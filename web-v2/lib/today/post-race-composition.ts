@@ -4,14 +4,17 @@
  *
  * The week after a race, Today rendered as an ordinary training day whose
  * plan happened to be empty. The deck's ruling: days 0 to 7 after a race
- * get their own composition —
+ * get their own composition.
  *
- *   hero      · the race, not a workout (name, days since, result with its
- *               provenance chip, CONFIRM, "The race story ›")
- *   beat 2    · the recovery read (readiness / sleep / RHR + the post_race
- *               purpose line)
- *   strip     · the RECOVERY WINDOW with its real date range
- *   tiles     · VOLUME + FORM with fatigue framing; GAP and RACE DAY leave
+ * 2026-08-17 · CORRECTED. The first build of that ruling overcorrected:
+ * it gave the race the hero on every day of the window and dropped the
+ * day's own prescription entirely, so the morning after his half David
+ * read a page that never mentioned the easy 4 he was supposed to run.
+ * The beat ORDER now lives in lib/today/composition.ts, which puts
+ * today's work first from day 1 onward and demotes the race to a line.
+ *
+ * What stays here is what only this state knows: how long ago the race
+ * was, and the shape of the recovery window the plan actually wrote.
  *
  * ── The thing that must not be hardcoded ───────────────────────────────
  *
@@ -255,34 +258,42 @@ export function selectRecoveryWindow(input: {
 /**
  * The window's one-line summary, spoken from what the plan prescribes.
  *
- * "Week 1 of 2 · 4 running days · 17 mi easy" for a half's context-aware
- * window; "Week 1 of 4 · 2 running days · 6 mi easy" for a marathon's
- * reverse taper; "Week 1 of 2 · rest only" when the plan really did
- * prescribe no running. The sentence is derived, never asserted.
+ * "4 running days · 17 mi easy" for a half's context-aware window;
+ * "2 running days · 6 mi easy" for a marathon's reverse taper; "rest
+ * only" when the plan really did prescribe no running. The sentence is
+ * derived, never asserted.
+ *
+ * 2026-08-17 · the "Week 1 of 2" prefix is gone. David read the live page
+ * and found the same window described three separate ways on one screen —
+ * "DAY 1 OF 14", "RECOVERY WINDOW · AUG 17 TO 30", and "Week 1 of 2".
+ * Position in the window is now stated once, in the strip header. This
+ * line says what the week HOLDS, which is the one thing the header does
+ * not.
  */
 export function recoveryWeekSummary(w: RecoveryWindow): string {
-  const weekPart = `Week ${w.weekIndex} of ${w.weeksTotal}`;
-  if (w.runningDays === 0) return `${weekPart} · rest only`;
+  if (w.runningDays === 0) return 'rest only';
   const dayPart = `${w.runningDays} running day${w.runningDays === 1 ? '' : 's'}`;
   const miPart = `${w.weekPlannedMi % 1 === 0 ? w.weekPlannedMi.toFixed(0) : w.weekPlannedMi.toFixed(1)} mi easy`;
-  return `${weekPart} · ${dayPart} · ${miPart}`;
+  return `${dayPart} · ${miPart}`;
 }
 
 /* ── the composition switch ──────────────────────────────────────────── */
 
+/**
+ * 2026-08-17 · the four `show*Tile` booleans that used to live here are
+ * gone. `lib/today/composition.ts` is the single authority on which tiles
+ * render, in every state, and two modules answering the same question is
+ * the shape of bug this codebase keeps paying for. What stays here is
+ * everything only the post-race state knows: how long ago the race was,
+ * and what the recovery plan actually prescribes.
+ */
 export type PostRaceComposition = {
   /** True when Today should render the post-race composition. */
   active: boolean;
   /** Days since the race finished. 0 = race day itself, 1 = yesterday. */
   daysSince: number | null;
-  /** "yesterday" / "2 days ago" — the hero's eyebrow tail. */
+  /** "yesterday" / "2 days ago" — the recent-race beat's eyebrow tail. */
   sinceLabel: string | null;
-  /** THE GAP is meaningless days after a race. */
-  showGapTile: boolean;
-  /** So is a countdown to a race months out. */
-  showRaceDayTile: boolean;
-  showVolumeTile: boolean;
-  showFormTile: boolean;
   /** The strip's eyebrow. Carries the real range when a window exists. */
   stripHeader: string;
   /** The strip's right-hand note, or null. */
@@ -312,18 +323,29 @@ export function composePostRaceToday(input: {
     daysSince != null && daysSince >= 0 && daysSince <= POST_RACE_TODAY_WINDOW_DAYS;
   const active = inWindow || (purposeIsPostRace && daysSince == null);
 
+  // One description of the window, not three. Where you are in it and how
+  // long it runs, in a single eyebrow.
+  //
+  // 2026-08-17 · this is computed BEFORE the active branch on purpose. A
+  // recovery block outlives the post-race window: David's runs 14 days,
+  // the composed post-race state 7. On day 8 the runner is still in the
+  // block, and a strip that reverted to "THIS WEEK" the moment the race
+  // stopped being news would be describing a recovery week as an ordinary
+  // one. The window's own copy belongs to the window.
+  const stripHeader = recovery
+    ? `RECOVERY · DAY ${recovery.dayIndex} OF ${recovery.daysTotal} · ${recovery.rangeLabel.toUpperCase()}`
+    : active ? 'RECOVERY WEEK' : 'THIS WEEK';
+  const stripNote = recovery?.nextBlockLabel ?? null;
+  const stripSummary = recovery ? recoveryWeekSummary(recovery) : null;
+
   if (!active) {
     return {
       active: false,
       daysSince,
       sinceLabel: null,
-      showGapTile: true,
-      showRaceDayTile: true,
-      showVolumeTile: true,
-      showFormTile: true,
-      stripHeader: 'THIS WEEK',
-      stripNote: null,
-      stripSummary: null,
+      stripHeader,
+      stripNote,
+      stripSummary,
       recovery,
     };
   }
@@ -338,51 +360,9 @@ export function composePostRaceToday(input: {
     active: true,
     daysSince,
     sinceLabel,
-    // Both leave: a projection and a countdown are noise while the body is
-    // absorbing a race. They return with the next block.
-    showGapTile: false,
-    showRaceDayTile: false,
-    showVolumeTile: true,
-    showFormTile: true,
-    stripHeader: recovery
-      ? `RECOVERY WINDOW · ${recovery.rangeLabel}`
-      : 'RECOVERY WEEK',
-    stripNote: recovery?.nextBlockLabel ?? null,
-    stripSummary: recovery ? recoveryWeekSummary(recovery) : null,
+    stripHeader,
+    stripNote,
+    stripSummary,
     recovery,
   };
-}
-
-/**
- * The FORM tile's fatigue framing during recovery. The label and delta are
- * unchanged truth; only the helper line changes, because "pull back this
- * week" is not advice four days after a race — the pull-back IS the plan.
- */
-export function postRaceFormHelper(
-  label: string,
-  recovery: RecoveryWindow | null,
-): string {
-  const through = recovery ? ` Expected through ${shortDate(recovery.endISO)}.` : '';
-  switch (label) {
-    case 'OVERREACH':
-    case 'LOADED':
-      return `Race fatigue, not a warning sign.${through}`;
-    case 'RACE-READY':
-    case 'PRODUCTIVE':
-      return `Freshness is returning.${through}`;
-    case 'DETRAINING':
-      return `Deliberately light while you absorb the race.${through}`;
-    default:
-      return `Reading your load through the recovery window.${through}`;
-  }
-}
-
-/** The VOLUME tile's recovery subline: the window's own cap, not a target. */
-export function postRaceVolumeNote(recovery: RecoveryWindow | null): string {
-  if (!recovery) return 'no target this week';
-  if (recovery.runningDays === 0) return 'rest week · no target';
-  const cap = recovery.weekPlannedMi % 1 === 0
-    ? recovery.weekPlannedMi.toFixed(0)
-    : recovery.weekPlannedMi.toFixed(1);
-  return `recovery week · ${cap} mi prescribed`;
 }

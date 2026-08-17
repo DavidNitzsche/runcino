@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
@@ -34,7 +34,7 @@ import { elevPathFromSplits } from '@/lib/route/polyline';
 // WorkoutProposalBanner / AdaptationCard are all folded into one chrome.
 // The sources are unchanged; only the rendering is unified.
 import { CoachDecisionCard } from '../cards/CoachDecisionCard';
-import { TARGETS_OWNED_PLAN_KINDS } from '@/lib/coach/decision-cards';
+import { TARGETS_OWNED_PLAN_KINDS, selectCoachDecisions } from '@/lib/coach/decision-cards';
 // 2026-08-17 · deck Decision 3b · one status vocabulary. Today's GAP tile
 // reads the same resolver and renders the same chip Targets does.
 import { resolveGoalStatus } from '@/lib/faff/goal-status';
@@ -49,11 +49,27 @@ import {
 import {
   selectRecoveryWindow,
   composePostRaceToday,
-  postRaceFormHelper,
-  postRaceVolumeNote,
   type RecoveryWindow,
   type PostRaceComposition,
 } from '@/lib/today/post-race-composition';
+/* 2026-08-17 · THE PAGE ORDER LIVES IN ONE PURE FUNCTION.
+ *
+ * David read the live page the morning after his A race and called it "a
+ * huge mess of information and an awful home page". The specific failure
+ * was structural, not visual: the hero slot below carried a
+ * `postRaceOwnsPage ? null` branch, which deleted the day's prescribed run
+ * from the page entirely and left the race result as the only large thing
+ * on it. Five near-equal cards followed, readiness rendered twice, and two
+ * tiles showed numbers from a block that had already finished.
+ *
+ * composeToday answers "what does this page hold, in what order" for every
+ * state in C1's conditional-layout table, and the render below is a walk
+ * over the beats it returns. No inline state branching in the JSX. */
+import {
+  composeToday,
+  type TodayBeat,
+  type TodayComposition,
+} from '@/lib/today/composition';
 
 export function TodayView({
   seed, curDay, onPickDay, onOpenDrawer, onOpenRace, onOpenRun,
@@ -101,7 +117,12 @@ export function TodayView({
   const goal = seed.goalRace;
   const isRaceDay = goal != null && goal.daysAway === 0 && !!d.iso && d.iso === goal.date && !d.done;
   const band = seed.readinessBrief?.band ?? null;
-  const isPullBack = band === 'pull-back' && !d.done && (d.type === 'easy' || d.type === 'recovery');
+  // 2026-08-17 · the pull-back branch that used to live here replaced the
+  // whole hero with a readiness score and biometrics, which meant a
+  // pull-back day was a page about the runner's HRV rather than a page
+  // about the run they were still supposed to do. Readiness now modifies
+  // beat 1 instead of replacing it — composeToday's readiness.modifiesWork
+  // decides, and the modifier line renders under the work hero.
   // 2026-06-10 · coached mode (fifth onboarding path): the runner's own
   // coach owns the plan. A plan-less day for a coached runner gets the
   // coached hero (no prescriptions, no workout card) — completed runs
@@ -141,9 +162,6 @@ export function TodayView({
     daysSince: postRaceRace?.daysSince ?? null,
     recovery: recoveryWindow,
   });
-  // The composition owns the page only on today's card. Tapping back to
-  // an earlier day in the strip shows that day, same rule race day uses.
-  const postRaceOwnsPage = postRace.active && !!d.today && !isRaceDay;
   const result = d.done ? (seed.results[curDay] ?? seed.results[0]) : undefined;
   // 2026-05-30: lazy-fetch the real run summary for past days so the hero
   // stats grid + heroExtra row don't render seed.results placeholder "·"
@@ -216,446 +234,110 @@ export function TodayView({
     return () => { alive = false; };
   }, [nudgeDismissed]);
 
-  return (
-    <>
-      <div className="top">
-        <div>
-          <div className="date">{d.full}</div>
-          <div className="wk">{seed.weekOf}</div>
-        </div>
-        {(() => {
-          // 2026-06-01 · Today header reads from seed.readinessBrief
-          // first · same source as the drawer. Previously the chip
-          // showed seed.readiness.score (legacy adaptReadiness output)
-          // while the drawer showed seed.readinessBrief.score, so the
-          // two surfaces could disagree. Brief is the source of truth;
-          // legacy readiness is the fallback only when brief is null
-          // (no-data band, fresh runner, composer error). Ring stroke
-          // is also band-aware now · was hardcoded green so a pull-
-          // back day showed a green ring with "PULL BACK" copy.
-          const score = seed.readinessBrief?.score ?? seed.readiness.score;
-          const label = seed.readinessBrief?.label ?? seed.readiness.label;
-          const band = seed.readinessBrief?.band ?? null;
-          // AFC fix 2 · sharp + ready collapse to the single good-state
-          // green from the locked palette. #34D058 was a one-off green
-          // visually indistinguishable from #3EBD41 at ring size.
-          const ringColor =
-            band === 'sharp' ? '#3EBD41' :
-            band === 'ready' ? '#3EBD41' :
-            band === 'moderate' ? '#F3AD38' :
-            band === 'pull-back' ? '#FC4D64' :
-            band === 'no-data' ? '#8A90A0' :
-            '#3EBD41';
-          return (
-            <div className="rbtn" onClick={onOpenDrawer} role="button" tabIndex={0}>
-              <div className="rt">
-                <div className="rl">
-                  READINESS{' '}
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-                </div>
-                <div className="rs" style={band ? { color: ringColor } : undefined}>{label}</div>
-              </div>
-              <div className="ringwrap">
-                <svg width="56" height="56" viewBox="0 0 56 56">
-                  <circle cx="28" cy="28" r="23" fill="none" stroke="rgba(255,255,255,.18)" strokeWidth="5"/>
-                  <circle cx="28" cy="28" r="23" fill="none" stroke={ringColor} strokeWidth="5" strokeLinecap="round" strokeDasharray="144.5" strokeDashoffset={144.5 - (score / 100) * 144.5} transform="rotate(-90 28 28)"/>
-                </svg>
-                {/* Cold-start: no biometric data yet → a "0" score reads as
-                    broken. Show an em-dash; the "BUILDING" label carries
-                    the honest state. */}
-                <div className="rv">{band === 'no-data' ? '—' : score}</div>
-              </div>
-            </div>
-          );
-        })()}
-      </div>
+  /* ── THE COMPOSITION ─────────────────────────────────────────────────
+     Everything above resolves data. This resolves the PAGE: which beats
+     it holds and in what order, for the state the runner is actually in.
+     See lib/today/composition.ts for the doctrine and the test suite. */
 
-      {/* 2026-06-04 · ALL wrapper divs + inline marginTop removed.
-          Each banner / proposal card renders directly into the .main
-          grid · components return null when they have nothing to
-          show.  .main's --section-gap handles spacing when something
-          IS rendered.  Previously every wrapper div made an empty
-          grid row + carried inline margin = ~60-100px of dead space
-          above THIS WEEK when none of these had content (David: "way
-          too much dead space up here, the rules were either not
-          enforced or too lax").
+  // What the plan says about the selected day. A rest day inside a
+  // recovery block is a real prescription and gets the hero; 'none' means
+  // there is no plan row at all, which is the only case with no work to
+  // lead with.
+  const prescribed: 'run' | 'rest' | 'none' =
+    isCoachedBlank ? 'none'
+      : isRest ? (d.planWorkoutId ? 'rest' : 'none')
+      : 'run';
 
-          Brief v2 §6 · ONE-BANNER CAP. The .prehero-stack wrapper is
-          display:contents (children stay direct grid items).
+  // The coach queue as the seed knows it. CoachDecisionCard also pulls
+  // adaptation notices from /api/coach/intents on mount, so this is a
+  // lower bound — which is why the card renders in a fixed slot below and
+  // self-suppresses when its real queue is empty.
+  const seedDecisionCount = useMemo(
+    () => selectCoachDecisions({
+      coachProposals: seed.pendingProposals,
+      planProposals: seed.planProposals,
+      workoutProposals: seed.pendingWorkoutProposals,
+      todayISO: seed.todayISO,
+      excludeKinds: TARGETS_OWNED_PLAN_KINDS,
+    }).length,
+    [seed.pendingProposals, seed.planProposals, seed.pendingWorkoutProposals, seed.todayISO],
+  );
 
-          2026-08-17 · deck Decision 2. The CSS gag that hid every
-          element after the first is retired: it enforced the cap by
-          making banners unreachable. CoachDecisionCard now folds the
-          four coach interruption sources (coach_proposals, plan
-          proposals, workout proposals, coach_intents) into ONE queue
-          and renders one card with an "N waiting" pager. The remaining
-          stack children are the non-coach banners, which are mutually
-          rare and self-suppressing. */}
+  const thisWeekPlannedMi = useMemo(() => {
+    const wk = seed.season.weekDays?.[seed.season.nowIdx] ?? [];
+    return Math.round(wk.reduce((s, x) => s + (x.mi ?? 0), 0) * 10) / 10;
+  }, [seed.season.weekDays, seed.season.nowIdx]);
 
-      <div className="prehero-stack">
-      <ReconnectBanner />
+  const comp: TodayComposition = composeToday({
+    isTodayCard: !!d.today,
+    isRaceDay,
+    dayDone: !!d.done,
+    prescribed,
+    coachedExternally: seed.coachedExternally,
+    hasMorningBrief: !!seed.morningBrief?.paragraph,
+    decisionCount: seedDecisionCount,
+    missedYesterday: !!missedYesterday,
+    // Web carries no injury-protocol signal on the seed yet: injury and
+    // illness arrive as coach proposals and ride the decision queue. The
+    // selector supports the state so the page is ready the day the signal
+    // lands; until then nothing claims the alert slot.
+    injuryActive: false,
+    readinessBand: band,
+    postRaceActive: postRace.active,
+    daysSinceRace: postRaceRace?.daysSince ?? postRace.daysSince ?? null,
+    hasRecentRace: !!postRaceRace,
+    raceResultAcknowledged: !!postRaceRace?.finishTime && !postRaceRace.provisional,
+    inRecoveryWindow: recoveryWindow != null,
+    recoveryWindowAvailable: (recoveryWindow?.days.length ?? 0) > 0,
+    betweenBlocks: !!seed.blockState?.betweenBlocks,
+    hasGoalRace: !!goal,
+    daysToGoalRace: goal?.daysAway ?? null,
+    weekPlannedMi: thisWeekPlannedMi,
+    weekLoggedMi: seed.thisWeekMiles ?? 0,
+    formLabel: seed.form?.label ?? null,
+  });
 
-      {showPhysiologyNudge ? (
-        <ProfileGapCard
-          highlight="Tell Faff your LTHR + HRmax"
-          fragment="so the coach can dial in your zones. Takes ~30 seconds."
-          ctaLabel="ADD"
-          ctaHref="/health"
-          onCta={() => {
-            if (typeof localStorage !== 'undefined') {
-              localStorage.setItem('physiologyNudgeDismissed', '1');
-            }
-            setNudgeDismissed(true);
-            setShowPhysiologyNudge(false);
-          }}
-        />
-      ) : null}
+  /* The header sub-line drops the race countdown when the countdown is
+     not the question of the day. David's page the morning after his half
+     read "RECOVERY · 111d to California International" — a number that is
+     true, and that nobody absorbing a race is asking. The phase name
+     stays; the horizon comes back with the block pointed at it. */
+  // Keyed off the runner's actual situation, not the card they happen to
+  // be looking at: tapping Wednesday inside a recovery block does not make
+  // the countdown relevant again.
+  const countdownIrrelevant =
+    postRace.active || recoveryWindow != null || !!seed.blockState?.betweenBlocks;
+  const headerSubline = (() => {
+    if (!countdownIrrelevant) return seed.weekOf;
+    const trimmed = (seed.weekOf ?? '').replace(/\s*·\s*\d+\s*d\s+to\s+.*$/i, '').trim();
+    return trimmed || seed.weekOf;
+  })();
 
-      {missedYesterday ? (
-        <DayStatePill
-          kind="missed"
-          label={`Yesterday's ${missedYesterday.name.toLowerCase()} · ${missedYesterday.dist} mi`}
-          actions={[
-            {
-              label: 'LOG IT',
-              onClick: () => { onPickDay(seed.todayIdx - 1); },
-            },
-            {
-              label: 'SKIP',
-              onClick: () => {
-                if (!missedYesterday.iso) return;
-                void fetch('/api/today/skip', {
-                  method: 'POST',
-                  headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({ date: missedYesterday.iso, skip: true }),
-                }).then(() => { setSkippedFor(missedYesterday.iso, true); });
-              },
-            },
-          ]}
-        />
-      ) : null}
+  /* -- the beats, as nodes --------------------------------------------
+     One node per beat. Nothing decides its own visibility here; the
+     composition already did. */
 
-      {/* 2026-08-17 · deck Decision 2 · one card, one queue, one grammar.
-          Decisions (amber) outrank notices (recovery blue); the pager
-          reaches the rest. No state gate here: an injury or illness
-          proposal is exactly the thing that must still reach the runner
-          on a recovery day, so suppression stays where the deck put it
-          (race week, section 5) and not here. */}
-      <CoachDecisionCard
-        coachProposals={seed.pendingProposals}
-        planProposals={seed.planProposals}
-        workoutProposals={seed.pendingWorkoutProposals}
-        todayISO={seed.todayISO}
-        // Wave 2 mounts the goal renegotiation inside THE PATH on Targets,
-        // beside the number it renegotiates. Today must not ask the same
-        // question a second time.
-        excludeKinds={TARGETS_OWNED_PLAN_KINDS}
-      />
-      </div>{/* .prehero-stack · brief v2 §6 one-banner cap */}
+  // Readiness has ONE readout, the ring in the header. When it changes
+  // today, the consequence is stated inside beat 1 rather than opening a
+  // second card about itself. That duplicate card is what David saw as
+  // "Readiness 68" rendered twice on one screen.
+  const readinessModifierNode = comp.readiness.modifiesWork && seed.readinessBrief ? (
+    <div className="work-modifier">
+      <span className="wm-k">READINESS</span>
+      <span className="wm-b">
+        {(seed.readinessBrief.oneLineMover ?? seed.readinessBrief.headline ?? '')
+          .replace(/[.\s]+$/, '')}
+        . Run this by the HR cap{d.hrCap ? ` (${d.hrCap} bpm)` : ''}, not pace.
+      </span>
+    </div>
+  ) : null;
 
-      {/* Morning brief content moved 2026-06-01 into the redesigned
-          Readiness drawer (overlays/Drawer.tsx). The inline panel that
-          rendered the same data on Today is removed · same data now
-          surfaces in one place when the runner taps the readiness ring.
-          See designs/from Design agent/readiness-drawer/. */}
-
-      {/* 2026-08-17 · THE COMPOSED MORNING BRIEF · one coach paragraph
-          (yesterday acknowledged · today's purpose + readiness band ·
-          season context only when it changed). NOT the 2026-06-01
-          drawer data above — this is prose, server-composed in
-          lib/coach/morning-brief.ts. Renders only on today's card,
-          pre-run (the post-run pivot owns the page once the run is
-          done), and disappears cleanly when composition returned null. */}
-      {d.today && !d.done && seed.morningBrief?.paragraph ? (
-        <div className="mbrief">
-          <div className="mb-eyebrow">THIS MORNING</div>
-          <div className="mb-body">{seed.morningBrief.paragraph}</div>
-        </div>
-      ) : null}
-
-      {/* 2026-08-17 · deck Decision 1 · the post-race composition.
-          Beat 1 is the race, beat 2 is the recovery read. Both sit
-          above the strip, which is why they render here rather than in
-          the hero slot below: the week after a race, the race IS the
-          hero and the day's prescription is context, not headline. */}
-      {postRaceOwnsPage && postRaceRace ? (
-        <PostRaceHero
-          race={postRaceRace}
-          sinceLabel={postRace.sinceLabel}
-          onConfirmed={setPostRaceRace}
-          coachLine={
-            postRaceRace.provisional || !postRaceRace.finishTime
-              ? 'You raced. The result stands whether you confirm it now or later. This week is for absorbing it, not chasing it.'
-              : 'The result is locked in. This week is for absorbing it, not chasing it.'
-          }
-        />
-      ) : null}
-
-      {postRaceOwnsPage ? (
-        <RecoveryReadCard
-          seed={seed}
-          window={postRace.recovery}
-          coachLine={
-            isPostRace && restPurpose
-              ? [restPurpose.verdict, ...restPurpose.facts].filter(Boolean).join(' ')
-              : null
-          }
-        />
-      ) : null}
-
-      {/* Beat 3 · the recovery window strip, in the plan's own span with
-          the plan's own days. Replaces the ordinary week strip only when
-          a recovery block actually exists; with no recovery plan the
-          normal strip renders below and nothing is invented. */}
-      {postRaceOwnsPage && postRace.recovery ? (
-        <RecoveryWindowStrip composition={postRace} />
-      ) : null}
-
-      {/* 2026-06-04 · label + week strip wrapped in a .band so the
-          label-to-week distance is the tight --label-gap, while the
-          band-to-next-band distance stays --section-gap from .main's
-          grid.  Same two-tier rhythm spec David defined for inside-card
-          field/section spacing, just applied to the page body.
-
-          Brief v2 §6 (queued task 3) · race morning hides the week
-          strip entirely — "the race takes the page" means no secondary
-          week context above the hero. Every other day renders the
-          strip unchanged. */}
-      {isRaceDay || (postRaceOwnsPage && postRace.recovery) ? null : (
-      <div className="band">
-      {/* Week label + prev/next navigation arrows */}
-      {(() => {
-        const nowIdx = seed.season.nowIdx;
-        const totalWeeks = seed.season.weekDays.length;
-        const canBack = weekOffset > -(nowIdx);
-        const canFwd  = weekOffset < (totalWeeks - 1 - nowIdx);
-        // Derive a readable week label for offset weeks
-        // 2026-08-17 · post-race window: the week strip is recovery
-        // context, not a training prescription. Reframe the header.
-        let stripLabel = isPostRace ? 'RECOVERY WEEK' : 'THIS WEEK';
-        if (weekOffset !== 0) {
-          const offsetDays = seed.season.weekDays[nowIdx + weekOffset];
-          if (offsetDays && offsetDays.length > 0) {
-            const first = offsetDays[0];
-            const last  = offsetDays[offsetDays.length - 1];
-            const fmt = (iso: string | undefined) => {
-              if (!iso) return '';
-              const p = iso.split('-').map(Number);
-              return new Date(p[0], p[1]-1, p[2]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            };
-            stripLabel = `${fmt(first.date)} – ${fmt(last.date)}`;
-          }
-        }
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div className="weeklab" style={{ flex: 1 }}>{stripLabel}</div>
-            <button
-              onClick={() => { setWeekOffset(o => o - 1); }}
-              disabled={!canBack}
-              style={{ background: 'none', border: 'none', cursor: canBack ? 'pointer' : 'default', opacity: canBack ? 1 : 0.25, color: 'rgba(255,255,255,.7)', padding: '2px 6px', fontSize: 16, lineHeight: 1 }}
-              aria-label="Previous week"
-            >‹</button>
-            <button
-              onClick={() => { setWeekOffset(o => o + 1); }}
-              disabled={!canFwd}
-              style={{ background: 'none', border: 'none', cursor: canFwd ? 'pointer' : 'default', opacity: canFwd ? 1 : 0.25, color: 'rgba(255,255,255,.7)', padding: '2px 6px', fontSize: 16, lineHeight: 1 }}
-              aria-label="Next week"
-            >›</button>
-          </div>
-        );
-      })()}
-      {/* 2026-06-01 · This Week strip · Direction A redesign per
-          designs/from Design agent/week-strip/README.md. Fixed-height
-          card (152px) with reserved 16px meta row at the bottom so
-          annotations (adapted "was X", strength glyph, done glyph)
-          never make a card taller than its neighbors. The strength
-          row is demoted from a separate text line to a top-right
-          dumbbell glyph in the icon cluster. Adaptation line lives
-          in the bottom meta row · only renders when original label
-          actually differs from current (no-op suppression per spec).
-          2026-06-07 · weekOffset navigation: offset 0 = current week
-          (seed.week, full fidelity). Other offsets use season.weekDays
-          entries — same plan data, slimmer shape — done days show the
-          green check and clicking opens the RunDetailModal. */}
-      <div className="week wkstrip-v2">
-        {weekOffset === 0 ? seed.week.map((day, i) => {
-          const skipped = isSkipped(day);
-          const isRest = day.type === 'rest';
-
-          // Adaptation detection · shared with TrainView's FULL PLAN
-          // grid via lib/adapt-text. David call 2026-06-01: surface
-          // ALL changes including distance ("an easy run can change
-          // to a shorter or longer easy run"), not just label flips.
-          // The helper applies a 0.25 mi tolerance to absorb rounding
-          // noise + case-normalizes labels so no-op rewrites stay
-          // silent.
-          const wasText = skipped ? null : buildAdaptText(day.adaptation, {
-            type: day.type,
-            name: day.name,
-            subLabel: day.subLabel,
-            dist: day.dist,
-            iso: (day as { iso?: string; date?: string }).iso ?? (day as { iso?: string; date?: string }).date ?? null,
-          });
-          const wasAdapted = !!wasText;
-          // 2026-06-03 · Rule 14 · removed `!day.done` filter. Hard-with-
-          // hard doctrine (Pfitz Advanced Marathoning Appx A) says PM
-          // strength after AM quality run is the canonical placement ·
-          // run-done doesn't preclude strength. Chip now hides only on
-          // skipped days. Tomorrow's chip auto-recomputes when today
-          // passes (date moves out of the week).
-          // 2026-06-11 · show the glyph when strength is recommended OR
-          // already logged that day. Once the weekly count is met the
-          // recommender stops recommending (so the day is no longer
-          // "suggested"), but the logged day must still show its green
-          // done state · otherwise a completed session would vanish.
-          // 2026-06-03 · per-day done state from strength_sessions
-          // reconcile · flips chip when HK push or manual log lands.
-          // Source: glance.strengthWeekStatus.{confirmed,bonus}.
-          const showDone = !!day.done && !skipped;
-          return (
-            <button
-              key={i}
-              className={`wc${i === curDay ? ' on' : ''}${day.today ? ' today' : ''}${skipped ? ' skipped' : ''}${isRest ? ' rest' : ''}`}
-              onClick={() => onPickDay(i)}
-              type="button"
-            >
-              {/* Top row · day label + date · icon cluster */}
-              <div className="wc-top">
-                <span className="wc-day">
-                  <span className="wc-dw">{day.today ? 'TODAY' : day.dw}</span>
-                  <b className="wc-dn">{day.dn}</b>
-                </span>
-                <span className="wc-ic">
-                  {showDone ? (
-                    <span className="gly done" title="Done" aria-label="Done">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 6L9 17l-5-5"/>
-                      </svg>
-                    </span>
-                  ) : null}
-                </span>
-              </div>
-
-              {/* Run name · effort dot + name. Normalize to title case
-                  so backend-uppercase labels like "THRESHOLD" render as
-                  "Threshold" matching design. Multi-word names (e.g.
-                  "Long Run") capitalize each word. */}
-              <div className="wc-name">
-                {isRest ? null : (
-                  <span className="effdot" style={{ background: EFF[day.type].dot }} aria-hidden="true" />
-                )}
-                <span className="wc-nm">{isRest ? 'Rest' : toTitleCase(workoutTypeTitle(day.type))}</span>
-              </div>
-
-              {/* Metrics · "{dist} · {pace}" or "rest" */}
-              <div className="wc-met">
-                {/* 2026-06-02 · David call: rest-day chip was rendering
-                    "Rest" (title) + "rest" (meta) · duplicate. The title
-                    above already says it. Empty meta row on rest days
-                    keeps the card height aligned with the strip. */}
-                {isRest ? null : day.dist === ' · ' ? <span className="wc-met-rest">·</span> : `${day.dist} mi · ${day.pace}`}
-              </div>
-
-              {/* Spacer to push meta to bottom */}
-              <div className="wc-grow" />
-
-              {/* Meta row · always present (height reserved). Shows
-                  the adaptation line, or SKIPPED, or stays empty. */}
-              <div className="wc-meta">
-                {skipped ? (
-                  <span className="wc-skipped">SKIPPED</span>
-                ) : wasAdapted && wasText ? (
-                  <>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#F3AD38" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="wc-was-icn">
-                      <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>
-                    </svg>
-                    <span className="wc-was-tx">{wasText}</span>
-                  </>
-                ) : null}
-              </div>
-            </button>
-          );
-        }) : (() => {
-          // Past / future week from season.weekDays
-          const nowIdx = seed.season.nowIdx;
-          const offsetDays = seed.season.weekDays[nowIdx + weekOffset] ?? [];
-          const DOW_SHORT = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
-          return offsetDays.map((day, i) => {
-            const t = day.type;
-            const isRest = t === 'rest';
-            const isDone = !!day.done;
-            const mi = day.mi > 0 ? day.mi.toFixed(1) : null;
-            const ps = day.paceSec;
-            const paceStr = ps ? `${Math.floor(ps/60)}:${String(Math.round(ps%60)).padStart(2,'0')}` : null;
-            const dn = day.date ? (() => { const p = (day.date as string).split('-').map(Number); return new Date(p[0],p[1]-1,p[2]).getDate(); })() : i + 1;
-            return (
-              <button
-                key={i}
-                className={`wc${isRest ? ' rest' : ''}`}
-                type="button"
-                onClick={() => {
-                  if (isDone && day.activityId && onOpenRun) onOpenRun(day.activityId as string);
-                }}
-                style={{ cursor: isDone && day.activityId ? 'pointer' : 'default' }}
-              >
-                <div className="wc-top">
-                  <span className="wc-day">
-                    <span className="wc-dw">{DOW_SHORT[i] ?? ''}</span>
-                    <b className="wc-dn">{dn}</b>
-                  </span>
-                  <span className="wc-ic">
-                    {isDone ? (
-                      <span className="gly done" aria-label="Done">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-                      </span>
-                    ) : null}
-                  </span>
-                </div>
-                <div className="wc-name">
-                  {isRest ? null : <span className="effdot" style={{ background: EFF[t]?.dot ?? '#8A90A0' }} aria-hidden="true" />}
-                  <span className="wc-nm">{isRest ? 'Rest' : toTitleCase(workoutTypeTitle(t))}</span>
-                </div>
-                <div className="wc-met">
-                  {isRest ? null : (mi && paceStr) ? `${mi} mi · ${paceStr}` : mi ? `${mi} mi` : null}
-                </div>
-                <div className="wc-grow" />
-                <div className="wc-meta" />
-              </button>
-            );
-          });
-        })()}
-      </div>
-      </div>
-      )}{/* .band · hidden on race morning per brief v2 §6 */}
-
-      {/* Strength-recommender reason banner removed 2026-06-01 (David
-          call · "why are we making a banner for strength at all"). The
-          chip-level "+ STRENGTH" annotation is the single surface;
-          the dormant-runner coach intent flows through the existing
-          /api/coach/intents stream (CoachActivityTimeline). The full
-          recommendation envelope still rides on the seed and is
-          available to other consumers · just no longer surfaces as
-          standalone chrome on Today. */}
-
-      {/* 2026-06-11 · the weekly "X/Y this week" strength status chip was
-          removed here (David call). Strength completion now reads off a
-          single signal · the per-day dumbbell glyph in the week strip turns
-          green when a session is logged on that day (see .strdone). No
-          separate counter line. */}
-
-      {/* 2026-08-17 · the post-race acknowledgment card that used to
-          mount here is gone. It is now the page's first two beats
-          (PostRaceHero + RecoveryReadCard above the strip) per deck
-          Decision 1, rather than a card wedged between the strip and
-          an unrelated hero. */}
-
-      {/* 2026-05-31: hero v2 — done days use CompletedHeroV2 (Post-Run
-          Detail (Easy)), planned-and-not-rest days use PlannedHeroV2
-          (Run Detail Planned (Easy)). Rest days keep the simple Recovery
-          panel below for now. */}
-      {isRaceDay ? (
-        <RaceDayHero goal={goal!} onOpenRace={onOpenRace} />
-      ) : d.done && !isRest ? (
+  /* Beat 1 - TODAY'S WORK. The prescription at hero scale: type,
+     distance, target pace, HR cap and the coach's reason for it, from
+     /api/today/purpose. A rest day gets the same treatment and says what
+     the rest is doing. This node renders in every state except race
+     morning, which has its own hero. */
+  const workNode: React.ReactNode = d.done && !isRest ? (
         <CompletedHeroV2
           d={d}
           result={result}
@@ -674,107 +356,8 @@ export function TodayView({
             : null) ?? seed.shoeRecByType[d.type] ?? null}
           persistShoe={curDay === seed.todayIdx}
         />
-      ) : postRaceOwnsPage ? (
-        // The race hero and the recovery read already carried the page.
-        // A REST card under them would be the third thing on one screen
-        // saying "nothing today".
-        null
-      ) : isPullBack ? (
-        <div className="hero">
-          <div className="hmain" style={meshGradient('recovery')}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <div className="htitle">{seed.readinessBrief!.score}</div>
-              <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.08em', opacity: 0.75 }}>{seed.readinessBrief!.label}</div>
-            </div>
-            {seed.readinessBrief!.oneLineMover && (
-              <div className="rest-coach">{seed.readinessBrief!.oneLineMover}</div>
-            )}
-            <div className="stats">
-              {(() => {
-                const sleepTile = seed.health.body.find(m => m.k === 'sleep');
-                const sleepSeries = sleepTile?.series ?? [];
-                const lastNight = sleepSeries.length ? sleepSeries[sleepSeries.length - 1] : null;
-                const avg7 = sleepTile?.current ?? null;
-                const rhrTile = seed.health.body.find(m => m.k === 'rhr');
-                const rhrCur = rhrTile?.current ?? null;
-                const rhrBase = rhrTile?.target ?? null;
-                const hrvTile = seed.health.body.find(m => m.k === 'hrv');
-                const hrvCur = hrvTile?.current ?? null;
-                const hrvBase = hrvTile?.target ?? null;
-                // 2026-06-10 · cold start. A brand-new runner with no
-                // HealthKit data was shown three empty tiles ("· bpm /
-                // · ms / 0.0h") that read as a broken card (David). When
-                // there's no biometric data at all, show one honest
-                // connect prompt instead of empty placeholders.
-                // Falsy (null/0) all-around = no real biometrics: a
-                // cold-start runner reads avg7 as 0.0h, not null.
-                if (!lastNight && !avg7 && !rhrCur && !hrvCur) {
-                  return (
-                    <div style={{ gridColumn: '1 / -1', opacity: 0.6, fontSize: 12.5, lineHeight: 1.5 }}>
-                      Connect Apple Health to track sleep, resting HR, and HRV. Until then, Faff coaches off your runs.
-                    </div>
-                  );
-                }
-                return (
-                  <>
-                    <div>
-                      <div className="v">{formatSleep(lastNight ?? avg7 ?? undefined)}</div>
-                      <div className="k">LAST NIGHT</div>
-                      {avg7 != null && (
-                        <div style={{ fontSize: 9.5, opacity: 0.55, marginTop: 2 }}>
-                          {avg7.toFixed(1)}h · 7-night avg
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <div className="v">{Math.round(rhrCur ?? 0) || '·'}<small> bpm</small></div>
-                      <div className="k">RESTING HR</div>
-                      {rhrBase != null && rhrCur != null && (
-                        <div style={{ fontSize: 9.5, opacity: 0.55, marginTop: 2 }}>
-                          baseline {Math.round(rhrBase)} · {rhrCur - rhrBase >= 0 ? '+' : ''}{Math.round(rhrCur - rhrBase)}
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <div className="v">{Math.round(hrvCur ?? 0) || '·'}<small> ms</small></div>
-                      <div className="k">HRV</div>
-                      <button type="button" className="fa-term-explain" style={{ display: 'block', marginTop: 3 }} onClick={() => openGlossary('HRV')}>WHY</button>
-                      {hrvBase != null && hrvCur != null && (
-                        <div style={{ fontSize: 9.5, opacity: 0.55, marginTop: 2 }}>
-                          baseline {Math.round(hrvBase)} · {Math.round((hrvCur - hrvBase) / hrvBase * 100) >= 0 ? '+' : ''}{Math.round((hrvCur - hrvBase) / hrvBase * 100)}%
-                        </div>
-                      )}
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-          {(() => {
-            const mover = seed.readinessBrief!.oneLineMover ?? seed.readinessBrief!.headline;
-            const cap = d.hrCap;
-            const capPart = cap ? ` (${cap} bpm)` : '';
-            return (
-              <div style={{ fontSize: 12, opacity: 0.6, padding: '10px 0 2px', lineHeight: 1.5 }}>
-                {mover}. Run this by the HR cap{capPart}, not pace.
-              </div>
-            );
-          })()}
-          <WorkoutCard
-            d={d}
-            done={false}
-            result={result}
-            runData={runData}
-            runLoading={runLoading}
-            shoes={seed.shoes}
-            seedShoe={(seed.todayShoeId != null
-              ? seed.shoes.find(s => s.id === seed.todayShoeId)?.nm
-              : null) ?? seed.shoeRecByType[d.type] ?? null}
-            persistShoe={curDay === seed.todayIdx}
-            seed={seed}
-          />
-        </div>
-      ) : !isRest ? (
+  ) : !isRest ? (
+    <>
         <>
           <PlannedHeroV2
             d={d}
@@ -818,7 +401,9 @@ export function TodayView({
             />
           )}
         </>
-      ) : (
+      {readinessModifierNode}
+    </>
+  ) : (
         <div className="hero">
           <div className="hmain" style={meshGradient(d.type)}>
             {/* 2026-06-03 · David: drop the small "DAY · TYPE · STATE"
@@ -953,19 +538,401 @@ export function TodayView({
             />
           )}
         </div>
-      )}
+  );
 
-      {/* 2026-06-08 · tiles recede on race morning · the race takes the
-          page. GAP/RACE-DAY/VOLUME/FORM all live one tap away in the full
-          race plan (and on Targets); on the day, they're noise.
+  /* Beat 4 - CONTEXT. The ordinary training week, or the recovery window
+     in the plan's own span. One band, one row. */
+  const weekBandNode = (
+      <div className="band">
+      {/* Week label + prev/next navigation arrows */}
+      {(() => {
+        const nowIdx = seed.season.nowIdx;
+        const totalWeeks = seed.season.weekDays.length;
+        const canBack = weekOffset > -(nowIdx);
+        const canFwd  = weekOffset < (totalWeeks - 1 - nowIdx);
+        // Derive a readable week label for offset weeks
+        // 2026-08-17 · post-race window: the week strip is recovery
+        // context, not a training prescription. Reframe the header.
+        let stripLabel = (comp.state === 'post-race' || comp.state === 'recovery')
+          ? 'RECOVERY WEEK' : 'THIS WEEK';
+        if (weekOffset !== 0) {
+          const offsetDays = seed.season.weekDays[nowIdx + weekOffset];
+          if (offsetDays && offsetDays.length > 0) {
+            const first = offsetDays[0];
+            const last  = offsetDays[offsetDays.length - 1];
+            const fmt = (iso: string | undefined) => {
+              if (!iso) return '';
+              const p = iso.split('-').map(Number);
+              return new Date(p[0], p[1]-1, p[2]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            };
+            stripLabel = `${fmt(first.date)} – ${fmt(last.date)}`;
+          }
+        }
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="weeklab" style={{ flex: 1 }}>{stripLabel}</div>
+            <button
+              onClick={() => { setWeekOffset(o => o - 1); }}
+              disabled={!canBack}
+              style={{ background: 'none', border: 'none', cursor: canBack ? 'pointer' : 'default', opacity: canBack ? 1 : 0.25, color: 'rgba(255,255,255,.7)', padding: '2px 6px', fontSize: 16, lineHeight: 1 }}
+              aria-label="Previous week"
+            >‹</button>
+            <button
+              onClick={() => { setWeekOffset(o => o + 1); }}
+              disabled={!canFwd}
+              style={{ background: 'none', border: 'none', cursor: canFwd ? 'pointer' : 'default', opacity: canFwd ? 1 : 0.25, color: 'rgba(255,255,255,.7)', padding: '2px 6px', fontSize: 16, lineHeight: 1 }}
+              aria-label="Next week"
+            >›</button>
+          </div>
+        );
+      })()}
+      {/* 2026-06-01 · This Week strip · Direction A redesign per
+          designs/from Design agent/week-strip/README.md. Fixed-height
+          card (152px) with reserved 16px meta row at the bottom so
+          annotations (adapted "was X", strength glyph, done glyph)
+          never make a card taller than its neighbors. The strength
+          row is demoted from a separate text line to a top-right
+          dumbbell glyph in the icon cluster. Adaptation line lives
+          in the bottom meta row · only renders when original label
+          actually differs from current (no-op suppression per spec).
+          2026-06-07 · weekOffset navigation: offset 0 = current week
+          (seed.week, full fidelity). Other offsets use season.weekDays
+          entries — same plan data, slimmer shape — done days show the
+          green check and clicking opens the RunDetailModal. */}
+      <div className="week wkstrip-v2">
+        {weekOffset === 0 ? seed.week.map((day, i) => {
+          const skipped = isSkipped(day);
+          const isRest = day.type === 'rest';
 
-          2026-08-17 · deck Decision 1 · the post-race week keeps VOLUME
-          and FORM with fatigue framing and drops THE GAP and the RACE
-          DAY countdown. A projection and a countdown to a race months
-          out say nothing useful days after the last one. */}
-      {isRaceDay ? null
-        : postRaceOwnsPage ? <PostRaceTiles seed={seed} composition={postRace} />
-        : <Tiles seed={seed} onOpenRace={onOpenRace} />}
+          // Adaptation detection · shared with TrainView's FULL PLAN
+          // grid via lib/adapt-text. David call 2026-06-01: surface
+          // ALL changes including distance ("an easy run can change
+          // to a shorter or longer easy run"), not just label flips.
+          // The helper applies a 0.25 mi tolerance to absorb rounding
+          // noise + case-normalizes labels so no-op rewrites stay
+          // silent.
+          const wasText = skipped ? null : buildAdaptText(day.adaptation, {
+            type: day.type,
+            name: day.name,
+            subLabel: day.subLabel,
+            dist: day.dist,
+            iso: (day as { iso?: string; date?: string }).iso ?? (day as { iso?: string; date?: string }).date ?? null,
+          });
+          const wasAdapted = !!wasText;
+          // 2026-08-17 · strength and cross-training are OFF the app
+          // (David: "it adds a level of complication and I am handling
+          // that elsewhere"). The per-day dumbbell glyph goes with them.
+          // Ingest and history stay; the prescription does not.
+          const showDone = !!day.done && !skipped;
+          return (
+            <button
+              key={i}
+              className={`wc${i === curDay ? ' on' : ''}${day.today ? ' today' : ''}${skipped ? ' skipped' : ''}${isRest ? ' rest' : ''}`}
+              onClick={() => onPickDay(i)}
+              type="button"
+            >
+              {/* Top row · day label + date · icon cluster */}
+              <div className="wc-top">
+                <span className="wc-day">
+                  <span className="wc-dw">{day.today ? 'TODAY' : day.dw}</span>
+                  <b className="wc-dn">{day.dn}</b>
+                </span>
+                <span className="wc-ic">
+                  {showDone ? (
+                    <span className="gly done" title="Done" aria-label="Done">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 6L9 17l-5-5"/>
+                      </svg>
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+
+              {/* Run name · effort dot + name. Normalize to title case
+                  so backend-uppercase labels like "THRESHOLD" render as
+                  "Threshold" matching design. Multi-word names (e.g.
+                  "Long Run") capitalize each word. */}
+              <div className="wc-name">
+                {isRest ? null : (
+                  <span className="effdot" style={{ background: EFF[day.type].dot }} aria-hidden="true" />
+                )}
+                <span className="wc-nm">{isRest ? 'Rest' : toTitleCase(workoutTypeTitle(day.type))}</span>
+              </div>
+
+              {/* Metrics · "{dist} · {pace}" or "rest" */}
+              <div className="wc-met">
+                {/* 2026-06-02 · David call: rest-day chip was rendering
+                    "Rest" (title) + "rest" (meta) · duplicate. The title
+                    above already says it. Empty meta row on rest days
+                    keeps the card height aligned with the strip. */}
+                {isRest ? null : day.dist === ' · ' ? <span className="wc-met-rest">·</span> : `${day.dist} mi · ${day.pace}`}
+              </div>
+
+              {/* Spacer to push meta to bottom */}
+              <div className="wc-grow" />
+
+              {/* Meta row · always present (height reserved). Shows
+                  the adaptation line, or SKIPPED, or stays empty. */}
+              <div className="wc-meta">
+                {skipped ? (
+                  <span className="wc-skipped">SKIPPED</span>
+                ) : wasAdapted && wasText ? (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#F3AD38" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="wc-was-icn">
+                      <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>
+                    </svg>
+                    <span className="wc-was-tx">{wasText}</span>
+                  </>
+                ) : null}
+              </div>
+            </button>
+          );
+        }) : (() => {
+          // Past / future week from season.weekDays
+          const nowIdx = seed.season.nowIdx;
+          const offsetDays = seed.season.weekDays[nowIdx + weekOffset] ?? [];
+          const DOW_SHORT = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+          return offsetDays.map((day, i) => {
+            const t = day.type;
+            const isRest = t === 'rest';
+            const isDone = !!day.done;
+            const mi = day.mi > 0 ? day.mi.toFixed(1) : null;
+            const ps = day.paceSec;
+            const paceStr = ps ? `${Math.floor(ps/60)}:${String(Math.round(ps%60)).padStart(2,'0')}` : null;
+            const dn = day.date ? (() => { const p = (day.date as string).split('-').map(Number); return new Date(p[0],p[1]-1,p[2]).getDate(); })() : i + 1;
+            return (
+              <button
+                key={i}
+                className={`wc${isRest ? ' rest' : ''}`}
+                type="button"
+                onClick={() => {
+                  if (isDone && day.activityId && onOpenRun) onOpenRun(day.activityId as string);
+                }}
+                style={{ cursor: isDone && day.activityId ? 'pointer' : 'default' }}
+              >
+                <div className="wc-top">
+                  <span className="wc-day">
+                    <span className="wc-dw">{DOW_SHORT[i] ?? ''}</span>
+                    <b className="wc-dn">{dn}</b>
+                  </span>
+                  <span className="wc-ic">
+                    {isDone ? (
+                      <span className="gly done" aria-label="Done">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+                <div className="wc-name">
+                  {isRest ? null : <span className="effdot" style={{ background: EFF[t]?.dot ?? '#8A90A0' }} aria-hidden="true" />}
+                  <span className="wc-nm">{isRest ? 'Rest' : toTitleCase(workoutTypeTitle(t))}</span>
+                </div>
+                <div className="wc-met">
+                  {isRest ? null : (mi && paceStr) ? `${mi} mi · ${paceStr}` : mi ? `${mi} mi` : null}
+                </div>
+                <div className="wc-grow" />
+                <div className="wc-meta" />
+              </button>
+            );
+          });
+        })()}
+      </div>
+      {comp.context.volumeLine ? (
+        <div className="ctx-line">{comp.context.volumeLine}</div>
+      ) : null}
+      </div>
+  );
+
+  const contextNode: React.ReactNode =
+    comp.context.strip === 'recovery' && postRace.recovery ? (
+      <RecoveryWindowStrip
+        composition={postRace}
+        progressLine={comp.context.volumeLine}
+        week={seed.week}
+        onPickDay={onPickDay}
+      />
+    ) : comp.context.strip === 'week' ? weekBandNode : null;
+
+  /* Beat 5 - RECENT. The race that just happened, at whatever weight it
+     has earned today. */
+  const recentNode: React.ReactNode = postRaceRace ? (
+    <RecentRaceBeat
+      race={postRaceRace}
+      sinceLabel={postRace.sinceLabel}
+      variant={comp.recent.treatment === 'hero' ? 'hero' : 'line'}
+      needsConfirm={comp.recent.needsConfirm}
+      onConfirmed={setPostRaceRace}
+      coachLine={
+        postRaceRace.provisional || !postRaceRace.finishTime
+          ? 'The result stands whether you confirm it now or later. This week is for absorbing it.'
+          : 'The result is locked in. This week is for absorbing it.'
+      }
+    />
+  ) : null;
+
+  /* Beat 3 - NEEDS A DECISION. One card, one queue, one grammar (deck
+     Decision 2). It sits UNDER the hero: a page whose first element is a
+     question is a page that never said what to do today. The card also
+     pulls adaptation notices from /api/coach/intents after mount, which
+     the seed cannot know about, so it keeps its slot even when the
+     composition saw an empty queue. It renders nothing when the real
+     queue is empty. */
+  const decisionNode = (
+    <>
+
+      {/* 2026-08-17 · deck Decision 2 · one card, one queue, one grammar.
+          Decisions (amber) outrank notices (recovery blue); the pager
+          reaches the rest. No state gate here: an injury or illness
+          proposal is exactly the thing that must still reach the runner
+          on a recovery day, so suppression stays where the deck put it
+          (race week, section 5) and not here. */}
+      <CoachDecisionCard
+        coachProposals={seed.pendingProposals}
+        planProposals={seed.planProposals}
+        workoutProposals={seed.pendingWorkoutProposals}
+        todayISO={seed.todayISO}
+        // Wave 2 mounts the goal renegotiation inside THE PATH on Targets,
+        // beside the number it renegotiates. Today must not ask the same
+        // question a second time.
+        excludeKinds={TARGETS_OWNED_PLAN_KINDS}
+      />
+    </>
+  );
+
+  const missedNode = (
+    <>
+      {missedYesterday ? (
+        <DayStatePill
+          kind="missed"
+          label={`Yesterday's ${missedYesterday.name.toLowerCase()} · ${missedYesterday.dist} mi`}
+          actions={[
+            {
+              label: 'LOG IT',
+              onClick: () => { onPickDay(seed.todayIdx - 1); },
+            },
+            {
+              label: 'SKIP',
+              onClick: () => {
+                if (!missedYesterday.iso) return;
+                void fetch('/api/today/skip', {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({ date: missedYesterday.iso, skip: true }),
+                }).then(() => { setSkippedFor(missedYesterday.iso, true); });
+              },
+            },
+          ]}
+        />
+      ) : null}
+    </>
+  );
+
+  const briefNode = seed.morningBrief?.paragraph ? (
+    <div className="mbrief">
+      <div className="mb-eyebrow">THIS MORNING</div>
+      <div className="mb-body">{seed.morningBrief.paragraph}</div>
+    </div>
+  ) : null;
+
+  const hasDecisionBeat = comp.beats.includes('decision');
+  const beatNode = (b: TodayBeat): React.ReactNode => {
+    switch (b) {
+      // Reserved for the injury protocol. See the composition input above
+      // for why nothing claims it on web yet.
+      case 'alert':    return null;
+      case 'brief':    return briefNode;
+      case 'race':     return <RaceDayHero goal={goal!} onOpenRace={onOpenRace} />;
+      case 'work':     return (<>{workNode}{hasDecisionBeat ? null : decisionNode}</>);
+      case 'decision': return decisionNode;
+      case 'missed':   return missedNode;
+      case 'context':  return contextNode;
+      case 'recent':   return recentNode;
+      case 'tiles':    return <Tiles seed={seed} onOpenRace={onOpenRace} gates={comp.tiles} />;
+      default:         return null;
+    }
+  };
+
+  return (
+    <>
+      <div className="top">
+        <div>
+          <div className="date">{d.full}</div>
+          <div className="wk">{headerSubline}</div>
+        </div>
+        {(() => {
+          // 2026-06-01 · Today header reads from seed.readinessBrief
+          // first · same source as the drawer. Previously the chip
+          // showed seed.readiness.score (legacy adaptReadiness output)
+          // while the drawer showed seed.readinessBrief.score, so the
+          // two surfaces could disagree. Brief is the source of truth;
+          // legacy readiness is the fallback only when brief is null
+          // (no-data band, fresh runner, composer error). Ring stroke
+          // is also band-aware now · was hardcoded green so a pull-
+          // back day showed a green ring with "PULL BACK" copy.
+          const score = seed.readinessBrief?.score ?? seed.readiness.score;
+          const label = seed.readinessBrief?.label ?? seed.readiness.label;
+          const band = seed.readinessBrief?.band ?? null;
+          // AFC fix 2 · sharp + ready collapse to the single good-state
+          // green from the locked palette. #34D058 was a one-off green
+          // visually indistinguishable from #3EBD41 at ring size.
+          const ringColor =
+            band === 'sharp' ? '#3EBD41' :
+            band === 'ready' ? '#3EBD41' :
+            band === 'moderate' ? '#F3AD38' :
+            band === 'pull-back' ? '#FC4D64' :
+            band === 'no-data' ? '#8A90A0' :
+            '#3EBD41';
+          return (
+            <div className="rbtn" onClick={onOpenDrawer} role="button" tabIndex={0}>
+              <div className="rt">
+                <div className="rl">
+                  READINESS{' '}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                </div>
+                <div className="rs" style={band ? { color: ringColor } : undefined}>{label}</div>
+              </div>
+              <div className="ringwrap">
+                <svg width="56" height="56" viewBox="0 0 56 56">
+                  <circle cx="28" cy="28" r="23" fill="none" stroke="rgba(255,255,255,.18)" strokeWidth="5"/>
+                  <circle cx="28" cy="28" r="23" fill="none" stroke={ringColor} strokeWidth="5" strokeLinecap="round" strokeDasharray="144.5" strokeDashoffset={144.5 - (score / 100) * 144.5} transform="rotate(-90 28 28)"/>
+                </svg>
+                {/* Cold-start: no biometric data yet → a "0" score reads as
+                    broken. Show an em-dash; the "BUILDING" label carries
+                    the honest state. */}
+                <div className="rv">{band === 'no-data' ? '—' : score}</div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* System chrome, not composed beats: a broken Strava connection
+          and a cold-start profile gap are about the ACCOUNT, not about
+          today's training, and both self-suppress. The coach's own
+          interruptions moved into the beat order below, under the hero,
+          which satisfies the brief v2 section 6 banner cap structurally
+          rather than by a CSS gag. */}
+      <div className="prehero-stack">
+        <ReconnectBanner />
+        {showPhysiologyNudge ? (
+          <ProfileGapCard
+            highlight="Tell Faff your LTHR + HRmax"
+            fragment="so the coach can dial in your zones. Takes ~30 seconds."
+            ctaLabel="ADD"
+            ctaHref="/health"
+            onCta={() => {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('physiologyNudgeDismissed', '1');
+              }
+              setNudgeDismissed(true);
+              setShowPhysiologyNudge(false);
+            }}
+          />
+        ) : null}
+      </div>
+
+      {comp.beats.map((b) => <Fragment key={b}>{beatNode(b)}</Fragment>)}
+
       {glossaryDrawer}
     </>
   );
@@ -4908,7 +4875,22 @@ function GoalReadyBody({ ready }: { ready: NonNullable<FaffSeed['goalReady']> })
   );
 }
 
-function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void }) {
+/**
+ * The tile row. Every tile has to be able to say something true today or
+ * it does not render.
+ *
+ * 2026-08-17 · the gates arrive from lib/today/composition.ts rather than
+ * being decided here. David's page the morning after his race carried a
+ * WEEKLY VOLUME tile reading "0 mi" over eight weeks of bars from a block
+ * that had already finished, and a countdown to a race 111 days out. Both
+ * were true numbers answering questions nobody was asking that day. A
+ * tile that cannot speak leaves; when none can, the row itself leaves.
+ */
+function Tiles({ seed, onOpenRace, gates }: {
+  seed: FaffSeed;
+  onOpenRace: () => void;
+  gates: TodayComposition['tiles'];
+}) {
   const goal = seed.goalRace;
   // 2026-08-17 · deck Decision 3b · ONE STATUS VOCABULARY.
   //
@@ -4945,8 +4927,11 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
   const num = bar ? `${bar.mi}` : `${seed.thisWeekMiles}`;
   const sub = bar ? ` mi · ${bar.label}` : ` mi · 8-wk avg ${seed.weeklyAvg}`;
 
+  if (!gates.show) return null;
+
   return (
-    <div className="tiles">
+    <div className={`tiles tiles-${gates.count}`}>
+      {gates.gap ? (
       <div
         className={`tile${goal ? '' : ' click'}`}
         onClick={goal ? undefined : onOpenRace}
@@ -4999,7 +4984,9 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
         </div>
         )}
       </div>
+      ) : null}
 
+      {gates.raceDay ? (
       <div className="tile click" onClick={onOpenRace} role="button" tabIndex={0}>
         <div className="fll">RACE DAY{goal ? ` · ${goal.name.toUpperCase().replace(' MARATHON','').slice(0,12)}` : ''}</div>
         <div className="tbody cd">
@@ -5012,7 +4999,9 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
           <div className="cdwk">{goal?.phaseLabel ?? (goal ? 'Building' : '—')}</div>
         </div>
       </div>
+      ) : null}
 
+      {gates.volume ? (
       <div className="tile">
         <div className="fll">WEEKLY VOLUME</div>
         <div className="tbody vfill">
@@ -5038,8 +5027,9 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
           <div className="volnum">{num}<small>{sub}</small></div>
         </div>
       </div>
+      ) : null}
 
-      {(() => {
+      {gates.form ? (() => {
         // 2026-06-01 · Training Form card · Banister TSB labels live
         // (backend commit 39a42b4b). Label-aware color + helper copy
         // per designs/briefs/training-form-banister-frontend-brief.md.
@@ -5104,7 +5094,7 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
             </div>
           </div>
         );
-      })()}
+      })() : null}
     </div>
   );
 }
@@ -5191,16 +5181,37 @@ function raceDistanceName(mi: number | null): string | null {
   return `${Math.round(mi * 10) / 10} mi`;
 }
 
-/* ── beat 1 · the race hero ────────────────────────────────────────────
-   Race name and days since in the eyebrow, the result at hero scale with
-   its provenance chip, CONFIRM, and the race story link. */
-function PostRaceHero({
-  race, sinceLabel, onConfirmed, coachLine,
+/* ── the RECENT beat · the race that just happened ─────────────────────
+ *
+ * Two weights, one component, one write path.
+ *
+ *   'hero' · race day itself, or a day with no plan row to lead with.
+ *            The result at 64px with the provenance chip, the confirm
+ *            actions and the coach's line.
+ *   'line' · every other day inside the window. One row: name, days
+ *            since, result, provenance, confirm if the time is still
+ *            provisional, and the way through to the race story.
+ *
+ * The demotion is the correction David asked for. The morning after his
+ * half, this card was 120px of finish time and roughly 60% empty space to
+ * the right, and it sat above the run he was supposed to do that day. The
+ * result has not been hidden: it is one line, it still carries CONFIRM,
+ * and it still opens the race story. It has just stopped being the answer
+ * to "what am I doing today", which it never was.
+ *
+ * The provenance rule is unchanged either way (race-data source-of-truth,
+ * Rule 3): a watch time says it is a watch time, and CONFIRM is the only
+ * thing that promotes it to an authoritative chip result.
+ */
+function RecentRaceBeat({
+  race, sinceLabel, onConfirmed, coachLine, variant, needsConfirm,
 }: {
   race: PostRaceRace;
   sinceLabel: string | null;
   onConfirmed: (r: PostRaceRace) => void;
   coachLine: string;
+  variant: 'hero' | 'line';
+  needsConfirm: boolean;
 }) {
   const router = useRouter();
   const [finish, setFinish] = useState(race.finishTime ?? '');
@@ -5236,58 +5247,103 @@ function PostRaceHero({
     }
   };
 
+  const provenanceChip = race.finishTime ? (
+    confirmed ? (
+      <span className="rrb-chip rrb-chip-locked">Chip time · locked in</span>
+    ) : (
+      <span className="rrb-chip rrb-chip-watch">Watch time · chip time to lock in</span>
+    )
+  ) : null;
+
+  const chipTimeInput = (
+    <>
+      <input
+        value={finish}
+        onChange={(ev) => setFinish(ev.target.value)}
+        placeholder="1:41:53"
+        inputMode="numeric"
+        aria-label="Chip time"
+        className="rrb-input"
+        style={{ fontFamily: oswald }}
+      />
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => { void submit(finish); }}
+        className="rrb-btn rrb-btn-primary"
+      >{busy ? 'SAVING' : 'SAVE RESULT'}</button>
+    </>
+  );
+
+  /* ── line · the demoted weight ─────────────────────────────────────── */
+  if (variant === 'line') {
+    return (
+      <div className="rrb-line">
+        <span className="rrb-eyebrow">{race.name}</span>
+        {sinceLabel ? <span className="rrb-since">{sinceLabel}</span> : null}
+        <span className="rrb-time" style={{ fontFamily: oswald }}>
+          {race.finishTime ?? 'No result yet'}
+        </span>
+        {(distName || race.pace) ? (
+          <span className="rrb-meta">
+            {[distName, race.pace ? `${race.pace} /mi` : null].filter(Boolean).join(' · ')}
+          </span>
+        ) : null}
+        {provenanceChip}
+        <span className="rrb-actions">
+          {needsConfirm && !confirmed ? (
+            race.finishTime && !editing ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => { void submit(race.finishTime!); }}
+                  className="rrb-btn rrb-btn-primary"
+                >{busy ? 'SAVING' : 'CONFIRM'}</button>
+                <button
+                  type="button"
+                  onClick={() => { setEditing(true); setFinish(race.finishTime ?? ''); }}
+                  className="rrb-btn"
+                >CHIP TIME</button>
+              </>
+            ) : chipTimeInput
+          ) : null}
+          <button
+            type="button"
+            onClick={() => router.push(`/races/${race.slug}`)}
+            className="rrb-btn rrb-btn-quiet"
+          >The race story ›</button>
+        </span>
+        {err ? <span className="rrb-err">{err}</span> : null}
+      </div>
+    );
+  }
+
+  /* ── hero · race day itself ────────────────────────────────────────── */
   return (
-    <div style={{
-      background: 'var(--card)', border: '1px solid var(--line)',
-      borderLeft: '4px solid #D03F3F', borderRadius: 16, padding: '20px 22px 18px',
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap',
-        fontSize: 10, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase',
-      }}>
-        <span style={{ color: '#D03F3F' }}>{race.name}</span>
-        {sinceLabel ? <span style={{ opacity: 0.55 }}>{sinceLabel}</span> : null}
+    <div className="rrb-hero">
+      <div className="rrb-hero-eyebrow">
+        <span className="rrb-eyebrow">{race.name}</span>
+        {sinceLabel ? <span className="rrb-since">{sinceLabel}</span> : null}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, marginTop: 10, flexWrap: 'wrap' }}>
+      <div className="rrb-hero-row">
         {race.finishTime ? (
-          <div style={{ fontFamily: oswald, fontSize: 64, fontWeight: 600, lineHeight: 0.85 }}>
-            {race.finishTime}
-          </div>
+          <div className="rrb-hero-time" style={{ fontFamily: oswald }}>{race.finishTime}</div>
         ) : (
-          <div style={{ fontFamily: oswald, fontSize: 30, fontWeight: 600 }}>Log your result</div>
+          <div className="rrb-hero-empty" style={{ fontFamily: oswald }}>Log your result</div>
         )}
-        <div style={{ paddingBottom: 6 }}>
+        <div className="rrb-hero-side">
           {(distName || race.pace) ? (
-            <div style={{
-              fontSize: 12, fontWeight: 700, letterSpacing: 1.4, color: '#C7CBD4',
-              textTransform: 'uppercase',
-            }}>
+            <div className="rrb-meta">
               {[distName, race.pace ? `${race.pace} /mi` : null].filter(Boolean).join(' · ')}
             </div>
           ) : null}
-          {/* Rule 3 · the provenance chip. A watch time says so. */}
-          {race.finishTime ? (
-            <div style={{ marginTop: 8 }}>
-              {confirmed ? (
-                <span style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase',
-                  color: '#3EBD41', border: '1px solid rgba(62,189,65,.4)',
-                  background: 'rgba(62,189,65,.08)', borderRadius: 9, padding: '5px 10px',
-                }}>Chip time · locked in</span>
-              ) : (
-                <span style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase',
-                  color: '#F3AD38', border: '1px solid rgba(243,173,56,.45)',
-                  background: 'rgba(243,173,56,.08)', borderRadius: 9, padding: '5px 10px',
-                }}>Watch time · chip time to lock in</span>
-              )}
-            </div>
-          ) : null}
+          {provenanceChip}
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="rrb-actions">
         {!confirmed ? (
           race.finishTime && !editing ? (
             <>
@@ -5295,168 +5351,61 @@ function PostRaceHero({
                 type="button"
                 disabled={busy}
                 onClick={() => { void submit(race.finishTime!); }}
-                style={{
-                  background: '#D03F3F', color: '#fff', border: '1px solid #D03F3F',
-                  borderRadius: 11, padding: '11px 18px', fontSize: 11, fontWeight: 800,
-                  letterSpacing: 1.6, textTransform: 'uppercase',
-                  cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
-                }}
+                className="rrb-btn rrb-btn-primary"
               >{busy ? 'SAVING' : 'CONFIRM RESULT'}</button>
               <button
                 type="button"
                 onClick={() => { setEditing(true); setFinish(race.finishTime ?? ''); }}
-                style={{
-                  background: 'none', border: '1px solid rgba(255,255,255,.18)', borderRadius: 11,
-                  color: '#C7CBD4', padding: '11px 18px', fontSize: 11, fontWeight: 800,
-                  letterSpacing: 1.6, textTransform: 'uppercase', cursor: 'pointer',
-                }}
+                className="rrb-btn"
               >ENTER CHIP TIME</button>
             </>
-          ) : (
-            <>
-              <input
-                value={finish}
-                onChange={(ev) => setFinish(ev.target.value)}
-                placeholder="1:41:53"
-                inputMode="numeric"
-                aria-label="Chip time"
-                style={{
-                  background: 'rgba(255,255,255,.06)', border: '1px solid var(--line)',
-                  borderRadius: 10, color: '#fff', fontFamily: oswald, fontSize: 18,
-                  fontWeight: 600, padding: '9px 12px', width: 130,
-                }}
-              />
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => { void submit(finish); }}
-                style={{
-                  background: '#D03F3F', color: '#fff', border: '1px solid #D03F3F',
-                  borderRadius: 11, padding: '11px 18px', fontSize: 11, fontWeight: 800,
-                  letterSpacing: 1.6, textTransform: 'uppercase',
-                  cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
-                }}
-              >{busy ? 'SAVING' : 'SAVE RESULT'}</button>
-            </>
-          )
+          ) : chipTimeInput
         ) : null}
         <button
           type="button"
           onClick={() => router.push(`/races/${race.slug}`)}
-          style={{
-            background: 'none', border: '1px solid rgba(255,255,255,.18)', borderRadius: 11,
-            color: '#C7CBD4', padding: '11px 18px', fontSize: 11, fontWeight: 800,
-            letterSpacing: 1.6, textTransform: 'uppercase', cursor: 'pointer',
-          }}
+          className="rrb-btn"
         >The race story ›</button>
       </div>
 
-      {err ? (
-        <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: '#FC4D64' }}>{err}</div>
-      ) : null}
+      {err ? <div className="rrb-err">{err}</div> : null}
 
-      <div style={{
-        marginTop: 16, fontSize: 13.5, lineHeight: 1.5, color: '#C7CBD4',
-        borderLeft: '3px solid #3EBD41', paddingLeft: 12,
-      }}>{coachLine}</div>
+      <div className="rrb-coach">{coachLine}</div>
     </div>
   );
 }
 
-/* ── beat 2 · the recovery read ────────────────────────────────────────
-   Readiness, sleep and RHR promoted from Health, under the post_race
-   purpose line. This is the beat that answers "how am I actually doing"
-   on a day with no workout to talk about. */
-function RecoveryReadCard({
-  seed, window: win, coachLine,
-}: {
-  seed: FaffSeed;
-  window: RecoveryWindow | null;
-  coachLine: string | null;
-}) {
-  const score = seed.readinessBrief?.score ?? seed.readiness.score;
-  const label = seed.readinessBrief?.label ?? seed.readiness.label;
-  const band = seed.readinessBrief?.band ?? null;
-  const bandColor =
-    band === 'sharp' || band === 'ready' ? '#3EBD41' :
-    band === 'moderate' ? '#F3AD38' :
-    band === 'pull-back' ? '#FC4D64' :
-    '#8A90A0';
-
-  const sleepTile = seed.health.body.find((m) => m.k === 'sleep');
-  const sleepSeries = sleepTile?.series ?? [];
-  const lastNight = sleepSeries.length ? sleepSeries[sleepSeries.length - 1] : null;
-  const rhrTile = seed.health.body.find((m) => m.k === 'rhr');
-  const rhrCur = rhrTile?.current ?? null;
-  const rhrBase = rhrTile?.target ?? null;
-
-  const oswald = "var(--font-display, 'Oswald', sans-serif)";
-  const eyebrow = win
-    ? `RECOVERY READ · DAY ${win.dayIndex} OF ${win.daysTotal}`
-    : 'RECOVERY READ';
-
-  return (
-    <div style={{
-      background: 'var(--card)', border: '1px solid var(--line)',
-      borderRadius: 16, padding: '20px 22px',
-    }}>
-      <div style={{
-        fontSize: 10, fontWeight: 800, letterSpacing: 1.8,
-        textTransform: 'uppercase', color: '#27B4E0',
-      }}>{eyebrow}</div>
-
-      <div style={{ display: 'flex', gap: 34, marginTop: 12, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.8, color: '#8A90A0' }}>READINESS</div>
-          <div style={{ fontFamily: oswald, fontSize: 32, fontWeight: 600, color: bandColor }}>
-            {band === 'no-data' ? '—' : score}
-          </div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: bandColor }}>{label}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.8, color: '#8A90A0' }}>SLEEP</div>
-          <div style={{ fontFamily: oswald, fontSize: 32, fontWeight: 600 }}>
-            {formatSleep(lastNight ?? sleepTile?.current ?? undefined)}
-          </div>
-          <div style={{ fontSize: 10, color: '#8A90A0' }}>last night</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.8, color: '#8A90A0' }}>RESTING HR</div>
-          <div style={{ fontFamily: oswald, fontSize: 32, fontWeight: 600 }}>
-            {rhrCur != null ? Math.round(rhrCur) : '·'}
-          </div>
-          <div style={{ fontSize: 10, color: '#8A90A0' }}>
-            {rhrBase != null && rhrCur != null
-              ? `baseline ${Math.round(rhrBase)} · ${rhrCur - rhrBase >= 0 ? 'up' : 'down'} ${Math.abs(Math.round(rhrCur - rhrBase))}`
-              : 'no baseline yet'}
-          </div>
-        </div>
-      </div>
-
-      {coachLine ? (
-        <div style={{
-          marginTop: 16, fontSize: 13.5, lineHeight: 1.5, color: '#C7CBD4',
-          borderLeft: '3px solid #27B4E0', paddingLeft: 12,
-        }}>{coachLine}</div>
-      ) : null}
-    </div>
-  );
-}
-
-/* ── beat 3 · the recovery window strip ────────────────────────────────
+/* ── the CONTEXT beat, recovery variant ────────────────────────────────
    The plan's own days, in its own span. Nothing here is a constant: the
    header carries the real date range, each cell carries what the plan
    prescribed for that day, and the summary underneath counts the real
    running days and miles. When the plan says easy running, the strip
-   says easy running. */
+   says easy running.
+
+   2026-08-17 · one description of the window, not three. The live page
+   said "DAY 1 OF 14" in the recovery-read card, "RECOVERY WINDOW · AUG 17
+   TO 30" on this strip, and "Week 1 of 2" underneath it. The eyebrow now
+   carries position and span together, and the line below says what the
+   week HOLDS and how much of it is behind you. */
 function RecoveryWindowStrip({
-  composition,
+  composition, progressLine, week, onPickDay,
 }: {
   composition: PostRaceComposition;
+  /** "0 mi logged so far" — the week's progress, from the composition. */
+  progressLine?: string | null;
+  /** The seed's own week, so a cell can resolve to the day it represents. */
+  week?: FaffSeed['week'];
+  onPickDay?: (i: number) => void;
 }) {
   const w = composition.recovery;
   if (!w || w.days.length === 0) return null;
   const oswald = "var(--font-display, 'Oswald', sans-serif)";
+  // 2026-08-17 · the cells are selectable, same as the ordinary week
+  // strip. Wave 1 shipped them as inert divs, which meant a runner inside
+  // a recovery block could not tap Wednesday to read the easy 3 the plan
+  // had written for it — the one strip that replaces the week strip was
+  // the one strip you could not use.
+  const indexFor = (iso: string) => (week ?? []).findIndex((x) => x.iso === iso);
 
   return (
     <div className="band">
@@ -5484,9 +5433,14 @@ function RecoveryWindowStrip({
       }}>
         {w.days.map((day) => {
           const accent = day.isRunning ? '#27B4E0' : 'rgba(255,255,255,.18)';
+          const idx = indexFor(day.iso);
+          const pickable = idx >= 0 && !!onPickDay;
           return (
-            <div
+            <button
               key={day.iso}
+              type="button"
+              disabled={!pickable}
+              onClick={pickable ? () => onPickDay!(idx) : undefined}
               style={{
                 background: 'var(--card)',
                 border: `1px solid ${day.isToday ? 'rgba(39,180,224,.5)' : 'var(--line)'}`,
@@ -5494,6 +5448,8 @@ function RecoveryWindowStrip({
                 minHeight: 86, display: 'flex', flexDirection: 'column',
                 gap: 5, alignItems: 'center', justifyContent: 'center',
                 opacity: day.isPast && !day.done ? 0.55 : 1,
+                color: 'inherit', font: 'inherit',
+                cursor: pickable ? 'pointer' : 'default',
               }}
             >
               <span style={{
@@ -5510,91 +5466,19 @@ function RecoveryWindowStrip({
                 textTransform: 'uppercase',
                 color: day.isRunning ? '#27B4E0' : '#8A90A0',
               }}>{day.label}</span>
-            </div>
+            </button>
           );
         })}
       </div>
 
+      {/* "every day optional" is retired. It was vague and it quietly
+          undercut the plan the coach had just written: the days ARE
+          prescribed, and the hero above says which one is today's. */}
       {composition.stripSummary ? (
-        <div style={{ fontSize: 11, color: '#8A90A0', padding: '0 2px' }}>
-          {composition.stripSummary}
-          {w.runningDays > 0 ? ' · every day optional' : ''}
+        <div className="ctx-line">
+          {[composition.stripSummary, progressLine].filter(Boolean).join(' · ')}
         </div>
       ) : null}
-    </div>
-  );
-}
-
-/* ── beat 4 · the two tiles that stay ──────────────────────────────────
-   THE GAP and RACE DAY leave: a projection and a countdown are noise
-   while the body is absorbing a race, and both return with the next
-   block. VOLUME and FORM stay, reframed for fatigue. */
-function PostRaceTiles({
-  seed, composition,
-}: {
-  seed: FaffSeed;
-  composition: PostRaceComposition;
-}) {
-  const [hoverBar, setHoverBar] = useState<number | null>(null);
-  const bar = hoverBar != null ? seed.volumeBars[hoverBar] : null;
-  const num = bar ? `${bar.mi}` : `${seed.thisWeekMiles}`;
-  const sub = bar ? ` mi · ${bar.label}` : ` mi · ${postRaceVolumeNote(composition.recovery)}`;
-
-  const FORM_COLOR: Record<string, string> = {
-    OVERREACH: '#FC4D64', LOADED: '#F3AD38', PRODUCTIVE: '#3EBD41',
-    'RACE-READY': '#F0DF47', DETRAINING: '#27B4E0', BUILDING: '#8A90A0',
-  };
-  const formColor = FORM_COLOR[seed.form.label] ?? '#8A90A0';
-  const dashLen = 339.3;
-  const absDelta = Math.min(50, Math.abs(seed.form.delta));
-  const dashOffset = dashLen - dashLen * (absDelta / 50);
-
-  return (
-    <div className="tiles tiles-two">
-      <div className="tile">
-        <div className="fll">WEEKLY VOLUME</div>
-        <div className="tbody vfill">
-          <div className="vol">
-            {(() => {
-              const maxMi = Math.max(...seed.volumeBars.map((x) => x.mi), 1);
-              return seed.volumeBars.map((b, i) => (
-                <i
-                  key={i}
-                  onMouseEnter={() => setHoverBar(i)}
-                  onMouseLeave={() => setHoverBar(null)}
-                  style={{
-                    height: b.mi > 0 ? `${(b.mi / maxMi) * 100}%` : '3px',
-                    background: b.current ? '#FFFFFF' : 'rgba(255,255,255,.55)',
-                  }}
-                />
-              ));
-            })()}
-          </div>
-          <div className="volnum">{num}<small>{sub}</small></div>
-        </div>
-      </div>
-
-      <div className="tile">
-        <div className="fll">TRAINING FORM</div>
-        <div className="tbody">
-          <div
-            className="rg"
-            style={{ width: 124, height: 124 }}
-            role="img"
-            aria-label={`Training form: ${seed.form.label}, ${seed.form.delta >= 0 ? 'plus' : 'minus'} ${Math.abs(Math.round(seed.form.delta))}`}
-          >
-            <svg width="124" height="124" viewBox="0 0 124 124">
-              <circle cx="62" cy="62" r="54" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="7" />
-              <circle cx="62" cy="62" r="54" fill="none" stroke={formColor} strokeWidth="7" strokeLinecap="round" strokeDasharray={dashLen} strokeDashoffset={dashOffset} transform="rotate(-90 62 62)" />
-            </svg>
-            <div className="rgc">
-              <b style={{ fontSize: 32, color: formColor }}>{seed.form.delta >= 0 ? '+' : '−'}{Math.abs(Math.round(seed.form.delta))}</b>
-            </div>
-          </div>
-          <div className="formsub">Fitness {seed.form.fitness} · Fatigue {seed.form.fatigue}</div>
-          <div className="formhelper">{postRaceFormHelper(seed.form.label, composition.recovery)}</div>
-        </div>
-      </div>
     </div>
   );
 }

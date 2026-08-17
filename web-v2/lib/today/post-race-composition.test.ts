@@ -23,8 +23,6 @@ import {
   recoveryWeekSummary,
   recoveryDayLabel,
   formatWindowRange,
-  postRaceVolumeNote,
-  postRaceFormHelper,
   type PhaseSpan,
   type PlanDayLite,
 } from './post-race-composition';
@@ -97,7 +95,9 @@ describe('the recovery window comes from the plan, not from a constant', () => {
     expect(w.weekPlannedMi).toBe(12);
     expect(w.days.filter((d) => d.isRunning).map((d) => d.label))
       .toEqual(['Easy 3', 'Easy 4', 'Easy 5']);
-    expect(recoveryWeekSummary(w)).toBe('Week 1 of 2 · 3 running days · 12 mi easy');
+    // 2026-08-17 · position in the window is stated once, in the strip
+    // header. This line says what the week holds.
+    expect(recoveryWeekSummary(w)).toBe('3 running days · 12 mi easy');
   });
 
   it('week two of the same window reports its own, larger shape', () => {
@@ -222,25 +222,16 @@ describe('composePostRaceToday · state selection', () => {
     expect(c.stripHeader).toBe('THIS WEEK');
   });
 
-  it('drops THE GAP and RACE DAY, keeps VOLUME and FORM', () => {
-    const c = composePostRaceToday({ purposeIsPostRace: true, daysSince: 1, recovery });
-    expect(c.showGapTile).toBe(false);
-    expect(c.showRaceDayTile).toBe(false);
-    expect(c.showVolumeTile).toBe(true);
-    expect(c.showFormTile).toBe(true);
-  });
-
-  it('keeps all four tiles when the state is not active', () => {
-    const c = composePostRaceToday({ purposeIsPostRace: false, daysSince: 30, recovery: null });
-    expect([c.showGapTile, c.showRaceDayTile, c.showVolumeTile, c.showFormTile])
-      .toEqual([true, true, true, true]);
-  });
+  // 2026-08-17 · the four show*Tile booleans moved to
+  // lib/today/composition.ts, which now answers "which tiles render" for
+  // every state rather than only the post-race one. Their assertions live
+  // in composition.test.ts.
 
   it('the strip header carries the real range, not a fixed label', () => {
     const c = composePostRaceToday({ purposeIsPostRace: true, daysSince: 1, recovery });
-    expect(c.stripHeader).toBe('RECOVERY WINDOW · Aug 17 to 30');
+    expect(c.stripHeader).toBe('RECOVERY · DAY 1 OF 14 · AUG 17 TO 30');
     expect(c.stripNote).toBe('next block opens Aug 31');
-    expect(c.stripSummary).toBe('Week 1 of 2 · 3 running days · 12 mi easy');
+    expect(c.stripSummary).toBe('3 running days · 12 mi easy');
   });
 
   it('with no recovery plan the strip degrades to a header and nothing invented', () => {
@@ -260,16 +251,9 @@ describe('composePostRaceToday · state selection', () => {
   });
 });
 
-/* ── tile copy ───────────────────────────────────────────────────────── */
+/* ── copy ───────────────────────────────────────────────────────────── */
 
-describe('tile copy reflects the real prescription', () => {
-  it('the volume note quotes the window cap the plan wrote', () => {
-    const half = selectRecoveryWindow({
-      phases: halfPhases, weekDays: halfWeeks, nowIdx: 1, todayISO: '2026-08-24',
-    });
-    expect(postRaceVolumeNote(half)).toBe('recovery week · 23 mi prescribed');
-  });
-
+describe('the window copy reflects the real prescription', () => {
   it('a genuinely rest-only week says rest, and only then', () => {
     const restOnly = selectRecoveryWindow({
       phases: [{ label: 'RECOVERY', startWeekIdx: 0, endWeekIdx: 0 }],
@@ -279,20 +263,7 @@ describe('tile copy reflects the real prescription', () => {
       ])],
       nowIdx: 0, todayISO: '2026-08-17',
     })!;
-    expect(postRaceVolumeNote(restOnly)).toBe('rest week · no target');
-    expect(recoveryWeekSummary(restOnly)).toBe('Week 1 of 1 · rest only');
-  });
-
-  it('with no window at all the volume tile makes no claim', () => {
-    expect(postRaceVolumeNote(null)).toBe('no target this week');
-  });
-
-  it('LOADED reads as race fatigue, not as a warning to pull back', () => {
-    const w = selectRecoveryWindow({
-      phases: halfPhases, weekDays: halfWeeks, nowIdx: 0, todayISO: '2026-08-17',
-    });
-    expect(postRaceFormHelper('LOADED', w)).toBe('Race fatigue, not a warning sign. Expected through Aug 30.');
-    expect(postRaceFormHelper('LOADED', null)).toBe('Race fatigue, not a warning sign.');
+    expect(recoveryWeekSummary(restOnly)).toBe('rest only');
   });
 
   it('no tile copy carries an em dash, an exclamation or an emoji', () => {
@@ -300,9 +271,11 @@ describe('tile copy reflects the real prescription', () => {
       phases: halfPhases, weekDays: halfWeeks, nowIdx: 0, todayISO: '2026-08-17',
     });
     const copy = [
-      postRaceVolumeNote(w), postRaceVolumeNote(null), recoveryWeekSummary(w!),
-      ...['OVERREACH', 'LOADED', 'PRODUCTIVE', 'RACE-READY', 'DETRAINING', 'BUILDING', 'WAT']
-        .map((l) => postRaceFormHelper(l, w)),
+      recoveryWeekSummary(w!),
+      composePostRaceToday({ purposeIsPostRace: true, daysSince: 1, recovery: w }).stripHeader,
+      composePostRaceToday({ purposeIsPostRace: true, daysSince: 1, recovery: w }).stripNote ?? '',
+      ...[0, 1, 2, 5].map((n) =>
+        composePostRaceToday({ purposeIsPostRace: true, daysSince: n, recovery: w }).sinceLabel ?? ''),
     ];
     for (const line of copy) {
       expect(line).not.toMatch(/—|!|\p{Extended_Pictographic}/u);

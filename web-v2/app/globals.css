@@ -191,6 +191,65 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .mbrief .mb-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;
   color:var(--green);margin-bottom:8px;}
 .mbrief .mb-body{font-size:14px;font-weight:400;line-height:1.55;color:#E6E8ED;max-width:760px;}
+
+/* ── TODAY'S COMPOSED BEATS (2026-08-17) ──────────────────────────────────
+   Three small surfaces the recomposition needed. The rule they share: none
+   of them may compete with beat 1. The hero states the work; these state
+   the qualifications, the context and the history, in that descending
+   order of weight. */
+
+/* Readiness modifier · the ONE place readiness speaks outside the header
+   ring. It is a line attached to the work, not a card about itself: the
+   page used to render "Readiness 68" in the header AND again at 32px in a
+   recovery-read card, which is how one number became two answers. */
+.work-modifier{display:flex;gap:10px;align-items:baseline;max-width:800px;
+  border-left:3px solid var(--over);padding:2px 0 2px 12px;}
+.work-modifier .wm-k{font-size:9.5px;font-weight:800;letter-spacing:1.6px;
+  text-transform:uppercase;color:var(--over);flex:none;}
+.work-modifier .wm-b{font-size:12.5px;line-height:1.5;color:var(--mute);}
+
+/* Context line · the one-line fact under a week strip. Deliberately the
+   quietest type on the page. */
+.ctx-line{font-size:11px;font-weight:600;color:var(--mute);padding:0 2px;}
+
+/* Recent race · the demoted weight. One row, wrapping on narrow screens,
+   carrying the result, its provenance, the confirm and the way through to
+   the race story. It is a line because a result stops being today's
+   headline the moment there is a session on the calendar. */
+.rrb-line{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;
+  background:var(--card);border:1px solid var(--line);border-left:3px solid var(--race);
+  border-radius:14px;padding:12px 16px;}
+.rrb-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:var(--race);}
+.rrb-since{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--mute);}
+.rrb-line .rrb-time{font-size:22px;font-weight:600;letter-spacing:-.5px;line-height:1;}
+.rrb-meta{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#C7CBD4;}
+.rrb-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-left:auto;}
+.rrb-chip{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  border-radius:9px;padding:4px 9px;white-space:nowrap;}
+.rrb-chip-locked{color:var(--green);border:1px solid rgba(62,189,65,.4);background:rgba(62,189,65,.08);}
+.rrb-chip-watch{color:var(--eyebrow);border:1px solid rgba(243,173,56,.45);background:rgba(243,173,56,.08);}
+.rrb-btn{background:none;border:1px solid rgba(255,255,255,.18);border-radius:10px;color:#C7CBD4;
+  padding:8px 13px;font-size:10.5px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;cursor:pointer;}
+.rrb-btn:hover{border-color:rgba(255,255,255,.34);}
+.rrb-btn-primary{background:var(--race);border-color:var(--race);color:#fff;}
+.rrb-btn-primary:disabled{opacity:.6;cursor:default;}
+.rrb-btn-quiet{border-color:transparent;padding-left:4px;padding-right:4px;}
+.rrb-input{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:10px;
+  color:#fff;font-size:16px;font-weight:600;padding:8px 11px;width:120px;}
+.rrb-err{font-size:12px;font-weight:600;color:var(--over);}
+
+/* Recent race · the hero weight. Race day itself, or a day with no plan
+   row to lead with. Everywhere else this is the .rrb-line above. */
+.rrb-hero{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--race);
+  border-radius:16px;padding:20px 22px 18px;display:flex;flex-direction:column;gap:14px;max-width:800px;}
+.rrb-hero-eyebrow{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
+.rrb-hero-row{display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;}
+.rrb-hero-time{font-size:64px;font-weight:600;line-height:.85;}
+.rrb-hero-empty{font-size:30px;font-weight:600;}
+.rrb-hero-side{display:flex;flex-direction:column;gap:8px;padding-bottom:6px;align-items:flex-start;}
+.rrb-hero .rrb-actions{margin-left:0;}
+.rrb-coach{font-size:13.5px;line-height:1.5;color:#C7CBD4;border-left:3px solid var(--green);padding-left:12px;}
+
 .top{display:flex;align-items:flex-start;justify-content:space-between;}
 .top .date{font-family:'Oswald',sans-serif;font-size:16px;font-weight:500;letter-spacing:1px;opacity:1;text-transform:uppercase;}
 .top .wk{font-size:12px;font-weight:600;opacity:1;margin-top:5px;}
@@ -1181,10 +1240,15 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-04 · tiles row · 4-col grid, gap = --grid-gap.  No margin-top
    · vertical separation comes from .main's grid row gap above. */
 .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--grid-gap);}
-/* 2026-08-17 · deck Decision 1 · the post-race week keeps VOLUME + FORM and
-   drops THE GAP + RACE DAY, so the row is two wide. A class, not an inline
-   style, so the narrow-viewport rules further down still collapse it. */
-.tiles.tiles-two{grid-template-columns:repeat(2,1fr);}
+/* 2026-08-17 · the row is exactly as wide as the number of tiles that can
+   say something true today (lib/today/composition.ts decides). A class per
+   count, not an inline style, so the narrow-viewport rules further down
+   still collapse them. A single surviving tile does not stretch to the
+   full page width — it sits at a card's width and the row ends. */
+.tiles.tiles-1{grid-template-columns:minmax(280px,420px);}
+.tiles.tiles-2{grid-template-columns:repeat(2,1fr);}
+.tiles.tiles-3{grid-template-columns:repeat(3,1fr);}
+.tiles.tiles-4{grid-template-columns:repeat(4,1fr);}
 /* 2026-06-04 · .tile · only the surface look declared here.
    Padding, radius, height:100%, display:flex column, gap, align-items
    stretch all come from the UNIVERSAL CARD LAYOUT rule below.  min-
@@ -2528,11 +2592,35 @@ a.lb.race:hover{color:#fff;border-color:rgba(208,63,63,.85);}
 .av-streak{font-size:13px;font-weight:700;color:#F3AD38;display:flex;align-items:center;gap:7px;}
 .av-streak .fl{font-size:15px;}
 .av-streaksub{font-size:11px;font-weight:600;opacity:.5;}
-.av-heat{display:flex;gap:3px;margin-top:14px;position:relative;}
-.av-hcol{display:flex;flex-direction:column;gap:3px;flex:1;}
+/* 2026-08-17 · the CONSISTENCY heatmap rendered NOTHING. The DOM was
+   correct — 18 week columns, 7 day cells each — but every column measured
+   0px wide, so 145 runs of history painted as empty space.
+
+   The cause was not the flex shorthand. It was the month-labels row: the
+   component renders `<div className="av-hmlabels" style={{width:'100%'}}>`
+   as the LAST CHILD OF `.av-heat`, which is `display:flex; row`. A flex
+   item with `width:100%` takes a 1141px flex base size, which is the
+   entire row, leaving zero free space for the eighteen `flex:1 1 0%`
+   columns to grow into. Measured live: the labels item was 1087px wide
+   and every column was 0.
+
+   The labels were always meant to sit UNDER the grid, so that is where
+   they go: out of flow against the container's own `position:relative`,
+   with `padding-bottom` reserving their height so the LESS/MORE key below
+   is not overlapped. The columns then get real free space to divide, and
+   `flex:1 1 0` with `min-width:0` keeps that division honest.
+
+   `max-width` caps the block so the squares read as a consistency strip
+   rather than a wall — the columns are square by construction, so an
+   uncapped 1141px row would render 60px cells and a 460px-tall panel. The
+   cap sits on `.av-heat`, which means the absolutely positioned labels
+   track the same width and stay aligned to the first and last column. */
+.av-heat{display:flex;gap:3px;margin-top:14px;position:relative;padding-bottom:22px;max-width:620px;}
+.av-hcol{display:flex;flex-direction:column;gap:3px;flex:1 1 0;min-width:0;}
 .av-hcell{width:100%;aspect-ratio:1;border-radius:2.5px;transition:transform .1s;}
 .av-hcell:hover{transform:scale(1.35);}
 .av-hmlabels{display:flex;justify-content:space-between;margin-top:9px;font-size:9px;font-weight:700;opacity:.4;letter-spacing:.5px;}
+.av-heat > .av-hmlabels{position:absolute;left:0;right:0;bottom:0;margin-top:0;}
 .av-hkey{display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-top:12px;font-size:9px;font-weight:700;opacity:.5;}
 .av-hkey i{width:10px;height:10px;border-radius:2.5px;}
 /* fun facts */
