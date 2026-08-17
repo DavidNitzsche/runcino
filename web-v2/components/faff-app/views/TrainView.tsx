@@ -38,6 +38,15 @@ import { workoutTypeTitle } from '@/lib/coach/workout-title';
 // countdown off the active plan's week count, which is how "7 days to Dec 6"
 // shipped while Dec 6 was 111 days out. See lib/faff/race-countdown.ts.
 import { daysToRace } from '@/lib/faff/race-countdown';
+// 2026-08-17 · calendar day keys from LOCAL parts. The month grid used to
+// key cells with toISOString(), which is the UTC date of a local-midnight
+// Date — one day early for every runner east of Greenwich.
+import { dayKeyFromLocalParts } from '@/lib/runtime/day-key';
+// 2026-08-17 · one definition of "miles this week", shared with Today.
+import { computeWeekMileage } from '@/lib/faff/week-mileage';
+// 2026-08-17 · per-workout DONE / MISSED / NOW badge. Was derived once per
+// week from the week index, so every past key workout read DONE.
+import { keyWorkoutState, MISSED_COLOR, type KeyWorkoutState } from '@/lib/faff/key-workout-state';
 // 2026-08-17 · what the volume ramp is allowed to claim when the active
 // block is a recovery / bridge block and the goal race is months away.
 import { resolveRampScope } from '@/lib/faff/ramp-scope';
@@ -323,9 +332,21 @@ export function TrainView({
     for (let i = 0; i <= nowIdx && i < seed.season.weekDays.length; i++) {
       const days = seed.season.weekDays[i] ?? [];
       const plannedMi = miles[i] ?? 0;
-      const actualMi = Math.round(
-        days.reduce((s, d) => s + (d.doneMi ?? 0), 0) * 10,
-      ) / 10;
+      // 2026-08-17 · same helper Today's rest-day recap now reads, so the
+      // two surfaces cannot drift apart again. Train was already correct
+      // (actual miles run); this makes the agreement structural rather than
+      // two independent reductions that happened to match. The helper also
+      // returns plannedToDateMi, which is what a mid-week "ahead/behind"
+      // should compare against — the current row deliberately shows neither
+      // (neutral bar, "N left") instead of grading a part-finished week.
+      const actualMi = computeWeekMileage(
+        days.map((d) => ({
+          dateISO: d.date ?? null,
+          plannedMi: d.mi,
+          doneMi: d.doneMi ?? 0,
+          type: d.type,
+        })),
+      ).actualMi;
       const nonRest = days.filter((d) => d.type !== 'rest');
       const sessDone = nonRest.filter((d) => d.done).length;
       const qualityDone = days.filter(
@@ -384,7 +405,11 @@ export function TrainView({
       /** 2026-06-07 · D1 · structured long-run label ("LONG · 7mi @ HM") when
        *  it carries more than the one-word title — shown as a secondary line. */
       structLabel?: string;
-      state: 'DONE' | 'NOW' | 'KEY' | '' | 'RACE';
+      /** 2026-08-17 · MISSED added. See lib/faff/key-workout-state.ts —
+       *  this used to be derived once per week and stamped on every
+       *  workout inside it, so a past week made every quality day DONE
+       *  whether it was run or not. */
+      state: KeyWorkoutState;
       raceRow?: boolean;
       date?: string;
       done?: boolean;
@@ -432,9 +457,11 @@ export function TrainView({
     seed.season.weekDays.forEach((days, i) => {
       if (i >= raceIdx) return;
       const isNow = i === nowIdx;
-      const isPast = i < nowIdx;
       const isMid = i > nowIdx;
-      const state: Mile['state'] = isPast ? 'DONE' : isNow ? 'NOW' : '';
+      // 2026-08-17 · `state` used to be derived HERE, once per week, off
+      // the week index alone — so every key workout in a past week wore
+      // DONE, run or not. It now lives inside the per-workout loop below
+      // and reads pick.done. Only the frame is week-level.
 
       // Collect all key workouts for this week.
       //   · intervals + tempo: always key quality sessions.
@@ -454,6 +481,9 @@ export function TrainView({
       if (keyDays.length === 0) return;
 
       for (const pick of keyDays) {
+        // 2026-08-17 · per-WORKOUT, off this workout's own done flag.
+        // A past week no longer certifies its contents.
+        const state = keyWorkoutState(i, nowIdx, !!pick.done);
         // 2026-06-03 · was "WK N" · same week-numbering problem as the
         // top-of-page pill. Switched to the workout's actual date which
         // never lies after a rebuild. pick.date can be undefined on
@@ -1241,8 +1271,13 @@ export function TrainView({
               {blockRunsToRace ? 'KEY WORKOUTS TO RACE' : 'KEY WORKOUTS · THIS BLOCK'}
             </span></div>
             <div className="miles">
+              {/* 2026-08-17 · the `done` class dims the title (globals
+                  `.mile.done .mtt` opacity .6) — a "this is behind you"
+                  treatment. It keyed off m.state === 'DONE', which a past
+                  week granted unconditionally, so missed workouts were
+                  dimmed as if completed. Keys off the workout's own flag. */}
               {milestones.map((m, i) => (
-                <div key={i} className={`mile${m.state === 'DONE' ? ' done' : ''}${m.raceRow ? ' race' : ''}`}>
+                <div key={i} className={`mile${m.done ? ' done' : ''}${m.raceRow ? ' race' : ''}`}>
                   <span className="mwk">{m.wkLabel}</span>
                   <span className="mdot" style={{ background: m.dot }} />
                   <div className="mtx">
@@ -1276,7 +1311,19 @@ export function TrainView({
                     )}
                   </div>
                   {m.state && (
-                    <span className="mst" style={m.state === 'NOW' ? { color: '#F3AD38', opacity: 0.95 } : undefined}>
+                    <span
+                      className="mst"
+                      style={
+                        m.state === 'NOW'
+                          ? { color: '#F3AD38', opacity: 0.95 }
+                          // MISSED is a fact, not an alarm — brief-neutral
+                          // grey, not the Off/warn red. Reasoning lives with
+                          // the constant in lib/faff/key-workout-state.ts.
+                          : m.state === 'MISSED'
+                            ? { color: MISSED_COLOR, opacity: 0.95 }
+                            : undefined
+                      }
+                    >
                       {m.state}
                     </span>
                   )}
@@ -1502,7 +1549,16 @@ function MonthCalendar({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun: (id: st
         for (let i = 0; i < lead; i++) cells.push(<div key={`e-${i}`} className="cell empty" />);
         for (let dd = 1; dd <= daysInMonth; dd++) {
           const date = new Date(mo.y, mo.m, dd);
-          const iso = date.toISOString().slice(0, 10);
+          // 2026-08-17 · was date.toISOString().slice(0, 10). `date` is
+          // built from LOCAL calendar parts, so its UTC instant is local
+          // midnight minus the zone offset — for any zone east of UTC that
+          // is the PREVIOUS day, and every cell in the grid keyed one day
+          // early. Berlin (+2) turned the 17th into 2026-08-16 and hung the
+          // whole month's workouts on the wrong dates. West-of-UTC zones
+          // survive by luck (00:00 PDT is 07:00Z, same date), which is why
+          // this shipped unnoticed for a Pacific runner. See
+          // lib/runtime/day-key.ts.
+          const iso = dayKeyFromLocalParts(date);
           const isToday = date.toDateString() === today.toDateString();
           const isRace = goal && goal.date.slice(0, 10) === iso;
           const past = date < today && !isToday;

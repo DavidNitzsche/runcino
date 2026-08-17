@@ -28,6 +28,13 @@ function meshGradient(type: EffortKey): React.CSSProperties {
 import { buildAdaptText } from '../adapt-text';
 import { workoutTypeTitle } from '@/lib/coach/workout-title';
 import { heatAwareDrift, type DriftBand } from '@/lib/coach/heat-band';
+// 2026-08-17 · EARLY/MIDDLE/LATE HR measured off phase-tagged work splits,
+// with the old avg±(max−avg) synthesis demoted to a labelled fallback.
+import { computeHrThirds, hrThirdsHeading, hrThirdsCaption } from '@/lib/coach/hr-thirds';
+// 2026-08-17 · one definition of "miles this week" (actual, not planned).
+import { computeWeekMileage } from '@/lib/faff/week-mileage';
+// 2026-08-17 · proportional B goal; the race-day hero had a flat +7:00.
+import { resolveBGoal } from '@/lib/race/b-goal';
 import { deriveSessionSegs, fallbackSessionSegs, deriveBlueprintData, type BlueprintData, type BlueprintSegment } from '../session-shape';
 import { elevPathFromSplits } from '@/lib/route/polyline';
 // 2026-08-17 · deck Decision 2 · CoachProposalCard / PlanProposalCard /
@@ -2482,9 +2489,19 @@ function CompletedHeroV2({
             top edges. */}
         <div className="titlerow">
           <h1 className="htitle">{workoutTypeTitle(d.type)}</h1>
-          <span className="check" title="On plan" aria-label="On plan">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-          </span>
+          {/* 2026-08-17 · this tick used to render unconditionally, on the
+              same hero whose right-hand card can say OFF PLAN. A runner who
+              missed the workout got a green check and a coral OFF PLAN badge
+              on one card, and the two are not both true. It is the same
+              verdict as the badge, so it reads the same variable — and it
+              only fires for 'on-plan'. HOT DAY is deliberately excluded:
+              the heat rescue says "honest for the conditions", not "on
+              plan", and a tick would flatten that distinction back out. */}
+          {verdictBadge === 'on-plan' && (
+            <span className="check" title="On plan" aria-label="On plan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            </span>
+          )}
         </div>
 
         <div className="leftstack">
@@ -2766,6 +2783,7 @@ function CompletedHeroV2({
         ) : d.type === 'tempo' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 ? (
           <TempoPanel
             phases={runData.phase_breakdown}
+            splits={splits}
             heatSlowdownPct={runData.heat_slowdown_pct ?? null}
           />
         ) : runData?.splits_unreliable ? (
@@ -3667,9 +3685,14 @@ function LongPanel({
  */
 function TempoPanel({
   phases,
+  splits,
   heatSlowdownPct,
 }: {
   phases: NonNullable<RunSummary['phase_breakdown']>;
+  /** 2026-08-17 · the two sibling panels (LongPanel, LongMpPanel) already
+   *  received these; the tempo panel was the only one synthesizing its HR
+   *  thirds out of avg + max. See lib/coach/hr-thirds.ts. */
+  splits: RunSummary['splits'];
   heatSlowdownPct: number | null;
 }) {
   const FONT_DISP = "var(--font-display, 'Oswald', sans-serif)";
@@ -3751,6 +3774,13 @@ function TempoPanel({
   // plan for conditions" copy.
   const insideHeatBand = heatBandW > 0 && heatBandLeft != null
     && delta != null && delta > 0 && markerPos >= heatBandLeft;
+
+  // 2026-08-17 · measured thirds where the splits carry per-mile HR on the
+  // work phase; the avg/peak shape, honestly labelled, below three of them.
+  const hrThirds = computeHrThirds(splits, {
+    avgHr: work.avg_hr,
+    maxHr: work.max_hr,
+  });
 
   return (
     <>
@@ -3855,32 +3885,31 @@ function TempoPanel({
       </div>
 
       {/* HR ACROSS THE BLOCK · three mini cards.
-          Use phase avg_hr if max_hr exists then synthesize early/middle/late
-          as avg ± a fraction. When max_hr is missing we just show avg three
-          times. Better than nothing; when phase data has finer granularity
-          later this becomes actual sampled thirds. */}
-      {work.avg_hr != null ? (
+          2026-08-17 · these numbers used to be avg ± a fraction of
+          (max − avg), rendered under a heading claiming they were measured
+          across the block. They were not: one average and one peak,
+          re-sliced three ways, so a single sensor spike moved the LATE card
+          and lit its amber warning. Now they average the phase-tagged work
+          splits by thirds — a real early / middle / late read — and the
+          synthesized form survives only below 3 HR-carrying work splits,
+          where the heading and caption say it is an estimate and no warning
+          fires. See lib/coach/hr-thirds.ts. */}
+      {hrThirds ? (
         <div style={{ marginTop: 12 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>HR ACROSS THE BLOCK</span>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>
+            {hrThirdsHeading(hrThirds.source)}
+          </span>
+          {hrThirdsCaption(hrThirds.source) ? (
+            <div style={{
+              fontSize: 10, fontWeight: 500, opacity: 0.55, marginTop: 4, lineHeight: 1.4,
+            }}>
+              {hrThirdsCaption(hrThirds.source)}
+            </div>
+          ) : null}
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 13,
           }}>
-            {(() => {
-              // Synthesize early/middle/late from avg + max when max is available.
-              // If max == avg + N, late ≈ avg + N/2, early ≈ avg - N/4.
-              const avg = work.avg_hr ?? 0;
-              const peak = work.max_hr ?? avg;
-              const climb = Math.max(0, peak - avg);
-              const early = Math.round(avg - climb / 4);
-              const middle = avg;
-              const late = Math.round(avg + climb / 2);
-              const driftHi = late - early > 8;
-              return [
-                { label: 'EARLY', bpm: early, warn: false },
-                { label: 'MIDDLE', bpm: middle, warn: false },
-                { label: 'LATE', bpm: late, warn: driftHi },
-              ];
-            })().map((card, i) => (
+            {hrThirds.thirds.map((card, i) => (
               <div key={i} style={{
                 background: card.warn ? 'rgba(255,178,77,.08)' : 'rgba(255,255,255,.05)',
                 border: `1px solid ${card.warn ? 'rgba(255,178,77,.4)' : 'rgba(255,255,255,.09)'}`,
@@ -4351,10 +4380,6 @@ function prettyCondition(c: string): string {
  * per the no-reactive-coach doctrine (memory/feedback_no_reactive_coach.md).
  */
 function RestDayCard({ d, seed }: { d: FaffSeed['week'][number]; seed?: FaffSeed }) {
-  // Derive this week's recap from the week array.
-  let weekMiles = 0;
-  let daysRun = 0;
-  let hardSessions = 0;
   const tomorrow: { type: string; dist: string; pace: string | null; name: string } | null = (() => {
     if (!seed) return null;
     const todayIdx = seed.week.findIndex(w => w.iso === d.iso);
@@ -4369,18 +4394,37 @@ function RestDayCard({ d, seed }: { d: FaffSeed['week'][number]; seed?: FaffSeed
       name: next.name || next.type.toUpperCase(),
     } : null;
   })();
-  if (seed) {
-    for (const w of seed.week) {
-      if (w.done) {
-        daysRun++;
-        weekMiles += parseFloat(w.dist || '0') || 0;
-        if (w.type === 'intervals' || w.type === 'tempo' || w.type === 'long') {
-          hardSessions++;
-        }
-      }
-    }
-  }
-  weekMiles = Math.round(weekMiles * 10) / 10;
+  // 2026-08-17 · "miles this week" had two definitions in this app. Today
+  // summed `w.dist` — the PLANNED distance of each day flagged done — while
+  // Train's execution strip summed `doneMi`, the miles actually run. A week
+  // where the runner over-ran their plan therefore read SMALLER on Today
+  // than on Train, for the same week, and the gap between plan and
+  // execution (the thing a coach is looking at) was invisible on both.
+  //
+  // Both surfaces now go through lib/faff/week-mileage.ts, whose ruling is
+  // that the unqualified headline number is ACTUAL miles run. The source is
+  // season.weekDays[nowIdx], the same rows TrainView reads, so the two pages
+  // agree byte for byte instead of agreeing by coincidence.
+  const week = seed
+    ? computeWeekMileage(
+        (seed.season.weekDays?.[seed.season.nowIdx] ?? []).map((w) => ({
+          dateISO: w.date ?? null,
+          plannedMi: w.mi,
+          doneMi: w.doneMi ?? 0,
+          type: w.type,
+        })),
+        { todayISO: seed.todayISO },
+      )
+    : null;
+  const weekMiles = week?.actualMi ?? 0;
+  const daysRun = week?.daysRun ?? 0;
+  const hardSessions = week?.hardSessionsDone ?? 0;
+  // "0 mi done" because nothing has been run yet is a fact. "0 mi done"
+  // because we have no rows for this week is a fabrication wearing the same
+  // face. PlannedDay (seed.week) carries no actual-miles field at all, so
+  // there is no honest fallback here — falling back to planned-of-done is
+  // the bug this fix removed. No rows, no panel.
+  const hasWeek = !!week && (week.daysPlanned > 0 || week.actualMi > 0);
 
   return (
     <div className="wcard" style={{ display: 'grid', gap: 16 }}>
@@ -4394,8 +4438,9 @@ function RestDayCard({ d, seed }: { d: FaffSeed['week'][number]; seed?: FaffSeed
         </div>
       </div>
 
-      {/* THIS WEEK recap · real numbers from the week array. */}
-      {seed ? (
+      {/* THIS WEEK recap · miles ACTUALLY RUN, off the same plan rows Train
+          reads. See lib/faff/week-mileage.ts. */}
+      {hasWeek ? (
         <div style={{
           padding: '12px 14px', borderRadius: 10,
           background: 'rgba(255,255,255,.04)',
@@ -4715,9 +4760,23 @@ function RaceDayHero({
 }) {
   const goalSec = parseHMSToSec(goal.goal);
   const goalPace = goalSec && goal.distanceMi ? fmtMMSS(goalSec / goal.distanceMi) : null;
-  // Canonical B-goal · A + 7:00, the same +420s derivation raceDetail.ts
-  // uses for the RaceView B·SAFE row. Derived, never stored.
-  const bGoal = goalSec ? fmtHMS(goalSec + 420) : null;
+  // 2026-08-17 · was `goalSec + 420` — a flat +7:00 at every distance, and
+  // no readback of the runner's own edited B goal. On a marathon +7:00 is
+  // ~2.9%, which is about right, which is why it survived: it was tuned on
+  // the one distance its author races. On an 18:00 5K it is +39%, a "safe
+  // target" of 25:00 that is not a race plan. Worse, the race page and the
+  // race-week card both already resolved B correctly, so the same runner
+  // could read two different B goals for the same race on the same morning.
+  //
+  // resolveBGoal is the single resolver all three now share: stored value
+  // wins, else EFFECTIVE target + 3.3% (effective, not the stated goal, so
+  // a demoted stretch goal does not hand back a B faster than the A the
+  // runner is actually being paced to), else null and the block hides.
+  const bGoalSec = resolveBGoal({
+    effectiveTargetSec: goal.effectiveTarget?.targetSec ?? goalSec,
+    storedBGoalSec: goal.goalSafeSec,
+  }).sec;
+  const bGoal = bGoalSec != null ? fmtHMS(bGoalSec) : null;
   const showProjection = !!goal.projected && goal.projected !== goal.goal;
   const eyebrow = goal.location ? `RACE DAY · ${goal.location.toUpperCase()}` : 'RACE DAY';
 
