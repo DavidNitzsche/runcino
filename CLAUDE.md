@@ -215,6 +215,48 @@ The candidate-stage naming worked. The splits-preservation bug fix in `d114c35` 
 
 ---
 
+## Rule 7 · A constant that asserts physiology carries a registry entry (locked 2026-08-17)
+
+**Nothing in the app should happen that isn't aligned with the doctrine.** The existing gates (`_maint_invariants.test.ts`, `_sweep_allusers.test.ts`) check that a plan is well-*formed* — placement, distance, alignment, counts. Nothing checked that it *agrees with the research*. That gap shipped a defect David caught on his phone: post-race recovery for a half prescribed 15 miles across 14 days, five straight rest days, off a 33 mi/wk base with a goal marathon 16 weeks out. `Research/00b` has two adjacent columns — "total recovery days (no quality)" (half = 10-14) and "days of zero/very-light running" (half = 3-5) — and the engine spent the first as if it were the second, then sized every distance off the marathon reverse taper. Fixed in `52174bcd`.
+
+### The gate
+
+- `web-v2/lib/doctrine/registry.ts` — the claims. Each binds an engine constant to a doctrine file, a **verbatim anchor string** in that file, and a plain-English statement of what doctrine says.
+- `web-v2/lib/doctrine/_doctrine_gate.test.ts` — resolves every anchor against the real file and runs every claim's predicate.
+- `web-v2/lib/doctrine/_doctrine_lint.test.ts` — scans source for the recurring shapes: a distance category carrying another's value, a doctrine table read at one hard-coded distance, a distance-keyed table with no claim watching it, a `Research/` citation that no longer resolves.
+- `scripts/check-doctrine.sh` — CI entry point, sibling of `check-palette-sync.sh`. Wired into `web-v2` `prebuild`, so it runs on every Railway build alongside the palette lock. Also `npm run test:doctrine`.
+
+### Adding a claim when you touch a training-science constant
+
+Append an entry to `DOCTRINE_REGISTRY`. Nothing else needs touching.
+
+1. **Anchor on quoted text, never a line number.** A table header row or a section heading. Line numbers rot on the next edit — the incident's own bug report cites `00b:196-204`, which is already fragile.
+2. **Read the numbers out of the doc.** Parse the band from the cited passage at run time and compare the engine against it. A check that hardcodes both sides only proves the test agrees with itself. `RECOVERY.half-protocol-run-days` is the model: it counts the running days in the doc's own 14-day table and asserts the constant equals that count.
+3. **Keep the format contract** — one single-line quoted `id:`, `doc:` and `anchor:` per claim. That's what lets the CI script verify citations with no TypeScript toolchain, on a cold container.
+
+### If a claim reveals a real violation
+
+Do **not** loosen the claim. Add a key to that claim's `exempt` map with an honest reason, and say so in your report. Exemptions are checked for staleness: fix the engine and the gate makes you delete the entry. The same applies to the lint's allowlists.
+
+### Not yet seeded — claim areas still unwatched
+
+Append these as the engine audit reaches them:
+
+- Daniels' weekly dosing caps (T ≤10%, I ≤8%, R ≤5% of weekly mileage; M ≤ lesser of 18 mi or 20%) — **not enforced anywhere in the engine**, so there is no constant to bind yet.
+- Polarized intensity distribution (70-80% E, 10-15% M+T, 10-15% I+R).
+- `validate.ts` `longRunWoWMaxPct` / `weeklyVolWoWMaxPct`, and `longRunCapMi`'s absolute per-distance ceilings.
+- The `PLAN_TEMPLATES` table in `plan-templates.ts` (every row cites a book, none cite `Research/`).
+- Heat, dewpoint and WBGT adjustments (`Research/06`, `lib/weather/heat-adjustment.ts`).
+- Fuelling: carbohydrate g/hr and hydration bands (`Research/18`, `Research/19`).
+- Strength programming dose and taper-week caps (`Research/07`).
+- HRV / RHR / ACWR readiness thresholds (`Research/15`).
+- Injury walk-run ladders and per-pathology return protocols (`Research/05`, `lib/plan/injury-builder.ts`).
+- Age and sex grading (`Research/13`, `Research/24`).
+- `fitness-trajectory.ts` gain rates (`BASE_BUILD_RATE`, `MAX_BLOCK_GAIN`) — check these are modelled, not presented as measured.
+- Altitude, treadmill and terrain pace conversions (`Research/01` §course/weather).
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
