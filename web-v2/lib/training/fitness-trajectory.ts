@@ -280,7 +280,13 @@ export function projectFitnessTrajectory(args: {
   const reachable = gapVdotRaw <= 0.2;
   // 2026-06-12 · the upgrade gear's headline: projected to BEAT the goal beyond
   // noise. Mirrors how the drift detectors let the projection read SHORT.
-  const aheadOfGoal = gapVdotRaw < -0.2;
+  // 2026-08-17 · P1-56 follow-up · a below-table goal can't express this in
+  // VDOT space (goalVdot is the currentVdot stand-in there, so gapVdotRaw is
+  // pinned at ~0 and the old `< -0.2` test could never fire) — read the direct
+  // seconds gap instead. 30s ≈ the same 0.2-VDOT noise margin at HM/M scale.
+  const aheadOfGoal = goalBelowTable
+    ? gapSec != null && gapSec < -30
+    : gapVdotRaw < -0.2;
   // Is the plan's prescribed ceiling enough to reach the goal? (Same 0.3 grace.)
   const planBuiltForGoal = plannedTargetVdot != null
     ? plannedTargetVdot >= goalVdot - 0.3
