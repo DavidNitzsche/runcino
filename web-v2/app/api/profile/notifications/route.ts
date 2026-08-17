@@ -51,6 +51,7 @@ import {
   PHONE_PASSTHROUGH_KEYS,
 } from '@/lib/notifications/prefs';
 import { requireUserId } from '@/lib/auth/session';
+import { apnsIsConfigured } from '@/lib/notifications/apns';
 
 const ALLOWED_KEYS = new Set<keyof typeof DEFAULT_PREFS>([
   'master_enabled',
@@ -83,7 +84,13 @@ export async function GET(req: NextRequest) {
   // passthrough keys (adaptation_enabled) ride along in `prefs` at
   // runtime — pass it as raw for the alias derivation.
   const dual = dualShapePrefsBody(prefs, prefs as unknown as Record<string, unknown>);
-  return NextResponse.json({ ...dual, prefs: dual });
+  // 2026-08-17 · delivery honesty. The settings surface offers 8 push
+  // categories; when APNs creds are absent the dispatcher silently no-ops
+  // (dispatch.ts skipped:'apns_not_configured'). Expose the real signal so
+  // the UI can say delivery is not enabled yet instead of implying the
+  // toggles deliver. Top-level + additive; the phone's tolerant per-key
+  // decode ignores unknown keys.
+  return NextResponse.json({ ...dual, prefs: dual, apns_configured: apnsIsConfigured() });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -102,6 +109,9 @@ export async function PATCH(req: NextRequest) {
   const patch: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(body)) {
     if (k === 'user_id') continue;
+    // 2026-08-17 · read-only status field emitted by GET — tolerated (and
+    // ignored) here so an echoed body can't 400 the whole PATCH.
+    if (k === 'apns_configured') continue;
     if (!ALLOWED_KEYS.has(k as any) && !PHONE_PASSTHROUGH_KEYS.has(k)) {
       return NextResponse.json({ error: `Field not allowed: ${k}` }, { status: 400 });
     }

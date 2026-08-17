@@ -506,11 +506,22 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
 
   /* ─────── race week ─────── */
   if (mode === 'raceweek') {
-    const aTarget = goal.goal;
-    const bTargetSec = goalSec ? goalSec + Math.round(goalSec * 0.033) : null; // B = A + ~3.3%
-    const bTarget = bTargetSec != null ? fmtClock(bTargetSec) : '·';
-    const aPace = goalSec && goal.distanceMi ? paceLabel(goalSec, goal.distanceMi) : 'goal pace';
-    const bPace = bTargetSec != null && goal.distanceMi ? paceLabel(bTargetSec, goal.distanceMi) : 'safe pace';
+    // 2026-08-17 · truth-source fix. A = the EFFECTIVE target from the seed
+    // (same resolver the watch/execution-plan/race-detail pace off), not
+    // the raw goal; B = the stored runner-edited goalSafeDisplay, with
+    // effective + 3.3% as the derived fallback (was goal × 1.033 fabricated
+    // client-side). The projection line stays visible so an off-track state
+    // is not hidden by race week, and a >5%-beyond-projection goal is
+    // framed as the stretch instead of pretending A = goal.
+    const et = goal.effectiveTarget ?? null;
+    const aSec = et?.targetSec ?? goalSec;
+    const isStretch = et?.source === 'projection';
+    const aTarget = aSec != null ? fmtClock(aSec) : goal.goal;
+    const bSec = goal.goalSafeSec ?? (aSec != null ? aSec + Math.round(aSec * 0.033) : null);
+    const bTarget = bSec != null ? fmtClock(bSec) : '·';
+    const aPace = aSec != null && goal.distanceMi ? paceLabel(aSec, goal.distanceMi) : 'target pace';
+    const bPace = bSec != null && goal.distanceMi ? paceLabel(bSec, goal.distanceMi) : 'safe pace';
+    const offNow = goalSec != null && projSec != null && projSec / goalSec > 1.08;
     return (
       <div className="fa-gappanel">
         <div className="pad">
@@ -519,13 +530,33 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
             <span className={`statuschip ${status.kind}`}><i className="dot" />Tapering</span>
           </div>
           <div className="truth">
-            <div className="hl">The work is done. The gap <em>can&apos;t move</em> now.</div>
-            <div className="sub">Nothing you do this week changes your fitness · only your freshness. The projection stops mattering. <b>Lock the plan: even pacing, fuel, sleep.</b></div>
+            {isStretch ? (
+              <>
+                <div className="hl">Race week. The projection writes the paces now.</div>
+                <div className="sub">Your goal sits more than 5% past the projection · pacing off it invites a blow-up by mile 5. <b>The A target below is the honest race. The goal stays as the stretch: {goal.goal}.</b></div>
+              </>
+            ) : (
+              <>
+                <div className="hl">The work is done. Fitness is set.</div>
+                <div className="sub">Nothing you do this week changes your fitness · only your freshness. <b>Lock the plan: even pacing, fuel, sleep.</b></div>
+              </>
+            )}
           </div>
           <div className="abtarget" style={{ marginTop: 20 }}>
-            <div className="t a"><span className="lbl">A · the goal</span><span className="v">{aTarget}</span><span className="p">{aPace} · if the day is cool and you feel it</span></div>
+            <div className="t a"><span className="lbl">{isStretch ? 'A · target · projection' : 'A · the goal'}</span><span className="v">{aTarget}</span><span className="p">{aPace} · if the day is cool and you feel it</span></div>
             <div className="t b"><span className="lbl">B · safe</span><span className="v">{bTarget}</span><span className="p">{bPace} · the line that still makes this a win</span></div>
           </div>
+          {projSec != null ? (
+            <div style={{
+              marginTop: 12, fontSize: 11.5, letterSpacing: '.04em',
+              color: offNow ? '#F3AD38' : 'rgba(255,255,255,.55)',
+            }}>
+              Projection {fmtClock(projSec)}
+              {goalSec != null && projSec > goalSec
+                ? ` · ${fmtDelta(projSec - goalSec)} behind the goal`
+                : goalSec != null ? ' · at or ahead of the goal' : ''}
+            </div>
+          ) : null}
         </div>
         <div className="div" />
         <div className="pad">

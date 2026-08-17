@@ -60,7 +60,8 @@ export type RaceDetailSeed = {
   // via the priority chip; PATCH /api/race fires the auto-rebuild hook
   // when this changes (A → B/C demotes the plan, B/C → A promotes).
   priority: 'A' | 'B' | 'C';
-  registered: boolean;
+  // 2026-08-17 · null = unknown (chip renders nothing). No default-true.
+  registered: boolean | null;
   bib: string;
   wave: string;
   daysAway: number;
@@ -69,6 +70,11 @@ export type RaceDetailSeed = {
   // persisted to races.actual_result via PATCH /api/race.
   isPast: boolean;
   finishTime: string | null;
+  // 2026-08-17 · provisional-finish provenance from the races-state row
+  // (primary source; retro?.provisional is the fallback) so a provisional
+  // finish stays labeled even when the retro build failed.
+  finishProvisional?: boolean;
+  finishProvisionalLabel?: string | null;
   pb: boolean;
   distanceMi: number;
   netElevFt: number;
@@ -76,6 +82,15 @@ export type RaceDetailSeed = {
   goalPace: string;
   aGoal: string;
   bGoal: string;
+  // 2026-08-17 · the EFFECTIVE race target (lib/race/effective-race-target)
+  // every pacing surface below the hero paces off — goal when within 5% of
+  // the projection, else the projection with the goal demoted to stretch.
+  // goalPace / pacing / splits / gels are all derived from it.
+  effectiveGoal: string;
+  effectiveSource: 'goal' | 'projection';
+  stretchGoal: string | null;
+  // 2026-08-17 · official race site URL when on file (races meta).
+  website?: string | null;
   pacing: Array<{ seg: string; sub: string; bar: number; barColor: string; pace: string; cum: string }>;
   splits: Array<{ label: string; val: string }>;
   gels: Array<{ mi: string; left: number; caf?: boolean }>;
@@ -137,10 +152,13 @@ const FALLBACK: RaceDetailSeed = {
   slug: 'race', name: 'Race', date: '', startTime: '·',
   course: '·', certification: '·',
   priority: 'A',
-  registered: false, bib: '·', wave: '·',
+  registered: null, bib: '·', wave: '·',
   daysAway: 0, isPast: false, finishTime: null, pb: false,
+  finishProvisional: false, finishProvisionalLabel: null,
   distanceMi: 0, netElevFt: 0, gainFt: 0, goalPace: '·',
   aGoal: '·', bGoal: '·',
+  effectiveGoal: '·', effectiveSource: 'goal', stretchGoal: null,
+  website: null,
   pacing: [],
   splits: [],
   gels: [],
@@ -200,7 +218,10 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
     if (sec <= 0) { setAGoal(normalizeGoalTime(r.aGoal)); return; }
     const next = fmtHM(sec);
     setAGoal(next);
-    setGoalPace(sec2pace(sec));
+    // Only mirror the pace optimistically when the page is pacing off the
+    // goal. When the effective target is the projection, an edited goal
+    // doesn't move the pacing surfaces until the server re-resolves.
+    if (r.effectiveSource === 'goal') setGoalPace(sec2pace(sec));
     const { autoRebuild } = await patchRace(r.slug, { goal: next });
     if (autoRebuild?.ok) setAutoRebuildToast(autoRebuild);
   }
@@ -360,7 +381,9 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
           <div className="rp-meta">
             <span><b>{formatDateFull(r.date)}</b>{r.isPast ? '' : ' · ' + startTime}</span>
             <span>{r.course}</span>
-            <span>{r.certification}</span>
+            {/* 2026-08-17 · only render certification when actually known —
+                the old seed stamped "USATF certified" on every A race. */}
+            {r.certification && r.certification !== '·' ? <span>{r.certification}</span> : null}
           </div>
           <div className="rp-chips">
             {!r.isPast && (
@@ -396,7 +419,7 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
                 })}
               </div>
             )}
-            {!r.isPast && r.registered && (
+            {!r.isPast && r.registered === true && (
               <div className="rp-chip reg">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#7BE8A0" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
                 Registered
@@ -469,9 +492,9 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
                   run-matched finish is labeled provisional with a one-tap
                   confirm (POST /api/race/result). Correct it by editing the
                   number above first. A confirmed chip time renders plain. */}
-              {r.retro?.provisional && finishTime && !confirmed ? (
+              {(r.finishProvisional || r.retro?.provisional) && finishTime && !confirmed ? (
                 <div className="rr-provrow">
-                  <span className="rr-provlbl">{r.retro.provisionalLabel ?? 'Provisional'}</span>
+                  <span className="rr-provlbl">{r.finishProvisionalLabel ?? r.retro?.provisionalLabel ?? 'Provisional'}</span>
                   <button type="button" className="rr-confirm" onClick={confirmProvisional} disabled={confirming}>
                     {confirming ? 'Confirming' : 'Confirm time'}
                   </button>
@@ -550,7 +573,7 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         <div className="rp-ss"><div className="k">DISTANCE</div><div className="v">{r.distanceMi}<small> mi</small></div></div>
         <div className="rp-ss"><div className="k">NET ELEVATION</div><div className="v down">{r.netElevFt > 0 ? `+${r.netElevFt}` : r.netElevFt}<small> ft</small></div></div>
         <div className="rp-ss"><div className="k">TOTAL GAIN</div><div className="v">+{r.gainFt.toLocaleString()}<small> ft</small></div></div>
-        <div className="rp-ss"><div className="k">GOAL PACE</div><div className="v">{goalPace}<small>/mi</small></div></div>
+        <div className="rp-ss"><div className="k">{r.effectiveSource === 'projection' ? 'TARGET PACE' : 'GOAL PACE'}</div><div className="v">{goalPace}<small>/mi</small></div></div>
       </div>
 
       {/* 2026-08-17 · post-race story. THE RACE STORY (splits vs the
@@ -707,7 +730,19 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
           fueling / logistics / pre-race insight blocks stand down. */}
       {!r.isPast && (
         <>
-          <div className="rp-sec">PACING PLAN<span className="rp-secr">Even effort for {aGoal} · {goalPace}/mi avg</span></div>
+          {/* 2026-08-17 · paces off the EFFECTIVE target (same resolver as
+              the watch + execution plan), with source named. When the goal
+              runs >5% beyond the projection the paces hold to the
+              projection and the goal rides along as the stretch. */}
+          <div className="rp-sec">PACING PLAN<span className="rp-secr">Even effort for {r.effectiveGoal} · {goalPace}/mi avg · {r.effectiveSource === 'projection' ? 'from projection' : 'your goal'}</span></div>
+          {r.effectiveSource === 'projection' && r.stretchGoal ? (
+            <div style={{
+              fontSize: 11.5, fontWeight: 600, letterSpacing: '.04em',
+              color: 'rgba(255,255,255,.62)', margin: '-6px 0 10px 2px',
+            }}>
+              Stretch: {r.stretchGoal} · the projection writes the paces, the goal stays the stretch
+            </div>
+          ) : null}
           <div className="rp-panel rp-pace">
             {r.pacing.map((p, i) => (
               <div className="rp-pr" key={i}>
@@ -722,7 +757,10 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
             </div>
           </div>
 
-          <div className="rp-sec">FUELING PLAN<span className="rp-secr">~70g carbs/hr · {r.gels.length} gels · fluids every aid station</span></div>
+          {/* 2026-08-17 · honesty: the gel count is derived from the target
+              duration, but the pre-race/hydration lines are standard-plan
+              defaults, and the label says so. */}
+          <div className="rp-sec">FUELING PLAN<span className="rp-secr">Standard plan · ~70g carbs/hr · {r.gels.length} gels sized to your target time</span></div>
           <div className="rp-panel">
             <div className="rp-fuel">
               <div className="rp-ftrack">
@@ -752,20 +790,23 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
             <LogisticsItem icon={<><path d="M6 2h9l3 3v17H6z"/><path d="M9 7h6M9 11h6M9 15h4"/></>}   label="PACKET PICKUP" value={r.pickup.value} detail={r.pickup.detail} />
             <LogisticsItem icon={<><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.5"/></>} label="FINISH" value={r.finish.value} detail={r.finish.detail} />
           </div>
-          <div className="rp-links">
-            <div className="rp-link">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
-              Official race site
+          {/* 2026-08-17 · dead-link cleanup. The GPX and weather-history rows
+              were inert divs with nowhere to go — deleted. The race-site row
+              is now a real link, rendered only when the site is on file. */}
+          {r.website ? (
+            <div className="rp-links">
+              <a
+                className="rp-link"
+                href={r.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ textDecoration: 'none', color: 'inherit' }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                Official race site
+              </a>
             </div>
-            <div className="rp-link">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20l-5-2V4l5 2 6-2 5 2v14l-5-2-6 2z"/><path d="M9 6v14M15 4v14"/></svg>
-              Download GPX
-            </div>
-            <div className="rp-link">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19V5M9 19V9M14 19v-6M19 19V7"/></svg>
-              Past results &amp; weather history
-            </div>
-          </div>
+          ) : null}
         </>
       )}
 

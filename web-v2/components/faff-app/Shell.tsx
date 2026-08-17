@@ -360,19 +360,21 @@ function isGuestSeed(seed: FaffSeed): boolean {
  *  on 2026-05-30, and prevents each view from rendering against the
  *  empty seed shape and producing surface-specific garbage. */
 function GuestPanel({ view }: { view: ViewKey }) {
+  // 2026-08-17 · stale-copy fix. Web sign-in exists at /login — the old
+  // "WEB SIGN-IN COMING SOON · sign in on the iPhone app" claim was false.
   const blurbs: Partial<Record<ViewKey, { title: string; body: string }>> = {
     today:     { title: 'Sign in to see today',
-                 body: 'Open the Faff iPhone app and sign in. Your session is shared with the web automatically. Your plan, runs, and readiness will light up here.' },
+                 body: 'Your plan, runs, and readiness light up here once you sign in.' },
     train:     { title: 'Sign in to see your plan',
-                 body: 'The training dashboard is per-runner. Sign in on the Faff iPhone app and your block, weeks, and key workouts populate here.' },
+                 body: 'The training dashboard is per-runner. Sign in and your block, weeks, and key workouts populate here.' },
     health:    { title: 'Sign in to see your health',
                  body: 'Readiness, HRV, RHR, sleep, VO2 and form metrics stream in from the iPhone HealthKit pipeline once you sign in.' },
     targets:   { title: 'Sign in to see your races',
                  body: 'Goal race, projection vs goal, calendar and PRs unlock after sign-in.' },
     activity:  { title: 'Sign in to see your log',
-                 body: 'Activity heatmap, recent runs and aggregates follow your runner-id. Sign in on iPhone to see them here.' },
+                 body: 'Activity heatmap, recent runs and aggregates follow your runner-id.' },
     profile:   { title: 'Sign in to see your profile',
-                 body: 'Shoe garage, connections, units and preferences are per-runner. Sign in on the iPhone app to manage them.' },
+                 body: 'Shoe garage, connections, units and preferences are per-runner.' },
     spectator: { title: 'Sign in to spectate', body: 'Spectator mode is per-runner.' },
     race:      { title: 'Sign in to see this race',
                  body: 'Race detail is keyed to your account.' },
@@ -395,14 +397,18 @@ function GuestPanel({ view }: { view: ViewKey }) {
       }}>
         {copy.body}
       </div>
-      <div style={{
-        fontSize: 11, fontWeight: 700, letterSpacing: '2px',
-        color: 'rgba(255,206,138,0.85)', marginBottom: 10,
-      }}>
-        WEB SIGN-IN COMING SOON
-      </div>
+      <a
+        href="/login"
+        style={{
+          fontSize: 12, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase',
+          color: '#10131A', background: 'rgba(255,206,138,0.92)', textDecoration: 'none',
+          borderRadius: 10, padding: '10px 22px', marginBottom: 12,
+        }}
+      >
+        Sign in
+      </a>
       <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-        Until then, sign in on the iPhone app. The session cookie is shared automatically.
+        Same account as the iPhone app.
       </div>
     </div>
   );

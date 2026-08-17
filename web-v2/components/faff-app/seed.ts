@@ -2358,16 +2358,40 @@ export async function buildSeed(): Promise<FaffSeed> {
         _pool.query(
           // Gun time: meta.startTime is the inline-editable Gun chip on
           // the race detail page (the canonical field · races-state.ts
-          // reads the same COALESCE chain).
+          // reads the same COALESCE chain). goal_safe: the runner-edited
+          // B target (2026-08-17 · read back for the race-week card).
           `SELECT course_geometry,
-                  COALESCE(meta->>'startTime', meta->>'gun_time', meta->>'start_time') AS start_time_local
+                  COALESCE(meta->>'startTime', meta->>'gun_time', meta->>'start_time') AS start_time_local,
+                  meta->>'goalSafeDisplay' AS goal_safe
              FROM races
             WHERE slug = $1 AND user_uuid = $2 LIMIT 1`,
           [goalRace.slug, userId],
-        ).catch(() => ({ rows: [] as Array<{ course_geometry: { bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number } } | null; start_time_local: string | null }> })),
+        ).catch(() => ({ rows: [] as Array<{ course_geometry: { bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number } } | null; start_time_local: string | null; goal_safe: string | null }> })),
       ]);
       const courseLibRow = courseLibRes.rows[0];
       const raceStartTimeLocal = (raceRowRes.rows[0] as { start_time_local?: string | null } | undefined)?.start_time_local ?? null;
+
+      // 2026-08-17 · truth-source wiring for the GapPanel race-week card.
+      // B target read back from the stored meta.goalSafeDisplay (the panel
+      // fabricated goal × 1.033 client-side); A target from the ONE
+      // effective-race-target resolver the watch/execution-plan/race-detail
+      // already pace off. Both best-effort — null keeps the panel's
+      // derived fallbacks honest.
+      goalRace.goalSafeSec = parseRaceTime(
+        (raceRowRes.rows[0] as { goal_safe?: string | null } | undefined)?.goal_safe ?? null,
+      );
+      if (goalSecLocal > 0) {
+        try {
+          const { loadEffectiveRaceTarget } = await import('@/lib/race/effective-race-target');
+          const et = await loadEffectiveRaceTarget(userId, goalSecLocal, goalRace.distanceMi);
+          goalRace.effectiveTarget = {
+            targetSec: et.targetSec,
+            source: et.source,
+            goalSec: et.goalSec,
+            projectionSec: et.projectionSec,
+          };
+        } catch { goalRace.effectiveTarget = null; }
+      }
       const courseGeom = (raceRowRes.rows[0] as any)?.course_geometry ?? null;
       const bbox = courseGeom?.bbox ?? null;
       const raceLat = bbox?.minLat != null && bbox?.maxLat != null

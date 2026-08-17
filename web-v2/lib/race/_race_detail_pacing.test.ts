@@ -1,0 +1,147 @@
+/**
+ * RACE-DETAIL PACING TRUTH-SOURCE INVARIANTS (2026-08-17).
+ *
+ * The web race-detail page derived its goal-pace strip stat, PACING PLAN
+ * blocks, splits, and gels from the RAW stated goal while the watch and
+ * execution plan already paced off the effective target. These tests lock
+ * the adoption:
+ *   1. goal fantasy (>5% past projection) → projection paces + stretch line
+ *   2. goal sane → goal paces, no stretch line
+ *   3. B · SAFE reads back the stored meta.goalSafeDisplay; the fallback is
+ *      effective + 3.3%, never goal + 7:00
+ *   4. certification / registered render nothing when unknown
+ */
+import { describe, it, expect } from 'vitest';
+import { resolveEffectiveRaceTarget, roundTargetSec } from './effective-race-target';
+import {
+  composeRaceDetailPacing,
+  certificationFromMeta,
+  registeredFromMeta,
+  B_SAFE_FRACTION,
+} from './race-detail-pacing';
+import { parseRaceTime } from '@/lib/training/vdot';
+
+const MARATHON = 26.2;
+
+describe('composeRaceDetailPacing · effective-target adoption', () => {
+  it('goal fantasy → projection writes the paces, goal demoted to stretch', () => {
+    // 3:00 goal (10800) at 3:22 fitness (12120): >5% adrift.
+    const effective = resolveEffectiveRaceTarget(10800, 12120);
+    const pf = composeRaceDetailPacing({
+      goalDisplay: '3:00:00',
+      effective,
+      goalSafeDisplay: null,
+      distanceMi: MARATHON,
+      netElevFt: 0,
+    });
+    expect(pf.effectiveSource).toBe('projection');
+    expect(pf.effectiveGoal).toBe('3:22:00');           // roundTargetSec(12120)
+    expect(pf.stretchGoal).toBe('3:00:00');             // the stretch line
+    expect(pf.aGoal).toBe('3:00:00');                   // hero still shows the stated goal
+    // Pace off the projection, not the goal: 12120/26.2 ≈ 462.6 s/mi.
+    expect(pf.goalPace).toBe('7:43');
+    // Splits/pacing recompute off the effective target — cumulative of the
+    // final pacing block lands at the effective time, not the goal.
+    expect(pf.pacing.length).toBe(4);
+    expect(parseRaceTime(pf.pacing[3].cum)).toBeGreaterThan(11514); // > 95% of projection
+    expect(parseRaceTime(pf.pacing[3].cum)).toBeLessThan(12300);
+    // Gels sized to the longer honest duration (3:22 ≈ 3.37h × 1.7 ≈ 6).
+    expect(pf.gels.length).toBe(Math.max(1, Math.round((roundTargetSec(12120) / 3600) * 1.7)));
+  });
+
+  it('goal sane (within 5% of projection) → goal writes the paces, no stretch', () => {
+    const effective = resolveEffectiveRaceTarget(10800, 11000);
+    const pf = composeRaceDetailPacing({
+      goalDisplay: '3:00:00',
+      effective,
+      goalSafeDisplay: null,
+      distanceMi: MARATHON,
+      netElevFt: 0,
+    });
+    expect(pf.effectiveSource).toBe('goal');
+    expect(pf.effectiveGoal).toBe('3:00:00');
+    expect(pf.stretchGoal).toBeNull();
+    expect(pf.goalPace).toBe('6:52');                   // 10800/26.2 ≈ 412.2 s/mi
+  });
+
+  it('no projection snapshot → goal fallback (cold start)', () => {
+    const effective = resolveEffectiveRaceTarget(10800, null);
+    const pf = composeRaceDetailPacing({
+      goalDisplay: '3:00:00',
+      effective,
+      goalSafeDisplay: null,
+      distanceMi: MARATHON,
+      netElevFt: 0,
+    });
+    expect(pf.effectiveSource).toBe('goal');
+    expect(pf.effectiveGoal).toBe('3:00:00');
+    expect(pf.stretchGoal).toBeNull();
+  });
+
+  it('no goal at all → everything degrades to placeholders', () => {
+    const pf = composeRaceDetailPacing({
+      goalDisplay: null,
+      effective: null,
+      goalSafeDisplay: null,
+      distanceMi: MARATHON,
+      netElevFt: 0,
+    });
+    expect(pf.aGoal).toBe('·');
+    expect(pf.effectiveGoal).toBe('·');
+    expect(pf.bGoal).toBe('·');
+    expect(pf.pacing).toEqual([]);
+    expect(pf.splits).toEqual([]);
+    expect(pf.gels).toEqual([]);
+  });
+});
+
+describe('B · SAFE readback', () => {
+  it('stored meta.goalSafeDisplay wins over any derivation', () => {
+    const effective = resolveEffectiveRaceTarget(10800, 11000);
+    const pf = composeRaceDetailPacing({
+      goalDisplay: '3:00:00',
+      effective,
+      goalSafeDisplay: '3:12:00',                        // runner-edited B
+      distanceMi: MARATHON,
+      netElevFt: 0,
+    });
+    expect(pf.bGoal).toBe('3:12:00');
+    expect(pf.bGoalSource).toBe('stored');
+  });
+
+  it('fallback is effective + 3.3%, not goal + 7:00', () => {
+    // Fantasy goal: effective = projection 12120. Old bug: B = 10800 + 420
+    // = 3:07:00 — FASTER than the honest projection.
+    const effective = resolveEffectiveRaceTarget(10800, 12120);
+    const pf = composeRaceDetailPacing({
+      goalDisplay: '3:00:00',
+      effective,
+      goalSafeDisplay: null,
+      distanceMi: MARATHON,
+      netElevFt: 0,
+    });
+    const effSec = effective.targetSec;
+    const expected = effSec + Math.round(effSec * B_SAFE_FRACTION);
+    expect(parseRaceTime(pf.bGoal)).toBe(expected);
+    expect(parseRaceTime(pf.bGoal)).not.toBe(10800 + 420);
+    expect(pf.bGoalSource).toBe('derived');
+  });
+});
+
+describe('unknown race facts render nothing', () => {
+  it('certification: only a real stored value survives', () => {
+    expect(certificationFromMeta({})).toBe('·');
+    expect(certificationFromMeta(null)).toBe('·');
+    expect(certificationFromMeta({ certification: '' })).toBe('·');
+    expect(certificationFromMeta({ certification: 42 })).toBe('·');
+    expect(certificationFromMeta({ certification: 'USATF certified' })).toBe('USATF certified');
+  });
+
+  it('registered: null (unknown) unless the runner recorded it — no default-true', () => {
+    expect(registeredFromMeta({})).toBeNull();
+    expect(registeredFromMeta(null)).toBeNull();
+    expect(registeredFromMeta({ registered: 'yes' })).toBeNull();
+    expect(registeredFromMeta({ registered: true })).toBe(true);
+    expect(registeredFromMeta({ registered: false })).toBe(false);
+  });
+});

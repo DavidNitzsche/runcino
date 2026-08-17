@@ -40,7 +40,9 @@ const ROW_DEFS: Array<{
   { key: 'skip_recovery_enabled', label: 'Workout reminders', sub: 'Pre-run brief on planned days' },
   { key: 'weekly_checkin_enabled', label: 'Weekly check-in', sub: 'Sunday recap + week-ahead context' },
   { key: 'niggle_sick_enabled', label: 'Niggle / sick check', sub: 'Daily check-in when something is active' },
-  { key: 'streak_enabled', label: 'Streak milestones', sub: '7 · 14 · 30 · 100 day streaks' },
+  // 2026-08-17 · streak row removed from the UI per the standing anti-streak
+  // ruling. The streak_enabled pref/column stays untouched server-side —
+  // this list just stops offering it.
   { key: 'strava_reconnect_enabled', label: 'Strava reconnect', sub: 'Nudge when the token goes stale' },
 ];
 
@@ -51,6 +53,11 @@ export function NotificationPrefsList({ initial }: { initial?: NotificationPrefs
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(initial ?? null);
   const [state, setState] = useState<'idle' | 'loading' | 'saving' | 'error'>(initial ? 'idle' : 'loading');
   const [err, setErr] = useState<string | null>(null);
+  // 2026-08-17 · delivery honesty. null = unknown (no claim rendered);
+  // false = APNs creds absent in this environment, so the toggles save but
+  // nothing delivers yet. Sourced from the real apnsIsConfigured() signal
+  // on GET /api/profile/notifications.
+  const [apnsConfigured, setApnsConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (initial) return;
@@ -61,6 +68,7 @@ export function NotificationPrefsList({ initial }: { initial?: NotificationPrefs
       .then((j) => {
         if (alive) {
           setPrefs((j.prefs ?? null) as NotificationPrefs | null);
+          if (typeof j.apns_configured === 'boolean') setApnsConfigured(j.apns_configured);
           setState('idle');
         }
       })
@@ -118,6 +126,11 @@ export function NotificationPrefsList({ initial }: { initial?: NotificationPrefs
 
   return (
     <div className="fa-rows">
+      {apnsConfigured === false ? (
+        <p className="fa-prov" style={{ padding: '8px 16px', color: 'var(--fa-mute, rgba(255,255,255,.55))' }}>
+          Delivery is not enabled yet · notifications will start when it is.
+        </p>
+      ) : null}
       {ROW_DEFS.map((row) => (
         <div className="fa-row" key={row.key}>
           <div>

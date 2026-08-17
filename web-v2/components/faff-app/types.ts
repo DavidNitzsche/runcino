@@ -307,6 +307,22 @@ export type GoalRace = {
   // race row hasn't been resolved to a real distance yet.
   distanceMi: number | null;
 
+  // 2026-08-17 · the EFFECTIVE race target (lib/race/effective-race-target
+  // resolver — same source the watch payload, execution plan, and race
+  // detail pace off). GapPanel's race-week card shows THIS as the A
+  // target; when source === 'projection' the stated goal is a stretch, not
+  // the pacing target. Null when no goal / resolver unavailable.
+  effectiveTarget?: {
+    targetSec: number;
+    source: 'goal' | 'projection';
+    goalSec: number;
+    projectionSec: number | null;
+  } | null;
+  // 2026-08-17 · the runner-edited B goal (races.meta.goalSafeDisplay,
+  // written by PATCH /api/race) in seconds. Null when never set — the
+  // race-week card then derives B = effective + 3.3%.
+  goalSafeSec?: number | null;
+
   // ─── 2026-06-04 · plan-trusts-itself doctrine ───
   /** Status from goal-projection · gates the "math is honest" panel.
    *  ON TRACK · plan is on pace · panel collapses to "the plan is the path".

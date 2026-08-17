@@ -110,8 +110,15 @@ function toGoalStatus(s: string): 'on-track' | 'watching' | 'off-track' {
   return 'on-track';
 }
 
-function statusFor(projSec: number | null, goalSec: number | null, daysAway: number | null) {
-  if (daysAway != null && daysAway <= 7 && daysAway >= 0) return 'race_week';
+// 2026-08-17 · status masking fix. This helper no longer returns
+// 'race_week': daysAway ≤ 7 used to blanket-override the honest ratio so a
+// runner whose projection sat >8% past the goal read "race_week" all week —
+// the exact week the honest 'off' matters most. Race week is now a separate
+// additive flag (raceWeek in the payload); status masks to 'race_week' only
+// when the ratio is NOT off (native's TargetsView switches on the status
+// string with default fallbacks, so 'off' in race week renders BEHIND —
+// tolerant, no exhaustive switch to break).
+function statusFor(projSec: number | null, goalSec: number | null) {
   if (projSec == null || goalSec == null) return 'cold';
   const ratio = projSec / goalSec;
   if (ratio > 1.08) return 'off';
@@ -502,13 +509,22 @@ export async function GET(req: NextRequest) {
     // only — a goal-mode deadline week is not a race week; 2026-07-06);
     // statusFor is the cold fallback only when there's no trajectory (no
     // vdot/goal/date).
-    const rawStatus = (race != null && daysAway != null && daysAway <= 7 && daysAway >= 0) ? 'race_week'
+    // 2026-08-17 · status masking fix. Compute the HONEST status first;
+    // race week is a flag, not a mask. status only reads 'race_week' when
+    // the honest read is not 'off' — a projection >8% past the goal stays
+    // 'off' straight through race week (native switches on the string with
+    // default fallbacks, so it renders BEHIND; no exhaustive decode to
+    // break). The additive raceWeek boolean carries the timing signal for
+    // clients that want both.
+    const raceWeek = race != null && daysAway != null && daysAway <= 7 && daysAway >= 0;
+    const honestStatus =
       // 2026-07-07 · gapVdot is null for a below-table GOAL (no fabricated
       // VDOT gap number) — reachable is still a real boolean in that case,
       // so 'watch' (not 'off') is the honest fallback when we can't grade
       // the miss by magnitude.
-      : traj ? (traj.reachable ? 'on_track' : (traj.gapVdot == null || traj.gapVdot <= 1.5) ? 'watch' : 'off')
-      : statusFor(projectionSec, goalSec, race != null ? daysAway : null);
+      traj ? (traj.reachable ? 'on_track' : (traj.gapVdot == null || traj.gapVdot <= 1.5) ? 'watch' : 'off')
+      : statusFor(projectionSec, goalSec);
+    const rawStatus = raceWeek && honestStatus !== 'off' ? 'race_week' : honestStatus;
     // S8 · Execution-honest reconciliation. A degraded executionQuality (a
     // scheduled-but-unrun recent key session, or a break's inactivity decay)
     // cannot sit under an "on track" headline. Demote on_track → watch BEFORE
@@ -603,6 +619,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       status,
+      // 2026-08-17 · additive race-week flag. True inside T-7 → T-0 of a
+      // real race. status still reads 'race_week' when the ratio is fine;
+      // when the honest read is 'off', status carries 'off' and THIS flag
+      // is how a client knows it is also race week.
+      raceWeek,
       vdot,
       projectionSec,
       // 2026-07-07 · AUDIT P1-13 · honest below-table state. When vdot is

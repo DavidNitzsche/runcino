@@ -17,10 +17,12 @@
  */
 
 import type { RaceDetailSeed } from './views/RaceView';
-import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
+import { parseRaceTime } from '@/lib/training/vdot';
 import { userIdFromCookies } from '@/lib/auth/session';
-import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
+import type { CourseGeometryInput } from '@/lib/race/pacing';
 import { buildRaceRetro } from '@/lib/race/retrospective';
+import { loadEffectiveRaceTarget } from '@/lib/race/effective-race-target';
+import { composeRaceDetailPacing, certificationFromMeta, registeredFromMeta } from '@/lib/race/race-detail-pacing';
 
 type CourseGeom = {
   trackPoints?: Array<{ lat: number; lon: number; ele: number | null }>;
@@ -29,91 +31,11 @@ type CourseGeom = {
   bbox?: { minLat: number; maxLat: number; minLon: number; maxLon: number };
 };
 
-function pace(goalSec: number, distMi: number): string {
-  if (!goalSec || !distMi) return '·';
-  const per = goalSec / distMi;
-  return `${Math.floor(per / 60)}:${String(Math.round(per % 60)).padStart(2, '0')}`;
-}
-
-function cumAt(goalSec: number, distMi: number, atMi: number): string {
-  if (!goalSec || !distMi) return '·';
-  const t = goalSec * (atMi / distMi);
-  return formatRaceTime(Math.round(t)) ?? '·';
-}
-
-/** 4-block negative-split pacing: first block 0.5%-1% slower (rolling in),
- *  middle blocks ~goal pace, last block fastest if downhill, even otherwise. */
-function buildPacing(goalSec: number, distMi: number, netElevFt: number): RaceDetailSeed['pacing'] {
-  if (!goalSec || !distMi) return [];
-  const downhill = netElevFt < -100;
-  const blocks = [
-    { start: 0,            end: distMi * 0.25, factor: 1.012, color: '#14C08C', sub: 'controlled · ease in' },
-    { start: distMi * 0.25, end: distMi * 0.50, factor: 1.0,   color: '#F3AD38', sub: 'settle into rhythm' },
-    { start: distMi * 0.50, end: distMi * 0.80, factor: downhill ? 0.998 : 1.0, color: '#D03F3F', sub: 'locked in · work the middle' },
-    { start: distMi * 0.80, end: distMi,        factor: downhill ? 0.985 : 0.992, color: '#FC4D64', sub: 'empty the tank' },
-  ];
-  const out: RaceDetailSeed['pacing'] = [];
-  let cum = 0;
-  for (let i = 0; i < blocks.length; i++) {
-    const b = blocks[i];
-    const seg = b.end - b.start;
-    const blockSec = goalSec * (seg / distMi) * b.factor;
-    cum += blockSec;
-    out.push({
-      seg: `Miles ${formatMileRange(b.start, b.end, i === 0)}`,
-      sub: b.sub,
-      bar: 60 + i * 10,
-      barColor: b.color,
-      pace: pace(blockSec, seg),
-      cum: formatRaceTime(Math.round(cum)) ?? '·',
-    });
-  }
-  return out;
-}
-function formatMileRange(a: number, b: number, first: boolean): string {
-  const round = (v: number) => Number.isInteger(v) ? v.toString() : v.toFixed(1).replace(/\.0$/, '');
-  const lo = first ? '1' : round(a);
-  return `${lo}–${round(b)}`;
-}
-
-/** 2026-06-09 · race-killer F3 — course-aware goal splits. Delegates to
- *  lib/race/pacing.ts: grade-weighted over the authored course phases when
- *  the library has them (cite Research/11 §grade-cost), the identical
- *  linear ladder when it doesn't. Flat-course splits on AFC told the
- *  runner to bank nothing on The Drop and left the Balboa climb unpriced. */
-function buildSplits(
-  goalSec: number,
-  distMi: number,
-  geometry?: CourseGeometryInput | null,
-): RaceDetailSeed['splits'] {
-  if (!goalSec || !distMi) return [];
-  return buildRacePacing({ goalSec, distanceMi: distMi, geometry: geometry ?? null })
-    .splits.map(s => ({ label: s.label, val: s.display }));
-}
-
-/** Gels at ~70g/hr (40g per gel), one every ~35 min. */
-function buildGels(goalSec: number, distMi: number): RaceDetailSeed['gels'] {
-  if (!goalSec || !distMi) return [];
-  const hours = goalSec / 3600;
-  const totalGels = Math.max(1, Math.round(hours * 1.7)); // ~every 35 min
-  const out: RaceDetailSeed['gels'] = [];
-  for (let i = 1; i <= totalGels; i++) {
-    const atMi = (i / (totalGels + 1)) * distMi;
-    const isCaf = i === Math.max(1, totalGels - 1) || i === totalGels;
-    out.push({
-      mi: `MI ${atMi.toFixed(1)}${isCaf ? ' · caf' : ''}`,
-      left: Math.round((atMi / distMi) * 100),
-      caf: isCaf,
-    });
-  }
-  return out;
-}
-
-function bumpHMS(t: string, addSec: number): string {
-  const sec = parseRaceTime(t);
-  if (!sec) return t;
-  return formatRaceTime(sec + addSec) ?? t;
-}
+/** Pacing/fueling math lives in lib/race/race-detail-pacing.ts (pure,
+ *  tested) — this file resolves the data and hands it over. 2026-08-17:
+ *  every pacing-derived field paces off the EFFECTIVE race target
+ *  (lib/race/effective-race-target.ts), matching the watch payload and
+ *  the execution plan. */
 
 function notablesFromElevation(geom: CourseGeom | null, distMi: number): RaceDetailSeed['notables'] {
   if (!geom?.trackPoints?.length || distMi <= 0) {
@@ -301,8 +223,15 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
     const dist = race.distance_mi ?? (geom?.distance_mi ?? 26.2);
     const gainFt = Math.round(geom?.elevation_gain_ft ?? 0);
     const aGoal = race.goal || '·';
-    const bGoal = aGoal !== '·' ? bumpHMS(aGoal, 420) : '·';
     const aGoalSec = parseRaceTime(aGoal) ?? 0;
+
+    // 2026-08-17 · the ONE race-target resolver (same as the watch payload
+    // + execution plan): goal when within 5% of the latest projection
+    // snapshot for this distance, else the projection with the goal demoted
+    // to stretch. No snapshot → goal fallback.
+    const effective = aGoalSec > 0
+      ? await loadEffectiveRaceTarget(userId, aGoalSec, dist).catch(() => null)
+      : null;
 
     const startTime = (meta as { startTime?: string }).startTime || '·';
     const wave = (meta as { wave?: string }).wave || (aGoal !== '·' ? `Seed ${aGoal}` : '·');
@@ -360,36 +289,60 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       } catch { retro = null; }
     }
 
+    // Every pacing-derived field off the effective target (pure module,
+    // tested in lib/race/_race_detail_pacing.test.ts). Also reads back the
+    // runner-edited B goal (meta.goalSafeDisplay) instead of goal + 7:00.
+    const pf = composeRaceDetailPacing({
+      goalDisplay: race.goal ?? null,
+      effective,
+      goalSafeDisplay: (meta as { goalSafeDisplay?: string }).goalSafeDisplay ?? null,
+      distanceMi: dist,
+      netElevFt,
+      geometry: (lib as { geometry_json?: unknown } | null)?.geometry_json as CourseGeometryInput | null,
+    });
+
     return {
       slug: race.slug,
       name: race.name,
       date: race.date,
       startTime,
       course: race.location ?? '·',
-      certification: race.priority === 'A' ? 'USATF certified' : '·',
+      // 2026-08-17 · honesty: no more hardcoded "USATF certified" on every
+      // A race. Render nothing when we don't actually know.
+      certification: certificationFromMeta(meta),
       // 2026-06-02 · A/B/C priority is editable on the race detail page.
       // Default to 'A' for legacy rows whose priority was never set —
       // matches POST /api/race's default. Type-narrow because race.priority
       // is a free string upstream.
       priority: ((race.priority === 'B' || race.priority === 'C') ? race.priority : 'A') as 'A' | 'B' | 'C',
-      registered: (meta as { registered?: boolean }).registered ?? true,
+      // 2026-08-17 · honesty: no default-true. The chip renders only when
+      // the runner actually recorded a registration.
+      registered: registeredFromMeta(meta),
       bib,
       wave,
       daysAway: race.days,
       isPast,
       finishTime,
+      // 2026-08-17 · provisional-finish provenance straight off the
+      // races-state row (primary; retro is the fallback in RaceView) so a
+      // provisional finish stays labeled even when buildRaceRetro threw.
+      finishProvisional: race.finishProvisional ?? false,
+      finishProvisionalLabel: race.finishProvisionalLabel ?? null,
       pb,
       distanceMi: dist,
       netElevFt,
       gainFt,
-      goalPace: pace(aGoalSec, dist),
+      goalPace: pf.goalPace,
       aGoal,
-      bGoal,
-      pacing: buildPacing(aGoalSec, dist, netElevFt),
-      splits: buildSplits(aGoalSec, dist, (lib as { geometry_json?: unknown } | null)?.geometry_json as CourseGeometryInput | null),
-      gels: buildGels(aGoalSec, dist),
+      bGoal: pf.bGoal,
+      effectiveGoal: pf.effectiveGoal,
+      effectiveSource: pf.effectiveSource,
+      stretchGoal: pf.stretchGoal,
+      pacing: pf.pacing,
+      splits: pf.splits,
+      gels: pf.gels,
       preRace:   '3 hrs out · 100g carbs + 24oz electrolyte',
-      onCourse:  `${buildGels(aGoalSec, dist).length} × gel · ~70g/hr carbs`,
+      onCourse:  `${pf.gels.length} × gel · ~70g/hr carbs`,
       hydration: 'Drink mix every 3–4 mi · extra electrolyte if warm',
       notables: notablesFromElevation(geom, dist),
       insight: insightFor(race.name, dist, netElevFt),
@@ -438,6 +391,11 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       courseStartLabel,
       courseFinishLabel,
       courseNotes,
+      // 2026-08-17 · official race site (races-state meta.officialUrl /
+      // meta.website). Replaces the three inert link rows: the site link is
+      // now a real <a> when on file, and the dead GPX / weather-history
+      // rows are gone.
+      website: race.website ?? null,
       // Retrospective fields — persisted to races.meta.
       avgHrBpm: (meta as { avgHrBpm?: unknown }).avgHrBpm != null ? Number((meta as { avgHrBpm?: unknown }).avgHrBpm) : null,
       retroFelt: (meta as { retroFelt?: string }).retroFelt ?? null,
