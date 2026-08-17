@@ -1,7 +1,7 @@
 //
 //  ToolkitPayloads.swift
 //  Wire models for the Faff Component Toolkit endpoints (Niggle, Sick,
-//  Strength, Cross-training, Goals, RPE, Streak, NotificationPrefs,
+//  Goals, RPE, Streak, NotificationPrefs,
 //  Checkin reply).
 //
 //  Doctrine 2026-05-31: every server-shaped struct gets a custom lenient

@@ -7,7 +7,7 @@
 //    · /api/streak                      · StreakPill
 //    · /api/niggle  + /recovery + DELETE · SymptomReportSheet + DailyCheckChip
 //    · /api/sick    + /recovery + DELETE · SymptomReportSheet + ReturnGateCard
-//    · /api/strength · /api/cross-training · LogNonRunSheet
+//    · /api/strength · HealthKit ingest only (STRENGTH-3)
 //    · /api/goals                       · NewGoalSheet
 //    · /api/runs/[id]/rpe GET/POST      · RPEEntryCard
 //    · /api/profile/notifications GET/PATCH · NotificationPrefsList
@@ -148,25 +148,14 @@ extension API {
         return (200..<300).contains(http.statusCode)
     }
 
-    // MARK: - Strength / Cross-training
-
-    @discardableResult
-    static func postStrength(type: String, durationMin: Int, notes: String? = nil) async throws -> Bool {
-        var req = URLRequest(url: baseURL.appendingPathComponent("api/strength"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // Field names match web-v2/app/api/strength/route.ts:
-        //   date · session_type · duration_min · notes.
-        var body: [String: Any] = [
-            "date": Self.isoTodayUTC(),
-            "session_type": type.lowercased(),
-            "duration_min": durationMin
-        ]
-        if let n = notes { body["notes"] = n }
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, http) = try await API.authedSend(req)
-        return (200..<300).contains(http.statusCode)
-    }
+    // MARK: - Strength ingest (HealthKit only)
+    //
+    // STRENGTH-3 (2026-08-17) · the MANUAL log calls are gone with the sheet
+    // that used them: postStrength(type:durationMin:notes:) and
+    // postCrossTraining(modality:durationMin:intensity:hr:). What remains is
+    // the HealthKit ingest pair, which is deliberately kept alive — the
+    // background importer keeps filling `strength_sessions` so the runner's
+    // history survives and this is reversible. Nothing surfaces it.
 
     /// HK-import path · POST `/api/strength` with `source='apple_health'`
     /// + `hk_uuid`. Idempotent server-side via the unique partial index on
@@ -220,28 +209,6 @@ extension API {
         return (200..<300).contains(http.statusCode)
     }
 
-    @discardableResult
-    static func postCrossTraining(modality: String,
-                                  durationMin: Int,
-                                  intensity: String,
-                                  hr: Int? = nil) async throws -> Bool {
-        var req = URLRequest(url: baseURL.appendingPathComponent("api/cross-training"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // Field names match web-v2/app/api/cross-training/route.ts:
-        //   date · modality · duration_min · intensity (easy|moderate|hard) · avg_hr.
-        var body: [String: Any] = [
-            "date": Self.isoTodayUTC(),
-            "modality": modality.lowercased(),
-            "duration_min": durationMin,
-            "intensity": intensity.lowercased()
-        ]
-        if let h = hr { body["avg_hr"] = h }
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, http) = try await API.authedSend(req)
-        return (200..<300).contains(http.statusCode)
-    }
-
     // MARK: - Goals
 
     @discardableResult
@@ -250,7 +217,7 @@ extension API {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         // Field names match web-v2/app/api/goals/route.ts:
-        //   goal_type ('volume' | 'speed' | 'distance' | 'habit' | 'strength' | 'health') ·
+        //   goal_type ('volume' | 'speed' | 'distance' | 'habit' | 'health') ·
         //   target (string) · deadline (ISO date · optional).
         let body: [String: Any] = [
             "goal_type": type.lowercased(),

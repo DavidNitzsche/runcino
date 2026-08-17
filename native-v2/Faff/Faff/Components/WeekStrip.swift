@@ -17,16 +17,8 @@ struct WeekStripDay: Identifiable, Hashable {
     var isDone: Bool = false
     /// Runner tapped Skip Today on this date · day_actions row exists.
     var isSkipped: Bool = false
-    /// Strength recommender picked this day · renders a thin underline under
-    /// the date number (no glyph — David's pick, keeps the strip uncluttered).
-    var strengthSuggested: Bool = false
-    /// A strength session was LOGGED on this date · the underline turns green
-    /// (vs blue for merely recommended).
-    var strengthDone: Bool = false
-    /// Strength would have been on this day but the readiness gate paused it
-    /// this week · the underline shows yellow ("paused") so the week isn't
-    /// blank when recovery is low.
-    var strengthPaused: Bool = false
+    // STRENGTH-3 (2026-08-17) · strengthSuggested / strengthDone /
+    // strengthPaused removed. The strip no longer underlines strength days.
     /// 2026-07-07 · today-composition · P2-11 · true when PlanDay carries a
     /// secondaryRun — the date is double-booked (e.g. an adapter-collision
     /// easy + long on the same day) and this pill is hiding a second run.
@@ -85,26 +77,6 @@ struct WeekStrip: View {
                 .foregroundStyle(d.isToday
                     ? Theme.dist
                     : Theme.txt.opacity(isSelected ? 1 : 0.8))
-                // Strength day · a thin underline below the number. Overlay (not
-                // a stacked element) so it never shifts the cell's layout.
-                .overlay(alignment: .bottom) {
-                    if d.strengthDone {
-                        Capsule()
-                            .fill(Theme.green)   // green · strength logged
-                            .frame(width: 14, height: 2.5)
-                            .offset(y: 2)
-                    } else if d.strengthSuggested {
-                        Capsule()
-                            .fill(Color(hex: 0x27B4E0))   // blue · recommended
-                            .frame(width: 14, height: 2.5)
-                            .offset(y: 2)
-                    } else if d.strengthPaused {
-                        Capsule()
-                            .fill(Color(hex: 0xF3AD38).opacity(0.85))  // yellow · paused (readiness)
-                            .frame(width: 14, height: 2.5)
-                            .offset(y: 2)
-                    }
-                }
             // 2026-07-07 · P2-11 · double-booked days get a small second dot
             // beside the primary one — honest signal that this pill is
             // hiding a second run, without restructuring any of the

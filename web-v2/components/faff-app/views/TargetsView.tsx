@@ -38,7 +38,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { FaffSeed, GoalRace, PlanProposalSeed, RaceLite } from '../types';
-import { LogNonRunSheet, NewGoalSheet } from '../toolkit';
+import { NewGoalSheet } from '../toolkit';
 import { GapPanel } from './GapPanel';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { resolveGoalStatus, formatGapClock, type GoalStatusRead } from '@/lib/faff/goal-status';
@@ -51,7 +51,6 @@ export function TargetsView({
   const router = useRouter();
   const goal = seed.goalRace;
   const [goalOpen, setGoalOpen] = useState(false);
-  const [logOpen, setLogOpen] = useState(false);
 
   // The pending goal renegotiation, if the engine has written one. Mounts
   // inside THE PATH per the deck, and forces the status chip to BEHIND —
@@ -270,7 +269,6 @@ export function TargetsView({
 
         <div className="raceacts">
           <button type="button" className="racebtn" onClick={() => setGoalOpen(true)}>+ New goal</button>
-          <button type="button" className="racebtn" onClick={() => setLogOpen(true)}>+ Log strength / cross</button>
         </div>
       </div>
 
@@ -310,11 +308,6 @@ export function TargetsView({
       {goalOpen ? (
         <SheetOverlay onDismiss={() => setGoalOpen(false)}>
           <NewGoalSheet onSaved={() => router.refresh()} onClose={() => setGoalOpen(false)} />
-        </SheetOverlay>
-      ) : null}
-      {logOpen ? (
-        <SheetOverlay onDismiss={() => setLogOpen(false)}>
-          <LogNonRunSheet onSaved={() => router.refresh()} onClose={() => setLogOpen(false)} />
         </SheetOverlay>
       ) : null}
     </div>

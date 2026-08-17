@@ -42,47 +42,10 @@ struct TodayView: View {
     /// the strip renders instantly on a cold open, refreshed in loadAll.
     @State private var trainingState: TrainingState? =
         AppCache.read(.trainingState, as: TrainingState.self)
-    /// date_iso strings the strength recommender picked for the current week ·
-    /// drives the strip underline + the Today nudge. Seeded from the cached
-    /// training-state (instant), refreshed in loadAll.
-    @State private var strengthDays: Set<String> = {
-        guard let ts = AppCache.read(.trainingState, as: TrainingState.self) else { return [] }
-        // Union ALL weeks so strength shows ahead (the backend now fills the
-        // current + next week), not just the current one.
-        return Set(ts.weeks.flatMap { $0.recommendedStrengthDays ?? [] })
-    }()
-    /// ISO dates a strength session was logged (current week) · drives the
-    /// green "done" underline + nudge.
-    @State private var strengthDoneDays: Set<String> = {
-        guard let ts = AppCache.read(.trainingState, as: TrainingState.self),
-              let cur = ts.weeks.first(where: { $0.isCurrent }) else { return [] }
-        return Set(cur.completedStrengthDays ?? [])
-    }()
-    /// True when the readiness gate paused this week's strength · drives a
-    /// yellow "Strength paused · readiness low" note so the empty strip reads
-    /// as intentional, not a bug.
-    @State private var strengthSuppressed: Bool = {
-        guard let ts = AppCache.read(.trainingState, as: TrainingState.self),
-              let cur = ts.weeks.first(where: { $0.isCurrent }) else { return false }
-        return cur.strengthSuppressed ?? false
-    }()
-    /// Days strength WOULD be on this week but the readiness gate paused it ·
-    /// drives the yellow "paused" underline on the strip.
-    @State private var strengthPausedDays: Set<String> = {
-        guard let ts = AppCache.read(.trainingState, as: TrainingState.self),
-              let cur = ts.weeks.first(where: { $0.isCurrent }) else { return [] }
-        return Set(cur.pausedStrengthDays ?? [])
-    }()
-    /// Full recommender picks keyed by ISO date (P2-50) · the "Strength
-    /// recommended" chip opens the session sheet from these. Seeded from the
-    /// cached training-state, refreshed in loadAll.
-    @State private var strengthPicksByDate: [String: StrengthPick] = {
-        guard let ts = AppCache.read(.trainingState, as: TrainingState.self) else { return [:] }
-        let picks = ts.weeks.flatMap { $0.strengthPicks ?? [] }
-        return Dictionary(picks.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
-    }()
-    /// Pick currently shown in the strength session sheet · nil = closed.
-    @State private var strengthSheetPick: StrengthPick? = nil
+    // STRENGTH-3 (2026-08-17) · strengthDays / strengthDoneDays /
+    // strengthSuppressed / strengthPausedDays / strengthPicksByDate /
+    // strengthSheetPick all removed. The backend no longer recommends
+    // strength, so there is nothing to seed, refresh, underline, or open.
     @State private var showNudge: Bool = false
     @State private var refreshing: Bool = false
     @State private var dayWorkout: WatchWorkout?   // workout fetched for a non-today selected day
@@ -157,8 +120,6 @@ struct TodayView: View {
     @State private var niggleCheck: NiggleStatus? = nil
     /// Symptom report sheet toggle (Niggle | Sick).
     @State private var showSymptomSheet: Bool = false
-    /// Log non-run sheet toggle (Strength | Cross-train).
-    @State private var showLogNonRunSheet: Bool = false
     /// Pending coach proposals stack · drives the COACH PROPOSALS strip
     /// above the hero. Each card opens NudgeSheet for accept/decline.
     @State private var pendingProposals: [PendingProposal] = []
@@ -789,21 +750,6 @@ struct TodayView: View {
             SymptomReportSheet(onSubmitted: { Task { await loadAll() } })
                 .presentationDetents([.medium, .large])
         }
-        .sheet(isPresented: $showLogNonRunSheet) {
-            LogNonRunSheet(onSubmitted: { Task { await loadAll() } })
-                .presentationDetents([.medium])
-        }
-        .sheet(item: $strengthSheetPick) { pick in
-            // P2-50 · the strength chip opens the actual prescription. Log
-            // from the sheet only when the pick is for today · logging a
-            // future day would poison the weekly count.
-            StrengthSessionSheet(
-                pick: pick,
-                isToday: pick.date == todayISO,
-                onLogged: { Task { await loadAll() } }
-            )
-            .presentationDetents([.medium, .large])
-        }
         .sheet(isPresented: $showShoePicker) {
             // 2026-06-01 round 8 · new TodayShoePicker (cream bottom sheet
             // per design package #3). Maps ProfileShoe → Shoe for the
@@ -1119,78 +1065,9 @@ struct TodayView: View {
                 .padding(.top, 18)
             }
 
-            // Strength nudge · the recommender picked this day. The strip shows
-            // WHICH days (the underline); this is the selected day's heads-up.
-            // Purely additive — runs-only days look exactly as before.
-            if strengthDoneDays.contains(selectedDayID) {
-                HStack(spacing: 7) {
-                    Image(systemName: "dumbbell.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.Accent.mintReady)
-                    Text("Strength")
-                        .font(.body(13, weight: .bold))
-                        .foregroundStyle(Theme.txt)
-                    Text("done")
-                        .font(.body(12, weight: .bold))
-                        .foregroundStyle(Theme.Accent.mintReady)
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .black))
-                        .foregroundStyle(Theme.Accent.mintReady)
-                }
-                .padding(.top, 16)
-            } else if strengthDays.contains(selectedDayID) {
-                // P2-50 · when the training-state carried the full pick
-                // (session content), the chip opens the session sheet. The
-                // plain row stays for stale caches that predate strengthPicks.
-                if let pick = strengthPicksByDate[selectedDayID] {
-                    Button { strengthSheetPick = pick } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "dumbbell.fill")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(Theme.dist)
-                            Text("Strength")
-                                .font(.body(13, weight: .bold))
-                                .foregroundStyle(Theme.txt)
-                            Text(pick.session?.title.isEmpty == false
-                                 ? "\(pick.session?.durationMin ?? 20) min \u{203A}"
-                                 : "recommended \u{203A}")
-                                .font(.body(12, weight: .semibold))
-                                .foregroundStyle(Theme.dist)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 16)
-                } else {
-                    HStack(spacing: 8) {
-                        Image(systemName: "dumbbell.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Theme.dist)
-                        Text("Strength")
-                            .font(.body(13, weight: .bold))
-                            .foregroundStyle(Theme.txt)
-                        Text("recommended")
-                            .font(.body(12, weight: .medium))
-                            .foregroundStyle(Theme.txt.opacity(0.55))
-                    }
-                    .padding(.top, 16)
-                }
-            } else if strengthPausedDays.contains(selectedDayID) {
-                // This was a strength day, paused by the readiness gate · same
-                // nudge as "recommended" but yellow + "paused · readiness low"
-                // so the runner sees it's intentional, not missing.
-                HStack(spacing: 8) {
-                    Image(systemName: "dumbbell.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color(hex: 0xF3AD38))
-                    Text("Strength")
-                        .font(.body(13, weight: .bold))
-                        .foregroundStyle(Theme.txt)
-                    Text("paused · readiness low")
-                        .font(.body(12, weight: .medium))
-                        .foregroundStyle(Color(hex: 0xF3AD38))
-                }
-                .padding(.top, 16)
-            }
+            // STRENGTH-3 (2026-08-17) · the strength nudge is removed. It read
+            // "Strength · recommended / done / paused · readiness low" under
+            // the selected day and opened a session sheet.
 
             // 2026-07-09 · the "Full plan · shoe · fuel" tap affordance was
             // removed (David): Full plan went to a dead page, shoe is chosen
@@ -2022,9 +1899,7 @@ struct TodayView: View {
             dowLabel: selectedIsToday ? "TODAY" : shortDOWLabel,
             titleText: peekTitleWord,
             nameSubtitle: plainWorkoutName,
-            onMesh: true,
-            strengthToday: selectedIsToday && strengthDays.contains(todayISO),
-            strengthDone: selectedIsToday && strengthDoneDays.contains(todayISO)
+            onMesh: true
         )
     }
 
@@ -3319,9 +3194,6 @@ struct TodayView: View {
                 // PlanDay.skipped — OR it in so the strip greys immediately,
                 // consistent with the SKIPPED hero.
                 isSkipped: (d.skipped ?? false) || (d.is_today && skipped),
-                strengthSuggested: strengthDays.contains(d.date_iso),
-                strengthDone: strengthDoneDays.contains(d.date_iso),
-                strengthPaused: strengthPausedDays.contains(d.date_iso),
                 hasSecondaryRun: d.secondaryRun != nil
             )
         }
@@ -3407,8 +3279,8 @@ struct TodayView: View {
         async let pp2 = (try? await API.fetchPendingProposals())
         // Propose-first per-workout adapter proposals (plan_workout_proposals).
         async let wp = (try? await API.fetchWorkoutProposals())
-        // Strength days for the current week · drives the strip underline + the
-        // Today nudge (the fetch also warms the training-state cache).
+        // Training-state · the post-race RECOVERY WINDOW reads the plan's
+        // phase spans off it (the fetch also warms the cache).
         async let tstr = (try? await API.fetchTrainingState())
 
         // Primary fetch · plan drives the hero + week strip + drag sheet.
@@ -3473,19 +3345,9 @@ struct TodayView: View {
             self.prevWeekPlan = prevW
             self.futureWeekPlans = futureW
             if let ts = trainingS {
-                // Held whole (not just the strength slices) so the
-                // post-race RECOVERY WINDOW can read the plan's own phase
-                // spans and prescribed days.
+                // The post-race RECOVERY WINDOW reads the plan's own phase
+                // spans and prescribed days off this.
                 self.trainingState = ts
-                self.strengthDays = Set(ts.weeks.flatMap { $0.recommendedStrengthDays ?? [] })
-                // P2-50 · full picks (session content) for the tappable chip.
-                let picks = ts.weeks.flatMap { $0.strengthPicks ?? [] }
-                self.strengthPicksByDate = Dictionary(picks.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
-                if let cur = ts.weeks.first(where: { $0.isCurrent }) {
-                    self.strengthDoneDays = Set(cur.completedStrengthDays ?? [])
-                    self.strengthSuppressed = cur.strengthSuppressed ?? false
-                    self.strengthPausedDays = Set(cur.pausedStrengthDays ?? [])
-                }
             }
             if let planWeek {
                 self.plan = planWeek

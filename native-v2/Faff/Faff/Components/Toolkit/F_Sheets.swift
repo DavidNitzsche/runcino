@@ -3,7 +3,7 @@
 //  Family F · Entry sheets.
 //
 //  Components: SymptomReportSheet (Niggle | Sick toggle) · ReturnGateCard ·
-//              LogNonRunSheet (Strength | Cross toggle) · NewGoalSheet.
+//              NewGoalSheet. (LogNonRunSheet removed · STRENGTH-3.)
 //
 //  ShoePickerSheet already exists (Run Detail picker) · reuse verbatim per
 //  the design spec.
@@ -359,81 +359,17 @@ struct ReturnGateCard: View {
     }
 }
 
-// MARK: - LogNonRunSheet
+// MARK: - LogNonRunSheet · REMOVED 2026-08-17 (STRENGTH-3)
 //
-// One sheet, Strength | Cross-train toggle. Posts to /api/strength or
-// /api/cross-training.
-
-struct LogNonRunSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var tab: Int = 0
-    @State private var strengthType: String? = "Full body"
-    @State private var strengthMinutes: String? = "45 min"
-    @State private var modality: String? = "Bike"
-    @State private var intensity: String? = "Moderate"
-    @State private var submitting: Bool = false
-    @State private var error: String? = nil
-    var onSubmitted: () -> Void = {}
-
-    private let strengthTypes = ["Full body", "Upper", "Lower", "Core"]
-    private let durations = ["20 min", "30 min", "45 min", "60 min", "90 min"]
-    private let modalities = ["Bike", "Swim", "Hike", "Row", "Ski", "Yoga"]
-    private let intensities = ["Easy", "Moderate", "Hard"]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sheetHeader("Log non-run")
-            VStack(alignment: .leading, spacing: 18) {
-                SegToggle(options: ["Strength", "Cross-train"], selectionIndex: $tab)
-                if tab == 0 {
-                    PickRow(label: "Type", options: strengthTypes, selection: $strengthType)
-                    PickRow(label: "Duration", options: durations, selection: $strengthMinutes)
-                } else {
-                    PickRow(label: "Modality", options: modalities, selection: $modality)
-                    PickRow(label: "Duration", options: durations, selection: $strengthMinutes)
-                    PickRow(label: "Intensity", options: intensities, selection: $intensity)
-                }
-                if let e = error {
-                    Text(e).font(.body(12, weight: .medium))
-                        .foregroundStyle(Theme.over)
-                }
-                PrimaryCta(title: submitting ? "Saving…" : "Save session",
-                           disabled: submitting,
-                           action: submit)
-            }
-            .padding(24)
-            Spacer(minLength: 0)
-        }
-        .background(Theme.Glass.strong)
-        .ignoresSafeArea(edges: .bottom)
-    }
-
-    private func parseMinutes(_ s: String?) -> Int {
-        guard let s else { return 45 }
-        let scanner = Scanner(string: s); var v: Int = 0
-        _ = scanner.scanInt(&v); return v == 0 ? 45 : v
-    }
-
-    private func submit() {
-        submitting = true; error = nil
-        let mins = parseMinutes(strengthMinutes)
-        Task {
-            do {
-                if tab == 0 {
-                    _ = try await API.postStrength(type: strengthType ?? "Full body",
-                                                    durationMin: mins)
-                } else {
-                    _ = try await API.postCrossTraining(modality: modality ?? "Bike",
-                                                         durationMin: mins,
-                                                         intensity: intensity ?? "Moderate")
-                }
-                await MainActor.run { submitting = false; onSubmitted(); dismiss() }
-            } catch {
-                await MainActor.run { self.submitting = false; self.error = error.localizedDescription }
-            }
-        }
-    }
-}
+// Was a Strength | Cross-train toggle posting to /api/strength or
+// /api/cross-training, reachable from the run menu. David: "remove
+// anything about strength training. Right now it adds a level of
+// complication and I am handling that elsewhere", and the same for
+// cross-training.
+//
+// The endpoints and their tables are untouched. HealthKitImporter still
+// imports strength/functional/core/cross/yoga workouts to /api/strength in
+// the background, so history keeps accruing with nothing surfacing it.
 
 // MARK: - SetGoalSheet
 //

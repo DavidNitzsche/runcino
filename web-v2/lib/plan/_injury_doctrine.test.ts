@@ -21,7 +21,6 @@ import {
   resolveInjuryProtocol,
   stageForWeek,
   stageSessionNotes,
-  crossTrainNotes,
   WALK_RUN_LADDER,
   MAX_WALK_RUN_STAGE,
   ALTERNATE_DAY_THROUGH_STAGE,
@@ -88,11 +87,15 @@ describe('INJURY-1 · doctrine conformance · Research/05 §§1, 9', () => {
       expect(stageForWeek(r, 11)).toBeNull();
     });
 
-    it('high-risk BSI cross-training is non-weight-bearing, low-risk is non-impact (:65-66)', () => {
+    it('high-risk BSI risk class records non-weight-bearing, low-risk non-impact (:65-66)', () => {
+      // STRENGTH-3 (2026-08-17) · faff no longer PRESCRIBES cross-training,
+      // so crossTrainNotes() is gone and nothing renders this field. The
+      // classification itself is doctrine data and still has to be right:
+      // it is the only place the table records that a high-risk BSI may not
+      // bear weight at all while a low-risk one may.
       // :66 "High-risk BSI | Non-weight-bearing only until clinician clears."
       const high = resolve('foot', 'moderate', 'navicular stress fracture');
       expect(high.protocol.crossTrain).toBe('non_weight_bearing');
-      expect(crossTrainNotes(high.protocol.crossTrain).toLowerCase()).toContain('non-weight-bearing');
       // :65 "Low-risk BSI | Non-impact only (pool, cycle, elliptical)".
       const low = resolve('shin', 'moderate', 'posteromedial tibial shaft stress reaction');
       expect(low.protocol.crossTrain).toBe('non_impact');
@@ -260,20 +263,35 @@ describe('INJURY-1 · doctrine conformance · Research/05 §§1, 9', () => {
       expect(active.length).toBeLessThanOrEqual(3);
     });
 
-    it('cross-training lands on the off-days, and at least one day is fully off', () => {
-      const { resolved, weeks } = wholePlan('achilles');
+    it('monitored off-days land between impact sessions, and at least one day is fully off', () => {
+      const { weeks } = wholePlan('achilles');
       for (const days of weeks) {
         const rest = days.filter((d) => d.subLabel === 'REST');
         expect(rest.length, 'recovery is the work · never a seven-day active week').toBeGreaterThanOrEqual(1);
         const runDows = new Set(days.filter(isRunningRow).map((d) => d.dow));
-        for (const d of days.filter((x) => x.subLabel === 'CROSS-TRAIN')) {
-          expect(runDows.has(d.dow), 'cross-train may not share a day with an impact session').toBe(false);
+        for (const d of days.filter((x) => x.subLabel === 'OFF-DAY')) {
+          expect(runDows.has(d.dow), 'an off-day may not share a day with an impact session').toBe(false);
         }
       }
-      // Clearance-gated weeks are cross-training only.
+    });
+
+    // STRENGTH-3 (2026-08-17) · a clearance-gated week is now SEVEN non-run
+    // days. It used to be "cross-training only". The week must still read as
+    // a deliberate holding pattern rather than a blank calendar, so the
+    // monitored off-days survive with copy that says what they are for.
+    it('a clearance-gated week is all non-run days, and still says why (:463)', () => {
       const bsi = wholePlan('foot', 'moderate', 'navicular stress fracture');
       for (const days of bsi.weeks) {
-        expect(days.some((d) => d.subLabel === 'CROSS-TRAIN')).toBe(true);
+        expect(days.filter(isRunningRow), 'Research/05:463 · no running before clearance').toEqual([]);
+        const monitored = days.filter((d) => d.subLabel === 'OFF-DAY');
+        expect(monitored.length, 'a rehab week may not render as an empty week').toBeGreaterThan(0);
+        for (const d of monitored) {
+          expect(d.notes.length).toBeGreaterThan(20);
+          expect(
+            /pool|bike|cycl|elliptical|swim|ergometer|cross.?train/i.test(d.notes),
+            'faff no longer prescribes cross-training (David 2026-08-17)',
+          ).toBe(false);
+        }
       }
     });
   });

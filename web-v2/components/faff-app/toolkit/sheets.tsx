@@ -9,9 +9,7 @@
  *   NewGoalSheet      · personal_goals create form. Lives behind a "+ NEW
  *                       GOAL" pill on Targets. POSTs to /api/goals.
  *                       Closes line 1830 (cross-cutting personal goals).
- *   LogNonRunSheet    · Strength | Cross toggle, modality + duration.
- *                       POSTs to /api/strength or /api/cross-training
- *                       depending on toggle. Closes lines 1847 + 1863.
+ *   LogNonRunSheet    · REMOVED 2026-08-17 · see STRENGTH-3 note below.
  *   SymptomReportSheet · UI shell only. Wire-up to /api/niggle and
  *                       /api/sick exists, but the follow-up loop
  *                       (escalation to /api/injuries) is blocked per
@@ -235,7 +233,10 @@ export function ManualHealthSheet({
 /* ============================================================
    NewGoalSheet · personal_goals create. POSTs to /api/goals.
    ============================================================ */
-const GOAL_TYPES = ['volume', 'speed', 'distance', 'habit', 'strength', 'health'] as const;
+// STRENGTH-3 (2026-08-17) · 'strength' dropped as a goal type. Existing
+// personal_goals rows with goal_type='strength' still read and render;
+// the picker no longer offers it and /api/goals no longer accepts it.
+const GOAL_TYPES = ['volume', 'speed', 'distance', 'habit', 'health'] as const;
 type GoalType = (typeof GOAL_TYPES)[number];
 
 export function NewGoalSheet({ onSaved, onClose }: { onSaved?: () => void; onClose?: () => void }) {
@@ -327,106 +328,17 @@ export function NewGoalSheet({ onSaved, onClose }: { onSaved?: () => void; onClo
 }
 
 /* ============================================================
-   LogNonRunSheet · Strength / Cross-training combined sheet.
+   LogNonRunSheet · REMOVED 2026-08-17 (STRENGTH-3).
+
+   Was a Strength | Cross toggle posting to /api/strength or
+   /api/cross-training. David: "remove anything about strength
+   training ... I am handling that elsewhere", and the same for
+   cross-training. faff logs running.
+
+   The endpoints and their tables survive untouched — the HealthKit
+   importer still posts strength sessions to /api/strength, so history
+   keeps accruing and this is reversible.
    ============================================================ */
-const STRENGTH_TYPES = ['full body', 'upper', 'lower', 'core'];
-const CROSS_MODALITIES = ['bike', 'swim', 'hike', 'row', 'ski'];
-
-export function LogNonRunSheet({ onSaved, onClose }: { onSaved?: () => void; onClose?: () => void }) {
-  const [mode, setMode] = useState<'strength' | 'cross'>('strength');
-  const [subtype, setSubtype] = useState<string | null>(null);
-  const [date, setDate] = useState(new Intl.DateTimeFormat('en-CA').format(new Date()));
-  const [durationMin, setDurationMin] = useState('');
-  const [notes, setNotes] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const options = mode === 'strength' ? STRENGTH_TYPES : CROSS_MODALITIES;
-
-  async function submit() {
-    if (!subtype) { setErr('Pick a type.'); return; }
-    const dur = parseInt(durationMin, 10);
-    if (Number.isNaN(dur) || dur <= 0 || dur > 600) { setErr('Enter a duration in minutes.'); return; }
-    setBusy(true);
-    setErr(null);
-    try {
-      const endpoint = mode === 'strength' ? '/api/strength' : '/api/cross-training';
-      const body = mode === 'strength'
-        ? { date, session_type: subtype, duration_min: dur, notes: notes.trim() || null }
-        : { date, modality: subtype, duration_min: dur, notes: notes.trim() || null };
-      const r = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      onSaved?.();
-      onClose?.();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <SheetShell title="Log non-run" subtitle="Strength + cross feed the weekly volume strip." onClose={onClose}>
-      <div className="fa-field">
-        <label>Type</label>
-        <div className="fa-seg">
-          <button type="button" className={mode === 'strength' ? 'sel' : ''} onClick={() => { setMode('strength'); setSubtype(null); }}>STRENGTH</button>
-          <button type="button" className={mode === 'cross' ? 'sel' : ''} onClick={() => { setMode('cross'); setSubtype(null); }}>CROSS</button>
-        </div>
-      </div>
-      <div className="fa-field">
-        <label>{mode === 'strength' ? 'Focus' : 'Modality'}</label>
-        <div className="fa-pickrow">
-          {options.map((o) => (
-            <button
-              key={o}
-              type="button"
-              className={`opt${subtype === o ? ' sel' : ''}`}
-              onClick={() => setSubtype(o)}
-            >
-              {o}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="fa-field" style={{ display: 'flex', gap: 12 }}>
-        <div style={{ flex: 1 }}>
-          <label>Date</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label>Duration (min)</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={durationMin}
-            onChange={(e) => setDurationMin(e.target.value)}
-            placeholder="45"
-            style={inputStyle}
-          />
-        </div>
-      </div>
-      <div className="fa-field">
-        <label>Notes (optional)</label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={2}
-          style={{ ...inputStyle, resize: 'vertical', fontFamily: 'var(--font-body)', fontSize: 14 }}
-        />
-      </div>
-      {err ? <FaError text={err} /> : null}
-      <button type="button" className="fa-submit" onClick={submit} disabled={busy || !subtype || !durationMin}>
-        {busy ? 'Saving…' : 'Log session'}
-      </button>
-      {onClose ? <button type="button" className="fa-skip" onClick={onClose}>Cancel</button> : null}
-    </SheetShell>
-  );
-}
 
 /* ============================================================
    SymptomReportSheet · niggle / sick toggle. Posts to /api/niggle

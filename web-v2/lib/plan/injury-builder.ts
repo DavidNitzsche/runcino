@@ -4,7 +4,11 @@
  * When `runner_injuries.resolved_date IS NULL`, the regular race-prep
  * plan is the wrong scaffold. This generator produces either a
  * return-to-run progression or, when the injury is a bone stress injury,
- * a cross-training holding pattern gated on clinical clearance.
+ * a no-running holding pattern gated on clinical clearance.
+ *
+ * STRENGTH-3 (2026-08-17) · the off-days no longer prescribe cross-
+ * training. See injuryWeekShape for what replaced it and for the doctrine
+ * gap that leaves open.
  *
  * Invocation: triggered by coach_proposals.proposal_type='injury_adjust'
  * accept (Q-08 path). Caller already authoritatively decided the
@@ -31,8 +35,7 @@
  *   3. :17 · "every other day during early stages (alternate-day rule)".
  *      The old placement took the earliest candidates in the week so it
  *      would "front-load sessions", producing four consecutive impact
- *      days. Impact days are now alternate-day through stage 7, with
- *      cross-training on the off-days.
+ *      days. Impact days are now alternate-day through stage 7.
  *
  * Also corrected: the session copy said "Pain >= 4/10 = stop", a number
  * the research does not use. :42-45 is 0-2 green, 3-5 hold the stage,
@@ -56,7 +59,6 @@ import {
   stageForWeek,
   stageSessionLabel,
   stageSessionNotes,
-  crossTrainNotes,
   doctrineWeeksLabel,
   ALTERNATE_DAY_THROUGH_STAGE,
   type ResolvedInjuryProtocol,
@@ -70,12 +72,11 @@ const dowOf = (k: string): number => {
 };
 
 /**
- * Ceiling on active (impact + cross-training) days inside an injury
- * week. Research/05:69 says match cross-training to the normal training
- * profile and gives no explicit cap, so this is the conservative
- * reading of "recovery is the work": at least two full rest days a week
- * while a runner is hurt. A stated weekly_frequency below this still
- * wins.
+ * Ceiling on non-fully-rest days inside an injury week (impact sessions
+ * plus the monitored off-days between them). Research/05:69 gives no
+ * explicit cap, so this is the conservative reading of "recovery is the
+ * work": at least two full rest days a week while a runner is hurt. A
+ * stated weekly_frequency below this still wins.
  */
 const MAX_ACTIVE_DAYS_PER_WEEK = 5;
 
@@ -151,9 +152,9 @@ export interface DayShape {
  * Placement rules, all doctrine-sourced:
  *   · restDow is the runner's chosen rest day (loadSettings).
  *   · impact (walk-run) days are ALTERNATE-DAY through stage 7 ·
- *     Research/05:17. The off-days between them carry cross-training,
- *     which is what the alternate-day rule is for: "the off-day is for
- *     tissue adaptation and pain monitoring".
+ *     Research/05:17. The off-days between them are labelled for what the
+ *     doctrine wants them for: "the off-day is for tissue adaptation and
+ *     pain monitoring".
  *   · impact-day COUNT comes from the stage's own sessions/wk column
  *     (:21-30), further capped by the runner's stated weekly_frequency.
  *   · a protocol with runStartWeek null (every BSI) produces NO rows of
@@ -191,12 +192,33 @@ export function injuryWeekShape(
   }
   const impactSet = new Set(impact);
 
-  // Cross-training takes the remaining budget, spread across the off-days
-  // between impact sessions · Research/05:60-69. Spreading matters here
-  // too: the old builder took the earliest free days, so an off-running
-  // week ran five contiguous active days then two contiguous rest days.
+  // STRENGTH-3 (2026-08-17) · the off-days used to carry a prescribed
+  // cross-training session (pool run / bike / elliptical, constrained by
+  // risk class · Research/05:60-69). faff no longer prescribes non-running
+  // work of any kind, so those days are now plain off-days. What the
+  // doctrine wanted from them survives — Research/05:17 says the off-day
+  // between impact sessions "is for tissue adaptation and pain
+  // monitoring", and that is what the day is labelled as. The alternate-
+  // day rule itself is unchanged: impact days are still spaced, and the
+  // active-day cap still holds at least two full rest days a week.
+  //
+  // KNOWN GAP, deliberately left open for David to rule on: :65 and :69
+  // make non-impact aerobic work the doctrine-mandated SUBSTITUTE during
+  // an off-running block ("pool running preserves VO2max and running-
+  // specific neuromuscular patterns for 4-6 weeks in trained runners"),
+  // and a clearance-gated BSI plan now offers nothing in its place.
+  //
+  // A week with no impact session at all — every clearance-gated week, and
+  // the pre-`runStartWeek` weeks of a normal protocol — has no "off-day
+  // between sessions" to space, so the check-in goes on every day but the
+  // runner's rest day. That is not filler: the low-risk BSI gate is "five
+  // consecutive days fully pain-free in daily activity", which is a DAILY
+  // observation, and it is the only thing the runner can actually do
+  // toward reopening the plan.
   const remaining = order.filter((dow) => !impactSet.has(dow));
-  const crossSet = new Set(spread(remaining, Math.max(0, activeCap - impactSet.size)));
+  const monitorSet = new Set(
+    stage ? spread(remaining, Math.max(0, activeCap - impactSet.size)) : remaining,
+  );
 
   const days: DayShape[] = [];
   for (let dow = 0; dow < 7; dow++) {
@@ -212,12 +234,16 @@ export function injuryWeekShape(
         // load into every volume and ACWR reader downstream.
         distance_mi: Math.round((stage.totalRunMin / WALK_RUN_MIN_PER_MI) * 10) / 10,
       });
-    } else if (crossSet.has(dow)) {
+    } else if (monitorSet.has(dow)) {
+      // The doctrine's own reason for this day, stated plainly. Not a
+      // prescription — a check-in.
       days.push({
         dow,
         type: 'rest',
-        subLabel: 'CROSS-TRAIN',
-        notes: crossTrainNotes(resolved.protocol.crossTrain),
+        subLabel: 'OFF-DAY',
+        notes: resolved.clearanceRequired
+          ? 'Off running. Check the site today: pain at rest, pain walking, pain on the stairs. That is the signal you are tracking while it heals.'
+          : 'Off running. This day is for tissue adaptation and pain monitoring. Note how the site felt after the last session before you load it again.',
         distance_mi: 0,
       });
     } else if (dow === restDow) {
@@ -338,7 +364,7 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
   // should not be labelled as one · Research/05:463, :479.
   const phaseLabel = resolved.clearanceRequired ? 'CLINICAL-CLEARANCE' : 'INJURY-RETURN';
   const rationale = resolved.clearanceRequired
-    ? `${resolved.protocol.label}. No running until a clinician clears it. ${resolved.protocol.clearanceGate ?? ''} Doctrine total return ${bandLabel}. Cross-training holds the aerobic base meanwhile.`.trim()
+    ? `${resolved.protocol.label}. No running until a clinician clears it. ${resolved.protocol.clearanceGate ?? ''} Doctrine total return ${bandLabel}. This plan holds the gate and tracks the days; it does not prescribe anything to do instead.`.trim()
     : `${resolved.protocol.label}. Walk-run ladder from week ${(resolved.runStartWeek ?? 0) + 1}, one stage a week, alternate days. Doctrine total return ${bandLabel}. Pain 0-2 carry on, 3-5 hold, 6 or more stop.`;
   const phaseId = id('phs');
   await pool.query(
@@ -353,10 +379,10 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
     const weekStart = addDays(startMonday, wi * 7);
     const stage = stageForWeek(resolved, wi);
     const weekRationale = resolved.clearanceRequired
-      ? `${phaseLabel} · week ${wi + 1} of ${totalWeeks} · cross-training only, awaiting clearance`
+      ? `${phaseLabel} · week ${wi + 1} of ${totalWeeks} · no running, awaiting clearance`
       : stage
         ? `${phaseLabel} · week ${wi + 1} of ${totalWeeks} · walk-run stage ${stage.stage} of 8`
-        : `${phaseLabel} · week ${wi + 1} of ${totalWeeks} · off running, loading work and cross-training`;
+        : `${phaseLabel} · week ${wi + 1} of ${totalWeeks} · off running, monitoring the site`;
     await pool.query(
       `INSERT INTO plan_weeks (id, plan_id, week_idx, week_start_iso, phase_id, is_race_week, rationale)
        VALUES ($1, $2, $3, $4, $5, FALSE, $6)`,

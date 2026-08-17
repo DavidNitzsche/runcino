@@ -8,7 +8,7 @@
      · profile/users fields  → PATCH /api/profile
      · day-of-week prefs     → PATCH /api/settings
    Plan-shaping edits (days/week, long-run/rest/quality day, weekly
-   target, experience, cross-training) trigger a server-side plan
+   target, experience) trigger a server-side plan
    rebuild; we surface a "plan updating" ack when the API reports it.
    Units intentionally omitted (David 2026-06-12: hidden until the
    display layer can actually render km/°C).
@@ -42,11 +42,10 @@ const EXPERIENCE = [
   { value: 'advanced', label: 'Advanced' }, { value: 'advanced_plus', label: 'Elite' },
 ];
 const SEX = [{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }, { value: 'other', label: 'Other' }];
-const CROSS = [
-  { value: 'cycling', label: 'Cycling' }, { value: 'swimming', label: 'Swimming' },
-  { value: 'strength', label: 'Strength' }, { value: 'elliptical', label: 'Elliptical' },
-  { value: 'rowing', label: 'Rowing' }, { value: 'yoga', label: 'Yoga' },
-];
+// STRENGTH-3 (2026-08-17) · the CROSS options list and the
+// cross_training_modes field are removed from TRAINING. faff shapes
+// running weeks; it no longer asks what else you do. The profile column
+// still exists and existing values are left in place.
 // Curated IANA list for the manual-timezone picker (common runner zones).
 const ZONES = [
   'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York',
@@ -71,7 +70,6 @@ const GROUPS: Group[] = [
     { key: 'rest_day', label: 'Rest day', endpoint: '/api/settings', kind: 'day', planShaping: true },
     { key: 'quality_days', label: 'Quality days', endpoint: '/api/settings', kind: 'multiday', planShaping: true },
     { key: 'weekly_mileage_target', label: 'Weekly target', endpoint: '/api/profile', kind: 'number', unit: 'mi', planShaping: true },
-    { key: 'cross_training_modes', label: 'Cross-training', endpoint: '/api/profile', kind: 'multi', options: CROSS },
   ]},
   { title: 'PHYSIOLOGY', fields: [
     { key: 'lthr', label: 'LTHR', endpoint: '/api/profile', kind: 'number', unit: 'bpm', hint: 'Sets your training zones.' },

@@ -28,7 +28,7 @@ struct TargetsView: View {
     /// cache so the spine paints immediately on cold launch.
     @State private var trainingState: TrainingState? =
         AppCache.read(.trainingState, as: TrainingState.self)
-    /// New-goal sheet (Volume / Speed / Distance / Habit / Strength / Health).
+    /// New-goal sheet (Volume / Speed / Distance / Habit / Health).
     /// Toolkit · Family F · POSTs to /api/goals.
     @State private var showNewGoalSheet: Bool = false
     @State private var showAddRaceSheet: Bool = false

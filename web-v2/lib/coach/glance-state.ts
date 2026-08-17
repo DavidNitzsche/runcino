@@ -38,11 +38,6 @@ export interface GlanceWeekDay {
    *  structured spec (rest/race/shakeout). Downstream renderers fall back
    *  to the existing label-only render in that case. */
   plannedSpec: WorkoutSpec | null;
-  /** Strength session for this day, if a strength row exists in plan_workouts.
-   *  Stored as workout_spec JSONB on the strength row. null on non-strength
-   *  days. Kept in a separate Map so strength rows never shadow the run row
-   *  for the same date (the planByDate Map is run-only). */
-  strengthSpec: WorkoutSpec | null;
   // Actual (strava)
   doneMi: number;
   activityId: string | null;   // → click navigates to /runs/[id]
@@ -143,40 +138,8 @@ export interface GlanceState {
     logged_at: string;
     days_active: number;
   } | null;
-  /** 2026-06-01 · per-runner strength day picker output. ISO YYYY-MM-DD
-   *  dates for this week (long_run_day window · #24), 0-2 entries. Empty
-   *  array = no strength surfaced (race week, plan dormant, no acceptable
-   *  slot). Frontend renders as "+ STRENGTH" annotation on week-strip chips. */
-  recommendedStrengthDays: string[];
-  /** Full strength recommendation envelope · reason + habit +
-   *  coachIntent. Null when the recommender failed (frontend falls back
-   *  to its local heuristic). */
-  strengthRecommendation: {
-    recommendedDays: string[];
-    reason: string;
-    habit: 'on_track' | 'building' | 'lapsed' | 'dormant' | 'unknown';
-    coachIntent: { severity: 'soft' | 'firm' | 'urgent'; body: string } | null;
-  } | null;
-  /** 2026-06-01 · this-week reconcile of recommendedDays vs logged
-   *  strength_sessions (manual + HK). Drives chip summary + per-bucket
-   *  arrays for any surface. Null when no recommender output. */
-  strengthWeekStatus: {
-    weekStartISO: string;
-    weekEndISO: string;
-    recommended: string[];
-    confirmed: Array<{
-      date: string; sessionId: number | null;
-      source: 'manual' | 'apple_health' | 'watch' | 'strava' | null;
-      durationMin: number | null; sessionType: string | null;
-    }>;
-    skipped: string[];
-    bonus: Array<{
-      date: string; sessionId: number | null;
-      source: 'manual' | 'apple_health' | 'watch' | 'strava' | null;
-      durationMin: number | null; sessionType: string | null;
-    }>;
-    summary: string;
-  } | null;
+  // STRENGTH-3 (2026-08-17) · recommendedStrengthDays / strengthRecommendation
+  // / strengthWeekStatus removed. See the note at the recommender call site.
 }
 
 /**
@@ -307,7 +270,6 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
 
   // Plan-aware fields (only populated when plan exists)
   let planByDate = new Map<string, any>();
-  let strengthByDate = new Map<string, any>();
   if (plan) {
     const weeks = (await pool.query(
       `SELECT id::text AS id, week_idx, week_start_iso FROM plan_weeks WHERE plan_id = $1 ORDER BY week_idx`,
@@ -345,14 +307,12 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
         WHERE plan_id = $1 AND date_iso BETWEEN $2::text AND $3::text`,
       [plan.id, weekDates[0].date, weekDates[6].date]
     )).rows;
-    // Separate strength rows so they don't shadow the run row for the same
-    // date (planByDate last-row-wins would overwrite the run with the
-    // strength row if both share a date_iso).
+    // STRENGTH-3 (2026-08-17) · strength rows are DROPPED, not surfaced.
+    // The generator no longer writes them, but plans authored before this
+    // change still carry them and must not shadow the run row for the same
+    // date (planByDate is last-row-wins).
     planByDate = new Map<string, any>(
       allPlanRows.filter((r: any) => r.type !== 'strength').map((r: any) => [r.date_iso, r])
-    );
-    strengthByDate = new Map<string, any>(
-      allPlanRows.filter((r: any) => r.type === 'strength').map((r: any) => [r.date_iso, r])
     );
   }
 
@@ -429,7 +389,6 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       plannedType: planRow?.type ?? (plan ? 'rest' : 'unplanned'),
       plannedLabel: planRow?.sub_label ?? null,
       plannedSpec,
-      strengthSpec: (strengthByDate.get(date)?.workout_spec ?? null) as WorkoutSpec,
       doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
       activityId: actual?.id ?? null,
       isToday: date === today,
@@ -737,42 +696,15 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     }
   }
 
-  // 2026-06-01 · strength-day recommender (web agent brief
-  // strength-recommender-backend-brief.md). Replaces the frontend's
-  // pure-week-shape pickStrengthDays() heuristic. Computed off the
-  // long_run_day week window (weekDays[0].date is the week start · #24).
-  // Best-effort · null when plan or signals aren't available, frontend
-  // falls back to its local heuristic.
-  let strengthRecommendation: import('./strength-recommender').StrengthRecommendation | null = null;
-  let strengthWeekStatus: import('./strength-status').StrengthWeekStatus | null = null;
-  try {
-    const {
-      recommendStrengthDays,
-      emitStrengthCoachIntent,
-      emitStrengthSkipIntent,
-      emitStrengthResumeIntent,
-    } = await import('./strength-recommender');
-    const { loadStrengthWeekStatus } = await import('./strength-status');
-    const weekStartISO = weekDays[0]?.date;
-    if (weekStartISO) {
-      strengthRecommendation = await recommendStrengthDays(userId, weekStartISO);
-      // Fire-and-forget · all three are idempotent.
-      //   · dormant habit → "you haven't lifted in 24 days" intent
-      //   · readiness suppress/cap → "we skipped strength today" intent
-      //   · signals normalized after a skip → "strength resumes today" intent
-      void emitStrengthCoachIntent(userId, strengthRecommendation);
-      void emitStrengthSkipIntent(userId, strengthRecommendation);
-      void emitStrengthResumeIntent(userId, strengthRecommendation);
-      // 2026-06-01 · scheduled-vs-actual reconcile · diff recommendedDays
-      // against logged strength_sessions (manual + HK-imported). Drives
-      // the "2/2 this week + 1 bonus" chip + the briefing summary.
-      strengthWeekStatus = await loadStrengthWeekStatus(
-        userId, weekStartISO, strengthRecommendation.recommendedDays,
-      );
-    }
-  } catch (e) {
-    console.warn('[glance-state] strength-recommender failed:', e instanceof Error ? e.message : String(e));
-  }
+  // STRENGTH-3 (2026-08-17) · the strength-day recommender is UNWIRED.
+  // David: "remove anything about strength training. Right now it adds a
+  // level of complication and I am handling that elsewhere." faff is a
+  // running coach; it no longer prescribes, recommends, or reconciles
+  // gym work. lib/coach/strength-recommender.ts and strength-status.ts
+  // still exist and still compile — nothing calls them — so the decision
+  // is reversible by restoring this block. The `strength_sessions` table
+  // and the HealthKit ingest that fills it are untouched: history keeps
+  // accruing silently.
 
   // E5 · classify how today's run went (frozen phases) → done-state copy.
   const todayExecution = await computeTodayExecution(userId, today, weekDays.find((d) => d.isToday));
@@ -796,17 +728,5 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     todaySkipped,
     activeNiggle,
     activeSick,
-    /** 2026-06-01 · strength-recommender output. recommendedStrengthDays
-     *  is the chip-annotation array (web agent's primary consumer);
-     *  strengthRecommendation carries the full envelope (reason, habit,
-     *  coachIntent) for the briefing surface. */
-    recommendedStrengthDays: strengthRecommendation?.recommendedDays ?? [],
-    strengthRecommendation,
-    /** 2026-06-01 · this-week reconcile of recommendedDays vs actual
-     *  logged sessions (manual + HK-imported). Drives the "2/2 this
-     *  week" summary chip + confirmed/skipped/bonus arrays for any
-     *  surface that wants to render them. Null when the recommender
-     *  hasn't produced a week start (cold path). */
-    strengthWeekStatus,
   };
 }

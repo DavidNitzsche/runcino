@@ -10,7 +10,9 @@
 //       Outdoor = white-fill primary · Treadmill = outline secondary.
 //    2. Divider line
 //    3. Log a niggle or sick day · presents SymptomSheet
-//    4. Log a non-run session     · presents LogNonRunSheet
+//
+//  STRENGTH-3 (2026-08-17) · the "Log a non-run session" row is removed.
+//  It opened LogNonRunSheet (Strength | Cross-train). faff logs running.
 //
 //  Animation: fade + rise (translateY 14pt + scale 0.97 → 0). Spring
 //  easing matches the design's cubic-bezier(.32, .72, 0, 1).
@@ -32,11 +34,10 @@ struct RunActionMenu: View {
     /// route pushes (Outdoor → WatchMirror if a Faff watch app is
     /// installed on a paired watch, else PhoneRunView — see
     /// RootTabView.outdoorRoute · Treadmill → TreadmillView)
-    /// or sheet presentations (niggle → SymptomSheet, non-run → LogNonRunSheet).
+    /// or sheet presentations (niggle → SymptomSheet).
     let onOutdoor: () -> Void
     let onTreadmill: () -> Void
     let onNiggle: () -> Void
-    let onNonRun: () -> Void
     /// Opens the full activity log (ActivityView). Optional so existing
     /// call sites that don't pass it compile unchanged.
     var onViewActivity: (() -> Void)? = nil
@@ -77,11 +78,6 @@ struct RunActionMenu: View {
                 icon: "waveform.path.ecg",
                 label: "Log a niggle or sick day",
                 onTap: { fire(onNiggle) }
-            )
-            actionRow(
-                icon: "dumbbell.fill",
-                label: "Log a non-run session",
-                onTap: { fire(onNonRun) }
             )
             if let onViewActivity {
                 actionRow(

@@ -2,7 +2,7 @@
  * /api/goals — personal_goals CRUD (non-race goals).
  *
  * Per docs/2026-05-30.html §12 + the input-tiers doctrine, runners can
- * set non-race goals (volume / speed / distance / habit / strength /
+ * set non-race goals (volume / speed / distance / habit /
  * health) OR the coach can surface them when the runner is close to a
  * milestone (e.g., "1 min from your 5K PR — want to take a shot?").
  *
@@ -18,8 +18,11 @@ import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
+// STRENGTH-3 (2026-08-17) · 'strength' removed. New strength goals are
+// rejected; rows already carrying goal_type='strength' still GET fine
+// (this set only gates writes).
 const VALID_GOAL_TYPES = new Set([
-  'volume', 'speed', 'distance', 'habit', 'strength', 'health',
+  'volume', 'speed', 'distance', 'habit', 'health',
 ]);
 
 export async function GET(req: NextRequest) {

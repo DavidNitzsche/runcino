@@ -78,46 +78,8 @@ export type FaffSeed = {
     status: 'pending';
     createdAt: string;
   }>;
-  /** 2026-06-01 · backend-owned strength-day recommendation. Mirror of
-   *  glance.strengthRecommendation. `recommendedDays` is also threaded
-   *  to each PlannedDay.strengthSuggested so the week-strip annotation
-   *  is a pure render, not a client-side computation. Null when the
-   *  recommender failed to produce a value · TodayView falls back to a
-   *  silent "no strength surfaced" state (no annotation, no caption). */
-  strengthRecommendation: {
-    recommendedDays: string[];
-    reason: string;
-    habit: 'on_track' | 'building' | 'lapsed' | 'dormant' | 'unknown';
-    coachIntent: { severity: 'soft' | 'firm' | 'urgent'; body: string } | null;
-  } | null;
-  /** 2026-06-01 · weekly reconciliation of recommendedDays against
-   *  what was actually logged in strength_sessions (manual + HK +
-   *  watch + strava). Backend ships at glance.strengthWeekStatus
-   *  (see designs/briefs/strength-hk-web-consumer-brief.md). The
-   *  `summary` field is render-ready · the arrays are there if a
-   *  tap-to-expand surface is added later. Null when no recommendation
-   *  has been produced yet. */
-  strengthWeekStatus: {
-    weekStartISO: string;
-    weekEndISO: string;
-    recommended: string[];
-    confirmed: Array<{
-      date: string;
-      sessionId: number | null;
-      source: 'manual' | 'apple_health' | 'watch' | 'strava' | null;
-      durationMin: number | null;
-      sessionType: string | null;
-    }>;
-    skipped: string[];
-    bonus: Array<{
-      date: string;
-      sessionId: number | null;
-      source: 'manual' | 'apple_health' | 'watch' | 'strava' | null;
-      durationMin: number | null;
-      sessionType: string | null;
-    }>;
-    summary: string;
-  } | null;
+  // STRENGTH-3 (2026-08-17) · strengthRecommendation / strengthWeekStatus
+  // removed from the seed. Nothing recommends or reconciles gym work.
   /** 2026-08-17 · composed morning brief · 2-3 deterministic sentences
    *  (yesterday acknowledged · today's purpose + readiness band · season
    *  context only when it changed). Server-composed in

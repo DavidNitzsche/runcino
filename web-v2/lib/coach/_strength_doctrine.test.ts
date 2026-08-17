@@ -20,6 +20,12 @@
  *      "Quantify session load via sRPE; do not equate to run minutes."
  *      Its citation pointed at Research/07 §1.1-1.3, which contains no
  *      such factor.
+ *
+ * STRENGTH-3 (2026-08-17) · the recommender is UNWIRED — nothing in the
+ * app calls it, and no surface renders strength. This suite stays green
+ * against the retained module so that if David ever asks for it back, it
+ * comes back correct rather than as the version that fabricated a
+ * mi/min coefficient. Do not read its presence as the feature being live.
  */
 import { describe, it, expect } from 'vitest';
 import {

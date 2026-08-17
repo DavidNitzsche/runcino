@@ -142,18 +142,8 @@ export type PlannedDay = {
   /** Runner explicitly skipped this day (day_actions.action='skip'). When
    *  true: week-strip card grayscales, hero swaps to SKIPPED state. */
   skipped?: boolean;
-  /** Per Research/07 doctrine, the 2 best days each week for an
-   *  ad-hoc strength session. Picked client-side from the week shape
-   *  (avoid hard-on-hard, prefer easy/recovery, never adjacent to
-   *  long-run quality). Surfaces as a "STRENGTH" annotation on the
-   *  week strip + a coach hint on TodayView when today matches. */
-  strengthSuggested?: boolean;
-  /** 2026-06-03 · true when a strength_sessions row exists for this
-   *  date (manual log OR Apple Health import via POST /api/strength
-   *  source='apple_health'). Read from glance.strengthWeekStatus
-   *  confirmed + bonus arrays. Flips the chip to a done-state so
-   *  runners see their lift was registered. */
-  strengthDone?: boolean;
+  // STRENGTH-3 (2026-08-17) · strengthSuggested / strengthDone removed.
+  // The week strip no longer annotates strength days.
   /** 2026-06-01 · plan-adapter provenance per day (backend commit
    *  a54c7069). Populated from glance.weekDays[].adaptation. Null on
    *  off-plan days or before backfill landed. When wasAdapted is true

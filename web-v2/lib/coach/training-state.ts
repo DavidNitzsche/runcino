@@ -14,7 +14,6 @@ import { getCanonicalRunIds, mileageByDay } from '@/lib/runs/volume';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
-import type { StrengthPick } from './strength-recommender';
 
 export interface PlanWeek {
   idx: number;
@@ -62,29 +61,10 @@ export interface PlanWeek {
     } | null;
   }>;
   isCurrent: boolean;
-  /** Strength-day picks · ISO YYYY-MM-DD for this Mon-Sun. Populated for
-   *  the current week and ALL future weeks so the native calendar and strip
-   *  show strength markers across the full plan arc. Only the CURRENT week
-   *  uses today's readiness gate; next week+ skip it (plan-phase target only)
-   *  and re-rate live when the runner reaches each week. */
-  recommendedStrengthDays: string[];
-  /** 2026-07-06 · audit P2-50 · the full recommender picks (intensity +
-   *  timing + the 20-minute session content) for this week's
-   *  recommendedStrengthDays. The chip used to say "recommended" with no
-   *  what; native renders these in a tappable session sheet. Same weeks
-   *  annotated as recommendedStrengthDays; entries align by `date`. */
-  strengthPicks?: StrengthPick[];
-  /** True when this week's strength was suppressed by the readiness gate
-   *  (pull-back band) · current week only. Lets the strip/Today explain the
-   *  absence ("Strength paused · readiness low") instead of showing nothing. */
-  strengthSuppressed?: boolean;
-  /** When suppressed, the days strength WOULD have been on (the phase-target
-   *  picks, readiness gate ignored). The strip shows these yellow ("paused")
-   *  so the week isn't just blank. Current week only. */
-  pausedStrengthDays?: string[];
-  /** Days a strength session was actually LOGGED this week · ISO dates from
-   *  strength_sessions. Current week only (2026-06-12). */
-  completedStrengthDays?: string[];
+  // STRENGTH-3 (2026-08-17) · recommendedStrengthDays / strengthPicks /
+  // strengthSuppressed / pausedStrengthDays / completedStrengthDays all
+  // removed. faff no longer recommends gym work; see the note where the
+  // recommender used to be called, below.
 }
 
 export interface PlanPhase { label: string; startWeekIdx: number; endWeekIdx: number; }
@@ -270,60 +250,15 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
       plannedMi,
       days,
       isCurrent,
-      // Filled in for the current week only · see below.
-      recommendedStrengthDays: [] as string[],
     };
   });
 
-  // 2026-06-01 · annotate every current + future week with strength
-  // recommendations so the native calendar and strip show strength markers
-  // across the full plan arc.
-  try {
-    const { recommendStrengthDays } = await import('./strength-recommender');
-    const curIdx = weeks.findIndex(w => w.isCurrent);
-    const curWeekStart = weeks[curIdx]?.startDate ?? today;
-    // Today's readiness only gates the CURRENT week. Suppressing next week
-    // (a week out, off a single low-readiness day) is too far in advance —
-    // those weeks show the phase-level target and re-rate live once the
-    // runner reaches them.
-    const futureWeeks = weeks.filter((_, i) => i >= curIdx);
-    // allSettled: a single week failure must NOT zero out all other weeks.
-    await Promise.allSettled(futureWeeks.map(async (w) => {
-      const skipReadinessGate = w.startDate > curWeekStart;
-      const rec = await recommendStrengthDays(userId, w.startDate, { skipReadinessGate });
-      w.recommendedStrengthDays = rec.recommendedDays;
-      // P2-50 · carry the full picks (intensity + timing + session content)
-      // so native can open the session sheet from the chip instead of
-      // leaving "recommended" as advisory wallpaper.
-      w.strengthPicks = rec.picks;
-      // Current week only: remember when the readiness gate fully suppressed
-      // strength, so Today can say why instead of just showing nothing. When
-      // suppressed, also surface the days it WOULD have been on (re-run with
-      // the gate off) so the strip shows them yellow ("paused"), not blank.
-      if (w.startDate === curWeekStart) {
-        const suppressed = rec._readinessGate?.suppressed === true;
-        w.strengthSuppressed = suppressed;
-        if (suppressed) {
-          const wouldBe = await recommendStrengthDays(userId, w.startDate, { skipReadinessGate: true });
-          w.pausedStrengthDays = wouldBe.recommendedDays;
-        }
-      }
-    }));
-    // Completed days · current week only, from strength_sessions.
-    const cur = weeks[curIdx];
-    if (cur) {
-      const weekEnd = new Date(new Date(cur.startDate + 'T12:00:00Z').getTime() + 6 * 86400000)
-        .toISOString().slice(0, 10);
-      const done = await pool.query<{ date: string }>(
-        `SELECT DISTINCT date::text AS date FROM strength_sessions
-          WHERE user_uuid = $1::uuid AND date >= $2::date AND date <= $3::date`,
-        [userId, cur.startDate, weekEnd],
-      ).catch(() => ({ rows: [] as Array<{ date: string }> }));
-      cur.completedStrengthDays = done.rows.map(r => r.date);
-    }
-  } catch (e) {
-    console.warn('[training-state] strength enrich failed:', e instanceof Error ? e.message : String(e));
-  }
+  // STRENGTH-3 (2026-08-17) · the per-week strength enrichment is gone.
+  // It used to call recommendStrengthDays for the current week and every
+  // future week, then reconcile against strength_sessions, so the native
+  // calendar and week strip could paint strength markers. faff prescribes
+  // running now, nothing else. The recommender module is intact and
+  // uncalled; strength_sessions and its HealthKit ingest keep filling.
 
   const current = weeks.find((w) => w.isCurrent);
   const currentPhase = current?.phase ?? null;

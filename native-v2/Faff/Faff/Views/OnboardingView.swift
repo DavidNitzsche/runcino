@@ -685,7 +685,7 @@ struct OnboardingView: View {
             (6, "6 days a week")
         ]
         return runQ("How many days a week\ndo you run?",
-                    context: "Count days you actually run, not strength or cross-training.",
+                    context: "Count the days you actually run.",
                     enabled: weeklyFreq != nil) {
             VStack(spacing: 9) {
                 ForEach(opts, id: \.0) { n, label in

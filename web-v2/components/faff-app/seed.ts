@@ -2147,28 +2147,14 @@ async function adaptForm(userId: string, glance: Glance | null): Promise<FaffSee
   return { fitness: 0, fatigue: 0, delta: 0, label: 'BUILDING', acwr };
 }
 
-/**
- * Strength-day picking is now backend-owned.
+/*
+ * STRENGTH-3 (2026-08-17) · strength-day picking is GONE, not moved.
  *
- * 2026-06-01 · the client-side pickStrengthDays() heuristic was removed
- * once the backend strength-recommender shipped (commit 34bff2a0). The
- * recommendation now flows in via glance.recommendedStrengthDays · an
- * array of ISO dates · which adaptWeek() matches against each day's iso
- * to set PlannedDay.strengthSuggested. The full envelope (reason +
- * habit + coachIntent) rides on FaffSeed.strengthRecommendation so the
- * briefing surface can render the coach voice and the dormant-habit
- * intent.
- *
- * The recommender personalizes on logged history, plan phase, race
- * proximity, ACWR, and the week's run shape · all things the old
- * client-side heuristic couldn't see. See:
- *   · designs/briefs/strength-recommender-backend-brief.md (the ask)
- *   · designs/briefs/strength-recommender-backend-landed.md (the reply)
- *   · web-v2/lib/coach/strength-recommender.ts (the implementation)
- *
- * Doctrine (Research/07) still rules: 2 sessions / wk default, easy or
- * recovery only, never day-before quality or long, race-week 0, taper
- * ≤1, ACWR>1.5 drops to 1. All seven rules are encoded backend-side.
+ * There was a client heuristic, then a backend recommender, and now
+ * neither. David: "remove anything about strength training. Right now it
+ * adds a level of complication and I am handling that elsewhere." The
+ * seed no longer carries a recommendation, a reconcile, or a per-day
+ * flag. lib/coach/strength-recommender.ts survives, uncalled.
  */
 
 /* ─────────────────────────  Public entry point  ───────────────────────── */
@@ -2204,8 +2190,6 @@ function emptySeed(): FaffSeed {
     morningBrief: null,
     coachLog: [],
     planProposals: [],
-    strengthRecommendation: null,
-    strengthWeekStatus: null,
     goalRace: null,
     volumeBars: [],
     thisWeekMiles: 0,
@@ -2331,29 +2315,6 @@ export async function buildSeed(): Promise<FaffSeed> {
   // blocking the page render.
   await enrichResultsWithRunData(userId, week, results).catch(() => {});
 
-  // 2026-06-01 · annotate strength days from the backend recommender
-  // (commit 34bff2a0). glance.recommendedStrengthDays is an array of
-  // ISO YYYY-MM-DD dates; match each PlannedDay.iso to set the flag.
-  // When the backend returns an empty array (race week, dormant plan,
-  // no acceptable slot, recommender errored), no day gets the
-  // annotation · the week strip shows zero "+ STRENGTH" chips, which
-  // is the correct silent state.
-  const strengthDays = new Set(glance?.recommendedStrengthDays ?? []);
-  // 2026-06-03 · per-day strengthDone flag · reads from strengthWeekStatus
-  // confirmed[] (sessions logged on a recommended day) + bonus[] (sessions
-  // logged on a non-recommended day · still done). HK pushes from Apple
-  // Health land here via POST /api/strength → strength_sessions → reconcile.
-  const confirmedDates = new Set<string>(
-    (glance?.strengthWeekStatus?.confirmed ?? []).map((c) => c.date)
-  );
-  const bonusDates = new Set<string>(
-    (glance?.strengthWeekStatus?.bonus ?? []).map((b) => b.date)
-  );
-  for (let i = 0; i < week.length; i++) {
-    const iso = week[i].iso;
-    week[i].strengthSuggested = !!iso && strengthDays.has(iso!);
-    week[i].strengthDone = !!iso && (confirmedDates.has(iso!) || bonusDates.has(iso!));
-  }
   const readiness = adaptReadiness(glance, health);
   const goalRace = adaptGoalRace(glance, races, profile, training);
   // 2026-06-08 · pacing-discipline computed ONCE · feeds both the
@@ -2896,8 +2857,6 @@ export async function buildSeed(): Promise<FaffSeed> {
     coachLog,
     planProposals,
     pendingWorkoutProposals,
-    strengthRecommendation: glance?.strengthRecommendation ?? null,
-    strengthWeekStatus: glance?.strengthWeekStatus ?? null,
     goalRace,
     volumeBars,
     thisWeekMiles,

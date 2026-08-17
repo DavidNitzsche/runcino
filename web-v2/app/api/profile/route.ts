@@ -30,8 +30,9 @@ const PROFILE_ALLOWED = new Set([
   'gender',
   // P30 — onboarding real persistence.
   'strava_connected_at', 'health_connected_at', 'onboarded_at', 'notification_token',
-  // P34 — cross-training opt-in.
-  'cross_training_modes',
+  // P34 cross-training opt-in · REMOVED 2026-08-17 (STRENGTH-3). The
+  // column stays and existing values are untouched; it is no longer
+  // writable and no longer shapes a plan.
   // P35 — per-user toggles.
   'strava_auto_push', 'phone_hr_alerts',
   // P36 — editable from iPhone Profile settings.
@@ -51,7 +52,7 @@ const USERS_ALLOWED = new Set([
 
 // Editing any of these reshapes the training plan → fire a rebuild.
 const PLAN_SHAPING = new Set([
-  'weekly_frequency', 'experience_level', 'weekly_mileage_target', 'cross_training_modes',
+  'weekly_frequency', 'experience_level', 'weekly_mileage_target',
 ]);
 
 /**
@@ -110,7 +111,6 @@ export async function GET(req: NextRequest) {
               p.birthday::text AS birthday, p.lthr, p.hrmax,
               p.rhr, p.experience_level, p.lthr_method, p.lthr_set_at,
               p.strava_connected_at, p.health_connected_at, p.onboarded_at,
-              p.cross_training_modes,
               p.strava_auto_push, p.strava_push_privacy, p.strava_push_title_format,
               p.weekly_mileage_target,
               -- 2026-06-12 settings consolidation

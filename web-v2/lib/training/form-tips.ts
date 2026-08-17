@@ -101,7 +101,6 @@ export const FORM_TIPS: Record<string, FormTip> = {
       'Hill repeats · 6 × 30s steep uphill at hard effort. Forces a quick, powerful push-off and naturally shortens ground contact.',
       'Pop-up plyos: 3 × 10 quick low jumps off both feet, focusing on minimal floor time. Twice a week, after easy runs.',
       'Drill the cadence fix (175+ spm) · they\'re linked. Shorter steps = shorter contact.',
-      'Strength: single-leg calf raises, 3 × 12 each side, 2× per week. Stronger calves = faster push-off.',
     ],
   },
 
@@ -152,7 +151,6 @@ export const FORM_TIPS: Record<string, FormTip> = {
       'Lift cadence to 175+ spm. Shorter steps = less time airborne = less vertical motion. This is the #1 fix.',
       'Visualize horizontal motion: "head moving forward, not up." Try running in front of a mirror or window where you can see your head height.',
       'Skip the heel strike · landing under your hips reduces the upward bounce of each stride.',
-      'Core strength · planks 3 × 30s, side planks 3 × 20s each side, 2× per week. A stiffer trunk damps oscillation.',
     ],
   },
 

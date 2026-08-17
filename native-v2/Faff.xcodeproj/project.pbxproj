@@ -87,7 +87,6 @@
 		9276B87CB0A938E3DF8E70EA /* PaceDrift.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA31DB52794BE1700934B01 /* PaceDrift.swift */; };
 		92B4B04DC3045097B60E9AC4 /* RecoveryWindowStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5F68CF60A53A86E84CD6B2 /* RecoveryWindowStrip.swift */; };
 		93719A4457B3D049C1A86D64 /* TreadmillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607A158397177D21CBC58EB8 /* TreadmillView.swift */; };
-		93E90D3E9AD9B720CFB434FC /* StrengthSessionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E37F96D2222B5DD2572EF12D /* StrengthSessionSheet.swift */; };
 		961FBF4DEC67B3CAD676A523 /* ReadinessGlanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 590886F21D4DD966A37DE610 /* ReadinessGlanceView.swift */; };
 		96AB4DF9DC78C005205930DA /* ResponsiveFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D23DD51213DA16F555FCAA /* ResponsiveFace.swift */; };
 		97C0A9C35C5B8D867ADBB661 /* F_Sheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8887459C81D2BD8B503FAFE /* F_Sheets.swift */; };
@@ -345,7 +344,6 @@
 		E2B28F9C8F4604550364F9BC /* WorkoutTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTracker.swift; sourceTree = "<group>"; };
 		E2F298DBE5A4654D6A3396C9 /* StravaPushHistorySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaPushHistorySheet.swift; sourceTree = "<group>"; };
 		E341D1073CB161F54628F683 /* RunDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunDetailView.swift; sourceTree = "<group>"; };
-		E37F96D2222B5DD2572EF12D /* StrengthSessionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrengthSessionSheet.swift; sourceTree = "<group>"; };
 		E642C82A6F2C85D02FB33076 /* AppCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCache.swift; sourceTree = "<group>"; };
 		E8C0E49F71B6BB27E246B9C6 /* K_TargetsProjectionDepth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = K_TargetsProjectionDepth.swift; sourceTree = "<group>"; };
 		E94BF41A96C49C2F0DFE896D /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
@@ -548,7 +546,6 @@
 				8FCD25057781DAE979CCDBFC /* ShoesView.swift */,
 				7A2DDEC15725161C4032FEC9 /* SignInView.swift */,
 				E2F298DBE5A4654D6A3396C9 /* StravaPushHistorySheet.swift */,
-				E37F96D2222B5DD2572EF12D /* StrengthSessionSheet.swift */,
 				89D7554D68355339D82D6F51 /* TargetsView.swift */,
 				54968706EA108BCE1A16D9A6 /* TodayShoeOverrideSheet.swift */,
 				3021BAFCB3395A359AD25A3C /* TodayView.swift */,
@@ -889,7 +886,6 @@
 				82583B8BEA1A55C53A47687D /* StravaPushHistorySheet.swift in Sources */,
 				0326FC753B14C5D8D88F0047 /* StravaPushSheet.swift in Sources */,
 				D1097CBDA1F05F55910B5163 /* StravaReconnectBanner.swift in Sources */,
-				93E90D3E9AD9B720CFB434FC /* StrengthSessionSheet.swift in Sources */,
 				5E96515E4E3AEB50C7224C2F /* TargetsView.swift in Sources */,
 				83B9F89A53AF34654F0DCC3D /* Theme.swift in Sources */,
 				49DD1311332CCD7EC88681EC /* Tips.swift in Sources */,

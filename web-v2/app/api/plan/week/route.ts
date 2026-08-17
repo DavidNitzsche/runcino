@@ -145,7 +145,9 @@ export async function GET(req: NextRequest) {
   // naive rows.map() emitted a duplicate pill for that date ("21 21"), and a
   // sparse plan left gaps (a rest day with no row, or only one authored row,
   // produced a 1-day / non-contiguous strip — Lilley, 2026-06-20). Collapse to
-  // the primary RUNNING workout per day (strength/cross fold out), then emit
+  // the primary RUNNING workout per day (legacy strength/cross rows fold
+  // out — STRENGTH-3 stopped emitting them, older plans still carry them),
+  // then emit
   // EXACTLY 7 contiguous days from weekStart so the strip is always 7 pills,
   // in order, no dupes, no gaps.
   // 2026-07-07 · today-composition · P1-4 · race_week_tuneup (the taper-week
@@ -164,17 +166,15 @@ export async function GET(req: NextRequest) {
   };
   const prioOf = (t: string) => TYPE_PRIORITY[t] ?? 2;
   const bestByDate = new Map<string, any>();
-  let anyStrengthByDate = new Map<string, boolean>();
   // 2026-07-07 · today-composition · P2-11 · collect EVERY running-type row
-  // per date (strength/cross fold out — those already have their own
-  // hasStrength signal and aren't a "double-booked run day" the way two
+  // per date (legacy strength/cross rows fold out — they aren't a
+  // "double-booked run day" the way two
   // easy/tempo/long rows sharing a date are). The collapse below picks one
   // row to show as the pill; runningRowsByDate lets the response say
   // "there's a second one you're not seeing" without silently hiding it.
   const NON_RUN_TYPES = new Set(['strength', 'cross', 'xt', 'rest']);
   const runningRowsByDate = new Map<string, typeof rows>();
   for (const r of rows) {
-    if (r.type === 'strength') anyStrengthByDate.set(r.date_iso, true);
     const prev = bestByDate.get(r.date_iso);
     if (!prev
         || prioOf(r.type) > prioOf(prev.type)
@@ -224,9 +224,6 @@ export async function GET(req: NextRequest) {
       done_mi: actual ? actual.mi : null,
       // 2026-05-31 · runner tapped Skip Today (day_actions row).
       skipped: skippedDates.has(dISO),
-      // 2026-06-20 · a run day that also carries a strength session, so the
-      // strip can mark it without a second pill.
-      hasStrength: anyStrengthByDate.get(dISO) === true && (r?.type !== 'strength'),
       // 2026-07-07 · P2-11 · the SECOND running-type row on a double-booked
       // date (e.g. an adapter-collided easy + long), or null when the date
       // carries at most one. Minimal shape — just enough for a client to

@@ -24,9 +24,8 @@
  *
  * A suspected navicular stress fracture used to get a walk-run ladder on
  * a three-week clock. Every protocol here whose `runStartWeek` is null
- * emits ZERO running rows; the plan is a cross-training holding pattern
- * with a clearance gate, and the return-to-run plan is written after a
- * clinician clears it.
+ * emits ZERO running rows; the plan is a holding pattern with a clearance
+ * gate, and the return-to-run plan is written after a clinician clears it.
  *
  * This table is data, not advice. It carries the doctrine's own numbers
  * and its own citations, nothing extrapolated. Where the research is
@@ -647,17 +646,11 @@ export function stageSessionNotes(s: WalkRunStage, riskClass: InjuryRiskClass): 
   return `${shape} ${pain} ${surface}`;
 }
 
-/** Cross-training line, constrained by risk class. Research/05:60-69. */
-export function crossTrainNotes(mode: CrossTrainMode): string {
-  switch (mode) {
-    case 'non_weight_bearing':
-      // :66 · high-risk BSI · non-weight-bearing only until cleared.
-      return 'Non-weight-bearing only. Pool running with a flotation belt, or an arm ergometer. No elliptical, no bike unless your clinician has said yes.';
-    case 'non_impact':
-      // :65, :69 · pool running preserves VO2max and running-specific
-      // neuromuscular patterns for 4-6 weeks in trained runners.
-      return 'Non-impact aerobic, 30-45 min easy. Pool run, bike, or elliptical. Pool running holds your aerobic fitness closest to running.';
-    default:
-      return 'Cross-train at an intensity that does not reproduce symptoms. 30-45 min easy.';
-  }
-}
+// STRENGTH-3 (2026-08-17) · crossTrainNotes() is deleted. It rendered the
+// runner-facing cross-training prescription for an injury week ("pool run
+// with a flotation belt", "non-impact aerobic 30-45 min"), and faff no
+// longer prescribes non-running work. The `crossTrain` field above SURVIVES
+// as doctrine data — it is the risk class's loading constraint per
+// Research/05:60-69, and dropping it would lose the distinction between a
+// high-risk BSI (non-weight-bearing) and a low-risk one (non-impact) that
+// the protocol table exists to record. Nothing renders it today.

@@ -1605,7 +1605,8 @@ struct ProfileFields: Decodable {
     let gender: String?
     let experience_level: String?
     let birthday: String?
-    let cross_training_modes: [String]?
+    // STRENGTH-3 (2026-08-17) · cross_training_modes dropped from the
+    // decode. /api/profile no longer returns or accepts it.
     let strava_connected_at: String?
     let health_connected_at: String?
     let onboarded_at: String?
@@ -2063,63 +2064,10 @@ struct TrainingPlanPhase: Decodable, Identifiable {
     }
 }
 
-/// One exercise line inside a strength pick's session (P2-50).
-struct StrengthPickExercise: Decodable, Identifiable {
-    let name: String
-    let sets: Int
-    let reps: String
-    var id: String { name }
-
-    enum CodingKeys: String, CodingKey { case name, sets, reps }
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
-        self.sets = c.decodeFlexInt(forKey: .sets) ?? 0
-        self.reps = try c.decodeIfPresent(String.self, forKey: .reps) ?? ""
-    }
-}
-
-/// The 20-minute session content the recommender attaches to each pick.
-struct StrengthPickSession: Decodable {
-    let title: String
-    let durationMin: Int
-    let exercises: [StrengthPickExercise]
-
-    enum CodingKeys: String, CodingKey { case title, durationMin, exercises }
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
-        self.durationMin = c.decodeFlexInt(forKey: .durationMin) ?? 20
-        self.exercises = (try? c.decode([StrengthPickExercise].self, forKey: .exercises)) ?? []
-    }
-}
-
-/// One strength pick from the recommender · date + intensity + timing + the
-/// actual session prescription. Mirrors StrengthPick in web-v2
-/// lib/coach/strength-recommender.ts, carried on training-state weeks as
-/// `strengthPicks` (audit P2-50 · the chip used to say "recommended" with
-/// no what).
-struct StrengthPick: Decodable, Identifiable {
-    let date: String
-    /// heavy | maintenance | mobility (Rule 14 intensity tag).
-    let intensity: String
-    /// pm | anytime · pm means after the day's run, 4-6h gap.
-    let timing: String
-    /// True when paired same-day with a quality/long run (hard-with-hard).
-    let pairedWithRun: Bool
-    let session: StrengthPickSession?
-    var id: String { date }
-
-    enum CodingKeys: String, CodingKey { case date, intensity, timing, pairedWithRun, session }
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
-        self.intensity = try c.decodeIfPresent(String.self, forKey: .intensity) ?? "maintenance"
-        self.timing = try c.decodeIfPresent(String.self, forKey: .timing) ?? "anytime"
-        self.pairedWithRun = try c.decodeIfPresent(Bool.self, forKey: .pairedWithRun) ?? false
-        self.session = try? c.decode(StrengthPickSession.self, forKey: .session)
-    }
-}
+// STRENGTH-3 (2026-08-17) · StrengthPickExercise / StrengthPickSession /
+// StrengthPick removed. They mirrored the web recommender's output, which
+// the backend no longer emits. See StrengthSessionSheet.swift (deleted) and
+// lib/coach/glance-state.ts for the whole change.
 
 struct TrainingPlanWeek: Decodable, Identifiable {
     let idx: Int
@@ -2128,25 +2076,9 @@ struct TrainingPlanWeek: Decodable, Identifiable {
     let plannedMi: Double
     let days: [TrainingPlanDay]
     let isCurrent: Bool
-    /// date_iso strings the strength recommender picked for this week. Set
-    /// on the current week by training-state.ts. Drives the week-strip
-    /// underline + the Today strength nudge.
-    let recommendedStrengthDays: [String]?
-    /// Full picks with session content for this week's recommended days
-    /// (P2-50) · the Today chip opens a session sheet from these.
-    let strengthPicks: [StrengthPick]?
-    /// ISO dates a strength session was LOGGED this week (current week only).
-    let completedStrengthDays: [String]?
-    /// True when the readiness gate suppressed this week's strength (current
-    /// week only) · drives the "Strength paused · readiness low" note so the
-    /// empty strip reads as intentional, not a bug.
-    let strengthSuppressed: Bool?
-    /// When suppressed, the days strength WOULD have been on · the strip
-    /// renders these yellow ("paused") so the week isn't blank.
-    let pausedStrengthDays: [String]?
     var id: Int { idx }
 
-    enum CodingKeys: String, CodingKey { case idx, phase, startDate, plannedMi, days, isCurrent, recommendedStrengthDays, strengthPicks, completedStrengthDays, strengthSuppressed, pausedStrengthDays }
+    enum CodingKeys: String, CodingKey { case idx, phase, startDate, plannedMi, days, isCurrent }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.idx = c.decodeFlexInt(forKey: .idx) ?? 0
@@ -2155,11 +2087,6 @@ struct TrainingPlanWeek: Decodable, Identifiable {
         self.plannedMi = try c.decodeIfPresent(Double.self, forKey: .plannedMi) ?? 0
         self.days = (try? c.decode([TrainingPlanDay].self, forKey: .days)) ?? []
         self.isCurrent = try c.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
-        self.recommendedStrengthDays = try? c.decode([String].self, forKey: .recommendedStrengthDays)
-        self.strengthPicks = try? c.decode([StrengthPick].self, forKey: .strengthPicks)
-        self.completedStrengthDays = try? c.decode([String].self, forKey: .completedStrengthDays)
-        self.strengthSuppressed = try? c.decode(Bool.self, forKey: .strengthSuppressed)
-        self.pausedStrengthDays = try? c.decode([String].self, forKey: .pausedStrengthDays)
     }
 }
 

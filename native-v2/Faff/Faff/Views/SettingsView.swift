@@ -559,7 +559,6 @@ struct SettingsView: View {
         putStr("experience_level", p?.experience_level)
         putInt("weekly_frequency", p?.weekly_frequency)
         putInt("weekly_mileage_target", p?.weekly_mileage_target)
-        if let cm = p?.cross_training_modes { v["cross_training_modes"] = .list(cm) }
         putInt("lthr", p?.lthr)
         putInt("max_hr_override", p?.max_hr_override)
         putStr("timezone", p?.timezone)
@@ -766,11 +765,9 @@ private let SETTINGS_EXPERIENCE: [SettingOpt] = [
 private let SETTINGS_SEX: [SettingOpt] = [
     .init(value: "male", label: "Male"), .init(value: "female", label: "Female"), .init(value: "other", label: "Other"),
 ]
-private let SETTINGS_CROSS: [SettingOpt] = [
-    .init(value: "cycling", label: "Cycling"), .init(value: "swimming", label: "Swimming"),
-    .init(value: "strength", label: "Strength"), .init(value: "elliptical", label: "Elliptical"),
-    .init(value: "rowing", label: "Rowing"), .init(value: "yoga", label: "Yoga"),
-]
+// STRENGTH-3 (2026-08-17) · SETTINGS_CROSS and the cross_training_modes
+// field are removed from TRAINING. faff asks how you want your running
+// week shaped and nothing else. /api/profile no longer accepts the key.
 // 2026-07-07 · units audit — wire values match the backend exactly
 // (web-v2/lib/coach/settings.ts DEFAULT_SETTINGS: units_distance 'mi'/'km',
 // units_temp 'F'/'C' UPPERCASE). Util/Units.swift's DistanceUnit/
@@ -811,7 +808,6 @@ let SETTINGS_GROUPS: [SettingGroup] = [
         // actively misleading (a km-preference runner would see "50 km"
         // next to a number that's still actually 50 miles stored).
         SettingField(key: "weekly_mileage_target", label: "Weekly target", endpoint: .profile, kind: .number, unit: "mi", planShaping: true),
-        SettingField(key: "cross_training_modes", label: "Cross-training", endpoint: .profile, kind: .multi, options: SETTINGS_CROSS),
         // P2-35 · goal/race setup's availability constraint. When >=2 days
         // are set here, the plan engine places long/quality/easy ONLY on
         // these days and overrides the pickers above — previously this was

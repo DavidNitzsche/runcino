@@ -16,7 +16,9 @@
  *        }
  * DELETE /api/strength?hk_uuid=<uuid>   → remove an HK-imported row by stable uuid
  *
- * Manual logging (LogNonRunSheet) · sends no source · defaults to 'manual'.
+ * Manual logging · sends no source · defaults to 'manual'. No surface
+ * posts this any more (STRENGTH-3, 2026-08-17); the HealthKit importer
+ * is the only live writer and it sends source='apple_health'.
  * HK ingest (HealthKitImporter) · sends source='apple_health' + hk_uuid.
  *   Idempotent on hk_uuid · re-syncing the same HKWorkout upserts
  *   instead of creating duplicates. Constraint catches dupes at write time.

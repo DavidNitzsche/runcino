@@ -95,7 +95,6 @@ struct RootTabView: View {
     @State private var pushProfile = false
     @State private var showRunMenu: Bool = false
     @State private var showSymptomSheet: Bool = false
-    @State private var showLogNonRunSheet: Bool = false
     @State private var showTrainingCal: Bool = false
     @State private var showInbox: Bool = false
     @State private var showReachabilityBanner: Bool = false
@@ -164,7 +163,6 @@ struct RootTabView: View {
                 onOutdoor: { tabPaths[selected, default: []].append(outdoorRoute) },
                 onTreadmill: { tabPaths[selected, default: []].append(.treadmill) },
                 onNiggle: { showSymptomSheet = true },
-                onNonRun: { showLogNonRunSheet = true },
                 onViewActivity: { tabPaths[selected, default: []].append(.activity) }
             )
             .allowsHitTesting(showRunMenu)
@@ -214,10 +212,6 @@ struct RootTabView: View {
             // SymptomReportSheet (Niggle | Sick) · existing toolkit component.
             SymptomReportSheet(onSubmitted: { showSymptomSheet = false })
                 .presentationDetents([.medium, .large])
-        }
-        .sheet(isPresented: $showLogNonRunSheet) {
-            LogNonRunSheet(onSubmitted: { showLogNonRunSheet = false })
-                .presentationDetents([.medium])
         }
         .task { await refreshTarget() }
         .onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
