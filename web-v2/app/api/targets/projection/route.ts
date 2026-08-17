@@ -55,7 +55,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
-import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode, DANIELS_MAX_VALID_DISTANCE_MI, predictRaceTimeFromAnchor, bestRecentVdot } from '@/lib/training/vdot';
+import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode, DANIELS_MAX_VALID_DISTANCE_MI, predictRaceTimeFromAnchor, bestRecentVdot, VDOT_FULL_VALUE_DAYS } from '@/lib/training/vdot';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { loadProfileState } from '@/lib/coach/profile-state';
 import { computeCourseImpact } from '@/lib/training/course-impact';
@@ -305,7 +305,7 @@ export async function GET(req: NextRequest) {
         const today = await runnerToday(userId);
         const runFloorMi = await goalRunFloorMiForUser(userId);
         const { raceCandidates, runCandidates } = await loadVdotInputs(userId, today);
-        const { belowTableAnchor } = bestRecentVdot(raceCandidates, today, 180, runCandidates, runFloorMi);
+        const { belowTableAnchor } = bestRecentVdot(raceCandidates, today, VDOT_FULL_VALUE_DAYS, runCandidates, runFloorMi);
         if (belowTableAnchor) {
           const riegel = predictRaceTimeFromAnchor(belowTableAnchor.anchor, distanceMi);
           if (riegel != null) {

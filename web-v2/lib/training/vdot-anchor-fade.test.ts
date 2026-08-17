@@ -1,117 +1,151 @@
 /**
  * 2026-06-09 · race-killer F1 regression tests — the stale-anchor fade.
+ * 2026-08-17 · DOCTRINE-2 · re-scoped onto the doctrine freshness window.
  *
- * Fixture = the runner's real A/B race history (what loadVdotInputs
- * delivers after its priority IN ('A','B') filter). The bug these lock
- * down: Disney HM (Feb 1, VDOT 47.9) exits a hard 180-day window on
- * Aug 1 → VDOT cliffs to 44.1 (LA Marathon) → HM projection lurches
- * 1:34:54 → 1:41:55 fifteen days before the A-race.
+ * F1's fix was that an aging anchor must GLIDE out rather than vanish
+ * overnight. That behaviour is unchanged and still locked below. What changed
+ * is WHERE the glide happens.
+ *
+ * These tests used to be written against a 180-day full-value window with a
+ * 120-day tail, so they asserted that a 197-day-old half marathon was still the
+ * runner's pace anchor. `Research/01-pace-zones-vdot.md` §"Freshness window"
+ * says the opposite in a four-row table — 12+ weeks is "Expired. Don't anchor
+ * pace prescription on this VDOT" — and §"Implementation notes" writes the rule
+ * directly at this engine: "use ≤56 days as the canonical freshness window."
+ *
+ * So the bands are now 56 / 84 days:
+ *   ≤ 56 d   full value
+ *   56-84 d  faded and FLOOR-ONLY · ranks below any in-window candidate, but
+ *            still anchors when it is the only evidence there is
+ *   > 84 d   expired · not a candidate
+ *
+ * The fixture keeps the runner's real race history and simply asks the
+ * questions at dates that exercise those bands.
  */
 import { describe, expect, it } from 'vitest';
-import { bestRecentVdot, predictRaceTime, vdotFromRace, type VdotCandidate } from './vdot';
+import {
+  bestRecentVdot,
+  predictRaceTime,
+  VDOT_FULL_VALUE_DAYS,
+  VDOT_EXPIRY_DAYS,
+  vdotFromRace,
+  type VdotCandidate,
+} from './vdot';
 
 /** Narrow the race|run candidate union to a race slug (null for runs). */
 const slugOf = (c: VdotCandidate | null | undefined): string | null =>
   c && c.source === 'race' ? c.slug : null;
 
+const addDays = (iso: string, n: number): string =>
+  new Date(Date.parse(iso + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+
+const DISNEY_DATE = '2026-02-01';
 const RACES = [
   { slug: 'rose-bowl-half-2026', name: 'Rose Bowl Half', date: '2026-01-18', priority: 'A' as const, distance_mi: 13.109, finish_seconds: 5918 },
-  { slug: 'disney-half-2026', name: 'Disney Half Marathon', date: '2026-02-01', priority: 'A' as const, distance_mi: 13.109, finish_seconds: 5694 },
+  { slug: 'disney-half-2026', name: 'Disney Half Marathon', date: DISNEY_DATE, priority: 'A' as const, distance_mi: 13.109, finish_seconds: 5694 },
   { slug: 'la-marathon-2026', name: 'LA Marathon', date: '2026-03-08', priority: 'A' as const, distance_mi: 26.219, finish_seconds: 12700 },
 ];
 
-describe('bestRecentVdot — stale-anchor fade (F1)', () => {
-  it('today (Jun 9): Disney anchors at full value — display unchanged', () => {
-    const { best } = bestRecentVdot(RACES, '2026-06-09');
+describe('bestRecentVdot — the doctrine freshness window (DOCTRINE-2)', () => {
+  it('inside 56 days: full value, effective ≡ raw', () => {
+    const { best, considered } = bestRecentVdot(RACES, addDays(DISNEY_DATE, 30));
     expect(slugOf(best)).toBe('disney-half-2026');
     expect(best?.vdot).toBe(47.9);
     expect(best?.vdot_raw).toBe(47.9);
-    expect(best?.age_days).toBe(128);
-  });
-
-  it('Aug 1 (the old cliff day): no cliff — Disney fades, does not vanish', () => {
-    const { best } = bestRecentVdot(RACES, '2026-08-01');
-    expect(slugOf(best)).toBe('disney-half-2026');
-    expect(best?.vdot).toBeGreaterThanOrEqual(47.8); // was 44.1 under the hard window
-  });
-
-  it('race morning (Aug 16): glide lands at 47.8 → projection ~1:35, not 1:41:55', () => {
-    const { best } = bestRecentVdot(RACES, '2026-08-16');
-    expect(slugOf(best)).toBe('disney-half-2026');
-    expect(best?.vdot).toBe(47.8);     // 47.9 − (16d past window / 14) × 0.1
-    expect(best?.age_days).toBe(196);
-    const proj = predictRaceTime(best!.vdot, 13.1)!;
-    expect(proj).toBeGreaterThanOrEqual(5694);  // never faster than the anchor said
-    expect(proj).toBeLessThan(5694 + 75);       // within ~1min of 1:34:54 — not 6115 (1:41:55)
-  });
-
-  it('anchors still expire — fade tail ends, next anchor takes over', () => {
-    // Disney age 300 on 2026-11-28 (inside tail) · 320 on 2026-12-18 (out).
-    const inside = bestRecentVdot(RACES, '2026-11-28');
-    expect(inside.considered.some((c) => slugOf(c) === 'disney-half-2026')).toBe(true);
-    const outside = bestRecentVdot(RACES, '2026-12-18');
-    expect(outside.considered.some((c) => slugOf(c) === 'disney-half-2026')).toBe(false);
-    expect(slugOf(outside.best)).toBe('la-marathon-2026'); // faded but present (age 285)
-  });
-
-  it('fresh evidence beats a faded anchor the moment it scores higher', () => {
-    // Hypothetical tune-up 10K on Jul 11 at 42:40 → raw VDOT ≈ 48.5.
-    const withTuneUp = [
-      ...RACES,
-      { slug: 'tune-up-10k', name: 'Tune-up 10K', date: '2026-07-11', priority: 'B' as const, distance_mi: 6.2137, finish_seconds: 2560 },
-    ];
-    const { best } = bestRecentVdot(withTuneUp, '2026-08-16');
-    expect(slugOf(best)).toBe('tune-up-10k');
-    expect(best!.vdot).toBeGreaterThan(47.8);
-  });
-
-  it('fresh anchors are bit-identical to the pre-fade behavior', () => {
-    // 30 days after Disney, everything is inside the window — effective ≡ raw.
-    const { best, considered } = bestRecentVdot(RACES, '2026-03-01');
-    expect(best?.vdot).toBe(47.9);
     for (const c of considered) expect(c.vdot).toBe(c.vdot_raw);
+  });
+
+  it('on the window edge (day 56) the anchor is still at full value', () => {
+    const { best } = bestRecentVdot([RACES[1]], addDays(DISNEY_DATE, VDOT_FULL_VALUE_DAYS));
+    expect(best?.vdot).toBe(47.9);
+  });
+
+  it('past 84 days the anchor is EXPIRED — doctrine refuses to anchor on it', () => {
+    const dayAfterExpiry = addDays(DISNEY_DATE, VDOT_EXPIRY_DAYS + 1);
+    const { considered } = bestRecentVdot([RACES[1]], dayAfterExpiry);
+    expect(considered.some((c) => slugOf(c) === 'disney-half-2026')).toBe(false);
+  });
+
+  it('with every race expired there is NO anchor — the honest answer, not a stale one', () => {
+    // Aug 17: Disney is 197 days old, LA 162, Rose Bowl 211. Research/01 calls
+    // all three expired. The old 180-day window answered "47.8" here, which is
+    // a pace prescription off a 6.5-month-old race.
+    const { best, considered } = bestRecentVdot(RACES, '2026-08-17');
+    expect(considered).toHaveLength(0);
+    expect(best).toBeNull();
   });
 });
 
-// ── 2026-08-17 · fresh-race precedence over faded anchors ───────────────────
-//
-// The AFC Half (Aug 16, 1:41:53 → VDOT ≈ 44.1) is a FRESH A-race result.
-// Doctrine (Research/01-pace-zones-vdot.md §"Freshness window"): 0-4 weeks
-// is a fresh signal; 12+ weeks is expired — "Use field test or recent race
-// instead." A 6.5-month-old faded Disney (47.8) must NOT outrank it.
+describe('bestRecentVdot — the fade still glides, at the doctrine boundary (F1)', () => {
+  it('no cliff crossing day 56: the fade is invisible at day granularity', () => {
+    const before = bestRecentVdot([RACES[1]], addDays(DISNEY_DATE, VDOT_FULL_VALUE_DAYS));
+    const after = bestRecentVdot([RACES[1]], addDays(DISNEY_DATE, VDOT_FULL_VALUE_DAYS + 1));
+    expect(before.best?.vdot).toBe(47.9);
+    expect(after.best).not.toBeNull();
+    expect(Math.abs(after.best!.vdot - before.best!.vdot)).toBeLessThanOrEqual(0.5);
+  });
 
-const AFC = { slug: 'afc-half-2026', name: 'AFC Half', date: '2026-08-16', priority: 'A' as const, distance_mi: 13.109, finish_seconds: 6113 };
+  it('continuity across the whole floor-only band — no single-day move over 0.5', () => {
+    let prev: number | null = null;
+    for (let age = 40; age <= VDOT_EXPIRY_DAYS; age++) {
+      const { best } = bestRecentVdot([RACES[1]], addDays(DISNEY_DATE, age));
+      expect(best, `no anchor at age ${age}, still inside the window`).not.toBeNull();
+      if (prev != null) {
+        expect(Math.abs(best!.vdot - prev), `cliff at age ${age}: ${prev} → ${best!.vdot}`)
+          .toBeLessThanOrEqual(0.5);
+      }
+      prev = best!.vdot;
+    }
+    // The glide is gentle: 28 days of tail at 0.1 per 14 days.
+    expect(prev).toBeGreaterThanOrEqual(47.6);
+    expect(prev).toBeLessThan(47.9);
+  });
 
-describe('bestRecentVdot — fresh race beats faded anchor (precedence)', () => {
-  it('day after the A-race: fresh AFC result supersedes faded Disney despite lower magnitude', () => {
-    const { best, considered } = bestRecentVdot([...RACES, AFC], '2026-08-17');
-    // Disney (age 197, effective 47.8) is demoted, not dropped — still visible
-    // in considered for display/debugging, just never the headline.
+  it('a projection off a faded anchor never reads faster than the race itself said', () => {
+    const { best } = bestRecentVdot([RACES[1]], addDays(DISNEY_DATE, 80));
+    const proj = predictRaceTime(best!.vdot, 13.1)!;
+    expect(proj).toBeGreaterThanOrEqual(5694);
+    expect(proj).toBeLessThan(5694 + 75);
+  });
+});
+
+describe('bestRecentVdot — floor-only demotion inside 56-84 days', () => {
+  // A tune-up inside the fresh window, and a faded anchor with a HIGHER VDOT.
+  // Doctrine: the stale one is "use only as a floor" — it must not outrank
+  // current evidence however large it is.
+  const freshDay = addDays(DISNEY_DATE, 70);   // Disney age 70 · floor-only band
+  const SLOWER_BUT_FRESH = {
+    slug: 'tune-up-10k', name: 'Tune-up 10K', date: addDays(freshDay, -10),
+    priority: 'B' as const, distance_mi: 6.2137, finish_seconds: 2820,   // ≈ VDOT 43
+  };
+
+  it('a fresher, SLOWER race outranks a faded, faster one', () => {
+    const { best, considered } = bestRecentVdot([RACES[1], SLOWER_BUT_FRESH], freshDay);
+    expect(slugOf(best)).toBe('tune-up-10k');
+    expect(best!.vdot).toBeLessThan(47.8);
+    // Demoted, not dropped — still visible for display and debugging.
     expect(considered.some((c) => slugOf(c) === 'disney-half-2026')).toBe(true);
-    expect(slugOf(best)).not.toBe('disney-half-2026');
-    expect(slugOf(best)).not.toBe('rose-bowl-half-2026');
-    // The winner is an in-window race at the fresh-evidence fitness level
-    // (AFC and LA Marathon both read ≈ 44.1 — either is honest; Disney's
-    // 47.8 is not).
-    expect(best!.age_days).toBeLessThanOrEqual(180);
-    expect(best!.vdot).toBeGreaterThanOrEqual(43.6);
-    expect(best!.vdot).toBeLessThanOrEqual(44.6);
   });
 
-  it('faded candidates rank below EVERY in-window candidate when a fresh race exists', () => {
-    const { considered } = bestRecentVdot([...RACES, AFC], '2026-08-17');
-    const firstFadedIdx = considered.findIndex((c) => c.age_days > 180);
-    const lastFreshIdx = considered.reduce((acc, c, i) => (c.age_days <= 180 ? i : acc), -1);
-    expect(firstFadedIdx).toBeGreaterThan(lastFreshIdx);
+  it('every floor-only candidate ranks below every in-window candidate', () => {
+    const { considered } = bestRecentVdot([RACES[1], SLOWER_BUT_FRESH], freshDay);
+    const firstStale = considered.findIndex((c) => c.age_days > VDOT_FULL_VALUE_DAYS);
+    const lastFresh = considered.reduce(
+      (acc, c, i) => (c.age_days <= VDOT_FULL_VALUE_DAYS ? i : acc), -1);
+    expect(firstStale).toBeGreaterThan(lastFresh);
   });
 
-  it('without a fresh race the fade still governs — faded Disney stays the anchor', () => {
-    // Same day, AFC not (yet) logged: no fresh evidence, so the glide is the
-    // honest read and Disney holds at 47.8. This is scenario (a) of the
-    // Aug-17 prod state.
-    const { best } = bestRecentVdot(RACES, '2026-08-17');
+  it('with nothing fresher, the faded anchor still anchors — a floor you have beats a guess you do not', () => {
+    const { best } = bestRecentVdot([RACES[1]], freshDay);
     expect(slugOf(best)).toBe('disney-half-2026');
-    expect(best?.vdot).toBe(47.8);
+    expect(best!.vdot).toBeGreaterThanOrEqual(47.7);
+  });
+
+  it('fresh evidence that scores HIGHER takes over outright', () => {
+    const faster = { ...SLOWER_BUT_FRESH, slug: 'tune-up-10k-fast', finish_seconds: 2560 };
+    const { best } = bestRecentVdot([RACES[1], faster], freshDay);
+    expect(slugOf(best)).toBe('tune-up-10k-fast');
+    expect(best!.vdot).toBeGreaterThan(47.8);
   });
 });
 
@@ -123,24 +157,31 @@ describe('bestRecentVdot — fresh race beats faded anchor (precedence)', () => 
 // anchor, by construction. Now cap-bounded runs sort at their capped face
 // value: a capped run genuinely leads by up to the doctrinal +1, and a race
 // still wins exact ties (stable sort, races first).
+//
+// DOCTRINE-2 (2026-08-17): the scenario DATES moved inside the 56-day window.
+// The behaviour under test is the SOFT CAP and the sort, neither of which
+// changed — but the old fixtures posed the question on a day when every race
+// in them was expired, which now (correctly) leaves nothing to cap against.
 
+const LA_DATE = '2026-03-08';
 const LA_ONLY = [
-  { slug: 'la-marathon-2026', name: 'LA Marathon', date: '2026-03-08', priority: 'A' as const, distance_mi: 26.219, finish_seconds: 12700 },
+  { slug: 'la-marathon-2026', name: 'LA Marathon', date: LA_DATE, priority: 'A' as const, distance_mi: 26.219, finish_seconds: 12700 },
 ];
 
 // Strong quality effort: 10K time-trial-grade run, reads well above the
 // ceiling → clamped to race + 1.0.
 const HOT_RUN = {
-  id: 'run-aug9', date: '2026-08-09', workout_type: 'race',
+  id: 'run-hot', date: addDays(LA_DATE, 20), workout_type: 'race',
   distance_mi: 6.2137, finish_seconds: 2560,
   avg_hr: null, max_hr: null, zone: null,
 };
+const ASK_DAY = addDays(LA_DATE, 30);   // LA age 30 · in window · run age 10
 
 describe('bestRecentVdot — capped training run leads the race anchor by +1', () => {
   it('a run clamped to the soft cap wins the headline at race + 1.0 (not a tie)', () => {
     const raceVdot = vdotFromRace(12700, 26.219)!;           // LA ≈ 44.1
     const ceiling = Math.round((raceVdot + 1.0) * 10) / 10;  // ≈ 45.1
-    const { best } = bestRecentVdot(LA_ONLY, '2026-08-17', 180, [HOT_RUN]);
+    const { best } = bestRecentVdot(LA_ONLY, ASK_DAY, VDOT_FULL_VALUE_DAYS, [HOT_RUN]);
     expect(best?.source).toBe('run');
     expect(best?.vdot).toBe(ceiling);
     // The cap is intact — the raw 10K read (≈48.5) never leaks through.
@@ -151,26 +192,25 @@ describe('bestRecentVdot — capped training run leads the race anchor by +1', (
     // Run with byte-identical distance/time to the Disney race → same
     // vdotFromRace read → exact tie → the race is the headline (stable
     // sort, races precede runs).
-    const disney = [{ slug: 'disney-half-2026', name: 'Disney Half Marathon', date: '2026-02-01', priority: 'A' as const, distance_mi: 13.109, finish_seconds: 5694 }];
-    const twinRun = { id: 'twin', date: '2026-03-01', workout_type: 'race', distance_mi: 13.109, finish_seconds: 5694, avg_hr: null, max_hr: null, zone: null };
-    const { best } = bestRecentVdot(disney, '2026-03-05', 180, [twinRun]);
+    const disney = [RACES[1]];
+    const twinRun = { id: 'twin', date: addDays(DISNEY_DATE, 28), workout_type: 'race', distance_mi: 13.109, finish_seconds: 5694, avg_hr: null, max_hr: null, zone: null };
+    const { best } = bestRecentVdot(disney, addDays(DISNEY_DATE, 32), VDOT_FULL_VALUE_DAYS, [twinRun]);
     expect(best?.source).toBe('race');
   });
 
-  it('David Aug 17, AFC logged: capped run leads the FRESH anchor, not the faded one', () => {
-    // Scenario (b) of the Aug-17 prod state: AFC (fresh, 44.1) demotes faded
-    // Disney/Rose Bowl, the ceiling re-anchors to the fresh proof (44.1 + 1),
-    // and the Aug 9 quality run — clamped to that ceiling — leads it by the
-    // doctrinal +1. Headline ≈ 45.1, NOT 47.8 (expired Disney) and NOT a
-    // silent tie-loss back to 44.1.
-    const freshRaceVdot = Math.max(vdotFromRace(12700, 26.219)!, vdotFromRace(6113, 13.109)!);
-    const ceiling = Math.round((freshRaceVdot + 1.0) * 10) / 10;
-    const { best, considered } = bestRecentVdot([...RACES, AFC], '2026-08-17', 180, [HOT_RUN]);
+  it('the soft-cap ceiling anchors to IN-WINDOW evidence, never a floor-only race', () => {
+    // A faded, faster half (age 70) plus a fresh, slower marathon. The ceiling
+    // for training reads must come from the fresh proof — otherwise an expired
+    // anchor keeps licensing training estimates the doctrine calls unsupported.
+    const freshRace = { ...LA_ONLY[0], date: addDays(DISNEY_DATE, 55) };
+    const askDay = addDays(DISNEY_DATE, 70);
+    const run = { ...HOT_RUN, date: addDays(askDay, -5) };
+    const freshVdot = vdotFromRace(12700, 26.219)!;
+    const ceiling = Math.round((freshVdot + 1.0) * 10) / 10;
+    const { best, considered } = bestRecentVdot([RACES[1], freshRace], askDay, VDOT_FULL_VALUE_DAYS, [run]);
     expect(best?.source).toBe('run');
     expect(best?.vdot).toBe(ceiling);
-    expect(ceiling).toBeGreaterThanOrEqual(44.6);
-    expect(ceiling).toBeLessThanOrEqual(45.6);
-    // Faded Disney did not set the ceiling (44.1 + 1, not 47.9 + 1)...
+    // Faded Disney (47.9) did not set the ceiling...
     expect(ceiling).toBeLessThan(46.5);
     // ...and is still visible, demoted.
     expect(considered.some((c) => slugOf(c) === 'disney-half-2026')).toBe(true);

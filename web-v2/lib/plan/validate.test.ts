@@ -70,9 +70,12 @@ function validHmPlan(): ComposePlanResult {
     // RACE-SPECIFIC: weeks 4–5
     makeWeek('2026-07-05', 'RACE-SPECIFIC', 43, [longDay(14), qualityDay(), easyDay(7), easyDay(8), easyDay(7)]),
     makeWeek('2026-07-12', 'RACE-SPECIFIC', 43, [longDay(14), qualityDay(), easyDay(7), easyDay(8), easyDay(7)]),
-    // TAPER: weeks 6–7 (~60% and ~47% of peak 43mi → >30% drop each)
+    // TAPER: weeks 6–7. Research/08 §9.1 puts the HM volume reduction at 30-50%
+    // of peak, so the taper bottoms at 22mi off a 43mi peak (49%). It used to
+    // bottom at 20mi (53%) — outside doctrine, and it passed because the
+    // validator only ever checked the shallow end. DOCTRINE-1b closed that.
     makeWeek('2026-07-19', 'TAPER',         26, [longDay(10), easyDay(5), easyDay(5), easyDay(6)]),
-    makeWeek('2026-07-26', 'TAPER',         20, [longDay(8),  easyDay(4), easyDay(4), easyDay(4)]),
+    makeWeek('2026-07-26', 'TAPER',         22, [longDay(9),  easyDay(4), easyDay(4), easyDay(5)]),
     // RACE WEEK
     makeWeek('2026-08-02', 'TAPER',          8, [easyDay(3), easyDay(3), easyDay(2)], true),
   ];

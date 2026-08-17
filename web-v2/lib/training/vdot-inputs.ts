@@ -23,6 +23,7 @@ import { pool } from '@/lib/db/pool';
 import {
   parseRaceTime, zoneFromType, vdotRunFloorMi, goalDistanceMiFromCode,
   FADE_TAIL_DAYS,
+  VDOT_FULL_VALUE_DAYS,
 } from '@/lib/training/vdot';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
@@ -82,8 +83,9 @@ function distFromLabel(label: string | null | undefined): number | null {
  *
  * @param userId     - the runner's UUID
  * @param today      - ISO date (caller must pass their runnerToday() result)
- * @param windowDays - full-value race lookback in days (default 180; must
- *                     match the lookbackDays the caller passes to
+ * @param windowDays - full-value race lookback in days (default
+ *                     VDOT_FULL_VALUE_DAYS = 56, Research/01 §"Freshness
+ *                     window"; must match the lookbackDays the caller passes to
  *                     bestRecentVdot). Race rows are FETCHED over
  *                     windowDays + FADE_TAIL_DAYS — bestRecentVdot owns
  *                     staleness (full value through windowDays, then the F1
@@ -98,7 +100,7 @@ function distFromLabel(label: string | null | undefined): number | null {
 export async function loadVdotInputs(
   userId: string,
   today: string,
-  windowDays = 180,
+  windowDays = VDOT_FULL_VALUE_DAYS,
 ): Promise<VdotInputs> {
 
   // ── Race candidates ──────────────────────────────────────────────────────

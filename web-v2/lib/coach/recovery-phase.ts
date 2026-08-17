@@ -133,17 +133,43 @@ export interface RecoveryPhase {
 
 // Doctrine timelines · "quality-ready" days per session type.
 // This is when the runner can do the NEXT QUALITY session · not full
-// recovery to peak. Aligned with Pfitzinger/Daniels actual plan
-// patterns (Sunday long → Tue/Wed quality).
+// recovery to peak.
+//
+// DOCTRINE-6 (2026-08-17) · RE-SOURCED FROM THE TABLE.
+//
+// The race rows were 10 / 5 / 3 / 2 days, attributed to "Pfitzinger/Daniels
+// actual plan patterns". Research/00b §"Recovery by Distance" has a column
+// headed "Return to quality workouts" that says something else entirely:
+//
+//   | 5K            | Day 6-8    |
+//   | 10K           | Day 7-10   |
+//   | Half marathon | Day 10-14  |
+//   | Marathon      | Week 3-4   |
+//
+// So this surface told a half-marathoner "quality-ready day 5" while the plan
+// engine — reading the same document one column over — held quality for 14 days
+// (POST_RACE_RECOVERY_WEEKS.hm = 2). One runner, two surfaces, opposite advice,
+// on the same screen. The engine's read is the correct one; this is the surface
+// that moves.
+//
+// Each row takes the FLOOR of its doctrine band, because this value answers
+// "when can I next do quality" and the earliest defensible day is the honest
+// answer to that question — the runner reads the doctrine and decides
+// (expectedWindowDoctrine, below). The marathon takes week 3 = day 21.
+//
+// Cite: Research/00b-recovery-protocols.md §"Recovery by Distance",
+//       column "Return to quality workouts"
+export function expectedDaysForAnchor(type: AnchorType, distanceMi: number): number {
+  return expectedDays(type, distanceMi);
+}
+
 function expectedDays(type: AnchorType, distanceMi: number): number {
   switch (type) {
     case 'race':
-      // Marathon: peak-ready is ~26 days (Friel) but quality-ready is
-      // ~10 days · easy by day 3, hard quality session by day 10ish.
-      if (distanceMi >= 24) return 10;
-      if (distanceMi >= 13) return 5;   // half marathon: 4-5d
-      if (distanceMi >= 6) return 3;     // 10k: 2-3d
-      return 2;                           // 5k: 2d
+      if (distanceMi >= 24) return 21;  // marathon+: week 3-4
+      if (distanceMi >= 13) return 10;  // half marathon: day 10-14
+      if (distanceMi >= 6) return 7;    // 10K: day 7-10
+      return 6;                          // 5K: day 6-8
     case 'long':
       // Pfitzinger/Daniels patterns · long Sunday → quality Tue/Wed:
       // - 13-15 mi · 2 days (Sun long → Tue quality)

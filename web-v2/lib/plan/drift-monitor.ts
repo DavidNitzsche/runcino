@@ -38,7 +38,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { bestRecentVdot } from '@/lib/training/vdot';
+import { bestRecentVdot, VDOT_FULL_VALUE_DAYS } from '@/lib/training/vdot';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 // HEAT-DRIFT-1 (2026-08-17) · shared heat doctrine (Research/06 §1 table +
 // §12 dewpoint surcharge) + Magnus-Tetens dewpoint estimate + the
@@ -412,7 +412,7 @@ async function loadCurrentVdot(userUuid: string): Promise<number | null> {
   // reads off the same candidate set (mismatch → false drift signal).
   const runFloorMi = await goalRunFloorMiForUser(userUuid);
   const { raceCandidates, runCandidates } = await loadVdotInputs(userUuid, today);
-  const { best } = bestRecentVdot(raceCandidates, today, 180, runCandidates, runFloorMi);
+  const { best } = bestRecentVdot(raceCandidates, today, VDOT_FULL_VALUE_DAYS, runCandidates, runFloorMi);
   return best?.vdot ?? null;
 }
 

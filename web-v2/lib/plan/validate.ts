@@ -24,6 +24,7 @@
 import type { ComposePlanResult, DistCategory } from './generate';
 import { distanceCategoryOfPublic } from './generate';
 import type { PlanMode } from './goal-tiers';
+import { taperFactor, GENERAL_RAMP_CEILING } from './goal-tiers';
 
 // ── constraint table (doctrine caps) ─────────────────────────────────────────
 //
@@ -42,19 +43,51 @@ import type { PlanMode } from './goal-tiers';
 interface PlanConstraints {
   longRunWoWMaxPct: number;     // max WoW long-run increase (% of prior week)
   taperDropMinPct: number;      // min taper volume drop vs non-taper peak (%)
+  taperDropMaxPct: number;      // MAX taper volume drop vs non-taper peak (%)
   weeklyVolWoWMaxPct: number;   // max WoW weekly total volume increase (%)
 }
 
+/**
+ * DOCTRINE-1b (2026-08-17) · THE TAPER BAND HAS TWO ENDS.
+ *
+ * `taperDropMinPct` only ever asked whether the taper was deep ENOUGH, so a
+ * taper that cut 55% off a 5K — nearly double what Research/08 §9.1 allows for
+ * that distance — passed clean. Every doctrine band has two ends, and a
+ * one-sided validator is how a wrong-row constant survives review: the check
+ * that should have caught the flat marathon taper being applied to a 5K was
+ * structurally incapable of firing.
+ *
+ * `taperDropMaxPct` is §9.1's "Volume reduction (peak week)" CEILING per
+ * distance. `taperDropMinPct` is the floor on the deepest pre-race taper week,
+ * set a few points under what the shared `taperFactor` model produces for that
+ * week so ordinary rounding does not trip it, and — per the registry claim
+ * TAPER.minimum-volume-drop — never stricter than §9.1's minimum reduction.
+ *
+ *   Distance | §9.1 reduction | model drop @ wk-2 | floor | ceiling
+ *   5K       | 25-35%         | (no pre-race wk)  | 20    | 35
+ *   10K      | 30-40%         | 25%               | 22    | 40
+ *   HM       | 30-50%         | 29%               | 26    | 50
+ *   M        | 40-60%         | 40%               | 36    | 60
+ *   Ultra    | 50-70%         | 44%               | 40    | 70
+ *
+ * HONEST LIMIT: both bounds are evaluated on NON-RACE taper weeks (TAPER-1's
+ * exclusion — a race week's `weeklyMi` excludes the race itself and is
+ * shakeout-plus-easies, which is race-day logistics rather than a training
+ * taper). A 5K's only taper week IS its race week, so for the 5K these bounds
+ * do not bind at all; what guards the 5K taper is the doctrine gate's
+ * TAPER.depth-per-week claim reading `TAPER_RACE_WEEK_PCT_OF_PEAK` straight out
+ * of §9.1.
+ */
 const CONSTRAINTS: Record<DistCategory, PlanConstraints> = {
-  '5k':    { longRunWoWMaxPct: 30, taperDropMinPct: 20, weeklyVolWoWMaxPct: 50 },
-  '10k':   { longRunWoWMaxPct: 30, taperDropMinPct: 25, weeklyVolWoWMaxPct: 50 },
-  'hm':    { longRunWoWMaxPct: 30, taperDropMinPct: 30, weeklyVolWoWMaxPct: 50 },
-  'm':     { longRunWoWMaxPct: 30, taperDropMinPct: 30, weeklyVolWoWMaxPct: 50 },
+  '5k':    { longRunWoWMaxPct: 30, taperDropMinPct: 20, taperDropMaxPct: 35, weeklyVolWoWMaxPct: 50 },
+  '10k':   { longRunWoWMaxPct: 30, taperDropMinPct: 22, taperDropMaxPct: 40, weeklyVolWoWMaxPct: 50 },
+  'hm':    { longRunWoWMaxPct: 30, taperDropMinPct: 26, taperDropMaxPct: 50, weeklyVolWoWMaxPct: 50 },
+  'm':     { longRunWoWMaxPct: 30, taperDropMinPct: 36, taperDropMaxPct: 60, weeklyVolWoWMaxPct: 50 },
   // #12 (audit 2026-06-16) · 'ultra' is now its own category (was bucketed as
   // 'm' by generate's old categorizer, which capped the ultra long run at the
-  // marathon ceiling). Same WoW/taper caps as the marathon; the long-run CAP
-  // itself is raised in longRunCapMi below to the ultra peak-long band.
-  'ultra': { longRunWoWMaxPct: 30, taperDropMinPct: 30, weeklyVolWoWMaxPct: 50 },
+  // marathon ceiling). The long-run CAP itself is raised in longRunCapMi below
+  // to the ultra peak-long band.
+  'ultra': { longRunWoWMaxPct: 30, taperDropMinPct: 40, taperDropMaxPct: 70, weeklyVolWoWMaxPct: 50 },
 };
 
 // Context-aware long-run cap. Kept separate from CONSTRAINTS because it
@@ -270,7 +303,22 @@ export function validateComposedPlan(
     // ramp big, so let the build-length curve govern (1.10^buildWeeks) with a higher backstop; non-ultra
     // keeps 8×. (Mirrors longRunCapMi already being raised per distance.)
     const flatCap = cat === 'ultra' ? 20.0 : 8.0;
-    const ceiling = rampBase * Math.min(flatCap, Math.pow(1.10, Math.max(1, buildWeeks)) * 1.15);
+    // DOCTRINE-7b (2026-08-17) · THE SAME 10% RULE, GENERALISED A SECOND TIME.
+    //
+    // This ceiling was `1.10^buildWeeks`, tracking what the generator's ramp used
+    // to be. When the generator's general-case ramp was re-sourced (see
+    // goal-tiers.ts GENERAL_RAMP_CEILING — Research/00a §"Volume progression
+    // rules", trained 15%/wk, novice 20%/wk, against §"The 10% rule —
+    // reconsidered" which says the 10% figure is not well supported), this
+    // validator kept the old number and began rejecting plans the generator was
+    // now correctly authoring: 48 beginner archetypes in the all-user sweep,
+    // every one a low-base runner on a short runway.
+    //
+    // "One doctrinal quantum, N disagreeing constants" is a named drift pattern
+    // and the fix for it is to have ONE constant. Both sites now read the same
+    // table, keyed to the same experience level, so they cannot diverge again.
+    const rampPerWeek = GENERAL_RAMP_CEILING[ctx.level ?? 'intermediate'];
+    const ceiling = rampBase * Math.min(flatCap, Math.pow(rampPerWeek, Math.max(1, buildWeeks)) * 1.15);
     // VCP-1 (2026-06-23) · allow a small absolute slack so a peak the composer floored to a clean whole mile
     // that lands a fraction over the exponential ceiling (15.0 vs 14.79) isn't rejected on a display-equal
     // boundary — a genuine multi-mile overshoot still fires. Mirrors the §6 WoW small-absolute exemption.
@@ -339,6 +387,32 @@ export function validateComposedPlan(
             `Taper bottoms at ${deepest}mi, only ${Math.round(deepestDrop)}% below peak ${peakVol}mi ` +
             `(need ≥${c.taperDropMinPct}% by race) — taper too shallow`,
           );
+        }
+        // DOCTRINE-1b · the OTHER end of the band. Research/08 §9.1 states a
+        // volume reduction RANGE per distance; a taper deeper than the range's
+        // ceiling is not a safer taper, it is detraining before a race. This is
+        // the check that was structurally missing — it is what would have caught
+        // the marathon's 0.45 factor being applied to a 5K.
+        if (deepestDrop > c.taperDropMaxPct) {
+          violations.push(
+            `Taper bottoms at ${deepest}mi, ${Math.round(deepestDrop)}% below peak ${peakVol}mi ` +
+            `(max ${c.taperDropMaxPct}% for this distance, Research/08 §9.1) — taper too deep`,
+          );
+        }
+        // DOCTRINE-1b · and each pre-race taper week against the shared model
+        // the generator used, so a layout or reconciliation pass cannot quietly
+        // flatten the descent that volumeCurve authored. taperW is ordered
+        // chronologically and the race week is excluded, so the last entry is
+        // always two weeks out.
+        for (let i = 0; i < taperW.length; i++) {
+          const wksLeft = taperW.length - i + 1;   // +1 · the race week is not in taperW
+          const expected = peakVol * taperFactor(cat, wksLeft);
+          if (taperW[i].weeklyMi > expected * 1.15 + 0.5) {
+            violations.push(
+              `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi vs the doctrine target ` +
+              `${Math.round(expected * 10) / 10}mi at ${wksLeft} weeks out (Research/08 §9.1) — taper week too shallow`,
+            );
+          }
         }
         for (let i = 0; i < taperW.length; i++) {
           if (taperW[i].weeklyMi > peakVol * 1.02) {

@@ -737,7 +737,49 @@ export function vdotFromRun(input: {
  * loader's job is only to deliver every candidate the fade can still see.
  */
 export const FADE_PER_14D = 0.1;
-export const FADE_TAIL_DAYS = 120;
+
+/**
+ * DOCTRINE-2 (2026-08-17) · THE FRESHNESS WINDOW IS 56 DAYS, NOT 180.
+ *
+ * `bestRecentVdot`'s `lookbackDays` defaulted to 180 and every caller passed
+ * 180 explicitly. `Research/01-pace-zones-vdot.md` §"Freshness window" is a
+ * four-row table that says the opposite:
+ *
+ *   | 0-4 weeks  | Fresh signal. Use without adjustment.                     |
+ *   | 4-8 weeks  | Slightly stale. Still usable...                           |
+ *   | 8-12 weeks | Stale... Use only as a floor, prompt for a fresh test.     |
+ *   | 12+ weeks  | Expired. Don't anchor pace prescription on this VDOT.      |
+ *
+ * and §"Implementation notes" writes the rule directly at this engine:
+ * "**Window** — use ≤56 days as the canonical freshness window."
+ *
+ * 180 days is 3.5× that, and this one constant sets every prescribed pace for
+ * every runner in the app. Three bands now, matching the doc's own rows:
+ *
+ *   age ≤ 56 d   FULL VALUE. The canonical anchor.
+ *   56 - 84 d    FLOOR ONLY. Still an honest read, but it cannot outrank
+ *                in-window evidence however large it is — doctrine's "use only
+ *                as a floor". With nothing fresher it still anchors, because a
+ *                floor you have beats a guess you don't.
+ *   > 84 d       EXPIRED. Not a candidate. Refuse to anchor.
+ *
+ * COHERENCE WITH THE F1 FADE AND FRESH-RACE PRECEDENCE (both landed earlier
+ * today, `c05fad5b`). Neither is reverted; both are re-scoped onto the doctrine
+ * window. The fade still smooths the exit — it now runs across the 56-84 day
+ * floor-only band instead of 180-300 — so an anchor still glides out rather
+ * than cliffing. Fresh-race precedence still fires; it is now a strictly
+ * narrower case of the floor-only demotion below (a fresh race is one kind of
+ * in-window evidence), and is kept because it is the case doctrine names
+ * explicitly: "Use field test or recent race instead."
+ *
+ * FADE_TAIL_DAYS is the width of the floor-only band, so the loader's fetch
+ * window (`windowDays + FADE_TAIL_DAYS`) lands exactly on the expiry line.
+ *
+ * Cite: Research/01-pace-zones-vdot.md §"Freshness window" · §"Implementation notes"
+ */
+export const VDOT_FULL_VALUE_DAYS = 56;
+export const VDOT_EXPIRY_DAYS = 84;
+export const FADE_TAIL_DAYS = VDOT_EXPIRY_DAYS - VDOT_FULL_VALUE_DAYS;
 
 /**
  * 2026-08-17 · FRESH-RACE PRECEDENCE over faded anchors.
@@ -815,7 +857,7 @@ export interface BelowTableAnchor {
 export function bestRecentVdot(
   races: Array<{ slug: string; name: string; date: string; priority: 'A'|'B'|'C'|null; distance_mi: number | null; finish_seconds: number | null }>,
   todayISO: string,
-  lookbackDays = 180,
+  lookbackDays = VDOT_FULL_VALUE_DAYS,
   runs?: Array<{
     id: string;
     date: string;
@@ -883,15 +925,25 @@ export function bestRecentVdot(
     });
   }
 
-  // FRESH-RACE PRECEDENCE (see FRESH_RACE_PRECEDENCE_DAYS above): a race
-  // inside the 4-week fresh band demotes every fade-tail candidate (age >
-  // lookbackDays) below the in-window field, regardless of magnitude.
-  // Run candidates live in a 60-day loader window so in practice only races
-  // can be demoted; the predicate is uniform anyway.
-  const freshRaceExists = raceCandidates.some(
-    (c) => c.age_days <= FRESH_RACE_PRECEDENCE_DAYS);
-  const demoted = (c: { age_days: number }): boolean =>
-    freshRaceExists && c.age_days > lookbackDays;
+  // DOCTRINE-2 · FLOOR-ONLY DEMOTION. Research/01 §"Freshness window" calls an
+  // 8-12 week anchor stale and says to "use only as a floor". So a candidate
+  // past the full-value window ranks below EVERY in-window candidate, however
+  // much larger it is — it can still anchor when nothing fresher exists (a
+  // floor you have beats a guess you don't), but it can never outrank current
+  // evidence. This generalises the fresh-race precedence added earlier today:
+  // a fresh race is one kind of in-window evidence, and the ≤28-day race case
+  // doctrine names explicitly ("use field test or recent race instead") is
+  // preserved verbatim below as the reason this rule exists.
+  //
+  // Note run candidates arrive from a 60-day loader window, so in practice it
+  // is races that get demoted; the predicate is uniform anyway.
+  const floorOnly = (c: { age_days: number }): boolean => c.age_days > lookbackDays;
+  const inWindowRaceExists = raceCandidates.some((c) => !floorOnly(c));
+  // The soft-cap ceiling is resolved from RACES only (runs are what it bounds,
+  // so including them would be circular). Semantics are unchanged from the
+  // fresh-race-precedence version — only the window moved.
+  const demotedForCeiling = (c: { age_days: number }): boolean =>
+    inWindowRaceExists && floorOnly(c);
 
   // AUDIT #8 · soft-cap ceiling for training-derived candidates. The best RAW
   // race VDOT in scope is the last hard proof of fitness; a training estimate
@@ -906,7 +958,7 @@ export function bestRecentVdot(
   // anchors to the same evidence the headline trusts. With no fresh race,
   // scope is unchanged: the best raw race in the full fade-visible window.
   const bestRaceRaw = raceCandidates.reduce<number | null>(
-    (max, c) => (demoted(c) ? max
+    (max, c) => (demotedForCeiling(c) ? max
       : (max == null || c.vdot_raw > max ? c.vdot_raw : max)), null);
   const trainingCeiling = bestRaceRaw != null
     ? bestRaceRaw + TRAINING_ESTIMATE_SOFT_CAP_VDOT : null;
@@ -1013,6 +1065,12 @@ export function bestRecentVdot(
   const runsCapBounded = trainingCeiling != null;
   const sortKey = (c: VdotCandidate) =>
     c.source === 'race' ? c.vdot : (runsCapBounded ? c.vdot : c.vdot - 1);
+  // DOCTRINE-2 · a floor-only (56-84 day) candidate ranks below every in-window
+  // candidate of either source. With no in-window evidence at all the tier term
+  // is uniform and the stale anchor still wins — it is the floor doctrine says
+  // to keep using until a fresh test replaces it.
+  const inWindowExists = inWindowRaceExists || runCandidates.some((c) => !floorOnly(c));
+  const demoted = (c: { age_days: number }): boolean => inWindowExists && floorOnly(c);
   const considered = [...raceCandidates, ...runCandidates]
     .sort((a, b) =>
       ((demoted(b) ? 0 : 1) - (demoted(a) ? 0 : 1)) ||

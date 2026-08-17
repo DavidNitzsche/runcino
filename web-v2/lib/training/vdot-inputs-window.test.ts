@@ -2,18 +2,23 @@
  * 2026-08-17 · F1 regression lock — the fade that never fired.
  *
  * vdot-anchor-fade.test.ts proves bestRecentVdot fades correctly when
- * candidates are fed IN-MEMORY. Prod cliffed anyway on Aug 1 (47.9 → 44.1
- * overnight, 15 days before the A-race) because loadVdotInputs applied a
- * hard 180-day SQL cutoff — fade-window candidates (age 180..300) never
- * left the database, so the fade had nothing to fade. That gap is exactly
- * what a unit test with in-memory fixtures cannot see.
+ * candidates are fed IN-MEMORY. Prod cliffed anyway because loadVdotInputs
+ * applied a hard `windowDays` SQL cutoff — fade-window candidates never left
+ * the database, so the fade had nothing to fade. That gap is exactly what a
+ * unit test with in-memory fixtures cannot see.
  *
  * These tests go THROUGH loadVdotInputs' windowing logic: the pool is
  * mocked, but the mock applies the date-window predicate the real SQL
- * expresses, using the cutoff parameter the code under test computed. If
- * the loader ever regresses to a hard `windowDays` fetch again, Disney
- * drops out of the returned candidates on Aug 1 and the continuity
- * assertions below cliff exactly like prod did.
+ * expresses, using the cutoff parameter the code under test computed. If the
+ * loader ever regresses to a hard `windowDays` fetch again, the anchor drops
+ * out of the returned candidates the day it crosses the full-value window and
+ * the continuity assertions below cliff exactly like prod did.
+ *
+ * DOCTRINE-2 (2026-08-17): the window itself moved from 180 + 120 days to
+ * Research/01's 56 + 28 (see vdot.ts VDOT_FULL_VALUE_DAYS). The INVARIANT
+ * under test is unchanged — the loader must fetch the whole band the fade can
+ * still see, never just the full-value window — so the scenario dates are
+ * expressed relative to the constants rather than hardcoded.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -27,7 +32,7 @@ vi.mock('@/lib/runtime/runner-tz', () => ({
 
 import { pool } from '@/lib/db/pool';
 import { loadVdotInputs } from './vdot-inputs';
-import { bestRecentVdot, FADE_TAIL_DAYS } from './vdot';
+import { bestRecentVdot, FADE_TAIL_DAYS, VDOT_FULL_VALUE_DAYS } from './vdot';
 
 const USER = 'user-uuid-test';
 
@@ -68,61 +73,88 @@ const addDays = (iso: string, n: number): string =>
 
 async function headlineVdot(today: string): Promise<number | null> {
   const { raceCandidates, runCandidates } = await loadVdotInputs(USER, today);
-  const { best } = bestRecentVdot(raceCandidates, today, 180, runCandidates, 4);
+  const { best } = bestRecentVdot(raceCandidates, today, VDOT_FULL_VALUE_DAYS, runCandidates, 4);
   return best?.vdot ?? null;
 }
 
 describe('loadVdotInputs windowing — fade-tail candidates reach bestRecentVdot', () => {
-  it('fetches races over lookbackDays + FADE_TAIL_DAYS, not a hard 180d wall', async () => {
-    // Aug 17: Disney is 197 days old — outside the old 180d SQL window,
-    // inside the fade tail. It MUST come back from the loader.
-    const { raceCandidates } = await loadVdotInputs(USER, '2026-08-17');
+  const DISNEY = '2026-02-01';
+
+  it('fetches races over windowDays + FADE_TAIL_DAYS, not a hard full-value wall', async () => {
+    // A day inside the floor-only band: past the full-value window, still
+    // visible to the fade. The loader MUST return it.
+    const inTail = addDays(DISNEY, VDOT_FULL_VALUE_DAYS + 5);
+    const { raceCandidates } = await loadVdotInputs(USER, inTail);
     expect(raceCandidates.map((r) => r.slug)).toContain('disney-half-2026');
-    // And the tail has a real end: a race older than 180 + FADE_TAIL_DAYS
-    // is legitimately excluded. Rose Bowl (2026-01-18) crosses that line
-    // 300 days later.
-    const past = await loadVdotInputs(USER, addDays('2026-01-18', 180 + FADE_TAIL_DAYS + 1));
-    expect(past.raceCandidates.map((r) => r.slug)).not.toContain('rose-bowl-half-2026');
+    // And the tail has a real end: past windowDays + FADE_TAIL_DAYS the race
+    // is legitimately excluded (Research/01: "Expired").
+    const past = await loadVdotInputs(USER, addDays(DISNEY, VDOT_FULL_VALUE_DAYS + FADE_TAIL_DAYS + 1));
+    expect(past.raceCandidates.map((r) => r.slug)).not.toContain('disney-half-2026');
   });
 
-  it('Aug 1 (the prod cliff day): Disney fades through the pipeline, no cliff', async () => {
-    const jul31 = await headlineVdot('2026-07-31');
-    const aug1 = await headlineVdot('2026-08-01');
-    // Prod: 47.9 → 44.1 overnight. Fixed pipeline: 47.9 → 47.9 (fade is
-    // 0.1 VDOT per 14 days — invisible at day granularity).
-    expect(jul31).toBe(47.9);
-    expect(aug1).toBeGreaterThanOrEqual(47.8);
-    expect(Math.abs(aug1! - jul31!)).toBeLessThanOrEqual(0.5);
-  });
-
-  it('continuity: no >0.5 single-day VDOT move from windowing alone (Jul 25 → Aug 20)', async () => {
-    let prev = await headlineVdot('2026-07-25');
-    for (let d = 1; d <= 26; d++) {
-      const today = addDays('2026-07-25', d);
-      const v = await headlineVdot(today);
-      expect(v, `headline VDOT null on ${today}`).not.toBeNull();
-      expect(Math.abs(v! - prev!), `cliff on ${today}: ${prev} → ${v}`).toBeLessThanOrEqual(0.5);
-      prev = v;
+  /** Run `fn` with only Disney in the races table.
+   *
+   *  The continuity guarantee this file exists to lock is about WINDOWING: an
+   *  aging anchor must not vanish because the loader stopped fetching it. It is
+   *  NOT a guarantee that the headline never steps — DOCTRINE-2's floor-only
+   *  demotion makes a fresher race supersede a stale one the day the stale one
+   *  leaves the full-value window, and that step is doctrine working, not a
+   *  cliff. Isolating to a single anchor tests the loader and nothing else. */
+  async function withOnlyDisney<T>(fn: () => Promise<T>): Promise<T> {
+    const saved = RACE_TABLE.splice(0, RACE_TABLE.length);
+    RACE_TABLE.push(saved.find((r) => r.slug === 'disney-half-2026')!);
+    try { return await fn(); } finally {
+      RACE_TABLE.splice(0, RACE_TABLE.length, ...saved);
     }
-    // And the endpoint is the honest glide value, matching the in-memory
-    // fade tests: 47.8 on race morning ±.
-    expect(prev).toBe(47.8);
+  }
+
+  it('the old cliff day: crossing the full-value window fades, does not vanish', async () => {
+    await withOnlyDisney(async () => {
+      const dayBefore = await headlineVdot(addDays(DISNEY, VDOT_FULL_VALUE_DAYS));
+      const dayAfter = await headlineVdot(addDays(DISNEY, VDOT_FULL_VALUE_DAYS + 1));
+      expect(dayBefore).toBe(47.9);
+      expect(dayAfter).not.toBeNull();
+      // The fade is 0.1 VDOT per 14 days — invisible at day granularity.
+      expect(Math.abs(dayAfter! - dayBefore!)).toBeLessThanOrEqual(0.5);
+    });
   });
 
-  it('Aug 17 headline through the full pipeline: 47.8 (faded Disney), not 44.1', async () => {
-    // Scenario (a) of the Aug-17 prod state — AFC result not yet logged.
-    expect(await headlineVdot('2026-08-17')).toBe(47.8);
+  it('continuity: no >0.5 single-day VDOT move from windowing alone, across the whole band', async () => {
+    await withOnlyDisney(async () => {
+      let prev: number | null = null;
+      for (let age = VDOT_FULL_VALUE_DAYS - 10; age <= VDOT_FULL_VALUE_DAYS + FADE_TAIL_DAYS; age++) {
+        const today = addDays(DISNEY, age);
+        const v = await headlineVdot(today);
+        expect(v, `headline VDOT null on ${today} (age ${age}, still in band)`).not.toBeNull();
+        if (prev != null) {
+          expect(Math.abs(v! - prev), `cliff on ${today}: ${prev} → ${v}`).toBeLessThanOrEqual(0.5);
+        }
+        prev = v;
+      }
+      // Endpoint is the honest glide value, matching the in-memory fade tests.
+      expect(prev).toBeGreaterThanOrEqual(47.6);
+      expect(prev).toBeLessThan(47.9);
+    });
   });
 
-  it('fresh race precedence survives the pipeline: logging AFC flips the anchor to it', async () => {
-    // Scenario (b): the AFC Half result (Aug 16, 1:41:53) lands in races.
+  it('past expiry the pipeline returns NO anchor rather than a stale one', async () => {
+    // Aug 17: every race in the fixture is 160+ days old. Research/01 §"Freshness
+    // window" calls 12+ weeks expired — "Don't anchor pace prescription on this
+    // VDOT. Use field test or recent race instead." The honest answer is null,
+    // and the surfaces above this fall through to their own estimate tiers.
+    expect(await headlineVdot('2026-08-17')).toBeNull();
+  });
+
+  it('fresh race precedence survives the pipeline: logging a fresh race flips the anchor to it', async () => {
+    // The AFC Half result (Aug 16, 1:41:53) lands in races. It is slower than
+    // the (expired) Disney read, and it is the only in-window evidence, so it
+    // becomes the anchor.
     RACE_TABLE.push({ slug: 'afc-half-2026', meta: { name: 'AFC Half', date: '2026-08-16', priority: 'A', distanceMi: 13.109 }, actual_result: { finishS: 6113 } });
     try {
       const { raceCandidates, runCandidates } = await loadVdotInputs(USER, '2026-08-17');
-      const { best } = bestRecentVdot(raceCandidates, '2026-08-17', 180, runCandidates, 4);
+      const { best } = bestRecentVdot(raceCandidates, '2026-08-17', VDOT_FULL_VALUE_DAYS, runCandidates, 4);
       expect(best).not.toBeNull();
-      // The faded 47.8 Disney must NOT outrank the fresh A-race reality.
-      expect(best!.age_days).toBeLessThanOrEqual(180);
+      expect(best!.age_days).toBeLessThanOrEqual(VDOT_FULL_VALUE_DAYS);
       expect(best!.vdot).toBeLessThan(45);
       expect(best!.vdot).toBeGreaterThanOrEqual(43.6);
     } finally {

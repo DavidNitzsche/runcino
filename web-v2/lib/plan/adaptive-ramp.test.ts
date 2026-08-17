@@ -79,9 +79,11 @@ describe('Adaptive ramp · tier ceiling cap', () => {
     // Sample across the matrix · 5K developing peak long band [3.5, 5]
     expect(bumpLong(4, TIER_TARGETS['5k'].developing.peakLongMiBand[1])).toBe(5);
     expect(bumpLong(5, TIER_TARGETS['5k'].developing.peakLongMiBand[1])).toBe(5);
-    // Marathon advanced [20, 22]
-    expect(bumpLong(21, TIER_TARGETS.m.advanced.peakLongMiBand[1])).toBe(22);
-    expect(bumpLong(22, TIER_TARGETS.m.advanced.peakLongMiBand[1])).toBe(22);
+    // Marathon advanced · band read from TIER_TARGETS, never hardcoded — the
+    // DOCTRINE-8 sweep moved this row to Research/22's own 22-24 mi.
+    const mAdvCeil = TIER_TARGETS.m.advanced.peakLongMiBand[1];
+    expect(bumpLong(mAdvCeil - 1, mAdvCeil)).toBe(mAdvCeil);
+    expect(bumpLong(mAdvCeil, mAdvCeil)).toBe(mAdvCeil);
     // Ultra advanced [24, 28]
     expect(bumpLong(27, TIER_TARGETS.ultra.advanced.peakLongMiBand[1])).toBe(28);
   });
@@ -148,10 +150,10 @@ describe("Adaptive ramp · doesn't exceed tier ceiling", () => {
     expect(applyBump(17, upper, 5)).toBe(17);  // even with wild bump attempt
   });
 
-  it('marathon advanced · ceiling 22mi · stays ≤ 22', () => {
-    const upper = TIER_TARGETS.m.advanced.peakLongMiBand[1];  // 22
-    expect(applyBump(21, upper, 1)).toBe(22);
-    expect(applyBump(22, upper, 2)).toBe(22);
+  it('marathon advanced · never exceeds the tier ceiling', () => {
+    const upper = TIER_TARGETS.m.advanced.peakLongMiBand[1];  // Research/22 §"Marathon — Advanced"
+    expect(applyBump(upper - 1, upper, 1)).toBe(upper);
+    expect(applyBump(upper, upper, 2)).toBe(upper);
   });
 
   it('5K developing · ceiling 5mi · stays ≤ 5', () => {

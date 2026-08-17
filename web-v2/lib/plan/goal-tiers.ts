@@ -147,6 +147,181 @@ export const RECOVERY_EFFORT_SCALE: Record<string, number> = {
   A: 1.0, B: 0.65, C: 0.35,
 };
 
+/** A race's priority as stored on `races.meta->>'priority'`. Anything absent or
+ *  unrecognised is treated as an A race — the conservative read, since an
+ *  unlabelled race is more likely a goal race than a tune-up. */
+export type RacePriority = 'A' | 'B' | 'C';
+
+export function recoveryEffortScale(priority: string | null | undefined): number {
+  const key = (priority ?? '').trim().toUpperCase();
+  return RECOVERY_EFFORT_SCALE[key] ?? RECOVERY_EFFORT_SCALE.A;
+}
+
+/**
+ * Recovery DURATION in weeks for a finished race, scaled by how hard it was
+ * actually raced.
+ *
+ * DOCTRINE-6 (2026-08-17). `RECOVERY_EFFORT_SCALE` was added the same morning
+ * as the RECOVERY-3 fix and imported nowhere, so every tune-up triggered the
+ * full A-race hole: a C-priority 10K put a runner into a week of recovery mode
+ * when Research/00b §"Recovery by Effort" asks for "2-3 easy days". This is the
+ * function that spends the constant.
+ *
+ * Scaling DURATION, never depth: a B race is a SHORTER hole, not a shallower
+ * one, so the runner re-enters the reverse taper further along rather than
+ * running a diluted version of week 1. `composeRecoveryPlan` already offsets
+ * into the profile by elapsed weeks; a scaled duration simply ends it sooner.
+ *
+ * Floors at 0 (a C-priority 5K needs no recovery WEEK at all — the day-level
+ * composer carries the 2-3 easy days) and never rounds a positive requirement
+ * away when the unscaled table asked for one: `Math.round` on 2 × 0.35 = 0.7
+ * would give 1, which is the intent — a C-effort marathon still deserves a week.
+ *
+ * Cite: Research/00b-recovery-protocols.md §"Recovery by Effort (A vs. B vs. C Race)"
+ */
+export function postRaceRecoveryWeeks(
+  cat: DistCategory,
+  priority: string | null | undefined,
+): number {
+  const full = POST_RACE_RECOVERY_WEEKS[cat];
+  if (full <= 0) return 0;
+  const scaled = full * recoveryEffortScale(priority);
+  // Round to nearest week, but never erase a non-trivial requirement: a half
+  // (2 wk) at C scale is 0.7 → 1 week, not 0.
+  return Math.max(scaled >= 0.5 ? 1 : 0, Math.round(scaled));
+}
+
+/**
+ * DOCTRINE-1 (2026-08-17) · TAPER DEPTH IS PER DISTANCE.
+ *
+ * The engine ran one taper curve — 0.82 / 0.60 / 0.45 of peak at three, two and
+ * one weeks out — for every race distance. Those three numbers are lifted from
+ * `Research/08-pacing-and-race-week.md` §9.2, whose title is "**Marathon** taper
+ * structure (3 weeks)". §9.1, one heading above it, is a five-row table:
+ *
+ *   | Distance | Taper length | Volume reduction (peak week) |
+ *   | 5K       | 5-7 days     | 25-35%                       |
+ *   | 10K      | 7-10 days    | 30-40%                       |
+ *   | Half     | 10-14 days   | 30-50%                       |
+ *   | Marathon | 14-21 days   | 40-60%                       |
+ *   | Ultra    | 14-28 days   | 50-70%                       |
+ *
+ * A 5K runner off a 30 mi/wk peak was racing on 13.5 miles where doctrine asks
+ * for 19.5-22.5. That is the same defect shape as the post-race recovery bug
+ * caught on 2026-08-17 — one row of a per-distance table applied to all rows —
+ * and it was duplicated at two sites in `generate.ts`, which is why this model
+ * is exported from here and both sites call it.
+ *
+ * SHAPE. §9.1 fixes only the DEPTH (the race week). The descent that reaches it
+ * is doctrine only for the marathon, in §9.2, so the marathon's own descent is
+ * the shape every distance uses, rescaled to its own depth. Expressed as the
+ * fraction of the total descent already spent at each week:
+ *
+ *   race week   1.000   →  1 - 1.000 × 0.55 = 0.45   (§9.2 band 40-50%)
+ *   two weeks   0.727   →  1 - 0.727 × 0.55 = 0.60   (§9.2 band 60-70%)
+ *   three weeks 0.327   →  1 - 0.327 × 0.55 = 0.82   (§9.2 band 80-90%)
+ *
+ * so the marathon reproduces its three legacy factors EXACTLY (to the two
+ * decimals the engine rounds to) and every marathon plan is byte-identical.
+ * Only the other four distances move.
+ *
+ * Cite: Research/08-pacing-and-race-week.md §9.1 (depth) + §9.2 (descent shape)
+ */
+const TAPER_DESCENT_SHAPE = [1.0, 0.727, 0.327];
+
+/**
+ * Race-week volume as a fraction of peak, per distance · the complement of
+ * §9.1's "Volume reduction (peak week)" band, taken at its midpoint.
+ *
+ * The marathon takes 0.45 rather than §9.1's midpoint of 0.50 because §9.2 is
+ * more specific for that distance (week -1 at 40-50% of peak) and 0.45 is the
+ * midpoint of the two bands' intersection. Every other distance has no §9.2, so
+ * §9.1's midpoint stands.
+ */
+export const TAPER_RACE_WEEK_PCT_OF_PEAK: Record<DistCategory, number> = {
+  '5k': 0.70,   // 25-35% cut → 65-75% remains
+  '10k': 0.65,  // 30-40% cut → 60-70% remains
+  'hm': 0.60,   // 30-50% cut → 50-70% remains
+  'm': 0.45,    // 40-60% cut ∩ §9.2's 40-50% → 45%
+  'ultra': 0.40, // 50-70% cut → 30-50% remains
+};
+
+/**
+ * Taper volume as a fraction of the block's peak week.
+ *
+ * `wksLeft` counts the race week as 1. Weeks earlier than the shape covers hold
+ * the shallowest stated factor rather than climbing back toward peak — a taper
+ * never goes back up.
+ */
+/**
+ * DOCTRINE-7 (2026-08-17) · THE 10% RULE IS REGIME-SPECIFIC.
+ *
+ * `generate.ts` capped every runner's weekly volume climb at `Math.min(1.10,
+ * …)` and cited `Research/00a` §"The 10% rule — reconsidered" as its authority.
+ * That section is the one that DEBUNKS the rule:
+ *
+ *   "The traditional 'increase weekly mileage by ≤10%' rule is not strongly
+ *   supported by recent evidence" · novices at +24%/wk over 8 wk showed no
+ *   higher injury rate than +10% over 12 (Buist RCT) · "Weekly mileage change
+ *   correlated weakly with injury" (BJSM 5,200-runner cohort).
+ *
+ * What `00a` DOES bind is the SINGLE-SESSION spike — a run >110% of the longest
+ * in the prior 30 days raises overuse risk ~64% — and the engine already
+ * enforces that, in `rampCeiling`. That is the constraint carrying the safety
+ * load; the weekly cap was riding on a citation that argues against it.
+ *
+ * ≤10%/week appears in doctrine only for three named regimes:
+ *   · injury return   — Research/05 §"Load progression" ("+≤10%/week")
+ *   · post-layoff     — Research/22 §"Return from Moderate Layoff"
+ *                       ("10% rule strictly enforced")
+ *   · youth (<14)     — Research/14 §"Youth Running Guidelines"
+ *
+ * All three live in other modules (`injury-builder.ts`, `adapt.ts`'s
+ * `RERAMP_WEEKLY_GROWTH`), which already run at 1.10 and are unchanged.
+ * `volumeCurve` is the GENERAL case, and its ceiling now comes from the row of
+ * `00a` §"Volume progression rules" that actually addresses general ramping:
+ *
+ *   | Year-on-year base growth | 5-15% per training cycle for trained
+ *   | athletes; novices safely +20-25% over 8 weeks vs. +10% over 12 |
+ *
+ * so a trained runner may climb at the top of the trained band (15%) and a
+ * novice at the FLOOR of the novice band (20%) — the conservative end of the
+ * only figure doctrine reports for that cohort.
+ *
+ * WHAT THIS CHANGES IN PRACTICE. The ceiling only binds when the geometric ramp
+ * from a runner's base to their tier peak would need more than the cap — an
+ * under-based runner on a short runway. Those runners previously got a plan the
+ * engine itself described as one where "the peak target won't be fully reached",
+ * i.e. they raced under-prepared relative to the Research/22 band for their
+ * distance and tier. The peak TARGET is unchanged and still bounds the curve, so
+ * no plan climbs past its band; runners simply reach the band they were always
+ * aimed at. Every other guard is untouched: the 110% single-session spike cap,
+ * the 50% week-over-week validator, the 1.45 post-deload cap, and a cutback
+ * every third or fourth week.
+ *
+ * Cite: Research/00a-distance-running-training.md §"Volume progression rules"
+ *       (general case) · §"The 10% rule — reconsidered" (why it is not universal)
+ * Cite: Research/05-injury-return-protocols.md · Research/22-plan-templates.md
+ *       §"Return from Moderate Layoff" (the regimes that DO take 10%)
+ */
+export const COMEBACK_RAMP_CEILING = 1.10;
+export const GENERAL_RAMP_CEILING: Record<Exclude<LevelKeyLite, null>, number> = {
+  beginner: 1.20,        // novices: 00a reports +20-25%/wk safe · take the floor
+  intermediate: 1.15,    // trained: top of the 5-15% band
+  advanced: 1.15,
+  advanced_plus: 1.15,
+};
+
+/** Local mirror of generate.ts's LevelKey · kept here to avoid a circular import. */
+export type LevelKeyLite = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
+
+export function taperFactor(cat: DistCategory, wksLeft: number): number {
+  const raceWeek = TAPER_RACE_WEEK_PCT_OF_PEAK[cat];
+  const span = 1 - raceWeek;
+  const idx = Math.min(Math.max(1, Math.round(wksLeft)), TAPER_DESCENT_SHAPE.length) - 1;
+  return Math.round((1 - TAPER_DESCENT_SHAPE[idx] * span) * 100) / 100;
+}
+
 /**
  * 2026-06-03 · Rule 12 · maintenance-mode shape per tier.
  *
@@ -210,13 +385,18 @@ export function pickPlanMode(
   nextRaceDistanceMi: number | null,
   lastRaceFinishedISO: string | null,
   lastRaceDistanceMi: number | null,
+  /** DOCTRINE-5 (2026-08-17) · the finished race's A/B/C priority. A B race
+   *  earns 60-70% of the A-race recovery duration and a C race 25-50%
+   *  (Research/00b §"Recovery by Effort"), so a tune-up no longer parks the
+   *  runner in recovery mode for the full table. Absent → treated as A. */
+  lastRacePriority?: string | null,
 ): PlanMode {
   const today = new Date(todayISO + 'T12:00:00Z').getTime();
-  // 1. Recovery check · within POST_RACE_RECOVERY_WEEKS of last race finish?
+  // 1. Recovery check · within the (effort-scaled) recovery window of the last race?
   if (lastRaceFinishedISO && lastRaceDistanceMi) {
     const lastCat = distanceCategoryOf(lastRaceDistanceMi);
     const recoveryEnd = new Date(lastRaceFinishedISO + 'T12:00:00Z').getTime()
-      + POST_RACE_RECOVERY_WEEKS[lastCat] * 7 * 86400000;
+      + postRaceRecoveryWeeks(lastCat, lastRacePriority) * 7 * 86400000;
     if (today < recoveryEnd) return 'recovery';
   }
   // 2. No next race · maintenance by default
@@ -256,19 +436,79 @@ export interface TierTarget {
  * If a row needs to change, update Research/22 FIRST, then this table.
  * The bench (generator-bench.test.ts) asserts plans match these bands ·
  * any plan-engine commit that breaks the assertions will fail CI.
+ *
+ * Tier ↔ Research/22 row: developing = "Beginner", intermediate =
+ * "Intermediate", advanced = "Advanced". `elite` has NO doctrine row — it is
+ * the engine's extrapolation above Advanced and is deliberately left alone.
+ *
+ * ── DOCTRINE-8 (2026-08-17) · THE BAND SWEEP ─────────────────────────────────
+ *
+ * `volumeCurve` targets `peakWeeklyMileageBand[0]`, so a band floor set below
+ * the doctrine row is not a conservative choice — it is the number the plan is
+ * BUILT to. A sub-3 marathoner (m/advanced) was built to 55 mi/wk against
+ * Research/22 §"Marathon — Advanced" 65-90, and their peak long capped at 22
+ * where the row says 22-24 — the band top sitting exactly on doctrine's floor.
+ *
+ * That is the same shape XTIER-1 fixed for 10K-advanced in June and did not
+ * sweep, which is the audit's "partial fix, class not swept" pattern. Swept
+ * here across every row that had it:
+ *
+ *   5k/advanced    weekly [35,50] → [40,70]   (§"5K — Advanced" 40-70)
+ *   10k/advanced   weekly [40,55] → [50,75]   (§"10K — Advanced" 50-75)
+ *   m/intermediate weekly [40,55] → [45,55]   (§"Marathon — Intermediate" 45-55)
+ *                  long   [18,20] → [20,22]   (same row, "20-22 mi")
+ *   m/advanced     weekly [55,75] → [65,90]   (§"Marathon — Advanced" 65-90)
+ *                  long   [20,22] → [22,24]   (same row, "22-24 mi")
+ *
+ * Rows already matching their doctrine row, and rows sitting ABOVE it (the
+ * developing bands, which track Research/00a's wider recreational range rather
+ * than 22's finish-focused beginner plans), are untouched.
+ *
+ * ── DOCTRINE-8b (2026-08-17) · LONG-RUN SHARE, RULED ─────────────────────────
+ *
+ * Two doctrine sources disagree, and the engine matched neither:
+ *
+ *   · Research/00a §"Volume progression rules" caps the long at "≤25-30% of
+ *     weekly volume (or by absolute time: <3.0-3.5 h for marathoners)".
+ *   · Research/22's own sample peak weeks run far above that at the low-volume
+ *     end — Marathon-Beginner is a 20-mile long inside a 37-mile week (54%),
+ *     Marathon-Intermediate 20 of 58 (34.5%) — and settle into 00a's band as
+ *     volume rises: Marathon-Advanced 22 of 76 (29%), HM-Advanced 16 of 63 (25%).
+ *
+ * OWNER RULING (David, 2026-08-17): the share is tier- and distance-dependent.
+ * "A marathon beginner's long run legitimately IS a bigger share of a small
+ * week; a 70-mpw runner's isn't." So the shares below are read off Research/22's
+ * ACTUAL sample weeks rather than invented, 00a's 25-30% governs the
+ * higher-volume tiers where the sample plans already agree with it, and the
+ * real safety bound for the low-volume/slow-runner case is the ABSOLUTE-TIME
+ * cap from 00a's own parenthetical — implemented as DOCTRINE-3 in
+ * generate.ts (`LONG_RUN_MAX_HOURS`), which is what stops a 54%-of-week long
+ * from becoming a four-hour run for someone training at 13:00/mi.
+ *
+ * Derivation, sample week where Research/22 prints one, band midpoints
+ * otherwise (peakLong mid ÷ peakWeekly mid):
+ *
+ *   5K   Beg 3.75/13.5 = .28 · Int 6.5/27.5 = .24 · Adv 10/55   = .18
+ *   10K  Beg 6.5/20    = .33 · Int 9.5/35   = .27 · Adv 14/62.5 = .22
+ *   HM   Beg 11/25     = .44 · Int 13/40    = .33 · Adv 16/63   = .25 (sample)
+ *   M    Beg 20/37     = .54 (sample) · Int 20/58 = .35 (sample) · Adv 22/76 = .29 (sample)
+ *
+ * Ultra keeps its existing shares: its rows map to race DISTANCES (50K, 50mi,
+ * 100K, 100mi) rather than experience tiers, and the back-to-back long-run
+ * option makes a single-run share non-comparable.
  */
 export const TIER_TARGETS: Record<DistCategory, Record<GoalTier, TierTarget>> = {
   '5k': {
     elite:        { peakWeeklyMileageBand: [55, 80], peakLongMiBand: [10, 14], qualityPerWeek: 3, longRunShare: 0.18, daysPerWeek: 6 },
-    advanced:     { peakWeeklyMileageBand: [35, 50], peakLongMiBand: [8, 12],  qualityPerWeek: 2, longRunShare: 0.22, daysPerWeek: 5 },
-    intermediate: { peakWeeklyMileageBand: [25, 35], peakLongMiBand: [6, 8],   qualityPerWeek: 2, longRunShare: 0.23, daysPerWeek: 4 },
-    developing:   { peakWeeklyMileageBand: [16, 24], peakLongMiBand: [3.5, 5], qualityPerWeek: 1, longRunShare: 0.20, daysPerWeek: 3 },
+    advanced:     { peakWeeklyMileageBand: [40, 70], peakLongMiBand: [8, 12],  qualityPerWeek: 2, longRunShare: 0.18, daysPerWeek: 5 }, // DOCTRINE-8 · Research/22 §"5K — Advanced" 40-70 mpw (was [35,50], floor below the row)
+    intermediate: { peakWeeklyMileageBand: [25, 35], peakLongMiBand: [6, 8],   qualityPerWeek: 2, longRunShare: 0.24, daysPerWeek: 4 },
+    developing:   { peakWeeklyMileageBand: [16, 24], peakLongMiBand: [3.5, 5], qualityPerWeek: 1, longRunShare: 0.28, daysPerWeek: 3 },
   },
   '10k': {
     elite:        { peakWeeklyMileageBand: [65, 90], peakLongMiBand: [13, 17], qualityPerWeek: 3, longRunShare: 0.20, daysPerWeek: 6 },
-    advanced:     { peakWeeklyMileageBand: [40, 55], peakLongMiBand: [13, 15], qualityPerWeek: 2, longRunShare: 0.24, daysPerWeek: 5 }, // XTIER-1 (2026-06-23) · was [10,13] — Research/22:144 10K-Advanced peak long is 13-15mi; the old top sat at research's FLOOR (RC2-2 then drives it into band, clamped ≤30%/week)
-    intermediate: { peakWeeklyMileageBand: [30, 42], peakLongMiBand: [9, 12],  qualityPerWeek: 2, longRunShare: 0.28, daysPerWeek: 5 },
-    developing:   { peakWeeklyMileageBand: [22, 30], peakLongMiBand: [6, 8],   qualityPerWeek: 1, longRunShare: 0.27, daysPerWeek: 4 },
+    advanced:     { peakWeeklyMileageBand: [50, 75], peakLongMiBand: [13, 15], qualityPerWeek: 2, longRunShare: 0.22, daysPerWeek: 5 }, // DOCTRINE-8 · Research/22 §"10K — Advanced" 50-75 mpw (was [40,55]) · XTIER-1 (2026-06-23) · was [10,13] — Research/22:144 10K-Advanced peak long is 13-15mi; the old top sat at research's FLOOR (RC2-2 then drives it into band, clamped ≤30%/week)
+    intermediate: { peakWeeklyMileageBand: [30, 42], peakLongMiBand: [9, 12],  qualityPerWeek: 2, longRunShare: 0.27, daysPerWeek: 5 },
+    developing:   { peakWeeklyMileageBand: [22, 30], peakLongMiBand: [6, 8],   qualityPerWeek: 1, longRunShare: 0.33, daysPerWeek: 4 },
   },
   'hm': {
     // Research/22 §"Half Marathon — Advanced" · sub-1:30, 45+ mpw base
@@ -276,15 +516,15 @@ export const TIER_TARGETS: Record<DistCategory, Record<GoalTier, TierTarget>> = 
     elite:        { peakWeeklyMileageBand: [70, 100], peakLongMiBand: [16, 20], qualityPerWeek: 3, longRunShare: 0.25, daysPerWeek: 7 },
     advanced:     { peakWeeklyMileageBand: [55, 85],  peakLongMiBand: [15, 17], qualityPerWeek: 2, longRunShare: 0.25, daysPerWeek: 6 },
     // Research/22 §"Half Marathon — Intermediate" · sub-2:00, 25-35 mpw base
-    intermediate: { peakWeeklyMileageBand: [35, 45],  peakLongMiBand: [12, 14], qualityPerWeek: 2, longRunShare: 0.30, daysPerWeek: 5 },
-    developing:   { peakWeeklyMileageBand: [25, 35],  peakLongMiBand: [9, 12],  qualityPerWeek: 1, longRunShare: 0.32, daysPerWeek: 4 },
+    intermediate: { peakWeeklyMileageBand: [35, 45],  peakLongMiBand: [12, 14], qualityPerWeek: 2, longRunShare: 0.33, daysPerWeek: 5 },
+    developing:   { peakWeeklyMileageBand: [25, 35],  peakLongMiBand: [9, 12],  qualityPerWeek: 1, longRunShare: 0.44, daysPerWeek: 4 },
   },
   'm': {
     // Research/22 §"Marathon — Advanced" · sub-3, 60+ mpw base
     elite:        { peakWeeklyMileageBand: [70, 100], peakLongMiBand: [22, 25], qualityPerWeek: 3, longRunShare: 0.28, daysPerWeek: 7 },
-    advanced:     { peakWeeklyMileageBand: [55, 75],  peakLongMiBand: [20, 22], qualityPerWeek: 2, longRunShare: 0.30, daysPerWeek: 6 },
-    intermediate: { peakWeeklyMileageBand: [40, 55],  peakLongMiBand: [18, 20], qualityPerWeek: 2, longRunShare: 0.34, daysPerWeek: 5 },
-    developing:   { peakWeeklyMileageBand: [30, 45],  peakLongMiBand: [16, 20], qualityPerWeek: 1, longRunShare: 0.40, daysPerWeek: 5 },
+    advanced:     { peakWeeklyMileageBand: [65, 90],  peakLongMiBand: [22, 24], qualityPerWeek: 2, longRunShare: 0.29, daysPerWeek: 6 }, // DOCTRINE-8 · Research/22 §"Marathon — Advanced" 65-90 mpw / 22-24 mi long (was [55,75]/[20,22])
+    intermediate: { peakWeeklyMileageBand: [45, 55],  peakLongMiBand: [20, 22], qualityPerWeek: 2, longRunShare: 0.35, daysPerWeek: 5 }, // DOCTRINE-8 · Research/22 §"Marathon — Intermediate" 45-55 mpw / 20-22 mi long (was [40,55]/[18,20])
+    developing:   { peakWeeklyMileageBand: [30, 45],  peakLongMiBand: [16, 20], qualityPerWeek: 1, longRunShare: 0.54, daysPerWeek: 5 }, // DOCTRINE-8b · Research/22 §"Marathon — Beginner" sample peak week: 20mi long in a 37mi week
   },
   'ultra': {
     // Research/22 §"Ultramarathon" · peak long 22-32 mi or 5-7 hr

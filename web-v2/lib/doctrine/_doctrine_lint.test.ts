@@ -150,12 +150,11 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'marathon-style 3-week taper, and the race-specific stimulus for an ultra is the long ' +
       'run rather than a pace insert. TAPER.duration-by-distance checks both against their own ' +
       'doctrine rows.',
-    'web-v2/lib/plan/validate.ts#CONSTRAINTS:hm==m':
-      'These are validator FLOORS, not prescriptions: doctrine reduction bands are 30-50% (HM), ' +
-      '40-60% (M) and 50-70% (ultra), so a shared 30% minimum drop is inside all three. ' +
-      'TAPER.minimum-volume-drop checks each against its own row.',
-    'web-v2/lib/plan/validate.ts#CONSTRAINTS:hm==ultra': 'Same shared validator floor · see CONSTRAINTS:hm==m.',
-    'web-v2/lib/plan/validate.ts#CONSTRAINTS:m==ultra': 'Same shared validator floor · see CONSTRAINTS:hm==m.',
+    // (DOCTRINE-1b, 2026-08-17) · the three CONSTRAINTS allowlist entries that
+    // used to live here are DELETED. hm/m/ultra shared a flat 30% taper floor
+    // and no ceiling at all; each row now carries its own floor AND its own
+    // §9.1 ceiling, so the values genuinely differ and the lint correctly
+    // stopped needing an exemption for them.
   };
 
   it('no distance category silently carries another category\'s value', () => {

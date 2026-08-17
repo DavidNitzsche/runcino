@@ -21,7 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import {
-  bestRecentVdot, predictRaceTime,
+  bestRecentVdot, VDOT_FULL_VALUE_DAYS, predictRaceTime,
 } from '@/lib/training/vdot';
 import { recordProjectionSnapshot } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr, ratchetUsersMaxHr } from '@/lib/training/max-hr';
@@ -63,7 +63,7 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
   // Throws on DB error — the outer loop catches per-user, logs, and continues
   // rather than storing VDOT=null from a transient failure.
   const { raceCandidates, runCandidates } = await loadVdotInputs(userUuid, today);
-  const { best } = bestRecentVdot(raceCandidates, today, 180, runCandidates, runFloorMi);
+  const { best } = bestRecentVdot(raceCandidates, today, VDOT_FULL_VALUE_DAYS, runCandidates, runFloorMi);
   const vdot = best?.vdot ?? null;
 
   // Race-anchored distance (if active plan ties to a race).

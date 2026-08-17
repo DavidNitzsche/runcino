@@ -43,7 +43,7 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildWorkoutSpec, conservativeVdotFromMileage } from './spec-builder';
 import {
-  tPaceFromVdot, iPaceFromVdot, bestRecentVdot,
+  tPaceFromVdot, iPaceFromVdot, bestRecentVdot, VDOT_FULL_VALUE_DAYS,
   vdotRunFloorMi, goalDistanceMiFromCode,
 } from '@/lib/training/vdot';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
@@ -661,7 +661,7 @@ export async function seedMaintenancePlanFromOnboarding(
   try {
     const runFloorMi = vdotRunFloorMi(goalDistanceMiFromCode(goals.ttDistance));
     const { raceCandidates, runCandidates } = await loadVdotInputs(userId, today);
-    const { best } = bestRecentVdot(raceCandidates, today, 180, runCandidates, runFloorMi);
+    const { best } = bestRecentVdot(raceCandidates, today, VDOT_FULL_VALUE_DAYS, runCandidates, runFloorMi);
     anchorVdot = best?.vdot ?? null;
   } catch {
     anchorVdot = null;

@@ -46,15 +46,22 @@
  */
 import {
   POST_RACE_RECOVERY_WEEKS,
+  postRaceRecoveryWeeks,
   RECOVERY_WEEKLY_PCT_OF_BASE,
   RECOVERY_RUN_DAYS,
   RECOVERY_LONG_PCT,
   RECOVERY_EFFORT_SCALE,
+  TAPER_RACE_WEEK_PCT_OF_PEAK,
+  taperFactor,
+  GENERAL_RAMP_CEILING,
+  COMEBACK_RAMP_CEILING,
   TIER_TARGETS,
   MAINTENANCE_BY_TIER,
   type DistCategory,
   type GoalTier,
 } from '@/lib/plan/goal-tiers';
+import { VDOT_FULL_VALUE_DAYS, VDOT_EXPIRY_DAYS, FADE_TAIL_DAYS } from '@/lib/training/vdot';
+import { expectedDaysForAnchor } from '@/lib/coach/recovery-phase';
 import {
   GAP_SHAVE_FRACTIONS,
   RERAMP_RESUME_FRACTION,
@@ -65,7 +72,7 @@ import { friel7Zones, lthrZones, pctMaxZones } from '@/lib/training/zones';
 import { lthrFromMaxHr } from '@/lib/training/lthr';
 import { vdotFromRace } from '@/lib/training/vdot';
 import type { DoctrineClaim } from './types';
-import { matchLiteral, parseBand, parsePaceBandSec, parsePctBand, sourceOf } from './resolve';
+import { matchLiteral, parseBand, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
 
 const CATS: DistCategory[] = ['5k', '10k', 'hm', 'm', 'ultra'];
 const TIERS: GoalTier[] = ['elite', 'advanced', 'intermediate', 'developing'];
@@ -89,6 +96,15 @@ function atMost(value: number, ceiling: number, what: string): void {
   if (value > ceiling) {
     throw new Error(`${what}: engine has ${value}, doctrine ceiling is ${ceiling}`);
   }
+}
+
+
+/** Research/00a §"Volume progression rules" long-run cap, as a fraction band. */
+function resolveShareCap(): [number, number] {
+  const cite = resolveCitation('Research/00a-distance-running-training.md', '### Volume progression rules');
+  const spec = cite.table().cell('Long-run cap', 'Specification');
+  const [lo, hi] = parseBand(spec);
+  return [lo / 100, hi / 100];
 }
 
 export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
@@ -236,19 +252,120 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
   {
     id: 'RECOVERY.effort-scale',
-    binds: ['lib/plan/goal-tiers.ts#RECOVERY_EFFORT_SCALE'],
+    binds: [
+      'lib/plan/goal-tiers.ts#RECOVERY_EFFORT_SCALE',
+      'lib/plan/goal-tiers.ts#postRaceRecoveryWeeks',
+      'lib/plan/goal-tiers.ts#pickPlanMode',
+      'lib/plan/generate.ts#composeRecoveryPlan',
+    ],
     doc: 'Research/00b-recovery-protocols.md',
     anchor: '### Recovery by Effort (A vs. B vs. C Race)',
     claim:
-      'Not every race earns the full recovery table. A B race takes 60-70% of A-race ' +
-      'recovery duration and a C race 25-50%. The engine scales DURATION, so an A race is ' +
-      'exactly 1.0 and the other two sit inside their stated bands.',
+      'Not every race earns the full recovery table. A B race takes 60-70% of A-race recovery ' +
+      'duration and a C race 25-50%. The engine scales DURATION, so an A race is exactly 1.0 ' +
+      'and the other two sit inside their stated bands — AND the constant is actually SPENT. A ' +
+      'scale that is declared and imported nowhere means every tune-up triggers full A-race ' +
+      'recovery, which is what shipped when this constant was first added.',
     check({ cite }) {
       const t = cite.table();
       const scale = (row: string) => parsePctBand(t.cell(row, 'Recovery scale'));
       if (RECOVERY_EFFORT_SCALE.A !== 1.0) throw new Error('an A race earns the full table · scale must be 1.0');
       within(RECOVERY_EFFORT_SCALE.B, scale('B race'), 'RECOVERY_EFFORT_SCALE.B');
       within(RECOVERY_EFFORT_SCALE.C, scale('C race / hard workout substitute'), 'RECOVERY_EFFORT_SCALE.C');
+      // WIRED: a B race must actually get a shorter hole than an A race.
+      for (const cat of CATS) {
+        const a = postRaceRecoveryWeeks(cat, 'A');
+        const b = postRaceRecoveryWeeks(cat, 'B');
+        const c = postRaceRecoveryWeeks(cat, 'C');
+        if (a !== POST_RACE_RECOVERY_WEEKS[cat]) {
+          throw new Error(`postRaceRecoveryWeeks(${cat}, 'A') is ${a} · an A race earns the full table (${POST_RACE_RECOVERY_WEEKS[cat]})`);
+        }
+        if (b > a || c > b) {
+          throw new Error(`postRaceRecoveryWeeks(${cat}) does not shorten with priority: A=${a} B=${b} C=${c}`);
+        }
+        if (a >= 2 && b >= a) {
+          throw new Error(`postRaceRecoveryWeeks(${cat}, 'B') is ${b} · a B race must be a SHORTER hole than ${a}`);
+        }
+      }
+      // And the two places a recovery window is decided both consult it.
+      for (const [file, needle] of [
+        ['web-v2/lib/plan/goal-tiers.ts', 'postRaceRecoveryWeeks(lastCat, lastRacePriority)'],
+        ['web-v2/lib/plan/generate.ts', 'postRaceRecoveryWeeks(lastCat,'],
+      ] as const) {
+        if (!sourceOf(file).includes(needle)) {
+          throw new Error(`${file} decides a recovery window without the effort scale · it will give a tune-up the full A-race hole`);
+        }
+      }
+    },
+  },
+  {
+    id: 'RECOVERY.denominator-is-peak',
+    binds: [
+      'lib/plan/goal-tiers.ts#RECOVERY_WEEKLY_PCT_OF_BASE',
+      'lib/plan/generate.ts#recentPeakWeeklyMileage',
+      'lib/plan/generate.ts#composeRecoveryPlan.peakAnchor',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Marathon Recovery (4-week reverse taper)',
+    claim:
+      'The reverse taper\'s weekly volumes are stated as a percentage of PEAK — the column ' +
+      'header says so in as many words. Multiplying them by a trailing AVERAGE instead lands ' +
+      'the whole recovery block roughly a third low, because the four weeks before a marathon ' +
+      'are peak-taper-taper-race and their mean is nothing the runner ever trained at. The ' +
+      'engine must therefore read a real peak week, and the reader must exist.',
+    check({ cite }) {
+      if (!/vs\.\s*peak/i.test(cite.table().headers.join(' '))) {
+        throw new Error('the reverse-taper column is no longer stated "vs. peak" · re-read the claim');
+      }
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/async function recentPeakWeeklyMileage\(/.test(src)) {
+        throw new Error('no peak-week reader in generate.ts · the reverse taper is being multiplied by an average');
+      }
+      if (/recentPeakWeeklyMi: inputs\.compose\.recentWeeklyMi\b/.test(src)) {
+        throw new Error(
+          'recentPeakWeeklyMi is wired to the 28-day mean again ("proxy when peak unknown") · ' +
+            'a percentage of peak multiplied by an average is not a percentage of peak',
+        );
+      }
+      if (!/recentPeakWeeklyMi: Math\.max\(recentPeakWeeklyMi,/.test(src)) {
+        throw new Error('composeRecoveryPlan is no longer fed the real peak week');
+      }
+    },
+  },
+  {
+    id: 'RECOVERY.quality-ready-day',
+    binds: ['lib/coach/recovery-phase.ts#expectedDays'],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Distance | Total recovery days (no quality) | Days of zero/very-light running |',
+    claim:
+      'The day a runner may next do quality work after a race is a column in the distance ' +
+      'table — "Return to quality workouts" — and the coach surface must read it. It used to ' +
+      'answer day 5 for a half while the plan engine, reading the SAME document one column ' +
+      'over, held quality for 14 days. One runner, two surfaces, opposite advice. The surface ' +
+      'may take the earliest day its band allows, never earlier, and never later than the ' +
+      'band ends.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'Return to quality workouts';
+      const probe: [DistCategory, number][] = [['5k', 3.1], ['10k', 6.2], ['hm', 13.1], ['m', 26.2]];
+      for (const [cat, mi] of probe) {
+        const cell = t.cell(DOC_ROW[cat], col);
+        // Marathon is stated in WEEKS ("Week 3-4"); the rest in days.
+        const mult = /week/i.test(cell) ? 7 : 1;
+        const [lo, hi] = parseBand(cell).map((n) => n * mult) as [number, number];
+        within(expectedDaysForAnchor('race', mi), [lo, hi], `recovery-phase quality-ready day after a ${cat}`);
+      }
+      // And it must not contradict the plan engine, which holds quality for the
+      // whole of POST_RACE_RECOVERY_WEEKS.
+      for (const [cat, mi] of probe) {
+        const engineDays = POST_RACE_RECOVERY_WEEKS[cat] * 7;
+        if (engineDays > 0 && expectedDaysForAnchor('race', mi) * 2 < engineDays) {
+          throw new Error(
+            `recovery-phase says quality-ready on day ${expectedDaysForAnchor('race', mi)} after a ${cat} ` +
+              `while the plan engine holds quality for ${engineDays} days · the two surfaces disagree`,
+          );
+        }
+      }
     },
   },
 
@@ -280,90 +397,230 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
   {
     id: 'TAPER.depth-per-week',
-    binds: ['lib/plan/generate.ts#volumeCurve.taperFactor', 'lib/plan/generate.ts#finalizeComposedPlan.factor'],
+    binds: [
+      'lib/plan/goal-tiers.ts#TAPER_RACE_WEEK_PCT_OF_PEAK',
+      'lib/plan/goal-tiers.ts#taperFactor',
+      'lib/plan/generate.ts#volumeCurve',
+      'lib/plan/generate.ts#finalizeComposedPlan',
+    ],
     doc: 'Research/08-pacing-and-race-week.md',
-    anchor: '### 9.2 Marathon taper structure (3 weeks)',
+    anchor: '| Distance | Taper length | Volume reduction (peak week) |',
     claim:
-      'The taper descends through stated bands of peak volume: three weeks out, two weeks ' +
-      'out, race week. Both places the engine writes these factors must land inside the ' +
-      "matching band, and they must agree with each other — they are the same doctrine.",
+      'How deep the taper cuts is set PER DISTANCE: a 5K sheds a quarter to a third of peak ' +
+      'volume, a marathon nearly half, an ultra more. The race-week factor for every distance ' +
+      'must land inside its own row of the reduction table — and there must be exactly ONE ' +
+      'model, called from both places the engine writes a taper, because the defect this ' +
+      'replaces was the marathon row hardcoded at two sites and applied to all five distances.',
     check({ cite }) {
       const t = cite.table();
-      const bandFor = (wk: string) => parsePctBand(t.cell(wk, 'Volume'));
+      const docRow: Record<DistCategory, string> = { ...DOC_ROW, ultra: 'Ultra (50K-100M)' };
+      for (const cat of CATS) {
+        // §9.1 states the REDUCTION; the engine stores what REMAINS.
+        const [cutLo, cutHi] = parsePctBand(t.cell(docRow[cat], 'Volume reduction (peak week)'));
+        const remains: [number, number] = [1 - cutHi, 1 - cutLo];
+        within(TAPER_RACE_WEEK_PCT_OF_PEAK[cat], remains, `TAPER_RACE_WEEK_PCT_OF_PEAK.${cat}`);
+        // taperFactor must agree with the table at the race week, and must
+        // DESCEND monotonically toward it from further out. A taper that goes
+        // back up is not a taper.
+        if (taperFactor(cat, 1) !== TAPER_RACE_WEEK_PCT_OF_PEAK[cat]) {
+          throw new Error(`taperFactor(${cat}, 1) does not equal the race-week depth for that distance`);
+        }
+        for (const w of [2, 3]) {
+          if (taperFactor(cat, w) <= taperFactor(cat, w - 1)) {
+            throw new Error(`taperFactor(${cat}) does not descend between ${w} and ${w - 1} weeks out`);
+          }
+          if (taperFactor(cat, w) > 1) throw new Error(`taperFactor(${cat}, ${w}) exceeds peak volume`);
+        }
+      }
+      // ONE model, both sites. The two hardcoded ternaries are gone; both
+      // callers now go through goal-tiers' taperFactor.
       const src = sourceOf('web-v2/lib/plan/generate.ts');
-      const re = /wksLeft === 1 \? (\d*\.?\d+) : wksLeft === 2 \? (\d*\.?\d+) : (\d*\.?\d+)/g;
-      const sites = [...src.matchAll(re)];
-      if (sites.length < 2) {
+      const calls = [...src.matchAll(/taperFactor\(taperCat, wksLeft\)/g)].length;
+      if (calls < 2) {
         throw new Error(
-          `expected the taper factors at both the volumeCurve and finalizeComposedPlan sites · found ${sites.length}`,
+          `expected both the volumeCurve and finalizeComposedPlan sites to call the shared ` +
+            `taperFactor model · found ${calls}`,
         );
       }
-      for (const s of sites) {
-        const [raceWk, twoOut, threeOut] = [Number(s[1]), Number(s[2]), Number(s[3])];
-        within(threeOut, bandFor('-3'), 'taper factor, three weeks out');
-        within(twoOut, bandFor('-2'), 'taper factor, two weeks out');
-        within(raceWk, bandFor('-1'), 'taper factor, race week');
-      }
-      const distinct = new Set(sites.map((s) => `${s[1]}/${s[2]}/${s[3]}`));
-      if (distinct.size !== 1) {
-        throw new Error(`the two taper sites disagree: ${[...distinct].join(' vs ')}`);
+      if (/wksLeft === 1 \? [\d.]+ : wksLeft === 2 \?/.test(src)) {
+        throw new Error('a hardcoded taper-factor ternary is back in generate.ts · it must read the shared model');
       }
     },
   },
   {
-    id: 'TAPER.minimum-volume-drop',
-    binds: ['lib/plan/validate.ts#CONSTRAINTS.taperDropMinPct'],
+    id: 'TAPER.marathon-descent-shape',
+    binds: ['lib/plan/goal-tiers.ts#taperFactor'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 9.2 Marathon taper structure (3 weeks)',
+    claim:
+      'The marathon is the one distance whose week-by-week descent doctrine states outright: ' +
+      '80-90% of peak three weeks out, 60-70% two weeks out, 40-50% race week. The shared ' +
+      'descent shape every distance is rescaled from is the marathon\'s own, so the marathon ' +
+      'must reproduce all three of its bands exactly.',
+    check({ cite }) {
+      const t = cite.table();
+      const bandFor = (wk: string) => parsePctBand(t.cell(wk, 'Volume'));
+      within(taperFactor('m', 3), bandFor('-3'), 'marathon taper factor, three weeks out');
+      within(taperFactor('m', 2), bandFor('-2'), 'marathon taper factor, two weeks out');
+      within(taperFactor('m', 1), bandFor('-1'), 'marathon taper factor, race week');
+    },
+  },
+  {
+    id: 'TAPER.validator-band-is-two-sided',
+    binds: [
+      'lib/plan/validate.ts#CONSTRAINTS.taperDropMinPct',
+      'lib/plan/validate.ts#CONSTRAINTS.taperDropMaxPct',
+    ],
     doc: 'Research/08-pacing-and-race-week.md',
     anchor: '| Distance | Taper length | Volume reduction (peak week) |',
     claim:
-      'The validator floor for how much a taper must drop may not be stricter than the ' +
-      'shallowest reduction doctrine allows for that distance, and may never be zero — a ' +
-      'validator that demands more than doctrine will reject correct plans, and one that ' +
-      'demands nothing lets a peak week masquerade as a taper.',
+      'Every doctrine band has two ends and the validator must check both. The floor may not ' +
+      'be stricter than the shallowest reduction doctrine allows for that distance (a validator ' +
+      'demanding more than doctrine rejects correct plans) and may never be zero. The CEILING ' +
+      'is the deepest reduction the row allows — without it, a taper that cuts a 5K by 55% ' +
+      'passes clean, which is exactly how the marathon row survived being applied to all five ' +
+      'distances.',
     check({ cite }) {
       const t = cite.table();
       const src = sourceOf('web-v2/lib/plan/validate.ts');
       const docRow: Record<DistCategory, string> = { ...DOC_ROW, ultra: 'Ultra (50K-100M)' };
       for (const cat of CATS) {
-        const m = matchLiteral(
-          src,
-          new RegExp(`'${cat}':\\s*\\{[^}]*taperDropMinPct:\\s*(\\d+)`),
-          `CONSTRAINTS['${cat}'].taperDropMinPct`,
+        const row = new RegExp(
+          `'${cat}':\\s*\\{[^}]*taperDropMinPct:\\s*(\\d+)[^}]*taperDropMaxPct:\\s*(\\d+)`,
         );
-        const pct = Number(m[1]);
-        const [lo] = parseBand(t.cell(docRow[cat], 'Volume reduction (peak week)'));
-        if (pct <= 0) throw new Error(`CONSTRAINTS['${cat}'].taperDropMinPct is ${pct} · a taper must drop volume`);
-        atMost(pct, lo, `CONSTRAINTS['${cat}'].taperDropMinPct`);
+        const m = matchLiteral(src, row, `CONSTRAINTS['${cat}'] taper band`);
+        const [floorPct, ceilPct] = [Number(m[1]), Number(m[2])];
+        const [lo, hi] = parseBand(t.cell(docRow[cat], 'Volume reduction (peak week)'));
+        if (floorPct <= 0) throw new Error(`CONSTRAINTS['${cat}'].taperDropMinPct is ${floorPct} · a taper must drop volume`);
+        atMost(floorPct, lo, `CONSTRAINTS['${cat}'].taperDropMinPct`);
+        if (ceilPct !== hi) {
+          throw new Error(
+            `CONSTRAINTS['${cat}'].taperDropMaxPct is ${ceilPct} · doctrine's deepest stated ` +
+              `reduction for this distance is ${hi}%`,
+          );
+        }
+        if (floorPct >= ceilPct) {
+          throw new Error(`CONSTRAINTS['${cat}'] taper band is inverted: floor ${floorPct} ≥ ceiling ${ceilPct}`);
+        }
+      }
+    },
+  },
+
+  // ══ LONG RUN · ABSOLUTE TIME ══════════════════════════════════════════════
+  {
+    id: 'LONGRUN.absolute-time-cap',
+    binds: ['lib/plan/generate.ts#LONG_RUN_MAX_HOURS', 'lib/plan/generate.ts#layoutWeek'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      "Doctrine's long-run cap has two clauses and the second is an ABSOLUTE TIME bound: " +
+      '"or by absolute time: <3.0-3.5 h for marathoners". The engine cited that clause as its ' +
+      'reason for letting the marathon long exceed the percentage cap, and never implemented ' +
+      'it — so the bound doing the permitting did no bounding. The ceiling is read out of the ' +
+      'doctrine cell, and the cap is actually applied against the runner\'s own easy pace.',
+    check({ cite }) {
+      const spec = cite.table().cell('Long-run cap', 'Specification');
+      // The parenthetical carries the hours; parseBand strips parentheses, so
+      // read the clause directly.
+      const clause = spec.match(/absolute time:\s*[^)]*/i);
+      if (!clause) {
+        throw new Error('the long-run cap no longer states an absolute-time alternative · re-read the claim');
+      }
+      const hours = parseBand(clause[0].replace(/[–—]/g, '-'));
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      const engine = Number(matchLiteral(src, /const LONG_RUN_MAX_HOURS = (\d*\.?\d+);/, 'LONG_RUN_MAX_HOURS')[1]);
+      within(engine, hours, 'LONG_RUN_MAX_HOURS');
+      // And it is WIRED. A ceiling nobody multiplies by is the defect this claim exists for.
+      if (!/LONG_RUN_MAX_HOURS \* 3600/.test(src)) {
+        throw new Error('LONG_RUN_MAX_HOURS is declared but never applied to a long run · implement the cap or delete it');
       }
     },
   },
 
   // ══ WEEKLY RAMP ═══════════════════════════════════════════════════════════
   {
-    id: 'RAMP.ten-percent-rule',
+    id: 'RAMP.ten-percent-is-regime-specific',
     binds: [
-      'lib/plan/generate.ts#volumeCurve.climbFactor',
-      'lib/plan/seed-from-onboarding.ts#buildProgressiveCurve',
+      'lib/plan/goal-tiers.ts#COMEBACK_RAMP_CEILING',
       'lib/plan/adapt.ts#RERAMP_WEEKLY_GROWTH',
+      'lib/plan/seed-from-onboarding.ts#buildProgressiveCurve',
     ],
     doc: 'Research/05-injury-return-protocols.md',
     anchor: 'weekly mileage +≤10%/week',
     claim:
-      'Weekly mileage climbs by at most ten percent a week. Every place the engine ramps ' +
-      'volume — the build curve, the onboarding seed, and the comeback re-ramp — uses that ' +
-      'same ceiling, and the number is read out of the doctrine sentence rather than assumed.',
+      'The ten-percent rule is doctrine for COMEBACK regimes — injury return, post-layoff, ' +
+      'youth — and the engine holds those paths to it exactly, reading the number out of the ' +
+      'doctrine sentence. It is NOT the general-case ramp; see RAMP.general-case-ceiling for ' +
+      'why, and note that the doc states it as "convention, not strongly evidence-supported ' +
+      'but a reasonable safety margin", which is an honest basis for a comeback cap and not ' +
+      'for a universal one.',
     check({ cite }) {
       const stated = parseBand(cite.section[0].replace(/.*weekly mileage \+/, ''))[0];
       const ceiling = 1 + stated / 100;
-      const sites: [string, string, RegExp][] = [
-        ['web-v2/lib/plan/generate.ts', 'climbFactor', /const climbFactor = Math\.min\((\d*\.?\d+),/],
-        ['web-v2/lib/plan/seed-from-onboarding.ts', 'buildProgressiveCurve', /current \* (\d*\.?\d+)\)\);/],
-      ];
-      for (const [file, binding, re] of sites) {
-        const v = Number(matchLiteral(sourceOf(file), re, binding)[1]);
-        atMost(v, ceiling, `${binding} weekly ramp factor`);
+      if (COMEBACK_RAMP_CEILING !== ceiling) {
+        throw new Error(`COMEBACK_RAMP_CEILING is ${COMEBACK_RAMP_CEILING} · doctrine states ${ceiling}`);
       }
       atMost(RERAMP_WEEKLY_GROWTH, ceiling, 'RERAMP_WEEKLY_GROWTH');
+      const seed = Number(
+        matchLiteral(
+          sourceOf('web-v2/lib/plan/seed-from-onboarding.ts'),
+          /current \* (\d*\.?\d+)\)\);/,
+          'buildProgressiveCurve',
+        )[1],
+      );
+      atMost(seed, ceiling, 'onboarding-seed weekly ramp factor');
+    },
+  },
+  {
+    id: 'RAMP.general-case-ceiling',
+    binds: [
+      'lib/plan/goal-tiers.ts#GENERAL_RAMP_CEILING',
+      'lib/plan/generate.ts#volumeCurve.climbFactor',
+      'lib/plan/validate.ts#safe-ramp ceiling',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'For a runner who is not coming back from anything, doctrine\'s general ramp figures are ' +
+      'in the base-growth row: trained athletes 5-15%, novices "safely +20-25% over 8 weeks". ' +
+      'The engine\'s per-experience ceiling must sit inside those figures — no higher than the ' +
+      'novice number doctrine actually reports for a novice, no higher than the trained number ' +
+      'for everyone else, and never below the comeback cap (a healthy runner may not be held ' +
+      'to a stricter ramp than someone returning from injury). Both places the app bounds a ' +
+      'ramp — the generator and the validator that judges it — must read this same table, ' +
+      'because "one doctrinal quantum, N disagreeing constants" is how the validator ended up ' +
+      'rejecting plans the generator was correctly authoring.',
+    check({ cite }) {
+      const spec = cite.table().cell('Year-on-year base growth', 'Specification');
+      const trained = parseBand(spec.split(';')[0]);            // 5-15
+      const novice = parseBand(spec.replace(/^[^;]*;\s*/, ''));  // 20-25
+      const trainedCeil = 1 + trained[1] / 100;
+      const noviceCeil = 1 + novice[1] / 100;
+      for (const [level, v] of Object.entries(GENERAL_RAMP_CEILING)) {
+        const ceiling = level === 'beginner' ? noviceCeil : trainedCeil;
+        atMost(v, ceiling, `GENERAL_RAMP_CEILING.${level}`);
+        if (v < COMEBACK_RAMP_CEILING) {
+          throw new Error(
+            `GENERAL_RAMP_CEILING.${level} is ${v}, below the ${COMEBACK_RAMP_CEILING} comeback ` +
+              'cap · a healthy runner may not ramp more slowly than an injury return',
+          );
+        }
+      }
+      // A novice ramps at least as fast as a trained runner · that is the whole
+      // point of the exception doctrine records.
+      if (GENERAL_RAMP_CEILING.beginner < GENERAL_RAMP_CEILING.intermediate) {
+        throw new Error('GENERAL_RAMP_CEILING gives a novice a stricter ramp than a trained runner · doctrine says the opposite');
+      }
+      // Both bounding sites read the table · neither hardcodes a factor.
+      for (const file of ['web-v2/lib/plan/generate.ts', 'web-v2/lib/plan/validate.ts']) {
+        if (!/GENERAL_RAMP_CEILING\[/.test(sourceOf(file))) {
+          throw new Error(`${file} does not read GENERAL_RAMP_CEILING · it is bounding a ramp with its own number`);
+        }
+      }
+      // The dead per-experience table this replaced must stay dead.
+      if (/^\s*const RAMP_PCT\b/m.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
+        throw new Error('RAMP_PCT is back in generate.ts · the live ramp table is GENERAL_RAMP_CEILING');
+      }
     },
   },
   {
@@ -373,7 +630,8 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     anchor: '### Volume progression rules',
     claim:
       'A single run beyond 110% of the longest run in the prior 30 days raises overuse-injury ' +
-      'risk by about 64%. The long-run ramp ceiling must not step past that multiple.',
+      'risk by about 64%. This — not the weekly ramp — is the load constraint doctrine actually ' +
+      'evidences, so the long-run ramp ceiling must not step past that multiple.',
     check({ cite }) {
       const t = cite.table();
       const stated = parseBand(t.cell('Single-session spike threshold', 'Specification'))[0] / 100;
@@ -384,43 +642,6 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       );
       atMost(seed, stated, 'long-run ramp seed vs the single-session spike threshold');
       atMost(step, stated, 'long-run per-step ramp vs the single-session spike threshold');
-    },
-  },
-  {
-    id: 'RAMP.novice-exception-unused',
-    binds: ['lib/plan/generate.ts#volumeCurve.climbFactor'],
-    doc: 'Research/00a-distance-running-training.md',
-    anchor: '### Volume progression rules',
-    claim:
-      'Doctrine records an exception — novices tolerated +20-25% over 8 weeks in trial data — ' +
-      'but the engine deliberately does not take it: one ramp ceiling applies to everyone. ' +
-      'That is the safe side of the exception, and this claim exists so the decision is ' +
-      'visible rather than accidental. If a per-experience ramp is ever introduced it must ' +
-      'not exceed the novice figure doctrine actually reports.',
-    check({ cite, exempt }) {
-      const spec = cite.table().cell('Year-on-year base growth', 'Specification');
-      const noviceCeiling = 1 + parseBand(spec.replace(/^[^;]*;\s*/, ''))[1] / 100;
-      const src = sourceOf('web-v2/lib/plan/generate.ts');
-      const climb = Number(matchLiteral(src, /const climbFactor = Math\.min\((\d*\.?\d+),/, 'climbFactor')[1]);
-      atMost(climb, noviceCeiling, 'climbFactor against the novice exception ceiling');
-      // A per-experience ramp table that is declared but never read is worse than
-      // no table: it reads as doctrine being applied when nothing applies it.
-      if (/^\s*const RAMP_PCT\b/m.test(src) && !/RAMP_PCT\[/.test(src) && !exempt('ramp-pct-dead')) {
-        throw new Error(
-          'RAMP_PCT is declared in generate.ts but never read. Either wire it (and re-check ' +
-            'it against this claim) or delete it.',
-        );
-      }
-    },
-    exempt: {
-      'ramp-pct-dead':
-        'KNOWN VIOLATION (found seeding this registry, 2026-08-17). generate.ts declares ' +
-        'RAMP_PCT { beginner 0.05, intermediate 0.07, advanced 0.07, advanced_plus 0.08 } with a ' +
-        'Research/ citation block, and nothing reads it — the live ramp is the flat ' +
-        'Math.min(1.10, …) at generate.ts:791. VOLUME_FLOOR_MPW next to it is neutralised the ' +
-        'same way by a `void floor`. Left alone here because deleting engine code is the ' +
-        "audit's call, not the gate's; recorded so the next reader does not mistake it for live " +
-        'per-experience doctrine.',
     },
   },
 
@@ -509,36 +730,95 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
 
   // ══ LONG RUN ══════════════════════════════════════════════════════════════
   {
-    id: 'LONGRUN.share-of-weekly-volume',
+    id: 'LONGRUN.share-is-tier-and-distance-dependent',
     binds: ['lib/plan/goal-tiers.ts#TIER_TARGETS.longRunShare'],
-    doc: 'Research/00a-distance-running-training.md',
-    anchor: '### Volume progression rules',
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 4. Marathon Plans',
     claim:
-      'The long run is capped at 25-30% of weekly volume, with an explicit alternative for ' +
-      'marathoners of an absolute time ceiling instead. Every tier target is checked against ' +
-      "the stated share; marathon and ultra tiers may instead use doctrine's absolute-time " +
-      'route, which in practice permits a larger share at low weekly volume.',
-    check({ cite, exempt }) {
-      const spec = cite.table().cell('Long-run cap', 'Specification');
-      const share = parseBand(spec)[1] / 100;
-      // Doctrine's "or by absolute time" clause is written for marathoners.
-      const absoluteTimeRoute = new Set<DistCategory>(['m', 'ultra']);
+      'TWO DOCTRINE SOURCES DISAGREE HERE, AND THE OWNER RULED ON THE RECONCILIATION ' +
+      '(David, 2026-08-17). Research/00a §"Volume progression rules" caps the long run at ' +
+      '25-30% of the week. Research/22\'s own sample peak weeks run far above that at the ' +
+      'low-volume end — a Marathon-Beginner long is 20 miles inside a 37-mile week — and ' +
+      'settle into 00a\'s band as volume rises. The ruling: "a marathon beginner\'s long run ' +
+      'legitimately IS a bigger share of a small week; a 70-mpw runner\'s isn\'t." So the ' +
+      'share is a function of tier and distance, read off Research/22\'s actual sample weeks; ' +
+      '00a\'s 25-30% governs the higher-volume tiers where the sample plans already agree with ' +
+      'it; and the safety bound for the low-volume, slow-runner case is 00a\'s OWN absolute-time ' +
+      'clause, checked by LONGRUN.absolute-time-cap. This claim holds the reconciliation to its ' +
+      'terms: every share must be under the doctrine row it came from, the shares must DESCEND ' +
+      'as the tier rises (that is the whole ruling), and the advanced tiers must land inside ' +
+      "00a's band.",
+    check({ cite }) {
+      // The engine's tiers map onto Research/22's named cohorts.
+      const TIER_ROW: Record<string, string> = {
+        developing: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced',
+      };
+      const DOC_SECTION: Partial<Record<DistCategory, string>> = {
+        '5k': '5K', '10k': '10K', hm: 'Half Marathon', m: 'Marathon',
+      };
+      const doc = cite.doc;
+      const all = sourceOf(doc).split('\n');
+      /** peak weekly + peak long bands off a "### <Distance> — <Cohort>" block. */
+      const rowBands = (distance: string, cohort: string): { weekly: [number, number]; long: [number, number] } => {
+        const at = all.findIndex((l) => l.startsWith('### ') && l.includes(distance) && l.includes(cohort));
+        if (at < 0) throw new Error(`DOCTRINE · no "### ${distance} — ${cohort}" section in ${doc}`);
+        const block = all.slice(at, at + 20);
+        const cell = (label: string) => {
+          const line = block.find((l) => l.includes(`| ${label} |`));
+          if (!line) throw new Error(`DOCTRINE · no "${label}" row under ${distance} — ${cohort} in ${doc}`);
+          return line.split('|')[2];
+        };
+        return { weekly: parseBand(cell('Peak weekly volume')), long: parseBand(cell('Peak long run')) };
+      };
+
+      const [ceilLo, ceilHi] = (() => {
+        const spec = resolveShareCap();
+        return spec;
+      })();
+
       for (const cat of CATS) {
-        for (const tier of TIERS) {
-          const v = TIER_TARGETS[cat][tier].longRunShare;
-          const ceiling = absoluteTimeRoute.has(cat) ? 0.40 : share;
-          if (v > ceiling && exempt(`${cat}.${tier}`)) continue;
-          atMost(v, ceiling, `TIER_TARGETS.${cat}.${tier}.longRunShare`);
+        const section = DOC_SECTION[cat];
+        // Ultra rows map to race DISTANCES, not experience tiers, and the
+        // back-to-back long option makes a single-run share non-comparable.
+        if (!section) continue;
+        let prev = Infinity;
+        for (const tier of ['developing', 'intermediate', 'advanced'] as const) {
+          const share = TIER_TARGETS[cat][tier].longRunShare;
+          const { weekly, long } = rowBands(section, TIER_ROW[tier]);
+          // Read off the doc: the largest share the row can express — its
+          // biggest long inside its smallest week. Research/22 prints a literal
+          // sample peak week for several of these cohorts (HM-Advanced is 16 mi
+          // in 63, Marathon-Beginner 20 in 37) and every one of them falls
+          // inside this bound, so it accommodates the sample weeks the ruling
+          // says to derive from while still catching an invented number.
+          const docShare = long[1] / weekly[0];
+          if (share > docShare + 0.01) {
+            throw new Error(
+              `TIER_TARGETS.${cat}.${tier}.longRunShare is ${share} · Research/22 ` +
+                `§"${section} — ${TIER_ROW[tier]}" implies ${docShare.toFixed(2)}`,
+            );
+          }
+          // THE RULING: the share must fall as the tier rises.
+          if (share > prev) {
+            throw new Error(
+              `TIER_TARGETS.${cat}: ${tier} takes a LARGER long-run share (${share}) than the ` +
+                `tier below it (${prev}) · the ruling is that the share shrinks as volume grows`,
+            );
+          }
+          prev = share;
+          // And the top tiers land inside 00a's band, where the sample plans agree with it.
+          if (tier === 'advanced' && share > ceilHi + 0.005) {
+            throw new Error(
+              `TIER_TARGETS.${cat}.advanced.longRunShare is ${share} · at this volume the sample ` +
+                `plans agree with Research/00a's ${ceilLo * 100}-${ceilHi * 100}% cap`,
+            );
+          }
+        }
+        // `elite` has no Research/22 row · hold it to the advanced share.
+        if (TIER_TARGETS[cat].elite.longRunShare > TIER_TARGETS[cat].advanced.longRunShare + 0.01) {
+          throw new Error(`TIER_TARGETS.${cat}.elite.longRunShare exceeds the advanced tier's · elite trains more volume, not a bigger share`);
         }
       }
-    },
-    exempt: {
-      'hm.developing':
-        'KNOWN VIOLATION (found seeding this registry, 2026-08-17). A developing half runner ' +
-        'gets longRunShare 0.32 against a 0.30 doctrine ceiling, and the absolute-time ' +
-        'alternative is written for marathoners, so it does not cover this row. The peak long ' +
-        'band [9, 12] against a peak weekly band [25, 35] is the underlying tension: a 12-mile ' +
-        'long off a 35-mile week is 34%. Recorded, not loosened; the engine audit owns it.',
     },
   },
   {
@@ -586,6 +866,133 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
                 `the doctrine volume range for ${docRow[cat]} (${lo}-${hi} mi/wk)`,
             );
           }
+        }
+      }
+    },
+  },
+  {
+    id: 'VOLUME.band-floor-is-what-plans-are-built-to',
+    binds: [
+      'lib/plan/goal-tiers.ts#TIER_TARGETS.peakWeeklyMileageBand',
+      'lib/plan/goal-tiers.ts#TIER_TARGETS.peakLongMiBand',
+      'lib/plan/generate.ts#volumeCurve.peakTarget',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 4. Marathon Plans',
+    claim:
+      'volumeCurve builds to peakWeeklyMileageBand[0], so a band FLOOR set below the doctrine ' +
+      "row is not a conservative choice — it is the number the plan reaches. Equally, a band " +
+      'CEILING resting exactly on the doctrine row\'s floor caps the peak long at the least ' +
+      'doctrine allows. Every tier band must therefore contain its Research/22 row rather than ' +
+      'sit under it. This is the shape XTIER-1 fixed for one row in June without sweeping the ' +
+      'class, which is how a sub-3 marathoner came to be built to 55 mi/wk against a 65-90 row.',
+    check({ cite }) {
+      const TIER_ROW: Record<string, string> = {
+        developing: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced',
+      };
+      const DOC_SECTION: Partial<Record<DistCategory, string>> = {
+        '5k': '5K', '10k': '10K', hm: 'Half Marathon', m: 'Marathon',
+      };
+      const all = sourceOf(cite.doc).split('\n');
+      const rowBands = (distance: string, cohort: string) => {
+        const at = all.findIndex((l) => l.startsWith('### ') && l.includes(distance) && l.includes(cohort));
+        if (at < 0) throw new Error(`DOCTRINE · no "### ${distance} — ${cohort}" section in ${cite.doc}`);
+        const block = all.slice(at, at + 20);
+        const cell = (label: string) => {
+          const line = block.find((l) => l.includes(`| ${label} |`));
+          if (!line) throw new Error(`DOCTRINE · no "${label}" row under ${distance} — ${cohort}`);
+          return line.split('|')[2];
+        };
+        return { weekly: parseBand(cell('Peak weekly volume')), long: parseBand(cell('Peak long run')) };
+      };
+      for (const cat of CATS) {
+        const section = DOC_SECTION[cat];
+        if (!section) continue;   // ultra rows are distance-keyed · see VOLUME.tier-peak-bands
+        for (const tier of ['developing', 'intermediate', 'advanced'] as const) {
+          const { weekly, long } = rowBands(section, TIER_ROW[tier]);
+          const [wLo] = TIER_TARGETS[cat][tier].peakWeeklyMileageBand;
+          const [, lHi] = TIER_TARGETS[cat][tier].peakLongMiBand;
+          if (wLo < weekly[0]) {
+            throw new Error(
+              `TIER_TARGETS.${cat}.${tier}.peakWeeklyMileageBand floor is ${wLo} · plans are BUILT ` +
+                `to this number and Research/22 §"${section} — ${TIER_ROW[tier]}" says ${weekly[0]}-${weekly[1]}`,
+            );
+          }
+          if (lHi < long[0]) {
+            throw new Error(
+              `TIER_TARGETS.${cat}.${tier}.peakLongMiBand ceiling is ${lHi}, at or under the ` +
+                `doctrine row's FLOOR of ${long[0]} · the XTIER-1 shape`,
+            );
+          }
+        }
+      }
+    },
+  },
+
+  // ══ VDOT ANCHOR FRESHNESS ═════════════════════════════════════════════════
+  {
+    id: 'VDOT.anchor-freshness-window',
+    binds: [
+      'lib/training/vdot.ts#VDOT_FULL_VALUE_DAYS',
+      'lib/training/vdot.ts#VDOT_EXPIRY_DAYS',
+      'lib/training/vdot.ts#bestRecentVdot',
+      'lib/training/vdot-inputs.ts#loadVdotInputs',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '| Time since race | Validity for current fitness                                  |',
+    claim:
+      'A race result is a reading of fitness ON RACE DAY, and doctrine states exactly how long ' +
+      'it stays usable: fresh to 4 weeks, slightly stale to 8, stale to 12 ("use only as a ' +
+      'floor"), expired after that ("Don\'t anchor pace prescription on this VDOT"). This one ' +
+      'constant sets every prescribed pace for every runner in the app, so the full-value ' +
+      'window and the expiry line are read out of the doctrine table rather than chosen: the ' +
+      'full-value window is where "still usable" ends, and expiry is where "use only as a ' +
+      'floor" ends. No caller may widen them.',
+    check({ cite }) {
+      const t = cite.table();
+      // Rows are stated in weeks; the boundary of each band is its upper edge.
+      const upperWeeks = (predicate: RegExp) => {
+        const row = t.rows.find((r) => predicate.test(r[t.headers[1]]));
+        if (!row) throw new Error(`DOCTRINE · no freshness row matching ${predicate} in ${cite.doc}`);
+        return parseBand(row[t.headers[0]])[1];
+      };
+      const stillUsableDays = upperWeeks(/still usable/i) * 7;              // 8 weeks → 56
+      const floorOnlyDays = upperWeeks(/only as a floor/i) * 7;             // 12 weeks → 84
+      if (VDOT_FULL_VALUE_DAYS !== stillUsableDays) {
+        throw new Error(
+          `VDOT_FULL_VALUE_DAYS is ${VDOT_FULL_VALUE_DAYS} · doctrine's "still usable" band ends ` +
+            `at ${stillUsableDays} days`,
+        );
+      }
+      if (VDOT_EXPIRY_DAYS !== floorOnlyDays) {
+        throw new Error(
+          `VDOT_EXPIRY_DAYS is ${VDOT_EXPIRY_DAYS} · doctrine calls an anchor expired after ` +
+            `${floorOnlyDays} days`,
+        );
+      }
+      // The doc writes the rule at this engine in prose too · both must agree.
+      const stated = resolveCitation(cite.doc, 'use ≤56 days as the canonical freshness window');
+      if (!stated.text().includes('canonical freshness window')) {
+        throw new Error('the implementation note stating the canonical window has moved · re-read the claim');
+      }
+      // The fade tail must land exactly on the expiry line, or the loader
+      // fetches a band the selector will not honour (or starves one it will).
+      if (VDOT_FULL_VALUE_DAYS + FADE_TAIL_DAYS !== VDOT_EXPIRY_DAYS) {
+        throw new Error(
+          `the fade tail (${FADE_TAIL_DAYS}d) does not carry the full-value window to expiry · ` +
+            `${VDOT_FULL_VALUE_DAYS} + ${FADE_TAIL_DAYS} ≠ ${VDOT_EXPIRY_DAYS}`,
+        );
+      }
+      // No caller may pass its own, wider window. The 180-day literal that used
+      // to appear at four call sites is the defect this guards.
+      for (const file of [
+        'web-v2/lib/plan/drift-monitor.ts',
+        'web-v2/lib/plan/seed-from-onboarding.ts',
+        'web-v2/app/api/cron/snapshot-projections/route.ts',
+        'web-v2/app/api/targets/projection/route.ts',
+      ]) {
+        if (/bestRecentVdot\([^)]*,\s*\d+\s*,/.test(sourceOf(file))) {
+          throw new Error(`${file} passes a hardcoded lookback to bestRecentVdot · it must pass VDOT_FULL_VALUE_DAYS`);
         }
       }
     },

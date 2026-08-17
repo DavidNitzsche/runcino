@@ -35,7 +35,7 @@ import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAn
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
-import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, BUILD_WINDOW_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory } from './goal-tiers';
+import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, BUILD_WINDOW_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING } from './goal-tiers';
 import { isBaseBuildingPlan } from './plan-templates';
 import { distanceMiFromLabel } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
@@ -330,6 +330,42 @@ async function recentWeeklyMileage(userId: string): Promise<number> {
 }
 
 /**
+ * DOCTRINE-4 (2026-08-17) · the runner's actual PEAK training week, mi.
+ *
+ * The post-race reverse taper in Research/00b is stated as percentages of
+ * "Volume vs. peak". The engine had no peak reader at all — `recentPeakWeeklyMi`
+ * was wired to the 28-day MEAN with the comment "proxy when peak unknown" — so
+ * every recovery percentage was multiplied by an average and the whole reverse
+ * taper landed roughly a third low. This reads the real thing.
+ *
+ * WINDOW. 16 weeks back from today, which spans a full build block: the peak
+ * week of a marathon build sits 3-4 weeks before the race, and recovery mode
+ * arms from race day, so a 16-week look-back always contains it. Longer would
+ * start reaching into the PREVIOUS season's peak, which is not the peak this
+ * recovery is unwinding.
+ *
+ * BUCKETING. Rolling 7-day sums rather than calendar weeks, because a runner
+ * whose big week straddles a Sunday boundary has a real peak the calendar
+ * split in two. Returns 0 when there is no history (cold start), which leaves
+ * the caller's `max(peak, mean)` floor to supply the anchor exactly as before.
+ */
+async function recentPeakWeeklyMileage(userId: string, todayISO: string): Promise<number> {
+  const { mileageByDay, isoDaysBefore } = await import('@/lib/runs/volume');
+  const WINDOW_DAYS = 112; // 16 weeks
+  const fromISO = isoDaysBefore(todayISO, WINDOW_DAYS);
+  const byDay = await mileageByDay(userId, fromISO, todayISO).catch(() => new Map());
+  if (byDay.size === 0) return 0;
+  const dayMi = (iso: string): number => (byDay.get(iso)?.mi ?? 0);
+  let peak = 0;
+  for (let end = 0; end < WINDOW_DAYS; end++) {
+    let sum = 0;
+    for (let k = 0; k < 7; k++) sum += dayMi(isoDaysBefore(todayISO, end + k));
+    if (sum > peak) peak = sum;
+  }
+  return Math.round(peak * 10) / 10;
+}
+
+/**
  * 2026-06-01 · runner's actual easy-day median over the last 14 days.
  *
  * Drives the easy-day distance floor in layoutWeek · prevents the
@@ -590,6 +626,22 @@ export function distanceCategoryOfPublic(raceDistanceMi: number): DistCategory {
 }
 
 /** Per-category structural numbers per Research/22 + canonical Daniels. */
+/**
+ * DOCTRINE-3 · the long run's absolute-time ceiling, hours.
+ *
+ * Research/00a §"Volume progression rules" states the long-run cap as
+ * "≤25-30% of weekly volume (or by absolute time: <3.0-3.5 h for marathoners;
+ * ultra athletes go longer)". The top of the stated band is the hard ceiling,
+ * matching how the engine reads every other doctrine band (take the permissive
+ * edge, then let the tighter distance caps bind first).
+ */
+const LONG_RUN_MAX_HOURS = 3.5;
+
+/** The slow end of the easy band the composer actually emits · spec-builder.ts
+ *  `easyHi = easyAnchorT + 120`. Kept as a named constant so the time cap and
+ *  the pace prescription cannot drift apart. */
+const EASY_BAND_SLOW_OFFSET_SEC = 120;
+
 const BLOCK_SHAPE: Record<DistCategory, { taperWeeks: number; raceSpecificCap: number }> = {
   '5k':    { taperWeeks: 1, raceSpecificCap: 2 }, // short, fast races · minimal taper
   '10k':   { taperWeeks: 2, raceSpecificCap: 3 },
@@ -685,29 +737,23 @@ function cutbackCadence(tsbAtStart?: number): number {
   return (typeof tsbAtStart === 'number' && tsbAtStart < -10) ? 3 : 4;
 }
 
-/** Experience-level volume floor + ramp tuning (Q-01 / SIM-02).
- *
- * Without these, a true beginner running 5 mpw who picks a goal race got
- * an immediate jump to 15 mpw (3× their actual base) in week 1 — way
- * over the 10% rule. With these, each level has a sensible floor that
- * matches research-grounded base mileage by experience.
- *
- * Cite: Research/00a-distance-running-training.md §Volume-Guidelines-by-Experience  // was §volume-by-experience · heading: ## Volume Guidelines by Experience and Distance
- * Cite: Research/22-plan-templates.md §minimum-base-by-level  // TODO: no matching heading in Research/22 — content exists but heading not anchored
- */
 export type LevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
-const VOLUME_FLOOR_MPW: Record<Exclude<LevelKey, null>, number> = {
-  beginner: 10,
-  intermediate: 15,
-  advanced: 20,
-  advanced_plus: 25,
-};
-const RAMP_PCT: Record<Exclude<LevelKey, null>, number> = {
-  beginner: 0.05,         // conservative 5%/wk for new runners
-  intermediate: 0.07,
-  advanced: 0.07,
-  advanced_plus: 0.08,    // capable of slightly more aggressive ramp
-};
+
+/* DOCTRINE-7 (2026-08-17) · VOLUME_FLOOR_MPW and RAMP_PCT are DELETED here.
+ *
+ * Both were declared with `Cite:` blocks and read by nothing. VOLUME_FLOOR_MPW
+ * was already neutralised by an explicit `void floor` — VAR-06 (2026-06-23)
+ * deliberately replaced it with `max(TRUE_BEGINNER_MIN_MPW, baseMi)` so a
+ * detrained runner is not jumped to a tier floor in week 1, and that decision
+ * stands. RAMP_PCT's { beginner 5%, intermediate 7%, advanced 7%,
+ * advanced_plus 8% } were uncited guesses that contradicted the flat
+ * `Math.min(1.10, …)` the engine actually ran.
+ *
+ * A dead constant carrying a citation is worse than no constant: it reads as
+ * doctrine being applied when nothing applies it, and it defeats review. The
+ * live ramp ceiling is RAMP_CEILING below; the live volume floor is
+ * TRUE_BEGINNER_MIN_MPW inside volumeCurve.
+ */
 
 /** Returns target mileage for each week 0..N-1 (chronological).
  *
@@ -717,31 +763,32 @@ const RAMP_PCT: Record<Exclude<LevelKey, null>, number> = {
  *   · cutback every 4th non-taper week to 85% of last peak
  *   · taper math unchanged
  *
- * The geometric ramp respects Research/00a §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
- * 10%/wk cap: when (peak/base)^(1/buildWeeks) > 1.10, we cap the
- * per-week growth at 10% and accept that the peak target won't be
- * fully reached. Honest about what's achievable in the runway.
+ * The geometric ramp is bounded by GENERAL_RAMP_CEILING (Research/00a
+ * §"Volume progression rules" · trained 15%/wk, novice 20%/wk). When
+ * (peak/base)^(1/climbWeeks) exceeds it we cap the per-week growth and accept
+ * that the peak target won't be fully reached — honest about the runway.
  *
- * Cite: Research/00a-distance-running-training.md §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
+ * Cite: Research/00a-distance-running-training.md §"Volume progression rules"
  * Cite: Research/22-plan-templates.md (tier targets via TIER_TARGETS)
- * Cite: Research/08-pacing-and-race-week.md §taper
+ * Cite: Research/08-pacing-and-race-week.md §9.1 (taper depth by distance)
  */
 function volumeCurve(
   baseMi: number,
   blocks: BlockPlan,
   level: LevelKey,
   tierTarget: TierTarget,
+  /** DOCTRINE-1 · race distance category · sets the TAPER's depth
+   *  (Research/08 §9.1) and the general-case ramp regime. */
+  taperCat: DistCategory,
   /** 2026-06-03 · Rule 8 · Banister TSB at generate-time. When < -10
    *  (high cumulative stress), shift cutback frequency from every 4th
    *  week to every 3rd week. null = cold-start, falls back to mod-4. */
   tsbAtStart?: number,
 ): number[] {
   const vols: number[] = [];
-  const floor = level ? VOLUME_FLOOR_MPW[level] : VOLUME_FLOOR_MPW.intermediate;
   // 2026-06-03 · mid-block doctrine RULE 4 (monotonic volume floor) ·
-  // enforced after vols are built (see end of function). `start` is
-  // already max(VOLUME_FLOOR, baseMi); the post-build sweep guarantees
-  // non-cutback non-taper weeks stay ≥ baseMi - 1.
+  // enforced after vols are built (see end of function). The post-build sweep
+  // guarantees non-cutback non-taper weeks stay ≥ baseMi - 1.
   // Cite: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md §Rule 4
   // 2026-06-20 · true-beginner volume floor. The research VOLUME_FLOOR (10
   // mpw for 'beginner') is the minimum base for a *trained* beginner; a
@@ -758,7 +805,6 @@ function volumeCurve(
   // runner already at/above the tier floor (David, any trained runner) is byte-unchanged:
   // max(6, base) == base == max(floor, base) when base >= floor >= 6.
   const TRUE_BEGINNER_MIN_MPW = 6;
-  void floor;
   const start = Math.max(TRUE_BEGINNER_MIN_MPW, baseMi);
   // Peak target · LOWER band of the tier so it's achievable from a
   // realistic base. If the runner already exceeds the lower band,
@@ -784,11 +830,17 @@ function volumeCurve(
   const climbWeeks = deloadMask.filter((d) => !d).length;
 
   // Geometric ramp factor across climb weeks (skipping deloads).
-  // Capped at 10%/week per progressive-overload doctrine.
+  // DOCTRINE-7 (2026-08-17) · the ceiling is the GENERAL-CASE ramp, keyed to
+  // experience, not the flat 1.10 that cited Research/00a §"The 10% rule —
+  // reconsidered" — the section that argues the 10% rule is NOT well supported.
+  // ≤10%/wk is doctrine for injury return, post-layoff and youth only, and those
+  // regimes ramp elsewhere (injury-builder, adapt's RERAMP_WEEKLY_GROWTH).
+  // See goal-tiers.ts GENERAL_RAMP_CEILING for the full sourcing.
   const idealFactor = climbWeeks > 1 && peakTarget > start
     ? Math.pow(peakTarget / start, 1 / (climbWeeks - 1))
     : 1.0;
-  const climbFactor = Math.min(1.10, idealFactor);
+  const rampCeilingWeekly = GENERAL_RAMP_CEILING[level ?? 'intermediate'];
+  const climbFactor = Math.min(rampCeilingWeekly, idealFactor);
 
   // Walk climb weeks · target = start * climbFactor^N where N is
   // the climbing-week index (skips deloads). Deload weeks = previous
@@ -827,11 +879,12 @@ function volumeCurve(
   if (taperPhase) {
     for (let w = 0; w < taperPhase.weeks; w++) {
       const wksLeft = taperPhase.weeks - w;
-      // Research/08 §9.2: marathon 3-week taper targets 80-90% → 60-70% → 40-50% of peak.
-      // 0.82 = midpoint of the 80-90% band for week -3; 0.60 and 0.45 are within their bands.
-      // HM taper is 2 weeks (taperWeeks=2), so the wksLeft===3 branch never fires for HM.
-      const taperFactor = wksLeft === 1 ? 0.45 : wksLeft === 2 ? 0.60 : 0.82;
-      vols.push(Math.round(lastPeak * taperFactor));
+      // DOCTRINE-1 (2026-08-17) · taper depth is PER DISTANCE. This used to be a
+      // flat 0.82/0.60/0.45 for every race — the marathon row of Research/08 §9.2
+      // applied universally, so a 5K raced off 45% of peak where §9.1 asks for
+      // 65-75%. One shared model now serves this site AND finalizeComposedPlan.
+      // Cite: Research/08 §9.1 (depth by distance) · goal-tiers.ts taperFactor.
+      vols.push(Math.round(lastPeak * taperFactor(taperCat, wksLeft)));
     }
   }
 
@@ -986,7 +1039,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -1034,6 +1087,10 @@ function layoutWeek({
    *  and every other day is rest (long/quality already land on available days
    *  via the upstream derivation). null = unrestricted (existing behaviour). */
   availableDows?: Set<number> | null;
+  /** DOCTRINE-3 · the SLOW end of the runner's own easy band, s/mi. Drives the
+   *  long run's absolute-TIME cap (Research/00a §"Volume progression rules":
+   *  "<3.0-3.5 h for marathoners"). null → no time cap (pace unknown). */
+  easyPaceSecPerMi?: number | null;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -1254,6 +1311,32 @@ function layoutWeek({
     longCap,
     rampCeiling,
   );
+  // DOCTRINE-3 (2026-08-17) · THE ABSOLUTE-TIME CAP, FINALLY IMPLEMENTED.
+  //
+  // Research/00a §"Volume progression rules": "Long-run cap | ≤25-30% of weekly
+  // volume (or by absolute time: <3.0-3.5 h for marathoners; ultra athletes go
+  // longer)". Every cap above this line is a DISTANCE cap. The DIST-1 comment a
+  // few lines up even cites the time bound as the reason the marathon long is
+  // allowed to break the percentage cap — and then never implements it, so the
+  // percentage cap was lifted on an authority that was never applied.
+  //
+  // The runners this hurts are the slowest ones, which is backwards: a 20-mile
+  // long at 13:00/mi is 4 h 20 m — an hour past doctrine's ceiling, aimed
+  // squarely at the cohort least equipped to absorb it. Faster runners were
+  // never near the bound (a 20-miler at 8:00/mi is 2 h 40 m), so this changes
+  // nothing for them.
+  //
+  // Evaluated at the SLOW end of the engine's own easy band (spec-builder's
+  // easyAnchorT + 120), because that is the pace the runner is actually
+  // permitted to run the long at — capping against a midpoint would let the
+  // permitted pace overshoot the ceiling.
+  //
+  // Ultra is exempt by the doctrine sentence itself ("ultra athletes go longer").
+  if (longCat !== 'ultra' && easyPaceSecPerMi != null && easyPaceSecPerMi > 0) {
+    const timeCapMi = Math.floor(((LONG_RUN_MAX_HOURS * 3600) / easyPaceSecPerMi) * 2) / 2;
+    // Never cap below the coherence floor a long run needs to still be a long run.
+    if (timeCapMi >= 3) longMi = Math.min(longMi, timeCapMi);
+  }
   // RP-FREQ-FLOOR (2026-06-24) · race-prep analogue of MAINT-FREQ-FLOOR. A distance-driven long
   // (marathon/ultra DIST-1 above) can over-consume a small week's budget, pinning the easy days at
   // 1mi via perEasyBudgetCap below — the same junk-run class fixed in maintenance. Race-prep can't
@@ -2165,7 +2248,9 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     ],
   } : baseTierTarget;
 
-  const vols = volumeCurve(input.recentWeeklyMi, blocks, input.level, tierTarget, input.tsbAtStart);
+  // DOCTRINE-1 · the taper's depth is keyed to the race distance (Research/08 §9.1),
+  // so the curve needs the category, not just the tier band.
+  const vols = volumeCurve(input.recentWeeklyMi, blocks, input.level, tierTarget, distanceCategoryOfTier(input.raceDistanceMi), input.tsbAtStart);
   // DIST-1 · plan-wide peak weekly volume · scales the marathon/ultra long to its doctrine band.
   const peakWeeklyMi = Math.max(1, ...vols);
   // #13 · the cadence volumeCurve used to deload, threaded into layoutWeek so
@@ -2346,6 +2431,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // advanced (incl. David) are unchanged.
       baseBuilding: isBaseBuildingPlan(distanceCategoryOf(input.raceDistanceMi), input.level),
       availableDows: input.availableDows ?? null,
+      // DOCTRINE-3 · the long run's absolute-time cap is evaluated against the
+      // runner's OWN easy pace, at the slow end of the band spec-builder emits
+      // (easyAnchorT + 120). currentT is the current-fitness anchor, which is
+      // what easy/long/recovery work paces off (PACE-E-1) — not the blended
+      // goal pace, which would flatter a slow runner into a longer long.
+      easyPaceSecPerMi: currentT != null ? currentT + EASY_BAND_SLOW_OFFSET_SEC : null,
     });
     // 2026-06-23 · SP-4 · race-week chronology guard. layoutWeek positions
     // shakeout/tune-up/easy by a circular days-before-race offset that WRAPS, so for a
@@ -2521,8 +2612,10 @@ export interface ComposeNonRaceInput {
   /** Next race (for context · maintenance plans show "X weeks until
    *  CIM build starts"). Null when no future race scheduled. */
   nextRace: { slug: string; name: string; date: string; distanceMi: number; goalPaceSec: number | null } | null;
-  /** Last race finished (recovery mode only). */
-  lastRaceFinished: { slug: string; name: string; date: string; distanceMi: number } | null;
+  /** Last race finished (recovery mode only). `priority` is the race's A/B/C
+   *  grading — DOCTRINE-5, it scales the recovery DURATION per Research/00b
+   *  §"Recovery by Effort". Absent → treated as an A race. */
+  lastRaceFinished: { slug: string; name: string; date: string; distanceMi: number; priority?: string | null } | null;
   rxQuality: ResolvedPrescriptions;
   tPaceSec: number | null;
   lthr: number | null;
@@ -2834,11 +2927,36 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     : input.lastRaceFinished.distanceMi <= 17 ? 'hm'
     : input.lastRaceFinished.distanceMi <= 30 ? 'm'
     : 'ultra';
-  const recoveryWeeks = POST_RACE_RECOVERY_WEEKS[lastCat];
+  // DOCTRINE-5 (2026-08-17) · RECOVERY_EFFORT_SCALE, finally spent. It was added
+  // the same morning as RECOVERY-3 and imported nowhere, so a B-priority tune-up
+  // triggered the full A-race hole. Research/00b §"Recovery by Effort": a B race
+  // takes 60-70% of A-race recovery DURATION, a C race 25-50%. Duration, not
+  // depth — a shorter hole, not a diluted one.
+  // A distance/priority pair that earns no recovery WEEK at all (5K at any
+  // priority; a C-effort 10K) still yields the historical one-week placeholder
+  // via the `max(1, …)` below — pickPlanMode never routes those to recovery in
+  // the first place, so this path is only reached by a direct call.
+  const recoveryWeeks = postRaceRecoveryWeeks(lastCat, input.lastRaceFinished.priority ?? null);
   // RECOVERY-2 (2026-06-23) · a mid-recovery REGEN must not restart at week 1. Offset into the reverse
   // taper by whole weeks elapsed since the race finished, and emit only the weeks that remain.
   const recoveryOff = Math.floor(Math.max(0, daysBetween(input.lastRaceFinished.date, input.startMondayISO)) / 7);
   const remainingWeeks = Math.max(1, recoveryWeeks - recoveryOff);
+  // DOCTRINE-4 (2026-08-17) · THE DENOMINATOR IS PEAK, NOT A 4-WEEK AVERAGE.
+  //
+  // RECOVERY_WEEKLY_PCT_OF_BASE multiplies this anchor, and the column it is
+  // read from in Research/00b §"Marathon Recovery (4-week reverse taper)" is
+  // headed "Volume vs. **peak**". Both inputs here were trailing AVERAGES:
+  // `recentWeeklyMi` is a 28-day mean, and `recentPeakWeeklyMi` was wired to the
+  // same value ("proxy when peak unknown"), so max() of two averages is an
+  // average. A marathoner whose true peak week was 70 but whose 4-week mean was
+  // 43 (peak, taper, taper, race week — exactly the shape of the weeks before a
+  // marathon) landed week 4 at 0.75 × 43 ≈ 32 mi, about 46% of true peak, where
+  // the doctrine row asks for 70-80%. The reverse taper reconverged on a number
+  // the runner had already left behind.
+  //
+  // `recentPeakWeeklyMi` is now a REAL peak week (see recentPeakWeeklyMileage in
+  // the loader); the max() with the mean is kept as a floor for callers that
+  // still pass a proxy, where it is a no-op.
   const peakAnchor = Math.max(input.recentPeakWeeklyMi, input.recentWeeklyMi);
 
   // RECOVERY-3 (2026-08-17) · per-distance volume profiles. Previously every
@@ -3437,17 +3555,21 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
   // 2026-06-23 · COH-4 · PROGRESSIVE taper enforcement, AFTER VOL-1 so it sees each week's REALIZED
   // day-sum. The race week's pre-race easy volume often EXCEEDS the volume-curve budget (the layout
   // places easy days the budget didn't account for), so running this on the budget missed it and
-  // left the race week ABOVE the preceding taper week (non-monotonic). Research/08 §9.2: the taper
-  // descends 80-90% → 60-70% → 40-50% of peak. Cap each taper week at BOTH its doctrine factor AND
-  // the prior taper week (strict monotonic descent); scaling all non-race days preserves easy<long.
+  // left the race week ABOVE the preceding taper week (non-monotonic). Cap each taper week at BOTH
+  // its doctrine factor AND the prior taper week (strict monotonic descent); scaling all non-race
+  // days preserves easy<long.
+  // DOCTRINE-1 (2026-08-17) · the factor is per-distance (Research/08 §9.1) and comes from the SAME
+  // shared model volumeCurve uses. It was a hardcoded marathon 0.82/0.60/0.45 here as well, so the
+  // two sites could — and did — encode the same doctrine twice and generalise the same wrong row.
   const nonTaperPeakR = Math.max(0, ...composed.weeks.filter((w) => w.phase !== 'TAPER' && !w.isRaceWeek).map((w) => w.weeklyMi ?? 0));
   if (nonTaperPeakR > 0) {
+    const taperCat = distanceCategoryOfTier(raceDistanceMi);
     const taperWeeks = composed.weeks.filter((w) => w.phase === 'TAPER');
     let priorTaper = Infinity;
     for (let i = 0; i < taperWeeks.length; i++) {
       const tw = taperWeeks[i];
       const wksLeft = taperWeeks.length - i;
-      const factor = wksLeft === 1 ? 0.45 : wksLeft === 2 ? 0.60 : 0.82;
+      const factor = taperFactor(taperCat, wksLeft);
       const target = Math.min(tw.weeklyMi, nonTaperPeakR * factor, priorTaper);
       if (tw.weeklyMi > 0 && target < tw.weeklyMi - 0.05) {
         const scale = target / tw.weeklyMi;
@@ -3455,6 +3577,53 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
           if (d.type !== 'race' && d.distanceMi > 0) d.distanceMi = Math.floor(d.distanceMi * scale * 2) / 2;
         }
         tw.weeklyMi = Math.round(tw.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
+      } else if (!tw.isRaceWeek && tw.weeklyMi > 0) {
+        // DOCTRINE-1c (2026-08-17) · THE TAPER RESCALE IS NOW SYMMETRIC.
+        //
+        // This pass only ever scaled taper weeks DOWN, so it enforced one end of
+        // the doctrine band and left the other open — the same one-sidedness the
+        // validator had. It mattered because the taper's depth is authored off
+        // the volume-curve BUDGET peak while everything downstream measures the
+        // REALIZED peak, and the two diverge whenever layoutWeek's floors (the
+        // recent-long floor, the easy-day median floor) lift realized volume
+        // above budget. A 10K beginner reporting 30 mi/wk peaked at a realized
+        // 32 and tapered to 17 — a 47% cut where Research/08 §9.1 allows 30-40%.
+        // The plan over-tapered, and nothing looked at it.
+        //
+        // Lifting back toward the doctrine target scales every non-race day
+        // proportionally, so easy<long and the day shape are preserved, and the
+        // result is still bounded by `priorTaper` (monotonic descent) and by the
+        // realized peak. The long-run WoW smoother re-runs after this block.
+        //
+        // DEADBAND: only acts when the week sits more than 12% below its target.
+        // Ordinary rounding and reconciliation land far inside that, so healthy
+        // plans — David's marathon among them — are byte-identical.
+        const doctrineTarget = Math.min(nonTaperPeakR * factor, priorTaper);
+        if (doctrineTarget > tw.weeklyMi * 1.12) {
+          // The restored miles go to the EASY days, never the long run. Two
+          // reasons, and they agree: Research/08 §9.1's own taper rules say
+          // "the largest cut is to easy mileage", so easy mileage is what a
+          // too-deep taper has over-cut; and the long is the one day bounded by
+          // the long-run WoW smoother, which has already run by this point —
+          // growing it here re-opens the >30% week-over-week jump that smoother
+          // exists to close (it did, on 51 ultra/marathon archetypes, before
+          // this was scoped to easy days).
+          const longMi = tw.days
+            .filter((d) => d.isLong && d.type !== 'race')
+            .reduce((sum, d) => sum + d.distanceMi, 0);
+          const longestMi = Math.max(0, ...tw.days.filter((d) => d.type !== 'race').map((d) => d.distanceMi));
+          const otherMi = tw.weeklyMi - longMi;
+          const wantOther = doctrineTarget - longMi;
+          if (otherMi > 0 && wantOther > otherMi) {
+            const scale = wantOther / otherMi;
+            for (const d of tw.days) {
+              if (d.type === 'race' || d.isLong || d.distanceMi <= 0) continue;
+              // easy never exceeds the week's longest run (layoutWeek's invariant).
+              d.distanceMi = Math.min(longestMi, Math.floor(d.distanceMi * scale * 2) / 2);
+            }
+            tw.weeklyMi = Math.round(tw.days.reduce((sum, d) => sum + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
+          }
+        }
       }
       priorTaper = tw.weeklyMi;
     }
@@ -3483,6 +3652,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     inputs.compose.raceDistanceMi,
     lastRaceFinished?.date ?? null,
     lastRaceDistanceMi ?? null,
+    lastRaceFinished?.priority ?? null,   // DOCTRINE-5 · effort-scaled recovery window
   );
 
   // 2026-08-17 · coaching-loop reconciliation · measured-progress gate for
@@ -3529,12 +3699,19 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     composed = composePlan(inputs.compose);
   } else {
     const tier = lookupTierTarget(inputs.compose.goalPaceSec, inputs.compose.raceDistanceMi, inputs.compose.level).tier; // VAR-01
+    // DOCTRINE-4 · read only on the non-race branch (maintenance + recovery are
+    // the two composers that anchor to peak); race-prep never touches it, so the
+    // race path takes no extra query.
+    const recentPeakWeeklyMi = await recentPeakWeeklyMileage(userId, todayISO);
     const nonRaceInput: ComposeNonRaceInput = {
       startMondayISO: inputs.compose.startMondayISO,
       level: inputs.compose.level,
       recentWeeklyMi: inputs.compose.recentWeeklyMi,
       recentLongMi: inputs.compose.recentLongMi,
-      recentPeakWeeklyMi: inputs.compose.recentWeeklyMi, // proxy when peak unknown
+      // DOCTRINE-4 · a REAL peak week, not the 28-day mean. Research/00b's
+      // reverse-taper column is headed "Volume vs. peak"; feeding it an average
+      // put marathon week 4 at ~46% of true peak against a 70-80% row.
+      recentPeakWeeklyMi: Math.max(recentPeakWeeklyMi, inputs.compose.recentWeeklyMi),
       easyDayMedianMi: inputs.compose.easyDayMedianMi,
       longRunDow: inputs.compose.longRunDow,
       restDow: inputs.compose.restDow,
@@ -3761,7 +3938,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
 async function loadLastRaceFinished(
   userId: string,
   todayISO: string,
-): Promise<{ lastRaceFinished: { slug: string; name: string; date: string; distanceMi: number } | null; lastRaceDistanceMi: number | null }> {
+): Promise<{ lastRaceFinished: { slug: string; name: string; date: string; distanceMi: number; priority: string | null } | null; lastRaceDistanceMi: number | null }> {
   const r = (await pool.query<{ slug: string; meta: any }>(
     `SELECT slug, meta FROM races
       WHERE user_uuid = $1
@@ -3789,6 +3966,10 @@ async function loadLastRaceFinished(
       name: String(m.name || r.slug),
       date: String(m.date),
       distanceMi: dMi,
+      // DOCTRINE-5 · A/B/C priority decides how much recovery the race earns
+      // (Research/00b §"Recovery by Effort"). Read here rather than re-queried
+      // downstream; the SELECT above already filters on it.
+      priority: m.priority != null ? String(m.priority) : null,
     },
     lastRaceDistanceMi: dMi,
   };
