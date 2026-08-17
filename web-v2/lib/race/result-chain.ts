@@ -62,6 +62,9 @@ export function manualResultPatch(
     finishDisplay: fmtFinish(finishS),
     source: 'manual',
     provisional: false,
+    // Retro-page confirm flow: records when the runner locked the result
+    // in (confirming or correcting an auto-logged watch_provisional).
+    confirmedAt: new Date().toISOString(),
     ...(avgHrBpm != null ? { avgHrBpm } : {}),
   };
 }

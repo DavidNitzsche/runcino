@@ -20,6 +20,7 @@ import type { RaceDetailSeed } from './views/RaceView';
 import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { userIdFromCookies } from '@/lib/auth/session';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
+import { buildRaceRetro } from '@/lib/race/retrospective';
 
 type CourseGeom = {
   trackPoints?: Array<{ lat: number; lon: number; ele: number | null }>;
@@ -263,10 +264,13 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
     ]);
     const [races, geoRow, courseLibRow] = await Promise.all([
       loadRacesState(userId),
+      // 2026-08-17 · retro: also pull actual_result (per-mile miles[],
+      // provisional flag) + plan (course phases with authored labels and
+      // target paces) — both feed the post-race retrospective build.
       pool.query(
-        `SELECT course_geometry, course_source, meta FROM races WHERE slug = $1 AND user_uuid = $2`,
+        `SELECT course_geometry, course_source, meta, actual_result, plan FROM races WHERE slug = $1 AND user_uuid = $2`,
         [slug, userId]
-      ).catch(() => ({ rows: [] as Array<{ course_geometry: CourseGeom | null; course_source: string | null; meta: Record<string, unknown> | null }> })),
+      ).catch(() => ({ rows: [] as Array<{ course_geometry: CourseGeom | null; course_source: string | null; meta: Record<string, unknown> | null; actual_result: Record<string, unknown> | null; plan: Record<string, unknown> | null }> })),
       // course_library row for the same slug — has provenance fields after
       // migration 127. When source='promoted' and contributor_count > 1,
       // RaceView surfaces a "Crowd-sourced by N runners" indicator.
@@ -332,6 +336,29 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
     const finishTime = race.finishTime ?? null;
     const pb = Boolean((meta as { pb?: boolean }).pb);
     const elevEnds = elevEndpointsFt(geom);  // #40 · caption start/finish ft
+
+    // Next A race after this one (used by the retro + the WHAT'S NEXT block).
+    const nextARow = isPast
+      ? races.aRaces.filter(r => r.date > race.date).sort((a, b) => a.date.localeCompare(b.date))[0] ?? null
+      : null;
+
+    // 2026-08-17 · post-race retrospective payload · actual_result miles,
+    // plan-phase targets vs actuals, VDOT + projection before/after, and
+    // the next-A-race read. Additive: null on upcoming races or any failure.
+    let retro = null;
+    if (isPast) {
+      try {
+        retro = await buildRaceRetro({
+          userId,
+          race,
+          nextA: nextARow,
+          actualResult: (row as { actual_result?: Record<string, unknown> | null } | null)?.actual_result ?? null,
+          plan: (row as { plan?: Record<string, unknown> | null } | null)?.plan ?? null,
+          libGeometry: (lib as { geometry_json?: unknown } | null)?.geometry_json as CourseGeometryInput | null,
+          todayISO: races.today,
+        });
+      } catch { retro = null; }
+    }
 
     return {
       slug: race.slug,
@@ -418,10 +445,8 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       retroNotes: (meta as { retroNotes?: string }).retroNotes ?? null,
       // Post-race handoff — next A race after this one + B races between.
       ...(() => {
-        if (!isPast) return { nextARace: null, bridgeRaces: [] };
-        const futureAs = races.aRaces.filter(r => r.date > race.date).sort((a, b) => a.date.localeCompare(b.date));
-        const nextA = futureAs[0] ?? null;
-        if (!nextA) return { nextARace: null, bridgeRaces: [] };
+        const nextA = nextARow;
+        if (!isPast || !nextA) return { nextARace: null, bridgeRaces: [] };
         const nextARace = { slug: nextA.slug, name: nextA.name, date: nextA.date, distanceMi: nextA.distance_mi ?? null };
         const bRaces = [...races.upcomingBs, ...races.upcomingCs]
           .filter(r => r.date > race.date && r.date < nextA.date)
@@ -432,6 +457,7 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
           .sort((a, b) => a.daysBeforeNextA - b.daysBeforeNextA);
         return { nextARace, bridgeRaces: bRaces };
       })(),
+      retro,
     };
   } catch {
     return null;

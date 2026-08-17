@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import type { FaffSeed } from '../types';
 import { CountdownLadder, CourseAnnotations, MARATHON_COUNTDOWN, StateChangeToast } from '../toolkit';
 import { RouteMap } from '../RouteMap';
-import { RaceRetrospectiveForm } from '@/components/races/RaceRetrospectiveForm';
+import { RaceRetrospective } from '@/components/races/RaceRetrospective';
+import type { RaceRetro } from '@/lib/race/retrospective';
 import { parseRaceTime } from '@/lib/training/vdot';
 
 interface RecalcResult {
@@ -125,6 +126,11 @@ export type RaceDetailSeed = {
   // between this race and that next A race. Drives the WHAT'S NEXT block.
   nextARace?: { slug: string; name: string; date: string; distanceMi: number | null } | null;
   bridgeRaces?: Array<{ name: string; date: string; daysBeforeNextA: number }>;
+  // 2026-08-17 · the post-race story payload (lib/race/retrospective.ts):
+  // resolved finish + provenance, per-mile splits, plan-phase targets vs
+  // actuals, VDOT + projection movement, next-A-race read. Null on
+  // upcoming races.
+  retro?: RaceRetro | null;
 };
 
 const FALLBACK: RaceDetailSeed = {
@@ -156,6 +162,7 @@ const FALLBACK: RaceDetailSeed = {
   contributorCount: 0,
   avgHrBpm: null, retroFelt: null, retroExecution: null, retroNotes: null,
   nextARace: null, bridgeRaces: [],
+  retro: null,
 };
 
 export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?: RaceDetailSeed; onBack: () => void }) {
@@ -303,6 +310,42 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
     setTimeout(() => setFinishAck(null), 1800);
   }
 
+  // 2026-08-17 · confirm a watch-provisional finish. POST /api/race/result
+  // is the canonical actual_result write: it re-asserts finishS, clears the
+  // provisional flag, fires the projection snapshots + next-plan chain.
+  // Correcting the time = edit the hero number first (commitFinish keeps
+  // meta in sync), then confirm.
+  const [confirming, setConfirming] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  async function confirmProvisional() {
+    const finishS = parseHMS(finishTime);
+    if (finishS <= 0 || confirming) return;
+    setConfirming(true);
+    try {
+      const res = await fetch('/api/race/result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: r.slug, finishS }),
+      });
+      if (res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setConfirmed(true);
+        if (j?.vdotAfter != null) {
+          setRecalcToast({ vdotBefore: j.vdotBefore ?? null, vdotAfter: j.vdotAfter });
+        }
+        router.refresh();
+      } else {
+        setFinishAck('error');
+        setTimeout(() => setFinishAck(null), 1800);
+      }
+    } catch {
+      setFinishAck('error');
+      setTimeout(() => setFinishAck(null), 1800);
+    } finally {
+      setConfirming(false);
+    }
+  }
+
   return (
     <>
       <div className="rp-back" onClick={onBack} role="button" tabIndex={0}>
@@ -422,6 +465,21 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
                 {finishAck === 'saved' && <span style={{ marginLeft: 8, color: 'var(--green)' }}> · saved</span>}
                 {finishAck === 'error' && <span style={{ marginLeft: 8, color: 'var(--over)' }}> · retry</span>}
               </div>
+              {/* 2026-08-17 · provenance honesty. A watch-auto-written or
+                  run-matched finish is labeled provisional with a one-tap
+                  confirm (POST /api/race/result). Correct it by editing the
+                  number above first. A confirmed chip time renders plain. */}
+              {r.retro?.provisional && finishTime && !confirmed ? (
+                <div className="rr-provrow">
+                  <span className="rr-provlbl">{r.retro.provisionalLabel ?? 'Provisional'}</span>
+                  <button type="button" className="rr-confirm" onClick={confirmProvisional} disabled={confirming}>
+                    {confirming ? 'Confirming' : 'Confirm time'}
+                  </button>
+                </div>
+              ) : null}
+              {confirmed ? (
+                <div className="rr-provrow"><span className="rr-provlbl" style={{ color: 'var(--green)', borderColor: 'rgba(62,189,65,.4)' }}>Locked in</span></div>
+              ) : null}
               <div className="rp-goals">
                 <div className="rp-goal a">
                   <div className="gk">A · GOAL</div>
@@ -439,6 +497,20 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
                   <div className="gv" style={{ color: pb ? 'var(--green)' : 'var(--mute)' }}>{pb ? 'YES' : 'NO'}</div>
                 </div>
               </div>
+              {/* Goal beside outcome, stated plain. No shame framing:
+                  the gap is a number, the story below explains it. */}
+              {(() => {
+                const fS = parseHMS(finishTime);
+                const gS = parseHMS(aGoal);
+                if (fS <= 0 || gS <= 0) return null;
+                const gap = fS - gS;
+                const disp = fmtGapShort(Math.abs(gap));
+                return (
+                  <div className="rr-herogap" style={{ color: gap <= 0 ? 'var(--green)' : 'var(--goal)' }}>
+                    {gap <= 0 ? `${disp} under goal` : `${disp} over goal`}
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             <div className="rp-count">
@@ -481,23 +553,23 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         <div className="rp-ss"><div className="k">GOAL PACE</div><div className="v">{goalPace}<small>/mi</small></div></div>
       </div>
 
-      {/* Retrospective form · past races only. Writes actual_result.finishS via
-          POST /api/race/result (canonical) and retro fields via PATCH /api/race. */}
+      {/* 2026-08-17 · post-race story. THE RACE STORY (splits vs the
+          course-phase plan) → WHAT IT MEANS (VDOT, projection movement,
+          next-race read) → RACE LOG (the notes/manual-entry form, collapsed
+          under the confirmed result instead of being the whole page). */}
       {r.isPast && (
-        <div className="band">
-          <div className="rp-sec">RETROSPECTIVE</div>
-          <RaceRetrospectiveForm
-            slug={r.slug}
-            existing={{
-              finishTime: finishTime || null,
-              pb,
-              avgHrBpm: r.avgHrBpm ?? null,
-              retroFelt: r.retroFelt ?? null,
-              retroExecution: r.retroExecution ?? null,
-              retroNotes: r.retroNotes ?? null,
-            }}
-          />
-        </div>
+        <RaceRetrospective
+          slug={r.slug}
+          retro={r.retro ?? null}
+          formExisting={{
+            finishTime: finishTime || null,
+            pb,
+            avgHrBpm: r.avgHrBpm ?? null,
+            retroFelt: r.retroFelt ?? null,
+            retroExecution: r.retroExecution ?? null,
+            retroNotes: r.retroNotes ?? null,
+          }}
+        />
       )}
 
       {/* Race week countdown · only renders inside T-7 → T-0 window. */}
@@ -629,65 +701,73 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
         </div>
       </div>
 
-      <div className="rp-sec">PACING PLAN<span className="rp-secr">Even effort for {aGoal} · {goalPace}/mi avg</span></div>
-      <div className="rp-panel rp-pace">
-        {r.pacing.map((p, i) => (
-          <div className="rp-pr" key={i}>
-            <div className="seg">{p.seg}<small>{p.sub}</small></div>
-            <div className="bar"><i style={{ width: `${p.bar}%`, background: p.barColor }} /></div>
-            <div className="pp">{p.pace}</div>
-            <div className="cum">{p.cum}</div>
-          </div>
-        ))}
-        <div className="rp-5k">
-          {r.splits.map(s => <span key={s.label}>{s.label} <b>{s.val}</b></span>)}
-        </div>
-      </div>
-
-      <div className="rp-sec">FUELING PLAN<span className="rp-secr">~70g carbs/hr · {r.gels.length} gels · fluids every aid station</span></div>
-      <div className="rp-panel">
-        <div className="rp-fuel">
-          <div className="rp-ftrack">
-            {r.gels.map((g, i) => (
-              <div key={i} className={`rp-fgel${g.caf ? ' caf' : ''}`} data-mi={g.mi} style={{ left: `${g.left}%` }} />
+      {/* Pre-race planning blocks · upcoming races only. State-driven
+          composition (CLAUDE.md): after the race the plan is history — the
+          story above shows plan vs actual, so the forward-looking pacing /
+          fueling / logistics / pre-race insight blocks stand down. */}
+      {!r.isPast && (
+        <>
+          <div className="rp-sec">PACING PLAN<span className="rp-secr">Even effort for {aGoal} · {goalPace}/mi avg</span></div>
+          <div className="rp-panel rp-pace">
+            {r.pacing.map((p, i) => (
+              <div className="rp-pr" key={i}>
+                <div className="seg">{p.seg}<small>{p.sub}</small></div>
+                <div className="bar"><i style={{ width: `${p.bar}%`, background: p.barColor }} /></div>
+                <div className="pp">{p.pace}</div>
+                <div className="cum">{p.cum}</div>
+              </div>
             ))}
+            <div className="rp-5k">
+              {r.splits.map(s => <span key={s.label}>{s.label} <b>{s.val}</b></span>)}
+            </div>
           </div>
-          <div className="rp-fx"><span>START</span><span>10K</span><span>HALF</span><span>30K</span><span>FINISH</span></div>
-        </div>
-        <div className="rp-fgrid">
-          <div className="rp-fg"><div className="k">PRE-RACE</div><div className="v">{r.preRace}</div></div>
-          <div className="rp-fg"><div className="k">ON COURSE</div><div className="v">{r.onCourse}</div></div>
-          <div className="rp-fg"><div className="k">HYDRATION</div><div className="v">{r.hydration}</div></div>
-        </div>
-      </div>
 
-      <div className="rp-sec">COURSE INSIGHT</div>
-      <div className="rp-panel rp-insight">
-        <span className="ct">COACH</span>
-        <span className="cx" dangerouslySetInnerHTML={{ __html: r.insight }} />
-      </div>
+          <div className="rp-sec">FUELING PLAN<span className="rp-secr">~70g carbs/hr · {r.gels.length} gels · fluids every aid station</span></div>
+          <div className="rp-panel">
+            <div className="rp-fuel">
+              <div className="rp-ftrack">
+                {r.gels.map((g, i) => (
+                  <div key={i} className={`rp-fgel${g.caf ? ' caf' : ''}`} data-mi={g.mi} style={{ left: `${g.left}%` }} />
+                ))}
+              </div>
+              <div className="rp-fx"><span>START</span><span>10K</span><span>HALF</span><span>30K</span><span>FINISH</span></div>
+            </div>
+            <div className="rp-fgrid">
+              <div className="rp-fg"><div className="k">PRE-RACE</div><div className="v">{r.preRace}</div></div>
+              <div className="rp-fg"><div className="k">ON COURSE</div><div className="v">{r.onCourse}</div></div>
+              <div className="rp-fg"><div className="k">HYDRATION</div><div className="v">{r.hydration}</div></div>
+            </div>
+          </div>
 
-      <div className="rp-sec">RACE LOGISTICS<span className="rp-secr">Saved to your race plan</span></div>
-      <div className="rp-logi">
-        <LogisticsItem icon={<><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>} label="START"  value={r.start.time}    detail={r.start.detail} />
-        <LogisticsItem icon={<path d="M4 16l4-8 4 5 4-9 4 12"/>}                                 label="SHUTTLE" value={r.shuttle.value} detail={r.shuttle.detail} />
-        <LogisticsItem icon={<><path d="M6 2h9l3 3v17H6z"/><path d="M9 7h6M9 11h6M9 15h4"/></>}   label="PACKET PICKUP" value={r.pickup.value} detail={r.pickup.detail} />
-        <LogisticsItem icon={<><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.5"/></>} label="FINISH" value={r.finish.value} detail={r.finish.detail} />
-      </div>
-      <div className="rp-links">
-        <div className="rp-link">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
-          Official race site
-        </div>
-        <div className="rp-link">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20l-5-2V4l5 2 6-2 5 2v14l-5-2-6 2z"/><path d="M9 6v14M15 4v14"/></svg>
-          Download GPX
-        </div>
-        <div className="rp-link">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19V5M9 19V9M14 19v-6M19 19V7"/></svg>
-          Past results &amp; weather history
-        </div>
-      </div>
+          <div className="rp-sec">COURSE INSIGHT</div>
+          <div className="rp-panel rp-insight">
+            <span className="ct">COACH</span>
+            <span className="cx" dangerouslySetInnerHTML={{ __html: r.insight }} />
+          </div>
+
+          <div className="rp-sec">RACE LOGISTICS<span className="rp-secr">Saved to your race plan</span></div>
+          <div className="rp-logi">
+            <LogisticsItem icon={<><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>} label="START"  value={r.start.time}    detail={r.start.detail} />
+            <LogisticsItem icon={<path d="M4 16l4-8 4 5 4-9 4 12"/>}                                 label="SHUTTLE" value={r.shuttle.value} detail={r.shuttle.detail} />
+            <LogisticsItem icon={<><path d="M6 2h9l3 3v17H6z"/><path d="M9 7h6M9 11h6M9 15h4"/></>}   label="PACKET PICKUP" value={r.pickup.value} detail={r.pickup.detail} />
+            <LogisticsItem icon={<><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.5"/></>} label="FINISH" value={r.finish.value} detail={r.finish.detail} />
+          </div>
+          <div className="rp-links">
+            <div className="rp-link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+              Official race site
+            </div>
+            <div className="rp-link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 20l-5-2V4l5 2 6-2 5 2v14l-5-2-6 2z"/><path d="M9 6v14M15 4v14"/></svg>
+              Download GPX
+            </div>
+            <div className="rp-link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19V5M9 19V9M14 19v-6M19 19V7"/></svg>
+              Past results &amp; weather history
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Post-race plan handoff · shows when result is logged + there's a
           future A race. Manual trigger only — runner decides when ready. */}
@@ -880,6 +960,14 @@ function elevAxisTicks(distMi: number): string[] {
  *  "1:30" → 5400 · "45:00" → 2700. Keeps this file's number/0 contract. */
 function parseHMS(t: string): number {
   return parseRaceTime((t || '').trim()) ?? 0;
+}
+/** "+11:53" style magnitude for the hero goal-gap line. */
+function fmtGapShort(sec: number): string {
+  const a = Math.round(Math.abs(sec));
+  const m = Math.floor(a / 60);
+  const s = a % 60;
+  if (m >= 60) return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 function fmtHMS(sec: number): string {
   const h = Math.floor(sec / 3600);

@@ -144,11 +144,11 @@ export function RaceRetrospectiveForm({ slug, existing }: {
             {[true, false].map((v) => (
               <button key={String(v)} onClick={() => setPb(v)}
                 style={{
-                  background: pb === v ? (v ? 'rgba(62,189,65,0.18)' : 'var(--card-2)') : 'transparent',
+                  background: pb === v ? (v ? 'rgba(62,189,65,0.18)' : 'rgba(255,255,255,.05)') : 'transparent',
                   border: `1px solid ${pb === v ? (v ? 'var(--green)' : 'var(--line)') : 'var(--line)'}`,
                   color: pb === v ? (v ? 'var(--green)' : 'var(--mute)') : 'var(--mute)',
                   borderRadius: 8, padding: '8px 14px',
-                  fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
+                  fontFamily: 'Inter,sans-serif', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
                 }}>
                 {v ? 'YES · PB' : 'NO'}
               </button>
@@ -175,7 +175,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
                 border: `1px solid ${felt === f ? 'var(--goal)' : 'var(--line)'}`,
                 color: felt === f ? 'var(--goal)' : 'var(--mute)',
                 borderRadius: 999, padding: '6px 12px',
-                fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
+                fontFamily: 'Inter,sans-serif', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
               }}>
               {f.toUpperCase()}
             </button>
@@ -188,11 +188,11 @@ export function RaceRetrospectiveForm({ slug, existing }: {
           {['Negative split', 'Even', 'Faded late', 'Went out too hot'].map((f) => (
             <button key={f} onClick={() => setExecution(f)}
               style={{
-                background: execution === f ? 'rgba(176,132,255,0.18)' : 'transparent',
-                border: `1px solid ${execution === f ? 'var(--learn)' : 'var(--line)'}`,
-                color: execution === f ? 'var(--learn)' : 'var(--mute)',
+                background: execution === f ? 'rgba(39,180,224,0.14)' : 'transparent',
+                border: `1px solid ${execution === f ? 'var(--dist)' : 'var(--line)'}`,
+                color: execution === f ? 'var(--dist)' : 'var(--mute)',
                 borderRadius: 999, padding: '6px 12px',
-                fontFamily: 'var(--f-label)', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
+                fontFamily: 'Inter,sans-serif', fontSize: 11, letterSpacing: '1px', cursor: 'pointer',
               }}>
               {f.toUpperCase()}
             </button>
@@ -212,16 +212,16 @@ export function RaceRetrospectiveForm({ slug, existing }: {
         <button onClick={submit} disabled={pending}
           style={{
             background: 'var(--green)', color: '#001', border: 'none', borderRadius: 8,
-            padding: '10px 20px', fontFamily: 'var(--f-label)', fontSize: 12, letterSpacing: '1.2px',
+            padding: '10px 20px', fontFamily: 'Inter,sans-serif', fontSize: 12, letterSpacing: '1.2px',
             cursor: pending ? 'default' : 'pointer', flexShrink: 0,
           }}>
           {pending ? 'SAVING…' : 'SAVE RETROSPECTIVE'}
         </button>
         {ack && (
           <div style={{ fontSize: 12, lineHeight: 1.6 }}>
-            <span style={{ color: 'var(--ink)' }}>{ack.text}</span>
+            <span style={{ color: 'var(--txt)' }}>{ack.text}</span>
             {ack.vdot?.after != null && (
-              <span style={{ marginLeft: 10, color: 'var(--ink)' }}>
+              <span style={{ marginLeft: 10, color: 'var(--txt)' }}>
                 {'VDOT '}
                 {ack.vdot.before != null
                   ? <>{ack.vdot.before.toFixed(1)} <span style={{ color: 'var(--mute)' }}>→</span> </>
@@ -238,7 +238,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
               <span style={{ marginLeft: 8, color: 'var(--mute)' }}>· Plan archived.</span>
             )}
             {ack.nextPlan?.ok && (
-              <span style={{ marginLeft: 8, color: 'var(--ink)' }}>
+              <span style={{ marginLeft: 8, color: 'var(--txt)' }}>
                 {`· ${ack.nextPlan.raceName} plan ready`}
                 {ack.nextPlan.weeks_generated
                   ? ` (${ack.nextPlan.weeks_generated} weeks${ack.nextPlan.compressed ? ' · compressed' : ''})`
@@ -264,7 +264,7 @@ export function RaceRetrospectiveForm({ slug, existing }: {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontFamily: 'var(--f-body)', fontSize: 10, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 6, fontWeight: 700 }}>
+      <div style={{ fontFamily: 'Inter,sans-serif', fontSize: 10, color: 'var(--mute)', letterSpacing: '1.4px', textTransform: 'uppercase', marginBottom: 6, fontWeight: 700 }}>
         {label}
       </div>
       {children}
@@ -274,7 +274,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function inputStyle(): React.CSSProperties {
   return {
-    background: 'var(--card-2)', border: '1px solid var(--line)', borderRadius: 8,
-    color: 'var(--ink)', fontFamily: 'var(--f-body)', fontSize: 14, padding: '8px 12px', width: '100%',
+    background: 'rgba(255,255,255,.05)', border: '1px solid var(--line)', borderRadius: 8,
+    color: 'var(--txt)', fontFamily: 'Inter,sans-serif', fontSize: 14, padding: '8px 12px', width: '100%',
   };
 }

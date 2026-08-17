@@ -2044,6 +2044,57 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .rp-insight .cx{font-size:14.5px;font-weight:500;line-height:1.6;opacity:.92;}
 .rp-insight .cx b{color:#FFE7C2;font-weight:700;}
 
+/* 2026-08-17 · race retrospective (post-race story) · .rr-* */
+/* hero · provisional finish + confirm affordance */
+.rr-provrow{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;flex-wrap:wrap;}
+.rr-provlbl{font-size:9.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#F3AD38;border:1px solid rgba(243,173,56,.4);border-radius:6px;padding:4px 8px;}
+.rr-confirm{font-family:Inter,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#0A0C10;background:#F6F7F8;border:0;border-radius:8px;padding:6px 12px;cursor:pointer;transition:opacity .15s;}
+.rr-confirm:hover{opacity:.85;}
+.rr-confirm:disabled{opacity:.5;cursor:wait;}
+.rr-herogap{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-top:12px;}
+/* story chart */
+.rr-chartwrap{margin:2px 0 6px;}
+.rr-chart{width:100%;height:auto;display:block;}
+.rr-legend{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:8px;font-size:9.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--mute);}
+.rr-legend span{display:inline-flex;align-items:center;gap:6px;}
+.rr-legend .sw{display:inline-block;width:14px;height:3px;border-radius:2px;}
+.rr-legend .sw.dash{height:0;border-top:2px dashed;background:none;border-radius:0;}
+.rr-legend .dot{display:inline-block;width:8px;height:8px;border-radius:50%;}
+.rr-legend .src{margin-left:auto;font-weight:600;opacity:.7;}
+/* phase table */
+.rr-table{margin-top:16px;border-top:1px solid var(--line);}
+.rr-tr{display:grid;grid-template-columns:minmax(0,1.6fr) 76px 76px 66px;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);}
+.rr-tr:last-of-type{border-bottom:none;}
+.rr-th{padding:8px 0 6px;font-size:9px;font-weight:700;letter-spacing:1.4px;color:var(--mute);border-bottom:1px solid var(--line);}
+.rr-th span:not(:first-child){text-align:right;}
+.rr-tr .rr-cph{display:flex;align-items:baseline;gap:8px;min-width:0;}
+.rr-tr .rr-cph .rr-cst{flex:0 0 auto;width:8px;height:8px;border-radius:50%;align-self:center;}
+.rr-tr .rr-cph .rr-cnm{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rr-tr .rr-cph .rr-crg{flex:0 0 auto;font-size:10px;font-weight:600;color:var(--mute);letter-spacing:.3px;}
+.rr-tr .rr-ctv{font-size:12px;font-weight:600;color:var(--mute);text-align:right;white-space:nowrap;}
+.rr-tr .rr-cav{font-family:'Oswald',sans-serif;font-size:17px;font-weight:600;letter-spacing:-.2px;text-align:right;white-space:nowrap;}
+.rr-tr .rr-cdv{font-size:12px;font-weight:700;text-align:right;white-space:nowrap;color:var(--mute);}
+.rr-tf{border-top:1px solid rgba(255,255,255,.16);}
+.rr-tf .rr-cph .rr-cnm{text-transform:uppercase;letter-spacing:1px;font-size:11px;color:var(--mute);}
+.rr-tf .rr-cav{font-size:19px;}
+.rr-tolnote{padding:8px 0 0;font-size:10px;font-weight:600;color:var(--mute);letter-spacing:.3px;}
+/* what-it-means tiles */
+.rr-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+.rr-tile{background:rgba(8,10,14,.4);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:15px 16px;}
+.rr-tile .k{font-size:10px;font-weight:700;letter-spacing:1.2px;opacity:.55;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rr-tile .v{font-family:'Oswald',sans-serif;font-size:30px;font-weight:600;letter-spacing:-1px;margin-top:7px;line-height:.9;}
+.rr-tile .s{font-size:11px;font-weight:600;color:var(--mute);margin-top:7px;letter-spacing:.2px;}
+/* race log (collapsed form) */
+.rr-logrow{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.rr-logtime{font-family:'Oswald',sans-serif;font-size:26px;font-weight:600;letter-spacing:-.5px;}
+.rr-logsub{font-size:12px;font-weight:600;color:var(--mute);}
+.rr-logbtn{margin-left:auto;font-family:Inter,sans-serif;font-size:10.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--txt);background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:7px 12px;cursor:pointer;transition:background .15s;}
+.rr-logbtn:hover{background:rgba(255,255,255,.12);}
+@media (max-width:760px){
+  .rr-tiles{grid-template-columns:1fr;}
+  .rr-tr{grid-template-columns:minmax(0,1.3fr) 62px 62px 56px;gap:8px;}
+}
+
 /* shoe selector on workout card */
 .kcv.shoe-sel{cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:color .15s;}
 .kcv.shoe-sel:hover{color:#F3AD38;}
