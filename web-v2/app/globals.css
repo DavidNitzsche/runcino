@@ -293,7 +293,7 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .kcv{font-size:13px;font-weight:600;color:#F6F7F8;line-height:1.25;}
 .wcoach{margin-top:18px;font-size:13px;font-weight:500;color:rgba(255,255,255,.8);line-height:1.5;}
 .wcoach .ct{display:inline-block;font-size:8.5px;font-weight:700;letter-spacing:1px;color:#F3AD38;border:1px solid rgba(255,206,138,.4);border-radius:5px;padding:2px 6px;margin-right:7px;}
-.etrack{position:relative;height:8px;border-radius:5px;background:linear-gradient(90deg,#27B4E0,#14C08C,#F3AD38,#D03F3F,#FC4D64);}
+.etrack{position:relative;height:8px;border-radius:5px;background:linear-gradient(90deg,#27B4E0,#3EBD41,#F3AD38,#D03F3F,#FC4D64);}
 .emark{position:absolute;bottom:15px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;transition:left .5s;}
 .emark .elbl{font-family:Inter,sans-serif;background:var(--txt);color:#0A0C10;font-weight:600;font-size:12px;letter-spacing:1.5px;padding:4px 11px;border-radius:8px;white-space:nowrap;}
 .emark .ecaret{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--txt);}
@@ -608,7 +608,7 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    row at the prior spacing. */
 .hero-v2 .effort-band .ehead{font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:42px;opacity:.9;display:flex;justify-content:space-between;gap:10px;}
 .hero-v2 .effort-band .ehead .em{opacity:.8;font-weight:600;white-space:nowrap;}
-.hero-v2 .effort-band .etrack{position:relative;height:8px;border-radius:5px;background:linear-gradient(90deg,#27B4E0,#14C08C,#F3AD38,#D03F3F,#FC4D64);}
+.hero-v2 .effort-band .etrack{position:relative;height:8px;border-radius:5px;background:linear-gradient(90deg,#27B4E0,#3EBD41,#F3AD38,#D03F3F,#FC4D64);}
 .hero-v2 .effort-band .emark{position:absolute;bottom:14px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;}
 .hero-v2 .effort-band .emark .elbl{font-family:Inter,sans-serif;background:#F6F7F8;color:#0A0C10;font-weight:600;font-size:12px;letter-spacing:1.5px;padding:4px 11px;border-radius:8px;white-space:nowrap;}
 .hero-v2 .effort-band .emark .ecaret{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #F6F7F8;}
@@ -2082,7 +2082,7 @@ a.lb.race:hover{color:#fff;border-color:rgba(208,63,63,.85);}
 
 /* fuel timeline */
 .rp-fuel{position:relative;padding:30px 4px 6px;}
-.rp-ftrack{position:relative;height:8px;border-radius:5px;background:linear-gradient(90deg,#14C08C,#F3AD38,#D03F3F,#FC4D64);}
+.rp-ftrack{position:relative;height:8px;border-radius:5px;background:linear-gradient(90deg,#3EBD41,#F3AD38,#D03F3F,#FC4D64);}
 .rp-fgel{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:#0A0C10;border:2.5px solid #F3AD38;transform:translate(-50%,-50%);box-shadow:0 0 10px rgba(255,206,138,.5);cursor:default;}
 .rp-fgel::after{content:attr(data-mi);position:absolute;bottom:20px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;color:#F3AD38;white-space:nowrap;}
 .rp-fgel.caf{border-color:#D03F3F;background:#3a1808;}
@@ -2594,7 +2594,7 @@ font-size:74px;margin-top:14px;text-shadow:0 3px 28px rgba(0,0,0,.28);}
 .gate-h .accent{background:linear-gradient(120deg,#FFE7C2,#D03F3F);-webkit-background-clip:text;background-clip:text;color:transparent;}
 .gate-sub{font-size:17px;font-weight:500;line-height:1.5;opacity:.86;margin-top:18px;max-width:420px;}
 .gate-tempbar{height:10px;border-radius:6px;margin-top:26px;max-width:420px;
-background:linear-gradient(90deg,#27B4E0,#14C08C,#F3AD38,#D03F3F,#FC4D64);box-shadow:0 6px 22px -8px rgba(0,0,0,.4);}
+background:linear-gradient(90deg,#27B4E0,#3EBD41,#F3AD38,#D03F3F,#FC4D64);box-shadow:0 6px 22px -8px rgba(0,0,0,.4);}
 .gate-railfoot{font-size:12px;font-weight:600;opacity:.66;line-height:1.6;}
 .gate-railfoot u{cursor:pointer;text-underline-offset:2px;}
 

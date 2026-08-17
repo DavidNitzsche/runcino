@@ -82,7 +82,7 @@ export function buildPacing(targetSec: number, distMi: number, netElevFt: number
   const DOWNHILL_CLOSE_CREDIT = 0.007;
 
   const spans = [
-    { start: 0,             end: distMi * 0.25, color: '#14C08C', sub: 'controlled · ease in' },
+    { start: 0,             end: distMi * 0.25, color: '#3EBD41', sub: 'controlled · ease in' },
     { start: distMi * 0.25, end: distMi * 0.50, color: '#F3AD38', sub: 'settle into rhythm' },
     { start: distMi * 0.50, end: distMi * 0.80, color: '#D03F3F', sub: 'locked in · work the middle' },
     { start: distMi * 0.80, end: distMi,        color: '#FC4D64', sub: 'empty the tank' },

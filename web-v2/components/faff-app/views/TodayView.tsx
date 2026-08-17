@@ -2378,12 +2378,13 @@ function CompletedHeroV2({
   // dark bar trough (rgba(0,0,0,.28) background) and the bright card.
   // AFC fix 2 (2026-06-09) · synced to the ONE canonical zone ladder
   // (= effort temperature scale · constants.ts ZC · Theme.swift ZoneSplit
-  // · RunDetailModal ZONE_COLOR): z1 recovery blue · z2 easy teal ·
-  // z3 long amber · z4 tempo ember · z5 intervals rose. The previous
-  // local set used the good-state green as Z2 and a one-off #7DD8E0 as
-  // Z1 · if #27B4E0 proves too dim against the dark bar trough, raise it
-  // in the palette, not per-site.
-  const zoneColors = ['#27B4E0', '#14C08C', '#F3AD38', '#D03F3F', '#FC4D64'];
+  // · RunDetailModal ZONE_COLOR): z1 recovery blue · z2 easy green ·
+  // z3 long amber · z4 tempo ember · z5 intervals rose. 2026-08-17 · the
+  // Z2 rung is the locked green #3EBD41 across every surface (David:
+  // "I want both to match") · Zone 2 IS easy, so the ladder rung and the
+  // easy-effort green are one color by design. If #27B4E0 proves too dim
+  // against the dark bar trough, raise it in the palette, not per-site.
+  const zoneColors = ['#27B4E0', '#3EBD41', '#F3AD38', '#D03F3F', '#FC4D64'];
   const peakHr = runData?.hr_max ?? result?.peak ?? null;
 
   // Render every split the run carries (was capped at 8 · landed

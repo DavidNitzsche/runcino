@@ -396,7 +396,7 @@ function svgWrap(pathD, pts, color, hasMarkers) {
   let body = '<path d="' + pathD + '" fill="none" stroke="' + color + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>';
   if (hasMarkers && pts.length >= 2) {
     // Endpoints
-    body += '<circle cx="' + pts[0][0].toFixed(1) + '" cy="' + pts[0][1].toFixed(1) + '" r="6" fill="#04201f" stroke="#14C08C" stroke-width="2.4"/>';
+    body += '<circle cx="' + pts[0][0].toFixed(1) + '" cy="' + pts[0][1].toFixed(1) + '" r="6" fill="#04201f" stroke="#3EBD41" stroke-width="2.4"/>';
     const last = pts[pts.length-1];
     body += '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="6" fill="' + color + '" stroke="#fff" stroke-width="1.8"/>';
   }
@@ -528,7 +528,7 @@ function renderFPlus(host, points) {
 
   // Endpoint markers · circle markers so they scale with zoom.
   L.circleMarker(points[0], {
-    radius: 7, fillColor: '#04201f', color: '#14C08C', weight: 3, fillOpacity: 1,
+    radius: 7, fillColor: '#04201f', color: '#3EBD41', weight: 3, fillOpacity: 1,
   }).addTo(leafletMap);
   L.circleMarker(points[points.length - 1], {
     radius: 7, fillColor: '#FC4D64', color: '#fff', weight: 2, fillOpacity: 1,
@@ -589,7 +589,7 @@ function renderF(host, pts) {
     const d = pts.map((p, i) => (i===0?'M':'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
     segments = '<path d="' + d + '" fill="none" stroke="#FF8847" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>';
   }
-  segments += '<circle cx="' + pts[0][0].toFixed(1) + '" cy="' + pts[0][1].toFixed(1) + '" r="6" fill="#04201f" stroke="#14C08C" stroke-width="2.4"/>';
+  segments += '<circle cx="' + pts[0][0].toFixed(1) + '" cy="' + pts[0][1].toFixed(1) + '" r="6" fill="#04201f" stroke="#3EBD41" stroke-width="2.4"/>';
   const last = pts[pts.length-1];
   segments += '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="6" fill="#FC4D64" stroke="#fff" stroke-width="1.8"/>';
   host.innerHTML = '<svg viewBox="0 0 ' + VW + ' ' + VH + '" preserveAspectRatio="xMidYMid meet">' + segments + '</svg>';

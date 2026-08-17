@@ -17,7 +17,7 @@ export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl
   // dot. Spec: light to deep [c1, c2, c3, c4, c5, base]. Per-day
   // re-theme cross-fades all 6 stops over 0.7s (handled in CSS).
   // Dots resync'd to the LOCKED TEN-COLOR PALETTE (brief v2, AFC fix 2).
-  // easy was #48B3B5 here, then #14C08C · both surfaces now read the
+  // easy was #48B3B5 here, then the retired teal · both surfaces now read the
   // locked good-state green #3EBD41, byte-for-byte with Theme.swift.
   recovery:  { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#27B4E0', mark: 8,  lbl: 'VERY EASY' },
   easy:      { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#3EBD41', mark: 26, lbl: 'EASY' },
@@ -90,18 +90,17 @@ export const KIT: Record<EffortKey, { weather: string; shoe: string; fuel: strin
 // tempo → intervals). One zone palette app-wide, synced with
 // session-shape ZONE_COLOR + RunDetailModal ZONE_COLOR.
 //
-// 2026-08-17 · deck Decision 7 · the Z2 rung is #14C08C, RULED as a
-// sanctioned WEB categorical for zone and season ladders (brief v2
-// ADDENDUM 3). It is deliberately NOT the good-state green: on a ladder,
-// #3EBD41 at Z2 would make "easy effort" and "good status" the same
-// pixel. Outside a ladder, #14C08C is not permitted — CI enforces both
-// halves of that (scripts/check-palette-sync.sh section 4).
-//
-// KNOWN DIVERGENCE, flagged for David: iPhone Theme.swift ZoneSplit.z2
-// already reads 0x3EBD41, so this rung is web-only today. The addendum
-// records it; resolving it needs a cross-surface ruling, not an agent's
-// unilateral edit to a shipped iOS value.
-export const ZC = ['#27B4E0','#14C08C','#F3AD38','#D03F3F','#FC4D64'];
+// 2026-08-17 · SUPERSEDING RULING (David: "I want both to match, so use
+// whatever is best for the use/implementation"). The Z2 rung is the
+// locked green #3EBD41, byte-for-byte with iPhone Theme.swift
+// ZoneSplit.z2 / Zone.z2, which had already migrated. The earlier
+// same-day ruling that sanctioned the retired teal as a web-only ladder
+// categorical is withdrawn: it left the ladder green diverging across
+// surfaces, and Zone 2 IS easy, so the zone rung and the easy-effort
+// green being one color is correct rather than a loss. The retired teal
+// is now on the CI tripwire and cannot return (check-palette-sync.sh
+// section 2, hex and rgba() decimal forms both).
+export const ZC = ['#27B4E0','#3EBD41','#F3AD38','#D03F3F','#FC4D64'];
 
 export type PlannedDay = {
   dw: string; dn: number; full: string;
@@ -280,9 +279,17 @@ export const PHASE: Record<PhaseKey, { lab: string; name: string; sub: string; f
 };
 
 export type SeasonType = 'easy'|'recovery'|'intervals'|'tempo'|'mp'|'long'|'vo2'|'sharp'|'rest';
+// 2026-08-17 · easy moved off the retired teal onto the locked green.
+// That collided with sharp, which was already #3EBD41 — a taper week
+// renders 'sharp' on Saturday and 'easy' on Sunday, so the two would
+// have read as one dot. Sharpener is a short fast-rep quality session
+// (6:20 in SEASON_TYPE_NAME, between intervals 6:05 and tempo 6:38), so
+// it takes the intervals rung. That follows the grouping this map
+// already uses — mp shares long's amber, vo2 shares intervals' red —
+// and keeps it clear of tempo, the other quality type in a taper week.
 export const SEASON_TYPE_COLOR: Record<SeasonType, string | null> = {
-  easy: '#14C08C', recovery: '#27B4E0', intervals: '#FC4D64', tempo: '#D03F3F',
-  mp: '#F3AD38',   long: '#F3AD38',     vo2: '#FC4D64',       sharp: '#3EBD41',
+  easy: '#3EBD41', recovery: '#27B4E0', intervals: '#FC4D64', tempo: '#D03F3F',
+  mp: '#F3AD38',   long: '#F3AD38',     vo2: '#FC4D64',       sharp: '#FC4D64',
   rest: null,
 };
 export const SEASON_TYPE_NAME: Record<SeasonType, [string,string]> = {

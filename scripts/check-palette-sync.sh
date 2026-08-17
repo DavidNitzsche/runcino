@@ -149,17 +149,41 @@ need "$WATCH_FACEKIT" 'bonus *= Color\(hex: 0xF0DF47\)'  'watch Faff.bonus = #F0
 # deep race-red, distinct from the brighter Warning #FC4D64 on intervals).
 # #E88021 retired app-wide; no orange anywhere.
 #   FF5722 / FF7A45 / E88021 · race+tempo -> Redish #D03F3F
-RETIRED='FF8847|48B3B5|008FEC|9013FE|2CA82F|D4900A|E85D26|D63E4E|EE6038|FF8870|34D058|5FD06A|27E087|FF5722|FF7A45|E88021|F43F5E|F5C518|F5A518|FFCE8A|FFB24D|FF6A6A|FF5A52'
+# 2026-08-17 · LADDER GREEN RETIRED FOR REAL (David: "I want both to match,
+# so use whatever is best for the use/implementation" · brief v2 ADDENDUM 3,
+# superseding the same-day entry that had sanctioned it as a web categorical).
+#   14C08C · easy + the Z2 ladder rung -> locked green #3EBD41. This is the
+#            one hex the AFC cutover retired but never added here, which is
+#            exactly why ~36 web call sites shipped it unguarded. iPhone had
+#            already migrated (Theme.swift Zone.z2 / ZoneSplit.z2), so web
+#            moved to the phone: no native change, no TestFlight build.
+RETIRED='FF8847|48B3B5|008FEC|9013FE|2CA82F|D4900A|E85D26|D63E4E|EE6038|FF8870|34D058|5FD06A|27E087|FF5722|FF7A45|E88021|F43F5E|F5C518|F5A518|FFCE8A|FFB24D|FF6A6A|FF5A52|14C08C'
+# Decimal-RGB forms of the retired hexes. A hex-only grep is blind to these:
+# rgba(20,192,140,.18) is the same dead teal as #14C08C, and the 2026-08-17
+# audit found exactly that shape surviving in web-v2/scripts. Add the decimal
+# triple here whenever a hex goes on the RETIRED list above.
+#   20,192,140 = #14C08C
+# NOTE · the other retirees still have live decimal-form call sites (F5C518,
+# FF8847, 5FD06A, FF5722, F43F5E in globals.css / faff-toolkit.css / toolkit
+# sheets / PhaseStrip / PlanArc). That backlog is real but out of scope for
+# this change; migrate those, then add their triples here.
+RETIRED_RGBA='20 *, *192 *, *140'
 # gstop · hero gradient stop ingredient (FaffEffort.heroGradient 2026-06-18).
 # Same exemption logic as FaffMesh: blend ingredients, not semantic colors.
 HIST_FILTER='deleted|retired|was |were |old |previously|killed|AFC fix|→|gstop'
+# Brandmark sweep · logo identity, exempt under the header rules and byte-
+# identical web↔iPhone. It is the ONLY sanctioned home of #14C08C. Matched by
+# the sweep's own signature: the 95deg CSS gradient and Theme.swift's stop
+# table comment. Everything else on the RETIRED list is banned outright.
+BRAND_SWEEP_EXEMPT='linear-gradient\( *95deg|// *55% +emerald'
 
-hits=$(grep -rinE "(#|0x)($RETIRED)" \
+hits=$(grep -rinE "(#|0x)($RETIRED)|rgba?\( *($RETIRED_RGBA) *[,)]" \
   "$ROOT/web-v2/app" "$ROOT/web-v2/components" "$ROOT/web-v2/lib" \
   "$ROOT/native-v2/Faff/Faff" \
   "$ROOT/legacy/native/Faff/FaffWatch Watch App" \
   --include='*.css' --include='*.ts' --include='*.tsx' --include='*.swift' \
-  2>/dev/null | grep -viE "$HIST_FILTER" | grep -v '/\._' \
+  2>/dev/null | grep -viE "$HIST_FILTER" | grep -vE "$BRAND_SWEEP_EXEMPT" \
+  | grep -v '/\._' \
   | grep -v '/app/dev/' | grep -v 'components/today/WeekStrip.tsx' || true)
 # Exclusions: /app/dev/ = design mockup routes (not product surface);
 # components/today/WeekStrip.tsx = dead file, zero importers (queued for
@@ -202,81 +226,25 @@ if [ -n "$watch_hex_hits" ]; then
   fail=1
 fi
 
-# ── 4 · LADDER GREEN #14C08C · sanctioned categorical, fenced ───────────────
-# Ruled 2026-08-17 (David · web recomposition deck Decision 7 · brief v2
-# ADDENDUM 3): #14C08C is a sanctioned categorical for ORDERED EFFORT LADDERS
-# ONLY — the Z1-Z5 zone scale, the season/phase workout-type maps, the pace-
-# quintile route palette, the race-effort ramps — plus the brandmark sweep,
-# which was already exempt as logo identity.
-#
-# Why it needs its own section: #14C08C is the one hex the brief retired that
-# was NEVER added to the RETIRED tripwire above, which is exactly why ~26 call
-# sites survived the AFC cutover unguarded. It cannot go in RETIRED now (the
-# ladder is sanctioned), and a positive `need` alone can't stop it reappearing
-# somewhere new. So this is a positive ALLOWLIST: the sanctioned files may
-# carry it, everywhere else fails.
-#
-# The decimal-RGB form is scanned too. rgba(20,192,140,…) is the same color and
-# a hex-only grep is blind to it — app/admin/page.tsx carried it with zero hex
-# occurrences and so was invisible to every guard until this one.
-
-LADDER_HEX='14C08C'
-LADDER_RGBA='rgba\( *20 *, *192 *, *140 *'
-
-# Sanctioned files, by path fragment. Each is a ladder or the brandmark.
-LADDER_ALLOWED_FILES='
-web-v2/components/faff-app/constants.ts
-web-v2/components/faff-app/session-shape.ts
-web-v2/components/faff-app/views/TodayView.tsx
-web-v2/components/faff-app/views/TrainView.tsx
-web-v2/components/faff-app/overlays/RunDetailModal.tsx
-web-v2/components/faff-app/overlays/WorkoutDetail.tsx
-web-v2/components/faff-app/RouteMap.tsx
-web-v2/components/runs/RunDetailModal.tsx
-web-v2/lib/race/race-detail-pacing.ts
-web-v2/app/globals.css
-native-v2/Faff/Faff/Theme.swift
-'
-ladder_filter=$(echo "$LADDER_ALLOWED_FILES" | grep -v '^$' | paste -sd'|' -)
-
-ladder_hits=$(grep -rinE "(#|0x)$LADDER_HEX|$LADDER_RGBA" \
-  "$ROOT/web-v2/app" "$ROOT/web-v2/components" "$ROOT/web-v2/lib" \
-  "$ROOT/native-v2/Faff/Faff" \
-  --include='*.css' --include='*.ts' --include='*.tsx' --include='*.swift' \
-  2>/dev/null | grep -viE "$HIST_FILTER" | grep -v '/\._' \
-  | grep -v '/app/dev/' \
-  | grep -vE "($ladder_filter)" || true)
-
-if [ -n "$ladder_hits" ]; then
-  echo "LADDER-GREEN FAIL · #14C08C outside its sanctioned categorical:"
-  echo "$ladder_hits"
-  echo "  #14C08C is ruled a ZONE/SEASON LADDER color only (brief v2 ADDENDUM 3)."
-  echo "  For easy effort, good state, selection accents or map markers use the"
-  echo "  locked green #3EBD41. If this really is a new ladder, add its file to"
-  echo "  LADDER_ALLOWED_FILES here and name it in the brief's addendum table."
-  fail=1
-fi
-
-# Positive lock · the ladders that ARE sanctioned must still carry the rung,
-# so a well-meaning "consolidate the greens" pass fails instead of silently
-# collapsing Z2 into the good-state green.
-need "$WEB_CONST" "ZC = \['#27B4E0','#14C08C'" 'ladder ZC Z2 = #14C08C (brief v2 ADDENDUM 3)'
+# ── 4 · Z2 LADDER RUNG · one green, both surfaces ───────────────────────────
+# Ruled 2026-08-17 (David: "I want both to match, so use whatever is best for
+# the use/implementation" · brief v2 ADDENDUM 3). The retired teal #14C08C is
+# banned outright — enforced by the RETIRED tripwire in section 2, hex and
+# rgba() decimal forms both. What remains here is the positive half: the Z2
+# rung must actually BE the locked green on every surface, so a future
+# "restore the teal ladder" pass fails instead of quietly re-splitting the
+# surfaces. Zone 2 IS easy; the rung and the easy-effort green are one color
+# by design, not by accident.
+need "$WEB_CONST" "ZC = \['#27B4E0','#3EBD41'" 'ladder ZC Z2 = #3EBD41 (brief v2 ADDENDUM 3)'
 need "$ROOT/web-v2/components/faff-app/session-shape.ts" \
-  "2: '#14C08C'" 'ladder session-shape ZONE_COLOR z2 = #14C08C'
+  "2: '#3EBD41'" 'ladder session-shape ZONE_COLOR z2 = #3EBD41'
 need "$ROOT/web-v2/components/runs/RunDetailModal.tsx" \
-  "z2: '#14C08C'" 'ladder run-detail ZONE_COLOR z2 = #14C08C'
-
-# Cross-surface status · OPEN. The deck's Option A assumed iPhone was still
-# byte-synced on this rung; it is not — iPhone migrated its ladder to the
-# locked green ahead of the ruling. Until David rules (mirror #14C08C back to
-# iPhone, or accept the ladder as web-only like the phase-identity group),
-# assert iPhone AS IT ACTUALLY STANDS so neither surface drifts further
-# without failing the build. Do not "fix" this by editing Theme.swift.
+  "z2: '#3EBD41'" 'ladder run-detail ZONE_COLOR z2 = #3EBD41'
 need "$IOS_THEME" 'z2 = Color\(hex: 0x3EBD41\)' \
-  'iPhone ladder z2 = #3EBD41 · DIVERGES from web #14C08C by ruling, pending David (brief v2 ADDENDUM 3)'
+  'iPhone ladder z2 = #3EBD41 · byte-synced with web ZC[1]'
 
 if [ "$fail" -eq 0 ]; then
   echo "palette-sync OK · ten-color lock verified across web / iPhone / watch"
-  echo "                · ladder green #14C08C fenced to its categorical"
+  echo "                · Z2 ladder rung = #3EBD41 on web + iPhone"
 fi
 exit $fail

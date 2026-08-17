@@ -264,7 +264,7 @@ export function fallbackSessionSegs(type: string, totalMi: number, paceStr: stri
 
 /** Z1-Z5 colour ramp · matches the design's ZC array. */
 const ZONE_COLOR: Record<1 | 2 | 3 | 4 | 5, string> = {
-  1: '#27B4E0', 2: '#14C08C', 3: '#F3AD38', 4: '#D03F3F', 5: '#FC4D64',
+  1: '#27B4E0', 2: '#3EBD41', 3: '#F3AD38', 4: '#D03F3F', 5: '#FC4D64',
 };
 
 /** Default zone per spec kind · used by the blueprint to place each

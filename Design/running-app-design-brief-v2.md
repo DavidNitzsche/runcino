@@ -29,7 +29,7 @@ This is the entire permitted semantic color set. Every pixel outside this table 
 | **PR gold** | `#F0DF47` | Personal record, milestone unlock, peak achievement (Light Yellow · palette pass 2026-06-17) |
 | **Eyebrow** | `#F3AD38` | Inline annotation, time-of-day label, secondary metadata (= Attention amber, dialed back via alpha where it reads loud · palette pass 2026-06-17) |
 
-**Retired tokens from v1:** `#FF8847`, `#14C08C` (easy → `#3EBD41`), `#4F8FF7` — all merge into the table above. **Amended 2026-08-17:** `#14C08C` stays retired as an *effort semantic*, but is re-admitted as a sanctioned categorical for ordered zone / season ladders only. See ADDENDUM ruling 3.
+**Retired tokens from v1:** `#FF8847`, `#14C08C` (easy → `#3EBD41`), `#4F8FF7` — all merge into the table above. `#14C08C` is retired **without exception** outside the brandmark sweep, and is on the CI retired-hex tripwire in both its hex and `rgba(20,192,140,…)` decimal forms. See ADDENDUM ruling 3.
 
 **Retired in the 2026-06-17 canonical-palette pass** (David handed the full brand palette: "every color from this; only rule is never Aquamarine `#27E087`"). The effort + zone scale now reads as a single temperature line — Recovery `#27B4E0` → Easy `#3EBD41` → Long `#F3AD38` → Tempo/Race `#D03F3F` → Intervals `#FC4D64`:
 
@@ -189,36 +189,22 @@ BASE `#5BD8D2` · BUILD `#FFCB47` · PEAK `#FF7733` · TAPER `#56E0B0` (+ mainte
 
 ---
 
-**3. Ladder green `#14C08C` — ADOPTED as a sanctioned categorical group (ruled 2026-08-17, David, web recomposition deck Decision 7).**
+**3. Ladder green `#14C08C` — RETIRED WITHOUT EXCEPTION. The Z2 rung is `#3EBD41` on every surface (ruled 2026-08-17, David).**
 
-`#14C08C` is listed as retired at the top of this brief (easy → `#3EBD41`), but it never left the code: roughly 26 web call sites still shipped it, unguarded, because it was the one retired hex never added to the CI tripwire. The brief and the code could not both be right. This ruling settles it, on the same precedent as ruling 2 above.
+David's words: *"I want both to match, so use whatever is best for the use/implementation."*
 
-**The ruling.** `#14C08C` is a sanctioned categorical for **ordered effort ladders only** — the Z1–Z5 zone scale, the season/phase workout-type maps, the pace-quintile route palette, and the race-effort ramps. On a ladder it occupies the Z2 rung. Everywhere else it is prohibited.
+**This supersedes the earlier same-day entry** which had adopted `#14C08C` as a sanctioned web categorical for ordered ladders (web recomposition deck Decision 7, Option A). That entry stood for a matter of hours and is withdrawn, not amended — the brief records one ruling on this, and it is this one.
 
-**Why it is not simply `#3EBD41`.** The core doctrine is one hex per meaning. `#3EBD41` already carries two: Easy effort and Good state. On a five-rung ladder that collision becomes visible — the Z2 swatch and the on-track chip would be the same pixel, so "easy effort" would read as "good status" on a page that shows both. Keeping the ladder rung distinct is what preserves the doctrine rather than what breaks it. The cost is one extra hex, confined to a scale.
+**Why the first ruling did not survive.** The deck sold Option A on the premise "no code changes, iPhone stays byte-synced." The premise was false. iPhone had **already** migrated its ladder: `Theme.swift` `Zone.z2` and `ZoneSplit.z2` read `0x3EBD41`, and `RouteMapView.swift` bucket colors carry `0x3EBD41` with the comment "was #14C08C teal". Sanctioning the teal on web would therefore have *created* a cross-surface split rather than preserved one — the exact opposite of the argument made for it. Matching means moving web to the phone: no native change, no TestFlight build.
 
-**Sanctioned sites** (asserted positively in CI):
+**The ruling.** `#14C08C` is retired everywhere. The Z1–Z5 zone scale, the season/phase workout-type maps, the pace-quintile route palette and the race-effort ramps all take `#3EBD41` at the Z2 / easy rung, byte-for-byte with iPhone.
 
-| Site | Role |
-|---|---|
-| `constants.ts` `ZC` | the Z1–Z5 ladder, Z2 rung |
-| `session-shape.ts` `ZONE_COLOR` | blueprint lane chart, zone 2 |
-| `TodayView.tsx` `zoneColors` | Today zone distribution bar |
-| `components/runs/RunDetailModal.tsx` `ZONE_COLOR` + zone trace gradient | run detail zone timeline |
-| `globals.css` `.etrack` · `.hero-v2 .effort-band .etrack` · `.gate-tempbar` | the effort-temperature rails |
-| `constants.ts` `SEASON_TYPE_COLOR` · `TrainView.tsx` `PHASE_TYPE_COLOR` | season / phase workout-type categoricals |
-| `RouteMap.tsx` `BUCKET_COLORS` | pace-quintile route ladder |
-| `race-detail-pacing.ts` · `globals.css` `.rp-ftrack` | race-effort ramps |
+**The one-hex-per-meaning objection, answered.** The earlier entry argued that `#3EBD41` already carries two meanings (Easy effort, Good state) and a five-rung ladder makes the collision visible. It reads the other way round: **Zone 2 IS easy.** The zone-ladder green and the easy-effort green being one color is the doctrine working, not a loss of resolution. Status-vs-effort is separated by treatment and context — a chip is not a rung — which is how the palette already handles `#F3AD38` (Long / Watch attention / Eyebrow) and `#FC4D64` (Intervals / Off-warn).
 
-**Prohibited, and migrated to `#3EBD41` on 2026-08-17:** easy-effort dots and role colors (`ROLECOL.EASY`, `EFFORT_COLOR.easy`, `ActivityView.EC.easy`, `session-shape COL.easy`, the `--eff-easy` fallbacks, every `ROLECOL[…] ?? …` fallback), good/improving-state chips (`.av-et-chip--improving`, the efficiency-trend scatter, the coach-log fitness-shift accent, the admin success box), map start markers, and generic selection accents (Settings day chips, checkbox `accentColor`).
+**Migrated to `#3EBD41` on 2026-08-17** (the sites the withdrawn entry had exempted): `constants.ts` `ZC`; `session-shape.ts` `ZONE_COLOR`; `components/runs/RunDetailModal.tsx` `ZONE_COLOR` and the zone-trace gradient; `TodayView.tsx` `zoneColors`; `globals.css` `.etrack` · `.hero-v2 .effort-band .etrack` · `.gate-tempbar` · `.rp-ftrack`; `constants.ts` `SEASON_TYPE_COLOR`; `TrainView.tsx` `PHASE_TYPE_COLOR`; `RouteMap.tsx` `BUCKET_COLORS`; `race-detail-pacing.ts` opening span. Plus the route-map dev mockups and the telemetry report's `--good`.
 
-**Brandmark exemption unchanged.** The `#14C08C` stop at 55% of the brandmark sweep (`globals.css .brandmark` / `.gate-mark`, `Theme.swift Brand.sweepStops`) is logo identity, already exempt under the header rules, and is not a ladder.
+**One collision the merge created, and how it was resolved.** `SEASON_TYPE_COLOR` had `sharp: '#3EBD41'` already, so moving `easy` onto the locked green made the two identical — and a taper week renders `sharp` on Saturday next to `easy` on Sunday. `sharp` (Sharpener, 6:20, between intervals 6:05 and tempo 6:38) moved to the intervals rung `#FC4D64`, from the locked ten. That matches the grouping the map already uses (`mp` shares `long`'s amber, `vo2` shares `intervals`' red) and keeps it distinct from tempo, the other quality type in a taper week. No other ladder collides: every zone rail, the route quintiles and both race ramps stay five distinct hues.
 
-**Cross-surface status — OPEN, flagged for David.** The deck presented Option A as "no code changes, iPhone stays byte-synced." That premise does not hold: iPhone had **already migrated** its ladder ahead of this ruling. `Theme.swift` `Zone.z2` and `ZoneSplit.z2` both read `0x3EBD41` today, and `RouteMapView.swift BUCKET_COLORS` carries `0x3EBD41` with the comment "was #14C08C teal". So the ladder green is, as of this ruling, **web-only** — the same standing ruling 2 gives the phase-identity group, but arrived at by accident rather than by design. Two ways to close it, both needing David:
+**Brandmark exemption unchanged.** The `#14C08C` stop at 55% of the brandmark sweep (`globals.css .brandmark` / `.gate-mark`, `Theme.swift Brand.sweepStops`) is logo identity, exempt under the header rules, and is byte-identical across web and iPhone. It is the only place the hex may appear.
 
-- **Mirror it.** Move iPhone `Zone.z2` / `ZoneSplit.z2` / `BUCKET_COLORS[3]` back to `0x14C08C`. Restores byte-sync and the ladder/status separation on both surfaces; reverses a shipped iOS value.
-- **Accept web-only.** Leave iPhone on `#3EBD41` and treat the ladder rung the way the phase palette is treated. Cheaper, but the Z2 rung then differs between the runner's two screens.
-
-Until it is ruled, CI asserts **both** sides as they actually stand, so neither can drift further without failing the build. No agent should change the iPhone ladder without David's ruling.
-
-**Enforcement.** `scripts/check-palette-sync.sh` section 4 is a positive allowlist: the sanctioned files above may carry `#14C08C`; any occurrence anywhere else in `web-v2/{app,components,lib}` or `native-v2` fails the build, including the `rgba(20,192,140,…)` decimal form that a hex-only grep cannot see.
+**Enforcement.** `#14C08C` is now on the `scripts/check-palette-sync.sh` RETIRED-HEX tripwire — the list it was missing from, which is exactly why ~36 call sites survived the original AFC cutover unguarded. The tripwire also scans the `rgba(20,192,140,…)` decimal form: the audit found retired hexes surviving in decimal notation precisely because the guard only ever looked for hex literals.

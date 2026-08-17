@@ -206,7 +206,7 @@ export function RouteMap({
   );
 }
 
-const BUCKET_COLORS = ['#FC4D64', '#D03F3F', '#F3AD38', '#14C08C', '#27B4E0'];
+const BUCKET_COLORS = ['#FC4D64', '#D03F3F', '#F3AD38', '#3EBD41', '#27B4E0'];
 
 function paceToSec(s: string | null): number | null {
   if (!s || typeof s !== 'string') return null;

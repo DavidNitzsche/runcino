@@ -80,7 +80,7 @@ interface PhaseMeta {
 // AFC fix 2 · effort colors come from the locked ten-color palette.
 // easy was a fourth one-off green (#2faf7c) found nowhere else.
 const PHASE_TYPE_COLOR: Record<string, string> = {
-  easy: '#14C08C', long: '#F3AD38', tempo: '#D03F3F', threshold: '#D03F3F',
+  easy: '#3EBD41', long: '#F3AD38', tempo: '#D03F3F', threshold: '#D03F3F',
   intervals: '#FC4D64', recovery: '#27B4E0', rest: '#8A90A0',
 };
 
