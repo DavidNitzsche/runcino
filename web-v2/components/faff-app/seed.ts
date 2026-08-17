@@ -1623,14 +1623,22 @@ function adaptUnloggedRaceAlert(races: Races | null): FaffSeed['unloggedRaceAler
 }
 
 function adaptActivity(log: LogT | null): ActivityData {
-  const recent: RecentRun[] = (log?.weeks.flatMap(w => w.runs) ?? []).slice(0, 8).map(r => {
+  // 2026-08-17 · Activity truth fixes. `recent` now carries the FULL loaded
+  // log window (ActivityView groups it by week with a Show-more, instead of
+  // a flat 8-run cap) and badges come from log-state's badgeForRun wiring
+  // (RACE / NAILED IT / SOLID / LONGEST) — the local ≥18mi LONGEST check
+  // moved there. The full history browser (all filter axes, pagination)
+  // is deck-pending; this is the minimal grouped window.
+  const recent: RecentRun[] = (log?.weeks ?? []).flatMap(w => w.runs.map(r => {
     const eff = mapType(r.workoutType ?? r.type);
     const niceDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(r.date + 'T12:00:00Z')).toUpperCase();
     const meta = `${r.distance_mi.toFixed(1)} mi${r.pace ? ' · ' + r.pace : ''}`;
-    let badge: RecentRun['badge'] | undefined;
-    if (r.distance_mi >= 18) badge = 'LONGEST';
-    return { date: niceDate, effort: eff, color: EFFORT_COLOR[eff], name: r.name || 'Run', meta, badge, slug: r.id };
-  });
+    return {
+      date: niceDate, effort: eff, color: EFFORT_COLOR[eff], name: r.name || 'Run', meta,
+      badge: r.badge ?? undefined, slug: r.id,
+      iso: r.date, week: w.label, mi: r.distance_mi, raceSlug: r.raceSlug ?? null,
+    };
+  }));
   const allRuns = (log?.weeks ?? []).flatMap(w => w.runs);
   return {
     ranges: {

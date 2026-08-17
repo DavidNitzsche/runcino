@@ -11,6 +11,12 @@ import { loadActivePlan } from '@/lib/plan/lookup';
 import { getCanonicalRunIds, ALL_TIME } from '@/lib/runs/volume';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
+import { distanceMiFromLabel } from '@/lib/race/distance';
+import {
+  coalesceRunName, normalizeDataWorkoutType, matchRaceForRun,
+  resolveWorkoutType, badgeForRun,
+  type MergedTwin, type RaceForMatch, type PlanWorkoutLite, type LogBadge,
+} from '@/lib/runs/log-enrich';
 
 export interface LogRun {
   id: string;
@@ -44,6 +50,16 @@ export interface LogRun {
   phaseLabel: string | null;
   shoeName: string | null;
   shoeSlug: string | null;  // URL-safe id used by the filter chip
+  // 2026-08-17 · Activity-surface truth fixes (lib/runs/log-enrich.ts):
+  // - name above is now COALESCED: canonical rows with a generic device
+  //   name ('Run') borrow the best merged twin's real name ("AFC Half").
+  // - isRace/raceSlug: run matched a races row (same date + distance
+  //   within ~12%, or a workoutType='race' flag on any row of the
+  //   physical run). Display name comes from races.meta.name.
+  // - badge: RACE > NAILED IT > SOLID > LONGEST (see badgeForRun).
+  isRace: boolean;
+  raceSlug: string | null;
+  badge: LogBadge | null;
 }
 
 // Per-axis available values for the filter chip strip — only render chips
@@ -166,7 +182,8 @@ export async function loadLogState(
   // bestByKey below. All-history canonical IDs; the LIMIT windows it.
   const canonicalIds = await getCanonicalRunIds(userId, ...ALL_TIME);
   const rows = (await pool.query(
-    `SELECT sa.data,
+    `SELECT sa.id::text AS row_id,
+            sa.data,
             sa.shoe_id,
             s.brand AS shoe_brand,
             s.model AS shoe_model
@@ -181,24 +198,103 @@ export async function loadLogState(
     [userId, limit, canonicalIds]
   )).rows;
 
-  // Active plan (memoized — shared across state-loaders)
+  // 2026-08-17 · Activity truth fixes — three parallel enrichment loads:
+  //
+  // (1) Merged twins of the loaded canonical rows. The dedup merge keeps
+  //     one row per physical run and points the losers at it via
+  //     data.mergedIntoId; the loser often carries the REAL name (the
+  //     runner names runs in Strava; the watch canonical says 'Run') and
+  //     the Strava workoutType flag ('1' = race). The absorb path never
+  //     copies `name` (canonical already has one), so coalesce at read.
+  //
+  // (2) plan_workouts across ALL the user's plans — archived included —
+  //     keyed by date. Historical quality days were all falling to the
+  //     activity type ('easy') because only the ACTIVE plan was loaded,
+  //     which over-read easy in the Year/All-time effort donuts. One
+  //     query; active plan rows win over archived on date collisions.
+  //
+  // (3) races rows for run↔race matching (see lib/runs/log-enrich.ts).
+  const loadedRowIds = rows.map((r: any) => String(r.row_id));
+  const [twinRows, allPlanWorkoutRows, raceRows] = await Promise.all([
+    loadedRowIds.length === 0 ? Promise.resolve({ rows: [] as any[] }) : pool.query(
+      `SELECT data->>'mergedIntoId' AS canonical_id,
+              data->>'name'         AS name,
+              data->>'source'       AS source,
+              data->>'workoutType'  AS workout_type
+         FROM runs
+        WHERE user_uuid = $1
+          AND data->>'mergedIntoId' = ANY($2::text[])`,
+      [userId, loadedRowIds]
+    ),
+    pool.query(
+      `SELECT pw.date_iso,
+              pw.type,
+              pw.pace_target_s_per_mi::float8 AS pace_target,
+              pw.is_quality
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1
+          AND pw.type IS NOT NULL
+        ORDER BY (tp.archived_iso IS NULL) ASC, tp.authored_iso ASC`,
+      [userId]
+    ).catch(() => ({ rows: [] as any[] })),
+    pool.query(
+      `SELECT slug, meta FROM races WHERE user_uuid = $1`,
+      [userId]
+    ).catch(() => ({ rows: [] as any[] })),
+  ]);
+
+  const twinsByCanonical = new Map<string, MergedTwin[]>();
+  for (const t of twinRows.rows as any[]) {
+    if (!t.canonical_id) continue;
+    const arr = twinsByCanonical.get(String(t.canonical_id)) ?? [];
+    arr.push({
+      name: t.name ?? null,
+      source: t.source ?? null,
+      workoutType: t.workout_type ?? null,
+    });
+    twinsByCanonical.set(String(t.canonical_id), arr);
+  }
+
+  // Date-keyed map across ALL plans. Rows arrive archived-first (then by
+  // authored_iso ascending), so the LAST write per date is the active
+  // plan's (or the newest plan's) — insertion order does the precedence.
+  // Planned rest days are skipped: a run that happened on a planned rest
+  // day is real training, not 'rest'.
+  const planWorkoutByDate = new Map<string, PlanWorkoutLite>();
+  for (const r of allPlanWorkoutRows.rows as any[]) {
+    if (!r.date_iso || !r.type) continue;
+    const t = String(r.type).toLowerCase();
+    if (t === 'rest') continue;
+    planWorkoutByDate.set(String(r.date_iso), {
+      type: String(r.type),
+      paceTargetSPerMi: r.pace_target != null ? Number(r.pace_target) : null,
+      isQuality: r.is_quality === true,
+    });
+  }
+
+  const racesForMatch: RaceForMatch[] = (raceRows.rows as any[]).map((r) => {
+    const meta = r.meta ?? {};
+    const explicit = meta.distanceMi != null ? Number(meta.distanceMi) : null;
+    return {
+      slug: String(r.slug),
+      name: meta.name != null ? String(meta.name) : null,
+      date: meta.date != null ? String(meta.date).slice(0, 10) : null,
+      distanceMi: explicit != null && isFinite(explicit) && explicit > 0
+        ? explicit
+        : distanceMiFromLabel(meta.distanceLabel ?? null),
+    };
+  });
+
+  // Active plan (memoized — shared across state-loaders) · still used for
+  // the phase ranges below (phase chips stay active-plan-scoped).
   const plan = await loadActivePlan(userId);
 
-  // plan_workouts keyed by ISO date — gives us the runner-friendly type
-  // assigned by the plan ("long", "quality", "easy", etc.) for that date.
-  const planWorkoutByDate = new Map<string, string>();
   // plan_phases — array of {label, start, end week-idx}, mapped to ISO dates
   // via plan_weeks. We resolve per-row at filter time.
   type PhaseRange = { label: string; start_iso: string; end_iso: string };
   let phaseRanges: PhaseRange[] = [];
   if (plan) {
-    const pw = (await pool.query(
-      `SELECT date_iso, type FROM plan_workouts WHERE plan_id = $1`,
-      [plan.id]
-    )).rows;
-    for (const r of pw) {
-      if (r.date_iso && r.type) planWorkoutByDate.set(r.date_iso, String(r.type));
-    }
     const weeks = (await pool.query(
       `SELECT week_idx, week_start_iso FROM plan_weeks WHERE plan_id = $1 ORDER BY week_idx`,
       [plan.id]
@@ -229,9 +325,37 @@ export async function loadLogState(
     const date = a.date || (a.startLocal ?? '').slice(0, 10);
     const sPerMi = Number(a.paceSPerMi) || null;
     const activityType: string | null = a.type ?? null;
-    // workoutType: plan-assigned type wins, then activity type, then null.
-    const planType = date ? (planWorkoutByDate.get(date) ?? null) : null;
-    const workoutType = planType ?? activityType;
+    const distanceMi = Number(a.distanceMi) || 0;
+    const twins = twinsByCanonical.get(String(r.row_id)) ?? [];
+    // workoutType hint from the PHYSICAL run — canonical row first, then
+    // any merged twin (the Strava twin carries workout_type '1' = race).
+    const workoutTypeHint = normalizeDataWorkoutType(a.workoutType)
+      ?? twins.map(t => normalizeDataWorkoutType(t.workoutType)).find(v => v != null)
+      ?? null;
+    // Race match: same date + distance within ~12%, or an explicit race
+    // flag on any row of the physical run.
+    const raceMatch = date
+      ? matchRaceForRun({ date, distanceMi, workoutTypeHint }, racesForMatch)
+      : null;
+    // workoutType: race match wins, then plan-assigned type (ANY plan,
+    // active preferred), then the run's own flag, then activity type.
+    const planEntry = date ? (planWorkoutByDate.get(date) ?? null) : null;
+    const workoutType = resolveWorkoutType({
+      isRace: raceMatch != null,
+      planType: planEntry?.type ?? null,
+      workoutTypeHint,
+      activityType,
+    });
+    // Display name: race name > canonical non-generic > best twin non-generic.
+    const coalescedName = coalesceRunName(a.name ?? null, twins);
+    const name = raceMatch?.name ?? coalescedName;
+    const badge = badgeForRun({
+      isRace: raceMatch != null,
+      workoutType,
+      distanceMi,
+      paceSPerMi: sPerMi,
+      plan: planEntry,
+    });
     // shoe: only set when both brand + model present
     const shoeName = r.shoe_brand && r.shoe_model
       ? `${r.shoe_brand} ${r.shoe_model}`.trim()
@@ -242,10 +366,10 @@ export async function loadLogState(
       date,
       dow: date ? dowOf(date) : 0,
       start_local: a.startLocal ?? null,
-      name: a.name ?? 'Run',
+      name,
       source: a.source ?? 'strava',
       type: activityType,
-      distance_mi: Number(a.distanceMi) || 0,
+      distance_mi: distanceMi,
       pace: a.avgPaceMinPerMi || fmtPaceFromSec(sPerMi) || null,
       // #2 · COALESCE the moving-time key. Webhook-ingested runs carry
       // movingSec/durationSec, not movingTimeS, so time_moving rendered blank
@@ -261,6 +385,9 @@ export async function loadLogState(
       phaseLabel: date ? phaseFor(date) : null,
       shoeName,
       shoeSlug,
+      isRace: raceMatch != null,
+      raceSlug: raceMatch?.slug ?? null,
+      badge,
     };
   });
 

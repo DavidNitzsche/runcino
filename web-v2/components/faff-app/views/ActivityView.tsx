@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { FaffSeed, HeatCell, EfficiencyTrend } from '../types';
+import type { FaffSeed, HeatCell, EfficiencyTrend, RecentRun } from '../types';
 import { StreakPill } from '../toolkit';
 
 const EC: Record<string,string> = {
@@ -184,26 +184,89 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
 
       <div className="band">
       <div className="fll">RECENT RUNS</div>
+      <RecentRunsLog recent={seed.activity.recent} onOpenRun={onOpenRun} />
+      </div>{/* .band */}
+    </>
+  );
+}
+
+/**
+ * 2026-08-17 · Grouped-by-week recent-runs log with effort-type filter chips
+ * and a Show-more window over the seed's loaded log window.
+ *
+ * MINIMAL scope on purpose — the FULL history browser (source/phase/shoe
+ * filter axes that log-state already computes, search, real pagination) is
+ * DECK-PENDING; this surfaces only week grouping + the type chips whose
+ * data the seed already carries. Do not grow this into the browser without
+ * the design deck.
+ */
+function RecentRunsLog({ recent, onOpenRun }: { recent: RecentRun[]; onOpenRun?: (runId: string) => void }) {
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [weeksShown, setWeeksShown] = useState(4);
+
+  const EFFORT_ORDER = ['easy', 'long', 'tempo', 'intervals', 'recovery', 'race'];
+  const effortsPresent = EFFORT_ORDER.filter(e => recent.some(r => r.effort === e));
+  const filtered = typeFilter ? recent.filter(r => r.effort === typeFilter) : recent;
+
+  // Group consecutive runs by their log week label — seed order is already
+  // newest week first, newest run first within a week.
+  const groups: { week: string; runs: RecentRun[]; mi: number }[] = [];
+  for (const r of filtered) {
+    const wk = r.week ?? 'RECENT';
+    const last = groups[groups.length - 1];
+    if (last && last.week === wk) { last.runs.push(r); last.mi += r.mi ?? 0; }
+    else groups.push({ week: wk, runs: [r], mi: r.mi ?? 0 });
+  }
+  const visible = groups.slice(0, weeksShown);
+
+  return (
+    <>
+      {effortsPresent.length > 1 && (
+        <div className="av-typechips">
+          <button className={!typeFilter ? 'on' : ''} onClick={() => { setTypeFilter(null); setWeeksShown(4); }}>All</button>
+          {effortsPresent.map(e => (
+            <button
+              key={e}
+              className={typeFilter === e ? 'on' : ''}
+              onClick={() => { setTypeFilter(typeFilter === e ? null : e); setWeeksShown(4); }}
+            >
+              <span className="dot" style={{ background: EC[e] }} />
+              {e[0].toUpperCase() + e.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="log">
-        {seed.activity.recent.map((r, i) => (
-          <div
-            className="lr"
-            key={i}
-            onClick={() => r.slug && onOpenRun?.(r.slug)}
-            role={r.slug ? 'button' : undefined}
-            tabIndex={r.slug ? 0 : undefined}
-            style={r.slug ? { cursor: 'pointer' } : undefined}
-          >
-            <span className="ld">{r.date}</span>
-            <span className="ldot" style={{ background: r.color }} />
-            <span className="ln">{r.name}</span>
-            <span className="lm">{r.meta}</span>
-            {r.badge && <span className={`lb ${r.badge === 'NAILED IT' || r.badge === 'SOLID' ? 'ok' : 'pr'}`}>{r.badge}</span>}
-            <span className="lgo">›</span>
+        {visible.map((g, gi) => (
+          <div key={`${g.week}-${gi}`}>
+            <div className="lwk"><span>{g.week}</span><span>{g.mi.toFixed(1)} MI</span></div>
+            {g.runs.map((r, i) => (
+              <div
+                className="lr"
+                key={r.slug ?? `${g.week}-${i}`}
+                onClick={() => r.slug && onOpenRun?.(r.slug)}
+                role={r.slug ? 'button' : undefined}
+                tabIndex={r.slug ? 0 : undefined}
+                style={r.slug ? { cursor: 'pointer' } : undefined}
+              >
+                <span className="ld">{r.date}</span>
+                <span className="ldot" style={{ background: r.color }} />
+                <span className="ln">{r.name}</span>
+                <span className="lm">{r.meta}</span>
+                {r.badge === 'RACE' && r.raceSlug ? (
+                  <a className="lb race" href={`/races/${r.raceSlug}`} onClick={(e) => e.stopPropagation()}>RACE</a>
+                ) : r.badge ? (
+                  <span className={`lb ${r.badge === 'NAILED IT' || r.badge === 'SOLID' ? 'ok' : r.badge === 'RACE' ? 'race' : 'pr'}`}>{r.badge}</span>
+                ) : null}
+                <span className="lgo">›</span>
+              </div>
+            ))}
           </div>
         ))}
       </div>
-      </div>{/* .band */}
+      {groups.length > weeksShown && (
+        <button className="av-showmore" onClick={() => setWeeksShown(n => n + 4)}>Show more</button>
+      )}
     </>
   );
 }

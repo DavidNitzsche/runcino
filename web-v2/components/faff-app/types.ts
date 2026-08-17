@@ -902,8 +902,16 @@ export type ActivityRange = {
 };
 export type RecentRun = {
   date: string; effort: string; color: string;
-  name: string; meta: string; badge?: 'NAILED IT'|'SOLID'|'LONGEST'|'PR';
+  name: string; meta: string; badge?: 'NAILED IT'|'SOLID'|'LONGEST'|'PR'|'RACE';
   slug?: string;
+  /** 2026-08-17 · Activity recent-runs week grouping + race linking.
+   *  iso = run's YYYY-MM-DD · week = log week label ("THIS WEEK" /
+   *  "AUG 4 → AUG 10") · mi = numeric miles for week totals · raceSlug
+   *  links a RACE-badged run to its /races/[slug] page. */
+  iso?: string;
+  week?: string;
+  mi?: number;
+  raceSlug?: string | null;
 };
 
 export type ShoeRec = { id?: number; brand?: string; model?: string; nm: string; role: string; roles: string[]; preferred: boolean; mi: number; max: number; baseline_mi?: number };

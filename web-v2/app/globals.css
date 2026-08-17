@@ -1274,7 +1274,19 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 .lr .lb{font-size:9px;font-weight:700;letter-spacing:1px;border-radius:5px;padding:3px 7px;margin-left:12px;}
 .lr .lb.pr{color:#F0DF47;border:1px solid rgba(245,197,24,.5);}
 .lr .lb.ok{color:#86efa0;border:1px solid rgba(62,189,65,.4);}
+.lr .lb.race{color:#FF8A80;border:1px solid rgba(208,63,63,.55);text-decoration:none;}
+a.lb.race:hover{color:#fff;border-color:rgba(208,63,63,.85);}
 .lr .lgo{margin-left:12px;font-size:18px;opacity:.5;font-weight:700;}
+/* 2026-08-17 · Activity recent-runs week grouping + type chips + show-more */
+.log .lwk{display:flex;justify-content:space-between;align-items:baseline;font-size:10.5px;font-weight:800;letter-spacing:1.6px;opacity:.55;margin:16px 2px 8px;}
+.log > div:first-child .lwk{margin-top:2px;}
+.av-typechips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+.av-typechips button{display:flex;align-items:center;gap:6px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.6px;color:rgba(255,255,255,.66);background:rgba(8,10,14,.4);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:7px 13px;cursor:pointer;transition:.15s;}
+.av-typechips button:hover{color:#fff;}
+.av-typechips button.on{background:#fff;color:#10131A;}
+.av-typechips .dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+.av-showmore{display:block;width:100%;font-family:inherit;font-size:11.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.7);background:rgba(8,10,14,.4);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px;cursor:pointer;transition:.15s;margin-top:4px;}
+.av-showmore:hover{color:#fff;border-color:rgba(255,255,255,.24);}
 /* health */
 .hrow{display:flex;align-items:center;gap:28px;margin-top:18px;}
 .hcoach .hcv{font-size:16px;font-weight:400;line-height:1.55;opacity:.94;margin-top:6px;max-width:560px;}

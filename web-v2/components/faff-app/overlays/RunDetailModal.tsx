@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { ZC } from '../constants';
-import { decodePolyline, polylineToSvgPath, polylineEndpoints, elevPathFromSplits } from '@/lib/route/polyline';
+import { elevPathFromSplits } from '@/lib/route/polyline';
 import { PostRunCheckinChips, RPEEntryCard } from '../toolkit';
+import { RouteMap } from '../RouteMap';
 
 /**
  * Run-detail overlay. Opens off Activity / Recent Runs / Heatmap clicks
@@ -363,45 +364,38 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
 }
 
 /** Route map + elevation profile. Both pull from real run data:
- *   - Route: decoded Strava polyline (lat/lng pairs projected to SVG).
+ *   - Route: the SHARED RouteMap treatment (CartoDB dark tiles + pace-graded
+ *     polyline) — the design-locked canonical map used by TodayView/RaceView.
+ *     2026-08-17 truth audit #4: this modal previously drew a bare SVG
+ *     polyline on a grid; David has ruled "don't revert" from the RouteMap
+ *     treatment, so the modal now renders the same component. Leaflet is
+ *     already lazy-loaded inside RouteMap (dynamic import), so the modal
+ *     bundle stays light until a route actually renders.
  *   - Elev: cumulative integration of splits[].elev_change_ft.
  *  Each renders only when the underlying data exists — no fake fallbacks. */
 function RouteAndElev({ data }: { data: RunDetail }) {
-  const route = useMemo(() => {
-    if (!data.route_polyline) return null;
-    const decoded = decodePolyline(data.route_polyline);
-    const path = polylineToSvgPath(decoded, 700, 168, 14);
-    const ends = polylineEndpoints(decoded, 700, 168, 14);
-    return path ? { path, endpoints: ends } : null;
-  }, [data.route_polyline]);
   const elev = useMemo(() => {
     if (!data.splits?.length) return null;
     return elevPathFromSplits(data.splits, 360, 58, 4);
   }, [data.splits]);
 
-  if (!route && !elev) return null;
+  if (!data.route_polyline && !elev) return null;
   return (
     <>
-      {route && (
+      {data.route_polyline && (
         <div className="band">
           <div className="fll">ROUTE</div>
-          <div className="rdmap">
-            <svg viewBox="0 0 700 168" preserveAspectRatio="none">
-              <defs>
-                <pattern id="rdm-rdmodal" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path d="M40 0H0V40" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1"/>
-                </pattern>
-              </defs>
-              <rect width="700" height="168" fill="url(#rdm-rdmodal)" />
-            </svg>
-            <svg viewBox="0 0 700 168" preserveAspectRatio="xMidYMid meet">
-              <path d={route.path} fill="none" stroke="#D03F3F" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-              {route.endpoints && <circle cx={route.endpoints.start[0]} cy={route.endpoints.start[1]} r="6" fill="#04201f" stroke="#14C08C" strokeWidth="3" />}
-              {route.endpoints && <circle cx={route.endpoints.end[0]} cy={route.endpoints.end[1]} r="6" fill="#D03F3F" stroke="#fff" strokeWidth="2" />}
-            </svg>
-            <span className="rdmaptag start">START</span>
-            <span className="rdmaptag end">FINISH</span>
-            <div className="rdmapstat">
+          <div style={{ position: 'relative' }}>
+            <RouteMap
+              polyline={data.route_polyline}
+              // Unverified splits must not pace-grade the line — pass none so
+              // RouteMap falls back to the plain coral route.
+              splits={data.splits_unreliable ? [] : (data.splits ?? [])}
+              height={280}
+            />
+            {/* Distance/gain overlay · top of the card so it never collides
+                with RouteMap's own FASTER→SLOWER legend (bottom-left). */}
+            <div className="rdmapstat" style={{ zIndex: 1000, top: 10, bottom: 'auto', pointerEvents: 'none' }}>
               <span>{data.distance_mi.toFixed(1)} MI</span>
               {data.elev_gain_ft != null && data.elev_gain_ft > 0 && <span>↗ {Math.round(data.elev_gain_ft)} FT</span>}
             </div>
