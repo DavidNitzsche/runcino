@@ -27,6 +27,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { stripResearchCitations as stripCitationsSafe } from '@/lib/plan/strip-citations';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
+import { resolveBlockState } from '@/lib/faff/block-state';
 import { redirect } from 'next/navigation';
 
 /* ─────────────────────────  Pure helpers  ───────────────────────── */
@@ -1617,12 +1618,19 @@ function adaptRaces(races: Races | null): RaceLite[] {
     meta: `${shortDate(r.date)}${r.location ? ' · ' + r.location : ''}`,
     tag: r.tag,
     days: `${Math.max(0, Math.round((Date.parse(r.date) - today) / 86_400_000))} days`,
+    // 2026-08-17 · recomposition deck Decision 3c · the CALENDAR row's role
+    // chip needs the real priority (and the race's own goal time where the
+    // runner set one), not the collapsed A-RACE / TUNE-UP tag. A null
+    // priority buckets with C, exactly as races-state buckets it.
+    priority: r.priority ?? null,
+    ownGoal: r.goal ?? null,
+    dateISO: r.date ?? null,
   }));
 }
 
-// 2026-08-17 · retro front door · past races for the Targets PAST RACES
-// list. Result + provenance ride from races-state so the row can label
-// the time honestly (chip time vs watch/run-match provisional · Rule 3).
+// 2026-08-17 · the Targets RESULTS column (recomposition deck Decision 3c).
+// Result + provenance ride from races-state so the row can label the time
+// honestly (chip time vs watch/run-match provisional · Rule 3).
 // Capped at 8 · the Targets list is a front door, not the archive.
 function adaptPastRaces(races: Races | null): FaffSeed['pastRaces'] {
   if (!races) return [];
@@ -1631,6 +1639,11 @@ function adaptPastRaces(races: Races | null): FaffSeed['pastRaces'] {
     name: r.name,
     meta: `${r.date ? shortDate(r.date) : ''}${r.location ? ' · ' + r.location : ''}`,
     result: r.finishTime,
+    dateISO: r.date ?? null,
+    // Finish pace from the date+distance-matched run. Presentational only ·
+    // it never upgrades a provisional time into an authoritative one.
+    pace: r.matchedRun?.pace ?? null,
+    priority: r.priority ?? null,
     // actual_result can itself be a watch-provisional auto-log · still
     // renders as provisional until a chip time locks it in.
     provenance: r.finishProvisional ? ('provisional' as const)
@@ -1639,6 +1652,46 @@ function adaptPastRaces(races: Races | null): FaffSeed['pastRaces'] {
       : r.finishSource === 'run_match' ? ('provisional' as const)
       : null,
   }));
+}
+
+// 2026-08-17 · recomposition deck Decision 3 · the BETWEEN BLOCKS read for
+// Targets' THE WORK. Bounds of the ACTIVE plan come off the plan's own
+// prescribed days (same derivation adaptSeason uses for blockOver, kept
+// local so the Targets read does not fight the Train read); the mode comes
+// off training_plans.mode via the memoized active-plan lookup.
+//
+// A recovery block is a bridge, not the block — see lib/faff/block-state.ts
+// for why it counts as between-blocks even though a plan row exists.
+function adaptBlockState(
+  training: Training | null,
+  planMode: string | null,
+  goalRace: GoalRace | null,
+  todayISO: string,
+): FaffSeed['blockState'] {
+  let first: string | null = null;
+  let last: string | null = null;
+  for (const w of (training?.weeks ?? [])) {
+    for (const d of (w.days ?? [])) {
+      if (!d.date) continue;
+      if (first == null || d.date < first) first = d.date;
+      if (last == null || d.date > last) last = d.date;
+    }
+    if (w.startDate) {
+      if (first == null || w.startDate < first) first = w.startDate;
+      const end = new Date(Date.parse(w.startDate + 'T12:00:00Z') + 6 * 86400000)
+        .toISOString().slice(0, 10);
+      if (last == null || end > last) last = end;
+    }
+  }
+  return resolveBlockState({
+    // No plan weeks at all means no active plan to be inside of, whatever
+    // a stale training_plans row claims.
+    planMode: (training?.weeks?.length ?? 0) > 0 ? planMode : null,
+    planFirstDayISO: first,
+    planLastDayISO: last,
+    todayISO,
+    goalRace: goalRace ? { name: goalRace.name, dateISO: goalRace.date ?? null } : null,
+  });
 }
 
 // 2026-08-17 · re-keyed on actual_result absence (finishSource !==
@@ -2164,6 +2217,9 @@ function emptySeed(): FaffSeed {
     races: [],
     pastRaces: [],
     unloggedRaceAlert: null,
+    // A signed-out shell has no plan · that is a no-plan between-blocks
+    // read, and Targets is not rendered for guests anyway.
+    blockState: resolveBlockState({ planMode: null, todayISO: new Date().toISOString().slice(0, 10), goalRace: null }),
     projectionTrend: [],
     activity: {
       ranges: {
@@ -2719,6 +2775,18 @@ export async function buildSeed(): Promise<FaffSeed> {
   healthSnapshot.qualityPredictors = qualityPredictors;
   const prs = adaptPRs(races, log);
   const racesList = adaptRaces(races);
+  // 2026-08-17 · deck Decision 3 · Targets THE WORK renders BETWEEN BLOCKS
+  // off this. loadActivePlan is the memoized lookup every other loader
+  // already hits this request, so this costs nothing extra.
+  const blockState = await (async () => {
+    try {
+      const { loadActivePlan } = await import('@/lib/plan/lookup');
+      const plan = await loadActivePlan(userId);
+      return adaptBlockState(training, plan?.mode ?? null, goalRace, training?.today ?? volumeToday);
+    } catch {
+      return adaptBlockState(training, null, goalRace, training?.today ?? volumeToday);
+    }
+  })();
   const activity = adaptActivity(log);
   const shoes = adaptShoes(profile);
   const shoeRecByType = await buildShoeRecByType(profile);
@@ -2841,6 +2909,7 @@ export async function buildSeed(): Promise<FaffSeed> {
     races: racesList,
     pastRaces: adaptPastRaces(races),
     unloggedRaceAlert: adaptUnloggedRaceAlert(races),
+    blockState,
     projectionTrend,
     activity,
     shoes,

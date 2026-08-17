@@ -1,34 +1,48 @@
 'use client';
 
 /**
- * TargetsView · rebuild (2026-06-04)
+ * TargetsView · Wave 2 of the approved web recomposition (2026-08-17).
  *
- * Implements `designs/from Design agent/targets-rebuild/`.  The page is a
- * top-to-bottom narrative · the answer → the path → the work → the
- * record → the calendar.  Mesh is neutral charcoal (see constants.ts ·
- * MESH.targets) and semantic color is reserved for the data only.
+ * Implements docs/design/web-recomposition-deck-2026-08-17.html · Decision 3,
+ * approved as mocked. The page answers four questions in order:
  *
- * Sections:
- *   1 · ANSWER   · goal hero (left) + projection band (right)
- *   2 · PATH     · status headline + signals + recent/next test points
- *                 + 3-rung status ladder
- *   3 · WORK     · current VDOT + 6w delta + held/implies/goalVDOT meta
- *   4 · PRs      · anchor line vs goal + 4-card grid (PR @ goal distance
- *                 highlighted)
- *   5 · RACES    · upcoming calendar + "New goal" action
+ *   1 · ANSWER    · the goal, the projection, and ONE status chip.
+ *   2 · THE PATH  · the trajectory number line (GapPanel), with the
+ *                   renegotiation card mounted HERE when one is pending —
+ *                   beside the number it renegotiates, not floating at the
+ *                   top of the page.
+ *   3 · THE WORK  · test points, or an explicit BETWEEN BLOCKS state when
+ *                   the active plan is a recovery bridge (or there is none)
+ *                   and the next block has not opened.
+ *   4 · RACES     · split into CALENDAR (role chips that state what the
+ *                   generator does with each race) and RESULTS (result +
+ *                   provenance chip, each row opening the retro page).
+ *   5 · RECORDS   · the PR grid, anchored against the goal. Not in the
+ *                   deck's mock; kept because it is live, correct, and not
+ *                   in the audit's dead list. Demoted below RACES so the
+ *                   deck's beat order still reads first.
  *
- * The off-track state still renders the existing `GapPanel` between
- * sections 1 and 3 because the redesign brief only covers ON TRACK /
- * WATCHING.  When the off-track redesign lands, replace the GapPanel
- * fallback below.
+ * ONE status vocabulary (Decision 3b). The page used to speak three dialects
+ * for one fact — StatusPill ("On track / Watching / Off track"), the
+ * confidence tier word ("HIGH / MEDIUM / LOW"), and prose ("on pace / off
+ * pace"). All three are gone. lib/faff/goal-status.ts is the only source,
+ * and it is exported for Today's GAP tile to adopt.
+ *
+ * Deleted with this rebuild (verified unreferenced first): StatusPill,
+ * ProjectionBand, StatusLadder, VdotSparkline, VdotDelta, and the helper
+ * functions that only fed them — posturePhrase, statusWord, gapText,
+ * bandCaption, pathHeadline, pathSubline, evidenceLine, vdotReadCopy,
+ * lastNonNull, vdotAtDaysAgo, daysHeld. Unrendered since 2026-06-11.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { FaffSeed, GoalRace } from '../types';
+import type { FaffSeed, GoalRace, PlanProposalSeed, RaceLite } from '../types';
 import { LogNonRunSheet, NewGoalSheet } from '../toolkit';
 import { GapPanel } from './GapPanel';
-import { parseRaceTime, vdotFromRace, formatRaceTime } from '@/lib/training/vdot';
+import { parseRaceTime } from '@/lib/training/vdot';
+import { resolveGoalStatus, formatGapClock, type GoalStatusRead } from '@/lib/faff/goal-status';
+import { resolveRaceRole, resolveProvenance } from '@/lib/faff/race-roles';
 
 export function TargetsView({
   seed, onOpenRace,
@@ -37,6 +51,16 @@ export function TargetsView({
   const goal = seed.goalRace;
   const [goalOpen, setGoalOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+
+  // The pending goal renegotiation, if the engine has written one. Mounts
+  // inside THE PATH per the deck, and forces the status chip to BEHIND —
+  // an unclosable gap is never dressed as anything softer.
+  const renegotiation = useMemo(
+    () => (seed.planProposals ?? []).find(
+      (p) => p.kind === 'goal_renegotiation' && p.status === 'pending',
+    ) ?? null,
+    [seed.planProposals],
+  );
 
   // === GUEST / NO-GOAL ====================================================
   if (!goal) {
@@ -67,243 +91,220 @@ export function TargetsView({
   }
 
   // === DERIVED VALUES =====================================================
-  // 2026-06-11 · the goal-seeking trajectory is the headline read · the drift
-  // binary (goalStatus) becomes a background signal. Derive the surface status
-  // from where the plan PROJECTS you on race day, so the status pill, the
-  // projection band, and the path section all agree with the GapPanel
-  // trajectory hero instead of contradicting it — drift could flag "off track"
-  // while you're projected 40s off goal and "within reach", which read as the
-  // page arguing with itself.
   const traj = goal.trajectory ?? null;
-  const status: 'on-track' | 'watching' | 'off-track' = traj
-    ? (traj.reachable ? 'on-track' : traj.gapVdot <= 1.5 ? 'watching' : 'off-track')
-    : (goal.goalStatus ?? 'on-track');
   const goalSec = parseRaceTime(goal.goal) ?? null;
-  // The band shows CURRENT FITNESS today (its label) vs the plan target — an
-  // honest "where you are now". The race-day TRAJECTORY is the GapPanel hero
-  // below; keeping them as two clearly-labeled time points (today vs race day)
-  // is coherent, where forcing the projected time into the "current fitness"
-  // marker would mislabel it.
-  const fitSec = goal.vdotProjectionSec ?? null;
-  const gapSec = goalSec != null && fitSec != null ? fitSec - goalSec : null; // positive = slower than goal
-  // Goal-attainment confidence chip · trajectory-aware when we have a trajectory
-  // (the engine's confidenceLabel is capped LOW by the old off-track binary,
-  // which would read "behind on this runway" directly under a hero that says
-  // "within reach"). reachable → HIGH, close → MEDIUM, far → LOW.
-  const conf: { tier: string; word: string; descriptor: string; detail: string } | null = traj
-    ? (traj.aheadOfGoal
-        ? { tier: 'high', word: 'AHEAD', descriptor: 'tracking to beat it', detail: `${formatGap(Math.abs(traj.gapSec ?? 0))} ahead of goal · confirm with a tune-up` }
-        : traj.reachable
-        ? { tier: 'high', word: 'HIGH', descriptor: 'tracking to hit it', detail: 'on the projected path · hold the plan' }
-        : traj.gapVdot <= 1.5
-          ? { tier: 'medium', word: 'MEDIUM', descriptor: 'within reach', detail: `${formatGap(traj.gapSec ?? 0)} to find by race day` }
-          : { tier: 'low', word: 'LOW', descriptor: 'behind on this runway', detail: `${formatGap(traj.gapSec ?? 0)} to find · plan needs to push` })
-    : (goal.confidenceLabel ?? null);
+  // The projected finish · trajectory first (where the plan, executed, lands
+  // you on race day), current-fitness projection as the fallback.
+  const projectedSec = traj?.projectedSec ?? goal.vdotProjectionSec ?? null;
 
-  // VDOT block · derived from projectionTrend (latest, 6-weeks-ago).
-  const trend = seed.projectionTrend ?? [];
-  const latestVdot = lastNonNull(trend.map(t => t.vdot));
-  const sixWeeksAgoVdot = vdotAtDaysAgo(trend, 42);
-  const vdotDelta = latestVdot != null && sixWeeksAgoVdot != null
-    ? Number((latestVdot - sixWeeksAgoVdot).toFixed(1))
-    : null;
-  const vdotHeldDays = trend.length > 0 ? daysHeld(trend, latestVdot) : null;
-  const goalVdot = goalSec != null && goal.distanceMi != null
-    ? vdotFromRace(goalSec, goal.distanceMi)
-    : null;
+  // THE single status read. Every chip on this page comes from here.
+  const status = resolveGoalStatus({
+    trajectory: traj,
+    goalSec,
+    projectionSec: goal.vdotProjectionSec ?? null,
+    unclosable: renegotiation != null,
+  });
 
-  // PR anchor (which PR is closest to the goal distance) — used to
-  // highlight the PR card and write the anchor line.
+  const goalPace = goalSec != null && goal.distanceMi ? paceLabel(goalSec, goal.distanceMi) : null;
+
+  // PR anchor (which PR is closest to the goal distance) — used to highlight
+  // the PR card and write the anchor line.
   const goalDist = goal.distanceMi ?? null;
   const anchorPr = goalDist != null
     ? seed.prs.find(p => prDistanceMi(p.k) === goalDist) ?? null
     : null;
   const anchorPrSec = anchorPr ? parseRaceTime(anchorPr.v) : null;
-  const anchorGapSec = anchorPrSec != null && goalSec != null
-    ? anchorPrSec - goalSec
-    : null;
+  const anchorGapSec = anchorPrSec != null && goalSec != null ? anchorPrSec - goalSec : null;
+
+  const calendar = seed.races.filter(r => r.tag !== 'PAST');
+  const results = seed.pastRaces;
 
   return (
     <div className="targets2">
       <div className="top">
         <div>
-          <div className="date">Race</div>
-          <div className="wk">Goals &amp; races</div>
-        </div>
-      </div>
-
-      {/* ============ SECTION 1 · THE ANSWER ============ */}
-      <div className="answer">
-        <div className="goalblock">
-          <div className="eyebrow">Primary goal</div>
-          <div className="goaltime">{goal.goal}</div>
-          {conf ? (
-            <div className="goalconf">
-              <span className={`confword ${conf.tier}`}>{conf.word}</span>
-              <span className="confdesc">{conf.descriptor}</span>
-              <span className="confdetail">{conf.detail}</span>
-            </div>
-          ) : null}
-          <div className="goalmeta">
-            <b>{goal.name}</b>
-            {goal.location ? <> · {goal.location}</> : null}
-            {' · '}{formatDate(goal.date)}
-          </div>
-          <div className="statusrow">
-            <span className="days"><b>{goal.daysAway}</b> days out</span>
+          <div className="date">Targets</div>
+          <div className="wk">
+            {goal.name}
+            {goal.daysAway >= 0 ? ` · ${goal.daysAway} day${goal.daysAway === 1 ? '' : 's'}` : ''}
           </div>
         </div>
       </div>
 
+      {/* ============ 1 · THE ANSWER ============ */}
       <div className="band">
-        <div className="eyebrow-sec">Closing the gap</div>
-        <GapPanel goal={goal} series={seed.projectionTrend} anchor={seed.health?.vdotAnchor ?? null} />
+        <div className="eyebrow-sec">The answer</div>
+        <div className="t2card" style={{ padding: '26px 28px' }}>
+          <div style={{ display: 'flex', gap: 44, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: '1.6px',
+                color: 'rgba(255,255,255,.78)', textTransform: 'uppercase',
+              }}>
+                {goal.name} · {formatDate(goal.date)}
+              </div>
+              <div className="goaltime" style={{ fontSize: 78, marginTop: 8 }}>{goal.goal}</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,.6)', marginTop: 8 }}>
+                goal{goalPace ? ` · ${goalPace}` : ''}
+              </div>
+            </div>
+            {projectedSec != null ? (
+              <div style={{ paddingBottom: 6 }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 800, letterSpacing: '1.8px',
+                  color: 'rgba(255,255,255,.55)', textTransform: 'uppercase',
+                }}>
+                  Projected
+                </div>
+                <div style={{
+                  fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 44,
+                  lineHeight: 1, marginTop: 6, fontVariantNumeric: 'tabular-nums',
+                  color: status?.tone ?? '#fff',
+                }}>
+                  {formatClock(projectedSec)}
+                </div>
+                {status ? <div style={{ marginTop: 10 }}><StatusChip read={status} /></div> : null}
+              </div>
+            ) : status ? (
+              <div style={{ paddingBottom: 6 }}><StatusChip read={status} /></div>
+            ) : null}
+          </div>
+          <div className="goalmeta" style={{ marginTop: 18 }}>
+            {goal.location ? <>{goal.location} · </> : null}
+            <b>{goal.daysAway}</b> days out
+          </div>
+        </div>
       </div>
 
-      {/* ============ THE WORK · test points ============ */}
-      {/* 2026-06-11 · David's strip-down. The drift-signal banners (they argued
-          with the trajectory), the pathHead copy, and the status ladder are
-          cut; the separate VDOT card is cut (its number + sparkline now live in
-          the GapPanel). What's left is the real, trackable session record: what
-          you ran (judged vs PLAN target) and what's next. Always shown. */}
+      {/* ============ 2 · THE PATH ============ */}
+      <div className="band">
+        <div className="eyebrow-sec">The path</div>
+        <GapPanel
+          goal={goal}
+          series={seed.projectionTrend}
+          anchor={seed.health?.vdotAnchor ?? null}
+          status={status}
+        />
+        {/* The renegotiation mounts HERE · directly under the number line
+            that justifies it. Deck Decision 3a. */}
+        {renegotiation ? (
+          <GoalRenegotiationCard
+            proposal={renegotiation}
+            goal={goal}
+            onDone={() => router.refresh()}
+          />
+        ) : null}
+      </div>
+
+      {/* ============ 3 · THE WORK ============ */}
       <div className="band">
         <div className="eyebrow-sec">The work</div>
         <div className="t2card pathcard">
-          <TestPointsGrid
+          {seed.blockState?.betweenBlocks ? (
+            <BetweenBlocks state={seed.blockState} />
+          ) : null}
+          <TheWork
             recent={goal.recentTestPoints ?? []}
             next={goal.nextTestPoints ?? []}
+            betweenBlocks={seed.blockState?.betweenBlocks ?? false}
+            blockOpensISO={seed.blockState?.nextBlockOpensISO ?? null}
+            calendar={calendar}
+            onOpenRace={onOpenRace}
           />
         </div>
       </div>
 
-      {/* ============ SECTION 4 · PRs ANCHORED ============ */}
+      {/* ============ 4 · RACES · CALENDAR + RESULTS ============ */}
       <div className="band">
-      <div className="eyebrow-sec">Personal records · measured against the goal</div>
-      {anchorPr && anchorGapSec != null ? (
-        <div className={`anchorline ${status === 'on-track' ? 'ontrack' : ''}`}>
-          Your {anchorPr.k.toLowerCase()} PR is <b>{anchorPr.v}</b>.
-          {' '}The goal is <b>{goal.goal}</b>
-          {anchorGapSec > 0 ? (
-            <> · a <span className="gp">{formatGap(anchorGapSec)} gap</span>, about <b>{formatPerMile(anchorGapSec, goalDist!)}/mi</b>. That's the distance the build is built to close.</>
-          ) : (
-            <> · you're already under it by <b>{formatGap(-anchorGapSec)}</b>. The build is about holding that and going further.</>
-          )}
-        </div>
-      ) : null}
-      <div className="prgrid2">
-        {seed.prs.map(p => {
-          const isAnchor = anchorPr && p.k === anchorPr.k;
-          return (
-            <div className={`prt2 ${isAnchor ? 'hl' : ''}`} key={p.k}>
-              {isAnchor && anchorGapSec != null && anchorGapSec > 0 ? (
-                <span className="gapchip">−{formatGap(anchorGapSec)} to goal</span>
-              ) : null}
-              <div className="prd">{p.k}</div>
-              <div className="prv">{p.v}</div>
-              <div className="prm">{p.date}</div>
-            </div>
-          );
-        })}
-      </div>
-      </div>{/* .band */}
-
-      {/* ============ SECTION 5 · RACES ============ */}
-      <div className="band">
-      <div className="eyebrow-sec">Races</div>
-      {seed.unloggedRaceAlert && (
-        <div
-          onClick={() => onOpenRace(seed.unloggedRaceAlert!.slug)}
-          role="button"
-          tabIndex={0}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '10px 14px', marginBottom: 8, borderRadius: 8,
-            border: '1px solid var(--goal)', background: 'rgba(243,173,56,0.08)',
-            cursor: 'pointer',
-          }}
-        >
-          <span style={{ fontSize: 13, color: 'var(--ink)' }}>
-            <strong>{seed.unloggedRaceAlert.name}</strong>
-            {` was ${seed.unloggedRaceAlert.daysSince} day${seed.unloggedRaceAlert.daysSince === 1 ? '' : 's'} ago. Log your result.`}
-          </span>
-          <span style={{ fontSize: 11, color: 'var(--goal)', fontFamily: 'var(--f-label)', letterSpacing: '1px' }}>
-            LOG →
-          </span>
-        </div>
-      )}
-      <div className="racelist">
-        {seed.races.map((r, i) => (
+        <div className="eyebrow-sec">Races</div>
+        {seed.unloggedRaceAlert ? (
           <div
-            className="racerow"
-            key={r.slug + i}
-            onClick={() => onOpenRace(r.slug)}
+            onClick={() => onOpenRace(seed.unloggedRaceAlert!.slug)}
             role="button"
             tabIndex={0}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 14px', marginBottom: 12, borderRadius: 8,
+              border: '1px solid var(--goal)', background: 'rgba(243,173,56,0.08)',
+              cursor: 'pointer',
+            }}
           >
-            <div className="rinfo">
-              <div className="rn">{r.name}</div>
-              <div className="rdate">{r.meta}</div>
-            </div>
-            <span className={`racetag ${r.tag === 'A RACE' ? 'a' : 'tune'}`}>
-              {r.tag === 'A RACE' ? 'A race' : 'Tune-up'}
+            <span style={{ fontSize: 13, color: 'var(--ink)' }}>
+              <strong>{seed.unloggedRaceAlert.name}</strong>
+              {` was ${seed.unloggedRaceAlert.daysSince} day${seed.unloggedRaceAlert.daysSince === 1 ? '' : 's'} ago. Log your result.`}
             </span>
-            <span className="racedays">
-              {String(r.days).replace(/[^0-9]/g, '') || r.days}
-              <small>days</small>
+            <span style={{ fontSize: 11, color: 'var(--goal)', fontFamily: 'var(--f-label)', letterSpacing: '1px' }}>
+              LOG →
             </span>
           </div>
-        ))}
-      </div>
-      {/* 2026-08-17 · retro front door · minimal PAST RACES list. Rows
-          reuse the .racerow styling and open the same RaceView the
-          upcoming rows do. Result + provenance chip come straight from
-          races-state (actual_result first; watch/run-match times labeled
-          provisional per race-data Rule 3). FLAG: final form of the
-          retro surface awaits the pending composition deck — keep this
-          list minimal until that lands. */}
-      {seed.pastRaces.length > 0 ? (
-        <>
-          <div className="eyebrow-sec" style={{ marginTop: 22 }}>Past races</div>
-          <div className="racelist">
-            {seed.pastRaces.map((r, i) => (
-              <div
-                className="racerow"
-                key={r.slug + i}
-                onClick={() => onOpenRace(r.slug)}
-                role="button"
-                tabIndex={0}
-              >
-                <div className="rinfo">
-                  <div className="rn">{r.name}</div>
-                  <div className="rdate">{r.meta}</div>
-                </div>
-                {r.provenance ? (
-                  <span
-                    className="racetag tune"
-                    style={r.provenance === 'provisional' ? { color: 'var(--goal)', borderColor: 'var(--goal)' } : undefined}
-                  >
-                    {r.provenance === 'official' ? 'Official'
-                      : r.provenance === 'logged' ? 'Logged'
-                      : 'Provisional'}
-                  </span>
-                ) : (
-                  <span className="racetag tune" style={{ color: 'var(--goal)', borderColor: 'var(--goal)' }}>
-                    No result
-                  </span>
-                )}
-                <span className="racedays" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {r.result ?? '·'}
-                </span>
+        ) : null}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 14 }}>
+          <div className="t2card" style={{ padding: '20px 22px' }}>
+            <SubLabel>Calendar</SubLabel>
+            {calendar.length > 0 ? (
+              <div style={{ marginTop: 6 }}>
+                {calendar.map((r, i) => (
+                  <CalendarRow key={r.slug + i} race={r} onOpen={() => onOpenRace(r.slug)} />
+                ))}
               </div>
-            ))}
+            ) : (
+              <EmptyLine>Nothing on the calendar. A race is what the plan points at.</EmptyLine>
+            )}
           </div>
-        </>
-      ) : null}
-      <div className="raceacts">
-        <button type="button" className="racebtn" onClick={() => setGoalOpen(true)}>+ New goal</button>
-        <button type="button" className="racebtn" onClick={() => setLogOpen(true)}>+ Log strength / cross</button>
+
+          <div className="t2card" style={{ padding: '20px 22px' }}>
+            <SubLabel>Results</SubLabel>
+            {results.length > 0 ? (
+              <div style={{ marginTop: 6 }}>
+                {results.map((r, i) => (
+                  <ResultRow key={r.slug + i} race={r} onOpen={() => onOpenRace(r.slug)} />
+                ))}
+              </div>
+            ) : (
+              <EmptyLine>No races on the record yet.</EmptyLine>
+            )}
+          </div>
+        </div>
+
+        <div className="raceacts">
+          <button type="button" className="racebtn" onClick={() => setGoalOpen(true)}>+ New goal</button>
+          <button type="button" className="racebtn" onClick={() => setLogOpen(true)}>+ Log strength / cross</button>
+        </div>
       </div>
-      </div>{/* .band */}
+
+      {/* ============ 5 · RECORDS ============ */}
+      {seed.prs.length > 0 ? (
+        <div className="band">
+          <div className="eyebrow-sec">Personal records · measured against the goal</div>
+          {anchorPr && anchorGapSec != null ? (
+            <div className={`anchorline ${status?.tier === 'ahead' || status?.tier === 'on-pace' ? 'ontrack' : ''}`}>
+              Your {anchorPr.k.toLowerCase()} PR is <b>{anchorPr.v}</b>.
+              {' '}The goal is <b>{goal.goal}</b>
+              {anchorGapSec > 0 ? (
+                <> · a <span className="gp">{formatGapClock(anchorGapSec)} gap</span>, about <b>{formatPerMile(anchorGapSec, goalDist!)}/mi</b>. That is the distance the build is built to close.</>
+              ) : (
+                <> · you are already under it by <b>{formatGapClock(-anchorGapSec)}</b>. The build is about holding that and going further.</>
+              )}
+            </div>
+          ) : null}
+          <div className="prgrid2">
+            {seed.prs.map(p => {
+              const isAnchor = anchorPr && p.k === anchorPr.k;
+              return (
+                <div className={`prt2 ${isAnchor ? 'hl' : ''}`} key={p.k}>
+                  {isAnchor && anchorGapSec != null && anchorGapSec > 0 ? (
+                    <span className="gapchip">−{formatGapClock(anchorGapSec)} to goal</span>
+                  ) : null}
+                  <div className="prd">{p.k}</div>
+                  <div className="prv">{p.v}</div>
+                  <div className="prm">{p.date}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       {goalOpen ? (
         <SheetOverlay onDismiss={() => setGoalOpen(false)}>
@@ -319,112 +320,274 @@ export function TargetsView({
   );
 }
 
-// ============================ STATUS PILL ============================
-function StatusPill({ status }: { status: 'on-track' | 'watching' | 'off-track' }) {
-  if (status === 'on-track') {
-    return <span className="spill ontrack"><span className="d" />On track</span>;
-  }
-  if (status === 'off-track') {
-    return <span className="spill off"><span className="d" />Off track</span>;
-  }
-  return <span className="spill watch"><span className="d" />Watching</span>;
+// ============================ STATUS CHIP ============================
+/**
+ * The one status chip · tier word + gap value. Exported so Today's GAP tile
+ * can render the identical chip instead of deriving its own wording.
+ */
+export function StatusChip({ read, compact }: { read: GoalStatusRead; compact?: boolean }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex', alignItems: 'center',
+        fontFamily: "'Inter', sans-serif",
+        fontSize: compact ? 10 : 11,
+        fontWeight: 800,
+        letterSpacing: '1.2px',
+        textTransform: 'uppercase',
+        color: read.tone,
+        border: `1px solid ${read.tone}59`,
+        background: `${read.tone}14`,
+        borderRadius: 9,
+        padding: compact ? '4px 8px' : '6px 11px',
+        whiteSpace: 'nowrap',
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      {read.label}
+    </span>
+  );
 }
 
-// ============================ PROJECTION BAND ============================
+// ============================ RENEGOTIATION ============================
 /**
- * Horizontal number line · slower → faster left-to-right, goal sits on
- * the right.  Positions are computed from the actual time delta on a
- * fixed scale (±10% of goal time around goal), clamped so both markers
- * stay inside the band.
+ * The goal renegotiation, mounted beside the number it renegotiates.
+ *
+ * TODO(wave-1-integration): Wave 1 is landing a shared CoachDecisionCard
+ * with exactly this grammar (deck Decision 2 · eyebrow names the kind, left
+ * accent carries the state, verb buttons in coach voice, never
+ * Accept/Dismiss). When it exists, swap this inline card for it and delete
+ * this component — the props map 1:1 (kind, eyebrow, title, body, actions).
+ * Rendered inline for now so Targets is complete without a cross-wave
+ * dependency.
+ *
+ * Accept path is the existing goal edit · PATCH /api/race/[slug]
+ * { goalSec, source: 'renegotiate' }, named by the proposal payload itself
+ * (RenegotiationReasons.accept_path). Holding the goal dismisses the
+ * proposal through the standard POST /api/plan/proposal seam.
  */
-function ProjectionBand({
-  goalSec, fitSec, loSec, hiSec, status, gapText,
+function GoalRenegotiationCard({
+  proposal, goal, onDone,
 }: {
-  goalSec: number | null;
-  fitSec: number | null;
-  loSec?: number | null;
-  hiSec?: number | null;
-  status: 'on-track' | 'watching' | 'off-track';
-  gapText: string;
+  proposal: PlanProposalSeed;
+  goal: GoalRace;
+  onDone: () => void;
 }) {
-  if (goalSec == null) {
-    return <div className="pband"><div className="btrack" /></div>;
+  const [busy, setBusy] = useState<null | 'hold' | 'move'>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const reasons = proposal.reasons ?? {};
+  const alternatives = (reasons as { alternatives?: Record<string, { sec: number; display: string; label: string }> }).alternatives ?? null;
+  // The engine recommends the B band · where the evidence says the runner is
+  // tracking. It never picks for them; this is the button's default.
+  const suggested = alternatives?.b ?? null;
+  const raceSlug = typeof (reasons as { race_slug?: unknown }).race_slug === 'string'
+    ? (reasons as { race_slug: string }).race_slug
+    : goal.slug;
+  const trajectorySec = typeof (reasons as { trajectory_sec?: unknown }).trajectory_sec === 'number'
+    ? (reasons as { trajectory_sec: number }).trajectory_sec
+    : null;
+
+  if (done) return null;
+
+  async function hold() {
+    setBusy('hold'); setError(null);
+    try {
+      const r = await fetch('/api/plan/proposal', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: proposal.id, action: 'dismiss' }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok && !(j as { ok?: boolean }).ok) throw new Error(`HTTP ${r.status}`);
+      setDone(true);
+      onDone();
+    } catch (e) {
+      setBusy(null);
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
-  // Scale · left = 1.10 × goal (slowest), right = 0.97 × goal (fastest)
-  // gives the goal marker around 77% (matches design intent of
-  // "goal sits on the right" without being pinned to the edge).
-  const left = goalSec * 1.10;
-  const right = goalSec * 0.97;
-  const pos = (x: number) => {
-    const raw = (left - x) / (left - right);
-    return Math.min(0.95, Math.max(0.05, raw)) * 100;
-  };
-  const goalPct = pos(goalSec);
-  const fitPct = fitSec != null ? pos(fitSec) : null;
-  // 2026-06-08 · CI edges · hi (slower) sits left of lo (faster) on the
-  // slower→faster track. Renders as a shaded zone behind the fit marker.
-  const loPct = loSec != null ? pos(loSec) : null;
-  const hiPct = hiSec != null ? pos(hiSec) : null;
-  const hasCI = loPct != null && hiPct != null;
-  const gapClass =
-    status === 'on-track' ? 'ontrack'
-    : status === 'off-track' ? 'off'
-    : '';
+
+  async function move() {
+    if (!suggested) return;
+    setBusy('move'); setError(null);
+    try {
+      const r = await fetch(`/api/race/${raceSlug}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ goalSec: suggested.sec, source: 'renegotiate' }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok && !(j as { ok?: boolean }).ok) throw new Error(`HTTP ${r.status}`);
+      // The goal edit fires an auto-rebuild · reload so every pace on the
+      // page comes from the new target rather than the old one.
+      window.location.reload();
+    } catch (e) {
+      setBusy(null);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   return (
-    <div className="pband">
-      <div className="btrack" />
-      {hasCI ? (
-        <div className="bci" style={{ left: `${hiPct}%`, width: `${loPct! - hiPct!}%` }} />
-      ) : null}
-      {fitPct != null && fitPct < goalPct ? (
-        <>
-          <div className="bgap" style={{ left: `${fitPct}%`, width: `${goalPct - fitPct}%` }} />
-          <div className={`bgaplab ${gapClass}`} style={{ left: `${(fitPct + goalPct) / 2}%` }}>
-            {gapText}
-          </div>
-        </>
-      ) : null}
-      {fitPct != null ? (
-        <div className={`bpt fit${hasCI ? ' range' : ''}`} style={{ left: `${fitPct}%` }}>
-          <div className="dot" />
-          <div className="cap">
-            <span className="v">
-              {hasCI
-                ? `${formatRaceTime(loSec!)} – ${formatRaceTime(hiSec!)}`
-                : (formatRaceTime(fitSec!) ?? '·')}
-            </span>
-            <span className="k">{hasCI ? 'where today’s fitness lands' : 'Current fitness'}</span>
-          </div>
-        </div>
-      ) : null}
-      <div className="bpt goal" style={{ left: `${goalPct}%` }}>
-        <div className="cap">
-          <span className="v">{formatRaceTime(goalSec) ?? '·'}</span>
-          <span className="k">Plan target</span>
-        </div>
-        <div className="dot" />
+    <div
+      role="region"
+      aria-label="Goal renegotiation"
+      style={{
+        marginTop: 14,
+        background: 'rgba(20,22,28,.55)',
+        border: '1px solid rgba(255,255,255,.1)',
+        borderLeft: '4px solid #F3AD38',
+        borderRadius: 16,
+        padding: '20px 22px',
+      }}
+    >
+      <div style={{
+        fontSize: 10, fontWeight: 800, letterSpacing: '1.8px',
+        color: '#F3AD38', textTransform: 'uppercase',
+      }}>
+        Coach · needs a decision
       </div>
+      <div style={{
+        fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 21,
+        letterSpacing: '.4px', textTransform: 'uppercase', margin: '10px 0 8px',
+      }}>
+        Your {shortRaceName(goal.name)} goal needs a call
+      </div>
+      <div style={{ fontSize: 14, color: '#C7CBD4', lineHeight: 1.55, maxWidth: 640 }}>
+        {trajectorySec != null
+          ? `Evidence says ${formatClock(trajectorySec)} against your ${goal.goal} goal. `
+          : `The projection has sat past your ${goal.goal} goal for long enough that the runway cannot close it. `}
+        Hold the goal and the plan keeps writing to it. Move the target and the paces get honest.
+        {suggested ? ` The ${goal.goal} stays on the board as the season ambition.` : ''}
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button type="button" onClick={hold} disabled={busy != null} style={renegBtn(busy != null)}>
+          {busy === 'hold' ? 'Holding…' : `Hold ${goal.goal}`}
+        </button>
+        {suggested ? (
+          <button type="button" onClick={move} disabled={busy != null} style={renegBtn(busy != null)}>
+            {busy === 'move' ? 'Moving…' : `Move to ${suggested.display}`}
+          </button>
+        ) : null}
+        <span style={{
+          fontSize: 11, fontWeight: 700, letterSpacing: '1.2px',
+          color: 'rgba(255,255,255,.5)', textTransform: 'uppercase', marginLeft: 'auto',
+        }}>
+          Decide later
+        </span>
+      </div>
+      {suggested && alternatives?.c ? (
+        <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,.55)' }}>
+          {suggested.label} · {suggested.display}. Safe floor {alternatives.c.display}.
+        </div>
+      ) : null}
+      {error ? (
+        <div style={{ marginTop: 10, fontSize: 11.5, color: '#FC4D64' }}>Could not save: {error}</div>
+      ) : null}
     </div>
   );
 }
 
-// ============================ TEST POINTS GRID ============================
-/** "430 → 7:10" · local to the test-points grid. */
-function fmtPaceShort(sPerMi: number): string {
-  const m = Math.floor(sPerMi / 60);
-  const s = Math.round(sPerMi % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
+function renegBtn(busy: boolean): React.CSSProperties {
+  return {
+    fontFamily: "'Inter', sans-serif",
+    fontSize: 11, fontWeight: 800, letterSpacing: '1.4px', textTransform: 'uppercase',
+    color: '#F3AD38', background: 'none',
+    border: '1px solid rgba(243,173,56,.5)', borderRadius: 11,
+    padding: '11px 18px',
+    cursor: busy ? 'wait' : 'pointer',
+    opacity: busy ? 0.6 : 1,
+  };
 }
 
-function TestPointsGrid({
-  recent, next,
+// ============================ BETWEEN BLOCKS ============================
+/**
+ * The honest empty state for THE WORK · deck Decision 3.
+ *
+ * A recovery block has no quality in it by design, so the test-point list
+ * is legitimately empty. Saying that out loud beats rendering a blank card
+ * that reads like a broken page.
+ */
+function BetweenBlocks({ state }: { state: FaffSeed['blockState'] }) {
+  const line = (() => {
+    const opens = state.nextBlockOpensISO ? formatDate(state.nextBlockOpensISO) : null;
+    const outPart = state.weeksOutAtOpen != null && state.goalName
+      ? `, ${state.weeksOutAtOpen} week${state.weeksOutAtOpen === 1 ? '' : 's'} out`
+      : '';
+
+    if (state.reason === 'recovery' && state.windowStartISO && state.windowEndISO) {
+      const window = `Recovery window ${formatDate(state.windowStartISO)} to ${formatDate(state.windowEndISO)}`;
+      if (opens && state.goalName) {
+        return `${window} · ${shortRaceName(state.goalName)} block opens ${opens}${outPart}`;
+      }
+      return opens ? `${window} · next block opens ${opens}` : window;
+    }
+    if (state.reason === 'block-over') {
+      return state.goalName && opens
+        ? `Last block is done. The ${shortRaceName(state.goalName)} block opens ${opens}${outPart}`
+        : 'Last block is done. The next one has not been written yet.';
+    }
+    return state.goalName
+      ? `No block running. Build one and the work toward ${shortRaceName(state.goalName)} starts showing up here.`
+      : 'No block running. Set a goal race and the work starts showing up here.';
+  })();
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+      padding: '12px 14px', marginBottom: 18,
+      background: 'rgba(39,180,224,.06)',
+      border: '1px solid rgba(39,180,224,.25)',
+      borderRadius: 12,
+    }}>
+      <span style={{
+        display: 'inline-flex', alignItems: 'center',
+        fontSize: 10, fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase',
+        color: '#27B4E0', border: '1px solid rgba(39,180,224,.4)',
+        background: 'rgba(39,180,224,.08)', borderRadius: 9, padding: '5px 10px',
+        whiteSpace: 'nowrap',
+      }}>
+        Between blocks
+      </span>
+      <span style={{ fontSize: 13, color: '#C7CBD4', minWidth: 0 }}>{line}</span>
+    </div>
+  );
+}
+
+// ============================ THE WORK ============================
+/**
+ * Recent + next test points. Between blocks the plan has no quality to
+ * point at, so the upcoming races become the test points — which is what
+ * they are: the next honest reads on fitness before the goal race.
+ */
+function TheWork({
+  recent, next, betweenBlocks, blockOpensISO, calendar, onOpenRace,
 }: {
   recent: NonNullable<GoalRace['recentTestPoints']>;
   next: NonNullable<GoalRace['nextTestPoints']>;
+  betweenBlocks: boolean;
+  blockOpensISO: string | null;
+  calendar: RaceLite[];
+  onOpenRace: (slug: string) => void;
 }) {
-  const showBoth = recent.length > 0 && next.length > 0;
-  const showOnly = recent.length > 0 || next.length > 0;
-  if (!showOnly) return null;
+  // Between blocks with nothing planned, the tune-ups on the calendar are
+  // the test points. Never invented: these are real races on the record.
+  const raceTestPoints = betweenBlocks && next.length === 0
+    ? calendar.filter(r => (r.priority ?? 'C') !== 'A')
+    : [];
+
+  const hasSomething = recent.length > 0 || next.length > 0 || raceTestPoints.length > 0;
+  if (!hasSomething) {
+    return (
+      <EmptyLine>
+        No test points yet. The next quality session or race is what moves the projection.
+      </EmptyLine>
+    );
+  }
+
+  const showBoth = recent.length > 0 && (next.length > 0 || raceTestPoints.length > 0);
+
   return (
     <div className={`testgrid ${showBoth ? '' : 'one'}`}>
       {recent.length > 0 ? (
@@ -453,6 +616,7 @@ function TestPointsGrid({
           ))}
         </div>
       ) : null}
+
       {next.length > 0 ? (
         <div className="tcol">
           <h4>Next test points</h4>
@@ -461,9 +625,6 @@ function TestPointsGrid({
               <span className="td">{formatTestDate(tp.dateISO)}</span>
               <span className="tl">
                 {splitLabel(tp.label)}
-                {/* 2026-06-09 Phase 2 (3.3) · the named test. Same
-                    thresholds the drift detectors judge by, stated
-                    before the run instead of after. */}
                 {tp.passCriteria ? (
                   <span style={{ display: 'block', fontSize: 11, color: 'var(--mute, #8B909C)', marginTop: 2 }}>
                     passes at ≤ {fmtPaceShort(tp.passCriteria.paceMaxSPerMi)}/mi
@@ -474,155 +635,162 @@ function TestPointsGrid({
             </div>
           ))}
         </div>
+      ) : raceTestPoints.length > 0 ? (
+        <div className="tcol">
+          <h4>Next test points</h4>
+          {raceTestPoints.map((r, i) => {
+            const role = resolveRaceRole(r.priority, { ownGoal: r.ownGoal });
+            const wk = weekOfBlock(blockOpensISO, r.dateISO);
+            return (
+              <div
+                className="trow next"
+                key={'rt' + i}
+                onClick={() => onOpenRace(r.slug)}
+                role="button"
+                tabIndex={0}
+                style={{ cursor: 'pointer', gridTemplateColumns: '80px 1fr 54px' }}
+              >
+                <span className="td">{r.dateISO ? formatTestDate(r.dateISO) : '·'}</span>
+                <span className="tl">
+                  {r.name}
+                  <span style={{ display: 'block', fontSize: 11, color: 'var(--mute, #8B909C)', marginTop: 2 }}>
+                    {role.line}
+                  </span>
+                </span>
+                {wk != null ? (
+                  <span className="tpace" style={{ color: 'rgba(255,255,255,.5)', fontSize: 12 }}>WK {wk}</span>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       ) : null}
     </div>
   );
 }
 
-// ============================ STATUS LADDER ============================
-function StatusLadder({
-  goal, status,
-}: {
-  goal: GoalRace;
-  status: 'on-track' | 'watching' | 'off-track';
-}) {
-  const tr = goal.transitions ?? { toBetter: null, toWorse: null };
+// ============================ RACE ROWS ============================
+function CalendarRow({ race, onOpen }: { race: RaceLite; onOpen: () => void }) {
+  const role = resolveRaceRole(race.priority, { ownGoal: race.ownGoal });
   return (
-    <div className="ladder">
-      <h4>What moves the status</h4>
-      <div className={`rung up ${status === 'on-track' ? 'here ontrack' : ''}`}>
-        <span className="rl">
-          <span className="ic">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 19V5M5 12l7-7 7 7" />
-            </svg>
-          </span>
-          On track
-          {status === 'on-track' ? <span className="here-tag">You are here</span> : null}
-        </span>
-        <span className="rx">
-          {status === 'on-track'
-            ? 'Plan is on pace · the work is doing the work.'
-            : (tr.toBetter ?? 'A new race within 5% of goal pace clears this · or 3+ weeks of tempo paces hitting plan targets re-rates VDOT from training.')}
-        </span>
-      </div>
-      <div className={`rung ${status === 'watching' ? 'here' : ''}`}>
-        <span className="rl">
-          <span className="ic">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M12 8v4" />
-              <path d="M12 16h.01" />
-            </svg>
-          </span>
-          Watching
-          {status === 'watching' ? <span className="here-tag">You are here</span> : null}
-        </span>
-        <span className="rx">
-          {status === 'watching'
-            ? `One soft signal is live. The plan holds ${goal.goal} · execution is on target.`
-            : 'Soft drift signals fire here · plan stays the same, we just watch the next quality run.'}
-        </span>
-      </div>
-      <div className={`rung down ${status === 'off-track' ? 'here off' : ''}`}>
-        <span className="rl">
-          <span className="ic">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12l7 7 7-7" />
-            </svg>
-          </span>
-          Off track
-          {status === 'off-track' ? <span className="here-tag">You are here</span> : null}
-        </span>
-        <span className="rx">
-          {tr.toWorse ?? 'Fires if another medium signal stacks · or a recent race lands 10%+ off goal · or VDOT trend drops 1+ point over 4 weeks. Headline switches to the raw projection.'}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ============================ VDOT SPARKLINE ============================
-function VdotSparkline({
-  trend,
-  goalVdot,
-}: {
-  trend: Array<{ date: string; vdot: number | null }>;
-  goalVdot: number | null;
-}) {
-  const pts = trend.filter((t): t is { date: string; vdot: number } => t.vdot != null);
-  if (pts.length < 2) return null;
-
-  const W = 120;
-  const H = 40;
-  const PAD = 4; // inner padding so dots/line don't clip the edge
-
-  const vdots = pts.map(p => p.vdot);
-  const candidates = goalVdot != null ? [...vdots, goalVdot] : vdots;
-  const rawMin = Math.min(...candidates);
-  const rawMax = Math.max(...candidates);
-  // Add a small margin so the line doesn't sit flush against the SVG edges.
-  const margin = Math.max((rawMax - rawMin) * 0.15, 0.5);
-  const yMin = rawMin - margin;
-  const yMax = rawMax + margin;
-  const yRange = yMax - yMin || 1;
-
-  const xOf = (i: number) => PAD + ((i / (pts.length - 1)) * (W - PAD * 2));
-  const yOf = (v: number) => PAD + ((1 - (v - yMin) / yRange) * (H - PAD * 2));
-
-  const polyline = pts.map((p, i) => `${xOf(i)},${yOf(p.vdot)}`).join(' ');
-  const last = pts[pts.length - 1];
-  const cx = xOf(pts.length - 1);
-  const cy = yOf(last.vdot);
-
-  const goalY = goalVdot != null ? yOf(goalVdot) : null;
-
-  return (
-    <svg
-      width={W}
-      height={H}
-      viewBox={`0 0 ${W} ${H}`}
-      style={{ display: 'block', marginTop: 8, overflow: 'visible' }}
-      aria-hidden="true"
+    <div
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      style={raceRowStyle}
     >
-      {goalY != null ? (
-        <line
-          x1={PAD} y1={goalY} x2={W - PAD} y2={goalY}
-          stroke="rgba(255,255,255,0.22)"
-          strokeWidth="1"
-          strokeDasharray="3 3"
-        />
-      ) : null}
-      <polyline
-        points={polyline}
-        fill="none"
-        stroke="rgba(255,255,255,0.55)"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-      <circle cx={cx} cy={cy} r="3" fill="rgba(255,255,255,0.9)" />
-    </svg>
+      <RoleChip role={role.role} tone={role.tone} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#fff' }}>{race.name}</div>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', marginTop: 2 }}>{role.line}</div>
+      </div>
+      <div style={{
+        fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 15,
+        color: '#C7CBD4', textAlign: 'right', whiteSpace: 'nowrap',
+      }}>
+        {race.dateISO ? formatDate(race.dateISO).toUpperCase() : race.days}
+        <span style={{
+          display: 'block', fontFamily: "'Inter', sans-serif", fontSize: 9.5,
+          fontWeight: 700, letterSpacing: '1px', color: 'rgba(255,255,255,.5)',
+          textTransform: 'uppercase',
+        }}>
+          {role.tag}
+        </span>
+      </div>
+    </div>
   );
 }
 
-// ============================ VDOT DELTA ============================
-function VdotDelta({ delta }: { delta: number }) {
-  const cls = delta > 0 ? '' : delta < 0 ? 'down' : 'flat';
-  if (delta === 0) {
-    return <span className={`delta ${cls}`}>flat</span>;
-  }
+function ResultRow({ race, onOpen }: { race: FaffSeed['pastRaces'][number]; onOpen: () => void }) {
+  const role = resolveRaceRole(race.priority);
+  const prov = resolveProvenance(race.provenance);
   return (
-    <span className={`delta ${cls}`}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15 }}>
-        {delta > 0 ? <path d="M12 19V5M5 12l7-7 7 7" /> : <path d="M12 5v14M5 12l7 7 7-7" />}
-      </svg>
-      {Math.abs(delta).toFixed(1)}
+    <div
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      style={raceRowStyle}
+    >
+      <RoleChip role={role.role} tone={role.tone} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#fff', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {race.name}
+          {prov ? (
+            <span style={{
+              fontSize: 9.5, fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase',
+              color: prov.tone, border: `1px solid ${prov.tone}66`, background: `${prov.tone}14`,
+              borderRadius: 7, padding: '3px 7px', whiteSpace: 'nowrap',
+            }}>
+              {prov.label}
+            </span>
+          ) : null}
+        </div>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', marginTop: 2 }}>
+          {[race.dateISO ? formatDate(race.dateISO) : null, race.pace ? `${race.pace} /mi` : null, 'Retro ›']
+            .filter(Boolean).join(' · ')}
+        </div>
+      </div>
+      <div style={{
+        fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 15,
+        color: race.result ? '#fff' : 'rgba(255,255,255,.45)',
+        textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+      }}>
+        {race.result ?? 'No result'}
+        <span style={{
+          display: 'block', fontFamily: "'Inter', sans-serif", fontSize: 9.5,
+          fontWeight: 700, letterSpacing: '1px', color: 'rgba(255,255,255,.5)',
+          textTransform: 'uppercase',
+        }}>
+          {prov ? prov.source : 'log it'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const raceRowStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 14,
+  padding: '13px 4px',
+  borderBottom: '1px solid rgba(255,255,255,.05)',
+  cursor: 'pointer',
+};
+
+function RoleChip({ role, tone }: { role: 'A' | 'B' | 'C'; tone: string }) {
+  const solid = role === 'A';
+  return (
+    <span style={{
+      fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 15,
+      width: 30, height: 30, borderRadius: 8,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto',
+      color: solid ? '#fff' : tone,
+      background: solid ? tone : `${tone}26`,
+      border: solid ? `1px solid ${tone}` : `1px solid ${tone}66`,
+    }}>
+      {role}
     </span>
   );
 }
 
-// ============================ SHEETS ============================
+// ============================ SMALL PARTS ============================
+function SubLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 800, letterSpacing: '1.8px',
+      color: '#F3AD38', textTransform: 'uppercase',
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function EmptyLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.55)', padding: '14px 4px 4px', lineHeight: 1.5 }}>
+      {children}
+    </div>
+  );
+}
+
 function SheetOverlay({ children, onDismiss }: { children: React.ReactNode; onDismiss: () => void }) {
   return (
     <div
@@ -651,197 +819,62 @@ function formatDate(iso: string) {
 }
 
 function formatTestDate(iso: string): string {
-  const d = new Date(iso + 'T12:00:00Z');
+  const d = new Date(iso.slice(0, 10) + 'T12:00:00Z');
   return new Intl.DateTimeFormat('en-US', {
     weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
   }).format(d);
 }
 
-function formatGap(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
+/** h:mm:ss / m:ss finish-time format. */
+function formatClock(sec: number): string {
+  const t = Math.max(0, Math.round(sec));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = t % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function paceLabel(totalSec: number, distanceMi: number): string {
+  const perMi = totalSec / Math.max(distanceMi, 0.01);
+  const m = Math.floor(perMi / 60);
+  const s = Math.round(perMi % 60);
+  return `${m}:${String(s).padStart(2, '0')} /mi`;
 }
 
 function formatPerMile(gapSec: number, distMi: number): string {
-  const perMi = Math.round(gapSec / distMi);
-  return `${perMi}s`;
+  return `${Math.round(gapSec / distMi)}s`;
 }
 
-/** Split "8mi tempo · 5 mi @ T" into ["8mi tempo", "5 mi @ T"] · the
- *  detail half renders as a smaller, dimmer aside. */
+/** "430 → 7:10" · pace shorthand for the pass-criteria line. */
+function fmtPaceShort(sPerMi: number): string {
+  const m = Math.floor(sPerMi / 60);
+  const s = Math.round(sPerMi % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Split "8mi tempo · 5 mi @ T" into a headline and a dimmer aside. */
 function splitLabel(label: string): React.ReactNode {
   const i = label.indexOf(' · ');
   if (i === -1) return label;
   return <>{label.slice(0, i)}<small> · {label.slice(i + 3)}</small></>;
 }
 
-function posturePhrase(_goal: GoalRace, status: 'on-track' | 'watching' | 'off-track'): string {
-  if (status === 'on-track') return 'Plan is on pace';
-  if (status === 'off-track') return 'Honest read';
-  return 'Holding the plan';
+/** First two words of a race name · "California International Marathon" in
+ *  a sentence is noise; "California International" carries it. */
+function shortRaceName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return parts.length <= 2 ? name : parts.slice(0, 2).join(' ');
 }
 
-function statusWord(status: 'on-track' | 'watching' | 'off-track'): string {
-  if (status === 'on-track') return 'on pace';
-  if (status === 'off-track') return 'off pace';
-  return 'holding';
-}
-
-function gapText(gapSec: number | null, status: 'on-track' | 'watching' | 'off-track'): string {
-  if (gapSec == null || gapSec <= 0) {
-    return status === 'on-track' ? 'on pace' : 'watching';
-  }
-  return `${formatGap(gapSec)} gap · ${status === 'off-track' ? 'off pace' : 'watching'}`;
-}
-
-function bandCaption(goal: GoalRace, gapSec: number | null, status: 'on-track' | 'watching' | 'off-track'): React.ReactNode {
-  const fit = goal.vdotProjectionSec != null ? formatRaceTime(goal.vdotProjectionSec) : null;
-  if (status === 'on-track') {
-    return (
-      <>
-        The plan still targets <b>{goal.goal}</b> · execution is on pace.
-        {fit && gapSec != null ? (
-          gapSec <= 0
-            ? <> Raw fitness reads <b>{fit}</b> · ahead of the target.</>
-            : <> Raw fitness reads <b>{fit}</b> · still {formatGap(gapSec)} back · the build is written to close it.</>
-        ) : null}
-      </>
-    );
-  }
-  if (status === 'off-track' && fit && gapSec != null && gapSec > 0) {
-    return (
-      <>
-        Raw fitness reads <b>{fit}</b> · {formatGap(gapSec)} off the {goal.goal} target.
-        {' '}The plan is closing the gap.
-      </>
-    );
-  }
-  return (
-    <>
-      The plan still targets <b>{goal.goal}</b> · we hold the line until the evidence clearly says we can't.
-      {fit ? <> Raw fitness reads <b>{fit}</b> today · that gap is what we're watching.</> : null}
-    </>
-  );
-}
-
-function pathHeadline(status: 'on-track' | 'watching' | 'off-track'): string {
-  if (status === 'on-track') return 'On track · the plan is the path.';
-  if (status === 'off-track') return 'Off track · closing the gap.';
-  return 'Watching · soft signals firing.';
-}
-
-function pathSubline(goal: GoalRace, status: 'on-track' | 'watching' | 'off-track'): string {
-  // When the trajectory drives the surface status, the engine's drift-status
-  // summary (computed from the OLD off-track/watching binary) can flatly
-  // contradict it — "the math is honest, time to look at what the plan can't
-  // close" under a hero that says "within reach". Prefer the status-driven
-  // copy whenever a trajectory is present; only fall back to the engine summary
-  // when there's no trajectory to align to.
-  if (!goal.trajectory && goal.projectionSummary) return goal.projectionSummary;
-  if (status === 'on-track') return 'The work is doing the work · stay the course.';
-  if (status === 'off-track') return 'The next blocks are written to close it.';
-  return 'Hold the plan · the next quality run will tell us more.';
-}
-
-function evidenceLine(s: { kind: string; evidence: Record<string, number | string | null> }): string | null {
-  if (s.kind === 'recent_race') {
-    return 'Most recent comparable race · within the 90-day window the projection reads from.';
-  }
-  if (s.kind === 'vdot_trend') return 'VDOT trend across the last 4 weeks.';
-  if (s.kind === 'aerobic_decoupling') return 'Aerobic decoupling above the doctrine threshold.';
-  if (s.kind === 'tempo_pace_drift') return 'Tempo paces drifting from plan targets.';
-  if (s.kind === 'plan_adapter_downgrades') return 'Plan adapter has downgraded recent quality.';
-  if (s.kind === 'missed_key_workouts') return 'Missed or skipped key workouts in the last block.';
-  return null;
-}
-
-function vdotReadCopy(vdot: number, delta: number | null, heldDays: number | null): React.ReactNode {
-  if (delta != null && delta > 0) {
-    return (
-      <>
-        Up <b>{delta.toFixed(1)} points</b> across the block.
-        {' '}The model only moves on a real result or a breakthrough session, so a flat read is expected, not a stall.
-      </>
-    );
-  }
-  if (delta != null && delta < 0) {
-    return (
-      <>
-        Down <b>{Math.abs(delta).toFixed(1)} points</b> across the block.
-        {' '}One soft signal · we watch the next quality run before adjusting the plan.
-      </>
-    );
-  }
-  if (heldDays != null) {
-    return (
-      <>
-        Flat across <b>{heldDays} days</b>.
-        {' '}The model only moves on a real result or a breakthrough session, so a flat read is expected, not a stall.
-      </>
-    );
-  }
-  return <>VDOT <b>{vdot.toFixed(1)}</b> · the model only moves on a real result or a breakthrough session.</>;
-}
-
-function lastNonNull(arr: Array<number | null>): number | null {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (arr[i] != null) return arr[i];
-  }
-  return null;
-}
-
-function vdotAtDaysAgo(
-  trend: Array<{ date: string; vdot: number | null }>,
-  daysAgo: number,
-): number | null {
-  if (trend.length === 0) return null;
-  // Find the trend entry closest to N days before the latest date.
-  const latestIso = trend[trend.length - 1].date;
-  const latestT = Date.parse(latestIso + 'T00:00:00Z');
-  if (isNaN(latestT)) return null;
-  const targetT = latestT - daysAgo * 86400_000;
-  let best: number | null = null;
-  let bestDelta = Infinity;
-  for (const row of trend) {
-    if (row.vdot == null) continue;
-    const t = Date.parse(row.date + 'T00:00:00Z');
-    if (isNaN(t)) continue;
-    const delta = Math.abs(t - targetT);
-    if (delta < bestDelta) {
-      bestDelta = delta;
-      best = row.vdot;
-    }
-  }
-  return best;
-}
-
-function daysHeld(
-  trend: Array<{ date: string; vdot: number | null }>,
-  currentVdot: number | null,
-): number | null {
-  if (currentVdot == null || trend.length === 0) return null;
-  // Walk backwards from the latest entry · count consecutive days where
-  // vdot equals (within .05) the current value.
-  let last: number | null = null;
-  for (let i = trend.length - 1; i >= 0; i--) {
-    const row = trend[i];
-    if (row.vdot == null) continue;
-    if (Math.abs(row.vdot - currentVdot) > 0.05) {
-      const start = trend[i + 1]?.date ?? null;
-      if (!start) return null;
-      const startT = Date.parse(start + 'T00:00:00Z');
-      const latestT = Date.parse(trend[trend.length - 1].date + 'T00:00:00Z');
-      if (isNaN(startT) || isNaN(latestT)) return null;
-      return Math.max(1, Math.round((latestT - startT) / 86400_000));
-    }
-    last = row.vdot;
-  }
-  // VDOT never changed across the full trend window.
-  const latestT = Date.parse(trend[trend.length - 1].date + 'T00:00:00Z');
-  const earliestT = Date.parse(trend[0].date + 'T00:00:00Z');
-  if (isNaN(latestT) || isNaN(earliestT)) return null;
-  return Math.max(1, Math.round((latestT - earliestT) / 86400_000));
+/** Which week of the upcoming block a date lands in. Null when the block
+ *  has no opening date, or the date is before it opens. */
+function weekOfBlock(blockOpensISO: string | null, dateISO: string | null | undefined): number | null {
+  if (!blockOpensISO || !dateISO) return null;
+  const open = Date.parse(blockOpensISO.slice(0, 10) + 'T12:00:00Z');
+  const d = Date.parse(dateISO.slice(0, 10) + 'T12:00:00Z');
+  if (!Number.isFinite(open) || !Number.isFinite(d) || d < open) return null;
+  return Math.floor((d - open) / (7 * 86400000)) + 1;
 }
 
 /** PR label → distance in miles. Returns null for unknown labels. */

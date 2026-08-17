@@ -272,20 +272,33 @@ export type FaffSeed = {
   // targets view
   prs: PR[];
   races: RaceLite[];
-  /** 2026-08-17 · retro front door · past races for the Targets PAST
-   *  RACES list. Result + provenance from races-state (actual_result
-   *  first; watch/run-match times stay 'provisional' per race-data
-   *  Rule 3). Final composition awaits the pending design deck. */
+  /** 2026-08-17 · the Targets RESULTS column (recomposition deck Decision
+   *  3c · replaced the minimal deck-pending PAST RACES list). Result +
+   *  provenance from races-state (actual_result first; watch/run-match
+   *  times stay 'provisional' per race-data Rule 3). Each row opens the
+   *  retro page. */
   pastRaces: Array<{
     slug: string;
     name: string;
     meta: string;
     result: string | null;
     provenance: 'official' | 'logged' | 'provisional' | null;
+    /** ISO race date · the RESULTS row states the date on its own line. */
+    dateISO?: string | null;
+    /** Finish pace from the matched run ("7:43"), when one matched. */
+    pace?: string | null;
+    /** Race priority · the RESULTS row carries the same role chip the
+     *  CALENDAR does, so a past A race still reads as an A race. */
+    priority?: 'A' | 'B' | 'C' | null;
   }>;
   // Past A/B race with no logged result, surfaced for up to 30 days post-race.
   // Drives the "AFC was 3 days ago — log your result" callout in TargetsView.
   unloggedRaceAlert: { slug: string; name: string; daysSince: number } | null;
+  /** 2026-08-17 · recomposition deck Decision 3 · is the runner inside a
+   *  training block or between two of them? Targets' THE WORK renders the
+   *  explicit BETWEEN BLOCKS state off this instead of an empty list.
+   *  Computed by lib/faff/block-state.ts. */
+  blockState: import('@/lib/faff/block-state').BlockState;
   // 2026-05-31: projection trend for the goal race's distance — daily
   // snapshots from projection_snapshots written by the 00:30 cron. Empty
   // array when no goal race / no snapshots recorded yet. Oldest -> newest.
@@ -375,8 +388,10 @@ export type GoalRace = {
   vdotProjectionSec?: number | null;
   /** 2026-06-08 · statistical band around the current-fitness projection
    *  (vdotProjectionSec) · Research/02 §13.7, status-scaled. lo = faster
-   *  edge, hi = slower edge, both seconds. Null at cold-start. Renders as
-   *  a range on the ProjectionBand current-fitness marker. */
+   *  edge, hi = slower edge, both seconds. Null at cold-start.
+   *  2026-08-17 · its only renderer (TargetsView's ProjectionBand) was
+   *  deleted with the recomposition. Still computed and on the wire for
+   *  the projection API and any future band. */
   confidenceInterval?: {
     lo: number;
     hi: number;
@@ -384,7 +399,11 @@ export type GoalRace = {
     method: 'observed-cv' | 'research-span';
   } | null;
   /** 2026-06-08 · goal-attainment confidence (HIGH/MEDIUM/LOW) · answers
-   *  "solidly or barely." Renders under the goal time. Null at cold-start. */
+   *  "solidly or barely." Null at cold-start.
+   *  2026-08-17 · RETIRED on Targets (recomposition deck Decision 3b): the
+   *  tier word was one of three status dialects for one fact. Targets now
+   *  reads lib/faff/goal-status.ts only. Still on the wire for the
+   *  projection API and the voice-band debug endpoints. */
   confidenceLabel?: {
     tier: 'high' | 'medium' | 'low';
     word: 'HIGH' | 'MEDIUM' | 'LOW';
@@ -704,7 +723,19 @@ export type ReadinessBriefSeed = {
     direction?: 'good' | 'bad';
   }>;
 };
-export type RaceLite = { slug: string; name: string; meta: string; tag: 'A RACE'|'TUNE-UP'|'PAST'; days: string };
+export type RaceLite = {
+  slug: string; name: string; meta: string; tag: 'A RACE'|'TUNE-UP'|'PAST'; days: string;
+  /** 2026-08-17 · Targets CALENDAR role chips (recomposition deck Decision
+   *  3c). The row states what the generator DOES with the race: A owns the
+   *  block, B stands in the week as a race day, C converts the nearest
+   *  quality slot. `null` buckets with C, exactly as races-state does. */
+  priority?: 'A' | 'B' | 'C' | null;
+  /** The race's own goal time when the runner set one ("45:00"). Null when
+   *  unset · the role caption then stays silent rather than inventing one. */
+  ownGoal?: string | null;
+  /** ISO race date · drives the calendar row's date column. */
+  dateISO?: string | null;
+};
 
 // 2026-06-01 · Power moves sidecar fields. All optional · null when
 // not enough signal exists for the helper to compute. Design agent

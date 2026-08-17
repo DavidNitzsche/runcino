@@ -44,6 +44,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { GoalRace } from '../types';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { projectFitnessTrajectory } from '@/lib/training/fitness-trajectory';
+import type { GoalStatusRead } from '@/lib/faff/goal-status';
 
 interface GapPanelProps {
   goal: GoalRace;
@@ -59,6 +60,12 @@ interface GapPanelProps {
     ageDays: number;
     tier: 'fresh' | 'aging' | 'stale';
   } | null;
+  /** 2026-08-17 · recomposition deck Decision 3b · THE status read, resolved
+   *  once by the page and passed down. This panel used to word its own chip
+   *  ("31:48 to find" / "On track" / "1:35 ahead"), which was the fourth
+   *  dialect on a page that was only supposed to have one. Null when there
+   *  is nothing honest to say · the panel then shows no chip. */
+  status?: GoalStatusRead | null;
 }
 
 type SegKey = 'fitness' | 'conditions' | 'course' | 'execution';
@@ -82,8 +89,6 @@ interface Hit {
   d: string;
   dKind: 'cut' | 'fixed';
 }
-
-type Status = { kind: 'good' | 'watch' | 'off' | 'info'; text: string };
 
 const SWATCH: Record<SegKey, string> = {
   fitness: '#F3AD38',
@@ -116,15 +121,12 @@ function fmtDelta(sec: number): string {
 }
 
 /* ─────── per-state derivations ─────── */
-function deriveStatus(projSec: number | null, goalSec: number | null): Status {
-  if (projSec == null || goalSec == null) {
-    return { kind: 'info', text: 'Estimating' };
-  }
-  const r = projSec / goalSec;
-  if (r > 1.08) return { kind: 'off', text: 'Off track · honest gap' };
-  if (r > 1.03) return { kind: 'watch', text: 'Watch · close it' };
-  return { kind: 'good', text: 'On track' };
-}
+// 2026-08-17 · deck Decision 3b · deriveStatus() DELETED. It was the
+// "On track / Watch · close it / Off track · honest gap" dialect — one of
+// the three this page spoke for one fact. The single vocabulary now
+// resolves once in lib/faff/goal-status.ts and arrives as the `status`
+// prop. The ratio thresholds it judged by (1.03 / 1.08) live on there,
+// unchanged, as the no-trajectory fallback.
 
 /**
  * Derive the gap segments. Fitness is always real (predicted vs goal
@@ -378,7 +380,7 @@ function Icon({ kind }: { kind: Hit['icon'] }) {
 }
 
 /* ─────── the panel ─────── */
-export function GapPanel({ goal, series, anchor }: GapPanelProps) {
+export function GapPanel({ goal, series, anchor, status: statusRead }: GapPanelProps) {
   const goalSec = useMemo(() => parseClockToSec(goal.goal), [goal.goal]);
   const projSec = useMemo(
     () => goal.vdotProjectionSec ?? null,
@@ -449,7 +451,6 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
     return 'steady';
   })();
 
-  const status = deriveStatus(projSec, goalSec);
   const segs = useMemo(() => {
     if (goalSec == null || projSec == null) return [];
     return deriveSegs(goalSec, projSec, goal);
@@ -477,7 +478,9 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
         <div className="pad">
           <div className="phead">
             <div className="eyebrow">Closing the gap</div>
-            <span className={`statuschip ${status.kind}`}><i className="dot" />{status.text}</span>
+            {/* Not a status · an absence of one. There is no projection to
+                place against the goal, so no tier word is honest here. */}
+            <span className="statuschip info"><i className="dot" />Estimating</span>
           </div>
           <div className="truth">
             <div className="hl">We can&apos;t draw your gap yet · and we won&apos;t fake one.</div>
@@ -527,7 +530,10 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
         <div className="pad">
           <div className="phead">
             <div className="eyebrow">Race week · {goal.daysAway} day{goal.daysAway === 1 ? '' : 's'} out</div>
-            <span className={`statuschip ${status.kind}`}><i className="dot" />Tapering</span>
+            {/* TAPERING is a phase, not a status · the goal-versus-projection
+                read rides on the projection line below, in the one
+                vocabulary. */}
+            <span className="statuschip info"><i className="dot" />Tapering</span>
           </div>
           <div className="truth">
             {isStretch ? (
@@ -549,12 +555,11 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
           {projSec != null ? (
             <div style={{
               marginTop: 12, fontSize: 11.5, letterSpacing: '.04em',
+              display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
               color: offNow ? '#F3AD38' : 'rgba(255,255,255,.55)',
             }}>
-              Projection {fmtClock(projSec)}
-              {goalSec != null && projSec > goalSec
-                ? ` · ${fmtDelta(projSec - goalSec)} behind the goal`
-                : goalSec != null ? ' · at or ahead of the goal' : ''}
+              <span>Projection {fmtClock(projSec)}</span>
+              {statusRead ? <VocabChip read={statusRead} /> : null}
             </div>
           ) : null}
         </div>
@@ -612,19 +617,15 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
       ? `The projection ${fmtClock(projSec ?? 0)} is a real gap, not an off day. <b>${goal.daysAway} days can close part of it</b> · setting a B-target keeps race day a win instead of a referendum.`
       : `The projection is deterministic · it only re-rates when a race or a breakthrough session beats your current estimate. It will not drift on its own. <b>Next test point: any quality workout that beats it, or the race.</b>`;
   }
-  const statusChipKind = traj ? ((traj.aheadOfGoal || traj.reachable) ? 'good' : 'watch') : status.kind;
-  const statusChipText = traj
-    ? (traj.aheadOfGoal ? `${fmtDelta(Math.abs(traj.gapSec ?? 0))} ahead`
-      : traj.reachable ? 'On track'
-      : `${fmtDelta(traj.gapSec ?? 0)} to find`)
-    : status.text;
-
   return (
     <div className="fa-gappanel">
       <div className="pad">
         <div className="phead">
           <div className="eyebrow">{eyebrow}</div>
-          <span className={`statuschip ${statusChipKind}`}><i className="dot" />{statusChipText}</span>
+          {/* 2026-08-17 · deck Decision 3b · the panel's own chip wording
+              ("31:48 to find" / "On track" / "1:35 ahead") retired. One
+              vocabulary, resolved by the page, rendered here. */}
+          {statusRead ? <VocabChip read={statusRead} /> : null}
         </div>
         <div className="truth">
           <div className="hl" dangerouslySetInnerHTML={{ __html: truthHl }} />
@@ -654,6 +655,22 @@ export function GapPanel({ goal, series, anchor }: GapPanelProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ─────── the one status chip · lib/faff/goal-status.ts ─────── */
+function VocabChip({ read }: { read: GoalStatusRead }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      fontFamily: "'Inter', sans-serif", fontSize: 10, fontWeight: 800,
+      letterSpacing: '1.2px', textTransform: 'uppercase',
+      color: read.tone, border: `1px solid ${read.tone}59`,
+      background: `${read.tone}14`, borderRadius: 9, padding: '4px 9px',
+      whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+    }}>
+      {read.label}
+    </span>
   );
 }
 
