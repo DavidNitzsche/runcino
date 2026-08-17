@@ -76,6 +76,16 @@ import {
   STRIDE_DEFAULT_REPS,
   STRIDE_DAYS_PER_WEEK,
 } from '@/lib/plan/spec-builder';
+import {
+  GRADE_COST_PER_PCT,
+  GRADE_MODEL_MAX_PCT,
+  DESCENT_GIVEBACK_FRACTION,
+  TREADMILL_AIR_RESISTANCE_GRADE_PCT,
+  TREADMILL_COST_PER_PCT,
+  composeEffortFactor,
+  gradeFactor,
+  treadmillEffectiveGradePct,
+} from '@/lib/terrain/grade-adjust';
 import { friel7Zones, lthrZones, pctMaxZones } from '@/lib/training/zones';
 import { lthrFromMaxHr } from '@/lib/training/lthr';
 import {
@@ -1819,6 +1829,186 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         [2 / 3 - 0.001, share],
         'OVER_CEILING_MAJORITY between a clear majority and the doctrine easy share',
       );
+    },
+  },
+
+  // ══ TERRAIN · grade adjustment for executed runs ═══════════════════════════
+  // Seeded 2026-08-17. CLAUDE.md §Doctrine gate listed "altitude, treadmill and
+  // terrain pace conversions" as an unwatched claim area; the terrain half is
+  // now watched. Altitude remains unseeded — nothing in the engine adjusts for
+  // it yet, so there is no constant to bind.
+  {
+    id: 'TERRAIN.grade-cost-per-pct',
+    binds: ['lib/terrain/grade-adjust.ts#GRADE_COST_PER_PCT'],
+    doc: 'Research/11-course-specific-training.md',
+    anchor: '### Mechanical Effects of Uphill Running',
+    claim:
+      'Running uphill costs a fixed fraction more per percent of grade, and that fraction is ' +
+      'stated in this section. Every pace-judging surface — the post-run recap, the training ' +
+      'VDOT candidates, the race split arithmetic — has to use that one number, or a hilly run ' +
+      'reads as slow on one surface and as fitness on another.',
+    check({ cite }) {
+      const text = cite.text();
+      const m = text.match(/rises\s*~?\s*(\d+(?:\.\d+)?)\s*%\s*per\s*1\s*%\s*of\s*grade/i);
+      if (!m) {
+        throw new Error(
+          'the uphill energy-cost sentence is no longer in §Mechanical Effects of Uphill Running · ' +
+            're-read the section before re-pointing this claim',
+        );
+      }
+      const doctrinePct = Number(m[1]);
+      const enginePct = GRADE_COST_PER_PCT * 100;
+      if (Math.abs(enginePct - doctrinePct) > 0.05) {
+        throw new Error(
+          `GRADE_COST_PER_PCT is ${enginePct}% per 1% grade · doctrine says ${doctrinePct}%`,
+        );
+      }
+      // The same coefficient must be the one the race-pacing path uses. Two
+      // numbers here means the plan and the execution disagree about the
+      // same hill.
+      const pacing = sourceOf('web-v2/lib/race/pacing.ts');
+      const lit = matchLiteral(
+        pacing,
+        /GRADE_COST_PER_PCT\s*=\s*(\d*\.\d+)/,
+        'lib/race/pacing.ts#GRADE_COST_PER_PCT',
+      );
+      if (Math.abs(Number(lit[1]) - GRADE_COST_PER_PCT) > 1e-9) {
+        throw new Error(
+          `lib/race/pacing.ts uses ${lit[1]} per 1% grade but lib/terrain/grade-adjust.ts uses ` +
+            `${GRADE_COST_PER_PCT}. Planned courses and executed runs must cost a hill the same.`,
+        );
+      }
+    },
+  },
+  {
+    id: 'TERRAIN.grade-model-ceiling',
+    binds: ['lib/terrain/grade-adjust.ts#GRADE_MODEL_MAX_PCT'],
+    doc: 'Research/11-course-specific-training.md',
+    anchor: '### Mechanical Effects of Uphill Running',
+    claim:
+      'The linear per-percent cost is only claimed to hold up to a stated grade. Past it the ' +
+      'engine clamps rather than extrapolating, so a drifted barometer or a fat-fingered ' +
+      'treadmill incline cannot produce an unbounded pace adjustment.',
+    check({ cite }) {
+      const m = cite.text().match(/up to\s*~?\s*(\d+)\s*[–-]\s*(\d+)\s*%/i);
+      if (!m) throw new Error('the validity ceiling ("up to ~10–15%") is no longer stated in this section');
+      within(GRADE_MODEL_MAX_PCT, [Number(m[1]), Number(m[2])], 'GRADE_MODEL_MAX_PCT');
+    },
+  },
+  {
+    id: 'TERRAIN.descent-giveback',
+    binds: ['lib/terrain/grade-adjust.ts#DESCENT_GIVEBACK_FRACTION'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Hills (Grade-Adjusted Pace)',
+    claim:
+      'A descent does NOT refund what the equivalent climb charged — doctrine puts the giveback ' +
+      'at a fraction of the loss. The asymmetry is the entire reason hills show up in a ' +
+      'whole-run adjustment at all: with a symmetric coefficient every rolling loop would net ' +
+      'to zero and terrain would be invisible to the engine.',
+    check({ cite }) {
+      const m = cite.text().match(/downhills give back roughly\s*(\d+)\s*[–-]\s*(\d+)\s*%/i);
+      if (!m) {
+        throw new Error(
+          'the downhill-giveback sentence is no longer in §Hills (Grade-Adjusted Pace) · a change ' +
+            'here changes how every executed run is judged',
+        );
+      }
+      within(DESCENT_GIVEBACK_FRACTION * 100, [Number(m[1]), Number(m[2])], 'DESCENT_GIVEBACK_FRACTION');
+      if (DESCENT_GIVEBACK_FRACTION >= 1) {
+        throw new Error('a descent that gives back everything makes terrain invisible · doctrine says it does not');
+      }
+    },
+  },
+  {
+    id: 'TERRAIN.treadmill-air-resistance-grade',
+    binds: ['lib/terrain/grade-adjust.ts#TREADMILL_AIR_RESISTANCE_GRADE_PCT'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### General incline → outdoor pace conversion',
+    claim:
+      'One specific belt grade is metabolically equal to outdoor flat, because it stands in for ' +
+      'the air resistance a treadmill runner never meets. The engine reads that grade out of ' +
+      "the doc's own conversion table and treats it as zero terrain — otherwise every " +
+      'treadmill run at the standard setting would be credited as a climb it was not.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'Equivalent outdoor pace adjustment';
+      const flatRows = t.rows.filter((r) => /^[≈~]?\s*outdoor flat\s*$/i.test((r[col] ?? '').trim()));
+      if (flatRows.length !== 1) {
+        throw new Error(
+          `the conversion table has ${flatRows.length} grades marked "≈ outdoor flat" · expected exactly one`,
+        );
+      }
+      const [docGrade] = parseBand(flatRows[0][t.headers[0]] ?? '');
+      if (docGrade !== TREADMILL_AIR_RESISTANCE_GRADE_PCT) {
+        throw new Error(
+          `TREADMILL_AIR_RESISTANCE_GRADE_PCT is ${TREADMILL_AIR_RESISTANCE_GRADE_PCT}% but doctrine ` +
+            `puts outdoor-flat equivalence at ${docGrade}%`,
+        );
+      }
+      // The engine must therefore make that belt setting a genuine no-op.
+      if (treadmillEffectiveGradePct(TREADMILL_AIR_RESISTANCE_GRADE_PCT) !== 0) {
+        throw new Error('the outdoor-flat-equivalent belt grade is not being treated as flat');
+      }
+      if (gradeFactor(treadmillEffectiveGradePct(TREADMILL_AIR_RESISTANCE_GRADE_PCT), 'treadmill') !== 1) {
+        throw new Error('a treadmill run at the air-resistance grade is still being adjusted');
+      }
+    },
+  },
+  {
+    id: 'TERRAIN.treadmill-cost-per-pct',
+    binds: ['lib/terrain/grade-adjust.ts#TREADMILL_COST_PER_PCT'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### General incline → outdoor pace conversion',
+    claim:
+      'Belt grade above the flat-equivalent setting costs a stated fraction more per percent, ' +
+      'measured against the same belt speed. It is a different reference frame from outdoor ' +
+      'grade and therefore a separate constant, not the outdoor number reused.',
+    check({ cite }) {
+      const m = cite.text().match(/each 1%\s*of treadmill grade adds\s*~?\s*(\d+(?:\.\d+)?)\s*%/i);
+      if (!m) throw new Error('the treadmill incline cost sentence is no longer in this section');
+      const doctrinePct = Number(m[1]);
+      const enginePct = TREADMILL_COST_PER_PCT * 100;
+      if (Math.abs(enginePct - doctrinePct) > 0.05) {
+        throw new Error(
+          `TREADMILL_COST_PER_PCT is ${enginePct}% per 1% belt grade · doctrine says ${doctrinePct}%`,
+        );
+      }
+    },
+  },
+  {
+    id: 'TERRAIN.conditions-compose-multiplicatively',
+    binds: ['lib/terrain/grade-adjust.ts#composeEffortFactor'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Combined conditions',
+    claim:
+      'When more than one condition is working on a runner, the adjustments multiply rather ' +
+      'than add. The engine has exactly one function that does that stacking, so a hot run on ' +
+      'a hilly route cannot be forgiven twice by two paths that each account for the day.',
+    check({ cite }) {
+      const text = cite.text();
+      if (!/multiplicativel?y,\s*not\s*additively/i.test(text)) {
+        throw new Error('§Combined conditions no longer states multiplicative stacking');
+      }
+      if (!/base_pace\s*×\s*\(1\s*\+\s*heat_adj\)/i.test(text)) {
+        throw new Error('the combined-conditions formula no longer shows the heat leg as (1 + heat_adj)');
+      }
+      const heatPct = 4;
+      const grade = gradeFactor(2);
+      const composed = composeEffortFactor({ heatSlowdownPct: heatPct, gradeFactor: grade });
+      const expected = (1 + heatPct / 100) * grade;
+      if (Math.abs(composed.factor - expected) > 1e-12) {
+        throw new Error(
+          `composeEffortFactor returned ${composed.factor} · doctrine's product is ${expected}`,
+        );
+      }
+      // Neutral legs must leave the other alone, or "no heat" would quietly
+      // cancel a real hill.
+      if (composeEffortFactor({ heatSlowdownPct: 0, gradeFactor: grade }).factor !== grade) {
+        throw new Error('a neutral heat leg is not passing the terrain factor through unchanged');
+      }
+      if (composeEffortFactor({ heatSlowdownPct: heatPct, gradeFactor: 1 }).factor !== 1 + heatPct / 100) {
+        throw new Error('flat terrain is not passing the heat factor through unchanged');
+      }
     },
   },
 ];

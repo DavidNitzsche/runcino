@@ -17,6 +17,21 @@
 
 import { describe, it, expect } from 'vitest';
 import { deriveRecap, type RecapInput } from './run-recap';
+import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
+
+/** An outdoor terrain context, the way a stored row would produce one. */
+function terrainOf(o: {
+  gainFt: number; lossFt: number; distanceMi?: number; paceSPerMi?: number;
+}) {
+  const distanceMi = o.distanceMi ?? 6;
+  const pace = o.paceSPerMi ?? 480;
+  return resolveRunTerrain({
+    source: 'watch',
+    distanceMi,
+    durationSec: distanceMi * pace,
+    splits: [{ mile: 1, elev_ft: o.gainFt }, { mile: 2, elev_ft: -o.lossFt }],
+  });
+}
 
 const baseLongRun: RecapInput = {
   type: 'long',
@@ -575,5 +590,136 @@ describe('deriveRecap · plain-English voice doctrine', () => {
     const text = r.verdict + ' ' + r.facts.join(' ')
       + ' ' + (r.coach_tip ?? '') + ' ' + (r.conditions_note ?? '');
     assertNoJargon(text);
+  });
+});
+
+// ── Terrain · the recap judges effort on grade-adjusted pace ────────────────
+//
+// 2026-08-17. The bug: a hilly easy run read as "relaxed and well inside easy"
+// because the clock was slow, and a net-downhill run read as fitness. The recap
+// now compares against the target on grade-adjusted pace and PRINTS the pace
+// the runner actually ran. Both numbers appear; they never swap jobs.
+
+describe('deriveRecap · terrain', () => {
+  const easyBase: RecapInput = {
+    type: 'easy',
+    phase: 'BUILD',
+    plannedMi: 6,
+    plannedPaceSPerMi: 8 * 60 + 20,   // 8:20 easy target
+    actualMi: 6,
+    actualPaceSPerMi: 9 * 60 + 10,    // 9:10 on the road · 50s "off" the target
+    actualAvgHr: 145,
+    actualMaxHr: 158,
+  };
+
+  it('with no terrain field the output is byte-identical to before', () => {
+    const a = deriveRecap(easyBase);
+    expect(deriveRecap({ ...easyBase, terrain: null })).toEqual(a);
+    // And a genuinely flat run adds nothing either.
+    const flat = deriveRecap({ ...easyBase, terrain: terrainOf({ gainFt: 20, lossFt: 20 }) });
+    expect(flat.facts).toEqual(a.facts);
+  });
+
+  it('a hilly easy run stops reading as "relaxed" and prints the REAL pace', () => {
+    // Shaped on David's 2026-07-06: 6 mi with 572 ft of climb, run at 9:10
+    // against an 8:20 easy target. Judged flat that effort is worth ~8:40 —
+    // inside the easy range, not 50 seconds of loafing.
+    const hilly = deriveRecap({
+      ...easyBase,
+      terrain: terrainOf({ gainFt: 572, lossFt: 60, distanceMi: 6, paceSPerMi: 550 }),
+    });
+    const text = hilly.facts.join(' ');
+    expect(text).toContain('9:10/mi');            // real pace, printed
+    expect(text).not.toMatch(/8:4\d/);            // adjusted pace, never printed as pace
+    expect(text).toContain('Right in the easy range');
+    // Pre-terrain this same run landed in the "Relaxed and well inside easy"
+    // branch, which is the mis-read being fixed.
+    expect(deriveRecap(easyBase).facts.join(' ')).toContain('Relaxed and well inside easy');
+  });
+
+  it('a net-downhill run stops being praised for pace gravity handed over', () => {
+    const quick: RecapInput = { ...easyBase, actualPaceSPerMi: 7 * 60 + 40 };
+    expect(deriveRecap(quick).facts.join(' ')).toContain('touch quicker');
+    const downhill = deriveRecap({
+      ...quick,
+      terrain: terrainOf({ gainFt: 40, lossFt: 900, distanceMi: 6, paceSPerMi: 460 }),
+    });
+    const text = downhill.facts.join(' ');
+    expect(text).toContain('7:40/mi');                    // real pace still shown
+    expect(text).not.toContain('touch quicker');          // no longer flattered
+    expect(text).toMatch(/Net downhill gave you/);
+  });
+
+  it('a tempo up a hill is not "short of the target"', () => {
+    const tempo: RecapInput = {
+      type: 'tempo',
+      phase: 'BUILD',
+      plannedMi: 8,
+      plannedPaceSPerMi: 7 * 60 + 44,
+      actualMi: 8.15,
+      actualPaceSPerMi: 8 * 60 + 3,
+      workPaceSPerMi: 8 * 60 + 3,
+      actualAvgHr: 149,
+      actualMaxHr: 168,
+      splits: Array.from({ length: 8 }, (_, i) => ({ mile: i + 1, paceSPerMi: 483 })),
+    };
+    expect(deriveRecap(tempo).facts.join(' ')).toMatch(/off the|fell short/);
+    const onHills = deriveRecap({
+      ...tempo,
+      terrain: terrainOf({ gainFt: 554, lossFt: 50, distanceMi: 8.15, paceSPerMi: 483 }),
+    });
+    expect(onHills.facts.join(' ')).not.toMatch(/fell short/);
+    expect(onHills.facts.join(' ')).toContain('8:03');   // the pace actually run
+  });
+
+  it('a treadmill with an unrecorded incline is not judged against the target', () => {
+    const belt = deriveRecap({
+      ...easyBase,
+      actualPaceSPerMi: 7 * 60 + 40,
+      terrain: resolveRunTerrain({ source: 'treadmill', indoor: true, distanceMi: 6, durationSec: 2760 }),
+    });
+    const text = belt.facts.join(' ');
+    expect(text).toContain('7:40/mi');
+    expect(text).not.toMatch(/quicker than|Relaxed and well inside/);
+    expect(text).toContain('incline not recorded');
+  });
+
+  it('a treadmill at the standard 1% belt reads exactly like a flat run', () => {
+    // David's 2026-07-15 row, elevGainFt and all.
+    const belt = resolveRunTerrain({
+      source: 'treadmill', indoor: true, distanceMi: 9.01, durationSec: 4636,
+      elevGainFt: 476, elevGainSource: 'treadmill_incline',
+      phases: [{ type: 'work', actualInclinePct: 1, actualDistanceMi: 9.01 }],
+    });
+    const r = deriveRecap({ ...easyBase, terrain: belt });
+    const plain = deriveRecap(easyBase);
+    expect(r.verdict).toBe(plain.verdict);
+    // Same judgement as a flat run · plus one honest sentence about where it
+    // happened. No phantom 476 ft hill.
+    expect(r.facts.slice(0, plain.facts.length)).toEqual(plain.facts);
+    expect(r.facts.join(' ')).toContain('flat-equivalent');
+  });
+
+  it('heat and hills together move the interval target ONCE, multiplicatively', () => {
+    const base: RecapInput = {
+      type: 'intervals', phase: 'BUILD', plannedMi: 6,
+      plannedPaceSPerMi: 392, actualMi: 6, actualPaceSPerMi: 470,
+      actualAvgHr: 165, actualMaxHr: 180,
+      repPaces: [400, 402, 401, 403], repCount: 4,
+      weather: { tempF: 82, dewpointF: 66, durationS: 2820 },
+    };
+    const terrain = terrainOf({ gainFt: 500, lossFt: 60, distanceMi: 6, paceSPerMi: 470 });
+    const heatOnly = deriveRecap(base).intervals_adjusted_target_s_per_mi!;
+    const both = deriveRecap({ ...base, terrain }).intervals_adjusted_target_s_per_mi!;
+
+    expect(both).toBeGreaterThan(heatOnly);      // hills stack on top of heat
+    // Exactly one product: target × heat leg × grade leg, per Research/01
+    // §Combined conditions. Within a second of heat-alone scaled by the grade
+    // factor (the slack is the integer rounding of heatOnly itself).
+    expect(Math.abs(both - heatOnly * terrain.factor)).toBeLessThanOrEqual(1);
+    // Applying heat a second time lands somewhere else entirely — that is the
+    // double-count this design makes unreachable.
+    const doubleCounted = heatOnly * (heatOnly / 392) * terrain.factor;
+    expect(doubleCounted - both).toBeGreaterThan(5);
   });
 });

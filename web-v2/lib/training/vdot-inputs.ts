@@ -29,6 +29,7 @@ import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { excludeDistanceReviewSql } from '@/lib/runs/distance-guard';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
 
 // ── Input shapes — match exactly what bestRecentVdot() accepts ──────────────
 
@@ -53,6 +54,16 @@ export interface RunVdotInput {
    *  zone-aware VDOT read. Only set when the work-phase pace is used (so the
    *  zone applies to the zone pace, not a WU+CD-dragged overall pace). */
   zone: 'threshold' | 'marathon' | 'interval' | 'race' | null;
+  /**
+   * 2026-08-17 · terrain. `finish_seconds` above is GRADE-ADJUSTED when the
+   * run carried a material elevation signal — a fitness estimate is a
+   * judgement about effort, and effort is what the grade adjustment recovers.
+   * These two fields keep the real numbers alongside it so no display path
+   * ever mistakes the adjusted time for what the runner actually ran.
+   */
+  raw_finish_seconds: number | null;
+  /** Seconds the terrain adjustment moved this candidate. 0 on flat runs. */
+  terrain_delta_seconds: number;
 }
 
 export interface VdotInputs {
@@ -228,11 +239,27 @@ export async function loadVdotInputs(
     work_mi: string | null;
     work_seconds: string | null;
     plan_type: string | null;
+    src: string | null;
+    indoor: boolean | null;
+    elev_gain_ft: string | null;
+    splits: unknown;
+    phases: unknown;
   }>(
     `SELECT sa.id::text AS id,
             COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) AS date,
             sa.data->>'workoutType' AS workout_type,
             (sa.data->>'distanceMi')::numeric AS distance_mi,
+            -- 2026-08-17 · terrain inputs for the grade adjustment. A hilly
+            -- training run under-reads as fitness and a net-downhill one
+            -- over-reads; both feed the same VDOT estimate. See
+            -- lib/terrain/run-terrain.ts for why splits are preferred over
+            -- the rolled-up gain (they are the only source of LOSS) and why
+            -- a treadmill row's elevGainFt is deliberately not read here.
+            sa.data->>'source' AS src,
+            (sa.data->>'indoor')::boolean AS indoor,
+            (sa.data->>'elevGainFt')::numeric AS elev_gain_ft,
+            sa.data->'splits' AS splits,
+            sa.data->'phases' AS phases,
             COALESCE(
               (sa.data->>'durationSec')::numeric,
               (sa.data->>'movingTimeS')::numeric,
@@ -354,6 +381,43 @@ export async function loadVdotInputs(
     const workMi = r.work_mi != null ? Number(r.work_mi) : null;
     const workSec = r.work_seconds != null ? Math.round(Number(r.work_seconds)) : null;
     const useWork = workMi != null && workSec != null && workMi >= 4 && workSec > 60;
+    const distMi = useWork ? workMi : (r.distance_mi != null ? Number(r.distance_mi) : null);
+    const rawSec = useWork ? workSec : (r.finish_seconds != null ? Number(r.finish_seconds) : null);
+
+    // ── Terrain ────────────────────────────────────────────────────────────
+    // 2026-08-17 · a VDOT candidate is an effort estimate, so it is judged on
+    // grade-adjusted pace. Doctrine: Research/11 §Mechanical Effects of Uphill
+    // Running (3.3% per 1% grade) and Research/01 §Hills (descents refund only
+    // 60-70%). The elevation is a property of the WHOLE run, so the factor is
+    // computed once from the whole run and then applied to whichever segment
+    // the candidate uses.
+    //
+    // Applying a whole-run factor to a work block assumes the climbing was
+    // spread evenly through the session. That assumption is not free, and it is
+    // stated rather than hidden: there is no per-phase elevation on the wire to
+    // do better with. It is bounded by the materiality floor below — a run flat
+    // enough for the assumption to be doubtful is also a run whose adjustment
+    // is under 4 s/mi and therefore skipped entirely. In David's history every
+    // run with a work block sits at 5-30 ft/mi, well inside that floor.
+    const terrain = resolveRunTerrain({
+      source: r.src,
+      indoor: r.indoor,
+      distanceMi: r.distance_mi != null ? Number(r.distance_mi) : null,
+      durationSec: r.finish_seconds != null ? Number(r.finish_seconds) : null,
+      elevGainFt: r.elev_gain_ft != null ? Number(r.elev_gain_ft) : null,
+      splits: r.splits,
+      phases: r.phases,
+    });
+    // Only act when the terrain moved the judgement by more than pace noise,
+    // and never on a treadmill whose incline nobody recorded — an unknown
+    // belt angle is not evidence of a flat one.
+    const applyTerrain =
+      terrain.material &&
+      terrain.basis !== 'treadmill-incline-unknown' &&
+      terrain.factor > 0 &&
+      rawSec != null;
+    const finishSec = applyTerrain ? rawSec! / terrain.factor : rawSec;
+
     return {
       id: String(r.id),
       date: r.date,
@@ -362,14 +426,17 @@ export async function loadVdotInputs(
       workout_type: r.workout_type != null
         ? (STRAVA_WORKOUT_TYPE[r.workout_type] ?? r.workout_type)
         : null,
-      distance_mi: useWork ? workMi : (r.distance_mi != null ? Number(r.distance_mi) : null),
-      finish_seconds: useWork ? workSec : (r.finish_seconds != null ? Number(r.finish_seconds) : null),
+      distance_mi: distMi,
+      finish_seconds: finishSec != null ? Math.round(finishSec) : null,
       avg_hr: r.avg_hr != null ? Number(r.avg_hr) : null,
       max_hr: maxHrValue,
       // Zone-read ONLY the work-phase pace · applying a zone inversion to a
       // WU+CD-dragged overall pace would badly understate. Without work-phase
       // data the run keeps the conservative race interpretation (zone null).
       zone: useWork ? zoneFromType(r.plan_type) : null,
+      raw_finish_seconds: rawSec != null ? Math.round(rawSec) : null,
+      terrain_delta_seconds:
+        applyTerrain && finishSec != null && rawSec != null ? Math.round(finishSec - rawSec) : 0,
     };
   });
 

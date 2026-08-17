@@ -25,6 +25,7 @@ import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
+import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
 import type { Phase, WorkoutType } from '@/lib/coach/run-purpose';
 
 export const dynamic = 'force-dynamic';
@@ -296,6 +297,25 @@ export async function GET(
     .then((m) => m.loadVoiceBandLite(userId))
     .catch(() => null);
 
+  // 2026-08-17 · terrain. Resolved from the stored row once and handed to the
+  // recap, which judges pace-vs-target through it and prints the real pace
+  // beside it. `splits_unreliable` rows still resolve here: the flag is about
+  // pause-inflated split TIMES, and the elevation deltas on those same splits
+  // are unaffected — and the rolled-up gain is the fallback either way.
+  const terrain = resolveRunTerrain({
+    source: typeof data.source === 'string' ? data.source : null,
+    indoor: data.indoor === true,
+    distanceMi: Number(data.distanceMi) || null,
+    durationSec: Number(data.durationSec) || Number(data.movingTimeS) || Number(data.elapsedTimeS) || null,
+    paceSPerMi: actualPaceSPerMi || null,
+    elevGainFt: Number(data.elevGainFt) || null,
+    elevGainSource: typeof data.elevGainSource === 'string' ? data.elevGainSource : null,
+    startLatLng: data.startLatLng,
+    endLatLng: data.endLatLng,
+    splits: Array.isArray(data.splits) ? data.splits : undefined,
+    phases: Array.isArray(data.phases) ? data.phases : undefined,
+  });
+
   const recap = deriveRecap({
     type,
     phase,
@@ -318,6 +338,7 @@ export async function GET(
     weather: weatherInput,
     // 2026-06-09 Phase 2 (3.2) · taken bail leads the recap (bail ≠ fail).
     ruleOutcomes: Array.isArray(data.ruleOutcomes) ? data.ruleOutcomes : null,
+    terrain,
     voiceBand,
   });
 

@@ -32,6 +32,8 @@ import {
   type WeatherInput,
   type WeatherJudgment,
 } from '@/lib/coach/weather-adjust';
+import { composeEffortFactor } from '@/lib/terrain/grade-adjust';
+import type { RunTerrain } from '@/lib/terrain/run-terrain';
 
 export interface RecapInput {
   type: WorkoutType;
@@ -98,6 +100,19 @@ export interface RecapInput {
     kind?: string; label?: string; breached?: boolean;
     actionTaken?: boolean; atMi?: number | null;
   }> | null;
+  /**
+   * 2026-08-17 · terrain, from `lib/terrain/run-terrain.ts`.
+   *
+   * THE RULE: the recap judges effort against the target on grade-adjusted
+   * pace, and prints the pace the runner actually ran. Both numbers appear;
+   * they never swap jobs. Absent / null = no terrain signal, and every branch
+   * below then behaves byte-identically to the pre-terrain output.
+   *
+   * A treadmill run arrives here with `surface: 'treadmill'`, which suppresses
+   * the outdoor-route framing entirely — a belt is not a hill and it is not a
+   * flat road either.
+   */
+  terrain?: RunTerrain | null;
   /** 2026-08-17 · adaptive voice band (lib/coach/voice-band.ts).
    *  'guided' / null / undefined = default copy, byte-identical to the
    *  pre-band output. 'calibration' softens with a learning frame ·
@@ -120,6 +135,34 @@ export interface RecapPayload {
 // Citations removed from output payloads (David, 2026-05-31). The
 // engine still reads research-grounded rules · the words shown to the
 // runner are plain English, not paper-style citations.
+
+/**
+ * The terrain factor to judge this run's pace through, or 1 when there is no
+ * usable signal.
+ *
+ * `material` is the gate on the whole thing: below ~4 s/mi the terrain is
+ * inside GPS pace noise, and an adjustment smaller than the error it corrects
+ * would only add wobble to a verdict. A treadmill with an unrecorded incline
+ * returns 1 too — an unknown belt angle is not a flat one, so we decline to
+ * adjust and the copy says why instead.
+ */
+function terrainFactor(t: RecapInput['terrain']): number {
+  if (!t || !t.material || t.basis === 'treadmill-incline-unknown') return 1;
+  return t.factor > 0 ? t.factor : 1;
+}
+
+/**
+ * What an observed pace was worth on flat ground in neutral conditions.
+ *
+ * FOR COMPARISON AGAINST A TARGET, NEVER FOR DISPLAY. Every call site that
+ * uses this feeds a `<` or a `-`; every call site that prints a pace uses the
+ * raw number. If you ever find this value inside a `paceLabel()` that is
+ * shown as "your pace", that is the bug.
+ */
+function judgedPace(observedSPerMi: number, t: RecapInput['terrain']): number {
+  const f = terrainFactor(t);
+  return f === 1 ? observedSPerMi : observedSPerMi / f;
+}
 
 function paceLabel(spm: number | null | undefined): string | null {
   if (!spm || spm <= 0) return null;
@@ -149,6 +192,7 @@ function intervalPacing(
   targetSPerMi: number | null,
   slowdownPct: number,
   avgHr: number | null,
+  terrain: RecapInput['terrain'],
 ): { fact: string | null; adjTarget: number | null } {
   const clean = (reps ?? []).filter((p) => typeof p === 'number' && p > 0);
   if (!targetSPerMi || clean.length < 2) {
@@ -161,11 +205,25 @@ function intervalPacing(
   // whenever it's genuinely warm (keyed on the full slowdown), so a hot day
   // still reads "heat-adjusted" even though the magnitude is halved.
   const repSlowdownPct = slowdownPct / 2;
-  const adjTarget = Math.round(targetSPerMi * (1 + repSlowdownPct / 100));
+  // 2026-08-17 · THIS IS THE ONLY PLACE IN THE RECAP WHERE TWO CONDITIONS
+  // STACK. Heat and hills both make the same target pace harder to hit, and
+  // two independent code paths each "helpfully" forgiving the day is how one
+  // hot hilly run gets forgiven twice. Research/01 §Combined conditions says
+  // multiply, so composeEffortFactor multiplies — once, here.
+  const combined = composeEffortFactor({
+    heatSlowdownPct: repSlowdownPct,
+    gradeFactor: terrainFactor(terrain),
+  });
+  const adjTarget = Math.round(targetSPerMi * combined.factor);
   const heat = slowdownPct >= 2;
-  const targetPhrase = heat
-    ? `the heat-adjusted ~${paceLabel(adjTarget)}`
-    : `the ~${paceLabel(adjTarget)} target`;
+  const hills = combined.grade > 1.001;
+  const targetPhrase = heat && hills
+    ? `the ~${paceLabel(adjTarget)} the heat and the hills allowed`
+    : heat
+      ? `the heat-adjusted ~${paceLabel(adjTarget)}`
+      : hills
+        ? `the ~${paceLabel(adjTarget)} the terrain allowed`
+        : `the ~${paceLabel(adjTarget)} target`;
   const half = Math.max(1, Math.floor(clean.length / 2));
   const firstHalf = clean.slice(0, half);
   const lastHalf = clean.slice(-half);
@@ -289,7 +347,9 @@ function tempoExecution(input: RecapInput): string | null {
   const slowest = Math.max(...workSplits);
   const spread = slowest - fastest;
   const avgWork = Math.round(workSplits.reduce((s, p) => s + p, 0) / workSplits.length);
-  const target = input.plannedPaceSPerMi;
+  // A treadmill with an unrecorded incline has no honest vs-target read; the
+  // block's own consistency is still a real observation, so fall through to it.
+  const target = judgeableAgainstTarget(input) ? input.plannedPaceSPerMi : null;
 
   // Even vs faded vs built: compare first and last work split halves.
   const half = Math.max(1, Math.floor(workSplits.length / 2));
@@ -300,7 +360,12 @@ function tempoExecution(input: RecapInput): string | null {
   const spreadDesc = spread <= 8 ? 'very even' : spread <= 16 ? 'consistent' : `${spread}s of spread`;
 
   if (target) {
-    const vsTarget = avgWork - target; // + = slower than target
+    // 2026-08-17 · judge the block on what the effort was worth, print what
+    // the runner ran. `avgWork` stays raw everywhere it is rendered below;
+    // only the vs-target comparison sees the terrain-adjusted value. A tempo
+    // up a hill was not "off the target" — it was the target, uphill.
+    // Rounded before subtracting · vsTarget is printed as a whole-second gap.
+    const vsTarget = Math.round(judgedPace(avgWork, input.terrain)) - target; // + = slower
     if (Math.abs(vsTarget) <= 5) {
       // Right on target — just report consistency
       return drift >= 8
@@ -335,7 +400,30 @@ function tempoExecution(input: RecapInput): string | null {
       : `${workSplits.length} work miles · ${spreadDesc}.`;
 }
 
+/**
+ * True when a pace-vs-target verdict is honest for this run.
+ *
+ * False for a treadmill whose incline nobody recorded: the belt speed is
+ * known, the effort behind it is not, and "you ran quicker than the easy
+ * target" is a claim about effort. Saying nothing beats saying something
+ * unfalsifiable — the recap falls back to its by-feel copy and the terrain
+ * note explains the gap.
+ */
+function judgeableAgainstTarget(input: RecapInput): boolean {
+  return input.terrain?.basis !== 'treadmill-incline-unknown';
+}
+
 export function deriveRecap(input: RecapInput): RecapPayload {
+  const payload = deriveRecapCore(input);
+  // Terrain speaks last. The lead fact is what the runner did; this is the
+  // one sentence about what the ground (or the belt) did to it. Only present
+  // when the terrain actually changed how the run should be read — a flat
+  // road run adds nothing here, which is the overwhelming majority of runs.
+  const note = input.terrain?.note ?? null;
+  return note ? { ...payload, facts: [...payload.facts, note] } : payload;
+}
+
+function deriveRecapCore(input: RecapInput): RecapPayload {
   // E6: pass the workout type so the conditions copy reframes around effort
   // for easy/long/recovery/shakeout (pace-cost framing only for quality/race).
   const weather = input.weather ? judgeWeather({ ...input.weather, workoutType: input.type, phase: 'post' }) : null;
@@ -434,8 +522,13 @@ export function deriveRecap(input: RecapInput): RecapPayload {
       const lead = `Easy ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}.`;
       const easyTgt = input.plannedPaceSPerMi ?? null;
       const easyAct = input.actualPaceSPerMi ?? null;
-      if (easyTgt && easyAct) {
-        const delta = easyAct - easyTgt; // + slower, − faster
+      if (easyTgt && easyAct && judgeableAgainstTarget(input)) {
+        // 2026-08-17 · `lead` above already printed the REAL pace. The verdict
+        // below is about effort, so it reads the grade-adjusted value: an easy
+        // run up a hill is not "relaxed and well inside easy" just because the
+        // clock was slow, and a net-downhill easy run that felt effortless
+        // should not be praised for a pace gravity handed over.
+        const delta = Math.round(judgedPace(easyAct, input.terrain)) - easyTgt; // + slower
         if (delta < -25) {
           // Voice band · default (guided/null) stays byte-identical.
           if (input.voiceBand === 'calibration') {
@@ -505,6 +598,7 @@ export function deriveRecap(input: RecapInput): RecapPayload {
         input.plannedPaceSPerMi ?? null,
         weather?.slowdownPct ?? 0,
         input.actualAvgHr ?? null,
+        input.terrain,
       );
       // Lead with the RESULT, not the prescription: how many reps landed in
       // the acceptable range (same band as the per-rep graph · prescribed

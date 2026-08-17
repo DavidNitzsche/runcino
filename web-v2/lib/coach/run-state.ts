@@ -17,6 +17,8 @@ import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 import { computeCadenceFatigue } from '@/lib/training/cadence-fatigue';
 import { heatAdjustedStatus } from './heat-band';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
+import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
+import { adjustmentLabel as terrainAdjustmentLabel } from '@/lib/terrain/grade-adjust';
 
 export interface RunSplit {
   mile: number;
@@ -108,6 +110,26 @@ export interface RunDetail {
   hr_max: number | null;
   cadence_avg: number | null;
   elev_gain_ft: number | null;
+  /**
+   * 2026-08-17 · terrain, from `lib/terrain/run-terrain.ts`.
+   *
+   * `pace_s_per_mi` above is and stays the REAL pace — distance over time,
+   * what the runner ran, the only value any surface may render as "pace".
+   * These fields are the separate, labelled effort read: what that pace was
+   * worth on flat ground. A consumer that shows `grade_adjusted_pace_s_per_mi`
+   * must show it beside the real pace and carry `terrain_label` with it.
+   *
+   * On a flat road run — the overwhelming majority — the adjusted pace equals
+   * the real pace exactly, `terrain_label` is null, and nothing renders.
+   */
+  grade_adjusted_pace_s_per_mi: number | null;
+  /** 'hill-adjusted' | 'descent-adjusted' | 'incline-adjusted', or null when
+   *  the terrain did not move the read far enough to be worth showing. */
+  terrain_label: string | null;
+  /** Where the terrain numbers came from · see `TerrainBasis`. */
+  terrain_basis: string;
+  /** 'outdoor' | 'treadmill'. A treadmill is neither a hill nor a flat road. */
+  terrain_surface: 'outdoor' | 'treadmill';
   temp_f: number | null;
   /**
    * Thermal arc for the run · the chip wants to show "65°F → 77°F" when
@@ -780,6 +802,33 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       if (splitsPositive <= 0) return raw;
       if (splitsPositive >= raw * 0.6) return raw;
       return Math.round(splitsPositive);
+    })(),
+    // 2026-08-17 · terrain. Resolved from the SAME raw row, not from the
+    // normalized fields above: `rawSplits` still carries whichever of the four
+    // elevation-delta key names the importer wrote, and summing the negatives
+    // is the only way this data model can tell a net-downhill run from a
+    // rolling one. `pace_s_per_mi` above is untouched and stays the real pace.
+    ...(() => {
+      const t = resolveRunTerrain({
+        source: r.source as string | null,
+        indoor: r.indoor === true,
+        distanceMi: Number(r.distanceMi) || null,
+        durationSec: movingSec ?? elapsedSec,
+        paceSPerMi,
+        elevGainFt: Number(r.elevGainFt) || null,
+        elevGainSource: r.elevGainSource as string | null,
+        startLatLng: r.startLatLng,
+        endLatLng: r.endLatLng,
+        splits: rawSplits,
+        phases: r.phases,
+      });
+      return {
+        grade_adjusted_pace_s_per_mi:
+          t.adjustedPaceSPerMi != null ? Math.round(t.adjustedPaceSPerMi) : null,
+        terrain_label: terrainAdjustmentLabel(t),
+        terrain_basis: t.basis as string,
+        terrain_surface: t.surface,
+      };
     })(),
     // 2026-06-01 · fall back to data.weather.temp_f when data.tempF
     // is absent. Watch-tier rows store enriched weather as the nested
