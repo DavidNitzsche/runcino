@@ -187,5 +187,27 @@ export async function expireStalePendingProposals(userUuid: string): Promise<num
         AND created_at < NOW() - interval '14 days'`,
     [userUuid],
   ).catch(() => ({ rowCount: 0 }));
-  return r.rowCount ?? 0;
+  // 2026-08-17 · one-time-shaped cleanup that rides the existing cron ·
+  // the historical mislabeled spam. Before the true-kind fix the drift
+  // writer stamped 'goal_time_changed' on staleness/volume/vdot/goal-gap
+  // observations; when generatePlan refused (race < 2 weeks out) the
+  // failure landed as 'pending' and the mismatched dedupe re-wrote it
+  // DAILY ("Goal time updated" cards for a staleness observation — 19
+  // on one runner). Expire those regardless of age, keyed on the
+  // synthetic marker: kind 'goal_time_changed' + reasons.drift_kind in
+  // the drift-signal set. Real goal edits never carry those markers
+  // (the renegotiation accept path stamps drift_kind
+  // 'goal_renegotiated', which is deliberately NOT in this set).
+  const mislabeled = await pool.query(
+    `UPDATE plan_proposals
+        SET status = 'expired', resolved_at = NOW()
+      WHERE user_uuid = $1 AND status = 'pending'
+        AND proposal_kind = 'goal_time_changed'
+        AND reasons->>'drift_kind' IN
+              ('staleness', 'volume_drift', 'vdot_drift',
+               'easy_drift', 'long_drift', 'quality_drift',
+               'goal_gap_widening')`,
+    [userUuid],
+  ).catch(() => ({ rowCount: 0 }));
+  return (r.rowCount ?? 0) + (mislabeled.rowCount ?? 0);
 }

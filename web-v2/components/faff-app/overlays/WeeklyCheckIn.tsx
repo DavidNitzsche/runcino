@@ -1,24 +1,100 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import type { FaffSeed } from '../types';
 import { EFF } from '../constants';
 
 /**
- * Weekly check-in overlay. Pulls the previous calendar week's structure
- * + Faff's goal-race context from the seed so the recap reflects the
- * real plan, not a hard-coded CIM teaser.
+ * Weekly check-in overlay · the "WEEK N RECAP" chip in the sidebar.
+ *
+ * 2026-08-17 · truth fix. The chip labels LAST week (Sidebar renders
+ * `WEEK max(1, nowIdx)`), and the totals row already read last week's
+ * miles — but the sessions count and the day bars were built from the
+ * CURRENT week (seed.week), so the overlay mixed two different weeks
+ * in one story. Everything below now reads the recap week
+ * (season.weekDays[nowIdx - 1]): bars, sessions, date range, delta
+ * (recap week vs the week before it).
+ *
+ * The "FAFF SAYS" line prefers the coach-log week-closed entry (GET
+ * /api/coach/log · kind 'week_close') when a recent one exists — the
+ * coach's actual close-of-week read — over today's readiness one-liner,
+ * which describes THIS morning, not last week.
  */
 export function WeeklyCheckIn({ open, onClose, seed }: { open: boolean; onClose: () => void; seed: FaffSeed }) {
-  // Use last week's totals from the volume strip + this week's plan
-  // for the "NEXT WEEK" hero. Best-effort; we degrade gracefully.
-  const prevWeekMi = seed.volumeBars.length >= 2 ? seed.volumeBars[seed.volumeBars.length - 2].mi : 0;
-  const thisWeekMi = seed.thisWeekMiles;
-  const delta = thisWeekMi - prevWeekMi;
+  const nowIdx = seed.season.nowIdx;
+  const recapIsCurrent = nowIdx === 0; // no prior plan week yet · recap week 1 itself
+  const recapIdx = Math.max(0, nowIdx - 1);
+  const seasonDays = seed.season.weekDays[recapIdx] ?? [];
+
+  // Recap-week day rows. Prefer the season grid (real plan data for any
+  // week); degrade to the current-week strip only when the season has
+  // nothing (plan-less runner).
+  const days = seasonDays.length > 0
+    ? seasonDays.map((d) => ({
+        letter: (d.dow ?? ' ')[0] ?? ' ',
+        type: d.type,
+        mi: d.mi || 0,
+        done: !!d.done,
+        date: d.date ?? null,
+      }))
+    : seed.week.map((d) => ({
+        letter: d.dw[0],
+        type: d.type,
+        mi: parseFloat(d.dist) || 0,
+        done: !!d.done,
+        date: (d as { iso?: string }).iso ?? null,
+      }));
+
+  // Actual miles · recap week vs the week before it. volumeBars are
+  // chronological with the current week last, so last week = len-2.
+  const bars = seed.volumeBars;
+  const recapMi = recapIsCurrent
+    ? seed.thisWeekMiles
+    : (bars[bars.length - 2]?.mi ?? 0);
+  const priorMi = recapIsCurrent
+    ? (bars[bars.length - 2]?.mi ?? 0)
+    : (bars[bars.length - 3]?.mi ?? 0);
+  const delta = Math.round((recapMi - priorMi) * 10) / 10;
+
   const phaseFull = seed.goalRace?.phaseLabel ?? 'Active block';
   const phaseTop = phaseFull.split(' · ')[0] ?? 'Active block';
-  const max = Math.max(1, ...seed.week.map(d => parseFloat(d.dist) || 0));
-  const sessionsDone = seed.week.filter(d => d.done).length;
-  const sessionsPlanned = seed.week.filter(d => d.type !== 'rest').length;
+  const max = Math.max(1, ...days.map((d) => d.mi));
+  const sessionsPlanned = days.filter((d) => d.type !== 'rest' && d.mi > 0).length;
+  const sessionsDone = days.filter((d) => d.type !== 'rest' && d.done).length;
+
+  // Recap-week date range for the subtitle (was today's date · wrong week).
+  const rangeLabel = (() => {
+    const dated = days.map((d) => d.date).filter((x): x is string => !!x);
+    if (dated.length === 0) return seed.topDate;
+    const fmt = (iso: string) => {
+      const p = iso.split('-').map(Number);
+      return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+    return `${fmt(dated[0])} – ${fmt(dated[dated.length - 1])}`;
+  })();
+
+  // Coach's week-closed line. Seed's coachLog strip usually carries it;
+  // fetch the log when the overlay opens in case it scrolled past the
+  // seed's cap. 10-day recency guard so a months-old close never
+  // narrates this recap.
+  const freshEnough = (dateISO: string) =>
+    Date.now() - Date.parse(dateISO + 'T12:00:00Z') <= 10 * 86400000;
+  const seedClose = seed.coachLog.find((e) => e.kind === 'week_close' && freshEnough(e.dateISO));
+  const [weekCloseLine, setWeekCloseLine] = useState<string | null>(seedClose?.body ?? null);
+  useEffect(() => {
+    if (!open || weekCloseLine) return;
+    let alive = true;
+    fetch('/api/coach/log?limit=20')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!alive || !j?.ok) return;
+        const e = (j.entries as Array<{ kind: string; body: string; dateISO: string }> | undefined)
+          ?.find((x) => x.kind === 'week_close' && freshEnough(x.dateISO));
+        if (e) setWeekCloseLine(e.body);
+      })
+      .catch(() => { /* readiness fallback covers it */ });
+    return () => { alive = false; };
+  }, [open, weekCloseLine]);
 
   return (
     <div className={`ov${open ? ' open' : ''}`}>
@@ -30,16 +106,16 @@ export function WeeklyCheckIn({ open, onClose, seed }: { open: boolean; onClose:
         <div className="wc-body">
           <div className="wc-tag">{phaseTop.toUpperCase()}</div>
           <div className="wc-h">{deltaHeadline(delta)}</div>
-          <div className="wc-sub">{seed.topDate}</div>
+          <div className="wc-sub">{rangeLabel}</div>
           <div className="wc-stats">
-            <div><div className="v">{prevWeekMi}<small> mi</small></div><div className="k">LAST WEEK</div></div>
+            <div><div className="v">{recapMi}<small> mi</small></div><div className="k">MILES</div></div>
             <div><div className="v">{sessionsDone}<small>/{sessionsPlanned}</small></div><div className="k">SESSIONS</div></div>
-            <div><div className={`v ${delta >= 0 ? 'up' : ''}`}>{delta >= 0 ? '+' : ''}{delta}<small> mi</small></div><div className="k">VS LAST WK</div></div>
+            <div><div className={`v ${delta >= 0 ? 'up' : ''}`}>{delta >= 0 ? '+' : ''}{delta}<small> mi</small></div><div className="k">VS WEEK BEFORE</div></div>
           </div>
-          <div className="wc-lbl">THIS WEEK</div>
+          <div className="wc-lbl">{recapIsCurrent ? 'THIS WEEK' : 'LAST WEEK'}</div>
           <div className="wc-week">
-            {seed.week.map((d, i) => {
-              const dist = parseFloat(d.dist) || 0;
+            {days.map((d, i) => {
+              const dist = d.mi;
               const h = dist > 0 ? Math.round((dist / max) * 100) : 6;
               const c = d.type === 'rest' ? null : EFF[d.type].dot;
               return (
@@ -54,7 +130,7 @@ export function WeeklyCheckIn({ open, onClose, seed }: { open: boolean; onClose:
                   ) : (
                     <div className="bar" style={{ height: '6%', background: 'rgba(255,255,255,.12)' }} />
                   )}
-                  <div className="dn">{d.dw[0]}</div>
+                  <div className="dn">{d.letter}</div>
                   <div className="dm">{dist > 0 ? `${dist} ${d.type}` : 'rest'}</div>
                 </div>
               );
@@ -63,7 +139,7 @@ export function WeeklyCheckIn({ open, onClose, seed }: { open: boolean; onClose:
           <div className="wc-lbl">FAFF SAYS</div>
           <div className="wc-coach">
             <span className="ct">COACH</span>
-            <span className="cx">{seed.readiness.coach}</span>
+            <span className="cx">{weekCloseLine ?? seed.readiness.coach}</span>
           </div>
           {seed.goalRace && (
             <>

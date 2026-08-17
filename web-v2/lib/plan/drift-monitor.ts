@@ -807,20 +807,32 @@ async function loadPlanLongRunMedian(planId: string, today: string): Promise<num
   return Number.isFinite(m) && m > 0 ? Math.round(m * 2) / 2 : null;
 }
 
+/**
+ * 2026-08-17 · truth-bug fix · guard and writer now agree.
+ *
+ *   · kind matches what the writer actually stamps (the cron writes the
+ *     signal's TRUE kind via driftProposalKind — no more checking
+ *     'staleness' while the row says 'goal_time_changed').
+ *   · planId '' (or null-ish) means "any plan for this user". The
+ *     goal-gap caller passed '' and the strict plan_id = '' equality
+ *     could never match a real row, so that dedupe was dead code.
+ */
 export async function hasPendingProposal(
   userUuid: string,
   planId: string,
   kind: DriftKind,
 ): Promise<boolean> {
+  const scoped = planId != null && planId !== '';
   const r = (await pool.query<{ id: number }>(
     `SELECT id FROM plan_proposals
-      WHERE user_uuid = $1 AND plan_id = $2 AND proposal_kind = $3
+      WHERE user_uuid = $1 AND proposal_kind = $2
+        AND ($3::text IS NULL OR plan_id::text = $3::text)
         AND (
               status = 'pending'
               OR (status = 'dismissed' AND resolved_at >= NOW() - interval '14 days')
             )
       ORDER BY created_at DESC LIMIT 1`,
-    [userUuid, planId, kind],
+    [userUuid, kind, scoped ? planId : null],
   ).catch(() => ({ rows: [] }))).rows[0];
   return r != null;
 }

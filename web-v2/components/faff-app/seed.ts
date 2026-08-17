@@ -42,27 +42,12 @@ function shortDate(iso: string): string {
 function niceLong(iso: string) {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(iso.slice(0, 10) + 'T12:00:00Z'));
 }
-function mapType(t: string | null | undefined): EffortKey {
-  const low = (t ?? '').toLowerCase();
-  // 2026-06-10 honesty pass: a day with NO planned workout is "nothing
-  // planned" — render it as rest, never invent an easy run for it.
-  // glance-state emits 'unplanned' for plan-less users (coached mode,
-  // pre-plan); the old fallthrough turned that into a week of phantom
-  // "Easy" days with 8:45 target paces and MISSED prompts.
-  if (low === '' || low === 'unplanned') return 'rest';
-  if (low.includes('rest')) return 'rest';
-  // 2026-06-08 · race must resolve BEFORE the easy fallback. Previously
-  // 'race' fell through to 'easy', so race morning rendered a cyan EASY
-  // hero (the orange MESH.race + 'RACE' title were unreachable). Guard the
-  // 'race_pace'/'race_simulation' quality subtypes so they DON'T match
-  // here — only a true race-effort row ('race', 'race_a'…) maps to 'race'.
-  if (low === 'race' || low.startsWith('race_a') || low.startsWith('race_b') || low.startsWith('race_c')) return 'race';
-  if (low.includes('long')) return 'long';
-  if (low.includes('tempo') || low.includes('threshold')) return 'tempo';
-  if (low.includes('interval') || low.includes('vo2') || low.includes('track')) return 'intervals';
-  if (low.includes('recovery') || low.includes('shake')) return 'recovery';
-  return 'easy';
-}
+// 2026-08-17 · mapType extracted to lib/faff/effort-map.ts (unit-testable;
+// gained the race_week_tuneup → tempo mapping so tune-up days stop
+// rendering as EASY). Re-exported name so all call sites below are
+// untouched.
+import { mapType } from '@/lib/faff/effort-map';
+import { computeUnloggedRaceAlert } from '@/lib/faff/unlogged-race-alert';
 function humanName(eff: EffortKey, distMi: number): string {
   // 2026-05-31: shortened to single-line uppercase tags per design.
   // The hero title is sized for one-line names (EASY / LONG / TEMPO /
@@ -994,9 +979,34 @@ function adaptVolumeBars(log: LogT | null, training: Training | null, today: str
 }
 
 function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeof loadPlanAdapts>>['value'], raceDistanceMi: number | null = null) {
-  if (!training?.weeks?.length) return { nowIdx: 0, raceIdx: 0, miles: [0], maxMi: 1, phases: [], weekDays: [], adaptations: [], horizonRaise: null };
+  if (!training?.weeks?.length) return { nowIdx: 0, raceIdx: 0, miles: [0], maxMi: 1, phases: [], weekDays: [], adaptations: [], horizonRaise: null, blockOver: false };
   const miles = training.weeks.map(w => Math.round(w.plannedMi || 0));
-  const nowIdx = Math.max(0, Math.min(miles.length - 1, training.currentWeekIdx ?? 0));
+  // 2026-08-17 · post-block truth fix. currentWeekIdx is null when no
+  // plan week contains today; the old `?? 0` re-anchored the whole
+  // surface to week 1 of a DEAD plan (Train showed "70 days to <next
+  // race>" from dead-plan week math while the real gap was 111 days).
+  // When today is past the plan's last prescribed day, clamp to the
+  // FINAL week and flag blockOver — the seed assembly turns that into
+  // an explicit season.blockComplete envelope for TrainView.
+  const lastPlannedDay = (() => {
+    let max: string | null = null;
+    for (const w of training.weeks) {
+      for (const d of (w.days ?? [])) {
+        if (d.date && (max == null || d.date > max)) max = d.date;
+      }
+      if (w.startDate) {
+        const end = new Date(Date.parse(w.startDate + 'T12:00:00Z') + 6 * 86400000)
+          .toISOString().slice(0, 10);
+        if (max == null || end > max) max = end;
+      }
+    }
+    return max;
+  })();
+  const blockOver = training.currentWeekIdx == null
+    && lastPlannedDay != null
+    && training.today > lastPlannedDay;
+  const nowIdx = Math.max(0, Math.min(miles.length - 1,
+    training.currentWeekIdx ?? (blockOver ? miles.length - 1 : 0)));
   const raceIdx = miles.length - 1;
   const DOW = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
   // Lookup canonical pace per effort type for non-current weeks (training-
@@ -1139,6 +1149,7 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
     // 2026-06-03 · Rule 11 (horizon-aware planning) · drives the
     // "LONG-RUN CAP · 22mi · setting up CIM" chip on TrainView.
     horizonRaise: training?.horizonRaise ?? null,
+    blockOver,
   };
 }
 
@@ -1609,17 +1620,34 @@ function adaptRaces(races: Races | null): RaceLite[] {
   }));
 }
 
+// 2026-08-17 · retro front door · past races for the Targets PAST RACES
+// list. Result + provenance ride from races-state so the row can label
+// the time honestly (chip time vs watch/run-match provisional · Rule 3).
+// Capped at 8 · the Targets list is a front door, not the archive.
+function adaptPastRaces(races: Races | null): FaffSeed['pastRaces'] {
+  if (!races) return [];
+  return races.past.slice(0, 8).map((r) => ({
+    slug: r.slug,
+    name: r.name,
+    meta: `${r.date ? shortDate(r.date) : ''}${r.location ? ' · ' + r.location : ''}`,
+    result: r.finishTime,
+    // actual_result can itself be a watch-provisional auto-log · still
+    // renders as provisional until a chip time locks it in.
+    provenance: r.finishProvisional ? ('provisional' as const)
+      : r.finishSource === 'actual_result' ? ('official' as const)
+      : r.finishSource === 'meta' ? ('logged' as const)
+      : r.finishSource === 'run_match' ? ('provisional' as const)
+      : null,
+  }));
+}
+
+// 2026-08-17 · re-keyed on actual_result absence (finishSource !==
+// 'actual_result') and extracted to lib/faff/unlogged-race-alert.ts for
+// unit tests. The old `!finishTime` check was suppressed forever by the
+// run-match auto-fill, so a raced A/B event never asked for its result.
 function adaptUnloggedRaceAlert(races: Races | null): FaffSeed['unloggedRaceAlert'] {
   if (!races) return null;
-  const candidate = races.past.find(
-    r => !r.finishTime && (r.priority === 'A' || r.priority === 'B'),
-  );
-  if (!candidate?.date) return null;
-  const daysSince = Math.round(
-    (Date.now() - Date.parse(candidate.date + 'T12:00:00Z')) / 86_400_000,
-  );
-  if (daysSince > 30) return null;
-  return { slug: candidate.slug, name: candidate.name, daysSince };
+  return computeUnloggedRaceAlert(races.past);
 }
 
 function adaptActivity(log: LogT | null): ActivityData {
@@ -2130,10 +2158,11 @@ function emptySeed(): FaffSeed {
     thisWeekMiles: 0,
     weeklyAvg: 0,
     form: { fitness: 0, fatigue: 0, delta: 0, label: 'BUILDING', acwr: null },
-    season: { nowIdx: 0, raceIdx: 0, miles: [], maxMi: 1, phases: [], weekDays: [], adaptations: [], horizonRaise: null },
+    season: { nowIdx: 0, raceIdx: 0, miles: [], maxMi: 1, phases: [], weekDays: [], adaptations: [], horizonRaise: null, blockComplete: null },
     health: { readiness, body: [], form: [], sleepArchitectureVerdict: null },
     prs: [],
     races: [],
+    pastRaces: [],
     unloggedRaceAlert: null,
     projectionTrend: [],
     activity: {
@@ -2511,7 +2540,37 @@ export async function buildSeed(): Promise<FaffSeed> {
   const { bars: volumeBars, thisWeek: thisWeekMiles, avg: weeklyAvg } = adaptVolumeBars(log, training, volumeToday, volumeSettings.long_run_day);
   // Load plan adapts AFTER training so we have plan_id to scope the query.
   const planAdapts = await loadPlanAdapts(userId, training?.plan_id ?? null);
-  const season = adaptSeason(training, planAdapts.value, goalRace?.distanceMi ?? null);
+  const { blockOver, ...seasonCore } = adaptSeason(training, planAdapts.value, goalRace?.distanceMi ?? null);
+  // 2026-08-17 · post-block truth fix · when the plan is over (today past
+  // its last prescribed day AND the plan's race already run), TrainView
+  // renders an explicit BLOCK COMPLETE header instead of dead-plan week
+  // math. Result + provenance come from races-state (actual_result-first
+  // per the race-data lock); next-race days come from the race DATE —
+  // one source, never (raceIdx - focusIdx) * 7.
+  const season = {
+    ...seasonCore,
+    blockComplete: (() => {
+      if (!blockOver) return null;
+      const finished = training?.race ?? null;
+      if (!finished || finished.days_to_race >= 0) return null;
+      const pastRow = races?.past.find((p) => p.slug === finished.slug) ?? null;
+      const next = races
+        ? [...races.aRaces, ...races.upcomingBs, ...races.upcomingCs]
+            .filter((x) => !!x.date)
+            .sort((a, b) => a.date.localeCompare(b.date))[0] ?? null
+        : null;
+      return {
+        raceSlug: finished.slug,
+        raceName: pastRow?.name ?? finished.name,
+        raceDate: pastRow?.date ?? finished.date ?? null,
+        result: pastRow?.finishTime ?? null,
+        resultProvisional: pastRow?.finishProvisional ?? false,
+        nextRaceSlug: next?.slug ?? null,
+        nextRaceName: next?.name ?? null,
+        nextRaceDays: next?.days ?? null,
+      };
+    })(),
+  };
   // 2026-05-31: projection trend series from projection_snapshots
   // (cron-daily rows). Pull 90 days of (vdot, projection_sec) for the
   // goal race's distance so TargetsView can render a sparkline.
@@ -2780,6 +2839,7 @@ export async function buildSeed(): Promise<FaffSeed> {
     health: healthSnapshot,
     prs,
     races: racesList,
+    pastRaces: adaptPastRaces(races),
     unloggedRaceAlert: adaptUnloggedRaceAlert(races),
     projectionTrend,
     activity,

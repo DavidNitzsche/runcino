@@ -93,6 +93,14 @@ export function TodayView({
   // coached hero (no prescriptions, no workout card) — completed runs
   // still render the normal done hero.
   const isCoachedBlank = seed.coachedExternally && !d.planWorkoutId && !d.done;
+  // 2026-08-17 · web Today now honors /api/today/purpose type
+  // 'post_race' (previously native-only). Fetched only for undone rest
+  // days — planned days already fetch purpose inside PlannedHeroV2.
+  // When it fires: the rest hero's coach line becomes the post-race
+  // verdict + facts, and the week strip header reframes for recovery.
+  // Copy-level honesty only · page composition awaits the design deck.
+  const { data: restPurpose } = useTodayPurpose(isRest && !d.done && !isCoachedBlank ? d.iso : undefined);
+  const isPostRace = restPurpose?.type === 'post_race';
   const result = d.done ? (seed.results[curDay] ?? seed.results[0]) : undefined;
   // 2026-05-30: lazy-fetch the real run summary for past days so the hero
   // stats grid + heroExtra row don't render seed.results placeholder "·"
@@ -348,7 +356,9 @@ export function TodayView({
         const canBack = weekOffset > -(nowIdx);
         const canFwd  = weekOffset < (totalWeeks - 1 - nowIdx);
         // Derive a readable week label for offset weeks
-        let stripLabel = 'THIS WEEK';
+        // 2026-08-17 · post-race window: the week strip is recovery
+        // context, not a training prescription. Reframe the header.
+        let stripLabel = isPostRace ? 'RECOVERY WEEK' : 'THIS WEEK';
         if (weekOffset !== 0) {
           const offsetDays = seed.season.weekDays[nowIdx + weekOffset];
           if (offsetDays && offsetDays.length > 0) {
@@ -763,7 +773,15 @@ export function TodayView({
                 eyebrow · same info as the week strip + the title itself,
                 pure repetition. Title now sits at the top of the column
                 aligned with the route + recap cards' top edges. */}
-            <div className="htitle">{isCoachedBlank ? 'COACHED' : workoutTypeTitle(d.type)}</div>
+            {/* 2026-08-17 · post-race window: title + coach line come
+                from /api/today/purpose ('RACE DONE' + verdict/facts)
+                instead of the generic REST kit. Same hero structure ·
+                copy swap only. */}
+            <div className="htitle">
+              {isCoachedBlank ? 'COACHED'
+                : isPostRace ? (restPurpose?.typeTitle ?? 'RACE DONE')
+                : workoutTypeTitle(d.type)}
+            </div>
             {/* 2026-06-04 · rest-day coach line · gives the card real
                 content for its grid-stretched height instead of leaving
                 empty space below the stats.  Pulled from KIT.rest.coach
@@ -785,6 +803,8 @@ export function TodayView({
             ) : (
               <div className="rest-coach">{isCoachedBlank
                 ? 'Your coach owns the plan. Faff tracks the work. Runs land here from your watch or Strava.'
+                : isPostRace && restPurpose
+                ? [restPurpose.verdict, ...restPurpose.facts].filter(Boolean).join(' ')
                 : KIT.rest.coach}</div>
             )}
             {/* 2026-06-10 · the calendar-link paste UI moved to Settings ›
@@ -961,6 +981,11 @@ type PurposePayload = {
    *  Optional · falls back to PlannedDay.name when missing on older
    *  responses (30-min cache cycle). */
   typeTitle?: string;
+  /** 2026-08-17 · raw purpose type as the server sent it ('post_race',
+   *  'race_week_tuneup'-normalized types, 'unplanned', …). Web reads it
+   *  as a plain string, same lenient convention as native — no enum
+   *  decode, unknown types fall through to defaults. */
+  type?: string;
 };
 /** Coach-derived "WHAT THIS RUN DID" payload from /api/runs/[id]/recap. */
 type RecapPayload = {
@@ -985,7 +1010,16 @@ function useTodayPurpose(dateIso: string | undefined): { data: PurposePayload | 
       .then(r => r.ok ? r.json() : null)
       .then((j: any) => {
         if (cancelled || !j || j.ok !== true) return;
-        setData({ verdict: j.verdict, facts: j.facts ?? [] });
+        // 2026-08-17 · typeTitle + type now ride through. typeTitle is
+        // the shared one-word hero title (workout-title.ts special-cases
+        // race_week_tuneup → 'TUNE-UP', post_race → 'RACE DONE'); type
+        // lets consumers branch on 'post_race'.
+        setData({
+          verdict: j.verdict,
+          facts: j.facts ?? [],
+          typeTitle: typeof j.typeTitle === 'string' && j.typeTitle ? j.typeTitle : undefined,
+          type: typeof j.type === 'string' && j.type ? j.type : undefined,
+        });
       })
       .catch(() => { /* swallow · fallback string covers it */ })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -1844,8 +1878,12 @@ function PlannedHeroV2({
               Locked vocabulary shared with iPhone + watch. Replaces the
               sub_label render ("4×1 MI @ I · 3 Min Jog") that truncated
               awkwardly when there's a right-side panel. The rich
-              sub_label moves into the SESSION grid where it has room. */}
-          <h1 className="htitle">{workoutTypeTitle(d.type)}</h1>
+              sub_label moves into the SESSION grid where it has room.
+              2026-08-17 · prefer the server's typeTitle when present —
+              it reads the RAW plan type, so a race_week_tuneup says
+              TUNE-UP instead of the effort-bucket title (the seed maps
+              tune-up into the tempo bucket for color/pace only). */}
+          <h1 className="htitle">{(!skipped && purpose?.typeTitle) || workoutTypeTitle(d.type)}</h1>
         </div>
 
         {adapted && adaptedFromLabel ? (
@@ -5212,6 +5250,19 @@ function PostRaceTodayCard() {
           ? 'Recovery first. The next block starts when your body says so, not the calendar.'
           : 'Confirm the time so the coach can recalibrate fitness off the race. Recovery first this week.'}
       </div>
+
+      {/* 2026-08-17 · retro front door · the race view (course, splits,
+          the story) already exists at /races/[slug] — same route the
+          TargetsView rows open. This is the post-race week's way in. */}
+      <button
+        type="button"
+        onClick={() => router.push(`/races/${pr.slug}`)}
+        style={{
+          marginTop: 12, background: 'none', border: 'none', padding: 0,
+          color: '#F3AD38', fontSize: 12, fontWeight: 800, letterSpacing: 0.4,
+          cursor: 'pointer',
+        }}
+      >The race story ›</button>
     </div>
   );
 }

@@ -254,6 +254,51 @@ export function TargetsView({
           </div>
         ))}
       </div>
+      {/* 2026-08-17 · retro front door · minimal PAST RACES list. Rows
+          reuse the .racerow styling and open the same RaceView the
+          upcoming rows do. Result + provenance chip come straight from
+          races-state (actual_result first; watch/run-match times labeled
+          provisional per race-data Rule 3). FLAG: final form of the
+          retro surface awaits the pending composition deck — keep this
+          list minimal until that lands. */}
+      {seed.pastRaces.length > 0 ? (
+        <>
+          <div className="eyebrow-sec" style={{ marginTop: 22 }}>Past races</div>
+          <div className="racelist">
+            {seed.pastRaces.map((r, i) => (
+              <div
+                className="racerow"
+                key={r.slug + i}
+                onClick={() => onOpenRace(r.slug)}
+                role="button"
+                tabIndex={0}
+              >
+                <div className="rinfo">
+                  <div className="rn">{r.name}</div>
+                  <div className="rdate">{r.meta}</div>
+                </div>
+                {r.provenance ? (
+                  <span
+                    className="racetag tune"
+                    style={r.provenance === 'provisional' ? { color: 'var(--goal)', borderColor: 'var(--goal)' } : undefined}
+                  >
+                    {r.provenance === 'official' ? 'Official'
+                      : r.provenance === 'logged' ? 'Logged'
+                      : 'Provisional'}
+                  </span>
+                ) : (
+                  <span className="racetag tune" style={{ color: 'var(--goal)', borderColor: 'var(--goal)' }}>
+                    No result
+                  </span>
+                )}
+                <span className="racedays" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {r.result ?? '·'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
       <div className="raceacts">
         <button type="button" className="racebtn" onClick={() => setGoalOpen(true)}>+ New goal</button>
         <button type="button" className="racebtn" onClick={() => setLogOpen(true)}>+ Log strength / cross</button>

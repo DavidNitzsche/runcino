@@ -41,7 +41,22 @@ export type AutoRebuildKind =
    *  a recovery remainder). race_id matches, so the race_mismatch
    *  check passes normally. Fired by the plan-drift cron's
    *  recovery-complete block. */
-  | 'recovery_complete';
+  | 'recovery_complete'
+  /** 2026-08-17 · truth-bug fix · the nightly soft-drift + goal-gap
+   *  writers stamp their TRUE kind on the proposal row. They used to
+   *  write a synthetic 'goal_time_changed' ("recalibrate"), which
+   *  (a) rendered as "Goal time updated" for what was a staleness
+   *  observation and (b) never matched the next-day dedupe check
+   *  (which looked for volume_drift/vdot_drift/staleness), so a
+   *  refused rebuild near race day re-proposed itself DAILY.
+   *  'goal_time_changed' is reserved for actual goal edits. */
+  | 'volume_drift'
+  | 'vdot_drift'
+  | 'staleness'
+  | 'easy_drift'
+  | 'long_drift'
+  | 'quality_drift'
+  | 'goal_gap_widening';
 
 export interface AutoRebuildInput {
   userUuid: string;

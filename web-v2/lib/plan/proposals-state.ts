@@ -17,8 +17,16 @@ export type PlanProposalKind =
   | 'volume_drift'
   | 'vdot_drift'
   | 'staleness'
+  // 2026-08-17 · truth-bug fix · the drift cron now writes its TRUE
+  // kind (per-axis drift + goal-gap included) instead of a synthetic
+  // 'goal_time_changed', which mislabeled a staleness observation as
+  // "Goal time updated" and defeated the next-day dedupe.
+  | 'easy_drift'
+  | 'long_drift'
+  | 'quality_drift'
+  | 'goal_gap_widening'
   | 'race_date_changed'
-  | 'goal_time_changed'
+  | 'goal_time_changed'    // reserved for ACTUAL goal edits
   | 'a_race_added'
   | 'a_race_removed'
   // 2026-08-17 · coaching-loop reconciliation
@@ -162,7 +170,15 @@ function synthesizeMessage(
     case 'vdot_drift':
       return 'Your current VDOT has drifted from this plan\'s anchor. Pace targets are stale.';
     case 'staleness':
-      return 'This plan was authored more than 8 weeks ago. Time for a refit.';
+      return 'This plan was authored more than 8 weeks ago. Time for a refresh.';
+    case 'easy_drift':
+      return 'Your easy days run longer than this plan prescribes. Refit so the plan matches reality.';
+    case 'long_drift':
+      return 'Your long runs have drifted from this plan\'s targets. Refit for an honest progression.';
+    case 'quality_drift':
+      return 'Your quality sessions have drifted from this plan\'s targets. Refit the work.';
+    case 'goal_gap_widening':
+      return 'The projection is drifting away from the goal. Rebuild to close the gap.';
     case 'race_date_changed':
       return status === 'auto_applied'
         ? 'Race date changed · plan timeline rebuilt automatically.'

@@ -34,10 +34,19 @@ import type { PlanProposalSeed } from '../types';
 
 type ActionState = 'idle' | 'accepting' | 'dismissing' | 'done' | 'error';
 
+// 2026-08-17 · truth-bug fix · drift proposals now arrive under their
+// TRUE kind (the cron used to write a synthetic 'goal_time_changed',
+// so a staleness observation rendered as "Goal time updated").
+// 'goal_time_changed' is reserved for actual goal edits; the drift
+// kinds get honest labels of their own.
 const KIND_LABELS: Record<PlanProposalSeed['kind'], string> = {
   volume_drift:      'Volume off plan',
   vdot_drift:        'Fitness moved',
-  staleness:         'Plan getting stale',
+  staleness:         'Plan refresh due',
+  easy_drift:        'Easy days off plan',
+  long_drift:        'Long runs off plan',
+  quality_drift:     'Quality off plan',
+  goal_gap_widening: 'Gap to goal widening',
   race_date_changed: 'Race date changed',
   goal_time_changed: 'Goal time updated',
   a_race_added:      'Goal race added',
@@ -49,7 +58,11 @@ const KIND_LABELS: Record<PlanProposalSeed['kind'], string> = {
 const KIND_EYEBROWS: Record<PlanProposalSeed['kind'], string> = {
   volume_drift:      'VOLUME · DRIFT',
   vdot_drift:        'FITNESS · DRIFT',
-  staleness:         'PLAN · STALE',
+  staleness:         'PLAN · REFRESH',
+  easy_drift:        'EASY DAYS · DRIFT',
+  long_drift:        'LONG RUN · DRIFT',
+  quality_drift:     'QUALITY · DRIFT',
+  goal_gap_widening: 'GOAL · GAP',
   race_date_changed: 'RACE · DATE',
   goal_time_changed: 'RACE · GOAL',
   a_race_added:      'RACE · ADDED',

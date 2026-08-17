@@ -247,6 +247,23 @@ export type FaffSeed = {
       toLongShare: number;
       race: { slug: string; name: string; date: string; distanceMi: number };
     } | null;
+    /** 2026-08-17 · post-block truth fix. Non-null when today is past
+     *  the active plan's last prescribed day AND its race has been run.
+     *  TrainView renders the BLOCK COMPLETE header from this instead of
+     *  re-anchoring to week 1 of the dead plan (the old `?? 0` clamp)
+     *  and computing a countdown from dead-plan week math. nextRaceDays
+     *  comes from the race DATE via races-state — one source. */
+    blockComplete: {
+      raceSlug: string;
+      raceName: string;
+      raceDate: string | null;
+      /** Finish display from races-state's ladder (actual_result first). */
+      result: string | null;
+      resultProvisional: boolean;
+      nextRaceSlug: string | null;
+      nextRaceName: string | null;
+      nextRaceDays: number | null;
+    } | null;
   };
 
   // health view
@@ -255,6 +272,17 @@ export type FaffSeed = {
   // targets view
   prs: PR[];
   races: RaceLite[];
+  /** 2026-08-17 · retro front door · past races for the Targets PAST
+   *  RACES list. Result + provenance from races-state (actual_result
+   *  first; watch/run-match times stay 'provisional' per race-data
+   *  Rule 3). Final composition awaits the pending design deck. */
+  pastRaces: Array<{
+    slug: string;
+    name: string;
+    meta: string;
+    result: string | null;
+    provenance: 'official' | 'logged' | 'provisional' | null;
+  }>;
   // Past A/B race with no logged result, surfaced for up to 30 days post-race.
   // Drives the "AFC was 3 days ago — log your result" callout in TargetsView.
   unloggedRaceAlert: { slug: string; name: string; daysSince: number } | null;
@@ -491,6 +519,9 @@ export type PlanProposalSeed = {
   previousPlanId: string | null;
   newPlanId: string | null;
   kind: 'volume_drift' | 'vdot_drift' | 'staleness'
+      // 2026-08-17 · truth-bug fix · drift proposals carry their TRUE
+      // kind now ('goal_time_changed' is reserved for actual goal edits).
+      | 'easy_drift' | 'long_drift' | 'quality_drift' | 'goal_gap_widening'
       | 'race_date_changed' | 'goal_time_changed'
       | 'a_race_added' | 'a_race_removed'
       // 2026-08-17 · coaching-loop reconciliation

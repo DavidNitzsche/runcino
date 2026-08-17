@@ -13,6 +13,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { detectDrift, hasPendingProposal } from '@/lib/plan/drift-monitor';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
+import {
+  SOFT_DRIFT_PROPOSAL_KINDS,
+  driftProposalKind,
+  suppressDriftNearRace,
+} from '@/lib/plan/drift-proposal-policy';
 
 export const maxDuration = 60;
 
@@ -325,8 +330,17 @@ export async function POST(req: NextRequest) {
       // goal-gap is the higher-order signal · drift detection is the
       // input-side anomaly check, goal-gap is the output-side check.
       const goalGap = await computeGoalGap(u);
-      if (goalGap && goalGap.status === 'widening' && goalGap.consecutiveWideningDays >= 3) {
-        // Auto-rebuild if no recent goal-gap rebuild
+      if (
+        goalGap && goalGap.status === 'widening' && goalGap.consecutiveWideningDays >= 3
+        // 2026-08-17 · truth-bug fix · inside 14 days of the race the
+        // generator refuses to rebuild ('target < 2 weeks away'), so a
+        // fire here can only produce a stuck pending row. Race week is
+        // briefing territory · suppress entirely.
+        && !suppressDriftNearRace(goalGap.raceDateISO, userToday)
+      ) {
+        // Auto-rebuild if no recent goal-gap rebuild. '' planId = any
+        // plan for this user (the strict plan_id='' match could never
+        // hit a real row, so this dedupe was dead before 2026-08-17).
         const recentGapRebuild = await hasPendingProposal(u, '', 'goal_gap_widening').catch(() => false);
         if (!recentGapRebuild) {
           try {
@@ -334,7 +348,10 @@ export async function POST(req: NextRequest) {
             await fireAutoRebuild({
               userUuid: u,
               raceSlug: goalGap.raceSlug,
-              kind: 'goal_time_changed',  // synthetic · recalibrate
+              // 2026-08-17 · TRUE kind. Was a synthetic
+              // 'goal_time_changed', which rendered as "Goal time
+              // updated" and never matched its own dedupe.
+              kind: 'goal_gap_widening',
               reasons: {
                 drift_kind: 'goal_gap_widening',
                 message: `Projection drifting away from goal for ${goalGap.consecutiveWideningDays} days · rebuilding to close the gap.`,
@@ -404,33 +421,53 @@ export async function POST(req: NextRequest) {
       // To avoid thrashing on borderline drift, take ONLY THE HIGHEST-
       // SEVERITY signal per run · multiple signals (e.g. volume_drift
       // + staleness simultaneously) collapse into one rebuild.
-      // Idempotency · skip if a rebuild already fired in last 24h via
-      // any drift signal kind.
-      const recent = await hasPendingProposal(u, report.planId, 'volume_drift')
-        || await hasPendingProposal(u, report.planId, 'vdot_drift')
-        || await hasPendingProposal(u, report.planId, 'staleness');
+      // Idempotency · a pending (or recently dismissed) row of ANY kind
+      // the writer can produce blocks a re-fire. 2026-08-17 · the guard
+      // iterates SOFT_DRIFT_PROPOSAL_KINDS — the exact set the writer
+      // stamps below — so guard and writer agree by construction (the
+      // old three-kind check never matched the synthetic
+      // 'goal_time_changed' rows the writer actually produced, which is
+      // how one runner accumulated 19 daily duplicates).
+      let recent = false;
+      for (const k of SOFT_DRIFT_PROPOSAL_KINDS) {
+        if (await hasPendingProposal(u, report.planId, k).catch(() => false)) {
+          recent = true;
+          break;
+        }
+      }
       if (recent) {
         r.signals_skipped = report.signals.length;
       } else if (report.primary) {
         const signal = report.primary;
-        // Run the rebuild via fireAutoRebuild · same path the hard-drift
-        // hooks use · same audit shape · same dedupe window.
-        try {
-          const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
-          // Look up the goal race slug for the plan
-          const plan = (await pool.query<{ race_id: string | null }>(
-            `SELECT race_id FROM training_plans WHERE id = $1`,
-            [report.planId],
-          ).catch(() => ({ rows: [] }))).rows[0];
-          if (plan?.race_id) {
+        // Look up the goal race (slug + date) for the plan · the date
+        // gates the race-proximity suppression below.
+        const plan = (await pool.query<{ race_id: string | null; race_date: string | null }>(
+          `SELECT tp.race_id, (rc.meta->>'date')::text AS race_date
+             FROM training_plans tp
+             LEFT JOIN races rc ON rc.slug = tp.race_id
+            WHERE tp.id = $1`,
+          [report.planId],
+        ).catch(() => ({ rows: [] }))).rows[0];
+        if (plan?.race_id && suppressDriftNearRace(plan.race_date, userToday)) {
+          // 2026-08-17 · truth-bug fix · target race within 14 days:
+          // generatePlan refuses to rebuild in that window ('target <
+          // 2 weeks away'), so firing can only mint a stuck pending
+          // row. The surface must not ask what the engine will refuse.
+          r.signals_skipped = report.signals.length;
+        } else if (plan?.race_id) {
+          // Run the rebuild via fireAutoRebuild · same path the hard-drift
+          // hooks use · same audit shape · same dedupe window.
+          try {
+            const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
             await fireAutoRebuild({
               userUuid: u,
               raceSlug: plan.race_id,
-              // Map drift kind → AutoRebuildKind · we reuse the existing
-              // hard-drift kinds since drift IS a recalibration trigger.
-              // The proposal row's `reasons.drift_kind` carries the soft
-              // signal that fired so the runner sees why.
-              kind: 'goal_time_changed',  // synthetic · "recalibrate"
+              // 2026-08-17 · TRUE kind (staleness → 'staleness', volume
+              // → 'volume_drift', …). Was a synthetic
+              // 'goal_time_changed' "recalibrate" that rendered as
+              // "Goal time updated" for a staleness observation and
+              // never matched the dedupe guard above.
+              kind: driftProposalKind(signal.kind),
               reasons: {
                 drift_kind: signal.kind,
                 message: signal.message,
@@ -440,25 +477,25 @@ export async function POST(req: NextRequest) {
               source: 'drift_cron_auto',
             });
             r.proposals_written++;
+          } catch (e: unknown) {
+            // If auto-rebuild fails, fall back to writing a pending proposal
+            // (the old behavior · runner sees a card to manually accept)
+            await pool.query(
+              `INSERT INTO plan_proposals
+                 (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
+               VALUES ($1, $2, $3, $4::jsonb, 'pending', 'drift_cron_fallback', NOW())`,
+              [
+                u, report.planId, signal.kind,
+                JSON.stringify({
+                  message: signal.message,
+                  severity: signal.severity,
+                  auto_rebuild_error: e instanceof Error ? e.message : String(e),
+                  ...signal.details,
+                }),
+              ],
+            );
+            r.proposals_written++;
           }
-        } catch (e: unknown) {
-          // If auto-rebuild fails, fall back to writing a pending proposal
-          // (the old behavior · runner sees a card to manually accept)
-          await pool.query(
-            `INSERT INTO plan_proposals
-               (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
-             VALUES ($1, $2, $3, $4::jsonb, 'pending', 'drift_cron_fallback', NOW())`,
-            [
-              u, report.planId, signal.kind,
-              JSON.stringify({
-                message: signal.message,
-                severity: signal.severity,
-                auto_rebuild_error: e instanceof Error ? e.message : String(e),
-                ...signal.details,
-              }),
-            ],
-          );
-          r.proposals_written++;
         }
       }
     } catch (e: unknown) {
@@ -491,6 +528,6 @@ export async function GET() {
       'vdot_drift · current VDOT deviates >2 from plan anchor (inferred from T-pace)',
       'staleness · plan authored >8 weeks ago',
     ],
-    note: 'Idempotent · checks for an existing pending proposal of the same kind before writing. Soft-drift only; hard-drift (race date / goal time / A-race add-or-remove) is handled by immediate-fire hooks at the route level.',
+    note: 'Idempotent · checks for an existing pending proposal of the same kind before writing (proposals carry their TRUE kind since 2026-08-17). Staleness/drift proposals are suppressed inside 14 days of the target race (the generator refuses to rebuild there). Soft-drift only; hard-drift (race date / goal time / A-race add-or-remove) is handled by immediate-fire hooks at the route level.',
   });
 }

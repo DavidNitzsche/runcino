@@ -583,6 +583,46 @@ export function TrainView({
           (BASE · WEEKS 1-6, duplicating phase info already in .t-ptitle
           and in the ramp axis). Each fact, phase / race / week / date,
           now appears once. */}
+      {/* 2026-08-17 · post-block truth fix. When the plan is over (today
+          past its last prescribed day, race already run) the header says
+          so instead of re-anchoring to week 1 of the dead plan. Countdown
+          days come from the NEXT race's date (seed.season.blockComplete,
+          races-state) — never from dead-plan week math. Minimal state ·
+          existing header classes · final composition awaits the pending
+          design deck. */}
+      {seed.season.blockComplete ? (() => {
+        const bc = seed.season.blockComplete!;
+        return (
+          <div className="t-htop">
+            <div>
+              <div className="t-eyebrow">BLOCK COMPLETE</div>
+              <div className="t-ptitle">{bc.raceName.toUpperCase()}</div>
+              <div className="t-focus">
+                <span className="ftag">{bc.result ? 'RESULT' : 'RACED'}</span>
+                <span className="ftx">
+                  {bc.result
+                    ? <>{bc.result}{bc.resultProvisional ? ' · provisional' : ''}</>
+                    : (bc.raceDate ? `raced ${formatDate(bc.raceDate)}` : 'raced')}
+                  {' '}
+                  <Link
+                    href={`/races/${bc.raceSlug}`}
+                    style={{ color: '#F3AD38', textDecoration: 'none', fontWeight: 700, whiteSpace: 'nowrap' }}
+                  >
+                    The race story ›
+                  </Link>
+                </span>
+              </div>
+            </div>
+            <div className="t-status">
+              <span className="cd">
+                {bc.nextRaceName && bc.nextRaceDays != null
+                  ? <>Next: {bc.nextRaceName} · <b>{bc.nextRaceDays}</b> days</>
+                  : <>No next race on the calendar.</>}
+              </span>
+            </div>
+          </div>
+        );
+      })() : (
       <div className="t-htop">
         <div>
           <div className="t-eyebrow">
@@ -629,6 +669,7 @@ export function TrainView({
           </span>
         </div>
       </div>
+      )}
 
       {/* Phase ramp */}
       <div className="ramp-wrap">
