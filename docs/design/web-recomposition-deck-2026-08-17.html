@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web Recomposition Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ================= locked palette · byte-identical to web-v2/app/globals.css ================= */
+:root{
+  --bg:#0A0C10; --card:#11141A; --line:rgba(255,255,255,.08);
+  --race:#D03F3F; --goal:#F3AD38; --green:#3EBD41; --over:#FC4D64;
+  --dist:#27B4E0; --gold:#F0DF47; --intervals:#FC4D64; --eyebrow:#F3AD38;
+  --txt:#FFFFFF; --mut:#8A90A0; --deck:#06080B;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--deck);color:var(--txt);font-family:'Inter',sans-serif;font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+a{color:var(--dist);text-decoration:none}
+.wrap{max-width:1240px;margin:0 auto;padding:0 26px 120px}
+
+/* ================= deck chrome ================= */
+.masthead{padding:64px 0 34px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:26px}
+.brand .mark{font-family:'Anton',sans-serif;font-size:26px;letter-spacing:-1px;transform:skewX(-9deg);text-transform:uppercase}
+.brand .dot{width:11px;height:11px;border-radius:50%;background:var(--race)}
+.mast-eb{font-size:11px;font-weight:700;letter-spacing:2.4px;color:var(--eyebrow);text-transform:uppercase;margin-bottom:14px}
+h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:56px;line-height:1.02;text-transform:uppercase;letter-spacing:.5px;max-width:900px}
+.mast-sub{color:var(--mut);max-width:760px;margin-top:18px;font-size:15.5px}
+.mast-sub b{color:#fff;font-weight:600}
+
+nav.secnav{position:sticky;top:0;z-index:50;background:rgba(6,8,11,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);margin:0 -26px;padding:12px 26px;display:flex;gap:8px;flex-wrap:wrap}
+nav.secnav a{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--mut);border:1px solid var(--line);border-radius:20px;padding:7px 13px;white-space:nowrap}
+nav.secnav a:hover{color:#fff;border-color:rgba(255,255,255,.25)}
+nav.secnav a .n{color:var(--eyebrow);margin-right:5px}
+
+section.sec{padding-top:86px;scroll-margin-top:64px}
+.sechead{margin-bottom:30px;max-width:900px}
+.secnum{font-family:'Oswald',sans-serif;font-weight:600;font-size:17px;color:var(--eyebrow);letter-spacing:3px;text-transform:uppercase;margin-bottom:8px}
+.sechead h2{font-family:'Oswald',sans-serif;font-weight:600;font-size:36px;line-height:1.06;text-transform:uppercase;letter-spacing:.5px}
+.secq{margin-top:12px;font-size:14px;color:var(--mut)}
+.secq b{color:var(--goal);font-weight:700}
+
+.caption{max-width:860px;margin:26px 0 0;padding-left:16px;border-left:3px solid var(--eyebrow)}
+.caption h3{font-size:12px;font-weight:800;letter-spacing:2px;color:var(--eyebrow);text-transform:uppercase;margin-bottom:8px}
+.caption p{color:#C7CBD4;font-size:14.5px;margin-bottom:10px}
+.caption p:last-child{margin-bottom:0}
+.caption b{color:#fff;font-weight:600}
+.decide{max-width:860px;margin-top:20px;background:rgba(243,173,56,.07);border:1px solid rgba(243,173,56,.3);border-radius:14px;padding:16px 20px}
+.decide .dl{font-size:11px;font-weight:800;letter-spacing:2px;color:var(--goal);text-transform:uppercase;margin-bottom:6px}
+.decide p{font-size:14.5px;color:#E6E8ED}
+.decide p b{color:var(--goal)}
+
+/* ================= mock screen frame ================= */
+.screen{background:var(--bg);border:1px solid rgba(255,255,255,.11);border-radius:20px;display:flex;overflow:hidden;box-shadow:0 40px 90px -50px rgba(0,0,0,.9);width:100%}
+.rail{flex:0 0 86px;background:#0D1016;border-right:1px solid rgba(255,255,255,.06);padding:22px 0;display:flex;flex-direction:column;align-items:center;gap:2px}
+.rail .rdot{width:12px;height:12px;border-radius:50%;background:var(--race);margin-bottom:22px}
+.rail .rt{font-size:9px;font-weight:700;letter-spacing:1.2px;color:rgba(255,255,255,.38);text-transform:uppercase;padding:12px 0;width:100%;text-align:center;border-left:2px solid transparent}
+.rail .rt.on{color:#fff;border-left-color:var(--race)}
+.stage{flex:1;min-width:0;padding:26px 32px 34px;display:flex;flex-direction:column;gap:14px}
+.pghead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px}
+.pghead .pgt{font-family:'Oswald',sans-serif;font-weight:600;font-size:24px;letter-spacing:.5px;text-transform:uppercase}
+.pghead .pgd{font-size:11px;font-weight:700;letter-spacing:1.6px;color:var(--mut);text-transform:uppercase}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px}
+.eb{font-size:10px;font-weight:800;letter-spacing:1.8px;color:var(--mut);text-transform:uppercase}
+.eb.amber{color:var(--eyebrow)}
+.eb.red{color:var(--race)}
+.eb.blue{color:var(--dist)}
+.eb.green{color:var(--green)}
+.oswald{font-family:'Oswald',sans-serif;font-weight:600}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:9px;padding:5px 10px;white-space:nowrap}
+.chip.amber{color:var(--goal);border:1px solid rgba(243,173,56,.45);background:rgba(243,173,56,.08)}
+.chip.green{color:var(--green);border:1px solid rgba(62,189,65,.4);background:rgba(62,189,65,.08)}
+.chip.blue{color:var(--dist);border:1px solid rgba(39,180,224,.4);background:rgba(39,180,224,.08)}
+.chip.red{color:#fff;background:var(--race);border:1px solid var(--race)}
+.chip.warn{color:var(--over);border:1px solid rgba(252,77,100,.45);background:rgba(252,77,100,.08)}
+.chip.ghosted{color:var(--mut);border:1px dashed rgba(255,255,255,.2);background:none}
+.btn{display:inline-block;font-size:11px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;border-radius:11px;padding:11px 18px;cursor:default;border:1px solid transparent}
+.btn.solid{background:var(--race);color:#fff}
+.btn.amberline{background:none;border-color:rgba(243,173,56,.5);color:var(--goal)}
+.btn.ghost{background:none;border-color:rgba(255,255,255,.18);color:#C7CBD4}
+.btn.blueline{background:none;border-color:rgba(39,180,224,.45);color:var(--dist)}
+.coachline{font-size:13.5px;color:#C7CBD4;border-left:3px solid var(--green);padding-left:12px}
+.coachline b{color:#fff;font-weight:600}
+
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px;min-height:104px;display:flex;flex-direction:column;gap:6px}
+.tile .tv{font-family:'Oswald',sans-serif;font-weight:600;font-size:30px;line-height:1}
+.tile .ts{font-size:11px;color:var(--mut)}
+.tile.ghostslot{border-style:dashed;border-color:rgba(255,255,255,.14);background:none;align-items:flex-start;justify-content:center}
+.tile.ghostslot .gs1{font-size:10px;font-weight:800;letter-spacing:1.6px;color:rgba(255,255,255,.3);text-transform:uppercase}
+.tile.ghostslot .gs2{font-size:11px;color:rgba(255,255,255,.35);margin-top:4px}
+
+/* week strip */
+.strip{display:grid;grid-template-columns:repeat(7,1fr);gap:9px}
+.dcell{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 10px;text-align:center;min-height:86px;display:flex;flex-direction:column;gap:5px;align-items:center;justify-content:center}
+.dcell .dw{font-size:9px;font-weight:800;letter-spacing:1.4px;color:var(--mut)}
+.dcell .dn{font-family:'Oswald',sans-serif;font-weight:600;font-size:19px}
+.dcell .dt{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--mut)}
+.dcell.today{border-color:rgba(39,180,224,.5)}
+.dcell.today .dw{color:var(--dist)}
+.dcell.race{border-color:var(--race);background:rgba(208,63,63,.1)}
+.dcell.race .dt{color:var(--race)}
+.dcell .edot{width:7px;height:7px;border-radius:50%}
+
+/* number line */
+.numline{position:relative;height:8px;border-radius:5px;background:linear-gradient(90deg,var(--over),var(--goal),var(--green));margin:52px 6px 36px}
+.nl-mark{position:absolute;top:50%;transform:translate(-50%,-50%);width:15px;height:15px;border-radius:50%;border:3px solid var(--bg)}
+.nl-lab{position:absolute;transform:translateX(-50%);font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;white-space:nowrap}
+.nl-lab .t{font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;letter-spacing:.5px;display:block;text-align:center}
+
+/* activity rows */
+.arow{display:flex;align-items:center;gap:14px;padding:13px 6px;border-bottom:1px solid rgba(255,255,255,.05)}
+.arow:last-child{border-bottom:none}
+.arow .adot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.arow .ad1{flex:1;min-width:0}
+.arow .an{font-size:13.5px;font-weight:600;color:#fff;display:flex;align-items:center;gap:8px}
+.arow .am{font-size:11px;color:var(--mut);margin-top:2px}
+.arow .astat{font-family:'Oswald',sans-serif;font-weight:600;font-size:16px;width:74px;text-align:right}
+.arow .asub{font-size:10px;color:var(--mut);width:64px;text-align:right}
+.badge-race{font-size:8.5px;font-weight:800;letter-spacing:1.2px;color:#fff;background:var(--race);border-radius:4px;padding:2px 6px}
+.wkhead{display:flex;justify-content:space-between;align-items:baseline;padding:4px 6px 8px;border-bottom:1px solid rgba(255,255,255,.09)}
+.wkhead .w1{font-size:11px;font-weight:800;letter-spacing:1.8px;color:#fff;text-transform:uppercase}
+.wkhead .w2{font-size:11px;color:var(--mut);letter-spacing:.5px}
+.fchip{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--mut);border:1px solid var(--line);border-radius:16px;padding:6px 12px;white-space:nowrap}
+.fchip.on{color:#0A0C10;background:var(--goal);border-color:var(--goal)}
+
+/* decision cards (section 2) */
+.dcard{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--goal);border-radius:16px;padding:20px 22px;max-width:880px}
+.dcard.applied{border-left-color:var(--dist)}
+.dcard .dc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.dcard .dc-title{font-family:'Oswald',sans-serif;font-weight:600;font-size:22px;letter-spacing:.4px;text-transform:uppercase;margin-bottom:8px}
+.dcard .dc-body{font-size:14px;color:#C7CBD4;max-width:640px}
+.dcard .dc-actions{display:flex;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap}
+.dcard .dc-later{font-size:11px;font-weight:700;letter-spacing:1.2px;color:var(--mut);text-transform:uppercase;margin-left:auto}
+.pager{font-size:10px;font-weight:800;letter-spacing:1.4px;color:var(--goal);text-transform:uppercase}
+
+/* targets */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.racerow{display:flex;align-items:center;gap:14px;padding:13px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
+.racerow:last-child{border-bottom:none}
+.rolechip{font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.rolechip.a{background:var(--race);color:#fff}
+.rolechip.b{background:rgba(243,173,56,.15);color:var(--goal);border:1px solid rgba(243,173,56,.4)}
+.rolechip.c{background:rgba(255,255,255,.06);color:var(--mut);border:1px solid var(--line)}
+.racerow .rr1{flex:1;min-width:0}
+.racerow .rn{font-size:13.5px;font-weight:600}
+.racerow .rm{font-size:11px;color:var(--mut);margin-top:2px}
+.racerow .rd{font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;color:#C7CBD4;text-align:right;white-space:nowrap}
+.racerow .rd span{display:block;font-family:Inter;font-size:9.5px;font-weight:700;letter-spacing:1px;color:var(--mut);text-transform:uppercase}
+
+/* zone ladder (section 7) */
+.zrow{display:flex;align-items:center;gap:12px;padding:9px 0}
+.zsw{width:44px;height:22px;border-radius:6px;flex:0 0 auto}
+.zl1{font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;width:96px}
+.zl2{font-size:11px;color:var(--mut)}
+.eband{height:8px;border-radius:5px;margin:10px 0 4px}
+.hexlab{font-family:'Oswald',sans-serif;font-size:13px;font-weight:500;letter-spacing:1px;color:#C7CBD4}
+
+/* IA columns (section 6) */
+.iacols{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:1050px}
+.iacol{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px}
+.iacol h4{font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px}
+.iacol.before h4{color:var(--over)}
+.iacol.after h4{color:var(--green)}
+.iacol ul{list-style:none}
+.iacol li{font-size:13px;color:#C7CBD4;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.iacol li:last-child{border-bottom:none}
+.iacol li.dead{color:var(--mut);text-decoration:line-through;text-decoration-color:rgba(252,77,100,.6)}
+.iacol li.move{color:var(--goal)}
+.iacol li b{color:#fff;font-weight:600}
+.iacol li code{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#9BA1AD;background:rgba(255,255,255,.04);border-radius:4px;padding:1px 5px}
+
+/* decisions summary */
+.dsum{max-width:960px}
+.dsum-row{display:flex;gap:16px;padding:15px 4px;border-bottom:1px solid rgba(255,255,255,.06);align-items:baseline}
+.dsum-row .dn{font-family:'Oswald',sans-serif;font-weight:600;font-size:20px;color:var(--eyebrow);width:30px;flex:0 0 auto}
+.dsum-row p{font-size:14.5px;color:#C7CBD4}
+.dsum-row p b{color:#fff;font-weight:600}
+.wave{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 20px}
+.wave h4{font-size:11px;font-weight:800;letter-spacing:2px;color:var(--eyebrow);text-transform:uppercase;margin-bottom:8px}
+.wave p{font-size:13.5px;color:#C7CBD4}
+.waves{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;max-width:960px;margin-top:22px}
+
+.mocklabel{font-size:10px;font-weight:800;letter-spacing:2px;color:var(--mut);text-transform:uppercase;margin:0 0 10px 4px}
+.mockstack{display:flex;flex-direction:column;gap:18px}
+@media (max-width:900px){.tiles{grid-template-columns:repeat(2,1fr)}.two,.iacols,.waves{grid-template-columns:1fr}.strip{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ===================================================== MASTHEAD -->
+<header class="masthead">
+  <div class="brand"><span class="dot"></span><span class="mark">Faff</span></div>
+  <div class="mast-eb">Web recomposition deck · 2026-08-17 · for David's ruling</div>
+  <h1>Eight decisions, each shown as the screen it produces</h1>
+  <p class="mast-sub">Three audits ran. The truth bugs are already being fixed by parallel agents. What remains is <b>composition</b>: which beats each page holds, in which state, with which vocabulary. Every section below is a rendered mock in the locked brand language with your real state: <b>AFC 1:41:53 yesterday</b>, recovery window Aug 17 to 30, <b>CIM Dec 6</b> at goal 3:00:00 projecting 3:31:48, tune-ups Santa Monica, Dodgers, Malibu. Section numbers are decision numbers.</p>
+</header>
+
+<nav class="secnav">
+  <a href="#s1"><span class="n">1</span>Post-race Today</a>
+  <a href="#s2"><span class="n">2</span>Interruption grammar</a>
+  <a href="#s3"><span class="n">3</span>Targets</a>
+  <a href="#s4"><span class="n">4</span>Activity</a>
+  <a href="#s5"><span class="n">5</span>Race week</a>
+  <a href="#s6"><span class="n">6</span>Chrome</a>
+  <a href="#s7"><span class="n">7</span>Palette ruling</a>
+  <a href="#s8"><span class="n">8</span>Coach visibility</a>
+  <a href="#sd"><span class="n">D</span>Decisions</a>
+</nav>
+
+<!-- ===================================================== SECTION 1 -->
+<section class="sec" id="s1">
+  <div class="sechead">
+    <div class="secnum">Decision 1</div>
+    <h2>Today · post-race week as a real state</h2>
+    <p class="secq">Days 0 to 7 after a race get their own composition. Today this state renders as a normal training day with seven Rest cards. <b>This is the state you are in right now.</b></p>
+  </div>
+
+  <p class="mocklabel">Mock · Today, rendered this morning, Aug 17</p>
+  <div class="screen">
+    <div class="rail">
+      <div class="rdot"></div>
+      <div class="rt on">Today</div><div class="rt">Train</div><div class="rt">Health</div><div class="rt">Goal</div><div class="rt">Activity</div>
+    </div>
+    <div class="stage">
+      <div class="pghead"><span class="pgt">Today</span><span class="pgd">Mon · Aug 17</span></div>
+
+      <!-- post-race hero -->
+      <div class="card" style="border-left:4px solid var(--race)">
+        <div class="eb red">America's Finest City Half · yesterday</div>
+        <div style="display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;margin-top:10px">
+          <div class="oswald" style="font-size:74px;line-height:.85">1:41:53</div>
+          <div style="padding-bottom:8px">
+            <div style="font-size:12px;font-weight:700;letter-spacing:1.4px;color:#C7CBD4;text-transform:uppercase">Half marathon · 7:46 /mi</div>
+            <div style="margin-top:8px"><span class="chip amber">Watch time · chip time to lock in</span></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:18px;align-items:center;flex-wrap:wrap">
+          <span class="btn solid">Confirm result</span>
+          <span class="btn ghost">The race story ›</span>
+        </div>
+        <div class="coachline" style="margin-top:16px">You raced yesterday. The result stands whether you confirm it now or later. This week is for absorbing it, not chasing it.</div>
+      </div>
+
+      <!-- recovery read -->
+      <div class="card">
+        <div class="eb blue">Recovery read · day 1 of 14</div>
+        <div style="display:flex;gap:34px;margin-top:12px;flex-wrap:wrap">
+          <div><div class="eb">Readiness</div><div class="oswald" style="font-size:32px;color:var(--goal)">58</div><div style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:var(--goal)">REBUILDING</div></div>
+          <div><div class="eb">Sleep</div><div class="oswald" style="font-size:32px;color:var(--green)">7:42</div><div style="font-size:10px;color:var(--mut)">last night</div></div>
+          <div><div class="eb">Resting HR</div><div class="oswald" style="font-size:32px;color:var(--goal)">54</div><div style="font-size:10px;color:var(--mut)">baseline 49 · up 5</div></div>
+        </div>
+        <div class="coachline" style="margin-top:16px;border-left-color:var(--dist)">Heart rate is up and the legs are heavy. That is the race, not a problem. If you feel like moving, a walk or 20 easy minutes. Nothing counts this week.</div>
+      </div>
+
+      <!-- recovery window strip -->
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;padding:0 2px">
+          <span class="eb blue">Recovery window · Aug 17 to 30</span>
+          <span style="font-size:11px;color:var(--mut)">next block opens Aug 31</span>
+        </div>
+        <div class="strip">
+          <div class="dcell today"><span class="dw">MON</span><span class="dn">17</span><span class="edot" style="background:var(--dist)"></span><span class="dt" style="color:var(--dist)">Walk ok</span></div>
+          <div class="dcell"><span class="dw">TUE</span><span class="dn">18</span><span class="edot" style="background:rgba(255,255,255,.18)"></span><span class="dt">Off</span></div>
+          <div class="dcell"><span class="dw">WED</span><span class="dn">19</span><span class="edot" style="background:var(--dist)"></span><span class="dt" style="color:var(--dist)">Easy 3</span></div>
+          <div class="dcell"><span class="dw">THU</span><span class="dn">20</span><span class="edot" style="background:rgba(255,255,255,.18)"></span><span class="dt">Off</span></div>
+          <div class="dcell"><span class="dw">FRI</span><span class="dn">21</span><span class="edot" style="background:var(--dist)"></span><span class="dt" style="color:var(--dist)">Easy 4</span></div>
+          <div class="dcell"><span class="dw">SAT</span><span class="dn">22</span><span class="edot" style="background:rgba(255,255,255,.18)"></span><span class="dt">Off</span></div>
+          <div class="dcell"><span class="dw">SUN</span><span class="dn">23</span><span class="edot" style="background:var(--dist)"></span><span class="dt" style="color:var(--dist)">Easy 5</span></div>
+        </div>
+        <div style="font-size:11px;color:var(--mut);margin-top:8px;padding:0 2px">Week 2 · easy volume only, cap 15 mi · every day optional</div>
+      </div>
+
+      <!-- tiles: two kept, two hidden -->
+      <div class="tiles">
+        <div class="tile"><div class="eb">Weekly volume</div><div class="tv">3.1 <span style="font-size:14px;color:var(--mut)">mi</span></div><div class="ts">recovery cap 15 · no target this week</div></div>
+        <div class="tile"><div class="eb">Training form</div><div class="tv" style="color:var(--goal)">LOADED</div><div class="ts">race fatigue · expected through Aug 23</div></div>
+        <div class="tile ghostslot"><div class="gs1">The gap</div><div class="gs2">hidden during recovery</div></div>
+        <div class="tile ghostslot"><div class="gs1">Race day</div><div class="gs2">returns Aug 31 with the new block</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption">
+    <h3>What changed</h3>
+    <p><b>The hero is the race, not a workout.</b> Race name, one day since, the result with its provenance chip, CONFIRM to lock the chip time over the watch time, and the race story link. The provenance chip follows the race-data source-of-truth rule: a watch time never displays as an authoritative chip result.</p>
+    <p><b>The second beat is the recovery read.</b> Readiness and sleep get promoted from Health, and the coach line comes from the post_race purpose instead of the generic day line. The week strip reframes as RECOVERY WINDOW with day guidance in recovery blue, not seven identical Rest cards that read like a broken plan.</p>
+    <p><b>Two tiles hide, two stay.</b> THE GAP and RACE DAY countdown are meaningless four days after a race and 111 days before the next one at this fidelity, so they leave. VOLUME and FORM stay with fatigue framing. The ghost slots above are deck notation only; the real page renders a two-tile row.</p>
+  </div>
+  <div class="decide"><div class="dl">Decision 1</div><p>Adopt this post-race composition for days 0 to 7, with the recovery-window strip extending through the full window (14 days here)? <b>Default if unruled: adopt.</b></p></div>
+</section>
+
+<!-- ===================================================== SECTION 2 -->
+<section class="sec" id="s2">
+  <div class="sechead">
+    <div class="secnum">Decision 2</div>
+    <h2>One interruption grammar</h2>
+    <p class="secq">Today the app interrupts you with four different chromes: CoachProposalCard, PlanProposalCard, WorkoutProposalBanner, AdaptationCard. One CoachDecisionCard replaces all four.</p>
+  </div>
+
+  <div class="mockstack">
+    <div>
+      <p class="mocklabel">Variant A · kind: goal renegotiation · amber = needs your decision</p>
+      <div class="dcard">
+        <div class="dc-top"><span class="eb amber">Coach · needs a decision</span><span class="pager">1 of 2 waiting ›</span></div>
+        <div class="dc-title">Your CIM goal needs a call</div>
+        <div class="dc-body">The plan projects 3:31:48 against your 3:00:00 goal. Hold the goal and I keep writing the plan to it. Move the goal and the paces get honest.</div>
+        <div class="dc-actions">
+          <span class="btn amberline">Hold 3:00:00</span>
+          <span class="btn amberline">Move the goal</span>
+          <span class="dc-later">Decide later</span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="mocklabel">Variant B · kind: field test · amber = needs your decision</p>
+      <div class="dcard">
+        <div class="dc-top"><span class="eb amber">Coach · needs a decision</span><span class="pager">2 of 2 waiting ›</span></div>
+        <div class="dc-title">A field test would sharpen your paces</div>
+        <div class="dc-body">Your last measured anchor is 63 days old. A 30 minute solo time trial next Thursday replaces the guesswork before the CIM block opens.</div>
+        <div class="dc-actions">
+          <span class="btn amberline">Put it on Thursday</span>
+          <span class="btn amberline">Skip this block</span>
+          <span class="dc-later">Decide later</span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="mocklabel">Variant C · kind: adaptation notice · recovery blue = already applied, nothing to decide</p>
+      <div class="dcard applied">
+        <div class="dc-top"><span class="eb blue">Coach · applied</span><span style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:var(--mut);text-transform:uppercase">Aug 14</span></div>
+        <div class="dc-title">This week absorbed your missed long run</div>
+        <div class="dc-body">Sunday's 16 moved to next Saturday and this week's quality dropped one notch. Nothing for you to do.</div>
+        <div class="dc-actions"><span class="btn blueline">See the change</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption">
+    <h3>What changed</h3>
+    <p><b>One chrome, kind-driven dressing.</b> Every interruption is the same card: eyebrow names the kind, left accent carries the state. Amber means the coach is waiting on you. Recovery blue means the coach already acted and is telling you. The verb buttons are always concrete actions in coach voice, never Accept/Dismiss.</p>
+    <p><b>One queue.</b> When multiple items wait, one card shows with an "N waiting" pager instead of three different banners stacking. The banner-cap rule (max one above the hero) becomes structurally impossible to violate.</p>
+  </div>
+  <div class="decide"><div class="dl">Decision 2</div><p>Unify the four interruption components into CoachDecisionCard with this grammar? <b>Default if unruled: unify.</b></p></div>
+</section>
+
+<!-- ===================================================== SECTION 3 -->
+<section class="sec" id="s3">
+  <div class="sechead">
+    <div class="secnum">Decision 3</div>
+    <h2>Targets · answer, path, work, races</h2>
+    <p class="secq">Beat order becomes ANSWER, THE PATH, THE WORK, RACES. The renegotiation card mounts inside THE PATH when pending. RACES splits into CALENDAR and RESULTS. And the page stops speaking three status dialects.</p>
+  </div>
+
+  <p class="mocklabel">Mock · Targets, rendered today with the renegotiation pending</p>
+  <div class="screen">
+    <div class="rail">
+      <div class="rdot"></div>
+      <div class="rt">Today</div><div class="rt">Train</div><div class="rt">Health</div><div class="rt on">Goal</div><div class="rt">Activity</div>
+    </div>
+    <div class="stage">
+      <div class="pghead"><span class="pgt">Targets</span><span class="pgd">CIM · 111 days</span></div>
+
+      <!-- vocabulary inset -->
+      <div class="card" style="border-style:dashed;background:none">
+        <div class="eb">Deck note · the status vocabulary today, three dialects for one fact</div>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;align-items:center">
+          <span class="chip warn">● Off track</span>
+          <span class="chip warn">BEHIND · 31:48</span>
+          <span style="font-size:12px;color:var(--mut);font-style:italic">"off pace" (prose)</span>
+          <span style="font-size:12px;color:var(--mut)">→ proposed single vocabulary:</span>
+          <span class="chip warn">BEHIND · 31:48</span>
+        </div>
+      </div>
+
+      <!-- 1 ANSWER -->
+      <div class="card">
+        <div class="eb amber">The answer</div>
+        <div style="display:flex;gap:44px;align-items:flex-end;margin-top:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:1.6px;color:#C7CBD4;text-transform:uppercase">California International Marathon · Dec 6</div>
+            <div class="oswald" style="font-size:66px;line-height:.9;margin-top:6px">3:00:00</div>
+            <div style="font-size:11px;color:var(--mut);margin-top:6px">goal · 6:52 /mi</div>
+          </div>
+          <div style="padding-bottom:4px">
+            <div class="eb">Projected</div>
+            <div class="oswald" style="font-size:40px;color:var(--over)">3:31:48</div>
+            <div style="margin-top:8px"><span class="chip warn">BEHIND · 31:48</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2 THE PATH -->
+      <div class="card">
+        <div class="eb amber">The path</div>
+        <div class="numline">
+          <span class="nl-mark" style="left:18%;background:var(--over)"></span>
+          <span class="nl-lab" style="left:18%;top:-42px;color:var(--over)"><span class="t">3:31:48</span>projected</span>
+          <span class="nl-mark" style="left:88%;background:#fff"></span>
+          <span class="nl-lab" style="left:88%;top:14px;color:#C7CBD4"><span class="t">3:00:00</span>goal</span>
+        </div>
+        <div style="font-size:12px;color:var(--mut)">Race week, this band re-anchors: <b style="color:#C7CBD4">effective target 3:29:59 · stretch 3:24:00</b>, with the standing goal shown as context, not the promise.</div>
+
+        <!-- renegotiation mounts HERE -->
+        <div class="dcard" style="margin-top:16px;max-width:none">
+          <div class="dc-top"><span class="eb amber">Coach · needs a decision</span></div>
+          <div class="dc-title" style="font-size:19px">Your CIM goal needs a call</div>
+          <div class="dc-body">Projection says 3:31:48. Hold 3:00:00 or move the goal. The plan follows your call either way.</div>
+          <div class="dc-actions"><span class="btn amberline">Hold 3:00:00</span><span class="btn amberline">Move the goal</span><span class="dc-later">Decide later</span></div>
+        </div>
+      </div>
+
+      <!-- 3 THE WORK -->
+      <div class="card">
+        <div class="eb amber">The work</div>
+        <div style="display:flex;align-items:center;gap:14px;margin-top:12px;padding:12px 14px;background:rgba(39,180,224,.06);border:1px solid rgba(39,180,224,.25);border-radius:12px">
+          <span class="chip blue">Between blocks</span>
+          <span style="font-size:13px;color:#C7CBD4">Recovery window Aug 17 to 30 · CIM block opens Aug 31, 14 weeks out</span>
+        </div>
+        <div class="arow" style="margin-top:6px"><span class="adot" style="background:var(--goal)"></span><div class="ad1"><div class="an">Santa Monica Classic 10K · tune-up test point</div><div class="am">Sep 13 · reads current fitness against the 45:00 own goal</div></div><div class="astat" style="color:var(--mut)">WK 3</div></div>
+        <div class="arow"><span class="adot" style="background:var(--goal)"></span><div class="ad1"><div class="an">Malibu Half · dress rehearsal</div><div class="am">Nov 8 · marathon pace segments inside the race</div></div><div class="astat" style="color:var(--mut)">WK 11</div></div>
+      </div>
+
+      <!-- 5 RACES split -->
+      <div class="two">
+        <div class="card">
+          <div class="eb amber">Calendar</div>
+          <div class="racerow" style="margin-top:6px"><span class="rolechip a">A</span><div class="rr1"><div class="rn">California International Marathon</div><div class="rm">goal race · everything points here</div></div><div class="rd">DEC 6<span>3:00:00 goal</span></div></div>
+          <div class="racerow"><span class="rolechip b">B</span><div class="rr1"><div class="rn">Santa Monica Classic 10K</div><div class="rm">tune-up · race day in your plan · own goal 45:00</div></div><div class="rd">SEP 13<span>tune-up</span></div></div>
+          <div class="racerow"><span class="rolechip c">C</span><div class="rr1"><div class="rn">Dodgers 5K</div><div class="rm">converts a quality day · no taper, no recovery debt</div></div><div class="rd">OCT 4<span>quality day</span></div></div>
+          <div class="racerow"><span class="rolechip b">B</span><div class="rr1"><div class="rn">Malibu Half</div><div class="rm">tune-up · race day in your plan</div></div><div class="rd">NOV 8<span>tune-up</span></div></div>
+        </div>
+        <div class="card">
+          <div class="eb amber">Results</div>
+          <div class="racerow" style="margin-top:6px"><span class="rolechip b" style="background:rgba(208,63,63,.15);color:var(--race);border-color:rgba(208,63,63,.4)">A</span><div class="rr1"><div class="rn">America's Finest City Half <span class="chip amber" style="margin-left:6px">provisional</span></div><div class="rm">Aug 16 · 7:43 /mi · Retro ›</div></div><div class="rd">1:41:53<span>Watch time</span></div></div>
+          <div class="racerow"><span class="rolechip c">·</span><div class="rr1"><div class="rn">Earlier results <span class="chip green" style="margin-left:6px">confirmed</span></div><div class="rm">each row · result, provenance chip, Retro ›</div></div><div class="rd">…<span>chip time</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption">
+    <h3>What changed</h3>
+    <p><b>One status vocabulary.</b> TargetsView currently ships three: the StatusPill ("On track / Watching / Off track"), the tier word ("AHEAD / BEHIND …"), and prose ("on pace / off pace"), and Today's GAP tile derives its own. The proposal: <b>the tier word plus the gap becomes the only status chip</b>, everywhere: AHEAD, ON PACE, WATCHING, BEHIND, each with the gap value. It obeys the label grammar rule (one word plus optional context) and it carries the number, which the pill never did. Pill and prose retire.</p>
+    <p><b>The renegotiation card mounts inside THE PATH</b>, directly under the number line that justifies it, not floating at the top of the page. Same CoachDecisionCard chrome as Decision 2.</p>
+    <p><b>THE WORK gets an explicit between-blocks state</b> instead of rendering an empty week list during recovery. It names the window and the block-open date.</p>
+    <p><b>RACES splits into CALENDAR and RESULTS.</b> Calendar rows carry role chips: A goal race, B tune-up with race day in your plan and an own goal where set, C converts a quality day. Results rows carry the result, its provenance chip, and the retro link. AFC shows the provisional amber chip until confirmed; the deck leaves earlier confirmed rows schematic because their times are not in this session's evidence.</p>
+  </div>
+  <div class="decide"><div class="dl">Decision 3</div><p>Three calls: <b>(a)</b> adopt the beat order with renegotiation mounted in THE PATH, <b>(b)</b> pick the single status vocabulary (proposed: tier word + gap, retire pill and prose), <b>(c)</b> approve the CALENDAR / RESULTS split with role chips. <b>Default if unruled: all three as mocked.</b></p></div>
+</section>
+
+<!-- ===================================================== SECTION 4 -->
+<section class="sec" id="s4">
+  <div class="sechead">
+    <div class="secnum">Decision 4</div>
+    <h2>Activity · the real history surface</h2>
+    <p class="secq">Week-grouped full history with filter chips, races named with a RACE badge, and the run detail carrying the RouteMap. Today the log is a flat recent list and races render as anonymous runs.</p>
+  </div>
+
+  <p class="mocklabel">Mock · Activity list with the AFC detail open</p>
+  <div class="screen">
+    <div class="rail">
+      <div class="rdot"></div>
+      <div class="rt">Today</div><div class="rt">Train</div><div class="rt">Health</div><div class="rt">Goal</div><div class="rt on">Activity</div>
+    </div>
+    <div class="stage">
+      <div class="pghead"><span class="pgt">Activity</span><span class="pgd">755 mi · 101 runs this year</span></div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="fchip on">All</span><span class="fchip">Races</span><span class="fchip">Quality</span><span class="fchip">Long</span><span class="fchip">Easy</span>
+        <span style="width:1px;background:var(--line);margin:2px 4px"></span>
+        <span class="fchip">Watch</span><span class="fchip">Strava</span><span class="fchip">HealthKit</span>
+        <span style="width:1px;background:var(--line);margin:2px 4px"></span>
+        <span class="fchip">Phase ▾</span><span class="fchip">Shoes ▾</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:14px;align-items:start">
+        <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+          <div class="card" style="padding:14px 18px">
+            <div class="wkhead"><span class="w1">Aug 17 to 23</span><span class="w2">recovery window · 0 mi so far</span></div>
+            <div style="font-size:12px;color:var(--mut);padding:12px 6px 4px">Nothing yet this week. That is the plan.</div>
+          </div>
+          <div class="card" style="padding:14px 18px">
+            <div class="wkhead"><span class="w1">Aug 10 to 16</span><span class="w2">24.6 mi · 4 runs</span></div>
+            <div class="arow" style="background:rgba(208,63,63,.06);border-radius:10px;padding:13px 10px"><span class="adot" style="background:var(--race)"></span><div class="ad1"><div class="an">America's Finest City Half <span class="badge-race">RACE</span></div><div class="am">Sun Aug 16 · 13.1 mi · watch</div></div><div class="astat">1:41:53</div><div class="asub">7:46 /mi</div></div>
+            <div class="arow"><span class="adot" style="background:var(--green)"></span><div class="ad1"><div class="an">Shakeout</div><div class="am">Fri Aug 14 · 2.0 mi · watch</div></div><div class="astat">19:20</div><div class="asub">9:40 /mi</div></div>
+            <div class="arow"><span class="adot" style="background:var(--green)"></span><div class="ad1"><div class="an">Easy + strides</div><div class="am">Wed Aug 12 · 4.0 mi · watch</div></div><div class="astat">35:48</div><div class="asub">8:57 /mi</div></div>
+            <div class="arow"><span class="adot" style="background:var(--green)"></span><div class="ad1"><div class="an">Easy</div><div class="am">Mon Aug 10 · 5.5 mi · watch</div></div><div class="astat">48:46</div><div class="asub">8:52 /mi</div></div>
+          </div>
+          <div class="card" style="padding:14px 18px">
+            <div class="wkhead"><span class="w1">Aug 3 to 9</span><span class="w2">31.2 mi · 5 runs</span></div>
+            <div class="arow"><span class="adot" style="background:var(--goal)"></span><div class="ad1"><div class="an">Long run</div><div class="am">Sun Aug 9 · 12.0 mi · watch</div></div><div class="astat">1:47:24</div><div class="asub">8:57 /mi</div></div>
+            <div class="arow"><span class="adot" style="background:var(--race)"></span><div class="ad1"><div class="an">Tempo · 2 x 2 mi</div><div class="am">Thu Aug 6 · 6.8 mi · watch</div></div><div class="astat">54:10</div><div class="asub">7:58 /mi</div></div>
+            <div style="font-size:11px;color:var(--mut);padding:10px 6px 2px">+ 3 more ›</div>
+          </div>
+        </div>
+
+        <!-- open detail -->
+        <div class="card" style="position:sticky;top:20px">
+          <div class="eb red">Race · Aug 16</div>
+          <div class="oswald" style="font-size:26px;margin-top:6px;text-transform:uppercase;letter-spacing:.5px">America's Finest City Half</div>
+          <div style="margin-top:12px;height:190px;border-radius:12px;background:#0D1117;border:1px solid var(--line);position:relative;overflow:hidden">
+            <svg viewBox="0 0 420 190" style="position:absolute;inset:0;width:100%;height:100%">
+              <defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3EBD41"/><stop offset=".45" stop-color="#F3AD38"/><stop offset=".8" stop-color="#D03F3F"/><stop offset="1" stop-color="#FC4D64"/></linearGradient></defs>
+              <path d="M30 160 C70 120 60 70 110 62 C160 54 180 96 220 88 C270 78 260 34 320 40 C370 45 390 90 388 128" fill="none" stroke="url(#pg)" stroke-width="4" stroke-linecap="round"/>
+              <circle cx="30" cy="160" r="6" fill="#fff"/><circle cx="388" cy="128" r="6" fill="#D03F3F"/>
+            </svg>
+            <span style="position:absolute;left:10px;bottom:8px;font-size:9px;letter-spacing:1px;color:rgba(255,255,255,.35);text-transform:uppercase">Route · pace graded</span>
+          </div>
+          <div style="display:flex;gap:26px;margin-top:14px;flex-wrap:wrap">
+            <div><div class="eb">Time</div><div class="oswald" style="font-size:24px">1:41:53</div></div>
+            <div><div class="eb">Pace</div><div class="oswald" style="font-size:24px">7:46</div></div>
+            <div><div class="eb">HR</div><div class="oswald" style="font-size:24px">168<span style="font-size:13px;color:var(--mut)"> avg</span></div></div>
+            <div><div class="eb">Climb</div><div class="oswald" style="font-size:24px">420<span style="font-size:13px;color:var(--mut)"> ft</span></div></div>
+          </div>
+          <div style="margin-top:14px;font-size:12px;color:var(--mut)">Splits · 7:52 · 7:41 · 7:48 · … · 7:31 last mile</div>
+          <div style="margin-top:14px"><span class="btn ghost">The race story ›</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption">
+    <h3>What changed</h3>
+    <p><b>History becomes navigable.</b> Week groups with week totals replace the flat list, and the current week states its emptiness honestly during recovery instead of looking broken. Races are named, tinted race red, and badged RACE (the naming fix itself is in the parallel truth-bug wave; the composition is what is proposed here).</p>
+    <p><b>The detail carries the RouteMap</b> with the pace-graded polyline, the same component the run modal already renders, plus splits and HR. On wide viewports the detail docks beside the list, which is what a command center earns over the phone.</p>
+    <p><b>Filter depth is the real call.</b> Type and source chips are cheap and useful now. Phase and shoe filters need joins the log endpoint does not expose yet. Proposal: ship type + source in the first pass, phase + shoe as a follow-up, dropdowns shown here so the chrome does not reflow when they land.</p>
+  </div>
+  <div class="decide"><div class="dl">Decision 4</div><p>Adopt the week-grouped history with docked detail? And filter depth: <b>type + source now, phase + shoe later</b>, or all four now? <b>Default if unruled: adopt, two-stage filters.</b></p></div>
+</section>
+
+<!-- ===================================================== SECTION 5 -->
+<section class="sec" id="s5">
+  <div class="sechead">
+    <div class="secnum">Decision 5</div>
+    <h2>Race week on Today</h2>
+    <p class="secq">The C1 promotion rules applied to CIM week: the strip swaps to the race-week schedule, logistics and pacing pull up from RaceView, and proposals suppress. Mocked at Wednesday of race week.</p>
+  </div>
+
+  <p class="mocklabel">Mock · Today, Wed Dec 2 · CIM in 4 days</p>
+  <div class="screen">
+    <div class="rail">
+      <div class="rdot"></div>
+      <div class="rt on">Today</div><div class="rt">Train</div><div class="rt">Health</div><div class="rt">Goal</div><div class="rt">Activity</div>
+    </div>
+    <div class="stage">
+      <div class="pghead"><span class="pgt">Today</span><span class="pgd">Wed · Dec 2</span></div>
+
+      <div class="card" style="border-left:4px solid var(--race)">
+        <div class="eb red">Race week · CIM in 4 days</div>
+        <div style="display:flex;align-items:flex-end;gap:26px;margin-top:8px;flex-wrap:wrap">
+          <div class="oswald" style="font-size:56px;line-height:.9">EASY 3 <span style="font-size:22px;color:var(--mut)">+ 4 strides</span></div>
+          <div style="padding-bottom:6px;font-size:12px;color:var(--mut)">today's job · stay loose, nothing more</div>
+        </div>
+        <div class="coachline" style="margin-top:14px;border-left-color:var(--race)">The work is banked. Nothing you do this week makes you fitter on Sunday. Plenty you could do makes you slower.</div>
+      </div>
+
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;padding:0 2px">
+          <span class="eb red">Race week schedule</span>
+          <span style="font-size:11px;color:var(--mut)">proposals paused until after the race</span>
+        </div>
+        <div class="strip">
+          <div class="dcell"><span class="dw">MON</span><span class="dn">30</span><span class="edot" style="background:var(--green)"></span><span class="dt">Easy 4</span></div>
+          <div class="dcell"><span class="dw">TUE</span><span class="dn">1</span><span class="edot" style="background:rgba(255,255,255,.18)"></span><span class="dt">Off</span></div>
+          <div class="dcell today"><span class="dw">WED</span><span class="dn">2</span><span class="edot" style="background:var(--green)"></span><span class="dt">Easy 3 + str</span></div>
+          <div class="dcell"><span class="dw">THU</span><span class="dn">3</span><span class="edot" style="background:rgba(255,255,255,.18)"></span><span class="dt">Off</span></div>
+          <div class="dcell"><span class="dw">FRI</span><span class="dn">4</span><span class="edot" style="background:var(--green)"></span><span class="dt">Shake 2</span></div>
+          <div class="dcell"><span class="dw">SAT</span><span class="dn">5</span><span class="edot" style="background:rgba(255,255,255,.18)"></span><span class="dt">Travel · expo</span></div>
+          <div class="dcell race"><span class="dw">SUN</span><span class="dn">6</span><span class="edot" style="background:var(--race)"></span><span class="dt">RACE</span></div>
+        </div>
+      </div>
+
+      <div class="two">
+        <div class="card">
+          <div class="eb red">Logistics</div>
+          <div style="margin-top:10px;font-size:13px;color:#C7CBD4;display:flex;flex-direction:column;gap:8px">
+            <div><b style="color:#fff">7:00 AM start</b> · Folsom to Sacramento, point to point</div>
+            <div>Bib pickup · Saturday expo only, no race-day pickup</div>
+            <div>Forecast · 39°F at the gun, 51°F at the finish</div>
+            <div>Drop bags on the shuttle · shuttle leaves 5:15 AM</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="eb red">Pacing</div>
+          <div style="display:flex;gap:26px;margin-top:10px">
+            <div><div class="eb">Race pace</div><div class="oswald" style="font-size:30px">6:52</div><div style="font-size:10px;color:var(--mut)">/mi</div></div>
+            <div><div class="eb">First 10K</div><div class="oswald" style="font-size:30px">6:58</div><div style="font-size:10px;color:var(--mut)">controlled</div></div>
+            <div><div class="eb">Halfway check</div><div class="oswald" style="font-size:30px">1:30:0X</div><div style="font-size:10px;color:var(--mut)">on plan</div></div>
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:var(--mut)">Full pacing plan on the race page ›</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption">
+    <h3>What changed</h3>
+    <p><b>The strip shows the whole race week</b> including the race cell in race red, instead of the generic training week. Logistics and pacing pull up from RaceView so race week does not require leaving Today. The pace numbers here assume the goal held; if Decision 3's renegotiation moved it, these render the effective target.</p>
+    <p><b>Proposals suppress for the week</b>, stated in the strip header. Inside 24 hours the existing rule takes over: strip and secondary beats hide, hero only.</p>
+  </div>
+  <div class="decide"><div class="dl">Decision 5</div><p>Adopt the race-week promotion on Today? <b>Default if unruled: adopt.</b> Needed before Nov 30 regardless of wave order.</p></div>
+</section>
+
+<!-- ===================================================== SECTION 6 -->
+<section class="sec" id="s6">
+  <div class="sechead">
+    <div class="secnum">Decision 6</div>
+    <h2>Chrome consolidation</h2>
+    <p class="secq">No mockup, one before-and-after. Five tabs stay. Everything with two front doors gets one. Dead trees come down.</p>
+  </div>
+
+  <div class="iacols">
+    <div class="iacol before">
+      <h4>Before · today's surface map</h4>
+      <ul>
+        <li><b>Shell</b> · Today, Train, Health, Goal, Activity</li>
+        <li><b>TopNav</b> · a second, older navigation chrome</li>
+        <li><b>/learn</b> · standalone page outside the Shell</li>
+        <li><b>/workouts</b> · standalone page outside the Shell</li>
+        <li><b>Two settings surfaces</b> · /settings and the Shell SettingsPanel</li>
+        <li>SpectatorView + GuestPanel · unused spectator mode</li>
+        <li>Paywall / Pro / Reach overlays · monetization stubs, single user base</li>
+        <li>Legacy component trees still compiled and shipped</li>
+        <li>globals.css · dead class families kept alive by the trees above</li>
+      </ul>
+    </div>
+    <div class="iacol after">
+      <h4>After · one shell, one door each</h4>
+      <ul>
+        <li><b>Shell</b> · Today, Train, Health, Goal, Activity <b>(unchanged)</b></li>
+        <li class="move">Learn and Workouts move inside the Shell, under Me</li>
+        <li class="move">One settings surface · the Shell panel, /settings redirects</li>
+        <li class="dead">TopNav · <code>components/layout/TopNav.tsx</code></li>
+        <li class="dead">SpectatorView + GuestPanel · <code>faff-app/views/SpectatorView.tsx</code>, <code>Shell.tsx GuestPanel</code></li>
+        <li class="dead">Paywall / Pro / Reach · <code>faff-app/overlays/{Paywall,Pro,Reach}.tsx</code></li>
+        <li class="dead">Legacy poster tree · <code>components/faff/</code> (Poster, BCard, BodyGrid, CoachVoice, FaffPageShell, MiniTileGrid, Sibling, StatTrio, WeekStrip, WorkoutBreakdown)</li>
+        <li class="dead">Legacy today tree · <code>components/today/</code> (AtAGlanceCard, old WeekStrip)</li>
+        <li class="dead">Legacy training tree · <code>components/training/</code> (PhaseStrip, PlanArc, WeekAhead)</li>
+        <li class="dead">Duplicate run modal · <code>components/runs/RunDetailModal.tsx</code> (the faff-app overlay is the live one)</li>
+        <li class="dead">globals.css demolition · class families orphaned by the deletions above, removed behind a grep gate (no selector deleted while a live tree references it)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="caption">
+    <h3>What changed</h3>
+    <p><b>The five tabs are untouched.</b> The demolition removes second front doors and code that renders for nobody. Each struck line lands as its own commit with an import-graph check first: anything still imported by a live tree stays until the importer moves. The list above matches what is present on main today; the per-file audit runs at demolition time, not from this deck.</p>
+  </div>
+  <div class="decide"><div class="dl">Decision 6</div><p>Approve the demolition list and the two moves (Learn, Workouts under Me; one settings surface)? <b>Default if unruled: approve, executed file-by-file behind import checks.</b></p></div>
+</section>
+
+<!-- ===================================================== SECTION 7 -->
+<section class="sec" id="s7">
+  <div class="sechead">
+    <div class="secnum">Decision 7</div>
+    <h2>Palette ruling · the ladder green</h2>
+    <p class="secq">Brief v2 retired #14C08C (easy → #3EBD41). But constants.ts still ships #14C08C as the zone and season categorical, byte-synced with iPhone Theme.swift, across roughly 26 call sites. The brief and the code cannot both be right. Your ruling settles it.</p>
+  </div>
+
+  <div class="two" style="max-width:1050px">
+    <div class="card">
+      <div class="eb green">Option A · sanction #14C08C as the ladder categorical</div>
+      <div style="font-size:12.5px;color:var(--mut);margin:8px 0 12px">An addendum names it a categorical group for zone and season ladders only, like the phase-identity palette. No code changes, iPhone stays byte-synced.</div>
+      <div class="eband" style="background:linear-gradient(90deg,#27B4E0,#14C08C,#F3AD38,#D03F3F,#FC4D64)"></div>
+      <div class="zrow"><span class="zsw" style="background:#27B4E0"></span><span class="zl1" style="color:#27B4E0">Z1 Recovery</span><span class="hexlab">#27B4E0</span></div>
+      <div class="zrow"><span class="zsw" style="background:#14C08C"></span><span class="zl1" style="color:#14C08C">Z2 Easy</span><span class="hexlab">#14C08C · ladder only</span></div>
+      <div class="zrow"><span class="zsw" style="background:#F3AD38"></span><span class="zl1" style="color:#F3AD38">Z3 Steady</span><span class="hexlab">#F3AD38</span></div>
+      <div class="zrow"><span class="zsw" style="background:#D03F3F"></span><span class="zl1" style="color:#D03F3F">Z4 Tempo</span><span class="hexlab">#D03F3F</span></div>
+      <div class="zrow"><span class="zsw" style="background:#FC4D64"></span><span class="zl1" style="color:#FC4D64">Z5 Intervals</span><span class="hexlab">#FC4D64</span></div>
+      <div style="margin-top:12px;font-size:12px;color:#C7CBD4"><b style="color:var(--green)">For:</b> the ladder green stays distinct from Good-state green, so "easy effort" never reads as "good status". Zero migration risk across 26 sites and two platforms.</div>
+      <div style="margin-top:6px;font-size:12px;color:#C7CBD4"><b style="color:var(--over)">Against:</b> an eleventh hex lives on permanently and the brief needs an addendum.</div>
+    </div>
+    <div class="card">
+      <div class="eb green">Option B · migrate the ladders to #3EBD41</div>
+      <div style="font-size:12.5px;color:var(--mut);margin:8px 0 12px">The code catches up to the brief as written. One green everywhere, changed in lockstep on web and iPhone per the cross-surface sync rule.</div>
+      <div class="eband" style="background:linear-gradient(90deg,#27B4E0,#3EBD41,#F3AD38,#D03F3F,#FC4D64)"></div>
+      <div class="zrow"><span class="zsw" style="background:#27B4E0"></span><span class="zl1" style="color:#27B4E0">Z1 Recovery</span><span class="hexlab">#27B4E0</span></div>
+      <div class="zrow"><span class="zsw" style="background:#3EBD41"></span><span class="zl1" style="color:#3EBD41">Z2 Easy</span><span class="hexlab">#3EBD41 · one green</span></div>
+      <div class="zrow"><span class="zsw" style="background:#F3AD38"></span><span class="zl1" style="color:#F3AD38">Z3 Steady</span><span class="hexlab">#F3AD38</span></div>
+      <div class="zrow"><span class="zsw" style="background:#D03F3F"></span><span class="zl1" style="color:#D03F3F">Z4 Tempo</span><span class="hexlab">#D03F3F</span></div>
+      <div class="zrow"><span class="zsw" style="background:#FC4D64"></span><span class="zl1" style="color:#FC4D64">Z5 Intervals</span><span class="hexlab">#FC4D64</span></div>
+      <div style="margin-top:12px;font-size:12px;color:#C7CBD4"><b style="color:var(--green)">For:</b> the ten-color table stays literally ten. The brief needs no edit and hex-lint gets simpler.</div>
+      <div style="margin-top:6px;font-size:12px;color:#C7CBD4"><b style="color:var(--over)">Against:</b> Good-state green now also means easy effort, a double meaning the semantic-purity rule exists to prevent. Migration touches 26 web sites plus Theme.swift in one locked deploy.</div>
+    </div>
+  </div>
+
+  <div class="caption">
+    <h3>The tension, honestly</h3>
+    <p>The brief's own text created this: it retired #14C08C and merged easy into Good-state green, but it also says one color equals one meaning. The two greens sit close enough that Option A costs little visually while keeping status and effort separable, which is why the phase-identity precedent exists. Option B is what the brief literally says. Both are defensible, which is exactly why this is your ruling and not an agent's call.</p>
+  </div>
+  <div class="decide"><div class="dl">Decision 7</div><p>Rule the ladder green: <b>A</b> sanction #14C08C as a categorical addendum, or <b>B</b> migrate 26 sites plus Theme.swift to #3EBD41. <b>Suggested default: A</b>, on the phase-identity precedent. Either way CI gets a rule so this cannot drift again.</p></div>
+</section>
+
+<!-- ===================================================== SECTION 8 -->
+<section class="sec" id="s8">
+  <div class="sechead">
+    <div class="secnum">Decision 8</div>
+    <h2>Coach visibility · where the voice lives</h2>
+    <p class="secq">Morning brief and the coach's log just shipped. This is the placement approval: brief atop Today, COACH'S LOG on Train, coach section on Me.</p>
+  </div>
+
+  <div class="mockstack">
+    <div>
+      <p class="mocklabel">Placement 1 · morning brief, directly under the Today header, above the hero (live today)</p>
+      <div class="screen"><div class="rail"><div class="rdot"></div><div class="rt on">Today</div><div class="rt">Train</div><div class="rt">Health</div><div class="rt">Goal</div><div class="rt">Activity</div></div>
+        <div class="stage" style="padding-bottom:24px">
+          <div class="pghead"><span class="pgt">Today</span><span class="pgd">Mon · Aug 17</span></div>
+          <div class="card" style="border-left:3px solid var(--green)">
+            <div class="eb green">This morning</div>
+            <div style="font-size:14px;color:#E6E8ED;margin-top:8px;max-width:760px">Day one after AFC. Resting heart rate is 5 up on baseline and sleep came in at 7:42, both normal for the morning after. Nothing is on the plan. If the legs want to move, a 20 minute walk is plenty. The next date that matters is Aug 31, when the CIM block opens.</div>
+          </div>
+          <div class="card" style="opacity:.45"><div class="eb red">America's Finest City Half · yesterday</div><div class="oswald" style="font-size:34px;margin-top:6px">1:41:53</div></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="mocklabel">Placement 2 · Coach's log on Train · the relationship arc, newest first</p>
+      <div class="screen"><div class="rail"><div class="rdot"></div><div class="rt">Today</div><div class="rt on">Train</div><div class="rt">Health</div><div class="rt">Goal</div><div class="rt">Activity</div></div>
+        <div class="stage" style="padding-bottom:24px">
+          <div class="pghead"><span class="pgt">Train</span><span class="pgd">Between blocks</span></div>
+          <div class="card">
+            <div class="eb amber">Coach's log</div>
+            <div class="arow" style="margin-top:6px"><div class="ad1"><div class="an">Recovery window open</div><div class="am">Two weeks, easy only, no targets. The block plan lands before Aug 31.</div></div><div class="astat" style="font-size:12px;color:var(--mut)">AUG 17</div></div>
+            <div class="arow"><div class="ad1"><div class="an">AFC done in 1:41:53</div><div class="am">Solid execution in heat. Full read in the race story.</div></div><div class="astat" style="font-size:12px;color:var(--mut)">AUG 16</div></div>
+            <div class="arow"><div class="ad1"><div class="an">Cut Friday to a shakeout</div><div class="am">You were still carrying Wednesday's strides. Fresh beats fit on race week.</div></div><div class="astat" style="font-size:12px;color:var(--mut)">AUG 14</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="mocklabel">Placement 3 · coach section on Me · controls and the paper trail</p>
+      <div class="screen"><div class="rail"><div class="rdot"></div><div class="rt">Today</div><div class="rt">Train</div><div class="rt">Health</div><div class="rt">Goal</div><div class="rt">Activity</div></div>
+        <div class="stage" style="padding-bottom:24px">
+          <div class="pghead"><span class="pgt">Me</span><span class="pgd">David</span></div>
+          <div class="card">
+            <div class="eb amber">Coach</div>
+            <div class="arow" style="margin-top:6px"><div class="ad1"><div class="an">Morning brief</div><div class="am">one paragraph on Today, mornings with a plan or a race in play</div></div><div class="astat" style="font-size:13px;color:var(--green)">ON</div></div>
+            <div class="arow"><div class="ad1"><div class="an">Coach's log</div><div class="am">every call the coach has made, newest first</div></div><div class="astat" style="font-size:13px;color:var(--mut)">42 ›</div></div>
+            <div class="arow"><div class="ad1"><div class="an">Decision history</div><div class="am">what you were asked, what you chose, what it changed</div></div><div class="astat" style="font-size:13px;color:var(--mut)">7 ›</div></div>
+            <div class="arow"><div class="ad1"><div class="an">How the coach decides</div><div class="am">the doctrine, in plain language</div></div><div class="astat" style="font-size:13px;color:var(--mut)">›</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption">
+    <h3>What changed</h3>
+    <p><b>Three placements, one voice.</b> The brief speaks first on Today and then gets out of the way, above the hero but visually quieter than it. The log lives on Train because that is where the plan's story belongs. Me holds the controls and the full paper trail, including the decision history that Decision 2's cards feed.</p>
+  </div>
+  <div class="decide"><div class="dl">Decision 8</div><p>Approve the three placements as mocked? <b>Default if unruled: approve.</b> Brief and log are already live; this locks where they sit before the recomposition builds around them.</p></div>
+</section>
+
+<!-- ===================================================== DECISIONS -->
+<section class="sec" id="sd">
+  <div class="sechead">
+    <div class="secnum">Summary</div>
+    <h2>Decisions</h2>
+    <p class="secq">One line each. Rule them in any order; defaults apply only if you say "defaults".</p>
+  </div>
+
+  <div class="dsum">
+    <div class="dsum-row"><span class="dn">1</span><p><b>Post-race Today:</b> adopt the race-result hero, recovery read, RECOVERY WINDOW strip, and the two-tile row for days 0 to 7?</p></div>
+    <div class="dsum-row"><span class="dn">2</span><p><b>Interruption grammar:</b> replace the four proposal components with one CoachDecisionCard, amber for decisions, recovery blue for applied notices, N-waiting pager?</p></div>
+    <div class="dsum-row"><span class="dn">3</span><p><b>Targets:</b> (a) beat order with renegotiation inside THE PATH, (b) single status vocabulary = tier word + gap, (c) CALENDAR / RESULTS split with A, B, C role chips?</p></div>
+    <div class="dsum-row"><span class="dn">4</span><p><b>Activity:</b> week-grouped history with docked RouteMap detail; filters type + source now, phase + shoe later?</p></div>
+    <div class="dsum-row"><span class="dn">5</span><p><b>Race week on Today:</b> adopt the strip swap, logistics and pacing pull-up, and proposal suppression?</p></div>
+    <div class="dsum-row"><span class="dn">6</span><p><b>Chrome:</b> approve the demolition list and the Learn / Workouts / settings consolidation under the five-tab Shell?</p></div>
+    <div class="dsum-row"><span class="dn">7</span><p><b>Ladder green:</b> A sanction #14C08C as a categorical addendum, or B migrate to #3EBD41 across web and iPhone?</p></div>
+    <div class="dsum-row"><span class="dn">8</span><p><b>Coach visibility:</b> approve morning brief atop Today, COACH'S LOG on Train, coach section on Me?</p></div>
+  </div>
+
+  <div class="waves">
+    <div class="wave"><h4>Wave 1 · now, during the recovery window</h4><p>Decision 1 (you are in this state today), Decision 2 (unblocks 3 and 5), Decision 7 as a ruling only, Decision 8 as placement lock. Smallest surface area, highest immediacy.</p></div>
+    <div class="wave"><h4>Wave 2 · before the block opens Aug 31</h4><p>Decision 3, the Targets restructure. It consumes the CoachDecisionCard from Wave 1 and the single status vocabulary, and it is the page the renegotiation lives on.</p></div>
+    <div class="wave"><h4>Wave 3 · during the CIM block</h4><p>Decision 4 Activity history, then Decision 6 chrome demolition. Demolition goes after the recomposition so nothing gets deleted that a new composition wanted.</p></div>
+    <div class="wave"><h4>Wave 4 · before Nov 30</h4><p>Decision 5 race week on Today, built and verified well before CIM week so the first live render is not the real race.</p></div>
+  </div>
+
+  <p style="max-width:860px;margin-top:34px;font-size:13px;color:var(--mut)">Mock data notes: AFC 1:41:53, the CIM goal and 3:31:48 projection, the recovery window, and the tune-up names are your real state. Tune-up dates, readiness numbers, split times, and race-week logistics are plausible placeholders for composition judgment, not claims. Truth-bug fixes (proposal spam, effective-target adoption, block-complete state, post_race hero copy, tune-up mapping, retro links, race naming, notification honesty) are landing in the parallel wave and are assumed present underneath everything shown here.</p>
+</section>
+
+</div>
+</body>
+</html>
