@@ -158,7 +158,7 @@ export function ReconnectBanner({ initialState }: ReconnectBannerProps = {}) {
           >
             Strava lost its grip.
           </span>
-          Your runs aren&apos;t syncing — token expired. One click to fix.
+          Your runs aren&apos;t syncing · token expired. One click to fix.
         </div>
       </div>
       <button

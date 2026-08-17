@@ -224,7 +224,7 @@ export function TargetsView({
         >
           <span style={{ fontSize: 13, color: 'var(--ink)' }}>
             <strong>{seed.unloggedRaceAlert.name}</strong>
-            {` was ${seed.unloggedRaceAlert.daysSince} day${seed.unloggedRaceAlert.daysSince === 1 ? '' : 's'} ago — log your result.`}
+            {` was ${seed.unloggedRaceAlert.daysSince} day${seed.unloggedRaceAlert.daysSince === 1 ? '' : 's'} ago. Log your result.`}
           </span>
           <span style={{ fontSize: 11, color: 'var(--goal)', fontFamily: 'var(--f-label)', letterSpacing: '1px' }}>
             LOG →

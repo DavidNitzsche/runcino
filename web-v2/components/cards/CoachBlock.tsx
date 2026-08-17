@@ -50,16 +50,16 @@ export function CoachBlock({
         if (res.ok) {
           setAck(
             rating === 'solid'   ? 'OK. Hold the plan.' :
-            rating === 'tired'   ? "OK — we'll see how the legs are tomorrow." :
+            rating === 'tired'   ? "OK. We'll see how the legs are tomorrow." :
                                    "OK. We'll back off tomorrow."
           );
           // Closed loop §8.1: bust the briefing so the next view reflects the rating.
           router.refresh();
         } else {
-          setAck("(couldn't save — we'll try again)");
+          setAck("(couldn't save · we'll try again)");
         }
       } catch {
-        setAck("(network hiccup — we'll try again)");
+        setAck("(network hiccup · we'll try again)");
       }
     });
   }

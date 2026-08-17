@@ -289,6 +289,13 @@ export async function GET(
     durationS: typeof data.durationSec === 'number' ? data.durationSec : null,
   } : null;
 
+  // 2026-08-17 · adaptive voice band for recap framing. Best-effort ·
+  // null on failure and null renders as 'guided' (the default band, whose
+  // copy is byte-identical to the pre-band output).
+  const voiceBand = await import('@/lib/coach/voice-band')
+    .then((m) => m.loadVoiceBandLite(userId))
+    .catch(() => null);
+
   const recap = deriveRecap({
     type,
     phase,
@@ -311,6 +318,7 @@ export async function GET(
     weather: weatherInput,
     // 2026-06-09 Phase 2 (3.2) · taken bail leads the recap (bail ≠ fail).
     ruleOutcomes: Array.isArray(data.ruleOutcomes) ? data.ruleOutcomes : null,
+    voiceBand,
   });
 
   // E3: light secondary reconciliation note. The verdict above stays anchored

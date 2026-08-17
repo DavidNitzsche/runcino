@@ -109,7 +109,7 @@ struct WithinReachSheet: View {
                 .background(Color(hex: 0xFFE9B0),
                             in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .padding(.top, 2)
-            Text("Your last three tempo runs put a 5K PR within one good effort. You're not chasing it · you're basically already there. Want to make it official and go for it?")
+            Text("Your last three tempo runs put a 5K PR within one good effort. The fitness is there. Want to make it official and go for it?")
                 .font(.body(15, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.94))
                 .lineSpacing(4)

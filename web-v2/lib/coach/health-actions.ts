@@ -638,7 +638,7 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       kept.unshift({
         signal: 'race_day',
         priority: 'on-course',
-        action: 'Race day. Time to execute — the work is done.',
+        action: 'Race day. Time to execute · the work is done.',
         cite: 'Race-week guard · readiness advice suppressed on race morning (Research/08 §9).',
       });
     } else if (suppressed.length > 0) {
@@ -647,7 +647,7 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       kept.push({
         signal: 'race_week',
         priority: 'low',
-        action: `Race week · ${daysToRace}d out. Taper noise is normal — fatigue signals don't change the plan now. Illness and injury rules stay on.`,
+        action: `Race week · ${daysToRace}d out. Taper noise is normal. Fatigue signals don't change the plan now. Illness and injury rules stay on.`,
         cite: 'Taper crud is expected · Research/08-pacing-and-race-week.md §9.',
       });
     }
@@ -660,7 +660,7 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       kept.push({
         signal: 'race_week',
         priority: 'medium',
-        action: `Gun time not set · ${daysToRace}d out. Confirm the start time and wave on the race page — wake-up, fueling, and corral timing hang off it.`,
+        action: `Gun time not set · ${daysToRace}d out. Confirm the start time and wave on the race page. Wake-up, fueling, and corral timing hang off it.`,
         cite: 'races.meta.startTime is empty · race card shows "—".',
       });
     }

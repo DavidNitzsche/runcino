@@ -318,7 +318,7 @@ function FieldEditor({ spec, value, autoMode, onClose, onSave }: {
         {spec.kind === 'tzmode' && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', cursor: 'pointer' }}>
             <input type="checkbox" checked={autoOn} onChange={e => setAutoOn(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#14C08C' }} />
-            <span className="se-lbl" style={{ margin: 0 }}>{autoOn ? 'Following your device on travel' : 'Pinned — set the zone below'}</span>
+            <span className="se-lbl" style={{ margin: 0 }}>{autoOn ? 'Following your device on travel' : 'Pinned · set the zone below'}</span>
           </label>
         )}
 

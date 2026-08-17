@@ -223,8 +223,8 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
 
   if (mode === 'race-prep') {
     const d = daysBetween(startMondayISO, raceDateISO);
-    if (d < 14) return { ok: false, reason: 'Race is under 2 weeks out — too close to build a plan. Push it later or pick a longer plan.' };
-    if (d > 365) return { ok: false, reason: 'Race is over a year out — the engine plans within a year.' };
+    if (d < 14) return { ok: false, reason: 'Race is under 2 weeks out · too close to build a plan. Push it later or pick a longer plan.' };
+    if (d > 365) return { ok: false, reason: 'Race is over a year out · the engine plans within a year.' };
   }
 
   const cat = distanceCategoryOfPublic(raceDistanceMi);

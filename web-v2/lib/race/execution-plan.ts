@@ -242,7 +242,7 @@ export function computeRaceFueling(args: {
       scheduleMi: [],
       scheduleMin: [],
       isDefault: args.isDefault ?? false,
-      shortLine: 'No on-course fuel needed — pre-race breakfast covers a race this short.',
+      shortLine: 'No on-course fuel needed · pre-race breakfast covers a race this short.',
       citation: 'Research/18-fueling-products.md §11 (5K/10K: 0 g/hr)',
     };
   }

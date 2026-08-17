@@ -120,7 +120,7 @@ export async function loadStravaConnectionStatus(
     return {
       state: 'needs_reauth',
       last_push_at,
-      reason: 'Most recent Strava push failed with 401 — token likely missing activity:write scope.',
+      reason: 'Most recent Strava push failed with 401 · token likely missing activity:write scope.',
     };
   }
 

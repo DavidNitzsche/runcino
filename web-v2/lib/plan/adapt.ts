@@ -1035,7 +1035,7 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
           const tPace = (rowPace != null && rowPace >= 240 && rowPace <= 960)
             ? rowPace
             : await deriveTPaceSecForRebuild(client, userId, row.race_id);
-          const notes = 'Field test. 1 mi easy warm-up, then 30 minutes at a hard, even effort — the fastest pace you could hold for about an hour. 1 mi easy cool-down. The last 20 minutes tell us your current threshold; paces recalibrate from it.';
+          const notes = 'Field test. 1 mi easy warm-up, then 30 minutes at a hard, even effort · the fastest pace you could hold for about an hour. 1 mi easy cool-down. The last 20 minutes tell us your current threshold; paces recalibrate from it.';
           if (tPace != null) {
             const coreMi = Math.round((1800 / tPace) * 10) / 10;
             const totalMi = Math.round((coreMi + 2) * 2) / 2;
@@ -2071,7 +2071,7 @@ async function detectFieldTestDue(userId: string): Promise<AdaptationTrigger | n
     return {
       kind: 'field_test_due',
       severity: 'info',
-      reason: `No race or field test in the last 6 weeks. Pace anchors are going stale — convert ${slot.date}'s quality session to a 30-minute threshold field test to lock in current fitness.`,
+      reason: `No race or field test in the last 6 weeks. Pace anchors are going stale. Convert ${slot.date}'s quality session to a 30-minute threshold field test to lock in current fitness.`,
       evidence: {
         workout_id: slot.id,
         planned_date: slot.date,

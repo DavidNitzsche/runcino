@@ -513,7 +513,7 @@ function RestBody() {
   return (
     <div style={{ padding: '8px 0 4px' }}>
       <p style={{ fontFamily: 'var(--f-body)', fontSize: 15, lineHeight: 1.6, color: 'var(--mute)', margin: '0 0 12px' }}>
-        Rest is the work today. Sleep, mobility, recovery — the legs earned it.
+        Rest is the work today. Sleep, mobility, recovery · the legs earned it.
       </p>
       <p style={{ fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.55 }}>
         Skip the rest and you skip the adaptation. Glycogen restocks, micro-tears repair, the nervous system

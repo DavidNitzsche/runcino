@@ -158,7 +158,7 @@ function injuryWeekShape(
       });
     } else {
       // Trimmed by the frequency cap → extra rest (rest is the work here).
-      days.push({ dow, type: 'rest', subLabel: 'REST', notes: 'Off. Extra recovery — building back carefully.', distance_mi: 0 });
+      days.push({ dow, type: 'rest', subLabel: 'REST', notes: 'Off. Extra recovery · building back carefully.', distance_mi: 0 });
     }
   }
   return days;

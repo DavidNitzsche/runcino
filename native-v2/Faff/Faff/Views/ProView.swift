@@ -80,7 +80,7 @@ struct ProView: View {
                 in: Capsule()
             )
 
-            Text("Your coach,\nunlocked.")
+            Text("The full coach,\nevery day.")
                 .font(.display(42, weight: .bold))
                 .tracking(-2)
                 .multilineTextAlignment(.center)

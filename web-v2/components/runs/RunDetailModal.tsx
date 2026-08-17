@@ -201,7 +201,7 @@ function Skeleton() {
 function ErrorState({ err }: { err: string }) {
   return (
     <div style={{ padding: '12px 0', fontFamily: 'var(--f-body)', fontSize: 13, color: 'var(--mute)', lineHeight: 1.55 }}>
-      Couldn't load this run yet — {err}. If you just finished it, the sync may still be in flight.
+      Couldn't load this run yet: {err}. If you just finished it, the sync may still be in flight.
     </div>
   );
 }
@@ -306,7 +306,7 @@ export function RunDetailBody({
           <div style={{ marginTop: 8, fontFamily: 'var(--f-body)', fontSize: 11, color: 'var(--mute)', lineHeight: 1.5 }}>
             {d.pace_work && d.pace
               ? `Run average pace was ${d.pace}/mi all-in; ${d.pace_work}/mi just for the work phases.`
-              : `These exclude warmups, cooldowns, and recovery jogs — the number that says whether you hit threshold today.`}
+              : `These exclude warmups, cooldowns, and recovery jogs. This is the number that says whether you hit threshold today.`}
           </div>
         </div>
       )}
@@ -444,22 +444,22 @@ function hasFormData(d: RunDetail): boolean {
 }
 
 function cadenceHint(c: number): string {
-  if (c >= 175) return 'high — efficient turnover';
+  if (c >= 175) return 'high · efficient turnover';
   if (c >= 165) return 'optimal range (170-180 target)';
   if (c >= 155) return 'fine, room to lift';
-  return 'low — try shorter, quicker steps';
+  return 'low · try shorter, quicker steps';
 }
 
 function gctHint(ms: number): string {
-  if (ms <= 220) return 'fast — elite range';
-  if (ms <= 260) return 'good — efficient ground contact';
-  return 'longer contact — overstriding flag';
+  if (ms <= 220) return 'fast · elite range';
+  if (ms <= 260) return 'good · efficient ground contact';
+  return 'longer contact · overstriding flag';
 }
 
 function voHint(cm: number): string {
-  if (cm <= 7) return 'low bounce — efficient';
+  if (cm <= 7) return 'low bounce · efficient';
   if (cm <= 9) return 'good range';
-  return 'high bounce — energy leak';
+  return 'high bounce · energy leak';
 }
 
 function vrHint(pct: number): string {
@@ -476,27 +476,27 @@ function hrInterpretation(p: { z1: number; z2: number; z3: number; z4: number; z
 
   // Easy run interpretations
   if (runType === 'easy') {
-    if (z1 >= 75) return 'Mostly Z1 recovery — true easy, maybe a touch slow. That\'s right for the day after hard work.';
-    if (easyZones >= 80) return 'Discipline win — kept it in the easy band. This is what easy is supposed to feel like.';
-    if (z3 + z4 >= 30) return 'Drifted into Z3+ for a chunk — easy days were meant to be easier. Lock effort next time.';
+    if (z1 >= 75) return 'Mostly Z1 recovery. True easy, maybe a touch slow. That\'s right for the day after hard work.';
+    if (easyZones >= 80) return 'Discipline win. Kept it in the easy band. This is what easy is supposed to feel like.';
+    if (z3 + z4 >= 30) return 'Drifted into Z3+ for a chunk. Easy days were meant to be easier. Lock effort next time.';
     return `${easyZones}% Z1+Z2 is right where an easy run should land.`;
   }
   // Threshold / tempo
   if (runType === 'threshold' || runType === 'tempo') {
-    if (z4 + z5 >= 35) return `${z4 + z5}% above LT — solid threshold work.`;
-    if (hard >= 20) return 'Partial threshold execution — reps probably needed more pace or less recovery.';
-    return 'Mostly aerobic for a quality day — check the splits, target pace may have been too soft.';
+    if (z4 + z5 >= 35) return `${z4 + z5}% above LT · solid threshold work.`;
+    if (hard >= 20) return 'Partial threshold execution. Reps probably needed more pace or less recovery.';
+    return 'Mostly aerobic for a quality day. Check the splits, target pace may have been too soft.';
   }
   // Long run
   if (runType === 'long') {
-    if (aerobic >= 70 && z4 < 10) return 'Aerobic long run — engine work without the cost. Right call.';
+    if (aerobic >= 70 && z4 < 10) return 'Aerobic long run. Engine work without the cost. Right call.';
     if (z3 >= 30) return 'Drift into Z3 late is normal on a long run. As long as form held.';
-    return `${aerobic}% in Z2-Z3 — that\'s a long-run profile.`;
+    return `${aerobic}% in Z2-Z3 · that\'s a long-run profile.`;
   }
   // Race / generic
-  if (hard >= 40) return `${hard}% above LT — race effort or hard quality.`;
-  if (easyZones >= 70) return 'Aerobic-dominant — recovery or true easy.';
-  return `Mostly Z${z3 >= z2 ? '3' : '2'} — steady aerobic territory.`;
+  if (hard >= 40) return `${hard}% above LT · race effort or hard quality.`;
+  if (easyZones >= 70) return 'Aerobic-dominant · recovery or true easy.';
+  return `Mostly Z${z3 >= z2 ? '3' : '2'} · steady aerobic territory.`;
 }
 
 function SmallStat({ v, u }: { v: string; u: string }) {
@@ -769,7 +769,7 @@ function ShoePicker({
             {selected ? shoeLabel(selected)
               : recName
                 ? <span style={{ color: 'var(--mute)' }}>{recName} · recommended</span>
-                : <span style={{ color: 'var(--mute)' }}>— No shoe assigned —</span>}
+                : <span style={{ color: 'var(--mute)' }}>No shoe assigned</span>}
           </span>
           {selected && shoeMileage(selected) && (
             <span style={{ color: 'var(--mute)', fontSize: 11, flexShrink: 0 }}>{shoeMileage(selected)}</span>
@@ -794,7 +794,7 @@ function ShoePicker({
           }}
         >
           <ShoeRow
-            label={<span style={{ color: 'var(--mute)' }}>— No shoe assigned —</span>}
+            label={<span style={{ color: 'var(--mute)' }}>No shoe assigned</span>}
             sub={null}
             selected={value == null}
             onClick={() => { onChange(null); setOpen(false); }}
@@ -1428,7 +1428,7 @@ function HrSummaryFallback({
     const zoneName = ZONE_NAME[dominantKey];
     return `${dominantPct}% of moving time in ${zoneName}${
       hrMax != null && hrAvg != null ? `. Averaged ${hrAvg} bpm, peaked at ${hrMax}` : ''
-    }. Per-time samples aren't available — the bar shows time-in-zone, the scale shows where AVG and PEAK landed.`;
+    }. Per-time samples aren't available. The bar shows time-in-zone, the scale shows where AVG and PEAK landed.`;
   })();
 
   return (

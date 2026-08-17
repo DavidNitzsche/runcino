@@ -18,13 +18,13 @@ struct GlossaryEntry: Identifiable {
         "vdot": GlossaryEntry(
             id: "vdot",
             term: "VDOT",
-            def: "Jack Daniels' aerobic fitness index, derived from race performance. It sets your training paces — Easy, Marathon, Threshold, Interval, and Repetition. A higher VDOT means faster target paces across all zones.",
+            def: "Jack Daniels' aerobic fitness index, derived from race performance. It sets your training paces: Easy, Marathon, Threshold, Interval, and Repetition. A higher VDOT means faster target paces across all zones.",
             cite: "Daniels' Running Formula"
         ),
         "hrv": GlossaryEntry(
             id: "hrv",
             term: "Heart rate variability",
-            def: "The millisecond variation between heartbeats. Higher HRV relative to your personal baseline means your nervous system has recovered. A single reading means little — the trend against your own history is what matters.",
+            def: "The millisecond variation between heartbeats. Higher HRV relative to your personal baseline means your nervous system has recovered. A single reading means little. The trend against your own history is what matters.",
             cite: "HealthKit · Apple Watch"
         ),
         "acwr": GlossaryEntry(
@@ -42,13 +42,13 @@ struct GlossaryEntry: Identifiable {
         "tsb": GlossaryEntry(
             id: "tsb",
             term: "Form score (Training Stress Balance)",
-            def: "Fitness minus Fatigue. A score of −10 to −20 is normal during a build — you are carrying load. A score of +5 to +15 is the target window for race day: fit and fresh.",
+            def: "Fitness minus Fatigue. A score of −10 to −20 is normal during a build. You are carrying load. A score of +5 to +15 is the target window for race day: fit and fresh.",
             cite: "Banister performance model"
         ),
         "hrmax": GlossaryEntry(
             id: "hrmax",
             term: "Maximum heart rate",
-            def: "The upper ceiling of your aerobic system. Used to set every HR training zone when LTHR is not available. Best observed from a high-effort interval or race — formula estimates are often 10–15 bpm off.",
+            def: "The upper ceiling of your aerobic system. Used to set every HR training zone when LTHR is not available. Best observed from a high-effort interval or race. Formula estimates are often 10–15 bpm off.",
             cite: nil
         ),
         "rhr": GlossaryEntry(

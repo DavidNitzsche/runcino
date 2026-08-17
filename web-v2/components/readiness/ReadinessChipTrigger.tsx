@@ -29,7 +29,7 @@ export function ReadinessChipTrigger({ breakdown, size = 'sm' }: { breakdown: RB
           background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}
-        aria-label={`Readiness ${breakdown.score ?? '—'} (${breakdown.label}) — tap for breakdown`}
+        aria-label={`Readiness ${breakdown.score ?? '—'} (${breakdown.label}) · tap for breakdown`}
       >
         <svg viewBox={`0 0 ${dim} ${dim}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
           <circle cx={dim / 2} cy={dim / 2} r={r} fill="none" stroke="var(--line)" strokeWidth={stroke} />

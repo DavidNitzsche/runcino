@@ -153,7 +153,7 @@ struct EmailSignInSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text(mode == .signIn
                  ? "Sign in with your email and password."
-                 : "Faff is invite-only. Leave your name and email — we'll send a login when you're approved.")
+                 : "Faff is invite-only. Leave your name and email. We'll send a login when you're approved.")
                 .font(.body(15, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.55))
                 .lineSpacing(3)

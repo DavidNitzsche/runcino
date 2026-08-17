@@ -78,9 +78,9 @@ struct RaceEditSheet: View {
                         ForEach(distances, id: \.self) { Text($0) }
                     }
                     Picker("Priority", selection: $priority) {
-                        Text("A — goal race").tag("A")
-                        Text("B — tune-up").tag("B")
-                        Text("C — for fun").tag("C")
+                        Text("A · goal race").tag("A")
+                        Text("B · tune-up").tag("B")
+                        Text("C · for fun").tag("C")
                     }
                 }
                 Section {

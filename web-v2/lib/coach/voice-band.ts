@@ -258,6 +258,50 @@ export async function computeVoiceBand(
   };
 }
 
+/**
+ * Convenience · load just the band for copy composers whose routes don't
+ * carry a full CoachState (the run-recap endpoint in particular). Loads
+ * the two partial-state signals computeVoiceBand reads (activeNiggle +
+ * recentCheckIns) with the same queries state-loader uses, then
+ * delegates. Best-effort · null on any failure, and null renders as
+ * 'guided' (the default band) in every consumer.
+ */
+export async function loadVoiceBandLite(userUuid: string): Promise<VoiceBand | null> {
+  try {
+    const checkIns = await pool.query(
+      `SELECT ts, rating, extras FROM check_ins
+        WHERE COALESCE(user_uuid, user_id) = $1 AND ts >= NOW() - interval '7 days'
+        ORDER BY ts DESC LIMIT 10`,
+      [userUuid],
+    ).catch(() => ({ rows: [] as any[] }));
+
+    // Mirror state-loader's activeNiggle derivation: most recent
+    // unresolved body-issue mention in the last 7 days.
+    let activeNiggle: CoachState['activeNiggle'] = null;
+    for (const row of checkIns.rows as any[]) {
+      const n = row.extras?.extracted?.niggle;
+      if (!n || !n.body_part || n.resolved) continue;
+      activeNiggle = {
+        body_part: String(n.body_part),
+        severity: (n.severity ?? null),
+        description: String(n.description ?? ''),
+        first_logged_ts: row.ts instanceof Date ? row.ts.toISOString() : String(row.ts),
+        days_ago: 0,
+      };
+      break;
+    }
+
+    const partial = {
+      activeNiggle,
+      recentCheckIns: (checkIns.rows as any[]).map((r) => ({ ts: r.ts, rating: r.rating })),
+    };
+    const reason = await computeVoiceBand(userUuid, partial as CoachState);
+    return reason.band;
+  } catch {
+    return null;
+  }
+}
+
 /* ────────────────────────── Helpers ────────────────────────── */
 
 /** Map a race_history distance bucket to mileage. */

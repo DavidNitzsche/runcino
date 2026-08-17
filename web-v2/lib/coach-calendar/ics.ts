@@ -159,7 +159,7 @@ export async function fetchIcsFeed(rawUrl: string): Promise<
       continue;
     }
     if (!res.ok) {
-      return { ok: false, error: `calendar host answered ${res.status} — check the link is the Sync URL, not the page URL` };
+      return { ok: false, error: `calendar host answered ${res.status} · check the link is the Sync URL, not the page URL` };
     }
 
     const len = Number(res.headers.get('content-length') ?? '0');
@@ -167,7 +167,7 @@ export async function fetchIcsFeed(rawUrl: string): Promise<
     const text = await res.text();
     if (text.length > MAX_FEED_BYTES) return { ok: false, error: 'calendar feed too large' };
     if (!text.includes('BEGIN:VCALENDAR')) {
-      return { ok: false, error: 'that link is not a calendar feed — in Final Surge, copy the Calendar Sync URL' };
+      return { ok: false, error: 'that link is not a calendar feed · in Final Surge, copy the Calendar Sync URL' };
     }
     return { ok: true, events: parseIcs(text) };
   }

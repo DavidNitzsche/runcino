@@ -239,7 +239,7 @@ function RunRow({ run, onOpen, onHover, needsReauth }: { run: LogRun; onOpen: (i
                 alignItems: 'center',
                 gap: 4,
               }}
-              title="Strava push failed (401) — click to reconnect"
+              title="Strava push failed (401) · click to reconnect"
             >
               <span aria-hidden>STRAVA</span>
               <span aria-hidden> · </span>

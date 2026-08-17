@@ -373,7 +373,7 @@ struct OnboardingView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 12)
                 .faffEntrance(1)
-            Text("Connect your watch and apps. We'll pull in every run so Faff is alive from minute one — and read your heart-rate history so we never have to ask you for numbers.")
+            Text("Connect your watch and apps. We'll pull in every run so Faff is alive from minute one, and read your heart-rate history so we never have to ask you for numbers.")
                 .font(.body(15, weight: .semibold))
                 .foregroundStyle(Theme.txt.opacity(0.84))
                 .lineSpacing(3)
@@ -627,7 +627,7 @@ struct OnboardingView: View {
     // Q0 — experience level
     private var runQ_experience: some View {
         runQ("How would you\ndescribe yourself?",
-             context: "Be honest — this shapes your first week.",
+             context: "Be honest · this shapes your first week.",
              enabled: experienceLevel != nil) {
             VStack(spacing: 10) {
                 levelCard("beginner",
@@ -685,7 +685,7 @@ struct OnboardingView: View {
             (6, "6 days a week")
         ]
         return runQ("How many days a week\ndo you run?",
-                    context: "Count days you actually run — not strength or cross-training.",
+                    context: "Count days you actually run, not strength or cross-training.",
                     enabled: weeklyFreq != nil) {
             VStack(spacing: 9) {
                 ForEach(opts, id: \.0) { n, label in
@@ -703,7 +703,7 @@ struct OnboardingView: View {
                       "25 to 35 miles", "35 to 45 miles", "45+ miles"]
         let vals = [0, 5, 15, 25, 35, 45]
         return runQ("What's your weekly\nmileage right now?",
-                    context: "Approximate is fine — your current base, not a peak or goal.",
+                    context: "Approximate is fine · your current base, not a peak or goal.",
                     enabled: weeklyMi != nil) {
             VStack(spacing: 10) {
                 ForEach(Array(labels.enumerated()), id: \.offset) { i, l in
@@ -777,7 +777,7 @@ struct OnboardingView: View {
     // Q5 (hasRaced) — race entries
     private var runQ_raceEntries: some View {
         runQ("What are your\nbest results?",
-             context: "Add up to 3. Finish time only — we'll do the math.") {
+             context: "Add up to 3. Finish time only · we'll do the math.") {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 10) {
                     ForEach($raceEntries) { $entry in

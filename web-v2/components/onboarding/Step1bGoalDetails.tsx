@@ -640,7 +640,7 @@ function RaceHistorySection({
               onClick={() => setDeclaredFirstRace(true)}
               label="No, first race"
             />
-            <Chip active={false} onClick={startAdd} label="Yes — add PR" />
+            <Chip active={false} onClick={startAdd} label="Yes · add PR" />
           </ChipRow>
         </div>
       )}

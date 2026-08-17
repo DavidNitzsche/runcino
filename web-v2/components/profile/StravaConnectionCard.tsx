@@ -208,7 +208,7 @@ export function StravaConnectionCard({ initial }: {
   const subtitle = isHealthy
     ? `Connected${prefs.lastSyncAgo ? ` · last sync ${prefs.lastSyncAgo}` : ''}`
     : isReauth
-      ? 'Reconnect required — your token expired or scopes changed.'
+      ? 'Reconnect required. Your token expired or scopes changed.'
       : 'Not connected';
 
   return (

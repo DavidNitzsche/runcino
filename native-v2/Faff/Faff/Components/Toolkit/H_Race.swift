@@ -1010,8 +1010,8 @@ struct RaceAutofillSheet: View {
                 Text("RACE SITE")
             } footer: {
                 Text(seedName?.isEmpty == false
-                     ? "Paste the official site, or leave it blank and we'll find \(seedName!) by name. Claude reads the page and fills in start time, corral, parking, shuttle, packet pickup and notes — you review before anything saves."
-                     : "Paste the official race site. Claude reads the page and fills in the details — you review before anything saves.")
+                     ? "Paste the official site, or leave it blank and we'll find \(seedName!) by name. Claude reads the page and fills in start time, corral, parking, shuttle, packet pickup and notes. You review before anything saves."
+                     : "Paste the official race site. Claude reads the page and fills in the details. You review before anything saves.")
                     .font(.body(11))
             }
         }
@@ -1036,7 +1036,7 @@ struct RaceAutofillSheet: View {
                     if values[item.key] != nil { reviewRow(item.key, item.label) }
                 }
             } header: {
-                Text("Found — review before saving")
+                Text("Found · review before saving")
             } footer: {
                 if let src = sources.first {
                     Text("Source: \(RaceDetailsCard.prettyHost(src))").font(.body(11))

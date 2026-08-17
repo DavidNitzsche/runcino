@@ -17,7 +17,7 @@ import { distanceLabel } from '@/lib/onboarding/state';
 export function CompletionScreen({ state }: { state: OnboardingState }) {
   const sub = state.distance === 'none' || !state.date
     ? 'Your first day is ready.'
-    : `${distanceLabel(state.distance)} plan around ${formatRaceDate(state.date)}. First day below — head to /today when you're ready.`;
+    : `${distanceLabel(state.distance)} plan around ${formatRaceDate(state.date)}. First day below · head to /today when you're ready.`;
 
   const tomorrow = computeTomorrow();
   const daysToRace = state.date ? daysUntil(state.date) : null;
@@ -48,7 +48,7 @@ export function CompletionScreen({ state }: { state: OnboardingState }) {
         color: '#fff',
         textTransform: 'uppercase',
       }}>
-        YOU'RE IN.
+        DAY ONE.
       </h1>
 
       <p style={{

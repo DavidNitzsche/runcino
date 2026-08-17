@@ -3789,7 +3789,7 @@ fileprivate struct HeroStepList: View {
         case .long:
             return longRunNote
         case .tempo:
-            return "A sustained hard effort — harder than easy but not all-out. Trains your body to clear lactate faster, which directly raises your race pace ceiling."
+            return "A sustained hard effort, harder than easy but not all-out. Trains your body to clear lactate faster, which directly raises your race pace ceiling."
         default:
             return nil
         }
@@ -3803,7 +3803,7 @@ fileprivate struct HeroStepList: View {
         let hasMPace = rowLabels.contains { $0.contains("M PACE") || $0.contains("MARATHON") || $0.contains("@MP") || $0.contains("@M ") }
         let hasTempo = rowLabels.contains { $0.contains("TEMPO") || $0.contains("THRESHOLD") }
         if hasTempo {
-            return "Mostly easy miles, finishing with a tempo push. Builds endurance while sharpening your lactate threshold — both matter for the back half of a race."
+            return "Mostly easy miles, finishing with a tempo push. Builds endurance while sharpening your lactate threshold. Both matter for the back half of a race."
         }
         if hasMPace {
             let mpSeg = steps.compactMap { item -> HeroSeg? in
@@ -3850,7 +3850,7 @@ fileprivate struct HeroStepList: View {
             text += ", then jog for \(rTime)"
         }
         text += ". Do that \(count) times."
-        text += " Interval runs push your aerobic ceiling — the engine that converts into faster race pace."
+        text += " Interval runs push your aerobic ceiling · the engine that converts into faster race pace."
         return text
     }
 

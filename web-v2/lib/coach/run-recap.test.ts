@@ -315,7 +315,9 @@ describe('deriveRecap · type=tempo/threshold', () => {
       actualMaxHr: 175,
     });
     expect(r.verdict).toBe('Tempo done.');
-    expect(r.facts.join(' ')).toMatch(/build up over weeks|bank pays off/);
+    // df2e3527 replaced the tempo filler phrase with the factual lead line ·
+    // no work-phase or split signal here, so the recap is the totals line.
+    expect(r.facts.join(' ')).toContain('Tempo done · 6.0 mi total at 7:35/mi, avg HR 168.');
   });
 
   it('threshold in hot weather with ≥4% slowdown adds heat-cost fact', () => {

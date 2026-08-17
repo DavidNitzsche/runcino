@@ -98,6 +98,11 @@ export interface RecapInput {
     kind?: string; label?: string; breached?: boolean;
     actionTaken?: boolean; atMi?: number | null;
   }> | null;
+  /** 2026-08-17 · adaptive voice band (lib/coach/voice-band.ts).
+   *  'guided' / null / undefined = default copy, byte-identical to the
+   *  pre-band output. 'calibration' softens with a learning frame ·
+   *  'challenge' tersens. Word choice only, never structure. */
+  voiceBand?: 'calibration' | 'guided' | 'challenge' | null;
 }
 
 export interface RecapPayload {
@@ -301,7 +306,7 @@ function tempoExecution(input: RecapInput): string | null {
       return drift >= 8
         ? `Hit the target early but faded ${drift}s across the block. Still a solid effort.`
         : drift <= -8
-          ? `Built into it — back half ${Math.abs(drift)}s quicker. ${spreadDesc} overall.`
+          ? `Built into it · back half ${Math.abs(drift)}s quicker. ${spreadDesc} overall.`
           : `Work miles landed on the ${paceLabel(target) ?? 'target'} mark · ${spreadDesc} through the block.`;
     } else if (vsTarget < -5) {
       // Ran under target
@@ -310,7 +315,14 @@ function tempoExecution(input: RecapInput): string | null {
       // Slightly short — note the gap without being harsh
       return `Work pace averaged ${paceLabel(avgWork)} · ${vsTarget}s/mi off the ${paceLabel(target) ?? 'target'}. ${spreadDesc}.`;
     } else {
-      // Significantly short — HR is the honest read
+      // Significantly short — HR is the honest read.
+      // Voice band · default (guided/null) stays byte-identical.
+      if (input.voiceBand === 'calibration') {
+        return `Tempo pace came in off the ${paceLabel(target) ?? 'target'} · useful calibration, the target tunes from here. ${spreadDesc}.`;
+      }
+      if (input.voiceBand === 'challenge') {
+        return `Short of the ${paceLabel(target) ?? 'target'} · HR is the honest grade. ${spreadDesc}.`;
+      }
       return `Tempo pace fell short of the ${paceLabel(target) ?? 'target'} · HR is the honest grade here. ${spreadDesc}.`;
     }
   }
@@ -319,7 +331,7 @@ function tempoExecution(input: RecapInput): string | null {
   return drift >= 10
     ? `${spread}s between fastest and slowest work mile · faded a bit in the back half.`
     : drift <= -10
-      ? `Built into the block — back half ${Math.abs(drift)}s stronger. ${spreadDesc}.`
+      ? `Built into the block · back half ${Math.abs(drift)}s stronger. ${spreadDesc}.`
       : `${workSplits.length} work miles · ${spreadDesc}.`;
 }
 
@@ -425,14 +437,21 @@ export function deriveRecap(input: RecapInput): RecapPayload {
       if (easyTgt && easyAct) {
         const delta = easyAct - easyTgt; // + slower, − faster
         if (delta < -25) {
-          facts.push(`${lead} A touch quicker than the ${paceLabel(easyTgt)} easy target — fine, but easy days bank the most when you let them stay genuinely easy.`);
+          // Voice band · default (guided/null) stays byte-identical.
+          if (input.voiceBand === 'calibration') {
+            facts.push(`${lead} A touch quicker than the ${paceLabel(easyTgt)} easy target. Early days · the target settles as we learn your easy.`);
+          } else if (input.voiceBand === 'challenge') {
+            facts.push(`${lead} Quicker than the ${paceLabel(easyTgt)} easy target. Keep easy easy.`);
+          } else {
+            facts.push(`${lead} A touch quicker than the ${paceLabel(easyTgt)} easy target. Fine, but easy days bank the most when you let them stay genuinely easy.`);
+          }
         } else if (delta > 45) {
-          facts.push(`${lead} Relaxed and well inside easy — exactly what these days are for.`);
+          facts.push(`${lead} Relaxed and well inside easy · exactly what these days are for.`);
         } else {
           facts.push(`${lead} Right in the easy range. That's the aerobic work, no cost.`);
         }
       } else {
-        facts.push(`${lead} Run by feel — the right way to take an easy day.`);
+        facts.push(`${lead} Run by feel · the right way to take an easy day.`);
       }
       if (input.plannedHrCap && input.actualAvgHr && input.actualAvgHr > input.plannedHrCap + 5) {
         if (heatExplainsDrift) {

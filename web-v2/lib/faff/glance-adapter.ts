@@ -968,7 +968,7 @@ export function buildSibling(glance: GlanceState, state: DayState): SiblingPaylo
         state,
         title,
         tiles,
-        prose: 'Yesterday is gone. Catch up or move on — both protect the plan.',
+        prose: 'Yesterday is gone. Catch up or move on · both protect the plan.',
         recommendation: 'move_on',
       };
     case 'new_user':

@@ -480,7 +480,7 @@ export function TrainView({
           if (incoming && (isMid || isNow)) {
             const v = verbForKind(incoming.kind);
             const noun = incoming.newType ? ` to ${incoming.newType}` : '';
-            adapt = { kind: 'incoming', copy: `Adapted: ${v}${noun} — ${shortWhy(incoming.why)}` };
+            adapt = { kind: 'incoming', copy: `Adapted: ${v}${noun} · ${shortWhy(incoming.why)}` };
           }
           // Outgoing: any adapt to a LATER week's workout, applied within
           // 3 days after this DONE workout (treats this week's result as

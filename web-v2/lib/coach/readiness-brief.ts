@@ -389,7 +389,9 @@ export async function loadReadinessBrief(
   const pillars = buildPillarTiles(breakdown, history, state, dynamicSleepTarget);
 
   // Headline · band-aware + streak-aware.
-  const headline = buildHeadline(breakdown, streaks, movers);
+  // 2026-08-17 · voice-band framing (lib/coach/voice-band.ts) · optional
+  // 4th arg; guided/null leaves every headline byte-identical.
+  const headline = buildHeadline(breakdown, streaks, movers, state.voiceBand?.band ?? null);
 
   // One-line mover frame.
   const oneLineMover = movers.length > 0
@@ -1199,6 +1201,10 @@ function buildHeadline(
   b: ReadinessBreakdown,
   streaks: ReadinessStreak[],
   movers: ReadinessMover[],
+  /** 2026-08-17 · adaptive voice band. 'guided'/null = default copy
+   *  (byte-identical). Only the READY doctrine tail branches · word
+   *  choice, not structure. */
+  voiceBand: 'calibration' | 'guided' | 'challenge' | null = null,
 ): string {
   // 2026-06-03 · stripped prescriptive tails ("Today is for hard work",
   // "Trade hard work for easy today") per no-reactive-coach. The
@@ -1234,6 +1240,13 @@ function buildHeadline(
         : realCount === 1
           ? 'The one system reporting is in band.'
           : 'Score is in the ready band.';
+    // Voice band · default (guided/null) stays byte-identical.
+    if (voiceBand === 'calibration') {
+      return `Ready · ${bodyLine} Today is whatever the plan says · still learning your normal.`;
+    }
+    if (voiceBand === 'challenge') {
+      return `Ready · ${bodyLine} Today is whatever the plan says. Execute.`;
+    }
     return `Ready · ${bodyLine} Today is whatever the plan says.`;
   }
   if (b.band === 'moderate') {

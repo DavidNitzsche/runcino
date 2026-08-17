@@ -1083,12 +1083,12 @@ function layoutWeek({
               : raceDistanceMi < 7 ? '5×200m @ 5K pace · 90s jog'
               : '4×400m @ 5K pace · 90s jog',  // 10K
             notes: isUltra
-              ? 'Threshold strides, 5 days out. Hold T effort — just under comfortably hard. Brief neuromuscular prime.'
+              ? 'Threshold strides, 5 days out. Hold T effort · just under comfortably hard. Brief neuromuscular prime.'
               : isMarathonPlus
               ? 'Five sharp 5K-pace reps, 5 days out. Brief neuromuscular primer. Legs stay fresh.'
               : isLongRace
               ? 'Race-pace primer, 5 days out. Hold goal pace, even reps, stop at 4. Confidence check, not a workout.'
-              : 'Short race-pace strides, 5 days out. Quick turnover — finish feeling sharp, not tired.',
+              : 'Short race-pace strides, 5 days out. Quick turnover · finish feeling sharp, not tired.',
           });
         } else if (daysBeforeRace >= 3 && daysBeforeRace <= 4) {
           // TAPER-RW-1 · time-based easy prescription (not distance). 35-45 min at conversational
@@ -1098,7 +1098,7 @@ function layoutWeek({
         } else {
           // TAPER-RW-1 · early race-week easy days also time-based (35-45 min)
           const earlyEasy = daysBeforeRace > 5;
-          days.push({ dow, type: earlyEasy ? 'easy' : 'rest', distanceMi: earlyEasy ? 4 : 0, isQuality: false, isLong: false, subLabel: earlyEasy ? 'EASY · 40 MIN' : 'REST', notes: earlyEasy ? '40 min easy. Keep it truly easy — save the legs.' : '' });
+          days.push({ dow, type: earlyEasy ? 'easy' : 'rest', distanceMi: earlyEasy ? 4 : 0, isQuality: false, isLong: false, subLabel: earlyEasy ? 'EASY · 40 MIN' : 'REST', notes: earlyEasy ? '40 min easy. Keep it truly easy · save the legs.' : '' });
         }
       }
     }
@@ -1126,7 +1126,7 @@ function layoutWeek({
             break;
           }
         }
-        days[idx] = restRow(idx, 'Off. Taper week — rest is the work now.');
+        days[idx] = restRow(idx, 'Off. Taper week · rest is the work now.');
       }
       for (let d = 0; d < 7; d++) {
         if (d !== raceDow && days[d].distanceMi > 0 && !isAvail(d)) {
@@ -1152,8 +1152,8 @@ function layoutWeek({
             const wasTuneup = d.type === 'race_week_tuneup';
             d.type = 'rest'; d.distanceMi = 0; d.subLabel = 'REST';
             d.notes = wasTuneup
-              ? 'Off. Too few run days this week to fit the tune-up — rest is the work now.'
-              : 'Off. Taper week — rest is the work now.';
+              ? 'Off. Too few run days this week to fit the tune-up · rest is the work now.'
+              : 'Off. Taper week · rest is the work now.';
             running--;
           }
         }
@@ -1908,7 +1908,7 @@ export function embedMidBlockRaces(
         victim.isQuality = false;
         victim.isLong = false;
         victim.subLabel = 'REST';
-        victim.notes = 'Off. Race week for a tune-up — rest is the work now.';
+        victim.notes = 'Off. Race week for a tune-up · rest is the work now.';
         running--;
       }
     }
@@ -3712,7 +3712,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
         // Cite: Research/22-plan-templates.md §11 "Two Marathons (spring + fall)"
         ...(composed.totalWeeks < 14 ? {
           compressed_timeline: true,
-          compressed_note: `${composed.totalWeeks}-week build — base phase condensed; race-specific phase and taper preserved intact.`,
+          compressed_note: `${composed.totalWeeks}-week build · base phase condensed; race-specific phase and taper preserved intact.`,
         } : {}),
       },
     });

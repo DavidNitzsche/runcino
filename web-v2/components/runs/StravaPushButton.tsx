@@ -174,7 +174,7 @@ export function StravaPushButton({
         onClick={needsReauth ? reconnect : push}
         disabled={busy || pending || success}
         title={needsReauth
-          ? "Strava revoked or missing 'activity:write' scope — reconnect to push"
+          ? "Strava revoked or missing 'activity:write' scope · reconnect to push"
           : "Push run to Strava"}
         style={{
           background: bg,

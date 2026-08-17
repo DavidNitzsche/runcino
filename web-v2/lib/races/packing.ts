@@ -36,7 +36,7 @@ export function defaultPackingList(input: PackingInputs): PackingItem[] {
 
   const items: PackingItem[] = [
     // ── GEAR ──
-    { item: 'Race shoes', category: 'gear', priority: 'must', why: 'Race-day pair — broken in but fresh.' },
+    { item: 'Race shoes', category: 'gear', priority: 'must', why: 'Race-day pair · broken in but fresh.' },
     { item: 'Race kit (singlet/shorts)', category: 'gear', priority: 'must' },
     { item: 'Race-day socks', category: 'gear', priority: 'must', why: 'No new socks on race day.' },
     { item: 'Body Glide / anti-chafe', category: 'gear', priority: 'must', why: 'Long runs get unforgiving.' },

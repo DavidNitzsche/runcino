@@ -33,8 +33,8 @@ export const SEED: Record<string, Article> = {
     title: 'HRV · What it is, why we watch it.',
     eyebrow: 'PHYSIOLOGY',
     body_md: [
-      'Heart rate variability is the time variation between consecutive heartbeats, measured overnight. It is a window into your autonomic nervous system — sympathetic (fight/flight) vs parasympathetic (rest/digest).',
-      "Higher HRV generally means your nervous system is recovered and ready for hard training. Lower HRV can signal fatigue, stress, illness brewing, or accumulating training load. It's one of the best early-warning signals we have for overtraining — dips in HRV often predict bad workouts before the legs do.",
+      'Heart rate variability is the time variation between consecutive heartbeats, measured overnight. It is a window into your autonomic nervous system: sympathetic (fight/flight) vs parasympathetic (rest/digest).',
+      "Higher HRV generally means your nervous system is recovered and ready for hard training. Lower HRV can signal fatigue, stress, illness brewing, or accumulating training load. It's one of the best early-warning signals we have for overtraining. Dips in HRV often predict bad workouts before the legs do.",
       "We track YOUR baseline, not population norms. A 60ms reading is 'high' for some runners and 'low' for others. What matters is your trend versus your 30-day average.",
     ].join('\n\n'),
     citations_json: [
@@ -63,7 +63,7 @@ export const SEED: Record<string, Article> = {
     eyebrow: 'PHYSIOLOGY',
     body_md: [
       'VO2 max is the peak oxygen your body can use per minute. It is the single best lab predictor of endurance ceiling. Higher VO2 max → faster aerobic running.',
-      "Apple's watch estimate isn't lab-grade — it's modeled from heart rate and pace, plus your demographics. It's directionally honest, but absolute numbers should be taken with salt. Month-over-month moves in Apple's number are real signal.",
+      "Apple's watch estimate isn't lab-grade. It's modeled from heart rate and pace, plus your demographics. It's directionally honest, but absolute numbers should be taken with salt. Month-over-month moves in Apple's number are real signal.",
       'Trained endurance runners typically score 55-75 ml/kg/min for men, 50-65 for women. Elite is 80+.',
     ].join('\n\n'),
     citations_json: [
@@ -76,10 +76,10 @@ export const SEED: Record<string, Article> = {
     title: 'Heart rate zones, the Friel way.',
     eyebrow: 'METHODOLOGY',
     body_md: [
-      "Most consumer wearables anchor zones to %MHR (max heart rate). For trained runners that's a coin flip — the 220-age formula has a ±10-15 bpm standard error. Two runners with the same MHR can have LTHRs 20+ bpm apart.",
-      "We anchor to LTHR (lactate threshold HR) — Joe Friel's seven-zone system, which maps to real physiological transitions (LT1, LT2, MLSS) instead of a guess.",
+      "Most consumer wearables anchor zones to %MHR (max heart rate). For trained runners that's a coin flip. The 220-age formula has a ±10-15 bpm standard error. Two runners with the same MHR can have LTHRs 20+ bpm apart.",
+      "We anchor to LTHR (lactate threshold HR), Joe Friel's seven-zone system, which maps to real physiological transitions (LT1, LT2, MLSS) instead of a guess.",
       "Z1 Recovery (<85% LTHR): true easy days, shake-outs, recovery. Z2 Aerobic (85-89%): the bulk of weekly mileage and long runs. Z3 Tempo (90-94%): marathon pace. Z4 Threshold (95-99%): cruise intervals. Z5 (100%+): VO2 work, hill repeats, race finishes.",
-      "How to find your LTHR: a 30-min solo time trial — LTHR ≈ average HR of the final 20 min. Or derive from race avg HR: half marathon ≈ LTHR, marathon ≈ LTHR − 6 bpm, 10K ≈ LTHR + 4. Re-test every 6-12 weeks.",
+      "How to find your LTHR: a 30-min solo time trial. LTHR ≈ average HR of the final 20 min. Or derive from race avg HR: half marathon ≈ LTHR, marathon ≈ LTHR − 6 bpm, 10K ≈ LTHR + 4. Re-test every 6-12 weeks.",
     ].join('\n\n'),
     citations_json: [
       { author: 'Friel', year: 2009, title: 'The Triathlete\'s Training Bible.', journal: 'VeloPress (LTHR seven-zone system)' },

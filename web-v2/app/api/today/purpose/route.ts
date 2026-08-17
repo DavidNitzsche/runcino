@@ -143,6 +143,9 @@ async function loadCueContext(userId: string, date: string): Promise<{
   recentHardSession: boolean;
   heatPenaltyBpm: number | null;
   pillarDownStreak: boolean;
+  /** 2026-08-17 · adaptive voice band from CoachState (voice-band.ts).
+   *  null on any load failure · composeCue treats null as 'guided'. */
+  voiceBand: 'calibration' | 'guided' | 'challenge' | null;
 }> {
   const hardYesterday = await pool.query<{ type: string | null; dist: number | string | null }>(
     `SELECT data->>'type' AS type, (data->>'distanceMi')::numeric AS dist
@@ -170,11 +173,13 @@ async function loadCueContext(userId: string, date: string): Promise<{
   } catch { /* swallow · null is fine */ }
 
   let pillarDownStreak = false;
+  let voiceBand: 'calibration' | 'guided' | 'challenge' | null = null;
   try {
     const { loadCoachState } = await import('@/lib/coach/state-loader');
     const { loadReadinessBrief } = await import('@/lib/coach/readiness-brief');
     const state = await loadCoachState(userId);
     if (state) {
+      voiceBand = state.voiceBand?.band ?? null;
       const brief = await loadReadinessBrief(userId, state);
       pillarDownStreak = (brief?.streaks ?? []).some((s) =>
         s.direction === 'below' && s.days >= 3
@@ -182,7 +187,7 @@ async function loadCueContext(userId: string, date: string): Promise<{
     }
   } catch { /* swallow · false is fine */ }
 
-  return { recentHardSession, heatPenaltyBpm, pillarDownStreak };
+  return { recentHardSession, heatPenaltyBpm, pillarDownStreak, voiceBand };
 }
 
 /**
@@ -385,6 +390,7 @@ export async function GET(req: NextRequest) {
       recentHardSession: cueContext.recentHardSession,
       heatPenaltyBpm: cueContext.heatPenaltyBpm,
       pillarDownStreak: cueContext.pillarDownStreak,
+      voiceBand: cueContext.voiceBand,
     });
 
     return NextResponse.json({

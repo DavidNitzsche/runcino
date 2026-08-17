@@ -59,8 +59,8 @@ export interface RaceDaySlots {
 
 export function renderRaceDay(s: RaceDaySlots): RenderedTemplate {
   const body = s.uber_pickup_local
-    ? `Gun ${s.gun_time_local}. Uber pickup ${s.uber_pickup_local}. kit on the chair · ${s.distance} ahead.`
-    : `Gun ${s.gun_time_local}. kit on the chair · ${s.distance} ahead.`;
+    ? `Gun ${s.gun_time_local}. Uber pickup ${s.uber_pickup_local}. Kit on the chair · ${s.distance} ahead.`
+    : `Gun ${s.gun_time_local}. Kit on the chair · ${s.distance} ahead.`;
   return {
     category: 'race_day',
     title: `RACE DAY · ${s.race_name.toUpperCase()}`,
@@ -92,11 +92,11 @@ export interface RaceEveSlots {
 export function renderRaceEve(s: RaceEveSlots): RenderedTemplate {
   const opener = s.shakeout_done
     ? 'Light shake-out done.'
-    : 'Shake-out skipped — that\'s fine.';
+    : 'Shake-out skipped. That\'s fine.';
   return {
     category: 'race_eve',
     title: 'RACE TOMORROW',
-    body: `${opener} Early to bed. kit prepped?`,
+    body: `${opener} Early to bed. Kit prepped?`,
     interruption_level: 'active',
     dedup_key: `race-eve:${s.race_id}`,
     thread_id: `race-${s.race_id}`,
@@ -163,7 +163,7 @@ export function renderSkipRecovery(s: SkipRecoverySlots): RenderedTemplate {
   return {
     category: 'skip_recovery',
     title: 'YESTERDAY · SKIPPED',
-    body: `Today is ${s.planned_today_verb} ${s.planned_today_distance}. still feeling it?`,
+    body: `Today is ${s.planned_today_verb} ${s.planned_today_distance}. Still feeling it?`,
     interruption_level: 'active',
     dedup_key: `skip-recovery:${s.user_id}:${s.date_iso}`,
     action_buttons: [
@@ -200,7 +200,7 @@ export function renderWeeklyCheckin(s: WeeklyCheckinSlots): RenderedTemplate {
   return {
     category: 'weekly_checkin',
     title: `WEEK DONE · ${actual} / ${planned} MI`,
-    body: `${s.days_run} of ${s.days_total} days. how'd it feel?`,
+    body: `${s.days_run} of ${s.days_total} days. How'd it feel?`,
     interruption_level: 'active',
     dedup_key: `weekly-checkin:${s.user_id}:${s.week_start_iso}`,
     action_buttons: [
@@ -232,7 +232,7 @@ export function renderNiggleCheck(s: NiggleCheckSlots): RenderedTemplate {
   return {
     category: 'niggle_sick',
     title: `${s.body_part.toUpperCase()} · ${s.days_active} ${dayUnit}`,
-    body: 'How is it this morning? scale of better, same, worse, gone.',
+    body: 'How is it this morning? Scale of better, same, worse, gone.',
     interruption_level: 'active',
     dedup_key: `niggle-check:${s.niggle_id}:${s.date_iso}`,
     action_buttons: [
@@ -260,7 +260,7 @@ export function renderSickCheck(s: SickCheckSlots): RenderedTemplate {
   return {
     category: 'niggle_sick',
     title: `SICK · ${dayUnit === 'DAY' ? '' : ''}${s.days_active} ${dayUnit}`.trim(),
-    body: 'How is it this morning? scale of better, same, worse, recovered.',
+    body: 'How is it this morning? Scale of better, same, worse, recovered.',
     interruption_level: 'active',
     // 2026-07-06 · audit P1-25 · sick check emits its OWN iOS category.
     // It shares the niggle_sick prefs bucket, but FAFF_NIGGLE's registered
@@ -301,7 +301,7 @@ export function renderStreakMilestone(s: StreakMilestoneSlots): RenderedTemplate
   return {
     category: 'streak',
     title: `${s.streak_days} DAY STREAK${tail}`,
-    body: 'consistency lands.',
+    body: 'Consistency lands.',
     interruption_level: 'passive',
     dedup_key: `milestone:streak:${s.streak_days}:${s.user_id}`,
     // Soft beat · no action (deck §F ACTION).

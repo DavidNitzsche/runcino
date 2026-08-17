@@ -91,7 +91,7 @@ const SPECS: Record<string, FieldSpec> = {
     transform: (v) => v.trim(),
   },
   age: {
-    label: 'Age', why: 'Use Birthday instead — it auto-updates each year',
+    label: 'Age', why: 'Use Birthday instead · it auto-updates each year',
     kind: 'number',
     validate: (v) => {
       const n = Number(v);
@@ -201,7 +201,7 @@ export function InlineGapEditor({ field, fallbackWhy }: { field: string; fallbac
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {spec.kind === 'select' && spec.options ? (
           <select autoFocus value={value} onChange={(e) => setValue(e.target.value)} style={inputStyle()}>
-            <option value="">— select —</option>
+            <option value="">Select</option>
             {spec.options.map((o) => <option key={o} value={o}>{o.replace('_', ' ')}</option>)}
           </select>
         ) : (

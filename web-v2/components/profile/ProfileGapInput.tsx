@@ -26,7 +26,7 @@ export function ProfileGapInput({ field, label, why, focused }: { field: string;
     if (!Number.isFinite(n) || n <= 0) { setAck('(enter a number)'); return; }
     // Convert to cm if entered in inches.
     const cm = unit === 'in' ? Math.round(n * 2.54) : Math.round(n);
-    if (cm < 120 || cm > 220) { setAck('(out of range — 120-220 cm)'); return; }
+    if (cm < 120 || cm > 220) { setAck('(out of range · 120-220 cm)'); return; }
 
     startTransition(async () => {
       try {
@@ -39,10 +39,10 @@ export function ProfileGapInput({ field, label, why, focused }: { field: string;
           setAck('Saved. Coach will mention it on next briefing.');
           router.refresh();  // closed loop — next /today render reads new value
         } else {
-          setAck("(couldn't save — try again)");
+          setAck("(couldn't save · try again)");
         }
       } catch {
-        setAck('(network hiccup — try again)');
+        setAck('(network hiccup · try again)');
       }
     });
   }

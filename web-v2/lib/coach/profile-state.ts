@@ -382,7 +382,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     nextARace,
     fitnessGoal,
     connections: {
-      strava:      { connected: stravaConnected, needsReauth: stravaNeedsReauth, lastSync: stravaLast?.toISOString() ?? null, note: stravaConnected ? (stravaLast ? `Last sync ${relativeAgo(stravaLast)}` : 'Connected · no runs synced yet') : (stravaNeedsReauth ? 'Reconnect needed — token expired' : 'Connect for auto-sync') },
+      strava:      { connected: stravaConnected, needsReauth: stravaNeedsReauth, lastSync: stravaLast?.toISOString() ?? null, note: stravaConnected ? (stravaLast ? `Last sync ${relativeAgo(stravaLast)}` : 'Connected · no runs synced yet') : (stravaNeedsReauth ? 'Reconnect needed · token expired' : 'Connect for auto-sync') },
       appleHealth: { connected: healthConnected, lastSync: healthLast?.toISOString() ?? null, note: healthConnected ? `Last reading ${relativeAgo(healthLast!)}` : 'Sleep / HRV / RHR / weight / VO2' },
       appleWatch:  { connected: watchConnected, lastSync: watchLast?.toISOString() ?? null, note: watchConnected ? `Last workout ${relativeAgo(watchLast!)}` : 'Open Faff on iPhone to pair' },
     },

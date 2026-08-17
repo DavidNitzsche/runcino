@@ -4760,7 +4760,7 @@ function GoalReadyBody({ ready }: { ready: NonNullable<FaffSeed['goalReady']> })
     'in-range': {
       big: goalTime, color: '#3EBD41', lab: 'IN RANGE NOW',
       sub: inRangeSub,
-      foot: 'Trend says race it — book one', footColor: '#3EBD41',
+      foot: 'Trend says race it · book one', footColor: '#3EBD41',
     },
     'projectable': {
       big: `~${fmtMon(ready.readyEarliestISO!)}`, color: '#F3AD38', lab: 'IN RANGE BY',

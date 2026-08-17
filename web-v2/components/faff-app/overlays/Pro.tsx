@@ -18,7 +18,7 @@ export function Pro({ open, onClose }: { open: boolean; onClose: () => void }) {
           <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </div>
         <div className="prok">FAFF PRO</div>
-        <div className="proh">Train like it&rsquo;s your job.</div>
+        <div className="proh">The full coach, every day.</div>
         <ul className="prol">
           {BULLETS.map((b, i) => (
             <li key={i}>

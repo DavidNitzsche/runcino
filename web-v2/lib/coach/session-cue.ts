@@ -23,6 +23,7 @@
  */
 
 import type { Phase, WorkoutType } from './run-purpose';
+import type { VoiceBand } from './voice-band';
 
 export interface CueInput {
   type: WorkoutType;
@@ -38,6 +39,11 @@ export interface CueInput {
   /** 2026-06-02 · is HRV / RHR / sleep tracking 3+ days red? Adjusts
    *  voice for "we're watching this · don't push." */
   pillarDownStreak?: boolean;
+  /** 2026-08-17 · adaptive voice band (lib/coach/voice-band.ts).
+   *  'guided' / null / undefined = default copy, byte-identical to the
+   *  pre-band output. 'calibration' softens with a learning frame ·
+   *  'challenge' tersens. Word choice only, never structure. */
+  voiceBand?: VoiceBand | null;
 }
 
 /**
@@ -87,6 +93,13 @@ function composeEasyCue(input: CueInput): string {
   if (input.plannedMi >= 8) {
     return 'Conversational pace. The volume is the workout, not the pace.';
   }
+  // Voice band · default (guided/null) stays byte-identical.
+  if (input.voiceBand === 'calibration') {
+    return 'Keep the first mile slow. Easy should feel easy · we\'re still dialing your paces.';
+  }
+  if (input.voiceBand === 'challenge') {
+    return 'First mile slow. Lock the rhythm by mile 3.';
+  }
   return 'Keep the first mile slow. The pace finds itself by mile 3.';
 }
 
@@ -96,6 +109,13 @@ function composeTempoCue(input: CueInput): string {
   }
   if (input.pillarDownStreak) {
     return 'Bail if it feels off. One missed tempo doesn\'t cost a build.';
+  }
+  // Voice band · default (guided/null) stays byte-identical.
+  if (input.voiceBand === 'calibration') {
+    return 'Comfortably hard, not racing. If the pace feels wrong, trust the effort.';
+  }
+  if (input.voiceBand === 'challenge') {
+    return 'Hold the line. Comfortably hard, no drift.';
   }
   return 'Hold the line. Comfortably hard, not racing.';
 }
@@ -107,6 +127,13 @@ function composeThresholdCue(input: CueInput): string {
   if (input.pillarDownStreak) {
     return 'Threshold is the bank. Skip a rep if form breaks before quality.';
   }
+  // Voice band · default (guided/null) stays byte-identical.
+  if (input.voiceBand === 'calibration') {
+    return 'Run the band, not the cutoff. If it reads too hot, ease off · the band is still being tuned.';
+  }
+  if (input.voiceBand === 'challenge') {
+    return 'Run the band, not the cutoff. No early drift.';
+  }
   return 'Run the band, not the cutoff. Drift early and you cook the back half.';
 }
 
@@ -116,6 +143,13 @@ function composeIntervalsCue(input: CueInput): string {
   }
   if (input.pillarDownStreak) {
     return 'Quality over quantity. Bail if form breaks before the count.';
+  }
+  // Voice band · default (guided/null) stays byte-identical.
+  if (input.voiceBand === 'calibration') {
+    return 'Even effort across the reps. First time at this pace is data, not a grade.';
+  }
+  if (input.voiceBand === 'challenge') {
+    return 'Even effort across the reps. Rep one sets the ceiling · hit the count.';
   }
   return 'Even effort across the reps. Rep one sets the ceiling.';
 }
