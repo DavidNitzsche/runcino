@@ -135,8 +135,21 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
     ? meshOverride
     : view === 'today'
       ? MESH.targets        // shared charcoal · color lives on the hero card
+      // 2026-08-17 · a PAST race joins the charcoal idiom. The race mesh is
+      // anticipation — it belongs to a race that is still ahead. Once the
+      // race is run, the page becomes a retrospective: a mile-by-mile
+      // chart, a phase table and the WHAT IT MEANS tiles, all of which the
+      // full-bleed red/maroon wash fought. The chart's gridlines and axis
+      // labels are rgba-white at .04–.10 and simply vanished against it,
+      // and a page-wide red reads as an alarm state for a race the runner
+      // should be proud of. Same ruling the brief already applied to
+      // Targets on 2026-06-04 (constants.ts MESH.targets): reserve
+      // semantic colour for the data, keep the page calm. Race identity
+      // survives in the hero result card, the race-red "Ran" trace, and
+      // the PAST RACE eyebrow — colour on the data, not on the ground.
+      // An UPCOMING race keeps the race mesh; that page is a countdown.
       : view === 'race'
-        ? MESH.race
+        ? (raceSeed?.isPast ? MESH.targets : MESH.race)
         // 2026-06-04 · Train joins Today + Targets on charcoal · the
         // per-phase color now lives on the .phgrid .phase cards as a
         // gradient (TrainView's phaseMeshGradient helper).  Same idiom:

@@ -34,6 +34,18 @@ import { phaseFocus } from '@/lib/faff/phase-focus';
 // sub_label structure detail ("4×1 mi @ I · 3 min jog") instead of
 // the type title. Single source of truth at lib/coach/workout-title.ts.
 import { workoutTypeTitle } from '@/lib/coach/workout-title';
+// 2026-08-17 · the ONE days-to-race derivation. Train used to compute the
+// countdown off the active plan's week count, which is how "7 days to Dec 6"
+// shipped while Dec 6 was 111 days out. See lib/faff/race-countdown.ts.
+import { daysToRace } from '@/lib/faff/race-countdown';
+// 2026-08-17 · what the volume ramp is allowed to claim when the active
+// block is a recovery / bridge block and the goal race is months away.
+import { resolveRampScope } from '@/lib/faff/ramp-scope';
+// 2026-08-17 · the ONE goal-status vocabulary (deck Decision 3b). Train was
+// the last surface deriving its own wording, so Train said "32 min behind"
+// while Goal said "BEHIND 19:04" for the same runner.
+import { resolveGoalStatus, formatGapClock } from '@/lib/faff/goal-status';
+import { StatusChip } from '../StatusChip';
 
 /**
  * 2026-06-04 · per-phase gradient for the .phgrid .phase cards.
@@ -210,8 +222,23 @@ export function TrainView({
   const [planOpen, setPlanOpen] = useState(false);
   const [planTab, setPlanTab] = useState<'month' | 'weeks'>('month');
 
-  const isRace = focusIdx === raceIdx;
-  const curPhase = phaseOfWeek(focusIdx, raceIdx, realPhases);
+  // 2026-08-17 · The active block only RUNS TO the race when the race
+  // actually falls inside it. blockState says the opposite out loud: a
+  // recovery / bridge / dead block is "between blocks" precisely because
+  // none of its work is pointed at the goal race (lib/faff/block-state.ts).
+  // Every "the last plan week is race week" assumption is gated on this.
+  // `raceIdx` is just `miles.length - 1`. It only MEANS race week when the
+  // block runs to the race, so the ramp asks resolveRampScope rather than
+  // assuming. seed.season.raceIdx itself is left alone — the full-plan
+  // modal and the phase-meta grid still key off it.
+  const ramp = resolveRampScope({
+    blockState: seed.blockState,
+    raceIdx,
+    goalName: seed.goalRace?.name ?? null,
+  });
+  const { blockRunsToRace, rampRaceIdx } = ramp;
+
+  const curPhase = phaseOfWeek(focusIdx, rampRaceIdx, realPhases);
   // 2026-06-03 · `curPhaseMeta` now blends the PHASE constant's mesh
   // (gradient color · stays in constants for design parity) with the
   // distance-aware name + focus from phaseFocus(). The old code read
@@ -226,7 +253,29 @@ export function TrainView({
     sub: _phaseAuthored.sub,
     focus: _phaseAuthored.focus,
   };
-  const daysOut = (raceIdx - focusIdx) * 7;
+  // 2026-08-17 · countdown truth fix. Was `(raceIdx - focusIdx) * 7` —
+  // pure plan geometry. `raceIdx` is only `miles.length - 1` (adaptSeason),
+  // i.e. the last week of WHATEVER plan is active, so a 2-week post-race
+  // recovery block rendered "7 days to Dec 6" while Dec 6 was 111 days out.
+  // Days-to-race now comes from the race's own date and the runner's own
+  // today, via lib/faff/race-countdown — one source, never plan geometry.
+  // Falls back to goal.daysAway (same races-table derivation) when the goal
+  // row carries no date string.
+  const daysOut = daysToRace(goal?.date, seed.todayISO) ?? goal?.daysAway ?? null;
+
+  // Race day is a DATE fact now, not "the focused bar is the last bar".
+  const isRaceDay = daysOut === 0;
+  const isRace = blockRunsToRace && focusIdx === raceIdx;
+
+  // 2026-08-17 · same pending-renegotiation read TargetsView makes, so the
+  // shared status resolver gets identical inputs on both pages. An
+  // unclosable gap must not read softer on Train than it does on Goal.
+  const renegotiation = useMemo(
+    () => (seed.planProposals ?? []).find(
+      (p) => p.kind === 'goal_renegotiation' && p.status === 'pending',
+    ) ?? null,
+    [seed.planProposals],
+  );
 
   // Per-phase metadata + volume range (compute from miles in that span).
   // Uses REAL plan_phases when present; falls back to a proportional split
@@ -536,17 +585,24 @@ export function TrainView({
   // phases, two naming systems, looked broken.
   const phaseAxis = useMemo(() => {
     const out: Array<{ key: PhaseKey; flex: number; color: string; label: string }> = [];
-    phaseGroups(raceIdx, realPhases).forEach((g) => {
+    phaseGroups(rampRaceIdx, realPhases).forEach((g) => {
       const authored = phaseFocus(g.phase, goal);
       out.push({ key: g.phase, flex: g.to - g.from + 1, color: phaseColor(g.phase), label: authored.name });
     });
-    out.push({ key: 'race', flex: 1, color: '#F3AD38', label: 'Race' });
+    // 2026-08-17 · the Race column belongs to the axis only when a race bar
+    // is actually drawn. Without this gate the last recovery week sat under
+    // a "Race" label.
+    if (blockRunsToRace) out.push({ key: 'race', flex: 1, color: '#F3AD38', label: 'Race' });
     return out;
-  }, [raceIdx, realPhases]);
+  }, [rampRaceIdx, blockRunsToRace, realPhases, goal]);
 
   // Peak = highest-mileage non-race, non-taper week. Derived from miles[]
   // at render time — no DB field needed (is_peak is never written by persistPlan).
   const peakIdx = useMemo(() => {
+    // 2026-08-17 · a recovery / bridge block has no peak week. Picking the
+    // tallest of two easy weeks and stamping PEAK on it called 17 easy
+    // miles the summit of a marathon build.
+    if (!blockRunsToRace) return -1;
     let best = 0; let idx = -1;
     for (let i = 0; i < raceIdx; i++) {
       const ph = phaseOfWeek(i, raceIdx, realPhases);
@@ -555,7 +611,7 @@ export function TrainView({
       }
     }
     return idx;
-  }, [miles, raceIdx, realPhases]);
+  }, [miles, raceIdx, realPhases, blockRunsToRace]);
 
   // Cutback = pre-taper week where volume drops vs the prior week.
   // Derived from miles[] — same source as the volumeCurve deloadMask.
@@ -662,10 +718,19 @@ export function TrainView({
                 their training "rewind" to week 1 every regenerate. The
                 NOW outline on the bar + the days-to-race countdown carry
                 the position more honestly. */}
-            {isRace ? 'RACE DAY' : `${miles[focusIdx]} MI · NOW`}
+            {isRaceDay ? 'RACE DAY' : `${miles[focusIdx]} MI · NOW`}
           </span>
           <span className="cd">
-            {isRace ? <>Race day. It&rsquo;s here.</> : goal ? <><b>{daysOut}</b> days to {formatDate(goal.date)}</> : <><b>{daysOut}</b> days to go</>}
+            {/* 2026-08-17 · reads off `daysOut`, which is now date-derived.
+                Renders nothing when there is no race date to count to —
+                an honest blank beats a plan-geometry guess. */}
+            {isRaceDay
+              ? <>Race day. It&rsquo;s here.</>
+              : daysOut == null
+                ? null
+                : goal?.date
+                  ? <><b>{daysOut}</b> days to {formatDate(goal.date)}</>
+                  : <><b>{daysOut}</b> days to go</>}
           </span>
         </div>
       </div>
@@ -677,8 +742,18 @@ export function TrainView({
           {/* 2026-06-03 · dropped "{raceIdx}-WEEK BLOCK" prefix. The block
               length is whatever's left to race day after the most-recent
               rebuild · it doesn't carry the runner's full training arc
-              forward. "Weekly volume to race day" is the honest framing. */}
-          <span className="lbl">WEEKLY VOLUME · TO RACE DAY</span>
+              forward. "Weekly volume to race day" is the honest framing.
+              2026-08-17 · ...but ONLY when the block actually runs to race
+              day. On a recovery / bridge / dead block the ramp holds two
+              weeks of easy running and then a checkered RACE bar, which
+              reads "recovery, then race" and hides the whole goal build in
+              between. The ramp is a VOLUME chart: it can only draw weeks
+              that have prescribed mileage, and the goal block has not been
+              generated yet — inventing bars for it would fabricate volume.
+              So the ramp scopes itself to the block it can actually draw,
+              says so in the label, and the caption underneath names what
+              comes next (same sentence the Goal page tells). */}
+          <span className="lbl">{ramp.label}</span>
           <button className="ghostbtn" onClick={() => openPlan('month')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
             FULL PLAN
@@ -691,9 +766,13 @@ export function TrainView({
             // is rendered below the map. Without this guard we got two
             // race bars (a peach one + a checkered one), and the phase
             // labels' flex sum didn't match the bar count.
-            if (i === raceIdx) return null;
+            // 2026-08-17 · only skip it when the last plan week IS race
+            // week. On a 2-week recovery block this was swallowing week 2
+            // — a real prescribed training week — and drawing a checkered
+            // RACE bar in its place.
+            if (blockRunsToRace && i === raceIdx) return null;
             const h = mi > 0 ? Math.round((mi / Math.max(maxMi, 1)) * 100) : 6;
-            const ph = phaseOfWeek(i, raceIdx, realPhases);
+            const ph = phaseOfWeek(i, rampRaceIdx, realPhases);
             const isCur = i === focusIdx;
             const isPast = i < nowIdx;
             const isPeak = i === peakIdx;
@@ -730,14 +809,19 @@ export function TrainView({
               </div>
             );
           })}
-          <div
-            className={`bar race${focusIdx === raceIdx ? ' cur' : ''}`}
-            style={{ height: '30%' }}
-            title="Race day"
-            onClick={() => openPlan('weeks')}
-            role="button"
-            tabIndex={0}
-          />
+          {/* 2026-08-17 · the checkered RACE bar only belongs here when the
+              race is the thing this block ends at. Rendering it after a
+              recovery block put race day two weeks away on the chart. */}
+          {ramp.showRaceBar ? (
+            <div
+              className={`bar race${focusIdx === raceIdx ? ' cur' : ''}`}
+              style={{ height: '30%' }}
+              title="Race day"
+              onClick={() => openPlan('weeks')}
+              role="button"
+              tabIndex={0}
+            />
+          ) : null}
         </div>
         {/* 2026-06-03 · phase labels use grid with EXPLICIT column spans
             matching the bars' grid. .ramp has 12 bars with 11 gaps; if
@@ -774,6 +858,27 @@ export function TrainView({
             </div>
           );
         })()}
+
+        {/* 2026-08-17 · the handoff line. The ramp can only draw the block
+            that exists; this names the one that doesn't yet, so "recovery
+            then nothing" doesn't read as "recovery then race". Same facts
+            the Goal page states, off the same lib/faff/block-state read. */}
+        {ramp.handoff ? (
+          <div style={{
+            marginTop: 12, fontSize: 11, fontWeight: 600, letterSpacing: '.3px',
+            color: 'rgba(255,255,255,.62)',
+            fontFamily: 'Inter, -apple-system, sans-serif',
+          }}>
+            {ramp.handoff.windowStartISO && ramp.handoff.windowEndISO
+              ? <>Recovery window {formatDate(ramp.handoff.windowStartISO)} to {formatDate(ramp.handoff.windowEndISO)}</>
+              : <>Current block ends {ramp.handoff.windowEndISO ? formatDate(ramp.handoff.windowEndISO) : 'shortly'}</>}
+            {ramp.handoff.goalName && ramp.handoff.opensISO ? (
+              <> · {ramp.handoff.goalName} block opens {formatDate(ramp.handoff.opensISO)}
+                {ramp.handoff.weeksOutAtOpen != null ? <>, {ramp.handoff.weeksOutAtOpen} weeks out</> : null}
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {/* Execution strip — last 4 past weeks + current week */}
@@ -1002,17 +1107,33 @@ export function TrainView({
                 </svg>
               );
 
-              // 2026-06-04 · status-aware chip + sublabel · matches
-              // the Targets headline fix · "0 sec ahead" was firing
-              // for both on-track AND watching because chip read
-              // goal.delta directly. Now: chip says "watching" in
-              // watching state, falls through to goal.delta for
-              // on-track/off-track.
+              // 2026-08-17 · Train was the last surface writing its own
+              // status wording. It said "3:31:48 PROJECTED FINISH TODAY ·
+              // 32 min behind" while the Goal page said "PROJECTED 3:19:04
+              // · BEHIND 19:04" — two defensible facts (today's fitness vs
+              // the race-day trajectory) delivered as two contradicting
+              // verdicts. Now there is ONE verdict, from the shared
+              // vocabulary (lib/faff/goal-status), fed the SAME inputs
+              // TargetsView feeds it so the two cannot drift; and the two
+              // NUMBERS are labelled as the distinct facts they are.
+              const status = resolveGoalStatus({
+                trajectory: goal.trajectory ?? null,
+                goalSec: parseRaceTime(goal.goal) ?? null,
+                projectionSec: goal.vdotProjectionSec ?? null,
+                unclosable: renegotiation != null,
+              });
+              // The race-day read · where the plan, executed, lands him.
+              const trajSec = goal.trajectory?.projectedSec ?? null;
+              // The track plots TODAY'S fitness against the goal, so its
+              // inline chip states THAT gap as a measurement — no verdict
+              // word, because the verdict is the StatusChip's job.
               const isWatching = goal.goalStatus === 'watching';
-              const chipLabel = isWatching ? 'watching' : goal.delta;
+              const chipLabel = gapSec
+                ? `${formatGapClock(gapSec)} ${gapSec > 0 ? 'slower' : 'faster'}`
+                : null;
               const sublabel = isWatching
-                ? `WATCHING · ${goal.goal} STILL IN PLAY`
-                : 'PROJECTED FINISH TODAY';
+                ? `FROM TODAY'S FITNESS · ${goal.goal} STILL IN PLAY`
+                : "FROM TODAY'S FITNESS";
               // Show the TODAY label using the model's read when
               // watching · so the runner can compare against the
               // goal tick. When on-track/off-track, goal.projected
@@ -1042,6 +1163,41 @@ export function TrainView({
                       <span className="pjlbl proj" style={{ left: `${projLeftPct}%` }}>TODAY<b>{projLabelTime}</b></span>
                     )}
                   </div>
+
+                  {/* 2026-08-17 · THE verdict · the second, distinct fact.
+                      Same StatusChip and same resolveGoalStatus read the
+                      Goal page renders, so the two pages state one verdict
+                      in one vocabulary. The race-day number sits beside it
+                      so it is legible as a different number from the
+                      today's-fitness number above, not a correction of it. */}
+                  {status ? (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      flexWrap: 'wrap', marginTop: 16, paddingTop: 14,
+                      borderTop: '1px solid rgba(255,255,255,.10)',
+                    }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 9.5, fontWeight: 700, letterSpacing: '1.4px',
+                          color: 'rgba(255,255,255,.5)', textTransform: 'uppercase',
+                          fontFamily: 'Inter, -apple-system, sans-serif',
+                        }}>
+                          On race day{goal.date ? ` · ${formatDate(goal.date)}` : ''}
+                        </div>
+                        {trajSec != null ? (
+                          <div style={{
+                            fontFamily: "'Oswald', sans-serif", fontWeight: 600,
+                            fontSize: 26, lineHeight: 1, marginTop: 6,
+                            fontVariantNumeric: 'tabular-nums', color: status.tone,
+                          }}>
+                            {formatRaceTime(trajSec) ?? '·'}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div style={{ marginLeft: 'auto' }}><StatusChip read={status} /></div>
+                    </div>
+                  ) : null}
+
                   {(levers.length > 0 || fallbackLines.length > 0) ? (
                     <div className="gap">
                       <div className="gap-lbl">WHAT CLOSES IT</div>
@@ -1078,7 +1234,12 @@ export function TrainView({
 
           {/* KEY WORKOUTS list */}
           <div className="card">
-            <div className="ch"><span className="ct">KEY WORKOUTS TO RACE</span></div>
+            {/* 2026-08-17 · "TO RACE" only when this block runs to the race.
+                A recovery block has no quality in it by design, so the
+                to-race framing put an empty promise over a race row. */}
+            <div className="ch"><span className="ct">
+              {blockRunsToRace ? 'KEY WORKOUTS TO RACE' : 'KEY WORKOUTS · THIS BLOCK'}
+            </span></div>
             <div className="miles">
               {milestones.map((m, i) => (
                 <div key={i} className={`mile${m.state === 'DONE' ? ' done' : ''}${m.raceRow ? ' race' : ''}`}>

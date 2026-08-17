@@ -306,6 +306,24 @@ struct TrainView: View {
         return iso
     }
 
+    /// True when the plan's last week actually REACHES the goal race — the
+    /// race falls inside this block.
+    ///
+    /// 2026-08-17 · a booked race is not the same fact as a plan that runs
+    /// to it. A post-race recovery block has `race != nil` and two weeks of
+    /// easy running, so keying the "TO RACE" wording off `race != nil`
+    /// labelled it "FULL PLAN · 2 WEEKS TO RACE" with the race 111 days
+    /// out. Same plan-geometry bug class as web's Train countdown (see
+    /// web-v2/lib/faff/race-countdown.ts): a week COUNT is not a distance
+    /// to a date.
+    private var planRunsToRace: Bool {
+        guard let raceDate = state?.race?.date, !raceDate.isEmpty,
+              let lastStart = state?.weeks.last?.startDate,
+              let d = Self.isoDate(lastStart) else { return false }
+        let end = Self.isoString(Calendar.current.date(byAdding: .day, value: 6, to: d) ?? d)
+        return raceDate <= end
+    }
+
     /// True when every plan week (and race day) is behind today.
     private var planEnded: Bool {
         guard let st = state, !st.weeks.isEmpty, let end = planEndISO else { return false }
@@ -584,9 +602,11 @@ struct TrainView: View {
     private var fullPlanCard: some View {
         VStack(spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
-                // "TO RACE" only when a race is actually booked — a
-                // maintenance / goal-mode plan has no race to count down to.
-                Text(state?.race != nil
+                // "TO RACE" only when the plan actually RUNS to the race —
+                // not merely when one is booked. A recovery / maintenance
+                // block stops short, and its week count is a plan length,
+                // not a countdown.
+                Text(planRunsToRace
                      ? "FULL PLAN · \(state?.weeks.count ?? 13) WEEKS TO RACE"
                      : "FULL PLAN · \(state?.weeks.count ?? 13) WEEKS")
                     .font(.body(10.5, weight: .extraBold))
