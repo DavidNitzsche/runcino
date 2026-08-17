@@ -160,14 +160,65 @@ need "$WATCH_FACEKIT" 'bonus *= Color\(hex: 0xF0DF47\)'  'watch Faff.bonus = #F0
 RETIRED='FF8847|48B3B5|008FEC|9013FE|2CA82F|D4900A|E85D26|D63E4E|EE6038|FF8870|34D058|5FD06A|27E087|FF5722|FF7A45|E88021|F43F5E|F5C518|F5A518|FFCE8A|FFB24D|FF6A6A|FF5A52|14C08C'
 # Decimal-RGB forms of the retired hexes. A hex-only grep is blind to these:
 # rgba(20,192,140,.18) is the same dead teal as #14C08C, and the 2026-08-17
-# audit found exactly that shape surviving in web-v2/scripts. Add the decimal
-# triple here whenever a hex goes on the RETIRED list above.
-#   20,192,140 = #14C08C
-# NOTE · the other retirees still have live decimal-form call sites (F5C518,
-# FF8847, 5FD06A, FF5722, F43F5E in globals.css / faff-toolkit.css / toolkit
-# sheets / PhaseStrip / PlanArc). That backlog is real but out of scope for
-# this change; migrate those, then add their triples here.
-RETIRED_RGBA='20 *, *192 *, *140'
+# audit found exactly that shape surviving. Add the decimal triple here
+# whenever a hex goes on the RETIRED list above — a retired colour that
+# survives in decimal notation is just as dead and twice as invisible.
+#
+# 2026-08-17 · DECIMAL BACKLOG CLEARED (20 of the 24 retirees). The previous
+# pass wired up 14C08C only and left the rest documented-but-unguarded; those
+# call sites are now migrated to their locked replacement, so the triples can
+# be locked with them:
+#   245,197,24  F5C518 -> PR gold #F0DF47      · toolkit --status-pr-border /
+#                        .fa-reply / .fa-toast / .fa-result.is-pr · globals
+#                        .lr .lb.pr / .pfpro / .prcta (each already inked
+#                        #F0DF47 — the wash was the last stale half)
+#   95,208,106  5FD06A -> --green #3EBD41      · globals .onpath-trans-up /
+#                        .wpb-done / .haero-chip-* / .hfc-ic-good /
+#                        .hact-pri-on-course · toolkit sheets saved-tick
+#   244,63,94   F43F5E -> Warning #FC4D64      · HealthView sleep-flag border
+#                        (COLOR_BAD on the eyebrow beside it is already FC4D64)
+#   255,87,34   FF5722 -> Redish #D03F3F       · globals .pjtick.proj glow
+#                        (its fill was already var(--race))
+#   255,136,71  FF8847 -> per-site, no single mapping (a v1 retiree that
+#                        "merges into the table"; brief v2 line 32):
+#                        · .wc.today ring/border -> #D03F3F, matching
+#                          `.wc.today .wc-dw{color:var(--race)}` right below it
+#                        · PhaseStrip/PlanArc PHASE_FILL.RACE -> #D03F3F, per
+#                          PlanArc's own legend "RACE = var(--race)"
+#                        · .fa-callout--cond (flame/Conditions, sibling of the
+#                          teal --tip) -> Attention #F3AD38, matching
+#                          .fa-heat--warm in the same file; its #FFB07A ink
+#                          collapsed to #F3AD38 too, the same bright-sibling
+#                          merge the 2026-06-17 pass did to #FFB24D
+#                        · .pay-left / .upsell warm->hot gradients -> #F3AD38.
+#                          NOT #D03F3F: the second stop is already #FC4D64, so
+#                          the race red would flatten both gradients into one
+#                          near-uniform wash. Amber keeps the temperature ramp
+#                          and matches .pay-mark, already #F3AD38.
+# The rest had zero live decimal sites and are locked pre-emptively.
+#
+# NOTE · FOUR retirees still have live decimal call sites and are deliberately
+# NOT in the list below — adding them today would only turn CI red:
+#   255,206,138 FFCE8A · ~36 sites (globals eyebrow/annotation washes, Shell,
+#                        PlanProposalCard, RunDetailModal, WorkoutDetail,
+#                        TodayView, TrainView) -> Attention #F3AD38
+#   255,178,77  FFB24D · ~7 sites (globals .drv-bar/.reachbn, TodayView warn
+#                        cards) -> Attention #F3AD38
+#   0,143,236   008FEC · 4 sites · brand-gradient blue. .fa-gate is plausibly
+#                        the sanctioned gate/launch use (brief v2 "reserved for
+#                        gate / launch / brandmark only"); the RunDetailModal /
+#                        SimpleCards uses read as a Recovery rung and want
+#                        --dist #27B4E0. Needs a ruling, not a sed.
+#   72,179,181  48B3B5 · 4 sites (PlanProposalCard, RaceView) -> needs the same
+#                        per-site read as FF8847 got.
+# Migrate those, then move their triples into the list.
+RETIRED_RGB_TRIPLES='20,192,140 39,224,135 44,168,47 52,208,88 95,208,106 144,19,254 212,144,10 214,62,78 232,93,38 232,128,33 238,96,56 244,63,94 245,165,24 245,197,24 255,87,34 255,90,82 255,106,106 255,122,69 255,136,71 255,136,112'
+# Expand "r,g,b" -> "r *, *g *, *b" so CSS/JSX spacing variants are caught
+# too: rgba(95, 208, 106, .18) is the same dead green as rgba(95,208,106,.18).
+RETIRED_RGBA=''
+for _t in $RETIRED_RGB_TRIPLES; do
+  RETIRED_RGBA="${RETIRED_RGBA:+$RETIRED_RGBA|}${_t//,/ *, *}"
+done
 # gstop · hero gradient stop ingredient (FaffEffort.heroGradient 2026-06-18).
 # Same exemption logic as FaffMesh: blend ingredients, not semantic colors.
 HIST_FILTER='deleted|retired|was |were |old |previously|killed|AFC fix|→|gstop'

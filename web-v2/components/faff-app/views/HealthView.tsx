@@ -729,7 +729,7 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             style={{
               margin: '14px 0 0',
               padding: '14px 18px',
-              border: `1px solid ${sc.flag ? 'rgba(244,63,94,.45)' : 'var(--line, #262C39)'}`,
+              border: `1px solid ${sc.flag ? 'rgba(252,77,100,.45)' : 'var(--line, #262C39)'}`,
               borderRadius: 12,
               background: 'var(--surface, #141923)',
             }}

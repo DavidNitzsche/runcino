@@ -41,7 +41,7 @@
   /* Status tints */
   --status-good-border: rgba(62,189,65,.4);
   --status-good-text: #86efa0;
-  --status-pr-border: rgba(245,197,24,.5);
+  --status-pr-border: rgba(240,223,71,.5);
   --status-pr-text: #F0DF47;
 
   /* Radii / elevation / motion */
@@ -109,8 +109,8 @@
 .fa-callout .ic svg { width: 14px; height: 14px; }
 .fa-callout .tx { font: 500 13px/1.55 var(--font-body); color: #FFFFFF; }
 .fa-callout .tx .lbl { display: block; font: 700 10px/1 var(--font-body); letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 5px; }
-.fa-callout--cond { border: 1px solid rgba(255,136,71,.55); }
-.fa-callout--cond .ic { background: rgba(255,136,71,.24); } .fa-callout--cond .ic svg { stroke: #FFB07A; } .fa-callout--cond .lbl { color: #FFB07A; }
+.fa-callout--cond { border: 1px solid rgba(243,173,56,.55); }
+.fa-callout--cond .ic { background: rgba(243,173,56,.24); } .fa-callout--cond .ic svg { stroke: #F3AD38; } .fa-callout--cond .lbl { color: #F3AD38; }
 .fa-callout--tip { border: 1px solid rgba(85,221,208,.55); }
 .fa-callout--tip .ic { background: rgba(85,221,208,.24); } .fa-callout--tip .ic svg { stroke: #7BE8DC; } .fa-callout--tip .lbl { color: #7BE8DC; }
 
@@ -119,8 +119,8 @@
 .fa-checkchips .grp .c { font: 600 12.5px/1 var(--font-body); color: var(--txt); background: rgba(255,255,255,.06); border: 1px solid var(--glass-line); border-radius: var(--r-chip); padding: 9px 12px; cursor: pointer; transition: .14s; }
 .fa-checkchips .grp .c:hover { background: rgba(255,255,255,.12); }
 .fa-checkchips .grp .c.sel { background: var(--txt); color: var(--bg); border-color: var(--txt); }
-.fa-reply { display: flex; gap: 11px; padding: 13px 15px; border-radius: var(--r-card); background: rgba(245,197,24,.07); border: 1px solid rgba(245,197,24,.24); }
-.fa-reply .av { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; background: rgba(245,197,24,.18); display: flex; align-items: center; justify-content: center; font: 700 11px/1 var(--font-display); color: var(--amber-gold); }
+.fa-reply { display: flex; gap: 11px; padding: 13px 15px; border-radius: var(--r-card); background: rgba(240,223,71,.07); border: 1px solid rgba(240,223,71,.24); }
+.fa-reply .av { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; background: rgba(240,223,71,.18); display: flex; align-items: center; justify-content: center; font: 700 11px/1 var(--font-display); color: var(--amber-gold); }
 .fa-reply .tx { font: 500 13px/1.45 var(--font-body); color: var(--txt); }
 .fa-reply .tx b { color: var(--amber-gold); font-weight: 700; }
 
@@ -239,7 +239,7 @@
 .fa-adapt .adapt-body .act { font: 700 11.5px/1 var(--font-body); color: var(--dist); margin-top: 9px; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; background: transparent; border: 0; padding: 0; }
 
 .fa-toast { display: inline-flex; align-items: center; gap: 11px; padding: 12px 15px; border-radius: var(--r-pill); background: var(--glass-strong); border: 1px solid var(--glass-line); box-shadow: var(--shadow-float); }
-.fa-toast .ic { width: 26px; height: 26px; border-radius: 50%; background: rgba(245,197,24,.16); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.fa-toast .ic { width: 26px; height: 26px; border-radius: 50%; background: rgba(240,223,71,.16); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .fa-toast .ic svg { width: 14px; height: 14px; stroke: var(--amber-gold); }
 .fa-toast .tx { font: 500 13px/1.3 var(--font-body); color: var(--txt); }
 .fa-toast .tx b { font-family: var(--font-display); font-weight: 600; color: var(--amber-gold); }
@@ -374,7 +374,7 @@
    H · RACE SURFACES
    ============================================================ */
 .fa-result { padding: 18px 20px; border-radius: var(--r-tile); background: rgba(13,16,22,.36); border: 1px solid var(--glass-line); }
-.fa-result.is-pr { border-color: var(--status-pr-border); background: rgba(245,197,24,.07); }
+.fa-result.is-pr { border-color: var(--status-pr-border); background: rgba(240,223,71,.07); }
 .fa-result .eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 700 10px/1 var(--font-body); letter-spacing: 1.6px; text-transform: uppercase; color: var(--fa-mute); }
 .fa-result.is-pr .eyebrow { color: var(--amber-gold); }
 .fa-result .time { font: 600 52px/.86 var(--font-display); letter-spacing: -2px; color: var(--txt); margin-top: 10px; }

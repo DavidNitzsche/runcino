@@ -26,7 +26,7 @@ const PHASE_FILL: Record<string, string> = {
   BUILD: 'rgba(243,173,56,0.55)',
   PEAK:  'rgba(252,77,100,0.55)',
   TAPER: 'rgba(176,132,255,0.60)',
-  RACE:  'rgba(255,136,71,0.85)',
+  RACE:  'rgba(208,63,63,0.85)',
 };
 
 export function PhaseStrip({
