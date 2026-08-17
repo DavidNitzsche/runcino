@@ -122,7 +122,16 @@ export type AdaptationTriggerKind =
   | 'injury_active'       // Q-08 · active runner_injuries row · propose
   | 'goal_changed'        // runner edited goal time → mark paces stale
   | 'training_gap'        // 2026-07-06 · unplanned layoff · Research/22 §14
-  | 'field_test_due';     // 2026-08-17 · no race/test in 42d · Research/01:684-686
+  | 'field_test_due'      // 2026-08-17 · no race/test in 42d · Research/01:684-686
+  | 'fitness_regression'; // 2026-08-17 · symmetric DOWNWARD re-anchor ·
+                          // race result or 28d sustained evidence shows
+                          // VDOT < last-reviewed − 1.5 → recompute paces
+                          // (auto for race-sourced, propose-first for
+                          // training-drift). Cite: Research/01:316-320
+                          // ("tempo unexpectedly hard ≥2 sessions → −1 to
+                          // −2 VDOT"; layoff rows) + freshness window
+                          // (:659-677 · stale anchor is a floor, not a
+                          // pace source).
 
 export interface AdaptationTrigger {
   kind: AdaptationTriggerKind;
@@ -166,6 +175,11 @@ export interface AdaptationAction {
    *  (e.g. seal-filtered) — otherwise the offset destroys a quality
    *  day without the added load it was offsetting. */
   onlyIfRescheduledId?: string;
+  /** 2026-08-17 · recompute_paces actions · the measured VDOT the plan's
+   *  future paces should re-derive from (pr_bank: the new race VDOT;
+   *  fitness_regression: the regressed evidence VDOT). null → resolved at
+   *  apply time from the latest projection snapshot (goal_changed). */
+  newVdot?: number | null;
   why: string;                // for the coach to repeat
 }
 
@@ -716,6 +730,17 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   const prBank = await detectPrBank(userId);
   if (prBank) triggers.push(prBank);
 
+  // 8b. FITNESS_REGRESSION (2026-08-17) · the downward mirror of PR_BANK.
+  //     Race result or 28d sustained training evidence showing VDOT more
+  //     than 1.5 pts BELOW the reviewed anchor → re-anchor paces down
+  //     (auto for race-sourced, propose-first for training drift).
+  //     Skipped when pr_bank fired — the two are evidence-exclusive and
+  //     the upward recompute already re-anchors everything.
+  if (!prBank) {
+    const regression = await detectFitnessRegression(userId);
+    if (regression) triggers.push(regression);
+  }
+
   // 9. GOAL_CHANGED · runner accepted adaptive-VDOT bump (manual override)
   //    OR edited their goal_race_time. Both signal "paces need re-derive".
   const goalChanged = await detectGoalChanged(userId);
@@ -778,6 +803,9 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
   // paired reschedule was seal-filtered, so an offset can't destroy a
   // quality day without the added load it was offsetting.
   const landedReschedules = new Set<string>();
+  // 2026-08-17 · recompute_paces · stamp users.vdot_last_reviewed AFTER
+  // commit (see the recompute_paces limb for why it can't run in-txn).
+  let postCommitVdotReviewed: number | null = null;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -790,6 +818,7 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         : a.kind === 'downgrade' ? 'plan_adapt_downgrade'
         : a.kind === 'shave'     ? 'plan_adapt_shave'
         : a.kind === 'mark_dirty' ? 'plan_adapt_mark_dirty'
+        : a.kind === 'recompute_paces' ? 'plan_adapt_recompute_paces'
         : a.kind === 'mark_upgrade' ? 'plan_adapt_upgrade'
         : a.kind === 'field_test' ? 'plan_adapt_field_test'
         : a.kind === 'note'      ? (a.noteReason ?? 'plan_adapt_note')
@@ -1052,19 +1081,46 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
           });
           touched++;
         }
-      } else if (a.kind === 'mark_dirty' && a.workoutIds) {
-        for (const wid of a.workoutIds) {
-          if (!unsealedSet.has(wid)) continue;
-          await client.query(
-            `UPDATE plan_workouts
-                SET notes = COALESCE(notes, '') || ' [paces stale - recompute]'
-              WHERE id = $1`,
-            [wid]
-          );
-          await writeIntent(client, userId, reason, wid, {
-            kind: a.kind, why: a.why,
+      } else if (a.kind === 'recompute_paces') {
+        // 2026-08-17 · coaching-loop reconciliation · a REAL pace rewrite
+        // (replaces the dead mark_dirty limb, which appended a
+        // '[paces stale - recompute]' string to notes that no reader
+        // consumed). Resolves the measured VDOT (action.newVdot from the
+        // trigger evidence, else the latest projection snapshot), then
+        // rewrites every FUTURE unsealed workout's pace_target +
+        // workout_spec on this transaction's client — seal guard lives
+        // inside recomputePacesForPlan (same Rule 15 predicate as
+        // filterUnsealedWorkouts). users.vdot_last_reviewed is stamped
+        // POST-COMMIT (a failed statement inside an open transaction
+        // aborts the whole txn in Postgres, and legacy schemas may lack
+        // the column — the durable fallback anchor is authored_state.
+        // pace_recompute.vdot which recomputePacesForPlan writes).
+        // Cite: Research/01 §Recalibrate-Paces.
+        let vdotNow = a.newVdot ?? null;
+        if (vdotNow == null) {
+          const { loadLatestVdotForUser } = await import('@/lib/training/projection-snapshots');
+          vdotNow = await loadLatestVdotForUser(userId).catch(() => null);
+        }
+        const planRow = (await client.query<{ id: string }>(
+          `SELECT id FROM training_plans
+            WHERE user_uuid = $1 AND archived_iso IS NULL
+            ORDER BY authored_iso DESC LIMIT 1`,
+          [userId],
+        )).rows[0];
+        if (vdotNow != null && planRow) {
+          const { recomputePacesForPlan } = await import('./recompute-paces');
+          const res = await recomputePacesForPlan(planRow.id, vdotNow, {
+            source: `adapt/${a.sourceTrigger ?? 'recompute_paces'}`,
+            client,
           });
-          touched++;
+          await writeIntent(client, userId, reason, planRow.id, {
+            kind: a.kind, why: a.why, vdot: vdotNow,
+            workouts_updated: res?.workoutsUpdated ?? 0,
+            workouts_sealed: res?.workoutsSealed ?? 0,
+            measured_progress_fraction: res?.measuredProgressFraction ?? null,
+          });
+          if ((res?.workoutsUpdated ?? 0) > 0) touched++;
+          postCommitVdotReviewed = vdotNow;
         }
       }
     }
@@ -1094,6 +1150,16 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
     throw e;
   } finally {
     client.release();
+  }
+  // Post-commit · stamp the reviewed VDOT so pr_bank / fitness_regression
+  // measure future deltas against it. .catch: legacy schemas may lack the
+  // column — authored_state.pace_recompute.vdot (written in-txn above) is
+  // the durable fallback anchor either way.
+  if (postCommitVdotReviewed != null) {
+    await pool.query(
+      `UPDATE users SET vdot_last_reviewed = $2 WHERE id = $1`,
+      [userId, postCommitVdotReviewed],
+    ).catch(() => null);
   }
   return touched;
 }
@@ -2020,6 +2086,164 @@ async function detectFieldTestDue(userId: string): Promise<AdaptationTrigger | n
   }
 }
 
+// ── FITNESS_REGRESSION · symmetric downward re-anchor (2026-08-17) ─────
+
+/** Same magnitude as pr_bank's upward gate · Research/01:316-317 puts a
+ *  single "tempo unexpectedly hard" signal at −1 to −2 VDOT, so 1.5 is
+ *  one honest evidence step in either direction. Exported for the
+ *  invariants suite. */
+export const REGRESSION_DELTA_THRESHOLD = 1.5;
+
+/** Pure firing predicate · fires when evidence VDOT sits more than the
+ *  threshold BELOW the last-reviewed anchor. Exported for tests. */
+export function fitnessRegressionFires(
+  oldVdot: number | null | undefined,
+  evidenceVdot: number | null | undefined,
+): boolean {
+  if (oldVdot == null || evidenceVdot == null) return false;
+  if (!Number.isFinite(oldVdot) || !Number.isFinite(evidenceVdot)) return false;
+  return evidenceVdot - oldVdot < -REGRESSION_DELTA_THRESHOLD;
+}
+
+/**
+ * FITNESS_REGRESSION · the missing mirror of PR_BANK. pr_bank only ever
+ * fired on delta > +1.5, so a runner whose fitness DROPPED kept getting
+ * paces anchored to the stale (faster) VDOT — the exact "prescribing
+ * paces the runner cannot run" failure the honest-paces doctrine forbids.
+ *
+ * Evidence, in priority order:
+ *   1. RACE · best A/B race finish in the last 14d whose derived VDOT is
+ *      < anchor − 1.5. Auto-applies (David: "watch time IS the result").
+ *      Cite: Research/01:311 (new race result → update VDOT from race —
+ *      the row doesn't say "only if faster").
+ *   2. TRAINING DRIFT · 28 days of projection snapshots (the measured
+ *      bestRecentVdot chain) whose BEST reading is < anchor − 1.5, with
+ *      ≥8 snapshot days so one bad week can't re-anchor a season.
+ *      Propose-first (a rebuild the runner gates).
+ *      Cite: Research/01:316-317 (−1 to −2 on sustained hard-tempo
+ *      evidence) + :659-677 (freshness window · the old anchor is a
+ *      floor, prompt a re-read, don't keep prescribing off it).
+ *
+ * Anchor cascade: users.vdot_last_reviewed → the active plan's
+ * pace_recompute.vdot → pace_blend.season_anchor_vdot → derived_from.
+ * bestRecentVdot (so the detector works even on schemas where
+ * vdot_last_reviewed was never populated — which is why pr_bank has been
+ * dormant for most runners).
+ *
+ * Per-finding context filter (CLAUDE.md round 4): suppressed within 7
+ * days BEFORE a race — taper conservation legitimately reads slow, and
+ * race-week pacing belongs to the race machinery, not a re-anchor.
+ */
+async function detectFitnessRegression(userId: string): Promise<AdaptationTrigger | null> {
+  const today = await runnerToday(userId);
+
+  // Race within the next 7 days → suppress (taper/race-week filter).
+  const upcoming = await pool.query(
+    `SELECT 1 FROM races
+      WHERE user_uuid = $1::uuid
+        AND (meta->>'date')::date BETWEEN $2::date AND $2::date + 7
+      LIMIT 1`,
+    [userId, today],
+  ).catch(() => ({ rows: [] as unknown[] }));
+  if (upcoming.rows.length > 0) return null;
+
+  // Anchor VDOT · reviewed column first, then the active plan's
+  // authored_state fallbacks (see cascade note above).
+  const anchorRow = (await pool.query<{ reviewed: string | null; authored_state: Record<string, unknown> | null }>(
+    `SELECT (SELECT vdot_last_reviewed::numeric::text FROM users WHERE id = $1::uuid) AS reviewed,
+            tp.authored_state
+       FROM training_plans tp
+      WHERE tp.user_uuid = $1::uuid AND tp.archived_iso IS NULL
+      ORDER BY tp.authored_iso DESC LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!anchorRow) return null;
+  const st = (anchorRow.authored_state ?? {}) as Record<string, any>;
+  const oldVdot: number | null =
+    (anchorRow.reviewed != null ? Number(anchorRow.reviewed) : null)
+    ?? (st.pace_recompute?.vdot != null ? Number(st.pace_recompute.vdot) : null)
+    ?? (st.pace_blend?.season_anchor_vdot != null ? Number(st.pace_blend.season_anchor_vdot) : null)
+    ?? (st.derived_from?.bestRecentVdot != null ? Number(st.derived_from.bestRecentVdot) : null);
+  if (oldVdot == null || !Number.isFinite(oldVdot)) return null;
+
+  const { vdotFromRace } = await import('../training/vdot');
+
+  // 1. RACE evidence · best A/B finish in last 14d.
+  const recent = (await pool.query<{
+    slug: string; date: string; distance_mi: string | null; finish_s: string | null;
+  }>(
+    `SELECT slug,
+            meta->>'date' AS date,
+            (meta->>'distanceMi')::numeric::text AS distance_mi,
+            actual_result->>'finishS' AS finish_s
+       FROM races
+      WHERE user_uuid = $1
+        AND meta->>'priority' IN ('A','B')
+        AND (meta->>'date')::date >= $2::date - 14
+        AND (meta->>'date')::date < $2::date
+        AND actual_result->>'finishS' IS NOT NULL
+      ORDER BY (meta->>'date') DESC LIMIT 3`,
+    [userId, today],
+  ).catch(() => ({ rows: [] }))).rows;
+  let bestRaceVdot: number | null = null;
+  let bestSlug = '';
+  let bestDate = '';
+  for (const raceRow of recent) {
+    const fs = raceRow.finish_s ? Number(raceRow.finish_s) : 0;
+    const mi = raceRow.distance_mi ? Number(raceRow.distance_mi) : 0;
+    const v = fs > 0 && mi > 0 ? vdotFromRace(fs, mi) : null;
+    if (v != null && (bestRaceVdot == null || v > bestRaceVdot)) {
+      bestRaceVdot = v; bestSlug = raceRow.slug; bestDate = raceRow.date;
+    }
+  }
+  if (bestRaceVdot != null && fitnessRegressionFires(oldVdot, bestRaceVdot)) {
+    const delta = bestRaceVdot - oldVdot;
+    return {
+      kind: 'fitness_regression',
+      severity: 'warn',
+      reason: `Race read slower than the plan's anchor · VDOT ${bestRaceVdot.toFixed(1)} vs ${oldVdot.toFixed(1)} (${delta.toFixed(1)}). Paces re-anchor to the result.`,
+      evidence: {
+        source: 'race',
+        new_vdot: bestRaceVdot,
+        old_vdot: oldVdot,
+        delta,
+        race_slug: bestSlug,
+        raced_at: bestDate,
+      },
+    };
+  }
+
+  // 2. TRAINING DRIFT · 28d of projection snapshots, best reading still
+  //    below the anchor by more than the threshold, ≥8 snapshot days.
+  const drift = (await pool.query<{ n: string; best: string | null }>(
+    `SELECT COUNT(DISTINCT snapshot_date)::text AS n,
+            MAX(vdot)::numeric::text AS best
+       FROM projection_snapshots
+      WHERE user_uuid = $1::uuid
+        AND snapshot_date >= $2::date - 28
+        AND vdot IS NOT NULL`,
+    [userId, today],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  const nDays = drift?.n != null ? Number(drift.n) : 0;
+  const best28 = drift?.best != null ? Number(drift.best) : null;
+  if (nDays >= 8 && best28 != null && fitnessRegressionFires(oldVdot, best28)) {
+    const delta = best28 - oldVdot;
+    return {
+      kind: 'fitness_regression',
+      severity: 'warn',
+      reason: `28 days of training evidence reads VDOT ${best28.toFixed(1)} vs the plan's ${oldVdot.toFixed(1)} anchor (${delta.toFixed(1)}). Recommend re-anchoring paces to current fitness.`,
+      evidence: {
+        source: 'training_drift',
+        new_vdot: best28,
+        old_vdot: oldVdot,
+        delta,
+        snapshot_days: nDays,
+      },
+    };
+  }
+  return null;
+}
+
 async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger | null> {
   const today = await runnerToday(userId);
 
@@ -2486,26 +2710,84 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
     }
     case 'pr_bank':
     case 'goal_changed': {
-      // Both signals say "paces stale; recompute". Mark next 14d
-      // plan_workouts so the briefing surface re-derives pace targets
-      // from the new VDOT / new goal.
-      const rows = (await pool.query(
-        `SELECT pw.id FROM plan_workouts pw
-            JOIN training_plans tp ON tp.id = pw.plan_id
-           WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
-             AND pw.date_iso::date BETWEEN $2::date AND $2::date + 14
-           ORDER BY pw.date_iso::date ASC`,
-        [userId, today]
-      )).rows;
-      if (rows.length === 0) return [];
+      // 2026-08-17 · coaching-loop reconciliation · both signals say
+      // "paces stale; recompute" — and now that MEANS a recompute. The
+      // old mark_dirty limb appended a '[paces stale - recompute]' string
+      // to notes that nothing ever read; the action is now a real
+      // recompute_paces (applyAdaptations → recomputePacesForPlan), which
+      // rewrites future unsealed rows' pace_target + workout_spec from
+      // the measured VDOT and stamps users.vdot_last_reviewed so the
+      // detector doesn't re-fire daily for the whole 14d race window.
+      // Cite: Research/01 §Recalibrate-Paces ("update VDOT from race →
+      // re-derive zones").
       const why = t.kind === 'pr_bank'
-        ? `New race fitness · VDOT +${Number(t.evidence.delta).toFixed(1)} pts. Paces need recompute.`
-        : 'Goal or VDOT changed. Plan paces need recompute against new target.';
+        ? `New race fitness · VDOT +${Number(t.evidence.delta).toFixed(1)} pts. Paces recomputed.`
+        : 'Goal or VDOT changed. Plan paces recomputed against the new anchor.';
       return [{
-        kind: 'mark_dirty',
-        workoutIds: rows.map((r: any) => r.id),
+        kind: 'recompute_paces',
+        newVdot: t.kind === 'pr_bank' && t.evidence.new_vdot != null
+          ? Number(t.evidence.new_vdot)
+          : null,  // goal_changed → latest snapshot VDOT at apply time
         why,
       }];
+    }
+    case 'fitness_regression': {
+      // 2026-08-17 · symmetric downward re-anchor. Per David: "watch time
+      // IS the result" — race-sourced evidence auto-applies (same posture
+      // as pr_bank's upward path); training-drift evidence proposes first
+      // (a rebuild the runner gates · POST /api/plan/proposal accept →
+      // generatePlan re-anchors at measured fitness). Honest-paces
+      // doctrine: the plan must never keep prescribing paces the runner
+      // has demonstrably lost. Cite: Research/01:316-320.
+      if (t.evidence.source === 'race') {
+        return [{
+          kind: 'recompute_paces',
+          newVdot: t.evidence.new_vdot != null ? Number(t.evidence.new_vdot) : null,
+          why: t.reason,
+        }];
+      }
+      // training_drift → propose-first (plan_proposals · pending). Accept
+      // rebuilds the plan (route: POST /api/plan/proposal), which
+      // re-anchors currentT at measured fitness AND re-gates the weekly
+      // blend on measured progress (generatePlan 2026-08-17). Deduped on
+      // an existing pending row so the daily cron doesn't pile them up.
+      try {
+        const planRow = (await pool.query<{ id: string }>(
+          `SELECT id FROM training_plans
+            WHERE user_uuid = $1 AND archived_iso IS NULL
+            ORDER BY authored_iso DESC LIMIT 1`,
+          [userId],
+        ).catch(() => ({ rows: [] }))).rows[0];
+        if (planRow) {
+          const dup = (await pool.query(
+            `SELECT 1 FROM plan_proposals
+              WHERE user_uuid = $1 AND proposal_kind = 'pace_reanchor'
+                AND (status = 'pending'
+                     OR (status = 'dismissed' AND resolved_at >= NOW() - interval '14 days'))
+              LIMIT 1`,
+            [userId],
+          ).catch(() => ({ rows: [] as unknown[] }))).rows[0];
+          if (!dup) {
+            await pool.query(
+              `INSERT INTO plan_proposals
+                 (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
+               VALUES ($1, $2, 'pace_reanchor', $3::jsonb, 'pending', 'adapt_cron', NOW())`,
+              [userId, planRow.id, JSON.stringify({
+                message: t.reason,
+                new_vdot: t.evidence.new_vdot ?? null,
+                old_vdot: t.evidence.old_vdot ?? null,
+                delta: t.evidence.delta ?? null,
+                evidence_source: 'training_drift',
+                citation: 'Research/01-pace-zones-vdot.md §Recalibrate-Paces',
+              })],
+            );
+          }
+        }
+      } catch {
+        // Proposal write failure is non-fatal · the drift monitor's
+        // vdot_drift check remains the backstop.
+      }
+      return [];
     }
     case 'niggle_reported': {
       // Q-04 default. ≥7/10 → 48h suspension (downgrade next 2d to rest);

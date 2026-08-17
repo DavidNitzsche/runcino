@@ -454,8 +454,10 @@ export type PlanProposalSeed = {
   newPlanId: string | null;
   kind: 'volume_drift' | 'vdot_drift' | 'staleness'
       | 'race_date_changed' | 'goal_time_changed'
-      | 'a_race_added' | 'a_race_removed';
-  status: 'pending' | 'auto_applied' | 'accepted' | 'dismissed' | 'superseded';
+      | 'a_race_added' | 'a_race_removed'
+      // 2026-08-17 · coaching-loop reconciliation
+      | 'goal_renegotiation' | 'pace_reanchor';
+  status: 'pending' | 'auto_applied' | 'accepted' | 'dismissed' | 'superseded' | 'expired';
   source: string;
   reasons: Record<string, unknown>;
   message: string;

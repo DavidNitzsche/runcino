@@ -39,6 +39,9 @@ import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTEN
 import { isBaseBuildingPlan } from './plan-templates';
 import { distanceMiFromLabel } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
+// 2026-08-17 · coaching-loop reconciliation · shared blend implementation
+// (authoring + adaptation-time recompute run the same math).
+import { blendedTPaceForWeek, measuredProgressFraction } from './recompute-paces';
 import { validateComposedPlan } from './validate';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
@@ -2038,6 +2041,25 @@ export interface ComposePlanInput {
   /** 2026-06-03 · Rule 16 · maxHr for the easy/long HR cap doctrine.
    *  Optional · null falls back to LTHR-only cap. */
   maxHr: number | null;
+  /** 2026-08-17 · coaching-loop reconciliation · measured share of the
+   *  season's VDOT gap actually banked (recompute-paces.ts
+   *  measuredProgressFraction). Gates the currentT→goalT weekly blend so
+   *  paces advance only as fast as demonstrated fitness: blend =
+   *  min(calendar fraction, measured + 0.15 grace). null/undefined =
+   *  calendar-only (fresh authoring · byte-identical to the historical
+   *  Rule 3 blend — the plan is a forecast, and the adaptation layer
+   *  (recomputePacesForPlan, pr_bank, fitness_regression) keeps it
+   *  honest as evidence arrives). generatePlan populates this on
+   *  MID-BLOCK REBUILDS from the prior plan's season anchor.
+   *  Cite: Research/01-pace-zones-vdot.md §Recalibrate-Paces (:304-321). */
+  measuredProgressFraction?: number | null;
+  /** 2026-08-17 · the season's original anchor VDOT, carried FORWARD
+   *  across mid-block rebuilds so the measured-progress fraction always
+   *  measures against where the season's ambition was priced, not against
+   *  the most recent rebuild (which would reset the gate to ~0 every
+   *  time). null/undefined → this authoring IS the season start and its
+   *  own estimatedCurrentVdot becomes the anchor. */
+  seasonAnchorVdot?: number | null;
 }
 
 export interface ComposedWeek {
@@ -2251,21 +2273,25 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       ? { flag: true, ...(goalVdot != null ? { goalVdot } : {}), estimatedCurrentVdot }
       : { flag: false };
 
+  // 2026-08-17 · coaching-loop reconciliation · the blend math moved to
+  // lib/plan/recompute-paces.ts (blendedTPaceForWeek) so authoring and the
+  // adaptation-time recompute share ONE implementation. Semantics here are
+  // byte-identical to the historical inline formula (Rule 3 + BRK-1 +
+  // VAR-07) whenever input.measuredProgressFraction is null/undefined;
+  // when a measured-progress fraction IS supplied (mid-block rebuilds),
+  // the calendar blend is gated on it — paces advance only as fast as
+  // demonstrated fitness. Cite: Research/01 §Recalibrate-Paces (:304-321).
+  const composeBuildWeeks = blocks.phases.filter((p) => p.label !== 'TAPER')
+    .reduce((s, p) => s + p.weeks, 0);
   function tPaceForWeek(weekIdx: number, phase: string): number | null {
-    if (goalT == null) return null;
-    if (currentT == null) return goalT;
-    // BRK-1 (2026-06-23) · a SOFT goal (currentT <= goalT · runner already fitter than the goal) trains
-    // QUALITY at CURRENT fitness — NOT the slower goalT — otherwise easy (PACE-E-1-anchored to currentT)
-    // ends up FASTER than the VO2max/MP work (a Daniels-order violation). The soft goal time stays the
-    // RACE-DAY target (the race row reads goalPaceSPerMi, not this blend). David is sub-fitness → unaffected.
-    if (currentT <= goalT) return currentT;
-    if (phase === 'TAPER') return goalT; // VAR-07 · keep TAPER; BASE carries no T-session so its blend is free to track currentT
-    // Blend over first 60% of the build · weekIdx ramps in [0, 1].
-    const buildWeeks = blocks.phases.filter((p) => p.label !== 'TAPER')
-      .reduce((s, p) => s + p.weeks, 0);
-    const denom = Math.max(1, Math.round(buildWeeks * 0.6));
-    const blend = Math.min(1, weekIdx / denom);
-    return Math.round(currentT + (goalT - currentT) * blend);
+    return blendedTPaceForWeek({
+      currentT,
+      goalT,
+      weekIdx,
+      phase,
+      buildWeeks: composeBuildWeeks,
+      measuredProgressFraction: input.measuredProgressFraction ?? null,
+    });
   }
 
   const weeks: ComposedWeek[] = [];
@@ -2422,6 +2448,23 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         tsbAtStart: input.tsbAtStart ?? null,
       },
       goal_realism: goalRealism,
+      // 2026-08-17 · coaching-loop reconciliation · the blend anchors, so
+      // recomputePacesForPlan (adaptation-time pace rewrite) can gate the
+      // weekly blend on measured evidence against the SAME season anchor
+      // this authoring ran on. season_anchor_vdot is the fitness the
+      // season's ambition was priced against; measured_progress_fraction
+      // records the gate this authoring itself used (null = calendar-
+      // trusted forecast). Cite: Research/01 §Recalibrate-Paces.
+      // Only the ANCHORS are recorded — never the derived T-paces, which
+      // recomputePacesForPlan re-derives from vdotNow (and whose exact
+      // values legitimately vary with resolution-tier internals a
+      // recompute doesn't need · see _audit_slow_runner P1-56 byte-safety).
+      pace_blend: {
+        season_anchor_vdot: input.seasonAnchorVdot ?? estimatedCurrentVdot,
+        goal_vdot: goalVdot,
+        build_weeks: composeBuildWeeks,
+        measured_progress_fraction: input.measuredProgressFraction ?? null,
+      },
       citations: blocks.phases.map((p) => p.citation),
     },
   };
@@ -3428,6 +3471,44 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     lastRaceFinished?.date ?? null,
     lastRaceDistanceMi ?? null,
   );
+
+  // 2026-08-17 · coaching-loop reconciliation · measured-progress gate for
+  // MID-BLOCK REBUILDS of the same race. The prior active plan carries the
+  // season's anchor VDOT (authored_state.pace_blend, falling back to the
+  // Rule 10 derived_from envelope); measured progress = share of the
+  // (goalVdot − seasonAnchor) gap the runner has actually banked. The
+  // weekly currentT→goalT blend is then capped at measured + 0.15 grace so
+  // a rebuild can't re-schedule goal-anchored paces fitness hasn't earned.
+  // Fresh authorings (no prior plan for this race) stay calendar-blended —
+  // a forecast, kept honest by recomputePacesForPlan + the adapter's
+  // pr_bank/fitness_regression detectors as evidence arrives.
+  // Byte-safe: when measured VDOT tracks the calendar the gate is a no-op
+  // (min(calendar, measured+grace) = calendar), and when no prior plan
+  // exists the input stays undefined (identical behavior to before).
+  // Cite: Research/01-pace-zones-vdot.md §Recalibrate-Paces (:304-321).
+  if (mode === 'race-prep' && raceSlug && inputs.compose.goalSec != null) {
+    try {
+      const prior = (await pool.query<{ authored_state: Record<string, unknown> | null }>(
+        `SELECT authored_state FROM training_plans
+          WHERE user_uuid = $1 AND archived_iso IS NULL AND race_id = $2
+          ORDER BY authored_iso DESC LIMIT 1`,
+        [userId, raceSlug],
+      ).catch(() => ({ rows: [] }))).rows[0];
+      const priorSt = (prior?.authored_state ?? null) as Record<string, any> | null;
+      const seasonAnchor: number | null =
+        (priorSt?.pace_blend?.season_anchor_vdot != null ? Number(priorSt.pace_blend.season_anchor_vdot) : null)
+        ?? (priorSt?.derived_from?.bestRecentVdot != null ? Number(priorSt.derived_from.bestRecentVdot) : null);
+      if (seasonAnchor != null) {
+        const goalVdotNow = vdotFromRace(inputs.compose.goalSec, inputs.compose.raceDistanceMi);
+        inputs.compose.seasonAnchorVdot = seasonAnchor;
+        inputs.compose.measuredProgressFraction = measuredProgressFraction(
+          seasonAnchor,
+          inputs.compose.bestRecentVdot ?? null,
+          goalVdotNow,
+        );
+      }
+    } catch { /* gate is additive — a read failure falls back to calendar blend */ }
+  }
 
   // 2. Compose · branch by mode.
   let composed: ComposePlanResult;

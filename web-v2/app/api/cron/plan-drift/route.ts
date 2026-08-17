@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
     proposals_written: number;
     signals_skipped: number;        // pending row already exists
     auto_results: number;           // provisional race results logged this tick
+    proposals_expired: number;      // 2026-08-17 · >14d pending rows expired this tick
     error?: string;
   };
   const results: UserResult[] = [];
@@ -56,8 +57,20 @@ export async function POST(req: NextRequest) {
       proposals_written: 0,
       signals_skipped: 0,
       auto_results: 0,
+      proposals_expired: 0,
     };
     try {
+      // 2026-08-17 · stale-proposal hygiene FIRST. Pending rows older
+      // than 14 days go to 'expired' — proposals-state stopped surfacing
+      // them at 14d anyway, and as invisible zombies they defeated every
+      // pending-row dedupe check (the audit found 19 identical staleness
+      // proposals accumulated on one runner).
+      try {
+        const { expireStalePendingProposals } = await import('@/lib/plan/goal-renegotiation');
+        r.proposals_expired = await expireStalePendingProposals(u);
+      } catch (e) {
+        console.error('[plan-drift] proposal expiry failed:', e);
+      }
       // 2026-08-17 · race-lifecycle · auto-provisional race results FIRST.
       // Before any graduate/transition decision, log a provisional
       // watch-time result for any recent race the runner finished but
@@ -338,6 +351,38 @@ export async function POST(req: NextRequest) {
           } catch (e) {
             console.error('[plan-drift] goal-gap rebuild failed:', e);
           }
+        }
+      }
+
+      // 2026-08-17 · coaching-loop reconciliation · UNCLOSABLE gap →
+      // goal-renegotiation proposal. goal-gap has classified 'unclosable'
+      // correctly since Phase 1.1 but nothing acted on it — the widening
+      // branch above only fires on trend, so a goal parked out of
+      // physiological reach just sat there. Sustained ≥5 consecutive
+      // snapshot days → write a pending plan_proposals row carrying the
+      // A/B/C alternative bands the gap report already computes. The
+      // proposal proposes a REVISED TARGET BAND; the stated goal stays on
+      // the board as the season ambition (David's framing). Accept seam:
+      // the existing PATCH /api/race/[slug] goal edit → goal_renegotiated
+      // rebuild. Dedupe/supersede/expiry live in goal-renegotiation.ts.
+      if (goalGap && goalGap.status === 'unclosable') {
+        try {
+          const { shouldProposeRenegotiation, writeGoalRenegotiationProposal } =
+            await import('@/lib/plan/goal-renegotiation');
+          if (shouldProposeRenegotiation(goalGap)) {
+            const { composeGapReport } = await import('@/lib/plan/gap-report');
+            const gapReport = await composeGapReport(u).catch(() => null);
+            const activePlanId = (await pool.query<{ id: string }>(
+              `SELECT id FROM training_plans
+                WHERE user_uuid = $1 AND archived_iso IS NULL
+                ORDER BY authored_iso DESC LIMIT 1`,
+              [u],
+            ).catch(() => ({ rows: [] }))).rows[0]?.id ?? null;
+            const wrote = await writeGoalRenegotiationProposal(u, activePlanId, goalGap, gapReport);
+            if (wrote) r.proposals_written++;
+          }
+        } catch (e) {
+          console.error('[plan-drift] goal-renegotiation failed:', e);
         }
       }
 

@@ -24,6 +24,7 @@ import { parseRaceTime } from '@/lib/training/vdot';
 import { composeRaceExecutionPlan } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { resolveEffectiveRaceTarget } from '@/lib/race/effective-race-target';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,10 +106,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       if (band) ci = { loSec: band.lo, hiSec: band.hi };
     }
 
+    // 2026-08-17 · coaching-loop reconciliation · pace off the EFFECTIVE
+    // target, not the raw goal. When the stated goal runs >5% faster than
+    // the latest projection, the splits/warm-up/triggers build on the
+    // projection (rounded) and the goal rides along as the stretch — the
+    // ambition stays on the board, the pacing stays runnable (Research/08
+    // §18.2: chasing an unrecoverable early deficit is the blow-up).
+    const effective = resolveEffectiveRaceTarget(goalSec, snapRow?.projection_sec ?? null);
+    // B-goal plumbing: the parsed B stays the slower backup. When the
+    // stated goal was demoted to stretch, a B faster than the effective
+    // target is no longer a fallback — the effective target already IS
+    // the honest plan — so it drops.
+    const bGoalEffective = bGoalSec != null && bGoalSec > effective.targetSec ? bGoalSec : null;
+
     const plan = composeRaceExecutionPlan({
-      goalSec,
+      goalSec: effective.targetSec,
       distanceMi,
-      bGoalSec,
+      bGoalSec: bGoalEffective,
       lthr: profileRow?.lthr ?? null,
       maxHr: maxHrEff?.bpm ?? null,
       vdot,
@@ -127,6 +141,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       raceDateISO: (meta.date as string) ?? null,
       startTimeLocal,
       plan,
+      // A-target = effective; stretch = the stated goal when it was
+      // demoted (source 'projection'). Surfaces with room render the
+      // stretch as secondary.
+      effective_target: {
+        target_sec: effective.targetSec,
+        source: effective.source,
+        goal_sec: effective.goalSec,
+        projection_sec: effective.projectionSec,
+        stretch_goal_sec: effective.source === 'projection' ? effective.goalSec : null,
+      },
     });
   } catch (e: unknown) {
     console.error('[race/execution-plan]', e instanceof Error ? e.message : e);

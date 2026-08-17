@@ -636,10 +636,24 @@ export async function buildWatchToday(
         ).catch(() => ({ rows: [] }))).rows[0]
       : null;
     const raceMeta = (planRace?.meta ?? raceRow?.meta ?? null) as Record<string, unknown> | null;
-    const raceGoalSec = raceMeta ? parseRaceGoalSec(raceMeta.goalDisplay as string) : null;
+    const statedGoalSec = raceMeta ? parseRaceGoalSec(raceMeta.goalDisplay as string) : null;
     const raceDistMi = raceMeta
       ? (Number(raceMeta.distanceMi) || distanceMiFromLabel(raceMeta.distanceLabel as string | null) || distanceMi)
       : distanceMi;
+
+    // 2026-08-17 · coaching-loop reconciliation · the watch paces the
+    // EFFECTIVE target, never a goal >5% faster than the current
+    // projection. The stated goal is the stretch; a runner chasing a
+    // fantasy split card from the gun is the §18.2 blow-up (Research/08).
+    // No snapshot → goal fallback. Resolver: lib/race/effective-race-target.ts.
+    let raceGoalSec = statedGoalSec;
+    if (statedGoalSec != null && raceDistMi > 0) {
+      try {
+        const { loadEffectiveRaceTarget } = await import('@/lib/race/effective-race-target');
+        const eff = await loadEffectiveRaceTarget(userId, statedGoalSec, raceDistMi);
+        raceGoalSec = eff.targetSec;
+      } catch { /* resolver is additive — stated goal stands on failure */ }
+    }
 
     // F3 · the race face's pace target is the runner's stated GOAL pace,
     // not the spec band midpoint. Race rows stash kind:'long' with a

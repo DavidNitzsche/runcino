@@ -14,6 +14,7 @@ import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { elevationGainFt } from '@/lib/race/gpx-parser';
 import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
+import { loadEffectiveRaceTarget, type EffectiveRaceTarget } from '@/lib/race/effective-race-target';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,13 +123,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     // The goal string parses via the shared parser ("1:30" → 5400, not 90
     // — race-killer F2). Library phases win over user GPX geometry: the
     // library carries authored grade phases, GPX rarely does.
+    // 2026-08-17 · coaching-loop reconciliation · the split cards pace
+    // off the EFFECTIVE target (goal when within 5% of projection, else
+    // the projection) so the race page never prescribes splits fitness
+    // can't hold. The stated goal rides along in effective_target as the
+    // stretch. Cite: Research/08 §18.2 · lib/race/effective-race-target.ts.
     let pacing = null;
+    let effectiveTarget: EffectiveRaceTarget | null = null;
     try {
       const goalSec = parseRaceTime((race as { goal?: string | null }).goal);
       const distanceMi = Number((race as { distance_mi?: number | null }).distance_mi);
       if (goalSec && distanceMi > 0) {
+        effectiveTarget = await loadEffectiveRaceTarget(userId, goalSec, distanceMi);
         pacing = buildRacePacing({
-          goalSec,
+          goalSec: effectiveTarget.targetSec,
           distanceMi,
           geometry: (libRow.rows[0]?.geometry_json ?? courseGeometry) as CourseGeometryInput | null,
         });
@@ -147,7 +155,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     // Cite Research/18 §1/§11.
     let fueling = null;
     try {
-      const goalSec = parseRaceTime((race as { goal?: string | null }).goal);
+      // Fuel schedule runs on the effective target too — a gel ladder
+      // built for a 3:00 the runner will cover in 3:12 under-fuels the
+      // final 12 minutes.
+      const statedGoalSec = parseRaceTime((race as { goal?: string | null }).goal);
+      const goalSec = effectiveTarget?.targetSec ?? statedGoalSec;
       const distanceMi = Number((race as { distance_mi?: number | null }).distance_mi);
       if (goalSec && distanceMi > 0) {
         const fuelDefaults = (await pool.query<{ fuel_brand: string | null; fuel_gel_carbs_g: number | null; fuel_target_g_per_hr: number | null }>(
@@ -187,6 +199,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       course_library: courseLibrary,
       pacing,
       fueling,
+      // 2026-08-17 · what the pacing/fueling above were built on. When
+      // source === 'projection' the stated goal was demoted to stretch.
+      effective_target: effectiveTarget ? {
+        target_sec: effectiveTarget.targetSec,
+        source: effectiveTarget.source,
+        goal_sec: effectiveTarget.goalSec,
+        projection_sec: effectiveTarget.projectionSec,
+        stretch_goal_sec: effectiveTarget.source === 'projection' ? effectiveTarget.goalSec : null,
+      } : null,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? String(err) }, { status: 500 });

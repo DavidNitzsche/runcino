@@ -55,6 +55,11 @@ export interface GoalGap {
   citation: string;
   /** Days the gap has been widening (drives auto-rebuild trigger). */
   consecutiveWideningDays: number;
+  /** 2026-08-17 · days (most recent backwards) the gap has exceeded the
+   *  unclosable threshold. Drives the goal-renegotiation proposal in the
+   *  plan-drift cron (sustained ≥5 days → propose a revised target band
+   *  while the stated goal stays the season ambition). */
+  consecutiveUnclosableDays: number;
 }
 
 /**
@@ -107,7 +112,8 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
   const weeksRemaining = Math.floor(daysRemaining / 7);
 
   // 4. Trend + status
-  const { status, consecutiveWideningDays } = classifyTrend(series, goalSec, weeksRemaining, raceDistanceMi);
+  const { status, consecutiveWideningDays, consecutiveUnclosableDays } =
+    classifyTrend(series, goalSec, weeksRemaining, raceDistanceMi);
 
   // 5. Confidence band · scales with projection stability + data density
   const confidence = computeConfidence(series);
@@ -127,6 +133,7 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
     weeksRemaining,
     whatClosesIt,
     consecutiveWideningDays,
+    consecutiveUnclosableDays,
     // Internal audit field · never surfaces to runner per the locked
     // "no citations anywhere" rule. Kept on the envelope so adapter/
     // simulator consumers can introspect the source.
@@ -148,17 +155,17 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
  * 1 week to go in a 5K is unclosable; the same gap in a marathon is
  * closing-territory.
  */
-function classifyTrend(
+export function classifyTrend(
   series: Array<{ date: string; projectionSec: number | null; vdot: number | null }>,
   goalSec: number,
   weeksRemaining: number,
   raceDistanceMi: number,
-): { status: GoalGapStatus; consecutiveWideningDays: number } {
+): { status: GoalGapStatus; consecutiveWideningDays: number; consecutiveUnclosableDays: number } {
   const valid = series.filter((s) => s.projectionSec != null) as Array<{
     date: string; projectionSec: number; vdot: number | null;
   }>;
   if (valid.length < 3) {
-    return { status: 'static', consecutiveWideningDays: 0 };
+    return { status: 'static', consecutiveWideningDays: 0, consecutiveUnclosableDays: 0 };
   }
 
   const latest = valid.at(-1)!;
@@ -177,9 +184,21 @@ function classifyTrend(
     : raceDistanceMi <= 14   ? 40
     :                          90;
   const maxClosableInRemainingTime = closableSecPerWeek * Math.max(1, weeksRemaining);
+  // 2026-08-17 · count consecutive days (latest backwards) over the
+  // unclosable threshold, so the renegotiation proposal only fires on a
+  // SUSTAINED read (≥5 days at the cron), not one bad snapshot. The
+  // threshold uses TODAY's weeksRemaining for every snapshot — a ±1-day
+  // approximation at week boundaries, conservative in the direction of
+  // firing later, never earlier.
+  let unclosableDays = 0;
+  for (let i = valid.length - 1; i >= 0; i--) {
+    const gap = valid[i].projectionSec - goalSec;
+    if (gap > maxClosableInRemainingTime * 1.5) unclosableDays++;
+    else break;
+  }
   if (latestGap > maxClosableInRemainingTime * 1.5) {
     // Gap exceeds even an optimistic close rate · unclosable
-    return { status: 'unclosable', consecutiveWideningDays: 0 };
+    return { status: 'unclosable', consecutiveWideningDays: 0, consecutiveUnclosableDays: unclosableDays };
   }
 
   // Count consecutive widening days (most recent backwards)
@@ -200,11 +219,11 @@ function classifyTrend(
     const delta = recentAvgGap - earlierAvgGap;
     // 2% of goal time is the noise floor · stable when within
     const noiseFloor = goalSec * 0.02;
-    if (delta < -noiseFloor) return { status: 'closing', consecutiveWideningDays: 0 };
-    if (delta >  noiseFloor) return { status: 'widening', consecutiveWideningDays: widening };
-    return { status: 'static', consecutiveWideningDays: 0 };
+    if (delta < -noiseFloor) return { status: 'closing', consecutiveWideningDays: 0, consecutiveUnclosableDays: 0 };
+    if (delta >  noiseFloor) return { status: 'widening', consecutiveWideningDays: widening, consecutiveUnclosableDays: 0 };
+    return { status: 'static', consecutiveWideningDays: 0, consecutiveUnclosableDays: 0 };
   }
-  return { status: 'static', consecutiveWideningDays: widening };
+  return { status: 'static', consecutiveWideningDays: widening, consecutiveUnclosableDays: 0 };
 }
 
 // ─── confidence band ───────────────────────────────────────────────────

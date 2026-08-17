@@ -20,14 +20,18 @@ export type PlanProposalKind =
   | 'race_date_changed'
   | 'goal_time_changed'
   | 'a_race_added'
-  | 'a_race_removed';
+  | 'a_race_removed'
+  // 2026-08-17 · coaching-loop reconciliation
+  | 'goal_renegotiation'   // unclosable gap sustained ≥5d · revised target band, ambition stays
+  | 'pace_reanchor';       // training-drift fitness regression · propose a re-anchor rebuild
 
 export type PlanProposalStatus =
   | 'pending'
   | 'auto_applied'
   | 'accepted'
   | 'dismissed'
-  | 'superseded';
+  | 'superseded'
+  | 'expired';             // 2026-08-17 · pending >14d, expired by the drift cron
 
 export interface PlanProposal {
   id: number;
@@ -137,7 +141,10 @@ function isHardDriftKind(kind: PlanProposalKind): boolean {
   return kind === 'race_date_changed'
       || kind === 'goal_time_changed'
       || kind === 'a_race_added'
-      || kind === 'a_race_removed';
+      || kind === 'a_race_removed'
+      // 2026-08-17 · a sustained-unclosable renegotiation is the highest-
+      // stakes card the engine writes · never buried under soft drift.
+      || kind === 'goal_renegotiation';
 }
 
 function synthesizeMessage(
@@ -170,5 +177,9 @@ function synthesizeMessage(
         : 'A new goal race was added · plan needs a refit.';
     case 'a_race_removed':
       return 'Your goal race was removed · pick a new A-race to keep training meaningful.';
+    case 'goal_renegotiation':
+      return 'The gap to your goal is wider than the remaining weeks can close. A revised race target is recommended. The goal stays on the board as the season ambition.';
+    case 'pace_reanchor':
+      return 'Training evidence reads below the plan\'s pace anchor. Recommend re-anchoring paces to current fitness.';
   }
 }

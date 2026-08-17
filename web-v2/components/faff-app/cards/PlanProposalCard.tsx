@@ -42,6 +42,8 @@ const KIND_LABELS: Record<PlanProposalSeed['kind'], string> = {
   goal_time_changed: 'Goal time updated',
   a_race_added:      'Goal race added',
   a_race_removed:    'Goal race removed',
+  goal_renegotiation: 'Revised race target',
+  pace_reanchor:     'Paces off fitness',
 };
 
 const KIND_EYEBROWS: Record<PlanProposalSeed['kind'], string> = {
@@ -52,6 +54,8 @@ const KIND_EYEBROWS: Record<PlanProposalSeed['kind'], string> = {
   goal_time_changed: 'RACE · GOAL',
   a_race_added:      'RACE · ADDED',
   a_race_removed:    'RACE · REMOVED',
+  goal_renegotiation: 'RACE · TARGET',
+  pace_reanchor:     'PACES · RE-ANCHOR',
 };
 
 export function PlanProposalCard({ proposal }: { proposal: PlanProposalSeed }) {
