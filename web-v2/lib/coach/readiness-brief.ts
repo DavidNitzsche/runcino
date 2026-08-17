@@ -27,6 +27,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { computeReadiness, computeDynamicSleepTarget, lutealAdjustedHrvBaseline, type ReadinessBreakdown, type ReadinessInput } from './readiness';
 import { loadReadinessHistory, type PillarPoint, type ReadinessHistory } from './readiness-history';
@@ -849,7 +850,7 @@ async function loadScoreTrend(
       [userId, startISO, todayISO],
     ).catch(() => ({ rows: [] }))).rows;
     const trend = rows.map((r) => ({
-      date: r.snapshot_date.toISOString().slice(0, 10),
+      date: pgDayKey(r.snapshot_date) ?? String(r.snapshot_date),
       score: r.score,
       band: r.band as PillarBand,
     }));

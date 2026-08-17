@@ -12,6 +12,7 @@ import { pool } from '@/lib/db/pool';
 import { userIdFromCookies } from '@/lib/auth/session';
 import { FaffLogo } from '@/components/FaffLogo';
 import { AccessRequestList } from './AccessRequestList';
+import { OpsAlertList } from './OpsAlertList';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,9 +32,15 @@ export default async function AdminPage() {
       <div className="wrap">
         <header className="head">
           <span className="logo"><FaffLogo height={20} /></span>
-          <span className="hlabel">ADMIN · ACCESS REQUESTS</span>
+          <span className="hlabel">ADMIN</span>
         </header>
+        <div className="shead">ACCESS REQUESTS</div>
         <AccessRequestList />
+        {/* Ops alerts · raiseAlert() wrote to ops_alerts for months with no
+            reader. 68 webhook_failure rows announced a dead Strava sync
+            here, unseen, for eleven weeks. */}
+        <div className="shead">OPS ALERTS</div>
+        <OpsAlertList />
       </div>
     </main>
   );
@@ -64,6 +71,19 @@ const styles = `
 .admin-shell .approve{background:#fff;color:#0b0b0b;}
 .admin-shell .deny{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);}
 .admin-shell .empty{opacity:.55;font-size:13.5px;padding:30px 4px;}
+.admin-shell .shead{
+  font-size:10px;font-weight:700;letter-spacing:2px;opacity:.45;
+  text-transform:uppercase;margin:30px 0 12px;
+}
+.admin-shell .shead:first-of-type{margin-top:0;}
+.admin-shell .sev{
+  display:inline-block;width:8px;height:8px;border-radius:50%;
+  margin-right:8px;vertical-align:middle;
+}
+.admin-shell .sev-critical{background:#FC4D64;}
+.admin-shell .sev-error{background:#D03F3F;}
+.admin-shell .sev-warn{background:#F3AD38;}
+.admin-shell .sev-info{background:#7A8290;}
 .admin-shell .temp{
   width:100%;margin-top:10px;padding:10px 12px;border-radius:10px;
   background:rgba(62,189,65,.12);border:1px solid rgba(62,189,65,.4);

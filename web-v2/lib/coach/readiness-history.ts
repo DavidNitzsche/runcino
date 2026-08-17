@@ -19,6 +19,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface PillarPoint {
@@ -250,5 +251,5 @@ function round(n: number, decimals: number): number {
 }
 
 function dt(d: Date | string): string {
-  return d instanceof Date ? d.toISOString().slice(0, 10) : String(d);
+  return pgDayKey(d) ?? String(d);
 }

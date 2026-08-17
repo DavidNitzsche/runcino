@@ -17,6 +17,8 @@
  * 30+ days, snapshots will be the primary read path.
  */
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
+import { addDaysToDayKey } from '@/lib/runtime/day-key';
 
 export interface ProjectionSnapshot {
   user_uuid: string;
@@ -131,7 +133,10 @@ export async function loadProjectionSeries(
   distanceMi: number,
   daysBack = 90,
 ): Promise<Array<{ date: string; projectionSec: number | null; vdot: number | null }>> {
-  const cutoff = new Date(Date.now() - daysBack * 86400000).toISOString().slice(0, 10);
+  // Trim the trend window on the RUNNER's calendar. A server-UTC cutoff
+  // adds or drops a day of the chart depending on the hour the page is
+  // loaded, which makes the same series look different at 4pm and 6pm.
+  const cutoff = addDaysToDayKey(await runnerToday(userUuid), -daysBack);
   const r = await pool.query<{ d: string; ps: number | null; v: number | null }>(
     `SELECT snapshot_date::text AS d,
             projection_sec AS ps,

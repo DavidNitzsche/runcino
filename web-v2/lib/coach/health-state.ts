@@ -4,6 +4,7 @@
  * for the HEALTH surface. Reads from health_samples.
  */
 import { pool } from '@/lib/db/pool';
+import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
@@ -416,7 +417,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
 
   // Sleep
   const sleepSeries = sleepRows.map((r: any) => ({
-    date: r.sample_date.toISOString ? r.sample_date.toISOString().slice(0, 10) : String(r.sample_date),
+    date: pgDayKey(r.sample_date) ?? String(r.sample_date),
     hours: Number(r.value),
   })).filter((d: any) => d.hours > 0);
   const sleepLast7 = sleepSeries.slice(-7).map((d) => d.hours);
@@ -426,7 +427,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
 
   // RHR
   const rhrSeries = rhrRows.map((r: any) => ({
-    date: r.d.toISOString().slice(0, 10),
+    date: pgDayKey(r.d) ?? String(r.d),
     bpm: Math.round(Number(r.v)),
   })).slice(-30);
   const rhrAll = rhrSeries.map((r) => r.bpm);
@@ -444,7 +445,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
   };
   const hrvSeries = hrvRows.map((r: any) => ({
-    date: r.d.toISOString().slice(0, 10),
+    date: pgDayKey(r.d) ?? String(r.d),
     ms: Math.round(Number(r.v)),
   })).slice(-30);
   const hrvAll = hrvSeries.map((r) => r.ms);
@@ -471,7 +472,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
 
   // Weight
   const weightSeries = wRows.map((r: any) => ({
-    date: r.sample_date.toISOString ? r.sample_date.toISOString().slice(0, 10) : String(r.sample_date),
+    date: pgDayKey(r.sample_date) ?? String(r.sample_date),
     lb: +(Number(r.value) * 2.20462).toFixed(1),
   }));
   const weightCurrent = weightSeries.at(-1)?.lb ?? null;
@@ -484,14 +485,14 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   // VO2 — current reading + 6-month series for the trend chart.
   const vo2Current = vo2Row?.value ? +Number(vo2Row.value).toFixed(1) : null;
   const vo2Series = (vo2SeriesRows ?? []).map((r: { d: Date | string; value: number | string }) => ({
-    date: r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d),
+    date: pgDayKey(r.d) ?? String(r.d),
     v: +Number(r.value).toFixed(1),
   })).filter((d) => d.v > 0);
 
   // 2026-06-01 · Quick Win signals from health_samples.
   const mapSeries = <T>(rows: any[], key: string, transform: (v: number) => T): { date: string; [k: string]: any }[] =>
     rows.map((r: any) => ({
-      date: r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d),
+      date: pgDayKey(r.d) ?? String(r.d),
       [key]: transform(Number(r.value)),
     })).filter((d: any) => Number.isFinite(d[key]));
 
@@ -555,7 +556,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   };
   const stageSeries = (rows: any[]): { date: string; min: number }[] =>
     rows.map((r) => ({
-      date: r.d.toISOString ? r.d.toISOString().slice(0, 10) : String(r.d),
+      date: pgDayKey(r.d) ?? String(r.d),
       min: Math.round(Number(r.value)),
     })).filter((p) => Number.isFinite(p.min) && p.min >= 0);
   // 2026-06-01 · sleep architecture regularity (Saw et al.). Compute
@@ -567,7 +568,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
   const stageMap = new Map<string, { deep?: number; rem?: number; light?: number; awake?: number }>();
   const stuff = (rows: any[], k: 'deep'|'rem'|'light'|'awake') => {
     for (const r of (rows ?? [])) {
-      const d = r.d.toISOString ? r.d.toISOString().slice(0, 10) : String(r.d);
+      const d = pgDayKey(r.d) ?? String(r.d);
       const v = Number(r.value);
       if (!Number.isFinite(v) || v < 0) continue;
       const cur = stageMap.get(d) ?? {};
@@ -645,7 +646,7 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
 
   // 2026-06-01 · Active energy daily kcal · iPhone 031fe5fd.
   const aeSeries = (activeEnergyRows as any[]).map((r) => ({
-    date: r.d.toISOString ? r.d.toISOString().slice(0, 10) : String(r.d),
+    date: pgDayKey(r.d) ?? String(r.d),
     kcal: Math.round(Number(r.value) || 0),
   })).filter((p) => Number.isFinite(p.kcal));
   const aeToday = aeSeries.at(-1)?.kcal ?? null;

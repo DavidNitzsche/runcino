@@ -404,6 +404,9 @@ export async function GET(req: NextRequest) {
           distanceMi,
           goalSec,
           vdot,
+          // The runner's day drives daysUntil (forecast vs climate, and
+          // the race-week copy), not the server's.
+          todayISO: await (await import('@/lib/runtime/runner-tz')).runnerToday(userId),
         }).catch(() => null);
         if (conditions) {
           conditionsImpactSec = conditions.seconds;

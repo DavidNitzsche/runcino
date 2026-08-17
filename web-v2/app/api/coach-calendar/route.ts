@@ -16,6 +16,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserId } from '@/lib/auth/session';
 import { normalizeFeedUrl } from '@/lib/coach-calendar/ics';
+import { runnerToday } from '@/lib/runtime/runner-tz';
+import { addDaysToDayKey } from '@/lib/runtime/day-key';
 import {
   getCoachCalendarStatus,
   refreshCoachCalendar,
@@ -24,9 +26,16 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-function shape(status: Awaited<ReturnType<typeof getCoachCalendarStatus>>) {
-  const today = new Date().toISOString().slice(0, 10);
-  const week = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+// `todayISO` is the RUNNER's today (runnerToday), never the server's.
+// "events in the next 7 days" bucketed off a UTC date silently rolls
+// forward at 5pm Pacific: an event tonight drops out of the count while
+// the runner is still looking at today.
+function shape(
+  status: Awaited<ReturnType<typeof getCoachCalendarStatus>>,
+  todayISO: string,
+) {
+  const today = todayISO;
+  const week = addDaysToDayKey(todayISO, 7);
   return {
     connected: status.urlSet,
     events_total: status.events.length,
@@ -40,7 +49,7 @@ export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const status = await getCoachCalendarStatus(auth);
-  return NextResponse.json({ ok: true, ...shape(status) });
+  return NextResponse.json({ ok: true, ...shape(status, await runnerToday(auth)) });
 }
 
 export async function POST(req: NextRequest) {
@@ -63,7 +72,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: result.error, saved: true }, { status: 422 });
   }
   const status = await getCoachCalendarStatus(auth);
-  return NextResponse.json({ ok: true, ...shape(status) });
+  return NextResponse.json({ ok: true, ...shape(status, await runnerToday(auth)) });
 }
 
 export async function DELETE(req: NextRequest) {

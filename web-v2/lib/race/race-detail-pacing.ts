@@ -26,6 +26,7 @@ import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { buildRacePacing, type CourseGeometryInput } from './pacing';
 import { computeRaceFueling, type RaceFuelingInput } from './execution-plan';
 import { raceOpeningPlan, openingAdjustmentOverSpan, caffeineStopIndexes } from './distance-doctrine';
+import { resolveBGoal } from './b-goal';
 import type { EffectiveRaceTarget } from './effective-race-target';
 
 export interface PacingBlock {
@@ -179,8 +180,10 @@ export function buildGels(
   });
 }
 
-/** B fallback fraction · matches the GapPanel race-week B-line. */
-export const B_SAFE_FRACTION = 0.033;
+/** B fallback fraction · re-exported from the shared resolver so the
+ *  race-detail page, the race-week card and the race-day hero cannot
+ *  drift apart again. See lib/race/b-goal.ts. */
+export { B_SAFE_FRACTION } from './b-goal';
 
 /** 2026-08-17 · honesty: certification renders ONLY when meta actually
  *  carries one (no more hardcoded "USATF certified" on every A race).
@@ -221,13 +224,15 @@ export function composeRaceDetailPacing(opts: {
   const effectiveGoal = effSec > 0 ? (formatRaceTime(effSec) ?? aGoal) : '·';
   const stretchGoal = source === 'projection' && aGoal !== '·' ? aGoal : null;
 
-  // B · SAFE readback. The runner-edited meta.goalSafeDisplay (written by
-  // PATCH /api/race) wins; fallback derives from the EFFECTIVE target so a
-  // demoted goal doesn't drag a fantasy B down with it.
-  const storedBSec = parseRaceTime(opts.goalSafeDisplay);
-  const derivedBSec = effSec > 0 ? effSec + Math.round(effSec * B_SAFE_FRACTION) : 0;
-  const bSec = storedBSec != null && storedBSec > 0 ? storedBSec : derivedBSec;
-  const bGoal = bSec > 0 ? (formatRaceTime(bSec) ?? '·') : '·';
+  // B · SAFE readback · delegated to the shared resolver (lib/race/b-goal.ts)
+  // so every surface answers this question the same way. Runner-edited
+  // meta.goalSafeDisplay wins; the fallback derives from the EFFECTIVE
+  // target so a demoted goal doesn't drag a fantasy B down with it.
+  const b = resolveBGoal({
+    effectiveTargetSec: effSec,
+    storedBGoalSec: parseRaceTime(opts.goalSafeDisplay),
+  });
+  const bGoal = b.sec != null ? (formatRaceTime(b.sec) ?? '·') : '·';
 
   return {
     aGoal,
@@ -236,7 +241,7 @@ export function composeRaceDetailPacing(opts: {
     stretchGoal,
     goalPace: pace(effSec, opts.distanceMi),
     bGoal,
-    bGoalSource: storedBSec != null && storedBSec > 0 ? 'stored' : 'derived',
+    bGoalSource: b.source === 'stored' ? 'stored' : 'derived',
     pacing: buildPacing(effSec, opts.distanceMi, opts.netElevFt),
     splits: buildSplits(effSec, opts.distanceMi, opts.geometry ?? null),
     gels: buildGels(effSec, opts.distanceMi, opts.fuel ?? null),

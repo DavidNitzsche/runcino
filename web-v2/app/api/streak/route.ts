@@ -17,6 +17,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
+import { runnerToday } from '@/lib/runtime/runner-tz';
+import { addDaysToDayKey } from '@/lib/runtime/day-key';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,8 +26,13 @@ const MILESTONES = [7, 14, 30, 100] as const;
 
 async function computeRunStreak(userId: string): Promise<number> {
   try {
-    const r = await pool.query(
-      `SELECT DISTINCT (data->>'date')::date AS d
+    // to_char, not ::date · node-pg parses a pg `date` into a JS Date at
+    // LOCAL midnight, and the day key was then read back off the UTC
+    // instant. A string out of Postgres is already the calendar day and
+    // needs no parsing at all (see project memory: node-pg timestamp TZ
+    // trap).
+    const r = await pool.query<{ d: string }>(
+      `SELECT DISTINCT to_char((data->>'date')::date, 'YYYY-MM-DD') AS d
          FROM runs
         WHERE user_uuid = $1
           AND data->>'date' IS NOT NULL
@@ -34,18 +41,19 @@ async function computeRunStreak(userId: string): Promise<number> {
       [userId],
     );
     if (r.rows.length === 0) return 0;
-    const dates = new Set(r.rows.map((row: any) => new Date(row.d).toISOString().slice(0, 10)));
-    let cursor = new Date();
-    const todayIso = cursor.toISOString().slice(0, 10);
-    if (!dates.has(todayIso)) {
-      cursor.setUTCDate(cursor.getUTCDate() - 1);
+    const dates = new Set(r.rows.map((row) => row.d));
+    // The streak walks the RUNNER's calendar. On server-UTC "today" a
+    // Pacific runner's streak broke or extended seven hours early every
+    // evening — the pill would read one day short from 5pm until midnight.
+    let cursor = await runnerToday(userId);
+    if (!dates.has(cursor)) {
+      cursor = addDaysToDayKey(cursor, -1);
     }
     let count = 0;
     for (;;) {
-      const iso = cursor.toISOString().slice(0, 10);
-      if (!dates.has(iso)) break;
+      if (!dates.has(cursor)) break;
       count++;
-      cursor.setUTCDate(cursor.getUTCDate() - 1);
+      cursor = addDaysToDayKey(cursor, -1);
     }
     return count;
   } catch {
@@ -58,8 +66,8 @@ async function longestPriorStreak(userId: string): Promise<number> {
   // remembering the longest gap-free run. Good enough for the "longest
   // ever" comparison the pill cares about.
   try {
-    const r = await pool.query(
-      `SELECT DISTINCT (data->>'date')::date AS d
+    const r = await pool.query<{ d: string }>(
+      `SELECT DISTINCT to_char((data->>'date')::date, 'YYYY-MM-DD') AS d
          FROM runs
         WHERE user_uuid = $1
           AND data->>'date' IS NOT NULL
@@ -67,7 +75,7 @@ async function longestPriorStreak(userId: string): Promise<number> {
       [userId],
     );
     if (r.rows.length === 0) return 0;
-    const dates = r.rows.map((row: any) => new Date(row.d).toISOString().slice(0, 10));
+    const dates = r.rows.map((row) => row.d);
     let longest = 1;
     let cur = 1;
     for (let i = 1; i < dates.length; i++) {

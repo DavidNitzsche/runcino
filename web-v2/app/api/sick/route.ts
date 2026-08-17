@@ -24,6 +24,8 @@ import { pool } from '@/lib/db/pool';
 import { enqueueNotification, nextMorning0715 } from '@/lib/notifications/enqueue';
 import { renderSickCheck } from '@/lib/notifications/templates';
 import { requireUserId } from '@/lib/auth/session';
+import { runnerTimezone } from '@/lib/runtime/runner-tz';
+import { dayKeyInTz } from '@/lib/runtime/day-key';
 
 interface SickPostBody {
   symptoms: string[];
@@ -96,8 +98,16 @@ export async function POST(req: NextRequest) {
     const episodeId = Number(ins.rows[0].id);
     // Notifications v1 §E — enqueue the first daily sick check for tomorrow 07:15.
     try {
-      const fireAt = nextMorning0715(new Date());
-      const dateIso = fireAt.toISOString().slice(0, 10);
+      // 2026-08-17 · resolve the runner's zone up front, so BOTH the fire
+      // time and the date baked into the template body are runner-local.
+      // Was: nextMorning0715(new Date()) → server-local 07:15 (07:15Z on
+      // Railway = 00:15 PT), with dateIso sliced off that UTC instant.
+      // enqueueNotification recomputes the FIRE TIME in the runner's zone
+      // via its marker, but nothing recomputed date_iso — so the check-in
+      // could be labelled with a day the runner never saw.
+      const tz = await runnerTimezone(userId);
+      const fireAt = nextMorning0715(new Date(), tz);
+      const dateIso = dayKeyInTz(fireAt, tz);
       const tpl = renderSickCheck({
         user_id: userId,
         episode_id: episodeId,

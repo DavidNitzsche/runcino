@@ -22,9 +22,14 @@
  *
  * Auth: same CRON_SECRET pattern as the other cron routes.
  *
- * Recommended schedule: 07:45 UTC daily (after run-adaptations at 07:15
- * and snapshot-projections at 07:30 — promotion has no dependency on
- * those, but spreading the load is nice).
+ * Schedule: 07:45 UTC daily, per .github/workflows/promote-courses.yml.
+ *
+ * 2026-08-17 · the note here said "after run-adaptations at 07:15", which
+ * stopped being true when run-adaptations moved to 03:00 UTC on
+ * 2026-06-04. Promotion has no dependency on either neighbour, so nothing
+ * broke — but a false ordering claim is how a real one gets trusted.
+ * It still lands after snapshot-projections (07:30), which is the only
+ * neighbour it shares any load with.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';

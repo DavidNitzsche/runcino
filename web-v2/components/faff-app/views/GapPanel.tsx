@@ -43,6 +43,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { GoalRace } from '../types';
 import { parseRaceTime } from '@/lib/training/vdot';
+import { resolveBGoal } from '@/lib/race/b-goal';
 import { projectFitnessTrajectory } from '@/lib/training/fitness-trajectory';
 import type { GoalStatusRead } from '@/lib/faff/goal-status';
 
@@ -520,7 +521,10 @@ export function GapPanel({ goal, series, anchor, status: statusRead }: GapPanelP
     const aSec = et?.targetSec ?? goalSec;
     const isStretch = et?.source === 'projection';
     const aTarget = aSec != null ? fmtClock(aSec) : goal.goal;
-    const bSec = goal.goalSafeSec ?? (aSec != null ? aSec + Math.round(aSec * 0.033) : null);
+    // 2026-08-17 · delegated to lib/race/b-goal.ts. The 3.3% lived inline
+    // in three places and one of them (TodayView's race-day hero) had a
+    // flat +7:00 instead, which is +39% on an 18:00 5K.
+    const bSec = resolveBGoal({ effectiveTargetSec: aSec, storedBGoalSec: goal.goalSafeSec }).sec;
     const bTarget = bSec != null ? fmtClock(bSec) : '·';
     const aPace = aSec != null && goal.distanceMi ? paceLabel(aSec, goal.distanceMi) : 'target pace';
     const bPace = bSec != null && goal.distanceMi ? paceLabel(bSec, goal.distanceMi) : 'safe pace';

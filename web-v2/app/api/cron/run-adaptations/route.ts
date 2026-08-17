@@ -6,10 +6,32 @@
  * PR bank, goal change) and applies actions to plan_workouts.
  * Idempotent.
  *
- * Auth: CRON_SECRET. Schedule: 07:15 UTC = 00:15 PT (between briefing
- * cron at 07:05 and weather cron at 07:30). Adaptation must happen
- * BEFORE the morning briefing reads the plan so the coach sees the
- * adapted state.
+ * Auth: CRON_SECRET.
+ *
+ * Schedule: 03:00 UTC = 20:00 PT the previous evening, per
+ * .github/workflows/run-adaptations.yml (`cron: '0 3 * * *'`). That file
+ * is the only schedule that exists — this comment does not set it, and
+ * for a while it disagreed with it.
+ *
+ * 2026-08-17 · this header used to claim 07:15 UTC "between briefing cron
+ * at 07:05 and weather cron at 07:30". The cron was moved to 03:00 on
+ * 2026-06-04 (David: "I dont want to wake up to change runs · that was
+ * annoying") so proposals land on Today the evening BEFORE, and the
+ * comment was never updated. Every ordering claim it made was false.
+ *
+ * The ordering INTENT still holds, and with more room than the stale
+ * comment claimed. Adaptation must land before the morning briefing
+ * reads the plan, so the coach sees the adapted state:
+ *
+ *   03:00 UTC  run-adaptations     (this route)
+ *   07:05 UTC  refresh-briefings   (+4h05m — the constraint that matters)
+ *   07:30 UTC  enrich-weather
+ *   08:15 UTC  readiness-snapshot
+ *
+ * If this cron is ever rescheduled, check it against refresh-briefings
+ * (`.github/workflows/refresh-briefings.yml`) — a briefing composed off
+ * an un-adapted plan tells the runner to do a workout the engine has
+ * already changed.
  *
  * Runs over all active users (training_plans with archived_iso IS NULL).
  */
@@ -156,6 +178,7 @@ export async function GET() {
   return NextResponse.json({
     endpoint: 'POST /api/cron/run-adaptations',
     auth: 'Authorization: Bearer <CRON_SECRET>',
-    schedule: '15 7 * * * UTC (00:15 PT)',
+    // Mirrors .github/workflows/run-adaptations.yml. Keep the two in step.
+    schedule: '0 3 * * * UTC (20:00 PT, previous evening)',
   });
 }

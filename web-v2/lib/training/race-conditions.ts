@@ -53,6 +53,13 @@ export interface RaceConditionsInput {
    *  jump the moment a race crossed into the 14-day forecast horizon.
    *  Null → daily max (conservative legacy behavior). */
   startTimeLocal?: string | null;
+  /**
+   * The RUNNER's today (runnerToday(userUuid)). Supply it whenever a
+   * user is in scope — `daysUntil` drives the forecast-vs-climate switch
+   * and the race-week copy, and a server-UTC "today" moves that boundary
+   * for anyone not living in UTC. Omitted → server UTC, documented below.
+   */
+  todayISO?: string | null;
 }
 
 export interface RaceConditionsResult {
@@ -119,14 +126,14 @@ function daysBetween(fromISO: string, toISO: string): number {
 export async function computeRaceConditions(
   input: RaceConditionsInput,
 ): Promise<RaceConditionsResult> {
-  // 2026-06-03 · `today` is server UTC here because RaceConditionsInput
-  // doesn't carry a userUuid. For races more than a day out the off-by-1
-  // doesn't matter (forecast lookup, climate fallback). Callers that
-  // need per-runner-TZ precision should pass `todayISO` directly via the
-  // input. Keeping the helper signature stable for now · upgrade path
-  // is to add `input.todayISO` and pass `await runnerToday(userUuid)`
-  // from the caller. See TZ refactor doctrine.
-  const todayISO = new Date().toISOString().slice(0, 10);
+  // 2026-08-17 · the upgrade path the 2026-06-03 note described is taken:
+  // callers with a user in scope pass `todayISO` from runnerToday(), and
+  // both of them now do (api/targets/projection, faff-app/seed). Server
+  // UTC survives only as the fallback for a caller with no user — which
+  // is off by a day for a Pacific runner every evening, and matters most
+  // in exactly the case where precision counts: the 14-day forecast
+  // boundary and the race-week copy.
+  const todayISO = input.todayISO ?? new Date().toISOString().slice(0, 10);
   const daysUntil = daysBetween(todayISO, input.raceDateISO);
   const ability = abilityTierFromVdot(input.vdot);
 

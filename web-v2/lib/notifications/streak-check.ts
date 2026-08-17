@@ -19,6 +19,8 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
+import { addDaysToDayKey } from '@/lib/runtime/day-key';
 import { enqueueNotification } from './enqueue';
 import { renderStreakMilestone } from './templates';
 
@@ -47,8 +49,11 @@ export async function maybeFireStreakMilestone(userId: string): Promise<void> {
  */
 async function computeRunStreak(userId: string): Promise<number> {
   try {
-    const r = await pool.query(
-      `SELECT DISTINCT (data->>'date')::date AS d
+    // to_char keeps the calendar day a string end to end; node-pg parses a
+    // pg `date` to LOCAL midnight and the key was read back off the UTC
+    // instant.
+    const r = await pool.query<{ d: string }>(
+      `SELECT DISTINCT to_char((data->>'date')::date, 'YYYY-MM-DD') AS d
          FROM runs
         WHERE user_uuid = $1
           AND data->>'date' IS NOT NULL
@@ -57,21 +62,21 @@ async function computeRunStreak(userId: string): Promise<number> {
       [userId],
     );
     if (r.rows.length === 0) return 0;
-    const dates = r.rows.map((row: any) => new Date(row.d).toISOString().slice(0, 10));
-    // Walk backwards from today; stop at the first gap.
-    let cursor = new Date();
+    const dates = new Set(r.rows.map((row) => row.d));
+    // Walk backwards from the RUNNER's today; stop at the first gap. On
+    // server-UTC this fired the streak-at-risk push against the wrong day
+    // for anyone not living in UTC.
+    let cursor = await runnerToday(userId);
     // Allow "today might not have a run yet" — start from today, but if the
     // most recent run is yesterday, that still counts as the active streak.
-    const todayIso = cursor.toISOString().slice(0, 10);
-    if (!dates.includes(todayIso)) {
-      cursor.setUTCDate(cursor.getUTCDate() - 1);
+    if (!dates.has(cursor)) {
+      cursor = addDaysToDayKey(cursor, -1);
     }
     let count = 0;
     for (;;) {
-      const iso = cursor.toISOString().slice(0, 10);
-      if (!dates.includes(iso)) break;
+      if (!dates.has(cursor)) break;
       count++;
-      cursor.setUTCDate(cursor.getUTCDate() - 1);
+      cursor = addDaysToDayKey(cursor, -1);
     }
     return count;
   } catch {

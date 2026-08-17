@@ -401,6 +401,12 @@ function fromAdaptation(a: AdaptationInput): CoachDecision {
  * when length > 1.
  */
 export function selectCoachDecisions(input: SelectDecisionsInput): CoachDecision[] {
+  // CLIENT-ONLY fallback. With no `timeZone` option Intl formats in the
+  // process default zone — which in the browser IS the runner's zone
+  // (correct), and on the server is UTC (wrong). The only production
+  // caller, CoachDecisionCard, is a client component and passes todayISO
+  // explicitly. Any server-side caller MUST pass it: a UTC "today" here
+  // ages every decision card a day early for a runner west of Greenwich.
   const todayISO = input.todayISO ?? new Intl.DateTimeFormat('en-CA').format(new Date());
   const excluded = new Set(input.excludeKinds ?? []);
   const out: CoachDecision[] = [];

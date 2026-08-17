@@ -19,6 +19,7 @@
  */
 
 import { cookies, headers } from 'next/headers';
+import { addDaysToDayKey } from '@/lib/runtime/day-key';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
@@ -108,11 +109,12 @@ function groupByWeek(rows: ByDateRow[]): Array<{ weekKey: string; rows: ByDateRo
   for (const r of rows) {
     // Group by ISO week-start (Monday). YYYY-MM-DD → week-Monday string.
     try {
-      const d = new Date(r.date + 'T12:00:00');
+      // 'T12:00:00' with no Z is LOCAL noon, and the getUTC* walk below
+      // then reads it in UTC — so at offsets past ±12 the Monday key
+      // landed on the wrong day. Anchor at noon UTC and stay there.
+      const d = new Date(r.date + 'T12:00:00Z');
       const dow = (d.getUTCDay() + 6) % 7;          // 0=Mon ... 6=Sun
-      const monday = new Date(d);
-      monday.setUTCDate(d.getUTCDate() - dow);
-      const key = monday.toISOString().slice(0, 10);
+      const key = addDaysToDayKey(r.date, -dow);
       const list = groups.get(key) ?? [];
       list.push(r);
       groups.set(key, list);

@@ -76,6 +76,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
+import { dayKeyInTz } from '@/lib/runtime/day-key';
 import {
   HIST_AVG_MIDPOINTS,
   HIST_LONG_MIDPOINTS,
@@ -281,10 +282,10 @@ export async function POST(req: NextRequest) {
   // Rest day must not collide with the long run; the generator overwrites
   // a shared slot with the long and would leave the week rest-less.
   const restDay = longRunDay ? (longRunDay === 'sat' ? 'mon' : 'sat') : null;
-  const todayInTz = (() => {
-    try { return new Date().toLocaleDateString('en-CA', { timeZone: timezone }); }
-    catch { return new Date().toISOString().slice(0, 10); }
-  })();
+  // dayKeyInTz carries the same UTC fallback for an unparseable zone, but
+  // keeps the "which day is it for this runner" question in one place
+  // (lib/runtime/day-key.ts) instead of an inline try/catch per caller.
+  const todayInTz = dayKeyInTz(new Date(), timezone);
   const startDate = (() => {
     if (typeof body.startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.startDate)) return null;
     const hi = new Date(todayInTz + 'T12:00:00Z');

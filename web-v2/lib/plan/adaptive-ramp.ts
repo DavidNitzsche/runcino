@@ -278,6 +278,9 @@ export async function planUpgrade(opp: RampOpportunity): Promise<UpgradePlan | n
   ).catch(() => ({ rows: [] as Array<{ user_uuid: string }> }))).rows[0];
   const today = userRow?.user_uuid
     ? await runnerToday(userRow.user_uuid)
+    // No owning user means the plan row is gone, so the query below
+    // returns nothing and this value is never read against real data.
+    // Server UTC is the only thing available and cannot mislead here.
     : new Date().toISOString().slice(0, 10);
   // Pull next 7 days of rows on the active plan.
   const rows = await pool.query<{

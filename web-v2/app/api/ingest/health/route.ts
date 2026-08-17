@@ -92,6 +92,24 @@ export async function POST(req: NextRequest) {
   } catch {
     // Best-effort.
   }
+  // The runner's zone, resolved once for this batch. Every sample_date
+  // fallback below buckets on the RUNNER's calendar day.
+  //
+  // 2026-08-17 · was `(recorded_at ?? now).slice(0, 10)` — the UTC day of
+  // the instant. sample_date is the UNIQUE key on health_samples, so a
+  // 6pm Pacific sleep/HRV/RHR reading was permanently filed against
+  // tomorrow's row, and the daily active-energy total was split across
+  // two days. The native client normally sends sample_date in runner-local
+  // time (HealthKitImporter), so this is the fallback path — but the
+  // fallback is what fires for every non-native or older client.
+  const { runnerTimezone } = await import('@/lib/runtime/runner-tz');
+  const { dayKeyInTz } = await import('@/lib/runtime/day-key');
+  const tz = await runnerTimezone(userId);
+  const localDayOf = (recordedAt: string | null | undefined): string => {
+    const d = recordedAt ? new Date(recordedAt) : new Date();
+    return dayKeyInTz(Number.isNaN(d.getTime()) ? new Date() : d, tz);
+  };
+
   // Pre-aggregate active_energy samples by calendar date.
   //
   // The iPhone sends ~15-second HK buckets (each 0.01–3 kcal). The health_samples
@@ -108,7 +126,7 @@ export async function POST(req: NextRequest) {
   const aeByDate = new Map<string, number>();
   for (const s of samples) {
     if (s?.sample_type === 'active_energy' && typeof s.value === 'number' && s.value > 0) {
-      const d: string = s.sample_date ?? (s.recorded_at ?? new Date().toISOString()).slice(0, 10);
+      const d: string = s.sample_date ?? localDayOf(s.recorded_at);
       aeByDate.set(d, (aeByDate.get(d) ?? 0) + s.value);
     }
   }
@@ -150,7 +168,7 @@ export async function POST(req: NextRequest) {
       skipped++;
       continue;
     }
-    const sampleDate = s.sample_date ?? (s.recorded_at ?? new Date().toISOString()).slice(0, 10);
+    const sampleDate = s.sample_date ?? localDayOf(s.recorded_at);
     const recordedAt = s.recorded_at ?? new Date().toISOString();
 
     try {

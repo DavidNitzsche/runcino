@@ -24,6 +24,7 @@ import type { PlannedDay, CompletedRun, EffortKey } from './constants';
 import { predictRaceTime, formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 import { userIdFromCookies } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { dayKeyFromLocalParts, pgDayKey, addDaysToDayKey } from '@/lib/runtime/day-key';
 import { stripResearchCitations as stripCitationsSafe } from '@/lib/plan/strip-citations';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
@@ -198,7 +199,9 @@ async function loadFormMetrics(uid: string) {
       [uid]
     ).catch(() => ({ rows: [] as Array<{ d: Date | string; cadence: string | null; power: string | null; stride: string | null }> }));
     for (const r of runRows.rows) {
-      const dStr = r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d);
+      // pgDayKey · node-pg parses a `date` column to LOCAL midnight, so
+      // reading the day back off the UTC instant loses a day east of UTC.
+      const dStr = pgDayKey(r.d) ?? String(r.d);
       // 130-220 spm guard · throws out 0/null cadence rows from runs that
       // don't carry the field (very-old Strava imports).
       if (r.cadence != null) {
@@ -251,7 +254,9 @@ async function loadFormMetrics(uid: string) {
       return { rows: [] as Array<{ sample_type: string; d: Date | string; value: number | string }> };
     });
     for (const r of hkRows.rows) {
-      const dStr = r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d);
+      // pgDayKey · node-pg parses a `date` column to LOCAL midnight, so
+      // reading the day back off the UTC instant loses a day east of UTC.
+      const dStr = pgDayKey(r.d) ?? String(r.d);
       (acc[r.sample_type] ??= []).push({ date: dStr, value: Number(r.value) });
     }
 
@@ -1763,7 +1768,9 @@ function buildRange(runs: LogRun[], range: 'month'|'year'|'all'): ActivityData['
       const end = new Date(start); end.setDate(start.getDate() + 7);
       const mi = subset.filter(r => Date.parse(r.date) >= start.getTime() && Date.parse(r.date) < end.getTime())
         .reduce((s, r) => s + r.distance_mi, 0);
-      vol.push({ l: shortDate(start.toISOString()).toUpperCase(), v: Math.round(mi) });
+      // `start` is local midnight; shortDate re-anchors at noon UTC off the
+      // date part, so it must be handed the LOCAL calendar day.
+      vol.push({ l: shortDate(dayKeyFromLocalParts(start)).toUpperCase(), v: Math.round(mi) });
     }
   } else if (range === 'year') {
     volT = 'Monthly mileage'; volS = `${now.getFullYear()}, by month`;
@@ -1793,6 +1800,14 @@ function buildRange(runs: LogRun[], range: 'month'|'year'|'all'): ActivityData['
   };
 }
 
+/** Monday of the week containing a YYYY-MM-DD day key, as a day key.
+ *  Noon-anchored UTC throughout — no local/UTC mixing, no DST edge. */
+function mondayKeyOf(dayKey: string): string {
+  const ms = Date.parse(`${dayKey.slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(ms)) return dayKey.slice(0, 10);
+  const dow = (new Date(ms).getUTCDay() + 6) % 7; // 0 = Monday
+  return addDaysToDayKey(dayKey.slice(0, 10), -dow);
+}
 function mondayOf(d: Date): Date {
   const day = new Date(d); day.setHours(0,0,0,0);
   const dow = (day.getDay() + 6) % 7;
@@ -1851,7 +1866,12 @@ function heatGrid(runs: LogRun[], weeks = 18): import('./types').HeatCell[][] {
     for (let d = 0; d < 7; d++) {
       const day = new Date(today);
       day.setDate(today.getDate() - (c * 7 + (6 - d)));
-      const iso = day.toISOString().slice(0, 10);
+      // `today` is LOCAL midnight (setHours(0,0,0,0)), so the cell key has
+      // to be read off the local parts. toISOString() here keyed every
+      // cell one day early for any runner east of UTC, and this grid runs
+      // in the browser — so the runner's own zone decided whether their
+      // activity heat map was aligned.
+      const iso = dayKeyFromLocalParts(day);
       const bucket = byDay[iso];
       const mi = bucket?.mi ?? 0;
       const lv: 0|1|2|3|4 = mi <= 0 ? 0 : mi < 4 ? 1 : mi < 8 ? 2 : mi < 14 ? 3 : 4;
@@ -1885,10 +1905,12 @@ function recordsFromRuns(runs: LogRun[]): ActivityData['ranges']['year']['recs']
   const longest = runs.reduce((p, c) => c.distance_mi > p.distance_mi ? c : p);
   const wmap: Record<string, number> = {};
   for (const r of runs) {
-    const dt = new Date(r.date);
-    const dow = (dt.getDay() + 6) % 7;
-    const mon = new Date(dt); mon.setDate(dt.getDate() - dow);
-    const key = mon.toISOString().slice(0, 10);
+    // Pure day-key arithmetic. This used to parse `r.date` (a YYYY-MM-DD)
+    // as UTC midnight and then walk it back with LOCAL getDay/setDate —
+    // two different calendars in three lines, so the Monday bucket could
+    // land on a Sunday and split one week's mileage across two rows of a
+    // "BIGGEST WEEK" record.
+    const key = mondayKeyOf(r.date);
     wmap[key] = (wmap[key] ?? 0) + r.distance_mi;
   }
   const bigWeek = Object.entries(wmap).sort((a, b) => b[1] - a[1])[0];
@@ -2494,6 +2516,9 @@ export async function buildSeed(): Promise<FaffSeed> {
             goalSec: goalSecLocal,
             vdot: profile?.physiology.vdot ?? null,
             startTimeLocal: raceStartTimeLocal,
+            // The runner's day, not the server's · daysUntil decides
+            // forecast-vs-climate and the race-week copy.
+            todayISO: await runnerToday(userId),
           });
           goalRace.conditionsImpactSec = conditions.seconds;
           goalRace.conditionsSource = conditions.source;

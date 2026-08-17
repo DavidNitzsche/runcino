@@ -19,6 +19,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import type { RunnerCalibrationLike } from '@/lib/plan/simulator';
@@ -122,7 +123,7 @@ export async function loadRunnerCalibration(
   if (row) {
     return {
       userUuid,
-      asOf: row.as_of.toISOString().slice(0, 10),
+      asOf: pgDayKey(row.as_of) ?? String(row.as_of),
       vdotPerQuality: Number(row.vdot_per_quality),
       longRunWeight: Number(row.long_run_weight),
       recoveryMult: Number(row.recovery_mult),

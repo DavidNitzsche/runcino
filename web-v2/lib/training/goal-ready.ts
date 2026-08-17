@@ -36,6 +36,7 @@
  * insufficient-data (cold start). The UI copy renders each honestly.
  */
 import { pool } from '@/lib/db/pool';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { vdotFromRace, formatRaceTime, predictRaceTime } from './vdot';
 
 export type TTGoalDistance =
@@ -231,6 +232,10 @@ export async function loadGoalReadyProjection(userId: string): Promise<GoalReady
     .map((r) => ({ dateISO: r.d, vdot: Number(r.v) }))
     .filter((p) => Number.isFinite(p.vdot));
 
-  const todayISO = new Date().toISOString().slice(0, 10);
+  // The runner's today, not the server's. This feeds projection dates the
+  // runner reads on Targets; a UTC "today" is the wrong day for anyone
+  // east of Greenwich after their local midnight, and for a US runner for
+  // the last seven hours of every evening.
+  const todayISO = await runnerToday(userId);
   return computeGoalReady(tt, prof.tt_time, pts, todayISO, prof.tt_secs);
 }
