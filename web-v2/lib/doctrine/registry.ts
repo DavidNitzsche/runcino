@@ -98,6 +98,33 @@ import {
   raceWindowFor,
 } from '@/lib/coach/easy-discipline';
 import { vdotFromRace } from '@/lib/training/vdot';
+import {
+  READINESS_WEIGHTS,
+  LOAD_CONTEXT_MULTIPLIER,
+  loadContextMultiplier,
+  computeReadiness,
+} from '@/lib/coach/readiness';
+import {
+  ACWR_BANDS,
+  SLEEP_FLOOR_TOLERANCE_H,
+  SLEEP_TARGET_BY_MPW,
+  sleepFloorForMileage,
+  tierRulesFor,
+  type ExperienceLevel,
+} from '@/lib/coach/tier-rules';
+import {
+  GRADE_COST_PER_PCT as ELEV_GRADE_COST_PER_PCT,
+  DESCENT_RECOVERY_FRACTION,
+  MAX_DESCENT_CREDIT_S_PER_MI,
+  DESCENT_HARD_CAP_S_PER_MI,
+} from '@/lib/training/elevation-model';
+import {
+  dewpointAddPct,
+  INTERVAL_ADJUSTMENT_FACTOR,
+  effortSlowdownPct,
+} from '@/lib/training/heat-model';
+import { WBGT_FLAGS, heatBandForFlag } from '@/lib/coach/heat-gate';
+import { HEAT_HR_CONFOUNDER, heatHrBumpBpm } from '@/lib/weather/heat-adjustment';
 import type { DoctrineClaim } from './types';
 import { matchLiteral, parseBand, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
 
@@ -1865,17 +1892,17 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       // The same coefficient must be the one the race-pacing path uses. Two
       // numbers here means the plan and the execution disagree about the
-      // same hill.
-      const pacing = sourceOf('web-v2/lib/race/pacing.ts');
-      const lit = matchLiteral(
-        pacing,
-        /GRADE_COST_PER_PCT\s*=\s*(\d*\.\d+)/,
-        'lib/race/pacing.ts#GRADE_COST_PER_PCT',
-      );
-      if (Math.abs(Number(lit[1]) - GRADE_COST_PER_PCT) > 1e-9) {
+      // same hill. 2026-08-17: race/pacing.ts no longer declares its own
+      // literal — the elevation consolidation moved it into
+      // lib/training/elevation-model.ts, which pacing.ts and course-impact.ts
+      // both call. This claim now compares the two exported constants
+      // directly, which is stronger than a source scan: a refactor that moves
+      // either one keeps failing here until they are reconciled.
+      if (Math.abs(ELEV_GRADE_COST_PER_PCT - GRADE_COST_PER_PCT) > 1e-9) {
         throw new Error(
-          `lib/race/pacing.ts uses ${lit[1]} per 1% grade but lib/terrain/grade-adjust.ts uses ` +
-            `${GRADE_COST_PER_PCT}. Planned courses and executed runs must cost a hill the same.`,
+          `lib/training/elevation-model.ts uses ${ELEV_GRADE_COST_PER_PCT} per 1% grade but ` +
+            `lib/terrain/grade-adjust.ts uses ${GRADE_COST_PER_PCT}. Planned courses and ` +
+            `executed runs must cost a hill the same.`,
         );
       }
     },
@@ -2008,6 +2035,402 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (composeEffortFactor({ heatSlowdownPct: heatPct, gradeFactor: 1 }).factor !== 1 + heatPct / 100) {
         throw new Error('flat terrain is not passing the heat factor through unchanged');
+      }
+    },
+  },
+
+  // ══ TIER-2 DOCTRINE (readiness · tier · elevation · heat) ═══════════════════
+  {
+    id: 'ELEVATION.descent-gives-back-half',
+    binds: [
+      'lib/training/elevation-model.ts#DESCENT_RECOVERY_FRACTION',
+      'lib/training/elevation-model.ts#MAX_DESCENT_CREDIT_S_PER_MI',
+      'lib/training/elevation-model.ts#DESCENT_HARD_CAP_S_PER_MI',
+    ],
+    doc: 'Research/11-course-specific-training.md',
+    anchor: '### Pacing Rule for Hilly Courses',
+    claim:
+      'Doctrine states both sides of a hill in seconds per mile: climbs add 10-30, descents ' +
+      'shave 5-15 and never more than 20. So a descent hands back about half of what the ' +
+      'matching climb took, the per-mile credit is capped at the top of the descent band, and ' +
+      'the hard floor is the stated 20. All three come out of this one code block.',
+    check({ cite }) {
+      const text = cite.text();
+      const climbLine = text.split('\n').find((l) => /On climbs:/.test(l));
+      const descentLine = text.split('\n').find((l) => /On descents:/.test(l));
+      if (!climbLine || !descentLine) {
+        throw new Error('the hilly-course pacing block no longer states both a climb and a descent rule');
+      }
+      const [climbLo, climbHi] = parseBand(climbLine);
+      const [descLo, descHi] = parseBand(descentLine);
+      const ratio = ((descLo + descHi) / 2) / ((climbLo + climbHi) / 2);
+      if (Math.abs(DESCENT_RECOVERY_FRACTION - ratio) > 0.02) {
+        throw new Error(
+          `DESCENT_RECOVERY_FRACTION is ${DESCENT_RECOVERY_FRACTION} · doctrine's bands ` +
+            `(climb ${climbLo}-${climbHi}, descent ${descLo}-${descHi} s/mi) give ${ratio.toFixed(2)}`,
+        );
+      }
+      if (MAX_DESCENT_CREDIT_S_PER_MI !== descHi) {
+        throw new Error(`MAX_DESCENT_CREDIT_S_PER_MI is ${MAX_DESCENT_CREDIT_S_PER_MI}, doctrine shaves at most ${descHi} s/mi`);
+      }
+      const hardCap = parseBand(descentLine.slice(descentLine.indexOf('minus')))[0];
+      if (DESCENT_HARD_CAP_S_PER_MI !== hardCap) {
+        throw new Error(`DESCENT_HARD_CAP_S_PER_MI is ${DESCENT_HARD_CAP_S_PER_MI}, doctrine caps at goal pace minus ${hardCap} s/mi`);
+      }
+    },
+  },
+  {
+    id: 'ELEVATION.grade-energy-cost',
+    binds: ['lib/training/elevation-model.ts#ELEV_GRADE_COST_PER_PCT'],
+    doc: 'Research/11-course-specific-training.md',
+    anchor: 'Energy cost rises ~3.3% per 1% of grade',
+    claim:
+      'Uphill running costs a fixed fraction of pace per 1% of grade, and that fraction is ' +
+      'stated in the doc. It used to live in two places at two values — the race-splits model ' +
+      'read it correctly and the Targets course chunk invented +10 s/mi per 100 ft/mi, which ' +
+      'lands 3-6x lighter. One constant now, read from the sentence itself.',
+    check({ cite }) {
+      const pct = parseBand(cite.section[0].replace(/up to.*$/, ''))[0];
+      if (Math.abs(ELEV_GRADE_COST_PER_PCT - pct / 100) > 0.0005) {
+        throw new Error(`ELEV_GRADE_COST_PER_PCT is ${ELEV_GRADE_COST_PER_PCT}, doctrine says ${pct}% per 1% of grade`);
+      }
+      // The old model is gone, not merely bypassed.
+      const src = sourceOf('web-v2/lib/training/course-impact.ts');
+      if (/NET_CLIMB_S_PER_MI_PER_100FT|GROSS_FATIGUE_S_PER_MI_PER_100FT/.test(src)) {
+        throw new Error('course-impact.ts still defines its own per-100-ft elevation coefficients');
+      }
+      if (!/courseElevationCostSec/.test(src)) {
+        throw new Error('course-impact.ts no longer calls the shared elevation model');
+      }
+    },
+  },
+  {
+    id: 'HEAT.band-taxonomy-is-wbgt',
+    binds: ['lib/coach/heat-gate.ts#WBGT_FLAGS', 'lib/coach/heat-gate.ts#heatBandForFlag'],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: '| WBGT (°F) | WBGT (°C) | Flag | Action |',
+    claim:
+      "Doctrine's heat taxonomy is the ACSM / Korey Stringer flag table, and the app had four " +
+      'others: a slowdown-%% ladder on the verdict, a Tair ladder on the race projection, a ' +
+      'different Tair ladder on the phone. Every band boundary and every flag name in the ' +
+      'engine is read straight off this table, and the word the UI shows is a mapping of the ' +
+      'flag rather than a scale of its own.',
+    check({ cite }) {
+      const t = cite.table();
+      const docFlags = t.rows.map((r) => r['Flag'].toLowerCase());
+      const engineFlags = WBGT_FLAGS.map((b) => b.flag);
+      if (engineFlags.join(',') !== docFlags.join(',')) {
+        throw new Error(`WBGT_FLAGS reads ${engineFlags.join(' · ')} · doctrine has ${docFlags.join(' · ')}`);
+      }
+      t.rows.forEach((row, i) => {
+        const cell = row['WBGT (°F)'];
+        const engine = WBGT_FLAGS[i].maxF;
+        if (/^</.test(cell.trim())) {
+          if (engine !== parseBand(cell)[0]) {
+            throw new Error(`WBGT_FLAGS[${i}].maxF is ${engine}, doctrine's first band is ${cell}`);
+          }
+          return;
+        }
+        if (/^>/.test(cell.trim())) {
+          if (engine !== Infinity) throw new Error(`WBGT_FLAGS[${i}].maxF is ${engine}, doctrine's last band is open-ended`);
+          return;
+        }
+        const hi = parseBand(cell)[1];
+        if (engine !== hi) throw new Error(`WBGT_FLAGS[${i}].maxF is ${engine}, doctrine's band ends at ${hi}`);
+      });
+      // The UI word must be a total mapping of the flag · a flag with no word
+      // is a surface that will quietly invent one.
+      for (const flag of new Set(engineFlags)) {
+        if (heatBandForFlag(flag) == null) throw new Error(`flag "${flag}" maps to no display word`);
+      }
+      if (heatBandForFlag('unknown') != null) {
+        throw new Error('an unknown flag maps to a heat word · a missing input must read as missing');
+      }
+    },
+  },
+  {
+    id: 'HEAT.dewpoint-surcharge',
+    binds: ['lib/training/heat-model.ts#dewpointAddPct'],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: 'and +1% per 10°F dewpoint above 60°F',
+    claim:
+      'The dewpoint surcharge is additive on the temperature slowdown at the rate the ' +
+      "quick-reference states, from the threshold it states. Every consumer gets it now — " +
+      'before 2026-08-17 three of the five heat call sites never passed a dewpoint at all.',
+    check({ cite }) {
+      const line = cite.section[0].slice(cite.section[0].indexOf('dewpoint') - 30);
+      const nums = line.match(/(\d+(?:\.\d+)?)/g)?.map(Number) ?? [];
+      const [rate, per, threshold] = [nums[0], nums[1], nums[2]];
+      if (dewpointAddPct(threshold) !== 0) {
+        throw new Error(`the surcharge fires at exactly ${threshold}°F · doctrine says ABOVE it`);
+      }
+      const at = threshold + per;
+      const got = dewpointAddPct(at);
+      if (Math.abs(got - rate) > 0.001) {
+        throw new Error(`dewpointAddPct(${at}) is ${got}% · doctrine says +${rate}% per ${per}°F above ${threshold}°F`);
+      }
+    },
+  },
+  {
+    id: 'HEAT.interval-adjustment-is-half',
+    binds: ['lib/training/heat-model.ts#INTERVAL_ADJUSTMENT_FACTOR'],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: 'apply **half** the continuous-run adjustment',
+    claim:
+      'Repeats with recovery between them cool partially, so they take half the continuous-run ' +
+      'heat adjustment. The halving lives in the shared model, applied by a flag on the ' +
+      'conditions, not re-implemented at whichever call site happens to remember it.',
+    check() {
+      if (INTERVAL_ADJUSTMENT_FACTOR !== 0.5) {
+        throw new Error(`INTERVAL_ADJUSTMENT_FACTOR is ${INTERVAL_ADJUSTMENT_FACTOR} · doctrine says half`);
+      }
+      const conditions = { tempF: 80, humidityPct: 60, durationS: 3600 } as const;
+      const continuous = effortSlowdownPct(conditions);
+      const repeats = effortSlowdownPct({ ...conditions, intervalStyle: true });
+      if (Math.abs(repeats - continuous * 0.5) > 1e-9) {
+        throw new Error(`repeats got ${repeats}% against ${continuous}% continuous · doctrine halves it`);
+      }
+    },
+  },
+  {
+    id: 'HR.heat-confounder-band',
+    binds: ['lib/weather/heat-adjustment.ts#HEAT_HR_CONFOUNDER', 'lib/weather/heat-adjustment.ts#heatHrBumpBpm'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| Confounder | Effect at fixed effort | Magnitude |',
+    claim:
+      'Heat raises HR at fixed effort by the amount this table states, from the temperature ' +
+      'this table states. The engine used to claim "~1 bpm per 1°F above ~60°F" and cite it to ' +
+      'Research/06 §1, which carries no bpm number anywhere — and the code did not implement ' +
+      "its own comment either. Both ends of the band and the threshold are read from the row.",
+    check({ cite }) {
+      const row = cite.table().row('Heat (≥25°C)');
+      const [lo, hi] = parseBand(row['Magnitude']);
+      if (HEAT_HR_CONFOUNDER.bandBpm[0] !== lo || HEAT_HR_CONFOUNDER.bandBpm[1] !== hi) {
+        throw new Error(`HEAT_HR_CONFOUNDER band is ${HEAT_HR_CONFOUNDER.bandBpm.join('-')} bpm, doctrine says ${lo}-${hi}`);
+      }
+      // "Heat (≥25°C)" · the threshold sits inside the row label, in Celsius,
+      // and parseBand strips parenthesised text — read it off the label direct.
+      const label = row[cite.table().headers[0]];
+      const c = label.match(/(\d+(?:\.\d+)?)\s*°?C/);
+      if (!c) throw new Error(`the heat confounder row no longer states a temperature: "${label}"`);
+      const thresholdC = Number(c[1]);
+      const thresholdF = Math.round(thresholdC * 9 / 5 + 32);
+      if (HEAT_HR_CONFOUNDER.thresholdF !== thresholdF) {
+        throw new Error(`HEAT_HR_CONFOUNDER.thresholdF is ${HEAT_HR_CONFOUNDER.thresholdF}, doctrine's ${thresholdC}°C is ${thresholdF}°F`);
+      }
+      if (heatHrBumpBpm(thresholdF - 1) !== 0) {
+        throw new Error('a heat HR bump is claimed below the doctrine threshold');
+      }
+      within(heatHrBumpBpm(thresholdF), [lo, hi], 'heatHrBumpBpm at the threshold');
+      within(heatHrBumpBpm(120), [lo, hi], 'heatHrBumpBpm well above the band');
+    },
+  },
+  {
+    id: 'READINESS.hrv-floor',
+    binds: ['lib/coach/readiness.ts#READINESS_WEIGHTS'],
+    doc: 'BuildResearch/D1-recovery-score-methodology.md',
+    anchor: 'Below 40% under-uses the signal; above 50% breaks on noisy nights',
+    claim:
+      'HRV carries a stated floor as well as a target. The methodology says below 40% ' +
+      'under-uses the signal and above 50% lets one bad PPG night swing the read, so the ' +
+      "engine's HRV weight has to sit inside that band — both ends of it.",
+    check({ cite }) {
+      // The sentence states the two edges separately ("Below 40%… above 50%"),
+      // so read them as the standalone percentages on the line rather than as
+      // a dashed band.
+      const nums = (cite.section[0].match(/\d+(?:\.\d+)?%/g) ?? []).map((s) => Number(s.replace('%', '')));
+      if (nums.length < 2) {
+        throw new Error('the HRV weight sentence no longer states two bounds · re-read the claim');
+      }
+      within(READINESS_WEIGHTS.hrv * 100, [Math.min(...nums), Math.max(...nums)], 'READINESS_WEIGHTS.hrv (%)');
+    },
+  },
+  {
+    id: 'READINESS.load-cannot-create-a-score',
+    binds: ['lib/coach/readiness.ts#computeReadiness'],
+    doc: 'BuildResearch/D1-recovery-score-methodology.md',
+    anchor: "create* a score; it can only modulate one",
+    claim:
+      'A runner with training history but no biometrics has no readiness score. Load can move ' +
+      'a reading that exists; it cannot conjure one, and it cannot lift a score past the ' +
+      "ceiling the day's own pillars could have reached.",
+    check() {
+      const runsButNoBiometrics = {
+        sleep7Avg: null, hrvCurrent: null, hrvBaseline: null,
+        rhrCurrent: null, rhrBaseline: null,
+        hrRecoveryCurrent: null, hrRecoveryBaseline: null,
+        loadAcwr: 1.15, loadAcute7: 4.6, loadChronic28: 4,
+      } as unknown as Parameters<typeof computeReadiness>[0];
+      const r = computeReadiness(runsButNoBiometrics);
+      if (r.score !== null) {
+        throw new Error(`a runner with only run history scored ${r.score} · load created a score out of nothing`);
+      }
+      // A real biometric day, with the freshest possible load bonus, must not
+      // exceed what the pillars alone could have produced.
+      const neutralDay = {
+        sleep7Avg: 7.5, hrvCurrent: 60, hrvBaseline: 60,
+        rhrCurrent: 50, rhrBaseline: 50,
+        hrRecoveryCurrent: null, hrRecoveryBaseline: null,
+        loadAcwr: 0.5, loadAcute7: 2, loadChronic28: 4,
+      } as unknown as Parameters<typeof computeReadiness>[0];
+      const fresh = computeReadiness(neutralDay);
+      const maxedPillars = {
+        ...neutralDay, hrvCurrent: 200, rhrCurrent: 20, sleep7Avg: 12,
+      } as unknown as Parameters<typeof computeReadiness>[0];
+      const ceiling = computeReadiness({ ...maxedPillars, loadAcwr: 1.15 } as never).score ?? 100;
+      if ((fresh.score ?? 0) > ceiling) {
+        throw new Error(`the load bonus lifted a neutral day to ${fresh.score}, past the pillar ceiling ${ceiling}`);
+      }
+    },
+  },
+  {
+    id: 'READINESS.load-is-a-multiplier',
+    binds: [
+      'lib/coach/readiness.ts#LOAD_CONTEXT_MULTIPLIER',
+      'lib/coach/readiness.ts#loadContextMultiplier',
+    ],
+    doc: 'BuildResearch/D1-recovery-score-methodology.md',
+    anchor: 'multiplier in the range [0.85, 1.10] applied after the biometric composite',
+    claim:
+      'Training load modulates the composite, it is not a pillar of it. Every value the ' +
+      'multiplier can take sits inside the stated range, the penalty and bonus point the way ' +
+      'doctrine says (penalise an ACWR spike, reward planned freshness), and the score module ' +
+      'multiplies rather than adds.',
+    check({ cite }) {
+      // The range is written `[0.85, 1.10]` — a comma pair, not a dashed band.
+      const m = cite.section[0].match(/\[\s*(\d*\.?\d+)\s*,\s*(\d*\.?\d+)\s*\]/);
+      if (!m) throw new Error('the load-multiplier sentence no longer states a [lo, hi] range');
+      const [lo, hi] = [Number(m[1]), Number(m[2])] as [number, number];
+      for (const [name, v] of Object.entries(LOAD_CONTEXT_MULTIPLIER)) {
+        within(v, [lo, hi], `LOAD_CONTEXT_MULTIPLIER.${name}`);
+      }
+      // Direction, straight from the sentence: "penalize when ATL spike +
+      // ACWR > 1.5; bonus when ATL drops in a planned taper".
+      const spike = loadContextMultiplier(1.7, 8, 4);
+      if (!(spike < 1)) throw new Error(`ACWR 1.7 gives multiplier ${spike} · doctrine penalises an ATL spike`);
+      const fresh = loadContextMultiplier(0.6, 2, 4);
+      if (!(fresh > 1)) throw new Error(`ACWR 0.6 gives multiplier ${fresh} · doctrine rewards a planned taper`);
+      const sweet = loadContextMultiplier(1.15, 4.6, 4);
+      if (sweet !== 1) throw new Error(`a sweet-spot ACWR gives ${sweet} · the sweet spot is neutral, not a bonus`);
+      // And it is genuinely applied as a multiplier on the finished composite.
+      matchLiteral(
+        sourceOf('web-v2/lib/coach/readiness.ts'),
+        /Math\.min\(composite \* loadMult, pillarCeiling\)/,
+        'lib/coach/readiness.ts#computeReadiness · post-composite multiplier',
+      );
+    },
+  },
+  {
+    id: 'READINESS.pillar-weights',
+    binds: ['lib/coach/readiness.ts#READINESS_WEIGHTS'],
+    doc: 'BuildResearch/D1-recovery-score-methodology.md',
+    anchor: '| Input | Weight | Source-of-truth metric | Baseline | Confidence floor |',
+    claim:
+      'The readiness pillars are weighted by signal fidelity, and the methodology names the ' +
+      'split: HRV highest, sleep next, RHR last. The engine had HRV and sleep tied at 28% ' +
+      'each, which inverts the ordering — sleep is one night of sample, HRV is a seven-day ' +
+      'trend. Each weight is read out of the table at run time.',
+    check({ cite }) {
+      const t = cite.table();
+      const want = (row: string) => parseBand(t.cell(row, 'Weight'))[0] / 100;
+      const pairs: Array<[string, number]> = [
+        ['HRV (LnRMSSD)', READINESS_WEIGHTS.hrv],
+        ['RHR', READINESS_WEIGHTS.rhr],
+        ['Sleep Quality Index', READINESS_WEIGHTS.sleep],
+        ['Training-load context', READINESS_WEIGHTS.load],
+      ];
+      for (const [row, engine] of pairs) {
+        const doctrine = want(row);
+        if (Math.abs(engine - doctrine) > 0.005) {
+          throw new Error(`READINESS_WEIGHTS for "${row}" is ${engine}, doctrine says ${doctrine}`);
+        }
+      }
+      // The ordering claim itself, not just the numbers · a future edit that
+      // moved all three by the same amount would still have to keep this.
+      if (!(READINESS_WEIGHTS.hrv > READINESS_WEIGHTS.sleep && READINESS_WEIGHTS.sleep > READINESS_WEIGHTS.rhr)) {
+        throw new Error('pillar weights no longer run HRV > sleep > RHR · that ordering is the fidelity claim');
+      }
+    },
+  },
+  {
+    id: 'TIER.acwr-bands-have-no-tier-dimension',
+    binds: ['lib/coach/tier-rules.ts#ACWR_BANDS', 'lib/coach/tier-rules.ts#tierRulesFor'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '| ACWR | Zone |',
+    claim:
+      "Gabbett's zones are one table with no experience column. The engine used to raise the " +
+      'caution line to 1.5 and the danger line to 1.9 for advanced_plus, which loosens the ' +
+      'safety threshold for the runners carrying the most load. Every tier now reads the same ' +
+      "boundaries, and those boundaries are the doc's own.",
+    check({ cite }) {
+      const t = cite.table();
+      const boundary = (label: string) => parseBand(t.row(label)[t.headers[0]])[0];
+      const detraining = boundary('< 0.8');
+      const caution = parseBand(t.row('1.3 – 1.5')[t.headers[0]])[0];
+      const danger = boundary('> 1.5');
+      const pairs: Array<[string, number, number]> = [
+        ['detraining', ACWR_BANDS.detraining, detraining],
+        ['caution', ACWR_BANDS.caution, caution],
+        ['danger', ACWR_BANDS.danger, danger],
+      ];
+      for (const [name, engine, doctrine] of pairs) {
+        if (engine !== doctrine) throw new Error(`ACWR_BANDS.${name} is ${engine}, doctrine says ${doctrine}`);
+      }
+      const tiers: ExperienceLevel[] = ['beginner', 'intermediate', 'advanced', 'advanced_plus'];
+      for (const tier of tiers) {
+        const r = tierRulesFor(tier, 55);
+        if (r.acwrCaution !== ACWR_BANDS.caution || r.acwrSpike !== ACWR_BANDS.danger
+          || r.acwrDetraining !== ACWR_BANDS.detraining) {
+          throw new Error(`tier "${tier}" carries its own ACWR thresholds · doctrine has no tier dimension`);
+        }
+      }
+    },
+  },
+  {
+    id: 'TIER.sleep-floor-rises-with-mileage',
+    binds: [
+      'lib/coach/tier-rules.ts#SLEEP_TARGET_BY_MPW',
+      'lib/coach/tier-rules.ts#sleepFloorForMileage',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### 20–40 mpw',
+    claim:
+      'The sleep requirement scales UP with weekly mileage — 7.5-9 h at 20-40 mpw through ' +
+      '9-10 h at 80+. The engine used to scale it DOWN with experience (6.8 h beginner, 6.0 ' +
+      'advanced_plus), which relaxed the bar for exactly the runners doctrine raises it for. ' +
+      'The four rows are read out of their own tables and the floor is each row\'s target ' +
+      'less one fixed tolerance.',
+    check({ cite }) {
+      const rows: Array<[string, number]> = [
+        ['### 20–40 mpw', 30],
+        ['### 40–60 mpw', 50],
+        ['### 60–80 mpw', 70],
+        ['### 80+ mpw', 95],
+      ];
+      let previous = 0;
+      rows.forEach(([anchor, mpw], i) => {
+        const section = i === 0
+          ? cite
+          : resolveCitation('Research/00b-recovery-protocols.md', anchor);
+        const target = parseBand(section.table().cell('Sleep', 'Target'))[0];
+        const engineTarget = SLEEP_TARGET_BY_MPW[i].band[0];
+        if (Math.abs(engineTarget - target) > 0.01) {
+          throw new Error(`SLEEP_TARGET_BY_MPW row ${i} target is ${engineTarget} h, doctrine says ${target} h`);
+        }
+        const floor = sleepFloorForMileage(mpw);
+        if (Math.abs(floor - (target - SLEEP_FLOOR_TOLERANCE_H)) > 0.01) {
+          throw new Error(`sleep floor at ${mpw} mpw is ${floor} h · doctrine target ${target} h less the ${SLEEP_FLOOR_TOLERANCE_H} h tolerance`);
+        }
+        if (floor <= previous && i > 0) {
+          throw new Error(`the sleep floor did not rise from row ${i - 1} to row ${i} · doctrine scales it up with load`);
+        }
+        previous = floor;
+      });
+      // And it is genuinely tier-blind.
+      const tiers: ExperienceLevel[] = ['beginner', 'intermediate', 'advanced', 'advanced_plus'];
+      const floors = new Set(tiers.map((tier) => tierRulesFor(tier, 70).sleep7AvgFloor));
+      if (floors.size !== 1) {
+        throw new Error(`the sleep floor still varies by experience tier: ${[...floors].join(' · ')}`);
       }
     },
   },

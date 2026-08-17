@@ -23,7 +23,10 @@
  * non-normal verdict, mirroring how readiness_pullback hands the change
  * to the runner (lib/plan/adapt.ts PROPOSE_FIRST_TRIGGERS).
  */
-import { estimateDewpointF } from './weather-adjust';
+// Imported from the shared model rather than from weather-adjust (which
+// re-exports it) so this module has no dependency on the verdict engine —
+// weather-adjust now reads the band taxonomy below.
+import { estimateDewpointF } from '@/lib/training/heat-model';
 
 export const CITATION_HEAT_GATE = {
   slug: 'research-06-weather-adjustments',
@@ -151,6 +154,86 @@ export function flagForWbgt(wbgtF: number): { flag: HeatFlag; action: HeatGateAc
   }
   const last = WBGT_FLAGS[WBGT_FLAGS.length - 1];
   return { flag: last.flag, action: last.action, note: last.note };
+}
+
+// ─── The heat band, once · doctrine-conformance audit cluster 6 ───────────
+//
+// Four taxonomies described the same afternoon before 2026-08-17, none of
+// them from Research/:
+//
+//   weather-adjust.bandFor   slowdown % · neutral <2, warm <4, hot <8, extreme
+//   race-conditions.heatBandFor  Tair · neutral <60, warm <70, hot <80, extreme
+//   J_CoachVerdict.HeatBand.from(tempF:)  Tair · 60 / 75 / 85 ("Maughan-ish")
+//   WBGT_FLAGS above         the actual doctrine, used only by the safety gate
+//
+// At 72°F the server said "hot" and the phone said "warm", about the same
+// run. Doctrine's taxonomy is the ACSM / Korey Stringer flag table, and it
+// is the one already sitting in this file. The four-word band the UI renders
+// is now a pure presentation mapping of that flag — the words stay, the
+// thresholds are doctrine's.
+//
+// WBGT needs humidity. A surface that cannot supply it gets `null` and shows
+// the temperature with no heat word, rather than a parallel scale invented
+// to fill the gap. That is the whole point: a missing input should read as a
+// missing input.
+export type HeatBandWord = 'neutral' | 'warm' | 'hot' | 'extreme';
+
+/** WBGT flag → the word the UI shows. Research/06:141-148 band for band. */
+export function heatBandForFlag(flag: HeatFlag): HeatBandWord | null {
+  switch (flag) {
+    case 'white':
+    case 'green':
+      return 'neutral';                 // "Optimal" / "Low risk"
+    case 'yellow':
+      return 'warm';                    // "Moderate risk"
+    case 'red':
+      return 'hot';                     // "High risk"
+    case 'black':
+      return 'extreme';                 // "Extreme risk"
+    default:
+      return null;                      // unknown · no WBGT, no word
+  }
+}
+
+export interface HeatBandReading {
+  /** ACSM / KSI flag · 'unknown' when WBGT could not be computed. */
+  flag: HeatFlag;
+  /** Approximated WBGT °F, or null when humidity is unknown. */
+  wbgtF: number | null;
+  /** The word for the UI · null means "we cannot say", not "neutral". */
+  band: HeatBandWord | null;
+}
+
+/**
+ * THE band read. Every surface that shows a heat word calls this.
+ * Research/06 §3's approximation and flag table, nothing else.
+ */
+export function heatBandForConditions(input: {
+  tairF: number | null | undefined;
+  humidityPct?: number | null;
+  cloudCoverPct?: number | null;
+  conditions?: string | null;
+}): HeatBandReading {
+  const t = input.tairF;
+  if (t == null || !Number.isFinite(t)) return { flag: 'unknown', wbgtF: null, band: null };
+  // `conditions` is the same three-bucket sky signal cloud cover carries;
+  // map it onto cloud cover so a surface with only a word still resolves.
+  const cloud = input.cloudCoverPct != null && Number.isFinite(input.cloudCoverPct)
+    ? input.cloudCoverPct
+    : skyWordToCloudPct(input.conditions);
+  const wbgtF = wbgtApproxF(t, input.humidityPct, cloud);
+  if (wbgtF == null) return { flag: 'unknown', wbgtF: null, band: null };
+  const flag = flagForWbgt(wbgtF).flag;
+  return { flag, wbgtF: Math.round(wbgtF * 10) / 10, band: heatBandForFlag(flag) };
+}
+
+/** 'clear' / 'partly cloudy' / … → the cloud-cover % the solar buckets read. */
+function skyWordToCloudPct(conditions?: string | null): number | null {
+  const c = (conditions ?? '').toLowerCase();
+  if (c === 'clear') return 0;
+  if (c === 'partly cloudy') return 50;
+  if (c === 'cloudy' || c === 'rain' || c === 'snow') return 100;
+  return null;
 }
 
 const SEVERITY: Record<HeatGateAction, number> = {

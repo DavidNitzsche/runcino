@@ -16,7 +16,7 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadCoachState } from '@/lib/coach/state-loader';
 import { computeReadiness } from './readiness';
-import { loadReadinessHistory } from './readiness-history';
+import { loadReadinessHistory, loadReadinessBandBaseline } from './readiness-history';
 
 export interface SnapshotResult {
   userUuid: string;
@@ -38,7 +38,11 @@ export async function writeReadinessSnapshot(
     return { userUuid, date, score: 70, band: 'ready', written: false, reason: 'no_state' };
   }
 
-  const breakdown = computeReadiness(state);
+  // 2026-08-17 · owner ruling · the snapshot stores the band the runner is
+  // shown, so it has to be the personally-banded one. Loading his own prior
+  // scores here is what makes tonight's row agree with tomorrow's brief.
+  const bandBaseline = await loadReadinessBandBaseline(userUuid, date);
+  const breakdown = computeReadiness(state, undefined, bandBaseline);
 
   // Bail out for runners with zero recoverable data · no point snapshotting
   // a default 70 every night before any HealthKit data lands.

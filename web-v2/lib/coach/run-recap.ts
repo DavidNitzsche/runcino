@@ -444,8 +444,14 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
   }
 
   // Heat-aware judgment on HR drift + pace fade.
-  const heatExplainsDrift =
-    conditionsMaterial && (weather?.heatBand === 'warm' || weather?.heatBand === 'hot' || weather?.heatBand === 'extreme');
+  //
+  // 2026-08-17 · gated on the SLOWDOWN, not the band word. `heatBand` is now
+  // the Research/06 §3 WBGT risk flag, and risk is the wrong question here:
+  // a green-flag 65°F morning is low risk and still drifts a long-run HR by
+  // thermoregulation. The 2% gate is the same one heat-band.ts's
+  // heatAdjustedStatus and heatAwareDrift use, so the recap prose, the phase
+  // bars and the drift chip all change their mind at the same moment.
+  const heatExplainsDrift = conditionsMaterial && (weather?.slowdownPct ?? 0) >= 2;
 
   // 2026-06-09 Phase 2 (3.2) · a TAKEN bail leads the facts. The runner
   // made the smart call mid-run; the recap must say so before any

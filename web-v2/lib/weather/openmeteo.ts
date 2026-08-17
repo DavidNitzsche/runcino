@@ -337,6 +337,16 @@ export interface DayForecast {
    *  range_label which is the full-day min/max. Null when window data
    *  isn't computed (no durationMin param). */
   window_label: string | null;
+  /**
+   * 2026-08-17 · doctrine-conformance audit, cluster 6. Relative humidity
+   * and cloud cover, at the workout window when one was requested and as the
+   * day's mean otherwise. Open-Meteo has always returned both; this endpoint
+   * simply never asked for them, which left every forecast-driven surface
+   * unable to compute a WBGT and inventing its own heat scale instead
+   * (Research/06 §3 · WBGT ≈ Tair − (100−RH)/5 + solar).
+   */
+  humidity_pct: number | null;
+  cloud_cover_pct: number | null;
 }
 
 /** Pretty-print the machine condition token. Shared with clients so the
@@ -447,7 +457,7 @@ export async function fetchDayForecast(
       `&start_date=${dateIso}` +
       `&end_date=${dateIso}` +
       `&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max,windspeed_10m_max` +
-      `&hourly=temperature_2m` +
+      `&hourly=temperature_2m,relativehumidity_2m,cloudcover` +
       `&temperature_unit=fahrenheit` +
       `&windspeed_unit=mph` +
       `&timezone=auto`;
@@ -467,10 +477,19 @@ export async function fetchDayForecast(
     let tempStartF: number | null = null;
     let tempEndF: number | null = null;
     let windowLabel: string | null = null;
+    const hourly = (key: string): Array<number | null> =>
+      (j?.hourly?.[key] ?? []).slice(0, 24).map((v: unknown) => num(v));
+    const hourHumidity = hourly('relativehumidity_2m');
+    const hourCloud = hourly('cloudcover');
+    // Day means · the honest default when no window was asked for.
+    const meanOf = (xs: Array<number | null>): number | null => {
+      const v = xs.filter((x): x is number => x != null);
+      return v.length === 0 ? null : Math.round(v.reduce((s, x) => s + x, 0) / v.length);
+    };
+    let humidityPct = meanOf(hourHumidity);
+    let cloudCoverPct = meanOf(hourCloud);
     if (workoutWindow && workoutWindow.durationMin > 0) {
-      const hourTemps: Array<number | null> = (j?.hourly?.temperature_2m ?? [])
-        .slice(0, 24)
-        .map((v: unknown) => num(v));
+      const hourTemps: Array<number | null> = hourly('temperature_2m');
       const startHour = workoutWindow.startHourOverride != null
         ? Math.max(0, Math.min(23.99, workoutWindow.startHourOverride))
         : parseBestWindowStartHour(bestWindow);
@@ -482,6 +501,12 @@ export async function fetchDayForecast(
       if (tempStartF != null || tempEndF != null) {
         windowLabel = composeRangeLabel(tempStartF, tempEndF, conditions);
       }
+      // Same window, same interpolation · the heat model prices one moment,
+      // so RH and cloud must describe that moment, not the whole day.
+      const hMid = interpolateTempAtHour(hourHumidity, (startHour + endHour) / 2);
+      const cMid = interpolateTempAtHour(hourCloud, (startHour + endHour) / 2);
+      if (hMid != null) humidityPct = Math.round(hMid);
+      if (cMid != null) cloudCoverPct = Math.round(cMid);
     }
 
     return {
@@ -497,6 +522,8 @@ export async function fetchDayForecast(
       temp_start_f: tempStartF,
       temp_end_f: tempEndF,
       window_label: windowLabel,
+      humidity_pct: humidityPct,
+      cloud_cover_pct: cloudCoverPct,
     };
   } catch (err) {
     console.error('[weather] fetchDayForecast failed:', err);

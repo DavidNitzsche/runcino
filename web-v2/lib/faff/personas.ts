@@ -140,19 +140,19 @@ const FIXED_TODAY = '2026-05-28';
 // /health readiness modal opens, which the simulator doesn't exercise.
 
 function readinessSharp(score = 88): ReadinessBreakdown {
-  return { score, band: 'sharp', label: 'SHARP', inputs: [] };
+  return { score, band: 'sharp', label: 'SHARP', inputs: [], personal: null };
 }
 
 function readinessReady(score = 78): ReadinessBreakdown {
-  return { score, band: 'ready', label: 'READY', inputs: [] };
+  return { score, band: 'ready', label: 'READY', inputs: [], personal: null };
 }
 
 function readinessModerate(score = 62): ReadinessBreakdown {
-  return { score, band: 'moderate', label: 'MODERATE', inputs: [] };
+  return { score, band: 'moderate', label: 'MODERATE', inputs: [], personal: null };
 }
 
 function readinessPullBack(score = 38): ReadinessBreakdown {
-  return { score, band: 'pull-back', label: 'PULL BACK', inputs: [] };
+  return { score, band: 'pull-back', label: 'PULL BACK', inputs: [], personal: null };
 }
 
 /** New-user fallback — no HK data means readiness can't compute. The
@@ -160,7 +160,7 @@ function readinessPullBack(score = 38): ReadinessBreakdown {
  *  Sibling MiniTile dots. Picking a midline value with the 'moderate'
  *  band keeps the type honest. */
 function readinessUnknown(): ReadinessBreakdown {
-  return { score: 50, band: 'moderate', label: 'MODERATE', inputs: [] };
+  return { score: 50, band: 'moderate', label: 'MODERATE', inputs: [], personal: null };
 }
 
 /** Build a 7-day week — Mon..Sun — keyed on workout types. Order is

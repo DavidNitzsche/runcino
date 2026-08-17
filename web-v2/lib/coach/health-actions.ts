@@ -40,6 +40,18 @@ import type { ReadinessStreak } from './readiness-brief';
 import { tierRulesFor, HARD_RULES, type ExperienceLevel } from './tier-rules';
 import { hasRecoverySignal } from './state-presence';
 
+/**
+ * Chronic weekly volume in miles · `loadChronic28` is a 28-day mi/DAY
+ * average, so ×7 is the runner's settled weekly mileage. Feeds the
+ * Research/00b sleep row (see tier-rules.sleepFloorForMileage); null when
+ * there isn't enough run history to place the runner on the table.
+ */
+function chronicWeeklyMpw(state: CoachState): number | null {
+  return state.loadChronic28 != null && isFinite(state.loadChronic28)
+    ? state.loadChronic28 * 7
+    : null;
+}
+
 export type HealthActionPriority = 'urgent' | 'high' | 'medium' | 'low' | 'on-course';
 
 export interface HealthAction {
@@ -150,7 +162,7 @@ export function buildThresholdLine(args: {
   scoreTrend: Array<{ date: string; score: number }>;
 }): string {
   const tier: ExperienceLevel = args.state.profile?.experience_level ?? null;
-  const rules = tierRulesFor(tier);
+  const rules = tierRulesFor(tier, chronicWeeklyMpw(args.state));
 
   // 2026-06-04 · compute current streak length DIRECTLY from history,
   // not from the streaks array. The streaks array only records 3+ day
@@ -259,16 +271,18 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     });
   }
 
-  // 2026-06-03 · tier-aware thresholds + tone. The runner's
-  // experience_level decides:
+  // 2026-06-03 · tier-aware TONE. The runner's experience_level decides:
   //   · how long a streak has to run before firing an action
-  //   · how short chronic sleep has to be before flagging
-  //   · what ACWR band counts as "spike" vs "caution"
+  //   · which informational wrist-temp chips are worth showing
+  //   · how many pull-back days the app waits through
   //   · whether the action reads as a prescription ("Tomorrow easy")
   //     or an observation ("HRV down 5 days · worth noting")
-  // See lib/coach/tier-rules.ts for the full table.
+  //
+  // 2026-08-17 · it no longer decides the SAFETY numbers. The ACWR bands
+  // come from Research/15's single untiered table and the sleep floor from
+  // the runner's own Research/00b mileage row — see lib/coach/tier-rules.ts.
   const tier: ExperienceLevel = state.profile?.experience_level ?? null;
-  const rules = tierRulesFor(tier);
+  const rules = tierRulesFor(tier, chronicWeeklyMpw(state));
   const isInformational = rules.tone === 'informational' || rules.tone === 'red-flag-only';
   const isRedFlagOnly = rules.tone === 'red-flag-only';
 

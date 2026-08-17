@@ -32,6 +32,7 @@
  */
 
 import { applyHeatToPace, abilityTierFromVdot } from '@/lib/weather/heat-adjustment';
+import { heatBandForConditions } from '@/lib/coach/heat-gate';
 import { fetchDayForecast } from '@/lib/weather/openmeteo';
 import { climateNormalForLocation } from '@/lib/training/climate-normals';
 
@@ -65,7 +66,9 @@ export interface RaceConditionsInput {
 export interface RaceConditionsResult {
   seconds: number | null;
   source: 'forecast' | 'climate' | null;
-  heatBand: 'neutral' | 'warm' | 'hot' | 'extreme';
+  /** Doctrine WBGT flag word · null when humidity is unknown and WBGT
+   *  genuinely cannot be computed (Research/06:141-148). */
+  heatBand: 'neutral' | 'warm' | 'hot' | 'extreme' | null;
   tempF: number | null;
   summary: string;
   /** Non-null when tempF > 85°F — heat illness is a real risk above that
@@ -77,12 +80,22 @@ export interface RaceConditionsResult {
  *  that we fall back to climate normals. */
 const FORECAST_HORIZON_DAYS = 14;
 
-function heatBandFor(tempF: number | null): RaceConditionsResult['heatBand'] {
-  if (tempF == null) return 'neutral';
-  if (tempF < 60) return 'neutral';
-  if (tempF < 70) return 'warm';
-  if (tempF < 80) return 'hot';
-  return 'extreme';
+/**
+ * 2026-08-17 · doctrine-conformance audit, cluster 6. This used to be a
+ * Tair ladder of its own — neutral <60, warm <70, hot <80, extreme — one of
+ * four heat taxonomies in the app and none of them doctrine's. At 72°F it
+ * said "hot" while the phone's fallback (60/75/85) said "warm" about the
+ * same conditions. The word now comes off Research/06:141-148's WBGT flag
+ * table via the one shared reader, and is null when the forecast carries no
+ * humidity and WBGT genuinely cannot be computed.
+ */
+function heatBandFor(
+  tempF: number | null,
+  conditions: string | null,
+  humidityPct: number | null,
+  cloudCoverPct: number | null,
+): RaceConditionsResult['heatBand'] {
+  return heatBandForConditions({ tairF: tempF, humidityPct, cloudCoverPct, conditions }).band;
 }
 
 /** Parse a local race start time → fractional hour 0-23.99.
@@ -139,6 +152,14 @@ export async function computeRaceConditions(
 
   let tempF: number | null = null;
   let source: 'forecast' | 'climate' | null = null;
+  // 2026-08-17 · the sky and the moisture the race is run under. The forecast
+  // carries both; this file never read them, so the Conditions chunk priced
+  // every race as a dry overcast day while the post-run verdict priced the
+  // sun and the dewpoint, and the heat WORD came off a Tair scale of this
+  // file's own invention (60/70/80) that disagreed with the phone's (60/75/85).
+  let skyConditions: string | null = null;
+  let humidityPct: number | null = null;
+  let cloudCoverPct: number | null = null;
 
   // 1a · forecast path. With a known start time, price the race window
   // (start → projected finish) and take its hotter edge; without one,
@@ -158,9 +179,15 @@ export async function computeRaceConditions(
       if (raceWindow && (forecast?.temp_start_f != null || forecast?.temp_end_f != null)) {
         tempF = Math.max(forecast.temp_start_f ?? -Infinity, forecast.temp_end_f ?? -Infinity);
         source = 'forecast';
+        skyConditions = forecast?.conditions ?? null;
+        humidityPct = forecast?.humidity_pct ?? null;
+        cloudCoverPct = forecast?.cloud_cover_pct ?? null;
       } else if (forecast?.temp_max_f != null) {
         tempF = forecast.temp_max_f;
         source = 'forecast';
+        skyConditions = forecast?.conditions ?? null;
+        humidityPct = forecast?.humidity_pct ?? null;
+        cloudCoverPct = forecast?.cloud_cover_pct ?? null;
       }
     } catch {
       // fall through to climate
@@ -180,20 +207,24 @@ export async function computeRaceConditions(
     return {
       seconds: null,
       source,
-      heatBand: 'neutral',
+      heatBand: null,
       tempF: null,
       summary: 'No race-day weather signal · Conditions chunk hidden.',
       safetyMessage: null,
     };
   }
 
-  // 2 · apply Maughan model
+  // 2 · apply the shared heat model, with the sky and moisture the race
+  //     will actually be run under. On the climate-normals path there is no
+  //     humidity, so the dewpoint surcharge and the WBGT band both degrade
+  //     to unknown rather than being guessed at.
   const goalPaceSPerMi = input.goalSec / input.distanceMi;
   const adjustedPaceSPerMi = applyHeatToPace(
     goalPaceSPerMi,
     tempF,
     input.distanceMi,
     ability,
+    { conditions: skyConditions, humidityPct, cloudCoverPct },
   );
 
   // 3 · convert delta-pace × distance to total-seconds
@@ -201,7 +232,7 @@ export async function computeRaceConditions(
   const seconds = Math.max(0, Math.round(deltaPerMi * input.distanceMi));
 
   // 4 · summary copy
-  const heatBand = heatBandFor(tempF);
+  const heatBand = heatBandFor(tempF, skyConditions, humidityPct, cloudCoverPct);
   const summary = buildSummary(seconds, tempF, source, heatBand);
   const safetyMessage = tempF > 85
     ? 'At this temperature, heat illness is a real risk. Run early, carry water, back off effort if you feel dizzy or stop sweating.'
@@ -222,6 +253,12 @@ function buildSummary(
     : source === 'climate'
       ? 'typical race-morning'
       : 'unknown signal';
+  if (heatBand == null) {
+    // No humidity for this race, so no WBGT and no heat word · state the
+    // temperature and the seconds, claim nothing about the band.
+    return `${tempLabel} ${sourceLabel}. ` +
+      `Maughan adds about ${seconds}s · humidity unknown this far out.`;
+  }
   if (heatBand === 'neutral') {
     return `${tempLabel} ${sourceLabel} · neutral conditions. ` +
       `Maughan adds about ${seconds}s · the day is not the bottleneck.`;

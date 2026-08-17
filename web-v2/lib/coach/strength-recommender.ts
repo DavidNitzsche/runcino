@@ -133,15 +133,15 @@ export interface StrengthRecommendation {
    *  session). Frontend renders via the existing coach_intents pipeline.
    *  Null in every other habit state. */
   coachIntent: StrengthCoachIntent | null;
-  /** 2026-06-01 · readiness-gate result that drove this recommendation.
-   *  Used by emitStrengthSkipIntent to write the audit row. Null when
-   *  no readiness gate fired (race-week + ACWR-only paths surface via
-   *  the regular `reason` field). NOT rendered by the frontend ·
-   *  internal audit signal. */
+  /** 2026-06-01 · readiness note attached to this recommendation. Used by
+   *  emitStrengthSkipIntent to write the audit row. NOT rendered by the
+   *  frontend · internal audit signal.
+   *
+   *  2026-08-17 · `suppressed` and `capped` are gone with the gate they
+   *  described. Readiness no longer removes or caps a session; it attaches
+   *  a sentence, and that sentence is what gets logged. */
   _readinessGate?: {
-    suppressed: boolean;
-    capped: boolean;
-    reason: string;
+    note: string;
   };
 }
 
@@ -249,7 +249,7 @@ export async function recommendStrengthDays(
   const weekDays = await loadWeekWorkouts(userUuid, weekStartISO);
 
   // 2. Load runner habit + preferences + readiness gate
-  const noGate: ReadinessGate = { suppressAll: false, capAtOne: false, reason: '' };
+  const noGate: ReadinessGate = { note: '' };
   const [habit, prefs, raceContext, loadContext, readinessGate] = await Promise.all([
     loadHabit(userUuid),
     loadPreferences(userUuid),
@@ -270,21 +270,10 @@ export async function recommendStrengthDays(
     };
   }
 
-  // 3.5 · Readiness pullback override (2026-06-01 · David's gap fix).
-  // Per Research/07 · heavy lifting under high fatigue increases
-  // injury risk. When the readiness brief signals pull-back or has
-  // active streaks, the strength recommender now matches what the
-  // run-adapter is doing · same source of truth, no contradictory
-  // signals to the runner.
-  if (readinessGate.suppressAll) {
-    return {
-      recommendedDays: [],
-      picks: [],
-      reason: readinessGate.reason,
-      habit, coachIntent,
-      _readinessGate: { suppressed: true, capped: false, reason: readinessGate.reason },
-    };
-  }
+  // 3.5 · Readiness used to suppress the whole week here (2026-06-01).
+  // Removed 2026-08-17 per the owner ruling: readiness informs, it never
+  // mutates a prescription. The note it produces rides along on the copy
+  // below instead of deleting the runner's strength week.
 
   // 4. Build candidate pool · easy or recovery days only, respecting
   //    adjacency rules.
@@ -304,12 +293,11 @@ export async function recommendStrengthDays(
   const phaseContext = await loadPhaseContext(userUuid, weekStartISO);
   const maxFromRunner = prefs.daysPerWeek;
   const maxFromPhase = phaseFrequencyCap(phaseContext, raceContext);
+  // ACWR is a training-load FACT (Research/07 shares the doctrine with the
+  // ACWR-spike rule) and keeps its cap. Readiness does not: the recovery
+  // score no longer caps the week — owner ruling, 2026-08-17.
   const maxFromLoad = (loadContext.acwr != null && loadContext.acwr > ACWR_HIGH_SPIKE_THRESHOLD) ? 1 : DEFAULT_STRENGTH_DAYS_PER_WEEK;
-  // Readiness streak (without full pull-back) drops to 1 maintenance ·
-  // Research/07 same doctrine as ACWR-spike rule. Maintenance is fine
-  // under recoverable fatigue; piling on a second heavy day is not.
-  const maxFromReadiness = readinessGate.capAtOne ? 1 : DEFAULT_STRENGTH_DAYS_PER_WEEK;
-  const target = Math.min(maxFromRunner, maxFromPhase, maxFromLoad, maxFromReadiness, candidates.length);
+  const target = Math.min(maxFromRunner, maxFromPhase, maxFromLoad, candidates.length);
   // 2026-06-10 · this cap is recomputed LIVE every read (loadGlanceState is
   // not cached · readiness + load are re-read each call), so the weekly
   // target adapts BOTH directions within a week. It drops under fatigue
@@ -396,9 +384,7 @@ export async function recommendStrengthDays(
     picks,
     reason: buildReason(picked, weekDays, raceContext, loadContext, readinessGate, phaseContext),
     habit, coachIntent,
-    _readinessGate: readinessGate.capAtOne
-      ? { suppressed: false, capped: true, reason: readinessGate.reason }
-      : { suppressed: false, capped: false, reason: '' },
+    _readinessGate: { note: readinessGate.note },
   };
 }
 
@@ -631,62 +617,62 @@ interface LoadContext {
   acwr: number | null;
 }
 
+/**
+ * ── 2026-08-17 · owner ruling · readiness INFORMS, it never mutates ───────
+ *
+ * This used to be a real gate: a pull-back band deleted every strength
+ * session for the week, and a single 3-day pillar streak cut the week from
+ * two sessions to one. That is readiness rewriting a prescription, which the
+ * owner has ruled out — and on the live evidence it fired constantly, because
+ * the band was banding a personally-baselined score on an absolute scale (18
+ * pull-back days in 78).
+ *
+ * What is left is a sentence. `note` is appended to the recommendation copy
+ * so the runner still learns that his recovery signals are soft; the number
+ * of sessions is decided by the plan, the phase, the runner's own preference
+ * and the load rules, exactly as it would be on a day he never opened the
+ * Health page.
+ *
+ * The separate systems keep their own gates: illness, niggles and injury are
+ * NOT readiness and are unaffected by this. ACWR (a training-load fact, not a
+ * recovery score) keeps its Research/07 cap.
+ */
 interface ReadinessGate {
-  /** True when the readiness brief signals composite pull-back ·
-   *  recommender returns empty days. Per Research/07 · heavy lifting
-   *  under multi-pillar fatigue is injury risk. */
-  suppressAll: boolean;
-  /** True when ≥1 active 3+ day streak (sleep, HRV, RHR). Drops the
-   *  weekly cap to 1 maintenance session. Same severity-band as the
-   *  ACWR > 1.5 rule. */
-  capAtOne: boolean;
-  /** Plain-language reason for the recommendation copy. Empty when
-   *  no gate fires (the recommender uses its normal copy). */
-  reason: string;
+  /** Plain-language note for the recommendation copy. Empty when quiet. */
+  note: string;
 }
 
 /**
- * Read the readiness brief and decide whether strength should suppress
- * or cap. Best-effort · returns "no gate" on failure so the recommender
- * degrades to its prior behavior (ACWR-only fatigue gate).
- *
- * Same source of truth the run-adapter reads (lib/plan/adapt.ts ·
- * detectReadinessPullback). Two systems, one signal · no more
- * contradictory readouts to the runner.
+ * Read the readiness brief for a note to attach. Best-effort · returns no
+ * note on failure, which is also the right answer when we cannot tell.
  */
 async function loadReadinessGate(userUuid: string): Promise<ReadinessGate> {
   try {
     const { loadCoachState } = await import('@/lib/coach/state-loader');
     const { loadReadinessBrief } = await import('@/lib/coach/readiness-brief');
     const state = await loadCoachState(userUuid);
-    if (!state) return { suppressAll: false, capAtOne: false, reason: '' };
+    if (!state) return { note: '' };
     const brief = await loadReadinessBrief(userUuid, state);
-    if (!brief) return { suppressAll: false, capAtOne: false, reason: '' };
+    if (!brief) return { note: '' };
 
-    const isPullback = brief.band === 'pull-back';
     const streaks = brief.streaks ?? [];
-
-    if (isPullback) {
+    if (brief.band === 'pull-back') {
       const streakDesc = streaks.length > 0
         ? ` (${streaks[0].pillar.toUpperCase()} ${streaks[0].direction} ${streaks[0].days}d)`
         : '';
       return {
-        suppressAll: true,
-        capAtOne: false,
-        reason: `Strength suppressed this week · Readiness low${streakDesc}. Heavy lifting when sleep and recovery are both down is injury risk.`,
+        note: `Recovery signals are low${streakDesc} · keep the lifting light if it still feels that way on the day.`,
       };
     }
     if (streaks.length >= 1) {
       const s = streaks[0];
       return {
-        suppressAll: false,
-        capAtOne: true,
-        reason: `Strength capped at 1 maintenance session · ${s.pillar.toUpperCase()} ${s.direction} for ${s.days} days. Hold form, skip the second heavy day.`,
+        note: `${s.pillar.toUpperCase()} ${s.direction} for ${s.days} days · worth knowing before the second heavy day.`,
       };
     }
-    return { suppressAll: false, capAtOne: false, reason: '' };
+    return { note: '' };
   } catch {
-    return { suppressAll: false, capAtOne: false, reason: '' };
+    return { note: '' };
   }
 }
 
@@ -970,10 +956,9 @@ function buildReason(
   }
 
   let suffix = '';
-  // Readiness signal first · it's the multi-pillar composite.
-  if (readinessGate.capAtOne && picked.length === 1) {
-    const s = readinessGate.reason.split('·')[1]?.trim() ?? 'readiness signal';
-    suffix = ` · dropped to 1 (${s})`;
+  // Readiness rides along as a note · it no longer changes the count.
+  if (readinessGate.note) {
+    suffix = ` · ${readinessGate.note}`;
   } else if (phaseCtx.mode === 'recovery') {
     suffix = ' · mobility only · post-race recovery';
   } else if (phaseCtx.mode === 'maintenance') {
@@ -1037,34 +1022,30 @@ export async function emitStrengthCoachIntent(
 }
 
 /**
- * Emit a `strength_skip` audit intent when the recommender suppressed
- * or capped strength because of readiness signals. Mirrors the
- * run-adapter's coach_intents writes · gives the briefing surface a
- * clean trail to explain what happened.
+ * Emit a `strength_skip` audit intent when readiness had something to say
+ * about this week's strength. Gives the briefing surface a clean trail.
  *
- * Two distinct signal kinds, both written under reason='strength_skip':
- *   · field='suppress' · band=pull-back → strength entirely off this week
- *   · field='cap_one'  · ≥1 active streak → dropped to 1 maintenance
+ * 2026-08-17 · owner ruling · this used to record a DECISION the engine had
+ * made for the runner: field='suppress' (band=pull-back → strength entirely
+ * off) or field='cap_one' (a streak → dropped to one session). Readiness no
+ * longer suppresses or caps anything, so the single remaining kind is
+ * field='note' and the row records a sentence he was shown. The reason string
+ * is unchanged so the existing `strength_resume` loop keeps closing.
  *
- * Idempotent per (user, kind, day) · re-running the recommender same
- * day doesn't double-write. Different kinds CAN coexist on the same
- * day if the picture shifts mid-day (e.g. recommender ran morning with
- * a streak, then evening readiness brief escalated to pull-back).
- *
- * Pre-condition · only fires when the recommender's returned
- * `recommendedDays.length` decision was DRIVEN by readiness · not
- * race-week or ACWR-only paths (those have their own surfacing).
+ * Idempotent per (user, kind, day) · re-running the recommender same day
+ * doesn't double-write.
  */
 export async function emitStrengthSkipIntent(
   userUuid: string,
   rec: StrengthRecommendation,
 ): Promise<void> {
-  // Only fire on readiness-driven suppression / cap. Race-week + ACWR-only
-  // paths surface via the recommender's own `reason` field on the seed ·
-  // they don't need a separate intent row.
+  // 2026-08-17 · readiness no longer suppresses or caps anything, so the
+  // row this writes is a NOTE the runner was shown, not a change that was
+  // made to his week. Kept because the loop-closing `strength_resume` intent
+  // reads it; the `kind` is now always the advisory one.
   const gate = rec._readinessGate;
-  if (!gate || (!gate.suppressed && !gate.capped)) return;
-  const kind = gate.suppressed ? 'suppress' : 'cap_one';
+  if (!gate?.note) return;
+  const kind = 'note';
 
   // 2026-06-03 · runner TZ for idempotency-per-day · was using server UTC.
   const today = await runnerToday(userUuid);
@@ -1079,7 +1060,7 @@ export async function emitStrengthSkipIntent(
          AND field = $2
          AND ts::date = $4::date
      )`,
-    [userUuid, kind, gate.reason, today],
+    [userUuid, kind, gate.note, today],
   ).catch((e) => { console.warn('[strength-recommender] emitStrengthSkipIntent failed:', e?.message ?? e); });
 }
 

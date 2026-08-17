@@ -26,7 +26,8 @@
  */
 
 import type { WorkoutType } from './run-purpose';
-import { effortSlowdownPct } from '@/lib/training/heat-model';
+import { heatEffort, estimateDewpointF } from '@/lib/training/heat-model';
+import { heatBandForConditions } from './heat-gate';
 
 export const CITATION_WEATHER = {
   slug: 'research-06-weather-adjustments',
@@ -79,13 +80,18 @@ export interface WeatherInput {
   phase?: 'pre' | 'post';
 }
 
+/**
+ * 2026-08-17 · re-sourced. This is now a presentation mapping of the
+ * Research/06:141-148 WBGT flag table (see lib/coach/heat-gate.ts), not a
+ * scale of its own. `null` on the wire means WBGT could not be computed.
+ */
 export type HeatBand = 'neutral' | 'warm' | 'hot' | 'extreme';
 
 export interface WeatherJudgment {
   /** % slower than the 50°F reference for an honest effort. 0 if neutral. */
   slowdownPct: number;
-  /** Plain-language band the heat falls in. */
-  heatBand: HeatBand;
+  /** Plain-language band the heat falls in. Null when humidity is unknown. */
+  heatBand: HeatBand | null;
   /** Tair + Td combined heat-stress index (°F). null if Td unknown. */
   heatStressF: number | null;
   /** Whether the conditions were material enough to surface in a recap. */
@@ -99,53 +105,12 @@ export interface WeatherJudgment {
 }
 
 /**
- * Estimate dewpoint from temperature and relative humidity if dewpoint
- * isn't directly supplied. Magnus-Tetens approximation, °F in / °F out.
- * Good to ±1°F in the running range we care about.
+ * Dewpoint estimator · re-exported from the shared heat model, where it
+ * moved on 2026-08-17 so every consumer resolves a missing dewpoint the
+ * same way. Kept here because heat-gate and drift-monitor import it from
+ * this module.
  */
-export function estimateDewpointF(tempF: number, humidityPct: number): number {
-  const T = (tempF - 32) * 5 / 9;
-  const a = 17.625;
-  const b = 243.04;
-  const rh = Math.max(1, Math.min(100, humidityPct)) / 100;
-  const alpha = Math.log(rh) + (a * T) / (b + T);
-  const tdC = (b * alpha) / (a - alpha);
-  return tdC * 9 / 5 + 32;
-}
-
-/**
- * Solar / sun adjustment. Direct sun on cloudless days adds ~5°F to the
- * effective temperature in trained runners (Sources 7 & 17 in Research/06).
- *
- * 2026-06-09 state-audit fix: the temp→slowdown curve that used to live
- * here sat ~2× above the cited Research/06 mid-pack column (70°F → 8%
- * vs doctrine 4%; 80°F → 17% vs 7.5%), and the dewpoint multiplier
- * (≤1.75×) compounded on top — verdict bands were forgiving warm-day
- * quality misses by 3-4× what the research supports. The slowdown now
- * comes from lib/training/heat-model.ts (the verbatim doctrine table +
- * additive §12 dewpoint surcharge + the documented duration scale),
- * shared with applyHeatToPace so post-run verdicts and the race
- * projection price the same physics identically.
- */
-function solarEffectiveBump(c: WeatherInput): number {
-  const cloud = c.cloudCoverPct ?? null;
-  const cond = (c.conditions ?? '').toLowerCase();
-  if (cond === 'clear' || (cloud != null && cloud < 25)) return 5;
-  if (cond === 'partly cloudy' || (cloud != null && cloud < 60)) return 2;
-  return 0;
-}
-
-// Band assignment from slowdown % only. UX bands, recalibrated
-// 2026-06-09 to the doctrine table so the felt labels land where they
-// used to (70°F dry still reads "hot"): the % thresholds halved with
-// the table (old 2/6/12 over a ~2× curve ≈ new 2/4/8 over doctrine).
-//   neutral < 2% · warm 2–4% · hot 4–8% · extreme ≥ 8%
-function bandFor(slowdownPct: number): HeatBand {
-  if (slowdownPct < 2) return 'neutral';
-  if (slowdownPct < 4) return 'warm';
-  if (slowdownPct < 8) return 'hot';
-  return 'extreme';
-}
+export { estimateDewpointF };
 
 // E6: easy / long / recovery / shakeout are run by effort or HR, not by the
 // clock · heat makes those paces drift slower by design, so the "costs you
@@ -165,7 +130,7 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
   if (t == null) {
     return {
       slowdownPct: 0,
-      heatBand: 'neutral',
+      heatBand: null,
       heatStressF: null,
       shouldFlagInRecap: false,
       summary: 'Conditions unknown',
@@ -174,27 +139,37 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
     };
   }
 
-  const td = input.dewpointF
-    ?? (input.humidityPct != null ? estimateDewpointF(t, input.humidityPct) : null);
+  // 2026-08-17 · this function used to bump the temperature for sun and
+  // resolve the dewpoint itself before calling the shared model — the two
+  // steps applyHeatToPace happened not to do, which is how the same
+  // afternoon read +6.4% on Targets and +9.35% here. All of it now happens
+  // inside the model; this passes the weather it has and nothing else.
+  // mid_pack column: post-run judgments don't carry the runner's tier, and
+  // mid-pack is the honest population default.
+  const heat = heatEffort({
+    tempF: t,
+    dewpointF: input.dewpointF,
+    humidityPct: input.humidityPct,
+    conditions: input.conditions,
+    cloudCoverPct: input.cloudCoverPct,
+    durationS: input.durationS,
+    tier: 'mid_pack',
+  });
+  const slowdownPct = Math.round((heat?.slowdownPct ?? 0) * 10) / 10;
+  const td = heat?.dewpointF ?? null;
 
-  // Effective temperature accounts for sun load.
-  const tEff = t + solarEffectiveBump(input);
-
-  // Base slowdown from the doctrine table (mid-pack column — post-run
-  // judgments don't carry the runner's tier; mid-pack is the honest
-  // population default), plus the §12 dewpoint surcharge, scaled by run
-  // duration. One shared formula with applyHeatToPace — see
-  // lib/training/heat-model.ts.
-  const slowdownPct = Math.round(
-    effortSlowdownPct({
-      tempF: tEff,
-      dewpointF: td,
-      durationS: input.durationS,
-      tier: 'mid_pack',
-    }) * 10,
-  ) / 10;
-
-  const heatBand = bandFor(slowdownPct);
+  // The word comes off the doctrine WBGT flag table, not off the slowdown %
+  // (cluster 6 · four taxonomies, none of them doctrine's). Null when
+  // humidity is unknown and WBGT genuinely cannot be computed — the copy
+  // below then states the temperature and stops, rather than reaching for an
+  // invented scale.
+  const bandReading = heatBandForConditions({
+    tairF: t,
+    humidityPct: input.humidityPct,
+    cloudCoverPct: input.cloudCoverPct,
+    conditions: input.conditions,
+  });
+  const heatBand = bandReading.band;
   const heatStressF = td != null ? Math.round(t + td) : null;
 
   // Material when slowdown >= 2% or extreme dewpoint, or when sun bumped
@@ -209,6 +184,24 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
   const tempPhrase = climbedMaterially
     ? `${Math.round(tStart as number)}°F → ${Math.round(input.tempF_end as number)}°F (peak ${Math.round(t)}°F)`
     : `${Math.round(t)}°F`;
+
+  // ── Two doctrinal questions, kept apart ──────────────────────────────
+  //
+  // `heatBand` answers "how RISKY were these conditions" and its taxonomy is
+  // Research/06 §3's WBGT flag table. `slowdownPct` answers "how much PACE
+  // did they cost" and comes from §1 + §12. They are different quantities
+  // and they legitimately disagree: 72°F at 50% RH under cloud is a green
+  // flag (low risk) that still costs a marathoner ~5% of pace.
+  //
+  // So the WORD on the card is the band, and the ADVICE escalates on
+  // whichever of the two is louder — a green-flag morning that costs 5% is
+  // still worth starting earlier, and a red-flag afternoon is worth a
+  // warning even on a run short enough that the duration scale keeps the
+  // percentage small. This is not a second band taxonomy; nothing here is
+  // exported or displayed as a band.
+  const paceCostTier = slowdownPct >= 8 ? 3 : slowdownPct >= 4 ? 2 : slowdownPct >= 2 ? 1 : 0;
+  const bandTier = heatBand === 'extreme' ? 3 : heatBand === 'hot' ? 2 : heatBand === 'warm' ? 1 : 0;
+  const adviceTier = Math.max(paceCostTier, bandTier);
 
   // Plain-English summary · this is what the runner reads on the run card.
   // Doctrine drives the band; the words are everyday talk. No "evaporative
@@ -226,6 +219,14 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
     summary = climbedMaterially
       ? `Got from ${Math.round(tStart as number)}°F to ${Math.round(input.tempF_end as number)}°F · a bit warm.`
       : `${Math.round(t)}°F · a bit warm.`;
+  } else if (heatBand == null || paceCostTier > 0) {
+    // Either no humidity (no WBGT, no honest heat word — the explicit
+    // degrade), or a green-flag day that still costs real pace. Both cases
+    // state the temperature and let the tail carry the cost; calling a day
+    // that costs 5% "good conditions" is the contradiction, not the honesty.
+    summary = climbedMaterially
+      ? `${Math.round(tStart as number)}°F to ${Math.round(input.tempF_end as number)}°F.`
+      : `${Math.round(t)}°F.`;
   } else {
     summary = climbedMaterially
       ? `${Math.round(tStart as number)}°F to ${Math.round(input.tempF_end as number)}°F · good conditions.`
@@ -254,7 +255,7 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
   // pace-aware advice because the workout is defined by pace.
   let coachTipForNextTime: string | null = null;
   const effort = isEffortRun(input.workoutType);
-  if (heatBand === 'warm') {
+  if (adviceTier === 1) {
     if (effort) {
       coachTipForNextTime = isPost
         ? `Next time it's this warm, start earlier and run by feel. The pace looks after itself.`
@@ -265,11 +266,11 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
     } else {
       coachTipForNextTime = `Try to start earlier next time when it's warm like this. Drink something with salt in it before the long ones.`;
     }
-  } else if (heatBand === 'hot') {
+  } else if (adviceTier === 2) {
     coachTipForNextTime = effort
       ? `Go by effort and HR, not pace · heat like this makes the watch lie. Start earlier when you can, and drink 16-24 oz with salt the hour before.`
       : `Start earlier next time. Heat like this is rough on the body · drink 16-24 oz with salt the hour before, and don't chase pace in the first miles.`;
-  } else if (heatBand === 'extreme') {
+  } else if (adviceTier === 3) {
     coachTipForNextTime = effort
       ? `Forget the pace in this · run by effort and cut it short if your HR won't settle. Move the run earlier next time.`
       : `Move hard runs out of this window. Pace targets don't really work when it's this hot. If you're racing somewhere warm, give yourself 10-14 days running in the heat to get used to it.`;

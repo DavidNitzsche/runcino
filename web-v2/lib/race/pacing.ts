@@ -10,17 +10,20 @@
  * the descent — a runner holding the linear split through The Drop banks
  * nothing and then bleeds time up 6th Ave wondering what went wrong.
  *
- * Model — even effort, grade-adjusted pace:
+ * Model — even effort, grade-adjusted pace. 2026-08-17: the grade maths
+ * moved to lib/training/elevation-model.ts, which is now the single
+ * elevation model in the app — this file and the Targets course chunk used
+ * to price the same terrain 3-6× apart. The numbers are unchanged here; the
+ * Targets side is the one that moved.
  *   · Uphill: pace multiplier 1 + 0.033 × grade%. Energy cost of running
  *     rises ~3.3% per 1% of grade (Cite: Research/11-course-specific-
- *     training.md §terminology — "Energy cost rises ~3.3% per 1% of
- *     grade up to ~10–15%").
+ *     training.md §"Mechanical Effects of Uphill Running" — "Energy cost
+ *     rises ~3.3% per 1% of grade up to ~10–15%").
  *   · Downhill: same coefficient, but the per-mile pace credit is capped
- *     at 15 s/mi. Descending faster than that trades quad damage for
- *     time you repay later (Cite: the AFC course doctrine itself,
- *     course_library.geometry_json phases[1] — "Target 10-15s faster
- *     than goal pace, no more"; Research/11 §downhill — braking forces
- *     rise steeply with descent speed).
+ *     at 15 s/mi. Descending faster than that trades quad damage for time
+ *     you repay later. Re-sourced 2026-08-17 from the AFC course row to
+ *     Research/11 §"Pacing Rule for Hilly Courses", which states the same
+ *     number as doctrine: "On descents: shave 5–15 s/mi".
  *   · Phases are then normalized so the time-weighted total equals the
  *     goal exactly — the output is *how the goal distributes over the
  *     course*, not a re-prediction of the goal.
@@ -48,6 +51,7 @@
  */
 
 import { raceOpeningPlan, openingAdjustmentOverSpan } from './distance-doctrine';
+import { gradePaceMultiplier } from '@/lib/training/elevation-model';
 
 export interface CoursePhaseInput {
   label?: string;
@@ -90,11 +94,6 @@ export interface RacePacing {
   splits: PacingSplit[];
   phases: PacingPhase[] | null;   // null when source === 'linear'
 }
-
-/** Uphill cost per 1% mean grade (fraction of pace). Cite: Research/11. */
-const GRADE_COST_PER_PCT = 0.033;
-/** Max per-mile credit a descent may take, in seconds (AFC course doctrine). */
-const MAX_DESCENT_CREDIT_S_PER_MI = 15;
 
 /** Position-based strategy cue for a phase, keyed on its mid-race fraction
  *  p ∈ [0,1]. Mirrors the negative-split arc's intent so the merged plan
@@ -176,20 +175,10 @@ export function buildRacePacing(input: {
   // `pos` is the phase's mid-race fraction, used for the strategy cue.
   let phasePaces: Array<{ p: CoursePhaseInput; pace: number; pos: number }> | null = null;
   if (phases) {
-    const raw = phases.map((p) => {
-      const grade = phaseGradePct(p);
-      let mult: number;
-      if (grade >= 0) {
-        mult = 1 + GRADE_COST_PER_PCT * grade;
-      } else {
-        const credit = Math.min(
-          GRADE_COST_PER_PCT * Math.abs(grade) * flatPace,
-          MAX_DESCENT_CREDIT_S_PER_MI,
-        );
-        mult = (flatPace - credit) / flatPace;
-      }
-      return { p, mult };
-    });
+    const raw = phases.map((p) => ({
+      p,
+      mult: gradePaceMultiplier(phaseGradePct(p), flatPace),
+    }));
     const rawTotal = raw.reduce(
       (s, { p, mult }) => s + ((p.end_mi! - p.start_mi!) * flatPace * mult),
       0,

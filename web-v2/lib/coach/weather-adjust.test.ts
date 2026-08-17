@@ -97,34 +97,39 @@ describe('judgeWeather · neutral band (50°F)', () => {
   });
 });
 
-describe('judgeWeather · solar bump pushes 65°F clear → hot band', () => {
-  it('65°F + clear sky becomes 70°F effective, lands in hot band', () => {
-    // Doctrine: 65°F base is 2.5% (warm). Clear adds +5°F → 70°F
-    // effective = 4.0% per the Research/06 mid-pack column → hot band.
+describe('judgeWeather · solar bump raises the pace cost at 65°F', () => {
+  it('65°F + clear sky becomes 70°F effective · 4% pace cost, green flag', () => {
+    // Doctrine: 65°F base is 2.5% (Research/06 §1 mid-pack). Clear adds +5°F
+    // → 70°F effective = 4.0%.
+    // The BAND is a separate doctrinal question (Research/06 §3 WBGT):
+    // 65 − (100−40)/5 + 5 = 58°F WBGT → green, "Low risk. Normal sessions."
+    // A low-risk day that still costs 4% of pace is not a contradiction ·
+    // it is why the two were separated in the 2026-08-17 audit.
     const j = judgeWeather({
       tempF: 65,
       humidityPct: 40,
       conditions: 'clear',
       cloudCoverPct: 10,
     });
-    expect(j.heatBand).toBe('hot');
+    expect(j.heatBand).toBe('neutral');
     expect(j.slowdownPct).toBeGreaterThanOrEqual(4);
     expect(j.slowdownPct).toBeLessThan(8);
     expect(j.shouldFlagInRecap).toBe(true);
     expect(j.coachTipForNextTime).not.toBeNull();
-    // Hot tip leads with "Start earlier next time".
+    // The advice still escalates on the pace cost.
     expect(j.coachTipForNextTime).toMatch(/Start earlier next time/);
   });
 
-  it('65°F overcast stays in warm (no solar bump)', () => {
-    // Same temp, cloudy → no +5°F bump, slowdown stays 2.5% (warm).
+  it('65°F overcast · no solar bump, so a smaller pace cost', () => {
+    // Same temp, cloudy → no +5°F bump, slowdown stays 2.5%.
+    // WBGT 65 − 12 + 0 = 53 → green.
     const j = judgeWeather({
       tempF: 65,
       humidityPct: 40,
       conditions: 'cloudy',
       cloudCoverPct: 80,
     });
-    expect(j.heatBand).toBe('warm');
+    expect(j.heatBand).toBe('neutral');
     expect(j.slowdownPct).toBeLessThan(4);
     expect(j.slowdownPct).toBeGreaterThanOrEqual(2);
   });
@@ -148,21 +153,22 @@ describe('judgeWeather · solar bump pushes 65°F clear → hot band', () => {
   });
 });
 
-describe('judgeWeather · extreme band (78°F humid)', () => {
-  it('78°F at 80% RH is extreme (slowdown ≥ 8%)', () => {
+describe('judgeWeather · red flag (78°F humid)', () => {
+  it('78°F at 80% RH costs ≥8% and flies a red flag', () => {
     // Partly cloudy +2°F → 80°F effective = 7.5% base; dewpoint ~71°F
-    // → +1.1% surcharge (§12: +1%/10°F above 60) → ~8.6% → extreme.
+    // → +1.1% surcharge (§12: +1%/10°F above 60) → ~8.6%.
+    // WBGT 78 − (100−80)/5 + 2 = 76 → Research/06:141-148 red band
+    // (73-82, "High risk") → the word is "hot".
     const j = judgeWeather({
       tempF: 78,
       humidityPct: 80,
       conditions: 'partly cloudy',
       cloudCoverPct: 50,
     });
-    expect(j.heatBand).toBe('extreme');
+    expect(j.heatBand).toBe('hot');
     expect(j.slowdownPct).toBeGreaterThanOrEqual(8);
     expect(j.shouldFlagInRecap).toBe(true);
-    // Extreme summary uses plain English: "seriously hot".
-    expect(j.summary).toMatch(/seriously hot/);
+    expect(j.summary).toMatch(/hot for running/);
     // Extreme tip mentions moving the run + acclimation in plain English.
     expect(j.coachTipForNextTime).toMatch(/Move hard runs out of this window|10-14 days running in the heat/);
     // heatStressF = round(tempF + dewpointF).
@@ -194,10 +200,11 @@ describe('judgeWeather · confirmed-Z input (peak-temp + thermal arc)', () => {
       conditions: 'clear',
       cloudCoverPct: 10,
     });
-    // Judged on peak 78°F + clear solar → 83°F effective. Should be extreme.
-    expect(j.heatBand).toBe('extreme');
-    // Plain-English arc framing: "Started at 60°F, hit 78°F."
-    expect(j.summary).toMatch(/Started at 60°F.*hit 78°F/);
+    // Judged on peak 78°F, not the 60°F start.
+    // WBGT 78 − (100−60)/5 + 5 = 75 → red band → "hot".
+    expect(j.heatBand).toBe('hot');
+    // Plain-English arc framing: "Started at 60°F, climbed to 78°F."
+    expect(j.summary).toMatch(/Started at 60°F.*(hit|climbed to) 78°F/);
   });
 
   it('quotes the climb when end - start ≥ 3°F', () => {
@@ -231,7 +238,9 @@ describe('judgeWeather · confirmed-Z input (peak-temp + thermal arc)', () => {
 
   it('null tempF returns Conditions unknown', () => {
     const j = judgeWeather({ tempF: null });
-    expect(j.heatBand).toBe('neutral');
+    // No temperature → no WBGT → no band. Explicitly null, never 'neutral' ·
+    // "we don't know" must not render as "conditions were fine".
+    expect(j.heatBand).toBeNull();
     expect(j.slowdownPct).toBe(0);
     expect(j.shouldFlagInRecap).toBe(false);
     expect(j.summary).toBe('Conditions unknown');
@@ -240,29 +249,32 @@ describe('judgeWeather · confirmed-Z input (peak-temp + thermal arc)', () => {
 });
 
 describe('judgeWeather · doctrine band boundaries', () => {
-  it('warm band lower bound: ~2% slowdown', () => {
-    // ~63°F cloudy → ~2.1% slowdown → warm (doctrine: 60°F=1.5, 65°F=2.5).
+  it('materiality lower bound: ~2% slowdown at 63°F', () => {
+    // ~63°F cloudy → ~2.1% slowdown (doctrine: 60°F=1.5, 65°F=2.5).
+    // WBGT 63 − 10 = 53 → green · a real pace cost on a low-risk day.
     const j = judgeWeather({
       tempF: 63, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80,
     });
     expect(j.slowdownPct).toBeGreaterThanOrEqual(2);
-    expect(j.heatBand).toBe('warm');
+    expect(j.heatBand).toBe('neutral');
   });
 
-  it('hot/extreme transition: <8% is hot, ≥8% is extreme', () => {
-    // 72°F dry cloudy → ~4.6% → hot.
-    const jHot = judgeWeather({
+  it('the WBGT flag is what moves the band, not the slowdown %', () => {
+    // 72°F, 30% RH, cloudy → 4.6% pace cost but WBGT 72 − 14 = 58 → green.
+    // The dry air is exactly why: evaporative cooling works, the risk is
+    // low, and the marathon-anchored table still prices the temperature.
+    const jDry = judgeWeather({
       tempF: 72, humidityPct: 30, conditions: 'cloudy', cloudCoverPct: 80,
     });
-    expect(jHot.slowdownPct).toBeLessThan(8);
-    expect(jHot.heatBand).toBe('hot');
+    expect(jDry.slowdownPct).toBeGreaterThanOrEqual(4);
+    expect(jDry.heatBand).toBe('neutral');
 
-    // 82°F at 70% RH cloudy → 8.5% base + ~1.1% dewpoint → extreme.
-    const jExtreme = judgeWeather({
+    // 82°F at 70% RH cloudy → WBGT 82 − 6 = 76 → red band → "hot".
+    const jRed = judgeWeather({
       tempF: 82, humidityPct: 70, conditions: 'cloudy', cloudCoverPct: 80,
     });
-    expect(jExtreme.slowdownPct).toBeGreaterThanOrEqual(8);
-    expect(jExtreme.heatBand).toBe('extreme');
+    expect(jRed.slowdownPct).toBeGreaterThanOrEqual(8);
+    expect(jRed.heatBand).toBe('hot');
   });
 
   it('shouldFlagInRecap fires at ≥2% slowdown OR dewpoint ≥65°F', () => {
@@ -283,7 +295,7 @@ describe('judgeWeather · doctrine band boundaries', () => {
     expect(jSticky.shouldFlagInRecap).toBe(true);
   });
 
-  it('coach tip escalates: warm → hot → extreme', () => {
+  it('coach tip escalates with the pace cost, whatever the flag says', () => {
     const jWarm = judgeWeather({
       tempF: 64, humidityPct: 50, conditions: 'cloudy', cloudCoverPct: 80,
     });
@@ -293,11 +305,18 @@ describe('judgeWeather · doctrine band boundaries', () => {
     const jExtreme = judgeWeather({
       tempF: 85, humidityPct: 70, conditions: 'cloudy', cloudCoverPct: 80,
     });
-    expect(jWarm.heatBand).toBe('warm');
-    expect(jHot.heatBand).toBe('hot');
-    expect(jExtreme.heatBand).toBe('extreme');
-    // Warm tip is the most casual: "Try to start earlier" + salt.
+    // 64°F cloudy 50% RH → 2.3% · 72°F → 4.6% · 85°F 70% RH → ~11.5%.
+    expect(jWarm.slowdownPct).toBeGreaterThanOrEqual(2);
+    expect(jWarm.slowdownPct).toBeLessThan(4);
+    expect(jHot.slowdownPct).toBeGreaterThanOrEqual(4);
+    expect(jHot.slowdownPct).toBeLessThan(8);
+    expect(jExtreme.slowdownPct).toBeGreaterThanOrEqual(8);
+    // Only the hottest of the three is a doctrine red flag (WBGT 79).
+    expect(jExtreme.heatBand).toBe('hot');
+    // Mildest tip is the most casual: "Try to start earlier" + salt.
     expect(jWarm.coachTipForNextTime).toMatch(/Try to start earlier|salt/);
+    expect(jHot.coachTipForNextTime).toMatch(/Start earlier next time|effort and HR/);
+    expect(jExtreme.coachTipForNextTime).toMatch(/Move hard runs|Forget the pace/);
     // Hot tip leads with "Start earlier next time" + rough on the body + 16-24 oz.
     expect(jHot.coachTipForNextTime).toMatch(/Start earlier next time|rough on the body|16-24 oz/);
     // Extreme tip mentions moving the run + heat acclimation in plain English.

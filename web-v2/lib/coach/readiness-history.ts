@@ -21,6 +21,38 @@
 import { pool } from '@/lib/db/pool';
 import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { BASELINE_WINDOW_DAYS, type ReadinessBandBaseline } from './readiness';
+
+/**
+ * The runner's own recent readiness scores, oldest → newest, excluding today.
+ *
+ * 2026-08-17 · owner ruling. The band is judged against the runner's own
+ * normal, not an absolute scale, so every surface that scores a day has to be
+ * able to say what normal looks like for HIM. One loader, so a Today screen
+ * and a Health page can never band the same score differently.
+ *
+ * Returns an empty window on any failure — the score module treats "no
+ * baseline" as a reason to stay quiet, which is the safe direction here.
+ */
+export async function loadReadinessBandBaseline(
+  userUuid: string,
+  todayISO?: string,
+): Promise<ReadinessBandBaseline> {
+  try {
+    const today = todayISO ?? await runnerToday(userUuid);
+    const rows = (await pool.query<{ score: number | null }>(
+      `SELECT score FROM readiness_snapshots
+        WHERE user_uuid = $1
+          AND snapshot_date < $2::date
+          AND snapshot_date >= $2::date - $3::int
+        ORDER BY snapshot_date ASC`,
+      [userUuid, today, BASELINE_WINDOW_DAYS],
+    )).rows;
+    return { recent: rows.map((r) => (r.score == null ? null : Number(r.score))) };
+  } catch {
+    return { recent: [] };
+  }
+}
 
 export interface PillarPoint {
   date: string;        // YYYY-MM-DD

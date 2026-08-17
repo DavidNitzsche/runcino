@@ -11,6 +11,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
+import { loadReadinessBandBaseline } from './readiness-history';
 import { loadNextARace } from './race-lookup';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { loadActivePlan } from '@/lib/plan/lookup';
@@ -608,6 +609,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       }
     : null;
 
+  const bandBaseline = await loadReadinessBandBaseline(userId, today);
   const readiness = computeReadiness({
     today, user_id: userId,
     profile: prof ?? null,
@@ -659,7 +661,14 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     // from the full state-loader path (e.g. /api/coach/today) when
     // it needs the authored copy.
     phase: null,
-  });
+  },
+    undefined,
+    // 2026-08-17 · owner ruling · Today bands the score against the runner's
+    // own rolling normal, same loader the brief and the nightly snapshot use.
+    // Without it this fast path would band on the absolute cuts and disagree
+    // with the Health page about the same number.
+    bandBaseline,
+  );
 
   // Pace-derivation inputs (Phase 47 · /today fallback). LTHR + the closest
   // upcoming A-race goal feed prescriptions.derivePaces() in the adapter so

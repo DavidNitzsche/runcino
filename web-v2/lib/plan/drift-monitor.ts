@@ -44,7 +44,6 @@ import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-input
 // §12 dewpoint surcharge) + Magnus-Tetens dewpoint estimate + the
 // workout_weather_cache reader for runs without enriched weather fields.
 import { effortSlowdownPct } from '@/lib/training/heat-model';
-import { estimateDewpointF } from '@/lib/coach/weather-adjust';
 import { lookupTempF } from '@/lib/weather/lookup';
 
 export type DriftKind =
@@ -574,29 +573,31 @@ export interface QualityDriftSample {
   tempF: number | null;
   dewpointF: number | null;
   humidityPct: number | null;
+  /** 2026-08-17 · the sky. Without it this sample dropped the Research/06 §3
+   *  solar correction that the post-run verdict applies, so a clear 80°F
+   *  tempo normalised at 7.2% here and 9.4% on the recap — the same run,
+   *  two answers. Null when the run carries no cloud/condition signal. */
+  conditions?: string | null;
+  cloudCoverPct?: number | null;
   durationS: number | null;
 }
 
 /** Pure per-run heat normalization · exported for tests. Returns the
  *  heat-adjusted actual pace (s/mi) and the applied slowdown %. */
 export function heatAdjustQualitySample(s: QualityDriftSample): { adjustedSPerMi: number; slowdownPct: number } {
-  if (s.tempF == null || !Number.isFinite(s.tempF)) {
-    return { adjustedSPerMi: s.actualSPerMi, slowdownPct: 0 };  // no weather → no adjustment, silently
-  }
-  const td = s.dewpointF != null && Number.isFinite(s.dewpointF)
-    ? s.dewpointF
-    : (s.humidityPct != null && Number.isFinite(s.humidityPct)
-        ? estimateDewpointF(s.tempF, s.humidityPct)
-        : null);
-  let pct = effortSlowdownPct({
+  // 2026-08-17 · the dewpoint fallback and the Research/06 §2 interval
+  // halving both moved into the shared model (cluster 5). This hands over the
+  // weather it has and lets one implementation decide what to do with it.
+  const pct = effortSlowdownPct({
     tempF: s.tempF,
-    dewpointF: td,
+    dewpointF: s.dewpointF,
+    humidityPct: s.humidityPct,
+    conditions: s.conditions,
+    cloudCoverPct: s.cloudCoverPct,
     durationS: s.durationS,
     tier: 'mid_pack',
+    intervalStyle: s.workoutType === 'intervals' || s.workoutType === 'vo2max',
   });
-  // Research/06 §2 interval-vs-continuous rule: repeats with recovery
-  // between cool partially · half the continuous adjustment.
-  if (s.workoutType === 'intervals' || s.workoutType === 'vo2max') pct = pct * 0.5;
   if (!(pct > 0)) return { adjustedSPerMi: s.actualSPerMi, slowdownPct: 0 };
   return {
     adjustedSPerMi: s.actualSPerMi / (1 + pct / 100),
@@ -627,6 +628,8 @@ async function checkQualityDrift(
     temp_f_peak: string | null;
     dewpoint_f: string | null;
     humidity_pct: string | null;
+    conditions: string | null;
+    cloud_cover_pct: string | null;
     duration_s: string | null;
     start_lat: string | null;
     start_lon: string | null;
@@ -643,6 +646,8 @@ async function checkQualityDrift(
             r.data->>'tempF_peak' AS temp_f_peak,
             r.data->>'dewpointF' AS dewpoint_f,
             r.data->>'humidityPct' AS humidity_pct,
+            r.data->>'conditions' AS conditions,
+            r.data->>'cloudCoverPct' AS cloud_cover_pct,
             COALESCE(r.data->>'durationSec', r.data->>'movingTimeS', r.data->>'elapsedTimeS') AS duration_s,
             COALESCE(r.data->'startLatLng'->>0, r.data->>'startLat', r.data->>'start_latitude') AS start_lat,
             COALESCE(r.data->'startLatLng'->>1, r.data->>'startLng', r.data->>'start_longitude') AS start_lon
@@ -691,6 +696,8 @@ async function checkQualityDrift(
       tempF,
       dewpointF: num(row.dewpoint_f),
       humidityPct: num(row.humidity_pct),
+      conditions: row.conditions ?? null,
+      cloudCoverPct: num(row.cloud_cover_pct),
       durationS: num(row.duration_s),
     });
     if (slowdownPct > 0) { adjustedRuns++; maxSlowdownPct = Math.max(maxSlowdownPct, slowdownPct); }

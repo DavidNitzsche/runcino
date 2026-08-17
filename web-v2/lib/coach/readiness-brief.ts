@@ -29,8 +29,8 @@
 import { pool } from '@/lib/db/pool';
 import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { computeReadiness, computeDynamicSleepTarget, lutealAdjustedHrvBaseline, type ReadinessBreakdown, type ReadinessInput } from './readiness';
-import { loadReadinessHistory, type PillarPoint, type ReadinessHistory } from './readiness-history';
+import { computeReadiness, computeDynamicSleepTarget, lutealAdjustedHrvBaseline, READINESS_WEIGHTS, type ReadinessBreakdown, type ReadinessInput } from './readiness';
+import { loadReadinessHistory, loadReadinessBandBaseline, type PillarPoint, type ReadinessHistory } from './readiness-history';
 import type { CoachState } from '@/lib/topics/types';
 import { buildSynthesis } from './synthesis';
 import { computeTrainingForm } from './training-form';
@@ -258,8 +258,18 @@ const PILLAR_LABEL: Record<PillarKey, string> = {
 const PILLAR_DISPLAY_LABEL: Record<PillarKey, string> = {
   sleep: 'SLEEP', hrv: 'HRV', rhr: 'RESTING HR', load: 'TRAINING LOAD', hr_recovery: 'HR RECOVERY',
 };
+// 2026-08-17 · doctrine-conformance audit · read the weights off the score
+// module instead of keeping a second copy here. The copy said 28/28/24 while
+// the score applied its own numbers; a display that carries its own version of
+// the table is a display that will eventually disagree with the score it
+// explains. Source: BuildResearch · D1 §"Summary table — recommended input
+// weights for a runner" (HRV 40 · Sleep 22 · RHR 18 · load 15% modifier).
 const PILLAR_WEIGHT: Record<PillarKey, number> = {
-  sleep: 28, hrv: 28, rhr: 24, load: 15, hr_recovery: 5,
+  sleep: Math.round(READINESS_WEIGHTS.sleep * 100),
+  hrv: Math.round(READINESS_WEIGHTS.hrv * 100),
+  rhr: Math.round(READINESS_WEIGHTS.rhr * 100),
+  load: Math.round(READINESS_WEIGHTS.load * 100),
+  hr_recovery: Math.round(READINESS_WEIGHTS.hr_recovery * 100),
 };
 // 2026-06-01 · Pillar "citation" field stripped of Research/ pointers
 // per the locked "no citations anywhere" rule. The value is still
@@ -305,7 +315,11 @@ export async function loadReadinessBrief(
   // and the displayed baseline disagreed. Now both read this one value.
   const dynamicSleepTarget = computeDynamicSleepTarget(state.loadAcwr);
   const stateForScore: CoachState = { ...state };
-  const breakdown = computeReadiness(stateForScore, dynamicSleepTarget);
+  // 2026-08-17 · owner ruling · band the score against the runner's own
+  // rolling normal. Without this the brief judged a personally-baselined
+  // number on an absolute scale and called 23% of his days PULL BACK.
+  const bandBaseline = await loadReadinessBandBaseline(userId, date);
+  const breakdown = computeReadiness(stateForScore, dynamicSleepTarget, bandBaseline);
 
   // 2026-06-01 · cold-start no longer short-circuits to null · the
   // drawer needs the coldStart envelope to render the "Building your

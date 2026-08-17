@@ -28,7 +28,7 @@
  *       Research/06-weather-adjustments.md §1/§12 via heat-model.
  */
 
-import { maughanSlowdownPct, durationHeatScale, abilityTierFromVdot } from '@/lib/training/heat-model';
+import { effortSlowdownPct, abilityTierFromVdot } from '@/lib/training/heat-model';
 import { parseStartHour } from '@/lib/training/race-conditions';
 import {
   raceOpeningPlan,
@@ -419,10 +419,15 @@ export function composeRaceExecutionPlan(args: {
   }];
 
   // ── Heat decision tree · unified doctrine model at race duration ──
+  // 2026-08-17 · routed through effortSlowdownPct, the shared model's single
+  // entry point, rather than composing maughanSlowdownPct × durationHeatScale
+  // by hand — one of the five hand-rolled pre-processors cluster 5 removed.
+  // This table is a "if the gun reads X°F" ladder built weeks out, so the
+  // dewpoint and the sky are genuinely unknown and are passed as such; the
+  // race-day Conditions chunk prices the real forecast.
   const tier = abilityTierFromVdot(args.vdot);
-  const durScale = durationHeatScale(goalSec);
   const heatRules: HeatRule[] = [65, 70, 75, 80].map((t) => {
-    const pct = maughanSlowdownPct(t, tier) * durScale;
+    const pct = effortSlowdownPct({ tempF: t, durationS: goalSec, tier });
     const add = Math.round(goalPace * pct / 100);
     return {
       ifStartTempAtLeastF: t,

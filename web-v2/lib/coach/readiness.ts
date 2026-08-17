@@ -1,19 +1,86 @@
 /**
- * Readiness — composite score per §8.3 doctrine.
+ * Readiness — composite score.
  *
  *   baseline 70, range 0-100
  *   bands: >85 SHARP · 65-85 READY · 50-65 MODERATE · <50 PULL BACK
  *
- * Weights (2026-05-30: dropped subjective, renormalized to objective signals
- * only — subjective check-ins now feed the coach voice directly rather than
- * the readiness number, so the score reflects what HealthKit actually says.
- * 2026-05-30 P2 #9: added HR Recovery 5% pillar from Apple Watch post-workout
- * 60s drop):
- *   - Sleep        28%  → 7-night avg vs 7.5h target. ±2 per 0.25h.
- *   - HRV          28%  → 7-day median vs 30-day baseline. ±1 per 2%.
- *   - RHR          24%  → 3-day rolling avg vs 30-day baseline. −2 per bpm above.
- *   - Load         15%  → A:C ratio (7d:28d). >1.5 = -8 per Gabbett.
+ * ── 2026-08-17 · doctrine-conformance audit, clusters 1 and 2 ─────────────
+ *
+ * The score carried its own weight table (Sleep 28 / HRV 28 / RHR 24) and
+ * applied training load as a fifth ADDITIVE pillar worth +5 to −8 points.
+ * Both contradict the methodology this score is built on
+ * (BuildResearch · D1-recovery-score-methodology.md):
+ *
+ *   · D1 §"Summary table — recommended input weights for a runner" is
+ *     HRV 40%, Sleep 22%, RHR 18%. D1 §2.1 is explicit about the direction
+ *     of the error: "Below 40% under-uses the signal". The engine had HRV
+ *     and sleep tied, which inverts the fidelity ordering — sleep is one
+ *     night's sample, HRV is a seven-day trend, and D1 §"Why these weights"
+ *     says weighting a sample above a trend "would be inverting fidelity".
+ *
+ *   · D1 §2.4 makes load "a 'load context' multiplier in the range
+ *     [0.85, 1.10] applied after the biometric composite", and D1
+ *     §"Why these weights" gives the reason: as a multiplier "it can't
+ *     *create* a score; it can only modulate one". The engine added +5 for a
+ *     sweet-spot ACWR, so a runner with no biometric signal at all banked
+ *     five points of readiness for having run a normal week.
+ *
+ * What changed, precisely:
+ *
+ *   1. The three biometric pillars keep their existing DEVIATION SCALES —
+ *      the point at which each pillar is fully dragged or fully lifted is
+ *      unchanged — and keep their existing TOTAL authority over the score
+ *      (48 points of drag, 34 of lift). Doctrine sets the SPLIT of that
+ *      authority, and only the split moved: 40 / 22 / 18.
+ *   2. Load is no longer a pillar. It is a multiplier on the composite,
+ *      taken from D1 §6 step 4, and the result is capped at the ceiling the
+ *      day's own pillars could have produced, so the modifier can lift a
+ *      real signal but can never manufacture one.
+ *
+ * Pillars, after the change:
+ *   - HRV          40%  → 7-day median vs 30-day baseline. Full swing at ±36%.
+ *   - Sleep        22%  → 7-night avg vs target. Full drag at −2.25h.
+ *   - RHR          18%  → 3-day rolling avg vs 30-day baseline. Full swing at ±6 bpm.
  *   - HR Recovery   5%  → most recent vs 30d baseline. ±1 per 2 bpm delta.
+ *   - Load         15%  → multiplier ×0.88-1.05, applied AFTER the composite.
+ *
+ * HR Recovery has no row in D1's table. It is an engine addition (2026-05-30
+ * P2 #9) occupying the 5% sub-signal slot D1 §2.6 gives to body-temp
+ * deviation, which this app does not compute. Documented as engine-internal
+ * rather than dressed up as doctrine.
+ *
+ * ── 2026-08-17 · owner ruling · the score INFORMS, it never mutates ───────
+ *
+ * The bands were absolute — >85 SHARP, 65-85 READY, 50-65 MODERATE, <50 PULL
+ * BACK — on a number whose pillars are all measured against the runner's OWN
+ * baselines. That mismatch is what made the detector misfire. Across 78
+ * snapshot days it produced 18 PULL BACK days (23% of all days); the runner
+ * trained through 12 of them, and on his lowest score ever recorded (31) he
+ * ran 8 miles and then raced a half the projection model called to within two
+ * seconds. The band flipped on 29 of 77 day-to-day transitions, mean swing
+ * 6.8 points. A flag that fires a quarter of the time and reverses every
+ * third day is measuring ordinary life variance in a 41-year-old running a
+ * company with two kids, not overreaching.
+ *
+ * Doctrine agreed all along and the engine had not caught up:
+ *
+ *   D1 §2.1  "Absolute HRV varies 5–10× between individuals — only
+ *            intra-individual trends matter."
+ *   D1 §2.8  "Implicitly handled by per-user baselines — the algorithm
+ *            normalizes against the individual's own 60-day mean/SD."
+ *   D1 §5    days 7-13 the score is provisional and "constrained to 33–66
+ *            (no green or red yet)"; a trustworthy score needs 30 days.
+ *   D1 §3    "three corroborating signals start to look like evidence."
+ *
+ * So the BAND is now a read on the runner's own score distribution, not on an
+ * absolute scale, and PULL BACK additionally requires the deviation to be
+ * sustained and corroborated. See `bandFor` below for the ladder and the
+ * expected firing rates.
+ *
+ * The score has no other job. Nothing in this module, and nothing that reads
+ * it inside lib/coach, changes a prescription, caps an intensity or writes a
+ * plan mutation. `readiness_pullback` in lib/plan/adapt.ts still can, and is
+ * reported rather than rewired from here.
  */
 import type { CoachState } from '@/lib/topics/types';
 
@@ -22,18 +89,200 @@ export interface ReadinessBreakdown {
   band: 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'unknown';
   label: string;                // 'SHARP' / 'READY' / 'MODERATE' / 'PULL BACK' / 'UNKNOWN'
   inputs: ReadinessInput[];
+  /**
+   * What the band was judged against. Null when the runner has no personal
+   * baseline yet, which is itself the reason the band stays quiet.
+   */
+  personal: {
+    /** The runner's own rolling normal, rounded for copy. */
+    normal: number;
+    /** Spread of his own scores · one SD, floored at 1. */
+    spread: number;
+    /** How far today sits from his normal, in SDs. */
+    z: number;
+    /** Days of history the normal was built from. */
+    days: number;
+  } | null;
+}
+
+/**
+ * The runner's own recent scores, oldest → newest, EXCLUDING today.
+ * Everything the band needs to know what "normal" looks like for him.
+ */
+export interface ReadinessBandBaseline {
+  recent: Array<number | null | undefined>;
 }
 
 export interface ReadinessInput {
   key: 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery';
-  label: string;          // 'SLEEP · 28%'
-  weight: number;         // contribution (signed)
+  label: string;          // 'SLEEP · 22%'
+  /**
+   * Signed points this input moved the score. For the four biometric pillars
+   * that is the pillar's own contribution; for `load` — a multiplier since
+   * 2026-08-17 — it is the points the multiplier moved the finished
+   * composite, so every consumer still reads one comparable number.
+   */
+  weight: number;
   observedV: string;      // '6.7h' / '71ms' / etc
   observedSub: string;    // 'vs 7.5h target' / '+27%' / etc
   meaning: string;        // one-sentence interpretation of YOUR value
 }
 
 const BASELINE = 70;
+
+/**
+ * Doctrine weights · BuildResearch · D1-recovery-score-methodology.md,
+ * §"Summary table — recommended input weights for a runner".
+ *
+ * Exported so the doctrine gate can read them, and so `readiness-brief`
+ * renders the same percentages the score actually applies (it used to carry
+ * its own copy of the table, which is how a display can drift from a score).
+ */
+export const READINESS_WEIGHTS = {
+  hrv: 0.40,
+  sleep: 0.22,
+  rhr: 0.18,
+  /** Modifier, not a pillar · see loadContextMultiplier. */
+  load: 0.15,
+  /** Engine-internal · D1 has no HR-recovery row. */
+  hr_recovery: 0.05,
+} as const;
+
+/**
+ * Points of drag and lift the biometric pillars share out between them, per
+ * 1.0 of weight. These two numbers carry the pre-audit engine's total
+ * authority forward unchanged — sleep + HRV + RHR could drag 48 points and
+ * lift 34 across a summed weight of 0.80 — so the number the runner has been
+ * reading keeps its scale. Doctrine sets how that authority is SPLIT, which
+ * is the only thing the audit found wrong.
+ */
+const PILLAR_DRAG_PER_WEIGHT = 60;      // 48 / 0.80
+const PILLAR_LIFT_PER_WEIGHT = 42.5;    // 34 / 0.80
+
+/**
+ * Deviation at which a pillar is fully dragged / fully lifted. Taken from
+ * the pre-audit engine's own clamps so re-weighting does not silently
+ * re-scale what counts as a big HRV drop or a short night:
+ *   sleep  −18 pts at 2 pts per 0.25 h → 2.25 h short;  +10 → 1.25 h over
+ *   HRV    ±18 pts at 1 pt per 2%      → ±36%
+ *   RHR    −12 pts at 2 pts per bpm    → +6 bpm;        +6 at 1 pt per bpm → −6 bpm
+ */
+const FULL_DEVIATION = {
+  sleepShortH: 2.25,
+  sleepSurplusH: 1.25,
+  hrvPct: 36,
+  rhrBpm: 6,
+} as const;
+
+/** Signed points a pillar contributes, from a normalised deviation in [-1, 1]. */
+function pillarPoints(deviation: number, weight: number): number {
+  const d = Math.max(-1, Math.min(1, deviation));
+  return d < 0 ? d * PILLAR_DRAG_PER_WEIGHT * weight : d * PILLAR_LIFT_PER_WEIGHT * weight;
+}
+
+/** The most a pillar could lift the score on a day it has signal. */
+function pillarMaxLift(weight: number): number {
+  return Math.round(PILLAR_LIFT_PER_WEIGHT * weight);
+}
+
+/** Engine-internal HR-recovery cap · ±5, unchanged from 2026-05-30. */
+const HR_RECOVERY_CAP = 5;
+
+// ── Personal banding · the 2026-08-17 owner ruling ────────────────────────
+
+/**
+ * Days of prior scores before the band is judged personally. D1 §5: "a useful
+ * score requires 14 days of HRV + RHR data; a trustworthy score requires 30."
+ * Below this the band cannot go red or green at all — the same progressive
+ * disclosure the methodology prescribes for the first two weeks.
+ */
+export const BASELINE_MIN_DAYS = 14;
+
+/** How far back the rolling normal looks. D1 §5's "establishing" window. */
+export const BASELINE_WINDOW_DAYS = 28;
+
+/**
+ * The ladder, in standard deviations of the runner's own score distribution.
+ *
+ * Expected firing rates on a roughly normal spread — the number that made
+ * this change necessary is the 23% the absolute cuts were producing:
+ *
+ *   sharp      z >= +1.5   ~6.7% of days
+ *   moderate   z <= -1.0   ~13.6% of days (the band between -1.0 and -2.0)
+ *   pull-back  z <= -2.0   ~2.3% of days BEFORE the two gates below,
+ *                          and ~0-1 days in 78 after them
+ *
+ * -2.0 is not arbitrary: D1 §6 clamps every input z to ±2, so ±2 SD is the
+ * edge of what the methodology treats as a meaningful reading at all.
+ */
+export const BAND_Z = {
+  sharp: 1.5,
+  moderate: -1.0,
+  pullBack: -2.0,
+} as const;
+
+/**
+ * PULL BACK needs more than one bad number. Two extra gates, both from the
+ * methodology rather than from taste:
+ *
+ *   SUSTAINED · yesterday must also have sat at or below the same cut.
+ *     D1 §2.2 on RHR: "≥+5 bpm for TWO DAYS"; §2.6 on temp: "a 3-day
+ *     persistent deviation is a real signal". One night is noise everywhere
+ *     in the document.
+ *
+ *   CORROBORATED · at least two biometric pillars must be dragging.
+ *     D1 §3: "three corroborating signals start to look like evidence", and
+ *     §2.2 warns RHR alone misses ~30% of cases. A single pillar having a bad
+ *     morning is not a body in trouble.
+ */
+export const PULLBACK_MIN_DRAGGING_PILLARS = 2;
+
+/** Mean and SD of the runner's own recent scores · null when too few. */
+function personalNormal(baseline: ReadinessBandBaseline | undefined): { mean: number; sd: number; days: number } | null {
+  const scores = (baseline?.recent ?? [])
+    .filter((s): s is number => typeof s === 'number' && isFinite(s))
+    .slice(-BASELINE_WINDOW_DAYS);
+  if (scores.length < BASELINE_MIN_DAYS) return null;
+  const mean = scores.reduce((s, x) => s + x, 0) / scores.length;
+  const variance = scores.reduce((s, x) => s + (x - mean) ** 2, 0) / scores.length;
+  // Floor the spread at 1 point · a runner whose scores never move must not
+  // divide by zero into an infinite z.
+  return { mean, sd: Math.max(1, Math.sqrt(variance)), days: scores.length };
+}
+
+/**
+ * Training-load context multiplier · BuildResearch · D1 §6 step 4, verbatim
+ * bands, and D1 §2.4's stated range [0.85, 1.10].
+ *
+ * Doctrine's own third branch reads
+ *   `elif 0.8 <= ACWR <= 1.3 and ATL < CTL * 0.8: load_mod = 1.05`
+ * which cannot be satisfied when ACWR is defined as ATL/CTL from a single
+ * source, as it is here (acute7 / chronic28) — `ATL < 0.8 × CTL` IS
+ * `ACWR < 0.8`. Rather than ship a branch wired to nothing (the audit's
+ * drift pattern #9), the engine implements what §2.4 says that branch is
+ * for — "bonus when ATL drops in a planned taper" — at the freshness
+ * threshold the same doctrine uses, Research/15's ACWR < 0.8. The
+ * contradiction in D1's pseudocode is reported as a corpus defect.
+ */
+export const LOAD_CONTEXT_MULTIPLIER = {
+  spike: 0.88,
+  elevated: 0.95,
+  neutral: 1.00,
+  fresh: 1.05,
+} as const;
+
+export function loadContextMultiplier(
+  acwr: number | null | undefined,
+  acute7: number | null | undefined,
+  chronic28: number | null | undefined,
+): number {
+  if (acwr == null || !isFinite(acwr)) return LOAD_CONTEXT_MULTIPLIER.neutral;
+  const atlOverCtl = acute7 != null && chronic28 != null ? acute7 > chronic28 : acwr > 1;
+  if (acwr > 1.5 && atlOverCtl) return LOAD_CONTEXT_MULTIPLIER.spike;
+  if (acwr > 1.3) return LOAD_CONTEXT_MULTIPLIER.elevated;
+  if (acwr < 0.8) return LOAD_CONTEXT_MULTIPLIER.fresh;
+  return LOAD_CONTEXT_MULTIPLIER.neutral;
+}
 
 /**
  * 2026-06-16 · #16 fix · load-scaled sleep target.
@@ -97,19 +346,30 @@ export function computeReadiness(
   // When omitted, derive the load-scaled target from state.loadAcwr so
   // the score and the baseline label always agree, on every surface.
   sleepTargetOverride?: number,
+  // 2026-08-17 · the runner's own recent scores. Supplied, the band is a read
+  // on HIS distribution; omitted, the band stays deliberately quiet (no
+  // PULL BACK, no SHARP) because an absolute cut on a personally-baselined
+  // number is the miscalibration this ruling removed.
+  baseline?: ReadinessBandBaseline,
 ): ReadinessBreakdown {
   let score = BASELINE;
   const inputs: ReadinessInput[] = [];
   const sleepTarget = sleepTargetOverride ?? computeDynamicSleepTarget(state.loadAcwr);
+  // Ceiling the day's own pillars could reach · load may modulate the score
+  // up to here and no further (D1: the modifier "can't create a score").
+  let pillarCeiling = BASELINE;
 
-  // SLEEP (28%)
+  // SLEEP (22%)
   if (state.sleep7Avg != null) {
     const target = sleepTarget;
     const delta = state.sleep7Avg - target;
     const debt = Math.max(0, -delta * 7); // approx weekly debt
-    // ±2 per 0.25h, clamp -18 / +10 (scaled from old ±15/+8 for new 28% weight)
-    const w = Math.max(-18, Math.min(10, Math.round(delta / 0.25 * 2)));
+    const w = Math.round(pillarPoints(
+      delta >= 0 ? delta / FULL_DEVIATION.sleepSurplusH : delta / FULL_DEVIATION.sleepShortH,
+      READINESS_WEIGHTS.sleep,
+    ));
     score += w;
+    pillarCeiling += pillarMaxLift(READINESS_WEIGHTS.sleep);
     const meaning = delta >= 0
       // 2026-06-16 · #16 · name the actual (possibly load-scaled) target,
       // not a hardcoded 7.5h, so the prose agrees with the scored delta.
@@ -122,7 +382,7 @@ export function computeReadiness(
           ? `Around ${debt.toFixed(0)}h short of your ${target.toFixed(1)}h target this week. Watch for fatigue creep.`
           : `A touch under your ${target.toFixed(1)}h target. Nothing concerning yet.`;
     inputs.push({
-      key: 'sleep', label: 'SLEEP · 28%', weight: w,
+      key: 'sleep', label: 'SLEEP · 22%', weight: w,
       // Tag the value as the 7-night average so it doesn't read as "last night".
       observedV: `${state.sleep7Avg.toFixed(1)}h · 7-night avg`,
       // 2026-06-03 · dropped "vs 7.5h target" tail · the pillar's
@@ -134,10 +394,10 @@ export function computeReadiness(
       meaning,
     });
   } else {
-    inputs.push({ key: 'sleep', label: 'SLEEP · 28%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No sleep data yet. Wear the watch overnight.' });
+    inputs.push({ key: 'sleep', label: 'SLEEP · 22%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No sleep data yet. Wear the watch overnight.' });
   }
 
-  // HRV (28%)
+  // HRV (40%) — the highest-fidelity pillar per D1 §2.1.
   if (state.hrvCurrent != null && state.hrvBaseline != null && state.hrvBaseline > 0) {
     // 2026-06-01 · Luteal-phase adjustment (Research/13 §1-Menstrual-Cycle-and-Training).  // was §sex-specific · heading: ## 1. The Menstrual Cycle and Training
     // Luteal HRV runs 5-10ms lower regardless of fitness · subtract 5ms
@@ -149,7 +409,7 @@ export function computeReadiness(
     // phase all apply byte-identical luteal logic (can't drift apart).
     const lutealAdjusted = lutealAdjustedHrvBaseline(state.hrvBaseline, state.biologicalSex, state.cyclePhase);
     const pct = ((state.hrvCurrent - lutealAdjusted) / lutealAdjusted) * 100;
-    // ±1 per 2%, clamp ±18 (scaled from old ±15 for new 28% weight).
+    // Full swing at ±36% off baseline, weighted at D1's 40%.
     // 2026-06-26 · deadband · within ±5% the HRV reads "at baseline · no
     // recovery flag" (the meaning band below). Noise-level drift then neither
     // drags nor lifts the score, and the metric stays out of the iPhone
@@ -157,8 +417,9 @@ export function computeReadiness(
     // actually means something gets weighted. Boundary matches the copy band.
     const w = (pct >= -5 && pct < 5)
       ? 0
-      : Math.max(-18, Math.min(18, Math.round(pct / 2)));
+      : Math.round(pillarPoints(pct / FULL_DEVIATION.hrvPct, READINESS_WEIGHTS.hrv));
     score += w;
+    pillarCeiling += pillarMaxLift(READINESS_WEIGHTS.hrv);
     const lutealNote = state.cyclePhase === 'luteal'
       ? ' Baseline adjusted for luteal phase.'
       : '';
@@ -178,7 +439,7 @@ export function computeReadiness(
             ? `Below your ${hrvBase}ms baseline. Could be stress, sleep, or building load. Watch tomorrow.`
             : `Well below your ${hrvBase}ms baseline. The week's been low. Ease off and check rest.`) + lutealNote;
     inputs.push({
-      key: 'hrv', label: 'HRV · 28%', weight: w,
+      key: 'hrv', label: 'HRV · 40%', weight: w,
       // G3 (2026-06-09) · health-state now feeds the 7-day MEDIAN
       // (outlier-immune after the Jun 8 partial-night incident).
       observedV: `${state.hrvCurrent}ms · 7d median`,
@@ -189,21 +450,22 @@ export function computeReadiness(
       meaning,
     });
   } else {
-    inputs.push({ key: 'hrv', label: 'HRV · 28%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No HRV data yet. Needs a few overnights of watch wear.' });
+    inputs.push({ key: 'hrv', label: 'HRV · 40%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No HRV data yet. Needs a few overnights of watch wear.' });
   }
 
-  // RHR (25%)
+  // RHR (18%) — D1 §2.2: "A confirmer, not a primary driver."
   if (state.rhrCurrent != null && state.rhrBaseline != null) {
     const delta = state.rhrCurrent - state.rhrBaseline;
-    // Clamp -12 / +6 (scaled from old -10/+5 for new 25% weight).
+    // Full swing at ±6 bpm off baseline, weighted at D1's 18%.
     // 2026-06-26 · deadband · -2 < delta <= 1 bpm reads "right on baseline · no
     // signal" (the meaning band below). A sub-1bpm rise is noise · don't dock
     // readiness or surface it in the "X dragging" headline. Only a real
     // rise/drop gets weighted. Boundary matches the copy band.
     const w = (delta > -2 && delta <= 1)
       ? 0
-      : Math.max(-12, Math.min(6, delta > 0 ? -delta * 2 : -delta));
+      : Math.round(pillarPoints(-delta / FULL_DEVIATION.rhrBpm, READINESS_WEIGHTS.rhr));
     score += w;
+    pillarCeiling += pillarMaxLift(READINESS_WEIGHTS.rhr);
     // 2026-06-26 · name the baseline bpm in the prose (observedSub isn't shown
     // on iPhone) so "at baseline" is verifiable at a glance.
     const rhrBase = Math.round(state.rhrBaseline);
@@ -215,62 +477,57 @@ export function computeReadiness(
           ? `A few beats above your ${rhrBase} bpm baseline. Could be sleep, dehydration, or a volume bump. One day is fine · watch for a streak.`
           : `Notably above your ${rhrBase} bpm baseline. Sleep, illness, dehydration, or overreach. If it holds 3+ days, ease the load.`;
     inputs.push({
-      key: 'rhr', label: 'RHR · 24%', weight: w,
+      key: 'rhr', label: 'RHR · 18%', weight: w,
       observedV: `${state.rhrCurrent} bpm · 3d avg`,
       observedSub: `baseline ${state.rhrBaseline} bpm`,
       meaning,
     });
   } else {
-    inputs.push({ key: 'rhr', label: 'RHR · 24%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No resting HR data yet.' });
+    inputs.push({ key: 'rhr', label: 'RHR · 18%', weight: 0, observedV: 'no data', observedSub: '', meaning: 'No resting HR data yet.' });
   }
 
-  // LOAD (15%) — Gabbett's Acute:Chronic Workload Ratio (ACWR).
+  // LOAD (15%) — Gabbett's Acute:Chronic Workload Ratio (ACWR), applied as a
+  // MULTIPLIER on the finished biometric composite, never as a pillar.
+  //
   //   acute7    = avg daily mi over last 7 days
   //   chronic28 = avg daily mi over last 28 days
   //   ratio     = acute7 / chronic28
   //
-  //   <0.8  light/cutback — fresh legs, NEUTRAL (0) · not a readiness drag
-  //   0.8-1.0 building — sustainable, +2
-  //   1.0-1.3 sweet spot — gains, low injury risk, +5
-  //   1.3-1.5 caution — elevated ramp, -3
-  //   >1.5   spike — high injury risk per Gabbett, -8
+  // BuildResearch · D1 §2.4: "a 'load context' multiplier in the range
+  // [0.85, 1.10] applied after the biometric composite". D1 §"Why these
+  // weights": as a multiplier "it can't *create* a score; it can only
+  // modulate one". Before 2026-08-17 this was +5 / +2 / 0 / −3 / −8 added
+  // straight to the score, so a sweet-spot ACWR handed a runner five points
+  // of readiness that no biometric had earned.
+  //
+  // The multiplier is resolved here (so the copy can name the band) and
+  // applied below, after HR recovery, on the whole composite.
+  const loadMult = loadContextMultiplier(state.loadAcwr, state.loadAcute7, state.loadChronic28);
+  const loadIdx = inputs.length;
   if (state.loadAcwr != null && state.loadAcute7 != null && state.loadChronic28 != null) {
     const r = state.loadAcwr;
-    let w = 0;
-    let meaning = '';
     // 2026-05-27: descriptive only — what the ratio IS, not what to DO
     // about it. The coach decides prescription. Otherwise this card and
     // the coach voice openly contradict (David flagged it: "why is it
     // telling me to back off but the coach isn't?").
-    // 2026-06-26 · low load (ACWR < 0.8) no longer DRAGS readiness. A cutback
-    // or down week means fresh legs, not an unready runner · weight 0, framed
-    // as freshness. The detraining-over-time concern lives in the copy's
-    // "only a worry if it stays here for weeks" caveat (and any sustained
-    // low-load streak), not the today-readiness score. (David's call · low
-    // load was surfacing in "X dragging" when he was simply well-rested.)
+    // 2026-06-26 · low load (ACWR < 0.8) is framed as freshness, not a drag ·
+    // David's call. Under the multiplier it is D1's taper bonus, ×1.05.
     const acuteWk = state.loadAcute7 * 7;   // mi/day → mi/week
     const baseWk = state.loadChronic28 * 7;
-    if (r < 0.8) {
-      w = 0;
-      meaning = `${acuteWk.toFixed(0)}mi this week vs your ~${baseWk.toFixed(0)}mi base. Fresh legs, low fatigue · fine for a cutback. Only a worry if it stays here for weeks.`;
-    } else if (r < 1.0) {
-      w = 2;
-      meaning = `${acuteWk.toFixed(0)}mi this week, just under your ~${baseWk.toFixed(0)}mi base. Building gradually · sustainable.`;
-    } else if (r <= 1.3) {
-      w = 5;
-      meaning = `Sweet spot per Gabbett. Productive band with the lowest injury rate in his cohort.`;
-    } else if (r <= 1.5) {
-      w = -3;
-      meaning = `${acuteWk.toFixed(0)}mi this week runs above your ~${baseWk.toFixed(0)}mi base. Elevated ramp · keep an eye on it.`;
-    } else {
-      w = -8;
-      meaning = `Above 1.5 · Gabbett's elevated-injury-risk band. Coach factors this into today's prescription.`;
-    }
-    score += w;
+    const meaning = r < 0.8
+      ? `${acuteWk.toFixed(0)}mi this week vs your ~${baseWk.toFixed(0)}mi base. Fresh legs, low fatigue · fine for a cutback. Only a worry if it stays here for weeks.`
+      : r <= 1.3
+        ? `${acuteWk.toFixed(0)}mi this week against your ~${baseWk.toFixed(0)}mi base. Sweet spot per Gabbett · the ratio is not pulling the score either way.`
+        : r <= 1.5
+          ? `${acuteWk.toFixed(0)}mi this week runs above your ~${baseWk.toFixed(0)}mi base. Elevated ramp · trims the score ${Math.round((1 - loadMult) * 100)}%.`
+          : `Above 1.5 · Gabbett's elevated-injury-risk band. Trims the score ${Math.round((1 - loadMult) * 100)}%. Coach factors this into today's prescription.`;
     const acwrWord = r < 0.8 ? 'Fresh' : r < 1.0 ? 'Building' : r <= 1.3 ? 'In range'
       : r < 1.5 ? 'Elevated' : 'High';
     inputs.push({
-      key: 'load', label: 'LOAD · 15%', weight: w,
+      // `weight` is patched below to the points the multiplier actually moved
+      // the score, so every consumer that reads a pillar contribution keeps
+      // reading a real, signed number.
+      key: 'load', label: 'LOAD · 15%', weight: 0,
       observedV: `${acwrWord} · ${r.toFixed(2)} ACWR`,
       observedSub: `this week ${state.loadAcute7.toFixed(1)} · month avg ${state.loadChronic28.toFixed(1)} mi/day`,
       meaning,
@@ -294,8 +551,9 @@ export function computeReadiness(
   if (state.hrRecoveryCurrent != null && state.hrRecoveryBaseline != null) {
     const delta = state.hrRecoveryCurrent - state.hrRecoveryBaseline;
     // ±1 per 2 bpm delta vs baseline, cap ±5.
-    const w = Math.max(-5, Math.min(5, Math.round(delta / 2)));
+    const w = Math.max(-HR_RECOVERY_CAP, Math.min(HR_RECOVERY_CAP, Math.round(delta / 2)));
     score += w;
+    pillarCeiling += HR_RECOVERY_CAP;
     const meaning = delta >= 6
       ? `Faster than your baseline. Strong cardio recovery signal · the engine is rebounding well.`
       : delta >= 2
@@ -323,19 +581,63 @@ export function computeReadiness(
   // Item 14: when every pillar has no real signal (brand-new user, Health
   // data not yet synced), return null score + 'unknown' band so the UI can
   // show "—" instead of 70/READY which reads as a confident endorsement.
-  if (inputs.every((i) => i.observedV === 'no data' || i.observedV === 'building history')) {
-    return { score: null, band: 'unknown', label: 'UNKNOWN', inputs };
+  //
+  // 2026-08-17 · LOAD no longer counts toward "we have signal". It is a
+  // modifier, and D1 §"Why these weights" is explicit that a modifier cannot
+  // create a score — a runner with run history but no biometrics is a
+  // cold-start runner, which is already how readiness-brief classifies him.
+  const BIOMETRIC_KEYS = new Set<ReadinessInput['key']>(['sleep', 'hrv', 'rhr', 'hr_recovery']);
+  const hasBiometricSignal = inputs.some(
+    (i) => BIOMETRIC_KEYS.has(i.key) && i.observedV !== 'no data' && i.observedV !== 'building history',
+  );
+  if (!hasBiometricSignal) {
+    return { score: null, band: 'unknown', label: 'UNKNOWN', inputs, personal: null };
   }
 
-  score = Math.max(0, Math.min(100, score));
-  const band = score > 85 ? 'sharp'
-    : score >= 65 ? 'ready'
-    : score >= 50 ? 'moderate'
-                  : 'pull-back';
+  // ── Load context, applied AFTER the composite (D1 §6 step 4) ─────────────
+  // Bounded above by the ceiling the day's own pillars could have reached, so
+  // a taper bonus can lift a real reading but never invent one.
+  const composite = score;
+  score = Math.max(0, Math.min(100, Math.min(composite * loadMult, pillarCeiling)));
+  inputs[loadIdx] = { ...inputs[loadIdx], weight: Math.round(score - composite) };
+  score = Math.round(score);
+
+  // ── The band · read against the runner's own normal ──────────────────────
+  const normal = personalNormal(baseline);
+  const draggingPillars = inputs.filter((i) => BIOMETRIC_KEYS.has(i.key) && i.weight < 0).length;
+  let band: ReadinessBreakdown['band'];
+  let personal: ReadinessBreakdown['personal'] = null;
+
+  if (normal == null) {
+    // No personal normal yet. D1 §5's provisional state: the score shows, the
+    // verdict does not. Silence is the default, so neither edge is reachable.
+    band = score >= 65 ? 'ready' : 'moderate';
+  } else {
+    const z = (score - normal.mean) / normal.sd;
+    personal = {
+      normal: Math.round(normal.mean),
+      spread: Math.round(normal.sd * 10) / 10,
+      z: Math.round(z * 100) / 100,
+      days: normal.days,
+    };
+    const cut = normal.mean + BAND_Z.pullBack * normal.sd;
+    const priorScores = (baseline?.recent ?? []).filter(
+      (s): s is number => typeof s === 'number' && isFinite(s),
+    );
+    const yesterday = priorScores[priorScores.length - 1];
+    const sustained = yesterday != null && yesterday <= cut;
+    const corroborated = draggingPillars >= PULLBACK_MIN_DRAGGING_PILLARS;
+
+    if (z >= BAND_Z.sharp) band = 'sharp';
+    else if (z <= BAND_Z.pullBack && sustained && corroborated) band = 'pull-back';
+    else if (z <= BAND_Z.moderate) band = 'moderate';
+    else band = 'ready';
+  }
+
   const label = band === 'sharp' ? 'SHARP'
     : band === 'ready' ? 'READY'
     : band === 'moderate' ? 'MODERATE'
                           : 'PULL BACK';
 
-  return { score, band, label, inputs };
+  return { score, band, label, inputs, personal };
 }
