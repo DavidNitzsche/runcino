@@ -202,7 +202,6 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
           try { localStorage.setItem('faffSb', next ? '1' : '0'); } catch { /* swallow */ }
         }}
         onOpenUpsell={() => setOpenOverlay('paywall')}
-        onOpenRecap={() => setOpenOverlay('weekci')}
       />
       <main className="main" ref={mainRef}>
         {/* 2026-05-31: auth contract change — when no faff_session cookie
