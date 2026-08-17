@@ -184,7 +184,7 @@ struct WatchMirrorView: View {
         case .warmup:   return Theme.neutralTeal
         case .work:     return Color(hex: 0xD03F3F)
         case .recovery: return Color(hex: 0x27B4E0)
-        case .cooldown: return Color(hex: 0x14C08C)
+        case .cooldown: return Color(hex: 0x3EBD41)
         default:        return Theme.mute
         }
     }

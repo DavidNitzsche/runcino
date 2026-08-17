@@ -250,7 +250,7 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                         textTransform: 'uppercase', color: 'var(--fa-mute, #D6DAE2)',
                       }}>
                         <span><i style={{
-                          display: 'inline-block', width: 8, height: 8, background: 'var(--eff-easy, #14C08C)',
+                          display: 'inline-block', width: 8, height: 8, background: 'var(--eff-easy, #3EBD41)',
                           borderRadius: 2, marginRight: 5, verticalAlign: 'middle',
                         }} />Warmup</span>
                         <span><i style={{
@@ -461,7 +461,7 @@ function formatHeroDate(iso: string): string {
  *  is absent or unknown (Strava / apple_watch source paths). */
 function phaseColorFor(phase: string | null | undefined): string | null {
   switch (phase) {
-    case 'warmup':   return 'var(--eff-easy, #14C08C)';
+    case 'warmup':   return 'var(--eff-easy, #3EBD41)';
     case 'work':     return 'var(--eff-tempo, #D03F3F)';
     case 'recovery': return 'var(--eff-recovery, #27B4E0)';
     case 'cooldown': return 'rgba(255,255,255,.3)';

@@ -5,7 +5,7 @@ import type { FaffSeed, HeatCell, EfficiencyTrend, RecentRun } from '../types';
 import { StreakPill } from '../toolkit';
 
 const EC: Record<string,string> = {
-  recovery: '#27B4E0', easy: '#14C08C', long: '#F3AD38',
+  recovery: '#27B4E0', easy: '#3EBD41', long: '#F3AD38',
   tempo: '#D03F3F', intervals: '#FC4D64', race: '#D03F3F',
 };
 // 2026-06-04 · level 0 lifted from rgba(255,255,255,.07) → .14
@@ -380,8 +380,8 @@ function EfficiencySparkline({ points, direction }: {
   const regY0 = Math.max(PAD, Math.min(H - PAD, intercept));
   const regY1 = Math.max(PAD, Math.min(H - PAD, slope * (n - 1) + intercept));
 
-  const dotColor = direction === 'declining' ? '#FC4D64' : '#14C08C';
-  const lineColor = direction === 'declining' ? 'rgba(252,77,100,.4)' : 'rgba(20,192,140,.4)';
+  const dotColor = direction === 'declining' ? '#FC4D64' : '#3EBD41';
+  const lineColor = direction === 'declining' ? 'rgba(252,77,100,.4)' : 'rgba(62,189,65,.4)';
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: '100%' }} preserveAspectRatio="none">

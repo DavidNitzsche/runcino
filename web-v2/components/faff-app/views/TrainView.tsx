@@ -1143,12 +1143,20 @@ export function TrainView({
             pages via GET /api/coach/log. */}
         {(seed.coachLog?.length ?? 0) > 0 && (
           <div className="card">
-            <div className="ch"><span className="ct">COACH&apos;S LOG</span></div>
+            {/* 2026-08-17 · deck Decision 8, placement 2 · amber eyebrow.
+                Every other card title on Train is the neutral 60% white
+                .ct because those cards are plan machinery. This one is the
+                coach speaking, and the deck dresses it as an eyebrow in
+                the coach's amber so the voice is distinguishable from the
+                surface it sits on. */}
+            <div className="ch">
+              <span className="ct" style={{ color: '#F3AD38' }}>COACH&apos;S LOG</span>
+            </div>
             <div className="clog">
               {seed.coachLog.map((e) => {
                 const accent =
                   e.kind === 'first_ever' ? '#F3AD38' :
-                  e.kind === 'fitness_shift' ? '#14C08C' :
+                  e.kind === 'fitness_shift' ? '#3EBD41' :
                   e.kind === 'phase_boundary' ? '#27B4E0' :
                   'rgba(255,255,255,.28)';
                 const dt = new Intl.DateTimeFormat('en-US', {

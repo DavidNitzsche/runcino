@@ -1,6 +1,14 @@
 'use client';
 
 /**
+ * SUPERSEDED 2026-08-17 · web recomposition deck, Decision 2.
+ * CoachDecisionCard is the one interruption chrome now; coach_proposals
+ * rows reach it through selectCoachDecisions() in lib/coach/decision-cards.ts,
+ * which still POSTs to /api/coach/proposal/[id]/{accept,decline}. This file
+ * has no importers. It is left in place because the deck sequences chrome
+ * demolition to Wave 3 ("nothing gets deleted that a new composition
+ * wanted"); do not re-mount it.
+ *
  * CoachProposalCard — accept/decline UI for a coach_proposals DB row
  * (injury_adjust / illness_adjust). Distinct from the inline workout-swap
  * ProposalCard in components/cards/ — that one POSTs to /api/coach/proposal;

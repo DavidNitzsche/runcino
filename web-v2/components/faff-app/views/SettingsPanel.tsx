@@ -263,7 +263,7 @@ function FieldEditor({ spec, value, autoMode, onClose, onSave }: {
         const on = single ? day === o.value : multi.includes(o.value);
         return (
           <button key={o.value} className={`se-role${on ? ' on' : ''}`}
-            style={{ borderColor: on ? '#14C08C' : 'transparent' }}
+            style={{ borderColor: on ? '#3EBD41' : 'transparent' }}
             onClick={() => toggleMulti(o.value, single)}>
             {o.label}
           </button>
@@ -298,7 +298,7 @@ function FieldEditor({ spec, value, autoMode, onClose, onSave }: {
           <div className="se-roles">
             {spec.options!.map(o => (
               <button key={o.value} className={`se-role${text === o.value ? ' on' : ''}`}
-                style={{ borderColor: text === o.value ? '#14C08C' : 'transparent' }}
+                style={{ borderColor: text === o.value ? '#3EBD41' : 'transparent' }}
                 onClick={() => setText(o.value)}>{o.label}</button>
             ))}
           </div>
@@ -317,7 +317,7 @@ function FieldEditor({ spec, value, autoMode, onClose, onSave }: {
         )}
         {spec.kind === 'tzmode' && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', cursor: 'pointer' }}>
-            <input type="checkbox" checked={autoOn} onChange={e => setAutoOn(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#14C08C' }} />
+            <input type="checkbox" checked={autoOn} onChange={e => setAutoOn(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#3EBD41' }} />
             <span className="se-lbl" style={{ margin: 0 }}>{autoOn ? 'Following your device on travel' : 'Pinned · set the zone below'}</span>
           </label>
         )}

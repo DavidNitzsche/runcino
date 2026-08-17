@@ -135,7 +135,7 @@ export function RouteMap({
 
       // Endpoint markers · last so they sit above all polylines.
       L.circleMarker(points[0] as LeafletNS.LatLngTuple, {
-        radius: 7, fillColor: '#04201f', color: '#14C08C',
+        radius: 7, fillColor: '#04201f', color: '#3EBD41',
         weight: 3, fillOpacity: 1,
       }).addTo(map);
       L.circleMarker(points[points.length - 1] as LeafletNS.LatLngTuple, {

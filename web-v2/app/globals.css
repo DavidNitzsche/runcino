@@ -145,18 +145,52 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
    above and below from .main's grid.  Apply this whenever a row has
    a label above it; standalone bands (hero / tiles) don't need it. */
 .band{display:flex;flex-direction:column;gap:var(--label-gap);}
-/* Brief v2 §6 · one-banner cap (queued task 3). display:contents keeps
-   each banner a direct .main grid item (gap rhythm intact); everything
-   after the first PRESENT banner is hidden. Components that render null
-   contribute no element, so :first-child = highest-priority live banner. */
+/* Brief v2 §6 · one-banner cap. display:contents keeps each banner a
+   direct .main grid item (gap rhythm intact).
+
+   2026-08-17 · the `>*:not(:first-child){display:none}` gag is GONE
+   (web recomposition deck, Decision 2). It enforced the cap by hiding
+   DOM, which meant a runner with three pending items silently never saw
+   two of them. CoachDecisionCard now folds every interruption source
+   into one queue and renders ONE card with an "N waiting" pager, so the
+   cap is structural and nothing is unreachable. The remaining children
+   of this stack are the non-coach banners (reconnect, profile gap,
+   missed yesterday) which are mutually rare and self-suppressing. */
 .prehero-stack{display:contents;}
-.prehero-stack>*:not(:first-child){display:none;}
-/* 2026-08-17 · composed morning brief · one quiet coach paragraph above
-   the week strip (lib/coach/morning-brief.ts). Inter body per the brief;
-   left rule keeps it reading as the coach speaking, not a banner. */
-.mbrief{border-left:3px solid rgba(255,255,255,.22);padding:2px 0 2px 14px;max-width:720px;}
-.mbrief .mb-eyebrow{font-size:11px;font-weight:800;letter-spacing:1.5px;color:rgba(255,255,255,.45);margin-bottom:5px;}
-.mbrief .mb-body{font-size:16px;font-weight:500;line-height:1.55;color:rgba(255,255,255,.85);}
+
+/* ── CoachDecisionCard · the one interruption chrome ──────────────────
+   Deck section 2. Left accent carries the state (amber = the coach is
+   waiting on you, recovery blue = already applied); the eyebrow names
+   the kind. Accent colors are set inline from decisionAccent() so the
+   kind→hex mapping lives in one place (lib/coach/decision-cards.ts). */
+.cdcard{background:var(--card,#11141A);border:1px solid var(--line,rgba(255,255,255,.08));
+  border-left:4px solid var(--goal);border-radius:16px;padding:20px 22px;max-width:880px;}
+.cd-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;}
+.cd-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;}
+.cd-pager{background:none;border:none;padding:0;cursor:pointer;
+  font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;font-family:inherit;}
+.cd-stamp{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--mut,#8A90A0);}
+.cd-title{font-family:'Oswald',sans-serif;font-weight:600;font-size:22px;line-height:1.12;
+  letter-spacing:.4px;text-transform:uppercase;margin-bottom:8px;}
+.cd-body{font-size:14px;line-height:1.5;color:#C7CBD4;max-width:640px;}
+.cd-actions{display:flex;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap;}
+.cd-btn{background:none;border:1px solid;border-radius:11px;padding:11px 18px;cursor:pointer;
+  font-family:inherit;font-size:11px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;}
+.cd-btn:disabled{opacity:.55;cursor:default;}
+.cd-later{margin-left:auto;background:none;border:none;padding:11px 2px;cursor:pointer;font-family:inherit;
+  font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--mut,#8A90A0);}
+.cd-later:hover{color:#fff;}
+.cd-err{margin-top:10px;font-size:11px;font-weight:600;color:var(--over,#FC4D64);}
+/* 2026-08-17 · composed morning brief · one coach paragraph directly under
+   the Today header, above the hero (lib/coach/morning-brief.ts).
+   Deck Decision 8, placement 1: a card carrying the coach's green left
+   accent, sized so it speaks first and then gets out of the way — present
+   above the hero, visually quieter than it. Inter body per brief v2. */
+.mbrief{background:var(--card,#11141A);border:1px solid var(--line,rgba(255,255,255,.08));
+  border-left:3px solid var(--green);border-radius:16px;padding:16px 20px;max-width:800px;}
+.mbrief .mb-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;
+  color:var(--green);margin-bottom:8px;}
+.mbrief .mb-body{font-size:14px;font-weight:400;line-height:1.55;color:#E6E8ED;max-width:760px;}
 .top{display:flex;align-items:flex-start;justify-content:space-between;}
 .top .date{font-family:'Oswald',sans-serif;font-size:16px;font-weight:500;letter-spacing:1px;opacity:1;text-transform:uppercase;}
 .top .wk{font-size:12px;font-weight:600;opacity:1;margin-top:5px;}
@@ -921,12 +955,15 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-08-17 · COACH'S LOG strip (lib/coach/coach-log.ts · TrainView).
    Row accent color carries the entry kind: amber = all-time first,
    green = fitness shift, blue = phase boundary, white = week close. */
-.train2 .clog{display:flex;flex-direction:column;gap:13px;min-height:0;}
-.train2 .clog-row{border-left:2px solid rgba(255,255,255,.28);padding-left:12px;}
-.train2 .clog-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
-.train2 .clog-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.6px;}
-.train2 .clog-date{font-size:10px;font-weight:600;letter-spacing:.8px;color:rgba(255,255,255,.38);}
-.train2 .clog-body{font-size:13px;line-height:1.5;color:rgba(255,255,255,.84);margin-top:3px;}
+/* Coach's log rows. 2026-08-17 · unscoped from .train2 (deck Decision 8)
+   so the COACH section on Me renders the same rows Train does · one voice,
+   one chrome, two placements. */
+.clog{display:flex;flex-direction:column;gap:13px;min-height:0;}
+.clog-row{border-left:2px solid rgba(255,255,255,.28);padding-left:12px;}
+.clog-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+.clog-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.6px;}
+.clog-date{font-size:10px;font-weight:600;letter-spacing:.8px;color:rgba(255,255,255,.38);}
+.clog-body{font-size:13px;line-height:1.5;color:rgba(255,255,255,.84);margin-top:3px;}
 .train2 .card .ch{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px;}
 .train2 .card .ch .ct{font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.6);}
 .train2 .card .ch .cx{font-size:11px;font-weight:600;color:rgba(255,255,255,.5);}
@@ -1144,6 +1181,10 @@ body.day-skipped .blobs{filter:grayscale(1) brightness(.66);transition:filter .5
 /* 2026-06-04 · tiles row · 4-col grid, gap = --grid-gap.  No margin-top
    · vertical separation comes from .main's grid row gap above. */
 .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--grid-gap);}
+/* 2026-08-17 · deck Decision 1 · the post-race week keeps VOLUME + FORM and
+   drops THE GAP + RACE DAY, so the row is two wide. A class, not an inline
+   style, so the narrow-viewport rules further down still collapse it. */
+.tiles.tiles-two{grid-template-columns:repeat(2,1fr);}
 /* 2026-06-04 · .tile · only the surface look declared here.
    Padding, radius, height:100%, display:flex column, gap, align-items
    stretch all come from the UNIVERSAL CARD LAYOUT rule below.  min-
@@ -2021,7 +2062,7 @@ a.lb.race:hover{color:#fff;border-color:rgba(208,63,63,.85);}
 .rp-map{position:relative;height:150px;overflow:hidden;margin-top:10px;}
 .rp-map svg{position:absolute;inset:0;width:100%;height:100%;}
 .rp-mtag{position:absolute;font-size:9px;font-weight:800;letter-spacing:.5px;padding:3px 7px;border-radius:5px;}
-.rp-mtag.s{background:#14C08C;color:#04201f;}
+.rp-mtag.s{background:#3EBD41;color:#04201f;}
 .rp-mtag.f{background:var(--race);color:#3a1808;}
 .rp-mstat{position:absolute;bottom:9px;left:12px;right:12px;display:flex;justify-content:space-between;font-size:9.5px;font-weight:700;color:rgba(255,255,255,.62);letter-spacing:.3px;}
 
@@ -2139,7 +2180,7 @@ a.lb.race:hover{color:#fff;border-color:rgba(208,63,63,.85);}
 .rdmap{position:relative;height:150px;border-radius:14px;overflow:hidden;margin-top:10px;background:rgba(4,6,10,.32);border:1px solid rgba(255,255,255,.09);}
 .rdmap svg{position:absolute;inset:0;width:100%;height:100%;}
 .rdmaptag{position:absolute;font-size:9px;font-weight:700;letter-spacing:.5px;padding:3px 7px;border-radius:5px;}
-.rdmaptag.start{left:12px;bottom:28px;background:#14C08C;color:#04201f;}
+.rdmaptag.start{left:12px;bottom:28px;background:#3EBD41;color:#04201f;}
 .rdmaptag.end{right:12px;top:14px;background:var(--race);color:#3a1808;}
 .rdmapstat{position:absolute;bottom:9px;left:12px;right:12px;display:flex;justify-content:space-between;font-size:9.5px;font-weight:700;color:rgba(255,255,255,.6);letter-spacing:.3px;}
 
@@ -2509,7 +2550,7 @@ a.lb.race:hover{color:#fff;border-color:rgba(208,63,63,.85);}
 .av-fact .fv{font-family:'Oswald',sans-serif;font-size:21px;font-weight:600;letter-spacing:-.5px;line-height:.95;}
 .av-fact .fc{font-size:12px;font-weight:500;opacity:.72;margin-top:5px;line-height:1.4;}
 .av-et-chip{font-size:10px;font-weight:700;letter-spacing:1.5px;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.55);}
-.av-et-chip--improving{color:#14C08C;background:rgba(20,192,140,.15);}
+.av-et-chip--improving{color:#3EBD41;background:rgba(62,189,65,.15);}
 .av-et-chip--declining{color:#FC4D64;background:rgba(252,77,100,.15);}
 .av-et-top{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;}
 .av-et-delta{font-family:'Oswald',sans-serif;font-size:52px;font-weight:600;letter-spacing:-2px;line-height:1;}

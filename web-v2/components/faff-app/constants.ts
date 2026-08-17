@@ -17,8 +17,8 @@ export const EFF: Record<EffortKey, { mesh: Mesh; dot: string; mark: number; lbl
   // dot. Spec: light to deep [c1, c2, c3, c4, c5, base]. Per-day
   // re-theme cross-fades all 6 stops over 0.7s (handled in CSS).
   // Dots resync'd to the LOCKED TEN-COLOR PALETTE (brief v2, AFC fix 2).
-  // easy was #48B3B5 here while iPhone shipped #14C08C "per --eff-easy" ·
-  // both surfaces now read #14C08C, byte-for-byte with Theme.swift.
+  // easy was #48B3B5 here, then #14C08C · both surfaces now read the
+  // locked good-state green #3EBD41, byte-for-byte with Theme.swift.
   recovery:  { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#27B4E0', mark: 8,  lbl: 'VERY EASY' },
   easy:      { mesh: ['#8FF0E0','#46CFC6','#2FC0E6','#23A98E','#1B8C7C','#0E5A54'], dot: '#3EBD41', mark: 26, lbl: 'EASY' },
   long:      { mesh: ['#FFE7B0','#F8BC4E','#F0A638','#EC8C2A','#D9791C','#A85A14'], dot: '#F3AD38', mark: 54, lbl: 'MODERATE' },
@@ -87,9 +87,20 @@ export const KIT: Record<EffortKey, { weather: string; shoe: string; fuel: strin
 };
 
 // Z1–Z5 ladder = the effort temperature scale (recovery → easy → long →
-// tempo → intervals). One zone palette app-wide (AFC fix 2) · replaces the
-// old ladder that used the good-state green (#3EBD41) as Z2 and is synced
-// byte-for-byte with Theme.swift ZoneSplit + RunDetailModal ZONE_COLORS.
+// tempo → intervals). One zone palette app-wide, synced with
+// session-shape ZONE_COLOR + RunDetailModal ZONE_COLOR.
+//
+// 2026-08-17 · deck Decision 7 · the Z2 rung is #14C08C, RULED as a
+// sanctioned WEB categorical for zone and season ladders (brief v2
+// ADDENDUM 3). It is deliberately NOT the good-state green: on a ladder,
+// #3EBD41 at Z2 would make "easy effort" and "good status" the same
+// pixel. Outside a ladder, #14C08C is not permitted — CI enforces both
+// halves of that (scripts/check-palette-sync.sh section 4).
+//
+// KNOWN DIVERGENCE, flagged for David: iPhone Theme.swift ZoneSplit.z2
+// already reads 0x3EBD41, so this rung is web-only today. The addendum
+// records it; resolving it needs a cross-surface ruling, not an agent's
+// unilateral edit to a shipped iOS value.
 export const ZC = ['#27B4E0','#14C08C','#F3AD38','#D03F3F','#FC4D64'];
 
 export type PlannedDay = {
@@ -236,7 +247,7 @@ export type CompletedRun = {
 // Shoe chips for the two roles are now color-identical · differentiated by
 // their text label. Flagged in the AFC recap for David's review.
 export const ROLECOL: Record<string,string> = {
-  RACE: '#D03F3F', TEMPO: '#D03F3F', LONG: '#F3AD38', EASY: '#14C08C', RECOVERY: '#27B4E0',
+  RACE: '#D03F3F', TEMPO: '#D03F3F', LONG: '#F3AD38', EASY: '#3EBD41', RECOVERY: '#27B4E0',
   INTERVALS: '#FC4D64',
 };
 

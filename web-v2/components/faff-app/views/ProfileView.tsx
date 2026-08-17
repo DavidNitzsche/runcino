@@ -112,7 +112,7 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
       <div className="garage">
         {garage.map((s, i) => {
           const pct = Math.min(100, Math.round((s.mi / s.max) * 100));
-          const col = ROLECOL[s.role] ?? '#14C08C';
+          const col = ROLECOL[s.role] ?? '#3EBD41';
           const worn = s.mi >= s.max;
           return (
             <div className="shoe" key={i} onClick={() => setEditing(i)} role="button" tabIndex={0}>
@@ -236,11 +236,15 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
       <NotificationPrefsList />
       </div>{/* .band */}
 
-      {/* Coach activity log · last 30 days of coach_intents rows in plain
-          English. Closes coverage line 1999 (coach_intents activity log). */}
+      {/* 2026-08-17 · deck Decision 8 · the COACH section.
+          Was a single "COACH ACTIVITY" band holding the coach_intents
+          timeline. The deck's third placement makes Me the coach's paper
+          trail: the log first (the coach's own authored lines, the same
+          rows Train shows), then the mutation timeline underneath, then
+          the doctrine. One voice, three placements. */}
       <div className="band">
-      <div className="fll">COACH ACTIVITY</div>
-      <CoachActivityTimeline limit={20} />
+      <div className="fll">COACH</div>
+      <CoachSection />
       </div>{/* .band */}
 
       <ShoeEditor
@@ -269,6 +273,118 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           setEditing(null);
         }}
       />
+    </>
+  );
+}
+
+/* ============================================================
+   CoachSection · deck Decision 8, placement 3.
+
+   Three beats, in the order the deck put them:
+     1. COACH'S LOG · the coach's own authored lines (week closes, phase
+        boundaries, all-time firsts, fitness shifts) from GET /api/coach/log.
+        Same rows Train renders, same .clog chrome — Train shows the recent
+        arc beside the plan, Me holds the paper trail.
+     2. ADAPTATIONS · the coach_intents mutation timeline that used to be
+        this whole band. Demoted under the log because a plan mutation is
+        machinery; the log is the coach speaking.
+     3. HOW THE COACH DECIDES · the doctrine, in plain language.
+
+   The log is fetched here rather than read off the seed because Profile's
+   seed slice caps coachLog for the Train strip; this surface is the full
+   history's front door and pages via ?before=.
+   ============================================================ */
+type CoachLogEntry = {
+  id: string;
+  kind: 'week_close' | 'phase_boundary' | 'first_ever' | 'fitness_shift' | string;
+  dateISO: string;
+  title: string;
+  body: string;
+};
+
+/** Accent per log kind. Matches TrainView so one entry reads the same on
+ *  both surfaces. Ladder green is not used here — a fitness shift is a
+ *  good state, and good state is the locked green (brief v2 ADDENDUM 3). */
+const LOG_ACCENT: Record<string, string> = {
+  first_ever: '#F3AD38',
+  fitness_shift: '#3EBD41',
+  phase_boundary: '#27B4E0',
+};
+
+function CoachSection() {
+  const [entries, setEntries] = useState<CoachLogEntry[] | null>(null);
+  const [logState, setLogState] = useState<'loading' | 'idle' | 'error'>('loading');
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/coach/log?limit=8')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!alive) return;
+        if (!j || j.ok !== true || !Array.isArray(j.entries)) {
+          setLogState('error');
+          return;
+        }
+        setEntries(j.entries as CoachLogEntry[]);
+        setLogState('idle');
+      })
+      .catch(() => { if (alive) setLogState('error'); });
+    return () => { alive = false; };
+  }, []);
+
+  return (
+    <>
+      {/* 1 · the coach's log */}
+      {logState === 'idle' && entries && entries.length > 0 ? (
+        <div style={{ marginBottom: 22 }}>
+          <div style={{
+            fontSize: 10, fontWeight: 800, letterSpacing: 1.8,
+            textTransform: 'uppercase', color: '#F3AD38', marginBottom: 12,
+          }}>COACH&apos;S LOG</div>
+          <div className="clog">
+            {entries.map((e) => {
+              const accent = LOG_ACCENT[e.kind] ?? 'rgba(255,255,255,.28)';
+              const dt = (() => {
+                const t = Date.parse(e.dateISO + 'T12:00:00Z');
+                if (!Number.isFinite(t)) return '';
+                return new Intl.DateTimeFormat('en-US', {
+                  month: 'short', day: 'numeric', timeZone: 'UTC',
+                }).format(new Date(t));
+              })();
+              return (
+                <div key={e.id} className="clog-row" style={{ borderLeftColor: accent }}>
+                  <div className="clog-head">
+                    <span className="clog-eyebrow" style={{ color: accent }}>{e.title}</span>
+                    <span className="clog-date">{dt}</span>
+                  </div>
+                  <div className="clog-body">{e.body}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : logState === 'idle' ? (
+        // An empty log is an honest state for a new runner, not an error.
+        <p className="fa-prov" style={{ padding: '0 0 18px' }}>
+          The coach has not written anything yet. Entries land as weeks close.
+        </p>
+      ) : null}
+
+      {/* 2 · the mutation timeline · last 30 days of coach_intents */}
+      <div style={{
+        fontSize: 10, fontWeight: 800, letterSpacing: 1.8,
+        textTransform: 'uppercase', color: '#8A90A0', marginBottom: 10,
+      }}>ADAPTATIONS</div>
+      <CoachActivityTimeline limit={20} />
+
+      {/* 3 · the doctrine */}
+      <div className="setlist" style={{ marginTop: 18 }}>
+        <a className="setr" href="/learn" style={{ textDecoration: 'none', color: 'inherit', display: 'flex' }}>
+          <span className="setk">HOW THE COACH DECIDES</span>
+          <span className="setv">The doctrine, in plain language</span>
+          <span className="sgo">›</span>
+        </a>
+      </div>
     </>
   );
 }
@@ -512,10 +628,10 @@ function ShoeEditor({
             <button
               key={r}
               className={`se-role${roles.includes(r) ? ' on' : ''}`}
-              style={{ borderColor: roles.includes(r) ? ROLECOL[r] ?? '#14C08C' : 'transparent' }}
+              style={{ borderColor: roles.includes(r) ? ROLECOL[r] ?? '#3EBD41' : 'transparent' }}
               onClick={() => toggleRole(r)}
             >
-              <span className="sd" style={{ background: ROLECOL[r] ?? '#14C08C' }} />{r}
+              <span className="sd" style={{ background: ROLECOL[r] ?? '#3EBD41' }} />{r}
             </button>
           ))}
         </div>
@@ -524,7 +640,7 @@ function ShoeEditor({
             type="checkbox"
             checked={preferred}
             onChange={(e) => setPreferred(e.target.checked)}
-            style={{ width: 14, height: 14, accentColor: '#14C08C', cursor: 'pointer' }}
+            style={{ width: 14, height: 14, accentColor: '#3EBD41', cursor: 'pointer' }}
           />
           <span className="se-lbl" style={{ margin: 0, color: preferred ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.28)' }}>
             PRIMARY SHOE FOR THESE TYPES

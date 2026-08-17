@@ -202,7 +202,81 @@ if [ -n "$watch_hex_hits" ]; then
   fail=1
 fi
 
+# ── 4 · LADDER GREEN #14C08C · sanctioned categorical, fenced ───────────────
+# Ruled 2026-08-17 (David · web recomposition deck Decision 7 · brief v2
+# ADDENDUM 3): #14C08C is a sanctioned categorical for ORDERED EFFORT LADDERS
+# ONLY — the Z1-Z5 zone scale, the season/phase workout-type maps, the pace-
+# quintile route palette, the race-effort ramps — plus the brandmark sweep,
+# which was already exempt as logo identity.
+#
+# Why it needs its own section: #14C08C is the one hex the brief retired that
+# was NEVER added to the RETIRED tripwire above, which is exactly why ~26 call
+# sites survived the AFC cutover unguarded. It cannot go in RETIRED now (the
+# ladder is sanctioned), and a positive `need` alone can't stop it reappearing
+# somewhere new. So this is a positive ALLOWLIST: the sanctioned files may
+# carry it, everywhere else fails.
+#
+# The decimal-RGB form is scanned too. rgba(20,192,140,…) is the same color and
+# a hex-only grep is blind to it — app/admin/page.tsx carried it with zero hex
+# occurrences and so was invisible to every guard until this one.
+
+LADDER_HEX='14C08C'
+LADDER_RGBA='rgba\( *20 *, *192 *, *140 *'
+
+# Sanctioned files, by path fragment. Each is a ladder or the brandmark.
+LADDER_ALLOWED_FILES='
+web-v2/components/faff-app/constants.ts
+web-v2/components/faff-app/session-shape.ts
+web-v2/components/faff-app/views/TodayView.tsx
+web-v2/components/faff-app/views/TrainView.tsx
+web-v2/components/faff-app/overlays/RunDetailModal.tsx
+web-v2/components/faff-app/overlays/WorkoutDetail.tsx
+web-v2/components/faff-app/RouteMap.tsx
+web-v2/components/runs/RunDetailModal.tsx
+web-v2/lib/race/race-detail-pacing.ts
+web-v2/app/globals.css
+native-v2/Faff/Faff/Theme.swift
+'
+ladder_filter=$(echo "$LADDER_ALLOWED_FILES" | grep -v '^$' | paste -sd'|' -)
+
+ladder_hits=$(grep -rinE "(#|0x)$LADDER_HEX|$LADDER_RGBA" \
+  "$ROOT/web-v2/app" "$ROOT/web-v2/components" "$ROOT/web-v2/lib" \
+  "$ROOT/native-v2/Faff/Faff" \
+  --include='*.css' --include='*.ts' --include='*.tsx' --include='*.swift' \
+  2>/dev/null | grep -viE "$HIST_FILTER" | grep -v '/\._' \
+  | grep -v '/app/dev/' \
+  | grep -vE "($ladder_filter)" || true)
+
+if [ -n "$ladder_hits" ]; then
+  echo "LADDER-GREEN FAIL · #14C08C outside its sanctioned categorical:"
+  echo "$ladder_hits"
+  echo "  #14C08C is ruled a ZONE/SEASON LADDER color only (brief v2 ADDENDUM 3)."
+  echo "  For easy effort, good state, selection accents or map markers use the"
+  echo "  locked green #3EBD41. If this really is a new ladder, add its file to"
+  echo "  LADDER_ALLOWED_FILES here and name it in the brief's addendum table."
+  fail=1
+fi
+
+# Positive lock · the ladders that ARE sanctioned must still carry the rung,
+# so a well-meaning "consolidate the greens" pass fails instead of silently
+# collapsing Z2 into the good-state green.
+need "$WEB_CONST" "ZC = \['#27B4E0','#14C08C'" 'ladder ZC Z2 = #14C08C (brief v2 ADDENDUM 3)'
+need "$ROOT/web-v2/components/faff-app/session-shape.ts" \
+  "2: '#14C08C'" 'ladder session-shape ZONE_COLOR z2 = #14C08C'
+need "$ROOT/web-v2/components/runs/RunDetailModal.tsx" \
+  "z2: '#14C08C'" 'ladder run-detail ZONE_COLOR z2 = #14C08C'
+
+# Cross-surface status · OPEN. The deck's Option A assumed iPhone was still
+# byte-synced on this rung; it is not — iPhone migrated its ladder to the
+# locked green ahead of the ruling. Until David rules (mirror #14C08C back to
+# iPhone, or accept the ladder as web-only like the phase-identity group),
+# assert iPhone AS IT ACTUALLY STANDS so neither surface drifts further
+# without failing the build. Do not "fix" this by editing Theme.swift.
+need "$IOS_THEME" 'z2 = Color\(hex: 0x3EBD41\)' \
+  'iPhone ladder z2 = #3EBD41 · DIVERGES from web #14C08C by ruling, pending David (brief v2 ADDENDUM 3)'
+
 if [ "$fail" -eq 0 ]; then
   echo "palette-sync OK · ten-color lock verified across web / iPhone / watch"
+  echo "                · ladder green #14C08C fenced to its categorical"
 fi
 exit $fail

@@ -91,6 +91,14 @@ function useIntents({
    the WhatChangedExpander. Lives on Today.
    Renders nothing when there's no recent intent — the surface
    stays clean on uneventful days.
+
+   SUPERSEDED 2026-08-17 · web recomposition deck, Decision 2.
+   Today no longer mounts this: recent unacked intents now arrive
+   as 'notice'-kind rows inside CoachDecisionCard, which reads the
+   same GET /api/coach/intents?unacked_only=true and keeps the same
+   localStorage dismiss key ('faff.dismissedIntents'). Kept because
+   chrome demolition is deck Wave 3; useIntents / WhatChangedExpander
+   / CoachActivityTimeline below are all still live.
    ============================================================ */
 export function AdaptationCard({
   initial,

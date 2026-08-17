@@ -1,6 +1,13 @@
 'use client';
 
 /**
+ * SUPERSEDED 2026-08-17 · web recomposition deck, Decision 2.
+ * CoachDecisionCard is the one interruption chrome now; workout proposals
+ * reach it through selectCoachDecisions() in lib/coach/decision-cards.ts,
+ * which still POSTs to /api/plan/workout-proposals/:id/{accept,dismiss}.
+ * No importers; kept because chrome demolition is deck Wave 3, along with
+ * the .wpb CSS family this file owned. Do not re-mount.
+ *
  * WorkoutProposalBanner · per-workout adapter proposal card.
  *
  * Renders one row of seed.pendingWorkoutProposals. The runner sees:

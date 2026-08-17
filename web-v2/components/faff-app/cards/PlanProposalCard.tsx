@@ -1,6 +1,13 @@
 'use client';
 
 /**
+ * SUPERSEDED 2026-08-17 · web recomposition deck, Decision 2.
+ * CoachDecisionCard is the one interruption chrome now; plan proposals
+ * reach it through selectCoachDecisions() in lib/coach/decision-cards.ts,
+ * which still POSTs {id, action} to /api/plan/proposal and still deep-links
+ * auto_applied rows to the diff page. No importers; kept because chrome
+ * demolition is deck Wave 3. Do not re-mount.
+ *
  * PlanProposalCard · render one row of seed.planProposals.
  *
  * Two visual modes, dispatched off PlanProposalSeed.status:

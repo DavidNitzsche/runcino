@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { FaffSeed } from '../types';
@@ -30,16 +30,30 @@ import { workoutTypeTitle } from '@/lib/coach/workout-title';
 import { heatAwareDrift, type DriftBand } from '@/lib/coach/heat-band';
 import { deriveSessionSegs, fallbackSessionSegs, deriveBlueprintData, type BlueprintData, type BlueprintSegment } from '../session-shape';
 import { elevPathFromSplits } from '@/lib/route/polyline';
-import { CoachProposalCard } from '../cards/CoachProposalCard';
-import { PlanProposalCard } from '../cards/PlanProposalCard';
-import { WorkoutProposalBanner } from '../cards/WorkoutProposalBanner';
+// 2026-08-17 · deck Decision 2 · CoachProposalCard / PlanProposalCard /
+// WorkoutProposalBanner / AdaptationCard are all folded into one chrome.
+// The sources are unchanged; only the rendering is unified.
+import { CoachDecisionCard } from '../cards/CoachDecisionCard';
+import { TARGETS_OWNED_PLAN_KINDS } from '@/lib/coach/decision-cards';
+// 2026-08-17 · deck Decision 3b · one status vocabulary. Today's GAP tile
+// reads the same resolver and renders the same chip Targets does.
+import { resolveGoalStatus } from '@/lib/faff/goal-status';
+import { StatusChip } from '../StatusChip';
 import { RouteMap } from '../RouteMap';
 import {
-  AdaptationCard,
   DayStatePill,
   ProfileGapCard,
   ReconnectBanner,
 } from '../toolkit';
+// 2026-08-17 · deck Decision 1 · post-race Today as a composed state.
+import {
+  selectRecoveryWindow,
+  composePostRaceToday,
+  postRaceFormHelper,
+  postRaceVolumeNote,
+  type RecoveryWindow,
+  type PostRaceComposition,
+} from '@/lib/today/post-race-composition';
 
 export function TodayView({
   seed, curDay, onPickDay, onOpenDrawer, onOpenRace, onOpenRun,
@@ -93,14 +107,43 @@ export function TodayView({
   // coached hero (no prescriptions, no workout card) — completed runs
   // still render the normal done hero.
   const isCoachedBlank = seed.coachedExternally && !d.planWorkoutId && !d.done;
-  // 2026-08-17 · web Today now honors /api/today/purpose type
-  // 'post_race' (previously native-only). Fetched only for undone rest
-  // days — planned days already fetch purpose inside PlannedHeroV2.
-  // When it fires: the rest hero's coach line becomes the post-race
-  // verdict + facts, and the week strip header reframes for recovery.
-  // Copy-level honesty only · page composition awaits the design deck.
+  // 2026-08-17 · web Today honors /api/today/purpose type 'post_race'.
+  // Fetched for undone rest days — planned days fetch purpose inside
+  // PlannedHeroV2. The verdict + facts become the recovery read's coach
+  // line in the post-race composition below.
   const { data: restPurpose } = useTodayPurpose(isRest && !d.done && !isCoachedBlank ? d.iso : undefined);
   const isPostRace = restPurpose?.type === 'post_race';
+
+  /* ── deck Decision 1 · post-race week as a real Today state ──────────
+     The race summary was fetched inside PostRaceTodayCard, which meant
+     only that card knew a race had just happened. Lifted here so the
+     whole page can compose off it: hero, recovery read, strip and tiles.
+
+     The recovery window is READ, never assumed. selectRecoveryWindow
+     walks the plan's own RECOVERY phase span and its real prescribed
+     days, so a half mid-marathon-build renders the easy running the
+     plan actually wrote (52174bcd) instead of a hardcoded rest week,
+     and a marathon's four-week reverse taper renders as four weeks.
+     Null when there is no recovery block · the page degrades to the
+     race hero over the ordinary week strip. */
+  const { race: postRaceRace, setRace: setPostRaceRace } = usePostRaceRace();
+  const recoveryWindow: RecoveryWindow | null = useMemo(
+    () => selectRecoveryWindow({
+      phases: seed.season.phases ?? [],
+      weekDays: seed.season.weekDays ?? [],
+      nowIdx: seed.season.nowIdx,
+      todayISO: seed.todayISO,
+    }),
+    [seed.season.phases, seed.season.weekDays, seed.season.nowIdx, seed.todayISO],
+  );
+  const postRace: PostRaceComposition = composePostRaceToday({
+    purposeIsPostRace: isPostRace,
+    daysSince: postRaceRace?.daysSince ?? null,
+    recovery: recoveryWindow,
+  });
+  // The composition owns the page only on today's card. Tapping back to
+  // an earlier day in the strip shows that day, same rule race day uses.
+  const postRaceOwnsPage = postRace.active && !!d.today && !isRaceDay;
   const result = d.done ? (seed.results[curDay] ?? seed.results[0]) : undefined;
   // 2026-05-30: lazy-fetch the real run summary for past days so the hero
   // stats grid + heroExtra row don't render seed.results placeholder "·"
@@ -237,21 +280,20 @@ export function TodayView({
           too much dead space up here, the rules were either not
           enforced or too lax").
 
-          Brief v2 §6 (queued task 3, 2026-06-09) · ONE-BANNER CAP.
-          The .prehero-stack wrapper is display:contents (children stay
-          direct grid items) and CSS hides every element after the
-          first, so at most ONE interruption renders above the hero
-          regardless of how many components have content. DOM order =
-          priority: reconnect → adaptation → physiology nudge → missed
-          yesterday → coach proposals → plan proposals → workout
-          proposals. Null-rendering components contribute no element,
-          so :first-child is always the highest-priority banner that
-          actually fired. ReconnectBanner moved inside the stack (it
-          was above the header and outside any cap). */}
+          Brief v2 §6 · ONE-BANNER CAP. The .prehero-stack wrapper is
+          display:contents (children stay direct grid items).
+
+          2026-08-17 · deck Decision 2. The CSS gag that hid every
+          element after the first is retired: it enforced the cap by
+          making banners unreachable. CoachDecisionCard now folds the
+          four coach interruption sources (coach_proposals, plan
+          proposals, workout proposals, coach_intents) into ONE queue
+          and renders one card with an "N waiting" pager. The remaining
+          stack children are the non-coach banners, which are mutually
+          rare and self-suppressing. */}
 
       <div className="prehero-stack">
       <ReconnectBanner />
-      <AdaptationCard />
 
       {showPhysiologyNudge ? (
         <ProfileGapCard
@@ -293,28 +335,22 @@ export function TodayView({
         />
       ) : null}
 
-      {seed.pendingProposals.length > 0
-        ? seed.pendingProposals.map((p) => (
-            <CoachProposalCard key={p.id} proposal={p} />
-          ))
-        : null}
-
-      {seed.planProposals && seed.planProposals.length > 0 ? (
-        <>
-          {seed.planProposals
-            .filter((p) => p.status === 'pending')
-            .map((p) => <PlanProposalCard key={`pp-${p.id}`} proposal={p} />)}
-          {seed.planProposals
-            .filter((p) => p.status === 'auto_applied')
-            .map((p) => <PlanProposalCard key={`pp-${p.id}`} proposal={p} />)}
-        </>
-      ) : null}
-
-      {(seed.pendingWorkoutProposals?.length ?? 0) > 0
-        ? seed.pendingWorkoutProposals!.map((p) => (
-            <WorkoutProposalBanner key={`wp-${p.id}`} proposal={p} />
-          ))
-        : null}
+      {/* 2026-08-17 · deck Decision 2 · one card, one queue, one grammar.
+          Decisions (amber) outrank notices (recovery blue); the pager
+          reaches the rest. No state gate here: an injury or illness
+          proposal is exactly the thing that must still reach the runner
+          on a recovery day, so suppression stays where the deck put it
+          (race week, section 5) and not here. */}
+      <CoachDecisionCard
+        coachProposals={seed.pendingProposals}
+        planProposals={seed.planProposals}
+        workoutProposals={seed.pendingWorkoutProposals}
+        todayISO={seed.todayISO}
+        // Wave 2 mounts the goal renegotiation inside THE PATH on Targets,
+        // beside the number it renegotiates. Today must not ask the same
+        // question a second time.
+        excludeKinds={TARGETS_OWNED_PLAN_KINDS}
+      />
       </div>{/* .prehero-stack · brief v2 §6 one-banner cap */}
 
       {/* Morning brief content moved 2026-06-01 into the redesigned
@@ -337,6 +373,44 @@ export function TodayView({
         </div>
       ) : null}
 
+      {/* 2026-08-17 · deck Decision 1 · the post-race composition.
+          Beat 1 is the race, beat 2 is the recovery read. Both sit
+          above the strip, which is why they render here rather than in
+          the hero slot below: the week after a race, the race IS the
+          hero and the day's prescription is context, not headline. */}
+      {postRaceOwnsPage && postRaceRace ? (
+        <PostRaceHero
+          race={postRaceRace}
+          sinceLabel={postRace.sinceLabel}
+          onConfirmed={setPostRaceRace}
+          coachLine={
+            postRaceRace.provisional || !postRaceRace.finishTime
+              ? 'You raced. The result stands whether you confirm it now or later. This week is for absorbing it, not chasing it.'
+              : 'The result is locked in. This week is for absorbing it, not chasing it.'
+          }
+        />
+      ) : null}
+
+      {postRaceOwnsPage ? (
+        <RecoveryReadCard
+          seed={seed}
+          window={postRace.recovery}
+          coachLine={
+            isPostRace && restPurpose
+              ? [restPurpose.verdict, ...restPurpose.facts].filter(Boolean).join(' ')
+              : null
+          }
+        />
+      ) : null}
+
+      {/* Beat 3 · the recovery window strip, in the plan's own span with
+          the plan's own days. Replaces the ordinary week strip only when
+          a recovery block actually exists; with no recovery plan the
+          normal strip renders below and nothing is invented. */}
+      {postRaceOwnsPage && postRace.recovery ? (
+        <RecoveryWindowStrip composition={postRace} />
+      ) : null}
+
       {/* 2026-06-04 · label + week strip wrapped in a .band so the
           label-to-week distance is the tight --label-gap, while the
           band-to-next-band distance stays --section-gap from .main's
@@ -347,7 +421,7 @@ export function TodayView({
           strip entirely — "the race takes the page" means no secondary
           week context above the hero. Every other day renders the
           strip unchanged. */}
-      {isRaceDay ? null : (
+      {isRaceDay || (postRaceOwnsPage && postRace.recovery) ? null : (
       <div className="band">
       {/* Week label + prev/next navigation arrows */}
       {(() => {
@@ -589,18 +663,11 @@ export function TodayView({
           green when a session is logged on that day (see .strdone). No
           separate counter line. */}
 
-      {/* 2026-08-17 · post-race branch. The week after a finished A/B
-          race, web Today had no acknowledgment at all — the race-morning
-          takeover only covers the day itself, pre-run. This card derives
-          the state client-side (/api/races → /api/race/[slug]) so it
-          works whether or not /api/today/purpose grows a post-race type:
-          race + result (PROVISIONAL until confirmed · Rule 3), one-tap
-          confirm → POST /api/race/result, recovery framing. Renders
-          nothing outside the 7-day window. Mounted below the week strip,
-          above the hero — a state-driven beat of the day's composition,
-          not a pre-hero banner (keeps the brief v2 §6 one-banner cap
-          honest). */}
-      {isRaceDay ? null : <PostRaceTodayCard />}
+      {/* 2026-08-17 · the post-race acknowledgment card that used to
+          mount here is gone. It is now the page's first two beats
+          (PostRaceHero + RecoveryReadCard above the strip) per deck
+          Decision 1, rather than a card wedged between the strip and
+          an unrelated hero. */}
 
       {/* 2026-05-31: hero v2 — done days use CompletedHeroV2 (Post-Run
           Detail (Easy)), planned-and-not-rest days use PlannedHeroV2
@@ -627,6 +694,11 @@ export function TodayView({
             : null) ?? seed.shoeRecByType[d.type] ?? null}
           persistShoe={curDay === seed.todayIdx}
         />
+      ) : postRaceOwnsPage ? (
+        // The race hero and the recovery read already carried the page.
+        // A REST card under them would be the third thing on one screen
+        // saying "nothing today".
+        null
       ) : isPullBack ? (
         <div className="hero">
           <div className="hmain" style={meshGradient('recovery')}>
@@ -905,8 +977,15 @@ export function TodayView({
 
       {/* 2026-06-08 · tiles recede on race morning · the race takes the
           page. GAP/RACE-DAY/VOLUME/FORM all live one tap away in the full
-          race plan (and on Targets); on the day, they're noise. */}
-      {isRaceDay ? null : <Tiles seed={seed} onOpenRace={onOpenRace} />}
+          race plan (and on Targets); on the day, they're noise.
+
+          2026-08-17 · deck Decision 1 · the post-race week keeps VOLUME
+          and FORM with fatigue framing and drops THE GAP and the RACE
+          DAY countdown. A projection and a countdown to a race months
+          out say nothing useful days after the last one. */}
+      {isRaceDay ? null
+        : postRaceOwnsPage ? <PostRaceTiles seed={seed} composition={postRace} />
+        : <Tiles seed={seed} onOpenRace={onOpenRace} />}
       {glossaryDrawer}
     </>
   );
@@ -4601,7 +4680,7 @@ function ShoePicker({ shoes, initial, persist, runId }: { shoes: FaffSeed['shoes
             background: s.nm === picked ? 'rgba(255,206,138,.12)' : undefined,
           }}
         >
-          <span style={{ width: 9, height: 9, borderRadius: '50%', background: ROLECOL[s.role] ?? '#14C08C' }} />
+          <span style={{ width: 9, height: 9, borderRadius: '50%', background: ROLECOL[s.role] ?? '#3EBD41' }} />
           {s.nm}
           <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 700, opacity: 0.5 }}>{s.role}</span>
         </div>
@@ -4850,37 +4929,35 @@ function GoalReadyBody({ ready }: { ready: NonNullable<FaffSeed['goalReady']> })
 
 function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void }) {
   const goal = seed.goalRace;
-  // AUDIT #34 · the THE GAP tile must read the SAME trajectory-derived status +
-  // projected number the Targets gap panel shows, or the same runner can read
-  // OFF TRACK (red) here and ON TRACK on Targets in one page load. The drift
-  // ladder (goal.goalStatus / .projected / .onTrack / .delta) and the forward
-  // trajectory are two independent engines (TargetsView.tsx documents the
-  // hazard). Canonical = the trajectory; mirror TargetsView's derivation here
-  // and fall back to the drift fields only when there's no trajectory.
+  // 2026-08-17 · deck Decision 3b · ONE STATUS VOCABULARY.
+  //
+  // This tile used to derive its own wording. AUDIT #34 had already caught
+  // the worst version of that (Today saying OFF TRACK while Targets said ON
+  // TRACK in the same page load) and fixed it by MIRRORING the trajectory
+  // derivation here — two copies of one rule, which only holds until one
+  // copy is edited. Wave 2 landed lib/faff/goal-status.ts as the single
+  // source, so the copy is deleted and Today reads from it.
+  //
+  // Same call shape as TargetsView: trajectory first (where the plan,
+  // executed, lands you on race day), current-fitness projection as the
+  // fallback, and a pending goal_renegotiation forces BEHIND. Today and
+  // Targets now speak the same four words plus the same gap number.
   const goalTraj = goal?.trajectory ?? null;
-  const goalStatusReconciled: 'on-track' | 'watching' | 'off-track' | undefined = goalTraj
-    ? (goalTraj.reachable ? 'on-track' : goalTraj.gapVdot <= 1.5 ? 'watching' : 'off-track')
-    : goal?.goalStatus;
-  // Race-day projected finish = the trajectory hero number Targets renders
-  // (traj.projectedSec). Falls back to the drift-ladder projected string.
+  const renegotiationPending = (seed.planProposals ?? []).some(
+    (p) => p.kind === 'goal_renegotiation' && p.status === 'pending',
+  );
+  const goalStatus = goal
+    ? resolveGoalStatus({
+        trajectory: goalTraj,
+        goalSec: parseRaceTime(goal.goal) ?? null,
+        projectionSec: goal.vdotProjectionSec ?? null,
+        unclosable: renegotiationPending,
+      })
+    : null;
+  // The projected finish, same precedence Targets uses for its hero number.
   const goalProjected: string | undefined = goalTraj?.projectedSec != null
     ? (formatRaceTime(goalTraj.projectedSec) ?? goal?.projected)
     : goal?.projected;
-  // Delta vs goal from the trajectory gap (positive gapSec = slower than goal =
-  // behind), formatted like seed.ts's drift delta. Falls back to goal.delta.
-  const goalDelta: string | undefined = (() => {
-    if (goalTraj?.gapSec == null) return goal?.delta;
-    const ahead = goalTraj.gapSec <= 0; // gapSec ≤ 0 means projected at/under goal
-    const abs = Math.abs(goalTraj.gapSec);
-    const mins = Math.floor(abs / 60);
-    const secs = Math.round(abs % 60);
-    const mag = mins > 0 ? `${mins} min` : `${secs} sec`;
-    return `${mag} ${ahead ? 'ahead' : 'behind'}`;
-  })();
-  // On-track flag the tile's color/footer branches read, reconciled to the
-  // trajectory status (so green/red here matches Targets' pill).
-  const goalOnTrackReconciled: boolean =
-    goalStatusReconciled != null ? goalStatusReconciled === 'on-track' : Boolean(goal?.onTrack);
   const ready = !goal ? seed.goalReady : null;
   const [hoverBar, setHoverBar] = useState<number | null>(null);
   const bar = hoverBar != null ? seed.volumeBars[hoverBar] : null;
@@ -4912,45 +4989,31 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
               AFC fix 9 · the no-goal state is a real affordance now: the
               tile is clickable (routes to the Goal page) and the copy says
               what tapping does instead of quoting a URL path. */}
-          {/* AUDIT #34 · status / projected / delta below are the reconciled,
-              trajectory-derived values (goalStatusReconciled / goalProjected /
-              goalDelta / goalOnTrackReconciled) so this tile agrees with Targets. */}
+          {/* Deck Decision 3b · the tone and the words both come from the
+              shared read. When resolveGoalStatus returns null there is
+              nothing honest to say, so the tile shows the goal and says the
+              projection is pending rather than inventing a tier. */}
           <div className="cdbig" style={{
-            color: !goal?.projected ? '#9099A8'
-              : goalStatusReconciled === 'off-track' ? '#FC4D64'
-              : goalStatusReconciled === 'watching' ? '#F3AD38'
-              : goalOnTrackReconciled ? '#3EBD41'
-              : '#FC4D64',
+            color: !goal?.projected ? '#9099A8' : (goalStatus?.tone ?? '#9099A8'),
           }}>
             {goalProjected ?? goal?.goal ?? '—'}
           </div>
           <div className="cdlab">{goal?.projected ? 'PROJECTED FINISH' : (goal ? 'TARGET FINISH' : 'NO GOAL SET')}</div>
-          {goal?.projected
-            ? (goalStatusReconciled === 'watching'
-                ? <div className="cdsub">Goal {goal.goal} · watching</div>
-                : <div className="cdsub">Goal {goal.goal} · {goalDelta}</div>)
+          {goal?.projected && goalStatus
+            ? <div className="cdsub">Goal {goal.goal}</div>
             : (goal ? <div className="cdsub" style={{ opacity: 0.7 }}>Log a recent race to project</div> : <div className="cdsub" style={{ opacity: 0.7 }}>Pick a goal race ›</div>)}
           <div className="cdbar"><div className="cdfill" style={{
             width: `${goal?.goalPct ?? 0}%`,
-            background: goalStatusReconciled === 'off-track' ? '#FC4D64'
-              : goalStatusReconciled === 'watching' ? '#F3AD38'
-              : goalOnTrackReconciled ? '#3EBD41'
-              : '#FC4D64',
+            background: goalStatus?.tone ?? '#9099A8',
           }} /></div>
-          <div className="cdwk" style={{
-            color: goalStatusReconciled === 'off-track' ? '#FC4D64'
-              : goalStatusReconciled === 'watching' ? '#F3AD38'
-              : goalOnTrackReconciled ? '#3EBD41'
-              : '#F3AD38',
-            opacity: 1,
-          }}>
+          {/* The one chip · identical component, identical wording, identical
+              number to the one Targets renders. */}
+          <div className="cdwk" style={{ opacity: 1 }}>
             {goal
-              ? (goal.projected
-                  ? (goalStatusReconciled === 'watching'
-                      ? `Watching · ${goal.goal} still in play`
-                      : goalOnTrackReconciled ? `On track for ${goal.goal}` : `${goalDelta}`)
-                  : 'Projection pending')
-              : 'No goal race set'}
+              ? (goalStatus
+                  ? <StatusChip read={goalStatus} compact />
+                  : <span style={{ color: '#8A90A0' }}>Projection pending</span>)
+              : <span style={{ color: '#8A90A0' }}>No goal race set</span>}
           </div>
         </div>
         )}
@@ -5065,27 +5128,37 @@ function Tiles({ seed, onOpenRace }: { seed: FaffSeed; onOpenRace: () => void })
   );
 }
 
-/* ─────────────── PostRaceTodayCard · the week after the race ───────────────
- * 2026-08-17 · Mirrors the native post-race Today branch, minimally. Fully
- * self-deriving from existing endpoints (no seed change, no new contract):
+/* ─────────────── post-race week · deck Decision 1 ───────────────────────
+ * 2026-08-17 · The state was a copy-level acknowledgment card mounted
+ * under the week strip. The deck makes it the page: the race is the hero,
+ * the recovery read is beat two, the strip becomes the recovery window,
+ * and two of the four tiles leave.
+ *
+ * The fetch lives in usePostRaceRace so TodayView can compose off it (a
+ * card that fetched its own race could only ever dress itself). Both
+ * endpoints are unchanged:
  *   1. GET /api/races → most recent past A/B race within 7 days.
  *   2. GET /api/race/[slug] → finishTime + provenance (finishProvisional /
  *      finishSource / matchedRun) from races-state.
- * States: provisional (watch-matched time · labeled PROVISIONAL per the
- * race-data Rule 3 lock · one-tap CONFIRM), missing (enter a time), and
- * confirmed (time reads back · recovery framing only). CONFIRM posts the
- * time (+ matched avg HR, which recalibrates LTHR) to POST /api/race/result
- * — the same authoritative chip-time write the races page uses. */
-function PostRaceTodayCard() {
-  const router = useRouter();
-  const [pr, setPr] = useState<{
-    slug: string; name: string; date: string; daysSince: number;
-    finishTime: string | null; provisional: boolean; avgHr: number | null;
-  } | null>(null);
-  const [finish, setFinish] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+ *
+ * States: provisional (watch-matched time · labeled per the race-data
+ * Rule 3 lock · one-tap CONFIRM), missing (enter a time), confirmed
+ * (time reads back). CONFIRM posts the time (+ matched avg HR, which
+ * recalibrates LTHR) to POST /api/race/result — the same authoritative
+ * chip-time write the races page uses. A watch time never displays as an
+ * authoritative chip result. */
+
+type PostRaceRace = {
+  slug: string; name: string; date: string; daysSince: number;
+  finishTime: string | null; provisional: boolean; avgHr: number | null;
+  distanceMi: number | null; pace: string | null;
+};
+
+function usePostRaceRace(): {
+  race: PostRaceRace | null;
+  setRace: (r: PostRaceRace) => void;
+} {
+  const [race, setRace] = useState<PostRaceRace | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -5102,39 +5175,71 @@ function PostRaceTodayCard() {
             typeof x.days_to_race === 'number' && x.days_to_race < 0 && x.days_to_race >= -7 &&
             (String(x.priority ?? '').toUpperCase() === 'A' || String(x.priority ?? '').toUpperCase() === 'B'))
           .sort((a, b) => (b.days_to_race ?? -99) - (a.days_to_race ?? -99));
-        const race = past[0];
-        if (!race || !alive) return;
-        const dr = await fetch(`/api/race/${race.slug}`);
+        const found = past[0];
+        if (!found || !alive) return;
+        const dr = await fetch(`/api/race/${found.slug}`);
         if (!dr.ok) return;
         const rr = (await dr.json())?.race ?? {};
         if (!alive) return;
-        setPr({
-          slug: race.slug,
-          name: rr.name ?? race.name ?? race.slug,
-          date: rr.date ?? race.date ?? '',
-          daysSince: -(race.days_to_race as number),
+        setRace({
+          slug: found.slug,
+          name: rr.name ?? found.name ?? found.slug,
+          date: rr.date ?? found.date ?? '',
+          daysSince: -(found.days_to_race as number),
           finishTime: rr.finishTime ?? null,
           provisional: rr.finishProvisional === true || rr.finishSource === 'run_match',
           avgHr: rr.matchedRun?.avg_hr ?? null,
+          distanceMi: typeof rr.distanceMi === 'number' ? rr.distanceMi : null,
+          pace: typeof rr.matchedRun?.pace === 'string' ? rr.matchedRun.pace : null,
         });
-        setFinish(rr.finishTime ?? '');
-      } catch { /* silent · the card simply doesn't render */ }
+      } catch { /* silent · the composition degrades to an ordinary day */ }
     })();
     return () => { alive = false; };
   }, []);
 
-  if (!pr) return null;
-  const confirmed = !!pr.finishTime && !pr.provisional;
+  return { race, setRace };
+}
+
+/** Distance name from the race's own miles. Never guessed from a label. */
+function raceDistanceName(mi: number | null): string | null {
+  if (mi == null || !Number.isFinite(mi) || mi <= 0) return null;
+  if (Math.abs(mi - 3.107) < 0.25) return '5K';
+  if (Math.abs(mi - 6.214) < 0.35) return '10K';
+  if (Math.abs(mi - 13.109) < 0.5) return 'Half marathon';
+  if (Math.abs(mi - 26.219) < 0.8) return 'Marathon';
+  return `${Math.round(mi * 10) / 10} mi`;
+}
+
+/* ── beat 1 · the race hero ────────────────────────────────────────────
+   Race name and days since in the eyebrow, the result at hero scale with
+   its provenance chip, CONFIRM, and the race story link. */
+function PostRaceHero({
+  race, sinceLabel, onConfirmed, coachLine,
+}: {
+  race: PostRaceRace;
+  sinceLabel: string | null;
+  onConfirmed: (r: PostRaceRace) => void;
+  coachLine: string;
+}) {
+  const router = useRouter();
+  const [finish, setFinish] = useState(race.finishTime ?? '');
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const confirmed = !!race.finishTime && !race.provisional;
+  const oswald = "var(--font-display, 'Oswald', sans-serif)";
+  const distName = raceDistanceName(race.distanceMi);
 
   const submit = async (time: string) => {
     const t = time.trim();
     if (!t || parseRaceTime(t) == null) {
-      setErr('That time doesn’t look right. Use 1:41:53 or 45:12.');
+      setErr('That time does not look right. Use 1:41:53 or 45:12.');
       return;
     }
     setBusy(true); setErr(null);
-    const body: Record<string, unknown> = { slug: pr.slug, finishDisplay: t };
-    if (pr.avgHr) body.avgHrBpm = pr.avgHr;
+    const body: Record<string, unknown> = { slug: race.slug, finishDisplay: t };
+    if (race.avgHr) body.avgHrBpm = race.avgHr;
     const r = await fetch('/api/race/result', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -5142,7 +5247,7 @@ function PostRaceTodayCard() {
     }).catch(() => null);
     setBusy(false);
     if (r?.ok) {
-      setPr({ ...pr, finishTime: t, provisional: false });
+      onConfirmed({ ...race, finishTime: t, provisional: false });
       setEditing(false);
       router.refresh();
     } else {
@@ -5150,66 +5255,79 @@ function PostRaceTodayCard() {
     }
   };
 
-  const oswald = "var(--font-display, 'Oswald', sans-serif)";
-  const sinceLabel = pr.daysSince === 1 ? '1 DAY AGO' : `${pr.daysSince} DAYS AGO`;
-
   return (
     <div style={{
-      background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 16,
-      padding: '18px 18px 16px',
+      background: 'var(--card)', border: '1px solid var(--line)',
+      borderLeft: '4px solid #D03F3F', borderRadius: 16, padding: '20px 22px 18px',
     }}>
       <div style={{
         display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap',
         fontSize: 10, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase',
       }}>
-        <span style={{ color: '#D03F3F' }}>{pr.name}</span>
-        <span style={{ opacity: 0.55 }}>{pr.date ? `${formatDate(pr.date)} · ` : ''}{sinceLabel}</span>
+        <span style={{ color: '#D03F3F' }}>{race.name}</span>
+        {sinceLabel ? <span style={{ opacity: 0.55 }}>{sinceLabel}</span> : null}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10, flexWrap: 'wrap' }}>
-        {pr.finishTime ? (
-          <div style={{ fontFamily: oswald, fontSize: 40, fontWeight: 600, lineHeight: 0.95 }}>
-            {pr.finishTime}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, marginTop: 10, flexWrap: 'wrap' }}>
+        {race.finishTime ? (
+          <div style={{ fontFamily: oswald, fontSize: 64, fontWeight: 600, lineHeight: 0.85 }}>
+            {race.finishTime}
           </div>
         ) : (
-          <div style={{ fontSize: 14, fontWeight: 700 }}>Log your result</div>
+          <div style={{ fontFamily: oswald, fontSize: 30, fontWeight: 600 }}>Log your result</div>
         )}
-        {confirmed ? (
-          <span style={{
-            fontSize: 9.5, fontWeight: 800, letterSpacing: 1.3, color: '#3EBD41',
-            border: '1px solid rgba(62,189,65,.4)', borderRadius: 999, padding: '3px 8px',
-          }}>LOCKED IN</span>
-        ) : pr.finishTime ? (
-          <span style={{
-            fontSize: 9.5, fontWeight: 800, letterSpacing: 1.3, color: '#0A0C10',
-            background: '#F3AD38', borderRadius: 999, padding: '3px 8px',
-          }}>PROVISIONAL</span>
-        ) : null}
-        {!confirmed && pr.finishTime ? (
-          <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.6 }}>from your watch</span>
-        ) : null}
+        <div style={{ paddingBottom: 6 }}>
+          {(distName || race.pace) ? (
+            <div style={{
+              fontSize: 12, fontWeight: 700, letterSpacing: 1.4, color: '#C7CBD4',
+              textTransform: 'uppercase',
+            }}>
+              {[distName, race.pace ? `${race.pace} /mi` : null].filter(Boolean).join(' · ')}
+            </div>
+          ) : null}
+          {/* Rule 3 · the provenance chip. A watch time says so. */}
+          {race.finishTime ? (
+            <div style={{ marginTop: 8 }}>
+              {confirmed ? (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase',
+                  color: '#3EBD41', border: '1px solid rgba(62,189,65,.4)',
+                  background: 'rgba(62,189,65,.08)', borderRadius: 9, padding: '5px 10px',
+                }}>Chip time · locked in</span>
+              ) : (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase',
+                  color: '#F3AD38', border: '1px solid rgba(243,173,56,.45)',
+                  background: 'rgba(243,173,56,.08)', borderRadius: 9, padding: '5px 10px',
+                }}>Watch time · chip time to lock in</span>
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      {!confirmed ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-          {pr.finishTime && !editing ? (
+      <div style={{ display: 'flex', gap: 10, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+        {!confirmed ? (
+          race.finishTime && !editing ? (
             <>
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => { void submit(pr.finishTime!); }}
+                onClick={() => { void submit(race.finishTime!); }}
                 style={{
-                  background: '#fff', color: '#0A0C10', border: 'none', borderRadius: 10,
-                  padding: '10px 16px', fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4,
+                  background: '#D03F3F', color: '#fff', border: '1px solid #D03F3F',
+                  borderRadius: 11, padding: '11px 18px', fontSize: 11, fontWeight: 800,
+                  letterSpacing: 1.6, textTransform: 'uppercase',
                   cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
                 }}
-              >{busy ? 'SAVING' : `CONFIRM ${pr.finishTime}`}</button>
+              >{busy ? 'SAVING' : 'CONFIRM RESULT'}</button>
               <button
                 type="button"
-                onClick={() => { setEditing(true); setFinish(pr.finishTime ?? ''); }}
+                onClick={() => { setEditing(true); setFinish(race.finishTime ?? ''); }}
                 style={{
-                  background: 'none', border: 'none', color: '#D03F3F', fontSize: 12,
-                  fontWeight: 800, letterSpacing: 0.4, cursor: 'pointer', padding: '10px 4px',
+                  background: 'none', border: '1px solid rgba(255,255,255,.18)', borderRadius: 11,
+                  color: '#C7CBD4', padding: '11px 18px', fontSize: 11, fontWeight: 800,
+                  letterSpacing: 1.6, textTransform: 'uppercase', cursor: 'pointer',
                 }}
               >ENTER CHIP TIME</button>
             </>
@@ -5220,10 +5338,11 @@ function PostRaceTodayCard() {
                 onChange={(ev) => setFinish(ev.target.value)}
                 placeholder="1:41:53"
                 inputMode="numeric"
+                aria-label="Chip time"
                 style={{
                   background: 'rgba(255,255,255,.06)', border: '1px solid var(--line)',
                   borderRadius: 10, color: '#fff', fontFamily: oswald, fontSize: 18,
-                  fontWeight: 600, padding: '8px 12px', width: 130,
+                  fontWeight: 600, padding: '9px 12px', width: 130,
                 }}
               />
               <button
@@ -5231,38 +5350,270 @@ function PostRaceTodayCard() {
                 disabled={busy}
                 onClick={() => { void submit(finish); }}
                 style={{
-                  background: '#fff', color: '#0A0C10', border: 'none', borderRadius: 10,
-                  padding: '10px 16px', fontSize: 12.5, fontWeight: 800, letterSpacing: 0.4,
+                  background: '#D03F3F', color: '#fff', border: '1px solid #D03F3F',
+                  borderRadius: 11, padding: '11px 18px', fontSize: 11, fontWeight: 800,
+                  letterSpacing: 1.6, textTransform: 'uppercase',
                   cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
                 }}
               >{busy ? 'SAVING' : 'SAVE RESULT'}</button>
             </>
-          )}
-        </div>
-      ) : null}
+          )
+        ) : null}
+        <button
+          type="button"
+          onClick={() => router.push(`/races/${race.slug}`)}
+          style={{
+            background: 'none', border: '1px solid rgba(255,255,255,.18)', borderRadius: 11,
+            color: '#C7CBD4', padding: '11px 18px', fontSize: 11, fontWeight: 800,
+            letterSpacing: 1.6, textTransform: 'uppercase', cursor: 'pointer',
+          }}
+        >The race story ›</button>
+      </div>
 
       {err ? (
         <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: '#FC4D64' }}>{err}</div>
       ) : null}
 
-      <div style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, opacity: 0.62, lineHeight: 1.45 }}>
-        {confirmed
-          ? 'Recovery first. The next block starts when your body says so, not the calendar.'
-          : 'Confirm the time so the coach can recalibrate fitness off the race. Recovery first this week.'}
+      <div style={{
+        marginTop: 16, fontSize: 13.5, lineHeight: 1.5, color: '#C7CBD4',
+        borderLeft: '3px solid #3EBD41', paddingLeft: 12,
+      }}>{coachLine}</div>
+    </div>
+  );
+}
+
+/* ── beat 2 · the recovery read ────────────────────────────────────────
+   Readiness, sleep and RHR promoted from Health, under the post_race
+   purpose line. This is the beat that answers "how am I actually doing"
+   on a day with no workout to talk about. */
+function RecoveryReadCard({
+  seed, window: win, coachLine,
+}: {
+  seed: FaffSeed;
+  window: RecoveryWindow | null;
+  coachLine: string | null;
+}) {
+  const score = seed.readinessBrief?.score ?? seed.readiness.score;
+  const label = seed.readinessBrief?.label ?? seed.readiness.label;
+  const band = seed.readinessBrief?.band ?? null;
+  const bandColor =
+    band === 'sharp' || band === 'ready' ? '#3EBD41' :
+    band === 'moderate' ? '#F3AD38' :
+    band === 'pull-back' ? '#FC4D64' :
+    '#8A90A0';
+
+  const sleepTile = seed.health.body.find((m) => m.k === 'sleep');
+  const sleepSeries = sleepTile?.series ?? [];
+  const lastNight = sleepSeries.length ? sleepSeries[sleepSeries.length - 1] : null;
+  const rhrTile = seed.health.body.find((m) => m.k === 'rhr');
+  const rhrCur = rhrTile?.current ?? null;
+  const rhrBase = rhrTile?.target ?? null;
+
+  const oswald = "var(--font-display, 'Oswald', sans-serif)";
+  const eyebrow = win
+    ? `RECOVERY READ · DAY ${win.dayIndex} OF ${win.daysTotal}`
+    : 'RECOVERY READ';
+
+  return (
+    <div style={{
+      background: 'var(--card)', border: '1px solid var(--line)',
+      borderRadius: 16, padding: '20px 22px',
+    }}>
+      <div style={{
+        fontSize: 10, fontWeight: 800, letterSpacing: 1.8,
+        textTransform: 'uppercase', color: '#27B4E0',
+      }}>{eyebrow}</div>
+
+      <div style={{ display: 'flex', gap: 34, marginTop: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.8, color: '#8A90A0' }}>READINESS</div>
+          <div style={{ fontFamily: oswald, fontSize: 32, fontWeight: 600, color: bandColor }}>
+            {band === 'no-data' ? '—' : score}
+          </div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2, color: bandColor }}>{label}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.8, color: '#8A90A0' }}>SLEEP</div>
+          <div style={{ fontFamily: oswald, fontSize: 32, fontWeight: 600 }}>
+            {formatSleep(lastNight ?? sleepTile?.current ?? undefined)}
+          </div>
+          <div style={{ fontSize: 10, color: '#8A90A0' }}>last night</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.8, color: '#8A90A0' }}>RESTING HR</div>
+          <div style={{ fontFamily: oswald, fontSize: 32, fontWeight: 600 }}>
+            {rhrCur != null ? Math.round(rhrCur) : '·'}
+          </div>
+          <div style={{ fontSize: 10, color: '#8A90A0' }}>
+            {rhrBase != null && rhrCur != null
+              ? `baseline ${Math.round(rhrBase)} · ${rhrCur - rhrBase >= 0 ? 'up' : 'down'} ${Math.abs(Math.round(rhrCur - rhrBase))}`
+              : 'no baseline yet'}
+          </div>
+        </div>
       </div>
 
-      {/* 2026-08-17 · retro front door · the race view (course, splits,
-          the story) already exists at /races/[slug] — same route the
-          TargetsView rows open. This is the post-race week's way in. */}
-      <button
-        type="button"
-        onClick={() => router.push(`/races/${pr.slug}`)}
-        style={{
-          marginTop: 12, background: 'none', border: 'none', padding: 0,
-          color: '#F3AD38', fontSize: 12, fontWeight: 800, letterSpacing: 0.4,
-          cursor: 'pointer',
-        }}
-      >The race story ›</button>
+      {coachLine ? (
+        <div style={{
+          marginTop: 16, fontSize: 13.5, lineHeight: 1.5, color: '#C7CBD4',
+          borderLeft: '3px solid #27B4E0', paddingLeft: 12,
+        }}>{coachLine}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ── beat 3 · the recovery window strip ────────────────────────────────
+   The plan's own days, in its own span. Nothing here is a constant: the
+   header carries the real date range, each cell carries what the plan
+   prescribed for that day, and the summary underneath counts the real
+   running days and miles. When the plan says easy running, the strip
+   says easy running. */
+function RecoveryWindowStrip({
+  composition,
+}: {
+  composition: PostRaceComposition;
+}) {
+  const w = composition.recovery;
+  if (!w || w.days.length === 0) return null;
+  const oswald = "var(--font-display, 'Oswald', sans-serif)";
+
+  return (
+    <div className="band">
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        gap: 12, padding: '0 2px',
+      }}>
+        <span style={{
+          fontSize: 10, fontWeight: 800, letterSpacing: 1.8,
+          textTransform: 'uppercase', color: '#27B4E0',
+        }}>{composition.stripHeader}</span>
+        {composition.stripNote ? (
+          <span style={{ fontSize: 11, color: '#8A90A0' }}>{composition.stripNote}</span>
+        ) : null}
+      </div>
+
+      {/* The column count is the plan's, not seven — a recovery week can
+          carry any number of dated days. minmax keeps the cells legible on
+          a phone and lets the row scroll rather than crush. */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${w.days.length}, minmax(72px, 1fr))`,
+        gap: 9,
+        overflowX: 'auto',
+      }}>
+        {w.days.map((day) => {
+          const accent = day.isRunning ? '#27B4E0' : 'rgba(255,255,255,.18)';
+          return (
+            <div
+              key={day.iso}
+              style={{
+                background: 'var(--card)',
+                border: `1px solid ${day.isToday ? 'rgba(39,180,224,.5)' : 'var(--line)'}`,
+                borderRadius: 12, padding: '12px 8px', textAlign: 'center',
+                minHeight: 86, display: 'flex', flexDirection: 'column',
+                gap: 5, alignItems: 'center', justifyContent: 'center',
+                opacity: day.isPast && !day.done ? 0.55 : 1,
+              }}
+            >
+              <span style={{
+                fontSize: 9, fontWeight: 800, letterSpacing: 1.4,
+                color: day.isToday ? '#27B4E0' : '#8A90A0',
+              }}>{day.isToday ? 'TODAY' : day.dow}</span>
+              <span style={{ fontFamily: oswald, fontSize: 19, fontWeight: 600 }}>{day.dayNum}</span>
+              <span style={{
+                width: 7, height: 7, borderRadius: '50%',
+                background: day.done ? '#3EBD41' : accent,
+              }} />
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 0.8,
+                textTransform: 'uppercase',
+                color: day.isRunning ? '#27B4E0' : '#8A90A0',
+              }}>{day.label}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {composition.stripSummary ? (
+        <div style={{ fontSize: 11, color: '#8A90A0', padding: '0 2px' }}>
+          {composition.stripSummary}
+          {w.runningDays > 0 ? ' · every day optional' : ''}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ── beat 4 · the two tiles that stay ──────────────────────────────────
+   THE GAP and RACE DAY leave: a projection and a countdown are noise
+   while the body is absorbing a race, and both return with the next
+   block. VOLUME and FORM stay, reframed for fatigue. */
+function PostRaceTiles({
+  seed, composition,
+}: {
+  seed: FaffSeed;
+  composition: PostRaceComposition;
+}) {
+  const [hoverBar, setHoverBar] = useState<number | null>(null);
+  const bar = hoverBar != null ? seed.volumeBars[hoverBar] : null;
+  const num = bar ? `${bar.mi}` : `${seed.thisWeekMiles}`;
+  const sub = bar ? ` mi · ${bar.label}` : ` mi · ${postRaceVolumeNote(composition.recovery)}`;
+
+  const FORM_COLOR: Record<string, string> = {
+    OVERREACH: '#FC4D64', LOADED: '#F3AD38', PRODUCTIVE: '#3EBD41',
+    'RACE-READY': '#F0DF47', DETRAINING: '#27B4E0', BUILDING: '#8A90A0',
+  };
+  const formColor = FORM_COLOR[seed.form.label] ?? '#8A90A0';
+  const dashLen = 339.3;
+  const absDelta = Math.min(50, Math.abs(seed.form.delta));
+  const dashOffset = dashLen - dashLen * (absDelta / 50);
+
+  return (
+    <div className="tiles tiles-two">
+      <div className="tile">
+        <div className="fll">WEEKLY VOLUME</div>
+        <div className="tbody vfill">
+          <div className="vol">
+            {(() => {
+              const maxMi = Math.max(...seed.volumeBars.map((x) => x.mi), 1);
+              return seed.volumeBars.map((b, i) => (
+                <i
+                  key={i}
+                  onMouseEnter={() => setHoverBar(i)}
+                  onMouseLeave={() => setHoverBar(null)}
+                  style={{
+                    height: b.mi > 0 ? `${(b.mi / maxMi) * 100}%` : '3px',
+                    background: b.current ? '#FFFFFF' : 'rgba(255,255,255,.55)',
+                  }}
+                />
+              ));
+            })()}
+          </div>
+          <div className="volnum">{num}<small>{sub}</small></div>
+        </div>
+      </div>
+
+      <div className="tile">
+        <div className="fll">TRAINING FORM</div>
+        <div className="tbody">
+          <div
+            className="rg"
+            style={{ width: 124, height: 124 }}
+            role="img"
+            aria-label={`Training form: ${seed.form.label}, ${seed.form.delta >= 0 ? 'plus' : 'minus'} ${Math.abs(Math.round(seed.form.delta))}`}
+          >
+            <svg width="124" height="124" viewBox="0 0 124 124">
+              <circle cx="62" cy="62" r="54" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="7" />
+              <circle cx="62" cy="62" r="54" fill="none" stroke={formColor} strokeWidth="7" strokeLinecap="round" strokeDasharray={dashLen} strokeDashoffset={dashOffset} transform="rotate(-90 62 62)" />
+            </svg>
+            <div className="rgc">
+              <b style={{ fontSize: 32, color: formColor }}>{seed.form.delta >= 0 ? '+' : '−'}{Math.abs(Math.round(seed.form.delta))}</b>
+            </div>
+          </div>
+          <div className="formsub">Fitness {seed.form.fitness} · Fatigue {seed.form.fatigue}</div>
+          <div className="formhelper">{postRaceFormHelper(seed.form.label, composition.recovery)}</div>
+        </div>
+      </div>
     </div>
   );
 }

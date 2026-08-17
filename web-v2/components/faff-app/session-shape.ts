@@ -84,7 +84,7 @@ export interface BlueprintData {
 }
 
 const COL = {
-  easy:      '#14C08C',   // Warm-up / Cool-down / single bar for easy
+  easy:      '#3EBD41',   // Warm-up / Cool-down / single bar for easy
   tempo:     '#D03F3F',   // Tempo block
   threshold: '#F3AD38',   // Threshold reps
   intervals: '#FC4D64',   // Interval reps

@@ -66,7 +66,7 @@ const styles = `
 .admin-shell .empty{opacity:.55;font-size:13.5px;padding:30px 4px;}
 .admin-shell .temp{
   width:100%;margin-top:10px;padding:10px 12px;border-radius:10px;
-  background:rgba(20,192,140,.12);border:1px solid rgba(20,192,140,.4);
+  background:rgba(62,189,65,.12);border:1px solid rgba(62,189,65,.4);
   font-size:12.5px;line-height:1.5;
 }
 .admin-shell .temp code{font-size:14px;font-weight:700;letter-spacing:.5px;}

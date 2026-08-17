@@ -43,6 +43,7 @@ import { GapPanel } from './GapPanel';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { resolveGoalStatus, formatGapClock, type GoalStatusRead } from '@/lib/faff/goal-status';
 import { resolveRaceRole, resolveProvenance } from '@/lib/faff/race-roles';
+import { StatusChip } from '../StatusChip';
 
 export function TargetsView({
   seed, onOpenRace,
@@ -321,33 +322,13 @@ export function TargetsView({
 }
 
 // ============================ STATUS CHIP ============================
-/**
- * The one status chip · tier word + gap value. Exported so Today's GAP tile
- * can render the identical chip instead of deriving its own wording.
- */
-export function StatusChip({ read, compact }: { read: GoalStatusRead; compact?: boolean }) {
-  return (
-    <span
-      style={{
-        display: 'inline-flex', alignItems: 'center',
-        fontFamily: "'Inter', sans-serif",
-        fontSize: compact ? 10 : 11,
-        fontWeight: 800,
-        letterSpacing: '1.2px',
-        textTransform: 'uppercase',
-        color: read.tone,
-        border: `1px solid ${read.tone}59`,
-        background: `${read.tone}14`,
-        borderRadius: 9,
-        padding: compact ? '4px 8px' : '6px 11px',
-        whiteSpace: 'nowrap',
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
-      {read.label}
-    </span>
-  );
-}
+// 2026-08-17 · Wave 1 integration · StatusChip moved to
+// components/faff-app/StatusChip.tsx so Today's GAP tile can render the
+// identical chip without importing a component out of this view. Re-exported
+// here so existing importers keep working. (The import above is what gives
+// this module the local binding its own JSX uses; a bare `export … from`
+// would re-export the name without defining it here.)
+export { StatusChip };
 
 // ============================ RENEGOTIATION ============================
 /**
