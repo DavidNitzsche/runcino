@@ -74,6 +74,80 @@ export const POST_RACE_RECOVERY_WEEKS: Record<DistCategory, number> = {
 };
 
 /**
+ * 2026-08-17 · RECOVERY-3 · recovery VOLUME is not recovery DURATION.
+ *
+ * The bug this fixes, from David's first post-race rollover: his half
+ * generated 6 miles in week 1 and 9 in week 2 (15 total) against a 33
+ * mi/wk base. He raced 13.1 with a marathon 16 weeks out and the app
+ * prescribed near-total rest for a fortnight.
+ *
+ * Root cause: Research/00b-recovery-protocols.md:196-204 has TWO
+ * distinct columns and the composer read the wrong one.
+ *   · "Total recovery days (no quality)" · half = 10-14
+ *   · "Days of zero/very-light running"  · half = 3-5
+ * POST_RACE_RECOVERY_WEEKS above correctly encodes the FIRST (no
+ * quality for ~2 weeks). The composer then reused the MARATHON
+ * reverse-taper percentages (:256-263 · wk1 10-20% of peak) for every
+ * distance, so "no quality" became "no running".
+ *
+ * These sequences come from each distance's own day-by-day protocol.
+ * Half (:240-255) is explicit: day 3 a 20-30 min jog, day 4 30-40 min
+ * easy, day 6 40-50 min + strides, day 7 a 45-60 min medium-long, day
+ * 12 a 50-70 min long. Summed at an easy pace that is ~60% of base in
+ * week 1 and ~80% in week 2 · a cutback, not a shutdown. Marathon
+ * KEEPS the reverse taper (:256-263) unchanged · that hole is real.
+ *
+ * Cite: Research/00b-recovery-protocols.md §Post-Race Recovery
+ *       (:196-204 table · :240-255 half protocol · :256-263 marathon)
+ */
+export const RECOVERY_WEEKLY_PCT_OF_BASE: Record<DistCategory, number[]> = {
+  '5k': [0.75],
+  '10k': [0.70],
+  'hm': [0.60, 0.80],
+  'm': [0.15, 0.35, 0.55, 0.75],
+  'ultra': [0.15, 0.35, 0.55, 0.75],
+};
+
+/**
+ * Running days per recovery week, per the same protocols. Derived
+ * counts, not a formula: the half runs on days 3, 4, 6 and 7 of week 1
+ * (4 days · optional 5th on day 5) then 5-6 days in week 2. Marathon
+ * week 1 is days 0-3 off with a couple of short jogs after (2 days),
+ * rebuilding to 6. Replaces ceil(wkPct * 7), which produced 2 running
+ * days for a half because it was fed marathon-depth percentages.
+ */
+export const RECOVERY_RUN_DAYS: Record<DistCategory, number[]> = {
+  '5k': [4],
+  '10k': [4],
+  'hm': [4, 6],
+  'm': [2, 4, 5, 6],
+  'ultra': [2, 4, 5, 6],
+};
+
+/**
+ * The week's longest run as a fraction of that week's volume. Marathon
+ * holds the historical 0.20 (its long stays deliberately small deep in
+ * the reverse taper). Shorter distances reintroduce a real medium-long
+ * on schedule: half day 7 is 45-60 min and day 12 is 50-70 min, which
+ * lands near 30% of those weeks. Always capped by the runner's own
+ * recent long.
+ */
+export const RECOVERY_LONG_PCT: Record<DistCategory, number> = {
+  '5k': 0.30, '10k': 0.30, 'hm': 0.30, 'm': 0.20, 'ultra': 0.20,
+};
+
+/**
+ * Effort scaling · Research/00b:216-222. An A race is run to the floor
+ * off a full taper and earns the full table. A B race is hard but not
+ * depleted (60-70% of A-race recovery duration); a C race is a hard
+ * workout in costume (25-50%). Applied to DURATION · a shorter hole,
+ * not a deeper one, so volumes shift up a step rather than down.
+ */
+export const RECOVERY_EFFORT_SCALE: Record<string, number> = {
+  A: 1.0, B: 0.65, C: 0.35,
+};
+
+/**
  * 2026-06-03 · Rule 12 · maintenance-mode shape per tier.
  *
  * When a runner has no race within the build window (BUILD_WINDOW_WEEKS),

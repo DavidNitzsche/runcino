@@ -35,7 +35,7 @@ import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAn
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
-import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, BUILD_WINDOW_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory } from './goal-tiers';
+import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, BUILD_WINDOW_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory } from './goal-tiers';
 import { isBaseBuildingPlan } from './plan-templates';
 import { distanceMiFromLabel } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
@@ -2841,13 +2841,16 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
   const remainingWeeks = Math.max(1, recoveryWeeks - recoveryOff);
   const peakAnchor = Math.max(input.recentPeakWeeklyMi, input.recentWeeklyMi);
 
-  // Pfitz: week 1 = 25-40% of peak (5K/10K) or 30% (M). Week 2 (M only) = 50-60%.
-  // RECOVERY-1 (2026-06-23) · reverse taper per Research/00b:256-263 (wk1 10-20% → wk2 30-40% →
-  // wk3 50-60% → wk4 70-80% of normal). Was [0.30,0.55] for marathon — wk1 ~2× too hot AND 2 weeks
-  // too short (research returns to quality at week 3-4, not week 2).
-  const wkPctSeq = (lastCat === 'm' || lastCat === 'ultra') ? [0.15, 0.35, 0.55, 0.75]
-    : lastCat === 'hm' ? [0.20, 0.40]
-    : [0.30];
+  // RECOVERY-3 (2026-08-17) · per-distance volume profiles. Previously every
+  // distance ran on the marathon reverse taper, so a half prescribed 20% of
+  // base in week 1 → 2 running days → 6 miles for a 33mpw runner with a
+  // marathon 16 weeks out. "No quality for 10-14 days" is not "no running for
+  // 10-14 days" (Research/00b:196-204 has both columns; the half's own
+  // protocol at :240-255 has a 45-60 min medium-long on day 7). Marathon and
+  // ultra keep the reverse taper unchanged. See goal-tiers RECOVERY-3.
+  const wkPctSeq = RECOVERY_WEEKLY_PCT_OF_BASE[lastCat];
+  const runDaySeq = RECOVERY_RUN_DAYS[lastCat];
+  const longPct = RECOVERY_LONG_PCT[lastCat];
   const weeks: ComposedWeek[] = [];
   const blocks: BlockPlan = {
     totalWeeks: remainingWeeks,
@@ -2880,7 +2883,10 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // REC-MEDIUM-1 (2026-06-23) · the 6mi floor inflated the "medium" day to 6mi for very
     // low-volume runners (5mpw base → wkWeekly=2mi → mediumMi was max(6,0)=6 = 3× the
     // week budget). Use a 2mi sanity floor (matching RECOVERY_MIN_EASY) and cap at wkWeekly.
-    const mediumMi = Math.min(wkWeekly, Math.max(2, Math.round(wkWeekly * 0.20)));
+    // RECOVERY-3 · long/medium sized per distance (marathon holds 0.20; the
+    // shorter distances reintroduce a real medium-long on the protocol's
+    // schedule), always capped by the week's own budget.
+    const mediumMi = Math.min(wkWeekly, Math.max(2, Math.round(wkWeekly * longPct)));
     const isFinalRecoveryWeek = (wi + recoveryOff) === recoveryWeeks - 1;
     const isFree = (d: number) =>
       d !== input.restDow && d !== extraRestDow && slots[d] == null &&
@@ -2927,7 +2933,12 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // EVERY empty slot (5 running days even the race-finish week). Cap TOTAL running days by wkPct (ceil so
     // the lightest week still gets ~2 short jogs) so the reverse taper actually rebuilds frequency: wk1 ~2 →
     // wk4 ~6. Stated-frequency runners unchanged.
-    const recoveryRunCap = Math.ceil(wkPct * 7);
+    // RECOVERY-3 (2026-08-17) · running days come from the distance's own
+    // protocol, not from ceil(wkPct * 7). The formula was calibrated on
+    // marathon percentages, so feeding it a half's shallower profile capped
+    // the week at 2 running days when the half protocol runs on four
+    // (days 3, 4, 6, 7 · Research/00b:240-255).
+    const recoveryRunCap = runDaySeq[wi + recoveryOff] ?? runDaySeq[runDaySeq.length - 1];
     // RECWK1-FREQ-1 (2026-06-23) · stated frequency is a CEILING for normal training, not a floor that
     // overrides recovery's deliberate frequency rebuild. A stated-freq=5 runner was getting 5 running days
     // in marathon-recovery week 1 (should be ~2). Apply recoveryRunCap to stated-freq runners too:
