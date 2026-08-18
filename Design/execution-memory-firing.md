@@ -411,10 +411,22 @@ gate collapses into one band cap.
 
 ## Memory
 
-`lib/coach/coach-log.ts` exists and records. **There is no promotion rule, no
-pattern counter, no decay, and no separation between storing and speaking.**
-Every item in the "what earns memory" list is currently either absent or
-indistinguishable from ordinary history.
+`lib/coach/coach-log.ts` exists and records. As of 2026-08-17,
+`lib/coach/memory.ts` adds the missing primitive: `recordEvidence` accumulates
+against a caller-chosen key until an evidence-count AND a distinct-period bar
+both clear (`shouldPromote`), `loadActiveMemory` applies read-time decay
+across the three tiers (`isExpired`, clocked off the LAST observation). No
+DDL — reuses the `coach_intents` append-only precedent `coach-log.ts` and
+`easy-discipline.ts` already established.
+
+**Deliberately unwired.** No detector calls `recordEvidence` yet, and no
+firing decision consults `loadActiveMemory` — "storing is not speaking" means
+the store existing is not the same as anything using it. `coach-log.ts`'s
+`week_close` / `phase_boundary` / `first_ever` / `easy_discipline` entries are
+each still their own hand-rolled evidence-counting state machine, not yet
+migrated onto the shared primitive; doing that migration live, overnight,
+against working code was judged riskier than leaving two systems that agree
+in shape but not in code for one more integration pass.
 
 ## Firing
 
