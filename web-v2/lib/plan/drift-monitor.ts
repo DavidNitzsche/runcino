@@ -46,6 +46,11 @@ import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-input
 import { effortSlowdownPct } from '@/lib/training/heat-model';
 import { lookupTempF } from '@/lib/weather/lookup';
 import {
+  runDaySql,
+  runDateKeySql,
+  runDistanceMiSql,
+  runTypeSql,
+  runWorkoutTypeSql,
   runWeatherTempFSql,
   runWeatherHumidityPctSql,
   runWeatherConditionsSql,
@@ -826,16 +831,47 @@ async function checkQualityDrift(
   };
 }
 
+/**
+ * Runs that are NOT ordinary aerobic training, excluded from "what does this
+ * runner's easy / long day actually look like" baselines.
+ *
+ * 2026-08-17 · both baselines below bucketed on BARE DISTANCE. Any 3-9 mile
+ * run counted as an easy day — a 5-mile tempo, a 6-mile threshold, a parkrun.
+ * Any run over 10 miles in the window counted as long-run capability, so a
+ * half marathon RACE became evidence of what this runner's long run should be.
+ * That is the same shape as the phantom-5K bug recorded in CLAUDE.md: a race
+ * effort leaking into a training baseline.
+ *
+ * Both baselines drive plan-rebuild proposals, so the contamination did not
+ * just mis-describe the runner — it re-authored their plan around the
+ * mis-description.
+ *
+ * Two filters, exactly as `lib/training/decoupling-trend.ts` applies them:
+ * the run's own type, and a plan-day join that catches historical rows
+ * predating the type stamp. Over-exclusion is the safe direction — a missing
+ * point weakens a baseline, a contaminated one moves it.
+ */
+const NOT_QUALITY_OR_RACE = (runAlias: string) => `
+  COALESCE(${runWorkoutTypeSql(runAlias)}, ${runTypeSql(runAlias)}, '')
+        NOT IN ('race', 'intervals', 'threshold', 'tempo', 'fartlek')
+  AND NOT EXISTS (
+    SELECT 1 FROM plan_workouts pw
+      JOIN training_plans tp ON tp.id = pw.plan_id
+     WHERE tp.user_uuid = $1::uuid
+       AND pw.date_iso = ${runDaySql(runAlias)}
+       AND pw.type IN ('race', 'intervals', 'threshold', 'tempo', 'fartlek', 'race_week_tuneup')
+  )`;
+
 async function loadEasyDayMedian(userUuid: string): Promise<number | null> {
   const r = (await pool.query<{ med: string | null }>(
     `WITH easy_runs AS (
-       SELECT (data->>'distanceMi')::numeric AS mi
-         FROM runs
-        WHERE user_uuid = $1::uuid
-          AND NOT (data ? 'mergedIntoId')
-          AND (data->>'distanceMi')::numeric BETWEEN 3 AND 9
-          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text
-              >= (NOW() - interval '14 days')::date::text
+       SELECT ${runDistanceMiSql('r')} AS mi
+         FROM runs r
+        WHERE r.user_uuid = $1::uuid
+          AND NOT (r.data ? 'mergedIntoId')
+          AND ${runDistanceMiSql('r')} BETWEEN 3 AND 9
+          AND ${runDateKeySql('r')} >= (NOW() - interval '14 days')::date::text
+          AND ${NOT_QUALITY_OR_RACE('r')}
      )
      SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med
        FROM easy_runs`,
@@ -863,14 +899,14 @@ async function loadPlanEasyDayMedian(planId: string, today: string): Promise<num
 async function loadRecentLongRunMedian(userUuid: string): Promise<number | null> {
   const r = (await pool.query<{ med: string | null }>(
     `WITH long_runs AS (
-       SELECT (data->>'distanceMi')::numeric AS mi
-         FROM runs
-        WHERE user_uuid = $1::uuid
-          AND NOT (data ? 'mergedIntoId')
-          AND (data->>'distanceMi')::numeric >= 10
-          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text
-              >= (NOW() - interval '21 days')::date::text
-        ORDER BY (data->>'distanceMi')::numeric DESC
+       SELECT ${runDistanceMiSql('r')} AS mi
+         FROM runs r
+        WHERE r.user_uuid = $1::uuid
+          AND NOT (r.data ? 'mergedIntoId')
+          AND ${runDistanceMiSql('r')} >= 10
+          AND ${runDateKeySql('r')} >= (NOW() - interval '21 days')::date::text
+          AND ${NOT_QUALITY_OR_RACE('r')}
+        ORDER BY ${runDistanceMiSql('r')} DESC
         LIMIT 5
      )
      SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med
