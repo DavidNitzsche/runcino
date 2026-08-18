@@ -96,7 +96,7 @@ export type FaffSeed = {
    *  Week closes, phase boundaries, all-time firsts, fitness shifts. */
   coachLog: Array<{
     id: string;
-    kind: 'week_close' | 'phase_boundary' | 'first_ever' | 'fitness_shift' | 'easy_discipline' | 'fitness_evidence';
+    kind: 'week_close' | 'phase_boundary' | 'first_ever' | 'fitness_shift' | 'easy_discipline' | 'fitness_evidence' | 'threshold_pattern';
     dateISO: string;
     title: string;
     body: string;

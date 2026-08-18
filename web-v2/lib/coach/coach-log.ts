@@ -32,6 +32,16 @@
  *     Routed through classifyFinding (lib/coach/firing-policy.ts) before it
  *     writes; only written when that classification is SURFACE or louder.
  *     One-shot per session date, not an episode.
+ *   · threshold_pattern — 2026-08-18 · lib/coach/threshold-pattern.ts, the
+ *     first real caller of lib/coach/memory.ts's recordEvidence /
+ *     loadActiveMemory. Every PARTIAL_FAILED reading in the threshold
+ *     domain is reported as evidence; only once the promotion bar clears
+ *     (3 occurrences across 3 distinct weeks, the doctrine doc's own
+ *     "repeated evidence" bar) does memory.ts write an 'active' record and
+ *     this module log a line — Design/execution-memory-firing.md's
+ *     pipeline example, "on the third repeated failure ... memory: create:
+ *     true, pattern: threshold durability issue". Written once per
+ *     candidate -> active promotion, not once per occurrence.
  *
  * STORAGE · coach_intents (no new table, no DDL). Entries are rows with
  * reason 'coach_log_<kind>', field = idempotency key, value = the
@@ -75,6 +85,11 @@ import {
   loadPartialFitnessEvidenceFindings,
   composeFitnessEvidenceEntry,
 } from '@/lib/coach/fitness-evidence';
+import {
+  loadThresholdPartialFailureFindings,
+  recordThresholdPatternEvidence,
+  composeThresholdPatternEntry,
+} from '@/lib/coach/threshold-pattern';
 
 /* ────────────────────────── Types ────────────────────────── */
 
@@ -84,7 +99,8 @@ export type CoachLogKind =
   | 'first_ever'
   | 'fitness_shift'
   | 'easy_discipline'
-  | 'fitness_evidence';
+  | 'fitness_evidence'
+  | 'threshold_pattern';
 
 export interface CoachLogEntry {
   id: string;
@@ -106,6 +122,7 @@ const REASON_OF_KIND: Record<Exclude<CoachLogKind, 'fitness_shift'>, string> = {
   first_ever: 'coach_log_first',
   easy_discipline: 'coach_log_easy_discipline',
   fitness_evidence: 'coach_log_fitness_evidence',
+  threshold_pattern: 'coach_log_threshold_pattern',
 };
 
 /* ──────────────────── Pure entry composers ──────────────────── */
@@ -500,6 +517,15 @@ export async function updateCoachLog(userId: string): Promise<{ written: number 
     // before it is allowed to write. One-shot per session date; the
     // (reason, field) idempotency below is the whole suppression mechanism.
     written += await updateFitnessEvidenceLog(userId, today);
+
+    // ── 6 · Threshold-durability pattern (daily) ──
+    // See lib/coach/threshold-pattern.ts · Design/execution-memory-firing.md
+    // Part 2's promotion primitive (lib/coach/memory.ts), wired to a real
+    // repeated finding. Unlike step 5, this is not one-shot per date — each
+    // PARTIAL_FAILED threshold reading is reported as evidence, and a log
+    // line is only written the day the pattern promotes from candidate to
+    // active (3 occurrences across 3 distinct weeks).
+    written += await updateThresholdPatternLog(userId, today);
   } catch (e) {
     console.warn('[coach-log] updateCoachLog failed:', e instanceof Error ? e.message : String(e));
   }
@@ -543,6 +569,52 @@ async function updateFitnessEvidenceLog(userId: string, todayISO: string): Promi
         establishedPaceSPerMi: Math.round(finding.establishedPaceSPerMi),
         actualPaceSPerMi: Math.round(finding.actualPaceSPerMi),
         firingLevel: level,
+      },
+    })) written++;
+  }
+  return written;
+}
+
+/* ─────────────── Threshold-durability pattern writer ─────────────── */
+
+/**
+ * Report every not-yet-reported PARTIAL_FAILED-in-threshold occurrence in
+ * the lookback window as evidence (`recordThresholdPatternEvidence`), and
+ * write a coach-log line only on a genuine candidate -> active promotion.
+ * Most days this reports evidence and writes nothing — doctrine's own
+ * `memory: { create: false, pattern_counter: threshold_failure +1 }` step —
+ * which is correct, not a bug: "storing is not speaking" (Part 2).
+ * `classifyFinding` is still run explicitly on a promotion, mirroring
+ * `updateFitnessEvidenceLog`, so a future change to the firing test is
+ * honoured automatically rather than assumed.
+ */
+async function updateThresholdPatternLog(userId: string, todayISO: string): Promise<number> {
+  let written = 0;
+  const findings = await loadThresholdPartialFailureFindings(userId, todayISO);
+  for (const finding of findings) {
+    const promotion = await recordThresholdPatternEvidence(userId, finding, todayISO);
+    if (!promotion) continue; // still below the promotion bar, or already active
+
+    const level = classifyFinding({
+      changed: true,
+      athleteNeedsToKnow: true,
+      usefulOnlyBecauseLooking: true,
+      isPositive: false,
+    });
+    if (!atLeastAsLoud(level, 'SURFACE')) continue;
+
+    const composed = composeThresholdPatternEntry(finding);
+    const key = `threshold_pattern:${finding.dateISO}`;
+    if (await writeEntry(userId, 'threshold_pattern', key, {
+      ...composed,
+      dateISO: finding.dateISO,
+      meta: {
+        domain: 'threshold',
+        evidenceCount: promotion.record.evidenceCount,
+        distinctPeriods: promotion.record.distinctPeriods,
+        stimulusCompletion: Math.round(finding.stimulusCompletion * 100) / 100,
+        firingLevel: level,
+        importance: 'high',
       },
     })) written++;
   }
@@ -668,7 +740,7 @@ export async function loadCoachLog(
     const kind = (typeof v.kind === 'string' ? v.kind : r.reason.replace(/^coach_log_/, '')) as CoachLogKind;
     entries.push({
       id: r.id,
-      kind: (['week_close', 'phase_boundary', 'first_ever', 'easy_discipline', 'fitness_evidence'] as string[]).includes(kind)
+      kind: (['week_close', 'phase_boundary', 'first_ever', 'easy_discipline', 'fitness_evidence', 'threshold_pattern'] as string[]).includes(kind)
         ? kind : 'week_close',
       dateISO: typeof v.dateISO === 'string' ? v.dateISO : ts.slice(0, 10),
       title: typeof v.title === 'string' ? v.title : 'LOG',
