@@ -60,6 +60,9 @@ interface RunRow {
   distanceMi: number;
   avgPaceSPerMi: number | null;
   splits: unknown[];
+  /** Watch-authored session structure (warmup / work / recovery / cooldown),
+   *  with per-phase actual distance and pace. Empty on Strava/HK rows. */
+  phases: unknown[];
 }
 
 /**
@@ -87,6 +90,7 @@ export async function computePacingDiscipline(
     distance_mi: string | null;
     pace_s_per_mi: number | null;
     splits: unknown[];
+    phases: unknown[];
   }>(
     `SELECT r.id::text AS id,
             data->>'type' AS type,
@@ -100,7 +104,8 @@ export async function computePacingDiscipline(
                 )
                 ELSE NULL END
             )::numeric AS pace_s_per_mi,
-            COALESCE(data->'splits', '[]'::jsonb) AS splits
+            COALESCE(data->'splits', '[]'::jsonb) AS splits,
+            COALESCE(data->'phases', '[]'::jsonb) AS phases
        FROM runs r
       WHERE r.user_uuid = $1
         AND r.absorbed_into_canonical_at IS NULL
@@ -123,6 +128,7 @@ export async function computePacingDiscipline(
       distanceMi: Number(r.distance_mi ?? 0),
       avgPaceSPerMi: r.pace_s_per_mi != null ? Number(r.pace_s_per_mi) : null,
       splits: Array.isArray(r.splits) ? r.splits : [],
+      phases: Array.isArray(r.phases) ? r.phases : [],
     }))
     .filter((r) => r.splits.length >= MIN_SPLITS && r.distanceMi >= MIN_DISTANCE_MI);
 
@@ -143,9 +149,7 @@ export async function computePacingDiscipline(
 
   const cvValues: number[] = [];
   for (const run of qualifying) {
-    const paceSecs = run.splits
-      .map(paceSecFromSplit)
-      .filter((p): p is number => p != null && p > 0 && p < 1800);
+    const paceSecs = effortPaceSeries(run);
     if (paceSecs.length < MIN_SPLITS) continue;
     const cv = coefficientOfVariation(paceSecs);
     if (cv != null && isFinite(cv)) cvValues.push(cv);
@@ -168,6 +172,74 @@ export async function computePacingDiscipline(
     cv: Math.round(medianCV * 1000) / 1000,
     source: 'observed',
   };
+}
+
+
+/**
+ * The pace series that actually represents a held effort.
+ *
+ * 2026-08-17 · this used to be every split of the run, and that measured
+ * SESSION STRUCTURE rather than pacing discipline. A 1.5 mi warm-up at 8:35,
+ * four kilometre reps at 6:21-6:56, jog recoveries at up to 16:46, and a
+ * cool-down at 8:25 produce an enormous coefficient of variation — by design,
+ * because that is what a structured workout looks like. A runner who only ever
+ * runs steady miles scored as a tight pacer by comparison.
+ *
+ * The consequence was inverted: this CV widens the execution buffer on race
+ * predictions, so the app handed a WORSE projection to the runner doing the
+ * better training. Structured work is the thing that earns a race time.
+ *
+ * The honest series, in order of preference:
+ *
+ *   1. Two or more WORK phases → their own paces. For an interval session
+ *      that is exactly the rep-consistency read a coach wants: 6:21, 6:27,
+ *      6:42, 6:56 is a real fade and says something true.
+ *   2. A race → every split. The whole activity IS one continuous effort, so
+ *      there is no structure to strip out.
+ *   3. One work phase (a continuous tempo) → the splits lying inside its
+ *      distance window, so the warm-up and cool-down miles drop out.
+ *   4. Otherwise → nothing. A structured session with no phase data cannot
+ *      have its effort isolated, and guessing is what produced the bug.
+ */
+function effortPaceSeries(run: RunRow): number[] {
+  const clean = (xs: Array<number | null>): number[] =>
+    xs.filter((p): p is number => p != null && p > 0 && p < 1800);
+
+  const phases = (run.phases as Array<Record<string, unknown>>) ?? [];
+  const work = phases.filter((ph) => String(ph?.type ?? '') === 'work');
+
+  if (work.length >= MIN_SPLITS) {
+    return clean(work.map((ph) => {
+      const v = Number(ph?.actualPaceSPerMi);
+      return Number.isFinite(v) ? v : null;
+    }));
+  }
+
+  const isRace = run.type != null && /\brace\b/i.test(run.type);
+  if (isRace) return clean(run.splits.map(paceSecFromSplit));
+
+  if (work.length === 1) {
+    // Walk the phases in order to find where the work block sits, then keep
+    // the mile splits inside it. Splits are mile-indexed and phases are
+    // distance-ordered, so a cumulative walk maps one onto the other.
+    let cursor = 0;
+    let start = 0;
+    let end = 0;
+    for (const ph of phases) {
+      const d = Number(ph?.actualDistanceMi);
+      const len = Number.isFinite(d) && d > 0 ? d : 0;
+      if (String(ph?.type ?? '') === 'work') { start = cursor; end = cursor + len; }
+      cursor += len;
+    }
+    if (end > start) {
+      const inWork = run.splits.filter((_, i) => i + 1 > start && i < end);
+      const series = clean(inWork.map(paceSecFromSplit));
+      if (series.length >= MIN_SPLITS) return series;
+    }
+    return [];
+  }
+
+  return [];
 }
 
 /**
