@@ -359,15 +359,30 @@ coach:  { firing: SURFACE, importance: high }
 plan:   MODIFY
 ```
 
-**First real instance, 2026-08-18.** `lib/coach/fitness-evidence.ts` runs the
-middle example above end to end for one finding shape — `PARTIAL_FAILED` with
-`evidence.fitness === 'high'` — through `interpretExecution` →
-`classifyFinding` → a written `coach-log.ts` entry. No memory candidate yet
-(single dated event, not a repeated pattern — see the module's own reasoning
-for why `episode-log.ts` doesn't apply here). The other findings this same
-pipeline could carry — a run of `PARTIAL_PRODUCTIVE` sessions as a pattern,
-`REPLACED`-by-race as its own entry, the third-repeated-failure → memory
-`create: true` → `plan: MODIFY` chain shown above — remain unwired.
+**2026-08-18, three of the four pipeline shapes now real.**
+
+- `lib/coach/fitness-evidence.ts` — the middle example, one dated
+  `PARTIAL_FAILED`-with-`evidence.fitness === 'high'` session through
+  `interpretExecution` → `classifyFinding` → a written entry. No memory
+  candidate (single event, not a pattern).
+- `lib/coach/threshold-pattern.ts` — the bottom example, the first real
+  caller of `lib/coach/memory.ts`. Every `PARTIAL_FAILED` threshold reading
+  reports to `recordEvidence`; only the genuine candidate → active
+  promotion (3 occurrences, 3 distinct weeks) writes a log entry. Stops at
+  `coach: { firing: SURFACE, importance: high }` — the `plan: MODIFY` half
+  of that example is deliberately not wired; changing what gets prescribed
+  off a memory promotion is a separate, larger decision than "the coach
+  speaks," kept out of this pass on purpose.
+- `lib/coach/race-replacement.ts` — `REPLACED`-by-race as its own entry,
+  same one-shot shape as fitness-evidence. Real-data check against prod
+  found a case the doctrine text doesn't name: a `REPLACED` session whose
+  `planned.domain` is itself `'race'` (the plan scheduled the race, nothing
+  was displaced) — gets its own composer branch rather than misreporting
+  "a race stood in for today's race work."
+
+Not yet wired: a run of `PARTIAL_PRODUCTIVE` sessions as its own pattern
+(distinct from the `PARTIAL_FAILED` pattern above), and the `plan: MODIFY`
+consequence noted above.
 
 ---
 
