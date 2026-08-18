@@ -50,6 +50,10 @@ export async function POST(req: NextRequest) {
     signals_skipped: number;        // pending row already exists
     auto_results: number;           // provisional race results logged this tick
     proposals_expired: number;      // 2026-08-17 · >14d pending rows expired this tick
+    /** 2026-08-17 · goal-gap rebuilds suppressed because the runner is ill,
+     *  injured, or re-entering after a gap — the states that widen the
+     *  projection in the first place. */
+    goal_gap_suppressed_compromised?: number;
     error?: string;
   };
   const results: UserResult[] = [];
@@ -338,6 +342,22 @@ export async function POST(req: NextRequest) {
         // briefing territory · suppress entirely.
         && !suppressDriftNearRace(goalGap.raceDateISO, userToday)
       ) {
+        /* 2026-08-17 · the projection widens BECAUSE of illness, injury and
+         * training gaps — they crater executionQuality, which lowers projected
+         * fitness, which is the thing this reads. Rebuilding here bakes a sick
+         * week into the plan's assumptions about the runner.
+         *
+         * The field-test trigger already applied exactly this guard inline,
+         * reasoning that "a compromised runner's test result would be noise".
+         * This is the same reasoning about a much larger action: a field test
+         * changes one session, a rebuild re-authors the block. It had no guard
+         * at all beyond race proximity. */
+        const { runnerIsCompromised } = await import('@/lib/plan/adapt');
+        const compromised = await runnerIsCompromised(u).catch(() => ({ compromised: false } as const));
+        if (compromised.compromised) {
+          r.goal_gap_suppressed_compromised = (r.goal_gap_suppressed_compromised ?? 0) + 1;
+          continue;
+        }
         // Auto-rebuild if no recent goal-gap rebuild. '' planId = any
         // plan for this user (the strict plan_id='' match could never
         // hit a real row, so this dedupe was dead before 2026-08-17).

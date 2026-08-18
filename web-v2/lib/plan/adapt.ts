@@ -790,6 +790,47 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
 
 /** True when a plan_adapt_gap marker was written within the last
  *  `days` days — the comeback re-entry window is still active. */
+/**
+ * Is this runner in a state where their recent training does not describe
+ * their capability?
+ *
+ * Illness, an active injury, an override-severity niggle, or re-entry after a
+ * training gap. All four make recent execution unrepresentative — and every
+ * detector that reads execution as evidence has to know about them.
+ *
+ * 2026-08-17 · EXTRACTED so it has more than one consumer. The field-test
+ * trigger applied exactly this condition inline, with a comment explaining
+ * that "a compromised runner's test result would be noise". Meanwhile the
+ * goal-gap auto-rebuild — a much larger action, which re-authors the whole
+ * plan — applied none of it.
+ *
+ * That gap was self-reinforcing in the worst way: the projection widens
+ * BECAUSE of illness and injury. They crater `executionQuality`, which lowers
+ * projected fitness, which widens the goal gap, which fired a rebuild that
+ * baked a sick week into the plan's assumptions about the runner.
+ *
+ * One predicate, two callers, so the two can no longer drift apart.
+ */
+export async function runnerIsCompromised(userId: string): Promise<
+  { compromised: false } | { compromised: true; reason: 'illness' | 'injury' | 'niggle' | 'gap_reentry' }
+> {
+  const gap = await detectTrainingGap(userId).catch(() => null);
+  if (gap != null || (await hasRecentGapIntent(userId, 7).catch(() => false))) {
+    return { compromised: true, reason: 'gap_reentry' };
+  }
+  if (await detectSickEpisodeActive(userId).catch(() => null)) {
+    return { compromised: true, reason: 'illness' };
+  }
+  if (await detectInjuryActive(userId).catch(() => null)) {
+    return { compromised: true, reason: 'injury' };
+  }
+  const niggle = await detectNiggleReported(userId).catch(() => null);
+  if (niggle && niggle.severity === 'override') {
+    return { compromised: true, reason: 'niggle' };
+  }
+  return { compromised: false };
+}
+
 async function hasRecentGapIntent(userId: string, days: number): Promise<boolean> {
   const r = await pool.query(
     `SELECT 1 FROM coach_intents
