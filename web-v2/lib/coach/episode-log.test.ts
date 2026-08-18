@@ -13,7 +13,7 @@
  * exact behaviour survives being routed through the generic module.
  */
 import { describe, it, expect } from 'vitest';
-import { decideEpisodeWrite, type EpisodeFinding, type EpisodeDetector } from './episode-log';
+import { decideEpisodeWrite, type EpisodeFinding, type EpisodeDetector, type EpisodeDecision } from './episode-log';
 
 type QuietReason = 'resolved' | 'insufficient_evidence' | 'stale' | 'hr_contradicts_pace' | 'no_basis';
 
@@ -103,7 +103,11 @@ describe('never speaks twice for the same state', () => {
     ];
     const writes: string[] = [];
     for (const { finding, today } of timeline) {
-      const d = decideEpisodeWrite(detector, lastField, finding, today);
+      // Explicit annotation breaks a circular-inference edge case: lastField
+      // is reassigned from d.field below, and TS's control-flow narrowing
+      // for the generic call otherwise tries to resolve d's type through
+      // its own prior-iteration assignment.
+      const d: EpisodeDecision = decideEpisodeWrite(detector, lastField, finding, today);
       if (d.write !== 'none') {
         writes.push(d.write);
         lastField = d.field;
