@@ -32,14 +32,30 @@
  * testable function. A runner nailing every session projects the full build
  * rate; one missing/downgrading sessions projects a discounted slope.
  *
- * Research basis:
- *   · BASE_BUILD_RATE 0.35 VDOT/wk — a focused block moves ~3–5 VDOT over
- *     12–16 weeks (≈0.25–0.4/wk). Research/00a periodization; same midpoint
- *     already used by computeConfidenceLabel (goal-projection.ts).
- *   · MAX_BLOCK_GAIN 5.0 — the upper end of that same range; a single build
- *     block does not deliver more, so the projection never promises it.
- *   · TAPER_WEEKS 2 — standard HM/M taper; no fitness gain is modeled in the
- *     taper window (freshness, not fitness). Research/00a, Pfitzinger taper.
+ * THE BUILD RATE IS A CONVENTION, NOT A RESEARCH FINDING (2026-08-18, doctrine
+ * sweep). This section used to cite "Research/00a periodization" for a VDOT-
+ * per-week figure; Research/00a never mentions VDOT at all — it is a
+ * training-load doc, not a pace-prescription one. Same fabricated-precision
+ * shape already caught once in simulator.ts's COLD_START_CALIBRATION (see
+ * CONVENTION.fitness-response-model), now a second instance in the sibling
+ * module. What Research/00a DOES ground is the SHAPE only: aerobic adaptation
+ * compounds over a period of weeks and saturates as a trained runner nears
+ * their ceiling (§"Aerobic Base Development").
+ *   · BASE_BUILD_RATE 0.35 VDOT/wk and MAX_BLOCK_GAIN 5.0 are a bounded,
+ *     tunable midpoint — not a doctrine number — sized so a projection never
+ *     promises more fitness than a single training block plausibly delivers.
+ *     The same duplicated convention lives in computeConfidenceLabel
+ *     (goal-projection.ts#BUILD_RATE_VDOT_PER_WEEK, also 0.35) — that copy
+ *     carries the identical fabricated citation and is unfixed by this pass;
+ *     flagged separately rather than edited here (out of this pass's scope).
+ *   · TAPER_WEEKS 2 is itself a flat approximation of BLOCK_SHAPE.taperWeeks
+ *     (generate.ts; doctrine-bound by TAPER.duration-by-distance), which is
+ *     1/2/2/3/3 weeks by distance (5K/10K/HM/M/ultra) — this module treats
+ *     every distance as a 2-week taper, undercounting the 3-week marathon and
+ *     ultra taper by a week (buildWeeks reads one week too generous for M/
+ *     ultra goals) and overcounting the 1-week 5K taper. Not fixed here —
+ *     changing buildWeeks changes every runner's projected gain, which is a
+ *     product decision, not a citation fix.
  *
  * Deliberately NOT modeled yet (documented, not hidden):
  *   · Diminishing returns near a runner's ceiling (gains slow as VDOT rises).
@@ -227,11 +243,11 @@ export function projectFitnessTrajectory(args: {
   const gainCap = Math.min(MAX_BLOCK_GAIN, planCeilingGain);
   // 2026-07-06 · P1-14 · runway cap on the PLANNED (future-build) gain.
   // "The plan trusts itself" credits the full goal gap when execution is
-  // clean — but one block cannot physically deliver more than the research
-  // build rate over the weeks that REMAIN (~0.25–0.4 VDOT/wk over 12–16
-  // weeks · Research/00a periodization; BASE_BUILD_RATE is the same 0.35
-  // midpoint computeConfidenceLabel grades the runway against). Without this
-  // term a VDOT-40 runner setting a goal needing 44.5 with 3 weeks left
+  // clean — but one block cannot physically deliver more than the modelled
+  // build rate over the weeks that REMAIN (BASE_BUILD_RATE — a bounded
+  // convention, not a doctrine number; see the file-header note — is the
+  // same 0.35 midpoint computeConfidenceLabel grades the runway against).
+  // Without this term a VDOT-40 runner setting a goal needing 44.5 with 3 weeks left
   // projected the full 4.5 gain → hero read ON PACE while confidenceLabel on
   // the SAME payload read LOW ("behind on this runway"). A gap the runway
   // cannot close IS David's "very clear I cannot" case — the projection must

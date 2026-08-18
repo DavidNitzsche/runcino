@@ -62,7 +62,9 @@ import {
   type DistCategory,
   type GoalTier,
 } from '@/lib/plan/goal-tiers';
+import { PLAN_TEMPLATES } from '@/lib/plan/plan-templates';
 import { VDOT_FULL_VALUE_DAYS, VDOT_EXPIRY_DAYS, FADE_TAIL_DAYS } from '@/lib/training/vdot';
+import { BASE_BUILD_RATE, MAX_BLOCK_GAIN } from '@/lib/training/fitness-trajectory';
 import { expectedDaysForAnchor } from '@/lib/coach/recovery-phase';
 import {
   GAP_SHAVE_FRACTIONS,
@@ -159,6 +161,7 @@ import {
 } from '@/lib/coach/tier-rules';
 import {
   GRADE_COST_PER_PCT as ELEV_GRADE_COST_PER_PCT,
+  GRADE_LINEAR_LIMIT_PCT,
   DESCENT_RECOVERY_FRACTION,
   MAX_DESCENT_CREDIT_S_PER_MI,
   DESCENT_HARD_CAP_S_PER_MI,
@@ -1068,6 +1071,121 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
                 `doctrine row's FLOOR of ${long[0]} · the XTIER-1 shape`,
             );
           }
+        }
+      }
+    },
+  },
+
+  // ══ PLAN TEMPLATE STRUCTURE ═══════════════════════════════════════════════
+  /**
+   * 2026-08-18 · doctrine sweep, "not yet seeded" item. Every PLAN_TEMPLATES
+   * row is transcribed from a Research/22 distance × level section (the file
+   * header says so), but each row's `source` field cites a book (Higdon,
+   * Pfitzinger, Daniels…) instead of the Research/ passage the gate can
+   * actually open. Of the row's seven fields, `templateFor` / `isBaseBuildingPlan`
+   * only ever READ `qualityCharacter` at runtime — durationWeeks, daysPerWeek,
+   * keyWorkouts and `source` are not consumed anywhere in the engine today, so
+   * this claim does not pretend they are load-bearing. peakWeeklyMi/peakLongMi
+   * are likewise unread, but they are still numbers the code carries as if
+   * they were doctrine, so they get the same drift check as everything else
+   * that is transcribed from a Research/ table, at no extra cost.
+   */
+  {
+    id: 'TEMPLATE.quality-character-and-volume-match-doctrine',
+    binds: [
+      'lib/plan/plan-templates.ts#PLAN_TEMPLATES.qualityCharacter',
+      'lib/plan/plan-templates.ts#PLAN_TEMPLATES.peakWeeklyMi',
+      'lib/plan/plan-templates.ts#PLAN_TEMPLATES.peakLongMi',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 4. Marathon Plans',
+    claim:
+      '`qualityCharacter` is the one field `isBaseBuildingPlan` actually gates on — whether a ' +
+      'runner gets structured interval/rep work at all — so it is the doctrine boundary the ' +
+      'code is acting on. A `base_building` row must draw from a Research/22 "Key workout ' +
+      'types" cell with no interval/rep notation; any other row must draw from a cell that has ' +
+      'it. peakWeeklyMi/peakLongMi must still overlap their doctrine row so the table cannot ' +
+      'silently drift from the research it was built from even while those two fields sit dormant.',
+    check() {
+      const doc = 'Research/22-plan-templates.md';
+      const DOC_DISTANCE: Record<'5k' | '10k' | 'hm' | 'm', string> = {
+        '5k': '5K', '10k': '10K', hm: 'Half Marathon', m: 'Marathon',
+      };
+      const COHORT: Record<'beginner' | 'intermediate' | 'advanced', string> = {
+        beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced',
+      };
+      const all = sourceOf(doc).split('\n');
+      // Structured reps show up as "I reps"/"R reps", "R 200s"/"I 1000-1600 m"
+      // (a bare I/R zone letter directly against a number), or "×" multiplication
+      // notation (e.g. "3-5×1 mi", "5×1000 m") — every doctrine cell that
+      // prescribes intervals uses at least one of these; every base-building
+      // cell (E runs, strides, fartlek, optional tempo/MP) uses none.
+      const REP_NOTATION = /\bI\s+reps\b|\bR\s+reps\b|\bR\s+\d|\bI\s+\d|×/;
+      const section = (distance: string, cohort: string) => {
+        // Exact-prefix match, not `.includes` · "Marathon" is a substring of
+        // "Half Marathon", so an includes-based search silently reads the HALF
+        // marathon's row for every Marathon lookup (same shape as the lint's
+        // "distance table read at a fixed distance" check — caught here on
+        // first run, when `m/beginner`'s [30,35] mi/wk didn't overlap the
+        // Half-Marathon-Beginner row's 22-28 it was actually being matched to).
+        const at = all.findIndex((l) => l.startsWith(`### ${distance} —`) && l.includes(cohort));
+        if (at < 0) throw new Error(`DOCTRINE · no "### ${distance} — ${cohort}" section in ${doc}`);
+        const block = all.slice(at, at + 20);
+        const cell = (label: string) => {
+          const line = block.find((l) => l.includes(`| ${label} |`));
+          if (!line) throw new Error(`DOCTRINE · no "${label}" row under ${distance} — ${cohort} in ${doc}`);
+          return line.split('|')[2].trim();
+        };
+        return {
+          keyWorkouts: cell('Key workout types'),
+          weekly: parseBand(cell('Peak weekly volume')),
+          long: parseBand(cell('Peak long run')),
+        };
+      };
+      for (const cat of ['5k', '10k', 'hm', 'm'] as const) {
+        const docDistance = DOC_DISTANCE[cat];
+        for (const level of ['beginner', 'intermediate', 'advanced'] as const) {
+          const row = PLAN_TEMPLATES.find((t) => t.distance === cat && t.level === level);
+          if (!row) throw new Error(`PLAN_TEMPLATES has no ${cat}/${level} row`);
+          const d = section(docDistance, COHORT[level]);
+          const hasReps = REP_NOTATION.test(d.keyWorkouts);
+          const isBaseBuilding = row.qualityCharacter === 'base_building';
+          if (isBaseBuilding && hasReps) {
+            throw new Error(
+              `PLAN_TEMPLATES ${cat}/${level} is 'base_building' but Research/22's ${docDistance} — ` +
+                `${COHORT[level]} key-workout cell prescribes structured reps: "${d.keyWorkouts}"`,
+            );
+          }
+          if (!isBaseBuilding && !hasReps) {
+            throw new Error(
+              `PLAN_TEMPLATES ${cat}/${level} is '${row.qualityCharacter}' but Research/22's ${docDistance} — ` +
+                `${COHORT[level]} key-workout cell has no interval/rep notation: "${d.keyWorkouts}"`,
+            );
+          }
+          const [wLo, wHi] = row.peakWeeklyMi;
+          if (wHi < d.weekly[0] || wLo > d.weekly[1]) {
+            throw new Error(
+              `PLAN_TEMPLATES ${cat}/${level}.peakWeeklyMi [${wLo}, ${wHi}] does not overlap Research/22's ` +
+                `${d.weekly[0]}-${d.weekly[1]} mi/wk`,
+            );
+          }
+          const [lLo, lHi] = row.peakLongMi;
+          if (lHi < d.long[0] || lLo > d.long[1]) {
+            throw new Error(
+              `PLAN_TEMPLATES ${cat}/${level}.peakLongMi [${lLo}, ${lHi}] does not overlap Research/22's ` +
+                `${d.long[0]}-${d.long[1]} mi`,
+            );
+          }
+        }
+        // advanced_plus has no doctrine section of its own; it must never be
+        // LESS structured than Advanced — doctrine has no cohort above
+        // Advanced that regresses to unstructured work.
+        const plus = PLAN_TEMPLATES.find((t) => t.distance === cat && t.level === 'advanced_plus');
+        if (plus?.qualityCharacter === 'base_building') {
+          throw new Error(
+            `PLAN_TEMPLATES ${cat}/advanced_plus is 'base_building' · no doctrine cohort above ` +
+              'Advanced regresses to unstructured work',
+          );
         }
       }
     },
@@ -2222,6 +2340,27 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
   {
+    // 2026-08-18 · doctrine sweep, "altitude/treadmill/terrain" item. This
+    // sibling constant to TERRAIN.grade-model-ceiling was never bound — same
+    // doctrine sentence, same shape of guard, different implementation
+    // (elevation-model.ts's per-foot course-cost model vs grade-adjust.ts's
+    // per-run judging model), just missed the first time.
+    id: 'ELEVATION.grade-linear-limit',
+    binds: ['lib/training/elevation-model.ts#GRADE_LINEAR_LIMIT_PCT'],
+    doc: 'Research/11-course-specific-training.md',
+    anchor: '### Mechanical Effects of Uphill Running',
+    claim:
+      'The linear per-percent energy cost is only claimed to hold up to a stated grade band. ' +
+      'This model takes the conservative (lower) end of that band as its clamp, so a course-' +
+      'library row with an extreme mean grade cannot be priced by extrapolating a relationship ' +
+      'doctrine never claims past its stated range.',
+    check({ cite }) {
+      const m = cite.text().match(/up to\s*~?\s*(\d+)\s*[–-]\s*(\d+)\s*%/i);
+      if (!m) throw new Error('the validity ceiling ("up to ~10–15%") is no longer stated in this section');
+      within(GRADE_LINEAR_LIMIT_PCT, [Number(m[1]), Number(m[2])], 'GRADE_LINEAR_LIMIT_PCT');
+    },
+  },
+  {
     id: 'HEAT.band-taxonomy-is-wbgt',
     binds: ['lib/coach/heat-gate.ts#WBGT_FLAGS', 'lib/coach/heat-gate.ts#heatBandForFlag'],
     doc: 'Research/06-weather-adjustments.md',
@@ -2342,6 +2481,92 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       within(heatHrBumpBpm(120), [lo, hi], 'heatHrBumpBpm well above the band');
     },
   },
+  // ══ SEX-SPECIFIC / CYCLE-PHASE ════════════════════════════════════════════
+  /**
+   * 2026-08-18 · doctrine sweep, "not yet seeded" item (CLAUDE.md listed this
+   * as "age and sex grading, Research/13 + Research/24" — that specific VDOT
+   * age/sex-tier feature does not exist in the engine yet; Research/24's own
+   * "Implementation notes" describes it as a future localStorage-backed UI
+   * concept, and pace targets are explicitly meant to keep flowing from raw
+   * VDOT even once built. Nothing to bind there. What DOES exist and run in
+   * production is Research/13's menstrual-cycle-phase adjustment, in two
+   * places: the luteal HRV-baseline allowance (readiness.ts, below) and the
+   * luteal HR-elevation insight (cycle-performance.ts, next claim).
+   */
+  {
+    id: 'CONVENTION.luteal-hrv-allowance',
+    binds: ['lib/coach/readiness.ts#lutealAdjustedHrvBaseline'],
+    doc: 'Research/13-sex-specific-training.md',
+    anchor: '| Wearable HRV / resting HR | Indirect via P4 | Trends with phase | Signal often swamped by training/sleep noise |',
+    claim:
+      'THE 5ms LUTEAL HRV ALLOWANCE IS A CONVENTION, NOT A RESEARCH FINDING. It cited "Luteal ' +
+      'HRV runs 5-10ms lower · Research/13" for a specific millisecond figure that appears ' +
+      'nowhere in the doc. What Research/13 actually says (this table row): wearable HRV ' +
+      '"trends with phase" but the signal is "often swamped by training/sleep noise" — real ' +
+      'grounding for a qualitative shift, and if anything a caution against a precise number, ' +
+      'not a citation for one. The allowance stays (deleting it would re-flag ordinary luteal ' +
+      'HRV dips as "below baseline," the false alarm doctrine warns against) but as a bounded, ' +
+      'honestly-labelled convention: small relative to a typical baseline, floored so the ' +
+      'adjusted baseline can never go non-positive, and gated strictly to female + luteal.',
+    check({ cite }) {
+      const src = sourceOf('web-v2/lib/coach/readiness.ts');
+      // The unique phrase from the ORIGINAL fabricated claim (distinct from
+      // this claim's own honest disclosure, which quotes the old wording
+      // without the words "regardless of fitness").
+      if (/5-10ms lower regardless of fitness/.test(src)) {
+        throw new Error('the fabricated "5-10ms lower regardless of fitness" citation is back in readiness.ts');
+      }
+      if (!/THE 5ms SHIFT IS A CONVENTION, NOT A RESEARCH FINDING/.test(src)) {
+        throw new Error('readiness.ts no longer states the luteal HRV allowance is a convention');
+      }
+      const shift = Number(matchLiteral(src, /Math\.max\(1, baseline - (\d+)\)/, 'lutealAdjustedHrvBaseline shift')[1]);
+      // Bounded · a shift has to be small relative to a real HRV baseline (the
+      // comment's own worked example is ~60ms) or it stops being an allowance
+      // and starts manufacturing readiness. 15ms would be a quarter of that.
+      if (!(shift > 0 && shift <= 15)) {
+        throw new Error(`lutealAdjustedHrvBaseline shift = ${shift}ms is outside a defensible range`);
+      }
+      const floorMatch = matchLiteral(src, /Math\.max\((\d+), baseline - \d+\)/, 'lutealAdjustedHrvBaseline floor');
+      if (Number(floorMatch[1]) < 1) {
+        throw new Error('lutealAdjustedHrvBaseline no longer floors the adjusted baseline above zero');
+      }
+      if (!/biologicalSex === 'female' && cyclePhase === 'luteal'/.test(src)) {
+        throw new Error('lutealAdjustedHrvBaseline no longer gates strictly on female + luteal');
+      }
+      // The doctrine row this rests on must still say what it says — a real
+      // signal, explicitly noisy, not a precise millisecond finding.
+      if (!/swamped by training\/sleep noise/i.test(cite.text())) {
+        throw new Error(
+          'Research/13\'s HRV cycle-tracking row no longer calls the signal noisy · re-read ' +
+            'before this convention is justified again',
+        );
+      }
+    },
+  },
+  {
+    id: 'CYCLE.luteal-hr-elevation-threshold',
+    binds: ['lib/coach/cycle-performance.ts#computeCyclePerformance'],
+    doc: 'Research/13-sex-specific-training.md',
+    anchor: 'Luteal phase elevates submaximal HR ~3–5 bpm (P4-driven plasma volume drop).',
+    claim:
+      'Doctrine states a real, measurable magnitude here (unlike the luteal HRV allowance ' +
+      'above): submaximal HR runs ~3-5 bpm higher in luteal vs follicular, driven by ' +
+      'progesterone\'s plasma-volume effect. The per-runner insight that flags "HR runs N bpm ' +
+      'higher in luteal" must fire at a threshold inside this doctrine band — below it, ordinary ' +
+      'day-to-day HR noise gets mislabeled a cycle signal; above it, the exact magnitude ' +
+      'doctrine says is real goes unreported.',
+    check({ cite }) {
+      const sentence = cite.text().match(/Luteal phase elevates submaximal HR [^\n]*bpm[^\n]*\./)?.[0];
+      if (!sentence) {
+        throw new Error('DOCTRINE · the luteal HR-elevation sentence is gone from Research/13 §1.4');
+      }
+      const [lo, hi] = parseBand(sentence);
+      const src = sourceOf('web-v2/lib/coach/cycle-performance.ts');
+      const threshold = Number(matchLiteral(src, /hrDelta > (\d+)/, 'luteal HR-elevation insight threshold')[1]);
+      within(threshold, [lo, hi], 'cycle-performance.ts luteal HR-elevation insight threshold');
+    },
+  },
+
   {
     id: 'READINESS.hrv-floor',
     binds: ['lib/coach/readiness.ts#READINESS_WEIGHTS'],
@@ -5030,6 +5255,66 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       // modelled gain as a measured one is the one sin here.)
       if (!/projectedVdot/.test(src)) {
         throw new Error('the simulator no longer names its output as projected');
+      }
+      // The doctrine this DOES rest on must still be there: a saturating curve.
+      if (!/saturate/i.test(cite.text())) {
+        throw new Error(
+          'Research/00a §"Aerobic Base Development" no longer describes gains saturating · ' +
+            'the only part of this model research grounds has moved',
+        );
+      }
+    },
+  },
+
+  /**
+   * 2026-08-18 · doctrine sweep, "not yet seeded" item · a THIRD instance of
+   * the same fabricated-precision shape as CONVENTION.fitness-response-model,
+   * found while seeding this claim. fitness-trajectory.ts's BASE_BUILD_RATE
+   * cited "Research/00a periodization" for a VDOT-per-week figure; Research/00a
+   * mentions VDOT nowhere (it is a training-load doc, not a pace-prescription
+   * one). goal-projection.ts carries an unfixed duplicate of the identical
+   * constant and citation (BUILD_RATE_VDOT_PER_WEEK, also 0.35) — out of this
+   * claim's binds, flagged separately rather than silently repaired here.
+   */
+  {
+    id: 'CONVENTION.trajectory-build-rate',
+    binds: ['lib/training/fitness-trajectory.ts#BASE_BUILD_RATE', 'lib/training/fitness-trajectory.ts#MAX_BLOCK_GAIN'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '## Aerobic Base Development',
+    claim:
+      'THE TRAJECTORY BUILD RATE IS A CONVENTION, NOT A RESEARCH FINDING. The module cited ' +
+      '"Research/00a periodization" for a VDOT-per-week figure; Research/00a never mentions ' +
+      'VDOT. What Research/00a DOES ground is the SHAPE only: aerobic adaptation compounds over ' +
+      'a period of weeks and saturates as a trained runner nears their ceiling. The numbers stay ' +
+      'a bounded, tunable midpoint — small enough that no projection promises more fitness than ' +
+      'a single training block plausibly delivers — and the output must stay labelled projected, ' +
+      'never measured (the one sin this app has already shipped once: a removed native "Fitness" ' +
+      'tile that read a modelled buildRatio as a measured Stalled/Lagging/Responding verdict).',
+    check({ cite }) {
+      const src = sourceOf('web-v2/lib/training/fitness-trajectory.ts');
+      if (/BASE_BUILD_RATE 0\.35 VDOT\/wk[\s\S]{0,80}Research\/00a periodization/.test(src)) {
+        throw new Error('the fabricated "Research/00a periodization" citation for BASE_BUILD_RATE is back');
+      }
+      if (!/IS A CONVENTION, NOT A RESEARCH FINDING/.test(src)) {
+        throw new Error('fitness-trajectory.ts no longer states its build rate is a convention');
+      }
+      if (!(BASE_BUILD_RATE > 0 && BASE_BUILD_RATE <= 1)) {
+        throw new Error(`BASE_BUILD_RATE = ${BASE_BUILD_RATE} is outside a defensible range`);
+      }
+      if (!(MAX_BLOCK_GAIN > 0 && MAX_BLOCK_GAIN <= 10)) {
+        throw new Error(`MAX_BLOCK_GAIN = ${MAX_BLOCK_GAIN} is outside a defensible range`);
+      }
+      // The ceiling must not bind before the rate can express a real multi-week
+      // block — a MAX_BLOCK_GAIN tighter than a few weeks of BASE_BUILD_RATE
+      // would make the rate meaningless (the cap is all that's ever visible).
+      if (MAX_BLOCK_GAIN < BASE_BUILD_RATE * 4) {
+        throw new Error(
+          `MAX_BLOCK_GAIN (${MAX_BLOCK_GAIN}) is under 4 weeks of BASE_BUILD_RATE (${BASE_BUILD_RATE}) · ` +
+            'the block ceiling would bind before the weekly rate ever mattered',
+        );
+      }
+      if (!/projectedVdot/.test(src)) {
+        throw new Error('fitness-trajectory.ts no longer names its output as projected');
       }
       // The doctrine this DOES rest on must still be there: a saturating curve.
       if (!/saturate/i.test(cite.text())) {

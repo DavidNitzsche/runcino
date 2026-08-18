@@ -332,12 +332,24 @@ export function computeDynamicSleepTarget(acwr: number | null | undefined): numb
 /**
  * 2026-06-16 · #19 · luteal-phase HRV baseline allowance.
  *
- * Luteal HRV runs 5-10ms lower regardless of fitness (Research/13
- * §1-Menstrual-Cycle-and-Training · HRV "trends with phase"), so subtract
- * 5ms from the baseline a luteal female is compared against — only when
- * biologicalSex === 'female' AND cyclePhase === 'luteal'. Floored at 1 so
- * the bar can never go non-positive. For everyone else the baseline is
- * unchanged.
+ * THE 5ms SHIFT IS A CONVENTION, NOT A RESEARCH FINDING (corrected 2026-08-18,
+ * doctrine sweep). This comment used to cite "Luteal HRV runs 5-10ms lower ·
+ * Research/13 §1-Menstrual-Cycle-and-Training" — no doctrine file in this repo
+ * carries a 5-10ms (or any millisecond) HRV figure. What Research/13 §1.3
+ * actually says, in its cycle-tracking-methods table: wearable HRV "trends
+ * with phase" but the "signal [is] often swamped by training/sleep noise" —
+ * real evidence for a QUALITATIVE shift and, if anything, a caution against
+ * quantifying it precisely, not grounds for a specific millisecond number.
+ * Same fabricated-precision shape as CONVENTION.fitness-response-model and
+ * CONVENTION.trajectory-build-rate, a third instance found in the same sweep.
+ *
+ * Subtract 5ms from the baseline a luteal female is compared against — only
+ * when biologicalSex === 'female' AND cyclePhase === 'luteal'. Floored at 1
+ * so the bar can never go non-positive. For everyone else the baseline is
+ * unchanged. The number stays (removing it entirely would be worse: it would
+ * silently re-flag every luteal-phase HRV dip as "below baseline," which is
+ * the exact false-alarm doctrine's qualitative direction warns against) but
+ * it is a bounded, tunable allowance, not a cited quantity.
  *
  * Lives here (the score module, alongside computeReadiness which applies
  * the same shift inline) so EVERY HRV-vs-baseline comparator can import
@@ -419,10 +431,12 @@ export function computeReadiness(
 
   // HRV (40%) — the highest-fidelity pillar per D1 §2.1.
   if (state.hrvCurrent != null && state.hrvBaseline != null && state.hrvBaseline > 0) {
-    // 2026-06-01 · Luteal-phase adjustment (Research/13 §1-Menstrual-Cycle-and-Training).  // was §sex-specific · heading: ## 1. The Menstrual Cycle and Training
-    // Luteal HRV runs 5-10ms lower regardless of fitness · subtract 5ms
-    // from the baseline so the runner isn't penalized for biology. Only
-    // applies when biologicalSex === 'female' AND cyclePhase === 'luteal'.
+    // 2026-06-01 · Luteal-phase adjustment. See lutealAdjustedHrvBaseline
+    // above for the honest citation: Research/13 grounds the SHAPE (HRV
+    // "trends with phase," signal noisy) not the 5ms figure, which is a
+    // bounded convention · subtract 5ms from the baseline so the runner
+    // isn't penalized for biology. Only applies when biologicalSex ===
+    // 'female' AND cyclePhase === 'luteal'.
     // For non-female users or non-luteal phases, baseline is unchanged.
     // 2026-06-16 · #19 · now via the shared lutealAdjustedHrvBaseline so
     // the score, the streak detector, the threshold line, and recovery-
