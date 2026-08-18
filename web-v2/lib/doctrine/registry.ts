@@ -65,6 +65,7 @@ import {
 import { PLAN_TEMPLATES } from '@/lib/plan/plan-templates';
 import { VDOT_FULL_VALUE_DAYS, VDOT_EXPIRY_DAYS, FADE_TAIL_DAYS } from '@/lib/training/vdot';
 import { BASE_BUILD_RATE, MAX_BLOCK_GAIN } from '@/lib/training/fitness-trajectory';
+import { BUILD_RATE_VDOT_PER_WEEK } from '@/lib/training/goal-projection';
 import { expectedDaysForAnchor } from '@/lib/coach/recovery-phase';
 import {
   GAP_SHAVE_FRACTIONS,
@@ -5315,6 +5316,50 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (!/projectedVdot/.test(src)) {
         throw new Error('fitness-trajectory.ts no longer names its output as projected');
+      }
+      // The doctrine this DOES rest on must still be there: a saturating curve.
+      if (!/saturate/i.test(cite.text())) {
+        throw new Error(
+          'Research/00a §"Aerobic Base Development" no longer describes gains saturating · ' +
+            'the only part of this model research grounds has moved',
+        );
+      }
+    },
+  },
+
+  /**
+   * 2026-08-18 · doctrine sweep follow-up · closes the duplicate flagged (but
+   * deliberately left unfixed) by CONVENTION.trajectory-build-rate's own
+   * comment. goal-projection.ts's BUILD_RATE_VDOT_PER_WEEK is the identical
+   * 0.35 constant with the identical fabricated "Research/00a periodization"
+   * citation — a third instance of the same shape, after simulator.ts's
+   * COLD_START_CALIBRATION (CONVENTION.fitness-response-model) and
+   * fitness-trajectory.ts's BASE_BUILD_RATE (CONVENTION.trajectory-build-
+   * rate). Same remediation: honest convention framing, no numeric change.
+   */
+  {
+    id: 'CONVENTION.goal-projection-build-rate',
+    binds: ['lib/training/goal-projection.ts#BUILD_RATE_VDOT_PER_WEEK'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '## Aerobic Base Development',
+    claim:
+      'BUILD_RATE_VDOT_PER_WEEK IS A CONVENTION, NOT A RESEARCH FINDING — the identical shape ' +
+      'as CONVENTION.trajectory-build-rate and CONVENTION.fitness-response-model. The comment ' +
+      'cited "Research/00a periodization" for a VDOT-per-week figure; Research/00a never ' +
+      'mentions VDOT. What Research/00a DOES ground is the SHAPE only: aerobic adaptation ' +
+      'compounds over a period of weeks and saturates as a trained runner nears their ceiling. ' +
+      'The number stays a bounded, tunable midpoint — calibrated against the confidence-label ' +
+      'tiers it feeds — not a doctrine figure.',
+    check({ cite }) {
+      const src = sourceOf('web-v2/lib/training/goal-projection.ts');
+      if (/pts\/wk[\s\S]{0,80}Research\/00a periodization/.test(src)) {
+        throw new Error('the fabricated "Research/00a periodization" citation for BUILD_RATE_VDOT_PER_WEEK is back');
+      }
+      if (!/IS A CONVENTION, NOT A RESEARCH FINDING/.test(src)) {
+        throw new Error('goal-projection.ts no longer states its build rate is a convention');
+      }
+      if (!(BUILD_RATE_VDOT_PER_WEEK > 0 && BUILD_RATE_VDOT_PER_WEEK <= 1)) {
+        throw new Error(`BUILD_RATE_VDOT_PER_WEEK = ${BUILD_RATE_VDOT_PER_WEEK} is outside a defensible range`);
       }
       // The doctrine this DOES rest on must still be there: a saturating curve.
       if (!/saturate/i.test(cite.text())) {

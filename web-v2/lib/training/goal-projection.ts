@@ -1821,11 +1821,22 @@ export function computeConfidenceInterval(args: {
  * Answers "solidly on track or barely?" by comparing the fitness gap to what
  * the runway can plausibly close, then gating by drift status.
  *
- * Build rate · a focused block typically moves ~3-5 VDOT over 12-16 weeks
- * (≈0.25-0.4 pts/wk · Research/00a periodization). 0.35 is the tunable
- * midpoint, calibrated so a 3-point gap over a 10-week runway reads MEDIUM.
+ * BUILD_RATE_VDOT_PER_WEEK IS A CONVENTION, NOT A RESEARCH FINDING (2026-08-18,
+ * doctrine sweep). This comment used to cite "Research/00a periodization" for
+ * a VDOT-per-week figure; Research/00a never mentions VDOT at all — it is a
+ * training-load doc, not a pace-prescription one. Same fabricated-precision
+ * shape as simulator.ts's COLD_START_CALIBRATION (CONVENTION.fitness-response-
+ * model) and fitness-trajectory.ts's BASE_BUILD_RATE (CONVENTION.trajectory-
+ * build-rate — the identical 0.35 constant, duplicated here rather than
+ * imported); this is the third instance, flagged but left unfixed by that
+ * claim's own comment and closed here. What Research/00a DOES ground is the
+ * SHAPE only: aerobic adaptation compounds over a period of weeks and
+ * saturates as a trained runner nears their ceiling (§"Aerobic Base
+ * Development"). The number itself stays a bounded, tunable midpoint —
+ * calibrated so a 3-point gap over a 10-week runway reads MEDIUM — not a
+ * doctrine figure.
  */
-const BUILD_RATE_VDOT_PER_WEEK = 0.35;
+export const BUILD_RATE_VDOT_PER_WEEK = 0.35;
 
 export function computeConfidenceLabel(args: {
   goalSec: number;
