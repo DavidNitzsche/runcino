@@ -108,8 +108,18 @@ function buildSimpleStreaks(
     });
   }
 
-  // RHR streak (consecutive ≥3 bpm above 60d baseline)
-  if (history.rhr.length >= 7) {
+  /* RHR streak (consecutive ≥3 bpm above 60d baseline).
+   *
+   * 2026-08-17 · was `>= 7`, which is an off-by-one that fires for essentially
+   * every new user. At EXACTLY seven days of history `slice(0, -7)` is empty,
+   * `reduce(…, 0)` returns 0, `Math.max(1, 0)` divides by 1, and the baseline
+   * comes out as **0** — so `value - 0 >= 3` is true for every physiological
+   * resting heart rate ever recorded, and a healthy runner gets a persisted
+   * seven-day RHR-elevation streak on day seven.
+   *
+   * `> 7` guarantees the baseline slice is non-empty, which is the actual
+   * precondition the arithmetic needs. */
+  if (history.rhr.length > 7) {
     const baseline = history.rhr.slice(0, -7).reduce((s, p) => s + p.value, 0) /
                      Math.max(1, history.rhr.length - 7);
     n = 0;

@@ -131,13 +131,23 @@ export function reciteToday(glance: GlanceState): CoachFactBlock {
     facts.push(emptyFact('TODAY'));
   }
 
-  // BODY · readiness band + score
+  // BODY · readiness band + score.
+  //
+  // 2026-08-17 · `readiness.ts` correctly returns `score: null, band:
+  // 'unknown'` for a runner with no biometric baseline yet. This reciter
+  // interpolated it anyway, so a new user's iPhone TODAY block read
+  // "BODY  UNKNOWN null / 100". Its sibling reciters in this file all branch
+  // to `emptyFact()` in that case; this one did not.
   const r = glance.readiness;
-  facts.push({
-    label: 'BODY',
-    value: `${r.label} ${r.score} / 100`,
-    valueColor: bandColorForReadiness(r.band),
-  });
+  if (r.score != null) {
+    facts.push({
+      label: 'BODY',
+      value: `${r.label} ${r.score} / 100`,
+      valueColor: bandColorForReadiness(r.band),
+    });
+  } else {
+    facts.push(emptyFact('BODY'));
+  }
 
   // WEEK · X of Y · plain (drop the sub-caption noise)
   if (glance.weekPlanned != null && glance.weekPlanned > 0) {

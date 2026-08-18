@@ -299,9 +299,17 @@ export type GoalRace = {
   slug: string; name: string; date: string;     // ISO
   daysAway: number;
   goal: string;        // e.g. "1:30:00"
-  projected: string;   // e.g. "1:29:45"
-  onTrack: boolean;
-  delta: string;       // e.g. "15 sec ahead"
+  /** e.g. "1:29:45". NULL when there is no measured fitness to project from.
+   *  2026-08-17 · this used to be seeded with the GOAL and could never be
+   *  falsy, which defeated every `goal?.projected ?` guard downstream — a
+   *  runner with zero runs saw their own goal rendered as "PROJECTED FINISH".
+   *  Consumers already branch on truthiness; the lie was at the source. */
+  projected: string | null;
+  /** NULL when unknown. Was hardcoded `true` before any projection existed,
+   *  so "no evidence" and "on track" were indistinguishable. */
+  onTrack: boolean | null;
+  /** e.g. "15 sec ahead". NULL when there is nothing to compare. */
+  delta: string | null;
   phaseLabel: string;  // "Build phase · wk 14 / 26"
   goalPct: number;     // 0..100 for progress bar
   location: string | null;  // e.g. "San Diego, CA"  — null if not on record

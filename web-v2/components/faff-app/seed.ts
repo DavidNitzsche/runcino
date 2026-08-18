@@ -831,14 +831,21 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
   // Real VDOT-based projection. Profile already carries the best
   // recent VDOT from races; turn that into a predicted time at the
   // goal race's distance.
-  let projected = aRace?.goal ?? null;
-  let onTrack = true;
-  let delta = 'on track';
+  // 2026-08-17 · start from NOTHING, not from the goal. Seeding `projected`
+  // with the goal meant a runner with no measured fitness saw their own
+  // target echoed back as a projection — and because it was never falsy, the
+  // `goal?.projected ?` guards on TodayView and TrainView could never fire.
+  // Absence of a projection is a real state and the surfaces already render
+  // it ("TARGET FINISH", "Projection pending"); they were simply never
+  // reached.
+  let projected: string | null = null;
+  let onTrack: boolean | null = null;
+  let delta: string | null = null;
   if (aRace && profile?.physiology.vdot && aRace.distance_mi) {
     try {
       const predicted = predictRaceTime(profile.physiology.vdot, aRace.distance_mi);
       const goalSec = parseRaceTime(aRace.goal);
-      if (predicted) projected = formatRaceTime(predicted) ?? aRace.goal;
+      if (predicted) projected = formatRaceTime(predicted) ?? null;
       if (predicted && goalSec) {
         const diff = goalSec - predicted;
         onTrack = diff >= -30; // 30s grace before flipping to behind
@@ -881,7 +888,7 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
     return {
       slug: aRace.slug, name: aRace.name, date: aRace.date,
       daysAway: Math.max(0, days), goal,
-      projected: projected ?? goal,
+      projected,
       onTrack, delta,
       phaseLabel,
       goalPct: Math.min(100, Math.max(0, 100 - (days / 365) * 100)),
@@ -893,7 +900,7 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
     return {
       slug: 'a-race', name: glance.nextARaceName, date: '',
       daysAway: Math.max(0, glance.daysToARace),
-      goal: '·', projected: '·', onTrack: true, delta: 'on track',
+      goal: '·', projected: null, onTrack: null, delta: null,
       phaseLabel: glance.phaseLabel || '·', goalPct: 50,
       location: null,
       distanceMi: null,

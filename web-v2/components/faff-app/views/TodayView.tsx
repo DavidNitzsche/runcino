@@ -5008,9 +5008,13 @@ function Tiles({ seed, onOpenRace, gates }: {
       })
     : null;
   // The projected finish, same precedence Targets uses for its hero number.
-  const goalProjected: string | undefined = goalTraj?.projectedSec != null
+  // 2026-08-17 · `goal.projected` is now nullable — it is null when there is
+  // no measured fitness to project from, rather than being seeded with the
+  // goal. Normalised to undefined so the render below keeps falling through
+  // to "TARGET FINISH".
+  const goalProjected: string | undefined = (goalTraj?.projectedSec != null
     ? (formatRaceTime(goalTraj.projectedSec) ?? goal?.projected)
-    : goal?.projected;
+    : goal?.projected) ?? undefined;
   const ready = !goal ? seed.goalReady : null;
   const [hoverBar, setHoverBar] = useState<number | null>(null);
   const bar = hoverBar != null ? seed.volumeBars[hoverBar] : null;
