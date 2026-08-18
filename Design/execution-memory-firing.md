@@ -390,24 +390,32 @@ and understanding training.
 
 ## Execution
 
+**Wired 2026-08-17.** `interpretExecution` (`lib/execution/interpret.ts`) was
+pure and tested since earlier the same day; it was called by nothing. It now
+is.
+
 | Item | State |
 |---|---|
-| Seven execution states | **ABSENT.** Seven independent predicates answer "was it done", using four different distance thresholds (none, ≥1.0 mi, ≥0.8×, ≥max(1, 0.6×), 0.7–1.3×). A 6 mi run on an 8 mi tempo day is simultaneously done and missed depending which surface you read. |
-| `stimulus_completion` | **ABSENT.** Nothing measures dose against intent. |
-| Intended-stimulus schema on the plan | **PARTIAL.** `workout_spec` carries structure, and the `progression` block now carries reps / duration / recovery / pace / zone — the raw material. There is no `primary_adaptation` or `acceptable_intensity_band`. |
-| Grading the shape actually performed | **VIOLATION.** `judgeTestPointExecution` grades against the PLANNED work window. Rule: do not compare 3 × 2 mi to the rep window for 5 × 1. |
-| Partial ≠ zero | **VIOLATION.** `goal-projection.ts:984` *abstains* on a cut-short session, so it is dropped entirely rather than recorded as partial. 60% completed reads as no evidence. |
-| Moved sessions | **CORRECT.** Reschedule updates `date_iso` and stamps `original_date_iso`; the adaptation loader follows the moved day. |
-| `EXTRA` is not credit | **CORRECT.** The consistency dimension penalises overshoot in both directions, and today's fix stopped a volume-overshoot shave from counting as "not absorbing". |
-| Evidence split four ways | **ABSENT.** One `completed` boolean feeds everything. |
-| The device already knows | **DISCARDED.** The watch computes a per-phase verdict (`hit`/`drifted`/`missed`/`incomplete`) against the server's own tolerance, plus `timeInToleranceSec` and a run-level `status` (`completed`/`partial`/`abandoned`). `status` is declared at the endpoint and read nowhere. |
+| Seven execution states | **RESOLVED.** `lib/execution/reconstruct.ts` builds the planned and actual `Stimulus` (workout_spec → `expandSpecToPhases` → bare row; watch phases → splits work-window → whole run), `interpretExecution` resolves the pair to one of the seven states. `lib/execution/load.ts` assembles it per session from `ownedDaysSql` + `getCanonicalRunIds`. |
+| `stimulus_completion` | **RESOLVED.** Carried on every `KeySessionRead`, and it is the term `readExecution` scores — a stimulus-weighted share, not a headcount. |
+| Intended-stimulus schema on the plan | **RESOLVED enough to score.** `workout_spec`'s `progression` block is the primary basis; a quality day with no progression block correctly abstains rather than inventing a pace/distance pairing that was never prescribed together. |
+| Grading the shape actually performed | **RESOLVED.** `reconstruct.ts` compares reconstructed stimulus to reconstructed stimulus, never planned reps to actual reps. |
+| Partial ≠ zero | **RESOLVED.** A `PARTIAL_PRODUCTIVE`/`PARTIAL_FAILED` session contributes its real `stimulusCompletion` (e.g. 0.6) to training credit and is excluded from progression credit — two currencies, not one abstain-or-full switch. |
+| Moved sessions | **CORRECT**, unchanged. |
+| `EXTRA` is not credit | **CORRECT, now also true in the new dimension.** `compliantSessions` drops `EXTRA` from both the training-credit and progression-credit shares. |
+| Evidence split four ways | **RESOLVED at the interpretation layer.** `EvidenceRead` (execution/adaptation/fitness/risk) is computed per session; the adaptation dimension currently consumes `state` and `stimulusCompletion` from it, not yet the fitness/risk fields — those are available for a future caller, not yet spent. |
+| The device already knows | **RESOLVED, and it disagreed with its own name.** `status` is now persisted on the run row and read — but `WorkoutEngine.abandon()` stamps it on any early stop, cool-down included (13 of 50 live completions), so it is NOT used as "did they give up." `effortCollapsed` is the conjunction: ended early AND a WORK phase unfinished, or RPE ≥ 8. `timeInToleranceSec` is carried but deliberately not scored (would double-count with target verdicts). |
 
-**The sharpest conflict is with work shipped the same day.** The adaptation
-model's execution gate — *you cannot earn more stress by not doing the work* —
-counts a quality day as done if a run exists on that date, and cannot tell
-`EQUIVALENT` from `MISSED`. Rule 4 refines it precisely: partial work earns
-training credit and not progression credit, which is a distinction the current
-gate collapses into one band cap.
+**The sharpest conflict was with work shipped the same day**, and it is
+closed: `readExecution` now scores stimulus completion (training credit) as
+its one averaged term, and gates the `strong` band on a separate progression-
+credit share (`PROGRESSION_GATE.strongMinShare`, 0.6) rather than folding both
+into one band cap. Verified against the owner's own AFC block: what the old
+headcount read as "9 of 11 key sessions run" was six full, two partial, one
+replaced by the goal race, two missed — the execution dimension moved from
+0.55 to 0.41 with the block's band and decision unchanged (`normal` /
+PROGRESS), because that specific block hadn't crossed a boundary. A block that
+sits nearer an edge will.
 
 ## Memory
 
