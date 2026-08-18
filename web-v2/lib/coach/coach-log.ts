@@ -42,6 +42,13 @@
  *     pipeline example, "on the third repeated failure ... memory: create:
  *     true, pattern: threshold durability issue". Written once per
  *     candidate -> active promotion, not once per occurrence.
+ *   · race_replacement — 2026-08-18 · a key session read REPLACED
+ *     (lib/coach/race-replacement.ts, lib/execution/interpret.ts): a race
+ *     stood in for a planned session, which Design/execution-memory-firing.md
+ *     Part 1 calls "not a miss" — high fitness evidence, but a higher
+ *     recovery cost, so "adjust downstream training rather than marking
+ *     Saturday green." Same shape as fitness_evidence: routed through
+ *     classifyFinding, one-shot per session date, not an episode.
  *
  * STORAGE · coach_intents (no new table, no DDL). Entries are rows with
  * reason 'coach_log_<kind>', field = idempotency key, value = the
@@ -90,6 +97,10 @@ import {
   recordThresholdPatternEvidence,
   composeThresholdPatternEntry,
 } from '@/lib/coach/threshold-pattern';
+import {
+  loadRaceReplacementFindings,
+  composeRaceReplacementEntry,
+} from '@/lib/coach/race-replacement';
 
 /* ────────────────────────── Types ────────────────────────── */
 
@@ -100,7 +111,8 @@ export type CoachLogKind =
   | 'fitness_shift'
   | 'easy_discipline'
   | 'fitness_evidence'
-  | 'threshold_pattern';
+  | 'threshold_pattern'
+  | 'race_replacement';
 
 export interface CoachLogEntry {
   id: string;
@@ -123,6 +135,7 @@ const REASON_OF_KIND: Record<Exclude<CoachLogKind, 'fitness_shift'>, string> = {
   easy_discipline: 'coach_log_easy_discipline',
   fitness_evidence: 'coach_log_fitness_evidence',
   threshold_pattern: 'coach_log_threshold_pattern',
+  race_replacement: 'coach_log_race_replacement',
 };
 
 /* ──────────────────── Pure entry composers ──────────────────── */
@@ -526,6 +539,13 @@ export async function updateCoachLog(userId: string): Promise<{ written: number 
     // line is only written the day the pattern promotes from candidate to
     // active (3 occurrences across 3 distinct weeks).
     written += await updateThresholdPatternLog(userId, today);
+
+    // ── 7 · Session replaced by a race (daily) ──
+    // See lib/coach/race-replacement.ts · Design/execution-memory-firing.md
+    // Part 1's "Session replaced by a race" — REPLACED, not a miss, but not
+    // equivalence either. Routed through classifyFinding before it writes.
+    // One-shot per session date; same (reason, field) idempotency.
+    written += await updateRaceReplacementLog(userId, today);
   } catch (e) {
     console.warn('[coach-log] updateCoachLog failed:', e instanceof Error ? e.message : String(e));
   }
@@ -615,6 +635,47 @@ async function updateThresholdPatternLog(userId: string, todayISO: string): Prom
         stimulusCompletion: Math.round(finding.stimulusCompletion * 100) / 100,
         firingLevel: level,
         importance: 'high',
+      },
+    })) written++;
+  }
+  return written;
+}
+
+/* ─────────────── Race-replacement writer ─────────────── */
+
+/**
+ * Write the race-replacement line for every not-yet-logged REPLACED session
+ * in the lookback window.
+ *
+ * Same shape as `updateFitnessEvidenceLog`: not an open/close episode, each
+ * occurrence is its own dated event, keyed by date, written at most once via
+ * `writeEntry`'s (reason, field) idempotency. `classifyFinding` gates the
+ * write explicitly — the finder only ever proposes SURFACE-worthy findings
+ * per its own module header, but the classification is still run here
+ * rather than assumed, so a future change to the firing test is honoured
+ * automatically.
+ */
+async function updateRaceReplacementLog(userId: string, todayISO: string): Promise<number> {
+  let written = 0;
+  const findings = await loadRaceReplacementFindings(userId, todayISO);
+  for (const finding of findings) {
+    const level = classifyFinding({
+      changed: true,
+      athleteNeedsToKnow: true,
+      usefulOnlyBecauseLooking: true,
+      isPositive: false,
+    });
+    if (!atLeastAsLoud(level, 'SURFACE')) continue;
+
+    const composed = composeRaceReplacementEntry(finding);
+    const key = `race_replacement:${finding.dateISO}`;
+    if (await writeEntry(userId, 'race_replacement', key, {
+      ...composed,
+      dateISO: finding.dateISO,
+      meta: {
+        displacedDomain: finding.displacedDomain,
+        displacedWorkMi: finding.displacedWorkMi != null ? round1(finding.displacedWorkMi) : null,
+        firingLevel: level,
       },
     })) written++;
   }
@@ -740,7 +801,10 @@ export async function loadCoachLog(
     const kind = (typeof v.kind === 'string' ? v.kind : r.reason.replace(/^coach_log_/, '')) as CoachLogKind;
     entries.push({
       id: r.id,
-      kind: (['week_close', 'phase_boundary', 'first_ever', 'easy_discipline', 'fitness_evidence', 'threshold_pattern'] as string[]).includes(kind)
+      kind: ([
+        'week_close', 'phase_boundary', 'first_ever', 'easy_discipline', 'fitness_evidence',
+        'threshold_pattern', 'race_replacement',
+      ] as string[]).includes(kind)
         ? kind : 'week_close',
       dateISO: typeof v.dateISO === 'string' ? v.dateISO : ts.slice(0, 10),
       title: typeof v.title === 'string' ? v.title : 'LOG',
