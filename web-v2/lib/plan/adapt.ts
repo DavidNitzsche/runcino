@@ -961,6 +961,7 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
           }
           await writeIntent(client, userId, reason, wid, {
             kind: a.kind, newType: a.newType, why: a.why,
+            source_trigger: a.sourceTrigger ?? null,
           });
           touched++;
         }
@@ -991,6 +992,7 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
           await rebuildWorkoutDerivations(client, userId, wid);
           await writeIntent(client, userId, reason, wid, {
             kind: a.kind, shaveFraction: a.shaveFraction, why: a.why,
+            source_trigger: a.sourceTrigger ?? null,
           });
           touched++;
         }

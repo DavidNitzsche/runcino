@@ -1553,7 +1553,13 @@ async function detectPlanAdapterDrift(userUuid: string): Promise<DriftSignal | n
        FROM coach_intents ci
       WHERE COALESCE(ci.user_uuid, ci.user_id::uuid) = $1::uuid
         AND ci.reason IN ('plan_adapt_downgrade','plan_adapt_shave')
-        AND ci.ts >= NOW() - INTERVAL '28 days'`,
+        AND ci.ts >= NOW() - INTERVAL '28 days'
+        -- 2026-08-17 · a volume_overshoot shave fires when the runner ran MORE
+        -- than the plan scheduled. Counting it as evidence that they are not
+        -- absorbing the plan is exactly inverted. The trigger that caused each
+        -- action is now stamped on the intent; rows written before that stamp
+        -- carry no source_trigger and keep their prior treatment.
+        AND COALESCE(ci.value->>'source_trigger', '') <> 'volume_overshoot'`,
     [userUuid],
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!r) return null;
@@ -1564,6 +1570,9 @@ async function detectPlanAdapterDrift(userUuid: string): Promise<DriftSignal | n
     kind: 'plan_adapter_downgrades',
     weight: 'medium',
     detail: `Plan adapter has stepped in ${weeksWithAdapts} of the last 4 weeks · sustained downgrades signal the runner isn't absorbing the plan as designed.`,
+    // NOTE · downgrades still arrive from several triggers (niggle, illness,
+    // heat bail, readiness). Only the inverted one — a shave for running MORE
+    // than scheduled — is excluded above. The rest genuinely belong here.
     evidence: { weeksWithAdaptations: weeksWithAdapts },
   };
 }
