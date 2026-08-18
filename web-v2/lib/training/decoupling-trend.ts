@@ -32,10 +32,12 @@ import {
   runSplitsSql,
   runWorkoutTypeSql,
   runTypeSql,
+  runTempFSql,
 } from '@/lib/runs/run-shape';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import { computeAerobicDecoupling } from './aerobic-decoupling';
+import { HEAT_CONFOUND_TEMP_F } from '@/lib/coach/easy-discipline';
 
 export interface DecouplingTrend {
   /** Current drift % · mean of the last 3 long runs. */
@@ -46,6 +48,10 @@ export interface DecouplingTrend {
   weeksTracked: number;
   /** Number of long runs in the trend. */
   runsCount: number;
+  /** Long runs dropped from the trend because they were run in heat, which
+   *  manufactures 2-5pp of decoupling on its own (Research/03 §12). Surfaced
+   *  so a thin trend can be explained rather than looking like missing data. */
+  heatExcludedRuns: number;
   /** Direction · derived from delta. */
   direction: 'improving' | 'flat' | 'declining';
   /** Plain-language summary. */
@@ -83,8 +89,9 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
   //      every pre-stamp historical row.
   // Over-exclusion (a quality day run easy) is the safe direction for
   // this signal — a contaminated point is worse than a missing one.
-  const rows = await pool.query<{ id: string; date: string; mi: number | string; splits: unknown }>(
-    `SELECT r.id::text, ${runDateKeySql('r')} AS date, ${runDistanceMiSql('r')} AS mi, ${runSplitsSql('r')} AS splits
+  const rows = await pool.query<{ id: string; date: string; mi: number | string; splits: unknown; temp_f: string | null }>(
+    `SELECT r.id::text, ${runDateKeySql('r')} AS date, ${runDistanceMiSql('r')} AS mi, ${runSplitsSql('r')} AS splits,
+            ${runTempFSql('r')} AS temp_f
        FROM runs r
       WHERE r.user_uuid = $1::uuid
         AND r.id = ANY($3::bigint[])
@@ -104,13 +111,38 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
     [userUuid, today, canonicalIds],
   ).then((r) => r.rows).catch(() => []);
 
+  /* 2026-08-17 · HEAT, PER OBSERVATION.
+   *
+   * This trend compares the first three long runs in a 60-day window against
+   * the last three, and it never looked at temperature. Over a summer block
+   * that is June against August, and `Research/03` §12 says heat manufactures
+   * 2-5% of decoupling on its own — comfortably more than the ±0.5pp the
+   * direction call turns on. The signal was reading the season and reporting
+   * it as a declining aerobic engine, which then moved goal status toward
+   * watching / off-track.
+   *
+   * `lib/adaptation/load.ts` already applies exactly this filter to exactly
+   * this function; the trend is the mirror that never got it. CLAUDE.md's
+   * per-finding rule is explicit that a guard elsewhere does not protect this.
+   *
+   * Excluding rather than adjusting, because this module already states the
+   * principle for its own contamination case: over-exclusion is the safe
+   * direction here, and a contaminated point is worse than a missing one. */
   const series: { date: string; driftPct: number }[] = [];
+  let heatExcluded = 0;
   for (const r of rows) {
+    const tempF = r.temp_f != null ? Number(r.temp_f) : null;
+    if (tempF != null && Number.isFinite(tempF) && tempF >= HEAT_CONFOUND_TEMP_F) {
+      heatExcluded++;
+      continue;
+    }
     const splits = Array.isArray(r.splits) ? r.splits as Parameters<typeof computeAerobicDecoupling>[0] : null;
     const result = computeAerobicDecoupling(splits, Number(r.mi));
     if (result) series.push({ date: r.date, driftPct: result.driftPct });
   }
 
+  // Honest absence. A summer block can legitimately leave too few comparable
+  // runs to call a direction, and saying nothing beats reporting the weather.
   if (series.length < 3) return null;
 
   // First-3 vs last-3 mean.
@@ -165,6 +197,7 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
     blockStartDriftPct,
     weeksTracked,
     runsCount: series.length,
+    heatExcludedRuns: heatExcluded,
     direction,
     summary,
     series: series.slice(-8),

@@ -531,6 +531,21 @@ export function runMaxHrSql(alias = ''): string {
   return `NULLIF(${col(alias)}->>'maxHr','')::numeric`;
 }
 
+/**
+ * Air temperature in FAHRENHEIT at the time of the run. NULL when the row was
+ * never weather-enriched.
+ *
+ * ⚠ This is the TOP-LEVEL `tempF`, which is the key the enrichment writes.
+ * Several call sites also reach for `tempF_peak`, `dewpointF`, `humidityPct`,
+ * `conditions` and `cloudCoverPct` at the top level — NONE of those exist on
+ * any row; they live inside `data->'weather'` under snake_case names. See the
+ * migration report. Do not add fragments for them here without first checking
+ * the live shape.
+ */
+export function runTempFSql(alias = ''): string {
+  return `NULLIF(${col(alias)}->>'tempF','')::numeric`;
+}
+
 /** Elevation gain in FEET. NULL when unmeasured. */
 export function runElevGainFtSql(alias = ''): string {
   return `NULLIF(${col(alias)}->>'elevGainFt','')::numeric`;
