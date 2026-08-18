@@ -418,6 +418,17 @@ export async function POST(req: NextRequest) {
     // coach and VDOT engines can query per-phase actuals without a
     // JOIN to coach_intents. Empty array when old clients omit phases.
     ...(body.phases?.length ? { phases: body.phases } : {}),
+    // 2026-08-17 · the run-level outcome the watch already computed
+    // ('completed' | 'partial' | 'abandoned'). Declared on the wire since the
+    // endpoint was written and copied nowhere: it survived only inside the raw
+    // coach_intents blob, so every reader that wanted "did this workout finish"
+    // reconstructed it from distance heuristics instead. Same F10 argument as
+    // `phases` — put it on the run row so consumers do not need the JOIN.
+    // Key ABSENT (not null) when the client omits it, so the merge upsert
+    // below cannot clobber a value written by a richer sibling payload.
+    ...(typeof body.status === 'string' && body.status !== ''
+      ? { status: body.status }
+      : {}),
     // 2026-07-06 · P1-26 · distance quarantine. Key is ABSENT (not null)
     // on clean runs so the merge upsert below can never clobber a flag
     // set by a prior over-soft-bound write. See lib/runs/distance-guard.ts.

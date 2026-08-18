@@ -308,6 +308,12 @@ export function interpretExecution(
     };
   }
 
+  // The middle band is reached three ways, and one sentence cannot describe
+  // all of them honestly. Volume short of the session is the common case. A
+  // domain change is a different failure — the work happened, at an intensity
+  // the session did not ask for — and saying "the work the session wanted"
+  // there would be untrue. It reads that way on real data: a threshold day run
+  // at repetition pace, and a race whose goal pace the runner never reached.
   return {
     state: 'PARTIAL_PRODUCTIVE',
     stimulusCompletion: completion,
@@ -317,7 +323,11 @@ export function interpretExecution(
       fitness: routineAerobic ? 'none' : 'low',
       risk: 'none',
     },
-    why: 'Short of the full session, but the work that happened was the work the session wanted.',
+    why: !sameDomain
+      ? 'The work happened at a different intensity than the session was aiming for, so it does not bank as that stimulus.'
+      : completion >= 1
+        ? 'The session was delivered in a different structure than it was written in. Banked as training, not as the prescription.'
+        : 'Short of the full session, but the work that happened was the work the session wanted.',
   };
 }
 

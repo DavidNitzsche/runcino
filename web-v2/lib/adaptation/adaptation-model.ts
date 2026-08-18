@@ -44,7 +44,33 @@
  *
  * Pain, injury and illness are vetoes rather than weights — they route to
  * PROTECT regardless of how well everything else reads.
+ *
+ * ## The execution dimension reads STATES, not a headcount
+ *
+ * It used to score completion as the share of key sessions with a run on the
+ * date. That predicate cannot tell `EQUIVALENT` from `MISSED`: a runner who
+ * swapped 5 × 1 mile for 3 × 2 because the track was closed, and a runner who
+ * skipped the session and jogged two miles, both scored 1.0.
+ *
+ * `Design/execution-memory-firing.md` rule 4 draws the distinction the old gate
+ * collapsed — **partial work earns training credit without earning progression
+ * credit** — and it needs two currencies, not one band cap:
+ *
+ *   · TRAINING credit    · how much of the intended stimulus was delivered.
+ *                          60% completed is not zero.
+ *   · PROGRESSION credit · whether a session demonstrated room for MORE. Only
+ *                          a fully delivered stimulus does.
+ *
+ * The two enter the model differently. Training credit is the dimension's
+ * completion term — a stimulus-weighted share in the slot the headcount used
+ * to occupy. Progression credit is a GATE on `strong`, the band that licenses
+ * asking for more, sitting beside the trend gate rather than in the average.
+ *
+ * A block of honest partial sessions therefore lands where it belongs: not
+ * penalised as misses, and not read as room to accelerate.
  */
+
+import type { ExecutionState } from '@/lib/execution/interpret';
 
 /** The five dimensions the doctrine's progression gate names. */
 export type AdaptationDimension =
@@ -100,11 +126,42 @@ export interface AdaptationVerdict {
  * honestly. Field-by-field provenance is in the doc comments so a future
  * caller wires the right reader rather than inventing a lookalike.
  */
+/**
+ * One key session, as `interpretExecution` read it. The unit the execution
+ * dimension scores.
+ */
+export interface KeySessionRead {
+  /** Doctrine's seven states. */
+  state: ExecutionState;
+  /** 0..1 · how much of the intended stimulus was delivered. */
+  stimulusCompletion: number;
+  /** `earnsProgressionCredit(read)` — whether this session demonstrated room
+   *  for more, which is a different question from whether it was useful. */
+  earnsProgression: boolean;
+}
+
 export interface AdaptationInput {
   /* --- execution ------------------------------------------------------- */
-  /** Key sessions prescribed in the window, and how many were run at all.
-   *  From the plan rows joined to runs — the same join `detectMissedKeyWorkouts`
-   *  uses (`lib/training/goal-projection.ts`). */
+  /**
+   * Every key session in the window, interpreted. From
+   * `loadKeySessionExecutions` (`lib/execution/load.ts`), which reconstructs
+   * the planned and actual stimulus and calls `interpretExecution`.
+   *
+   * Sessions whose work could not be described are dropped by the loader
+   * rather than passed as a state — an unreadable session is missing evidence,
+   * never a failed one. Pass null when none was readable; the dimension then
+   * scores on target adherence alone rather than inventing a completion.
+   */
+  keySessionExecutions: KeySessionRead[] | null;
+  /**
+   * Key sessions prescribed in the window, and how many were run at all.
+   *
+   * NARRATION ONLY — this pair no longer scores anything. It is the sentence
+   * the runner recognises ("9 of 11 key sessions run"), kept beside the states
+   * that actually drive the verdict. Scoring off it is the bug this dimension
+   * was rewritten to remove: "a run exists on that date" is true of an
+   * equivalent session, a session cut in half, and a two-mile jog alike.
+   */
   keySessionsPlanned: number | null;
   keySessionsCompleted: number | null;
   /** Per-session target verdicts, newest last. From
@@ -229,6 +286,27 @@ export const EXECUTION_GATE = {
   capPoor: -1.5,
 } as const;
 
+/**
+ * The second currency, and the half the old single band cap could not express.
+ *
+ * Doctrine rule 4: partial work can be useful without earning progression.
+ * Training credit keeps an honest partial block out of `marginal` — the work
+ * happened and it counted. It must not also unlock `strong`, because `strong`
+ * means "there is room to ask for more" and a session that was cut short
+ * demonstrated the opposite.
+ *
+ * So the top band takes a share gate of its own, exactly like the trend gate
+ * beside it: fewer than this share of key sessions delivering a FULL stimulus
+ * and the block cannot read as strong, however good everything else looks.
+ *
+ * The value is the same edge `shareToScore` puts the dimension scale's zero at
+ * (0.6). Below six in ten sessions fully delivered, the honest description is
+ * "you are absorbing this", not "there is room for more".
+ */
+export const PROGRESSION_GATE = {
+  strongMinShare: 0.6,
+} as const;
+
 /** A niggle at or above this severity is a veto, not a weight. Matches the
  *  existing adapter threshold in `lib/plan/adapt.ts`. */
 export const NIGGLE_VETO_SEVERITY = 7;
@@ -261,13 +339,76 @@ function pct(n: number): string {
 
 /* ------------------------------------------------------------- dimensions */
 
+/**
+ * The key sessions that count toward compliance.
+ *
+ * `EXTRA` is dropped, and that is doctrine rather than tidiness: extra work is
+ * DATA, not achievement, and "more work is not evidence that more work was
+ * appropriate". Letting an unplanned run raise the compliance share would make
+ * a runner who ignored the plan and ran extra read as absorbing it well.
+ */
+function compliantSessions(reads: KeySessionRead[]): KeySessionRead[] {
+  return reads.filter((r) => r.state !== 'EXTRA');
+}
+
+/**
+ * Share of key sessions that delivered a full stimulus.
+ *
+ * Exported because the band gate in `classifyAdaptation` needs it and the
+ * dimension read cannot carry it — `DimensionRead` is a fixed shape, and
+ * widening it for one consumer would put a second definition of this number in
+ * the codebase. Null when there is nothing to read.
+ */
+export function progressionCreditShare(input: AdaptationInput): number | null {
+  const reads = input.keySessionExecutions ? compliantSessions(input.keySessionExecutions) : [];
+  if (reads.length === 0) return null;
+  return reads.filter((r) => r.earnsProgression).length / reads.length;
+}
+
 function readExecution(input: AdaptationInput): DimensionRead {
   const parts: number[] = [];
   const notes: string[] = [];
 
-  if (input.keySessionsPlanned != null && input.keySessionsPlanned > 0 && input.keySessionsCompleted != null) {
-    const share = clamp(input.keySessionsCompleted / input.keySessionsPlanned, 0, 1);
-    parts.push(shareToScore(share));
+  /* TRAINING credit · how much of the intended stimulus landed, summed over
+   * the sessions rather than counted. A session cut to 60% contributes 0.6 —
+   * not the 1.0 the old headcount gave it for having a run on the date, and
+   * not the 0 a strict completion test would.
+   *
+   * Exactly ONE part, in the same slot the headcount occupied. That matters:
+   * this list is averaged flat, so adding a second completion term would
+   * silently halve the weight of the target-adherence and rep-shape signals
+   * beside it and lift the whole dimension off the `EXECUTION_GATE` edges the
+   * caps are calibrated against. It did, on the first cut of this change: a
+   * runner who missed three of eight sessions and ran the rest slow with
+   * fading reps came out `strong`.
+   *
+   * The other currency — progression credit — is a GATE on the top band rather
+   * than a term in the mean, for the same reason the trend gate is. See
+   * `PROGRESSION_GATE`. */
+  const reads = input.keySessionExecutions ? compliantSessions(input.keySessionExecutions) : [];
+  if (reads.length > 0) {
+    const training = reads.reduce((a, r) => a + clamp(r.stimulusCompletion, 0, 1), 0) / reads.length;
+    parts.push(shareToScore(training));
+
+    const full = reads.filter((r) => r.earnsProgression).length;
+    const missed = reads.filter((r) => r.state === 'MISSED').length;
+    // Named rather than swept into "partial": a race is not a session the
+    // runner half-did, and reading it as one is the misdescription the states
+    // exist to end.
+    const replaced = reads.filter((r) => r.state === 'REPLACED').length;
+    const partial = reads.length - full - missed - replaced;
+    const bits = [`${full} of ${reads.length} key sessions delivered the full stimulus`];
+    if (partial > 0) bits.push(`${partial} partial`);
+    if (replaced > 0) bits.push(`${replaced} replaced by a race`);
+    if (missed > 0) bits.push(`${missed} not run`);
+    notes.push(bits.join(' · '));
+  } else if (
+    input.keySessionsPlanned != null && input.keySessionsPlanned > 0
+    && input.keySessionsCompleted != null
+  ) {
+    // Narration only — no score. See the field docs: counting runs on dates is
+    // exactly the read this dimension was rewritten to stop trusting, and a
+    // block we cannot interpret is missing evidence rather than a bad block.
     notes.push(`${input.keySessionsCompleted} of ${input.keySessionsPlanned} key sessions run`);
   }
 
@@ -538,8 +679,17 @@ export function classifyAdaptation(input: AdaptationInput): AdaptationVerdict {
   const weeks = input.distinctEvidenceWeeks ?? 0;
   const trendGatePassed = weeks >= MIN_WEEKS_FOR_STRONG;
 
+  /* Doctrine rule 4 · the second gate on `strong`. Training credit is not
+   * progression credit, so a block carried by partial sessions may read as
+   * `normal` — the work counted — and may not read as room for more. Null
+   * (nothing interpretable) does not block: absence of evidence is not
+   * evidence of poor adaptation, and that rule outranks this gate. */
+  const progressionShare = progressionCreditShare(input);
+  const progressionGatePassed =
+    progressionShare == null || progressionShare >= PROGRESSION_GATE.strongMinShare;
+
   let band: AdaptationBand;
-  if (mean >= BAND_EDGES.strong && trendGatePassed) band = 'strong';
+  if (mean >= BAND_EDGES.strong && trendGatePassed && progressionGatePassed) band = 'strong';
   else if (mean >= BAND_EDGES.normal) band = 'normal';
   else if (mean >= BAND_EDGES.marginal) band = 'marginal';
   else band = 'poor';
@@ -590,7 +740,7 @@ export function classifyAdaptation(input: AdaptationInput): AdaptationVerdict {
     stepMultiplier,
     dimensions,
     veto: null,
-    summary: summarise(band, mean, dimensions, trendGatePassed),
+    summary: summarise(band, mean, dimensions, trendGatePassed, progressionGatePassed),
   };
 }
 
@@ -604,6 +754,7 @@ function summarise(
   mean: number,
   dimensions: DimensionRead[],
   trendGatePassed: boolean,
+  progressionGatePassed: boolean,
 ): string {
   const weakest = dimensions
     .filter((d) => d.score != null && d.detail)
@@ -613,6 +764,11 @@ function summarise(
     case 'strong':
       return 'You are absorbing this block well. The work is landing and there is room to ask for more.';
     case 'normal':
+      if (mean >= BAND_EDGES.strong && !progressionGatePassed) {
+        // The distinction doctrine rule 4 exists for, said out loud: the work
+        // counted, and it did not demonstrate room for more.
+        return 'The work you did is landing, but too much of it came in short of the session to call it room for more. Staying on the planned progression.';
+      }
       if (!trendGatePassed && mean >= BAND_EDGES.strong) {
         return 'Recent sessions look good, but it is not yet enough weeks to call it a trend. Staying on the planned progression.';
       }

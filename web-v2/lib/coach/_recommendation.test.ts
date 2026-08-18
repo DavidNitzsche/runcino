@@ -111,8 +111,20 @@ describe('proceeding as planned is a decision, not silence', () => {
 });
 
 describe('adaptation verdicts become readable coaching', () => {
+  /** N key sessions, `run` of them delivered in full and the rest not run.
+   *  The execution dimension scores STATES now, so a fixture that wants to
+   *  describe a half-executed block says so here rather than through the
+   *  headcount, which is narration and no longer scores anything. */
+  function sessions(total: number, run: number): AdaptationInput['keySessionExecutions'] {
+    return Array.from({ length: total }, (_, i) =>
+      i < run
+        ? { state: 'AS_PLANNED' as const, stimulusCompletion: 1, earnsProgression: true }
+        : { state: 'MISSED' as const, stimulusCompletion: 0, earnsProgression: false });
+  }
+
   function input(over: Partial<AdaptationInput> = {}): AdaptationInput {
     return {
+      keySessionExecutions: sessions(8, 8),
       keySessionsPlanned: 8,
       keySessionsCompleted: 8,
       targetVerdicts: ['on', 'on', 'on', 'on'],
@@ -147,6 +159,7 @@ describe('adaptation verdicts become readable coaching', () => {
     const r = recommendFromAdaptation(
       classifyAdaptation(
         input({
+          keySessionExecutions: sessions(8, 5),
           keySessionsCompleted: 5,
           targetVerdicts: ['slow', 'slow', 'on', 'slow'],
           repConsistency: ['fading', 'fading'],

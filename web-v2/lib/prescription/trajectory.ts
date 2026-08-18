@@ -96,6 +96,7 @@ export type SessionFamily = 'threshold' | 'interval';
  */
 export function authoringAdaptation(): AdaptationVerdict {
   const blank: AdaptationInput = {
+    keySessionExecutions: null,
     keySessionsPlanned: null, keySessionsCompleted: null, targetVerdicts: null,
     repConsistency: null, rpeReported: null, rpeHarderThanExpected: null,
     decouplingVerdicts: null, lateDriftBpm: null, easyDiscipline: null,

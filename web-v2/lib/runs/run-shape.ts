@@ -334,10 +334,37 @@ export interface RunData {
   /** Structured workout phases from the faff watch app (warmup / work /
    *  recovery / cooldown), with actual-vs-target per phase. 21% of rows. The
    *  richest signal in the blob, and the only place `actualPaceSPerMi` and
-   *  per-phase verdicts live. */
+   *  per-phase verdicts live. Normalise with `runPhases`. */
   phases?: unknown[];
 
-  /** The watch's own id for the completion this row came from. 28% / 42%. */
+  /**
+   * The watch's own run-level outcome — `completed` | `partial` | `abandoned`.
+   *
+   * ⚠ ABSENT ON EVERY HISTORICAL ROW. The field arrives on the wire
+   * (`WatchCompletionBody.status`) and the completion endpoint stored the whole
+   * payload in `coach_intents.value` while never copying this key onto the run,
+   * so the only place it exists for runs written before 2026-08-17 is that blob
+   * — see `watchCompletionRef`, which is the key it is filed under.
+   *
+   * ⚠ AND IT DOES NOT MEAN WHAT IT SOUNDS LIKE. `WorkoutEngine.abandon()` in
+   * the watch app stamps `abandoned` whenever the runner ends the workout
+   * before the LAST PLANNED PHASE has completed. Ending during the cool-down —
+   * which is what most runners do — produces `abandoned` on a session that was
+   * fully executed. In the live data 13 of 50 completions carry it, including
+   * an 18-mile long run and a tempo whose work block finished in full.
+   *
+   * So this is a signal about workout STRUCTURE, not about effort. Read it
+   * together with the per-phase `completed` flags: an unfinished WORK phase is
+   * what "cut it short" means. `watchStoppedInsideWork` is that predicate.
+   */
+  status?: 'completed' | 'partial' | 'abandoned' | string;
+
+  /** Contingency-rule outcomes the watch recorded — `pass` / `bail` / `abort`.
+   *  Zero rows carry it in the live census. */
+  ruleOutcomes?: unknown[];
+
+  /** The watch's own id for the completion this row came from. 28% / 42%.
+   *  Also the `coach_intents.field` value the full payload is filed under. */
   watchCompletionRef?: string;
   client_workout_id?: string;
 
@@ -606,6 +633,17 @@ export function runSplitsSql(alias = ''): string {
 /** The raw watch phases array, as jsonb. */
 export function runPhasesSql(alias = ''): string {
   return `${col(alias)}->'phases'`;
+}
+
+/** The watch's run-level outcome. NULL on every row written before
+ *  2026-08-17 — see the `status` field note for where it lives instead. */
+export function runWatchStatusSql(alias = ''): string {
+  return `${col(alias)}->>'status'`;
+}
+
+/** The `coach_intents.field` key the full watch payload is filed under. */
+export function runWatchCompletionRefSql(alias = ''): string {
+  return `${col(alias)}->>'watchCompletionRef'`;
 }
 
 /**
@@ -1008,4 +1046,153 @@ export function splitsWithHrAndPace(
     .filter((s): s is NormalizedSplit & { hr: number; paceSec: number } =>
       s.hr != null && s.paceSec != null)
     .map((s) => ({ hr: s.hr, paceSec: s.paceSec }));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 5 · WATCH PHASES
+ *
+ * `data.phases` is the richest thing in the blob and, until now, the only one
+ * with no shared reader — five call sites hand-roll `Number(p.actualPaceSPerMi)`
+ * against an `unknown[]`, each with its own idea of which phase types count as
+ * work (`glance-state` takes `type === 'work'`; `run-win` takes
+ * `'work' | 'tempo' | 'threshold'`, two of which no phase has ever carried).
+ *
+ * The array holds three eras, and they differ in what is POPULATED rather than
+ * in key names:
+ *
+ *   · WATCH     — every field. `index`, `verdict`, `timeInToleranceSec` and
+ *                 `targetPaceSPerMi` all present.
+ *   · TREADMILL — `TreadmillView.buildPayload` writes its own dict: no
+ *                 `index`, no `targetPaceSPerMi`, no `verdict`, no tolerance
+ *                 counters. `actualPaceSPerMi` on a treadmill phase is the
+ *                 belt speed, so it is exact rather than GPS-estimated.
+ *   · PHONE     — `PhoneRunTracker`, same shape as the watch.
+ *
+ * So a reader that requires `verdict` silently drops every treadmill session,
+ * and one that requires `index` mis-orders them. Both are absence-of-recording,
+ * never a judgement, and this normaliser keeps them distinguishable.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** The watch's own per-phase grade, computed on the device against the
+ *  server's tolerance. `WorkoutEngine.buildCompletion`:
+ *
+ *    incomplete · the runner ended the phase before reaching its target
+ *    hit        · mean pace in band AND ≥70% of 5s samples in band
+ *    drifted    · mean pace in band, < 70% of samples in band
+ *    missed     · mean pace outside the band
+ *
+ *  Null when the phase had no target to grade against (recoveries, and every
+ *  treadmill phase). */
+export type PhaseVerdict = 'hit' | 'drifted' | 'missed' | 'incomplete';
+
+export type PhaseType = 'warmup' | 'work' | 'recovery' | 'cooldown';
+
+/** One watch phase, normalised. Null means "this era did not record it". */
+export interface NormalizedPhase {
+  /** Position in the workout. Falls back to array order when the payload
+   *  omits `index` (every treadmill phase does). */
+  index: number;
+  type: PhaseType | null;
+  label: string | null;
+  targetPaceSPerMi: number | null;
+  actualPaceSPerMi: number | null;
+  actualDurationSec: number | null;
+  actualDistanceMi: number | null;
+  avgHr: number | null;
+  /** Whether the phase ran to its target. `false` on the phase the runner was
+   *  in when they ended the workout. Null when the payload omitted it. */
+  completed: boolean | null;
+  verdict: PhaseVerdict | null;
+  timeInToleranceSec: number | null;
+  timeOutOfToleranceSec: number | null;
+}
+
+const PHASE_TYPES: readonly string[] = ['warmup', 'work', 'recovery', 'cooldown'];
+const PHASE_VERDICTS: readonly string[] = ['hit', 'drifted', 'missed', 'incomplete'];
+
+/** Normalise `data.phases`. Returns [] when the row carries none. */
+export function runPhases(d: RunData): NormalizedPhase[] {
+  const raw = d.phases;
+  if (!Array.isArray(raw)) return [];
+  const out: NormalizedPhase[] = [];
+  raw.forEach((el, i) => {
+    if (!el || typeof el !== 'object' || Array.isArray(el)) return;
+    const p = el as Record<string, unknown>;
+    const idx = num(p.index);
+    const type = typeof p.type === 'string' && PHASE_TYPES.includes(p.type)
+      ? (p.type as PhaseType) : null;
+    const verdict = typeof p.verdict === 'string' && PHASE_VERDICTS.includes(p.verdict)
+      ? (p.verdict as PhaseVerdict) : null;
+    out.push({
+      index: idx ?? i,
+      type,
+      label: typeof p.label === 'string' ? p.label : null,
+      targetPaceSPerMi: pos(p.targetPaceSPerMi),
+      actualPaceSPerMi: pos(p.actualPaceSPerMi),
+      actualDurationSec: pos(p.actualDurationSec),
+      actualDistanceMi: pos(p.actualDistanceMi),
+      avgHr: hrToNum(p.avgHr),
+      completed: typeof p.completed === 'boolean' ? p.completed : null,
+      verdict,
+      timeInToleranceSec: num(p.timeInToleranceSec),
+      timeOutOfToleranceSec: num(p.timeOutOfToleranceSec),
+    });
+  });
+  return out;
+}
+
+/** The watch's run-level outcome, when the row carries it. See the `status`
+ *  field note — `abandoned` means the workout ended before its last phase,
+ *  which is NOT the same as the runner giving up. */
+export function runWatchStatus(d: RunData): 'completed' | 'partial' | 'abandoned' | null {
+  const s = d.status;
+  return s === 'completed' || s === 'partial' || s === 'abandoned' ? s : null;
+}
+
+/** The `coach_intents.field` key this run's full watch payload is filed
+ *  under, for rows written before `status` was persisted onto the run. */
+export function runWatchCompletionRef(d: RunData): string | null {
+  return typeof d.watchCompletionRef === 'string' && d.watchCompletionRef !== ''
+    ? d.watchCompletionRef : null;
+}
+
+/**
+ * Did the runner stop INSIDE the work?
+ *
+ * The predicate the run-level `status` is repeatedly mistaken for. A workout
+ * whose cool-down was cut short is `abandoned` and was fully executed; a
+ * workout whose fourth rep lasted six seconds is `abandoned` and was not.
+ * Only the second is evidence about the athlete.
+ *
+ * Returns null rather than false when the payload records no `completed`
+ * flags at all (treadmill rows before the field was written) — "we cannot
+ * see" and "they finished" must not be the same answer.
+ */
+export function watchStoppedInsideWork(phases: NormalizedPhase[]): boolean | null {
+  const work = phases.filter((p) => p.type === 'work');
+  if (work.length === 0) return null;
+  const known = work.filter((p) => p.completed != null);
+  if (known.length === 0) return null;
+  return known.some((p) => p.completed === false);
+}
+
+/**
+ * Share of graded time the runner spent inside the pace band, across the work
+ * phases. The device computed the two counters against the SERVER's own
+ * tolerance, so this is the closest thing to a ground-truth execution read
+ * anywhere in the system — and nothing consumed it until now.
+ *
+ * Null when no work phase carried the counters (every treadmill session, and
+ * any phase with no target).
+ */
+export function workToleranceShare(phases: NormalizedPhase[]): number | null {
+  let inSec = 0, outSec = 0;
+  for (const p of phases) {
+    if (p.type !== 'work') continue;
+    if (p.timeInToleranceSec == null || p.timeOutOfToleranceSec == null) continue;
+    inSec += p.timeInToleranceSec;
+    outSec += p.timeOutOfToleranceSec;
+  }
+  const total = inSec + outSec;
+  return total > 0 ? inSec / total : null;
 }

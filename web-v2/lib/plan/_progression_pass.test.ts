@@ -40,6 +40,7 @@ const BLOCK_WEEKLY_MI = 70;
 const BLOCK_SEED = '4×6 min @ T pace · 90s jog';
 
 const BLANK: AdaptationInput = {
+  keySessionExecutions: null,
   keySessionsPlanned: null, keySessionsCompleted: null, targetVerdicts: null,
   repConsistency: null, rpeReported: null, rpeHarderThanExpected: null,
   decouplingVerdicts: null, lateDriftBpm: null, easyDiscipline: null,

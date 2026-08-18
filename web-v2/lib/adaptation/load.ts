@@ -37,6 +37,7 @@ import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 import { DECOUPLING_ENDURANCE_GAP_PCT, DECOUPLING_HEAT_ARTIFACT_PCT } from '@/lib/coach/limiter';
 import { computeHrThirds } from '@/lib/coach/hr-thirds';
 import { loadRecentTestPoints } from '@/lib/training/goal-projection';
+import { loadKeySessionExecutions } from '@/lib/execution/load';
 import { classifyAdaptation, type AdaptationInput, type AdaptationVerdict } from './adaptation-model';
 
 /**
@@ -114,8 +115,15 @@ export async function loadAdaptationInput(
    *  the answer instead of re-deriving it. */
   const OWNED_DAYS = ownedDaysSql();
 
+  /* The measured anchor, read once. Both the verdict path and the execution
+   * reconstruction need it — the first to grade pace against it, the second to
+   * name the domain a piece of work landed in and the pace this runner has
+   * established there. Two independent reads would be two opinions. */
+  const vdot = await quiet('current vdot', () => currentVdot(userUuid));
+
   const [
     keySessions,
+    keySessionReads,
     verdictRows,
     rpe,
     longRuns,
@@ -128,9 +136,12 @@ export async function loadAdaptationInput(
     recovery,
     easy,
   ] = await Promise.all([
-    /* Key sessions planned vs actually run. A quality day counts as completed
-     * when a run exists on that date — "did you do the thing", not "was it
-     * good". Whether it was good is the target-verdict signal below. */
+    /* Key sessions planned vs actually run.
+     *
+     * NARRATION ONLY since 2026-08-17. This counts a quality day as completed
+     * when a run exists on that date, which cannot tell an EQUIVALENT session
+     * from a MISSED one — the sentence the runner recognises, and no longer
+     * the number the model scores. The states below are what it scores. */
     quiet('key sessions', async () =>
       (
         await pool.query<{ planned: string; completed: string }>(
@@ -147,6 +158,18 @@ export async function loadAdaptationInput(
       ).rows[0],
     ),
 
+    /* Every key session, INTERPRETED — the execution dimension's real input.
+     *
+     * `interpretExecution` resolves each prescribed session to one of
+     * doctrine's seven states and a stimulus completion, reconstructing the
+     * planned stimulus from `workout_spec` and the actual one from the watch's
+     * own phases (falling back to splits, then the whole run). Sessions whose
+     * work no basis could describe come back `readable: false` and are dropped
+     * here rather than passed as a state — a session we cannot judge is
+     * missing evidence, not a failed one. */
+    quiet('key session executions', () =>
+      loadKeySessionExecutions(userUuid, fromISO, todayISO, vdot)),
+
     /* Target adherence. Calls the SAME judge the projection uses rather than
      * re-deriving: `loadRecentTestPoints` carries the basis ladder (work-phase
      * watch pace, then splits, then a blended whole-run expectation, then an
@@ -154,13 +177,11 @@ export async function loadAdaptationInput(
      * A second implementation here would drift from the verdicts the runner
      * sees on the run itself. Windowed to the adaptation window and uncapped,
      * where the projection takes only the newest three. */
-    quiet('target verdicts', async () => {
-      const vdot = await currentVdot(userUuid);
-      // includeArchivedPlans: the block the runner just finished lives in an
-      // archived plan the moment the next one is authored. His body does not
-      // know that. The projection keeps the active-plan-only default.
-      return loadRecentTestPoints(userUuid, vdot, 200, fromISO, true);
-    }),
+    // includeArchivedPlans: the block the runner just finished lives in an
+    // archived plan the moment the next one is authored. His body does not
+    // know that. The projection keeps the active-plan-only default.
+    quiet('target verdicts', () =>
+      loadRecentTestPoints(userUuid, vdot, 200, fromISO, true)),
 
     quiet('rpe', async () =>
       (
@@ -377,7 +398,21 @@ export async function loadAdaptationInput(
 
   const readinessTotal = readiness ? Number(readiness.total) : 0;
 
+  /* Only the sessions a basis could actually describe. `readable: false`
+   * covers two cases and neither is a finding about the runner: a plan row
+   * whose intended stimulus we cannot state, and a run whose work no basis
+   * could locate. Passing either as a state would put a fabricated judgement
+   * into the dimension that gates his progression. */
+  const executions = (keySessionReads ?? [])
+    .filter((s) => s.readable && s.read != null)
+    .map((s) => ({
+      state: s.read!.state,
+      stimulusCompletion: s.read!.stimulusCompletion,
+      earnsProgression: s.earnsProgression,
+    }));
+
   return {
+    keySessionExecutions: executions.length > 0 ? executions : null,
     keySessionsPlanned: keySessions ? Number(keySessions.planned) || null : null,
     keySessionsCompleted: keySessions ? Number(keySessions.completed) : null,
     targetVerdicts: verdicts.length > 0 ? verdicts : null,

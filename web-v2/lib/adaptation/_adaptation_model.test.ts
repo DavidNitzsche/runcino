@@ -8,15 +8,36 @@
 import { describe, it, expect } from 'vitest';
 import {
   classifyAdaptation,
+  progressionCreditShare,
   MIN_WEEKS_FOR_STRONG,
   NIGGLE_VETO_SEVERITY,
+  PROGRESSION_GATE,
   READINESS_MIN_WINDOW_DAYS,
   type AdaptationInput,
+  type KeySessionRead,
 } from './adaptation-model';
+
+/** Shorthand for a session in a given state. The execution dimension scores
+ *  these; the planned/completed headcount beside them is narration. */
+const as_planned: KeySessionRead =
+  { state: 'AS_PLANNED', stimulusCompletion: 1, earnsProgression: true };
+const equivalent: KeySessionRead =
+  { state: 'EQUIVALENT', stimulusCompletion: 1, earnsProgression: true };
+const partial_failed: KeySessionRead =
+  { state: 'PARTIAL_FAILED', stimulusCompletion: 0.6, earnsProgression: false };
+const missed: KeySessionRead =
+  { state: 'MISSED', stimulusCompletion: 0, earnsProgression: false };
+const replaced: KeySessionRead =
+  { state: 'REPLACED', stimulusCompletion: 1, earnsProgression: false };
+const extra: KeySessionRead =
+  { state: 'EXTRA', stimulusCompletion: 0, earnsProgression: false };
+
+const repeat = (r: KeySessionRead, n: number): KeySessionRead[] => Array.from({ length: n }, () => r);
 
 /** A runner we can see clearly and who is doing fine. Tests mutate from here. */
 function baseline(): AdaptationInput {
   return {
+    keySessionExecutions: repeat(as_planned, 8),
     keySessionsPlanned: 8,
     keySessionsCompleted: 8,
     targetVerdicts: ['on', 'on', 'on', 'on', 'on', 'on'],
@@ -43,6 +64,7 @@ function baseline(): AdaptationInput {
 /** A runner we can barely see at all. */
 function blind(): AdaptationInput {
   return {
+    keySessionExecutions: null,
     keySessionsPlanned: null,
     keySessionsCompleted: null,
     targetVerdicts: null,
@@ -129,6 +151,7 @@ describe('the doctrine progression table', () => {
   it('marginal holds the current stimulus rather than adding to it', () => {
     const struggling: AdaptationInput = {
       ...baseline(),
+      keySessionExecutions: [...repeat(as_planned, 5), ...repeat(missed, 3)],
       keySessionsCompleted: 5,
       targetVerdicts: ['slow', 'slow', 'on', 'slow', 'on', 'on'],
       repConsistency: ['fading', 'fading', 'even'],
@@ -144,6 +167,7 @@ describe('the doctrine progression table', () => {
   it('poor reduces or modifies the stimulus', () => {
     const failing: AdaptationInput = {
       ...baseline(),
+      keySessionExecutions: [...repeat(as_planned, 2), ...repeat(missed, 6)],
       keySessionsCompleted: 2,
       targetVerdicts: ['slow', 'slow', 'slow', 'slow'],
       repConsistency: ['fading', 'fading', 'fading'],
@@ -170,6 +194,7 @@ describe('execution is a gate — you cannot earn stress by not doing the work',
     // taxed them was never delivered. Averaging calls that "absorbing well".
     const skipping: AdaptationInput = {
       ...baseline(),
+      keySessionExecutions: [...repeat(as_planned, 5), ...repeat(missed, 3)],
       keySessionsCompleted: 5,
       targetVerdicts: ['slow', 'slow', 'on', 'slow', 'on', 'on'],
       repConsistency: ['fading', 'fading', 'even'],
@@ -184,6 +209,7 @@ describe('execution is a gate — you cannot earn stress by not doing the work',
   it('wholesale non-execution caps at poor', () => {
     const absent: AdaptationInput = {
       ...baseline(),
+      keySessionExecutions: [as_planned, ...repeat(missed, 7)],
       keySessionsCompleted: 1,
       targetVerdicts: ['slow', 'slow', 'slow', 'slow'],
       repConsistency: ['fading', 'fading', 'fading'],
@@ -194,11 +220,144 @@ describe('execution is a gate — you cannot earn stress by not doing the work',
   it('the gate explains itself in terms of the sessions, not the heart rate', () => {
     const skipping: AdaptationInput = {
       ...baseline(),
+      keySessionExecutions: [...repeat(as_planned, 5), ...repeat(missed, 3)],
       keySessionsCompleted: 5,
       targetVerdicts: ['slow', 'slow', 'on', 'slow', 'on', 'on'],
       repConsistency: ['fading', 'fading', 'even'],
     };
     expect(classifyAdaptation(skipping).summary).toMatch(/session|rep/i);
+  });
+});
+
+describe('execution reads STATES · a run on the date is not a session done', () => {
+  // `Design/execution-memory-firing.md` Part 1. The old gate counted a quality
+  // day as done if a run existed on that date, which cannot tell EQUIVALENT
+  // from MISSED — the two runners below scored identically under it.
+  const swapped: AdaptationInput = {
+    ...baseline(),
+    keySessionExecutions: repeat(equivalent, 8),
+    keySessionsCompleted: 8,
+  };
+  const skipped: AdaptationInput = {
+    ...baseline(),
+    keySessionExecutions: repeat(missed, 8),
+    // The headcount still says every session had a run on its date. It is
+    // narration now, and narration must not move the verdict.
+    keySessionsCompleted: 8,
+    // Nothing was run, so there is nothing to grade against a target. Leaving
+    // baseline's six on-target verdicts here would be describing a runner who
+    // both skipped every session and nailed six of them.
+    targetVerdicts: null,
+    repConsistency: null,
+  };
+
+  it('an equivalent session earns full credit · different shape, same stimulus', () => {
+    const v = classifyAdaptation(swapped);
+    expect(v.dimensions.find((d) => d.dimension === 'execution')!.score)
+      .toBe(classifyAdaptation(baseline()).dimensions.find((d) => d.dimension === 'execution')!.score);
+    expect(progressionCreditShare(swapped)).toBe(1);
+  });
+
+  it('a missed block reads as missed even when a run exists on every date', () => {
+    const v = classifyAdaptation(skipped);
+    expect(v.dimensions.find((d) => d.dimension === 'execution')!.score).toBeLessThan(-1);
+    expect(v.band).toBe('poor');
+  });
+
+  it('a replaced session is not a miss and is not room for more', () => {
+    // "Adjust downstream training rather than marking Saturday green."
+    const raced: AdaptationInput = {
+      ...baseline(),
+      keySessionExecutions: [...repeat(as_planned, 7), replaced],
+    };
+    expect(classifyAdaptation(raced).dimensions.find((d) => d.dimension === 'execution')!.detail)
+      .toMatch(/replaced by a race/);
+    expect(progressionCreditShare(raced)).toBeCloseTo(7 / 8, 5);
+  });
+
+  it('EXTRA never counts as compliance · extra work is data, not achievement', () => {
+    const withExtra: AdaptationInput = {
+      ...baseline(),
+      keySessionExecutions: [...repeat(as_planned, 4), ...repeat(missed, 4), ...repeat(extra, 8)],
+    };
+    const without: AdaptationInput = {
+      ...baseline(),
+      keySessionExecutions: [...repeat(as_planned, 4), ...repeat(missed, 4)],
+    };
+    // Eight unplanned runs must not raise the share of the plan that was done.
+    expect(progressionCreditShare(withExtra)).toBe(progressionCreditShare(without));
+    expect(classifyAdaptation(withExtra).dimensions.find((d) => d.dimension === 'execution')!.score)
+      .toBe(classifyAdaptation(without).dimensions.find((d) => d.dimension === 'execution')!.score);
+  });
+
+  it('nothing interpretable leaves the dimension to the verdicts, not to a headcount', () => {
+    const uninterpretable: AdaptationInput = {
+      ...baseline(),
+      keySessionExecutions: null,
+      keySessionsCompleted: 1,
+      keySessionsPlanned: 8,
+      targetVerdicts: null,
+      repConsistency: null,
+    };
+    // 1 of 8 would once have scored −1.6 and capped the band at marginal off a
+    // predicate that cannot see whether a session happened. Absence of
+    // evidence is not evidence of poor adaptation.
+    expect(classifyAdaptation(uninterpretable).dimensions
+      .find((d) => d.dimension === 'execution')!.score).toBeNull();
+  });
+});
+
+describe('rule 4 · training credit and progression credit are different currencies', () => {
+  /** Every session useful, none of them fully delivered. */
+  const allPartial: AdaptationInput = {
+    ...baseline(),
+    keySessionExecutions: repeat(partial_failed, 8),
+    keySessionsCompleted: 8,
+  };
+
+  it('partial work is not scored as zero', () => {
+    const partialScore = classifyAdaptation(allPartial)
+      .dimensions.find((d) => d.dimension === 'execution')!.score!;
+    const missedScore = classifyAdaptation({ ...baseline(), keySessionExecutions: repeat(missed, 8) })
+      .dimensions.find((d) => d.dimension === 'execution')!.score!;
+    expect(partialScore).toBeGreaterThan(missedScore);
+  });
+
+  it('and is not rewarded as though it demonstrated capacity for more', () => {
+    const partialScore = classifyAdaptation(allPartial)
+      .dimensions.find((d) => d.dimension === 'execution')!.score!;
+    const fullScore = classifyAdaptation(baseline())
+      .dimensions.find((d) => d.dimension === 'execution')!.score!;
+    expect(partialScore).toBeLessThan(fullScore);
+  });
+
+  it('a block carried by partials cannot reach strong, however good the rest looks', () => {
+    // The gate the single band cap could not express: the work counted, and it
+    // did not show room for more.
+    const v = classifyAdaptation({
+      ...allPartial,
+      // Everything else pristine and spread over enough weeks.
+      targetVerdicts: ['on', 'on', 'on', 'on', 'on', 'on'],
+      distinctEvidenceWeeks: 5,
+    });
+    expect(progressionCreditShare(allPartial)).toBeLessThan(PROGRESSION_GATE.strongMinShare);
+    expect(v.band).not.toBe('strong');
+  });
+
+  it('and the summary says which of the two failed', () => {
+    const v = classifyAdaptation({
+      ...baseline(),
+      keySessionExecutions: [...repeat(as_planned, 4), ...repeat(partial_failed, 4)],
+      distinctEvidenceWeeks: 5,
+    });
+    if (v.band === 'normal') expect(v.summary).toMatch(/short of the session|as expected/i);
+  });
+
+  it('an uninterpretable block does not trip the gate · absence is not a finding', () => {
+    expect(progressionCreditShare({ ...baseline(), keySessionExecutions: null })).toBeNull();
+    // Same input as the strong case, with the states removed entirely.
+    const v = classifyAdaptation({ ...baseline(), keySessionExecutions: null });
+    expect(['strong', 'normal']).toContain(v.band);
   });
 });
 
