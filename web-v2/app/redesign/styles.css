@@ -1,0 +1,17 @@
+/* faff.run redesign · design-system entry point.
+ *
+ * Ported verbatim from the outside-studio handoff (docs/design/
+ * DESIGN-BRIEF-site-wide-redesign.md), 2026-08-18. Scoped to
+ * app/redesign/* only — does not touch globals.css or any token the
+ * current live app depends on. See scripts/check-palette-sync.sh's
+ * header for why the CI palette lock no longer checks web while this
+ * is in flight.
+ */
+@import url("./tokens/fonts.css");
+@import url("./tokens/colors.css");
+@import url("./tokens/typography.css");
+@import url("./tokens/spacing.css");
+@import url("./tokens/shape.css");
+@import url("./tokens/motion.css");
+@import url("./tokens/base.css");
+@import url("./tokens/chart.css");

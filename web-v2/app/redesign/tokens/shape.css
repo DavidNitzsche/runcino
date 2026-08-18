@@ -1,0 +1,37 @@
+/* Radius, elevation and the treatment that replaces borders.
+   Light: soft real shadow, a panel lifted off warm paper. Dark: a rim of light.
+   In neither theme is a hairline border the answer. Recessed things (tracks) are cut in. */
+:root{
+  --radius-xs:8px; --radius-s:12px; --radius-m:16px; --radius-l:20px;
+  --radius-xl:24px; --radius-2xl:28px; --radius-pill:999px;
+
+  --edge-light:inset 0 0 0 1px rgba(20,18,15,.04); /* @kind shadow */
+  --elevation-flat:0 1px 2px rgba(20,18,15,.05); /* @kind shadow */
+  --elevation-raised:0 1px 2px rgba(20,18,15,.05),0 12px 28px -12px rgba(20,18,15,.16); /* @kind shadow */
+  --elevation-lift:0 2px 4px rgba(20,18,15,.06),0 28px 60px -20px rgba(20,18,15,.24); /* @kind shadow */
+  --elevation-control:0 1px 2px rgba(20,18,15,.07); /* @kind shadow */
+  --elevation-recess:inset 0 1px 2px rgba(20,18,15,.09); /* @kind shadow */
+  --elevation-overlay:0 40px 90px -30px rgba(20,18,15,.4); /* @kind shadow */
+  --elevation-sheet:0 -24px 64px -24px rgba(20,18,15,.28); /* @kind shadow */
+
+  --mark-halo:4px;                       /* the mark wears a halo of its own surface */
+  --mark-glow:0 4px 10px -2px rgba(20,18,15,.35); /* @kind shadow */
+  --band-lip:none; /* @kind shadow */
+  --track-height:12px;
+  --track-height-s:8px;
+  --rule-light:rgba(20,18,15,.08); /* @kind other */
+  --rule-hairline:none; /* @kind other */ /* still none. Space, a fill step, or a rule of tinted ink.  */
+}
+[data-theme="dark"]{
+  --edge-light:inset 0 1px 0 rgba(255,255,255,.08),inset 0 0 0 1px rgba(255,255,255,.035); /* @kind shadow */
+  --elevation-flat:inset 0 1px 0 rgba(255,255,255,.08),inset 0 0 0 1px rgba(255,255,255,.035); /* @kind shadow */
+  --elevation-raised:inset 0 1px 0 rgba(255,255,255,.08),inset 0 0 0 1px rgba(255,255,255,.035),0 30px 70px -28px #000; /* @kind shadow */
+  --elevation-lift:inset 0 1px 0 rgba(255,255,255,.1),inset 0 0 0 1px rgba(255,255,255,.04),0 40px 90px -30px #000; /* @kind shadow */
+  --elevation-control:inset 0 1px 0 rgba(255,255,255,.08); /* @kind shadow */
+  --elevation-recess:inset 0 1px 3px rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.05); /* @kind shadow */
+  --elevation-overlay:inset 0 1px 0 rgba(255,255,255,.09),0 40px 90px -30px #000; /* @kind shadow */
+  --elevation-sheet:inset 0 1px 0 rgba(255,255,255,.09),0 -24px 64px -24px rgba(0,0,0,.8); /* @kind shadow */
+  --mark-glow:0 0 22px 2px rgba(255,77,24,.6); /* @kind shadow */
+  --band-lip:inset 0 1px 0 rgba(255,255,255,.18); /* @kind shadow */
+  --rule-light:rgba(255,255,255,.08); /* @kind other */
+}

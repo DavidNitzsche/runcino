@@ -1,0 +1,10 @@
+/* Webfonts. The faff three-font system, as used in the product.
+   Bebas Neue: display and every numeral. Oswald: labels, kickers, statuses. Inter: body and voice. */
+@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap");
+:root{
+  --font-core:"Inter",-apple-system,system-ui,"Helvetica Neue",sans-serif;
+  --font-display:"Bebas Neue","HelveticaNeue-Bold",Impact,sans-serif;
+  --font-sub:"Oswald","Inter",sans-serif;
+  --font-value:"Bebas Neue","HelveticaNeue-Bold",sans-serif;
+  --display-stretch:normal; /* @kind font */ /* Bebas has no width axis */
+}

@@ -1,0 +1,53 @@
+/* Type. Four registers and a real middle one: the coach's voice.
+   Display and numerals are Bebas: condensed, uppercase, dominant. Labels are Oswald,
+   letterspaced and quiet. Body and the coach's voice are Inter. Nothing below 11px. */
+:root{
+  /* display · Bebas as the graphic. Uppercase, tight leading. */
+  --type-display-1:140px; /* @kind font */
+  --type-display-2:96px; /* @kind font */
+  --type-display-3:56px; /* @kind font */
+  --lh-display-1:.84; /* @kind font */
+  --lh-display-2:.88; /* @kind font */
+  --lh-display-3:.94; /* @kind font */
+  --tracking-display:.006em; /* @kind font */ /* Bebas wants a hair of positive tracking, never negative */
+
+  /* value · numerals, also Bebas. Tabular, dominant in their space. */
+  --type-value-1:72px; /* @kind font */
+  --type-value-2:54px; /* @kind font */
+  --type-value-3:38px; /* @kind font */
+  --type-value-4:28px; /* @kind font */
+  --lh-value:1; /* @kind font */
+  --tracking-value:.008em; /* @kind font */
+
+  /* say · the coach's voice, Inter. The middle register the old surface did not have. */
+  --type-say-1:26px; /* @kind font */
+  --type-say-2:20px; /* @kind font */
+  --type-say-3:17px; /* @kind font */
+  --lh-say-1:1.4; /* @kind font */
+  --lh-say-2:1.5; /* @kind font */
+  --lh-say-3:1.55; /* @kind font */
+  --tracking-say:-.005em; /* @kind font */
+
+  /* body · Inter */
+  --type-body:15px; /* @kind font */
+  --type-body-s:13.5px; /* @kind font */
+  --lh-body:1.55; /* @kind font */
+  --lh-body-s:1.5; /* @kind font */
+
+  /* label · Oswald, uppercase, letterspaced. The product's supporting voice. */
+  --type-label:12px; /* @kind font */
+  --type-label-s:11px; /* @kind font */
+  --type-meta:11.5px; /* @kind font */
+  --lh-label:1.2; /* @kind font */
+  --tracking-label:.14em; /* @kind font */
+
+  /* kicker · the loudest label register */
+  --type-kicker:11px; /* @kind font */
+  --tracking-kicker:.2em; /* @kind font */
+
+  --weight-regular:400; /* @kind font */
+  --weight-medium:500; /* @kind font */
+  --weight-semibold:600; /* @kind font */
+  --weight-label:600; /* @kind font */
+  --weight-display:400; /* @kind font */ /* Bebas ships one weight */
+}

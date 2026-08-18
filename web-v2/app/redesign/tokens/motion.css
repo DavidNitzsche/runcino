@@ -1,0 +1,18 @@
+/* Motion. Nothing bounces. Nothing draws attention to itself.
+   Data never animates into position, because reflow is the failure this system was built against. */
+:root{
+  --ease-out:cubic-bezier(.2,.7,.3,1); /* @kind other */
+  --ease-inout:cubic-bezier(.5,0,.3,1); /* @kind other */
+  --dur-1:120ms; /* @kind other */   /* hover, press */
+  --dur-2:200ms; /* @kind other */   /* fill and colour changes */
+  --dur-3:320ms; /* @kind other */   /* sheets, overlays */
+  --dur-4:600ms; /* @kind other */   /* a range mark moving to a new value */
+  --press-scale:.985; /* @kind other */
+  --hover-lift:brightness(1.12); /* @kind other */
+}
+@media (prefers-reduced-motion:reduce){:root{
+  --dur-1:0ms; /* @kind other */
+  --dur-2:0ms; /* @kind other */
+  --dur-3:0ms; /* @kind other */
+  --dur-4:0ms; /* @kind other */
+}}

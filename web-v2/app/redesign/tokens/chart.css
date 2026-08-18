@@ -1,0 +1,77 @@
+/* ── charts ─────────────────────────────────────────────────────────────────
+   A chart is the primary object on the card. The athlete reads the shape first.
+   ONE MARK TYPE PER CHART: bars, a line, or a ring. Nothing is laid over the marks —
+   no gridlines, axes, bands, thresholds or labels on the data.
+
+   Colour: each metric has its own hue, and every mark is filled with that hue's
+   gradient, built by the same formula as the state gradients — a lift, the colour
+   itself, then the hue turned. Never a fade to black, never a second hue's colour. */
+:root{
+  --chart-bar-gap:clamp(2px,3.5%,12px);   /* bars keep their gap in a wide card, close it in a narrow one */
+  --chart-bar-r:10px;
+  --chart-bar-min:14px;
+  --chart-stroke:8px;
+}
+.faff-chart{position:relative;display:flex;flex-direction:column;gap:10px;flex:1 1 auto;align-self:stretch;min-width:0;min-height:0;
+  --c:var(--state-long);
+  --c-lift:oklch(from var(--c) calc(l + var(--g-lift)) calc(c * .94) calc(h - 6));
+  --c-turn:oklch(from var(--c) calc(l - var(--g-drop)) c calc(h + var(--g-turn)));
+  --c-fill:linear-gradient(180deg,var(--c-lift) 0%,var(--c) 52%,var(--c-turn) 100%)}
+.faff-chart.warm{--c-turn:oklch(from var(--c) calc(l - var(--g-drop)) c calc(h + var(--g-turn-warm)))}
+
+/* the axis lives BELOW the plot, never over the marks. Bar labels sit in the same
+   slots as their bars; a line's labels sit at its ends. */
+.faff-chart-plot{position:relative;flex:1 1 auto;min-height:0;min-width:0;display:flex}
+/* the svg is painted into the plot, never allowed to size it: a viewBox has an intrinsic
+   aspect ratio, and a chart's height belongs to the card, not to its geometry */
+.faff-chart-plot>svg{position:absolute;inset:0;width:100%;height:100%}
+.faff-chart-plot>.faff-chart-bars{flex:1 1 auto;width:100%;min-width:0;height:100%}
+.faff-chart-axis{flex:0 0 auto;display:flex;gap:var(--chart-bar-gap);
+  font-family:var(--font-sub);font-size:var(--type-label-s);font-weight:var(--weight-label);
+  letter-spacing:var(--tracking-label);text-transform:uppercase;line-height:16px;color:var(--text-secondary)}
+.faff-chart-axis>span{flex:1 1 0;min-width:0;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.faff-chart-axis.ends{justify-content:space-between}
+.faff-chart-axis.ends>span{flex:0 0 auto;text-align:left}
+
+/* bars */
+.faff-chart-bars{display:flex;align-items:flex-end;gap:var(--chart-bar-gap);width:100%;height:100%}
+.faff-chart-bars>i{flex:1 1 0;min-width:0;min-height:var(--chart-bar-min);
+  height:calc(var(--v) * 1%);background:var(--c-fill);border-radius:var(--chart-bar-r)}
+
+/* line */
+.faff-chart>svg{display:block;width:100%;height:100%;overflow:visible}
+.faff-chart .line{fill:none;stroke-width:var(--chart-stroke);stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+
+/* ring */
+.faff-chart>svg.ring{width:100%;height:100%;overflow:visible}
+.faff-chart .track{stroke:color-mix(in oklab,var(--c) 16%,transparent);stroke-width:11}
+.faff-chart .value{stroke-width:11;stroke-linecap:round}
+
+/* ── motion ─────────────────────────────────────────────────────────────────
+   A chart arrives the way the data arrived: in order, from the baseline out.
+   Entry is the only choreography; an update is a single interpolation of the
+   same marks — never a redraw, never a fade between two pictures. */
+:root{
+  --chart-in:var(--dur-slow,560ms);
+  /* stagger between marks, oldest first */
+  --chart-step:34ms; /* @kind other */
+  --chart-ease:cubic-bezier(.22,.68,.24,1); /* @kind other */
+  --chart-update:var(--dur-base,320ms);
+}
+.faff-chart-bars>i{transform-origin:50% 100%;transition:height var(--chart-update) var(--chart-ease)}
+.faff-chart[data-enter] .faff-chart-bars>i{animation:faff-bar-in var(--chart-in) var(--chart-ease) backwards;
+  animation-delay:calc(var(--i) * var(--chart-step))}
+@keyframes faff-bar-in{from{transform:scaleY(.04);opacity:0}to{transform:scaleY(1);opacity:1}}
+
+.faff-chart .line{transition:stroke-dashoffset var(--chart-update) var(--chart-ease)}
+.faff-chart[data-enter] .line{animation:faff-line-in calc(var(--chart-in) * 1.4) var(--chart-ease) backwards}
+@keyframes faff-line-in{from{stroke-dashoffset:var(--len)}to{stroke-dashoffset:0}}
+
+.faff-chart .value{transition:stroke-dasharray var(--chart-update) var(--chart-ease)}
+.faff-chart[data-enter] .value{animation:faff-ring-in calc(var(--chart-in) * 1.2) var(--chart-ease) backwards}
+@keyframes faff-ring-in{from{stroke-dasharray:0 999}}
+
+@media (prefers-reduced-motion:reduce){
+  .faff-chart[data-enter] .faff-chart-bars>i,.faff-chart[data-enter] .line,.faff-chart[data-enter] .value{animation:none}
+  .faff-chart-bars>i,.faff-chart .line,.faff-chart .value{transition-duration:1ms}
+}

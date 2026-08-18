@@ -1,0 +1,223 @@
+/* Colour. Warm paper is the ground; the canvas is the second theme.
+   Temperature is effort: cool is recovery and the body, warm is the build, hot ember is race day.
+   Colour always encodes a state; it is never a finish.
+   THREE SYSTEMS, NEVER CROSSED:
+     1. the state palette and its gradients encode day state
+     2. the zone ramp encodes heart-rate zones and nothing else
+     3. mesh palettes are backdrops only
+   A zone colour never fills a state badge. A state colour never fills a zone bar. */
+:root{
+  /* ── page: warm paper, white panels ── */
+  --paper:#EFECE6;
+  --ground:#EFECE6;
+  --surface-1:#FFFFFF;
+  --surface-2:#F8F6F2;
+  --surface-3:#EDE9E3;
+  --surface-4:#E1DCD4;
+  --ink-1:#14120F;
+  --ink-2:#5E5A54;
+  --ink-3:#8C877F;
+  --ink-4:#B8B2A9;
+
+  /* ── canvas: the dark surfaces, for the dark theme and for mesh ── */
+  --canvas-1:#0A0C10;
+  --canvas-2:#15171C;
+  --canvas-card:#11141A;
+  --canvas-card-2:#13171F;
+  --ink-on-dark:#F6F7F8;
+  --mute-on-dark:#8A90A0;
+  --dim-on-dark:#4B505E;
+  --line-on-dark:rgba(255,255,255,.08); /* @kind other */
+
+  /* ── state palette. Each maps to a day state. Encodes what something IS. ── */
+  --state-easy:#3EBD41;      /* good, solid, ready, completed */
+  --state-quality:#F3AD38;   /* effort, the working amber */
+  --state-alarm:#FC4D64;     /* over, alert. Sparingly. */
+  --state-long:#27B4E0;      /* distance, the long-run blue */
+  --state-rest:#008FEC;      /* recovery, stand-down */
+  --state-phase:#B084FF;     /* explainer, phase, onboarding */
+  --state-race:#FF8847;      /* the race horizon. Sacred to race week. */
+
+  /* the ink forms: the same seven deepened just enough to hold as type or as a mark on paper */
+  --state-easy-ink:#1E9A4A;
+  --state-quality-ink:#CE7008; /* amber darkened straight down goes mustard — the ink form turns toward orange instead */
+  --state-alarm-ink:#DE2340;
+  --state-long-ink:#1189B5;
+  --state-rest-ink:#0B72C4;
+  --state-phase-ink:#7B4EE0;
+  --state-race-ink:#E4661F;
+
+  /* ── heart-rate zone ramp. One job: the zone bar. Luminance peaks at Z3. ── */
+  --zone-1:#5B7CB8;
+  --zone-2:#48B3B5;
+  --zone-3:#8FC04A;
+  --zone-4:#E89B3A;
+  --zone-5:#D63E4E;
+
+  /* ── state gradients. ONE FORMULA, no hand-picked stops.
+        Every gradient is derived from its state colour: a lift of the same hue, the state colour
+        itself, then the same hue turned +34 and dropped a little. One angle, three stops, fixed
+        positions. NO GRADIENT TERMINATES IN BLACK — the last stop turns the hue, it never drains
+        it. To add a gradient, add a state colour; never write stops by hand. ── */
+  --g-angle:135deg; /* @kind other */
+  --g-stop-1:0%; /* @kind other */
+  --g-stop-2:45%; /* @kind other */
+  --g-stop-3:100%; /* @kind other */
+  --g-lift:.14; /* @kind other */
+  /* warm states start bright already: lifting them the full amount washes white type off the top stop */
+  --g-lift-warm:.03; /* @kind other */
+  --g-drop:.10; /* @kind other */
+  /* cool states turn toward violet; warm states turn toward red — a warm gradient deepens, never yellows */
+  --g-turn:34; /* @kind other */
+  --g-turn-warm:-34; /* @kind other */
+
+  /* the neutral state: nothing happened. The only desaturated gradient in the system. */
+  --state-mute:#8792A8;
+  --state-mute-ink:#63708C;
+
+  --g-easy:linear-gradient(var(--g-angle),
+    oklch(from var(--state-easy) calc(l + var(--g-lift)) calc(c * .94) calc(h - 6)) var(--g-stop-1),
+    var(--state-easy) var(--g-stop-2),
+    oklch(from var(--state-easy) calc(l - var(--g-drop)) c calc(h + var(--g-turn))) var(--g-stop-3)); /* @kind other */
+  --g-quality:linear-gradient(var(--g-angle),
+    oklch(from var(--state-quality) calc(l + var(--g-lift-warm)) calc(c * .94) calc(h - 6)) var(--g-stop-1),
+    var(--state-quality) var(--g-stop-2),
+    oklch(from var(--state-quality) calc(l - var(--g-drop)) c calc(h + var(--g-turn-warm))) var(--g-stop-3)); /* @kind other */
+  --g-alarm:linear-gradient(var(--g-angle),
+    oklch(from var(--state-alarm) calc(l + var(--g-lift-warm)) calc(c * .94) calc(h - 6)) var(--g-stop-1),
+    var(--state-alarm) var(--g-stop-2),
+    oklch(from var(--state-alarm) calc(l - var(--g-drop)) c calc(h + var(--g-turn-warm))) var(--g-stop-3)); /* @kind other */
+  --g-long:linear-gradient(var(--g-angle),
+    oklch(from var(--state-long) calc(l + var(--g-lift)) calc(c * .94) calc(h - 6)) var(--g-stop-1),
+    var(--state-long) var(--g-stop-2),
+    oklch(from var(--state-long) calc(l - var(--g-drop)) c calc(h + var(--g-turn))) var(--g-stop-3)); /* @kind other */
+  --g-rest:linear-gradient(var(--g-angle),
+    oklch(from var(--state-rest) calc(l + var(--g-lift)) calc(c * .94) calc(h - 6)) var(--g-stop-1),
+    var(--state-rest) var(--g-stop-2),
+    oklch(from var(--state-rest) calc(l - var(--g-drop)) c calc(h + var(--g-turn))) var(--g-stop-3)); /* @kind other */
+  --g-phase:linear-gradient(var(--g-angle),
+    oklch(from var(--state-phase) calc(l + var(--g-lift)) calc(c * .94) calc(h - 6)) var(--g-stop-1),
+    var(--state-phase) var(--g-stop-2),
+    oklch(from var(--state-phase) calc(l - var(--g-drop)) c calc(h + var(--g-turn))) var(--g-stop-3)); /* @kind other */
+  --g-race:linear-gradient(var(--g-angle),
+    oklch(from var(--state-race) calc(l + var(--g-lift-warm)) calc(c * .94) calc(h - 6)) var(--g-stop-1),
+    var(--state-race) var(--g-stop-2),
+    oklch(from var(--state-race) calc(l - var(--g-drop)) c calc(h + var(--g-turn-warm))) var(--g-stop-3)); /* @kind other */
+  --g-mute:linear-gradient(var(--g-angle),
+    oklch(from var(--state-mute) calc(l + var(--g-lift)) calc(c * .94) calc(h - 6)) var(--g-stop-1),
+    var(--state-mute) var(--g-stop-2),
+    oklch(from var(--state-mute) calc(l - var(--g-drop)) c calc(h + var(--g-turn))) var(--g-stop-3)); /* @kind other */
+
+  /* aliases — a situation reuses a state's gradient, it never gets its own stops */
+  --g-done:var(--g-easy); /* @kind other */
+  --g-missed:var(--g-quality); /* @kind other */
+  --g-niggle:var(--g-quality); /* @kind other */
+  --g-ease:var(--g-quality); /* @kind other */
+  --g-new:var(--g-phase); /* @kind other */
+  --g-sick:var(--g-mute); /* @kind other */
+  --g-skip:var(--g-mute); /* @kind other */
+
+  /* a poster carries a light scrim so white type holds over the bright end of a gradient */
+  --poster-scrim:linear-gradient(180deg,rgba(0,0,0,.26) 0%,rgba(0,0,0,.04) 34%,rgba(0,0,0,.3) 100%); /* @kind other */
+
+  /* ── living mesh palettes. Backdrops only. Slot 1 lightest, 2 to 5 saturated mids,
+        slot 6 the deep base. Only slot 6 goes dark: that is what keeps a mesh vibrant. ── */
+  --mesh-today-1:#FFC98A; --mesh-today-2:#FF8847; --mesh-today-3:#F2673A;
+  --mesh-today-4:#E85D26; --mesh-today-5:#C23A1C; --mesh-today-6:#4A1208;
+  --mesh-train-1:#FFE0A0; --mesh-train-2:#F3AD38; --mesh-train-3:#E89B3A;
+  --mesh-train-4:#E07A2A; --mesh-train-5:#C47812; --mesh-train-6:#3E2A0A;
+  --mesh-activity-1:#D6BE98; --mesh-activity-2:#B2916A; --mesh-activity-3:#8A6A48;
+  --mesh-activity-4:#5E4630; --mesh-activity-5:#45331F; --mesh-activity-6:#1C140D;
+  --mesh-health-1:#7FE6D6; --mesh-health-2:#3FB6B0; --mesh-health-3:#27B4E0;
+  --mesh-health-4:#1F8F76; --mesh-health-5:#11605E; --mesh-health-6:#06302E;
+  --mesh-targets-1:#FFD27A; --mesh-targets-2:#FF7A45; --mesh-targets-3:#FC4D64;
+  --mesh-targets-4:#D6263C; --mesh-targets-5:#9E1733; --mesh-targets-6:#3A0E12;
+  --mesh-scrim:linear-gradient(180deg,rgba(0,0,0,.34) 0%,rgba(0,0,0,0) 26%,rgba(0,0,0,0) 52%,rgba(0,0,0,.55) 100%); /* @kind other */
+
+  /* ── semantic aliases ── */
+  --text-primary:var(--ink-1);
+  --text-secondary:var(--ink-2);
+  --text-quiet:var(--ink-3);
+  --text-disabled:var(--ink-4);
+  --text-on-signal:#FFFFFF;
+  --text-on-mesh:#FFFFFF;
+
+  --surface-page:var(--ground);
+  --surface-tile:var(--surface-1);
+  --surface-tile-raised:var(--surface-2);
+  --surface-control:var(--surface-3);
+  --surface-control-hover:var(--surface-4);
+
+  --page-ground:none; /* @kind other */
+  --material-tile:#FFFFFF; /* @kind other */
+  --material-tile-raised:#F8F6F2; /* @kind other */
+  --material-control:#EDE9E3; /* @kind other */
+  --material-control-hover:#E1DCD4; /* @kind other */
+  --material-track:#EAE6E0; /* @kind other */
+  --material-action:#14120F; /* @kind other */
+
+  /* the mark is ink, not a hue: where the runner actually is is a fact, not a state.
+     The state hue belongs to the band the mark sits in. */
+  --mark-actual:var(--ink-1);
+  --mark-out-of-range:var(--state-alarm-ink);
+  --action-primary:#14120F;
+  --action-primary-text:#FFFFFF;
+  --action-accent:var(--state-quality-ink);
+  --signal:var(--state-quality-ink);
+  --signal-hover:var(--state-quality);
+  --attention:var(--state-quality-ink);
+  --fault:var(--state-alarm-ink);
+
+  /* range-scale parts */
+  --range-track:var(--material-track);
+  --range-band:#DDD8D0; /* @kind other */
+  --range-endpoint:var(--ink-3);
+  --range-target:var(--ink-1);
+
+  /* data graphics */
+  --plot-quiet:#DCD8D1;
+  --plot-ink:var(--ink-1);
+  --plot-highlight:var(--state-quality-ink);
+  --plot-negative:var(--state-alarm-ink);
+  --plot-projection:var(--state-long-ink);
+
+  --focus-ring:0 0 0 3px rgba(243,173,56,.5);
+  --scrim:rgba(20,18,15,.42);
+}
+
+/* Dark theme. The canvas tokens become the surfaces and the state hues take their bright
+   form, because they are no longer sitting on paper. The gradients are unchanged: they are
+   saturated at every stop, so they read on either ground. */
+[data-theme="dark"]{
+  --ground:var(--canvas-1);
+  --surface-1:var(--canvas-card);
+  --surface-2:var(--canvas-card-2);
+  --surface-3:#1B1F27;
+  --surface-4:#242935;
+  --ink-1:var(--ink-on-dark);
+  --ink-2:var(--mute-on-dark);
+  --ink-3:#6B7182;
+  --ink-4:var(--dim-on-dark);
+
+  --state-easy-ink:var(--state-easy);
+  --state-quality-ink:var(--state-quality);
+  --state-alarm-ink:var(--state-alarm);
+  --state-long-ink:var(--state-long);
+  --state-rest-ink:var(--state-rest);
+  --state-phase-ink:var(--state-phase);
+  --state-race-ink:var(--state-race);
+
+  --material-tile:var(--canvas-card); /* @kind other */
+  --material-tile-raised:var(--canvas-card-2); /* @kind other */
+  --material-control:#1B1F27; /* @kind other */
+  --material-control-hover:#242935; /* @kind other */
+  --material-track:rgba(255,255,255,.07); /* @kind other */
+  --material-action:#F6F7F8; /* @kind other */
+  --action-primary:#F6F7F8;
+  --action-primary-text:#0A0C10;
+  --text-on-signal:#221503;
+  --mark-actual:var(--ink-on-dark);
+  --range-band:#242935; /* @kind other */
+  --plot-quiet:rgba(255,255,255,.08);
+  --scrim:rgba(0,0,0,.72);
+}

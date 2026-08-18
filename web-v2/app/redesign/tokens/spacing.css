@@ -1,0 +1,16 @@
+/* Space is the structuring device. One scale, applied everywhere. */
+:root{
+  --sp-0:0px; --sp-1:2px; --sp-2:4px; --sp-3:6px; --sp-4:8px; --sp-5:12px;
+  --sp-6:16px; --sp-7:20px; --sp-8:24px; --sp-9:32px; --sp-10:40px;
+  --sp-11:56px; --sp-12:72px; --sp-13:96px; --sp-14:128px;
+
+  --tile-pad:var(--sp-9);
+  --tile-pad-lg:var(--sp-10);
+  --stack-gap:var(--sp-7);
+  --section-gap:var(--sp-11);
+  --screen-pad-phone:var(--sp-5);
+  --screen-pad-web:var(--sp-10);
+  --hit-min:44px;
+  --measure-say:34ch; /* @kind other */
+  --measure-body:62ch; /* @kind other */
+}
