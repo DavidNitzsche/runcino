@@ -172,9 +172,12 @@ import {
   PACING_CV_DOC_ROW,
   ALTITUDE_SLOWDOWN_PCT,
   HEADWIND_COST_S_PER_MI,
+  TAILWIND_BENEFIT_S_PER_MI,
+  assessRepresentativeness,
   composeSlowdown,
   effectiveEffortClass,
 } from '@/lib/race/representativeness';
+import { provisionalResultPatch } from '@/lib/race/auto-result';
 import {
   CURVE_NEUTRAL_EXPONENT_BAND,
   DECOUPLING_ENDURANCE_GAP_PCT,
@@ -3764,6 +3767,230 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
     },
   },
+  {
+    id: 'REPRESENTATIVENESS.tailwind-table',
+    binds: ['lib/race/representativeness.ts#TAILWIND_BENEFIT_S_PER_MI'],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: '### Headwind / tailwind seconds-per-mile (flat, dry, head-on/dead-aft)',
+    claim:
+      'The help a tailwind gives a race is read out of the SAME doctrine table as the headwind ' +
+      'cost, from its own two published columns, cell for cell. It is never derived by ' +
+      'inverting or halving the headwind figure: the doc states the asymmetry in words ("a ' +
+      'headwind costs roughly 2x what an equal tailwind gives back") and then prints the ' +
+      'numbers, so a derived figure would be the engine agreeing with itself instead of with ' +
+      'the research.',
+    check({ cite }) {
+      const t = cite.table();
+      for (const row of TAILWIND_BENEFIT_S_PER_MI) {
+        const docRow = t.rows.find((r) => parseBand(r[t.headers[0]])[0] === row.mph);
+        if (!docRow) {
+          throw new Error(`DOCTRINE · no ${row.mph} mph row in the wind table in ${cite.doc}`);
+        }
+        // Doctrine prints the benefit as a negative change to finish time; the
+        // engine stores magnitudes.
+        const at6 = Math.abs(parseBand(docRow['Tailwind benefit (6:00)'])[0]);
+        const at8 = Math.abs(parseBand(docRow['Tailwind benefit (8:00)'])[0]);
+        if (row.at6 !== at6 || row.at8 !== at8) {
+          throw new Error(
+            `TAILWIND_BENEFIT_S_PER_MI at ${row.mph} mph is (${row.at6}, ${row.at8}) s/mi · ` +
+              `doctrine says (${at6}, ${at8})`,
+          );
+        }
+        // A slower runner is in the wind longer, so the benefit rises with pace.
+        if (row.at8 < row.at6) {
+          throw new Error(`TAILWIND_BENEFIT_S_PER_MI at ${row.mph} mph helps a 6:00 runner more than an 8:00 one`);
+        }
+        // And the doctrine-stated asymmetry must survive · a tailwind never
+        // gives back as much as the same headwind takes.
+        const head = HEADWIND_COST_S_PER_MI.find((h) => h.mph === row.mph);
+        if (!head) throw new Error(`no headwind row at ${row.mph} mph to check the asymmetry against`);
+        if (row.at6 >= head.at6 || row.at8 >= head.at8) {
+          throw new Error(
+            `the wind asymmetry is gone at ${row.mph} mph · doctrine says a headwind costs ` +
+              'roughly 2x what an equal tailwind returns',
+          );
+        }
+      }
+    },
+  },
+
+  /* ── The second RULE claim (see EVIDENCE.race-supersedes-earlier-leads) ──
+   *
+   * This one locks a SYMMETRY rather than a number, because the defect it
+   * closes was an absence: every context filter in the engine had been added
+   * to the exact branch where a bug was observed and never to its mirror.
+   * `assessRaceRepresentativeness` is 900+ lines of gating with one caller —
+   * the DOWNWARD re-anchor. The upward one, which auto-rewrites every future
+   * pace target, had no gate at all.
+   *
+   * A claim that only checked constants could not have seen that. What is
+   * wrong is the shape of the call graph, so that is what this checks.
+   */
+  {
+    id: 'REPRESENTATIVENESS.both-directions-are-diagnosed',
+    binds: [
+      'lib/race/representativeness.ts#assessRepresentativeness',
+      'lib/plan/adapt.ts#detectPrBank',
+    ],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: 'downhills do not symmetrically refund the cost',
+    claim:
+      'A race that was AIDED is no more a fitness reading than a race that was sabotaged, so ' +
+      'the upward re-anchor is gated by the same four steps as the downward one: assess, ' +
+      'scale by earned authority, refuse below the unrepresentative floor, re-check the firing ' +
+      'predicate against the SCALED value. Doctrine supplies the aid side directly — its ' +
+      'course table is keyed on NET elevation and it states that a descent is a partial refund ' +
+      'rather than no refund. The two limbs price different factors because most are not ' +
+      'sign-symmetric, and the effort class is charged downward only: an athlete who ran a ' +
+      'personal best off a training week demonstrated it, and believing a good result LESS the ' +
+      'harder the circumstances were would invert the evidence.',
+    check({ cite }) {
+      // Doctrine still says a descent is a partial refund, not a full one.
+      if (!/downhill/i.test(cite.text())) {
+        throw new Error(`Research/02 §13.2 no longer discusses downhills · re-anchor the claim`);
+      }
+      if (!(DESCENT_RECOVERY_FRACTION > 0 && DESCENT_RECOVERY_FRACTION < 1)) {
+        throw new Error(
+          `DESCENT_RECOVERY_FRACTION is ${DESCENT_RECOVERY_FRACTION} · doctrine says a descent ` +
+            'refunds SOME of the climb, neither none of it nor all of it',
+        );
+      }
+
+      // A marathon well inside the anchor's prediction · the pr_bank shape.
+      const base = { distanceMi: 26.22, finishS: 11400, anchorVdot: 44, raceVdot: 48 } as const;
+      const flat = assessRepresentativeness({ ...base, direction: 'upward' });
+      if (flat.authority !== 1 || flat.detractors.length > 0) {
+        throw new Error('a clean upward read is being discounted · the aid limb is charging a flat course');
+      }
+
+      // The same race down a course that drops a thousand feet.
+      const downhill = assessRepresentativeness({
+        ...base,
+        direction: 'upward',
+        course: { elevationGainFt: 0, netElevationFt: -1000 },
+      });
+      if (!downhill.detractors.some((d) => d.factor === 'net_downhill')) {
+        throw new Error(
+          'a net-downhill course is not priced on the upward limb · the rule-8 gate is ' +
+            'decorative on the branch that prescribes work the runner cannot absorb',
+        );
+      }
+      if (!(downhill.authority < flat.authority)) {
+        throw new Error('a net-downhill course cost no authority · the aid pricing is inert');
+      }
+
+      // Effort class · charged downward, never upward.
+      const slowC = assessRepresentativeness({
+        distanceMi: 26.22, finishS: 13000, anchorVdot: 48, raceVdot: 44,
+        direction: 'downward', state: { priority: 'C' },
+      });
+      if (slowC.authority >= 1) {
+        throw new Error('a C race is no longer discounted on the downward limb · Research/00b grades it a hard workout');
+      }
+      const fastC = assessRepresentativeness({ ...base, direction: 'upward', state: { priority: 'C' } });
+      if (fastC.authority !== 1) {
+        throw new Error(
+          'the effort class is being charged on the upward limb · a personal best run without a ' +
+            'taper is more evidence of fitness, not less',
+        );
+      }
+
+      // And the gate must be WIRED, not merely available. Both halves: the
+      // scaling call, and the re-check of the predicate against the scaled value.
+      const src = sourceOf('web-v2/lib/plan/adapt.ts');
+      const prBank = src.slice(src.indexOf('async function detectPrBank'));
+      const body = prBank.slice(0, prBank.indexOf('\n * FIELD_TEST_DUE'));
+      for (const [needle, what] of [
+        ['assessRaceRepresentativeness', 'the representativeness assessment'],
+        ['authorityScaledVdot', 'the authority scaling'],
+        ["direction: 'upward'", 'the upward direction'],
+      ] as const) {
+        if (!body.includes(needle)) {
+          throw new Error(`detectPrBank no longer calls ${what} · the upward re-anchor is ungated again`);
+        }
+      }
+      if (!/const delta = scaledVdot - oldVdot;\s*\n\s*if \(delta <= 1\.5\) return null;/.test(body)) {
+        throw new Error(
+          'detectPrBank no longer re-checks its firing threshold against the SCALED VDOT · ' +
+            'scaling a value and then testing the raw one is a gate that cannot bite',
+        );
+      }
+    },
+  },
+
+  {
+    id: 'EVIDENCE.chip-time-is-canonical',
+    binds: [
+      'lib/race/auto-result.ts#provisionalResultPatch',
+      'lib/race/representativeness.ts#assessRepresentativeness',
+    ],
+    doc: 'Research/15-wearable-data.md',
+    anchor: 'the official chip time over the certified course is canonical',
+    claim:
+      'An unconfirmed watch time may stand in for a race result, but it is not the canonical ' +
+      'measurement doctrine names, so it cannot AUTO-APPLY an upward fitness re-anchor. Two ' +
+      'consequences. The patch reads ELAPSED time first — a race is timed gun-to-mat, and ' +
+      'moving time subtracts every auto-pause and aid-station stop, so it reads systematically ' +
+      'faster than the chip time it stands in for. And an unconfirmed result is a premise ' +
+      'failure on the upward limb, zeroed rather than discounted because no percentage ' +
+      'expresses "this might be the wrong run". The same flag is inert on the DOWNWARD limb on ' +
+      'purpose: both residual errors bias the reading faster, so a provisional row that still ' +
+      'reads slow is understating the drop and acting on it is the conservative move.',
+    check({ cite }) {
+      if (!/chip time/i.test(cite.text())) {
+        throw new Error('Research/15 no longer names the chip time as canonical · re-anchor the claim');
+      }
+      // ELAPSED beats moving · the direction of the fix, not just its presence.
+      const run = (data: Record<string, unknown>) => ({ id: 'r1', data });
+      const patch = provisionalResultPatch(run({ elapsedTimeS: 6200, movingTimeS: 6100, movingSec: 6050 }));
+      if (patch?.finishS !== 6200) {
+        throw new Error(
+          `provisionalResultPatch took ${patch?.finishS}s from a run with 6200s elapsed and ` +
+            '6100s moving · a race result is elapsed time, and moving time errs fast',
+        );
+      }
+      // Moving time still stands in when there is no elapsed field at all.
+      if (provisionalResultPatch(run({ movingTimeS: 6100 }))?.finishS !== 6100) {
+        throw new Error('a run carrying only a moving time no longer produces a provisional result');
+      }
+      if (patch?.provisional !== true) {
+        throw new Error('the provisional flag is no longer written · every downstream gate reads it');
+      }
+
+      // Upward · premise gate, and it must be REPORTED rather than a silent zero.
+      const base = { distanceMi: 13.1, finishS: 5400, anchorVdot: 44, raceVdot: 48 } as const;
+      const unconfirmed = assessRepresentativeness({
+        ...base, direction: 'upward', state: { resultProvisional: true },
+      });
+      if (unconfirmed.authority !== 0) {
+        throw new Error(
+          `an unconfirmed watch time carries ${unconfirmed.authority} authority upward · ` +
+            'doctrine says the chip time is the canonical one',
+        );
+      }
+      if (!unconfirmed.detractors.some((d) => d.factor === 'unconfirmed_result')) {
+        throw new Error('the unconfirmed-result gate zeroed the read without saying why');
+      }
+      if (assessRepresentativeness({ ...base, direction: 'upward' }).authority !== 1) {
+        throw new Error('a CONFIRMED result is being gated as if it were provisional');
+      }
+
+      // Downward · deliberately inert, and this asymmetry is the claim, so it
+      // is checked rather than assumed.
+      const slow = { distanceMi: 13.1, finishS: 6600, anchorVdot: 48, raceVdot: 44 } as const;
+      const slowConfirmed = assessRepresentativeness({ ...slow, direction: 'downward' });
+      const slowProvisional = assessRepresentativeness({
+        ...slow, direction: 'downward', state: { resultProvisional: true },
+      });
+      if (slowProvisional.authority !== slowConfirmed.authority) {
+        throw new Error(
+          'the provisional gate is firing on the downward limb · a watch time errs FAST, so a ' +
+            'provisional row reading slow understates the drop and must still be actionable',
+        );
+      }
+    },
+  },
+
   {
     id: 'LIMITER.volume-floor-is-the-plan-target',
     binds: ['lib/coach/limiter.ts#diagnoseLimiter', 'lib/plan/goal-tiers.ts#TIER_TARGETS'],

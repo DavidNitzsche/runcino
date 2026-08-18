@@ -124,10 +124,20 @@ describe('provisionalResultPatch', () => {
     });
   });
 
-  it('resolves seconds through the COALESCE ladder (movingSec, then elapsedTimeS)', () => {
+  // 2026-08-17 round 2 · this test previously asserted the OPPOSITE of its last
+  // line (moving time winning over elapsed) and it was pinning a bug. A race is
+  // timed gun-to-mat; moving time subtracts every auto-pause and every stopped
+  // second at an aid station, so it reads systematically FASTER than the chip
+  // time it stands in for — and that bias flowed into vdotFromRace and, via
+  // pr_bank, into a pace recompute. Research/15: "the official chip time over
+  // the certified course is canonical". Locked by
+  // EVIDENCE.chip-time-is-canonical in the doctrine registry.
+  it('resolves seconds through the COALESCE ladder, ELAPSED first', () => {
     expect(provisionalResultPatch(run('r1', { movingSec: 6000 }))?.finishS).toBe(6000);
     expect(provisionalResultPatch(run('r2', { elapsedTimeS: 6200 }))?.finishS).toBe(6200);
-    expect(provisionalResultPatch(run('r3', { movingTimeS: 6100, elapsedTimeS: 6200 }))?.finishS).toBe(6100);
+    expect(provisionalResultPatch(run('r3', { movingTimeS: 6100, elapsedTimeS: 6200 }))?.finishS).toBe(6200);
+    // Moving time still stands in when no elapsed field was ingested at all.
+    expect(provisionalResultPatch(run('r4', { movingTimeS: 6100, movingSec: 6050 }))?.finishS).toBe(6100);
   });
 
   it('omits avgHrBpm when the run has no avgHr, and never carries undefined keys', () => {

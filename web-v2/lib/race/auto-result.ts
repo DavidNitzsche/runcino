@@ -40,6 +40,32 @@
  * watch time as an authoritative chip time / PR. races-state.ts and
  * personal-records.ts carry the flag; WATCH_PROVISIONAL_FINISH_LABEL
  * is the render-ready caption.
+ *
+ * FITNESS doctrine (2026-08-17 round 2). The paragraph above scoped
+ * `provisional` to display, and the fitness path was never covered — so
+ * an unconfirmed watch time could re-anchor VDOT and rewrite every
+ * future pace target. Where the flag now binds:
+ *
+ *   · UPWARD re-anchor (adapt.ts detectPrBank) · BLOCKED. The
+ *     representativeness model treats an unconfirmed result as a
+ *     premise failure, the same shape as illness — there is no
+ *     percentage that expresses "this might be the wrong run", so none
+ *     is invented. The runner confirms on the retro page and the paces
+ *     move with it. Research/15: the chip time over the certified
+ *     course is canonical.
+ *   · DOWNWARD re-anchor (detectFitnessRegression) · ADMITTED, on
+ *     purpose. Both residual errors in a provisional time bias it
+ *     FASTER, so a provisional row reading below the anchor understates
+ *     the drop and acting on it is conservative.
+ *   · bestRecentVdot (vdot-inputs.ts) · ADMITTED, unchanged. It is the
+ *     headline fitness estimate every surface reads; blinding it the
+ *     morning after a goal race is the failure this whole module was
+ *     built to fix. Its exposure is bounded — nothing there auto-writes
+ *     a plan — and the elapsed-time preference below removes the
+ *     systematic bias at source.
+ *   · runPostResultChain · ADMITTED, unchanged. Snapshots, plan archive
+ *     and next-block generation are David's explicit direction and are
+ *     what stops TODAY reading UNPLANNED the morning after a race.
  */
 
 import { pool } from '@/lib/db/pool';
@@ -130,9 +156,22 @@ export function provisionalResultPatch(run: RunCandidate): {
   avgHrBpm?: number;
 } | null {
   const d = run.data ?? {};
-  // Moving-time COALESCE ladder — same order races-state.ts uses:
-  // movingTimeS (pullSync/watch/HK) → movingSec (webhook) → elapsedTimeS.
-  const secs = Number(d.movingTimeS) || Number(d.movingSec) || Number(d.elapsedTimeS) || null;
+  // 2026-08-17 round 2 · ELAPSED FIRST. This was a moving-time ladder
+  // (movingTimeS → movingSec → elapsedTimeS), copied from the display path in
+  // races-state.ts. It is the wrong field for a race result, and it is wrong in
+  // the direction that hurts: a race is timed gun-to-mat, whereas moving time
+  // subtracts every auto-pause and every stopped second at an aid station, so
+  // it reads systematically FASTER than the chip time it is standing in for.
+  // That bias then flowed straight into vdotFromRace and, through pr_bank, into
+  // a pace recompute — an over-read of fitness prescribing work off seconds the
+  // runner never ran.
+  //
+  // Research/15 §"Coaching implications": "the official chip time over the
+  // certified course is canonical". Elapsed is the closest thing a watch holds
+  // to it, and it errs slow, which is the safe side. Moving time is kept as the
+  // fallback for ingest paths that carry no elapsed field at all — a slightly
+  // fast result beats no result, and `provisional: true` says which it is.
+  const secs = Number(d.elapsedTimeS) || Number(d.movingTimeS) || Number(d.movingSec) || null;
   if (!secs || secs <= 0) return null;
   const avgHr = Number(d.avgHr) || null;
   return {

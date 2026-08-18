@@ -20,6 +20,7 @@ import { TAPER_RACE_WEEK_PCT_OF_PEAK, distanceCategoryOf } from '@/lib/plan/goal
 import {
   assessRepresentativeness,
   type RaceSplit,
+  type RepresentativenessDirection,
   type RepresentativenessInput,
   type RepresentativenessRead,
   type WindRelation,
@@ -80,6 +81,12 @@ export async function assessRaceRepresentativeness(args: {
   finishS: number;
   anchorVdot: number;
   raceVdot: number;
+  /**
+   * Which limb to run. Both production callers know: `detectFitnessRegression`
+   * only ever asks about a race slower than the anchor, `detectPrBank` only
+   * about a faster one. Omit and the pure module infers it.
+   */
+  direction?: RepresentativenessDirection;
 }): Promise<RepresentativenessRead | null> {
   const { userId, raceSlug, raceDateISO, distanceMi, finishS, anchorVdot, raceVdot } = args;
 
@@ -209,6 +216,7 @@ export async function assessRaceRepresentativeness(args: {
     finishS,
     anchorVdot,
     raceVdot,
+    direction: args.direction ?? null,
     course: {
       elevationGainFt,
       netElevationFt,
@@ -240,6 +248,12 @@ export async function assessRaceRepresentativeness(args: {
       taperRatio,
       illness: sick,
       niggleSeverity: num(niggle?.severity),
+      // The flag lib/race/auto-result.ts writes when it adopts a matched watch
+      // run as the finish. Read straight off the row rather than inferred from
+      // `source`, because a future ingest path may add another provisional
+      // source name and the flag is the contract the five display consumers
+      // already honour.
+      resultProvisional: ar.provisional === true,
     },
     // Empty in production · vdotFromRace reads raw elapsed time and the anchor
     // side does not terrain-adjust races. See the double-counting note in

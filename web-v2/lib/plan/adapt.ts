@@ -1932,9 +1932,34 @@ async function detectGoalChanged(userId: string): Promise<AdaptationTrigger | nu
 
 /**
  * PR_BANK · recent race finish whose VDOT exceeds users.vdot_last_reviewed
- * by > 1.5 pts. Action: mark next 14d plan_workouts as paces-stale so the
- * runner's prescription gets recomputed off the new VDOT before the next
- * quality session. Cite: Research/01-pace-zones-vdot.md §Recalibrate-Paces  // was §VDOT-recalibrate · heading: ## How to recalibrate paces.
+ * by > 1.5 pts. Action: recompute every future unsealed pace target and
+ * workout spec off the new VDOT. Cite: Research/01-pace-zones-vdot.md
+ * §Recalibrate-Paces  // was §VDOT-recalibrate · heading: ## How to recalibrate paces.
+ *
+ * ── 2026-08-17 round 2 · the rule-8 gate this detector never had ─────────
+ *
+ * `detectFitnessRegression` below is this function's mirror and it asks, before
+ * moving the anchor, whether the race was a measurement of fitness at all.
+ * `detectPrBank` did not — it was `detectFitnessRegression` minus eight lines,
+ * and those eight lines were the entire rule-8 gate. Every context filter in
+ * this engine had been added to the branch where a bug was observed and never
+ * to its mirror, and the upward branch is the dangerous one to leave open: an
+ * over-read prescribes work the runner cannot absorb, while an under-read only
+ * prescribes work that is too easy.
+ *
+ * `Design/adaptive-progression-engine.md` rule 8 is about diagnosis, not about
+ * direction. A net-downhill point-to-point, a dead-aft wind, or a watch time
+ * nobody has confirmed all produce the same observation — the runner beat the
+ * anchor's prediction — with no new fitness behind it. A race that was aided is
+ * no more a fitness reading than a race that was sabotaged.
+ *
+ * The gate is deliberately the SAME four steps, in the same order, calling the
+ * same two functions as the downward path: assess, scale, floor, re-check.
+ *
+ * Concrete instance in this database: `cim` (A race, 2026-12-06) carries
+ * `course_library.net_elevation_ft = -340`. Ungated, that course's descent
+ * would have been read as fitness and rewritten every pace in the block behind
+ * it.
  */
 async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
   const r = (await pool.query<{
@@ -1980,6 +2005,8 @@ async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
   let bestNewVdot = 0;
   let bestSlug = '';
   let bestDate = '';
+  let bestDistanceMi = 0;
+  let bestFinishS = 0;
   for (const raceRow of recent) {
     const fs = raceRow.finish_s ? Number(raceRow.finish_s) : 0;
     const mi = raceRow.distance_mi ? Number(raceRow.distance_mi) : 0;
@@ -1988,21 +2015,58 @@ async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
       bestNewVdot = v;
       bestSlug = raceRow.slug;
       bestDate = raceRow.date;
+      bestDistanceMi = mi;
+      bestFinishS = fs;
     }
   }
   const oldVdot = Number(r.old_vdot);
-  const delta = bestNewVdot - oldVdot;
+  if (bestNewVdot - oldVdot <= 1.5) return null;
+
+  // 2026-08-17 · rule 8, applied to the upward branch for the first time.
+  // Identical four steps to detectFitnessRegression: assess representativeness,
+  // scale by the authority it earned, refuse below the unrepresentative floor,
+  // and re-check the firing predicate against the SCALED value — never against
+  // the raw one, which is the step that makes the gate bite rather than decorate.
+  const { assessRaceRepresentativeness } = await import('../race/representativeness-inputs');
+  const { authorityScaledVdot } = await import('../race/representativeness');
+  const rep = await assessRaceRepresentativeness({
+    userId, raceSlug: bestSlug, raceDateISO: bestDate,
+    distanceMi: bestDistanceMi, finishS: bestFinishS,
+    anchorVdot: oldVdot, raceVdot: bestNewVdot,
+    direction: 'upward',
+  }).catch(() => null);
+
+  // No diagnosis available → full authority, so a data outage can never freeze
+  // the fitness model. Same posture as the downward path.
+  const authority = rep?.authority ?? 1;
+  const scaledVdot = rep == null
+    ? bestNewVdot
+    : authorityScaledVdot(oldVdot, bestNewVdot, authority);
+
+  // Unrepresentative · the course, the conditions, or the fact that nobody has
+  // confirmed the time account for the margin. Rule 8's "reduce confidence, not
+  // fitness": the race is on record and the anchor is left alone.
+  if (scaledVdot == null) return null;
+
+  const delta = scaledVdot - oldVdot;
   if (delta <= 1.5) return null;
+
   return {
     kind: 'pr_bank',
     severity: 'info',
-    reason: `New race fitness · VDOT ${bestNewVdot.toFixed(1)} vs prior ${oldVdot.toFixed(1)} (+${delta.toFixed(1)}). Paces need recompute.`,
+    reason: authority >= 1
+      ? `New race fitness · VDOT ${bestNewVdot.toFixed(1)} vs prior ${oldVdot.toFixed(1)} (+${delta.toFixed(1)}). Paces need recompute.`
+      : `New race fitness · VDOT ${bestNewVdot.toFixed(1)} vs prior ${oldVdot.toFixed(1)}. ${rep?.summary ?? ''} Paces move part of the way, to ${scaledVdot.toFixed(1)}.`.trim(),
     evidence: {
-      new_vdot: bestNewVdot,
+      new_vdot: scaledVdot,
       old_vdot: oldVdot,
       delta,
       race_slug: bestSlug,
       raced_at: bestDate,
+      raw_race_vdot: bestNewVdot,
+      representativeness: authority,
+      representativeness_tier: rep?.tier ?? null,
+      representativeness_detractors: rep?.detractors.map((d) => d.factor) ?? [],
     },
   };
 }
@@ -2379,6 +2443,13 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
       userId, raceSlug: bestSlug, raceDateISO: bestDate,
       distanceMi: bestDistanceMi, finishS: bestFinishS,
       anchorVdot: oldVdot, raceVdot: bestRaceVdot,
+      // Stated, not inferred · this branch is only reachable when the race read
+      // more than 1.5 VDOT BELOW the anchor. Note the provisional-result premise
+      // gate is inert here on purpose: a watch time's residual errors all bias
+      // FASTER, so a provisional row that still reads this slow is understating
+      // the drop, and acting on it is the conservative move. See the gate's own
+      // comment in lib/race/representativeness.ts.
+      direction: 'downward',
     }).catch(() => null);
 
     // No diagnosis available → behave exactly as before (full authority), so a

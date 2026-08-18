@@ -18,6 +18,38 @@
  * blown pacing job, a head cold, or a C race jogged as a workout all overwrote a
  * stable fitness model at full authority.
  *
+ * ── BOTH DIRECTIONS (2026-08-17, round 2) ────────────────────────────────
+ *
+ * This module shipped gating only the DOWNWARD re-anchor, because downward is
+ * where the bug had been observed. `detectPrBank` — the upward mirror, which
+ * auto-applies `recompute_paces` and rewrites every future unsealed pace target
+ * — had no gate at all. That is the more dangerous half: an over-read of
+ * fitness prescribes work the runner cannot absorb, where an under-read only
+ * prescribes work that is too easy.
+ *
+ * Rule 8 does not say "downward". It says a race must be DIAGNOSED before it
+ * moves the fitness model, and the reasons it lists are symmetric facts about a
+ * race day. A net-downhill point-to-point, a dead-aft wind, a course short of
+ * its nominal distance, or a watch time nobody has confirmed all produce the
+ * same observation — "the runner ran faster than the anchor predicted" —
+ * without the runner having got fitter. **A race that was aided is no more a
+ * fitness reading than a race that was sabotaged.**
+ *
+ * So `assessRepresentativeness` now carries a `direction`:
+ *
+ *   downward · the race under-ran the anchor. Doctrine prices what SLOWED it
+ *              (heat, hills, wind, altitude, pacing) and grades what the race
+ *              WAS (effort class, illness, fuelling).
+ *   upward   · the race over-ran the anchor. Doctrine prices what HELPED it
+ *              (net descent, tailwind) and gates on whether the result is a
+ *              confirmed measurement at all.
+ *
+ * The two limbs deliberately do NOT share their factor sets, because most
+ * factors are not sign-symmetric — see `priceAids` and the effort-class note in
+ * `assessRepresentativeness` for the per-factor reasoning. What IS shared is
+ * the shape: residual authority, multiplicative composition, a premise gate,
+ * and `authorityScaledVdot` moving the anchor part of the way.
+ *
  * ── The model ─────────────────────────────────────────────────────────────
  *
  * Authority is NOT a hand-tuned confidence dial. It is a residual:
@@ -145,7 +177,22 @@ import type { TrainingFormLabel } from '@/lib/coach/training-form';
 
 export type RepresentativenessFactor =
   | 'course_elevation' | 'heat' | 'humidity' | 'wind' | 'altitude'
-  | 'pacing' | 'taper_state' | 'fatigue' | 'illness' | 'not_maximal' | 'fuelling';
+  | 'pacing' | 'taper_state' | 'fatigue' | 'illness' | 'not_maximal' | 'fuelling'
+  // ── aid factors · only ever charged on an UPWARD read ───────────────────
+  | 'net_downhill' | 'tailwind' | 'unconfirmed_result';
+
+/**
+ * Which way the race moved against the anchor, and therefore which set of
+ * facts is capable of explaining it away.
+ *
+ *   'downward' · the race ran SLOWER than the anchor predicted.
+ *   'upward'   · the race ran FASTER than the anchor predicted.
+ *
+ * Callers may state it; `assessRepresentativeness` otherwise infers it from
+ * `raceVdot` against `anchorVdot`, which is the same comparison by a monotonic
+ * transform of the same two numbers.
+ */
+export type RepresentativenessDirection = 'downward' | 'upward';
 
 export interface RepresentativenessDetractor {
   factor: RepresentativenessFactor;
@@ -159,20 +206,35 @@ export interface RepresentativenessRead {
   /** 0..1 — how much authority this result should carry over the fitness model. */
   authority: number;
   tier: 'representative' | 'compromised' | 'unrepresentative';
+  /** Which limb of the model ran. */
+  direction: RepresentativenessDirection;
   /** Each factor that reduced authority, with how much and why. */
   detractors: RepresentativenessDetractor[];
   /** One plain-language line for the coach voice. */
   summary: string;
   /**
    * How short of the anchor's prediction the race actually ran, in percent of
-   * predicted time. 0 when the race met or beat the prediction.
+   * predicted time. 0 when the race met or beat the prediction, and always 0 on
+   * an upward read (see `observedSurplusPct`).
    */
   observedShortfallPct: number;
-  /** How much of that shortfall doctrine prices to conditions and execution. */
+  /**
+   * How far INSIDE the anchor's prediction the race ran, in percent of
+   * predicted time. The upward mirror of `observedShortfallPct`, and 0 on a
+   * downward read. Two fields rather than one signed one: every consumer of a
+   * shortfall wants it non-negative, and a sign flip in a percentage is exactly
+   * the kind of quiet error this module exists to stop.
+   */
+  observedSurplusPct: number;
+  /**
+   * How much of that deviation doctrine prices to conditions and execution
+   * (downward) or to course and conditions aid (upward).
+   */
   explainedPct: number;
   /**
    * The effort class the race is judged AS, after taper and fatigue downgrades.
-   * Not necessarily the priority the athlete declared.
+   * Not necessarily the priority the athlete declared. Reported on both limbs;
+   * only CHARGED on the downward one — see `assessRepresentativeness`.
    */
   effectiveEffortClass: RacePriority;
 }
@@ -224,6 +286,14 @@ export const WIND_GATE_MPH = 10;
 /**
  * `Research/02` §13.2 "Course Profile" · the table's own flat row is
  * "Flat (< 100 ft / 30m) | 0%". A course under it is not a hill.
+ *
+ * The same threshold gates the AID side, and the table supports that directly:
+ * its key column is "Net elevation gain", so a course whose net DROP clears the
+ * flat row is, by doctrine's own measure, not a flat course either. The
+ * magnitude of the help is not a mirror of the cost — the doc's own rule of
+ * thumb says "downhills do not symmetrically refund the cost", which is the
+ * asymmetry `elevation-model.ts` already encodes as `DESCENT_RECOVERY_FRACTION`
+ * — but the question "is this course flat" has one answer for both directions.
  */
 export const FLAT_COURSE_GAIN_FT = 100;
 
@@ -261,6 +331,28 @@ export const HEADWIND_COST_S_PER_MI: ReadonlyArray<{ mph: number; at6: number; a
   { mph: 20, at6: 40, at8: 58  },
   { mph: 25, at6: 60, at8: 85  },
   { mph: 30, at6: 85, at8: 120 },
+];
+
+/**
+ * `Research/06` §6, the SAME table's "Tailwind benefit" columns. Doctrine
+ * publishes both limbs of the wind effect and states the asymmetry in words
+ * directly above it — "a headwind costs roughly 2× what an equal tailwind gives
+ * back" — so the aid side is a transcription, not an inversion of the cost
+ * side. Magnitudes here; the doc writes them negative because it states them as
+ * a change to finish time.
+ *
+ * Only reachable on an UPWARD read, and only when the caller can actually say
+ * the wind was behind the runner. `representativeness-inputs.ts` reports
+ * `windRelation: 'unknown'`, which doctrine's own out-and-back rule resolves to
+ * a NET LOSS — so an unknown wind is never scored as help.
+ */
+export const TAILWIND_BENEFIT_S_PER_MI: ReadonlyArray<{ mph: number; at6: number; at8: number }> = [
+  { mph: 5,  at6: 1.5, at8: 2  },
+  { mph: 10, at6: 6,   at8: 9  },
+  { mph: 15, at6: 12,  at8: 17 },
+  { mph: 20, at6: 20,  at8: 28 },
+  { mph: 25, at6: 30,  at8: 42 },
+  { mph: 30, at6: 42,  at8: 58 },
 ];
 
 /**
@@ -394,6 +486,30 @@ export interface RaceStateInput {
    * same evidence twice under `pacing`. Athlete-reported only.
    */
   fuellingFailure?: boolean | null;
+  /**
+   * `races.actual_result.provisional` — true when the finish time was adopted
+   * from a matched watch/Strava run by `lib/race/auto-result.ts` and the runner
+   * has not yet confirmed or corrected it.
+   *
+   * `Research/15` §"Coaching implications": "**Race PRs** measured by GPS
+   * distance can over- or under-report by 1-3% on technical courses; the
+   * official chip time over the certified course is canonical." An unconfirmed
+   * watch time is not that. Two known error sources, both unpriceable:
+   *
+   *   · TIME · the patch reads a moving/elapsed time off the runner's own
+   *     watch. Auto-pause and a stopped clock at aid stations make moving time
+   *     read faster than the chip. (`auto-result.ts` now prefers ELAPSED for
+   *     exactly this reason, which removes the systematic part; what is left is
+   *     the part nobody can size.)
+   *   · IDENTITY · the run was matched to the race by date ±1 day and distance
+   *     ±12%. Almost always right, and when it is wrong the finish time belongs
+   *     to a different effort entirely. There is no percentage that expresses
+   *     "this might be the wrong run".
+   *
+   * PREMISE GATE, UPWARD ONLY. See `assessRepresentativeness` for why the same
+   * flag is deliberately inert on the downward limb.
+   */
+  resultProvisional?: boolean | null;
 }
 
 export interface RepresentativenessInput {
@@ -405,6 +521,13 @@ export interface RepresentativenessInput {
   anchorVdot: number;
   /** VDOT derived from this race by `vdotFromRace`. */
   raceVdot: number;
+  /**
+   * Which limb to run. Omit and it is inferred from `raceVdot` against
+   * `anchorVdot`; state it when the caller already knows (both production
+   * callers do — one only ever asks about a slower race, the other only about
+   * a faster one).
+   */
+  direction?: RepresentativenessDirection | null;
   course?: RaceCourseInput | null;
   weather?: RaceWeatherInput | null;
   state?: RaceStateInput | null;
@@ -447,25 +570,33 @@ function interp(
 }
 
 /**
- * `Research/06` §6 headwind cost, seconds per mile, interpolated on wind speed
+ * `Research/06` §6 wind effect, seconds per mile, interpolated on wind speed
  * and on the runner's own pace between doctrine's 6:00 and 8:00 anchors.
+ *
+ * One walker over either limb of the doc's single table. The head and tail
+ * columns are separate transcriptions with the asymmetry doctrine states baked
+ * into their own numbers, so the tail limb is NEVER derived from the head one.
  */
-function headwindCostSPerMi(windMph: number, pacePerMi: number): number {
+function windEffectSPerMi(
+  table: ReadonlyArray<{ mph: number; at6: number; at8: number }>,
+  windMph: number,
+  pacePerMi: number,
+): number {
   if (!isFinite(windMph) || windMph <= 0) return 0;
-  const first = HEADWIND_COST_S_PER_MI[0];
-  const last = HEADWIND_COST_S_PER_MI[HEADWIND_COST_S_PER_MI.length - 1];
+  const first = table[0];
+  const last = table[table.length - 1];
   const at = (row: { at6: number; at8: number }) => {
-    // Doctrine states the cost at 6:00/mi (360s) and 8:00/mi (480s). Slower
-    // runners spend longer in the wind, so the cost rises with pace. Clamped
+    // Doctrine states the effect at 6:00/mi (360s) and 8:00/mi (480s). Slower
+    // runners spend longer in the wind, so it rises with pace. Clamped
     // rather than extrapolated — beyond the stated anchors doctrine is silent.
     const t = clamp01((pacePerMi - 360) / (480 - 360));
     return row.at6 + (row.at8 - row.at6) * t;
   };
   if (windMph <= first.mph) return at(first) * (windMph / first.mph);
   if (windMph >= last.mph) return at(last);
-  for (let i = 0; i < HEADWIND_COST_S_PER_MI.length - 1; i++) {
-    const lo = HEADWIND_COST_S_PER_MI[i];
-    const hi = HEADWIND_COST_S_PER_MI[i + 1];
+  for (let i = 0; i < table.length - 1; i++) {
+    const lo = table[i];
+    const hi = table[i + 1];
     if (windMph >= lo.mph && windMph <= hi.mph) {
       const t = (windMph - lo.mph) / (hi.mph - lo.mph);
       return at(lo) + (at(hi) - at(lo)) * t;
@@ -473,6 +604,12 @@ function headwindCostSPerMi(windMph: number, pacePerMi: number): number {
   }
   return 0;
 }
+
+const headwindCostSPerMi = (windMph: number, pacePerMi: number): number =>
+  windEffectSPerMi(HEADWIND_COST_S_PER_MI, windMph, pacePerMi);
+
+const tailwindBenefitSPerMi = (windMph: number, pacePerMi: number): number =>
+  windEffectSPerMi(TAILWIND_BENEFIT_S_PER_MI, windMph, pacePerMi);
 
 /**
  * Coefficient of variation of the per-mile splits, in percent — the dispersion
@@ -550,23 +687,38 @@ export function assessRepresentativeness(
   const finishS = Number(input.finishS);
   const pacePerMi = distanceMi > 0 ? finishS / distanceMi : 0;
 
-  // ── 1 · How far short of the anchor did this race actually run? ──────────
+  const direction: RepresentativenessDirection =
+    input.direction ?? (Number(input.raceVdot) > Number(input.anchorVdot) ? 'upward' : 'downward');
+
+  // ── 1 · How far off the anchor's prediction did this race actually run? ──
   const predictedS = predictRaceTime(input.anchorVdot, distanceMi);
+  const measurable = predictedS != null && predictedS > 0 && finishS > 0;
   const observedShortfallPct =
-    predictedS != null && predictedS > 0 && finishS > 0
-      ? Math.max(0, (finishS / predictedS - 1) * 100)
+    measurable && direction === 'downward'
+      ? Math.max(0, (finishS / predictedS! - 1) * 100)
       : 0;
+  const observedSurplusPct =
+    measurable && direction === 'upward'
+      ? Math.max(0, (1 - finishS / predictedS!) * 100)
+      : 0;
+  const observedDeviationPct = direction === 'upward' ? observedSurplusPct : observedShortfallPct;
 
   // ── 2 · Price what doctrine can explain ─────────────────────────────────
-  const priced = priceConditions({
-    input, distanceMi, finishS, pacePerMi, skip, detractorsOut: detractors,
-  });
+  //
+  // Different limbs, different facts. Slowness is explained by what made the
+  // day hard; speed is explained by what made it easy. Running the downward
+  // factor set against a fast race would price a hot, hilly race as LESS
+  // credible when it came in FASTER than the anchor, which is nonsense —
+  // adversity that failed to slow the runner is evidence FOR the result.
+  const priced = direction === 'upward'
+    ? priceAids({ input, distanceMi, finishS, pacePerMi, skip, detractorsOut: detractors })
+    : priceConditions({ input, distanceMi, finishS, pacePerMi, skip, detractorsOut: detractors });
 
-  // Unexplained fraction. With no shortfall to explain there is nothing to
+  // Unexplained fraction. With no deviation to explain there is nothing to
   // discount — the caller's own gate decides whether to act at all.
   const unexplained =
-    observedShortfallPct > 0
-      ? clamp01(1 - priced.explainedPct / observedShortfallPct)
+    observedDeviationPct > 0
+      ? clamp01(1 - priced.explainedPct / observedDeviationPct)
       : 1;
 
   // Charge the conditions detractors against the authority they actually cost,
@@ -588,8 +740,22 @@ export function assessRepresentativeness(
   }
 
   // ── 3 · Effort class · what the race WAS ────────────────────────────────
+  //
+  // DOWNWARD ONLY, and this is the one place the two limbs are asymmetric by
+  // design rather than by omission. `Research/00b`'s effort table grades how
+  // COMPLETE an effort was, which is what licenses excusing a slow time: a
+  // parkrun jogged off full training legs is "treat like a hard workout", so it
+  // does not get to prove the runner slow.
+  //
+  // The same fact does not excuse a FAST time. An athlete who ran a personal
+  // best without a taper, off a training week, in a race they called a B, has
+  // demonstrated the performance and then some — `Research/01`'s recalibrate
+  // row says "new race result → update VDOT from race" with no clause about
+  // how well rested they were. Charging the effort class upward would mean the
+  // engine believed a good result LESS the harder the circumstances were, which
+  // inverts the evidence.
   const { cls, downgradedBy } = effectiveEffortClass(input.state, distanceMi);
-  const classMultiplier = recoveryEffortScale(cls);
+  const classMultiplier = direction === 'upward' ? 1 : recoveryEffortScale(cls);
   let authority = unexplained * classMultiplier;
 
   if (classMultiplier < 1 && !skip.has('not_maximal')) {
@@ -616,8 +782,32 @@ export function assessRepresentativeness(
     });
   }
 
-  // ── 4 · Premise gate · illness and reported fuelling failure ────────────
-  if (input.state?.illness && !skip.has('illness')) {
+  // ── 4 · Premise gate ────────────────────────────────────────────────────
+  //
+  // UPWARD · the result has to be a measurement before it can be a fast one.
+  // A provisional finish is a watch time for a run the engine MATCHED to the
+  // race; nobody has confirmed it is the race, and `Research/15` says the chip
+  // time over the certified course is the canonical one. Zeroed rather than
+  // discounted, for the same reason illness is: there is no magnitude to tune,
+  // so none is invented.
+  //
+  // Deliberately INERT on the downward limb, and the asymmetry is principled
+  // rather than convenient. Both residual errors in a provisional time push the
+  // reading FASTER than truth — a moving-time under-read, and a mis-matched run
+  // that on a race weekend is overwhelmingly a shakeout or a warm-up. So a
+  // provisional result that still reads 1.5 VDOT BELOW the anchor is under-
+  // stating how far fitness fell: acting on it is conservative. Acting on the
+  // same row upward is acting on the error itself.
+  if (direction === 'upward' && input.state?.resultProvisional && !skip.has('unconfirmed_result')) {
+    detractors.push({
+      factor: 'unconfirmed_result',
+      authorityCost: round3(authority),
+      detail:
+        'Finish time was adopted from a matched watch run and has not been confirmed. ' +
+        'Research/15 · the chip time over the certified course is the canonical one.',
+    });
+    authority = 0;
+  } else if (input.state?.illness && !skip.has('illness')) {
     detractors.push({
       factor: 'illness',
       authorityCost: round3(authority),
@@ -648,12 +838,17 @@ export function assessRepresentativeness(
   return {
     authority,
     tier,
-    // Immaterial factors drop out of the report. Illness never does: it is the
-    // reason the read is zero, and a zero read with no stated cause is exactly
-    // the kind of unexplained suppression this module exists to avoid.
-    detractors: detractors.filter((d) => d.authorityCost > 0 || d.factor === 'illness'),
-    summary: buildSummary(tier, detractors, observedShortfallPct, priced.explainedPct),
+    direction,
+    // Immaterial factors drop out of the report. The premise gates never do:
+    // they are the reason the read is zero, and a zero read with no stated
+    // cause is exactly the kind of unexplained suppression this module exists
+    // to avoid.
+    detractors: detractors.filter(
+      (d) => d.authorityCost > 0 || d.factor === 'illness' || d.factor === 'unconfirmed_result',
+    ),
+    summary: buildSummary(direction, tier, detractors, observedDeviationPct, priced.explainedPct),
     observedShortfallPct: round3(observedShortfallPct),
+    observedSurplusPct: round3(observedSurplusPct),
     explainedPct: round3(priced.explainedPct),
     effectiveEffortClass: cls,
   };
@@ -819,6 +1014,113 @@ function priceConditions(args: {
 }
 
 /**
+ * The UPWARD mirror of `priceConditions` · price every way the day could have
+ * handed the runner time they did not earn.
+ *
+ * Same contract: each detractor's `authorityCost` is TEMPORARILY the factor's
+ * percentage of finish time, and `assessRepresentativeness` rescales the set
+ * into authority once it knows the total.
+ *
+ * ── Why this is a short list, factor by factor ────────────────────────────
+ *
+ * The downward limb prices six things. Only two of them have an aid limb that
+ * doctrine actually supports, and inventing the other four is precisely the
+ * failure this module was built to stop — a small unjustified number applied to
+ * every clean result is as wrong as no number applied to a compromised one.
+ *
+ *   · COURSE ELEVATION → yes. `courseElevationCostSec` is already SIGNED and
+ *     already carries `Research/11`'s asymmetric giveback, so a net-downhill
+ *     course returns negative seconds with no new model. This is the factor
+ *     that matters in practice: a point-to-point that drops several hundred
+ *     feet is the classic PR course.
+ *   · WIND → yes, when the caller can say the wind was behind them.
+ *     `Research/06` §6 publishes a "Tailwind benefit" column beside the
+ *     headwind one. Note the gate: an UNKNOWN wind resolves to doctrine's
+ *     out-and-back rule, which is a net LOSS, so it never scores as help.
+ *   · HEAT / HUMIDITY → no. The Maughan table bottoms out at 0% ("50°F and
+ *     below is 0% for every tier"). Doctrine describes cool as the absence of a
+ *     penalty, never as a bonus, and there is no row to read for one.
+ *   · ALTITUDE → no. `Research/06` §7 tabulates the cost of racing AT altitude
+ *     against a sea-level baseline. Sea level IS the baseline; racing at it is
+ *     not a tailwind. (An altitude-resident racing low is a real effect, but it
+ *     needs residency data this app does not hold, and it is not in the cited
+ *     table.)
+ *   · PACING → no. Even splits are how a race is supposed to be run.
+ *     `Research/08` §2.2 gives a band of NORMAL dispersion and charges only the
+ *     excess above it; there is no credit below it, and treating good pacing as
+ *     an artifact would discount exactly the races worth believing.
+ *
+ * ── The one this list does NOT cover, and why ────────────────────────────
+ *
+ * A SHORT OR UNCERTIFIED COURSE. This is a real way to over-read a race, and
+ * `Research/15` gives the band ("GPS distance can over- or under-report by
+ * 1-3%"). It is not priced here because the input does not exist: `raceVdot` is
+ * derived from the race's NOMINAL `meta.distanceMi`, never from the watch's
+ * measured distance, so a GPS over-measure cannot leak into the VDOT in the
+ * first place, and nothing in the schema records whether a course was
+ * certified. A genuinely short course would need a certification field on
+ * `races.meta` to diagnose. Named here so the gap is a work item rather than an
+ * oversight.
+ */
+function priceAids(args: {
+  input: RepresentativenessInput;
+  distanceMi: number;
+  finishS: number;
+  pacePerMi: number;
+  skip: Set<RepresentativenessFactor>;
+  detractorsOut: RepresentativenessDetractor[];
+}): { explainedPct: number } {
+  const { input, distanceMi, finishS, pacePerMi, skip, detractorsOut } = args;
+  const push = (factor: RepresentativenessFactor, pct: number, detail: string) => {
+    if (pct > 0.01) detractorsOut.push({ factor, authorityCost: pct, detail });
+  };
+
+  // ── Net descent · Research/11 via the one shared model ──────────────────
+  // Gated on Research/02 §13.2's own flat row, read on the column the table is
+  // keyed by ("Net elevation gain") — a net drop under 100 ft is a flat course.
+  let descentPct = 0;
+  const netFt = Number(input.course?.netElevationFt ?? NaN);
+  if (!skip.has('net_downhill') && input.course && finishS > 0 &&
+      isFinite(netFt) && netFt <= -FLAT_COURSE_GAIN_FT) {
+    const sec = courseElevationCostSec({
+      distanceMi,
+      flatPaceSPerMi: pacePerMi,
+      gainFt: input.course.elevationGainFt ?? null,
+      netFt,
+    });
+    // Negative seconds = the course gave back more than it took. A course that
+    // drops 400 ft but climbs 2000 to do it is still a hard course, and this
+    // correctly prices it at zero help.
+    if (sec != null && sec < 0) {
+      descentPct = (-sec / finishS) * 100;
+      push('net_downhill', descentPct,
+        `${Math.round(-netFt)} ft of net descent over ${distanceMi.toFixed(1)} mi is worth about ` +
+        `${Math.round(-sec)}s at this pace (Research/11 · a descent hands back half what the ` +
+        'matching climb costs).');
+    }
+  }
+
+  // ── Tailwind · Research/06 §6, gated by §11 ("sustained wind > 10 mph") ──
+  let tailPct = 0;
+  const w = input.weather;
+  if (!skip.has('tailwind') && w?.windMph != null && pacePerMi > 0 &&
+      Number(w.windMph) > WIND_GATE_MPH && w.windRelation === 'tail') {
+    const mph = Number(w.windMph);
+    const benefit = tailwindBenefitSPerMi(mph, pacePerMi);
+    if (benefit > 0) {
+      tailPct = (benefit / pacePerMi) * 100;
+      push('tailwind', tailPct,
+        `${Math.round(mph)} mph tailwind is worth about ${benefit.toFixed(0)}s/mi ` +
+        '(Research/06 §6 · a tailwind gives back about half what the same headwind costs).');
+    }
+  }
+
+  // Same composition rule as the downward limb — one function, so the two
+  // directions can never drift into different stacking arithmetic.
+  return { explainedPct: composeSlowdown({ course: descentPct, wind: tailPct }) };
+}
+
+/**
  * THE single place slowdown percentages stack in this file.
  *
  * `Research/01` §"Combined conditions": "Add adjustments multiplicatively, not
@@ -862,9 +1164,10 @@ export function composeSlowdown(parts: {
  * (Design/running-app-design-brief-v2.md §tone).
  */
 function buildSummary(
+  direction: RepresentativenessDirection,
   tier: RepresentativenessRead['tier'],
   detractors: RepresentativenessDetractor[],
-  observedShortfallPct: number,
+  observedDeviationPct: number,
   explainedPct: number,
 ): string {
   const live = detractors
@@ -873,14 +1176,32 @@ function buildSummary(
   const named = live.slice(0, 3).map((d) => FACTOR_WORD[d.factor]);
   const verb = named.length > 1 ? 'account' : 'accounts';
 
+  if (direction === 'upward') {
+    if (detractors.some((d) => d.factor === 'unconfirmed_result')) {
+      return 'Watch time, not a confirmed result. Confirm the finish and the paces move with it.';
+    }
+    if (named.length === 0) {
+      return 'Nothing about the day explains this. That is a real step up in fitness.';
+    }
+    if (tier === 'representative') {
+      return `${cap(list(named))} helped a little. Most of this is fitness, and the paces move.`;
+    }
+    if (tier === 'compromised') {
+      return `${cap(list(named))} ${verb} for about ${Math.round(explainedPct)}% of a ` +
+        `${Math.round(observedDeviationPct)}% margin. Some of it is fitness, so the paces move part of the way.`;
+    }
+    return `${cap(list(named))} ${verb} for this. The time stands as a result, ` +
+      'but it is not a new fitness number.';
+  }
+
   if (named.length === 0) {
-    return observedShortfallPct > 0
+    return observedDeviationPct > 0
       ? 'Clean race, clean conditions. This is a real reading of current fitness.'
       : 'Race conditions were normal. Nothing here argues with the result.';
   }
 
   // Did the conditions do the work, or was it what the race WAS?
-  const conditionsLed = explainedPct > 0.5 && observedShortfallPct > 0;
+  const conditionsLed = explainedPct > 0.5 && observedDeviationPct > 0;
 
   if (tier === 'representative') {
     return `Mostly a clean race. ${cap(list(named))} took a little off it, ` +
@@ -890,7 +1211,7 @@ function buildSummary(
   if (tier === 'compromised') {
     return conditionsLed
       ? `${cap(list(named))} ${verb} for about ${Math.round(explainedPct)}% of a ` +
-        `${Math.round(observedShortfallPct)}% shortfall. The result moves fitness, but not by much.`
+        `${Math.round(observedDeviationPct)}% shortfall. The result moves fitness, but not by much.`
       : `${cap(list(named))} ${verb} for most of this. The result moves fitness, but not by much.`;
   }
 
@@ -912,6 +1233,9 @@ const FACTOR_WORD: Record<RepresentativenessFactor, string> = {
   illness: 'illness',
   not_maximal: 'this not being a goal race',
   fuelling: 'the fuelling',
+  net_downhill: 'the net descent',
+  tailwind: 'the tailwind',
+  unconfirmed_result: 'the result not being confirmed',
 };
 
 function list(words: string[]): string {
@@ -925,13 +1249,15 @@ function cap(s: string): string {
 }
 
 /**
- * Scale a downward re-anchor by how much authority the evidence earned.
+ * Scale a re-anchor by how much authority the evidence earned. DIRECTION-FREE:
+ * it interpolates from the anchor toward the race, so it serves the upward and
+ * downward limbs identically and neither can drift from the other.
  *
- * At full authority the new anchor is the race's own VDOT — exactly today's
- * behaviour. At partial authority the anchor moves part of the way. Below the
- * unrepresentative floor it does not move at all, and the caller should record
- * a confidence reduction instead of a fitness change (rule 8: "reduce
- * confidence, smaller adjustment").
+ * At full authority the new anchor is the race's own VDOT — exactly the
+ * behaviour before any of this existed. At partial authority the anchor moves
+ * part of the way. Below the unrepresentative floor it does not move at all,
+ * and the caller should record a confidence reduction instead of a fitness
+ * change (rule 8: "reduce confidence, smaller adjustment").
  */
 export function authorityScaledVdot(
   anchorVdot: number,
