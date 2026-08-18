@@ -145,6 +145,24 @@ import {
 } from '@/lib/training/heat-model';
 import { WBGT_FLAGS, heatBandForFlag } from '@/lib/coach/heat-gate';
 import { HEAT_HR_CONFOUNDER, heatHrBumpBpm } from '@/lib/weather/heat-adjustment';
+import type { AbilityTier } from '@/lib/training/heat-model';
+import {
+  REPRESENTATIVE_FLOOR,
+  UNREPRESENTATIVE_FLOOR,
+  HEAT_GATE_SUM_F,
+  HEAT_GATE_DEWPOINT_F,
+  ALTITUDE_GATE_FT,
+  WIND_GATE_MPH,
+  FLAT_COURSE_GAIN_FT,
+  HEAT_ALTITUDE_COMPOUND_THRESHOLD_PCT,
+  HEAT_ALTITUDE_COMPOUND_HAIRCUT,
+  PACING_CV_CEILING_PCT,
+  PACING_CV_DOC_ROW,
+  ALTITUDE_SLOWDOWN_PCT,
+  HEADWIND_COST_S_PER_MI,
+  composeSlowdown,
+  effectiveEffortClass,
+} from '@/lib/race/representativeness';
 import type { DoctrineClaim } from './types';
 import { matchLiteral, parseBand, parseBands, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
 
@@ -2833,6 +2851,338 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           'composeRecoveryPlan writes no pace_blend.season_anchor_vdot · the build that follows ' +
             'a recovery block has no evidence baseline and the gate goes inert',
         );
+      }
+    },
+  },
+
+  // ══ RACE REPRESENTATIVENESS · rule 8 ══════════════════════════════════════
+  // Design/adaptive-progression-engine.md rule 8: "Do not re-anchor downward
+  // from every poor race. Diagnose first." These claims hold the diagnosis to
+  // the research it says it is reading.
+  {
+    id: 'REPRESENTATIVENESS.effort-class-authority',
+    binds: [
+      'lib/race/representativeness.ts#REPRESENTATIVE_FLOOR',
+      'lib/race/representativeness.ts#UNREPRESENTATIVE_FLOOR',
+      'lib/race/representativeness.ts#effectiveEffortClass',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Recovery by Effort (A vs. B vs. C Race)',
+    claim:
+      'How much authority a race carries over the fitness model is graded by the same table ' +
+      'that grades its recovery: an A race is "Maximum, full taper, peak day", a C race is a ' +
+      '"hard workout substitute" run with "no taper". The two tier floors are therefore the ' +
+      'doctrine B and C scales rather than invented confidence numbers, they keep the order ' +
+      'doctrine states, and a race the athlete raced on overreached legs cannot come out ' +
+      'graded above one they declared a tune-up.',
+    check({ cite }) {
+      const t = cite.table();
+      // The semantic basis · doctrine still says a C race is a hard workout.
+      const cEffort = t.cell('C race / hard workout substitute', 'Effort given');
+      if (!/no taper/i.test(cEffort)) {
+        throw new Error(
+          `Research/00b no longer describes a C race as run with no taper ("${cEffort}") · ` +
+            'the authority grading rests on that reading, so re-read the claim',
+        );
+      }
+      const aEffort = t.cell('A race', 'Effort given');
+      if (!/maximum/i.test(aEffort) || !/taper/i.test(aEffort)) {
+        throw new Error(`Research/00b no longer describes an A race as a maximal, tapered effort ("${aEffort}")`);
+      }
+      // The floors ARE the doctrine scales, and sit inside the doc's own bands.
+      if (REPRESENTATIVE_FLOOR !== RECOVERY_EFFORT_SCALE.B) {
+        throw new Error('REPRESENTATIVE_FLOOR has drifted off the doctrine B-race scale');
+      }
+      if (UNREPRESENTATIVE_FLOOR !== RECOVERY_EFFORT_SCALE.C) {
+        throw new Error('UNREPRESENTATIVE_FLOOR has drifted off the doctrine C-race scale');
+      }
+      within(REPRESENTATIVE_FLOOR, parsePctBand(t.cell('B race', 'Recovery scale')), 'REPRESENTATIVE_FLOOR');
+      within(
+        UNREPRESENTATIVE_FLOOR,
+        parsePctBand(t.cell('C race / hard workout substitute', 'Recovery scale')),
+        'UNREPRESENTATIVE_FLOOR',
+      );
+      if (UNREPRESENTATIVE_FLOOR >= REPRESENTATIVE_FLOOR) {
+        throw new Error('the representativeness floors are inverted');
+      }
+      // The class grading is monotone and never steps below C.
+      if (effectiveEffortClass({ priority: 'A' }).cls !== 'A') {
+        throw new Error('a declared A race off a normal taper is not being graded an A effort');
+      }
+      if (effectiveEffortClass({ priority: 'A', formBand: 'OVERREACH' }).cls !== 'C') {
+        throw new Error('a race off overreached legs must be graded a C effort · doctrine ties effort to taper');
+      }
+      for (const p of ['A', 'B', 'C'] as const) {
+        const cls = effectiveEffortClass({ priority: p, formBand: 'OVERREACH' }).cls;
+        if (RECOVERY_EFFORT_SCALE[cls] > RECOVERY_EFFORT_SCALE[p]) {
+          throw new Error(`a fatigue downgrade RAISED the effort class for a ${p} race`);
+        }
+      }
+    },
+  },
+  {
+    id: 'REPRESENTATIVENESS.materiality-gates',
+    binds: [
+      'lib/race/representativeness.ts#HEAT_GATE_SUM_F',
+      'lib/race/representativeness.ts#HEAT_GATE_DEWPOINT_F',
+      'lib/race/representativeness.ts#ALTITUDE_GATE_FT',
+      'lib/race/representativeness.ts#WIND_GATE_MPH',
+    ],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: 'Apply Td/Tair table whenever (Tair + Td) > 110°F or Td > 60°F',
+    claim:
+      'Doctrine does not only supply weather curves, it states WHEN each one applies. Below ' +
+      'those thresholds the correct adjustment is zero rather than a small number — otherwise ' +
+      'a cool, still, flat race accumulates a fraction of a percent from every model and ' +
+      'quietly costs a clean result part of its authority, which is this module\'s own failure ' +
+      'mode arriving from the opposite direction. All four gates are read out of the passage.',
+    check({ cite }) {
+      const text = cite.text();
+      const one = (re: RegExp, what: string): number => {
+        const m = text.match(re);
+        if (!m) {
+          throw new Error(
+            `DOCTRINE · ${what} is no longer stated in ${cite.doc} §"When to slow paces" · re-read the claim`,
+          );
+        }
+        // Doctrine writes thousands with a separator ("3,000 ft").
+        return Number(m[1].replace(/,/g, ''));
+      };
+      const sum = one(/\(Tair \+ Td\)\s*>\s*([\d,]+)/, 'the Tair+Td gate');
+      const dew = one(/Td\s*>\s*([\d,]+)°F/, 'the dewpoint gate');
+      const alt = one(/elevation\s*>\s*([\d,]+)\s*ft/, 'the altitude gate');
+      const wind = one(/sustained wind\s*>\s*([\d,]+)\s*mph/, 'the wind gate');
+
+      const pairs: Array<[string, number, number]> = [
+        ['HEAT_GATE_SUM_F', HEAT_GATE_SUM_F, sum],
+        ['HEAT_GATE_DEWPOINT_F', HEAT_GATE_DEWPOINT_F, dew],
+        ['ALTITUDE_GATE_FT', ALTITUDE_GATE_FT, alt],
+        ['WIND_GATE_MPH', WIND_GATE_MPH, wind],
+      ];
+      for (const [name, engine, doctrine] of pairs) {
+        if (engine !== doctrine) {
+          throw new Error(`${name} is ${engine}, doctrine states ${doctrine}`);
+        }
+      }
+      // And the gates are actually SPENT · a gate nobody consults is the defect.
+      const src = sourceOf('web-v2/lib/race/representativeness.ts');
+      for (const name of ['HEAT_GATE_SUM_F', 'ALTITUDE_GATE_FT', 'WIND_GATE_MPH']) {
+        if ((src.match(new RegExp(name, 'g')) ?? []).length < 2) {
+          throw new Error(`${name} is declared but never applied · implement the gate or delete it`);
+        }
+      }
+    },
+  },
+  {
+    id: 'REPRESENTATIVENESS.compose-not-stack',
+    binds: [
+      'lib/race/representativeness.ts#composeSlowdown',
+      'lib/race/representativeness.ts#HEAT_ALTITUDE_COMPOUND_THRESHOLD_PCT',
+      'lib/race/representativeness.ts#HEAT_ALTITUDE_COMPOUND_HAIRCUT',
+    ],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: '### Combined adjustment formula (additive approximation)',
+    claim:
+      'Conditions COMPOSE, they never stack twice. The general rule is Research/01 ' +
+      '§"Combined conditions" ("Add adjustments multiplicatively, not additively"), which is ' +
+      'also what lib/terrain/grade-adjust.ts enforces for the heat×grade pair. Research/06 ' +
+      'states one exception with a worked number — heat and altitude compound less than the ' +
+      'product suggests — and the engine must reproduce that worked example exactly, reading ' +
+      'both the threshold and the answer out of the doc rather than agreeing with itself.',
+    check({ cite }) {
+      const text = cite.text();
+      const grab = (re: RegExp, what: string) => {
+        const m = text.match(re);
+        if (!m) throw new Error(`DOCTRINE · ${what} is no longer stated in ${cite.doc} · re-read the claim`);
+        return m;
+      };
+      const threshold = Number(grab(/when both\s*>\s*(\d+)%/, 'the compounding threshold')[1]);
+      const haircut = Number(grab(/reduce expected gains by\s*~?(\d+)%/, 'the compounding haircut')[1]) / 100;
+      if (HEAT_ALTITUDE_COMPOUND_THRESHOLD_PCT !== threshold) {
+        throw new Error(
+          `HEAT_ALTITUDE_COMPOUND_THRESHOLD_PCT is ${HEAT_ALTITUDE_COMPOUND_THRESHOLD_PCT}, doctrine says ${threshold}`,
+        );
+      }
+      if (Math.abs(HEAT_ALTITUDE_COMPOUND_HAIRCUT - haircut) > 1e-9) {
+        throw new Error(`HEAT_ALTITUDE_COMPOUND_HAIRCUT is ${HEAT_ALTITUDE_COMPOUND_HAIRCUT}, doctrine says ${haircut}`);
+      }
+
+      // The worked example, read out of the doc and reproduced by the engine.
+      const ex = grab(
+        /a (\d+)% heat \+ (\d+)% altitude condition\s*≈\s*(\d+)%/,
+        "doctrine's heat-plus-altitude worked example",
+      );
+      const [heat, alt, expected] = [Number(ex[1]), Number(ex[2]), Number(ex[3])];
+      const got = composeSlowdown({ heat, altitude: alt });
+      if (Math.round(got) !== expected) {
+        throw new Error(
+          `composeSlowdown(${heat}% heat, ${alt}% altitude) = ${got.toFixed(2)}% · doctrine's own ` +
+            `worked example says ≈${expected}%`,
+        );
+      }
+
+      // The general rule is multiplicative, not additive · Research/01.
+      const general = resolveCitation('Research/01-pace-zones-vdot.md', '### Combined conditions');
+      if (!/multiplicatively, not additively/i.test(general.text())) {
+        throw new Error(
+          'Research/01 §"Combined conditions" no longer states the multiplicative rule · ' +
+            'composeSlowdown is built on it, so re-read both claims',
+        );
+      }
+      // Two factors under the compounding threshold must multiply, not add.
+      const additive = 5 + 4;
+      const multiplied = composeSlowdown({ heat: 5, course: 4 });
+      if (multiplied <= additive) {
+        throw new Error(
+          `composeSlowdown is adding rather than multiplying: 5% + 4% gave ${multiplied.toFixed(3)}%`,
+        );
+      }
+    },
+  },
+  {
+    id: 'REPRESENTATIVENESS.pacing-cv-bands',
+    binds: ['lib/race/representativeness.ts#PACING_CV_CEILING_PCT'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '| Performance tier | 5-km CV (men) | 5-km CV (women) | Late-race pattern |',
+    claim:
+      'Split dispersion is only a pacing failure when it exceeds what a runner of that ' +
+      'standard normally shows. The Diaz / Hettinga table states those bands per tier, so ' +
+      "each of the engine's ceilings is the top of a real row rather than a chosen number, " +
+      'and they rise as the standard falls — a four-hour marathoner is allowed more variation ' +
+      'than a national-class one.',
+    check({ cite }) {
+      const t = cite.table();
+      const tiers: AbilityTier[] = ['elite', 'mid_pack', 'slow'];
+      let previous = 0;
+      for (const tier of tiers) {
+        const row = PACING_CV_DOC_ROW[tier];
+        const [, hi] = parseBand(t.cell(row, '5-km CV (men)'));
+        const engine = PACING_CV_CEILING_PCT[tier];
+        if (engine !== hi) {
+          throw new Error(
+            `PACING_CV_CEILING_PCT.${tier} is ${engine}% · Research/08's "${row}" row tops out at ${hi}%`,
+          );
+        }
+        if (engine <= previous) {
+          throw new Error(
+            `PACING_CV_CEILING_PCT does not rise as the standard falls: ${tier} is ${engine}% ` +
+              `against ${previous}% for the tier above it`,
+          );
+        }
+        previous = engine;
+      }
+      // A women's band exists for every row the engine reads · if doctrine ever
+      // drops it, the single-column read below needs revisiting.
+      for (const tier of tiers) {
+        if (!/\d/.test(t.cell(PACING_CV_DOC_ROW[tier], '5-km CV (women)'))) {
+          throw new Error(`Research/08's "${PACING_CV_DOC_ROW[tier]}" row no longer states a women's CV band`);
+        }
+      }
+    },
+  },
+  {
+    id: 'REPRESENTATIVENESS.flat-course-is-not-a-hill',
+    binds: ['lib/race/representativeness.ts#FLAT_COURSE_GAIN_FT'],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '| Net elevation gain | Slowdown (typical) |',
+    claim:
+      "Doctrine's course-profile table has a flat row that costs zero, and it states where " +
+      'flat ends. A course under that figure must not be charged for its elevation at all.',
+    check({ cite }) {
+      const t = cite.table();
+      const label = t.headers[0];
+      const flat = t.rows.find((r) => /^flat/i.test(r[label] ?? ''));
+      if (!flat) {
+        throw new Error(`DOCTRINE · no "Flat" row in the course-profile table in ${cite.doc}`);
+      }
+      const m = /<\s*([\d,]+)\s*ft/.exec(flat[label]);
+      if (!m) {
+        throw new Error(`DOCTRINE · the "Flat" row no longer states a foot threshold ("${flat[label]}")`);
+      }
+      const doctrineFt = Number(m[1].replace(/,/g, ''));
+      if (FLAT_COURSE_GAIN_FT !== doctrineFt) {
+        throw new Error(`FLAT_COURSE_GAIN_FT is ${FLAT_COURSE_GAIN_FT}, doctrine says flat is under ${doctrineFt} ft`);
+      }
+      // And the flat row really does cost nothing.
+      const cost = parseBand(flat['Slowdown (typical)']);
+      if (cost[0] !== 0 || cost[1] !== 0) {
+        throw new Error(`Research/02's flat row now costs ${flat['Slowdown (typical)']} · re-read the claim`);
+      }
+    },
+  },
+  {
+    id: 'REPRESENTATIVENESS.altitude-table',
+    binds: ['lib/race/representativeness.ts#ALTITUDE_SLOWDOWN_PCT'],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: '### Race performance loss by elevation (sea-level acclimatized)',
+    claim:
+      'Every altitude figure the engine prices a race with must sit inside the band doctrine ' +
+      'states for that elevation, both for the athlete who travelled in and for the one who ' +
+      'has been resident three weeks — and the acclimated cost must never exceed the acute one.',
+    check({ cite }) {
+      const t = cite.table();
+      const bandFor = (cell: string): [number, number] | null => {
+        if (!/\d/.test(cell)) return null;            // "Negligible"
+        return parseBand(cell);
+      };
+      for (const row of ALTITUDE_SLOWDOWN_PCT) {
+        const docRow = t.rows.find(
+          (r) => Number((r[t.headers[0]] ?? '').replace(/,/g, '')) === row.ft,
+        );
+        if (!docRow) {
+          throw new Error(`DOCTRINE · no ${row.ft} ft row in the altitude table in ${cite.doc}`);
+        }
+        const acute = bandFor(docRow['Endurance event slowdown']);
+        const accl = bandFor(docRow['After 3 weeks acclimatization']);
+        if (acute) within(row.acute, acute, `ALTITUDE_SLOWDOWN_PCT ${row.ft} ft acute`);
+        else if (row.acute !== 0) {
+          throw new Error(`doctrine calls ${row.ft} ft negligible · the engine charges ${row.acute}%`);
+        }
+        if (accl) {
+          // A "<0.5%" cell states a ceiling, not a band.
+          if (/^\s*<|^\s*&lt;/.test(docRow['After 3 weeks acclimatization'])) {
+            atMost(row.acclimated, accl[1], `ALTITUDE_SLOWDOWN_PCT ${row.ft} ft acclimated`);
+          } else {
+            within(row.acclimated, accl, `ALTITUDE_SLOWDOWN_PCT ${row.ft} ft acclimated`);
+          }
+        }
+        if (row.acclimated > row.acute) {
+          throw new Error(
+            `ALTITUDE_SLOWDOWN_PCT at ${row.ft} ft costs an acclimated athlete more than an ` +
+              'unacclimatized one · doctrine says acclimatization helps',
+          );
+        }
+      }
+    },
+  },
+  {
+    id: 'REPRESENTATIVENESS.wind-table',
+    binds: ['lib/race/representativeness.ts#HEADWIND_COST_S_PER_MI'],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: '### Headwind / tailwind seconds-per-mile (flat, dry, head-on/dead-aft)',
+    claim:
+      "The headwind cost the engine charges a race is doctrine's own table, at both pace " +
+      'anchors it publishes, cell for cell. It is a straight transcription, so the gate ' +
+      'checks it as one rather than as a band.',
+    check({ cite }) {
+      const t = cite.table();
+      for (const row of HEADWIND_COST_S_PER_MI) {
+        const docRow = t.rows.find((r) => parseBand(r[t.headers[0]])[0] === row.mph);
+        if (!docRow) {
+          throw new Error(`DOCTRINE · no ${row.mph} mph row in the wind table in ${cite.doc}`);
+        }
+        const at6 = parseBand(docRow['Headwind cost (6:00 pace)'])[0];
+        const at8 = parseBand(docRow['Headwind cost (8:00 pace)'])[0];
+        if (row.at6 !== at6 || row.at8 !== at8) {
+          throw new Error(
+            `HEADWIND_COST_S_PER_MI at ${row.mph} mph is (${row.at6}, ${row.at8}) s/mi · ` +
+              `doctrine says (${at6}, ${at8})`,
+          );
+        }
+        // A headwind always costs a slower runner more · they are in it longer.
+        if (row.at8 < row.at6) {
+          throw new Error(`HEADWIND_COST_S_PER_MI at ${row.mph} mph costs a 6:00 runner more than an 8:00 one`);
+        }
       }
     },
   },

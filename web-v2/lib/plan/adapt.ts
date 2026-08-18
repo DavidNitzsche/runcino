@@ -2353,27 +2353,65 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
   let bestRaceVdot: number | null = null;
   let bestSlug = '';
   let bestDate = '';
+  let bestDistanceMi = 0;
+  let bestFinishS = 0;
   for (const raceRow of recent) {
     const fs = raceRow.finish_s ? Number(raceRow.finish_s) : 0;
     const mi = raceRow.distance_mi ? Number(raceRow.distance_mi) : 0;
     const v = fs > 0 && mi > 0 ? vdotFromRace(fs, mi) : null;
     if (v != null && (bestRaceVdot == null || v > bestRaceVdot)) {
       bestRaceVdot = v; bestSlug = raceRow.slug; bestDate = raceRow.date;
+      bestDistanceMi = mi; bestFinishS = fs;
     }
   }
   if (bestRaceVdot != null && fitnessRegressionFires(oldVdot, bestRaceVdot)) {
-    const delta = bestRaceVdot - oldVdot;
+    // 2026-08-17 · rule 8 of Design/adaptive-progression-engine.md ·
+    // "Do not re-anchor downward from every poor race. Diagnose first."
+    // The magnitude of the re-anchor scales with how representative the race
+    // was; below the unrepresentative floor it does not fire at all and the
+    // fitness model is left alone. Diagnosis lives entirely in
+    // lib/race/representativeness.ts (pure) + -inputs.ts (the queries).
+    const { assessRaceRepresentativeness } = await import('../race/representativeness-inputs');
+    const { authorityScaledVdot } = await import('../race/representativeness');
+    const rep = await assessRaceRepresentativeness({
+      userId, raceSlug: bestSlug, raceDateISO: bestDate,
+      distanceMi: bestDistanceMi, finishS: bestFinishS,
+      anchorVdot: oldVdot, raceVdot: bestRaceVdot,
+    }).catch(() => null);
+
+    // No diagnosis available → behave exactly as before (full authority), so a
+    // data outage can never silently freeze the fitness model.
+    const authority = rep?.authority ?? 1;
+    const scaledVdot = rep == null
+      ? bestRaceVdot
+      : authorityScaledVdot(oldVdot, bestRaceVdot, authority);
+
+    if (scaledVdot == null) {
+      // Unrepresentative · rule 8's "reduce confidence, not fitness". The race
+      // is on record; the anchor is not touched.
+      return null;
+    }
+
+    const delta = scaledVdot - oldVdot;
+    if (!fitnessRegressionFires(oldVdot, scaledVdot)) return null;
+
     return {
       kind: 'fitness_regression',
       severity: 'warn',
-      reason: `Race read slower than the plan's anchor · VDOT ${bestRaceVdot.toFixed(1)} vs ${oldVdot.toFixed(1)} (${delta.toFixed(1)}). Paces re-anchor to the result.`,
+      reason: authority >= 1
+        ? `Race read slower than the plan's anchor · VDOT ${bestRaceVdot.toFixed(1)} vs ${oldVdot.toFixed(1)} (${delta.toFixed(1)}). Paces re-anchor to the result.`
+        : `Race read slower than the plan's anchor · VDOT ${bestRaceVdot.toFixed(1)} vs ${oldVdot.toFixed(1)}. ${rep?.summary ?? ''} Paces move part of the way, to ${scaledVdot.toFixed(1)}.`.trim(),
       evidence: {
         source: 'race',
-        new_vdot: bestRaceVdot,
+        new_vdot: scaledVdot,
         old_vdot: oldVdot,
         delta,
         race_slug: bestSlug,
         raced_at: bestDate,
+        raw_race_vdot: bestRaceVdot,
+        representativeness: authority,
+        representativeness_tier: rep?.tier ?? null,
+        representativeness_detractors: rep?.detractors.map((d) => d.factor) ?? [],
       },
     };
   }
