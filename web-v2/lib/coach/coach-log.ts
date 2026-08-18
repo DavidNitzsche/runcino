@@ -24,6 +24,14 @@
  *     exactly twice per episode: once when the pattern establishes and
  *     once when it resolves. Never in between — this is an observation,
  *     not a per-run grade (feedback_no_reactive_coach).
+ *   · fitness_evidence — 2026-08-18 · a key session read PARTIAL_FAILED
+ *     with evidence.fitness === 'high' (lib/coach/fitness-evidence.ts,
+ *     lib/execution/interpret.ts): the athlete came apart at a pace already
+ *     established as achievable, which Design/execution-memory-firing.md
+ *     Part 1 calls "one of the most informative things that can happen."
+ *     Routed through classifyFinding (lib/coach/firing-policy.ts) before it
+ *     writes; only written when that classification is SURFACE or louder.
+ *     One-shot per session date, not an episode.
  *
  * STORAGE · coach_intents (no new table, no DDL). Entries are rows with
  * reason 'coach_log_<kind>', field = idempotency key, value = the
@@ -62,6 +70,11 @@ import {
   type EasyQuietReason,
 } from '@/lib/coach/easy-discipline';
 import { updateEpisode, type EpisodeDetector } from '@/lib/coach/episode-log';
+import { classifyFinding, atLeastAsLoud } from '@/lib/coach/firing-policy';
+import {
+  loadPartialFitnessEvidenceFindings,
+  composeFitnessEvidenceEntry,
+} from '@/lib/coach/fitness-evidence';
 
 /* ────────────────────────── Types ────────────────────────── */
 
@@ -70,7 +83,8 @@ export type CoachLogKind =
   | 'phase_boundary'
   | 'first_ever'
   | 'fitness_shift'
-  | 'easy_discipline';
+  | 'easy_discipline'
+  | 'fitness_evidence';
 
 export interface CoachLogEntry {
   id: string;
@@ -91,6 +105,7 @@ const REASON_OF_KIND: Record<Exclude<CoachLogKind, 'fitness_shift'>, string> = {
   phase_boundary: 'coach_log_phase',
   first_ever: 'coach_log_first',
   easy_discipline: 'coach_log_easy_discipline',
+  fitness_evidence: 'coach_log_fitness_evidence',
 };
 
 /* ──────────────────── Pure entry composers ──────────────────── */
@@ -478,10 +493,60 @@ export async function updateCoachLog(userId: string): Promise<{ written: number 
 
     // ── 4 · Easy-day discipline (daily, at most twice per episode) ──
     written += await updateEasyDisciplineLog(userId, today);
+
+    // ── 5 · Partial-failed-at-a-known-pace fitness evidence (daily) ──
+    // See lib/coach/fitness-evidence.ts · Design/execution-memory-firing.md
+    // Part 1's "extremely informative" case, routed through classifyFinding
+    // before it is allowed to write. One-shot per session date; the
+    // (reason, field) idempotency below is the whole suppression mechanism.
+    written += await updateFitnessEvidenceLog(userId, today);
   } catch (e) {
     console.warn('[coach-log] updateCoachLog failed:', e instanceof Error ? e.message : String(e));
   }
   return { written };
+}
+
+/* ─────────────── Partial-failed fitness-evidence writer ─────────────── */
+
+/**
+ * Write the fitness-evidence line for every not-yet-logged
+ * PARTIAL_FAILED-at-a-known-pace session in the lookback window.
+ *
+ * Unlike easy-discipline this is not an open/close episode: each occurrence
+ * is its own dated event, keyed by date, written at most once per date via
+ * the same `writeEntry` idempotency `week_close` / `phase_boundary` /
+ * `first_ever` already use. `classifyFinding` gates the write — the finder
+ * only ever proposes SURFACE-worthy findings per its own module header, but
+ * the classification is still run explicitly here rather than assumed, so a
+ * future change to the firing test is honoured automatically.
+ */
+async function updateFitnessEvidenceLog(userId: string, todayISO: string): Promise<number> {
+  let written = 0;
+  const findings = await loadPartialFitnessEvidenceFindings(userId, todayISO);
+  for (const finding of findings) {
+    const level = classifyFinding({
+      changed: true,
+      athleteNeedsToKnow: true,
+      usefulOnlyBecauseLooking: true,
+      isPositive: false,
+    });
+    if (!atLeastAsLoud(level, 'SURFACE')) continue;
+
+    const composed = composeFitnessEvidenceEntry(finding);
+    const key = `fitness_evidence:${finding.dateISO}`;
+    if (await writeEntry(userId, 'fitness_evidence', key, {
+      ...composed,
+      dateISO: finding.dateISO,
+      meta: {
+        domain: finding.domain,
+        stimulusCompletion: Math.round(finding.stimulusCompletion * 100) / 100,
+        establishedPaceSPerMi: Math.round(finding.establishedPaceSPerMi),
+        actualPaceSPerMi: Math.round(finding.actualPaceSPerMi),
+        firingLevel: level,
+      },
+    })) written++;
+  }
+  return written;
 }
 
 /* ─────────────── Easy-discipline episode state machine ─────────────── */
@@ -603,7 +668,7 @@ export async function loadCoachLog(
     const kind = (typeof v.kind === 'string' ? v.kind : r.reason.replace(/^coach_log_/, '')) as CoachLogKind;
     entries.push({
       id: r.id,
-      kind: (['week_close', 'phase_boundary', 'first_ever', 'easy_discipline'] as string[]).includes(kind)
+      kind: (['week_close', 'phase_boundary', 'first_ever', 'easy_discipline', 'fitness_evidence'] as string[]).includes(kind)
         ? kind : 'week_close',
       dateISO: typeof v.dateISO === 'string' ? v.dateISO : ts.slice(0, 10),
       title: typeof v.title === 'string' ? v.title : 'LOG',
