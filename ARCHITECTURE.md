@@ -73,6 +73,21 @@ archived.
 Correct: for each *date*, take the workout from the most recently authored plan covering that
 date. Reference implementation in `lib/adaptation/load.ts` (`OWNED_DAYS`).
 
+### `races` is per-user, and slugs are shared between athletes
+
+A slug like `cim` names the *event*, not one runner's entry. Every athlete
+racing it has their own row under the same slug. So an `UPDATE races SET … WHERE
+slug = $1` overwrites every other user's result with this one's — the same shape
+as the cross-user leak in the 2026-05-30 audit. Always scope by `user_uuid`.
+
+Caught in a 2026-08-17 backfill before it ran, alongside a second hazard in the
+same script worth stating separately: **a Strava token refresh must persist, or
+it silently kills the integration.** Strava invalidates the old refresh token
+the instant it issues a new one, so a read-only connection that refreshes and
+cannot write leaves a dead connection with no error — the failure surfaces at
+the next sync, far from its cause. Any script that may refresh needs write
+access and must fail loudly if the rotated triple does not save.
+
 ### Runs multi-ingest
 
 Watch, Strava and HealthKit can all produce a row for one run. `getCanonicalRunIds`
@@ -91,6 +106,31 @@ read as a runner doing badly. But a swallowed error is indistinguishable from ab
 **Always log in the catch.** That log is the only reason the bigint bug above was found.
 
 ---
+
+### The A/B race filter is load-bearing safety, not tidiness
+
+`lib/training/vdot-inputs.ts` admits only `meta->>'priority' IN ('A','B')` into
+the VDOT candidate pool, and `vdot.ts` drops `'C'` again at selection.
+
+That filter reads like data hygiene. It is the only thing standing between the
+candidate pool and a jogged C race, because **`assessRaceRepresentativeness` is
+not consulted on the selection path at all.** Its only callers are the two
+re-anchor detectors in `lib/plan/adapt.ts`; `vdot.ts` contains no reference to
+it. Selection is max-wins over the pool, so it keeps the aided read and discards
+the hilly one.
+
+Two things break together if the filter is opened without extending
+representativeness into selection:
+
+1. A low-effort or heavily-aided race can become the anchor that sets every
+   prescribed pace.
+2. `supersededLead` (`EVIDENCE.race-supersedes-earlier-leads`) keys on the
+   freshest race's DATE with no authority predicate, so a jogged C race becomes
+   "the field test" and demotes every legitimate training lead behind it.
+
+The honest version of "all races have meaning" is that authority *scales a
+candidate's weight* rather than gating its membership — which requires both of
+the above fixed first.
 
 ## 3 · The gates
 
