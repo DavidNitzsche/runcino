@@ -83,6 +83,12 @@ import {
   STRIDE_DAYS_PER_WEEK,
 } from '@/lib/plan/spec-builder';
 import {
+  AT_PACE_WEEKLY_SHARE_CAP,
+  CRUISE_RECOVERY_MIN_PER_WORK_MI,
+  INTERVAL_REP_MINUTES,
+  CONTINUOUS_TEMPO_MINUTES,
+} from '@/lib/prescription/levers';
+import {
   GRADE_COST_PER_PCT,
   GRADE_MODEL_MAX_PCT,
   DESCENT_GIVEBACK_FRACTION,
@@ -2579,6 +2585,108 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (taperMpDose(0, 999) != null) {
         throw new Error('the race week was handed an MP session - 9.2 row -1 is the 5K-pace tune-up');
       }
+    },
+  },
+
+  /* ── Progression levers ───────────────────────────────────────────────────
+   *
+   * `Design/adaptive-progression-engine.md` §2 makes duration, density and rep
+   * count first-class progression levers so the engine stops treating "faster"
+   * as the only way to progress. That freedom needs a ceiling: without one, a
+   * lever ladder walks a runner straight past Daniels' at-pace volume caps one
+   * comfortable step at a time. These four claims are that ceiling, and they
+   * bind the caps to the doc that states them.
+   */
+  {
+    id: 'PROGRESSION.threshold-volume-cap',
+    binds: ['lib/prescription/levers.ts#AT_PACE_WEEKLY_SHARE_CAP.threshold'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 5.3 Cruise intervals (Daniels)',
+    claim:
+      'Threshold work caps at 10% of weekly mileage. The duration and rep-count levers must ' +
+      'refuse to step past it, which is why a 30 mi/wk runner cannot be progressed to 3x10 min ' +
+      'of T work however well they are adapting.',
+    check({ cite }) {
+      const pctInDoc = Number(
+        matchLiteral(cite.text(), /cap T-pace at (\d+)% of weekly mileage/, 'Daniels T-pace cap')[1],
+      );
+      const engine = AT_PACE_WEEKLY_SHARE_CAP.threshold * 100;
+      within(engine, [pctInDoc, pctInDoc], 'threshold at-pace weekly share cap');
+    },
+  },
+  {
+    id: 'PROGRESSION.cruise-recovery-scales-with-work',
+    binds: ['lib/prescription/levers.ts#CRUISE_RECOVERY_MIN_PER_WORK_MI'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 5.3 Cruise intervals (Daniels)',
+    claim:
+      'Cruise recovery is one minute of jog per mile of work segment. When the duration lever ' +
+      'lengthens a rep, recovery has to grow with it — holding recovery fixed while the work ' +
+      'grows is a density increase the engine did not intend and the runner did not earn.',
+    check({ cite }) {
+      const perMi = Number(
+        matchLiteral(cite.text(), /(\d+) min jog per mile of work segment/, 'cruise recovery ratio')[1],
+      );
+      within(CRUISE_RECOVERY_MIN_PER_WORK_MI, [perMi, perMi], 'cruise recovery minutes per work mile');
+    },
+  },
+  {
+    id: 'PROGRESSION.interval-rep-window-and-cap',
+    binds: [
+      'lib/prescription/levers.ts#INTERVAL_REP_MINUTES',
+      'lib/prescription/levers.ts#AT_PACE_WEEKLY_SHARE_CAP.interval',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## 6. VO2max workouts',
+    claim:
+      'VO2 repetitions run 3-5 minutes and total at-pace volume caps at 8% of weekly mileage. ' +
+      'The interval-duration lever stops at the top of the rep window rather than growing reps ' +
+      'indefinitely — past five minutes the session stops being VO2 work and becomes threshold ' +
+      'work wearing its name.',
+    check({ cite }) {
+      const text = cite.text();
+      const rep = matchLiteral(text, /each interval should be (\d+)[–-](\d+) min long/, 'VO2 rep window');
+      within(INTERVAL_REP_MINUTES.min, [Number(rep[1]), Number(rep[1])], 'VO2 rep minimum minutes');
+      within(INTERVAL_REP_MINUTES.max, [Number(rep[2]), Number(rep[2])], 'VO2 rep maximum minutes');
+      const cap = Number(
+        matchLiteral(text, /total at-pace volume ≤ (\d+)% of weekly mileage/, 'VO2 volume cap')[1],
+      );
+      within(AT_PACE_WEEKLY_SHARE_CAP.interval * 100, [cap, cap], 'interval at-pace weekly share cap');
+    },
+  },
+  {
+    id: 'PROGRESSION.repetition-volume-cap',
+    binds: ['lib/prescription/levers.ts#AT_PACE_WEEKLY_SHARE_CAP.repetition'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## 7. Speed / economy workouts',
+    claim:
+      'R-pace work caps at 5% of weekly mileage — the tightest of the three at-pace caps, ' +
+      'because repetition work targets recruitment and economy rather than lactate clearance ' +
+      'and buys nothing from extra volume.',
+    check({ cite }) {
+      const cap = Number(
+        matchLiteral(cite.text(), /cap R pace at (\d+)% of weekly mileage/, 'Daniels R-pace cap')[1],
+      );
+      within(AT_PACE_WEEKLY_SHARE_CAP.repetition * 100, [cap, cap], 'repetition at-pace weekly share cap');
+    },
+  },
+  {
+    id: 'PROGRESSION.continuous-tempo-window',
+    binds: ['lib/prescription/levers.ts#CONTINUOUS_TEMPO_MINUTES'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 5.1 Threshold family overview',
+    claim:
+      'Continuous tempo runs 20-40 minutes. The density lever collapses reps toward a single ' +
+      'continuous effort, so it needs a stopping point: a 2x15 that becomes 1x30 is doctrine, ' +
+      'a 1x50 is not a tempo any more.',
+    check({ cite }) {
+      const m = matchLiteral(
+        cite.text(),
+        /\|\s*Continuous tempo\s*\|[^|]*\|[^|]*\|[^|]*\|\s*(\d+)[–-](\d+) min\s*\|/,
+        'continuous tempo duration cell',
+      );
+      within(CONTINUOUS_TEMPO_MINUTES.min, [Number(m[1]), Number(m[1])], 'continuous tempo minimum minutes');
+      within(CONTINUOUS_TEMPO_MINUTES.max, [Number(m[2]), Number(m[2])], 'continuous tempo maximum minutes');
     },
   },
 ];
