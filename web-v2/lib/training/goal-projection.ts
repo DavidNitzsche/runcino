@@ -1402,19 +1402,24 @@ async function detectRecentRaceDrift(
 /** STRONG · VDOT trend over 4+ weeks has dropped by ≥ 1 point.
  *  Read from projection_snapshots history. */
 async function detectVdotTrendDrift(userUuid: string): Promise<DriftSignal | null> {
-  const r = (await pool.query<{ recent: string | null; older: string | null }>(
+  const r = (await pool.query<{
+    recent: string | null; older: string | null;
+    recent_anchor: string | null; older_anchor: string | null;
+  }>(
     `WITH ranked AS (
-       SELECT vdot, snapshot_date,
+       SELECT vdot, snapshot_date, vdot_anchor_date,
               ROW_NUMBER() OVER (ORDER BY snapshot_date DESC) AS rn
          FROM projection_snapshots
         WHERE user_uuid = $1::uuid
           AND vdot IS NOT NULL
           AND snapshot_date >= CURRENT_DATE - INTERVAL '60 days'
-        GROUP BY vdot, snapshot_date
+        GROUP BY vdot, snapshot_date, vdot_anchor_date
      )
      SELECT
        (SELECT AVG(vdot)::text FROM ranked WHERE rn <= 7) AS recent,
-       (SELECT vdot::text FROM ranked WHERE snapshot_date <= CURRENT_DATE - INTERVAL '28 days' ORDER BY snapshot_date DESC LIMIT 1) AS older`,
+       (SELECT vdot_anchor_date::text FROM ranked WHERE rn = 1) AS recent_anchor,
+       (SELECT vdot::text FROM ranked WHERE snapshot_date <= CURRENT_DATE - INTERVAL '28 days' ORDER BY snapshot_date DESC LIMIT 1) AS older,
+       (SELECT vdot_anchor_date::text FROM ranked WHERE snapshot_date <= CURRENT_DATE - INTERVAL '28 days' ORDER BY snapshot_date DESC LIMIT 1) AS older_anchor`,
     [userUuid],
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!r || !r.recent || !r.older) return null;
@@ -1422,11 +1427,44 @@ async function detectVdotTrendDrift(userUuid: string): Promise<DriftSignal | nul
   const older = Number(r.older);
   if (recent >= older - 1) return null;
 
+  /* 2026-08-17 · RULE 1. "Time passing cannot decrease demonstrated fitness."
+   *
+   * This detector compared two points on the snapshot series and called any
+   * drop "points of fitness loss", at weight STRONG, which pushes goal status
+   * to off-track. But the snapshot IS `bestRecentVdot`'s output, and that
+   * number falls on the CALENDAR by design: an aging anchor fades 0.1 VDOT per
+   * fortnight, expires outright at 84 days, and the read then drops to whatever
+   * training candidates remain. A runner who trains perfectly and simply does
+   * not race will watch this fire.
+   *
+   * `vdot_anchor_date` has been written to this table since migration 125 and
+   * never read. Reading it separates the two cases:
+   *
+   *   · SAME anchor  → the only thing that moved is the fade. Calendar.
+   *   · DIFFERENT    → new evidence arrived. Real, but it is the same evidence
+   *                    `detectFitnessRegression` already evaluates behind a
+   *                    representativeness gate. One gated path beats one gated
+   *                    and one ungated saying the same thing louder.
+   *
+   * Doctrine's own prescription for stale evidence is to preserve the estimate
+   * and lower CONFIDENCE, never to record a loss. So neither case is a fitness
+   * finding, and this now stays quiet in both. Kept rather than deleted because
+   * an anchor-less drop (no anchor recorded on either endpoint) is still an
+   * honest signal on pre-migration rows. */
+  if (r.recent_anchor != null && r.older_anchor != null) {
+    return null;
+  }
+
   return {
     kind: 'vdot_trend',
-    weight: 'strong',
-    detail: `VDOT trend is down · ${older.toFixed(1)} four weeks ago, ${recent.toFixed(1)} now · ${(older - recent).toFixed(1)} points of fitness loss.`,
-    evidence: { vdotRecent: recent, vdot4wAgo: older, delta: Number((recent - older).toFixed(2)) },
+    weight: 'medium',
+    detail: `Fitness estimate is ${(older - recent).toFixed(1)} lower than four weeks ago · ${older.toFixed(1)} then, ${recent.toFixed(1)} now.`,
+    evidence: {
+      vdotRecent: recent,
+      vdot4wAgo: older,
+      delta: Number((recent - older).toFixed(2)),
+      anchorProvenance: 'unrecorded',
+    },
   };
 }
 
