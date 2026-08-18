@@ -391,3 +391,32 @@ describe('consistency means the shape of the block, not just its average', () =>
     expect(detail).not.toMatch(/one week at/i);
   });
 });
+
+describe('heat is filtered per observation, not per surface', () => {
+  // CLAUDE.md's locked per-finding rule: a guard on the parent surface does
+  // not protect a sub-finding. Research/03 §12 — heat manufactures 2-5% of
+  // decoupling on its own, so a hot-day reading must clear the endurance
+  // threshold BY that artifact before it accuses the runner's aerobic base.
+  // The loader owns the filtering; these hold the consequence.
+  it('a decoupling verdict that survived filtering still counts against absorption', () => {
+    const withPoor = classifyAdaptation({ ...baseline(), decouplingVerdicts: ['poor', 'poor', 'race-ready'] });
+    const withClean = classifyAdaptation({ ...baseline(), decouplingVerdicts: ['race-ready', 'race-ready', 'race-ready'] });
+    const cost = (v: ReturnType<typeof classifyAdaptation>) =>
+      v.dimensions.find((d) => d.dimension === 'internal_cost')!.score!;
+    expect(cost(withPoor)).toBeLessThan(cost(withClean));
+  });
+
+  it('filtered-out observations leave the dimension unreadable rather than clean', () => {
+    // A hot run below the raised bar is not evidence either way. Recording it
+    // as a good run would be the same error in the other direction.
+    const v = classifyAdaptation({
+      ...baseline(),
+      decouplingVerdicts: null,
+      lateDriftBpm: null,
+      rpeReported: null,
+      rpeHarderThanExpected: null,
+      easyDiscipline: null,
+    });
+    expect(v.dimensions.find((d) => d.dimension === 'internal_cost')!.score).toBeNull();
+  });
+});

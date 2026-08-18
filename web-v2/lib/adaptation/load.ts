@@ -21,8 +21,9 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds } from '@/lib/runs/volume';
 import { computeTrainingForm } from '@/lib/coach/training-form';
 import { computeRecoveryPhase } from '@/lib/coach/recovery-phase';
-import { loadEasyDiscipline } from '@/lib/coach/easy-discipline';
+import { loadEasyDiscipline, HEAT_CONFOUND_TEMP_F } from '@/lib/coach/easy-discipline';
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
+import { DECOUPLING_ENDURANCE_GAP_PCT, DECOUPLING_HEAT_ARTIFACT_PCT } from '@/lib/coach/limiter';
 import { computeHrThirds } from '@/lib/coach/hr-thirds';
 import { loadRecentTestPoints } from '@/lib/training/goal-projection';
 import { classifyAdaptation, type AdaptationInput, type AdaptationVerdict } from './adaptation-model';
@@ -293,8 +294,36 @@ export async function loadAdaptationInput(
     const splits = Array.isArray(d.splits) ? (d.splits as never[]) : null;
     const distanceMi = Number(d.distanceMi) > 0 ? Number(d.distanceMi) : null;
 
+    /* Decoupling, heat-filtered PER OBSERVATION.
+     *
+     * `Research/03` §12: heat manufactures 2-5% of decoupling on its own. So a
+     * hot-day reading must clear the endurance threshold BY that artifact
+     * before it is allowed to say anything about the runner's aerobic base —
+     * otherwise the finding is about the weather.
+     *
+     * CLAUDE.md's per-finding context-filter rule is explicit that a guard on
+     * the parent surface does not protect a sub-finding, and this is exactly
+     * the case it describes. Without this filter, a 90°F long run reading 13.2%
+     * drift counted as poor absorption, held the adaptation band at `normal`
+     * instead of `strong`, and would have withheld a progression step the
+     * runner had actually earned. Being conservative for a wrong reason is
+     * still being wrong.
+     *
+     * The same constants the limiter uses, deliberately — two filters
+     * disagreeing about what counts as hot is its own bug. */
     const dec = computeAerobicDecoupling(splits, distanceMi);
-    if (dec) decouplingVerdicts.push(dec.verdict);
+    if (dec) {
+      const tempF = Number(d.tempF ?? (d.weather as Record<string, unknown> | undefined)?.tempF);
+      const heatConfounded = Number.isFinite(tempF) && tempF >= HEAT_CONFOUND_TEMP_F;
+      const threshold = heatConfounded
+        ? DECOUPLING_ENDURANCE_GAP_PCT + DECOUPLING_HEAT_ARTIFACT_PCT
+        : DECOUPLING_ENDURANCE_GAP_PCT;
+      // A hot day that does not clear the raised bar is not evidence either
+      // way — dropped, never recorded as a clean run, because inventing a good
+      // verdict is the same error in the other direction.
+      if (dec.driftPct >= threshold) decouplingVerdicts.push('poor');
+      else if (!heatConfounded) decouplingVerdicts.push(dec.verdict);
+    }
 
     // NOTE · `computeHrThirds` reads `phase === 'work'` splits, which a long
     // run does not have — it is built for structured work blocks, and on a
