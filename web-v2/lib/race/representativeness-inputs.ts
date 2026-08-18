@@ -16,6 +16,7 @@
  * behaviour, so a data outage cannot silently freeze the fitness model.
  */
 import { pool } from '@/lib/db/pool';
+import { resolveCourseElevation } from './course-elevation';
 import { TAPER_RACE_WEEK_PCT_OF_PEAK, distanceCategoryOf } from '@/lib/plan/goal-tiers';
 import {
   assessRepresentativeness,
@@ -107,9 +108,16 @@ export async function assessRaceRepresentativeness(args: {
   const ar = (raceRow.actual_result ?? {}) as Record<string, unknown>;
   const geom = (raceRow.course_geometry ?? {}) as Record<string, unknown>;
 
-  // ── 2 · Course elevation · course_library first, GPX geometry as the
-  //        labelled fallback. Mirrors the precedence in components/faff-app/
-  //        seed.ts rather than the projection route, which lacks the fallback.
+  // ── 2 · Course elevation · measured geometry first, typed scalars as the
+  //        fallback. One resolver, shared with seed.ts and the projection
+  //        route — see lib/race/course-elevation.ts for why measurement wins.
+  //
+  //        This used to run the other way: the library's typed scalars won
+  //        unless the row was a `stub`. AFC is `editorial`, so its hand-typed
+  //        "flat, 210 ft gross, 0 net" beat the 5790-point GPS track sitting
+  //        on the race row, which measures 722 ft gross and −130 ft net. The
+  //        course read as flat, so the race read as easier than it was, and
+  //        the fitness taken off it was low by roughly half a VDOT point.
   const lib = (await pool.query<{
     source: string | null;
     elevation_gain_ft: string | null;
@@ -120,18 +128,19 @@ export async function assessRaceRepresentativeness(args: {
     [raceSlug],
   ).catch(() => ({ rows: [] }))).rows[0];
 
-  let elevationGainFt = num(lib?.elevation_gain_ft);
-  let netElevationFt = num(lib?.net_elevation_ft);
-  const libIsStub = lib?.source == null || lib.source === 'stub';
-  if (libIsStub && geom.elevation_gain_ft != null) {
-    elevationGainFt = num(geom.elevation_gain_ft);
-    const tp = Array.isArray(geom.trackPoints) ? geom.trackPoints : null;
-    if (tp && tp.length >= 2) {
-      const first = num((tp[0] as Record<string, unknown>)?.ele);
-      const last = num((tp[tp.length - 1] as Record<string, unknown>)?.ele);
-      if (first != null && last != null) netElevationFt = Math.round((last - first) * 3.28084);
-    }
-  }
+  //        Measurement does not win because it is measurement — it wins only
+  //        when the trace clears the confidence bar (route length agrees with
+  //        the nominal distance, dense enough sampling, no dropouts or
+  //        altitude spikes). A short or corrupt watch trace loses to the
+  //        curated value, and any disagreement is preserved on `conflict`
+  //        rather than being erased by picking a winner.
+  const resolvedElev = resolveCourseElevation({
+    lib,
+    geometry: geom,
+    nominalDistanceMi: distanceMi,
+  });
+  const elevationGainFt = resolvedElev.elevationGainFt;
+  const netElevationFt = resolvedElev.netElevationFt;
 
   // Mean course altitude, for the Research/06 §7 gate. Only the GPX carries it.
   let altitudeFt: number | null = null;

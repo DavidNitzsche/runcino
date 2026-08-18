@@ -4,12 +4,27 @@
  *
  * GPX only for now; TCX/FIT come later when needed.
  */
+import { elevationProfileFt } from './course-elevation';
 
 export interface CourseGeometry {
   source: 'upload' | 'library' | 'strava_match';
   trackPoints: { lat: number; lon: number; ele: number | null }[];
   distance_mi: number;
   elevation_gain_ft: number;
+  /**
+   * Gross descended feet, noise-thresholded. Positive number.
+   * Null when the track carries no usable elevation samples.
+   */
+  elevation_loss_ft: number | null;
+  /**
+   * Signed net change in feet (finish − start). Negative = net drop.
+   *
+   * Carried here so an uploaded course knows its own net from the moment it
+   * is parsed. Before this field existed, net lived only in hand-typed
+   * `course_library.net_elevation_ft` values — nothing computed it, so a
+   * course whose profile contradicted the typed number had no way to say so.
+   */
+  net_elevation_ft: number | null;
   bbox: { minLat: number; maxLat: number; minLon: number; maxLon: number };
   raw_filename?: string;
 }
@@ -40,9 +55,11 @@ export function parseGPX(xml: string, filename?: string): CourseGeometry {
   // Elevation gain · noise-thresholded (see elevationGainFt). Raw sample-to-
   // sample summing inflated gain badly from GPS/barometric jitter — AFC's
   // 5790-point track raw-summed to 923 ft vs Strava's 724.
-  const elevation_gain_ft = elevationGainFt(
-    points.map((p) => p.ele).filter((e): e is number => e != null),
-  );
+  const eles = points.map((p) => p.ele).filter((e): e is number => e != null);
+  const elevation_gain_ft = elevationGainFt(eles);
+  // Loss and net from the one shared derivation, so an uploaded course
+  // carries its full profile rather than gain alone.
+  const profile = elevationProfileFt(eles);
 
   // BBox for clip + render
   const lats = points.map((p) => p.lat);
@@ -57,6 +74,8 @@ export function parseGPX(xml: string, filename?: string): CourseGeometry {
     trackPoints: points,
     distance_mi,
     elevation_gain_ft,
+    elevation_loss_ft: profile?.lossFt ?? null,
+    net_elevation_ft: profile?.netFt ?? null,
     bbox,
     raw_filename: filename,
   };

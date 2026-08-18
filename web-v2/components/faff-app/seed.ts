@@ -2463,24 +2463,27 @@ export async function buildSeed(): Promise<FaffSeed> {
       const raceLng = bbox?.minLon != null && bbox?.maxLon != null
         ? (Number(bbox.minLon) + Number(bbox.maxLon)) / 2 : null;
 
-      // When course_library is a stub (or missing), prefer GPS-derived
-      // elevation from the uploaded course_geometry. AFC example: library
-      // stub says 210 ft gain / 0 net; GPX has 923 ft gain / −130 ft net.
+      // Course elevation · measured geometry beats the library's typed
+      // scalars. One resolver, shared with representativeness-inputs.ts and
+      // the projection route — see lib/race/course-elevation.ts.
+      //
+      // The old rule consulted geometry only when the library row was a
+      // `stub`, which is why the AFC case this comment used to describe never
+      // actually got fixed: AFC is `editorial`, so its typed "210 ft gain /
+      // 0 net" won over a 5790-point track measuring 722 ft gain / −130 net.
+      const { resolveCourseElevation } = await import('@/lib/race/course-elevation');
       const libSource = (courseLibRow?.source as 'editorial' | 'crowd' | 'stub' | null) ?? null;
-      const libIsStub = libSource == null || libSource === 'stub';
-      let elevGainFt: number | null = courseLibRow?.elevation_gain_ft ?? null;
-      let netElevFt: number | null = courseLibRow?.net_elevation_ft ?? null;
-      let effectiveCourseSource: 'editorial' | 'crowd' | 'stub' | null = libSource;
-      if (libIsStub && courseGeom?.elevation_gain_ft != null) {
-        elevGainFt = Number(courseGeom.elevation_gain_ft);
-        const tp = Array.isArray(courseGeom.trackPoints) ? courseGeom.trackPoints : null;
-        if (tp && tp.length >= 2) {
-          const firstEle = Number((tp[0] as any).ele ?? 0);
-          const lastEle = Number((tp[tp.length - 1] as any).ele ?? 0);
-          netElevFt = Math.round((lastEle - firstEle) * 3.28084);
-        }
-        effectiveCourseSource = 'crowd'; // GPS-measured, not editorially verified
-      }
+      const resolvedElev = resolveCourseElevation({
+        lib: courseLibRow ?? null,
+        geometry: courseGeom,
+        nominalDistanceMi: goalRace.distanceMi,
+      });
+      const elevGainFt: number | null = resolvedElev.elevationGainFt;
+      const netElevFt: number | null = resolvedElev.netElevationFt;
+      // GPS-measured reads as 'crowd' (measured, not editorially verified);
+      // otherwise the library row's own label stands.
+      const effectiveCourseSource: 'editorial' | 'crowd' | 'stub' | null =
+        resolvedElev.provenance === 'measured' ? 'crowd' : libSource;
 
       if (goalSecLocal > 0) {
         // §2.2 · Course chunk · per-race elevation impact

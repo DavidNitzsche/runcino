@@ -59,6 +59,7 @@ import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode,
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { loadProfileState } from '@/lib/coach/profile-state';
 import { computeCourseImpact } from '@/lib/training/course-impact';
+import { resolveCourseElevation } from '@/lib/race/course-elevation';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
 import { computePacingDiscipline } from '@/lib/coach/pacing-discipline';
 import { computeProjectionLevers } from '@/lib/coach/projection-levers';
@@ -141,7 +142,16 @@ export async function GET(req: NextRequest) {
       ? await pool.query<{
           slug: string; name: string; date: string; goal: string | null;
           distance_mi: number | null; location: string | null;
-          course_geometry: { bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number } } | null;
+          // The full geometry column: bbox drives the forecast lookup, and
+          // trackPoints are what resolveCourseElevation measures the course
+          // profile from. Declaring bbox alone was why this route silently
+          // had no measured-elevation path at all.
+          course_geometry: {
+            bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number };
+            trackPoints?: unknown;
+            elevation_gain_ft?: unknown;
+            net_elevation_ft?: unknown;
+          } | null;
           goal_safe: string | null;
         }>(
           `SELECT slug,
@@ -159,7 +169,16 @@ export async function GET(req: NextRequest) {
       : await pool.query<{
           slug: string; name: string; date: string; goal: string | null;
           distance_mi: number | null; location: string | null;
-          course_geometry: { bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number } } | null;
+          // The full geometry column: bbox drives the forecast lookup, and
+          // trackPoints are what resolveCourseElevation measures the course
+          // profile from. Declaring bbox alone was why this route silently
+          // had no measured-elevation path at all.
+          course_geometry: {
+            bbox?: { minLat?: number; maxLat?: number; minLon?: number; maxLon?: number };
+            trackPoints?: unknown;
+            elevation_gain_ft?: unknown;
+            net_elevation_ft?: unknown;
+          } | null;
           goal_safe: string | null;
         }>(
           `SELECT slug,
@@ -379,15 +398,26 @@ export async function GET(req: NextRequest) {
       const raceLng = bbox?.minLon != null && bbox?.maxLon != null
         ? (Number(bbox.minLon) + Number(bbox.maxLon)) / 2 : null;
 
-      // 3b · §2.2 Course chunk
+      // 3b · §2.2 Course chunk · measured geometry beats the library's typed
+      // scalars, via the one resolver the seed and representativeness share.
+      // This route previously read the typed scalars only, with no geometry
+      // fallback at all — the last reader still trusting a hand-curated
+      // number over the GPS track sitting next to it.
+      const resolvedElev = resolveCourseElevation({
+        lib: courseLibRow ?? null,
+        geometry: raceRowRes.rows[0]?.course_geometry ?? null,
+        nominalDistanceMi: distanceMi,
+      });
       const courseImpact = computeCourseImpact(
         {
           distanceMi,
           goalSec,
-          elevationGainFt: courseLibRow?.elevation_gain_ft ?? null,
-          netElevationFt: courseLibRow?.net_elevation_ft ?? null,
+          elevationGainFt: resolvedElev.elevationGainFt,
+          netElevationFt: resolvedElev.netElevationFt,
         },
-        (courseLibRow?.source as 'editorial' | 'crowd' | 'stub' | null) ?? null,
+        resolvedElev.provenance === 'measured'
+          ? 'crowd'
+          : ((courseLibRow?.source as 'editorial' | 'crowd' | 'stub' | null) ?? null),
       );
       courseImpactSec = courseImpact.seconds;
       courseSource = courseImpact.source;

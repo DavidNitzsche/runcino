@@ -63,6 +63,7 @@
 
 import { Pool } from 'pg';
 import { pool as defaultPool } from '@/lib/db/pool';
+import { elevationProfileFromGeometry } from '@/lib/race/course-elevation';
 
 export type PromoteAction = 'created' | 'upgraded' | 'incremented' | 'noop';
 
@@ -116,12 +117,19 @@ function genericize(raceGeometry: any): Record<string, any> {
           ele: p.ele == null ? null : Number(p.ele),
         }))
     : [];
+  // Derive the profile from the track we are about to share rather than
+  // trusting whatever scalars the source blob happened to carry. Older
+  // uploads predate `net_elevation_ft` on CourseGeometry entirely, so this
+  // is the only way a promoted course arrives with a net at all.
+  const derived = elevationProfileFromGeometry({ trackPoints });
   const out: Record<string, any> = {
     source: 'crowd-sourced',
     trackPoints,
     distance_mi: typeof g.distance_mi === 'number' ? g.distance_mi : null,
     elevation_gain_ft:
-      typeof g.elevation_gain_ft === 'number' ? g.elevation_gain_ft : null,
+      derived?.gainFt ?? (typeof g.elevation_gain_ft === 'number' ? g.elevation_gain_ft : null),
+    elevation_loss_ft: derived?.lossFt ?? null,
+    net_elevation_ft: derived?.netFt ?? null,
     bbox: g.bbox && typeof g.bbox === 'object'
       ? {
           minLat: Number(g.bbox.minLat),
@@ -235,11 +243,11 @@ export async function promoteCourseFromRace(opts: PromoteOpts): Promise<PromoteR
     const insert = await p.query<CourseRow>(
       `INSERT INTO course_library (
          slug, name, distance_mi, geometry_json, elevation_gain_ft,
-         start_label, finish_label, notes,
+         net_elevation_ft, start_label, finish_label, notes,
          source, contributor_count, first_contributed_iso, updated_ts
        ) VALUES (
          $1, $2, $3, $4::jsonb, $5,
-         $6, $7, $8,
+         $6, $7, $8, $9,
          'crowd-sourced', 1, NOW(), NOW()
        )
        ON CONFLICT (slug) DO NOTHING
@@ -250,6 +258,7 @@ export async function promoteCourseFromRace(opts: PromoteOpts): Promise<PromoteR
         distGuess,
         JSON.stringify(generic),
         generic.elevation_gain_ft,
+        generic.net_elevation_ft,
         generic.start_label ?? null,
         generic.finish_label ?? null,
         'Crowd-sourced from runner GPX upload.',
@@ -277,6 +286,7 @@ export async function promoteCourseFromRace(opts: PromoteOpts): Promise<PromoteR
               geometry_json = $2::jsonb,
               distance_mi = COALESCE(distance_mi, $3),
               elevation_gain_ft = COALESCE($4, elevation_gain_ft),
+              net_elevation_ft = COALESCE($8, net_elevation_ft),
               start_label = COALESCE(start_label, $5),
               finish_label = COALESCE(finish_label, $6),
               name = COALESCE(NULLIF(name, ''), $7),
@@ -293,6 +303,7 @@ export async function promoteCourseFromRace(opts: PromoteOpts): Promise<PromoteR
         generic.start_label ?? null,
         generic.finish_label ?? null,
         nameGuess,
+        generic.net_elevation_ft,
       ],
     );
     await p.query(
