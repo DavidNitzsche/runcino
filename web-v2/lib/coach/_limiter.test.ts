@@ -1,0 +1,446 @@
+/**
+ * Limiter diagnosis · doctrine tests.
+ *
+ * These encode `Design/adaptive-progression-engine.md` §11 and the specific
+ * claims about what each signal can and cannot distinguish, so a regression
+ * fails with the rule it broke rather than with a number that moved.
+ *
+ * The case that matters most is the last one: a wrong limiter sends the whole
+ * prescription down the wrong road for a block, so several tests here assert
+ * that the module DECLINES to be confident rather than that it produces an
+ * answer.
+ */
+import { describe, it, expect } from 'vitest';
+import {
+  diagnoseLimiter,
+  fitRiegelExponent,
+  CURVE_NEUTRAL_EXPONENT_BAND,
+  DECOUPLING_ENDURANCE_GAP_PCT,
+  DECOUPLING_HEAT_ARTIFACT_PCT,
+  HARD_DAY_GAP_DAYS,
+  INCOMPLETE_RECOVERY_WORKOUTS,
+  DEFAULT_LIMITER,
+  LEVERS,
+  type LimiterInput,
+} from './limiter';
+import { composeWhatClosesIt } from '@/lib/plan/goal-gap';
+
+/** A runner with a goal and nothing else visible. Tests add one signal at a time. */
+function blank(goalDistanceMi = 26.2, goalPaceSecPerMi: number | null = 412): LimiterInput {
+  return {
+    goalDistanceMi,
+    goalPaceSecPerMi,
+    experienceLevel: 'advanced',
+    blockProgressFraction: null,
+    performances: null,
+    fadeObservations: null,
+    thresholdPaceStartSecPerMi: null,
+    thresholdPaceNowSecPerMi: null,
+    thresholdWindowWeeks: null,
+    weeklyMiAtWindowStart: null,
+    recentWeeklyMi: null,
+    observedHardDayGaps: null,
+    sessionsMissingPacesInARow: null,
+  };
+}
+
+/** Two performances whose fitted exponent is `b`, anchored on a 1:30 half. */
+function curveAt(b: number): LimiterInput['performances'] {
+  const halfS = 5400;
+  const marathonS = halfS * Math.pow(2, b);
+  return [
+    { distanceMi: 13.1, finishSeconds: halfS, ageDays: 10 },
+    { distanceMi: 26.2, finishSeconds: Math.round(marathonS), ageDays: 30 },
+  ];
+}
+
+describe('the curve fit is doctrine\'s own formula', () => {
+  it('b = ln(T2/T1) / ln(D2/D1) · Research/02 §6', () => {
+    // Doctrine's own worked example: a 20:00 5K with a 1:33 half is b ≈ 1.072.
+    const b = fitRiegelExponent(
+      { distanceMi: 3.10686, finishSeconds: 1200, ageDays: 0 },
+      { distanceMi: 13.1094, finishSeconds: 5580, ageDays: 0 },
+    );
+    expect(b).toBeCloseTo(1.072, 2);
+  });
+
+  it('refuses a pair too close in distance to fit against', () => {
+    // Half against 30K · ratio 1.42, where ln(D2/D1) stops carrying the fit and
+    // a few seconds of timing noise moves the exponent more than the runner does.
+    expect(
+      fitRiegelExponent(
+        { distanceMi: 13.1, finishSeconds: 5400, ageDays: 0 },
+        { distanceMi: 18.6, finishSeconds: 7900, ageDays: 0 },
+      ),
+    ).toBeNull();
+  });
+
+  it('accepts the pairs runners actually have · 5K-to-10K and half-to-marathon', () => {
+    expect(
+      fitRiegelExponent(
+        { distanceMi: 3.1, finishSeconds: 1200, ageDays: 0 },
+        { distanceMi: 6.2, finishSeconds: 2500, ageDays: 0 },
+      ),
+    ).not.toBeNull();
+    expect(
+      fitRiegelExponent(
+        { distanceMi: 13.1, finishSeconds: 5400, ageDays: 0 },
+        { distanceMi: 26.2, finishSeconds: 11400, ageDays: 0 },
+      ),
+    ).not.toBeNull();
+  });
+
+  it('refuses a pair where the longer race was not slower · that is not a curve', () => {
+    expect(
+      fitRiegelExponent(
+        { distanceMi: 13.1, finishSeconds: 5400, ageDays: 0 },
+        { distanceMi: 26.2, finishSeconds: 5000, ageDays: 0 },
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('each limiter fires from its characteristic evidence', () => {
+  it('endurance · a curve steeper than doctrine\'s neutral band', () => {
+    const r = diagnoseLimiter({ ...blank(), performances: curveAt(1.14) })!;
+    expect(r.primary).toBe('endurance');
+    expect(r.levers[0]).toMatch(/long-run duration/i);
+  });
+
+  it('endurance · aerobic decoupling in the band doctrine calls an endurance gap', () => {
+    const r = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [
+        { distanceMi: 18, lateFadeSecPerMi: null, decouplingPct: DECOUPLING_ENDURANCE_GAP_PCT + 2, cadence: null },
+        { distanceMi: 20, lateFadeSecPerMi: null, decouplingPct: DECOUPLING_ENDURANCE_GAP_PCT + 3, cadence: null },
+      ],
+    })!;
+    expect(r.primary).toBe('endurance');
+  });
+
+  it('speed_reserve · a curve flatter than doctrine\'s neutral band', () => {
+    const r = diagnoseLimiter({ ...blank(), performances: curveAt(1.01) })!;
+    expect(r.primary).toBe('speed_reserve');
+    expect(r.levers[0]).toMatch(/strides/i);
+  });
+
+  it('durability · late fade with the aerobic system intact and cadence breaking', () => {
+    const r = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [
+        { distanceMi: 20, lateFadeSecPerMi: 22, decouplingPct: 4, cadence: 'breaking' },
+        { distanceMi: 18, lateFadeSecPerMi: 15, decouplingPct: 3, cadence: 'fading' },
+      ],
+    })!;
+    expect(r.primary).toBe('durability');
+    // Duration before the pace demand · §2's cheapest-adaptation-first order.
+    expect(r.levers[0]).toMatch(/duration/i);
+    expect(r.levers[r.levers.length - 1]).toMatch(/race-pace/i);
+  });
+
+  it('threshold · pace stagnant across a block while volume climbed', () => {
+    const r = diagnoseLimiter({
+      ...blank(),
+      thresholdPaceStartSecPerMi: 400,
+      thresholdPaceNowSecPerMi: 402,
+      thresholdWindowWeeks: 8,
+      weeklyMiAtWindowStart: 40,
+      recentWeeklyMi: 70,
+    })!;
+    expect(r.primary).toBe('threshold');
+    // The §11 progression · duration first, pace last.
+    expect(r.levers[0]).toMatch(/duration/i);
+    expect(r.levers[r.levers.length - 1]).toMatch(/pace/i);
+  });
+
+  it('training_volume · running under the band the plan is built to', () => {
+    const r = diagnoseLimiter({ ...blank(), recentWeeklyMi: 28, blockProgressFraction: 0.8 })!;
+    expect(r.primary).toBe('training_volume');
+    expect(r.levers[0]).toMatch(/frequency/i);
+  });
+
+  it('training_volume does NOT fire early in a block · being under peak is the plan working', () => {
+    const r = diagnoseLimiter({ ...blank(), recentWeeklyMi: 55, blockProgressFraction: 0.15 })!;
+    expect(r.ranked.find((x) => x.limiter === 'training_volume')).toBeUndefined();
+  });
+
+  it('recovery_capacity · consistently needing longer than doctrine\'s hard-day gap', () => {
+    const r = diagnoseLimiter({
+      ...blank(),
+      observedHardDayGaps: [
+        { stimulus: 'vo2max', daysTaken: HARD_DAY_GAP_DAYS.vo2max + 3 },
+        { stimulus: 'threshold', daysTaken: HARD_DAY_GAP_DAYS.threshold + 2 },
+      ],
+    })!;
+    expect(r.primary).toBe('recovery_capacity');
+    expect(r.levers[0]).toMatch(/gap between hard days/i);
+  });
+
+  it('recovery_capacity · doctrine\'s strongest single performance indicator', () => {
+    const r = diagnoseLimiter({ ...blank(), sessionsMissingPacesInARow: INCOMPLETE_RECOVERY_WORKOUTS })!;
+    expect(r.primary).toBe('recovery_capacity');
+  });
+
+  it('one missed session is not a limiter · doctrine requires two', () => {
+    const r = diagnoseLimiter({ ...blank(), sessionsMissingPacesInARow: INCOMPLETE_RECOVERY_WORKOUTS - 1 })!;
+    expect(r.ranked.find((x) => x.limiter === 'recovery_capacity')).toBeUndefined();
+  });
+
+  it('aerobic_capacity is the default for the events doctrine says it dominates', () => {
+    for (const [mi, cat] of [[3.1, '5k'], [6.2, '10k']] as const) {
+      const r = diagnoseLimiter(blank(mi, 330))!;
+      expect(r.primary).toBe(DEFAULT_LIMITER[cat]);
+      expect(r.primary).toBe('aerobic_capacity');
+    }
+  });
+
+  it('aerobic_capacity is never diagnosed from evidence, only defaulted', () => {
+    // It is not separable from `threshold` with this app's data, so no signal
+    // path may ever produce it as an evidence-backed finding.
+    const loaded = diagnoseLimiter({
+      ...blank(3.1, 330),
+      performances: curveAt(1.14),
+      fadeObservations: [{ distanceMi: 10, lateFadeSecPerMi: 20, decouplingPct: 12, cadence: 'breaking' }],
+      recentWeeklyMi: 12,
+      blockProgressFraction: 0.9,
+      sessionsMissingPacesInARow: 3,
+    })!;
+    expect(loaded.ranked.find((x) => x.limiter === 'aerobic_capacity')).toBeUndefined();
+  });
+});
+
+describe('a flat curve is a real finding, not a failure', () => {
+  it('a runner whose curve tracks the reference gets the goal-distance default at low confidence', () => {
+    const mid = (CURVE_NEUTRAL_EXPONENT_BAND[0] + CURVE_NEUTRAL_EXPONENT_BAND[1]) / 2;
+    const r = diagnoseLimiter({ ...blank(), performances: curveAt(mid) })!;
+    expect(r.ranked).toEqual([]);
+    expect(r.primary).toBe('threshold'); // marathon · doctrine says LT2 dominates
+    expect(r.confidence).not.toBe('high');
+    expect(r.levers).toEqual(LEVERS.threshold);
+  });
+
+  it('a runner we cannot see at all gets the default and says so', () => {
+    const r = diagnoseLimiter(blank())!;
+    expect(r.confidence).toBe('low');
+    expect(r.ranked).toEqual([]);
+    expect(r.summary).toMatch(/not enough evidence/i);
+  });
+
+  it('no goal means no diagnosis', () => {
+    expect(diagnoseLimiter({ ...blank(), goalDistanceMi: null })).toBeNull();
+  });
+});
+
+describe('ambiguous evidence must not produce false confidence', () => {
+  it('a late fade with no HR is consistent with endurance AND durability · both rank, confidence falls', () => {
+    const r = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [
+        { distanceMi: 20, lateFadeSecPerMi: 25, decouplingPct: null, cadence: 'breaking' },
+        { distanceMi: 18, lateFadeSecPerMi: 18, decouplingPct: null, cadence: 'fading' },
+      ],
+    })!;
+    const named = r.ranked.map((x) => x.limiter);
+    expect(named).toContain('durability');
+    expect(named).toContain('endurance');
+    expect(r.confidence).not.toBe('high');
+  });
+
+  it('two limiters neck and neck read as low confidence whatever the ordering', () => {
+    // Under-volumed AND missing paces · doctrine's own note that these are
+    // entangled (a runner who cannot recover cannot carry volume) shows up here
+    // as two findings of near-identical strength. Neither may win by rounding.
+    const r = diagnoseLimiter({
+      ...blank(),
+      recentWeeklyMi: 50,
+      blockProgressFraction: 0.8,
+      sessionsMissingPacesInARow: 2,
+    })!;
+    const named = r.ranked.map((x) => x.limiter);
+    expect(named).toContain('training_volume');
+    expect(named).toContain('recovery_capacity');
+    expect(r.ranked[0].severity - r.ranked[1].severity).toBeLessThan(0.1);
+    expect(r.confidence).toBe('low');
+    expect(r.summary).toMatch(/rather than a settled answer/i);
+  });
+
+  it('a fade on a confounded course is the terrain, not the runner', () => {
+    const r = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [
+        { distanceMi: 20, lateFadeSecPerMi: 40, decouplingPct: 4, cadence: 'breaking', courseConfounded: true },
+      ],
+    })!;
+    expect(r.ranked.find((x) => x.limiter === 'durability')).toBeUndefined();
+  });
+
+  it('a bare fade with nothing attached accuses no one', () => {
+    const r = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [{ distanceMi: 20, lateFadeSecPerMi: 30, decouplingPct: null, cadence: null }],
+    })!;
+    expect(r.ranked).toEqual([]);
+  });
+});
+
+describe('per-observation context filters · CLAUDE.md, locked 2026-05-19 round 4', () => {
+  it('decoupling in heat must clear the threshold by the artifact doctrine states', () => {
+    const justOver = DECOUPLING_ENDURANCE_GAP_PCT + 1; // over the threshold, inside the heat artifact
+    const cool = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [{ distanceMi: 18, lateFadeSecPerMi: null, decouplingPct: justOver, cadence: null }],
+    })!;
+    expect(cool.ranked.find((x) => x.limiter === 'endurance')).toBeDefined();
+
+    const hot = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [
+        { distanceMi: 18, lateFadeSecPerMi: null, decouplingPct: justOver, cadence: null, heatConfounded: true },
+      ],
+    })!;
+    expect(hot.ranked.find((x) => x.limiter === 'endurance')).toBeUndefined();
+  });
+
+  it('a hot-day reading past the artifact still counts · the filter is not a blanket suppression', () => {
+    const r = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [
+        {
+          distanceMi: 18,
+          lateFadeSecPerMi: null,
+          decouplingPct: DECOUPLING_ENDURANCE_GAP_PCT + DECOUPLING_HEAT_ARTIFACT_PCT + 2,
+          cadence: null,
+          heatConfounded: true,
+        },
+      ],
+    })!;
+    expect(r.ranked.find((x) => x.limiter === 'endurance')).toBeDefined();
+  });
+
+  it('a stale performance cannot fit a curve · two old races describe a different runner', () => {
+    const stale = curveAt(1.14)!.map((p) => ({ ...p, ageDays: 400 }));
+    const r = diagnoseLimiter({ ...blank(), performances: stale })!;
+    expect(r.ranked).toEqual([]);
+  });
+});
+
+describe('the David case · a marathoner whose half-marathon fitness outruns their marathon', () => {
+  /**
+   * AFC half 1:41:53 against a marathon that lands far slower than the curve
+   * predicts. Riegel from the half at doctrine's default exponent gives roughly
+   * 3:32; a 3:50 marathon fits an exponent well above the neutral band, which
+   * is doctrine's Speedster — short form ahead of long form.
+   *
+   * The engine must call this ENDURANCE and reach for long-run duration, NOT
+   * reach for pace, and NOT read the strong half as licence to train faster.
+   */
+  const david: LimiterInput = {
+    ...blank(26.2, 412), // goal marathon 3:00
+    performances: [
+      { distanceMi: 13.1, finishSeconds: 6113, ageDays: 5 }, // 1:41:53
+      { distanceMi: 26.2, finishSeconds: 13800, ageDays: 45 }, // 3:50:00
+    ],
+    fadeObservations: [
+      { distanceMi: 20, lateFadeSecPerMi: 28, decouplingPct: 11, cadence: 'fading' },
+      { distanceMi: 18, lateFadeSecPerMi: 19, decouplingPct: 9.5, cadence: 'sustained' },
+    ],
+    recentWeeklyMi: 55,
+  };
+
+  it('names endurance, not speed and not pace', () => {
+    const r = diagnoseLimiter(david)!;
+    expect(r.primary).toBe('endurance');
+    expect(r.primary).not.toBe('speed_reserve');
+  });
+
+  it('is confident, because the curve and the decoupling agree', () => {
+    const r = diagnoseLimiter(david)!;
+    expect(r.confidence).toBe('high');
+  });
+
+  it('prescribes duration and volume · never "run the workouts faster"', () => {
+    const r = diagnoseLimiter(david)!;
+    expect(r.levers[0]).toMatch(/long-run duration/i);
+    // §11: "Do not simply make every workout faster."
+    expect(r.levers[0].toLowerCase()).not.toMatch(/\bfaster\b/);
+  });
+
+  it('the same runner with the marathon removed cannot be diagnosed from the half alone', () => {
+    const r = diagnoseLimiter({ ...david, performances: [david.performances![0]], fadeObservations: null })!;
+    expect(r.ranked.find((x) => x.limiter === 'endurance' && x.evidence.some((e) => /curve/i.test(e)))).toBeUndefined();
+  });
+
+  it('a provisional result costs the read a confidence notch', () => {
+    const r = diagnoseLimiter({
+      ...david,
+      performances: david.performances!.map((p, i) => (i === 0 ? { ...p, provisional: true } : p)),
+    })!;
+    expect(r.confidence).not.toBe('high');
+  });
+});
+
+describe('the goal-gap payoff · whatClosesIt is the limiter, not hardcoded prose', () => {
+  it('an endurance-limited runner is told to lengthen the long run', () => {
+    const limiter = diagnoseLimiter({ ...blank(), performances: curveAt(1.14) })!;
+    const out = composeWhatClosesIt('widening', 600, 12, 26.2, limiter);
+    expect(out.join(' ')).toMatch(/long-run duration/i);
+    // The line that used to go to everyone.
+    expect(out.join(' ')).not.toMatch(/threshold density is the lever/i);
+  });
+
+  it('a speed-limited runner is told to add strides, not threshold density', () => {
+    const limiter = diagnoseLimiter({ ...blank(), performances: curveAt(1.01) })!;
+    const out = composeWhatClosesIt('widening', 600, 12, 26.2, limiter);
+    expect(out.join(' ')).toMatch(/strides/i);
+    expect(out.join(' ')).not.toMatch(/threshold density/i);
+  });
+
+  it('two runners with the same gap and different limiters get different advice', () => {
+    const a = diagnoseLimiter({ ...blank(), performances: curveAt(1.14) })!;
+    const b = diagnoseLimiter({ ...blank(), recentWeeklyMi: 28, blockProgressFraction: 0.8 })!;
+    expect(composeWhatClosesIt('static', 600, 12, 26.2, a)).not.toEqual(
+      composeWhatClosesIt('static', 600, 12, 26.2, b),
+    );
+  });
+
+  it('no limiter read says so rather than inventing a lever', () => {
+    const out = composeWhatClosesIt('widening', 600, 12, 26.2, null);
+    expect(out.join(' ')).toMatch(/not enough evidence/i);
+    expect(out.join(' ')).not.toMatch(/threshold density is the lever/i);
+  });
+
+  it('running ahead of the goal is still left alone', () => {
+    const limiter = diagnoseLimiter({ ...blank(), performances: curveAt(1.14) })!;
+    const out = composeWhatClosesIt('static', -300, 12, 26.2, limiter);
+    expect(out.join(' ')).toMatch(/ahead of the goal/i);
+  });
+
+  it('a low-confidence limiter hedges instead of instructing', () => {
+    const limiter = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [
+        { distanceMi: 20, lateFadeSecPerMi: 25, decouplingPct: null, cadence: 'breaking' },
+      ],
+    })!;
+    expect(limiter.confidence).toBe('low');
+    const out = composeWhatClosesIt('widening', 600, 12, 26.2, limiter);
+    expect(out.join(' ')).toMatch(/most likely lever/i);
+  });
+});
+
+describe('§11 · the limiter selects a lever other than pace', () => {
+  it('no limiter opens with a pace change', () => {
+    for (const [limiter, levers] of Object.entries(LEVERS)) {
+      expect(levers.length, `${limiter} has no levers`).toBeGreaterThan(0);
+      expect(levers[0].toLowerCase(), `${limiter} opens on pace`).not.toMatch(/^[^·]*\bpace\b/);
+    }
+  });
+
+  it('every limiter the type admits has a lever list', () => {
+    const all: Array<keyof typeof LEVERS> = [
+      'aerobic_capacity', 'threshold', 'speed_reserve', 'endurance',
+      'durability', 'training_volume', 'recovery_capacity',
+    ];
+    for (const l of all) expect(LEVERS[l]?.length ?? 0).toBeGreaterThan(0);
+  });
+});

@@ -150,6 +150,17 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'marathon-style 3-week taper, and the race-specific stimulus for an ultra is the long ' +
       'run rather than a pace insert. TAPER.duration-by-distance checks both against their own ' +
       'doctrine rows.',
+    'web-v2/lib/coach/limiter.ts#DEFAULT_LIMITER:5k==10k':
+      'Research/00a §"When each TID applies" gives 5K and 10K a SINGLE shared row, so the two ' +
+      'distances have one rationale between them ("Build aerobic capacity broadly") and one ' +
+      'default limiter follows. This is doctrine\'s own grouping, not a paste. ' +
+      'LIMITER.goal-distance-default reads that row and fails if it ever splits.',
+    'web-v2/lib/coach/limiter.ts#DEFAULT_LIMITER:hm==m':
+      'The half and the marathon have separate rows in Research/00a §"When each TID applies" and ' +
+      'both name LT2 as what dominates the event ("LT2 and economy dominate", "LT2 and fatigue ' +
+      'resistance dominate"), so both correctly default to the threshold limiter. The values ' +
+      'agree because the doctrine agrees; LIMITER.goal-distance-default checks each row ' +
+      'separately and fails if either stops naming LT2.',
     // (DOCTRINE-1b, 2026-08-17) · the three CONSTRAINTS allowlist entries that
     // used to live here are DELETED. hm/m/ultra shared a flat 30% taper floor
     // and no ceiling at all; each row now carries its own floor AND its own

@@ -26,6 +26,9 @@
 
 import { pool } from '@/lib/db/pool';
 import { loadProjectionSeries } from '@/lib/training/projection-snapshots';
+import { diagnoseLimiter, type LimiterRead, type PerformancePoint } from '@/lib/coach/limiter';
+import { recentWeeklyMileageMi } from '@/lib/runs/volume';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 export type GoalGapStatus = 'closing' | 'static' | 'widening' | 'unclosable';
 
@@ -49,8 +52,16 @@ export interface GoalGap {
   status: GoalGapStatus;
   /** Weeks remaining until race day (rounded down · raceWeek = 0). */
   weeksRemaining: number;
-  /** 1-3 specific actions that would close (or hold) the gap. */
+  /** 1-3 specific actions that would close (or hold) the gap. Composed from
+   *  `limiter` below · these used to be hardcoded prose that told every runner
+   *  threshold density was their lever regardless of whether it was. */
   whatClosesIt: string[];
+  /** 2026-08-17 · what is actually preventing the goal, per
+   *  `Design/adaptive-progression-engine.md` §11. Null when the limiter read
+   *  could not be assembled (cold start, or a read failed) — `whatClosesIt`
+   *  degrades to status-only guidance in that case rather than to the old
+   *  invented prose. */
+  limiter: LimiterRead | null;
   /** Research/ doctrine citation for every consumer to surface. */
   citation: string;
   /** Days the gap has been widening (drives auto-rebuild trigger). */
@@ -75,8 +86,8 @@ export interface GoalGap {
  */
 export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> {
   // 1. Active plan + race
-  const planRow = (await pool.query<{ race_id: string }>(
-    `SELECT race_id FROM training_plans
+  const planRow = (await pool.query<{ race_id: string; authored_iso: string | null }>(
+    `SELECT race_id, authored_iso::text AS authored_iso FROM training_plans
       WHERE user_uuid = $1::uuid AND archived_iso IS NULL
       LIMIT 1`,
     [userUuid],
@@ -118,8 +129,19 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
   // 5. Confidence band · scales with projection stability + data density
   const confidence = computeConfidence(series);
 
-  // 6. What closes it · status + gap-magnitude aware
-  const whatClosesIt = composeWhatClosesIt(status, gapSec, weeksRemaining, raceDistanceMi);
+  // 6. Limiter · WHY the runner is short, not just by how much. Best-effort:
+  //    a failure here degrades whatClosesIt, it never blocks the gap.
+  const limiter = await loadLimiterForGoal({
+    userUuid,
+    goalDistanceMi: raceDistanceMi,
+    goalSec,
+    raceDateISO,
+    planAuthoredISO: planRow.authored_iso,
+    excludeSlug: raceRow.slug,
+  }).catch(() => null);
+
+  // 7. What closes it · limiter-led, status- and gap-magnitude aware
+  const whatClosesIt = composeWhatClosesIt(status, gapSec, weeksRemaining, raceDistanceMi, limiter);
 
   return {
     raceSlug: raceRow.slug,
@@ -132,6 +154,7 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
     status,
     weeksRemaining,
     whatClosesIt,
+    limiter,
     consecutiveWideningDays,
     consecutiveUnclosableDays,
     // Internal audit field · never surfaces to runner per the locked
@@ -253,59 +276,176 @@ function computeConfidence(
   return Math.round((density * 0.6 + stability * 0.4) * 100) / 100;
 }
 
+// ─── limiter assembly ──────────────────────────────────────────────────
+
+/**
+ * Assemble what this surface can cheaply see into a limiter read.
+ *
+ * Deliberately partial. The performance curve and the volume check are the two
+ * signals available for one extra query each; fade/decoupling, threshold
+ * history and recovery gaps need heavier reads and are left null. The limiter
+ * model degrades honestly on nulls — an unreadable dimension lowers confidence
+ * rather than inventing a finding — so a partial input produces a weaker read,
+ * never a wrong one.
+ *
+ * Race-data rules (CLAUDE.md, locked 2026-05-19): a performance curve IS a
+ * race-result consumer, so it reads `races.actual_result.finishS` first and
+ * curated `meta.finishTime` second, and never touches `strava_activities` —
+ * an auto-detected 5K split inside a long run would bend the curve toward a
+ * speed bias the runner does not have. Watch-provisional results are included
+ * (they are real efforts) but flagged, and cost the read a confidence notch.
+ */
+async function loadLimiterForGoal(args: {
+  userUuid: string;
+  goalDistanceMi: number;
+  goalSec: number;
+  raceDateISO: string;
+  planAuthoredISO: string | null;
+  excludeSlug: string;
+}): Promise<LimiterRead | null> {
+  const { userUuid, goalDistanceMi, goalSec, raceDateISO, planAuthoredISO, excludeSlug } = args;
+  const todayMs = Date.now();
+
+  const rows = (await pool.query<{ slug: string; meta: any; actual_result: any }>(
+    `SELECT slug, meta, actual_result FROM races
+      WHERE user_uuid = $1::uuid AND slug <> $2
+      ORDER BY (meta->>'date') DESC NULLS LAST
+      LIMIT 40`,
+    [userUuid, excludeSlug],
+  ).catch(() => ({ rows: [] }))).rows;
+
+  const performances: PerformancePoint[] = [];
+  for (const r of rows) {
+    const m = r.meta ?? {};
+    const ar = r.actual_result ?? {};
+    const dateISO = String(m.date ?? '').slice(0, 10);
+    if (!dateISO) continue;
+    const ageDays = Math.floor((todayMs - Date.parse(dateISO + 'T12:00:00Z')) / 86400000);
+    if (ageDays < 0) continue; // upcoming race · not a performance
+
+    const distanceMi = m.distanceMi ? Number(m.distanceMi) : distanceMiFromLabel(m.distanceLabel ?? null);
+    if (!distanceMi || !(distanceMi > 0)) continue;
+
+    // The ladder, per the race-data lock · curated chip time beats stale meta.
+    let finishSeconds: number | null = null;
+    let provisional = false;
+    if (ar?.finishS && Number(ar.finishS) > 0) {
+      finishSeconds = Math.round(Number(ar.finishS));
+      provisional = ar.provisional === true || ar.source === 'watch_provisional';
+    } else if (typeof m.finishTime === 'string') {
+      const parts = m.finishTime.split(':').map(Number);
+      if (parts.length >= 2 && parts.every((n: number) => Number.isFinite(n))) {
+        finishSeconds =
+          parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+      }
+    }
+    if (!finishSeconds || !(finishSeconds > 0)) continue;
+
+    performances.push({ distanceMi, finishSeconds, ageDays, provisional });
+  }
+
+  const recentWeeklyMi = await recentWeeklyMileageMi(userUuid).catch(() => null);
+
+  // How far through the block we are · volume under the peak band is the plan
+  // working early and a finding late, and the limiter model needs to know which.
+  let blockProgressFraction: number | null = null;
+  if (planAuthoredISO) {
+    const start = Date.parse(String(planAuthoredISO).slice(0, 10) + 'T12:00:00Z');
+    const end = Date.parse(raceDateISO + 'T12:00:00Z');
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      blockProgressFraction = Math.max(0, Math.min(1, (todayMs - start) / (end - start)));
+    }
+  }
+
+  return diagnoseLimiter({
+    goalDistanceMi,
+    goalPaceSecPerMi: goalDistanceMi > 0 ? goalSec / goalDistanceMi : null,
+    experienceLevel: null,
+    blockProgressFraction,
+    performances: performances.length > 0 ? performances : null,
+    fadeObservations: null,
+    thresholdPaceStartSecPerMi: null,
+    thresholdPaceNowSecPerMi: null,
+    thresholdWindowWeeks: null,
+    weeklyMiAtWindowStart: null,
+    recentWeeklyMi,
+    observedHardDayGaps: null,
+    sessionsMissingPacesInARow: null,
+  });
+}
+
 // ─── what closes it ────────────────────────────────────────────────────
 
 /**
- * Compose 1-3 specific actions the runner can take to close (or hold)
- * the gap. Status-aware:
- *   · closing · "here's what we need to see to keep it"
- *   · static · "one more strong long run + threshold consistency"
- *   · widening · "shift toward threshold density / cut down on lifestyle drag"
- *   · unclosable · "we'll surface goal-renegotiation when we get closer"
+ * Compose 1-3 specific actions the runner can take to close (or hold) the gap.
  *
- * Gap-magnitude aware: a 10-sec gap on a marathon is noise; a 10-sec
- * gap on a 5K is meaningful.
+ * 2026-08-17 · this used to return hardcoded prose. Every runner whose
+ * trajectory was widening was told "Threshold density is the lever · 2 quality
+ * days/week vs current 1", whether or not threshold was their limiter — because
+ * the engine had no way to know what their limiter was. That string was the
+ * clearest evidence of the §11 hole. The levers now come from the limiter
+ * diagnosis, so an endurance-limited runner is told to lengthen the long run
+ * and a speed-limited runner is told to add strides.
+ *
+ * Status still shapes the framing:
+ *   · closing · what to hold
+ *   · static / widening · what to change, taken from the limiter's lever order
+ *   · unclosable · renegotiation, with the limiter named
+ *
+ * Exported for tests · pure, and the only place the gap turns into advice.
  */
-function composeWhatClosesIt(
+export function composeWhatClosesIt(
   status: GoalGapStatus,
   gapSec: number,
   weeksRemaining: number,
   raceDistanceMi: number,
+  limiter: LimiterRead | null,
 ): string[] {
   const out: string[] = [];
+  const levers = limiter?.levers ?? [];
+  /** A limiter we are not confident in suggests rather than instructs. */
+  const hedged = limiter != null && limiter.confidence === 'low';
 
   if (status === 'closing') {
-    out.push('Hold the threshold consistency · Trajectory is moving toward the goal.');
+    out.push('Hold what you are doing · trajectory is moving toward the goal.');
+    if (levers[0]) out.push(`Keep progressing the same lever · ${levers[0]}`);
     if (weeksRemaining <= 4) {
-      out.push('Keep the long-run progression honest · Race-pace miles are doing the work.');
+      out.push('Keep the long-run progression honest · the race-specific work is doing it now.');
     }
     return out;
   }
 
-  if (status === 'static') {
-    if (gapSec > 0) {
-      out.push('One more strong long run + threshold day per week closes ~15-30s/week.');
-      if (raceDistanceMi >= 13) {
-        out.push('Marathon-pace integration in the long run shifts the projection by 0.5 VDOT/4wk.');
-      }
+  if (status === 'static' || status === 'widening') {
+    if (gapSec <= 0) {
+      out.push('Running ahead of the goal · maintain rhythm, no need to push harder.');
+      return out;
+    }
+    if (limiter && levers.length > 0) {
+      out.push(
+        hedged
+          ? `Most likely lever · ${levers[0]}`
+          : `${limiter.summary.split('.')[0]} · ${levers[0]}`,
+      );
+      if (levers[1]) out.push(levers[1]);
     } else {
-      out.push('Running ahead of the goal · Maintain rhythm, no need to push harder.');
+      // No limiter read · say what is true rather than inventing a lever.
+      out.push('Not enough evidence yet to say which lever closes this · training to the demands of the distance.');
     }
-    return out;
-  }
-
-  if (status === 'widening') {
-    out.push('Threshold density is the lever · 2 quality days/week vs current 1.');
-    out.push('Check the readiness brief · Widening trajectory often tracks sleep + RHR drift.');
-    if (weeksRemaining <= 6) {
-      out.push(`${weeksRemaining} weeks left · We'll surface goal options if it keeps widening.`);
+    if (status === 'widening') {
+      out.push('Check the readiness brief · a widening trajectory often tracks sleep and RHR drift.');
+      if (weeksRemaining <= 6) {
+        out.push(`${weeksRemaining} weeks left · goal options surface if it keeps widening.`);
+      }
     }
     return out;
   }
 
   // unclosable
-  out.push(`Gap is wider than what's typically closable in ${weeksRemaining} weeks.`);
+  out.push(`Gap is wider than what is typically closable in ${weeksRemaining} weeks.`);
+  if (limiter && levers[0] && !hedged) {
+    out.push(`The work does not change · ${levers[0]}`);
+  }
   out.push('Goal renegotiation will surface in the brief when we have one more data week.');
-  out.push('Training stays honest · Race-day execution still matters at any goal.');
+  out.push('Training stays honest · race-day execution still matters at any goal.');
   return out;
 }

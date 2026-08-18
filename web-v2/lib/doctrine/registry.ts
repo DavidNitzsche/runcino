@@ -163,6 +163,17 @@ import {
   composeSlowdown,
   effectiveEffortClass,
 } from '@/lib/race/representativeness';
+import {
+  CURVE_NEUTRAL_EXPONENT_BAND,
+  DECOUPLING_ENDURANCE_GAP_PCT,
+  DECOUPLING_HEAT_ARTIFACT_PCT,
+  DEFAULT_LIMITER,
+  HARD_DAY_GAP_DAYS,
+  INCOMPLETE_RECOVERY_WORKOUTS,
+  LEVERS,
+  fitRiegelExponent,
+  type Limiter,
+} from '@/lib/coach/limiter';
 import type { DoctrineClaim } from './types';
 import { matchLiteral, parseBand, parseBands, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
 
@@ -3110,6 +3121,61 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
     },
   },
+
+  // ══ LIMITER · what is actually preventing the goal ════════════════════════
+  {
+    id: 'LIMITER.curve-shape-neutral-band',
+    binds: ['lib/coach/limiter.ts#CURVE_NEUTRAL_EXPONENT_BAND', 'lib/coach/limiter.ts#fitRiegelExponent'],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '| Type | Diagnostic ratio | Riegel-equivalent exponent |',
+    claim:
+      'McMillan classifies runners from the SHAPE of their race-time curve, and that ' +
+      'classification is a limiter diagnosis: a Speedster is short-biased and therefore ' +
+      'endurance-limited, an Endurance monster is long-biased and therefore speed-limited, and ' +
+      'the Combo band in between is the neutral zone where no shape limiter exists. The ' +
+      "engine's neutral band must BE the Combo row's exponent band, read out of the doc, and " +
+      'the two flanking rows must still sit on the sides the diagnosis assumes — a doc edit ' +
+      'that swapped them would invert every diagnosis this module makes.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'Riegel-equivalent exponent';
+      const combo = parseBand(t.cell('Combo runner', col));
+      const speedster = parseBand(t.cell('Speedster', col));
+      const monster = parseBand(t.cell('Endurance monster', col));
+      if (
+        CURVE_NEUTRAL_EXPONENT_BAND[0] !== combo[0] ||
+        CURVE_NEUTRAL_EXPONENT_BAND[1] !== combo[1]
+      ) {
+        throw new Error(
+          `CURVE_NEUTRAL_EXPONENT_BAND is [${CURVE_NEUTRAL_EXPONENT_BAND}] · the Combo runner row ` +
+            `in ${cite.doc} states ${combo[0]}-${combo[1]}`,
+        );
+      }
+      // The Speedster sits ABOVE the neutral band and the Endurance monster
+      // BELOW it. The whole diagnosis hangs on that orientation.
+      if (speedster[0] < combo[1]) {
+        throw new Error(
+          `the Speedster row (${speedster}) no longer sits above the Combo band (${combo}) · ` +
+            'a higher exponent must still mean short-biased, or the endurance diagnosis inverts',
+        );
+      }
+      if (monster[1] > combo[0]) {
+        throw new Error(
+          `the Endurance monster row (${monster}) no longer sits below the Combo band (${combo}) · ` +
+            'a lower exponent must still mean long-biased, or the speed diagnosis inverts',
+        );
+      }
+      // And the fit itself is doctrine's, not an invention: a runner whose long
+      // race is disproportionately slow must land above the band.
+      const speedy = fitRiegelExponent(
+        { distanceMi: 3.1, finishSeconds: 1200, ageDays: 0 },
+        { distanceMi: 26.2, finishSeconds: 12600, ageDays: 0 },
+      );
+      if (speedy == null || speedy <= combo[1]) {
+        throw new Error(`fitRiegelExponent does not put a 20:00 5K against a 3:30 marathon above the Combo band (got ${speedy})`);
+      }
+    },
+  },
   {
     id: 'REPRESENTATIVENESS.altitude-table',
     binds: ['lib/race/representativeness.ts#ALTITUDE_SLOWDOWN_PCT'],
@@ -3156,6 +3222,254 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
   {
+    id: 'LIMITER.decoupling-names-the-endurance-gap',
+    binds: ['lib/coach/limiter.ts#DECOUPLING_ENDURANCE_GAP_PCT'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| Decoupling % | Meaning |',
+    claim:
+      'Doctrine does not merely band Pa:HR decoupling, it says what each band MEANS, and one ' +
+      'row names an endurance gap outright: "Endurance gap; build base before progressing". ' +
+      'The threshold at which the engine routes a decoupling reading to the endurance limiter ' +
+      'is the floor of that row — found by reading the Meaning column rather than by counting ' +
+      'rows, so a reordered table cannot silently move the threshold.',
+    check({ cite }) {
+      const t = cite.table();
+      const [pctCol, meaningCol] = t.headers;
+      const row = t.rows.find((r) => /endurance gap/i.test(r[meaningCol] ?? ''));
+      if (!row) {
+        throw new Error('no decoupling band in this table names an endurance gap any more · re-read the claim');
+      }
+      const [lo] = parseBand(row[pctCol]);
+      if (DECOUPLING_ENDURANCE_GAP_PCT !== lo) {
+        throw new Error(
+          `DECOUPLING_ENDURANCE_GAP_PCT is ${DECOUPLING_ENDURANCE_GAP_PCT} · the row doctrine calls ` +
+            `an endurance gap starts at ${lo}%`,
+        );
+      }
+      // The band below it must still read as acceptable · if doctrine ever
+      // calls 5-8% a gap too, the engine is under-diagnosing.
+      const below = t.rows.find((r) => /acceptable/i.test(r[meaningCol] ?? ''));
+      if (!below) throw new Error('doctrine no longer marks a decoupling band as acceptable · the threshold needs re-deriving');
+    },
+  },
+  {
+    id: 'LIMITER.heat-artifact-filters-decoupling',
+    binds: ['lib/coach/limiter.ts#DECOUPLING_HEAT_ARTIFACT_PCT'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '- Heat adds 2–5% artifactually — control conditions.',
+    claim:
+      'Doctrine states how much decoupling heat manufactures on its own. A hot-day reading ' +
+      'that clears the endurance-gap threshold by less than that is a finding about the ' +
+      'weather, not about the runner\'s aerobic base, so the engine adds the artifact to the ' +
+      'threshold before letting a heat-confounded observation accuse anyone. The constant is ' +
+      'the TOP of the stated artifact band, because a filter set at the bottom would still ' +
+      'let the worst case through. This is the per-observation context filter CLAUDE.md ' +
+      'requires: a diagnosis-level heat guard would not protect this sub-finding.',
+    check({ cite }) {
+      const [lo, hi] = parseBand(cite.section[0]);
+      if (DECOUPLING_HEAT_ARTIFACT_PCT !== hi) {
+        throw new Error(
+          `DECOUPLING_HEAT_ARTIFACT_PCT is ${DECOUPLING_HEAT_ARTIFACT_PCT} · doctrine states heat adds ` +
+            `${lo}-${hi}% and the filter must cover the worst case`,
+        );
+      }
+      // A filter that does not actually widen the threshold is decoration.
+      if (DECOUPLING_HEAT_ARTIFACT_PCT <= 0) {
+        throw new Error('the heat artifact filter is zero · heat-confounded readings are being taken at face value');
+      }
+      if (!sourceOf('web-v2/lib/coach/limiter.ts').includes('DECOUPLING_ENDURANCE_GAP_PCT + DECOUPLING_HEAT_ARTIFACT_PCT')) {
+        throw new Error('the heat artifact is declared but never added to the endurance threshold · the filter is inert');
+      }
+    },
+  },
+  {
+    id: 'LIMITER.hard-day-gap-is-doctrine',
+    binds: ['lib/coach/limiter.ts#HARD_DAY_GAP_DAYS'],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Stimulus on day N | Minimum gap before next hard day |',
+    claim:
+      'Recovery capacity is diagnosed against the gap doctrine actually prescribes between a ' +
+      'given stimulus and the next hard day, not against a number this module invented. Each ' +
+      'stimulus the engine tracks reads its gap out of the matching doctrine row, and VO2max ' +
+      'must still cost more recovery than a threshold session — that ordering is what makes ' +
+      'the diagnosis mean anything.',
+    check({ cite }) {
+      const t = cite.table();
+      const [stimCol, gapCol] = t.headers;
+      const gapFor = (re: RegExp) => {
+        const row = t.rows.find((r) => re.test(r[stimCol] ?? ''));
+        if (!row) throw new Error(`no row matching ${re} in the hard/easy table · re-anchor the claim`);
+        return parseBand(row[gapCol])[0];
+      };
+      const doc = {
+        threshold: gapFor(/^threshold\/tempo/i),
+        vo2max: gapFor(/^vo2max intervals/i),
+        long_race_pace: gapFor(/^long run with marathon-pace/i),
+      };
+      for (const k of Object.keys(doc) as Array<keyof typeof doc>) {
+        if (HARD_DAY_GAP_DAYS[k] !== doc[k]) {
+          throw new Error(`HARD_DAY_GAP_DAYS.${k} is ${HARD_DAY_GAP_DAYS[k]} · doctrine prescribes ${doc[k]} day(s)`);
+        }
+      }
+      if (doc.vo2max <= doc.threshold) {
+        throw new Error('doctrine no longer costs VO2max more recovery than threshold · the recovery diagnosis needs re-deriving');
+      }
+    },
+  },
+  {
+    id: 'LIMITER.incomplete-recovery-workout-count',
+    binds: ['lib/coach/limiter.ts#INCOMPLETE_RECOVERY_WORKOUTS'],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Signal | Threshold suggesting incomplete recovery | Notes |',
+    claim:
+      'Doctrine names one performance signal as the strongest single indicator of incomplete ' +
+      'recovery — being unable to hit prescribed paces at the usual HR/RPE — and states how ' +
+      'many workouts it takes to count. The engine requires exactly that many before naming ' +
+      'recovery capacity as the limiter, so one bad Tuesday cannot reroute a training block.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'Threshold suggesting incomplete recovery';
+      const cell = t.cell('Performance', col);
+      if (!/prescribed paces/i.test(cell)) {
+        throw new Error(`the Performance row no longer describes missed prescribed paces: "${cell}"`);
+      }
+      const [lo] = parseBand(cell);
+      if (INCOMPLETE_RECOVERY_WORKOUTS !== lo) {
+        throw new Error(`INCOMPLETE_RECOVERY_WORKOUTS is ${INCOMPLETE_RECOVERY_WORKOUTS} · doctrine states ${lo}+ workouts`);
+      }
+      if (!/strongest single performance indicator/i.test(t.cell('Performance', 'Notes'))) {
+        throw new Error(
+          'doctrine no longer calls this the strongest single performance indicator · the weight ' +
+            'the limiter gives it needs re-deriving',
+        );
+      }
+    },
+  },
+  {
+    id: 'LIMITER.goal-distance-default',
+    binds: ['lib/coach/limiter.ts#DEFAULT_LIMITER'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '| Race distance | Phase | Best-fit TID | Rationale |',
+    claim:
+      'When the performance curve is flat and nothing else fires, the fallback limiter is the ' +
+      'quality doctrine says dominates that event. The rationale column states it in words: ' +
+      'the 5K/10K row names aerobic capacity, the half and the marathon both name LT2 ' +
+      '(threshold), and the ultra is prescribed HVLIT, which is pure aerobic base. The ' +
+      "engine's default map is checked against what those cells actually say, so a doctrine " +
+      'edit moves the default rather than leaving it stranded. The two same-value pairs are ' +
+      'doctrine\'s own groupings, not a paste: 5K and 10K share ONE row in this table, and ' +
+      'the half and marathon rows give the same LT2 rationale.',
+    check({ cite }) {
+      const t = cite.table();
+      const [distCol, , tidCol, whyCol] = t.headers;
+      /** Every rationale + TID cell doctrine gives a distance, lower-cased. */
+      const saysFor = (re: RegExp): string => {
+        const rows = t.rows.filter((r) => re.test(r[distCol] ?? ''));
+        if (rows.length === 0) throw new Error(`no ${re} row in the TID table · re-anchor the claim`);
+        return rows.map((r) => `${r[tidCol]} ${r[whyCol]}`).join(' ').toLowerCase();
+      };
+      const short = saysFor(/5k\/10k/i);
+      const half = saysFor(/^half-marathon/i);
+      const full = saysFor(/^marathon/i);
+      const ultra = saysFor(/^ultra/i);
+
+      if (!/aerobic capacity/.test(short)) {
+        throw new Error(`the 5K/10K rows no longer name aerobic capacity: "${short}"`);
+      }
+      if (!/lt2/.test(half) || !/lt2/.test(full)) {
+        throw new Error('the half and marathon rows no longer name LT2 · the threshold default needs re-deriving');
+      }
+      if (!/hvlit/.test(ultra)) {
+        throw new Error(`the ultra row no longer prescribes HVLIT: "${ultra}"`);
+      }
+      const expect: Record<DistCategory, Limiter> = {
+        '5k': 'aerobic_capacity',
+        '10k': 'aerobic_capacity',
+        hm: 'threshold',
+        m: 'threshold',
+        ultra: 'endurance',
+      };
+      for (const cat of CATS) {
+        if (DEFAULT_LIMITER[cat] !== expect[cat]) {
+          throw new Error(`DEFAULT_LIMITER.${cat} is ${DEFAULT_LIMITER[cat]} · doctrine's rationale for this distance says ${expect[cat]}`);
+        }
+      }
+      // The distinction that matters: the events doctrine says are LT2-dominated
+      // must NOT default to the VO2max lever, and vice versa. That confusion is
+      // the one this default exists to prevent.
+      for (const cat of ['hm', 'm'] as const) {
+        if (DEFAULT_LIMITER[cat] === 'aerobic_capacity') {
+          throw new Error(`DEFAULT_LIMITER.${cat} reaches for VO2max where doctrine says LT2 dominates`);
+        }
+      }
+    },
+  },
+  {
+    id: 'LIMITER.levers-progress-before-pace',
+    binds: ['lib/coach/limiter.ts#LEVERS'],
+    doc: 'Design/adaptive-progression-engine.md',
+    anchor: '| limiter | progress |',
+    claim:
+      'The whole point of a limiter is that it selects a lever OTHER than pace — §11 ends ' +
+      '"Do not simply make every workout faster", and §2 says progression is not pace ' +
+      'progression. Every limiter the engine can name must therefore carry a lever list whose ' +
+      'FIRST entry is not a pace change, and the four limiters §11 tabulates must progress in ' +
+      'the order §11 gives them. The three §11 leaves unfilled (aerobic capacity, durability, ' +
+      'recovery capacity) are held to the same shape.',
+    check({ cite }) {
+      const t = cite.table();
+      const [limiterCol, progressCol] = t.headers;
+      const docRow = (name: string): string => {
+        const row = t.rows.find((r) => (r[limiterCol] ?? '').toLowerCase() === name);
+        if (!row) throw new Error(`§11 no longer tabulates "${name}" · re-anchor the claim`);
+        return (row[progressCol] ?? '').toLowerCase();
+      };
+      // Doctrine's own four rows · the engine's lever order must follow them.
+      const tabulated: Array<[Limiter, string, string[]]> = [
+        ['endurance', 'endurance', ['long-run', 'aerobic volume', 'threshold blocks', 'durability']],
+        ['speed_reserve', 'speed reserve', ['strides', 'intervals', 'vo2']],
+        ['training_volume', 'training capacity', ['frequency', 'easy volume', 'long-run consistency']],
+      ];
+      for (const [limiter, docName, ordered] of tabulated) {
+        const says = docRow(docName);
+        for (const term of ordered) {
+          if (!says.includes(term)) {
+            throw new Error(`§11's "${docName}" row no longer names "${term}": "${says}"`);
+          }
+        }
+        // The engine's list must mention each, in the order doctrine lists them.
+        const engine = LEVERS[limiter].join(' | ').toLowerCase();
+        let at = -1;
+        for (const term of ordered) {
+          const next = engine.indexOf(term.split(' ')[0]);
+          if (next < 0) throw new Error(`LEVERS.${limiter} never mentions "${term}" · §11 lists it`);
+          if (next < at) throw new Error(`LEVERS.${limiter} reorders §11's progression · "${term}" comes too early`);
+          at = next;
+        }
+      }
+      // The threshold row is the shape claim in miniature: duration, then
+      // density, then pace — and pace LAST is the part that must not rot.
+      const thr = docRow('threshold');
+      const order = ['duration', 'density', 'pace'].map((w) => thr.indexOf(w));
+      if (order.some((i) => i < 0) || order[0] > order[1] || order[1] > order[2]) {
+        throw new Error(`§11's threshold row no longer progresses duration then density then pace: "${thr}"`);
+      }
+      const engineThr = LEVERS.threshold.map((l) => l.toLowerCase());
+      if (!/duration/.test(engineThr[0]) || !/pace/.test(engineThr[engineThr.length - 1])) {
+        throw new Error('LEVERS.threshold must start at duration and end at pace · that is the §11 progression');
+      }
+      // No limiter may open with a pace change. This is the defect the module
+      // exists to fix: every prescription reaching for pace because it had no
+      // basis for choosing another lever.
+      for (const [limiter, levers] of Object.entries(LEVERS) as Array<[Limiter, string[]]>) {
+        if (levers.length === 0) throw new Error(`LEVERS.${limiter} is empty · a limiter with no lever prescribes nothing`);
+        if (/^[^·]*\bpace\b/.test(levers[0].toLowerCase())) {
+          throw new Error(`LEVERS.${limiter} opens with a pace change · §11 says do not simply make every workout faster`);
+        }
+      }
+    },
+  },
+  {
     id: 'REPRESENTATIVENESS.wind-table',
     binds: ['lib/race/representativeness.ts#HEADWIND_COST_S_PER_MI'],
     doc: 'Research/06-weather-adjustments.md',
@@ -3183,6 +3497,32 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         if (row.at8 < row.at6) {
           throw new Error(`HEADWIND_COST_S_PER_MI at ${row.mph} mph costs a 6:00 runner more than an 8:00 one`);
         }
+      }
+    },
+  },
+  {
+    id: 'LIMITER.volume-floor-is-the-plan-target',
+    binds: ['lib/coach/limiter.ts#diagnoseLimiter', 'lib/plan/goal-tiers.ts#TIER_TARGETS'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume table',
+    claim:
+      'Training volume is diagnosed as a limiter against the SAME band the plan is built to — ' +
+      'TIER_TARGETS.peakWeeklyMileageBand — rather than a mileage number of the limiter ' +
+      "module's own. Two disagreeing numbers for one doctrinal quantum is the shape that had " +
+      'the validator rejecting plans the generator was correctly authoring, and it would here ' +
+      'produce a limiter that fires against a bar no plan ever aims at.',
+    check({ cite }) {
+      // The doctrine table still spans a real volume range · the band the
+      // limiter reads is checked against it by VOLUME.tier-peak-bands.
+      const t = cite.table();
+      if (t.rows.length === 0) throw new Error('the volume table is empty · re-anchor the claim');
+      const src = sourceOf('web-v2/lib/coach/limiter.ts');
+      if (!/TIER_TARGETS\[cat\]\[tier\]\.peakWeeklyMileageBand/.test(src)) {
+        throw new Error('limiter.ts no longer reads the tier volume band · it is diagnosing against its own number');
+      }
+      // And it must not have grown a mileage constant of its own.
+      if (/const\s+\w*(?:MILEAGE|MPW|WEEKLY_MI)\w*\s*(?::[^=]+)?=\s*\d/i.test(src)) {
+        throw new Error('limiter.ts declares its own weekly-mileage constant · read TIER_TARGETS instead');
       }
     },
   },

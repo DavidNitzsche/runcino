@@ -67,6 +67,9 @@ function mkGap(): GoalGap {
     trajectorySec: 11640,     // 3:14
     gapSec: 840,
     confidence: 0.8,
+    // Renegotiation is a trajectory decision, not a limiter one · this fixture
+    // exercises the sustained-unclosable path and carries no limiter read.
+    limiter: null,
     status: 'unclosable',
     weeksRemaining: 4,
     whatClosesIt: [],
