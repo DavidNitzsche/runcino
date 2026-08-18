@@ -48,9 +48,10 @@ import { lookupTempF } from '@/lib/weather/lookup';
 // The threshold-band question lives in a pure module so the drift monitor and
 // the run recap can never disagree about whether a session left the band.
 import {
-  THRESHOLD_HR_CEILING_OF_TARGET,
   fastQualityLeftTheBand,
   ranAboveThresholdBand,
+  ranBelowThresholdBand,
+  slowQualityNeverReachedTheBand,
 } from '@/lib/training/threshold-band';
 
 export type DriftKind =
@@ -683,6 +684,7 @@ async function checkQualityDrift(
    * the same rows so the two reads can never describe different sessions. */
   let hrReadable = 0;
   let hrAboveThreshold = 0;
+  let hrBelowThreshold = 0;
   for (const row of rows) {
     const actual = row.actual != null ? Number(row.actual) : NaN;
     const planned = row.planned != null ? Number(row.planned) : NaN;
@@ -724,6 +726,7 @@ async function checkQualityDrift(
     if (avgHr != null && hrTarget != null && hrTarget > 0) {
       hrReadable++;
       if (ranAboveThresholdBand(avgHr, hrTarget)) hrAboveThreshold++;
+      else if (ranBelowThresholdBand(avgHr, hrTarget)) hrBelowThreshold++;
     }
 
     adjustedActuals.push(adjustedSPerMi);
@@ -763,6 +766,23 @@ async function checkQualityDrift(
     return null;
   }
 
+  /* SLOWER than prescribed is the mirror, and it was left unguarded.
+   *
+   * It has the same two explanations: the targets really are too aggressive,
+   * or the runner never reached the intensity. Heart rate separates them, and
+   * the pair was already being counted in the loop above for the fast case
+   * only — the discriminator existed and one branch used it.
+   *
+   * This one also LOOPS, which the fast case does not. "Refit to a lower VDOT"
+   * hands back slower targets; slower targets are easier; an obedient runner's
+   * next sessions sit lower still on HR and pace; the detector fires again.
+   * Gating on HR breaks the cycle at exactly the right place, because a runner
+   * dutifully hitting an over-soft target is precisely the case where HR sits
+   * under the band. */
+  if (!fasterThanPlan && slowQualityNeverReachedTheBand(hrReadable, hrBelowThreshold)) {
+    return null;
+  }
+
   const message = fasterThanPlan
     ? `Your quality workouts are landing ${Math.abs(Math.round(pctDrift))}% ` +
       `FASTER than prescribed${heatNote}` +
@@ -771,8 +791,11 @@ async function checkQualityDrift(
         : ` · the targets may be soft, though no heart-rate data corroborates it`) +
       ` · worth a refit, not proof of new fitness on its own.`
     : `Your quality workouts are landing ${Math.round(pctDrift)}% SLOWER ` +
-      `than prescribed${heatNote} · pace targets may be too aggressive · check ` +
-      `accumulated fatigue or refit to a lower VDOT.`;
+      `than prescribed${heatNote}` +
+      (hrReadable > 0
+        ? ` with the heart rate up in the band · the effort was there and the pace was not`
+        : ` · no heart-rate data to say whether the effort was there`) +
+      ` · check accumulated fatigue before refitting.`;
 
   return {
     kind: 'quality_drift',
@@ -788,6 +811,7 @@ async function checkQualityDrift(
       max_heat_slowdown_pct: maxSlowdownPct,
       hr_readable_runs: hrReadable,
       hr_above_threshold_runs: hrAboveThreshold,
+      hr_below_threshold_runs: hrBelowThreshold,
       citation: 'docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.2 + Daniels Running Formula §VDOT pace tables + Research/06-weather-adjustments.md §1-§2 (heat normalization)',
     },
   };

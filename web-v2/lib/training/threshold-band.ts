@@ -43,13 +43,59 @@
  */
 export const THRESHOLD_HR_CEILING_OF_TARGET = 1.02;
 
-/** Did this session's heart rate leave the band it was prescribed for? */
+/**
+ * Bottom of the threshold HR band, as a multiple of the session's HR target.
+ *
+ * The same Friel table: zone 5a ("At LT") runs 100-102% of LTHR, and zone 4
+ * ("SubThreshold · just below LT") sits at 95-99%. So 100% is the floor of
+ * being AT threshold, and below it the runner was working under the intensity
+ * the session was prescribed for.
+ */
+export const THRESHOLD_HR_FLOOR_OF_TARGET = 1.0;
+
+/** Did this session's heart rate go ABOVE the band it was prescribed for? */
 export function ranAboveThresholdBand(
   avgHrBpm: number | null | undefined,
   hrTargetBpm: number | null | undefined,
 ): boolean {
   if (avgHrBpm == null || hrTargetBpm == null || !(hrTargetBpm > 0)) return false;
   return avgHrBpm > hrTargetBpm * THRESHOLD_HR_CEILING_OF_TARGET;
+}
+
+/**
+ * Did this session's heart rate stay BELOW the band — i.e. the runner never
+ * reached the intensity the session existed to deliver?
+ *
+ * The mirror of `ranAboveThresholdBand`, and it exists because the mirror was
+ * missing. Every context filter in this engine was added to the branch where a
+ * bug was observed and not to its opposite, so the same ambiguity that made
+ * "faster than prescribed" unreadable was sitting unguarded on "slower than
+ * prescribed" — where it also loops.
+ */
+export function ranBelowThresholdBand(
+  avgHrBpm: number | null | undefined,
+  hrTargetBpm: number | null | undefined,
+): boolean {
+  if (avgHrBpm == null || hrTargetBpm == null || !(hrTargetBpm > 0)) return false;
+  return avgHrBpm < hrTargetBpm * THRESHOLD_HR_FLOOR_OF_TARGET;
+}
+
+/**
+ * Across a stretch of SLOWER-than-prescribed quality work, did the runner
+ * mostly stay under the intensity?
+ *
+ * If they did, the session was not a fitness test — they did not reach the
+ * zone. Concluding "targets too aggressive, refit to a lower VDOT" from that is
+ * both wrong and self-reinforcing: the lower target is easier, so the next
+ * session's HR sits lower still, which produces the same finding again. Same
+ * majority rule and the same absence-is-not-evidence default as the fast case.
+ */
+export function slowQualityNeverReachedTheBand(
+  hrReadable: number,
+  hrBelowThreshold: number,
+): boolean {
+  if (hrReadable <= 0) return false;
+  return hrBelowThreshold / hrReadable > 0.5;
 }
 
 /**

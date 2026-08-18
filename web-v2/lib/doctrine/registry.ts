@@ -86,7 +86,9 @@ import {
 } from '@/lib/plan/recompute-paces';
 import {
   THRESHOLD_HR_CEILING_OF_TARGET,
+  THRESHOLD_HR_FLOOR_OF_TARGET,
   fastQualityLeftTheBand,
+  slowQualityNeverReachedTheBand,
 } from '@/lib/training/threshold-band';
 import {
   STRIDE_DURATION_S,
@@ -3357,6 +3359,29 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (!fastQualityLeftTheBand(4, 3) || fastQualityLeftTheBand(4, 2)) {
         throw new Error('the overcooked finding no longer requires a majority of readable sessions');
+      }
+
+      // THE MIRROR. Every context filter in this engine was historically added
+      // to the branch where a bug was seen and not to its opposite; this claim
+      // exists to make that asymmetry fail loudly rather than sit unnoticed.
+      // Slower-than-prescribed is equally ambiguous AND it loops: a lower VDOT
+      // gives softer targets, softer targets are easier, and the next round of
+      // evidence is worse.
+      const [floorPct] = matchLiteral(
+        cite.text(),
+        /\|\s*5a Threshold\s*\|\s*(\d+)[–-]\d+%\s*\|/,
+        'Friel zone 5a floor',
+      ).slice(1);
+      within(
+        THRESHOLD_HR_FLOOR_OF_TARGET,
+        [Number(floorPct) / 100, Number(floorPct) / 100],
+        'threshold HR floor as a multiple of the session target',
+      );
+      if (slowQualityNeverReachedTheBand(0, 0)) {
+        throw new Error('no HR data now reads as "never reached the band" · absence became a finding');
+      }
+      if (!slowQualityNeverReachedTheBand(4, 3) || slowQualityNeverReachedTheBand(4, 2)) {
+        throw new Error('the under-reached finding no longer requires a majority of readable sessions');
       }
     },
   },

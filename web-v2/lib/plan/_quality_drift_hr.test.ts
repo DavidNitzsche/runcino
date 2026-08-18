@@ -13,7 +13,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { fastQualityLeftTheBand, THRESHOLD_HR_CEILING_OF_TARGET } from '@/lib/training/threshold-band';
+import {
+  fastQualityLeftTheBand,
+  slowQualityNeverReachedTheBand,
+  ranAboveThresholdBand,
+  ranBelowThresholdBand,
+  THRESHOLD_HR_CEILING_OF_TARGET,
+  THRESHOLD_HR_FLOOR_OF_TARGET,
+} from '@/lib/training/threshold-band';
 
 describe('the discriminator', () => {
   it('a majority of sessions above the band reads as overcooked', () => {
@@ -91,5 +98,42 @@ describe('the recap says the right thing about a fast tempo', () => {
     const all = r.facts.join(' ');
     expect(all).toMatch(/soft lead/i);
     expect(all).toMatch(/retest/i);
+  });
+});
+
+describe('the SLOWER mirror · the branch that loops', () => {
+  it('a runner who never reached the band does not read as losing fitness', () => {
+    // "Refit to a lower VDOT" hands back slower targets; slower targets are
+    // easier; the next sessions sit lower still on HR and pace; the detector
+    // fires again. Gating on HR breaks it at exactly the right place, because
+    // a runner dutifully hitting an over-soft target is the case where HR sits
+    // under the band.
+    expect(slowQualityNeverReachedTheBand(4, 3)).toBe(true);
+  });
+
+  it('working hard and still missing the pace IS a real signal', () => {
+    // HR up in the band means the effort was there and the pace was not.
+    // That one should still surface.
+    expect(slowQualityNeverReachedTheBand(4, 1)).toBe(false);
+  });
+
+  it('no readable heart rate is not evidence in either direction', () => {
+    expect(slowQualityNeverReachedTheBand(0, 0)).toBe(false);
+  });
+
+  it('the floor is the bottom of Friel 5a, not the ceiling', () => {
+    // Zone 4 "SubThreshold, just below LT" is 95-99%; 5a "At LT" starts at
+    // 100%. Below the floor is under the intensity the session existed for.
+    expect(THRESHOLD_HR_FLOOR_OF_TARGET).toBe(1.0);
+    expect(THRESHOLD_HR_FLOOR_OF_TARGET).toBeLessThan(THRESHOLD_HR_CEILING_OF_TARGET);
+  });
+
+  it('the two guards are mirrors and cannot both fire on one session', () => {
+    const target = 149;
+    for (const hr of [140, 149, 152, 158]) {
+      const above = ranAboveThresholdBand(hr, target);
+      const below = ranBelowThresholdBand(hr, target);
+      expect(above && below).toBe(false);
+    }
   });
 });
