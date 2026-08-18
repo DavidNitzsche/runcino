@@ -159,6 +159,16 @@ export interface RecoveryPhase {
 //
 // Cite: Research/00b-recovery-protocols.md §"Recovery by Distance",
 //       column "Return to quality workouts"
+/**
+ * How much slower the post-anchor easy runs must be before their form metrics
+ * are treated as explained by pace rather than by tissue.
+ *
+ * Deliberately small. Cadence, stride and power respond to speed quickly, so a
+ * few percent of pace covers the delta thresholds above several times over,
+ * and the honest default when both readings move together is to say nothing.
+ */
+export const PACE_CONFOUND_PCT = 3;
+
 export function expectedDaysForAnchor(type: AnchorType, distanceMi: number): number {
   return expectedDays(type, distanceMi);
 }
@@ -587,10 +597,11 @@ async function loadMuscleSignals(
   // 2026-06-01 · field names in runs.data: avgCadence, avgPowerW,
   // avgStrideLengthM. GCT lives on health_samples (sample_type =
   // 'ground_contact_time') · joined by date to the easy runs.
-  const afterRows = await pool.query<{ cadence: number | string | null; stride: number | string | null; power: number | string | null; gct: number | string | null }>(
+  const afterRows = await pool.query<{ cadence: number | string | null; stride: number | string | null; power: number | string | null; gct: number | string | null; pace: number | string | null }>(
     `SELECT (r.data->>'avgCadence')::numeric AS cadence,
             (r.data->>'avgStrideLengthM')::numeric AS stride,
             (r.data->>'avgPowerW')::numeric AS power,
+            (r.data->>'paceSPerMi')::numeric AS pace,
             (SELECT AVG(value::numeric) FROM health_samples h
               WHERE COALESCE(h.user_uuid, h.user_id) = $1
                 AND h.sample_type = 'ground_contact_time'
@@ -608,10 +619,11 @@ async function loadMuscleSignals(
   ).then((r) => r.rows).catch(() => []);
 
   // Baseline form metrics from easy runs BEFORE anchor (30d window).
-  const beforeRows = await pool.query<{ cadence: number | string | null; stride: number | string | null; power: number | string | null; gct: number | string | null }>(
+  const beforeRows = await pool.query<{ cadence: number | string | null; stride: number | string | null; power: number | string | null; gct: number | string | null; pace: number | string | null }>(
     `SELECT (r.data->>'avgCadence')::numeric AS cadence,
             (r.data->>'avgStrideLengthM')::numeric AS stride,
             (r.data->>'avgPowerW')::numeric AS power,
+            (r.data->>'paceSPerMi')::numeric AS pace,
             (SELECT AVG(value::numeric) FROM health_samples h
               WHERE COALESCE(h.user_uuid, h.user_id) = $1
                 AND h.sample_type = 'ground_contact_time'
@@ -652,17 +664,42 @@ async function loadMuscleSignals(
   const powerDelta = (powerAfter != null && powerBefore != null)
     ? +(powerAfter - powerBefore).toFixed(0) : null;
 
+  /* 2026-08-17 · PACE IS THE CONFOUND, and it explains all four signals.
+   *
+   * Cadence, stride length and running power all scale with speed, and ground
+   * contact time lengthens as speed falls. So a runner who runs their easy
+   * days after a long run EASIER — which is the correct thing to do — produces
+   * every signal below with zero muscle damage, and was told "the
+   * neuromuscular system is still loaded" for doing it right.
+   *
+   * Pace was sitting in the same rows the query already reads. When the easy
+   * runs since the anchor were materially slower, the form deltas are
+   * explained by the pace and are not evidence about tissue. Suppress rather
+   * than adjust: there is no doctrine here giving a form-per-pace coefficient,
+   * and inventing one to keep the finding alive would be worse than staying
+   * quiet. Over-exclusion is the safe direction for a coach message. */
+  const paceAfter = avg(afterRows, 'pace');
+  const paceBefore = avg(beforeRows, 'pace');
+  const paceSlowerPct = (paceAfter != null && paceBefore != null && paceBefore > 0)
+    ? ((paceAfter - paceBefore) / paceBefore) * 100
+    : null;
+  const paceExplainsIt = paceSlowerPct != null && paceSlowerPct > PACE_CONFOUND_PCT;
+
   const fatigueSignals: string[] = [];
-  if (cadenceDelta != null && cadenceDelta < -3) fatigueSignals.push('cadence dropped');
-  if (gctDelta != null && gctDelta > 8) fatigueSignals.push('ground contact stretched');
-  if (strideDelta != null && strideDelta < -3) fatigueSignals.push('stride shortened');
-  if (powerDelta != null && powerDelta < -10) fatigueSignals.push('power degraded');
+  if (!paceExplainsIt) {
+    if (cadenceDelta != null && cadenceDelta < -3) fatigueSignals.push('cadence dropped');
+    if (gctDelta != null && gctDelta > 8) fatigueSignals.push('ground contact stretched');
+    if (strideDelta != null && strideDelta < -3) fatigueSignals.push('stride shortened');
+    if (powerDelta != null && powerDelta < -10) fatigueSignals.push('power degraded');
+  }
 
   // 2026-06-03 · description, not verdict. "Muscle recovery on track"
   // was mildly prescriptive (implied an expected trajectory the runner
   // didn't sign up for). Now states what the form metrics show.
   let summary: string;
-  if (fatigueSignals.length === 0) {
+  if (paceExplainsIt) {
+    summary = `Form metrics track the easier pace on the runs since · nothing here separates recovery from simply running them slower.`;
+  } else if (fatigueSignals.length === 0) {
     summary = `Form metrics on the easy runs since are within your normal range.`;
   } else if (fatigueSignals.length === 1) {
     summary = `${fatigueSignals[0][0].toUpperCase() + fatigueSignals[0].slice(1)} on the easy runs since · classic eccentric load signal.`;
