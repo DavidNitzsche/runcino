@@ -1068,6 +1068,41 @@ export function bestRecentVdot(
   const runsCapBounded = trainingCeiling != null;
   const sortKey = (c: VdotCandidate) =>
     c.source === 'race' ? c.vdot : (runsCapBounded ? c.vdot : c.vdot - 1);
+
+  /**
+   * 2026-08-17 · SUPERSEDED-LEAD DOCTRINE.
+   *
+   * `Research/01` §"Testing cadence" is explicit about what a good training run
+   * IS: a tempo that feels notably easier at target pace is worth "+1 VDOT
+   * estimated; field-test within 2 weeks". A SOFT LEAD, and a request for a
+   * test — not a fitness number. The AUDIT #8 cap above enforces the +1
+   * magnitude faithfully. Nothing enforced the second half of the sentence.
+   *
+   * The failure that exposed it: David raced an A-priority half on 2026-08-16
+   * in 1:41:53 → VDOT 44.1. Four training runs — the oldest a 4-mile tempo from
+   * 55 days earlier — were each capped to `bestRaceRaw + 1.0` = 45.1, tied at
+   * the ceiling, and outranked the race by exactly the permitted lead. His
+   * anchor the day after his goal race was a two-month-old tempo run. Because
+   * the cap pins every lead to the same value, this is not an edge case: once a
+   * runner has ANY qualifying training run, their races can never anchor them.
+   *
+   * The rule doctrine implies: a lead is RESOLVED by the test it asked for. A
+   * training estimate older than a race cannot outrank that race, whatever its
+   * magnitude — the field test came back, and it is the answer. Training runs
+   * SINCE the race still lead by up to +1, because that is new evidence
+   * acquired after the last hard proof, which is precisely the case the soft
+   * lead exists to describe.
+   */
+  const freshestRaceDate = raceCandidates.reduce<string | null>(
+    (max, r) => (r.date && (!max || r.date > max) ? r.date : max),
+    null,
+  );
+  // `<=`, not `<`. A run dated the SAME day as the race is almost always that
+  // race re-ingested from Strava, or its warm-up — so treating it as fresh
+  // evidence would let the race lead itself by +1 and inflate every runner's
+  // anchor on the day they race. Strictly-later runs are genuine new evidence.
+  const supersededLead = (c: VdotCandidate): boolean =>
+    c.source === 'run' && freshestRaceDate != null && c.date <= freshestRaceDate;
   // DOCTRINE-2 · a floor-only (56-84 day) candidate ranks below every in-window
   // candidate of either source. With no in-window evidence at all the tier term
   // is uniform and the stale anchor still wins — it is the floor doctrine says
@@ -1077,6 +1112,7 @@ export function bestRecentVdot(
   const considered = [...raceCandidates, ...runCandidates]
     .sort((a, b) =>
       ((demoted(b) ? 0 : 1) - (demoted(a) ? 0 : 1)) ||
+      ((supersededLead(b) ? 0 : 1) - (supersededLead(a) ? 0 : 1)) ||
       (sortKey(b) - sortKey(a)));
 
   // P1-56 · belowTableAnchor is populated ONLY when there is no real (in-table)

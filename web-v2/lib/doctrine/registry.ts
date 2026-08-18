@@ -3122,6 +3122,56 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  /* ── A doctrine claim on a RULE, not a constant ──────────────────────────
+   *
+   * Every other claim in this file binds a NUMBER to research. This one binds
+   * a SELECTION RULE, because the bug it locks had its doctrine stated
+   * correctly in a comment directly above the code that violated it.
+   *
+   * `Research/01` says a good tempo is worth "+1 VDOT estimated; field-test
+   * within 2 weeks" — two clauses. The AUDIT #8 soft cap enforced the +1 and
+   * nothing enforced the field test, so a lead outranked the very test it
+   * asked for. The engine agreed with doctrine on the magnitude and disagreed
+   * with it on what the number MEANT, and no gate could see the difference.
+   */
+  {
+    id: 'EVIDENCE.race-supersedes-earlier-leads',
+    binds: ['lib/training/vdot.ts#bestRecentVdot.supersededLead'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Testing cadence',
+    claim:
+      'A training-derived VDOT is a SOFT LEAD awaiting a field test, not a fitness number. So a ' +
+      'training estimate dated on or before a race can never outrank that race, whatever its ' +
+      'magnitude — the test came back and it is the answer. The soft cap pins every qualifying ' +
+      'lead to exactly bestRaceRaw + 1, so without this rule a runner with ANY qualifying ' +
+      'training run could never be anchored on their own races: the day after a 1:41:53 A-race ' +
+      'half, the anchor was a 4-mile tempo from 55 days earlier. Training AFTER the race still ' +
+      'leads by the permitted +1, which is the case the soft lead exists to describe.',
+    check() {
+      const src = sourceOf('web-v2/lib/training/vdot.ts');
+      // The doc must still describe a training read as an estimate needing a test.
+      const cite = resolveCitation('Research/01-pace-zones-vdot.md', '### Testing cadence').text();
+      if (!/field-test|field test/i.test(cite)) {
+        throw new Error(
+          'Research/01 §"Testing cadence" no longer asks for a field test · the superseded-lead ' +
+            'rule rests on that clause, so re-read the passage before changing the engine',
+        );
+      }
+      // And the engine must still demote leads at or before the freshest race.
+      matchLiteral(
+        src,
+        /const supersededLead = \(c: VdotCandidate\): boolean =>\s*\n?\s*c\.source === 'run' && freshestRaceDate != null && c\.date <= freshestRaceDate;/,
+        'bestRecentVdot superseded-lead rule',
+      );
+      if (!/\(\(supersededLead\(b\) \? 0 : 1\) - \(supersededLead\(a\) \? 0 : 1\)\)/.test(src)) {
+        throw new Error(
+          'the superseded-lead tier is no longer applied in the candidate sort · the rule is ' +
+            'defined but inert, which is how it looked before the fix',
+        );
+      }
+    },
+  },
+
   // ══ LIMITER · what is actually preventing the goal ════════════════════════
   {
     id: 'LIMITER.curve-shape-neutral-band',
