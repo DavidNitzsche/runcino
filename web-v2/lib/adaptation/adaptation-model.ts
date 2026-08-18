@@ -202,6 +202,10 @@ export const BAND_EDGES = {
 /** Fewer readable dimensions than this and the model refuses to judge. */
 export const MIN_DIMENSIONS_FOR_VERDICT = 2;
 
+/** Week-to-week spread (SD of the planned-vs-actual ratio) above which the
+ *  block is described as interrupted rather than steady. */
+export const CONSISTENCY_SPREAD_NOTE = 0.2;
+
 /** `strong` requires evidence spread over at least this many distinct weeks. */
 export const MIN_WEEKS_FOR_STRONG = 3;
 
@@ -399,6 +403,20 @@ function readConsistency(input: AdaptationInput): DimensionRead {
       // falls away on both sides rather than rewarding overshoot.
       parts.push(clamp(2 - Math.abs(mean - 1.0) * 8, -2, 2));
       notes.push(`weekly volume averaging ${pct(mean)} of plan`);
+
+      // The mean alone hides the shape. 100/100/100/10/100/70 and a steady 80%
+      // both average ~80%, and they are not the same runner: one is absorbing
+      // a consistent load, the other had the block interrupted. This dimension
+      // is called consistency, so the spread has to count.
+      if (ratios.length >= 3) {
+        const variance = ratios.reduce((a, r) => a + (r - mean) ** 2, 0) / ratios.length;
+        const spread = Math.sqrt(variance);
+        parts.push(clamp(2 - spread * 8, -2, 2));
+        if (spread > CONSISTENCY_SPREAD_NOTE) {
+          const worst = Math.min(...ratios);
+          notes.push(`one week at ${pct(worst)} of plan against a ${pct(mean)} average`);
+        }
+      }
     }
   }
 

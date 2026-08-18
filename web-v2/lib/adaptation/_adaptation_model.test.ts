@@ -348,3 +348,46 @@ describe('the verdict is explainable', () => {
     expect(classifyAdaptation(baseline()).confidence).toBe('high');
   });
 });
+
+describe('consistency means the shape of the block, not just its average', () => {
+  it('an interrupted block scores below a steady one at the same average', () => {
+    const steady: AdaptationInput = {
+      ...baseline(),
+      weeklyPlannedMi: [50, 50, 50, 50, 50, 50],
+      weeklyActualMi: [40, 40, 40, 40, 40, 40],
+    };
+    const interrupted: AdaptationInput = {
+      ...baseline(),
+      weeklyPlannedMi: [50, 50, 50, 50, 50, 50],
+      weeklyActualMi: [50, 50, 50, 5, 50, 35],
+    };
+    const cons = (v: ReturnType<typeof classifyAdaptation>) =>
+      v.dimensions.find((d) => d.dimension === 'consistency')!.score!;
+    // Same 80% average, different blocks.
+    expect(cons(classifyAdaptation(interrupted))).toBeLessThan(cons(classifyAdaptation(steady)));
+  });
+
+  it('names the missed week rather than hiding it in the mean', () => {
+    const interrupted: AdaptationInput = {
+      ...baseline(),
+      weeklyPlannedMi: [50, 50, 50, 50, 50, 50],
+      weeklyActualMi: [50, 50, 50, 5, 50, 35],
+    };
+    const detail = classifyAdaptation(interrupted).dimensions.find(
+      (d) => d.dimension === 'consistency',
+    )!.detail;
+    expect(detail).toMatch(/one week at/i);
+  });
+
+  it('needs at least three weeks before it judges spread at all', () => {
+    const twoWeeks: AdaptationInput = {
+      ...baseline(),
+      weeklyPlannedMi: [50, 50],
+      weeklyActualMi: [50, 5],
+    };
+    const detail = classifyAdaptation(twoWeeks).dimensions.find(
+      (d) => d.dimension === 'consistency',
+    )!.detail;
+    expect(detail).not.toMatch(/one week at/i);
+  });
+});

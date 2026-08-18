@@ -18,12 +18,31 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { getCanonicalRunIds } from '@/lib/runs/volume';
 import { computeTrainingForm } from '@/lib/coach/training-form';
 import { computeRecoveryPhase } from '@/lib/coach/recovery-phase';
 import { loadEasyDiscipline } from '@/lib/coach/easy-discipline';
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 import { computeHrThirds } from '@/lib/coach/hr-thirds';
+import { loadRecentTestPoints } from '@/lib/training/goal-projection';
 import { classifyAdaptation, type AdaptationInput, type AdaptationVerdict } from './adaptation-model';
+
+/**
+ * The measured anchor, as the daily snapshot cron computed it from
+ * `bestRecentVdot`. Read rather than recomputed: this is only used to size the
+ * easy-pace leg of a blended verdict, and re-running selection here would put
+ * a second opinion about fitness in the adaptation path.
+ */
+async function currentVdot(userUuid: string): Promise<number | null> {
+  const r = await pool.query<{ vdot: string | null }>(
+    `SELECT vdot::text FROM projection_snapshots
+      WHERE user_uuid = $1 AND vdot IS NOT NULL
+      ORDER BY snapshot_date DESC LIMIT 1`,
+    [userUuid],
+  );
+  const v = r.rows[0]?.vdot;
+  return v != null ? Number(v) : null;
+}
 
 /** How far back the adaptation read looks. Long enough for a trend, short
  *  enough to describe the block the runner is actually in. */
@@ -55,6 +74,37 @@ export async function loadAdaptationInput(
   const fromISO = daysBefore(todayISO, ADAPTATION_WINDOW_DAYS);
   const readinessFromISO = daysBefore(todayISO, READINESS_WINDOW_DAYS);
 
+  /* Two things every query below depends on, and both were wrong the first
+   * time this file was written. Both were caught by running the loader against
+   * real data rather than by a test, which is the argument for doing that.
+   *
+   * 1 · WHICH PLAN OWNED EACH DAY. `plan_workouts` carries every plan the
+   *     runner has ever had — 45 of them over 3904 rows in the case that
+   *     caught this — and rebuilds mean many plans cover the SAME dates. An
+   *     unscoped count read 431 quality sessions in a 42-day window.
+   *
+   *     Scoping to the active plan is the obvious fix and it is also wrong:
+   *     the day after a goal race the active plan is a fresh recovery block
+   *     with no history, so the whole executed block vanishes into an archived
+   *     row and the runner reads as having done nothing. The body does not
+   *     know the plan was archived. So: for each DATE, take the workout from
+   *     the most recently authored plan that covered that date. Rebuilds
+   *     collapse to one, and executed history survives the rollover.
+   *
+   * 2 · DEDUP RUNS. This data multi-ingests (watch, Strava, HealthKit), and
+   *     `getCanonicalRunIds` is the single source of truth for which row is
+   *     the real one. Counting raw rows inflates completion and volume alike. */
+  const canonicalIds = await getCanonicalRunIds(userUuid, fromISO, todayISO).catch(() => [] as string[]);
+
+  /** One row per planned day — the version that was live for that date. */
+  const OWNED_DAYS = `
+    SELECT DISTINCT ON (pw.date_iso)
+           pw.date_iso, pw.is_quality, pw.distance_mi
+      FROM plan_workouts pw
+      JOIN training_plans tp ON tp.id = pw.plan_id
+     WHERE pw.user_uuid = $1 AND pw.date_iso >= $2 AND pw.date_iso < $3
+     ORDER BY pw.date_iso, tp.authored_iso DESC`;
+
   const [
     keySessions,
     verdictRows,
@@ -75,38 +125,33 @@ export async function loadAdaptationInput(
     quiet('key sessions', async () =>
       (
         await pool.query<{ planned: string; completed: string }>(
-          `SELECT COUNT(*)::text AS planned,
+          `WITH owned AS (${OWNED_DAYS})
+           SELECT COUNT(*)::text AS planned,
                   COUNT(*) FILTER (WHERE r.id IS NOT NULL)::text AS completed
-             FROM plan_workouts pw
+             FROM owned
              LEFT JOIN runs r
-               ON r.user_uuid = pw.user_uuid
-              AND (r.data->>'start_date_local')::date = pw.date_iso::date
-            WHERE pw.user_uuid = $1
-              AND pw.is_quality = true
-              AND pw.date_iso >= $2
-              AND pw.date_iso < $3`,
-          [userUuid, fromISO, todayISO],
+               ON r.id::text = ANY($4::text[])
+              AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) = owned.date_iso
+            WHERE owned.is_quality = true`,
+          [userUuid, fromISO, todayISO, canonicalIds],
         )
       ).rows[0],
     ),
 
-    /* Target adherence. Reads the persisted verdicts rather than re-judging:
-     * `judgeTestPointExecution` already applies the basis ladder and the heat
-     * adjustment, and a second implementation here would drift from it. */
-    quiet('target verdicts', async () =>
-      (
-        await pool.query<{ verdict: string }>(
-          `SELECT r.data->'faff'->>'quality_verdict' AS verdict
-             FROM runs r
-            WHERE r.user_uuid = $1
-              AND (r.data->>'start_date_local')::date >= $2::date
-              AND (r.data->>'start_date_local')::date < $3::date
-              AND r.data->'faff'->>'quality_verdict' IS NOT NULL
-            ORDER BY (r.data->>'start_date_local')::date`,
-          [userUuid, fromISO, todayISO],
-        )
-      ).rows,
-    ),
+    /* Target adherence. Calls the SAME judge the projection uses rather than
+     * re-deriving: `loadRecentTestPoints` carries the basis ladder (work-phase
+     * watch pace, then splits, then a blended whole-run expectation, then an
+     * honest abstention), the heat adjustment, and the double-ingest dedup.
+     * A second implementation here would drift from the verdicts the runner
+     * sees on the run itself. Windowed to the adaptation window and uncapped,
+     * where the projection takes only the newest three. */
+    quiet('target verdicts', async () => {
+      const vdot = await currentVdot(userUuid);
+      // includeArchivedPlans: the block the runner just finished lives in an
+      // archived plan the moment the next one is authored. His body does not
+      // know that. The projection keeps the active-plan-only default.
+      return loadRecentTestPoints(userUuid, vdot, 200, fromISO, true);
+    }),
 
     quiet('rpe', async () =>
       (
@@ -123,16 +168,33 @@ export async function loadAdaptationInput(
     /* Long runs carry the internal-cost signals worth reading: decoupling and
      * late HR drift. Both need splits, so runs without them drop out rather
      * than contributing a guess. */
+    /* One row per long-run DAY, choosing the richest.
+     *
+     * This data carries two split shapes: Strava-raw (`moving_time`,
+     * `average_speed`, no heart rate) and faff-normalised (`hr`, `pace`). Both
+     * can exist for the same run, and the canonical picker optimises for
+     * mileage truth rather than for signal richness — so it can land on the
+     * HR-less row and take the entire internal-cost dimension dark.
+     *
+     * Picking per day rather than per row keeps this dedup-safe: a day
+     * contributes exactly one observation either way. Ordering prefers splits
+     * that actually carry HR, then more splits, then the longer run. */
     quiet('long runs', async () =>
       (
         await pool.query<{ id: string; data: unknown }>(
-          `SELECT r.id::text, r.data
+          `SELECT DISTINCT ON (day) r.id::text, r.data,
+                  COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) AS day
              FROM runs r
             WHERE r.user_uuid = $1
-              AND (r.data->>'start_date_local')::date >= $2::date
-              AND (r.data->>'start_date_local')::date < $3::date
-              AND (r.data->>'distance')::numeric > 12874
-            ORDER BY (r.data->>'start_date_local')::date`,
+              AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) >= $2
+              AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) < $3
+              AND (r.data->>'distanceMi')::numeric >= 8
+              AND r.data->'mergedIntoId' IS NULL
+            ORDER BY day,
+                     (r.data->'splits'->0 ? 'hr') DESC,
+                     jsonb_array_length(COALESCE(r.data->'splits', '[]'::jsonb)) DESC,
+                     (r.data->>'distanceMi')::numeric DESC,
+                     r.id DESC`,
           [userUuid, fromISO, todayISO],
         )
       ).rows,
@@ -144,26 +206,27 @@ export async function loadAdaptationInput(
     quiet('weekly volume', async () =>
       (
         await pool.query<{ wk: string; planned: string; actual: string }>(
-          `WITH wks AS (
-             SELECT date_trunc('week', pw.date_iso::date) AS wk,
-                    SUM(pw.distance_mi)::numeric AS planned
-               FROM plan_workouts pw
-              WHERE pw.user_uuid = $1 AND pw.date_iso >= $2 AND pw.date_iso < $3
+          `WITH owned AS (${OWNED_DAYS}),
+           wks AS (
+             SELECT date_trunc('week', owned.date_iso::date) AS wk,
+                    SUM(owned.distance_mi)::numeric AS planned
+               FROM owned
               GROUP BY 1
            ), act AS (
-             SELECT date_trunc('week', (r.data->>'start_date_local')::date) AS wk,
-                    SUM((r.data->>'distance')::numeric) / 1609.34 AS actual
+             SELECT date_trunc('week',
+                      COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10))::date) AS wk,
+                    SUM((r.data->>'distanceMi')::numeric) AS actual
                FROM runs r
-              WHERE r.user_uuid = $1
-                AND (r.data->>'start_date_local')::date >= $2::date
-                AND (r.data->>'start_date_local')::date < $3::date
+              WHERE r.id::text = ANY($4::text[])
+                AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) >= $2
+                AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) < $3
               GROUP BY 1
            )
            SELECT wks.wk::text, wks.planned::text, COALESCE(act.actual, 0)::text AS actual
              FROM wks LEFT JOIN act USING (wk)
             WHERE wks.wk < date_trunc('week', $3::date)
             ORDER BY wks.wk`,
-          [userUuid, fromISO, todayISO],
+          [userUuid, fromISO, todayISO, canonicalIds],
         )
       ).rows,
     ),
@@ -228,25 +291,44 @@ export async function loadAdaptationInput(
   for (const run of longRuns ?? []) {
     const d = (run.data ?? {}) as Record<string, unknown>;
     const splits = Array.isArray(d.splits) ? (d.splits as never[]) : null;
-    const distanceMi = Number(d.distance) > 0 ? Number(d.distance) / 1609.34 : null;
+    const distanceMi = Number(d.distanceMi) > 0 ? Number(d.distanceMi) : null;
 
     const dec = computeAerobicDecoupling(splits, distanceMi);
     if (dec) decouplingVerdicts.push(dec.verdict);
 
+    // NOTE · `computeHrThirds` reads `phase === 'work'` splits, which a long
+    // run does not have — it is built for structured work blocks, and on a
+    // long run it falls through to the summary estimate. That estimate is a
+    // model output, and feeding a model output back in as evidence is how a
+    // signal becomes circular, so only measured thirds contribute and long
+    // runs contribute none. Aerobic decoupling above is the long-run read.
     const thirds = computeHrThirds(splits, {
-      avgHr: typeof d.average_heartrate === 'number' ? d.average_heartrate : null,
-      maxHr: typeof d.max_heartrate === 'number' ? d.max_heartrate : null,
+      avgHr: typeof d.avgHr === 'number' ? d.avgHr : null,
+      maxHr: typeof d.maxHr === 'number' ? d.maxHr : null,
     });
-    // Only measured thirds. An estimated third is a model output, and feeding
-    // a model output back in as evidence is how a signal becomes circular.
     if (thirds?.source === 'measured' && thirds.driftBpm != null) {
       lateDriftBpm.push(thirds.driftBpm);
     }
   }
 
-  const verdicts = (verdictRows ?? [])
-    .map((r) => r.verdict)
-    .filter((v): v is 'on' | 'fast' | 'slow' => v === 'on' || v === 'fast' || v === 'slow');
+  /* One verdict per DAY.
+   *
+   * `loadRecentTestPoints` dedups runs per workout row, not workout rows per
+   * date — fine for its own use, where only the active plan is in scope. Once
+   * archived plans are included every rebuild contributes its own copy of the
+   * same day, which read as 130 quality sessions in a six-week window. Keeping
+   * the first per date restores one session per session.
+   *
+   * Points whose verdict abstained (no honest basis to judge on) are dropped
+   * rather than counted as misses. An unjudgeable session is missing evidence,
+   * not a failed one. */
+  const seenDays = new Set<string>();
+  const verdicts: Array<'on' | 'fast' | 'slow'> = [];
+  for (const p of verdictRows ?? []) {
+    if (seenDays.has(p.dateISO)) continue;
+    seenDays.add(p.dateISO);
+    if (p.verdict === 'on' || p.verdict === 'fast' || p.verdict === 'slow') verdicts.push(p.verdict);
+  }
 
   const weeklyPlannedMi = (weekly ?? []).map((w) => Number(w.planned));
   const weeklyActualMi = (weekly ?? []).map((w) => Number(w.actual));

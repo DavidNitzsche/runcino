@@ -1015,9 +1015,23 @@ export function judgeTestPointExecution(input: {
  * blended whole-run expectation otherwise, abstention when nothing honest
  * exists). vdot threads through for the easy-pace leg of the blend.
  */
-async function loadRecentTestPoints(
+/**
+ * 2026-08-17 · exported and windowable for the adaptation model.
+ *
+ * The projection wants the last handful of test points; the adaptation model
+ * wants every judged session in its window. Same judgement either way — the
+ * basis ladder, the heat adjustment and the double-ingest dedup must not be
+ * reimplemented anywhere, which is what a second copy of this query would be.
+ *
+ * @param limit    how many points, newest first. Default 3 (the projection's).
+ * @param sinceISO oldest date to include. Null keeps the original behaviour.
+ */
+export async function loadRecentTestPoints(
   userUuid: string,
   vdot: number | null,
+  limit = 3,
+  sinceISO: string | null = null,
+  includeArchivedPlans = false,
 ): Promise<GoalProjection['recentTestPoints']> {
   const today = await runnerToday(userUuid);
   // 2026-07-06 · audit P1-11 · runner-local day bucketing for ci.ts
@@ -1092,17 +1106,18 @@ async function loadRecentTestPoints(
             AND r.absorbed_into_canonical_at IS NULL
             AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
           WHERE tp.user_uuid = $1::uuid
-            AND tp.archived_iso IS NULL
+            AND ($6::boolean OR tp.archived_iso IS NULL)
             AND pw.type IN ('tempo','threshold','intervals','long','race','race_week_tuneup')
             AND pw.date_iso <= $2
+            AND ($5::text IS NULL OR pw.date_iso >= $5)
           ORDER BY pw.id,
                    (r.data ? 'splits') DESC,
                    COALESCE((r.data->>'distanceMi')::numeric, 0) DESC,
                    r.id DESC
        ) dedup
       ORDER BY dedup.date_iso DESC
-      LIMIT 3`,
-    [userUuid, today, ciTz],
+      LIMIT $4`,
+    [userUuid, today, ciTz, limit, sinceISO, includeArchivedPlans],
   ).catch(() => ({ rows: [] }))).rows;
 
   if (rows.length === 0) return [];
