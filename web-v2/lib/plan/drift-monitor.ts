@@ -45,6 +45,12 @@ import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-input
 // workout_weather_cache reader for runs without enriched weather fields.
 import { effortSlowdownPct } from '@/lib/training/heat-model';
 import { lookupTempF } from '@/lib/weather/lookup';
+import {
+  runWeatherTempFSql,
+  runWeatherHumidityPctSql,
+  runWeatherConditionsSql,
+  runWeatherCloudCoverPctSql,
+} from '@/lib/runs/run-shape';
 // The threshold-band question lives in a pure module so the drift monitor and
 // the run recap can never disagree about whether a session left the band.
 import {
@@ -635,9 +641,7 @@ async function checkQualityDrift(
     avg_hr: string | null;
     actual: string | null;
     run_date: string | null;
-    temp_f: string | null;
     temp_f_peak: string | null;
-    dewpoint_f: string | null;
     humidity_pct: string | null;
     conditions: string | null;
     cloud_cover_pct: string | null;
@@ -655,12 +659,15 @@ async function checkQualityDrift(
               ELSE NULL
             END AS actual,
             r.data->>'date' AS run_date,
-            r.data->>'tempF' AS temp_f,
-            r.data->>'tempF_peak' AS temp_f_peak,
-            r.data->>'dewpointF' AS dewpoint_f,
-            r.data->>'humidityPct' AS humidity_pct,
-            r.data->>'conditions' AS conditions,
-            r.data->>'cloudCoverPct' AS cloud_cover_pct,
+            -- 2026-08-17 · these read TOP-LEVEL camelCase keys that exist on
+            -- zero rows; the enrichment writes snake_case inside
+            -- data->'weather'. Every input but bare temperature was silently
+            -- null, so the humidity surcharge and the solar correction never
+            -- applied here even though the header above describes adding them.
+            ${runWeatherTempFSql('r')} AS temp_f_peak,
+            ${runWeatherHumidityPctSql('r')} AS humidity_pct,
+            ${runWeatherConditionsSql('r')} AS conditions,
+            ${runWeatherCloudCoverPctSql('r')} AS cloud_cover_pct,
             COALESCE(r.data->>'durationSec', r.data->>'movingTimeS', r.data->>'elapsedTimeS') AS duration_s,
             COALESCE(r.data->'startLatLng'->>0, r.data->>'startLat', r.data->>'start_latitude') AS start_lat,
             COALESCE(r.data->'startLatLng'->>1, r.data->>'startLng', r.data->>'start_longitude') AS start_lon
@@ -691,11 +698,11 @@ async function checkQualityDrift(
     if (!Number.isFinite(actual) || !Number.isFinite(planned) || planned <= 0) continue;
     // Per-run weather resolution: enriched run fields first, then the
     // workout_weather_cache keyed by the run's start coords + date.
-    let tempF: number | null = null;
-    for (const raw of [row.temp_f_peak, row.temp_f]) {
-      const v = raw != null ? Number(raw) : NaN;
-      if (Number.isFinite(v)) { tempF = v; break; }
-    }
+    // One fragment now resolves peak → mean → bare tempF, so there is nothing
+    // left to ladder here.
+    let tempF: number | null = row.temp_f_peak != null && Number.isFinite(Number(row.temp_f_peak))
+      ? Number(row.temp_f_peak)
+      : null;
     if (tempF == null) {
       const lat = row.start_lat != null ? Number(row.start_lat) : NaN;
       const lon = row.start_lon != null ? Number(row.start_lon) : NaN;
@@ -712,7 +719,9 @@ async function checkQualityDrift(
       actualSPerMi: actual,
       workoutType: row.pw_type,
       tempF,
-      dewpointF: num(row.dewpoint_f),
+      // No stored dewpoint anywhere in runs.data · heat-model estimates it
+      // from temperature + humidity (Magnus-Tetens).
+      dewpointF: null,
       humidityPct: num(row.humidity_pct),
       conditions: row.conditions ?? null,
       cloudCoverPct: num(row.cloud_cover_pct),

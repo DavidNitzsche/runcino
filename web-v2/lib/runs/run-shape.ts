@@ -546,6 +546,52 @@ export function runTempFSql(alias = ''): string {
   return `NULLIF(${col(alias)}->>'tempF','')::numeric`;
 }
 
+/* ── weather · the enrichment block ─────────────────────────────────────────
+ *
+ * `data->'weather'` is written by the weather enrichment and uses SNAKE_CASE
+ * keys. Several call sites reach for camelCase equivalents at the TOP level
+ * (`tempF_peak`, `dewpointF`, `humidityPct`, `conditions`, `cloudCoverPct`) —
+ * a live census found those on ZERO rows out of 247. Only bare top-level
+ * `tempF` exists (209 rows), written separately from the enrichment block.
+ *
+ * The consequence, found 2026-08-17: the quality-drift heat normalisation was
+ * receiving temperature and nothing else, so the humidity surcharge and the
+ * solar correction never applied. Its own header describes a fix that added
+ * those inputs; the keys it added do not exist.
+ *
+ * DEWPOINT IS NOT STORED AT ALL. `humidity_pct` is, and `lib/training/
+ * heat-model.ts` estimates dewpoint from temperature + humidity via
+ * Magnus-Tetens. Ask for humidity and let the model do it.
+ */
+
+/** Peak air temperature (F) from the enrichment block, falling back to the
+ *  mean and then to the top-level `tempF`. Peak is the right read for a heat
+ *  cost: a run is paced by the worst of its conditions, not their average. */
+export function runWeatherTempFSql(alias = ''): string {
+  const d = col(alias);
+  return `COALESCE(NULLIF(${d}->'weather'->>'temp_f_peak','')::numeric, ` +
+         `NULLIF(${d}->'weather'->>'temp_f','')::numeric, ` +
+         `NULLIF(${d}->>'tempF','')::numeric)`;
+}
+
+/** Relative humidity (%) from the enrichment block. Feeds the Magnus-Tetens
+ *  dewpoint estimate — there is no stored dewpoint. */
+export function runWeatherHumidityPctSql(alias = ''): string {
+  const d = col(alias);
+  return `COALESCE(NULLIF(${d}->'weather'->>'humidity_pct_peak','')::numeric, ` +
+         `NULLIF(${d}->'weather'->>'humidity_pct','')::numeric)`;
+}
+
+/** Sky conditions text ('clear', 'cloudy', ...). Drives the solar correction. */
+export function runWeatherConditionsSql(alias = ''): string {
+  return `NULLIF(${col(alias)}->'weather'->>'conditions','')`;
+}
+
+/** Cloud cover (%). The numeric half of the solar correction. */
+export function runWeatherCloudCoverPctSql(alias = ''): string {
+  return `NULLIF(${col(alias)}->'weather'->>'cloud_cover_pct','')::numeric`;
+}
+
 /** Elevation gain in FEET. NULL when unmeasured. */
 export function runElevGainFtSql(alias = ''): string {
   return `NULLIF(${col(alias)}->>'elevGainFt','')::numeric`;
