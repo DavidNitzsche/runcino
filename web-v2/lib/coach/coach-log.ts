@@ -59,7 +59,9 @@ import {
   composeEasyDisciplineEntry,
   composeEasyDisciplineResolved,
   type EasyDisciplineFinding,
+  type EasyQuietReason,
 } from '@/lib/coach/easy-discipline';
+import { updateEpisode, type EpisodeDetector } from '@/lib/coach/episode-log';
 
 /* ────────────────────────── Types ────────────────────────── */
 
@@ -488,66 +490,30 @@ export async function updateCoachLog(userId: string): Promise<{ written: number 
  * Write the easy-discipline line at most twice per episode: once when the
  * pattern establishes, once when it resolves.
  *
- * The log is append-only and has no "close" concept, so the current episode
- * state is derived by reading the newest `coach_log_easy_discipline` row. That
- * gives a two-state machine with no schema change:
- *
- *   nothing / resolved  + detector says established → write OPEN
- *   open                + detector says resolved    → write CLOSE
- *   anything else                                   → write nothing
- *
- * The OPEN row's `field` carries the episode id (the day it opened) and the
- * CLOSE row reuses it, so the (reason, field) dedup keeps re-runs idempotent
- * and a later relapse opens a genuinely new episode rather than being
- * swallowed. "Never nag" is enforced here, structurally, rather than by
- * remembering to check a flag at every call site.
+ * 2026-08-17 firing-policy pass: the two-state machine that used to live
+ * here directly (read the newest `coach_log_easy_discipline` row, derive
+ * open/closed, decide open/close/nothing) is now `lib/coach/episode-log.ts`
+ * — lifted so other pattern-gated detectors can reuse the same mechanism
+ * instead of hand-rolling it. This function is unchanged in EFFECT: same
+ * reason (`coach_log_easy_discipline`), same field naming
+ * (`easy:open:<date>` / `easy:resolved:<episode>`), same (reason, field)
+ * idempotency, same single-row lookback. `episode-log.test.ts` locks the
+ * generalised state machine directly; `easy-discipline.test.ts` still locks
+ * the pure gate and the composed words, untouched.
  */
+const EASY_DISCIPLINE_EPISODE: EpisodeDetector<EasyDisciplineFinding, EasyQuietReason> = {
+  reason: REASON_OF_KIND.easy_discipline,
+  openPrefix: 'easy:open:',
+  closePrefix: 'easy:resolved:',
+  resolvedReason: 'resolved',
+  composeOpen: composeEasyDisciplineEntry,
+  composeClose: composeEasyDisciplineResolved,
+};
+
 async function updateEasyDisciplineLog(userId: string, todayISO: string): Promise<number> {
-  const reason = REASON_OF_KIND.easy_discipline;
-  const last = await pool
-    .query<{ field: string; value: string }>(
-      `SELECT field, value FROM coach_intents
-        WHERE COALESCE(user_uuid, user_id) = $1 AND reason = $2
-        ORDER BY ts DESC LIMIT 1`,
-      [userId, reason],
-    )
-    .catch(() => ({ rows: [] as Array<{ field: string; value: string }> }));
-
-  const openEpisode = (() => {
-    const row = last.rows[0];
-    if (!row || !row.field.startsWith('easy:open:')) return null;
-    return row.field.slice('easy:open:'.length);
-  })();
-
   const finding = await loadEasyDiscipline(userId, todayISO);
   if (!finding) return 0;
-
-  if (openEpisode == null) {
-    if (finding.state !== 'established') return 0;
-    const { title, body } = composeEasyDisciplineEntry(finding);
-    return (await writeEntry(userId, 'easy_discipline', `easy:open:${todayISO}`, {
-      title,
-      body,
-      dateISO: todayISO,
-      meta: easyMeta(finding, 'established'),
-    }))
-      ? 1
-      : 0;
-  }
-
-  // An episode is open. Only a genuine resolve closes it — running out of
-  // qualifying data ('stale' / 'insufficient_evidence') is silence, not good
-  // news, and must never be reported as if the runner fixed something.
-  if (finding.quietReason !== 'resolved') return 0;
-  const { title, body } = composeEasyDisciplineResolved(finding);
-  return (await writeEntry(userId, 'easy_discipline', `easy:resolved:${openEpisode}`, {
-    title,
-    body,
-    dateISO: todayISO,
-    meta: easyMeta(finding, 'resolved'),
-  }))
-    ? 1
-    : 0;
+  return updateEpisode(userId, EASY_DISCIPLINE_EPISODE, finding, todayISO, easyMeta);
 }
 
 function easyMeta(f: EasyDisciplineFinding, state: string): Record<string, unknown> {
