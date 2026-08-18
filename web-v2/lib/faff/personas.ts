@@ -139,28 +139,35 @@ const FIXED_TODAY = '2026-05-28';
 // Poster colour and Sibling tile dots; inputs[] only matters when the
 // /health readiness modal opens, which the simulator doesn't exercise.
 
+/** These four personas stand in for fully instrumented runners, so they carry
+ *  full recovery coverage · see ReadinessBreakdown.coverage (COLD-5). */
 function readinessSharp(score = 88): ReadinessBreakdown {
-  return { score, band: 'sharp', label: 'SHARP', inputs: [], personal: null };
+  return { score, band: 'sharp', label: 'SHARP', inputs: [], coverage: 1, personal: null };
 }
 
 function readinessReady(score = 78): ReadinessBreakdown {
-  return { score, band: 'ready', label: 'READY', inputs: [], personal: null };
+  return { score, band: 'ready', label: 'READY', inputs: [], coverage: 1, personal: null };
 }
 
 function readinessModerate(score = 62): ReadinessBreakdown {
-  return { score, band: 'moderate', label: 'MODERATE', inputs: [], personal: null };
+  return { score, band: 'moderate', label: 'MODERATE', inputs: [], coverage: 1, personal: null };
 }
 
 function readinessPullBack(score = 38): ReadinessBreakdown {
-  return { score, band: 'pull-back', label: 'PULL BACK', inputs: [], personal: null };
+  return { score, band: 'pull-back', label: 'PULL BACK', inputs: [], coverage: 1, personal: null };
 }
 
-/** New-user fallback — no HK data means readiness can't compute. The
- *  resolver hits `new_user` first, so this score never reaches the
- *  Sibling MiniTile dots. Picking a midline value with the 'moderate'
- *  band keeps the type honest. */
+/** New-user fallback — no HK data means readiness can't compute.
+ *
+ *  COLD-5 (2026-08-17) · this used to return `score: 50, band: 'moderate'`,
+ *  with a comment explaining that a midline value "keeps the type honest".
+ *  It kept the type SATISFIED; the value was a fabrication that happened to be
+ *  unreachable (the resolver hits `new_user` first). The type has carried a
+ *  real answer for this case for months — `score: null`, `band: 'unknown'` —
+ *  so the persona now uses it, and a simulator that does reach this path shows
+ *  a new user what a new user actually sees. */
 function readinessUnknown(): ReadinessBreakdown {
-  return { score: 50, band: 'moderate', label: 'MODERATE', inputs: [], personal: null };
+  return { score: null, band: 'unknown', label: 'UNKNOWN', inputs: [], coverage: 0, personal: null };
 }
 
 /** Build a 7-day week — Mon..Sun — keyed on workout types. Order is

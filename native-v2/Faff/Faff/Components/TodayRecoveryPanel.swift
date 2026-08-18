@@ -491,6 +491,12 @@ private extension TodayRecoveryPanel {
         case "OK":      return ("OK", Color(hex: 0x3FB6B0))     // saturated teal
         case "WATCH":   return ("WATCH", Theme.goal)           // amber
         case "RAMP_UP": return ("RAMP", Color(hex: 0xD6483F))   // coral
+        // COLD-3 (2026-08-17) · the backend sends "UNKNOWN" when the account
+        // has less than a full 28-day chronic window, so the ratio cannot be
+        // computed. The value tile already shows an em-dash for that; without
+        // this case the badge fell to the default and painted a teal "OK"
+        // beside it — a verdict on a number that does not exist.
+        case "UNKNOWN": return ("—", Color(hex: 0x8A90A0))       // neutral grey
         default:        return ("OK", Color(hex: 0x3FB6B0))
         }
     }

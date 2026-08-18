@@ -37,16 +37,18 @@ import type { CoachState } from '@/lib/topics/types';
 import { computeTrainingForm, type TrainingFormLabel } from './training-form';
 import { loadTrainingState } from './training-state';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
-import { hasSleepSignal, hasHrvSignal, hasRhrSignal } from './state-presence';
+import { hasSleepSignal, hasHrvSignal, hasRhrSignal, hasRecoverySignal, recoveryCoverage } from './state-presence';
 
 /* ────────────────────────── Public types ────────────────────────── */
 
 export type RecoveryMode = 'standard' | 'long_run';
 export type RecoveryBand = 'recovered' | 'recovering' | 'dragging' | 'depleted';
-export type FormBandLabel = 'OPTIMAL' | 'PRODUCTIVE' | 'OVERREACH' | 'FRESH';
+/** `BUILDING` · COLD-4 · the Banister envelope has no verdict yet. */
+export type FormBandLabel = 'OPTIMAL' | 'PRODUCTIVE' | 'OVERREACH' | 'FRESH' | 'BUILDING';
 export type ArcDirection = 'on_track' | 'flat' | 'slipping';
 export type FuelingWindowState = 'open' | 'closing' | 'closed';
-export type AcwrBand = 'OK' | 'WATCH' | 'RAMP_UP';
+/** `UNKNOWN` · COLD-3 · not enough observable history for a ratio. */
+export type AcwrBand = 'OK' | 'WATCH' | 'RAMP_UP' | 'UNKNOWN';
 
 export interface RecoveryBrief {
   mode: RecoveryMode;
@@ -54,6 +56,17 @@ export interface RecoveryBrief {
   band: RecoveryBand;
   oneLine: string;
   bigCopy: string;
+
+  /**
+   * COLD-4 (2026-08-17) · what fraction of the recovery picture `score` is
+   * actually backed by · `recoveryCoverage` over the four recovery pillars.
+   *
+   * 1.0 fully instrumented · 0.4 or below is a thin reading that should be
+   * rendered with subdued chrome and a "limited signal" caption. The score is
+   * now a real reading of however much we can see; this says how much that is.
+   * Never zero — the cold-start gate returns null before it could be.
+   */
+  coverage: number;
 
   pillars: {
     sleepTarget: {
@@ -208,10 +221,22 @@ export async function loadRecoveryBrief(
   const runTiming = await loadTodayRunTiming(userId, today);
   if (!runTiming) return null;
 
-  // 2. Cold-start gate · no baseline HRV/RHR means we can't compute drops.
-  //    Sleep can be missing (runner might not have logged), but HRV/RHR
-  //    baseline anchors are required for the score weighting.
-  if (state.hrvBaseline == null && state.rhrBaseline == null) {
+  // 2. Cold-start gate.
+  //
+  // COLD-4 (2026-08-17) · this read `hrvBaseline == null && rhrBaseline == null`
+  // — AND, not OR. It only turned the brief off for a runner missing BOTH, and
+  // a watch surfaces RHR days before it has enough overnights for an HRV
+  // baseline, so the ordinary new-watch runner walked straight through it. Then
+  // `computeScore` charged absent HRV `100 - 0 = 100` at weight 0.45 and absent
+  // sleep a hardcoded 50, and the brief opened with "Recovered cleanly ·
+  // banking the work" at ~89/100 for a runner we could barely see.
+  //
+  // Two changes, and the second is the one that matters: the gate now asks the
+  // canonical presence API instead of hand-rolling a sixth definition of "real
+  // signal", AND `computeScore` weighs only the pillars that are present (see
+  // below), so passing this gate on RHR alone yields an RHR-shaped score rather
+  // than a full-confidence one.
+  if (!hasRecoverySignal(state, 'baseline')) {
     return null;
   }
 
@@ -236,10 +261,17 @@ export async function loadRecoveryBrief(
   const weekProgress = composeWeekProgress(trainingState, state, today);
 
   // 6. Score + band + authored copy
+  //
+  // COLD-4 · each pillar passes null when it has no signal, so `computeScore`
+  // can drop it instead of scoring its absence. `form` contributes only when
+  // the Banister envelope has a full CTL window behind it — below that its TSB
+  // is measuring how long the account has existed (see training-form.ts
+  // COLD-1), and `tsb ?? 0` used to turn exactly that into 70/100.
+  const formSufficient = form != null && form.label !== 'BUILDING';
   const score = computeScore({
-    hrvPct: hrvRebound.pct,
-    rhrPct: rhrDelta.pct,
-    tsb: form?.tsb ?? 0,
+    hrvPct: hrvRebound.present ? hrvRebound.pct : null,
+    rhrPct: rhrDelta.present ? rhrDelta.pct : null,
+    tsb: formSufficient ? form.tsb : null,
     sleepAdequacyPct: sleepAdequacyPct(state.sleep7Avg, sleepTarget.hoursTarget),
   });
   const band = bandFromScore(score);
@@ -270,6 +302,7 @@ export async function loadRecoveryBrief(
   return {
     mode,
     score,
+    coverage: recoveryCoverage(state),
     band,
     oneLine,
     bigCopy,
@@ -343,9 +376,17 @@ function computeRhrDelta(state: CoachState) {
   // hardcoded fabricated default the audit called out by name. Now:
   // gate on hasRhrSignal(state, 'baseline') and zero the math when
   // the runner has no real RHR signal.
+  //
+  // COLD-4 (2026-08-17) · that fix gated the DERIVED fields and left the `?? 60`
+  // itself executing, so `baselineBpm` and `currentBpm` still shipped 60/60 in
+  // the payload underneath a comment saying the fabricated default was gone.
+  // `loadRecoveryBrief` then differenced them for the headline copy. The two
+  // raw fields now follow the same `present ? … : 0` rule as their siblings —
+  // and 0 is the value the surfaces already read as absent: the native RHR chip
+  // self-suppresses on `currentBpm > 0` (TodayRecoveryPanel.swift:206).
   const present = hasRhrSignal(state, 'baseline');
-  const baselineBpm = state.rhrBaseline ?? state.rhrCurrent ?? 60;
-  const currentBpm = state.rhrCurrent ?? baselineBpm;
+  const baselineBpm = present ? (state.rhrBaseline ?? state.rhrCurrent ?? 0) : 0;
+  const currentBpm = present ? (state.rhrCurrent ?? baselineBpm) : 0;
   // Projected morning RHR · runs are typically +3-5bpm above baseline
   // immediately post-effort, returning to baseline by morning if recovery
   // is on track. Project a straight-line return.
@@ -404,12 +445,20 @@ function composeTrainingInput(
 }
 
 function mapFormBand(label: TrainingFormLabel | null): FormBandLabel {
-  // Mapping from training-form.ts labels → brief's 4-state band:
+  // Mapping from training-form.ts labels → brief's band:
   //   DETRAINING / RACE-READY → FRESH    (excess freshness)
   //   PRODUCTIVE              → PRODUCTIVE
   //   LOADED                  → OPTIMAL  (productive overload zone)
   //   OVERREACH               → OVERREACH
-  //   BUILDING / null         → PRODUCTIVE (cold-start neutral)
+  //   BUILDING / null         → BUILDING (we cannot say yet)
+  //
+  // COLD-4 (2026-08-17) · `BUILDING` and `null` used to fall through to
+  // PRODUCTIVE, captioned "cold-start neutral". Neutral is not what PRODUCTIVE
+  // says: it is a verdict that the runner is absorbing their training well, and
+  // it was being handed to every runner we could not yet see. BUILDING already
+  // exists in the source vocabulary and means the honest thing; it now survives
+  // the mapping. Wire-safe · the native chip reads this as a free string
+  // (TodayRecoveryPanel.swift:238).
   switch (label) {
     case 'DETRAINING':
     case 'RACE-READY':
@@ -419,9 +468,10 @@ function mapFormBand(label: TrainingFormLabel | null): FormBandLabel {
     case 'OVERREACH':
       return 'OVERREACH';
     case 'PRODUCTIVE':
+      return 'PRODUCTIVE';
     case 'BUILDING':
     default:
-      return 'PRODUCTIVE';
+      return 'BUILDING';
   }
 }
 
@@ -516,8 +566,13 @@ function composeWeekProgress(
     };
   }
 
+  // COLD-3 · `state.loadAcwr ?? 0` used to band an absent ratio as 'OK' — a
+  // verdict on nothing, and the one the native badge paints teal. Zero already
+  // renders as an em-dash on the tile (TodayRecoveryPanel.swift:447); the band
+  // now agrees with it instead of contradicting it.
   const acwrValue = state.loadAcwr ?? 0;
-  const acwrBand: AcwrBand = acwrValue >= 1.5 ? 'RAMP_UP'
+  const acwrBand: AcwrBand = state.loadAcwr == null ? 'UNKNOWN'
+    : acwrValue >= 1.5 ? 'RAMP_UP'
     : acwrValue >= 1.3 ? 'WATCH'
     : 'OK';
 
@@ -532,17 +587,56 @@ function composeWeekProgress(
 
 /* ────────────────────────── Score + band ────────────────────────── */
 
-function computeScore(inputs: { hrvPct: number; rhrPct: number; tsb: number; sleepAdequacyPct: number }): number {
+/**
+ * COLD-4 (2026-08-17) · the weighted mean now runs over the pillars that are
+ * PRESENT and renormalises, instead of scoring absence.
+ *
+ * What it did before: every term was unconditional, and each one's "no data"
+ * value happened to be a good one.
+ *
+ *   absent HRV    → pct 0  → `100 - 0` = 100 at weight 0.45   → 45 pts
+ *   absent RHR    → pct 0  → `100 - 0` = 100 at weight 0.25   → 25 pts
+ *   absent form   → `tsb ?? 0` → `70 + 0` = 70 at weight 0.20 → 14 pts
+ *   absent sleep  → hardcoded 50 at weight 0.10               →  5 pts
+ *                                                              ──────
+ *                                                                89/100
+ *
+ * 89 bands as `recovered` and the brief opens "Recovered cleanly · banking the
+ * work." Sixty-four of those points came from data that did not exist, and
+ * every default happened to flatter. A pillar we cannot see must not vote.
+ *
+ * Renormalising means a runner with RHR only is scored on RHR only — a real
+ * reading of a thin picture, rather than a confident reading of a fabricated
+ * one. `coverage` on the brief says how thin.
+ */
+function computeScore(inputs: {
+  hrvPct: number | null;
+  rhrPct: number | null;
+  tsb: number | null;
+  sleepAdequacyPct: number | null;
+}): number {
   // Each pillar contributes a 0-100 score · inverted where needed so
   // higher is always "better recovery." HRV/RHR pct above are 0=fully
   // recovered → 100=most extended; invert.
-  const hrvScore = 100 - inputs.hrvPct;     // 100=baseline HRV, 0=full drop
-  const rhrScore = 100 - inputs.rhrPct;     // 100=at baseline, 0=+10bpm
-  // TSB band → score · OPTIMAL/PRODUCTIVE ≈ 70-85, OVERREACH < 40.
-  const tsbScore = Math.max(0, Math.min(100, 70 + (inputs.tsb * 2)));
-  const sleepScore = inputs.sleepAdequacyPct;
-  const raw = (hrvScore * W_HRV) + (rhrScore * W_RHR) + (tsbScore * W_TSB) + (sleepScore * W_SLEEP);
-  return Math.max(0, Math.min(100, Math.round(raw)));
+  const terms: Array<[number | null, number]> = [
+    [inputs.hrvPct == null ? null : 100 - inputs.hrvPct, W_HRV],
+    [inputs.rhrPct == null ? null : 100 - inputs.rhrPct, W_RHR],
+    // TSB band → score · OPTIMAL/PRODUCTIVE ≈ 70-85, OVERREACH < 40.
+    [inputs.tsb == null ? null : Math.max(0, Math.min(100, 70 + inputs.tsb * 2)), W_TSB],
+    [inputs.sleepAdequacyPct, W_SLEEP],
+  ];
+  let weighted = 0;
+  let totalWeight = 0;
+  for (const [value, weight] of terms) {
+    if (value == null) continue;
+    weighted += value * weight;
+    totalWeight += weight;
+  }
+  // The caller's cold-start gate guarantees at least one recovery pillar, so
+  // this cannot divide by zero · the guard is here so a future caller cannot
+  // reintroduce the fabrication by loosening the gate.
+  if (totalWeight <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round(weighted / totalWeight)));
 }
 
 function bandFromScore(score: number): RecoveryBand {
@@ -558,8 +652,13 @@ function bandFromPillars(_pillars: Pick<RecoveryBrief['pillars'], 'sleepTarget' 
   return 'recovering';
 }
 
-function sleepAdequacyPct(sleep7Avg: number | null, hoursTarget: number): number {
-  if (sleep7Avg == null) return 50;
+/**
+ * COLD-4 (2026-08-17) · returned a hardcoded 50 for a runner with no sleep
+ * data — a mid-band number indistinguishable at the callsite from a measured
+ * one. Null now, and `computeScore` drops the term.
+ */
+function sleepAdequacyPct(sleep7Avg: number | null, hoursTarget: number): number | null {
+  if (sleep7Avg == null) return null;
   const ratio = sleep7Avg / hoursTarget;
   return Math.max(0, Math.min(100, Math.round(ratio * 100)));
 }

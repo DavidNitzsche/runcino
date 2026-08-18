@@ -83,12 +83,32 @@
  * reported rather than rewired from here.
  */
 import type { CoachState } from '@/lib/topics/types';
+import { recoveryCoverage } from './state-presence';
 
 export interface ReadinessBreakdown {
   score: number | null;         // 0-100; null when all pillar inputs have no signal (cold start)
   band: 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'unknown';
   label: string;                // 'SHARP' / 'READY' / 'MODERATE' / 'PULL BACK' / 'UNKNOWN'
   inputs: ReadinessInput[];
+  /**
+   * COLD-5 (2026-08-17) · how much of the recovery picture this score is
+   * actually backed by · 0..1, from `recoveryCoverage` in state-presence.ts.
+   *
+   * Honesty here used to be binary: `score: null` when ALL FOUR biometrics
+   * were absent, and a confident two-digit number the moment any ONE of them
+   * arrived — with nothing on the shape to say which. A runner with RHR alone
+   * (20 of the 75 recovery weight) read exactly like a fully instrumented one.
+   *
+   * `recoveryCoverage` was written for this in the 2026-06-05 multi-tenant
+   * audit and then called by nothing but its own test for two months. Its
+   * reading: 1.0 fully instrumented · 0.6+ trustworthy · 0.4 or below LIMITED,
+   * render with subdued chrome and a "limited signal" caption · 0.0 cold start,
+   * which is the `score: null` case.
+   *
+   * LOAD is deliberately excluded. It is a modifier, not a pillar — a
+   * Strava-only runner has load and no idea how rested they are.
+   */
+  coverage: number;
   /**
    * What the band was judged against. Null when the runner has no personal
    * baseline yet, which is itself the reason the band stays quiet.
@@ -590,8 +610,24 @@ export function computeReadiness(
   const hasBiometricSignal = inputs.some(
     (i) => BIOMETRIC_KEYS.has(i.key) && i.observedV !== 'no data' && i.observedV !== 'building history',
   );
+  const coverage = recoveryCoverage(state);
   if (!hasBiometricSignal) {
-    return { score: null, band: 'unknown', label: 'UNKNOWN', inputs, personal: null };
+    // COLD-5 · the LOAD input is dropped from an UNKNOWN reading. It is the
+    // one pillar that can still carry a string here (a runner with runs and no
+    // watch), and it was shipping verdict words — "High · 3.96 ACWR" — inside
+    // a breakdown whose own answer is "we cannot say". The ratio itself is
+    // fixed upstream (lib/coach/acwr.ts: that 3.96 was the cold-start
+    // identity), but a load verdict has no business riding along in a payload
+    // that exists to say the readiness picture is empty. Consumers that want
+    // load read it off CoachState directly.
+    return {
+      score: null,
+      band: 'unknown',
+      label: 'UNKNOWN',
+      inputs: inputs.filter((i) => i.key !== 'load'),
+      coverage,
+      personal: null,
+    };
   }
 
   // ── Load context, applied AFTER the composite (D1 §6 step 4) ─────────────
@@ -639,5 +675,5 @@ export function computeReadiness(
     : band === 'moderate' ? 'MODERATE'
                           : 'PULL BACK';
 
-  return { score, band, label, inputs, personal };
+  return { score, band, label, inputs, coverage, personal };
 }

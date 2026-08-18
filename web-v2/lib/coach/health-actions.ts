@@ -741,7 +741,12 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     // would be the very lie this audit Pattern 5 named.
     //
     // Cite: docs/2026-06-05-multi-tenant-audit.html § Pattern 2, 5.
-    if (!hasRecoverySignal(state)) {
+    // COLD-5 (2026-08-17) · `breakdown.score == null` added to the bail. The
+    // presence check below is the right question but not quite the same one
+    // the scorer asks: a runner with an HRV reading and no HRV BASELINE has a
+    // recovery signal by this predicate and no scorable pillar, so the ladder
+    // fell through and rendered the string "Today null · recent: null".
+    if (breakdown.score == null || !hasRecoverySignal(state)) {
       return [{
         signal: 'compound',
         priority: 'low',

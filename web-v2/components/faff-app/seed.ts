@@ -2180,12 +2180,18 @@ async function adaptForm(userId: string, glance: Glance | null): Promise<FaffSee
         fatigue: tf.atl,
         delta: tf.tsb,
         label: tf.label,
+        // COLD-1 · below a full CTL window the envelope has no verdict in it ·
+        // see training-form.ts labelForTsb.
+        provisional: tf.label === 'BUILDING',
         // 2026-06-03 · always read ACWR from glance (which now uses
         // canonicalMileageByDay clustering, same as Readiness drawer).
         // Previously this surfaced tf.acwr · training-form's MAX-per-day
         // SQL dedupe produced a third independent ACWR number, so the
         // Health page, Readiness drawer, and THE STORY card each read
         // a different value. Glance is the canonical source.
+        // COLD-3 · both now come from lib/coach/acwr.ts, so the two arms of
+        // this ?? are the same number and the divergence it works around is
+        // gone. Left in place: glance is still the canonical read.
         acwr: glance?.loadAcwr ?? tf.acwr,
       };
     }
@@ -2193,7 +2199,7 @@ async function adaptForm(userId: string, glance: Glance | null): Promise<FaffSee
 
   // Cold start · no recoverable run history yet
   const acwr = glance?.loadAcwr ?? null;
-  return { fitness: 0, fatigue: 0, delta: 0, label: 'BUILDING', acwr };
+  return { fitness: 0, fatigue: 0, delta: 0, label: 'BUILDING', acwr, provisional: true };
 }
 
 /*
@@ -2243,7 +2249,7 @@ function emptySeed(): FaffSeed {
     volumeBars: [],
     thisWeekMiles: 0,
     weeklyAvg: 0,
-    form: { fitness: 0, fatigue: 0, delta: 0, label: 'BUILDING', acwr: null },
+    form: { fitness: 0, fatigue: 0, delta: 0, label: 'BUILDING', acwr: null, provisional: true },
     season: { nowIdx: 0, raceIdx: 0, miles: [], maxMi: 1, phases: [], weekDays: [], adaptations: [], horizonRaise: null, blockComplete: null },
     health: { readiness, body: [], form: [], sleepArchitectureVerdict: null },
     prs: [],

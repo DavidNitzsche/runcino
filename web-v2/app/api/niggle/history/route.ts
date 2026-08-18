@@ -8,15 +8,28 @@
  *             acwr_at_log — ACWR in the 7 days before logging (Phase 2)
  *
  * Phase 2:
- *   ACWR join  — LEFT JOIN LATERAL fires one 28-day mileage scan per episode;
- *                MAX-per-day dedup matches training-form.ts convention.
+ *   ACWR       — resolved in TS against lib/coach/acwr.ts, per episode, at the
+ *                date that episode was logged. See the 2026-08-17 note below.
  *   Recurrence — JS post-processing counts episodes per (body_part, side)
  *                within the 60 days before last_flare_at.
+ *
+ * 2026-08-17 COLD-3 · the ACWR used to be a LEFT JOIN LATERAL firing one
+ * 28-day mileage scan per episode, with no coverage guard at all — the fifth
+ * and last of five hand-rolled copies of the ratio. A niggle logged in a
+ * runner's first fortnight got the cold-start identity (both legs sum the same
+ * runs, so the ratio is the constant 28/7 = 4.00), and HealthView rendered
+ * "Logged during a loaded week (ACWR 4.00)" against it — the app telling a new
+ * runner their injury was their own fault, off a number that could not have
+ * come out any other way. Now: one mileage read for the whole history, one
+ * first-run date, and the shared pure function applied per episode date, so a
+ * historical ACWR answers to exactly the same coverage rule as today's.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
+import { acwrFromDailyMileage, ACWR_CHRONIC_DAYS } from '@/lib/coach/acwr';
+import { coverageDaysFrom, firstRunISO, isoDaysBefore, mileageByDay } from '@/lib/runs/volume';
 
 export interface BodyPartSummary {
   body_part: string;
@@ -84,16 +97,7 @@ export async function GET(req: NextRequest) {
       [userId],
     );
 
-    // ── 2. Full episode list with ACWR at time of logging ────────────────
-    // LEFT JOIN LATERAL fires one 28-day mileage scan per episode row.
-    // Inner subquery takes MAX distanceMi per calendar day (same dedup guard
-    // used in training-form.ts to avoid double-counting watch/apple_watch
-    // sibling rows for the same physical run).
-    //
-    // ACWR formula (matches training-form.ts:210-213):
-    //   acute7        = sum of mi in the 7 days ending on logged_at (d >= logged_at - 6)
-    //   chronic28_wk  = sum of mi in the 28-day window / 4
-    //   acwr          = acute7 * 4 / chronic28_total   (≡ acute7 / chronic28_wk)
+    // ── 2. Full episode list ─────────────────────────────────────────────
     const episodesRes = await pool.query<{
       id: string;
       body_part: string;
@@ -105,7 +109,6 @@ export async function GET(req: NextRequest) {
       cleared_at: Date | null;
       days_active: string;
       check_in_count: string;
-      acwr_at_log: string | null;
     }>(
       `SELECT
         n.id,
@@ -120,31 +123,38 @@ export async function GET(req: NextRequest) {
           EXTRACT(EPOCH FROM (COALESCE(n.cleared_at, now()) - n.logged_at)) / 86400.0
         )::int                                                               AS days_active,
         (SELECT COUNT(*) FROM niggle_recovery nr
-          WHERE nr.niggle_id = n.id)::int                                   AS check_in_count,
-        acwr_w.acwr                                                          AS acwr_at_log
+          WHERE nr.niggle_id = n.id)::int                                   AS check_in_count
       FROM niggles n
-      LEFT JOIN LATERAL (
-        SELECT ROUND(
-          SUM(CASE WHEN d >= n.logged_at::date - 6 THEN mi ELSE 0 END) * 4.0 /
-          NULLIF(SUM(mi), 0.0),
-          2
-        ) AS acwr
-        FROM (
-          SELECT (data->>'date')::date                    AS d,
-                 MAX((data->>'distanceMi')::numeric)      AS mi
-            FROM runs
-           WHERE user_uuid = $1::uuid
-             AND NOT (data ? 'mergedIntoId')
-             AND (data->>'date')::date
-                   BETWEEN n.logged_at::date - 27
-                       AND n.logged_at::date
-           GROUP BY 1
-        ) sub
-      ) acwr_w ON true
       WHERE COALESCE(n.user_uuid, n.user_id) = $1
       ORDER BY n.logged_at DESC`,
       [userId],
     );
+
+    // ── 2b. ACWR at each episode's log date ──────────────────────────────
+    // One mileage read spanning every episode's chronic window, one first-run
+    // date, then the shared pure ratio per episode. Absent (null) whenever the
+    // account had less than a full chronic window of history at that date —
+    // see the COLD-3 note in the file docblock.
+    const episodeDates = episodesRes.rows.map((r) => new Date(r.logged_at).toISOString().slice(0, 10));
+    const acwrByEpisode = new Map<string, number | null>();
+    if (episodeDates.length > 0) {
+      const newest = episodeDates.reduce((a, b) => (a > b ? a : b));
+      const oldest = episodeDates.reduce((a, b) => (a < b ? a : b));
+      const [byDay, firstISO] = await Promise.all([
+        mileageByDay(userId, isoDaysBefore(oldest, ACWR_CHRONIC_DAYS - 1), newest)
+          .catch(() => new Map<string, { mi: number; canonicalIds: string[] }>()),
+        firstRunISO(userId).catch(() => null),
+      ]);
+      const mi = new Map<string, number>();
+      for (const [day, info] of byDay) mi.set(day, info.mi);
+      for (const dateISO of episodeDates) {
+        if (acwrByEpisode.has(dateISO)) continue;
+        acwrByEpisode.set(
+          dateISO,
+          acwrFromDailyMileage(mi, dateISO, coverageDaysFrom(firstISO, dateISO, ACWR_CHRONIC_DAYS)).acwr,
+        );
+      }
+    }
 
     // ── 3. Recovery trend per episode (batch) ────────────────────────────
     const episodeIds = episodesRes.rows.map(r => Number(r.id));
@@ -185,7 +195,7 @@ export async function GET(req: NextRequest) {
       days_active: Number(r.days_active),
       check_in_count: Number(r.check_in_count),
       recovery_trend: trendMap.get(Number(r.id)) ?? [],
-      acwr_at_log: r.acwr_at_log !== null ? Number(r.acwr_at_log) : null,
+      acwr_at_log: acwrByEpisode.get(new Date(r.logged_at).toISOString().slice(0, 10)) ?? null,
     }));
 
     // ── 5. Summary with recurrence counts ───────────────────────────────

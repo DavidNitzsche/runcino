@@ -59,6 +59,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { computeAcwr } from './acwr';
 
 export type StrengthHabit = 'on_track' | 'building' | 'lapsed' | 'dormant' | 'unknown';
 
@@ -678,30 +679,20 @@ async function loadReadinessGate(userUuid: string): Promise<ReadinessGate> {
 
 async function loadLoadContext(userUuid: string): Promise<LoadContext> {
   // 2026-06-03 · runner TZ anchors the ACWR windows.
+  //
+  // 2026-08-17 COLD-3 · this was the fourth of five ACWR implementations and
+  // the loosest of the three guards: `chronic === 0` alone, so ANY runner with
+  // a single logged mile got a ratio. A week-one runner's two legs sum the
+  // same runs, so the number it handed the strength cap was the constant 4.00
+  // — three times ACWR_HIGH_SPIKE_THRESHOLD — and every new runner's second
+  // weekly session was cut on week one, captioned "ACWR 4.0 · high".
+  //
+  // The cap itself is unchanged and still correct: ACWR is a training-load
+  // fact, not a recovery score, so it survives the "readiness informs, never
+  // acts" ruling. It just has to be a real measurement first.
   const today = await runnerToday(userUuid);
-  // Quick ACWR derivation · acute (7d) / chronic (28d).
-  // 2026-06-01 - MAX-per-day dedupe (see lib/plan/generate.ts).
-  const r = (await pool.query<{ acute: string; chronic: string }>(
-    `WITH per_day AS (
-       SELECT COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date AS d,
-              MAX((data->>'distanceMi')::numeric) AS mi
-         FROM runs
-        WHERE user_uuid = $1
-          AND NOT (data ? 'mergedIntoId')
-          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date
-              >= $2::date - 28
-        GROUP BY 1
-     )
-     SELECT
-        COALESCE(SUM(mi) FILTER (WHERE d >= $2::date - 7), 0)::text AS acute,
-        COALESCE(SUM(mi), 0)::text AS chronic
-      FROM per_day`,
-    [userUuid, today],
-  ).catch(() => ({ rows: [{ acute: '0', chronic: '0' }] }))).rows[0];
-  const acute = Number(r?.acute ?? 0) / 7;
-  const chronic = Number(r?.chronic ?? 0) / 28;
-  if (chronic === 0) return { acwr: null };
-  return { acwr: Math.round((acute / chronic) * 100) / 100 };
+  const { acwr } = await computeAcwr(userUuid, today);
+  return { acwr };
 }
 
 /**

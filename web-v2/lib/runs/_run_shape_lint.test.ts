@@ -199,7 +199,6 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
     'lib/coach/races-state.ts': 'Distance/day · next batch.',
     'lib/coach/profile-state.ts': 'Day/source · next batch.',
     'lib/coach/runner-calibration.ts': 'Day/distance · next batch.',
-    'lib/coach/strength-recommender.ts': 'Day/distance · next batch.',
     'lib/coach/easy-discipline.ts': 'Type/day · next batch.',
     'lib/coach/voice-band.ts': 'workoutType/distance/day · next batch.',
     'lib/coach/coach-log.ts': 'Distance/day · next batch.',
@@ -237,7 +236,6 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
     'app/api/admin/tester-watch/route.ts': 'Admin diagnostic · day/distance/maxHr.',
     'app/api/cron/dedupe-runs/route.ts': 'Dedup cron · day only.',
     'app/api/ingest/workout/route.ts': 'Ingest write path · client_workout_id/qualityFlag.',
-    'app/api/niggle/history/route.ts': 'Day/distance · next batch.',
     'app/api/plan/week/route.ts': 'Day/id · next batch.',
     'app/api/prescription/route.ts':
       'Reads startLat and startLng, which are not keys on any row (the real one is ' +
@@ -308,7 +306,6 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
     'lib/coach/cycle-performance.ts': 'Next batch.',
     'lib/coach/calibration.ts': 'Next batch.',
     'lib/coach/training-form.ts': 'Next batch.',
-    'lib/coach/strength-recommender.ts': 'Next batch.',
     'lib/coach/runner-calibration.ts': 'Next batch.',
 
     /* ── training / race / misc readers ────────────────────────────────── */
@@ -322,7 +319,6 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
     /* ── app routes ────────────────────────────────────────────────────── */
     'app/api/admin/re-enrich-weather/route.ts': 'Admin backfill · next batch.',
     'app/api/admin/tester-watch/route.ts': 'Admin diagnostic · next batch.',
-    'app/api/niggle/history/route.ts': 'Next batch.',
     'app/api/prescription/route.ts': 'Reads startLat/startLng, which do not exist · see RAW_ACCESS_ALLOWED.',
     'app/api/runs/[id]/route.ts': 'Next batch.',
     'app/api/strava/push-recent/route.ts': 'Next batch.',

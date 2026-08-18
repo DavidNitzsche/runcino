@@ -9,6 +9,7 @@ import { pool } from '@/lib/db/pool';
 import type { CoachState } from '@/lib/topics/types';
 import { loadNextARace } from './race-lookup';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
+import { computeAcwr } from './acwr';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { loadBiologicalSex } from '@/lib/coach/biological-sex';
 import { runnerToday } from '@/lib/runtime/runner-tz';
@@ -366,43 +367,26 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   }
 
   // ACWR — Acute:Chronic Workload Ratio (Gabbett).
-  //   acute7    = avg daily distance over last 7 days   (mi/day)
-  //   chronic28 = avg daily distance over last 28 days  (mi/day)
-  //   ratio     = acute7 / chronic28
   //
-  // 2026-05-27 P-DOUBLECOUNT: pulls through canonicalMileageByDay so
-  // un-merged duplicate rows don't inflate the ratio. David's ACWR
-  // was reading 1.80 because Mon/Tue/Wed each had a phantom dup
-  // adding ~6mi to the acute window. Without the dedupe, the swap
-  // card fires off ghost numbers.
-  const acwrFrom = new Date(Date.parse(today + 'T12:00:00Z') - 28 * 86400000)
-    .toISOString().slice(0, 10);
-  const canonicalAcwr = await canonicalMileageByDay(userId, acwrFrom, today);
-  const acuteCutoff = new Date(Date.parse(today + 'T12:00:00Z') - 7 * 86400000)
-    .toISOString().slice(0, 10);
-  let acuteSum = 0;
-  let chronicSum = 0;
-  let runs28 = 0;
-  for (const [day, info] of canonicalAcwr) {
-    if (info.mi <= 0.3) continue;
-    chronicSum += info.mi;
-    runs28 += info.canonicalIds.length;
-    if (day > acuteCutoff) acuteSum += info.mi;
-  }
-  // STRENGTH-2 (2026-08-17) · the strength fold is removed. Research/15
+  // 2026-08-17 COLD-3 · this file used to carry its own copy of the ratio,
+  // one of five, behind a `runs28 >= 3` guard that counted RUNS rather than
+  // window coverage and so failed open for the cold-start runner it was
+  // written for (a first-week runner's two legs sum the same runs and the
+  // ratio is the constant 28/7 = 4.00). One implementation now, in
+  // lib/coach/acwr.ts, which keeps the canonicalMileageByDay dedupe this
+  // file introduced and adds the coverage guard.
+  //
+  // STRENGTH-2 (2026-08-17) · the strength fold stays removed. Research/15
   // §ACWR is right that the ratio is a TRAINING LOAD measure rather than
   // a mileage one, but the fix this file shipped was a fabricated
   // minute-to-mile constant (0.07), and Research/09:350 says in one line:
   // "Quantify session load via sRPE; do not equate to run minutes."
   // ACWR is running-only until the running side can move to sRPE with
   // it. The follow-up, in order, is in lib/coach/strength-load.ts.
-  const loadAcute7    = acuteSum > 0 ? +(acuteSum / 7).toFixed(2) : 0;
-  const loadChronic28 = chronicSum > 0 ? +(chronicSum / 28).toFixed(2) : 0;
-  // Only compute the ratio when we have at least a few runs in the chronic
-  // window — otherwise divide-by-near-zero gives nonsense spikes.
-  const loadAcwr = (loadChronic28 >= 0.1 && runs28 >= 3)
-    ? +(loadAcute7 / loadChronic28).toFixed(2)
-    : null;
+  const load = await computeAcwr(userId, today);
+  const loadAcute7    = load.acute7;
+  const loadChronic28 = load.chronic28;
+  const loadAcwr      = load.acwr;
 
   // Pending intents (not yet acknowledged)
   const intents = await pool.query(

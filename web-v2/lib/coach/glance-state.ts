@@ -14,6 +14,7 @@ import { computeReadiness, type ReadinessBreakdown } from './readiness';
 import { loadReadinessBandBaseline } from './readiness-history';
 import { loadNextARace } from './race-lookup';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
+import { computeAcwr } from './acwr';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadSettings } from '@/lib/coach/settings';
@@ -514,42 +515,26 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   ).catch(() => ({ rows: [] }));
 
   // ACWR for LOAD pillar — Gabbett's Acute:Chronic Workload Ratio.
-  //   acute7    = avg daily distance over last 7 days  (mi/day)
-  //   chronic28 = avg daily distance over last 28 days (mi/day)
   //
-  // 2026-06-03 · pulled through canonicalMileageByDay (matches state-
-  // loader.ts pattern). Raw SUM(distanceMi) inflated David's ACWR to
-  // 1.60 because mergedIntoId-less duplicate rows from watch+Strava
-  // double-counted. canonicalMileageByDay clusters by (date, distance
-  // ±15%, duration ±20%) and picks one canonical row per cluster — same
-  // dedupe the Readiness drawer uses (which read 0.97). Three Health-
-  // page surfaces had three different ACWR numbers before this fix.
-  const acwrFrom = new Date(Date.parse(today + 'T12:00:00Z') - 28 * 86400000)
-    .toISOString().slice(0, 10);
-  const acuteCutoff = new Date(Date.parse(today + 'T12:00:00Z') - 7 * 86400000)
-    .toISOString().slice(0, 10);
-  const canonicalAcwr = await canonicalMileageByDay(userId, acwrFrom, today);
-  let acuteSum = 0;
-  let chronicSum = 0;
-  let runs28 = 0;
-  for (const [day, info] of canonicalAcwr) {
-    if (info.mi <= 0.3) continue;
-    chronicSum += info.mi;
-    runs28 += info.canonicalIds.length;
-    if (day > acuteCutoff) acuteSum += info.mi;
-  }
-  // STRENGTH-2 (2026-08-17) · the strength fold is removed. It converted
+  // 2026-08-17 COLD-3 · this was the second of five copies of the ratio,
+  // byte-identical to state-loader.ts's and carrying the same `runs28 >= 3`
+  // guard, which counts RUNS rather than window coverage and so never fired
+  // for a cold-start runner (whose two legs sum the same runs, making the
+  // ratio the constant 28/7 = 4.00). Both now call lib/coach/acwr.ts, so the
+  // "three Health-page surfaces, three different ACWR numbers" failure this
+  // block was written to fix cannot come back through a fourth copy.
+  //
+  // STRENGTH-2 (2026-08-17) · the strength fold stays removed. It converted
   // strength minutes to running miles at a fabricated 0.07 mi/min, which
   // Research/09:350 prohibits outright ("Quantify session load via sRPE;
   // do not equate to run minutes"), and that number was moving the ratio
   // the readiness pull-back and the strength cap both read. ACWR is
   // running-only until both sides can move to sRPE together — the exact
   // follow-up is written out in lib/coach/strength-load.ts.
-  const loadAcute7 = acuteSum > 0 ? +(acuteSum / 7).toFixed(2) : 0;
-  const loadChronic28 = chronicSum > 0 ? +(chronicSum / 28).toFixed(2) : 0;
-  const loadAcwr = (loadChronic28 >= 0.1 && runs28 >= 3)
-    ? +(loadAcute7 / loadChronic28).toFixed(2)
-    : null;
+  const load = await computeAcwr(userId, today);
+  const loadAcute7 = load.acute7;
+  const loadChronic28 = load.chronic28;
+  const loadAcwr = load.acwr;
 
   // Skip Today (P-SKIP, 2026-05-28). One-row point read against day_actions
   // (migration 114). Index on (user_id, date_iso, action) makes this ~O(1).

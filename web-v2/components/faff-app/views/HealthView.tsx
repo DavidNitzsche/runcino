@@ -226,7 +226,15 @@ function fmtClock(v: number): string {
 function HeroGauge({ score, band }: { score: number; band: string }) {
   const stroke = BAND[band] ?? BAND['no-data'];
   const dash = 628.3;
-  const offset = dash - (Math.max(0, Math.min(100, score)) / 100) * dash;
+  // COLD-5 (2026-08-17) · 'unknown' and 'no-data' both mean the score does not
+  // exist. `adaptReadiness` coalesces a null score to 0 to satisfy a
+  // non-nullable type, and this gauge then drew a big confident "0" inside an
+  // empty ring — the worst of both readings, since 0 is also the bottom of the
+  // scale. Show the em-dash this page already uses for absence, and leave the
+  // ring empty rather than drawing a 0%-filled arc that looks like a verdict.
+  // The 'BUILDING BASELINE' verdict text below already carries the honest state.
+  const empty = band === 'unknown' || band === 'no-data';
+  const offset = empty ? dash : dash - (Math.max(0, Math.min(100, score)) / 100) * dash;
   return (
     <div className="hh-gauge">
       <svg viewBox="0 0 240 240" width="100%" height="100%">
@@ -240,7 +248,7 @@ function HeroGauge({ score, band }: { score: number; band: string }) {
         />
       </svg>
       <div className="hh-gauge-cv">
-        <span className="hh-num">{Math.round(score)}</span>
+        <span className="hh-num">{empty ? '—' : Math.round(score)}</span>
       </div>
     </div>
   );
@@ -545,8 +553,13 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
   const streakRows = (brief?.streaks ?? []).filter(s => s.direction === 'below').slice(0, 3);
 
   // Training-form insight derived from seed.form (no backend brief needed).
+  // COLD-1 (2026-08-17) · `provisional` is true until the 42-day CTL window is
+  // fully covered by the runner's own history. The tile still appears — a card
+  // that vanishes is its own kind of lie about a runner who IS training — but
+  // it shows the em-dash this page already uses for absence rather than a
+  // signed number that the band legend directly below would read as overreach.
   const trainingForm = seed.form?.label
-    ? { label: seed.form.label, delta: seed.form.delta }
+    ? { label: seed.form.label, delta: seed.form.delta, provisional: seed.form.provisional }
     : null;
 
   return (
@@ -581,13 +594,20 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
           <div className="hh-score">
             <HeroGauge score={todayScore} band={band} />
             <div className="hh-verdict">{verdictText}</div>
-            <div className="hh-base">
-              14-day baseline <b>{Math.round(baseline)}</b> · today <b>{Math.round(todayScore)}</b>
-              {' · '}
-              <b style={{ color: net >= 0 ? COLOR_GOOD : COLOR_BAD }}>
-                {net >= 0 ? '+' : '−'}{Math.abs(Math.round(net))}
-              </b>
-            </div>
+            {/* COLD-5 · the baseline line is a comparison between two numbers
+                that do not exist yet on a cold start · `baseline` falls back to
+                a hardcoded 60 and `todayScore` to 0, which rendered as
+                "14-day baseline 60 · today 0 · −60". Suppressed until there is
+                a score to compare. */}
+            {band === 'unknown' || band === 'no-data' ? null : (
+              <div className="hh-base">
+                14-day baseline <b>{Math.round(baseline)}</b> · today <b>{Math.round(todayScore)}</b>
+                {' · '}
+                <b style={{ color: net >= 0 ? COLOR_GOOD : COLOR_BAD }}>
+                  {net >= 0 ? '+' : '−'}{Math.abs(Math.round(net))}
+                </b>
+              </div>
+            )}
             <div className="hh-wk-head" style={{ marginTop: 18 }}>
               <span className="l">{weekScores.length === 7 ? '7-DAY' : `${weekScores.length}-DAY`} READINESS</span>
               <span className="r">
@@ -998,23 +1018,35 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
               <div className="hins">
                 <div className="hins-k">TRAINING FORM</div>
                 <div className="hins-h">
-                  {trainingForm.delta >= 0 ? '+' : '−'}
-                  {Math.abs(Math.round(trainingForm.delta))} · {trainingForm.label}
+                  {trainingForm.provisional ? (
+                    <>— · {trainingForm.label}</>
+                  ) : (
+                    <>
+                      {trainingForm.delta >= 0 ? '+' : '−'}
+                      {Math.abs(Math.round(trainingForm.delta))} · {trainingForm.label}
+                    </>
+                  )}
                 </div>
                 <div className="hins-m">
-                  Fitness {seed.form.fitness} · Fatigue {seed.form.fatigue}.
+                  {trainingForm.provisional
+                    ? 'Six weeks of running history sets the fitness baseline. Building it.'
+                    : `Fitness ${seed.form.fitness} · Fatigue ${seed.form.fatigue}.`}
                   {seed.form.acwr != null ? (
                     <>{' '}<button type="button" className="fa-term-explain" style={{ display: 'inline' }} onClick={() => openGlossary('ACWR')}>ACWR</button>{` ${seed.form.acwr.toFixed(2)} (weekly load vs monthly base).`}</>
                   ) : null}
                 </div>
                 {/* 2026-06-03 · trimmed per David's "way too wordy" QC.
                     Keeps the band reference (the most actionable info)
-                    + 1-line context. Drops the full TSB explanation. */}
-                <div className="hins-what">
-                  Form = Fitness − Fatigue. Negative is normal in a build.
-                  <br />
-                  <b>&gt;+25</b> detraining · <b>+10/+25</b> race-ready · <b>−10/+10</b> productive · <b>−30/−10</b> loaded · <b>&lt;−30</b> overreach.
-                </div>
+                    + 1-line context. Drops the full TSB explanation.
+                    COLD-1 · the band legend is suppressed while provisional ·
+                    it is a key to a number we are not showing. */}
+                {trainingForm.provisional ? null : (
+                  <div className="hins-what">
+                    Form = Fitness − Fatigue. Negative is normal in a build.
+                    <br />
+                    <b>&gt;+25</b> detraining · <b>+10/+25</b> race-ready · <b>−10/+10</b> productive · <b>−30/−10</b> loaded · <b>&lt;−30</b> overreach.
+                  </div>
+                )}
               </div>
             ) : null}
             {seed.health.blockComparison ? (

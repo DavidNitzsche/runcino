@@ -175,6 +175,16 @@ export async function observableCoverageDays(
   toISO: string,
   windowDays: number,
 ): Promise<number> {
+  return coverageDaysFrom(await firstRunISO(userUuid), toISO, windowDays);
+}
+
+/**
+ * COLD-2 · the date of the earliest run we have ever seen for this account,
+ * or null for an account with no runs. One query, so a caller resolving
+ * coverage at MANY dates (a niggle history walking N episodes) reads the
+ * account's start once and does the arithmetic per date.
+ */
+export async function firstRunISO(userUuid: string): Promise<string | null> {
   const row = (await pool.query<{ first: string | null }>(
     `SELECT MIN(COALESCE(data->>'date', LEFT(data->>'startLocal', 10))) AS first
        FROM runs
@@ -182,7 +192,23 @@ export async function observableCoverageDays(
         AND ${CANONICAL_ROW_SQL}`,
     [userUuid],
   ).catch(() => ({ rows: [] as { first: string | null }[] }))).rows[0];
-  const firstISO = row?.first ?? null;
+  return row?.first ?? null;
+}
+
+/**
+ * COLD-2 · the pure half of `observableCoverageDays` · how many of the
+ * `windowDays` ending at `toISO` this account could possibly have been running
+ * in, given it started at `firstISO`.
+ *
+ * Split out so every window-coverage question in the app answers to one
+ * implementation, including the ones that ask it at a historical date rather
+ * than today (see `lib/coach/acwr.ts`).
+ */
+export function coverageDaysFrom(
+  firstISO: string | null,
+  toISO: string,
+  windowDays: number,
+): number {
   if (!firstISO) return 0;
   const days = Math.floor((Date.parse(toISO + 'T12:00:00Z') - Date.parse(firstISO + 'T12:00:00Z')) / 86400000) + 1;
   if (!Number.isFinite(days) || days <= 0) return 0;

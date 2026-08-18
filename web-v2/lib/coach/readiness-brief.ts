@@ -198,7 +198,9 @@ export interface ReadinessBrief {
     tsb: number;
     ctl: number;
     atl: number;
-    band: 'detraining' | 'race-ready' | 'productive' | 'loaded' | 'overreach';
+    /** `building` · COLD-1 · the CTL window is not yet covered, so the
+     *  envelope carries no verdict. Was silently mapped to `productive`. */
+    band: 'detraining' | 'race-ready' | 'productive' | 'loaded' | 'overreach' | 'building';
     label: string;
   } | null;
   /** "Watching" callouts for tomorrow · the brief points the runner at
@@ -468,12 +470,16 @@ export async function loadReadinessBrief(
         tsb: Math.round(trainingFormRaw.tsb),
         ctl: Math.round(trainingFormRaw.ctl),
         atl: Math.round(trainingFormRaw.atl),
+        // COLD-1 (2026-08-17) · the trailing default was `'productive'`, so a
+        // BUILDING envelope — the label that means "we cannot say yet" —
+        // reported as a verdict that the runner is absorbing their training
+        // well. It now maps to its own band.
         band: (trainingFormRaw.label === 'RACE-READY' ? 'race-ready'
           : trainingFormRaw.label === 'PRODUCTIVE' ? 'productive'
           : trainingFormRaw.label === 'LOADED' ? 'loaded'
           : trainingFormRaw.label === 'OVERREACH' ? 'overreach'
           : trainingFormRaw.label === 'DETRAINING' ? 'detraining'
-          : 'productive') as 'detraining' | 'race-ready' | 'productive' | 'loaded' | 'overreach',
+          : 'building') as 'detraining' | 'race-ready' | 'productive' | 'loaded' | 'overreach' | 'building',
         label: trainingFormRaw.label,
       }
     : null;

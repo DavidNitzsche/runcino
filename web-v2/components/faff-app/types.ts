@@ -106,7 +106,14 @@ export type FaffSeed = {
   volumeBars: VolumeBar[];         // 8-week strip
   thisWeekMiles: number;
   weeklyAvg: number;
-  form: { fitness: number; fatigue: number; delta: number; label: string; acwr: number | null };
+  /**
+   * `provisional` · COLD-1 (2026-08-17). True when the Banister envelope does
+   * not yet have a full 42-day CTL window of the runner's own history behind
+   * it, so `fitness` / `fatigue` / `delta` are still converging out of a zero
+   * seed and the signed number must not be shown against the TSB legend.
+   * `label` is held at BUILDING for the same reason.
+   */
+  form: { fitness: number; fatigue: number; delta: number; label: string; acwr: number | null; provisional: boolean };
 
   // train view (26-week plan)
   season: {

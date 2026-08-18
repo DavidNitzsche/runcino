@@ -191,6 +191,13 @@ import {
 } from '@/lib/race/representativeness';
 import { provisionalResultPatch } from '@/lib/race/auto-result';
 import {
+  ACWR_ACUTE_DAYS,
+  ACWR_CHRONIC_DAYS,
+  ACWR_MIN_COVERAGE_DAYS,
+  acwrFromDailyMileage,
+} from '@/lib/coach/acwr';
+import { ATL_WINDOW_DAYS, CTL_WINDOW_DAYS, labelForTsb } from '@/lib/coach/training-form';
+import {
   CURVE_NEUTRAL_EXPONENT_BAND,
   DECOUPLING_ENDURANCE_GAP_PCT,
   DECOUPLING_HEAT_ARTIFACT_PCT,
@@ -4836,6 +4843,186 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  /* ── Cold-start observability · the 2026-08-17 audit ──────────────────────
+   *
+   * Four signals asserted things they could not know, and all four were
+   * loudest in a runner's first month. These claims bind the windows, and each
+   * one carries a behavioural falsifier that replays the original defect · a
+   * band check alone would not have caught any of them, because every constant
+   * involved was already correct. What was wrong was what the engine did when
+   * it could not see far enough back to use them.
+   */
+  {
+    id: 'SAMPLING.acwr-needs-a-full-chronic-window',
+    binds: [
+      'lib/coach/acwr.ts#ACWR_MIN_COVERAGE_DAYS',
+      'lib/coach/acwr.ts#acwrFromDailyMileage',
+    ],
+    doc: 'Research/15-wearable-data.md',
+    anchor: 'ACWR = acute_load_7d / chronic_load_28d',
+    claim:
+      'The ratio is defined over a 7-day numerator and a 28-day denominator, and the engine ' +
+      'reads both window lengths out of that definition. The denominator divides by a FIXED 28 ' +
+      'days, so for an account younger than the window the uncovered days enter it as real ' +
+      'zeroes and deflate the baseline. At the limit the two legs sum the SAME runs and the ' +
+      'ratio is the constant 28/7 = 4.00 for any mileage whatsoever — an algebraic identity ' +
+      'that fired an urgent injury card. So the ratio requires a fully observable chronic ' +
+      'window, and below it the honest output is null.',
+    check({ cite }) {
+      // Read both window lengths out of the doc's own formula rather than
+      // restating them, so a doc edit to either window moves the engine.
+      const line = cite.section[0];
+      const acute = Number(line.match(/acute_load_(\d+)d/)?.[1]);
+      const chronic = Number(line.match(/chronic_load_(\d+)d/)?.[1]);
+      if (!Number.isFinite(acute) || !Number.isFinite(chronic)) {
+        throw new Error(`could not read the ACWR windows out of ${cite.doc} · line: ${line}`);
+      }
+      if (ACWR_ACUTE_DAYS !== acute) {
+        throw new Error(`ACWR_ACUTE_DAYS is ${ACWR_ACUTE_DAYS}, doctrine says ${acute}`);
+      }
+      if (ACWR_CHRONIC_DAYS !== chronic) {
+        throw new Error(`ACWR_CHRONIC_DAYS is ${ACWR_CHRONIC_DAYS}, doctrine says ${chronic}`);
+      }
+      // The coverage requirement IS the chronic window · anything less and the
+      // fixed denominator is counting days the account did not exist.
+      if (ACWR_MIN_COVERAGE_DAYS !== chronic) {
+        throw new Error(
+          `ACWR_MIN_COVERAGE_DAYS is ${ACWR_MIN_COVERAGE_DAYS} · a fixed ${chronic}-day ` +
+            'denominator needs that many days of observable history to mean anything',
+        );
+      }
+
+      // Falsifier · replay the defect. A runner whose entire history is one
+      // week, running every day. The pre-fix engine returned exactly 4.00 here
+      // and could return nothing else.
+      const today = '2026-03-08';
+      const week = new Map<string, number>();
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(Date.parse(today + 'T12:00:00Z') - i * 86400000).toISOString().slice(0, 10);
+        week.set(d, 6);
+      }
+      const cold = acwrFromDailyMileage(week, today, 7);
+      if (cold.acwr !== null) {
+        throw new Error(
+          `a 7-day-old account reports ACWR ${cold.acwr} · with both legs summing the same ` +
+            `runs the only value it can produce is ${chronic}/${acute} = ` +
+            `${(chronic / acute).toFixed(2)}, which is arithmetic, not a measurement`,
+        );
+      }
+      if (cold.reason !== 'insufficient_coverage') {
+        throw new Error(`cold-start ACWR is absent for the wrong reason: ${cold.reason}`);
+      }
+      // And it must still compute once the window is covered · a guard that
+      // never opens is as useless as one that never closes.
+      const full = new Map<string, number>();
+      for (let i = 0; i < ACWR_CHRONIC_DAYS; i++) {
+        const d = new Date(Date.parse(today + 'T12:00:00Z') - i * 86400000).toISOString().slice(0, 10);
+        full.set(d, 6);
+      }
+      const warm = acwrFromDailyMileage(full, today, ACWR_CHRONIC_DAYS);
+      if (warm.acwr == null) {
+        throw new Error('a fully covered 28-day window still reports no ACWR · the guard never opens');
+      }
+      within(warm.acwr, [0.9, 1.1], 'ACWR for a runner holding steady mileage');
+    },
+  },
+
+  {
+    id: 'SAMPLING.acwr-is-not-a-stop-light',
+    binds: ['lib/coach/health-actions.ts#buildHealthActions', 'lib/coach/acwr.ts#acwrAbsentCopy'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: 'treat ACWR as a directional sanity check, not a stop-light',
+    claim:
+      'Doctrine is explicit that a ratio in itself is not a verdict, and the same section ' +
+      'carries the Impellizzeri critique that no causal injury link has been established. The ' +
+      'engine still promotes the ratio to an urgent injury card, which is defensible only ' +
+      'while the number is a real measurement. This claim binds the thing that makes that ' +
+      'true: every card that acts on the ratio must be gated on it being non-null, so an ' +
+      'absent ratio can never be read as a calm one or as an alarming one.',
+    check({ cite }) {
+      // The doc must still say this · a claim that outlives its passage is decoration.
+      const stance = cite.section.join(' ');
+      if (!/not a verdict/.test(stance)) {
+        throw new Error(`${cite.doc} no longer says a ratio in itself is not a verdict`);
+      }
+
+      const src = sourceOf('web-v2/lib/coach/health-actions.ts');
+      // Every branch that reads the ratio carries its own null guard. An
+      // ungated read is how an absent signal becomes a confident one.
+      const reads = [...src.matchAll(/state\.loadAcwr/g)].length;
+      const guarded = [...src.matchAll(/state\.loadAcwr\s*!=\s*null/g)].length;
+      if (reads === 0) {
+        throw new Error('health-actions.ts no longer reads loadAcwr · re-point or delete this claim');
+      }
+      if (guarded === 0) {
+        throw new Error('no null guard remains on loadAcwr in health-actions.ts');
+      }
+      // The urgent hard-cap card specifically · the most consequential consumer.
+      matchLiteral(
+        src,
+        /if \(state\.loadAcwr != null && state\.loadAcwr >= HARD_RULES\.acwrInjuryHardCap\)/,
+        'lib/coach/health-actions.ts · ACWR injury hard cap must stay null-gated',
+      );
+    },
+  },
+
+  {
+    id: 'SAMPLING.ctl-atl-time-constants',
+    binds: [
+      'lib/coach/training-form.ts#CTL_WINDOW_DAYS',
+      'lib/coach/training-form.ts#ATL_WINDOW_DAYS',
+      'lib/coach/training-form.ts#labelForTsb',
+    ],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '| Quantity | Time constant | Reads as |',
+    claim:
+      'CTL is a 42-day time constant and ATL a 7-day one, read out of the doc rather than ' +
+      'restated. The consequence the engine kept missing: a 42-day EWMA seeded at zero has not ' +
+      'converged until 42 days of the RUNNER’S OWN history have passed through it, and every ' +
+      'day before their first run enters the series as a rest day. A runner ten days in at 50 ' +
+      'mi/wk therefore lands at TSB around −32 with CTL just past the CTL<10 guard, and was ' +
+      'labelled OVERREACH. Below a covered CTL window the label must stay BUILDING.',
+    check({ cite }) {
+      const t = cite.table();
+      const days = (label: string) => {
+        const cell = t.row(label)[t.headers[1]];
+        const n = Number(String(cell).match(/(\d+)/)?.[1]);
+        if (!Number.isFinite(n)) throw new Error(`could not read a time constant for ${label}: ${cell}`);
+        return n;
+      };
+      const ctlDays = days('CTL');
+      const atlDays = days('ATL');
+      if (CTL_WINDOW_DAYS !== ctlDays) {
+        throw new Error(`CTL_WINDOW_DAYS is ${CTL_WINDOW_DAYS}, doctrine says ${ctlDays}`);
+      }
+      if (ATL_WINDOW_DAYS !== atlDays) {
+        throw new Error(`ATL_WINDOW_DAYS is ${ATL_WINDOW_DAYS}, doctrine says ${atlDays}`);
+      }
+
+      // Falsifier · the exact day-10 envelope from the incident. Deeply
+      // negative TSB, CTL above the magnitude guard, and only ten days of
+      // observable history behind it.
+      const day10 = labelForTsb(-32, 13, 10);
+      if (day10 !== 'BUILDING') {
+        throw new Error(
+          `a runner with 10 days of history and TSB −32 is labelled ${day10} · the ` +
+            `${ctlDays}-day EWMA has not converged, so the number is measuring the age of the ` +
+            'account, not the athlete',
+        );
+      }
+      // One day short of the window is still provisional; the window itself is not.
+      if (labelForTsb(-32, 40, ctlDays - 1) !== 'BUILDING') {
+        throw new Error('the coverage guard opens before the CTL window is covered');
+      }
+      if (labelForTsb(-32, 40, ctlDays) !== 'OVERREACH') {
+        throw new Error(
+          'a fully covered CTL window still withholds the verdict · the guard never opens, ' +
+            'which suppresses real overreach',
+        );
+      }
+    },
+  },
+
   {
     id: 'CONVENTION.adaptive-bump-ceiling',
     binds: ['lib/plan/adaptive-ramp.ts#MAX_WEEKLY_BUMP_MI', 'lib/plan/adaptive-ramp.ts#MAX_LONG_BUMP_MI'],
@@ -4979,6 +5166,79 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
             'rest week · re-read it before this cap is justified again',
         );
       }
+    },
+  },
+
+  /**
+   * CONVENTION · like `CONVENTION.cold-start-mileage-anchor`, the RULE here is
+   * ours and only its SHAPE is grounded in research. Research/15 says what a
+   * recovery score IS — a weighted blend of HRV, RHR and sleep, and a blend of
+   * correlates rather than a direct measurement. It says nothing about what to
+   * do when one of those inputs is missing, because no passage in the corpus
+   * does. So this claim does not pretend to cite a threshold. It fixes the one
+   * thing the doc's own definition implies: a blend can only blend what it has.
+   *
+   * The defect: every term in the recovery score was unconditional, and each
+   * one's absent value happened to be a good one — absent HRV scored 100 at
+   * weight 0.45, absent RHR 100 at 0.25, an absent Banister envelope 70 at
+   * 0.20, absent sleep a hardcoded 50 at 0.10. Net 89/100, rendered as
+   * "Recovered cleanly · banking the work" to a runner we could barely see.
+   */
+  {
+    id: 'CONVENTION.absent-pillars-do-not-score',
+    binds: ['lib/coach/recovery-brief.ts#computeScore'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: 'These are weighted blends of the same underlying physiology (HRV, RHR, sleep), packaged differently.',
+    claim:
+      'A recovery score is a weighted blend of HRV, RHR and sleep, and doctrine is explicit ' +
+      'that it measures correlates rather than recovery itself. What follows is ours, not the ' +
+      'doc’s: a blend may only blend the inputs it actually has. An absent pillar is dropped ' +
+      'and the remaining weights renormalise, so the score is a real reading of a thin picture ' +
+      'instead of a confident reading of a fabricated one. What this claim enforces is that no ' +
+      'pillar can ever again contribute a default value, and that a fully absent input set ' +
+      'cannot produce a passing score.',
+    check({ cite }) {
+      // The doc must still define the score as a blend of these three.
+      const t = cite.section.join(' ');
+      for (const signal of ['HRV', 'RHR', 'sleep']) {
+        if (!t.includes(signal)) {
+          throw new Error(`${cite.doc} no longer names ${signal} as a recovery-score input`);
+        }
+      }
+
+      // Comment lines are stripped before scanning · each of these fabrications
+      // is quoted verbatim in the "was:" comment that records its removal, and
+      // a tripwire that fires on its own incident report is a tripwire nobody
+      // can keep green.
+      const src = sourceOf('web-v2/lib/coach/recovery-brief.ts')
+        .split('\n')
+        .filter((l) => {
+          const t = l.trim();
+          return !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*');
+        })
+        .join('\n');
+      // The fabrications by name. None may return.
+      if (/sleepAdequacyPct[\s\S]{0,200}?return 50;/.test(src)) {
+        throw new Error('sleepAdequacyPct returns a hardcoded 50 again for a runner with no sleep data');
+      }
+      if (/tsb: form\?\.tsb \?\? 0/.test(src)) {
+        throw new Error('`form?.tsb ?? 0` is back · an absent Banister envelope scores 70/100 through it');
+      }
+      if (/state\.rhrBaseline \?\? state\.rhrCurrent \?\? 60/.test(src)) {
+        throw new Error('the fabricated 60 bpm RHR baseline is back in the recovery brief payload');
+      }
+      // And the renormalisation itself · the weights must be summed from the
+      // terms that survived, never from a fixed total.
+      matchLiteral(
+        src,
+        /totalWeight \+= weight;/,
+        'lib/coach/recovery-brief.ts#computeScore · weights renormalise over present pillars',
+      );
+      matchLiteral(
+        src,
+        /if \(value == null\) continue;/,
+        'lib/coach/recovery-brief.ts#computeScore · absent pillars are skipped, not defaulted',
+      );
     },
   },
 ];

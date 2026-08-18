@@ -44,6 +44,8 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { coverageDaysFrom, firstRunISO } from '@/lib/runs/volume';
+import { computeAcwr } from './acwr';
 
 export type TrainingFormLabel =
   | 'DETRAINING'
@@ -66,11 +68,23 @@ export interface TrainingForm {
   trend7: number;
   /** ACWR (acute/chronic) · retained for back-compat surfaces. */
   acwr: number | null;
+  /**
+   * COLD-1 (2026-08-17) · how many of the CTL window's 42 days this account
+   * could possibly have been training in. Below the full window the EWMAs are
+   * still converging out of their zero seed, so `label` is held at BUILDING —
+   * see `labelForTsb`. Consumers that ASSERT something about the runner's
+   * fatigue must read the label, not the raw `tsb`.
+   */
+  coverageDays: number;
 }
 
-/** EWMA decay constants · industry-standard windows. */
-const CTL_WINDOW_DAYS = 42;
-const ATL_WINDOW_DAYS = 7;
+/**
+ * EWMA decay constants · industry-standard windows.
+ * Exported so the doctrine gate can read them against Research/15's own
+ * CTL/ATL time-constant table · see READINESS.ctl-atl-time-constants.
+ */
+export const CTL_WINDOW_DAYS = 42;
+export const ATL_WINDOW_DAYS = 7;
 const CTL_DECAY = 1 / CTL_WINDOW_DAYS;
 const ATL_DECAY = 1 / ATL_WINDOW_DAYS;
 
@@ -170,7 +184,24 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
     [userUuid, today],
   ).catch(() => ({ rows: [] }))).rows;
 
-  if (rows.length === 0) return null;
+  // COLD-1 (2026-08-17) · this guard used to read `if (rows.length === 0)`,
+  // which could never execute: the query opens with
+  // `generate_series(today-120, today)` and LEFT JOINs the runs onto it, so it
+  // returns 121 rows for everyone — including a runner with no runs at all.
+  // The one line that was supposed to say "we cannot see this athlete yet" was
+  // dead code, and so EVERY account got a TrainingForm.
+  //
+  // What that shipped: the EWMAs seed at zero and 111 uncovered days enter the
+  // series as real rest days, so a runner ten days in at 50 mi/wk converges ATL
+  // fast and CTL slowly and lands at tsb ≈ −32 with ctl ≈ 13 — past the CTL<10
+  // BUILDING guard, into OVERREACH, and straight into the urgent
+  // `tsb_overreach` card in health-actions.ts. Their absorption was fine. The
+  // number was measuring the age of the account.
+  //
+  // The honest guard is observable history, so that is what it now asks for.
+  const firstISO = await firstRunISO(userUuid).catch(() => null);
+  const coverageDays = coverageDaysFrom(firstISO, today, CTL_WINDOW_DAYS);
+  if (rows.length === 0 || coverageDays === 0) return null;
 
   // Per-day stress series.
   const stresses = rows.map((r) => {
@@ -245,29 +276,22 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
     ? Math.round((tsbSeries.at(-1)! - tsbSeries.at(-8)!) * SCALE)
     : 0;
 
-  // ACWR · acute 7d sum / chronic 28d sum-per-day-equivalent.
-  // 2026-08-17 · COLD-2 · the chronic leg divides by a FIXED 4 weeks. For a
-  // runner whose history is shorter than the window, the uncovered days enter
-  // the denominator as real zeroes and deflate the baseline — a runner ten days
-  // in reads a chronic average well under their actual load, so a normal week
-  // presents as an acute spike. ACWR needs a full 28 days of observable history
-  // to mean anything; below that the honest answer is null, not a number.
-  // (ARCHITECTURE §5 · absence of evidence is not evidence of a problem.)
-  const firstMileageIdx = rows.findIndex((r) => (Number(r.mi) || 0) > 0);
-  const observedDays = firstMileageIdx < 0 ? 0 : rows.length - firstMileageIdx;
-  const acute7 = rows.slice(-7).reduce((s, r) => s + (Number(r.mi) || 0), 0);
-  const chronic28 = rows.slice(-28).reduce((s, r) => s + (Number(r.mi) || 0), 0) / 4;
-  const acwr = (chronic28 > 0 && observedDays >= 28)
-    ? Number((acute7 / chronic28).toFixed(2))
-    : null;
+  // ACWR · 2026-08-17 COLD-3 · this file used to carry the third of five
+  // hand-rolled copies of the ratio. Its coverage guard was the right one and
+  // is now the shared rule; the arithmetic has moved to lib/coach/acwr.ts,
+  // which also reads through the canonical dedupe rather than this file's
+  // MAX-per-day approximation — the exact divergence seed.ts:2154 works around
+  // by preferring glance's number over this one.
+  const { acwr } = await computeAcwr(userUuid, today);
 
   return {
     ctl: ctlScaled,
     atl: atlScaled,
     tsb: tsbScaled,
-    label: labelForTsb(tsbScaled, ctlScaled),
+    label: labelForTsb(tsbScaled, ctlScaled, coverageDays),
     trend7,
     acwr,
+    coverageDays,
   };
 }
 
@@ -284,8 +308,22 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
  *
  * Special case · CTL < 10 → BUILDING (not enough chronic load to
  * call meaningful overreach vs detraining).
+ *
+ * COLD-1 (2026-08-17) · and the same for an account younger than the CTL
+ * window. That CTL<10 test was the right INTENT — "we do not have enough
+ * chronic load to call this" — reached for through the wrong proxy. CTL
+ * magnitude is not observability: a runner ten days in at 50 mi/wk has CTL 13,
+ * clears the test, and gets labelled OVERREACH off a TSB that is measuring how
+ * long the account has existed. The 42-day EWMA has not converged out of its
+ * zero seed until 42 days of the runner's own history have gone through it,
+ * and every day before their first run is entering that series as a rest day.
+ *
+ * So below the window the label is BUILDING, which is exactly what BUILDING
+ * already means and already renders honestly everywhere it appears. The
+ * numbers still return; only the verdict is withheld.
  */
-function labelForTsb(tsb: number, ctl: number): TrainingFormLabel {
+export function labelForTsb(tsb: number, ctl: number, coverageDays: number): TrainingFormLabel {
+  if (coverageDays < CTL_WINDOW_DAYS) return 'BUILDING';
   if (ctl < 10) return 'BUILDING';
   if (tsb > 25)  return 'DETRAINING';
   if (tsb > 10)  return 'RACE-READY';

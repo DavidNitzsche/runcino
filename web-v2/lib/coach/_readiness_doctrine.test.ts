@@ -279,7 +279,10 @@ describe('READINESS-4 · the score informs, it never mutates', () => {
     const keys = Object.keys(r);
     // Owner ruling 2026-08-17 + the locked no-reactive-coach rule. The score
     // returns a number, a word, and the reasons — nothing actionable.
-    expect(keys.sort()).toEqual(['band', 'inputs', 'label', 'personal', 'score']);
+    // `coverage` (COLD-5, 2026-08-17) is a statement about how much of the
+    // recovery picture backs the score. It is a disclosure, not an
+    // instruction — it says how far to trust the number, never what to do.
+    expect(keys.sort()).toEqual(['band', 'coverage', 'inputs', 'label', 'personal', 'score']);
     for (const input of r.inputs) {
       expect(
         Object.keys(input).sort(),
