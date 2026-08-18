@@ -821,7 +821,10 @@ const BLOCK_SHAPE: Record<DistCategory, { taperWeeks: number; raceSpecificCap: n
   'ultra': { taperWeeks: 3, raceSpecificCap: 4 },
 };
 
-function sizeBlocks(totalWeeks: number, raceDistanceMi: number, isMidBlock: boolean = false): BlockPlan {
+// Exported for lib/plan/block-preview.ts (the pre-recovery-complete block-shape
+// preview) — it must call this SAME function rather than re-deriving BLOCK_SHAPE
+// or the phase-sizing arithmetic. See that file's header for why.
+export function sizeBlocks(totalWeeks: number, raceDistanceMi: number, isMidBlock: boolean = false): BlockPlan {
   const cat = distanceCategoryOf(raceDistanceMi);
   const shape = BLOCK_SHAPE[cat];
   const taperWeeks       = shape.taperWeeks;
