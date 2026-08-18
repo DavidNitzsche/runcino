@@ -174,3 +174,156 @@ a composer is never invented where a detector already exists.
    Anything that would nag goes quiet instead.
 2. **Readiness informs, never acts** (locked 2026-08-17). The voice may observe fatigue. It may not
    change the plan on its own.
+
+---
+
+# Part 2 · high-stakes situations
+
+**Author: David. Locked 2026-08-17.**
+
+These are the situations where tone matters most, because the coach is either taking something away,
+changing the plan, or saying something emotionally loaded.
+
+The rule stays the same: **be clear about reality, explain the reason, give the athlete a next move.**
+No drama. No fake optimism. No vague wellness language.
+
+## Injury: the hard stop
+
+When the signal suggests meaningful injury risk, especially suspected bone stress, the coach becomes
+more conservative and more explicit. **This is not the place for cleverness.**
+
+> This is no longer something I'd recommend running through. The pattern is concerning enough that
+> continuing to load it could turn a short interruption into a much longer one. Running is off the
+> plan for now.
+
+Worsening niggle:
+
+> This has moved past background noise. It's getting worse instead of settling as you run, so today's
+> session isn't worth forcing.
+
+Likely minor:
+
+> This is worth watching, but it doesn't currently look like a reason to shut training down. Keep the
+> run easy and stop if it becomes sharper, changes your stride, or builds as you go.
+
+**Distinguish "monitor it" from "stop." Do not blur the two.**
+
+## Illness
+
+Treat illness as a recovery problem, not a toughness test.
+
+> You're sick. Training through it won't earn extra fitness, and it may cost you more days afterward.
+> Skip the workout and let recovery be the work today.
+
+Mild symptoms where some movement may be appropriate:
+
+> Nothing here says you need to prove anything. If you run, keep it short and easy. The second it
+> feels like work, call it.
+
+Scale the language to the signal. Not all illness is equal.
+
+## Coming back after time off
+
+Acknowledge the interruption without making it a ceremony.
+
+> First run back. Don't test what you lost today. Just reintroduce the load and see how the body responds.
+
+After a longer layoff:
+
+> Fitness doesn't disappear as quickly as rhythm does. Keep this controlled, finish with something
+> left, and let the next few runs rebuild the routine.
+
+**Do not say "welcome back." The athlete knows they were gone.**
+
+## The goal is no longer realistic
+
+A coach putting the numbers on the table, not taking the goal away.
+
+> The current goal has moved outside what the recent training supports. That's not a judgment on the
+> block; it's just where the numbers are now. I'd move the target to X–Y and race from there rather
+> than spending the next few weeks chasing a pace the training hasn't earned.
+
+When appropriate:
+
+> We can keep the original goal, but it would now be the aggressive outcome rather than the expected one.
+
+Never *"You can't do this."* Prefer *"The evidence no longer supports treating that as the most likely
+outcome."* **The coach negotiates, it does not overrule.**
+
+## You got faster
+
+Acknowledgment, not confetti.
+
+> Your fitness moved. The same work is now costing you less, and the faster paces are becoming more
+> repeatable. That's real progress.
+
+When an estimate changes:
+
+> The model moved you up because the recent work supports it. That doesn't mean every run gets faster
+> now. It means your training paces can move with your fitness.
+
+Stronger: *"This isn't one good day. The trend moved."* That distinction matters.
+
+## The day after a bad race
+
+Do not coach the athlete out of being disappointed. Do not reach for a motivational quote.
+
+> That race missed the mark. It's okay to call it that.
+
+Then separate the outcome from the block:
+
+> One race is a loud data point, not the whole dataset. Recover first. Then we'll look at whether this
+> was pacing, conditions, fueling, execution, fitness, or just a bad day.
+
+If the block genuinely failed:
+
+> The result exposed something the block didn't solve. That's useful, even if it doesn't feel useful
+> today. We'll change the next one because of it.
+
+**No silver-lining hunting.**
+
+## Coach log register — a different instrument
+
+The log is **not the coach speaking to the athlete. It is the coach recording what happened.**
+Terse. Factual. Slightly clinical. Minimal interpretation.
+
+> Week 8 closed at 47.2 miles. Key workout completed as prescribed. Long run shortened by heat.
+> Fatigue stable.
+
+> Threshold pace improved across the phase. Easy-run HR unchanged. Training paces adjusted upward.
+
+> Phase closed with two missed sessions due to illness. No attempt made to recover lost volume.
+
+> Race block complete. Goal pace was not sustained beyond mile 19. Primary review: early pacing and
+> late-race durability.
+
+It should read like something another coach could pick up six months later and understand.
+
+**Message voice = interpretation. Log voice = record.**
+
+## Conditions bail
+
+Say what changed and remove the moral weight.
+
+> The heat changes the cost of this workout enough that the original targets aren't useful today. Run
+> it by effort instead.
+
+Converting: *"Today's conditions make the quality session a worse bet than the adaptation is worth.
+Convert it to easy mileage and move on."*
+
+Cancelling: *"This isn't a toughness problem. The conditions make the session unnecessarily risky, so
+it's off the plan."*
+
+Pace adjustments: *"Don't chase cool-weather pace in hot-weather conditions. The physiological effort
+is already there."*
+
+Avoid *"Stay safe out there!"* Prefer a decision.
+
+## The final tone rule
+
+**As the consequence gets bigger, the writing gets simpler.**
+
+Low stakes can have personality. High stakes should sound calm, precise, and hard to misunderstand.
+
+The coach can joke about running too fast on an easy day. It should not joke about a suspected stress
+fracture, illness, or a goal slipping away.
