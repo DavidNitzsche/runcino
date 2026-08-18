@@ -438,11 +438,18 @@ in shape but not in code for one more integration pass.
 
 ## Firing
 
+**Wired 2026-08-17.** `lib/coach/firing-policy.ts#classifyFinding` implements
+the firing test in the doctrine's own order, gated to five named INTERRUPT
+categories only. `lib/coach/episode-log.ts` generalises the suppression
+machine `easy-discipline.ts` pioneered — any detector shaped as
+`{state: 'established'|'quiet', quietReason}` gets open/close-once-per-episode
+for free.
+
 | Item | State |
 |---|---|
-| Four levels | **ABSENT as a policy.** Individual detectors decide for themselves. |
-| INTERRUPT threshold | **ALIGNED by accident.** Notifications were cut to one category — "tomorrow's session changed, here's why" — which is exactly a qualifying interrupt. |
-| Episode suppression | **PARTIAL.** `easy-discipline` implements it properly: speaks once when a pattern establishes, once when it resolves, never between. It is the reference implementation and the only one. |
+| Four levels | **RESOLVED as a shared policy.** `classifyFinding` is the one answer; before, each detector decided its own loudness. |
+| INTERRUPT threshold | **AUDITED 2026-08-18, not "one category."** The earlier note conflated a narrower historical claim (plan-change pushes cut to one type: "tomorrow's session changed") with all 8 push categories in `lib/notifications/templates.ts`. Audited each: `race_day` cleanly matches (time-sensitive race execution); `race_eve`/`sleep_banking` are race-week-scoped (T-7→T-1) and execution-adjacent, correctly tiered below `race_day` (`active`, not `time-sensitive`); `skip_recovery` precedes today's session and can inform it; `niggle_sick`/sick-check match the safety-or-injury category; `race_countdown` sits at the mildest `passive` tier; `strava_reconnect` is operational account-health content, not a coaching assertion, and Part 3 governs coaching messages. `streak` was the one real violation — found and disabled same night (`cd5d438a`). `weekly_checkin`'s SOLID/TIRED/WRECKED prompt looked like the reactive layer David gutted 2026-05-28, but it feeds `/api/checkin`, already fully de-LLM'd and deterministic — it asks a neutral question and persists the raw answer, it does not assert an unearned judgment, so it does not fail the positive-message-threshold rule the way the streak line did. |
+| Episode suppression | **RESOLVED, generalised.** `episode-log.ts` is the shared machine; `easy-discipline.ts` is its first migrated caller, behaviour-preserving (its own tests, untouched, still pass). |
 | Silence as a designed state | **ALIGNED.** Already locked in the voice brief. |
 | No duplicate coaching | **UNVERIFIED.** No mechanism prevents one insight firing on the watch, the recap, the evening summary and the weekly review. |
 | Positive messages earning airtime | **VIOLATION.** The recap congratulated a runner for leaving the threshold band until today. |
