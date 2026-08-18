@@ -2592,6 +2592,61 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  // == FAST-FINISH LONG RUN . Research/04 4.5 ==============================
+  {
+    id: 'HMLONG.half-shares-the-cadence',
+    binds: [
+      'lib/plan/generate.ts#longFinishSegment',
+      'lib/plan/generate.ts#layoutWeek.racePaceLongWeek',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.5 Fast finish long run',
+    claim:
+      'The half marathon\'s race-pace long run is on the same two-to-three-week cadence as ' +
+      'the marathon\'s. This table states the rhythm in its own Frequency row and names the ' +
+      'half in its own When-in-cycle row, so the treatment 4.4 bought the marathon is owed ' +
+      'here too. The engine put a 50%-of-the-long half-marathon-pace finish on EVERY ' +
+      'race-specific week and then let the intensity floor shave it back: across the half ' +
+      'archetype matrix every race-specific week carried a finish and 83% of them came out ' +
+      'shaved, which is the correction pass doing the generator\'s job. The cadence band is ' +
+      'read out of this table, and the RACE-SPECIFIC arm of longFinishSegment must gate on ' +
+      'it for BOTH distances rather than only for the marathon.',
+    check({ cite }) {
+      const [lo, hi] = parseBand(cite.table().cell('Frequency', 'Prescription'));
+      if (MP_LONG_CADENCE_WEEKS < lo || MP_LONG_CADENCE_WEEKS > hi) {
+        throw new Error(
+          `MP_LONG_CADENCE_WEEKS is ${MP_LONG_CADENCE_WEEKS}, but 4.5 allows every ${lo}-${hi} weeks`,
+        );
+      }
+      // The claim only holds while the doc still puts this session in the
+      // HALF's specific phase. If that row ever narrows to the marathon, the
+      // half's cadence loses its citation and this must be re-derived.
+      const when = cite.table().cell('When in cycle', 'Prescription');
+      if (!/\bHM\b|half/i.test(when)) {
+        throw new Error(
+          `4.5 "When in cycle" no longer names the half ("${when}") - the half's cadence ` +
+            'citation no longer resolves; re-read the section',
+        );
+      }
+      // The rule, at source level: the RACE-SPECIFIC arm returns a plain easy
+      // long off-cadence with NO distance condition, and the cadence flag it
+      // reads is computed for every distance that has a race-pace tag. A
+      // `racePaceTag === 'MP' &&` creeping back into either place is exactly
+      // the regression this claim exists to catch.
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      matchLiteral(
+        src,
+        /const racePaceLongWeek = phase === 'RACE-SPECIFIC' && racePaceTag != null\s*\n\s*&& racePaceLongThisWeek\(weekIdx, weeksToPhaseEnd, cutbackEveryN\);/,
+        'the race-pace-long cadence flag is distance-blind',
+      );
+      matchLiteral(
+        src,
+        /if \(phase === 'RACE-SPECIFIC'\) \{[\s\S]{0,600}?\n {4}if \(!cadenceWeek\) return null;/,
+        "longFinishSegment's RACE-SPECIFIC arm gates on the cadence unconditionally",
+      );
+    },
+  },
+
   // ══ RAMP BASE · what a build is allowed to ramp FROM ══════════════════════
   {
     id: 'RAMPBASE.resume-from-pre-interruption-volume',
@@ -4455,11 +4510,16 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'otherwise race-prep opens too late to build the plan doctrine describes — and no ' +
       'longer than the LONGEST, or the engine is holding a runner in race-specific work past ' +
       'the point any published plan does. Both ends are read out of the doc.',
-    check({ exempt }) {
+    check() {
       // The claim's own anchor is the marathon row because it is the exact hit:
       // BUILD_WINDOW_WEEKS.m is 18 and every marathon plan in Research/22 is 18
       // weeks. The other distances are resolved the same way, from their own
       // headings — the durations are never restated here.
+      //
+      // DOCTRINE-HMWIN-1 (2026-08-17) · the `ceiling-hm` exemption is gone. It
+      // recorded the half's window sitting at 14 against three published
+      // 12-week plans, reported rather than moved. Ruled on: the window is 12
+      // and every distance now clears both ends of its own published band.
       const PLAN_HEADINGS: Record<DistCategory, string[]> = {
         '5k': ['### 5K — Beginner', '### 5K — Intermediate', '### 5K — Advanced'],
         '10k': ['### 10K — Beginner', '### 10K — Intermediate', '### 10K — Advanced'],
@@ -4486,20 +4546,8 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
               `shortest published ${cat} plan (${shortest} wk)`,
           );
         }
-        if (wks > longest && exempt(`ceiling-${cat}`)) continue;
         atMost(wks, longest, `BUILD_WINDOW_WEEKS.${cat}`);
       }
-    },
-    exempt: {
-      'ceiling-hm':
-        'KNOWN DIVERGENCE, found by this claim (2026-08-17). All three half-marathon plans in ' +
-        'Research/22 run 12 weeks; the engine opens the half build window at 14, so a runner ' +
-        'with a half 13-14 weeks out enters race-prep about two weeks before any published ' +
-        'plan would start. Harmless in the common case — the composer fits the block to the ' +
-        'actual race date — but it IS the engine disagreeing with the doc, and per the ' +
-        'task constraint the number was reported rather than moved. Fixing it means either ' +
-        'dropping the window to 12 or adding a longer half plan to Research/22; that is a ' +
-        'training-content decision, not a gate decision.',
     },
   },
 
@@ -4515,7 +4563,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'that minimum effective dose (below it the block is quietly detraining the runner) and ' +
       'strictly below 1.0 (at or above it, this is not maintenance — it is another build). ' +
       'The fraction is parsed from the doc\'s own sentence and from its "Peak weekly volume" row.',
-    check({ cite, exempt }) {
+    check({ cite }) {
       const text = cite.text();
       // "~2/3 of training volume maintains VO2max for ~15 weeks…" — read the
       // fraction out of the prose rather than restating 0.66 here.
@@ -4540,21 +4588,54 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         }
         atMost(pct, 0.99, `MAINTENANCE_BY_TIER.${tier}.weeklyPctOfPeak`);
       }
-      // Frequency is where the engine and this section genuinely disagree.
-      const docDays = parseBand(cite.table().cell('Days/week', 'Value'));
-      const engineDays = TIERS.map((t) => MAINTENANCE_BY_TIER[t].daysPerWeek);
-      if (Math.max(...engineDays) > docDays[1] && exempt('frequency-holds')) return;
-      atMost(Math.max(...engineDays), docDays[1], 'MAINTENANCE_BY_TIER daysPerWeek');
+      // DOCTRINE-MAINTFREQ-1 (2026-08-17) · the frequency half of this check,
+      // and the `frequency-holds` exemption that carried it, have MOVED to
+      // MAINTENANCE.frequency-is-base-building. §7 owns the VOLUME floor and
+      // this claim keeps it; §6 owns frequency. See that claim for the ruling.
     },
-    exempt: {
-      'frequency-holds':
-        'KNOWN DIVERGENCE, found by this claim (2026-08-17). Research/22 §7 puts a maintenance ' +
-        'block at 3-4 days/wk; the engine holds 5-7. This is deliberate and documented on ' +
-        'MAINTENANCE_BY_TIER: frequency is the first thing lost and the slowest to rebuild, so ' +
-        'volume drops and days do not. The engine\'s posture matches Research/22 §6 Base ' +
-        'Building / Off-Season (5-6 days) more closely than §7, which is arguably the right ' +
-        'section for a runner who HAS a race, just not yet a near one. Reported, not moved — ' +
-        'picking which section governs is a coaching decision.',
+  },
+
+  {
+    id: 'MAINTENANCE.frequency-is-base-building',
+    binds: ['lib/plan/goal-tiers.ts#MAINTENANCE_BY_TIER'],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 6. Base Building / Off-Season Plan',
+    claim:
+      'This mode fires when a runner HAS a goal race and it is simply not near yet. That ' +
+      'runner is base-building, not maintaining, so §6 Base Building / Off-Season governs ' +
+      'their run frequency rather than §7 Maintenance — frequency is the first quality lost ' +
+      'and the slowest to rebuild, and §7\'s 3-4 days would spend it to hold a volume number ' +
+      '§7 itself only asks for when the runner is between goals entirely. Every tier must ' +
+      'therefore sit at or above §6\'s frequency floor. The ceiling is §6\'s too, with one ' +
+      'stated exception read out of the doc rather than waved through: the elite tier holds ' +
+      'seven days, which §6 does not reach and §10 High-Volume publishes for exactly the ' +
+      'runner that tier describes.',
+    check({ cite }) {
+      // §6 → "Days/week | 5-6".
+      const baseDays = parseBand(cite.table().cell('Days/week', 'Value'));
+      // §10 → "Days/week | 7 (doubles 3-5 days/wk at peak)", for "experienced
+      // runners targeting peak performance". Read, never restated.
+      const highVolumeDays = parseBand(
+        resolveCitation(
+          'Research/22-plan-templates.md',
+          '## 10. High-Volume Plan (6-7 day, doubles)',
+        ).table().cell('Days/week', 'Value'),
+      );
+      for (const tier of TIERS) {
+        const days = MAINTENANCE_BY_TIER[tier].daysPerWeek;
+        if (days < baseDays[0]) {
+          throw new Error(
+            `MAINTENANCE_BY_TIER.${tier}.daysPerWeek = ${days} is under Research/22 §6's ` +
+              `base-building floor (${baseDays[0]}) · this block is spending the quality that ` +
+              'takes longest to rebuild',
+          );
+        }
+        // The elite tier is the only one §6 alone does not cover. It is bounded
+        // by §10 instead, and by nothing wider — a tier drifting past the
+        // highest frequency Research/22 publishes anywhere still fails here.
+        const ceiling = tier === 'elite' ? Math.max(baseDays[1], highVolumeDays[1]) : baseDays[1];
+        atMost(days, ceiling, `MAINTENANCE_BY_TIER.${tier}.daysPerWeek`);
+      }
     },
   },
 
@@ -4567,42 +4648,63 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'Race-week easy days are prescribed in MINUTES, not miles — every template in §9.3 is ' +
       'written that way, because three days out the point is time on legs at conversational ' +
       'effort and a distance target invites a runner to race it. The engine\'s T-4 and T-3 ' +
-      'prescriptions must land inside the published durations for those days.',
-    check({ cite, exempt }) {
+      'prescriptions must land inside the published durations for those days — and T-3 is ' +
+      'read per distance, because the marathon template makes that day a near-rest and the ' +
+      'half template makes it a real easy run. One number cannot satisfy both.',
+    check({ cite }) {
       const src = sourceOf('web-v2/lib/plan/generate.ts');
-      const m = matchLiteral(
+      const t3s = matchLiteral(
         src,
-        /const minEasy = daysBeforeRace === 4 \? (\d+) : (\d+);/,
-        'race-week easy minutes',
+        /const minEasyT3 = raceWeekCat === 'm' \|\| raceWeekCat === 'ultra' \? (\d+) : (\d+);/,
+        'race-week T-3 easy minutes, split by distance',
       );
-      const [t4, t3] = [Number(m[1]), Number(m[2])];
+      const [t3Long, t3Short] = [Number(t3s[1]), Number(t3s[2])];
+      const t4 = Number(
+        matchLiteral(
+          src,
+          /const minEasy = daysBeforeRace === 4 \? (\d+) : minEasyT3;/,
+          'race-week T-4 easy minutes',
+        )[1],
+      );
       if (!/EASY · \$\{minEasy\} MIN/.test(src)) {
         throw new Error(
           'the race-week easy day no longer labels itself in minutes · §9.3 prescribes time',
         );
       }
       // Templates assume a Sunday race, so T-4 is Wednesday and T-3 Thursday.
-      // The half is the middle-of-the-road template and the binding one.
       const half = resolveCitation(
         'Research/08-pacing-and-race-week.md',
         '**Half marathon — race week template (Sunday race):**',
       ).table();
       within(t4, parseBand(half.cell('Wed', 'Duration')), 'race-week T-4 easy (half template)');
-      within(t3, parseBand(half.cell('Thu', 'Duration')), 'race-week T-3 easy (half template)');
+      within(t3Short, parseBand(half.cell('Thu', 'Duration')), 'race-week T-3 easy (half template)');
       // The marathon template is more conservative on the same two days.
+      // TAPER-RWT3-1 (2026-08-17) · the `marathon-t3-shakeout` exemption is
+      // gone. It recorded a flat 35 min sitting 5 min over the marathon's
+      // "Rest or short easy shakeout · 0-30 min" ceiling, reported rather than
+      // moved because that pass made no engine changes. Ruled on: the branch
+      // splits, and both halves now land inside their own template's row.
       const mar = cite.table();
       within(t4, parseBand(mar.cell('Wed', 'Duration')), 'race-week T-4 easy (marathon template)');
-      const marT3 = parseBand(mar.cell('Thu', 'Duration'));
-      if (t3 > marT3[1] && exempt('marathon-t3-shakeout')) return;
-      within(t3, marT3, 'race-week T-3 easy (marathon template)');
-    },
-    exempt: {
-      'marathon-t3-shakeout':
-        'KNOWN DIVERGENCE, found by this claim (2026-08-17). The marathon template makes T-3 ' +
-        '"Rest or short easy shakeout, 0-30 min"; the engine prescribes a flat 35 min at T-3 ' +
-        'for every distance, 5 min over that ceiling. Inside the half and shorter templates it ' +
-        'is correct. Reported rather than moved: splitting the branch per distance is an ' +
-        'engine change, and this pass does not make engine changes to satisfy a citation.',
+      within(t3Long, parseBand(mar.cell('Thu', 'Duration')), 'race-week T-3 easy (marathon template)');
+      // The split is only meaningful if the marathon actually gets less. A
+      // regression that re-flattened the two to one value would still satisfy
+      // both bands at 30 min and would quietly cost the half its easy day.
+      if (t3Long >= t3Short) {
+        throw new Error(
+          `race-week T-3 is ${t3Long} min for the marathon and ${t3Short} for the half · §9.3 ` +
+            'makes the marathon\'s the shorter day, so the split has collapsed',
+        );
+      }
+      // 5K and 10K race on Saturday in §9.3, so their T-3 is the Wednesday row.
+      // The short branch serves them too and must clear both.
+      for (const [label, heading] of [
+        ['10K', '**10K — race week template (Saturday race):**'],
+        ['5K', '**5K — race week template (Saturday race):**'],
+      ] as const) {
+        const t = resolveCitation('Research/08-pacing-and-race-week.md', heading).table();
+        within(t3Short, parseBand(t.cell('Wed', 'Duration')), `race-week T-3 easy (${label} template)`);
+      }
     },
   },
 

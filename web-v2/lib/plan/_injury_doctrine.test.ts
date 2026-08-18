@@ -294,6 +294,59 @@ describe('INJURY-1 · doctrine conformance · Research/05 §§1, 9', () => {
         }
       }
     });
+
+    // OFFLOAD-1 (2026-08-17) · the other half of the same rule. STRENGTH-3
+    // took the prescription out; this ruling put the NAME back. :407 gives a
+    // bone stress injury 2-6 weeks off running with "Cross-train: pool
+    // running, cycling, elliptical" in the same cell, and :69 says why — deep
+    // water running preserves VO2max for 4-6 weeks in trained runners. With
+    // cross-training gone from the product those weeks read as weeks of
+    // nothing, which is the app silently omitting the thing that protects the
+    // runner. The plan now says what the gap is for. It still prescribes
+    // nothing into it.
+    it('an off-running week NAMES the substitute without prescribing it (:63, :65, :69, :407)', () => {
+      const bsi = wholePlan('foot', 'moderate', 'navicular stress fracture');
+      let named = 0;
+      for (const days of bsi.weeks) {
+        for (const d of days.filter((x) => x.subLabel === 'OFF-DAY')) {
+          expect(
+            /non-impact aerobic work/i.test(d.notes),
+            'an off-running week must name what doctrine puts in the gap',
+          ).toBe(true);
+          // Named, not prescribed: no session, no dose, no duration, and the
+          // copy says out loud who is actually directing this.
+          expect(d.notes).not.toMatch(/\b\d+\s*(min|minutes|hr|hours|x|×)\b/i);
+          expect(d.notes).toMatch(/clinician/i);
+          named++;
+        }
+        // And the week's SHAPE is untouched — still zero running rows and
+        // still no row of any non-running session type.
+        expect(days.filter(isRunningRow)).toEqual([]);
+        expect(days.every((d) => d.type === 'rest')).toBe(true);
+      }
+      expect(named).toBeGreaterThan(0);
+    });
+
+    // The off-day BETWEEN two walk-run sessions has its own job (:17) and does
+    // not carry the offload copy. The split is on whether the week runs at all.
+    it('an off-day between sessions keeps its own reason, not the offload line', () => {
+      const { resolved, weeks } = wholePlan('achilles');
+      const ladderWeek = weeks[(resolved.runStartWeek ?? 0) + 1];
+      const between = ladderWeek.filter((d) => d.subLabel === 'OFF-DAY');
+      expect(between.length).toBeGreaterThan(0);
+      for (const d of between) {
+        expect(d.notes).toMatch(/tissue adaptation and pain monitoring/i);
+        expect(d.notes).not.toMatch(/non-impact aerobic work/i);
+      }
+      // …while this protocol's own pre-ladder weeks DO carry it, and no longer
+      // reference a "last session" that has not happened yet.
+      const preLadder = weeks[0].filter((d) => d.subLabel === 'OFF-DAY');
+      expect(preLadder.length).toBeGreaterThan(0);
+      for (const d of preLadder) {
+        expect(d.notes).toMatch(/non-impact aerobic work/i);
+        expect(d.notes).not.toMatch(/last session/i);
+      }
+    });
   });
 
   // ── Conservative degrade ────────────────────────────────────────────

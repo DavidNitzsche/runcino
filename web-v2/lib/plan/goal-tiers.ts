@@ -45,6 +45,13 @@ export type DistCategory = '5k' | '10k' | 'hm' | 'm' | 'ultra';
  * what has to be long enough to fit one. Bound by PLANMODE.build-window-fits-
  * doctrine-plan, which reads those durations out of the doc.
  *
+ * DOCTRINE-HMWIN-1 (2026-08-17) · hm was 14 and is now 12. That claim found
+ * the divergence and it was reported rather than moved, under an exemption; it
+ * has since been ruled on. All three half plans in Research/22 §3 publish
+ * `Duration | 12 weeks`, so a 14-week window put a runner into race-prep about
+ * two weeks before any published half plan would start. The exemption is gone
+ * and the claim now binds the half like every other distance.
+ *
  * Cite: Research/22-plan-templates.md · the per-distance plan `Duration` rows
  *       (5K 8-18 wk · 10K 10-18 · HM 12 · M 18 · ultra 16-28)
  * Cite: Research/22-plan-templates.md §"Multi-Race Year Planning" — the
@@ -53,7 +60,7 @@ export type DistCategory = '5k' | '10k' | 'hm' | 'm' | 'ultra';
 export const BUILD_WINDOW_WEEKS: Record<DistCategory, number> = {
   '5k': 10,
   '10k': 12,
-  'hm': 14,
+  'hm': 12,
   'm': 18,
   'ultra': 24,
 };
@@ -361,19 +368,30 @@ export function taperFactor(cat: DistCategory, wksLeft: number): number {
  * fraction is genuinely grounded — Research/22 §7 states the minimum effective
  * dose outright — and is now bound by MAINTENANCE.minimum-effective-volume.
  *
- * KNOWN DIVERGENCE, not silently reconciled: Research/22 §7 puts a maintenance
- * block at 3-4 days/wk, and this table holds 5-7. The engine keeps frequency
- * deliberately (dropping days/wk loses the neuromuscular pattern fastest) and
- * that posture is closer to Research/22 §6 Base Building / Off-Season, which
- * runs 5-6 days at 80-100% of the last cycle's peak. This mode fires when a
- * runner has a race but it is outside the build window, so §6 is the better
- * fit than §7 for frequency and §7 is the better fit for volume. Flagged
- * rather than moved — see the claim's note.
+ * DOCTRINE-MAINTFREQ-1 (2026-08-17) · which section governs is now decided.
+ * The divergence flagged here was 5-7 days against §7 Maintenance's 3-4, held
+ * under an exemption. Ruled: §6 Base Building / Off-Season governs, not §7.
+ * This mode fires when the runner HAS a goal race and it is simply not near
+ * yet — that runner is base-building, not maintaining. Frequency is the first
+ * quality lost and the slowest to rebuild, so days hold and volume drops. §7
+ * still owns the volume floor, which is why the two claims below split:
+ * MAINTENANCE.minimum-effective-volume reads §7, MAINTENANCE.frequency-is-
+ * base-building reads §6. The exemption is deleted.
+ *
+ * Recorded honestly, because the re-point does not fit perfectly: §6's own
+ * `Days/week` row is 5-6, so it covers `developing`, `intermediate` and
+ * `advanced` outright and does NOT by itself reach `elite`'s 7. That seventh
+ * day is grounded in §10 High-Volume Plan ("Days/week | 7"), which Research/22
+ * writes for "experienced runners targeting peak performance" — the runner the
+ * elite tier describes. The claim reads both rows out of the doc and bounds
+ * elite by §10, every other tier by §6.
  *
  * Cite: Research/22-plan-templates.md §"Maintenance Plan" — "~2/3 of training
  *       volume maintains VO2max for ~15 weeks if intensity is preserved"
  * Cite: Research/22-plan-templates.md §"Base Building / Off-Season Plan" — 5-6
  *       days/wk, all-E with strides, one optional steady run just below T
+ * Cite: Research/22-plan-templates.md §"High-Volume Plan" — 7 days/wk for
+ *       experienced runners targeting peak performance
  * Cite: Research/09-cross-training.md §"Detraining timeline (no training at all)"
  */
 export interface MaintenanceShape {

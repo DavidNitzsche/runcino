@@ -6,9 +6,9 @@
  * return-to-run progression or, when the injury is a bone stress injury,
  * a no-running holding pattern gated on clinical clearance.
  *
- * STRENGTH-3 (2026-08-17) · the off-days no longer prescribe cross-
- * training. See injuryWeekShape for what replaced it and for the doctrine
- * gap that leaves open.
+ * STRENGTH-3 (2026-08-17) · the off-days no longer prescribe cross-training.
+ * OFFLOAD-1 (2026-08-17) · an off-running week now NAMES what doctrine puts in
+ * the gap, without prescribing it. See OFFLOAD_SUBSTITUTE_LINE.
  *
  * Invocation: triggered by coach_proposals.proposal_type='injury_adjust'
  * accept (Q-08 path). Caller already authoritatively decided the
@@ -82,6 +82,36 @@ const MAX_ACTIVE_DAYS_PER_WEEK = 5;
 
 /** Walk-jog pace used to price the RUNNING minutes of a walk-run session. */
 const WALK_RUN_MIN_PER_MI = 11;
+
+/**
+ * OFFLOAD-1 (2026-08-17) · what an off-running week says about the gap.
+ *
+ * `Research/05` does not treat time off running as time off training. :407
+ * puts a bone stress injury 2-6 weeks off running and writes "Cross-train:
+ * pool running, cycling, elliptical" in the same cell; :63 and :65 say the
+ * same for soft tissue and low-risk BSI; :69 states the reason — deep-water
+ * running "preserves VO2max and running-specific neuromuscular patterns" for
+ * 4-6 weeks in trained runners. Non-impact aerobic work is not an optional
+ * extra in these protocols. It is the SUBSTITUTE the offload is built around.
+ *
+ * faff removed cross-training from the product, so those days became plain
+ * off-days and a 2-6 week layoff read as weeks of nothing. That is the app
+ * silently omitting the thing doctrine put there to protect the runner.
+ *
+ * Ruled (2026-08-17): the plan NAMES the substitute and does not prescribe it.
+ * No sessions, no durations, no doses, no tracking, no new session type.
+ * Cross-training stays out of the product as a feature. This is one sentence
+ * of context on a day that is already an off-day, so the runner knows the gap
+ * has a name and is not being told what to do in it — they are under clinical
+ * direction, and the copy says so.
+ *
+ * The modalities are deliberately NOT listed. "Non-impact aerobic work" is the
+ * category; a list of options reads as a menu, and a menu is a prescription.
+ */
+const OFFLOAD_SUBSTITUTE_LINE =
+  'Time off running is to unload the injury, not to lose the aerobic base. '
+  + 'The research fills that gap with non-impact aerobic work. '
+  + 'faff does not plan it, and your clinician decides what you are cleared for.';
 
 export interface InjuryBuildInput {
   userId: string;
@@ -202,11 +232,15 @@ export function injuryWeekShape(
   // day rule itself is unchanged: impact days are still spaced, and the
   // active-day cap still holds at least two full rest days a week.
   //
-  // KNOWN GAP, deliberately left open for David to rule on: :65 and :69
-  // make non-impact aerobic work the doctrine-mandated SUBSTITUTE during
-  // an off-running block ("pool running preserves VO2max and running-
-  // specific neuromuscular patterns for 4-6 weeks in trained runners"),
-  // and a clearance-gated BSI plan now offers nothing in its place.
+  // OFFLOAD-1 (2026-08-17) · that gap is now closed, and the ruling that
+  // closed it is recorded on OFFLOAD_SUBSTITUTE_LINE above. The gap was: :65
+  // and :69 make non-impact aerobic work the doctrine-mandated SUBSTITUTE
+  // during an off-running block, and a clearance-gated BSI plan offered
+  // nothing in its place, so a 2-6 week layoff read as weeks of nothing.
+  // Ruled: the plan NAMES the substitute without prescribing it. Still no
+  // sessions, no durations, no doses, no tracking, no new session type — the
+  // week's SHAPE below is byte-for-byte what it was. Only the copy on a
+  // no-running week changed.
   //
   // A week with no impact session at all — every clearance-gated week, and
   // the pre-`runStartWeek` weeks of a normal protocol — has no "off-day
@@ -237,12 +271,25 @@ export function injuryWeekShape(
     } else if (monitorSet.has(dow)) {
       // The doctrine's own reason for this day, stated plainly. Not a
       // prescription — a check-in.
+      //
+      // OFFLOAD-1 · three cases, not two. `stage == null` means the week
+      // carries NO running at all: every clearance-gated week, and the weeks
+      // before `runStartWeek` on a normal protocol. Those are the offload, and
+      // they are the weeks that name the substitute. A week that DOES have
+      // walk-run sessions has a genuine off-day BETWEEN them, and :17 already
+      // states what that day is for — it needs no other job.
+      //
+      // Splitting on `stage` also fixes copy that was simply wrong before a
+      // ladder opens: the old non-clearance line said "note how the site felt
+      // after the last session" on weeks where there had been no session.
       days.push({
         dow,
         type: 'rest',
         subLabel: 'OFF-DAY',
-        notes: resolved.clearanceRequired
-          ? 'Off running. Check the site today: pain at rest, pain walking, pain on the stairs. That is the signal you are tracking while it heals.'
+        notes: stage == null
+          ? (resolved.clearanceRequired
+              ? `Off running. Check the site today: pain at rest, pain walking, pain on the stairs. That is the signal you are tracking while it heals. ${OFFLOAD_SUBSTITUTE_LINE}`
+              : `Off running. The walk-run ladder has not opened yet. Watch how the site behaves in ordinary walking. ${OFFLOAD_SUBSTITUTE_LINE}`)
           : 'Off running. This day is for tissue adaptation and pain monitoring. Note how the site felt after the last session before you load it again.',
         distance_mi: 0,
       });
@@ -364,7 +411,10 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
   // should not be labelled as one · Research/05:463, :479.
   const phaseLabel = resolved.clearanceRequired ? 'CLINICAL-CLEARANCE' : 'INJURY-RETURN';
   const rationale = resolved.clearanceRequired
-    ? `${resolved.protocol.label}. No running until a clinician clears it. ${resolved.protocol.clearanceGate ?? ''} Doctrine total return ${bandLabel}. This plan holds the gate and tracks the days; it does not prescribe anything to do instead.`.trim()
+    // OFFLOAD-1 · this used to end "it does not prescribe anything to do
+    // instead", which was accurate and was also the defect. The plan still
+    // prescribes nothing; it now says what the gap is for.
+    ? `${resolved.protocol.label}. No running until a clinician clears it. ${resolved.protocol.clearanceGate ?? ''} Doctrine total return ${bandLabel}. This plan holds the gate and tracks the days. It does not prescribe the non-impact aerobic work the research puts in the gap, and it does not pretend the gap is not there.`.trim()
     : `${resolved.protocol.label}. Walk-run ladder from week ${(resolved.runStartWeek ?? 0) + 1}, one stage a week, alternate days. Doctrine total return ${bandLabel}. Pain 0-2 carry on, 3-5 hold, 6 or more stop.`;
   const phaseId = id('phs');
   await pool.query(

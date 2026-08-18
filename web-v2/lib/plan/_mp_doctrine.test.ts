@@ -214,26 +214,124 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
     expect(totals.shaved / totals.weeks).toBeLessThan(0.15);
   });
 
-  it('the half marathon is untouched', () => {
-    // Research/04 §4.5 arguably owes the half the same cadence; that is a
-    // separate deliberate decision. This test exists so taking it is loud.
+  // DOCTRINE-HMLONG-1 (2026-08-17) · this test used to be "the half marathon is
+  // untouched", and its comment recorded the half's cadence as a deliberate
+  // open decision so that taking it would be loud. It has now been ruled on:
+  // Research/04 §4.5 "Fast finish long run" carries "Frequency | Every 2–3
+  // weeks" and "When in cycle | Specific phase, marathon and HM", which is the
+  // same rhythm §4.4 gives the marathon, stated for the half. The reason for
+  // holding off — that the half's race-specific block measured 75% easy rather
+  // than 58% — was the symptom rather than the counter-argument: it measured 75%
+  // because `applyIntensityFloor` was shaving the finish on 83% of half
+  // race-specific weeks, every week landing within a point of the floor.
+  //
+  // What did NOT change, deliberately: the half keeps BOTH structured sessions
+  // on a cadence week. §16's forbidden pairing is "MP long run + hard tempo",
+  // and the half's race-specific mix is threshold + intervals.
+  it('the half runs its race-pace long on the same 2-3 week cadence', () => {
     const r = buildSimPlan({
-      ...base, goalMode: 'goal', distance: 'half', experienceLevel: 'intermediate',
-      weeklyMileageBucket: 35, weeklyFrequency: 5, planWeeks: 14, goalTimeSec: 6300,
-      longestRunBucket: '6-10',
+      ...base, goalMode: 'goal', distance: 'half', experienceLevel: 'advanced',
+      weeklyMileageBucket: 45, weeklyFrequency: 6, planWeeks: 12, goalTimeSec: 5400,
+      longestRunBucket: '10+',
     } as never);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    let checked = 0;
-    for (const w of r.composed.weeks) {
-      if (w.phase !== 'RACE-SPECIFIC' || w.isRaceWeek) continue;
-      const long = w.days.find((d) => d.isLong && d.type === 'long');
-      if (!long) continue;
-      expect(finishMiOf(long.subLabel), `half lost its race-pace finish: "${long.subLabel}"`).toBeGreaterThan(0);
-      expect(w.days.filter((d) => d.isQuality && d.type !== 'race').length).toBe(2);
-      checked++;
+    const rs = r.composed.weeks
+      .map((w, i) => ({ w, i }))
+      .filter(({ w }) => w.phase === 'RACE-SPECIFIC' && !w.isRaceWeek);
+    expect(rs.length).toBeGreaterThan(2);
+
+    const withRp = rs.filter(({ w }) => finishMiOf(w.days.find((d) => d.isLong)?.subLabel) > 0);
+    const withoutRp = rs.filter(({ w }) => finishMiOf(w.days.find((d) => d.isLong)?.subLabel) === 0);
+    // Both kinds exist — that IS the cadence. Before the ruling `withoutRp` was
+    // empty for every half archetype, which is the defect.
+    expect(withRp.length).toBeGreaterThan(0);
+    expect(withoutRp.length).toBeGreaterThan(0);
+    for (let i = 1; i < withRp.length; i++) {
+      const gap = withRp[i].i - withRp[i - 1].i;
+      expect(gap).toBeGreaterThanOrEqual(2);
+      expect(gap).toBeLessThanOrEqual(3);
     }
-    expect(checked).toBeGreaterThan(0);
+    // The intervening long is a plain easy long, not a shrunken race-pace one.
+    for (const { w } of withoutRp) {
+      expect(w.days.find((d) => d.isLong)?.subLabel).toBe('LONG');
+    }
+    // The last race-specific week always carries one · closest to the race.
+    expect(finishMiOf(rs[rs.length - 1].w.days.find((d) => d.isLong)?.subLabel)).toBeGreaterThan(0);
+    // …and the week's shape is unchanged: two structured sessions either way.
+    for (const { w } of rs) {
+      expect(w.days.filter((d) => d.isQuality && d.type !== 'race').length).toBe(2);
+    }
+  });
+
+  it('the half cadence takes the intensity floor off its every-week duty', () => {
+    // The outcome that says the change worked, measured across the half
+    // archetype matrix (3 levels x 4 volumes x 3 frequencies, 12- and 14-week).
+    //
+    //                                       before      after
+    //   race-specific weeks with a finish   216 (100%)  144 (67%)
+    //   weeks the floor shaved              180 (83%)   116 (54%)
+    //
+    // What the residue IS matters more than its size. Afterwards the floor
+    // fires on cadence weeks and only on cadence weeks: those genuinely carry a
+    // 50%-of-the-long race-pace block beside two structured sessions, and
+    // trimming them is exactly what a safety net is for. The off-cadence weeks
+    // — a third of the block, which is what a two-week cadence yields — now
+    // clear the floor on their own with real headroom instead of being pinned
+    // to within a point of it. That is the difference between a correction and
+    // a mechanism.
+    let weeks = 0;
+    let shaved = 0;
+    let offCadence = 0;
+    let offCadenceShare = 0;
+    const pinned: string[] = [];
+    for (const experienceLevel of ['beginner', 'intermediate', 'advanced'] as const) {
+      for (const weeklyMileageBucket of [15, 25, 35, 45]) {
+        for (const weeklyFrequency of [4, 5, 6]) {
+          for (const planWeeks of [12, 14]) {
+            const r = buildSimPlan({
+              ...base, goalMode: 'goal', distance: 'half', experienceLevel, weeklyMileageBucket,
+              weeklyFrequency, planWeeks, goalTimeSec: 6300,
+              longestRunBucket: weeklyMileageBucket >= 35 ? '10+' : '6-10',
+            } as never);
+            if (!r.ok) continue;
+            for (const w of r.composed.weeks) {
+              if (w.phase !== 'RACE-SPECIFIC' || w.isRaceWeek) continue;
+              const long = w.days.find((d) => d.isLong && d.type === 'long');
+              if (!long || long.distanceMi <= 0) continue;
+              weeks++;
+              const ratio = finishMiOf(long.subLabel) / long.distanceMi;
+              if (ratio > 0.01 && ratio < 0.48) shaved++;
+              if (ratio <= 0.01) {
+                offCadence++;
+                // An off-cadence long has no finish for the floor to take, so
+                // the week has to stand on its own. Every one must clear the
+                // floor unaided, and as a group they must clear it with real
+                // headroom — otherwise the density moved rather than went.
+                const share = weekIntensity(w as never).easyShare;
+                offCadenceShare += share;
+                if (share < EASY_SHARE_FLOOR - 0.005) {
+                  pinned.push(
+                    `${experienceLevel}/${weeklyMileageBucket}mi/f${weeklyFrequency}/${planWeeks}wk = ` +
+                    `${(share * 100).toFixed(1)}%`,
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(weeks).toBeGreaterThan(100);
+    expect(pinned.slice(0, 8).join('\n')).toBe('');
+    // A two-week cadence over a race-specific phase leaves about a third of it
+    // running a plain easy long. Before the ruling this was zero.
+    expect(offCadence / weeks).toBeGreaterThan(0.30);
+    // …and those weeks sit clear of the floor rather than on it. Before, every
+    // race-specific week came out inside a point of 75%.
+    expect(offCadenceShare / offCadence).toBeGreaterThan(EASY_SHARE_FLOOR + 0.05);
+    // …and the floor is no longer the every-week mechanism it was at 83%.
+    expect(shaved / weeks).toBeLessThan(0.60);
   });
 });
 

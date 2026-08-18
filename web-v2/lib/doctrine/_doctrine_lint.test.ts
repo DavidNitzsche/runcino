@@ -141,6 +141,14 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
     'web-v2/lib/plan/goal-tiers.ts#RECOVERY_LONG_PCT:m==ultra':
       'The marathon and ultra both hold the long deliberately small inside the reverse taper · ' +
       'documented at goal-tiers.ts:128-133.',
+    'web-v2/lib/plan/goal-tiers.ts#BUILD_WINDOW_WEEKS:10k==hm':
+      'DOCTRINE-HMWIN-1 (2026-08-17). The two arrive at 12 from different directions and both ' +
+      'are read out of the doc. Research/22 §3 publishes `Duration | 12 weeks` for ALL THREE ' +
+      'half plans, so the half is pinned to exactly 12 — it has no band to sit anywhere else ' +
+      'in. The 10K\'s own plans run 10, 12 and 12-18 weeks, and 12 is the engine\'s choice ' +
+      'inside that band. PLANMODE.build-window-fits-doctrine-plan checks each distance against ' +
+      'its own headings and fails if either drifts outside them, so the agreement is ' +
+      'arithmetic rather than a paste.',
     'web-v2/lib/plan/generate.ts#BLOCK_SHAPE:10k==hm':
       'Research/08 §9.1 gives the 10K a 7-10 day taper and the half 10-14 · both round to the ' +
       'same 2 whole weeks, which is the granularity the block planner works in. ' +

@@ -1426,14 +1426,27 @@ export async function resolvePrescriptions(
  *     latitude doctrine already grants ("every 2–3 weeks") and never more.
  *   · The intervening long runs are plain easy longs.
  *
- * HM is deliberately NOT on this cadence. §4.5 "Fast finish long run" gives the
- * half's long-run insert the same "every 2–3 weeks" rhythm, so the same
- * treatment is arguably owed — but the half's race-specific block measured 75%
- * easy at the floor rather than 58%, its insert is a third of the absolute
- * mileage the marathon's is, and `_intensity_doctrine.test.ts` holds a
- * deliberate guard that every half race-specific long keeps a race-pace finish.
- * Changing that is a separate, deliberate decision; it is reported, not taken
- * here.
+ * DOCTRINE-HMLONG-1 (2026-08-17) · the half is now on the same cadence. When
+ * this constant landed, the half was reported rather than moved and the
+ * decision left open. It has since been ruled on: §4.5 "Fast finish long run"
+ * states the same rhythm in its own table —
+ *
+ *   | Frequency     | Every 2–3 weeks              |
+ *   | When in cycle | Specific phase, marathon and HM |
+ *
+ * — so §4.5 owes the half exactly what §4.4 gave the marathon, and the reason
+ * offered for holding off was itself the symptom. The half's race-specific
+ * block measured 75% easy *because* `applyIntensityFloor` was shaving the
+ * finish it should never have authored: across the half archetype matrix, 100%
+ * of race-specific weeks carried a finish and 83% of those came out shaved,
+ * every week pinned to within a point of the floor. A floor that fires
+ * every single week is not a safety net, it is the generator's real behaviour
+ * arriving through a correction pass.
+ *
+ * The half reuses `racePaceLongThisWeek` unchanged, so it inherits both
+ * properties the marathon's cadence already has: measured backwards from the
+ * phase end, so the last race-specific week always carries one; and never
+ * landing on a deload.
  */
 export const MP_LONG_CADENCE_WEEKS = 2;
 
@@ -1560,7 +1573,7 @@ export function taperMpDose(
  *       HMP at the QUALITY→RACE-SPECIFIC seam, then HMP through race-specific.
  *   M  "long run w/ last N @ M": race pace IS marathon pace → every finish @ MP.
  *
- *   RACE-SPECIFIC (every wk):       40% @ {HM | MP}
+ *   RACE-SPECIFIC (on cadence):     40% @ {HM | MP}   (see `cadenceWeek`)
  *   QUALITY last wk:                33% @ {HM | MP}   (HMP step for HM)
  *   QUALITY 2nd-from-last:          33% @ {M  | MP}   (M-pace warm-in for HM)
  *   QUALITY 3rd-from-last:          30% @ {M  | MP}
@@ -1573,8 +1586,9 @@ function longFinishSegment(
   phase: string,
   weeksToPhaseEnd: number,
   racePaceTag: 'HM' | 'MP' | null,
-  /** DOCTRINE-MPLONG-1 · `racePaceLongThisWeek` for this week. Only the
-   *  marathon's race-specific arm consults it; every other arm is unchanged. */
+  /** DOCTRINE-MPLONG-1 / DOCTRINE-HMLONG-1 · `racePaceLongThisWeek` for this
+   *  week. Only the RACE-SPECIFIC arm consults it; the QUALITY warm-in ramp is
+   *  three weeks long and already a cadence of its own. */
   cadenceWeek: boolean = true,
 ): { pct: number; tag: 'HM' | 'M' | 'MP' } | null {
   if (!racePaceTag) return null;
@@ -1584,8 +1598,11 @@ function longFinishSegment(
   // builds toward it progressively.
   if (phase === 'RACE-SPECIFIC') {
     // DOCTRINE-MPLONG-1 · Research/04 §4.4 "Every 2–3 weeks during marathon
-    // specific phase". Off-cadence weeks run the long easy.
-    if (racePaceTag === 'MP' && !cadenceWeek) return null;
+    // specific phase". DOCTRINE-HMLONG-1 · §4.5 "Fast finish long run" carries
+    // the same "Every 2–3 weeks" in its own Frequency row, and names the half
+    // in "When in cycle | Specific phase, marathon and HM". Off-cadence weeks
+    // run the long easy, for both distances.
+    if (!cadenceWeek) return null;
     return { pct: 0.50, tag: racePaceTag };
   }
   if (phase !== 'QUALITY') return null;
@@ -1736,7 +1753,22 @@ function layoutWeek({
           // miles (marathon Wed 30-40 / Thu 0-30, half Wed 35-45 / Thu 30-40). Bound by
           // TAPER.race-week-easy-duration. (Was `Daniels §Race-week sharpening`, a section
           // the gate could not open — DOCTRINE-BOOK-7, 2026-08-17.)
-          const minEasy = daysBeforeRace === 4 ? 40 : 35;
+          //
+          // TAPER-RWT3-1 (2026-08-17) · T-3 splits by distance; it used to be a
+          // flat 35 min for every race. §9.3's half template makes T-3 "Easy + 6
+          // strides · 30-40 min" and its marathon template makes the same day
+          // "Rest or short easy shakeout · 0-30 min" — the marathon deliberately
+          // takes a near-rest day three out before the longest race on the
+          // board. 35 sits inside the half's row and five minutes over the
+          // marathon's ceiling, so the one number could not be right for both.
+          // The ultra has no §9.3 template of its own; it takes the marathon's
+          // row as the nearest and most conservative published one, which is
+          // consistent with §9.1 giving the ultra the longest taper and the
+          // deepest volume cut of any distance. T-4 is unchanged: 40 min sits
+          // inside both templates' Wednesday rows.
+          const raceWeekCat = distanceCategoryOf(raceDistanceMi);
+          const minEasyT3 = raceWeekCat === 'm' || raceWeekCat === 'ultra' ? 30 : 35;
+          const minEasy = daysBeforeRace === 4 ? 40 : minEasyT3;
           days.push({ dow, type: 'easy', distanceMi: 3 + (daysBeforeRace === 4 ? 1 : 0), isQuality: false, isLong: false, subLabel: `EASY · ${minEasy} MIN`, notes: `${minEasy} min easy. Conversational effort throughout. Strides optional at end.` });
         } else {
           // TAPER-RW-1 · early race-week easy days also time-based (35-45 min)
@@ -2043,11 +2075,17 @@ function layoutWeek({
   // picks it up and the watch executes easy-build + finish — closing the
   // generator side of the D1 gap (in-place row patches fixed the active
   // plan; this fixes every future regen + new runner).
-  // DOCTRINE-MPLONG-1 · does the marathon-pace long land this week? Computed
-  // once and read twice: once for the long run's own finish, once by the
-  // quality mix below (Research/04 §16 forbids pairing it with a hard tempo).
-  const mpLongWeek = phase === 'RACE-SPECIFIC' && racePaceTag === 'MP'
+  // DOCTRINE-MPLONG-1 / DOCTRINE-HMLONG-1 · does the race-pace long land this
+  // week? Both the marathon's MP long (§4.4) and the half's fast-finish long
+  // (§4.5) carry "Every 2–3 weeks", so both walk the same cadence.
+  const racePaceLongWeek = phase === 'RACE-SPECIFIC' && racePaceTag != null
     && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN);
+  // The MARATHON-only consequences hang off this narrower flag: §16's forbidden
+  // "MP long run + hard tempo" pairing (the half's race-specific mix is
+  // threshold + intervals, which §16 does not name) and DAY-SIZE-1's at-pace
+  // cap. Extending either to the half is a separate decision and is not taken
+  // here — the ruling was about the long run's rhythm, not the week's shape.
+  const mpLongWeek = racePaceTag === 'MP' && racePaceLongWeek;
   // DOCTRINE-TAPERMP-1 · the marathon taper's MP session (Research/08 §9.2).
   // Marathon only — the half, 5K, 10K and ultra tapers have no MP row in that
   // table and keep their 5K-pace tune-up. `baseBuilding` (true beginner) is
@@ -2056,7 +2094,7 @@ function layoutWeek({
   const taperMp = (phase === 'TAPER' && !isRaceWeek && cat === 'm' && !baseBuilding)
     ? taperMpDose(weeksToPhaseEnd, qualityCeiling)
     : null;
-  const finishSeg = longFinishSegment(phase, weeksToPhaseEnd, racePaceTag, mpLongWeek);
+  const finishSeg = longFinishSegment(phase, weeksToPhaseEnd, racePaceTag, racePaceLongWeek);
   const finishMi = finishSeg ? Math.round(longMi * finishSeg.pct) : 0;
   const hasFinish = finishSeg != null && finishMi > 0 && finishMi < longMi;
   slots[longRunDow] = {

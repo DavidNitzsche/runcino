@@ -99,8 +99,15 @@ describe('DOCTRINE-TID-1 · easy/hard intensity distribution', () => {
   it('a plan that already clears the floor keeps its race-pace long runs', () => {
     // The correction can only ever REDUCE a long-run finish, so the way it
     // would misfire is by trimming a plan that never needed trimming. A half at
-    // 35 mi/wk sat at 87% easy before this pass existed; every race-specific
-    // long must still carry a real race-pace segment afterwards.
+    // 35 mi/wk sat at 87% easy before this pass existed; the race-specific
+    // longs that carry a finish must still carry a real one afterwards.
+    //
+    // DOCTRINE-HMLONG-1 (2026-08-17) · "every race-specific long" became "every
+    // CADENCE race-specific long". Research/04 §4.5 gives the half's fast-finish
+    // long "Every 2–3 weeks", so the intervening longs are now plain easy longs
+    // by design rather than by correction. The assertion that matters here is
+    // unchanged and is the one this test was written for: a long that DOES
+    // carry a finish must not have been trimmed below the dose doctrine states.
     //
     // 5K, 10K and ultra are not usable here: longFinishSegment returns null for
     // them by design — those distances train race pace through reps, not
@@ -113,12 +120,19 @@ describe('DOCTRINE-TID-1 · easy/hard intensity distribution', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     let checked = 0;
+    let offCadence = 0;
     for (const w of r.composed.weeks) {
       if (w.phase !== 'RACE-SPECIFIC' || w.isRaceWeek) continue;
       const long = w.days.find((d) => d.isLong && d.type === 'long');
       if (!long) continue;
       const m = String(long.subLabel).match(/(\d+(?:\.\d+)?)mi @ (?:HM|MP|M)\b/);
-      expect(m, `half RACE-SPECIFIC long lost its race-pace finish: "${long.subLabel}"`).toBeTruthy();
+      if (!m) {
+        // Off-cadence week · Research/04 §4.5. It must be a PLAIN long, not a
+        // finish the floor shaved to nothing — "LONG" with no segment at all.
+        expect(String(long.subLabel), `off-cadence long is not a plain long: "${long.subLabel}"`).toBe('LONG');
+        offCadence++;
+        continue;
+      }
       // What "still reads as a race-pace session" means is stated by doctrine,
       // not by a share of the long: `Research/04-workout-vocabulary.md` §4.5
       // sizes a fast-finish long as "final 2-6 mi at MP or slightly faster".
@@ -136,10 +150,12 @@ describe('DOCTRINE-TID-1 · easy/hard intensity distribution', () => {
       // on 36 mi); what moved is that it now sits in a real cruise-interval
       // session instead of being spread across an undersized one and an
       // oversized long-run finish.
-      expect(Number(m![1])).toBeGreaterThanOrEqual(2);
+      expect(Number(m[1])).toBeGreaterThanOrEqual(2);
       checked++;
     }
     expect(checked).toBeGreaterThan(0);
+    // And the cadence is real in this archetype, not a vacuous pass.
+    expect(offCadence).toBeGreaterThan(0);
   });
 
   it('the marathon keeps marathon-pace long runs after the correction', () => {
