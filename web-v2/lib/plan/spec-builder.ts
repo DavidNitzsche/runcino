@@ -1022,15 +1022,39 @@ export function tPaceFromGoal(
 }
 
 /**
- * Cold-start VDOT floor: when no measured fitness signal exists, estimate
- * conservatively from weekly mileage rather than defaulting to the goal.
- * A 28-min 5K runner entering sub-20 at 15 mpw is assumed VDOT 32
- * (~10:45 easy), not VDOT 50 (~8:12 easy). Deliberate underestimate.
- * Cite: Daniels Running Formula §"VDOT and Training" — mileage-band heuristic.
+ * Cold-start pace floor: when no measured fitness signal exists, anchor
+ * conservatively on weekly mileage rather than on the runner's goal. A 28-min
+ * 5K runner entering sub-20 at 15 mpw is assumed VDOT 32 (~10:45 easy), not
+ * VDOT 50 (~8:12 easy). Deliberate underestimate.
  *
- * 2026-06-10 · lifted to module scope from generate.ts (where it was
- * nested in the composer) so the maintenance seeder can anchor its
- * workout_spec paces on the same cited heuristic. One source.
+ * ── THESE NUMBERS ARE A CONVENTION, NOT A RESEARCH FINDING ─────────────────
+ *
+ * 2026-08-17 · this carried the citation `Daniels Running Formula §"VDOT and
+ * Training" — mileage-band heuristic` for two months. **There is no such
+ * table.** Daniels derives VDOT from race performance; he publishes no
+ * mileage-to-VDOT mapping, and the cited section does not resolve to anything
+ * in `Research/`. The citation was laundering a product convention into a
+ * research finding, on the single most consequential number for every new user.
+ *
+ * What IS cited is the SHAPE of the idea, not the values: `Research/00a`
+ * §"Volume table" maps weekly mileage to a competitive tier per distance
+ * (beginner / recreational competitive / sub-elite / elite), and its closing
+ * line — "the first 30 mi/wk produces the largest improvements" — is why the
+ * bands below are dense at the bottom and flatten out.
+ *
+ * The specific VDOTs are ours. They are chosen to sit low, because the cost of
+ * the two errors is not symmetric: an over-estimate prescribes a beginner work
+ * they cannot absorb, and an under-estimate prescribes work that is merely too
+ * easy for a few weeks until real evidence arrives.
+ *
+ * The guarantee this function owes, and which `CONVENTION.cold-start-mileage-
+ * anchor` in the doctrine registry enforces, is that it is monotonic, bounded,
+ * and conservative — never that it is measured. Its output is marked
+ * `provisional_mileage` all the way through `pace_blend`, and three readers
+ * refuse to inherit it (`anchor-provenance.ts`).
+ *
+ * 2026-06-10 · lifted to module scope from generate.ts (where it was nested in
+ * the composer) so the maintenance seeder anchors on the same convention.
  */
 export function conservativeVdotFromMileage(weeklyMi: number): number {
   if (weeklyMi >= 45) return 47;
@@ -1040,5 +1064,8 @@ export function conservativeVdotFromMileage(weeklyMi: number): number {
   if (weeklyMi >= 25) return 38;
   if (weeklyMi >= 20) return 35;
   if (weeklyMi >= 15) return 32;
-  return 30; // Daniels VDOT floor; sub-30 is indistinguishable from no-data
+  // 30 is the bottom of Daniels' published VDOT table — the one genuinely
+  // cited number here. Below it the tables do not go, and a runner under it is
+  // indistinguishable from no data at all.
+  return 30;
 }

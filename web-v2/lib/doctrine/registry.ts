@@ -90,6 +90,7 @@ import {
   fastQualityLeftTheBand,
   slowQualityNeverReachedTheBand,
 } from '@/lib/training/threshold-band';
+import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
 import {
   STRIDE_DURATION_S,
   STRIDE_RECOVERY_S,
@@ -3558,6 +3559,91 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (!slowQualityNeverReachedTheBand(4, 3) || slowQualityNeverReachedTheBand(4, 2)) {
         throw new Error('the under-reached finding no longer requires a majority of readable sessions');
+      }
+    },
+  },
+
+  /* ── A CONVENTION claim ──────────────────────────────────────────────────
+   *
+   * Every other entry in this file asserts that an engine constant AGREES with
+   * research. This one asserts the opposite and does it on purpose: the
+   * numbers it watches are a product convention, they are not in `Research/`,
+   * and the claim exists so nobody can quietly re-label them as science.
+   *
+   * The defect that motivated it: `conservativeVdotFromMileage` carried
+   * `Daniels Running Formula §"VDOT and Training" — mileage-band heuristic`
+   * for two months. There is no such table. Daniels derives VDOT from race
+   * performance and publishes no mileage mapping, and the cited section
+   * resolves to nothing in `Research/`. It was the single most consequential
+   * number for every new user, and the gate could not see it — because a
+   * citation that names a BOOK rather than a `Research/` file is invisible to
+   * a registry that only checks file anchors.
+   *
+   * So the claim binds what the function actually owes: monotonic, bounded,
+   * conservative. Not measured.
+   */
+  {
+    id: 'CONVENTION.cold-start-mileage-anchor',
+    binds: ['lib/plan/spec-builder.ts#conservativeVdotFromMileage'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume table — miles per week (km in parentheses)',
+    claim:
+      'The cold-start pace anchor is a CONVENTION, not a research finding. Research grounds its ' +
+      'SHAPE only: the volume table maps weekly mileage to a competitive tier per distance, and ' +
+      'its closing note that "the first 30 mi/wk produces the largest improvements" is why the ' +
+      'bands are dense at the bottom and flatten above. The specific VDOTs are ours, chosen to ' +
+      'sit low because the two errors do not cost the same — over-estimating prescribes a ' +
+      'beginner work they cannot absorb, under-estimating prescribes work that is merely too ' +
+      'easy until real evidence arrives. What this claim enforces is that the function stays ' +
+      'monotonic, stays inside the Daniels table it floors on, and never advertises itself as ' +
+      'measured.',
+    check() {
+      const src = sourceOf('web-v2/lib/plan/spec-builder.ts');
+
+      // The false citation must not come back.
+      if (/Daniels Running Formula §"VDOT and Training"/.test(src)) {
+        throw new Error(
+          'the fabricated `Daniels §"VDOT and Training"` citation is back on ' +
+            'conservativeVdotFromMileage · that table does not exist',
+        );
+      }
+      // And the honest label must stay.
+      if (!/THESE NUMBERS ARE A CONVENTION, NOT A RESEARCH FINDING/.test(src)) {
+        throw new Error(
+          'conservativeVdotFromMileage no longer states that its values are a convention · ' +
+            'that sentence is the whole point of this claim',
+        );
+      }
+
+      // Monotonic and bounded. Read the rungs out of the source rather than
+      // restating them here, so the check cannot agree with a stale copy.
+      const body = src.slice(src.indexOf('export function conservativeVdotFromMileage'));
+      const rungs = [...body.slice(0, body.indexOf('\n}')).matchAll(
+        /if \(weeklyMi >= (\d+)\) return (\d+);/g,
+      )].map((m) => ({ mi: Number(m[1]), vdot: Number(m[2]) }));
+      if (rungs.length < 5) {
+        throw new Error(`could not read the mileage bands out of the source · found ${rungs.length}`);
+      }
+      for (let i = 1; i < rungs.length; i++) {
+        if (rungs[i].mi >= rungs[i - 1].mi || rungs[i].vdot >= rungs[i - 1].vdot) {
+          throw new Error(
+            `the mileage bands are no longer monotonic at ${rungs[i].mi} mi → ${rungs[i].vdot}`,
+          );
+        }
+      }
+      // Daniels' published table spans 30-85. A mileage guess must never
+      // reach a value the tables treat as a competitive performance.
+      atMost(rungs[0].vdot, 50, 'top cold-start mileage band');
+      if (conservativeVdotFromMileage(1) !== 30) {
+        throw new Error('the cold-start floor left the bottom of the Daniels table');
+      }
+      // The volume table it grounds on must still exist and still be a table.
+      const t = resolveCitation(
+        'Research/00a-distance-running-training.md',
+        '### Volume table — miles per week (km in parentheses)',
+      ).text();
+      if (!/Beginner/.test(t) || !/Elite/.test(t)) {
+        throw new Error('Research/00a volume table no longer spans beginner to elite');
       }
     },
   },
