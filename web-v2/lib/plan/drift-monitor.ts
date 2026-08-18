@@ -111,6 +111,33 @@ const STALENESS_WEEKS_THRESHOLD = 8;
  *  internally (recentWeeklyMileage = last 28 days). */
 const VOLUME_WINDOW_DAYS = 28;
 
+/**
+ * Top of the threshold HR band, as a multiple of the session's own
+ * `hr_target_bpm`. `Research/03` §6 (Friel) puts zone 5a — "At LT · cruise
+ * intervals" — at 100-102% of LTHR. Above that the runner is past threshold.
+ *
+ * This is the discriminator that tells the two explanations for a fast quality
+ * session apart. Running under target pace can mean the targets are soft, or it
+ * can mean the session was overcooked, and those call for opposite responses.
+ * Heart rate answers it: faster WITH HR inside the band is a genuine fitness
+ * lead; faster WITH HR above it means the runner left the zone the session was
+ * prescribed for. Same pattern as easy-discipline's `hr_contradicts_pace`.
+ */
+export const THRESHOLD_HR_CEILING_OF_TARGET = 1.02;
+
+/**
+ * Did a stretch of faster-than-prescribed quality work leave the band?
+ *
+ * Pure, so the judgement can be tested without a database. Returns false when
+ * no heart rate was readable at all — an unreadable session is not evidence of
+ * overcooking, and defaulting to "overcooked" would silently suppress every
+ * legitimate refit for runners who train without a strap.
+ */
+export function fastQualityLeftTheBand(hrReadable: number, hrAboveThreshold: number): boolean {
+  if (hrReadable <= 0) return false;
+  return hrAboveThreshold / hrReadable > 0.5;
+}
+
 // ─── Top-level entry ────────────────────────────────────────────────────
 
 /**
@@ -622,6 +649,8 @@ async function checkQualityDrift(
   const rows = (await pool.query<{
     planned: string | null;
     pw_type: string;
+    hr_target_bpm: string | null;
+    avg_hr: string | null;
     actual: string | null;
     run_date: string | null;
     temp_f: string | null;
@@ -636,6 +665,8 @@ async function checkQualityDrift(
   }>(
     `SELECT pw.pace_target_s_per_mi::text AS planned,
             pw.type AS pw_type,
+            (pw.workout_spec->>'hr_target_bpm')::text AS hr_target_bpm,
+            r.data->>'avgHr' AS avg_hr,
             CASE
               WHEN (r.data->>'avgPaceMinPerMi') ~ '^[0-9]+:[0-9]+$'
               THEN EXTRACT(EPOCH FROM (r.data->>'avgPaceMinPerMi')::interval)::text
@@ -667,6 +698,10 @@ async function checkQualityDrift(
   const planneds: number[] = [];
   let adjustedRuns = 0;
   let maxSlowdownPct = 0;
+  /* HR corroboration for the FASTER case · see the branch below. Counted over
+   * the same rows so the two reads can never describe different sessions. */
+  let hrReadable = 0;
+  let hrAboveThreshold = 0;
   for (const row of rows) {
     const actual = row.actual != null ? Number(row.actual) : NaN;
     const planned = row.planned != null ? Number(row.planned) : NaN;
@@ -701,6 +736,15 @@ async function checkQualityDrift(
       durationS: num(row.duration_s),
     });
     if (slowdownPct > 0) { adjustedRuns++; maxSlowdownPct = Math.max(maxSlowdownPct, slowdownPct); }
+
+    // Did the heart rate agree that this was threshold work?
+    const avgHr = num(row.avg_hr);
+    const hrTarget = num(row.hr_target_bpm);
+    if (avgHr != null && hrTarget != null && hrTarget > 0) {
+      hrReadable++;
+      if (avgHr > hrTarget * THRESHOLD_HR_CEILING_OF_TARGET) hrAboveThreshold++;
+    }
+
     adjustedActuals.push(adjustedSPerMi);
     planneds.push(planned);
   }
@@ -719,10 +763,32 @@ async function checkQualityDrift(
   const heatNote = adjustedRuns > 0
     ? ` (heat-normalized · ${adjustedRuns} run${adjustedRuns === 1 ? '' : 's'} adjusted for conditions)`
     : '';
+  /* FASTER than prescribed has TWO explanations and they call for opposite
+   * responses. The engine used to assume one of them — "pace targets are too
+   * soft · refit VDOT" — which validates overcooking and, on a rebuild, hands
+   * the runner faster targets that make the next session hotter still.
+   *
+   * Threshold adaptation comes from time at the intensity where lactate
+   * clearance matches production (Research/04 §5). Exceeding that pace does not
+   * buy more of it; it ends the session sooner and banks fatigue. So a fast
+   * tempo run WITH the heart rate above the band is an execution finding, not a
+   * fitness finding, and rebuilding the plan is the wrong move.
+   *
+   * Where HR says the runner genuinely sat inside the band while running
+   * faster, that is a soft LEAD (Research/01 §"Testing cadence") — worth a
+   * refit proposal, still not proof of new fitness. */
+  if (fasterThanPlan && fastQualityLeftTheBand(hrReadable, hrAboveThreshold)) {
+    // Suppress the rebuild proposal. Nothing about the plan is wrong.
+    return null;
+  }
+
   const message = fasterThanPlan
     ? `Your quality workouts are landing ${Math.abs(Math.round(pctDrift))}% ` +
-      `FASTER than prescribed${heatNote} · pace targets are too soft · refit VDOT and ` +
-      `tighten the threshold/interval paces.`
+      `FASTER than prescribed${heatNote}` +
+      (hrReadable > 0
+        ? ` and the heart rate agrees they sat inside the band · the targets look soft`
+        : ` · the targets may be soft, though no heart-rate data corroborates it`) +
+      ` · worth a refit, not proof of new fitness on its own.`
     : `Your quality workouts are landing ${Math.round(pctDrift)}% SLOWER ` +
       `than prescribed${heatNote} · pace targets may be too aggressive · check ` +
       `accumulated fatigue or refit to a lower VDOT.`;
@@ -739,6 +805,8 @@ async function checkQualityDrift(
       threshold_pct: PACE_DRIFT_PCT,
       heat_adjusted_runs: adjustedRuns,
       max_heat_slowdown_pct: maxSlowdownPct,
+      hr_readable_runs: hrReadable,
+      hr_above_threshold_runs: hrAboveThreshold,
       citation: 'docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.2 + Daniels Running Formula §VDOT pace tables + Research/06-weather-adjustments.md §1-§2 (heat normalization)',
     },
   };

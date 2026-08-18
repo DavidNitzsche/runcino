@@ -85,6 +85,10 @@ import {
   gatedBlendFraction,
 } from '@/lib/plan/recompute-paces';
 import {
+  THRESHOLD_HR_CEILING_OF_TARGET,
+  fastQualityLeftTheBand,
+} from '@/lib/plan/drift-monitor';
+import {
   STRIDE_DURATION_S,
   STRIDE_RECOVERY_S,
   STRIDE_DEFAULT_REPS,
@@ -3168,6 +3172,46 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           'the superseded-lead tier is no longer applied in the candidate sort · the rule is ' +
             'defined but inert, which is how it looked before the fix',
         );
+      }
+    },
+  },
+
+  {
+    id: 'EVIDENCE.fast-quality-is-not-automatically-fitness',
+    binds: [
+      'lib/plan/drift-monitor.ts#THRESHOLD_HR_CEILING_OF_TARGET',
+      'lib/plan/drift-monitor.ts#fastQualityLeftTheBand',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| 5a Threshold | 100–102% | At LT — cruise intervals |',
+    claim:
+      'Running quality work FASTER than prescribed has two explanations that call for opposite ' +
+      'responses — soft targets, or an overcooked session — and heart rate tells them apart. ' +
+      'Friel zone 5a, "At LT", tops out at 102% of LTHR; above that the session left the band ' +
+      'it was prescribed for. The engine used to assume soft targets unconditionally and told ' +
+      'the runner to "refit VDOT and tighten the paces", which validates overcooking and hands ' +
+      'back faster targets that make the next session hotter still. Threshold adaptation comes ' +
+      'from TIME at the intensity where lactate clearance matches production, so exceeding the ' +
+      'pace shortens the dose rather than increasing it.',
+    check({ cite }) {
+      const pct = matchLiteral(
+        cite.text(),
+        /\|\s*5a Threshold\s*\|\s*(\d+)[–-](\d+)%\s*\|/,
+        'Friel zone 5a band',
+      );
+      const ceilingPct = Number(pct[2]) / 100;
+      within(
+        THRESHOLD_HR_CEILING_OF_TARGET,
+        [ceilingPct, ceilingPct],
+        'threshold HR ceiling as a multiple of the session target',
+      );
+      // An unreadable heart rate must never READ as overcooked — that would
+      // suppress every legitimate refit for runners training without a strap.
+      if (fastQualityLeftTheBand(0, 0)) {
+        throw new Error('no HR data now reads as overcooked · absence of evidence became a finding');
+      }
+      if (!fastQualityLeftTheBand(4, 3) || fastQualityLeftTheBand(4, 2)) {
+        throw new Error('the overcooked finding no longer requires a majority of readable sessions');
       }
     },
   },
