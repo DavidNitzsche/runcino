@@ -378,6 +378,21 @@ export function buildWorkoutSpec(
   const interval = tPaceSec - 18;
   const recovery = easyAnchorT + 100;   // very easy · PACE-E-1 · current-fitness anchor
   const mp = tPaceSec + 18;             // marathon pace
+  /**
+   * DOCTRINE-TAPERMP-1 (2026-08-17) · THE marathon-pace expression, in one
+   * place. The long-run M-finish and the taper's MP session are the same
+   * physiological target and must never be able to disagree — a helper copied
+   * into a second branch and then corrected in only one is the exact fork class
+   * this codebase has already paid for twice (the cadence-target fork, the
+   * `hrCapEasy` backfill fork). The rule is unchanged from the long-run branch:
+   * goal MP "exactly" (Research/04 §4.4 "Pace | MP exactly — not faster") ONLY
+   * when goal MP genuinely sits in the marathon zone — slower than threshold,
+   * faster than the long-run bulk — else the moderate T+18 default, which is
+   * always in-zone. Research/01:130-134 zone order.
+   */
+  const marathonPace = (goalPaceSPerMi != null && goalPaceSPerMi > tPaceSec && goalPaceSPerMi < longLo)
+    ? goalPaceSPerMi
+    : Math.min(tPaceSec, easyAnchorT) + 18;
   // DOCTRINE-STRIDES-1 · Research/04 §7.2 "Accelerate to mile-to-5K race pace".
   // True I-pace when the caller threaded one; else Daniels' I = T−33 (the same
   // relation the intervals branch documents below). 5K pace is the SLOW end of
@@ -429,9 +444,12 @@ export function buildWorkoutSpec(
             // AND FASTER than the long-run bulk's fast edge (longLo — else it lands in the easy/long band, a
             // soft-goal inversion). Outside that window, the moderate default (≈ tPaceSec+18, always in-zone:
             // T < default < long). HM tag rides tPaceSec (correct, never inverts). Research/01:130-134 order.
+            // DOCTRINE-TAPERMP-1 · the M arm now reads the shared `marathonPace`
+            // expression above (byte-identical to the inline one it replaces) so
+            // the taper's MP session cannot drift from the long-run M-finish.
             finish_pace_s_per_mi: finish.tag === 'HM'
               ? Math.min(tPaceSec, easyAnchorT) + 5
-              : (goalPaceSPerMi != null && goalPaceSPerMi > tPaceSec && goalPaceSPerMi < longLo ? goalPaceSPerMi : Math.min(tPaceSec, easyAnchorT) + 18),
+              : marathonPace,
             finish_label: finish.tag,
           }
         : {};
@@ -485,17 +503,43 @@ export function buildWorkoutSpec(
         cd = Number((cd * k).toFixed(1));
         tempoDist = Number(Math.max(0.5, budget - wu - cd).toFixed(1));
       }
+      // DOCTRINE-TAPERMP-1 (2026-08-17) · a continuous block the prescription
+      // declares "@ MP" is run at MARATHON pace, not threshold.
+      //
+      // `Research/08-pacing-and-race-week.md` §9.2 gives the marathon taper two
+      // MP-specific sessions — "14-16 mi w/ 10-12 mi at MP" at three weeks out
+      // and "6-8 mi at MP" at two — and §9.1 states why they survive the taper
+      // at all: "The largest cut is to easy mileage; intensity is preserved
+      // through the taper." Pacing that block at T would be ~18 s/mi too fast
+      // and would turn a specificity rehearsal into a threshold session in the
+      // window where doctrine adds no novel stress.
+      //
+      // HR carries no target here on purpose. `Research/03-heart-rate-zones.md`
+      // §"What to anchor on" lists the marathon-pace run as "M-pace anchored to
+      // goal" — pace is the governor, and inventing an MP heart rate would be
+      // asserting physiology no doctrine in this repo states. The tempo
+      // contingency rules still ride along, and an HR over LTHR+5 during an MP
+      // block is exactly the bail worth offering.
+      const atMarathonPace = /@\s*MP\b/i.test(prescription ?? '');
+      const blockPace = atMarathonPace ? marathonPace : tempo;
       return {
         spec: {
           kind: 'tempo',
           warmup_mi: Number(wu.toFixed(1)),
           tempo_distance_mi: Number(tempoDist.toFixed(1)),
-          tempo_pace_s_per_mi: tempo,
+          tempo_pace_s_per_mi: blockPace,
           cooldown_mi: Number(cd.toFixed(1)),
-          hr_target_bpm: lthr ? Math.round(lthr * 0.92) : null,
+          hr_target_bpm: atMarathonPace ? null : (lthr ? Math.round(lthr * 0.92) : null),
+          // The authored prescription carries the block's IDENTITY, exactly as
+          // it does for time-based rep sets above: `subLabelFromSpec` re-derives
+          // a tempo label as "@ T", so without this an MP block would come back
+          // from a spec rebuild relabelled as threshold work. Only set when the
+          // label would otherwise be wrong, so every existing tempo spec is
+          // byte-identical.
+          ...(atMarathonPace && prescription ? { label: prescription } : {}),
           ...withRules,
         },
-        paceTargetSPerMi: tempo,
+        paceTargetSPerMi: blockPace,
       };
     }
     case 'threshold': {

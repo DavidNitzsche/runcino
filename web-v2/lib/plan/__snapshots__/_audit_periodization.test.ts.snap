@@ -8,11 +8,11 @@ exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: p
   "wk7: threshold="4×1mi @ T pace · 90s jog" ; intervals="5×1mi @ I-T transition · 2:00 jog"",
   "wk8: threshold="4×1mi @ T pace · 90s jog" ; tempo="4mi continuous tempo"",
   "wk9: tempo="4mi continuous wave tempo · ±10 s/mi around T" ; threshold="5×2K · descend MP → T · 2 min jog"",
-  "wk10: tempo="4mi continuous wave tempo · ±10 s/mi around T" ; threshold="5×2K · descend MP → T · 2 min jog"",
+  "wk10: threshold="5×2K · descend MP → T · 2 min jog"",
   "wk11: tempo="4mi continuous wave tempo · ±10 s/mi around T" ; threshold="5×2K · descend MP → T · 2 min jog"",
-  "wk12: tempo="4mi continuous wave tempo · ±10 s/mi around T" ; threshold="5×2K · descend MP → T · 2 min jog"",
-  "wk13: race_week_tuneup="5×400m @ 5K pace · 2min jog"",
-  "wk14: race_week_tuneup="5×400m @ 5K pace · 2min jog"",
+  "wk12: threshold="5×2K · descend MP → T · 2 min jog"",
+  "wk13: tempo="2.5 mi WU · 11 mi @ MP · 1.5 mi CD"",
+  "wk14: tempo="2 mi WU · 7 mi @ MP · 1 mi CD"",
   "wk15: race="RACE" ; race_week_tuneup="5×400m @ 5K pace · 2min jog"",
 ]
 `;
@@ -29,11 +29,11 @@ exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: p
   "wk7:QUALITY:51mi:long18:threshold+intervals",
   "wk8:QUALITY:65mi:long21:threshold+tempo",
   "wk9:RACE-SPECIFIC:66mi:long22:tempo+threshold",
-  "wk10:RACE-SPECIFIC:66.5mi:long22.5:tempo+threshold",
+  "wk10:RACE-SPECIFIC:65.5mi:long22.5:threshold",
   "wk11:RACE-SPECIFIC:52mi:long19:tempo+threshold",
-  "wk12:RACE-SPECIFIC:66.5mi:long22.5:tempo+threshold",
-  "wk13:TAPER:53mi:long20:race_week_tuneup",
-  "wk14:TAPER:39mi:long15:race_week_tuneup",
+  "wk12:RACE-SPECIFIC:65.5mi:long22.5:threshold",
+  "wk13:TAPER:55mi:long20:tempo",
+  "wk14:TAPER:41mi:long15:tempo",
   "wk15:TAPER:44.2mi:long0:race+race_week_tuneup",
 ]
 `;

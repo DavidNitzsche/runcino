@@ -19,6 +19,14 @@ import { heatAdjustedStatus } from './heat-band';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
 import { adjustmentLabel as terrainAdjustmentLabel } from '@/lib/terrain/grade-adjust';
+import {
+  coalesceRunName,
+  matchRaceForRun,
+  normalizeDataWorkoutType,
+  type MergedTwin,
+  type RaceForMatch,
+} from '@/lib/runs/log-enrich';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 export interface RunSplit {
   mile: number;
@@ -413,6 +421,82 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // Coerce: bigint columns can come back as strings (see shoes mapping).
   const shoeId: number | null = row.shoe_id == null ? null : Number(row.shoe_id);
 
+  // 2026-08-17 · RUNDETAIL-NAME-1 · the run log learned the run's real name and
+  // the detail page never did.
+  //
+  // `loadRunDetail` passed `data.name` straight through from the canonical row.
+  // After dedup that row is usually the WATCH's, whose name is 'Run'; the
+  // Strava twin carrying "AFC Half" was merged away, and the absorb path only
+  // copies fields the canonical LACKS — a canonical always has a name, so the
+  // good one never lands. Tapping into a race therefore showed a 46pt "Run".
+  //
+  // `log-state.ts` already solved this for the log at read time. The rules live
+  // in `lib/runs/log-enrich.ts` as pure functions precisely so a second surface
+  // can apply them rather than re-derive them, so this reads the same two
+  // inputs (merged twins, races) and calls the same two helpers. Nothing is
+  // reimplemented here — a second copy of the name rules would be exactly the
+  // fork class the sweep in this same pass went looking for.
+  //
+  // Both loads are best-effort: a failure returns the row's own name, which is
+  // what this function did before.
+  const runDisplayName = await (async (): Promise<string | null> => {
+    const canonicalRowId = row.id != null ? String(row.id) : null;
+    const runDate = String(r.date || (r.startLocal ?? '').slice(0, 10) || '').slice(0, 10);
+    const distanceMi = Number(r.distanceMi) || 0;
+    try {
+      const [twinRows, raceRows] = await Promise.all([
+        canonicalRowId == null ? Promise.resolve({ rows: [] as Array<Record<string, unknown>> }) : pool.query(
+          `SELECT data->>'name'        AS name,
+                  data->>'source'      AS source,
+                  data->>'workoutType' AS workout_type
+             FROM runs
+            WHERE user_uuid = $1
+              AND data->>'mergedIntoId' = $2`,
+          [userId, canonicalRowId],
+        ).catch(() => ({ rows: [] as Array<Record<string, unknown>> })),
+        !runDate ? Promise.resolve({ rows: [] as Array<Record<string, unknown>> }) : pool.query(
+          `SELECT slug, meta FROM races
+            WHERE user_uuid = $1 AND meta->>'date' LIKE $2 || '%'`,
+          [userId, runDate],
+        ).catch(() => ({ rows: [] as Array<Record<string, unknown>> })),
+      ]);
+
+      const twins: MergedTwin[] = twinRows.rows.map((t) => ({
+        name: (t.name as string | null) ?? null,
+        source: (t.source as string | null) ?? null,
+        workoutType: (t.workout_type as string | null) ?? null,
+      }));
+
+      // The same hint order log-state uses: the canonical row's own flag, then
+      // any twin's (the Strava twin is the one that carries '1' = race).
+      const workoutTypeHint = normalizeDataWorkoutType(r.workoutType)
+        ?? twins.map((t) => normalizeDataWorkoutType(t.workoutType)).find((v) => v != null)
+        ?? null;
+
+      const racesForMatch: RaceForMatch[] = raceRows.rows.map((raw) => {
+        const meta = (raw.meta ?? {}) as Record<string, unknown>;
+        const explicit = meta.distanceMi != null ? Number(meta.distanceMi) : null;
+        return {
+          slug: String(raw.slug),
+          name: meta.name != null ? String(meta.name) : null,
+          date: meta.date != null ? String(meta.date).slice(0, 10) : null,
+          distanceMi: explicit != null && isFinite(explicit) && explicit > 0
+            ? explicit
+            : distanceMiFromLabel((meta.distanceLabel as string | null) ?? null),
+        };
+      });
+
+      const raceMatch = runDate
+        ? matchRaceForRun({ date: runDate, distanceMi, workoutTypeHint }, racesForMatch)
+        : null;
+      // Race name > canonical non-generic > best twin non-generic. Identical
+      // precedence to log-state.ts, because it is the same two calls.
+      return raceMatch?.name ?? coalesceRunName(r.name ?? null, twins);
+    } catch {
+      return r.name ?? null;
+    }
+  })();
+
   // Pace — prefer formatted, else derive from seconds.
   const paceSPerMi = Number(r.paceSPerMi) || null;
   const pace = r.avgPaceMinPerMi
@@ -758,7 +842,8 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     id: r.id ?? r.activityId ?? activityId,
     date: day,
     start_local: r.startLocal ?? null,
-    name: r.name ?? null,
+    // RUNDETAIL-NAME-1 · twin-coalesced, race-matched (see the block above).
+    name: runDisplayName,
     source: r.source ?? 'strava',
     type: r.type ?? null,
 

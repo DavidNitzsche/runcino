@@ -1175,6 +1175,164 @@ export async function resolvePrescriptions(
 }
 
 /**
+ * DOCTRINE-MPLONG-1 (2026-08-17) · the marathon-pace long run is a CADENCE
+ * session, not a weekly one.
+ *
+ * `Research/04-workout-vocabulary.md` §4.4 "Marathon-pace long run" states the
+ * dose and the rhythm in the same table:
+ *
+ *   | Common dose | 14–18 mi total with 10–14 mi at MP |
+ *   | Frequency   | Every 2–3 weeks during marathon specific phase |
+ *   | When in cycle | 6–10 weeks out from goal marathon |
+ *
+ * `longFinishSegment` read the dose and ignored the rhythm: it put a
+ * 50%-of-the-long marathon-pace finish on EVERY race-specific week, and
+ * `qualityTypesFor` put two structured sessions beside it in the same seven
+ * days. §16 "Combinations to avoid" names that pairing outright — "MP long run
+ * + hard tempo within 5 days | Same energy system, same impact pattern, no
+ * recovery between". The measured cost was a race-specific block at 58-71%
+ * easy against a 75% doctrinal floor.
+ *
+ * The 80/20 pass (`applyIntensityFloor`) was the first half of the fix and is
+ * an after-the-fact correction: it hands surplus hard miles back by shrinking
+ * the finish it should never have authored, which lands every race-specific
+ * week on exactly the floor. This is the other half — the CADENCE — and it
+ * removes the cause rather than trimming the symptom.
+ *
+ * The rule, stated so a reader can check it against the table above:
+ *
+ *   · The MP long lands every `MP_LONG_CADENCE_WEEKS` weeks, counted BACKWARDS
+ *     from the last week of the race-specific phase, so the session closest to
+ *     the taper always carries it and the cadence is plan-length independent.
+ *   · A cutback week never carries it. The deload exists to absorb the block's
+ *     fatigue and the MP long is the block's single biggest quality session;
+ *     putting one on the other defeats both. When the cadence lands on a
+ *     deload the session steps back one more week, which spends exactly the
+ *     latitude doctrine already grants ("every 2–3 weeks") and never more.
+ *   · The intervening long runs are plain easy longs.
+ *
+ * HM is deliberately NOT on this cadence. §4.5 "Fast finish long run" gives the
+ * half's long-run insert the same "every 2–3 weeks" rhythm, so the same
+ * treatment is arguably owed — but the half's race-specific block measured 75%
+ * easy at the floor rather than 58%, its insert is a third of the absolute
+ * mileage the marathon's is, and `_intensity_doctrine.test.ts` holds a
+ * deliberate guard that every half race-specific long keeps a race-pace finish.
+ * Changing that is a separate, deliberate decision; it is reported, not taken
+ * here.
+ */
+export const MP_LONG_CADENCE_WEEKS = 2;
+
+/**
+ * Does the marathon-pace long run land in the week at `weekIdx`?
+ *
+ * Pure and self-contained: the phase's last week is `weekIdx + weeksToPhaseEnd`,
+ * and the deload mask is the same `(i + 1) % cutbackEveryN === 0` formula
+ * `volumeCurve` and `layoutWeek` already share, so this needs no knowledge of
+ * the plan beyond what `layoutWeek` is handed.
+ */
+export function racePaceLongThisWeek(
+  weekIdx: number,
+  weeksToPhaseEnd: number,
+  cutbackEveryN: number,
+): boolean {
+  const isCutbackAt = (i: number) => i > 0 && (i + 1) % cutbackEveryN === 0;
+  // Anchor on the phase's LAST week — the one closest to the race — and step
+  // back. Anchoring on the first week instead would make the cadence depend on
+  // where the phase happens to start, so a 15- and a 16-week build would put
+  // the final MP long a different distance from race day.
+  let i = weekIdx + weeksToPhaseEnd;
+  if (isCutbackAt(i)) i -= 1;
+  // The sequence descends strictly, so this terminates; the guard is belt and
+  // braces against a caller passing a degenerate cutbackEveryN.
+  for (let guard = 0; i >= 0 && guard < 500; guard++) {
+    if (i === weekIdx) return true;
+    if (i < weekIdx) return false;
+    let next = i - MP_LONG_CADENCE_WEEKS;
+    if (isCutbackAt(next)) next -= 1;   // stretch to the 3-week end of the band
+    i = next;
+  }
+  return false;
+}
+
+/**
+ * DOCTRINE-TAPERMP-1 (2026-08-17) · the marathon taper keeps its marathon-pace
+ * work.
+ *
+ * `Research/08-pacing-and-race-week.md` §9.1 states the principle:
+ *
+ *   "The largest cut is to easy mileage; intensity is preserved through the
+ *    taper."
+ *
+ * and §9.2 "Marathon taper structure (3 weeks)" states the sessions:
+ *
+ *   | -3 | 80-90% peak | Final MP-specific (14-16 mi w/ 10-12 mi at MP) | ... |
+ *   | -2 | 60-70% peak | 6-8 mi at MP, or 4-5 mi threshold              | ... |
+ *   | -1 | 40-50% peak | 3-4 mi w/ 4-6 x 1 min at 5K pace, 4-5 days out | ... |
+ *
+ * `qualityTypesFor` collapsed the whole taper to `['race_week_tuneup']`, which
+ * is the -1 row applied to all three. That is not a taper, it is a volume cut
+ * with the intensity cut too — the exact distinction §9.1 draws. A marathoner
+ * who has spent the block rehearsing MP stops rehearsing it at the moment the
+ * rehearsal matters most, and the last MP running before race day ends up
+ * being 4-5 weeks stale.
+ *
+ * The engine's phase layout maps onto §9.2 exactly, which is what makes this
+ * fixable without touching the volume curve: the race week IS the -1 row and
+ * already carries `race_week_tuneup` (its own 5K-pace prime), so the two
+ * non-race TAPER weeks are -3 and -2, and the volume curve already puts them
+ * at ~80% and ~57% of peak.
+ *
+ * The doses below are the MIDPOINTS of the bands in the table above. They are
+ * targets, not floors: `taperMpDose` scales them down when the week cannot
+ * afford them, which is what keeps a 25 mi/wk marathoner from being handed a
+ * 15-mile quality session. The scale preserves the doctrine's MP-to-total
+ * ratio, so a scaled session is still recognisably the same workout.
+ *
+ * What is deliberately NOT restored: §9.2's -2 row also asks the long run to
+ * carry "MP miles late". `Research/04` §16 "Combinations to avoid" names "Fast
+ * finish long run before goal race | Adds depletion in taper window", and the
+ * two cannot both be honoured. §16 is the more specific claim about the taper
+ * window, so the taper long stays easy and the MP work lives in the quality
+ * session where §9.2 puts most of it.
+ */
+export const TAPER_MP_DOSE = {
+  /** -3 week · "Final MP-specific (14-16 mi w/ 10-12 mi at MP)" · band midpoints. */
+  final:  { totalMi: 15, mpMi: 11 },
+  /** -2 week · "6-8 mi at MP" · band midpoint, plus a 2mi WU and a 1mi CD. */
+  primer: { totalMi: 10, mpMi: 7 },
+} as const;
+
+/**
+ * The marathon taper's MP session for one week, or null when this week has none.
+ *
+ * `weeksToPhaseEnd` is 0 on the race week, so the two non-race taper weeks are
+ * 1 (=-2, the primer) and 2 or more (=-3, the final MP-specific). A one-week
+ * taper therefore gets the primer, which is the right way round: the session
+ * closer to race day is the smaller one.
+ *
+ * `budgetMi` is the week's quality-day allocation ceiling; the returned session
+ * never exceeds it.
+ */
+export function taperMpDose(
+  weeksToPhaseEnd: number,
+  budgetMi: number,
+): { totalMi: number; mpMi: number; warmupMi: number; cooldownMi: number } | null {
+  if (weeksToPhaseEnd < 1) return null;              // race week · §9.2's -1 row
+  const dose = weeksToPhaseEnd >= 2 ? TAPER_MP_DOSE.final : TAPER_MP_DOSE.primer;
+  if (!(budgetMi > 0)) return null;
+  const scale = Math.min(1, budgetMi / dose.totalMi);
+  const totalMi = Math.round(dose.totalMi * scale * 2) / 2;
+  const mpMi = Math.round(dose.mpMi * scale * 2) / 2;
+  // Below ~3mi of MP the session stops being a marathon-pace rehearsal and
+  // becomes a jog with a surge. §9.2's own alternative for the -2 week is
+  // "4-5 mi threshold"; the caller falls back to the tune-up rather than ship
+  // a session doctrine would not recognise.
+  if (mpMi < 3 || totalMi - mpMi < 1) return null;
+  const warmupMi = Math.round((totalMi - mpMi) * (2 / 3) * 2) / 2;
+  return { totalMi, mpMi, warmupMi, cooldownMi: Number((totalMi - mpMi - warmupMi).toFixed(1)) };
+}
+
+/**
  * 2026-06-07 · Audit D follow-up · long-run race-pace finish for the late
  * build. Returns {pct, tag} or null (plain easy long). Derived from PHASE
  * POSITION (weeks from the end of the phase), so it holds for any plan
@@ -1200,13 +1358,21 @@ function longFinishSegment(
   phase: string,
   weeksToPhaseEnd: number,
   racePaceTag: 'HM' | 'MP' | null,
+  /** DOCTRINE-MPLONG-1 · `racePaceLongThisWeek` for this week. Only the
+   *  marathon's race-specific arm consults it; every other arm is unchanged. */
+  cadenceWeek: boolean = true,
 ): { pct: number; tag: 'HM' | 'M' | 'MP' } | null {
   if (!racePaceTag) return null;
   // Research/22 §3 Advanced peak week: "16mi LR w/ last 8mi @ HMP" = 50%.
   // §4 Marathon peaks at 64-70%; Research/00a §fast-finish says 10-25% (general principle).
   // 0.50 targets the §22 minimum for the race-specific phase; QUALITY ramp (0.30→0.33→0.33)
   // builds toward it progressively.
-  if (phase === 'RACE-SPECIFIC') return { pct: 0.50, tag: racePaceTag };
+  if (phase === 'RACE-SPECIFIC') {
+    // DOCTRINE-MPLONG-1 · Research/04 §4.4 "Every 2–3 weeks during marathon
+    // specific phase". Off-cadence weeks run the long easy.
+    if (racePaceTag === 'MP' && !cadenceWeek) return null;
+    return { pct: 0.50, tag: racePaceTag };
+  }
   if (phase !== 'QUALITY') return null;
   // Last three QUALITY weeks build toward race pace. HM ramps M → M → HMP;
   // M holds MP throughout (race pace == marathon pace).
@@ -1591,7 +1757,20 @@ function layoutWeek({
   // picks it up and the watch executes easy-build + finish — closing the
   // generator side of the D1 gap (in-place row patches fixed the active
   // plan; this fixes every future regen + new runner).
-  const finishSeg = longFinishSegment(phase, weeksToPhaseEnd, racePaceTag);
+  // DOCTRINE-MPLONG-1 · does the marathon-pace long land this week? Computed
+  // once and read twice: once for the long run's own finish, once by the
+  // quality mix below (Research/04 §16 forbids pairing it with a hard tempo).
+  const mpLongWeek = phase === 'RACE-SPECIFIC' && racePaceTag === 'MP'
+    && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN);
+  // DOCTRINE-TAPERMP-1 · the marathon taper's MP session (Research/08 §9.2).
+  // Marathon only — the half, 5K, 10K and ultra tapers have no MP row in that
+  // table and keep their 5K-pace tune-up. `baseBuilding` (true beginner) is
+  // excluded: §9.2 is a competitive-marathoner taper, and a beginner's taper
+  // stays the light sharpen day Research/22 §Beginner prescribes.
+  const taperMp = (phase === 'TAPER' && !isRaceWeek && cat === 'm' && !baseBuilding)
+    ? taperMpDose(weeksToPhaseEnd, qualityCeiling)
+    : null;
+  const finishSeg = longFinishSegment(phase, weeksToPhaseEnd, racePaceTag, mpLongWeek);
   const finishMi = finishSeg ? Math.round(longMi * finishSeg.pct) : 0;
   const hasFinish = finishSeg != null && finishMi > 0 && finishMi < longMi;
   slots[longRunDow] = {
@@ -1625,12 +1804,25 @@ function layoutWeek({
         : (phase === 'QUALITY' || phase === 'RACE-SPECIFIC') ? ['tempo']
         : [] )
       :
-        phase === 'TAPER'         ? ['race_week_tuneup']                               // tune-up · same for all distances
+        // DOCTRINE-TAPERMP-1 · the marathon taper's non-race weeks run the
+        // MP-specific session Research/08 §9.2 prescribes; every other distance
+        // (and the marathon's own race week, and a week too small to carry a
+        // recognisable MP dose) keeps the 5K-pace tune-up, which IS §9.2's -1
+        // row. One quality slot either way — PP-3's "one quality session in a
+        // non-race taper week" is untouched.
+        phase === 'TAPER'         ? (taperMp ? ['tempo'] : ['race_week_tuneup'])
       : phase === 'RACE-SPECIFIC'
           ? (cat === '5k'   ? ['intervals', 'intervals']
            : cat === '10k'  ? ['intervals', 'intervals']   // RACE-SPEC-10K-1 (2026-06-23): 10K race-specific dominates with I-pace reps (Research/00a §308 "3–4×2km at 10K pace"), mirrors 5K; threshold was demoted to QUALITY phase
            : cat === 'hm'   ? ['threshold', 'intervals']
-           : /* m / ultra */  ['tempo', 'threshold'])
+           // DOCTRINE-MPLONG-1 · on the week the marathon-pace long lands, the
+           // tempo comes OUT. Research/04 §16 "Combinations to avoid": "MP long
+           // run + hard tempo within 5 days | Same energy system, same impact
+           // pattern, no recovery between". The MP long IS the week's second
+           // quality session — §4.4 calls it the "marathon-specific stimulus" —
+           // so the week still runs two hard days, one of which is the long.
+           // Off-cadence weeks keep both structured sessions beside an easy long.
+           : /* m / ultra */  (mpLongWeek ? ['threshold'] : ['tempo', 'threshold']))
       : phase === 'QUALITY'
           ? (cat === '5k'   ? (wi % 2 === 0 ? ['intervals', 'intervals'] : ['intervals', 'threshold'])
            : cat === '10k'  ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
@@ -1653,7 +1845,16 @@ function layoutWeek({
     // PP-3 (2026-06-23, David approved) · non-race taper weeks get exactly 1 tune-up, not 2.
     // Pfitzinger §taper: "reduce volume, preserve intensity, one quality session." Two tune-ups
     // in a non-race taper week accumulate fatigue and blunt the taper effect.
-    const effectiveQDows = (phase === 'TAPER' && !isRaceWeek) ? qualityDows.slice(0, 1) : qualityDows;
+    // DOCTRINE-MPLONG-1 · an MP-long week has ONE structured slot, so it gets
+    // one quality DOW. Without this the `types[i % types.length]` fill below
+    // would put the surviving threshold session on both days — trading the
+    // forbidden tempo pairing for a worse one (§16 "Two threshold sessions
+    // back-to-back"). The freed day becomes an easy day, not a rest day: the
+    // frequency cap counts long + quality as `runningPlaced`, so easyCount
+    // rises by exactly one and the runner's training-day count is unchanged.
+    const effectiveQDows = (phase === 'TAPER' && !isRaceWeek) || mpLongWeek
+      ? qualityDows.slice(0, 1)
+      : qualityDows;
     // QUAL-PHASE-STABLE (2026-06-24) · anchor the quality DOWs to a weekIdx-INVARIANT placement profile
     // so they don't oscillate as the QUALITY mix toggles. The two parities differ only by whether
     // intervals is present; the intervals-bearing parity is the most gap-demanding, so place against it.
@@ -1680,12 +1881,22 @@ function layoutWeek({
       // spacing and every structural invariant are exactly as before.
       // Base-building beginners are excluded: Research/22 §Beginner keeps them
       // on easy running plus one light surge session, not the full vocabulary.
-      const candidateFamily = baseBuilding ? null : qualityFamilyFor(cat, phase, weekIdx, weeksToPhaseEnd, qt);
+      // DOCTRINE-TAPERMP-1 · the taper's MP session is prescribed by Research/08
+      // §9.2 by name and dose; no §15 vocabulary family may supersede it.
+      const candidateFamily = (baseBuilding || (taperMp && qt === 'tempo'))
+        ? null
+        : qualityFamilyFor(cat, phase, weekIdx, weeksToPhaseEnd, qt);
       const vocabFamily = (candidateFamily && !usedFamilies.has(candidateFamily)) ? candidateFamily : null;
       const vocabRx = vocabFamily ? rx.families[vocabFamily] : undefined;
       if (vocabFamily && vocabRx) usedFamilies.add(vocabFamily);
       const sub =
-        vocabRx && qt !== 'tempo' ? vocabRx
+        // DOCTRINE-TAPERMP-1 · "N mi WU · M mi @ MP · P mi CD". The "@ MP"
+        // token is load-bearing, not decoration: `parseTempoShape` reads the
+        // segment sizes out of it and `buildWorkoutSpec` reads the tag to pace
+        // the block at marathon pace instead of threshold.
+        taperMp && qt === 'tempo'
+          ? `${taperMp.warmupMi} mi WU · ${taperMp.mpMi} mi @ MP · ${taperMp.cooldownMi} mi CD`
+      : vocabRx && qt !== 'tempo' ? vocabRx
       : qt === 'intervals'        ? rx.intervals
       : qt === 'threshold'        ? rx.threshold
       : qt === 'tempo'            ? (baseBuilding
@@ -1723,6 +1934,11 @@ function layoutWeek({
       // taper volume the gate counted (51→44.6mi). The freed surplus flows into the easy-fill below.
       const slotMi = effectiveType === 'race_week_tuneup'
         ? Math.min(qualityMiEach, (cat === '5k' || cat === '10k') ? 4 : 5)
+        // DOCTRINE-TAPERMP-1 · the taper MP session is sized by DOCTRINE
+        // (Research/08 §9.2's 14-16 / 6-8 mi bands), not by the week's generic
+        // quality share, which in a tapering week is far too small to carry it.
+        // `taperMpDose` has already clamped it to what the week can afford.
+        : (taperMp && effectiveType === 'tempo') ? taperMp.totalMi
         : qualityMiEach;
       slots[dow] = {
         dow: dow as DOW, type: effectiveType, distanceMi: slotMi, isQuality: true, isLong: false,
@@ -1732,6 +1948,10 @@ function layoutWeek({
         // splits" is exactly wrong on a hill session, which Research/04 §8.1
         // prescribes by effort precisely because pace cannot hold on a climb.
         notes: (vocabFamily && FAMILY_NOTES[vocabFamily]) ? FAMILY_NOTES[vocabFamily]!
+        // DOCTRINE-TAPERMP-1 · Research/04 §4.4 "Pace | MP exactly — not faster".
+        // The taper is where a runner is most tempted to test fitness (§9.4
+        // "Resist the urge to test fitness"), so the note says the quiet part.
+        : (taperMp && effectiveType === 'tempo') ? 'Race pace, not faster. This is a rehearsal, not a test.'
         : effectiveType === 'intervals'        ? 'WU 1.5mi, reps, CD 1mi. Hold pace, even splits.'
         : effectiveType === 'threshold'        ? 'WU 1.5mi, threshold reps, CD 1mi. Comfortably hard.'
         : effectiveType === 'tempo'            ? 'WU, continuous tempo block, CD. Just below threshold.'
@@ -3768,8 +3988,39 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
       const factor = taperFactor(taperCat, wksLeft);
       const target = Math.min(tw.weeklyMi, nonTaperPeakR * factor, priorTaper);
       if (tw.weeklyMi > 0 && target < tw.weeklyMi - 0.05) {
-        const scale = target / tw.weeklyMi;
+        // DOCTRINE-TAPERMP-1 (2026-08-17) · Research/08 §9.1: "The largest cut
+        // is to easy mileage; intensity is preserved through the taper."
+        //
+        // A flat proportional scale cuts the quality session by the same
+        // fraction as the easy days, which is the opposite of that rule — and
+        // for the MP session it also breaks the label: the day's sub_label
+        // spells out "2.5 mi WU · 11 mi @ MP · 1.5 mi CD", so shaving the day
+        // to 14.5 mi leaves a prescription whose own segments no longer sum to
+        // it. That is the composed-vs-persisted drift CC-1 fixed for the
+        // race-week tune-up, in the other direction.
+        //
+        // So hold the MP session and take the whole cut out of the rest. The
+        // guard is deliberately narrow — a non-long quality day whose
+        // prescription declares an MP block, which only DOCTRINE-TAPERMP-1
+        // authors — so every plan that existed before this pass scales exactly
+        // as it did. When the week is too small to hold the session and still
+        // reach its target, the flat scale takes over rather than shipping a
+        // taper week that refuses to descend.
+        const heldMi = tw.days.filter(isMpTaperSession).reduce((s, d) => s + d.distanceMi, 0);
+        const scalableMi = tw.weeklyMi - heldMi;
+        const heldScale = scalableMi > 0 ? (target - heldMi) / scalableMi : 0;
+        // The long run must stay the longest run of the week. Holding the MP
+        // session while the long absorbs the whole cut can invert that on a
+        // small-volume marathoner (the sweep catches it as "tempo exceeds the
+        // long"), so intensity is only preserved while the week can still
+        // afford BOTH. Otherwise the flat scale takes over and the session
+        // shrinks with everything else — the label is re-sized to match below.
+        const longMi = Math.max(0, ...tw.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi));
+        const holds = heldMi > 0 && scalableMi > 0 && target - heldMi > 0
+          && Math.floor(longMi * heldScale * 2) / 2 >= heldMi;
+        const scale = holds ? heldScale : target / tw.weeklyMi;
         for (const d of tw.days) {
+          if (holds && isMpTaperSession(d)) continue;
           if (d.type !== 'race' && d.distanceMi > 0) d.distanceMi = Math.floor(d.distanceMi * scale * 2) / 2;
         }
         tw.weeklyMi = Math.round(tw.days.reduce((s, d) => s + (d.type !== 'race' ? d.distanceMi : 0), 0) * 10) / 10;
@@ -3825,9 +4076,57 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
     }
   }
 
+  // DOCTRINE-TAPERMP-1 · re-sync the taper MP session's label to its distance.
+  // Several passes above may trim a day (the quality≤long re-cap, the taper
+  // rescale's flat-scale fallback), and this session is the only one in the
+  // plan whose sub_label spells out its own segment arithmetic — "2 mi WU · 7
+  // mi @ MP · 1 mi CD" — so a trim that left the label alone would ship a
+  // prescription that does not add up to the day it is printed on. Runs after
+  // every trimmer for exactly that reason.
+  for (const w of composed.weeks) {
+    for (const d of w.days) {
+      if (isMpTaperSession(d)) resizeMpSession(d, d.distanceMi);
+    }
+  }
+
   // DOCTRINE-TID-1 (2026-08-17) · the 80/20 constraint, which the engine has
   // never had in any form. Runs LAST, because every pass above moves mileage.
   applyIntensityFloor(composed);
+}
+
+/**
+ * DOCTRINE-TAPERMP-1 · is this day the taper's marathon-pace session?
+ *
+ * Deliberately narrow — a non-long quality day whose prescription declares a
+ * continuous MP block, which only `taperMpDose` authors. Every plan composed
+ * before this pass existed answers false, so the trimmers it guards behave
+ * exactly as they did.
+ */
+function isMpTaperSession(d: DayPlan): boolean {
+  return d.isQuality && !d.isLong && d.type !== 'race'
+    && MP_SESSION_LABEL.test(String(d.subLabel ?? ''));
+}
+
+const MP_SESSION_LABEL = /^([\d.]+) mi WU · ([\d.]+) mi @ MP · ([\d.]+) mi CD$/i;
+
+/**
+ * Rewrite an MP session's label so its segments sum to `totalMi`, holding the
+ * warm-up and cool-down proportions. The MP block absorbs the remainder, which
+ * is the right way round: `Research/08` §9.2 sizes the session BY its MP
+ * mileage, so that is the number the label must keep honest.
+ */
+function resizeMpSession(day: DayPlan, totalMi: number): void {
+  const m = String(day.subLabel ?? '').match(MP_SESSION_LABEL);
+  if (!m) return;
+  const [wuPrev, mpPrev, cdPrev] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const prev = wuPrev + mpPrev + cdPrev;
+  if (!(prev > 0) || !(totalMi > 0) || Math.abs(prev - totalMi) < 0.05) return;
+  const k = totalMi / prev;
+  const wu = Math.max(0.5, Math.round(wuPrev * k * 2) / 2);
+  const cd = Math.max(0.5, Math.round(cdPrev * k * 2) / 2);
+  const mp = Number((totalMi - wu - cd).toFixed(1));
+  if (mp <= 0) return;
+  day.subLabel = `${wu} mi WU · ${mp} mi @ MP · ${cd} mi CD`;
 }
 
 /**

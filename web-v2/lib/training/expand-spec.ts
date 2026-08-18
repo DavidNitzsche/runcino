@@ -215,7 +215,12 @@ function expandTempo(
     },
     {
       type: 'work',
-      label: `${tempoMi.toFixed(1)} mi tempo`,
+      // DOCTRINE-TAPERMP-1 · an "@ MP" block is a marathon-pace rehearsal, and
+      // the watch phase must say so. Every other tempo spec carries no `label`
+      // and reads exactly as before.
+      label: /@\s*MP\b/i.test(String(s.label ?? ''))
+        ? `${tempoMi.toFixed(1)} mi @ MP`
+        : `${tempoMi.toFixed(1)} mi tempo`,
       distanceMi: Number(tempoMi.toFixed(1)),
       durationSec: Math.round(tempoMi * (tempoPace ?? DURATION_EST_S_PER_MI)),
       targetPaceSPerMi: tempoPace,
@@ -453,6 +458,12 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
   const kind = String(s.kind ?? '');
   switch (kind) {
     case 'tempo': {
+      // DOCTRINE-TAPERMP-1 · a continuous block is not always at T. The taper's
+      // MP session (Research/08 §9.2) carries its authored prescription in
+      // `label` for exactly this reason — re-deriving "@ T" over a marathon-pace
+      // block is the sub_label/spec drift this function exists to prevent.
+      const authored = typeof s.label === 'string' ? s.label.trim() : '';
+      if (authored) return authored;
       const wu = Number(s.warmup_mi ?? 0);
       const tempo = Number(s.tempo_distance_mi ?? 0);
       const cd = Number(s.cooldown_mi ?? 0);

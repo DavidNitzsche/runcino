@@ -124,6 +124,11 @@ export type AdaptationTriggerKind =
   | 'goal_changed'        // runner edited goal time → mark paces stale
   | 'training_gap'        // 2026-07-06 · unplanned layoff · Research/22 §14
   | 'field_test_due'      // 2026-08-17 · no race/test in 42d · Research/01:684-686
+  | 'heat_bail'           // 2026-08-17 · Research/06 §11 · today's conditions
+                          // reach the doctrine's time-on-feet conversion or a
+                          // hard bail. ENVIRONMENTAL HAZARD, not a wellness
+                          // score — see detectHeatBail for why this is not the
+                          // readiness ruling being re-opened.
   | 'fitness_regression'; // 2026-08-17 · symmetric DOWNWARD re-anchor ·
                           // race result or 28d sustained evidence shows
                           // VDOT < last-reviewed − 1.5 → recompute paces
@@ -649,9 +654,13 @@ export function overshootFires(
  *   · field_test_due — the engine wants to spend a quality day on a
  *     fitness test; the runner can decline (2026-08-17 · Research/01:708
  *     "plan the test as a workout ... and surface why").
+ *   · heat_bail — today's conditions reach Research/06 §11's time-on-feet
+ *     conversion or hard-bail rows. Propose-first for the same reason as
+ *     the other two: the runner may be running indoors, at 5 a.m., or
+ *     somewhere the forecast is not about.
  */
 export const PROPOSE_FIRST_TRIGGERS: ReadonlySet<AdaptationTriggerKind> =
-  new Set<AdaptationTriggerKind>(['readiness_pullback', 'field_test_due']);
+  new Set<AdaptationTriggerKind>(['readiness_pullback', 'field_test_due', 'heat_bail']);
 
 /**
  * Cron split (2026-07-06 · P1-37). Partition on each action's OWN
@@ -760,6 +769,11 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
     const fieldTest = await detectFieldTestDue(userId);
     if (fieldTest) triggers.push(fieldTest);
   }
+
+  // 11. HEAT_BAIL (2026-08-17) · Research/06 §11. Today's conditions reach the
+  //     doctrine's time-on-feet conversion or one of its hard bails.
+  const heatBail = await detectHeatBail(userId);
+  if (heatBail) triggers.push(heatBail);
 
   const actions: AdaptationAction[] = [];
   for (const t of triggers) {
@@ -2052,6 +2066,106 @@ export function fieldTestGate(g: {
   return { ok: true, blockedBy: null };
 }
 
+/**
+ * HEAT-1 wiring (2026-08-17) · give `lib/coach/heat-gate.ts` somewhere to go.
+ *
+ * The gate already implemented `Research/06` §11 in full — the WBGT flag table,
+ * the time-on-feet conversions, the hard bails — and nothing registered it as
+ * an adaptation trigger, so at ACSM black flag ("Cancel competitive racing.
+ * Easy only, early or late only.") the prescription was unchanged and the day
+ * terminated in a sentence about hydration.
+ *
+ * ── THIS IS NOT THE READINESS RULING BEING RE-OPENED ──────────────────────
+ *
+ * The owner ruled (2026-06-03, `feedback_no_reactive_coach`) that READINESS
+ * informs and never mutates: a composite wellness score is a soft, noisy,
+ * whole-person inference, and the plan does not get to rewrite itself because
+ * one of its pillars dipped. That ruling stands and nothing here touches it.
+ *
+ * Heat is different in kind, not in degree:
+ *
+ *   · It is an EXTERNAL HAZARD, measured, with a doctrine-mandated hard stop.
+ *     Research/06:493-499 does not say "consider easing"; it says WBGT >86°F
+ *     is a black flag and Td >=80°F is the point at which sweat stops cooling
+ *     you. That is a fact about the air, not an opinion about the runner.
+ *   · It is not a score. There is no ladder of our own invention here — the
+ *     thresholds are the ACSM / Korey Stringer table verbatim, and the gate
+ *     is a pure function anyone can check against the doc.
+ *   · The failure mode is acute and same-day. A readiness dip costs a slightly
+ *     worse session; a threshold session at black-flag WBGT is a medical event.
+ *
+ * So it may PROPOSE a conversion or a cancellation — and only propose. It is
+ * in `PROPOSE_FIRST_TRIGGERS` alongside readiness_pullback, for a reason that
+ * is specific rather than deferential: a forecast is about a place and an hour,
+ * and the runner may be on a treadmill, out at 5 a.m., or three states away.
+ * The runner is the one who knows. If you are reading this while considering
+ * whether readiness may now mutate too: it may not, and this trigger is not a
+ * precedent for it.
+ *
+ * Fires only on the two doctrine rows that CHANGE THE SESSION — the
+ * time-on-feet conversion and the hard bail. The yellow and red flag rows are
+ * guidance on how to run the session as written ("reduce hard-session volume
+ * 5-10%"), already surfaced as prose, and turning every warm afternoon into a
+ * plan proposal would be exactly the reactive noise the ruling forbids.
+ */
+async function detectHeatBail(userId: string): Promise<AdaptationTrigger | null> {
+  try {
+    const today = await runnerToday(userId);
+    // Only a day that actually asks for hard running can be converted or
+    // cancelled. An easy day in extreme heat is a coaching NOTE, not a plan
+    // change — Research/06:484 converts "hard sessions", and the runner has
+    // always been free to run their easy day at whatever hour they like.
+    const todayKey = (await pool.query<{ id: string; type: string }>(
+      `SELECT pw.id, pw.type FROM plan_workouts pw
+          JOIN training_plans tp ON tp.id = pw.plan_id
+         WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+           AND pw.type IN ('threshold','tempo','intervals','vo2max','long','race')
+           AND pw.date_iso = $2::text
+         LIMIT 1`,
+      [userId, today],
+    )).rows[0];
+    if (!todayKey) return null;
+
+    const { resolveHomeLatLng, fetchDayForecast } = await import('@/lib/weather/openmeteo');
+    const home = await resolveHomeLatLng(userId);
+    if (!home) return null;
+    const f = await fetchDayForecast(home.lat, home.lng, today);
+    if (!f) return null;
+
+    const { evaluateHeatGate } = await import('@/lib/coach/heat-gate');
+    const verdict = evaluateHeatGate({
+      tairF: f.temp_max_f ?? f.temp_start_f,
+      humidityPct: f.humidity_pct,
+      cloudCoverPct: f.cloud_cover_pct,
+    });
+    if (verdict.action !== 'easy_time_on_feet' && verdict.action !== 'cancel') return null;
+
+    return {
+      kind: 'heat_bail',
+      // A hard bail is an override-severity finding even though the ACTION is
+      // proposed: severity describes how strongly doctrine speaks, and
+      // propose-first describes who decides. Keeping those separate is what
+      // lets the banner say "black flag" without the plan changing by itself.
+      severity: verdict.action === 'cancel' ? 'override' : 'warn',
+      reason: `Heat gate · ${verdict.headline}`,
+      evidence: {
+        action: verdict.action,
+        flag: verdict.flag,
+        wbgtF: verdict.wbgtF,
+        dewpointF: verdict.dewpointF,
+        tairF: f.temp_max_f ?? f.temp_start_f,
+        humidityPct: f.humidity_pct,
+        cloudCoverPct: f.cloud_cover_pct,
+        workoutType: todayKey.type,
+        citation: verdict.citation,
+      },
+    };
+  } catch (e) {
+    console.warn('[adapt] detectHeatBail failed:', e instanceof Error ? e.message : String(e));
+    return null;
+  }
+}
+
 async function detectFieldTestDue(userId: string): Promise<AdaptationTrigger | null> {
   const today = await runnerToday(userId);
   try {
@@ -2708,6 +2822,49 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         workoutIds: [todayKey.id],
         newType: 'easy',
         why: t.reason,
+      }];
+    }
+    case 'heat_bail': {
+      // Research/06 §11, mapped onto the two things a plan row can become:
+      //
+      //   easy_time_on_feet (:484, :487) → the session still happens, but as
+      //     easy running with no pace targets. `downgrade` to 'easy' is
+      //     exactly that: the write path clears sub_label, pace target and
+      //     is_quality, which is what "drop the pace targets" means in rows.
+      //
+      //   cancel (:493-499) → not outdoors today. 'rest' is the honest row,
+      //     and the why line carries doctrine's own alternative so the runner
+      //     reading the proposal knows indoors or postponed is the ask, not
+      //     that the day is written off.
+      //
+      // Today's row only. A forecast three days out is not a reason to rewrite
+      // Thursday — the same just-in-time discipline readiness_pullback keeps,
+      // and for a stronger reason here: weather forecasts get better the closer
+      // you get, and by Thursday morning this detector will run again.
+      const action = String((t.evidence as Record<string, unknown> | undefined)?.action ?? '');
+      const todayKey = (await pool.query(
+        `SELECT pw.id FROM plan_workouts pw
+            JOIN training_plans tp ON tp.id = pw.plan_id
+           WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+             AND pw.type IN ('threshold','tempo','intervals','vo2max','long','race')
+             AND pw.date_iso = $2::text
+           LIMIT 1`,
+        [userId, today],
+      )).rows[0];
+      if (!todayKey) return [];
+      if (action === 'cancel') {
+        return [{
+          kind: 'downgrade',
+          workoutIds: [todayKey.id],
+          newType: 'rest',
+          why: `${t.reason} Move it indoors or postpone it.`,
+        }];
+      }
+      return [{
+        kind: 'downgrade',
+        workoutIds: [todayKey.id],
+        newType: 'easy',
+        why: `${t.reason} Run it as easy time on feet, no pace targets.`,
       }];
     }
     case 'rhr_spike':

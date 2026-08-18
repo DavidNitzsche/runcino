@@ -165,15 +165,25 @@ describe('MIDRACE-1 · mid-block tune-up race embedding', () => {
     expect(raceDay.distanceMi).toBeCloseTo(13.1, 5);
     expect(raceDay.isLong).toBe(true);
     expect(wk.isCutback).toBe(true);
-    // Recovery window Mon-Thu of week 12: both quality DOWs converted.
+    // Recovery window Mon-Thu of week 12: every quality DOW inside it converted.
     const wk12 = embedded.weeks[12];
     for (const dow of [1, 2, 3, 4]) {
       expect(dayByDow(wk12, dow).isQuality).toBe(false);
     }
     expect(dayByDow(wk12, 2).type).toBe('easy');
     expect(dayByDow(wk12, 4).type).toBe('easy');
-    expect(dayByDow(baseline.weeks[12], 2).isQuality).toBe(true);
-    expect(dayByDow(baseline.weeks[12], 4).isQuality).toBe(true);
+    // The baseline is what the window converted FROM. Week 12 is a
+    // marathon-pace long week under DOCTRINE-MPLONG-1 (Research/04 §4.4's
+    // "every 2-3 weeks" cadence), so it authors ONE structured session beside
+    // the MP long rather than two — §16 forbids pairing that long with a hard
+    // tempo. Tuesday is that session and the recovery window converts it;
+    // Thursday is already an easy day before the race is embedded at all.
+    // Asserted as "some quality inside the window, none after" so the check
+    // survives the next legitimate change to which weekday carries what.
+    const baseWk12 = baseline.weeks[12];
+    expect(dayByDow(baseWk12, 2).isQuality).toBe(true);
+    expect([1, 2, 3, 4].filter((d) => dayByDow(baseWk12, d).isQuality).length).toBeGreaterThan(0);
+    expect(dayByDow(baseWk12, 4).type).toBe('easy');
     // Quality RESUMES after the window — the displaced session lands on
     // Friday (first easy day past recovery), never intervals (gap-1 rule).
     const friday = dayByDow(wk12, 5);

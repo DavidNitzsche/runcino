@@ -69,7 +69,13 @@ import {
   classifyGapBand,
 } from '@/lib/plan/adapt';
 import { EASY_SHARE_FLOOR } from '@/lib/plan/intensity-distribution';
-import { qualityFamilyFor } from '@/lib/plan/generate';
+import {
+  qualityFamilyFor,
+  MP_LONG_CADENCE_WEEKS,
+  racePaceLongThisWeek,
+  TAPER_MP_DOSE,
+  taperMpDose,
+} from '@/lib/plan/generate';
 import {
   STRIDE_DURATION_S,
   STRIDE_RECOVERY_S,
@@ -126,7 +132,7 @@ import {
 import { WBGT_FLAGS, heatBandForFlag } from '@/lib/coach/heat-gate';
 import { HEAT_HR_CONFOUNDER, heatHrBumpBpm } from '@/lib/weather/heat-adjustment';
 import type { DoctrineClaim } from './types';
-import { matchLiteral, parseBand, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
+import { matchLiteral, parseBand, parseBands, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
 
 const CATS: DistCategory[] = ['5k', '10k', 'hm', 'm', 'ultra'];
 const TIERS: GoalTier[] = ['elite', 'advanced', 'intermediate', 'developing'];
@@ -1131,7 +1137,16 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
   {
     id: 'PACE.easy-band-off-threshold',
-    binds: ['lib/plan/spec-builder.ts#buildWorkoutSpec.easyLo', 'lib/plan/spec-builder.ts#buildWorkoutSpec.easyHi'],
+    binds: [
+      'lib/plan/spec-builder.ts#buildWorkoutSpec.easyLo',
+      'lib/plan/spec-builder.ts#buildWorkoutSpec.easyHi',
+      // 2026-08-17 · fork sweep. `easyPaceBandFromAnchorPace` is a second copy
+      // of these two offsets. It has no non-test callers today, which is
+      // exactly what makes it dangerous: a twin nobody exercises is a twin
+      // nobody notices going stale. The check below now reads both literals
+      // and fails if they ever disagree.
+      'lib/training/vdot.ts#easyPaceBandFromAnchorPace',
+    ],
     doc: 'Research/01-pace-zones-vdot.md',
     anchor: '### Pace conversion from a race time',
     claim:
@@ -1160,6 +1175,24 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const [lo, hi] = [Number(m[1]), Number(m[2])];
       within(lo, [want[0] - 15, want[0] + 15], 'easy-pace floor offset off T (Research/01:142 MP+60)');
       within(hi, [want[1] - 15, want[1] + 15], 'easy-pace ceiling offset off T (Research/01:142 MP+90)');
+
+      // The twin in lib/training/vdot.ts must state the SAME offsets. It is a
+      // public export with no callers, so nothing else would ever catch it
+      // drifting — and "one copy fixed, the other left behind" is the failure
+      // this repo has now paid for three times (the cadence-target fork, the
+      // backfill route's hrCapEasy, this band).
+      const twin = matchLiteral(
+        sourceOf('web-v2/lib/training/vdot.ts'),
+        /return \{ lo: t \+ (\d+), hi: t \+ (\d+) \};/,
+        'easyPaceBandFromAnchorPace easy band',
+      );
+      if (Number(twin[1]) !== lo || Number(twin[2]) !== hi) {
+        throw new Error(
+          `the easy band is stated twice and the two disagree: spec-builder T+${lo}/T+${hi}, ` +
+          `lib/training/vdot.ts easyPaceBandFromAnchorPace T+${twin[1]}/T+${twin[2]}. ` +
+          'Re-point one at the other or delete the unused twin — do not edit only one.',
+        );
+      }
     },
   },
   {
@@ -2431,6 +2464,120 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const floors = new Set(tiers.map((tier) => tierRulesFor(tier, 70).sleep7AvgFloor));
       if (floors.size !== 1) {
         throw new Error(`the sleep floor still varies by experience tier: ${[...floors].join(' · ')}`);
+      }
+    },
+  },
+
+  // == MARATHON-PACE LONG RUN . Research/04 4.4 =============================
+  {
+    id: 'MPLONG.race-specific-cadence',
+    binds: [
+      'lib/plan/generate.ts#MP_LONG_CADENCE_WEEKS',
+      'lib/plan/generate.ts#racePaceLongThisWeek',
+      'lib/plan/generate.ts#longFinishSegment',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.4 Marathon-pace long run',
+    claim:
+      'The marathon-pace long run happens every two to three weeks in the race-specific ' +
+      'phase, not every week. The engine read this table\'s DOSE and ignored its FREQUENCY: ' +
+      'it put a 50%-of-the-long marathon-pace finish on every race-specific week and paired ' +
+      'it with two structured sessions, which 16 names as a combination to avoid and which ' +
+      'measured 58-71% easy against a 75% floor. The cadence band is read out of the ' +
+      'Frequency row, and the check walks the generator\'s own week-picker to confirm no two ' +
+      'marathon-pace longs ever sit closer or further apart than doctrine allows.',
+    check({ cite }) {
+      const [lo, hi] = parseBand(cite.table().cell('Frequency', 'Prescription'));
+      if (MP_LONG_CADENCE_WEEKS < lo || MP_LONG_CADENCE_WEEKS > hi) {
+        throw new Error(
+          `MP_LONG_CADENCE_WEEKS is ${MP_LONG_CADENCE_WEEKS}, doctrine allows every ${lo}-${hi} weeks`,
+        );
+      }
+      // Walk the picker across every plausible phase geometry. The gap between
+      // consecutive marathon-pace longs must stay inside the doctrine band even
+      // when the deload dodge stretches it.
+      for (const cutbackEveryN of [3, 4]) {
+        for (const phaseEndIdx of [5, 8, 11, 12, 13, 15, 17, 21]) {
+          const hits: number[] = [];
+          for (let wk = 0; wk <= phaseEndIdx; wk++) {
+            if (racePaceLongThisWeek(wk, phaseEndIdx - wk, cutbackEveryN)) hits.push(wk);
+          }
+          for (let i = 1; i < hits.length; i++) {
+            const gap = hits[i] - hits[i - 1];
+            if (gap < lo || gap > hi) {
+              throw new Error(
+                `marathon-pace longs land ${gap} weeks apart (weeks ${hits.join(',')}, ` +
+                `phase ends ${phaseEndIdx}, deload every ${cutbackEveryN}) - doctrine allows ${lo}-${hi}`,
+              );
+            }
+          }
+          // And a deload week never carries the block's biggest quality session.
+          for (const wk of hits) {
+            if (wk > 0 && (wk + 1) % cutbackEveryN === 0) {
+              throw new Error(`a marathon-pace long landed on cutback week ${wk} (deload every ${cutbackEveryN})`);
+            }
+          }
+        }
+      }
+    },
+  },
+
+  // == MARATHON TAPER . MP work survives the volume cut . Research/08 9.2 ====
+  {
+    id: 'TAPERMP.marathon-taper-mp-dose',
+    binds: [
+      'lib/plan/generate.ts#TAPER_MP_DOSE',
+      'lib/plan/generate.ts#taperMpDose',
+    ],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 9.2 Marathon taper structure (3 weeks)',
+    claim:
+      'The marathon taper keeps marathon-pace work: roughly 14-16 mi with 10-12 at MP three ' +
+      'weeks out, and 6-8 mi at MP two weeks out. The engine set the whole taper\'s quality to ' +
+      'the 5K-pace tune-up, which is the race-week row applied to all three weeks - a volume ' +
+      'cut WITH the intensity cut too, the exact distinction 9.1 draws when it says the ' +
+      'largest cut is to easy mileage and intensity is preserved. Both doses are read out of ' +
+      'the Quality session column, parentheses included, since that is where the numbers live.',
+    check({ cite }) {
+      const t = cite.table();
+      // parseBand strips bracketed text, and this column keeps its numbers
+      // inside the brackets - "Final MP-specific (14-16 mi w/ 10-12 mi at MP)".
+      // parseBands reads every band on the line in order instead.
+      const minus3 = parseBands(t.cell('-3', 'Quality session'));
+      const minus2 = parseBands(t.cell('-2', 'Quality session'));
+      if (minus3.length < 2) throw new Error(`the -3 quality cell no longer states a total and an MP band: "${t.cell('-3', 'Quality session')}"`);
+      if (minus2.length < 1) throw new Error(`the -2 quality cell no longer states an MP band: "${t.cell('-2', 'Quality session')}"`);
+      within(TAPER_MP_DOSE.final.totalMi, minus3[0], 'taper -3 session total');
+      within(TAPER_MP_DOSE.final.mpMi, minus3[1], 'taper -3 miles at MP');
+      within(TAPER_MP_DOSE.primer.mpMi, minus2[0], 'taper -2 miles at MP');
+      if (TAPER_MP_DOSE.primer.totalMi <= TAPER_MP_DOSE.primer.mpMi) {
+        throw new Error('the -2 session has no room for a warm-up or cool-down around its MP block');
+      }
+      // The dose is a target, not a floor: an unconstrained week gets doctrine
+      // exactly, and a week that cannot afford it gets a scaled-down session
+      // whose MP block still dominates, or no MP session at all.
+      const full = taperMpDose(2, 999);
+      if (!full || full.totalMi !== TAPER_MP_DOSE.final.totalMi || full.mpMi !== TAPER_MP_DOSE.final.mpMi) {
+        throw new Error(`an unconstrained -3 week did not get the doctrine dose: ${JSON.stringify(full)}`);
+      }
+      const primer = taperMpDose(1, 999);
+      if (!primer || primer.mpMi !== TAPER_MP_DOSE.primer.mpMi) {
+        throw new Error(`an unconstrained -2 week did not get the doctrine dose: ${JSON.stringify(primer)}`);
+      }
+      for (const budget of [4, 6, 8, 10, 12, 15, 20]) {
+        for (const wtpe of [1, 2]) {
+          const d = taperMpDose(wtpe, budget);
+          if (!d) continue;
+          if (d.totalMi > budget + 0.001) throw new Error(`taperMpDose(${wtpe}, ${budget}) returned a ${d.totalMi}mi session`);
+          if (Math.abs(d.warmupMi + d.mpMi + d.cooldownMi - d.totalMi) > 0.051) {
+            throw new Error(`taperMpDose(${wtpe}, ${budget}) segments do not sum to its total: ${JSON.stringify(d)}`);
+          }
+          if (d.mpMi / d.totalMi < 0.5) throw new Error(`taperMpDose(${wtpe}, ${budget}) is no longer MP-dominant: ${JSON.stringify(d)}`);
+        }
+      }
+      // The race week keeps the 5K-pace tune-up doctrine gives it (9.2 row -1).
+      if (taperMpDose(0, 999) != null) {
+        throw new Error('the race week was handed an MP session - 9.2 row -1 is the 5K-pace tune-up');
       }
     },
   },

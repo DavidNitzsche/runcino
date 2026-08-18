@@ -76,18 +76,57 @@ export interface PlanProposal {
  * Hard-drift kinds (race_*, goal_*, a_race_*) get severity 1.0 so
  * they sort to the top regardless of soft-drift severity scores.
  */
+/** The `plan_proposals` columns both reads select. */
+interface ProposalRow {
+  id: number;
+  plan_id: string | null;
+  new_plan_id: string | null;
+  proposal_kind: PlanProposalKind;
+  status: PlanProposalStatus;
+  source: string;
+  reasons: Record<string, unknown> | null;
+  created_at: Date | string;
+  resolved_at: Date | string | null;
+}
+
+/** Row → `PlanProposal`. One translation, so two reads cannot disagree. */
+function toProposal(r: ProposalRow): PlanProposal {
+  const reasons = r.reasons ?? {};
+  const severityRaw = typeof reasons.severity === 'number' ? reasons.severity : null;
+  return {
+    id: r.id,
+    planId: r.plan_id,
+    previousPlanId: r.plan_id,
+    newPlanId: r.new_plan_id,
+    kind: r.proposal_kind,
+    status: r.status,
+    source: r.source,
+    reasons,
+    message: synthesizeMessage(r.proposal_kind, r.status, reasons),
+    severity: isHardDriftKind(r.proposal_kind) ? 1.0 : severityRaw,
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    resolvedAt: r.resolved_at instanceof Date ? r.resolved_at.toISOString()
+      : r.resolved_at ? String(r.resolved_at) : null,
+  };
+}
+
+/** Pending before auto_applied before everything else, then severity, then recency. */
+function sortProposals(proposals: PlanProposal[]): PlanProposal[] {
+  return [...proposals].sort((a, b) => {
+    const statusRank = (s: PlanProposalStatus) =>
+      s === 'pending' ? 0 : s === 'auto_applied' ? 1 : 2;
+    const sa = statusRank(a.status);
+    const sb = statusRank(b.status);
+    if (sa !== sb) return sa - sb;
+    const va = a.severity ?? 0;
+    const vb = b.severity ?? 0;
+    if (va !== vb) return vb - va;
+    return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+  });
+}
+
 export async function loadPlanProposals(userId: string): Promise<PlanProposal[]> {
-  const rows = (await pool.query<{
-    id: number;
-    plan_id: string | null;
-    new_plan_id: string | null;
-    proposal_kind: PlanProposalKind;
-    status: PlanProposalStatus;
-    source: string;
-    reasons: Record<string, unknown> | null;
-    created_at: Date | string;
-    resolved_at: Date | string | null;
-  }>(
+  const rows = (await pool.query<ProposalRow>(
     // 2026-06-02 · auto_applied banners auto-clear after 24h per the
     // PlanProposalCard doctrine note ("stays up for 24h then hides").
     // Pending proposals stay 14d so the runner has time to accept /
@@ -105,44 +144,37 @@ export async function loadPlanProposals(userId: string): Promise<PlanProposal[]>
       ORDER BY status ASC, created_at DESC
       LIMIT 20`,
     [userId],
-  ).catch(() => ({ rows: [] }))).rows;
+  ).catch(() => ({ rows: [] as ProposalRow[] }))).rows;
 
-  const proposals: PlanProposal[] = rows.map((r) => {
-    const reasons = r.reasons ?? {};
-    const severityRaw = typeof reasons.severity === 'number' ? reasons.severity : null;
-    const severity = isHardDriftKind(r.proposal_kind) ? 1.0 : severityRaw;
+  return sortProposals(rows.map(toProposal)).slice(0, 5);
+}
 
-    return {
-      id: r.id,
-      planId: r.plan_id,
-      previousPlanId: r.plan_id,
-      newPlanId: r.new_plan_id,
-      kind: r.proposal_kind,
-      status: r.status,
-      source: r.source,
-      reasons,
-      message: synthesizeMessage(r.proposal_kind, r.status, reasons),
-      severity,
-      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
-      resolvedAt: r.resolved_at instanceof Date ? r.resolved_at.toISOString()
-        : r.resolved_at ? String(r.resolved_at) : null,
-    };
-  });
-
-  // Custom sort: pending before auto_applied, then by severity desc
-  proposals.sort((a, b) => {
-    const statusRank = (s: PlanProposalStatus) =>
-      s === 'pending' ? 0 : s === 'auto_applied' ? 1 : 2;
-    const sa = statusRank(a.status);
-    const sb = statusRank(b.status);
-    if (sa !== sb) return sa - sb;
-    const va = a.severity ?? 0;
-    const vb = b.severity ?? 0;
-    if (va !== vb) return vb - va;
-    return Date.parse(b.createdAt) - Date.parse(a.createdAt);
-  });
-
-  return proposals.slice(0, 5);
+/**
+ * Every recent proposal, resolved rows included · the debug/audit read behind
+ * `GET /api/plan/proposal?all=1` (2026-08-17).
+ *
+ * `loadPlanProposals` above is the SURFACE read: it hides resolved rows and an
+ * auto-applied banner after 24 hours, because that is what a Today card should
+ * show. When you are trying to work out why a plan rebuilt itself last Tuesday,
+ * those are exactly the rows you need. Same mapping, same sort, wider window —
+ * the row → `PlanProposal` translation is shared so the two reads can never
+ * describe the same row differently.
+ */
+export async function loadAllPlanProposals(
+  userId: string,
+  limit = 25,
+): Promise<PlanProposal[]> {
+  const rows = (await pool.query<ProposalRow>(
+    `SELECT id, plan_id, new_plan_id, proposal_kind, status, source,
+            reasons, created_at, resolved_at
+       FROM plan_proposals
+      WHERE user_uuid = $1
+        AND created_at >= NOW() - interval '180 days'
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [userId, Math.max(1, Math.min(100, limit))],
+  ).catch(() => ({ rows: [] as ProposalRow[] }))).rows;
+  return sortProposals(rows.map(toProposal));
 }
 
 function isHardDriftKind(kind: PlanProposalKind): boolean {

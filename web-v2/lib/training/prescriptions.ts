@@ -15,6 +15,7 @@
  */
 
 import { computeZones, type ZoneTable } from './zones';
+import { tPaceFromGoal } from '@/lib/plan/spec-builder';
 import {
   applyHeatToPace,
   abilityTierFromVdot,
@@ -103,18 +104,21 @@ interface ProfileInputs {
 
 // ── Pace derivation ─────────────────────────────────────────────────────
 
-/** Derive a Threshold Pace (s/mi) from a race goal. For HM goal it's
- *  ~HM pace + 5-10s; for marathon goal it's ~HM pace - 15s ≈ M + 15-25s.
- *  If no goal, return null and callers should fall back to HR-only cues. */
+/**
+ * Derive a Threshold Pace (s/mi) from a race goal. Null when there is no goal
+ * to derive from, and callers fall back to HR-only cues.
+ *
+ * 2026-08-17 · DE-FORKED. This was a byte-identical copy of `tPaceFromGoal`
+ * minus one branch: it had no PACE-5 ultra guard, so a 50K goal produced
+ * `finishPace − 18` and called it "threshold". An ultra finish pace is an
+ * arbitrary slow target well below threshold, and the canonical function
+ * refuses it on purpose (Research/22:289/297/316 · ultra runs at "race-paced
+ * effort"; Research/00a:311-312 · ultra threshold is fitness-anchored, never
+ * finish-pace-derived). Delegating means the guard arrives for free and the
+ * offsets can never drift apart again.
+ */
 function tPaceSecPerMi(p: ProfileInputs): number | null {
-  if (!p.goal_seconds || !p.goal_distance_mi) return null;
-  const goalSPerMi = Math.round(p.goal_seconds / p.goal_distance_mi);
-  // Half marathon goal pace ≈ T-pace + ~5s/mi for most runners.
-  // Marathon goal pace ≈ T-pace + 15-25s.
-  if (p.goal_distance_mi >= 25) return goalSPerMi - 18; // marathon
-  if (p.goal_distance_mi >= 12) return goalSPerMi - 5;  // half
-  if (p.goal_distance_mi >= 5)  return goalSPerMi + 8;  // 10K
-  return goalSPerMi + 15;                                // 5K
+  return tPaceFromGoal(p.goal_seconds, p.goal_distance_mi);
 }
 
 function fmtPace(sPerMi: number | null): string | null {

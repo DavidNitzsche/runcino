@@ -1,6 +1,57 @@
 /**
- * POST /api/plan/proposal · runner accepts or dismisses a plan-drift
- * proposal. Both lifecycle terminals end in plan_proposals.status set,
+ * /api/plan/proposal · the plan-drift proposal surface.
+ *
+ * ── GET · read the caller's proposals ─────────────────────────────────────
+ *
+ * Added 2026-08-17. Until then this route was POST-only: the runner could
+ * ACCEPT or DISMISS a proposal but had no way to ASK whether one existed. Web
+ * never noticed because it reads `planProposals` off its own server-rendered
+ * seed (`components/faff-app/seed.ts` → `loadPlanProposals`); native has no
+ * seed, so on the phone a pending rebuild proposal was unreachable — the plan
+ * could be drifting and the surface that says so could not be reached.
+ *
+ *   GET /api/plan/proposal            → pending + recently auto-applied
+ *   GET /api/plan/proposal?all=1      → the full recent history, resolved rows
+ *                                       included, for a debug/audit view
+ *
+ * Response:
+ *
+ *   {
+ *     "proposals": [
+ *       {
+ *         "id": 41,
+ *         "planId": "…", "previousPlanId": "…", "newPlanId": null,
+ *         "kind": "volume_drift",           // PlanProposalKind
+ *         "status": "pending",              // PlanProposalStatus
+ *         "source": "drift_cron",
+ *         "reasons": { … },                 // raw blob, includes `message`
+ *         "message": "…",                   // plain language, always present
+ *         "severity": 0.62,                 // null for hard-drift kinds
+ *         "createdAt": "…", "resolvedAt": null
+ *       }
+ *     ],
+ *     "pendingCount": 1
+ *   }
+ *
+ * The element shape is `PlanProposal` from `lib/plan/proposals-state.ts`, byte
+ * for byte what the web seed puts in `planProposals` — same loader, same
+ * ordering (pending first, then severity, then recency), same cap of five.
+ * That is deliberate: two surfaces reading the same rows through two different
+ * shapes is how they drift apart.
+ *
+ * Scoped to the authenticated caller by `requireUserId`; the loader takes the
+ * user id and every query filters on it, so there is no way to read another
+ * runner's proposals through this route.
+ *
+ * NATIVE WIRING IS NOT DONE. This route is the contract only. A later pass
+ * needs to: poll or fetch this on the phone's Today surface, render the
+ * accept/dismiss pair against the POST below (`{ id, action }`), and handle
+ * the 409 the POST returns when the proposal was already resolved somewhere
+ * else — likely on the web, in another session, minutes earlier.
+ *
+ * ── POST · accept or dismiss ──────────────────────────────────────────────
+ *
+ * Both lifecycle terminals end in plan_proposals.status set,
  * resolved_at stamped.
  *
  * accept · runs generatePlan against the goal race · returns the new
@@ -130,10 +181,33 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
-  return NextResponse.json({
-    endpoint: 'POST /api/plan/proposal',
-    body: { id: 'number (proposal id)', action: "'accept' | 'dismiss'" },
-    note: 'Accept runs generatePlan for the plan\'s race. Dismiss just closes the proposal · drift-cron will not re-propose the same kind for 14 days.',
-  });
+/**
+ * GET · the caller's plan proposals. See the route header for the contract.
+ *
+ * Delegates to the SAME loader the web seed uses rather than issuing its own
+ * query. A hand-rolled query here would be a second definition of "which
+ * proposals should a runner see", and the two would answer differently the
+ * first time either changed — the fork class this codebase keeps paying for.
+ */
+export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
+
+  const all = req.nextUrl.searchParams.get('all') === '1';
+  try {
+    const { loadPlanProposals, loadAllPlanProposals } = await import('@/lib/plan/proposals-state');
+    const proposals = all
+      ? await loadAllPlanProposals(userId)
+      : await loadPlanProposals(userId);
+    return NextResponse.json({
+      proposals,
+      pendingCount: proposals.filter((p) => p.status === 'pending').length,
+    });
+  } catch (e: unknown) {
+    return NextResponse.json(
+      { error: 'failed to load proposals', detail: e instanceof Error ? e.message : String(e) },
+      { status: 500 },
+    );
+  }
 }

@@ -88,6 +88,12 @@ export async function POST(req: NextRequest) {
       // Propose-first (engine opinion · runner gates):
       //   · readiness_pullback · "we'd like to ease tomorrow because..."
       //   · field_test_due · "spend Thursday's quality on a 30-min test"
+      //   · heat_bail · "WBGT is black flag today · convert or move it"
+      //     (2026-08-17 · Research/06 §11. Unlike readiness this one is an
+      //     ENVIRONMENTAL hazard with a doctrine hard stop, not a wellness
+      //     score — see detectHeatBail. It still only proposes, because a
+      //     forecast is about a place and an hour and the runner may be
+      //     indoors, out at dawn, or somewhere else entirely.)
       //     (2026-08-17 · PROPOSE_FIRST_TRIGGERS is the single authority)
       const triggerKinds = new Set(triggers.map((t) => t.kind));
       const isProposeOnly = triggerKinds.size > 0

@@ -11,10 +11,9 @@
  *   1. Find the active plan row(s) for the user.
  *   2. Find the user's A-race goal (priority='A', upcoming, with
  *      meta.goalDisplay = "H:MM:SS" and meta.distanceLabel).
- *   3. For each plan_workouts row with NULL workout_spec, build a
- *      type-aware spec using the same T-pace derivation as
- *      `lib/training/prescriptions.ts` so the numbers match what the
- *      coach voice would prescribe.
+ *   3. For each plan_workouts row with NULL workout_spec, build the spec with
+ *      `buildWorkoutSpec` — THE canonical builder, the same function the
+ *      generator and the adapter call.
  *   4. UPDATE plan_workouts SET workout_spec = $1 WHERE id = $2.
  *
  * No-op if no active plan, no goal race, or every row already has spec.
@@ -22,188 +21,55 @@
  * to run → run it ourselves, surface results not "go click this").
  *
  * Query: ?dry=1 to print without writing (default writes).
+ *
+ * ── 2026-08-17 · DE-FORKED. This route was writing stale doctrine. ────────
+ *
+ * `lib/plan/spec-builder.ts` opens by saying it was "extracted from
+ * app/api/admin/backfill-workout-spec/route.ts so the generator + backfill
+ * cron + adapter all derive the same way". The extraction happened. The route
+ * was never re-pointed at it — it kept a complete private copy of
+ * `buildSpec`, `hrCapEasy`, `hrCapLong`, `hrLthrBpm`, `tPaceSPerMi`,
+ * `fuelMi` and `distanceMiFromLabel`, frozen at the 2026-05-30 state, and
+ * every correction since landed only in `lib/`. Running it would have
+ * overwritten good specs with retired numbers:
+ *
+ *   easy/long HR cap   0.80 / 0.85 × LTHR, no maxHr branch, against the
+ *                      canonical MAX(0.89×LTHR, 0.78×maxHR). At LTHR 162 /
+ *                      maxHR 188 that is 130 bpm where doctrine says 147 —
+ *                      the exact band spec-builder's own comment calls "way
+ *                      too tight" (Rule 16, 2026-06-03).
+ *   easy pace band     T+60 / T+110 against PACE-E-2's T+80 / T+120 — 20 s/mi
+ *                      too fast at the floor.
+ *   tempo pace         T+5 against PACE-T-1's "the headline tempo pace == T"
+ *                      (2026-06-23, explicitly approved).
+ *   race row           T-anchored band and a 0.95×LTHR cap — the retired
+ *                      constant that "sat BELOW honest HM effort and would
+ *                      alarm the entire race".
+ *   ultra T-pace       no PACE-5 guard, so a 50K goal yielded finishPace−18
+ *                      as "threshold", which the canonical path refuses.
+ *   distance labels    26.2188 / 13.1094 / 6.21371 / 3.10686 and no ultra
+ *                      rows, against `lib/race/distance.ts`.
+ *
+ * Nothing tested any of it. The fix is delegation, not repair: the route now
+ * calls `buildWorkoutSpec`, `tPaceFromGoal` and `distanceMiFromLabel`, and it
+ * threads the inputs the canonical builder wants (the row's own sub_label as
+ * the prescription, maxHR, goal pace) so a backfilled spec is byte-identical
+ * to what the generator would have authored for the same row. There is no
+ * spec-shaping logic left in this file to go stale.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireAdmin } from '@/lib/auth/session';
-
-function distanceMiFromLabel(label: string | null | undefined): number | null {
-  if (!label) return null;
-  const s = String(label).toLowerCase().trim();
-  if (s === 'marathon' || s === '26.2') return 26.2188;
-  if (s === 'half marathon' || s === 'half' || s === '13.1') return 13.1094;
-  if (s === '10k') return 6.21371;
-  if (s === '5k') return 3.10686;
-  if (s === '15k') return 9.32057;
-  const m = s.match(/^(\d+(?:\.\d+)?)\s*(mi|km|k)?$/);
-  if (m) {
-    const n = parseFloat(m[1]);
-    if (!m[2] || m[2] === 'mi') return n;
-    if (m[2] === 'km' || m[2] === 'k') return n / 1.609344;
-  }
-  return null;
-}
+import { buildWorkoutSpec, tPaceFromGoal } from '@/lib/plan/spec-builder';
+import { distanceMiFromLabel } from '@/lib/race/distance';
+import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 
 function parseHMS(t: string): number {
   const parts = (t || '').trim().split(':').map((x) => parseInt(x, 10) || 0);
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   if (parts.length === 2) return parts[0] * 3600 + parts[1] * 60;
   return 0;
-}
-
-/**
- * Daniels T-pace (Threshold) in s/mi, derived from goal_seconds + distance_mi
- * via the same offsets as prescriptions.ts → tPaceSecPerMi.
- *   marathon goal → T = goal pace − 18 s/mi
- *   half goal     → T = goal pace − 5 s/mi
- *   10K goal      → T = goal pace + 8 s/mi
- *   5K goal       → T = goal pace + 15 s/mi
- */
-function tPaceSPerMi(goalSec: number, distMi: number): number | null {
-  if (!goalSec || !distMi) return null;
-  const gp = Math.round(goalSec / distMi);
-  if (distMi >= 25) return gp - 18;
-  if (distMi >= 12) return gp - 5;
-  if (distMi >= 5) return gp + 8;
-  return gp + 15;
-}
-
-/** LTHR-derived heart-rate cap for easy/long. Per Friel zones, easy is
- *  Z2 (≤80% LTHR), long is Z2-Z3 ceiling (≤85% LTHR). Without LTHR we
- *  leave hr_cap_bpm null and the consumer falls back to a pace-only spec. */
-function hrCapEasy(lthr: number | null): number | null {
-  return lthr ? Math.round(lthr * 0.80) : null;
-}
-function hrCapLong(lthr: number | null): number | null {
-  return lthr ? Math.round(lthr * 0.85) : null;
-}
-function hrLthrBpm(lthr: number | null): number | null {
-  return lthr ?? null;
-}
-
-/** Build a v1-shaped workout_spec by type. Returns null for types whose
- *  spec is supposed to be null (rest/strength/cross/shakeout). */
-function buildSpec(
-  type: string,
-  distance_mi: number | null,
-  t: number,
-  lthr: number | null,
-): Record<string, unknown> | null {
-  // T-pace offsets per Daniels Table 2 / prescriptions.ts paces().
-  const easyLo = t + 60, easyHi = t + 110;
-  const longLo = t + 55, longHi = t + 90;
-  const tempo  = t + 5;                  // tempo ≈ T + 5-18 s/mi
-  const interval = t - 18;               // ~10K pace
-  const recovery = t + 100;              // very easy
-
-  const fuelMi = (dist: number | null): number[] => {
-    if (!dist || dist < 8) return [];
-    const out: number[] = [];
-    // First fuel at mi 5, then every 4 mi
-    for (let m = 5; m < dist; m += 4) out.push(m);
-    return out;
-  };
-
-  // 2026-05-30 (post-mortem fix): every spec MUST carry its `kind`
-  // discriminator — both paceFromSpec (seed.ts) and glance-adapter's
-  // surface-driven path narrow off `spec.kind`. The original backfill
-  // omitted it, so all 62 rows shipped as kind-less and downstream
-  // consumers silently fell through to PACE_DEFAULT. Re-run with
-  // ?force=1 to rewrite the existing kind-less rows.
-  switch (type) {
-    case 'easy':
-      return {
-        kind: 'easy',
-        pace_target_s_per_mi_lo: easyLo,
-        pace_target_s_per_mi_hi: easyHi,
-        hr_cap_bpm: hrCapEasy(lthr),
-        fuel_mi: [],
-      };
-    case 'recovery':
-      return {
-        kind: 'recovery',
-        pace_target_s_per_mi_lo: recovery,
-        pace_target_s_per_mi_hi: recovery + 30,
-        hr_cap_bpm: hrCapEasy(lthr),
-      };
-    case 'long':
-      return {
-        kind: 'long',
-        pace_target_s_per_mi_lo: longLo,
-        pace_target_s_per_mi_hi: longHi,
-        hr_cap_bpm: hrCapLong(lthr),
-        fuel_mi: fuelMi(distance_mi),
-      };
-    case 'tempo': {
-      const tempoDist = Math.max(2, Math.min(7, (distance_mi ?? 8) - 3));
-      const wu = ((distance_mi ?? 8) - tempoDist) / 2;
-      return {
-        kind: 'tempo',
-        warmup_mi: Number(wu.toFixed(1)),
-        tempo_distance_mi: Number(tempoDist.toFixed(1)),
-        tempo_pace_s_per_mi: tempo,
-        cooldown_mi: Number(wu.toFixed(1)),
-        hr_target_bpm: lthr ? Math.round(lthr * 0.92) : null,
-      };
-    }
-    case 'threshold': {
-      const repCount = 4;
-      const repMi = 1.0;
-      const wu = ((distance_mi ?? 7) - repCount * repMi - 1) / 2;
-      return {
-        kind: 'threshold',
-        warmup_mi: Number(Math.max(1.5, wu).toFixed(1)),
-        rep_count: repCount,
-        rep_distance_mi: repMi,
-        rep_pace_s_per_mi: t,
-        rep_rest_s: 60,
-        cooldown_mi: Number(Math.max(1.0, wu).toFixed(1)),
-        lthr_bpm: hrLthrBpm(lthr),
-      };
-    }
-    case 'intervals':
-    case 'vo2max': {
-      const repCount = 5;
-      const repMi = 0.62;
-      const wu = ((distance_mi ?? 7) - repCount * repMi - 1) / 2;
-      return {
-        kind: 'intervals',
-        warmup_mi: Number(Math.max(1.5, wu).toFixed(1)),
-        rep_count: repCount,
-        rep_distance_mi: repMi,
-        rep_pace_s_per_mi: interval,
-        rep_rest_s: 90,
-        cooldown_mi: Number(Math.max(1.0, wu).toFixed(1)),
-        lthr_bpm: hrLthrBpm(lthr),
-      };
-    }
-    case 'race':
-      // No 'race' kind in WorkoutSpec union — race weeks render via
-      // race-day surface, not the breakdown card. Stash as 'long' so
-      // the row still gets a pace target the week-strip can show.
-      return {
-        kind: 'long',
-        pace_target_s_per_mi_lo: t - 10,
-        pace_target_s_per_mi_hi: t + 5,
-        hr_cap_bpm: lthr ? Math.round(lthr * 0.95) : null,
-        fuel_mi: fuelMi(distance_mi),
-      };
-    case 'shakeout':
-      return {
-        kind: 'easy',
-        pace_target_s_per_mi_lo: easyHi,
-        pace_target_s_per_mi_hi: easyHi + 30,
-        hr_cap_bpm: hrCapEasy(lthr),
-        fuel_mi: [],
-      };
-    case 'rest':
-    case 'cross':
-    case 'strength':
-      return null;
-    default:
-      return null;
-  }
 }
 
 export async function POST(req: NextRequest) {
@@ -249,22 +115,34 @@ export async function POST(req: NextRequest) {
     const goalDistMi =
       Number((meta as { distanceMi?: number }).distanceMi ?? 0) ||
       distanceMiFromLabel((meta as { distanceLabel?: string }).distanceLabel);
-    const t = goalSec > 0 && goalDistMi ? tPaceSPerMi(goalSec, goalDistMi) : null;
+    // `tPaceFromGoal` is the canonical derivation and carries the PACE-5 ultra
+    // guard: a 50K finish pace is an arbitrary slow target, not threshold, so
+    // it returns null rather than shipping finishPace−18 as "T". The old local
+    // copy had no such guard.
+    const t = goalSec > 0 && goalDistMi ? tPaceFromGoal(goalSec, goalDistMi) : null;
+    const goalPaceSPerMi = goalSec > 0 && goalDistMi ? Math.round(goalSec / goalDistMi) : null;
 
     if (t == null) {
       return NextResponse.json({
         ok: false,
-        error: 'no goal race with parseable goalDisplay + distance',
+        error: goalDistMi != null && goalDistMi >= 31
+          ? 'ultra goal · T-pace is not derivable from finish pace (PACE-5). Regenerate the plan instead of backfilling.'
+          : 'no goal race with parseable goalDisplay + distance',
         plans: planRows.map((p) => p.id),
       }, { status: 400 });
     }
 
-    // 3. LTHR for HR cap derivation.
+    // 3. HR anchors. LTHR from the profile; max HR from the canonical resolver
+    //    (`user_override → 12-month observed → stored → null`) rather than the
+    //    non-existent `profile.max_hr`. Rule 16 (2026-06-03) takes the HIGHER
+    //    of the two anchor-derived easy caps, so omitting maxHR — as the forked
+    //    copy did — silently wrote the tighter, wrong one.
     const profRow = (await pool.query(
       `SELECT lthr FROM profile WHERE user_uuid = $1`,
       [userId],
     ).catch(() => ({ rows: [] as Array<{ lthr: number | null }> }))).rows[0];
     const lthr = profRow?.lthr != null ? Number(profRow.lthr) : null;
+    const maxHr = await loadEffectiveMaxHr(userId).then((r) => r.bpm).catch(() => null);
 
     // 4. Walk plan_workouts with NULL spec, build + UPDATE.
     let totalUpdated = 0;
@@ -276,14 +154,29 @@ export async function POST(req: NextRequest) {
       const whereSpec = force
         ? `(workout_spec IS NULL OR (workout_spec IS NOT NULL AND NOT (workout_spec ? 'kind')))`
         : `workout_spec IS NULL`;
+      // sub_label comes along because the canonical builder READS it: the
+      // prescription string is what sizes a tempo block, a rep set, a stride
+      // suffix and a long run's race-pace finish. The forked copy ignored it
+      // and invented generic shapes, so a backfilled "5×2K descend MP → T"
+      // row came back as an anonymous 4×1mi.
       const rows = (await pool.query(
-        `SELECT id, type, distance_mi FROM plan_workouts
+        `SELECT id, type, distance_mi, sub_label FROM plan_workouts
           WHERE plan_id = $1 AND ${whereSpec}`,
         [plan.id],
-      )).rows as Array<{ id: string; type: string; distance_mi: number | null }>;
+      )).rows as Array<{ id: string; type: string; distance_mi: number | null; sub_label: string | null }>;
 
       for (const row of rows) {
-        const spec = buildSpec(row.type, row.distance_mi != null ? Number(row.distance_mi) : null, t, lthr);
+        // THE canonical builder — same call shape the generator uses
+        // (lib/plan/generate.ts, persistPlan).
+        const { spec } = buildWorkoutSpec(
+          row.type,
+          row.distance_mi != null ? Number(row.distance_mi) : null,
+          t,
+          lthr,
+          row.sub_label,
+          maxHr,
+          goalPaceSPerMi,
+        );
         if (spec === null) continue;   // null-spec types (rest/cross/strength) — leave as NULL
         if (!dry) {
           await pool.query(
@@ -310,6 +203,8 @@ export async function POST(req: NextRequest) {
       goalSeconds: goalSec,
       goalDistMi,
       lthr,
+      maxHr,
+      builder: 'lib/plan/spec-builder#buildWorkoutSpec',
       planIds: planRows.map((p) => p.id),
       samples,
     });
