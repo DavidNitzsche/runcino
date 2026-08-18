@@ -28,6 +28,21 @@
 #     group (phase visualizations only) — four hexes asserted below.
 #
 # Wire-up: run from CI before web deploy and as an Xcode build phase.
+#
+# WEB EXEMPTED 2026-08-18 (David: "iphone doesnt matter right now until we
+# update design and implementation"). Web is implementing a full site-wide
+# redesign (outside-studio brief, docs/design/DESIGN-BRIEF-site-wide-redesign.md)
+# with a different palette — warm paper ground, its own 7-color state system —
+# while iPhone/watch stay on the locked ten-color palette below, untouched,
+# for now. Every web-only assertion (globals.css / constants.ts / TrainView.tsx)
+# is commented out, not deleted — re-enable once web's new palette is itself
+# locked and iPhone/watch are redesigned to match it, per brief v2's own
+# "byte-for-byte across all three surfaces" intent. iPhone↔watch checks below
+# are untouched: neither surface is changing, so keeping them honest costs
+# nothing. The RETIRED-HEX tripwire and the Z2-ladder assertion are scoped to
+# exclude web-v2 for the same reason — a hex "retired" under the OLD web
+# palette is not necessarily banned from the NEW one, and re-litigating that
+# per-hex is exactly the busywork this exemption exists to avoid.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -50,36 +65,34 @@ need() { # $1=file  $2=grep -E pattern (case-insensitive)  $3=label
 }
 
 # ── 1 · LOCK CHECK · the ten colors, per surface ────────────────────────────
-# Web tokens
-need "$WEB_CSS" '\-\-race:#D03F3F'        'web --race = #D03F3F (Race/Tempo · Redish · orange retired, reads Strava)'
-need "$WEB_CSS" '\-\-goal:#F3AD38'        'web --goal = #F3AD38 (Long)'
-need "$WEB_CSS" '\-\-green:#3EBD41'       'web --green = #3EBD41 (Good state)'
-need "$WEB_CSS" '\-\-over:#FC4D64'        'web --over = #FC4D64 (Off/warn)'
-need "$WEB_CSS" '\-\-dist:#27B4E0'        'web --dist = #27B4E0 (Recovery)'
-need "$WEB_CSS" '\-\-intervals:#FC4D64'   'web --intervals = #FC4D64 (Intervals · = Warning red, ceiling)'
-need "$WEB_CSS" '\-\-watch:#F3AD38'       'web --watch = #F3AD38 (Watch attention)'
-need "$WEB_CSS" '\-\-gold:#F0DF47'        'web --gold = #F0DF47 (PR gold · Light Yellow)'
-need "$WEB_CSS" '\-\-eyebrow:#F3AD38'     'web --eyebrow = #F3AD38 (Eyebrow · = Attention amber)'
-need "$WEB_CSS" '\-\-eff-easy:#3EBD41'    'web --eff-easy = #3EBD41 (Easy)'
-need "$WEB_CSS" '\-\-eff-tempo:#D03F3F'   'web --eff-tempo = #D03F3F'
-need "$WEB_CSS" '\-\-eff-intervals:#FC4D64' 'web --eff-intervals = #FC4D64'
-need "$WEB_CSS" '\-\-eff-race:#D03F3F'    'web --eff-race = #D03F3F'
-# Consolidation tokens · bright text-on-dark siblings + Strava brand. Not
-# part of the locked ten. The 2026-06-17 palette pass (David's canonical
-# palette) collapsed --warn-text -> Attention #F3AD38 and --over-text ->
-# Warning #FC4D64 (the bright #FFB24D / #FF6A6A siblings retired; the same
-# hue at full strength already reads bright on dark). Strava lock-exempt.
-need "$WEB_CSS" '\-\-warn-text:#F3AD38'   'web --warn-text = #F3AD38 (= Attention amber)'
-need "$WEB_CSS" '\-\-over-text:#FC4D64'   'web --over-text = #FC4D64 (= Warning red)'
-need "$WEB_CSS" '\-\-strava:#FC4C02'      'web --strava = #FC4C02 (Strava brand, lock-exempt)'
+# Web tokens — DISABLED (redesign 2026-08-18): web's palette is being fully
+# replaced; see the exemption note above. Re-enable once web's new palette
+# is locked and these hexes are updated to match it (or iPhone/watch adopt
+# web's new palette instead — that ruling hasn't happened yet).
+# need "$WEB_CSS" '\-\-race:#D03F3F'        'web --race = #D03F3F (Race/Tempo · Redish · orange retired, reads Strava)'
+# need "$WEB_CSS" '\-\-goal:#F3AD38'        'web --goal = #F3AD38 (Long)'
+# need "$WEB_CSS" '\-\-green:#3EBD41'       'web --green = #3EBD41 (Good state)'
+# need "$WEB_CSS" '\-\-over:#FC4D64'        'web --over = #FC4D64 (Off/warn)'
+# need "$WEB_CSS" '\-\-dist:#27B4E0'        'web --dist = #27B4E0 (Recovery)'
+# need "$WEB_CSS" '\-\-intervals:#FC4D64'   'web --intervals = #FC4D64 (Intervals · = Warning red, ceiling)'
+# need "$WEB_CSS" '\-\-watch:#F3AD38'       'web --watch = #F3AD38 (Watch attention)'
+# need "$WEB_CSS" '\-\-gold:#F0DF47'        'web --gold = #F0DF47 (PR gold · Light Yellow)'
+# need "$WEB_CSS" '\-\-eyebrow:#F3AD38'     'web --eyebrow = #F3AD38 (Eyebrow · = Attention amber)'
+# need "$WEB_CSS" '\-\-eff-easy:#3EBD41'    'web --eff-easy = #3EBD41 (Easy)'
+# need "$WEB_CSS" '\-\-eff-tempo:#D03F3F'   'web --eff-tempo = #D03F3F'
+# need "$WEB_CSS" '\-\-eff-intervals:#FC4D64' 'web --eff-intervals = #FC4D64'
+# need "$WEB_CSS" '\-\-eff-race:#D03F3F'    'web --eff-race = #D03F3F'
+# need "$WEB_CSS" '\-\-warn-text:#F3AD38'   'web --warn-text = #F3AD38 (= Attention amber)'
+# need "$WEB_CSS" '\-\-over-text:#FC4D64'   'web --over-text = #FC4D64 (= Warning red)'
+# need "$WEB_CSS" '\-\-strava:#FC4C02'      'web --strava = #FC4C02 (Strava brand, lock-exempt)'
 
-# Web effort dots (constants.ts)
-need "$WEB_CONST" "easy:.*dot: '#3EBD41'"      'web EFF.easy.dot = #3EBD41'
-need "$WEB_CONST" "tempo:.*dot: '#D03F3F'"     'web EFF.tempo.dot = #D03F3F'
-need "$WEB_CONST" "intervals:.*dot: '#FC4D64'" 'web EFF.intervals.dot = #FC4D64'
-need "$WEB_CONST" "race:.*dot: '#D03F3F'"      'web EFF.race.dot = #D03F3F'
-need "$WEB_CONST" "recovery:.*dot: '#27B4E0'"  'web EFF.recovery.dot = #27B4E0'
-need "$WEB_CONST" "long:.*dot: '#F3AD38'"      'web EFF.long.dot = #F3AD38'
+# Web effort dots (constants.ts) — DISABLED (redesign 2026-08-18), same reason.
+# need "$WEB_CONST" "easy:.*dot: '#3EBD41'"      'web EFF.easy.dot = #3EBD41'
+# need "$WEB_CONST" "tempo:.*dot: '#D03F3F'"     'web EFF.tempo.dot = #D03F3F'
+# need "$WEB_CONST" "intervals:.*dot: '#FC4D64'" 'web EFF.intervals.dot = #FC4D64'
+# need "$WEB_CONST" "race:.*dot: '#D03F3F'"      'web EFF.race.dot = #D03F3F'
+# need "$WEB_CONST" "recovery:.*dot: '#27B4E0'"  'web EFF.recovery.dot = #27B4E0'
+# need "$WEB_CONST" "long:.*dot: '#F3AD38'"      'web EFF.long.dot = #F3AD38'
 
 # iPhone tokens (Theme.swift)
 need "$IOS_THEME" 'green *= Color\(hex: 0x3EBD41\)'     'iOS Theme.green = #3EBD41'
@@ -97,20 +110,24 @@ need "$IOS_THEME" 'case \.race: *return Color\(hex: 0xD03F3F\)'      'iOS race d
 # variant values byte-synced web↔iPhone.
 need "$IOS_THEME" 'case \.ember: *return Color\(hex: 0xF3AD38\)' 'TweakAccent ember.goal = locked #F3AD38'
 need "$IOS_THEME" 'case \.ember: *return Color\(hex: 0xD03F3F\)' 'TweakAccent ember.race = locked #D03F3F'
-need "$WEB_CSS" 'data-accent="gold"\]\{--goal:#F0DF47;--race:#F0DF47;\}'   'web gold accent = iPhone gold (Light Yellow)'
-need "$WEB_CSS" 'data-accent="violet"\]\{--goal:#A78BFA;--race:#B794F4;\}' 'web violet accent = iPhone violet'
-need "$WEB_CSS" 'data-accent="cool"\]\{--goal:#27B4E0;--race:#3AA0E0;\}'   'web cool accent = iPhone cool'
+# Web accent assertions — DISABLED (redesign 2026-08-18): web↔iPhone accent
+# parity is moot while web's whole palette is being replaced.
+# need "$WEB_CSS" 'data-accent="gold"\]\{--goal:#F0DF47;--race:#F0DF47;\}'   'web gold accent = iPhone gold (Light Yellow)'
+# need "$WEB_CSS" 'data-accent="violet"\]\{--goal:#A78BFA;--race:#B794F4;\}' 'web violet accent = iPhone violet'
+# need "$WEB_CSS" 'data-accent="cool"\]\{--goal:#27B4E0;--race:#3AA0E0;\}'   'web cool accent = iPhone cool'
 need "$IOS_THEME" 'case \.gold: *return Color\(hex: 0xF0DF47\)' 'iPhone gold accent = #F0DF47 (Light Yellow)'
 need "$IOS_THEME" 'return Color\(hex: 0xB794F4\)' 'iPhone violet.race = #B794F4'
 need "$IOS_THEME" 'return Color\(hex: 0x3AA0E0\)' 'iPhone cool.race = #3AA0E0'
 
 # Phase-identity categorical group · ruled adopted 2026-06-09 · phase
 # visualizations only (web TrainView today).
-WEB_TRAIN="$ROOT/web-v2/components/faff-app/views/TrainView.tsx"
-need "$WEB_TRAIN" "return '#5BD8D2'" 'phase BASE = #5BD8D2'
-need "$WEB_TRAIN" "return '#FFCB47'" 'phase BUILD = #FFCB47'
-need "$WEB_TRAIN" "return '#FF7733'" 'phase PEAK = #FF7733'
-need "$WEB_TRAIN" "return '#56E0B0'" 'phase TAPER = #56E0B0'
+# DISABLED (redesign 2026-08-18): TrainView itself is in scope for the
+# redesign and its phase colors will change with everything else.
+# WEB_TRAIN="$ROOT/web-v2/components/faff-app/views/TrainView.tsx"
+# need "$WEB_TRAIN" "return '#5BD8D2'" 'phase BASE = #5BD8D2'
+# need "$WEB_TRAIN" "return '#FFCB47'" 'phase BUILD = #FFCB47'
+# need "$WEB_TRAIN" "return '#FF7733'" 'phase PEAK = #FF7733'
+# need "$WEB_TRAIN" "return '#56E0B0'" 'phase TAPER = #56E0B0'
 
 # Watch tokens
 need "$WATCH_THEME"   'green *= Color\(hex: 0x3EBD41\)'  'watch C.green = #3EBD41'
@@ -228,8 +245,12 @@ HIST_FILTER='deleted|retired|was |were |old |previously|killed|AFC fix|→|gstop
 # table comment. Everything else on the RETIRED list is banned outright.
 BRAND_SWEEP_EXEMPT='linear-gradient\( *95deg|// *55% +emerald'
 
+# web-v2 excluded (redesign 2026-08-18): a hex "retired" under the OLD web
+# palette is not a claim about the NEW one, and web is expected to introduce
+# hexes this tripwire would otherwise flag as resurrected. native-v2/legacy
+# paths unchanged — neither surface is being touched, so the tripwire still
+# does real work there.
 hits=$(grep -rinE "(#|0x)($RETIRED)|rgba?\( *($RETIRED_RGBA) *[,)]" \
-  "$ROOT/web-v2/app" "$ROOT/web-v2/components" "$ROOT/web-v2/lib" \
   "$ROOT/native-v2/Faff/Faff" \
   "$ROOT/legacy/native/Faff/FaffWatch Watch App" \
   --include='*.css' --include='*.ts' --include='*.tsx' --include='*.swift' \
@@ -287,22 +308,15 @@ fi
 # "restore the teal ladder" pass fails instead of quietly re-splitting the
 # surfaces. Zone 2 IS easy; the rung and the easy-effort green are one color
 # by design, not by accident.
-need "$WEB_CONST" "ZC = \['#27B4E0','#3EBD41'" 'ladder ZC Z2 = #3EBD41 (brief v2 ADDENDUM 3)'
-need "$ROOT/web-v2/components/faff-app/session-shape.ts" \
-  "2: '#3EBD41'" 'ladder session-shape ZONE_COLOR z2 = #3EBD41'
-# 2026-08-17 · the third rung assertion used to point at
-# web-v2/components/runs/RunDetailModal.tsx and its local ZONE_COLOR map.
-# That file was a closed-island orphan (its only importers were themselves
-# orphans; Shell mounts components/faff-app/overlays/RunDetailModal) and
-# the CIM sweep deleted it. The live modal has no ZONE_COLOR of its own —
-# it reads ZC straight from constants.ts, so the WEB_CONST assertion above
-# already covers the surface this line was guarding. Not replaced: there
-# is nothing left to drift.
+# Web ladder assertions — DISABLED (redesign 2026-08-18), same reason as
+# section 1. iOS keeps its own check below since it isn't changing.
+# need "$WEB_CONST" "ZC = \['#27B4E0','#3EBD41'" 'ladder ZC Z2 = #3EBD41 (brief v2 ADDENDUM 3)'
+# need "$ROOT/web-v2/components/faff-app/session-shape.ts" \
+#   "2: '#3EBD41'" 'ladder session-shape ZONE_COLOR z2 = #3EBD41'
 need "$IOS_THEME" 'z2 = Color\(hex: 0x3EBD41\)' \
-  'iPhone ladder z2 = #3EBD41 · byte-synced with web ZC[1]'
+  'iPhone ladder z2 = #3EBD41 (web comparison suspended, see redesign exemption above)'
 
 if [ "$fail" -eq 0 ]; then
-  echo "palette-sync OK · ten-color lock verified across web / iPhone / watch"
-  echo "                · Z2 ladder rung = #3EBD41 on web + iPhone"
+  echo "palette-sync OK · iPhone/watch ten-color lock verified (web exempted for redesign, see header)"
 fi
 exit $fail
