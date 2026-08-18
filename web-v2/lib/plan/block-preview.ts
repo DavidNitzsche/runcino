@@ -36,8 +36,14 @@ import {
   weekStartBoundaryOf,
   daysBetween,
   distanceCategoryOfPublic,
+  embedMidBlockRaces,
   type BlockPlan,
   type DistCategory,
+  type DayPlan,
+  type DOW,
+  type ComposedWeek,
+  type MidBlockRace,
+  type EmbeddedRaceSummary,
 } from './generate';
 import { addDays } from './core';
 
@@ -179,5 +185,243 @@ export function previewBlockShape(input: BlockShapePreviewInput): BlockShapePrev
     disclaimer: 'PROVISIONAL — phase shape only (how many weeks of BASE/QUALITY/RACE-SPECIFIC/TAPER). '
       + 'Volume, pace anchors and cutback cadence are NOT computed here and will differ from this '
       + 'preview once the real rebuild runs with actual post-recovery training data.',
+  };
+}
+
+/**
+ * previewMidBlockRacePlacement · 2026-08-18
+ *
+ * David's follow-up to the phase-shape preview above: which WEEK will his
+ * own upcoming tune-up races (Santa Monica 10K, Dodgers, Run Malibu — all
+ * dated B/C races ahead of CIM) land in once the real block is generated?
+ * `embedMidBlockRaces()` in generate.ts already answers this — it's the
+ * function composePlan calls, inside composePlan, right after the week
+ * skeleton is laid out (generate.ts ~3818-3827) — so this calls THAT
+ * function rather than re-deriving any of its placement/mini-taper/
+ * frequency-cap logic. Same anti-drift posture as `previewBlockShape`
+ * calling the real `sizeBlocks`.
+ *
+ * THE SKELETON PROBLEM (read this before trusting the day-level output).
+ * `embedMidBlockRaces(weeks, vols, opts)` takes a full `ComposedWeek[]` —
+ * every day already typed easy/long/quality/rest with a real distanceMi —
+ * not just phase week-counts. That skeleton is normally built by
+ * `layoutWeek()` (generate.ts, private, called once per week inside
+ * composePlan ~3701-3800), which needs `vols[wi]` (the ramped weekly
+ * mileage from `volumeCurve`), `rx` (workout-library prescriptions),
+ * `tierTarget`, and the overload `trajectory` — every one of those is
+ * sized off exactly the rolling fitness data (tsbAtStart, 28-day volume/
+ * quality) that `previewBlockShape`'s own header explains isn't available
+ * yet during a recovery window. Calling the real `layoutWeek` here would
+ * mean fabricating fitness numbers to feed it — worse than not previewing
+ * at all.
+ *
+ * So this builds a SYNTHETIC placeholder skeleton instead — one week
+ * template repeated across the block, days typed easy/long/quality/rest
+ * from the runner's PREFERENCES only (long_run_day / rest_day /
+ * quality_days / weekly_frequency — read once by the caller, same as
+ * `weekStartDow` above), with round placeholder distances. Preferences are
+ * genuinely data-independent (no rolling fitness read), so WHICH DAY OF
+ * WEEK is long/quality/rest is real; the distances on each day are not,
+ * and neither is the recent-quality-habit ramp `densityForWeek` in
+ * generate.ts would otherwise apply (that ramp reads 28-day quality
+ * history — the same reason `isMidBlock` above defaults to false).
+ *
+ * WHAT THIS MEANS FOR THE OUTPUT:
+ *   - `weekIdx` on each returned race is REAL. It falls straight out of
+ *     `daysBetween(startMondayISO, race.date) / 7` inside the real
+ *     `embedMidBlockRaces` — pure calendar arithmetic against the same
+ *     `blockStartISO`/`weekStartDow` `previewBlockShape` already computes.
+ *     A race's week does not depend on the skeleton at all.
+ *   - Which EXACT day inside that week gets the mini-taper / shakeout /
+ *     post-race-easy treatment, and what a displaced quality session
+ *     becomes, DOES depend on the skeleton — `embedMidBlockRaces` reads
+ *     and mutates `slot.isLong`/`slot.isQuality`/`slot.distanceMi` on
+ *     whichever day was already prescribed as what. Once the real rebuild
+ *     runs with real volumes and real quality density, the same race could
+ *     land its mini-taper on a different day than this preview shows (the
+ *     WEEK will still match).
+ */
+
+export type MidBlockRacePlacementInput = BlockShapePreviewInput & {
+  /**
+   * Target date of the plan's own race — same value as `raceDateISO`
+   * above. Kept as a distinct field (rather than reusing `raceDateISO`
+   * silently) because `embedMidBlockRaces` takes `raceDateISO` as an opt
+   * that excludes any candidate race on/after it — spelling it out here
+   * mirrors that opt's own name so the exclusion rule is visible at the
+   * call site, not just in `BlockShapePreviewInput`.
+   */
+  raceDateISO: string;
+  /**
+   * Candidate B/C races that MIGHT land inside this block. The route
+   * builds this from `loadRacesState()` — every upcoming B/C race other
+   * than the target itself, distance-capped at the target's own distance
+   * (a race longer than the target isn't a tune-up; mirrors generate.ts's
+   * own `midBlockRaceRows` filter at ~6008-6010). Deliberately NOT further
+   * filtered by date here: the exact "does this fall inside the block, and
+   * is it before the target race" predicate lives inside the real
+   * `embedMidBlockRaces` (`race.date >= opts.raceDateISO` excluded; offset
+   * outside `[0, totalDays)` excluded) — passing every plausible candidate
+   * and letting the real function decide is what keeps this preview from
+   * drifting out of step with it.
+   */
+  midBlockRaces: MidBlockRace[];
+  /**
+   * Runner's rest day (0=Sun..6=Sat). Default 6 (Saturday) — generate.ts's
+   * own default (`loadGeneratorInputs`: `prefs?.rest_day ?? 'sat'`).
+   */
+  restDow?: number;
+  /**
+   * Runner's quality days (0=Sun..6=Sat). Default [2, 4] (Tue/Thu) —
+   * generate.ts's own default (`prefs?.quality_days ?? ['tue','thu']`).
+   * NOT sliced down by the recent-quality-habit ramp (`densityForWeek`)
+   * or by `available_days` — both read rolling data/settings this preview
+   * doesn't take on, so every week gets the runner's full stated quality
+   * density. Sourcing is reported on the result the same way `isMidBlock`
+   * is above.
+   */
+  qualityDows?: number[];
+  /**
+   * Runner's stated training days/week (profile.weekly_frequency). Passed
+   * straight through to the real `embedMidBlockRaces`'s own frequency-cap
+   * trim (a race landing on a former rest day adds a running day; the cap
+   * trims an easy day back to rest to hold the runner's stated frequency).
+   * null preserves the legacy fill-every-slot behavior, same as the real
+   * generator's own null case (David / pre-frequency profiles).
+   */
+  trainingDaysPerWeek?: number | null;
+};
+
+export interface MidBlockRacePlacementPreview extends BlockShapePreview {
+  /**
+   * The real `embedMidBlockRaces`'s own return value, passed through
+   * unreshaped — one entry per candidate race that actually landed inside
+   * the previewed block (a race outside the block's date range, on/after
+   * the target race, or inside the block's own final race week is silently
+   * dropped by the real function, exactly as it would be at generation
+   * time).
+   */
+  embeddedRaces: EmbeddedRaceSummary[];
+  /** Sourcing of the day-of-week inputs used to build the placeholder skeleton. */
+  skeletonAssumptions: {
+    restDow: { value: number; sourced: 'explicit' | 'default' };
+    qualityDows: { value: number[]; sourced: 'explicit' | 'default' };
+    trainingDaysPerWeek: { value: number | null; sourced: 'explicit' | 'default' };
+  };
+  /** See the file-level doc comment above `previewMidBlockRacePlacement` for the full explanation. */
+  skeletonDisclaimer: string;
+}
+
+const DEFAULT_REST_DOW = 6;               // Saturday — generate.ts's own default.
+const DEFAULT_QUALITY_DOWS: DOW[] = [2, 4]; // Tue/Thu — generate.ts's own default.
+/** Round, structurally-plausible placeholder distances. Never meant to be
+ *  read as a real prescription — embedMidBlockRaces only ever compares them
+ *  (`> 0`, `Math.min(d.distanceMi, N)` caps), never presents them as the
+ *  session's actual dose, so any consistent nonzero set works. */
+const PLACEHOLDER_LONG_MI = 12;
+const PLACEHOLDER_QUALITY_MI = 8;
+const PLACEHOLDER_EASY_MI = 5;
+
+/**
+ * One repeating week template — long/rest/quality days placed purely from
+ * prefs, everything else easy — expanded across the whole block. Exported
+ * for direct testing (drift guard against embedMidBlockRaces below).
+ */
+export function buildPlaceholderWeekSkeleton(opts: {
+  blockStartISO: string;
+  weekStartDow: number;
+  longRunDow: number;
+  restDow: number;
+  qualityDows: number[];
+  totalWeeksForBlock: number;
+  phases: BlockPlan['phases'];
+}): { weeks: ComposedWeek[]; vols: number[] } {
+  // Expand sizeBlocks' phase week-counts into one label per week index, so
+  // the placeholder weeks at least carry the real phase name even though
+  // their day-level contents are synthetic.
+  const phaseLabels: string[] = [];
+  for (const p of opts.phases) for (let i = 0; i < p.weeks; i++) phaseLabels.push(p.label);
+
+  const weeks: ComposedWeek[] = [];
+  const vols: number[] = [];
+  for (let wi = 0; wi < opts.totalWeeksForBlock; wi++) {
+    const startISO = addDays(opts.blockStartISO, wi * 7);
+    const isRaceWeek = wi === opts.totalWeeksForBlock - 1;
+    const days: DayPlan[] = [];
+    for (let j = 0; j < 7; j++) {
+      const dow = ((opts.weekStartDow + j) % 7) as DOW;
+      if (dow === opts.longRunDow) {
+        days.push({ dow, type: 'long', distanceMi: PLACEHOLDER_LONG_MI, isQuality: false, isLong: true, subLabel: null, notes: '' });
+      } else if (dow === opts.restDow) {
+        days.push({ dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: '' });
+      } else if (opts.qualityDows.includes(dow)) {
+        days.push({ dow, type: 'threshold', distanceMi: PLACEHOLDER_QUALITY_MI, isQuality: true, isLong: false, subLabel: null, notes: '' });
+      } else {
+        days.push({ dow, type: 'easy', distanceMi: PLACEHOLDER_EASY_MI, isQuality: false, isLong: false, subLabel: null, notes: '' });
+      }
+    }
+    const weeklyMi = Math.round(days.reduce((s, d) => s + d.distanceMi, 0) * 10) / 10;
+    weeks.push({
+      startISO,
+      phase: phaseLabels[wi] ?? phaseLabels[phaseLabels.length - 1] ?? 'BASE',
+      weeklyMi,
+      days,
+      isRaceWeek,
+      tPaceSec: null,
+      isCutback: false,
+    });
+    vols.push(weeklyMi);
+  }
+  return { weeks, vols };
+}
+
+export function previewMidBlockRacePlacement(input: MidBlockRacePlacementInput): MidBlockRacePlacementPreview {
+  const shape = previewBlockShape(input);
+  const weekStartDow = input.weekStartDow ?? DEFAULT_WEEK_START_DOW;
+  // Same relationship previewBlockShape's own header documents:
+  // weekStartDow = (longRunDow + 1) % 7.
+  const longRunDow = ((weekStartDow + 6) % 7) as DOW;
+
+  const restDowSourced = input.restDow !== undefined;
+  const restDow = input.restDow ?? DEFAULT_REST_DOW;
+  const qualityDowsSourced = input.qualityDows !== undefined;
+  const qualityDows = input.qualityDows?.length ? input.qualityDows : DEFAULT_QUALITY_DOWS;
+  const trainingDaysPerWeekSourced = input.trainingDaysPerWeek !== undefined;
+  const trainingDaysPerWeek = input.trainingDaysPerWeek ?? null;
+
+  const { weeks, vols } = buildPlaceholderWeekSkeleton({
+    blockStartISO: shape.blockStartISO,
+    weekStartDow,
+    longRunDow,
+    restDow,
+    qualityDows,
+    totalWeeksForBlock: shape.totalWeeksForBlock,
+    phases: shape.phases,
+  });
+
+  // The real function itself — not reimplemented. It reads/mutates `weeks`
+  // (and syncs `vols`) in place and returns the placement summary.
+  const embeddedRaces = embedMidBlockRaces(weeks, vols, {
+    startMondayISO: shape.blockStartISO,
+    raceDateISO: input.raceDateISO,
+    midBlockRaces: input.midBlockRaces,
+    trainingDaysPerWeek,
+  });
+
+  return {
+    ...shape,
+    embeddedRaces,
+    skeletonAssumptions: {
+      restDow: { value: restDow, sourced: restDowSourced ? 'explicit' : 'default' },
+      qualityDows: { value: qualityDows, sourced: qualityDowsSourced ? 'explicit' : 'default' },
+      trainingDaysPerWeek: { value: trainingDaysPerWeek, sourced: trainingDaysPerWeekSourced ? 'explicit' : 'default' },
+    },
+    skeletonDisclaimer: 'PROVISIONAL, one level deeper than the phase shape above. Which WEEK each race '
+      + 'lands in is real date arithmetic against the same block start this preview already computes. '
+      + 'Which EXACT day inside that week becomes the mini-taper/shakeout/recovery-easy day, and what a '
+      + 'displaced quality session turns into, was computed against a SYNTHETIC placeholder week (long/'
+      + 'quality/rest days placed from the runner\'s own preferences, but with round placeholder distances '
+      + 'and no recent-quality-habit ramp) — not the real prescribed week the actual rebuild will build. '
+      + 'Expect the week to match and the day-level detail to shift once the real rebuild runs.',
   };
 }

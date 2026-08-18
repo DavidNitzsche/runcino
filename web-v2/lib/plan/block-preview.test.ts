@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { previewBlockShape } from './block-preview';
-import { sizeBlocks } from './generate';
-import { addDays } from './core';
+import {
+  previewBlockShape,
+  previewMidBlockRacePlacement,
+  buildPlaceholderWeekSkeleton,
+  type MidBlockRacePlacementInput,
+} from './block-preview';
+import { sizeBlocks, embedMidBlockRaces, type MidBlockRace } from './generate';
+import { addDays, daysBetween } from './core';
 
 const MARATHON_MI = 26.2;
 // 2026-08-17 is a Monday — weekStartDow=1 (the default) is then a no-op,
@@ -133,5 +138,154 @@ describe('previewBlockShape', () => {
     });
     expect(result.distanceCategory).toBe('hm');
     expect(result.phases.find((p) => p.label === 'TAPER')?.weeks).toBe(2); // HM taper per BLOCK_SHAPE
+  });
+});
+
+describe('previewMidBlockRacePlacement', () => {
+  // 20-week no-recovery marathon block starting MONDAY, so blockStartISO ===
+  // MONDAY and weekIdx = floor(daysBetween(MONDAY, race.date) / 7) is easy
+  // to hand-verify.
+  const raceDateISO = addDays(MONDAY, 19 * 7);
+  const baseInput: MidBlockRacePlacementInput = {
+    todayISO: MONDAY,
+    raceDateISO,
+    raceDistanceMi: MARATHON_MI,
+    midBlockRaces: [],
+  };
+
+  it('a B race that falls inside the block is placed in the correct week', () => {
+    // 5 full weeks after block start → weekIdx 5 (0-indexed).
+    const raceDate = addDays(MONDAY, 5 * 7 + 3); // Thursday of week index 5
+    const tuneUp: MidBlockRace = {
+      slug: 'santa-monica-10k', name: 'Santa Monica 10K', date: raceDate,
+      distanceMi: 6.2, goalPaceSec: null, priority: 'B',
+    };
+    const result = previewMidBlockRacePlacement({ ...baseInput, midBlockRaces: [tuneUp] });
+
+    expect(result.embeddedRaces).toHaveLength(1);
+    expect(result.embeddedRaces[0].slug).toBe('santa-monica-10k');
+    expect(result.embeddedRaces[0].weekIdx).toBe(5);
+    expect(result.embeddedRaces[0].priority).toBe('B');
+    expect(result.embeddedRaces[0].distanceMi).toBe(6.2);
+  });
+
+  it('a C race that falls inside the block is placed in the correct week', () => {
+    const raceDate = addDays(MONDAY, 9 * 7 + 1); // week index 9
+    const tuneUp: MidBlockRace = {
+      slug: 'dodgers-5k', name: 'Dodgers 5K', date: raceDate,
+      distanceMi: 3.1, goalPaceSec: null, priority: 'C',
+    };
+    const result = previewMidBlockRacePlacement({ ...baseInput, midBlockRaces: [tuneUp] });
+
+    expect(result.embeddedRaces).toHaveLength(1);
+    expect(result.embeddedRaces[0].weekIdx).toBe(9);
+    expect(result.embeddedRaces[0].priority).toBe('C');
+  });
+
+  it('a race ON the target race date is excluded (mirrors embedMidBlockRaces\' own race.date >= raceDateISO check)', () => {
+    const onTargetDate: MidBlockRace = {
+      slug: 'same-day', name: 'Same Day', date: raceDateISO,
+      distanceMi: 6.2, goalPaceSec: null, priority: 'B',
+    };
+    const result = previewMidBlockRacePlacement({ ...baseInput, midBlockRaces: [onTargetDate] });
+    expect(result.embeddedRaces).toHaveLength(0);
+  });
+
+  it('a race AFTER the target race date is excluded', () => {
+    const afterTarget: MidBlockRace = {
+      slug: 'after', name: 'After Target', date: addDays(raceDateISO, 7),
+      distanceMi: 6.2, goalPaceSec: null, priority: 'C',
+    };
+    const result = previewMidBlockRacePlacement({ ...baseInput, midBlockRaces: [afterTarget] });
+    expect(result.embeddedRaces).toHaveLength(0);
+  });
+
+  it('a race BEFORE the block window (still inside an active recovery period) is excluded', () => {
+    // Recovery runs 3 weeks; block starts 3 weeks from MONDAY. A candidate
+    // race dated inside the recovery window (before blockStartISO) falls
+    // outside embedMidBlockRaces' own [0, totalDays) offset window.
+    const recoveryEndISO = addDays(MONDAY, 2 * 7 + 6);
+    const raceInRecovery: MidBlockRace = {
+      slug: 'during-recovery', name: 'During Recovery', date: addDays(MONDAY, 5),
+      distanceMi: 6.2, goalPaceSec: null, priority: 'C',
+    };
+    const result = previewMidBlockRacePlacement({
+      ...baseInput, recoveryEndISO, midBlockRaces: [raceInRecovery],
+    });
+    expect(result.embeddedRaces).toHaveLength(0);
+  });
+
+  it('reports weekIdx purely from calendar arithmetic against blockStartISO, independent of the placeholder skeleton', () => {
+    const raceDate = addDays(MONDAY, 12 * 7 + 2);
+    const tuneUp: MidBlockRace = {
+      slug: 'run-malibu-half', name: 'Run Malibu Half', date: raceDate,
+      distanceMi: 13.1, goalPaceSec: null, priority: 'B',
+    };
+    const result = previewMidBlockRacePlacement({ ...baseInput, midBlockRaces: [tuneUp] });
+    const expectedWeekIdx = Math.floor(daysBetween(result.blockStartISO, raceDate) / 7);
+    expect(result.embeddedRaces[0].weekIdx).toBe(expectedWeekIdx);
+    expect(expectedWeekIdx).toBe(12);
+  });
+
+  // Anti-drift regression: previewMidBlockRacePlacement must produce EXACTLY
+  // what a direct call to the real embedMidBlockRaces produces against the
+  // same placeholder skeleton — computed here via an INDEPENDENT direct call
+  // to buildPlaceholderWeekSkeleton + embedMidBlockRaces, not by reusing
+  // previewMidBlockRacePlacement's internals. If a future edit ever
+  // reimplements any part of embedMidBlockRaces' placement/mini-taper/
+  // frequency-cap logic inside block-preview.ts instead of calling the real
+  // function, this test is the one that catches the divergence.
+  it('agrees byte-for-byte with a direct buildPlaceholderWeekSkeleton + embedMidBlockRaces call (no-drift guard)', () => {
+    const races: MidBlockRace[] = [
+      { slug: 'santa-monica-10k', name: 'Santa Monica 10K', date: addDays(MONDAY, 4 * 7 + 6), distanceMi: 6.2, goalPaceSec: null, priority: 'B' },
+      { slug: 'dodgers', name: 'Dodgers', date: addDays(MONDAY, 5 * 7 + 5), distanceMi: 3.1, goalPaceSec: null, priority: 'C' },
+      { slug: 'run-malibu-half', name: 'Run Malibu Half', date: addDays(MONDAY, 12 * 7 + 6), distanceMi: 13.1, goalPaceSec: 480, priority: 'B' },
+    ];
+    const input: MidBlockRacePlacementInput = { ...baseInput, midBlockRaces: races };
+    const preview = previewMidBlockRacePlacement(input);
+
+    const shape = previewBlockShape(input);
+    const weekStartDow = 1; // DEFAULT_WEEK_START_DOW (Monday) — same default previewBlockShape used above
+    const longRunDow = (weekStartDow + 6) % 7;
+    const { weeks, vols } = buildPlaceholderWeekSkeleton({
+      blockStartISO: shape.blockStartISO,
+      weekStartDow,
+      longRunDow,
+      restDow: 6,
+      qualityDows: [2, 4],
+      totalWeeksForBlock: shape.totalWeeksForBlock,
+      phases: shape.phases,
+    });
+    const direct = embedMidBlockRaces(weeks, vols, {
+      startMondayISO: shape.blockStartISO,
+      raceDateISO: input.raceDateISO,
+      midBlockRaces: races,
+      trainingDaysPerWeek: null,
+    });
+
+    expect(preview.embeddedRaces).toEqual(direct);
+  });
+
+  it('honors explicit restDow/qualityDows/trainingDaysPerWeek and marks them explicit', () => {
+    const result = previewMidBlockRacePlacement({
+      ...baseInput, restDow: 0, qualityDows: [1, 3, 5], trainingDaysPerWeek: 5,
+    });
+    expect(result.skeletonAssumptions.restDow).toEqual({ value: 0, sourced: 'explicit' });
+    expect(result.skeletonAssumptions.qualityDows).toEqual({ value: [1, 3, 5], sourced: 'explicit' });
+    expect(result.skeletonAssumptions.trainingDaysPerWeek).toEqual({ value: 5, sourced: 'explicit' });
+  });
+
+  it('defaults restDow/qualityDows/trainingDaysPerWeek and marks them default', () => {
+    const result = previewMidBlockRacePlacement(baseInput);
+    expect(result.skeletonAssumptions.restDow).toEqual({ value: 6, sourced: 'default' });
+    expect(result.skeletonAssumptions.qualityDows).toEqual({ value: [2, 4], sourced: 'default' });
+    expect(result.skeletonAssumptions.trainingDaysPerWeek).toEqual({ value: null, sourced: 'default' });
+  });
+
+  it('still returns the underlying phase-shape preview fields (extends previewBlockShape)', () => {
+    const result = previewMidBlockRacePlacement(baseInput);
+    expect(result.provisional).toBe(true);
+    expect(result.totalWeeksForBlock).toBe(20);
+    expect(result.phases.reduce((s, p) => s + p.weeks, 0)).toBe(result.totalWeeksForBlock);
   });
 });
