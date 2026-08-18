@@ -16,6 +16,19 @@
  * cron scheduler is the one that enforces the rate-limit when the per-week
  * race-countdown also lands; if both fire we accept the v1 minor double-up
  * (deferred to v1.1+).
+ *
+ * DISABLED — the only call site (app/api/ingest/workout/route.ts) has been
+ * commented out since 2026-06-03 on David's call: consecutive-day volume
+ * isn't something to glorify, and undermines rest doctrine. See that file
+ * for the exact quote. This independently matches Design/execution-memory-
+ * firing.md Part 3 ("positive messages need the same threshold" — a bare
+ * day-counter is not evidence anything changed about the athlete's fitness
+ * or training capacity, so it can't clear the meaningfulPositive bar
+ * either). If this is ever re-enabled as an opt-in setting, it must fire
+ * through lib/coach/firing-policy.ts's classifyFinding with an actual
+ * meaningfulPositive justification (e.g. first time at this consistency
+ * after a layoff, a genuine load-ceiling crossing) — not unconditionally
+ * on every Nth day, which is what this file does today.
  */
 
 import { pool } from '@/lib/db/pool';
