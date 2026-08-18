@@ -485,27 +485,35 @@ export function runMovingSecSql(alias = ''): string {
 }
 
 /**
- * FINISH seconds as the VDOT path defines it — `durationSec` FIRST, then
- * `movingTimeS`, `movingSec`, `elapsedTimeS`.
+ * FINISH seconds for the VDOT path — moving time first, `elapsedTimeS` as the
+ * last resort.
  *
- * Deliberately kept separate from `runMovingSecSql` rather than unified,
- * because the two orders genuinely disagree and unifying them would change
- * what the app computes. Matches `lib/training/vdot-inputs.ts`.
+ * 2026-08-17 · REORDERED. This ladder used to put `durationSec` first, which
+ * includes paused time. A fitness estimate derived from a training run is a
+ * PACE reading, and pace is distance over the time spent *running* — standing
+ * at a light is not running. Preferring the paused clock therefore made every
+ * watch-recorded run read slower than the runner ran, and under-read their
+ * fitness in exactly the direction that then prescribes them slower work.
  *
- * ⚠ On watch-era rows this resolves to `durationSec`, which is LARGER than
- * moving time (avg +77s, max +561s over the 29 rows carrying both). A larger
- * finish time reads as a SLOWER runner, so this ladder systematically
- * under-reads fitness on watch rows. That is existing behaviour, preserved
- * here on purpose and reported rather than silently corrected — see the
- * migration report. If it is ever fixed, fix it here and the whole VDOT path
- * moves together.
+ * It was not a rounding error. Across the rows carrying both keys the gap
+ * averages 52s and reaches 561s; one 5.97-mile threshold session carried 305
+ * seconds of pauses, so it entered the VDOT path as 7:46/mi when it was run at
+ * 6:55/mi, and anchored at VDOT 43.6.
+ *
+ * Races are unaffected: they read `races.actual_result.finishS`, or the Strava
+ * match, which already prefers moving time. This ladder only ever fed
+ * TRAINING-run candidates.
+ *
+ * Still distinct from `runMovingSecSql`, which has no `elapsedTimeS` rung — a
+ * finish time may fall back to wall-clock when nothing better exists, whereas
+ * a moving-time reader should return null rather than answer with elapsed.
  */
 export function runFinishSecSql(alias = ''): string {
   const d = col(alias);
-  return `COALESCE((${d}->>'durationSec')::numeric, ` +
-         `(${d}->>'movingTimeS')::numeric, ` +
-         `(${d}->>'movingSec')::numeric, ` +
-         `(${d}->>'elapsedTimeS')::numeric)`;
+  return `COALESCE(NULLIF(${d}->>'movingTimeS','')::numeric, ` +
+         `NULLIF(${d}->>'movingSec','')::numeric, ` +
+         `NULLIF(${d}->>'durationSec','')::numeric, ` +
+         `NULLIF(${d}->>'elapsedTimeS','')::numeric)`;
 }
 
 /** Elapsed (wall-clock) seconds. Strava-era key; null on HealthKit rows. */

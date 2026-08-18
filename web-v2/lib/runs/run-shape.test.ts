@@ -47,10 +47,15 @@ describe('SQL fragments · byte-equivalent to the expressions they replaced', ()
     expect(runDistanceMiSql('r')).toBe("(r.data->>'distanceMi')::numeric");
   });
 
-  it('runFinishSecSql matches the ladder in lib/training/vdot-inputs.ts', () => {
+  it('runFinishSecSql prefers MOVING time — a paused clock is not a pace', () => {
+    // 2026-08-17 · reordered. This used to put durationSec first, which
+    // includes paused time, so every watch-recorded training run entered the
+    // VDOT path slower than it was run. One 5.97-mile threshold session
+    // carried 305s of pauses and anchored at VDOT 43.6 having been run at
+    // ~6:55/mi. Races are unaffected — they never used this ladder.
     expect(runFinishSecSql('sa')).toBe(
-      "COALESCE((sa.data->>'durationSec')::numeric, (sa.data->>'movingTimeS')::numeric, " +
-      "(sa.data->>'movingSec')::numeric, (sa.data->>'elapsedTimeS')::numeric)",
+      "COALESCE(NULLIF(sa.data->>'movingTimeS','')::numeric, NULLIF(sa.data->>'movingSec','')::numeric, " +
+      "NULLIF(sa.data->>'durationSec','')::numeric, NULLIF(sa.data->>'elapsedTimeS','')::numeric)",
     );
   });
 
@@ -61,15 +66,16 @@ describe('SQL fragments · byte-equivalent to the expressions they replaced', ()
     );
   });
 
-  it('the two duration ladders are DELIBERATELY different', () => {
-    // Not a tidy-up target. On the 29 rows carrying both movingTimeS and
-    // durationSec the two disagree by up to 561s, because durationSec includes
-    // paused time. Unifying them would change what the app computes.
-    expect(runMovingSecSql('r')).not.toBe(runFinishSecSql('r'));
-    expect(runMovingSecSql('r').indexOf('movingTimeS'))
-      .toBeLessThan(runMovingSecSql('r').indexOf('durationSec'));
-    expect(runFinishSecSql('r').indexOf('durationSec'))
-      .toBeLessThan(runFinishSecSql('r').indexOf('movingTimeS'));
+  it('both ladders now prefer moving time, and neither may regress', () => {
+    // They agree on the ordering that matters and differ only in that finish
+    // has an elapsedTimeS rung of last resort: a finish time may fall back to
+    // wall-clock when nothing better exists, whereas a moving-time reader
+    // should return null rather than answer with elapsed.
+    for (const sql of [runMovingSecSql('r'), runFinishSecSql('r')]) {
+      expect(sql.indexOf('movingTimeS')).toBeLessThan(sql.indexOf('durationSec'));
+    }
+    expect(runFinishSecSql('r')).toContain('elapsedTimeS');
+    expect(runMovingSecSql('r')).not.toContain('elapsedTimeS');
   });
 
   it('HR and elevation fragments match their call sites', () => {
