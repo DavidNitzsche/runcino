@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import type { FaffSeed } from '@/components/faff-app/types';
 import type { EffortKey, PhaseKey } from '@/components/faff-app/constants';
 import { phaseFocus } from '@/lib/faff/phase-focus';
@@ -248,14 +249,21 @@ type WeekRowData = {
   longMi: number;
 };
 
-function WeekRow({ w, last, maxMi }: { w: WeekRowData; last: boolean; maxMi: number }) {
+/** `weekIdx` is the real 0-based index into seed.season.miles / weekDays —
+ *  the same index this row's own data was built from (WeeksTable /
+ *  BetweenBlocksWeeksTable's `Array.from({length: ...}, (_, i) => ...)`,
+ *  so `i` already IS the week index, not just an array position). Links to
+ *  the Week Detail screen (app/redesign/block/week/[idx]), which validates
+ *  the same range this table renders — see WeekDetailClient's file doc. */
+function WeekRow({ w, last, maxMi, weekIdx }: { w: WeekRowData; last: boolean; maxMi: number; weekIdx: number }) {
   const isNow = w.flag === 'Now';
   return (
-    <div style={{
+    <Link href={`/redesign/block/week/${weekIdx}`} style={{
       display: 'grid', gridTemplateColumns: '104px 128px minmax(0,1fr) 160px 88px',
       gap: 'var(--sp-8)', alignItems: 'center', padding: 'var(--sp-6) var(--sp-8)',
       boxShadow: last ? 'none' : 'inset 0 -1px 0 var(--rule-light)',
       background: isNow ? 'var(--material-tile-raised)' : 'transparent',
+      textDecoration: 'none', color: 'inherit',
     }}>
       <span className="faff-value" style={{ fontSize: 'var(--type-value-4)', color: isNow ? 'var(--state-quality-ink)' : 'var(--text-primary)' }}>{w.week}</span>
       <span style={{
@@ -278,7 +286,7 @@ function WeekRow({ w, last, maxMi }: { w: WeekRowData; last: boolean; maxMi: num
           letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', marginLeft: 5, color: 'var(--text-quiet)',
         }}>mi</span>
       </span>
-    </div>
+    </Link>
   );
 }
 
@@ -532,7 +540,7 @@ function WeeksTable({ raceIdx, maxMi, nowIdx, peakIdx, cutbackSet, miles, weekDa
         }}>
           <span>Week</span><span>Phase</span><span>Volume &middot; 0 &mdash; {maxMi} mi</span><span>Shape</span><span style={{ textAlign: 'right' }}>Planned</span>
         </div>
-        {rows.map((w, i) => <WeekRow key={w.week} w={w} last={i === rows.length - 1} maxMi={maxMi} />)}
+        {rows.map((w, i) => <WeekRow key={w.week} w={w} last={i === rows.length - 1} maxMi={maxMi} weekIdx={i} />)}
       </Tile>
     </div>
   );
@@ -669,7 +677,7 @@ function BetweenBlocksWeeksTable({ raceIdx, maxMi, nowIdx, miles, weekDays }: {
         }}>
           <span>Week</span><span>Phase</span><span>Volume &middot; 0 &mdash; {maxMi} mi</span><span>Shape</span><span style={{ textAlign: 'right' }}>Planned</span>
         </div>
-        {rows.map((w, i) => <WeekRow key={w.week} w={w} last={i === rows.length - 1} maxMi={maxMi} />)}
+        {rows.map((w, i) => <WeekRow key={w.week} w={w} last={i === rows.length - 1} maxMi={maxMi} weekIdx={i} />)}
       </Tile>
     </div>
   );
