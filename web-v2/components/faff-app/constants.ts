@@ -157,7 +157,7 @@ export type PlannedDay = {
     originalDateIso: string | null;
     reason: string | null;
     adaptedAt: string | null;
-    kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
+    kind: import('@/lib/coach/adaptation-info').AdaptationKind | null;
   } | null;
   /** 2026-06-01 · backend-owned cadence prescription for this workout.
    *  Replaces the frontend's invented "relaxed" / "drive turnover"

@@ -160,7 +160,7 @@ export type FaffSeed = {
         originalDateIso: string | null;
         reason: string | null;
         adaptedAt: string | null;
-        kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
+        kind: import('@/lib/coach/adaptation-info').AdaptationKind | null;
       } | null;
       /** 2026-06-01 · web agent brief · training-trajectory signal per
        *  done quality/long workout. "Did this workout move my fitness

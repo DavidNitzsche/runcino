@@ -98,7 +98,7 @@ export interface PlanAdaptationContext {
   originalSubLabel: string | null;
   originalDistanceMi: number | null;
   reason: string | null;
-  kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
+  kind: import('@/lib/coach/adaptation-info').AdaptationKind | null;
 }
 
 interface BuildArgs {

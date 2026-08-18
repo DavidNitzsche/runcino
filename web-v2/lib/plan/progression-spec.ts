@@ -60,6 +60,50 @@ export interface ProgressionSpec {
   zone: ChallengeZone;
   /** Null on a seed week, a deload, or a week where every lever was capped. */
   lever: ProgressionLever | null;
+  /**
+   * The CALENDAR's proposal for this session, when the gate prescribed
+   * something else. Absent whenever the two agree, so an untouched row is
+   * byte-identical to what authoring wrote.
+   *
+   * ## Why the row has to remember both
+   *
+   * Doctrine §3 has the calendar propose and the evidence permit. Once the
+   * evidence declines a step, the two diverge, and the next cycle needs BOTH
+   * numbers: the prescribed shape to hold or step from, and the authored shape
+   * to recognise that a divergence exists at all. Keeping only the prescribed
+   * one loses the plan; keeping only the authored one loses the hold — and the
+   * ladder would resume from where the calendar had got to rather than from
+   * where the runner paused, which is the whole behaviour the gate exists for.
+   */
+  authored?: AuthoredProgression | null;
+  /** What the gate did to this row, for the audit trail and the week view.
+   *  Absent until the gate has actually changed something. */
+  gate?: GateStamp | null;
+}
+
+/** The calendar's own step, kept beside the prescribed one. Carries its own
+ *  lever because that is the knob the ladder resumes on. */
+export interface AuthoredProgression {
+  reps: number;
+  rep_minutes: number;
+  recovery_minutes: number;
+  pace_s_per_mi: number;
+  zone: ChallengeZone;
+  lever: ProgressionLever | null;
+}
+
+export interface GateStamp {
+  /**
+   * `ProgressionAction`. TAKE is included, and not redundantly: a step taken
+   * after a pause REWRITES the row, because the ladder resumes one rung above
+   * where the runner stopped rather than wherever the calendar had climbed to.
+   * That is a gate decision and it belongs in the audit trail.
+   */
+  action: 'ACCELERATE' | 'TAKE' | 'HOLD' | 'BACK_OFF';
+  /** The adaptation band behind the decision. */
+  band: 'strong' | 'normal' | 'marginal' | 'poor';
+  /** ISO timestamp, so a stale stamp is recognisable as stale. */
+  at: string;
 }
 
 const ZONES: ChallengeZone[] = ['ESTABLISHED', 'PROGRESSIVE', 'PROBE'];
@@ -85,10 +129,19 @@ export function progressionSpecFields(args: {
   lever?: ProgressionLever | null;
   zone?: ChallengeZone | null;
   repsOverride?: number | null;
+  /**
+   * The calendar's proposal, when the writer is the GATE and it prescribed
+   * something else. Authoring never passes this: at authoring the prescribed
+   * shape IS the calendar's, and writing it twice would be a second copy of one
+   * fact. Omitted whenever it equals the prescribed shape, for the same reason.
+   */
+  authored?: { shape: WorkShape; lever: ProgressionLever | null; zone?: ChallengeZone | null } | null;
+  gate?: GateStamp | null;
 }): Record<string, ProgressionSpec> {
   const s = args.shape;
   if (!s || !(s.reps > 0) || !(s.repMinutes > 0) || !(s.paceSPerMi > 0)) return {};
   const reps = args.repsOverride != null && args.repsOverride > 0 ? args.repsOverride : s.reps;
+  const a = args.authored;
   return {
     [PROGRESSION_SPEC_KEY]: {
       reps: Math.round(reps),
@@ -97,6 +150,19 @@ export function progressionSpecFields(args: {
       pace_s_per_mi: Math.round(s.paceSPerMi),
       zone: args.zone ?? s.zone,
       lever: args.lever ?? null,
+      ...(a && a.shape.reps > 0 && a.shape.repMinutes > 0 && a.shape.paceSPerMi > 0
+        ? {
+            authored: {
+              reps: Math.round(a.shape.reps),
+              rep_minutes: Number(a.shape.repMinutes.toFixed(2)),
+              recovery_minutes: Number(Math.max(0, a.shape.recoveryMinutes).toFixed(2)),
+              pace_s_per_mi: Math.round(a.shape.paceSPerMi),
+              zone: a.zone ?? a.shape.zone,
+              lever: a.lever ?? null,
+            },
+          }
+        : {}),
+      ...(args.gate ? { gate: args.gate } : {}),
     },
   };
 }
@@ -112,35 +178,77 @@ export function readProgressionSpec(spec: unknown): {
   shape: WorkShape;
   lever: ProgressionLever | null;
   zone: ChallengeZone;
+  /**
+   * The calendar's own proposal, when the gate has prescribed something else.
+   * Null on every row the gate has not touched — where the shape above IS the
+   * calendar's, so a caller wanting "what did the plan ask for" reads
+   * `authored ?? shape` and gets the right answer either way.
+   */
+  authored: { shape: WorkShape; lever: ProgressionLever | null } | null;
+  gate: GateStamp | null;
 } | null {
   if (!spec || typeof spec !== 'object') return null;
   const raw = (spec as Record<string, unknown>)[PROGRESSION_SPEC_KEY];
   if (!raw || typeof raw !== 'object') return null;
   const p = raw as Record<string, unknown>;
 
+  const shape = readShape(p);
+  if (shape == null) return null;
+  const lever = readLever(p.lever);
+
+  // A malformed `authored` degrades to null rather than failing the whole read:
+  // the prescribed shape is what "hold the current stimulus" needs, and the
+  // calendar's copy is commentary on top of it. Same posture as the lever.
+  const authoredRaw = p.authored;
+  const authoredShape = authoredRaw && typeof authoredRaw === 'object'
+    ? readShape(authoredRaw as Record<string, unknown>)
+    : null;
+
+  return {
+    shape,
+    lever,
+    zone: shape.zone,
+    authored: authoredShape
+      ? { shape: authoredShape, lever: readLever((authoredRaw as Record<string, unknown>).lever) }
+      : null,
+    gate: readGate(p.gate),
+  };
+}
+
+function readShape(p: Record<string, unknown>): WorkShape | null {
   const reps = num(p.reps);
   const repMinutes = num(p.rep_minutes);
   const recoveryMinutes = num(p.recovery_minutes);
   const paceSPerMi = num(p.pace_s_per_mi);
   if (reps == null || repMinutes == null || paceSPerMi == null) return null;
   if (!(reps > 0) || !(repMinutes > 0) || !(paceSPerMi > 0)) return null;
-
   const zone = ZONES.includes(p.zone as ChallengeZone) ? (p.zone as ChallengeZone) : null;
   if (zone == null) return null;
-  const lever = LEVER_ORDER.includes(p.lever as ProgressionLever)
-    ? (p.lever as ProgressionLever)
-    : null;
-
   return {
-    shape: {
-      reps: Math.round(reps),
-      repMinutes,
-      recoveryMinutes: recoveryMinutes != null && recoveryMinutes >= 0 ? recoveryMinutes : 0,
-      paceSPerMi,
-      zone,
-    },
-    lever,
+    reps: Math.round(reps),
+    repMinutes,
+    recoveryMinutes: recoveryMinutes != null && recoveryMinutes >= 0 ? recoveryMinutes : 0,
+    paceSPerMi,
     zone,
+  };
+}
+
+function readLever(v: unknown): ProgressionLever | null {
+  return LEVER_ORDER.includes(v as ProgressionLever) ? (v as ProgressionLever) : null;
+}
+
+const GATE_ACTIONS = ['ACCELERATE', 'TAKE', 'HOLD', 'BACK_OFF'];
+const GATE_BANDS = ['strong', 'normal', 'marginal', 'poor'];
+
+function readGate(v: unknown): GateStamp | null {
+  if (!v || typeof v !== 'object') return null;
+  const g = v as Record<string, unknown>;
+  if (!GATE_ACTIONS.includes(String(g.action))) return null;
+  if (!GATE_BANDS.includes(String(g.band))) return null;
+  return {
+    action: g.action as GateStamp['action'],
+    band: g.band as GateStamp['band'],
+    at: typeof g.at === 'string' ? g.at : '',
   };
 }
 

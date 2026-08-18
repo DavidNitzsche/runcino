@@ -26,7 +26,11 @@
 import { pool } from '@/lib/db/pool';
 import { stripResearchCitations } from '@/lib/plan/strip-citations';
 
-export type AdaptationKind = 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other';
+/** 2026-08-17 · 'reshape' · the progression gate held, eased or accelerated a
+ *  session's dose. Named rather than left to fall through to 'other' because
+ *  the runner's question about this one is different: the day is the same
+ *  workout at a different size, not a workout that was replaced. */
+export type AdaptationKind = 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'reshape' | 'other';
 
 export interface AdaptationInfo {
   /** True when current runner-facing fields (type / distance / date)
@@ -134,14 +138,19 @@ function composeInfo(r: RawRow): AdaptationInfo {
   let kind: AdaptationKind | null = null;
   if (r.intent_value?.kind) {
     const k = r.intent_value.kind;
-    if (k === 'downgrade' || k === 'reschedule' || k === 'shave' || k === 'mark_dirty') {
+    if (k === 'downgrade' || k === 'reschedule' || k === 'shave' || k === 'mark_dirty' || k === 'reshape') {
       kind = k;
     } else {
       kind = 'other';
     }
   } else if (r.intent_reason) {
-    const reasonSuffix = r.intent_reason.replace(/^plan_adapt_?/, '');
-    if (['downgrade', 'reschedule', 'shave', 'mark_dirty'].includes(reasonSuffix)) {
+    // 'plan_adapt_progression' → 'reshape'. The reason string and the kind
+    // differ here because the reason names the CYCLE that made the decision
+    // and the kind names what happened to the row.
+    const reasonSuffix = r.intent_reason === 'plan_adapt_progression'
+      ? 'reshape'
+      : r.intent_reason.replace(/^plan_adapt_?/, '');
+    if (['downgrade', 'reschedule', 'shave', 'mark_dirty', 'reshape'].includes(reasonSuffix)) {
       kind = reasonSuffix as AdaptationKind;
     } else if (wasAdapted) {
       kind = 'other';

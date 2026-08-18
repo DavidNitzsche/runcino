@@ -154,6 +154,62 @@ describe('PROGRESSION-PERSIST-1 · the work shape survives persistence', () => {
     expect(carried, 'no quality day carried a work shape at all').toBeGreaterThan(3);
   });
 
+  it('carries the calendar\'s own proposal beside the prescribed one', () => {
+    // PROGRESSION-GATE-1 · once evidence declines a step the two part company,
+    // and the next cycle needs BOTH: the prescribed shape to hold or step from,
+    // and the authored shape to recognise that a divergence exists at all.
+    // Keeping only one of them loses either the plan or the pause.
+    const prescribed: WorkShape = { reps: 3, repMinutes: 11, recoveryMinutes: 1, paceSPerMi: 462, zone: 'ESTABLISHED' };
+    const authored: WorkShape = { reps: 3, repMinutes: 13, recoveryMinutes: 1, paceSPerMi: 462, zone: 'PROGRESSIVE' };
+    const spec = throughJson({
+      kind: 'threshold',
+      ...progressionSpecFields({
+        shape: prescribed,
+        lever: null,
+        zone: prescribed.zone,
+        authored: { shape: authored, lever: 'quality_duration' },
+        gate: { action: 'HOLD', band: 'marginal', at: '2026-09-07T03:00:00.000Z' },
+      }),
+    });
+    const back = readProgressionSpec(spec);
+    expect(back).not.toBeNull();
+    expect(back!.shape).toEqual(prescribed);
+    expect(back!.authored!.shape).toEqual(authored);
+    expect(back!.authored!.lever).toBe('quality_duration');
+    expect(back!.gate).toEqual({ action: 'HOLD', band: 'marginal', at: '2026-09-07T03:00:00.000Z' });
+  });
+
+  it('reads an untouched row as having no divergence and no gate stamp', () => {
+    // Authoring never writes either field, so a plan the gate has not seen is
+    // byte-identical to what it has always been — and a consumer asking "what
+    // did the plan ask for" reads `authored ?? shape` and gets the right answer.
+    const shape: WorkShape = { reps: 4, repMinutes: 10, recoveryMinutes: 1, paceSPerMi: 462, zone: 'PROGRESSIVE' };
+    const fields = progressionSpecFields({ shape, lever: 'quality_duration', zone: shape.zone });
+    expect(Object.keys(fields[PROGRESSION_SPEC_KEY])).not.toContain('authored');
+    expect(Object.keys(fields[PROGRESSION_SPEC_KEY])).not.toContain('gate');
+    const back = readProgressionSpec(throughJson({ kind: 'threshold', ...fields }));
+    expect(back!.authored).toBeNull();
+    expect(back!.gate).toBeNull();
+  });
+
+  it('degrades a malformed divergence to null without losing the prescribed shape', () => {
+    // The prescribed shape is what "hold the current stimulus" needs; the
+    // calendar's copy and the stamp are commentary on top of it. Same posture
+    // as an unrecognised lever.
+    const back = readProgressionSpec({
+      [PROGRESSION_SPEC_KEY]: {
+        reps: 3, rep_minutes: 11, recovery_minutes: 1, pace_s_per_mi: 462, zone: 'ESTABLISHED',
+        lever: null,
+        authored: { reps: 0, rep_minutes: 13, pace_s_per_mi: 462, zone: 'PROGRESSIVE' },
+        gate: { action: 'SHRUG', band: 'marginal', at: '' },
+      },
+    });
+    expect(back).not.toBeNull();
+    expect(back!.shape.repMinutes).toBe(11);
+    expect(back!.authored).toBeNull();
+    expect(back!.gate).toBeNull();
+  });
+
   it('the preservation SQL carries an existing block forward and never invents one', () => {
     const sql = preserveProgressionSql('$2');
     // The old-row read, the guard, and the merge all have to be there. The
