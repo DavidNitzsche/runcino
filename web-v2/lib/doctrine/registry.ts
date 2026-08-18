@@ -904,7 +904,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const all = sourceOf(doc).split('\n');
       /** peak weekly + peak long bands off a "### <Distance> — <Cohort>" block. */
       const rowBands = (distance: string, cohort: string): { weekly: [number, number]; long: [number, number] } => {
-        const at = all.findIndex((l) => l.startsWith('### ') && l.includes(distance) && l.includes(cohort));
+        const at = all.findIndex((l) => l.startsWith(`### ${distance} —`) && l.includes(cohort));
         if (at < 0) throw new Error(`DOCTRINE · no "### ${distance} — ${cohort}" section in ${doc}`);
         const block = all.slice(at, at + 20);
         const cell = (label: string) => {
@@ -1039,7 +1039,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       };
       const all = sourceOf(cite.doc).split('\n');
       const rowBands = (distance: string, cohort: string) => {
-        const at = all.findIndex((l) => l.startsWith('### ') && l.includes(distance) && l.includes(cohort));
+        const at = all.findIndex((l) => l.startsWith(`### ${distance} —`) && l.includes(cohort));
         if (at < 0) throw new Error(`DOCTRINE · no "### ${distance} — ${cohort}" section in ${cite.doc}`);
         const block = all.slice(at, at + 20);
         const cell = (label: string) => {
