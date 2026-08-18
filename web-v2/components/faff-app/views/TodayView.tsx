@@ -3776,10 +3776,15 @@ function TempoPanel({
 
   // 2026-08-17 · measured thirds where the splits carry per-mile HR on the
   // work phase; the avg/peak shape, honestly labelled, below three of them.
+  // 2026-08-17 · heat reaches this panel now. `heatSlowdownPct` was already
+  // in scope two lines up, drawing the heat band on the pace gauge, and was
+  // not passed to the HR reading directly below it. Research/03 §2 puts heat
+  // at 25°C+ at +5-20 bpm against an 8 bpm warn edge, so the amber card could
+  // be entirely weather.
   const hrThirds = computeHrThirds(splits, {
     avgHr: work.avg_hr,
     maxHr: work.max_hr,
-  });
+  }, heatSlowdownPct ?? null);
 
   return (
     <>

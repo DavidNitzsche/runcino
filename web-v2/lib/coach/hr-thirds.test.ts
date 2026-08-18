@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeHrThirds,
+  HEAT_SUPPRESSES_DRIFT_WARN_PCT,
   hrThirdsHeading,
   hrThirdsCaption,
   MIN_MEASURED_SPLITS,
@@ -173,5 +174,44 @@ describe('computeHrThirds · nothing to show', () => {
     expect(computeHrThirds([], { avgHr: null, maxHr: 180 })).toBeNull();
     expect(computeHrThirds(null, {})).toBeNull();
     expect(computeHrThirds(undefined, { avgHr: 0 })).toBeNull();
+  });
+});
+
+describe('heat withholds the warning, never the measurement', () => {
+  // Research/03 §2: heat at 25°C+ moves HR by +5-20 bpm, against an 8 bpm
+  // warn edge. On a hot run the amber card can be entirely weather — and
+  // heatSlowdownPct was already in scope at the call site, unused.
+  const drifting = [w(148), w(150), w(153), w(158), w(160), w(162)];
+
+  it('warns on a drifting block in neutral conditions', () => {
+    const r = computeHrThirds(drifting, { avgHr: 155, maxHr: 168 })!;
+    expect(r.driftBpm).toBeGreaterThan(LATE_DRIFT_WARN_BPM);
+    expect(r.thirds[2].warn).toBe(true);
+    expect(r.heatSuppressedWarn).toBe(false);
+  });
+
+  it('withholds the same warning when the run was hot', () => {
+    const r = computeHrThirds(drifting, { avgHr: 155, maxHr: 168 }, HEAT_SUPPRESSES_DRIFT_WARN_PCT)!;
+    expect(r.thirds[2].warn).toBe(false);
+    expect(r.heatSuppressedWarn).toBe(true);
+  });
+
+  it('still reports the three measured thirds on a hot run', () => {
+    const neutral = computeHrThirds(drifting, { avgHr: 155, maxHr: 168 })!;
+    const hot = computeHrThirds(drifting, { avgHr: 155, maxHr: 168 }, 12)!;
+    expect(hot.thirds.map((t) => t.bpm)).toEqual(neutral.thirds.map((t) => t.bpm));
+    expect(hot.driftBpm).toBe(neutral.driftBpm);
+    expect(hot.source).toBe('measured');
+  });
+
+  it('a mildly warm run below the hot gate still warns', () => {
+    const r = computeHrThirds(drifting, { avgHr: 155, maxHr: 168 }, HEAT_SUPPRESSES_DRIFT_WARN_PCT - 1)!;
+    expect(r.thirds[2].warn).toBe(true);
+  });
+
+  it('omitting the heat argument behaves exactly as before', () => {
+    const a = computeHrThirds(drifting, { avgHr: 155, maxHr: 168 })!;
+    const b = computeHrThirds(drifting, { avgHr: 155, maxHr: 168 }, null)!;
+    expect(a.thirds[2].warn).toBe(b.thirds[2].warn);
   });
 });

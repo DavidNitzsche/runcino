@@ -60,6 +60,10 @@ export interface HrThird {
 export interface HrThirds {
   thirds: [HrThird, HrThird, HrThird];
   source: HrThirdsSource;
+  /** True when the late third DID clear the warn edge but heat explains it,
+   *  so no warning was raised. Lets a surface say "hot day" instead of going
+   *  silently quiet, which reads as nothing having happened. */
+  heatSuppressedWarn?: boolean;
   /**
    * LATE − EARLY in bpm. Null on the estimated path: the synthesized
    * numbers have no time axis, so their difference is not a drift.
@@ -87,6 +91,27 @@ export const MIN_MEASURED_SPLITS = 3;
  */
 export const LATE_DRIFT_WARN_BPM = 8;
 
+/**
+ * Heat-adjusted slowdown, in percent, at or above which this panel stops
+ * raising a drift warning at all.
+ *
+ * `Research/03` §2 puts heat at or above 25°C at **+5 to +20 bpm**, and §12
+ * names rising core temperature as the first driver of cardiac drift itself.
+ * The warn edge above is 8 bpm — comfortably inside what heat alone produces,
+ * so on a hot run the amber card can be entirely weather.
+ *
+ * Suppressing rather than raising the bar, for the same reason the decoupling
+ * trend excludes hot runs instead of adjusting them: doctrine's band here is
+ * 5-20 bpm, and picking a number inside a spread that wide to keep the finding
+ * alive would be inventing precision the research does not offer. On a hot run
+ * the panel still shows the three measured thirds — the numbers are real — it
+ * just declines to call them drift.
+ *
+ * 6% is the existing HOT-run gate (`lib/coach/run-state.ts`), reused so two
+ * surfaces cannot disagree about what counts as hot.
+ */
+export const HEAT_SUPPRESSES_DRIFT_WARN_PCT = 6;
+
 const mean = (xs: readonly number[]): number =>
   Math.round(xs.reduce((a, b) => a + b, 0) / xs.length);
 
@@ -102,7 +127,15 @@ const mean = (xs: readonly number[]): number =>
 export function computeHrThirds(
   splits: readonly HrThirdsSplit[] | null | undefined,
   fallback: { avgHr?: number | null; maxHr?: number | null },
+  /** Heat-adjusted slowdown for this run, if known. At or above
+   *  `HEAT_SUPPRESSES_DRIFT_WARN_PCT` the late-third warning is withheld —
+   *  heat moves HR by more than the warn edge on its own. Omitted / null
+   *  behaves exactly as before. */
+  heatSlowdownPct?: number | null,
 ): HrThirds | null {
+  const heatConfounded = heatSlowdownPct != null
+    && Number.isFinite(heatSlowdownPct)
+    && heatSlowdownPct >= HEAT_SUPPRESSES_DRIFT_WARN_PCT;
   const work = (splits ?? []).filter(
     (s) =>
       s.phase === 'work' &&
@@ -129,11 +162,15 @@ export function computeHrThirds(
       thirds: [
         { label: 'EARLY', bpm: early, warn: false },
         { label: 'MIDDLE', bpm: middle, warn: false },
-        { label: 'LATE', bpm: late, warn: driftBpm > LATE_DRIFT_WARN_BPM },
+        // Heat withholds the warning, never the measurement. The three
+        // numbers below are real either way; only the claim that they mean
+        // cardiac drift is suppressed.
+        { label: 'LATE', bpm: late, warn: !heatConfounded && driftBpm > LATE_DRIFT_WARN_BPM },
       ],
       source: 'measured',
       driftBpm,
       measuredSplits: n,
+      heatSuppressedWarn: heatConfounded && driftBpm > LATE_DRIFT_WARN_BPM,
     };
   }
 
