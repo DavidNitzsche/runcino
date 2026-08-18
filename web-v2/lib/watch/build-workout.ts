@@ -311,6 +311,68 @@ function distanceMiFromLabel(label: string | null | undefined): number | null {
 
 // ── Main entrypoint ─────────────────────────────────────────────────────
 
+
+/**
+ * ONE classification of what a session is, for the four decisions that need it.
+ *
+ * 2026-08-17 · this function previously answered the question four times, with
+ * four non-matching lists:
+ *
+ *   defaultTolerance   {threshold,intervals}→8  {tempo,race}→12  else→20
+ *   isQualityWorkout   {intervals,vo2max,threshold,tempo}
+ *   hrCeilingBpm       {easy,long}
+ *   fuelingType        {long} {threshold,tempo,intervals} {rest} else easy
+ *
+ * `race_week_tuneup` is in NONE of them, and it is live in the plan — a
+ * 5×400m at T pace shipped to the wrist with a ±20 s/mi band instead of ±8, no
+ * HR target, no ceiling, and an easy-run fuelling plan. `PaceDrift.swift` then
+ * derives `hardDrift = max(15, 20+5)`, so the rep never turns red: the watch
+ * calls 6:50–7:30/mi "on target" on a 7:10 rep. `vo2max` has the same hole in
+ * two of the four.
+ *
+ * Keyed off the SPEC's `kind` first, because the spec is authored truth and is
+ * already correct where `plan_workouts.type` is not — a race-week tune-up
+ * carries `kind: 'threshold'`. Falls back to `type` for the categories the spec
+ * union has no member for (race, rest, shakeout).
+ */
+export type SessionClass = 'easy' | 'long' | 'threshold' | 'interval' | 'race' | 'rest' | 'other';
+
+export function classifySession(
+  type: string,
+  spec: Record<string, unknown> | null | undefined,
+): SessionClass {
+  // Type wins where the spec union cannot express the answer. A race stashes
+  // as `kind: 'long'` because WorkoutSpec has no race member, so asking the
+  // spec first would classify race day as a long run.
+  if (type === 'race') return 'race';
+  if (type === 'rest') return 'rest';
+
+  const kind = typeof spec?.kind === 'string' ? spec.kind : null;
+  switch (kind) {
+    case 'intervals': return 'interval';
+    case 'threshold':
+    case 'tempo':     return 'threshold';
+    case 'long':      return 'long';
+    case 'easy':
+    case 'recovery':  return 'easy';
+  }
+
+  switch (type) {
+    case 'intervals':
+    case 'vo2max':            return 'interval';
+    case 'threshold':
+    case 'tempo':
+    case 'race_week_tuneup':
+    case 'fartlek':
+    case 'progression':       return 'threshold';
+    case 'long':              return 'long';
+    case 'easy':
+    case 'recovery':
+    case 'shakeout':          return 'easy';
+    default:                  return 'other';
+  }
+}
+
 export async function buildWatchToday(
   userId: string,
   /** Override "today" for testing/smoke. Defaults to PT-adjusted now. */
@@ -417,11 +479,16 @@ export async function buildWatchToday(
     distanceMi,
   );
 
-  // Tolerance defaults per workout type (tighter for threshold/intervals).
+  const sessionClass = classifySession(
+    wo.type,
+    (wo.workout_spec ?? null) as Record<string, unknown> | null,
+  );
+
+  // Tolerance defaults · tight on work the runner is meant to hit precisely.
   const defaultTolerance =
-    wo.type === 'threshold' || wo.type === 'intervals' ? 8
-  : wo.type === 'tempo' || wo.type === 'race'          ? 12
-  :                                                      20;
+    sessionClass === 'threshold' || sessionClass === 'interval' ? 8
+  : sessionClass === 'race'                                     ? 12
+  :                                                               20;
 
   // 5. Expand to phases · PREFER workout_spec (authored truth) over
   //    prescriptionFor() (generic template). Per iPhone agent's
@@ -483,8 +550,8 @@ export async function buildWatchToday(
     ? (Number((wo.workout_spec as Record<string, unknown>)?.lthr_bpm) ||
        Number((wo.workout_spec as Record<string, unknown>)?.hr_target_bpm) || null)
     : null;
-  const isQualityWorkout = wo.type === 'intervals' || wo.type === 'vo2max' || wo.type === 'threshold' || wo.type === 'tempo';
-  const isIntervalWorkout = wo.type === 'intervals' || wo.type === 'vo2max';
+  const isQualityWorkout = sessionClass === 'threshold' || sessionClass === 'interval';
+  const isIntervalWorkout = sessionClass === 'interval';
   const rawHrTarget = isQualityWorkout ? (specHrBpm ?? lthr ?? null) : null;
   // %HRmax fallback when LTHR absent (Friel conservative). Already the final
   // target — must NOT receive the 1.05× interval uplift that LTHR sources use.
@@ -553,11 +620,11 @@ export async function buildWatchToday(
   // race pace (HR well above the 89%-LTHR easy ceiling), so a workout-level
   // ceiling would red-alert through the entire finish — coaching the
   // opposite of the prescription. The easy build is run by feel.
-  const longHasFinish = wo.type === 'long'
+  const longHasFinish = sessionClass === 'long'
     && wo.workout_spec != null
     && Number((wo.workout_spec as Record<string, unknown>)?.finish_mi) > 0;
   // HR ceiling only for easy/long where staying aerobic is the discipline
-  const hrCeilingBpm = (wo.type === 'easy' || wo.type === 'long') && !longHasFinish
+  const hrCeilingBpm = (sessionClass === 'easy' || sessionClass === 'long') && !longHasFinish
     ? lthr  ? Math.round(lthr * 0.89)   // top of Z2 in Friel zones
     : maxHr ? Math.round(maxHr * 0.78)  // %HRmax fallback when LTHR absent
     : null
@@ -856,12 +923,12 @@ export async function buildWatchToday(
   // run (sim fixtures set them, masking the gap). Race day is handled
   // above via gelsMi — the engine ignores time-anchored fueling there.
   // Best-effort: never fail the payload over fueling math.
-  if (wo.type !== 'race') {
+  if (sessionClass !== 'race') {
     try {
       const fuelingType: WorkoutFuelingType =
-        wo.type === 'long' ? 'long'
-        : wo.type === 'threshold' || wo.type === 'tempo' || wo.type === 'intervals' ? 'quality'
-        : wo.type === 'rest' ? 'rest'
+        sessionClass === 'long' ? 'long'
+        : sessionClass === 'threshold' || sessionClass === 'interval' ? 'quality'
+        : sessionClass === 'rest' ? 'rest'
         : 'easy';
 
       // Runner product prefs — same source as the iPhone brief, so the
