@@ -5,11 +5,26 @@
  * J. Daniels, 3rd ed., extended through VDOT 85 per project memory).
  *
  * Strategy:
- *   1. For each race in the past 6 months, look up the VDOT corresponding
- *      to (finish_time, distance).
- *   2. Return the highest (best). This naturally excludes slow C-races
- *      because a C-race effort produces a lower VDOT.
- *   3. Also exclude races flagged priority='C' explicitly.
+ *   1. For each race inside the freshness window, look up the VDOT
+ *      corresponding to (finish_time, distance).
+ *   2. Rank by AUTHORITY BAND first, then by value. Every race is a
+ *      candidate; how much weight it carries is graded by what the race was.
+ *   3. Return the top of that ranking.
+ *
+ * 2026-08-17 · EVERY RACE COUNTS, AT THE WEIGHT IT EARNED. Step 2 used to read
+ * "return the highest (best) — this naturally excludes slow C-races because a
+ * C-race effort produces a lower VDOT", and step 3 dropped `priority='C'`
+ * outright. The comment was wrong about its own mechanism and the filter was
+ * load-bearing because of it: max-wins does NOT exclude a C race, it excludes a
+ * SLOW one, so a C race run hard, or on a course that flattered it, would have
+ * anchored every prescribed pace. The A/B filter in `vdot-inputs.ts` was the
+ * only thing standing in the way, and `assessRepresentativeness` — the module
+ * built to grade exactly this — was never consulted on this path.
+ *
+ * Now authority scales a candidate's WEIGHT instead of gating its membership.
+ * A C race on a hilly course still means something, just less; if it is all the
+ * runner has, it still anchors them. See `lib/race/effort-authority.ts` for
+ * which half of rule 8 selection can charge and which half it cannot.
  *
  * Algorithm: invert the Daniels race-time table by binary-searching over
  * VDOT and computing predicted race time at each VDOT, returning the VDOT
@@ -23,6 +38,13 @@
  *   - Find s such that VO2(s) = v · %v(t) where t = (d·1000)/s
  *   - The whole thing is solved iteratively.
  */
+
+import {
+  REPRESENTATIVE_FLOOR,
+  authorityTier,
+  selectionAuthority,
+  type AuthorityTier,
+} from '@/lib/race/effort-authority';
 
 /** Distance in km from a label. */
 function kmFromMi(mi: number): number { return mi * 1.609344; }
@@ -541,9 +563,24 @@ export interface RaceVdotCandidate {
   slug: string;
   name: string;
   date: string;
-  priority: 'A' | 'B' | 'C' | null;
+  /**
+   * As stored on `races.meta->>'priority'`. Deliberately `string | null` rather
+   * than the A/B/C union: `lib/faff/types.ts` also allows `training_run` and
+   * `hilly_excluded`, and now that selection admits every priority those values
+   * genuinely reach this type. The union was a lie the old SQL filter hid.
+   */
+  priority: string | null;
   distance_mi: number;
   finish_seconds: number;
+  /**
+   * 0..1 · how much weight this result carries at selection, graded by what the
+   * race WAS (`Research/00b`'s effort table via
+   * `lib/race/effort-authority.ts#selectionAuthority`). Reported, never spent on
+   * `vdot` — see the ranking note in `bestRecentVdot`.
+   */
+  authority: number;
+  /** The band `authority` falls in, against the two doctrine floors. */
+  authority_tier: AuthorityTier;
   /** Effective VDOT after the stale-anchor fade (= vdot_raw inside the
    *  full-value window). This is the value every consumer should treat
    *  as "current fitness estimate". */
@@ -879,7 +916,7 @@ export interface BelowTableAnchor {
 }
 
 export function bestRecentVdot(
-  races: Array<{ slug: string; name: string; date: string; priority: 'A'|'B'|'C'|null; distance_mi: number | null; finish_seconds: number | null }>,
+  races: Array<{ slug: string; name: string; date: string; priority: string | null; distance_mi: number | null; finish_seconds: number | null }>,
   todayISO: string,
   lookbackDays = VDOT_FULL_VALUE_DAYS,
   runs?: Array<{
@@ -910,20 +947,31 @@ export function bestRecentVdot(
     return Math.round(faded * 10) / 10;
   };
 
-  // P1-56 · best (fastest pace) below-table race candidate seen, tracked
-  // alongside the normal race loop so eligibility (date window, C-race
-  // exclusion) matches exactly. Race wins over run for this fallback too,
-  // same doctrine as the main sortKey (race ties beat training estimates) —
-  // simplified here to "any race beats any run" since these are honest-effort
-  // anchors either way once we're off the VDOT table (no soft-cap to apply).
+  // P1-56 · best below-table race candidate seen, tracked alongside the normal
+  // race loop so eligibility (date window) matches exactly. Race wins over run
+  // for this fallback too, same doctrine as the main sortKey (race ties beat
+  // training estimates) — simplified here to "any race beats any run" since
+  // these are honest-effort anchors either way once we're off the VDOT table
+  // (no soft-cap to apply).
+  //
+  // 2026-08-17 · now that a C race is a candidate, "best" is graded before it is
+  // timed: a representative race beats a compromised one, and only within a band
+  // does the fastest pace win. This is the below-table mirror of the authority
+  // tier in the main sort. The authority is a local rather than a field on
+  // `BelowTableAnchor` — that interface is constructed by callers and tests, and
+  // widening it would be churn for a value nothing downstream reads.
   let belowTableRace: BelowTableAnchor | null = null;
+  let belowTableRaceAuthority = 0;
   let belowTableRun: BelowTableAnchor | null = null;
 
   const raceCandidates: RaceVdotCandidate[] = [];
   for (const r of races) {
     if (!r.date || !r.distance_mi || !r.finish_seconds) continue;
     if (r.date < cutoff) continue;
-    if (r.priority === 'C') continue;
+    // 2026-08-17 · the `if (r.priority === 'C') continue` that stood here is
+    // GONE, together with the `IN ('A','B')` filter in vdot-inputs.ts. Every
+    // race is a candidate; `authority` below is what decides its weight.
+    const authority = selectionAuthority(r.priority);
     const v = vdotFromRace(r.finish_seconds, r.distance_mi);
     if (v == null) {
       // Below (or above) the [30,85] table — not silently dropped. Below-30
@@ -931,12 +979,18 @@ export function bestRecentVdot(
       // runner); anchorPaceFrom is agnostic and a >85 anchor would just never
       // win a comparison against real candidates, so no extra guard needed.
       const anchor = anchorPaceFrom(r.finish_seconds, r.distance_mi);
-      if (anchor && (belowTableRace == null || anchor.paceSPerMi < belowTableRace.anchor.paceSPerMi)) {
+      const beatsIncumbent =
+        belowTableRace == null ||
+        authority > belowTableRaceAuthority ||
+        (authority === belowTableRaceAuthority &&
+          anchor != null && anchor.paceSPerMi < belowTableRace.anchor.paceSPerMi);
+      if (anchor && beatsIncumbent) {
         belowTableRace = {
           source: 'race', refId: r.slug, name: r.name, date: r.date,
           distance_mi: r.distance_mi, finish_seconds: r.finish_seconds,
           age_days: ageDays(r.date), anchor,
         };
+        belowTableRaceAuthority = authority;
       }
       continue;
     }
@@ -946,8 +1000,36 @@ export function bestRecentVdot(
       slug: r.slug, name: r.name, date: r.date, priority: r.priority,
       distance_mi: r.distance_mi, finish_seconds: r.finish_seconds,
       vdot: effective(v, age), vdot_raw: v, age_days: age,
+      authority, authority_tier: authorityTier(authority),
     });
   }
+
+  /**
+   * 2026-08-17 · THE AUTHORITY TIER · rule 8 reaches selection.
+   *
+   * `Research/00b` §"Recovery by Effort" grades a C race "Strong effort, no
+   * taper … treat like a hard workout", and `Research/01` §"Triggers to retest"
+   * only licenses "Update VDOT from race" for a result that was "all-out,
+   * well-paced". A race below the B row is therefore not the thing doctrine
+   * says updates VDOT, however large its number.
+   *
+   * Ranked, not removed, and only against BETTER-GRADED RACES. Same idiom as
+   * the staleness demotion directly below: the rule bites only when the runner
+   * actually has the better evidence. With no representative race in the
+   * window, a C race is not demoted at all — it competes at face value, it sets
+   * the training soft-cap ceiling, and if it is the only candidate it is the
+   * anchor. A floor you have beats a guess you don't.
+   *
+   * Deliberately scoped race-against-race. Training runs carry their own two
+   * bounding mechanisms (the AUDIT #8 soft cap and the superseded-lead rule);
+   * inventing a cross-source ordering between a C race and a tempo would be a
+   * third, unbacked one. What the C race DOES do to runs is bound them, by
+   * setting the ceiling — so the anchor can never drift more than the doctrinal
+   * +1 above the C race even when a tempo outranks it.
+   */
+  const representativeRaceExists = raceCandidates.some((c) => c.authority >= REPRESENTATIVE_FLOOR);
+  const authorityDemoted = (c: VdotCandidate): boolean =>
+    c.source === 'race' && representativeRaceExists && c.authority < REPRESENTATIVE_FLOOR;
 
   // DOCTRINE-2 · FLOOR-ONLY DEMOTION. Research/01 §"Freshness window" calls an
   // 8-12 week anchor stale and says to "use only as a floor". So a candidate
@@ -981,8 +1063,18 @@ export function bestRecentVdot(
   // grant a ~48.9 ceiling off evidence the doctrine calls expired). The cap
   // anchors to the same evidence the headline trusts. With no fresh race,
   // scope is unchanged: the best raw race in the full fade-visible window.
+  //
+  // 2026-08-17 (authority) · AUTHORITY-demoted races are excluded on the same
+  // principle, and it is the same sentence: the cap anchors to the evidence the
+  // headline trusts. Without this, a C race that read high would be barred from
+  // the headline and then hand every training run a ceiling +1 above itself —
+  // laundering the demoted race straight back in through the runs. Note the
+  // predicate is inert when no representative race exists, so a C-race-only
+  // runner still gets a ceiling off their C race rather than none.
+  const excludedFromCeiling = (c: RaceVdotCandidate): boolean =>
+    demotedForCeiling(c) || authorityDemoted(c);
   const bestRaceRaw = raceCandidates.reduce<number | null>(
-    (max, c) => (demotedForCeiling(c) ? max
+    (max, c) => (excludedFromCeiling(c) ? max
       : (max == null || c.vdot_raw > max ? c.vdot_raw : max)), null);
   const trainingCeiling = bestRaceRaw != null
     ? bestRaceRaw + TRAINING_ESTIMATE_SOFT_CAP_VDOT : null;
@@ -1113,9 +1205,28 @@ export function bestRecentVdot(
    * SINCE the race still lead by up to +1, because that is new evidence
    * acquired after the last hard proof, which is precisely the case the soft
    * lead exists to describe.
+   *
+   * ── 2026-08-17 · IT HAS TO BE A TEST TO RESOLVE A TEST ───────────────────
+   *
+   * The rule shipped keyed on the freshest race's DATE with no predicate on
+   * what that race was, which was safe only because the A/B filter upstream
+   * guaranteed it was a graded one. Opening the pool removes that guarantee and
+   * the rule inverts: a parkrun jogged as a workout becomes "the field test"
+   * and demotes every legitimate training lead behind it, deleting real
+   * evidence on the authority of a race nobody raced.
+   *
+   * Doctrine is precise about which result answers the question. `Research/01`
+   * §"Triggers to retest" licenses "Update VDOT from race" for a "New race
+   * result (any distance, all-out, well-paced …)", and `Research/00b`'s C row
+   * is neither all-out nor tapered — it is "treat like a hard workout". A hard
+   * workout does not resolve the field test that another hard workout asked
+   * for. So the date that supersedes is the freshest race AT OR ABOVE THE
+   * REPRESENTATIVE FLOOR: the same B row that is doctrine's boundary for a
+   * result standing as a performance. Existing behaviour is unchanged for every
+   * A and B race, which is every race that could reach this rule before today.
    */
   const freshestRaceDate = raceCandidates.reduce<string | null>(
-    (max, r) => (r.date && (!max || r.date > max) ? r.date : max),
+    (max, r) => (r.date && r.authority >= REPRESENTATIVE_FLOOR && (!max || r.date > max) ? r.date : max),
     null,
   );
   // `<=`, not `<`. A run dated the SAME day as the race is almost always that
@@ -1130,9 +1241,27 @@ export function bestRecentVdot(
   // to keep using until a fresh test replaces it.
   const inWindowExists = inWindowRaceExists || runCandidates.some((c) => !floorOnly(c));
   const demoted = (c: { age_days: number }): boolean => inWindowExists && floorOnly(c);
+  // Tier order · staleness, then authority, then superseded leads, then value.
+  //
+  // Authority sits BELOW staleness because the two answer different questions
+  // and staleness is the harder one: doctrine calls a 12-week-old anchor
+  // "Expired. Don't anchor pace prescription on this VDOT" with no appeal,
+  // where a low-authority race is current evidence that is simply worth less.
+  //
+  // Authority sits ABOVE the superseded-lead tier because it now feeds it: a
+  // race has to clear the floor to supersede anything at all.
+  //
+  // AUTHORITY NEVER TOUCHES `sortKey`. A candidate's `vdot` is a statement
+  // about a performance that actually happened, and it is read by display
+  // surfaces and by `predictRaceTime`. Scaling it would invent a finish time
+  // nobody ran — the neutral-equivalent lever `Research/06` §10 offers and that
+  // rule 8 deliberately declines in favour of scaling the ADJUSTMENT
+  // (representativeness.ts, double-counting trap B). Selection decides WHICH
+  // evidence anchors; it must not restate WHAT the evidence said.
   const considered = [...raceCandidates, ...runCandidates]
     .sort((a, b) =>
       ((demoted(b) ? 0 : 1) - (demoted(a) ? 0 : 1)) ||
+      ((authorityDemoted(b) ? 0 : 1) - (authorityDemoted(a) ? 0 : 1)) ||
       ((supersededLead(b) ? 0 : 1) - (supersededLead(a) ? 0 : 1)) ||
       (sortKey(b) - sortKey(a)));
 

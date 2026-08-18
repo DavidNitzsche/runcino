@@ -51,6 +51,7 @@ import {
   RECOVERY_RUN_DAYS,
   RECOVERY_LONG_PCT,
   RECOVERY_EFFORT_SCALE,
+  recoveryEffortScale,
   TAPER_RACE_WEEK_PCT_OF_PEAK,
   taperFactor,
   GENERAL_RAMP_CEILING,
@@ -189,6 +190,12 @@ import {
   composeSlowdown,
   effectiveEffortClass,
 } from '@/lib/race/representativeness';
+import {
+  authorityTier,
+  isGradedRacePriority,
+  selectionAuthority,
+  GRADED_RACE_PRIORITIES,
+} from '@/lib/race/effort-authority';
 import { provisionalResultPatch } from '@/lib/race/auto-result';
 import {
   ACWR_ACUTE_DAYS,
@@ -3539,7 +3546,13 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'lead to exactly bestRaceRaw + 1, so without this rule a runner with ANY qualifying ' +
       'training run could never be anchored on their own races: the day after a 1:41:53 A-race ' +
       'half, the anchor was a 4-mile tempo from 55 days earlier. Training AFTER the race still ' +
-      'leads by the permitted +1, which is the case the soft lead exists to describe.',
+      'leads by the permitted +1, which is the case the soft lead exists to describe. ' +
+      'AND THE RACE HAS TO BE A TEST TO RESOLVE ONE (2026-08-17): the rule shipped keyed on the ' +
+      'freshest race DATE with no predicate on what that race was, which was safe only while an ' +
+      'upstream A/B filter guaranteed it. Doctrine licenses "Update VDOT from race" for a result ' +
+      'that was "all-out, well-paced"; a C race is "treat like a hard workout", and a hard ' +
+      'workout does not resolve the field test another hard workout asked for. The superseding ' +
+      'date is therefore the freshest race at or above the representative floor.',
     check() {
       const src = sourceOf('web-v2/lib/training/vdot.ts');
       // The doc must still describe a training read as an estimate needing a test.
@@ -3548,6 +3561,15 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           'Research/01 §"Testing cadence" no longer asks for a field test · the superseded-lead ' +
             'rule rests on that clause, so re-read the passage before changing the engine',
+        );
+      }
+      // The doc must also still say which results update VDOT · "all-out,
+      // well-paced" is what licenses the authority predicate below.
+      const triggers = resolveCitation('Research/01-pace-zones-vdot.md', '### Triggers to retest').text();
+      if (!/all-out.*well-paced/i.test(triggers)) {
+        throw new Error(
+          'Research/01 §"Triggers to retest" no longer qualifies which race result updates VDOT · ' +
+            'the authority predicate on the superseded-lead rule rests on that clause',
         );
       }
       // And the engine must still demote leads at or before the freshest race.
@@ -3561,6 +3583,182 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           'the superseded-lead tier is no longer applied in the candidate sort · the rule is ' +
             'defined but inert, which is how it looked before the fix',
         );
+      }
+      // WIRED · the date that supersedes must be filtered by authority. Without
+      // this the rule reads "the freshest race" again and a jogged C race
+      // becomes the field test.
+      matchLiteral(
+        src,
+        /const freshestRaceDate = raceCandidates\.reduce<string \| null>\(\s*\n?\s*\(max, r\) => \(r\.date && r\.authority >= REPRESENTATIVE_FLOOR/,
+        'bestRecentVdot superseded-lead authority predicate',
+      );
+    },
+  },
+
+  /* ── SELECTION-TIME EFFORT CLASS ─────────────────────────────────────────
+   *
+   * The claim that let the A/B filter in `vdot-inputs.ts` be opened. That
+   * filter read as data hygiene and was load-bearing safety, because
+   * `assessRaceRepresentativeness` was never consulted on the selection path:
+   * selection is max-wins, so it kept the aided read and discarded the hilly
+   * one. Authority now scales a candidate's WEIGHT instead of gating its
+   * membership, and this claim is what stops the grading being quietly deleted
+   * on the way — "every race has meaning" read as "every race weighs the same"
+   * is the failure mode most worth preventing.
+   */
+  {
+    id: 'EVIDENCE.race-authority-is-the-effort-class',
+    binds: [
+      'lib/race/effort-authority.ts#selectionAuthority',
+      'lib/race/effort-authority.ts#authorityTier',
+      'lib/training/vdot.ts#bestRecentVdot.authorityDemoted',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Recovery by Effort (A vs. B vs. C Race)',
+    claim:
+      'How much a race result is allowed to weigh at SELECTION is graded by the same table that ' +
+      'grades its recovery: an A race is "Maximum, full taper, peak day"; a C race is "Strong ' +
+      'effort, no taper … treat like a hard workout". The three scales are read out of the doc ' +
+      'rather than restated here, they stay strictly ordered, and the grading is actually SPENT ' +
+      'in the candidate sort. A grading that is computed and never ranked on is the shape the ' +
+      'whole representativeness module already had: 900 lines of diagnosis that the path setting ' +
+      'every prescribed pace never called.',
+    check({ cite }) {
+      const t = cite.table();
+      const scale = (row: string) => parsePctBand(t.cell(row, 'Recovery scale'));
+      if (selectionAuthority('A') !== 1.0) {
+        throw new Error('an A race is the full table · selection authority must be 1.0');
+      }
+      within(selectionAuthority('B'), scale('B race'), "selectionAuthority('B')");
+      within(
+        selectionAuthority('C'),
+        scale('C race / hard workout substitute'),
+        "selectionAuthority('C')",
+      );
+      // Strictly ordered · collapsing the distinction is the mistake this
+      // claim exists to prevent.
+      if (!(selectionAuthority('A') > selectionAuthority('B')
+            && selectionAuthority('B') > selectionAuthority('C'))) {
+        throw new Error(
+          'selection authority no longer distinguishes A, B and C races · Research/00b grades ' +
+            'them differently and the engine must too',
+        );
+      }
+      // Case-insensitive, because `races.meta->>'priority'` is free text.
+      for (const p of GRADED_RACE_PRIORITIES) {
+        if (selectionAuthority(p.toLowerCase()) !== selectionAuthority(p)) {
+          throw new Error(`selectionAuthority is case-sensitive on '${p}' · the column is free text`);
+        }
+      }
+      // The tiers must land on the doctrine floors.
+      if (authorityTier(selectionAuthority('A')) !== 'representative'
+          || authorityTier(selectionAuthority('B')) !== 'representative'
+          || authorityTier(selectionAuthority('C')) !== 'compromised') {
+        throw new Error(
+          'the authority tiers no longer place A and B above the representative floor with C ' +
+            'below it · that placement is what the two doctrine floors mean',
+        );
+      }
+      // WIRED · the grade must reach the ranking, and must not reach the value.
+      const src = sourceOf('web-v2/lib/training/vdot.ts');
+      if (!/authority: selectionAuthority\(r\.priority\)|const authority = selectionAuthority\(r\.priority\);/.test(src)) {
+        throw new Error('bestRecentVdot no longer grades its race candidates');
+      }
+      if (!/\(\(authorityDemoted\(b\) \? 0 : 1\) - \(authorityDemoted\(a\) \? 0 : 1\)\)/.test(src)) {
+        throw new Error(
+          'the authority tier is no longer applied in the candidate sort · the grade is computed ' +
+            'and never spent, which is exactly how representativeness looked before this work',
+        );
+      }
+      if (/vdot(_raw)?: [^,\n]*authority/.test(src)) {
+        throw new Error(
+          "a candidate's VDOT is being scaled by its authority · that fabricates a finish time " +
+            'nobody ran. Rule 8 scales the ADJUSTMENT, not the performance',
+        );
+      }
+      // And the SQL filter it replaced must stay gone · if it comes back, the
+      // grading above is decoration again. Comment lines are stripped first:
+      // the fix's own note names the clause it deleted, and a check that cannot
+      // tell a description from an execution is the shape of a false alarm
+      // nobody trusts twice.
+      const loader = sourceOf('web-v2/lib/training/vdot-inputs.ts')
+        .split('\n')
+        .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+        .join('\n');
+      if (/priority'\s+IN\s+\('A',\s*'B'\)/.test(loader)) {
+        throw new Error(
+          "the A/B priority filter is back in vdot-inputs.ts · it and the authority grading are " +
+            'two answers to one question, and only one of them lets a C race count at all',
+        );
+      }
+    },
+  },
+
+  /* ── The ungraded row ────────────────────────────────────────────────────
+   *
+   * `Research/00b`'s effort table has exactly three rows. `lib/faff/types.ts`
+   * allows `training_run` and `hilly_excluded`, and `races.meta->>'priority'`
+   * is free text besides. Which doctrine row an ungraded label falls to is
+   * OURS to decide, so it is labelled a convention rather than dressed as a
+   * finding — the failure `CONVENTION.cold-start-mileage-anchor` was written
+   * for. What is not ours to decide is the direction of the error.
+   */
+  {
+    id: 'CONVENTION.ungraded-race-priority',
+    binds: [
+      'lib/race/effort-authority.ts#selectionAuthority',
+      'lib/race/effort-authority.ts#isGradedRacePriority',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Recovery by Effort (A vs. B vs. C Race)',
+    claim:
+      'A priority the effort table has no row for is graded at the LOWEST graded row, not the ' +
+      'highest. This is a convention: doctrine names A, B and C and says nothing about ' +
+      '`hilly_excluded` or `training_run`. What research supplies is the direction. Grading an ' +
+      'ungraded row as an A race asserts what the A row says — "Maximum, full taper, peak day" — ' +
+      'about a row whose own label says the course did the talking or that it was not a race at ' +
+      'all. `recoveryEffortScale` deliberately defaults the other way because for recovery ' +
+      'DURATION over-resting is the safe error; for AUTHORITY the safe error is the opposite, and ' +
+      'reusing that default is how a course-excluded marathon would have come to set every ' +
+      'prescribed pace. The two mappings must therefore agree on every graded priority and ' +
+      'disagree on ungraded ones.',
+    check({ cite }) {
+      const t = cite.table();
+      // The doc still has exactly the three rows this convention fills the gaps around.
+      for (const row of ['A race', 'B race', 'C race / hard workout substitute']) {
+        if (!t.cell(row, 'Effort given')) {
+          throw new Error(`Research/00b's effort table no longer has a "${row}" row`);
+        }
+      }
+      const cRow = t.cell('C race / hard workout substitute', 'Recovery scale');
+      const lowest = parsePctBand(cRow);
+
+      for (const p of GRADED_RACE_PRIORITIES) {
+        if (!isGradedRacePriority(p)) throw new Error(`'${p}' should be a graded priority`);
+        if (selectionAuthority(p) !== recoveryEffortScale(p)) {
+          throw new Error(
+            `selectionAuthority('${p}') and recoveryEffortScale('${p}') have drifted apart · ` +
+              'both spend the same doctrine row and must agree wherever doctrine has one',
+          );
+        }
+      }
+      for (const p of ['hilly_excluded', 'training_run', 'DNF', '', null]) {
+        if (isGradedRacePriority(p)) throw new Error(`'${p}' should not be a graded priority`);
+        within(selectionAuthority(p), lowest, `selectionAuthority(${JSON.stringify(p)})`);
+        if (selectionAuthority(p) >= selectionAuthority('B')) {
+          throw new Error(
+            `an ungraded priority (${JSON.stringify(p)}) is being trusted at or above a B race · ` +
+              'the whole point of this convention is that it is not',
+          );
+        }
+        // And it must be the honest opposite of the recovery default, not a
+        // silent copy of it.
+        if (selectionAuthority(p) === recoveryEffortScale(p)) {
+          throw new Error(
+            `selectionAuthority(${JSON.stringify(p)}) has picked up recoveryEffortScale's ` +
+              'unknown→A default · that default is correct for recovery duration and wrong here',
+          );
+        }
       }
     },
   },

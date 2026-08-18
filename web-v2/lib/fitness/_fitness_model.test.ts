@@ -24,6 +24,7 @@ import {
   type VdotCandidate,
 } from '../training/vdot';
 import { resolveFitness, type FitnessEstimate } from './fitness-model';
+import { authorityTier, selectionAuthority } from '../race/effort-authority';
 
 const HM_MI = 13.1094;
 const TODAY = '2026-08-17';
@@ -45,6 +46,9 @@ const raceC = (o: {
   vdot: o.vdot,
   vdot_raw: o.vdot,
   age_days: o.age,
+  // Declared A above, so the selection grading is the full A row.
+  authority: selectionAuthority('A'),
+  authority_tier: authorityTier(selectionAuthority('A')),
 });
 
 const runC = (o: {

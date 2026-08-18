@@ -107,30 +107,47 @@ read as a runner doing badly. But a swallowed error is indistinguishable from ab
 
 ---
 
-### The A/B race filter is load-bearing safety, not tidiness
+### Every race is a VDOT candidate · authority scales weight, not membership
 
-`lib/training/vdot-inputs.ts` admits only `meta->>'priority' IN ('A','B')` into
-the VDOT candidate pool, and `vdot.ts` drops `'C'` again at selection.
+**Resolved 2026-08-17.** The A/B filter is gone. What follows is why it existed,
+because the two hazards it was accidentally covering are now covered by rules
+that a future change could quietly undo.
 
-That filter reads like data hygiene. It is the only thing standing between the
-candidate pool and a jogged C race, because **`assessRaceRepresentativeness` is
-not consulted on the selection path at all.** Its only callers are the two
-re-anchor detectors in `lib/plan/adapt.ts`; `vdot.ts` contains no reference to
-it. Selection is max-wins over the pool, so it keeps the aided read and discards
-the hilly one.
+`lib/training/vdot-inputs.ts` used to admit only `meta->>'priority' IN ('A','B')`
+and `vdot.ts` dropped `'C'` again at selection. That read like data hygiene. It
+was the only thing standing between the candidate pool and a jogged C race,
+because **`assessRaceRepresentativeness` was not consulted on the selection path
+at all** — its only callers are still the two re-anchor detectors in
+`lib/plan/adapt.ts`. Selection is max-wins, so it keeps the aided read and
+discards the hilly one. Two things would have broken together:
 
-Two things break together if the filter is opened without extending
-representativeness into selection:
-
-1. A low-effort or heavily-aided race can become the anchor that sets every
+1. A low-effort or heavily-aided race becoming the anchor that sets every
    prescribed pace.
-2. `supersededLead` (`EVIDENCE.race-supersedes-earlier-leads`) keys on the
+2. `supersededLead` (`EVIDENCE.race-supersedes-earlier-leads`) keyed on the
    freshest race's DATE with no authority predicate, so a jogged C race becomes
    "the field test" and demotes every legitimate training lead behind it.
 
-The honest version of "all races have meaning" is that authority *scales a
-candidate's weight* rather than gating its membership — which requires both of
-the above fixed first.
+Both are closed in `bestRecentVdot`, and only then was the filter opened:
+
+- Each race candidate carries an `authority` from
+  `lib/race/effort-authority.ts#selectionAuthority` — `Research/00b`'s effort
+  table, A 1.0 · B 0.65 · C 0.35. A race below the B floor ranks below every
+  better-graded race, is excluded from the training soft-cap ceiling, and cannot
+  supersede a training lead. With no better-graded race in the window it is not
+  demoted at all: a floor you have beats a guess you don't.
+- **Authority scales RANK, never the VDOT.** A candidate's `vdot` is a statement
+  about a performance that happened, read by display surfaces and by
+  `predictRaceTime`. Scaling it would invent a finish time nobody ran — the
+  neutral-equivalent lever `Research/06` §10 offers and rule 8 declines.
+
+Two things it deliberately does not do. Selection cannot price CONDITIONS —
+every conditions factor is a share of the shortfall against the anchor, and at
+selection the anchor is what is being chosen; a materially net-downhill course
+therefore enters unpriced, and is priced at re-anchor time where an anchor
+exists. And an UNGRADED priority (`hilly_excluded`, `training_run`) is graded at
+the C row, not A: `recoveryEffortScale` defaults unknown→A because over-resting
+is the safe error for recovery duration, and that default is exactly backwards
+for authority.
 
 ## 3 · The gates
 

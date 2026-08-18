@@ -164,8 +164,8 @@ import {
   type AbilityTier,
 } from '@/lib/training/heat-model';
 import { courseElevationCostSec } from '@/lib/training/elevation-model';
+import { REPRESENTATIVE_FLOOR, UNREPRESENTATIVE_FLOOR } from './effort-authority';
 import {
-  RECOVERY_EFFORT_SCALE,
   recoveryEffortScale,
   TAPER_RACE_WEEK_PCT_OF_PEAK,
   distanceCategoryOf,
@@ -242,19 +242,20 @@ export interface RepresentativenessRead {
 // ── Doctrine-derived constants ─────────────────────────────────────────────
 
 /**
- * `Research/00b` §"Recovery by Effort (A vs. B vs. C Race)". The B row —
- * "Hard but not depleted; 1-week taper" — is doctrine's boundary between a
- * result that stands as a performance and one that carries a caveat. A read at
- * or above it is representative.
+ * The two doctrine tier floors — `Research/00b` §"Recovery by Effort (A vs. B
+ * vs. C Race)"'s B and C rows.
+ *
+ * 2026-08-17 · MOVED, NOT CHANGED. They now live in `./effort-authority.ts`
+ * and are re-exported here so every existing importer is untouched and there is
+ * exactly one definition of each. The move exists because SELECTION
+ * (`lib/training/vdot.ts#bestRecentVdot`) needs the same floors, and this file
+ * imports `predictRaceTime` from that one — a direct import back would close a
+ * cycle through the hottest file in the fitness model. `effort-authority.ts` is
+ * a leaf: it imports only `lib/plan/goal-tiers.ts`, which imports nothing.
+ *
+ * See that file for what the anchor-free half of rule 8 can and cannot charge.
  */
-export const REPRESENTATIVE_FLOOR = RECOVERY_EFFORT_SCALE.B;
-
-/**
- * The C row — "Strong effort, no taper … treat like a hard workout" — is
- * doctrine's own marker for "this barely counts as a race". Below it a result
- * does not move the fitness model at all.
- */
-export const UNREPRESENTATIVE_FLOOR = RECOVERY_EFFORT_SCALE.C;
+export { REPRESENTATIVE_FLOOR, UNREPRESENTATIVE_FLOOR } from './effort-authority';
 
 /**
  * `Research/06` §10 "Combined adjustment formula (additive approximation)":

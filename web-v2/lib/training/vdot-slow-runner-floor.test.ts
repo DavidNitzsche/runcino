@@ -193,11 +193,43 @@ describe('P1-56 · bestRecentVdot — belowTableAnchor is honest and additive', 
     expect(r.belowTableAnchor).toBeNull(); // real candidate wins outright — no anchor fallback needed
   });
 
-  it('C-priority slow race is excluded from belowTableAnchor too (same eligibility as the main path)', () => {
+  // 2026-08-17 · POLICY CHANGED, and this test now asserts the new one.
+  //
+  // It used to read "C-priority slow race is excluded from belowTableAnchor too
+  // (same eligibility as the main path)" — correct while the main path excluded
+  // C races. It no longer does: authority scales a candidate's weight rather
+  // than gating its membership. The eligibility mirror still holds; what it
+  // mirrors changed.
+  //
+  // Excluding it was the WRONG safety here, and in the one direction that
+  // matters. A below-table anchor sets T-pace off the runner's own demonstrated
+  // pace. Dropping their only race sends `resolveCurrentTPace` down to tier 3,
+  // `conservativeVdotFromMileage`, which floors at VDOT 30 — a pace FASTER than
+  // anything a below-table runner has ever run. That is the P1-56 failure this
+  // whole below-table path exists to prevent, and a C-race filter reintroduced
+  // it for exactly the runners least able to absorb it.
+  it('a C-priority slow race still sets belowTableAnchor · it is a real demonstrated pace', () => {
     const r = bestRecentVdot(
       [{ ...SLOW_RACE, priority: 'C' as const }], TODAY, 180,
     );
-    expect(r.belowTableAnchor).toBeNull();
+    expect(r.belowTableAnchor).not.toBeNull();
+    expect(r.belowTableAnchor!.refId).toBe('slow-5k');
+    expect(r.belowTableAnchor!.anchor.paceSPerMi).toBeCloseTo(SLOW_PACE_S_PER_MI, 0);
+  });
+
+  it('a better-graded below-table race beats a C one, even when the C race is faster', () => {
+    // The below-table mirror of the authority tier: grade first, then time.
+    // The A race here is genuinely SLOWER, and it still wins — which is the
+    // conservative direction for a pace the runner will be prescribed.
+    const r = bestRecentVdot(
+      [
+        { ...SLOW_RACE, slug: 'jogged-5k', priority: 'C' as const,
+          finish_seconds: SLOW_5K_FINISH_S - 120 },
+        { ...SLOW_RACE, slug: 'raced-5k', priority: 'A' as const },
+      ],
+      TODAY, 180,
+    );
+    expect(r.belowTableAnchor!.refId).toBe('raced-5k');
   });
 
   it('below-table RUN candidate requires the same honesty gate as vdotFromRun (quality type or hard HR)', () => {

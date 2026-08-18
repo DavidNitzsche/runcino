@@ -50,7 +50,13 @@ export interface RaceVdotInput {
   slug: string;
   name: string;
   date: string;
-  priority: 'A' | 'B' | 'C' | null;
+  /**
+   * Raw `races.meta->>'priority'`. `string | null`, not the A/B/C union: the
+   * SQL no longer filters on it, and `lib/faff/types.ts` allows `training_run`
+   * and `hilly_excluded` too. `selectionAuthority` grades every value, so an
+   * unrecognised one is priced rather than silently read as an A race.
+   */
+  priority: string | null;
   distance_mi: number | null;
   finish_seconds: number | null;
 }
@@ -146,7 +152,21 @@ export async function loadVdotInputs(
   const raceCutoff = new Date(Date.parse(today + 'T12:00:00Z') - (windowDays + FADE_TAIL_DAYS) * 86400000)
     .toISOString().slice(0, 10);
 
-  // Pull A/B races within the lookback window.
+  // Pull EVERY race within the lookback window.
+  //
+  // 2026-08-17 · the `AND meta->>'priority' IN ('A','B')` that stood here is
+  // gone. It read as data hygiene and was load-bearing safety: it was the only
+  // thing standing between the candidate pool and a jogged C race, because
+  // selection is max-wins and `assessRaceRepresentativeness` was never on this
+  // path. Opening it on its own would have let a C race set every prescribed
+  // pace and let it supersede every legitimate training lead behind it.
+  //
+  // Both are closed first, in `bestRecentVdot`: a race's authority
+  // (`lib/race/effort-authority.ts`) now bands it in the ranking, bounds the
+  // training soft-cap ceiling, and gates the superseded-lead rule. So every
+  // race can count, at the weight `Research/00b`'s effort table gives it,
+  // instead of an A/B race counting fully and a C race not at all.
+  //
   // No .catch() — throws on error so the caller refuses to generate rather
   // than producing a goal-pace plan (the C1 bug class).
   const raceRows = await pool.query<{
@@ -158,8 +178,7 @@ export async function loadVdotInputs(
        FROM races
       WHERE user_uuid = $1
         AND (meta->>'date')::date >= $2::date
-        AND (meta->>'date')::date <  $3::date
-        AND meta->>'priority' IN ('A', 'B')`,
+        AND (meta->>'date')::date <  $3::date`,
     [userId, raceCutoff, today],
   ).then(r => r.rows);
 
@@ -222,7 +241,7 @@ export async function loadVdotInputs(
       slug: r.slug,
       name: (m.name as string) ?? r.slug,
       date: (m.date as string) ?? '',
-      priority: ((m.priority as string) ?? null) as 'A' | 'B' | 'C' | null,
+      priority: (m.priority as string) ?? null,
       distance_mi: distMi,
       finish_seconds: finishSec,
     };
