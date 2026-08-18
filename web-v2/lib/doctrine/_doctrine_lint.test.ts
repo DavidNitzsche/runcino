@@ -388,22 +388,25 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
   // 2026-08-17 · WORKED THROUGH TO ZERO. All 25 were opened one at a time and
   // resolved into one of three outcomes:
   //
-  //   · RE-POINTED (17) · the passage is real and Research/ already covered it,
+  //   · RE-POINTED (21) · the passage is real and Research/ already covered it,
   //     so the citation now names the file. Cutback depth and cadence, post-race
   //     duration, race-week easy durations, the maintenance shape, the long-run
   //     validator caps, the VDOT table, the plan-mode machine.
   //
-  //   · RELABELLED AS CONVENTION (7, across 5 sites) · the passage does not
-  //     check out, and the behaviour is ours rather than doctrine's. Handled the
-  //     way the cold-start anchor was: honest label, plus a claim asserting the
+  //   · RELABELLED AS CONVENTION (4 · adaptive-ramp, the post-deload re-entry
+  //     cap, and both simulator citations) · the passage does not check out, and
+  //     the behaviour is ours rather than doctrine's. Handled the way the
+  //     cold-start anchor was: honest label, plus a claim asserting the
   //     properties the number actually owes. The simulator's whole fitness-
-  //     response model is the big one — `Daniels §VDOT response curves` was
+  //     response model is the big one — its VDOT-response-curve citation was
   //     fabricated in exactly the same shape as the anchor was, and had been
   //     projecting every runner's trajectory under it.
   //
-  //   · REPORTED, NOT MOVED (1) · goal-tiers BUILD_WINDOW_WEEKS.hm is 14 weeks
-  //     against Research/22's 12-week half plans. Bound with an honest exempt
-  //     rather than silently edited to fit.
+  // Three engine-vs-doctrine divergences surfaced while binding the re-pointed
+  // ones. All THREE were reported, not moved — each is an `exempt` key on its
+  // claim, with the reason: BUILD_WINDOW_WEEKS.hm (14 wk vs Research/22's 12-wk
+  // half plans), MAINTENANCE_BY_TIER daysPerWeek (5-7 vs §7's 3-4), and the
+  // race-week T-3 easy (flat 35 min vs the marathon template's 0-30).
   //
   // An entry may not come back without somebody saying which of the three it is.
   const BOOK_CITATIONS_PER_FILE: Record<string, number> = {};
