@@ -363,4 +363,52 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
         dead.join('\n  '),
     ).toEqual([]);
   });
+
+  /**
+   * A citation that names a BOOK instead of a `Research/` file is invisible to
+   * every other check in this file and to the registry itself — the gate only
+   * ever resolves file anchors, so a book reference is verified by nothing.
+   *
+   * That is not hypothetical. `conservativeVdotFromMileage` — the number that
+   * sets every new runner's paces — carried `Daniels Running Formula §"VDOT
+   * and Training" — mileage-band heuristic` for two months. There is no such
+   * table; Daniels derives VDOT from race performance and publishes no mileage
+   * mapping. A product convention was wearing a research finding's clothes,
+   * and the gate could not see it because it had nothing to open.
+   *
+   * Book citations are NOT banned — several are real, and `Research/` itself
+   * cites these books. What is banned is a book citation nobody has counted.
+   *
+   * Counted per FILE, never per line: Rule 7 is explicit that line numbers rot
+   * on the next edit, and an inventory that breaks whenever code moves gets
+   * "fixed" by updating the numbers, which teaches people to ignore it. Moving
+   * a citation is free; ADDING one fails here, and at that moment somebody has
+   * to say whether the passage they are citing is real.
+   */
+  const BOOK_CITATIONS_PER_FILE: Record<string, number> = {
+  'lib/glossary.ts': 1,
+  'lib/plan/adaptive-ramp.ts': 1,
+  'lib/plan/generate.ts': 6,
+  'lib/plan/goal-tiers.ts': 8,
+  'lib/plan/seed-from-onboarding.ts': 2,
+  'lib/plan/simulator.ts': 2,
+  'lib/plan/validate.ts': 4,
+  'lib/training/vdot.ts': 1,
+  };
+
+  it('every book-only citation is counted · an uncounted one is verified by nothing', () => {
+    const BOOKS = /(Daniels|Pfitzinger|Lydiard|Magness|Hudson|Running Formula|Advanced Marathoning|Faster Road Racing)/;
+    const counts: Record<string, number> = {};
+    for (const file of sourceFiles()) {
+      const rel = path.relative(path.join(repoRoot(), 'web-v2'), file);
+      for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+        if (!/\b[Cc]ite:/.test(line)) continue;
+        if (/Research\/|docs\/|Design\//.test(line)) continue;
+        if (!BOOKS.test(line)) continue;
+        counts[rel] = (counts[rel] ?? 0) + 1;
+      }
+    }
+    expect(counts).toEqual(BOOK_CITATIONS_PER_FILE);
+  });
+
 });

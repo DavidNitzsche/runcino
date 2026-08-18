@@ -3433,9 +3433,13 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     return Math.min(desiredDensity, Math.round(recentQ + (desiredDensity - recentQ) * (stepsUp / 4)));
   }
 
-  // Cold-start VDOT floor · conservativeVdotFromMileage lifted to spec-builder.ts
+  // Cold-start pace floor · conservativeVdotFromMileage lifted to spec-builder.ts
   // 2026-06-10 (shared with the maintenance seeder). Moved ABOVE goalT for VAR-05.
-  // Cite: Daniels Running Formula §"VDOT and Training" — mileage-band heuristic.
+  //
+  // 2026-08-17 · the duplicate of a citation that named a table which does not
+  // exist. See that function's header: its values are a CONVENTION, bound by
+  // CONVENTION.cold-start-mileage-anchor, and its output is marked
+  // `provisional_mileage` so three readers refuse to inherit it.
   const estimatedCurrentVdot = input.bestRecentVdot
     ?? conservativeVdotFromMileage(input.recentWeeklyMi);
   // 2026-07-07 · AUDIT P1-56 · currentT is the pace every easy/long/recovery/
