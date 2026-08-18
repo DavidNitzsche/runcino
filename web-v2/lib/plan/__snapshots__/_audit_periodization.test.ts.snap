@@ -2,11 +2,11 @@
 
 exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: per-week structural fingerprint is byte-stable > david-marathon-quality-vocab 1`] = `
 [
-  "wk4: threshold="4×1mi @ T pace · 90s jog" ; tempo="4mi continuous tempo"",
-  "wk5: threshold="4×1mi @ T pace · 90s jog" ; intervals="6×90s hills @ 5K-10K effort · 2:30 jog down"",
-  "wk6: threshold="4×1mi @ T pace · 90s jog" ; tempo="4mi continuous tempo"",
-  "wk7: threshold="4×1mi @ T pace · 90s jog" ; intervals="5×1mi @ I-T transition · 2:00 jog"",
-  "wk8: threshold="4×1mi @ T pace · 90s jog" ; tempo="4mi continuous tempo"",
+  "wk4: threshold="4×7 min @ T pace · 90s jog" ; tempo="4mi continuous tempo"",
+  "wk5: threshold="4×7 min @ T pace · 60s jog" ; intervals="6×90s hills @ 5K-10K effort · 2:30 jog down"",
+  "wk6: threshold="3×10 min @ T pace · 60s jog" ; tempo="4mi continuous tempo"",
+  "wk7: threshold="2×12 min @ T pace · 60s jog" ; intervals="3×7 min @ I-T transition · 2 min jog"",
+  "wk8: threshold="2×14 min @ T pace · 2 min jog" ; tempo="4mi continuous tempo"",
   "wk9: tempo="4mi continuous wave tempo · ±10 s/mi around T" ; threshold="5×2K · descend MP → T · 2 min jog"",
   "wk10: threshold="5×2K · descend MP → T · 2 min jog"",
   "wk11: tempo="4mi continuous wave tempo · ±10 s/mi around T" ; threshold="5×2K · descend MP → T · 2 min jog"",

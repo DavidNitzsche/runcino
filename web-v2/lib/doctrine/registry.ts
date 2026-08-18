@@ -99,7 +99,13 @@ import {
   CRUISE_RECOVERY_MIN_PER_WORK_MI,
   INTERVAL_REP_MINUTES,
   CONTINUOUS_TEMPO_MINUTES,
+  advanceShape,
 } from '@/lib/prescription/levers';
+import {
+  MIN_QUALITY_REP_MINUTES,
+  clampToWeek,
+  OverloadTrajectory,
+} from '@/lib/prescription/trajectory';
 import {
   GRADE_COST_PER_PCT,
   GRADE_MODEL_MAX_PCT,
@@ -2801,6 +2807,144 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       );
       within(CONTINUOUS_TEMPO_MINUTES.min, [Number(m[1]), Number(m[1])], 'continuous tempo minimum minutes');
       within(CONTINUOUS_TEMPO_MINUTES.max, [Number(m[2]), Number(m[2])], 'continuous tempo maximum minutes');
+    },
+  },
+  {
+    id: 'PROGRESSION.continuous-tempo-ceiling-binds-both-levers',
+    binds: ['lib/prescription/levers.ts#advanceShape.quality_duration'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 5.2 Continuous tempo (4–8 mi at threshold)',
+    claim:
+      'Once the density lever has collapsed a rep set to one continuous block, the duration ' +
+      'lever is prescribing a tempo and stops where a tempo stops. The density lever already ' +
+      'refused to produce a 1x50; without the same ceiling on the duration lever the ladder ' +
+      'reached the same place one step later, bounded only by the weekly volume cap.',
+    check({ cite }) {
+      const max = Number(
+        matchLiteral(cite.text(), /\|\s*Duration\s*\|[^|]*?(\d+)[–-](\d+) min sweet spot\s*\|/, 'tempo sweet spot')[2],
+      );
+      within(CONTINUOUS_TEMPO_MINUTES.max, [max, max], 'continuous tempo ceiling');
+      // Behaviour: a single block AT the ceiling may not be lengthened, on a
+      // weekly mileage whose volume cap is nowhere near binding.
+      const atCeiling = advanceShape({
+        shape: { reps: 1, repMinutes: max, recoveryMinutes: 0, paceSPerMi: 420, zone: 'ESTABLISHED' },
+        lever: 'quality_duration', stepMultiplier: 1, weeklyMi: 120, family: 'threshold',
+      });
+      if (!atCeiling.capped) {
+        throw new Error(`the duration lever walked a ${max}-minute continuous tempo past its ceiling`);
+      }
+    },
+  },
+  {
+    id: 'PROGRESSION.week-affordability-respects-the-share-cap',
+    binds: [
+      'lib/prescription/trajectory.ts#clampToWeek',
+      'lib/prescription/trajectory.ts#MIN_QUALITY_REP_MINUTES',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 5.3 Cruise intervals (Daniels)',
+    claim:
+      'Daniels\' at-pace cap is a SHARE of the week, so the same session is inside doctrine in ' +
+      'one week and outside it in the next — a cutback week cuts the mileage the cap is a share ' +
+      'of. The overload trajectory holds the shape the block has earned; each week clamps that ' +
+      'shape to what its own mileage can pay for, cutting reps before it shortens the rep, and ' +
+      'never shortening it below doctrine\'s shortest prescribed quality repetition.',
+    check({ cite }) {
+      const pct = Number(
+        matchLiteral(cite.text(), /cap T-pace at (\d+)% of weekly mileage/, 'Daniels T-pace cap')[1],
+      ) / 100;
+      // The floor is doctrine's own shortest quality rep, not a chosen number.
+      within(MIN_QUALITY_REP_MINUTES, [INTERVAL_REP_MINUTES.min, INTERVAL_REP_MINUTES.min],
+        'minimum quality rep minutes');
+      // Behaviour, at the numbers the doc states: 30 mi/wk at 7:00 buys 3 mi of
+      // threshold, so a five-by-seven-minute session must come back inside it.
+      const pace = 420;
+      for (const weeklyMi of [20, 30, 45, 60]) {
+        const cut = clampToWeek(
+          { reps: 5, repMinutes: 7, recoveryMinutes: 1, paceSPerMi: pace, zone: 'ESTABLISHED' },
+          weeklyMi, 'threshold',
+        );
+        const workMi = (cut.reps * cut.repMinutes * 60) / pace;
+        if (workMi > weeklyMi * pct + 0.05) {
+          throw new Error(
+            `${weeklyMi} mi/wk was prescribed ${workMi.toFixed(2)} mi of threshold, over the ${pct * 100}% cap`,
+          );
+        }
+        if (cut.repMinutes < INTERVAL_REP_MINUTES.min) {
+          throw new Error(`the affordability clamp cut a rep to ${cut.repMinutes} min`);
+        }
+      }
+    },
+  },
+  {
+    id: 'PROGRESSION.deload-carries-no-step',
+    binds: ['lib/prescription/trajectory.ts#OverloadTrajectory.step'],
+    doc: 'Design/adaptive-progression-engine.md',
+    anchor: 'W4  recovery',
+    claim:
+      'The doctrine\'s own canonical progression puts a recovery week between the third and ' +
+      'fifth overload steps, and §13 states what a recovery block does: retain, then resume. A ' +
+      'recovery week that carried a progression step would be a deload in volume only, and the ' +
+      'block would ratchet through the week it exists to absorb.',
+    check() {
+      const t = new OverloadTrajectory();
+      const seed = '4×1mi @ T pace · 90s jog';
+      const args = { seedPrescription: seed, paceSPerMi: 420, weeklyMi: 60, dayBudgetMi: 9 };
+      t.step({ family: 'threshold', weekIdx: 0, isDeload: false, ...args });
+      const before = t.step({ family: 'threshold', weekIdx: 1, isDeload: false, ...args })!;
+      const deload = t.step({ family: 'threshold', weekIdx: 2, isDeload: true, ...args })!;
+      const after = t.step({ family: 'threshold', weekIdx: 3, isDeload: false, ...args })!;
+      if (deload.lever != null) {
+        throw new Error(`a deload week pulled the ${deload.lever} lever`);
+      }
+      if (deload.shape.reps !== before.shape.reps || deload.shape.repMinutes !== before.shape.repMinutes) {
+        throw new Error('a deload week changed the prescribed shape');
+      }
+      if (after.lever == null) {
+        throw new Error('the trajectory did not resume after the recovery week');
+      }
+    },
+  },
+  {
+    id: 'PROGRESSION.authored-block-progresses-without-pace',
+    binds: ['lib/prescription/trajectory.ts#OverloadTrajectory'],
+    doc: 'Design/adaptive-progression-engine.md',
+    anchor: 'Meaningful progression, entirely before the fitness model moves.',
+    claim:
+      'A freshly authored block must be able to progress an athlete, and must do it without ' +
+      'moving the pace. Nobody has run a session yet, so the adaptation model returns `normal` ' +
+      'and the pace lever — ninth on the ladder and gated on `strong` on top of that — is out of ' +
+      'reach for the whole block. Every step is duration, density or rep count at demonstrated ' +
+      'effort, which is rule 7: fitness may stay flat while training progresses.',
+    check() {
+      const t = new OverloadTrajectory();
+      const pace = 420;
+      const seen: number[] = [];
+      const levers: Array<string | null> = [];
+      let totalFirst = 0;
+      let totalLast = 0;
+      for (let w = 0; w < 14; w++) {
+        const step = t.step({
+          family: 'threshold', weekIdx: w,
+          seedPrescription: '4×1mi @ T pace · 90s jog',
+          paceSPerMi: pace, weeklyMi: 60, dayBudgetMi: 9,
+          isDeload: w > 0 && (w + 1) % 4 === 0,
+        })!;
+        seen.push(step.shape.paceSPerMi);
+        levers.push(step.lever);
+        const total = step.shape.reps * step.shape.repMinutes;
+        if (w === 0) totalFirst = total;
+        totalLast = total;
+      }
+      if (new Set(seen).size !== 1 || seen[0] !== pace) {
+        throw new Error(`the authored block moved the work pace: ${[...new Set(seen)].join(' · ')}`);
+      }
+      if (levers.includes('pace')) {
+        throw new Error('the pace lever fired on a block with no evidence behind it');
+      }
+      if (!(totalLast > totalFirst)) {
+        throw new Error('the authored block did not progress at all — the stimulus never grew');
+      }
     },
   },
   // ══ EVIDENCE · Rule 1 · fitness changes require evidence ══════════════════

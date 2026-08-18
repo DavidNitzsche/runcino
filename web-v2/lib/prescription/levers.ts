@@ -175,6 +175,24 @@ export interface LeverSelection {
   skipped: Array<{ lever: ProgressionLever; reason: string }>;
 }
 
+/**
+ * Levers that act on the WEEK rather than on one session's geometry.
+ *
+ * `advanceShape` returns the shape untouched for these — mileage, frequency,
+ * long-run length and race specificity are the volume curve's and the
+ * periodiser's to move, not a rep set's. A caller walking a single session's
+ * shape passes them as `unavailable` so the selector spends its cycle on a
+ * lever that can actually change the prescription, rather than reporting a
+ * change that never happened.
+ */
+export const WEEK_LEVEL_LEVERS: readonly ProgressionLever[] = [
+  'weekly_volume',
+  'run_frequency',
+  'long_run_duration',
+  'race_specificity',
+  'goal_pace_exposure',
+] as const;
+
 /** What the limiter diagnosis says to reach for. Doctrine §11. */
 export const LIMITER_LEVERS: Record<string, readonly ProgressionLever[]> = {
   threshold: ['quality_duration', 'work_density', 'pace'],
@@ -206,17 +224,38 @@ export function selectLever(args: {
   recentLevers: ProgressionLever[];
   /** Levers currently at their doctrine cap and therefore unavailable. */
   exhausted: ProgressionLever[];
+  /**
+   * A ladder to walk ahead of the generic one when no limiter has been
+   * diagnosed. The limiter is the RUNNER's constraint and outranks this; this
+   * is for callers that know something narrower — a threshold session's own
+   * energy system, say — without claiming to know why the runner is slow.
+   * Ignored when `limiter` resolves to a known ladder.
+   */
+  preferred?: readonly ProgressionLever[];
+  /** The one-line reason `preferred` is the right ladder. Surfaces in
+   *  `rationale`, so it must read as a true statement on its own. */
+  preferredReason?: string;
+  /**
+   * Levers this caller cannot pull at all — not capped, out of scope. A
+   * session-shape walker passes `WEEK_LEVEL_LEVERS`: those knobs are real and
+   * are moved elsewhere in the engine, so calling them "exhausted" would put a
+   * false line in the audit trail.
+   */
+  unavailable?: readonly ProgressionLever[];
 }): LeverSelection | null {
   const { limiter, adaptation, recentLevers, exhausted } = args;
+  const unavailable = args.unavailable ?? [];
 
   if (adaptation.stepMultiplier <= 0) return null;
 
   const skipped: LeverSelection['skipped'] = [];
-  const preferred = (limiter && LIMITER_LEVERS[limiter]) || LEVER_ORDER;
+  const diagnosed = limiter ? LIMITER_LEVERS[limiter] : undefined;
+  const preferred = diagnosed ?? args.preferred ?? LEVER_ORDER;
 
   // Walk the preferred ladder, then the generic one, taking the first lever
   // that is neither exhausted nor freshly pulled.
-  const candidates = [...preferred, ...LEVER_ORDER.filter((l) => !preferred.includes(l))];
+  const candidates = [...preferred, ...LEVER_ORDER.filter((l) => !preferred.includes(l))]
+    .filter((l) => !unavailable.includes(l));
 
   for (const lever of candidates) {
     if (exhausted.includes(lever)) {
@@ -251,9 +290,11 @@ export function selectLever(args: {
     }
     return {
       lever,
-      rationale: limiter
-        ? `${limiter.replace(/_/g, ' ')} is the limiter, and this is the cheapest lever it responds to that still has room`
-        : 'cheapest lever with room on the generic ladder',
+      rationale: diagnosed
+        ? `${limiter!.replace(/_/g, ' ')} is the limiter, and this is the cheapest lever it responds to that still has room`
+        : args.preferred && args.preferredReason
+          ? `${args.preferredReason} — and this is the cheapest lever on it that still has room`
+          : 'cheapest lever with room on the generic ladder',
       skipped,
     };
   }
@@ -298,7 +339,15 @@ export function advanceShape(args: {
   switch (lever) {
     case 'quality_duration':
     case 'interval_duration': {
-      const maxRep = family === 'interval' ? INTERVAL_REP_MINUTES.max : Infinity;
+      // The continuous-tempo ceiling binds on the DURATION lever as well as on
+      // the density lever. Once the density lever has collapsed a rep set to a
+      // single block, "lengthen the rep" and "lengthen the tempo" are the same
+      // instruction, and `Research/04-workout-vocabulary.md` §5.1 stops a
+      // continuous tempo at 40 minutes either way. Without this the ladder
+      // walks 1x30 to 1x50 under the volume cap alone and calls it a tempo.
+      const maxRep = family === 'interval'
+        ? INTERVAL_REP_MINUTES.max
+        : (shape.reps <= 1 ? CONTINUOUS_TEMPO_MINUTES.max : Infinity);
       const wanted = Math.min(shape.repMinutes + step, maxRep);
       if (wanted <= shape.repMinutes || wanted * shape.reps > capMinutes) {
         return { shape, change: 'rep duration is at its cap', capped: true };

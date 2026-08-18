@@ -229,16 +229,54 @@ function timeRepSpec(
   withRules: Record<string, unknown>,
 ): SpecBuildResult {
   const byEffort = /hill/i.test(String(prescription ?? ''));
-  // WU/CD use the same floors as the distance-based branches. The reps' own
-  // mileage is whatever the runner covers in the prescribed time, so it is not
-  // reserved here — totalDistanceMiFromSpec keeps the day's headline distance.
-  const wu = Math.max(0.5, Math.min(1.5, budgetMi * 0.3));
-  const cd = Math.max(0.5, Math.min(1.0, budgetMi * 0.25));
+  // WU/CD use the same floors as the distance-based branches.
+  const wuFloor = Math.max(0.5, Math.min(1.5, budgetMi * 0.3));
+  const cdFloor = Math.max(0.5, Math.min(1.0, budgetMi * 0.25));
+  // PROGRESSION-1 (2026-08-17) · reserve the reps' own mileage and split the
+  // REMAINDER into warm-up and cool-down, the way both distance-based branches
+  // already do.
+  //
+  // `totalDistanceMiFromSpec` reports a time-based day at its headline
+  // distance, so the day's number was always right; what was wrong was the
+  // breakdown underneath it. The expanded phases a watch runs are warm-up +
+  // reps + jogs + cool-down, and with WU/CD pinned at their 1.5/1.0 ceilings a
+  // nine-mile threshold day expanded to about seven and a half. That was
+  // invisible while only hills and fartlek were time-based; it is not once the
+  // overload trajectory writes every generic threshold and rep session this
+  // way.
+  //
+  // A by-effort set (hills · Research/04 §8.1 prescribes them at effort with no
+  // pace) has no pace to convert its seconds into miles, so it keeps the
+  // floors — byte-identical to what it built before.
+  const paced = !byEffort && repPaceSec > 0;
+  const restMi = (reps.restS ?? 90) / 540;
+  // And cap the rep count to what the day can hold, exactly as both
+  // distance-based branches do. A prescription is a request, not an
+  // instruction: a six-rep set on a four-mile quality day does not fit once
+  // warm-up, floats and cool-down are paid for, and before this the time-based
+  // branch simply let it overflow — a four-mile day whose spec expanded to five
+  // and a half. Unreachable for a by-effort set (no pace, no mileage to sum),
+  // so hills build byte-identically.
+  let repCount = reps.reps;
+  if (paced) {
+    while (
+      repCount > 1 &&
+      wuFloor + (repCount * reps.durationS) / repPaceSec + (repCount - 1) * restMi + cdFloor > budgetMi
+    ) repCount--;
+  }
+  const workMi = paced ? (repCount * reps.durationS) / repPaceSec : 0;
+  const floatMi = Math.max(0, repCount - 1) * restMi;
+  const slack = Math.max(0, budgetMi - workMi - floatMi);
+  // Round the warm-up once and derive the cool-down as the exact remainder,
+  // mirroring the intervals branch — two independent roundings let wu + cd
+  // overshoot the slack by up to a tenth of a mile each.
+  const wu = Number((workMi > 0 ? Math.max(wuFloor, slack / 2) : wuFloor).toFixed(1));
+  const cd = workMi > 0 ? Math.max(cdFloor, slack - wu) : cdFloor;
   return {
     spec: {
       kind,
-      warmup_mi: Number(wu.toFixed(1)),
-      rep_count: reps.reps,
+      warmup_mi: wu,
+      rep_count: repCount,
       rep_duration_s: Math.round(reps.durationS),
       rep_pace_s_per_mi: byEffort ? null : repPaceSec,
       rep_rest_s: reps.restS ?? 90,

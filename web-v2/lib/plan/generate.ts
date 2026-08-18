@@ -42,6 +42,13 @@ import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal
 // 2026-08-17 · coaching-loop reconciliation · shared blend implementation
 // (authoring + adaptation-time recompute run the same math).
 import { blendedTPaceForWeek, measuredProgressFraction } from './recompute-paces';
+// PROGRESSION-1 (2026-08-17) · the authored default overload trajectory.
+// `Design/adaptive-progression-engine.md` §3's "calendar proposes" half: the
+// plan carries a lever-driven trajectory so a block progresses by duration,
+// density and rep count at constant effort. The "evidence permits" half runs
+// after the runner has run something and is not authored here.
+import { OverloadTrajectory, type SessionFamily } from '@/lib/prescription/trajectory';
+import type { ChallengeZone, ProgressionLever, WorkShape } from '@/lib/prescription/levers';
 import { validateComposedPlan } from './validate';
 import { EASY_SHARE_FLOOR, weekIntensity, splitDay } from './intensity-distribution';
 
@@ -1066,6 +1073,22 @@ export interface DayPlan {
    *  goal pace. Absent (undefined) on every other day — including the
    *  plan's own race-week race day, which keeps args.goalPaceSec. */
   raceGoalPaceSec?: number | null;
+  /**
+   * PROGRESSION-1 (2026-08-17) · the overload trajectory's shape for this
+   * session, when the slot is a generic threshold / rep session the trajectory
+   * owns. Absent on every other day, and on the named `Research/04` §15
+   * vocabulary families, whose dose doctrine states by name.
+   *
+   * `subLabel` is RENDERED from this shape and `buildWorkoutSpec` parses that
+   * label straight back, so the shape, the label and the spec are one set of
+   * numbers rather than three that have to be kept in step.
+   */
+  workShape?: WorkShape | null;
+  /** Which lever moved this session on from the previous week. Null on the
+   *  block's opening dose, on a deload, and when every lever was at its cap. */
+  progressionLever?: ProgressionLever | null;
+  /** The session's intent · `Design/adaptive-progression-engine.md` §4. */
+  challengeZone?: ChallengeZone | null;
 }
 
 /**
@@ -1532,7 +1555,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -1584,6 +1607,21 @@ function layoutWeek({
    *  long run's absolute-TIME cap (Research/00a §"Volume progression rules":
    *  "<3.0-3.5 h for marathoners"). null → no time cap (pace unknown). */
   easyPaceSecPerMi?: number | null;
+  /**
+   * PROGRESSION-1 · the block's default overload trajectory. Stateful and
+   * ordered — `composePlan` steps it once per week in ascending week order,
+   * which is the order it already calls this function in.
+   *
+   * null keeps the pre-2026-08-17 behaviour exactly: every week of a phase
+   * renders the same fixed prescription string. That is what the maintenance
+   * and recovery composers, which have no build to progress through, want.
+   */
+  trajectory?: OverloadTrajectory | null;
+  /** The week's threshold pace (s/mi) — the same number `buildWorkoutSpec`
+   *  will pace the session at. Evidence-derived; never a calendar ramp. */
+  weekTPaceSec?: number | null;
+  /** The week's rep pace (s/mi), for the interval track's caps. */
+  weekIPaceSec?: number | null;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -2010,31 +2048,85 @@ function layoutWeek({
           return a.includes('intervals') ? a : b.includes('intervals') ? b : qualityTypes; })()
       : qualityTypes;
     const scheduledQ = scheduleQuality(effectiveQDows, qualityTypes, longRunDow, restDow, availableDows, placementProfile);
-    // DOCTRINE-VOCAB-1 · a week never runs the same family twice. Both of a
-    // week's slots can land on the same type (the scheduler is free to), and a
-    // family keyed only on type would then fill both with one workout —
-    // trading three shapes for two, which is not what §15 is asking for. The
-    // second slot falls back to its generic prescription.
+    // DOCTRINE-VOCAB-1 (2026-08-17) · does Research/04 §15 place a specific
+    // family on this slot, in this phase, for this distance? If so its
+    // prescription supersedes the generic vo2max/threshold/tempo string.
+    //
+    // A week never runs the same family twice. Both of a week's slots can land
+    // on the same type (the scheduler is free to), and a family keyed only on
+    // type would then fill both with one workout — trading three shapes for
+    // two, which is not what §15 is asking for. The second slot falls back to
+    // its generic prescription.
+    // The slot's TYPE is unchanged either way — each family is only ever
+    // offered to a slot whose type already matches its shape — so scheduling,
+    // spacing and every structural invariant are exactly as before.
+    // Base-building beginners are excluded: Research/22 §Beginner keeps them
+    // on easy running plus one light surge session, not the full vocabulary.
+    // DOCTRINE-TAPERMP-1 · the taper's MP session is prescribed by Research/08
+    // §9.2 by name and dose; no §15 vocabulary family may supersede it.
+    //
+    // PROGRESSION-1 · resolved in a PRE-PASS rather than inline, because the
+    // overload trajectory has to step at most once per family per week. A week
+    // whose scheduler puts two generic rep slots on it (the 5K's race-specific
+    // mix does) would otherwise take two duration steps in seven days, which is
+    // the opposite of the doctrine's one-lever-per-cycle rule. Resolving the
+    // vocabulary first tells us which slots the trajectory actually owns before
+    // any of them is stepped.
     const usedFamilies = new Set<WorkoutFamily>();
-    scheduledQ.dows.forEach((dow, i) => {
-      if (slots[dow] != null) return; // conflict · skip
+    const filledByThisPass = new Set<number>();
+    const resolvedSlots = scheduledQ.dows.map((dow, i) => {
+      if (slots[dow] != null || filledByThisPass.has(dow)) return null; // conflict · skip
+      filledByThisPass.add(dow);
       const qt = scheduledQ.types[i % scheduledQ.types.length];
-      // DOCTRINE-VOCAB-1 (2026-08-17) · does Research/04 §15 place a specific
-      // family on this slot, in this phase, for this distance? If so its
-      // prescription supersedes the generic vo2max/threshold/tempo string.
-      // The slot's TYPE is unchanged either way — each family is only ever
-      // offered to a slot whose type already matches its shape — so scheduling,
-      // spacing and every structural invariant are exactly as before.
-      // Base-building beginners are excluded: Research/22 §Beginner keeps them
-      // on easy running plus one light surge session, not the full vocabulary.
-      // DOCTRINE-TAPERMP-1 · the taper's MP session is prescribed by Research/08
-      // §9.2 by name and dose; no §15 vocabulary family may supersede it.
       const candidateFamily = (baseBuilding || (taperMp && qt === 'tempo'))
         ? null
         : qualityFamilyFor(cat, phase, weekIdx, weeksToPhaseEnd, qt);
       const vocabFamily = (candidateFamily && !usedFamilies.has(candidateFamily)) ? candidateFamily : null;
       const vocabRx = vocabFamily ? rx.families[vocabFamily] : undefined;
       if (vocabFamily && vocabRx) usedFamilies.add(vocabFamily);
+      return { dow, qt, vocabFamily, vocabRx };
+    });
+
+    // PROGRESSION-1 · a slot the trajectory owns is a GENERIC threshold or rep
+    // session — the one whose prescription is the fixed `rx.threshold` /
+    // `rx.intervals` string that repeated verbatim for every week of a phase.
+    // A §15 vocabulary family, a taper MP block and a beginner's light fartlek
+    // all carry a dose doctrine states by name, and are left exactly as they
+    // are.
+    const trackFor = (s: { qt: DayPlan['type']; vocabRx: string | undefined }): SessionFamily | null => {
+      if (baseBuilding || s.vocabRx) return null;
+      if (s.qt === 'threshold') return 'threshold';
+      if (s.qt === 'intervals') return 'interval';
+      return null;
+    };
+    const stepByTrack = new Map<SessionFamily, ReturnType<OverloadTrajectory['step']>>();
+    if (trajectory) {
+      for (const s of resolvedSlots) {
+        if (!s) continue;
+        const track = trackFor(s);
+        if (track == null || stepByTrack.has(track)) continue;
+        stepByTrack.set(track, trajectory.step({
+          family: track,
+          weekIdx,
+          seedPrescription: track === 'threshold' ? rx.threshold : rx.intervals,
+          paceSPerMi: track === 'threshold' ? weekTPaceSec : weekIPaceSec,
+          weeklyMi,
+          // The same number this slot's `slotMi` resolves to below — a generic
+          // quality slot always takes the week's quality share.
+          dayBudgetMi: qualityMiEach,
+          // Doctrine §2's W4. `isCutback` is the same deload mask `volumeCurve`
+          // cut the week's mileage with, so the trajectory holds on exactly the
+          // weeks the plan already calls recovery.
+          isDeload: isCutback,
+        }));
+      }
+    }
+
+    resolvedSlots.forEach((slot) => {
+      if (!slot) return; // conflict · skip
+      const { dow, qt, vocabFamily, vocabRx } = slot;
+      const track = trackFor(slot);
+      const step = track != null ? (stepByTrack.get(track) ?? null) : null;
       const sub =
         // DOCTRINE-TAPERMP-1 · "N mi WU · M mi @ MP · P mi CD". The "@ MP"
         // token is load-bearing, not decoration: `parseTempoShape` reads the
@@ -2043,8 +2135,11 @@ function layoutWeek({
         taperMp && qt === 'tempo'
           ? `${taperMp.warmupMi} mi WU · ${taperMp.mpMi} mi @ MP · ${taperMp.cooldownMi} mi CD`
       : vocabRx && qt !== 'tempo' ? vocabRx
-      : qt === 'intervals'        ? rx.intervals
-      : qt === 'threshold'        ? rx.threshold
+        // PROGRESSION-1 · the trajectory's rendered shape when it owns this
+        // slot, the fixed catalog string when it does not (unparseable seed,
+        // no pace anchor, or a composer that passes no trajectory at all).
+      : qt === 'intervals'        ? (step?.label ?? rx.intervals)
+      : qt === 'threshold'        ? (step?.label ?? rx.threshold)
       : qt === 'tempo'            ? (baseBuilding
                                       // Beginner sharpen day = a light fartlek: an easy run with a
                                       // few short surges at T effort, sized to the runner (no 3mi
@@ -2089,6 +2184,14 @@ function layoutWeek({
       slots[dow] = {
         dow: dow as DOW, type: effectiveType, distanceMi: slotMi, isQuality: true, isLong: false,
         subLabel: sub,
+        // PROGRESSION-1 · the shape the label was rendered from, so a surface
+        // that wants the geometry does not have to parse prose back out of the
+        // string, and so the trajectory is inspectable end to end.
+        ...(step ? {
+          workShape: step.shape,
+          progressionLever: step.lever,
+          challengeZone: step.zone,
+        } : {}),
         // DOCTRINE-VOCAB-1 · a family's coaching note comes from what that
         // family is FOR, not from the slot's spec kind. "Hold pace, even
         // splits" is exactly wrong on a hill session, which Research/04 §8.1
@@ -2940,6 +3043,16 @@ export interface ComposePlanResult {
   vols: number[];
   /** Bundle that persistPlan writes verbatim to training_plans.authored_state. */
   authoredState: Record<string, unknown>;
+  /**
+   * PROGRESSION-1 · the block's overload trajectory, week by week and track by
+   * track: which lever moved, what it changed, where a doctrine cap bound and
+   * where the session held. Absent on the maintenance and recovery composers,
+   * which have no build to progress through.
+   *
+   * Purely an audit surface — nothing in persistence reads it. It exists so
+   * "why is week 7 what it is" has an answer that is not a guess.
+   */
+  progression?: OverloadTrajectory['log'];
 }
 
 /**
@@ -3153,6 +3266,47 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     });
   }
 
+  /**
+   * PROGRESSION-1 (2026-08-17) · the block's default overload trajectory.
+   *
+   * `Design/adaptive-progression-engine.md` §3: "the plan carries a default
+   * overload trajectory". Before this the plan carried none — every week of a
+   * phase rendered the same fixed prescription string, and the only thing that
+   * moved was a pace ramp indexed on the week number, which Rule 1 forbids and
+   * `fbc61eb9` deleted. Deleting it left the block frozen; this is what belongs
+   * in its place.
+   *
+   * The trajectory is walked with the adaptation model's own no-evidence
+   * verdict, which is `normal` — §3's "progress as planned". It is a DEFAULT:
+   * once the runner has actually run something, the adaptation model permits,
+   * holds or modifies it, and that half is not authored here.
+   */
+  const trajectory = new OverloadTrajectory();
+  // The rep pace persistPlan will use, mirrored here so the trajectory's
+  // at-pace caps are computed against the pace actually prescribed. 5K/10K/HM
+  // goals carry true Daniels I; marathon and ultra keep the cruise-interval
+  // T−18 default that `buildWorkoutSpec` applies (R3 · PACE-I-1).
+  const iPaceEligible = ['5k', '10k', 'hm'].includes(distanceCategoryOf(input.raceDistanceMi));
+  // Memoised: `vdotFromTpace` is a fifty-step binary search over the Daniels
+  // table, and without evidence every week of a block carries the same T, so
+  // this would otherwise run the same search once per week for one answer.
+  const iPaceCache = new Map<number, number | null>();
+  const iPaceForWeek = (t: number | null): number | null => {
+    if (t == null) return null;
+    if (!iPaceEligible) return t - 18;
+    const hit = iPaceCache.get(t);
+    if (hit !== undefined) return hit;
+    // Same precedence as `resolveCurrentTPace`: a MEASURED VDOT outranks a
+    // below-table anchor. persistPlan's own I-pace derivation reaches for the
+    // anchor first, which for a runner who has both is the anchor overriding a
+    // measurement — the inversion P1-56's byte-safety test exists to catch.
+    const v = (input.bestRecentVdot == null && input.belowTableAnchor)
+      ? iPaceFromAnchorPace(input.belowTableAnchor.anchor)
+      : (iPaceFromVdot(vdotFromTpace(t)) ?? t - 18);
+    iPaceCache.set(t, v);
+    return v;
+  };
+
   const weeks: ComposedWeek[] = [];
   let phaseCursor = 0;
   let phaseWkRemaining = blocks.phases[0].weeks;
@@ -3211,6 +3365,13 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // what easy/long/recovery work paces off (PACE-E-1) — not the blended
       // goal pace, which would flatter a slow runner into a longer long.
       easyPaceSecPerMi: currentT != null ? currentT + EASY_BAND_SLOW_OFFSET_SEC : null,
+      // PROGRESSION-1 · the overload trajectory, stepped once per week in
+      // ascending order. The paces are the ones persistPlan will pace the
+      // session at, so the shape's at-pace caps are computed against the pace
+      // the runner is actually asked to hold.
+      trajectory,
+      weekTPaceSec: weekT,
+      weekIPaceSec: iPaceForWeek(weekT),
     });
     // 2026-06-23 · SP-4 · race-week chronology guard. layoutWeek positions
     // shakeout/tune-up/easy by a circular days-before-race offset that WRAPS, so for a
@@ -3264,6 +3425,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     blocks,
     totalWeeks,
     vols,
+    progression: trajectory.log,
     authoredState: {
       total_weeks: totalWeeks,
       race_distance_mi: input.raceDistanceMi,

@@ -478,7 +478,21 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
       // label here would drop the family name between compose and persist,
       // which is the sub_label/spec drift this function exists to prevent.
       const authored = typeof s.label === 'string' ? s.label.trim() : '';
-      if (authored) return authored;
+      if (authored) {
+        // PROGRESSION-1 (2026-08-17) · but the COUNT is the spec's, not the
+        // label's. `timeRepSpec` drops reps that do not fit the day's mileage
+        // budget, exactly as the distance-based branches do, and for those the
+        // whole label is re-derived here so the count follows. A time-based set
+        // keeps its authored string for its identity, so only the leading
+        // "N×" is reconciled — the workout is still "hills", it is just five of
+        // them rather than six.
+        const specReps = Number(s.rep_count ?? 0) || 0;
+        const lead = authored.match(/^(\s*)(\d+)(\s*[×xX]\s*)/);
+        if (specReps > 0 && lead && Number(lead[2]) !== specReps) {
+          return `${lead[1]}${specReps}${lead[3]}${authored.slice(lead[0].length)}`;
+        }
+        return authored;
+      }
       const reps = Number(s.rep_count ?? 0) || 0;
       const repMi = Number(s.rep_distance_mi ?? 0) || 0;
       const repM = Number(s.rep_distance_m ?? 0) || 0;
