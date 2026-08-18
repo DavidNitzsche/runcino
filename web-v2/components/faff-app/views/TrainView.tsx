@@ -1767,6 +1767,14 @@ function PlanDayPanel({
   // Build segment rows from workout_spec when available.
   // Covers long (BASE/FINISH), tempo (WARMUP/TEMPO/COOLDOWN),
   // intervals, threshold, easy, progression.
+  //
+  // COLD-4 · what a work row says when the spec carries no pace, by zone. Same
+  // strings the glance breakdown uses, so the two surfaces agree.
+  const EFFORT_TAIL: Record<string, string> = {
+    tempo: 'Comfortably hard · by feel',
+    threshold: 'Comfortably hard · by feel',
+    intervals: '5K–10K effort',
+  };
   type Seg = { label: string; body: string; tail?: string };
   const segments: Seg[] = [];
   if (spec) {
@@ -1794,9 +1802,14 @@ function PlanDayPanel({
       const tempoPace = spec.tempo_pace_s_per_mi as number | undefined;
       const workPace = repPace ?? tempoPace;
       const workDist = spec.work_distance_mi as number | undefined;
+      // COLD-4 · a by-effort session has no pace, and gating the WORK row on
+      // one made the whole work block VANISH from the detail sheet — a
+      // threshold day reading as warm-up plus cool-down, i.e. an easy run.
+      // The effort cue is the tail; the block itself is never dropped.
+      const workTail = workPace != null ? `${fmtPace(workPace)}/mi` : EFFORT_TAIL[kind];
       if (wu) segments.push({ label: 'WARMUP', body: `${wu.toFixed(1)} mi easy` });
-      if (workDist && workPace) segments.push({ label: kind === 'tempo' ? 'TEMPO' : 'WORK', body: `${workDist.toFixed(1)} mi`, tail: `${fmtPace(workPace)}/mi` });
-      else if (workPace) segments.push({ label: kind === 'tempo' ? 'TEMPO' : 'WORK', body: 'Work block', tail: `${fmtPace(workPace)}/mi` });
+      if (workDist) segments.push({ label: kind === 'tempo' ? 'TEMPO' : 'WORK', body: `${workDist.toFixed(1)} mi`, tail: workTail });
+      else segments.push({ label: kind === 'tempo' ? 'TEMPO' : 'WORK', body: 'Work block', tail: workTail });
       if (cd) segments.push({ label: 'COOLDOWN', body: `${cd.toFixed(1)} mi easy` });
     } else if (kind === 'intervals') {
       const wu = spec.warmup_mi as number | undefined;
@@ -1805,7 +1818,9 @@ function PlanDayPanel({
       const recov = spec.recovery_mi as number | undefined;
       const cd = spec.cooldown_mi as number | undefined;
       if (wu) segments.push({ label: 'WARMUP', body: `${wu.toFixed(1)} mi easy` });
-      if (reps && repPace) segments.push({ label: 'REPS', body: `${reps}×`, tail: `${fmtPace(repPace)}/mi` });
+      // COLD-4 · see the threshold branch — the rep count is what the runner
+      // executes and it survives whether or not a pace was prescribed.
+      if (reps) segments.push({ label: 'REPS', body: `${reps}×`, tail: repPace != null ? `${fmtPace(repPace)}/mi` : EFFORT_TAIL.intervals });
       if (recov) segments.push({ label: 'RECOVERY', body: `${recov.toFixed(1)} mi jog between` });
       if (cd) segments.push({ label: 'COOLDOWN', body: `${cd.toFixed(1)} mi easy` });
     } else if (kind === 'easy') {

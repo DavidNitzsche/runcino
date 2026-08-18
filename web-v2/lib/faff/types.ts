@@ -123,6 +123,24 @@ export interface WorkoutSpecLong {
   finish_label?: string;    // e.g. "M" | "HM" | "Marathon Pace"
 }
 
+/**
+ * COLD-4 (2026-08-17) · A SESSION CAN CARRY NO PACE, ON PURPOSE.
+ *
+ * Two shapes set `by_effort`, for opposite reasons and with the same
+ * consequence — the pace field is null and no consumer may invent one:
+ *
+ *   · hills and fartlek (`Research/04` §8.1, §9.1) — the pace column reads
+ *     "5K–10K effort", never a number, because a flat-ground pace is
+ *     unreachable on a gradient.
+ *   · the calibration intro (`lib/plan/anchor-provenance.ts`) — the runner has
+ *     no measured fitness, so any pace we printed would be one we made up.
+ *
+ * The pace fields below were typed `number` while the builder has emitted null
+ * for time-based hill reps since 2026-08-17. TypeScript believed the number and
+ * the runtime delivered null, so consumers read them unguarded and rendered
+ * "0:00/mi". Widening these is what turns that class of bug from silent into a
+ * compile error.
+ */
 export interface WorkoutSpecThreshold {
   kind: 'threshold';
   warmup_mi: number;
@@ -130,7 +148,16 @@ export interface WorkoutSpecThreshold {
   /** Use exactly ONE of rep_distance_m or rep_distance_mi (the other undefined). */
   rep_distance_m?: number;
   rep_distance_mi?: number;
-  rep_pace_s_per_mi: number;
+  /** Time-based reps (hills, fartlek, the overload trajectory) carry seconds
+   *  instead of a distance. `Research/04` §8.1. */
+  rep_duration_s?: number;
+  /** Null when `by_effort` — never a placeholder, never zero. */
+  rep_pace_s_per_mi: number | null;
+  /** True when the session is prescribed by EFFORT and carries no pace. */
+  by_effort?: true;
+  /** The authored prescription, where the workout's identity lives ("6×90s
+   *  hills", "Mona"). Present on time-based rep specs. */
+  label?: string;
   rep_rest_s: number;
   cooldown_mi: number;
   lthr_bpm: number | null;
@@ -140,7 +167,10 @@ export interface WorkoutSpecTempo {
   kind: 'tempo';
   warmup_mi: number;
   tempo_distance_mi: number;
-  tempo_pace_s_per_mi: number;
+  /** Null when `by_effort` — never a placeholder, never zero. */
+  tempo_pace_s_per_mi: number | null;
+  by_effort?: true;
+  label?: string;
   cooldown_mi: number;
   hr_target_bpm: number | null;
 }
@@ -151,7 +181,11 @@ export interface WorkoutSpecIntervals {
   rep_count: number;
   rep_distance_m?: number;
   rep_distance_mi?: number;
-  rep_pace_s_per_mi: number;
+  rep_duration_s?: number;
+  /** Null when `by_effort` — never a placeholder, never zero. */
+  rep_pace_s_per_mi: number | null;
+  by_effort?: true;
+  label?: string;
   rep_rest_s: number;
   cooldown_mi: number;
   lthr_bpm: number | null;

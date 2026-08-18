@@ -234,8 +234,12 @@ function timeRepSpec(
   lthr: number | null,
   prescription: string | null | undefined,
   withRules: Record<string, unknown>,
+  /** COLD-4 · the calibration intro forces the same by-effort treatment onto a
+   *  session that would otherwise be paced, for the opposite reason: hills have
+   *  no reachable pace, a cold start has no honest one. */
+  effortCued = false,
 ): SpecBuildResult {
-  const byEffort = /hill/i.test(String(prescription ?? ''));
+  const byEffort = effortCued || /hill/i.test(String(prescription ?? ''));
   // WU/CD use the same floors as the distance-based branches.
   const wuFloor = Math.max(0.5, Math.min(1.5, budgetMi * 0.3));
   const cdFloor = Math.max(0.5, Math.min(1.0, budgetMi * 0.25));
@@ -338,6 +342,26 @@ export function buildWorkoutSpec(
   // must track current fitness, not the goal-blended tPaceSec). null → uses tPaceSec (byte-identical).
   // Quality (threshold/tempo/intervals/race) stays on tPaceSec.
   easyAnchorTSec: number | null = null,
+  /**
+   * COLD-4 (2026-08-17) · THE CALIBRATION INTRO · run this quality session by
+   * EFFORT, with no pace target at all.
+   *
+   * Set by the composer for the opening `CALIBRATION_INTRO_WEEKS` of a plan
+   * whose fitness anchor is `provisional_mileage` — i.e. a VDOT
+   * `conservativeVdotFromMileage` invented out of a self-reported weekly
+   * mileage bucket. The DISTANCE of the session is the runner's own claim and
+   * doctrine-bounded; the PACE is ours, and a fabricated number presented as a
+   * target is the thing being removed. `Design/adaptive-progression-engine.md`
+   * §A names that function as a non-evidence leak by construction.
+   *
+   * The representation is the one `Research/04` §8.1 hill repeats already use
+   * (`by_effort: true`, null rep pace) — chosen rather than invented so the
+   * expander, the watch payload, the phone breakdown and the recap all handle
+   * it on paths that already exist.
+   *
+   * false (the default) → every branch below is byte-identical to before.
+   */
+  effortCued = false,
 ): SpecBuildResult {
   // 2026-06-02 · parse the prescription up front (e.g. "6×800m @ I
   // pace · 90s jog" → {reps:6, repDistanceMi:0.497, restS:90}). When
@@ -596,13 +620,19 @@ export function buildWorkoutSpec(
       // contingency rules still ride along, and an HR over LTHR+5 during an MP
       // block is exactly the bail worth offering.
       const atMarathonPace = /@\s*MP\b/i.test(prescription ?? '');
+      // COLD-4 · the calibration intro drops the block's pace target. An MP
+      // block is priced off the runner's GOAL rather than off the provisional
+      // fitness anchor, so it carries no fabrication and keeps its target —
+      // the same reasoning that exempts race day and the race-week tune-up.
+      const blockByEffort = effortCued && !atMarathonPace;
       const blockPace = atMarathonPace ? marathonPace : tempo;
       return {
         spec: {
           kind: 'tempo',
           warmup_mi: Number(wu.toFixed(1)),
           tempo_distance_mi: Number(tempoDist.toFixed(1)),
-          tempo_pace_s_per_mi: blockPace,
+          tempo_pace_s_per_mi: blockByEffort ? null : blockPace,
+          ...(blockByEffort ? { by_effort: true } : {}),
           cooldown_mi: Number(cd.toFixed(1)),
           hr_target_bpm: atMarathonPace ? null : (lthr ? Math.round(lthr * 0.92) : null),
           // The authored prescription carries the block's IDENTITY, exactly as
@@ -614,11 +644,11 @@ export function buildWorkoutSpec(
           ...(atMarathonPace && prescription ? { label: prescription } : {}),
           ...withRules,
         },
-        paceTargetSPerMi: blockPace,
+        paceTargetSPerMi: blockByEffort ? null : blockPace,
       };
     }
     case 'threshold': {
-      if (timeReps) return timeRepSpec('threshold', timeReps, distance_mi ?? 7, tPaceSec, lthr, prescription, withRules);
+      if (timeReps) return timeRepSpec('threshold', timeReps, distance_mi ?? 7, tPaceSec, lthr, prescription, withRules, effortCued);
       // 2026-06-02 · prefer parsed prescription · falls back to
       // historical defaults when the rx string is absent / unparseable.
       const repCount = parsed?.reps ?? 4;
@@ -647,18 +677,22 @@ export function buildWorkoutSpec(
           warmup_mi: Number(wu.toFixed(1)),
           rep_count: reps,
           rep_distance_mi: repMi,
-          rep_pace_s_per_mi: tPaceSec,
+          // COLD-4 · the calibration intro emits the rep with no pace. Distance,
+          // count and rest are unchanged — those come from the prescription
+          // library and the runner's own volume, not from the invented VDOT.
+          rep_pace_s_per_mi: effortCued ? null : tPaceSec,
+          ...(effortCued ? { by_effort: true } : {}),
           rep_rest_s: restS,
           cooldown_mi: Number(cd.toFixed(1)),
           lthr_bpm: hrLthrBpm(lthr),
           ...withRules,
         },
-        paceTargetSPerMi: tPaceSec,
+        paceTargetSPerMi: effortCued ? null : tPaceSec,
       };
     }
     case 'intervals':
     case 'vo2max': {
-      if (timeReps) return timeRepSpec('intervals', timeReps, distance_mi ?? 7, iPaceSec ?? interval, lthr, prescription, withRules);
+      if (timeReps) return timeRepSpec('intervals', timeReps, distance_mi ?? 7, iPaceSec ?? interval, lthr, prescription, withRules, effortCued);
       // 2026-06-02 · prefer parsed prescription · falls back to
       // historical defaults when the rx string is absent / unparseable.
       const repCount = parsed?.reps ?? 5;
@@ -694,13 +728,16 @@ export function buildWorkoutSpec(
           warmup_mi: wuVal,
           rep_count: reps,
           rep_distance_mi: repMi,
-          rep_pace_s_per_mi: repPace,
+          // COLD-4 · see the threshold branch. An I-pace derived from a mileage
+          // bucket is the same fabrication one zone harder.
+          rep_pace_s_per_mi: effortCued ? null : repPace,
+          ...(effortCued ? { by_effort: true } : {}),
           rep_rest_s: restS,
           cooldown_mi: cdVal,
           lthr_bpm: hrLthrBpm(lthr),
           ...withRules,
         },
-        paceTargetSPerMi: repPace,
+        paceTargetSPerMi: effortCued ? null : repPace,
       };
     }
     case 'race': {

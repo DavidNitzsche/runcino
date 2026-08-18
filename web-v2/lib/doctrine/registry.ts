@@ -94,6 +94,7 @@ import {
 import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
 import { MAX_LONG_BUMP_MI, MAX_WEEKLY_BUMP_MI, MAX_PER_EASY_BUMP_MI } from '@/lib/plan/adaptive-ramp';
 import { COLD_START_CALIBRATION } from '@/lib/plan/simulator';
+import { CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES } from '@/lib/plan/anchor-provenance';
 import {
   STRIDE_DURATION_S,
   STRIDE_RECOVERY_S,
@@ -3647,6 +3648,158 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       ).text();
       if (!/Beginner/.test(t) || !/Elite/.test(t)) {
         throw new Error('Research/00a volume table no longer spans beginner to elite');
+      }
+    },
+  },
+
+  /* ── A SECOND CONVENTION CLAIM ───────────────────────────────────────────
+   *
+   * `CALIBRATION_INTRO_WEEKS` is the sibling of the constant above and shares
+   * its hazard: it sits on the cold-start path, it decides what a brand-new
+   * runner is prescribed, and no passage in `Research/` states it. The whole
+   * reason it exists is that `conservativeVdotFromMileage` invents a VDOT — so
+   * a fabricated citation attached to the FIX would be the same defect wearing
+   * the bandage.
+   *
+   * What research does state, and what this claim reads out of the doc:
+   *
+   *   · §"Field-test protocols (when no recent race exists)" — doctrine's own
+   *     answer to an absent race is RUN A TEST, not estimate. The intro's
+   *     threshold session is that test in all but name.
+   *   · §"When to lock to a specific pace vs. give a range" — "the harder the
+   *     workout, the tighter the lock", and its own escape hatch: where a pace
+   *     target is not meaningful, "Use HR/effort, not pace".
+   *
+   * The second of those is a genuine tension and is recorded as one rather than
+   * argued away: doctrine wants threshold work pace-locked, and for the intro
+   * window we do not lock it. The claim therefore constrains the window from
+   * both sides — it must be short, it must be endable by evidence, and it must
+   * never be able to cover a whole plan.
+   */
+  {
+    id: 'CONVENTION.calibration-intro-window',
+    binds: [
+      'lib/plan/anchor-provenance.ts#CALIBRATION_INTRO_WEEKS',
+      'lib/plan/anchor-provenance.ts#EFFORT_CUED_TYPES',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Field-test protocols (when no recent race exists)',
+    claim:
+      'The length of the cold-start calibration intro is a DATA-SUFFICIENCY CONVENTION, not a ' +
+      'physiological finding, and must say so in its own source. Research grounds only the shape: ' +
+      'when no recent race exists doctrine prescribes a FIELD TEST rather than an estimate, and ' +
+      'the threshold session the intro prescribes is that test. Doctrine separately wants hard ' +
+      'work pace-locked ("the harder the workout, the tighter the lock"), so withholding a pace ' +
+      'is a deviation that has to be bounded: the window stays short, it applies only to the ' +
+      'generic quality families, it never touches work priced off the runner\'s stated goal ' +
+      '(race day, the race-week tune-up), and a measured read must be able to end it early. ' +
+      'What is enforced is those bounds and the honest labelling — never the number itself.',
+    check({ cite }) {
+      const src = sourceOf('web-v2/lib/plan/anchor-provenance.ts');
+
+      // 1 · The honest label must be present, in the same form the sibling
+      // claim enforces. This sentence is the whole point.
+      if (!/THIS IS A DATA-SUFFICIENCY CONVENTION, NOT A PHYSIOLOGICAL CLAIM/.test(src)) {
+        throw new Error(
+          'CALIBRATION_INTRO_WEEKS no longer states that it is a convention · that sentence is ' +
+            'what stops the next reader treating it as physiology',
+        );
+      }
+      // 2 · And no `Research/` citation may be attached to it. A cold-start
+      // constant wearing a citation is exactly the defect this file was
+      // extended to catch; if one ever belongs here it goes on a claim, not in
+      // a comment above the number.
+      const decl = src.slice(
+        Math.max(0, src.indexOf('THIS IS A DATA-SUFFICIENCY CONVENTION')),
+        src.indexOf('export const CALIBRATION_INTRO_WEEKS'),
+      );
+      if (/Research\/\d/.test(decl) || /Daniels Running Formula §/.test(decl)) {
+        throw new Error(
+          'a research citation has been attached to CALIBRATION_INTRO_WEEKS · its value is a ' +
+            'convention and citing a doc for it launders one into the other',
+        );
+      }
+
+      // 3 · The window is bounded. Read the value out of the source rather than
+      // restating it, so this cannot agree with a stale copy.
+      const weeks = Number(
+        matchLiteral(src, /export const CALIBRATION_INTRO_WEEKS = (\d+);/, 'CALIBRATION_INTRO_WEEKS')[1],
+      );
+      if (weeks !== CALIBRATION_INTRO_WEEKS) {
+        throw new Error(`the exported constant (${CALIBRATION_INTRO_WEEKS}) and its source (${weeks}) disagree`);
+      }
+      within(CALIBRATION_INTRO_WEEKS, [1, 4], 'calibration intro window, in weeks');
+
+      // 4 · It can never cover a whole plan. `composePlan` excludes race week
+      // from the intro, and the engine refuses a race-prep block under two
+      // weeks — so the shortest plan it will ever build still contains one
+      // paced week. Assert the exclusion is actually in the composer rather
+      // than trusting the comment.
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/anchorIsProvisional && wi < CALIBRATION_INTRO_WEEKS && !isRaceWeek/.test(gen)) {
+        throw new Error(
+          'the calibration intro no longer excludes race week · a two-week plan could then be ' +
+            'prescribed entirely by effort, including its tune-up',
+        );
+      }
+
+      // 5 · Scope. Only the generic quality families lose their pace. Race day
+      // and the race-week tune-up are priced off the runner's STATED GOAL, not
+      // off the provisional fitness anchor, so neither carries the fabrication
+      // — and both are already exempt from the evidence-time pace recompute for
+      // the same reason.
+      for (const t of ['threshold', 'intervals', 'tempo']) {
+        if (!EFFORT_CUED_TYPES.has(t)) {
+          throw new Error(`${t} left EFFORT_CUED_TYPES · the intro no longer covers the session that caused it`);
+        }
+      }
+      for (const t of ['race', 'race_week_tuneup', 'easy', 'long', 'recovery']) {
+        if (EFFORT_CUED_TYPES.has(t)) {
+          throw new Error(
+            `${t} entered EFFORT_CUED_TYPES · the intro withholds a pace we fabricated, and this ` +
+              'session\'s pace is not one of them',
+          );
+        }
+      }
+
+      // 6 · The window must be ENDABLE. An intro nothing can close is not a
+      // calibration, it is a permanent downgrade — which is precisely the
+      // Justin bug the no-race self-heal was written for, re-created on the
+      // race-prep path. The cron's re-anchor is that escape.
+      const reanchor = sourceOf('web-v2/lib/plan/reanchor-plan.ts');
+      if (!/export async function reanchorActivePlan/.test(reanchor)) {
+        throw new Error('reanchorActivePlan is gone · nothing can end the calibration intro');
+      }
+      if (!/reanchorActivePlan/.test(sourceOf('web-v2/app/api/cron/snapshot-projections/route.ts'))) {
+        throw new Error('the projection cron no longer calls the re-anchor · the intro cannot end');
+      }
+
+      // 7 · Both doctrine passages this claim leans on must still say what it
+      // says they say. The field-test protocols are the grounding for the
+      // shape; the lock-in rule is the tension being bounded, and if the doc
+      // ever stops wanting hard work pace-locked, this claim's whole framing
+      // needs re-reading by a human.
+      const protocols = cite.text();
+      if (!/time trial/i.test(protocols) || !/VDOT|T pace/.test(protocols)) {
+        throw new Error(
+          'Research/01 field-test protocols no longer describe deriving a pace anchor from a test',
+        );
+      }
+      const lock = resolveCitation(
+        'Research/01-pace-zones-vdot.md',
+        '### When to lock to a specific pace vs. give a range',
+      ).text();
+      if (!/the harder the workout, the tighter the lock/i.test(lock)) {
+        throw new Error(
+          'Research/01 no longer states the lock-in rule · the calibration intro is a deviation ' +
+            'from it and the deviation was scoped against that sentence',
+        );
+      }
+      if (!/HR\/effort/i.test(lock)) {
+        throw new Error(
+          'Research/01 lock-in table no longer carries an effort-based prescription style · the ' +
+            'intro\'s representation was chosen because doctrine already has one',
+        );
       }
     },
   },

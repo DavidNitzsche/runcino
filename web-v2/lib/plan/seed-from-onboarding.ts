@@ -55,6 +55,7 @@ import { randomBytes } from 'crypto';
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildWorkoutSpec, conservativeVdotFromMileage } from './spec-builder';
+import { CALIBRATION_INTRO_WEEKS } from './anchor-provenance';
 import {
   tPaceFromVdot, iPaceFromVdot, bestRecentVdot, VDOT_FULL_VALUE_DAYS,
   vdotRunFloorMi, goalDistanceMiFromCode,
@@ -108,10 +109,8 @@ interface SeedResult {
 }
 
 const TOTAL_WEEKS = 16;        // Maintenance window per canonical builder.
-const CALIBRATION_INTRO_WEEKS = 2;  // Cold-start runner: ease in for this many
-                                    // weeks with effort-cued threshold (not
-                                    // fabricated-pace VO2) until a measured read
-                                    // lands and the re-anchor commits the build.
+// CALIBRATION_INTRO_WEEKS moved to ./anchor-provenance (2026-08-17 · COLD-4)
+// when the race-prep path adopted the same intro. One number, two seeders.
 const MPW_FLOOR   = 8;         // Below 8 mpw, no plan helps; floor at 8.
 const LONG_PCT    = 0.26;      // Long run % of weekly (canonical builder).
 const T_SOLO_PCT  = 0.18;      // Threshold (1 quality/wk · maintenance).

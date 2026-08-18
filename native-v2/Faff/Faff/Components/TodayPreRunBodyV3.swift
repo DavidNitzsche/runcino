@@ -232,8 +232,18 @@ struct TodayPreRunBodyV3: View {
         // intervals where the meaningful target is the rep pace
         // (6:29). For easy runs there's only one phase so the result
         // is unchanged.
+        //
+        // COLD-4 2026-08-17 · that fix was re-opened by the null door. A
+        // session can now carry work phases with NO pace on purpose — hill
+        // reps, and the cold-start calibration intro — and the second lookup
+        // below then picked the warm-up's easy pace right back up and printed
+        // it under "TARGET PACE". So: once a work phase exists, the answer
+        // comes from a work phase or it is a dash. The fallback survives only
+        // for a session that has no work phase at all.
         let phases = workout?.phases ?? []
-        if let work = phases.first(where: { $0.type == .work && $0.targetPaceSPerMi != nil })?.targetPaceSPerMi {
+        let workPhases = phases.filter { $0.type == .work }
+        if !workPhases.isEmpty {
+            guard let work = workPhases.compactMap({ $0.targetPaceSPerMi }).first else { return "—" }
             return formatPace(work)
         }
         if let any = phases.first(where: { $0.targetPaceSPerMi != nil })?.targetPaceSPerMi {

@@ -126,8 +126,22 @@ struct TreadmillView: View {
             return [TreadSeg(label: "Just Run", sub: "",
                              kind: .work, mph: 5.5, inc: 1.0, dur: 30 * 60)]
         }
+        // COLD-4 2026-08-17 · a belt needs a number even when the session does
+        // not have one, so the defaults below stay. What changes is WHERE the
+        // number comes from for a runner we have never measured: a session
+        // prescribed by effort (hill reps · the cold-start calibration intro)
+        // used to hand them a flat 7.0 mph — 8:34/mi — which is a pace, and a
+        // fast one, invented by this view. When the session carries an easy
+        // anchor of its own (the warm-up, which is derived from the runner's own
+        // band) start the work segments a step above it instead. The runner
+        // adjusts by feel from there, which is what the session is asking for.
+        let easyMph = phases
+            .first(where: { $0.type == .warmup })
+            .flatMap { mphFromPaceSPerMi($0.targetPaceSPerMi) }
         return phases.map { phase in
-            let mph = mphFromPaceSPerMi(phase.targetPaceSPerMi) ?? defaultMphFor(phase.type)
+            let mph = mphFromPaceSPerMi(phase.targetPaceSPerMi)
+                ?? effortStartMph(phase.type, easyMph: easyMph)
+                ?? defaultMphFor(phase.type)
             let kind: TreadSegKind = {
                 switch phase.type {
                 case .warmup:   return .warm
@@ -151,6 +165,20 @@ struct TreadmillView: View {
     private func mphFromPaceSPerMi(_ secPerMi: Int?) -> Double? {
         guard let s = secPerMi, s > 0 else { return nil }
         return 3600.0 / Double(s)
+    }
+
+    /// COLD-4 · a STARTING belt speed for a by-effort segment, anchored on the
+    /// runner's own easy pace rather than a population constant. Threshold work
+    /// sits roughly 0.8 mph above easy and recoveries at easy — close enough to
+    /// begin, which is all a by-effort session needs; the runner takes it from
+    /// there. Returns nil when the session carries no easy anchor either, and
+    /// the flat defaults below stand.
+    private func effortStartMph(_ type: WatchPhaseType, easyMph: Double?) -> Double? {
+        guard let easy = easyMph, easy > 0 else { return nil }
+        switch type {
+        case .warmup, .cooldown, .recovery: return easy
+        case .work: return easy + 0.8
+        }
     }
 
     /// Sensible defaults when the plan didn't carry a target pace.

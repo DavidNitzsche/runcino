@@ -23,10 +23,16 @@
 import { describe, it, expect } from 'vitest';
 import { classifyGoalTier, lookupTierTarget, TIER_TARGETS } from './goal-tiers';
 import { weeklyAvgFromWindow, MIN_COVERAGE_DAYS } from '@/lib/runs/volume';
-import { paceBlendAnchorIsProvisional, isProvisionalAnchor } from './anchor-provenance';
+import {
+  paceBlendAnchorIsProvisional, isProvisionalAnchor,
+  CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES,
+} from './anchor-provenance';
 import { buildSimPlan } from './sim-inputs';
 import type { SimInputs } from './sim-constants';
-import { predictRaceTime } from '@/lib/training/vdot';
+import { predictRaceTime, tPaceFromVdot } from '@/lib/training/vdot';
+import { specForComposedDay } from './generate';
+import { conservativeVdotFromMileage } from './spec-builder';
+import { expandSpecToPhases, subLabelFromSpec } from '@/lib/training/expand-spec';
 
 const MARATHON_MI = 26.2188;
 /** The apple-review@faff.run shape: 0 runs, 0 races, 30 mi/wk self-report. */
@@ -196,5 +202,142 @@ describe('COLD-3 · a mileage-derived anchor is marked, and readers refuse it', 
     expect(paceBlendAnchorIsProvisional({ season_anchor_vdot: 48 })).toBe(false);
     expect(paceBlendAnchorIsProvisional(null)).toBe(false);
     expect(isProvisionalAnchor('below_table_anchor')).toBe(false);
+  });
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * FIX 4 · marking the anchor was not enough — the plan still PRESCRIBED it
+ *
+ * COLD-3 stopped three readers believing the invented VDOT. It did not stop
+ * the runner being handed it: the same cold-start account still got a week-one
+ * threshold session at 8:23/mi, a pace derived entirely from a 30 mi/wk
+ * self-report. The distance is the runner's own claim; the pace was ours.
+ *
+ * The maintenance path solved this in June (`CALIBRATION_INTRO_WEEKS`) and
+ * race-prep never got it.
+ * ───────────────────────────────────────────────────────────────────────── */
+describe('COLD-4 · the calibration intro reaches the race-prep path', () => {
+  /** persistPlan's own argument shape for the cold-start marathon plan. */
+  const persistArgs = (built: Extract<ReturnType<typeof buildSimPlan>, { ok: true }>) => ({
+    lthr: null,
+    maxHr: null,
+    goalPaceSec: built.derived.goalPaceSec,
+    easyAnchorTSec: tPaceFromVdot(conservativeVdotFromMileage(built.derived.recentWeeklyMi)),
+    goalIPaceEligible: false,   // marathon goal → cruise default
+    belowTableAnchor: null,
+  });
+
+  const build = () => {
+    const built = buildSimPlan(COLD_START);
+    if (!built.ok) throw new Error(built.reason);
+    return built;
+  };
+
+  it('the intro window covers the opening weeks and NOTHING after them', () => {
+    const built = build();
+    for (let wi = 0; wi < built.composed.weeks.length; wi++) {
+      const cued = built.composed.weeks[wi].days.filter((d) => (d as { effortCued?: boolean }).effortCued === true);
+      if (wi < CALIBRATION_INTRO_WEEKS) {
+        expect(cued.length, `week ${wi + 1} should carry the intro`).toBeGreaterThan(0);
+        // ONLY quality. The runner's own volume claim is untouched.
+        for (const d of cued) {
+          expect(d.isQuality).toBe(true);
+          expect(EFFORT_CUED_TYPES.has(d.type)).toBe(true);
+        }
+      } else {
+        expect(cued.length, `week ${wi + 1} is past the window`).toBe(0);
+      }
+    }
+  });
+
+  it('week one quality carries NO pace target · week three does', () => {
+    const built = build();
+    const args = persistArgs(built);
+    const qualityOf = (wi: number) => built.composed.weeks[wi].days
+      .filter((d) => d.isQuality)
+      .map((d) => ({ d, ...specForComposedDay(d, built.composed.weeks[wi].tPaceSec ?? null, args) }));
+
+    const w1 = qualityOf(0);
+    expect(w1.length).toBeGreaterThan(0);
+    for (const q of w1) {
+      expect(q.paceTargetSPerMi, 'week-one quality must not carry a pace column').toBeNull();
+      const spec = q.spec as Record<string, unknown>;
+      expect(spec.by_effort).toBe(true);
+      // The pace is withheld. Everything else about the session is intact.
+      expect(spec.rep_pace_s_per_mi ?? spec.tempo_pace_s_per_mi ?? null).toBeNull();
+      expect(Number(spec.warmup_mi)).toBeGreaterThan(0);
+      expect(Number(spec.cooldown_mi)).toBeGreaterThan(0);
+      expect(Number(spec.rep_count ?? 1)).toBeGreaterThan(0);
+      // ...and the label says EFFORT rather than promising a pace it lacks.
+      const label = subLabelFromSpec(q.spec as Parameters<typeof subLabelFromSpec>[0]) ?? '';
+      expect(label).not.toMatch(/@\s*[TIRME]\s*pace\b/i);
+      expect(label).toMatch(/effort/i);
+    }
+
+    const w3 = qualityOf(2);
+    expect(w3.length).toBeGreaterThan(0);
+    for (const q of w3) {
+      expect(q.paceTargetSPerMi, 'week three is past the window · pace returns').not.toBeNull();
+      expect((q.spec as Record<string, unknown>).by_effort).toBeUndefined();
+    }
+  });
+
+  it('the long run and the weekly volume are IDENTICAL either way', () => {
+    // The owner's ruling: effort-cue the pace only. Volume and the long run are
+    // the runner's own claim and are already doctrine-bounded, so the intro must
+    // not move a single mile.
+    const built = build();
+    const args = persistArgs(built);
+    for (const wi of [0, 1]) {
+      const w = built.composed.weeks[wi];
+      const long = w.days.find((d) => d.isLong)!;
+      expect((long as { effortCued?: boolean }).effortCued).toBeUndefined();
+      const { paceTargetSPerMi, spec } = specForComposedDay(long, w.tPaceSec ?? null, args);
+      expect(paceTargetSPerMi).not.toBeNull();          // long keeps its band
+      expect((spec as Record<string, unknown>).by_effort).toBeUndefined();
+      expect(long.distanceMi).toBeGreaterThan(0);
+    }
+  });
+
+  it('an effort-cued session is still executable on the watch', () => {
+    // A phase list with structure, distances/durations and jog recoveries — and
+    // a null target on the work, which every watch face already handles. The
+    // failure this guards is an EMPTY or paceless-and-shapeless expansion,
+    // which would leave the runner with nothing to run.
+    const built = build();
+    const args = persistArgs(built);
+    const w = built.composed.weeks[0];
+    const q = w.days.find((d) => d.isQuality)!;
+    const { spec } = specForComposedDay(q, w.tPaceSec ?? null, args);
+    const easy = args.easyAnchorTSec != null ? args.easyAnchorTSec + 100 : null;
+    const phases = expandSpecToPhases({
+      spec: spec as Parameters<typeof expandSpecToPhases>[0]['spec'],
+      totalMi: q.distanceMi, easyPaceSec: easy, recoveryPaceSec: easy,
+    });
+    expect(phases).not.toBeNull();
+    const work = (phases ?? []).filter((p) => p.type === 'work');
+    expect(work.length).toBeGreaterThan(0);
+    for (const p of work) {
+      expect(p.targetPaceSPerMi ?? null).toBeNull();        // no invented pace
+      expect(p.tolerancePaceSPerMi ?? null).toBeNull();     // and no band around one
+      // Still countable: every work phase knows how far or how long it runs.
+      expect((p.distanceMi ?? 0) > 0 || (p.durationSec ?? 0) > 0).toBe(true);
+      // And it is not mislabelled as a hill just because it has no pace.
+      expect(p.label).not.toMatch(/hill/i);
+    }
+    // Warm-up and cool-down keep the runner's own easy band — that pace is not
+    // the fabrication being withheld.
+    expect((phases ?? []).find((p) => p.type === 'warmup')?.targetPaceSPerMi).toBe(easy);
+  });
+
+  it('a MEASURED runner gets no intro at all (byte-identical to before)', () => {
+    const built = buildSimPlan({ ...COLD_START, bestRecentVdotOverride: 48 });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    for (const w of built.composed.weeks) {
+      for (const d of w.days) {
+        expect((d as { effortCued?: boolean }).effortCued).toBeUndefined();
+      }
+    }
   });
 });

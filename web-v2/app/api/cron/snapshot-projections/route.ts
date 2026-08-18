@@ -26,7 +26,7 @@ import {
 import { recordProjectionSnapshot } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr, ratchetUsersMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
-import { reanchorMaintenancePlan } from '@/lib/plan/reanchor-maintenance';
+import { reanchorActivePlan } from '@/lib/plan/reanchor-plan';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { refreshRunnerCalibration } from '@/lib/coach/runner-calibration';
 
@@ -44,7 +44,7 @@ function distFromLabel(label: string | null | undefined): number | null {
   return distanceMiFromLabel(label);
 }
 
-async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchor: Awaited<ReturnType<typeof reanchorMaintenancePlan>> }> {
+async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchor: Awaited<ReturnType<typeof reanchorActivePlan>> }> {
   // Ratchet stored max_hr if a new ceiling was observed this year.
   // loadVdotInputs calls loadEffectiveMaxHr internally for the run-candidate
   // HR gate; we call it separately here for the ratchet side effect only.
@@ -109,12 +109,17 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
     snapshots.push({ distance: d, sec: projSec });
   }
 
-  // Self-heal: if this runner is on a no-race plan that was anchored
-  // provisionally (or their fitness has shifted >= 2 VDOT), refresh its future
-  // paces in place off the measured read. This is what makes a provisional /
-  // calibrating plan never get stuck on fabricated paces. Best-effort.
-  let reanchor: Awaited<ReturnType<typeof reanchorMaintenancePlan>> = null;
-  try { reanchor = await reanchorMaintenancePlan(userUuid, vdot, today); }
+  // Self-heal: if this runner's ACTIVE plan was anchored provisionally (or
+  // their fitness has shifted >= 2 VDOT), refresh its future paces in place off
+  // the measured read. This is what makes a provisional / calibrating plan never
+  // get stuck on fabricated paces, and it is what ENDS the calibration intro.
+  //
+  // 2026-08-17 · COLD-4 · was scoped to no-race plans only, so a race-prep
+  // runner on an invented anchor had no path off it. `vdot` here is
+  // `bestRecentVdot(...)` — evidence-only, so a null read leaves the plan alone
+  // rather than re-anchoring onto another estimate. Best-effort.
+  let reanchor: Awaited<ReturnType<typeof reanchorActivePlan>> = null;
+  try { reanchor = await reanchorActivePlan(userUuid, vdot, today); }
   catch { reanchor = null; }
 
   return { vdot, snapshots, reanchor };
@@ -145,7 +150,7 @@ export async function POST(req: NextRequest) {
   // hardcoded-user append. (Pre-signup this force-included David's UUID
   // as legacy-row paranoia; every active plan now carries user_uuid.)
 
-  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchored?: { from: number | null; to: number; workouts: number }; calibration?: { data_quality: string; workouts: number; quality: number } | { error: string }; error?: string }> = [];
+  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchored?: { mode: string; from: number | null; to: number; workouts: number; sealed: number; cleared_provisional: boolean }; calibration?: { data_quality: string; workouts: number; quality: number } | { error: string }; error?: string }> = [];
   for (const u of userIds) {
     try {
       const today = await runnerToday(u);
@@ -162,7 +167,7 @@ export async function POST(req: NextRequest) {
 
       results.push({
         user_uuid: u, vdot: r.vdot, snapshots: r.snapshots,
-        ...(r.reanchor ? { reanchored: { from: r.reanchor.fromVdot, to: r.reanchor.toVdot, workouts: r.reanchor.workoutsUpdated } } : {}),
+        ...(r.reanchor ? { reanchored: { mode: r.reanchor.mode, from: r.reanchor.fromVdot, to: r.reanchor.toVdot, workouts: r.reanchor.workoutsUpdated, sealed: r.reanchor.workoutsSealed, cleared_provisional: r.reanchor.clearedProvisional } } : {}),
         calibration,
       });
     } catch (e: unknown) {

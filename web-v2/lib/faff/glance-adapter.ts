@@ -570,8 +570,14 @@ function buildWorkoutBreakdown(
           },
           {
             label: 'TEMPO',
+            // COLD-4 · a spec with no tempo pace is prescribed by EFFORT — the
+            // calibration intro, or a doctrine family that states effort rather
+            // than a number. The tail says so. `fmtPace(null)` used to render
+            // "0:00/mi", which reads as a target of zero.
             body: workBody,
-            tail: `${fmtPace(spec.tempo_pace_s_per_mi)}/mi`,
+            tail: spec.tempo_pace_s_per_mi != null
+              ? `${fmtPace(spec.tempo_pace_s_per_mi)}/mi`
+              : 'Comfortably hard · by feel',
           },
           {
             label: 'COOLDOWN',
@@ -607,7 +613,14 @@ function buildWorkoutBreakdown(
           {
             label: 'WORK',
             body: `${spec.rep_count} × ${distStr} · ${restStr} jog rest`,
-            tail: `${fmtPace(spec.rep_pace_s_per_mi)}/mi`,
+            // COLD-4 · see the TEMPO row. The effort cue matches the one the
+            // no-spec branch below already uses, so a runner sees the same
+            // instruction whether or not their plan carries specs — and the
+            // structure (count, distance, rest) is unchanged, because that is
+            // the part of the session we actually know.
+            tail: spec.rep_pace_s_per_mi != null
+              ? `${fmtPace(spec.rep_pace_s_per_mi)}/mi`
+              : (spec.kind === 'intervals' ? '5K–10K effort' : 'Comfortably hard · by feel'),
           },
           {
             label: 'COOLDOWN',

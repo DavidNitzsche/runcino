@@ -36,7 +36,10 @@ import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, BUILD_WINDOW_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING } from './goal-tiers';
-import { type AnchorSource, isProvisionalAnchor, paceBlendAnchorIsProvisional } from './anchor-provenance';
+import {
+  type AnchorSource, isProvisionalAnchor, paceBlendAnchorIsProvisional,
+  CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES,
+} from './anchor-provenance';
 import { isBaseBuildingPlan } from './plan-templates';
 import { distanceMiFromLabel } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
@@ -1113,6 +1116,25 @@ export interface DayPlan {
   progressionLever?: ProgressionLever | null;
   /** The session's intent · `Design/adaptive-progression-engine.md` §4. */
   challengeZone?: ChallengeZone | null;
+  /**
+   * COLD-4 (2026-08-17) · THE CALIBRATION INTRO.
+   *
+   * True on the quality sessions of the opening `CALIBRATION_INTRO_WEEKS` when
+   * this plan's fitness anchor is `provisional_mileage` — a VDOT invented from
+   * a self-reported mileage bucket rather than measured from anything the
+   * runner has run. `persistPlan` passes it to `buildWorkoutSpec`, which emits
+   * the session `by_effort` with no pace target.
+   *
+   * The maintenance seeder has had this since 2026-06-15 and race-prep — where
+   * a new runner WITH a goal lands — never got it: a zero-run account was
+   * handed a 7 mi threshold session at 8:23/mi in week one. The distance is the
+   * runner's own claim and is doctrine-bounded (`Research/00a` caps progression
+   * against their longest recent run); the pace was ours.
+   *
+   * Absent on every other day, so a plan with a measured anchor is
+   * byte-identical to before.
+   */
+  effortCued?: boolean;
 }
 
 /**
@@ -3715,6 +3737,24 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         }
       }
     }
+    // COLD-4 · THE CALIBRATION INTRO. When this plan's anchor is provisional —
+    // `conservativeVdotFromMileage` reading a mileage bucket, marked
+    // `provisional_mileage` a few dozen lines above — the opening weeks'
+    // quality sessions go out by EFFORT rather than at a pace we invented.
+    //
+    // Applied here rather than inside `layoutWeek` on purpose: the composer is
+    // the only layer that knows the anchor's provenance, and the shape of the
+    // week (types, distances, rep counts, the overload trajectory's decision)
+    // is deliberately untouched. Only the pace target is withheld.
+    //
+    // Race week is excluded even if it falls inside the window — a two-week
+    // plan is legal — because race day and the tune-up are priced off the
+    // runner's stated goal, not off the fitness anchor.
+    if (anchorIsProvisional && wi < CALIBRATION_INTRO_WEEKS && !isRaceWeek) {
+      for (const d of days) {
+        if (d.isQuality && EFFORT_CUED_TYPES.has(d.type)) d.effortCued = true;
+      }
+    }
     // 2026-08-17 · cross-training rest-day relabel removed (owner ruling).
     weeks.push({ startISO: weekStart, phase: phaseLabel, weeklyMi: vols[wi], days, isRaceWeek, tPaceSec: weekT, isCutback: wi > 0 && (wi + 1) % cutbackEveryN === 0 });
     phaseWkRemaining--;
@@ -4426,6 +4466,72 @@ async function clearActivePlansFor(client: PoolClient, userId: string, reason = 
   );
 }
 
+/**
+ * THE PACE + SPEC A COMPOSED DAY IS PERSISTED WITH.
+ *
+ * Lifted out of `persistPlan` verbatim (2026-08-17 · COLD-4) so the numbers the
+ * writer commits can be inspected without a database. It was previously
+ * inlined, which meant every audit of "what does this plan actually prescribe"
+ * had to reconstruct the argument list by hand — and an audit that reproduces
+ * the code it is auditing proves nothing.
+ *
+ * Pure. Same inputs, same spec, no I/O.
+ */
+export function specForComposedDay(
+  d: DayPlan,
+  /** The week's blended T-pace. Null → no spec (the caller writes nulls). */
+  weekT: number | null,
+  args: {
+    lthr: number | null;
+    maxHr: number | null;
+    goalPaceSec: number | null;
+    easyAnchorTSec: number | null;
+    goalIPaceEligible: boolean;
+    belowTableAnchor?: BelowTableAnchor | null;
+  },
+): { paceTargetSPerMi: number | null; spec: ReturnType<typeof buildWorkoutSpec>['spec'] } {
+  if (weekT == null) return { paceTargetSPerMi: null, spec: null };
+  // 2026-06-02 · pass the prescription string (sub_label) into
+  // spec-builder so the spec's rep_count / rep_distance_mi /
+  // rep_rest_s match what the label promises. Was hardcoded ·
+  // produced 5×1km specs under "4×1 mi @ I" labels.
+  // 2026-06-03 · Rule 16 · pass maxHr alongside LTHR so easy/long
+  // HR caps use max(89% LTHR, 78% maxHR) instead of LTHR-only.
+  // R3 · per-week true I-pace for 5K/10K goals: invert the week's blended
+  // T back to a VDOT, then take its 5K-race-pace I. Ramps with the block;
+  // null (→ cruise default) for half/marathon and when weekT is unusable.
+  // TAPER-SHARP-1 (2026-06-23) · the marathon/ultra race-week sharpener is 5K-pace reps (Research/08
+  // §9.3 "5×1min @ 5K pace") — a NEUROMUSCULAR primer FASTER than race pace, not MP. Compute I-pace for
+  // the tune-up day even when the goal distance isn't I-eligible for long-run inserts (spec-builder
+  // uses it only when the prescription says "5K pace", so the HM tune-up still reads HMP).
+  // 2026-07-07 · AUDIT P1-56 · vdotFromTpace's binary search is bounded [30,85] — inverting a
+  // below-table weekT through it silently clamps UP to VDOT-30 I-pace, re-introducing the
+  // too-fast-prescription bug one level down from the T-pace fix. When the plan-wide fitness read
+  // came from a below-table anchor (no measured VDOT), derive I-pace directly off the anchor via
+  // Riegel (iPaceFromAnchorPace) instead — never re-enters VDOT space. Byte-identical whenever
+  // args.belowTableAnchor is null (every runner with a measured VDOT).
+  const iPaceSec = (args.goalIPaceEligible || d.type === 'race_week_tuneup')
+    ? (args.belowTableAnchor
+        ? iPaceFromAnchorPace(args.belowTableAnchor.anchor)
+        : iPaceFromVdot(vdotFromTpace(weekT)))
+    : null;
+  const built = buildWorkoutSpec(
+    d.type, d.distanceMi, weekT, args.lthr, d.subLabel, args.maxHr ?? null,
+    // 2026-06-09 · goal pace · only the race branch reads it.
+    // MIDRACE-1 (2026-08-17) · an embedded mid-block tune-up race day
+    // carries ITS OWN goal pace (raceGoalPaceSec, may be null → the
+    // race branch derives race pace from T at the TUNE-UP's distance);
+    // the plan's race-week race day keeps args.goalPaceSec.
+    d.raceGoalPaceSec !== undefined ? d.raceGoalPaceSec : (args.goalPaceSec ?? null),
+    iPaceSec,
+    args.easyAnchorTSec ?? null,  // PACE-E-1 · easy/long/recovery anchor (current fitness)
+    // COLD-4 · the composer's calibration-intro decision. The spec goes
+    // out `by_effort` with no rep pace and no pace_target column.
+    d.effortCued === true,
+  );
+  return { paceTargetSPerMi: built.paceTargetSPerMi, spec: built.spec };
+}
+
 async function persistPlan(client: PoolClient, args: {
   userId: string; raceSlug: string | null; raceDateISO: string;
   blocks: BlockPlan; weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean; tPaceSec?: number | null }>;
@@ -4569,52 +4675,14 @@ async function persistPlan(client: PoolClient, args: {
       // carries its target pace + structured spec from day one.
       // Reuses lib/plan/spec-builder.ts (single source of truth ·
       // backfill cron uses the same helper).
-      let paceTargetSPerMi: number | null = null;
-      let workoutSpec: ReturnType<typeof buildWorkoutSpec>['spec'] = null;
       // 2026-06-03 · Rule 3 · use the week's blended T-pace if set
       // (composePlan computes per-week tPaceSec from bestRecentVdot ramp);
       // fall back to plan-wide goal-T. Plain assignment from week's own
       // tPaceSec (set on every ComposedWeek by composePlan).
       const weekT = (w as { tPaceSec?: number | null }).tPaceSec ?? args.tPaceSec;
-      if (weekT != null) {
-        // 2026-06-02 · pass the prescription string (sub_label) into
-        // spec-builder so the spec's rep_count / rep_distance_mi /
-        // rep_rest_s match what the label promises. Was hardcoded ·
-        // produced 5×1km specs under "4×1 mi @ I" labels.
-        // 2026-06-03 · Rule 16 · pass maxHr alongside LTHR so easy/long
-        // HR caps use max(89% LTHR, 78% maxHR) instead of LTHR-only.
-        // R3 · per-week true I-pace for 5K/10K goals: invert the week's blended
-        // T back to a VDOT, then take its 5K-race-pace I. Ramps with the block;
-        // null (→ cruise default) for half/marathon and when weekT is unusable.
-        // TAPER-SHARP-1 (2026-06-23) · the marathon/ultra race-week sharpener is 5K-pace reps (Research/08
-        // §9.3 "5×1min @ 5K pace") — a NEUROMUSCULAR primer FASTER than race pace, not MP. Compute I-pace for
-        // the tune-up day even when the goal distance isn't I-eligible for long-run inserts (spec-builder
-        // uses it only when the prescription says "5K pace", so the HM tune-up still reads HMP).
-        // 2026-07-07 · AUDIT P1-56 · vdotFromTpace's binary search is bounded [30,85] — inverting a
-        // below-table weekT through it silently clamps UP to VDOT-30 I-pace, re-introducing the
-        // too-fast-prescription bug one level down from the T-pace fix. When the plan-wide fitness read
-        // came from a below-table anchor (no measured VDOT), derive I-pace directly off the anchor via
-        // Riegel (iPaceFromAnchorPace) instead — never re-enters VDOT space. Byte-identical whenever
-        // args.belowTableAnchor is null (every runner with a measured VDOT).
-        const iPaceSec = (args.goalIPaceEligible || d.type === 'race_week_tuneup')
-          ? (args.belowTableAnchor
-              ? iPaceFromAnchorPace(args.belowTableAnchor.anchor)
-              : iPaceFromVdot(vdotFromTpace(weekT)))
-          : null;
-        const built = buildWorkoutSpec(
-          d.type, d.distanceMi, weekT, args.lthr, d.subLabel, args.maxHr ?? null,
-          // 2026-06-09 · goal pace · only the race branch reads it.
-          // MIDRACE-1 (2026-08-17) · an embedded mid-block tune-up race day
-          // carries ITS OWN goal pace (raceGoalPaceSec, may be null → the
-          // race branch derives race pace from T at the TUNE-UP's distance);
-          // the plan's race-week race day keeps args.goalPaceSec.
-          d.raceGoalPaceSec !== undefined ? d.raceGoalPaceSec : (args.goalPaceSec ?? null),
-          iPaceSec,
-          args.easyAnchorTSec ?? null,  // PACE-E-1 · easy/long/recovery anchor (current fitness)
-        );
-        paceTargetSPerMi = built.paceTargetSPerMi;
-        workoutSpec = built.spec;
-      }
+      const derived = specForComposedDay(d, weekT, args);
+      let paceTargetSPerMi: number | null = derived.paceTargetSPerMi;
+      let workoutSpec: ReturnType<typeof buildWorkoutSpec>['spec'] = derived.spec;
       // 2026-06-02 · distance_mi now reflects the TOTAL run · WU + core +
       // floats + CD · so the headline number matches the breakdown.
       // Was: stored just the core (e.g. "4×1 mi @ T" → 4.0) while the

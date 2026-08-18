@@ -202,7 +202,16 @@ function expandTempo(
   // Legacy fallback (spec without tempo pace): T ≈ E − 80 inverts the
   // spec-builder easy offset (easy lo = T + 80 · Research/01 §T-pace).
   // Null easy anchor → by-feel tempo, never a fabricated number.
-  const tempoPace = Number(s.tempo_pace_s_per_mi) || (easyPaceSec != null ? easyPaceSec - 80 : null);
+  //
+  // COLD-4 · `by_effort` is DELIBERATE absence, not missing data, so it must
+  // beat the easy-anchor fallback. A calibration-intro tempo whose pace we
+  // declined to state would otherwise come back out of the expander as
+  // easy−80 — the fabrication re-derived one layer down, which is the exact
+  // shape of the P1-56 bug class this file has already paid for twice.
+  const byEffort = s.by_effort === true;
+  const tempoPace = byEffort
+    ? null
+    : (Number(s.tempo_pace_s_per_mi) || (easyPaceSec != null ? easyPaceSec - 80 : null));
   const easyEst = easyPaceSec ?? DURATION_EST_S_PER_MI;
   return [
     {
@@ -261,6 +270,13 @@ function expandReps(
   const repPace = byEffort
     ? null
     : (Number(s.rep_pace_s_per_mi) || (easyPaceSec != null ? easyPaceSec - 80 : null));
+  // COLD-4 · `by_effort` used to be synonymous with "this is a hill session",
+  // because hills were the only thing that set it. The calibration intro now
+  // sets it on ordinary threshold and interval reps, so the WORD has to come
+  // from the workout's own identity (the authored label a time-rep spec
+  // carries) rather than from the pace being absent — otherwise a cold-start
+  // runner's first threshold session tells them to run hills.
+  const isHillRep = /hill/i.test(String(s.label ?? ''));
   const restS = Number(s.rep_rest_s ?? 60) || 60;
   const easyEst = easyPaceSec ?? DURATION_EST_S_PER_MI;
   const phases: ExpandedPhase[] = [];
@@ -281,7 +297,7 @@ function expandReps(
       // same way it already handles the jog recoveries below.
       ? {
           type: 'work',
-          label: `${byEffort ? 'Hill' : 'Rep'} ${i + 1} of ${reps} · ${formatSec(repDurationS)}`,
+          label: `${isHillRep ? 'Hill' : 'Rep'} ${i + 1} of ${reps} · ${formatSec(repDurationS)}`,
           distanceMi: null,
           durationSec: repDurationS,
           targetPaceSPerMi: repPace,
@@ -468,7 +484,11 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
       const tempo = Number(s.tempo_distance_mi ?? 0);
       const cd = Number(s.cooldown_mi ?? 0);
       if (!wu && !cd) return `${formatMi(tempo)} mi continuous tempo`;
-      return `${formatMi(wu)} mi WU · ${formatMi(tempo)} mi @ T · ${formatMi(cd)} mi CD`;
+      // COLD-4 · "@ T" names a pace. When the spec deliberately carries none,
+      // the label has to say EFFORT, or the runner reads a target the workout
+      // does not contain and the phone shows a dash where the number should be.
+      const tTag = s.by_effort === true ? '@ T effort' : '@ T';
+      return `${formatMi(wu)} mi WU · ${formatMi(tempo)} mi ${tTag} · ${formatMi(cd)} mi CD`;
     }
     case 'threshold':
     case 'intervals': {
@@ -488,10 +508,17 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
         // them rather than six.
         const specReps = Number(s.rep_count ?? 0) || 0;
         const lead = authored.match(/^(\s*)(\d+)(\s*[×xX]\s*)/);
-        if (specReps > 0 && lead && Number(lead[2]) !== specReps) {
-          return `${lead[1]}${specReps}${lead[3]}${authored.slice(lead[0].length)}`;
-        }
-        return authored;
+        const reconciled = specReps > 0 && lead && Number(lead[2]) !== specReps
+          ? `${lead[1]}${specReps}${lead[3]}${authored.slice(lead[0].length)}`
+          : authored;
+        // COLD-4 (2026-08-17) · the same reconciliation the rep COUNT gets, for
+        // the PACE. An authored prescription names a zone — "3×8 min @ T pace"
+        // — and when the spec deliberately carries no pace, that phrase is the
+        // one part of the identity that is no longer true. The workout is still
+        // the same session; it is being run by effort, so say effort. A named
+        // family that states no zone (hills, "Mona") matches nothing here and
+        // comes back untouched.
+        return s.by_effort === true ? effortizeZone(reconciled) : reconciled;
       }
       const reps = Number(s.rep_count ?? 0) || 0;
       const repMi = Number(s.rep_distance_mi ?? 0) || 0;
@@ -499,7 +526,14 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
       const effRepMi = repMi > 0 ? repMi : (repM / 1609.34);
       const restS = Number(s.rep_rest_s ?? 0) || 0;
       const repLabel = formatRepLabel(effRepMi);
-      const paceTag = kind === 'intervals' ? '@ I' : '@ T pace';
+      // COLD-4 · same rule as the tempo branch above: a spec that carries no
+      // rep pace must not be labelled with the zone as though it did. "@ T
+      // effort" is the instruction the session actually contains — comfortably
+      // hard, repeatable — and it is what the watch, the phone breakdown and
+      // the recap all agree on for this row.
+      const paceTag = s.by_effort === true
+        ? (kind === 'intervals' ? '@ I effort' : '@ T effort')
+        : (kind === 'intervals' ? '@ I' : '@ T pace');
       const restLabel = formatRestLabel(restS);
       return `${reps}×${repLabel} ${paceTag} · ${restLabel}`;
     }
@@ -553,6 +587,24 @@ export function strideSuffix(spec: WorkoutSpec): string {
   if (reps <= 0) return '';
   const durationSec = Number(s.strides_duration_s ?? 0) || 20;
   return ` + ${reps}×${durationSec}s strides`;
+}
+
+/**
+ * COLD-4 · rewrite a zone-naming phrase in an authored prescription so it names
+ * an EFFORT instead of a pace.
+ *
+ *   "3×8 min @ T pace · 90s jog"  →  "3×8 min @ T effort · 90s jog"
+ *   "5×1km @ I · 2 min jog"       →  "5×1km @ I effort · 2 min jog"
+ *   "6×90s hills"                 →  unchanged (states no zone)
+ *
+ * Only ever applied to a spec that carries `by_effort`, so a paced session's
+ * label is untouched. Deliberately conservative — it edits the zone token and
+ * nothing else, because the rest of the string is the workout's identity.
+ */
+function effortizeZone(label: string): string {
+  return label
+    .replace(/@\s*([TIRME])\s*pace\b/gi, '@ $1 effort')
+    .replace(/@\s*([TIRME])\b(?!\s*(?:effort|pace))/g, '@ $1 effort');
 }
 
 function formatMi(n: number): string {

@@ -780,7 +780,14 @@ private struct TempoPostPanel: View {
     private var tempoBlock: some View {
         if let w = workPhase, let actualSec = parsePaceSec(w.actual_pace) {
             let specPace: Int? = detail?.planned_spec?.rep_pace_s_per_mi.map { Int($0) }
-            let targetSec = parsePaceSec(w.target_pace) ?? specPace ?? actualSec
+            // COLD-4 2026-08-17 · `?? actualSec` made the target equal whatever
+            // the runner ran, so the panel asserted a target the coach never
+            // set and CmpBar drew a dead-on-target bar every time. A session
+            // prescribed by EFFORT (hill reps · the cold-start calibration
+            // intro) has no target, and the honest render is to show the actual
+            // pace and say nothing about a target — not to invent one and then
+            // congratulate the runner for hitting it.
+            let targetSec: Int? = parsePaceSec(w.target_pace) ?? specPace
             VStack(alignment: .leading, spacing: 11) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("TEMPO BLOCK")
@@ -797,7 +804,7 @@ private struct TempoPostPanel: View {
                     }
                 }
                 HStack {
-                    Text("TARGET \(formatPace(targetSec))/\(Units.distanceLabel())")
+                    Text(targetSec.map { "TARGET \(formatPace($0))/\(Units.distanceLabel())" } ?? "BY EFFORT")
                         .font(.body(10.5, weight: .bold))
                         .foregroundStyle(mutedText)
                     Spacer()
@@ -807,7 +814,9 @@ private struct TempoPostPanel: View {
                             .foregroundStyle(mutedText)
                     }
                 }
-                CmpBar(actualSec: actualSec, goalSec: targetSec, maxDev: 10, onMesh: onMesh)
+                if let targetSec {
+                    CmpBar(actualSec: actualSec, goalSec: targetSec, maxDev: 10, onMesh: onMesh)
+                }
             }
         }
     }
@@ -1083,7 +1092,43 @@ private struct RepsPostPanel: View {
         .padding(.horizontal, 10).padding(.vertical, 4)
     }
 
+    @ViewBuilder
     private func repRow(idx: Int, rep: PhaseBreakdown) -> some View {
+        // COLD-4 2026-08-17 · a rep set can be prescribed BY EFFORT and carry no
+        // target — hill reps (Research/04 §8.1) and the cold-start calibration
+        // intro. `rawT = targetSec ?? actualSec` made every such rep's delta
+        // exactly zero, so the gauge drew a green in-range needle whatever the
+        // runner did: a verdict manufactured out of the absence of a standard.
+        // With no target there is nothing to grade, so the row becomes what it
+        // honestly is — a splits report.
+        if targetSec == nil {
+            repRowByEffort(idx: idx, rep: rep)
+        } else {
+            repRowGraded(idx: idx, rep: rep)
+        }
+    }
+
+    /// The reps, reported without a verdict. Number, pace, and nothing implied.
+    private func repRowByEffort(idx: Int, rep: PhaseBreakdown) -> some View {
+        HStack(spacing: 10) {
+            VStack(spacing: 0) {
+                Text("\(idx + 1)")
+                    .font(.body(15, weight: .bold))
+                    .foregroundStyle(primaryText)
+                Text("REP")
+                    .font(.body(7.5, weight: .extraBold)).tracking(0.6)
+                    .foregroundStyle(mutedText)
+            }
+            .frame(width: 30)
+            Spacer(minLength: 0)
+            Text(rep.actual_pace ?? "—")
+                .font(.body(15, weight: .bold))
+                .foregroundStyle(primaryText)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+    }
+
+    private func repRowGraded(idx: Int, rep: PhaseBreakdown) -> some View {
         let actualSec = parsePaceSec(rep.actual_pace) ?? (targetSec ?? 0)
         let rawT = targetSec ?? actualSec
         let delta = actualSec - rawT   // shown vs the prescribed (raw) target

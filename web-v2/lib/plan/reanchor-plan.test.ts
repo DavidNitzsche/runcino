@@ -3,7 +3,9 @@
  * VDOT V produces the SAME paces a fresh seed at V would).
  */
 import { describe, it, expect } from 'vitest';
-import { shouldReanchor, refreshedPaceAndSpec, REANCHOR_VDOT_DELTA } from './reanchor-maintenance';
+import {
+  shouldReanchor, shouldReanchorRacePrep, refreshedPaceAndSpec, REANCHOR_VDOT_DELTA,
+} from './reanchor-plan';
 import { buildWorkoutSpec } from './spec-builder';
 import { tPaceFromVdot, iPaceFromVdot } from '@/lib/training/vdot';
 
@@ -19,6 +21,53 @@ describe('shouldReanchor — when to refresh', () => {
     expect(shouldReanchor('measured_run', 35.4, 36.0)).toBe(false);      // jitter
     expect(shouldReanchor('measured_run', 35.4, 35.4 + REANCHOR_VDOT_DELTA)).toBe(true); // real gain
     expect(shouldReanchor('measured_run', 40, 37)).toBe(true);           // real loss (≥2)
+  });
+});
+
+/**
+ * COLD-4 · the race-prep arm's gate reads `pace_blend`, which is the vocabulary
+ * `composePlan` persists — `authored_state.anchorSource` is the maintenance
+ * seeder's key and does not exist on a race-prep plan.
+ */
+describe('shouldReanchorRacePrep — the race-prep gate', () => {
+  it('ends the calibration intro on the first measured read', () => {
+    const provisional = {
+      season_anchor_vdot: 40,
+      season_anchor_source: 'provisional_mileage',
+      season_anchor_provisional: true,
+    };
+    expect(shouldReanchorRacePrep(provisional, 35.4)).toBe(true);
+    // Either mark alone is sufficient (paceBlendAnchorIsProvisional's contract).
+    expect(shouldReanchorRacePrep({ season_anchor_vdot: 40, season_anchor_provisional: true }, 35.4)).toBe(true);
+  });
+
+  it('never fires without a measured read — a provisional stays provisional', () => {
+    const provisional = { season_anchor_vdot: 40, season_anchor_source: 'provisional_mileage' };
+    expect(shouldReanchorRacePrep(provisional, null)).toBe(false);
+  });
+
+  it('holds a measured anchor through jitter, moves on a real shift', () => {
+    const measured = {
+      season_anchor_vdot: 48,
+      season_anchor_source: 'measured_vdot',
+      season_anchor_provisional: false,
+    };
+    expect(shouldReanchorRacePrep(measured, 48.6)).toBe(false);
+    expect(shouldReanchorRacePrep(measured, 48 + REANCHOR_VDOT_DELTA)).toBe(true);
+    expect(shouldReanchorRacePrep(measured, 45)).toBe(true);
+  });
+
+  it('a plan with NO recorded anchor takes the measurement', () => {
+    // The live apple-review@faff.run plan is exactly this shape: authored
+    // before the provenance column existed, anchored on the mileage estimate
+    // anyway, nine weeks of tempo work priced off zero recorded runs. Without
+    // this branch it gets neither the intro (needs a fresh authoring) nor the
+    // self-heal, and runs the whole block on the invented pace.
+    expect(shouldReanchorRacePrep(null, 48)).toBe(true);
+    expect(shouldReanchorRacePrep({}, 48)).toBe(true);
+    // Still gated on evidence — an absent anchor is not a licence to guess.
+    expect(shouldReanchorRacePrep(null, null)).toBe(false);
+    expect(shouldReanchorRacePrep({}, null)).toBe(false);
   });
 });
 

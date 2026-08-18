@@ -426,6 +426,22 @@ function paceFromSpec(spec: import('@/lib/faff/types').WorkoutSpec | null | unde
   }
 }
 
+/**
+ * COLD-4 (2026-08-17) · does this spec prescribe EFFORT rather than a pace?
+ *
+ * Two shapes set it: `Research/04` §8.1 hill / fartlek reps, whose pace column
+ * states an effort because a flat-ground number is unreachable on a gradient,
+ * and the calibration intro (`lib/plan/anchor-provenance.ts`), where the runner
+ * has no measured fitness and any pace we printed would be invented.
+ *
+ * `paceFromSpec` returning null cannot answer this on its own — null also means
+ * "we do not know", and the two get opposite treatment: unknown may fall back
+ * to a placeholder, deliberate must not.
+ */
+function specIsByEffort(spec: import('@/lib/faff/types').WorkoutSpec | null | undefined): boolean {
+  return !!spec && (spec as { by_effort?: boolean }).by_effort === true;
+}
+
 /* ─────────────────────────  Adapters  ───────────────────────── */
 
 /**
@@ -469,12 +485,21 @@ function adaptWeek(glance: Glance | null, skipSet?: Set<string>, cadenceBaseline
     // by backend adapter (commit a54c7069). The defensive easyBucket
     // override that lived here is removed · spec is authoritative again.
     const specPace = paceFromSpec(d.plannedSpec);
-    const paceSec = specPace
-      ?? (d as { paceTargetSPerMi?: number | null }).paceTargetSPerMi
-      ?? PACE_DEFAULT[eff];
+    // COLD-4 (2026-08-17) · `by_effort` is DELIBERATE ABSENCE, and the whole
+    // point is that no surface invents a replacement. PACE_DEFAULT is a
+    // placeholder for a plan that has no spec at all; letting an effort-cued
+    // session fall through to it put 6:05/mi on the card under the words
+    // "TARGET PACE" — a number nobody derived, presented as the prescription,
+    // on exactly the runner we removed the fabricated pace for.
+    const byEffort = specIsByEffort(d.plannedSpec);
+    const paceSec = byEffort
+      ? null
+      : (specPace
+        ?? (d as { paceTargetSPerMi?: number | null }).paceTargetSPerMi
+        ?? PACE_DEFAULT[eff]);
     const paceStr = paceSec != null && paceSec > 0
       ? `${Math.floor(paceSec / 60)}:${String(Math.round(paceSec % 60)).padStart(2, '0')}`
-      : (eff === 'rest' ? 'Rest' : '·');
+      : (eff === 'rest' ? 'Rest' : byEffort ? 'Effort' : '·');
     // Real estimated duration from pace × distance (was a flat 9 min/mi).
     const estMin = d.plannedMi > 0 && paceSec && paceSec > 0 ? Math.round(d.plannedMi * paceSec / 60) : null;
     const est = estMin != null
@@ -1061,7 +1086,13 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
     // for plan-builder rows that authored without a VDOT.
     // 2026-06-01: workout_spec atomically cleared on downgrade by
     // backend (commit a54c7069). Defensive easyBucket override removed.
-    const specPace = paceFromSpec((d as { spec?: import('@/lib/faff/types').WorkoutSpec | null }).spec);
+    const daySpec = (d as { spec?: import('@/lib/faff/types').WorkoutSpec | null }).spec;
+    const specPace = paceFromSpec(daySpec);
+    // COLD-4 · same rule as adaptWeek. This `paceSec` is not only rendered —
+    // TrainView grades a completed run against it (`comparePace - pick.paceSec`),
+    // so a placeholder here means an effort-cued session run exactly right comes
+    // back marked off-pace against a number the coach never set.
+    const dayByEffort = specIsByEffort(daySpec);
     const anyD = d as unknown as {
       id?: string; donePaceSec?: number | null; doneAvgHr?: number | null;
       doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
@@ -1076,7 +1107,7 @@ function adaptSeason(training: Training | null, adapts: Awaited<ReturnType<typeo
       type: t as import('./constants').EffortKey,
       name: d.label || humanName(t, d.mi),
       mi: d.mi || 0,
-      paceSec: specPace ?? PACE_DEFAULT[t] ?? null,
+      paceSec: dayByEffort ? null : (specPace ?? PACE_DEFAULT[t] ?? null),
       doneMi: d.doneMi || 0,
       done: !!d.activityId,
       activityId: d.activityId,

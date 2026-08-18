@@ -2203,8 +2203,16 @@ struct TodayView: View {
         // 2026-06-02 round 43 · prefer the WORK phase pace over the
         // first phase. For intervals/tempo, the first phase is the
         // warmup at 8:12 but the meaningful target is the rep pace.
+        //
+        // COLD-4 2026-08-17 · a work phase may legitimately carry no pace
+        // (hill reps · the cold-start calibration intro). Falling through to
+        // the next branch then republished the WARM-UP pace as the session's
+        // target — the same bug the note above fixed, re-entered through null.
+        // Mirrors TodayPreRunBodyV3.targetPaceText.
         let phases = displayWorkout?.phases ?? []
-        if let work = phases.first(where: { $0.type == .work && $0.targetPaceSPerMi != nil })?.targetPaceSPerMi {
+        let workPhases = phases.filter { $0.type == .work }
+        if !workPhases.isEmpty {
+            guard let work = workPhases.compactMap({ $0.targetPaceSPerMi }).first else { return "—" }
             return formatPace(secondsPerMi: work)
         }
         if let any = phases.first(where: { $0.targetPaceSPerMi != nil })?.targetPaceSPerMi {
