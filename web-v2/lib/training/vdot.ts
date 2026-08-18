@@ -431,17 +431,34 @@ export function tPaceFromVdot(vdot: number | null | undefined): number | null {
  *
  * Cite: Research/01-pace-zones-vdot.md §Daniels-T-pace (inverse of tPaceFromVdot).
  */
+/**
+ * Memo for the search below. Pure function of one number, so a cache is exact
+ * rather than an approximation — and the engine asks the same question over and
+ * over: `persistPlan` inverts the SAME week T-pace once per workout ROW, so an
+ * eighteen-week plan ran this fifty-step search well over a hundred times for
+ * about a dozen distinct answers. Bounded so a long-lived server process cannot
+ * accumulate one entry per pace it has ever seen.
+ */
+const T_PACE_VDOT_MEMO = new Map<number, number | null>();
+const T_PACE_VDOT_MEMO_MAX = 512;
+
 export function vdotFromTpace(tPaceSPerMi: number): number | null {
   if (!tPaceSPerMi || tPaceSPerMi <= 0) return null;
+  const hit = T_PACE_VDOT_MEMO.get(tPaceSPerMi);
+  if (hit !== undefined) return hit;
   let lo = 30, hi = 85;
+  let out: number | null = null;
   for (let i = 0; i < 50; i++) {
     const mid = (lo + hi) / 2;
     const tp = tPaceFromVdot(mid);
-    if (tp == null) return null;
+    if (tp == null) { out = null; break; }
     // T-pace slower (larger s/mi) than target → VDOT too low → search up.
     if (tp > tPaceSPerMi) lo = mid; else hi = mid;
+    out = Math.round(((lo + hi) / 2) * 10) / 10;
   }
-  return Math.round(((lo + hi) / 2) * 10) / 10;
+  if (T_PACE_VDOT_MEMO.size >= T_PACE_VDOT_MEMO_MAX) T_PACE_VDOT_MEMO.clear();
+  T_PACE_VDOT_MEMO.set(tPaceSPerMi, out);
+  return out;
 }
 
 /**
