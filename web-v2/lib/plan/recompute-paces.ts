@@ -10,14 +10,18 @@
  *      currentT → goalT over the first 60% of the build INDEXED BY WEEK
  *      NUMBER, so a runner whose measured fitness stalled still got
  *      goal-anchored quality paces on schedule. The blend math now lives
- *      here (blendedTPaceForWeek) with an optional measured-progress gate:
- *      blend = min(calendar fraction, measured fraction + grace). When no
- *      measured evidence is supplied (fresh authoring · the plan is a
- *      forecast built on the assumption fitness tracks the calendar) the
- *      gate is inert and the math is byte-identical to the historical
- *      formula. When evidence IS supplied (mid-block rebuilds, the
- *      recompute path below), paces advance only as fast as demonstrated
- *      fitness does.
+ *      here (blendedTPaceForWeek).
+ *
+ *      2026-08-17 (later the same day) · EVIDENCE-1 · the first cut of this
+ *      module kept the calendar as the default and let a measured fraction
+ *      CAP it, which left the violation intact whenever no evidence existed —
+ *      i.e. on every fresh authoring. `Design/engine-doctrine-evidence-and-
+ *      levers.md` Rule 1 is now locked and names it: "time passing, plan
+ *      completion, or scheduled progression alone cannot increase or decrease
+ *      demonstrated fitness." The calendar term is gone. The blend is the
+ *      demonstrated fraction of the current→goal gap plus a fixed grace, and
+ *      nothing else; with no evidence it is zero and the plan prescribes
+ *      honest current-fitness paces until a measurement moves them.
  *      Cite: Research/01-pace-zones-vdot.md §"How to recalibrate paces"
  *      (:304-321 · retest triggers; VDOT moves ~1-3 pts per verified
  *      signal, never on schedule) and §"Freshness window" (:659-677 ·
@@ -82,16 +86,39 @@ export function measuredProgressFraction(
 }
 
 /**
- * The gate itself. Calendar can never push the blend further than
- * measured evidence + grace; measured evidence can never push it further
- * than the calendar (paces don't leapfrog the periodization).
+ * EVIDENCE-1 (2026-08-17) · THE BLEND IS DRIVEN BY EVIDENCE, NOT BY THE WEEK
+ * NUMBER.
+ *
+ * `Design/engine-doctrine-evidence-and-levers.md` Rule 1, locked by the owner:
+ *
+ *   > Time passing, plan completion, or scheduled progression alone cannot
+ *   > increase or decrease demonstrated fitness.
+ *
+ * and it names this function's caller as violation #1 by file. The blend used
+ * to advance from measured fitness toward the goal-derived ceiling on
+ * `weekIdx / round(buildWeeks × 0.6)` — a calendar fraction — with the measured
+ * gate only ever capping it. So when no evidence existed the calendar ran
+ * unopposed, and the plan asserted a fitness change nobody measured: on the
+ * owner's CIM block, threshold work by week 8 at a VDOT he has never run.
+ *
+ * There is now no calendar term. The fraction of the current→goal gap the
+ * prescription may claim is the fraction the runner has DEMONSTRATED, plus the
+ * standing grace below. No evidence supplied → 0 → the block trains at
+ * current, demonstrated fitness for its whole length, and moves the day a race,
+ * a time trial or a re-anchor lands (`recomputePacesForPlan`, which is the
+ * evidence path and passes a real `measured`).
+ *
+ * The corollary the doctrine states for coming out of a recovery block —
+ * "preserve the prior estimate, reduce confidence if warranted, and require
+ * fresh evidence before moving the ceiling" — is exactly this: the prior
+ * estimate is preserved because nothing moves it but a measurement.
  */
 export function gatedBlendFraction(
-  calendarFraction: number,
+  _calendarFraction: number,
   measured: number | null | undefined,
 ): number {
-  if (measured == null) return calendarFraction;
-  return Math.min(calendarFraction, Math.min(1, measured + BLEND_GRACE_FRACTION));
+  if (measured == null) return 0;
+  return Math.min(1, measured + BLEND_GRACE_FRACTION);
 }
 
 export interface BlendTPaceArgs {
@@ -123,20 +150,17 @@ export function blendedTPaceForWeek(args: BlendTPaceArgs): number | null {
   // at CURRENT fitness. See composePlan for the full rationale.
   if (currentT <= goalT) return currentT;
   const measured = args.measuredProgressFraction ?? null;
-  if (args.phase === 'TAPER') {
-    // VAR-07 · TAPER sharpens at goalT when the calendar is trusted
-    // (authoring parity · return goalT verbatim). Under a measured gate,
-    // taper sharpens only as far as the evidence allows — a runner who
-    // never closed the gap must not get goal-anchored taper quality
-    // (honest-paces doctrine · Research/01:659-677 freshness).
-    if (measured == null) return goalT;
-    const blend = gatedBlendFraction(1, measured);
-    return Math.round(currentT + (goalT - currentT) * blend);
-  }
-  // Blend over first 60% of the build · weekIdx ramps in [0, 1].
-  const denom = Math.max(1, Math.round(args.buildWeeks * 0.6));
-  const calendar = Math.min(1, args.weekIdx / denom);
-  const blend = gatedBlendFraction(calendar, measured);
+  // EVIDENCE-1 · TAPER used to return `goalT` verbatim when no evidence
+  // existed — the sharpest form of the violation, since it prescribed
+  // goal-anchored quality in the last three weeks to a runner who had never
+  // demonstrated it. Taper now sharpens exactly as far as the evidence does,
+  // like every other week. Race-pace work is unaffected: MP/HMP segments and
+  // race day anchor on `goalPaceSec`, not on this T (Research/01:659-677 ·
+  // a stale anchor is a floor, not a pace source).
+  //
+  // `weekIdx` and `buildWeeks` remain on the args for callers and for the
+  // audit trail; nothing reads them any more, which is the point.
+  const blend = gatedBlendFraction(0, measured);
   return Math.round(currentT + (goalT - currentT) * blend);
 }
 

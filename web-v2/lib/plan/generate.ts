@@ -366,6 +366,152 @@ async function recentPeakWeeklyMileage(userId: string, todayISO: string): Promis
   return Math.round(peak * 10) / 10;
 }
 
+// ── RAMPBASE-1 (2026-08-17) · the volume a build may honestly ramp FROM ──
+//
+// THE DEFECT. `volumeCurve`'s `baseMi` came straight from `recentWeeklyMi`, a
+// flat 28-day MEAN. A build authored the day a mandated recovery block ends
+// reads that block as the runner's fitness: the engine prescribes the deload,
+// then treats the deload as the base. On the owner's CIM authoring (2026-08-31,
+// four days after an A-priority half and its Research/00b recovery window) the
+// mean read 15.8 mi/wk against twelve clean weeks averaging 41 and a real peak
+// of 52.3. The block opened at 19 mi/wk with ONE-MILE easy days and peaked at
+// 48 against a tier band of [65, 90].
+//
+// It is the same shape DOCTRINE-4 fixed for the recovery composer four hours
+// earlier — "a percentage of peak multiplied by an average is not a percentage
+// of peak" — applied to the recovery block and never swept to the build that
+// FOLLOWS recovery.
+//
+// THE RULE.
+//
+//   base = max(28-day mean, sustained × RESUME_FRACTION)   ← if, and only if,
+//                                                            the low stretch is
+//                                                            a mandated one
+//
+//   sustained = the RAMP_BASE_SUSTAINED_RANK-th highest of the last
+//               RAMP_BASE_LOOKBACK_WEEKS 7-day blocks. Third-highest, not the
+//               max: a base is a volume the runner reached repeatedly, so one
+//               big week can never set it (nor can two).
+//
+//   interruption = how many of the most recent blocks sit below that sustained
+//               level. The lift applies only while the interruption is no
+//               longer than the one the engine itself mandates — the finished
+//               race's taper plus its own post-race recovery window. With no
+//               finished race to explain it, the allowance is the two weeks
+//               Research/22 §14 calls a SHORT layoff. Anything longer is a
+//               layoff, not a deload: no lift, the mean governs, and the
+//               comeback machinery (adapt.ts RERAMP-1, injury-builder) keeps
+//               owning the ramp exactly as it does today.
+//
+// WHY 70%. Both tables that describe returning from an interruption agree on
+// the number and on the anchor being PRE-interruption volume, never the
+// interruption's own:
+//   · Research/22 §14 "Return from Short Layoff" — 8-14 days off → "70% of
+//     pre-layoff volume for 1 wk, 85% for wk 2, full for wk 3".
+//   · Research/00b §"Marathon Recovery (4-week reverse taper)" week 4 — "70-80%"
+//     of peak, with "full return to peak training load typically week 5-6".
+// The floor of the band is taken. The build's own ramp ceiling carries the
+// runner the rest of the way, which is what "full by week 3" describes.
+//
+// WHAT IT DOES NOT DO. A runner whose recent mean already sits at or above
+// 70% of their sustained level gets `max(mean, …) = mean` — byte-identical
+// output. That is every runner in steady training, so the sweep archetypes
+// (which compose from synthetic inputs and never reach this reader) and every
+// non-interrupted authoring are untouched.
+
+/** Blocks of 7 days looked back over. 16 weeks spans a full build. */
+export const RAMP_BASE_LOOKBACK_WEEKS = 16;
+/** Rank of the "sustained" week · 3rd-highest, so no single (or double) outlier week sets a base. */
+export const RAMP_BASE_SUSTAINED_RANK = 3;
+/** Research/22 §14 · resume at 70% of PRE-interruption volume. */
+export const RAMP_BASE_RESUME_FRACTION = 0.70;
+/** Research/22 §14 · "Return from Short Layoff (1-2 weeks off)". Longer + unexplained = moderate layoff. */
+export const SHORT_LAYOFF_WEEKS = 2;
+
+export interface RampBaseEvidence {
+  /** The base volumeCurve ramps from. */
+  baseMi: number;
+  /** The 28-day mean it would have used. */
+  meanMi: number;
+  /** Rank-3 week of the look-back. 0 when there is no history. */
+  sustainedMi: number;
+  /** Consecutive most-recent blocks below the resume level. */
+  interruptionWeeks: number;
+  /** How long an interruption this authoring is entitled to look through. */
+  allowedInterruptionWeeks: number;
+  /** True when the sustained level (not the mean) set the base. */
+  lifted: boolean;
+}
+
+/**
+ * Pure half of RAMPBASE-1. `weeklySeries` is most-recent-first 7-day sums.
+ * Exported for direct unit testing — the worktree has no DB pool.
+ */
+export function resolveRampBase(opts: {
+  meanWeeklyMi: number;
+  weeklySeries: number[];
+  allowedInterruptionWeeks: number;
+}): RampBaseEvidence {
+  const mean = Math.max(0, opts.meanWeeklyMi || 0);
+  const series = opts.weeklySeries.filter((v) => Number.isFinite(v)).map((v) => Math.max(0, v));
+  const base0: RampBaseEvidence = {
+    baseMi: mean, meanMi: mean, sustainedMi: 0,
+    interruptionWeeks: 0, allowedInterruptionWeeks: opts.allowedInterruptionWeeks, lifted: false,
+  };
+  if (series.length < RAMP_BASE_SUSTAINED_RANK) return base0;
+  const sorted = [...series].sort((a, b) => b - a);
+  const sustained = sorted[RAMP_BASE_SUSTAINED_RANK - 1] ?? 0;
+  if (!(sustained > 0)) return base0;
+  const resumeLevel = sustained * RAMP_BASE_RESUME_FRACTION;
+  let interruption = 0;
+  while (interruption < series.length && series[interruption] < resumeLevel) interruption++;
+  const evidence: RampBaseEvidence = {
+    ...base0, sustainedMi: Math.round(sustained * 10) / 10, interruptionWeeks: interruption,
+  };
+  if (interruption > opts.allowedInterruptionWeeks) return evidence;   // a layoff, not a deload
+  const lifted = resumeLevel > mean;
+  return {
+    ...evidence,
+    baseMi: lifted ? Math.round(resumeLevel * 10) / 10 : mean,
+    lifted,
+  };
+}
+
+/** DB half of RAMPBASE-1 · builds the 7-day series and spends `resolveRampBase`. */
+async function rampBaseForBuild(
+  userId: string,
+  todayISO: string,
+  meanWeeklyMi: number,
+  lastRaceFinished: { date: string; distanceMi?: number } | null,
+  lastRaceDistanceMi: number | null,
+  lastRacePriority: string | null,
+): Promise<RampBaseEvidence> {
+  const { mileageByDay, isoDaysBefore } = await import('@/lib/runs/volume');
+  const WINDOW_DAYS = RAMP_BASE_LOOKBACK_WEEKS * 7;
+  const byDay = await mileageByDay(userId, isoDaysBefore(todayISO, WINDOW_DAYS), todayISO)
+    .catch(() => new Map());
+  const dayMi = (iso: string): number => (byDay.get(iso)?.mi ?? 0);
+  const series: number[] = [];
+  for (let w = 0; w < RAMP_BASE_LOOKBACK_WEEKS; w++) {
+    let sum = 0;
+    for (let k = 0; k < 7; k++) sum += dayMi(isoDaysBefore(todayISO, w * 7 + k));
+    series.push(Math.round(sum * 10) / 10);
+  }
+  // How long an interruption this authoring may look through. A race the
+  // runner actually ran explains its own taper AND its own recovery window —
+  // both are volumes the engine itself prescribed, so reading them as fitness
+  // is the defect. Nothing else earns more than the short-layoff allowance.
+  let allowed = SHORT_LAYOFF_WEEKS;
+  const lastMi = lastRaceDistanceMi ?? lastRaceFinished?.distanceMi ?? null;
+  if (lastRaceFinished?.date && lastMi != null && lastMi > 0) {
+    const weeksSince = Math.floor(daysBetween(lastRaceFinished.date, todayISO) / 7);
+    const cat = distanceCategoryOfTier(lastMi);
+    const mandated = BLOCK_SHAPE[cat].taperWeeks + postRaceRecoveryWeeks(cat, lastRacePriority);
+    if (weeksSince >= 0 && weeksSince <= mandated) allowed = Math.max(allowed, mandated);
+  }
+  return resolveRampBase({ meanWeeklyMi, weeklySeries: series, allowedInterruptionWeeks: allowed });
+}
+
 /**
  * 2026-06-01 · runner's actual easy-day median over the last 14 days.
  *
@@ -2218,6 +2364,11 @@ function frontLoadFirstRun(days: DayPlan[], anchorDow: number): void {
 
 export type MidBlockRace = NonNullable<ComposePlanInput['midBlockRaces']>[number];
 
+/** MIDRACE-TAPER-1 · running days the B-race mini-taper covers (day-1 shakeout, day-2 eased). */
+const MINI_TAPER_RUNNING_DAYS = 2;
+/** …found within this many CALENDAR days, so a rest-heavy week can't drag the taper onto the long run. */
+const MINI_TAPER_LOOKBACK_DAYS = 4;
+
 export interface EmbeddedRaceSummary {
   slug: string;
   name: string;
@@ -2278,31 +2429,51 @@ export function embedMidBlockRaces(
     touchedWeeks.add(wi);
 
     if (race.priority === 'B') {
-      // Mini-taper · no quality within 2 days before (Research/08 §9 race-week
-      // idiom scaled down: day-1 shakeout, day-2 eased). The long run is never
-      // displaced pre-race.
-      const dayBefore = dayAt(o - 1);
-      if (dayBefore && dayBefore.type !== 'race' && !dayBefore.isLong && dayBefore.distanceMi > 0) {
-        dayBefore.type = 'shakeout';
-        dayBefore.distanceMi = 2;
-        dayBefore.isQuality = false;
-        dayBefore.isLong = false;
+      // Mini-taper · no quality within the 2 RUNNING days before the race, and
+      // the last running day before it is a shakeout (Research/08 §9 race-week
+      // idiom scaled down). The long run is never displaced pre-race.
+      //
+      // MIDRACE-TAPER-1 (2026-08-17) · this used to index CALENDAR offsets −1
+      // and −2, which made the whole mini-taper a no-op for the commonest
+      // layout there is. The owner rests Saturday and races Sunday: the −1
+      // guard required `distanceMi > 0`, so a rest day the day before the race
+      // silently SKIPPED the taper, and −2 was his short Friday easy — already
+      // not quality — so the Thursday session stood untouched. Both his B races
+      // (Santa Monica 10K, Run Malibu Half) were authored off a full Thursday
+      // quality session with no taper of any kind. A rest day IS taper; the
+      // eased days have to be the days he actually runs.
+      const preRun: { day: DayPlan; off: number }[] = [];
+      for (let j = 1; j <= MINI_TAPER_LOOKBACK_DAYS && preRun.length < MINI_TAPER_RUNNING_DAYS; j++) {
+        const d = dayAt(o - j);
+        if (!d || d.type === 'race') break;      // plan window edge or another race
+        if (d.distanceMi <= 0) continue;         // a rest day is already taper
+        preRun.push({ day: d, off: o - j });
+      }
+      // No quality inside the mini-taper.
+      for (const { day: d, off } of preRun) {
+        if (!d.isQuality || d.isLong) continue;
+        d.type = 'easy';
+        d.distanceMi = Math.min(d.distanceMi, 6);
+        d.isQuality = false;
+        d.subLabel = 'EASY';
+        d.notes = `Easy. Inside the mini-taper for ${race.name} · no quality this close.`;
+        delete d.raceGoalPaceSec;
+        touchedWeeks.add(Math.floor(off / 7));
+      }
+      // The last running day before the race is the shakeout.
+      const lastRun = preRun[0];
+      if (lastRun && !lastRun.day.isLong) {
+        const d = lastRun.day;
+        d.type = 'shakeout';
+        d.distanceMi = 2;
+        d.isQuality = false;
+        d.isLong = false;
         // DOCTRINE-STRIDES-1 · same move as the race-week shakeout: strides
         // belong in the sub_label, which is the prescription spec-builder reads.
-        dayBefore.subLabel = 'SHAKEOUT · 4×20s strides';
-        dayBefore.notes = `2 mi easy. Loosen the legs for ${race.name}.`;
-        delete dayBefore.raceGoalPaceSec;
-        touchedWeeks.add(Math.floor((o - 1) / 7));
-      }
-      const twoBefore = dayAt(o - 2);
-      if (twoBefore && twoBefore.type !== 'race' && twoBefore.isQuality && !twoBefore.isLong) {
-        twoBefore.type = 'easy';
-        twoBefore.distanceMi = Math.min(twoBefore.distanceMi, 6);
-        twoBefore.isQuality = false;
-        twoBefore.subLabel = 'EASY';
-        twoBefore.notes = `Easy. Two days out from ${race.name} · no quality inside the mini-taper.`;
-        delete twoBefore.raceGoalPaceSec;
-        touchedWeeks.add(Math.floor((o - 2) / 7));
+        d.subLabel = 'SHAKEOUT · 4×20s strides';
+        d.notes = `2 mi easy. Loosen the legs for ${race.name}.`;
+        delete d.raceGoalPaceSec;
+        touchedWeeks.add(Math.floor(lastRun.off / 7));
       }
       // Post-race easy days per race-mile scale (see doctrine block above):
       // half+ → 4, 10K/5-11mi → 2, shorter → 1.
@@ -2475,6 +2646,138 @@ export function embedMidBlockRaces(
   return embedded;
 }
 
+/**
+ * MIDRACE-RAMP-1 (2026-08-17) · the ramp ceiling, enforced AFTER tune-up
+ * embedding, on the week that follows a B race.
+ *
+ * THE DEFECT. `volumeCurve` builds the block under `GENERAL_RAMP_CEILING`, and
+ * then `embedMidBlockRaces` rewrites `w.weeklyMi` (and `vols[]`) for every week
+ * it touches — so the ceiling is computed on numbers that no longer exist by
+ * the time the plan is persisted. The validator does not catch the gap either:
+ * embedding flags the tune-up week `isCutback`, and the §6 week-over-week check
+ * deliberately exempts the week after a cutback. The cap is therefore bypassed
+ * in exactly the place it is load-bearing. On the owner's CIM block the week
+ * immediately after a raced half came out at +37% week-over-week AND as the
+ * single biggest week of the block, carrying its longest run.
+ *
+ * THE RULE. A week following an embedded B race may not exceed
+ *   · the last UNDISTORTED week × the runner's general ramp ceiling — the
+ *     tune-up week itself is a mini-tapered week, so ramping off it would
+ *     punish the runner for tapering, which is why the validator exempts it in
+ *     the first place; and
+ *   · when the tune-up was a half or longer, the biggest week that came before
+ *     it. Returning from 13.1 raced miles you may come back to your previous
+ *     peak. You may not come back PAST it: `POST_RACE_RECOVERY_WEEKS.hm` is two
+ *     weeks of no quality, and the block does not peak inside them. A 5K/10K
+ *     tune-up is a hard workout, not a recovery event, so it takes the ramp
+ *     ceiling only and the block may legitimately reach a new high.
+ * C races are untouched — they take the week's quality slot without a mini-taper
+ * or a volume drop, so there is no cutback to return from.
+ *
+ * The surplus comes off the easy days first (Research/08 §9.1 · "the largest
+ * cut is to easy mileage" — the same ordering `finalizeComposedPlan`'s taper
+ * rescale already cites), spilling proportionally onto the rest only when easy
+ * mileage alone cannot cover it. The key session survives the cap.
+ *
+ * AND the long run inside a half-or-longer B race's no-quality window loses its
+ * race-pace finish. `POST_RACE_RECOVERY_WEEKS.hm` is 2 weeks of no quality
+ * (Research/00b §"Post-Race Recovery"); `embedMidBlockRaces`' own 4-day easy
+ * window covers the first days and stops, so a 21.5-mile long with a 10.5-mile
+ * marathon-pace finish landed six days after 13.1 raced miles. Stripping the
+ * finish leaves the aerobic long intact and removes the quality that doctrine
+ * says has not been earned back yet.
+ *
+ * WHERE IT RUNS. Inside `finalizeComposedPlan`, AFTER the VOL-1 reconcile and
+ * before the taper enforcement. Running it in `composePlan` (the obvious place,
+ * right after the embed) compares BUDGET volumes, and the budget is not what
+ * ships: the per-day caps trim weeks afterwards, so the reference week shrank
+ * from 54 to 51 while the capped week kept the 53.5 the budget allowed and
+ * stayed the block's peak. Same budget-vs-realized trap COH-4 documents one
+ * pass below. The taper then descends from the corrected peak.
+ */
+export function enforceRampCeilingAfterEmbedding(
+  weeks: ComposedWeek[],
+  vols: number[],
+  level: LevelKey,
+  embedded: EmbeddedRaceSummary[],
+): void {
+  const ceiling = GENERAL_RAMP_CEILING[level ?? 'intermediate'];
+  const bRaceWeeks = new Set(embedded.filter((e) => e.priority === 'B').map((e) => e.weekIdx));
+  for (const e of embedded) {
+    if (e.priority !== 'B') continue;
+    const wi = e.weekIdx + 1;
+    const w = weeks[wi];
+    const prev = weeks[wi - 1];
+    if (!w || !prev || w.isRaceWeek || bRaceWeeks.has(wi)) continue;
+    // Race-pace finish inside the post-race no-quality window (half+ only).
+    if (e.distanceMi >= 12) {
+      const long = w.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
+      if (long && splitDay(long).qualityMi > 0) setLongFinish(long, 0);
+    }
+    // Ramp reference · the most recent week distorted by neither a tune-up nor
+    // a planned cutback. Falls back to the prior peak when the block has none.
+    const priorPeak = Math.max(...weeks.slice(0, wi).map((x) => x.weeklyMi ?? 0));
+    let refMi = 0;
+    for (let k = wi - 1; k >= 0; k--) {
+      if (bRaceWeeks.has(k) || weeks[k].isCutback || weeks[k].isRaceWeek) continue;
+      refMi = weeks[k].weeklyMi ?? 0;
+      break;
+    }
+    if (!(refMi > 0)) refMi = priorPeak;
+    const cap = e.distanceMi >= 12
+      ? Math.min(refMi * ceiling, priorPeak)
+      : refMi * ceiling;
+    if (!(cap > 0) || (w.weeklyMi ?? 0) <= cap + 0.05) continue;
+    trimWeekToVolume(w, cap);
+    if (Array.isArray(vols) && wi < vols.length) vols[wi] = w.weeklyMi;
+  }
+}
+
+/** Easy-day floor the MIDRACE-RAMP-1 trim will not cut below before spilling
+ *  onto the rest of the week. Matches layoutWeek's own coherence minimum. */
+const RAMP_TRIM_MIN_EASY_MI = 3;
+
+/** Bring a composed week down to `targetMi`, easy days first. */
+function trimWeekToVolume(week: ComposedWeek, targetMi: number): void {
+  const sum = () => Math.round(week.days.reduce((s, d) => s + d.distanceMi, 0) * 10) / 10;
+  const easies = week.days.filter((d) => d.type === 'easy' && d.distanceMi > RAMP_TRIM_MIN_EASY_MI);
+  const easyMi = easies.reduce((s, d) => s + d.distanceMi, 0);
+  const easyFloorMi = easies.length * RAMP_TRIM_MIN_EASY_MI;
+  let surplus = sum() - targetMi;
+  if (surplus > 0 && easyMi > easyFloorMi) {
+    const take = Math.min(surplus, easyMi - easyFloorMi);
+    const scale = (easyMi - take) / easyMi;
+    for (const d of easies) {
+      d.distanceMi = Math.max(RAMP_TRIM_MIN_EASY_MI, Math.floor(d.distanceMi * scale * 2) / 2);
+    }
+    surplus = sum() - targetMi;
+  }
+  if (surplus > 0.05) {
+    // Easy alone could not cover it · scale every non-race day proportionally,
+    // which preserves the easy<long ordering layoutWeek established.
+    const trimmable = week.days.filter((d) => d.type !== 'race' && d.distanceMi > 0);
+    const total = trimmable.reduce((s, d) => s + d.distanceMi, 0);
+    if (total > 0) {
+      const scale = Math.max(0, (total - surplus) / total);
+      for (const d of trimmable) {
+        const next = Math.floor(d.distanceMi * scale * 2) / 2;
+        if (d.isLong || d.isQuality) { d.distanceMi = Math.max(1, next); continue; }
+        d.distanceMi = Math.max(0, next);
+      }
+    }
+  }
+  // A long run that was trimmed carries a finish segment sized for the old
+  // distance · re-size it so sub_label never claims more MP miles than the day.
+  const long = week.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
+  if (long) {
+    const finish = splitDay(long).qualityMi;
+    if (finish > 0 && finish > long.distanceMi * 0.5) {
+      setLongFinish(long, Math.max(0, Math.floor(long.distanceMi * 0.5 * 2) / 2));
+    }
+  }
+  week.weeklyMi = sum();
+}
+
 // ── Pure compose layer (2026-06-02) ─────────────────────────────────────
 // Extracted from generatePlan() so the plan-engine bench can test the
 // actual plan output against persona doctrine targets without a database.
@@ -2498,6 +2801,15 @@ export interface ComposePlanInput {
   startMondayISO: string;
   level: LevelKey;
   recentWeeklyMi: number;
+  /** RAMPBASE-1 (2026-08-17) · the volume the build ramps FROM. Equals
+   *  `recentWeeklyMi` for a runner in steady training; higher only when the
+   *  28-day mean is depressed by an interruption the engine itself mandated
+   *  (a race taper + its Research/00b recovery window). Undefined → the mean,
+   *  which is the pre-RAMPBASE-1 behaviour, so every synthetic-input caller
+   *  (sweep archetypes, benches, sims) is byte-identical. */
+  rampBaseMi?: number;
+  /** Transparency record for the above · lands in authored_state. */
+  rampBaseEvidence?: RampBaseEvidence;
   easyDayMedianMi: number;
   /** 2026-06-03 · runner's recent peak long-run distance · floors the
    *  long-run sizing so the plan can't ask for a shorter long than the
@@ -2709,7 +3021,10 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
 
   // DOCTRINE-1 · the taper's depth is keyed to the race distance (Research/08 §9.1),
   // so the curve needs the category, not just the tier band.
-  const vols = volumeCurve(input.recentWeeklyMi, blocks, input.level, tierTarget, distanceCategoryOfTier(input.raceDistanceMi), input.tsbAtStart);
+  // RAMPBASE-1 · ramp from the runner's SUSTAINED base, not from a mandated
+  // deload the engine itself prescribed. Falls back to the 28-day mean, which
+  // is what every caller that does not supply the field gets.
+  const vols = volumeCurve(input.rampBaseMi ?? input.recentWeeklyMi, blocks, input.level, tierTarget, distanceCategoryOfTier(input.raceDistanceMi), input.tsbAtStart);
   // DIST-1 · plan-wide peak weekly volume · scales the marathon/ultra long to its doctrine band.
   const peakWeeklyMi = Math.max(1, ...vols);
   // #13 · the cadence volumeCurve used to deload, threaded into layoutWeek so
@@ -2944,7 +3259,6 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         trainingDaysPerWeek: input.trainingDaysPerWeek,
       })
     : [];
-
   return {
     weeks,
     blocks,
@@ -2956,6 +3270,9 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       goal_pace_s_per_mi: input.goalPaceSec,
       recent_avg_mpw: input.recentWeeklyMi,
       weeklyAvg4w: input.recentWeeklyMi,
+      // RAMPBASE-1 · what the volume curve actually ramped from, and why. Null
+      // (absent) whenever it was the 28-day mean.
+      ...(input.rampBaseEvidence ? { ramp_base: input.rampBaseEvidence } : {}),
       is_mid_block: input.isMidBlock,
       t_pace_s_per_mi: input.tPaceSec,
       lthr_bpm: input.lthr,
@@ -3065,6 +3382,13 @@ export interface ComposeNonRaceInput {
   rxQuality: ResolvedPrescriptions;
   tPaceSec: number | null;
   lthr: number | null;
+  /** EVIDENCE-2 (2026-08-17) · the runner's measured VDOT at authoring. Both
+   *  non-race composers record it as `pace_blend.season_anchor_vdot` so the
+   *  build that FOLLOWS a recovery/maintenance block has an anchor to measure
+   *  progress against. Without it the measured-progress gate read null and the
+   *  next race-prep authoring had no evidence baseline at all — the second
+   *  violation named in Design/engine-doctrine-evidence-and-levers.md. */
+  bestRecentVdot?: number | null;
 }
 
 /**
@@ -3352,6 +3676,10 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       target_weekly_mi: targetWeekly,
       target_long_mi: targetLong,
       next_race: input.nextRace,
+      // EVIDENCE-2 · carry the season anchor forward (see ComposeNonRaceInput).
+      ...(input.bestRecentVdot != null
+        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, goal_vdot: null, build_weeks: TOTAL_WEEKS, measured_progress_fraction: null } }
+        : {}),
       citations: blocks.phases.map((p) => p.citation),
     },
   };
@@ -3569,6 +3897,12 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
       last_race_finished: input.lastRaceFinished,
       next_race: input.nextRace,
       target_weekly_mi: weeks[0]?.weeklyMi ?? 0,
+      // EVIDENCE-2 · a recovery block wrote NO pace anchor, so the race-prep
+      // authoring that follows it found none and fell through to the calendar
+      // blend ungated. Record the fitness the block was entered at.
+      ...(input.bestRecentVdot != null
+        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, goal_vdot: null, build_weeks: weeks.length, measured_progress_fraction: null } }
+        : {}),
       citations: blocks.phases.map((p) => p.citation),
     },
   };
@@ -3886,7 +4220,7 @@ async function persistPlan(client: PoolClient, args: {
  * never drift. No DB, no clock. Behavior-preserving lift of the former inline
  * block — asserted byte-stable by the plan test suite.
  */
-export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi: number): void {
+export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi: number, level: LevelKey = null): void {
   // Long-run WoW smoother · clamp each training long to ≤ prev × 1.30
   // (rounded down to 0.5mi), trimming the week total to match. Defined as a
   // function so it can be RE-APPLIED after the taper rescale below — the
@@ -3966,6 +4300,18 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
   // races have no race-typed day outside the race week → byte-identical.
   for (const w of composed.weeks) {
     w.weeklyMi = Math.round(w.days.reduce((s, d) => s + ((d.type !== 'race' || !w.isRaceWeek) ? d.distanceMi : 0), 0) * 10) / 10;
+  }
+
+  // MIDRACE-RAMP-1 (2026-08-17) · the ramp ceiling, on the week after a tune-up.
+  // Runs on the REALIZED volumes VOL-1 just wrote (see the function's own
+  // "where it runs" note) and BEFORE the taper pass, so the taper descends from
+  // the corrected peak. No embedded races → no-op, byte-identical.
+  {
+    const embedded = ((composed.authoredState as Record<string, unknown> | undefined)
+      ?.embedded_races ?? []) as EmbeddedRaceSummary[];
+    if (Array.isArray(embedded) && embedded.length > 0) {
+      enforceRampCeilingAfterEmbedding(composed.weeks, composed.vols, level, embedded);
+    }
   }
 
   // 2026-06-23 · COH-4 · PROGRESSIVE taper enforcement, AFTER VOL-1 so it sees each week's REALIZED
@@ -4167,7 +4513,27 @@ function resizeMpSession(day: DayPlan, totalMi: number): void {
 function applyIntensityFloor(composed: ComposePlanResult): void {
   for (const w of composed.weeks) {
     if (w.isRaceWeek || w.phase === 'TAPER') continue;
-    if (weekIntensity(w).easyShare >= EASY_SHARE_FLOOR) continue;
+    // MIDRACE-TID-1 (2026-08-17) · A RACE IS NOT TRAINING VOLUME.
+    //
+    // The floor reads Research/00a's "≥75% of TRAINING volume in Z1" and, on a
+    // week carrying an embedded tune-up, was counting a raced 10K or half as
+    // training. Four weeks of the owner's CIM block landed at 45.8%, 63%, 51.3%
+    // and 37.9% — and the pass could do nothing about any of them, because its
+    // only lever is the long run's marathon-pace finish and in a tune-up week
+    // the long run IS the race.
+    //
+    // The honest correction is to measure the week's TRAINING distribution:
+    // take the race day out of both sides of the ratio, not to widen the floor
+    // and not to wave the week through. It is the same argument the plan's own
+    // race week already makes one line up (a race is the event, not the
+    // training), applied per finding rather than per surface — CLAUDE.md's
+    // per-finding context-filter rule. What is left is the week's actual
+    // training, held to the same 75% as every other week, with the long-run
+    // finish still available as the lever whenever the race did not consume it.
+    const trainingWeek = w.days.some((d) => d.type === 'race')
+      ? { ...w, days: w.days.filter((d) => d.type !== 'race') }
+      : w;
+    if (weekIntensity(trainingWeek).easyShare >= EASY_SHARE_FLOOR) continue;
 
     const long = w.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
     if (!long) continue;
@@ -4175,7 +4541,7 @@ function applyIntensityFloor(composed: ComposePlanResult): void {
     if (finishMi <= 0) continue;
 
     // Hard miles the week may carry: (1 - floor) of its running volume.
-    const totals = w.days.reduce(
+    const totals = trainingWeek.days.reduce(
       (acc, d) => { const s = splitDay(d); acc.easy += s.easyMi; acc.hard += s.qualityMi; return acc; },
       { easy: 0, hard: 0 },
     );
@@ -4213,7 +4579,41 @@ function setLongFinish(day: DayPlan, finishMi: number): void {
   day.notes = `Steady ${easyMi}mi, then ${finishMi}mi at ${tag === 'HM' ? 'half-marathon pace' : 'marathon pace'}.`;
 }
 
+/**
+ * Everything `generatePlan` does BEFORE it touches the database: load the
+ * inputs, pick the mode, compose, finalize, validate.
+ *
+ * Extracted 2026-08-17 (RAMPBASE-1 audit) so the author-time pipeline can be
+ * driven end-to-end — real `loadGeneratorInputs`, real composer, real
+ * validator, against real rows — without persisting. Every verification of a
+ * dated plan defect before this had to re-implement the wiring in a harness
+ * and therefore verified the harness, not the engine. `generatePlan` now calls
+ * this and does nothing but persist what comes back.
+ */
+export interface ComposeForUserResult {
+  compose: ComposePlanInput;
+  composed: ComposePlanResult;
+  mode: PlanMode;
+  todayISO: string;
+  trailingAvgWeeklyMi: number | null;
+}
+
+export async function composeForUser(
+  input: GenerateInput,
+): Promise<{ ok: true; result: ComposeForUserResult } | { ok: false; reason: string }> {
+  const r = await composeForUserInternal(input);
+  return r.ok ? { ok: true, result: r.result } : { ok: false, reason: r.reason };
+}
+
 export async function generatePlan(input: GenerateInput): Promise<GenerateResult> {
+  const staged = await composeForUserInternal(input);
+  if (!staged.ok) return { ok: false, reason: staged.reason };
+  return persistComposedPlan(input, staged.result);
+}
+
+async function composeForUserInternal(
+  input: GenerateInput,
+): Promise<{ ok: true; result: ComposeForUserResult } | { ok: false; reason: string }> {
   const { userId, raceSlug, startAnchor = 'monday', startDateISO, goalTarget, freshTarget } = input;
 
   // 1. Load all DB-sourced inputs into a pure-data bundle.
@@ -4238,6 +4638,22 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     lastRaceFinished?.priority ?? null,   // DOCTRINE-5 · effort-scaled recovery window
   );
 
+  // RAMPBASE-1 (2026-08-17) · race-prep ramps from the runner's SUSTAINED
+  // base. The 28-day mean is the right number for pace anchors and for the
+  // Rule 10 transparency envelope (both keep reading it) and the wrong number
+  // for a ramp whose window is half mandated recovery. Maintenance/recovery
+  // are unaffected: they anchor to peak already (DOCTRINE-4).
+  if (mode === 'race-prep') {
+    const ramp = await rampBaseForBuild(
+      userId, todayISO, inputs.compose.recentWeeklyMi,
+      lastRaceFinished, lastRaceDistanceMi, lastRaceFinished?.priority ?? null,
+    );
+    if (ramp.lifted) {
+      inputs.compose.rampBaseMi = ramp.baseMi;
+      inputs.compose.rampBaseEvidence = ramp;
+    }
+  }
+
   // 2026-08-17 · coaching-loop reconciliation · measured-progress gate for
   // MID-BLOCK REBUILDS of the same race. The prior active plan carries the
   // season's anchor VDOT (authored_state.pace_blend, falling back to the
@@ -4261,9 +4677,15 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
         [userId, raceSlug],
       ).catch(() => ({ rows: [] }))).rows[0];
       const priorSt = (prior?.authored_state ?? null) as Record<string, any> | null;
+      // EVIDENCE-2 · third rung: the runner's OWN measured VDOT. A prior plan
+      // that recorded no anchor (every recovery block before this commit) used
+      // to leave seasonAnchor null, which switched the gate off entirely.
+      // Anchoring on today's measurement makes measured progress 0 — honest:
+      // nothing has been demonstrated since — rather than absent.
       const seasonAnchor: number | null =
         (priorSt?.pace_blend?.season_anchor_vdot != null ? Number(priorSt.pace_blend.season_anchor_vdot) : null)
-        ?? (priorSt?.derived_from?.bestRecentVdot != null ? Number(priorSt.derived_from.bestRecentVdot) : null);
+        ?? (priorSt?.derived_from?.bestRecentVdot != null ? Number(priorSt.derived_from.bestRecentVdot) : null)
+        ?? (inputs.compose.bestRecentVdot != null ? Number(inputs.compose.bestRecentVdot) : null);
       if (seasonAnchor != null) {
         const goalVdotNow = vdotFromRace(inputs.compose.goalSec, inputs.compose.raceDistanceMi);
         inputs.compose.seasonAnchorVdot = seasonAnchor;
@@ -4316,6 +4738,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       rxQuality: inputs.compose.rxQuality,
       tPaceSec: inputs.compose.tPaceSec,
       lthr: inputs.compose.lthr,
+      bestRecentVdot: inputs.compose.bestRecentVdot ?? null,   // EVIDENCE-2
     };
     composed = mode === 'recovery'
       ? composeRecoveryPlan(nonRaceInput)
@@ -4325,6 +4748,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
   // 3. Validate composed plan · gate before any DB mutation.
   // Throws PlanValidationError if doctrine or corruption checks fail.
   // clearActivePlansFor never runs on a bad plan — runner's active plan untouched.
+  let trailingAvgWeeklyMi: number | null = null;
   {
     const priorPeakRow = (await pool.query<{ peak_long: string | null }>(
       `SELECT MAX(pw.distance_mi)::text AS peak_long
@@ -4343,7 +4767,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
           AND (data->>'date')::date < $2::date`,
       [userId, todayISO],
     ).catch(() => ({ rows: [{ avg_weekly: null }] }))).rows[0];
-    const trailingAvgWeeklyMi = trailingRow?.avg_weekly != null
+    trailingAvgWeeklyMi = trailingRow?.avg_weekly != null
       ? Number(trailingRow.avg_weekly)
       : null;
     // 2026-06-10 persona-suite fix · author-time WoW smoothing. The
@@ -4356,7 +4780,7 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
     // (30 for all four distance categories — kept literal here because
     // generate→validate would be a runtime import cycle). Race-day rows
     // are not training longs and are skipped, matching the validator.
-    finalizeComposedPlan(composed, inputs.compose.raceDistanceMi);
+    finalizeComposedPlan(composed, inputs.compose.raceDistanceMi, inputs.compose.level);
     // MAINT-WEEKLYML-1 (2026-06-23) · re-snapshot vols from the VOL-1-reconciled weeklyMi values so
     // non-race-prep modes (maintenance/recovery) carry realized volumes, not the pre-finalize budgets.
     // composePlan derives vols from volumeCurve (the real source); maintenance/recovery authored weeklyMi
@@ -4384,6 +4808,20 @@ export async function generatePlan(input: GenerateInput): Promise<GenerateResult
       recentWeeklyMi: inputs.compose.recentWeeklyMi, // CC-2 · cold-start ramp base
     });
   }
+
+  return {
+    ok: true,
+    result: { compose: inputs.compose, composed, mode, todayISO, trailingAvgWeeklyMi },
+  };
+}
+
+async function persistComposedPlan(
+  input: GenerateInput,
+  staged: ComposeForUserResult,
+): Promise<GenerateResult> {
+  const { userId, raceSlug, goalTarget } = input;
+  const { compose, composed, mode, todayISO } = staged;
+  const inputs = { compose };
 
   // 4. Archive existing + persist · one transaction (M-19, 2026-06-09).
   // Wraps sealed-day snapshot → archive → all plan inserts → mode

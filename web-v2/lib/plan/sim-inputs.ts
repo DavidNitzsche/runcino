@@ -288,7 +288,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
         };
         try {
           const racePrepPlan = composePlan(racePrepInput);
-          finalizeComposedPlan(racePrepPlan, raceDistanceMi);
+          finalizeComposedPlan(racePrepPlan, raceDistanceMi, level);
           composed = {
             ...racePrepPlan,
             weeks: [...holdWeeksArr, ...racePrepPlan.weeks],
@@ -299,7 +299,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       }
     }
   }
-  finalizeComposedPlan(composed, raceDistanceMi);
+  finalizeComposedPlan(composed, raceDistanceMi, level);
   // VOLS-SNAP (2026-06-24) · re-snapshot the volume-curve series from the VOL-1/COH-4-reconciled
   // weeklyMi, exactly as the production generatePlan path does (generate.ts:3098). finalize mutates
   // weeklyMi to the realized day-sum but never touches composed.vols, which composePlan returned

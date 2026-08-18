@@ -1,20 +1,33 @@
 /**
- * BLEND-GATE INVARIANTS (2026-08-17 · coaching-loop reconciliation).
+ * BLEND INVARIANTS · EVIDENCE-1 (2026-08-17).
  *
- * Locks the measured-evidence gate on the weekly currentT→goalT blend:
+ * REWRITTEN the day it was written. The first version of this file locked a
+ * PARITY invariant — "with no measured evidence the blend is byte-identical to
+ * the historical calendar formula" — against a legacy implementation copied in
+ * verbatim. Hours later the owner locked
+ * `Design/engine-doctrine-evidence-and-levers.md` Rule 1:
  *
- *   1. PARITY   — with no measured evidence the shared blendedTPaceForWeek
- *                 is byte-identical to the historical composePlan-local
- *                 formula (Rule 3 + BRK-1 + VAR-07). The extraction cannot
- *                 change a single authored pace.
- *   2. STALL    — fitness stalls → paces stall at currentT + grace,
- *                 regardless of how far the calendar has marched.
- *   3. ADVANCE  — fitness advances → paces advance (monotone in measured
- *                 progress, capped by the calendar).
- *   4. TRACK    — measured VDOT tracks the calendar → the gate is a no-op
- *                 (min(calendar, measured + grace) = calendar).
+ *   > Time passing, plan completion, or scheduled progression alone cannot
+ *   > increase or decrease demonstrated fitness.
  *
- * Cite: Research/01-pace-zones-vdot.md §Recalibrate-Paces (:304-321).
+ * naming this exact formula as violation #1. A test that pins an engine to a
+ * behaviour doctrine forbids is not a guard, it is the defect with a lock on
+ * it, so the parity invariant is deleted rather than exempted and replaced by
+ * its negation. What the blend now locks:
+ *
+ *   1. NO-CALENDAR — the result does not depend on weekIdx, phase or
+ *                    buildWeeks. Nothing about the schedule can move a pace.
+ *   2. HOLD        — no evidence → the block trains at demonstrated fitness
+ *                    (plus the standing single-retest grace), start to finish.
+ *   3. ADVANCE     — fitness advances → paces advance, monotone in measured
+ *                    progress, reaching goal pace only at fully-proven fitness.
+ *   4. TAPER       — the taper sharpens on evidence like every other week; it
+ *                    no longer returns goal pace unconditionally.
+ *
+ * Cite: Design/engine-doctrine-evidence-and-levers.md §Rule 1
+ * Cite: Research/01-pace-zones-vdot.md §Recalibrate-Paces (:304-321) ·
+ *       §"Freshness window" (:659-677 · a stale anchor is a floor, not a pace
+ *       source).
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -24,23 +37,6 @@ import {
   gatedBlendFraction,
   blendedTPaceForWeek,
 } from './recompute-paces';
-
-/** The historical composePlan-local tPaceForWeek, verbatim (pre-2026-08-17). */
-function legacyTPaceForWeek(
-  currentT: number | null,
-  goalT: number | null,
-  weekIdx: number,
-  phase: string,
-  buildWeeks: number,
-): number | null {
-  if (goalT == null) return null;
-  if (currentT == null) return goalT;
-  if (currentT <= goalT) return currentT;
-  if (phase === 'TAPER') return goalT;
-  const denom = Math.max(1, Math.round(buildWeeks * 0.6));
-  const blend = Math.min(1, weekIdx / denom);
-  return Math.round(currentT + (goalT - currentT) * blend);
-}
 
 describe('measuredProgressFraction', () => {
   it('is null on missing inputs', () => {
@@ -62,44 +58,69 @@ describe('measuredProgressFraction', () => {
 });
 
 describe('gatedBlendFraction', () => {
-  it('trusts the calendar when no evidence is supplied', () => {
-    expect(gatedBlendFraction(0.8, null)).toBe(0.8);
-    expect(gatedBlendFraction(1, undefined)).toBe(1);
+  it('claims NOTHING when no evidence is supplied', () => {
+    expect(gatedBlendFraction(0.8, null)).toBe(0);
+    expect(gatedBlendFraction(1, undefined)).toBe(0);
   });
-  it('caps the calendar at measured + grace', () => {
+  it('is the measured fraction plus the standing grace', () => {
     expect(gatedBlendFraction(0.8, 0)).toBeCloseTo(BLEND_GRACE_FRACTION, 5);
     expect(gatedBlendFraction(0.8, 0.5)).toBeCloseTo(0.65, 5);
   });
-  it('never exceeds the calendar (evidence cannot leapfrog periodization)', () => {
-    expect(gatedBlendFraction(0.2, 0.9)).toBe(0.2);
+  it('ignores the calendar argument entirely (Rule 1)', () => {
+    for (const calendar of [0, 0.2, 0.5, 1]) {
+      expect(gatedBlendFraction(calendar, 0.9)).toBeCloseTo(1, 5);
+      expect(gatedBlendFraction(calendar, 0.3)).toBeCloseTo(0.45, 5);
+      expect(gatedBlendFraction(calendar, null)).toBe(0);
+    }
   });
   it('caps at 1 overall', () => {
     expect(gatedBlendFraction(1, 0.95)).toBe(1);
   });
 });
 
-describe('blendedTPaceForWeek · parity with the historical formula (gate off)', () => {
+describe('blendedTPaceForWeek · NO-CALENDAR (Rule 1)', () => {
   const grid = {
     currentT: [null, 380, 390, 420.4],
     goalT: [null, 360, 395],
     weekIdx: [0, 1, 3, 6, 9, 14],
     phase: ['BASE', 'BUILD', 'RACE-SPECIFIC', 'TAPER'],
     buildWeeks: [1, 6, 10, 14],
+    measured: [null, 0, 0.4, 1],
   };
-  it('matches on the full grid', () => {
+  it('is invariant in weekIdx, phase and buildWeeks across the full grid', () => {
     for (const currentT of grid.currentT) {
       for (const goalT of grid.goalT) {
-        for (const weekIdx of grid.weekIdx) {
-          for (const phase of grid.phase) {
-            for (const buildWeeks of grid.buildWeeks) {
-              const got = blendedTPaceForWeek({ currentT, goalT, weekIdx, phase, buildWeeks });
-              const want = legacyTPaceForWeek(currentT, goalT, weekIdx, phase, buildWeeks);
-              expect(got).toBe(want);
+        for (const measuredProgressFraction of grid.measured) {
+          const ref = blendedTPaceForWeek({
+            currentT, goalT, weekIdx: 0, phase: 'BASE', buildWeeks: 1, measuredProgressFraction,
+          });
+          for (const weekIdx of grid.weekIdx) {
+            for (const phase of grid.phase) {
+              for (const buildWeeks of grid.buildWeeks) {
+                const got = blendedTPaceForWeek({
+                  currentT, goalT, weekIdx, phase, buildWeeks, measuredProgressFraction,
+                });
+                expect(got).toBe(ref);
+              }
             }
           }
         }
       }
     }
+  });
+
+  it('HOLD · a whole block with no evidence trains at demonstrated fitness + grace', () => {
+    const currentT = 453;   // the owner's measured VDOT 45.1
+    const goalT = 413;      // 3:00 CIM, GOAL-2-floored
+    const held = Math.round(currentT + (goalT - currentT) * BLEND_GRACE_FRACTION);
+    for (let weekIdx = 0; weekIdx < 14; weekIdx++) {
+      const phase = weekIdx >= 11 ? 'TAPER' : 'BUILD';
+      expect(blendedTPaceForWeek({
+        currentT, goalT, weekIdx, phase, buildWeeks: 11, measuredProgressFraction: 0,
+      })).toBe(held);
+    }
+    // and it never reaches the goal-derived pace on the calendar alone
+    expect(held).toBeGreaterThan(goalT);
   });
 });
 
@@ -141,17 +162,16 @@ describe('blendedTPaceForWeek · the measured gate', () => {
     expect(at1).toBe(goalT); // fully-proven fitness reaches goal pace
   });
 
-  it('TRACK · measured tracks the calendar → gate is a no-op', () => {
-    const denom = Math.max(1, Math.round(buildWeeks * 0.6));
-    for (const weekIdx of [0, 2, 4, 6, 8]) {
-      const calendar = Math.min(1, weekIdx / denom);
-      const gated = blendedTPaceForWeek({
-        currentT, goalT, weekIdx, phase: 'BUILD', buildWeeks,
-        measuredProgressFraction: calendar,  // fitness exactly on schedule
-      });
-      const ungated = blendedTPaceForWeek({ currentT, goalT, weekIdx, phase: 'BUILD', buildWeeks });
-      expect(gated).toBe(ungated);
-    }
+  it('TAPER · sharpens on evidence, never on arrival', () => {
+    const noEvidence = blendedTPaceForWeek({
+      currentT, goalT, weekIdx: 13, phase: 'TAPER', buildWeeks,
+    })!;
+    expect(noEvidence).toBe(currentT);            // Rule 1 · nothing was measured
+    const proven = blendedTPaceForWeek({
+      currentT, goalT, weekIdx: 13, phase: 'TAPER', buildWeeks,
+      measuredProgressFraction: 1,
+    })!;
+    expect(proven).toBe(goalT);                   // fully demonstrated → goal pace
   });
 
   it('BRK-1 · soft goal still trains at current fitness under any gate', () => {

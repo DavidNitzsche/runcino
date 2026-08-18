@@ -75,7 +75,15 @@ import {
   racePaceLongThisWeek,
   TAPER_MP_DOSE,
   taperMpDose,
+  RAMP_BASE_RESUME_FRACTION,
+  RAMP_BASE_SUSTAINED_RANK,
+  resolveRampBase,
 } from '@/lib/plan/generate';
+import {
+  BLEND_GRACE_FRACTION,
+  blendedTPaceForWeek,
+  gatedBlendFraction,
+} from '@/lib/plan/recompute-paces';
 import {
   STRIDE_DURATION_S,
   STRIDE_RECOVERY_S,
@@ -2528,6 +2536,79 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  // ══ RAMP BASE · what a build is allowed to ramp FROM ══════════════════════
+  {
+    id: 'RAMPBASE.resume-from-pre-interruption-volume',
+    binds: [
+      'lib/plan/generate.ts#RAMP_BASE_RESUME_FRACTION',
+      'lib/plan/generate.ts#resolveRampBase',
+      'lib/plan/generate.ts#ComposePlanInput.rampBaseMi',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '| 8-14 days | 70% of pre-layoff volume for 1 wk, 85% for wk 2, full for wk 3 |',
+    claim:
+      'A runner coming back from an interruption resumes at a fraction of their PRE-' +
+      'interruption volume — never at the interruption\'s own volume, which is the number ' +
+      'the engine was reading. `volumeCurve` ramped from a flat 28-day mean, so a build ' +
+      'authored the day a mandated recovery block ends took the deload the engine itself ' +
+      'prescribed as the runner\'s fitness. The resume fraction is the floor of the band ' +
+      'doctrine states, and the lift is allowed only while the low stretch is no longer ' +
+      'than the recovery the engine mandates; past that it is a layoff and the comeback ' +
+      'protocols own the ramp.',
+    check({ cite }) {
+      // The doc's own number, read out of the cell rather than hand-copied.
+      const stated = cite.section.find((l) => l.includes('70% of pre-layoff volume'));
+      if (!stated) throw new Error('the short-layoff resume row no longer states a resume fraction');
+      const docFraction = Number((stated.match(/(\d+)%\s+of\s+pre-layoff/) ?? [])[1]) / 100;
+      if (!(docFraction > 0)) throw new Error(`could not read the resume fraction out of: ${stated}`);
+      if (Math.abs(RAMP_BASE_RESUME_FRACTION - docFraction) > 0.001) {
+        throw new Error(
+          `RAMP_BASE_RESUME_FRACTION is ${RAMP_BASE_RESUME_FRACTION}, doctrine resumes at ${docFraction}`,
+        );
+      }
+      // Research/00b's reverse taper must agree · its last week is the same band.
+      const rt = resolveCitation('Research/00b-recovery-protocols.md', '### Marathon Recovery (4-week reverse taper)');
+      const [lo] = parseBand(rt.table().cell('Week 4', 'Volume vs. peak'));
+      if (Math.abs(lo / 100 - docFraction) > 0.001) {
+        throw new Error(
+          `Research/22 resumes at ${docFraction} and Research/00b's reverse taper ends at ${lo / 100}. ` +
+            'Two docs, two different resume levels — reconcile them before moving the engine.',
+        );
+      }
+      // The base must never be BELOW the mean · the lift can only ever add.
+      const mean = 15.8;
+      const series = [0, 17, 23, 30, 40, 44, 40, 47, 43, 40, 47, 40, 45, 39, 41, 38];
+      const lifted = resolveRampBase({ meanWeeklyMi: mean, weeklySeries: series, allowedInterruptionWeeks: 4 });
+      if (lifted.baseMi < mean) throw new Error('resolveRampBase returned a base below the 28-day mean');
+      if (!lifted.lifted) throw new Error('a four-week mandated deload off a 40 mi/wk base did not lift the ramp base');
+      // …and a genuine layoff must NOT be lifted, however good the old base was.
+      const detrained = resolveRampBase({
+        meanWeeklyMi: 4, weeklySeries: [0, 0, 2, 3, 5, 6, 8, 40, 44, 47, 40, 43, 45, 41, 39, 42],
+        allowedInterruptionWeeks: 4,
+      });
+      if (detrained.lifted || detrained.baseMi !== 4) {
+        throw new Error(
+          `a seven-week layoff was lifted to ${detrained.baseMi} mi/wk · past the mandated window the ` +
+            'comeback protocols (Research/22 §"Return from Moderate Layoff", Research/05) own the ramp',
+        );
+      }
+      // …and one outlier week cannot set a base.
+      const spike = resolveRampBase({
+        meanWeeklyMi: 10, weeklySeries: [10, 10, 10, 60, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+        allowedInterruptionWeeks: 4,
+      });
+      if (spike.sustainedMi > 10.001) {
+        throw new Error(`a single 60-mile week set the sustained base to ${spike.sustainedMi}`);
+      }
+      if (RAMP_BASE_SUSTAINED_RANK < 3) {
+        throw new Error(`RAMP_BASE_SUSTAINED_RANK is ${RAMP_BASE_SUSTAINED_RANK} · a base is a volume reached repeatedly`);
+      }
+      if (!/volumeCurve\(input\.rampBaseMi \?\? input\.recentWeeklyMi,/.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
+        throw new Error('volumeCurve no longer reads rampBaseMi · the build is ramping from the 28-day mean again');
+      }
+    },
+  },
+
   // == MARATHON TAPER . MP work survives the volume cut . Research/08 9.2 ====
   {
     id: 'TAPERMP.marathon-taper-mp-dose',
@@ -2687,6 +2768,72 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       );
       within(CONTINUOUS_TEMPO_MINUTES.min, [Number(m[1]), Number(m[1])], 'continuous tempo minimum minutes');
       within(CONTINUOUS_TEMPO_MINUTES.max, [Number(m[2]), Number(m[2])], 'continuous tempo maximum minutes');
+    },
+  },
+  // ══ EVIDENCE · Rule 1 · fitness changes require evidence ══════════════════
+  {
+    id: 'EVIDENCE.no-calendar-pace-advance',
+    binds: [
+      'lib/plan/recompute-paces.ts#gatedBlendFraction',
+      'lib/plan/recompute-paces.ts#blendedTPaceForWeek',
+    ],
+    doc: 'Design/engine-doctrine-evidence-and-levers.md',
+    anchor: '> Time passing, plan completion, or scheduled progression alone cannot increase or decrease',
+    claim:
+      'A prescribed pace may not advance because a week went by. The weekly T-pace blend ' +
+      'interpolated from measured fitness toward the goal-derived ceiling on weekIdx / ' +
+      'round(buildWeeks x 0.6), and the taper returned goal pace outright — both assert a ' +
+      'fitness change nobody measured, and the owner\'s locked Rule 1 names this file as ' +
+      'the violation. The blend is now the DEMONSTRATED fraction of the gap plus a fixed ' +
+      'grace, and nothing else: no evidence means the block trains at demonstrated ' +
+      'fitness until a race, a time trial or a re-anchor moves it.',
+    check() {
+      const src = sourceOf('web-v2/lib/plan/recompute-paces.ts');
+      // No calendar term may re-enter the blend.
+      if (/weekIdx\s*\/\s*denom|args\.weekIdx\s*\//.test(src)) {
+        throw new Error('blendedTPaceForWeek divides by a calendar denominator again · Rule 1 forbids it');
+      }
+      if (/buildWeeks\s*\*\s*0\.6/.test(src)) {
+        throw new Error('the 60%-of-build calendar ramp is back in recompute-paces.ts');
+      }
+      // Behaviour, not just text: identical inputs at every week index and phase.
+      const args = { currentT: 453, goalT: 413, buildWeeks: 11 };
+      for (const measured of [null, 0, 0.5, 1] as (number | null)[]) {
+        const seen = new Set<number | null>();
+        for (const weekIdx of [0, 1, 4, 8, 13]) {
+          for (const phase of ['BASE', 'BUILD', 'RACE-SPECIFIC', 'TAPER']) {
+            seen.add(blendedTPaceForWeek({ ...args, weekIdx, phase, measuredProgressFraction: measured }));
+          }
+        }
+        if (seen.size !== 1) {
+          throw new Error(
+            `the T-pace blend still varies with the schedule at measured=${measured}: ${[...seen].join(' · ')}`,
+          );
+        }
+      }
+      // No evidence → the runner's own demonstrated fitness (plus the grace),
+      // never the goal-derived pace.
+      const held = blendedTPaceForWeek({ ...args, weekIdx: 13, phase: 'TAPER' });
+      if (held !== args.currentT) {
+        throw new Error(`with no evidence the taper prescribes ${held} s/mi against a demonstrated ${args.currentT}`);
+      }
+      if (gatedBlendFraction(1, null) !== 0) {
+        throw new Error('an unmeasured runner is still credited with part of the goal gap');
+      }
+      // The grace is bounded by what ONE honest retest could confirm (Research/01
+      // :314-316 · a single signal moves VDOT ~1-3 points).
+      if (BLEND_GRACE_FRACTION < 0 || BLEND_GRACE_FRACTION > 0.2) {
+        throw new Error(`BLEND_GRACE_FRACTION is ${BLEND_GRACE_FRACTION} · the standing allowance must stay inside one retest`);
+      }
+      // The recovery composer must record an anchor for the NEXT block to
+      // measure progress against — the second violation in the doctrine table.
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/mode: 'recovery',[\s\S]{0,900}?season_anchor_vdot/.test(gen)) {
+        throw new Error(
+          'composeRecoveryPlan writes no pace_blend.season_anchor_vdot · the build that follows ' +
+            'a recovery block has no evidence baseline and the gate goes inert',
+        );
+      }
     },
   },
 ];
