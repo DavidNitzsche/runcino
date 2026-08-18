@@ -46,11 +46,21 @@
  * also carries a position-based STRATEGY CUE so the intent reads, not
  * just the numbers.
  *
+ * 2026-08-17 · F2. A course with no authored phase profile now gets the
+ * doctrine opening segments (settle / early block / repaid remainder) as
+ * its phases, and its splits integrate over them, instead of returning
+ * `phases: null` + a linear ladder. Half of `course_library` — LA
+ * Marathon, Rose Bowl Half, Disney Half, Run Malibu, Santa Monica 10K —
+ * carries zero phases, and every consumer of that null invented its own
+ * opening arc to fill the hole. The watch already ran the doctrine
+ * segments there (lib/watch/build-workout.ts), so this is the phone and
+ * the web catching up to the wrist rather than a new model.
+ *
  * This is split *arithmetic* on an already-chosen goal, not a training
  * prescription — the doctrine inputs are the cited grade-cost numbers.
  */
 
-import { raceOpeningPlan, openingAdjustmentOverSpan } from './distance-doctrine';
+import { raceOpeningPlan, openingAdjustmentOverSpan, raceOpeningSegments } from './distance-doctrine';
 import { gradePaceMultiplier } from '@/lib/training/elevation-model';
 
 export interface CoursePhaseInput {
@@ -89,11 +99,33 @@ export interface PacingPhase {
 }
 
 export interface RacePacing {
+  /** Whether the COURSE informed the plan. 'linear' = no usable profile. */
   source: 'course' | 'linear';
+  /**
+   * Where `phases` came from. 'course' = named terrain segments; 'opening'
+   * = the doctrine opening model (settle / early block / repaid remainder,
+   * lib/race/distance-doctrine.ts), which is what a course with no phase
+   * profile gets. 'none' only when the race is too short to carry an
+   * opening at all.
+   */
+  phase_source: 'course' | 'opening' | 'none';
   goal_sec: number;
   splits: PacingSplit[];
-  phases: PacingPhase[] | null;   // null when source === 'linear'
+  phases: PacingPhase[] | null;
 }
+
+/**
+ * Sub-label for the doctrine opening segments. The terrain phases get a
+ * position-based cue (phaseCue); these are already named for their intent,
+ * so the cue says what the runner does rather than repeating the label.
+ * Cite: Research/08 §3.1 (settle) + §4.3 (the repayment is what makes the
+ * cumulative land on the target).
+ */
+const OPENING_CUES: Readonly<Record<string, string>> = {
+  'Settle': 'Bank nothing',
+  'Find rhythm': 'Ease onto target',
+  'Goal pace': 'Repay the opening, then hold',
+};
 
 /** Position-based strategy cue for a phase, keyed on its mid-race fraction
  *  p ∈ [0,1]. Mirrors the negative-split arc's intent so the merged plan
@@ -173,7 +205,7 @@ export function buildRacePacing(input: {
 
   // Per-phase raw multipliers, then normalize total time back to goalSec.
   // `pos` is the phase's mid-race fraction, used for the strategy cue.
-  let phasePaces: Array<{ p: CoursePhaseInput; pace: number; pos: number }> | null = null;
+  let phasePaces: Array<{ p: CoursePhaseInput; pace: number; pos: number; cue?: string }> | null = null;
   if (phases) {
     const raw = phases.map((p) => ({
       p,
@@ -212,6 +244,38 @@ export function buildRacePacing(input: {
     const arcScale = goalSec / arcedTotal;
     phasePaces = arced.map(({ p, pace, pos }) => ({ p, pace: pace * arcScale, pos }));
   }
+  /** True when the terrain profile shaped the paces above. */
+  const terrainPhased = phasePaces != null;
+
+  // ── No usable course profile → still not a flat line ──────────────────
+  // 2026-08-17 · F2. A course with no authored phases used to return
+  // `phases: null` and linearly-interpolated splits, and every consumer
+  // then invented its own opening: the iPhone race page ran a 0.22/0.77
+  // block split at goal+5 / goal / goal−7 (the fifth opening model the
+  // distance-doctrine audit missed), while the watch — for the SAME
+  // phase-less course — already ran the doctrine segments. On LA Marathon
+  // the phone said miles 1-6 at goal+5 and the wrist said mile 1 at
+  // goal+15. Phase-less is a statement about the COURSE, not about the
+  // race plan: the distance still has an opening arc, so serve it.
+  // Consumers render what they are given instead of each guessing.
+  if (!phasePaces) {
+    const segs = raceOpeningSegments({ goalSec, distanceMi });
+    // A race shorter than its own opening block has nothing to repay over
+    // (raceOpeningPlan floors repayMi at 0.1 mi, which would not sum to
+    // the target). Leave those linear — the old behaviour, unchanged.
+    const covers = segs.length > 1
+      && Math.abs(segs[segs.length - 1].endMi - distanceMi) < 0.01;
+    if (covers) {
+      phasePaces = segs.map((s) => ({
+        p: { label: s.label, start_mi: s.startMi, end_mi: s.endMi },
+        // Unrounded — the rounded column would drift the FINISH checkpoint
+        // off the target by a few seconds over a marathon.
+        pace: s.pacePreciseSPerMi,
+        pos: Math.min(1, Math.max(0, ((s.startMi + s.endMi) / 2) / distanceMi)),
+        cue: OPENING_CUES[s.label],
+      }));
+    }
+  }
 
   /** Elapsed seconds at mile m, integrating across phases (or linear). */
   const elapsedAt = (m: number): number => {
@@ -243,17 +307,18 @@ export function buildRacePacing(input: {
   });
 
   return {
-    source: phasePaces ? 'course' : 'linear',
+    source: terrainPhased ? 'course' : 'linear',
+    phase_source: terrainPhased ? 'course' : (phasePaces ? 'opening' : 'none'),
     goal_sec: goalSec,
     splits,
     phases: phasePaces
-      ? phasePaces.map(({ p, pace, pos }) => ({
+      ? phasePaces.map(({ p, pace, pos, cue }) => ({
           label: p.label ?? `${p.start_mi}–${p.end_mi} mi`,
           start_mi: p.start_mi!,
           end_mi: p.end_mi!,
           pace_s_per_mi: Math.round(pace),
           display: fmtPace(pace),
-          cue: phaseCue(pos),
+          cue: cue ?? phaseCue(pos),
         }))
       : null,
   };

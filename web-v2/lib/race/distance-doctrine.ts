@@ -249,6 +249,14 @@ export interface RaceOpeningSegment {
   distanceMi: number;
   /** Rounded target pace for the segment, s/mi. */
   paceSPerMi: number;
+  /**
+   * The same pace unrounded. Σ(distanceMi · pacePreciseSPerMi) is exactly
+   * goalSec; the rounded column carries a few seconds of residue across a
+   * marathon. A consumer that integrates cumulative split times off these
+   * segments (lib/race/pacing.ts) has to use this one or its FINISH
+   * checkpoint drifts off the target it was built from.
+   */
+  pacePreciseSPerMi: number;
   durationSec: number;
 }
 
@@ -273,6 +281,7 @@ export function raceOpeningSegments(args: { goalSec: number; distanceMi: number 
     out.push({
       label, startMi, endMi, distanceMi: d,
       paceSPerMi: Math.round(pace),
+      pacePreciseSPerMi: pace,
       durationSec: Math.round(d * pace),
     });
   };

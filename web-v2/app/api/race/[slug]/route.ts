@@ -9,12 +9,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { loadRacesState } from '@/lib/coach/races-state';
 import { requireUserId } from '@/lib/auth/session';
-import { parseRaceTime } from '@/lib/training/vdot';
+import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { elevationGainFt } from '@/lib/race/gpx-parser';
 import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 import { loadEffectiveRaceTarget, type EffectiveRaceTarget } from '@/lib/race/effective-race-target';
+import { resolveBGoal } from '@/lib/race/b-goal';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,20 +129,34 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     // the projection) so the race page never prescribes splits fitness
     // can't hold. The stated goal rides along in effective_target as the
     // stretch. Cite: Research/08 §18.2 · lib/race/effective-race-target.ts.
+    const raceDistanceMi = Number((race as { distance_mi?: number | null }).distance_mi) || 0;
     let pacing = null;
     let effectiveTarget: EffectiveRaceTarget | null = null;
     try {
       const goalSec = parseRaceTime((race as { goal?: string | null }).goal);
-      const distanceMi = Number((race as { distance_mi?: number | null }).distance_mi);
-      if (goalSec && distanceMi > 0) {
-        effectiveTarget = await loadEffectiveRaceTarget(userId, goalSec, distanceMi);
+      if (goalSec && raceDistanceMi > 0) {
+        effectiveTarget = await loadEffectiveRaceTarget(userId, goalSec, raceDistanceMi);
         pacing = buildRacePacing({
           goalSec: effectiveTarget.targetSec,
-          distanceMi,
+          distanceMi: raceDistanceMi,
           geometry: (libRow.rows[0]?.geometry_json ?? courseGeometry) as CourseGeometryInput | null,
         });
       }
     } catch { /* pacing is additive — never fail the detail over it */ }
+
+    // B · SAFE · runner-entered meta.goalSafeDisplay wins, else the
+    // EFFECTIVE target + 3.3% (lib/race/b-goal.ts). Never derived from the
+    // stated goal: on a demoted race that produces a "safe" target faster
+    // than the A plan.
+    const storedBGoalDisplay = typeof raceMeta?.goalSafeDisplay === 'string'
+      ? raceMeta.goalSafeDisplay
+      : null;
+    const bGoal = effectiveTarget
+      ? resolveBGoal({
+          effectiveTargetSec: effectiveTarget.targetSec,
+          storedBGoalSec: parseRaceTime(storedBGoalDisplay),
+        })
+      : null;
 
     const proximity = (race as any).days < 0 ? 'post-race'
       : (race as any).days <= 7 ? 'race-week'
@@ -201,12 +216,34 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       fueling,
       // 2026-08-17 · what the pacing/fueling above were built on. When
       // source === 'projection' the stated goal was demoted to stretch.
+      // `target_pace_s_per_mi` is served rather than left to the client:
+      // the iPhone used to divide the STATED goal by the distance and
+      // render the result as the header pace over server split rows built
+      // from the effective target (F1). One divider, one answer.
       effective_target: effectiveTarget ? {
         target_sec: effectiveTarget.targetSec,
+        target_display: formatRaceTime(effectiveTarget.targetSec),
+        target_pace_s_per_mi: raceDistanceMi > 0
+          ? Math.round(effectiveTarget.targetSec / raceDistanceMi)
+          : null,
         source: effectiveTarget.source,
         goal_sec: effectiveTarget.goalSec,
+        goal_display: formatRaceTime(effectiveTarget.goalSec),
         projection_sec: effectiveTarget.projectionSec,
+        projection_date: effectiveTarget.projectionDateISO,
         stretch_goal_sec: effectiveTarget.source === 'projection' ? effectiveTarget.goalSec : null,
+      } : null,
+      // 2026-08-17 · F1 · B · SAFE from the ONE resolver (lib/race/b-goal.ts),
+      // the same answer web race-detail and the race-week GapPanel give.
+      // The iPhone carried `goal + 420s` — a flat +7:00 that is ~+2.9% on a
+      // marathon and +39% on an 18-minute 5K, derived from the STATED goal,
+      // so on a demoted race its "safe" B landed 24 minutes FASTER than the
+      // A plan the watch was pacing.
+      b_goal: bGoal && bGoal.sec != null ? {
+        sec: bGoal.sec,
+        display: formatRaceTime(bGoal.sec),
+        pace_s_per_mi: raceDistanceMi > 0 ? Math.round(bGoal.sec / raceDistanceMi) : null,
+        source: bGoal.source,
       } : null,
     });
   } catch (err: any) {

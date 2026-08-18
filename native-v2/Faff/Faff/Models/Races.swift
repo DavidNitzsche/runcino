@@ -27,9 +27,22 @@ struct RaceDetailResponse: Decodable {
     /// an older server. `isDefault` flags a research default the runner
     /// hasn't confirmed — the UI then prompts them to enter their own fuel.
     let fueling: RaceFueling?
+    /// 2026-08-17 · F1 — what the server actually paced this race off. The
+    /// backend resolves it once (lib/race/effective-race-target.ts) and every
+    /// other consumer — the watch payload, the execution plan, web — already
+    /// read it. This view was the sixth, and the only one still dividing the
+    /// runner's STATED goal by the distance to write its header pace. nil on
+    /// an older server, or when the race has no goal.
+    let effective_target: RaceEffectiveTarget?
+    /// 2026-08-17 · F1 — B · SAFE from lib/race/b-goal.ts (runner-entered
+    /// meta.goalSafeDisplay wins, else effective target + 3.3%). Replaces
+    /// this view's local `goal + 7:00`, which was distance-blind and derived
+    /// from the stated goal.
+    let b_goal: RaceBGoal?
 
     enum CodingKeys: String, CodingKey {
         case race, proximity, course_geometry, course_source, course_library, pacing, fueling
+        case effective_target, b_goal
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -40,6 +53,64 @@ struct RaceDetailResponse: Decodable {
         self.course_library = try c.decodeIfPresent(CourseLibraryProvenance.self, forKey: .course_library)
         self.pacing = try? c.decodeIfPresent(RacePacing.self, forKey: .pacing)
         self.fueling = try? c.decodeIfPresent(RaceFueling.self, forKey: .fueling)
+        self.effective_target = try? c.decodeIfPresent(RaceEffectiveTarget.self, forKey: .effective_target)
+        self.b_goal = try? c.decodeIfPresent(RaceBGoal.self, forKey: .b_goal)
+    }
+}
+
+/// The one target every pacing surface on this race is built from.
+///
+/// `source == "projection"` means the stated goal ran more than 5% faster
+/// than the latest projection and was demoted: the paces come from the
+/// projection and the goal rides along as the stretch. It is NOT deleted —
+/// `goal_display` still carries it, and the UI must show both. Doctrine:
+/// Design/goal-pursuit-doctrine.md §8/§16 (propose primary · stretch ·
+/// long-term; the coach negotiates, it does not overrule).
+struct RaceEffectiveTarget: Decodable {
+    let targetSec: Int
+    let targetDisplay: String?
+    /// Server-computed so the phone never divides a time by a distance and
+    /// disagrees with the split rows sitting under it.
+    let targetPaceSPerMi: Int?
+    let source: String            // "goal" | "projection"
+    let goalSec: Int
+    let goalDisplay: String?
+    let projectionSec: Int?
+
+    /// True when the stated goal was demoted to the stretch.
+    var isDemoted: Bool { source == "projection" && goalSec != targetSec }
+
+    enum CodingKeys: String, CodingKey {
+        case target_sec, target_display, target_pace_s_per_mi
+        case source, goal_sec, goal_display, projection_sec
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.targetSec = c.decodeFlexInt(forKey: .target_sec) ?? 0
+        self.targetDisplay = try? c.decodeIfPresent(String.self, forKey: .target_display)
+        self.targetPaceSPerMi = c.decodeFlexInt(forKey: .target_pace_s_per_mi)
+        self.source = (try? c.decodeIfPresent(String.self, forKey: .source)) ?? "goal"
+        self.goalSec = c.decodeFlexInt(forKey: .goal_sec) ?? 0
+        self.goalDisplay = try? c.decodeIfPresent(String.self, forKey: .goal_display)
+        self.projectionSec = c.decodeFlexInt(forKey: .projection_sec)
+    }
+}
+
+/// B · SAFE. `source` is "stored" when the runner entered it themselves and
+/// "derived" when the server took the effective target + 3.3%.
+struct RaceBGoal: Decodable {
+    let sec: Int
+    let display: String?
+    let paceSPerMi: Int?
+    let source: String            // "stored" | "derived"
+
+    enum CodingKeys: String, CodingKey { case sec, display, pace_s_per_mi, source }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.sec = c.decodeFlexInt(forKey: .sec) ?? 0
+        self.display = try? c.decodeIfPresent(String.self, forKey: .display)
+        self.paceSPerMi = c.decodeFlexInt(forKey: .pace_s_per_mi)
+        self.source = (try? c.decodeIfPresent(String.self, forKey: .source)) ?? "derived"
     }
 }
 

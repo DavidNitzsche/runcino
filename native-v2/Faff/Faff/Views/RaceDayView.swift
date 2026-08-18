@@ -206,24 +206,33 @@ struct RaceDayView: View {
                         .padding(.top, Theme.Space.section)
                     }
 
-                    // 1 · THE PLAN — how to run it, stretch by stretch.
-                    // Prefer the backend's course-aware named segments
-                    // (pacing.phases · "Point Loma Climb · 6:58/mi", grade-
-                    // weighted over the authored course). Fall back to the
-                    // local generic negative-split block ONLY when the server
-                    // has no course geometry to phase against (phases empty).
-                    if detail?.race.is_past != true {
-                        if let phases = coursePhases, !phases.isEmpty {
-                            section(title: "THE PLAN", right: planRightLabel) {
+                    // 1 · THE PLAN — how to run it, stretch by stretch. One
+                    // source: the backend's `pacing.phases`. Named terrain
+                    // segments ("Point Loma Climb · 6:58/mi", grade-weighted
+                    // over the authored course) when the course library has
+                    // a profile; the doctrine opening segments (settle /
+                    // early block / repaid remainder, Research/08 §3.1) when
+                    // it doesn't. 2026-08-17 · F2 — the phone's own fallback
+                    // plan is gone; a phase-less course is no longer an
+                    // invitation for each surface to invent an opening.
+                    if detail?.race.is_past != true,
+                       let phases = coursePhases, !phases.isEmpty {
+                        section(title: "THE PLAN", right: planRightLabel) {
+                            VStack(alignment: .leading, spacing: 9) {
+                                // F1 · when the stated goal was demoted, say
+                                // so and keep the goal on the page. Never
+                                // swap one number for the other in silence.
+                                if let caption = planTargetCaption {
+                                    Text(caption)
+                                        .font(.body(11.5, weight: .semibold))
+                                        .foregroundStyle(Theme.txt.opacity(0.62))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .padding(.horizontal, 4)
+                                }
                                 coursePhasesCard(phases)
                             }
-                            .padding(.top, Theme.Space.section)
-                        } else if !planPhases.isEmpty {
-                            section(title: "THE PLAN", right: planRightLabel) {
-                                planPhasesCard
-                            }
-                            .padding(.top, Theme.Space.section)
                         }
+                        .padding(.top, Theme.Space.section)
                     }
 
                     // 1b · THE BRIEF — the race-morning execution brief from
@@ -569,7 +578,12 @@ struct RaceDayView: View {
                         .foregroundStyle(Theme.txt)
                         .shadow(color: .black.opacity(0.3), radius: 22, y: 2)
                     if goalPace != "—" {
-                        Text("GOAL TIME  ·  \(goalPace) /\(Units.distanceLabel())")
+                        // `goalPace` is the EFFECTIVE target's pace, which is
+                        // the goal's pace only when the goal was not demoted.
+                        // Label it for what it is in each case (F1).
+                        Text(targetIsDemoted
+                             ? "TARGET PACE  ·  \(goalPace) /\(Units.distanceLabel())"
+                             : "GOAL TIME  ·  \(goalPace) /\(Units.distanceLabel())")
                             .font(.body(13, weight: .bold))
                             .foregroundStyle(Theme.txt.opacity(0.78))
                     } else {
@@ -711,14 +725,26 @@ struct RaceDayView: View {
                 Text("GOAL")
                     .font(.body(9.5, weight: .extraBold)).tracking(1.2)
                     .foregroundStyle(Theme.txt.opacity(0.6))
+                // The GOAL slot stays the runner's stated goal. It is theirs,
+                // the pencil beside it edits that field, and the app does not
+                // overwrite it (goal-pursuit-doctrine.md §14 · fitness
+                // updates often, goals do not).
                 Text(goalTime)
                     .font(.display(20, weight: .bold)).tracking(-0.5)
                     .foregroundStyle(Theme.txt)
                     .lineLimit(1).minimumScaleFactor(0.7)
+                // The pace under it is the pace the page is actually built
+                // from. When those are two different races the sub-line says
+                // TARGET so the pair never reads as arithmetic on the goal
+                // above it — the full negotiation is spelled out under
+                // THE PLAN (planTargetCaption).
                 if goalPace != "—" {
-                    Text("\(goalPace)/\(Units.distanceLabel())")
+                    Text(targetIsDemoted
+                         ? "TARGET \(goalPace)/\(Units.distanceLabel())"
+                         : "\(goalPace)/\(Units.distanceLabel())")
                         .font(.body(10.5, weight: .bold))
                         .foregroundStyle(Theme.txt.opacity(0.6))
+                        .lineLimit(1).minimumScaleFactor(0.7)
                 }
             }
             // Edit affordance · the page had no way to change distance / date /
@@ -742,33 +768,41 @@ struct RaceDayView: View {
         .padding(.vertical, 12)
     }
 
-    private struct RacePhase: Identifiable {
-        let id = UUID(); let range: String; let intent: String; let pace: String
-    }
+    // 2026-08-17 · F2 · the local `planPhases` fallback is deleted.
+    //
+    // It computed settleEnd = 0.22 × distance, goalEnd = 0.77 × distance,
+    // and paced them goal+5 / goal / goal−7. That was a fifth independent
+    // opening model — lib/race/distance-doctrine.ts:19-23 enumerates the
+    // four the doctrine audit replaced and this one was missed — and it was
+    // not an edge case: every course in course_library with no authored
+    // phase profile fell into it (LA Marathon, Rose Bowl Half, Disney Half,
+    // Run Malibu, Santa Monica 10K). On LA Marathon it told the runner
+    // miles 1-6 at goal+5 while the wrist, reading the doctrine, opened
+    // mile 1 at goal+15 and held goal+5 through mile 10.
+    //
+    // The backend now serves the doctrine opening segments as `phases` for
+    // phase-less courses (lib/race/pacing.ts), so the phone renders what
+    // the watch runs instead of guessing. Nothing replaced this in Swift.
 
-    /// Negative-split plan derived from goal pace + distance · controlled
-    /// start, goal-pace middle, strong finish. Real numbers, not the old
-    /// hardcoded "MI 1-3 settle 6:55" copy.
-    private var planPhases: [RacePhase] {
-        guard let gs = parsedGoalSec,
-              let dist = detail?.race.distance_mi, dist > 0 else { return [] }
-        let goalPaceSec = Double(gs) / dist
-        let settleEnd = max(1, Int((dist * 0.22).rounded()))
-        let goalEnd = max(settleEnd + 1, Int((dist * 0.77).rounded()))
-        let distLabel = dist.truncatingRemainder(dividingBy: 1) == 0
-            ? "\(Int(dist))" : String(format: "%.1f", dist)
-        return [
-            RacePhase(range: "MILES 1–\(settleEnd)", intent: "Settle in · bank nothing",
-                      pace: fmtPaceSec(goalPaceSec + 5)),
-            RacePhase(range: "MILES \(settleEnd + 1)–\(goalEnd)", intent: "Lock goal pace",
-                      pace: fmtPaceSec(goalPaceSec)),
-            RacePhase(range: "MILES \(goalEnd + 1)–\(distLabel)", intent: "Empty the tank",
-                      pace: fmtPaceSec(goalPaceSec - 7)),
-        ]
-    }
-
+    /// "AVG 8:04/mi" · the average of the target the rows below are built
+    /// from, not of the stated goal (F1).
     private var planRightLabel: String? {
         goalPace == "—" ? nil : "AVG \(goalPace)/\(Units.distanceLabel())"
+    }
+
+    /// The negotiation line under THE PLAN when the stated goal was demoted.
+    ///
+    /// Both numbers, named. The target writes the paces; the goal is still
+    /// the runner's and still on the board as the stretch. Doctrine:
+    /// goal-pursuit-doctrine.md §8 (at Unsupported, propose primary /
+    /// stretch / long-term rather than silently rewriting the goal) and §16
+    /// (by race week an aspiration becomes primary · aggressive · stretch).
+    /// Coach voice: short, no hype, no em dash.
+    private var planTargetCaption: String? {
+        guard targetIsDemoted,
+              let target = effectiveTargetDisplay,
+              let goal = detail?.effective_target?.goalDisplay else { return nil }
+        return "Paced for \(target), from your projection. \(goal) stays the stretch."
     }
 
     // MARK: - Course-aware pacing (backend RacePacing.phases · race P2)
@@ -821,47 +855,14 @@ struct RaceDayView: View {
                     Divider().background(Color.white.opacity(0.08))
                 }
             }
-        }
-        .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
-    }
-
-    /// "MILES 1–4" / "MILE 6" — humanised range label for a course segment.
-    private func milesRange(_ start: Double, _ end: Double) -> String {
-        let s = miLabel(start), e = miLabel(end)
-        return s == e ? "MILE \(s)" : "MILES \(s)–\(e)"
-    }
-
-    private func miLabel(_ mi: Double) -> String {
-        mi.truncatingRemainder(dividingBy: 1) == 0
-            ? "\(Int(mi))" : String(format: "%.1f", mi)
-    }
-
-    private var planPhasesCard: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(planPhases.enumerated()), id: \.offset) { i, ph in
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(ph.range)   // MILES lead — big, first.
-                            .font(.display(17, weight: .bold)).tracking(-0.2)
-                            .foregroundStyle(Theme.txt)
-                            .lineLimit(1).minimumScaleFactor(0.8)
-                        Text(ph.intent)
-                            .font(.body(11, weight: .semibold))
-                            .foregroundStyle(Theme.txt.opacity(0.55))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 12)
-                    Text("\(ph.pace)/\(Units.distanceLabel())")
-                        .font(.display(18, weight: .bold)).tracking(-0.3)
-                        .foregroundStyle(Theme.txt)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 13)
-                if i < planPhases.count - 1 {
-                    Divider().background(Color.white.opacity(0.08))
-                }
-            }
-            if let b = bGoalTime, let bp = bGoalPace {
+            // B · SAFE footer. This used to live on the deleted local
+            // fallback card, so it only ever rendered on courses with no
+            // phase profile — and it showed `stated goal + 7:00`. It now
+            // rides the one plan card, off the server's resolver, and shows
+            // on every course. Suppressed only when the execution plan's own
+            // "IF IT GOES SIDEWAYS" section is on screen carrying the same
+            // contingency, so the page never states the B twice.
+            if !sidewaysSectionShowing, let b = bGoalTime, let bp = bGoalPace {
                 Divider().background(Color.white.opacity(0.08))
                 HStack {
                     Text("IF IT GOES SIDEWAYS")
@@ -877,6 +878,17 @@ struct RaceDayView: View {
         }
         .background(Theme.Glass.fill, in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous).stroke(Theme.Glass.line, lineWidth: 1))
+    }
+
+    /// "MILES 1–4" / "MILE 6" — humanised range label for a course segment.
+    private func milesRange(_ start: Double, _ end: Double) -> String {
+        let s = miLabel(start), e = miLabel(end)
+        return s == e ? "MILE \(s)" : "MILES \(s)–\(e)"
+    }
+
+    private func miLabel(_ mi: Double) -> String {
+        mi.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(mi))" : String(format: "%.1f", mi)
     }
 
     // MARK: - Fueling (race P5 · backend `fueling` block)
@@ -1115,14 +1127,25 @@ struct RaceDayView: View {
     /// when the race detail hadn't loaded (or no goal was set).
     private var goalTime: String { detail?.race.goal ?? "—" }
 
-    /// Pace per mile derived from goal time / distance. Falls back to
-    /// "—" when either is unknown. The "6:51" hardcode was the old
-    /// sub-3-marathon placeholder · misleading when shown over another
-    /// distance or no race.
+    /// The pace this race is actually run at · the EFFECTIVE target's pace,
+    /// served by the backend (RaceDetailResponse.effective_target).
+    ///
+    /// 2026-08-17 · F1. This used to divide the runner's STATED goal by the
+    /// distance, and it was the last of six consumers doing so. On CIM —
+    /// stated 3:00:00, marathon projection 3:31:38 — the server demotes the
+    /// target to 3:31:40 and builds the split rows and the course-phase
+    /// paces at ~8:04/mi, and this property rendered "AVG 6:52/mi" above
+    /// them. The number the runner scans and the numbers on the rows came
+    /// from different races.
+    ///
+    /// Falls back to the stated goal only for an older server that sends no
+    /// effective_target — the arithmetic is the server's, not ours.
     /// 2026-07-07 · units audit — returns bare "M:SS" (no suffix, every
-    /// call site appends its own "/mi" literal — see individual fixes at
-    /// each Text() usage below).
+    /// call site appends its own "/mi" literal).
     private var goalPace: String {
+        if let p = detail?.effective_target?.targetPaceSPerMi, p > 0 {
+            return Units.formatPaceBare(secPerMile: p)
+        }
         // 2026-06-09 · race-killer F2 — RaceClock (API.swift) carries the
         // h:mm-vs-m:ss heuristic. The local 2-part branch read the stored
         // "1:30" goal as 90s → "0:07/mi" on race morning.
@@ -1130,6 +1153,24 @@ struct RaceDayView: View {
               let dist = detail?.race.distance_mi, dist > 0 else { return "—" }
         let perMile = Int(round(Double(totalSec) / dist))
         return Units.formatPaceBare(secPerMile: perMile)
+    }
+
+    /// True when the server demoted the stated goal to the stretch. The page
+    /// then names BOTH numbers: the target that writes the paces, and the
+    /// goal, which is still the runner's and still on the board. Silently
+    /// swapping one for the other is the failure the doctrine forbids
+    /// (Design/goal-pursuit-doctrine.md §8 · "the coach does not secretly
+    /// change the goal"; Design/coach-voice-brief.md · "the coach
+    /// negotiates, it does not overrule").
+    private var targetIsDemoted: Bool {
+        detail?.effective_target?.isDemoted == true
+    }
+
+    /// "3:31:40" · what the paces on this page are written from. nil unless
+    /// the stated goal was demoted (otherwise it IS the goal, already shown).
+    private var effectiveTargetDisplay: String? {
+        guard targetIsDemoted, let et = detail?.effective_target else { return nil }
+        return et.targetDisplay
     }
     private var courseStat: String {
         // Distance only · total gain moved to the ELEVATION header where it
@@ -1193,69 +1234,34 @@ struct RaceDayView: View {
     }
 
     // MARK: - Race-morning + plan helpers
+    //
+    // 2026-08-17 · `parsedGoalSec` / `fmtRaceTime` / `fmtPaceSec` deleted
+    // with their last callers. Every one of them existed to turn the stated
+    // goal into a pace or a split on the client. That arithmetic now happens
+    // once, on the server, against the effective target.
 
-    /// Parse goal string ("1:30:00" / "1:30" / "45:00") → total seconds.
-    /// Used by B-goal, splits, and fuel computations so we only decode once.
-    /// 2026-06-09 · race-killer F2 — RaceClock (API.swift). The local
-    /// 2-part branch read the stored "1:30" goal as 90 seconds, which made
-    /// this view's race-morning splits card show 5K "0:21" and B-goal "8:30".
-    private var parsedGoalSec: Int? {
-        RaceClock.seconds(from: detail?.race.goal)
-    }
-
-    private func fmtRaceTime(_ secs: Int) -> String {
-        let h = secs / 3600
-        let m = (secs % 3600) / 60
-        let s = secs % 60
-        return h > 0
-            ? String(format: "%d:%02d:%02d", h, m, s)
-            : String(format: "%d:%02d", m, s)
-    }
-
-    /// 2026-07-07 · units audit — redirected to the shared bare formatter.
-    private func fmtPaceSec(_ secPerMile: Double) -> String {
-        Units.formatPaceBare(secPerMile: secPerMile)
-    }
-
-    /// B-goal = A-goal + 7 minutes. Mirrors web raceDetail.ts:283.
-    private var bGoalTime: String? {
-        guard let gs = parsedGoalSec else { return nil }
-        return fmtRaceTime(gs + 420)
-    }
+    /// B · SAFE, resolved by the backend (lib/race/b-goal.ts).
+    ///
+    /// 2026-08-17 · F1. This was `stated goal + 420 seconds`. b-goal.ts
+    /// documents that exact line as the wrong implementation: a flat +7:00
+    /// is ~+2.9% on a marathon and +39% on an 18-minute 5K, and deriving it
+    /// from the STATED goal meant that on a demoted race the "safe" backup
+    /// landed FASTER than the A plan — on CIM, a B of 3:07 against an A the
+    /// watch paces at 3:31:40. The server now answers the question once,
+    /// reading the runner's own meta.goalSafeDisplay when they entered one.
+    private var bGoalTime: String? { detail?.b_goal?.display }
 
     private var bGoalPace: String? {
-        guard let gs = parsedGoalSec,
-              let dist = detail?.race.distance_mi, dist > 0 else { return nil }
-        return fmtPaceSec(Double(gs + 420) / dist)
+        guard let p = detail?.b_goal?.paceSPerMi, p > 0 else { return nil }
+        return Units.formatPaceBare(secPerMile: p)
     }
 
-    /// Cumulative split times at standard checkpoints.
-    /// 2026-06-09 · race-killer F3 — prefer the server's course-aware
-    /// splits (RaceDetailResponse.pacing · grade-weighted over the
-    /// authored course phases, cite Research/11 §grade-cost). The local
-    /// linear ladder remains as the fallback for older servers / courses
-    /// with no usable phase profile — flat-course splits on AFC told the
-    /// runner to bank nothing on The Drop and left the Balboa climb
-    /// unpriced.
-    private var raceSplits: [(label: String, time: String)] {
-        if let server = detail?.pacing?.splits, !server.isEmpty {
-            return server.map { ($0.label, $0.display) }
-        }
-        guard let gs = parsedGoalSec,
-              let dist = detail?.race.distance_mi, dist > 0 else { return [] }
-        let rungs: [(label: String, mi: Double)] = [
-            ("5K", 3.1069), ("10K", 6.2137), ("HALF", 13.1094),
-            ("30K", 18.641), ("40K", 24.855),
-        ]
-        var out = rungs
-            .filter { $0.mi < dist - 0.1 }
-            .map { r -> (label: String, time: String) in
-                let cum = Int((r.mi / dist * Double(gs)).rounded())
-                return (r.label, fmtRaceTime(cum))
-            }
-        out.append(("FINISH", fmtRaceTime(gs)))
-        return out
-    }
+    // 2026-08-17 · `raceSplits` deleted with `splitsCard`. It preferred the
+    // server's course-aware splits (race-killer F3, 2026-06-09) but kept a
+    // local linear ladder behind them, and that ladder ran off the STATED
+    // goal — so on a demoted race it disagreed with every other number on
+    // the page, and it interpolated flat, which the doctrine opening model
+    // (now served for phase-less courses too) says no race is run at.
 
     // MARK: - Race-morning card (days == 0)
 
@@ -1293,65 +1299,12 @@ struct RaceDayView: View {
             .stroke(Theme.Glass.line, lineWidth: 1))
     }
 
-    // MARK: - Race plan card (A + B goal)
-
-    private var racePlanCard: some View {
-        let aTime  = goalTime   // existing computed property
-        let aPace  = goalPace   // existing computed property
-        let bTime  = bGoalTime ?? "—"
-        let bPace  = bGoalPace ?? "—"
-        return VStack(spacing: 0) {
-            HStack {
-                SpecLabel(text: "A GOAL", size: 10, tracking: 1.5,
-                          color: Theme.txt.opacity(0.55))
-                Spacer(minLength: 12)
-                Text("\(aTime)  ·  \(aPace)/\(Units.distanceLabel())")
-                    .font(.body(14, weight: .bold))
-                    .foregroundStyle(Theme.txt)
-            }
-            .padding(14)
-            Divider().background(Color.white.opacity(0.08))
-            HStack {
-                SpecLabel(text: "B GOAL", size: 10, tracking: 1.5,
-                          color: Theme.txt.opacity(0.55))
-                Spacer(minLength: 12)
-                Text("\(bTime)  ·  \(bPace)/\(Units.distanceLabel())")
-                    .font(.body(14, weight: .bold))
-                    .foregroundStyle(Theme.txt.opacity(0.65))
-            }
-            .padding(14)
-        }
-        .background(Theme.Glass.fill,
-                    in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous)
-            .stroke(Theme.Glass.line, lineWidth: 1))
-    }
-
-    // MARK: - Splits card
-
-    private var splitsCard: some View {
-        let splits = raceSplits
-        return VStack(spacing: 0) {
-            ForEach(Array(splits.enumerated()), id: \.offset) { i, row in
-                HStack {
-                    SpecLabel(text: row.label, size: 10, tracking: 1.5,
-                              color: Theme.txt.opacity(0.55))
-                    Spacer(minLength: 12)
-                    Text(row.time)
-                        .font(.body(15, weight: .bold))
-                        .foregroundStyle(i == splits.count - 1 ? Theme.race : Theme.txt)
-                }
-                .padding(14)
-                if i < splits.count - 1 {
-                    Divider().background(Color.white.opacity(0.08))
-                }
-            }
-        }
-        .background(Theme.Glass.fill,
-                    in: RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.rTile, style: .continuous)
-            .stroke(Theme.Glass.line, lineWidth: 1))
-    }
+    // 2026-08-17 · `racePlanCard` (A GOAL / B GOAL rows) and `splitsCard`
+    // deleted. Nothing in the view hierarchy referenced either — THE PLAN
+    // became the single merged pace table on 2026-06-17 and the redundant
+    // SPLITS card went with it — but both were still compiled against the
+    // stated-goal pace and the `goal + 7:00` B, so they sat in the file as a
+    // working copy of the numbers this pass exists to remove.
 
     // MARK: - Toolkit helpers (CountdownLadder + VDOTPredictionTable)
     //
@@ -1440,6 +1393,15 @@ struct RaceDayView: View {
         // (David 2026-06-17). Tightened from the old 14-day / "sharpening" gate.
         if let d = detail?.race.days, d >= 0, d <= 7 { return true }
         return (detail?.proximity ?? "").lowercased() == "race-week"
+    }
+
+    /// Whether the execution plan's "IF IT GOES SIDEWAYS" section renders.
+    /// Mirrors the condition the body uses, so THE PLAN's B · SAFE footer
+    /// can stand down exactly when that section stands up (and not merely
+    /// because it is race week — the execution plan 404s for a race with no
+    /// goal, and the runner would then get no B at all).
+    private var sidewaysSectionShowing: Bool {
+        showMorningBrief && execPlan?.bGoalTriggers.first != nil
     }
 
     /// Format seconds-per-mile → "m:ss". Shared by the B-goal + heat cards

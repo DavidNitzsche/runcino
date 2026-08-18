@@ -104,12 +104,9 @@ describe('buildRacePacing — AFC 1:30', () => {
 });
 
 describe('buildRacePacing — fallbacks', () => {
-  it('degrades to linear with no geometry', () => {
+  it('reports no COURSE shaping with no geometry', () => {
     const p = buildRacePacing({ goalSec: GOAL, distanceMi: DIST, geometry: null });
     expect(p.source).toBe('linear');
-    expect(p.phases).toBeNull();
-    const fiveK = p.splits.find((s) => s.label === '5K')!;
-    expect(fiveK.cum_sec).toBe(Math.round(3.1069 * FLAT_PACE));
   });
 
   it('degrades to linear when phases have gaps (untrustworthy coverage)', () => {
@@ -120,5 +117,78 @@ describe('buildRacePacing — fallbacks', () => {
   it('degrades to linear when phases stop short of the finish', () => {
     const short = { phases: [{ label: 'A', start_mi: 0, end_mi: 8 }] };
     expect(buildRacePacing({ goalSec: GOAL, distanceMi: DIST, geometry: short }).source).toBe('linear');
+  });
+});
+
+/**
+ * 2026-08-17 · F2. A course with no phase profile is a statement about the
+ * COURSE, not about the race plan: the distance still has an opening arc.
+ * Half of course_library (LA Marathon, Rose Bowl Half, Disney Half, Run
+ * Malibu, Santa Monica 10K) carries zero phases, and the consumers of the
+ * old `phases: null` each invented their own opener to fill it — the
+ * iPhone's 0.22/0.77 goal+5 / goal / goal−7 block being the fifth
+ * implementation the distance-doctrine audit missed.
+ */
+describe('buildRacePacing — phase-less course serves the doctrine opening', () => {
+  const LA_DIST = 26.22;
+  const LA_GOAL = 12700;  // CIM's effective target · roundTargetSec(12698)
+
+  const p = buildRacePacing({ goalSec: LA_GOAL, distanceMi: LA_DIST, geometry: null });
+
+  it('names the phase source without claiming the course shaped it', () => {
+    expect(p.source).toBe('linear');
+    expect(p.phase_source).toBe('opening');
+  });
+
+  it('serves the marathon row of Research/08 §3.1: mile 1 at +15, 1-10 at +5', () => {
+    const gp = LA_GOAL / LA_DIST;                       // 484.4 s/mi
+    const [settle, early, rest] = p.phases!;
+    expect(settle.label).toBe('Settle');
+    expect(settle.start_mi).toBe(0);
+    expect(settle.end_mi).toBe(1);
+    expect(settle.pace_s_per_mi).toBe(Math.round(gp + 15));
+    expect(early.label).toBe('Find rhythm');
+    expect(early.end_mi).toBe(10);
+    expect(early.pace_s_per_mi).toBe(Math.round(gp + 5));
+    // Remainder repays the 60 s conceded over the opening 10 miles.
+    expect(rest.label).toBe('Goal pace');
+    expect(rest.pace_s_per_mi).toBeLessThan(Math.round(gp));
+  });
+
+  it('carries a cue that explains rather than repeating the label', () => {
+    expect(p.phases!.map((x) => x.cue)).toEqual([
+      'Bank nothing', 'Ease onto target', 'Repay the opening, then hold',
+    ]);
+  });
+
+  it('integrates the splits over the arc, landing FINISH exactly on target', () => {
+    const linear5K = 3.1069 * (LA_GOAL / LA_DIST);
+    const fiveK = p.splits.find((s) => s.label === '5K')!;
+    // Settled, not linear: the opening allowance shows in the early splits.
+    expect(fiveK.cum_sec).toBeGreaterThan(Math.round(linear5K));
+    expect(fiveK.cum_sec).toBeLessThan(linear5K + 40);
+    expect(p.splits.find((s) => s.label === 'FINISH')!.cum_sec).toBe(LA_GOAL);
+    // Σ(mi · pace) over the whole plan is the target (float, unrounded).
+    const sum = p.phases!.reduce((s, x) => s + (x.end_mi - x.start_mi) * x.pace_s_per_mi, 0);
+    expect(Math.abs(sum - LA_GOAL)).toBeLessThan(6);
+  });
+
+  it('reads the distance row, not the marathon row, on a 10K', () => {
+    // Santa Monica 10K · 6.22 mi. §3.1 10K row is +5 to +10 over mile 1,
+    // then AT goal pace — no early block. A marathon's +15 here would be
+    // the exact defect distance-doctrine.ts exists to stop.
+    const tenK = buildRacePacing({ goalSec: 2700, distanceMi: 6.22, geometry: null });
+    const gp = 2700 / 6.22;
+    expect(tenK.phase_source).toBe('opening');
+    expect(tenK.phases!.map((x) => x.label)).toEqual(['Settle', 'Goal pace']);
+    expect(tenK.phases![0].pace_s_per_mi).toBe(Math.round(gp + 7));
+  });
+
+  it('leaves a race with nothing to repay over strictly linear', () => {
+    // 1 mile · the whole race IS the settle block, so there is no
+    // remainder to repay into and the arc cannot sum to the target.
+    const mile = buildRacePacing({ goalSec: 300, distanceMi: 1, geometry: null });
+    expect(mile.phase_source).toBe('none');
+    expect(mile.phases).toBeNull();
   });
 });
