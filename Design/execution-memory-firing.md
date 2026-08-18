@@ -359,6 +359,16 @@ coach:  { firing: SURFACE, importance: high }
 plan:   MODIFY
 ```
 
+**First real instance, 2026-08-18.** `lib/coach/fitness-evidence.ts` runs the
+middle example above end to end for one finding shape — `PARTIAL_FAILED` with
+`evidence.fitness === 'high'` — through `interpretExecution` →
+`classifyFinding` → a written `coach-log.ts` entry. No memory candidate yet
+(single dated event, not a repeated pattern — see the module's own reasoning
+for why `episode-log.ts` doesn't apply here). The other findings this same
+pipeline could carry — a run of `PARTIAL_PRODUCTIVE` sessions as a pattern,
+`REPLACED`-by-race as its own entry, the third-repeated-failure → memory
+`create: true` → `plan: MODIFY` chain shown above — remain unwired.
+
 ---
 
 # Non-negotiable rules
