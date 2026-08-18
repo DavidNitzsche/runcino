@@ -33,6 +33,13 @@
  */
 
 import { parsePrescription, parseTempoShape, parseStrides, parseTimeReps } from './prescription-parser';
+// 2026-08-17 · the stored race abort CALLS doctrine now instead of mirroring
+// its numbers. See the contingency-rules block for what "keep in sync" cost.
+import {
+  raceAbortHrBpm,
+  raceCheckpointMi,
+  RACE_PACE_ABORT_FRACTION,
+} from '@/lib/race/distance-doctrine';
 
 export type WorkoutSpec = Record<string, unknown> | null;
 
@@ -347,10 +354,24 @@ export function buildWorkoutSpec(
   // 2026-06-09 Phase 2 (3.2) · contingency rules per type. The watch
   // OFFERS the bail on breach (CONTINUE / TAKE THE BAIL · never
   // enforces); pass rules are post-run confirmation criteria (the same
-  // numbers the WATCHING test reads); the race abort mirrors the
-  // execution plan's mile-5 checkpoint (lib/race/execution-plan.ts —
-  // LTHR+3 / goal+23 · keep in sync). Null-LTHR runners get pace rules
+  // numbers the WATCHING test reads). Null-LTHR runners get pace rules
   // only · never an invented HR number.
+  //
+  // 2026-08-17 · the race abort now CALLS the doctrine rather than
+  // mirroring it. It used to hardcode LTHR+3 / goal+23 / mile-5, with a
+  // comment reading "keep in sync" — and it had not been. Doctrine moved to
+  // a per-distance %LTHR ceiling, a 5% pace fraction, and a checkpoint at
+  // 38% of the race; those three functions had exactly one caller
+  // (execution-plan.ts) while the STORED rule, the one that reaches the
+  // wrist, kept the old numbers.
+  //
+  // The gap was not cosmetic. For a marathoner at LTHR 162 the stored rule
+  // aborts at 165 bpm — 102% of LTHR, against a doctrine marathon ceiling of
+  // 88-95%. It can essentially never fire, so race day had no working abort.
+  // And mile-5 is the wrong checkpoint for anything but a marathon: a 5K's
+  // check happened at a mile it never reaches.
+  //
+  // "Keep in sync" is not a mechanism. Calling the same function is.
   const contingencyRules = ((): Array<Record<string, unknown>> | null => {
     const rules: Array<Record<string, unknown>> = [];
     const passHr = lthr != null ? Math.round(lthr * 0.975) : null;
@@ -370,14 +391,19 @@ export function buildWorkoutSpec(
           label: `HR over ${bailHr} mid-finish · cut the finish in half, jog home` });
       }
     } else if (type === 'race') {
-      const abortHr = lthr != null ? lthr + 3 : (maxHr != null ? Math.round(maxHr * 0.91) : null);
+      const raceMi = distance_mi ?? 0;
+      const checkpointMi = raceMi > 0 ? raceCheckpointMi(raceMi) : null;
+      const scope = checkpointMi != null ? `mile-${checkpointMi}` : 'mile-5';
+      const at = checkpointMi != null ? `Mile ${checkpointMi}` : 'Mile 5';
+      const abortHr = raceMi > 0 ? raceAbortHrBpm({ distanceMi: raceMi, lthr, maxHr }) : null;
       if (abortHr != null) {
-        rules.push({ kind: 'abort', metric: 'hr', op: '>', value: abortHr, scope: 'mile-5', action: 'switch_to_b_goal',
-          label: `Mile 5 check: avgHr over ${abortHr} · switch to the B plan` });
+        rules.push({ kind: 'abort', metric: 'hr', op: '>', value: abortHr, scope, action: 'switch_to_b_goal',
+          label: `${at} check: avgHr over ${abortHr} · switch to the B plan` });
       }
       if (goalPaceSPerMi != null) {
-        rules.push({ kind: 'abort', metric: 'pace', op: '>', value: goalPaceSPerMi + 23, scope: 'mile-5', action: 'switch_to_b_goal',
-          label: `Mile 5 check: pace slower than goal +23s · switch to the B plan` });
+        const abortPace = Math.round(goalPaceSPerMi * (1 + RACE_PACE_ABORT_FRACTION));
+        rules.push({ kind: 'abort', metric: 'pace', op: '>', value: abortPace, scope, action: 'switch_to_b_goal',
+          label: `${at} check: pace slower than ${Math.floor(abortPace / 60)}:${String(abortPace % 60).padStart(2, '0')}/mi · switch to the B plan` });
       }
     }
     return rules.length > 0 ? rules : null;
