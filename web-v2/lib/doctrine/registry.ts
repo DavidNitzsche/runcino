@@ -87,7 +87,7 @@ import {
 import {
   THRESHOLD_HR_CEILING_OF_TARGET,
   fastQualityLeftTheBand,
-} from '@/lib/plan/drift-monitor';
+} from '@/lib/training/threshold-band';
 import {
   STRIDE_DURATION_S,
   STRIDE_RECOVERY_S,
@@ -3179,8 +3179,9 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   {
     id: 'EVIDENCE.fast-quality-is-not-automatically-fitness',
     binds: [
-      'lib/plan/drift-monitor.ts#THRESHOLD_HR_CEILING_OF_TARGET',
-      'lib/plan/drift-monitor.ts#fastQualityLeftTheBand',
+      'lib/training/threshold-band.ts#THRESHOLD_HR_CEILING_OF_TARGET',
+      'lib/training/threshold-band.ts#fastQualityLeftTheBand',
+      'lib/coach/run-recap.ts#tempoExecution',
     ],
     doc: 'Research/03-heart-rate-zones.md',
     anchor: '| 5a Threshold | 100–102% | At LT — cruise intervals |',

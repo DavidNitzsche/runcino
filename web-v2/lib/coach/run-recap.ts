@@ -27,6 +27,7 @@
  * not in the words.
  */
 import type { Phase, WorkoutType } from '@/lib/coach/run-purpose';
+import { ranAboveThresholdBand } from '@/lib/training/threshold-band';
 import {
   judgeWeather,
   type WeatherInput,
@@ -374,8 +375,25 @@ function tempoExecution(input: RecapInput): string | null {
           ? `Built into it · back half ${Math.abs(drift)}s quicker. ${spreadDesc} overall.`
           : `Work miles landed on the ${paceLabel(target) ?? 'target'} mark · ${spreadDesc} through the block.`;
     } else if (vsTarget < -5) {
-      // Ran under target
-      return `Ran ${Math.abs(vsTarget)}s/mi under the target · pushed the tempo today. ${spreadDesc}.`;
+      /* Ran under target · which is genuinely ambiguous, and the old copy
+       * ("pushed the tempo today") read as approval for whichever it was.
+       *
+       * Threshold work is bought with time at the intensity where lactate
+       * clearance matches production. Running past that pace does not buy more
+       * of it — the session ends sooner and costs more. So beating the target
+       * is only good news when the heart rate says the runner was still inside
+       * the band; otherwise they left the zone the session existed for.
+       *
+       * Same discriminator the drift monitor uses, from the same module, so
+       * the recap and the rebuild decision can never disagree. */
+      const under = Math.abs(vsTarget);
+      if (ranAboveThresholdBand(input.actualAvgHr, input.plannedHrCap)) {
+        return `Ran ${under}s/mi under the target, and the heart rate went with it · that is past threshold, not more of it. Threshold is bought with time at the pace, not by beating it. ${spreadDesc}.`;
+      }
+      if (input.actualAvgHr != null && input.plannedHrCap != null) {
+        return `Ran ${under}s/mi under the target with the heart rate still in the band · that is a soft lead the targets should probably catch up to. Worth a retest before it counts as a new number. ${spreadDesc}.`;
+      }
+      return `Ran ${under}s/mi under the target · no heart rate to say whether that was fitness or just a hot start. The test is stacking the next eight weeks, not winning today. ${spreadDesc}.`;
     } else if (vsTarget <= 18) {
       // Slightly short — note the gap without being harsh
       return `Work pace averaged ${paceLabel(avgWork)} · ${vsTarget}s/mi off the ${paceLabel(target) ?? 'target'}. ${spreadDesc}.`;

@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { fastQualityLeftTheBand, THRESHOLD_HR_CEILING_OF_TARGET } from './drift-monitor';
+import { fastQualityLeftTheBand, THRESHOLD_HR_CEILING_OF_TARGET } from '@/lib/training/threshold-band';
 
 describe('the discriminator', () => {
   it('a majority of sessions above the band reads as overcooked', () => {
@@ -47,5 +47,49 @@ describe('the band edge is the doctrine one', () => {
     const target = 149;
     expect(target * 1.01 > target * THRESHOLD_HR_CEILING_OF_TARGET).toBe(false);
     expect(target * 1.03 > target * THRESHOLD_HR_CEILING_OF_TARGET).toBe(true);
+  });
+});
+
+describe('the recap says the right thing about a fast tempo', () => {
+  // The old copy was "pushed the tempo today", which reads as approval for
+  // whichever of the two explanations it was.
+  it('names the band when HR went with the pace', async () => {
+    const { deriveRecap } = await import('@/lib/coach/run-recap');
+    const r = deriveRecap({
+      type: 'tempo', phase: 'BUILD', plannedMi: 8,
+      plannedPaceSPerMi: 420, plannedHrCap: 149,
+      actualMi: 8, actualPaceSPerMi: 405,
+      workPaceSPerMi: 405,
+      actualAvgHr: 160, actualMaxHr: 172,
+      splits: [
+        { mile: 1, paceSPerMi: 404, avgHr: 158 },
+        { mile: 2, paceSPerMi: 406, avgHr: 160 },
+        { mile: 3, paceSPerMi: 405, avgHr: 161 },
+        { mile: 4, paceSPerMi: 405, avgHr: 162 },
+      ],
+    });
+    const all = r.facts.join(' ');
+    expect(all).toMatch(/past threshold|bought with time/i);
+    expect(all).not.toMatch(/pushed the tempo/i);
+  });
+
+  it('calls it a soft lead when HR stayed inside the band', async () => {
+    const { deriveRecap } = await import('@/lib/coach/run-recap');
+    const r = deriveRecap({
+      type: 'tempo', phase: 'BUILD', plannedMi: 8,
+      plannedPaceSPerMi: 420, plannedHrCap: 149,
+      actualMi: 8, actualPaceSPerMi: 405,
+      workPaceSPerMi: 405,
+      actualAvgHr: 145, actualMaxHr: 152,
+      splits: [
+        { mile: 1, paceSPerMi: 404, avgHr: 144 },
+        { mile: 2, paceSPerMi: 406, avgHr: 145 },
+        { mile: 3, paceSPerMi: 405, avgHr: 146 },
+        { mile: 4, paceSPerMi: 405, avgHr: 145 },
+      ],
+    });
+    const all = r.facts.join(' ');
+    expect(all).toMatch(/soft lead/i);
+    expect(all).toMatch(/retest/i);
   });
 });

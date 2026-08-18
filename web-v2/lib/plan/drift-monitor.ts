@@ -45,6 +45,13 @@ import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-input
 // workout_weather_cache reader for runs without enriched weather fields.
 import { effortSlowdownPct } from '@/lib/training/heat-model';
 import { lookupTempF } from '@/lib/weather/lookup';
+// The threshold-band question lives in a pure module so the drift monitor and
+// the run recap can never disagree about whether a session left the band.
+import {
+  THRESHOLD_HR_CEILING_OF_TARGET,
+  fastQualityLeftTheBand,
+  ranAboveThresholdBand,
+} from '@/lib/training/threshold-band';
 
 export type DriftKind =
   | 'volume_drift'
@@ -111,32 +118,6 @@ const STALENESS_WEEKS_THRESHOLD = 8;
  *  internally (recentWeeklyMileage = last 28 days). */
 const VOLUME_WINDOW_DAYS = 28;
 
-/**
- * Top of the threshold HR band, as a multiple of the session's own
- * `hr_target_bpm`. `Research/03` §6 (Friel) puts zone 5a — "At LT · cruise
- * intervals" — at 100-102% of LTHR. Above that the runner is past threshold.
- *
- * This is the discriminator that tells the two explanations for a fast quality
- * session apart. Running under target pace can mean the targets are soft, or it
- * can mean the session was overcooked, and those call for opposite responses.
- * Heart rate answers it: faster WITH HR inside the band is a genuine fitness
- * lead; faster WITH HR above it means the runner left the zone the session was
- * prescribed for. Same pattern as easy-discipline's `hr_contradicts_pace`.
- */
-export const THRESHOLD_HR_CEILING_OF_TARGET = 1.02;
-
-/**
- * Did a stretch of faster-than-prescribed quality work leave the band?
- *
- * Pure, so the judgement can be tested without a database. Returns false when
- * no heart rate was readable at all — an unreadable session is not evidence of
- * overcooking, and defaulting to "overcooked" would silently suppress every
- * legitimate refit for runners who train without a strap.
- */
-export function fastQualityLeftTheBand(hrReadable: number, hrAboveThreshold: number): boolean {
-  if (hrReadable <= 0) return false;
-  return hrAboveThreshold / hrReadable > 0.5;
-}
 
 // ─── Top-level entry ────────────────────────────────────────────────────
 
@@ -742,7 +723,7 @@ async function checkQualityDrift(
     const hrTarget = num(row.hr_target_bpm);
     if (avgHr != null && hrTarget != null && hrTarget > 0) {
       hrReadable++;
-      if (avgHr > hrTarget * THRESHOLD_HR_CEILING_OF_TARGET) hrAboveThreshold++;
+      if (ranAboveThresholdBand(avgHr, hrTarget)) hrAboveThreshold++;
     }
 
     adjustedActuals.push(adjustedSPerMi);
