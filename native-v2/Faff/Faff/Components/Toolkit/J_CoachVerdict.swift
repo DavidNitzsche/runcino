@@ -81,15 +81,19 @@ enum HeatBand: String {
         case .unknown: return Theme.mute
         }
     }
-    /// Derive a heat band from a temperature when the backend doesn't
-    /// emit one. Maughan-ish breakpoints: 60/75/85°F.
-    static func from(tempF: Double?) -> HeatBand {
-        guard let t = tempF else { return .unknown }
-        if t < 60 { return .neutral }
-        if t < 75 { return .warm }
-        if t < 85 { return .hot }
-        return .extreme
-    }
+    // 2026-08-17 · execution-layer audit · DE-FORKED. `from(tempF:)` used
+    // to derive this band from dry-bulb temperature at 60/75/85°F
+    // ("Maughan-ish") breakpoints. The backend's lib/coach/heat-gate.ts
+    // names this exact function as one of four independent taxonomies
+    // that disagreed about the same afternoon — at 72°F the server said
+    // "hot" and the phone said "warm" about the same run — and retires
+    // all four in favor of one ACSM/KSI WBGT flag band computed
+    // server-side (needs humidity + cloud cover, which dry-bulb alone
+    // can't approximate). That value now ships as
+    // DailyForecast.heat_band; every call site reads it through
+    // `HeatBand.from(_ raw: String?)` above. A surface that cannot
+    // supply the backend value shows no heat word (`.unknown`), never a
+    // dry-bulb guess standing in for it.
 }
 
 struct HeatBandChip: View {

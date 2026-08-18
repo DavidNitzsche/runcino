@@ -953,11 +953,15 @@ struct TodayView: View {
 
             // Weather chip — right-aligned, only shown when heat is meaningful
             if let t = weather?.tempF, t > 10, t < 130 {
-                // 2026-07-07 · units audit — HeatBand.from(tempF:) classification
-                // stays Fahrenheit (t, unconverted) since its thresholds are
-                // presumably F-calibrated; only the displayed tempLabel string
-                // converts via Units.formatTemperature.
-                HStack { Spacer(minLength: 0); HeatBandChip(band: HeatBand.from(tempF: t), tempLabel: Units.formatTemperature(fahrenheit: t)) }
+                // 2026-08-17 · execution-layer audit — the band now comes from
+                // the backend's WBGT flag (DailyForecast.heat_band, computed by
+                // lib/coach/heat-gate.ts heatBandForConditions), not the retired
+                // dry-bulb HeatBand.from(tempF:) guess. Only the displayed
+                // tempLabel string still derives from `t` (via
+                // Units.formatTemperature); the band itself reads the doctrine
+                // value. forecast.heat_band nil → HeatBand.from(nil) → .unknown,
+                // which renders as no heat word rather than a dry-bulb guess.
+                HStack { Spacer(minLength: 0); HeatBandChip(band: HeatBand.from(forecast?.heat_band), tempLabel: Units.formatTemperature(fahrenheit: t)) }
             } else if let tag = weatherTagLabel {
                 HStack {
                     Spacer(minLength: 0)

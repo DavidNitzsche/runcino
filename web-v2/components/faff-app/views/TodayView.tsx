@@ -36,6 +36,14 @@ import { computeWeekMileage } from '@/lib/faff/week-mileage';
 // 2026-08-17 · proportional B goal; the race-day hero had a flat +7:00.
 import { resolveBGoal } from '@/lib/race/b-goal';
 import { deriveSessionSegs, fallbackSessionSegs, deriveBlueprintData, type BlueprintData, type BlueprintSegment } from '../session-shape';
+// 2026-08-17 · execution-layer audit: planCadenceTarget forked its own
+// 5-type table (missing race/rest) instead of importing the canonical
+// per-type cadence prescription. cadenceTargetFor is already the backend's
+// source of truth for this exact number (see components/faff-app/seed.ts
+// cadenceTargetForEffort) — a race day with no seed-provided cadenceTarget
+// fell through the local fork's `?? CANONICAL.easy` and prescribed 165-175
+// spm instead of the canonical 178-188 race rhythm.
+import { cadenceTargetFor } from '@/lib/coach/cadence-target';
 import { elevPathFromSplits } from '@/lib/route/polyline';
 // 2026-08-17 · deck Decision 2 · CoachProposalCard / PlanProposalCard /
 // WorkoutProposalBanner / AdaptationCard are all folded into one chrome.
@@ -1632,29 +1640,55 @@ function deriveCoachLine(
 
   return kitFallback;
 }
-function planEffortLabel(t: string): { copy: string; ratio: string } {
-  switch (t) {
-    case 'easy':      return { copy: 'Conversational · Z2',     ratio: '3 / 10' };
-    case 'long':      return { copy: 'Aerobic · Z2-Z3',        ratio: '5 / 10' };
-    case 'tempo':     return { copy: 'Comfortably hard · Z4',  ratio: '7 / 10' };
-    case 'intervals': return { copy: 'Hard · Z5 spikes',       ratio: '9 / 10' };
-    case 'recovery':  return { copy: 'Very easy · Z1',         ratio: '2 / 10' };
-    default:          return { copy: 'By feel',                ratio: '— / 10' };
-  }
+/**
+ * 2026-08-17 · DE-FORKED. This table covered 5 of the 7 EffortKey values
+ * and fell through to a "By feel · — / 10" default for the other two —
+ * 'race' and 'rest'. A future race day viewed off "today" in the week
+ * strip (PlannedHeroV2 renders for any non-today day, including a race;
+ * only race-morning-as-today takes over with RaceDayHero) landed on that
+ * default, so the runner's goal race read as an unlabeled effort instead
+ * of the max-effort entry EFF[.race] already carries (mark: 100, the
+ * highest of every EffortKey — see components/faff-app/constants.ts —
+ * and Research/03's Z5 purpose text names "race finishes" explicitly).
+ * Record<EffortKey,...> with no default makes the omission a compile
+ * error instead of a silent runtime fallback, so this can't happen again
+ * for any future EffortKey either.
+ */
+function planEffortLabel(t: EffortKey): { copy: string; ratio: string } {
+  const TABLE: Record<EffortKey, { copy: string; ratio: string }> = {
+    recovery:  { copy: 'Very easy · Z1',        ratio: '2 / 10' },
+    easy:      { copy: 'Conversational · Z2',   ratio: '3 / 10' },
+    long:      { copy: 'Aerobic · Z2-Z3',       ratio: '5 / 10' },
+    tempo:     { copy: 'Comfortably hard · Z4', ratio: '7 / 10' },
+    intervals: { copy: 'Hard · Z5 spikes',      ratio: '9 / 10' },
+    race:      { copy: 'All-out · race effort', ratio: '10 / 10' },
+    rest:      { copy: 'Rest · no stress',      ratio: '0 / 10' },
+  };
+  return TABLE[t];
 }
 /**
  * 2026-06-01 · Cadence target now comes from the seed
  * (PlannedDay.cadenceTarget) populated by backend. This wrapper
  * reads the seed-provided range when available, falls back to the
- * canonical static range when the field isn't populated (older
- * seeds, FALLBACK_WEEK rendering, etc).
+ * canonical range when the field isn't populated (older seeds,
+ * FALLBACK_WEEK rendering, etc).
  *
  * Replaces the old "relaxed" / "drive turnover" vague strings with
  * real number ranges like "172-180 spm · drive turnover" for every
  * workout type.
+ *
+ * 2026-08-17 · DE-FORKED. The fallback used to carry its own 5-entry
+ * copy of the canonical range (easy/long/tempo/intervals/recovery),
+ * missing 'race' and 'rest'. A race day with no seed-provided
+ * cadenceTarget (older seeds, FALLBACK_WEEK) fell through `?? CANONICAL.easy`
+ * and prescribed 165-175 spm — easy's range — where the canonical table
+ * (lib/coach/cadence-target.ts, the same module seed.ts's
+ * cadenceTargetForEffort already delegates to) says 178-188, race rhythm.
+ * Delegating here means the fallback can never drift from the seed path
+ * again, for any EffortKey.
  */
 function planCadenceTarget(
-  t: string,
+  t: EffortKey,
   baseline: number | null | undefined,
   seedTarget?: { low: number; high: number; copy: string } | undefined,
 ): string {
@@ -1664,26 +1698,23 @@ function planCadenceTarget(
   if (seedTarget && seedTarget.low > 0 && seedTarget.high > 0) {
     return `${seedTarget.low}-${seedTarget.high} spm`;
   }
-  // Fallback canonical range when seed is empty (mirrors backend)
-  const CANONICAL: Record<string, { lo: number; hi: number }> = {
-    easy:      { lo: 165, hi: 175 },
-    long:      { lo: 168, hi: 178 },
-    tempo:     { lo: 172, hi: 182 },
-    intervals: { lo: 180, hi: 190 },
-    recovery:  { lo: 162, hi: 172 },
-  };
-  const c = CANONICAL[t] ?? CANONICAL.easy;
-  let lo = c.lo, hi = c.hi;
-  if (baseline && baseline > 130 && baseline < 220) {
-    const shift = Math.round(baseline - 170);
-    lo = Math.max(150, Math.min(200, lo + shift));
-    hi = Math.max(155, Math.min(205, hi + shift));
-  }
-  return `${lo}-${hi} spm`;
+  const { low, high } = cadenceTargetFor(t, baseline ?? null);
+  return `${low}-${high} spm`;
 }
 function hrTargetLabel(d: FaffSeed['week'][number]): { value: string; sub: string } {
   if (d.hrCap != null) {
     if (d.type === 'tempo' || d.type === 'intervals') return { value: `~${d.hrCap}`, sub: ` bpm · Z4` };
+    // 2026-08-17 · race-day hrCap (lib/plan/spec-builder.ts case 'race') is
+    // an HM/M ceiling anchored at 92-100% of LTHR — Research/08 §6.1: "an
+    // HM races at 96-100% of LTHR ... Marathon+ -> 92%." That is solidly
+    // above the Z2 aerobic ceiling this fallback labels everything else
+    // with (Z2 upper = 89% LTHR, see lib/training/zones.ts lthrZones).
+    // A race day viewed off "today" in the week strip (PlannedHeroV2
+    // renders for any non-today day; only race-morning-as-today takes
+    // over with RaceDayHero) fell through to the generic branch below and
+    // told the runner to stay under a Z2 ceiling on race effort — the
+    // opposite of the pacing plan on the same page.
+    if (d.type === 'race') return { value: `< ${d.hrCap}`, sub: ` bpm · race-effort cap` };
     // 2026-06-03 · long runs ALSO cap at Z2 per Rule 16 doctrine
     // (hrCapEasy = hrCapLong = max(89% LTHR, 78% maxHR)). David flagged
     // the Sun 6/7 card showing "<144 bpm · Z3" when 144 IS the Z2 upper

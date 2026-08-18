@@ -49,6 +49,15 @@ export interface RaceDetailPacingFields {
   pacing: PacingBlock[];
   splits: Array<{ label: string; val: string }>;
   gels: Array<{ mi: string; left: number; caf?: boolean }>;
+  /**
+   * 2026-08-17 · execution-layer audit. The distance/duration-aware target
+   * rate (g/hr) the `gels` pins above were actually built at — the SAME
+   * computeRaceFueling() call buildGels() already makes, just with its
+   * `targetCarbsPerHourG` exposed instead of discarded. Research/18 §11:
+   * 5K/10K 0 g/hr, HM 30-60, M 60-90 · never one flat number for every
+   * distance.
+   */
+  fuelTargetGPerHr: number;
 }
 
 export function pace(totalSec: number, distMi: number): string {
@@ -245,5 +254,16 @@ export function composeRaceDetailPacing(opts: {
     pacing: buildPacing(effSec, opts.distanceMi, opts.netElevFt),
     splits: buildSplits(effSec, opts.distanceMi, opts.geometry ?? null),
     gels: buildGels(effSec, opts.distanceMi, opts.fuel ?? null),
+    // 2026-08-17 · same computeRaceFueling() inputs as buildGels() above
+    // (kept as a second call rather than reshaping buildGels' return —
+    // that function is asserted against directly as a bare array in
+    // lib/race/_race_doctrine.test.ts, so its signature stays put).
+    fuelTargetGPerHr: computeRaceFueling({
+      goalSec: effSec,
+      distanceMi: opts.distanceMi,
+      goalPaceSPerMi: effSec > 0 && opts.distanceMi > 0 ? effSec / opts.distanceMi : 0,
+      fuel: opts.fuel ?? null,
+      isDefault: opts.fuel == null,
+    }).targetCarbsPerHourG,
   };
 }

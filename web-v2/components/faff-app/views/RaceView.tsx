@@ -94,6 +94,12 @@ export type RaceDetailSeed = {
   pacing: Array<{ seg: string; sub: string; bar: number; barColor: string; pace: string; cum: string }>;
   splits: Array<{ label: string; val: string }>;
   gels: Array<{ mi: string; left: number; caf?: boolean }>;
+  /** 2026-08-17 · execution-layer audit. The distance/duration-aware
+   *  target rate (g/hr) the `gels` pins above were built at
+   *  (lib/race/execution-plan.ts computeRaceFueling, Research/18 §11).
+   *  Replaces a hardcoded "~70g carbs/hr" that quoted the marathon row
+   *  over every distance's pins, 0 on a 5K included. */
+  fuelTargetGPerHr: number;
   preRace: string;
   onCourse: string;
   hydration: string;
@@ -162,6 +168,7 @@ const FALLBACK: RaceDetailSeed = {
   pacing: [],
   splits: [],
   gels: [],
+  fuelTargetGPerHr: 0,
   preRace: '·', onCourse: '·', hydration: '·',
   notables: [],
   insight: 'Race details will appear here once the GPX and goal time are confirmed.',
@@ -766,10 +773,16 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
             </div>
           </div>
 
-          {/* 2026-08-17 · honesty: the gel count is derived from the target
-              duration, but the pre-race/hydration lines are standard-plan
+          {/* 2026-08-17 · honesty: the gel count AND rate are derived from
+              the target duration (Research/18 §11 — 0 g/hr on a 5K/10K, up
+              through 60-90 on a marathon; never one flat number for every
+              distance), but the pre-race/hydration lines are standard-plan
               defaults, and the label says so. */}
-          <div className="rp-sec">FUELING PLAN<span className="rp-secr">Standard plan · ~70g carbs/hr · {r.gels.length} gels sized to your target time</span></div>
+          <div className="rp-sec">FUELING PLAN<span className="rp-secr">
+            {r.gels.length > 0
+              ? `Standard plan · ~${r.fuelTargetGPerHr}g carbs/hr · ${r.gels.length} gels sized to your target time`
+              : 'Standard plan · no on-course fuel needed for this distance'}
+          </span></div>
           <div className="rp-panel">
             <div className="rp-fuel">
               <div className="rp-ftrack">

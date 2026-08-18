@@ -377,8 +377,15 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       pacing: pf.pacing,
       splits: pf.splits,
       gels: pf.gels,
+      fuelTargetGPerHr: pf.fuelTargetGPerHr,
       preRace:   '3 hrs out · 100g carbs + 24oz electrolyte',
-      onCourse:  `${pf.gels.length} × gel · ~70g/hr carbs`,
+      // 2026-08-17 · honesty: the rate used to be a hardcoded 70g/hr for
+      // every distance. It now reads the same computeRaceFueling() rate
+      // the gel pins above were built at (0 for 5K/10K, 30-60 HM, 60-90 M
+      // per Research/18 §11) — never a marathon number on a 5K.
+      onCourse:  pf.gels.length > 0
+        ? `${pf.gels.length} × gel · ~${pf.fuelTargetGPerHr}g/hr carbs`
+        : 'No on-course fuel needed for this distance',
       hydration: 'Drink mix every 3–4 mi · extra electrolyte if warm',
       notables: notablesFromElevation(geom, dist),
       insight: insightFor(race.name, dist, netElevFt),

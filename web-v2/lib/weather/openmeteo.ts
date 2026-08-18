@@ -10,6 +10,7 @@
 import { pool } from '@/lib/db/pool';
 import { toUtcIso } from '@/lib/runs/normalize-time';
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
+import { heatBandForConditions, type HeatBandWord } from '@/lib/coach/heat-gate';
 
 export interface RunWeather {
   /**
@@ -347,6 +348,17 @@ export interface DayForecast {
    */
   humidity_pct: number | null;
   cloud_cover_pct: number | null;
+  /**
+   * 2026-08-17 · doctrine-conformance audit, cluster 6. The ACSM/KSI WBGT
+   * flag band (lib/coach/heat-gate.ts heatBandForConditions) — the one
+   * heat taxonomy Research/06 §3 actually specifies. That file's header
+   * names four independent dry-bulb-only taxonomies it retires, including
+   * iPhone's J_CoachVerdict.HeatBand.from(tempF:) (60/75/85°F "Maughan-
+   * ish" breakpoints) — at 72°F the server said "hot" and the phone said
+   * "warm" about the same run. Null when humidity couldn't be resolved
+   * for this day; renders as no heat word, never a dry-bulb guess.
+   */
+  heat_band: HeatBandWord | null;
 }
 
 /** Pretty-print the machine condition token. Shared with clients so the
@@ -509,6 +521,17 @@ export async function fetchDayForecast(
       if (cMid != null) cloudCoverPct = Math.round(cMid);
     }
 
+    // Heat band off the same temp/humidity/cloud resolution the window
+    // fields above already picked — the workout-window moment when one
+    // was requested, the day otherwise. tempStartF is the runner's
+    // actual likely conditions; tempMaxF is the honest day-level fallback.
+    const heatBand = heatBandForConditions({
+      tairF: tempStartF ?? tempMaxF,
+      humidityPct,
+      cloudCoverPct,
+      conditions,
+    }).band;
+
     return {
       date: dateIso,
       temp_min_f: tempMinF,
@@ -524,6 +547,7 @@ export async function fetchDayForecast(
       window_label: windowLabel,
       humidity_pct: humidityPct,
       cloud_cover_pct: cloudCoverPct,
+      heat_band: heatBand,
     };
   } catch (err) {
     console.error('[weather] fetchDayForecast failed:', err);
