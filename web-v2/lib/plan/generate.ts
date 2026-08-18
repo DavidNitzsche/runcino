@@ -47,8 +47,17 @@ import { blendedTPaceForWeek, measuredProgressFraction } from './recompute-paces
 // plan carries a lever-driven trajectory so a block progresses by duration,
 // density and rep count at constant effort. The "evidence permits" half runs
 // after the runner has run something and is not authored here.
-import { OverloadTrajectory, type SessionFamily } from '@/lib/prescription/trajectory';
+import { MIN_QUALITY_REP_MINUTES, OverloadTrajectory, type SessionFamily } from '@/lib/prescription/trajectory';
 import type { ChallengeZone, ProgressionLever, WorkShape } from '@/lib/prescription/levers';
+import { atPaceSessionCapMi, CONTINUOUS_TEMPO_MINUTES } from '@/lib/prescription/levers';
+// DAY-SIZE-1 (2026-08-17) · a quality day is warm-up + at-pace work + floats +
+// cool-down. The module header carries the category error this replaced.
+import { composeQualityDay, floatMi as jogFloatMi, maxQualityDayMi, type QualityFamily } from './quality-day';
+import { parsePrescription, parseTempoShape, parseTimeReps } from './prescription-parser';
+// PROGRESSION-PERSIST-1 (2026-08-17) · the trajectory's decision, carried into
+// `plan_workouts.workout_spec` so the adaptation model can hold or modify a
+// stimulus it can actually see.
+import { progressionSpecFields } from './progression-spec';
 import { validateComposedPlan } from './validate';
 import { EASY_SHARE_FLOOR, weekIntensity, splitDay } from './intensity-distribution';
 
@@ -1762,9 +1771,32 @@ function layoutWeek({
   const longShare = phase === 'BASE' ? Math.max(0.28, tierTarget.longRunShare - 0.04)
                   : phase === 'TAPER' ? 0.28
                   : tierTarget.longRunShare;
+  // DAY-SIZE-1 (2026-08-17) · `qualityShare` is now the FALLBACK day budget,
+  // not the primary one.
+  //
+  // It was a flat share of weekly volume spent on the whole quality DAY, which
+  // charged the day's warm-up and cool-down — easy miles, by
+  // `Research/04-workout-vocabulary.md` §5.3's own "2-3 mi E each side" —
+  // against the intensity allowance. At 55 mi/wk over two quality days that is
+  // 6.05 miles for the day, leaving about three at threshold against a doctrine
+  // band of four to eight on a week whose Daniels cap permitted 5.5.
+  //
+  // Build and race-specific weeks now size each quality day from its own
+  // session (see `lib/plan/quality-day.ts`). This share survives for the paths
+  // that are NOT sized that way and must stay byte-stable: BASE (no quality),
+  // TAPER (whose two session kinds — the §9.2 MP block and the tune-up — are
+  // already sized by doctrine), the beginner fartlek, and any prescription
+  // whose at-pace volume cannot be read out of the string.
   const qualityShare = phase === 'BASE' ? 0
                      : phase === 'TAPER' ? 0.18
                      : 0.22;  // total across quality days
+  // Which weeks size their quality days from the session. TAPER is excluded
+  // because both of its session kinds already carry a doctrine-stated dose;
+  // `baseBuilding` because a beginner's sharpen day is an easy run with surges
+  // in it, not a workout with easy legs around it; and a week with no pace
+  // anchor because there is then no way to turn minutes of work into miles.
+  const doctrinalDaySizing = phase !== 'BASE' && phase !== 'TAPER' && !baseBuilding
+    && weekTPaceSec != null && weekTPaceSec > 0;
   // Cap long at the tier's peakLong upper bound · no overdistance
   // beyond what doctrine prescribes. Use the higher of two sizes:
   //   · weeklyMi × longShare (the volume-curve derived target)
@@ -1885,7 +1917,18 @@ function layoutWeek({
   if (trainingDaysPerWeek != null && phase !== 'BASE' && phase !== 'TAPER' && !isCutback) {
     const qDays = qualityDows.length;
     const easyDays = Math.max(0, trainingDaysPerWeek - 1 - qDays);
-    const perQEst = qDays > 0 ? Math.max(2, Math.round((weeklyMi * qualityShare) / qDays)) : 0;
+    // DAY-SIZE-1 · reserve what a quality day actually costs. This guard exists
+    // to stop a distance-driven long swallowing the week and pinning the easy
+    // days at 1mi; sizing the reservation off the old 22% share while the days
+    // themselves are sized off doctrine would under-reserve by several miles
+    // and reintroduce exactly the junk-run class it was written to prevent.
+    const perQEst = qDays > 0
+      ? Math.max(2, Math.round(
+          doctrinalDaySizing
+            ? maxQualityDayMi({ family: 'threshold', weeklyMi, paceSPerMi: weekTPaceSec, ceilingMi: null })
+            : (weeklyMi * qualityShare) / qDays,
+        ))
+      : 0;
     const longRoom = weeklyMi - perQEst * qDays - 2 * easyDays;
     const minLong = Math.max(perQEst + 1, 3, longFloor);
     if (longRoom >= minLong && longRoom < longMi) longMi = longRoom;
@@ -1917,6 +1960,23 @@ function layoutWeek({
   // and healthy weeks (qualityRaw ≥ 2) are byte-unchanged.
   const qualityFloorFreq = (trainingDaysPerWeek != null && phase !== 'BASE' && phase !== 'TAPER' && !isCutback) ? 2 : 0;
   const qualityMiEach = Math.min(Math.max(qualityRaw, qualityFloor, qualityFloorFreq), qualityCeiling);
+  // DAY-SIZE-1 · the week's OWN budget bound on a doctrinally-sized quality day.
+  //
+  // Sizing the day from the session is right, and on a small week it still has
+  // to be paid for out of somewhere. The long run keeps its distance and every
+  // other running day keeps the 2mi coherence floor RP-FREQ-FLOOR reserves for
+  // it; what is left over is what the quality days may spend. Without this, an
+  // 18-mile week over six running days spends doctrine's warm-up and cool-down
+  // out of the easy days and leaves one of them at a mile — the junk-run class
+  // `_maint_invariants` holds at zero, arriving by a new route.
+  //
+  // Gated on a stated frequency, which is exactly when the engine knows how
+  // many days it owes a runner; and applied ONLY to the doctrinal sizing, so
+  // `qualityMiEach` and every path still using it are byte-unchanged.
+  const qualityWeekRoomMi = (trainingDaysPerWeek != null && qualityDows.length > 0)
+    ? (weeklyMi - longMi - 2 * Math.max(0, trainingDaysPerWeek - 1 - qualityDows.length)) / qualityDows.length
+    : Infinity;
+  const doctrinalDayCeiling = Math.max(1, Math.min(qualityCeiling, qualityWeekRoomMi));
 
   // Pre-allocate: rest = 0, long + quality slotted in
   const slots: (DayPlan | null)[] = new Array(7).fill(null);
@@ -1965,6 +2025,35 @@ function layoutWeek({
       : phase === 'TAPER' ? 'Easy long, hold pace. Quality lives in the race itself.'
       : 'Conversational throughout. Build the engine.',
   };
+  // DAY-SIZE-1 · on a marathon-pace long week, the MP block IS the week's
+  // race-specific stimulus.
+  //
+  // `Research/04` §4.4 calls it "the marathon-specific stimulus" and gives it a
+  // cadence — "every 2-3 weeks" — and `racePaceLongThisWeek` exists precisely so
+  // it is not competing with a full structured session every week. §16 already
+  // takes the tempo out of these weeks; the one structured session that remains
+  // must not now grow into the space the MP dose occupies.
+  //
+  // So on THESE weeks only, the structured session is bounded by what is left of
+  // the week's intensity allowance after the MP block has taken its share. It is
+  // the reverse of `applyIntensityFloor`'s default give-back order, and
+  // deliberately: that pass reads the long-run finish as the surplus in an
+  // over-dense week, which is right when the finish is on every week and wrong
+  // on the three where doctrine put it on purpose. The threshold track has the
+  // rest of the block to grow in; the §4.4 cadence has three sessions.
+  // The floor keeps the session a session. On a week where the MP block alone
+  // is most of the intensity allowance the remainder goes to zero, and a
+  // structured day the engine sizes at zero is not a deload — it is a row the
+  // runner reads as broken. Two of doctrine's shortest quality repetitions
+  // (`MIN_QUALITY_REP_MINUTES`, itself Research/04 §6's 3-minute floor) is the
+  // smallest thing that is still a rep set, and the intensity floor pass gives
+  // back the difference from the long exactly as it always has.
+  const mpLongAtPaceCapMi = (mpLongWeek && hasFinish)
+    ? Math.max(
+        (2 * MIN_QUALITY_REP_MINUTES * 60) / (weekTPaceSec && weekTPaceSec > 0 ? weekTPaceSec : 480),
+        weeklyMi * (1 - EASY_SHARE_FLOOR) - finishMi,
+      )
+    : null;
   if (phase !== 'BASE') {
     // Q-02 fix: quality mix now varies by race distance per Research/22.
     // 5K leans VO2max heavy (intervals); 10K balanced threshold + intervals;
@@ -2111,9 +2200,14 @@ function layoutWeek({
           seedPrescription: track === 'threshold' ? rx.threshold : rx.intervals,
           paceSPerMi: track === 'threshold' ? weekTPaceSec : weekIPaceSec,
           weeklyMi,
-          // The same number this slot's `slotMi` resolves to below — a generic
-          // quality slot always takes the week's quality share.
+          // DAY-SIZE-1 · the day is sized FROM the session on a build week, so
+          // the trajectory's earned stimulus is bounded by Daniels' at-pace cap
+          // rather than by an arithmetic share of weekly volume. `qualityMiEach`
+          // stays the budget on the paths that are not doctrinally sized.
           dayBudgetMi: qualityMiEach,
+          sizeDay: doctrinalDaySizing
+            ? { ceilingMi: doctrinalDayCeiling, atPaceCapMi: mpLongAtPaceCapMi }
+            : null,
           // Doctrine §2's W4. `isCutback` is the same deload mask `volumeCurve`
           // cut the week's mileage with, so the trajectory holds on exactly the
           // weeks the plan already calls recovery.
@@ -2122,11 +2216,124 @@ function layoutWeek({
       }
     }
 
+    // DAY-SIZE-1 (2026-08-17) · size a quality DAY from its session.
+    //
+    // `Research/04-workout-vocabulary.md` §5.2/§5.3 prescribe "2-3 mi E each
+    // side" around 4-8 miles at threshold, and §6.2 the same warm-up with a 1-2
+    // mi cool-down around 3-6 miles at I. Those easy legs are EASY — the
+    // intensity caps and the 75% easy floor speak only to the at-pace half — so
+    // the day is composed, not shared out of the week's volume. `layoutWeek`
+    // fills the remaining days from `weeklyMi - allocated`, so the extra easy
+    // miles come off the standalone easy days and the weekly total is
+    // unchanged: this RELOCATES easy running, it does not add any.
+
+    /** Doctrine's own bounds on a continuous tempo block, both applied.
+     *  §5.1 "| Continuous tempo | 3-8 mi continuous | T | None | 20-40 min |" —
+     *  a slow runner reaches forty minutes before eight miles and a fast one
+     *  reaches eight miles first, so whichever binds first is the answer. The
+     *  three-mile floor is the bottom of the same band and predates this. */
+    const sizeTempoDay = (): { tempoMi: number; dayMi: number } => {
+      const capMi = Math.min(atPaceSessionCapMi(weeklyMi, 'threshold'), mpLongAtPaceCapMi ?? Infinity);
+      const byTimeMi = weekTPaceSec != null && weekTPaceSec > 0
+        ? (CONTINUOUS_TEMPO_MINUTES.max * 60) / weekTPaceSec
+        : Infinity;
+      let tempoMi = Math.max(3, Math.round(Math.min(capMi, byTimeMi)));
+      const first = composeQualityDay({ family: 'threshold', atPaceMi: tempoMi, ceilingMi: doctrinalDayCeiling });
+      // The ceiling is structural (the long run stays the week's longest run).
+      // The easy legs give way first — `composeQualityDay` has already shrunk
+      // them — and only when the block itself will not fit does the block come
+      // down, because a day promising more tempo than its own mileage can hold
+      // is the sub_label/spec drift this codebase has twice paid for.
+      if (first.dayMi > doctrinalDayCeiling) {
+        tempoMi = Math.max(1, Math.floor(doctrinalDayCeiling - first.warmupMi - first.cooldownMi));
+      }
+      return {
+        tempoMi,
+        dayMi: composeQualityDay({ family: 'threshold', atPaceMi: tempoMi, ceilingMi: doctrinalDayCeiling }).dayMi,
+      };
+    };
+
+    /**
+     * A day sized around a prescription the engine did not choose the dose of —
+     * a §15 vocabulary family, or a catalog string the trajectory does not own.
+     *
+     * The SHAPE is doctrine's, stated by name, and is honoured as written; the
+     * day is built to hold it instead of squeezing the warm-up and cool-down
+     * out of the session. The one thing that can still move is the rep COUNT,
+     * and only downward: a named dose is stated for the runner doctrine had in
+     * mind, and five two-kilometre reps is 6.2 miles at threshold, which is
+     * 13.5% of a 46-mile cutback week against Daniels' 10%. That is the same
+     * cut `clampToWeek` makes for the trajectory — reps come off before the rep
+     * shortens — and the label is rewritten with it, because a session the
+     * runner reads as five reps over a spec that runs four is exactly the drift
+     * this codebase has already fixed twice.
+     *
+     * Returns null when the string carries no readable at-pace volume, and the
+     * caller falls back to the weekly share.
+     */
+    const sizeFromPrescription = (
+      p: string | null | undefined,
+      family: QualityFamily,
+    ): { prescription: string; dayMi: number } | null => {
+      if (!p) return null;
+      // A "N mi WU · M mi @ T · P mi CD" string already IS a whole day.
+      const tempo = parseTempoShape(p);
+      if (tempo) {
+        return { prescription: p, dayMi: Number((tempo.warmupMi + tempo.tempoMi + tempo.cooldownMi).toFixed(1)) };
+      }
+      const pace = family === 'interval' ? weekIPaceSec : weekTPaceSec;
+      const dist = parsePrescription(p);
+      const timed = dist ? null : parseTimeReps(p);
+      let reps: number;
+      let repMi: number;
+      let restS: number;
+      if (dist) {
+        ({ reps, repMi, restS } = { reps: dist.reps, repMi: dist.repDistanceMi, restS: dist.restS ?? 90 });
+      } else if (timed && pace != null && pace > 0) {
+        ({ reps, repMi, restS } = { reps: timed.reps, repMi: timed.durationS / pace, restS: timed.restS ?? 90 });
+      } else {
+        return null;
+      }
+      if (!(repMi > 0)) return null;
+
+      const capMi = Math.min(atPaceSessionCapMi(weeklyMi, family), mpLongAtPaceCapMi ?? Infinity);
+      // Never below two reps — a one-rep "rep session" is a different workout,
+      // and the affordability cut is meant to size a session, not delete it.
+      let keptReps = reps;
+      while (keptReps > 2 && keptReps * repMi > capMi) keptReps--;
+      // Rewrite ONLY the leading rep count, and only when the string opens with
+      // it, so the family's identity ("descend MP → T", "hills") is untouched.
+      const prescription = keptReps === reps
+        ? p
+        : p.replace(/^(\s*)\d+(\s*[×xX])/, `$1${keptReps}$2`);
+
+      return {
+        prescription,
+        dayMi: composeQualityDay({
+          family,
+          atPaceMi: keptReps * repMi,
+          floatMi: jogFloatMi(keptReps, restS / 60),
+          ceilingMi: doctrinalDayCeiling,
+        }).dayMi,
+      };
+    };
+
     resolvedSlots.forEach((slot) => {
       if (!slot) return; // conflict · skip
       const { dow, qt, vocabFamily, vocabRx } = slot;
       const track = trackFor(slot);
       const step = track != null ? (stepByTrack.get(track) ?? null) : null;
+      const qFamily: QualityFamily = qt === 'intervals' ? 'interval' : 'threshold';
+      const tempoSized = (doctrinalDaySizing && qt === 'tempo' && !baseBuilding && !taperMp)
+        ? sizeTempoDay()
+        : null;
+      // The fixed string this slot carries when the trajectory does not own it:
+      // a §15 vocabulary family, or the catalog entry for a slot whose seed the
+      // trajectory could not read. Sized to the week, label and day together.
+      const rxSized = (doctrinalDaySizing && !taperMp && step == null && tempoSized == null
+        && (qt === 'intervals' || qt === 'threshold'))
+        ? sizeFromPrescription(vocabRx ?? (qt === 'intervals' ? rx.intervals : rx.threshold), qFamily)
+        : null;
       const sub =
         // DOCTRINE-TAPERMP-1 · "N mi WU · M mi @ MP · P mi CD". The "@ MP"
         // token is load-bearing, not decoration: `parseTempoShape` reads the
@@ -2134,12 +2341,15 @@ function layoutWeek({
         // the block at marathon pace instead of threshold.
         taperMp && qt === 'tempo'
           ? `${taperMp.warmupMi} mi WU · ${taperMp.mpMi} mi @ MP · ${taperMp.cooldownMi} mi CD`
-      : vocabRx && qt !== 'tempo' ? vocabRx
+        // DAY-SIZE-1 · `rxSized` is the same string with its rep count cut to
+        // the week's at-pace allowance, when the week could not afford the
+        // named dose. Identical to `vocabRx` whenever it could.
+      : vocabRx && qt !== 'tempo' ? (rxSized?.prescription ?? vocabRx)
         // PROGRESSION-1 · the trajectory's rendered shape when it owns this
         // slot, the fixed catalog string when it does not (unparseable seed,
         // no pace anchor, or a composer that passes no trajectory at all).
-      : qt === 'intervals'        ? (step?.label ?? rx.intervals)
-      : qt === 'threshold'        ? (step?.label ?? rx.threshold)
+      : qt === 'intervals'        ? (step?.label ?? rxSized?.prescription ?? rx.intervals)
+      : qt === 'threshold'        ? (step?.label ?? rxSized?.prescription ?? rx.threshold)
       : qt === 'tempo'            ? (baseBuilding
                                       // Beginner sharpen day = a light fartlek: an easy run with a
                                       // few short surges at T effort, sized to the runner (no 3mi
@@ -2148,7 +2358,11 @@ function layoutWeek({
                                       // DOCTRINE-VOCAB-1 · the family entry for a tempo slot is a
                                       // PHRASE ("continuous wave tempo · ±10 s/mi around T"); the
                                       // sizing in front of it is the caller's, exactly as for rx.tempo.
-                                      : `${Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${vocabRx ?? rx.tempo}`)
+                                      // DAY-SIZE-1 · that sizing is now the AT-PACE block, straight
+                                      // out of §5.1's band, rather than 60% of a whole-day share —
+                                      // the 0.6 was itself an implicit warm-up/cool-down reserve,
+                                      // taken out of the intensity budget.
+                                      : `${tempoSized ? tempoSized.tempoMi : Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${vocabRx ?? rx.tempo}`)
       : qt === 'race_week_tuneup' ? (
           raceDistanceMi >= 31 ? '5×400m @ T pace · 90s jog'   // ULTRA-TUNE-1: threshold, not I-pace (see race-week note)
         : raceDistanceMi >= 20 ? '5×400m @ 5K pace · 2min jog' // TAPER-SHARP-1 · marathon: 5K-pace prime
@@ -2173,6 +2387,17 @@ function layoutWeek({
       // (Research/08:394-438), NOT a full quality slot. Cap its distance to the band so composed ==
       // persisted — the spec realizer truncates a 10mi tune-up to ~3.6mi at persist, silently dropping
       // taper volume the gate counted (51→44.6mi). The freed surplus flows into the easy-fill below.
+      // DAY-SIZE-1 · the day this session actually needs: warm-up + at-pace
+      // work + jog floats + cool-down. Null on the paths doctrine already
+      // sizes (the taper MP block, the race-week tune-up), on a beginner's
+      // fartlek, and on any prescription whose at-pace volume cannot be read —
+      // those keep the weekly share, byte-for-byte as before.
+      const doctrinalDayMi: number | null = !doctrinalDaySizing || (taperMp && qt === 'tempo')
+        ? null
+        : step?.dayMi != null ? step.dayMi
+        : tempoSized ? tempoSized.dayMi
+        : rxSized ? rxSized.dayMi
+        : null;
       const slotMi = effectiveType === 'race_week_tuneup'
         ? Math.min(qualityMiEach, (cat === '5k' || cat === '10k') ? 4 : 5)
         // DOCTRINE-TAPERMP-1 · the taper MP session is sized by DOCTRINE
@@ -2180,6 +2405,16 @@ function layoutWeek({
         // quality share, which in a tapering week is far too small to carry it.
         // `taperMpDose` has already clamped it to what the week can afford.
         : (taperMp && effectiveType === 'tempo') ? taperMp.totalMi
+        // The composed day still passes through the envelope the share-based
+        // budget was held to: the recent-quality-distance floor, the
+        // stated-frequency floor, and the ceiling that keeps the long run the
+        // week's longest run. Each of those records a real bug; none of them
+        // is what was making the sessions short.
+        : doctrinalDayMi != null
+          ? Math.min(
+              Math.max(Math.round(doctrinalDayMi * 2) / 2, qualityFloor, qualityFloorFreq),
+              doctrinalDayCeiling,
+            )
         : qualityMiEach;
       slots[dow] = {
         dow: dow as DOW, type: effectiveType, distanceMi: slotMi, isQuality: true, isLong: false,
@@ -4289,6 +4524,24 @@ async function persistPlan(client: PoolClient, args: {
       // a quality run longer than the week's long on short-race plans (round-2
       // CRITICAL). No-op when the spec already fits (David byte-for-byte same).
       workoutSpec = capSpecToDistance(workoutSpec, d.distanceMi);
+      // PROGRESSION-PERSIST-1 (2026-08-17) · carry the trajectory's decision
+      // into the row. Without this the shape died here and the adaptation
+      // model's "hold the current stimulus" had nothing to hold — see
+      // lib/plan/progression-spec.ts. Attached AFTER the distance cap so the
+      // block describes the session actually prescribed: `capSpecToDistance`
+      // can trim a rep, and a block disagreeing with the spec beside it would
+      // be the same drift in a new field.
+      if (workoutSpec && d.workShape) {
+        workoutSpec = {
+          ...workoutSpec,
+          ...progressionSpecFields({
+            shape: d.workShape,
+            lever: d.progressionLever ?? null,
+            zone: d.challengeZone ?? null,
+            repsOverride: Number((workoutSpec as Record<string, unknown>).rep_count ?? 0) || null,
+          }),
+        };
+      }
       const totalDistanceMi = totalDistanceMiFromSpec(workoutSpec, d.distanceMi);
       // 2026-06-03 · iPhone agent Tier 2.d brief · sub_label derived
       // from spec instead of the rx template string. The spec is the

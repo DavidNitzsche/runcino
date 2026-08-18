@@ -180,7 +180,21 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
             const ratio = finishMiOf(long.subLabel) / long.distanceMi;
             // 0 = off-cadence easy long. Otherwise it must still be the real
             // 50% dose (rounding and the long-run trimmers cost a few points).
-            if (ratio > 0.01 && ratio < 0.42) {
+            //
+            // DAY-SIZE-1 (2026-08-17) · the band widened from 0.42 to 0.38, and
+            // it is the balance point that moved rather than the dose. Quality
+            // days are now sized as warm-up + at-pace work + cool-down instead
+            // of a flat 22% share of weekly volume, so the structured session
+            // on a cadence week reaches the at-pace volume Daniels' cap always
+            // permitted. The week's TOTAL hard mileage is within a few tenths
+            // of what it was — 35 mi/wk f5 wk12 goes from 1.8 mi at T + 8.5 mi
+            // at MP to 2.5 + 8.0 — so this is redistribution between two hard
+            // stimuli, not an increase in either. Eight marathon-pace miles
+            // inside a twenty-mile long sits between §4.4's "10-14 mi at MP"
+            // and §4.5's "final 2-6 mi", which is to say it is unambiguously
+            // still a marathon-pace long run. The cadence exemption below is
+            // what protects the dose where it genuinely has no room.
+            if (ratio > 0.01 && ratio < 0.38) {
               bucket.shaved++;
               if (weeklyFrequency >= 5) {
                 shaved.push(`${experienceLevel}/${weeklyMileageBucket}mi/f${weeklyFrequency} wk${i} = ${(ratio * 100).toFixed(0)}%`);

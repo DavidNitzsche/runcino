@@ -1,0 +1,233 @@
+/**
+ * PROGRESSION-PERSIST-1 (2026-08-17) · the overload trajectory's shape must
+ * survive the trip to `plan_workouts.workout_spec` and back.
+ *
+ * The shape was computed, attached to the composed day, and then dropped at the
+ * persistence boundary — only the rendered prescription string reached the
+ * database. That blocks the second half of
+ * `Design/adaptive-progression-engine.md` §3: "hold the current stimulus" needs
+ * to know what the current stimulus was, and re-deriving it by regexing
+ * `"3×10 min @ T pace · 60s jog"` is exactly the drift the string was never
+ * meant to carry.
+ *
+ * These tests assert IDENTITY after a round trip, not presence, and they hold
+ * the Rule 6 discipline mechanically so a future writer of that multi-writer
+ * jsonb column cannot quietly erase the block.
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+import { describe, it, expect } from 'vitest';
+import {
+  PROGRESSION_SPEC_KEY,
+  preserveProgressionSql,
+  progressionSpecFields,
+  readProgressionSpec,
+} from './progression-spec';
+import {
+  composePlan,
+  finalizeComposedPlan,
+  inlinePrescriptions,
+  distanceCategoryOfPublic,
+  type ComposePlanInput,
+  type DOW,
+} from './generate';
+import { buildWorkoutSpec, capSpecToDistance, tPaceFromGoal } from './spec-builder';
+import { tPaceFromVdot } from '@/lib/training/vdot';
+import type { WorkShape } from '@/lib/prescription/levers';
+import { repoRoot } from '@/lib/doctrine/resolve';
+
+/** The DB stores jsonb · anything that does not survive JSON is already lost. */
+const throughJson = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+function cimBlock(): ComposePlanInput {
+  const distanceMi = 26.2;
+  const goalSec = 10800;
+  const currentT = tPaceFromVdot(44.1);
+  const goalT = tPaceFromGoal(goalSec, distanceMi);
+  return {
+    raceDistanceMi: distanceMi, goalSec,
+    goalPaceSec: Math.round(goalSec / distanceMi),
+    raceDateISO: '2026-12-06', startMondayISO: '2026-08-31',
+    level: 'advanced', recentWeeklyMi: 45, easyDayMedianMi: 6, recentLongMi: 14,
+    bestRecentVdot: 44.1, isMidBlock: false,
+    longRunDow: 0 as DOW, restDow: 5 as DOW, qualityDows: [2, 4] as DOW[],
+    trainingDaysPerWeek: null, crossModes: [],
+    rxQuality: inlinePrescriptions(distanceCategoryOfPublic(distanceMi)),
+    rxRaceSpecific: inlinePrescriptions(distanceCategoryOfPublic(distanceMi)),
+    tPaceSec: (goalT != null && currentT != null ? Math.min(goalT, currentT) : goalT) ?? currentT ?? 480,
+    lthr: null, maxHr: null,
+  } as ComposePlanInput;
+}
+
+describe('PROGRESSION-PERSIST-1 · the work shape survives persistence', () => {
+  it('round-trips every shape the trajectory can produce', () => {
+    const shapes: WorkShape[] = [
+      { reps: 4, repMinutes: 10, recoveryMinutes: 1, paceSPerMi: 462, zone: 'ESTABLISHED' },
+      { reps: 1, repMinutes: 30, recoveryMinutes: 0, paceSPerMi: 394, zone: 'PROGRESSIVE' },
+      { reps: 6, repMinutes: 3, recoveryMinutes: 2.5, paceSPerMi: 410, zone: 'PROBE' },
+      { reps: 2, repMinutes: 20, recoveryMinutes: 1.5, paceSPerMi: 540, zone: 'ESTABLISHED' },
+    ];
+    for (const shape of shapes) {
+      for (const lever of ['quality_duration', 'work_density', null] as const) {
+        const spec = throughJson({
+          kind: 'threshold',
+          ...progressionSpecFields({ shape, lever, zone: shape.zone }),
+        });
+        const back = readProgressionSpec(spec);
+        expect(back, `no block read back for ${shape.reps}x${shape.repMinutes}`).not.toBeNull();
+        expect(back!.shape).toEqual(shape);
+        expect(back!.lever).toBe(lever);
+        expect(back!.zone).toBe(shape.zone);
+      }
+    }
+  });
+
+  it('reads null rather than a half-populated shape', () => {
+    // A consumer deciding whether to hold a stimulus has to be able to tell
+    // "nothing recorded" from "a shape with a zero in it".
+    expect(readProgressionSpec(null)).toBeNull();
+    expect(readProgressionSpec({ kind: 'threshold' })).toBeNull();
+    expect(readProgressionSpec({ [PROGRESSION_SPEC_KEY]: {} })).toBeNull();
+    expect(readProgressionSpec({
+      [PROGRESSION_SPEC_KEY]: { reps: 4, rep_minutes: 10, recovery_minutes: 1, pace_s_per_mi: 0, zone: 'ESTABLISHED', lever: null },
+    })).toBeNull();
+    expect(readProgressionSpec({
+      [PROGRESSION_SPEC_KEY]: { reps: 4, rep_minutes: 10, recovery_minutes: 1, pace_s_per_mi: 462, zone: 'NONSENSE', lever: null },
+    })).toBeNull();
+    // An unrecognised lever degrades to null without losing the shape — the
+    // shape is what "hold the stimulus" needs; the lever is commentary.
+    const odd = readProgressionSpec({
+      [PROGRESSION_SPEC_KEY]: { reps: 4, rep_minutes: 10, recovery_minutes: 1, pace_s_per_mi: 462, zone: 'ESTABLISHED', lever: 'telepathy' },
+    });
+    expect(odd).not.toBeNull();
+    expect(odd!.lever).toBeNull();
+    expect(odd!.shape.reps).toBe(4);
+  });
+
+  it('survives the real author chain, identically, on a composed block', () => {
+    // The exact chain `persistPlan` runs: buildWorkoutSpec → capSpecToDistance
+    // → attach the block → JSON → (jsonb) → read back.
+    const input = cimBlock();
+    const res = composePlan(input);
+    finalizeComposedPlan(res, 26.2, 'advanced');
+
+    let carried = 0;
+    for (const w of res.weeks) {
+      const weekT = (w as { tPaceSec?: number | null }).tPaceSec ?? input.tPaceSec;
+      if (weekT == null) continue;
+      for (const d of w.days) {
+        if (!d.isQuality || !d.workShape) continue;
+        const built = buildWorkoutSpec(
+          d.type, d.distanceMi, weekT, null, d.subLabel, null, input.goalPaceSec ?? null, null,
+        );
+        let spec = capSpecToDistance(built.spec, d.distanceMi);
+        expect(spec, `${w.startISO} ${d.type} built no spec`).not.toBeNull();
+        spec = {
+          ...(spec as Record<string, unknown>),
+          ...progressionSpecFields({
+            shape: d.workShape,
+            lever: d.progressionLever ?? null,
+            zone: d.challengeZone ?? null,
+            repsOverride: Number((spec as Record<string, unknown>).rep_count ?? 0) || null,
+          }),
+        };
+        const back = readProgressionSpec(throughJson(spec));
+        expect(back, `${w.startISO} ${d.type} lost its shape in persistence`).not.toBeNull();
+        // Identity, field by field. `reps` is allowed to follow the spec when
+        // `capSpecToDistance` trimmed one — that is the documented override —
+        // so it is checked against the SPEC rather than against the intent.
+        expect(back!.shape.repMinutes).toBe(Number(d.workShape.repMinutes.toFixed(2)));
+        expect(back!.shape.recoveryMinutes).toBe(Number(Math.max(0, d.workShape.recoveryMinutes).toFixed(2)));
+        expect(back!.shape.paceSPerMi).toBe(Math.round(d.workShape.paceSPerMi));
+        expect(back!.zone).toBe(d.challengeZone ?? d.workShape.zone);
+        expect(back!.lever).toBe(d.progressionLever ?? null);
+        const specReps = Number((spec as Record<string, unknown>).rep_count ?? 0) || d.workShape.reps;
+        expect(
+          back!.shape.reps,
+          `${w.startISO}: persisted block says ${back!.shape.reps} reps, the spec beside it says ${specReps}`,
+        ).toBe(Math.round(specReps));
+        carried++;
+      }
+    }
+    // If the trajectory ever stops owning any session this test would pass
+    // vacuously, which would be worse than failing.
+    expect(carried, 'no quality day carried a work shape at all').toBeGreaterThan(3);
+  });
+
+  it('the preservation SQL carries an existing block forward and never invents one', () => {
+    const sql = preserveProgressionSql('$2');
+    // The old-row read, the guard, and the merge all have to be there. The
+    // behaviour itself is exercised against a real database by the writers'
+    // own integration paths; this holds the statement's shape.
+    expect(sql).toContain('plan_workouts.workout_spec');
+    expect(sql).toContain(`? '${PROGRESSION_SPEC_KEY}'`);
+    expect(sql).toContain(`jsonb_set($2::jsonb, '{${PROGRESSION_SPEC_KEY}}'`);
+    // A new spec that DOES carry a block must win, and a NULL spec must stay
+    // NULL — both are branches, not accidents.
+    expect(sql).toContain('IS NOT NULL');
+    expect(sql).toContain('ELSE $2::jsonb');
+    expect(preserveProgressionSql('$1', 'pw')).toContain('pw.workout_spec');
+  });
+
+  it('every writer of workout_spec either preserves the block or says why not', () => {
+    // CLAUDE.md Rule 6, made mechanical. `plan_workouts.workout_spec` has
+    // several writers with different field coverage, which is precisely the
+    // shape that erased `strava_activities.data.splits` and
+    // `races.actual_result`. A new writer added later must land in one of these
+    // two lists on purpose.
+    const NOT_PRESERVED: Record<string, string> = {
+      'web-v2/lib/plan/adapt.ts':
+        'Two writers, both deliberate: the adapter downgrading a quality day to easy/rest, and the ' +
+        'field-test replacement. Both make the row a DIFFERENT session, so a block describing the ' +
+        'old one would be a false record of what the runner was asked to do. The third writer in ' +
+        'this file (rebuildWorkoutDerivations, same session) DOES preserve.',
+      'web-v2/app/api/plan/restore/route.ts':
+        'Restores a captured snapshot verbatim. The snapshot carries whatever the row had, block ' +
+        'included, so a full replace is the correct semantics for a point-in-time restore.',
+      'web-v2/app/api/plan/replan/route.ts':
+        'Clears the spec to NULL on a replan — there is no session left to describe.',
+      'web-v2/app/api/plan/workout/[id]/accept-standing/route.ts':
+        'Clears the spec to NULL when a standing change replaces the workout.',
+    };
+
+    const root = repoRoot();
+    const roots = [path.join(root, 'web-v2', 'lib'), path.join(root, 'web-v2', 'app')];
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith('.ts') && !/\.test\.ts$/.test(e.name)) files.push(p);
+      }
+    };
+    for (const r of roots) if (fs.existsSync(r)) walk(r);
+
+    const unguarded: string[] = [];
+    for (const file of files) {
+      const rel = path.relative(root, file);
+      if (rel.endsWith('progression-spec.ts')) continue; // it IS the guard
+      for (const [i, line] of fs.readFileSync(file, 'utf8').split('\n').entries()) {
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) continue;      // comments describe
+        if (!/workout_spec\s*=/.test(line)) continue;
+        if (/preserveProgressionSql/.test(line)) continue;   // guarded
+        if (/workout_spec\s*=\s*(NULL|null)/i.test(line) && rel in NOT_PRESERVED) continue;
+        if (rel in NOT_PRESERVED) continue;
+        unguarded.push(`${rel}:${i + 1}  ${line.trim()}`);
+      }
+    }
+    expect(
+      unguarded,
+      'These write plan_workouts.workout_spec without the Rule 6 guard. Either wrap the parameter\n' +
+        'in preserveProgressionSql, or record in NOT_PRESERVED why this writer is entitled to\n' +
+        'discard the overload trajectory\'s shape.\n  ' + unguarded.join('\n  '),
+    ).toEqual([]);
+
+    // And the allowlist may not rot: every entry must still be a real writer.
+    const stale = Object.keys(NOT_PRESERVED).filter((rel) => {
+      const abs = path.join(root, rel);
+      return !fs.existsSync(abs) || !/workout_spec\s*=/.test(fs.readFileSync(abs, 'utf8'));
+    });
+    expect(stale, `these allowlist entries no longer write workout_spec · delete them:\n  ${stale.join('\n  ')}`)
+      .toEqual([]);
+  });
+});

@@ -97,12 +97,19 @@ import {
   STRIDE_DAYS_PER_WEEK,
 } from '@/lib/plan/spec-builder';
 import {
+  AT_PACE_SESSION_MI,
   AT_PACE_WEEKLY_SHARE_CAP,
   CRUISE_RECOVERY_MIN_PER_WORK_MI,
   INTERVAL_REP_MINUTES,
   CONTINUOUS_TEMPO_MINUTES,
   advanceShape,
+  atPaceSessionCapMi,
 } from '@/lib/prescription/levers';
+import {
+  QUALITY_WARMUP_MI,
+  QUALITY_COOLDOWN_MI,
+  composeQualityDay,
+} from '@/lib/plan/quality-day';
 import {
   MIN_QUALITY_REP_MINUTES,
   clampToWeek,
@@ -2812,6 +2819,172 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       );
       within(CONTINUOUS_TEMPO_MINUTES.min, [Number(m[1]), Number(m[1])], 'continuous tempo minimum minutes');
       within(CONTINUOUS_TEMPO_MINUTES.max, [Number(m[2]), Number(m[2])], 'continuous tempo maximum minutes');
+    },
+  },
+  // ══ QUALITY DAY · a session is work PLUS easy legs ════════════════════════
+  /**
+   * `qualityShare = 0.22` sized a whole quality DAY as a share of weekly volume
+   * and split it across the week's quality days. At 55 mi/wk over two of them
+   * that is 6.05 miles for the day, and the warm-up and cool-down come out of
+   * it first — so the runner reached about three miles of threshold against a
+   * band of four to eight, on a week whose Daniels cap permitted 5.5.
+   *
+   * The error is a category error. The at-pace caps and the 75% easy floor
+   * govern INTENSITY; §5.3's "2-3 mi E each side" is E. Charging a day's easy
+   * legs to its hard budget spends the intensity allowance twice.
+   *
+   * These four claims bind the numbers that replaced it. The last one is the
+   * behavioural one and is the point: a day must come out BIGGER than the
+   * at-pace work it carries.
+   */
+  {
+    id: 'QUALITYDAY.threshold-session-at-pace-band',
+    binds: ['lib/prescription/levers.ts#AT_PACE_SESSION_MI.threshold'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 5.1 Threshold family overview',
+    claim:
+      'One cruise-interval session carries 4-8 miles at threshold. This bounds the SESSION, where ' +
+      'the 10% share bounds it against the runner\'s weekly volume, and both apply: past eight ' +
+      'miles at T the workout has stopped being cruise intervals however high the mileage it sits ' +
+      'in, so a 100 mi/wk runner is not owed a ten-mile threshold session by their own ten percent.',
+    check({ cite }) {
+      const band = parseBand(cite.table().cell('Cruise intervals (Daniels)', 'Total at-pace'));
+      within(AT_PACE_SESSION_MI.threshold.min, [band[0], band[0]], 'threshold session at-pace minimum');
+      within(AT_PACE_SESSION_MI.threshold.max, [band[1], band[1]], 'threshold session at-pace maximum');
+      // Behaviour: the tighter of the two bounds wins at both ends of the
+      // mileage range, so neither is decorative.
+      const small = atPaceSessionCapMi(30, 'threshold');
+      if (Math.abs(small - 3) > 0.001) {
+        throw new Error(`30 mi/wk should buy the share cap (3 mi), got ${small}`);
+      }
+      const large = atPaceSessionCapMi(120, 'threshold');
+      if (Math.abs(large - band[1]) > 0.001) {
+        throw new Error(`120 mi/wk should be held at the session band (${band[1]} mi), got ${large}`);
+      }
+    },
+  },
+  {
+    id: 'QUALITYDAY.interval-session-at-pace-band',
+    binds: ['lib/prescription/levers.ts#AT_PACE_SESSION_MI.interval'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 6.1 VO2max family overview',
+    claim:
+      'One VO2 rep session carries 3-6 miles at I pace — a smaller band than threshold work, ' +
+      'because the same physiological return arrives in less volume and the cost of exceeding it ' +
+      'is higher.',
+    check({ cite }) {
+      const band = parseBand(cite.table().cell('Mile repeats (3K/5K)', 'Total at-pace'));
+      within(AT_PACE_SESSION_MI.interval.min, [band[0], band[0]], 'interval session at-pace minimum');
+      within(AT_PACE_SESSION_MI.interval.max, [band[1], band[1]], 'interval session at-pace maximum');
+      // The interval band must sit below the threshold band at both ends —
+      // doctrine gives them different numbers, and a paste would not.
+      if (AT_PACE_SESSION_MI.interval.max >= AT_PACE_SESSION_MI.threshold.max) {
+        throw new Error('the VO2 session band is not tighter than the threshold session band');
+      }
+    },
+  },
+  {
+    id: 'QUALITYDAY.warmup-cooldown-are-doctrine',
+    binds: [
+      'lib/plan/quality-day.ts#QUALITY_WARMUP_MI',
+      'lib/plan/quality-day.ts#QUALITY_COOLDOWN_MI',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 5.3 Cruise intervals (Daniels)',
+    claim:
+      'A threshold session runs 2-3 miles of EASY running on each side of the work. The engine ' +
+      'spends the bottom of the band — a warm-up is a cost paid in fatigue and in the runner\'s ' +
+      'morning, and the top of it belongs to the runner who wants it rather than to a generator ' +
+      'choosing on their behalf.',
+    check({ cite }) {
+      const band = parseBand(cite.table().cell('Warmup/cooldown', 'Prescription'));
+      within(QUALITY_WARMUP_MI.threshold, band, 'threshold warm-up miles');
+      within(QUALITY_COOLDOWN_MI.threshold, band, 'threshold cool-down miles');
+      if (QUALITY_WARMUP_MI.threshold !== band[0] || QUALITY_COOLDOWN_MI.threshold !== band[0]) {
+        throw new Error(
+          `the engine should spend the bottom of the ${band[0]}-${band[1]} mi band, not ` +
+          `${QUALITY_WARMUP_MI.threshold}/${QUALITY_COOLDOWN_MI.threshold}`,
+        );
+      }
+    },
+  },
+  {
+    id: 'QUALITYDAY.legs-are-easy-not-intensity',
+    binds: [
+      'lib/plan/quality-day.ts#composeQualityDay',
+      'lib/plan/quality-day.ts#warmupCooldownMi',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 6.2 Mile repeats (3–6 × 1 mile)',
+    claim:
+      'A VO2 session runs 2-3 miles of easy warm-up and 1-2 miles of easy cool-down around the ' +
+      'reps, and those miles are EASY — the at-pace caps and the easy-share floor speak to the ' +
+      'reps only. So a quality DAY is always longer than the at-pace work it carries, by the ' +
+      'warm-up and cool-down doctrine prescribes; sizing the day as a share of weekly volume ' +
+      'charged the easy legs to the hard budget and left the session short of its own band.',
+    check({ cite }) {
+      // §6.2 states the two sides in one cell, separated by a semicolon.
+      const cell = cite.table().cell('Warmup/cooldown', 'Prescription');
+      const [wuText, cdText] = cell.split(';');
+      if (!cdText) throw new Error(`§6.2 warm-up/cool-down cell no longer names both sides: "${cell}"`);
+      const wuBand = parseBand(wuText);
+      const cdBand = parseBand(cdText);
+      within(QUALITY_WARMUP_MI.interval, wuBand, 'VO2 warm-up miles');
+      within(QUALITY_COOLDOWN_MI.interval, cdBand, 'VO2 cool-down miles');
+      // Behaviour · the composed day always exceeds its at-pace work by the
+      // easy legs, and by doctrine's FULL legs for any session that has reached
+      // the at-pace volume doctrine quoted them against (§5.3's "2-3 mi each
+      // side" sits beside "4-8 mi" at pace; §6.2's beside §6.1's "3-6 mi").
+      // Below that reference the legs scale in proportion — a 20 mi/wk runner
+      // cannot spend four miles warming up for two miles of work — and above it
+      // they stop growing, because a warm-up does not lengthen with the runner.
+      // This is the assertion that the category error cannot come back.
+      for (const weeklyMi of [20, 30, 45, 60, 80]) {
+        for (const family of ['threshold', 'interval'] as const) {
+          const atPaceMi = atPaceSessionCapMi(weeklyMi, family);
+          const day = composeQualityDay({ family, atPaceMi });
+          const legs = Number((day.dayMi - day.atPaceMi).toFixed(2));
+          const full = QUALITY_WARMUP_MI[family] + QUALITY_COOLDOWN_MI[family];
+          const reference = AT_PACE_SESSION_MI[family].min;
+          // Doctrine's legs, scaled — or `spec-builder`'s own 30%/25% floors
+          // where those are larger, SIDE BY SIDE, because the day may never
+          // promise less warm-up than the spec built from it will take (it
+          // would take the difference out of the reps instead).
+          const scale = Math.min(1, atPaceMi / reference);
+          const expected =
+            Math.max(QUALITY_WARMUP_MI[family] * scale, Math.max(0.5, Math.min(1.5, day.dayMi * 0.3)))
+            + Math.max(QUALITY_COOLDOWN_MI[family] * scale, Math.max(0.5, Math.min(1.0, day.dayMi * 0.25)));
+          if (Math.abs(legs - expected) > 0.06) {
+            throw new Error(
+              `${weeklyMi} mi/wk ${family}: a ${day.dayMi} mi day around ${atPaceMi} mi of work ` +
+              `carries ${legs} mi of easy legs, doctrine scaled gives ${expected.toFixed(2)}`,
+            );
+          }
+          // Above doctrine's reference session, the legs ARE doctrine's — the
+          // floors are a floor, never a licence to keep growing the warm-up.
+          if (atPaceMi >= reference && Math.abs(legs - full) > 0.06 && legs > full) {
+            throw new Error(
+              `${weeklyMi} mi/wk ${family}: legs grew to ${legs} mi past doctrine's ${full} mi`,
+            );
+          }
+          if (!(legs > 0)) {
+            throw new Error(`${weeklyMi} mi/wk ${family}: the session lost its warm-up entirely`);
+          }
+          // And the work itself is never cut to make room for them.
+          if (day.atPaceMi < atPaceMi - 0.001) {
+            throw new Error(`${weeklyMi} mi/wk ${family}: the warm-up ate the workout`);
+          }
+          // The day is longer than the work. That is the whole claim.
+          if (!(day.dayMi > day.atPaceMi)) {
+            throw new Error(`${weeklyMi} mi/wk ${family}: the day is no longer than its own reps`);
+          }
+        }
+      }
+      // And the quality day never swallows a small runner's week.
+      const tiny = composeQualityDay({ family: 'threshold', atPaceMi: atPaceSessionCapMi(20, 'threshold') });
+      if (tiny.dayMi > 20 * 0.3) {
+        throw new Error(`a 20 mi/wk runner's quality day is ${tiny.dayMi} mi — it is swallowing the week`);
+      }
     },
   },
   {

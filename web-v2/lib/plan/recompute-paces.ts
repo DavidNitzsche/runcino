@@ -44,6 +44,7 @@ import {
   tPaceFromVdot, iPaceFromVdot, vdotFromTpace, vdotFromRace,
 } from '@/lib/training/vdot';
 import { buildWorkoutSpec, tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
+import { preserveProgressionSql } from './progression-spec';
 import { distanceCategoryOf } from './goal-tiers';
 
 /**
@@ -348,9 +349,14 @@ export async function recomputePacesForPlan(
         ? subLabelFromSpec(built.spec as Parameters<typeof subLabelFromSpec>[0])
         : null;
       await tx.query(
+        // Rule 6 · this rebuilds the spec for the SAME session off a new pace.
+        // `buildWorkoutSpec` knows nothing about the overload trajectory, so a
+        // full replace would silently erase the shape every time evidence moved
+        // the anchor — the one moment the adaptation model most needs to know
+        // what the runner was already doing.
         `UPDATE plan_workouts
             SET pace_target_s_per_mi = $1,
-                workout_spec = $2::jsonb,
+                workout_spec = ${preserveProgressionSql('$2')},
                 sub_label = COALESCE($3, sub_label)
           WHERE id = $4`,
         [built.paceTargetSPerMi, built.spec ? JSON.stringify(built.spec) : null, derivedLabel, row.id],

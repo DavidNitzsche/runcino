@@ -1,0 +1,10 @@
+import pg from 'pg';
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL_RO || process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+const cols = async (t) => (await pool.query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_name=$1 ORDER BY ordinal_position`, [t])).rows;
+console.log('plan_workouts:', JSON.stringify(await cols('plan_workouts')));
+console.log('notifications_log:', JSON.stringify(await cols('notifications_log')));
+const pay = await pool.query(`SELECT payload FROM notifications_log ORDER BY fired_at DESC LIMIT 2`);
+console.log('sample payloads:', JSON.stringify(pay.rows).slice(0, 600));
+const aps = await pool.query(`SELECT COUNT(*)::int AS n FROM notifications_log WHERE payload ? 'aps'`);
+console.log('rows with aps key:', aps.rows[0].n);
+await pool.end();

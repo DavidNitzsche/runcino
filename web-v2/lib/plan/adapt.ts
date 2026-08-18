@@ -66,6 +66,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore, mileageByDay } from '@/lib/runs/volume';
 import type { ExperienceLevel } from '@/lib/coach/profile-state';
 import { logSealSkip } from './seal';
+import { preserveProgressionSql } from './progression-spec';
 import { stripResearchCitations } from './strip-citations';
 
 /**
@@ -976,6 +977,13 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
               ? null
               : { kind: newType };  // easy or recovery
             await client.query(
+              // Rule 6 · this one deliberately does NOT preserve the overload
+              // trajectory's shape, and that is the rule working rather than an
+              // exception to it. The row is being made a DIFFERENT session — a
+              // threshold day downgraded to easy or rest — so a block
+              // describing three by ten minutes at T would be a false record of
+              // what the runner was asked to do. Explicit destruction beats
+              // silent destruction; this is the explicit kind.
               `UPDATE plan_workouts
                   SET type = $1,
                       original_sub_label = COALESCE(original_sub_label, sub_label),
@@ -1113,6 +1121,9 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
               duration_target_s: 1800,
             };
             await client.query(
+              // Rule 6 · deliberately not preserved, same reasoning as the
+              // downgrade above: a field test replaces the session outright, so
+              // the trajectory's shape no longer describes this row.
               `UPDATE plan_workouts
                   SET type = 'tempo',
                       original_sub_label = COALESCE(original_sub_label, sub_label),
@@ -1351,8 +1362,11 @@ async function rebuildWorkoutDerivations(
     //    when subLabelFromSpec returned null (shouldn't happen for
     //    the three types we gate on, but defensive).
     await client.query(
+      // Rule 6 · same session, rebuilt derivations. The overload trajectory's
+      // shape is not something `buildWorkoutSpec` can regenerate, so it is
+      // carried forward rather than dropped.
       `UPDATE plan_workouts
-          SET workout_spec = $1::jsonb,
+          SET workout_spec = ${preserveProgressionSql('$1')},
               sub_label = COALESCE($2, sub_label),
               pace_target_s_per_mi = COALESCE($3, pace_target_s_per_mi)
         WHERE id = $4`,

@@ -76,6 +76,30 @@ export function parseTempoShape(s: string | null | undefined): ParsedTempo | nul
 }
 
 /**
+ * DAY-SIZE-1 (2026-08-17) · the leading size on a composed tempo prescription.
+ *
+ * `layoutWeek` writes a continuous tempo as `"<N>mi <phrase>"` — "5mi
+ * continuous wave tempo · ±10 s/mi around T" — where the phrase carries the
+ * §15 family's identity and the number is the composer's decision about the
+ * block. `parseTempoShape` cannot read it (there is no WU/CD segment to read),
+ * so `buildWorkoutSpec` fell through to its own default of `budget - 3` and
+ * built a block of a different length from the one the label promised. The two
+ * agreed only by coincidence, at exactly the budget where 0.6 x budget and
+ * budget - 3 cross.
+ *
+ * Returns null unless the string OPENS with the size, so a phrase that merely
+ * mentions a distance ("±10 s/mi around T", "last 2 mi at MP") is never read as
+ * the block.
+ */
+export function parseTempoLeadMi(s: string | null | undefined): number | null {
+  if (!s || typeof s !== 'string') return null;
+  const m = s.match(/^\s*(\d+(?:\.\d+)?)\s*mi\b/i);
+  if (!m) return null;
+  const mi = parseFloat(m[1]);
+  return Number.isFinite(mi) && mi > 0 ? mi : null;
+}
+
+/**
  * Parse a prescription string. Returns null when no rep pattern was
  * recognized (e.g. "continuous tempo", malformed strings) · caller
  * should fall back to the hardcoded spec.
@@ -90,7 +114,19 @@ export function parsePrescription(s: string | null | undefined): ParsedPrescript
   // Match "N×Mmi" / "N×Mkm" / "N×Mk" / "N×Mm" · supports × and x and X
   // separators · whitespace tolerated around × and the unit.
   // Examples: "4×1mi", "6×800m", "4×1km", "5×1k", "4×1 mi"
-  const repMatch = s.match(/(\d+)\s*[×xX]\s*(\d+(?:\.\d+)?)\s*(mi|km|k|m)\b/);
+  //
+  // 2026-08-17 · the UNAMBIGUOUS uppercase units are accepted too. Research/04
+  // §11.2 names the Canova session "2K repeats" and the catalog writes it that
+  // way — "5×2K · descend MP → T · 2 min jog" — which this regex missed, so
+  // `buildWorkoutSpec` fell through to its default and built 4×1mi @ T under a
+  // label promising five two-kilometre reps. That is the sub_label/spec drift
+  // this parser exists to prevent, arriving through the parser itself.
+  //
+  // K, KM and MI are added because no other reading of them exists. A bare
+  // uppercase "M" is deliberately NOT accepted: "400M" is plainly metres and
+  // "2M" is plainly miles, and a parser that guesses between them is how the
+  // next drift starts. Lowercase "m" keeps its existing metres meaning.
+  const repMatch = s.match(/(\d+)\s*[×xX]\s*(\d+(?:\.\d+)?)\s*(mi|MI|km|KM|k|K|m)\b/);
   if (!repMatch) return null;
 
   const reps = parseInt(repMatch[1], 10);

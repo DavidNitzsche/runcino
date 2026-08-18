@@ -62,6 +62,7 @@ import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireAdmin } from '@/lib/auth/session';
 import { buildWorkoutSpec, tPaceFromGoal } from '@/lib/plan/spec-builder';
+import { preserveProgressionSql } from '@/lib/plan/progression-spec';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 
@@ -180,7 +181,12 @@ export async function POST(req: NextRequest) {
         if (spec === null) continue;   // null-spec types (rest/cross/strength) — leave as NULL
         if (!dry) {
           await pool.query(
-            `UPDATE plan_workouts SET workout_spec = $1 WHERE id = $2`,
+            // Rule 6 · the backfill rebuilds a spec from the row's own
+            // sub_label and knows nothing about the overload trajectory. Under
+            // `force=1` it rewrites rows that ALREADY have a spec, so without
+            // this guard a maintenance sweep would strip every shape the
+            // author wrote.
+            `UPDATE plan_workouts SET workout_spec = ${preserveProgressionSql('$1')} WHERE id = $2`,
             [spec, row.id],
           );
         }

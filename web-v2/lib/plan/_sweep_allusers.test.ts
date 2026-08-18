@@ -152,6 +152,11 @@ function grade(a: Arc) {
 }
 
 describe('ALL-USER conformance sweep', () => {
+  // Composing 9294 plans takes ~2s alone and several times that when the whole
+  // suite is running in parallel around it, against vitest's 5s default. A gate
+  // that goes red because the machine was busy teaches people to re-run it
+  // until it passes, which is how a real regression gets waved through. The
+  // timeout is generous on purpose; nothing about the assertions changes.
   it('every archetype is research-conformant', () => {
     let n = 0;
     for (const a of matrix()) { grade(a); n++; }
@@ -165,5 +170,5 @@ describe('ALL-USER conformance sweep', () => {
     // THE GATE · every archetype must be research-conformant. If this fails, an engine change
     // regressed some user segment — read the FIRM list above for the exact archetypes + violations.
     expect(firmTotal, `${firmTotal} firm conformance failures across the user matrix — see log`).toBe(0);
-  });
+  }, 60_000);
 });

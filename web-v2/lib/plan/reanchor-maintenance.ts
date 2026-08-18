@@ -24,6 +24,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { buildWorkoutSpec } from './spec-builder';
+import { preserveProgressionSql } from './progression-spec';
 import { tPaceFromVdot, iPaceFromVdot } from '@/lib/training/vdot';
 
 /** Refresh only when fitness moved enough to matter — avoids churning paces on
@@ -118,7 +119,10 @@ export async function reanchorMaintenancePlan(
         w.type, w.distance_mi != null ? Number(w.distance_mi) : null, measuredVdot, ttDistance,
       );
       await client.query(
-        `UPDATE plan_workouts SET pace_target_s_per_mi = $1, workout_spec = $2 WHERE id = $3`,
+        // Rule 6 · a maintenance re-anchor rewrites the same session's paces;
+        // the trajectory's shape survives it.
+        `UPDATE plan_workouts SET pace_target_s_per_mi = $1,
+                workout_spec = ${preserveProgressionSql('$2')} WHERE id = $3`,
         [paceTargetSPerMi, spec ? JSON.stringify(spec) : null, w.id],
       );
       updated++;

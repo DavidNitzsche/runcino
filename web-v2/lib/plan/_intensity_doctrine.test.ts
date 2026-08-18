@@ -119,9 +119,24 @@ describe('DOCTRINE-TID-1 · easy/hard intensity distribution', () => {
       if (!long) continue;
       const m = String(long.subLabel).match(/(\d+(?:\.\d+)?)mi @ (?:HM|MP|M)\b/);
       expect(m, `half RACE-SPECIFIC long lost its race-pace finish: "${long.subLabel}"`).toBeTruthy();
-      // A quarter of the long is the floor of what still reads as a race-pace
-      // session; the correction has no reason to go anywhere near it here.
-      expect(Number(m![1]) / long.distanceMi).toBeGreaterThan(0.25);
+      // What "still reads as a race-pace session" means is stated by doctrine,
+      // not by a share of the long: `Research/04-workout-vocabulary.md` §4.5
+      // sizes a fast-finish long as "final 2-6 mi at MP or slightly faster".
+      // Two miles is therefore the floor, and it is a stronger claim than the
+      // 25%-of-the-long proxy that stood here — a quarter of a short long is
+      // under two miles and would have passed.
+      //
+      // DAY-SIZE-1 (2026-08-17) · the proxy is what the change moved. With
+      // quality days sized as warm-up + at-pace work + cool-down, this
+      // archetype's threshold session reaches 4 mi at T — the bottom of §5.3's
+      // own 4-8 mi band, which the 22% whole-day share never let it reach — and
+      // the intensity floor gives the difference back out of the long's finish,
+      // which is the give-back order `applyIntensityFloor` documents. The
+      // week's total hard mileage is unchanged to within a tenth (8.8 -> 8.75
+      // on 36 mi); what moved is that it now sits in a real cruise-interval
+      // session instead of being spread across an undersized one and an
+      // oversized long-run finish.
+      expect(Number(m![1])).toBeGreaterThanOrEqual(2);
       checked++;
     }
     expect(checked).toBeGreaterThan(0);

@@ -63,9 +63,9 @@
 import {
   advanceShape,
   assignZone,
+  atPaceSessionCapMi,
   selectLever,
   totalWorkMinutes,
-  AT_PACE_WEEKLY_SHARE_CAP,
   CRUISE_RECOVERY_MIN_PER_WORK_MI,
   INTERVAL_REP_MINUTES,
   LIMITER_LEVERS,
@@ -80,6 +80,7 @@ import {
   type AdaptationVerdict,
 } from '@/lib/adaptation/adaptation-model';
 import { parsePrescription, parseTimeReps } from '@/lib/plan/prescription-parser';
+import { atPaceMiOf, composeQualityDay, floatMi as floatMiOf } from '@/lib/plan/quality-day';
 
 /** Which of Daniels' at-pace cap families a session falls under. */
 export type SessionFamily = 'threshold' | 'interval';
@@ -144,6 +145,14 @@ export interface TrajectoryStep {
   /** True when the week could not afford the trajectory's shape and the
    *  prescription was cut to fit. The trajectory itself is unaffected. */
   clamped: boolean;
+  /**
+   * The mileage the DAY should carry, when the caller asked for the day to be
+   * sized from the session rather than the session cut to fit a day.
+   *
+   * Null under the legacy `dayBudgetMi` contract, where the caller already
+   * knows the day and this module's job was only to fit inside it.
+   */
+  dayMi: number | null;
   zone: ChallengeZone;
   /** Rendered prescription. Round-trips through `parseTimeReps`, so the spec a
    *  runner's watch executes is parsed back out of this exact string. */
@@ -276,9 +285,15 @@ export function seedShapeFrom(
 
 /* ----------------------------------------------------------- affordability */
 
-/** Minutes of at-pace work a week's mileage can carry, per Daniels' share caps. */
+/**
+ * Minutes of at-pace work ONE session on a `weeklyMi` week can carry.
+ *
+ * Both of doctrine's bounds: Daniels' share of weekly mileage, and the session
+ * band §5.1 / §6.1 state in miles. The share alone lets a high-mileage runner
+ * past the top of the band the workout is defined by.
+ */
 export function atPaceCapMinutes(weeklyMi: number, family: SessionFamily, paceSPerMi: number): number {
-  return (weeklyMi * AT_PACE_WEEKLY_SHARE_CAP[family] * paceSPerMi) / 60;
+  return (atPaceSessionCapMi(weeklyMi, family) * paceSPerMi) / 60;
 }
 
 /**
@@ -295,7 +310,19 @@ export function atPaceCapMinutes(weeklyMi: number, family: SessionFamily, paceSP
  * shorten, and never below doctrine's shortest quality repetition.
  */
 export function clampToWeek(shape: WorkShape, weeklyMi: number, family: SessionFamily): WorkShape {
-  const cap = atPaceCapMinutes(weeklyMi, family, shape.paceSPerMi);
+  return clampToAtPaceMinutes(shape, atPaceCapMinutes(weeklyMi, family, shape.paceSPerMi));
+}
+
+/**
+ * The same cut against an explicit ceiling in minutes.
+ *
+ * `clampToWeek` derives its ceiling from Daniels' share of the week, which is
+ * the usual bound. A caller occasionally knows a TIGHTER one — a marathon-pace
+ * long week, where the §4.4 cadence session and a full structured session
+ * together would breach the week's intensity allowance and the structured
+ * session is the one that gives way.
+ */
+export function clampToAtPaceMinutes(shape: WorkShape, cap: number): WorkShape {
   if (!(cap > 0) || totalWorkMinutes(shape) <= cap) return shape;
   let reps = shape.reps;
   while (reps > 1 && reps * shape.repMinutes > cap) reps--;
@@ -394,8 +421,32 @@ export class OverloadTrajectory {
     /** The week's planned mileage, for the at-pace caps. */
     weeklyMi: number;
     /** The mileage the week allocated to THIS quality day. The session's
-     *  warm-up, reps, floats and cool-down have to fit inside it. */
+     *  warm-up, reps, floats and cool-down have to fit inside it.
+     *
+     *  Ignored when `sizeDay` is set — the two are opposite contracts and
+     *  `sizeDay` is the one that stops the day budget being the binding
+     *  constraint on the runner's progression. */
     dayBudgetMi: number;
+    /**
+     * Size the DAY from the session instead of cutting the session to fit the
+     * day.
+     *
+     * The day the runner is asked to run is warm-up + work + floats +
+     * cool-down, and only the middle term is intensity. Handing the trajectory
+     * a whole-day budget charged the easy legs against the hard allowance, so
+     * a week whose Daniels cap permitted 5.6 threshold miles prescribed 3.4 and
+     * two consecutive weeks of earned progression rendered as one session.
+     *
+     * `ceilingMi` remains a hard bound — `layoutWeek` passes the rule that the
+     * long run stays the week's longest run. When it binds the warm-up and
+     * cool-down give way before the work does.
+     */
+    sizeDay?: {
+      ceilingMi: number | null;
+      /** A tighter at-pace ceiling than Daniels' share, in miles, when the
+       *  caller knows one. Null leaves the share cap alone. */
+      atPaceCapMi?: number | null;
+    } | null;
     /** True on a cutback / deload week. Doctrine §2's W4: the trajectory does
      *  not step. The deload is the point of the week. */
     isDeload: boolean;
@@ -480,17 +531,44 @@ export class OverloadTrajectory {
     });
     if (zone === 'PROBE') track.cyclesSinceProbe = 0;
 
-    const afford = clampToDay(
-      clampToWeek({ ...track.shape, zone }, weeklyMi, family),
-      dayBudgetMi,
-      track.shape.recoveryMinutes,
-    );
+    // The week's own at-pace cap always applies — it is Daniels' share of the
+    // mileage the runner is actually running, and a cutback week cuts the
+    // mileage the share is of.
+    let afford = clampToWeek({ ...track.shape, zone }, weeklyMi, family);
+    let dayMi: number | null = null;
+    if (args.sizeDay) {
+      const ceilingMi = args.sizeDay.ceilingMi;
+      const atPaceCapMi = args.sizeDay.atPaceCapMi;
+      if (atPaceCapMi != null && atPaceCapMi >= 0) {
+        afford = clampToAtPaceMinutes(afford, (atPaceCapMi * afford.paceSPerMi) / 60);
+      }
+      const composed = () => composeQualityDay({
+        family,
+        atPaceMi: atPaceMiOf(afford),
+        floatMi: floatMiOf(afford.reps, afford.recoveryMinutes),
+        ceilingMi,
+      });
+      let day = composed();
+      // A ceiling tight enough that the work itself does not fit inside it,
+      // once a minimal warm-up and cool-down are paid for, is the one case
+      // where the session still has to come down. Cutting reps here rather
+      // than leaving the day over its bound is what keeps the rendered label
+      // true of the spec `buildWorkoutSpec` builds from it.
+      if (ceilingMi != null && ceilingMi > 0 && day.dayMi > ceilingMi + 0.05) {
+        afford = clampToDay(afford, ceilingMi, afford.recoveryMinutes);
+        day = composed();
+      }
+      dayMi = Math.min(day.dayMi, ceilingMi != null && ceilingMi > 0 ? ceilingMi : day.dayMi);
+    } else {
+      afford = clampToDay(afford, dayBudgetMi, track.shape.recoveryMinutes);
+    }
     const step: TrajectoryStep = {
       shape: afford,
       lever,
       change,
       held,
       clamped: afford.reps !== track.shape.reps || afford.repMinutes !== track.shape.repMinutes,
+      dayMi,
       zone,
       label: renderShapeLabel(afford, family, track.paceTag),
     };

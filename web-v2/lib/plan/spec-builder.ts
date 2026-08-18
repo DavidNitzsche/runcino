@@ -32,7 +32,7 @@
  *     hardcodes, no carve-outs.
  */
 
-import { parsePrescription, parseTempoShape, parseStrides, parseTimeReps } from './prescription-parser';
+import { parsePrescription, parseTempoShape, parseTempoLeadMi, parseStrides, parseTimeReps } from './prescription-parser';
 // 2026-08-17 · the stored race abort CALLS doctrine now instead of mirroring
 // its numbers. See the contingency-rules block for what "keep in sync" cost.
 import {
@@ -545,8 +545,19 @@ export function buildWorkoutSpec(
       // side"). Established runners (budget>=8) unaffected — floors never bind.
       const wuFloor = Math.max(0.5, Math.min(1.5, budget * 0.3));
       const cdFloor = Math.max(0.5, Math.min(1.0, budget * 0.25));
+      // DAY-SIZE-1 (2026-08-17) · when the composer declared the block size in
+      // the prescription ("5mi continuous wave tempo · ±10 s/mi around T"),
+      // that is the block. The default below is for prescriptions that state no
+      // size at all; running it over a prescription that DOES state one is the
+      // label and the spec deciding the workout independently, which is the
+      // drift this file exists to stop. Still bounded by the day: a declared
+      // block that will not fit inside the budget with its warm-up and
+      // cool-down is trimmed to what will, exactly as the default is.
+      const declaredTempoMi = parsedTempo ? null : parseTempoLeadMi(prescription);
       let tempoDist = parsedTempo?.tempoMi
-        ?? Math.min(Math.max(0.5, budget - wuFloor - cdFloor), Math.max(2, Math.min(7, budget - 3)));
+        ?? (declaredTempoMi != null
+          ? Math.min(declaredTempoMi, Math.max(0.5, budget - wuFloor - cdFloor))
+          : Math.min(Math.max(0.5, budget - wuFloor - cdFloor), Math.max(2, Math.min(7, budget - 3))));
       let wu = parsedTempo?.warmupMi
         ?? Math.max(wuFloor, (budget - tempoDist) / 2);
       let cd = parsedTempo?.cooldownMi ?? Math.max(cdFloor, budget - tempoDist - wu);

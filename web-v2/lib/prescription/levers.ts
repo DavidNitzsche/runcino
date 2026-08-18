@@ -133,12 +133,48 @@ export function totalWorkMinutes(s: WorkShape): number {
 /* -------------------------------------------------------------- doctrine */
 
 /** Daniels' at-pace volume caps as a share of weekly mileage.
- *  `Research/04-workout-vocabulary.md:187` (T), `:227` (I), `:326` (R). */
+ *  `Research/04-workout-vocabulary.md:187` (T), `:227` (I), `:326` (R).
+ *
+ *  These bound ONE session, not the week. The doc states each of them in a
+ *  workout's own field table — §5.3's cell reads "Total volume at pace | 4-8 mi
+ *  (Daniels: cap T-pace at 10% of weekly mileage)", which is the volume of that
+ *  cruise-interval session — so a week carrying a tempo and a cruise session
+ *  does not halve either one. */
 export const AT_PACE_WEEKLY_SHARE_CAP = {
   threshold: 0.10,
   interval: 0.08,
   repetition: 0.05,
 } as const;
+
+/**
+ * The at-pace volume ONE session carries, in miles, straight out of the
+ * doctrine's family-overview tables: §5.1 gives cruise intervals "4-8 mi" and
+ * §6.1 gives mile repeats "3-6 mi".
+ *
+ * The share cap and this band answer different questions and BOTH bind. The
+ * share cap asks what the runner's weekly volume can absorb — it is the number
+ * that stops a 30 mi/wk runner being given a 5-mile tempo. This band asks what
+ * the session IS: past eight miles at threshold the workout has stopped being
+ * cruise intervals whoever is running it, and a 100 mi/wk runner is not owed a
+ * ten-mile T session merely because ten is under their ten percent.
+ *
+ * `min` is not a floor. A small week buys a small session; doctrine's lower
+ * bound describes the runner who can afford the whole dose, and flooring a 20
+ * mi/wk runner at four threshold miles would be the share cap read backwards.
+ */
+export const AT_PACE_SESSION_MI = {
+  threshold: { min: 4, max: 8 },
+  interval: { min: 3, max: 6 },
+} as const;
+
+/** The at-pace mileage one session of `family` may carry on a `weeklyMi` week:
+ *  the share cap and the session band, whichever binds first. */
+export function atPaceSessionCapMi(
+  weeklyMi: number,
+  family: keyof typeof AT_PACE_SESSION_MI,
+): number {
+  return Math.min(weeklyMi * AT_PACE_WEEKLY_SHARE_CAP[family], AT_PACE_SESSION_MI[family].max);
+}
 
 /** VO2 repetitions run 3-5 minutes. `Research/04-workout-vocabulary.md:227`. */
 export const INTERVAL_REP_MINUTES = { min: 3, max: 5 } as const;
@@ -333,7 +369,14 @@ export function advanceShape(args: {
   const step = Math.max(1, Math.round(2 * stepMultiplier));
 
   // The volume ceiling in minutes, from the mileage cap and the work pace.
-  const capMi = weeklyMi * AT_PACE_WEEKLY_SHARE_CAP[family];
+  // Both doctrine bounds apply: the share of the week the runner can absorb,
+  // and the session band that says what the workout is. Without the second, the
+  // ladder walks a high-mileage runner to a twelve-mile "cruise interval"
+  // session — inside their ten percent, and four miles past anything §5.1
+  // describes.
+  const capMi = family === 'repetition'
+    ? weeklyMi * AT_PACE_WEEKLY_SHARE_CAP.repetition
+    : atPaceSessionCapMi(weeklyMi, family);
   const capMinutes = (capMi * shape.paceSPerMi) / 60;
 
   switch (lever) {
