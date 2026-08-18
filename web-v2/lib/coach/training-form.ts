@@ -246,9 +246,20 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
     : 0;
 
   // ACWR · acute 7d sum / chronic 28d sum-per-day-equivalent.
+  // 2026-08-17 · COLD-2 · the chronic leg divides by a FIXED 4 weeks. For a
+  // runner whose history is shorter than the window, the uncovered days enter
+  // the denominator as real zeroes and deflate the baseline — a runner ten days
+  // in reads a chronic average well under their actual load, so a normal week
+  // presents as an acute spike. ACWR needs a full 28 days of observable history
+  // to mean anything; below that the honest answer is null, not a number.
+  // (ARCHITECTURE §5 · absence of evidence is not evidence of a problem.)
+  const firstMileageIdx = rows.findIndex((r) => (Number(r.mi) || 0) > 0);
+  const observedDays = firstMileageIdx < 0 ? 0 : rows.length - firstMileageIdx;
   const acute7 = rows.slice(-7).reduce((s, r) => s + (Number(r.mi) || 0), 0);
   const chronic28 = rows.slice(-28).reduce((s, r) => s + (Number(r.mi) || 0), 0) / 4;
-  const acwr = chronic28 > 0 ? Number((acute7 / chronic28).toFixed(2)) : null;
+  const acwr = (chronic28 > 0 && observedDays >= 28)
+    ? Number((acute7 / chronic28).toFixed(2))
+    : null;
 
   return {
     ctl: ctlScaled,

@@ -130,6 +130,15 @@ const STALENESS_WEEKS_THRESHOLD = 8;
  *  internally (recentWeeklyMileage = last 28 days). */
 const VOLUME_WINDOW_DAYS = 28;
 
+/** COLD-2 (2026-08-17) · a plan cannot have DRIFTED from a baseline it has not
+ *  yet had time to be measured against. Volume drift compares a 28-day trailing
+ *  average to the plan's authored `weeklyAvg4w`; inside the first fortnight the
+ *  trailing window is still mostly pre-plan history, so the comparison measures
+ *  the onboarding transient rather than drift. `checkStaleness` has an age guard
+ *  but it only fires in the OTHER direction (too old), so nothing guarded the
+ *  too-young end — and a young-plan volume signal auto-rebuilds without asking. */
+const VOLUME_DRIFT_MIN_PLAN_AGE_DAYS = 14;
+
 
 // ─── Top-level entry ────────────────────────────────────────────────────
 
@@ -229,6 +238,13 @@ async function checkVolumeDrift(
 ): Promise<DriftSignal | null> {
   const authoredAvg = Number((plan.authored_state as { weeklyAvg4w?: number }).weeklyAvg4w);
   if (!isFinite(authoredAvg) || authoredAvg <= 0) return null;
+
+  // COLD-2 · plan-age grace. See VOLUME_DRIFT_MIN_PLAN_AGE_DAYS.
+  const authoredMs = Date.parse(plan.authored_iso);
+  if (Number.isFinite(authoredMs)) {
+    const ageDays = (Date.now() - authoredMs) / 86400000;
+    if (ageDays < VOLUME_DRIFT_MIN_PLAN_AGE_DAYS) return null;
+  }
 
   const currentAvg = await loadCurrentWeeklyMileage(userUuid);
   if (currentAvg == null || currentAvg <= 0) return null;
@@ -351,9 +367,13 @@ async function loadCurrentWeeklyMileage(userUuid: string): Promise<number | null
   // which uses smart-dedup (date + 0.1-mi distance bucket). Old
   // MAX-per-day was undercounting David by ~3 mi/wk on weeks with
   // legitimate same-day doubles.
-  const { recentMileageMi } = await import('@/lib/runs/volume');
-  const total = await recentMileageMi(userUuid, VOLUME_WINDOW_DAYS);
-  return total > 0 ? Math.round((total / 4) * 10) / 10 : null;
+  // 2026-08-17 · COLD-2 · the fixed `/ 4` divisor is now `/ coveredWeeks`, and
+  // returns null under a week of observable history. The old form read a
+  // perfectly-executed first week as a 75% volume collapse, which cleared the
+  // 40% threshold below and fired an unconfirmed auto-rebuild.
+  const { recentMileageWindow, weeklyAvgFromWindow } = await import('@/lib/runs/volume');
+  const { totalMi, coveredDays } = await recentMileageWindow(userUuid, VOLUME_WINDOW_DAYS);
+  return weeklyAvgFromWindow(totalMi, coveredDays, VOLUME_WINDOW_DAYS);
 }
 
 /**

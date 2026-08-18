@@ -30,9 +30,17 @@ describe('VAR-01 · experience clamps the tier', () => {
     // No goal → defaults off experience, not a hardcoded intermediate.
     expect(classifyGoalTier(null, 26.2, 'beginner')).toBe('developing');
     expect(classifyGoalTier(null, 26.2, 'advanced')).toBe('advanced');
-    // No level → unchanged legacy behavior (pace-only).
-    expect(classifyGoalTier(410, 26.2)).toBe('advanced');
+    // COLD-1 (2026-08-17) · this line used to assert "no level → unchanged legacy
+    // behavior (pace-only)" and expect 'advanced'. That legacy behavior WAS the
+    // bug: `profile.experience_level` is NULL on production accounts, so a goal
+    // time somebody typed picked the tier by itself — a sub-3 marathon goal on an
+    // account with zero runs authorized the advanced band (65-90 mi/wk, 22-24 mi
+    // long runs). An unstated level is unknown capacity, not permission.
+    // See _coldstart_doctrine.test.ts § COLD-1.
+    expect(classifyGoalTier(410, 26.2)).toBe('intermediate');
     expect(classifyGoalTier(null, 26.2)).toBe('intermediate');
+    // ...and it is liftable, but only by DEMONSTRATED pace, never by the goal.
+    expect(classifyGoalTier(410, 26.2, null, 405)).toBe('advanced');
   });
 
   it('experience moves the composed weekly peak (soft-goal marathon)', () => {

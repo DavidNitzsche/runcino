@@ -13,9 +13,14 @@ import { buildSimPlan } from './sim-inputs';
 import { validateComposedPlan, PlanValidationError } from './validate';
 import { classifyGoalTier, TIER_TARGETS, distanceCategoryOf, BUILD_WINDOW_WEEKS } from './goal-tiers';
 import { recentWeeklyMiFromBucket, recentLongMiFromBucket, SIM_DISTANCE_MI, type SimDistance } from './sim-constants';
+import { predictRaceTime } from '@/lib/training/vdot';
 
 const DISTANCES: SimDistance[] = ['5k', '10k', 'half', 'marathon', '50k', '100k'];
-const EXPERIENCE = ['beginner', 'intermediate', 'advanced', 'advanced_plus'];
+// COLD-1 (2026-08-17) · `null` IS the production state — `profile.experience_level` is
+// NULL on real accounts and the sweep could not see it, so the rung where a typed goal
+// time picked the tier by itself was never graded. Keep it first: it is the default a
+// new signup lands on.
+const EXPERIENCE = [null, 'beginner', 'intermediate', 'advanced', 'advanced_plus'];
 const FREQ = [3, 4, 5, 6];
 // CC2-2 (2026-06-23) · bucket 0 = true-zero base. The refuse-vs-plan boundary (where BRK-2/CC2-1 live)
 // was untested — lowest fed was recentWeeklyMiFromBucket(5)=10. Split-graded in grade().
@@ -26,7 +31,7 @@ const GOAL_SEC: Record<SimDistance, number> = { '5k': 1350, '10k': 2700, half: 6
 const catOf: Record<SimDistance, '5k' | '10k' | 'hm' | 'm' | 'ultra'> = { '5k': '5k', '10k': '10k', half: 'hm', marathon: 'm', '50k': 'ultra', '100k': 'ultra' };
 const WEEKS: Record<SimDistance, number> = { '5k': 10, '10k': 12, half: 14, marathon: 18, '50k': 22, '100k': 24 };
 
-type Arc = { goalMode: 'goal' | 'justRun' | 'race'; distance: SimDistance; experienceLevel: string; weeklyFrequency: number; weeklyMileageBucket: number; longestRunBucket: string; goalTimeSec: number | null; planWeeks: number; raceDateISO?: string; availableDays?: string[]; bestRecentVdotOverride?: number };
+type Arc = { goalMode: 'goal' | 'justRun' | 'race'; distance: SimDistance; experienceLevel: string | null; weeklyFrequency: number; weeklyMileageBucket: number; longestRunBucket: string; goalTimeSec: number | null; planWeeks: number; raceDateISO?: string; availableDays?: string[]; bestRecentVdotOverride?: number };
 
 function* matrix(): Generator<Arc> {
   for (const distance of DISTANCES)
@@ -100,7 +105,13 @@ function grade(a: Arc) {
   }
 
   const cat = distanceCategoryOf(built.raceDistanceMi); // engine's actual distance (justRun → hm reference)
-  const tier = classifyGoalTier(a.goalTimeSec ? Math.round(a.goalTimeSec / built.raceDistanceMi) : null, built.raceDistanceMi, a.experienceLevel as any);
+  // COLD-1 · grade against the SAME evidence the engine saw. `bestRecentVdotOverride` is
+  // the only measured-fitness signal in the matrix; without it a NULL-level archetype is
+  // capped at intermediate, which is exactly the rung this sweep was blind to.
+  const demonstratedPaceSec = built.derived.bestRecentVdot != null
+    ? (() => { const t = predictRaceTime(built.derived.bestRecentVdot, built.raceDistanceMi); return t != null ? Math.round(t / built.raceDistanceMi) : null; })()
+    : null;
+  const tier = classifyGoalTier(a.goalTimeSec ? Math.round(a.goalTimeSec / built.raceDistanceMi) : null, built.raceDistanceMi, a.experienceLevel as any, demonstratedPaceSec);
   const band = TIER_TARGETS[cat][tier];
   const recentLong = built.derived.recentLongMi;       // ENGINE-derived (post coherence-clamp)
   const recentWeekly = built.derived.recentWeeklyMi;

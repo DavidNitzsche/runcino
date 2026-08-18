@@ -63,7 +63,8 @@
  */
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { getCanonicalRunIds, isoDaysBefore, mileageByDay } from '@/lib/runs/volume';
+import { getCanonicalRunIds, isoDaysBefore, mileageByDay, observableCoverageDays, weeklyAvgFromWindow } from '@/lib/runs/volume';
+import { paceBlendAnchorIsProvisional } from './anchor-provenance';
 import type { ExperienceLevel } from '@/lib/coach/profile-state';
 import { logSealSkip } from './seal';
 import { preserveProgressionSql } from './progression-spec';
@@ -2445,10 +2446,20 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!anchorRow) return null;
   const st = (anchorRow.authored_state ?? {}) as Record<string, any>;
+  // COLD-3 (2026-08-17) · READER 1 · a PROVISIONAL anchor is not fitness, so it
+  // cannot be regressed FROM. `pace_blend.season_anchor_vdot` may be
+  // conservativeVdotFromMileage's reading of a weekly-mileage self-report — for a
+  // 30 mi/wk cold-start signup, VDOT 40. Around day 8 this detector compared that
+  // invented 40 against the runner's first genuinely-measured effort and reported
+  // a fitness regression: "you have lost 6 points of fitness" to somebody who had
+  // simply never been measured before. Nothing was lost; nothing had been
+  // established. Skip the rung and fall through to `derived_from.bestRecentVdot`,
+  // which is null unless something was actually measured.
+  const anchorProvisional = paceBlendAnchorIsProvisional(st.pace_blend);
   const oldVdot: number | null =
     (anchorRow.reviewed != null ? Number(anchorRow.reviewed) : null)
     ?? (st.pace_recompute?.vdot != null ? Number(st.pace_recompute.vdot) : null)
-    ?? (st.pace_blend?.season_anchor_vdot != null ? Number(st.pace_blend.season_anchor_vdot) : null)
+    ?? (!anchorProvisional && st.pace_blend?.season_anchor_vdot != null ? Number(st.pace_blend.season_anchor_vdot) : null)
     ?? (st.derived_from?.bestRecentVdot != null ? Number(st.derived_from.bestRecentVdot) : null);
   if (oldVdot == null || !Number.isFinite(oldVdot)) return null;
 
@@ -2916,7 +2927,14 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
           const preByDay = await mileageByDay(userId, isoDaysBefore(lastRunISO, 27), lastRunISO);
           let preMi = 0;
           for (const [, v] of preByDay) preMi += v.mi;
-          const preAbsenceWeeklyMi = preMi / 4;
+          // 2026-08-17 · COLD-2 · the fixed `/ 4` deflates the comeback ceiling for a
+          // runner whose whole history is shorter than the 28-day pre-absence window
+          // (the uncovered days enter the divisor as real zeroes). Divide by the days
+          // actually observable, and hand buildReRampActions a 0 when there is under a
+          // week of them — its own `< 5 mi` guard then skips the re-ramp rather than
+          // rescaling the runway against a number we invented.
+          const preCoveredDays = await observableCoverageDays(userId, lastRunISO, 28);
+          const preAbsenceWeeklyMi = weeklyAvgFromWindow(preMi, preCoveredDays, 28) ?? 0;
           const futureRows = (await pool.query<{
             id: string; date: string; type: string; distance_mi: string | null;
             in_race_week: boolean; week_start_iso: string | null;

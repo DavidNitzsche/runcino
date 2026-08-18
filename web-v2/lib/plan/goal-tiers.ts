@@ -553,45 +553,94 @@ export type ExperienceLevelInput = 'beginner' | 'intermediate' | 'advanced' | 'a
 
 const TIER_ORD: Record<GoalTier, number> = { developing: 0, intermediate: 1, advanced: 2, elite: 3 };
 
+/**
+ * The pace→tier table itself, with no experience clamp applied. Extracted so the
+ * SAME thresholds grade a GOAL pace (ambition) and a DEMONSTRATED pace (capacity)
+ * — the clamp below compares the two, and a comparison across two different
+ * tables would be meaningless.
+ */
+function tierFromPace(paceSec: number, cat: DistCategory): GoalTier {
+  switch (cat) {
+    case '5k': // sub-17:00 elite · sub-18:30 advanced · sub-24:30 intermediate
+      return paceSec <= 330 ? 'elite' : paceSec <= 360 ? 'advanced' : paceSec <= 480 ? 'intermediate' : 'developing';
+    case '10k': // sub-35:40 elite · sub-40:24 advanced · sub-52:48 intermediate
+      return paceSec <= 345 ? 'elite' : paceSec <= 390 ? 'advanced' : paceSec <= 510 ? 'intermediate' : 'developing';
+    case 'hm': // sub-1:18:35 elite · sub-1:31:42 advanced (covers 1:30) · sub-2:01:12 intermediate
+      return paceSec <= 360 ? 'elite' : paceSec <= 420 ? 'advanced' : paceSec <= 555 ? 'intermediate' : 'developing';
+    case 'm': // sub-2:37:12 elite · sub-3:03:24 advanced (covers sub-3) · sub-4:02:24 intermediate
+      return paceSec <= 360 ? 'elite' : paceSec <= 420 ? 'advanced' : paceSec <= 555 ? 'intermediate' : 'developing';
+    case 'ultra': // ~30s/mi slower bands than marathon
+      return paceSec <= 420 ? 'elite' : paceSec <= 480 ? 'advanced' : paceSec <= 600 ? 'intermediate' : 'developing';
+  }
+}
+
+/**
+ * COLD-1 (2026-08-17) · the tier ceiling an UNSTATED experience level earns.
+ *
+ * `profile.experience_level` is NULL for real production accounts, and the
+ * clamp below used to pass NULL straight through — so a goal TIME somebody
+ * typed picked the tier by itself. A marathon goal at 6:40/mi off an account
+ * with zero runs classified `advanced`: peak band 65-90 mi/wk, 22-24 mi long
+ * runs, ramped from a self-reported 30 mi/wk over 13 weeks. Nothing in that
+ * chain was demonstrated.
+ *
+ * `intermediate` was unclamped for the same reason and could reach `elite`.
+ *
+ * Per Design/adaptive-progression-engine.md ("Fitness must be demonstrated")
+ * an unstated level is unknown capacity, not permission. It is capped here,
+ * and lifted only by `demonstratedPaceSec` — an equivalent race pace the
+ * caller derived from a MEASURED VDOT (races / qualifying runs), never from
+ * mileage self-report or from the goal.
+ */
+const UNSTATED_LEVEL_TIER_CEILING: GoalTier = 'intermediate';
+/** An explicitly-intermediate runner has a stated base, but not an elite one. */
+const INTERMEDIATE_LEVEL_TIER_CEILING: GoalTier = 'advanced';
+
 export function classifyGoalTier(
   goalPaceSec: number | null | undefined,
   raceDistanceMi: number,
   level?: ExperienceLevelInput,
+  /**
+   * COLD-1 · the runner's DEMONSTRATED equivalent race pace at this distance
+   * (s/mi), predicted from a measured VDOT by the caller. Lifts the
+   * unstated-level ceiling to whatever the evidence itself grades at — and
+   * nothing further. Omit (or pass null) when no measured fitness exists;
+   * the ceiling then holds, which is the cold-start case.
+   */
+  demonstratedPaceSec?: number | null,
 ): GoalTier {
   // VAR-01 · experience CLAMPS the pace-derived tier. Research/22 has distinct per-experience
   // templates (5K Beginner 12-15mi/3day vs Advanced 40-70mi/6-7day; M Beginner 30-35mi/20-long vs
   // Advanced 65-90mi/22-24-long). The tier reflects training CAPACITY (experience), not only goal
   // AMBITION (pace): an advanced runner with a soft goal still has the base for advanced volume; a
   // beginner with an aggressive goal can't absorb advanced bands.
+  const cat = distanceCategoryOf(raceDistanceMi);
+
+  // COLD-1 · the ceiling an unstated level earns, possibly lifted by evidence.
+  const demonstratedTier =
+    demonstratedPaceSec != null && Number.isFinite(demonstratedPaceSec) && demonstratedPaceSec > 0
+      ? tierFromPace(demonstratedPaceSec, cat)
+      : null;
+  const unstatedCeiling: GoalTier =
+    demonstratedTier != null && TIER_ORD[demonstratedTier] > TIER_ORD[UNSTATED_LEVEL_TIER_CEILING]
+      ? demonstratedTier
+      : UNSTATED_LEVEL_TIER_CEILING;
+
   if (goalPaceSec == null || !Number.isFinite(goalPaceSec) || goalPaceSec <= 0) {
     // No goal yet → default off experience, not a hardcoded 'intermediate'.
     return level === 'beginner' ? 'developing'
       : (level === 'advanced' || level === 'advanced_plus') ? 'advanced'
-      : 'intermediate';
+      : unstatedCeiling === 'intermediate' ? 'intermediate' : unstatedCeiling;
   }
-  const cat = distanceCategoryOf(raceDistanceMi);
-  let tier: GoalTier = 'intermediate';
-  switch (cat) {
-    case '5k': // sub-17:00 elite · sub-18:30 advanced · sub-24:30 intermediate
-      tier = goalPaceSec <= 330 ? 'elite' : goalPaceSec <= 360 ? 'advanced' : goalPaceSec <= 480 ? 'intermediate' : 'developing';
-      break;
-    case '10k': // sub-35:40 elite · sub-40:24 advanced · sub-52:48 intermediate
-      tier = goalPaceSec <= 345 ? 'elite' : goalPaceSec <= 390 ? 'advanced' : goalPaceSec <= 510 ? 'intermediate' : 'developing';
-      break;
-    case 'hm': // sub-1:18:35 elite · sub-1:31:42 advanced (covers 1:30) · sub-2:01:12 intermediate
-      tier = goalPaceSec <= 360 ? 'elite' : goalPaceSec <= 420 ? 'advanced' : goalPaceSec <= 555 ? 'intermediate' : 'developing';
-      break;
-    case 'm': // sub-2:37:12 elite · sub-3:03:24 advanced (covers sub-3) · sub-4:02:24 intermediate
-      tier = goalPaceSec <= 360 ? 'elite' : goalPaceSec <= 420 ? 'advanced' : goalPaceSec <= 555 ? 'intermediate' : 'developing';
-      break;
-    case 'ultra': // ~30s/mi slower bands than marathon
-      tier = goalPaceSec <= 420 ? 'elite' : goalPaceSec <= 480 ? 'advanced' : goalPaceSec <= 600 ? 'intermediate' : 'developing';
-      break;
-  }
+  const tier = tierFromPace(goalPaceSec, cat);
   // Clamp to experience capacity: advanced(+) never below advanced, beginner never above intermediate.
   if (level === 'advanced' || level === 'advanced_plus') return TIER_ORD[tier] < TIER_ORD.advanced ? 'advanced' : tier;
   if (level === 'beginner') return TIER_ORD[tier] > TIER_ORD.intermediate ? 'intermediate' : tier;
-  return tier;
+  // COLD-1 · the two rungs that used to fall through unclamped.
+  if (level === 'intermediate') {
+    return TIER_ORD[tier] > TIER_ORD[INTERMEDIATE_LEVEL_TIER_CEILING] ? INTERMEDIATE_LEVEL_TIER_CEILING : tier;
+  }
+  return TIER_ORD[tier] > TIER_ORD[unstatedCeiling] ? unstatedCeiling : tier;
 }
 
 /**
@@ -616,8 +665,10 @@ export function lookupTierTarget(
   goalPaceSec: number | null | undefined,
   raceDistanceMi: number,
   level?: ExperienceLevelInput,
+  /** COLD-1 · demonstrated equivalent race pace (s/mi) from a MEASURED VDOT. */
+  demonstratedPaceSec?: number | null,
 ): { tier: GoalTier; target: TierTarget } {
-  const tier = classifyGoalTier(goalPaceSec, raceDistanceMi, level);
+  const tier = classifyGoalTier(goalPaceSec, raceDistanceMi, level, demonstratedPaceSec);
   const cat = distanceCategoryOf(raceDistanceMi);
   return { tier, target: TIER_TARGETS[cat][tier] };
 }

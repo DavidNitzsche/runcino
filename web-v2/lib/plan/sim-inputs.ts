@@ -247,7 +247,14 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     };
     composed = composePlan(input);
   } else {
-    const tier = lookupTierTarget(goalPaceSec, raceDistanceMi, level).tier; // VAR-01 · experience clamps the tier
+    // COLD-1 · demonstrated equivalent race pace from a MEASURED VDOT only (mirrors generatePlan).
+    const simDemonstrated = bestRecentVdot != null
+      ? (() => {
+          const t = predictRaceTime(bestRecentVdot, raceDistanceMi);
+          return t != null ? Math.round(t / raceDistanceMi) : null;
+        })()
+      : null;
+    const tier = lookupTierTarget(goalPaceSec, raceDistanceMi, level, simDemonstrated).tier; // VAR-01 + COLD-1
     if (mode !== 'recovery' && sim.goalMode === 'race') {
       nextRace = { slug: 'sim-race', name: 'Goal race', date: raceDateISO, distanceMi: raceDistanceMi, goalPaceSec };
     }

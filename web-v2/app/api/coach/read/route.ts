@@ -36,6 +36,8 @@ import { resolveFitness } from '@/lib/fitness/fitness-model';
 import { readAdaptation } from '@/lib/adaptation/load';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
 import { recommendFromAdaptation, renderShort } from '@/lib/coach/recommendation';
+import { pool } from '@/lib/db/pool';
+import { paceBlendAnchorIsProvisional } from '@/lib/plan/anchor-provenance';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +58,7 @@ export async function GET(req: NextRequest) {
   const userId = auth;
   const todayISO = await runnerToday(userId);
 
-  const [fitness, adaptation, goalGap] = await Promise.all([
+  const [fitness, adaptation, goalGap, goalRealism] = await Promise.all([
     quiet('fitness', async () => {
       const inputs = await loadVdotInputs(userId, todayISO);
       const { best, considered } = bestRecentVdot(
@@ -69,6 +71,47 @@ export async function GET(req: NextRequest) {
     }),
     quiet('adaptation', () => readAdaptation(userId)),
     quiet('goal gap', () => computeGoalGap(userId)),
+    // COLD-3 (2026-08-17) · the active plan's goal-realism verdict. composePlan
+    // has computed and persisted this since 2026-06 and NOTHING read it — grep
+    // returned the write and the type, no consumer. It is the one honest thing
+    // the engine says about an over-ambitious goal, so it belongs on the read
+    // every surface already consumes.
+    quiet('goal realism', async () => {
+      const row = (await pool.query<{
+        realism: Record<string, unknown> | null;
+        blend: Record<string, unknown> | null;
+        measured_vdot: string | null;
+      }>(
+        `SELECT authored_state->'goal_realism' AS realism,
+                authored_state->'pace_blend'   AS blend,
+                authored_state->'derived_from'->>'bestRecentVdot' AS measured_vdot
+           FROM training_plans
+          WHERE user_uuid = $1 AND archived_iso IS NULL
+          ORDER BY authored_iso DESC LIMIT 1`,
+        [userId],
+      )).rows[0];
+      if (!row?.realism) return null;
+      const r = row.realism as Record<string, unknown>;
+      // Plans authored BEFORE the provenance landed carry neither `assessable`
+      // nor a marked `pace_blend`, and both live plans are in that state. Rather
+      // than defaulting them to "assessable" — the assumption that produced the
+      // bug — fall back to the Rule 10 transparency envelope, which records
+      // `derived_from.bestRecentVdot` and is null exactly when nothing was
+      // measured. This makes an already-persisted plan read honestly with no
+      // backfill.
+      const nothingMeasured = row.measured_vdot == null;
+      const assessable = typeof r.assessable === 'boolean'
+        ? r.assessable
+        : !(paceBlendAnchorIsProvisional(row.blend) || nothingMeasured);
+      return {
+        assessable,
+        flag: assessable === true && r.flag === true,
+        basis: (r.basis as string | undefined)
+          ?? (paceBlendAnchorIsProvisional(row.blend) || nothingMeasured ? 'provisional_mileage' : 'measured_vdot'),
+        goalVdot: r.goalVdot != null ? Number(r.goalVdot) : null,
+        estimatedCurrentVdot: assessable && r.estimatedCurrentVdot != null ? Number(r.estimatedCurrentVdot) : null,
+      };
+    }),
   ]);
 
   const recommendation = adaptation ? recommendFromAdaptation(adaptation) : null;
@@ -132,5 +175,11 @@ export async function GET(req: NextRequest) {
           whatClosesIt: goalGap.whatClosesIt,
         }
       : null,
+
+    // COLD-3 · is the entered goal realistic against demonstrated fitness, and
+    // CAN we even say? `assessable: false` means the plan's fitness anchor was a
+    // mileage self-report, not a measurement — the guard's verdict is unavailable
+    // rather than negative, and a surface must not render it as "goal looks fine."
+    goalRealism: goalRealism ?? null,
   });
 }

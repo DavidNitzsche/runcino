@@ -153,12 +153,96 @@ export async function recentMileageMi(
 }
 
 /**
+ * COLD-2 (2026-08-17) · minimum OBSERVABLE history before a weekly average
+ * means anything. This is a data-sufficiency rule, not a physiological one:
+ * below one full week there is no week to average.
+ */
+export const MIN_COVERAGE_DAYS = 7;
+
+/**
+ * COLD-2 · how many of the last `windowDays` this account could possibly have
+ * been running in — today minus the FIRST run we have ever seen, capped at the
+ * window. Zero for an account with no runs at all.
+ *
+ * The distinction that matters: a runner who has been with us for a year and
+ * ran nothing this month has full coverage and a real zero. A runner three days
+ * old who ran every one of those days has three days of coverage and no
+ * measurable weekly volume yet. Dividing both by a fixed 4 makes the second one
+ * look like a collapse.
+ */
+export async function observableCoverageDays(
+  userUuid: string,
+  toISO: string,
+  windowDays: number,
+): Promise<number> {
+  const row = (await pool.query<{ first: string | null }>(
+    `SELECT MIN(COALESCE(data->>'date', LEFT(data->>'startLocal', 10))) AS first
+       FROM runs
+      WHERE user_uuid = $1
+        AND ${CANONICAL_ROW_SQL}`,
+    [userUuid],
+  ).catch(() => ({ rows: [] as { first: string | null }[] }))).rows[0];
+  const firstISO = row?.first ?? null;
+  if (!firstISO) return 0;
+  const days = Math.floor((Date.parse(toISO + 'T12:00:00Z') - Date.parse(firstISO + 'T12:00:00Z')) / 86400000) + 1;
+  if (!Number.isFinite(days) || days <= 0) return 0;
+  return Math.min(windowDays, days);
+}
+
+/**
+ * COLD-2 · miles/week from a window total and the window's real coverage.
+ *
+ * Returns null — "we cannot say yet" — below `MIN_COVERAGE_DAYS`, rather than a
+ * number deflated by the uncovered remainder. A runner one perfect week into
+ * their first plan used to read `30 / 4 = 7.5 mi/wk`, a 75% collapse against a
+ * 30 mi/wk authored plan, which is past the drift monitor's 40% trigger and
+ * fires an unconfirmed auto-rebuild that re-authors the plan at the deflated
+ * base. Three days in, the same runner read one ninth of their real volume.
+ *
+ * Above `MIN_COVERAGE_DAYS` the divisor is the covered weeks, so a full 28-day
+ * window is byte-identical to the old `/ 4`.
+ */
+export function weeklyAvgFromWindow(
+  totalMi: number,
+  coveredDays: number,
+  windowDays: number = 28,
+): number | null {
+  if (!(totalMi > 0)) return null;
+  const covered = Math.min(coveredDays, windowDays);
+  if (covered < MIN_COVERAGE_DAYS) return null;
+  return Math.round((totalMi / (covered / 7)) * 10) / 10;
+}
+
+/**
+ * Total miles in the last `windowDays` AND how much of that window the account
+ * could have been running in. The pair callers need to compute an honest weekly
+ * average · see `weeklyAvgFromWindow`.
+ */
+export async function recentMileageWindow(
+  userUuid: string,
+  windowDays: number = 28,
+): Promise<{ totalMi: number; coveredDays: number }> {
+  const today = await runnerToday(userUuid);
+  const fromISO = new Date(Date.parse(today + 'T12:00:00Z') - windowDays * 86400000)
+    .toISOString().slice(0, 10);
+  const byDay = await mileageByDay(userUuid, fromISO, today).catch(() => new Map());
+  let total = 0;
+  for (const { mi } of byDay.values()) total += mi;
+  return {
+    totalMi: Math.round(total * 10) / 10,
+    coveredDays: await observableCoverageDays(userUuid, today, windowDays),
+  };
+}
+
+/**
  * Weekly average (mi/wk) over the last 4 weeks · rounded to 0.1 mi.
- * Null when total is zero (cold-start). Used by generate / drift-monitor / adapt.
+ * Null when total is zero (cold-start) OR when the account has under a week of
+ * observable history (COLD-2 · the average would be a fabricated collapse).
+ * Used by generate / drift-monitor / adapt.
  */
 export async function recentWeeklyMileageMi(
   userUuid: string,
 ): Promise<number | null> {
-  const total = await recentMileageMi(userUuid, 28);
-  return total > 0 ? Math.round((total / 4) * 10) / 10 : null;
+  const { totalMi, coveredDays } = await recentMileageWindow(userUuid, 28);
+  return weeklyAvgFromWindow(totalMi, coveredDays, 28);
 }

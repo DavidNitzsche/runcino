@@ -36,6 +36,7 @@ import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, BUILD_WINDOW_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING } from './goal-tiers';
+import { type AnchorSource, isProvisionalAnchor, paceBlendAnchorIsProvisional } from './anchor-provenance';
 import { isBaseBuildingPlan } from './plan-templates';
 import { distanceMiFromLabel } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
@@ -3252,6 +3253,11 @@ export interface ComposePlanInput {
    *  time). null/undefined → this authoring IS the season start and its
    *  own estimatedCurrentVdot becomes the anchor. */
   seasonAnchorVdot?: number | null;
+  /** COLD-3 (2026-08-17) · provenance of an INHERITED `seasonAnchorVdot`. A
+   *  rebuild may only carry forward an anchor that was itself measured; an
+   *  inherited provisional is a fabrication compounding across rebuilds.
+   *  Undefined when no anchor is inherited. */
+  seasonAnchorSource?: AnchorSource;
 }
 
 export interface ComposedWeek {
@@ -3311,10 +3317,23 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // 2026-06-02 · tier targets drive volume + long-run sizing.
   // Sourced from Research/22 via lookupTierTarget. Classification
   // uses goalPaceSec; falls back to intermediate tier when no goal.
+  // COLD-1 (2026-08-17) · the DEMONSTRATED equivalent race pace, from a MEASURED
+  // VDOT only. `bestRecentVdot` is evidence-only (races + qualifying runs); it is
+  // null for a runner the app has never seen take a step, and deliberately NOT
+  // backfilled here with conservativeVdotFromMileage — a mileage self-report is
+  // not a demonstrated capacity, and feeding it in is exactly how a typed goal
+  // time used to authorize advanced-tier volume off zero evidence.
+  const demonstratedPaceSec = input.bestRecentVdot != null
+    ? (() => {
+        const t = predictRaceTime(input.bestRecentVdot, input.raceDistanceMi);
+        return t != null ? Math.round(t / input.raceDistanceMi) : null;
+      })()
+    : null;
   const { tier, target: baseTierTarget } = lookupTierTarget(
     input.goalPaceSec,
     input.raceDistanceMi,
     input.level, // VAR-01 · experience clamps the pace-derived tier
+    demonstratedPaceSec, // COLD-1 · an unstated level is lifted only by evidence
   );
 
   // 2026-06-03 · Rule 11 · horizon-aware long-run dials.
@@ -3330,7 +3349,13 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     let bestShare = baseTierTarget.longRunShare;
     let bestRace: { slug: string; name: string; date: string; distanceMi: number } | null = null;
     for (const h of horizon) {
-      const { target: ht } = lookupTierTarget(h.goalPaceSec, h.distanceMi, input.level); // VAR-01
+      const hDemonstrated = input.bestRecentVdot != null
+        ? (() => {
+            const t = predictRaceTime(input.bestRecentVdot, h.distanceMi);
+            return t != null ? Math.round(t / h.distanceMi) : null;
+          })()
+        : null;
+      const { target: ht } = lookupTierTarget(h.goalPaceSec, h.distanceMi, input.level, hDemonstrated); // VAR-01 + COLD-1
       // Only LARGER bands count · we extend up, never contract down.
       if (ht.peakLongMiBand[1] > bestCap || ht.longRunShare > bestShare) {
         if (ht.peakLongMiBand[1] > bestCap) bestCap = ht.peakLongMiBand[1];
@@ -3428,6 +3453,21 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   );
   const currentT = currentTResolved.tPaceSec ?? tPaceFromVdot(estimatedCurrentVdot);
 
+  // COLD-3 · provenance of the anchor this authoring is about to persist.
+  // `resolveCurrentTPace` has computed exactly this tier since 2026-07-07 and
+  // every caller threw it away. An INHERITED anchor keeps the provenance it was
+  // handed (generatePlan refuses to inherit a provisional one, so an inherited
+  // anchor present here is always measured); a fresh authoring reports whether
+  // anything was actually measured.
+  const seasonAnchorSource: AnchorSource = input.seasonAnchorVdot != null
+    ? (input.seasonAnchorSource ?? 'measured_vdot')
+    : input.bestRecentVdot != null
+      ? 'measured_vdot'
+      : currentTResolved.tier === 'below_table_anchor'
+        ? 'below_table_anchor'
+        : 'provisional_mileage';
+  const anchorIsProvisional = isProvisionalAnchor(seasonAnchorSource);
+
   // 2026-06-03 · mid-block doctrine RULE 3 (pace anchor blend) · when bestRecentVdot
   // implies a T-pace slower than goal-T, anchor early-week paces to currentT and blend
   // toward goalT by mid-build (Cite: §Rule 3). 2026-06-23 · VAR-05 · a by-feel runner (no
@@ -3475,10 +3515,35 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   const realismFlag = goalVdot != null
     ? goalVdot > estimatedCurrentVdot * 1.15
     : (input.goalSec != null && currentPredicted != null && input.goalSec < currentPredicted);
-  const goalRealism: { flag: boolean; goalVdot?: number; estimatedCurrentVdot?: number } =
-    realismFlag
-      ? { flag: true, ...(goalVdot != null ? { goalVdot } : {}), estimatedCurrentVdot }
-      : { flag: false };
+  // COLD-3 (2026-08-17) · the guard was SILENCED BY THE FABRICATION IT WAS
+  // MEANT TO CATCH. `estimatedCurrentVdot` falls back to
+  // conservativeVdotFromMileage, which reads a 30 mi/wk self-report as VDOT 40 —
+  // a level of fitness nobody demonstrated. A 3:30 marathon goal (VDOT ~44.6) is
+  // then only +11.5% over that invented baseline, under the 15% trigger, and the
+  // plan records `{ flag: false }`: an affirmative statement that the goal is
+  // realistic, made about a runner the app has never seen take a step.
+  //
+  // With no measured fitness the honest answer is neither true nor false. It is
+  // "not assessable yet" — which is a different thing to say to the runner, and
+  // the only honest thing the engine knows about an over-ambitious cold-start
+  // goal. `basis` names what the verdict rests on so a surface never has to
+  // guess. (Design/adaptive-progression-engine.md §A · evidence-only.)
+  const goalRealism: {
+    flag: boolean;
+    assessable: boolean;
+    basis: AnchorSource;
+    goalVdot?: number;
+    estimatedCurrentVdot?: number;
+  } = anchorIsProvisional
+    ? {
+        flag: false,
+        assessable: false,
+        basis: seasonAnchorSource,
+        ...(goalVdot != null ? { goalVdot } : {}),
+      }
+    : realismFlag
+      ? { flag: true, assessable: true, basis: seasonAnchorSource, ...(goalVdot != null ? { goalVdot } : {}), estimatedCurrentVdot }
+      : { flag: false, assessable: true, basis: seasonAnchorSource, estimatedCurrentVdot };
 
   // 2026-08-17 · coaching-loop reconciliation · the blend math moved to
   // lib/plan/recompute-paces.ts (blendedTPaceForWeek) so authoring and the
@@ -3712,6 +3777,13 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // recompute doesn't need · see _audit_slow_runner P1-56 byte-safety).
       pace_blend: {
         season_anchor_vdot: input.seasonAnchorVdot ?? estimatedCurrentVdot,
+        // COLD-3 (2026-08-17) · the anchor's PROVENANCE, written alongside the
+        // number it qualifies. Without it a mileage-derived estimate is
+        // indistinguishable from a race result once persisted, and three
+        // readers were treating it as one. `season_anchor_provisional` is the
+        // single boolean a reader checks before believing the VDOT.
+        season_anchor_source: seasonAnchorSource,
+        season_anchor_provisional: anchorIsProvisional,
         goal_vdot: goalVdot,
         build_weeks: composeBuildWeeks,
         measured_progress_fraction: input.measuredProgressFraction ?? null,
@@ -4075,7 +4147,7 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       next_race: input.nextRace,
       // EVIDENCE-2 · carry the season anchor forward (see ComposeNonRaceInput).
       ...(input.bestRecentVdot != null
-        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, goal_vdot: null, build_weeks: TOTAL_WEEKS, measured_progress_fraction: null } }
+        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, season_anchor_source: 'measured_vdot' as AnchorSource, season_anchor_provisional: false, goal_vdot: null, build_weeks: TOTAL_WEEKS, measured_progress_fraction: null } }
         : {}),
       citations: blocks.phases.map((p) => p.citation),
     },
@@ -4298,7 +4370,7 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
       // authoring that follows it found none and fell through to the calendar
       // blend ungated. Record the fitness the block was entered at.
       ...(input.bestRecentVdot != null
-        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, goal_vdot: null, build_weeks: weeks.length, measured_progress_fraction: null } }
+        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, season_anchor_source: 'measured_vdot' as AnchorSource, season_anchor_provisional: false, goal_vdot: null, build_weeks: weeks.length, measured_progress_fraction: null } }
         : {}),
       citations: blocks.phases.map((p) => p.citation),
     },
@@ -5097,13 +5169,25 @@ async function composeForUserInternal(
       // to leave seasonAnchor null, which switched the gate off entirely.
       // Anchoring on today's measurement makes measured progress 0 — honest:
       // nothing has been demonstrated since — rather than absent.
+      // COLD-3 (2026-08-17) · READER 3 · refuse to INHERIT a provisional anchor.
+      // The prior plan's `season_anchor_vdot` may be a mileage-derived estimate.
+      // Carrying it forward launders a self-report into the season's fitness
+      // baseline permanently: every subsequent rebuild inherits it, and
+      // measuredProgressFraction then grades real running against an invented
+      // starting point. `derived_from.bestRecentVdot` (rung 2) is measured by
+      // construction — it is null when nothing was measured — and rung 3 is
+      // today's own measurement. Only rung 1 needed the guard.
+      const priorAnchorProvisional = paceBlendAnchorIsProvisional(priorSt?.pace_blend);
       const seasonAnchor: number | null =
-        (priorSt?.pace_blend?.season_anchor_vdot != null ? Number(priorSt.pace_blend.season_anchor_vdot) : null)
+        (!priorAnchorProvisional && priorSt?.pace_blend?.season_anchor_vdot != null ? Number(priorSt.pace_blend.season_anchor_vdot) : null)
         ?? (priorSt?.derived_from?.bestRecentVdot != null ? Number(priorSt.derived_from.bestRecentVdot) : null)
         ?? (inputs.compose.bestRecentVdot != null ? Number(inputs.compose.bestRecentVdot) : null);
       if (seasonAnchor != null) {
         const goalVdotNow = vdotFromRace(inputs.compose.goalSec, inputs.compose.raceDistanceMi);
         inputs.compose.seasonAnchorVdot = seasonAnchor;
+        // Everything that survives the guard above is measured, so the
+        // inherited provenance is measured too.
+        inputs.compose.seasonAnchorSource = 'measured_vdot';
         inputs.compose.measuredProgressFraction = measuredProgressFraction(
           seasonAnchor,
           inputs.compose.bestRecentVdot ?? null,
@@ -5118,7 +5202,14 @@ async function composeForUserInternal(
   if (mode === 'race-prep') {
     composed = composePlan(inputs.compose);
   } else {
-    const tier = lookupTierTarget(inputs.compose.goalPaceSec, inputs.compose.raceDistanceMi, inputs.compose.level).tier; // VAR-01
+    // COLD-1 · same evidence-only lift as the race-prep branch.
+    const nrDemonstrated = inputs.compose.bestRecentVdot != null
+      ? (() => {
+          const t = predictRaceTime(inputs.compose.bestRecentVdot, inputs.compose.raceDistanceMi);
+          return t != null ? Math.round(t / inputs.compose.raceDistanceMi) : null;
+        })()
+      : null;
+    const tier = lookupTierTarget(inputs.compose.goalPaceSec, inputs.compose.raceDistanceMi, inputs.compose.level, nrDemonstrated).tier; // VAR-01 + COLD-1
     // DOCTRINE-4 · read only on the non-race branch (maintenance + recovery are
     // the two composers that anchor to peak); race-prep never touches it, so the
     // race path takes no extra query.
@@ -5653,13 +5744,21 @@ async function loadGeneratorInputs(
   // /api/onboarding/complete § PLAN-GEN HANDOFF). Self-reports only
   // fill zeros; any real run history always wins.
   if (recentMi <= 0 || recentLong <= 0) {
-    const selfReport = (await pool.query<{ avg: number | null; target: number | null; long: number | null }>(
-      `SELECT history_avg_weekly_mi AS avg, weekly_mileage_target AS target,
+    const selfReport = (await pool.query<{ avg: number | null; long: number | null }>(
+      `SELECT history_avg_weekly_mi AS avg,
               history_longest_recent_mi AS long
          FROM profile WHERE user_uuid = $1 LIMIT 1`,
       [userId],
     ).catch(() => ({ rows: [] }))).rows[0];
-    if (recentMi <= 0) { recentMi = Number(selfReport?.avg ?? selfReport?.target ?? 0) || 0; if (recentMi > 50) recentMi = 50; } // CC-6 · collapse a 55 self-report target to the sim/gate's 50 cap (50 vs 55 yield identical paces)
+    // 2026-08-17 · COLD-2 · `weekly_mileage_target` was the second rung of this
+    // fallback and is NOT a history field — it is what the runner said they WANT
+    // to be running. It reached recentWeeklyMi, which anchors the volume curve's
+    // start AND (via conservativeVdotFromMileage) the cold-start pace floor: the
+    // VDOT floor swings 30 → 47 across the range of that one form input, about
+    // 2:30/mi of threshold pace, on an aspiration. `history_avg_weekly_mi` is the
+    // field that answers this question; when it is absent the honest answer is
+    // zero, which the ramp machinery already handles (BRK-2 / CC2-1).
+    if (recentMi <= 0) { recentMi = Number(selfReport?.avg ?? 0) || 0; if (recentMi > 50) recentMi = 50; } // CC-6 · collapse a 55 self-report to the sim/gate's 50 cap (50 vs 55 yield identical paces)
     if (recentLong <= 0) recentLong = Number(selfReport?.long ?? 0) || 0;
   }
   // COH-1 · clamp the reported longest run to be coherent with weekly volume (the long anchors

@@ -387,6 +387,11 @@ async function persistMaintenancePlan(args: {
   totalWeeks: number;
   peakLongMi: number;
   peakWeeklyMi: number;
+  /** 2026-08-17 · COLD-2 · the runner's CURRENT weekly base (self-reported
+   *  history, or derived from their runs) — NOT the target they are ramping
+   *  toward. Anchors the provisional pace estimate when no measured VDOT
+   *  exists. */
+  currentWeeklyMi: number;
   /** 2026-06-15 · measured current-fitness VDOT from the runner's recent runs
    *  (goal-relative floor). Null when nothing qualified → fall back to the
    *  conservative mileage estimate. Anchors pace specs, not volume. */
@@ -415,7 +420,13 @@ async function persistMaintenancePlan(args: {
   // Per CLAUDE.md "Engine must match research": VDOT comes from a measured
   // effort (Research/01 §field-test), not fabricated from weekly mileage —
   // the mileage estimate is a last-resort provisional, flagged as such.
-  const anchorVdot = args.anchorVdot ?? conservativeVdotFromMileage(args.peakWeeklyMi);
+  // 2026-08-17 · COLD-2 · the provisional estimate reads the runner's CURRENT
+  // base, not `peakWeeklyMi` — which is the aspiration they are ramping toward
+  // (`goals.weeklyMiTarget`). Anchoring on the target handed a runner who said
+  // "I run 10 mi/wk, I want to reach 45" a VDOT-47 pace set on day one, roughly
+  // 2:30/mi of threshold ahead of anything they have run. The ramp destination
+  // is a volume plan; it is not evidence of fitness.
+  const anchorVdot = args.anchorVdot ?? conservativeVdotFromMileage(args.currentWeeklyMi);
   const anchorSource = args.anchorVdot != null ? 'measured_run' : 'provisional_mileage';
   const tPaceSec = tPaceFromVdot(anchorVdot) ?? 480;
   // True Daniels I-pace for a goal BUILD (5K/10K quality = VO2 intervals).
@@ -679,6 +690,7 @@ export async function seedMaintenancePlanFromOnboarding(
     totalWeeks,
     peakLongMi,
     peakWeeklyMi: targetWeeklyMi,
+    currentWeeklyMi: startWeeklyMi, // COLD-2 · pace anchors on the base, not the target
     anchorVdot,
     // Cold start (no measured read) → calibration intro; the daily re-anchor
     // commits the real build once the runner's first honest effort reads.

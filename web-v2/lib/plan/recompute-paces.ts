@@ -46,6 +46,7 @@ import {
 import { buildWorkoutSpec, tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
 import { preserveProgressionSql } from './progression-spec';
 import { distanceCategoryOf } from './goal-tiers';
+import { paceBlendAnchorIsProvisional } from './anchor-provenance';
 
 /**
  * Grace allowance on the measured-progress gate. Week 1-2 of a block has
@@ -240,10 +241,20 @@ export async function recomputePacesForPlan(
   // (written by composePlan since 2026-08-17), falling back to the Rule 10
   // transparency envelope, then the cold-start mileage heuristic — the
   // same cascade composePlan's estimatedCurrentVdot ran at authoring.
+  // COLD-3 (2026-08-17) · READER 2 · both the provisional anchor AND the
+  // re-derivation rung below it are fabrications of the same number. This
+  // function feeds `measuredProgressFraction`, whose entire job is to answer
+  // "how much of the goal gap has the runner actually banked" — grading measured
+  // progress against a mileage-derived starting point makes that number a
+  // fiction, and the final rung recomputed the fiction from scratch even when
+  // the plan never recorded one. When nothing was measured, the honest anchor is
+  // null: `measuredProgressFraction(null, …)` already returns null, and the
+  // blend falls back to its calendar forecast, which is at least labelled as a
+  // forecast. (Design/adaptive-progression-engine.md §A.)
+  const anchorProvisional = paceBlendAnchorIsProvisional(st.pace_blend);
   const vdotAtAuthoring: number | null =
-    (st.pace_blend?.season_anchor_vdot != null ? Number(st.pace_blend.season_anchor_vdot) : null)
-    ?? (st.derived_from?.bestRecentVdot != null ? Number(st.derived_from.bestRecentVdot) : null)
-    ?? (st.recent_avg_mpw != null ? conservativeVdotFromMileage(Number(st.recent_avg_mpw)) : null);
+    (!anchorProvisional && st.pace_blend?.season_anchor_vdot != null ? Number(st.pace_blend.season_anchor_vdot) : null)
+    ?? (st.derived_from?.bestRecentVdot != null ? Number(st.derived_from.bestRecentVdot) : null);
 
   const goalVdot = goalSec != null && raceDistanceMi != null
     ? vdotFromRace(goalSec, raceDistanceMi)
