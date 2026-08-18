@@ -30,9 +30,22 @@
  * The runner gets a usable plan immediately, and the next lifecycle
  * rebuild from the canonical buildPlan upgrades it with full doctrine.
  *
- * Cite: Daniels Running Formula §13 · "Periodization" — maintenance
- * weeks hold flat at the runner-stated target with a 0.82× cutback
- * every third week.
+ * Maintenance weeks hold flat at the runner-stated target with a 0.82×
+ * cutback every third week.
+ *
+ * DOCTRINE-BOOK-12 (2026-08-17) · was `Daniels Running Formula §13 ·
+ * "Periodization"`, which the gate could not open. Both halves are in
+ * Research/: the every-third-week cadence is the default row of Research/00b
+ * §Frequency (bound by CUTBACK.cadence), and the flat maintenance hold is
+ * Research/22 §7. The 0.82 DEPTH is a known live violation — an 18% cut
+ * against doctrine's 20-30% floor — already recorded against CUTBACK.depth
+ * with an `exempt` entry. It is left alone here on purpose: this pass fixes
+ * citations, and moving a number to make one fit is the failure mode the
+ * gate exists to prevent.
+ *
+ * Cite: Research/00b-recovery-protocols.md §Frequency ("3 weeks load → 1 week cutback")
+ * Cite: Research/00b-recovery-protocols.md §"Depth of Cutback by Mileage Tier" (20-30%)
+ * Cite: Research/22-plan-templates.md §"Maintenance Plan"
  * Cite: Research/00a §Volume-Progression-Rules — long-run floor  // was §"The 10% rule, reconsidered" · heading: ### Volume progression rules
  * is 50% of the recent longest training run (or historical longest
  * when no recent data exists).
@@ -182,8 +195,9 @@ function midpoints(goals: OnboardingGoals): {
  * replaces the old flat-from-target approach that dropped brand-new
  * runners into their goal mileage on day 1.
  *
- * Cite: Daniels Running Formula §13 · Periodization + Research/00a
- * §Volume-Progression-Rules (≤10% per week).
+ * Cite: Research/00b-recovery-protocols.md §Frequency — "3 weeks load → 1 week
+ * cutback" is the default row; bound by CUTBACK.cadence.
+ * Cite: Research/00a-distance-running-training.md §Volume-Progression-Rules (≤10% per week).
  */
 function buildProgressiveCurve(startMpw: number, targetMpw: number, totalWeeks: number = TOTAL_WEEKS): {
   volumeMi: number[];
@@ -593,7 +607,9 @@ async function deriveRunHistory(userId: string, cutoffISO: string): Promise<{
  *
  *   Cold-start: nothing supplied → 8 mpw floor, 4 mi peak long.
  *
- *  Cite: Daniels Running Formula §13 · "Periodization" · maintenance.
+ *  Cite: Research/22-plan-templates.md §"Maintenance Plan" · holding fitness
+ *  between cycles, flat rather than progressive (DOCTRINE-BOOK-13, 2026-08-17 ·
+ *  was `Daniels §13 "Periodization"`, unopenable by the gate).
  *  Cite: Research/00a · long-run anchored on recent / historical longest.
  */
 export async function seedMaintenancePlanFromOnboarding(

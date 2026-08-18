@@ -373,7 +373,11 @@ export function iPaceFromAnchorPace(anchor: AnchorPace | null | undefined): numb
  * surface (effort-only guidance, no number), not substitute a
  * shorter-distance number.
  *
- * Cite: Daniels Running Formula §VDOT table (same formula as `vdotFromRace`).
+ * Cite: Research/01-pace-zones-vdot.md §vdot-table — the same published table
+ * `vdotFromRace` reads, inverted. (Was `Daniels Running Formula §VDOT table`,
+ * a book citation the gate could not open; the table itself is reproduced in
+ * Research/01 with its citation, so the anchor now resolves — DOCTRINE-BOOK-17,
+ * 2026-08-17.)
  */
 export function predictRaceTime(vdot: number, distanceMi: number): number | null {
   if (!vdot || vdot <= 0 || !distanceMi || distanceMi <= 0) return null;

@@ -29,8 +29,22 @@
  * Cite: David 2026-06-02 conversation · "if the runner and the weeks
  * are solid, distance is up or even a bit over the ramp can be pretty
  * aggressive."
- * Cite: Pfitzinger Faster Road Racing · adaptive load progression
+ * DOCTRINE-BOOK-15 (2026-08-17) · THE BUMP POLICY IS A PRODUCT CONVENTION.
+ * This used to cite `Pfitzinger Faster Road Racing · adaptive load progression`,
+ * which the gate could not open — and Faster Road Racing's plans are fixed
+ * schedules, so there is no adaptive-progression protocol in it to cite. The
+ * gates above (readiness green, last two qualities on pace, clean long,
+ * 7-day cooldown) are ours, and so are MAX_LONG_BUMP_MI / MAX_WEEKLY_BUMP_MI.
+ * +5 mi in a week is NOT inside Research/00a's per-week ramp band at low
+ * volume — at 20 mpw it is +25% — which is exactly why the bump is bounded by
+ * the tier band rather than by a percentage, and why it only fires when the
+ * runner is demonstrably absorbing load. CONVENTION.adaptive-bump-ceiling
+ * binds the property it actually owes: a bump can never carry a runner past
+ * the upper band of their own tier.
+ *
  * Cite: Research/00a-distance-running-training.md §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
+ * Cite: Research/00a-distance-running-training.md §"Practical load rules" — add
+ *       stress one-at-a-time; the fatigue gate that the pull-back streak mirrors
  */
 
 import { pool } from '@/lib/db/pool';

@@ -1009,7 +1009,10 @@ function volumeCurve(
   // Walk climb weeks · target = start * climbFactor^N where N is
   // the climbing-week index (skips deloads). Deload weeks = previous
   // climb week × 0.80 (RC2-4 · doctrine is 20-30% reduction; prior 0.85 = 15% — too shallow).
-  // Cite: Pfitzinger Advanced Marathoning §"Cutback Weeks" (20-25% drop).
+  // Cite: Research/00b-recovery-protocols.md §"Depth of Cutback by Mileage Tier" (20-30%
+  // off the highest week of the preceding block). 0.80 sits on the floor of that band.
+  // Bound by CUTBACK.depth. (Was cited to Pfitzinger ADM §"Cutback Weeks" with a
+  // "(20-25%)" band the doc does not state — DOCTRINE-BOOK-5, 2026-08-17.)
   let climbIdx = 0;
   let lastClimb = start;
   let lastPeak = start;
@@ -1025,7 +1028,18 @@ function volumeCurve(
       // curve climbs aggressively (e.g. 5mpw → 25mi peak in 14 wks). Cap the FIRST climbing
       // week after a deload to deload × 1.45 so the WoW validator's 50% limit never fires.
       // The cap only bites on that one week; subsequent weeks continue the uncapped curve.
-      // Cite: Pfitzinger Advanced Marathoning §"Cutback Weeks" + §"Week-over-Week 10% Rule".
+      // DOCTRINE-BOOK-6 (2026-08-17) · 1.45 IS A PRODUCT CONVENTION, NOT A RESEARCH FINDING.
+      // It used to cite Pfitzinger ADM §"Cutback Weeks" plus a supposed week-over-week
+      // 10%-rule section. (Named rather than quoted: the registry claim greps this file for
+      // the exact old string so it cannot come back, and reproducing it here would trip
+      // that tripwire.) The
+      // cutback half of that is real and lives on the deload line above; the 1.45 half is not
+      // doctrine at all. No source prescribes how fast a runner returns from a planned cutback
+      // — the number exists only so this curve cannot author a week that validate.ts's own
+      // weeklyVolWoWMaxPct ceiling would then reject. What it owes is that relationship, and
+      // CONVENTION.post-deload-reentry-cap enforces it: 1.45 must stay strictly under the
+      // tightest WoW ceiling in CONSTRAINTS. Cite: Research/00b §"Cutback Weeks" for the
+      // deload → return pattern this rides on; the factor itself is ours.
       const cappedTarget = lastDeloadVol != null
         ? Math.min(geometricTarget, lastDeloadVol * 1.45)
         : geometricTarget;
@@ -1694,7 +1708,12 @@ function layoutWeek({
           });
         } else if (daysBeforeRace >= 3 && daysBeforeRace <= 4) {
           // TAPER-RW-1 · time-based easy prescription (not distance). 35-45 min at conversational
-          // pace; the distance is a planning guide only. Cite: Daniels §Race-week sharpening.
+          // pace; the distance is a planning guide only.
+          // Cite: Research/08-pacing-and-race-week.md §"9.3 Day-by-day race week templates" —
+          // every published template puts the T-3/T-4 days at an easy run in minutes, not
+          // miles (marathon Wed 30-40 / Thu 0-30, half Wed 35-45 / Thu 30-40). Bound by
+          // TAPER.race-week-easy-duration. (Was `Daniels §Race-week sharpening`, a section
+          // the gate could not open — DOCTRINE-BOOK-7, 2026-08-17.)
           const minEasy = daysBeforeRace === 4 ? 40 : 35;
           days.push({ dow, type: 'easy', distanceMi: 3 + (daysBeforeRace === 4 ? 1 : 0), isQuality: false, isLong: false, subLabel: `EASY · ${minEasy} MIN`, notes: `${minEasy} min easy. Conversational effort throughout. Strides optional at end.` });
         } else {
@@ -3273,7 +3292,8 @@ export interface ComposedWeek {
   /** RC2-4 · planned cutback (deload) week. The validator exempts the
    *  FOLLOWING week from the WoW jump check — returning from a planned
    *  deload to normal training is an EXPECTED jump, not a ramp error.
-   *  Cite: Pfitzinger Advanced Marathoning §"Cutback Weeks". */
+   *  Cite: Research/00b-recovery-protocols.md §"What Cutback Weeks Are Not" — a cutback
+   *  is a planned reduction, so the return to load is the design rather than a defect. */
   isCutback?: boolean;
 }
 
@@ -3810,8 +3830,16 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
 // RECOVERY · 1-2 weeks immediately after a race. Very low volume,
 // all easy + rest. Auto-transitions to maintenance OR race-prep.
 //
-// Cite: Pfitzinger Faster Road Racing §"Recovery & Off-Season Training"
-// Cite: Daniels Running Formula 3rd ed §"Off-Season Training"
+// DOCTRINE-BOOK-8 (2026-08-17) · was two book citations the gate could not open
+// (Pfitzinger FRR §"Recovery & Off-Season Training", Daniels 3rd ed §"Off-Season
+// Training"). The shape these composers implement is published; see the header on
+// MAINTENANCE_BY_TIER in goal-tiers.ts for the volume grounding and for the honest
+// note on where the engine's frequency diverges from Research/22 §7.
+//
+// Cite: Research/22-plan-templates.md §"Maintenance Plan" (volume + 1 quality)
+// Cite: Research/22-plan-templates.md §"Base Building / Off-Season Plan" (all-E,
+//       strides, no peak — which is why VO2 work is cut entirely here)
+// Cite: Research/00b-recovery-protocols.md §"Recovery by Distance" (recovery mode)
 
 export interface ComposeNonRaceInput {
   startMondayISO: string;

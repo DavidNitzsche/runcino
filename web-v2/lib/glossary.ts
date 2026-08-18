@@ -8,7 +8,12 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   VDOT: {
     term: 'VDOT',
     def: "Jack Daniels' aerobic fitness index, derived from race performance. It sets your training paces: Easy, Marathon, Threshold, Interval, and Repetition. A higher VDOT means faster target paces across all zones.",
-    cite: "Daniels' Running Formula",
+    // `cite` is USER-FACING — it renders in the glossary drawer and the iOS
+    // glossary sheet, so it stays the book a runner would recognise. The
+    // attribution is also simply true: VDOT is Daniels', derived from race
+    // performance. The gate-resolvable anchor goes here instead of replacing
+    // it (DOCTRINE-BOOK-16, 2026-08-17).
+    cite: "Daniels' Running Formula", // Research/01-pace-zones-vdot.md §vdot-table
   },
   HRV: {
     term: 'Heart rate variability',

@@ -57,6 +57,7 @@ import {
   COMEBACK_RAMP_CEILING,
   TIER_TARGETS,
   MAINTENANCE_BY_TIER,
+  BUILD_WINDOW_WEEKS,
   type DistCategory,
   type GoalTier,
 } from '@/lib/plan/goal-tiers';
@@ -91,6 +92,8 @@ import {
   slowQualityNeverReachedTheBand,
 } from '@/lib/training/threshold-band';
 import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
+import { MAX_LONG_BUMP_MI, MAX_WEEKLY_BUMP_MI, MAX_PER_EASY_BUMP_MI } from '@/lib/plan/adaptive-ramp';
+import { COLD_START_CALIBRATION } from '@/lib/plan/simulator';
 import {
   STRIDE_DURATION_S,
   STRIDE_RECOVERY_S,
@@ -4273,6 +4276,453 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       // And it must not have grown a mileage constant of its own.
       if (/const\s+\w*(?:MILEAGE|MPW|WEEKLY_MI)\w*\s*(?::[^=]+)?=\s*\d/i.test(src)) {
         throw new Error('limiter.ts declares its own weekly-mileage constant · read TIER_TARGETS instead');
+      }
+    },
+  },
+
+  // ══ THE BOOK-CITATION SWEEP (2026-08-17) ══════════════════════════════════
+  //
+  // Eight claims seeded by working through the 25 citations that named a BOOK
+  // rather than a `Research/` file. A book citation is invisible to this
+  // registry — the gate only ever opens files — which is how a fabricated
+  // Daniels table set every new runner's paces for two months
+  // (CONVENTION.cold-start-mileage-anchor). The inventory in
+  // `_doctrine_lint.test.ts` is now empty; these are what replaced it.
+
+  {
+    id: 'PLANMODE.build-window-fits-doctrine-plan',
+    binds: ['lib/plan/goal-tiers.ts#BUILD_WINDOW_WEEKS'],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### Marathon — Intermediate',
+    claim:
+      'The build window is how many weeks before a race the engine switches out of ' +
+      'maintenance and starts race-prep, so it is the space a plan has to be built in. ' +
+      'Research/22 publishes a Duration for every distance × tier plan, and the window must ' +
+      'be at least long enough to fit the SHORTEST published plan for that distance — ' +
+      'otherwise race-prep opens too late to build the plan doctrine describes — and no ' +
+      'longer than the LONGEST, or the engine is holding a runner in race-specific work past ' +
+      'the point any published plan does. Both ends are read out of the doc.',
+    check({ exempt }) {
+      // The claim's own anchor is the marathon row because it is the exact hit:
+      // BUILD_WINDOW_WEEKS.m is 18 and every marathon plan in Research/22 is 18
+      // weeks. The other distances are resolved the same way, from their own
+      // headings — the durations are never restated here.
+      const PLAN_HEADINGS: Record<DistCategory, string[]> = {
+        '5k': ['### 5K — Beginner', '### 5K — Intermediate', '### 5K — Advanced'],
+        '10k': ['### 10K — Beginner', '### 10K — Intermediate', '### 10K — Advanced'],
+        hm: [
+          '### Half Marathon — Beginner',
+          '### Half Marathon — Intermediate',
+          '### Half Marathon — Advanced',
+        ],
+        m: ['### Marathon — Beginner', '### Marathon — Intermediate', '### Marathon — Advanced'],
+        ultra: ['### 50K Ultra', '### 50 Mile', '### 100K', '### 100 Mile'],
+      };
+      for (const cat of CATS) {
+        const bands = PLAN_HEADINGS[cat].map((h) =>
+          parseBand(
+            resolveCitation('Research/22-plan-templates.md', h).table().cell('Duration', 'Value'),
+          ),
+        );
+        const shortest = Math.min(...bands.map((b) => b[0]));
+        const longest = Math.max(...bands.map((b) => b[1]));
+        const wks = BUILD_WINDOW_WEEKS[cat];
+        if (wks < shortest) {
+          throw new Error(
+            `BUILD_WINDOW_WEEKS.${cat} = ${wks} wk opens race-prep too late to build the ` +
+              `shortest published ${cat} plan (${shortest} wk)`,
+          );
+        }
+        if (wks > longest && exempt(`ceiling-${cat}`)) continue;
+        atMost(wks, longest, `BUILD_WINDOW_WEEKS.${cat}`);
+      }
+    },
+    exempt: {
+      'ceiling-hm':
+        'KNOWN DIVERGENCE, found by this claim (2026-08-17). All three half-marathon plans in ' +
+        'Research/22 run 12 weeks; the engine opens the half build window at 14, so a runner ' +
+        'with a half 13-14 weeks out enters race-prep about two weeks before any published ' +
+        'plan would start. Harmless in the common case — the composer fits the block to the ' +
+        'actual race date — but it IS the engine disagreeing with the doc, and per the ' +
+        'task constraint the number was reported rather than moved. Fixing it means either ' +
+        'dropping the window to 12 or adding a longer half plan to Research/22; that is a ' +
+        'training-content decision, not a gate decision.',
+    },
+  },
+
+  {
+    id: 'MAINTENANCE.minimum-effective-volume',
+    binds: ['lib/plan/goal-tiers.ts#MAINTENANCE_BY_TIER'],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 7. Maintenance Plan',
+    claim:
+      'Maintenance holds fitness rather than building it, and doctrine states the floor ' +
+      'outright: roughly two-thirds of training volume maintains VO2max for about 15 weeks ' +
+      'provided intensity is preserved. Every tier\'s weeklyPctOfPeak must sit at or above ' +
+      'that minimum effective dose (below it the block is quietly detraining the runner) and ' +
+      'strictly below 1.0 (at or above it, this is not maintenance — it is another build). ' +
+      'The fraction is parsed from the doc\'s own sentence and from its "Peak weekly volume" row.',
+    check({ cite, exempt }) {
+      const text = cite.text();
+      // "~2/3 of training volume maintains VO2max for ~15 weeks…" — read the
+      // fraction out of the prose rather than restating 0.66 here.
+      const frac = text.match(/(\d+)\s*\/\s*(\d+)\s+of training volume maintains/);
+      if (!frac) {
+        throw new Error(
+          'the minimum-effective-dose sentence is gone from Research/22 §"Maintenance Plan" · ' +
+            're-read the section and re-anchor this claim',
+        );
+      }
+      const minEffective = Number(frac[1]) / Number(frac[2]);
+      // The table states the same quantity a second way ("~65% of last cycle's peak").
+      const rowPct = parseBand(cite.table().cell('Peak weekly volume', 'Value'))[0] / 100;
+      const floor = Math.min(minEffective, rowPct);
+      for (const tier of TIERS) {
+        const pct = MAINTENANCE_BY_TIER[tier].weeklyPctOfPeak;
+        if (pct < floor) {
+          throw new Error(
+            `MAINTENANCE_BY_TIER.${tier}.weeklyPctOfPeak = ${pct} is under doctrine's ` +
+              `minimum effective dose (${floor.toFixed(3)}) · this block detrains`,
+          );
+        }
+        atMost(pct, 0.99, `MAINTENANCE_BY_TIER.${tier}.weeklyPctOfPeak`);
+      }
+      // Frequency is where the engine and this section genuinely disagree.
+      const docDays = parseBand(cite.table().cell('Days/week', 'Value'));
+      const engineDays = TIERS.map((t) => MAINTENANCE_BY_TIER[t].daysPerWeek);
+      if (Math.max(...engineDays) > docDays[1] && exempt('frequency-holds')) return;
+      atMost(Math.max(...engineDays), docDays[1], 'MAINTENANCE_BY_TIER daysPerWeek');
+    },
+    exempt: {
+      'frequency-holds':
+        'KNOWN DIVERGENCE, found by this claim (2026-08-17). Research/22 §7 puts a maintenance ' +
+        'block at 3-4 days/wk; the engine holds 5-7. This is deliberate and documented on ' +
+        'MAINTENANCE_BY_TIER: frequency is the first thing lost and the slowest to rebuild, so ' +
+        'volume drops and days do not. The engine\'s posture matches Research/22 §6 Base ' +
+        'Building / Off-Season (5-6 days) more closely than §7, which is arguably the right ' +
+        'section for a runner who HAS a race, just not yet a near one. Reported, not moved — ' +
+        'picking which section governs is a coaching decision.',
+    },
+  },
+
+  {
+    id: 'TAPER.race-week-easy-duration',
+    binds: ['lib/plan/generate.ts#composeRaceWeek.easyMinutes'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 9.3 Day-by-day race week templates',
+    claim:
+      'Race-week easy days are prescribed in MINUTES, not miles — every template in §9.3 is ' +
+      'written that way, because three days out the point is time on legs at conversational ' +
+      'effort and a distance target invites a runner to race it. The engine\'s T-4 and T-3 ' +
+      'prescriptions must land inside the published durations for those days.',
+    check({ cite, exempt }) {
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      const m = matchLiteral(
+        src,
+        /const minEasy = daysBeforeRace === 4 \? (\d+) : (\d+);/,
+        'race-week easy minutes',
+      );
+      const [t4, t3] = [Number(m[1]), Number(m[2])];
+      if (!/EASY · \$\{minEasy\} MIN/.test(src)) {
+        throw new Error(
+          'the race-week easy day no longer labels itself in minutes · §9.3 prescribes time',
+        );
+      }
+      // Templates assume a Sunday race, so T-4 is Wednesday and T-3 Thursday.
+      // The half is the middle-of-the-road template and the binding one.
+      const half = resolveCitation(
+        'Research/08-pacing-and-race-week.md',
+        '**Half marathon — race week template (Sunday race):**',
+      ).table();
+      within(t4, parseBand(half.cell('Wed', 'Duration')), 'race-week T-4 easy (half template)');
+      within(t3, parseBand(half.cell('Thu', 'Duration')), 'race-week T-3 easy (half template)');
+      // The marathon template is more conservative on the same two days.
+      const mar = cite.table();
+      within(t4, parseBand(mar.cell('Wed', 'Duration')), 'race-week T-4 easy (marathon template)');
+      const marT3 = parseBand(mar.cell('Thu', 'Duration'));
+      if (t3 > marT3[1] && exempt('marathon-t3-shakeout')) return;
+      within(t3, marT3, 'race-week T-3 easy (marathon template)');
+    },
+    exempt: {
+      'marathon-t3-shakeout':
+        'KNOWN DIVERGENCE, found by this claim (2026-08-17). The marathon template makes T-3 ' +
+        '"Rest or short easy shakeout, 0-30 min"; the engine prescribes a flat 35 min at T-3 ' +
+        'for every distance, 5 min over that ceiling. Inside the half and shorter templates it ' +
+        'is correct. Reported rather than moved: splitting the branch per distance is an ' +
+        'engine change, and this pass does not make engine changes to satisfy a citation.',
+    },
+  },
+
+  {
+    id: 'LONGRUN.validator-cap-is-the-elite-band',
+    binds: ['lib/plan/validate.ts#longRunCapMi'],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### Marathon — Advanced',
+    claim:
+      'The validator\'s long-run cap is a BACKSTOP behind the builder, not a second opinion ' +
+      'about how long a long run should be. It therefore has to sit at the top of the highest ' +
+      'tier band the builder can legitimately reach — TIER_TARGETS[cat].elite.peakLongMiBand ' +
+      '— or it rejects plans the generator was entitled to author, which is exactly what it ' +
+      'did before 2026-06-23. It must also clear the peak long run Research/22 publishes for ' +
+      'that distance. And because this cap was documented in a header comment that went stale ' +
+      'for two months while the citation under it named an unopenable book, every value the ' +
+      'function returns must still appear in that comment.',
+    check() {
+      const src = sourceOf('web-v2/lib/plan/validate.ts');
+      const body = src.slice(src.indexOf('function longRunCapMi'));
+      const fn = body.slice(0, body.indexOf('\n}'));
+      const caps: Partial<Record<DistCategory, number>> = {};
+      for (const cat of ['5k', '10k', 'm', 'ultra'] as const) {
+        caps[cat] = Number(
+          matchLiteral(fn, new RegExp(`case '${cat}':\\s*return (\\d+);`), `longRunCapMi ${cat}`)[1],
+        );
+      }
+      // The half is context-dependent: beginner / standalone / stepping-stone.
+      caps.hm = Number(
+        matchLiteral(fn, /return ctx\.level === 'beginner' \? \d+ : (\d+);/, 'longRunCapMi hm')[1],
+      );
+      for (const cat of CATS) {
+        const band = TIER_TARGETS[cat].elite.peakLongMiBand[1];
+        if (caps[cat] !== band) {
+          throw new Error(
+            `longRunCapMi('${cat}') = ${caps[cat]} but the elite peakLongMiBand top is ${band} · ` +
+              'a backstop below the builder rejects legal plans; above it, it guards nothing',
+          );
+        }
+      }
+      // …and the marathon cap must clear what Research/22 publishes.
+      const docPeakLong = parseBand(
+        resolveCitation('Research/22-plan-templates.md', '### Marathon — Advanced')
+          .table()
+          .cell('Peak long run', 'Value'),
+      );
+      if ((caps.m ?? 0) < docPeakLong[1]) {
+        throw new Error(
+          `longRunCapMi('m') = ${caps.m} rejects the ${docPeakLong[1]} mi peak long run ` +
+            'Research/22 §"Marathon — Advanced" prescribes',
+        );
+      }
+      // The header comment must still describe the function.
+      const header = src.slice(0, src.indexOf('interface PlanConstraints'));
+      for (const [cat, mi] of Object.entries(caps)) {
+        if (!new RegExp(`≤ ?${mi} mi`).test(header)) {
+          throw new Error(
+            `the long-run cap comment no longer lists ${mi} mi (${cat}) · it went stale once ` +
+              'before, for two months, under a citation nobody could open',
+          );
+        }
+      }
+    },
+  },
+
+  /* ── CONVENTION claims from the book-citation sweep ──────────────────────
+   *
+   * Four numbers that were wearing a research finding's clothes. Each is kept
+   * (the behaviour is fine and in three cases obviously right) and relabelled,
+   * with a claim asserting the property it genuinely owes.
+   */
+
+  {
+    id: 'CONVENTION.fitness-response-model',
+    binds: ['lib/plan/simulator.ts#computeWeeklyGain', 'lib/plan/simulator.ts#COLD_START_CALIBRATION'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '## Aerobic Base Development',
+    claim:
+      'THE SIMULATOR\'S FITNESS-RESPONSE MODEL IS A CONVENTION. It cited `Daniels Running ' +
+      'Formula §VDOT response curves`, which does not exist — Daniels publishes a VDOT table ' +
+      'mapping performance to paces, not a curve of VDOT gain against training. No doc in ' +
+      'Research/ carries a VDOT-gain-per-week figure at all, so there was nothing behind ' +
+      '0.10 points per quality session or a plateau at 75. This is the cold-start anchor\'s ' +
+      'defect a second time, and it had been projecting every runner\'s trajectory. Research ' +
+      'grounds the model\'s SHAPE only — adaptation is non-linear and saturates as a runner ' +
+      'approaches their ceiling. What this claim enforces is that the parameters stay bounded ' +
+      'and inside the published VDOT table, that the output stays labelled as projected, and ' +
+      'that the false citation never comes back.',
+    check({ cite }) {
+      const src = sourceOf('web-v2/lib/plan/simulator.ts');
+      for (const ghost of [/Daniels Running Formula §VDOT response curves/, /Pfitzinger ADM §long-run progression/]) {
+        if (ghost.test(src)) {
+          throw new Error(`a fabricated citation is back on the simulator: ${ghost}`);
+        }
+      }
+      if (!/THE FITNESS-RESPONSE MODEL IN THIS FILE IS A CONVENTION, NOT A RESEARCH\n \* FINDING/.test(src)) {
+        throw new Error(
+          'simulator.ts no longer states that its response model is a convention · that ' +
+            'sentence is the whole point of this claim',
+        );
+      }
+      // Bounded, and inside the table the rest of the engine reads. Daniels'
+      // published VDOT table spans 30-85 (see the cap work in vdot.ts), so a
+      // modelled plateau above that is a number with nothing underneath it.
+      const c = COLD_START_CALIBRATION;
+      if (!(c.vdotPerQuality > 0 && c.vdotPerQuality <= 0.5)) {
+        throw new Error(`vdotPerQuality = ${c.vdotPerQuality} is outside a defensible range`);
+      }
+      if (!(c.longRunWeight >= 0 && c.longRunWeight <= 1)) {
+        throw new Error(`longRunWeight = ${c.longRunWeight} is not a 0..1 weight`);
+      }
+      atMost(c.plateauVdot, 85, 'COLD_START_CALIBRATION.plateauVdot');
+      const baseGain = Number(matchLiteral(src, /const baseGain = (\d*\.?\d+);/, 'baseGain')[1]);
+      if (!(baseGain > 0 && baseGain <= 0.5)) {
+        throw new Error(`baseGain = ${baseGain} is outside a defensible range`);
+      }
+      // Modelled, never presented as measured. (See CLAUDE.md — showing a
+      // modelled gain as a measured one is the one sin here.)
+      if (!/projectedVdot/.test(src)) {
+        throw new Error('the simulator no longer names its output as projected');
+      }
+      // The doctrine this DOES rest on must still be there: a saturating curve.
+      if (!/saturate/i.test(cite.text())) {
+        throw new Error(
+          'Research/00a §"Aerobic Base Development" no longer describes gains saturating · ' +
+            'the only part of this model research grounds has moved',
+        );
+      }
+    },
+  },
+
+  {
+    id: 'CONVENTION.adaptive-bump-ceiling',
+    binds: ['lib/plan/adaptive-ramp.ts#MAX_WEEKLY_BUMP_MI', 'lib/plan/adaptive-ramp.ts#MAX_LONG_BUMP_MI'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'THE ADAPTIVE BUMP IS A CONVENTION. It cited `Pfitzinger Faster Road Racing · adaptive ' +
+      'load progression`; Faster Road Racing publishes fixed schedules, so there is no ' +
+      'adaptive-progression protocol in it. +5 mi in a week is not inside any per-week ramp ' +
+      'band at low volume — at 20 mi/wk it is +25% — so a percentage is not what bounds this. ' +
+      'What bounds it is the runner\'s own tier band, which Research/22 sets and which the ' +
+      'bump code caps against on both the long run and the week. That is the property this ' +
+      'claim enforces, along with the bump staying small in absolute terms.',
+    check({ cite }) {
+      const src = sourceOf('web-v2/lib/plan/adaptive-ramp.ts');
+      if (/Cite: Pfitzinger Faster Road Racing/.test(src)) {
+        throw new Error('the unopenable Pfitzinger citation is back on the adaptive ramp');
+      }
+      if (!/THE BUMP POLICY IS A PRODUCT CONVENTION/.test(src)) {
+        throw new Error(
+          'adaptive-ramp.ts no longer states that its bump policy is a convention',
+        );
+      }
+      // Every bump must be clamped to the tier band. Without these the bump is
+      // unbounded and the "convention" has no ceiling at all.
+      for (const clamp of [/Math\.min\(proposed, opp\.tierLongUpper\)/, /tierWeeklyUpper/]) {
+        if (!clamp.test(src)) {
+          throw new Error(`the bump no longer clamps to the tier band (${clamp})`);
+        }
+      }
+      if (!(MAX_LONG_BUMP_MI > 0 && MAX_LONG_BUMP_MI <= 2)) {
+        throw new Error(`MAX_LONG_BUMP_MI = ${MAX_LONG_BUMP_MI} is no longer a nudge`);
+      }
+      if (!(MAX_WEEKLY_BUMP_MI > 0 && MAX_WEEKLY_BUMP_MI <= 10)) {
+        throw new Error(`MAX_WEEKLY_BUMP_MI = ${MAX_WEEKLY_BUMP_MI} is no longer a nudge`);
+      }
+      if (MAX_PER_EASY_BUMP_MI > MAX_WEEKLY_BUMP_MI) {
+        throw new Error('a single easy day may be bumped more than the whole week');
+      }
+      // And the doctrine it defers to must still be a table of progression rules.
+      if (cite.table().rows.length === 0) {
+        throw new Error('Research/00a §"Volume progression rules" is no longer a table');
+      }
+    },
+  },
+
+  {
+    id: 'RAMP.validator-shares-the-generator-ceiling',
+    binds: ['lib/plan/validate.ts#peakVsTrailingRamp'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'The peak-vs-trailing ramp check and the generator\'s own climb must read the SAME ramp ' +
+      'ceiling. "One doctrinal quantum, N disagreeing constants" is a named drift pattern here: ' +
+      'this validator kept a flat 1.65 (and before that 1.10^weeks) after the generator was ' +
+      're-sourced to GENERAL_RAMP_CEILING, and rejected 48 beginner archetypes the generator was ' +
+      'correctly authoring. It must key off GENERAL_RAMP_CEILING, at the caller\'s experience ' +
+      'level, and hold no ramp percentage of its own. Seeded by the book-citation sweep, which ' +
+      'found the field\'s doc-comment still describing the deleted 1.65 under an unopenable ' +
+      'Pfitzinger citation — the second stale comment in this file hiding behind a book.',
+    check({ cite }) {
+      const src = sourceOf('web-v2/lib/plan/validate.ts');
+      if (/Cite: Pfitzinger "Advanced Marathoning" §weekly volume escalation/.test(src)) {
+        throw new Error('the unopenable Pfitzinger citation is back on the peak-vs-trailing check');
+      }
+      // One constant, read from the shared table.
+      matchLiteral(
+        src,
+        /const rampPerWeek = GENERAL_RAMP_CEILING\[ctx\.level \?\? 'intermediate'\];/,
+        'peak-vs-trailing ramp ceiling',
+      );
+      matchLiteral(
+        src,
+        /const ceiling = rampBase \* Math\.min\(flatCap, Math\.pow\(rampPerWeek,/,
+        'peak-vs-trailing ceiling expression',
+      );
+      // And no resurrected flat ratio in the executing code. The 1.65 that used
+      // to live here may still be NAMED in the comments that explain why it went.
+      const code = src
+        .split('\n')
+        .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+        .join('\n');
+      if (/rampBase\s*\*\s*\d+\.\d+\s*[;)]/.test(code)) {
+        throw new Error(
+          'the peak-vs-trailing check has grown a flat ramp multiplier again · it must read ' +
+            'GENERAL_RAMP_CEILING so the validator and the generator cannot diverge',
+        );
+      }
+      // The generator's ceiling is only doctrine because this table says so.
+      const spec = cite.table().cell('Year-on-year base growth', 'Specification');
+      const grown = parseBand(spec);
+      const engine = Object.values(GENERAL_RAMP_CEILING).map((v) => (v - 1) * 100);
+      if (Math.min(...engine) < grown[0]) {
+        throw new Error(
+          `a ramp ceiling of ${Math.min(...engine)}%/wk is under doctrine's ${grown[0]}% floor`,
+        );
+      }
+    },
+  },
+
+  {
+    id: 'CONVENTION.post-deload-reentry-cap',
+    binds: ['lib/plan/generate.ts#volumeCurve.postDeloadCap'],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### What Cutback Weeks Are Not',
+    claim:
+      'THE 1.45 POST-DELOAD RE-ENTRY CAP IS A CONVENTION. It cited `Pfitzinger ADM §"Cutback ' +
+      'Weeks" + §"Week-over-Week 10% Rule"`; the cutback half is real and lives on the deload ' +
+      'line (bound by CUTBACK.depth), but no source prescribes how fast a runner returns FROM ' +
+      'a planned cutback. The factor exists so this curve cannot author a week that the ' +
+      'validator would then reject — a plumbing constant, not physiology. What it owes is ' +
+      'exactly that: it must stay strictly under the tightest weeklyVolWoWMaxPct in ' +
+      'CONSTRAINTS, or the generator and the validator disagree and plans fail to build.',
+    check({ cite }) {
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      if (/§"Week-over-Week 10% Rule"/.test(gen)) {
+        throw new Error('the fabricated `§"Week-over-Week 10% Rule"` citation is back');
+      }
+      if (!/1\.45 IS A PRODUCT CONVENTION, NOT A RESEARCH FINDING/.test(gen)) {
+        throw new Error('generate.ts no longer states that the 1.45 re-entry cap is a convention');
+      }
+      const factor = Number(
+        matchLiteral(gen, /lastDeloadVol \* (\d*\.?\d+)/, 'post-deload re-entry cap')[1],
+      );
+      const ceilings = [
+        ...sourceOf('web-v2/lib/plan/validate.ts').matchAll(/weeklyVolWoWMaxPct: (\d+)/g),
+      ].map((m) => 1 + Number(m[1]) / 100);
+      if (ceilings.length === 0) throw new Error('CONSTRAINTS no longer declares weeklyVolWoWMaxPct');
+      const tightest = Math.min(...ceilings);
+      if (factor >= tightest) {
+        throw new Error(
+          `the post-deload re-entry cap (${factor}) is at or above the tightest WoW ceiling ` +
+            `(${tightest}) · the generator would author weeks its own validator rejects`,
+        );
+      }
+      // Deload → return is a real pattern; the doc must still say a cutback is
+      // a reduction rather than a rest week, or the whole manoeuvre changes.
+      if (!/not rest weeks/i.test(cite.text())) {
+        throw new Error(
+          'Research/00b §"What Cutback Weeks Are Not" no longer distinguishes a cutback from a ' +
+            'rest week · re-read it before this cap is justified again',
+        );
       }
     },
   },

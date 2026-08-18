@@ -385,16 +385,28 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
    * a citation is free; ADDING one fails here, and at that moment somebody has
    * to say whether the passage they are citing is real.
    */
-  const BOOK_CITATIONS_PER_FILE: Record<string, number> = {
-  'lib/glossary.ts': 1,
-  'lib/plan/adaptive-ramp.ts': 1,
-  'lib/plan/generate.ts': 6,
-  'lib/plan/goal-tiers.ts': 8,
-  'lib/plan/seed-from-onboarding.ts': 2,
-  'lib/plan/simulator.ts': 2,
-  'lib/plan/validate.ts': 4,
-  'lib/training/vdot.ts': 1,
-  };
+  // 2026-08-17 · WORKED THROUGH TO ZERO. All 25 were opened one at a time and
+  // resolved into one of three outcomes:
+  //
+  //   · RE-POINTED (17) · the passage is real and Research/ already covered it,
+  //     so the citation now names the file. Cutback depth and cadence, post-race
+  //     duration, race-week easy durations, the maintenance shape, the long-run
+  //     validator caps, the VDOT table, the plan-mode machine.
+  //
+  //   · RELABELLED AS CONVENTION (7, across 5 sites) · the passage does not
+  //     check out, and the behaviour is ours rather than doctrine's. Handled the
+  //     way the cold-start anchor was: honest label, plus a claim asserting the
+  //     properties the number actually owes. The simulator's whole fitness-
+  //     response model is the big one — `Daniels §VDOT response curves` was
+  //     fabricated in exactly the same shape as the anchor was, and had been
+  //     projecting every runner's trajectory under it.
+  //
+  //   · REPORTED, NOT MOVED (1) · goal-tiers BUILD_WINDOW_WEEKS.hm is 14 weeks
+  //     against Research/22's 12-week half plans. Bound with an honest exempt
+  //     rather than silently edited to fit.
+  //
+  // An entry may not come back without somebody saying which of the three it is.
+  const BOOK_CITATIONS_PER_FILE: Record<string, number> = {};
 
   it('every book-only citation is counted · an uncounted one is verified by nothing', () => {
     const BOOKS = /(Daniels|Pfitzinger|Lydiard|Magness|Hudson|Running Formula|Advanced Marathoning|Faster Road Racing)/;

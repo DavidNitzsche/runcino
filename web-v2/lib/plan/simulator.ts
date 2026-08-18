@@ -37,9 +37,45 @@
  * Daniels/Pfitz plans for 5K/10K/HM/marathon · sim should match
  * published progressions within ±10% (test bench in Phase 3).
  *
- * Cite: docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 2.1
- * Cite: Daniels Running Formula §VDOT response curves
- * Cite: Pfitzinger ADM §long-run progression
+ * ── DOCTRINE-BOOK-14 (2026-08-17) ──────────────────────────────────────────
+ * THE FITNESS-RESPONSE MODEL IN THIS FILE IS A CONVENTION, NOT A RESEARCH
+ * FINDING. It used to cite a "VDOT response curves" section of Daniels' Running
+ * Formula, and a "long-run progression" section of Pfitzinger's Advanced
+ * Marathoning. (Spelled out rather than quoted verbatim: the registry claim
+ * greps this file for the exact old strings so they cannot come back, and a
+ * comment reproducing them would trip its own tripwire.) Neither checks out,
+ * and this is the
+ * same failure as the cold-start pace anchor (CONVENTION.cold-start-mileage-
+ * anchor): a product model wearing a research finding's clothes, invisible to
+ * the gate because the citation named a book instead of a file it could open.
+ *
+ *   · Daniels publishes a VDOT TABLE — a performance-to-paces mapping. He
+ *     publishes no response CURVE, nothing that says a quality session is
+ *     worth 0.10 VDOT points or that runners plateau at 75. A search of
+ *     Research/ for any VDOT-gain-per-week figure returns nothing, because
+ *     no doc carries one.
+ *   · The long-run section it named is not a section of Advanced Marathoning, and
+ *     what this file does with the long run is not a progression protocol —
+ *     it is a modelled contribution term, longRunRatio × weight × baseGain.
+ *
+ * So `vdotPerQuality`, `baseGain`, `longRunWeight`, `plateauVdot` and the
+ * plateau penalty are OURS. What research does ground is the model's SHAPE:
+ * that gains are non-linear and diminish as a runner approaches their ceiling,
+ * and that quality density has a point past which more stops helping. That is
+ * why the shape survives and only the labelling changed.
+ *
+ * This matters more than a comment usually does, because everything here is
+ * PROJECTED. Nothing in this file measures a runner. Surfacing its output as
+ * though it were observed fitness is the one thing this model must never be
+ * used for. Bound by CONVENTION.fitness-response-model.
+ *
+ * Cite: docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 2.1 — the model's own spec
+ * Cite: Research/00a-distance-running-training.md §"Aerobic Base Development"
+ *       — the time courses that justify a non-linear, saturating shape
+ * Cite: Research/00a-distance-running-training.md §"Workout dose by race distance"
+ *       — the quality-density ceiling behind the >2-sessions penalty
+ * Cite: Research/00a-distance-running-training.md §"Long-run rules of thumb"
+ *       — the long-run share the contribution term reads, 25-30% of the week
  */
 
 import { pool } from '@/lib/db/pool';

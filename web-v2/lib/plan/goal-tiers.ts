@@ -38,8 +38,17 @@ export type DistCategory = '5k' | '10k' | 'hm' | 'm' | 'ultra';
  * to decide if a future race is close enough to warrant race-prep mode
  * (vs maintenance mode that waits for the build window to open).
  *
- * Cite: Daniels Running Formula 3rd ed §"Building the Plan"
- * Cite: Pfitzinger Faster Road Racing §"Block Periodization"
+ * DOCTRINE-BOOK-1 (2026-08-17) · this used to cite `Daniels §"Building the
+ * Plan"` and `Pfitzinger FRR §"Block Periodization"`, neither of which the
+ * doctrine gate could open. The band IS grounded, just elsewhere: Research/22
+ * publishes a duration for every distance × tier plan, and the build window is
+ * what has to be long enough to fit one. Bound by PLANMODE.build-window-fits-
+ * doctrine-plan, which reads those durations out of the doc.
+ *
+ * Cite: Research/22-plan-templates.md · the per-distance plan `Duration` rows
+ *       (5K 8-18 wk · 10K 10-18 · HM 12 · M 18 · ultra 16-28)
+ * Cite: Research/22-plan-templates.md §"Multi-Race Year Planning" — the
+ *       cycle → recovery → bridge → cycle block table this mode machine walks
  */
 export const BUILD_WINDOW_WEEKS: Record<DistCategory, number> = {
   '5k': 10,
@@ -53,14 +62,24 @@ export const BUILD_WINDOW_WEEKS: Record<DistCategory, number> = {
  * 2026-06-03 · Rule 13 · post-race recovery weeks per distance.
  *
  * Mandatory low-volume easy-running window AFTER a race finishes,
- * BEFORE either maintenance or the next race-prep starts. Pfitz
- * explicitly says skipping recovery causes overtraining 80% of the
- * time. Race-prep blocks that fire too soon after a race land into
- * a runner with depleted glycogen + microscopic muscle damage and
- * stall out by week 3.
+ * BEFORE either maintenance or the next race-prep starts. Race-prep
+ * blocks that fire too soon after a race land into a runner with
+ * depleted glycogen + microscopic muscle damage and stall out by
+ * week 3.
  *
- * Cite: Pfitzinger Advanced Marathoning §"Post-race recovery"
- * Cite: Daniels Running Formula §"Recovery after racing"
+ * DOCTRINE-BOOK-2 (2026-08-17) · this header used to assert that "Pfitz
+ * explicitly says skipping recovery causes overtraining 80% of the time",
+ * under book citations the gate could not open. Nothing in Research/ carries
+ * that statistic and it is not attributable to a passage anyone here has read,
+ * so it is gone. What Research/00b DOES say, and what actually justifies the
+ * window, is kept: returning to *hard* running before day 7 demonstrably
+ * impairs recovery (§"Muscle-Damage Biomarker Timeline"), and CK/LDH do not
+ * return to baseline until day 6-8. The duration band itself is bound by
+ * RECOVERY.post-race-duration.
+ *
+ * Cite: Research/00b-recovery-protocols.md §"Recovery by Distance" — the
+ *       "Total recovery days (no quality)" column
+ * Cite: Research/00b-recovery-protocols.md §"Muscle-Damage Biomarker Timeline (Marathon)"
  */
 // 2026-06-23 · RECOVERY-1 · post-race recovery duration per Research/00b:197-208 (marathon 21-28
 // days / return to quality wk3-4; HM 10-14 days). Was hm:1/m:2 — ~2 weeks too short → under-recovery
@@ -336,9 +355,26 @@ export function taperFactor(cat: DistCategory, wksLeft: number): number {
  * VO2 work is CUT entirely · with no race in window that stress
  * is just damaging.
  *
- * Cite: Pfitzinger Faster Road Racing §"Recovery & Off-Season Training"
- * Cite: Daniels Running Formula 3rd ed §"Off-Season Training"
- * Cite: Hudson Run Faster Ch. 7 §"Maintenance Periods"
+ * DOCTRINE-BOOK-3 (2026-08-17) · replaces three book citations the gate could
+ * not open (Pfitzinger FRR §"Recovery & Off-Season Training", Daniels 3rd ed
+ * §"Off-Season Training", Hudson Ch. 7 §"Maintenance Periods"). The volume
+ * fraction is genuinely grounded — Research/22 §7 states the minimum effective
+ * dose outright — and is now bound by MAINTENANCE.minimum-effective-volume.
+ *
+ * KNOWN DIVERGENCE, not silently reconciled: Research/22 §7 puts a maintenance
+ * block at 3-4 days/wk, and this table holds 5-7. The engine keeps frequency
+ * deliberately (dropping days/wk loses the neuromuscular pattern fastest) and
+ * that posture is closer to Research/22 §6 Base Building / Off-Season, which
+ * runs 5-6 days at 80-100% of the last cycle's peak. This mode fires when a
+ * runner has a race but it is outside the build window, so §6 is the better
+ * fit than §7 for frequency and §7 is the better fit for volume. Flagged
+ * rather than moved — see the claim's note.
+ *
+ * Cite: Research/22-plan-templates.md §"Maintenance Plan" — "~2/3 of training
+ *       volume maintains VO2max for ~15 weeks if intensity is preserved"
+ * Cite: Research/22-plan-templates.md §"Base Building / Off-Season Plan" — 5-6
+ *       days/wk, all-E with strides, one optional steady run just below T
+ * Cite: Research/09-cross-training.md §"Detraining timeline (no training at all)"
  */
 export interface MaintenanceShape {
   /** Days running per week · held from race-prep habit. */
@@ -377,7 +413,15 @@ export type PlanMode = 'race-prep' | 'maintenance' | 'recovery';
  * The maintenance-to-race-prep transition fires automatically when
  * today crosses (nextRaceDate − BUILD_WINDOW_WEEKS).
  *
- * Cite: Pfitzinger Faster Road Racing §"Block Periodization"
+ * DOCTRINE-BOOK-4 (2026-08-17) · was `Pfitzinger FRR §"Block Periodization"`,
+ * which the gate could not open. The three-mode machine is the same shape as
+ * Research/22 §11's published season table — cycle → recovery → bridge →
+ * cycle — with "bridge / base" as this app's maintenance mode.
+ *
+ * Cite: Research/22-plan-templates.md §"Multi-Race Year Planning"
+ * Cite: Research/00a-distance-running-training.md §"Block periodization (Issurin)"
+ *       — block sequencing is the default for a year-round racer with
+ *       multiple peaks, which is what a mode machine has to serve
  */
 export function pickPlanMode(
   todayISO: string,

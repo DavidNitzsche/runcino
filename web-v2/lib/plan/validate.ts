@@ -30,15 +30,28 @@ import { taperFactor, GENERAL_RAMP_CEILING } from './goal-tiers';
 //
 // Long-run caps by context (see longRunCapMi()):
 //
+//   5K:                                      ≤ 14 mi
+//   10K:                                     ≤ 17 mi
 //   HM standalone, beginner:                 ≤ 14 mi
-//   HM standalone, intermediate/advanced:    ≤ 16 mi
-//   HM stepping stone to marathon (≤168 d):  ≤ 20 mi
-//   Marathon (standalone or any):            ≤ 22 mi
-//   10K:                                     ≤ 13 mi
-//   5K:                                      ≤ 10 mi
+//   HM standalone, intermediate/advanced:    ≤ 20 mi
+//   HM stepping stone to marathon (≤168 d):  ≤ 22 mi
+//   Marathon:                                ≤ 25 mi
+//   Ultra:                                   ≤ 32 mi
 //
-// Cite: Daniels "Running Formula" §long-run doctrine; Pfitzinger
-//       "Advanced Marathoning" §"Bridging from half to full" (horizon raise).
+// DOCTRINE-BOOK-9 (2026-08-17) · TWO defects fixed here at once. The table above
+// listed six caps (≤10 / ≤13 / ≤16 / ≤22 …) that longRunCapMi STOPPED USING in
+// 2026-06-23 (COH-2) — a stale comment nobody re-read because the citation under it
+// named a book, and a book citation is not something the gate can open. It also
+// cited `Daniels §long-run doctrine`, which is not a section of anything.
+//
+// The caps are real and grounded: each is the top of that distance's ELITE
+// peakLongMiBand in TIER_TARGETS, which Research/22 sets. The validator is a
+// backstop behind the builder, so it has to sit at the highest band any tier can
+// legitimately reach. Bound by LONGRUN.validator-cap-is-the-elite-band.
+//
+// Cite: Research/22-plan-templates.md — the per-distance "Peak long run" rows
+// Cite: Research/00a-distance-running-training.md §"Long-run rules of thumb"
+//       (long-run cap 25-30% of weekly volume — the share ceiling behind these)
 
 interface PlanConstraints {
   longRunWoWMaxPct: number;     // max WoW long-run increase (% of prior week)
@@ -117,9 +130,23 @@ export interface PlanValidationContext {
   level: 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
   /**
    * True when a marathon-distance (≥20 mi) A/B-priority race exists within
-   * ~168 days after the current race. Loosens HM long-run cap from 14/16 mi
-   * to 20 mi — plan is a stepping stone, not a standalone build.
-   * Cite: Pfitzinger "Advanced Marathoning" §"Bridging from half to full."
+   * ~168 days after the current race. Loosens the HM long-run cap from 14/20 mi
+   * to 22 mi — plan is a stepping stone, not a standalone build.
+   *
+   * DOCTRINE-BOOK-10 (2026-08-17) · was `Pfitzinger ADM §"Bridging from half to
+   * full."`, a section title the gate could not open and which nobody here has
+   * read. Split honestly into the half that is grounded and the half that is not:
+   *
+   *   · THE NUMBER is doctrine. 22 mi is the top of Research/22's "Marathon —
+   *     Intermediate" peak long run (20-22 mi), i.e. this stops being capped as
+   *     a half and starts being capped as the marathon build it feeds.
+   *   · THE TRIGGER is ours. No source in Research/ defines a 168-day horizon,
+   *     or says a half inside a marathon block should be sized to the marathon.
+   *     That is a product decision about which race the plan is really serving.
+   *
+   * Cite: Research/22-plan-templates.md §"Marathon Plans" (the 20-22 mi row)
+   * Cite: Research/22-plan-templates.md §"Multi-Race Year Planning" — races
+   *       stacked inside one season are cycles that feed each other
    */
   isSteppingStoneToMarathon: boolean;
   /**
@@ -137,10 +164,30 @@ export interface PlanValidationContext {
   /**
    * Runner's trailing 28-day average weekly mileage, computed from actual runs
    * immediately before generation. Used for peak-vs-trailing ramp check (F13):
-   * plan peak weekly volume must not exceed trailing × 1.65, a 65% jump ceiling
-   * grounded in Pfitzinger's 10%/week escalation doctrine and race-prep ramp
-   * literature. null = not enough history to compute (skip the check).
-   * Cite: Pfitzinger "Advanced Marathoning" §weekly volume escalation.
+   * Used for the peak-vs-trailing ramp check (F13) in section 3 below.
+   * null = not enough history to compute (skip the check).
+   *
+   * DOCTRINE-BOOK-11 (2026-08-17) · THIS COMMENT WAS STALE, AND THE BOOK CITATION
+   * UNDER IT IS WHY. It described a flat "trailing × 1.65, a 65% jump ceiling
+   * grounded in Pfitzinger's 10%/week escalation doctrine", cited to
+   * `§weekly volume escalation` — a section nobody can open. Two things were wrong:
+   *
+   *   · The constant is GONE. DOCTRINE-7b replaced the flat 1.65 with a
+   *     build-length-aware ceiling, `rampBase × min(flatCap, rampPerWeek^buildWeeks
+   *     × 1.15)`, precisely because a flat 1.65 rejected any build over ~5 climb
+   *     weeks. This is the same stale-comment-under-an-unopenable-citation shape as
+   *     the long-run cap table at the top of this file.
+   *   · The citation inverted its own source. Research/00a §"The 10% rule —
+   *     reconsidered" is the passage saying the 10%/week rule is NOT well supported;
+   *     it cannot be the ground for a ramp ceiling built on it.
+   *
+   * The live ceiling needs no book. `rampPerWeek` reads GENERAL_RAMP_CEILING, the
+   * same table the generator ramps to — one doctrinal quantum, one constant — and
+   * that table is sourced to Research/00a §"Volume progression rules" and bound by
+   * RAMP.general-case-ceiling. Bound here by RAMP.validator-shares-the-generator-ceiling.
+   *
+   * Cite: Research/00a-distance-running-training.md §"Volume progression rules"
+   *       (via GENERAL_RAMP_CEILING — see goal-tiers.ts)
    */
   trailingAvgWeeklyMi: number | null;
   /** 2026-06-23 · GOAL-1 · true when available_days constrain quality to empty by construction
@@ -473,7 +520,8 @@ export function validateComposedPlan(
     // error. The cutback deliberately drops 20% below the prior peak; the following week
     // returns to the normal climbing curve. Flagging this as a WoW violation would
     // incorrectly penalise the doctrinal 20% deload → return pattern.
-    // Cite: Pfitzinger Advanced Marathoning §"Cutback Weeks".
+    // Cite: Research/00b-recovery-protocols.md §"What Cutback Weeks Are Not" — the
+    // reduction is planned, so the return to load is the design, not a ramp error.
     if (nonRaceWeeks[i - 1].isCutback) continue;
     // 2026-06-23 · small-absolute exemption: at very low volume the %-jump is misleading — a
     // 6mi→9mi step is +50% but only +3mi, a safe ramp for a cold-start beginner. Flag only when
