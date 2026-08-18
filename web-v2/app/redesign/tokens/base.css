@@ -59,3 +59,10 @@ html{-webkit-text-size-adjust:100%}
 @keyframes faff-drift-4{from{transform:translate(0,0) scale(1.05)}to{transform:translate(9%,-6%) scale(.95)}}
 @keyframes faff-drift-5{from{transform:translate(0,0) scale(.97)}to{transform:translate(-8%,-8%) scale(1.12)}}
 @media (prefers-reduced-motion:reduce){.faff-mesh>.faff-blobs>i{animation:none}}
+
+/* Sheet slide-in: the level-3 panel (log/edit, coach reply, settings, gear) arrives from the
+   right edge. Keyframes are global by nature (no selector to scope under), same as the mesh
+   drift keyframes above — only components that name faff-sheet-in in their own animation
+   property are ever affected. */
+@keyframes faff-sheet-in{from{transform:translateX(24px);opacity:0}to{transform:translateX(0);opacity:1}}
+@media (prefers-reduced-motion:reduce){.faff-sheet{animation:none!important}}
