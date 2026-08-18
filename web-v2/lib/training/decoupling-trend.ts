@@ -25,6 +25,14 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import {
+  runDaySql,
+  runDateKeySql,
+  runDistanceMiSql,
+  runSplitsSql,
+  runWorkoutTypeSql,
+  runTypeSql,
+} from '@/lib/runs/run-shape';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import { computeAerobicDecoupling } from './aerobic-decoupling';
@@ -76,23 +84,23 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
   // Over-exclusion (a quality day run easy) is the safe direction for
   // this signal — a contaminated point is worse than a missing one.
   const rows = await pool.query<{ id: string; date: string; mi: number | string; splits: unknown }>(
-    `SELECT r.id::text, r.data->>'date' AS date, (r.data->>'distanceMi')::numeric AS mi, r.data->'splits' AS splits
+    `SELECT r.id::text, ${runDateKeySql('r')} AS date, ${runDistanceMiSql('r')} AS mi, ${runSplitsSql('r')} AS splits
        FROM runs r
       WHERE r.user_uuid = $1::uuid
         AND r.id = ANY($3::bigint[])
-        AND (r.data->>'distanceMi')::numeric >= 6
-        AND (r.data->>'date')::date >= $2::date - interval '60 days'
-        AND COALESCE(r.data->>'workoutType', r.data->>'type', '')
+        AND ${runDistanceMiSql('r')} >= 6
+        AND (${runDateKeySql('r')})::date >= $2::date - interval '60 days'
+        AND COALESCE(${runWorkoutTypeSql('r')}, ${runTypeSql('r')}, '')
               NOT IN ('race', 'intervals', 'threshold', 'tempo', 'fartlek')
         AND NOT EXISTS (
           SELECT 1
             FROM plan_workouts pw
             JOIN training_plans tp ON tp.id = pw.plan_id
            WHERE tp.user_uuid = $1::uuid
-             AND pw.date_iso = COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10))
+             AND pw.date_iso = ${runDaySql('r')}
              AND pw.type IN ('race', 'intervals', 'threshold', 'tempo', 'fartlek', 'race_week_tuneup')
         )
-      ORDER BY (r.data->>'date')::date ASC`,
+      ORDER BY (${runDateKeySql('r')})::date ASC`,
     [userUuid, today, canonicalIds],
   ).then((r) => r.rows).catch(() => []);
 

@@ -28,6 +28,19 @@ import {
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { excludeDistanceReviewSql } from '@/lib/runs/distance-guard';
+import {
+  runDaySql,
+  runDistanceMiSql,
+  runFinishSecSql,
+  runAvgHrSql,
+  runElevGainFtSql,
+  runSplitsSql,
+  runPhasesSql,
+  runWorkoutTypeSql,
+  runSourceSql,
+  runIndoorSql,
+  runNotMergedSql,
+} from '@/lib/runs/run-shape';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
 
@@ -165,10 +178,10 @@ export async function loadVdotInputs(
         `SELECT data
            FROM runs
           WHERE user_uuid = $1
-            AND NOT (data ? 'mergedIntoId')
-            AND (data->>'distanceMi')::numeric > 2.5
-            AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= $2
-            AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) <= $3`,
+            AND ${runNotMergedSql()}
+            AND ${runDistanceMiSql()} > 2.5
+            AND ${runDaySql()} >= $2
+            AND ${runDaySql()} <= $3`,
         [userId, earliestDate, today],
       ).then(r => r.rows)
     : [];
@@ -246,27 +259,22 @@ export async function loadVdotInputs(
     phases: unknown;
   }>(
     `SELECT sa.id::text AS id,
-            COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) AS date,
-            sa.data->>'workoutType' AS workout_type,
-            (sa.data->>'distanceMi')::numeric AS distance_mi,
+            ${runDaySql('sa')} AS date,
+            ${runWorkoutTypeSql('sa')} AS workout_type,
+            ${runDistanceMiSql('sa')} AS distance_mi,
             -- 2026-08-17 · terrain inputs for the grade adjustment. A hilly
             -- training run under-reads as fitness and a net-downhill one
             -- over-reads; both feed the same VDOT estimate. See
             -- lib/terrain/run-terrain.ts for why splits are preferred over
             -- the rolled-up gain (they are the only source of LOSS) and why
             -- a treadmill row's elevGainFt is deliberately not read here.
-            sa.data->>'source' AS src,
-            (sa.data->>'indoor')::boolean AS indoor,
-            (sa.data->>'elevGainFt')::numeric AS elev_gain_ft,
-            sa.data->'splits' AS splits,
-            sa.data->'phases' AS phases,
-            COALESCE(
-              (sa.data->>'durationSec')::numeric,
-              (sa.data->>'movingTimeS')::numeric,
-              (sa.data->>'movingSec')::numeric,
-              (sa.data->>'elapsedTimeS')::numeric
-            ) AS finish_seconds,
-            (sa.data->>'avgHr')::numeric AS avg_hr,
+            ${runSourceSql('sa')} AS src,
+            ${runIndoorSql('sa')} AS indoor,
+            ${runElevGainFtSql('sa')} AS elev_gain_ft,
+            ${runSplitsSql('sa')} AS splits,
+            ${runPhasesSql('sa')} AS phases,
+            ${runFinishSecSql('sa')} AS finish_seconds,
+            ${runAvgHrSql('sa')} AS avg_hr,
             -- 2026-06-09 Phase 2 / regression-audit F10 · WORK-PHASE
             -- effort from the watch completion. A tempo's whole-run pace
             -- (WU + blocks + CD) reads ~VDOT 40 for a 47.9 runner — the
@@ -284,7 +292,7 @@ export async function loadVdotInputs(
                         ELSE '[]'::jsonb END) AS phase
               WHERE COALESCE(ci.user_uuid, ci.user_id) = sa.user_uuid
                 AND ci.reason = 'watch_completion'
-                AND (ci.ts AT TIME ZONE $4::text)::date = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
+                AND (ci.ts AT TIME ZONE $4::text)::date = ${runDaySql('sa')}::date
                 AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
                               WHERE COALESCE(ci2.user_uuid, ci2.user_id) = sa.user_uuid
                                 AND ci2.reason = 'watch_completion'
@@ -302,7 +310,7 @@ export async function loadVdotInputs(
                         ELSE '[]'::jsonb END) AS phase
               WHERE COALESCE(ci.user_uuid, ci.user_id) = sa.user_uuid
                 AND ci.reason = 'watch_completion'
-                AND (ci.ts AT TIME ZONE $4::text)::date = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
+                AND (ci.ts AT TIME ZONE $4::text)::date = ${runDaySql('sa')}::date
                 AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
                               WHERE COALESCE(ci2.user_uuid, ci2.user_id) = sa.user_uuid
                                 AND ci2.reason = 'watch_completion'
@@ -320,21 +328,21 @@ export async function loadVdotInputs(
                JOIN training_plans tp ON tp.id = pw.plan_id
               WHERE tp.user_uuid = sa.user_uuid
                 AND tp.archived_iso IS NULL
-                AND pw.date_iso = COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))
+                AND pw.date_iso = ${runDaySql('sa')}
                 AND pw.type IN ('tempo','threshold','intervals','marathon_pace','race','race_week_tuneup')
               ORDER BY pw.type
               LIMIT 1) AS plan_type
        FROM runs sa
       WHERE sa.user_uuid = $1
-        AND NOT (sa.data ? 'mergedIntoId')
-        AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) >= $2
-        AND COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10)) <  $3
+        AND ${runNotMergedSql('sa')}
+        AND ${runDaySql('sa')} >= $2
+        AND ${runDaySql('sa')} <  $3
         -- 2026-06-15 · floor lowered 4 → 3mi so a 5K-goal runner's ~3.1mi
         -- quality efforts leave the DB at all. The GOAL-RELATIVE gate
         -- (vdotRunFloorMi: 3.0 for 5K, 4.0 for longer) is applied downstream
         -- in vdotFromRun/bestRecentVdot — this WHERE is just the cheap row
         -- prefilter, set to the lowest floor any goal can ask for (5K = 3.0).
-        AND (sa.data->>'distanceMi')::numeric >= 3
+        AND ${runDistanceMiSql('sa')} >= 3
         -- 2026-07-06 · P1-26 · skip distance-quarantined rows. Runs over the
         -- 50 mi soft bound now ingest with data.qualityFlag='distance_review'
         -- instead of being 400'd + dead-lettered; they count toward volume
@@ -348,12 +356,7 @@ export async function loadVdotInputs(
         -- excluded every watch-source run from VDOT candidacy. The
         -- HR-quality gate inside vdotFromRun was built for exactly those
         -- runs and never received one.
-        AND COALESCE(
-              (sa.data->>'durationSec')::numeric,
-              (sa.data->>'movingTimeS')::numeric,
-              (sa.data->>'movingSec')::numeric,
-              (sa.data->>'elapsedTimeS')::numeric
-            ) > 60
+        AND ${runFinishSecSql('sa')} > 60
         -- C1-1e: exclude race-day runs. The curated races row is canonical for
         -- race-day performance; a GPS-over-measured Strava activity on the same
         -- day produces phantom-high VDOT (e.g. Disney 13.38mi vs curated
@@ -363,7 +366,7 @@ export async function loadVdotInputs(
            WHERE rr.user_uuid = $1
              AND ABS(
                (rr.meta->>'date')::date
-               - COALESCE(sa.data->>'date', LEFT(sa.data->>'startLocal',10))::date
+               - ${runDaySql('sa')}::date
              ) <= 1
         )`,
     [userId, runCutoff, today, ciTz],

@@ -28,6 +28,8 @@
  * signal · the run-detail card simply doesn't render the chip.
  */
 
+import { splitsWithHrAndPace, DECOUPLING_SPLIT_SHAPES } from '@/lib/runs/run-shape';
+
 export interface AerobicDecouplingResult {
   /** Drift % · positive = HR climbed faster than pace (decoupling).
    *  Negative is rare but possible (warm-up effect on early miles). */
@@ -46,9 +48,21 @@ export interface AerobicDecouplingResult {
   splitsCount: number;
 }
 
-/** Shape of a split row as it lives in runs.data.splits. The shape has
- *  changed over time (older runs use avgHr/paceSPerMi, newer use
- *  hr/pace mm:ss). The helper normalizes both. */
+/**
+ * Shape of a split row as it lives in runs.data.splits.
+ *
+ * 2026-08-17 · the pace/HR normalisation that used to live here is now
+ * `splitsWithHrAndPace` in `lib/runs/run-shape.ts`. It was a private third
+ * opinion about split shape, and `runs.data.splits` carries SIX of them —
+ * this file knew about three.
+ *
+ * `DECOUPLING_SPLIT_SHAPES` pins the reach to exactly what this function has
+ * always been able to read, so lifting the helper changed nothing. In
+ * particular it still reads NOTHING from the Strava-raw shape (`average_speed`,
+ * `moving_time`, `average_heartrate`), which 36 rows carry inside `splits` and
+ * which has never produced a decoupling signal. Widening that is a behaviour
+ * change and belongs in its own commit.
+ */
 interface SplitRow {
   mile?: number;
   hr?: number | string;
@@ -57,39 +71,6 @@ interface SplitRow {
   pace?: number | string;          // "9:16" mm:ss OR seconds OR null
   paceSPerMi?: number | string;
   paceSecPerMi?: number | string;
-}
-
-/**
- * Normalize a pace value to seconds per mile.
- * Accepts: "9:16" mm:ss strings · numeric seconds · null.
- */
-function paceToSec(p: unknown): number | null {
-  if (p == null) return null;
-  if (typeof p === 'number') return Number.isFinite(p) && p > 0 ? p : null;
-  if (typeof p !== 'string') return null;
-  if (/^\d+:\d{1,2}$/.test(p)) {
-    const [m, s] = p.split(':').map((x) => parseInt(x, 10));
-    return Number.isFinite(m) && Number.isFinite(s) ? m * 60 + s : null;
-  }
-  const n = Number(p);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-function hrToNum(h: unknown): number | null {
-  if (h == null) return null;
-  const n = typeof h === 'number' ? h : Number(h);
-  return Number.isFinite(n) && n > 40 && n < 230 ? n : null;
-}
-
-/**
- * Extract (hr, paceSec) per split, dropping rows missing either signal.
- */
-function extractValidSplits(splits: SplitRow[]): Array<{ hr: number; paceSec: number }> {
-  return splits.map((s) => {
-    const hr = hrToNum(s.hr ?? s.avgHr ?? s.hrAvgBpm);
-    const paceSec = paceToSec(s.pace ?? s.paceSPerMi ?? s.paceSecPerMi);
-    return hr != null && paceSec != null ? { hr, paceSec } : null;
-  }).filter((x): x is { hr: number; paceSec: number } => x != null);
 }
 
 /**
@@ -106,7 +87,7 @@ export function computeAerobicDecoupling(
   if (!splits || splits.length < 4) return null;       // need ≥4 splits to halve meaningfully
   if (distanceMi == null || distanceMi < 6) return null;
 
-  const valid = extractValidSplits(splits);
+  const valid = splitsWithHrAndPace(splits, { shapes: DECOUPLING_SPLIT_SHAPES });
   if (valid.length < 4) return null;                   // need enough valid rows
 
   // Split into halves · for odd counts, give the extra split to first half

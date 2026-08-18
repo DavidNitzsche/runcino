@@ -14,6 +14,7 @@
  * never disagree. Idempotent.
  */
 import { pool } from '@/lib/db/pool';
+import { runDaySql } from '@/lib/runs/run-shape';
 import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { enhanceCanonicalFromAbsorbed } from '@/lib/runs/canonical';
 import { planMergeOps, type RunRow } from '@/lib/runs/identity';
@@ -42,7 +43,7 @@ export async function autoMergeForDate(
     `SELECT id::text AS id, user_uuid::text AS user_uuid, data
        FROM runs
       WHERE user_uuid = $1
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) = $2`,
+        AND ${runDaySql()} = $2`,
     [userId, date],
   )).rows as RunRow[];
 

@@ -19,6 +19,7 @@
  * fast-follow (AUDIT-FIXES.md).
  */
 import { pool } from '@/lib/db/pool';
+import { runDaySql, runDistanceMiSql, runNotMergedSql } from '@/lib/runs/run-shape';
 
 /**
  * Map of shoe_id → tracked miles for one runner. Shoes with no assigned
@@ -28,12 +29,12 @@ export async function computeShoeMileage(userId: string): Promise<Map<number, nu
   const rows = (await pool.query<{ shoe_id: number; total_mi: string }>(
     `WITH per_day_shoe AS (
        SELECT shoe_id,
-              COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date AS d,
-              MAX((data->>'distanceMi')::numeric) AS mi
+              ${runDaySql()}::date AS d,
+              MAX(${runDistanceMiSql()}) AS mi
          FROM runs
         WHERE user_uuid = $1
           AND shoe_id IS NOT NULL
-          AND NOT (data ? 'mergedIntoId')
+          AND ${runNotMergedSql()}
         GROUP BY shoe_id, 2
      )
      SELECT shoe_id, SUM(mi) AS total_mi

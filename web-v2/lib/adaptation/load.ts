@@ -19,6 +19,17 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds } from '@/lib/runs/volume';
+import { ownedDaysSql } from '@/lib/plan/owned-days';
+import {
+  runDaySql,
+  runDistanceMiSql,
+  runSplitsSql,
+  runNotMergedSql,
+  asRunData,
+  runDistanceMi,
+  runAvgHr,
+  runMaxHr,
+} from '@/lib/runs/run-shape';
 import { computeTrainingForm } from '@/lib/coach/training-form';
 import { computeRecoveryPhase } from '@/lib/coach/recovery-phase';
 import { loadEasyDiscipline, HEAT_CONFOUND_TEMP_F } from '@/lib/coach/easy-discipline';
@@ -97,14 +108,11 @@ export async function loadAdaptationInput(
    *     the real one. Counting raw rows inflates completion and volume alike. */
   const canonicalIds = await getCanonicalRunIds(userUuid, fromISO, todayISO).catch(() => [] as string[]);
 
-  /** One row per planned day — the version that was live for that date. */
-  const OWNED_DAYS = `
-    SELECT DISTINCT ON (pw.date_iso)
-           pw.date_iso, pw.is_quality, pw.distance_mi
-      FROM plan_workouts pw
-      JOIN training_plans tp ON tp.id = pw.plan_id
-     WHERE pw.user_uuid = $1 AND pw.date_iso >= $2 AND pw.date_iso < $3
-     ORDER BY pw.date_iso, tp.authored_iso DESC`;
+  /** One row per planned day — the version that was live for that date.
+   *  Both failure modes described above now live in `lib/plan/owned-days.ts`
+   *  along with the query, so the next surface to ask this question inherits
+   *  the answer instead of re-deriving it. */
+  const OWNED_DAYS = ownedDaysSql();
 
   const [
     keySessions,
@@ -132,7 +140,7 @@ export async function loadAdaptationInput(
              FROM owned
              LEFT JOIN runs r
                ON r.id::text = ANY($4::text[])
-              AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) = owned.date_iso
+              AND ${runDaySql('r')} = owned.date_iso
             WHERE owned.is_quality = true`,
           [userUuid, fromISO, todayISO, canonicalIds],
         )
@@ -184,17 +192,17 @@ export async function loadAdaptationInput(
       (
         await pool.query<{ id: string; data: unknown }>(
           `SELECT DISTINCT ON (day) r.id::text, r.data,
-                  COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) AS day
+                  ${runDaySql('r')} AS day
              FROM runs r
             WHERE r.user_uuid = $1
-              AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) >= $2
-              AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) < $3
-              AND (r.data->>'distanceMi')::numeric >= 8
-              AND r.data->'mergedIntoId' IS NULL
+              AND ${runDaySql('r')} >= $2
+              AND ${runDaySql('r')} < $3
+              AND ${runDistanceMiSql('r')} >= 8
+              AND ${runNotMergedSql('r')}
             ORDER BY day,
-                     (r.data->'splits'->0 ? 'hr') DESC,
-                     jsonb_array_length(COALESCE(r.data->'splits', '[]'::jsonb)) DESC,
-                     (r.data->>'distanceMi')::numeric DESC,
+                     (${runSplitsSql('r')}->0 ? 'hr') DESC,
+                     jsonb_array_length(COALESCE(${runSplitsSql('r')}, '[]'::jsonb)) DESC,
+                     ${runDistanceMiSql('r')} DESC,
                      r.id DESC`,
           [userUuid, fromISO, todayISO],
         )
@@ -214,13 +222,12 @@ export async function loadAdaptationInput(
                FROM owned
               GROUP BY 1
            ), act AS (
-             SELECT date_trunc('week',
-                      COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10))::date) AS wk,
-                    SUM((r.data->>'distanceMi')::numeric) AS actual
+             SELECT date_trunc('week', ${runDaySql('r')}::date) AS wk,
+                    SUM(${runDistanceMiSql('r')}) AS actual
                FROM runs r
               WHERE r.id::text = ANY($4::text[])
-                AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) >= $2
-                AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) < $3
+                AND ${runDaySql('r')} >= $2
+                AND ${runDaySql('r')} < $3
               GROUP BY 1
            )
            SELECT wks.wk::text, wks.planned::text, COALESCE(act.actual, 0)::text AS actual
@@ -290,9 +297,9 @@ export async function loadAdaptationInput(
   const decouplingVerdicts: Array<'race-ready' | 'building' | 'poor'> = [];
   const lateDriftBpm: number[] = [];
   for (const run of longRuns ?? []) {
-    const d = (run.data ?? {}) as Record<string, unknown>;
+    const d = asRunData(run.data);
     const splits = Array.isArray(d.splits) ? (d.splits as never[]) : null;
-    const distanceMi = Number(d.distanceMi) > 0 ? Number(d.distanceMi) : null;
+    const distanceMi = runDistanceMi(d);
 
     /* Decoupling, heat-filtered PER OBSERVATION.
      *
@@ -332,8 +339,8 @@ export async function loadAdaptationInput(
     // signal becomes circular, so only measured thirds contribute and long
     // runs contribute none. Aerobic decoupling above is the long-run read.
     const thirds = computeHrThirds(splits, {
-      avgHr: typeof d.avgHr === 'number' ? d.avgHr : null,
-      maxHr: typeof d.maxHr === 'number' ? d.maxHr : null,
+      avgHr: runAvgHr(d),
+      maxHr: runMaxHr(d),
     });
     if (thirds?.source === 'measured' && thirds.driftBpm != null) {
       lateDriftBpm.push(thirds.driftBpm);
