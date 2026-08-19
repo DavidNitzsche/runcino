@@ -116,8 +116,12 @@ export function computeFueling(input: FuelingInput): FuelingPlan {
   // where doctrine prescribes zero (5K/10K, :369-370) — a gel inside a
   // 20-minute race is a defect, not a preference.
   const raceDistMi = input.raceDistanceMi ?? (workoutType === 'race' ? (distanceMi ?? null) : null);
+  // Null when the distance is unknown as well as when it is absent — an
+  // unrecognized distance has no doctrine row, and borrowing one is the bug
+  // this categorizer unification exists to kill. The duration-based baseRate
+  // still applies, so an unknown-distance race is fuelled by how long it takes.
   const doctrineRaceTarget = raceDistMi != null
-    ? raceCarbsPerHourTarget(raceDistMi, workoutType === 'race' ? durationEstMin * 60 : null).targetGPerHr
+    ? (raceCarbsPerHourTarget(raceDistMi, workoutType === 'race' ? durationEstMin * 60 : null)?.targetGPerHr ?? null)
     : null;
   const raceTarget = raceFuelTargetGPerHr ?? doctrineRaceTarget;
 
@@ -182,9 +186,10 @@ export function computeFueling(input: FuelingInput): FuelingPlan {
     carbsTotalG: carbsTotal,
     shortLine,
     why,
-    citation: workoutType === 'race' && raceDistMi != null
-      ? raceCarbsPerHourTarget(raceDistMi, durationEstMin * 60).citation
-      : 'Research/18-fueling-products.md §1 + §11 + §13 (Costa et al.)',
+    citation: (workoutType === 'race' && raceDistMi != null
+      ? raceCarbsPerHourTarget(raceDistMi, durationEstMin * 60)?.citation
+      : null)
+      ?? 'Research/18-fueling-products.md §1 + §11 + §13 (Costa et al.)',
     gPerHr: effectiveRate,
     isRehearsal: workoutType === 'long' && daysToARace != null && daysToARace <= 56,
     heatAdjusted: heatPen > 0,
