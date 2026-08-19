@@ -102,7 +102,7 @@ export function RunActionClient({ seed }: { seed: FaffSeed }) {
   const [busy, setBusy] = useState(false);
 
   function close() {
-    router.push('/redesign/today');
+    router.push('/today');
   }
 
   // Nothing real to skip or move: today is a rest day, or today's run is

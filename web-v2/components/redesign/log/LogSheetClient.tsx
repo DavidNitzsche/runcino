@@ -149,7 +149,7 @@ export function LogSheetClient() {
         setError("That's too short to log as a run — check the distance and duration.");
         return;
       }
-      router.push(`/redesign/runs/${encodeURIComponent(json.id)}`);
+      router.push(`/runs/${encodeURIComponent(json.id)}`);
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
     } finally {

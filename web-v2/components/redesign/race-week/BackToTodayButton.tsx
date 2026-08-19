@@ -18,7 +18,7 @@ import { Button } from '@/components/redesign/core/Button';
 export function BackToTodayButton() {
   const router = useRouter();
   return (
-    <Button variant="secondary" size="md" onClick={() => router.push('/redesign/today')}>
+    <Button variant="secondary" size="md" onClick={() => router.push('/today')}>
       Back to today
     </Button>
   );

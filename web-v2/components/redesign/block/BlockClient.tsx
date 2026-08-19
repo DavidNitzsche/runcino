@@ -258,7 +258,7 @@ type WeekRowData = {
 function WeekRow({ w, last, maxMi, weekIdx }: { w: WeekRowData; last: boolean; maxMi: number; weekIdx: number }) {
   const isNow = w.flag === 'Now';
   return (
-    <Link href={`/redesign/block/week/${weekIdx}`} style={{
+    <Link href={`/training/week/${weekIdx}`} style={{
       display: 'grid', gridTemplateColumns: '104px 128px minmax(0,1fr) 160px 88px',
       gap: 'var(--sp-8)', alignItems: 'center', padding: 'var(--sp-6) var(--sp-8)',
       boxShadow: last ? 'none' : 'inset 0 -1px 0 var(--rule-light)',

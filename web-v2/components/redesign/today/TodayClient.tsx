@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import type { FaffSeed, EffortKey } from '@/components/faff-app/types';
 import { EFF, KIT } from '@/components/faff-app/constants';
 import type { WorkoutSpec } from '@/lib/faff/types';
@@ -247,6 +248,23 @@ export function TodayClient({ seed, easyCeilingPct, easyFloorPct }: {
             phase={seed.weekOf}
             stats={isDone ? doneStats : plannedStats}
           />
+        )}
+
+        {/* 2026-08-18 · real trigger for the Run Action (skip/move) sheet
+            — TodayClient previously had none, leaving /today/run-action
+            unreachable from the UI. Only offered for a real, not-yet-done,
+            non-rest day (skipping/moving a rest day or an already-logged
+            run doesn't mean anything). */}
+        {!isDone && today && today.type !== 'rest' && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Link href="/today/run-action" style={{
+              fontFamily: 'var(--font-sub)', fontSize: 'var(--type-label-s)', fontWeight: 'var(--weight-label)',
+              letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-quiet)',
+              textDecoration: 'none',
+            }}>
+              Skip or move →
+            </Link>
+          </div>
         )}
 
         {isDone ? (

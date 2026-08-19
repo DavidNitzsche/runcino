@@ -154,7 +154,7 @@ export function ActivityClient({ seed }: { seed: FaffSeed }) {
   const d: ActivityRange = seed.activity.ranges[range];
 
   const openRun = (slug?: string) => {
-    if (slug) router.push(`/redesign/runs/${encodeURIComponent(slug)}`);
+    if (slug) router.push(`/runs/${encodeURIComponent(slug)}`);
   };
 
   return (

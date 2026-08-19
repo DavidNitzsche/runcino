@@ -33,21 +33,21 @@ import { Icon } from '@/components/redesign/core/Icon';
  * every surface" (guideline) without inventing a sixth rail destination
  * the design doc doesn't specify.
  *
- * Log a run / Settings are plain route pushes to /redesign/log and
- * /redesign/settings, not client-state overlays — both of those screens
- * already self-wrap in the shared <Sheet> shell (LogSheetClient,
- * SettingsClient's non-Sheet full-page exception noted in its own file)
- * and manage their own close-via-router.back()/push() behavior, so
- * navigating to their real route already reads as "a sheet arrives" per
+ * Log a run / Settings are plain route pushes to /runs/new and /me, not
+ * client-state overlays — both of those screens already self-wrap in the
+ * shared <Sheet> shell (LogSheetClient, SettingsClient's non-Sheet
+ * full-page exception noted in its own file) and manage their own
+ * close-via-router.back()/push() behavior, so navigating to their real
+ * route already reads as "a sheet arrives" per
  * the design brief, stays addressable ("a run, a week, a race each have
  * a URL" — guideline), and needed no new overlay-state plumbing.
  */
 
 const ITEMS = [
-  { id: 'today', href: '/redesign/today', label: 'Today', icon: 'sun' },
-  { id: 'activity', href: '/redesign/activity', label: 'Activity', icon: 'list' },
-  { id: 'block', href: '/redesign/block', label: 'Block', icon: 'grid' },
-  { id: 'season', href: '/redesign/season', label: 'Season', icon: 'flag' },
+  { id: 'today', href: '/today', label: 'Today', icon: 'sun' },
+  { id: 'activity', href: '/log', label: 'Activity', icon: 'list' },
+  { id: 'block', href: '/training', label: 'Block', icon: 'grid' },
+  { id: 'season', href: '/goal', label: 'Season', icon: 'flag' },
 ] as const;
 
 export function Rail() {
@@ -84,7 +84,7 @@ export function Rail() {
         );
       })}
       <button
-        onClick={() => router.push('/redesign/log')}
+        onClick={() => router.push('/runs/new')}
         style={{
           display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 44, marginLeft: 'auto',
           borderRadius: 'var(--radius-pill)', border: 0, cursor: 'pointer', background: 'transparent',
@@ -96,7 +96,7 @@ export function Rail() {
         Log a run
       </button>
       <button
-        onClick={() => router.push('/redesign/settings')}
+        onClick={() => router.push('/me')}
         aria-label="Settings"
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40,

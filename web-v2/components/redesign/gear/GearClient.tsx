@@ -159,7 +159,7 @@ export function GearClient({ seed }: { seed: FaffSeed }) {
 
   function close() {
     if (typeof window !== 'undefined' && window.history.length > 1) router.back();
-    else router.push('/redesign/today');
+    else router.push('/today');
   }
 
   async function addShoe() {

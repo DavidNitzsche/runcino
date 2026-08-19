@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import type { ConnectionRow, FaffSeed } from '@/components/faff-app/types';
 import { Tile } from '@/components/redesign/core/Tile';
 import { Badge, type BadgeTone } from '@/components/redesign/core/Badge';
@@ -72,10 +73,11 @@ import { Dialog } from '@/components/redesign/feedback/Dialog';
  *     units stay hidden until the display layer can actually render
  *     km/°C; reproducing the mock's Select here would be decorative,
  *     writing to no real field.
- *   · "Manage" gear/shoes row — dropped. No shoe-list editor exists on
- *     this route (shoe management lives on Run Detail's retire flow,
- *     already ported); inventing a "Manage" destination here would be a
- *     dead link.
+ *   · "Manage" gear/shoes row — 2026-08-18 · restored. The Gear screen
+ *     (components/redesign/gear/GearClient.tsx) now has a real live route
+ *     at /me/gear — this was dropped at first port only because no
+ *     destination existed yet, not because the feature doesn't. It links
+ *     there now that one does.
  *   · "Export training data" button — dropped. No GET /api/export or
  *     equivalent exists anywhere in app/api; the mock's button has no
  *     real backend today.
@@ -463,6 +465,14 @@ export function SettingsClient({ connections, userHint }: {
               )}
             </div>
           )}
+        </Section>
+      </Tile>
+
+      <Tile pad="lg" radius="2xl" style={{ display: 'grid', gap: 'var(--sp-6)' }}>
+        <Section label="Gear">
+          <Link href="/me/gear" style={{ textDecoration: 'none' }}>
+            <Button variant="secondary" full>Manage gear</Button>
+          </Link>
         </Section>
       </Tile>
 
