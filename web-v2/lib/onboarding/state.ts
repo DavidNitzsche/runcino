@@ -149,7 +149,10 @@ const VALID_STEPS = new Set([
 ]);
 const VALID_DISTANCES = new Set<RaceDistance>(['5k', '10k', 'half', 'marathon', 'none', 'coached']);
 const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
-const VALID_WEEKLY_MI = new Set<WeeklyMileage>([0, 5, 15, 25, 35, 45, 55, 65, 75, 85, 95]);
+/** Every rung the weekly-mileage question offers, ascending. Exported because
+ *  the doctrine gate reads its ceiling: what onboarding cannot SAY, the cold
+ *  start cannot know. See `VOLUME.onboarding-ladder-reaches-doctrine`. */
+export const VALID_WEEKLY_MI = new Set<WeeklyMileage>([0, 5, 15, 25, 35, 45, 55, 65, 75, 85, 95]);
 const VALID_FREQ = new Set<WeeklyFrequency>([0, 1, 2, 3, 4, 5, 6]);
 const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+', '45+', '45-60', '60-80', '80+']);
 const VALID_HIST_LONG = new Set<HistLong>(['0-3', '3-6', '6-10', '10+', '10-16', '16-22', '22+']);
