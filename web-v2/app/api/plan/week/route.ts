@@ -14,6 +14,8 @@
  *     week_end_iso:   string,     // ISO long-run day (week end, 6 days later)
  *     today_iso:      string,     // server "today" (PT-adjusted)
  *     days: Array<{
+ *       plan_workout_id: string | null, // row id — the day's IDENTITY (null on a
+ *                                       // synthesised rest day with no row)
  *       date_iso: string, dow: number, type: string,
  *       distance_mi: number, sub_label: string | null,
  *       is_today: boolean, is_past: boolean,
@@ -79,7 +81,7 @@ export async function GET(req: NextRequest) {
   }
 
   const rows = (await pool.query(
-    `SELECT date_iso, dow, type, distance_mi, sub_label
+    `SELECT id::text AS id, date_iso, dow, type, distance_mi, sub_label
        FROM plan_workouts
       WHERE plan_id = $1
         AND date_iso::date BETWEEN $2::date AND $3::date
@@ -210,6 +212,16 @@ export async function GET(req: NextRequest) {
       ? runningRows.find((row) => row !== r) ?? null
       : null;
     return {
+      // 2026-08-19 · a plan day's IDENTITY is its row id, not its date.
+      // Nothing stops two plan_workouts rows sharing (plan_id, date_iso) —
+      // there is no unique index — and the collapse above already handles
+      // exactly that case (see `secondary`). Clients were keying their day
+      // lists on date_iso, which silently merges a double-booked date into
+      // one row and re-uses a stale view when a row is replaced. ADDITIVE:
+      // date_iso is untouched and stays the lookup key for "the day that
+      // holds this calendar date". Null on a synthesised rest day — the
+      // 7-day window emits every date whether or not a row exists for it.
+      plan_workout_id: r?.id ?? null,
       date_iso: dISO,
       dow,
       type: r?.type ?? 'rest',
@@ -228,8 +240,16 @@ export async function GET(req: NextRequest) {
       // date (e.g. an adapter-collided easy + long), or null when the date
       // carries at most one. Minimal shape — just enough for a client to
       // badge the day and show what the collapse is hiding.
+      // The runner-up carries its own row id for the same reason the primary
+      // does — it is the one row on the strip that provably shares a date
+      // with another, so a date key cannot tell the two apart.
       secondaryRun: secondary
-        ? { type: secondary.type, sub_label: secondary.sub_label ?? null, distance_mi: Number(secondary.distance_mi) || 0 }
+        ? {
+            plan_workout_id: secondary.id ?? null,
+            type: secondary.type,
+            sub_label: secondary.sub_label ?? null,
+            distance_mi: Number(secondary.distance_mi) || 0,
+          }
         : null,
     };
   });

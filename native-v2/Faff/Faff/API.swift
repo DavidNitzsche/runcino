@@ -1448,7 +1448,22 @@ struct PlannedSpec: Decodable {
 }
 
 struct PlanDay: Decodable, Identifiable {
-    var id: String { date_iso }
+    /// 2026-08-19 · `plan_workouts.id` from the server. THIS is the day's
+    /// identity. `id` used to be `date_iso`, which is not unique by anything
+    /// stronger than convention: there is no unique index on
+    /// (plan_id, date_iso), and /api/plan/week itself already handles a
+    /// double-booked date (see `secondaryRun`). A date-keyed `Identifiable`
+    /// merges two rows into one row of a ForEach and re-uses a stale view when
+    /// a row is replaced by a different row on the same date. Nil only on a
+    /// synthesised rest day — the endpoint emits all 7 dates in the window
+    /// whether or not a plan_workouts row exists for each one.
+    let planWorkoutId: String?
+    /// Falls back to a date-derived key for synthesised rest days, which are
+    /// unique per date by construction (one per date across the 7-day window).
+    /// The `date:` prefix keeps that key from ever colliding with a row id.
+    var id: String { planWorkoutId ?? "date:\(date_iso)" }
+    /// The calendar date this day sits on. Still the right key for
+    /// "find the day that holds this date" — a LOOKUP, not an identity.
     let date_iso: String
     let dow: Int
     let type: String
@@ -1477,11 +1492,13 @@ struct PlanDay: Decodable, Identifiable {
     // throwing array decoder. View code reads non-optionals directly,
     // so we default them safely here.
     enum CodingKeys: String, CodingKey {
+        case planWorkoutId = "plan_workout_id"
         case date_iso, dow, type, distance_mi, sub_label, is_today, is_past
         case completedRunId, done_mi, skipped, plannedSpec, secondaryRun
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.planWorkoutId = try c.decodeIfPresent(String.self, forKey: .planWorkoutId)
         self.date_iso = try c.decodeIfPresent(String.self, forKey: .date_iso) ?? ""
         self.dow = c.decodeFlexInt(forKey: .dow) ?? 0
         self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? "rest"
@@ -1501,14 +1518,22 @@ struct PlanDay: Decodable, Identifiable {
 /// second run on a double-booked plan day. Mirrors the backend's additive
 /// `secondaryRun` field on /api/plan/week's PlanDay (web-v2/app/api/plan/
 /// week/route.ts).
-struct SecondaryRun: Decodable {
+struct SecondaryRun: Decodable, Identifiable {
+    /// 2026-08-19 · the runner-up's own `plan_workouts.id`. This row shares a
+    /// date with the primary by definition, so a date key cannot name it.
+    let planWorkoutId: String?
+    var id: String { planWorkoutId ?? "secondary:\(type):\(distance_mi)" }
     let type: String
     let sub_label: String?
     let distance_mi: Double
 
-    enum CodingKeys: String, CodingKey { case type, sub_label, distance_mi }
+    enum CodingKeys: String, CodingKey {
+        case planWorkoutId = "plan_workout_id"
+        case type, sub_label, distance_mi
+    }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.planWorkoutId = try c.decodeIfPresent(String.self, forKey: .planWorkoutId)
         self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? ""
         self.sub_label = try c.decodeIfPresent(String.self, forKey: .sub_label)
         self.distance_mi = try c.decodeIfPresent(Double.self, forKey: .distance_mi) ?? 0
@@ -2135,6 +2160,15 @@ struct TrainingInfluence: Decodable {
 }
 
 struct TrainingPlanDay: Decodable, Identifiable {
+    /// 2026-08-19 · `plan_workouts.id`. The server has ALWAYS sent this —
+    /// lib/coach/training-state.ts emits `id: String(d.id)` on every day and
+    /// documents it as "used by TrainView to cross-reference coach_intents
+    /// rows that targeted this specific workout" — this struct simply never
+    /// decoded it, and keyed `Identifiable` on `date` instead. Unlike
+    /// /api/plan/week these rows are the raw plan_workouts rows, unfiltered
+    /// and uncollapsed, so a date genuinely repeats whenever a date carries
+    /// two workouts. Nil is defensive only.
+    let planWorkoutId: String?
     let date: String
     let dow: Int
     let type: String
@@ -2145,11 +2179,16 @@ struct TrainingPlanDay: Decodable, Identifiable {
     /// Trajectory signal for done quality/long days. Nil on rest, undone,
     /// or pre-backfill rows. Non-breaking: absent key silently → nil.
     let trainingInfluence: TrainingInfluence?
-    var id: String { date }
+    /// Row id when the server sent one; a date-derived key only as a fallback.
+    var id: String { planWorkoutId ?? "date:\(date)" }
 
-    enum CodingKeys: String, CodingKey { case date, dow, type, mi, label, doneMi, activityId, trainingInfluence }
+    enum CodingKeys: String, CodingKey {
+        case planWorkoutId = "id"
+        case date, dow, type, mi, label, doneMi, activityId, trainingInfluence
+    }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.planWorkoutId = try c.decodeIfPresent(String.self, forKey: .planWorkoutId)
         self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
         self.dow = c.decodeFlexInt(forKey: .dow) ?? 0
         self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? "rest"

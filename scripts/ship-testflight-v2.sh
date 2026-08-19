@@ -143,10 +143,14 @@ cat > /tmp/FaffV2ExportOptions.plist <<PLIST
 </dict></plist>
 PLIST
 
-# Brief v2 §1 build enforcement (queued task 6) · the ten-color lock +
-# retired-hex tripwire gates every TestFlight archive. Fails the ship if
-# any surface drifts from the locked palette.
-echo "→ Palette-sync gate (brief v2 §1)…"
+# Palette build enforcement (queued task 6) · the per-surface palette lock +
+# retired-hex tripwire gates every TestFlight archive. Fails the ship if any
+# surface drifts from the palette its own design document specifies.
+#
+# 2026-08-19 · the phone is locked to the v5 iPhone handoff
+# (design/0819/design_handoff_faff_iphone_app v5), NOT to brief v2 — brief v2
+# still governs web and watch. The gate itself carries the full ruling.
+echo "→ Palette-sync gate (iPhone: v5 handoff · watch: brief v2 §1)…"
 bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-palette-sync.sh"
 
 # WorkoutEngine test gate · compile-check the watch test target before

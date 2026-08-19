@@ -86,6 +86,22 @@ targets:
           - Inter-SemiBold.ttf
           - Inter-Bold.ttf
           - Inter-ExtraBold.ttf
+          # v5 iPhone typography (design_handoff_faff_iphone_app v5).
+          # Both are VARIABLE fonts, unmodified upstream Google Fonts
+          # releases, renamed only (upstream filenames carry the axis
+          # list in square brackets, which does not round-trip cleanly
+          # through this plist). Registering a variable font here makes
+          # its DEFAULT instance available by PostScript name —
+          # InstrumentSans-Regular and Archivo-SemiBold — and every other
+          # point in the variation space reachable by setting axes on a
+          # CTFontDescriptor. See FontsV5.swift: the display register the
+          # design asks for (Archivo wght 800, wdth 112) is not a named
+          # instance in the file, so `Font.custom("Archivo-ExtraBold")`
+          # would return nil. Use Font.faffDisplay / Font.faffText.
+          # SIL OFL 1.1 · the two OFL-*.txt files ship beside the TTFs in
+          # Resources/Fonts because the licence must travel with the font.
+          - InstrumentSans-Variable.ttf
+          - Archivo-Variable.ttf
         # Strava OAuth callback scheme · the redirect URI on the auth
         # server is `faff://strava-oauth/callback`. Was lost when an
         # earlier xcodegen regen ran without this block · restored
