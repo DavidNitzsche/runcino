@@ -1093,8 +1093,35 @@ export function buildWorkoutSpec(
       // reads HMP via the goal-pace branch below. In prod, iPaceSec is always threaded for
       // race_week_tuneup (persistPlan computes it unconditionally), so the fallback is defensive.
       const wants5kPace = /5\s*k\s*pace|@\s*I\b/i.test(String(prescription ?? ''));
+      // TUNEUP-T-1 (2026-08-19) · the THIRD pace token this branch can be
+      // handed, and the one it silently ignored. `generate.ts` writes the ultra
+      // race-week primer as "5×400m @ T pace · 90s jog" (ULTRA-TUNE-1 · both
+      // sites: the race-week day builder and `inlinePrescriptions`), which
+      // matches neither matcher above and fell through to the `tPaceSec - 5`
+      // default — so the watch ran the reps 5 s/mi FASTER than the label said,
+      // and 5 s/mi above T is no longer T. That is the same label-versus-spec
+      // drift class the codebase has already paid for twice (the HM tune-up
+      // hardcoded to 2×0.5mi, and the beginner "5×1 min surges" built as a
+      // 2.5-mile continuous threshold block): the row promises one workout and
+      // the spec builds another, with nothing in between to notice.
+      //
+      // The prescriptions that legitimately want the primer carry NO pace token
+      // at all ("Two sharp half-mile reps just above T-pace" is the default's
+      // own description, not a prescription) — so naming T explicitly is what
+      // separates "the label says T" from "the label says nothing".
+      // Cite: Research/01-pace-zones-vdot.md §"Daniels' 5 training zones" — T is
+      // a pace defined by VDOT, not a band; a rep written @ T runs at T.
+      //
+      // Deliberately the NARROW token `@ T`, matching the shape of the two
+      // matchers above, and not a bare "T-pace" anywhere in the string: the
+      // default primer describes ITSELF as "just above T-pace", and widening
+      // the match would re-point that one at T and change a workout nobody
+      // asked to change.
+      const wantsTPace = /@\s*T\b/i.test(String(prescription ?? ''));
       const repPace = wants5kPace
         ? (iPaceSec ?? (tPaceSec - 18))
+        : wantsTPace
+        ? tPaceSec
         : wantsRacePace
         // PINV-1-BOUNDARY (2026-06-23) · >= not > so that goal pace exactly AT the easy floor
         // (borderline soft-goal) routes to tPaceSec, not to the easy-pace goal.

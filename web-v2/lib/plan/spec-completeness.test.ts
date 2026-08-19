@@ -109,3 +109,41 @@ describe('D1 · subLabelFromSpec long-finish derivation', () => {
     expect(subLabelFromSpec(race)).toBeNull();
   });
 });
+
+/**
+ * TUNEUP-T-1 (2026-08-19) · the race-week tune-up runs the pace its label says.
+ *
+ * Same failure class as D1 above — the row promises one workout and the spec
+ * builds another — found in the third pace token this branch can be handed.
+ * `generate.ts` writes the ultra race-week primer as "5×400m @ T pace" at both
+ * sites (the race-week day builder and `inlinePrescriptions`). The branch
+ * matched only "race pace"/"@ HMP|MP" and "5K pace"/"@ I", so "@ T pace" fell
+ * through to the `tPaceSec - 5` default and the watch ran the reps 5 s/mi
+ * faster than the label promised. Five seconds a mile above T is not T.
+ */
+describe('TUNEUP-T-1 · race_week_tuneup label and spec agree on pace', () => {
+  const T = 400, I = 360, GOAL = 420;
+  const repPaceFor = (rx: string | null) =>
+    (buildWorkoutSpec('race_week_tuneup', 5, T, 170, rx, 190, GOAL, I).spec as Record<string, unknown>)
+      .rep_pace_s_per_mi;
+
+  it('"@ T pace" builds at T, not T-5', () => {
+    expect(repPaceFor('5×400m @ T pace · 90s jog')).toBe(T);
+  });
+
+  it('every other race-week primer generate.ts writes is unchanged', () => {
+    // The four sibling strings, verbatim from generate.ts's two tune-up sites.
+    expect(repPaceFor('5×400m @ 5K pace · 2min jog')).toBe(I);   // marathon
+    expect(repPaceFor('4×1km @ race pace · 90s jog')).toBe(GOAL); // half
+    expect(repPaceFor('5×200m @ 5K pace · 90s jog')).toBe(I);     // 5K
+    expect(repPaceFor('4×400m @ 5K pace · 90s jog')).toBe(I);     // 10K
+  });
+
+  it('a prescription with no pace token still gets the T-5 primer', () => {
+    // The narrow `@ T` match, deliberately: the default primer describes itself
+    // as "just above T-pace", and a wider match would re-point it at T and
+    // change a workout nobody asked to change.
+    expect(repPaceFor(null)).toBe(T - 5);
+    expect(repPaceFor('Two sharp half-mile reps just above T-pace')).toBe(T - 5);
+  });
+});

@@ -65,6 +65,7 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore, mileageByDay, observableCoverageDays, weeklyAvgFromWindow } from '@/lib/runs/volume';
 import { paceBlendAnchorIsProvisional } from './anchor-provenance';
+import { distanceMiOfMeta } from '@/lib/race/distance';
 import type { ExperienceLevel } from '@/lib/coach/profile-state';
 import { logSealSkip } from './seal';
 import { mutatePlan } from './mutate';
@@ -2348,12 +2349,15 @@ async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
   const recent = (await pool.query<{
     slug: string;
     date: string;
-    distance_mi: string | null;
+    meta: unknown;
     finish_s: string | null;
   }>(
+    // LABEL-ONLY-1 (2026-08-19) · select `meta` and resolve the distance at
+    // READ time (see the note on the loop below), rather than reading the
+    // numeric `meta.distanceMi` that most race rows do not carry.
     `SELECT slug,
             meta->>'date' AS date,
-            (meta->>'distanceMi')::numeric::text AS distance_mi,
+            meta,
             actual_result->>'finishS' AS finish_s
        FROM races
       WHERE user_uuid = $1
@@ -2375,7 +2379,14 @@ async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
   let bestFinishS = 0;
   for (const raceRow of recent) {
     const fs = raceRow.finish_s ? Number(raceRow.finish_s) : 0;
-    const mi = raceRow.distance_mi ? Number(raceRow.distance_mi) : 0;
+    // LABEL-ONLY-1 (2026-08-19) · this was `row.distance_mi ? Number(...) : 0`,
+    // reading the numeric jsonb field directly. That field is NULL on a race
+    // row written with a distance LABEL and no number — 2 of the 12 rows in
+    // production — so `mi` was 0, `vdotFromRace` was skipped, and pr_bank could
+    // never fire for such a race no matter how fast the runner ran it. The
+    // shared read-time resolver is the same one loadGeneratorInputs and
+    // loadLastRaceFinished already trust for exactly this reason.
+    const mi = distanceMiOfMeta(raceRow.meta) ?? 0;
     const v = fs > 0 && mi > 0 ? vdotFromRace(fs, mi) : null;
     if (v != null && v > bestNewVdot) {
       bestNewVdot = v;
@@ -2785,11 +2796,14 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
 
   // 1. RACE evidence · best A/B finish in last 14d.
   const recent = (await pool.query<{
-    slug: string; date: string; distance_mi: string | null; finish_s: string | null;
+    slug: string; date: string; meta: unknown; finish_s: string | null;
   }>(
+    // LABEL-ONLY-1 (2026-08-19) · `meta` selected whole; the distance is
+    // resolved at read time in the loop below. See the sibling note in
+    // detectPrBank — the same defect, in the mirror-image detector.
     `SELECT slug,
             meta->>'date' AS date,
-            (meta->>'distanceMi')::numeric::text AS distance_mi,
+            meta,
             actual_result->>'finishS' AS finish_s
        FROM races
       WHERE user_uuid = $1
@@ -2807,7 +2821,12 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
   let bestFinishS = 0;
   for (const raceRow of recent) {
     const fs = raceRow.finish_s ? Number(raceRow.finish_s) : 0;
-    const mi = raceRow.distance_mi ? Number(raceRow.distance_mi) : 0;
+    // LABEL-ONLY-1 · a label-only race row read as distance 0 here too, so a
+    // fitness REGRESSION was equally invisible. The two directions had to be
+    // fixed together: fixing only the upward one would have left the engine
+    // able to see a label-only race when it went well and blind when it did
+    // not, which is worse than being blind to both.
+    const mi = distanceMiOfMeta(raceRow.meta) ?? 0;
     const v = fs > 0 && mi > 0 ? vdotFromRace(fs, mi) : null;
     if (v != null && (bestRaceVdot == null || v > bestRaceVdot)) {
       bestRaceVdot = v; bestSlug = raceRow.slug; bestDate = raceRow.date;

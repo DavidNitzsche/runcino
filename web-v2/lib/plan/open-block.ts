@@ -28,12 +28,13 @@
  * author it at all, has it already been done today — lives here, fully tested,
  * and is wired into both writers (the result chain and the nightly cron).
  *
- * The AUTHORSHIP for the no-target case needs the `generate.ts` entry that
- * does not exist yet; `authorNoTargetBlock` below is the single seam where it
- * lands, and it says so precisely rather than pretending. Until then the state
- * is SURFACED, not silent: a pending `open_block` proposal records that this
- * runner is planless and why, the cron retries every night, and the runner is
- * picked up on the first tick after the entry point ships.
+ * The AUTHORSHIP for the no-target case needed a `generate.ts` entry that did
+ * not exist. It does now: `GenerateInput.openTarget` (2026-08-19 ·
+ * OPEN-TARGET-1), and `authorNoTargetBlock` below calls it. A runner who
+ * finishes a race with nothing booked receives an authored plan — the reverse
+ * taper Research/00b prescribes for the distance they just ran, or a
+ * maintenance block once that window has closed — not a pending proposal and a
+ * nightly retry.
  *
  * The goal-anchored case works today and is taken first where it applies.
  */
@@ -57,8 +58,11 @@ export interface OpenBlockOutcome {
    *    'coached_externally'       · the runner's own coach owns the plan
    *    'not_due'                  · they have a plan, or a target to build to
    *    'already_pending'          · an open_block proposal is already standing
-   *    'no_target_entry_missing'  · the generate.ts open entry (see below)
    *    'generation_failed'        · the generator ran and refused
+   *
+   * 'no_target_entry_missing' retired 2026-08-19 · the generate.ts open entry
+   * exists (GenerateInput.openTarget), so the no-target case now authors or
+   * fails for a real reason rather than for the absence of a code path.
    */
   reason: string;
   planId?: string;
@@ -170,40 +174,60 @@ export async function authorOpenBlock(input: AuthorOpenBlockInput): Promise<Open
 }
 
 /**
- * THE SEAM. Authoring a recovery or maintenance block with no target at all.
+ * THE SEAM, now closed (2026-08-19 · OPEN-TARGET-1).
  *
- * `generate.ts` is the only module that can do this, and it cannot yet: with
- * neither `raceSlug` nor `goalTarget`, `loadGeneratorInputs` returns
- * `'race not found'` before any composer is reached. Nothing downstream is
- * missing — `pickPlanMode` already answers "no next race → maintenance" at
- * step 2, `composeMaintenancePlan` already falls back to its rolling four-week
- * default when `nextRace` is null, and `ComposeNonRaceInput.nextRace` is
- * already typed nullable. The gap is the input loader, and it is the one file
- * this work does not own.
+ * Authoring a recovery or maintenance block with no target at all. `generate.ts`
+ * is the only module that can do this, and until this commit it could not: with
+ * neither `raceSlug` nor `goalTarget`, `loadGeneratorInputs` returned
+ * `'race not found'` before any composer was reached. That was the ONLY missing
+ * piece, and re-verified before building on it rather than taken on trust:
  *
- * What lands here when that entry exists (the whole change, verbatim):
+ *   · `pickPlanMode` step 2 reads, verbatim, "No next race · maintenance by
+ *     default" — and it is reached, because step 1's recovery check is guarded
+ *     on the LAST race, not the next one.
+ *   · `ComposeNonRaceInput.nextRace` is declared `| null`.
+ *   · `composeMaintenancePlan` guards its whole horizon calculation behind
+ *     `if (input.nextRace)` and otherwise keeps `TOTAL_WEEKS = 4` — "when no
+ *     race is scheduled (just-run mode), fall back to the 4-week rolling
+ *     default", in its own comment.
+ *   · `composeRecoveryPlan` never reads `nextRace` at all; its length and
+ *     shape come from `lastRaceFinished` and Research/00b's reverse taper.
  *
- *     const gen = await generatePlan({
- *       userId: input.userUuid,
- *       openTarget: { after: input.lastRace },   // new GenerateInput member
- *       startAnchor: 'today',
- *     });
- *     return gen.ok
- *       ? { ok: true, mode, reason: 'authored', planId: gen.plan_id }
- *       : { ok: false, mode, reason: 'generation_failed' };
+ * Two things the claim did NOT cover, found by tracing rather than assuming,
+ * and handled in `generate.ts` (see OPEN-TARGET-1 there):
  *
- * Until then this returns honestly. It does NOT fall back to a race-anchored
- * build off the finished race: `loadGeneratorInputs` rejects a past date at
- * `totalDays < 14` ("target < 2 weeks away"), so that path cannot work, and
- * making it work would mean writing a plan whose `race_id` points at a race
- * that already happened — a lie the graduate cron would then act on.
+ *   · `ComposePlanInput` still requires a `raceDistanceMi`, so the no-target
+ *     path has to name a distance nobody is racing. It names the last raced
+ *     one, and where none exists a labelled convention that is provably inert.
+ *   · `pickPlanMode` would have disagreed with `openBlockMode` on race DAY and
+ *     on any C-priority race, because the DB reader behind it filters to A/B
+ *     races dated strictly before today. The finished race is threaded through
+ *     `openTarget.after` so both read the same race and reach the same answer.
+ *
+ * It still does NOT fall back to a race-anchored build off the finished race:
+ * that would write a plan whose `race_id` points at a race that already
+ * happened, which the graduate cron would then act on.
  */
 async function authorNoTargetBlock(
   input: AuthorOpenBlockInput,
   mode: OpenBlockMode,
 ): Promise<OpenBlockOutcome> {
-  void input;
-  return { ok: false, mode, reason: 'no_target_entry_missing' };
+  const gen = await generatePlan({
+    userId: input.userUuid,
+    openTarget: { after: input.lastRace },
+    // The block starts TODAY, not on the training-week boundary behind it. A
+    // runner who is planless right now needs today prescribed; anchoring to
+    // Monday would date the opening days before the block was authored, which
+    // is the same reason onboarding uses this anchor.
+    startAnchor: 'today',
+  }).catch((e: unknown) => ({
+    ok: false as const,
+    plan_id: undefined,
+    reason: e instanceof Error ? e.message : String(e),
+  }));
+  return gen.ok
+    ? { ok: true, mode, reason: 'authored', planId: gen.plan_id }
+    : { ok: false, mode, reason: 'generation_failed' };
 }
 
 /**
