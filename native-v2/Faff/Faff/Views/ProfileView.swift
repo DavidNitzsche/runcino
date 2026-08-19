@@ -294,7 +294,22 @@ struct ProfileView: View {
     }
     private func provenanceKindForVDOT(value: Double?) -> ProvenanceKind? {
         guard value != nil else { return nil }
-        return .raceCalibrated(raceName: "recent race PR", dateLabel: "")
+        // 2026-08-18 · doctrine sweep fix (CLAUDE.md Race-data
+        // source-of-truth). This claimed "recent race PR" for every VDOT
+        // value with no check — but profile-state.ts's
+        // loadLatestVdotWithAnchor anchor can come from a training-run
+        // candidate, not just a race (see lib/training/vdot.ts
+        // bestRecentVdot). vdot_anchor_name is only populated when a
+        // races row matches the anchor date (±1 day, profile-state.ts);
+        // when it's nil the VDOT's anchor wasn't a race, and captioning
+        // it "recent race PR" is an unlabeled-provenance claim of exactly
+        // the shape this doctrine forbids.
+        if let name = profile?.physiology.vdot_anchor_name, !name.isEmpty {
+            let days = profile?.physiology.vdot_anchor_age_days
+            let dateLabel = days.map { "\($0)d ago" } ?? ""
+            return .raceCalibrated(raceName: name, dateLabel: dateLabel)
+        }
+        return .estimated(method: "your recent training")
     }
 
     // MARK: - Toolkit · SETTINGS rows (SettingValueRow)

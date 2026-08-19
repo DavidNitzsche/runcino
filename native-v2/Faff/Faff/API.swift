@@ -800,6 +800,20 @@ enum API {
         return decoded
     }
 
+    /// Personal records — source-of-truth compliant (2026-08-18 doctrine
+    /// sweep). Curated race results first (races.actual_result, then
+    /// races.meta.finishTime); a bucket with no curated result falls back
+    /// to the fastest whole training run near that distance, always
+    /// provisional:true. Replaces ActivityView's old client-side
+    /// computeRecords(), which derived FASTEST PACE from ANY run with no
+    /// race gate — see Models/Runs.swift's PersonalRecordsResponse doc.
+    static func fetchPersonalRecords() async throws -> PersonalRecordsResponse? {
+        let url = baseURL.appendingPathComponent("api/records")
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        return try? JSONDecoder().decode(PersonalRecordsResponse.self, from: data)
+    }
+
     /// Single run detail (P28). Powers RunDetailSheet.
     static func fetchRunDetail(id: String) async throws -> RunDetail? {
         let url = baseURL.appendingPathComponent("api/runs/\(id)")

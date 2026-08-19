@@ -533,7 +533,7 @@ struct RaceDayView: View {
             // Strava run via the run-detail destination so the runner can
             // dig into splits / HR / cadence on race day.
             if let finish = detail?.race.finishTime, detail?.race.is_past == true {
-                let isPB = detail?.race.pb == true
+                let isPB = isPBConfirmed
                 let pbHex: UInt32 = 0xF0DF47
                 VStack(alignment: .leading, spacing: 9) {
                     Text(finish)
@@ -553,6 +553,12 @@ struct RaceDayView: View {
                                             in: RoundedRectangle(cornerRadius: 5))
                                 .overlay(RoundedRectangle(cornerRadius: 5)
                                     .stroke(Color(hex: pbHex).opacity(0.45), lineWidth: 1))
+                        } else if isFinishProvisional {
+                            // Unconfirmed watch match — label it, don't let
+                            // it read as a settled result (Rule 3).
+                            Text(detail?.race.finishProvisionalLabel ?? "Provisional")
+                                .font(.label(10)).tracking(1.5)
+                                .foregroundStyle(Theme.warnText)
                         }
                     }
                     if let mr = detail?.race.matchedRun,
@@ -646,11 +652,30 @@ struct RaceDayView: View {
         return "\(d) DAYS OUT"
     }
 
+    /// 2026-08-18 · doctrine sibling fix (CLAUDE.md Race-data
+    /// source-of-truth · Rule 3). `race.pb` was rendered as an
+    /// authoritative "PERSONAL BEST" badge in five places in this file
+    /// with no check of `finishProvisional`/`finishSource` — a
+    /// date+distance-matched watch time (races-state's run_match rung,
+    /// never a curated chip time) could headline as a confirmed PR with
+    /// zero provenance label, the exact shape f55798f2 fixed on web.
+    /// Mirrors TodayView.postRaceResult's identical provisional check.
+    private var isFinishProvisional: Bool {
+        (detail?.race.finishProvisional == true) || (detail?.race.finishSource == "run_match")
+    }
+
+    /// True only when the server both marked this a PB AND the finish
+    /// backing it is a curated result, not an unconfirmed watch match.
+    private var isPBConfirmed: Bool {
+        detail?.race.pb == true && !isFinishProvisional
+    }
+
     /// Existing-PR chip when the user has logged a personal best for this
-    /// race. Hidden when the field is null (most races) or false.
+    /// race. Hidden when the field is null (most races), false, or the
+    /// backing finish is still provisional (Rule 3 — no PB claim off an
+    /// unconfirmed time).
     private var pbChip: String? {
-        if let pb = detail?.race.pb, pb { return "PERSONAL BEST" }
-        return nil
+        isPBConfirmed ? "PERSONAL BEST" : nil
     }
 
     // courseRoute(points:) removed 2026-06-17 — THE COURSE now renders via
@@ -668,14 +693,14 @@ struct RaceDayView: View {
 
     private var countdownColor: Color {
         if detail?.race.is_past == true {
-            return detail?.race.pb == true ? Color(hex: 0xF0DF47) : Theme.txt
+            return isPBConfirmed ? Color(hex: 0xF0DF47) : Theme.txt
         }
         return Theme.race
     }
 
     private var countdownHeroStyle: AnyShapeStyle {
         if detail?.race.is_past == true {
-            return detail?.race.pb == true
+            return isPBConfirmed
                 ? AnyShapeStyle(LinearGradient(
                     colors: [Color(hex: 0xF3AD38), Color(hex: 0xF0DF47)],
                     startPoint: .leading, endPoint: .trailing))
@@ -686,7 +711,8 @@ struct RaceDayView: View {
 
     private var countdownSub: String? {
         if detail?.race.is_past == true {
-            return detail?.race.pb == true ? "FINISHED · PERSONAL BEST" : "FINISHED"
+            if isPBConfirmed { return "FINISHED · PERSONAL BEST" }
+            return isFinishProvisional ? "FINISHED · PROVISIONAL" : "FINISHED"
         }
         guard let d = detail?.race.days, d > 0 else { return "Race day. Trust the work." }
         // No "TO {code}" days-out subtitle — the name lives in the header pill;
@@ -999,7 +1025,7 @@ struct RaceDayView: View {
     /// / notes → PATCH /api/race write.
     private var retroCard: some View {
         let hasFinish = (detail?.race.finishTime?.isEmpty == false)
-        let isPB = detail?.race.pb == true
+        let isPB = isPBConfirmed
         let pbHex: UInt32 = 0xF0DF47
         return VStack(alignment: .leading, spacing: 12) {
             if hasFinish, let finish = detail?.race.finishTime {
@@ -1007,9 +1033,9 @@ struct RaceDayView: View {
                     Text(finish)
                         .font(.display(28, weight: .bold)).tracking(-0.5)
                         .foregroundStyle(isPB ? Color(hex: pbHex) : Theme.txt)
-                    Text(isPB ? "FINISHED · PERSONAL BEST" : "FINISHED")
+                    Text(isPB ? "FINISHED · PERSONAL BEST" : (isFinishProvisional ? "FINISHED · PROVISIONAL" : "FINISHED"))
                         .font(.body(9.5, weight: .extraBold)).tracking(1.4)
-                        .foregroundStyle(Theme.txt.opacity(0.6))
+                        .foregroundStyle(isFinishProvisional && !isPB ? Theme.warnText : Theme.txt.opacity(0.6))
                     Spacer()
                 }
                 Text("Tap below to add how it went, or correct the time.")

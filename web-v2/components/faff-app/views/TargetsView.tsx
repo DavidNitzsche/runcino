@@ -285,7 +285,20 @@ export function TargetsView({
           <div className="eyebrow-sec">Personal records · measured against the goal</div>
           {anchorPr && anchorGapSec != null ? (
             <div className={`anchorline ${status?.tier === 'ahead' || status?.tier === 'on-pace' ? 'ontrack' : ''}`}>
-              Your {anchorPr.k.toLowerCase()} PR is <b>{anchorPr.v}</b>.
+              {/* 2026-08-18 · doctrine sweep sibling fix — this sentence used to
+                  read "Your {k} PR is X" unconditionally, even when anchorPr
+                  came from adaptPRs' training-run fallback (no confirmed race
+                  at that distance). The grid tile below already carries a
+                  "· training" caption for that case; this headline claim
+                  didn't, so a training effort could read as a confirmed PR
+                  in the one sentence on the page most likely to be read.
+                  Per CLAUDE.md Race-data Rule 3, the training-derived number
+                  must never be presented as authoritative. */}
+              {anchorPr.source === 'training' ? (
+                <>Your fastest {anchorPr.k.toLowerCase()} training effort is <b>{anchorPr.v}</b> — no confirmed race yet.</>
+              ) : (
+                <>Your {anchorPr.k.toLowerCase()} PR is <b>{anchorPr.v}</b>.</>
+              )}
               {' '}The goal is <b>{goal.goal}</b>
               {anchorGapSec > 0 ? (
                 <> · a <span className="gp">{formatGapClock(anchorGapSec)} gap</span>, about <b>{formatPerMile(anchorGapSec, goalDist!)}/mi</b>. That is the distance the build is built to close.</>

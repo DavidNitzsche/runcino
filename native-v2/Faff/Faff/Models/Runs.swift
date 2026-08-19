@@ -479,3 +479,104 @@ struct FartlekSegment: Decodable {
     let pace_s_per_mi: Double?
     let duration_s: Double?
 }
+
+// MARK: - /api/records
+
+// 2026-08-18 · doctrine sweep sibling fix (CLAUDE.md Race-data
+// source-of-truth). ActivityView's "Personal records" grid used to derive
+// FASTEST PACE client-side from ANY run in /api/log, zero gate on whether
+// it was a race — a GPS-glitched stride or a hard interval rep could
+// headline as a Personal Record forever, the exact shape f55798f2 fixed
+// on web (seed.ts's recordsFromRuns). /api/records already existed for
+// this (built 2026-07-06 · phone+watch audit P1-7, lib/race/
+// personal-records.ts) but the phone never adopted it — these are its
+// wire models. Curated race results (races.actual_result first, then
+// races.meta.finishTime) render as authoritative; a bucket with no
+// curated result falls back to the fastest whole training run near that
+// distance, ALWAYS carrying provisional:true + provisionalLabel.
+struct PersonalRecordsResponse: Decodable {
+    let records: [PersonalRecordEntry]
+    let training: PersonalRecordTraining?
+
+    enum CodingKeys: String, CodingKey { case records, training }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.records = (try? c.decode([PersonalRecordEntry].self, forKey: .records)) ?? []
+        self.training = try? c.decodeIfPresent(PersonalRecordTraining.self, forKey: .training)
+    }
+}
+
+struct PersonalRecordEntry: Decodable, Identifiable {
+    /// "5k" | "10k" | "half" | "marathon"
+    let key: String
+    /// "5K" / "10K" / "Half Marathon" / "Marathon"
+    let label: String
+    let timeDisplay: String
+    let paceDisplay: String?
+    let dateISO: String?
+    let name: String?
+    let distanceMi: Double?
+    /// 'race_result' | 'race_meta' | 'training_run'
+    let source: String
+    /// Rule 3: true whenever this is NOT a curated race result.
+    let provisional: Bool
+    let provisionalLabel: String?
+
+    var id: String { key }
+
+    enum CodingKeys: String, CodingKey {
+        case key, label, timeDisplay, paceDisplay, dateISO, name, distanceMi
+        case source, provisional, provisionalLabel
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.key = (try? c.decode(String.self, forKey: .key)) ?? ""
+        self.label = (try? c.decode(String.self, forKey: .label)) ?? ""
+        self.timeDisplay = (try? c.decode(String.self, forKey: .timeDisplay)) ?? ""
+        self.paceDisplay = try? c.decodeIfPresent(String.self, forKey: .paceDisplay)
+        self.dateISO = try? c.decodeIfPresent(String.self, forKey: .dateISO)
+        self.name = try? c.decodeIfPresent(String.self, forKey: .name)
+        self.distanceMi = try? c.decodeIfPresent(Double.self, forKey: .distanceMi)
+        self.source = (try? c.decode(String.self, forKey: .source)) ?? "training_run"
+        self.provisional = (try? c.decodeIfPresent(Bool.self, forKey: .provisional)) ?? true
+        self.provisionalLabel = try? c.decodeIfPresent(String.self, forKey: .provisionalLabel)
+    }
+}
+
+struct PersonalRecordTraining: Decodable {
+    let longestRun: PersonalRecordLongestRun?
+    let biggestWeek: PersonalRecordBiggestWeek?
+
+    enum CodingKeys: String, CodingKey { case longestRun, biggestWeek }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.longestRun = try? c.decodeIfPresent(PersonalRecordLongestRun.self, forKey: .longestRun)
+        self.biggestWeek = try? c.decodeIfPresent(PersonalRecordBiggestWeek.self, forKey: .biggestWeek)
+    }
+}
+
+struct PersonalRecordLongestRun: Decodable {
+    let distanceMi: Double
+    let dateISO: String?
+    let name: String?
+
+    enum CodingKeys: String, CodingKey { case distanceMi, dateISO, name }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.distanceMi = (try? c.decode(Double.self, forKey: .distanceMi)) ?? 0
+        self.dateISO = try? c.decodeIfPresent(String.self, forKey: .dateISO)
+        self.name = try? c.decodeIfPresent(String.self, forKey: .name)
+    }
+}
+
+struct PersonalRecordBiggestWeek: Decodable {
+    let miles: Double
+    let weekStartISO: String
+
+    enum CodingKeys: String, CodingKey { case miles, weekStartISO }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.miles = (try? c.decode(Double.self, forKey: .miles)) ?? 0
+        self.weekStartISO = (try? c.decode(String.self, forKey: .weekStartISO)) ?? ""
+    }
+}

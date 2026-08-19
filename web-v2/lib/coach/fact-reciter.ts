@@ -334,7 +334,16 @@ export function reciteRaces(state: RacesState): CoachFactBlock {
   if (state.past.length > 0) {
     const recent = state.past[0];
     const recentBits: string[] = [recent.name];
-    if (recent.finishTime) recentBits.push(recent.finishTime);
+    // 2026-08-18 · doctrine sweep sibling fix — this line showed
+    // recent.finishTime bare, with no check of finishProvisional, while
+    // the RACE DETAIL block a few dozen lines down (FINISH, ~line 405)
+    // already gates the identical field correctly ("Strava elapsed ·
+    // race to lock in" per CLAUDE.md Rule 3). A date+distance-matched
+    // watch time could headline this compact summary as a settled
+    // result. Mirror the same caveat here.
+    if (recent.finishTime) {
+      recentBits.push(recent.finishProvisional ? `${recent.finishTime} (provisional)` : recent.finishTime);
+    }
     facts.push({
       label: 'PAST',
       value: `${state.past.length} completed`,
