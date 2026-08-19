@@ -156,7 +156,18 @@ describe('DAY-SIZE-1 · a quality day is sized from its session', () => {
         const s = built.spec as Record<string, unknown> | null;
         if (!s) continue;
         // A rep count in the label is the rep count in the spec.
-        const m = String(d.subLabel ?? '').match(/^(\d+)\s*[×xX]/);
+        //
+        // EXCEPT on a GRAMMAR-SEQ segmented session, where the leading number
+        // is not the set's rep count at all. §9.2's Mona fartlek renders as
+        // "2×90s @ 5K · 90s jog + 4×60s ... + 4×15s @ mile · 15s jog": the "2"
+        // names the first run-length group of fourteen steps. `expand-spec.ts`
+        // already draws this exact line when it reconciles a label against a
+        // spec (`const stepped = Array.isArray(s.steps) ... specReps = stepped
+        // ? 0 : rep_count`), so this asserts the same rule rather than a second
+        // one. The session reached this sweep for the first time with
+        // DOCTRINE-BASE-2, which put §9's fartleks into BASE weeks.
+        const stepped = Array.isArray(s.steps) && (s.steps as unknown[]).length > 0;
+        const m = stepped ? null : String(d.subLabel ?? '').match(/^(\d+)\s*[×xX]/);
         if (m && Number(s.rep_count ?? 0) > 0) {
           expect(Number(s.rep_count), `"${d.subLabel}" built ${s.rep_count} reps`).toBe(Number(m[1]));
         }

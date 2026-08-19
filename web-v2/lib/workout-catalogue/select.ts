@@ -243,15 +243,38 @@ const SLOT_FAMILIES: Record<Slot, CatalogueEntry['family'][]> = {
  * of a phase table: admitting §7 to the rep slot in every phase was tried, and
  * it cost a marathon build its second hill session and a 5K build its §12.2
  * cutdown — four broadly-placed entries thinned the rotation everywhere so a
- * twelve-second hill-sprint set could be a runner's week of VO2 work. The base
- * row lists strides and hill sprints too, but the engine places no structured
- * quality session in BASE at all (see `VOCAB.phase-placement`), so that row is
- * describing what an easy week already carries.
+ * twelve-second hill-sprint set could be a runner's week of VO2 work.
+ *
+ * ── DOCTRINE-BASE-2 (2026-08-19) · the base row is a row, not a footnote ────
+ *
+ * This comment used to end: "The base row lists strides and hill sprints too,
+ * but the engine places no structured quality session in BASE at all, so that
+ * row is describing what an easy week already carries." That reading is wrong,
+ * and it is the whole of the defect. §15's base row is
+ *
+ *   | Base (8–12+ wks) | E, GA, medium-long, long, strides, hill sprints,
+ *                        occasional fartlek/light hills | 2 quality sessions/wk max |
+ *
+ * — a Primary-workouts column naming three kinds of work the engine did not
+ * place, and a Frequency column stating a CEILING OF TWO, which is not a
+ * statement you make about a phase that carries none. A runner who has been
+ * doing speed and is handed three weeks with every surge removed loses the one
+ * adaptation that decays fastest, and loses it in the phase §7.2's own row says
+ * never to stop ("All phases — never stop doing strides").
+ *
+ * So the SPEED slot — the base row's own vocabulary — admits §8's light hills
+ * and §9's fartleks in the base phase, alongside §7. What it deliberately does
+ * NOT admit is `threshold` or `vo2max`: `Research/00b`'s reverse taper spells
+ * out what a rebuilding week's first structured work is and what it is not —
+ * week 3 is "Strides + light fartlek (4–6× 1 min @ 10K effort) | First
+ * structured surges. No threshold or VO2max." The base row agrees by omission;
+ * this admits exactly what both name.
  */
 const SLOT_FAMILIES_IN_PHASE: Partial<
   Record<Slot, Partial<Record<DoctrinePhase, CatalogueEntry['family'][]>>>
 > = {
   intervals: { taper: ['speed'] },
+  speed: { base: ['hills', 'fartlek'] },
 };
 
 /** The families this slot admits in this phase. */

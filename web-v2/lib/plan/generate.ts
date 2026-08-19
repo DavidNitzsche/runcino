@@ -83,6 +83,7 @@ import {
 // the anchors the composer can honestly supply and the shapes the engine's
 // prescription grammar cannot yet express.
 import {
+  anchorsFor,
   newCatalogueHistory, recordCatalogueChoice, selectSlotWorkout,
   type CatalogueHistory, type ComposerSlot,
 } from './catalogue-rx';
@@ -941,6 +942,42 @@ const BLOCK_SHAPE: Record<DistCategory, { taperWeeks: number; raceSpecificCap: n
 export const BASE_REBUILT_SHARE = 0.70;
 
 /**
+ * DOCTRINE-BASE-2 (2026-08-19) · the structured sessions a BASE week carries,
+ * and the day type each one lands on.
+ *
+ * ONE, and the one is doctrine's rather than a convention.
+ *
+ * `Research/04-workout-vocabulary.md` §15's base row states a CEILING —
+ * "2 quality sessions/wk max" — and qualifies half of what it names as
+ * "OCCASIONAL fartlek/light hills". The opening number is stated directly by
+ * the two `Research/00b-recovery-protocols.md` tables that describe a runner
+ * rebuilding volume, and they agree:
+ *
+ *   §"Marathon Recovery (4-week reverse taper)" · week 4 Quality is "One light
+ *     tempo (15-20 min @ HMP)", with the Notes column reading "First true
+ *     workout. Re-evaluate before adding a second quality session in week 5."
+ *   §"Marathon Recovery, Conservative (6-week)" · "Two quality sessions"
+ *     appears once, on the row whose Notes read "Resume normal block".
+ *
+ * Both ladders run 0 → 1 → 2 and both put the second session at the point the
+ * block resumes normal training — which in this engine is QUALITY, where the
+ * two-slot mixes live. So BASE opens at one and stays at one; §15's "max" is a
+ * ceiling this phase never reaches.
+ *
+ * The strides `DOCTRINE-STRIDES-1` places on the week's easy days are not
+ * counted against it. §7.2's own contraindication row is "Not a workout".
+ *
+ * The type is `intervals` — the engine's existing rep-shaped day. Nothing here
+ * needs a new day type, a new column, or a new field on the wire; what makes
+ * this a base session rather than a VO2 one is the catalogue SLOT the composer
+ * asks with (`speed`), not the type of the row it writes.
+ *
+ * Bound by `DOCTRINE.base-quality-per-week`, which reads both Research/00b
+ * ladders and §15's ceiling.
+ */
+export const BASE_QUALITY_TYPES: ReadonlyArray<DayPlan['type']> = ['intervals'];
+
+/**
  * DOCTRINE-DOSING-2 (2026-08-18) · the smallest race-pace finish that is still
  * a race-pace session.
  *
@@ -1319,12 +1356,22 @@ export interface ResolvedPrescriptions {
  *   | Sharpening / taper        | Reduced-volume versions of recent workouts;
  *                                 strides; short race-pace work |
  *
- * BASE has no quality slot in this engine and doctrine does not ask for one —
- * its row is easy running plus strides and hill sprints, which is what
- * DOCTRINE-STRIDES-1 now puts there. QUALITY spans both the optional hill block
- * and specific support, so it opens with hills and fartlek and closes with
- * reps; RACE-SPECIFIC becomes race-pace work; TAPER's sharpener is already the
- * race-week tune-up.
+ * DOCTRINE-BASE-2 (2026-08-19) · BASE gets §7's SPEED row, and it used to get
+ * nothing. This header read "BASE has no quality slot in this engine and
+ * doctrine does not ask for one", which is not what §15 says: its base row
+ * names strides, hill sprints and occasional fartlek/light hills as the
+ * phase's Primary workouts and then states a frequency CEILING of two, which
+ * is not a sentence anyone writes about a phase that carries none.
+ * DOCTRINE-STRIDES-1 put the strides on the easy days — §7.2's own Placement
+ * row and its "Not a workout" contraindication both say that is where they
+ * belong — and left the rest of the row unplaced. This places it: one
+ * structured session a week, drawn from §7, §8's light hills and §9's
+ * fartleks, and from nothing else. See `baseQualityTypes` for the frequency
+ * and `SLOT_FAMILIES_IN_PHASE` for the families.
+ *
+ * QUALITY spans both the optional hill block and specific support, so it opens
+ * with hills and fartlek and closes with reps; RACE-SPECIFIC becomes race-pace
+ * work; TAPER's sharpener is already the race-week tune-up.
  *
  * Each family is placed on the slot whose EXISTING type already matches its
  * shape, so this changes what a workout IS without changing which day it lands
@@ -1363,6 +1410,22 @@ export function qualityFamilyFor(
   // run a single threshold slot instead; see `qualityTypesFor`.
   if (cat === 'ultra' && slotType === 'intervals' && phase === 'QUALITY') {
     return 'hills';
+  }
+  // DOCTRINE-BASE-2 · §15's base row, on the one slot a base week carries.
+  //
+  // `speed` NAMES the row — "strides, hill sprints" is §7 — and the catalogue
+  // is free to answer with anything else §15 places beside it, which
+  // `SLOT_FAMILIES_IN_PHASE` scopes to §8's light hills and §9's fartleks. That
+  // is the same division of labour the QUALITY arm below already runs: this
+  // states the §15 RULING the doctrine gate checks, and the selector's
+  // least-recently-used rotation picks which member of the row lands this week.
+  //
+  // Distance-independent, and deliberately. §15's rows are keyed on PHASE, not
+  // on the event: an aerobic base week is the same week whether the race at the
+  // end of the block is a 5K or a hundred kilometres, which is exactly why the
+  // per-distance quality mixes below start at QUALITY and not before it.
+  if (phase === 'BASE') {
+    return slotType === 'intervals' ? 'speed' : null;
   }
   if (phase === 'RACE-SPECIFIC') {
     // §15 race-specific row. Ultra is deliberately excluded: it trains
@@ -1451,6 +1514,11 @@ export function qualityFamilyFor(
  * row. Coach voice: what it is for, and the one thing to get right.
  */
 const FAMILY_NOTES: Partial<Record<WorkoutFamily, string>> = {
+  // §7.1 "Short, fast, full-recovery work"; §7.2 Recovery "no fatigue between
+  // strides"; §7.2 Contraindications "Not a workout — back off if form
+  // deteriorates". The recovery IS the prescription here, so it is what the
+  // note says.
+  speed:   'Full recovery between reps. This is form and turnover, not a workout.',
   // §8.2 Purpose "Power, tendon stiffness, form"; §8.1 pace column is effort.
   hills:   'Run the climb by effort, not pace. Jog down, full recovery, repeat.',
   // §9.1 "Unstructured to highly structured pace variation within a continuous run."
@@ -2053,6 +2121,27 @@ function layoutWeek({
   // phase keeps a lower share since the long is the only quality.
   // TAPER pulls back to a recovery long. QUALITY + RACE-SPECIFIC use
   // the full tier share.
+  /**
+   * DOCTRINE-BASE-2 · the week's R pace, from the one function that answers
+   * "what is this zone worth".
+   *
+   * `anchorsFor` is the same call `selectSlotWorkout` makes a few hundred lines
+   * below and the same resolver `buildWorkoutSpec` prices a rep off, so the
+   * pace a §7 speed day is SIZED at and the pace it is RUN at are one number by
+   * construction — which is the property `catalogue-rx.ts`'s header calls the
+   * whole safety gate. Null when the runner's implied VDOT falls outside
+   * Daniels' published 30-85 table, which is the honest answer, and the sizing
+   * falls back to the I anchor.
+   *
+   * Only BASE reads it (the `repetition` quality family is BASE-only), so it is
+   * resolved only there — `resolveZoneAnchors` walks the VDOT table and this
+   * function runs once per week of every plan in a 120k-archetype sweep.
+   */
+  const weekRPaceSec = phase === 'BASE'
+    ? (anchorsFor({
+        tPaceSec: weekTPaceSec, iPaceSec: weekIPaceSec, mpPaceSec: weekMpPaceSec ?? null,
+      }).R ?? null)
+    : null;
   const longShare = phase === 'BASE' ? Math.max(0.28, tierTarget.longRunShare - 0.04)
                   : phase === 'TAPER' ? 0.28
                   : tierTarget.longRunShare;
@@ -2080,7 +2169,16 @@ function layoutWeek({
   // `baseBuilding` because a beginner's sharpen day is an easy run with surges
   // in it, not a workout with easy legs around it; and a week with no pace
   // anchor because there is then no way to turn minutes of work into miles.
-  const doctrinalDaySizing = phase !== 'BASE' && phase !== 'TAPER' && !baseBuilding
+  //
+  // DOCTRINE-BASE-2 · BASE is now INCLUDED, and it has to be. `qualityShare` is
+  // zero there and stays zero — a base week's easy volume is not a pool the
+  // quality day draws a percentage from — so the only way its structured day
+  // gets a size at all is from the session itself: §17.1's warm-up jog, the
+  // reps, the walk-back jogs, §17.4's cool-down. Without this the day would
+  // round to zero miles and the INV13 guard below would demote it to rest,
+  // which is the same "quality slot the engine sized at nothing" this
+  // workstream removed everywhere else.
+  const doctrinalDaySizing = phase !== 'TAPER' && !baseBuilding
     && weekTPaceSec != null && weekTPaceSec > 0;
   // Cap long at the tier's peakLong upper bound · no overdistance
   // beyond what doctrine prescribes. Use the higher of two sizes:
@@ -2196,21 +2294,47 @@ function layoutWeek({
   // every other running day: longMi ≤ weeklyMi − quality − 2×easyDays. Only when the capped long
   // still stays the longest run (> per-quality, ≥ a 3mi coherence floor, ≥ the recent-long floor);
   // a genuinely volume-constrained week (can't fit a floor-respecting long AND 2mi easies — e.g.
-  // 10mpw/6-day) is left as-is. BASE/TAPER/cutback are excluded (deliberate deload shapes already
+  // 10mpw/6-day) is left as-is. TAPER/cutback are excluded (deliberate deload shapes already
   // floor or descend). Gated on stated frequency so David's null-frequency profiles stay byte-stable;
   // a no-op for healthy-volume weeks where the long never approaches that ceiling.
-  if (trainingDaysPerWeek != null && phase !== 'BASE' && phase !== 'TAPER' && !isCutback) {
-    const qDays = qualityDows.length;
+  //
+  // DOCTRINE-BASE-2 · BASE is no longer excluded, and it has to stop being.
+  // The exclusion was correct while a base week had no quality day: nothing
+  // competed with the long, so nothing could squeeze the easy days under two
+  // miles. §15's base row now gets its one session, and on the swept corpus
+  // leaving BASE out of this reservation put 392 sub-2-mile runs back into
+  // weeks that had the miles to seat every run properly — the exact junk-run
+  // class RP-FREQ-FLOOR was written to end, arriving through the one phase the
+  // guard did not cover.
+  if (trainingDaysPerWeek != null && phase !== 'TAPER' && !isCutback) {
+    // The days the week will ACTUALLY schedule, which in BASE is one whatever
+    // the runner's preferences list — `effectiveQDows` derives the same number
+    // from the same type list further down, and reserving for two would take
+    // miles off the long that nothing is going to spend.
+    const qDays = phase === 'BASE'
+      ? Math.min(qualityDows.length, BASE_QUALITY_TYPES.length)
+      : qualityDows.length;
     const easyDays = Math.max(0, trainingDaysPerWeek - 1 - qDays);
     // DAY-SIZE-1 · reserve what a quality day actually costs. This guard exists
     // to stop a distance-driven long swallowing the week and pinning the easy
     // days at 1mi; sizing the reservation off the old 22% share while the days
     // themselves are sized off doctrine would under-reserve by several miles
     // and reintroduce exactly the junk-run class it was written to prevent.
+    //
+    // DOCTRINE-BASE-2 · a base week reserves for a REPETITION day. §7's speed
+    // work spends Daniels' 5% rather than his 10% and carries §17.1's one-mile
+    // jog either side rather than §5.3's two, so reserving a threshold day's
+    // cost there would take several miles off the long to hold room for a
+    // session that is never that big.
     const perQEst = qDays > 0
       ? Math.max(2, Math.round(
           doctrinalDaySizing
-            ? maxQualityDayMi({ family: 'threshold', weeklyMi, paceSPerMi: weekTPaceSec, ceilingMi: null })
+            ? maxQualityDayMi({
+                family: phase === 'BASE' ? 'repetition' : 'threshold',
+                weeklyMi,
+                paceSPerMi: phase === 'BASE' ? (weekRPaceSec ?? weekIPaceSec) : weekTPaceSec,
+                ceilingMi: null,
+              })
             : (weeklyMi * qualityShare) / qDays,
         ))
       : 0;
@@ -2258,8 +2382,16 @@ function layoutWeek({
   // Gated on a stated frequency, which is exactly when the engine knows how
   // many days it owes a runner; and applied ONLY to the doctrinal sizing, so
   // `qualityMiEach` and every path still using it are byte-unchanged.
-  const qualityWeekRoomMi = (trainingDaysPerWeek != null && qualityDows.length > 0)
-    ? (weeklyMi - longMi - 2 * Math.max(0, trainingDaysPerWeek - 1 - qualityDows.length)) / qualityDows.length
+  //
+  // DOCTRINE-BASE-2 · the divisor is the days the week will actually SCHEDULE,
+  // which in BASE is one whatever the runner's preferences list. Dividing a
+  // base week's room between two days it never fills halves the ceiling and
+  // shrinks the one session that does land.
+  const scheduledQDayCount = phase === 'BASE'
+    ? Math.min(qualityDows.length, BASE_QUALITY_TYPES.length)
+    : qualityDows.length;
+  const qualityWeekRoomMi = (trainingDaysPerWeek != null && scheduledQDayCount > 0)
+    ? (weeklyMi - longMi - 2 * Math.max(0, trainingDaysPerWeek - 1 - scheduledQDayCount)) / scheduledQDayCount
     : Infinity;
   const doctrinalDayCeiling = Math.max(1, Math.min(qualityCeiling, qualityWeekRoomMi));
 
@@ -2386,7 +2518,46 @@ function layoutWeek({
         weeklyMi * (1 - EASY_SHARE_FLOOR) - finishMi,
       )
     : null;
-  if (phase !== 'BASE') {
+  /* ── DOCTRINE-BASE-2 (2026-08-19) · what a BASE week's quality mix is ───────
+   *
+   * ONE slot, and the one is doctrine's, not a convention.
+   *
+   * §15's base row states the CEILING — "2 quality sessions/wk max" — and a
+   * ceiling is not a target; the row's own Primary-workouts column qualifies
+   * the second half of what it names as "OCCASIONAL fartlek/light hills".
+   * `Research/00b` states the opening number directly, in the two tables that
+   * describe a runner rebuilding volume:
+   *
+   *   §"Marathon Recovery (4-week reverse taper)"
+   *     | Week 3 | 50-60% | ... | Strides + light fartlek (4-6× 1 min @ 10K
+   *       effort) | First structured surges. No threshold or VO2max. |
+   *     | Week 4 | 70-80% | ... | One light tempo (15-20 min @ HMP) | First
+   *       true workout. Re-evaluate before adding a second quality session in
+   *       week 5. |
+   *   §"Marathon Recovery, Conservative (6-week)"
+   *     | 4 | 55% | 70-80 min easy | Light fartlek |
+   *     | 5 | 70% | 80-90 min easy | Tempo 15-20 min @ HMP |
+   *     | 6 | 85% | 90+ min, optional MP segments | Two quality sessions |
+   *       Resume normal block |
+   *
+   * Both ladders run 0 → 1 → 2, and both put the SECOND session at the point
+   * the block resumes normal training — which in this engine is QUALITY, where
+   * the two-slot mixes below already live. So BASE opens at one and stays at
+   * one, and §15's "max" is never reached inside the phase.
+   *
+   * Bound by `DOCTRINE.base-quality-per-week`, which reads both tables.
+   *
+   * The strides on the week's easy days are NOT this session and are not
+   * counted against it: §7.2's own contraindication row is "Not a workout".
+   *
+   * The slot's TYPE is `intervals` — the engine's existing rep-shaped day —
+   * because nothing about this needs a new day type, a new column or a new
+   * field on the wire. What differs from a QUALITY rep day is which doctrine
+   * row the session comes out of, and that is settled by the catalogue slot
+   * (`speed`, see the `ComposerSlot` resolution below), not by the day type.
+   */
+  const baseQualityTypes: Array<DayPlan['type']> = BASE_QUALITY_TYPES.slice();
+  {
     // Q-02 fix: quality mix now varies by race distance per Research/22.
     // 5K leans VO2max heavy (intervals); 10K balanced threshold + intervals;
     // HM threshold-dominant + race-specific MP; M long-run + threshold +
@@ -2408,6 +2579,14 @@ function layoutWeek({
       ? ( phase === 'TAPER' ? ['race_week_tuneup']
         : (phase === 'QUALITY' || phase === 'RACE-SPECIFIC') ? ['tempo']
         : [] )
+      // DOCTRINE-BASE-2 · one slot in BASE, from §15's base row. See
+      // `baseQualityTypes` above for the frequency and the two Research/00b
+      // ladders it is read from. The true-beginner arm above keeps its empty
+      // list: Research/22 §Beginner builds on easy running and the strides
+      // DOCTRINE-STRIDES-1 already places, and §7.3's own contraindication row
+      // rules hill sprints out for exactly that runner ("Not for first-month-
+      // back runners; require base of easy running").
+      : phase === 'BASE' ? baseQualityTypes
       :
         // DOCTRINE-TAPERMP-1 · the marathon taper's non-race weeks run the
         // MP-specific session Research/08 §9.2 prescribes; every other distance
@@ -2560,7 +2739,15 @@ function layoutWeek({
     // a 5×1 min surge set is ~0.6 mi at T, so two of them sit far inside
     // Daniels' 10% on any week a beginner runs, and `applyDosingCaps` holds the
     // cap regardless. Recorded as open rather than papered over.
-    const effectiveQDows = qualityDows.slice(
+    // DOCTRINE-BASE-2 · NO types means NO days, and the `Math.max(1, …)` floor
+    // below cannot say that. This pass used to be skipped wholesale on BASE
+    // weeks, so an empty type list never reached it; now that BASE places a
+    // slot the pass runs on every phase, and a true-beginner base week — whose
+    // mix is deliberately empty, per Research/22 §Beginner — would otherwise be
+    // floored to one scheduled day and fill it from `types[i % 0]` — or, worse,
+    // from `scheduleQuality`'s own `['threshold']` default, which would hand a
+    // first-month-back runner a threshold session in their base phase.
+    const effectiveQDows = qualityTypes.length === 0 ? [] : qualityDows.slice(
       0,
       Math.max(1, Math.min(
         baseBuilding ? qualityDows.length : qualityTypes.length,
@@ -2722,7 +2909,12 @@ function layoutWeek({
           slots: count[p] ?? 1,
         }));
       }
-      return (qt: DayPlan['type']): number => {
+      // DOCTRINE-BASE-2 · `'strides'` is accepted alongside the day types.
+      // `slotDosePace` has mapped it to R since DOCTRINE-DOSING-2 landed and
+      // nothing asked for it, because no slot spent the R budget. A base
+      // week's §7 session does, and asking for it by the day type `intervals`
+      // would price it against Daniels' 8% instead of his 5%.
+      return (qt: DayPlan['type'] | 'strides'): number => {
         const p = slotDosePace(qt, Boolean(taperMp) && qt === 'tempo');
         return p ? (byPace.get(p) ?? Infinity) : Infinity;
       };
@@ -2752,6 +2944,18 @@ function layoutWeek({
      */
     const trackOfType = (qt: DayPlan['type']): SessionFamily | null => {
       if (baseBuilding) return null;
+      // DOCTRINE-BASE-2 · the T and I ladders do not start in BASE.
+      //
+      // The base week's slot carries the day type `intervals`, so without this
+      // the overload trajectory would read it as the block's first I session
+      // and start climbing there — three or four rungs spent before the phase
+      // that is supposed to open the ladder begins. §15 places no I-pace work
+      // in base and `Research/00b`'s reverse taper says the same thing in the
+      // negative ("No threshold or VO2max"), so there is no dose here for a
+      // ladder to carry. The base session's dose is doctrine's own, stated by
+      // name in §7/§8/§9 and sized by `fits` inside Daniels' share; the ladders
+      // open with QUALITY, exactly as they did before this phase had a slot.
+      if (phase === 'BASE') return null;
       if (qt === 'threshold') return 'threshold';
       if (qt === 'intervals') return 'interval';
       return null;
@@ -2834,8 +3038,21 @@ function layoutWeek({
       const candidateFamily = (baseBuilding || (taperMp && qt === 'tempo'))
         ? null
         : qualityFamilyFor(cat, phase, weekIdx, weeksToPhaseEnd, qt);
+      // DOCTRINE-BASE-2 · in BASE the rep-shaped day is fed by the SPEED slot.
+      //
+      // The day keeps the `intervals` type — that is what the row, the spec
+      // builder, the persistence layer and the watch already understand — and
+      // the slot is what decides which of §15's rows the catalogue draws from.
+      // `SLOT_FAMILIES.speed` is §7, and `SLOT_FAMILIES_IN_PHASE.speed.base`
+      // adds §8's light hills and §9's fartleks. What it cannot reach is
+      // `vo2max` and `threshold`, which is the point: the `intervals` slot
+      // admits §6's rep sessions in every phase, and §6.5's own "Late base"
+      // row would have put 8-12×600m at I into a rebuilding week that
+      // `Research/00b` says carries "No threshold or VO2max".
       const slot: ComposerSlot | null =
-        qt === 'threshold' || qt === 'intervals' || qt === 'tempo' ? qt : null;
+        phase === 'BASE'
+          ? (qt === 'intervals' ? 'speed' : null)
+          : qt === 'threshold' || qt === 'intervals' || qt === 'tempo' ? qt : null;
       const choice = (candidateFamily && catalogueTier && slot && catalogueHistory)
         ? selectSlotWorkout({
             history: catalogueHistory,
@@ -2987,7 +3204,14 @@ function layoutWeek({
       if (tempo) {
         return { prescription: p, dayMi: Number((tempo.warmupMi + tempo.tempoMi + tempo.cooldownMi).toFixed(1)) };
       }
-      const pace = family === 'interval' ? weekIPaceSec : weekTPaceSec;
+      // DOCTRINE-BASE-2 · a §7 rep is timed and its work pace is R, not I and
+      // not T. `weekRPaceSec` is `resolveZoneAnchors`' own R — the same number
+      // `buildWorkoutSpec` will pace the rep at — and it falls back to the I
+      // anchor for the effort-cued §8 and §9 sessions the base slot also
+      // carries, whose rendered strings name no R zone at all.
+      const pace = family === 'interval' ? weekIPaceSec
+        : family === 'repetition' ? (weekRPaceSec ?? weekIPaceSec)
+        : weekTPaceSec;
       // GRAMMAR-SEQ-1 · an unequal-step session is a FIXED shape doctrine states
       // by name — §13's ladders, §10's combos and alternations, §12.4's
       // progression — so the day is sized FROM it rather than it being cut to
@@ -3038,7 +3262,12 @@ function layoutWeek({
       // DOCTRINE-DOSING-2 · plus what the WEEK has left at this pace.
       const capMi = Math.min(
         atPaceSessionCapMi(weeklyMi, family),
-        slotBudgetMi(family === 'interval' ? 'intervals' : 'threshold'),
+        slotBudgetMi(
+          family === 'interval' ? 'intervals'
+          // DOCTRINE-BASE-2 · the R budget, for the R family. See `slotBudgetMi`.
+          : family === 'repetition' ? 'strides'
+          : 'threshold',
+        ),
         mpLongAtPaceCapMi ?? Infinity,
       );
       // Two reps is the FLOOR the cut prefers — a one-rep "rep session" is a
@@ -3080,17 +3309,50 @@ function layoutWeek({
       const { dow, qt, vocabFamily, vocabRx } = slot;
       const track = trackFor(slot);
       const step = track != null ? (stepByTrack.get(track) ?? null) : null;
-      const qFamily: QualityFamily = qt === 'intervals' ? 'interval' : 'threshold';
+      // DOCTRINE-BASE-2 · a base week's session is §7/§8/§9 work, so it is
+      // sized and capped as REPETITION, not as an interval session.
+      //
+      // Three things follow from the family, and all three are right this way.
+      // `AT_PACE_SESSION_MI.repetition` is read out of §7.4 rather than §6.1,
+      // so a twelve-second sprint set is not measured against a mile-repeat
+      // band; `QUALITY_WARMUP_MI/COOLDOWN_MI` give it §17.1's one-mile jog
+      // instead of §6.2's two; and `atPaceSessionCapMi` charges it Daniels'
+      // 5% R cap instead of the 8% I cap — the tighter number, which is the
+      // one §7's own contraindication row names ("Cap at 5% weekly mileage").
+      const qFamily: QualityFamily = phase === 'BASE'
+        ? 'repetition'
+        : qt === 'intervals' ? 'interval' : 'threshold';
       const tempoSized = (doctrinalDaySizing && qt === 'tempo' && !baseBuilding && !taperMp)
         ? sizeTempoDay(slot.catalogueAtPaceMi)
         : null;
       // The fixed string this slot carries when the trajectory does not own it:
       // a §15 vocabulary family, or the catalog entry for a slot whose seed the
       // trajectory could not read. Sized to the week, label and day together.
+      //
+      // DOCTRINE-BASE-2 · BASE never reaches for the generic fallback. `VOCAB`
+      // in `resolvePrescriptions` carries no `speed` row, so `vocabRx` there is
+      // either the catalogue's own §15 base-row session or nothing — and
+      // nothing means the day is dropped below rather than filled with
+      // `rx.intervals`, which is an I-pace rep set §15 does not place in base.
       const rxSized = (doctrinalDaySizing && !taperMp && step == null && tempoSized == null
         && (qt === 'intervals' || qt === 'threshold'))
-        ? sizeFromPrescription(vocabRx ?? (qt === 'intervals' ? rx.intervals : rx.threshold), qFamily)
+        ? sizeFromPrescription(
+            phase === 'BASE'
+              ? vocabRx
+              : vocabRx ?? (qt === 'intervals' ? rx.intervals : rx.threshold),
+            qFamily,
+          )
         : null;
+      // DOCTRINE-BASE-2 · the refusal, honoured.
+      //
+      // `selectWorkout` declines when Daniels' share leaves too little for the
+      // shortest form of anything §15 places here, and `renderPrescription`
+      // declines a shape the engine's grammar cannot express. On a base week
+      // both are real answers rather than failures — at a small enough volume
+      // the honest week IS easy running plus the strides on its easy days —
+      // and the day goes back to the easy fill below instead of being filled
+      // with a session doctrine did not put there or sized at zero miles.
+      if (phase === 'BASE' && (!vocabRx || rxSized == null)) return;
       const sub =
         // DOCTRINE-TAPERMP-1 · "N mi WU · M mi @ MP · P mi CD". The "@ MP"
         // token is load-bearing, not decoration: `parseTempoShape` reads the
@@ -3173,12 +3435,44 @@ function layoutWeek({
         // stated-frequency floor, and the ceiling that keeps the long run the
         // week's longest run. Each of those records a real bug; none of them
         // is what was making the sessions short.
+        // DOCTRINE-BASE-2 · the recent-quality-distance floor is NOT applied to
+        // a base week's session, and the reason is what that floor is for. It
+        // records "don't author a shorter version of the workout this runner is
+        // already doing" — a claim about the same kind of session. §7's speed
+        // work is not a shorter threshold day; it is a different session with a
+        // different day around it (§17.1's 1-2 mi jog, §17.4's 1-2 mi cool-down,
+        // which is exactly what `QUALITY_WARMUP_MI.repetition` carries). Flooring
+        // eight fifteen-second hill sprints at a seven-mile day because the
+        // runner's last tempo was eight would wrap five easy miles around
+        // ninety seconds of work and call it quality — the junk-run shape the
+        // day-sizing pass exists to prevent, arriving from the other direction.
+        : phase === 'BASE' && doctrinalDayMi != null
+          ? Math.min(Math.round(doctrinalDayMi * 2) / 2, doctrinalDayCeiling)
         : doctrinalDayMi != null
           ? Math.min(
               Math.max(Math.round(doctrinalDayMi * 2) / 2, qualityFloor, qualityFloorFreq),
               doctrinalDayCeiling,
             )
         : qualityMiEach;
+      // DOCTRINE-BASE-2 · the second refusal · a week that cannot SEAT the
+      // session does not get a shrunken one.
+      //
+      // The selector prices a session against Daniels' share of the week; this
+      // asks the other question — whether the week's remaining MILES can hold
+      // the day doctrine composes for it once the long run and the two-mile
+      // coherence floor on every other running day are paid. On a 10 mi/wk
+      // budget over six running days with an 8 mi long there is nothing left,
+      // `qualityWeekRoomMi` goes negative, and `doctrinalDayCeiling`'s own
+      // one-mile floor was cutting a "12×8s hill sprints · 2 min jog" day to a
+      // single mile: a label promising twelve sprints and twenty-two minutes of
+      // walk-down recovery over a day that cannot hold the recovery, which is
+      // the label/spec drift this file has twice paid for.
+      //
+      // Refusing is the same answer `select.ts`'s header already gives for the
+      // low-volume threshold case, and it leaves the runner the week doctrine
+      // actually prescribes there: easy running, plus the strides
+      // DOCTRINE-STRIDES-1 puts on two of its easy days.
+      if (phase === 'BASE' && slotMi + 1e-9 < Math.round((doctrinalDayMi ?? 0) * 2) / 2) return;
       slots[dow] = {
         dow: dow as DOW, type: effectiveType, distanceMi: slotMi, isQuality: true, isLong: false,
         subLabel: sub,
@@ -4227,10 +4521,74 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // synthetic persona, the simulator — the gate does not fire. Absence of
   // history is not evidence of a deficit, and inventing one would make every
   // DB-free caller author a phase the runner's actual data might not support.
+  //
+  // ── DOCTRINE-BASE-3 (2026-08-19) · WHICH volume the gate reads ─────────────
+  //
+  // It read `meanMi` — the raw 28-day mean — and `RampBaseEvidence` carries two
+  // other fields that exist precisely because the raw mean is the wrong number
+  // to read a mandated interruption through. `rampBaseForBuild`'s own header
+  // states the principle it was written for:
+  //
+  //   "A race the runner actually ran explains its own taper AND its own
+  //    recovery window — both are volumes the engine itself prescribed, so
+  //    reading them as fitness is the defect."
+  //
+  // `resolveRampBase` applies that to the RAMP and this gate did not apply it
+  // to the PHASE, so the same four weeks were discounted as engine-prescribed
+  // by one half of the authoring and counted as detraining by the other. The
+  // owner's CIM build is the case: measured against prod on 2026-08-31, his
+  // sustained level was 43.5 mi/wk and his 28-day mean 16.8, so the gate asked
+  // "16.8 ≥ 30.45?", got no, and inserted three BASE weeks fifteen days after
+  // an A-priority half — a window largely made of the taper and the 10-14
+  // recovery days `Research/00b` mandates for that distance, both of them
+  // volumes this engine itself prescribed.
+  //
+  // ── What replaces it, and why it is not simply `baseMi` ───────────────────
+  //
+  // `baseMi` would work — it is `max(mean, sustained × 0.70)` when the dip is
+  // explained — but it is the LIFT rounded to a tenth, so comparing it back
+  // against the un-rounded 70% threshold decides a genuine edge case on a
+  // rounding artefact. `lifted` is the same fact stated exactly: true when, and
+  // only when, the interruption is no longer than the one the engine itself
+  // mandated (a finished race's taper plus `Research/00b`'s recovery window for
+  // its distance and priority; otherwise `Research/22` §14's two-week short
+  // layoff). So the gate asks the two questions doctrine actually poses:
+  //
+  //   · is the runner holding their own volume?   `meanMi ≥ 70% × sustainedMi`
+  //   · if not, is the shortfall EXPLAINED?       `lifted`
+  //
+  // ── Why "explained" is the right test, and not adherence ─────────────────
+  //
+  // The tempting alternative is to read the plan rows and ask what was
+  // PRESCRIBED during the window — "prescribed low and ran low" being a
+  // different fact from "prescribed high and ran low". It is rejected, on two
+  // grounds. First, no `Research/` file measures fitness by adherence, so the
+  // threshold would be ours and the rule would be uncited — which Rule 7 does
+  // not allow for a constant that asserts physiology. Second, it would let a
+  // prescription outrank doctrine: a plan that asked for 40 miles inside a
+  // window `Research/00b` says is recovery would make the runner's compliance
+  // with doctrine read as a fitness deficit. The mandated-window test asks
+  // instead what DOCTRINE says the window was for, which is knowable without
+  // trusting any particular plan that was authored over it.
+  //
+  // ── What still fires ──────────────────────────────────────────────────────
+  //
+  // Everything unexplained. `resolveRampBase` counts the consecutive most-recent
+  // weeks below the resume level and refuses the lift outright when that run is
+  // longer than the allowance, so a runner eight weeks down with no race behind
+  // them gets `lifted === false`, the mean governs, and BASE goes in exactly as
+  // it does today. The allowance is self-limiting in the other direction too:
+  // it is only extended while `weeksSince <= mandated`, so the same runner
+  // eight weeks past a marathon whose mandated window was seven is back on the
+  // two-week short-layoff allowance. And the VOLUME ramp is untouched either
+  // way — `baseMi` still governs what the block opens at, which is the
+  // mechanism that keeps this runner off 50 mi/wk in week one. Skipping BASE
+  // changes what the weeks CONTAIN, not how big they are.
   const rampEvidence = input.rampBaseEvidence ?? null;
   const baseRebuilt = rampEvidence == null
     || !(rampEvidence.sustainedMi > 0)
-    || rampEvidence.meanMi >= BASE_REBUILT_SHARE * rampEvidence.sustainedMi;
+    || rampEvidence.meanMi >= BASE_REBUILT_SHARE * rampEvidence.sustainedMi
+    || rampEvidence.lifted;
   const blocks = sizeBlocks(totalWeeks, input.raceDistanceMi, input.isMidBlock && baseRebuilt);
 
   // DOCTRINE-1 · the taper's depth is keyed to the race distance (Research/08 §9.1),

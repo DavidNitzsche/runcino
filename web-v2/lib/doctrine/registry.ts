@@ -131,9 +131,11 @@ import {
   TAPER_MP_DOSE,
   taperMpDose,
   RAMP_BASE_RESUME_FRACTION,
+  SHORT_LAYOFF_WEEKS,
   RAMP_BASE_SUSTAINED_RANK,
   resolveRampBase,
   BASE_REBUILT_SHARE,
+  BASE_QUALITY_TYPES,
   FAST_FINISH_MIN_MI,
 } from '@/lib/plan/generate';
 import {
@@ -1964,11 +1966,109 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           }
         }
       }
-      // BASE's row is easy running plus strides and hill sprints, and that is
-      // what the engine puts there. If a future edit gives BASE a structured
-      // quality slot this claim should be revisited, not silently widened.
-      if (qualityFamilyFor('m', 'BASE', 0, 5, 'intervals') !== null) {
-        throw new Error('the engine now places a quality family in BASE · §15 base row is easy volume + strides');
+      // DOCTRINE-BASE-2 · BASE's row is now placed too, and it is checked the
+      // same way as the others rather than asserted to be empty. Its Primary
+      // workouts column reads "E, GA, medium-long, long, strides, hill sprints,
+      // occasional fartlek/light hills", so the family the engine names there
+      // must appear in that prose — and it must be the same for every distance,
+      // because §15's rows are keyed on phase and not on the event.
+      const baseProse = t.cell('Base (8\u201312+ wks)', 'Primary workouts');
+      const BASE_KEYWORD: Record<string, RegExp> = {
+        speed: /strides|hill sprints/i,
+        hills: /light hills|hill sprints/i,
+        fartlek: /fartlek/i,
+      };
+      for (const cat of cats) {
+        for (const slot of slots) {
+          const family = qualityFamilyFor(cat, 'BASE', 0, 5, slot);
+          if (family == null) continue;
+          const kw = BASE_KEYWORD[family];
+          if (!kw || !kw.test(baseProse)) {
+            throw new Error(
+              `qualityFamilyFor puts "${family}" in BASE (${cat}, ${slot}), but §15's base row ` +
+              `reads "${baseProse}" \u2014 doctrine does not place it there.`,
+            );
+          }
+        }
+      }
+      if (qualityFamilyFor('m', 'BASE', 0, 5, 'intervals') == null) {
+        throw new Error(
+          'BASE places no quality family at all. \u00a715\u2019s base row names strides, hill sprints ' +
+          'and occasional fartlek/light hills as its Primary workouts and states a ceiling of ' +
+          'two quality sessions a week \u2014 a phase that carries none does not get a ceiling.',
+        );
+      }
+    },
+  },
+  {
+    id: 'DOCTRINE.base-quality-per-week',
+    binds: [
+      'lib/plan/generate.ts#BASE_QUALITY_TYPES',
+      'lib/plan/generate.ts#qualityTypesFor',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Marathon Recovery (4-week reverse taper)',
+    claim:
+      'A BASE week carries ONE structured session, not two and not none. \u00a715 of Research/04 ' +
+      'states the ceiling ("2 quality sessions/wk max") and Research/00b states the opening ' +
+      'number: the four-week reverse taper puts "One light tempo" on week 4 and says in the ' +
+      'same row to "Re-evaluate before adding a second quality session in week 5", and the ' +
+      'six-week conservative table reaches "Two quality sessions" only on the row whose notes ' +
+      'read "Resume normal block". Both ladders run 0 \u2192 1 \u2192 2 with the second session arriving ' +
+      'when normal training resumes, which in this engine is the QUALITY phase.',
+    check({ cite }) {
+      const t = cite.table();
+      // The four-week ladder's own last rebuilding row: ONE session, and an
+      // instruction not to add the second yet.
+      const wk4Quality = t.cell('Week 4', 'Quality');
+      if (!/^\s*one\b/i.test(wk4Quality)) {
+        throw new Error(
+          `the reverse taper's week-4 Quality cell no longer opens with a count: "${wk4Quality}"`,
+        );
+      }
+      const wk4Notes = t.cell('Week 4', 'Notes');
+      if (!/second quality session in week 5/i.test(wk4Notes)) {
+        throw new Error(
+          `the reverse taper no longer defers the second quality session: "${wk4Notes}"`,
+        );
+      }
+      // The six-week conservative ladder must agree: two sessions arrive with
+      // the resumption of the normal block, not inside the rebuild.
+      const slow = resolveCitation(
+        'Research/00b-recovery-protocols.md',
+        '### Marathon Recovery, Conservative (6-week)',
+      ).table();
+      const twoRows = slow.rows.filter((r) => /two quality sessions/i.test(r['Quality'] ?? ''));
+      if (twoRows.length !== 1) {
+        throw new Error(
+          `the conservative ladder names "Two quality sessions" on ${twoRows.length} rows \u00b7 expected exactly one`,
+        );
+      }
+      if (!/resume normal block/i.test(twoRows[0]['Notes'] ?? '')) {
+        throw new Error(
+          'the conservative ladder\u2019s two-session row no longer coincides with resuming the ' +
+          `normal block: "${twoRows[0]['Notes']}"`,
+        );
+      }
+      // \u00a715's ceiling, read out of the base row's own Frequency cell.
+      const ceiling = parseBand(resolveCitation(
+        'Research/04-workout-vocabulary.md',
+        '## 15. Training-cycle placement summary',
+      ).table().cell('Base (8\u201312+ wks)', 'Frequency'))[1];
+      if (BASE_QUALITY_TYPES.length !== 1) {
+        throw new Error(
+          `BASE authors ${BASE_QUALITY_TYPES.length} structured sessions a week \u00b7 both Research/00b ` +
+          'rebuild ladders open at one',
+        );
+      }
+      if (BASE_QUALITY_TYPES.length > ceiling) {
+        throw new Error(
+          `BASE authors ${BASE_QUALITY_TYPES.length} sessions against \u00a715's ceiling of ${ceiling}`,
+        );
+      }
+      // And the composer must actually be reading this constant.
+      if (!/phase === 'BASE' \? baseQualityTypes/.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
+        throw new Error('layoutWeek no longer fills the BASE quality mix from BASE_QUALITY_TYPES');
       }
     },
   },
@@ -8040,6 +8140,79 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       // The complement of the DEEPEST cut doctrine sanctions.
       const floor = 1 - cut[1] / 100;
       within(BASE_REBUILT_SHARE, [floor, floor], 'base-rebuilt share of sustained volume');
+    },
+  },
+  {
+    id: 'DOCTRINE.base-gate-reads-explained-dips',
+    binds: [
+      'lib/plan/generate.ts#BASE_REBUILT_SHARE',
+      'lib/plan/generate.ts#SHORT_LAYOFF_WEEKS',
+      'lib/plan/generate.ts#resolveRampBase',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### Return from Short Layoff (1-2 weeks off)',
+    claim:
+      'The base-rebuilt gate asks two questions, not one: is the runner holding their own ' +
+      'volume, and \u2014 if not \u2014 is the shortfall EXPLAINED. It read only the raw 28-day mean, ' +
+      'so the taper and post-race recovery window the engine itself prescribed were discounted ' +
+      'as engine-authored by the ramp (`resolveRampBase`) and counted as detraining by the ' +
+      'phase planner in the same authoring. `lifted` is the flag that already answers the second ' +
+      'question: true only while the interruption is no longer than the one doctrine mandates \u2014 ' +
+      'a finished race\u2019s taper plus Research/00b\u2019s recovery window for its distance and priority, ' +
+      'and otherwise this section\u2019s one-to-two-week short layoff. A longer, unexplained absence ' +
+      'is not lifted, the mean governs, and BASE goes in exactly as before.',
+    check({ cite }) {
+      // The section's own title states the short-layoff length; the engine's
+      // default allowance is read from it rather than hand-copied.
+      const weeks = parseBand(matchLiteral(
+        cite.text(), /Return from Short Layoff \(([\d\s\u2013\u2014-]+) weeks? off\)/i, 'short-layoff window',
+      )[1])[1];
+      if (SHORT_LAYOFF_WEEKS !== weeks) {
+        throw new Error(
+          `SHORT_LAYOFF_WEEKS is ${SHORT_LAYOFF_WEEKS}, doctrine calls ${weeks} weeks a short layoff`,
+        );
+      }
+      // The gate, exercised through the same evidence the composer is handed.
+      const gate = (e: { meanMi: number; sustainedMi: number; lifted: boolean }) =>
+        !(e.sustainedMi > 0)
+        || e.meanMi >= BASE_REBUILT_SHARE * e.sustainedMi
+        || e.lifted;
+
+      // A mandated post-race window: three low weeks inside a four-week
+      // allowance, off a sustained 43.5. The mean alone fails the share test;
+      // the explanation is what carries it.
+      const mandated = resolveRampBase({
+        meanWeeklyMi: 16.8,
+        weeklySeries: [0, 4, 19.2, 38.1, 11.3, 37.8, 40.3, 46.4, 6, 27.9, 41.4, 40, 45.9, 38.7, 40.8, 43.5],
+        allowedInterruptionWeeks: 4,
+      });
+      if (mandated.meanMi >= BASE_REBUILT_SHARE * mandated.sustainedMi) {
+        throw new Error('the mandated-window fixture no longer fails the raw-mean test \u00b7 it proves nothing');
+      }
+      if (!gate(mandated)) {
+        throw new Error(
+          'a runner inside the recovery window the engine itself prescribed is still read as ' +
+          'short of base \u00b7 the same weeks are discounted by resolveRampBase and counted here',
+        );
+      }
+      // The same shortfall with no explanation \u2014 seven weeks down, only the
+      // short-layoff allowance \u2014 must still insert BASE.
+      const unexplained = resolveRampBase({
+        meanWeeklyMi: 4,
+        weeklySeries: [0, 0, 2, 3, 5, 6, 8, 40, 44, 47, 40, 43, 45, 41, 39, 42],
+        allowedInterruptionWeeks: SHORT_LAYOFF_WEEKS,
+      });
+      if (gate(unexplained)) {
+        throw new Error(
+          'a seven-week unexplained absence reads as base-rebuilt \u00b7 Research/22 \u00a7"Return from ' +
+          'Moderate Layoff (3-8 weeks)" prescribes a rebuild, and Research/00a places a returning ' +
+          'runner on "Linear (rebuild base before any sharpening)"',
+        );
+      }
+      // The gate in the composer must be the one this claim just exercised.
+      if (!/\|\| rampEvidence\.lifted;/.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
+        throw new Error('composePlan\u2019s base-rebuilt gate no longer reads the explained-interruption flag');
+      }
     },
   },
   /* ───────────────────── THE CONVERGENCE RULE (2026-08-19) ─────────────────
