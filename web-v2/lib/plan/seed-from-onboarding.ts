@@ -53,6 +53,10 @@
 
 import { randomBytes } from 'crypto';
 import { pool } from '@/lib/db/pool';
+import { mutatePlan } from './mutate';
+
+/** Anything that can run a statement — the pool, or a boundary-owned transaction. */
+type Queryable = { query: typeof pool.query };
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildWorkoutSpec, conservativeVdotFromMileage } from './spec-builder';
 import { CALIBRATION_INTRO_WEEKS } from './anchor-provenance';
@@ -379,8 +383,8 @@ function distributeVolume(
 // Persistence
 // ─────────────────────────────────────────────────────────────────
 
-async function clearActivePlansFor(userId: string): Promise<void> {
-  await pool.query(
+async function clearActivePlansFor(userId: string, tx: Queryable = pool): Promise<void> {
+  await tx.query(
     `UPDATE training_plans SET archived_iso = NOW()
       WHERE user_uuid = $1 AND archived_iso IS NULL`,
     [userId],
@@ -390,6 +394,9 @@ async function clearActivePlansFor(userId: string): Promise<void> {
 }
 
 async function persistMaintenancePlan(args: {
+  /** Transaction the plan mutation boundary owns. Every write below runs on
+   *  it, so the whole seed lands atomically or not at all. */
+  tx: Queryable;
   userId: string;
   startMonday: string;
   goalISO: string;
@@ -447,7 +454,7 @@ async function persistMaintenancePlan(args: {
   // no-goal maintenance (quality there is threshold, never intervals).
   const iPaceSec = args.ttDistance ? iPaceFromVdot(anchorVdot) : null;
 
-  await pool.query(
+  await args.tx.query(
     `INSERT INTO training_plans (id, user_id, user_uuid, mode, race_id, goal_iso, authored_state)
      VALUES ($1, 'me', $2, 'maintenance', NULL, $3, $4)`,
     [planId, args.userId, args.goalISO,
@@ -470,7 +477,7 @@ async function persistMaintenancePlan(args: {
     ? `Building toward your ${args.ttDistance === '1mi' ? '1-mile' : args.ttDistance.toUpperCase()} goal · 1 targeted quality session/week + aerobic base.`
     : 'No A-race, holding aerobic base with 1 quality session/week.';
   const phaseId = id('phs');
-  await pool.query(
+  await args.tx.query(
     `INSERT INTO plan_phases (id, plan_id, label, start_week_idx, end_week_idx, rationale, citation)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
@@ -484,7 +491,7 @@ async function persistMaintenancePlan(args: {
     const weekStartISO = addDays(args.startMonday, wi * 7);
     const weekId = id('wk');
     const isCutback = args.curve.isCutback[wi];
-    await pool.query(
+    await args.tx.query(
       `INSERT INTO plan_weeks (id, plan_id, week_idx, week_start_iso, phase_id,
                                 is_cutback, is_peak, is_race_week, rationale)
        VALUES ($1, $2, $3, $4, $5, $6, FALSE, FALSE, $7)`,
@@ -547,7 +554,7 @@ async function persistMaintenancePlan(args: {
         /* prescription */ undefined, /* maxHr */ null, /* goalPaceSPerMi */ null,
         /* iPaceSec */ iPaceSec,
       );
-      await pool.query(
+      await args.tx.query(
         `INSERT INTO plan_workouts (id, plan_id, week_id, date_iso, dow, type, distance_mi,
                                     pace_target_s_per_mi, workout_spec,
                                     is_quality, is_long, notes, sub_label,
@@ -693,8 +700,25 @@ export async function seedMaintenancePlanFromOnboarding(
     anchorVdot = null;
   }
 
-  await clearActivePlansFor(userId);
+  // Routed through the plan mutation boundary (lib/plan/mutate.ts) as an
+  // 'authorship' mutation. This is the onboarding seeder: it creates the
+  // runner's first plan, so there is no before-state to diff. The boundary
+  // reads the PERSISTED plan back and validates it, report-only — refusing a
+  // first plan would leave a brand-new signup with nothing at all.
+  //
+  // It also gives archive + create + every insert a single transaction; they
+  // were unbatched `pool.query` calls before.
+  const seedBoundary = await mutatePlan<string>({
+    userUuid: userId,
+    source: 'seed-from-onboarding',
+    todayISO: today,
+    touches: 'authorship',
+    planIdFromResult: (v) => v,
+    detail: { total_weeks: totalWeeks, tt_distance: goals.ttDistance ?? null },
+    apply: async (tx) => {
+  await clearActivePlansFor(userId, tx);
   const planId = await persistMaintenancePlan({
+    tx,
     userId,
     startMonday,
     goalISO,
@@ -729,10 +753,16 @@ export async function seedMaintenancePlanFromOnboarding(
       ],
     },
   });
+      return planId;
+    },
+  });
+  if (!seedBoundary.ok || !seedBoundary.planId) {
+    return { ok: false, reason: 'onboarding seed refused by the plan mutation boundary' };
+  }
 
   return {
     ok: true,
-    plan_id: planId,
+    plan_id: seedBoundary.planId,
     weeks_generated: totalWeeks,
     peak_mpw: targetWeeklyMi,
   };

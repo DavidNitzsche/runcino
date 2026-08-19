@@ -31,6 +31,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
+import { mutatePlan } from '@/lib/plan/mutate';
 import { generatePlan } from '@/lib/plan/generate';
 
 export const maxDuration = 120;
@@ -92,9 +93,27 @@ export async function POST(req: NextRequest) {
           WHERE plan_id = $1 ORDER BY week_idx ASC LIMIT ${LADDER.length}`,
         [newPlanId],
       )).rows;
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
+      // Routed through the plan mutation boundary (lib/plan/mutate.ts). The sick
+      // ladder scales volume and strips quality from the first three weeks of a
+      // freshly rebuilt plan — structural, and applied as one batch because a
+      // half-applied ladder is worse than none.
+      //
+      // NOTE ON THE EXPECTED SHAPE. `dropQuality` deliberately empties week 1 of
+      // quality (Research/05 return-to-run: easy only). If that week is a
+      // QUALITY-phase week the validator's §5 fires — correctly describing what
+      // the ladder did. That is a real conflict between two doctrines and it is
+      // surfaced rather than suppressed: the boundary refuses, the plan stays as
+      // the rebuild left it, `ladderWeeks` reports 0, and the refusal lands on
+      // plan_mutation_rejections where it can be adjudicated. Silently applying
+      // it and silently refusing it are both worse than a visible refusal.
+      const ladderBoundary = await mutatePlan<number>({
+        userUuid: userId,
+        source: 'api/plan/replan sick-ladder',
+        todayISO: fromISO,
+        planId: newPlanId,
+        detail: { reason, ladder_weeks: weeks.length },
+        apply: async (client) => {
+        let applied = 0;
         for (let i = 0; i < weeks.length; i++) {
           const wk = weeks[i];
           if (wk.is_race_week) continue; // never ladder race week
@@ -120,14 +139,18 @@ export async function POST(req: NextRequest) {
               [newPlanId, wk.id],
             );
           }
-          ladderApplied++;
+          applied++;
         }
-        await client.query('COMMIT');
-      } catch (e) {
-        await client.query('ROLLBACK');
-        throw e;
-      } finally {
-        client.release();
+        return applied;
+        },
+      });
+      if (ladderBoundary.ok) {
+        ladderApplied = ladderBoundary.value ?? 0;
+      } else {
+        console.error(
+          '[plan/replan] sick ladder REJECTED by the plan mutation boundary · ' +
+          `${ladderBoundary.violations.length} introduced violation(s) · plan left as rebuilt`,
+        );
       }
     }
 

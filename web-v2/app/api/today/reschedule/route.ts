@@ -33,6 +33,7 @@ import { randomBytes } from 'crypto';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
+import { mutatePlan } from '@/lib/plan/mutate';
 
 interface Body {
   from_date?: string;
@@ -148,9 +149,22 @@ export async function POST(req: NextRequest) {
   const fromWeek = await weekFor(fromDate);
   const dowOf = (iso: string) => new Date(iso + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  // Routed through the plan mutation boundary (lib/plan/mutate.ts). A move is
+  // six statements — relocate, possibly delete the displaced run, reconcile the
+  // rest placeholders — and only the FINISHED state is meaningful, so the
+  // boundary wraps the whole set rather than each statement. Structural by
+  // definition: date_iso, week_id and the row set all move.
+  //
+  // What this catches that nothing did before: a move that lands a quality day
+  // adjacent to the long run (Research/00b:55-60), or drops a run after race
+  // day in race week.
+  const boundary = await mutatePlan<{ moved: Record<string, unknown>; replaced: { type: string; distance_mi: number } | null }>({
+    userUuid: userId,
+    source: 'api/today/reschedule',
+    todayISO: fromDate,
+    planId: plan.id,
+    detail: { from: fromDate, to: toDate, replace: body?.replace === true },
+    apply: async (client) => {
 
     const rowsOn = async (dateIso: string): Promise<Array<{ id: string; type: string }>> =>
       (await client.query(
@@ -224,17 +238,27 @@ export async function POST(req: NextRequest) {
       })],
     ).catch(() => {});
 
-    await client.query('COMMIT');
+      return { moved, replaced };
+    },
+  });
 
-    await bustBriefingCacheForEvent(userId, 'plan_swap');
-
-    return NextResponse.json({ ok: true, moved, replaced });
-  } catch (e: any) {
-    await client.query('ROLLBACK').catch(() => {});
-    return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });
-  } finally {
-    client.release();
+  if (!boundary.ok) {
+    // The move was refused and the plan is unchanged. 409 with the violation
+    // list so the client can say what the move would have broken rather than
+    // showing a generic failure.
+    return NextResponse.json(
+      { error: 'plan_invariant_violation', violations: boundary.violations },
+      { status: 409 },
+    );
   }
+
+  await bustBriefingCacheForEvent(userId, 'plan_swap');
+
+  return NextResponse.json({
+    ok: true,
+    moved: boundary.value?.moved,
+    replaced: boundary.value?.replaced ?? null,
+  });
 }
 
 export const dynamic = 'force-dynamic';

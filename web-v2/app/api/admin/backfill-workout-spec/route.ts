@@ -65,6 +65,8 @@ import { buildWorkoutSpec, tPaceFromGoal } from '@/lib/plan/spec-builder';
 import { preserveProgressionSql } from '@/lib/plan/progression-spec';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
+import { mutatePlan } from '@/lib/plan/mutate';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 function parseHMS(t: string): number {
   const parts = (t || '').trim().split(':').map((x) => parseInt(x, 10) || 0);
@@ -149,6 +151,29 @@ export async function POST(req: NextRequest) {
     let totalUpdated = 0;
     const samples: Array<{ id: string; type: string; before: null; after: Record<string, unknown> | null }> = [];
 
+    // ── ROUTED THROUGH THE PLAN MUTATION BOUNDARY (2026-08-18) ─────────────
+    //
+    // This is the admin backfill, and it does NOT get a validation bypass —
+    // because it does not need one, which is a better answer than an exemption.
+    // Every statement below writes exactly one column, `workout_spec`, and no
+    // invariant in `validate.ts` reads it. That makes this a `'derivations'`
+    // mutation, and the boundary PROVES the claim by fingerprinting the
+    // structural columns (date_iso, dow, type, distance_mi, is_quality,
+    // is_long, and the row set) before and after. If a future edit to this
+    // route ever starts moving one of those, the boundary rolls the backfill
+    // back and records `undeclared_structural` rather than letting an admin
+    // endpoint quietly restructure a live plan.
+    //
+    // THE ESCAPE HATCH, if a later backfill genuinely needs it: pass
+    // `bypass: { reason: '…' }` to `mutatePlan`. It skips validation entirely,
+    // logs a `[plan/mutate] BYPASS` line, and lands a `bypassed` row on
+    // `plan_mutation_rejections` carrying the reason. It is deliberately the
+    // only way past the door, and it is deliberately loud: an unmarked bypass
+    // is how the unguarded-write problem started.
+    //
+    // One boundary per plan (the boundary is plan-scoped). `dry=1` writes
+    // nothing, so it never enters the door at all.
+    const boundaryRefusals: Array<{ planId: string; violations: string[] }> = [];
     for (const plan of planRows) {
       // Default: only NULL specs. force=1: also kind-less existing specs
       // (the post-mortem case from the first backfill pass).
@@ -166,32 +191,56 @@ export async function POST(req: NextRequest) {
         [plan.id],
       )).rows as Array<{ id: string; type: string; distance_mi: number | null; sub_label: string | null }>;
 
-      for (const row of rows) {
-        // THE canonical builder — same call shape the generator uses
-        // (lib/plan/generate.ts, persistPlan).
-        const { spec } = buildWorkoutSpec(
-          row.type,
-          row.distance_mi != null ? Number(row.distance_mi) : null,
-          t,
-          lthr,
-          row.sub_label,
-          maxHr,
-          goalPaceSPerMi,
-        );
-        if (spec === null) continue;   // null-spec types (rest/cross/strength) — leave as NULL
-        if (!dry) {
-          await pool.query(
-            // Rule 6 · the backfill rebuilds a spec from the row's own
-            // sub_label and knows nothing about the overload trajectory. Under
-            // `force=1` it rewrites rows that ALREADY have a spec, so without
-            // this guard a maintenance sweep would strip every shape the
-            // author wrote.
-            `UPDATE plan_workouts SET workout_spec = ${preserveProgressionSql('$1')} WHERE id = $2`,
-            [spec, row.id],
+      const writeSpecs = async (tx: { query: typeof pool.query }): Promise<number> => {
+        let n = 0;
+        for (const row of rows) {
+          // THE canonical builder — same call shape the generator uses
+          // (lib/plan/generate.ts, persistPlan).
+          const { spec } = buildWorkoutSpec(
+            row.type,
+            row.distance_mi != null ? Number(row.distance_mi) : null,
+            t,
+            lthr,
+            row.sub_label,
+            maxHr,
+            goalPaceSPerMi,
           );
+          if (spec === null) continue;   // null-spec types (rest/cross/strength) — leave as NULL
+          if (!dry) {
+            await tx.query(
+              // Rule 6 · the backfill rebuilds a spec from the row's own
+              // sub_label and knows nothing about the overload trajectory. Under
+              // `force=1` it rewrites rows that ALREADY have a spec, so without
+              // this guard a maintenance sweep would strip every shape the
+              // author wrote.
+              `UPDATE plan_workouts SET workout_spec = ${preserveProgressionSql('$1')} WHERE id = $2`,
+              [spec, row.id],
+            );
+          }
+          n += 1;
+          if (samples.length < 6) samples.push({ id: row.id, type: row.type, before: null, after: spec });
         }
-        totalUpdated += 1;
-        if (samples.length < 6) samples.push({ id: row.id, type: row.type, before: null, after: spec });
+        return n;
+      };
+
+      if (dry) {
+        totalUpdated += await writeSpecs(pool);
+        continue;
+      }
+
+      const boundary = await mutatePlan<number>({
+        userUuid: userId,
+        source: 'admin/backfill-workout-spec',
+        todayISO: await runnerToday(userId),
+        planId: plan.id,
+        touches: 'derivations',
+        detail: { force, rows: rows.length },
+        apply: async (tx) => writeSpecs(tx),
+      });
+      if (boundary.ok) {
+        totalUpdated += boundary.value ?? 0;
+      } else {
+        boundaryRefusals.push({ planId: plan.id, violations: boundary.violations });
       }
     }
 
@@ -205,6 +254,9 @@ export async function POST(req: NextRequest) {
       ok: true,
       dry,
       updated: totalUpdated,
+      // Empty unless the boundary refused a plan. A non-empty array means this
+      // route tried to move a structural column, which it must never do.
+      boundary_refusals: boundaryRefusals,
       tPaceSec: t,
       goalSeconds: goalSec,
       goalDistMi,
