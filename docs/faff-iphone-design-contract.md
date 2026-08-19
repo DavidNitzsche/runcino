@@ -140,7 +140,7 @@ Needs nothing from design.
 | **Phone-initiated runs** | The setting that reveals the RUN pill. Recording is **foreground-only** — a phone in a pocket with the screen off stops the run. The treadmill HEART tile has no source without a watch. |
 | **Change the plan** | Cutback, travel, extra day are new. "Another race" is already built and produces the design's exact sentence. Each states its trade-off before the runner confirms. |
 | **Shoe retirement** | Mileage and percent-used already exist. Adding a shoe type and one agreed default. *Confirm the bands you want: racing 150–250, trainers 400.* |
-| **Palette re-lock** | The build gate is being re-pointed at the new palette, and both typefaces bundled. Your palette is canonical. |
+| **Palette re-lock** | **Done.** The build gate now asserts your palette — black ground, four surface steps, `#FF5A1F` / `#F2B03C` / `#FF4438`, all six day-state gradients — as the phone's lock, and brief v2 is marked superseded on the phone. The old palette is still asserted while screens read from it, and the gate fails the build the moment nothing does. Both typefaces are bundled and registered; the display face is Archivo at wght 800 / wdth 112, which is not a named instance, so it is reached through the variable axes (`Font.faffDisplay`). Tabular figures are on by default and verified: Instrument Sans's default digits are not tabular. |
 
 ---
 
@@ -150,8 +150,13 @@ Coached mode, just-run mode, and distance-goal-without-a-race exist in the backe
 work end to end. They get no phone screens for now. They need a graceful "not on phone yet"
 rather than three blank screens — a refusal, not a screen set.
 
-The training calendar and week strip are blocked on a plan day being identified by its
-server id rather than its date. Half-fixed already.
+The training calendar and week strip were blocked on a plan day being identified by its
+server id rather than its date. **Unblocked.** `/api/plan/week` now sends
+`plan_workout_id` on every day and on the hidden second run of a double-booked date;
+`/api/training/state` was already sending `id` and the client simply wasn't reading it.
+Both structs key identity on the row id and fall back to a `date:`-prefixed key only for
+a synthesised rest day. The date is still there and is still the right way to ask "which
+day holds this date" — it is a lookup, not an identity.
 
 ---
 

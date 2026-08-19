@@ -105,10 +105,15 @@ enum InterWeight {
     }
 }
 
-// MARK: - Canonical type scale (brief v2)
+// MARK: - Legacy type scale (brief v2)
 //
-// Six tiers, mirroring web's --fs-* CSS vars. New views pick the nearest
-// tier; never hard-code a point size that fits between two rungs.
+// Six tiers, mirroring web's --fs-* CSS vars.
+//
+// SUPERSEDED ON THE PHONE, 2026-08-19. New iPhone views use FontsV5.swift —
+// Instrument Sans for interface text and numerals (tabular figures), Archivo
+// 800 at width 112 uppercase for the display register — and TypeScaleV5 for
+// the sizes. brief v2's Oswald/Inter pairing still governs web and watch.
+// This scale stays while the legacy screens are still on screen.
 enum TypeScale {
     /// Oswald hero — the largest single-field display role (workout name, big countdown)
     static let hero: CGFloat = 64

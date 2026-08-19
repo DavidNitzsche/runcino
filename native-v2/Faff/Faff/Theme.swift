@@ -2,10 +2,14 @@
 //  Theme.swift
 //  faff.run v3 · canonical design tokens (paint by number).
 //
-//  Source of truth: the approved Faff Web App color palette, mirrored
-//  here verbatim. Every hex traces back to that palette. iOS does NOT
-//  reinterpret colors. To change a token, edit it in the web canonical
-//  first, then mirror here.
+//  NOT the phone's source of truth any more (2026-08-19). The approved
+//  iPhone design is design/0819/design_handoff_faff_iphone_app v5 and its
+//  tokens live in ThemeV5.swift. This file is the LEGACY skin, kept live and
+//  correct only while screens still read from it, and CI-required to be
+//  deleted once none do. See ThemeV5.swift and scripts/check-palette-sync.sh.
+//
+//  Historically: mirrored the approved Faff Web App color palette verbatim,
+//  every hex tracing back to it, iOS never reinterpreting a color.
 //
 //  Single dark skin (no Paper revert in v3, that was a v2 detour).
 //  Text on warm meshes (TEMPO/INTERVALS/TARGETS/RACE) does NOT auto
@@ -30,9 +34,23 @@ enum Theme {
     static let mute   = Color(hex: 0x646464)        // secondary text
     static let dim    = Color(hex: 0x4B505E)        // tertiary text
 
-    // ───── Semantic accents · LOCKED TEN-COLOR PALETTE (brief v2, AFC 2026-06-09) ─────
-    // Byte-for-byte identical with web globals.css :root and the watch
-    // (WatchTheme.swift + FaceKit.swift). Do not add an eleventh color.
+    // ───── Semantic accents · LEGACY TEN-COLOR PALETTE (brief v2, AFC 2026-06-09) ─────
+    // Byte-for-byte identical with the watch (WatchTheme.swift + FaceKit.swift).
+    // Do not add an eleventh color.
+    //
+    // SUPERSEDED ON THE PHONE, 2026-08-19. The approved iPhone design is
+    // design/0819/design_handoff_faff_iphone_app v5, and ThemeV5.swift carries
+    // its palette: pure-black ground, four surface steps, Signal orange
+    // #FF5A1F, Attention amber #F2B03C, Fault red #FF4438, six day-state
+    // gradients. brief v2 still governs WEB and WATCH; it does not govern the
+    // phone (it retired orange app-wide, and the phone's accent is now orange).
+    //
+    // This block stays until the v5 build session has moved the last call site
+    // off it — a half-migrated palette on a real device is worse than two
+    // palettes in the source for a week. check-palette-sync.sh counts the
+    // remaining references and, when the count reaches zero, FAILS the build
+    // until this block is deleted. Do not recolour anything here in the
+    // meantime: TestFlight is serving this skin.
     static let green     = Color(hex: 0x3EBD41)     // good state / on-plan / READY
     static let goal      = Color(hex: 0xF3AD38)     // long / goal markers / attention
     static let over      = Color(hex: 0xFC4D64)     // off / warn

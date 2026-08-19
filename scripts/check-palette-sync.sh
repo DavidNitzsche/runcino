@@ -4,12 +4,25 @@
 #
 # Two guards, exit 1 on any violation:
 #
-#   1. LOCK CHECK   · every semantic slot of the locked ten-color palette is
-#                     present with the exact expected hex in each surface's
+#   1. LOCK CHECK   · every semantic slot of a surface's locked palette is
+#                     present with the exact expected hex in that surface's
 #                     token file (web globals.css / constants.ts, iPhone
-#                     Theme.swift, watch WatchTheme.swift + FaceKit.swift).
-#                     The table below IS the lock — change the palette by
-#                     changing brief v2 first, then this file.
+#                     ThemeV5.swift + Theme.swift, watch WatchTheme.swift +
+#                     FaceKit.swift). The tables below ARE the lock.
+#
+#                     WHICH DOCUMENT RULES WHICH SURFACE (2026-08-19):
+#                       · iPhone → design/0819/design_handoff_faff_iphone_app v5
+#                         (README.md + Faff-iPhone-App.dc.html). That handoff is
+#                         the approved product. `Design/running-app-design-brief-v2.md`
+#                         is SUPERSEDED for the phone — most visibly, brief v2
+#                         retired orange app-wide and the phone's primary accent
+#                         is now Signal orange #FF5A1F. Change a phone token by
+#                         changing the v5 handoff first, then ThemeV5.swift,
+#                         then this file. Do NOT reconcile a phone value against
+#                         brief v2.
+#                       · web + watch → brief v2, unchanged. Neither surface is
+#                         being redesigned into v5, and the cross-surface drift
+#                         this gate exists to prevent is still real between them.
 #
 #   2. RETIRED-HEX  · hexes deleted by the AFC palette cutover may not
 #      TRIPWIRE      reappear in live code. Comment lines that reference
@@ -50,6 +63,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WEB_CSS="$ROOT/web-v2/app/globals.css"
 WEB_CONST="$ROOT/web-v2/components/faff-app/constants.ts"
 IOS_THEME="$ROOT/native-v2/Faff/Faff/Theme.swift"
+IOS_THEME_V5="$ROOT/native-v2/Faff/Faff/ThemeV5.swift"
+IOS_FONTS_V5="$ROOT/native-v2/Faff/Faff/FontsV5.swift"
 WATCH_THEME="$ROOT/legacy/native/Faff/FaffWatch Watch App/WatchTheme.swift"
 WATCH_FACEKIT="$ROOT/legacy/native/Faff/FaffWatch Watch App/FaceKit.swift"
 
@@ -94,30 +109,103 @@ need() { # $1=file  $2=grep -E pattern (case-insensitive)  $3=label
 # need "$WEB_CONST" "recovery:.*dot: '#27B4E0'"  'web EFF.recovery.dot = #27B4E0'
 # need "$WEB_CONST" "long:.*dot: '#F3AD38'"      'web EFF.long.dot = #F3AD38'
 
-# iPhone tokens (Theme.swift)
-need "$IOS_THEME" 'green *= Color\(hex: 0x3EBD41\)'     'iOS Theme.green = #3EBD41'
-need "$IOS_THEME" 'goal *= Color\(hex: 0xF3AD38\)'      'iOS Theme.goal = #F3AD38'
-need "$IOS_THEME" 'over *= Color\(hex: 0xFC4D64\)'      'iOS Theme.over = #FC4D64'
-need "$IOS_THEME" 'dist *= Color\(hex: 0x27B4E0\)'      'iOS Theme.dist = #27B4E0'
-need "$IOS_THEME" 'race *= Color\(hex: 0xD03F3F\)'      'iOS Theme.race = #D03F3F'
-need "$IOS_THEME" 'intervals *= Color\(hex: 0xFC4D64\)' 'iOS Theme.intervals = #FC4D64'
-need "$IOS_THEME" 'case \.easy: *return Color\(hex: 0x3EBD41\)'      'iOS easy dot = #3EBD41'
-need "$IOS_THEME" 'case \.tempo: *return Color\(hex: 0xD03F3F\)'     'iOS tempo dot = #D03F3F'
-need "$IOS_THEME" 'case \.intervals: *return Color\(hex: 0xFC4D64\)' 'iOS intervals dot = #FC4D64'
-need "$IOS_THEME" 'case \.race: *return Color\(hex: 0xD03F3F\)'      'iOS race dot = #D03F3F'
+# ── 1a · iPhone · THE v5 PALETTE (authoritative, 2026-08-19) ───────────────
+# Source: design/0819/design_handoff_faff_iphone_app v5. The six day-state
+# ramps are read out of that bundle's own token block (the `:root { --g-*-panel }`
+# in Faff-iPhone-App.dc.html), which is the only machine-readable token
+# declaration the handoff ships; every hex below that also appears there is
+# byte-identical to it. The rest come from the handoff README, which states its
+# hexes are exact.
+need "$IOS_THEME_V5" 'ground *= Color\(hex: 0x000000\)'    'v5 phone ground = #000000 (pure black page)'
+need "$IOS_THEME_V5" 'surface1 *= Color\(hex: 0x0F1011\)'  'v5 phone surface step 1 = #0F1011'
+need "$IOS_THEME_V5" 'surface2 *= Color\(hex: 0x17191B\)'  'v5 phone surface step 2 = #17191B'
+need "$IOS_THEME_V5" 'surface3 *= Color\(hex: 0x212427\)'  'v5 phone surface step 3 = #212427'
+need "$IOS_THEME_V5" 'surface4 *= Color\(hex: 0x2A2E32\)'  'v5 phone surface step 4 = #2A2E32'
+need "$IOS_THEME_V5" 'signal *= Color\(hex: 0xFF5A1F\)'    'v5 phone Signal orange = #FF5A1F (position/primary action · never "good")'
+need "$IOS_THEME_V5" 'attention *= Color\(hex: 0xF2B03C\)' 'v5 phone Attention amber = #F2B03C (out of range / stale / modelled tilde · never "error")'
+need "$IOS_THEME_V5" 'fault *= Color\(hex: 0xFF4438\)'     'v5 phone Fault red = #FF4438 (could not read · never renders a real value)'
 
-# TweakAccent · ruled exempt 2026-06-09 · ember default = locked palette,
-# variant values byte-synced web↔iPhone.
-need "$IOS_THEME" 'case \.ember: *return Color\(hex: 0xF3AD38\)' 'TweakAccent ember.goal = locked #F3AD38'
-need "$IOS_THEME" 'case \.ember: *return Color\(hex: 0xD03F3F\)' 'TweakAccent ember.race = locked #D03F3F'
+# The six day-state gradients · three stops each, exact, one line per state.
+need "$IOS_THEME_V5" 'easy: *\[Color\] = \[Color\(hex: 0x3EBD41\), Color\(hex: 0x1F8A52\), Color\(hex: 0x0F4A3A\)\]'    'v5 day-state EASY = #3EBD41 → #1F8A52 → #0F4A3A'
+need "$IOS_THEME_V5" 'rest: *\[Color\] = \[Color\(hex: 0x008FEC\), Color\(hex: 0x4A3A8E\), Color\(hex: 0x1C1A3A\)\]'    'v5 day-state REST = #008FEC → #4A3A8E → #1C1A3A'
+need "$IOS_THEME_V5" 'quality: *\[Color\] = \[Color\(hex: 0xF3AD38\), Color\(hex: 0xE85D26\), Color\(hex: 0x7A2828\)\]' 'v5 day-state THRESHOLD/QUALITY = #F3AD38 → #E85D26 → #7A2828'
+need "$IOS_THEME_V5" 'race: *\[Color\] = \[Color\(hex: 0xFF8847\), Color\(hex: 0xE85D26\), Color\(hex: 0x7A2828\)\]'    'v5 day-state RACE = #FF8847 → #E85D26 → #7A2828'
+need "$IOS_THEME_V5" 'phase: *\[Color\] = \[Color\(hex: 0xB084FF\), Color\(hex: 0x6A4ACE\), Color\(hex: 0x2A1A5A\)\]'   'v5 day-state BLOCK PHASE = #B084FF → #6A4ACE → #2A1A5A'
+need "$IOS_THEME_V5" 'long: *\[Color\] = \[Color\(hex: 0x27B4E0\), Color\(hex: 0x1A6A9E\), Color\(hex: 0x0C2A5E\)\]'    'v5 day-state LONG RUN = #27B4E0 → #1A6A9E → #0C2A5E'
+
+# NO GREEN AS A VERDICT. The v5 palette has no "good" colour: Signal orange is
+# explicitly "never means good", and the only green in the system is the EASY
+# day-state ramp (which says what kind of day it is, not that it went well).
+# Nothing to assert positively — this note exists so the next person adding a
+# "success green" to the phone reads why there isn't one.
+
+# v5 typography · the two families, and the display register's exact axes.
+# Both faces are variable fonts; the display instance (Archivo wght 800 at
+# wdth 112) is NOT a named instance in the file, so it is only reachable by
+# setting axes. See FontsV5.swift.
+need "$IOS_FONTS_V5" 'textFamily *= "Instrument Sans"'  'v5 phone text face = Instrument Sans'
+need "$IOS_FONTS_V5" 'displayFamily *= "Archivo"'       'v5 phone display face = Archivo'
+need "$IOS_FONTS_V5" 'displayWeight: Double *= 800'     'v5 phone display weight = 800'
+need "$IOS_FONTS_V5" 'displayWidth: *Double *= 112'     'v5 phone display width = 112'
+need "$ROOT/native-v2/project.yml" 'InstrumentSans-Variable\.ttf' 'Instrument Sans registered in UIAppFonts'
+need "$ROOT/native-v2/project.yml" 'Archivo-Variable\.ttf'        'Archivo registered in UIAppFonts'
+
+# ── 1b · iPhone · the LEGACY ten-colour palette, asserted while it is used ──
+# The v5 build session rewires call sites off these tokens. Until the last one
+# is gone they must stay correct — a half-migrated palette on a device is the
+# outcome worth avoiding, and TestFlight is still serving the legacy skin.
+#
+# THIS BLOCK EXPIRES ON ITS OWN. When no file under native-v2 outside
+# Theme.swift references a legacy token any more, the branch below inverts: it
+# stops asserting the values and starts requiring the declarations be DELETED.
+# Nobody has to remember to come back and remove it.
+LEGACY_PHONE_TOKEN_RE='Theme\.(green|goal|over|dist|rest|race|intervals|warnText|overText)\b|TweakAccent|Theme\.Zone|Theme\.Phase|FaffEffort'
+legacy_phone_files=$(grep -rlE "$LEGACY_PHONE_TOKEN_RE" "$ROOT/native-v2/Faff/Faff" \
+  --include='*.swift' 2>/dev/null \
+  | grep -v '/\._' | grep -v '/Theme\.swift$' | grep -v '/ThemeV5\.swift$' || true)
+legacy_phone_count=$(printf '%s' "$legacy_phone_files" | grep -c . || true)
+
+if [ "$legacy_phone_count" -gt 0 ]; then
+  need "$IOS_THEME" 'green *= Color\(hex: 0x3EBD41\)'     'iOS Theme.green = #3EBD41'
+  need "$IOS_THEME" 'goal *= Color\(hex: 0xF3AD38\)'      'iOS Theme.goal = #F3AD38'
+  need "$IOS_THEME" 'over *= Color\(hex: 0xFC4D64\)'      'iOS Theme.over = #FC4D64'
+  need "$IOS_THEME" 'dist *= Color\(hex: 0x27B4E0\)'      'iOS Theme.dist = #27B4E0'
+  need "$IOS_THEME" 'race *= Color\(hex: 0xD03F3F\)'      'iOS Theme.race = #D03F3F'
+  need "$IOS_THEME" 'intervals *= Color\(hex: 0xFC4D64\)' 'iOS Theme.intervals = #FC4D64'
+  need "$IOS_THEME" 'case \.easy: *return Color\(hex: 0x3EBD41\)'      'iOS easy dot = #3EBD41'
+  need "$IOS_THEME" 'case \.tempo: *return Color\(hex: 0xD03F3F\)'     'iOS tempo dot = #D03F3F'
+  need "$IOS_THEME" 'case \.intervals: *return Color\(hex: 0xFC4D64\)' 'iOS intervals dot = #FC4D64'
+  need "$IOS_THEME" 'case \.race: *return Color\(hex: 0xD03F3F\)'      'iOS race dot = #D03F3F'
+
+  # TweakAccent · ruled exempt 2026-06-09 · ember default = locked palette,
+  # variant values byte-synced web↔iPhone.
+  need "$IOS_THEME" 'case \.ember: *return Color\(hex: 0xF3AD38\)' 'TweakAccent ember.goal = locked #F3AD38'
+  need "$IOS_THEME" 'case \.ember: *return Color\(hex: 0xD03F3F\)' 'TweakAccent ember.race = locked #D03F3F'
+else
+  if grep -qE 'green *= Color\(hex: 0x3EBD41\)|goal *= Color\(hex: 0xF3AD38\)' "$IOS_THEME"; then
+    echo "PALETTE LOCK FAIL · legacy phone palette has no consumers left but is still declared"
+    echo "  Nothing under native-v2 references Theme.green / .goal / .over / .dist /"
+    echo "  .race / .intervals / TweakAccent / Theme.Zone / Theme.Phase / FaffEffort"
+    echo "  any more. The v5 migration is complete, so the old palette must go:"
+    echo "    1. delete the legacy token block from native-v2/Faff/Faff/Theme.swift"
+    echo "    2. delete section 1b of this script (this whole if/else)"
+    echo "  Two palettes in one app is how a half-migrated skin ships."
+    fail=1
+  fi
+fi
 # Web accent assertions — DISABLED (redesign 2026-08-18): web↔iPhone accent
 # parity is moot while web's whole palette is being replaced.
 # need "$WEB_CSS" 'data-accent="gold"\]\{--goal:#F0DF47;--race:#F0DF47;\}'   'web gold accent = iPhone gold (Light Yellow)'
 # need "$WEB_CSS" 'data-accent="violet"\]\{--goal:#A78BFA;--race:#B794F4;\}' 'web violet accent = iPhone violet'
 # need "$WEB_CSS" 'data-accent="cool"\]\{--goal:#27B4E0;--race:#3AA0E0;\}'   'web cool accent = iPhone cool'
-need "$IOS_THEME" 'case \.gold: *return Color\(hex: 0xF0DF47\)' 'iPhone gold accent = #F0DF47 (Light Yellow)'
-need "$IOS_THEME" 'return Color\(hex: 0xB794F4\)' 'iPhone violet.race = #B794F4'
-need "$IOS_THEME" 'return Color\(hex: 0x3AA0E0\)' 'iPhone cool.race = #3AA0E0'
+# TweakAccent variants · legacy phone palette, so they live and die with
+# section 1b's reference count (v5 has one accent, Signal orange, and no
+# user-preference recolour).
+if [ "$legacy_phone_count" -gt 0 ]; then
+  need "$IOS_THEME" 'case \.gold: *return Color\(hex: 0xF0DF47\)' 'iPhone gold accent = #F0DF47 (Light Yellow)'
+  need "$IOS_THEME" 'return Color\(hex: 0xB794F4\)' 'iPhone violet.race = #B794F4'
+  need "$IOS_THEME" 'return Color\(hex: 0x3AA0E0\)' 'iPhone cool.race = #3AA0E0'
+fi
 
 # Phase-identity categorical group · ruled adopted 2026-06-09 · phase
 # visualizations only (web TrainView today).
@@ -238,7 +326,14 @@ for _t in $RETIRED_RGB_TRIPLES; do
 done
 # gstop · hero gradient stop ingredient (FaffEffort.heroGradient 2026-06-18).
 # Same exemption logic as FaffMesh: blend ingredients, not semantic colors.
-HIST_FILTER='deleted|retired|was |were |old |previously|killed|AFC fix|→|gstop'
+# v5stop · day-state gradient stop in ThemeV5.swift (2026-08-19). Three hexes
+# the OLD phone palette retired — #FF8847 and #E85D26 (race/tempo, retired when
+# David ruled orange reads "Strava") and #008FEC (corporate blue, deleted when
+# rest folded into recovery) — are restored by the v5 handoff as ramp stops in
+# the race / quality / rest gradients. They are approved there and nowhere else,
+# which is why this is a marker on those specific lines rather than a deletion
+# from the RETIRED list: a bare #FF8847 anywhere else on the phone still fails.
+HIST_FILTER='deleted|retired|was |were |old |previously|killed|AFC fix|→|gstop|v5stop'
 # Brandmark sweep · logo identity, exempt under the header rules and byte-
 # identical web↔iPhone. It is the ONLY sanctioned home of #14C08C. Matched by
 # the sweep's own signature: the 95deg CSS gradient and Theme.swift's stop
@@ -313,10 +408,17 @@ fi
 # need "$WEB_CONST" "ZC = \['#27B4E0','#3EBD41'" 'ladder ZC Z2 = #3EBD41 (brief v2 ADDENDUM 3)'
 # need "$ROOT/web-v2/components/faff-app/session-shape.ts" \
 #   "2: '#3EBD41'" 'ladder session-shape ZONE_COLOR z2 = #3EBD41'
-need "$IOS_THEME" 'z2 = Color\(hex: 0x3EBD41\)' \
-  'iPhone ladder z2 = #3EBD41 (web comparison suspended, see redesign exemption above)'
+# Legacy phone ladder · gated on the same reference count as section 1b.
+if [ "$legacy_phone_count" -gt 0 ]; then
+  need "$IOS_THEME" 'z2 = Color\(hex: 0x3EBD41\)' \
+    'iPhone ladder z2 = #3EBD41 (web comparison suspended, see redesign exemption above)'
+fi
 
 if [ "$fail" -eq 0 ]; then
-  echo "palette-sync OK · iPhone/watch ten-color lock verified (web exempted for redesign, see header)"
+  echo "palette-sync OK · iPhone v5 palette + typography locked; watch ten-color lock verified (web exempted for redesign, see header)"
+  if [ "$legacy_phone_count" -gt 0 ]; then
+    echo "  · legacy phone palette still asserted — $legacy_phone_count file(s) under native-v2 reference it."
+    echo "    When that reaches 0, this gate flips and requires the legacy block deleted from Theme.swift."
+  fi
 fi
 exit $fail
