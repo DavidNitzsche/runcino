@@ -34,9 +34,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
+  // 2026-08-19 · race-shape audit · THE POPULATION WAS THE BUG'S ACCOMPLICE.
+  //
+  // This was "every user with an active plan", which by construction excludes
+  // the runner this cron most needs to reach: the one who finished a race,
+  // had their plan archived by the result chain, and now has none. They were
+  // not merely unfixed, they were never iterated — so the nightly retry that
+  // makes the open-block handoff a safety net rather than a one-shot could not
+  // have existed under the old query.
+  //
+  // Widened by UNION to every runner who has a race row and NO active plan.
+  // That is exactly the planless population, bounded by the users table, and
+  // the loop body short-circuits for them within a few cheap queries
+  // (detectDrift returns null with no plan, and the open-block handoff is
+  // idempotent on a standing pending row).
   const userIds = (await pool.query<{ user_uuid: string }>(
     `SELECT DISTINCT user_uuid FROM training_plans
-      WHERE archived_iso IS NULL AND user_uuid IS NOT NULL`,
+      WHERE archived_iso IS NULL AND user_uuid IS NOT NULL
+     UNION
+     SELECT DISTINCT r.user_uuid FROM races r
+      WHERE r.user_uuid IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM training_plans tp
+           WHERE tp.user_uuid = r.user_uuid AND tp.archived_iso IS NULL
+        )`,
   ).catch(() => ({ rows: [] }))).rows.map((r) => r.user_uuid);
 
   // 2026-06-10 · multi-user: the SELECT above IS the population — no
@@ -58,6 +79,15 @@ export async function POST(req: NextRequest) {
      *  slug for the auto-rebuild path to key off. Counted so the skip is
      *  visible in the cron report rather than silent. */
     goal_gap_skipped_goal_mode?: number;
+    /** 2026-08-19 · plans that ran out of prescribed days this tick. Before
+     *  this, a plan with no race had no end at all — the lookup INNER JOINed
+     *  `races` and dropped every goal-mode and open-block row. */
+    plans_elapsed?: number;
+    /** 2026-08-19 · outcome of the open-block handoff for a runner with no
+     *  active plan and nothing booked. Reason string, not a count: the useful
+     *  thing is WHY ('authored' / 'coached_externally' / 'already_pending' /
+     *  'no_target_entry_missing'), and there is at most one per runner. */
+    open_block?: string;
     error?: string;
   };
   const results: UserResult[] = [];
@@ -112,14 +142,21 @@ export async function POST(req: NextRequest) {
       // its build window (BUILD_WINDOW_WEEKS[distance]), fire a
       // rebuild that picks race-prep mode. The runner has been in
       // maintenance possibly for months; now it's time to build.
+      // 2026-08-19 · race-shape audit · LEFT JOIN, not INNER.
+      // `tp.race_id` is NULL for a goal-mode plan and for every open
+      // maintenance/recovery block, and an INNER JOIN on NULL drops the row —
+      // so this lookup returned undefined for exactly the runners with no race
+      // and the whole maintenance→race-prep transition never saw them. The
+      // JOIN is now outer and the transition itself gates on `race_id` being
+      // present, which is the condition it actually needs.
       const maintenancePlan = (await pool.query<{
-        plan_id: string; race_id: string; race_date: string; race_meta: any;
+        plan_id: string; race_id: string | null; race_date: string | null; race_meta: any;
       }>(
         `SELECT tp.id::text AS plan_id, tp.race_id::text AS race_id,
                 (rc.meta->>'date')::text AS race_date,
                 rc.meta AS race_meta
            FROM training_plans tp
-           JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
+           LEFT JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
           WHERE tp.user_uuid = $1
             AND tp.archived_iso IS NULL
             AND tp.mode = 'maintenance'
@@ -127,7 +164,7 @@ export async function POST(req: NextRequest) {
         [u],
       ).catch(() => ({ rows: [] }))).rows[0];
 
-      if (maintenancePlan) {
+      if (maintenancePlan?.race_id && maintenancePlan.race_date) {
         const { BUILD_WINDOW_WEEKS, distanceCategoryOrNull } = await import('@/lib/plan/goal-tiers');
         const { distanceMiOf } = await import('@/lib/plan/generate');
         // 2026-08-18 · this read `Number(meta->>'distanceMi')`, and a legacy
@@ -199,21 +236,40 @@ export async function POST(req: NextRequest) {
       // below plus the fact that a successful graduate re-points the
       // active plan's race_id at a future race.
       const { runnerToday } = await import('@/lib/runtime/runner-tz');
-      const { graduateDue, recoveryCompleteDue } = await import('@/lib/plan/race-lifecycle');
+      const { graduateDue, recoveryCompleteDue, planElapsed } =
+        await import('@/lib/plan/race-lifecycle');
       const userToday = await runnerToday(u);
+      // 2026-08-19 · race-shape audit · LEFT JOIN + the plan's own last day.
+      //
+      // This was an INNER JOIN to `races`, so a goal-mode plan (race_id NULL,
+      // authored_state.goal_mode — every no-race fitness-goal runner) never
+      // produced a row here. `activePlanRow` was permanently undefined for
+      // them, which meant nothing below it ran: no graduate, no archive, no
+      // rebuild. Their 16-week plan elapsed and Today kept rendering a plan
+      // whose last prescribed day receded further into the past every morning,
+      // forever, with no signal anywhere.
+      //
+      // `last_workout_iso` is what gives a plan with no race an END. A
+      // race-prep plan ends at its race (graduateDue); everything else ends
+      // when it runs out of prescribed days (planElapsed).
       const activePlanRow = (await pool.query<{
-        plan_id: string; race_id: string; race_date: string;
+        plan_id: string; race_id: string | null; race_date: string | null;
+        goal_mode: string | null; last_workout_iso: string | null; mode: string | null;
       }>(
         `SELECT tp.id::text AS plan_id, tp.race_id::text AS race_id,
-                (rc.meta->>'date')::text AS race_date
+                (rc.meta->>'date')::text AS race_date,
+                tp.authored_state->>'goal_mode' AS goal_mode,
+                tp.mode::text AS mode,
+                (SELECT MAX(pw.date_iso) FROM plan_workouts pw
+                  WHERE pw.plan_id = tp.id) AS last_workout_iso
            FROM training_plans tp
-           JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
+           LEFT JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
           WHERE tp.user_uuid = $1
             AND tp.archived_iso IS NULL
           ORDER BY tp.authored_iso DESC LIMIT 1`,
         [u],
       ).catch(() => ({ rows: [] }))).rows[0];
-      const finishedRow = activePlanRow && graduateDue(activePlanRow.race_date, userToday)
+      const finishedRow = activePlanRow?.race_id && graduateDue(activePlanRow.race_date, userToday)
         ? activePlanRow
         : undefined;
 
@@ -263,8 +319,147 @@ export async function POST(req: NextRequest) {
             }
           }
         }
-        // No next A-race · leave plan as-is. Runner gets a "schedule your next race"
-        // empty-state on the next /today render. NOT a drift signal · move on.
+        // 2026-08-19 · race-shape audit · this comment used to end the block:
+        // "No next A-race · leave plan as-is." The plan is NOT as-is — the
+        // result chain archived it the moment the finish time landed, so
+        // "leave it" left the runner with zero active plans. The open-block
+        // handoff is below, outside this branch, so it also catches a runner
+        // who reached this state by any other route.
+      }
+
+      // 2026-08-19 · race-shape audit · THE PLAN THAT RAN OUT.
+      //
+      // A race-prep plan ends at its race and `graduateDue` above owns that.
+      // Nothing owned the end of any OTHER plan. A goal-mode plan's sixteen
+      // weeks elapse; a maintenance block's rolling four weeks elapse; and
+      // because the lookup above INNER JOINed `races`, the row was invisible
+      // and no code even asked. Today kept rendering the last prescribed day
+      // of a plan that finished months ago.
+      //
+      // Rebuild toward whatever the runner is actually working to: the goal
+      // the plan itself recorded, or their profile goal. `fireAutoRebuild`
+      // takes a goal target directly now, so this is the same audited path
+      // the race-anchored transitions use — same proposal row, same dedupe.
+      let elapsedHandled = false;
+      if (
+        activePlanRow && !activePlanRow.race_id
+        && planElapsed(activePlanRow.last_workout_iso, userToday)
+      ) {
+        const alreadyRebuilt = (await pool.query(
+          `SELECT 1 FROM plan_proposals
+            WHERE user_uuid = $1
+              AND proposal_kind = 'plan_elapsed'
+              AND created_at >= NOW() - interval '24 hours'`,
+          [u],
+        ).catch(() => ({ rowCount: 0 }))).rowCount;
+        if (!alreadyRebuilt) {
+          try {
+            const { fireAutoRebuild, resolveGoalTarget } = await import('@/lib/plan/auto-rebuild');
+            const target = await resolveGoalTarget(u, userToday);
+            if (target) {
+              const result = await fireAutoRebuild({
+                userUuid: u,
+                goalTarget: target,
+                kind: 'plan_elapsed',
+                reasons: {
+                  transition: 'plan_elapsed',
+                  last_workout_iso: activePlanRow.last_workout_iso,
+                  plan_mode: activePlanRow.mode,
+                  goal_mode: activePlanRow.goal_mode === 'true',
+                  message: 'Plan ran out of prescribed days · rebuilding toward the goal.',
+                },
+                source: 'plan_elapsed_cron',
+              });
+              if (result.ok) r.proposals_written++;
+              elapsedHandled = result.ok;
+              r.plans_elapsed = (r.plans_elapsed ?? 0) + 1;
+            } else {
+              // No goal to rebuild toward either. Archive the dead plan so the
+              // open-block handoff below sees an honest "no active plan", then
+              // let it decide what this runner should have. Leaving it active
+              // is what produced the forever-stale plan in the first place.
+              await pool.query(
+                `UPDATE training_plans SET archived_iso = NOW(), archive_reason = 'plan_elapsed'
+                  WHERE id = $1 AND archived_iso IS NULL`,
+                [activePlanRow.plan_id],
+              ).catch(() => pool.query(
+                `UPDATE training_plans SET archived_iso = NOW()
+                  WHERE id = $1 AND archived_iso IS NULL`,
+                [activePlanRow.plan_id],
+              ).catch(() => null));
+              r.plans_elapsed = (r.plans_elapsed ?? 0) + 1;
+            }
+          } catch (e) {
+            console.error('[plan-drift] elapsed-plan rebuild failed:', e);
+          }
+        }
+      }
+
+      // 2026-08-19 · race-shape audit · THE RUNNER WITH NOTHING BOOKED.
+      //
+      // Every entry into the generator needs a target, so a runner with no
+      // race and no goal was invisible to the entire adaptation system — and
+      // that is the ordinary end of a season, not an edge case. The result
+      // chain fires this the moment a race is resulted with nothing next; this
+      // is the nightly safety net for everyone who reached the same state by
+      // another route (a race deleted, a plan expired above, a chain that
+      // failed). `authorOpenBlock` is idempotent on a standing pending row, so
+      // a runner who genuinely cannot be authored for yet is recorded once,
+      // not once per morning.
+      if (!elapsedHandled) {
+        try {
+          const { authorOpenBlock } = await import('@/lib/plan/open-block');
+          const stillActive = (await pool.query<{ id: string }>(
+            `SELECT id FROM training_plans
+              WHERE user_uuid = $1 AND archived_iso IS NULL LIMIT 1`,
+            [u],
+          ).catch(() => ({ rows: [] as Array<{ id: string }> }))).rows[0];
+          if (!stillActive) {
+            const target = (await pool.query<{
+              slug: string; date: string | null; dist: string | null; priority: string | null;
+            }>(
+              `SELECT slug, meta->>'date' AS date, meta->>'distanceMi' AS dist,
+                      meta->>'priority' AS priority
+                 FROM races
+                WHERE user_uuid = $1
+                  AND meta->>'priority' IN ('A','B')
+                  AND (meta->>'date')::date >= $2::date
+                ORDER BY (meta->>'date')::date ASC LIMIT 1`,
+              [u, userToday],
+            ).catch(() => ({ rows: [] }))).rows[0];
+            const last = (await pool.query<{
+              slug: string; date: string | null; meta: any; priority: string | null;
+            }>(
+              `SELECT slug, meta->>'date' AS date, meta, meta->>'priority' AS priority
+                 FROM races
+                WHERE user_uuid = $1
+                  AND meta->>'priority' IN ('A','B')
+                  AND (meta->>'date')::date < $2::date
+                ORDER BY (meta->>'date')::date DESC LIMIT 1`,
+              [u, userToday],
+            ).catch(() => ({ rows: [] }))).rows[0];
+            const { distanceMiOf } = await import('@/lib/plan/generate');
+            const open = await authorOpenBlock({
+              userUuid: u,
+              todayISO: userToday,
+              lastRace: last
+                ? {
+                    slug: last.slug,
+                    dateISO: last.date,
+                    distanceMi: distanceMiOf(last.meta),
+                    priority: last.priority,
+                  }
+                : null,
+              hasFutureTarget: Boolean(target),
+              hasActivePlan: false,
+              source: 'open_block_cron',
+            });
+            r.open_block = open.reason;
+            if (open.ok) r.proposals_written++;
+          }
+        } catch (e) {
+          console.error('[plan-drift] open-block handoff failed:', e);
+        }
       }
 
       // 2026-08-17 · race-lifecycle · recovery → next-block transition.
@@ -494,20 +689,43 @@ export async function POST(req: NextRequest) {
             WHERE tp.id = $1`,
           [report.planId],
         ).catch(() => ({ rows: [] }))).rows[0];
-        if (plan?.race_id && suppressDriftNearRace(plan.race_date, userToday)) {
+        // 2026-08-19 · the goal-mode target, resolved BEFORE the suppression
+        // check so a goal deadline gets the same race-proximity guard a race
+        // date does. Inside 14 days the generator refuses either way.
+        const goalTarget = plan?.race_id
+          ? null
+          : await (await import('@/lib/plan/auto-rebuild')).resolveGoalTarget(u, userToday);
+        const targetDateISO = plan?.race_id ? plan.race_date : (goalTarget?.raceDateISO ?? null);
+        if (!plan?.race_id && !goalTarget) {
+          // No race and no resolvable goal. Nothing to rebuild TOWARD, so
+          // firing would only mint a pending row nothing can resolve. The
+          // elapsed-plan / open-block handoff above owns this runner.
+          r.signals_skipped = report.signals.length;
+        } else if (suppressDriftNearRace(targetDateISO, userToday)) {
           // 2026-08-17 · truth-bug fix · target race within 14 days:
           // generatePlan refuses to rebuild in that window ('target <
           // 2 weeks away'), so firing can only mint a stuck pending
           // row. The surface must not ask what the engine will refuse.
           r.signals_skipped = report.signals.length;
-        } else if (plan?.race_id) {
+        } else {
           // Run the rebuild via fireAutoRebuild · same path the hard-drift
           // hooks use · same audit shape · same dedupe window.
+          //
+          // 2026-08-19 · race-shape audit · this was `else if (plan?.race_id)`,
+          // the ONLY call site for a drift rebuild. `detectDrift` has always
+          // handled a NULL race_id (it reads the plan directly and never joins
+          // `races`), so a goal-mode runner produced real drift signals, then
+          // fell off the end of the if/else chain: `signals_found` reported
+          // them every night and `proposals_written` never once incremented.
+          // Nothing acted on a single one of them. A goal-mode plan now
+          // rebuilds through the goal target — the same entry
+          // `rebuildActivePlanForPrefs` has used since P1-16 — and a plan with
+          // neither race nor resolvable goal falls through to the pending row.
           try {
             const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
             await fireAutoRebuild({
               userUuid: u,
-              raceSlug: plan.race_id,
+              ...(plan?.race_id ? { raceSlug: plan.race_id } : { goalTarget: goalTarget! }),
               // 2026-08-17 · TRUE kind (staleness → 'staleness', volume
               // → 'volume_drift', …). Was a synthetic
               // 'goal_time_changed' "recalibrate" that rendered as

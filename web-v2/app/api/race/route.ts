@@ -15,6 +15,20 @@ import { generatePlan } from '@/lib/plan/generate';
 import { requireUserId } from '@/lib/auth/session';
 import { patchSettings } from '@/lib/coach/settings';
 import { distanceMiFromLabel } from '@/lib/race/distance'; // 2026-07-06 · P1-17 · shared label→mi parser
+import { isCoachedExternally } from '@/lib/plan/coached-gate';
+import { runnerToday } from '@/lib/runtime/runner-tz';
+import { suppressDriftNearRace } from '@/lib/plan/drift-proposal-policy';
+
+/** Rule 11's horizon window · A/B races within 24 weeks AFTER the target race
+ *  raise the long-run cap (generate.ts loadGeneratorInputs, `+ interval '168
+ *  days'`). A race added beyond it cannot change the plan, so it does not
+ *  earn a rebuild. */
+const HORIZON_DAYS = 168;
+
+function addDaysISO(iso: string, days: number): string {
+  return new Date(Date.parse(iso + 'T12:00:00Z') + days * 86400000)
+    .toISOString().slice(0, 10);
+}
 
 function toFriendlyPlanError(raw: string | null): string | null {
   if (!raw) return null;
@@ -117,16 +131,100 @@ export async function POST(req: NextRequest) {
 
     // Q-05 · auto-generate plan on first A-race when there's no active
     // plan. If there IS an active plan tied to some other race, we DO
-    // NOT auto-switch — would be too aggressive. Instead leave it to
-    // the runner to explicitly /plan/generate (or accept a future
-    // coach_proposals item, when wired).
+    // NOT auto-switch — would be too aggressive; 2026-08-19 we now REBUILD
+    // the existing block so it can see the new race (see below), which is a
+    // different thing from re-pointing it at a new target.
     let plan: { ok: boolean; plan_id?: string; weeks_generated?: number; reason?: string } | null = null;
-    if (meta.priority === 'A') {
-      const active = (await pool.query<{ race_id: string | null }>(
-        `SELECT race_id FROM training_plans WHERE user_uuid = $1 AND archived_iso IS NULL LIMIT 1`,
+    // 2026-08-19 · race-shape audit · COACHED RUNNERS AUTHOR NOTHING.
+    // `coached_externally` (the fifth onboarding branch) was honoured at
+    // onboarding and read in exactly two DISPLAY files after that — never in
+    // the plan engine. So the obvious thing a coached runner does, putting
+    // their goal race on the calendar so Faff can track it, landed here, found
+    // no active plan, and authored a full 16-week block against their own
+    // coach's. The race still saves; only authorship is gated.
+    const coached = await isCoachedExternally(userId);
+    let autoRebuild: { kind: string; ok: boolean; reason?: string; newPlanId?: string } | null = null;
+    if (!coached) {
+      const active = (await pool.query<{ race_id: string | null; race_date: string | null }>(
+        `SELECT tp.race_id, (rc.meta->>'date')::text AS race_date
+           FROM training_plans tp
+           LEFT JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
+          WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL LIMIT 1`,
         [userId],
       ).catch(() => ({ rows: [] }))).rows[0];
-      if (!active) {
+      if (active) {
+        // 2026-08-19 · race-shape audit · THE SECOND A-RACE.
+        //
+        // This branch used to be absent: generation happened only `if
+        // (!active)`, and `fireAutoRebuild` was never called from POST (only
+        // from the drift cron, PATCH, and DELETE). So a runner who added a
+        // September half and then a December marathon got a half block that
+        // never learned it was a stepping stone — Rule 11's `horizonRaces`
+        // logic in generate.ts raises the long-run cap for exactly that case,
+        // but it runs at AUTHORING time and nothing re-authored.
+        //
+        // EVERY priority, not just A. The same "authored once, never
+        // re-authored" hole covers the two other things a new race changes:
+        //   · A/B AFTER the target date  → Rule 11 `horizonRaces`, which
+        //     raises the long-run cap for a stepping-stone block.
+        //   · B/C INSIDE the plan window → MIDRACE-1 `midBlockRaces`, which
+        //     embeds the tune-up (B: mini-taper + race + recovery days;
+        //     C: converts the week's nearest quality slot).
+        // Both are read by `loadGeneratorInputs` at authoring time only, so
+        // without a re-author neither ever sees a race added afterwards.
+        //
+        // 'a_race_added' is the kind the PATCH hook already stamps when a race
+        // is promoted TO A-priority, which is the same event from the plan's
+        // point of view. The rebuild targets the ACTIVE plan's own race, not
+        // the new one: the runner's current block keeps its target and gains
+        // the new race in its horizon / mid-block reads. `fireAutoRebuild`
+        // no-ops on a race_mismatch, and the 60s dedupe covers a double POST.
+        //
+        // TWO GUARDS, both borrowed from the machinery that already learned
+        // these lessons:
+        //
+        //   · RELEVANCE. Fire only when the new race lands somewhere the
+        //     generator actually reads it — inside the plan window (a
+        //     mid-block tune-up) or within Rule 11's 168-day horizon past the
+        //     target. A race two years out changes nothing, and re-authoring
+        //     a block to produce a byte-identical plan is churn.
+        //
+        //   · RACE PROXIMITY. `suppressDriftNearRace` — inside 14 days of the
+        //     target the generator refuses ('target < 2 weeks away'), so
+        //     firing could only mint a stuck pending row. That is the exact
+        //     truth-bug the 2026-08-17 drift fix closed; the same rule applies
+        //     to a rebuild triggered from a route.
+        const todayISO = await runnerToday(userId);
+        const newDate = typeof meta.date === 'string' ? meta.date.slice(0, 10) : null;
+        const relevant = Boolean(
+          newDate && active.race_date && newDate > todayISO
+          && newDate <= addDaysISO(active.race_date.slice(0, 10), HORIZON_DAYS),
+        );
+        if (
+          active.race_id && active.race_id !== slug && relevant
+          && !suppressDriftNearRace(active.race_date, todayISO)
+        ) {
+          try {
+            const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
+            const rb = await fireAutoRebuild({
+              userUuid: userId,
+              raceSlug: active.race_id,
+              kind: 'a_race_added',
+              reasons: {
+                added_race: slug,
+                added_race_date: meta.date,
+                added_race_distance_mi: meta.distanceMi,
+                added_race_priority: meta.priority,
+                message: `${body.name} added · rebuilding the active block with the new race on the horizon.`,
+              },
+              source: 'race_post_hook',
+            });
+            autoRebuild = { kind: 'a_race_added', ok: rb.ok, reason: rb.reason, newPlanId: rb.newPlanId };
+          } catch (e: unknown) {
+            console.error('[race POST] horizon rebuild warn:', e instanceof Error ? e.message : String(e));
+          }
+        }
+      } else if (meta.priority === 'A') {
         // 2026-06-20 · optional "when do you want to start" for races (David).
         // Defaults to the upcoming Monday (startAnchor) when omitted; a chosen
         // start anchors week 0 there (clamped >= today in generatePlan). The
@@ -160,7 +258,13 @@ export async function POST(req: NextRequest) {
     }
 
     const planError = plan && !plan.ok ? toFriendlyPlanError(plan.reason ?? null) : null;
-    return NextResponse.json({ ok: true, slug, plan, plan_error: planError });
+    return NextResponse.json({
+      ok: true, slug, plan, plan_error: planError,
+      // 2026-08-19 · so the client can say "your coach owns the plan · this
+      // race is on your calendar" instead of silently showing no plan.
+      ...(coached ? { coached_externally: true } : {}),
+      ...(autoRebuild ? { auto_rebuild: autoRebuild } : {}),
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

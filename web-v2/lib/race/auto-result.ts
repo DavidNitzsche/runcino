@@ -261,6 +261,7 @@ export async function detectAndLogProvisionalResults(userId: string): Promise<Au
       raceSlug: race.slug,
       raceDateISO: dateISO,
       distanceMi,
+      racePriority: priority,
       finishS: patch.finishS,
       // Full chain (archive + next-plan generation) for goal races only.
       regeneratePlan: priority === 'A' || priority === 'B',

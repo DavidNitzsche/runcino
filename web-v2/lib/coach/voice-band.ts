@@ -41,6 +41,7 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import type { CoachState } from '@/lib/topics/types';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 /* ────────────────────────── Public types ────────────────────────── */
 
@@ -448,38 +449,62 @@ async function goalOffProjectedForWindow(
 ): Promise<boolean> {
   // 2026-06-03 · runner TZ anchors the projection-snapshot window.
   const today = await runnerToday(userUuid);
+
+  // 2026-08-19 · race-shape audit · resolve the goal race in TS, not SQL.
+  //
+  // The distance used to be read as `(r.meta->>'distanceMi')::numeric` inside
+  // the query. That field is NULL on every race row written before 2026-07-06
+  // (the write path stored distanceLabel only), so `dist_mi` was NULL, the
+  // projection join `ps.distance_mi = g.dist_mi` matched NOTHING — `NULL =
+  // anything` is never true — `total_count` came back 0, and the `total >= 7`
+  // guard at the bottom turned the whole soft-cap OFF. Silently, and for
+  // exactly the runners whose race rows are the oldest.
+  //
+  // Resolved here through `distanceMiFromLabel`, the ONE parser the race write
+  // paths use, rather than a CASE ladder in SQL: the codebase already paid for
+  // half a dozen drifting local forks of that mapping once (P1-17), and a
+  // seventh living inside a query string is the least reviewable place to put
+  // it. Read-time — no migration, and a label-only row lights up immediately.
+  const goalRow = (await pool.query<{
+    goal_sec: string | null; dist_mi: string | null;
+    label: string | null; name: string | null;
+  }>(
+    `SELECT (r.plan->'goal'->>'finish_time_s')::numeric::text AS goal_sec,
+            (r.meta->>'distanceMi')                           AS dist_mi,
+            (r.meta->>'distanceLabel')                        AS label,
+            (r.meta->>'name')                                 AS name
+       FROM training_plans tp
+       JOIN races r ON r.slug = tp.race_id AND r.user_uuid = tp.user_uuid
+      WHERE tp.user_uuid = $1::uuid AND tp.archived_iso IS NULL
+      LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] as Array<{
+    goal_sec: string | null; dist_mi: string | null; label: string | null; name: string | null;
+  }> }))).rows[0];
+
+  const goalSec = goalRow?.goal_sec != null ? Number(goalRow.goal_sec) : NaN;
+  const numericMi = goalRow?.dist_mi != null ? Number(goalRow.dist_mi) : NaN;
+  const distMi = Number.isFinite(numericMi) && numericMi > 0
+    ? numericMi
+    : (distanceMiFromLabel(goalRow?.label) ?? distanceMiFromLabel(goalRow?.name));
+  // No goal race, no goal time, or a distance nothing can resolve → the
+  // soft-cap has nothing to measure. False, as before.
+  if (!Number.isFinite(goalSec) || goalSec <= 0 || distMi == null || !(distMi > 0)) return false;
+
   const result = (await pool.query<{ off_count: string; total_count: string }>(
-    `WITH plan_race AS (
-       SELECT race_id, user_uuid FROM training_plans
-        WHERE user_uuid = $1::uuid AND archived_iso IS NULL
-        LIMIT 1
-     ),
-     goal AS (
-       SELECT (r.plan->'goal'->>'finish_time_s')::numeric AS goal_sec,
-              (r.meta->>'distanceMi')::numeric AS dist_mi
-         FROM races r
-         -- 2026-08-17 · races composite-PK prep · owner is carried through
-         -- the CTE so the join predicate itself is user-scoped. The WHERE
-         -- below already pinned r to $1, but the safety now lives on the
-         -- join rather than depending on a sibling predicate staying put.
-         JOIN plan_race pr ON pr.race_id = r.slug AND pr.user_uuid = r.user_uuid
-        WHERE r.user_uuid = $1::uuid
-        LIMIT 1
-     ),
-     proj AS (
-       SELECT ps.snapshot_date,
-              ps.projection_sec
-         FROM projection_snapshots ps, goal g
+    `WITH proj AS (
+       SELECT ps.snapshot_date, ps.projection_sec
+         FROM projection_snapshots ps
         WHERE ps.user_uuid = $1::uuid
-          AND ps.distance_mi = g.dist_mi
+          AND ps.distance_mi = $5::numeric
           AND ps.snapshot_date >= $4::date - $3::int
      )
      SELECT COUNT(*) FILTER (
-              WHERE proj.projection_sec > (SELECT goal_sec FROM goal) * (1 + $2::numeric)
+              WHERE proj.projection_sec > $6::numeric * (1 + $2::numeric)
             )::text AS off_count,
             COUNT(*)::text AS total_count
        FROM proj`,
-    [userUuid, pct, windowDays, today],
+    [userUuid, pct, windowDays, today, distMi, goalSec],
   ).catch(() => ({ rows: [{ off_count: '0', total_count: '0' }] }))).rows[0];
 
   const off = Number(result?.off_count ?? 0);

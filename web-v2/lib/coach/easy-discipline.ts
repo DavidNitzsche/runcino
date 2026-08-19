@@ -79,6 +79,7 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { weatherContext } from '@/lib/weather/heat-adjustment';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 
 /* ═══════════════════════ Doctrine-bound constants ═══════════════════════ */
 
@@ -778,13 +779,28 @@ export async function loadEasyDiscipline(
     // is the conservative direction (the run stays in the pattern) — so the
     // race read is taken from the races table, which is the source of truth
     // for race dates per CLAUDE.md.
+    // 2026-08-19 · race-shape audit · resolve the distance through the shared
+    // label parser, not the raw jsonb field. `meta.distanceMi` is NULL on
+    // every race row written before 2026-07-06 (the standard write path stored
+    // distanceLabel only), so `(meta->>'distanceMi')::float8` returned null and
+    // `raceWindowFor(null)` defaulted to 13.1 — the HALF window. A day-20 run
+    // after a MARATHON therefore fell outside the 14-day half window and was
+    // graded as ordinary easy training, in the middle of a 28-day recovery
+    // block that Research/00b says is still recovery. Read-time resolution, no
+    // migration: `distanceMiFromLabel` is the same superset parser the race
+    // routes write through, so a label-only row lights up immediately.
     const races = await pool
-      .query<{ d: string; dist: number | null }>(
-        `SELECT (meta->>'date') AS d, (meta->>'distanceMi')::float8 AS dist
+      .query<{ d: string; dist: number | null; label: string | null; name: string | null }>(
+        `SELECT (meta->>'date') AS d, (meta->>'distanceMi')::float8 AS dist,
+                (meta->>'distanceLabel') AS label, (meta->>'name') AS name
            FROM races WHERE user_uuid = $1 AND (meta->>'date') IS NOT NULL`,
         [userId],
       )
-      .catch(() => ({ rows: [] as { d: string; dist: number | null }[] }));
+      .catch(() => ({ rows: [] as { d: string; dist: number | null; label: string | null; name: string | null }[] }));
+    const raceDistanceMi = (r: { dist: number | null; label: string | null; name: string | null }): number | null =>
+      (r.dist != null && Number.isFinite(r.dist) && r.dist > 0)
+        ? r.dist
+        : (distanceMiFromLabel(r.label) ?? distanceMiFromLabel(r.name));
 
     const sick = await pool
       .query<{ a: string; b: string | null }>(
@@ -820,7 +836,7 @@ export async function loadEasyDiscipline(
         const gap = Math.abs(daysBetween(race.d, dateISO));
         if (daysFromNearestRace == null || gap < daysFromNearestRace) {
           daysFromNearestRace = gap;
-          raceWindowDays = raceWindowFor(race.dist, daysBetween(race.d, dateISO) > 0);
+          raceWindowDays = raceWindowFor(raceDistanceMi(race), daysBetween(race.d, dateISO) > 0);
         }
       }
 
@@ -874,6 +890,14 @@ export async function loadEasyDiscipline(
  * Watched by `RACE.easy-read-context-window`.
  */
 export function raceWindowFor(distanceMi: number | null, isAfter: boolean): number {
+  // 2026-08-19 · race-shape audit · the `?? 13.1` default is a LAST resort and
+  // is now reached only when a race row carries no numeric distance, no label
+  // and no parseable name — `loadEasyDiscipline` resolves label→miles before
+  // calling. It stays rather than returning null because the caller's contract
+  // is "how many days of context does this race carry", and the half's window
+  // is the middle of the table: guessing short would grade a marathon's third
+  // week as ordinary training (the bug), guessing long would silence real
+  // 5K-week observations for a month.
   const d = distanceMi ?? 13.1;
   if (d >= 25) return isAfter ? 28 : 21; // marathon
   if (d >= 12) return isAfter ? 14 : 14; // half
