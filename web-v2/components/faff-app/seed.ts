@@ -1735,7 +1735,7 @@ function adaptUnloggedRaceAlert(races: Races | null): FaffSeed['unloggedRaceAler
   return computeUnloggedRaceAlert(races.past);
 }
 
-function adaptActivity(log: LogT | null): ActivityData {
+function adaptActivity(log: LogT | null, races: Races | null): ActivityData {
   // 2026-08-17 · Activity truth fixes. `recent` now carries the FULL loaded
   // log window (ActivityView groups it by week with a Show-more, instead of
   // a flat 8-run cap) and badges come from log-state's badgeForRun wiring
@@ -1755,9 +1755,9 @@ function adaptActivity(log: LogT | null): ActivityData {
   const allRuns = (log?.weeks ?? []).flatMap(w => w.runs);
   return {
     ranges: {
-      month: buildRange(allRuns, 'month'),
-      year:  buildRange(allRuns, 'year'),
-      all:   buildRange(allRuns, 'all'),
+      month: buildRange(allRuns, 'month', races),
+      year:  buildRange(allRuns, 'year', races),
+      all:   buildRange(allRuns, 'all', races),
     },
     recent,
   };
@@ -1765,7 +1765,7 @@ function adaptActivity(log: LogT | null): ActivityData {
 
 type LogRun = LogT['weeks'][number]['runs'][number];
 
-function buildRange(runs: LogRun[], range: 'month'|'year'|'all'): ActivityData['ranges']['year'] {
+function buildRange(runs: LogRun[], range: 'month'|'year'|'all', races: Races | null): ActivityData['ranges']['year'] {
   const now = new Date();
   const cutoff = range === 'month' ? new Date(now.getFullYear(), now.getMonth(), 1)
     : range === 'year' ? new Date(now.getFullYear(), 0, 1)
@@ -1820,7 +1820,7 @@ function buildRange(runs: LogRun[], range: 'month'|'year'|'all'): ActivityData['
     eyebrow, big, sub, totals, volT, volS, vol,
     mix: effortMix(subset),
     efficiencyTrend: buildEfficiencyTrend(subset),
-    recs: recordsFromRuns(subset),
+    recs: recordsFromRuns(subset, races),
     heat: heatGrid(subset, 18),
     heatLabels: monthLabelsFromHeat(),
     facts: factsFromRuns(subset, totalMiles, totalElev),
@@ -1920,11 +1920,36 @@ function monthLabelsFromHeat(): string[] {
   }
   return labels;
 }
-function recordsFromRuns(runs: LogRun[]): ActivityData['ranges']['year']['recs'] {
+// 2026-08-18 · doctrine fix (CLAUDE.md Race-data source-of-truth). This
+// used to pick "FASTEST 5K"/"FASTEST 10K" from ANY training run in the
+// distance window (fastestNear over `runs: LogRun[]`, no race gate) —
+// a solid tempo run could out-pace a real 5K and display as a Personal
+// Record with no provenance label. Personal Records claim authority, so
+// this now only reads confirmed race finishes (races.past, matched by
+// distance_mi, finishProvisional === false) — the same source
+// adaptPRs() already uses correctly for the HALF/MARATHON buckets a few
+// hundred lines up. Unlike adaptPRs, this does NOT fall back to a
+// training-derived approximation when no confirmed race exists at that
+// distance — "No 5K yet" is the honest state for a card whose whole
+// premise is "this is your official best," not "your fastest training
+// effort at roughly this distance."
+function fastestConfirmedRace(races: Races | null, min: number, max: number): { v: string; c: string } | null {
+  const cands = (races?.past ?? []).filter(r =>
+    !r.finishProvisional && r.finishTime && r.distance_mi != null && r.distance_mi >= min && r.distance_mi <= max,
+  );
+  if (!cands.length) return null;
+  const best = cands.reduce((p, c) => paceToSec(c.finishTime!) / c.distance_mi! < paceToSec(p.finishTime!) / p.distance_mi! ? c : p);
+  const paceSecPerMi = Math.round(paceToSec(best.finishTime!) / best.distance_mi!);
+  return { v: `${Math.floor(paceSecPerMi / 60)}:${String(paceSecPerMi % 60).padStart(2, '0')}`, c: niceLong(best.date) };
+}
+
+function recordsFromRuns(runs: LogRun[], races: Races | null): ActivityData['ranges']['year']['recs'] {
+  const fast5K = fastestConfirmedRace(races, 3.0, 3.4);
+  const fast10K = fastestConfirmedRace(races, 6.0, 6.6);
   if (!runs.length) {
     return [
-      { k: 'FASTEST 5K',   v: '·', c: 'No 5K yet',   t: 'tempo' },
-      { k: 'FASTEST 10K',  v: '·', c: 'No 10K yet',  t: 'tempo' },
+      fast5K  ? { k: 'FASTEST 5K',  v: fast5K.v,  c: fast5K.c,  t: 'tempo' } : { k: 'FASTEST 5K',  v: '·', c: 'No 5K yet',  t: 'tempo' },
+      fast10K ? { k: 'FASTEST 10K', v: fast10K.v, c: fast10K.c, t: 'tempo' } : { k: 'FASTEST 10K', v: '·', c: 'No 10K yet', t: 'tempo' },
       { k: 'LONGEST RUN',  v: '·', c: '·',           t: 'long'  },
       { k: 'BIGGEST WEEK', v: '·', c: '·',           t: 'long'  },
     ];
@@ -1941,20 +1966,13 @@ function recordsFromRuns(runs: LogRun[]): ActivityData['ranges']['year']['recs']
     wmap[key] = (wmap[key] ?? 0) + r.distance_mi;
   }
   const bigWeek = Object.entries(wmap).sort((a, b) => b[1] - a[1])[0];
-  const fastestNear = (min: number, max: number) => {
-    const cands = runs.filter(r => r.distance_mi >= min && r.distance_mi <= max && r.pace);
-    cands.sort((a, b) => paceToSec(a.pace!) - paceToSec(b.pace!));
-    return cands[0] ?? null;
-  };
-  const fast5K = fastestNear(3.0, 3.4);
-  const fast10K = fastestNear(6.0, 6.6);
   const records: ActivityData['ranges']['year']['recs'] = [];
   records.push(fast5K
-    ? { k: 'FASTEST 5K',  v: fast5K.pace!,  c: niceLong(fast5K.date),  t: 'tempo' }
-    : { k: 'FASTEST 5K',  v: '·',           c: 'No 5K yet',            t: 'tempo' });
+    ? { k: 'FASTEST 5K',  v: fast5K.v,  c: fast5K.c,  t: 'tempo' }
+    : { k: 'FASTEST 5K',  v: '·',       c: 'No 5K yet',  t: 'tempo' });
   records.push(fast10K
-    ? { k: 'FASTEST 10K', v: fast10K.pace!, c: niceLong(fast10K.date), t: 'tempo' }
-    : { k: 'FASTEST 10K', v: '·',           c: 'No 10K yet',           t: 'tempo' });
+    ? { k: 'FASTEST 10K', v: fast10K.v, c: fast10K.c, t: 'tempo' }
+    : { k: 'FASTEST 10K', v: '·',       c: 'No 10K yet', t: 'tempo' });
   records.push({ k: 'LONGEST RUN', v: `${longest.distance_mi.toFixed(1)}<small> mi</small>`, c: `${longest.name} · ${niceLong(longest.date)}`, t: 'race' });
   records.push(bigWeek
     ? { k: 'BIGGEST WEEK', v: `${bigWeek[1].toFixed(1)}<small> mi</small>`, c: `wk of ${shortDate(bigWeek[0])}`, t: 'long' }
@@ -2809,7 +2827,7 @@ export async function buildSeed(): Promise<FaffSeed> {
       return adaptBlockState(training, null, goalRace, training?.today ?? volumeToday);
     }
   })();
-  const activity = adaptActivity(log);
+  const activity = adaptActivity(log, races);
   const shoes = adaptShoes(profile);
   const shoeRecByType = await buildShoeRecByType(profile);
   const connections = adaptConnections(profile);

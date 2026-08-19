@@ -496,7 +496,17 @@ export function RaceDetailClient({ race: r }: { race: RaceDetailSeed }) {
               this result, real fields straight from RaceRetro. */}
           {r.isPast && r.retro && (r.retro.vdotRace != null || r.avgHrBpm != null) && (
             <Tile radius="l">
-              <Section title="What it means" />
+              <Section title="What it means" right={isProvisional && (
+                <span style={{ color: 'var(--fault)' }}>{provisionalLabel.toLowerCase()}</span>
+              )} />
+              {/* 2026-08-18 · caveat added — the VDOT/projection/pace numbers
+                  below derive from finishS, which can itself be an
+                  unconfirmed run_match/watch fallback (races-state.ts). The
+                  live RaceRetrospective.tsx co-locates this exact caveat with
+                  its own VDOT tile (WHAT IT MEANS header, "watch time ·
+                  provisional") — this port had the hero + Result-tile badges
+                  but was missing it here, so an unconfirmed finish could
+                  silently drive a displayed VDOT with no local caveat. */}
               <div style={{ marginTop: 'var(--sp-7)', display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-9)' }}>
                 {r.retro.vdotRace != null && (
                   <Stat label="VDOT from this race" value={r.retro.vdotRace.toFixed(1)}
