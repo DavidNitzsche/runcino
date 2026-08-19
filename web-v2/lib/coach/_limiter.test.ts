@@ -24,6 +24,10 @@ import {
   type LimiterInput,
 } from './limiter';
 import { composeWhatClosesIt } from '@/lib/plan/goal-gap';
+import {
+  computeAerobicDecoupling,
+  DECOUPLING_PROTOCOL_MIN_MINUTES,
+} from '@/lib/training/aerobic-decoupling';
 
 /** A runner with a goal and nothing else visible. Tests add one signal at a time. */
 function blank(goalDistanceMi = 26.2, goalPaceSecPerMi: number | null = 412): LimiterInput {
@@ -442,5 +446,89 @@ describe('§11 · the limiter selects a lever other than pace', () => {
       'durability', 'training_volume', 'recovery_capacity',
     ];
     for (const l of all) expect(LEVERS[l]?.length ?? 0).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * 2026-08-19 · the endurance finding was structurally unreachable for a
+ * short-distance runner, and duration-blind for everyone.
+ *
+ * `computeAerobicDecoupling` gated on `distanceMi >= 6`, a quantity Research/03
+ * §12 never states. §12 states the protocol in TIME — "a steady aerobic run
+ * (60–90 min)". The distance gate therefore admitted a 36-minute effort from a
+ * fast runner and refused a 62-minute one from a slow runner, and since
+ * `DECOUPLING_ENDURANCE_GAP_PCT` reads §12's own interpretation table, both
+ * mistakes were the same mistake: the table applied outside its scope in one
+ * direction and withheld inside it in the other.
+ */
+describe('DECOUPLING · the gate is Research/03 §12\'s duration, not a distance', () => {
+  /** n mile-splits at a fixed pace, HR climbing linearly by `hrRise` overall. */
+  const run = (miles: number, paceSec: number, hrStart: number, hrRise: number) =>
+    Array.from({ length: miles }, (_, i) => ({
+      mile: i + 1,
+      pace: paceSec,
+      hr: hrStart + Math.round((hrRise * i) / Math.max(1, miles - 1)),
+    }));
+
+  it('a 5K runner\'s 5-mile long run reads · 12:20/mi is 62 minutes', () => {
+    const r = computeAerobicDecoupling(run(5, 740, 141, 16), 5);
+    expect(r).not.toBeNull();
+    expect(r!.durationMin).toBeGreaterThanOrEqual(DECOUPLING_PROTOCOL_MIN_MINUTES);
+    // The old gate returned null here purely because 5 < 6.
+  });
+
+  it('a 35-minute 5-miler does not · pace, not distance, is what changed', () => {
+    expect(computeAerobicDecoupling(run(5, 420, 141, 16), 5)).toBeNull();
+  });
+
+  it('a 36-minute SIX-miler does not either · the old gate admitted this one', () => {
+    expect(computeAerobicDecoupling(run(6, 360, 140, 18), 6)).toBeNull();
+  });
+
+  it('a marathoner\'s 14-miler still reads · §12 extends the band to race length', () => {
+    const r = computeAerobicDecoupling(run(14, 450, 138, 13), 14);
+    expect(r).not.toBeNull();
+    expect(r!.durationMin).toBeGreaterThan(90);
+  });
+
+  it('the bands are §12\'s four rows · 7% is "acceptable", not an endurance gap', () => {
+    // 7.x% drift used to verdict `poor` off a boundary the doc does not publish,
+    // while this file's own DECOUPLING_ENDURANCE_GAP_PCT (8) called it fine.
+    const r = computeAerobicDecoupling(run(5, 740, 141, 16), 5)!;
+    expect(r.driftPct).toBeGreaterThan(5);
+    expect(r.driftPct).toBeLessThan(DECOUPLING_ENDURANCE_GAP_PCT);
+    expect(r.verdict).toBe('building');
+  });
+
+  it('a stated-short effort is held back from the endurance finding', () => {
+    const short = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [
+        { distanceMi: 5, durationSec: 40 * 60, lateFadeSecPerMi: null, decouplingPct: 14, cadence: null },
+        { distanceMi: 5, durationSec: 40 * 60, lateFadeSecPerMi: null, decouplingPct: 13, cadence: null },
+      ],
+    });
+    expect(short?.ranked.some((r) => r.limiter === 'endurance')).not.toBe(true);
+
+    // The same two readings off protocol-length efforts DO accuse the base.
+    const long = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [
+        { distanceMi: 12, durationSec: 100 * 60, lateFadeSecPerMi: null, decouplingPct: 14, cadence: null },
+        { distanceMi: 12, durationSec: 100 * 60, lateFadeSecPerMi: null, decouplingPct: 13, cadence: null },
+      ],
+    });
+    expect(long?.ranked.some((r) => r.limiter === 'endurance')).toBe(true);
+  });
+
+  it('an unstated duration still counts · the engine\'s only producer enforces it upstream', () => {
+    const r = diagnoseLimiter({
+      ...blank(),
+      fadeObservations: [
+        { distanceMi: 12, lateFadeSecPerMi: null, decouplingPct: 14, cadence: null },
+        { distanceMi: 12, lateFadeSecPerMi: null, decouplingPct: 13, cadence: null },
+      ],
+    });
+    expect(r?.ranked.some((l) => l.limiter === 'endurance')).toBe(true);
   });
 });

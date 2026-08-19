@@ -316,6 +316,14 @@ import {
   fitRiegelExponent,
   type Limiter,
 } from '@/lib/coach/limiter';
+import {
+  DECOUPLING_PROTOCOL_MIN_MINUTES,
+  DECOUPLING_BAND_STRONG_PCT,
+  DECOUPLING_BAND_ACCEPTABLE_PCT,
+  DECOUPLING_BAND_ABOVE_AET_PCT,
+} from '@/lib/training/aerobic-decoupling';
+import { FUELLING_RELEVANT_MIN_MINUTES } from '@/lib/coach/run-recap';
+import { CROSS_SPAN_CI_PCT } from '@/lib/training/goal-projection';
 import type { DoctrineClaim } from './types';
 import { matchLiteral, parseBand, parseBands, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
 
@@ -9416,6 +9424,335 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (!/researchSpanBasePct/.test(src)) {
         throw new Error('the B-target no longer reads the confidence-band table');
+      }
+    },
+  },
+
+  // ══ AEROBIC DECOUPLING ════════════════════════════════════════════════════
+  {
+    id: 'DECOUPLING.protocol-duration',
+    binds: [
+      'lib/training/aerobic-decoupling.ts#DECOUPLING_PROTOCOL_MIN_MINUTES',
+      'lib/training/aerobic-decoupling.ts#computeAerobicDecoupling',
+      'lib/training/decoupling-trend.ts#computeDecouplingTrend',
+      'lib/coach/limiter.ts#DECOUPLING_ENDURANCE_GAP_PCT',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: 'Compare first vs. second half of a steady aerobic run (60–90 min).',
+    claim:
+      'The Pa:HR decoupling protocol is stated in TIME, not distance · §12 gives it as a ' +
+      'steady aerobic run of 60-90 minutes, repeats it under Use as a "fixed 60-min run", ' +
+      'and §16 lists the instrument as the "60-min drift run". The engine gates on the ' +
+      "floor of that window, measured on the segment it actually compares. It used to gate " +
+      'on six miles, a quantity doctrine states nowhere: 36 minutes for a 6:00/mi runner and ' +
+      '78 for a 12:00/mi runner, which both read drift off efforts too short to have any and ' +
+      'left the whole surface dark for short-distance runners.',
+    check({ cite }) {
+      // The window, read out of the anchor line itself.
+      const [lo, hi] = parseBand(
+        matchLiteral(cite.text(), /steady aerobic run \(([^)]+)\)/, '§12 protocol duration')[1],
+      );
+      if (!(lo > 0 && hi > lo)) throw new Error(`§12 no longer states a duration window · got ${lo}-${hi}`);
+      if (DECOUPLING_PROTOCOL_MIN_MINUTES !== lo) {
+        throw new Error(
+          `DECOUPLING_PROTOCOL_MIN_MINUTES = ${DECOUPLING_PROTOCOL_MIN_MINUTES} · §12's protocol ` +
+            `runs ${lo}-${hi} min, so the floor is ${lo}`,
+        );
+      }
+      // §12's Use clause states the same number a second way, and §16's Field
+      // Alternatives table names the instrument by it a third. All three must
+      // agree, or the doc is describing more than one instrument. Read off the
+      // whole file: the anchor's own section stops at the next heading, and
+      // both of these sit below it.
+      const doc03 = sourceOf('Research/03-heart-rate-zones.md');
+      const useMin = Number(
+        matchLiteral(doc03, /fixed (\d+)-min run/, "§12 Use clause's fixed drift run")[1],
+      );
+      const fieldMin = Number(
+        matchLiteral(doc03, /\|\s*(\d+)-min drift run\s*\|/, "§16's Field Alternatives drift-run row")[1],
+      );
+      if (fieldMin !== DECOUPLING_PROTOCOL_MIN_MINUTES) {
+        throw new Error(`§16 lists a ${fieldMin}-min drift run · the engine gates at ${DECOUPLING_PROTOCOL_MIN_MINUTES}`);
+      }
+      if (useMin !== DECOUPLING_PROTOCOL_MIN_MINUTES) {
+        throw new Error(`§12's Use clause says ${useMin} min · the engine gates at ${DECOUPLING_PROTOCOL_MIN_MINUTES}`);
+      }
+      // And the gate is actually a duration gate in the source, not a distance
+      // one wearing the constant's name. This claim exists because a distance
+      // gate that looked reasonable stood for months.
+      const src = sourceOf('web-v2/lib/training/aerobic-decoupling.ts');
+      if (/distanceMi\s*<\s*\d/.test(stripComments(src))) {
+        throw new Error('computeAerobicDecoupling is gated on a distance threshold again');
+      }
+      if (!/durationMin\s*>=\s*DECOUPLING_PROTOCOL_MIN_MINUTES/.test(stripComments(src))) {
+        throw new Error('computeAerobicDecoupling no longer gates on the protocol duration');
+      }
+      // The trend surface must not reintroduce the gate in SQL, which is how it
+      // inherited the old one.
+      const trend = stripComments(sourceOf('web-v2/lib/training/decoupling-trend.ts'));
+      const sqlFloor = Number(matchLiteral(trend, /runDistanceMiSql\('r'\)\}\s*>=\s*(\d+)/, 'trend distance prefilter')[1]);
+      // Four miles is the fewest mile-splits the computation can halve; anything
+      // above that starts excluding runs the duration gate would have admitted.
+      if (sqlFloor > 4) {
+        throw new Error(
+          `decoupling-trend prefilters at >= ${sqlFloor} mi · that is a distance gate again, and it ` +
+            'hides exactly the slower runners whose 5-mile long run IS a 60-minute steady effort',
+        );
+      }
+    },
+  },
+  {
+    id: 'DECOUPLING.interpretation-bands',
+    binds: [
+      'lib/training/aerobic-decoupling.ts#DECOUPLING_BAND_STRONG_PCT',
+      'lib/training/aerobic-decoupling.ts#DECOUPLING_BAND_ACCEPTABLE_PCT',
+      'lib/training/aerobic-decoupling.ts#DECOUPLING_BAND_ABOVE_AET_PCT',
+      'lib/coach/limiter.ts#DECOUPLING_ENDURANCE_GAP_PCT',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| Decoupling % | Meaning |',
+    claim:
+      "Every boundary the app uses to band a drift reading is a boundary §12's interpretation " +
+      'table publishes: <5% strong, 5-8% acceptable, 8-10% endurance gap, >10% above aerobic ' +
+      'threshold. The engine held a 7 for years, which is not in the table — it split the ' +
+      '"5-8% Acceptable" row down the middle, so the run card called a 7.5% reading poor while ' +
+      "limiter.ts (reading the same table's 8-10% row) said the aerobic base was fine.",
+    check({ cite }) {
+      // Read the four row labels out of the doc and take their boundaries.
+      const rows = cite.section
+        .filter((l) => /^\|/.test(l) && /%/.test(l) && !/Decoupling %/.test(l) && !/^\|\s*-+/.test(l))
+        .map((l) => l.split('|')[1].trim());
+      if (rows.length !== 4) {
+        throw new Error(`§12's interpretation table now has ${rows.length} rows, not 4 · re-read the claim`);
+      }
+      // Boundaries are the distinct numbers the rows name, in order.
+      const bounds = [...new Set(rows.flatMap((r) => parseBand(r)))].sort((a, b) => a - b);
+      const expected = [
+        DECOUPLING_BAND_STRONG_PCT,
+        DECOUPLING_BAND_ACCEPTABLE_PCT,
+        DECOUPLING_BAND_ABOVE_AET_PCT,
+      ];
+      for (const e of expected) {
+        if (!bounds.includes(e)) {
+          throw new Error(`engine band boundary ${e}% is not one §12 publishes · doc states ${bounds.join(', ')}`);
+        }
+      }
+      // The limiter's endurance-gap threshold is the floor of the row that
+      // names an endurance gap, not any of the others.
+      const gapRow = rows.find((_, i) =>
+        /endurance gap/i.test(cite.section.filter((l) => /^\|/.test(l) && /%/.test(l) && !/Decoupling %/.test(l) && !/^\|\s*-+/.test(l))[i]),
+      );
+      if (!gapRow) throw new Error('§12 no longer names an "Endurance gap" row');
+      if (DECOUPLING_ENDURANCE_GAP_PCT !== parseBand(gapRow)[0]) {
+        throw new Error(
+          `DECOUPLING_ENDURANCE_GAP_PCT = ${DECOUPLING_ENDURANCE_GAP_PCT} · §12's endurance-gap row ` +
+            `opens at ${parseBand(gapRow)[0]}%`,
+        );
+      }
+      // The band boundaries must be shared, not re-typed per surface. Two
+      // copies of a boundary is how the 7 survived in two files.
+      const trend = stripComments(sourceOf('web-v2/lib/training/decoupling-trend.ts'));
+      if (/currentDriftPct\s*<\s*\d/.test(trend)) {
+        throw new Error('decoupling-trend banded on a literal again · read the shared constants');
+      }
+    },
+  },
+
+  // ══ FUELLING ══════════════════════════════════════════════════════════════
+  {
+    id: 'FUELLING.attribution-duration-floor',
+    binds: ['lib/coach/run-recap.ts#FUELLING_RELEVANT_MIN_MINUTES'],
+    doc: 'Research/18-fueling-products.md',
+    anchor: '| Easy run <60 min | Water only | No fueling stimulus needed |',
+    claim:
+      'Below an hour of running there is no fuelling to get wrong, so the post-run coach may ' +
+      'not name fuel as the cause of anything. §8 says water only under an hour, the CHO ' +
+      'definition calls it the primary fuel for running over 60 minutes, and §"Hourly intake ' +
+      'by exercise duration" carries a literal 0 g/hr in its shortest row. run-recap used to ' +
+      "tell any long-run runner to eat earlier — including a 5K runner's 45-minute one.",
+    check({ cite }) {
+      const floor = Number(
+        matchLiteral(cite.text(), /Easy run <(\d+) min \| Water only/, "§8's water-only row")[1],
+      );
+      if (FUELLING_RELEVANT_MIN_MINUTES !== floor) {
+        throw new Error(
+          `FUELLING_RELEVANT_MIN_MINUTES = ${FUELLING_RELEVANT_MIN_MINUTES} · §8 puts the water-only ` +
+            `ceiling at ${floor} min`,
+        );
+      }
+      // The same number, stated independently in the doc's own definition of
+      // the macronutrient. Two routes to it, per the registry's own rule.
+      const defn = Number(
+        matchLiteral(
+          sourceOf('Research/18-fueling-products.md'),
+          /Primary fuel for endurance running >(\d+) min/,
+          "the CHO definition's duration",
+        )[1],
+      );
+      if (defn !== floor) {
+        throw new Error(`Research/18 states two different fuelling floors: §8 says ${floor}, the definition says ${defn}`);
+      }
+      // And the shortest row of the intake table really does prescribe nothing,
+      // which is what makes "fuel" an impossible cause down there.
+      const shortest = matchLiteral(
+        sourceOf('Research/18-fueling-products.md'),
+        /\|\s*<45 min\s*\|\s*([^|]+)\|/,
+        "the intake table's shortest row",
+      )[1].trim();
+      if (parseBand(shortest)[1] !== 0) {
+        throw new Error(`Research/18's shortest intake row now prescribes "${shortest}", not 0 g/hr`);
+      }
+      // The gate is wired, not merely declared.
+      const src = stripComments(sourceOf('web-v2/lib/coach/run-recap.ts'));
+      if (!/FUELLING_RELEVANT_MIN_MINUTES\s*\*\s*60/.test(src)) {
+        throw new Error('run-recap no longer applies the fuelling-relevance duration gate');
+      }
+      const fuelLines = src.split('\n').filter((l) => /fuel/i.test(l) && /facts\.push|`/.test(l));
+      if (fuelLines.length > 0 && !/fuellingApplies/.test(src)) {
+        throw new Error('run-recap attributes a cause to fuelling without consulting the duration gate');
+      }
+    },
+  },
+
+  // ══ PLAN SHAPE ════════════════════════════════════════════════════════════
+  {
+    id: 'PLAN.tier-days-per-week',
+    binds: ['lib/plan/goal-tiers.ts#TIER_TARGETS.daysPerWeek'],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 1. 5K Plans',
+    claim:
+      'Research/22 never publishes a peak weekly volume on its own · every plan table prints ' +
+      '"| Days/week |" directly above "| Peak weekly volume |", so the volume band only means ' +
+      'anything alongside the day count it was written for. The engine\'s daysPerWeek must be ' +
+      "the doc's number for that cohort, and it must never sit ABOVE it — a tier claiming more " +
+      'training days than doctrine publishes would let the all-user sweep scale its volume ' +
+      'expectation down for a plan that is already running doctrine\'s full week.',
+    check({ exempt }) {
+      const TIER_ROW: Partial<Record<GoalTier, string>> = {
+        developing: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced',
+      };
+      const DOC_SECTION: Partial<Record<DistCategory, string>> = {
+        '5k': '5K', '10k': '10K', hm: 'Half Marathon', m: 'Marathon',
+      };
+      const all = sourceOf('Research/22-plan-templates.md').split('\n');
+      const docDays = (distance: string, cohort: string): [number, number] => {
+        const at = all.findIndex((l) => l.startsWith(`### ${distance} —`) && l.includes(cohort));
+        if (at < 0) throw new Error(`DOCTRINE · no "### ${distance} — ${cohort}" section`);
+        const line = all.slice(at, at + 20).find((l) => l.includes('| Days/week |'));
+        if (!line) throw new Error(`DOCTRINE · no "Days/week" row under ${distance} — ${cohort}`);
+        // "3 run + 1-2 walk/cross" and "4 (3 run + cross-train)" both state the
+        // RUN days first; the parenthetical and the cross-training term are not
+        // running days and must not widen the band.
+        return parseBand(line.split('|')[2].split(/\(|run \+|\+/)[0]);
+      };
+      for (const cat of CATS) {
+        const section = DOC_SECTION[cat];
+        if (!section) continue; // ultra rows key on race distance, not cohort
+        for (const tier of ['developing', 'intermediate', 'advanced'] as const) {
+          const eng = TIER_TARGETS[cat][tier].daysPerWeek;
+          const [lo, hi] = docDays(section, TIER_ROW[tier]!);
+          if (eng >= lo && eng <= hi) continue;
+          if (exempt(`${cat}.${tier}`)) continue;
+          throw new Error(
+            `TIER_TARGETS.${cat}.${tier}.daysPerWeek = ${eng} · Research/22 §"${section} — ` +
+              `${TIER_ROW[tier]}" publishes ${lo}${hi !== lo ? `-${hi}` : ''} days/week`,
+          );
+        }
+        // `elite` has no Research/22 row · it may not train FEWER days than the
+        // tier below it.
+        if (TIER_TARGETS[cat].elite.daysPerWeek < TIER_TARGETS[cat].advanced.daysPerWeek) {
+          throw new Error(`TIER_TARGETS.${cat}.elite trains fewer days than advanced`);
+        }
+      }
+      // The sweep must read the tier's day count rather than assume one, or the
+      // scaling it does is against a number from nowhere.
+      const sweep = stripComments(sourceOf('web-v2/lib/plan/_sweep_allusers.test.ts'));
+      if (!/band\.daysPerWeek/.test(sweep)) {
+        throw new Error('the all-user sweep no longer scales its weekly-volume floor by the band\'s day count');
+      }
+    },
+    exempt: {
+      '5k.advanced':
+        'KNOWN DIVERGENCE, engine BELOW doctrine (found 2026-08-19 wiring this claim). ' +
+        'Research/22 §"5K — Advanced" publishes 6-7 days/week; TIER_TARGETS has 5. Not ' +
+        'changed here: goal-tiers.ts is owned by the plan-engine work in flight, and the ' +
+        'direction is conservative — a lower daysPerWeek makes the sweep\'s volume ' +
+        'expectation STRICTER, never softer, so nothing is hidden by leaving it. Reported ' +
+        'for a ruling.',
+      '10k.advanced':
+        'KNOWN DIVERGENCE, engine BELOW doctrine (found 2026-08-19 wiring this claim). ' +
+        'Research/22 §"10K — Advanced" publishes 6-7 days/week; TIER_TARGETS has 5. Same ' +
+        'shape and same conservative direction as 5k.advanced.',
+      'm.developing':
+        'KNOWN DIVERGENCE, engine ABOVE doctrine (found 2026-08-19 wiring this claim). ' +
+        'Research/22 §"Marathon — Beginner" publishes "4 (3 run + cross-train)"; ' +
+        'TIER_TARGETS.m.developing has 5 running days. This is the one entry whose ' +
+        'direction matters — a day count above doctrine lets the sweep scale its volume ' +
+        'floor down — so it is called out explicitly rather than absorbed. A marathon ' +
+        'beginner running five days instead of doctrine\'s three-plus-cross is a real ' +
+        'prescription question, not a rounding one. Reported for a ruling.',
+    },
+  },
+
+  // ══ DRIFT DETECTION ═══════════════════════════════════════════════════════
+  {
+    id: 'PREDICTION.drift-anchor-span-margin',
+    binds: ['lib/training/goal-projection.ts#driftAnchorMarginPct'],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '| Prediction span | Suggested 80% CI |',
+    claim:
+      'A race at a different distance from the goal is evidence, not noise · §13.7 answers a ' +
+      'cross-distance prediction with a confidence interval rather than a refusal, and §14 ' +
+      'rule 1 makes Riegel the default across 1500m-half. So the drift detector admits any ' +
+      "span doctrine can normalise and charges it §13.7's own CI as extra slowdown before it " +
+      'fires. Where §13.7 prints no row for a pair, the engine takes the WIDEST published row ' +
+      'that brackets the span — a stated number used where it cannot be too narrow — never an ' +
+      'interpolated one. Ultras are declined outright, because §14 rule 6 sends them to ' +
+      'Cameron and time-on-feet instead of this machinery.',
+    check({ cite }) {
+      const t = cite.table();
+      const pct = (row: string) => parseBand(t.cell(row, 'Suggested 80% CI'))[0];
+      // The two fallbacks must really BE the widest published rows in their
+      // direction, or "conservative bound" is just a number someone liked.
+      const shortening = ['Marathon → 5K, recent base'];
+      const lengthening = [
+        '5K → 10K, recent input',
+        '10K → half, recent input',
+        'Half → marathon, marathon-trained',
+        '5K → marathon, marathon-trained',
+      ];
+      const widestShortening = Math.max(...shortening.map(pct));
+      const widestLengthening = Math.max(...lengthening.map(pct));
+      if (CROSS_SPAN_CI_PCT.marathonToFiveK !== widestShortening) {
+        throw new Error(
+          `the shortening fallback uses ${CROSS_SPAN_CI_PCT.marathonToFiveK}% · §13.7's widest ` +
+            `shortening row is ${widestShortening}%`,
+        );
+      }
+      if (CROSS_SPAN_CI_PCT.shortToMarathonTrained !== widestLengthening) {
+        throw new Error(
+          `the lengthening fallback uses ${CROSS_SPAN_CI_PCT.shortToMarathonTrained}% · §13.7's ` +
+            `widest two-sided lengthening row is ${widestLengthening}%`,
+        );
+      }
+      // §14 rule 6 is what takes ultras out, so it has to still say so.
+      if (!/switch to time-on-feet models beyond 100K/.test(sourceOf('Research/02-race-time-prediction.md'))) {
+        throw new Error('§14 rule 6 no longer sends ultras to time-on-feet · re-read the ultra decline');
+      }
+      const src = stripComments(sourceOf('web-v2/lib/training/goal-projection.ts'));
+      // The ±30% window is gone and must not come back: it is what silenced the
+      // STRONG detector for every short-distance runner.
+      if (/raceDistanceMi\s*\*\s*0\.7|raceDistanceMi\s*\*\s*1\.3/.test(src)) {
+        throw new Error('detectRecentRaceDrift is back on a fixed ±30% distance window');
+      }
+      if (!/mediumAt\s*=\s*5\s*\+\s*marginPct/.test(src) || !/strongAt\s*=\s*10\s*\+\s*marginPct/.test(src)) {
+        throw new Error('the drift triggers no longer charge a cross-distance anchor for its span');
+      }
+      // Cross-distance candidates must be ranked by VDOT. Ranking by raw pace
+      // across distances picks the shortest race every time, whatever the
+      // fitness behind it.
+      if (/if \(!best \|\| pace < best\.pace\)/.test(src)) {
+        throw new Error('cross-distance anchors are ranked by raw pace again · only VDOT compares across distances');
       }
     },
   },

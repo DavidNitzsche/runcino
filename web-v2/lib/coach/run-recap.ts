@@ -36,6 +36,20 @@ import {
 import { composeEffortFactor } from '@/lib/terrain/grade-adjust';
 import type { RunTerrain } from '@/lib/terrain/run-terrain';
 
+/**
+ * Minutes of running below which `Research/18` prescribes no fuelling at all,
+ * so fuel cannot be the cause of anything the recap observes.
+ *
+ * The doc says it three ways and lands on the same number: the CHO definition
+ * calls it the "Primary fuel for endurance running >60 min"; §8's training-vs-
+ * racing table opens with "Easy run <60 min | Water only | No fueling stimulus
+ * needed"; and §"Hourly intake by exercise duration" carries a literal "0" in
+ * the g/hr column for its shortest row before reaching a real target at 1 hr.
+ *
+ * Bound by `FUELLING.attribution-duration-floor` in lib/doctrine/registry.ts.
+ */
+export const FUELLING_RELEVANT_MIN_MINUTES = 60;
+
 export interface RecapInput {
   type: WorkoutType;
   phase: Phase | null;
@@ -47,6 +61,11 @@ export interface RecapInput {
   /** Actual canonical-row execution. */
   actualMi: number;
   actualPaceSPerMi: number | null;
+  /** Elapsed running time, seconds. Optional · derived from
+   *  `actualMi × actualPaceSPerMi` when absent, which is what every existing
+   *  caller relied on implicitly. Used to decide whether a long run was long
+   *  enough for `Research/18`'s fuelling guidance to apply at all. */
+  actualDurationSec?: number | null;
   /** Work-phase avg pace (s/mi) derived from watch completion phases.
    *  When present, replaces whole-run avg in tempo/threshold copy.
    *  Absent on Strava/cold-start runs — falls back to actualPaceSPerMi. */
@@ -505,10 +524,20 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
         const easyMi = Math.max(0, Math.round(input.actualMi - finishMi));
         const fPaceStr = paceLabel(input.finishPaceSPerMi!)?.replace('/mi', '') ?? '';
         const rawLabel = String(input.finishLabel ?? '').trim().toUpperCase();
-        const label = rawLabel === 'HM' ? 'HMP' : rawLabel === 'M' ? 'MP' : rawLabel || 'HMP';
+        /* 2026-08-19 · the fallback used to be `|| 'HMP'`, which named a
+         * marathoner's own marathon-pace finish "half-marathon pace" every
+         * time the spec's `finish_label` was missing — the app telling the
+         * runner they ran a pace they did not run, on their key session.
+         *
+         * There is nothing in the input that says what the segment was when
+         * the spec did not say, and the goal race is not on this wire. So the
+         * label is simply omitted: the distance and the actual pace are both
+         * still printed, and every word of the sentence is true. Naming the
+         * zone is a nicety; naming it wrong is a defect. */
+        const label = rawLabel === 'HM' ? 'HMP' : rawLabel === 'M' ? 'MP' : rawLabel || null;
         const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
         facts.push(
-          `Long run done · ${easyMi}mi easy + ${Math.round(finishMi)}mi @ ${label} ${fPaceStr}${hrPart}.`,
+          `Long run done · ${easyMi}mi easy + ${Math.round(finishMi)}mi @ ${label ? `${label} ` : ''}${fPaceStr}${hrPart}.`,
         );
       } else {
         const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
@@ -516,19 +545,49 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
           `Long run done · ${input.actualMi.toFixed(1)} mi${hrPart} · kept it aerobic.`,
         );
       }
+      /* 2026-08-19 · FUEL IS A CAUSE ONLY ONCE THE RUN IS LONG ENOUGH TO HAVE
+       * ONE. Both branches below used to blame fuelling on ANY long run — a
+       * 5K-focused runner's 5-mile, 45-minute long run included. `Research/18`
+       * §"Hourly intake by exercise duration" puts the carbohydrate target at
+       * "<45 min | 0", §8 says "Easy run <60 min | Water only | No fueling
+       * stimulus needed", and the section's own definition line calls CHO the
+       * "Primary fuel for endurance running >60 min". Telling that runner to
+       * eat earlier prescribes against doctrine and, worse, misdiagnoses: a
+       * 45-minute HR climb is pace, heat or fitness, never glycogen.
+       *
+       * This is the same contradiction as `run-purpose.ts`'s `isShortBlock`
+       * gap, on the post-run side. Below the threshold the observation still
+       * gets reported — the runner should know their HR climbed — with the
+       * cause left open instead of asserted wrongly. */
+      const runDurationSec = input.actualDurationSec != null && input.actualDurationSec > 0
+        ? input.actualDurationSec
+        : (input.actualPaceSPerMi != null && input.actualPaceSPerMi > 0
+            ? input.actualMi * input.actualPaceSPerMi
+            : null);
+      const fuellingApplies =
+        runDurationSec == null || runDurationSec >= FUELLING_RELEVANT_MIN_MINUTES * 60;
+
       if (drift && drift.drift >= 8) {
         if (heatExplainsDrift) {
           facts.push(
             `Your HR climbed ${drift.drift} bpm by the end (${drift.firstHr} → ${drift.lastHr}). That's normal in heat like this · the body works harder to cool itself, not because you're slowing down.`,
           );
-        } else {
+        } else if (fuellingApplies) {
           facts.push(
             `Your HR climbed ${drift.drift} bpm by the end (${drift.firstHr} → ${drift.lastHr}). Usually fuel or water · try eating something earlier and drinking more next time.`,
+          );
+        } else {
+          facts.push(
+            `Your HR climbed ${drift.drift} bpm by the end (${drift.firstHr} → ${drift.lastHr}). On a run this short that's effort, not fuel · start the next one easier and see if it settles.`,
           );
         }
       }
       if (fade && fade > 25 && !heatExplainsDrift) {
-        facts.push(`The last third was about ${fade}s/mi slower than the rest. Worth checking your fueling.`);
+        facts.push(
+          fuellingApplies
+            ? `The last third was about ${fade}s/mi slower than the rest. Worth checking your fueling.`
+            : `The last third was about ${fade}s/mi slower than the rest. Too short to be fuel · that's a pacing read, so go out closer to the pace you can hold.`,
+        );
       }
       return {
         verdict: 'Long run done.',

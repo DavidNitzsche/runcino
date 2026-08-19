@@ -80,6 +80,7 @@ import {
   type DistCategory,
   type ExperienceLevelInput,
 } from '@/lib/plan/goal-tiers';
+import { DECOUPLING_PROTOCOL_MIN_MINUTES } from '@/lib/training/aerobic-decoupling';
 
 /** The seven limiters `Design/adaptive-progression-engine.md` §11 names. */
 export type Limiter =
@@ -154,6 +155,17 @@ export interface FadeObservation {
    *  when the run had no usable HR — which is the case that makes endurance and
    *  durability inseparable, not a case that means "fine". */
   decouplingPct: number | null;
+  /** Elapsed running time for the effort, seconds. Research/03 §12's
+   *  interpretation table — the source of `DECOUPLING_ENDURANCE_GAP_PCT` — is
+   *  stated for "a steady aerobic run (60–90 min)", so a decoupling reading off
+   *  a shorter effort is outside the table it would be graded against.
+   *
+   *  Optional because a `decouplingPct` produced by `computeAerobicDecoupling`
+   *  already satisfies the protocol duration by construction. Supply it when
+   *  the drift came from anywhere else, and a short effort's reading is then
+   *  held back from the endurance finding rather than accusing the runner's
+   *  aerobic base for being brief. */
+  durationSec?: number | null;
   /** From `computeCadenceFatigue` (`lib/training/cadence-fatigue.ts`). A
    *  cadence that breaks down under fatigue is a mechanical read, and it is the
    *  signal that separates durability from endurance when HR is present. */
@@ -248,6 +260,24 @@ export const CURVE_FRESHNESS_DAYS = 56;
  * Pa:HR decoupling at which Research/03 §12 stops calling the aerobic system
  * adequate and names an endurance gap outright: "Endurance gap; build base
  * before progressing". The floor of that row, read out of the doc.
+ *
+ * 2026-08-19 · THIS ROW IS DURATION-SCOPED, AND THE SCOPE IS NOW ENFORCED.
+ * §12 states its instrument before it states its table — "Compare first vs.
+ * second half of a steady aerobic run (60–90 min)" — so every row of that
+ * table, this one included, describes what drift means on a run of about that
+ * length. Applying 8% to a 40-minute effort quotes the table outside its own
+ * scope: §2's confounder row scopes cardiac drift to ">30 min steady" and puts
+ * its magnitude at "+5–15% over 60 min", so a short effort has not had the
+ * time to develop the drift the row is describing and a reading off one means
+ * something else entirely.
+ *
+ * The scope is held in two places, deliberately. `computeAerobicDecoupling`
+ * now refuses to produce a number at all below `DECOUPLING_PROTOCOL_MIN_MINUTES`,
+ * so every `decouplingPct` reaching this file from the engine already satisfies
+ * it by construction; and `FadeObservation.durationSec` lets a caller with
+ * another source of drift state the duration explicitly, which is checked
+ * below. CLAUDE.md's per-finding rule is why both exist rather than one: an
+ * upstream guard is not a guarantee about a sub-finding's own inputs.
  */
 export const DECOUPLING_ENDURANCE_GAP_PCT = 8;
 
@@ -500,9 +530,18 @@ export function diagnoseLimiter(input: LimiterInput): LimiterRead | null {
     let ambiguousFades = 0;
 
     for (const o of fades) {
+      /* Duration · Research/03 §12's table is stated for a 60-90 min steady
+       * run, so a stated-short effort's drift is not a reading that table can
+       * grade. Unknown duration passes: the engine's only producer of
+       * `decouplingPct` enforces the protocol duration itself. */
+      const durationKnownShort =
+        o.durationSec != null &&
+        Number.isFinite(o.durationSec) &&
+        o.durationSec < DECOUPLING_PROTOCOL_MIN_MINUTES * 60;
+
       // Decoupling · heat inflates it by a known amount, so a heat-confounded
       // reading must clear the threshold by the artifact before it counts.
-      if (o.decouplingPct != null) {
+      if (o.decouplingPct != null && !durationKnownShort) {
         const threshold = o.heatConfounded
           ? DECOUPLING_ENDURANCE_GAP_PCT + DECOUPLING_HEAT_ARTIFACT_PCT
           : DECOUPLING_ENDURANCE_GAP_PCT;
@@ -518,8 +557,13 @@ export function diagnoseLimiter(input: LimiterInput): LimiterRead | null {
       const faded = !o.courseConfounded && o.lateFadeSecPerMi != null && o.lateFadeSecPerMi > 0;
       if (!faded) continue;
 
+      /* A stated-short effort's drift cannot say the aerobic system HELD
+       * either — the table that would clear it is out of scope in both
+       * directions. Such an observation is treated exactly like a run with no
+       * HR at all: consistent with durability AND endurance, and said to be. */
       const aerobicHeld =
         o.decouplingPct != null &&
+        !durationKnownShort &&
         o.decouplingPct <
           (o.heatConfounded ? DECOUPLING_ENDURANCE_GAP_PCT + DECOUPLING_HEAT_ARTIFACT_PCT : DECOUPLING_ENDURANCE_GAP_PCT);
       const mechanical = o.cadence === 'fading' || o.cadence === 'breaking';
@@ -527,7 +571,7 @@ export function diagnoseLimiter(input: LimiterInput): LimiterRead | null {
       if (aerobicHeld && mechanical) {
         // The engine held and the chassis did not. This is durability.
         durabilityHits++;
-      } else if (o.decouplingPct == null && mechanical) {
+      } else if ((o.decouplingPct == null || durationKnownShort) && mechanical) {
         // Cadence broke down but we cannot see whether HR did. Consistent with
         // durability AND with endurance · rank both, and say so.
         durabilityHits++;

@@ -6,7 +6,8 @@
  * a build block · decoupling moves visibly week-to-week, unlike VO2 max
  * which barely budges.
  *
- * Doctrine: Research/15 § aerobic decoupling.
+ * Doctrine: Research/03-heart-rate-zones.md §12 "Cardiac Drift and Aerobic
+ * Decoupling (Pa:HR)".
  *
  *   A runner whose aerobic engine is improving will show progressively
  *   lower pace-to-HR drift on long steady-state runs. The trajectory
@@ -14,11 +15,19 @@
  *   not declared.
  *
  * Algorithm:
- *   1. Pull last 60d of long runs with computed decoupling (>= 6mi
- *      steady-state)
+ *   1. Pull last 60d of steady runs long enough to carry the signal
  *   2. Filter to non-race / non-interval workouts (steady-state only)
  *   3. Take the first N and the last N · compare averages
  *   4. Surface the trend message
+ *
+ * 2026-08-19 · the SQL used to require `>= 6` miles, mirroring the distance
+ * gate `computeAerobicDecoupling` no longer has. §12 states the protocol in
+ * time (60-90 min), so the qualifying test is duration and it lives in exactly
+ * one place — the computation. The distance term here is now only a cheap
+ * prefilter for "could possibly hold four mile-splits", and every row it lets
+ * through is still judged by the real gate below. That is what re-opens this
+ * whole surface for a 5K/10K runner: a 5-mile long run at 12:00/mi is a 60
+ * minute steady effort and always was a valid drift read.
  *
  * Returns null when there aren't enough samples for a meaningful trend
  * (< 3 runs in the window).
@@ -36,7 +45,12 @@ import {
 } from '@/lib/runs/run-shape';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
-import { computeAerobicDecoupling } from './aerobic-decoupling';
+import {
+  computeAerobicDecoupling,
+  DECOUPLING_BAND_STRONG_PCT,
+  DECOUPLING_BAND_ACCEPTABLE_PCT,
+  DECOUPLING_BAND_ABOVE_AET_PCT,
+} from './aerobic-decoupling';
 import { HEAT_CONFOUND_TEMP_F } from '@/lib/coach/easy-discipline';
 
 export interface DecouplingTrend {
@@ -58,11 +72,18 @@ export interface DecouplingTrend {
   summary: string;
   /** Latest 8 data points for a tile sparkline. */
   series: { date: string; driftPct: number }[];
-  /** 2026-06-03 · zone for the current drift % · Research/15:
-   *  · < 5%  · race-ready band · aerobic engine deeply built
-   *  · 5-7%  · building band · solid base, still improving
-   *  · 7-10% · developing band · base under construction
-   *  · 10%+  · early base band */
+  /** Zone for the current drift %, one per row of Research/03 §12's
+   *  interpretation table:
+   *  · < 5%   · race-ready · "Strong aerobic endurance; sustainable"
+   *  · 5-8%   · building   · "Acceptable; approaching aerobic limit"
+   *  · 8-10%  · developing · "Endurance gap; build base before progressing"
+   *  · 10%+   · early base · "Above aerobic threshold or insufficient endurance"
+   *
+   *  2026-08-19 · the middle boundary was 7, which §12 does not publish — it
+   *  cut the "5-8% Acceptable" row in half, so this surface called a 7.5%
+   *  reading `developing` while `limiter.ts` (reading the "8-10% Endurance
+   *  gap" row for the same number) said the aerobic base was fine. Both now
+   *  read the same four rows. */
   currentZone: 'race-ready' | 'building' | 'developing' | 'early-base';
   /** 2026-06-03 · static explanation · what aerobic decoupling IS. */
   whatItIs: string;
@@ -71,7 +92,9 @@ export interface DecouplingTrend {
 export async function computeDecouplingTrend(userUuid: string): Promise<DecouplingTrend | null> {
   // 2026-06-03 · runner TZ for the 60d window.
   const today = await runnerToday(userUuid);
-  // Pull last 60d of long runs (>= 6mi).
+  // Pull last 60d of steady runs. The distance term is a prefilter for "could
+  // hold four mile-splits", not the qualifying test — that is §12's 60-minute
+  // duration, applied per run by `computeAerobicDecoupling` below.
   // Phase B · one canonical dedup. A dupe of one long run would otherwise push
   // two identical drift points into the first-3 / last-3 means.
   const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(today, 60), today);
@@ -95,7 +118,7 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
        FROM runs r
       WHERE r.user_uuid = $1::uuid
         AND r.id = ANY($3::bigint[])
-        AND ${runDistanceMiSql('r')} >= 6
+        AND ${runDistanceMiSql('r')} >= 4
         AND (${runDateKeySql('r')})::date >= $2::date - interval '60 days'
         AND COALESCE(${runWorkoutTypeSql('r')}, ${runTypeSql('r')}, '')
               NOT IN ('race', 'intervals', 'threshold', 'tempo', 'fartlek')
@@ -181,11 +204,11 @@ export async function computeDecouplingTrend(userUuid: string): Promise<Decoupli
     summary = `Your HR is drifting more through the back half of your long runs than it was ${weeksTracked} week${weeksTracked === 1 ? '' : 's'} ago. The aerobic engine is losing efficiency.`;
   }
 
-  // 2026-06-03 · zone reference for the current drift % · per Research/15.
+  // Zone reference for the current drift % · Research/03 §12's four rows.
   const currentZone: DecouplingTrend['currentZone'] =
-    currentDriftPct < 5 ? 'race-ready'
-    : currentDriftPct < 7 ? 'building'
-    : currentDriftPct < 10 ? 'developing'
+    currentDriftPct < DECOUPLING_BAND_STRONG_PCT ? 'race-ready'
+    : currentDriftPct < DECOUPLING_BAND_ACCEPTABLE_PCT ? 'building'
+    : currentDriftPct < DECOUPLING_BAND_ABOVE_AET_PCT ? 'developing'
     : 'early-base';
 
   // 2026-06-03 · "Lower is better" moved to the headline eyebrow on
