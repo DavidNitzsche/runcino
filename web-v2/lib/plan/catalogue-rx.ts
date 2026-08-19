@@ -52,9 +52,12 @@ import type {
   DoctrinePhase,
   PaceZone,
   Structure,
+  SequenceStructure,
+  AlternationStructure,
   Tier,
 } from '@/lib/workout-catalogue/types';
 import type { WorkoutFamily } from './workout-library';
+import { resolveZoneAnchors } from './zone-anchors';
 
 /* ─────────────────────────────────────────────────────────────── history ── */
 
@@ -103,43 +106,49 @@ function recentFrom(history: CatalogueHistory, weekIdx: number): RecentSession[]
  * The pace anchors the composer can honestly hand the selector.
  *
  * The selector declines a workout whose zones it has no anchor for rather than
- * pacing it by inference, and that gate is the reason this map is SHORT. The
- * composer carries two numbers per week — the threshold pace and the rep pace,
- * the same two `buildWorkoutSpec` will pace the session at — and two doctrine
- * relations extend them:
+ * pacing it by inference. That gate is the whole safety property here, and the
+ * rule it enforces is: NEVER ANCHOR A ZONE THE SPEC BUILDER CANNOT PACE, or the
+ * label promises a pace the watch does not run — the drift this codebase has
+ * already paid for twice.
  *
- *   · HM ← T. `Research/01` §"Pace conversion from a race time" defines T as
- *     "~half-marathon pace to 15K pace", so the half's race pace and T are one
- *     LT-anchored class. `dosePaceOf` already reads an @HM long-run finish as a
- *     T dose on the same sentence.
- *   · 5K ← I. `Research/01` §Daniels-I puts I at "~3K to 5K race pace";
- *     `spec-builder.ts` cites the same row when it paces a rep session.
+ * ── This used to be two zones, and why it is now nine ──────────────────────
  *
- * EVERY OTHER ZONE IS LEFT UNANCHORED ON PURPOSE, and the consequence is
- * visible: the three 10K race-pace sessions in §14.2 whose only zone is `10K`
- * are declined with `no-anchor`, as are §5.4's sub-threshold intervals (ST is
- * "~10-15 s/mi slower than T" and the composer has no ST number), §7's R-pace
- * work and every MP-only session. Anchoring them off T or I would put a pace on
- * the label that `buildWorkoutSpec` would not build — it paces a `threshold`
- * slot at T and an `intervals` slot at I regardless of what the prescription
- * declares — and a label promising a pace the watch does not run is the drift
- * this module exists to avoid. Widening the vocabulary further is a
- * spec-builder change, not a catalogue one.
+ * Until ZONE-R-1 the map held T/HM and I/5K, because `buildWorkoutSpec` paced a
+ * `threshold` slot at T and a rep slot at I *regardless of what the
+ * prescription declared*. Anchoring anything else would have been a lie, so §7's
+ * R work, §5.4's sub-threshold intervals, §14.2's three 10K-specific sessions
+ * and every MP-only session were declined with `no-anchor` — sitting in the
+ * catalogue, cited, and unreachable.
+ *
+ * The fix was not to relax the gate. `resolveZoneAnchors` is now the one answer
+ * to "what is this zone worth", and `buildWorkoutSpec` prices its rep off the
+ * SAME function via the zone the prescription declares. So this map and the
+ * spec builder's reach are the same set by construction rather than by anyone
+ * remembering, and `VOCAB.catalogue-anchors` checks exactly that.
+ *
+ * What is still unanchored, and why:
+ *
+ *   · E · easy is a BAND a day carries, never a work target. A catalogue entry
+ *     zoned E is an easy run (§9.4's Lydiard fartlek), and every one of them is
+ *     `effortOnly`, which needs no anchor at all.
+ *   · M and MP when the caller supplies no marathon pace · every composer path
+ *     supplies one, and a caller that does not gets a refusal rather than a
+ *     guess.
+ *   · R, mile, 3K and 10K when `vdotFromTpace` falls outside Daniels' published
+ *     30-85 table · the honest answer for a runner the table does not cover.
  */
 export function anchorsFor(args: {
   tPaceSec: number | null;
   iPaceSec: number | null;
+  /** The runner's marathon pace, from `marathonPaceSPerMi` — the same
+   *  expression `buildWorkoutSpec` will pace an MP block at. */
+  mpPaceSec?: number | null;
 }): Partial<Record<PaceZone, number>> {
-  const out: Partial<Record<PaceZone, number>> = {};
-  if (args.tPaceSec != null && args.tPaceSec > 0) {
-    out.T = args.tPaceSec;
-    out.HM = args.tPaceSec;
-  }
-  if (args.iPaceSec != null && args.iPaceSec > 0) {
-    out.I = args.iPaceSec;
-    out['5K'] = args.iPaceSec;
-  }
-  return out;
+  return resolveZoneAnchors({
+    tPaceSec: args.tPaceSec,
+    iPaceSec: args.iPaceSec,
+    marathonPaceSec: args.mpPaceSec ?? null,
+  });
 }
 
 /* ───────────────────────────────────────────────────────────── rendering ── */
@@ -236,7 +245,97 @@ function zoneClause(entry: CatalogueEntry): string {
   return ` @ ${entry.zones.map((z) => ZONE_LABEL[z]).join('-')} ${paceWord(last)}`;
 }
 
-/** Every step of a sequence has the same length and unit. */
+/**
+ * GRAMMAR-SEQ-1 (2026-08-19) · one step, in the grammar `parseSegments` reads.
+ *
+ * `"400m @ mile · 90s jog"`. The zone token is the doc's own shorthand and the
+ * rest is the doc's own number; nothing here decides anything.
+ */
+function stepToken(
+  value: number,
+  unit: string,
+  zone: PaceZone | null,
+  recoverySec: number | null,
+): string | null {
+  const size = repToken(value, unit);
+  if (!size) return null;
+  const z = zone ? ` @ ${ZONE_LABEL[zone]}` : '';
+  const r = recoverySec != null && recoverySec > 0 ? ` · ${restToken(recoverySec)} jog` : '';
+  return `${size}${z}${r}`;
+}
+
+/**
+ * A heterogeneous sequence, run-length encoded — which is how the doc writes it.
+ *
+ * §9.2's structure row is "2 × 90 s hard / 90 s float, then 4 × 60 s / 60 s
+ * float, then 4 × 30 s / 30 s float, then 4 × 15 s / 15 s float", and §10.2's
+ * is "2 mi T + 4×800 I". Collapsing runs of identical steps reproduces exactly
+ * that notation rather than fourteen and five separate segments, and
+ * `parseSegments` expands it back to the same step list, so the label the
+ * runner reads and the spec the watch runs are the same object twice.
+ */
+function renderSequenceSegments(s: SequenceStructure): string | null {
+  // A step at E is not WORK. Every segment this grammar emits becomes a work
+  // phase with a pace target on the watch, and §11.4's "8 mi easy + immediate
+  // 8 mi MP" has an easy run in the middle of it — a long run with a
+  // marathon-pace finish under another name, which the engine already authors
+  // on the long-run day (`longFinishSegment`). Rendering it here would put a
+  // threshold target on eight easy miles and double-count the session. Declining
+  // is the same answer the `double` structure gets, for the same reason.
+  if (s.steps.some((st) => st.zone === 'E')) return null;
+  const parts: string[] = [];
+  let i = 0;
+  while (i < s.steps.length) {
+    const step = s.steps[i];
+    let run = 1;
+    while (
+      i + run < s.steps.length &&
+      s.steps[i + run].value === step.value &&
+      s.steps[i + run].unit === step.unit &&
+      s.steps[i + run].zone === step.zone &&
+      s.steps[i + run].recoverySec === step.recoverySec
+    ) run++;
+    const token = stepToken(step.value, step.unit, step.zone, step.recoverySec);
+    if (!token) return null;
+    parts.push(run > 1 ? `${run}×${token}` : token);
+    i += run;
+  }
+  return parts.length >= 2 ? parts.join(' + ') : null;
+}
+
+/**
+ * §10.1's alternation · `"6×(1mi @ MP + 1mi @ 10K)"`.
+ *
+ * The doc's own structure row is "1 mi at MP / 1 mi at 10K, repeated 5–8×", and
+ * its recovery row is "None — continuous". No rest token is written, so
+ * `parseSegments` reads every step's recovery as zero and `expandSpecToPhases`
+ * emits the work phases back to back with no recovery phase between them —
+ * which is what makes the session continuous rather than a rep set whose rest
+ * happens to be nothing.
+ */
+function renderAlternationSegments(s: AlternationStructure, cycles: number): string | null {
+  if (!(cycles >= 2)) return null;
+  // Same rule as the sequence renderer: neither leg of an alternation is easy.
+  // §10.1 says so in its own Pace row — "recovery segments at MP (NOT easy)".
+  if (s.steady.zone === 'E' || s.fast.zone === 'E') return null;
+  const steady = stepToken(s.steady.value, s.steady.unit, s.steady.zone, null);
+  const fast = stepToken(s.fast.value, s.fast.unit, s.fast.zone, null);
+  if (!steady || !fast) return null;
+  return `${cycles}×(${steady} + ${fast})`;
+}
+
+/**
+ * Every step of a sequence is the same STEP — same length, same unit, and the
+ * same zone.
+ *
+ * The zone comparison is not tidiness. §11.4's second structure is "8 mi easy +
+ * immediate 8 mi MP": two steps, both eight miles, at two different paces. On
+ * length and unit alone it read as uniform and rendered "2×8mi @ E-MP race
+ * pace" — a two-rep set at marathon pace, half of which doctrine states as an
+ * easy run. It was unreachable while MP had no anchor and became reachable the
+ * moment one existed, which is the shape of every drift bug in this file's
+ * history: a latent misreading, waiting for the gate in front of it to open.
+ */
 function uniformSequence(
   s: Structure,
 ): { reps: number; value: number; unit: string; recoverySec: number } | null {
@@ -244,6 +343,7 @@ function uniformSequence(
   const first = s.steps[0];
   for (const step of s.steps) {
     if (step.value !== first.value || step.unit !== first.unit) return null;
+    if (step.zone !== first.zone) return null;
   }
   const rest = s.steps.find((x) => x.recoverySec != null)?.recoverySec ?? 0;
   return { reps: s.steps.length, value: first.value, unit: first.unit, recoverySec: rest };
@@ -283,12 +383,34 @@ export function renderPrescription(entry: CatalogueEntry, dose: Dose): string | 
 
   if (s.kind === 'sequence') {
     const u = uniformSequence(s);
-    if (!u) return null;
-    const size = repToken(u.value, u.unit);
-    if (!size) return null;
-    const word = entry.family === 'hills' ? ' hills' : '';
-    const r = restToken(u.recoverySec);
-    return `${u.reps}×${size}${word}${zones}${r ? ` · ${r} jog` : ''}`;
+    if (u) {
+      const size = repToken(u.value, u.unit);
+      if (!size) return null;
+      const word = entry.family === 'hills' ? ' hills' : '';
+      const r = restToken(u.recoverySec);
+      return `${u.reps}×${size}${word}${zones}${r ? ` · ${r} jog` : ''}`;
+    }
+    // GRAMMAR-SEQ-1 · unequal steps · §13's ladders, §9.2's Mona, §10.2's
+    // combos, §12.4's progression. Each step carries its own zone and its own
+    // recovery, which is the thing a uniform rep set cannot say.
+    //
+    // NOT for an effort-cued entry. §8.5's Lydiard hill circuit is the case
+    // that proves it: its "sequence" is one LAP of a loop — 800 m of bounding
+    // uphill, 800 m flat jog, 700 m striding downhill, 800 m wind sprints —
+    // where the second leg is recovery and none of the four has a pace, because
+    // §8.1's pace column is effort and could not be otherwise on a gradient.
+    // Rendered as segments it came out "800m + 800m @ E + 700m + 800m": a paced
+    // four-rep set, one rep of which is an easy jog. A grammar whose content is
+    // per-step ZONES has nothing to say about a session doctrine states without
+    // any, so it declines, exactly as it did before.
+    if (entry.effortOnly) return null;
+    return renderSequenceSegments(s);
+  }
+
+  if (s.kind === 'alternation') {
+    // GRAMMAR-SEQ-1 · §10.1. `dose.reps` is the cycle count `fits` settled on
+    // inside the doc's own band.
+    return renderAlternationSegments(s, dose.reps);
   }
 
   if (s.kind === 'continuous') {
@@ -340,6 +462,10 @@ export interface SlotRequest {
   inTaperWindow: boolean;
   tPaceSec: number | null;
   iPaceSec: number | null;
+  /** ZONE-R-1 · the runner's marathon pace, from `marathonPaceSPerMi` — the
+   *  same expression `buildWorkoutSpec` paces an MP block at. Anchors M and MP,
+   *  which is what makes §11.3's and §4.4's MP sessions offerable at all. */
+  mpPaceSec?: number | null;
   /** Slugs this week has already spent, so a week never repeats a session. */
   usedThisWeek: ReadonlySet<string>;
 }
@@ -386,7 +512,11 @@ export function selectSlotWorkout(req: SlotRequest): SlotChoice {
   if (phases.length === 0) {
     return { ok: false, reason: 'phase', detail: `no doctrine phase maps to ${req.enginePhase}` };
   }
-  const anchors = anchorsFor({ tPaceSec: req.tPaceSec, iPaceSec: req.iPaceSec });
+  const anchors = anchorsFor({
+    tPaceSec: req.tPaceSec,
+    iPaceSec: req.iPaceSec,
+    mpPaceSec: req.mpPaceSec ?? null,
+  });
   const recent = recentFrom(req.history, req.weekIdx);
   const exclude = new Set<string>(req.usedThisWeek);
   let lastRefusal: { reason: string; detail: string } = {

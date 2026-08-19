@@ -91,6 +91,7 @@ import {
   type GateStamp,
 } from './progression-spec';
 import { buildWorkoutSpec, capSpecToDistance } from './spec-builder';
+import { primaryZone } from './prescription-parser';
 
 /* ------------------------------------------------------------------ timing */
 
@@ -420,13 +421,37 @@ export interface ProgressionWeek {
 
 const DOW_OF: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 
-/** Which cap family a persisted row falls under. The trajectory only ever owns
- *  these two types, so anything else is not its business. */
-function familyOfType(type: string): SessionFamily | null {
-  if (type === 'threshold') return 'threshold';
-  if (type === 'intervals' || type === 'vo2max') return 'interval';
+/**
+ * Which cap family a persisted row falls under.
+ *
+ * ZONE-R-1 (2026-08-19) · read off the row's own PRESCRIPTION rather than off
+ * its type alone. `Research/01`'s dosing table caps three paces and the type
+ * only distinguishes two of them: a `threshold` row prescribing §5.4's
+ * sub-threshold intervals and an `intervals` row prescribing §7.4's 200 m
+ * repeats both used to come back as the type's default family, which is the
+ * wrong cap in the second case by a factor of nearly two. `primaryZone` is the
+ * same reading `buildWorkoutSpec` paces off and `dosing.ts` charges off, so all
+ * three agree about what a row is by construction.
+ *
+ * Type still decides when the prescription declares no zone, and every
+ * prescription the engine wrote before this declares one that maps back to the
+ * type's own family — so nothing existing changes hands.
+ */
+function familyOfType(type: string, prescription?: string | null): SessionFamily | null {
+  const declared = ZONE_SESSION_FAMILY[primaryZone(prescription) ?? ''] ?? null;
+  if (type === 'threshold') return declared ?? 'threshold';
+  if (type === 'intervals' || type === 'vo2max') return declared ?? 'interval';
   return null;
 }
+
+/** `Research/04`'s zone shorthand onto `Research/01`'s three capped rows. The
+ *  same mapping `ZONE_DOSE_PACE` states for the dosing gate; T/I/R here because
+ *  the trajectory speaks in cap families and the gate speaks in pace letters. */
+const ZONE_SESSION_FAMILY: Record<string, SessionFamily | undefined> = {
+  T: 'threshold', ST: 'threshold', HM: 'threshold',
+  I: 'interval', '5K': 'interval', '10K': 'interval', '3K': 'interval',
+  R: 'repetition', mile: 'repetition',
+};
 
 /**
  * Load everything the weekly pass needs for one runner, or null when it should
@@ -517,7 +542,7 @@ export async function loadProgressionWeek(userId: string): Promise<ProgressionWe
     // run; this is the cheaper half of the same rule, and it also declines to
     // rewrite a day the runner simply missed — that session is history now.
     if (r.date_iso < todayISO) continue;
-    const family = familyOfType(r.type);
+    const family = familyOfType(r.type, r.sub_label);
     if (family == null) continue;
     const block = readProgressionSpec(r.workout_spec);
     if (block == null) continue;
@@ -558,9 +583,9 @@ export async function loadProgressionWeek(userId: string): Promise<ProgressionWe
     Date.parse(due.weekStartISO + 'T12:00:00Z') - PRIOR_LOOKBACK_DAYS * 86_400_000,
   ).toISOString().slice(0, 10);
   const priorRows = (await pool.query<{
-    date_iso: string; type: string; workout_spec: unknown;
+    date_iso: string; type: string; sub_label: string | null; workout_spec: unknown;
   }>(
-    `SELECT pw.date_iso::text AS date_iso, pw.type, pw.workout_spec
+    `SELECT pw.date_iso::text AS date_iso, pw.type, pw.sub_label, pw.workout_spec
        FROM plan_workouts pw
        LEFT JOIN plan_weeks wk ON wk.id = pw.week_id
        LEFT JOIN plan_phases ph ON ph.id = wk.phase_id
@@ -576,7 +601,7 @@ export async function loadProgressionWeek(userId: string): Promise<ProgressionWe
 
   const prior = new Map<SessionFamily, PriorPrescription>();
   for (const r of priorRows) {
-    const family = familyOfType(r.type);
+    const family = familyOfType(r.type, r.sub_label);
     if (family == null || prior.has(family)) continue;
     const block = readProgressionSpec(r.workout_spec);
     if (block == null) continue;

@@ -161,10 +161,28 @@ export const AT_PACE_WEEKLY_SHARE_CAP = {
  * `min` is not a floor. A small week buys a small session; doctrine's lower
  * bound describes the runner who can afford the whole dose, and flooring a 20
  * mi/wk runner at four threshold miles would be the share cap read backwards.
+ *
+ * ZONE-R-1 (2026-08-19) · the R row is read out of two documents, because
+ * `Research/04` §7.1's family-overview table states rep COUNTS where §5.1 and
+ * §6.1 state at-pace volumes, and no §7 table gives a family-wide mileage band.
+ *
+ *   · `max` · `Research/01` §"Dosing rules — Daniels' caps", R row, whose
+ *     single-workout cell is two caps sharing a sentence: "5% of weekly mi
+ *     (max 8K cumulative)". The percentage half is already
+ *     `AT_PACE_WEEKLY_SHARE_CAP.repetition`; the absolute half is this, and
+ *     8 km is 4.97 mi.
+ *   · `min` · `Research/04` §7.4's own "Total | 1.6–2.4 K at R", which is
+ *     0.99 mi. `min` is the reference `warmupCooldownMi` scales the easy legs
+ *     against, and §7.4 is the section that states BOTH numbers — its at-pace
+ *     total and the warm-up quoted beside it — so reading one without the other
+ *     is what would make this a borrowed value rather than a read one.
+ *
+ * Bound by `DOSING.repetition-session-band`.
  */
 export const AT_PACE_SESSION_MI = {
   threshold: { min: 4, max: 8 },
   interval: { min: 3, max: 6 },
+  repetition: { min: 0.99, max: 4.97 },
 } as const;
 
 /** The at-pace mileage one session of `family` may carry on a `weeklyMi` week:
@@ -178,6 +196,38 @@ export function atPaceSessionCapMi(
 
 /** VO2 repetitions run 3-5 minutes. `Research/04-workout-vocabulary.md:227`. */
 export const INTERVAL_REP_MINUTES = { min: 3, max: 5 } as const;
+
+/**
+ * ZONE-R-1 · an R repetition is 200-600 m and never longer than two minutes.
+ *
+ * `Research/01-pace-zones-vdot.md` §"Dosing rules — Daniels' caps", R row,
+ * "Rep length range" column: "200–600m, ≤2 min".
+ *
+ * Both halves are load-bearing and they are stated in different units on
+ * purpose. The METRES are what `clampToAtPaceMinutes` floors on — an R rep
+ * shortened below two hundred metres has stopped being the workout — and the
+ * two MINUTES is what caps the duration lever, which without it would walk an R
+ * set toward the continuous-tempo ceiling and call the result speed work.
+ *
+ * Bound by `PROGRESSION.repetition-rep-window`.
+ */
+export const REPETITION_REP_METRES = { min: 200, max: 600 } as const;
+export const REPETITION_REP_MINUTES_MAX = 2;
+
+/**
+ * The shortest a rep of `family` may be cut to, in minutes, at a given work
+ * pace. Doctrine states the T/I floor in minutes and the R floor in metres, so
+ * the R arm converts at the session's own pace rather than carrying a second
+ * number that would drift from the first.
+ */
+export function minRepMinutes(
+  family: keyof typeof AT_PACE_WEEKLY_SHARE_CAP,
+  paceSPerMi: number,
+): number {
+  if (family !== 'repetition') return INTERVAL_REP_MINUTES.min;
+  const mi = REPETITION_REP_METRES.min / 1609.344;
+  return paceSPerMi > 0 ? (mi * paceSPerMi) / 60 : INTERVAL_REP_MINUTES.min;
+}
 
 /** Continuous tempo runs 20-40 minutes. `Research/04-workout-vocabulary.md:159`. */
 export const CONTINUOUS_TEMPO_MINUTES = { min: 20, max: 40 } as const;
@@ -374,9 +424,10 @@ export function advanceShape(args: {
   // ladder walks a high-mileage runner to a twelve-mile "cruise interval"
   // session — inside their ten percent, and four miles past anything §5.1
   // describes.
-  const capMi = family === 'repetition'
-    ? weeklyMi * AT_PACE_WEEKLY_SHARE_CAP.repetition
-    : atPaceSessionCapMi(weeklyMi, family);
+  // ZONE-R-1 · repetition used to bypass the session band because there was no
+  // R row in `AT_PACE_SESSION_MI` to consult. There is now — `Research/01`'s R
+  // cell states both halves — so all three families read the same expression.
+  const capMi = atPaceSessionCapMi(weeklyMi, family);
   const capMinutes = (capMi * shape.paceSPerMi) / 60;
 
   switch (lever) {
@@ -388,8 +439,15 @@ export function advanceShape(args: {
       // instruction, and `Research/04-workout-vocabulary.md` §5.1 stops a
       // continuous tempo at 40 minutes either way. Without this the ladder
       // walks 1x30 to 1x50 under the volume cap alone and calls it a tempo.
+      // ZONE-R-1 · and `Research/01`'s R row stops a repetition at two minutes
+      // either way. Without this arm the R family would fall through to the
+      // threshold reading below — `Infinity` while the set has more than one
+      // rep — and the duration lever would walk 8×200 m toward 8×2 mi under the
+      // volume cap alone, which is a threshold session wearing R's label.
       const maxRep = family === 'interval'
         ? INTERVAL_REP_MINUTES.max
+        : family === 'repetition'
+        ? REPETITION_REP_MINUTES_MAX
         : (shape.reps <= 1 ? CONTINUOUS_TEMPO_MINUTES.max : Infinity);
       const wanted = Math.min(shape.repMinutes + step, maxRep);
       if (wanted <= shape.repMinutes || wanted * shape.reps > capMinutes) {
@@ -443,6 +501,15 @@ export function advanceShape(args: {
     }
 
     case 'recovery_duration': {
+      // ZONE-R-1 · doctrine forbids this lever on R work in as many words.
+      // `Research/04` §7.4's contraindication row reads "Cap at 5% weekly
+      // mileage; don't shorten the rest", and §7.1's family table gives every R
+      // session a FULL recovery ("Full walk/jog", "200m jog (full recovery)").
+      // Tightening it turns speed work into an anaerobic session, which is a
+      // different workout with a different cost.
+      if (family === 'repetition') {
+        return { shape, change: 'doctrine does not shorten the rest on R work', capped: true };
+      }
       const wanted = Math.max(1, shape.recoveryMinutes - 1);
       if (wanted >= shape.recoveryMinutes) {
         return { shape, change: 'recovery is already minimal', capped: true };

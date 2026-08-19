@@ -234,16 +234,33 @@ describe('SELECTOR · refusal at low volume', () => {
 
   it('says so plainly when doctrine places nothing here at all', () => {
     // §15's taper row is "Reduced-volume versions of recent workouts; strides;
-    // short race-pace work" — no hill block, no fartlek, no VO2 set. Every
-    // entry on the rep slot agrees in its own "When in cycle" row, so the cell
-    // is genuinely empty and the selector says which cell it is.
+    // short race-pace work" — no hill block, no fartlek, no VO2 set.
+    //
+    // ZONE-R-1 (2026-08-19) · this used to assert the cell was EMPTY, and the
+    // cell was never empty: the row names strides and short race-pace work in
+    // as many words, and §7's speed family is exactly that. What was empty was
+    // the engine's admission table, which offered no §7 entry to any slot in
+    // any phase — the other half of why the R bucket in `dosing.ts` could never
+    // fire from a generated plan.
+    //
+    // So the claim flips to what the row actually says: the taper rep slot
+    // offers §7 work and nothing else. A hill block, a fartlek or a VO2 set
+    // reaching here would still be the defect this test was written for.
     for (const distance of ALL_DISTANCES) {
       const res = selectWorkout(base({ slot: 'intervals', phase: 'taper', distance, weeklyMi: 55 }));
-      expect(res.ok, `${distance} taper offered a rep session`).toBe(false);
-      if (!res.ok) {
-        expect(res.reason).toBe('nothing-placed-here');
-        expect(res.detail).toContain('taper');
+      expect(res.ok, `${distance} taper offered nothing at all`).toBe(true);
+      if (res.ok) {
+        expect(res.entry.family, `${distance} taper offered a ${res.entry.family} session`).toBe('speed');
+        expect(res.entry.section.startsWith('§7')).toBe(true);
       }
+    }
+    // And the phases where §15 genuinely places nothing on this slot still say
+    // so, with the phase named.
+    const none = selectWorkout(base({ slot: 'medium_long', phase: 'taper', distance: 'm', weeklyMi: 55 }));
+    expect(none.ok).toBe(false);
+    if (!none.ok) {
+      expect(none.reason).toBe('nothing-placed-here');
+      expect(none.detail).toContain('taper');
     }
   });
 

@@ -70,6 +70,7 @@ import {
   INTERVAL_REP_MINUTES,
   LIMITER_LEVERS,
   WEEK_LEVEL_LEVERS,
+  minRepMinutes,
   type ChallengeZone,
   type ProgressionLever,
   type WorkShape,
@@ -82,8 +83,16 @@ import {
 import { parsePrescription, parseTimeReps } from '@/lib/plan/prescription-parser';
 import { atPaceMiOf, composeQualityDay, floatMi as floatMiOf } from '@/lib/plan/quality-day';
 
-/** Which of Daniels' at-pace cap families a session falls under. */
-export type SessionFamily = 'threshold' | 'interval';
+/**
+ * Which of Daniels' at-pace cap families a session falls under.
+ *
+ * ZONE-R-1 (2026-08-19) · `repetition` is new here and it is the third of
+ * `Research/01` §"Dosing rules — Daniels' caps"'s three capped rows. The R cap
+ * (`AT_PACE_WEEKLY_SHARE_CAP.repetition`) has been in the engine since the
+ * progression engine landed and nothing could ever spend against it, because
+ * this union had two members and every consumer keyed off it.
+ */
+export type SessionFamily = 'threshold' | 'interval' | 'repetition';
 
 /**
  * The verdict an authored plan progresses against.
@@ -122,6 +131,13 @@ export function authoringAdaptation(): AdaptationVerdict {
 export const SESSION_LADDER: Record<SessionFamily, readonly ProgressionLever[]> = {
   threshold: LIMITER_LEVERS.threshold,
   interval: LIMITER_LEVERS.speed_reserve,
+  // ZONE-R-1 · R work grows by COUNT and by nothing cheaper. `Research/04` §7.4
+  // fixes the rep at 200 m and states the band as "Reps | 8–12", so the count
+  // is the only stated axis; its contraindication row rules the recovery lever
+  // out in as many words ("don't shorten the rest"); and `Research/01`'s R row
+  // caps the rep at "200–600m, ≤2 min", which leaves the duration lever almost
+  // no room to be the answer. Pace sits last, where `selectLever` gates it.
+  repetition: ['rep_count', 'interval_duration', 'pace'],
 };
 
 const LADDER_REASON =
@@ -197,7 +213,7 @@ export function renderShapeLabel(
   family: SessionFamily,
   paceTag?: string | null,
 ): string {
-  const tag = `@ ${paceTag || (family === 'interval' ? 'I pace' : 'T pace')}`;
+  const tag = `@ ${paceTag || (family === 'interval' ? 'I pace' : family === 'repetition' ? 'R pace' : 'T pace')}`;
   const mins = Math.round(shape.repMinutes);
   if (shape.reps <= 1) return `1×${mins} min ${tag}`;
   return `${shape.reps}×${mins} min ${tag} · ${formatRest(Math.round(shape.recoveryMinutes * 60))}`;
@@ -311,7 +327,15 @@ export function atPaceCapMinutes(weeklyMi: number, family: SessionFamily, paceSP
  * shorten, and never below doctrine's shortest quality repetition.
  */
 export function clampToWeek(shape: WorkShape, weeklyMi: number, family: SessionFamily): WorkShape {
-  return clampToAtPaceMinutes(shape, atPaceCapMinutes(weeklyMi, family, shape.paceSPerMi));
+  return clampToAtPaceMinutes(
+    shape,
+    atPaceCapMinutes(weeklyMi, family, shape.paceSPerMi),
+    // ZONE-R-1 · doctrine's shortest rep is family-specific. T and I floor at
+    // §6's three minutes; R floors at `Research/01`'s "200–600m", converted at
+    // the session's own pace. Threshold and interval get the same number they
+    // always got, so nothing existing moves.
+    minRepMinutes(family, shape.paceSPerMi),
+  );
 }
 
 /**
@@ -323,13 +347,19 @@ export function clampToWeek(shape: WorkShape, weeklyMi: number, family: SessionF
  * together would breach the week's intensity allowance and the structured
  * session is the one that gives way.
  */
-export function clampToAtPaceMinutes(shape: WorkShape, cap: number): WorkShape {
+export function clampToAtPaceMinutes(
+  shape: WorkShape,
+  cap: number,
+  /** Doctrine's shortest rep for this family. Defaults to §6's three minutes,
+   *  which is what every existing caller was already getting. */
+  repFloorMinutes: number = MIN_QUALITY_REP_MINUTES,
+): WorkShape {
   if (!(cap > 0) || totalWorkMinutes(shape) <= cap) return shape;
   let reps = shape.reps;
   while (reps > 1 && reps * shape.repMinutes > cap) reps--;
   let repMinutes = shape.repMinutes;
   if (reps * repMinutes > cap) {
-    repMinutes = Math.max(MIN_QUALITY_REP_MINUTES, Math.floor(cap / reps));
+    repMinutes = Math.max(repFloorMinutes, Math.floor(cap / reps));
   }
   if (reps === shape.reps && repMinutes === shape.repMinutes) return shape;
   return { ...shape, reps, repMinutes };

@@ -287,3 +287,303 @@ function parseRest(s: string): number | null {
   }
   return null;
 }
+
+/* ─────────────────────────────── zones ─────────────────────────────────── */
+
+/**
+ * ZONE-R-1 (2026-08-19) · the pace zone a prescription DECLARES.
+ *
+ * `Research/04-workout-vocabulary.md` §"Pace zone shorthand" is the vocabulary;
+ * every prescription this engine writes names its zone out of it ("@ T pace",
+ * "@ I-T transition", "@ 5K-10K effort", "· MP → T ·"). Until now nothing read
+ * those tokens: `buildWorkoutSpec` paced a `threshold` slot at T and a rep slot
+ * at I whatever the label said, and `dosing.ts` carried two hand-written
+ * regexes — one for "@ MP", one for "5K pace" — because those were the two
+ * cases where the label and the type disagreed badly enough to notice.
+ *
+ * This is that reading, once, so the pace the watch runs and the bucket the
+ * dosing gate charges come from the same lines of parsing.
+ *
+ * ── Where a zone may appear ────────────────────────────────────────────────
+ *
+ * Two places, both deliberate and both narrow:
+ *
+ *   · after an `@`, up to the next `·` — "@ T pace", "@ 5K-10K effort".
+ *     A multi-zone clause is a BAND ("I-T transition" is the transition between
+ *     them), and its first token is the one the session is paced at.
+ *   · in an arrow clause of its own — "· MP → T ·" — which the catalogue
+ *     renders for entries whose cited rows state a progression ("descend across
+ *     reps"). Its LAST token is the target the session is paced at.
+ *
+ * Anywhere else a bare letter is prose, not a zone. "±10 s/mi around T" is a
+ * wave tempo's shape row, and reading its T as a declaration would be the
+ * beginning of a habit that ends in a mis-paced session.
+ */
+export type PrescriptionZone =
+  | 'E' | 'M' | 'MP' | 'T' | 'ST' | 'I' | 'R' | 'HM' | '10K' | '5K' | '3K' | 'mile';
+
+const ZONE_TOKENS: ReadonlyMap<string, PrescriptionZone> = new Map<string, PrescriptionZone>([
+  ['E', 'E'], ['M', 'M'], ['MP', 'MP'], ['T', 'T'], ['ST', 'ST'], ['I', 'I'],
+  ['R', 'R'], ['HM', 'HM'], ['10K', '10K'], ['5K', '5K'], ['3K', '3K'], ['mile', 'mile'],
+]);
+
+/** Zone tokens inside one clause, in the order they are written. */
+function zonesInClause(clause: string): PrescriptionZone[] {
+  const out: PrescriptionZone[] = [];
+  for (const raw of clause.split(/[^A-Za-z0-9]+/)) {
+    if (!raw) continue;
+    const z = ZONE_TOKENS.get(raw);
+    if (z) out.push(z);
+  }
+  return out;
+}
+
+const ARROW_CLAUSE = /^[A-Za-z0-9]+(?:\s*(?:→|->)\s*[A-Za-z0-9]+)+$/;
+
+/** The arrow clause a prescription carries, if it carries exactly one. */
+function arrowZones(s: string): PrescriptionZone[] {
+  for (const clause of s.split(/[·•]/)) {
+    const t = clause.trim();
+    if (!/→|->/.test(t)) continue;
+    // Only a clause that is NOTHING but zone tokens and arrows. A sentence that
+    // happens to contain an arrow is prose.
+    if (!ARROW_CLAUSE.test(t)) continue;
+    const zs = zonesInClause(t);
+    if (zs.length) return zs;
+  }
+  return [];
+}
+
+/** Every zone a prescription declares, in written order. Empty when it declares
+ *  none — the common case, and it means the caller's own default stands. */
+export function parseZones(s: string | null | undefined): PrescriptionZone[] {
+  if (!s || typeof s !== 'string') return [];
+  const text = String(s);
+  const out: PrescriptionZone[] = [];
+  for (const m of text.matchAll(/@\s*([^·•+()]+)/g)) out.push(...zonesInClause(m[1]));
+  out.push(...arrowZones(text));
+  return out;
+}
+
+/**
+ * The ONE zone the session's headline pace is set from.
+ *
+ * A progression walks toward its target, so the target is the last token of the
+ * arrow clause; a band is entered at its slow edge, so the band is the first.
+ * Both readings are what the existing branches already did by another route,
+ * which is why turning this on moved no number: `@ I-T transition` resolves to
+ * I, which is what a rep slot was already paced at, and `· MP → T ·` resolves
+ * to T, which is what a threshold slot was already paced at.
+ */
+export function primaryZone(s: string | null | undefined): PrescriptionZone | null {
+  if (!s || typeof s !== 'string') return null;
+  const arrows = arrowZones(String(s));
+  if (arrows.length) return arrows[arrows.length - 1];
+  const all = parseZones(s);
+  return all.length ? all[0] : null;
+}
+
+/* ────────────────────────────── segments ───────────────────────────────── */
+
+/**
+ * GRAMMAR-SEQ-1 (2026-08-19) · a session whose steps are NOT all the same.
+ *
+ * `parsePrescription` and `parseTimeReps` both read one shape: N identical reps
+ * with one recovery. That is most of `Research/04`, and it is none of §13's
+ * ladders ("400-800-1200-1600"), §9.2's Mona fartlek ("2×90 s, 4×60 s, 4×30 s,
+ * 4×15 s"), §10.1's alternations ("1 mi at MP / 1 mi at 10K, repeated 5–8×"),
+ * §10.2's combos ("2 mi T + 4×800 I") or §12.4's 5K progression ("first third
+ * at HM, middle at T, final third at 10K-5K"). Every one of those sits in the
+ * catalogue as cited data and every one was declined, because approximating
+ * them into a uniform rep set is the label/spec drift this codebase has already
+ * paid for twice.
+ *
+ * ── The grammar ────────────────────────────────────────────────────────────
+ *
+ *     SEQ   := ITEM (' + ' ITEM)*
+ *     ITEM  := [N '×'] ( '(' STEP (' + ' STEP)* ')' | STEP ) [' · ' REST]
+ *     STEP  := NUMBER UNIT [' @ ' ZONE(-ZONE)*] [' · ' REST]
+ *     UNIT  := mi | km | m | min | s
+ *
+ * It is the notation a coach writes on a whiteboard, chosen for that reason:
+ * "6×(1mi @ MP + 1mi @ 10K)" is §10.1's own structure row, and
+ * "2mi @ T · 2:30 jog + 4×800m @ I · 90s jog" is §10.2's first common structure.
+ *
+ * ── Why this is safe to add ────────────────────────────────────────────────
+ *
+ * Returns null unless the string carries a top-level ` + ` or a `×(` group AND
+ * every item parses, so no prescription the engine writes today reaches it.
+ * `buildWorkoutSpec` consults it FIRST, before `parsePrescription` — a combo
+ * like "2mi @ T · 2:30 jog + 4×800m @ I · 90s jog" contains a `4×800m` that the
+ * older parser would happily read on its own, building the rep block and
+ * silently dropping the threshold block in front of it.
+ *
+ * Strict, not tolerant, for the same reason: an item with anything left over
+ * after its number, unit and zone fails the WHOLE parse rather than being
+ * guessed at. That is what keeps the library's "2 mi E + 6×80m strides" — which
+ * has a top-level ` + ` and is not a sequence — from being read as one.
+ */
+export type SegmentUnit = 'mi' | 'km' | 'm' | 'min' | 's';
+
+export interface ParsedSegment {
+  /** Size of this step in `unit`. */
+  value: number;
+  unit: SegmentUnit;
+  /** The zone this step runs at, null when the step declares none. */
+  zone: PrescriptionZone | null;
+  /** Jog recovery AFTER this step, seconds. 0 for continuous work. */
+  restS: number;
+}
+
+const STEP_RE = /^(\d+(?:\.\d+)?)\s*(mi|km|m|min|s)(?:\s*@\s*([A-Za-z0-9/\- ]+?))?$/;
+
+/** Split on a separator that is not inside parentheses. */
+function splitTopLevel(s: string, sep: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (depth === 0 && s.startsWith(sep, i)) {
+      out.push(s.slice(start, i));
+      i += sep.length - 1;
+      start = i + 1;
+    }
+  }
+  out.push(s.slice(start));
+  return out.map((x) => x.trim()).filter((x) => x.length > 0);
+}
+
+/** `"400m @ mile · 90s jog"` → one step. Null when the text is not a step. */
+function parseStep(text: string): ParsedSegment | null {
+  const parts = splitTopLevel(text, '·');
+  if (parts.length === 0 || parts.length > 2) return null;
+  const m = parts[0].trim().match(STEP_RE);
+  if (!m) return null;
+  const value = parseFloat(m[1]);
+  const unit = m[2] as SegmentUnit;
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const zones = m[3] ? zonesInClause(m[3]) : [];
+  // A zone clause that names no zone at all is junk, not an empty zone.
+  if (m[3] && zones.length === 0) return null;
+  let restS = 0;
+  if (parts.length === 2) {
+    const r = parseRest(parts[1]);
+    if (r == null) return null;
+    restS = r;
+  }
+  return { value, unit, zone: zones.length ? zones[0] : null, restS };
+}
+
+export function parseSegments(s: string | null | undefined): ParsedSegment[] | null {
+  if (!s || typeof s !== 'string') return null;
+  const text = String(s).trim();
+  if (!/\s\+\s/.test(text) && !/[×xX]\s*\(/.test(text)) return null;
+
+  const out: ParsedSegment[] = [];
+  for (const item of splitTopLevel(text, ' + ')) {
+    const rep = item.match(/^(\d+)\s*[×xX]\s*/);
+    const repeat = rep ? parseInt(rep[1], 10) : 1;
+    // Bounded so a malformed string cannot ask for an unbounded expansion. The
+    // largest rep band anywhere in Research/04 is §7.5's "8–16".
+    if (!Number.isFinite(repeat) || repeat <= 0 || repeat > 32) return null;
+    const body = (rep ? item.slice(rep[0].length) : item).trim();
+
+    if (body.startsWith('(')) {
+      const close = body.lastIndexOf(')');
+      if (close < 0) return null;
+      const tail = body.slice(close + 1).trim().replace(/^[·•]\s*/, '');
+      let groupRest = 0;
+      if (tail) {
+        const r = parseRest(tail);
+        if (r == null) return null;
+        groupRest = r;
+      }
+      const steps: ParsedSegment[] = [];
+      for (const st of splitTopLevel(body.slice(1, close), ' + ')) {
+        const parsed = parseStep(st);
+        if (!parsed) return null;
+        steps.push(parsed);
+      }
+      if (steps.length === 0) return null;
+      for (let i = 0; i < repeat; i++) {
+        steps.forEach((step, j) => {
+          out.push({
+            ...step,
+            restS: j === steps.length - 1 ? Math.max(step.restS, groupRest) : step.restS,
+          });
+        });
+      }
+      continue;
+    }
+
+    const step = parseStep(body);
+    if (!step) return null;
+    for (let i = 0; i < repeat; i++) out.push({ ...step });
+  }
+
+  if (out.length < 2) return null;
+  // The last step of a session has nothing to recover into. `expandSpecToPhases`
+  // drops the trailing recovery of a uniform rep set for the same reason; saying
+  // it here means every consumer of the segment list agrees without knowing to.
+  out[out.length - 1] = { ...out[out.length - 1], restS: 0 };
+  return out;
+}
+
+/**
+ * GRAMMAR-SEQ-1 · take ONE step off the end of a segment prescription, or null
+ * when there is nothing left to take.
+ *
+ * The give-back lever for an unequal-step session. A rep set sheds reps by
+ * rewriting its leading count, and a sequence has no leading count to rewrite —
+ * so it sheds its LAST step, which is the honest end to cut from: §13.1 says
+ * the ascending ladder's closing rung is what "tests stamina" and the
+ * descending ladder is "front-loaded", so in both cases the opening rungs are
+ * the session's identity and the tail is the part a smaller week cannot buy.
+ *
+ * A repeated item loses one repeat rather than the whole group, so
+ * "6×(1mi @ MP + 1mi @ 10K)" gives back one cycle at a time instead of six.
+ *
+ * Never cuts below two items: one item is not a sequence, and a one-item string
+ * stops parsing as one — which would hand the whole session back to the uniform
+ * parsers and change what the watch runs.
+ */
+export function dropLastSegment(s: string | null | undefined): string | null {
+  if (!s || typeof s !== 'string') return null;
+  const items = splitTopLevel(String(s).trim(), ' + ');
+  // A single REPEATED group is still a sequence — "6×(1mi @ MP + 1mi @ 10K)" is
+  // twelve steps — and it sheds a whole cycle at a time.
+  if (items.length === 0) return null;
+  if (items.length === 1 && !/^\d+\s*[×xX]\s*\(/.test(items[0])) return null;
+  const last = items[items.length - 1];
+  const rep = last.match(/^(\d+)(\s*[×xX]\s*)/);
+  if (rep) {
+    const n = parseInt(rep[1], 10);
+    if (n > 2) {
+      items[items.length - 1] = `${n - 1}${rep[2]}${last.slice(rep[0].length)}`;
+      return items.join(' + ');
+    }
+    if (n === 2) {
+      items[items.length - 1] = last.slice(rep[0].length);
+      return items.join(' + ');
+    }
+    // n === 1 · a "1×" prefix is not a repeat; fall through to dropping the item.
+  }
+  if (items.length <= 2) return null;
+  items.pop();
+  return items.join(' + ');
+}
+
+/** A segment's length in miles, given the work pace time-based steps need. */
+export function segmentMi(seg: ParsedSegment, paceSPerMi: number | null): number | null {
+  switch (seg.unit) {
+    case 'mi': return seg.value;
+    case 'km': return (seg.value * 1000) / 1609.344;
+    case 'm': return seg.value / 1609.344;
+    case 'min': return paceSPerMi && paceSPerMi > 0 ? (seg.value * 60) / paceSPerMi : null;
+    case 's': return paceSPerMi && paceSPerMi > 0 ? seg.value / paceSPerMi : null;
+    default: return null;
+  }
+}

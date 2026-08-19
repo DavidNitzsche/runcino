@@ -102,11 +102,22 @@
  * between reps are Z1 and are already excluded there.
  */
 import { AT_PACE_WEEKLY_SHARE_CAP } from '@/lib/prescription/levers';
-import { splitDay, type IntensityDay, type IntensityWeek } from './intensity-distribution';
+import {
+  splitDay,
+  SPEC_PROBE_T_PACE_SEC,
+  type IntensityDay,
+  type IntensityWeek,
+} from './intensity-distribution';
 import { extractFinishSegment } from './spec-builder';
+import { parseSegments, parseZones, primaryZone, segmentMi } from './prescription-parser';
+import { ZONE_DOSE_PACE, tightestDosePace, type DosePace } from './zone-anchors';
+import type { PaceZone } from '@/lib/workout-catalogue/types';
 
-/** The four quality paces doctrine doses. E carries a share band, not a cap. */
-export type DosePace = 'M' | 'T' | 'I' | 'R';
+/** The four quality paces doctrine doses. E carries a share band, not a cap.
+ *  Declared in `./zone-anchors` alongside the zone table it is derived from, so
+ *  the buckets and the zones cannot drift; re-exported here unchanged because
+ *  this module is where every consumer looks for it. */
+export type { DosePace };
 
 export const DOSE_PACES: readonly DosePace[] = ['M', 'T', 'I', 'R'] as const;
 
@@ -159,8 +170,37 @@ export function weeklyShareCap(pace: DosePace): number | null {
   return family ? AT_PACE_WEEKLY_SHARE_CAP[family] : null;
 }
 
+/** The types whose prescription can declare a zone of its own. A long run's
+ *  zone is its FINISH segment, which `extractFinishSegment` reads; an easy day
+ *  has no zone to declare. */
+const ZONED_TYPES = new Set(['threshold', 'tempo', 'intervals', 'vo2max', 'race_week_tuneup']);
+
+/**
+ * ZONE-R-1 (2026-08-19) · the bucket a prescription's own declared zone spends
+ * against, or null when it declares none.
+ *
+ * This module used to carry two hand-written regexes for this — one for "@ MP",
+ * one for "5K pace" — because those were the two places the label and the type
+ * disagreed loudly enough to notice. They were right and they were not general:
+ * a `threshold` row prescribing §5.4's sub-threshold intervals, an `intervals`
+ * row prescribing §7.4's 200 m repeats and a `threshold` row prescribing
+ * §14.2's 10K work all read as their type's default and were charged to the
+ * wrong cap — the last two by nearly a factor of two.
+ *
+ * `parseZones` is the SAME reading `buildWorkoutSpec` paces the session off, so
+ * a session cannot be run at one pace and charged to another.
+ */
+function declaredDosePace(subLabel: string | null | undefined): DosePace | null {
+  const zones = parseZones(subLabel).filter((z): z is PaceZone => z in ZONE_DOSE_PACE);
+  return zones.length ? tightestDosePace(zones) : null;
+}
+
 /** Which pace a day's hard miles are run at, or null when it doses nothing. */
 export function dosePaceOf(day: IntensityDay): DosePace | null {
+  if (ZONED_TYPES.has(day.type)) {
+    const declared = declaredDosePace(day.subLabel);
+    if (declared) return declared;
+  }
   switch (day.type) {
     // Raced, not dosed. `validate.ts` draws the same line for the long-run cap
     // ("it is the race, not a training long run"); without it a marathon race
@@ -277,6 +317,66 @@ export interface WeekDose {
   byPace: Record<DosePace, number>;
 }
 
+/**
+ * GRAMMAR-SEQ-1 (2026-08-19) · one day's doses, which for most days is one.
+ *
+ * An unequal-step session runs several zones in one workout — §10.2's combo is
+ * "4 mi T + 6×400 R", §13.2's ladder walks mile pace to HM pace — and charging
+ * the whole thing to one bucket is wrong in both directions. Charged to the
+ * LOOSEST it under-reports the R content; charged to the TIGHTEST it reports
+ * six four-hundreds as four and a half miles of R work, which would ban the
+ * session on any week under ninety miles.
+ *
+ * `Research/01`'s caps are per PACE — "5% of weekly mi" at R, "8%" at I — so
+ * the honest reading is per segment, and that is what this does: each step's
+ * mileage goes to its own zone's bucket, scaled so the buckets still sum to the
+ * hard miles `splitDay` measured. The two accountings therefore cannot disagree
+ * about how much of the day was hard; they only disagree about how to label it.
+ *
+ * The SELECTOR stays conservative on purpose. `sessionAllowanceMi` prices the
+ * whole sequence against its tightest zone's cap before the session is ever
+ * offered, so what a plan is charged here can never exceed what it was allowed
+ * there — the two are not in tension, they are a bound and a measurement.
+ */
+export function dayDoses(day: IntensityDay): DayDose[] {
+  const qualityMi = splitDay(day).qualityMi;
+  if (qualityMi <= 0) return [];
+  const subLabel = day.subLabel ?? null;
+
+  if (ZONED_TYPES.has(day.type)) {
+    const segs = parseSegments(subLabel);
+    if (segs) {
+      // The probe pace only converts time-stated steps into a SHARE of the
+      // session; the shares are rescaled to `qualityMi` below, so its value
+      // cannot move the total. It is the same probe `splitDay` reads the spec
+      // with, so a time-stated step is weighed the same way on both sides.
+      const byPace = new Map<DosePace, number>();
+      let sum = 0;
+      for (const seg of segs) {
+        const mi = segmentMi(seg, SPEC_PROBE_T_PACE_SEC) ?? 0;
+        if (!(mi > 0)) continue;
+        sum += mi;
+        // A step that declares no zone inherits the session's own — §9.2's 30 s
+        // Mona reps carry no zone because the doc names only the ends of the
+        // ramp, and they are still part of that session's dose.
+        const zone = (seg.zone ?? primaryZone(subLabel)) as PaceZone | null;
+        const p = zone ? ZONE_DOSE_PACE[zone] : null;
+        if (!p) continue;
+        byPace.set(p, (byPace.get(p) ?? 0) + mi);
+      }
+      if (sum > 0 && byPace.size > 0) {
+        const k = qualityMi / sum;
+        return [...byPace.entries()]
+          .map(([pace, mi]) => ({ pace, mi: Number((mi * k).toFixed(2)), subLabel }))
+          .filter((d) => d.mi > 0);
+      }
+    }
+  }
+
+  const pace = dosePaceOf(day);
+  return pace ? [{ pace, mi: qualityMi, subLabel }] : [];
+}
+
 export function weekDose(week: IntensityWeek): WeekDose {
   const sessions: DayDose[] = [];
   const byPace: Record<DosePace, number> = { M: 0, T: 0, I: 0, R: 0 };
@@ -288,12 +388,10 @@ export function weekDose(week: IntensityWeek): WeekDose {
     if (day.type === 'race') continue;
     weeklyMi += Math.max(0, day.distanceMi ?? 0);
 
-    const pace = dosePaceOf(day);
-    if (!pace) continue;
-    const mi = splitDay(day).qualityMi;
-    if (mi <= 0) continue;
-    byPace[pace] = Number((byPace[pace] + mi).toFixed(2));
-    sessions.push({ pace, mi, subLabel: day.subLabel ?? null });
+    for (const d of dayDoses(day)) {
+      byPace[d.pace] = Number((byPace[d.pace] + d.mi).toFixed(2));
+      sessions.push(d);
+    }
   }
 
   return { weeklyMi: Number(weeklyMi.toFixed(2)), sessions, byPace };

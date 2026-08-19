@@ -210,7 +210,13 @@ export const PHASE_FROM_ENGINE: Record<string, DoctrinePhase[]> = {
 export type Slot = 'threshold' | 'intervals' | 'tempo' | 'long' | 'medium_long' | 'speed';
 
 const SLOT_FAMILIES: Record<Slot, CatalogueEntry['family'][]> = {
-  threshold: ['threshold', 'cutdown', 'race_specific', 'marathon_specific', 'ladder'],
+  // GRAMMAR-SEQ-1 · `combo` sits on the threshold slot as well as the tempo
+  // slot. §10 holds two shapes, not one: §10.3's wave tempo is a continuous
+  // block and belongs on the tempo slot, while §10.1's MP/10K alternations and
+  // §10.2's threshold/VO2 combos are STRUCTURED sessions with unequal steps and
+  // have no continuous phrase to render. They were reachable only through the
+  // tempo slot, where `renderContinuousPhrase` refused them every time.
+  threshold: ['threshold', 'cutdown', 'race_specific', 'marathon_specific', 'ladder', 'combo'],
   intervals: ['vo2max', 'hills', 'fartlek', 'race_specific', 'ladder'],
   tempo: ['threshold', 'combo'],
   // The week's long run and the mid-week medium-long are different DAYS with
@@ -222,6 +228,37 @@ const SLOT_FAMILIES: Record<Slot, CatalogueEntry['family'][]> = {
   medium_long: ['medium_long'],
   speed: ['speed'],
 };
+
+/**
+ * ZONE-R-1 · families a slot admits only in a particular doctrine phase.
+ *
+ * §15's rows are not interchangeable and one of them names something no other
+ * row does. The taper row reads "Reduced-volume versions of recent workouts;
+ * strides; short race-pace work | 2 lighter quality/wk" — strides and short
+ * race-pace work, by name, as the phase's own primary workouts. §7's speed
+ * family is exactly that, and §7.4's own "When in cycle" row agrees ("Base,
+ * late specific, taper week").
+ *
+ * So it is admitted THERE and nowhere else. That restraint is the whole point
+ * of a phase table: admitting §7 to the rep slot in every phase was tried, and
+ * it cost a marathon build its second hill session and a 5K build its §12.2
+ * cutdown — four broadly-placed entries thinned the rotation everywhere so a
+ * twelve-second hill-sprint set could be a runner's week of VO2 work. The base
+ * row lists strides and hill sprints too, but the engine places no structured
+ * quality session in BASE at all (see `VOCAB.phase-placement`), so that row is
+ * describing what an easy week already carries.
+ */
+const SLOT_FAMILIES_IN_PHASE: Partial<
+  Record<Slot, Partial<Record<DoctrinePhase, CatalogueEntry['family'][]>>>
+> = {
+  intervals: { taper: ['speed'] },
+};
+
+/** The families this slot admits in this phase. */
+function familiesFor(slot: Slot, phase: DoctrinePhase): CatalogueEntry['family'][] {
+  const extra = SLOT_FAMILIES_IN_PHASE[slot]?.[phase];
+  return extra ? [...SLOT_FAMILIES[slot], ...extra] : SLOT_FAMILIES[slot];
+}
 
 /** Fixed per-slot offset so two slots in one week never land on one index. */
 const SLOT_ROTATION_OFFSET: Record<Slot, number> = {
@@ -669,7 +706,7 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
     rejected.push({ slug, reason, detail });
   };
 
-  const families = SLOT_FAMILIES[slot];
+  const families = familiesFor(slot, phase);
   const candidates: Array<{ entry: CatalogueEntry; dose: Dose }> = [];
   let sawPlacement = false;
 

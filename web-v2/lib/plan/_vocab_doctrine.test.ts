@@ -61,7 +61,24 @@ describe('DOCTRINE-VOCAB-1 · the plan carries the phase\'s vocabulary', () => {
     // entry's own `zones` (MP → T) rather than from the hand-written string
     // "5×2K · descend MP → T · 2 min jog". The word "descend" was the engine's;
     // the arrow is §11.2's ("descend across reps to slightly faster than T").
-    expect([...shapes].some((s) => /MP → T/.test(s)), `marathon has no MP session: ${[...shapes]}`).toBe(true);
+    //
+    // ZONE-R-1 (2026-08-19) · the assertion is about MARATHON-PACE WORK, not
+    // about §11.2 specifically, and that is a correction rather than a
+    // relaxation. It was pinned to one entry's exact string while the threshold
+    // slot's candidate pool has since gone from five entries to eight — MP and
+    // ST became anchorable, so §12.5's continuous mile cutdowns and §5.4's
+    // sub-threshold intervals joined §11.2 and the two cutdowns already there —
+    // and a least-recently-used rotation over eight entries with two
+    // catalogue-won slots in the phase cannot land on any particular one.
+    //
+    // §11.2's zone walk is still asserted, deterministically and without a plan
+    // in the way, by `_catalogue_wiring.test.ts`, which renders the entry
+    // directly. What belongs HERE is what the phase must contain whichever
+    // entry wins it: marathon-pace work.
+    expect(
+      [...shapes].some((s) => /\bMP\b/.test(s)),
+      `marathon has no MP session: ${[...shapes]}`,
+    ).toBe(true);
     // §10.3 wave tempo — "Specific phase HM/marathon".
     expect([...shapes].some((s) => /wave tempo/.test(s))).toBe(true);
     // §8 — the hill/strength block before the sharpening end.
@@ -104,9 +121,18 @@ describe('DOCTRINE-VOCAB-1 · the plan carries the phase\'s vocabulary', () => {
     // never what doctrine asked for. A build with more than one such slot draws
     // both — asserted on the half, which has a race-specific threshold slot as
     // well as a QUALITY one.
+    //
+    // ZONE-R-1 (2026-08-19) · the mileage bucket moved from 45 to 35, and the
+    // reason is worth stating rather than quietly editing. §5.4's sub-threshold
+    // intervals joined this slot's rotation the moment ST became anchorable —
+    // it is the session doctrine states for exactly this phase and this engine
+    // had never been able to offer it — so the pool went from five entries to
+    // six and the least-recently-used tie-break lands differently. The claim
+    // did not weaken: a 35 mi/wk half still draws §12.2, and the shapes-count
+    // assertion below is what holds the breadth.
     const withCutdown = qualityShapes({
       ...base, goalMode: 'goal', distance: 'half', experienceLevel: 'intermediate',
-      weeklyMileageBucket: 45, weeklyFrequency: 5, planWeeks: 16, goalTimeSec: 6300,
+      weeklyMileageBucket: 35, weeklyFrequency: 5, planWeeks: 16, goalTimeSec: 6300,
       longestRunBucket: '10+',
     });
     expect(

@@ -26,7 +26,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
-import { buildWorkoutSpec, conservativeVdotFromMileage, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, STRIDE_DAYS_PER_WEEK, STRIDE_DEFAULT_REPS, STRIDE_DURATION_S } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage, marathonPaceSPerMi, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, STRIDE_DAYS_PER_WEEK, STRIDE_DEFAULT_REPS, STRIDE_DURATION_S } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor, DANIELS_MAX_VALID_DISTANCE_MI } from '@/lib/training/vdot';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
@@ -57,7 +57,7 @@ import { atPaceSessionCapMi, CONTINUOUS_TEMPO_MINUTES } from '@/lib/prescription
 // DAY-SIZE-1 (2026-08-17) · a quality day is warm-up + at-pace work + floats +
 // cool-down. The module header carries the category error this replaced.
 import { composeQualityDay, floatMi as jogFloatMi, maxQualityDayMi, type QualityFamily } from './quality-day';
-import { parsePrescription, parseTempoShape, parseTimeReps } from './prescription-parser';
+import { dropLastSegment, parsePrescription, parseSegments, parseTempoShape, parseTimeReps, segmentMi } from './prescription-parser';
 // PROGRESSION-PERSIST-1 (2026-08-17) · the trajectory's decision, carried into
 // `plan_workouts.workout_spec` so the adaptation model can hold or modify a
 // stimulus it can actually see.
@@ -70,7 +70,7 @@ import { EASY_SHARE_FLOOR, weekIntensity, splitDay } from './intensity-distribut
 // the two unable to disagree — see that file's header.
 import {
   DOSE_PACES, slotDosePace, slotDoseBudgetMi, weeklyDoseBudgetMi,
-  dosePaceOf, weekDosingFindings, duplicatePaceFamily,
+  dayDoses, weekDosingFindings, duplicatePaceFamily,
   type DosePace, type DosingContext,
 } from './dosing';
 // VOCAB-CATALOGUE-1 (2026-08-18) · the workout vocabulary, wired.
@@ -1769,7 +1769,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, catalogueHistory = null, level = null,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, catalogueHistory = null, level = null,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -1836,6 +1836,10 @@ function layoutWeek({
   weekTPaceSec?: number | null;
   /** The week's rep pace (s/mi), for the interval track's caps. */
   weekIPaceSec?: number | null;
+  /** ZONE-R-1 · the runner's marathon pace (s/mi), from `marathonPaceSPerMi`.
+   *  Anchors the catalogue's M and MP zones — §11.3's and §4.4's marathon-pace
+   *  sessions were declined `no-anchor` without it. */
+  weekMpPaceSec?: number | null;
   /**
    * VOCAB-CATALOGUE-1 · the plan's running record of which catalogue sessions
    * it has already authored. Stateful and ordered, the same contract as
@@ -2642,6 +2646,7 @@ function layoutWeek({
             inTaperWindow: phase === 'TAPER' || isRaceWeek,
             tPaceSec: weekTPaceSec,
             iPaceSec: weekIPaceSec,
+            mpPaceSec: weekMpPaceSec,
             usedThisWeek: usedSlugs,
           })
         : null;
@@ -2877,6 +2882,39 @@ function layoutWeek({
         return { prescription: p, dayMi: Number((tempo.warmupMi + tempo.tempoMi + tempo.cooldownMi).toFixed(1)) };
       }
       const pace = family === 'interval' ? weekIPaceSec : weekTPaceSec;
+      // GRAMMAR-SEQ-1 · an unequal-step session is a FIXED shape doctrine states
+      // by name — §13's ladders, §10's combos and alternations, §12.4's
+      // progression — so the day is sized FROM it rather than it being cut to
+      // the day. The selector has already refused this session on any week that
+      // cannot afford it (`sessionAllowanceMi` prices the whole sequence against
+      // Daniels' share before it is offered), which is why there is no cut here
+      // to make. Without this the day fell through to the week's flat quality
+      // share and a four-rung ladder was printed over a day sized for something
+      // else — the label/spec drift this whole workstream exists to close.
+      const segs = parseSegments(p);
+      if (segs) {
+        let atPaceMi = 0;
+        let restS = 0;
+        let unpriced = false;
+        for (const s of segs) {
+          const mi = segmentMi(s, pace);
+          if (mi == null) { unpriced = true; break; }
+          atPaceMi += mi;
+          restS += s.restS;
+        }
+        if (!unpriced && atPaceMi > 0) {
+          return {
+            prescription: p,
+            dayMi: composeQualityDay({
+              family,
+              atPaceMi,
+              floatMi: Number((restS / 540).toFixed(2)),
+              ceilingMi: doctrinalDayCeiling,
+            }).dayMi,
+          };
+        }
+        return null;
+      }
       const dist = parsePrescription(p);
       const timed = dist ? null : parseTimeReps(p);
       let reps: number;
@@ -4376,6 +4414,23 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       trajectory,
       weekTPaceSec: weekT,
       weekIPaceSec: iPaceForWeek(weekT),
+      // ZONE-R-1 · THE marathon-pace expression, called rather than re-derived,
+      // so the pace the selector prices an MP session at is the pace
+      // `buildWorkoutSpec` will build it at.
+      // The two inputs are the ones `persistPlan` hands `buildWorkoutSpec`, in
+      // the same shapes: `currentT` is the same `resolveCurrentTPace` cascade,
+      // and the goal pace carries the same below-table fallback. Diverging on
+      // either would size an MP session at one pace and run it at another.
+      weekMpPaceSec: weekT != null && weekT > 0
+        ? marathonPaceSPerMi({
+            tPaceSec: weekT,
+            easyAnchorTSec: currentT,
+            goalPaceSPerMi: input.goalPaceSec
+              ?? (input.belowTableAnchor
+                ? Math.round(input.belowTableAnchor.anchor.paceSPerMi)
+                : null),
+          })
+        : null,
       // VOCAB-CATALOGUE-1 · the plan's running record of which of
       // Research/04's named workouts it has already authored. Stepped in
       // ascending week order, the same contract as `trajectory`, so the
@@ -5807,10 +5862,22 @@ function applyDosingCaps(composed: ComposePlanResult): void {
         // doctrine put it on purpose"); this is that sentence, applied.
         const finishIsScheduled = String(w.phase ?? '') === 'RACE-SPECIFIC';
         const longRank = (d: DayPlan) => (d.isLong ? (finishIsScheduled ? -1 : 1) : 0);
+        // GRAMMAR-SEQ-1 · a day can dose more than one pace. §13.2's ladder runs
+        // its 400 at mile pace (R) and its other three rungs at 5K/10K (I), and
+        // `weekDose` charges each rung to its own bucket — so a day is a
+        // candidate for a finding when it doses THAT pace, not when its single
+        // headline pace happens to match.
+        //
+        // Looking it up by `dosePaceOf` was the bug: that function returns the
+        // TIGHTEST of a session's zones, so the ladder answered R, the I finding
+        // found no candidate at all, and 2.23 mi at I shipped uncorrected on a
+        // 17 mi/wk week. Byte-identical for every single-zone session, which is
+        // every session the engine wrote before this.
+        const doseAt = (d: DayPlan) =>
+          dayDoses(d as never).filter((x) => x.pace === f.pace).reduce((a, x) => a + x.mi, 0);
         const candidates = w.days
-          .filter((d) => d.type !== 'race' && dosePaceOf(d as never) === f.pace)
-          .sort((a, b) => longRank(b) - longRank(a)
-            || splitDay(b as never).qualityMi - splitDay(a as never).qualityMi);
+          .filter((d) => d.type !== 'race' && doseAt(d) > 0)
+          .sort((a, b) => longRank(b) - longRank(a) || doseAt(b) - doseAt(a));
         if (candidates.length === 0) continue;
 
         // `weekly` and `cumulative` are budgets for the whole week;
@@ -5824,14 +5891,17 @@ function applyDosingCaps(composed: ComposePlanResult): void {
         let over = f.overByMi;
         for (const day of candidates) {
           if (over <= 0) break;
-          const have = splitDay(day as never).qualityMi;
+          // What the day doses AT THIS PACE, and what it doses in total. They
+          // differ only on a multi-zone session; `trimSessionDose` works in
+          // total hard miles, so the target is translated once here.
+          const have = doseAt(day);
           if (have <= 0) continue;
           // A single-workout finding is only about days over the cap.
           if (f.scope === 'single-workout' && have <= f.capMi + 0.05) continue;
           const want = f.scope === 'single-workout'
             ? f.capMi
             : Math.max(0, have - over);
-          const after = trimSessionDose(day, want);
+          const after = trimSessionDose(day, want, doseAt);
           if (after < have - 0.01) {
             over -= have - after;
             moved = true;
@@ -5859,8 +5929,23 @@ function applyDosingCaps(composed: ComposePlanResult): void {
  * longer warm-up and cool-down — which is what keeps every structural invariant
  * intact and what lets `applyDosingCaps` converge.
  */
-function trimSessionDose(day: DayPlan, targetMi: number): number {
-  const before = splitDay(day as never).qualityMi;
+function trimSessionDose(
+  day: DayPlan,
+  targetMi: number,
+  /**
+   * GRAMMAR-SEQ-1 · what quantity `targetMi` is expressed in.
+   *
+   * Defaults to the day's whole hard mileage, which is what every single-zone
+   * session's dose is. A multi-zone session — §13.2's ladder runs its 400 at
+   * mile pace and its other rungs at 5K/10K — is trimmed against ONE of its
+   * buckets, and the caller passes that bucket's measure so the loop drives on
+   * exactly the number the finding is about. Translating a per-pace target into
+   * a whole-day one instead loses the difference inside the tolerance and stops
+   * one step short.
+   */
+  measure: (d: DayPlan) => number = (d) => splitDay(d as never).qualityMi,
+): number {
+  const before = measure(day);
   if (before <= targetMi + 0.05) return before;
   const label = String(day.subLabel ?? '');
 
@@ -5869,7 +5954,7 @@ function trimSessionDose(day: DayPlan, targetMi: number): number {
   //     and persist.
   if (day.isLong && day.type === 'long') {
     setLongFinish(day, Math.max(0, Math.floor(targetMi * 2) / 2));
-    return splitDay(day as never).qualityMi;
+    return measure(day);
   }
 
   // 2 · an explicit three-segment prescription ("2 mi WU · 4 mi @ T · 2 mi CD").
@@ -5884,7 +5969,32 @@ function trimSessionDose(day: DayPlan, targetMi: number): number {
     if (want < block) {
       day.subLabel = `${wu} mi WU · ${want} mi @ ${seg[3]} · ${Number((cd + block - want).toFixed(1))} mi CD`;
     }
-    return splitDay(day as never).qualityMi;
+    return measure(day);
+  }
+
+  // 2b · GRAMMAR-SEQ-1 · an unequal-step session. It has no leading rep count
+  //      to rewrite, so it sheds its last step (see `dropLastSegment` for which
+  //      end and why), one at a time, re-measuring against the same `splitDay`
+  //      the gate will ask.
+  //
+  //      This lever is what lets a fixed-shape session survive the denominator
+  //      moving. `layoutWeek` prices a sequence against the volume curve's
+  //      BUDGET, and a low-frequency week realizes well under it — a 3-day 10K
+  //      week budgeted at 50 mi composes to 34 once the long and the easy days
+  //      hit their own ceilings. A rep set is cut back by `sizeFromPrescription`
+  //      on the way through; a sequence cannot be, so §13.3's seven-rung pyramid
+  //      shipped 3.98 mi at I on a 34 mi week — 11.7% against Daniels' 8%.
+  if (parseSegments(label)) {
+    let cur = label;
+    let now = before;
+    for (let guard = 0; guard < 16 && now > targetMi + 0.05; guard++) {
+      const next = dropLastSegment(cur);
+      if (next == null || !parseSegments(next)) break;
+      cur = next;
+      day.subLabel = cur;
+      now = measure(day);
+    }
+    return now;
   }
 
   // 3 · a rep set the prescription opens the count of ("4×1mi @ T pace · 60s
@@ -5911,7 +6021,7 @@ function trimSessionDose(day: DayPlan, targetMi: number): number {
         n--;
         cur = cur.replace(/^(\s*)\d+(\s*[×xX])/, `$1${n}$2`);
         day.subLabel = cur;
-        now = splitDay(day as never).qualityMi;
+        now = measure(day);
       }
       if (now <= targetMi + 0.05) return now;
       // Down to a single repetition and still over: the levers below own it.
@@ -5966,7 +6076,7 @@ function trimSessionDose(day: DayPlan, targetMi: number): number {
           /^(\s*)1(\s*[×xX]\s*)\d+(?:\.\d+)?(\s*)(mi|km|K|m)\b/,
           `$11$2${Number(rounded.toFixed(2))}$3$4`,
         );
-        return splitDay(day as never).qualityMi;
+        return measure(day);
       }
       return now;
     }
@@ -5983,7 +6093,7 @@ function trimSessionDose(day: DayPlan, targetMi: number): number {
           /^(\s*)1(\s*[×xX]\s*)\d+(?:\.\d+)?(\s*min\b)/i,
           `$11$2${want}$3`,
         );
-        return splitDay(day as never).qualityMi;
+        return measure(day);
       }
     }
     return now;
@@ -5997,7 +6107,7 @@ function trimSessionDose(day: DayPlan, targetMi: number): number {
     const want = Math.max(0.5, Math.floor(targetMi * 2) / 2);
     if (want < Number(lead[2])) {
       day.subLabel = label.replace(/^(\s*)[\d.]+(\s*mi\b)/i, `$1${want}$2`);
-      return splitDay(day as never).qualityMi;
+      return measure(day);
     }
   }
 

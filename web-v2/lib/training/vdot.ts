@@ -676,6 +676,139 @@ export function iPaceFromVdot(vdot: number | null | undefined): number | null {
 }
 
 /**
+ * ZONE-R-1 (2026-08-19) · the RACE-PACE distances the Daniels table publishes,
+ * in miles, so a caller asks for a column rather than for a number.
+ *
+ * `Research/01-pace-zones-vdot.md` §"VDOT lookup table" is seven columns —
+ * Mile, 3K, 5K, 10K, 15K, Half, Marathon — and §"Pace conversion from a race
+ * time" defines every training zone as one of them ("T | ~half-marathon pace to
+ * 15K pace", "I | ~3K to 5K race pace", "R | ~mile race pace"). Reading a zone
+ * therefore means reading a column, and `predictRaceTime` already inverts the
+ * table. The alternative — deriving R from I by an offset — is the thing this
+ * file's mile-column correction exists to stop: the raw equation over-reads by
+ * four to six VDOT points at the mile, so anything derived from it would be
+ * systematically fast at exactly the zone where being fast hurts most.
+ */
+export const TABLE_RACE_DISTANCE_MI = {
+  mile: 1.0,
+  '3K': 1.86411,
+  '5K': 3.10686,
+  '10K': 6.21371,
+  half: 13.10940,
+  marathon: 26.21880,
+} as const;
+
+/**
+ * ZONE-R-1 · the published 3K column, `[VDOT, seconds]`, ascending by VDOT.
+ *
+ * AUDIT #7 added `MILE_VDOT_TABLE` because the Daniels & Gilbert curve
+ * over-reads at short distances, and reasoned that "the next column (3K,
+ * 1.864mi) is far enough that the raw equation has nearly converged". Measured
+ * against the doc, it has not: the equation is 10-15 s/mi SLOW at 3K across the
+ * whole table (VDOT 40: 452 vs the published 437; VDOT 60: 317 vs 304), while
+ * it reproduces the 10K column to within half a second per mile.
+ *
+ * That gap did not matter while nothing read 3K. `Research/04` §13.2's ladder
+ * paces its 800 at "3K/5K" and §9.3's Michigan at "mile/3K effort", so it does
+ * now — and a 3K rung twelve seconds a mile slow is not a 3K rung.
+ *
+ * Every row is verified against `Research/01`'s own table by
+ * `PACE.repetition-is-mile-race-pace`, so a transcription slip fails the build
+ * rather than shipping.
+ */
+const THREE_K_VDOT_TABLE: ReadonlyArray<readonly [number, number]> = [
+  [30, 1047], [32, 990], [34, 938], [36, 893], [38, 852], [40, 815], [42, 782],
+  [44, 751], [45, 737], [46, 724], [48, 696], [50, 671], [52, 647], [54, 625],
+  [55, 614], [56, 604], [58, 585], [60, 567], [62, 551], [64, 535], [65, 528],
+  [66, 521], [68, 507], [70, 495], [72, 482], [74, 471], [75, 465], [76, 460],
+  [78, 450], [80, 441], [82, 432], [84, 424], [85, 420],
+];
+
+/** Finish seconds from a VDOT by linear interpolation of a published column,
+ *  clamped to its edges. `Research/01` §"How to look up VDOT from a race":
+ *  "Interpolate linearly between rows if needed". */
+function secFromColumn(table: ReadonlyArray<readonly [number, number]>, vdot: number): number {
+  if (vdot <= table[0][0]) return table[0][1];
+  const last = table[table.length - 1];
+  if (vdot >= last[0]) return last[1];
+  for (let i = 0; i < table.length - 1; i++) {
+    const [v1, s1] = table[i];
+    const [v2, s2] = table[i + 1];
+    if (vdot >= v1 && vdot <= v2) {
+      const f = (vdot - v1) / (v2 - v1);
+      return Math.round(s1 + f * (s2 - s1));
+    }
+  }
+  return last[1];
+}
+
+/** Distances (mi) for which a PUBLISHED column beats the raw equation, and the
+ *  column. The mile is AUDIT #7's; the 3K is ZONE-R-1's, measured the same way.
+ *  5K and beyond are left on the equation, which reproduces those columns. */
+const PUBLISHED_COLUMNS: ReadonlyArray<{ lo: number; hi: number; table: ReadonlyArray<readonly [number, number]> }> = [
+  { lo: MILE_CORRECTION_MIN_MI, hi: MILE_CORRECTION_MAX_MI, table: MILE_VDOT_TABLE },
+  // A tight window around 3000 m · 1.864 mi. Nothing else lives here, and a
+  // wide one would start correcting distances the column does not describe.
+  { lo: 1.80, hi: 1.93, table: THREE_K_VDOT_TABLE },
+];
+
+/**
+ * Race pace (s/mi) at one of the published table distances, from a VDOT.
+ *
+ * The general form of `iPaceFromVdot`. Callers name the column they mean, so a
+ * zone that doctrine defines as "current 10K" is priced off the 10K column and
+ * not off a nearby one with an offset bolted on.
+ *
+ * Cite: `Research/01-pace-zones-vdot.md` §"VDOT lookup table".
+ */
+export function racePaceFromVdot(
+  vdot: number | null | undefined,
+  distanceMi: number,
+): number | null {
+  if (!vdot || !Number.isFinite(vdot) || vdot <= 0) return null;
+  if (!(distanceMi > 0)) return null;
+  // Where `Research/01` publishes a column AND the raw equation diverges from
+  // it, the column wins — the ruling AUDIT #7 already made for the mile,
+  // applied to the one other column measured to diverge. Everything from 5K up
+  // falls through to `predictRaceTime`, which reproduces those columns.
+  //
+  // Deliberately NOT folded into `predictRaceTime` itself: that function has
+  // many callers with their own reasons to want the equation, and widening its
+  // correction window is a change to all of them. This function's contract is
+  // narrower and explicit — "read the published table at this column".
+  for (const c of PUBLISHED_COLUMNS) {
+    if (distanceMi >= c.lo && distanceMi <= c.hi) {
+      return Math.round(secFromColumn(c.table, vdot) / distanceMi);
+    }
+  }
+  const sec = predictRaceTime(vdot, distanceMi);
+  if (sec == null) return null;
+  return Math.round(sec / distanceMi);
+}
+
+/**
+ * ZONE-R-1 · Daniels R-pace (repetition · speed/economy), s/mi, from a VDOT.
+ *
+ * `Research/01-pace-zones-vdot.md` §"Pace conversion from a race time" gives R
+ * two readings — "~mile race pace, or ~6 sec/400m faster than I" — and this
+ * takes the FIRST, because the mile is a column of the published table and the
+ * second reading is an offset off a number that is itself derived. Research/04
+ * §"Pace zone shorthand" says the same thing from the other side: R's race-pace
+ * anchor is "~mile to 800m race pace".
+ *
+ * `predictRaceTime` at one mile routes through `MILE_VDOT_TABLE` — the literal
+ * Mile column — rather than through the Daniels & Gilbert equation, which
+ * AUDIT #7 measured over-reading by 4-6 VDOT points at the mile. So R comes out
+ * of the table Daniels published, at one mile, which makes the seconds the
+ * finish time and the pace the same number.
+ *
+ * Bound by `PACE.repetition-is-mile-race-pace` in lib/doctrine/registry.ts.
+ */
+export function rPaceFromVdot(vdot: number | null | undefined): number | null {
+  return racePaceFromVdot(vdot, TABLE_RACE_DISTANCE_MI.mile);
+}
+
+/**
  * 2026-07-07 · AUDIT P1-56 · factored out of vdotFromRun (see its doc comment
  * below for the full gate rationale) so the below-table anchor fallback
  * (bestRecentVdot's belowTableAnchor) can apply the IDENTICAL honesty gate
