@@ -152,3 +152,63 @@ rather than three blank screens — a refusal, not a screen set.
 
 The training calendar and week strip are blocked on a plan day being identified by its
 server id rather than its date. Half-fixed already.
+
+---
+
+## 6 · "Change the plan" — built, and there are five not four
+
+`POST /api/plan/change` shipped. It proposes first and writes nothing until a confirm
+carrying a state token, so "read the trade-off, then confirm or back out" is the actual
+contract, not a convention. A token that has gone stale returns *plan moved* rather than
+applying to a plan that changed underneath.
+
+**The design lists four scenarios. There are five.** `move_day` was implied by the design
+and had no representation; it now exists.
+
+Every trade-off below is real output, not sample copy. Set type against these.
+
+**Cutback** — *"Week 6 drops from 32 mi to 24.5 and the long from 12 to 9.5 · that is 23%
+off the week. The second quality session becomes an easy run. You lose a hard week of the
+build. Nothing before or after week 6 moves, and the race date does not change."*
+
+**Travel** — *"You are out from 30 September to 6 October. 34 mi come out of week 7 and
+they are not made up anywhere · you cannot bank miles. The 12 mi long run on 4 October goes
+with it · there is nowhere in that week to put it that leaves the spacing between hard days
+intact. You come back through week 9 at 30.5 rather than 34, because a jump straight back
+to full is past the acute-to-chronic line doctrine calls high risk. The race date and the
+taper do not move."*
+
+**Extra day** — *"From week 10 you run 6 days instead of 5. The weeks keep their miles, so
+they come off the runs you already have: your easy days go from 6 to 4 and Friday picks up
+4. The long run and the quality sessions are untouched. There is one fewer rest day to
+absorb a bad night."*
+
+**Move a day** — *"Your easy run moves from Friday 23 October to Monday 26 October. Friday
+becomes rest. The week keeps its 34.5 mi and its hard days stay spaced the way doctrine
+asks."*
+
+**Another race** — *"QA Tune-up 10K on 5 September lands in week 3. It becomes that week's
+quality session and the days either side go easy. You trade that week's quality session for
+a real fitness read 14 weeks out. The long run is not displaced unless the race falls on it.
+The rest of the block is re-authored from where you are now, so other weeks can move by a
+mile or two. Nothing before today changes."*
+
+### The sheet must be able to refuse
+
+A scenario can come back unavailable with a reason, and the design needs a state for it.
+The refusals are real: a cutback on a taper week, a race week, a week already cut, or a week
+already underway. A move that would break the spacing between hard days.
+
+**And a two-week travel window is genuinely unsatisfiable.** Shrinking the re-entry week to
+the safe line prices its interval session past the weekly cap; demoting that session then
+empties a race-specific week. Both rules are right and no edit satisfies both, so the sheet
+says so rather than proposing something it cannot do: *"Being away that long is not a week
+off, it is a different block."* One-week windows work cleanly.
+
+### Two things not built
+
+**Undo.** The response carries what changed, but nothing restores it.
+
+**Extra day changes the plan, not the saved weekly frequency**, so a later full rebuild
+reverts it. That is stated in the response's caveats rather than hidden, and the design
+should surface it.
