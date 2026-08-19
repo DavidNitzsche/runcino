@@ -75,21 +75,48 @@ export const ACWR_CHRONIC_DAYS = 28;
 export const ACWR_MIN_COVERAGE_DAYS = ACWR_CHRONIC_DAYS;
 
 /**
+ * ── RULE 7 (2026-08-19) · THE THREE SAMPLING GUARDS ARE CONVENTIONS ────────
+ *
+ * The WINDOWS above are doctrine and are bound:
+ * SAMPLING.acwr-needs-a-full-chronic-window parses `acute_load_7d` and
+ * `chronic_load_28d` straight out of Research/15's own formula line, so a doc
+ * edit to either window moves the engine.
+ *
+ * The three constants below are not. Research/15 defines the ratio and states
+ * its bands; it says nothing about how much data must be present before the
+ * ratio is honest, because that is a question about our data pipeline rather
+ * than about physiology. They are OURS, and CONVENTION.acwr-sampling-guards
+ * binds them to the only properties they can honestly claim: that each one
+ * only ever SUPPRESSES a reading (never fabricates or inflates one), and that
+ * none of them can be loosened to the point where the algebraic identity the
+ * coverage guard exists to stop — both legs summing the same runs, giving a
+ * constant 28/7 = 4.00 — can reappear.
+ *
+ * Note the trap that was NOT taken here: Research/15 does carry a "3" —
+ * "3 valid readings per week is sufficient for trend assessment" (Plews /
+ * Laursen). That is three HRV READINGS, not three run days. Binding
+ * ACWR_MIN_RUN_DAYS to it would be the two-adjacent-columns misread that Rule
+ * 7 exists to prevent, with a citation that resolved and a claim that was
+ * still wrong. Left as a labelled convention instead.
+ */
+
+/**
  * Secondary guard, retained from the pre-audit implementations: days carrying
  * real mileage inside the chronic window. Coverage does the real work now, but
  * a runner with 28 days of history and two runs in it still divides by a
- * near-zero baseline.
+ * near-zero baseline. CONVENTION.
  */
 export const ACWR_MIN_RUN_DAYS = 3;
 
-/** Chronic mi/day below which the division is noise. */
+/** Chronic mi/day below which the division is noise. CONVENTION. */
 export const ACWR_MIN_CHRONIC_MI_PER_DAY = 0.1;
 
 /**
- * A day under this many miles is not a run day. Carried forward verbatim from
- * `state-loader.ts` / `glance-state.ts`, which both filtered `info.mi <= 0.3`.
+ * A day under this many miles is not a run day. CONVENTION · carried forward
+ * verbatim from `state-loader.ts` / `glance-state.ts`, which both filtered
+ * `info.mi <= 0.3`.
  */
-const RUN_DAY_MIN_MI = 0.3;
+export const RUN_DAY_MIN_MI = 0.3;
 
 export type AcwrAbsentReason =
   /** Fewer than a full chronic window of observable history. */

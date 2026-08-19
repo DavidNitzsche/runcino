@@ -314,11 +314,14 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
 
   // ── C · a doctrine table with nothing watching it ─────────────────────────
   const UNBOUND_TABLES: Record<string, string> = {
-    'web-v2/lib/plan/goal-tiers.ts#BUILD_WINDOW_WEEKS':
-      'Not a physiology claim · it is a product decision about when race-prep mode opens. Its ' +
-      'cited sources are Daniels and Pfitzinger book sections rather than a Research/ passage, ' +
-      'so there is nothing in Research/ to anchor a claim on. Revisit if a build-window band is ' +
-      'ever written into Research/22.',
+    // (Rule 7, 2026-08-19) · the `goal-tiers.ts#BUILD_WINDOW_WEEKS` entry that
+    // used to sit here is DELETED TOO, and it was found by the staleness check
+    // added below rather than by anyone reading the list. Its reason said
+    // "there is nothing in Research/ to anchor a claim on"; that stopped being
+    // true when PLANMODE.build-window-fits-doctrine-plan bound the table to
+    // Research/22's own plan durations, and the entry then sat here excusing a
+    // table that was already watched. That is precisely how an allowlist rots:
+    // nobody re-reads an entry once it has a paragraph attached to it.
     'web-v2/lib/plan/gap-report.ts#RENEGOTIATION_WINDOW_WEEKS':
       'Not a physiology claim · it is a product decision about how many weeks before race day ' +
       'a goal-renegotiation card surfaces. Nothing in Research/ states a renegotiation lead ' +
@@ -331,11 +334,30 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'DURATIONS per distance but states no threshold below which a build stops working, so ' +
       'there is no band to bind. The numbers are the shortest plan each distance has in ' +
       'Research/22, used as a floor rather than a prescription.',
-    'web-v2/lib/plan/validate.ts#CONSTRAINTS':
-      'Partly bound: taperDropMinPct is checked by TAPER.minimum-volume-drop. The other two ' +
-      'fields (longRunWoWMaxPct, weeklyVolWoWMaxPct) are week-over-week validator ceilings with ' +
-      'no direct Research/ band — see the unseeded-claims TODO in CLAUDE.md §Doctrine gate.',
+    // (Rule 7, 2026-08-19) · the `web-v2/lib/plan/validate.ts#CONSTRAINTS`
+    // entry that used to sit here is DELETED. All four of its fields now carry
+    // a claim: taperDropMin/Max by TAPER.validator-band-is-two-sided,
+    // longRunWoWMaxPct by LONGRUN.wow-single-step-cap-is-the-injury-red-line,
+    // and weeklyVolWoWMaxPct — the last unbound field of a table whose
+    // siblings were all bound — by CONVENTION.validator-weekly-step-ceiling.
+    // That last one is a labelled convention carrying a recorded violation,
+    // which is a different and much better state than an allowlist entry: the
+    // gate now reports the divergence on every run instead of excusing it.
   };
+
+  it('every unbound-table entry is still unbound · a bound table must not stay allowlisted', () => {
+    const stale: string[] = [];
+    for (const key of Object.keys(UNBOUND_TABLES)) {
+      const name = key.split('#')[1];
+      if (DOCTRINE_REGISTRY.some((c) => c.binds.some((b) => b.includes(name)))) stale.push(key);
+    }
+    expect(
+      stale,
+      'These tables now carry a registry claim, so their allowlist entry is excusing nothing and\n' +
+        'is the kind of stale exemption the gate exists to surface. Delete them.\n  ' +
+        stale.join('\n  '),
+    ).toEqual([]);
+  });
 
   it('every distance-keyed doctrine table is bound to a claim or explicitly unbound', () => {
     const bound = new Set(DOCTRINE_REGISTRY.flatMap((c) => c.binds).map((b) => b.split('#')[0].replace(/^lib\//, '')));
@@ -387,7 +409,12 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'Research/00b-recovery-protocols.md §recovery-load-scaling',
       'Research/01-pace-zones-vdot.md §T-pace-derivation',
       'Research/04-workout-vocabulary.md §hard-easy-rule',
-      'Research/04-workout-vocabulary.md §quality-density',
+      // (Rule 7, 2026-08-19) · `Research/04 §quality-density` is DELETED from
+      // this list. Its last user was the simulator's quality-density risk
+      // flag, which is now re-pointed at Research/00a §"Workout dose by race
+      // distance" — a heading that exists, and the same one
+      // QUALITY.sessions-per-week reads to establish the three-session ceiling
+      // the flag fires at. The list shrinks by one; it may not grow.
       'Research/04-workout-vocabulary.md §long-run-progression',
       'Research/15-wearable-data.md §HR-Recovery',
       'Research/15-wearable-data.md §recovery-after-quality',
@@ -541,6 +568,89 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
         'whether runners were told their goal was reachable. Point it at the passage, or say\n' +
         'plainly that the number is ours.',
     ).toEqual(BARE_ATTRIBUTIONS_PER_FILE);
+  });
+
+  /**
+   * F · LINE-NUMBER CITATIONS. Rule 7 opens with the rule and the reason:
+   * "Anchor on quoted text, never a line number. Line numbers rot on the next
+   * edit — the incident's own bug report cites `00b:196-204`, which is already
+   * fragile."
+   *
+   * A `Research/05:407` reads like a citation and behaves like decoration.
+   * Check D above happily resolves it, because the regex stops at the colon
+   * and only ever sees `Research/05` — so the file exists, the check passes,
+   * and the thing a human would actually open is a line that has since moved.
+   * Every other guard in this file is blind to it in the same way.
+   *
+   * A CEILING, not an equality, and deliberately so. `BOOK_CITATIONS_PER_FILE`
+   * above is an equality because it was worked to zero in one sitting; this
+   * inventory starts at ~190 across 38 files, most of them owned by whoever is
+   * mid-flight in `generate.ts` or `adapt.ts`. An equality would fail the
+   * moment somebody CLEANED one up, which teaches exactly the wrong lesson.
+   * So: a file may never grow past its recorded count, and a file not listed
+   * here may have none at all. Shrinking is free; every entry that reaches
+   * zero should be deleted.
+   *
+   * Counted per FILE, never per line, for the reason the book check gives:
+   * moving a citation must stay free, and ADDING one must cost a conversation.
+   */
+  const LINE_CITATIONS_PER_FILE: Record<string, number> = {
+    // Seeded 2026-08-19 from the tree as it stood · 130 across 20 files.
+    // lib/plan/injury-protocols.ts (34 line references), lib/coach/
+    // heat-acclimatization.ts (19) and lib/coach/strength-load.ts (2) were taken
+    // to ZERO in the same change and are absent from this list on purpose — a
+    // file at zero is not listed, so it cannot creep back to one.
+    //
+    // lib/plan/generate.ts and lib/plan/adapt.ts are half the remaining total
+    // between them and are the obvious next two to clear.
+    'lib/plan/generate.ts': 29,
+    'lib/plan/adapt.ts': 24,
+    'lib/coach/heat-gate.ts': 17,
+    'lib/plan/spec-builder.ts': 12,
+    'lib/coach/strength-recommender.ts': 11,
+    'lib/plan/injury-builder.ts': 7,
+    'lib/training/vdot.ts': 6,
+    'lib/plan/goal-tiers.ts': 4,
+    'lib/plan/strip-citations.ts': 3,
+    'lib/plan/validate.ts': 3,
+    'lib/plan/mutate.ts': 2,
+    'lib/plan/recompute-paces.ts': 2,
+    'lib/training/prescriptions.ts': 2,
+    'lib/training/race-conditions.ts': 2,
+    'lib/coach/glance-state.ts': 1,
+    'lib/coach/state-loader.ts': 1,
+    'lib/coach/weather-adjust.ts': 1,
+    'lib/onboarding/state.ts': 1,
+    'lib/plan/intensity-distribution.ts': 1,
+    'lib/today/post-race-composition.ts': 1,
+  };
+
+  it('no file grows a new line-number citation · Rule 7 forbids them outright', () => {
+    const RE = /Research\/[0-9]{2}[A-Za-z-]*(?:\.md)?:[0-9]+/g;
+    const counts: Record<string, number> = {};
+    for (const file of sourceFiles()) {
+      const relPath = path.relative(path.join(repoRoot(), 'web-v2'), file);
+      for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+        // Same backtick rule as the two checks above: a comment QUOTING the
+        // line reference it just deleted is not making one.
+        const live = line.replace(/`[^`]*`/g, ' ');
+        const n = [...live.matchAll(RE)].length;
+        if (n > 0) counts[relPath] = (counts[relPath] ?? 0) + n;
+      }
+    }
+    const grown: string[] = [];
+    for (const [file, n] of Object.entries(counts)) {
+      const ceiling = LINE_CITATIONS_PER_FILE[file] ?? 0;
+      if (n > ceiling) grown.push(`${file}: ${n} (recorded ceiling ${ceiling})`);
+    }
+    expect(
+      grown,
+      'A citation written as a LINE NUMBER points at something that moves. Rule 7: "Anchor on\n' +
+        'quoted text, never a line number." Every Research/ doc numbers its headings — cite the\n' +
+        'section, or quote the sentence. If the number matters, put it in a registry claim that\n' +
+        'parses it out of the doc at run time.\n  ' +
+        grown.join('\n  '),
+    ).toEqual([]);
   });
 
   it('every book-only citation is counted · an uncounted one is verified by nothing', () => {

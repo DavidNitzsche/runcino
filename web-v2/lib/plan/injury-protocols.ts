@@ -8,17 +8,18 @@
  * prescription.
  *
  * Research/05-injury-return-protocols.md is organised the other way
- * round: §§2-19 are one graded protocol PER SITE, and §9.2 (:440-454)
+ * round: §§2-19 are one graded protocol PER SITE, and §9.2 "Risk
+ * Stratification (Critical for Coaching Decisions)"
  * stratifies bone stress injury by location because the high-risk sites
  * have poor blood supply and non-union rates that make premature loading
  * limb-threatening. Two numbers the old builder could not express:
  *
- *   · :475  low-risk BSI · "Total return: 8-16 weeks typical."
- *   · :487  high-risk BSI · "Total return commonly 4-9 months."
+ *   · §9.5  low-risk BSI · "Total return: 8-16 weeks typical."
+ *   · §9.6  high-risk BSI · "Total return commonly 4-9 months."
  *
  * against a builder whose longest plan was four weeks.
  *
- * And the rule that matters most, :463:
+ * And the rule that matters most, §9.4:
  *
  *   "All confirmed BSIs: no running until clinical clearance."
  *
@@ -37,19 +38,19 @@
  * Risk class · drives whether running may be prescribed at all and what
  * kind of cross-training is safe.
  *
- *   bsi_high      · Research/05:443-454 high-risk column · tension-side or
- *                   avascular sites. Non-weight-bearing until cleared (:66).
- *   bsi_low       · :442-453 low-risk column. Non-impact only (:65).
+ *   bsi_high      · §9.2 high-risk column · tension-side or avascular
+ *                   sites. Non-weight-bearing until cleared (§1.3).
+ *   bsi_low       · §9.2 low-risk column. Non-impact only (§1.3).
  *   bsi_suspected · focal bone tenderness / positive hop with no imaging.
- *                   :499-500 "All suspected BSIs warrant medical
+ *                   §9.9 "All suspected BSIs warrant medical
  *                   evaluation." Treated as low-risk BSI until stratified.
- *   tendinopathy  · §§3,4,7,11,15,16 · load is the treatment (:64), so
+ *   tendinopathy  · §§3,4,7,11,15,16 · load is the treatment (§1.3), so
  *                   complete rest is contraindicated.
  *   soft_tissue   · §§10,12,13 acute strains.
  *   joint         · §§5,6,14,19.
  *   fascia        · §2.
  *   bone_stress_continuum · §8 MTSS · not a BSI, but on the same
- *                   continuum (:390) and one positive hop test away.
+ *                   continuum (§8.1) and one positive hop test away.
  *   unknown       · doctrine silent for this site · conservative degrade.
  */
 export type InjuryRiskClass =
@@ -82,20 +83,23 @@ export interface InjuryProtocol {
   runStartWeek: number | null;
   /** Same, for a `major` (7-10/10) presentation, where the site's own
    *  table gives a pain-dependent band (e.g. MTSS phase 1 is "2-6 weeks
-   *  (pain-dependent)", Research/05:407). Undefined → use runStartWeek. */
+   *  (pain-dependent)", §8.4). Undefined → use runStartWeek. */
   runStartWeekSevere?: number;
-  /** Walk-run stage the site's table re-enters running at (:21-30). */
+  /** Walk-run stage the site's table re-enters running at, per §1.1's
+   *  8-stage template. */
   startStage: number;
   crossTrain: CrossTrainMode;
   /** Shown instead of a return date when runStartWeek is null. */
   clearanceGate: string | null;
-  /** Line-level citation into Research/05. */
+  /** Section-level citation into Research/05. Rule 7: never a line
+   *  number — the section heading survives edits, the line does not. */
   citation: string;
 }
 
 /**
- * The generic walk-run ladder · Research/05:21-30, table "Generic
- * walk-run progression template (8 stages)". Encoded verbatim.
+ * The generic walk-run ladder · Research/05-injury-return-protocols.md
+ * §1.1, table "Generic walk-run progression template (8 stages)".
+ * Encoded verbatim; bound by INJURY.walk-run-ladder-is-encoded-verbatim.
  *
  * `sessionsPerWk` takes the LOW end where the research writes a band
  * ("3-4" for stages 4-7): the conservative reading, per the rule that
@@ -127,14 +131,16 @@ export const WALK_RUN_LADDER: readonly WalkRunStage[] = [
 export const MAX_WALK_RUN_STAGE = 8;
 
 /**
- * Research/05:33 · "Spend at least 2 sessions at each stage before
+ * Research/05-injury-return-protocols.md §1.1 ·
+ * "Spend at least 2 sessions at each stage before
  * progressing." At the doctrine's 3 sessions/week that is one stage per
  * week at most, never two.
  */
 export const MAX_STAGE_ADVANCE_PER_WEEK = 1;
 
 /**
- * Research/05:17 · "Frequency: every other day during early stages
+ * Research/05-injury-return-protocols.md §1.1 ·
+ * "Frequency: every other day during early stages
  * (alternate-day rule) — the off-day is for tissue adaptation and pain
  * monitoring." Impact sessions are never placed on back-to-back days
  * below this stage.
@@ -143,7 +149,7 @@ export const ALTERNATE_DAY_THROUGH_STAGE = 7;
 
 /**
  * How many plan weeks we actually write rows for. The doctrine bands run
- * to 39 weeks (4-9 months, :487); a plan is a rolling scaffold that
+ * to 39 weeks (4-9 months, §9.6); a plan is a rolling scaffold that
  * re-generates, so we write the near window and carry the full band in
  * the plan's authored_state and phase rationale.
  */
@@ -152,9 +158,9 @@ export const INJURY_PLAN_MAX_WEEKS = 12;
 /**
  * Conservative fallback. Research/05 has no entry for e.g. "lower back",
  * so we apply only the general principles: the walk-run scaffold is for
- * "any injury that has required a layoff longer than ~2 weeks" (:11),
- * "weeks off ≈ weeks to rebuild base" (:76), and "symptoms persisting
- * ≥6 weeks despite appropriate load management" is a referral (:101).
+ * "any injury that has required a layoff longer than ~2 weeks" (§1.1),
+ * "weeks off ≈ weeks to rebuild base" (§1.4), and "symptoms persisting
+ * ≥6 weeks despite appropriate load management" is a referral (§1.6).
  * Two weeks off running, then stage 1, over an 8-week window.
  */
 const PROTOCOL_UNKNOWN: InjuryProtocol = {
@@ -166,12 +172,12 @@ const PROTOCOL_UNKNOWN: InjuryProtocol = {
   startStage: 1,
   crossTrain: 'non_impact',
   clearanceGate: null,
-  citation: 'Research/05:11, :17, :76, :101 · general principles · no site-specific protocol in the research',
+  citation: 'Research/05-injury-return-protocols.md §1.1 + §1.4 + §1.6 · general principles · no site-specific protocol in the research',
 };
 
 /**
  * Bone stress injury · the three entries that emit no running.
- * :463 "All confirmed BSIs: no running until clinical clearance."
+ * §9.4 "All confirmed BSIs: no running until clinical clearance."
  */
 const PROTOCOL_BSI_HIGH: InjuryProtocol = {
   key: 'bsi_high',
@@ -182,7 +188,7 @@ const PROTOCOL_BSI_HIGH: InjuryProtocol = {
   startStage: 1,
   crossTrain: 'non_weight_bearing',
   clearanceGate: 'Imaging confirmation of healing before any running. Your clinician sets the date, not this plan.',
-  citation: 'Research/05:463, :477-487 · high-risk site · imaging-confirmed healing before running · total return commonly 4-9 months',
+  citation: 'Research/05-injury-return-protocols.md §9.4 + §9.6 · high-risk site · imaging-confirmed healing before running · total return commonly 4-9 months',
 };
 
 const PROTOCOL_BSI_LOW: InjuryProtocol = {
@@ -194,7 +200,7 @@ const PROTOCOL_BSI_LOW: InjuryProtocol = {
   startStage: 1,
   crossTrain: 'non_impact',
   clearanceGate: 'Five consecutive days fully pain-free in daily activity, plus clinical clearance, before the first running step.',
-  citation: 'Research/05:463, :465-475, :494-497 · offload then pain-free walking gate · total return 8-16 weeks typical',
+  citation: 'Research/05-injury-return-protocols.md §9.4 + §9.5 + §9.8 · offload then pain-free walking gate · total return 8-16 weeks typical',
 };
 
 const PROTOCOL_BSI_SUSPECTED: InjuryProtocol = {
@@ -206,7 +212,7 @@ const PROTOCOL_BSI_SUSPECTED: InjuryProtocol = {
   startStage: 1,
   crossTrain: 'non_impact',
   clearanceGate: 'Get it looked at before any running. Focal bone pain with a positive hop test is a referral, not a training decision.',
-  citation: 'Research/05:95, :456-460, :463, :499-500 · suspected BSI warrants medical evaluation · treated as low-risk until stratified',
+  citation: 'Research/05-injury-return-protocols.md §9.3 + §9.4 + §9.9 · suspected BSI warrants medical evaluation · treated as low-risk until stratified',
 };
 
 /**
@@ -225,7 +231,7 @@ interface SiteRule {
 
 const SITE_RULES: readonly SiteRule[] = [
   // ── Bone stress · highest priority, most specific first ──────────────
-  // High-risk sites · Research/05:443-454.
+  // High-risk sites · Research/05 §9.2.
   {
     match: /\b(navicular|jones (fracture|zone)|fifth metatarsal|5th metatarsal|femoral neck|anterior tibia|anterior tibial cortex|black line|medial malleol\w*|sesamoid)\b/,
     protocol: PROTOCOL_BSI_HIGH,
@@ -241,7 +247,7 @@ const SITE_RULES: readonly SiteRule[] = [
   },
   // Bone stress named without a site · unstratified, so suspected.
   { match: /\b(stress fracture|stress reaction|bone stress|bsi)\b/, protocol: PROTOCOL_BSI_SUSPECTED },
-  // The referral red flags for BSI, in the runner's own words (:95).
+  // The referral red flags for BSI, in the runner's own words (§1.6).
   { match: /\b(focal bone|point.?tender|hop test|night pain)\b/, protocol: PROTOCOL_BSI_SUSPECTED },
 
   // ── Achilles · insertional before mid-portion ───────────────────────
@@ -256,7 +262,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:234-240 · §4.4 · floor-level calf raises, no dorsiflexion past neutral · phase 1 weeks 1-3 off running',
+      citation: 'Research/05-injury-return-protocols.md §4.4 · floor-level calf raises, no dorsiflexion past neutral · phase 1 weeks 1-3 off running',
     },
   },
   {
@@ -270,7 +276,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:190-196 · §3.4 · Silbernagel pain-monitoring model · phase 1 weeks 1-2 off running',
+      citation: 'Research/05-injury-return-protocols.md §3.4 · Silbernagel pain-monitoring model · phase 1 weeks 1-2 off running',
     },
   },
 
@@ -286,7 +292,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:141-148 · §2.4 · high-load calf raises weeks 1-4, walk-run stage 1-2 at weeks 5-6 if morning pain <=2/10',
+      citation: 'Research/05-injury-return-protocols.md §2.4 · high-load calf raises weeks 1-4, walk-run stage 1-2 at weeks 5-6 if morning pain <=2/10',
     },
   },
   {
@@ -300,7 +306,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 8,
       crossTrain: 'as_tolerated',
       clearanceGate: null,
-      citation: 'Research/05:866-870 · §18.4 · footwear is the intervention · reduced volume running continues from week 1',
+      citation: 'Research/05-injury-return-protocols.md §18.4 · footwear is the intervention · reduced volume running continues from week 1',
     },
   },
   {
@@ -314,7 +320,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:744-748 · §15.4 · phase 1 weeks 1-3 off running, walk-run from week 4 on flat cushioned surfaces',
+      citation: 'Research/05-injury-return-protocols.md §15.4 · phase 1 weeks 1-3 off running, walk-run from week 4 on flat cushioned surfaces',
     },
   },
   {
@@ -328,7 +334,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:785-789 · §16.4 · phase 1 weeks 1-2 off running, walk-run on flat predictable surface from week 3',
+      citation: 'Research/05-injury-return-protocols.md §16.4 · phase 1 weeks 1-2 off running, walk-run on flat predictable surface from week 3',
     },
   },
   {
@@ -342,7 +348,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:826-830 · §17.4 · walk only weeks 1-2, walk-run stage 1-3 in a cushioned shoe from week 3',
+      citation: 'Research/05-injury-return-protocols.md §17.4 · walk only weeks 1-2, walk-run stage 1-3 in a cushioned shoe from week 3',
     },
   },
 
@@ -361,7 +367,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:406-411 · §8.4 · phase 1 relative rest 2-6 weeks pain-dependent · alternate-day walk-run on flat soft surface',
+      citation: 'Research/05-injury-return-protocols.md §8.4 · phase 1 relative rest 2-6 weeks pain-dependent · alternate-day walk-run on flat soft surface',
     },
   },
 
@@ -377,7 +383,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:272-279 · §5.4 · hip abductor work weeks 1-2 off running, walk-run stage 1-2 flat only from week 3, no downhills',
+      citation: 'Research/05-injury-return-protocols.md §5.4 · hip abductor work weeks 1-2 off running, walk-run stage 1-2 flat only from week 3, no downhills',
     },
   },
   {
@@ -391,7 +397,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:362-368 · §7.4 · heavy slow resistance · walk-run stage 1-3 starting week 4-5, flat',
+      citation: 'Research/05-injury-return-protocols.md §7.4 · heavy slow resistance · walk-run stage 1-3 starting week 4-5, flat',
     },
   },
   {
@@ -401,7 +407,7 @@ const SITE_RULES: readonly SiteRule[] = [
       label: 'Patellofemoral pain',
       riskClass: 'joint',
       totalWeeks: [9, null],
-      // §6.4 (:313) is the one protocol in the research that keeps the
+      // §6.4 is the one protocol in the research that keeps the
       // runner running: "supports running through monitored, low-grade
       // symptoms (<=2/10 NRS in-session) with training modification
       // rather than complete cessation". Stage 8 is continuous easy, and
@@ -411,7 +417,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 8,
       crossTrain: 'as_tolerated',
       clearanceGate: null,
-      citation: 'Research/05:313-321 · §6.4 · pain-guided · reduce volume to ~50% of pre-flare, keep it flat and easy, pain <=2/10 in session',
+      citation: 'Research/05-injury-return-protocols.md §6.4 · pain-guided · reduce volume to ~50% of pre-flare, keep it flat and easy, pain <=2/10 in session',
     },
   },
 
@@ -427,7 +433,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:573-577 · §11.4 Goom framework · isometrics weeks 1-2, walk-run flat alternate-day from week 3, no uphill',
+      citation: 'Research/05-injury-return-protocols.md §11.4 Goom framework · isometrics weeks 1-2, walk-run flat alternate-day from week 3, no uphill',
     },
   },
   {
@@ -436,7 +442,7 @@ const SITE_RULES: readonly SiteRule[] = [
       key: 'hamstring_strain',
       label: 'Hamstring strain',
       riskClass: 'soft_tissue',
-      // :531-532 · type I (sprint mechanism) 3-6 weeks, type II (stretch
+      // §10.4 · type I (sprint mechanism) 3-6 weeks, type II (stretch
       // mechanism) 8-30+, and "Coaches should be much more conservative"
       // about type II. We cannot tell the two apart from a body-part
       // picker, so the band is the conservative one.
@@ -445,7 +451,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:523-532 · §10.4 · walk-run from week 3 · type II stretch-mechanism band taken because type is unknown from a body-part picker',
+      citation: 'Research/05-injury-return-protocols.md §10.4 · walk-run from week 3 · type II stretch-mechanism band taken because type is unknown from a body-part picker',
     },
   },
 
@@ -461,7 +467,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:614-620 · §12.4 · walk-run stage 1-3 from week 3 once 25 single-leg heel raises are pain-free · 2-4 weeks grade I, 4-8 grade II',
+      citation: 'Research/05-injury-return-protocols.md §12.4 · walk-run stage 1-3 from week 3 once 25 single-leg heel raises are pain-free · 2-4 weeks grade I, 4-8 grade II',
     },
   },
 
@@ -481,7 +487,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:907-912 · §19.4 · conservative management 3-6 months before surgical consideration · walk-run in phase 2 (weeks 5-8)',
+      citation: 'Research/05-injury-return-protocols.md §19.4 · conservative management 3-6 months before surgical consideration · walk-run in phase 2 (weeks 5-8)',
     },
   },
   {
@@ -496,7 +502,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 8,
       crossTrain: 'as_tolerated',
       clearanceGate: null,
-      citation: 'Research/05:700-704 · §14.4 · reduced volume from week 1, no hills, glute strengthening is the intervention',
+      citation: 'Research/05-injury-return-protocols.md §14.4 · reduced volume from week 1, no hills, glute strengthening is the intervention',
     },
   },
   {
@@ -510,7 +516,7 @@ const SITE_RULES: readonly SiteRule[] = [
       startStage: 1,
       crossTrain: 'non_impact',
       clearanceGate: null,
-      citation: 'Research/05:659-663 · §13.4 · phase 1 1-2 weeks off, walk-run on the flat from week 3, no hills and no fast running',
+      citation: 'Research/05-injury-return-protocols.md §13.4 · phase 1 1-2 weeks off, walk-run on the flat from week 3, no hills and no fast running',
     },
   },
 ];
@@ -565,7 +571,7 @@ export function resolveInjuryProtocol(input: ResolveInjuryProtocolInput): Resolv
   }
 
   // Conservative escalation · a 7-10/10 presentation at a site that sits
-  // on the bone-stress continuum is the exact picture Research/05:395
+  // on the bone-stress continuum is the exact picture Research/05 §8.2
   // and :425 send for imaging ("Focal tenderness, positive hop test,
   // night pain -> image to rule out stress fracture"). We cannot palpate
   // or run a hop test from here, so a major shin or foot complaint is
@@ -576,7 +582,7 @@ export function resolveInjuryProtocol(input: ResolveInjuryProtocolInput): Resolv
     && (protocol.riskClass === 'bone_stress_continuum' || protocol.key === 'metatarsalgia')
   ) {
     protocol = PROTOCOL_BSI_SUSPECTED;
-    matchedOn = `${matchedOn} · escalated to suspected bone stress injury at 7-10/10 (Research/05:395, :425)`;
+    matchedOn = `${matchedOn} · escalated to suspected bone stress injury at 7-10/10 (Research/05 §8.2, §8.7)`;
   }
 
   let runStartWeek = protocol.runStartWeek;
@@ -600,7 +606,7 @@ export function resolveInjuryProtocol(input: ResolveInjuryProtocolInput): Resolv
 }
 
 /**
- * Stage for a given plan week. Research/05:33 · at least two sessions
+ * Stage for a given plan week. Research/05 §1.1 · at least two sessions
  * per stage before progressing, so at the doctrine's three sessions a
  * week that is one stage per week, never two.
  */
@@ -622,7 +628,7 @@ export function doctrineWeeksLabel(protocol: InjuryProtocol): string {
 
 /**
  * The session line for one walk-run stage, in coach voice.
- * Research/05:36 · easy/conversational only, no tempo, no intervals, no
+ * Research/05 §1.1 · easy/conversational only, no tempo, no intervals, no
  * hills until a full continuous base is back.
  */
 export function stageSessionLabel(s: WalkRunStage): string {
@@ -633,12 +639,12 @@ export function stageSessionNotes(s: WalkRunStage, riskClass: InjuryRiskClass): 
   const shape = s.continuous
     ? `${s.totalRunMin} minutes continuous, easy effort.`
     : `${s.runMin} min jog / ${s.walkMin} min walk, ${s.repeats} rounds. ${s.totalRunMin} minutes of running total.`;
-  // Research/05:42-45 · the in-session rule is 0-2 green, 3-5 hold, 6+
+  // Research/05 §1.2 · the in-session rule is 0-2 green, 3-5 hold, 6+
   // stop. The old builder said "pain >= 4/10 = stop", which both stopped
   // sessions the doctrine says to continue at held load and gave a
   // number the doctrine does not use.
   const pain = isBsi(riskClass)
-    ? 'Any pain on the bone stops the session (Research/05:55).'
+    ? 'Any pain on the bone stops the session (Research/05 §1.2).'
     : 'Pain 0-2 carry on. 3-5 hold this stage, do not progress. 6 or more stop.';
   const surface = s.stage <= 5
     ? 'Flat, firm, predictable surface.'
@@ -651,6 +657,6 @@ export function stageSessionNotes(s: WalkRunStage, riskClass: InjuryRiskClass): 
 // with a flotation belt", "non-impact aerobic 30-45 min"), and faff no
 // longer prescribes non-running work. The `crossTrain` field above SURVIVES
 // as doctrine data — it is the risk class's loading constraint per
-// Research/05:60-69, and dropping it would lose the distinction between a
+// Research/05 §1.3, and dropping it would lose the distinction between a
 // high-risk BSI (non-weight-bearing) and a low-risk one (non-impact) that
 // the protocol table exists to record. Nothing renders it today.
