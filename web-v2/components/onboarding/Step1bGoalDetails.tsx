@@ -61,7 +61,15 @@ const WEEKLY_MI_CHIPS: { value: WeeklyMileage; label: string }[] = [
   { value: 25, label: '25' },
   { value: 35, label: '35' },
   { value: 45, label: '45' },
-  { value: 55, label: '55+' },
+  { value: 55, label: '55' },
+  // HIGHVOL-1 (2026-08-19) · the ladder used to end at a '55+' chip, so every
+  // runner from 55 to 200 mi/wk picked the same value and was authored the same
+  // plan. Research/00a §"Volume table" describes training volumes well past
+  // this; the form has to reach them.
+  { value: 65, label: '65' },
+  { value: 75, label: '75' },
+  { value: 85, label: '85' },
+  { value: 95, label: '95+' },
 ];
 
 const FREQ_CHIPS: WeeklyFrequency[] = [0, 1, 2, 3, 4, 5, 6];
@@ -71,14 +79,23 @@ const HIST_AVG_CHIPS: { value: HistAvg; label: string }[] = [
   { value: '5-15',  label: '5-15' },
   { value: '15-25', label: '15-25' },
   { value: '25-35', label: '25-35' },
-  { value: '35+',   label: '35+' },
+  { value: '35+',   label: '35-45' },
+  { value: '45-60', label: '45-60' },
+  { value: '60-80', label: '60-80' },
+  { value: '80+',   label: '80+' },
 ];
 
 const HIST_LONG_CHIPS: { value: HistLong; label: string }[] = [
   { value: '0-3',  label: '0-3' },
   { value: '3-6',  label: '3-6' },
   { value: '6-10', label: '6-10' },
-  { value: '10+',  label: '10+' },
+  // HIGHVOL-1 · '10+' stays a legal PERSISTED value (live rows and issued URLs
+  // carry it) but is no longer offered: an open-ended top rung capped every
+  // long-run anchor above 10 mi at the same 12, and that anchor is the
+  // 110%-of-prior-30d spike guard.
+  { value: '10-16', label: '10-16' },
+  { value: '16-22', label: '16-22' },
+  { value: '22+',   label: '22+' },
 ];
 
 const HIST_YEARS_CHIPS: { value: HistYears; label: string }[] = [

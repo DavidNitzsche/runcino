@@ -115,14 +115,47 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
     'Massive aerobic volume, hill power, T early, mega B2Bs', '100mi structures'),
 ];
 
-const NORM_LEVEL = (l: string | null | undefined): PlanLevel =>
-  (l === 'beginner' || l === 'intermediate' || l === 'advanced' || l === 'advanced_plus') ? l : 'intermediate';
+const EXPLICIT_LEVEL = (l: string | null | undefined): PlanLevel | null =>
+  (l === 'beginner' || l === 'intermediate' || l === 'advanced' || l === 'advanced_plus') ? l : null;
 
-/** The template for a runner's distance + level. Defaults level → intermediate
- *  when unknown (matches the engine's historical default, so a null-experience
- *  runner is unchanged). */
-export function templateFor(distance: DistCategory, level: string | null | undefined): PlanTemplate {
-  const lvl = NORM_LEVEL(level);
+/**
+ * LOWVOL-2 (2026-08-19) · the template level an UNSTATED experience earns.
+ *
+ * `profile.experience_level` is NULL on real production accounts, and this
+ * function used to answer `'intermediate'` for every one of them — including a
+ * runner whose whole WEEK is smaller than the PEAK week of doctrine's beginner
+ * plan for their distance. `Research/22` §"5K — Beginner" peaks at 12-15 mi/wk;
+ * a 5-10 mi/wk runner was routed into the periodized interval machine that
+ * §"5K — Intermediate" describes, and `classifyGoalTier`'s COLD-1 clamp did not
+ * help because it caps the TIER, never the TEMPLATE.
+ *
+ * The rule is deliberately one-sided and deliberately conservative. Volume can
+ * only ever demote an unstated level, never promote it — a big week is not a
+ * demonstration of anything (that is COLD-1's whole argument) whereas a week
+ * below the beginner peak is a hard fact about what the runner can absorb. And
+ * the threshold is the beginner row's own peak FLOOR read out of the table, so
+ * a runner sitting anywhere inside doctrine's beginner band keeps the
+ * intermediate default exactly as before: it fires only BELOW the band.
+ */
+function unstatedLevelFor(distance: DistCategory, weeklyMi: number | null | undefined): PlanLevel {
+  if (weeklyMi == null || !(weeklyMi > 0)) return 'intermediate';
+  const beginnerPeakFloor = PLAN_TEMPLATES
+    .find((t) => t.distance === distance && t.level === 'beginner')?.peakWeeklyMi[0];
+  if (beginnerPeakFloor == null) return 'intermediate';
+  return weeklyMi < beginnerPeakFloor ? 'beginner' : 'intermediate';
+}
+
+/** The template for a runner's distance + level. A stated level always wins.
+ *  When the level is unknown, `weeklyMi` (the runner's recent weekly volume)
+ *  demotes to `beginner` only if that volume is below doctrine's beginner peak
+ *  band for the distance; omit it, or pass 0, and the historical intermediate
+ *  default stands. */
+export function templateFor(
+  distance: DistCategory,
+  level: string | null | undefined,
+  weeklyMi?: number | null,
+): PlanTemplate {
+  const lvl = EXPLICIT_LEVEL(level) ?? unstatedLevelFor(distance, weeklyMi);
   const exact = PLAN_TEMPLATES.find((t) => t.distance === distance && t.level === lvl);
   if (exact) return exact;
   // distance miss (shouldn't happen) → nearest by category, intermediate
@@ -132,8 +165,13 @@ export function templateFor(distance: DistCategory, level: string | null | undef
 
 /** True when this runner's plan should be base-building structure (E + strides +
  *  light fartlek, progressive easy long, late speedwork) rather than the
- *  periodized I/T/R machine. The single behavioural gate — only `beginner`
- *  flips it, so intermediate/advanced (incl. David) are unchanged. */
-export function isBaseBuildingPlan(distance: DistCategory, level: string | null | undefined): boolean {
-  return templateFor(distance, level).qualityCharacter === 'base_building';
+ *  periodized I/T/R machine. The behavioural gate — `beginner` flips it, so a
+ *  stated intermediate/advanced (incl. David) is unchanged; an UNSTATED level
+ *  flips it only below doctrine's beginner peak band (see `unstatedLevelFor`). */
+export function isBaseBuildingPlan(
+  distance: DistCategory,
+  level: string | null | undefined,
+  weeklyMi?: number | null,
+): boolean {
+  return templateFor(distance, level, weeklyMi).qualityCharacter === 'base_building';
 }

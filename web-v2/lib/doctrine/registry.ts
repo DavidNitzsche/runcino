@@ -121,6 +121,7 @@ import { expectedDaysForAnchor } from '@/lib/coach/recovery-phase';
 import {
   GAP_SHAVE_FRACTIONS,
   RERAMP_RESUME_FRACTION,
+  RERAMP_MIN_BASE_SIGNAL_MI,
   RERAMP_WEEKLY_GROWTH,
   classifyGapBand,
 } from '@/lib/plan/adapt';
@@ -945,23 +946,39 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
   {
     id: 'RAMP.single-session-spike',
-    binds: ['lib/plan/generate.ts#rampCeiling'],
+    binds: ['lib/plan/generate.ts#rampCeiling', 'lib/plan/generate.ts#recentPeakLongMi'],
     doc: 'Research/00a-distance-running-training.md',
     anchor: '### Volume progression rules',
     claim:
       'A single run beyond 110% of the longest run in the prior 30 days raises overuse-injury ' +
       'risk by about 64%. This — not the weekly ramp — is the load constraint doctrine actually ' +
-      'evidences, so the long-run ramp ceiling must not step past that multiple.',
+      'evidences, so the long-run ramp ceiling must not step past that multiple. The multiple is ' +
+      'taken against THE longest run in the window, whatever its length: the lookback that feeds ' +
+      'the ceiling may carry no minimum-distance filter, because filtering short runs out makes a ' +
+      'low-volume runner read as no history and `rampCeiling` then returns the unbounded doctrine ' +
+      'cap — the guard switched off for exactly the runners it protects (LOWVOL-1, 2026-08-19: a ' +
+      '6 mi longest read 0 and was authored a 10 mi week-1 long, 167% of prior-30d).',
     check({ cite }) {
       const t = cite.table();
       const stated = parseBand(t.cell('Single-session spike threshold', 'Specification'))[0] / 100;
       const src = sourceOf('web-v2/lib/plan/generate.ts');
-      const seed = Number(matchLiteral(src, /const seed = Math\.round\(recentLongMi \* (\d*\.?\d+)\)/, 'rampCeiling seed')[1]);
+      const seed = Number(
+        matchLiteral(src, /const seed = Math\.floor\(recentLongMi \* (\d*\.?\d+) \* 2\) \/ 2;/, 'rampCeiling seed')[1],
+      );
       const step = Number(
         matchLiteral(src, /const stepCeil = recentLongMi \* Math\.pow\((\d*\.?\d+),/, 'rampCeiling step')[1],
       );
       atMost(seed, stated, 'long-run ramp seed vs the single-session spike threshold');
       atMost(step, stated, 'long-run per-step ramp vs the single-session spike threshold');
+      // The anchor the multiple is taken against must be the real longest run.
+      const fn = src.slice(src.indexOf('async function recentPeakLongMi'));
+      const body = fn.slice(0, fn.indexOf('\n}'));
+      if (/distanceMi'\)::numeric\s*>=/.test(body)) {
+        throw new Error(
+          'recentPeakLongMi filters the lookback by a minimum distance again · a runner whose ' +
+            'longest run is below that floor reads 0 and rampCeiling stops bounding their long run',
+        );
+      }
     },
   },
 
@@ -1873,14 +1890,23 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
   {
     id: 'COMEBACK.reramp-resume-fraction',
-    binds: ['lib/plan/adapt.ts#RERAMP_RESUME_FRACTION', 'lib/plan/adapt.ts#RERAMP_WEEKLY_GROWTH'],
+    binds: [
+      'lib/plan/adapt.ts#RERAMP_RESUME_FRACTION',
+      'lib/plan/adapt.ts#RERAMP_WEEKLY_GROWTH',
+      'lib/plan/adapt.ts#RERAMP_MIN_BASE_SIGNAL_MI',
+    ],
     doc: 'Research/22-plan-templates.md',
     anchor: 'Volume cap: weekly mileage ≤ 50% of lowest pre-layoff week initially',
     claim:
       'Coming back from a longer absence, the resume anchor is a fraction of pre-absence ' +
       'volume and the climb from there is the 10% rule strictly enforced. The anchor must be ' +
       'no more generous than doctrine allows for the harshest case, and the growth rate is ' +
-      'the same ten percent used everywhere else.',
+      'the same ten percent used everywhere else. Doctrine states the rule as a PROPORTION of ' +
+      'the runner\'s own volume, so it applies at every volume; any floor the engine puts under ' +
+      'it is a noise guard of ours, is not a doctrine number, and must stay far below a real ' +
+      'runner\'s week (LOWVOL-6, 2026-08-19: the floor was five miles a week, above a ' +
+      'beginner\'s entire week, so the cohort least able to absorb a full-volume return was ' +
+      'the one that never got the shave).',
     check({ cite }) {
       const text = cite.text();
       if (!/10% rule strictly enforced/i.test(text)) {
@@ -1891,6 +1917,28 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (RERAMP_RESUME_FRACTION <= 0 || RERAMP_RESUME_FRACTION > 1) {
         throw new Error(`RERAMP_RESUME_FRACTION is ${RERAMP_RESUME_FRACTION} · it is a fraction of pre-absence volume`);
+      }
+      // The noise guard, held below doctrine's own smallest published weekly
+      // volume — Research/00a's volume table, beginner column — so it can never
+      // again exclude a runner the research describes.
+      const smallestPublishedWeek = Math.min(
+        ...resolveCitation(
+          'Research/00a-distance-running-training.md',
+          '### Volume table — miles per week (km in parentheses)',
+        ).text()
+          .split('\n')
+          .filter((l) => l.startsWith('|') && !/^\|\s*(Distance|-)/.test(l))
+          .map((l) => l.split('|').map((c) => c.trim()))
+          .filter((c) => c.length > 5)
+          .map((c) => parseBand(c[2])[0])
+          .filter((n) => Number.isFinite(n) && n > 0),
+      );
+      if (!(RERAMP_MIN_BASE_SIGNAL_MI < smallestPublishedWeek)) {
+        throw new Error(
+          `RERAMP_MIN_BASE_SIGNAL_MI is ${RERAMP_MIN_BASE_SIGNAL_MI} mi/wk, at or above the ` +
+            `smallest weekly volume doctrine publishes (${smallestPublishedWeek} mi/wk) · the ` +
+            'comeback shave is being withheld from runners the research describes',
+        );
       }
     },
   },
@@ -4910,6 +4958,33 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (!/Beginner/.test(t) || !/Elite/.test(t)) {
         throw new Error('Research/00a volume table no longer spans beginner to elite');
       }
+      // HIGHVOL-1 (2026-08-19) · and it must not FLATTEN before the table does.
+      // The ladder ended at 45 mi/wk while doctrine's own table goes on to name
+      // three further competitive tiers, so every runner from 45 to 200 mi/wk
+      // was handed one number. The top rung must at least reach the lowest
+      // sub-elite floor the table states — read out of the table, not restated.
+      const subEliteFloors = t
+        .split('\n')
+        .filter((l) => l.startsWith('|') && !/^\|\s*(Distance|-)/.test(l))
+        .map((l) => l.split('|').map((c) => c.trim()))
+        // `| Distance | Beginner | Recreational competitive | Sub-elite | Elite |`
+        // → index 4 is the sub-elite cell (index 0 is the empty pre-pipe field).
+        .filter((c) => c.length > 5)
+        .map((c) => parseBand(c[4])[0])
+        .filter((n) => Number.isFinite(n) && n > 0);
+      if (subEliteFloors.length < 4) {
+        throw new Error(
+          `could not read the sub-elite column out of Research/00a's volume table · ` +
+            `found ${subEliteFloors.length} rows`,
+        );
+      }
+      const lowestSubElite = Math.min(...subEliteFloors);
+      if (rungs[0].mi < lowestSubElite) {
+        throw new Error(
+          `the cold-start ladder flattens at ${rungs[0].mi} mi/wk, below doctrine's lowest ` +
+            `sub-elite floor of ${lowestSubElite} mi/wk · every runner above it gets one guess`,
+        );
+      }
     },
   },
 
@@ -5753,6 +5828,79 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           );
         }
         atMost(wks, longest, `BUILD_WINDOW_WEEKS.${cat}`);
+      }
+    },
+  },
+
+  /* ── COLD-START-1 (2026-08-19) ────────────────────────────────────────────
+   *
+   * `composeMaintenancePlan` sizes a week off the runner's recent peak. For a
+   * runner with no recorded running that anchor is zero, and the arithmetic
+   * produced one four-mile run a week — which for somebody with no history is
+   * also a first session four miles long. Doctrine has a section written for
+   * exactly this runner and it is not the maintenance plan.
+   */
+  {
+    id: 'COLDSTART.couch-to-5k-opening',
+    binds: [
+      'lib/plan/generate.ts#COLD_START_DAYS_PER_WEEK',
+      'lib/plan/generate.ts#COLD_START_WEEK1_RUN_MIN',
+      'lib/plan/generate.ts#COLD_START_PEAK_RUN_MIN',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 8. Couch-to-5K Progression',
+    claim:
+      'A runner with no recorded running is doctrine\'s sedentary starter, and §8 states their ' +
+      'opening week outright: three days a week with a rest day between, a first session of ' +
+      'eight one-minute runs, and a peak workout of a thirty-minute continuous run. The engine ' +
+      'must open a no-history plan on those three numbers and on no other — in particular it may ' +
+      'not assert a long run, because a long-run coherence floor is precisely what turned a ' +
+      'zero anchor into a four-mile first session.',
+    check({ cite }) {
+      const text = cite.text();
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      const cell = (label: string): string => {
+        const line = text.split('\n').find((l) => l.includes(`| ${label} |`));
+        if (!line) throw new Error(`DOCTRINE · no "${label}" row under Research/22 §8`);
+        return line.split('|')[2].trim();
+      };
+      // "Days/week | 3 (with rest day between)"
+      const docDays = parseBand(cell('Days/week'))[0];
+      // "Peak workout | 30 min continuous run"
+      const docPeakMin = parseBand(cell('Peak workout'))[0];
+      // The week-1 row of the run/walk table: "8× (60 sec run / 90 sec walk)".
+      const wk1 = text.split('\n').find((l) => /^\|\s*1\s*\|/.test(l));
+      if (!wk1) throw new Error('DOCTRINE · Research/22 §8 has no week-1 run/walk row');
+      const reps = wk1.match(/(\d+)\s*×\s*\(\s*(\d+)\s*sec run/);
+      if (!reps) {
+        throw new Error(`DOCTRINE · could not read week 1's run intervals out of "${wk1.trim()}"`);
+      }
+      const docWeek1Min = (Number(reps[1]) * Number(reps[2])) / 60;
+
+      const lit = (name: string): number =>
+        Number(matchLiteral(src, new RegExp(`const ${name} = (\\d+);`), name)[1]);
+      const days = lit('COLD_START_DAYS_PER_WEEK');
+      const week1 = lit('COLD_START_WEEK1_RUN_MIN');
+      const peak = lit('COLD_START_PEAK_RUN_MIN');
+      if (days !== docDays) {
+        throw new Error(`COLD_START_DAYS_PER_WEEK is ${days} · Research/22 §8 says ${docDays}`);
+      }
+      if (week1 !== docWeek1Min) {
+        throw new Error(
+          `COLD_START_WEEK1_RUN_MIN is ${week1} min · Research/22 §8 week 1 is ` +
+            `${reps[1]}×${reps[2]} sec = ${docWeek1Min} min of running`,
+        );
+      }
+      if (peak !== docPeakMin) {
+        throw new Error(`COLD_START_PEAK_RUN_MIN is ${peak} · Research/22 §8 says ${docPeakMin}`);
+      }
+      // And the no-history week must not reach for a long run. `coldStartWeek`
+      // is the whole branch; if it ever authors `isLong: true` the four-mile
+      // first session is back in a new costume.
+      const fn = src.slice(src.indexOf('function coldStartWeek'));
+      const body = fn.slice(0, fn.indexOf('\n  }\n'));
+      if (/isLong:\s*true/.test(body)) {
+        throw new Error('coldStartWeek authors a long run · a day-one runner has no long to floor');
       }
     },
   },
@@ -6952,6 +7100,64 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
               `(${sessBand[0]}), engine has ${stage.sessionsPerWk}`,
           );
         }
+      }
+    },
+  },
+
+  {
+    id: 'INJURY.walk-run-is-priced-at-the-runners-own-easy-pace',
+    binds: [
+      'lib/plan/injury-builder.ts#WALK_RUN_MIN_PER_MI',
+      'lib/plan/injury-builder.ts#injuryWeekShape',
+      'lib/plan/injury-builder.ts#MAX_ACTIVE_DAYS_PER_WEEK',
+    ],
+    doc: 'Research/05-injury-return-protocols.md',
+    anchor: '**Generic walk-run progression template (8 stages)**',
+    claim:
+      'The walk-run ladder is written in MINUTES and the plan schema carries MILES, so a pace ' +
+      'has to convert between them — and doctrine states that pace by CATEGORY only: §1.1 ' +
+      '"Pace: easy/conversational only". A single hard-coded minutes-per-mile is therefore one ' +
+      'runner\'s easy pace applied to everybody, and it decides how much running load every ' +
+      'injured runner is booked for: at a fixed 11:00/mi a 15:00/mi runner\'s stage-1 session ' +
+      'was over-booked by 36%, into every volume and ACWR reader downstream, for the population ' +
+      'most at risk. `injuryWeekShape` must therefore accept the runner\'s own easy pace, and ' +
+      'the constant may only be the fallback. The same file\'s frequency cap must also honour a ' +
+      'stated weekly_frequency BELOW its default, which is what its own doc says it does.',
+    check({ cite }) {
+      const text = cite.text();
+      if (!/easy\s*\/\s*conversational only/i.test(text)) {
+        throw new Error(
+          'Research/05 §1.1 no longer states the walk-run pace as "easy/conversational only" · ' +
+            're-read the section and re-anchor this claim',
+        );
+      }
+      const src = sourceOf('web-v2/lib/plan/injury-builder.ts');
+      // The runner's own pace reaches the sizing.
+      matchLiteral(
+        src,
+        /easyPaceSecPerMi\?: number \| null,/,
+        'injuryWeekShape takes the runner\'s own easy pace',
+      );
+      matchLiteral(
+        src,
+        /easyPaceSecPerMi != null && easyPaceSecPerMi > 0/,
+        'the walk-run distance is priced at the runner\'s pace when there is one',
+      );
+      // And the stated frequency is believed all the way down.
+      const gate = Number(
+        matchLiteral(
+          src,
+          /Number\(freqRow\.f\) >= (\d+) && Number\(freqRow\.f\) <= 7/,
+          'injury-plan weekly_frequency gate',
+        )[1],
+      );
+      if (gate > 1) {
+        throw new Error(
+          `an injured runner's stated weekly_frequency is discarded below ${gate} days/wk · ` +
+            'the file\'s own MAX_ACTIVE_DAYS_PER_WEEK doc says "a stated weekly_frequency below ' +
+            'this still wins", and falling back to the default schedules them MORE active days, ' +
+            'not fewer',
+        );
       }
     },
   },

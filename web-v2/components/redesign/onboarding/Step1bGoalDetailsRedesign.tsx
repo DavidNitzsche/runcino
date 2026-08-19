@@ -51,7 +51,7 @@ import { OnboardingSidebar } from '@/components/redesign/onboarding/OnboardingSi
  *   · weeklyFreq (WeeklyFrequency, integer 3-6 in this step's own UI) →
  *     Stepper — a literal match to WebOnboarding.jsx's own "consistent"
  *     mode: `<Stepper label="Days per week" value={4} min={2} max={7}/>`.
- *   · weeklyMi (WeeklyMileage, chip values 15/25/35/45/55 — uniform
+ *   · weeklyMi (WeeklyMileage, chip values 15/25/35/45/55/65/75/85/95 — uniform
  *     step-10) → Stepper(min=15,max=55,step=10). The live component's
  *     own WEEKLY_MI_CHIPS array only offers these five values (the 0/5
  *     true-beginner values exist on the type but aren't rendered by
@@ -76,7 +76,9 @@ const TT_DISTANCES: { value: TTDistance | null; label: string }[] = [
 ];
 
 const WEEKLY_MI_MIN: WeeklyMileage = 15;
-const WEEKLY_MI_MAX: WeeklyMileage = 55;
+// HIGHVOL-1 (2026-08-19) · the stepper stopped at 55, so a sub-elite or elite
+// weekly volume (Research/00a §"Volume table") could not be stated at all.
+const WEEKLY_MI_MAX: WeeklyMileage = 95;
 const WEEKLY_FREQ_MIN: WeeklyFrequency = 3;
 const WEEKLY_FREQ_MAX: WeeklyFrequency = 6;
 
@@ -85,13 +87,18 @@ const HIST_AVG_CHIPS: { value: HistAvg; label: string }[] = [
   { value: '5-15', label: '5-15 mi' },
   { value: '15-25', label: '15-25 mi' },
   { value: '25-35', label: '25-35 mi' },
-  { value: '35+', label: '35+ mi' },
+  { value: '35+', label: '35-45 mi' },
+  { value: '45-60', label: '45-60 mi' },
+  { value: '60-80', label: '60-80 mi' },
+  { value: '80+', label: '80+ mi' },
 ];
 const HIST_LONG_CHIPS: { value: HistLong; label: string }[] = [
   { value: '0-3', label: '0-3 mi' },
   { value: '3-6', label: '3-6 mi' },
   { value: '6-10', label: '6-10 mi' },
-  { value: '10+', label: '10+ mi' },
+  { value: '10-16', label: '10-16 mi' },
+  { value: '16-22', label: '16-22 mi' },
+  { value: '22+', label: '22+ mi' },
 ];
 const HIST_YEARS_CHIPS: { value: HistYears; label: string }[] = [
   { value: '<1', label: 'Under a year' },

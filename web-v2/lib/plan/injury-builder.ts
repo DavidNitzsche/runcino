@@ -81,7 +81,24 @@ const dowOf = (k: string): number => {
  */
 const MAX_ACTIVE_DAYS_PER_WEEK = 5;
 
-/** Walk-jog pace used to price the RUNNING minutes of a walk-run session. */
+/**
+ * Fallback walk-jog pace used to price the RUNNING minutes of a walk-run
+ * session when the runner's own easy pace cannot be read.
+ *
+ * ── INJ-LOWVOL-1 (2026-08-19) · THIS WAS THE ONLY PACE ─────────────────────
+ *
+ * `Research/05` §1.1 states the pace by CATEGORY and not by number: "Pace:
+ * easy/conversational only." A fixed 11:00/mi is therefore not doctrine, it is
+ * one runner's easy pace applied to everybody — and because the ladder is
+ * written in MINUTES and the plan schema carries MILES, that number decides how
+ * much running load every injured runner is booked for. A 15:00/mi runner's
+ * stage-1 session (five minutes of running) was priced at 0.5 mi when they will
+ * actually cover 0.33: a 36% over-booking of volume, into every ACWR and
+ * weekly-volume reader downstream, for the population most at risk from it.
+ *
+ * It now stands in only where the runner has no readable easy pace at all, and
+ * `injuryWeekShape` takes the real one as an argument.
+ */
 const WALK_RUN_MIN_PER_MI = 11;
 
 /**
@@ -198,6 +215,11 @@ export function injuryWeekShape(
   resolved: ResolvedInjuryProtocol,
   restDow: number,
   maxSessions: number | null,
+  /**
+   * INJ-LOWVOL-1 · the runner's OWN easy pace, s/mi — `Research/05` §1.1
+   * "Pace: easy/conversational only". Null falls back to `WALK_RUN_MIN_PER_MI`.
+   */
+  easyPaceSecPerMi?: number | null,
 ): DayShape[] {
   const stage = stageForWeek(resolved, weekIdx);
   const activeCap = Math.min(maxSessions ?? MAX_ACTIVE_DAYS_PER_WEEK, MAX_ACTIVE_DAYS_PER_WEEK);
@@ -267,7 +289,13 @@ export function injuryWeekShape(
         // whole session (walk included) by a 12 min/mi pace, so stage 1 —
         // five minutes of jogging — was booked as 2.1 miles of running
         // load into every volume and ACWR reader downstream.
-        distance_mi: Math.round((stage.totalRunMin / WALK_RUN_MIN_PER_MI) * 10) / 10,
+        distance_mi: Math.round(
+          (stage.totalRunMin / (
+            easyPaceSecPerMi != null && easyPaceSecPerMi > 0
+              ? easyPaceSecPerMi / 60
+              : WALK_RUN_MIN_PER_MI
+          )) * 10,
+        ) / 10,
       });
     } else if (monitorSet.has(dow)) {
       // The doctrine's own reason for this day, stated plainly. Not a
@@ -358,8 +386,34 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
     `SELECT weekly_frequency AS f FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] as Array<{ f: number | null }> }))).rows[0];
-  const maxSessions = freqRow?.f != null && Number(freqRow.f) >= 3 && Number(freqRow.f) <= 7
+  // INJ-LOWVOL-1 (2026-08-19) · this read `>= 3`, discarding a stated frequency
+  // of one or two — so an injured 2-day-a-week runner fell back to the
+  // conservative default and was scheduled up to five active days, which is
+  // the opposite of conservative for them and directly contradicts this file's
+  // own doc at MAX_ACTIVE_DAYS_PER_WEEK ("A stated weekly_frequency below this
+  // still wins"). `injuryWeekShape` already floors the cap through
+  // `Math.min(..., MAX_ACTIVE_DAYS_PER_WEEK)` and `Math.max(0, ...)`, so a
+  // stated 1 or 2 needs no special handling beyond being believed.
+  const maxSessions = freqRow?.f != null && Number(freqRow.f) >= 1 && Number(freqRow.f) <= 7
     ? Number(freqRow.f) : null;
+
+  // INJ-LOWVOL-1 · the runner's own easy pace, from the slow end of the easy /
+  // long band their plans were authored with (the generator derives it from
+  // measured fitness · PACE-E-1). Best-effort: no readable band leaves the
+  // walk-run priced at the documented fallback.
+  const easyPaceRow = (await pool.query<{ hi: number | null }>(
+    `SELECT (pw.workout_spec->>'pace_target_s_per_mi_hi')::float AS hi
+       FROM plan_workouts pw
+       JOIN training_plans tp ON tp.id = pw.plan_id
+      WHERE tp.user_uuid = $1
+        AND pw.workout_spec->>'kind' IN ('easy', 'long')
+        AND pw.workout_spec->>'pace_target_s_per_mi_hi' IS NOT NULL
+      ORDER BY (pw.workout_spec->>'kind' = 'easy') DESC, pw.date_iso DESC
+      LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] as Array<{ hi: number | null }> }))).rows[0];
+  const easyPaceSecPerMi = easyPaceRow?.hi != null && Number(easyPaceRow.hi) > 0
+    ? Number(easyPaceRow.hi) : null;
 
   const planId = id('pln');
   const today = await runnerToday(userId);
@@ -460,7 +514,7 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
       [weekId, planId, wi, weekStart, phaseId, weekRationale],
     );
 
-    const days = injuryWeekShape(wi, resolved, restDow, maxSessions);
+    const days = injuryWeekShape(wi, resolved, restDow, maxSessions, easyPaceSecPerMi);
     for (const d of days) {
       if (d.distance_mi === 0 && d.type !== 'rest') continue;
       const wkoId = id('wko');

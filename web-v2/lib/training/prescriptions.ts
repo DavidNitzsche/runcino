@@ -22,6 +22,48 @@ import {
   abilityTierFromVdot,
   type AbilityTier,
 } from '@/lib/weather/heat-adjustment';
+import { composeQualityDay } from '@/lib/plan/quality-day';
+import { atPaceSessionCapMi } from '@/lib/prescription/levers';
+
+/* ── LOWVOL-4 (2026-08-19) · THIS FILE DID NOT SCALE WITH WEEKLY VOLUME ──────
+ *
+ * Every quality prescription below carried a fixed `wuMi = 1.5, cdMi = 1` and a
+ * rep count off a three-rung mileage ladder that bottomed out at "everyone
+ * else". On an 8 mi/wk week that produced a 4.8-mile threshold day — 60% of the
+ * week — and a 6.0-mile intervals day, 75%. The card is a fallback (an
+ * authored `workout_spec` wins wherever one exists) but it is the one a
+ * spec-less row renders on the wrist, and a small runner is exactly the runner
+ * whose rows predate the spec.
+ *
+ * The repair is to stop having a second opinion. `atPaceSessionCapMi` is
+ * Daniels' weekly share (T ≤10%, I ≤8%) crossed with `Research/04` §5.1/§6.1's
+ * session band, and `composeQualityDay` is the warm-up and cool-down §5.3
+ * states, scaled when the runner cannot afford the whole dose and floored where
+ * `spec-builder` would re-impose its own. Both are already bound by the
+ * doctrine registry. The rep count can only ever come DOWN from the ladder that
+ * was here, so a runner whose dose already funded the old count is unchanged.
+ */
+
+/** `Research/00a` §"Volume progression rules" · "Long-run cap | ≤25-30% of
+ *  weekly volume". The engine takes the ceiling of the stated band. */
+const LONG_RUN_SHARE_CAP = 0.30;
+
+/** Reps the week's own at-pace allowance funds, never more than `ladder`. */
+function affordableReps(weeklyMi: number, family: 'threshold' | 'interval', repMi: number, ladder: number): number {
+  const cap = atPaceSessionCapMi(Math.max(0, weeklyMi), family);
+  return Math.max(1, Math.min(ladder, Math.floor(cap / repMi)));
+}
+
+/** Split the slack between warm-up and cool-down when the plan's target for the
+ *  day is LONGER than the dosed session — the card and the breakdown have to
+ *  agree on the same total. 60/40, as before. */
+function padToTarget(
+  targetMi: number | undefined, dayMi: number, workMi: number, wuMi: number, cdMi: number,
+): { wuMi: number; cdMi: number } {
+  if (targetMi == null || !(targetMi > dayMi)) return { wuMi, cdMi };
+  const need = Math.max(0, targetMi - workMi);
+  return { wuMi: Math.round(need * 0.6 * 10) / 10, cdMi: Math.round(need * 0.4 * 10) / 10 };
+}
 
 /**
  * CONVERGED 2026-08-18 · this was a nine-member union that omitted `fartlek`,
@@ -288,9 +330,11 @@ export function prescriptionFor(
     case 'easy': {
       // Prefer the plan's target distance for this day; fall back to a
       // weekly-volume-derived estimate when no target is passed.
+      // LOWVOL-4 · `|| 5` handed a five-mile easy run to a runner whose weekly
+      // volume we do not know. An unknown week yields no number.
       const total = targetMi != null && targetMi > 0
         ? Math.round(targetMi * 10) / 10
-        : Math.round(weeklyMi * 0.18 || 5);
+        : weeklyMi > 0 ? Math.round(weeklyMi * 0.18) : 0;
       return {
         type, total_mi: total,
         headline: 'Easy aerobic',
@@ -310,9 +354,14 @@ export function prescriptionFor(
     case 'long': {
       // Use the plan's target distance when present; the day card and the
       // step breakdown must agree.
+      // LOWVOL-4 · the fallback was `weeklyMi * 0.32 || 12`: above doctrine's
+      // own long-run cap at every volume (32 miles on a 100 mi/wk week, with
+      // nothing consulted), and a fabricated twelve-mile long run for a runner
+      // whose weekly volume is unknown. Now it is doctrine's ceiling, and an
+      // unknown week yields no number rather than an invented one.
       const total = targetMi != null && targetMi > 0
         ? Math.round(targetMi * 10) / 10
-        : Math.round(weeklyMi * 0.32 || 12);
+        : weeklyMi > 0 ? Math.round(weeklyMi * LONG_RUN_SHARE_CAP * 10) / 10 : 0;
       const mpMi  = Math.round(total * 0.35 * 10) / 10;
       const easyMi = Math.round((total - mpMi) * 10) / 10;
       const hasMpSegment = weeklyMi >= 35 && pc.marathon;
@@ -336,18 +385,21 @@ export function prescriptionFor(
     }
 
     case 'threshold': {
-      const reps = weeklyMi >= 45 ? 4 : weeklyMi >= 35 ? 3 : 2;
       const repMi = 1;
+      // LOWVOL-4 · the old ladder is now a CEILING on the dosed count, never a
+      // floor under it.
+      const reps = affordableReps(weeklyMi, 'threshold', repMi, weeklyMi >= 45 ? 4 : weeklyMi >= 35 ? 3 : 2);
       const recoveryMi = (reps - 1) * 0.3;
       const repsBlockMi = reps * repMi + recoveryMi;
-      let wuMi = 1.5, cdMi = 1;
-      // If the plan has a specific target for today, pad warmup + cooldown
-      // (60/40 split) so the prescription totals match the planned distance.
-      if (targetMi != null && targetMi > 0) {
-        const need = Math.max(0, targetMi - repsBlockMi);
-        wuMi = Math.round(need * 0.6 * 10) / 10;
-        cdMi = Math.round(need * 0.4 * 10) / 10;
-      }
+      const day = composeQualityDay({
+        family: 'threshold', atPaceMi: reps * repMi, floatMi: recoveryMi,
+        ceilingMi: targetMi != null && targetMi > 0 ? targetMi : null,
+      });
+      const padded = padToTarget(
+        targetMi != null && targetMi > 0 ? targetMi : undefined,
+        day.dayMi, repsBlockMi, day.warmupMi, day.cooldownMi,
+      );
+      const wuMi = padded.wuMi, cdMi = padded.cdMi;
       const total = wuMi + repsBlockMi + cdMi;
       return {
         type, total_mi: Math.round(total * 10) / 10,
@@ -372,13 +424,24 @@ export function prescriptionFor(
     }
 
     case 'tempo': {
-      const tempoMi = weeklyMi >= 45 ? 5 : weeklyMi >= 35 ? 4 : 3;
-      let wuMi = 1.5, cdMi = 1;
-      if (targetMi != null && targetMi > 0) {
-        const need = Math.max(0, targetMi - tempoMi);
-        wuMi = Math.round(need * 0.6 * 10) / 10;
-        cdMi = Math.round(need * 0.4 * 10) / 10;
-      }
+      // LOWVOL-4 · a continuous tempo is threshold work and spends the same
+      // weekly allowance a cruise set does. The ladder is the ceiling.
+      const tempoMi = Math.max(
+        0.5,
+        Math.min(
+          weeklyMi >= 45 ? 5 : weeklyMi >= 35 ? 4 : 3,
+          Math.round(atPaceSessionCapMi(Math.max(0, weeklyMi), 'threshold') * 2) / 2,
+        ),
+      );
+      const day = composeQualityDay({
+        family: 'threshold', atPaceMi: tempoMi, floatMi: 0,
+        ceilingMi: targetMi != null && targetMi > 0 ? targetMi : null,
+      });
+      const padded = padToTarget(
+        targetMi != null && targetMi > 0 ? targetMi : undefined,
+        day.dayMi, tempoMi, day.warmupMi, day.cooldownMi,
+      );
+      const wuMi = padded.wuMi, cdMi = padded.cdMi;
       const total = wuMi + tempoMi + cdMi;
       return {
         type, total_mi: total,
@@ -398,16 +461,21 @@ export function prescriptionFor(
     }
 
     case 'intervals': {
-      const reps = weeklyMi >= 45 ? 6 : 5;
       const repMi = 0.5; // 800m ≈ 0.5mi
+      // LOWVOL-4 · 5×800m was the floor for EVERYONE. It is now the ceiling,
+      // and Daniels' 8% decides what the week can actually pay for.
+      const reps = affordableReps(weeklyMi, 'interval', repMi, weeklyMi >= 45 ? 6 : 5);
       const recoveryMi = (reps - 1) * 0.25;
       const repsBlockMi = reps * repMi + recoveryMi;
-      let wuMi = 1.5, cdMi = 1;
-      if (targetMi != null && targetMi > 0) {
-        const need = Math.max(0, targetMi - repsBlockMi);
-        wuMi = Math.round(need * 0.6 * 10) / 10;
-        cdMi = Math.round(need * 0.4 * 10) / 10;
-      }
+      const day = composeQualityDay({
+        family: 'interval', atPaceMi: reps * repMi, floatMi: recoveryMi,
+        ceilingMi: targetMi != null && targetMi > 0 ? targetMi : null,
+      });
+      const padded = padToTarget(
+        targetMi != null && targetMi > 0 ? targetMi : undefined,
+        day.dayMi, repsBlockMi, day.warmupMi, day.cooldownMi,
+      );
+      const wuMi = padded.wuMi, cdMi = padded.cdMi;
       const total = wuMi + repsBlockMi + cdMi;
       return {
         type, total_mi: Math.round(total * 10) / 10,

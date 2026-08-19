@@ -1423,6 +1423,33 @@ export function tPaceFromGoal(
  * the composer) so the maintenance seeder anchors on the same convention.
  */
 export function conservativeVdotFromMileage(weeklyMi: number): number {
+  // ── HIGHVOL-1 (2026-08-19) · the ladder used to END at 45 mi/wk ────────────
+  //
+  // `if (weeklyMi >= 45) return 47` was the top rung, so a runner at 45 mi/wk
+  // and a runner at 120 mi/wk were handed the same anchor — and 47 happens to
+  // be the owner's own VDOT, which is how it got there. `Research/00a`
+  // §"Volume table" describes training volumes to 200 mi/wk across four
+  // competitive tiers; a ladder that flattens at the bottom of that range is
+  // asserting the runner's volume stops mattering exactly where doctrine says
+  // three more tiers begin.
+  //
+  // The rungs added here keep every property this function owes: monotonic,
+  // conservative, and CAPPED — `CONVENTION.cold-start-mileage-anchor` holds the
+  // top band at 50 on purpose, because this is a guess from a self-report and a
+  // guess must never reach a value the Daniels tables treat as a competitive
+  // performance. So a 100 mi/wk cold start is still anchored well below what
+  // they almost certainly run. That is deliberate and it is not the mechanism
+  // meant to close the gap: the anchor is marked `provisional_mileage` through
+  // `pace_blend`, the calibration intro runs the opening quality sessions by
+  // EFFORT rather than at this pace, and `reanchorActivePlan` replaces it the
+  // day a measured read lands — which for a runner at this volume is days.
+  // The rungs start at 70 rather than at 55 deliberately: 45-70 mi/wk is where
+  // the app's existing runners sit and their authored plans stay byte-for-byte
+  // what they were. The gap this closes is above them, where doctrine's table
+  // still had two tiers to go and the ladder had none.
+  if (weeklyMi >= 100) return 50;
+  if (weeklyMi >= 85) return 49;
+  if (weeklyMi >= 70) return 48;
   if (weeklyMi >= 45) return 47;
   if (weeklyMi >= 40) return 45;
   if (weeklyMi >= 35) return 43;

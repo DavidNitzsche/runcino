@@ -19,8 +19,8 @@ export type SimDistance = '5k' | '10k' | 'half' | 'marathon' | '50k' | '100k';
 export type SimRaceDistance = '5k' | '10k' | 'half' | 'marathon';
 export type SimExperience = 'beginner' | 'intermediate' | 'advanced';
 export type SimWhen = '<6mo' | '6-12mo' | '1-2yr' | '2+yr';
-export type SimWeeklyMi = 0 | 5 | 15 | 25 | 35 | 45;
-export type SimLongBucket = '0-3' | '3-6' | '6-10' | '10+';
+export type SimWeeklyMi = 0 | 5 | 15 | 25 | 35 | 45 | 55 | 70 | 90;
+export type SimLongBucket = '0-3' | '3-6' | '6-10' | '10+' | '16-22' | '22+';
 
 export interface SimRaceHistoryEntry {
   distance: SimRaceDistance;
@@ -149,14 +149,22 @@ export const WEEKLY_MI_OPTIONS: { value: SimWeeklyMi; label: string }[] = [
   { value: 15, label: '15 to 25 miles' },
   { value: 25, label: '25 to 35 miles' },
   { value: 35, label: '35 to 45 miles' },
-  { value: 45, label: '45+ miles' },
+  // HIGHVOL-1 (2026-08-19) · the ladder stopped at an open-ended '45+', so the
+  // simulator could not represent — and therefore could not audit — any runner
+  // in the sub-elite or elite rows of Research/00a §"Volume table".
+  { value: 45, label: '45 to 55 miles' },
+  { value: 55, label: '55 to 70 miles' },
+  { value: 70, label: '70 to 90 miles' },
+  { value: 90, label: '90+ miles' },
 ];
 
 export const LONG_BUCKET_OPTIONS: { value: SimLongBucket; label: string }[] = [
   { value: '0-3', label: 'Up to 3 miles' },
   { value: '3-6', label: '3 to 6 miles' },
   { value: '6-10', label: '6 to 10 miles' },
-  { value: '10+', label: '10+ miles' },
+  { value: '10+', label: '10 to 16 miles' },
+  { value: '16-22', label: '16 to 22 miles' },
+  { value: '22+', label: '22+ miles' },
 ];
 
 export const WHEN_OPTIONS: { value: SimWhen; label: string }[] = [
@@ -183,10 +191,24 @@ export function recentWeeklyMiFromBucket(b: SimWeeklyMi): number {
   if (b < 25) return 20;
   if (b < 35) return 30;
   if (b < 45) return 40; // VAR-06pt2 · 35-45 bucket stays 40
-  return 50;             // VAR-06pt2 · 45+ runners start/peak higher (Research/00a:194-206)
+  if (b < 55) return 50; // VAR-06pt2 · 45+ runners start/peak higher (Research/00a §"Volume table")
+  // HIGHVOL-1 (2026-08-19) · midpoints of the bands above; the open-ended top
+  // rung sits at the bottom of the marathon-elite row rather than its middle,
+  // keeping a self-report conservative.
+  if (b < 70) return 62;
+  if (b < 90) return 80;
+  return 100;
 }
 
 /** longest-run bucket → recentLongMi (state.ts HIST_LONG_MIDPOINTS: 2/5/8/12). */
 export function recentLongMiFromBucket(b: SimLongBucket): number {
-  return b === '0-3' ? 2 : b === '3-6' ? 5 : b === '6-10' ? 8 : 12;
+  if (b === '0-3') return 2;
+  if (b === '3-6') return 5;
+  if (b === '6-10') return 8;
+  // HIGHVOL-1 · '10+' keeps its 12 (byte-stable); the rungs above it exist
+  // because that anchor IS the 110%-of-prior-30d single-session spike guard,
+  // and an open-ended top rung held a 20-mile long runner to a 13-mile week 1.
+  if (b === '16-22') return 19;
+  if (b === '22+') return 22;
+  return 12;
 }
