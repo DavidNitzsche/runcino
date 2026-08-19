@@ -103,6 +103,20 @@ export interface RunVdotInput {
 export interface VdotInputs {
   raceCandidates: RaceVdotInput[];
   runCandidates: RunVdotInput[];
+  /**
+   * FLOOR-1 (2026-08-19) · the goal-relative honest-effort floor this load was
+   * gated at (`vdotRunFloorMi`: 3.0 for a 5K goal, 4.0 otherwise).
+   *
+   * Returned so a caller threads the SAME floor into `bestRecentVdot` that the
+   * loader used on the work-block gate, without a second `profile` read and
+   * without the chance of using a different one. `app/api/coach/read` used to
+   * omit the argument entirely and take the 4.0 default while the cron, the
+   * drift monitor, the generator and the targets route all passed the
+   * goal-relative value — the exact mismatch this file's own comment warns
+   * about ("the cron compute a 5K runner's VDOT while drift sees none → false
+   * drift"), in the direction warned about.
+   */
+  runFloorMi: number;
 }
 
 // Strava's numeric workoutType enum → string taxonomy bestRecentVdot expects.
@@ -146,7 +160,12 @@ export async function loadVdotInputs(
   userId: string,
   today: string,
   windowDays = VDOT_FULL_VALUE_DAYS,
+  /** FLOOR-1 · the goal-relative honest-effort floor. Resolved from the
+   *  runner's own goal when omitted, which is what every caller wants and what
+   *  none of them can forget once it is resolved here. */
+  runFloorMiArg?: number,
 ): Promise<VdotInputs> {
+  const runFloorMi = runFloorMiArg ?? await goalRunFloorMiForUser(userId);
 
   // ── Race candidates ──────────────────────────────────────────────────────
 
@@ -419,12 +438,24 @@ export async function loadVdotInputs(
   const maxHrValue = effMaxHr.bpm;
 
   const runCandidates: RunVdotInput[] = runRows.map((r) => {
-    // F10 · prefer the work-phase effort when the watch captured one
-    // big enough to read (vdotFromRun's own ≥4 mi floor). The whole-run
-    // numbers remain the fallback for Strava/HK-only runs.
+    // F10 · prefer the work-phase effort when the watch captured one big enough
+    // to read. The whole-run numbers remain the fallback for Strava/HK-only
+    // runs.
+    //
+    // FLOOR-1 (2026-08-19) · that floor is `runFloorMi`, not a hardcoded 4.
+    // The 2026-06-15 fix (`vdotRunFloorMi`) threaded a goal-relative floor of
+    // 3.0 mi for a 5K-goal runner and lowered the SQL prefilter above to
+    // `>= 3` for it; this line then re-imposed 4 one level up and undid it for
+    // exactly the cohort it was written for. A 5K runner's 3.2 mi work block
+    // failed the gate, so `distMi`/`rawSec` fell back to the WHOLE run —
+    // warm-up and cool-down included — and, worse, `zone` below went null with
+    // them, which makes `vdotFromRun` read a warm-up-dragged average pace
+    // through `vdotFromRace` as an all-out race. That is the ~3-point
+    // understatement the zone-aware read exists to prevent, applied to the one
+    // runner the floor fix was for.
     const workMi = r.work_mi != null ? Number(r.work_mi) : null;
     const workSec = r.work_seconds != null ? Math.round(Number(r.work_seconds)) : null;
-    const useWork = workMi != null && workSec != null && workMi >= 4 && workSec > 60;
+    const useWork = workMi != null && workSec != null && workMi >= runFloorMi && workSec > 60;
     const distMi = useWork ? workMi : (r.distance_mi != null ? Number(r.distance_mi) : null);
     const rawSec = useWork ? workSec : (r.finish_seconds != null ? Number(r.finish_seconds) : null);
 
@@ -484,7 +515,7 @@ export async function loadVdotInputs(
     };
   });
 
-  return { raceCandidates, runCandidates };
+  return { raceCandidates, runCandidates, runFloorMi };
 }
 
 /**

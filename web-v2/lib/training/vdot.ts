@@ -146,6 +146,19 @@ function mileSecFromVdot(vdot: number): number {
  */
 export const DANIELS_MAX_VALID_DISTANCE_MI = 26.3; // clears 26.2188/26.219/26.22 marathon constants
 
+/**
+ * CEIL-ZONE-1 (2026-08-19) · the published table's VDOT range, named once.
+ *
+ * `Research/01-pace-zones-vdot.md` §Core terms: "Range: ~30 (beginner) to
+ * 85+ (elite)". The pair was written as bare `30` / `85` in four places in this file
+ * (`vdotFromRace`'s clamp, `vdotFromTpace`'s and `vdotFromMpace`'s search
+ * bounds) and is now needed by a fifth reader (`vdotFromZonePace` in
+ * plan-target.ts), which is one more copy than a range this load-bearing should
+ * have. Bound by `PACE.daniels-table-range`.
+ */
+export const DANIELS_VDOT_MIN = 30;
+export const DANIELS_VDOT_MAX = 85;
+
 /** Daniels' VO2 cost of running at speed s (m/min). */
 function vo2Cost(metersPerMin: number): number {
   return -4.6 + 0.182258 * metersPerMin + 0.000104 * metersPerMin * metersPerMin;
@@ -184,7 +197,7 @@ export function vdotFromRace(finishSeconds: number, distanceMi: number): number 
   if (distanceMi > 0 && isMileRange(distanceMi)) return mileVdotFromSec(finishSeconds);
   const vdot = rawVdot(finishSeconds, distanceMi);
   if (vdot == null) return null;
-  if (vdot < 30 || vdot > 85) return null;
+  if (vdot < DANIELS_VDOT_MIN || vdot > DANIELS_VDOT_MAX) return null;
   return Math.round(vdot * 10) / 10; // 1 decimal place
 }
 
@@ -472,7 +485,7 @@ export function vdotFromTpace(tPaceSPerMi: number): number | null {
   if (!tPaceSPerMi || tPaceSPerMi <= 0) return null;
   const hit = T_PACE_VDOT_MEMO.get(tPaceSPerMi);
   if (hit !== undefined) return hit;
-  let lo = 30, hi = 85;
+  let lo = DANIELS_VDOT_MIN, hi = DANIELS_VDOT_MAX;
   let out: number | null = null;
   for (let i = 0; i < 50; i++) {
     const mid = (lo + hi) / 2;
@@ -495,7 +508,7 @@ export function vdotFromTpace(tPaceSPerMi: number): number | null {
  */
 export function vdotFromMpace(mPaceSPerMi: number): number | null {
   if (!mPaceSPerMi || mPaceSPerMi <= 0) return null;
-  let lo = 30, hi = 85;
+  let lo = DANIELS_VDOT_MIN, hi = DANIELS_VDOT_MAX;
   for (let i = 0; i < 50; i++) {
     const mid = (lo + hi) / 2;
     const t = predictRaceTime(mid, 26.2188);

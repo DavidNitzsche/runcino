@@ -38,8 +38,9 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { bestRecentVdot, VDOT_FULL_VALUE_DAYS } from '@/lib/training/vdot';
+import { bestRecentVdot, VDOT_FULL_VALUE_DAYS, vdotFromTpace } from '@/lib/training/vdot';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
+import { primaryZone } from '@/lib/plan/prescription-parser';
 // HEAT-DRIFT-1 (2026-08-17) · shared heat doctrine (Research/06 §1 table +
 // §12 dewpoint surcharge) + Magnus-Tetens dewpoint estimate + the
 // workout_weather_cache reader for runs without enriched weather fields.
@@ -116,10 +117,27 @@ const VOLUME_DRIFT_PCT_THRESHOLD = 40;
  *  Cite: docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 1.2 */
 const PER_TYPE_DRIFT_PCT_THRESHOLD = 20;
 
-/** VDOT drift threshold · drift > 2 = paces materially wrong.
- *  Daniels VDOT tables show each +1 VDOT shifts T/I paces ~5-7 s/mi ·
- *  +2 is a full pace tier. */
-const VDOT_DRIFT_THRESHOLD = 2.0;
+/**
+ * VDOT drift threshold · how far current fitness may sit from the plan's
+ * authored anchor before the plan is worth re-fitting.
+ *
+ * DRIFT-T-1 (2026-08-19) · this used to justify itself with a bare
+ * pace-per-point claim and no pointer. `Research/01-pace-zones-vdot.md`
+ * §"Update logic" states the corpus's own re-derivation quantum in code:
+ * `if abs(new_VDOT - current_VDOT) >= 1: regenerate_all_paces()`. One point is
+ * where doctrine says the prescribed paces have stopped being the right paces.
+ *
+ * This constant is deliberately TWO points, and that is ours, not Daniels'.
+ * §"Update logic" is about a MEASURED new VDOT replacing a measured old one —
+ * one number, one error term. This comparison has two estimates in it (the
+ * plan's anchor, inferred back out of its own prescribed T-paces, against
+ * `bestRecentVdot`), and its consequence is heavier: it writes a proposal
+ * asking the runner to re-author their block, not a silent pace re-derivation.
+ * So it fires at twice doctrine's quantum. `ADAPTATION.vdot-drift-threshold`
+ * parses the `>= 1` out of §"Update logic" and holds this between one and two
+ * times it, so the CONVENTION cannot quietly widen into "we never mention it".
+ */
+export const VDOT_DRIFT_THRESHOLD = 2.0;
 
 /** Staleness threshold · plans authored more than 8 weeks ago should
  *  re-evaluate. Most build cycles run 12-16 wks · 8 wks is the rough
@@ -388,61 +406,63 @@ async function loadCurrentWeeklyMileage(userUuid: string): Promise<number | null
  * targets-gap-panel-backend-landed.md for the gap doc).
  */
 async function inferPlanAnchorVdot(planId: string): Promise<number | null> {
-  const rows = (await pool.query<{ pace: number }>(
-    `SELECT pace_target_s_per_mi::int AS pace
+  const rows = (await pool.query<{ pace: number; sub_label: string | null }>(
+    // DRIFT-T-1 · ORDER BY, because `LIMIT 4` over an unordered scan is four
+    // arbitrary rows and this plan's T-pace ramps across the block — the same
+    // query could answer differently on two consecutive nights.
+    `SELECT pace_target_s_per_mi::int AS pace, sub_label
        FROM plan_workouts
       WHERE plan_id = $1
         AND type = 'threshold'
         AND pace_target_s_per_mi IS NOT NULL
         AND pace_target_s_per_mi > 0
+      ORDER BY date_iso, id
       LIMIT 4`,
     [planId],
   ).catch(() => ({ rows: [] }))).rows;
   if (rows.length === 0) return null;
 
+  // DRIFT-T-1 · a `threshold` ROW is not automatically a T-PACE row. The
+  // catalogue can author §5.4's sub-threshold intervals and §14.2's 10K work
+  // under the same type, and both carry a declared zone that is not T — the
+  // identical mistake CEIL-ZONE-1 fixed in plan-target.ts, on the identical
+  // column. Rows whose declared zone is not T are dropped rather than averaged
+  // in at the wrong zone; when none survive, the anchor is honestly unknown.
+  const tPaces = rows
+    .filter((r) => {
+      const z = primaryZone(r.sub_label);
+      return z == null || z === 'T';
+    })
+    .map((r) => r.pace);
+  if (tPaces.length === 0) return null;
+
   // Average T-pace across the plan's threshold workouts.
-  const avgPace = rows.reduce((s, r) => s + r.pace, 0) / rows.length;
+  const avgPace = tPaces.reduce((s, p) => s + p, 0) / tPaces.length;
 
-  // Inverse Daniels lookup: T-pace s/mi → VDOT (rough · we use the same
-  // VDOT-85 cap doctrine).
-  return inverseTPaceToVdot(avgPace);
-}
-
-/**
- * Daniels T-pace lookup table (s/mi · VDOT 30-65 covers 99% of runners).
- * Source: Daniels' Running Formula 4e, Table 2.2 · T-pace column.
- * Inverse-interpolates to estimate VDOT from observed T-pace.
- */
-const T_PACE_TABLE: ReadonlyArray<{ vdot: number; tPaceSec: number }> = [
-  { vdot: 30, tPaceSec: 660 },  // 11:00/mi
-  { vdot: 35, tPaceSec: 570 },  // 9:30/mi
-  { vdot: 40, tPaceSec: 503 },  // 8:23
-  { vdot: 45, tPaceSec: 451 },  // 7:31
-  { vdot: 50, tPaceSec: 408 },  // 6:48
-  { vdot: 55, tPaceSec: 373 },  // 6:13
-  { vdot: 60, tPaceSec: 343 },  // 5:43
-  { vdot: 65, tPaceSec: 317 },  // 5:17
-];
-
-function inverseTPaceToVdot(tPaceSec: number): number | null {
-  if (!isFinite(tPaceSec) || tPaceSec <= 0) return null;
-  // Below fastest tier · clamp
-  if (tPaceSec <= T_PACE_TABLE[T_PACE_TABLE.length - 1].tPaceSec) {
-    return T_PACE_TABLE[T_PACE_TABLE.length - 1].vdot;
-  }
-  // Above slowest tier · clamp
-  if (tPaceSec >= T_PACE_TABLE[0].tPaceSec) {
-    return T_PACE_TABLE[0].vdot;
-  }
-  for (let i = 0; i < T_PACE_TABLE.length - 1; i++) {
-    const hi = T_PACE_TABLE[i];      // slower vdot · slower pace
-    const lo = T_PACE_TABLE[i + 1];  // faster vdot · faster pace
-    if (tPaceSec >= lo.tPaceSec && tPaceSec <= hi.tPaceSec) {
-      const t = (tPaceSec - hi.tPaceSec) / (lo.tPaceSec - hi.tPaceSec);
-      return hi.vdot + (lo.vdot - hi.vdot) * t;
-    }
-  }
-  return null;
+  // DRIFT-T-1 (2026-08-19) · THE canonical inversion, not a second copy of it.
+  //
+  // This line used to call a local `inverseTPaceToVdot` over a hand-typed
+  // eight-row `T_PACE_TABLE` whose only citation was a book ("Daniels' Running
+  // Formula 4e, Table 2.2") rather than anything in `Research/`. It was a
+  // duplicate of `vdotFromTpace`, which IS bound to doctrine by
+  // `PACE.threshold-anchor` — and the two disagreed, systematically, in one
+  // direction, by an amount that GREW with fitness:
+  //
+  //   VDOT | canonical T | typed table |  the typed table's pace, read
+  //        |     (s/mi)  |     (s/mi)  |  canonically → VDOT
+  //     45 |         454 |         451 |  45.3
+  //     50 |         414 |         408 |  50.8
+  //     55 |         381 |         373 |  56.2
+  //     60 |         353 |         343 |  61.8
+  //     65 |         329 |         317 |  67.6
+  //
+  // The plan's anchor came out of the typed table and `loadCurrentVdot` comes
+  // out of `bestRecentVdot`, so the two sides of the subtraction below were
+  // read off different tables. At VDOT 65 the gap is 2.6 points — larger than
+  // `VDOT_DRIFT_THRESHOLD` itself, and signed the same way every time. A runner
+  // could be told their fitness had drifted UP from the plan when nothing had
+  // moved but which lookup table each half of the comparison used.
+  return vdotFromTpace(avgPace);
 }
 
 async function loadCurrentVdot(userUuid: string): Promise<number | null> {

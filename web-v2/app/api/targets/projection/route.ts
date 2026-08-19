@@ -594,6 +594,11 @@ export async function GET(req: NextRequest) {
       // AUDIT #36 · stale-anchor ±8% override (Research/02 §13.7) — the web seed
       // passes this; without it the iPhone band stayed falsely narrow.
       vdotAnchorDateISO, vdotAnchorDistanceMi,
+      // CI-CROSS-1 · and the §13.7 CROSS-SPAN rows, off the same answer
+      // computeGoalProjection already resolved. Recomputing the band here
+      // without this would leave the iPhone on the symmetric ±3% for a
+      // marathon predicted off a 5K while the web read the one-sided ±10%.
+      marathonSpecificTraining: gp?.marathonSpecificTraining ?? null,
     });
     const lastMove = lastMoveFromSeries(series);
     const held = heldDays(series, vdot);
