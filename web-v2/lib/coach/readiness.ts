@@ -84,6 +84,7 @@
  */
 import type { CoachState } from '@/lib/topics/types';
 import { recoveryCoverage } from './state-presence';
+import { sleepTargetForMileage } from './tier-rules';
 
 export interface ReadinessBreakdown {
   score: number | null;         // 0-100; null when all pillar inputs have no signal (cold start)
@@ -305,28 +306,65 @@ export function loadContextMultiplier(
 }
 
 /**
- * 2026-06-16 · #16 fix · load-scaled sleep target.
+ * The sleep target · ONE definition, doctrine's own.
  *
- * Research/00b §284 ("recovery requirements scale with absolute training
- * load") + §290 (20–40 mpw sleep band 7.5–9h). Under high acute:chronic
- * load the recovery bar rises: 8.0h at ACWR>1.0, 8.5h at >1.3; otherwise
- * the 7.5h floor.
+ * ── 2026-08-19 · sleep-target reconciliation ─────────────────────────────
  *
- * Lives here (the score module) rather than in readiness-brief because
- * the SCORE must use the same target the displayed baseline label does.
- * Before this fix the score hardcoded 7.5h while the brief's baseline
- * label showed the elevated target, so a 7.8h sleeper under load read
- * "+0.3h vs target" (scored as surplus) next to a baseline implying
- * "target 8.5h" (−0.7h short) — the score credited phantom surplus and
- * contradicted the delta. computeReadiness now derives this internally
- * so EVERY score consumer (brief, glance, watch, /api/readiness) agrees,
- * and the brief's label reads the same value.
+ * There were FIVE sleep targets in this codebase and only one of them was
+ * bound to the research:
+ *
+ *   tier-rules.ts     SLEEP_TARGET_BY_MPW   7.5 / 8 / 8.5 / 9 by mileage  ← bound
+ *   readiness.ts      this function          7.5 / 8 / 8.5 by ACWR
+ *   recovery-brief.ts SLEEP_TARGET_STANDARD  flat 8.5, long-run 9.25
+ *   recovery-phase.ts TARGET_H               hardcoded 7.5
+ *   sleep-coaching.ts TARGET_H / TREND_AVG_H 7.0 / 6.5
+ *
+ * A runner could be told he was half an hour OVER target on one surface and
+ * two hours UNDER it on another, on the same night's sleep.
+ *
+ * WHAT DOCTRINE ACTUALLY SAYS, and where this function was wrong. Research/00b
+ * §"Recovery Scaled to Weekly Mileage" opens "Recovery requirements scale with
+ * absolute training load" and then gives four per-mileage tables. ABSOLUTE
+ * training load is mileage. This function took those tables' numbers — 7.5,
+ * 8.0, 8.5 — and keyed them off the acute:chronic RATIO instead, which is a
+ * different quantity entirely: a runner holding a steady 70 mpw has an ACWR of
+ * 1.0 and was handed the 20-40 mpw target, while a runner ramping from 15 to
+ * 25 mpw got the 60-80 mpw one. The numbers were doctrine's; the axis was not.
+ *
+ * So the target is now `sleepTargetForMileage` from tier-rules.ts — the one
+ * implementation that reads the four bands out of their own tables at run time
+ * (registry claim TIER.sleep-floor-rises-with-mileage), and the one every
+ * other sleep consumer now calls too.
+ *
+ * WHAT WAS LOST: the ACWR sensitivity. Nothing in Research/00b supports it,
+ * and the mileage axis it replaces is what the doc actually indexes on. A
+ * runner in a genuine load spike is already served — the spike raises his
+ * chronic mileage, which raises his target, on doctrine's own axis.
+ *
+ * Lives here (the score module) rather than in readiness-brief because the
+ * SCORE must use the same target the displayed baseline label does. Before the
+ * 2026-06-16 fix the score hardcoded 7.5h while the brief's label showed a
+ * different one, so a 7.8h sleeper read "+0.3h vs target" next to a baseline
+ * implying "-0.7h short". That coupling is preserved; only the axis moved.
  */
-export function computeDynamicSleepTarget(acwr: number | null | undefined): number {
-  if (acwr == null) return 7.5;
-  if (acwr > 1.3) return 8.5;
-  if (acwr > 1.0) return 8.0;
-  return 7.5;
+export function computeDynamicSleepTarget(weeklyMpw: number | null | undefined): number {
+  return sleepTargetForMileage(weeklyMpw);
+}
+
+/**
+ * The runner's habitual weekly mileage, for the sleep target and anything else
+ * that scales recovery to load.
+ *
+ * CHRONIC, not acute. Research/00b scales the recovery requirement to what the
+ * runner HABITUALLY does, and `loadChronic28` is that; `loadAcute7` is this
+ * week, which on a cutback week would drop his sleep target exactly when he is
+ * absorbing the block. Falls back to acute only when there is no chronic leg
+ * yet, and to null when there is neither — `sleepTargetForMileage` then returns
+ * the entry row, which is doctrine's lightest guidance.
+ */
+export function weeklyMpwFor(state: Pick<CoachState, 'loadChronic28' | 'loadAcute7'>): number | null {
+  const perDay = state.loadChronic28 ?? state.loadAcute7;
+  return perDay != null && isFinite(perDay) ? perDay * 7 : null;
 }
 
 /**
@@ -386,7 +424,10 @@ export function computeReadiness(
 ): ReadinessBreakdown {
   let score = BASELINE;
   const inputs: ReadinessInput[] = [];
-  const sleepTarget = sleepTargetOverride ?? computeDynamicSleepTarget(state.loadAcwr);
+  // 2026-08-19 · the target is keyed on the runner's habitual MILEAGE, which
+  // is the axis Research/00b indexes on, not on the acute:chronic ratio. See
+  // computeDynamicSleepTarget for what was wrong and what it cost.
+  const sleepTarget = sleepTargetOverride ?? computeDynamicSleepTarget(weeklyMpwFor(state));
   // Ceiling the day's own pillars could reach · load may modulate the score
   // up to here and no further (D1: the modifier "can't create a score").
   let pillarCeiling = BASELINE;

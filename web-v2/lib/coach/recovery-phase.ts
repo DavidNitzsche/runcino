@@ -52,6 +52,9 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import { lutealAdjustedHrvBaseline } from './readiness';
+// 2026-08-19 · ONE sleep target · Research/00b, mileage-scaled.
+import { sleepTargetForMileage } from './tier-rules';
+import { computeAcwr } from './acwr';
 import { loadBiologicalSex } from './biological-sex';
 import type { CoachState } from '@/lib/topics/types';
 
@@ -323,7 +326,17 @@ export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPh
   // 30-day baseline excluding the post-anchor window.
   // 2026-06-16 · #19 · pass sex + cycle phase so the HRV status line
   // compares against the luteal-adjusted baseline (matches the score).
-  const pillars = await loadPillarBounceBack(userUuid, anchor.date, today, biologicalSex, cyclePhase);
+  // 2026-08-19 · sleep-target reconciliation. This file hardcoded 7.5h for
+  // every runner; Research/00b scales the target to habitual weekly mileage,
+  // so a 70 mpw runner sitting at 7.6h was being told he was "at target" when
+  // doctrine puts his bar at 8.5h. `chronic28` is the canonical habitual load
+  // (lib/coach/acwr.ts), and is null until a full chronic window is observable
+  // — in which case sleepTargetForMileage returns doctrine's entry row.
+  const load = await computeAcwr(userUuid, today).catch(() => null);
+  const sleepTargetH = sleepTargetForMileage(
+    load?.chronic28 != null ? load.chronic28 * 7 : null,
+  );
+  const pillars = await loadPillarBounceBack(userUuid, anchor.date, today, biologicalSex, cyclePhase, sleepTargetH);
 
   // 3 · Recovery % weighted by Plews-style importance.
   // 2026-06-01 · brief response: count how many pillars have full
@@ -393,6 +406,9 @@ async function loadPillarBounceBack(
   // 2026-06-16 · #19 · luteal-phase context for the HRV status line.
   biologicalSex: CoachState['biologicalSex'],
   cyclePhase: CoachState['cyclePhase'],
+  // 2026-08-19 · doctrine sleep target for THIS runner's mileage · replaces
+  // the hardcoded 7.5h in computeStatusLine.
+  sleepTargetH: number,
 ): Promise<RecoveryPhase['pillars']> {
   // 2026-06-03 · dropped wrist_temp + resp_rate from the recovery pillar
   // list. Both already appear as standalone tiles in the BODY section
@@ -506,7 +522,7 @@ async function loadPillarBounceBack(
     // a percentage they have to interpret.
     // 2026-06-16 · #19 · pass sex + cycle phase so the HRV delta is
     // measured against the luteal-adjusted baseline.
-    const { statusLine, severity } = computeStatusLine(spec, current, baseline, biologicalSex, cyclePhase);
+    const { statusLine, severity } = computeStatusLine(spec, current, baseline, biologicalSex, cyclePhase, sleepTargetH);
 
     out.push({
       key: spec.key,
@@ -528,8 +544,9 @@ async function loadPillarBounceBack(
  *
  *   · HRV (more = better, baseline comparison)
  *   · RHR (lower = better, baseline comparison · BELOW baseline = good)
- *   · Sleep (target 7.5h regardless of personal baseline · runners
- *     whose chronic avg is 6.5h still need 7.5h for recovery)
+ *   · Sleep (the doctrine target for the runner's weekly mileage,
+ *     regardless of personal baseline · a runner whose chronic avg is
+ *     6.5h still needs the full target for recovery)
  *   · HR Recovery (higher 60s drop = better)
  *
  * Severity bands are calibrated per-metric · ±1 bpm RHR doesn't deserve
@@ -542,6 +559,12 @@ function computeStatusLine(
   // 2026-06-16 · #19 · luteal-phase context · applied to the HRV branch.
   biologicalSex?: CoachState['biologicalSex'],
   cyclePhase?: CoachState['cyclePhase'],
+  // 2026-08-19 · the doctrine, mileage-scaled sleep target. Optional only
+  // because it follows two optional parameters; the one real caller always
+  // passes it. When absent the fallback is `sleepTargetForMileage(null)` —
+  // doctrine's own entry row for an unknown mileage, NOT a number written
+  // down here, which is what this reconciliation was removing.
+  sleepTargetH?: number,
 ): { statusLine: string; severity: 'good' | 'watch' | 'bad' | 'no-data' } {
   if (current == null || baseline == null) {
     return { statusLine: '', severity: 'no-data' };
@@ -553,9 +576,13 @@ function computeStatusLine(
     return { statusLine: '', severity: 'no-data' };
   }
   if (spec.key === 'sleep') {
-    // Sleep compares to TARGET 7.5h · not personal baseline. A runner
-    // whose chronic average is 6h still needs 7.5h to recover.
-    const TARGET_H = 7.5;
+    // Sleep compares to the doctrine TARGET · not to personal baseline. A
+    // runner whose chronic average is 6h still needs the target to recover.
+    //
+    // 2026-08-19 · the target is Research/00b's mileage-scaled one, passed in,
+    // not a hardcoded 7.5h. It is the same number readiness.ts, recovery-brief
+    // and sleep-coaching now use — one target, five former values.
+    const TARGET_H = sleepTargetH ?? sleepTargetForMileage(null);
     const shortBy = +(TARGET_H - current).toFixed(1);
     if (shortBy <= 0.3) return { statusLine: 'at target', severity: 'good' };
     if (shortBy <= 1.0) return { statusLine: `${shortBy.toFixed(1)}h short of target`, severity: 'watch' };

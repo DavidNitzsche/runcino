@@ -29,7 +29,7 @@
 import { pool } from '@/lib/db/pool';
 import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { computeReadiness, computeDynamicSleepTarget, lutealAdjustedHrvBaseline, READINESS_WEIGHTS, type ReadinessBreakdown, type ReadinessInput } from './readiness';
+import { computeReadiness, computeDynamicSleepTarget, weeklyMpwFor, lutealAdjustedHrvBaseline, READINESS_WEIGHTS, type ReadinessBreakdown, type ReadinessInput } from './readiness';
 import { loadReadinessHistory, loadReadinessBandBaseline, type PillarPoint, type ReadinessHistory } from './readiness-history';
 import type { CoachState } from '@/lib/topics/types';
 import { buildSynthesis } from './synthesis';
@@ -316,7 +316,7 @@ export async function loadReadinessBrief(
   // just the label). Before this the score used a hardcoded 7.5h while
   // the baseline label showed the elevated target, so the scored delta
   // and the displayed baseline disagreed. Now both read this one value.
-  const dynamicSleepTarget = computeDynamicSleepTarget(state.loadAcwr);
+  const dynamicSleepTarget = computeDynamicSleepTarget(weeklyMpwFor(state));
   const stateForScore: CoachState = { ...state };
   // 2026-08-17 · owner ruling · band the score against the runner's own
   // rolling normal. Without this the brief judged a personally-baselined

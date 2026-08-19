@@ -70,6 +70,9 @@ import { logSealSkip } from './seal';
 import { mutatePlan } from './mutate';
 import { preserveProgressionSql } from './progression-spec';
 import { stripResearchCitations } from './strip-citations';
+// 2026-08-19 · the convergence rule's copy composer · one voice for every
+// sentence the runner reads about a readiness-driven change.
+import { convergenceCopyFromPhrases } from '@/lib/coach/convergence';
 import {
   applyProgressionReshape,
   loadProgressionWeek,
@@ -208,6 +211,26 @@ export interface AdaptationAction {
   noteReason?: string;
   noteField?: string | null;
   noteValue?: Record<string, unknown>;
+  /**
+   * 2026-08-19 · per-ACTION override of the kind-level propose-first default.
+   *
+   * `PROPOSE_FIRST_TRIGGERS` answers "does this KIND of trigger normally ask
+   * first"; this answers "does THIS action, on this evidence, still need to".
+   * They are different questions and readiness is where they come apart:
+   * `readiness_pullback` at amber is an opinion the runner should gate, and at
+   * convergent red it is a settled change the owner asked to wake up to.
+   *
+   * The owner's ruling (2026-08-19) is that the change "is settled the night
+   * before". He moved the adaptation cron to 03:00 himself — "I dont want to
+   * wake up to change runs · that was annoying" — and a proposal sitting in a
+   * banner is the thing that was annoying, not the fix. It is the same call he
+   * made for `progression_gate` after proposals went 0-for-52 and auto-applied
+   * repairs went 4-for-4: reversibility is the control, not approval.
+   *
+   * Only ever set to skip the banner, never to force one. A kind that is not
+   * propose-first is unaffected.
+   */
+  forceApplyNow?: boolean;
   /** 2026-07-06 · anti-stacking coupling guard. A downgrade emitted to
    *  offset a reschedule is skipped when that reschedule did not land
    *  (e.g. seal-filtered) — otherwise the offset destroys a quality
@@ -727,7 +750,13 @@ export function partitionActionsForCron(actions: AdaptationAction[]): {
   const applyNow: AdaptationAction[] = [];
   const proposeFirst: AdaptationAction[] = [];
   for (const a of actions) {
-    (a.sourceTrigger != null && PROPOSE_FIRST_TRIGGERS.has(a.sourceTrigger) ? proposeFirst : applyNow).push(a);
+    // 2026-08-19 · `forceApplyNow` lets a single action opt out of its kind's
+    // propose-first default. See the field's docblock for why readiness needs
+    // it: amber asks, convergent red is already settled.
+    const proposes = a.sourceTrigger != null
+      && PROPOSE_FIRST_TRIGGERS.has(a.sourceTrigger)
+      && a.forceApplyNow !== true;
+    (proposes ? proposeFirst : applyNow).push(a);
   }
   return { applyNow, proposeFirst };
 }
@@ -1841,166 +1870,182 @@ async function detectTrainingGap(userId: string): Promise<AdaptationTrigger | nu
 }
 
 /**
- * Multi-signal readiness check via the readiness brief (2026-06-01).
+ * THE CONVERGENCE CHECK · readiness may change a session, on convergence only.
  *
- * Replaces detectRhrSpike + detectSleepCrater + any other single-pillar
- * heuristic. Reads the full brief (5 pillars + Plews HRV + 3-day streak
- * persistence) and fires ONLY when:
+ * ── The ruling (owner, 2026-08-19) ───────────────────────────────────────
  *
- *   · band === 'pull-back' (composite score < 50 · multiple pillars
- *     simultaneously degraded · per Research/15 §Recovery-Scores)  // was §interpretation · heading: ## Recovery Scores > ### Interpretation rules
+ *   "Readiness may change a session — but only on a convergence of
+ *    independent signals, never on one metric, and the change is settled
+ *    the night before."
  *
- *   OR
+ * This supersedes, and is the owner reconciling, the 2026-06-03 ruling that
+ * readiness INFORMS and never mutates. The comment above `detectHeatBail`
+ * still describes that older position and has been updated to point here; if
+ * you are reading this after finding that block, this is the change it
+ * anticipated and the conditions under which it was allowed.
  *
- *   · ≥1 active streak (per Research/15 Plews approach · 3-day
- *     persistence is the actionable signal · single-day swings are
- *     noise)
+ * ── What this replaces ───────────────────────────────────────────────────
  *
- * Severity ladder:
- *   · 'override' when band='pull-back' OR ≥2 active streaks
- *   · 'warn'      when ≥1 streak only
+ * The old gate was a four-way OR:
  *
- * The action handler (see actionsForTrigger) targets only TODAY's
- * workout · never reaches forward 2+ days to decide a future quality
- * day from yesterday's data.
+ *     if (!sustainedPullBack && !hasTieredStreak && !forcedByHardRule
+ *         && !subjectiveFired) return null;
+ *
+ * `hasTieredStreak` is ONE streak in ONE pillar, and it downgraded the day's
+ * quality session by itself. `subjectiveFired` is one bad post-run rating,
+ * also by itself. Both are exactly what the ruling forbids, and both are gone.
+ *
+ * ── What decides now ─────────────────────────────────────────────────────
+ *
+ * `lib/coach/convergence.ts` — a pure, exhaustively tested rule that grades
+ * five INDEPENDENT domains (autonomic, cardiac, sleep, load, subjective),
+ * applies a per-domain context filter to each, and returns green / amber /
+ * red. Three converging domains are needed before the plan may be touched;
+ * two produce a note and nothing else; one, however extreme, produces nothing.
+ * `lib/coach/_convergence.test.ts` proves the single-signal case for every
+ * domain at maximum severity.
+ *
+ * ── Why sleep is allowed back in ─────────────────────────────────────────
+ *
+ * The old code excluded sleep from adapter-relevant pillars entirely, on the
+ * owner's 2026-06-04 objection: "why did my plan change in the middle of the
+ * night???" That objection was about a BEHAVIOURAL input auto-downgrading a
+ * session ON ITS OWN. Under convergence it never can — sleep is one vote of
+ * the three required — and the ruling's own example of a convergence worth
+ * acting on is "three days of poor sleep and an elevated resting heart rate".
+ * So sleep counts, and cannot act.
+ *
+ * ── The tier dimension, and where it went ────────────────────────────────
+ *
+ * The old gate was tier-aware, on the owner's 2026-06-03 ask: "I think the
+ * plan adjustments and flags should be dependent on the level of the runner.
+ * So advanced maybe let the runner push through things more?" An advanced
+ * runner needed a 5-day streak where a beginner needed 3.
+ *
+ * That preference is NOT dropped — it moved to where it belongs. It still runs
+ * in full in `lib/coach/health-actions.ts`, the Health page's WHAT TO DO panel
+ * (`rules.streakDaysMin`, `rules.pullbackConsecutiveDays`,
+ * `HARD_RULES.pullbackForcedAck`), which ADVISES. What is now tier-blind is
+ * the bar for CHANGING THE PLAN, for two reasons:
+ *
+ *   · Research/15 has no tier dimension. The registry already holds this line
+ *     elsewhere — TIER.acwr-is-not-tiered fails the build if a tier carries
+ *     its own ACWR thresholds, and the sleep floor is asserted tier-blind for
+ *     the same reason. A convergence bar that moved with experience would be
+ *     the third invented tier axis, not the first principled one.
+ *   · With five domains, requiring four of an advanced runner is most of the
+ *     available evidence, and requiring two of a beginner is below the bar the
+ *     ruling sets for everyone.
+ *
+ * So the old comment's claim that "plan and panel must agree" is deliberately
+ * no longer true, and the disagreement is the point: the panel speaks at a
+ * tier-tuned threshold, the plan changes only on convergence. Do not
+ * re-converge them without re-opening the ruling.
+ *
+ * ── Severity and who decides ─────────────────────────────────────────────
+ *
+ * red   → 'override', and the action APPLIES in the 03:00 pass. The owner
+ *         moved that cron himself so the day would be settled before he saw
+ *         it; a proposal waiting in a banner is the thing he was fixing, not
+ *         the thing he asked for. Reversibility is the control, the same call
+ *         the owner made for `progression_gate` after proposals went 0-for-52.
+ * amber → 'warn', and the action is a NOTE. Nothing in plan_workouts moves.
  */
 async function detectReadinessPullback(userId: string): Promise<AdaptationTrigger | null> {
   try {
     const { loadCoachState } = await import('@/lib/coach/state-loader');
     const { loadReadinessBrief } = await import('@/lib/coach/readiness-brief');
-    const { tierRulesFor, HARD_RULES } = await import('@/lib/coach/tier-rules');
+    const {
+      gradeConvergence, convergenceCopy, convergencePhrases,
+    } = await import('@/lib/coach/convergence');
+    const {
+      loadConvergenceSeries, loadConvergenceContext,
+    } = await import('@/lib/coach/convergence-loader');
+
     const state = await loadCoachState(userId);
     if (!state) return null;
-    const brief = await loadReadinessBrief(userId, state);
-    if (!brief) return null;
+    const today = await runnerToday(userId);
 
-    // 2026-06-03 · tier-aware thresholds. Same rules as the Health
-    // page WHAT TO DO panel (lib/coach/health-actions.ts) · plan and
-    // panel must agree. Per David: "I think the plan adjustments and
-    // flags should be dependent on the level of the runner. So
-    // advanced maybe let the runner push through things more?"
-    //
-    // Advanced runners require:
-    //   · sustained pull-back (3+ consecutive days < 40), OR
-    //   · streak ≥ 5 days, OR
-    //   · 2+ simultaneous streaks ≥ 5 days each
-    // Beginners/intermediate: 2+ days pull-back OR streak ≥ 3 days.
-    //
-    // HARD RULES (always fire regardless of tier):
-    //   · 7-day sustained pull-back · trumps any tier setting
-    //   · We don't gate the streak detector itself · it still emits
-    //     3-day streaks for the streaks panel. Just the plan-adjust
-    //     trigger waits for the tier threshold before downgrading.
-    const tier = state.profile?.experience_level ?? null;
-    const rules = tierRulesFor(tier);
-
-    const streaks = brief.streaks ?? [];
-    const scoreTrend = brief.scoreTrend ?? [];
-    const recentScores = scoreTrend.slice(-rules.pullbackConsecutiveDays).map((s) => s.score);
-    const sustainedPullBack = recentScores.length >= rules.pullbackConsecutiveDays
-      && recentScores.every((s) => s < 40);
-
-    // 7-day hard rule · pull-back sustained that long forces an
-    // adaptation regardless of tier.
-    const last7Scores = scoreTrend.slice(-HARD_RULES.pullbackForcedAck).map((s) => s.score);
-    const forcedByHardRule = last7Scores.length === HARD_RULES.pullbackForcedAck
-      && last7Scores.every((s) => s < 40);
-
-    // Streaks gated by tier minimum AND by pillar.
-    //
-    // 2026-06-04 · SLEEP streaks excluded from plan-adapt triggers
-    // (David's "why did my plan change in the middle of the night???").
-    // Sleep is a BEHAVIORAL lever the runner controls · short sleep
-    // weeks are life, not fitness drift. Plan adapts to what the body
-    // shows in response to TRAINING (HRV / RHR / hr_recovery / load),
-    // not to lifestyle inputs. Sleep still surfaces in the streaks
-    // panel + WHAT TO DO actions (where it's a behavioral nudge, not
-    // an auto-downgrade trigger).
-    //
-    // The bar for "plan should change" is objective body response,
-    // not behavioral input. A runner sleeping poorly for a week
-    // doesn't need their quality session moved · they need a heads-up
-    // about the sleep itself. Their body will tell us via HRV/RHR if
-    // it's actually compromising training.
-    const adapterRelevantPillars = new Set(['hrv', 'rhr', 'hr_recovery', 'load']);
-    const tierStreaks = streaks.filter((s) =>
-      s.days >= rules.streakDaysMin && adapterRelevantPillars.has(s.pillar)
-    );
-    const hasTieredStreak = tierStreaks.length > 0;
-
-    // 2026-08-17 · SUBJECTIVE pillar (coach-experience pass). A WRECKED-
-    // equivalent POST-RUN read (RPE ≥ 8 / rating 'wrecked' / body chip
-    // 'cooked') on a day that was PLANNED EASY joins the objective
-    // evidence — extending the Saw et al. subjective-override doctrine
-    // readiness-brief.ts already applies to the morning prescription
-    // (composePrescription, "subjective wins on the day") into the
-    // adapter read. An easy day should not wreck the runner; when it
-    // does, the runner's own report is evidence the objective pillars
-    // may not show until tomorrow. Same propose-first banner as every
-    // pullback action (PROPOSE_FIRST_TRIGGERS) — the runner gates it.
-    // Quality/long days are excluded on purpose: those are ALLOWED to
-    // read hard. See lib/coach/acknowledge.ts subjectivePullbackSignal.
-    let subjectiveFired = false;
-    let subjectiveReason: string | null = null;
+    // The runner's own report on a day that was PLANNED EASY. Quality and long
+    // days are excluded inside `subjectivePullbackSignal` — those are allowed
+    // to read hard. Best-effort: the objective domains still decide without it.
+    let subjectiveWreckedOnEasy = false;
     let subjectiveDetail: Record<string, unknown> | null = null;
     try {
-      const { loadYesterdaySignals, subjectivePullbackSignal } = await import('@/lib/coach/acknowledge');
+      const { loadYesterdaySignals, subjectivePullbackSignal } =
+        await import('@/lib/coach/acknowledge');
       const sub = subjectivePullbackSignal(await loadYesterdaySignals(userId));
-      subjectiveFired = sub.fired;
-      subjectiveReason = sub.reason;
+      subjectiveWreckedOnEasy = sub.fired;
       subjectiveDetail = sub.detail as Record<string, unknown> | null;
-    } catch { /* best-effort · objective pillars still decide */ }
+    } catch { /* objective domains still decide */ }
 
-    if (!sustainedPullBack && !hasTieredStreak && !forcedByHardRule && !subjectiveFired) return null;
+    const [series, context] = await Promise.all([
+      loadConvergenceSeries(userId, today, { subjectiveWreckedOnEasy }),
+      loadConvergenceContext(userId, today),
+    ]);
 
-    // Reason · what TRULY tripped, in plain English.
-    const reasonParts: string[] = [];
-    if (tierStreaks.length > 0) {
-      const s = tierStreaks[0];
-      reasonParts.push(`${s.pillar.toUpperCase()} ${s.direction} ${s.days} days running`);
-    }
-    if (forcedByHardRule) {
-      reasonParts.push(`pull-back band sustained ${HARD_RULES.pullbackForcedAck} days (hard rule)`);
-    } else if (sustainedPullBack) {
-      reasonParts.push(`pull-back band sustained ${recentScores.length} days · score ${brief.score}/100`);
-    }
-    if (subjectiveFired && subjectiveReason) {
-      reasonParts.push(subjectiveReason);
-    }
+    const verdict = gradeConvergence(series, context);
+    if (verdict.grade === 'green') return null;
 
-    // Severity ladder: hard-rule sustained pull-back OR 2+ tier-streaks → override.
-    // Single tier-streak OR shorter sustained pull-back → warn (softer adjust).
-    // Subjective + any objective signal agreeing → override (the two
-    // disagree-free case is exactly when Saw et al. say act); subjective
-    // alone → warn (propose-first · runner gates it anyway).
-    const severity: 'warn' | 'override' = (
-      forcedByHardRule
-      || tierStreaks.length >= 2
-      || (sustainedPullBack && tierStreaks.length >= 1)
-      || (subjectiveFired && (hasTieredStreak || sustainedPullBack))
-    )
-      ? 'override'
-      : 'warn';
+    // The brief is read for the HEADLINE and score only — evidence for the
+    // record, never a second opinion that could fire on its own.
+    const brief = await loadReadinessBrief(userId, state).catch(() => null);
+
+    // Copy is authored by the rule, in coach voice, naming the convergence
+    // rather than any metric. The concrete session swap is filled in by
+    // actionsForTrigger, which is the only place that knows what today holds.
+    const line = convergenceCopy(verdict, null);
 
     return {
       kind: 'readiness_pullback',
-      severity,
-      reason: `Readiness pullback · ${reasonParts.join(' + ')}.`,
+      severity: verdict.grade === 'red' ? 'override' : 'warn',
+      reason: line ?? `Readiness convergence · ${verdict.rationale}.`,
       evidence: {
-        score: brief.score,
-        band: brief.band,
-        tier: tier ?? 'intermediate',
-        streaks: tierStreaks.map((s) => ({ pillar: s.pillar, direction: s.direction, days: s.days })),
-        sustainedPullBackDays: sustainedPullBack ? recentScores.length : 0,
-        forcedByHardRule,
-        subjective: subjectiveFired ? (subjectiveDetail ?? {}) : null,
-        headline: brief.headline,
+        convergenceGrade: verdict.grade,
+        converging: verdict.converging,
+        domains: verdict.domains.map((d) => ({
+          domain: d.domain,
+          dragging: d.dragging,
+          daysSustained: d.daysSustained,
+          suppressedBy: d.suppressedBy,
+          counts: d.counts,
+        })),
+        rationale: verdict.rationale,
+        // The authored fragments, so actionsForTrigger can re-author the line
+        // once it knows which session changed — one voice, one composer.
+        phrases: convergencePhrases(verdict),
+        baselineDays: series.baselineDays,
+        subjective: subjectiveWreckedOnEasy ? (subjectiveDetail ?? {}) : null,
+        score: brief?.score ?? null,
+        band: brief?.band ?? null,
+        headline: brief?.headline ?? null,
       },
     };
   } catch (e) {
     console.warn('[adapt] detectReadinessPullback failed:', e instanceof Error ? e.message : String(e));
     return null;
   }
+}
+
+/**
+ * Re-author the convergence line once the concrete session is known.
+ *
+ * The detector cannot write this: it grades the evidence before anything has
+ * looked at what today actually holds. The fragments it authored travel on the
+ * trigger's evidence and are recombined by the SAME composer in
+ * `lib/coach/convergence.ts`, so there is still exactly one place the sentence
+ * is built.
+ */
+function convergenceWhy(t: AdaptationTrigger, workoutType: string): string {
+  const raw = (t.evidence as Record<string, unknown> | undefined)?.phrases;
+  const phrases = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+  const named = workoutType === 'long' ? 'long run' : `${workoutType} session`;
+  const line = convergenceCopyFromPhrases(phrases, {
+    from: named,
+    to: 'easy running',
+    movedTo: null,
+  });
+  return line ?? t.reason;
 }
 
 async function detectRhrSpike(userId: string): Promise<AdaptationTrigger | null> {
@@ -2436,7 +2481,14 @@ export function fieldTestGate(g: {
  * The owner ruled (2026-06-03, `feedback_no_reactive_coach`) that READINESS
  * informs and never mutates: a composite wellness score is a soft, noisy,
  * whole-person inference, and the plan does not get to rewrite itself because
- * one of its pillars dipped. That ruling stands and nothing here touches it.
+ * one of its pillars dipped. Nothing in THIS trigger touches that.
+ *
+ * UPDATE 2026-08-19 · the owner has since reconciled that ruling himself:
+ * readiness may change a session, but only on a CONVERGENCE of independent
+ * signals, never on one metric, and only settled the night before. The clause
+ * below — "one of its pillars dipped" — is still exactly what may not move a
+ * plan, and `lib/coach/convergence.ts` is what enforces it. Heat remains a
+ * separate argument for a separate reason, set out below.
  *
  * Heat is different in kind, not in degree:
  *
@@ -2455,8 +2507,9 @@ export function fieldTestGate(g: {
  * is specific rather than deferential: a forecast is about a place and an hour,
  * and the runner may be on a treadmill, out at 5 a.m., or three states away.
  * The runner is the one who knows. If you are reading this while considering
- * whether readiness may now mutate too: it may not, and this trigger is not a
- * precedent for it.
+ * whether readiness may now mutate too: it may, on the terms in
+ * `lib/coach/convergence.ts` and on no others, and this trigger was never the
+ * precedent for it — the owner's 2026-08-19 ruling is.
  *
  * Fires only on the two doctrine rows that CHANGE THE SESSION — the
  * time-on-feet conversion and the hard bail. The yellow and red flag rows are
@@ -3292,10 +3345,36 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       //
       // Doctrine · David, 2026-06-01: "I don't know about a number
       // Sunday at 5:50 AM making a call for Tuesday. That doesn't
-      // seem right." Right · just-in-time decisions only, and only
-      // when the multi-signal brief says so (not a single RHR spike).
-      const todayKey = (await pool.query(
-        `SELECT pw.id FROM plan_workouts pw
+      // seem right." Right · just-in-time decisions only.
+      //
+      // 2026-08-19 · AMBER NEVER TOUCHES THE PLAN. Two converging domains
+      // are enough to tell the runner and not enough to change his day; the
+      // ruling permits a change only on a convergence, and the convergence
+      // bar for mutation is three (see lib/coach/convergence.ts). A note
+      // writes a coach_intents row and mutates nothing.
+      const grade = String(
+        (t.evidence as Record<string, unknown> | undefined)?.convergenceGrade ?? '',
+      );
+      if (grade !== 'red') {
+        return [{
+          kind: 'note',
+          noteReason: 'readiness_convergence_amber',
+          noteField: today,
+          noteValue: {
+            grade,
+            converging: (t.evidence as Record<string, unknown> | undefined)?.converging ?? [],
+          },
+          // A note is RECORD-ONLY · it writes a coach_intents row and mutates
+          // nothing. Routing it to the proposal writer would put a banner in
+          // front of the runner asking him to approve a change that does not
+          // exist, which is the 0-for-52 proposal problem in its purest form.
+          forceApplyNow: true,
+          why: t.reason,
+        }];
+      }
+
+      const todayKey = (await pool.query<{ id: string; type: string }>(
+        `SELECT pw.id, pw.type FROM plan_workouts pw
             JOIN training_plans tp ON tp.id = pw.plan_id
            WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
              AND pw.type IN ('threshold','tempo','intervals','vo2max','long')
@@ -3303,12 +3382,37 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
            LIMIT 1`,
         [userId, today]
       )).rows[0];
-      if (!todayKey) return [];
+      // Nothing hard scheduled · nothing to soften. A red morning on an easy
+      // day is a note, not a change: the day is already what a red morning
+      // would have asked for.
+      if (!todayKey) {
+        return [{
+          kind: 'note',
+          noteReason: 'readiness_convergence_red_no_quality',
+          noteField: today,
+          noteValue: { grade },
+          // Record-only · see the amber branch above.
+          forceApplyNow: true,
+          why: t.reason,
+        }];
+      }
+
+      // The session becomes easy running. A downgrade REDUCES load — it
+      // clears the pace target and the quality flag — so it cannot breach a
+      // dosing cap; `mutatePlan` re-validates the whole week regardless.
+      //
+      // Readiness does NOT re-anchor paces here or anywhere. What the runner
+      // is judged capable of comes from measured evidence; this changes only
+      // what is prescribed today.
       return [{
         kind: 'downgrade',
         workoutIds: [todayKey.id],
         newType: 'easy',
-        why: t.reason,
+        // Settled overnight, per the ruling · not a banner waiting for an
+        // answer. See AdaptationAction.forceApplyNow.
+        forceApplyNow: true,
+        // The runner is told what changed and why, naming the convergence.
+        why: convergenceWhy(t, todayKey.type),
       }];
     }
     case 'heat_bail': {

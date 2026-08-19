@@ -211,15 +211,24 @@ import {
   LOAD_CONTEXT_MULTIPLIER,
   loadContextMultiplier,
   computeReadiness,
+  computeDynamicSleepTarget,
 } from '@/lib/coach/readiness';
 import {
   ACWR_BANDS,
   SLEEP_FLOOR_TOLERANCE_H,
   SLEEP_TARGET_BY_MPW,
   sleepFloorForMileage,
+  sleepTargetForMileage,
   tierRulesFor,
   type ExperienceLevel,
 } from '@/lib/coach/tier-rules';
+// 2026-08-19 · the convergence rule · the owner's ruling that readiness may
+// change a session only on a convergence of independent signals.
+import {
+  CONVERGENCE,
+  gradeConvergence,
+  hrvFallbackLnDrop,
+} from '@/lib/coach/convergence';
 import {
   GRADE_COST_PER_PCT as ELEV_GRADE_COST_PER_PCT,
   GRADE_LINEAR_LIMIT_PCT,
@@ -7578,6 +7587,434 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       // The complement of the DEEPEST cut doctrine sanctions.
       const floor = 1 - cut[1] / 100;
       within(BASE_REBUILT_SHARE, [floor, floor], 'base-rebuilt share of sustained volume');
+    },
+  },
+  /* ───────────────────── THE CONVERGENCE RULE (2026-08-19) ─────────────────
+   *
+   * The owner ruled that readiness may change a session, "but only on a
+   * convergence of independent signals, never on one metric, and the change is
+   * settled the night before". These claims bind every number that rule turns
+   * on, and the two that are NOT in the research are labelled convention.
+   */
+  {
+    id: 'CONVERGENCE.rhr-threshold',
+    binds: ['lib/coach/convergence.ts#CONVERGENCE'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '### Decision rules',
+    claim:
+      'The cardiac domain fires at the first row of the RHR decision table whose action ' +
+      'signal is to ACT rather than to watch: a rise at or above the stated bpm, held for ' +
+      'the stated number of consecutive days. Both numbers are read out of that row. The ' +
+      'row above it says "Watch, do not act" on a one-day rise, which is why no domain in ' +
+      'this rule can be satisfied by a single reading.',
+    check({ cite }) {
+      const t = cite.table();
+      const row = t.rows.find((r) => /consecutive days/i.test(Object.values(r)[0] ?? ''));
+      if (!row) throw new Error('Research/15 RHR decision table no longer has a consecutive-days row');
+      const label = Object.values(row)[0];
+      const action = Object.values(row)[2] ?? '';
+      if (!/reduce intensity/i.test(action)) {
+        throw new Error(`the consecutive-days RHR row no longer says to reduce intensity · reads "${action}"`);
+      }
+      const bpm = Number(matchLiteral(label, /\+(\d+(?:\.\d+)?)\s*bpm/, 'RHR rise bpm')[1]);
+      const days = Number(matchLiteral(label, /for\s*(\d+)\+?\s*consecutive days/i, 'RHR days')[1]);
+      if (CONVERGENCE.rhrRiseBpm !== bpm) {
+        throw new Error(`CONVERGENCE.rhrRiseBpm is ${CONVERGENCE.rhrRiseBpm}, doctrine says ${bpm}`);
+      }
+      if (CONVERGENCE.rhrMinDays !== days) {
+        throw new Error(`CONVERGENCE.rhrMinDays is ${CONVERGENCE.rhrMinDays}, doctrine says ${days}`);
+      }
+    },
+  },
+  {
+    id: 'CONVERGENCE.hrv-persistence',
+    binds: ['lib/coach/convergence.ts#CONVERGENCE'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '### Interpretation matrix',
+    claim:
+      'The autonomic domain needs the 7-day rolling LnRMSSD to fall further than the ' +
+      'smallest worthwhile change for the number of consecutive days the interpretation ' +
+      'matrix names against "Reduce intensity". One day, or two, is not that row.',
+    check({ cite }) {
+      const t = cite.table();
+      const row = t.rows.find((r) => /reduce intensity/i.test(Object.values(r)[2] ?? ''));
+      if (!row) throw new Error('Research/15 HRV interpretation matrix no longer has a reduce-intensity row');
+      const label = Object.values(row)[0];
+      const days = Number(matchLiteral(label, /(\d+)\s*days/i, 'HRV persistence days')[1]);
+      if (CONVERGENCE.hrvMinDays !== days) {
+        throw new Error(`CONVERGENCE.hrvMinDays is ${CONVERGENCE.hrvMinDays}, doctrine says ${days}`);
+      }
+      if (!/SWC/i.test(label)) {
+        throw new Error('the reduce-intensity HRV row no longer measures against the SWC');
+      }
+    },
+  },
+  {
+    id: 'CONVERGENCE.hrv-smallest-worthwhile-change',
+    binds: ['lib/coach/convergence.ts#CONVERGENCE', 'lib/coach/convergence.ts#hrvFallbackLnDrop'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '### Plews approach (peer-reviewed)',
+    claim:
+      'The SWC is the stated multiple of the standard deviation of the 7-day rolling ' +
+      'average, and the fallback used before that SD exists is the same section’s ' +
+      'alternative form, a raw RMSSD percentage drop. Both numbers are read out of the ' +
+      'section, and the fallback is converted into log space from the percentage rather ' +
+      'than written down twice.',
+    check({ cite }) {
+      const text = cite.text();
+      const mult = Number(matchLiteral(
+        text, /smallest worthwhile change \(SWC\)\*\*\s*as\s*`([\d.]+)\s*×\s*SD`/i, 'SWC multiple',
+      )[1]);
+      if (CONVERGENCE.hrvSwcSdMultiple !== mult) {
+        throw new Error(`CONVERGENCE.hrvSwcSdMultiple is ${CONVERGENCE.hrvSwcSdMultiple}, doctrine says ${mult}`);
+      }
+      const pct = Number(matchLiteral(text, /≈\s*([\d.]+)%\s*raw RMSSD drop/i, 'raw RMSSD fallback')[1]);
+      if (CONVERGENCE.hrvFallbackDropPct !== pct) {
+        throw new Error(`CONVERGENCE.hrvFallbackDropPct is ${CONVERGENCE.hrvFallbackDropPct}, doctrine says ${pct}`);
+      }
+      // And the log-space form has to BE that percentage, not a second number.
+      const expected = -Math.log(1 - pct / 100);
+      if (Math.abs(hrvFallbackLnDrop() - expected) > 1e-9) {
+        throw new Error('hrvFallbackLnDrop no longer derives from the cited percentage');
+      }
+    },
+  },
+  {
+    id: 'CONVERGENCE.baseline-minimum-days',
+    binds: ['lib/coach/convergence.ts#CONVERGENCE', 'lib/coach/convergence.ts#gradeConvergence'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '### Establishing a baseline',
+    claim:
+      'Nothing may fire before the runner has the minimum days of data doctrine requires ' +
+      'before drawing conclusions at all. A day-one runner has no personal normal, so every ' +
+      'deviation would be measured against nothing. The gate is enforced, not just declared: ' +
+      'a runner one day short of it grades green with every domain at maximum severity.',
+    check({ cite }) {
+      const days = Number(matchLiteral(
+        cite.text(), /Minimum\s*(\d+)\s*days of data/i, 'baseline minimum days',
+      )[1]);
+      if (CONVERGENCE.minBaselineDays !== days) {
+        throw new Error(`CONVERGENCE.minBaselineDays is ${CONVERGENCE.minBaselineDays}, doctrine says ${days}`);
+      }
+      const everythingWrong = {
+        hrvLnRolling: Array.from({ length: 30 }, () => Math.log(15)),
+        hrvLnBaseline: Math.log(60),
+        hrvLnSd60d: 0.1,
+        rhrDaily: Array.from({ length: 30 }, () => 75),
+        rhrBaseline: 48,
+        sleepNightly: Array.from({ length: 30 }, () => 3),
+        acwrDaily: Array.from({ length: 30 }, () => 4),
+        subjectiveWreckedOnEasy: true,
+        weeklyMpw: 45,
+      };
+      const ctx = {
+        daysToNextRace: null, daysSinceLastRace: null, postRaceWindowDays: 14,
+        inPlannedCutback: false, illnessActive: false, daysSinceTravel: null,
+        heatFlaggedDaysRecent: 0, alcoholLastNight: false,
+      };
+      const cold = gradeConvergence({ ...everythingWrong, baselineDays: days - 1 }, ctx);
+      if (cold.grade !== 'green') {
+        throw new Error(`a runner with ${days - 1} baseline days graded ${cold.grade} · the cold-start gate is not enforced`);
+      }
+    },
+  },
+  {
+    id: 'CONVERGENCE.acwr-danger-zone',
+    binds: ['lib/coach/convergence.ts#CONVERGENCE'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '| ACWR | Zone |',
+    claim:
+      'The load domain votes only in Gabbett’s danger zone, at the same threshold ' +
+      'ACWR_BANDS already carries, and it can never act alone. Doctrine’s own critique ' +
+      'in this section is the reason: ACWR is "a directional sanity check, not a stop-light", ' +
+      '"a ratio of 1.4 in itself is not a verdict", and the instruction is to "Couple with ' +
+      'HRV trend, RHR, sleep, and subjective state" — which is the convergence rule in ' +
+      'doctrine’s own words.',
+    check({ cite }) {
+      const t = cite.table();
+      const danger = t.rows.find((r) => /danger/i.test(r.Zone ?? ''));
+      if (!danger) throw new Error('Research/15 ACWR table no longer has a danger row');
+      const threshold = parseBand(danger.ACWR)[0];
+      if (CONVERGENCE.acwrDanger !== threshold) {
+        throw new Error(`CONVERGENCE.acwrDanger is ${CONVERGENCE.acwrDanger}, doctrine says ${threshold}`);
+      }
+      if (CONVERGENCE.acwrDanger !== ACWR_BANDS.danger) {
+        throw new Error('the convergence rule and ACWR_BANDS disagree about the danger threshold');
+      }
+      const text = cite.text();
+      if (!/Couple with HRV trend, RHR, sleep, and subjective state/i.test(text)) {
+        throw new Error('Research/15 no longer instructs coupling ACWR with the other signals · re-read the rule');
+      }
+    },
+  },
+  {
+    id: 'CONVERGENCE.travel-confound-window',
+    binds: ['lib/coach/convergence.ts#CONVERGENCE'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '### Confounders that elevate RHR independent of training stress',
+    claim:
+      'The per-domain context filters are the operational form of this section. The travel ' +
+      'window is read out of its own sentence — travel and altitude elevate nocturnal ' +
+      'HR for a stated number of days — and the engine takes the WIDE end, so the filter ' +
+      'is generous to the runner rather than to the detector.',
+    check({ cite }) {
+      const band = parseBand(matchLiteral(
+        cite.text(), /elevates nocturnal HR ([\d\s–—-]+) days/i, 'travel confound days',
+      )[1]);
+      if (CONVERGENCE.travelConfoundDays !== band[1]) {
+        throw new Error(
+          `CONVERGENCE.travelConfoundDays is ${CONVERGENCE.travelConfoundDays}, doctrine’s wide end is ${band[1]}`,
+        );
+      }
+    },
+  },
+  {
+    id: 'CONVERGENCE.three-corroborating-signals',
+    binds: ['lib/coach/convergence.ts#CONVERGENCE', 'lib/coach/convergence.ts#gradeConvergence'],
+    doc: 'BuildResearch/D1-recovery-score-methodology.md',
+    anchor: 'three corroborating signals start to look like evidence',
+    claim:
+      'THREE independent domains, not two, before the plan may be touched — and one, ' +
+      'however extreme, may never touch it. This is the owner’s ruling of 2026-08-19 ' +
+      'enforced rather than described: the check drives every domain to maximum severity ON ' +
+      'ITS OWN and requires green every time. The number itself is D1 §3’s, whose ' +
+      'honest status is stated in convergence.ts: a finding about what READS as evidence, ' +
+      'not a physiological threshold. The physiology is per-domain and is Research/15’s.',
+    check() {
+      if (CONVERGENCE.redMinDomains !== 3) {
+        throw new Error(`CONVERGENCE.redMinDomains is ${CONVERGENCE.redMinDomains} · the ruling requires a convergence, and three is the corroboration bar`);
+      }
+      if (CONVERGENCE.amberMinDomains >= CONVERGENCE.redMinDomains) {
+        throw new Error('the amber bar must sit below the red bar · saying something should need less evidence than doing something');
+      }
+      const ctx = {
+        daysToNextRace: null, daysSinceLastRace: null, postRaceWindowDays: 14,
+        inPlannedCutback: false, illnessActive: false, daysSinceTravel: null,
+        heatFlaggedDaysRecent: 0, alcoholLastNight: false,
+      };
+      const base = {
+        hrvLnRolling: Array.from({ length: 30 }, () => Math.log(60)),
+        hrvLnBaseline: Math.log(60),
+        hrvLnSd60d: 0.1,
+        rhrDaily: Array.from({ length: 30 }, () => 48),
+        rhrBaseline: 48,
+        sleepNightly: Array.from({ length: 30 }, () => 8.2),
+        acwrDaily: Array.from({ length: 30 }, () => 1.0),
+        subjectiveWreckedOnEasy: false,
+        baselineDays: 60,
+        weeklyMpw: 45,
+      };
+      // Each domain, alone, as loud as it can possibly be.
+      const singles: Array<[string, Record<string, unknown>]> = [
+        ['cardiac', { rhrDaily: Array.from({ length: 30 }, () => 95) }],
+        ['autonomic', { hrvLnRolling: Array.from({ length: 30 }, () => Math.log(2)) }],
+        ['sleep', { sleepNightly: Array.from({ length: 30 }, () => 0.5) }],
+        ['load', { acwrDaily: Array.from({ length: 30 }, () => 9) }],
+        ['subjective', { subjectiveWreckedOnEasy: true }],
+      ];
+      for (const [name, over] of singles) {
+        const v = gradeConvergence({ ...base, ...over } as Parameters<typeof gradeConvergence>[0], ctx);
+        if (v.converging.length !== 1) {
+          throw new Error(`the ${name} fixture no longer isolates one domain (${v.converging.join(', ')})`);
+        }
+        if (v.grade !== 'green') {
+          throw new Error(`ONE METRIC MOVED A SESSION · ${name} alone graded ${v.grade}`);
+        }
+      }
+    },
+  },
+  {
+    id: 'CONVERGENCE.hr-recovery-is-not-a-domain',
+    binds: ['lib/coach/convergence.ts#ConvergenceDomain'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '### What each one actually measures',
+    claim:
+      'The domains have to be INDEPENDENT or the rule is theatre. HR recovery is the same ' +
+      'cardiac system RHR measures, from the same sensor, and Research/15 gives it no row of ' +
+      'its own anywhere — the composite-score section lists HRV, RHR and sleep as the ' +
+      'underlying physiology these scores blend. Admitting HR recovery as a sixth domain ' +
+      'would let one elevated heart rate vote twice and reach the bar by itself, so it is ' +
+      'excluded from the domain union entirely.',
+    check({ cite }) {
+      const src = sourceOf('web-v2/lib/coach/convergence.ts');
+      const union = matchLiteral(
+        src, /export type ConvergenceDomain =([\s\S]*?);/, 'ConvergenceDomain union',
+      )[1];
+      if (/hr_recovery|hrRecovery/.test(union)) {
+        throw new Error('HR recovery has been admitted as a convergence domain · it is not independent of RHR');
+      }
+      if (!/HR RECOVERY IS DELIBERATELY NOT A SIXTH DOMAIN/.test(src)) {
+        throw new Error('convergence.ts no longer records why HR recovery is excluded');
+      }
+      // Doctrine's own account of what these composites are made of.
+      if (!/HRV, RHR, sleep/i.test(cite.text())) {
+        throw new Error('Research/15 §Recovery Scores no longer names HRV/RHR/sleep as the underlying physiology');
+      }
+    },
+  },
+  {
+    id: 'CONVENTION.convergence-load-persistence',
+    binds: ['lib/coach/convergence.ts#CONVERGENCE'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '| ACWR | Zone |',
+    claim:
+      'THE TWO-DAY PERSISTENCE ON THE LOAD DOMAIN IS A CONVENTION. Research/15 gives ACWR no ' +
+      'persistence requirement, because it declines to make the ratio a verdict at all. Two ' +
+      'days matches the shortest persistence doctrine asks of any domain it DOES quantify ' +
+      '(RHR), so load is held to no weaker a standard than the signals with real thresholds. ' +
+      'It is bounded by that: never below the RHR bar, and never a single day.',
+    check() {
+      if (CONVERGENCE.acwrMinDays < 2) {
+        throw new Error(`CONVERGENCE.acwrMinDays is ${CONVERGENCE.acwrMinDays} · a single day is never actionable`);
+      }
+      if (CONVERGENCE.acwrMinDays < CONVERGENCE.rhrMinDays) {
+        throw new Error('the load domain is held to a weaker persistence bar than RHR, which doctrine actually quantifies');
+      }
+      const src = sourceOf('web-v2/lib/coach/convergence.ts');
+      if (!/CONVENTION · not read out of the research[\s\S]{0,600}acwrMinDays/.test(src)) {
+        throw new Error('convergence.ts no longer labels acwrMinDays a convention');
+      }
+    },
+  },
+  {
+    id: 'CONVENTION.convergence-heat-window',
+    binds: ['lib/coach/convergence.ts#CONVERGENCE'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '### Confounders that elevate RHR independent of training stress',
+    claim:
+      'THE THREE-DAY HEAT WINDOW IS A CONVENTION. Doctrine names "hot bedroom" as an RHR ' +
+      'confounder of the same magnitude as the threshold the cardiac domain fires on, but ' +
+      'gives it no duration — unlike travel, which carries an explicit 3-5 day figure on ' +
+      'the same line. Three days errs toward not counting a cardiac reading heat could ' +
+      'explain, and is bounded below by the travel window doctrine does state.',
+    check({ cite }) {
+      const text = cite.text();
+      if (!/hot bedroom/i.test(text)) {
+        throw new Error('Research/15 no longer names a hot bedroom as an RHR confounder');
+      }
+      if (/hot bedroom[^)]*\)\s*(?:for|over)?\s*\d+\s*(?:-|–)?\s*\d*\s*days/i.test(text)) {
+        throw new Error('doctrine now states a heat duration · replace this convention with the cited number');
+      }
+      if (CONVERGENCE.heatConfoundDays < 1 || CONVERGENCE.heatConfoundDays > CONVERGENCE.travelConfoundDays) {
+        throw new Error(
+          `CONVERGENCE.heatConfoundDays is ${CONVERGENCE.heatConfoundDays} · outside the range bounded by the cited travel window`,
+        );
+      }
+      const src = sourceOf('web-v2/lib/coach/convergence.ts');
+      if (!/CONVENTION · not read out of the research[\s\S]{0,700}heatConfoundDays/.test(src)) {
+        throw new Error('convergence.ts no longer labels heatConfoundDays a convention');
+      }
+    },
+  },
+
+  /* ───────────────────── SLEEP TARGET · ONE NUMBER (2026-08-19) ────────────
+   *
+   * There were five sleep targets and one of them was bound. These claims hold
+   * the reconciliation in place.
+   */
+  {
+    id: 'SLEEP.one-target-across-every-surface',
+    binds: [
+      'lib/coach/readiness.ts#computeDynamicSleepTarget',
+      'lib/coach/recovery-brief.ts#computeSleepTarget',
+      'lib/coach/recovery-phase.ts#computeStatusLine',
+      'lib/coach/sleep-coaching.ts#computeSleepCoaching',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: 'Recovery requirements scale with absolute training load',
+    claim:
+      'Every surface that tells the runner about sleep reads ONE target, and it is the ' +
+      'mileage-scaled one doctrine actually states. Four of the five former values were ' +
+      'unbound: an ACWR-keyed ladder in readiness.ts (doctrine’s numbers on the wrong ' +
+      'axis — this section says ABSOLUTE training load, which is mileage, not a ratio), ' +
+      'a flat 8.5/9.25 in recovery-brief.ts read off the sleep-EXTENSION delta table, a ' +
+      'hardcoded 7.5 in recovery-phase.ts, and a 7.0/6.5 pair in sleep-coaching.ts that sat ' +
+      'BELOW doctrine’s lowest target. All four now route through sleepTargetForMileage.',
+    check({ cite }) {
+      if (!/absolute training load/i.test(cite.text())) {
+        throw new Error('Research/00b no longer scales recovery to absolute training load · re-read the axis');
+      }
+      // The target moves with mileage on every surface that has one.
+      const light = computeDynamicSleepTarget(30);
+      const heavy = computeDynamicSleepTarget(95);
+      if (!(heavy > light)) {
+        throw new Error(`the readiness sleep target does not rise with mileage (${light}h at 30 mpw, ${heavy}h at 95)`);
+      }
+      if (computeDynamicSleepTarget(30) !== sleepTargetForMileage(30)) {
+        throw new Error('readiness.ts carries a sleep target of its own again');
+      }
+      // And the retired constants are gone, not merely unused.
+      const forbidden: Array<[string, RegExp, string]> = [
+        ['web-v2/lib/coach/recovery-brief.ts', /SLEEP_TARGET_STANDARD_H|SLEEP_TARGET_LONG_RUN_H/, 'the flat 8.5/9.25 targets'],
+        ['web-v2/lib/coach/sleep-coaching.ts', /const TARGET_H\s*=|const TREND_AVG_H\s*=/, 'the 7.0/6.5 pair'],
+        ['web-v2/lib/coach/recovery-phase.ts', /const TARGET_H = 7\.5/, 'the hardcoded 7.5'],
+      ];
+      for (const [file, re, what] of forbidden) {
+        if (re.test(sourceOf(file))) {
+          throw new Error(`${what} is back in ${file} · the sleep target has forked again`);
+        }
+      }
+    },
+  },
+  {
+    id: 'SLEEP.extension-is-a-delta-not-a-target',
+    binds: ['lib/coach/recovery-brief.ts#computeSleepTarget'],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Sleep Extension and Sleep Banking',
+    claim:
+      'The sleep-extension table states an AMOUNT TO ADD, not a target to sit at. Reading it ' +
+      'as an absolute is what produced the flat 8.5h bar. The long-run target is now the ' +
+      'runner’s mileage-scaled target PLUS this table’s own low-end increment, and ' +
+      'the increment is checked against the doc rather than written down as 0.75.',
+    check({ cite }) {
+      const row = cite.table().rows.find((r) => /extension/i.test(Object.values(r)[0] ?? ''));
+      if (!row) throw new Error('Research/00b no longer has a sleep-extension row');
+      const protocol = Object.values(row)[1] ?? '';
+      const mins = parseBand(matchLiteral(protocol, /Add ([\d\s–—-]+) min/i, 'sleep extension minutes')[1]);
+      const lowEndHours = mins[0] / 60;
+      const src = sourceOf('web-v2/lib/coach/recovery-brief.ts');
+      const engine = Number(matchLiteral(
+        src, /const SLEEP_EXTENSION_LONG_RUN_H = ([\d.]+);/, 'long-run sleep extension',
+      )[1]);
+      if (Math.abs(engine - lowEndHours) > 0.01) {
+        throw new Error(`SLEEP_EXTENSION_LONG_RUN_H is ${engine}h, doctrine’s low end is ${lowEndHours}h`);
+      }
+    },
+  },
+  {
+    id: 'READINESS.one-weight-table',
+    binds: ['lib/coach/readiness.ts#READINESS_WEIGHTS', 'lib/coach/recovery-brief.ts#computeScore'],
+    doc: 'BuildResearch/D1-recovery-score-methodology.md',
+    anchor: "create* a score; it can only modulate one",
+    claim:
+      'There is ONE readiness weight table. recovery-brief.ts carried a second, unbound one ' +
+      '(HRV .45 / RHR .25 / TSB .20 / SLEEP .10) under the comment "per execution brief", ' +
+      'naming a source that does not exist in this repo, and it repeated both errors the ' +
+      '2026-08-17 audit had already fixed in readiness.ts: sleep at half its doctrine weight, ' +
+      'and load as a PILLAR rather than a multiplier. It now imports READINESS_WEIGHTS and ' +
+      'applies training form as a multiplier, so the two composites cannot drift again.',
+    check() {
+      const src = sourceOf('web-v2/lib/coach/recovery-brief.ts');
+      if (/const W_HRV = 0\.|const W_RHR = 0\.|const W_SLEEP = 0\.|const W_TSB\b/.test(src)) {
+        throw new Error('recovery-brief.ts carries its own readiness weights again');
+      }
+      if (!/READINESS_WEIGHTS/.test(src)) {
+        throw new Error('recovery-brief.ts no longer imports the one weight table');
+      }
+      // Load is a multiplier there, as it is in readiness.ts.
+      if (!/recoveryFormMultiplier/.test(src)) {
+        throw new Error('recovery-brief.ts no longer applies training form as a multiplier');
+      }
+      const mult = matchLiteral(
+        src, /export const RECOVERY_FORM_MULTIPLIER = \{([\s\S]*?)\} as const;/, 'RECOVERY_FORM_MULTIPLIER',
+      )[1];
+      const values = [...mult.matchAll(/([\d.]+),/g)].map((m) => Number(m[1]));
+      // D1 §2.4's stated range for a load-context multiplier.
+      for (const v of values) {
+        if (v < 0.85 || v > 1.10) {
+          throw new Error(`RECOVERY_FORM_MULTIPLIER carries ${v}, outside D1 §2.4's [0.85, 1.10]`);
+        }
+      }
     },
   },
 ];
