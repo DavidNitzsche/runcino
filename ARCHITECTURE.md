@@ -182,7 +182,8 @@ Ordered by how often they settle an argument.
 | `Design/adaptive-progression-engine.md` | The coaching engine. Three models, eleven levers, the control loop |
 | `Design/coach-voice-brief.md` | How the coach speaks, and the situation library |
 | `Design/goal-pursuit-doctrine.md` | Goal feasibility, trajectory, renegotiation |
-| `Design/running-app-design-brief-v2.md` | Visual language — palette, type, composition |
+| `Faff/design/0819/design_handoff_faff_iphone_app v5/` | **iPhone** visual language. Supersedes brief v2 for the phone |
+| `Design/running-app-design-brief-v2.md` | Visual language for **web and watch only** — palette, type, composition |
 | `Research/` | The training science every constant cites. `Research/INDEX.md` is the map |
 
 `Design/engine-doctrine-evidence-and-levers.md` was absorbed into the progression engine doc
