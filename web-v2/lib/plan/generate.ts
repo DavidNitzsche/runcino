@@ -65,6 +65,14 @@ import { progressionSpecFields } from './progression-spec';
 import { validateComposedPlan } from './validate';
 import { mutatePlan } from './mutate';
 import { EASY_SHARE_FLOOR, weekIntensity, splitDay } from './intensity-distribution';
+// DOCTRINE-DOSING-2 · the composer sizes to the SAME doctrine the gate checks.
+// Importing the budget from the module that measures the breach is what makes
+// the two unable to disagree — see that file's header.
+import {
+  DOSE_PACES, slotDosePace, slotDoseBudgetMi, weeklyDoseBudgetMi,
+  dosePaceOf, weekDosingFindings, duplicatePaceFamily,
+  type DosePace, type DosingContext,
+} from './dosing';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
 export type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -196,9 +204,36 @@ export function scheduleQuality(
     // Downgrade against the PLACEMENT profile (gapTypes) — it governs satisfiability — and downgrade
     // this week's matching intervals label too (if any), so the recursion converges on a legal placement
     // while the returned types stay truthful. A week with no intervals label just keeps its types.
-    const downGap = gapTypes.slice(); downGap[gapTypes.lastIndexOf('intervals')] = 'threshold';
+    const gi = gapTypes.lastIndexOf('intervals');
+    const downGap = gapTypes.slice(); downGap[gi] = 'threshold';
     const downLabel = types.slice();
     const li = types.lastIndexOf('intervals'); if (li >= 0) downLabel[li] = 'threshold';
+    // DOCTRINE-DOSING-2 (2026-08-18) · the downgrade may not create a SECOND
+    // session of a pace family the week already runs.
+    //
+    // Substituting threshold for intervals is a gap fix — it needs one easy day
+    // instead of two — and on a week whose other session is already threshold it
+    // buys that at the cost of running Daniels' whole 10% weekly allowance
+    // twice. `Research/04` §5.2 gives the T session "1×/week", §16 names "Two
+    // threshold sessions back-to-back" outright, and `Research/01`'s weekly
+    // column makes it arithmetic. It is not hypothetical: a half-marathoner
+    // available three days a week got two threshold days in the same
+    // race-specific week, and the dosing pass then had to cut one of them to a
+    // quarter-mile fragment to fit the cap.
+    //
+    // When the substitute would duplicate, the session is DROPPED instead. That
+    // is the same trade the downgrade already makes — a legal smaller week
+    // beats a rejected plan — taken one step further for a runner whose
+    // available days cannot space two hard sessions at all. The freed day is
+    // filled as an easy run by `layoutWeek`, so the training-day count holds.
+    if (li >= 0 && duplicatePaceFamily(downLabel) != null) {
+      return scheduleQuality(
+        best.filter((_, i) => i !== li),
+        types.filter((_, i) => i !== li),
+        longRunDow, restDow, availableDows,
+        gapTypes.filter((_, i) => i !== gi),
+      );
+    }
     return scheduleQuality(best, downLabel, longRunDow, restDow, availableDows, downGap);
   }
   return { dows: best as DOW[], types };
@@ -822,6 +857,38 @@ const BLOCK_SHAPE: Record<DistCategory, { taperWeeks: number; raceSpecificCap: n
   'ultra': { taperWeeks: 3, raceSpecificCap: 4 },
 };
 
+/**
+ * DOCTRINE-BASE-1 (2026-08-18) · the share of the block's own weekly-volume
+ * target a runner must already be holding before BASE may be skipped.
+ *
+ * `Research/00a-distance-running-training.md` §"Volume progression rules":
+ * "| Down weeks | Every 3-4 wk, reduce by 20-30% |". That band is the ONLY
+ * statement in the research of how far below peak a runner who is genuinely
+ * mid-block may legitimately sit — the deepest planned deload leaves them at
+ * 70% of peak. A runner further down than doctrine's own deepest down week is
+ * not mid-block on a light week; they are short of base, and the weeks that
+ * close the gap are base weeks whatever the plan labels them.
+ *
+ * Bound by DOCTRINE.base-rebuilt-share, which parses the 20-30% band out of
+ * that row and asserts this constant is its complement.
+ *
+ * See the gate itself in `composePlan`, and the defect that motivated it.
+ */
+export const BASE_REBUILT_SHARE = 0.70;
+
+/**
+ * DOCTRINE-DOSING-2 (2026-08-18) · the smallest race-pace finish that is still
+ * a race-pace session.
+ *
+ * `Research/04-workout-vocabulary.md` §4.5 "Fast finish long run" prescribes
+ * the segment as "final 2-6 mi at MP or slightly faster"; §4.4's marathon-pace
+ * long is larger again. Two miles is the bottom of the only band doctrine
+ * states for it, so a segment the week's dosing budget cannot size to two miles
+ * is not scheduled at all — the long runs easy and the week's threshold work
+ * goes to its structured session. Bound by MPLONG.fast-finish-floor.
+ */
+export const FAST_FINISH_MIN_MI = 2;
+
 // Exported for lib/plan/block-preview.ts (the pre-recovery-complete block-shape
 // preview) — it must call this SAME function rather than re-deriving BLOCK_SHAPE
 // or the phase-sizing arithmetic. See that file's header for why.
@@ -1214,6 +1281,25 @@ export function qualityFamilyFor(
   weeksToPhaseEnd: number,
   slotType: DayPlan['type'],
 ): WorkoutFamily | null {
+  // DOCTRINE-DOSING-2 · the ultra's rep slot is HILLS, in the QUALITY phase.
+  //
+  // ULTRA-QUAL-1 already ruled I-pace reps out of ultra training
+  // (Research/00a:311 "3×1600m at 10K pace (rarely)"), and DOCTRINE-DOSING-2
+  // put a rep slot on every ultra QUALITY week to stop it running two T
+  // sessions. Those two only agree if the slot is pinned: `Research/22`
+  // §Ultramarathon lists "hill repeats" and "hill power" under Key workout
+  // types for the 50K and 50 mile, and every sample peak week in that section
+  // pairs ONE threshold session with hill work. Without this pin, a
+  // late-QUALITY ultra week falls through to the generic I prescription.
+  //
+  // RACE-SPECIFIC is deliberately NOT covered. §15's row for that phase reads
+  // "Race-pace workouts, MP long runs, Canova structures, 4×2 mi for HM" and
+  // places no hill session there — the doctrine gate's VOCAB.phase-placement
+  // claim catches it if this reaches for one. The ultra's race-specific weeks
+  // run a single threshold slot instead; see `qualityTypesFor`.
+  if (cat === 'ultra' && slotType === 'intervals' && phase === 'QUALITY') {
+    return 'hills';
+  }
   if (phase === 'RACE-SPECIFIC') {
     // §15 race-specific row. Ultra is deliberately excluded: it trains
     // threshold-dominant off race-paced EFFORT, not rep sessions
@@ -2099,7 +2185,48 @@ function layoutWeek({
     ? taperMpDose(weeksToPhaseEnd, qualityCeiling)
     : null;
   const finishSeg = longFinishSegment(phase, weeksToPhaseEnd, racePaceTag, racePaceLongWeek);
-  const finishMi = finishSeg ? Math.round(longMi * finishSeg.pct) : 0;
+  // DOCTRINE-DOSING-2 · the long-run finish is a DOSE, and it was never charged
+  // to one. A half of the long run at marathon pace is marathon-pace mileage —
+  // `dosePaceOf` reads it as M, `splitDay` counts its miles as hard — but the
+  // segment was sized purely as a fraction of the long, so a 21 mi long on a
+  // 54.5 mi race-specific week shipped 11 mi at MP against `Research/01`'s "the
+  // lesser of 18 mi or 20% of weekly mi" (10.9). This is the same doctrine
+  // `weekDosingFindings` measures afterwards, applied here so it is never
+  // authored. `weekDoseContext` keeps the taper out of the percentage half —
+  // Research/08 §9.2 prescribes 10-12 mi at MP on an 80-90%-of-peak week by
+  // name, and §9.1 says why (see `capEnforced`).
+  //
+  // An @HM finish doses T, not M, and takes the T budget accordingly — which is
+  // also why the structured slots below reserve against it rather than spending
+  // the same ten percent twice.
+  const finishPace: DosePace | null = finishSeg
+    ? (finishSeg.tag === 'HM' ? 'T' : 'M')
+    : null;
+  const weekDoseContext: DosingContext =
+    isRaceWeek ? 'race-week' : phase === 'TAPER' ? 'taper' : 'training';
+  const finishBudgetMi = finishPace
+    ? weeklyDoseBudgetMi(weeklyMi, finishPace, weekDoseContext)
+    : Infinity;
+  const finishRawMi = finishSeg
+    ? Math.min(Math.round(longMi * finishSeg.pct), Math.floor(finishBudgetMi * 2) / 2)
+    : 0;
+  // DOCTRINE-DOSING-2 · a race-pace finish the week cannot afford is not run at
+  // all, rather than run as a fragment.
+  //
+  // `Research/04` §4.5 sizes a fast-finish long as "final 2-6 mi at MP or
+  // slightly faster", and §4.4's marathon-pace long is larger still. Below two
+  // miles there is no session in doctrine that the segment corresponds to — it
+  // is a mile of race pace tacked onto a long run, which §4.5's own "Not a hard
+  // workout" cousin (Research/00a's "Easy long with surges") describes better
+  // than its fast-finish row does.
+  //
+  // This binds on the smallest bases, where Daniels' 10% cannot buy two miles
+  // at threshold: an 18 mi/wk half-marathoner's whole weekly T allowance is
+  // 1.8 mi. On those weeks the long runs easy and the week's threshold work
+  // goes to the structured session, which is a coherent week rather than a
+  // shrunken imitation of a bigger runner's. `hasFinish` is what the quality
+  // mix keys on below, so the freed slot comes back automatically.
+  const finishMi = finishRawMi >= FAST_FINISH_MIN_MI ? finishRawMi : 0;
   const hasFinish = finishSeg != null && finishMi > 0 && finishMi < longMi;
   slots[longRunDow] = {
     dow: longRunDow, type: 'long', distanceMi: longMi, isQuality: false, isLong: true,
@@ -2168,30 +2295,112 @@ function layoutWeek({
         // row. One quality slot either way — PP-3's "one quality session in a
         // non-race taper week" is untouched.
         phase === 'TAPER'         ? (taperMp ? ['tempo'] : ['race_week_tuneup'])
+      // ── DOCTRINE-DOSING-2 (2026-08-18) · ONE SESSION PER PACE FAMILY, PER WEEK ──
+      //
+      // `threshold` (cruise intervals) and `tempo` (a continuous block) are the
+      // SAME pace in Daniels' taxonomy — both are T — and every mix below used
+      // to pair them, or to pair `intervals` with itself. That is the shape
+      // behind 1055 of the corpus's 1750 weekly-cap breaches: two individually
+      // legal sessions summing to 13-25% of a week against doctrine's 10%.
+      //
+      // The fix is not to halve both sessions. Doctrine states the frequency
+      // directly, and it is one:
+      //
+      //   · §5.2 continuous tempo, Frequency: "1×/week or ALTERNATING with
+      //     cruise intervals" — the two forms of T work alternate ACROSS weeks;
+      //     they are not run in the same seven days.
+      //   · §6.2 mile repeats, Frequency: "Every 7-10 days"; §6.3 1000m
+      //     repeats, "Weekly during VO2max block" — one I session, not two.
+      //   · §16 "Combinations to avoid": "Two threshold sessions back-to-back |
+      //     Only the Norwegian double-day model handles this, and only with
+      //     sub-threshold pacing" — which the engine does not prescribe.
+      //   · `Research/01` §"Dosing rules": the 10% / 8% weekly columns, which
+      //     are what one full-dose session of each already spends.
+      //
+      // So the pairs below now alternate the FORM of the T session week to week
+      // (§5.2's own instruction) instead of running both forms at once, and the
+      // second slot goes to the family whose weekly budget is untouched. Every
+      // week still carries two quality sessions — §15's "2 quality/wk" is
+      // unchanged — and each keeps its full doctrinal dose rather than half of
+      // one. `assertOnePerPaceFamily` below holds the invariant.
       : phase === 'RACE-SPECIFIC'
-          ? (cat === '5k'   ? ['intervals', 'intervals']
-           : cat === '10k'  ? ['intervals', 'intervals']   // RACE-SPEC-10K-1 (2026-06-23): 10K race-specific dominates with I-pace reps (Research/00a §308 "3–4×2km at 10K pace"), mirrors 5K; threshold was demoted to QUALITY phase
-           : cat === 'hm'   ? ['threshold', 'intervals']
+          // 5K/10K keep the race-pace rep session (§14.1-14.2, resolved to the
+          // `race_specific` family) and spend the other slot on threshold, which
+          // §15's race-specific row names in the same breath ("4×2 mi for HM").
+          // Running the rep session twice broke §6.2's "every 7-10 days" and
+          // put 2× the 8% I budget in one week.
+          ? (cat === '5k'   ? ['intervals', 'threshold']
+           : cat === '10k'  ? ['intervals', 'threshold']   // RACE-SPEC-10K-1 (2026-06-23): 10K race-specific dominates with I-pace reps (Research/00a §308 "3–4×2km at 10K pace"), mirrors 5K
+           // DOCTRINE-HMLONG-DOSE-1 · on the week the half's fast-finish long
+           // lands, the CRUISE session comes out — the direct analogue of
+           // DOCTRINE-MPLONG-1, forced by a collision the marathon does not
+           // have. The marathon's long finishes at MP and its structured slot
+           // runs at T: different pace families, different budgets, no clash.
+           // The half's finishes at HM race pace, which `Research/01`
+           // §"Pace conversion from a race time" places inside T ("~half-
+           // marathon pace to 15K pace") — so a cadence week carrying both runs
+           // TWO threshold sessions and spends Daniels' 10% twice. On a 36 mi/wk
+           // half that is 3.5 mi of finish plus a 4 mi cruise against a 3.6 mi
+           // weekly allowance; something has to give, and doctrine says which.
+           // §4.5 schedules the fast-finish long "Every 2-3 weeks" and §15's
+           // race-specific row lists it among the phase's primary workouts, so
+           // on the weeks it lands it IS the week's threshold work. Off-cadence
+           // weeks have no finish (longFinishSegment returns null) and keep both
+           // structured sessions, exactly as before.
+           : cat === 'hm'   ? (hasFinish ? ['intervals'] : ['threshold', 'intervals'])
            // DOCTRINE-MPLONG-1 · on the week the marathon-pace long lands, the
            // tempo comes OUT. Research/04 §16 "Combinations to avoid": "MP long
            // run + hard tempo within 5 days | Same energy system, same impact
            // pattern, no recovery between". The MP long IS the week's second
            // quality session — §4.4 calls it the "marathon-specific stimulus" —
            // so the week still runs two hard days, one of which is the long.
-           // Off-cadence weeks keep both structured sessions beside an easy long.
-           : /* m / ultra */  (mpLongWeek ? ['threshold'] : ['tempo', 'threshold']))
+           // DOCTRINE-DOSING-2 · off-cadence weeks have no MP long (§4.4's
+           // "every 2-3 weeks" · longFinishSegment returns null), so they DO
+           // run two structured sessions — but the second is no longer a second
+           // T session. The threshold slot keeps the race-specific work (§14.4
+           // Canova 2K reps, via the `marathon_specific` family); the other goes
+           // to the rep slot, which §14.4 also names ("MP+10K alternations") and
+           // which for the ultra resolves to hills rather than I-pace reps.
+           // DOCTRINE-DOSING-2 · the ULTRA runs ONE structured session here, and
+           // that is doctrine rather than a dosing convenience. Every sample
+           // race-specific peak week in `Research/22` §Ultramarathon carries
+           // exactly one — the 50 mile's "WU + 30 min @ T + CD (9 mi)", the
+           // 100K's "WU + 4×8 min @ T + CD (10 mi)" — beside the back-to-back
+           // long pair that IS the ultra's second quality stimulus, with hill
+           // strides riding on an easy day rather than occupying a slot. It also
+           // keeps §15's race-specific row honest: that row names race-pace
+           // work, MP long runs and Canova structures, and nothing in it places
+           // a hill session in this phase.
+           : cat === 'ultra' ? ['threshold']
+           // The marathon's off-cadence weeks keep their TEMPO slot, not a
+           // second threshold one. The slot's identity matters as much as its
+           // pace: `qualityFamilyFor` resolves a race-specific tempo to the
+           // `combo` family — §10.3's wave tempo, "Specific phase HM/marathon" —
+           // and the threshold slot to `marathon_specific` (§11.2 Canova 2K
+           // reps), which the MP-long weeks already carry. Pairing the wave
+           // tempo with the rep slot keeps both §15 shapes in the block while
+           // the week runs one T session and one I session.
+           : /* m */  (mpLongWeek ? ['threshold'] : ['tempo', 'intervals']))
       : phase === 'QUALITY'
-          ? (cat === '5k'   ? (wi % 2 === 0 ? ['intervals', 'intervals'] : ['intervals', 'threshold'])
-           : cat === '10k'  ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
-           : cat === 'hm'   ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['threshold', 'tempo'])
+          // Each row: one I-family slot, one T-family slot, and the T slot
+          // alternates cruise intervals ↔ continuous tempo by week parity —
+          // §5.2's "alternating with cruise intervals", read literally.
+          ? (cat === '5k'   ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['intervals', 'tempo'])
+           : cat === '10k'  ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['intervals', 'tempo'])
+           : cat === 'hm'   ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['intervals', 'tempo'])
            : cat === 'ultra'
                // ULTRA-QUAL-1 (2026-06-23): ultra training is threshold-dominant; I-pace intervals are
-               // "rarely" appropriate (Research/00a §311 "3×1600m at 10K pace (rarely)"). Alternating
-               // intervals every other week throughout the QUALITY block means 4-5 interval sessions per
-               // cycle — far above research doctrine. Remove intervals from the regular rotation; if a
-               // rare interval session is warranted, it's an exceptional week not the default.
-               ? ['threshold', 'tempo']
-           : /* marathon */  (wi % 2 === 0 ? ['threshold', 'tempo']     : ['threshold', 'intervals']))
+               // "rarely" appropriate (Research/00a §311 "3×1600m at 10K pace (rarely)").
+               // DOCTRINE-DOSING-2 · the pair was `['threshold','tempo']` — both
+               // T, and 20% of the week at threshold. Research/22's ultra sample
+               // peak weeks show what the second session actually is: the 50K's
+               // "6×3 min hill repeats", the 50-mile's and 100K's "hill strides"
+               // beside a SINGLE "WU + 30 min @ T + CD". So the rep slot carries
+               // HILLS for the ultra — `qualityFamilyFor` pins it there, in this
+               // phase and in RACE-SPECIFIC, so it can never fall through to
+               // I-pace track reps ULTRA-QUAL-1 removed.
+               ? (wi % 2 === 0 ? ['threshold', 'intervals'] : ['tempo', 'intervals'])
+           : /* marathon */  (wi % 2 === 0 ? ['tempo', 'intervals']  : ['threshold', 'intervals']))
       : [];
     const qualityTypes = qualityTypesFor(weekIdx);
     // Prescription strings are resolved up-front from workout_library
@@ -2209,9 +2418,34 @@ function layoutWeek({
     // back-to-back"). The freed day becomes an easy day, not a rest day: the
     // frequency cap counts long + quality as `runningPlaced`, so easyCount
     // rises by exactly one and the runner's training-day count is unchanged.
-    const effectiveQDows = (phase === 'TAPER' && !isRaceWeek) || mpLongWeek
-      ? qualityDows.slice(0, 1)
-      : qualityDows;
+    //
+    // DOCTRINE-DOSING-2 (2026-08-18) · the slot count follows the TYPE count.
+    //
+    // `scheduledQ.types[i % scheduledQ.types.length]` fills any surplus day by
+    // wrapping the type list, so a mix that declares ONE type and two days runs
+    // that one session twice. DOCTRINE-MPLONG-1 patched that by hand for the
+    // marathon's MP-long week; DOCTRINE-HMLONG-DOSE-1 adds the half's
+    // fast-finish week, and enumerating a third exception is how the trap stays
+    // open. Deriving the count closes it for every mix.
+    //
+    // BASE-BUILDING IS EXEMPT, and the reason is a defect rather than doctrine.
+    // Its mix is `['tempo']` on two quality days — two light fartleks, which
+    // §5.2's "1×/week" would rather see as one. But collapsing the second into
+    // an easy day moves enough mileage on a true-beginner ramp to breach the
+    // validator's own 50% week-over-week volume limit (16 archetypes,
+    // `5k/beginner/f6/m0/L0-3` among them). Trading a frequency nuance for a
+    // structural ramp violation is a worse plan, and re-sizing the beginner
+    // ramp is not this workstream's to do. The dose itself is not the problem:
+    // a 5×1 min surge set is ~0.6 mi at T, so two of them sit far inside
+    // Daniels' 10% on any week a beginner runs, and `applyDosingCaps` holds the
+    // cap regardless. Recorded as open rather than papered over.
+    const effectiveQDows = qualityDows.slice(
+      0,
+      Math.max(1, Math.min(
+        baseBuilding ? qualityDows.length : qualityTypes.length,
+        (phase === 'TAPER' && !isRaceWeek) || mpLongWeek ? 1 : qualityDows.length,
+      )),
+    );
     // QUAL-PHASE-STABLE (2026-06-24) · anchor the quality DOWs to a weekIdx-INVARIANT placement profile
     // so they don't oscillate as the QUALITY mix toggles. The two parities differ only by whether
     // intervals is present; the intervals-bearing parity is the most gap-demanding, so place against it.
@@ -2260,6 +2494,62 @@ function layoutWeek({
       return { dow, qt, vocabFamily, vocabRx };
     });
 
+    /* ── DOCTRINE-DOSING-2 · the week's at-pace budget, before anything is sized ──
+     *
+     * `atPaceSessionCapMi` answers "how big may ONE session be on a week this
+     * size", and it answered it identically for every session in the week —
+     * which is how a week ended up spending Daniels' whole 10% twice. This
+     * resolves the other half of the same doctrine: what the WEEK may spend,
+     * minus what the long run's race-pace finish has already committed, divided
+     * among the slots that want it.
+     *
+     * Both bounds still apply, and the smaller wins. The session band (§5.1's
+     * "4-8 mi", §6.1's "3-6 mi") says what the workout IS; this says what the
+     * week can pay for. `slotDoseBudgetMi` carries the doctrine; this carries
+     * the week's own bookkeeping.
+     *
+     * DOCTRINE-DOSING-2's type mixes mean `slots` is 1 for every mix the engine
+     * authors, so in practice each session gets the family's whole remaining
+     * budget rather than a fraction of it — the redistribution happened when the
+     * second T session became an I session, not here. The division is kept
+     * because it is what makes the guarantee structural: any future mix that
+     * doubles up on a family is bounded by arithmetic rather than by whoever
+     * remembers this rule.
+     */
+    const slotBudgetMi = (() => {
+      // The long-run finish is deliberately NOT reserved here, though it is a
+      // dose of the same pace. `Research/04` §4.5 gives the fast-finish long
+      // "Every 2-3 weeks" while the structured session is weekly, and
+      // `applyIntensityFloor` already treats the finish as the surplus in an
+      // over-dense week for exactly that reason. Charging it first would size
+      // the phase's own race-specific session down to nothing to protect a
+      // segment doctrine schedules less often. `applyDosingCaps` reconciles the
+      // two after every pass that moves mileage, and gives the finish back
+      // first — see that function.
+      const reserved: Partial<Record<DosePace, number>> = {};
+      const count: Partial<Record<DosePace, number>> = {};
+      for (const s of resolvedSlots) {
+        if (!s) continue;
+        const p = slotDosePace(s.qt, Boolean(taperMp) && s.qt === 'tempo');
+        if (!p) continue;
+        count[p] = (count[p] ?? 0) + 1;
+      }
+      const byPace = new Map<DosePace, number>();
+      for (const p of DOSE_PACES) {
+        byPace.set(p, slotDoseBudgetMi({
+          weeklyMi,
+          pace: p,
+          context: weekDoseContext,
+          reservedMi: reserved[p] ?? 0,
+          slots: count[p] ?? 1,
+        }));
+      }
+      return (qt: DayPlan['type']): number => {
+        const p = slotDosePace(qt, Boolean(taperMp) && qt === 'tempo');
+        return p ? (byPace.get(p) ?? Infinity) : Infinity;
+      };
+    })();
+
     // PROGRESSION-1 · a slot the trajectory owns is a GENERIC threshold or rep
     // session — the one whose prescription is the fixed `rx.threshold` /
     // `rx.intervals` string that repeated verbatim for every week of a phase.
@@ -2290,7 +2580,18 @@ function layoutWeek({
           // stays the budget on the paths that are not doctrinally sized.
           dayBudgetMi: qualityMiEach,
           sizeDay: doctrinalDaySizing
-            ? { ceilingMi: doctrinalDayCeiling, atPaceCapMi: mpLongAtPaceCapMi }
+            ? {
+                ceilingMi: doctrinalDayCeiling,
+                // DOCTRINE-DOSING-2 · the trajectory's earned stimulus is now
+                // also bounded by what the WEEK has left at this pace, not only
+                // by what one session may carry. Both caps were always meant to
+                // bind (`Research/01` states them in two columns); only the
+                // first was ever computed.
+                atPaceCapMi: Math.min(
+                  mpLongAtPaceCapMi ?? Infinity,
+                  slotBudgetMi(track === 'interval' ? 'intervals' : 'threshold'),
+                ),
+              }
             : null,
           // Doctrine §2's W4. `isCutback` is the same deload mask `volumeCurve`
           // cut the week's mileage with, so the trajectory holds on exactly the
@@ -2314,14 +2615,42 @@ function layoutWeek({
     /** Doctrine's own bounds on a continuous tempo block, both applied.
      *  §5.1 "| Continuous tempo | 3-8 mi continuous | T | None | 20-40 min |" —
      *  a slow runner reaches forty minutes before eight miles and a fast one
-     *  reaches eight miles first, so whichever binds first is the answer. The
-     *  three-mile floor is the bottom of the same band and predates this. */
+     *  reaches eight miles first, so whichever binds first is the answer.
+     *
+     *  DOCTRINE-DOSING-2 · the three-MILE floor that used to sit under this is
+     *  gone, and its removal is the low-mileage half of this workstream.
+     *
+     *  It came from the left column of §5.1's own row ("3-8 mi continuous"), and
+     *  read as a floor it contradicts `Research/01`'s cap for every runner under
+     *  30 mi/wk: ten percent of a 22-mile week is 2.2 miles, and the floor
+     *  overrode it to three — 13.6% of the week at threshold, authored on the
+     *  smallest bases in the corpus. It is the single largest source of the
+     *  508 single-workout T breaches the census measured.
+     *
+     *  Doctrine's floor for this session is not in miles. §5.2 states it in
+     *  time — "Duration | 20 min minimum for stimulus; 20-40 min sweet spot" —
+     *  and §5.1's own "Total at-pace" column for the row says "20-40 min". Time
+     *  is the runner-invariant unit: at a 9:00 T pace twenty minutes is 2.2
+     *  miles, which is exactly ten percent of that 22-mile week. The cap and the
+     *  stimulus floor agree once the floor is read in the unit doctrine wrote it
+     *  in; it was the mile translation that did not fit either.
+     *
+     *  Where they still collide — a fast runner on a very small week, whose ten
+     *  percent is under twenty minutes — the CAP wins. It is the safety rule,
+     *  a short tempo is recoverable inside the same week, and `Research/00b`
+     *  exists because the other error is not. */
     const sizeTempoDay = (): { tempoMi: number; dayMi: number } => {
-      const capMi = Math.min(atPaceSessionCapMi(weeklyMi, 'threshold'), mpLongAtPaceCapMi ?? Infinity);
+      const capMi = Math.min(
+        atPaceSessionCapMi(weeklyMi, 'threshold'),
+        slotBudgetMi('tempo'),
+        mpLongAtPaceCapMi ?? Infinity,
+      );
       const byTimeMi = weekTPaceSec != null && weekTPaceSec > 0
         ? (CONTINUOUS_TEMPO_MINUTES.max * 60) / weekTPaceSec
         : Infinity;
-      let tempoMi = Math.max(3, Math.round(Math.min(capMi, byTimeMi)));
+      // Half-mile grain, rounded DOWN: the cap is a ceiling, and rounding a
+      // 2.6-mile allowance up to three is how the old floor got in.
+      let tempoMi = Math.max(0.5, Math.floor(Math.min(capMi, byTimeMi) * 2) / 2);
       const first = composeQualityDay({ family: 'threshold', atPaceMi: tempoMi, ceilingMi: doctrinalDayCeiling });
       // The ceiling is structural (the long run stays the week's longest run).
       // The easy legs give way first — `composeQualityDay` has already shrunk
@@ -2380,11 +2709,29 @@ function layoutWeek({
       }
       if (!(repMi > 0)) return null;
 
-      const capMi = Math.min(atPaceSessionCapMi(weeklyMi, family), mpLongAtPaceCapMi ?? Infinity);
-      // Never below two reps — a one-rep "rep session" is a different workout,
-      // and the affordability cut is meant to size a session, not delete it.
+      // DOCTRINE-DOSING-2 · plus what the WEEK has left at this pace.
+      const capMi = Math.min(
+        atPaceSessionCapMi(weeklyMi, family),
+        slotBudgetMi(family === 'interval' ? 'intervals' : 'threshold'),
+        mpLongAtPaceCapMi ?? Infinity,
+      );
+      // Two reps is the FLOOR the cut prefers — a one-rep "rep session" is a
+      // different workout, and the affordability cut is meant to size a
+      // session, not delete it.
+      //
+      // DOCTRINE-DOSING-2 · but it is a preference, not a licence to overspend.
+      // Two reps of a named dose can exceed a small week's whole allowance on
+      // their own ("5×2K" is 6.2 mi at T; a 25 mi/wk runner may spend 2.5), and
+      // before this the cut stopped at two and shipped the breach. When two
+      // still overshoot, the set collapses to ONE — which for the threshold
+      // family is a shape doctrine names in its own right (§5.1 "| Continuous
+      // tempo | 3-8 mi continuous |"), and for a rep set is the honest
+      // statement that this week cannot afford the named dose. The rep itself
+      // never shortens here: its length is the workout's identity and rewriting
+      // it would leave the label describing a session the spec does not build.
       let keptReps = reps;
       while (keptReps > 2 && keptReps * repMi > capMi) keptReps--;
+      while (keptReps > 1 && keptReps * repMi > capMi) keptReps--;
       // Rewrite ONLY the leading rep count, and only when the string opens with
       // it, so the family's identity ("descend MP → T", "hills") is untouched.
       const prescription = keptReps === reps
@@ -3397,7 +3744,6 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   const totalWeeks = Math.max(3,
     Math.floor(daysBetween(input.startMondayISO, input.raceDateISO) / 7) + 1
   );
-  const blocks = sizeBlocks(totalWeeks, input.raceDistanceMi, input.isMidBlock);
   // 2026-06-02 · tier targets drive volume + long-run sizing.
   // Sourced from Research/22 via lookupTierTarget. Classification
   // uses goalPaceSec; falls back to intermediate tier when no goal.
@@ -3475,6 +3821,78 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       baseTierTarget.peakWeeklyMileageBand[1],
     ],
   } : baseTierTarget;
+
+  // DOCTRINE-BASE-1 (2026-08-18) · BASE is skipped for a runner who HAS a
+  // base, and recent quality is not evidence that they do.
+  //
+  // `sizeBlocks` drops the BASE phase entirely when `isMidBlock`, and
+  // `detectMidBlock` sets that flag from three signals that all measure the
+  // same thing: did this runner do hard sessions in the last 28 days. None of
+  // them looks at VOLUME. So a runner one week out of a post-race reverse
+  // taper — quality in the archived plan, mileage still less than two thirds of
+  // what the block will demand — reads as mid-block, and the engine authors a
+  // fourteen-week marathon build that opens in QUALITY. That is the defect
+  // this gate closes, and it was found on the owner's own CIM build: 31 mi in
+  // week one carrying 7.0 mi at threshold, 22.6% of the week.
+  //
+  // Doctrine is explicit, in three places that agree:
+  //
+  //   · `Research/00b-recovery-protocols.md` §"Reverse Periodization for
+  //     Marathon Recovery" — "A *reverse taper* (post-race) inverts this:
+  //     progressively rebuild volume first, then add intensity." Volume FIRST.
+  //     Its own week-by-week ordering does not reintroduce a quality session
+  //     until week 5.
+  //   · `Research/00a-distance-running-training.md` §Periodization, the linear
+  //     table's base row: "Base / aerobic conditioning | 8-16 wk | Easy
+  //     mileage, long runs, strides | High, peak | Low". The phase is DEFINED
+  //     by volume being at peak. A runner well below peak has base left.
+  //   · The same file's §"Periodization choice by athlete and event":
+  //     "Returning from layoff | Linear (rebuild base before any sharpening)".
+  //
+  // And §"Reverse linear" licenses skipping the build for "Athletes with
+  // adequate base year-round" — adequate BASE, which is a volume claim.
+  //
+  // ── The comparison is against the RUNNER'S OWN volume, not the plan's target ──
+  //
+  // The first cut of this gate measured the runner against
+  // `tierTarget.peakWeeklyMileageBand[0]` — the volume the block is building
+  // TOWARD — and that is wrong in a way worth recording, because it is the
+  // regression the original mid-block rule was written to prevent. A runner
+  // steadily holding 45 mi/wk six weeks into a build toward a 70 mi peak is
+  // below 70% of that target and is not short of base at all; they are exactly
+  // where the plan means them to be. Gating on the target would have dropped
+  // them into a fresh BASE phase on every rebuild.
+  //
+  // "Has the base been rebuilt" is a question about the runner's own history:
+  // is the volume they are running now depressed relative to the volume they
+  // have demonstrably held? `RampBaseEvidence` already answers exactly that and
+  // is already computed on every race-prep authoring —
+  //
+  //   · `sustainedMi` — the 3rd-highest of the last sixteen 7-day blocks. A
+  //     level reached repeatedly, so no single big week can set it.
+  //   · `meanMi` — the 28-day mean, i.e. what they are running now.
+  //
+  // and the threshold between them is doctrine's, not chosen here. The one
+  // place the research says how far below their own level a runner in normal
+  // training may legitimately sit is `Research/00a` §"Volume progression
+  // rules" — "| Down weeks | Every 3-4 wk, reduce by 20-30% |". A genuine
+  // mid-block runner caught on their deepest planned down week is at 70% of
+  // their sustained level. Below that the shortfall is not a down week, it is a
+  // volume deficit, and the weeks that close it are base weeks whatever the
+  // plan labels them. Bound by DOCTRINE.base-rebuilt-share, which parses the
+  // 20-30% band out of that row. It is also the same 70% `Research/22` §14 and
+  // `Research/00b`'s reverse taper both use as the resume level, which is why
+  // `RAMP_BASE_RESUME_FRACTION` already carries it.
+  //
+  // With no evidence — `composePlan` called directly from a harness, a
+  // synthetic persona, the simulator — the gate does not fire. Absence of
+  // history is not evidence of a deficit, and inventing one would make every
+  // DB-free caller author a phase the runner's actual data might not support.
+  const rampEvidence = input.rampBaseEvidence ?? null;
+  const baseRebuilt = rampEvidence == null
+    || !(rampEvidence.sustainedMi > 0)
+    || rampEvidence.meanMi >= BASE_REBUILT_SHARE * rampEvidence.sustainedMi;
+  const blocks = sizeBlocks(totalWeeks, input.raceDistanceMi, input.isMidBlock && baseRebuilt);
 
   // DOCTRINE-1 · the taper's depth is keyed to the race distance (Research/08 §9.1),
   // so the curve needs the category, not just the tier band.
@@ -4102,9 +4520,27 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
         // qualBudgetCap further limits quality distance when freq headroom is tight.
         const qDist = Math.min(Math.max(3, Math.round(wkWeekly * 0.16)), wkLong, qualBudgetCap);
         if (shape.qualityType === 'threshold') {
+          // DOCTRINE-DOSING-2 (2026-08-18) · the maintenance threshold session
+          // carried the same two defects the race-prep tempo did, and worse.
+          //
+          // Its label was PROSE — "3mi @ T pace · cruise" — which no parser
+          // reads, so `buildWorkoutSpec` fell through to its 4×1mi default and
+          // the workout the watch ran had nothing to do with the number
+          // printed on it. And that number came off a hard-coded three-mile
+          // floor, which on a 12 mi/wk maintenance week is 16.7% of the week at
+          // threshold against `Research/01`'s 10%. The all-user sweep found it
+          // on 38k archetype-weeks, most of the corpus's whole failure count.
+          //
+          // Now it is a real cruise-interval prescription (§5.3 "3–6 × 1 mi
+          // with 1 min jog"), with the rep count sized by the week's own
+          // threshold budget — the same `weeklyDoseBudgetMi` the gate checks —
+          // and floored at one rep so a small week gets a real, single mile at
+          // T rather than a fictional three.
+          const tBudgetMi = weeklyDoseBudgetMi(wkWeekly, 'T');
+          const reps = Math.max(1, Math.min(6, Math.floor(tBudgetMi)));
           slots[qDow] = {
             dow: qDow, type: 'threshold', distanceMi: qDist, isQuality: true, isLong: false,
-            subLabel: `${Math.max(3, Math.round(qDist * 0.5))}mi @ T pace · cruise`,
+            subLabel: `${reps}×1mi @ T pace · 60s jog`,
             notes: 'WU 1.5mi · steady at threshold · CD 1mi. Aerobic engine maintenance.',
           };
         } else if (shape.qualityType === 'fartlek') {
@@ -5064,9 +5500,300 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
     }
   }
 
+  // DOCTRINE-DOSING-2 (2026-08-18) · Daniels' dosing caps, reconciled after
+  // every pass that moved mileage. Runs BEFORE the intensity floor: it only
+  // ever converts hard miles to easy ones, so it can lift a week's easy share
+  // but never lower it, and the floor pass gets the last word on that number.
+  applyDosingCaps(composed);
+
   // DOCTRINE-TID-1 (2026-08-17) · the 80/20 constraint, which the engine has
   // never had in any form. Runs LAST, because every pass above moves mileage.
   applyIntensityFloor(composed);
+}
+
+/**
+ * DOCTRINE-DOSING-2 (2026-08-18) · hold every week inside Daniels' dosing caps.
+ *
+ * `Research/01-pace-zones-vdot.md` §"Dosing rules — Daniels' caps" bounds how
+ * much of a week may be run at each quality pace. `layoutWeek` now sizes every
+ * session against that budget as it authors — see `slotBudgetMi` — so this pass
+ * exists for the two things authoring cannot settle on its own:
+ *
+ *  1. THE DENOMINATOR MOVES. The caps are percentages of weekly mileage, and
+ *     `weeklyMi` at layout time is the volume-curve BUDGET. VOL-1 later
+ *     reconciles it to the realized day-sum, the taper rescale cuts it again,
+ *     and the long-run WoW smoother trims a long the week was measured against.
+ *     A session sized to ten percent of the budget can be eleven percent of what
+ *     the week turns out to be.
+ *  2. THE ORDER OF GIVE-BACK IS A DOCTRINE QUESTION, not an authoring one. The
+ *     long run's race-pace finish is authored before the structured slots, so
+ *     charging it first would shrink the phase's own race-specific session to
+ *     protect a segment `Research/04` §4.5 schedules "Every 2-3 weeks" against
+ *     one scheduled weekly. Reconciling afterwards lets the surplus be decided
+ *     by doctrine rather than by which pass ran first.
+ *
+ * ── The give-back order, and why ───────────────────────────────────────────
+ *
+ * The finish goes first. That is `applyIntensityFloor`'s existing ruling, in
+ * its own words — "The long-run finish is therefore the SURPLUS hard mileage in
+ * an over-dense week, and it is what this pass gives back first" — resting on
+ * §4.4's "every 2-3 weeks" cadence and §16's "MP long run + hard tempo within 5
+ * days". Only when the finish is gone does a structured session come down, and
+ * then by REP COUNT before block length, because §5.3's cruise intervals and
+ * §6.2's mile repeats are defined by their rep length and doctrine's own
+ * affordability cut (`sizeFromPrescription`) takes reps off first.
+ *
+ * ── What it may not move ───────────────────────────────────────────────────
+ *
+ * Nothing structural. The correction converts hard miles to easy miles INSIDE
+ * THE SAME DAY: day count, day distances, placement, weekly totals and the long
+ * run's length are all byte-identical afterwards. That is the same constraint
+ * `applyIntensityFloor` accepted, for the same reason — it is the only lever
+ * that cannot disturb the invariants the sweep gates hold — and it is also what
+ * makes this pass converge in one sweep: the denominator it measures against
+ * cannot move while it is trimming.
+ *
+ * ── Which caps ─────────────────────────────────────────────────────────────
+ *
+ * Whatever `capEnforced` says: absolute ceilings in every week, percentage caps
+ * on training weeks only. A taper is a volume cut with intensity held
+ * (`Research/08` §9.1) and §9.2 states its sessions by name at doses outside
+ * the percentage; see `dosing.ts` for the arithmetic.
+ */
+function applyDosingCaps(composed: ComposePlanResult): void {
+  for (const w of composed.weeks) {
+    // Up to three sweeps: trimming one pace can reveal that another shares a
+    // day (a long run doses M through its finish and nothing else, but a rep
+    // set that shortens changes no other bucket), and a rep count is a coarse
+    // lever that may overshoot its own target. Three is empirically past the
+    // point where the corpus stops changing; the loop exits early when a sweep
+    // finds nothing.
+    for (let sweep = 0; sweep < 3; sweep++) {
+      const findings = weekDosingFindings(w as never).filter((f) => f.enforced);
+      if (findings.length === 0) break;
+      let moved = false;
+      for (const f of findings) {
+        // Everything in the week that doses this pace, in give-back order.
+        //
+        // The long run's race-pace finish goes FIRST — but only where doctrine
+        // treats it as surplus rather than as the week's scheduled stimulus, and
+        // the phase is what tells them apart.
+        //
+        //  · In QUALITY, the finish is `longFinishSegment`'s warm-in ramp: it
+        //    lands on each of the last three weeks of the phase at 30-33% of the
+        //    long, beside two full structured sessions. That is the over-dense
+        //    week `applyIntensityFloor` describes, and its ruling stands — "The
+        //    long-run finish is therefore the SURPLUS hard mileage in an
+        //    over-dense week, and it is what this pass gives back first."
+        //  · In RACE-SPECIFIC, a finish only exists on the CADENCE weeks
+        //    `Research/04` §4.4 and §4.5 both scheduled "Every 2-3 weeks"
+        //    (`longFinishSegment` returns null otherwise). §4.4 calls it "the
+        //    marathon-specific stimulus" and §15 lists "MP long runs" among the
+        //    phase's primary workouts. Trimming it to protect a structured
+        //    session would spend the phase's own named session to keep a weekly
+        //    one — the give-back order backwards. So there it goes LAST, and the
+        //    structured sessions come down first.
+        //
+        // `applyIntensityFloor`'s own comment makes exactly this distinction
+        // ("right when the finish is on every week and wrong on the three where
+        // doctrine put it on purpose"); this is that sentence, applied.
+        const finishIsScheduled = String(w.phase ?? '') === 'RACE-SPECIFIC';
+        const longRank = (d: DayPlan) => (d.isLong ? (finishIsScheduled ? -1 : 1) : 0);
+        const candidates = w.days
+          .filter((d) => d.type !== 'race' && dosePaceOf(d as never) === f.pace)
+          .sort((a, b) => longRank(b) - longRank(a)
+            || splitDay(b as never).qualityMi - splitDay(a as never).qualityMi);
+        if (candidates.length === 0) continue;
+
+        // `weekly` and `cumulative` are budgets for the whole week;
+        // `single-workout` bounds one day. Either way the target is the same
+        // arithmetic: how many hard miles at this pace must come out.
+        // `overByMi` is rounded to two places and a finding only fires past a
+        // tenth-of-a-mile tolerance, so the smallest breach that can reach here
+        // reports exactly 0.05 over. Guarding at 0.05 would skip precisely
+        // those — the marginal ones — and leave them to the gate. Anything
+        // above zero is a breach worth a lever.
+        let over = f.overByMi;
+        for (const day of candidates) {
+          if (over <= 0) break;
+          const have = splitDay(day as never).qualityMi;
+          if (have <= 0) continue;
+          // A single-workout finding is only about days over the cap.
+          if (f.scope === 'single-workout' && have <= f.capMi + 0.05) continue;
+          const want = f.scope === 'single-workout'
+            ? f.capMi
+            : Math.max(0, have - over);
+          const after = trimSessionDose(day, want);
+          if (after < have - 0.01) {
+            over -= have - after;
+            moved = true;
+          }
+        }
+      }
+      if (!moved) break;
+    }
+  }
+}
+
+/**
+ * Cut one session's at-pace mileage to `targetMi`, rewriting the prescription
+ * so the label and the spec still describe the same workout.
+ *
+ * Returns the at-pace mileage the session carries afterwards — which may be
+ * more than asked for when doctrine leaves no lever: a rep set already down to
+ * one repetition cannot shed more without becoming a different workout, and
+ * shortening the repetition itself would change the session's identity (§5.3
+ * and §6.2 both define their workout BY the rep length). The caller reports
+ * what it could not fix rather than pretending otherwise.
+ *
+ * The day's own distance never changes. What was hard becomes easy inside the
+ * same session — a shorter tempo inside the same total, fewer reps with a
+ * longer warm-up and cool-down — which is what keeps every structural invariant
+ * intact and what lets `applyDosingCaps` converge.
+ */
+function trimSessionDose(day: DayPlan, targetMi: number): number {
+  const before = splitDay(day as never).qualityMi;
+  if (before <= targetMi + 0.05) return before;
+  const label = String(day.subLabel ?? '');
+
+  // 1 · the long run's race-pace finish. `setLongFinish` owns sub_label and
+  //     notes together — it is the only carrier of the finish between compose
+  //     and persist.
+  if (day.isLong && day.type === 'long') {
+    setLongFinish(day, Math.max(0, Math.floor(targetMi * 2) / 2));
+    return splitDay(day as never).qualityMi;
+  }
+
+  // 2 · an explicit three-segment prescription ("2 mi WU · 4 mi @ T · 2 mi CD").
+  //     The block shrinks and the cool-down absorbs it, so the segments still
+  //     sum to the day — the arithmetic DOCTRINE-TAPERMP-1 keeps honest.
+  const seg = label.match(/^([\d.]+) mi WU · ([\d.]+) mi @ ([A-Za-z]+) · ([\d.]+) mi CD$/i);
+  if (seg) {
+    const wu = Number(seg[1]);
+    const block = Number(seg[2]);
+    const cd = Number(seg[4]);
+    const want = Math.max(0.5, Math.floor(targetMi * 2) / 2);
+    if (want < block) {
+      day.subLabel = `${wu} mi WU · ${want} mi @ ${seg[3]} · ${Number((cd + block - want).toFixed(1))} mi CD`;
+    }
+    return splitDay(day as never).qualityMi;
+  }
+
+  // 3 · a rep set the prescription opens the count of ("4×1mi @ T pace · 60s
+  //     jog", "6×90s hills"). Reps come off before anything else — doctrine's
+  //     own affordability cut does the same, and for the same reason: fewer
+  //     reps of the stated length is still the stated workout.
+  const reps = label.match(/^(\s*)(\d+)(\s*[×xX])/);
+  if (reps) {
+    let n = parseInt(reps[2], 10);
+    let cur = label;
+    let now = before;
+    if (n > 1) {
+      // Step the count down ONE at a time and re-measure, rather than dividing
+      // the dose by the label's rep count.
+      //
+      // The two numbers are not always the same. `buildWorkoutSpec` caps a set
+      // to what the day's mileage can hold once warm-up, jog floats and
+      // cool-down are paid for, so a six-rep prescription on a five-mile day
+      // builds four — and dividing by six models a per-rep cost 33% below the
+      // real one, which cuts the label without moving the workout. Re-measuring
+      // asks the same `splitDay` the gate asks, so what this function reports
+      // is what the gate will see.
+      while (n > 1 && now > targetMi + 0.05) {
+        n--;
+        cur = cur.replace(/^(\s*)\d+(\s*[×xX])/, `$1${n}$2`);
+        day.subLabel = cur;
+        now = splitDay(day as never).qualityMi;
+      }
+      if (now <= targetMi + 0.05) return now;
+      // Down to a single repetition and still over: the levers below own it.
+      // `cur` is now "1×…", which is what they match on.
+    }
+    // A ONE-rep time block is a continuous tempo, and doctrine dials that one
+    // in minutes: §5.1's row reads "| Continuous tempo | 3-8 mi continuous | T
+    // | None | 20-40 min |" and §5.2 "Duration | 20 min minimum for stimulus;
+    // 20-40 min sweet spot". So its length is a lever where a multi-rep set's
+    // rep length is not — shortening one repetition of "4×1 mi" would make it a
+    // different workout (§5.3 defines it BY the mile), shortening the single
+    // block just makes it a shorter tempo.
+    //
+    // The floor is `MIN_QUALITY_REP_MINUTES` — Research/04 §6's three-minute
+    // repetition — not §5.2's twenty. Twenty minutes is the stimulus optimum,
+    // and where it collides with `Research/01`'s cap the cap wins: see the
+    // tension resolved in dosing.ts's header, and `sizeTempoDay`.
+    // A one-rep DISTANCE set is the low-volume case, and the same argument
+    // applies to its length as to the tempo's.
+    //
+    // `AT_PACE_SESSION_MI` already states the principle for the session band:
+    // "`min` is not a floor. A small week buys a small session; doctrine's
+    // lower bound describes the runner who can afford the whole dose, and
+    // flooring a 20 mi/wk runner at four threshold miles would be the share cap
+    // read backwards." §5.1's shortest cruise repetition is a mile, which is
+    // 12.5% of an eight-mile week — doctrine's rep bands are written for
+    // runners at the volumes `Research/00a`'s own volume table puts them at,
+    // and below that floor the CAP is the rule that still means something.
+    //
+    // So the single repetition shortens, in the unit the prescription states it
+    // in, down to `MIN_QUALITY_REP_MINUTES` (Research/04 §6's three minutes).
+    // Shorter than that and it is not a repetition, and the caller keeps what
+    // it has. Only ever at ONE rep: shortening a repetition inside a multi-rep
+    // set would change the workout §5.3 and §6.2 define BY its rep length,
+    // where here the set IS the single effort.
+    const dist = cur.match(/^(\s*)1(\s*[×xX]\s*)(\d+(?:\.\d+)?)\s*(mi|km|K|m)\b/);
+    if (dist && now > 0) {
+      const unit = dist[4];
+      const perMi = unit === 'mi' ? 1 : unit === 'm' ? 1609.34 : 1.609344;
+      const floorMi = (MIN_QUALITY_REP_MINUTES * 60) / 480; // §6's 3 min, at splitDay's probe pace
+      const wantMi = Math.max(floorMi, Math.min(now, targetMi));
+      if (wantMi < now - 0.01) {
+        const raw = wantMi * perMi;
+        const grain = unit === 'm' ? 100 : unit === 'mi' ? 0.25 : 0.5;
+        // Round DOWN to the grain, but never below the three-minute floor
+        // itself: flooring 0.375 mi onto a quarter-mile grain gives 0.25, which
+        // is a ninety-second fragment doctrine describes nowhere. The floor is
+        // rounded UP to the grain and wins.
+        const floorGrain = Math.ceil((floorMi * perMi) / grain) * grain;
+        const rounded = Math.max(grain, floorGrain, Math.floor(raw / grain) * grain);
+        day.subLabel = cur.replace(
+          /^(\s*)1(\s*[×xX]\s*)\d+(?:\.\d+)?(\s*)(mi|km|K|m)\b/,
+          `$11$2${Number(rounded.toFixed(2))}$3$4`,
+        );
+        return splitDay(day as never).qualityMi;
+      }
+      return now;
+    }
+
+    const timed = cur.match(/^(\s*)1(\s*[×xX]\s*)(\d+(?:\.\d+)?)(\s*min\b)/i);
+    if (timed && now > 0) {
+      const mins = Number(timed[3]);
+      const want = Math.max(
+        MIN_QUALITY_REP_MINUTES,
+        Math.floor(mins * Math.min(1, targetMi / now)),
+      );
+      if (want < mins) {
+        day.subLabel = cur.replace(
+          /^(\s*)1(\s*[×xX]\s*)\d+(?:\.\d+)?(\s*min\b)/i,
+          `$11$2${want}$3`,
+        );
+        return splitDay(day as never).qualityMi;
+      }
+    }
+    return now;
+  }
+
+  // 4 · a continuous block whose size leads the prescription ("5mi continuous
+  //     tempo", "4mi continuous wave tempo · ±10 s/mi around T"). Only the
+  //     leading number moves; the phrase after it is the workout's identity.
+  const lead = label.match(/^(\s*)([\d.]+)\s*mi\b/i);
+  if (lead && !/\bE\s+w\//i.test(label)) {
+    const want = Math.max(0.5, Math.floor(targetMi * 2) / 2);
+    if (want < Number(lead[2])) {
+      day.subLabel = label.replace(/^(\s*)[\d.]+(\s*mi\b)/i, `$1${want}$2`);
+      return splitDay(day as never).qualityMi;
+    }
+  }
+
+  return before;
 }
 
 /**
@@ -5198,6 +5925,14 @@ function applyIntensityFloor(composed: ComposePlanResult): void {
 function setLongFinish(day: DayPlan, finishMi: number): void {
   const tagMatch = String(day.subLabel ?? '').match(/mi\s*@\s*(HM|MP|M)\b/i);
   const tag = tagMatch ? tagMatch[1].toUpperCase() : 'MP';
+  // DOCTRINE-DOSING-2 · the same floor `layoutWeek` authors to, applied to
+  // every later trim. `Research/04` §4.5 states the segment as "final 2-6 mi at
+  // MP or slightly faster", so a give-back that would leave less than two miles
+  // removes the finish instead of shipping a mile of race pace under a label
+  // that promises a session. Both the intensity floor and the dosing pass reach
+  // this function, and neither should be able to invent a shape doctrine does
+  // not describe.
+  if (finishMi > 0 && finishMi < FAST_FINISH_MIN_MI) finishMi = 0;
   if (finishMi <= 0) {
     day.subLabel = 'LONG';
     day.notes = 'Conversational throughout. Build the engine.';
@@ -5277,10 +6012,14 @@ async function composeForUserInternal(
       userId, todayISO, inputs.compose.recentWeeklyMi,
       lastRaceFinished, lastRaceDistanceMi, lastRaceFinished?.priority ?? null,
     );
-    if (ramp.lifted) {
-      inputs.compose.rampBaseMi = ramp.baseMi;
-      inputs.compose.rampBaseEvidence = ramp;
-    }
+    // DOCTRINE-BASE-1 (2026-08-18) · the EVIDENCE is threaded whether or not it
+    // lifted the base. `rampBaseMi` stays conditional, so the volume curve is
+    // byte-identical for every runner the lift does not apply to — but the
+    // base-rebuilt gate in `composePlan` needs the comparison the evidence
+    // carries (this runner's 28-day mean against this runner's own sustained
+    // level) even on the authorings where the ramp itself did not move.
+    if (ramp.lifted) inputs.compose.rampBaseMi = ramp.baseMi;
+    inputs.compose.rampBaseEvidence = ramp;
   }
 
   // 2026-08-17 · coaching-loop reconciliation · measured-progress gate for

@@ -104,12 +104,21 @@ describe('DAY-SIZE-1 · a quality day is sized from its session', () => {
     // day budget cut both back to the 26 minutes it could afford. A deload week
     // repeating the week before it is correct (doctrine §2's W4 holds the
     // stimulus), so only NON-deload neighbours are compared.
+    //
+    // DOCTRINE-DOSING-2 (2026-08-18) · the week's T session is now found by
+    // PACE FAMILY, not by the `threshold` type alone. `threshold` (cruise
+    // intervals) and `tempo` (a continuous block) are both T in Daniels'
+    // taxonomy, and the composer now alternates between the two forms week to
+    // week — Research/04 §5.2's "Frequency | 1×/week or alternating with cruise
+    // intervals" — instead of running both in the same seven days. Looking only
+    // for `threshold` would see half the block's T sessions and miss exactly the
+    // consecutive pairs this test exists to compare.
     const res = composePlan(cimBlock());
     finalizeComposedPlan(res, 26.2, 'advanced');
     const labels: Array<{ wk: number; label: string; cutback: boolean }> = [];
     for (const [i, w] of res.weeks.entries()) {
       if (w.phase !== 'QUALITY') continue;
-      const th = w.days.find((d) => d.isQuality && d.type === 'threshold');
+      const th = w.days.find((d) => d.isQuality && (d.type === 'threshold' || d.type === 'tempo'));
       if (th) labels.push({ wk: i, label: String(th.subLabel), cutback: Boolean(w.isCutback) });
     }
     expect(labels.length).toBeGreaterThan(2);

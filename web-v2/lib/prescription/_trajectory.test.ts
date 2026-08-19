@@ -327,10 +327,35 @@ describe('David\'s CIM block', () => {
       `${s.shape.reps}×${s.shape.repMinutes}min @ ${s.shape.paceSPerMi}s/mi ${s.zone.padEnd(11)}` +
       `${s.clamped ? ' [clamped] ' : ' '}${s.change}`).join('\n')}`);
 
-    const thresholdLabels = r.composed.weeks.flatMap((w) =>
-      w.days.filter((d) => d.type === 'threshold' && d.workShape).map((d) => d.subLabel));
-    expect(thresholdLabels.length).toBeGreaterThan(2);
-    expect(new Set(thresholdLabels).size).toBeGreaterThan(1);
+    // DOCTRINE-DOSING-2 (2026-08-18) · read every TRAJECTORY-OWNED session, not
+    // the `threshold`-typed ones alone.
+    //
+    // The composer now alternates the T session's FORM week to week — cruise
+    // intervals one week, a continuous tempo the next, per Research/04 §5.2
+    // "Frequency | 1×/week or alternating with cruise intervals" — instead of
+    // running both forms in the same seven days. Only the cruise form carries a
+    // `workShape`, so filtering on `type === 'threshold'` now sees half the
+    // block's T ladder and reads a passing block as a stalled one. What the test
+    // is actually about is whether the trajectory MOVES, and it owns both the
+    // threshold and the interval track; both are asserted, and each track that
+    // appears more than once must show more than one shape.
+    const ownedByFamily = new Map<string, string[]>();
+    for (const w of r.composed.weeks) {
+      for (const d of w.days) {
+        if (!d.workShape || d.type === 'race') continue;
+        const list = ownedByFamily.get(d.type) ?? [];
+        list.push(String(d.subLabel));
+        ownedByFamily.set(d.type, list);
+      }
+    }
+    const ownedLabels = [...ownedByFamily.values()].flat();
+    expect(ownedLabels.length).toBeGreaterThan(2);
+    expect(new Set(ownedLabels).size).toBeGreaterThan(1);
+    for (const [family, labels] of ownedByFamily) {
+      if (labels.length < 2) continue;
+      expect(new Set(labels).size, `${family} repeated one shape for the whole block`)
+        .toBeGreaterThan(1);
+    }
   });
 
   it('holds one pace for the whole block · no evidence, no fitness claim', () => {

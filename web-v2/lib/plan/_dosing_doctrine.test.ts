@@ -13,16 +13,35 @@
  * `N× M min @ T pace` with `5mi continuous tempo`, landing at 13-19% of the
  * week at T against doctrine's 10%.
  *
- * ── This file tests a DETECTOR, and asserts on its SHAPE, not its silence ──
+ * ── DOCTRINE-DOSING-2 (2026-08-18) · this is now a GATE, and it asserts ZERO ──
  *
- * The counts below are ratchets, not zeroes, and deliberately so. Enforcing the
- * weekly cap would re-prescribe existing plans including the owner's live one,
- * which is his decision and not this file's. So the corpus assertions here say
- * "no worse than what we measured when this landed" — the same posture
- * `_maint_invariants.test.ts` takes for the defects it is still working down.
- * What IS asserted absolutely is that the measurement itself is correct: that
- * the right miles land in the right bucket, that a race is not a workout, and
- * that a week with no quality reports nothing.
+ * The counts here landed as ratchets — 1750 findings across 178 of 180
+ * archetypes — because enforcing the caps would re-prescribe existing plans and
+ * that was the owner's call. He made it: "if my plan has a chance of breaking
+ * rules, then we need to insert something into the code that would never allow
+ * that."
+ *
+ * So the composer was fixed rather than the detector loosened, and the corpus
+ * census below asserts zero ENFORCED breaches instead of a ceiling. What
+ * changed in the engine, in the order it matters:
+ *
+ *   1. `qualityTypesFor` stopped pairing two sessions of one pace family.
+ *      `threshold` and `tempo` are both T; the mixes now alternate the FORM
+ *      week to week, which is what §5.2's "1×/week or alternating with cruise
+ *      intervals" asks for, and spend the freed slot on a family with budget.
+ *   2. The day sizers spend a WEEKLY budget (`slotDoseBudgetMi`) rather than a
+ *      per-session share, so two sessions can never each claim the whole 10%.
+ *   3. `applyDosingCaps` reconciles after every pass that moves mileage, since
+ *      the caps are percentages of a denominator VOL-1 and the taper rescale
+ *      both rewrite after the sessions were sized.
+ *   4. `validateComposedPlan` turns any remaining enforced finding into a fatal
+ *      violation, unconditionally, on every path that writes a plan.
+ *
+ * The findings that REMAIN are all percentage findings in tapers and race
+ * weeks, and they are reported rather than enforced: Research/08 §9.1 holds
+ * intensity while volume falls, and §9.2 states its taper sessions by name at
+ * doses outside Research/01's percentages. `capEnforced` carries that argument
+ * and `DOSING.taper-percentage-exemption` binds it to the document.
  *
  * Run: ./node_modules/.bin/vitest run lib/plan/_dosing_doctrine.test.ts
  */
@@ -39,7 +58,7 @@ import {
   CUMULATIVE_CEILING_KM,
   type DosingFinding,
 } from './dosing';
-import { validateComposedPlan } from './validate';
+import { validateComposedPlan, PlanValidationError } from './validate';
 import type { SimDistance } from './sim-constants';
 
 const base = {
@@ -223,8 +242,8 @@ describe('DOCTRINE-DOSING-1 · pace attribution', () => {
   });
 });
 
-describe('DOCTRINE-DOSING-1 · the detector is advisory, never fatal', () => {
-  it('validateComposedPlan reports dosing without failing the plan', () => {
+describe('DOCTRINE-DOSING-2 · the gate is FATAL, and the composer never reaches it', () => {
+  it('validateComposedPlan passes a composed plan and reports the taper exemptions', () => {
     const r = buildSimPlan({
       ...base, goalMode: 'goal', distance: 'marathon', experienceLevel: 'advanced',
       weeklyMileageBucket: 45, weeklyFrequency: 6, planWeeks: 18,
@@ -233,18 +252,58 @@ describe('DOCTRINE-DOSING-1 · the detector is advisory, never fatal', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
 
-    // The corpus proves this archetype breaches the weekly T cap. The plan must
-    // still validate: a dosing finding cannot block a DB write.
+    // This archetype used to breach the weekly T cap; the composer now sizes
+    // to the same budget the gate checks, so validation passes with the caps
+    // FATAL. Both call shapes must behave identically — enforcement is
+    // unconditional, not something the caller opts into.
     const seen: DosingFinding[] = [];
     expect(() =>
       validateComposedPlan(r.composed, r.raceDistanceMi, r.mode, r.validateCtx, {
         onDosing: (f) => seen.push(...f),
       }),
     ).not.toThrow();
-    expect(seen.length).toBeGreaterThan(0);
-
-    // And omitting the callback must not change the outcome or compute anything.
     expect(() => validateComposedPlan(r.composed, r.raceDistanceMi, r.mode, r.validateCtx)).not.toThrow();
+
+    // What IS reported is the taper's percentage findings — Research/08 §9.1
+    // holds intensity while volume falls, so the share rises by design. They
+    // are visible and non-fatal, which is the whole point of keeping the sink.
+    for (const f of seen) {
+      expect(f.enforced, `a fatal finding survived composition: ${f.message}`).toBe(false);
+      expect(['taper', 'race-week']).toContain(f.context);
+      expect(f.basis).toBe('percentage');
+    }
+  });
+
+  it('a hand-built violating week is REJECTED, not merely reported', () => {
+    // The gate has to be able to say no, or the zero above proves nothing. This
+    // is the two-legal-sessions week from the attribution suite, asserted at the
+    // validator rather than at the detector.
+    const r = buildSimPlan({
+      ...base, goalMode: 'goal', distance: 'marathon', experienceLevel: 'advanced',
+      weeklyMileageBucket: 45, weeklyFrequency: 6, planWeeks: 18,
+      goalTimeSec: GOAL_SEC.marathon, longestRunBucket: '10+',
+    } as any);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    const wk = r.composed.weeks.find((w: { phase: string; isRaceWeek?: boolean }) =>
+      w.phase === 'QUALITY' && !w.isRaceWeek);
+    expect(wk).toBeTruthy();
+    if (!wk) return;
+    // Give the week a second threshold session at a full doctrinal dose. Nothing
+    // else moves, so the only thing that can fail is the dosing cap.
+    const victim = wk.days.find((d: { type: string }) => d.type === 'easy');
+    expect(victim).toBeTruthy();
+    if (!victim) return;
+    victim.type = 'threshold';
+    victim.isQuality = true;
+    victim.subLabel = '5×1mi @ T pace · 60s jog';
+
+    let err: unknown;
+    try { validateComposedPlan(r.composed, r.raceDistanceMi, r.mode, r.validateCtx); }
+    catch (e) { err = e; }
+    expect(err).toBeInstanceOf(PlanValidationError);
+    expect((err as PlanValidationError).violations.some((v) => /mi at T/.test(v))).toBe(true);
   });
 });
 
@@ -294,11 +353,30 @@ describe('DOCTRINE-DOSING-1 · corpus census', () => {
       expect(['training', 'taper', 'race-week']).toContain(f.context);
     }
 
-    // RATCHET, not a zero. Enforcing these caps would re-prescribe live plans,
-    // which is the owner's call — see the file header. Until that decision, this
-    // number may fall but must not rise: any change that makes the engine dose
-    // MORE quality than doctrine allows has to be a deliberate one.
+    // ── THE GATE · ZERO, not a ratchet ──────────────────────────────────────
+    //
+    // This landed as a ratchet at 1750 findings across 178 of 180 archetypes,
+    // on the reasoning that enforcing the caps was the owner's call. He made
+    // it, and the composer was fixed rather than the detector loosened: the
+    // type mixes stopped running two sessions of one pace family, the day
+    // sizers spend a weekly budget instead of a per-session one, and
+    // `applyDosingCaps` reconciles after every pass that moves mileage.
+    //
+    // What must be zero is every ENFORCED finding — the absolute ceilings in
+    // any week, the percentage caps on training weeks. The percentage findings
+    // that remain are all in tapers and race weeks, where Research/08 §9.1
+    // holds intensity while volume falls and §9.2 prescribes doses outside the
+    // percentage by name; `capEnforced` carries that reasoning and
+    // DOSING.taper-percentage-exemption binds it to the doc.
     expect(archetypes).toBeGreaterThan(150);
-    expect(findings.length).toBeLessThanOrEqual(1750);
+    const enforced = findings.filter((f) => f.enforced);
+    expect(
+      enforced.length,
+      `${enforced.length} enforced dosing breaches the composer should never have authored:\n` +
+        enforced.slice(0, 8).map((f) => `  · ${f.phase} ${f.weekStartISO}: ${f.message}`).join('\n'),
+    ).toBe(0);
+    // And no TRAINING week may carry a percentage finding at all — that is the
+    // same statement from the other side, and it is the number that was 1547.
+    expect(summarizeDosing(findings).training).toBe(0);
   }, 120_000);
 });

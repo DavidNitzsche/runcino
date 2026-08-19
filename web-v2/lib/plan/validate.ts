@@ -207,24 +207,26 @@ export interface PlanValidationContext {
  *
  * This file's entire severity model is "anything pushed to `violations` is
  * fatal" — there is no warn level, because until now every check either blocked
- * a write or did not exist. Daniels' weekly dosing caps are the first thing
- * worth measuring that must NOT block a write yet, so they get a callback
- * instead of a level.
+ * a write or did not exist.
  */
 export interface ValidateOptions {
   /**
-   * Receives every Daniels dosing-cap breach in the plan (see `./dosing`).
+   * Receives EVERY Daniels dosing-cap finding in the plan (see `./dosing`),
+   * including the ones that are not fatal.
    *
-   * DETECTOR, NOT ENFORCER — deliberately, and this is the whole point of the
-   * shape. `Research/01` §"Dosing rules — Daniels' caps" has never been
-   * enforced anywhere in the engine, so turning it into a `violations.push`
-   * would re-prescribe every plan already in the database, including the
-   * owner's live marathon build, the moment it regenerated. Whether to do that
-   * is his call, not this file's.
+   * DOCTRINE-DOSING-2 (2026-08-18) · this is no longer how the caps are
+   * enforced. Enforcement is unconditional at the bottom of
+   * `validateComposedPlan`: any finding whose `enforced` flag is set becomes a
+   * violation, on every path that writes a plan, whether or not a caller passed
+   * this. That change was made because the advisory shape had a defect no
+   * argument was needed for — no production caller ever passed the callback, so
+   * the check was declared and never ran.
    *
-   * Omitting the callback skips the computation entirely, so the prod path is
-   * unchanged in behaviour and in cost. When the decision is made, enforcement
-   * is one `violations.push` here — not a flag hidden in `dosing.ts`.
+   * What survives here is the REPORT. The percentage caps do not govern a taper
+   * or a race week (Research/08 §9.1, and §9.2's own named doses — see
+   * `capEnforced`), and those findings are worth a human's eye even though they
+   * are not errors. A caller that wants to see them passes this; a caller that
+   * only needs the gate does not have to.
    */
   onDosing?: (findings: DosingFinding[]) => void;
 }
@@ -659,18 +661,38 @@ export function validateComposedPlan(
     }
   }
 
-  // ── 10. Daniels' weekly dosing caps (ADVISORY · never fatal) ─────────────
-  // Runs last and outside the violations array on purpose. See ValidateOptions
-  // .onDosing: these caps have never been enforced, and enforcing them here
-  // would silently re-prescribe existing plans. Computed only when a caller
-  // asks, so the prod path pays nothing.
+  // ── 10. Daniels' dosing caps · FATAL (DOCTRINE-DOSING-2, 2026-08-18) ─────
   //
-  // Every finding carries its own `context` (training / taper / race-week)
-  // rather than whole weeks being suppressed — CLAUDE.md §"Per-finding context
-  // filters". A taper deliberately holds intensity while volume falls
-  // (Research/08 §9.1), so its percentages rise by design; that is a different
-  // fact from a build week over its cap, and the caller is told which it has.
-  if (opts?.onDosing) opts.onDosing(planDosingFindings(weeks));
+  // This ran as an advisory callback for one day. The reasoning then was that
+  // enforcing it would re-prescribe existing plans and that was the owner's
+  // call; he made it — "if my plan has a chance of breaking rules, then we need
+  // to insert something into the code that would never allow that."
+  //
+  // So it is computed UNCONDITIONALLY now, not when a caller opts in. The
+  // advisory shape had a second failure mode nobody had to argue about: no
+  // production caller ever passed `onDosing`, so the check existed and never
+  // ran. A gate that has to be requested is not a gate.
+  //
+  // `enforced` is the finding's own answer to "may the engine author this"
+  // (see `capEnforced` in ./dosing): absolute ceilings bind in every week,
+  // percentage caps bind on training weeks. A taper deliberately holds
+  // intensity while volume falls (Research/08 §9.1) and §9.2 prescribes its
+  // sessions by name at doses outside the percentage, so enforcing the
+  // percentage there would forbid the taper doctrine mandates. Those findings
+  // are still REPORTED through `onDosing` — CLAUDE.md §"Per-finding context
+  // filters" — they are simply not fatal.
+  //
+  // Nothing should ever reach here. `layoutWeek` sizes every session against
+  // this same budget and `applyDosingCaps` reconciles after every pass that
+  // moves mileage; the whole 180-archetype corpus authors zero enforced
+  // breaches. This is the assertion that it stays that way, on every path that
+  // writes a plan.
+  const dosing = planDosingFindings(weeks);
+  if (opts?.onDosing) opts.onDosing(dosing);
+  for (const f of dosing) {
+    if (!f.enforced) continue;
+    violations.push(`Week ${f.weekStartISO ?? '?'} (${f.phase ?? '?'}): ${f.message}`);
+  }
 
   if (violations.length > 0) throw new PlanValidationError(violations);
 }
