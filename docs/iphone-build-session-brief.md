@@ -58,6 +58,39 @@ scold.
 - Ship with `scripts/ship-testflight-v2.sh`. **Never ship a TestFlight build without an
   explicit go from David.**
 
+## The runway is already laid — use it, don't rebuild it
+
+Main is at `545fa384`. Three things landed specifically so this session doesn't start by
+doing them:
+
+**The v5 tokens are in code.** `native-v2/Faff/Faff/ThemeV5.swift` — ground, four surface
+steps, signal, attention, fault, the six day-state gradients, radii, spacing, motion. Added
+alongside the old palette; nothing was recoloured, no view was touched. Build against
+ThemeV5, never against a hex literal.
+
+**The gate makes the migration finish.** `scripts/check-palette-sync.sh` asserts the v5
+palette, and asserts the legacy ten-colour block *only while something still references it*.
+It counts the referencing files itself — 47 today, printed on every green run — and **inverts
+to a hard failure at zero**, demanding the legacy block be deleted from `Theme.swift`. Watch
+that number fall as you port. It is the honest progress bar.
+
+**The typefaces are bundled and registered.** Instrument Sans + Archivo, OFL 1.1, no Reserved
+Font Name, licences shipping beside the TTFs.
+
+> **Do not call `Font.custom` for the display face.** The design's display register — Archivo
+> **wght 800 / wdth 112** — is not a named instance in the file, so
+> `Font.custom("Archivo-ExtraBold", …)` silently returns the right weight at the wrong width
+> and looks *almost* correct. Use `Font.faffDisplay(_:)` and
+> `Font.faffText(_:weight:width:tabular:)` in `FontsV5.swift`, which set variation axes on a
+> `CTFontDescriptor`. Tabular figures are default-on there via the OpenType `tnum` tag —
+> Instrument Sans's default digits are genuinely proportional (391–666 upem), so a live pace
+> or countdown would visibly jitter without it. `.monospacedDigit()` is a system-font
+> guarantee and does not apply to a custom face.
+
+One caveat on sourcing: `#F2B03C`, `#FF4438` and the four surface steps appear nowhere in the
+`.dc.html` — they come from the README prose alone. The six gradients byte-match between the
+two. If a colour looks wrong on device, those are the ones with a single source.
+
 ## Contracts that must not move
 
 **The watch wire is frozen.** `WatchCompletion` is camelCase with no CodingKeys; a
@@ -92,7 +125,10 @@ no-heart layout.
 
 Verify against the real app, not only against fixtures. `swiftc -typecheck` over the iOS
 sources against the simulator SDK works and is fast — use it rather than claiming "compiles by
-inspection". The iOS Simulator tooling in this session can build, install and screenshot; open
+inspection". One trap: `/Volumes/WP` is not APFS, so an AppleDouble `._*` shadow sits beside
+every source file. `find native-v2/Faff/Faff -name '*.swift'` returns 202 files, half of them
+binary resource forks that fail with "invalid character in source file". Exclude them with
+`! -name '._*'` — the real count is 101. The iOS Simulator tooling in this session can build, install and screenshot; open
 the live panel before building so David can watch.
 
 Ten QA accounts exist in production (`qa-*-20260819-1231@faff.run`). **Never touch
