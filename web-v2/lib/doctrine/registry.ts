@@ -168,7 +168,7 @@ import {
 } from '@/lib/training/threshold-band';
 import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
 import { MAX_LONG_BUMP_MI, MAX_WEEKLY_BUMP_MI, MAX_PER_EASY_BUMP_MI } from '@/lib/plan/adaptive-ramp';
-import { COLD_START_CALIBRATION } from '@/lib/plan/simulator';
+import { COLD_START_CALIBRATION, simulate } from '@/lib/plan/simulator';
 import {
   MARATHON_PACE_WORKOUT_CAP,
   CUMULATIVE_CEILING_KM,
@@ -316,6 +316,35 @@ import {
   fitRiegelExponent,
   type Limiter,
 } from '@/lib/coach/limiter';
+// ── Rule 7 · 2026-08-19 · constants that asserted physiology and cited a line
+// number, or cited nothing at all. See the claim block at the end of the file.
+import {
+  ACCLIMATION_TIMELINE,
+  FULL_ACCLIM_DAYS,
+  MAX_PENALTY_BPM_AT_PEAK,
+  expectedHeatPenaltyBpm,
+} from '@/lib/coach/heat-acclimatization';
+import { sessionRpeAu } from '@/lib/coach/strength-load';
+import {
+  MAX_WALK_RUN_STAGE,
+  MAX_STAGE_ADVANCE_PER_WEEK,
+  ALTERNATE_DAY_THROUGH_STAGE,
+  INJURY_PLAN_MAX_WEEKS,
+  resolveInjuryProtocol,
+} from '@/lib/plan/injury-protocols';
+import {
+  ACWR_MIN_RUN_DAYS,
+  ACWR_MIN_CHRONIC_MI_PER_DAY,
+  RUN_DAY_MIN_MI,
+} from '@/lib/coach/acwr';
+import {
+  DENSITY_PENALTY,
+  PLATEAU_FLOOR_VDOT,
+  QUALITY_DENSITY_CEILING,
+  RAMP_FLAG_THRESHOLD,
+  SIGMA_SEC_PER_MILE,
+  BAND_SIGMAS,
+} from '@/lib/plan/simulator';
 import type { DoctrineClaim } from './types';
 import { matchLiteral, parseBand, parseBands, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
 
@@ -7112,6 +7141,61 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
    * anywhere in the engine — fueling.ts and fuel-resolve.ts are carb-only.
    * A claim needs a constant to bind; inventing one to satisfy the gate
    * would be the fabrication this gate exists to catch, not fix.
+   *
+   * ── 2026-08-19 · BOTH RE-SURVEYED. Still zero consumers, and the two gaps
+   * are NOT the same size. Written down here rather than in a status doc,
+   * because this is the file anyone asking "why is there no claim for X"
+   * will open.
+   *
+   * RESEARCH/19 · HYDRATION · a genuine capability gap, blocked on inputs.
+   *   Encodable content is dense: fluid ml/hr as a 5-distance x 4-temperature
+   *   table, an 8-row sodium mg/hr scenario table, sweat-rate and sweat-sodium
+   *   classifications, the EAH ceilings (~800 ml/hr general, ~500 for a >5 h
+   *   marathon), the mass-loss performance bands, pre-race preload figures.
+   *   What blocks it is DATA, not doctrine: nothing in the schema stores a
+   *   measured sweat rate, a sweat-sodium class, logged fluid or sodium, or a
+   *   pre/post-run mass pair, and HealthKit import takes bodyMass but not
+   *   dietaryWater. Body mass (profile.weight_kg), temperature, duration and
+   *   distance already exist, so the ml/hr table is the reachable half and the
+   *   sodium half is not.
+   *   What the runner gets instead: one hardcoded string, identical for every
+   *   runner at every distance in every temperature — components/faff-app/
+   *   raceDetail.ts, "Drink mix every 3-4 mi · extra electrolyte if warm" —
+   *   plus a few hand-written heat tips. Both render sites already carry a
+   *   comment admitting it is a standing default, in contrast to the adjacent
+   *   on-course carb line which was moved onto the real per-distance rate.
+   *
+   * RESEARCH/24 · AGE AND SEX GRADING · not blocked on anything.
+   *   Every input it asks for is already stored: profile.birthday (with
+   *   ageFromBirthday() in profile-state.ts already deriving the age and
+   *   exposing it as identity.age), profile.age, and sex in both
+   *   profile.sex and users.sex with loadBiologicalSex() normalising them.
+   *   The doc's own "Implementation notes" describe localStorage and call
+   *   server-side persistence future work, which is stale — the columns
+   *   landed in migration 106.
+   *   Encodable content is thin but real: a 6-row male age-decline table
+   *   (~0.3/yr in the 30s rising to ~1.5/yr past 70), a 4-row cohort-ceiling
+   *   table, and a +7 VDOT female cohort offset. The female decline curve is
+   *   described in prose only and has no numbers to encode.
+   *   What the runner gets instead: a 50-year-old's VDOT is treated
+   *   byte-identically to a 25-year-old's. Every function in the VDOT
+   *   pipeline — vdotFromRace, predictRaceTime, bestRecentVdot,
+   *   resolveCurrentTPace, resolveFitness — takes no age and no sex ("anchor
+   *   age" in that file means days since the race, not the runner's age). The
+   *   only consumer of identity.age anywhere is fact-reciter.ts, which
+   *   concatenates it into a display string.
+   *   NOTE THE RULE THAT MAKES THIS CHEAP AND SAFE: Research/24 states twice
+   *   that raw VDOT drives pace prescription ALWAYS and the graded number is
+   *   framing only. So consuming it changes no prescribed pace, no plan and
+   *   no watch payload — it adds a secondary line to the VDOT tile, in the
+   *   slot HealthView.tsx currently gives to anchor staleness. Two onboarding
+   *   screens already promise it ("UNLOCKS AGE-GRADED ZONES",
+   *   Step3Confirm.tsx and Step3ConfirmRedesign.tsx) and nothing delivers it.
+   *
+   * Neither is built here, per instruction. The asymmetry is the finding: /19
+   * needs new capture surfaces and a DDL migration before a claim can exist,
+   * while /24 needs only a function and has a promise outstanding to the
+   * runner.
    */
   {
     id: 'LONGRUN.wow-single-step-cap-is-the-injury-red-line',
@@ -9417,6 +9501,874 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (!/researchSpanBasePct/.test(src)) {
         throw new Error('the B-target no longer reads the confidence-band table');
       }
+    },
+  },
+
+  // ══ RULE 7 · 2026-08-19 ═══════════════════════════════════════════════════
+  //
+  // Eleven constants that assert physiology and cited nothing, or cited a LINE
+  // NUMBER — which Rule 7 forbids outright, because a line number rots on the
+  // next edit to the doc while a quoted heading survives everything except a
+  // change to what the doc says.
+  //
+  // Three files were re-anchored on verbatim text as part of this
+  // (lib/coach/heat-acclimatization.ts, lib/coach/strength-load.ts,
+  // lib/plan/injury-protocols.ts — 34 line references in the last one alone),
+  // and the claims below read their numbers back out of Research/ at run time.
+  //
+  // Five of the eleven turned out to have NO doctrine behind them at all. That
+  // is a finding, not a failure, and they are labelled CONVENTION rather than
+  // given a citation that would not survive being opened. Two of those carry
+  // recorded violations; both are runner-facing and both are flagged in the
+  // exemptions below rather than swallowed by a widened claim.
+
+  {
+    id: 'HEAT.acclimation-timeline',
+    binds: [
+      'lib/coach/heat-acclimatization.ts#ACCLIMATION_TIMELINE',
+      'lib/coach/heat-acclimatization.ts#MAX_PENALTY_BPM_AT_PEAK',
+      'lib/coach/heat-acclimatization.ts#expectedHeatPenaltyBpm',
+    ],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: '### Adaptation timeline (Périard 2021, Tipton-related ACSM consensus)',
+    claim:
+      'Heat acclimation shows up as HEART RATE AT A GIVEN WORKLOAD falling — five beats by day ' +
+      'three, fifteen by day fourteen — and as a share of the full gains realised on the same ' +
+      'day bands. The engine carries that table row for row, and the residual HR cost it quotes ' +
+      'an unacclimated runner is the same fifteen beats a fully acclimated one has banked. Every ' +
+      'number here used to be cited as `Research/06:158-163`, a line range Rule 7 forbids; the ' +
+      'claim now reads the day rows, the HR column and the performance column out of the doc ' +
+      'itself, so a reworded table fails here instead of drifting.',
+    check({ cite }) {
+      const t = cite.table();
+      // The doc's fifth row ("14+ · Refines") is a maintenance note, not an
+      // adaptation stage · the engine's four stages are the doc's first four.
+      if (t.rows.length < ACCLIMATION_TIMELINE.length) {
+        throw new Error(
+          `doctrine's acclimation timeline has ${t.rows.length} rows, the engine encodes ` +
+            `${ACCLIMATION_TIMELINE.length} stages`,
+        );
+      }
+      const magnitude = (cell: string): [number, number] => {
+        const [lo, hi] = parseBand(cell);
+        const [a, b] = [Math.abs(lo), Math.abs(hi)];
+        return [Math.min(a, b), Math.max(a, b)];
+      };
+      for (let i = 0; i < ACCLIMATION_TIMELINE.length; i++) {
+        const row = t.rows[i];
+        const stage = ACCLIMATION_TIMELINE[i];
+        // Day band · the engine's `throughDay` is the top of the doc's own row.
+        const dayTop = parseBand(row['Day'])[1];
+        if (stage.throughDay !== dayTop) {
+          throw new Error(
+            `ACCLIMATION_TIMELINE[${i}].throughDay is ${stage.throughDay}, doctrine's row ` +
+              `"${row['Day']}" runs through day ${dayTop}`,
+          );
+        }
+        // HR @ workload · doctrine writes the reduction signed ("−10–15 bpm"),
+        // the engine stores the magnitude.
+        const hr = magnitude(row['HR @ workload']);
+        if (stage.hrReductionBpm[0] !== hr[0] || stage.hrReductionBpm[1] !== hr[1]) {
+          throw new Error(
+            `ACCLIMATION_TIMELINE[${i}].hrReductionBpm is ${stage.hrReductionBpm.join('-')}, ` +
+              `doctrine's "HR @ workload" for that row is "${row['HR @ workload']}"`,
+          );
+        }
+        // Performance · the first and last rows are worded, not numbered.
+        const perf = row['Performance'];
+        if (/\d/.test(perf)) {
+          const band = parseBand(perf);
+          if (stage.gainsPct[0] !== band[0] || stage.gainsPct[1] !== band[1]) {
+            throw new Error(
+              `ACCLIMATION_TIMELINE[${i}].gainsPct is ${stage.gainsPct.join('-')}, doctrine says "${perf}"`,
+            );
+          }
+        } else if (/begins/i.test(perf)) {
+          within(stage.gainsPct[1], [0, 0], `ACCLIMATION_TIMELINE[${i}].gainsPct at doctrine's "${perf}"`);
+        } else if (/full/i.test(perf)) {
+          within(stage.gainsPct[0], [100, 100], `ACCLIMATION_TIMELINE[${i}].gainsPct at doctrine's "${perf}"`);
+        } else {
+          throw new Error(
+            `the Performance column now reads "${perf}" for row ${i} · it no longer states a ` +
+              'percentage, "begins improving" or "full acclimation", so the engine\'s 0/100 ' +
+              'endpoints are unsupported. Re-read the table.',
+          );
+        }
+      }
+      // The peak penalty IS the full-acclimation reduction · one number, not two.
+      const fullRow = t.rows[ACCLIMATION_TIMELINE.length - 1];
+      const fullReduction = magnitude(fullRow['HR @ workload'])[1];
+      if (MAX_PENALTY_BPM_AT_PEAK !== fullReduction) {
+        throw new Error(
+          `MAX_PENALTY_BPM_AT_PEAK is ${MAX_PENALTY_BPM_AT_PEAK}, doctrine's full-acclimation ` +
+            `reduction is ${fullReduction} bpm`,
+        );
+      }
+      // Read forward: an acclimated runner has paid it all back, and the cost
+      // never rises as the days accumulate.
+      if (expectedHeatPenaltyBpm(FULL_ACCLIM_DAYS) !== 0) {
+        throw new Error(
+          `a fully acclimated runner is still charged ${expectedHeatPenaltyBpm(FULL_ACCLIM_DAYS)} bpm`,
+        );
+      }
+      let prev = Infinity;
+      for (let d = 1; d <= FULL_ACCLIM_DAYS; d++) {
+        const p = expectedHeatPenaltyBpm(d);
+        if (p > prev) throw new Error(`the heat penalty rises between day ${d - 1} and day ${d}`);
+        prev = p;
+      }
+      // The invented curve and its invented attribution may not come back.
+      const src = sourceOf('web-v2/lib/coach/heat-acclimatization.ts');
+      if (/exp\(\s*-\s*\w+\s*\/\s*7\s*\)/.test(stripComments(src))) {
+        throw new Error(
+          'the exponential decay is back · doctrine states a table, and the `max * exp(-N/7)` ' +
+            'that replaced it was in no research file',
+        );
+      }
+      // Backticked / commented mentions are the file WRITING DOWN what it
+      // removed · only an executing reference counts, same rule the lint's
+      // bare-attribution check already applies.
+      if (/Friel/.test(stripComments(src))) {
+        throw new Error('the Friel attribution is back on a timeline Research/06 credits to Périard 2021');
+      }
+      // And nothing may read RESTING HR as the adaptation signature again.
+      if (!/rhrTrend/.test(src) || !/workloadHrDeltaBpm/.test(src)) {
+        throw new Error(
+          'heat-acclimatization.ts no longer separates resting HR from HR-at-workload · that ' +
+            'conflation is what made the card read heat strain as adaptation',
+        );
+      }
+    },
+  },
+
+  {
+    id: 'HEAT.full-acclimation-duration',
+    binds: ['lib/coach/heat-acclimatization.ts#FULL_ACCLIM_DAYS'],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: 'Duration:    10–14 days minimum, 14–21 days preferred',
+    claim:
+      'The acclimation protocol states a minimum of ten to fourteen days. The engine counts a ' +
+      'runner toward full acclimation at the TOP of that minimum band, which is also where the ' +
+      'adaptation timeline puts full acclimation, so the two tables agree. Was cited as ' +
+      '`Research/06:169`; a line number is not a citation.',
+    check({ cite }) {
+      const [minLo, minHi] = parseBand(cite.section[0].replace(/.*Duration:/, '').split(',')[0]);
+      if (FULL_ACCLIM_DAYS !== minHi) {
+        throw new Error(
+          `FULL_ACCLIM_DAYS is ${FULL_ACCLIM_DAYS} · doctrine's stated minimum band is ` +
+            `${minLo}-${minHi} days and the engine takes the top of it`,
+        );
+      }
+      // Cross-check against the other table that names the same day: the
+      // timeline's full-acclimation row. Two doctrine passages, one constant.
+      const timeline = resolveCitation(
+        'Research/06-weather-adjustments.md',
+        '### Adaptation timeline (Périard 2021, Tipton-related ACSM consensus)',
+      );
+      const fullRow = timeline.table().rows[ACCLIMATION_TIMELINE.length - 1];
+      const fullDay = parseBand(fullRow['Day'])[1];
+      if (FULL_ACCLIM_DAYS !== fullDay) {
+        throw new Error(
+          `FULL_ACCLIM_DAYS is ${FULL_ACCLIM_DAYS} but the adaptation timeline reaches full ` +
+            `acclimation on day ${fullDay} · the two passages disagree, so one of them moved`,
+        );
+      }
+    },
+  },
+
+  {
+    id: 'HEAT.pacing-during-acclimation',
+    binds: ['lib/coach/heat-acclimatization.ts#ACCLIMATION_TIMELINE'],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: '### Pacing during acclimation',
+    claim:
+      'Doctrine states how much slower to run while acclimating, on the SAME day bands as the ' +
+      'adaptation timeline: ten to fifteen percent in the first days, nothing by day fourteen. ' +
+      'The engine tells the runner that band verbatim, so it has to be the doc\'s. Both the ' +
+      'numbers and the day rows are read out of this table, and the day rows are checked against ' +
+      'the timeline\'s — reading one table at the other\'s rows is the exact misread Rule 7 exists ' +
+      'to catch.',
+    check({ cite }) {
+      const t = cite.table();
+      const dayCol = t.headers[0];
+      const paceCol = t.headers[1];
+      for (let i = 0; i < ACCLIMATION_TIMELINE.length; i++) {
+        const row = t.rows[i];
+        const stage = ACCLIMATION_TIMELINE[i];
+        const dayTop = parseBand(row[dayCol])[1];
+        if (stage.throughDay !== dayTop) {
+          throw new Error(
+            `the pacing table's row ${i} runs through day ${dayTop} but the engine's stage ` +
+              `${i} runs through day ${stage.throughDay} · the two Research/06 tables are being ` +
+              'read at different rows',
+          );
+        }
+        // "−10 to −15%" defeats parseBand (the word "to" is not a dash), so
+        // take the magnitudes in the order the doc writes them.
+        const nums = (row[paceCol].match(/\d+/g) ?? []).map(Number);
+        const want: [number, number] = nums.length >= 2 ? [Math.min(...nums), Math.max(...nums)] : [0, 0];
+        if (nums.length === 0 && !/normal|race-ready/i.test(row[paceCol])) {
+          throw new Error(
+            `the pacing cell for row ${i} reads "${row[paceCol]}" · no number and no statement ` +
+              'that paces are normal, so a zero adjustment is unsupported',
+          );
+        }
+        if (stage.pacingAdjustPct[0] !== want[0] || stage.pacingAdjustPct[1] !== want[1]) {
+          throw new Error(
+            `ACCLIMATION_TIMELINE[${i}].pacingAdjustPct is ${stage.pacingAdjustPct.join('-')}, ` +
+              `doctrine says "${row[paceCol]}"`,
+          );
+        }
+      }
+    },
+  },
+
+  {
+    id: 'STRENGTH.session-load-is-srpe-not-miles',
+    binds: [
+      'lib/coach/strength-load.ts#sessionRpeAu',
+      'lib/coach/strength-load.ts#strengthMinutesByDay',
+    ],
+    doc: 'Research/09-cross-training.md',
+    anchor: '- Quantify session load via sRPE; do not equate to run minutes.',
+    claim:
+      'Doctrine forbids converting strength minutes into running-mile equivalents in one ' +
+      'sentence, and the engine used to do exactly that at an invented 0.07 mi/min, folded into ' +
+      'both ACWR sites, under a citation to a Research/07 section containing no such factor. The ' +
+      'replacement is Foster session-RPE — rating times minutes, in arbitrary units — and it must ' +
+      'refuse to produce a number when either input is missing, because a defaulted RPE is the ' +
+      'same fabrication in a new unit. This is the file\'s only claim, and it was cited by line ' +
+      'number (`Research/09:350`) until Rule 7.',
+    check({ cite }) {
+      if (!/do not equate to run minutes/i.test(cite.section[0])) {
+        throw new Error('Research/09 no longer forbids equating strength load to run minutes');
+      }
+      // Foster's arithmetic, and nothing else.
+      if (sessionRpeAu(7, 60) !== 420) {
+        throw new Error(`sessionRpeAu(7, 60) is ${sessionRpeAu(7, 60)}, session-RPE is rating x minutes`);
+      }
+      for (const [rpe, min] of [[null, 60], [7, null], [0, 60], [11, 60], [7, 0]] as const) {
+        if (sessionRpeAu(rpe, min) !== null) {
+          throw new Error(`sessionRpeAu(${rpe}, ${min}) returned a number · a missing or out-of-range input has no load`);
+        }
+      }
+      // The prohibited conversion may not return, here or at either fold site.
+      const files = [
+        'web-v2/lib/coach/strength-load.ts',
+        'web-v2/lib/coach/glance-state.ts',
+        'web-v2/lib/coach/state-loader.ts',
+      ];
+      for (const f of files) {
+        const code = stripComments(sourceOf(f));
+        if (/0\.07/.test(code)) {
+          throw new Error(
+            `${f} carries a 0.07 coefficient again · that is the minute-to-mile equivalence ` +
+              'Research/09 forbids, and it moved the ratio gating the readiness pull-back',
+          );
+        }
+      }
+    },
+  },
+
+  {
+    id: 'INJURY.walk-run-cadence-is-derived-from-the-ladder',
+    binds: [
+      'lib/plan/injury-protocols.ts#MAX_WALK_RUN_STAGE',
+      'lib/plan/injury-protocols.ts#MAX_STAGE_ADVANCE_PER_WEEK',
+      'lib/plan/injury-protocols.ts#ALTERNATE_DAY_THROUGH_STAGE',
+    ],
+    doc: 'Research/05-injury-return-protocols.md',
+    anchor: '**Generic walk-run progression template (8 stages)**',
+    claim:
+      'How fast an injured runner climbs the walk-run ladder is not a separate rule — it falls ' +
+      'out of the ladder table and the rule printed under it. Doctrine asks for at least two ' +
+      'sessions at each stage and puts the early stages at three sessions a week, so at most one ' +
+      'stage a week. The ladder has as many stages as the table has rows, and the alternate-day ' +
+      'rule covers every stage the table still writes as run-walk intervals rather than as a ' +
+      'continuous block. All three constants are DERIVED here from the doc rather than restated, ' +
+      'and all three used to be cited by line number.',
+    check({ cite }) {
+      const t = cite.table();
+      const text = cite.text();
+
+      // Stage count · the table's own row count.
+      if (MAX_WALK_RUN_STAGE !== t.rows.length) {
+        throw new Error(
+          `MAX_WALK_RUN_STAGE is ${MAX_WALK_RUN_STAGE}, doctrine's ladder has ${t.rows.length} stages`,
+        );
+      }
+
+      // Advance rate · sessions per week divided by sessions per stage.
+      const perStage = text.match(/at least (\d+) sessions? at each stage/i);
+      if (!perStage) {
+        throw new Error(
+          'the "spend at least N sessions at each stage" rule is gone from §1.1 · the engine\'s ' +
+            'one-stage-a-week cadence has nothing under it. Re-read the section.',
+        );
+      }
+      const sessionsPerStage = Number(perStage[1]);
+      const weeklySessions = Math.min(
+        ...t.rows.map((r) => parseBand(r['Sessions/wk'])[0]),
+      );
+      const derivedAdvance = Math.floor(weeklySessions / sessionsPerStage);
+      if (MAX_STAGE_ADVANCE_PER_WEEK !== derivedAdvance) {
+        throw new Error(
+          `MAX_STAGE_ADVANCE_PER_WEEK is ${MAX_STAGE_ADVANCE_PER_WEEK} · doctrine's ` +
+            `${weeklySessions} sessions a week at ${sessionsPerStage} per stage is ` +
+            `${derivedAdvance} stage(s) a week`,
+        );
+      }
+
+      // Alternate-day rule · through the last stage doctrine still writes as
+      // intervals. The continuous stage has no repeat count.
+      const section11 = resolveCitation(
+        'Research/05-injury-return-protocols.md',
+        '### 1.1 The Walk-Run Protocol Structure',
+      ).text();
+      if (!/every other day during early stages/i.test(section11)) {
+        throw new Error(
+          '§1.1 no longer states the alternate-day frequency rule · ALTERNATE_DAY_THROUGH_STAGE ' +
+            'has nothing under it',
+        );
+      }
+      let lastInterval = 0;
+      t.rows.forEach((r, i) => {
+        if (/\d/.test(r['Repeats'])) lastInterval = i + 1;
+      });
+      if (ALTERNATE_DAY_THROUGH_STAGE !== lastInterval) {
+        throw new Error(
+          `ALTERNATE_DAY_THROUGH_STAGE is ${ALTERNATE_DAY_THROUGH_STAGE} · doctrine's last ` +
+            `run-walk interval stage is ${lastInterval} (stage ${lastInterval + 1} is the ` +
+            'continuous block)',
+        );
+      }
+      // The engine's own ladder must agree about which stage is continuous.
+      const engineLastInterval = WALK_RUN_LADDER.filter((s) => !s.continuous).length;
+      if (engineLastInterval !== lastInterval) {
+        throw new Error(
+          `WALK_RUN_LADDER marks ${engineLastInterval} interval stages, doctrine's table has ${lastInterval}`,
+        );
+      }
+      // Rule 7 · the line references this file used to carry are gone.
+      const src = sourceOf('web-v2/lib/plan/injury-protocols.ts');
+      const lineCites = [...src.matchAll(/Research\/05[A-Za-z-]*(?:\.md)?:\d+/g)].map((m) => m[0]);
+      if (lineCites.length > 0) {
+        throw new Error(
+          `injury-protocols.ts has grown ${lineCites.length} line-number citation(s) again ` +
+            `(${lineCites.slice(0, 3).join(', ')}) · Rule 7: anchor on quoted text, never a line ` +
+            'number. Research/05 numbers every heading; cite the section.',
+        );
+      }
+    },
+  },
+
+  {
+    id: 'INJURY.bsi-return-is-the-doc-band-and-clinician-gated',
+    binds: [
+      'lib/plan/injury-protocols.ts#resolveInjuryProtocol',
+      'lib/plan/injury-protocols.ts#INJURY_PLAN_MAX_WEEKS',
+    ],
+    doc: 'Research/05-injury-return-protocols.md',
+    anchor: '**All confirmed BSIs: no running until clinical clearance.**',
+    claim:
+      'A bone stress injury is the one place this engine must refuse to prescribe. Doctrine\'s ' +
+      'contraindication is absolute, so every BSI protocol emits no running rows at all and ' +
+      'shows a clearance gate instead of a return date. The total-return bands are the doc\'s ' +
+      'own — eight to sixteen weeks for a low-risk site, four to nine months for a high-risk ' +
+      'one — and the claim reads both out of §9.5 and §9.6 rather than trusting the numbers ' +
+      'somebody copied across. A suspected BSI is held to the low-risk band until imaging says ' +
+      'otherwise, never to a shorter one.',
+    check({ cite }) {
+      if (!/no running until clinical clearance/i.test(cite.section[0])) {
+        throw new Error('§9.4 no longer states the absolute no-running contraindication for confirmed BSIs');
+      }
+      const bsi = {
+        high: resolveInjuryProtocol({ site: 'navicular', severity: 'moderate' }),
+        low: resolveInjuryProtocol({ site: 'tibial shaft stress fracture', severity: 'moderate' }),
+        suspected: resolveInjuryProtocol({ site: 'stress reaction', severity: 'moderate' }),
+      };
+      for (const [name, r] of Object.entries(bsi)) {
+        if (r.runStartWeek !== null) {
+          throw new Error(`the ${name}-risk BSI protocol starts running at week ${r.runStartWeek} · doctrine says clinical clearance first`);
+        }
+        if (!r.clearanceRequired) throw new Error(`the ${name}-risk BSI protocol is not clearance-gated`);
+        if (!r.protocol.clearanceGate) throw new Error(`the ${name}-risk BSI protocol shows no clearance gate`);
+      }
+
+      // §9.5 · low-risk total return, in weeks, read from the doc.
+      const lowBand = parseBand(
+        resolveCitation('Research/05-injury-return-protocols.md', '**Total return: 8-16 weeks typical.**').section[0],
+      );
+      for (const key of ['low', 'suspected'] as const) {
+        const [lo, hi] = bsi[key].protocol.totalWeeks;
+        if (lo !== lowBand[0] || hi !== lowBand[1]) {
+          throw new Error(
+            `the ${key}-risk BSI band is ${lo}-${hi} weeks, §9.5 states ${lowBand[0]}-${lowBand[1]}`,
+          );
+        }
+      }
+
+      // §9.6 · high-risk total return is stated in MONTHS. Accept any
+      // whole-week rendering of the band, from 4.0 to 4.35 weeks per month.
+      const months = parseBand(
+        resolveCitation('Research/05-injury-return-protocols.md', '**Total return commonly 4-9 months.**').section[0],
+      );
+      const [hiLo, hiHi] = bsi.high.protocol.totalWeeks;
+      if (hiHi == null) throw new Error('the high-risk BSI band has no upper bound · §9.6 states one');
+      within(hiLo, [Math.floor(months[0] * 4), Math.ceil(months[0] * 4.35)], 'high-risk BSI band floor, in weeks');
+      within(hiHi, [Math.floor(months[1] * 4), Math.ceil(months[1] * 4.35)], 'high-risk BSI band ceiling, in weeks');
+      if (hiLo < lowBand[1]) {
+        throw new Error(
+          `the high-risk BSI band opens at ${hiLo} weeks, inside the low-risk band that ends at ` +
+            `${lowBand[1]} · §9.2 stratifies these precisely because the high-risk sites take longer`,
+        );
+      }
+
+      // The plan scaffold is shorter than the doctrine band on purpose. What
+      // it may not do is be shorter than a band it claims to cover, or long
+      // enough to imply the whole return has been written out.
+      if (INJURY_PLAN_MAX_WEEKS < lowBand[0]) {
+        throw new Error(
+          `INJURY_PLAN_MAX_WEEKS is ${INJURY_PLAN_MAX_WEEKS}, under the ${lowBand[0]}-week floor ` +
+            'of the shortest BSI return doctrine states',
+        );
+      }
+      if (INJURY_PLAN_MAX_WEEKS >= hiHi) {
+        throw new Error(
+          `INJURY_PLAN_MAX_WEEKS is ${INJURY_PLAN_MAX_WEEKS} · at or past the ${hiHi}-week ` +
+            'high-risk band it stops being a rolling scaffold and starts implying the whole ' +
+            'clinician-led return has been authored here',
+        );
+      }
+    },
+  },
+
+  {
+    id: 'CONVENTION.validator-weekly-step-ceiling',
+    binds: ['lib/plan/validate.ts#CONSTRAINTS.weeklyVolWoWMaxPct'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'THE VALIDATOR\'S 50%/WEEK VOLUME CEILING IS A CONVENTION. It was the last field of ' +
+      'CONSTRAINTS with nothing watching it, which is why the whole table sat in the lint\'s ' +
+      'unbound-table allowlist. Doctrine reports 5-15% per cycle for trained athletes and ' +
+      '+20-25% over 8 weeks for novices, and no passage anywhere in Research/ states a 50% ' +
+      'week-over-week ceiling. What this claim enforces is that the backstop can never be ' +
+      'STRICTER than the ramp the generator is authorised to author — "one doctrinal quantum, N ' +
+      'disagreeing constants" is the named drift bug here, and a validator tighter than its own ' +
+      'generator rejects correct plans and leaves the runner with none — and that it stays flat ' +
+      'across distances only because doctrine\'s ramp figures carry no distance dimension.',
+    check({ cite, exempt }) {
+      const spec = cite.table().cell('Year-on-year base growth', 'Specification');
+      const trained = parseBand(spec.split(';')[0]);
+      const novice = parseBand(spec.replace(/^[^;]*;\s*/, ''));
+      const loosestDoctrinePct = Math.max(trained[1], novice[1]);
+
+      const src = sourceOf('web-v2/lib/plan/validate.ts');
+      const values = [...src.matchAll(/weeklyVolWoWMaxPct: (\d+)/g)].map((m) => Number(m[1]));
+      if (values.length !== CATS.length) {
+        throw new Error(`CONSTRAINTS declares weeklyVolWoWMaxPct ${values.length} times, expected one per distance`);
+      }
+      // Flat by design · doctrine's ramp figures are keyed to experience, not
+      // to race distance, so a per-distance split here would be invented.
+      if (new Set(values).size !== 1) {
+        throw new Error(
+          `weeklyVolWoWMaxPct now differs by distance (${values.join(', ')}) · doctrine's volume ` +
+            'ramp figures have no distance dimension, so a split needs its own citation',
+        );
+      }
+      const ceiling = values[0];
+
+      // Never stricter than the generator's own ceiling.
+      const generatorPct = Math.max(...Object.values(GENERAL_RAMP_CEILING).map((v) => (v - 1) * 100));
+      if (ceiling < generatorPct) {
+        throw new Error(
+          `the validator rejects at ${ceiling}%/wk while the generator is authorised to climb at ` +
+            `${generatorPct}%/wk · the validator would reject plans the generator correctly ` +
+            'authors, and a rejected plan is no plan at all',
+        );
+      }
+
+      // And the divergence itself · recorded, not hidden.
+      if (ceiling > loosestDoctrinePct && !exempt('flat-50-has-no-doctrine-figure')) {
+        throw new Error(
+          `weeklyVolWoWMaxPct is ${ceiling}% · the loosest weekly ramp figure doctrine publishes ` +
+            `is ${loosestDoctrinePct}%`,
+        );
+      }
+    },
+    exempt: {
+      'flat-50-has-no-doctrine-figure':
+        'REAL VIOLATION, DELIBERATELY NOT FIXED. 50%/week is double the loosest ramp figure ' +
+        'Research/00a publishes (novices +20-25%). It cannot be tightened to a doctrine-derived ' +
+        'value: measured against the 11,598-archetype sweep on 2026-08-19, a 25% ceiling fails ' +
+        '1480 archetypes, 35% fails 328, 40% fails 48, and only 45%+ is clean — because the ' +
+        'GENERATOR itself authors week-over-week steps as large as 44% (marathon/beginner/f5/ ' +
+        'm35/L0-3). The validator is calibrated to the generator, not to doctrine. Tightening it ' +
+        'here would reject plans the generator correctly produces and leave those runners with ' +
+        'no plan, which is the exact failure recorded in validate.ts section 6 for recovery ' +
+        'blocks. The defect to chase is the volume curve in generate.ts, which is a different ' +
+        'file and a different owner. Delete this entry when that curve stops producing 44% steps.',
+    },
+  },
+
+  {
+    id: 'CONVENTION.taper-descent-shape',
+    binds: ['lib/plan/goal-tiers.ts#TAPER_DESCENT_SHAPE', 'lib/plan/goal-tiers.ts#taperFactor'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 9.2 Marathon taper structure (3 weeks)',
+    claim:
+      'The descent shape is HALF doctrine. That it lands the marathon inside §9.2\'s three ' +
+      'volume bands is doctrine, and this claim derives the admissible interval for each entry ' +
+      'from those bands rather than trusting the three-decimal literals. Two things about it are ' +
+      'CONVENTION and are labelled as such: the precision (§9.2\'s bands are ten points wide, so ' +
+      '0.727 and 0.327 are one choice inside a range, reverse-engineered to reproduce three ' +
+      'legacy constants byte-for-byte) and the extrapolation (§9.2 is titled "Marathon taper ' +
+      'structure"; doctrine states no week-by-week descent for any other distance, so rescaling ' +
+      'it to their §9.1 depths is ours).',
+    check({ cite }) {
+      const t = cite.table();
+      const src = sourceOf('web-v2/lib/plan/goal-tiers.ts');
+      const shape = matchLiteral(
+        src,
+        /const TAPER_DESCENT_SHAPE = \[([^\]]+)\]/,
+        'TAPER_DESCENT_SHAPE',
+      )[1]
+        .split(',')
+        .map((s) => Number(s.trim()));
+
+      // The race week is by definition the whole descent.
+      if (shape[0] !== 1) {
+        throw new Error(`TAPER_DESCENT_SHAPE opens at ${shape[0]} · the race week spends the entire descent`);
+      }
+      // Monotone · a taper never climbs back toward peak.
+      for (let i = 1; i < shape.length; i++) {
+        if (!(shape[i] < shape[i - 1])) {
+          throw new Error(`TAPER_DESCENT_SHAPE does not descend between index ${i - 1} and ${i}`);
+        }
+      }
+
+      // DERIVED FROM THE DOC · each entry's admissible interval, given the
+      // marathon's own race-week depth. shape_i = (1 - f_i) / (1 - raceWeek).
+      const span = 1 - TAPER_RACE_WEEK_PCT_OF_PEAK.m;
+      const docWeeks = ['-1', '-2', '-3'];
+      for (let i = 0; i < shape.length; i++) {
+        const [lo, hi] = parsePctBand(t.cell(docWeeks[i], 'Volume'));
+        const admissible: [number, number] = [(1 - hi) / span, (1 - lo) / span];
+        within(
+          shape[i],
+          [Math.min(...admissible), Math.max(...admissible)],
+          `TAPER_DESCENT_SHAPE[${i}] against §9.2's "${t.cell(docWeeks[i], 'Volume')}" band`,
+        );
+      }
+
+      // THE EXTRAPOLATION · doctrine covers only the marathon, so the other
+      // four owe the properties §9.1 does state: never above peak, never
+      // shallower than their own race-week depth, monotone all the way down.
+      for (const cat of CATS) {
+        for (let w = 1; w <= shape.length; w++) {
+          const f = taperFactor(cat, w);
+          if (f > 1) throw new Error(`taperFactor(${cat}, ${w}) is ${f} · above peak volume`);
+          if (f < TAPER_RACE_WEEK_PCT_OF_PEAK[cat]) {
+            throw new Error(
+              `taperFactor(${cat}, ${w}) is ${f}, below that distance's own §9.1 race-week depth ` +
+                `of ${TAPER_RACE_WEEK_PCT_OF_PEAK[cat]} · the extrapolated shape has cut deeper ` +
+                'than doctrine states for the race week itself',
+            );
+          }
+        }
+      }
+
+      // The file must keep saying which half is ours.
+      if (!/CONVENTION · the three-decimal PRECISION/.test(src)) {
+        throw new Error(
+          'goal-tiers.ts no longer records that the descent shape\'s precision and its ' +
+            'extrapolation past the marathon are conventions · that sentence is this claim\'s point',
+        );
+      }
+    },
+  },
+
+  {
+    id: 'CONVENTION.acwr-sampling-guards',
+    binds: [
+      'lib/coach/acwr.ts#ACWR_MIN_RUN_DAYS',
+      'lib/coach/acwr.ts#ACWR_MIN_CHRONIC_MI_PER_DAY',
+      'lib/coach/acwr.ts#RUN_DAY_MIN_MI',
+    ],
+    doc: 'Research/15-wearable-data.md',
+    anchor: 'ACWR = acute_load_7d / chronic_load_28d',
+    claim:
+      'THE THREE ACWR SAMPLING GUARDS ARE CONVENTIONS. Research/15 defines the ratio and states ' +
+      'its bands; it says nothing about how much data must be present before the ratio is ' +
+      'honest, because that is a question about our pipeline rather than about physiology. The ' +
+      'WINDOWS are doctrine and are bound elsewhere. What these three owe is that each only ever ' +
+      'SUPPRESSES a reading — a guard that could inflate a ratio would be inventing load — that ' +
+      'each stays inside the window it samples, and that none can be loosened far enough for the ' +
+      'algebraic identity the coverage guard exists to stop to reappear. Note the trap not ' +
+      'taken: Research/15 does carry a "3", but it is three HRV readings a week, not three run ' +
+      'days, and binding to it would be the adjacent-column misread with a citation that resolved.',
+    check({ cite }) {
+      // The windows this claim's guards sample are still the doc's.
+      const line = cite.section[0];
+      const chronic = Number(line.match(/chronic_load_(\d+)d/)?.[1]);
+      if (!Number.isFinite(chronic)) throw new Error(`could not read the chronic window out of ${cite.doc}`);
+
+      if (!(ACWR_MIN_RUN_DAYS > 0 && ACWR_MIN_RUN_DAYS <= chronic)) {
+        throw new Error(
+          `ACWR_MIN_RUN_DAYS is ${ACWR_MIN_RUN_DAYS} · it must ask for at least one run day and ` +
+            `cannot ask for more than the ${chronic}-day window contains`,
+        );
+      }
+      if (!(ACWR_MIN_CHRONIC_MI_PER_DAY > 0)) {
+        throw new Error('ACWR_MIN_CHRONIC_MI_PER_DAY is not positive · the near-zero-denominator guard is off');
+      }
+      if (!(RUN_DAY_MIN_MI > 0 && RUN_DAY_MIN_MI < 1)) {
+        throw new Error(
+          `RUN_DAY_MIN_MI is ${RUN_DAY_MIN_MI} · a run-day floor of a mile or more would discard real ` +
+            'recovery shakeouts from the denominator and inflate the ratio',
+        );
+      }
+
+      // SUPPRESSES ONLY · each guard's failure mode is a null, never a number.
+      // Falsifier: a runner with a full chronic window but only two run days.
+      const today = '2026-03-08';
+      const sparse = new Map<string, number>();
+      sparse.set(today, 8);
+      sparse.set(new Date(Date.parse(today + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10), 8);
+      const out = acwrFromDailyMileage(sparse, today, chronic);
+      if (out.acwr !== null) {
+        throw new Error(
+          `a runner with ${sparse.size} run days in the chronic window reports ACWR ${out.acwr} · ` +
+            `ACWR_MIN_RUN_DAYS (${ACWR_MIN_RUN_DAYS}) is not suppressing it`,
+        );
+      }
+      if (out.reason !== 'insufficient_runs' && out.reason !== 'no_chronic_load') {
+        throw new Error(`a two-run chronic window is absent for the wrong reason: ${out.reason}`);
+      }
+
+      // The file must keep saying these are ours.
+      if (!/THE THREE SAMPLING GUARDS ARE CONVENTIONS/.test(sourceOf('web-v2/lib/coach/acwr.ts'))) {
+        throw new Error('acwr.ts no longer records that its sampling guards are conventions rather than doctrine');
+      }
+    },
+  },
+
+  {
+    id: 'CONVENTION.simulator-response-parameters',
+    binds: [
+      'lib/plan/simulator.ts#DENSITY_PENALTY',
+      'lib/plan/simulator.ts#PLATEAU_FLOOR_VDOT',
+      'lib/plan/simulator.ts#QUALITY_DENSITY_CEILING',
+      'lib/plan/simulator.ts#RAMP_FLAG_THRESHOLD',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Workout dose by race distance',
+    claim:
+      'CONVENTION.fitness-response-model bound the simulator\'s cold-start calibration and its ' +
+      'baseGain and stopped there. The rest of the model\'s parameters were FUNCTION-LOCAL, and ' +
+      'therefore invisible to a lint that scans for names — the same evasion, in a different ' +
+      'shape, as the wrapper generics that hid eight per-distance tables. They are module-level ' +
+      'and labelled now. Two are doctrine-derived: the density ceiling is the three-quality ' +
+      'sessions this table caps every tier at, and it must equal what QUALITY.sessions-per-week ' +
+      'reads. Two are ours: the 0.7 remainder past that ceiling and the VDOT-50 plateau floor ' +
+      'appear in no Research/ doc, and the 0.7 carried a bare "(Daniels)" attribution with ' +
+      'nothing to open — the same shape as the fabricated 0.5 VDOT/week.',
+    check({ cite }) {
+      const t = cite.table();
+      const src = sourceOf('web-v2/lib/plan/simulator.ts');
+
+      // DOCTRINE · the density ceiling is the tier ceiling, read from the same
+      // table QUALITY.sessions-per-week reads, and from the engine's own tiers.
+      const tierMax = Math.max(
+        ...CATS.flatMap((cat) => TIERS.map((tier) => TIER_TARGETS[cat][tier].qualityPerWeek)),
+      );
+      if (QUALITY_DENSITY_CEILING !== tierMax) {
+        throw new Error(
+          `QUALITY_DENSITY_CEILING is ${QUALITY_DENSITY_CEILING} but the highest qualityPerWeek ` +
+            `any tier runs is ${tierMax} · the simulator is penalising a density the planner ` +
+            'either never reaches or routinely exceeds',
+        );
+      }
+      if (t.rows.length === 0) {
+        throw new Error('the workout-dose table is gone from Research/00a · the density ceiling has nothing under it');
+      }
+
+      // CONVENTION · bounded, and honest about being ours.
+      if (!(DENSITY_PENALTY > 0 && DENSITY_PENALTY < 1)) {
+        throw new Error(
+          `DENSITY_PENALTY is ${DENSITY_PENALTY} · past the density ceiling returns must diminish, ` +
+            'not vanish and not increase',
+        );
+      }
+      if (!(PLATEAU_FLOOR_VDOT >= DANIELS_VDOT_MIN && PLATEAU_FLOOR_VDOT < DANIELS_VDOT_MAX)) {
+        throw new Error(
+          `PLATEAU_FLOOR_VDOT is ${PLATEAU_FLOOR_VDOT} · outside the published VDOT table ` +
+            `(${DANIELS_VDOT_MIN}-${DANIELS_VDOT_MAX}) the saturation term is modelling nobody`,
+        );
+      }
+      // The ramp flag must sit inside the two bands doctrine does publish, and
+      // must state the threshold it actually tests.
+      const spec = resolveCitation('Research/00a-distance-running-training.md', '### Volume progression rules')
+        .table()
+        .cell('Year-on-year base growth', 'Specification');
+      const trained = parseBand(spec.split(';')[0]);
+      const novice = parseBand(spec.replace(/^[^;]*;\s*/, ''));
+      within(
+        RAMP_FLAG_THRESHOLD * 100,
+        [trained[0], novice[1]],
+        'RAMP_FLAG_THRESHOLD against the ramp figures doctrine publishes',
+      );
+      if (/exceeds 10% rule/.test(stripComments(src))) {
+        throw new Error(
+          'the volume-ramp risk flag says "exceeds 10% rule" again · it tests a different number, ' +
+            'and Research/00a §"The 10% rule — reconsidered" is the section that DEBUNKS that rule ' +
+            'as a general-case ceiling (see DOCTRINE-7)',
+        );
+      }
+      // A bare "(Daniels)" on the density penalty is a citation with nothing
+      // to open · that is how the 0.5 VDOT/week fabrication survived.
+      const code = stripComments(src);
+      if (/Daniels/.test(code)) {
+        throw new Error('an executing line in simulator.ts names Daniels · this model is ours, not his');
+      }
+      if (!/CONVENTION\. That returns diminish past a quality-density ceiling/.test(src)) {
+        throw new Error('simulator.ts no longer records that its density penalty is a convention');
+      }
+    },
+  },
+
+  {
+    id: 'CONVENTION.simulator-projection-band',
+    binds: [
+      'lib/plan/simulator.ts#SIGMA_SEC_PER_MILE',
+      'lib/plan/simulator.ts#BAND_SIGMAS',
+      'lib/plan/simulator.ts#simulate.confidence',
+      'lib/plan/simulator.ts#simulate',
+      'lib/plan/gap-report.ts#confidenceBand',
+    ],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '### 13.7 Confidence Intervals to Report with Predictions',
+    claim:
+      'THE PROJECTION BAND IS A CONVENTION AND IT REACHES A RUNNER. gap-report.ts turns the ' +
+      'simulator\'s p25 / median / p75 straight into the A-goal / B-goal / C-goal a runner is ' +
+      'shown, so the four numbers behind it — a per-distance sigma and a 1.5-sigma half-width — ' +
+      'are a precision claim made to a person. Nothing in Research/ states a projection interval; ' +
+      '§13.7 is the only table in the corpus that says how wide a REPORTED prediction interval ' +
+      'should be, and its tightest entry is the floor this band cannot honestly sit under. A ' +
+      'projection of a runner\'s unmeasured future fitness — built on a response model that is ' +
+      'itself entirely convention — cannot be more certain than a same-day cross-distance ' +
+      'prediction from a race that actually happened.',
+    check({ cite, exempt }) {
+      const tightestPct = Math.min(
+        ...cite.table().rows.map((r) => parseBand(r[cite.table().headers[1]])[0]),
+      );
+      if (!(tightestPct > 0)) throw new Error('§13.7 no longer states any confidence interval');
+
+      // Shape first · a band that is not centred, or a sigma that shrinks with
+      // distance, would be wrong whatever the magnitudes.
+      if (!(BAND_SIGMAS > 0)) throw new Error(`BAND_SIGMAS is ${BAND_SIGMAS} · a zero-width band claims certainty`);
+      for (let i = 1; i < SIGMA_SEC_PER_MILE.length; i++) {
+        if (SIGMA_SEC_PER_MILE[i].sigma <= SIGMA_SEC_PER_MILE[i - 1].sigma) {
+          throw new Error(
+            'SIGMA_SEC_PER_MILE does not widen with distance · §8 of this doc is explicit that ' +
+              'prediction error grows non-linearly with distance because failure modes multiply',
+          );
+        }
+        if (SIGMA_SEC_PER_MILE[i].throughMi <= SIGMA_SEC_PER_MILE[i - 1].throughMi) {
+          throw new Error('SIGMA_SEC_PER_MILE bands are not in ascending distance order');
+        }
+      }
+
+      // Magnitude · the band as a percentage of a mid-table runner's predicted
+      // time, against the tightest interval doctrine publishes for anything.
+      const anchorVdot = 48;
+      const failures: string[] = [];
+      for (const label of ['5K', '10K', 'half', 'marathon'] as const) {
+        const mi = TABLE_RACE_DISTANCE_MI[label];
+        const median = predictRaceTime(anchorVdot, mi);
+        if (median == null) continue;
+        const sigma = (SIGMA_SEC_PER_MILE.find((b) => mi <= b.throughMi)
+          ?? SIGMA_SEC_PER_MILE[SIGMA_SEC_PER_MILE.length - 1]).sigma * mi;
+        const pct = (BAND_SIGMAS * sigma) / median * 100;
+        if (pct < tightestPct && !exempt(`band-tighter-than-doctrine:${label}`)) {
+          failures.push(`${label}: ±${pct.toFixed(2)}% vs §13.7's tightest ±${tightestPct}%`);
+        }
+      }
+      if (failures.length > 0) {
+        throw new Error(
+          `the projection band claims more precision than §13.7 reports for any prediction span:\n` +
+            `    ${failures.join('\n    ')}\n` +
+            '    These become the runner\'s A-goal and C-goal. Widen the band or record the ' +
+            'violation — do not widen this claim.',
+        );
+      }
+
+      // THE PER-WEEK CONFIDENCE DECAY · also a convention, and the only
+      // properties it can honestly owe are shape ones: it starts at full
+      // confidence for the week in hand, never rises as the horizon extends,
+      // and never reaches zero (a projection nobody should look at should not
+      // be published at all, rather than published at confidence 0).
+      const horizon = Array.from({ length: 24 }, (_, i) => ({
+        weekIdx: i,
+        startISO: '2026-01-05',
+        phase: 'BUILD',
+        weeklyMi: 30,
+        qualitySessions: 2,
+        longRunMi: 9,
+      }));
+      const traj = simulate({
+        weeks: horizon,
+        startVdot: anchorVdot,
+        raceDistanceMi: TABLE_RACE_DISTANCE_MI.marathon,
+        calibration: COLD_START_CALIBRATION,
+      }).weeklyTrajectory;
+      if (traj[0].confidence !== 1) {
+        throw new Error(`week 0 is projected at confidence ${traj[0].confidence} · this week is the week we know`);
+      }
+      for (let i = 1; i < traj.length; i++) {
+        if (traj[i].confidence > traj[i - 1].confidence) {
+          throw new Error(
+            `projection confidence RISES between week ${i - 1} and week ${i} · a further-out ` +
+              'week cannot be better known than a nearer one',
+          );
+        }
+      }
+      if (!(traj[traj.length - 1].confidence > 0)) {
+        throw new Error('the confidence decay reaches zero · a projection worth nothing should not be published');
+      }
+
+      // The band must still be what gap-report reads · a claim bound to a
+      // number nothing consumes guards nothing.
+      if (!/finalProjection\.p25Sec/.test(sourceOf('web-v2/lib/plan/gap-report.ts'))) {
+        throw new Error('gap-report.ts no longer reads the simulator band · re-point this claim at whatever sets the A/B/C goals');
+      }
+    },
+    exempt: {
+      'band-tighter-than-doctrine:5K':
+        'REAL VIOLATION, RUNNER-FACING, NOT FIXED HERE. At a VDOT-48 anchor the 5K band is ' +
+        '±0.38% against §13.7\'s tightest published interval of ±1.5% — roughly four times too ' +
+        'confident. Concretely: a 19:46 projection produces an A-goal of 19:41 and a C-goal of ' +
+        '19:51. Ten seconds apart is not three goals, it is one goal printed three times, and it ' +
+        'is asserting a precision no table in Research/ supports for any prediction at any ' +
+        'distance. Widening it changes what every 5K runner is shown, which is a product ' +
+        'decision rather than a gate fix, so it is recorded here for David rather than taken ' +
+        'unilaterally. Delete this entry when SIGMA_SEC_PER_MILE\'s short-distance rows are ' +
+        'resized against §13.7.',
+      'band-tighter-than-doctrine:10K':
+        'REAL VIOLATION, RUNNER-FACING, NOT FIXED HERE. Same defect as the 5K row, half as ' +
+        'severe: ±0.73% against §13.7\'s ±1.5% floor, so a 40:59 projection spans 38 seconds ' +
+        'from A-goal to C-goal. §13.7\'s own 5K→10K row — a prediction from a race that ' +
+        'actually happened, on the day — is ±1.5%, and a projection of fitness a runner does ' +
+        'not have yet cannot be twice as certain as that. Recorded with the 5K row; they get ' +
+        'resized together.',
+      'band-tighter-than-doctrine:half':
+        'REAL VIOLATION, MARGINAL. ±1.38% against §13.7\'s ±1.5% floor — under the line but ' +
+        'only just, and in the same direction as the two short distances. Listed rather than ' +
+        'rounded away because the marathon row clears the floor comfortably (±3.46% against a ' +
+        '±3% half→marathon entry), which shows the shape of the defect: the per-mile sigma is ' +
+        'calibrated for the marathon and everything shorter inherits a band that is too tight. ' +
+        'Delete this entry with the other two.',
     },
   },
 ];

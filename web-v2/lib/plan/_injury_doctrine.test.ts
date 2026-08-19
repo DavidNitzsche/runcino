@@ -369,10 +369,21 @@ describe('INJURY-1 · doctrine conformance · Research/05 §§1, 9', () => {
       expect(r.runStartWeek).toBe(2);
     });
 
-    it('every protocol carries a line-level citation', () => {
+    // Rule 7 (2026-08-19) · this used to assert `/Research\/05:/`, i.e. it
+    // REQUIRED the line-number form that Rule 7 forbids outright ("anchor on
+    // quoted text, never a line number"). A test enforcing the defect is worse
+    // than no test, because it makes the fix look like a regression. It now
+    // asserts the form the rule actually wants: the doc by name, a numbered
+    // section that Research/05 really has, and no line number anywhere.
+    it('every protocol cites a SECTION of Research/05, never a line number', () => {
       for (const site of ['achilles', 'calf', 'shin', 'knee', 'hip', 'foot', 'glute', 'hamstring', 'lower back']) {
-        expect(resolve(site).protocol.citation, `${site} · every prescription needs a citation`)
-          .toMatch(/Research\/05:/);
+        const citation = resolve(site).protocol.citation;
+        expect(citation, `${site} · every prescription needs a citation`)
+          .toContain('Research/05-injury-return-protocols.md');
+        expect(citation, `${site} · the citation must name a § section someone can open`)
+          .toMatch(/§\d+\.\d+/);
+        expect(citation, `${site} · Rule 7 · a line number rots on the next edit to the doc`)
+          .not.toMatch(/Research\/05[A-Za-z-]*(?:\.md)?:\d/);
       }
     });
   });

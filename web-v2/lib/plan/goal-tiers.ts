@@ -263,6 +263,33 @@ export function postRaceRecoveryWeeks(
  * decimals the engine rounds to) and every marathon plan is byte-identical.
  * Only the other four distances move.
  *
+ * ── RULE 7 (2026-08-19) · WHAT IS DOCTRINE HERE AND WHAT IS NOT ───────────
+ * Two different things are going on in this array and they have different
+ * epistemic status. Bound by CONVENTION.taper-descent-shape, which parses
+ * §9.2's three volume bands and derives the admissible range for each entry.
+ *
+ *   · DOCTRINE · that the shape lands the marathon inside §9.2's three bands.
+ *     The claim derives, from §9.2's own numbers, the interval each entry may
+ *     occupy, and every entry sits inside it.
+ *
+ *   · CONVENTION · the three-decimal PRECISION. §9.2's bands are ten points
+ *     wide, so 0.727 and 0.327 are one choice inside a range, not a figure
+ *     doctrine states. They were reverse-engineered to reproduce three legacy
+ *     constants byte-for-byte, which is a good reason and is not a research
+ *     finding. Writing them to three decimals implies a precision the source
+ *     does not have.
+ *
+ *   · CONVENTION · applying the shape to the other four distances at all.
+ *     §9.2 is titled "Marathon taper structure" and doctrine states no
+ *     week-by-week descent for 5K, 10K, half or ultra. Rescaling the
+ *     marathon's descent to each distance's own §9.1 depth is OUR
+ *     extrapolation. It is a defensible one — a taper that descends
+ *     monotonically to a doctrine-correct race-week depth is better than one
+ *     that does not — but nobody should read it as doctrine. In practice a
+ *     5K's taper is one week long (§9.1 gives 5-7 days, and
+ *     TAPER.duration-by-distance holds BLOCK_SHAPE to that), so entries past
+ *     the first are never reached for the short distances.
+ *
  * Cite: Research/08-pacing-and-race-week.md §9.1 (depth) + §9.2 (descent shape)
  */
 const TAPER_DESCENT_SHAPE = [1.0, 0.727, 0.327];

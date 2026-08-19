@@ -5,15 +5,21 @@
  *
  * This file used to convert strength minutes into running-mile
  * equivalents at a fixed 0.07 mi/min and fold the result into ACWR.
- * Research/09-cross-training.md:350 prohibits exactly that, in one line:
+ * Research/09-cross-training.md §"Strength Training as Cross-Training"
+ * prohibits exactly that, in one line:
  *
  *   "Quantify session load via sRPE; do not equate to run minutes."
  *
  * The constant cited "Research/07 §1.1-1.3" for its anchor. §1.1-1.3 is
- * the glossary and the running-economy evidence table (:9-41); it
- * contains no minute-to-mile factor, no 60%-of-easy-running figure, and
- * nothing that would produce 0.07. The number was invented and then
- * carried a citation that made it look sourced.
+ * the glossary and the running-economy evidence table; it contains no
+ * minute-to-mile factor, no 60%-of-easy-running figure, and nothing that
+ * would produce 0.07. The number was invented and then carried a
+ * citation that made it look sourced.
+ *
+ * RULE 7 (2026-08-19) · the two `Research/09:350` line references in this
+ * file are gone. A line number rots on the next edit to the doc; the
+ * sentence does not. Bound by STRENGTH.session-load-is-srpe-not-miles,
+ * which resolves that sentence against Research/09 at run time.
  *
  * Two ACWR sites folded it in (lib/coach/glance-state.ts,
  * lib/coach/state-loader.ts), so a fabricated coefficient was moving the
@@ -41,9 +47,10 @@
  *   2. Capture RPE in the strength log sheet + the iPhone sheet; leave
  *      it optional, and treat missing RPE as no reading, never as a
  *      default value.
- *   3. Convert the RUNNING side of ACWR to sRPE (Research/09:350,
- *      Research/15 §ACWR) and switch both fold sites over in one
- *      change so a ratio is never half in miles and half in AU.
+ *   3. Convert the RUNNING side of ACWR to sRPE (Research/09
+ *      §"Strength Training as Cross-Training", Research/15 §ACWR) and
+ *      switch both fold sites over in one change, so a ratio is never
+ *      half in miles and half in AU.
  * Until step 3 lands, strength stress is genuinely absent from ACWR.
  * That is a known gap, and it is the honest state: an invented
  * coefficient is not a better estimate than no estimate.
@@ -52,9 +59,10 @@
 import { pool } from '@/lib/db/pool';
 
 /**
- * Foster session-RPE · Research/09:350 · "Quantify session load via
- * sRPE". Load in arbitrary units = RPE (0-10 category-ratio) × session
- * duration in minutes.
+ * Foster session-RPE · Research/09-cross-training.md §"Strength Training
+ * as Cross-Training" · "Quantify session load via sRPE; do not equate to
+ * run minutes." Load in arbitrary units = RPE (0-10 category-ratio) ×
+ * session duration in minutes.
  *
  * Returns null when either input is missing — no reading beats a
  * defaulted one, same posture as the RHR-trend and heat-gate nulls.

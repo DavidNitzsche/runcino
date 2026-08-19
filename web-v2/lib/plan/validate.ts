@@ -95,6 +95,38 @@ interface PlanConstraints {
  * do not bind at all; what guards the 5K taper is the doctrine gate's
  * TAPER.depth-per-week claim reading `TAPER_RACE_WEEK_PCT_OF_PEAK` straight out
  * of §9.1.
+ *
+ * ── RULE 7 (2026-08-19) · `weeklyVolWoWMaxPct` IS A CONVENTION ─────────────
+ * It was the last field of this table with nothing watching it, and the whole
+ * table sat in the lint's UNBOUND_TABLES allowlist because of it. That
+ * allowlist entry is gone: `taperDropMin/Max` are bound by
+ * TAPER.validator-band-is-two-sided, `longRunWoWMaxPct` by
+ * LONGRUN.wow-single-step-cap-is-the-injury-red-line, and this field is now
+ * bound by CONVENTION.validator-weekly-step-ceiling.
+ *
+ * It is a CONVENTION, and it carries a RECORDED VIOLATION. Nothing in
+ * Research/ states a 50%/week volume ceiling. Research/00a §"Volume
+ * progression rules" reports 5-15% per cycle for trained athletes and
+ * +20-25% over 8 weeks for novices; 50% is double the loosest figure doctrine
+ * publishes, and it is flat across all five distances.
+ *
+ * It is NOT SAFE to tighten to a doctrine-derived value, and that is the more
+ * interesting half. Measured against the 11,598-archetype sweep on 2026-08-19:
+ *
+ *   ceiling | FIRM failures | largest step the generator authored
+ *   25%     | 1480          | up to 32%
+ *   35%     |  328          | up to 39%
+ *   40%     |   48          | up to 44%  (marathon/beginner/f5/m35/L0-3)
+ *   45%     |    0          | —
+ *   50%     |    0          | — (shipping value)
+ *
+ * So the generator itself authors week-over-week steps as large as 44%, and
+ * this validator is calibrated to the generator rather than to doctrine.
+ * Tightening it would reject plans the generator correctly produces and leave
+ * those runners with NO plan — the exact failure recorded in section 6 below
+ * for recovery blocks. The defect to chase is therefore upstream in
+ * `generate.ts`'s volume curve, not here. Left at 50 deliberately; see the
+ * exemption on CONVENTION.validator-weekly-step-ceiling.
  */
 const CONSTRAINTS: Record<DistCategory, PlanConstraints> = {
   '5k':    { longRunWoWMaxPct: 30, taperDropMinPct: 20, taperDropMaxPct: 35, weeklyVolWoWMaxPct: 50 },

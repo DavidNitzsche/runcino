@@ -14,28 +14,33 @@
  * means the simulator's job is to TELL the runner what to expect, not
  * to gate-keep the plan.
  *
- * Model (calibrated against Daniels Running Formula + Pfitzinger ADM):
+ * Model · OURS, not a published one. Every bullet below is a modelling
+ * choice; see the DOCTRINE-BOOK-14 note further down for what happened the
+ * last time this block read as though the numbers came out of a book.
  *
  *   VDOT progression:
- *     · Threshold + interval volume drives VDOT up at ~0.4 pts per
- *       4-week block when quality density is 1-2 sessions/wk
- *     · Marginal returns above 2 quality/wk (Daniels §threshold density)
- *     · Recovery cost · 1 quality day costs ~36h to bank
- *     · Sleep + RHR drift reduce response by up to 30% (Plews)
+ *     · Threshold + interval volume drives VDOT up · magnitude is
+ *       COLD_START_CALIBRATION.vdotPerQuality, a convention
+ *     · Marginal returns once quality density reaches the ceiling any tier
+ *       runs · threshold from Research/00a §"Workout dose by race distance",
+ *       magnitude (DENSITY_PENALTY) a convention
+ *     · Recovery response scales with `recoveryMult`, a per-runner
+ *       calibration rather than a doctrine figure
  *
  *   Endurance:
- *     · Long-run progression at 10% of weekly volume drives finish-line
- *       sustain for the marathon distance (Pfitzinger ADM)
- *     · For HM/10K/5K, long-run gain is secondary to threshold
+ *     · The long run contributes in proportion to its share of the week,
+ *       weighted by `longRunWeight` · a modelled contribution term, not a
+ *       progression protocol
  *
  *   Plateau detection:
- *     · Once VDOT per-week-gain falls below 0.05, additional volume
- *       buys ~nothing · simulator flags this so the planner doesn't
- *       propose pointless ramps
+ *     · Gains saturate toward `plateauVdot` from PLATEAU_FLOOR_VDOT. The
+ *       saturating SHAPE is Research/00a §"Aerobic Base Development"; both
+ *       endpoints are conventions
  *
- * Validation: simulator predictions checked against canonical
- * Daniels/Pfitz plans for 5K/10K/HM/marathon · sim should match
- * published progressions within ±10% (test bench in Phase 3).
+ * There is no validation bench. This block used to promise one ("sim should
+ * match published progressions within ±10%, test bench in Phase 3"); no such
+ * bench was ever written, and a promised falsifier that does not exist is
+ * worse than none, because it reads as though the model has been checked.
  *
  * ── DOCTRINE-BOOK-14 (2026-08-17) ──────────────────────────────────────────
  * THE FITNESS-RESPONSE MODEL IN THIS FILE IS A CONVENTION, NOT A RESEARCH
@@ -68,6 +73,33 @@
  * PROJECTED. Nothing in this file measures a runner. Surfacing its output as
  * though it were observed fitness is the one thing this model must never be
  * used for. Bound by CONVENTION.fitness-response-model.
+ *
+ * ── RULE 7 (2026-08-19) · THE NUMBERS THE MODEL ACTUALLY RUNS ON ───────────
+ * CONVENTION.fitness-response-model bound `COLD_START_CALIBRATION` and
+ * `baseGain`, and stopped there. Everything else doing work in this file is
+ * FUNCTION-LOCAL, which made it invisible to the doctrine lint's name-based
+ * scan — the same evasion, in a different shape, as the wrapper generics that
+ * hid eight per-distance tables in `lib/race/distance-doctrine.ts`. The rest
+ * are now labelled and bound:
+ *
+ *   · `densityPenalty` (0.7) and the plateau floor (VDOT 50) —
+ *     CONVENTION.simulator-response-parameters. The SHAPE is doctrine (a
+ *     quality-density ceiling exists; gains saturate near a ceiling); the two
+ *     magnitudes are ours and appear in no Research/ doc.
+ *
+ *   · `sigmaSecPerMile`, the ±1.5σ p25/p75 band, and the per-week
+ *     `confidence` decay — CONVENTION.simulator-projection-band. THIS IS THE
+ *     ONE THAT REACHES A RUNNER: `lib/plan/gap-report.ts` turns p25 / median /
+ *     p75 straight into the A-goal / B-goal / C-goal a runner is shown. The
+ *     band is therefore a runner-facing precision claim, and it was resting on
+ *     four unlabelled numbers. Research/02 §13.7 is the only table in the
+ *     corpus that says how wide a reported prediction interval should be, and
+ *     the claim compares this band against it. It does not currently pass —
+ *     see the exemption on that claim.
+ *
+ * Neither set is being changed here. Labelling a convention is not the same as
+ * endorsing its value, and widening a runner-facing goal band is a product
+ * decision, not a gate fix.
  *
  * Cite: docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 2.1 — the model's own spec
  * Cite: Research/00a-distance-running-training.md §"Aerobic Base Development"
@@ -135,6 +167,77 @@ export interface SimulatorResult {
   citation: string;
 }
 
+/**
+ * Quality sessions per week at which this projection both flags density risk
+ * and applies the diminishing-returns penalty.
+ *
+ * DOCTRINE, not convention: Research/00a §"Workout dose by race distance" is
+ * the table QUALITY.sessions-per-week reads to assert that three quality
+ * sessions is the ceiling any tier runs. Sitting the flag exactly at that
+ * ceiling is the doc's own number. The PENALTY MAGNITUDE below is not.
+ */
+export const QUALITY_DENSITY_CEILING = 3;
+
+/**
+ * The week-over-week volume step this projection flags as a risk.
+ *
+ * CONVENTION. Research/00a §"Volume progression rules" reports 5-15% per cycle
+ * for trained athletes and +20-25% over 8 weeks for novices; 12% is neither,
+ * and this function is not given the runner's experience level so it cannot
+ * read GENERAL_RAMP_CEILING. It sits inside doctrine's two bands, which is the
+ * only property it can honestly claim.
+ *
+ * This is advisory output only — the plan's actual ramp is bounded by
+ * `GENERAL_RAMP_CEILING` in the generator and by `CONSTRAINTS` in the
+ * validator, both of which are bound elsewhere in the registry.
+ */
+export const RAMP_FLAG_THRESHOLD = 0.12;
+
+/**
+ * Multiplier applied to a week's modelled gain once quality density reaches
+ * QUALITY_DENSITY_CEILING.
+ *
+ * CONVENTION. That returns diminish past a quality-density ceiling is
+ * doctrine's shape; that the remainder is 70% is ours and appears in no
+ * Research/ doc. Was an inline `0.7` with the bare attribution "(Daniels)".
+ * Bound by CONVENTION.simulator-response-parameters.
+ */
+export const DENSITY_PENALTY = 0.7;
+
+/**
+ * VDOT below which the plateau term gives full gain.
+ *
+ * CONVENTION. `plateauPenalty` interpolates from 1.0 at this floor to 0.1 at
+ * `plateauVdot`. Research/00a §"Aerobic Base Development" grounds the SHAPE —
+ * gains saturate as a runner approaches their ceiling — and nothing in
+ * Research/ names a VDOT at which the saturation starts. 50 is ours.
+ * Bound by CONVENTION.simulator-response-parameters.
+ */
+export const PLATEAU_FLOOR_VDOT = 50;
+
+/**
+ * Standard deviation of the projected finish, in seconds per mile of race
+ * distance, by distance band.
+ *
+ * CONVENTION, and the one that reaches a runner: `lib/plan/gap-report.ts`
+ * turns the ±1.5σ band these produce into the A-goal / B-goal / C-goal.
+ * Research/02 §13.7 "Confidence Intervals to Report with Predictions" is the
+ * only table in the corpus that says how wide a reported interval should be.
+ * Bound by CONVENTION.simulator-projection-band, WHICH CARRIES A RECORDED
+ * VIOLATION: at 5K and 10K this band is materially tighter than the tightest
+ * interval §13.7 publishes for any prediction span. Read that exemption before
+ * touching these numbers.
+ */
+export const SIGMA_SEC_PER_MILE: ReadonlyArray<{ throughMi: number; sigma: number }> = [
+  { throughMi: 3.5, sigma: 1.0 },
+  { throughMi: 7, sigma: 2.0 },
+  { throughMi: 14, sigma: 4.0 },
+  { throughMi: Infinity, sigma: 10.0 },
+] as const;
+
+/** Half-width of the reported band, in standard deviations. CONVENTION. */
+export const BAND_SIGMAS = 1.5;
+
 /** Cold-start calibration defaults · used when no per-runner data exists. */
 export const COLD_START_CALIBRATION: RunnerCalibrationLike = {
   vdotPerQuality: 0.10,    // 0.4 pts / 4 weeks at 1 quality/wk
@@ -159,8 +262,12 @@ export function simulate(input: SimulatorInput): SimulatorResult {
     curVdot = Math.min(85, curVdot + gain);  // VDOT-85 hard cap
     const projectedSec = predictRaceTime(curVdot, input.raceDistanceMi);
 
-    // Confidence shrinks for further-out weeks (more uncertainty)
-    // Linearly interpolate from 1.0 (this week) to 0.4 (race week)
+    // Confidence shrinks for further-out weeks (more uncertainty).
+    // Linearly interpolate from 1.0 (this week) to 0.4 (race week).
+    // CONVENTION · no Research/ doc puts projection confidence on a per-week
+    // clock. What the claim enforces is the SHAPE (starts at 1, never rises,
+    // never reaches 0), not the 0.04 or the 0.4.
+    // Bound by CONVENTION.simulator-projection-band.
     const confidence = Math.max(0.4, 1 - wk.weekIdx * 0.04);
 
     trajectory.push({
@@ -175,13 +282,33 @@ export function simulate(input: SimulatorInput): SimulatorResult {
     // Risk flag · steep ramp
     if (wk.weeklyMi > 0 && wk.weekIdx > 0) {
       const prevMi = input.weeks[wk.weekIdx - 1]?.weeklyMi ?? wk.weeklyMi;
-      if (prevMi > 0 && (wk.weeklyMi - prevMi) / prevMi > 0.12) {
-        riskFlags.push(`Wk${wk.weekIdx}: ${Math.round((wk.weeklyMi - prevMi) / prevMi * 100)}% volume ramp · exceeds 10% rule.`);
+      // 2026-08-19 · the flag used to read "exceeds 10% rule" while testing
+      // 12%, and the rule it named is the one Research/00a §"The 10% rule —
+      // reconsidered" DEBUNKS as a general-case ceiling (see DOCTRINE-7 in
+      // goal-tiers.ts). A flag that misstates its own threshold and cites a
+      // retired rule teaches a runner to ignore it. It now states the
+      // threshold it actually tests, and names the row that does bound a
+      // general ramp. The threshold itself is unchanged and is a CONVENTION:
+      // it sits between doctrine's trained band top (15%) and its novice band
+      // top (25%), and this function does not know the runner's level.
+      // Bound by CONVENTION.simulator-response-parameters.
+      if (prevMi > 0 && (wk.weeklyMi - prevMi) / prevMi > RAMP_FLAG_THRESHOLD) {
+        riskFlags.push(
+          `Wk${wk.weekIdx}: ${Math.round((wk.weeklyMi - prevMi) / prevMi * 100)}% volume ramp · ` +
+          `over the ${Math.round(RAMP_FLAG_THRESHOLD * 100)}% step this projection flags ` +
+          `(Research/00a-distance-running-training.md §"Volume progression rules").`,
+        );
       }
     }
-    // Risk flag · quality density too high
-    if (wk.qualitySessions >= 3) {
-      riskFlags.push(`Wk${wk.weekIdx}: ${wk.qualitySessions} quality sessions · density risk per Research/04 §quality-density.`);
+    // Risk flag · quality density too high. Three quality sessions is the
+    // ceiling any tier runs (QUALITY.sessions-per-week reads that out of
+    // Research/00a §"Workout dose by race distance"), so the THRESHOLD is
+    // doctrine even though the penalty magnitude below is not.
+    if (wk.qualitySessions >= QUALITY_DENSITY_CEILING) {
+      riskFlags.push(
+        `Wk${wk.weekIdx}: ${wk.qualitySessions} quality sessions · density risk ` +
+        `(Research/00a-distance-running-training.md §"Workout dose by race distance").`,
+      );
     }
   }
 
@@ -194,16 +321,17 @@ export function simulate(input: SimulatorInput): SimulatorResult {
   const finalVdot = trajectory.at(-1)?.projectedVdot ?? input.startVdot;
   const medianSec = predictRaceTime(finalVdot, input.raceDistanceMi);
 
-  // Confidence band · ±1.5σ around median model.
-  // σ scales with race distance: shorter races have tighter bands.
+  // Confidence band · ±BAND_SIGMAS σ around the median model.
+  // σ scales with race distance: shorter races get tighter bands.
+  // CONVENTION on both counts — see SIGMA_SEC_PER_MILE. This band becomes the
+  // runner's A/B/C goals in gap-report.ts, so it is a precision claim made to
+  // a person, not an internal number.
   const sigmaSecPerMile =
-      input.raceDistanceMi <= 3.5  ? 1.0
-    : input.raceDistanceMi <= 7    ? 2.0
-    : input.raceDistanceMi <= 14   ? 4.0
-    :                                10.0;
+    SIGMA_SEC_PER_MILE.find((b) => input.raceDistanceMi <= b.throughMi)?.sigma
+    ?? SIGMA_SEC_PER_MILE[SIGMA_SEC_PER_MILE.length - 1].sigma;
   const sigmaSec = sigmaSecPerMile * input.raceDistanceMi;
-  const p25Sec = medianSec != null ? medianSec - Math.round(1.5 * sigmaSec) : null;
-  const p75Sec = medianSec != null ? medianSec + Math.round(1.5 * sigmaSec) : null;
+  const p25Sec = medianSec != null ? medianSec - Math.round(BAND_SIGMAS * sigmaSec) : null;
+  const p75Sec = medianSec != null ? medianSec + Math.round(BAND_SIGMAS * sigmaSec) : null;
 
   return {
     weeklyTrajectory: trajectory,
@@ -221,8 +349,13 @@ export function simulate(input: SimulatorInput): SimulatorResult {
  *
  *   qualityStimulus  = sessions × vdotPerQuality
  *   longRunContrib   = (longRunMi / weeklyMi) × longRunWeight × baseGain
- *   plateauPenalty   = max(0.1, 1 - (curVdot - 50) / (plateauVdot - 50))
+ *   plateauPenalty   = max(0.1, 1 - (curVdot - PLATEAU_FLOOR_VDOT)
+ *                                    / (plateauVdot - PLATEAU_FLOOR_VDOT))
  *   recoveryMult     = runner-specific (sleep-debt-prone < 1.0)
+ *
+ * `baseGain`, `DENSITY_PENALTY` and `PLATEAU_FLOOR_VDOT` are conventions.
+ * Bound by CONVENTION.fitness-response-model and
+ * CONVENTION.simulator-response-parameters.
  */
 function computeWeeklyGain(
   wk: SimulatorWeek,
@@ -234,14 +367,19 @@ function computeWeeklyGain(
   const qualityStimulus = wk.qualitySessions * cal.vdotPerQuality;
   const longRunRatio = wk.weeklyMi > 0 ? wk.longRunMi / wk.weeklyMi : 0;
   const longRunContrib = longRunRatio * cal.longRunWeight * baseGain;
-  // Plateau math · safe against zero headroom (beginners with plateauVdot=50)
-  // and capped at 1.0 so being below plateau gives full gain, not a boost
-  const plateauHeadroom = Math.max(1, cal.plateauVdot - 50);
-  const plateauPenalty = Math.max(0.1, Math.min(1, 1 - (curVdot - 50) / plateauHeadroom));
+  // Plateau math · safe against zero headroom (beginners with plateauVdot at
+  // the floor) and capped at 1.0 so being below plateau gives full gain, not
+  // a boost. PLATEAU_FLOOR_VDOT is a CONVENTION — see its declaration.
+  const plateauHeadroom = Math.max(1, cal.plateauVdot - PLATEAU_FLOOR_VDOT);
+  const plateauPenalty = Math.max(0.1, Math.min(1, 1 - (curVdot - PLATEAU_FLOOR_VDOT) / plateauHeadroom));
   const raw = (qualityStimulus + longRunContrib) * cal.recoveryMult * plateauPenalty;
 
-  // Diminishing returns above 2 quality/wk (Daniels)
-  const densityPenalty = wk.qualitySessions > 2 ? 0.7 : 1.0;
+  // Diminishing returns once quality density reaches the ceiling any tier
+  // runs. The threshold is doctrine's; DENSITY_PENALTY is ours. The bare
+  // attribution this comment used to carry — a naked "(Daniels)" with nothing
+  // to open — is exactly the shape the lint's bare-attribution check exists
+  // to stop, and it was sitting on a number Daniels never published.
+  const densityPenalty = wk.qualitySessions >= QUALITY_DENSITY_CEILING ? DENSITY_PENALTY : 1.0;
   return raw * densityPenalty;
 }
 
