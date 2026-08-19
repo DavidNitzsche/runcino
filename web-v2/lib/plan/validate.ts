@@ -25,6 +25,7 @@ import type { ComposePlanResult, DistCategory } from './generate';
 import { distanceCategoryOfPublic } from './generate';
 import type { PlanMode } from './goal-tiers';
 import { taperFactor, GENERAL_RAMP_CEILING } from './goal-tiers';
+import { planDosingFindings, type DosingFinding } from './dosing';
 
 // ── constraint table (doctrine caps) ─────────────────────────────────────────
 //
@@ -199,6 +200,35 @@ export interface PlanValidationContext {
   recentWeeklyMi?: number | null;
 }
 
+// ── advisory sinks ────────────────────────────────────────────────────────────
+
+/**
+ * Optional, report-only outputs. Nothing passed here can fail a plan.
+ *
+ * This file's entire severity model is "anything pushed to `violations` is
+ * fatal" — there is no warn level, because until now every check either blocked
+ * a write or did not exist. Daniels' weekly dosing caps are the first thing
+ * worth measuring that must NOT block a write yet, so they get a callback
+ * instead of a level.
+ */
+export interface ValidateOptions {
+  /**
+   * Receives every Daniels dosing-cap breach in the plan (see `./dosing`).
+   *
+   * DETECTOR, NOT ENFORCER — deliberately, and this is the whole point of the
+   * shape. `Research/01` §"Dosing rules — Daniels' caps" has never been
+   * enforced anywhere in the engine, so turning it into a `violations.push`
+   * would re-prescribe every plan already in the database, including the
+   * owner's live marathon build, the moment it regenerated. Whether to do that
+   * is his call, not this file's.
+   *
+   * Omitting the callback skips the computation entirely, so the prod path is
+   * unchanged in behaviour and in cost. When the decision is made, enforcement
+   * is one `violations.push` here — not a flag hidden in `dosing.ts`.
+   */
+  onDosing?: (findings: DosingFinding[]) => void;
+}
+
 // ── error type ────────────────────────────────────────────────────────────────
 
 export class PlanValidationError extends Error {
@@ -235,12 +265,15 @@ function addDays(isoDate: string, n: number): string {
  * @param raceDistanceMi Race distance in miles — selects the constraint row.
  * @param mode           'race-prep' enables taper + quality-coverage checks.
  * @param ctx            Runner + session context (experience, horizon, prior plan).
+ * @param opts           Advisory sinks. `onDosing` receives Daniels' weekly
+ *                       dosing-cap findings; see the note on that option.
  */
 export function validateComposedPlan(
   result: ComposePlanResult,
   raceDistanceMi: number,
   mode: PlanMode,
   ctx: PlanValidationContext,
+  opts?: ValidateOptions,
 ): void {
   const cat = distanceCategoryOfPublic(raceDistanceMi);
   const c = CONSTRAINTS[cat];
@@ -625,6 +658,19 @@ export function validateComposedPlan(
       }
     }
   }
+
+  // ── 10. Daniels' weekly dosing caps (ADVISORY · never fatal) ─────────────
+  // Runs last and outside the violations array on purpose. See ValidateOptions
+  // .onDosing: these caps have never been enforced, and enforcing them here
+  // would silently re-prescribe existing plans. Computed only when a caller
+  // asks, so the prod path pays nothing.
+  //
+  // Every finding carries its own `context` (training / taper / race-week)
+  // rather than whole weeks being suppressed — CLAUDE.md §"Per-finding context
+  // filters". A taper deliberately holds intensity while volume falls
+  // (Research/08 §9.1), so its percentages rise by design; that is a different
+  // fact from a build week over its cap, and the caller is told which it has.
+  if (opts?.onDosing) opts.onDosing(planDosingFindings(weeks));
 
   if (violations.length > 0) throw new PlanValidationError(violations);
 }

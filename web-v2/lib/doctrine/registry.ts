@@ -106,6 +106,11 @@ import {
   STRIDE_DAYS_PER_WEEK,
 } from '@/lib/plan/spec-builder';
 import {
+  MARATHON_PACE_WORKOUT_CAP,
+  CUMULATIVE_CEILING_KM,
+  weeklyShareCap,
+} from '@/lib/plan/dosing';
+import {
   AT_PACE_SESSION_MI,
   AT_PACE_WEEKLY_SHARE_CAP,
   CRUISE_RECOVERY_MIN_PER_WORK_MI,
@@ -5767,6 +5772,125 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         /if \(value == null\) continue;/,
         'lib/coach/recovery-brief.ts#computeScore · absent pillars are skipped, not defaulted',
       );
+    },
+  },
+
+  /* ══════════════════════════════════════════════════════════════════════════
+   * DOSING · Daniels' weekly quality caps.
+   *
+   * `Research/01-pace-zones-vdot.md` §"Dosing rules — Daniels' caps" is a
+   * five-column table, and the engine had only ever read one of the columns.
+   * `AT_PACE_WEEKLY_SHARE_CAP` encodes the SINGLE-WORKOUT percentages, cited to
+   * Research/04's per-workout field tables and bound by the three
+   * PROGRESSION.*-volume-cap claims above. Nothing read the "Weekly cap"
+   * column, nothing read the marathon row at all, and nothing read the absolute
+   * cumulative ceilings in the I and R cells.
+   *
+   * The three claims below bind what `lib/plan/dosing.ts` now reads. Note that
+   * the DETECTOR those constants feed is advisory: `validateComposedPlan` can
+   * report a dosing breach but cannot fail a plan on one. These claims are
+   * therefore about the NUMBERS being right, not about the engine obeying them
+   * — the engine does not obey them yet, and that gap is documented in
+   * dosing.ts rather than hidden behind an exemption here.
+   * ═════════════════════════════════════════════════════════════════════════ */
+  {
+    id: 'DOSING.weekly-cap-column',
+    binds: [
+      'lib/plan/dosing.ts#weeklyShareCap',
+      'lib/prescription/levers.ts#AT_PACE_WEEKLY_SHARE_CAP',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: "### Dosing rules — Daniels' caps",
+    claim:
+      'T, I and R each carry a WEEKLY cap as well as a per-workout one, and Research/01 states ' +
+      'both at the same percentage of weekly mileage. The engine keeps one constant for both ' +
+      'readings, so this claim checks that constant against the weekly column — if a future doc ' +
+      'edit ever separates the two numbers, one constant will stop being able to serve both.',
+    check({ cite }) {
+      const t = cite.table();
+      // Read the WEEKLY column, not the single-workout column the PROGRESSION
+      // claims already read. Same numbers today; different assertions.
+      for (const [pace, family] of [
+        ['T', 'threshold'],
+        ['I', 'interval'],
+        ['R', 'repetition'],
+      ] as const) {
+        const band = parsePctBand(t.cell(pace, 'Weekly cap'));
+        const engine = weeklyShareCap(pace);
+        if (engine == null) {
+          throw new Error(`weeklyShareCap('${pace}') is null, but doctrine states a weekly cap`);
+        }
+        within(engine, band, `${pace} weekly dosing cap`);
+        // And the single-workout column must still agree, since one constant
+        // serves both readings.
+        within(AT_PACE_WEEKLY_SHARE_CAP[family], parsePctBand(t.cell(pace, 'Single-workout cap')),
+          `${pace} single-workout dosing cap`);
+      }
+    },
+  },
+  {
+    id: 'DOSING.marathon-pace-workout-ceiling',
+    binds: ['lib/plan/dosing.ts#MARATHON_PACE_WORKOUT_CAP', 'lib/plan/dosing.ts#weeklyShareCap'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: "### Dosing rules — Daniels' caps",
+    claim:
+      'One marathon-pace workout is capped at the LESSER of 18 miles and 20% of weekly mileage, ' +
+      'so a 100 mi/wk runner is held to 18 rather than 20. Doctrine states no WEEKLY cap for M ' +
+      'at all, and the engine records that silence as null rather than inventing a number.',
+    check({ cite }) {
+      const t = cite.table();
+      const cell = t.cell('M', 'Single-workout cap');
+      const m = matchLiteral(cell, /lesser of (\d+) mi or (\d+)% of weekly mi/i, 'M single-workout cap');
+      within(MARATHON_PACE_WORKOUT_CAP.absMi, [Number(m[1]), Number(m[1])], 'M absolute workout ceiling');
+      within(
+        MARATHON_PACE_WORKOUT_CAP.pctOfWeekly * 100,
+        [Number(m[2]), Number(m[2])],
+        'M workout share of weekly mi',
+      );
+      // The weekly cell reads "n/a". If a doc edit ever gives M a weekly cap,
+      // this fails and the engine has to grow one rather than silently ignore it.
+      const weekly = t.cell('M', 'Weekly cap').trim().toLowerCase();
+      if (weekly !== 'n/a') {
+        throw new Error(
+          `Research/01 now states a weekly cap for M ("${weekly}"), but weeklyShareCap('M') is null`,
+        );
+      }
+      if (weeklyShareCap('M') !== null) {
+        throw new Error("weeklyShareCap('M') invents a weekly cap doctrine does not state");
+      }
+    },
+  },
+  {
+    id: 'DOSING.cumulative-ceilings',
+    binds: ['lib/plan/dosing.ts#CUMULATIVE_CEILING_KM'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: "### Dosing rules — Daniels' caps",
+    claim:
+      'I and R carry absolute cumulative ceilings — 10K and 8K of at-pace work — on top of their ' +
+      'percentages. These bind where a share cap stops protecting anyone: 8% of a 100 mi week ' +
+      'would allow eight miles of VO2 work, which the 10K ceiling forbids.',
+    check({ cite }) {
+      const t = cite.table();
+      for (const pace of ['I', 'R'] as const) {
+        const km = Number(
+          matchLiteral(
+            t.cell(pace, 'Single-workout cap'),
+            /max (\d+)K cumulative/i,
+            `${pace} cumulative ceiling`,
+          )[1],
+        );
+        const engine = CUMULATIVE_CEILING_KM[pace];
+        if (engine == null) {
+          throw new Error(`CUMULATIVE_CEILING_KM.${pace} is absent, but doctrine states ${km}K`);
+        }
+        within(engine, [km, km], `${pace} cumulative at-pace ceiling (km)`);
+      }
+      // T and M state no cumulative ceiling · the engine must not invent one.
+      for (const pace of ['T', 'M'] as const) {
+        if (CUMULATIVE_CEILING_KM[pace] != null) {
+          throw new Error(`CUMULATIVE_CEILING_KM.${pace} invents a ceiling doctrine does not state`);
+        }
+      }
     },
   },
 ];
