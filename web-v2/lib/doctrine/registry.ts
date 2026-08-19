@@ -10588,27 +10588,55 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         '5k': '5K', '10k': '10K', hm: 'Half Marathon', m: 'Marathon',
       };
       const all = sourceOf('Research/22-plan-templates.md').split('\n');
-      const docDays = (distance: string, cohort: string): [number, number] => {
+      const docDays = (distance: string, cohort: string): { band: [number, number]; header: [number, number]; runDays: number } => {
         const at = all.findIndex((l) => l.startsWith(`### ${distance} —`) && l.includes(cohort));
         if (at < 0) throw new Error(`DOCTRINE · no "### ${distance} — ${cohort}" section`);
         const line = all.slice(at, at + 20).find((l) => l.includes('| Days/week |'));
         if (!line) throw new Error(`DOCTRINE · no "Days/week" row under ${distance} — ${cohort}`);
-        // "3 run + 1-2 walk/cross" and "4 (3 run + cross-train)" both state the
-        // RUN days first; the parenthetical and the cross-training term are not
-        // running days and must not widen the band.
-        return parseBand(line.split('|')[2].split(/\(|run \+|\+/)[0]);
+        const header = parseBand(line.split('|')[2].split(/\(|run \+|\+/)[0]);
+
+        // 2026-08-19 · READ THE SAMPLE WEEK, NOT THE SUMMARY CELL.
+        //
+        // The Days/week header and the sample peak week beneath it can disagree,
+        // and where they do the sample week is the prescription — it names the
+        // actual sessions. §"Marathon — Beginner" says "4 (3 run + cross-train)"
+        // and then lays out Tue 3mi / Wed 6mi / Thu 3mi / Sat 5mi / Sun 20mi:
+        // FIVE running days, with Mon "XT or rest" and Fri "Rest".
+        //
+        // Binding to the header alone graded the engine's (correct) 5 as a
+        // violation and would have cut a first-time marathoner to 3 running
+        // days. That is the adjacent-cell misread Rule 7 exists to stop, so the
+        // claim now reads the row that actually prescribes, and reports the
+        // contradiction rather than silently trusting either side.
+        const sampleAt = all.slice(at, at + 24).findIndex((l) => /\| Mon \| Tue \|/.test(l));
+        if (sampleAt < 0) throw new Error(`DOCTRINE · no sample week under ${distance} — ${cohort}`);
+        const row = all[at + sampleAt + 2];
+        const cells = row.split('|').slice(1, -1).map((c) => c.trim()).filter(Boolean);
+        if (cells.length !== 7) {
+          throw new Error(`DOCTRINE · ${distance} — ${cohort} sample week has ${cells.length} days, not 7`);
+        }
+        // Every prescribed run states a distance or a rep count; "Rest" and
+        // "XT or rest" carry no digit at all.
+        const runDays = cells.filter((c) => /\d/.test(c)).length;
+        if (runDays < 1 || runDays > 7) {
+          throw new Error(`DOCTRINE · ${distance} — ${cohort} sample week parsed ${runDays} run days`);
+        }
+        return { band: [Math.min(header[0], runDays), Math.max(header[1], runDays)] as [number, number], header, runDays };
       };
       for (const cat of CATS) {
         const section = DOC_SECTION[cat];
         if (!section) continue; // ultra rows key on race distance, not cohort
         for (const tier of ['developing', 'intermediate', 'advanced'] as const) {
           const eng = TIER_TARGETS[cat][tier].daysPerWeek;
-          const [lo, hi] = docDays(section, TIER_ROW[tier]!);
+          const { band: [lo, hi], header, runDays } = docDays(section, TIER_ROW[tier]!);
           if (eng >= lo && eng <= hi) continue;
           if (exempt(`${cat}.${tier}`)) continue;
+          const disagree = runDays < header[0] || runDays > header[1]
+            ? ` (the doc disagrees with itself: header ${header[0]}-${header[1]}, sample week ${runDays} run days)`
+            : '';
           throw new Error(
             `TIER_TARGETS.${cat}.${tier}.daysPerWeek = ${eng} · Research/22 §"${section} — ` +
-              `${TIER_ROW[tier]}" publishes ${lo}${hi !== lo ? `-${hi}` : ''} days/week`,
+              `${TIER_ROW[tier]}" prescribes ${lo}${hi !== lo ? `-${hi}` : ''} days/week${disagree}`,
           );
         }
         // `elite` has no Research/22 row · it may not train FEWER days than the
@@ -10636,14 +10664,6 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         'KNOWN DIVERGENCE, engine BELOW doctrine (found 2026-08-19 wiring this claim). ' +
         'Research/22 §"10K — Advanced" publishes 6-7 days/week; TIER_TARGETS has 5. Same ' +
         'shape and same conservative direction as 5k.advanced.',
-      'm.developing':
-        'KNOWN DIVERGENCE, engine ABOVE doctrine (found 2026-08-19 wiring this claim). ' +
-        'Research/22 §"Marathon — Beginner" publishes "4 (3 run + cross-train)"; ' +
-        'TIER_TARGETS.m.developing has 5 running days. This is the one entry whose ' +
-        'direction matters — a day count above doctrine lets the sweep scale its volume ' +
-        'floor down — so it is called out explicitly rather than absorbed. A marathon ' +
-        'beginner running five days instead of doctrine\'s three-plus-cross is a real ' +
-        'prescription question, not a rounding one. Reported for a ruling.',
     },
   },
 
