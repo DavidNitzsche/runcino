@@ -373,7 +373,17 @@ export type GoalRace = {
     lo: number;
     hi: number;
     pct: number;
-    method: 'observed-cv' | 'research-span';
+    /** The wire has carried 'research-span-stale' since the §13.7 stale-anchor
+     *  override landed and this union never learned about it; CI-CROSS-1 adds
+     *  'research-span-cross' (the anchor and the target are at different
+     *  distances and §13.7's span row is wider). The assignment in seed.ts goes
+     *  through `unknown`, so a narrow union here is a lie the compiler cannot
+     *  catch rather than a constraint it enforces. */
+    method: 'observed-cv' | 'research-span' | 'research-span-stale' | 'research-span-cross';
+    /** CI-CROSS-1 · §13.7's "±10% (one-sided pessimistic)" row. `lo` is the
+     *  projection itself: doctrine states the error runs one way, so the band
+     *  opens toward slow and promises no upside. */
+    oneSided?: boolean;
   } | null;
   /** 2026-06-08 · goal-attainment confidence (HIGH/MEDIUM/LOW) · answers
    *  "solidly or barely." Null at cold-start.

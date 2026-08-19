@@ -22,7 +22,9 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { predictRaceTime, formatRaceTime } from '@/lib/training/vdot';
+import { predictRaceTime, formatRaceTime, DANIELS_VDOT_MAX } from '@/lib/training/vdot';
+import { VDOT_PER_ASSESSMENT_BLOCK } from '@/lib/training/vdot-gain-rate';
+import { researchSpanBasePct } from '@/lib/training/goal-projection';
 
 export type LeverKind =
   | 'tune_up_race'
@@ -73,21 +75,87 @@ export interface ProjectionLeversInput {
 
 // ─── Lever projection math · per-kind VDOT/seconds delta ───
 //
-// Each lever produces a hypothetical "projected time after this lever
-// lands" and a delta vs the current projection. The deltas are doctrine
-// estimates · the panel surfaces them with "would" copy to make clear
-// they're projections, not promises.
+// Each lever produces a hypothetical "projected time after this lever lands"
+// and a delta vs the current projection. Every number here is MODELLED — none
+// of it has happened — and the panel renders them with "would" copy.
+//
+// ── LEVER-CITE-1 (2026-08-19) · where these came from ─────────────────────
+//
+// This block used to be six bare literals under a comment calling them
+// "doctrine estimates", with no citation anywhere in the file and no pointer
+// into `Research/`. They convert directly into a sentence the runner reads —
+// "doing a tune-up race would take X seconds off your projection" — so an
+// uncited number here is a promise the app cannot back. Two of the six turn
+// out to have real doctrine behind them; the rest are ours, and now say so.
 
-const VDOT_BUMP_TUNE_UP    = 1.0;
-const VDOT_BUMP_THRESHOLD  = 0.5;
-const VDOT_BUMP_SHARPEN    = 0.3;
-const VDOT_BUMP_VO2        = 0.4;
-const VDOT_BUMP_GOAL_PACE  = 0.3;
+/**
+ * A TUNE-UP RACE · +1.0 VDOT. DOCTRINE.
+ *
+ * The lever does not claim that racing makes a runner fitter. It claims that
+ * racing MEASURES them about a point higher than the solo effort their anchor
+ * currently rests on, which is what `Research/01-pace-zones-vdot.md`
+ * §"Field-test protocols (when no recent race exists)" states outright: a solo
+ * 5K time trial's "VDOT may under-read by 1–2 points (no competition)", output
+ * "VDOT (apply +1 correction)". The same number falls out of §"Testing cadence"
+ * from the other side — one VDOT point per reassessment, and the doc's own
+ * example of a reassessment is "(tune-up race, hard tempo session)".
+ *
+ * Read from `VDOT_PER_ASSESSMENT_BLOCK` rather than re-typed, so there is one
+ * definition of doctrine's VDOT point in the engine.
+ */
+const VDOT_BUMP_TUNE_UP = VDOT_PER_ASSESSMENT_BLOCK;
+
+/**
+ * The four TRAINING-BLOCK levers · CONVENTION, bounded by doctrine.
+ *
+ * `Research/` states no VDOT delta for adding a block of one flavour of work.
+ * It states a rate (§"Testing cadence": one point per 4-6 weeks, which is
+ * `VDOT_GAIN_PER_WEEK_MAX`) and it states what each session type trains
+ * (`Research/04` §5-§7), but nothing anywhere prices "one more threshold block"
+ * in VDOT. So these four are OURS. They are written as fractions of the one
+ * quantum doctrine does state so that the thing they are relative to is
+ * explicit, and so a future edit cannot quietly put a lever above a full
+ * reassessment cycle's worth of fitness.
+ *
+ * The ORDER is not arbitrary even though the values are: threshold work above
+ * VO2max work above sharpening, which is `Research/04` §5.1's own framing of
+ * threshold as the highest-yield sustainable stimulus and §7's repetition work
+ * as economy/neuromuscular rather than aerobic. The MAGNITUDES are a judgement
+ * call, held between zero and doctrine's point by
+ * `PROJECTION.lever-bumps-under-doctrine-quantum`.
+ */
+const VDOT_BUMP_THRESHOLD  = VDOT_PER_ASSESSMENT_BLOCK * 0.5;
+const VDOT_BUMP_VO2        = VDOT_PER_ASSESSMENT_BLOCK * 0.4;
+const VDOT_BUMP_SHARPEN    = VDOT_PER_ASSESSMENT_BLOCK * 0.3;
+const VDOT_BUMP_GOAL_PACE  = VDOT_PER_ASSESSMENT_BLOCK * 0.3;
+
+/**
+ * How much of the CONDITIONS gap a better corral/wave reclaims · CONVENTION.
+ *
+ * `Research/02` §13.3 prices heat, and §13.6 prices pacing execution, but
+ * nothing in `Research/` says what share of a weather-and-crowding penalty a
+ * different start wave gives back — it depends on the race, the field and the
+ * hour of the start, none of which the app knows. Just under half is ours, and
+ * it is deliberately under half so the lever never reads as the bigger part of
+ * the answer.
+ */
 const CORRAL_CONDITIONS_RECLAIM_PCT = 0.45;
 
-// Runner's chosen B-target in seconds (A + ~3.3% per GapPanel raceweek).
-function bTargetSec(goalSec: number): number {
-  return goalSec + Math.round(goalSec * 0.033);
+/**
+ * The B-target · the slow edge of the honest confidence band.
+ *
+ * LEVER-CITE-1 · this was a flat 3.3% of the goal at every distance, from
+ * nowhere. A B-target is the time a runner should still be happy with, which
+ * is the pessimistic edge of what the app already tells them the range is — so
+ * it now reads the SAME `Research/02` §13.7 span table `computeConfidenceInterval`
+ * sizes the band off, at the target distance. That makes it 2.0% over 5K and
+ * 3.0% over the marathon instead of 3.3% at both, and it means the B-target and
+ * the band can never disagree about how wide the uncertainty is.
+ *
+ * Cite: Research/02-race-time-prediction.md §13.7 (confidence intervals)
+ */
+function bTargetSec(goalSec: number, raceDistanceMi: number): number {
+  return goalSec + Math.round(goalSec * researchSpanBasePct(raceDistanceMi) / 100);
 }
 
 // Known multi-wave races · keyed by goal race slug. As wave_options
@@ -104,7 +172,7 @@ const KNOWN_MULTI_WAVE: ReadonlySet<string> = new Set([
 
 function projWithVdotBump(currentVdot: number | null, bump: number, distMi: number): number | null {
   if (currentVdot == null || !isFinite(currentVdot)) return null;
-  const newVdot = Math.min(85, currentVdot + bump);
+  const newVdot = Math.min(DANIELS_VDOT_MAX, currentVdot + bump);
   return predictRaceTime(newVdot, distMi);
 }
 
@@ -223,7 +291,7 @@ export async function computeProjectionLevers(
 
   // Rule 5 · off-track? always include set_b_target lever.
   if (input.projectionSec / input.goalSec > 1.08) {
-    const bSec = bTargetSec(input.goalSec);
+    const bSec = bTargetSec(input.goalSec, distMi);
     out.push({
       icon: 'shield',
       kind: 'set_b_target',

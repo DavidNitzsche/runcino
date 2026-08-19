@@ -50,7 +50,8 @@ import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { heatAdjustedStatus } from '@/lib/coach/heat-band';
 import { projectFitnessTrajectory, type FitnessTrajectory } from './fitness-trajectory';
 import { VDOT_GAIN_PER_WEEK_MAX } from './vdot-gain-rate';
-import { loadPlannedTargetVdot } from './plan-target';
+import { loadPlannedTargetVdot, loadMarathonSpecificTraining } from './plan-target';
+import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { expandSpecToPhases, type ExpandedPhase } from './expand-spec';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 
@@ -85,8 +86,17 @@ export interface ConfidenceInterval {
   /** Provenance · 'observed-cv' when sized off the runner's own pacing CV,
    *  'research-span' when off the Research/02 §13.7 table,
    *  'research-span-stale' when the §13.7 ±8% stale-input override fires
-   *  (anchor >180 days old). */
-  method: 'observed-cv' | 'research-span' | 'research-span-stale';
+   *  (anchor >180 days old),
+   *  'research-span-cross' when the §13.7 cross-distance row governs — the
+   *  anchor is at a different distance from the target and doctrine sizes that
+   *  span wider than the same-distance table (CI-CROSS-1). */
+  method: 'observed-cv' | 'research-span' | 'research-span-stale' | 'research-span-cross';
+  /** CI-CROSS-1 · true when §13.7's "±10% (one-sided pessimistic)" row governs:
+   *  a marathon predicted from a sub-half-marathon input with no marathon
+   *  block. The band then runs from the projection to +10%, with no fast edge —
+   *  doctrine states the error in that case is one-directional, and §14.7 says
+   *  coaches reporting a point estimate here "systematically over-predict". */
+  oneSided?: boolean;
 }
 
 export interface ConfidenceLabel {
@@ -176,6 +186,14 @@ export interface GoalProjection {
   /** 2026-06-08 · statistical band around the current-fitness projection
    *  (vdotProjectionSec). Null at cold-start. See computeConfidenceInterval. */
   confidenceInterval: ConfidenceInterval | null;
+  /** CI-CROSS-1 · whether this runner's plan meets Research/02 §13.1's
+   *  marathon-specificity minima, when that question could change the band
+   *  (marathon target off a sub-half-marathon anchor); null otherwise, and
+   *  null when the read was not attempted. Echoed so a surface that recomputes
+   *  the band for its own status/pacing — `app/api/targets/projection` — sizes
+   *  it off the same answer instead of a second database read that could
+   *  disagree. */
+  marathonSpecificTraining: boolean | null;
   /** 2026-06-08 · goal-attainment confidence (HIGH/MEDIUM/LOW). Null at
    *  cold-start. See computeConfidenceLabel. */
   confidenceLabel: ConfidenceLabel | null;
@@ -283,7 +301,7 @@ export async function computeGoalProjection(args: {
     executionAbsence.recentMissedKeyDates,
   );
   const plannedTargetVdot = vdot != null
-    ? await loadPlannedTargetVdot(userUuid, raceDistanceMi).catch(() => null)
+    ? await loadPlannedTargetVdot(userUuid).catch(() => null)
     : null;
   // 2026-06-12 · the UPGRADE gear · symmetric opposite of the drift detectors.
   // Controlled over-performance on recent threshold work → unconfirmed
@@ -312,6 +330,18 @@ export async function computeGoalProjection(args: {
   // above it, which read as a contradiction). Falls back to vdotProjectionSec
   // when there's no trajectory. The confidence label (goal attainment) is
   // computed once here so web / iPhone / watch all read one number.
+  // CI-CROSS-1 · §13.7's marathon rows split on whether a marathon block is in
+  // place, so the band needs to know. Only asked when it can matter — a
+  // marathon target predicted off a sub-half-marathon anchor — so no other
+  // shape pays for the query. Failure reads as "no block established", which
+  // is §13.7's wider row, never the narrower one.
+  const needsMarathonBlockSignal =
+    distanceCategoryOrNull(raceDistanceMi) === 'm' &&
+    vdotAnchorDistanceMi != null &&
+    ['5k', '10k'].includes(distanceCategoryOrNull(vdotAnchorDistanceMi) ?? '');
+  const marathonSpecificTraining = needsMarathonBlockSignal
+    ? await loadMarathonSpecificTraining(userUuid).catch(() => null)
+    : null;
   const confidenceInterval = computeConfidenceInterval({
     centerSec: trajectory?.projectedSec ?? vdotProjectionSec,
     raceDistanceMi,
@@ -319,6 +349,7 @@ export async function computeGoalProjection(args: {
     pacing: pacing ?? null,
     vdotAnchorDateISO: vdotAnchorDateISO ?? null,
     vdotAnchorDistanceMi: vdotAnchorDistanceMi ?? null,
+    marathonSpecificTraining,
   });
   const confidenceLabel = computeConfidenceLabel({
     goalSec,
@@ -340,6 +371,7 @@ export async function computeGoalProjection(args: {
     transitions,
     confidenceInterval,
     confidenceLabel,
+    marathonSpecificTraining,
     trajectory,
   };
 }
@@ -1758,10 +1790,34 @@ function composeSummary(
  * Status scaling · drift signals add uncertainty (faff overlay on §13.7):
  *    on-track ×1.0 · watching ×1.25 · off-track ×1.5
  *
- * Symmetric today. Two §13.7 refinements are deferred (see docs/AUDIT-FIXES.md):
- * marathon-without-a-block one-sided pessimism (§13.1 / §13.7 "±10% one-sided")
- * and the >6-month-old-input → ±8% override both need the VDOT anchor's
- * distance + age + a marathon-block signal, which aren't threaded yet.
+ * ── CI-CROSS-1 (2026-08-19) · the span is a PAIR, not a target ─────────────
+ *
+ * §13.7's table is keyed on a SPAN — "5K → 10K", "half → marathon" — and this
+ * function read only the right-hand side of the arrow. `vdotAnchorDistanceMi`
+ * has been threaded here from `computeGoalProjection` since 2026-06-08 with a
+ * comment saying it was for the one-sided-pessimism case and "not yet consumed
+ * here"; it was destructured out of `computeGoalProjection`'s args, passed in,
+ * and never read. So a marathon-goal runner anchored on a 5K PR — the exact
+ * case §13.1 calls "the single largest error source" and §14.7 warns produces
+ * systematic over-prediction — got the same ±3% band as one anchored on a
+ * half, and the band was symmetric, implying the projection was as likely to
+ * be pessimistic as optimistic when doctrine says it is not.
+ *
+ * The rows are now read as spans:
+ *
+ *   · target = marathon, anchor SUB-HALF-MARATHON. §13.1's adjustment rule is
+ *     stated for exactly that shape — "for marathon prediction from a
+ *     sub-half-marathon input" — and §13.7 gives it two rows: ±5% with a
+ *     marathon block in place, ±10% ONE-SIDED PESSIMISTIC without one.
+ *     `marathonSpecificTraining` carries which, read off the runner's own plan
+ *     against §13.1's stated minima (see loadMarathonSpecificTraining).
+ *   · every other stated span (5K→10K, 10K→half, half→marathon, marathon→5K)
+ *     is read from the table, and can only ever WIDEN the band: the existing
+ *     target-keyed defaults already carry an input-noise margin over §13.7's
+ *     narrowest rows, and nothing here should make a cross-distance prediction
+ *     read tighter than a same-distance one.
+ *   · an unknown anchor distance changes nothing. Not knowing the span is not
+ *     evidence about it.
  */
 export function computeConfidenceInterval(args: {
   centerSec: number | null;
@@ -1772,9 +1828,16 @@ export function computeConfidenceInterval(args: {
    *  today, the §13.7 stale-input override fires: basePct → 8.0%, symmetric,
    *  superseding both observed-CV and the standard distance table. */
   vdotAnchorDateISO?: string | null;
-  /** Distance (miles) of the anchor race/run. Threaded for Case 1 (marathon
-   *  one-sided pessimism); not yet consumed here — see AUDIT-FIXES CI-followup-1. */
+  /** Distance (miles) of the anchor race/run · CI-CROSS-1 reads it as the
+   *  left-hand side of §13.7's span. Null = span unknown, table unchanged. */
   vdotAnchorDistanceMi?: number | null;
+  /** CI-CROSS-1 · does this runner have marathon-specific training in place, by
+   *  §13.1's stated minima? Only consulted for a marathon target off a
+   *  sub-half-marathon anchor. `false`/`null` both select §13.7's "no marathon
+   *  block" row: doctrine's own instruction on which way to lean here is
+   *  unambiguous (§14.7), and "we could not establish a block" is not evidence
+   *  that one exists. */
+  marathonSpecificTraining?: boolean | null;
 }): ConfidenceInterval | null {
   const { centerSec, raceDistanceMi, status, pacing, vdotAnchorDateISO } = args;
   if (centerSec == null || centerSec <= 0) return null; // cold-start · no band
@@ -1790,8 +1853,8 @@ export function computeConfidenceInterval(args: {
       const ageDays = (Date.now() - anchorMs) / 86_400_000;
       if (ageDays > STALE_DAYS) {
         const mult = status === 'off-track' ? 1.5 : status === 'watching' ? 1.25 : 1.0;
-        const half = Math.round((centerSec * 8.0 * mult) / 100);
-        const pct = Math.round(8.0 * mult * 10) / 10;
+        const half = Math.round((centerSec * CROSS_SPAN_CI_PCT.staleInput * mult) / 100);
+        const pct = Math.round(CROSS_SPAN_CI_PCT.staleInput * mult * 10) / 10;
         return { lo: centerSec - half, hi: centerSec + half, pct, method: 'research-span-stale' };
       }
     }
@@ -1806,16 +1869,112 @@ export function computeConfidenceInterval(args: {
     method = 'observed-cv';
   } else {
     // Research/02 §13.7 span table, keyed on target distance.
-    basePct = raceDistanceMi <= 6.5 ? 2.0 : raceDistanceMi <= 16 ? 2.5 : 3.0;
+    basePct = researchSpanBasePct(raceDistanceMi);
     method = 'research-span';
+  }
+
+  // CI-CROSS-1 · the left-hand side of §13.7's arrow.
+  const cross = crossSpanCi(
+    args.vdotAnchorDistanceMi ?? null,
+    raceDistanceMi,
+    args.marathonSpecificTraining ?? null,
+  );
+  let oneSided = false;
+  if (cross != null && cross.pct > basePct) {
+    basePct = cross.pct;
+    oneSided = cross.oneSided;
+    method = 'research-span-cross';
   }
 
   const mult = status === 'off-track' ? 1.5 : status === 'watching' ? 1.25 : 1.0;
   const half = Math.round((centerSec * basePct * mult) / 100);
   const pct = Math.round(basePct * mult * 10) / 10;
 
-  return { lo: centerSec - half, hi: centerSec + half, pct, method };
+  // "One-sided pessimistic" means the error runs one way: the prediction is
+  // optimistic and the real finish is SLOWER. So the band opens toward slow and
+  // has no fast edge to speak of — `lo` stays at the projection itself rather
+  // than promising an upside doctrine does not support.
+  return oneSided
+    ? { lo: centerSec, hi: centerSec + half, pct, method, oneSided: true }
+    : { lo: centerSec - half, hi: centerSec + half, pct, method };
 }
+
+/**
+ * CI-CROSS-1 · `Research/02` §13.7's cross-distance rows, read as spans.
+ *
+ * Returns null when doctrine states nothing about this pair (including an
+ * unknown anchor and a same-category anchor, which §13.7's arrow rows do not
+ * describe). The caller only ever widens.
+ *
+ * Bound by `PREDICTION.cross-distance-span-bands` in lib/doctrine/registry.ts,
+ * which parses these percentages out of §13.7's own table.
+ */
+function crossSpanCi(
+  anchorDistanceMi: number | null,
+  targetDistanceMi: number,
+  marathonSpecificTraining: boolean | null,
+): { pct: number; oneSided: boolean } | null {
+  if (anchorDistanceMi == null || !(anchorDistanceMi > 0)) return null;
+  const from = distanceCategoryOrNull(anchorDistanceMi);
+  const to = distanceCategoryOrNull(targetDistanceMi);
+  if (from == null || to == null || from === to) return null;
+
+  // §13.1 "Adjustment rule": "for marathon prediction from a sub-half-marathon
+  // input, add 5% if marathon-specific training is absent". §13.7 gives that
+  // shape its two rows — and the fact that the doc writes them as "5K →
+  // marathon" while §13.1 writes the same rule as "sub-half-marathon input" is
+  // what says the 10K anchor belongs in the same row rather than in a gap.
+  if (to === 'm' && (from === '5k' || from === '10k')) {
+    return marathonSpecificTraining === true
+      ? { pct: CROSS_SPAN_CI_PCT.shortToMarathonTrained, oneSided: false }
+      : { pct: CROSS_SPAN_CI_PCT.shortToMarathonNoBlock, oneSided: true };
+  }
+  if (from === '5k' && to === '10k') return { pct: CROSS_SPAN_CI_PCT.fiveKToTenK, oneSided: false };
+  if (from === '10k' && to === 'hm') return { pct: CROSS_SPAN_CI_PCT.tenKToHalf, oneSided: false };
+  if (from === 'hm' && to === 'm') return { pct: CROSS_SPAN_CI_PCT.halfToMarathon, oneSided: false };
+  if (from === 'm' && to === '5k') return { pct: CROSS_SPAN_CI_PCT.marathonToFiveK, oneSided: false };
+  // Every other pair — ultras at either end, half→10K, marathon→half and the
+  // rest — is a span doctrine's table does not state. Left to the target-keyed
+  // default rather than interpolated into a number nobody published.
+  return null;
+}
+
+/**
+ * The SAME-distance half-width for a target race, %, before status scaling.
+ *
+ * `Research/02` §13.7's rows are spans, and this is the engine's read of them
+ * when the anchor is at (or near) the target distance: the narrowest stated row
+ * that reaches this target, plus the input-noise margin §11.1 describes. It is
+ * exported because the B-target lever must use the same number — a B-target
+ * wider or tighter than the band the app draws would be two answers to one
+ * question (`lib/coach/projection-levers.ts#bTargetSec`).
+ */
+export function researchSpanBasePct(raceDistanceMi: number): number {
+  return raceDistanceMi <= 6.5 ? 2.0 : raceDistanceMi <= 16 ? 2.5 : 3.0;
+}
+
+/**
+ * `Research/02` §13.7 "Confidence Intervals to Report with Predictions", one
+ * key per row of the table. Named rather than inlined so the doctrine claim can
+ * check each against the passage.
+ */
+export const CROSS_SPAN_CI_PCT = {
+  /** "5K → 10K, recent input | ±1.5%" */
+  fiveKToTenK: 1.5,
+  /** "10K → half, recent input | ±2.5%" */
+  tenKToHalf: 2.5,
+  /** "Half → marathon, marathon-trained | ±3%" */
+  halfToMarathon: 3.0,
+  /** "5K → marathon, marathon-trained | ±5%" */
+  shortToMarathonTrained: 5.0,
+  /** "5K → marathon, no marathon block | ±10% (one-sided pessimistic)" */
+  shortToMarathonNoBlock: 10.0,
+  /** "Marathon → 5K, recent base | ±3%" */
+  marathonToFiveK: 3.0,
+  /** "Cross-prediction with > 6-month-old input | ±8%" · the stale override
+   *  above, named here so the whole table lives in one place. */
+  staleInput: 8.0,
+} as const;
 
 /**
  * Goal-attainment confidence (the LABEL on the goal, distinct from the band).

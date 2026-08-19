@@ -61,11 +61,20 @@ export async function GET(req: NextRequest) {
   const [fitness, adaptation, goalGap, goalRealism] = await Promise.all([
     quiet('fitness', async () => {
       const inputs = await loadVdotInputs(userId, todayISO);
+      // FLOOR-1 (2026-08-19) · thread the goal-relative run floor. This call
+      // omitted the argument and silently took `bestRecentVdot`'s 4.0 default
+      // while the projection cron, the drift monitor, the plan generator and
+      // the targets route all passed `goalRunFloorMiForUser`. For a 5K-goal
+      // runner that is a different candidate set on the same day — the "cron
+      // computes a VDOT while drift sees none → false drift" hazard named in
+      // vdot-inputs.ts's own comment. `inputs.runFloorMi` is the floor that
+      // load was gated at, so the two halves cannot disagree.
       const { best, considered } = bestRecentVdot(
         inputs.raceCandidates,
         todayISO,
         undefined,
         inputs.runCandidates,
+        inputs.runFloorMi,
       );
       return resolveFitness({ best, considered });
     }),

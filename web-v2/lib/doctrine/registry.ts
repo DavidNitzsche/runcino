@@ -95,7 +95,20 @@ import {
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { anchorsFor, doctrinePhasesForWeek, renderPrescription } from '@/lib/plan/catalogue-rx';
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
-import { VDOT_FULL_VALUE_DAYS, VDOT_EXPIRY_DAYS, FADE_TAIL_DAYS } from '@/lib/training/vdot';
+import {
+  VDOT_FULL_VALUE_DAYS,
+  VDOT_EXPIRY_DAYS,
+  FADE_TAIL_DAYS,
+  DANIELS_VDOT_MIN,
+  DANIELS_VDOT_MAX,
+  iPaceFromVdot,
+} from '@/lib/training/vdot';
+import {
+  zonePaceAtVdot,
+  vdotFromZonePace,
+  stimulusVdotForRow,
+} from '@/lib/training/zone-stimulus';
+import type { PaceZone } from '@/lib/workout-catalogue/types';
 import {
   BASE_BUILD_RATE,
   MAX_BLOCK_GAIN,
@@ -425,6 +438,19 @@ function resolveShareCap(): [number, number] {
   const spec = cite.table().cell('Long-run cap', 'Specification');
   const [lo, hi] = parseBand(spec);
   return [lo / 100, hi / 100];
+}
+
+/**
+ * Source with comments removed, for the checks that assert a call or a symbol
+ * is GONE from a file.
+ *
+ * The same rule the lint's bare-attribution check already applies to backticked
+ * spans: a comment that writes down the mistake it replaced is not making the
+ * mistake. Several of the claims below assert `vdotFromRace(` or `T_PACE_TABLE`
+ * no longer appears in a file whose header explains, at length, why it used to.
+ */
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
 export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
@@ -1771,13 +1797,24 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   // ══ VDOT & PREDICTION ═════════════════════════════════════════════════════
   {
     id: 'VDOT.table-range',
-    binds: ['lib/training/vdot.ts#vdotFromRace'],
+    binds: [
+      'lib/training/vdot.ts#vdotFromRace',
+      // CEIL-ZONE-1 (2026-08-19) · the same range is now NAMED
+      // (DANIELS_VDOT_MIN/MAX) and read by every inversion in the engine —
+      // vdotFromRace's clamp, vdotFromTpace's and vdotFromMpace's search
+      // bounds, and zone-stimulus.ts#vdotFromZonePace. It was four bare literal
+      // pairs; a fifth reader was one copy too many.
+      'lib/training/vdot.ts#DANIELS_VDOT_MIN',
+      'lib/training/vdot.ts#DANIELS_VDOT_MAX',
+      'lib/training/zone-stimulus.ts#vdotFromZonePace',
+    ],
     doc: 'Research/01-pace-zones-vdot.md',
     anchor: '## VDOT lookup table',
     claim:
       'The published table this app inverts spans a fixed VDOT range. A value outside it is ' +
       'extrapolation, not lookup, so the engine must reject exactly the range the table ' +
-      'covers — the clamp bounds are read off the first and last rows of the doc table.',
+      'covers — the bounds are read off the first and last rows of the doc table, and every ' +
+      'inversion in the engine searches that one named range rather than its own copy of it.',
     check({ cite }) {
       const vdots = cite
         .table()
@@ -1797,9 +1834,23 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(`a time far slower than VDOT ${lo} still resolves · the engine has no floor`);
       }
       const src = sourceOf('web-v2/lib/training/vdot.ts');
-      const m = matchLiteral(src, /vdot < (\d+) \|\| vdot > (\d+)/, 'vdotFromRace clamp');
-      if (Number(m[1]) !== lo || Number(m[2]) !== hi) {
-        throw new Error(`vdotFromRace clamps to ${m[1]}-${m[2]} · the doctrine table spans ${lo}-${hi}`);
+      const engineLo = Number(matchLiteral(src, /DANIELS_VDOT_MIN = (\d+);/, 'DANIELS_VDOT_MIN')[1]);
+      const engineHi = Number(matchLiteral(src, /DANIELS_VDOT_MAX = (\d+);/, 'DANIELS_VDOT_MAX')[1]);
+      if (engineLo !== lo || engineHi !== hi) {
+        throw new Error(`the engine's named table range is ${engineLo}-${engineHi} · the doctrine table spans ${lo}-${hi}`);
+      }
+      if (DANIELS_VDOT_MIN !== lo || DANIELS_VDOT_MAX !== hi) {
+        throw new Error('the exported range disagrees with its own literal · impossible unless the file moved');
+      }
+      // CEIL-ZONE-1 · every inversion reads the named range. Four bare `30`/`85`
+      // pairs is how a lookup table gets forked, which is the shape DRIFT-T-1
+      // found in the drift monitor.
+      if (/vdot < 30 \|\| vdot > 85|let lo = 30, hi = 85;/.test(stripComments(src))) {
+        throw new Error('an inversion in vdot.ts hardcodes the table range again');
+      }
+      const zoneSrc = stripComments(sourceOf('web-v2/lib/training/zone-stimulus.ts'));
+      if (!/DANIELS_VDOT_MIN/.test(zoneSrc) || !/DANIELS_VDOT_MAX/.test(zoneSrc)) {
+        throw new Error('vdotFromZonePace no longer searches the named table range');
       }
     },
   },
@@ -8808,6 +8859,279 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         if (v < 0.85 || v > 1.10) {
           throw new Error(`RECOVERY_FORM_MULTIPLIER carries ${v}, outside D1 §2.4's [0.85, 1.10]`);
         }
+      }
+    },
+  },
+
+  // ── CEIL-ZONE-1 / DRIFT-T-1 / CI-CROSS-1 / LEVER-CITE-1 (2026-08-19) ──────
+  // The plan's stimulus ceiling, and the constants around it that were
+  // asserting physiology with nothing to open.
+  {
+    id: 'PACE.zone-stimulus-inversion',
+    binds: [
+      'lib/training/zone-stimulus.ts#vdotFromZonePace',
+      'lib/training/zone-stimulus.ts#stimulusVdotForRow',
+      'lib/training/plan-target.ts#loadPlannedTargetVdot',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Pace conversion from a race time',
+    claim:
+      'Doctrine defines every training zone as a column of the published race-pace table — T ' +
+      'as half-marathon-to-15K pace, I as 3K-to-5K pace, R as mile pace. So the VDOT a ' +
+      'prescribed pace implies is read by inverting THAT zone, and a rep set is never ' +
+      're-scored as a race at the goal distance.',
+    check({ cite }) {
+      const text = cite.text();
+      const rows: Array<[string, RegExp]> = [
+        ['T', /half-marathon pace to 15K pace/i],
+        ['I', /3K to 5K race pace/i],
+        ['R', /mile race pace/i],
+      ];
+      for (const [zone, phrase] of rows) {
+        if (!phrase.test(text)) {
+          throw new Error(`the ${zone} row no longer states its race-pace anchor · re-read the claim`);
+        }
+      }
+      // 1 · the inverse really is the forward table run backwards. Any drift
+      // between zone-anchors.ts and this inversion shows up here.
+      const zones: PaceZone[] = ['T', 'HM', 'ST', 'I', '5K', '3K', '10K', 'R', 'mile', 'M', 'MP'];
+      for (const v of [32, 40, 48, 55, 65, 75]) {
+        for (const z of zones) {
+          const pace = zonePaceAtVdot(v, z);
+          if (pace == null) continue; // a zone this runner cannot honestly be priced at
+          const back = vdotFromZonePace(z, pace);
+          if (back == null) throw new Error(`zone ${z} priced at VDOT ${v} does not invert`);
+          // The forward direction rounds pace to whole seconds, and a second of
+          // pace is worth well under half a VDOT point at every zone here.
+          if (Math.abs(back - v) > 0.5) {
+            throw new Error(`zone ${z} round trip: VDOT ${v} -> ${pace}s/mi -> ${back}`);
+          }
+        }
+      }
+      // 2 · the taper primer is not the ceiling, at any distance. A marathon
+      // plan's tune-up is "5x400m @ 5K pace" carrying an I-pace, and the branch
+      // this claim replaced read that pace as a MARATHON RACE. Assert both
+      // halves — the row contributes nothing now, AND the mis-read it replaced
+      // was worth several points — so this is a live guard, not a tautology.
+      const iPace = iPaceFromVdot(48);
+      if (iPace == null) throw new Error('I-pace is unreadable at VDOT 48 · the table moved');
+      if (stimulusVdotForRow('race_week_tuneup', '5x400m @ 5K pace', iPace) != null) {
+        throw new Error('a race-week tune-up is being read as the plan stimulus ceiling again');
+      }
+      const asRace = vdotFromRace(
+        Math.round(iPace * TABLE_RACE_DISTANCE_MI.marathon),
+        TABLE_RACE_DISTANCE_MI.marathon,
+      );
+      if (asRace == null || asRace - 48 < 3) {
+        throw new Error('the rep-set-as-race mis-read no longer overstates fitness · re-derive this guard');
+      }
+      // 3 · an I-zone session reads at its own zone, landing on the runner the
+      // plan was written for rather than several points above them.
+      const asZone = stimulusVdotForRow('intervals', '5x400m @ 5K pace', iPace);
+      if (asZone == null || Math.abs(asZone.vdot - 48) > 0.5) {
+        throw new Error(`an I-pace rep set reads as ${asZone?.vdot ?? 'null'}, not the VDOT 48 it was written at`);
+      }
+      // 4 · the ceiling must not reach for a race inversion at all. That call
+      // site IS the bug. Comments are stripped first — both files describe the
+      // branch they replaced, and writing down what went wrong is allowed.
+      const src = stripComments(
+        sourceOf('web-v2/lib/training/zone-stimulus.ts')
+        + sourceOf('web-v2/lib/training/plan-target.ts'),
+      );
+      if (/vdotFromRace\s*\(/.test(src)) {
+        throw new Error('the plan stimulus ceiling is scoring a prescribed pace as a race again');
+      }
+    },
+  },
+  {
+    id: 'ADAPTATION.vdot-drift-threshold',
+    binds: [
+      'lib/plan/drift-monitor.ts#VDOT_DRIFT_THRESHOLD',
+      'lib/plan/drift-monitor.ts#inferPlanAnchorVdot',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Update logic',
+    claim:
+      'Doctrine re-derives paces when VDOT moves by one point. The drift monitor proposes a ' +
+      'plan REFIT, which is heavier and rests on two estimates rather than one, so it fires ' +
+      'between one and two times that quantum — and both sides of its comparison read the ' +
+      'same canonical T-pace inversion rather than a private lookup table.',
+    check({ cite }) {
+      const q = Number(
+        matchLiteral(
+          cite.text(),
+          /abs\(new_VDOT - current_VDOT\)\s*>=\s*(\d+)/,
+          "Research/01 §Update logic's re-derivation quantum",
+        )[1],
+      );
+      const raw = sourceOf('web-v2/lib/plan/drift-monitor.ts');
+      const src = stripComments(raw);
+      const engine = Number(
+        matchLiteral(src, /export const VDOT_DRIFT_THRESHOLD = (\d*\.?\d+);/, 'VDOT_DRIFT_THRESHOLD')[1],
+      );
+      if (engine < q) {
+        throw new Error(`drift fires at ${engine} VDOT, INSIDE doctrine's ${q}-point re-derivation quantum`);
+      }
+      if (engine > q * 2) {
+        throw new Error(`drift fires at ${engine} VDOT, more than twice doctrine's ${q}-point quantum`);
+      }
+      // The duplicate T-pace column that made this threshold meaningless. At
+      // VDOT 65 it disagreed with the canonical inversion by 2.6 points — more
+      // than the threshold itself, and signed the same way every time.
+      if (/T_PACE_TABLE|inverseTPaceToVdot/.test(src)) {
+        throw new Error('drift-monitor.ts carries its own T-pace lookup table again');
+      }
+      if (!/vdotFromTpace/.test(src)) {
+        throw new Error('drift-monitor.ts no longer inverts T-pace through the canonical function');
+      }
+    },
+  },
+  {
+    id: 'PREDICTION.cross-distance-span-bands',
+    binds: [
+      'lib/training/goal-projection.ts#CROSS_SPAN_CI_PCT',
+      'lib/training/goal-projection.ts#computeConfidenceInterval',
+    ],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '### 13.7 Confidence Intervals to Report with Predictions',
+    claim:
+      "A prediction's confidence interval is keyed on the SPAN — which distance the anchor " +
+      "sits at and which the target is — not on the target alone. The engine carries §13.7's " +
+      'rows value-for-value, including the one the doc marks one-sided pessimistic.',
+    check({ cite }) {
+      const t = cite.table();
+      const docPct = (row: string) => {
+        // parseBand, not parsePctBand: these cells are already percentages and
+        // the engine stores them as percentages, so dividing by 100 here would
+        // compare 1.5 against 0.015.
+        const [lo, hi] = parseBand(t.cell(row, 'Suggested 80% CI'));
+        if (lo !== hi) throw new Error(`§13.7 row "${row}" now states a band, not a single figure`);
+        return lo;
+      };
+      const src = sourceOf('web-v2/lib/training/goal-projection.ts');
+      const enginePct = (key: string) =>
+        Number(matchLiteral(src, new RegExp(`${key}:\\s*(\\d*\\.?\\d+),`), `CROSS_SPAN_CI_PCT.${key}`)[1]);
+      const bindings: Array<[string, string]> = [
+        ['fiveKToTenK', '5K → 10K, recent input'],
+        ['tenKToHalf', '10K → half, recent input'],
+        ['halfToMarathon', 'Half → marathon, marathon-trained'],
+        ['shortToMarathonTrained', '5K → marathon, marathon-trained'],
+        ['shortToMarathonNoBlock', '5K → marathon, no marathon block'],
+        ['marathonToFiveK', 'Marathon → 5K, recent base'],
+        ['staleInput', 'Cross-prediction with > 6-month-old input'],
+      ];
+      for (const [key, row] of bindings) {
+        const doc = docPct(row);
+        const eng = enginePct(key);
+        if (eng !== doc) throw new Error(`CROSS_SPAN_CI_PCT.${key} = ${eng}, doctrine says ${doc}`);
+      }
+      // The one-sided row is one-sided in the ENGINE too, or the band promises
+      // an upside doctrine explicitly withholds.
+      if (!/one-sided/i.test(t.cell('5K → marathon, no marathon block', 'Suggested 80% CI'))) {
+        throw new Error('§13.7 no longer marks the no-marathon-block row one-sided · re-read the claim');
+      }
+      if (!/oneSided: true/.test(src)) {
+        throw new Error('the no-marathon-block band is symmetric again · doctrine states the error runs one way');
+      }
+      // And the anchor distance is actually READ. This claim exists because it
+      // sat in the signature for two months, destructured and unused.
+      if (!/crossSpanCi\(\s*args\.vdotAnchorDistanceMi/.test(src.replace(/\s*\n\s*/g, ' ').replace(/crossSpanCi\( /g, 'crossSpanCi('))) {
+        throw new Error('computeConfidenceInterval no longer reads vdotAnchorDistanceMi');
+      }
+    },
+  },
+  {
+    id: 'PREDICTION.marathon-specificity-minima',
+    binds: [
+      'lib/training/plan-target.ts#MARATHON_SPECIFIC_PEAK_LONG_RUN_MI',
+      'lib/training/plan-target.ts#MARATHON_SPECIFIC_PEAK_WEEKLY_MI',
+      'lib/training/plan-target.ts#loadMarathonSpecificTraining',
+    ],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '### 13.1 Training Specificity',
+    claim:
+      'Marathon-specific training means peak long runs at or above 18 miles, peak weekly ' +
+      'mileage at or above 50, and marathon-pace work. Below those, a marathon predicted from ' +
+      'a short race runs 5-15% slow, and the engine sizes its band off the wider §13.7 row.',
+    check({ cite }) {
+      const text = cite.text();
+      const longMi = Number(
+        matchLiteral(text, /insufficient long runs \(<\s*(\d+)\s*mi peak\)/i, "§13.1's peak long-run minimum")[1],
+      );
+      const weekMi = Number(
+        matchLiteral(text, /insufficient mileage \(<\s*(\d+)\s*mpw\)/i, "§13.1's weekly-mileage minimum")[1],
+      );
+      const src = sourceOf('web-v2/lib/training/plan-target.ts');
+      const engineLong = Number(
+        matchLiteral(src, /MARATHON_SPECIFIC_PEAK_LONG_RUN_MI = (\d+);/, 'peak long-run minimum')[1],
+      );
+      const engineWeek = Number(
+        matchLiteral(src, /MARATHON_SPECIFIC_PEAK_WEEKLY_MI = (\d+);/, 'peak weekly minimum')[1],
+      );
+      if (engineLong !== longMi) throw new Error(`engine peak long run ${engineLong} mi != doctrine's ${longMi}`);
+      if (engineWeek !== weekMi) throw new Error(`engine peak week ${engineWeek} mi != doctrine's ${weekMi}`);
+      if (!/no marathon-pace work/i.test(text)) {
+        throw new Error('§13.1 no longer names marathon-pace work as a specificity condition');
+      }
+      // All three conditions, because doctrine lists all three.
+      if (!/hasMarathonPaceWork/.test(src)) {
+        throw new Error('loadMarathonSpecificTraining no longer checks for marathon-pace work');
+      }
+    },
+  },
+  {
+    id: 'PROJECTION.lever-bumps-under-doctrine-quantum',
+    binds: [
+      'lib/coach/projection-levers.ts#VDOT_BUMP_TUNE_UP',
+      'lib/coach/projection-levers.ts#VDOT_BUMP_THRESHOLD',
+      'lib/coach/projection-levers.ts#VDOT_BUMP_VO2',
+      'lib/coach/projection-levers.ts#VDOT_BUMP_SHARPEN',
+      'lib/coach/projection-levers.ts#VDOT_BUMP_GOAL_PACE',
+      'lib/coach/projection-levers.ts#bTargetSec',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Testing cadence — how often to deliberately test',
+    claim:
+      "Doctrine's only per-block VDOT quantum is one point per reassessment. A tune-up race is " +
+      'worth exactly that (it IS the reassessment); the four training-block levers are ' +
+      'CONVENTION and each is worth strictly less, with the whole set staying inside one ' +
+      "block's modelled ceiling.",
+    check() {
+      const src = sourceOf('web-v2/lib/coach/projection-levers.ts');
+      if (!/const VDOT_BUMP_TUNE_UP = VDOT_PER_ASSESSMENT_BLOCK;/.test(src)) {
+        throw new Error('VDOT_BUMP_TUNE_UP no longer reads the one doctrine quantum');
+      }
+      const fractions = ['THRESHOLD', 'VO2', 'SHARPEN', 'GOAL_PACE'].map((k) =>
+        Number(
+          matchLiteral(
+            src,
+            new RegExp(`const VDOT_BUMP_${k}\\s+= VDOT_PER_ASSESSMENT_BLOCK \\* (\\d*\\.?\\d+);`),
+            `VDOT_BUMP_${k}`,
+          )[1],
+        ),
+      );
+      for (const f of fractions) {
+        if (!(f > 0)) throw new Error('a lever models zero or negative fitness · it would not be a lever');
+        if (!(f < 1)) {
+          throw new Error(
+            `a training-block lever is modelled at ${f}x a full reassessment cycle · doctrine states no ` +
+              'per-block figure at all, so ours may not exceed the one quantum it does state',
+          );
+        }
+      }
+      const total = VDOT_PER_ASSESSMENT_BLOCK * (1 + fractions.reduce((s, f) => s + f, 0));
+      if (total > MAX_BLOCK_GAIN_VDOT) {
+        throw new Error(
+          `every lever stacked models ${total.toFixed(2)} VDOT, past the ${MAX_BLOCK_GAIN_VDOT}-point block ceiling`,
+        );
+      }
+      // The B-target reads the same §13.7 table the band does, not a flat
+      // percentage from nowhere.
+      if (/goalSec \* 0\.033/.test(src)) {
+        throw new Error('bTargetSec is back on a flat uncited percentage');
+      }
+      if (!/researchSpanBasePct/.test(src)) {
+        throw new Error('the B-target no longer reads the confidence-band table');
       }
     },
   },
