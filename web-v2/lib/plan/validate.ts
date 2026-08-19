@@ -62,8 +62,47 @@ interface PlanConstraints {
   longRunWoWMaxPct: number;     // max WoW long-run increase (% of prior week)
   taperDropMinPct: number;      // min taper volume drop vs non-taper peak (%)
   taperDropMaxPct: number;      // MAX taper volume drop vs non-taper peak (%)
-  weeklyVolWoWMaxPct: number;   // max WoW weekly total volume increase (%)
 }
+
+/**
+ * WKRAMP-1 (2026-08-19) · THE ACUTE-TO-CHRONIC RED LINE.
+ *
+ * Replaces `CONSTRAINTS.weeklyVolWoWMaxPct`, a flat 50%-of-last-week ceiling
+ * that was never a research number — it tracked whatever `generate.ts` happened
+ * to author, which was steps up to 44% for a beginner marathoner. A guardrail
+ * calibrated to the thing it guards is not a guardrail.
+ *
+ * WHY THE INSTRUMENT CHANGED, NOT JUST THE NUMBER. "This week versus last week"
+ * is the wrong question, and it is why the old check needed a hand-written
+ * exemption for the week after a cutback. Doctrine deliberately builds dips into
+ * a block — "Down weeks | Every 3-4 wk, reduce by 20-30%" — so a week-over-week
+ * ratio reads a planned deload as a spike on the way back out, and any ceiling
+ * loose enough to permit the rebound is far too loose to catch a real one.
+ *
+ * Research/00a §"Load metrics" and §"ACWR risk zones" publish the instrument
+ * that does ask the right question: acute load (7 days) over chronic load (the
+ * 28-day mean), with 0.8-1.3 the sweet spot, 1.3-1.5 caution, and ≥1.5
+ * "substantially elevated" injury risk. A dip barely moves a 28-day mean, so
+ * the rebound needs no exemption, while a genuine spike shows up whether it
+ * arrives in one week or accumulates over three.
+ *
+ * The validator is a backstop behind the builder, so it sits at the red line
+ * (1.5) rather than at the sweet-spot boundary. With `enforceWeeklyRampCeiling`
+ * in place the generator's worst archetype across the 11,598-archetype sweep
+ * reaches 1.306 — just inside doctrine's caution band, with the backstop a
+ * genuine distance above it rather than fitted to it.
+ *
+ * Not per-distance: doctrine's ACWR table carries no distance dimension.
+ *
+ * Cite: Research/00a-distance-running-training.md §"ACWR risk zones"
+ * Bound by RAMP.acute-chronic-ratio-red-line.
+ */
+const ACWR_HIGH_RISK = 1.5;
+
+/** Weeks in the chronic window · Research/00a §"Load metrics": "Chronic load
+ *  (28-day) | Mean weekly load over last 28 days". The acute week is inside
+ *  that window, as the doc's own 7-day/28-day nesting describes. */
+const ACWR_CHRONIC_WEEKS = 4;
 
 /**
  * DOCTRINE-1b (2026-08-17) · THE TAPER BAND HAS TWO ENDS.
@@ -96,48 +135,33 @@ interface PlanConstraints {
  * TAPER.depth-per-week claim reading `TAPER_RACE_WEEK_PCT_OF_PEAK` straight out
  * of §9.1.
  *
- * ── RULE 7 (2026-08-19) · `weeklyVolWoWMaxPct` IS A CONVENTION ─────────────
- * It was the last field of this table with nothing watching it, and the whole
- * table sat in the lint's UNBOUND_TABLES allowlist because of it. That
- * allowlist entry is gone: `taperDropMin/Max` are bound by
- * TAPER.validator-band-is-two-sided, `longRunWoWMaxPct` by
- * LONGRUN.wow-single-step-cap-is-the-injury-red-line, and this field is now
- * bound by CONVENTION.validator-weekly-step-ceiling.
+ * ── WKRAMP-1 (2026-08-19) · `weeklyVolWoWMaxPct` IS GONE FROM THIS TABLE ────
  *
- * It is a CONVENTION, and it carries a RECORDED VIOLATION. Nothing in
- * Research/ states a 50%/week volume ceiling. Research/00a §"Volume
- * progression rules" reports 5-15% per cycle for trained athletes and
- * +20-25% over 8 weeks for novices; 50% is double the loosest figure doctrine
- * publishes, and it is flat across all five distances.
+ * It was 50, flat across all five distances, and it was not a research number:
+ * swept across 11,598 archetypes, tightening it toward doctrine failed 1480
+ * archetypes at 25%, 328 at 35%, 48 at 40%, and only 45%+ came back clean —
+ * because `generate.ts` itself authored week-over-week steps as large as 44%,
+ * for a first-time marathoner. The constant tracked the generator, not the
+ * research.
  *
- * It is NOT SAFE to tighten to a doctrine-derived value, and that is the more
- * interesting half. Measured against the 11,598-archetype sweep on 2026-08-19:
- *
- *   ceiling | FIRM failures | largest step the generator authored
- *   25%     | 1480          | up to 32%
- *   35%     |  328          | up to 39%
- *   40%     |   48          | up to 44%  (marathon/beginner/f5/m35/L0-3)
- *   45%     |    0          | —
- *   50%     |    0          | — (shipping value)
- *
- * So the generator itself authors week-over-week steps as large as 44%, and
- * this validator is calibrated to the generator rather than to doctrine.
- * Tightening it would reject plans the generator correctly produces and leave
- * those runners with NO plan — the exact failure recorded in section 6 below
- * for recovery blocks. The defect to chase is therefore upstream in
- * `generate.ts`'s volume curve, not here. Left at 50 deliberately; see the
- * exemption on CONVENTION.validator-weekly-step-ceiling.
+ * The generator was fixed first (`enforceWeeklyRampCeiling`), and section 6 now
+ * asks the question doctrine actually publishes an instrument for — the acute
+ * load spike, bounded by `ACWR_HIGH_RISK` above — while the cumulative ramp
+ * stays with §3, which already reads `GENERAL_RAMP_CEILING` against the
+ * runner's real base. Neither belongs in a per-distance table: doctrine's ramp
+ * and ACWR figures carry an experience dimension or none at all, never a
+ * distance dimension, which is why the flat row was the tell.
  */
 const CONSTRAINTS: Record<DistCategory, PlanConstraints> = {
-  '5k':    { longRunWoWMaxPct: 30, taperDropMinPct: 20, taperDropMaxPct: 35, weeklyVolWoWMaxPct: 50 },
-  '10k':   { longRunWoWMaxPct: 30, taperDropMinPct: 22, taperDropMaxPct: 40, weeklyVolWoWMaxPct: 50 },
-  'hm':    { longRunWoWMaxPct: 30, taperDropMinPct: 26, taperDropMaxPct: 50, weeklyVolWoWMaxPct: 50 },
-  'm':     { longRunWoWMaxPct: 30, taperDropMinPct: 36, taperDropMaxPct: 60, weeklyVolWoWMaxPct: 50 },
+  '5k':    { longRunWoWMaxPct: 30, taperDropMinPct: 20, taperDropMaxPct: 35 },
+  '10k':   { longRunWoWMaxPct: 30, taperDropMinPct: 22, taperDropMaxPct: 40 },
+  'hm':    { longRunWoWMaxPct: 30, taperDropMinPct: 26, taperDropMaxPct: 50 },
+  'm':     { longRunWoWMaxPct: 30, taperDropMinPct: 36, taperDropMaxPct: 60 },
   // #12 (audit 2026-06-16) · 'ultra' is now its own category (was bucketed as
   // 'm' by generate's old categorizer, which capped the ultra long run at the
   // marathon ceiling). The long-run CAP itself is raised in longRunCapMi below
   // to the ultra peak-long band.
-  'ultra': { longRunWoWMaxPct: 30, taperDropMinPct: 40, taperDropMaxPct: 70, weeklyVolWoWMaxPct: 50 },
+  'ultra': { longRunWoWMaxPct: 30, taperDropMinPct: 40, taperDropMaxPct: 70 },
 };
 
 // Context-aware long-run cap. Kept separate from CONSTRAINTS because it
@@ -592,26 +616,62 @@ export function validateComposedPlan(
   // marathoner's mandatory recovery plan and left them with ZERO plans (round-2
   // CRITICAL). Only enforce the build ceiling when building to the race —
   // matching the section-4 taper check, which is already race-prep-only.
+  //
+  // WKRAMP-1 (2026-08-19) · THE STEP AND THE REBOUND ARE DIFFERENT QUESTIONS,
+  // AND ONLY ONE OF THEM WAS BEING ASKED.
+  //
+  // This was a single flat 50%-of-last-week ceiling, and 50 was not a research
+  // number: it was whatever the generator happened to author. Swept across
+  // 11,598 archetypes, tightening it toward doctrine rejected plans in bulk
+  // (25% → 1480 firm failures) because `generate.ts` itself authored steps up to
+  // 44%. A guardrail calibrated to the thing it guards is not a guardrail. The
+  // generator is fixed (see `enforceWeeklyRampCeiling`) and this check now asks
+  // the question doctrine actually publishes an instrument for.
+  //
+  //   · this week against the 28-day mean — the instrument Research/00a
+  //     §"Load metrics" and §"ACWR risk zones" actually publish for the
+  //     question "is this week too big for what I have been doing". It catches
+  //     a spike whether it lands in one week or accumulates over three, and a
+  //     planned deload barely moves a four-week mean, so unlike the old
+  //     week-over-week ratio it needs no cutback exemption. The ceiling is
+  //     `ACWR_HIGH_RISK`, the ≥1.5 "substantially elevated" row: a validator is
+  //     a backstop and belongs at the red line, not at the sweet-spot boundary.
+  //
+  // WHY THIS DOES NOT ALSO MIRROR THE GENERATOR'S PEAK-RELATIVE RAMP RULE.
+  // `enforceWeeklyRampCeiling` caps every authored week at the block's peak
+  // times `GENERAL_RAMP_CEILING`, and re-asserting that here was the obvious
+  // move. It is the wrong one, because this function is not only a generation
+  // gate — `lib/plan/mutate.ts` runs it differentially over every adapter
+  // write, blocking a mutation that INTRODUCES a violation. A peak-relative
+  // test is not stable under mutation: shaving one mile off week 1 lowers the
+  // peak and can tip a week five weeks later past the ceiling, so an ordinary
+  // "runner cut a run short" write would be refused for a ramp it did not
+  // author. The cumulative case is already covered, and covered better, by §3
+  // above — `rampBase × rampPerWeek^buildWeeks`, reading the same
+  // GENERAL_RAMP_CEILING against the runner's actual base rather than against
+  // one extreme week inside the plan. So: §3 bounds the ramp over the block,
+  // this bounds the acute spike, and the peak-relative rule lives where the
+  // plan is authored and there is no differential semantics to trip over.
+  //
+  // The small-absolute exemption (2026-06-23) is unchanged: at very low volume
+  // a %-jump is misleading — a 6mi→9mi step is +50% but only +3mi, a safe ramp
+  // for a cold-start beginner — so a jump of 4mi or less is never flagged.
+  // `enforceWeeklyRampCeiling` applies the identical exemption, so the
+  // generator and the validator agree about which jumps are too small to name.
   const nonRaceWeeks = weeks.filter(w => !w.isRaceWeek);
   for (let i = 1; mode === 'race-prep' && i < nonRaceWeeks.length; i++) {
-    const prev = nonRaceWeeks[i - 1].weeklyMi;
-    const curr = nonRaceWeeks[i].weeklyMi;
-    // RC2-4 · Returning from a planned cutback week is an expected volume jump, NOT a ramp
-    // error. The cutback deliberately drops 20% below the prior peak; the following week
-    // returns to the normal climbing curve. Flagging this as a WoW violation would
-    // incorrectly penalise the doctrinal 20% deload → return pattern.
-    // Cite: Research/00b-recovery-protocols.md §"What Cutback Weeks Are Not" — the
-    // reduction is planned, so the return to load is the design, not a ramp error.
-    if (nonRaceWeeks[i - 1].isCutback) continue;
-    // 2026-06-23 · small-absolute exemption: at very low volume the %-jump is misleading — a
-    // 6mi→9mi step is +50% but only +3mi, a safe ramp for a cold-start beginner. Flag only when
-    // the jump exceeds the % ceiling AND is more than 4mi in absolute terms (mirrors the taper
-    // rule's shift from %-only to a calibrated check).
-    if (prev > 0 && curr > prev * (1 + c.weeklyVolWoWMaxPct / 100) && curr - prev > 4) {
-      const pct = Math.round(((curr - prev) / prev) * 100);
+    const prev = nonRaceWeeks[i - 1].weeklyMi ?? 0;
+    const curr = nonRaceWeeks[i].weeklyMi ?? 0;
+    if (!(prev > 0) || curr - prev <= 4) continue;
+    const window = nonRaceWeeks
+      .slice(Math.max(0, i - (ACWR_CHRONIC_WEEKS - 1)), i + 1)
+      .map(w => w.weeklyMi ?? 0);
+    const chronic = window.reduce((s, v) => s + v, 0) / window.length;
+    if (chronic > 0 && curr / chronic > ACWR_HIGH_RISK) {
       violations.push(
-        `Week ${nonRaceWeeks[i].startISO}: volume jumps ${prev}mi → ${curr}mi ` +
-        `(${pct}% increase > ${c.weeklyVolWoWMaxPct}% WoW limit)`,
+        `Week ${nonRaceWeeks[i].startISO}: ${curr}mi against a ${chronic.toFixed(1)}mi ` +
+        `${ACWR_CHRONIC_WEEKS}-week mean is an acute:chronic ratio of ` +
+        `${(curr / chronic).toFixed(2)} — doctrine's high-risk line is ${ACWR_HIGH_RISK}`,
       );
     }
   }

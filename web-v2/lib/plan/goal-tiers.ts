@@ -596,18 +596,57 @@ export interface TierTarget {
  *
  * Ultra keeps its existing shares: its rows map to race DISTANCES (50K, 50mi,
  * 100K, 100mi) rather than experience tiers, and the back-to-back long-run
- * option makes a single-run share non-comparable.
+ * option makes a single-run share non-comparable. (ULTRA-OUT-1, 2026-08-19:
+ * that mismatch is now why ultra authorship is refused outright — see
+ * supported-distances.ts. These rows stay so re-opening it is a change to one
+ * gate rather than an excavation.)
+ *
+ * ── TIERDAYS-1 (2026-08-19) · 5K and 10K ADVANCED: daysPerWeek 5 → 6 ───────
+ *
+ * Both said 5. Research/22 §"5K — Advanced" and §"10K — Advanced" both publish
+ * "6-7" in the Days/week row, and both sample peak weeks lay out SEVEN running
+ * days with no rest day at all. The engine was two days under doctrine on the
+ * only two rows where it was, recorded as exemptions on
+ * PLAN.tier-days-per-week; those exemptions are now deleted.
+ *
+ * 6, not 7 — the floor of the published band, matching how every other
+ * doctrine band in this engine is read (GENERAL_RAMP_CEILING takes the novice
+ * floor, the deload takes the floor of 20-30%). The sample weeks argue for 7;
+ * the header argues for 6-7; the conservative reading that satisfies both is 6.
+ *
+ * WHAT IT CHANGES IN A RUNNER'S WEEK: NOTHING, AND THAT IS THE POINT.
+ * `TIER_TARGETS.daysPerWeek` has exactly one reader outside the doctrine gate —
+ * the all-user sweep's WK-FREQ-1 volume scaling. The composer takes its day
+ * count from `MAINTENANCE_BY_TIER`'s shape, overridden by the runner's stated
+ * `weekly_frequency`, so this field never reached a prescribed week. Measured
+ * across all 48 advanced 5K/10K archetypes (f3-f6 × three mileage buckets ×
+ * two experience levels), peak weekly volume and peak-week run days are
+ * IDENTICAL before and after, and no archetype crosses the WK_UNDERREACH line
+ * under either value.
+ *
+ * WHICH DIRECTION IT MOVES THE GATE: softer, and correctly so. The sweep grades
+ * a plan's volume against `band[0] × min(1, runDays / daysPerWeek)`, so raising
+ * the denominator lowers the floor for any plan running fewer days. That is
+ * WK-FREQ-1's own rule landing rather than being weakened: doctrine's 40-70 mi
+ * is published FOR a 6-7 day week, and holding a 5-day plan to a 6-day plan's
+ * full volume asks a 5K runner for six days of miles in five sessions.
+ *
+ * The 5K and 10K `elite` rows are left at 6, which now equals `advanced`.
+ * Research/22 publishes no elite row for either distance, so raising them would
+ * be invention; the elite tiers are separated from advanced by volume (55-80 vs
+ * 40-70, 65-90 vs 50-75), which is how doubles show up in a day count that
+ * cannot exceed seven.
  */
 export const TIER_TARGETS: Record<DistCategory, Record<GoalTier, TierTarget>> = {
   '5k': {
     elite:        { peakWeeklyMileageBand: [55, 80], peakLongMiBand: [10, 14], qualityPerWeek: 3, longRunShare: 0.18, daysPerWeek: 6 },
-    advanced:     { peakWeeklyMileageBand: [40, 70], peakLongMiBand: [8, 12],  qualityPerWeek: 2, longRunShare: 0.18, daysPerWeek: 5 }, // DOCTRINE-8 · Research/22 §"5K — Advanced" 40-70 mpw (was [35,50], floor below the row)
+    advanced:     { peakWeeklyMileageBand: [40, 70], peakLongMiBand: [8, 12],  qualityPerWeek: 2, longRunShare: 0.18, daysPerWeek: 6 }, // DOCTRINE-8 · Research/22 §"5K — Advanced" 40-70 mpw (was [35,50], floor below the row) · TIERDAYS-1 (2026-08-19) · daysPerWeek 5 → 6, see the note above TIER_TARGETS
     intermediate: { peakWeeklyMileageBand: [25, 35], peakLongMiBand: [6, 8],   qualityPerWeek: 2, longRunShare: 0.24, daysPerWeek: 4 },
     developing:   { peakWeeklyMileageBand: [16, 24], peakLongMiBand: [3.5, 5], qualityPerWeek: 1, longRunShare: 0.28, daysPerWeek: 3 },
   },
   '10k': {
     elite:        { peakWeeklyMileageBand: [65, 90], peakLongMiBand: [13, 17], qualityPerWeek: 3, longRunShare: 0.20, daysPerWeek: 6 },
-    advanced:     { peakWeeklyMileageBand: [50, 75], peakLongMiBand: [13, 15], qualityPerWeek: 2, longRunShare: 0.22, daysPerWeek: 5 }, // DOCTRINE-8 · Research/22 §"10K — Advanced" 50-75 mpw (was [40,55]) · XTIER-1 (2026-06-23) · was [10,13] — Research/22:144 10K-Advanced peak long is 13-15mi; the old top sat at research's FLOOR (RC2-2 then drives it into band, clamped ≤30%/week)
+    advanced:     { peakWeeklyMileageBand: [50, 75], peakLongMiBand: [13, 15], qualityPerWeek: 2, longRunShare: 0.22, daysPerWeek: 6 }, // TIERDAYS-1 (2026-08-19) · daysPerWeek 5 → 6, see the note above TIER_TARGETS · DOCTRINE-8 · Research/22 §"10K — Advanced" 50-75 mpw (was [40,55]) · XTIER-1 (2026-06-23) · was [10,13] — Research/22:144 10K-Advanced peak long is 13-15mi; the old top sat at research's FLOOR (RC2-2 then drives it into band, clamped ≤30%/week)
     intermediate: { peakWeeklyMileageBand: [30, 42], peakLongMiBand: [9, 12],  qualityPerWeek: 2, longRunShare: 0.27, daysPerWeek: 5 },
     developing:   { peakWeeklyMileageBand: [22, 30], peakLongMiBand: [6, 8],   qualityPerWeek: 1, longRunShare: 0.33, daysPerWeek: 4 },
   },

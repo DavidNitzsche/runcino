@@ -104,7 +104,28 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
   T('m', 'advanced_plus', [18, 18], [7, 7], [85, 110], [22, 24],  'full_periodized', false, 0.15,
     'Advanced marathon w/ PM doubles on E + quality days', 'Pfitz 18/85-100+'),
 
-  // ── Ultra (50K → 100mi) · all levels build aerobically; B2B long runs ─
+  // ── Ultra (50K → 100mi) · UNREACHABLE · authorship removed 2026-08-19 ──
+  //
+  // ULTRA-OUT-1 · these four rows are keyed by EXPERIENCE, and every field in
+  // them was lifted from a different ultra DISTANCE in Research/22: 'beginner'
+  // is its 50K row, 'intermediate' its 50 Mile, 'advanced' its 100K,
+  // 'advanced_plus' its 100 Mile. Every number matches exactly. So the axis is
+  // wrong, not the values — a first-time 100-miler is graded "beginner" and
+  // handed a 50K plan, and a seasoned 50K runner is graded "advanced" and
+  // handed a 100K. No amount of retuning fixes that; the table needs a distance
+  // dimension the engine does not have.
+  //
+  // The owner's call was to take ultra out rather than build that dimension
+  // now: "lets remove ultra plans and training for now". `planAuthorshipUnsupported`
+  // (supported-distances.ts) refuses before anything reaches here, on the race
+  // path, the no-race goal path and the simulator alike, so these rows are dead
+  // and the mislabel cannot reach a runner.
+  //
+  // KEPT, NOT DELETED, and kept wrong on purpose. Re-opening ultra means giving
+  // this table its missing axis, and the rows are the evidence of what that axis
+  // has to be. Deleting them would leave the next reader to rediscover the
+  // Research/22 mapping from scratch. Nothing here is doctrine — Research/22 is
+  // untouched and is the source either way.
   T('ultra', 'beginner',      [16, 16], [4, 5], [30, 50], [22, 25], 'base_building',   true, 0.60,
     'E/GA, hill repeats, MLR, back-to-back weekend long runs, race terrain', 'Higdon 50K / MOTTIV'),
   T('ultra', 'intermediate',  [20, 20], [5, 6], [50, 75], [28, 32], 'base_building',   true, 0.50,
