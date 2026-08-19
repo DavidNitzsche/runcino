@@ -1,0 +1,194 @@
+    <div id="5c" style="display:flex;flex-direction:column;gap:16px;width:390px" data-screen-label="05c">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:var(--signal);color:var(--action-primary-text);font-size:13px;font-weight:700">5c</span>
+        <span style="font-size:15px">After the run · treadmill</span>
+      </div>
+
+      <div style="width:390px;height:844px;background:var(--surface-page);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 32px 80px -24px rgba(0,0,0,.85)">
+        <div style="position:relative;flex:1;min-height:0;overflow-y:auto">
+          <div style="padding:0 16px 24px;display:flex;flex-direction:column;gap:20px">
+
+            <div style="margin:0 -16px;padding:0 20px 26px;border-radius:0 0 30px 30px;background:{{ d.gradPanel }};display:flex;flex-direction:column;gap:22px;position:relative;isolation:isolate">
+              <div aria-hidden="true" style="position:absolute;z-index:-1;inset:0;border-radius:inherit;pointer-events:none;opacity:.5;mix-blend-mode:overlay;background-image:url(&quot;data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='180' height='180' filter='url(%23n)'/></svg>&quot;)"></div>
+              <div style="height:62px;display:flex;justify-content:space-between;align-items:center;padding:0 6px 8px;font-size:15px;font-weight:600;color:#FFFFFF">
+                <span>7:11</span>
+                <span style="display:flex;gap:6px;align-items:center;opacity:.9">
+                  <span style="width:17px;height:11px;border-radius:2px;background:#FFFFFF;display:block"></span>
+                  <span style="width:24px;height:11px;border-radius:3px;background:#FFFFFF;display:block"></span>
+                </span>
+              </div>
+              <div style="margin-top:-22px;height:44px;display:flex;align-items:center;justify-content:space-between">
+                <span class="faff-display" style="font-size:20px;line-height:1.14;letter-spacing:.02em;color:#FFFFFF">Today</span>
+                <button style="width:30px;height:30px;border:0;border-radius:999px;background:rgba(255,255,255,.2);color:#FFFFFF;font:600 12px/1 var(--font-core);cursor:pointer" style-hover="filter:brightness(1.12)" onClick="{{ openAccount }}">JR</button>
+              </div>
+              <div style="margin-top:-8px;display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                <span class="faff-display" style="font-size:26px;line-height:1.14;color:#FFFFFF">{{ d.dateLine }}</span>
+                <span style="font-size:13px;color:rgba(255,255,255,.78)">Logged 7:04</span>
+              </div>
+              <div style="margin-top:-6px;display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+                <sc-for list="{{ doneStrip }}" as="c" hint-placeholder-count="7">
+                  <div style="display:grid;justify-items:center;gap:8px;padding:10px 0 10px;border-radius:16px;background:{{ c.washBg }}">
+                    <span style="font-size:12px;color:{{ c.washDim }}">{{ c.d }}</span>
+                    <span class="faff-value" style="font-size:16px;color:{{ c.washInk }}">{{ c.n }}</span>
+                    <span style="width:100%;height:4px;max-width:22px;border-radius:999px;background:{{ c.washRail }}"></span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:16px">
+                <div style="display:flex;flex-direction:column;gap:2px">
+                  <span style="font-size:13px;color:rgba(255,255,255,.8)">Treadmill · indoor, no GPS</span>
+                  <span class="faff-display" style="font-size:56px;line-height:1.02;color:#FFFFFF">{{ done.type }}</span>
+                </div>
+                <div style="display:flex;gap:28px;align-items:baseline">
+                  <span class="faff-value" style="font-size:32px;line-height:1.1;color:#FFFFFF">{{ done.distance }}<span style="font-size:14px;margin-left:5px;color:rgba(255,255,255,.8)">mi</span></span>
+                  <span class="faff-value" style="font-size:32px;line-height:1.1;color:#FFFFFF">{{ done.time }}</span>
+                  <span class="faff-value" style="font-size:32px;line-height:1.1;color:#FFFFFF">{{ done.pace }}<span style="font-size:14px;margin-left:5px;color:rgba(255,255,255,.8)">/mi</span></span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px;padding:0 4px">
+              <div style="display:flex;align-items:baseline;gap:12px">
+                <span style="flex:1;font-size:13px;color:var(--text-quiet)">{{ done.summaryTitle }}</span>
+                <span style="width:104px;flex:0 0 auto;font-size:13px;color:var(--text-quiet);text-align:right">Asked</span>
+                <span style="width:92px;flex:0 0 auto;font-size:13px;color:var(--text-quiet);text-align:right">Ran</span>
+              </div>
+              <sc-for list="{{ done.summary }}" as="r" hint-placeholder-count="3">
+                <div style="display:flex;align-items:baseline;gap:12px;min-height:34px">
+                  <span style="flex:1;font-size:16px;color:var(--text-primary)">{{ r.label }}</span>
+                  <span class="faff-value" style="width:104px;flex:0 0 auto;font-size:15px;color:var(--text-secondary);text-align:right">{{ r.asked }}</span>
+                  <span style="width:92px;flex:0 0 auto;display:flex;justify-content:flex-end">
+                    <sc-if value="{{ r.tap }}" hint-placeholder-val="{{ true }}">
+                      <button class="faff-value" style="border:0;border-radius:999px;background:{{ r.tapBg }};color:{{ r.ink }};font-size:18px;line-height:1.1;text-align:right;padding:{{ r.tapPad }};cursor:pointer;font-family:inherit" style-hover="filter:brightness(1.12)" onClick="{{ r.onClick }}">{{ r.ran }}</button>
+                    </sc-if>
+                    <sc-if value="{{ r.plain }}" hint-placeholder-val="{{ true }}">
+                      <span class="faff-value" style="color:{{ r.ink }};font-size:18px;line-height:1.1;text-align:right">{{ r.ran }}</span>
+                    </sc-if>
+                  </span>
+                </div>
+              </sc-for>
+
+              <sc-if value="{{ effortOpen }}" hint-placeholder-val="{{ true }}">
+                <div style="margin-top:6px;display:flex;flex-direction:column;gap:10px">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                    <span style="font-size:15px;color:var(--text-primary)">How hard was it</span>
+                    <span style="font-size:13px;color:var(--text-quiet)">{{ done.effortAsked }}</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:4px">
+                    <sc-for list="{{ effortScale }}" as="e" hint-placeholder-count="10">
+                      <button class="faff-value" style="height:46px;border:0;border-radius:12px;background:{{ e.bg }};color:{{ e.ink }};font-size:16px;font-family:inherit;cursor:pointer;padding:0" style-hover="filter:brightness(1.14)" onClick="{{ e.onClick }}">{{ e.n }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.CoachSay" hint-size="100%,110px" size="md" attribution="{{ null }}" dc-props="{{ coachFlush }}">{{ done.verdict }}</x-import>
+
+            <div style="background:var(--material-tile);border-radius:22px;padding:20px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:20px">
+                <sc-for list="{{ done.groups }}" as="grp" hint-placeholder-count="4">
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                      <span class="faff-display" style="font-size:15px;letter-spacing:.06em;line-height:1.14;color:{{ grp.labelInk }}">{{ grp.title }}</span>
+                      <span class="faff-value" style="font-size:13px;color:var(--text-quiet)">{{ grp.note }}</span>
+                    </div>
+                    <div style="border-radius:18px;background:{{ grp.bodyFill }};padding:{{ grp.bodyPad }};display:flex;flex-direction:column;gap:12px">
+                      <sc-for list="{{ grp.steps }}" as="s" hint-placeholder-count="2">
+                        <div style="display:flex;align-items:baseline;gap:12px">
+                          <span style="flex:1;font-size:15px;color:var(--text-primary)">{{ s.main }}</span>
+                          <span class="faff-value" style="font-size:13px;color:var(--text-quiet);white-space:nowrap">{{ s.asked }}</span>
+                          <span class="faff-value" style="width:58px;flex:0 0 auto;font-size:17px;text-align:right;color:{{ s.ink }}">{{ s.ran }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="background:var(--material-tile);border-radius:22px;padding:20px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font-size:13px;color:var(--text-secondary)">Where the heart sat</span>
+                <span class="faff-value" style="font-size:15px">{{ done.zoneLead }}<span style="font-size:13px;color:var(--text-quiet)"> in zone {{ d.zone }}</span></span>
+              </div>
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ZoneBar" hint-size="100%,64px" shares="{{ d.zoneShares }}" target="{{ d.zone }}" height="{{ 44 }}" labels="{{ false }}"></x-import>
+            </div>
+
+            <div style="background:var(--material-tile);border-radius:22px;padding:20px;display:flex;flex-direction:column;gap:14px">
+              <span style="font-size:13px;color:var(--text-secondary)">On the belt</span>
+              <div style="display:flex;justify-content:space-between">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <span style="font-size:12px;color:var(--text-quiet)">AVG SPEED</span>
+                  <span class="faff-value" style="font-size:26px;color:var(--text-primary)">{{ done.beltSpeed }}<span style="font-size:13px;color:var(--text-quiet)"> mph</span></span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+                  <span style="font-size:12px;color:var(--text-quiet)">AVG INCLINE</span>
+                  <span class="faff-value" style="font-size:26px;color:var(--text-primary)">{{ done.beltIncline }}<span style="font-size:13px;color:var(--text-quiet)">%</span></span>
+                </div>
+              </div>
+            </div>
+
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,120px" header="Shoes you wore">
+              <sc-for list="{{ doneShoeRows }}" as="s" hint-placeholder-count="1">
+                <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="{{ s.label }}" sub="{{ s.sub }}" value="{{ s.value }}" onClick="{{ s.onClick }}"></x-import>
+              </sc-for>
+            </x-import>
+
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,190px" header="What this did">
+              <sc-for list="{{ afterRows }}" as="a" hint-placeholder-count="3">
+                <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="{{ a.label }}" sub="{{ a.sub }}" value="{{ a.value }}" onClick="{{ a.onClick }}"></x-import>
+              </sc-for>
+            </x-import>
+
+            <sc-if value="{{ hasNiggle }}" hint-placeholder-val="{{ false }}">
+              <a href="#13a" style="font-size:13px;color:var(--text-secondary);padding:0 4px;text-decoration:none">If it's still there tomorrow, see <span style="color:#FF5A1F">13a</span></a>
+            </sc-if>
+
+            <button style="width:100%;height:52px;border:0;border-radius:999px;background:{{ stravaBg }};color:{{ stravaInk }};font:700 16px/1 var(--font-core);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px" style-hover="filter:brightness(1.12)" onClick="{{ pushStrava }}">{{ stravaLabel }}</button>
+          </div>
+        </div>
+
+        <div style="flex:0 0 62px;display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--surface-page)">
+          <sc-for list="{{ phoneTabs }}" as="t" hint-placeholder-count="4">
+            <button style="flex:{{ t.flex }};height:{{ t.h }};border:0;border-radius:{{ t.radius }};background:{{ t.bg }};color:{{ t.ink }};cursor:pointer;display:flex;flex-direction:{{ t.dir }};align-items:center;justify-content:center;gap:{{ t.iconGap }};padding:0 {{ t.padX }}px;font:{{ t.font }}" style-hover="filter:brightness(1.12)" onClick="{{ t.onClick }}">
+              <span style="display:block;flex:0 0 auto;width:{{ t.iconPx }};height:{{ t.iconPx }};background:currentColor;mask-image:url({{ t.iconUrl }});mask-size:contain;mask-position:center;mask-repeat:no-repeat;-webkit-mask-image:url({{ t.iconUrl }});-webkit-mask-size:contain;-webkit-mask-position:center;-webkit-mask-repeat:no-repeat"></span>
+              <span>{{ t.label }}</span>
+            </button>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ runPickerOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;z-index:7;background:rgba(0,0,0,.72);display:flex;flex-direction:column;justify-content:flex-end" onClick="{{ closeRunPicker }}">
+            <div style="background:var(--surface-1);border-radius:26px 26px 44px 44px;padding:22px 18px 34px;display:flex;flex-direction:column;gap:16px;animation:faffSheetUp 320ms cubic-bezier(.2,.7,.3,1)" onClick="{{ stop }}">
+              <div style="padding:0 4px">
+                <span class="faff-display" style="font-size:20px;line-height:1.14">Start the run</span>
+              </div>
+              <a href="#12a" style="display:flex;flex-direction:column;gap:2px;padding:16px 18px;border-radius:18px;background:var(--material-tile);text-decoration:none;color:var(--text-primary)" onClick="{{ closeRunPicker }}">
+                <span style="font-size:16px;font-weight:600">Outdoor</span>
+                <span style="font-size:13px;color:var(--text-quiet)">GPS pace and route</span>
+              </a>
+              <a href="#12b" style="display:flex;flex-direction:column;gap:2px;padding:16px 18px;border-radius:18px;background:var(--material-tile);text-decoration:none;color:var(--text-primary)" onClick="{{ closeRunPicker }}">
+                <span style="font-size:16px;font-weight:600">Treadmill</span>
+                <span style="font-size:13px;color:var(--text-quiet)">Speed and incline, no GPS</span>
+              </a>
+              <button style="width:100%;height:44px;border:0;border-radius:999px;background:transparent;color:var(--text-secondary);font:600 15px/1 var(--font-core);cursor:pointer" style-hover="color:var(--text-primary)" onClick="{{ closeRunPicker }}">Cancel</button>
+            </div>
+          </div>
+        </sc-if>
+        <div style="flex:0 0 34px;background:var(--surface-page);position:relative">
+          <div style="position:absolute;left:50%;bottom:9px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--text-primary);opacity:.28"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<section data-theme="dark" style="order:4;display:flex;flex-direction:column;gap:24px;padding:24px 32px;background:#000;color:var(--text-primary);font-family:var(--font-core)">
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div class="faff-display" style="font-size:20px;line-height:1.14">Race detail · the schedule row, pushed open</div>
+    <div style="font-size:15px;color:var(--text-secondary);max-width:64ch;text-wrap:pretty">Reached by tapping the next A race on Races. No panel here · a pushed screen keeps the app's quiet register, and the goal, projection and gap already have a home on the place they came from. <a href="#8a">8a</a>.</div>
+  </div>

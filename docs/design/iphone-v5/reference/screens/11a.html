@@ -1,0 +1,89 @@
+  <div id="11a" style="display:flex;flex-direction:column;gap:16px;width:390px" data-screen-label="11">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:var(--signal);color:var(--action-primary-text);font-size:13px;font-weight:700">11a</span>
+      <span style="font-size:15px">Shoes</span>
+    </div>
+
+    <div style="width:390px;height:844px;background:var(--surface-page);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 32px 80px -24px rgba(0,0,0,.85)">
+      <div style="flex:1;min-height:0;overflow-y:auto">
+        <div style="height:44px;display:flex;justify-content:space-between;align-items:center;padding:0 22px;font-size:15px;font-weight:600;color:var(--text-primary)">
+          <span>6:04</span>
+          <span style="display:flex;gap:6px;align-items:center;opacity:.9">
+            <span style="width:17px;height:11px;border-radius:2px;background:var(--text-primary);display:block"></span>
+            <span style="width:24px;height:11px;border-radius:3px;background:var(--text-primary);display:block"></span>
+          </span>
+        </div>
+        <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.AppBar" hint-size="100%,92px" title="Shoes" onBack="{{ navNoop }}"></x-import>
+        <div style="padding:0 16px 32px;display:flex;flex-direction:column;gap:24px">
+
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span class="faff-display" style="font-size:15px;letter-spacing:.06em;line-height:1.14;color:var(--text-secondary);padding:0 4px">In rotation</span>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ shoes.rows }}" as="s" hint-placeholder-count="3">
+                <div style="border-radius:22px;background:var(--material-tile);padding:18px;display:flex;flex-direction:column;gap:12px">
+                  <button style="border:0;background:transparent;cursor:pointer;text-align:left;font-family:inherit;padding:0;display:flex;flex-direction:column;gap:12px" onClick="{{ s.toggleOpen }}">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                      <span style="font-size:16px;color:var(--text-primary);font-weight:600">{{ s.name }}</span>
+                      <span class="faff-value" style="font-size:13px;color:var(--text-quiet)">{{ s.mi }} mi</span>
+                    </div>
+                    <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.RangeScale" hint-size="100%,48px" mode="progress" min="{{ 0 }}" max="{{ s.cap }}" value="{{ s.mi }}" endpoints="{{ s.endpoints }}" size="s" surface="tile"></x-import>
+                  </button>
+                  <sc-if value="{{ s.open }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:8px;padding-top:4px">
+                      <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Button" hint-size="100%,44px" variant="{{ s.wearVariant }}" size="md" full="{{ true }}" onClick="{{ s.wear }}">{{ s.wearingLabel }}</x-import>
+                      <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Button" hint-size="100%,44px" variant="destructive" size="md" full="{{ true }}" onClick="{{ s.retire }}">Retire these</x-import>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Button" hint-size="100%,48px" variant="ghost" size="md" full="{{ true }}" onClick="{{ raceDetail.noop }}">Add a pair</x-import>
+
+          <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,80px" header="Retired">
+            <sc-for list="{{ shoes.retired }}" as="r" hint-placeholder-count="1">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="{{ r.name }}" sub="{{ r.sub }}" value="{{ r.mi }} mi"></x-import>
+            </sc-for>
+          </x-import>
+        </div>
+      </div>
+
+      <div style="flex:0 0 62px;display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--surface-page)">
+        <sc-for list="{{ phoneTabs }}" as="t" hint-placeholder-count="4">
+          <button style="flex:{{ t.flex }};height:{{ t.h }};border:0;border-radius:{{ t.radius }};background:{{ t.bg }};color:{{ t.ink }};cursor:pointer;display:flex;flex-direction:{{ t.dir }};align-items:center;justify-content:center;gap:{{ t.iconGap }};padding:0 {{ t.padX }}px;font:{{ t.font }}" style-hover="filter:brightness(1.12)" onClick="{{ t.onClick }}">
+            <span style="display:block;flex:0 0 auto;width:{{ t.iconPx }};height:{{ t.iconPx }};background:currentColor;mask-image:url({{ t.iconUrl }});mask-size:contain;mask-position:center;mask-repeat:no-repeat;-webkit-mask-image:url({{ t.iconUrl }});-webkit-mask-size:contain;-webkit-mask-position:center;-webkit-mask-repeat:no-repeat"></span>
+            <span>{{ t.label }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="flex:0 0 34px;background:var(--surface-page);position:relative">
+        <div style="position:absolute;left:50%;bottom:9px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--text-primary);opacity:.28"></div>
+      </div>
+
+      <sc-if value="{{ runPickerOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;z-index:7;background:rgba(0,0,0,.72);display:flex;flex-direction:column;justify-content:flex-end" onClick="{{ closeRunPicker }}">
+          <div style="background:var(--surface-1);border-radius:26px 26px 44px 44px;padding:22px 18px 34px;display:flex;flex-direction:column;gap:16px;animation:faffSheetUp 320ms cubic-bezier(.2,.7,.3,1)" onClick="{{ stop }}">
+            <div style="padding:0 4px">
+              <span class="faff-display" style="font-size:20px;line-height:1.14">Start the run</span>
+            </div>
+            <a href="#12a" style="display:flex;flex-direction:column;gap:2px;padding:16px 18px;border-radius:18px;background:var(--material-tile);text-decoration:none;color:var(--text-primary)" onClick="{{ closeRunPicker }}">
+              <span style="font-size:16px;font-weight:600">Outdoor</span>
+              <span style="font-size:13px;color:var(--text-quiet)">GPS pace and route</span>
+            </a>
+            <a href="#12b" style="display:flex;flex-direction:column;gap:2px;padding:16px 18px;border-radius:18px;background:var(--material-tile);text-decoration:none;color:var(--text-primary)" onClick="{{ closeRunPicker }}">
+              <span style="font-size:16px;font-weight:600">Treadmill</span>
+              <span style="font-size:13px;color:var(--text-quiet)">Speed and incline, no GPS</span>
+            </a>
+            <button style="width:100%;height:44px;border:0;border-radius:999px;background:transparent;color:var(--text-secondary);font:600 15px/1 var(--font-core);cursor:pointer" style-hover="color:var(--text-primary)" onClick="{{ closeRunPicker }}">Cancel</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</section>
+<section data-theme="dark" style="order:5;display:flex;flex-direction:column;gap:24px;padding:24px 32px;background:#000;color:var(--text-primary);font-family:var(--font-core)">
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div class="faff-display" style="font-size:20px;line-height:1.14">Live run</div>
+    <div style="font-size:15px;color:var(--text-secondary);max-width:64ch;text-wrap:pretty">RUN opens a chooser on Today first · Outdoor or Treadmill. Both are glance surfaces, not reading surfaces, so both dropped the coaching commentary and the splits list for a few huge numbers. <a href="#12a">12a</a> has nothing to adjust outdoors, so it is pace and heart rate, big, against their bands. <a href="#12b">12b</a> adds the +/- controls a treadmill needs.</div>
+  </div>

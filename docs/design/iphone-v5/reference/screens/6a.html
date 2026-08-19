@@ -1,0 +1,238 @@
+  <div id="6a" style="display:flex;flex-direction:column;gap:16px;width:390px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:var(--signal);color:var(--action-primary-text);font-size:13px;font-weight:700">6a</span>
+      <span style="font-size:15px">Block</span>
+    </div>
+
+    <div style="width:390px;height:844px;background:var(--surface-page);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 32px 80px -24px rgba(0,0,0,.85)">
+      <div style="position:relative;flex:1;min-height:0;overflow-y:auto">
+        <div style="padding:0 16px 24px;display:flex;flex-direction:column;gap:20px">
+
+          <div style="margin:0 -16px;padding:0 20px 26px;border-radius:0 0 30px 30px;background:var(--g-phase-panel);display:flex;flex-direction:column;gap:22px;position:relative;isolation:isolate">
+            <div aria-hidden="true" style="position:absolute;z-index:-1;inset:0;border-radius:inherit;pointer-events:none;opacity:.5;mix-blend-mode:overlay;background-image:url(&quot;data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='180' height='180' filter='url(%23n)'/></svg>&quot;)"></div>
+            <div style="height:62px;display:flex;justify-content:space-between;align-items:center;padding:0 6px 8px;font-size:15px;font-weight:600;color:#FFFFFF">
+              <span>6:04</span>
+              <span style="display:flex;gap:6px;align-items:center;opacity:.9">
+                <span style="width:17px;height:11px;border-radius:2px;background:#FFFFFF;display:block"></span>
+                <span style="width:24px;height:11px;border-radius:3px;background:#FFFFFF;display:block"></span>
+              </span>
+            </div>
+            <div style="margin-top:-22px;height:44px;display:flex;align-items:center;justify-content:space-between">
+              <span class="faff-display" style="font-size:20px;line-height:1.14;letter-spacing:.02em;color:#FFFFFF">Block</span>
+              <button style="width:30px;height:30px;border:0;border-radius:999px;background:rgba(255,255,255,.2);color:#FFFFFF;font:600 12px/1 var(--font-core);cursor:pointer" style-hover="filter:brightness(1.12)" onClick="{{ openAccount }}">JR</button>
+            </div>
+            <div style="margin-top:-8px;display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <span class="faff-display" style="font-size:26px;line-height:1.14;color:#FFFFFF">Week 6 of 16</span>
+              <span style="font-size:13px;color:rgba(255,255,255,.78)">{{ block.toGo }}</span>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:20px">
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:13px;color:rgba(255,255,255,.8)">{{ block.kicker }}</span>
+                <span class="faff-display" style="font-size:56px;line-height:1.02;color:#FFFFFF">{{ block.phase }}</span>
+              </div>
+              <div class="faff-value" style="font-size:28px;line-height:1.1;color:#FFFFFF">{{ block.phaseWeek }}</div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-top:4px;padding:16px 18px;border-radius:18px;background:rgba(255,255,255,.16)">
+                <sc-for list="{{ block.stats }}" as="p" hint-placeholder-count="3">
+                  <div style="min-width:0;display:flex;flex-direction:column;gap:6px">
+                    <span style="font-size:12px;color:rgba(255,255,255,.78)">{{ p.label }}</span>
+                    <span class="faff-value" style="font-size:17px;line-height:1.2;color:#FFFFFF">{{ p.value }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:12px;padding:0 4px">
+            <span class="faff-display" style="font-size:15px;letter-spacing:.06em;line-height:1.14;color:var(--text-secondary)">The arc</span>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.PhaseBar" hint-size="100%,54px" phases="{{ block.phases }}" height="{{ 30 }}"></x-import>
+          </div>
+
+          <sc-if value="{{ block.hasChanges }}" hint-placeholder-val="{{ true }}">
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,120px" header="Changed">
+              <sc-for list="{{ block.changedRows }}" as="r" hint-placeholder-count="1">
+                <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="{{ r.label }}" sub="{{ r.sub }}" value="{{ r.value }}" onClick="{{ r.onClick }}"></x-import>
+              </sc-for>
+            </x-import>
+          </sc-if>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:0 4px;margin-top:4px">
+            <span class="faff-display" style="font-size:15px;letter-spacing:.06em;line-height:1.14;color:var(--text-secondary)">Where this goes</span>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.CoachSay" hint-size="100%,90px" size="md" attribution="{{ null }}" dc-props="{{ coachFlush }}">{{ block.say }}</x-import>
+          </div>
+
+          <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,190px" header="So far in this block">
+            <sc-for list="{{ block.soFarRows }}" as="r" hint-placeholder-count="3">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="{{ r.label }}" sub="{{ r.sub }}" value="{{ r.value }}"></x-import>
+            </sc-for>
+          </x-import>
+
+          <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,58px">
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="Change the plan" sub="Cutback, travel, extra day, another race, move a day" onClick="{{ openPlan }}"></x-import>
+          </x-import>
+
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:0 4px">
+              <span class="faff-display" style="font-size:15px;letter-spacing:.06em;line-height:1.14;color:var(--text-secondary)">Every week</span>
+              <span class="faff-value" style="font-size:13px;color:var(--text-quiet)">All 16</span>
+            </div>
+            <div style="border-radius:22px;background:var(--material-tile);overflow:hidden;display:flex;flex-direction:column">
+              <sc-for list="{{ block.weeks }}" as="w" hint-placeholder-count="6">
+                <div style="display:flex;flex-direction:column">
+                  <button style="border:0;background:{{ w.rowBg }};cursor:pointer;display:flex;align-items:center;gap:14px;padding:14px 16px;text-align:left;font-family:inherit" style-hover="filter:brightness(1.14)" onClick="{{ w.onClick }}">
+                    <span style="width:74px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px">
+                      <span style="font-size:15px;font-weight:{{ w.weight }};color:{{ w.ink }}">{{ w.week }}</span>
+                      <span style="font-size:12px;color:var(--text-quiet)">{{ w.flag }}</span>
+                    </span>
+                    <span style="flex:1;min-width:0">
+                      <span style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;align-items:end;height:44px">
+                        <sc-for list="{{ w.bars }}" as="b" hint-placeholder-count="7">
+                          <span style="display:block;height:{{ b.h }};border-radius:2px;background:{{ b.fill }};opacity:{{ b.op }}"></span>
+                        </sc-for>
+                      </span>
+                    </span>
+                    <span class="faff-value" style="flex:0 0 auto;font-size:15px;color:var(--text-secondary);white-space:nowrap">{{ w.mi }}</span>
+                  </button>
+                  <sc-if value="{{ w.open }}" hint-placeholder-val="{{ true }}">
+                    <div style="background:var(--material-tile-raised);padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+                      <sc-for list="{{ w.detail }}" as="r" hint-placeholder-count="3">
+                        <div style="display:flex;align-items:baseline;gap:12px">
+                          <span style="flex:1;font-size:14px;color:var(--text-primary)">{{ r.label }}</span>
+                          <span class="faff-value" style="font-size:14px;color:var(--text-secondary);white-space:nowrap">{{ r.value }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,150px">
+            <sc-for list="{{ block.libraryRows }}" as="r" hint-placeholder-count="2">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="{{ r.label }}" sub="{{ r.sub }}" value="{{ r.value }}" onClick="{{ r.onClick }}"></x-import>
+            </sc-for>
+          </x-import>
+        </div>
+      </div>
+
+      <div style="flex:0 0 62px;display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--surface-page)">
+        <sc-for list="{{ blockTabs }}" as="t" hint-placeholder-count="4">
+          <button style="flex:{{ t.flex }};height:{{ t.h }};border:0;border-radius:{{ t.radius }};background:{{ t.bg }};color:{{ t.ink }};cursor:pointer;display:flex;flex-direction:{{ t.dir }};align-items:center;justify-content:center;gap:{{ t.iconGap }};padding:0 {{ t.padX }}px;font:{{ t.font }}" style-hover="filter:brightness(1.12)" onClick="{{ t.onClick }}">
+            <span style="display:block;flex:0 0 auto;width:{{ t.iconPx }};height:{{ t.iconPx }};background:currentColor;mask-image:url({{ t.iconUrl }});mask-size:contain;mask-position:center;mask-repeat:no-repeat;-webkit-mask-image:url({{ t.iconUrl }});-webkit-mask-size:contain;-webkit-mask-position:center;-webkit-mask-repeat:no-repeat"></span>
+            <span>{{ t.label }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="flex:0 0 34px;background:var(--surface-page);position:relative">
+        <div style="position:absolute;left:50%;bottom:9px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--text-primary);opacity:.28"></div>
+      </div>
+
+      <sc-if value="{{ runPickerOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;z-index:7;background:rgba(0,0,0,.72);display:flex;flex-direction:column;justify-content:flex-end" onClick="{{ closeRunPicker }}">
+          <div style="background:var(--surface-1);border-radius:26px 26px 44px 44px;padding:22px 18px 34px;display:flex;flex-direction:column;gap:16px;animation:faffSheetUp 320ms cubic-bezier(.2,.7,.3,1)" onClick="{{ stop }}">
+            <div style="padding:0 4px">
+              <span class="faff-display" style="font-size:20px;line-height:1.14">Start the run</span>
+            </div>
+            <a href="#12a" style="display:flex;flex-direction:column;gap:2px;padding:16px 18px;border-radius:18px;background:var(--material-tile);text-decoration:none;color:var(--text-primary)" onClick="{{ closeRunPicker }}">
+              <span style="font-size:16px;font-weight:600">Outdoor</span>
+              <span style="font-size:13px;color:var(--text-quiet)">GPS pace and route</span>
+            </a>
+            <a href="#12b" style="display:flex;flex-direction:column;gap:2px;padding:16px 18px;border-radius:18px;background:var(--material-tile);text-decoration:none;color:var(--text-primary)" onClick="{{ closeRunPicker }}">
+              <span style="font-size:16px;font-weight:600">Treadmill</span>
+              <span style="font-size:13px;color:var(--text-quiet)">Speed and incline, no GPS</span>
+            </a>
+            <button style="width:100%;height:44px;border:0;border-radius:999px;background:transparent;color:var(--text-secondary);font:600 15px/1 var(--font-core);cursor:pointer" style-hover="color:var(--text-primary)" onClick="{{ closeRunPicker }}">Cancel</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ planOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;inset:0;z-index:6;background:rgba(0,0,0,.72);display:flex;flex-direction:column;justify-content:flex-end" onClick="{{ closePlan }}">
+          <div style="background:var(--surface-1);border-radius:26px 26px 44px 44px;padding:22px 18px 34px;display:flex;flex-direction:column;gap:18px;animation:faffSheetUp 320ms cubic-bezier(.2,.7,.3,1)" onClick="{{ stop }}">
+            <div style="display:flex;flex-direction:column;gap:4px;padding:0 4px">
+              <span class="faff-display" style="font-size:20px;line-height:1.14">What changed</span>
+              <span style="font-size:13px;color:var(--text-quiet)">{{ plan.sub }}</span>
+            </div>
+
+            <sc-if value="{{ plan.menu }}" hint-placeholder-val="{{ true }}">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,250px">
+                <sc-for list="{{ plan.options }}" as="o" hint-placeholder-count="4">
+                  <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="{{ o.label }}" sub="{{ o.sub }}" onClick="{{ o.onClick }}"></x-import>
+                </sc-for>
+              </x-import>
+            </sc-if>
+
+            <sc-if value="{{ plan.deciding }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:18px">
+                <sc-if value="{{ plan.needsRange }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <span class="faff-display" style="font-size:15px;letter-spacing:.06em;line-height:1.14;color:var(--text-secondary);padding:0 4px">Which dates</span>
+                    <div style="display:flex;gap:10px">
+                      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+                        <span style="font-size:12px;color:var(--text-quiet);padding:0 2px">From</span>
+                        <input type="date" value="{{ plan.travelFrom }}" onChange="{{ plan.setTravelFrom }}" style="width:100%;height:44px;border:0;border-radius:14px;background:var(--material-tile);color:var(--text-primary);font:600 15px/1 var(--font-core);padding:0 12px;font-family:inherit"/>
+                      </div>
+                      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+                        <span style="font-size:12px;color:var(--text-quiet);padding:0 2px">To</span>
+                        <input type="date" value="{{ plan.travelTo }}" onChange="{{ plan.setTravelTo }}" style="width:100%;height:44px;border:0;border-radius:14px;background:var(--material-tile);color:var(--text-primary);font:600 15px/1 var(--font-core);padding:0 12px;font-family:inherit"/>
+                      </div>
+                    </div>
+                    <button style="width:100%;height:48px;border:0;border-radius:999px;background:var(--material-action);color:var(--action-primary-text);font:700 15px/1 var(--font-core);cursor:pointer;margin-top:4px" style-hover="filter:brightness(1.12)" onClick="{{ plan.checkTravel }}">Check these dates</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ plan.refused }}" hint-placeholder-val="{{ false }}">
+                  <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Alert" hint-size="100%,100px" tone="attention">{{ plan.refusalText }}</x-import>
+                </sc-if>
+                <sc-if value="{{ plan.showSay }}" hint-placeholder-val="{{ true }}">
+                  <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.CoachSay" hint-size="100%,110px" size="md" attribution="{{ null }}" dc-props="{{ coachFlush }}">{{ plan.say }}</x-import>
+                </sc-if>
+                <sc-if value="{{ plan.hasCaveats }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:13px;line-height:1.4;color:var(--text-quiet);padding:0 4px">{{ plan.caveatsText }}</span>
+                </sc-if>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-if value="{{ plan.showSay }}" hint-placeholder-val="{{ true }}">
+                    <button style="width:100%;height:52px;border:0;border-radius:999px;background:var(--material-action);color:var(--action-primary-text);font:700 16px/1 var(--font-core);cursor:pointer" style-hover="filter:brightness(1.12)" onClick="{{ plan.confirm }}">{{ plan.confirmLabel }}</button>
+                  </sc-if>
+                  <sc-if value="{{ plan.refused }}" hint-placeholder-val="{{ false }}">
+                    <button style="width:100%;height:48px;border:0;border-radius:999px;background:var(--material-tile-raised);color:var(--text-primary);font:600 15px/1 var(--font-core);cursor:pointer" style-hover="filter:brightness(1.12)" onClick="{{ plan.tryAgain }}">Try different dates</button>
+                  </sc-if>
+                  <button style="width:100%;height:44px;border:0;border-radius:999px;background:transparent;color:var(--text-secondary);font:600 15px/1 var(--font-core);cursor:pointer" style-hover="color:var(--text-primary)" onClick="{{ plan.back }}">Leave it alone</button>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ plan.menu }}" hint-placeholder-val="{{ true }}">
+              <button style="width:100%;height:48px;border:0;border-radius:999px;background:var(--material-tile-raised);color:var(--text-primary);font:600 15px/1 var(--font-core);cursor:pointer" style-hover="filter:brightness(1.12)" onClick="{{ closePlan }}">Close</button>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ accountOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;inset:0;z-index:5;background:rgba(0,0,0,.72);display:flex;flex-direction:column;justify-content:flex-end" onClick="{{ closeAccount }}">
+          <div style="background:var(--surface-1);border-radius:26px 26px 44px 44px;padding:22px 18px 34px;display:flex;flex-direction:column;gap:16px;animation:faffSheetUp 320ms cubic-bezier(.2,.7,.3,1)" onClick="{{ stop }}">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 4px">
+              <span class="faff-display" style="font-size:20px;line-height:1.14">Jamie Rowe</span>
+              <span style="font-size:13px;color:var(--text-quiet)">Week 6 of 16</span>
+            </div>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,190px">
+              <sc-for list="{{ accountRows }}" as="r" hint-placeholder-count="3">
+                <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="{{ r.label }}" sub="{{ r.sub }}" value="{{ r.value }}" onClick="{{ r.onClick }}"></x-import>
+              </sc-for>
+            </x-import>
+            <button style="width:100%;height:48px;border:0;border-radius:999px;background:var(--material-tile-raised);color:var(--text-primary);font:600 15px/1 var(--font-core);cursor:pointer" style-hover="filter:brightness(1.12)" onClick="{{ closeAccount }}">Close</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</section>
+
+<section data-theme="dark" style="order:1;display:flex;flex-direction:column;gap:40px;padding:24px 32px;background:#000;color:var(--text-primary);font-family:var(--font-core)">
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div class="faff-display" style="font-size:20px;line-height:1.14">Today · before and after</div>
+    <div style="font-size:15px;color:var(--text-secondary);max-width:64ch;text-wrap:pretty"><a href="#5c">5c</a> adds the treadmill's after-run recap: no route, no weather, an "On the belt" card with average speed and incline instead. Flagging a niggle now links to <a href="#13a">13a</a>, what tomorrow looks like if it's still there. One screen, two halves of the day. <a href="#5a">5a</a> answers what the run is, what it asks of you and how long it takes, with the state gradient carrying the type. <a href="#5b">5b</a> is the same screen once the run is in: what happened against what was asked, the route, and Strava. Day state switch drives both.</div>
+  </div>
+
+  <div style="display:flex;gap:64px;flex-wrap:wrap;align-items:flex-start">

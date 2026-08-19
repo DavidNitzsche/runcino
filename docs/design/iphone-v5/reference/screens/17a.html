@@ -1,0 +1,78 @@
+  <div id="17a" style="display:flex;flex-direction:column;gap:16px;width:390px" data-screen-label="17">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:var(--signal);color:var(--action-primary-text);font-size:13px;font-weight:700">17a</span>
+      <span style="font-size:15px">Today changed overnight</span>
+    </div>
+
+    <div style="width:390px;height:844px;background:var(--surface-page);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 32px 80px -24px rgba(0,0,0,.85)">
+      <div style="flex:1;min-height:0;overflow-y:auto">
+        <div style="padding:0 16px 24px;display:flex;flex-direction:column;gap:20px">
+
+          <div style="margin:0 -16px;padding:0 20px 26px;border-radius:0 0 30px 30px;background:var(--g-rest-panel);display:flex;flex-direction:column;gap:22px;position:relative;isolation:isolate">
+            <div aria-hidden="true" style="position:absolute;z-index:-1;inset:0;border-radius:inherit;pointer-events:none;opacity:.5;mix-blend-mode:overlay;background-image:url(&quot;data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='180' height='180' filter='url(%23n)'/></svg>&quot;)"></div>
+            <div style="height:62px;display:flex;justify-content:space-between;align-items:center;padding:0 6px 8px;font-size:15px;font-weight:600;color:#FFFFFF">
+              <span>6:04</span>
+              <span style="display:flex;gap:6px;align-items:center;opacity:.9">
+                <span style="width:17px;height:11px;border-radius:2px;background:#FFFFFF;display:block"></span>
+                <span style="width:24px;height:11px;border-radius:3px;background:#FFFFFF;display:block"></span>
+              </span>
+            </div>
+            <div style="margin-top:-22px;height:44px;display:flex;align-items:center;justify-content:space-between">
+              <span class="faff-display" style="font-size:20px;line-height:1.14;letter-spacing:.02em;color:#FFFFFF">Today</span>
+              <button style="width:30px;height:30px;border:0;border-radius:999px;background:rgba(255,255,255,.2);color:#FFFFFF;font:600 12px/1 var(--font-core);cursor:pointer" style-hover="filter:brightness(1.12)" onClick="{{ openAccount }}">JR</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:20px">
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font-size:13px;color:rgba(255,255,255,.8)">{{ overnight.changedNote }}</span>
+                <span class="faff-display" style="font-size:56px;line-height:1.02;color:#FFFFFF">{{ overnight.type }}</span>
+              </div>
+              <div class="faff-value" style="font-size:28px;line-height:1.1;color:#FFFFFF">{{ overnight.dose }}</div>
+            </div>
+          </div>
+
+          <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.CoachSay" hint-size="100%,90px" size="md">{{ overnight.coach }}</x-import>
+
+          <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,180px" header="What converged">
+            <sc-for list="{{ overnight.converged }}" as="c" hint-placeholder-count="3">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="{{ c.label }}" sub="{{ c.sub }}" value="{{ c.value }}"></x-import>
+            </sc-for>
+          </x-import>
+
+          <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,58px" header="What moved">
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="{{ overnight.movedLabel }}" sub="{{ overnight.movedSub }}"></x-import>
+          </x-import>
+        </div>
+      </div>
+
+      <div style="flex:0 0 62px;display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--surface-page)">
+        <sc-for list="{{ phoneTabs }}" as="t" hint-placeholder-count="4">
+          <button style="flex:{{ t.flex }};height:{{ t.h }};border:0;border-radius:{{ t.radius }};background:{{ t.bg }};color:{{ t.ink }};cursor:pointer;display:flex;flex-direction:{{ t.dir }};align-items:center;justify-content:center;gap:{{ t.iconGap }};padding:0 {{ t.padX }}px;font:{{ t.font }}" style-hover="filter:brightness(1.12)" onClick="{{ t.onClick }}">
+            <span style="display:block;flex:0 0 auto;width:{{ t.iconPx }};height:{{ t.iconPx }};background:currentColor;mask-image:url({{ t.iconUrl }});mask-size:contain;mask-position:center;mask-repeat:no-repeat;-webkit-mask-image:url({{ t.iconUrl }});-webkit-mask-size:contain;-webkit-mask-position:center;-webkit-mask-repeat:no-repeat"></span>
+            <span>{{ t.label }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="flex:0 0 34px;background:var(--surface-page);position:relative">
+        <div style="position:absolute;left:50%;bottom:9px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--text-primary);opacity:.28"></div>
+      </div>
+
+      <sc-if value="{{ runPickerOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;z-index:7;background:rgba(0,0,0,.72);display:flex;flex-direction:column;justify-content:flex-end" onClick="{{ closeRunPicker }}">
+          <div style="background:var(--surface-1);border-radius:26px 26px 44px 44px;padding:22px 18px 34px;display:flex;flex-direction:column;gap:16px;animation:faffSheetUp 320ms cubic-bezier(.2,.7,.3,1)" onClick="{{ stop }}">
+            <div style="padding:0 4px">
+              <span class="faff-display" style="font-size:20px;line-height:1.14">Start the run</span>
+            </div>
+            <a href="#12a" style="display:flex;flex-direction:column;gap:2px;padding:16px 18px;border-radius:18px;background:var(--material-tile);text-decoration:none;color:var(--text-primary)" onClick="{{ closeRunPicker }}">
+              <span style="font-size:16px;font-weight:600">Outdoor</span>
+              <span style="font-size:13px;color:var(--text-quiet)">GPS pace and route</span>
+            </a>
+            <a href="#12b" style="display:flex;flex-direction:column;gap:2px;padding:16px 18px;border-radius:18px;background:var(--material-tile);text-decoration:none;color:var(--text-primary)" onClick="{{ closeRunPicker }}">
+              <span style="font-size:16px;font-weight:600">Treadmill</span>
+              <span style="font-size:13px;color:var(--text-quiet)">Speed and incline, no GPS</span>
+            </a>
+            <button style="width:100%;height:44px;border:0;border-radius:999px;background:transparent;color:var(--text-secondary);font:600 15px/1 var(--font-core);cursor:pointer" style-hover="color:var(--text-primary)" onClick="{{ closeRunPicker }}">Cancel</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>

@@ -1,0 +1,102 @@
+  <div id="8a" style="display:flex;flex-direction:column;gap:16px;width:390px" data-screen-label="08">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:var(--signal);color:var(--action-primary-text);font-size:13px;font-weight:700">8a</span>
+      <span style="font-size:15px">Race detail</span>
+    </div>
+
+    <div style="width:390px;height:844px;background:var(--surface-page);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 32px 80px -24px rgba(0,0,0,.85)">
+      <div style="flex:1;min-height:0;overflow-y:auto">
+        <div style="height:44px;display:flex;justify-content:space-between;align-items:center;padding:0 22px;font-size:15px;font-weight:600;color:var(--text-primary)">
+          <span>6:04</span>
+          <span style="display:flex;gap:6px;align-items:center;opacity:.9">
+            <span style="width:17px;height:11px;border-radius:2px;background:var(--text-primary);display:block"></span>
+            <span style="width:24px;height:11px;border-radius:3px;background:var(--text-primary);display:block"></span>
+          </span>
+        </div>
+        <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.AppBar" hint-size="100%,92px" title="{{ raceDetail.name }}" eyebrow="{{ raceDetail.when }}" onBack="{{ navNoop }}"></x-import>
+        <div style="padding:0 16px 32px;display:flex;flex-direction:column;gap:24px">
+
+          <div style="border-radius:22px;background:var(--material-tile);padding:18px;display:flex;justify-content:space-between;gap:12px">
+            <sc-for list="{{ raceDetail.stats }}" as="p" hint-placeholder-count="3">
+              <div style="min-width:0;display:flex;flex-direction:column;gap:6px">
+                <span style="font-size:12px;color:var(--text-quiet)">{{ p.label }}</span>
+                <span class="faff-value" style="font-size:20px;line-height:1.15;color:{{ p.ink }}">{{ p.value }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span class="faff-display" style="font-size:15px;letter-spacing:.06em;line-height:1.14;color:var(--text-secondary);padding:0 4px">Course</span>
+            <div style="border-radius:22px;background:var(--material-tile);padding:18px">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ElevationProfile" hint-size="100%,140px" points="{{ raceDetail.elevation }}" marks="{{ raceDetail.marks }}" footnotes="{{ raceDetail.elevFootnotes }}" height="{{ 120 }}"></x-import>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <span class="faff-display" style="font-size:15px;letter-spacing:.06em;line-height:1.14;color:var(--text-secondary);padding:0 4px">Pace plan</span>
+            <sc-for list="{{ raceDetail.paceSections }}" as="ps" hint-placeholder-count="3">
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:0 4px">
+                  <span class="faff-display" style="font-size:15px;letter-spacing:.06em;line-height:1.14;color:var(--text-primary)">{{ ps.title }}</span>
+                  <span class="faff-value" style="font-size:13px;color:var(--text-quiet)">{{ ps.note }}</span>
+                </div>
+                <div style="border-radius:18px;background:var(--material-tile);padding:16px 18px;display:flex;justify-content:space-between;align-items:baseline;gap:12px">
+                  <span style="font-size:15px;color:var(--text-secondary)">Pace</span>
+                  <span class="faff-value" style="font-size:17px;color:var(--text-primary)">{{ ps.pace }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="border-radius:22px;background:var(--material-tile);padding:18px;display:flex;flex-direction:column;gap:12px">
+            <span class="faff-display" style="font-size:15px;letter-spacing:.06em;line-height:1.14;color:var(--text-secondary)">Taper</span>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.RangeScale" hint-size="100%,64px" mode="progress" min="{{ 0 }}" max="{{ raceDetail.taperMax }}" value="{{ raceDetail.taperWeeks }}" endpoints="{{ raceDetail.taperEndpoints }}" centerLabel="Three weeks out" hue="phase" surface="tile"></x-import>
+          </div>
+
+          <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListGroup" hint-size="100%,80px" header="Gear plan">
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.ListRow" hint-size="100%,58px" label="{{ raceDetail.shoe }}" sub="{{ raceDetail.shoeSub }}" value="Change" onClick="{{ raceDetail.noop }}"></x-import>
+          </x-import>
+
+          <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.CoachSay" hint-size="100%,90px" size="md">{{ raceDetail.coach }}</x-import>
+        </div>
+      </div>
+
+      <div style="flex:0 0 62px;display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--surface-page)">
+        <sc-for list="{{ seasonTabs }}" as="t" hint-placeholder-count="4">
+          <button style="flex:{{ t.flex }};height:{{ t.h }};border:0;border-radius:{{ t.radius }};background:{{ t.bg }};color:{{ t.ink }};cursor:pointer;display:flex;flex-direction:{{ t.dir }};align-items:center;justify-content:center;gap:{{ t.iconGap }};padding:0 {{ t.padX }}px;font:{{ t.font }}" style-hover="filter:brightness(1.12)" onClick="{{ t.onClick }}">
+            <span style="display:block;flex:0 0 auto;width:{{ t.iconPx }};height:{{ t.iconPx }};background:currentColor;mask-image:url({{ t.iconUrl }});mask-size:contain;mask-position:center;mask-repeat:no-repeat;-webkit-mask-image:url({{ t.iconUrl }});-webkit-mask-size:contain;-webkit-mask-position:center;-webkit-mask-repeat:no-repeat"></span>
+            <span>{{ t.label }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="flex:0 0 34px;background:var(--surface-page);position:relative">
+        <div style="position:absolute;left:50%;bottom:9px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--text-primary);opacity:.28"></div>
+      </div>
+
+      <sc-if value="{{ runPickerOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;z-index:7;background:rgba(0,0,0,.72);display:flex;flex-direction:column;justify-content:flex-end" onClick="{{ closeRunPicker }}">
+          <div style="background:var(--surface-1);border-radius:26px 26px 44px 44px;padding:22px 18px 34px;display:flex;flex-direction:column;gap:16px;animation:faffSheetUp 320ms cubic-bezier(.2,.7,.3,1)" onClick="{{ stop }}">
+            <div style="padding:0 4px">
+              <span class="faff-display" style="font-size:20px;line-height:1.14">Start the run</span>
+            </div>
+            <a href="#12a" style="display:flex;flex-direction:column;gap:2px;padding:16px 18px;border-radius:18px;background:var(--material-tile);text-decoration:none;color:var(--text-primary)" onClick="{{ closeRunPicker }}">
+              <span style="font-size:16px;font-weight:600">Outdoor</span>
+              <span style="font-size:13px;color:var(--text-quiet)">GPS pace and route</span>
+            </a>
+            <a href="#12b" style="display:flex;flex-direction:column;gap:2px;padding:16px 18px;border-radius:18px;background:var(--material-tile);text-decoration:none;color:var(--text-primary)" onClick="{{ closeRunPicker }}">
+              <span style="font-size:16px;font-weight:600">Treadmill</span>
+              <span style="font-size:13px;color:var(--text-quiet)">Speed and incline, no GPS</span>
+            </a>
+            <button style="width:100%;height:44px;border:0;border-radius:999px;background:transparent;color:var(--text-secondary);font:600 15px/1 var(--font-core);cursor:pointer" style-hover="color:var(--text-primary)" onClick="{{ closeRunPicker }}">Cancel</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</section>
+
+<section data-theme="dark" style="order:7;display:flex;flex-direction:column;gap:24px;padding:24px 32px;background:#000;color:var(--text-primary);font-family:var(--font-core)">
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div class="faff-display" style="font-size:20px;line-height:1.14">Onboarding · day one</div>
+    <div style="font-size:15px;color:var(--text-secondary);max-width:64ch;text-wrap:pretty">Four short questions, then the first prescription. The fitness question is the five onboarding modes the design system reserved for Radio · each reveals only the one follow-up it needs. No shell, no tabs · there is no plan yet to navigate. <a href="#9a">9a</a>.</div>
+  </div>

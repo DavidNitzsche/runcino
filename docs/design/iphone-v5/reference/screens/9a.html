@@ -1,0 +1,117 @@
+  <div id="9a" style="display:flex;flex-direction:column;gap:16px;width:390px" data-screen-label="09">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:var(--signal);color:var(--action-primary-text);font-size:13px;font-weight:700">9a</span>
+      <span style="font-size:15px">Onboarding</span>
+    </div>
+
+    <div style="width:390px;height:844px;background:var(--surface-page);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 32px 80px -24px rgba(0,0,0,.85)">
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:64px 20px 32px;display:flex;flex-direction:column;gap:28px">
+
+        <div style="display:flex;gap:6px;padding:0 4px">
+          <sc-for list="{{ onboard.dots }}" as="dot" hint-placeholder-count="5">
+            <span style="flex:1;height:4px;border-radius:999px;background:{{ dot.on }}"></span>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ onboard.s0 }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:16px;flex:1">
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:40px">
+              <span class="faff-display" style="font-size:38px;line-height:1.1">Let's write the plan</span>
+              <span style="font-size:15px;color:var(--text-secondary);text-wrap:pretty">A few questions, then a real prescription for tomorrow. Nothing here is permanent.</span>
+            </div>
+            <div style="flex:1"></div>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Button" hint-size="100%,52px" variant="primary" size="lg" full="{{ true }}" onClick="{{ onboard.next }}">Start</x-import>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ onboard.s1 }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:20px;flex:1">
+            <span class="faff-display" style="font-size:26px;line-height:1.14">The goal</span>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Select" hint-size="100%,64px" label="Distance" value="{{ onboard.distance }}" options="{{ onboard.distanceOptions }}" onChange="{{ onboard.setDistance }}"></x-import>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Input" hint-size="100%,64px" label="Race date" type="date" value="{{ onboard.raceDate }}" onChange="{{ onboard.setRaceDate }}" helper="Leave it blank if you have not entered yet." full="{{ true }}"></x-import>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Input" hint-size="100%,64px" label="Goal time" placeholder="e.g. 3:30:00" value="{{ onboard.goalTime }}" onChange="{{ onboard.setGoalTime }}" helper="Optional. The coach can set one later from your fitness alone." full="{{ true }}"></x-import>
+            <div style="flex:1"></div>
+            <div style="display:flex;gap:8px">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Button" hint-size="100%,52px" variant="ghost" size="lg" onClick="{{ onboard.back }}">Back</x-import>
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Button" hint-size="100%,52px" variant="primary" size="lg" full="{{ true }}" onClick="{{ onboard.next }}">Continue</x-import>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ onboard.s2 }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:16px;flex:1">
+            <span class="faff-display" style="font-size:26px;line-height:1.14">Where fitness stands</span>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ onboard.modes }}" as="m" hint-placeholder-count="5">
+                <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Radio" hint-size="100%,56px" checked="{{ m.checked }}" onChange="{{ m.onChange }}" label="{{ m.label }}" sub="{{ m.sub }}"></x-import>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ onboard.modeRecent }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Input" hint-size="100%,64px" label="Race distance" value="{{ onboard.recentDist }}" onChange="{{ onboard.setRecentDist }}" placeholder="Half marathon" full="{{ true }}"></x-import>
+                <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Input" hint-size="100%,64px" label="Finish time" value="{{ onboard.recentTime }}" onChange="{{ onboard.setRecentTime }}" placeholder="1:38:12" full="{{ true }}"></x-import>
+              </div>
+            </sc-if>
+            <sc-if value="{{ onboard.modeEffort }}" hint-placeholder-val="{{ false }}">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Input" hint-size="100%,64px" label="Pace for 20 minutes hard" value="{{ onboard.effortPace }}" onChange="{{ onboard.setEffortPace }}" placeholder="7:10 /mi" unit="/mi" full="{{ true }}"></x-import>
+            </sc-if>
+            <sc-if value="{{ onboard.modeConsistent }}" hint-placeholder-val="{{ false }}">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Stepper" hint-size="100%,64px" label="Typical weekly mileage" value="{{ onboard.weeklyMi }}" min="{{ 10 }}" max="{{ 70 }}" onChange="{{ onboard.setWeeklyMi }}"></x-import>
+            </sc-if>
+            <sc-if value="{{ onboard.modeTimeoff }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Input" hint-size="100%,64px" label="Weeks off" value="{{ onboard.offWeeks }}" onChange="{{ onboard.setOffWeeks }}" type="number" full="{{ true }}"></x-import>
+                <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Input" hint-size="100%,64px" label="Weekly mileage before the break" value="{{ onboard.offMi }}" onChange="{{ onboard.setOffMi }}" type="number" full="{{ true }}"></x-import>
+              </div>
+            </sc-if>
+            <sc-if value="{{ onboard.modeNew }}" hint-placeholder-val="{{ false }}">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.CoachSay" hint-size="100%,60px" size="sm">The first weeks build the habit before the pace.</x-import>
+            </sc-if>
+
+            <div style="flex:1"></div>
+            <div style="display:flex;gap:8px">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Button" hint-size="100%,52px" variant="ghost" size="lg" onClick="{{ onboard.back }}">Back</x-import>
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Button" hint-size="100%,52px" variant="primary" size="lg" full="{{ true }}" onClick="{{ onboard.next }}">Continue</x-import>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ onboard.s3 }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:20px;flex:1">
+            <span class="faff-display" style="font-size:26px;line-height:1.14">What fits your week</span>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Stepper" hint-size="100%,64px" label="Days per week" value="{{ onboard.days }}" min="{{ 2 }}" max="{{ 7 }}" helper="{{ onboard.daysHelper }}" onChange="{{ onboard.setDays }}"></x-import>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Select" hint-size="100%,64px" label="Long run day" value="{{ onboard.longDay }}" options="{{ onboard.longDayOptions }}" onChange="{{ onboard.setLongDay }}"></x-import>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Switch" hint-size="100%,56px" checked="{{ onboard.phoneStart }}" onChange="{{ onboard.togglePhoneStart }}" label="Start sessions from this phone" sub="{{ onboard.phoneStartSub }}"></x-import>
+            <div style="flex:1"></div>
+            <div style="display:flex;gap:8px">
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Button" hint-size="100%,52px" variant="ghost" size="lg" onClick="{{ onboard.back }}">Back</x-import>
+              <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.Button" hint-size="100%,52px" variant="primary" size="lg" full="{{ true }}" onClick="{{ onboard.next }}">Write the plan</x-import>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ onboard.s4 }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:20px;flex:1">
+            <span class="faff-display" style="font-size:26px;line-height:1.14">Day one</span>
+            <div style="border-radius:22px;background:var(--g-easy-panel);padding:20px;display:flex;flex-direction:column;gap:14px;position:relative;isolation:isolate">
+              <div aria-hidden="true" style="position:absolute;z-index:-1;inset:0;border-radius:inherit;pointer-events:none;opacity:.5;mix-blend-mode:overlay;background-image:url(&quot;data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='180' height='180' filter='url(%23n)'/></svg>&quot;)"></div>
+              <span style="font-size:13px;color:rgba(255,255,255,.8)">Base begins today</span>
+              <span class="faff-display" style="font-size:44px;line-height:1.02;color:#FFFFFF">Easy</span>
+              <span class="faff-value" style="font-size:22px;color:#FFFFFF">4 mi</span>
+            </div>
+            <x-import component-from-global-scope="FaffRunDesignSystem_1f682c.CoachSay" hint-size="100%,80px" size="md">Four easy miles to get the legs moving · the real work begins once the habit does.</x-import>
+            <div style="flex:1"></div>
+            <a href="#5a" style="display:flex;align-items:center;justify-content:center;height:52px;border-radius:999px;background:var(--material-action);color:var(--action-primary-text);font:700 15px/1 var(--font-core);text-decoration:none">See today · 5a</a>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section data-theme="dark" style="order:8;display:flex;flex-direction:column;gap:24px;padding:24px 32px;background:#000;color:var(--text-primary);font-family:var(--font-core)">
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div class="faff-display" style="font-size:20px;line-height:1.14">Settings</div>
+    <div style="font-size:15px;color:var(--text-secondary);max-width:64ch;text-wrap:pretty">Reached from the avatar. Forms that take immediate effect stay as Switch, Select and Stepper on a plain tile · statements and the one destructive action stay in a ListGroup, per the mobile grammar. <a href="#10a">10a</a>.</div>
+  </div>
