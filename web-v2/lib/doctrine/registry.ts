@@ -63,6 +63,8 @@ import {
   type GoalTier,
 } from '@/lib/plan/goal-tiers';
 import { PLAN_TEMPLATES } from '@/lib/plan/plan-templates';
+import { RACE_CARB_G_PER_HR } from '@/lib/race/distance-doctrine';
+import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
 import { VDOT_FULL_VALUE_DAYS, VDOT_EXPIRY_DAYS, FADE_TAIL_DAYS } from '@/lib/training/vdot';
 import { BASE_BUILD_RATE, MAX_BLOCK_GAIN } from '@/lib/training/fitness-trajectory';
 import { BUILD_RATE_VDOT_PER_WEEK } from '@/lib/training/goal-projection';
@@ -5767,6 +5769,226 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         /if \(value == null\) continue;/,
         'lib/coach/recovery-brief.ts#computeScore · absent pillars are skipped, not defaulted',
       );
+    },
+  },
+
+  /* ── 2026-08-18 · doctrine sweep round 2 · five "not yet seeded" claim
+   * areas from CLAUDE.md's list: fitness-trajectory gain rates were already
+   * closed by CONVENTION.trajectory-build-rate / CONVENTION.goal-projection-
+   * build-rate / CONVENTION.fitness-response-model above (confirmed, not
+   * re-added). This block closes the five genuinely-open areas that HAD an
+   * engine constant to bind: the long-run week-over-week red line, the RHR
+   * pre-illness threshold, the injury walk-run ladder, the strength
+   * phase-frequency matrix, and the race-day carb rate by distance.
+   *
+   * Two areas remain deliberately unclaimed, same shape as Daniels' weekly
+   * dosing caps: age/sex VDOT grading (Research/24) has NO engine
+   * implementation at all (grepped clean across lib/), and hydration
+   * bands (Research/19) likewise have no g/hr-or-sodium prescription
+   * anywhere in the engine — fueling.ts and fuel-resolve.ts are carb-only.
+   * A claim needs a constant to bind; inventing one to satisfy the gate
+   * would be the fabrication this gate exists to catch, not fix.
+   */
+  {
+    id: 'LONGRUN.wow-single-step-cap-is-the-injury-red-line',
+    binds: ['lib/plan/validate.ts#CONSTRAINTS.longRunWoWMaxPct'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'Doctrine names two thresholds for a single long run against the longest run in the ' +
+      'prior 30 days: over 110% starts raising overuse-injury risk (~64%), and over 130% ' +
+      '"raises it further" — a harder red line. RAMP.single-session-spike already holds the ' +
+      'GENERATOR to the softer 110% guideline (rampCeiling). The validator is the backstop that ' +
+      'REJECTS a plan outright, so it is allowed to sit at the harder ceiling doctrine names ' +
+      'rather than the guideline the generator itself honours — a 130%-of-longest run is exactly ' +
+      'a 30% week-over-week jump, which is what longRunWoWMaxPct enforces.',
+    check({ cite }) {
+      const cellText = cite.table().cell('Single-session spike threshold', 'Specification');
+      // `>NNN%` only — the cell also carries a bare "~64%" injury-risk-increase
+      // figure between the two thresholds, which is not itself a threshold.
+      const pcts = [...cellText.matchAll(/>(\d+)%/g)].map((m) => Number(m[1]));
+      if (pcts.length < 2) {
+        throw new Error(
+          'doctrine no longer states two spike thresholds (>110% / >130%) for a single long run ' +
+            'vs. the prior-30-day longest',
+        );
+      }
+      const hardCeilingIncreasePct = pcts[1] - 100; // "130% of longest" → a 30% increase
+      const src = sourceOf('web-v2/lib/plan/validate.ts');
+      const values = [...src.matchAll(/longRunWoWMaxPct: (\d+)/g)].map((m) => Number(m[1]));
+      if (values.length === 0) throw new Error('CONSTRAINTS no longer declares longRunWoWMaxPct');
+      for (const v of values) {
+        if (v !== hardCeilingIncreasePct) {
+          throw new Error(
+            `longRunWoWMaxPct is ${v}%, doctrine's harder single-session ceiling is a ` +
+              `${hardCeilingIncreasePct}% week-over-week increase (>${pcts[1]}% of longest)`,
+          );
+        }
+      }
+    },
+  },
+
+  {
+    id: 'READINESS.rhr-elevation-pre-illness-band',
+    binds: ['lib/coach/health-state.ts#rhrElevated', 'lib/coach/health-state.ts#rhrSustainedRed'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '## Spotting Illness Early',
+    claim:
+      'The classic pre-illness signature is a nocturnal RHR +5 to +15 bpm above baseline, ' +
+      'typically 1-3 days before symptoms. The engine\'s two watch-list tiers — amber at +5 ' +
+      '(the earliest, most sensitive read) and red at +8 (partway up the band, once it is not ' +
+      'settling) — must both sit inside that band, and the sustained/red tier must trigger no ' +
+      'sooner than the elevated/amber one.',
+    check({ cite }) {
+      // "+5 to +15 bpm" — prose-"to" band, not the hyphenated form parseBand
+      // handles, so pull the two numbers directly.
+      const magCell = cite.table().cell('RHR (nocturnal)', 'Magnitude');
+      const nums = [...magCell.matchAll(/\d+/g)].map((m) => Number(m[0]));
+      if (nums.length < 2) {
+        throw new Error(`doctrine's RHR pre-illness magnitude cell no longer states a two-number band: "${magCell}"`);
+      }
+      const [lo, hi] = nums;
+      const src = sourceOf('web-v2/lib/coach/health-state.ts');
+      const elevated = Number(
+        matchLiteral(src, /const rhrElevated\s*=\s*rhrDelta != null && rhrDelta >= (\d+);/, 'rhrElevated')[1],
+      );
+      const sustained = Number(
+        matchLiteral(src, /const rhrSustainedRed = rhrDelta != null && rhrDelta >= (\d+);/, 'rhrSustainedRed')[1],
+      );
+      within(elevated, [lo, hi], 'rhrElevated threshold');
+      within(sustained, [lo, hi], 'rhrSustainedRed threshold');
+      if (sustained < elevated) {
+        throw new Error(`rhrSustainedRed (${sustained}) fires before rhrElevated (${elevated}) · escalation order is backwards`);
+      }
+    },
+  },
+
+  {
+    id: 'INJURY.walk-run-ladder-is-encoded-verbatim',
+    binds: ['lib/plan/injury-protocols.ts#WALK_RUN_LADDER'],
+    doc: 'Research/05-injury-return-protocols.md',
+    anchor: '**Generic walk-run progression template (8 stages)**',
+    claim:
+      'The 8-stage walk-run re-entry ladder is one specific table, not a formula, and the ' +
+      'engine carries it stage-for-stage: run minutes, walk minutes, repeats and total run time ' +
+      'per stage, read straight off doctrine\'s own numbers. Where a stage\'s sessions/wk is a ' +
+      'band ("3-4"), the engine holds the low end — the conservative reading doctrine\'s own ' +
+      '"spend at least 2 sessions before progressing" caution calls for.',
+    check({ cite }) {
+      const t = cite.table();
+      if (t.rows.length !== WALK_RUN_LADDER.length) {
+        throw new Error(`doctrine's walk-run table has ${t.rows.length} stages, engine has ${WALK_RUN_LADDER.length}`);
+      }
+      for (const stage of WALK_RUN_LADDER) {
+        const row = t.rows[stage.stage - 1];
+        if (Number(row['Stage']) !== stage.stage) {
+          throw new Error(`walk-run stage ${stage.stage} is out of order in the doctrine table`);
+        }
+        // Stage 8 is written as a continuous block ("25-30 (continuous)",
+        // "—" for walk/repeats) rather than discrete run-walk intervals.
+        if (!/\d/.test(row['Repeats'])) {
+          within(stage.runMin, parseBand(row['Run (min)']), `WALK_RUN_LADDER stage ${stage.stage} run minutes`);
+          if (!stage.continuous) {
+            throw new Error(`stage ${stage.stage} is doctrine's continuous stage but the engine does not mark it continuous`);
+          }
+          continue;
+        }
+        within(stage.runMin, parseBand(row['Run (min)']), `WALK_RUN_LADDER stage ${stage.stage} run minutes`);
+        within(stage.walkMin, parseBand(row['Walk (min)']), `WALK_RUN_LADDER stage ${stage.stage} walk minutes`);
+        within(stage.repeats, parseBand(row['Repeats']), `WALK_RUN_LADDER stage ${stage.stage} repeats`);
+        within(stage.totalRunMin, parseBand(row['Total run time']), `WALK_RUN_LADDER stage ${stage.stage} total run minutes`);
+        const sessBand = parseBand(row['Sessions/wk']);
+        within(stage.sessionsPerWk, sessBand, `WALK_RUN_LADDER stage ${stage.stage} sessions/wk`);
+        if (sessBand[0] !== sessBand[1] && stage.sessionsPerWk !== sessBand[0]) {
+          throw new Error(
+            `stage ${stage.stage} sessions/wk should hold the doctrine band's low end ` +
+              `(${sessBand[0]}), engine has ${stage.sessionsPerWk}`,
+          );
+        }
+      }
+    },
+  },
+
+  {
+    id: 'STRENGTH.phase-frequency-cap-matches-the-matrix',
+    binds: [
+      'lib/coach/strength-recommender.ts#phaseFrequencyCap',
+      'lib/coach/strength-recommender.ts#LAST_HEAVY_DAYS_BEFORE_RACE',
+    ],
+    doc: 'Research/07-strength-programming.md',
+    anchor: '### 2.1 Phase × variable matrix',
+    claim:
+      'The strength macrocycle runs inverse to the run macrocycle, and doctrine states its own ' +
+      'per-phase session cap and heavy-lift cutoff as one matrix, not scattered numbers: base ' +
+      'and build hold 2-3 and 2 sessions/wk, peak drops to 1-2 (maintenance only), taper drops ' +
+      'to a single session and stops heavy loading 7-10 days out, race week stops entirely. The ' +
+      'engine reads each phase\'s cap off this table — still gated behind #27\'s dormant ' +
+      'strength_days_per_week column for off-season, flagged in the code, not here.',
+    check({ cite }) {
+      const t = cite.table();
+      const band = (row: string, col: string) => parseBand(t.cell(row, col));
+      const src = sourceOf('web-v2/lib/coach/strength-recommender.ts');
+
+      const buildCap = Number(
+        matchLiteral(
+          src,
+          /phase === 'QUALITY' \|\| phase === 'BUILD' \|\| phase === 'BASE'\) return (\d);/,
+          'phaseFrequencyCap BUILD/BASE',
+        )[1],
+      );
+      within(buildCap, band('Sessions/wk', 'Build'), 'phaseFrequencyCap BUILD/BASE');
+
+      const taperCap = Number(
+        matchLiteral(src, /if \(phase === 'TAPER'\) return (\d);/, 'phaseFrequencyCap TAPER')[1],
+      );
+      within(taperCap, band('Sessions/wk', 'Taper'), 'phaseFrequencyCap TAPER');
+
+      const peakCap = Number(
+        matchLiteral(src, /phase === 'RACE-SPECIFIC'\) return (\d);/, 'phaseFrequencyCap PEAK')[1],
+      );
+      within(peakCap, band('Sessions/wk', 'Peak'), 'phaseFrequencyCap PEAK (RACE-SPECIFIC)');
+
+      const maintCap = Number(
+        matchLiteral(src, /mode === 'maintenance'\) return (\d);/, 'phaseFrequencyCap off-season/maintenance')[1],
+      );
+      within(maintCap, band('Sessions/wk', 'Off-season'), 'phaseFrequencyCap off-season/maintenance');
+
+      const [rwLo, rwHi] = band('Sessions/wk', 'Race week');
+      if (rwLo !== 0 || rwHi !== 0) {
+        throw new Error('doctrine no longer prescribes 0 strength sessions in race week');
+      }
+      matchLiteral(src, /raceCtx\.kind === 'race_week'\) return 0;/, 'phaseFrequencyCap race week');
+
+      const heavyBand = parseBand(t.cell('Last heavy session', 'Taper'));
+      const heavyVal = Number(
+        matchLiteral(src, /const LAST_HEAVY_DAYS_BEFORE_RACE = (\d+);/, 'LAST_HEAVY_DAYS_BEFORE_RACE')[1],
+      );
+      within(heavyVal, heavyBand, 'LAST_HEAVY_DAYS_BEFORE_RACE');
+    },
+  },
+
+  {
+    id: 'FUELING.race-carb-rate-by-distance',
+    binds: ['lib/race/distance-doctrine.ts#RACE_CARB_G_PER_HR'],
+    doc: 'Research/18-fueling-products.md',
+    anchor: '## 11. During-Race Fueling Protocols by Distance',
+    claim:
+      'On-course carbohydrate intake is prescribed BY DISTANCE, not one flat number for every ' +
+      'race: 5K takes none, 10K takes 0-30 g/hr in the last third only, the half sits at 30-60, ' +
+      'and the marathon (and 50K) sit at 60-90. This is the fix for the defect fueling.ts\'s own ' +
+      'header names — a flat DEFAULT_RACE_TARGET_G_PER_HR = 75 used to be applied to every ' +
+      'distance, roughly doubling the half\'s prescription past the point doctrine calls a ' +
+      'GI-distress threshold.',
+    check({ cite }) {
+      const t = cite.table();
+      for (const cat of CATS) {
+        const row = DOC_ROW[cat];
+        const docBand = parseBand(t.cell(row, 'CHO/hr target'));
+        const eng = RACE_CARB_G_PER_HR[cat];
+        within(eng.targetGPerHr, docBand, `RACE_CARB_G_PER_HR.${cat}.targetGPerHr`);
+        within(eng.bandGPerHr[0], docBand, `RACE_CARB_G_PER_HR.${cat}.bandGPerHr low`);
+        within(eng.bandGPerHr[1], docBand, `RACE_CARB_G_PER_HR.${cat}.bandGPerHr high`);
+      }
     },
   },
 ];
