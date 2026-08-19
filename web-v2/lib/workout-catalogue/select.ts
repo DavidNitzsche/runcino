@@ -330,6 +330,35 @@ export interface SelectorInput {
    * because the reason for it is not doctrine's.
    */
   exclude?: ReadonlySet<string>;
+  /**
+   * SLOT-ROTATE-2 (2026-08-19) · THE BLOCK'S EARNED DOSE, IN AT-PACE MINUTES.
+   *
+   * The week's at-pace budget (`sessionAllowanceMi`) says what the runner MAY
+   * spend at this pace. It does not say what the block has WORKED UP TO, and
+   * before this field the selector spent the whole share every week: the
+   * cheapest legal dose of the chosen session was the largest one that fitted,
+   * so week one of a block and week six of it prescribed the same number of
+   * at-pace minutes. Handing the selector more slots therefore traded a rising
+   * ladder for a flat line at the cap — which is what a plan is not.
+   *
+   * `lib/prescription/trajectory.ts` already walks that ladder for the generic
+   * slots (`Design/adaptive-progression-engine.md` §3, "the plan carries a
+   * default overload trajectory"), and its currency is minutes of work at
+   * pace — the same currency `Dose.atPaceMinutes` is in. So the composer steps
+   * the trajectory whether or not this module ends up filling the slot, and
+   * passes the minutes it earned here.
+   *
+   * It is a CEILING ON SIZING and never a gate. A session is eligible on the
+   * week's true allowance, exactly as before; the target only decides where
+   * inside the structure's own band the dose lands, and it can never push a
+   * session below the shape that makes it that session (`fits`'s floor is
+   * still `structure.reps.min` / `block.min`). A block therefore opens at the
+   * dose doctrine seeds it with, climbs on the trajectory's schedule, and
+   * changes WHICH session carries that dose week to week.
+   *
+   * Null leaves the old behaviour untouched: spend what the week allows.
+   */
+  targetAtPaceMinutes?: number | null;
 }
 
 /* ──────────────────────────────────────────────────────────── the output ── */
@@ -428,7 +457,22 @@ function fits(
    * every other session refuses below its own minimum shape.
    */
   scalesBelowFloor = false,
+  /**
+   * SLOT-ROTATE-2 · the dose the block has earned, in miles at this pace.
+   *
+   * A SIZING ceiling, never an eligibility one. Every refusal below is still
+   * tested against `allowanceMi` — what the week may spend — so a session that
+   * doctrine can afford stays available whatever the trajectory has reached;
+   * this only decides where inside the structure's own band the dose sits, and
+   * the band's own floor (`reps.min`, `block.min`, `cycles.min`) still wins.
+   * `null` spends the whole allowance, which is what happened before it existed.
+   */
+  targetMi: number | null = null,
 ): { ok: true; dose: Omit<Dose, 'structure'> } | { ok: false; detail: string } {
+  /** The bound the dose is SIZED to · the tighter of allowance and target. */
+  const sizeToMi = targetMi != null && targetMi > 0
+    ? Math.min(allowanceMi, targetMi)
+    : allowanceMi;
   const dose = (reps: number, mi: number, minutes: number, recoverySec: number) => ({
     ok: true as const,
     dose: { reps, atPaceMi: mi, atPaceMinutes: minutes, recoverySec },
@@ -471,7 +515,13 @@ function fits(
             `shortest form of this session is ${block.min} min`,
         };
       }
-      const minutes = Math.min(block.max, availableMinutes);
+      // SLOT-ROTATE-2 · size to the earned dose, floored at the block's own
+      // stated minimum. §5.2's "20 min minimum for stimulus" is what makes a
+      // tempo a tempo, so the trajectory may hold a block at twenty minutes
+      // and may not shave it to twelve.
+      const sizeMinutes = (sizeToMi * paceSPerMi) / 60;
+      const upper = Math.min(block.max, availableMinutes);
+      const minutes = Math.min(upper, Math.max(sizeMinutes, Math.min(block.min, upper)));
       return dose(1, (minutes * 60) / paceSPerMi, minutes, 0);
     }
     const minMi = repMi(block.min, block.unit, paceSPerMi);
@@ -483,7 +533,8 @@ function fits(
       };
     }
     const maxMi = repMi(block.max, block.unit, paceSPerMi) ?? minMi;
-    const mi = Math.min(maxMi, allowanceMi);
+    const upperMi = Math.min(maxMi, allowanceMi);
+    const mi = Math.min(upperMi, Math.max(sizeToMi, Math.min(minMi, upperMi)));
     return dose(1, mi, minutesOf(mi), 0);
   }
 
@@ -499,8 +550,13 @@ function fits(
           `form of this session is ${structure.reps.min}×${structure.rep.min}${structure.rep.unit} = ${minMi.toFixed(2)} mi`,
       };
     }
+    // SLOT-ROTATE-2 · `sizeToMi`, not `allowanceMi`. The refusal above is still
+    // the week's true allowance — eligibility is doctrine's question — and this
+    // is where inside `reps.min…reps.max` the block's earned dose lands. The
+    // loop's own floor is the structure's minimum rep count, so a low target
+    // buys the shortest legal form of the session and never a shorter one.
     let reps = structure.reps.max;
-    while (reps > structure.reps.min && reps * one > allowanceMi) reps--;
+    while (reps > structure.reps.min && reps * one > sizeToMi) reps--;
     const mi = reps * one;
     return dose(reps, mi, minutesOf(mi), structure.recoverySec ? structure.recoverySec.min : 0);
   }
@@ -534,7 +590,7 @@ function fits(
       };
     }
     let cycles = structure.cycles.max;
-    while (cycles > structure.cycles.min && cycles * pair > allowanceMi) cycles--;
+    while (cycles > structure.cycles.min && cycles * pair > sizeToMi) cycles--;
     const mi = cycles * pair;
     return dose(cycles, mi, minutesOf(mi), 0);
   }
@@ -699,6 +755,7 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
     phase, distance, tier, weekIndex, weeklyMi, slot, anchors,
     placedThisWeek = [], dayOffset = 0, recent = [],
     inTaperWindow = false, cycleCounts = {}, exclude,
+    targetAtPaceMinutes = null,
   } = input;
 
   const rejected: Rejection[] = [];
@@ -763,6 +820,13 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
 
     // Affordability, and the refusal path.
     const allowanceMi = sessionAllowanceMi(entry, weeklyMi);
+    // SLOT-ROTATE-2 · the block's earned dose in this session's own currency.
+    // An effort-prescribed session spends no at-pace miles at all (§8.1's pace
+    // column is "5K–10K effort"), so there is nothing for the trajectory to
+    // meter and the target does not reach it.
+    const targetMi = (targetAtPaceMinutes != null && targetAtPaceMinutes > 0 && pace != null && pace > 0)
+      ? (targetAtPaceMinutes * 60) / pace
+      : null;
     let picked: Dose | null = null;
     let lastDetail = 'no structure fits';
     for (const structure of entry.structures) {
@@ -784,7 +848,7 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
       // IS its identity, and §5.2's continuous tempo already exists as the
       // shorter session, so it refuses rather than scaling into one.
       const scalesBelowFloor = entry.family === 'long';
-      const f = fits(structure, allowanceMi, pace, entry.effortOnly, scalesBelowFloor);
+      const f = fits(structure, allowanceMi, pace, entry.effortOnly, scalesBelowFloor, targetMi);
       if (f.ok) {
         picked = { structure, ...f.dose };
         break;

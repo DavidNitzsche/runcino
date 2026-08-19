@@ -576,6 +576,48 @@ export function dropLastSegment(s: string | null | undefined): string | null {
   return items.join(' + ');
 }
 
+/**
+ * SLOT-ROTATE-4 (2026-08-19) · the last rung, when two still will not fit.
+ *
+ * `dropLastSegment` stops at two items on purpose: below that there is no
+ * sequence left to shed from, and a one-step "ladder" is not §13's session. But
+ * "there is nothing left to shed" and "the week can afford what remains" are
+ * different statements, and `applyDosingCaps` was treating the first as if it
+ * implied the second — so a two-rung remainder that still breached Daniels'
+ * share shipped as the plan's final answer.
+ *
+ * It is reachable because a sequence is priced at SELECTION against the volume
+ * curve's budget and realized against what the week actually composes to; the
+ * two diverge most on low-frequency weeks, which is the same divergence
+ * `dropLastSegment`'s own comment records. §13.1's 1600-1200-800-400 on a
+ * 19.5 mi week came out 1.74 mi at I against a 1.56 cap, with the shedder out
+ * of moves at two rungs.
+ *
+ * The collapse to ONE is the shape `sizeFromPrescription` already documents for
+ * a rep set that cannot be afforded — "when two still overshoot, the set
+ * collapses to one" — and the first item is what repeated shedding from the end
+ * converges on. The result is no longer a ladder and does not pretend to be: it
+ * is one rung at its stated length, which is a workout the runner can do and
+ * the spec builder can build, where the alternative is a labelled breach.
+ *
+ * Returns null when there is no single leading step to keep, or when the string
+ * is already one step.
+ */
+export function keepFirstSegment(s: string | null | undefined): string | null {
+  if (!s || typeof s !== 'string') return null;
+  const items = splitTopLevel(String(s).trim(), ' + ');
+  if (items.length < 2) return null;
+  const first = items[0].trim();
+  if (!first) return null;
+  // A leading "N×(...)" group is a repeated cycle, not a step; one cycle of it
+  // is still a multi-step sequence and shedding it is `dropLastSegment`'s job.
+  if (/^\d+\s*[×xX]\s*\(/.test(first)) return null;
+  // `parseSegments` reads a bare step, and `parsePrescription` / `parseTimeReps`
+  // read a counted set. Emitting the count makes the survivor readable by the
+  // rep-set parsers the spec builder reaches for first.
+  return /^\d+\s*[×xX]/.test(first) ? first : `1×${first}`;
+}
+
 /** A segment's length in miles, given the work pace time-based steps need. */
 export function segmentMi(seg: ParsedSegment, paceSPerMi: number | null): number | null {
   switch (seg.unit) {

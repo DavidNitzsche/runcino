@@ -348,13 +348,49 @@ describe('David\'s CIM block', () => {
         ownedByFamily.set(d.type, list);
       }
     }
+    // SLOT-ROTATE-2 (2026-08-19) · the trajectory owns FEWER LABELS than it did
+    // and steps MORE OFTEN than it did, and both halves of that are the point.
+    //
+    // `Research/04` §15's specific-support row names "T, cruise intervals, mile
+    // repeats at slower I, alternations", and the composer now places all four
+    // rather than falling to the generic string — so most of this block's
+    // quality days carry a catalogue session and no `workShape`. Counting
+    // rendered labels therefore measures how much of the vocabulary the
+    // catalogue took, which is not what this test is about.
+    //
+    // What it is about is whether the block PROGRESSES, and that lives in the
+    // trajectory's own log: it now steps on every quality week whoever ends up
+    // filling the slot, because the dose the block has earned is what the
+    // catalogue is handed to size its session with. Those are the assertions.
+    // The label check stays as an anti-vacuum floor — if the trajectory ever
+    // stops rendering anything at all, that is a different bug and this still
+    // catches it.
     const ownedLabels = [...ownedByFamily.values()].flat();
-    expect(ownedLabels.length).toBeGreaterThan(2);
-    expect(new Set(ownedLabels).size).toBeGreaterThan(1);
+    expect(ownedLabels.length, 'the trajectory rendered nothing at all').toBeGreaterThan(0);
     for (const [family, labels] of ownedByFamily) {
       if (labels.length < 2) continue;
       expect(new Set(labels).size, `${family} repeated one shape for the whole block`)
         .toBeGreaterThan(1);
+    }
+
+    const log = r.composed.progression ?? [];
+    for (const family of ['threshold', 'interval'] as const) {
+      const track = log.filter((s) => s.family === family);
+      expect(track.length, `${family} never stepped`).toBeGreaterThan(3);
+      // The EARNED dose, before the week's affordability clamp shows up in the
+      // label. More than one shape means the ladder moved; a strictly rising
+      // count is deliberately NOT asserted, because a cutback week cuts the
+      // mileage Daniels' share is a share of and the prescription follows it
+      // down — which is the deload doing its job, not the ladder stalling.
+      const shapes = new Set(track.map((s) => `${s.shape.reps}x${s.shape.repMinutes}`));
+      expect(shapes.size, `${family} held one shape for the whole block`).toBeGreaterThan(2);
+      // SLOT-ROTATE-3 · and it never leaves §6.1's rep-count band on the way.
+      if (family === 'interval') {
+        for (const s of track) {
+          expect(s.shape.reps, `a VO2max session was cut to ${s.shape.reps} rep(s)`)
+            .toBeGreaterThanOrEqual(3);
+        }
+      }
     }
   });
 

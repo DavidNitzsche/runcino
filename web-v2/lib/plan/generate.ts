@@ -53,11 +53,11 @@ import { blendedTPaceForWeek, measuredProgressFraction } from './recompute-paces
 // after the runner has run something and is not authored here.
 import { MIN_QUALITY_REP_MINUTES, OverloadTrajectory, type SessionFamily } from '@/lib/prescription/trajectory';
 import type { ChallengeZone, ProgressionLever, WorkShape } from '@/lib/prescription/levers';
-import { atPaceSessionCapMi, CONTINUOUS_TEMPO_MINUTES } from '@/lib/prescription/levers';
+import { atPaceSessionCapMi, CONTINUOUS_TEMPO_MINUTES, totalWorkMinutes } from '@/lib/prescription/levers';
 // DAY-SIZE-1 (2026-08-17) · a quality day is warm-up + at-pace work + floats +
 // cool-down. The module header carries the category error this replaced.
 import { composeQualityDay, floatMi as jogFloatMi, maxQualityDayMi, type QualityFamily } from './quality-day';
-import { dropLastSegment, parsePrescription, parseSegments, parseTempoShape, parseTimeReps, segmentMi } from './prescription-parser';
+import { dropLastSegment, keepFirstSegment, parsePrescription, parseSegments, parseTempoShape, parseTimeReps, segmentMi } from './prescription-parser';
 // PROGRESSION-PERSIST-1 (2026-08-17) · the trajectory's decision, carried into
 // `plan_workouts.workout_spec` so the adaptation model can hold or modify a
 // stimulus it can actually see.
@@ -1407,6 +1407,29 @@ export function qualityFamilyFor(
     if (!early && slotType === 'threshold' && (cat === '5k' || cat === '10k' || cat === 'hm')) {
       return 'cutdown';
     }
+    // SLOT-ROTATE-1 (2026-08-19) · §15's specific-support row names four things
+    // and the engine reached for one of them.
+    //
+    //   | Specific support (4–6 wks) | T, cruise intervals, mile repeats at
+    //     slower I, alternations |
+    //
+    // "mile repeats at slower I" is the rep slot once the hill block is behind
+    // it, and "T, cruise intervals" is the threshold and tempo slots for the
+    // whole of specific support. Neither was placed here, so those slots fell
+    // to the generic `rx.intervals` / `rx.threshold` string for every week of
+    // every block — the twelve of a marathon's seventeen quality days the
+    // catalogue did not own.
+    //
+    // These two are DOORS, not prescriptions. `rx.families` carries no row for
+    // either (`VOCAB` in `resolvePrescriptions` lists neither), so when the
+    // catalogue declines, `vocabRx` is undefined and the slot falls straight
+    // back to the overload trajectory that owned it before — which is the
+    // half of this that must not be lost. See SLOT-ROTATE-2 in `layoutWeek`
+    // for the dose side: the trajectory keeps stepping underneath the rotation
+    // and hands the catalogue the at-pace minutes the block has earned, so the
+    // identity rotates while the load still climbs.
+    if (!early && slotType === 'intervals') return 'vo2max';
+    if (slotType === 'threshold' || slotType === 'tempo') return 'threshold';
     return null;
   }
 
@@ -2620,56 +2643,33 @@ function layoutWeek({
       });
     }
     const usedSlugs = new Set<string>();
-    const resolvedSlots = scheduledQ.dows.map((dow, i) => {
+
+    /* ── SLOT-ROTATE-2 (2026-08-19) · WHICH SLOTS EXIST, BEFORE WHO FILLS THEM ──
+     *
+     * This used to be the first half of the catalogue pass, and the ordering it
+     * forced is the reason a rotating vocabulary and a rising dose could not
+     * both be true. The chain ran: catalogue chooses → week's budget is divided
+     * among the slots it left → trajectory steps inside that budget. So the
+     * trajectory could only ever see the slots the catalogue had DECLINED, and
+     * `trackFor` said as much — a slot with a `vocabRx` was simply not on a
+     * ladder. Widening §15's placement therefore took slots off the ladder one
+     * for one, and the threshold track's dose flattened onto the weekly cap:
+     * measured at 4.0 mi at T in every QUALITY week of a 14-week marathon,
+     * where the ladder had been running 3×7 min → 4×7 min → 4×9 min.
+     *
+     * The slot's TYPE is not the catalogue's to decide — `scheduleQuality`
+     * fixed it above, and the conflict skip below is a calendar question. So
+     * the week's slot list is resolvable first, and once it is, the budget and
+     * the trajectory both resolve before anything picks a session. The
+     * catalogue then runs LAST and is handed the minutes the block has earned.
+     *
+     * `slotBudgetMi` and `stepByTrack` read this list; both counted the same
+     * surviving slots off `resolvedSlots` before, so neither changes.
+     */
+    const plannedSlots = scheduledQ.dows.map((dow, i) => {
       if (slots[dow] != null || filledByThisPass.has(dow)) return null; // conflict · skip
       filledByThisPass.add(dow);
-      const qt = scheduledQ.types[i % scheduledQ.types.length];
-      const candidateFamily = (baseBuilding || (taperMp && qt === 'tempo'))
-        ? null
-        : qualityFamilyFor(cat, phase, weekIdx, weeksToPhaseEnd, qt);
-      const slot: ComposerSlot | null =
-        qt === 'threshold' || qt === 'intervals' || qt === 'tempo' ? qt : null;
-      const choice = (candidateFamily && catalogueTier && slot && catalogueHistory)
-        ? selectSlotWorkout({
-            history: catalogueHistory,
-            enginePhase: phase,
-            distance: cat,
-            tier: catalogueTier,
-            weekIdx,
-            weeklyMi,
-            slot,
-            dayOffset: dow,
-            placedThisWeek,
-            // §16 "Fast finish long run before goal race | Adds depletion in
-            // taper window". The taper's LENGTH is Research/08's and the block
-            // planner's, not Research/04's, so the caller states it.
-            inTaperWindow: phase === 'TAPER' || isRaceWeek,
-            tPaceSec: weekTPaceSec,
-            iPaceSec: weekIPaceSec,
-            mpPaceSec: weekMpPaceSec,
-            usedThisWeek: usedSlugs,
-          })
-        : null;
-      if (choice?.ok) {
-        const text = slot === 'tempo' ? choice.phrase : choice.prescription;
-        if (text) {
-          usedSlugs.add(choice.entry.slug);
-          usedFamilies.add(choice.family);
-          placedThisWeek.push({ slug: choice.entry.slug, dayOffset: dow });
-          recordCatalogueChoice(catalogueHistory!, choice.entry.slug, weekIdx);
-          return {
-            dow, qt,
-            vocabFamily: choice.family,
-            vocabRx: text,
-            catalogueNote: choice.note,
-            catalogueAtPaceMi: choice.dose.atPaceMi,
-          };
-        }
-      }
-      const vocabFamily = (candidateFamily && !usedFamilies.has(candidateFamily)) ? candidateFamily : null;
-      const vocabRx = vocabFamily ? rx.families[vocabFamily] : undefined;
-      if (vocabFamily && vocabRx) usedFamilies.add(vocabFamily);
-      return { dow, qt, vocabFamily, vocabRx, catalogueNote: null, catalogueAtPaceMi: null };
+      return { dow, qt: scheduledQ.types[i % scheduledQ.types.length] };
     });
 
     /* ── DOCTRINE-DOSING-2 · the week's at-pace budget, before anything is sized ──
@@ -2706,7 +2706,7 @@ function layoutWeek({
       // first — see that function.
       const reserved: Partial<Record<DosePace, number>> = {};
       const count: Partial<Record<DosePace, number>> = {};
-      for (const s of resolvedSlots) {
+      for (const s of plannedSlots) {
         if (!s) continue;
         const p = slotDosePace(s.qt, Boolean(taperMp) && s.qt === 'tempo');
         if (!p) continue;
@@ -2728,23 +2728,43 @@ function layoutWeek({
       };
     })();
 
-    // PROGRESSION-1 · a slot the trajectory owns is a GENERIC threshold or rep
-    // session — the one whose prescription is the fixed `rx.threshold` /
-    // `rx.intervals` string that repeated verbatim for every week of a phase.
-    // A §15 vocabulary family, a taper MP block and a beginner's light fartlek
-    // all carry a dose doctrine states by name, and are left exactly as they
-    // are.
-    const trackFor = (s: { qt: DayPlan['type']; vocabRx: string | undefined }): SessionFamily | null => {
-      if (baseBuilding || s.vocabRx) return null;
-      if (s.qt === 'threshold') return 'threshold';
-      if (s.qt === 'intervals') return 'interval';
+    /* ── SLOT-ROTATE-2 · THE TRACK A SLOT SITS ON, AND WHO OWNS THE LABEL ─────
+     *
+     * These were one function and they are two questions.
+     *
+     * `trackOfType` is the DOSE question: which of Daniels' quality tracks does
+     * this slot spend against. It is a property of the slot's type and of
+     * nothing else, so the trajectory can step it before anybody has chosen a
+     * session — which is the whole of this change.
+     *
+     * `trackFor` is the LABEL question, unchanged: does the trajectory's own
+     * rendered shape become the prescription the runner reads. A slot the
+     * catalogue filled carries the session doctrine names by name, and a taper
+     * MP block and a beginner's light fartlek carry doses `Research/08` §9.2
+     * and `Research/22` state — none of them is a shape for the ladder to
+     * render.
+     *
+     * So on a rotated week the trajectory still STEPS and its dose is still
+     * spent; what it no longer does is supply the words. That is the dose /
+     * identity split, and it is why the ladder survives the rotation: the
+     * ladder is a number, the vocabulary is a name, and only the number has to
+     * be monotone.
+     */
+    const trackOfType = (qt: DayPlan['type']): SessionFamily | null => {
+      if (baseBuilding) return null;
+      if (qt === 'threshold') return 'threshold';
+      if (qt === 'intervals') return 'interval';
       return null;
+    };
+    const trackFor = (s: { qt: DayPlan['type']; vocabRx: string | undefined }): SessionFamily | null => {
+      if (s.vocabRx) return null;
+      return trackOfType(s.qt);
     };
     const stepByTrack = new Map<SessionFamily, ReturnType<OverloadTrajectory['step']>>();
     if (trajectory) {
-      for (const s of resolvedSlots) {
+      for (const s of plannedSlots) {
         if (!s) continue;
-        const track = trackFor(s);
+        const track = trackOfType(s.qt);
         if (track == null || stepByTrack.has(track)) continue;
         stepByTrack.set(track, trajectory.step({
           family: track,
@@ -2778,6 +2798,92 @@ function layoutWeek({
         }));
       }
     }
+
+    /* ── SLOT-ROTATE-2 · the catalogue picks the session, at the earned dose ──
+     *
+     * Runs after the trajectory rather than before it, and takes one number
+     * from it: `totalWorkMinutes(step.shape)`, the at-pace minutes this track
+     * has worked up to. The selector treats it as a ceiling on SIZING inside
+     * the entry's own doctrine band — never as an eligibility test — so the
+     * week still offers everything §15 places on the slot and doctrine's own
+     * shape floors (§5.2's twenty minutes, a rep set's `reps.min`) still win
+     * over a target below them.
+     *
+     * `step.shape` is already through `clampToWeek` and the week's
+     * `slotBudgetMi`, so the target can only ever be at or under the share cap
+     * the census enforces. It cannot introduce a breach; it can only spend less
+     * of the same budget.
+     *
+     * On weeks the trajectory has nothing to say — no pace anchor, an
+     * unparseable seed, a composer running without a trajectory at all — the
+     * target is null and this is the behaviour that shipped before: spend the
+     * week's whole share.
+     */
+    const targetMinutesFor = (qt: DayPlan['type']): number | null => {
+      const track = trackOfType(qt === 'tempo' ? 'threshold' : qt);
+      if (track == null) return null;
+      const step = stepByTrack.get(track);
+      if (!step) return null;
+      const mins = totalWorkMinutes(step.shape);
+      return mins > 0 ? mins : null;
+    };
+
+    const resolvedSlots = plannedSlots.map((planned) => {
+      if (!planned) return null; // conflict · skip
+      const { dow, qt } = planned;
+      const candidateFamily = (baseBuilding || (taperMp && qt === 'tempo'))
+        ? null
+        : qualityFamilyFor(cat, phase, weekIdx, weeksToPhaseEnd, qt);
+      const slot: ComposerSlot | null =
+        qt === 'threshold' || qt === 'intervals' || qt === 'tempo' ? qt : null;
+      const choice = (candidateFamily && catalogueTier && slot && catalogueHistory)
+        ? selectSlotWorkout({
+            history: catalogueHistory,
+            enginePhase: phase,
+            distance: cat,
+            tier: catalogueTier,
+            weekIdx,
+            weeklyMi,
+            slot,
+            dayOffset: dow,
+            placedThisWeek,
+            // §16 "Fast finish long run before goal race | Adds depletion in
+            // taper window". The taper's LENGTH is Research/08's and the block
+            // planner's, not Research/04's, so the caller states it.
+            inTaperWindow: phase === 'TAPER' || isRaceWeek,
+            tPaceSec: weekTPaceSec,
+            iPaceSec: weekIPaceSec,
+            mpPaceSec: weekMpPaceSec,
+            usedThisWeek: usedSlugs,
+            targetAtPaceMinutes: targetMinutesFor(qt),
+            // SLOT-ROTATE-5 · §15's hill/strength block, then §15's specific
+            // support. `qualityFamilyFor` splits QUALITY on the same test —
+            // it opens the phase with hills and closes it with reps — so the
+            // two agree by construction rather than by anyone remembering.
+            inHillBlock: phase === 'QUALITY' ? weeksToPhaseEnd > 2 : null,
+          })
+        : null;
+      if (choice?.ok) {
+        const text = slot === 'tempo' ? choice.phrase : choice.prescription;
+        if (text) {
+          usedSlugs.add(choice.entry.slug);
+          usedFamilies.add(choice.family);
+          placedThisWeek.push({ slug: choice.entry.slug, dayOffset: dow });
+          recordCatalogueChoice(catalogueHistory!, choice.entry.slug, weekIdx);
+          return {
+            dow, qt,
+            vocabFamily: choice.family,
+            vocabRx: text,
+            catalogueNote: choice.note,
+            catalogueAtPaceMi: choice.dose.atPaceMi,
+          };
+        }
+      }
+      const vocabFamily = (candidateFamily && !usedFamilies.has(candidateFamily)) ? candidateFamily : null;
+      const vocabRx = vocabFamily ? rx.families[vocabFamily] : undefined;
+      if (vocabFamily && vocabRx) usedFamilies.add(vocabFamily);
+      return { dow, qt, vocabFamily, vocabRx, catalogueNote: null, catalogueAtPaceMi: null };
+    });
 
     // DAY-SIZE-1 (2026-08-17) · size a quality DAY from its session.
     //
@@ -5993,6 +6099,27 @@ function trimSessionDose(
       cur = next;
       day.subLabel = cur;
       now = measure(day);
+    }
+    // SLOT-ROTATE-4 · the shedder runs out of moves at two rungs, and "no rungs
+    // left to drop" is not "the week can afford what is left". A two-rung
+    // remainder over the cap used to ship as the final answer — §13.1's ladder
+    // at 1.74 mi at I on a 19.5 mi week, against Daniels' 1.56. One rung at its
+    // stated length is a session; a labelled breach is not. See
+    // `keepFirstSegment` for why the FIRST is the one kept.
+    if (now > targetMi + 0.05) {
+      const one = keepFirstSegment(cur);
+      if (one != null) {
+        const prev = day.subLabel;
+        day.subLabel = one;
+        const after = measure(day);
+        // Only if it actually helps: a single rung of a long-first ladder is
+        // smaller than two, but nothing here guarantees that for every shape
+        // the grammar admits, and a change that does not reduce the breach is
+        // a change that only costs the runner a rung.
+        if (after < now) return after;
+        day.subLabel = prev;
+        now = measure(day);
+      }
     }
     return now;
   }

@@ -92,7 +92,7 @@ import {
   distanceCategoryOrNull,
 } from '@/lib/race/distance-category';
 import { distanceMiFromLabel } from '@/lib/race/distance';
-import { anchorsFor, renderPrescription } from '@/lib/plan/catalogue-rx';
+import { anchorsFor, doctrinePhasesForWeek, renderPrescription } from '@/lib/plan/catalogue-rx';
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
 import { VDOT_FULL_VALUE_DAYS, VDOT_EXPIRY_DAYS, FADE_TAIL_DAYS } from '@/lib/training/vdot';
 import {
@@ -171,6 +171,7 @@ import {
   AT_PACE_SESSION_MI,
   AT_PACE_WEEKLY_SHARE_CAP,
   CRUISE_RECOVERY_MIN_PER_WORK_MI,
+  INTERVAL_MIN_REPS,
   INTERVAL_REP_MINUTES,
   CONTINUOUS_TEMPO_MINUTES,
   REPETITION_REP_METRES,
@@ -1931,6 +1932,13 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         combo: /alternation|race-pace/i,
         marathon_specific: /canova|MP long runs/i,
         race_specific: /race-pace workouts/i,
+        // SLOT-ROTATE-1 · §15's specific-support row opens "T, cruise
+        // intervals, mile repeats at slower I, alternations". The first two
+        // items are the threshold and tempo slots and the third is the rep
+        // slot once the hill block is behind it; the engine placed neither and
+        // spent those weeks on the generic string instead.
+        threshold: /cruise intervals/i,
+        vo2max: /mile repeats/i,
       };
       const cats: DistCategory[] = ['5k', '10k', 'hm', 'm', 'ultra'];
       const slots = ['intervals', 'threshold', 'tempo'] as const;
@@ -2249,6 +2257,110 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           `REPETITION_REP_MINUTES_MAX is ${REPETITION_REP_MINUTES_MAX}; doctrine says ${mins[1]} min`,
         );
+      }
+    },
+  },
+  {
+    id: 'PROGRESSION.interval-rep-count-floor',
+    binds: [
+      'lib/prescription/levers.ts#INTERVAL_MIN_REPS',
+      'lib/prescription/levers.ts#advanceShape',
+      'lib/prescription/trajectory.ts#clampToWeek',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 6.1 VO2max family overview',
+    claim:
+      'A VO2max session is a rep set. Every row of §6.1 states a rep-count band and the ' +
+      'smallest lower bound in the column is the fewest reps any §6 session is prescribed at; ' +
+      'the document describes no continuous form of one. Both the density lever and the ' +
+      'week-affordability clamp must stop there, or a rep set collapses into a single long ' +
+      'block still wearing the interval label.',
+    check({ cite }) {
+      const t = cite.table();
+      const counts: number[] = [];
+      for (const row of t.rows) {
+        const cell = row[t.headers.find((h) => /reps/i.test(h)) ?? ''] ?? '';
+        // "3–6 × 1 mi", "8–16 × 400", "4–10 × 800" · the LEADING band is the
+        // rep count; everything after the × is the rep's length.
+        const m = cell.replace(/[–—−]/g, '-').match(/^\s*(\d+)\s*(?:-\s*(\d+))?\s*[×xX]/);
+        if (!m) continue;
+        counts.push(Number(m[1]));
+      }
+      if (counts.length < 5) {
+        throw new Error(
+          `§6.1's overview table no longer states rep counts this claim can read — ` +
+            `found ${counts.length} readable rows`,
+        );
+      }
+      const floor = Math.min(...counts);
+      if (INTERVAL_MIN_REPS !== floor) {
+        throw new Error(
+          `INTERVAL_MIN_REPS is ${INTERVAL_MIN_REPS}; §6.1's smallest stated rep count is ${floor}`,
+        );
+      }
+      // The density lever must refuse to go under it. A 3-rep set is the floor,
+      // so merging one more rep out of it is the step that has to be capped.
+      const at = advanceShape({
+        shape: { reps: floor, repMinutes: 7, recoveryMinutes: 1, paceSPerMi: 420, zone: 'ESTABLISHED' },
+        lever: 'work_density', stepMultiplier: 1, weeklyMi: 80, family: 'interval',
+      });
+      if (!at.capped) {
+        throw new Error(
+          `the density lever took a ${floor}-rep VO2max set to ${at.shape.reps}×${at.shape.repMinutes} min; ` +
+            '§6.1 states no session below that count',
+        );
+      }
+      // And a set already at the floor must survive the week clamp with its
+      // count intact — the rep shortens instead.
+      const held = clampToWeek(
+        { reps: floor, repMinutes: 10, recoveryMinutes: 2, paceSPerMi: 420, zone: 'ESTABLISHED' },
+        40, 'interval',
+      );
+      if (held.reps < floor) {
+        throw new Error(
+          `the week clamp cut a VO2max set to ${held.reps} rep(s); §6.1's floor is ${floor}`,
+        );
+      }
+    },
+  },
+  {
+    id: 'VOCAB.hill-block-precedes-specific-support',
+    binds: ['lib/plan/catalogue-rx.ts#doctrinePhasesForWeek'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## 15. Training-cycle placement summary',
+    claim:
+      '§15 is an ordered sequence of phases, not a pool. The optional hill/strength block ' +
+      'precedes specific support, so once it is behind, the specific-support row is the row ' +
+      'that governs. The engine has one QUALITY phase where the doc has two, and resolving ' +
+      'that by taking whichever row answers first let the hill row win every week — §8 is ' +
+      'effort-prescribed and spends no at-pace share, so a hill session almost always fits, ' +
+      'and §6\'s rep sessions (placed in specific support and nowhere else) became unreachable.',
+    check({ cite }) {
+      const t = cite.table();
+      const labels = t.rows.map((r) => r[t.headers[0]] ?? '');
+      const hill = labels.findIndex((l) => /hill\s*\/\s*strength/i.test(l));
+      const spec = labels.findIndex((l) => /^specific support/i.test(l));
+      if (hill < 0 || spec < 0) {
+        throw new Error(
+          `§15 no longer names both a hill/strength row and a specific-support row: ${labels.join(' | ')}`,
+        );
+      }
+      if (!(hill < spec)) {
+        throw new Error('§15 no longer places the hill/strength block before specific support');
+      }
+      const early = doctrinePhasesForWeek('QUALITY', true);
+      const late = doctrinePhasesForWeek('QUALITY', false);
+      if (!early.includes('hill_strength')) {
+        throw new Error('the hill/strength block is unreachable in the opening part of QUALITY');
+      }
+      if (late.includes('hill_strength')) {
+        throw new Error(
+          'the hill/strength row still governs after its block is over — §15 places it before ' +
+            'specific support, not alongside it',
+        );
+      }
+      if (!late.includes('specific_support')) {
+        throw new Error('the specific-support row is unreachable in the closing part of QUALITY');
       }
     },
   },
