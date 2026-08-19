@@ -97,6 +97,12 @@ export const DISTANCE_CATEGORIES: readonly DistanceCategory[] =
  * DISTANCE.ultra-floor in lib/doctrine/registry.ts, all three of which parse
  * the flanking distances out of the Research/ docs at run time.
  */
+/** 50 km in miles, exact. Derived, not typed, because every rounded form of
+ *  it in this codebase (the label parser's 31.07, sim-constants' 31.0686)
+ *  must land on the ULTRA side of an exclusive boundary, so the boundary has
+ *  to be the exact value rather than any one rounding of it. */
+const MI_PER_KM_50 = 50 / 1.609344;
+
 export const DISTANCE_CATEGORY_MAX_MI: Readonly<Record<DistanceCategory, number>> = {
   // (5K 3.1 + 10K 6.2) / 2 · convention, doctrine states no boundary
   '5k': 4.65,
@@ -107,7 +113,14 @@ export const DISTANCE_CATEGORY_MAX_MI: Readonly<Record<DistanceCategory, number>
   // (Half 13.1 + Marathon 26.2) / 2 · convention, doctrine states no boundary
   'hm': 19.65,
   // 50 km · DOCTRINE. Research/08 §10.1 `Ultra (50K+)` names the ultra's floor
-  'm': 31.07,
+  // 50 km at full precision (50 / 1.609344), NOT the parser's 2-dp 31.07.
+  // The boundary is exclusive, so it has to sit at or below the SMALLEST
+  // representation of 50 km in the codebase or that representation lands on
+  // the marathon side. lib/race/distance.ts rounds km->mi to 2 dp and yields
+  // 31.07; lib/plan/sim-constants.ts carries 31.0686 to match the native
+  // SetGoalSheet wire contract. With the boundary at 31.07 the native value
+  // was 0.0014 mi short and a 50K from the simulator graded as a MARATHON.
+  'm': MI_PER_KM_50,
   'ultra': Infinity,
 };
 

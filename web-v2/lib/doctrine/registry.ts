@@ -6653,9 +6653,18 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const token = matchLiteral(label, /(\d+\s*K)\b/i, 'the ultra row\'s own distance floor')[1];
       const floorMi = distanceMiFromLabel(token.replace(/\s+/g, ''));
       if (floorMi == null) throw new Error(`DOCTRINE · cannot resolve the ultra floor "${token}" to miles`);
-      within(DISTANCE_CATEGORY_MAX_MI.m, [floorMi, floorMi], `the marathon row's ceiling (doctrine: ${label})`);
-      if (distanceCategoryOrNull(floorMi) !== 'ultra') {
-        throw new Error(`a ${floorMi} mi race is not categorized as an ultra, but doctrine calls it one`);
+      // The doc says "50K". The codebase holds that distance at two legitimate
+      // precisions — the label parser rounds km->mi to 2 dp (31.07) and
+      // sim-constants keeps full precision to match native (31.0686) — so the
+      // ceiling is asserted within one parser-rounding step, and then EVERY
+      // representation of 50 km is required to classify as an ultra. That is
+      // stronger than byte-equality against one of them, and it is what caught
+      // a 50K from the simulator grading as a marathon.
+      within(DISTANCE_CATEGORY_MAX_MI.m, [floorMi - 0.01, floorMi], `the marathon row's ceiling (doctrine: ${label})`);
+      for (const repr of [floorMi, 50 / 1.609344]) {
+        if (distanceCategoryOrNull(repr) !== 'ultra') {
+          throw new Error(`a ${repr} mi race (50 km) is not categorized as an ultra, but doctrine calls it one`);
+        }
       }
       if (distanceCategoryOrNull(floorMi - 0.01) !== 'm') {
         throw new Error(`a race just under ${floorMi} mi is not marathon-class · the floor is in the wrong place`);
