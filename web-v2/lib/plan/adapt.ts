@@ -67,6 +67,7 @@ import { getCanonicalRunIds, isoDaysBefore, mileageByDay, observableCoverageDays
 import { paceBlendAnchorIsProvisional } from './anchor-provenance';
 import type { ExperienceLevel } from '@/lib/coach/profile-state';
 import { logSealSkip } from './seal';
+import { mutatePlan } from './mutate';
 import { preserveProgressionSql } from './progression-spec';
 import { stripResearchCitations } from './strip-citations';
 import {
@@ -942,9 +943,38 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
   // 2026-08-17 · recompute_paces · stamp users.vdot_last_reviewed AFTER
   // commit (see the recompute_paces limb for why it can't run in-txn).
   let postCommitVdotReviewed: number | null = null;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+
+  // ── THE MUTATION BOUNDARY (2026-08-18) ──────────────────────────────────
+  // Every write below now runs inside `mutatePlan`, which snapshots the plan
+  // before and after the whole action loop, rehydrates both into the shape
+  // `validateComposedPlan` consumes, and rolls the transaction back if this
+  // pass INTRODUCED a doctrine violation. See lib/plan/mutate.ts for why the
+  // verdict is differential rather than absolute.
+  //
+  // WHY THE WHOLE LOOP AND NOT EACH STATEMENT. A cron pass is one coherent
+  // response to one night's evidence: a reschedule paired with its
+  // anti-stacking downgrade, a shave plus the derivation rebuild that keeps
+  // the label honest. Validating each statement in turn would reject the
+  // intermediate states those pairs pass through, and would cost ~34
+  // rehydrations per user instead of two. The batch is the unit that has to
+  // be doctrinally sound, so the batch is the unit that is validated — and
+  // the batch is also the unit that is rolled back, so a pass either lands
+  // whole or not at all.
+  //
+  // THE CASE THIS CLOSES. The `field_test` limb issues
+  // `SET type='tempo', is_quality=true` on a future day, and the `downgrade`
+  // limb sets `is_quality=false` on a quality day. Neither had anything
+  // checking the resulting week: a field test could land the day before the
+  // long run (Research/00b:55-60 wants a day between), and a downgrade could
+  // empty a QUALITY-phase week of quality entirely. Both are now caught.
+  const todayForBoundary = await runnerToday(userId);
+  const boundary = await mutatePlan<number>({
+    userUuid: userId,
+    source: 'adapt/applyAdaptations',
+    todayISO: todayForBoundary,
+    touches: 'structural',
+    detail: { action_kinds: actions.map((a) => a.kind) },
+    apply: async (client) => {
     for (const a of actions) {
       // Map action kind → coach_intents reason. Prefix with plan_adapt_
       // so the briefing voice can detect any prescription-mutation row by
@@ -1396,12 +1426,32 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         [userId, touched]
       );
     }
-    await client.query('COMMIT');
-  } catch (e) {
-    await client.query('ROLLBACK');
-    throw e;
-  } finally {
-    client.release();
+      return touched;
+    },
+  });
+
+  if (!boundary.ok) {
+    // The pass was refused and the plan is byte-identical to before. The
+    // rejection is already on `plan_mutation_rejections` and in the log; what
+    // matters here is that the cron KEEPS GOING — `run-adaptations` walks
+    // every user in one sweep, and a throw would take the rest of them down
+    // with this one. Return 0 touched: nothing changed, and the caller's
+    // "adaptations applied" counter tells the truth.
+    console.error(
+      `[applyAdaptations] pass REJECTED by the plan mutation boundary · user=${userId.slice(0, 8)} · ` +
+      `${boundary.violations.length} introduced violation(s) · plan unchanged`,
+    );
+    return 0;
+  }
+  touched = boundary.value ?? 0;
+  if (boundary.preExisting.length > 0) {
+    // Not blocking, and deliberately so — this plan already carried these
+    // before tonight's pass. Logged so a plan drifting out of doctrine is
+    // visible rather than merely tolerated.
+    console.warn(
+      `[applyAdaptations] plan carries ${boundary.preExisting.length} pre-existing ` +
+      `doctrine violation(s) · user=${userId.slice(0, 8)}`,
+    );
   }
   // Post-commit · stamp the reviewed VDOT so pr_bank / fitness_regression
   // measure future deltas against it. .catch: legacy schemas may lack the
@@ -1459,6 +1509,13 @@ async function writeIntent(
  * Cite: subLabelFromSpec contract · only tempo/threshold/intervals
  * carry full label info in spec; easy/long/recovery/rest are no-ops
  * here (subLabelFromSpec returns null and we leave sub_label alone).
+ *
+ * PLAN MUTATION BOUNDARY (2026-08-18). `client` is the transaction
+ * `applyAdaptations`' `mutatePlan` owns; this helper does not open its own
+ * door. It writes only workout_spec / sub_label / pace_target — the
+ * derivations of a distance change that already happened one statement earlier
+ * in the same batch — so it is the batch, not this statement, that is
+ * validated.
  *
  * Non-fatal: any failure (missing T-pace, missing race, build error)
  * logs and returns without throwing. The caller's UPDATE already

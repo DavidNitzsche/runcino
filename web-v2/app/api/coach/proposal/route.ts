@@ -23,6 +23,7 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
+import { mutatePlan } from '@/lib/plan/mutate';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -77,13 +78,35 @@ export async function POST(req: NextRequest) {
   const proposedRounded = p.alt_type === 'race'
     ? proposedRaw
     : Math.max(0, Math.round(proposedRaw * 2) / 2);
-  const patched = await pool.query(
-    `UPDATE plan_workouts
-       SET type = $3, distance_mi = $4, sub_label = $5
-     WHERE plan_id = $1 AND date_iso = $2::text
-     RETURNING date_iso, dow, type, distance_mi, sub_label`,
-    [plan.id, today, p.alt_type, proposedRounded, p.alt_label]
-  );
+  // Routed through the plan mutation boundary (lib/plan/mutate.ts). Accepting a
+  // swap rewrites type + distance on a live plan row, so it is 'structural':
+  // the boundary refuses the accept if it introduces a doctrine violation the
+  // plan did not already carry (e.g. swapping the week's only quality session
+  // out of a QUALITY-phase week).
+  const boundary = await mutatePlan<{ rowCount: number; row: Record<string, unknown> | undefined }>({
+    userUuid: userId,
+    source: 'api/coach/proposal accept',
+    todayISO: today,
+    planId: plan.id,
+    detail: { proposal: p },
+    apply: async (tx) => {
+      const res = await tx.query(
+        `UPDATE plan_workouts
+           SET type = $3, distance_mi = $4, sub_label = $5
+         WHERE plan_id = $1 AND date_iso = $2::text
+         RETURNING date_iso, dow, type, distance_mi, sub_label`,
+        [plan.id, today, p.alt_type, proposedRounded, p.alt_label]
+      );
+      return { rowCount: res.rowCount ?? 0, row: res.rows[0] };
+    },
+  });
+  if (!boundary.ok) {
+    return NextResponse.json(
+      { error: 'plan_invariant_violation', violations: boundary.violations },
+      { status: 409 },
+    );
+  }
+  const patched = { rowCount: boundary.value?.rowCount ?? 0, rows: [boundary.value?.row] };
   if (patched.rowCount === 0) {
     return NextResponse.json({ error: "today's plan row not found" }, { status: 404 });
   }

@@ -33,6 +33,7 @@ import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildWorkoutSpec, tPaceFromGoal } from '@/lib/plan/spec-builder';
+import { mutatePlan } from '@/lib/plan/mutate';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,9 +51,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'workoutId_required' }, { status: 400 });
   }
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  // Routed through the plan mutation boundary (lib/plan/mutate.ts). A restore
+  // promotes original_type / original_distance_mi / original_date_iso back onto
+  // the row, so type, distance and date can all move — 'structural'. The
+  // restored values were valid when the plan was authored, so a rejection here
+  // means the plan has drifted underneath them; the runner gets a 409 naming
+  // what the restore would have broken rather than a silent half-restore.
+  //
+  // The early-exit branches below (`not_found`, `cannot_restore_past`,
+  // `not_adapted`) return an error shape instead of writing. They pass through
+  // the boundary having changed nothing, so the diff is empty and the empty
+  // transaction commits — the boundary is a gate on writes, not a control-flow
+  // mechanism.
+  const abort = (error: string, status: number) =>
+    ({ kind: 'abort' as const, error, status });
+
+  const boundary = await mutatePlan<
+    | { kind: 'abort'; error: string; status: number }
+    | { kind: 'ok'; restored: Record<string, unknown> }
+  >({
+    userUuid: userId,
+    source: 'api/plan/restore',
+    todayISO: await runnerToday(userId),
+    workoutId,
+    detail: { workout_id: workoutId },
+    apply: async (client) => {
 
     // 1. Read · owner-scoped via training_plans.user_uuid join.
     const row = (await client.query<{
@@ -86,20 +109,11 @@ export async function POST(req: NextRequest) {
       [workoutId, userId],
     )).rows[0];
 
-    if (!row) {
-      await client.query('ROLLBACK');
-      return NextResponse.json({ ok: false, error: 'workout_not_found' }, { status: 404 });
-    }
+    if (!row) return abort('workout_not_found', 404);
 
     // 2. Reject past workouts · already happened, restoration is meaningless.
     const today = await runnerToday(userId);
-    if (row.date_iso < today) {
-      await client.query('ROLLBACK');
-      return NextResponse.json(
-        { ok: false, error: 'cannot_restore_past' },
-        { status: 400 },
-      );
-    }
+    if (row.date_iso < today) return abort('cannot_restore_past', 400);
 
     // 3. Reject if nothing to restore.
     const hasOriginals =
@@ -107,13 +121,7 @@ export async function POST(req: NextRequest) {
       row.original_distance_mi != null ||
       row.original_date_iso != null ||
       row.original_sub_label != null;
-    if (!hasOriginals) {
-      await client.query('ROLLBACK');
-      return NextResponse.json(
-        { ok: false, error: 'not_adapted' },
-        { status: 400 },
-      );
-    }
+    if (!hasOriginals) return abort('not_adapted', 400);
 
     // 4. Compute restored values.
     const restoredType = row.original_type ?? row.type;
@@ -205,37 +213,49 @@ export async function POST(req: NextRequest) {
       ],
     );
 
-    await client.query('COMMIT');
-
-    // Bust the briefing cache so the next render reflects the restore.
-    try {
-      const { bustBriefingCacheForEvent } = await import('@/lib/coach/cache');
-      await bustBriefingCacheForEvent(userId, 'plan_swap');
-    } catch {/* non-blocking */}
-
-    return NextResponse.json({
-      ok: true,
-      restored: {
-        id: workoutId,
-        type: restoredType,
-        sub_label: restoredSubLabel,
-        distance_mi: restoredDistanceMi,
-        date_iso: restoredDateIso,
-        is_quality: isRestoredQuality,
-        workout_spec: workoutSpec,
-        pace_target_s_per_mi: paceTargetSPerMi,
-      },
-    });
-  } catch (err: any) {
-    await client.query('ROLLBACK').catch(() => {});
+      return {
+        kind: 'ok' as const,
+        restored: {
+          id: workoutId,
+          type: restoredType,
+          sub_label: restoredSubLabel,
+          distance_mi: restoredDistanceMi,
+          date_iso: restoredDateIso,
+          is_quality: isRestoredQuality,
+          workout_spec: workoutSpec,
+          pace_target_s_per_mi: paceTargetSPerMi,
+        },
+      };
+    },
+  }).catch((err: unknown) => {
     console.error('[plan/restore] error:', err);
-    return NextResponse.json(
-      { ok: false, error: err?.message ?? String(err) },
-      { status: 500 },
-    );
-  } finally {
-    client.release();
+    return null;
+  });
+
+  if (boundary == null) {
+    return NextResponse.json({ ok: false, error: 'restore_failed' }, { status: 500 });
   }
+  if (!boundary.ok) {
+    return NextResponse.json(
+      { ok: false, error: 'plan_invariant_violation', violations: boundary.violations },
+      { status: 409 },
+    );
+  }
+  const outcome = boundary.value;
+  if (outcome == null) {
+    return NextResponse.json({ ok: false, error: 'restore_failed' }, { status: 500 });
+  }
+  if (outcome.kind === 'abort') {
+    return NextResponse.json({ ok: false, error: outcome.error }, { status: outcome.status });
+  }
+
+  // Bust the briefing cache so the next render reflects the restore.
+  try {
+    const { bustBriefingCacheForEvent } = await import('@/lib/coach/cache');
+    await bustBriefingCacheForEvent(userId, 'plan_swap');
+  } catch {/* non-blocking */}
+
+  return NextResponse.json({ ok: true, restored: outcome.restored });
 }
 
 /**

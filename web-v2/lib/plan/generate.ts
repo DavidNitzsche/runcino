@@ -63,6 +63,7 @@ import { parsePrescription, parseTempoShape, parseTimeReps } from './prescriptio
 // stimulus it can actually see.
 import { progressionSpecFields } from './progression-spec';
 import { validateComposedPlan } from './validate';
+import { mutatePlan } from './mutate';
 import { EASY_SHARE_FLOOR, weekIntensity, splitDay } from './intensity-distribution';
 // DOCTRINE-DOSING-2 · the composer sizes to the SAME doctrine the gate checks.
 // Importing the budget from the module that measures the breach is what makes
@@ -6218,11 +6219,36 @@ async function persistComposedPlan(
   // snapshot silently returned an empty map — the retry rebuilt with
   // every Rule 15 seal dropped. Now any failure rolls the whole
   // rebuild back and the prior plan stays active.
+  //
+  // 2026-08-18 · ROUTED THROUGH THE PLAN MUTATION BOUNDARY (lib/plan/mutate.ts).
+  // The transaction is now owned by `mutatePlan`, which does one thing this
+  // path never did: it reads the PERSISTED plan back and validates THAT.
+  //
+  // Why that matters here specifically. `validateComposedPlan` runs upstream on
+  // the in-memory `ComposePlanResult`. Between that call and the row landing in
+  // `plan_workouts`, `persistPlan` re-derives each day's distance from the
+  // workout spec (`totalDistanceMiFromSpec`), caps the spec to the day distance
+  // (`capSpecToDistance`), and overlays the PRIOR plan's prescriptions onto any
+  // sealed completed day (Rule 15). Every one of those can move a number the
+  // validator had already approved, and nothing checked the result.
+  //
+  // REPORT ONLY, deliberately. Drift lands on `plan_mutation_rejections` with
+  // outcome `authorship_drift` and the rebuild COMMITS. Rolling a rebuild back
+  // would leave the runner with no active plan at all — today, the watch and
+  // the adaptation crons all go dark — which is a strictly worse failure than
+  // a plan that drifted. The honest move is to see it, not to detonate on it.
+  //
+  // NOTE: composition and phase logic above are untouched; only the
+  // persistence transaction moved.
   let planId: string | undefined;
-  const client = await pool.connect();
-  let releaseErr: Error | undefined;
-  try {
-    await client.query('BEGIN');
+  const boundary = await mutatePlan<string | undefined>({
+    userUuid: userId,
+    source: 'generate/persistComposedPlan',
+    todayISO,
+    touches: 'authorship',
+    planIdFromResult: (v) => v ?? null,
+    detail: { mode, race_slug: raceSlug ?? null, total_weeks: composed.totalWeeks },
+    apply: async (client) => {
     // 2026-06-03 · Rule 15 · snapshot the prior plan's completed-day
     // prescriptions BEFORE archiving so persistPlan can overlay them
     // onto the new plan's rows. Without this, a rebuild would change
@@ -6317,19 +6343,14 @@ async function persistComposedPlan(
       `UPDATE training_plans SET mode = $1 WHERE id = $2`,
       [mode, planId],
     );
-    await client.query('COMMIT');
-  } catch (e) {
+    return planId;
+    },
+  }).catch((e) => {
+    // The boundary already rolled back, so the prior active plan stays live.
     console.error('[generatePlan]', `rebuild rolled back · prior active plan untouched · user=${userId.slice(0, 8)} ·`, e instanceof Error ? e.message : String(e));
-    // Roll back so the prior active plan stays live. If ROLLBACK itself
-    // fails the connection is poisoned — hand the error to release() so
-    // the pool destroys the socket instead of recycling a connection
-    // with an open aborted transaction.
-    try { await client.query('ROLLBACK'); }
-    catch (rbErr) { releaseErr = rbErr instanceof Error ? rbErr : new Error(String(rbErr)); }
     throw e;
-  } finally {
-    client.release(releaseErr);
-  }
+  });
+  planId = boundary.value ?? planId;
 
   // Post-commit, best-effort · plan mutation → invalidate memoized lookup
   // so the next /today render sees the new active plan.

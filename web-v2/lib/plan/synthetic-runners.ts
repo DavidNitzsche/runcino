@@ -264,7 +264,14 @@ export const PERSONAS: SyntheticRunner[] = [
     },
     race: {
       slug: 'persona-ultra-50k',
-      distanceMi: 31.0,
+      // 2026-08-18 · was 31.0, which is not a 50K. The canonical 50K in this
+      // codebase is 31.07 mi (lib/race/distance.ts · distanceMiFromLabel('50K')
+      // is what every real ultra race row resolves to). The old categorizers
+      // cut the ultra at a flat 30 miles so the under-encoded fixture passed;
+      // doctrine puts the floor at 50 km (Research/08 §10.1 "Ultra (50K+)"),
+      // and at that floor a 31.0-mile race is marathon-class — which is what
+      // the persona started being graded as.
+      distanceMi: 31.07,
       goalSec: 16200,  // 4:30:00 50K
       weeksOut: 20,
     },

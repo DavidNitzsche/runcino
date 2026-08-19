@@ -141,7 +141,7 @@ describe('Research/08 §3.1 (:58-64) · first mile vs goal pace, by distance', (
   for (const cat of RACE_DISTANCE_CATEGORIES) {
     it(`${FIXTURES[cat].label} lands a 0-2% negative split (§4.3 :182-189)`, () => {
       const { goalSec, distanceMi } = FIXTURES[cat];
-      const plan = raceOpeningPlan({ goalSec, distanceMi });
+      const plan = raceOpeningPlan({ goalSec, distanceMi })!;
       const half = distanceMi / 2;
       const adj1 = openingAdjustmentOverSpan(plan, 0, half);
       const adj2 = openingAdjustmentOverSpan(plan, half, distanceMi);
@@ -327,7 +327,7 @@ describe('Research/18 §11 (:367-376) · during-race CHO/hr by distance', () => 
     it(`${FIXTURES[cat].label} targets its own g/hr band`, () => {
       const [lo, hi] = BANDS[cat];
       const { goalSec, distanceMi } = FIXTURES[cat];
-      const target = raceCarbsPerHourTarget(distanceMi, goalSec).targetGPerHr;
+      const target = raceCarbsPerHourTarget(distanceMi, goalSec)!.targetGPerHr;
       expect(target, `${cat}: Research/18 §11 gives ${lo}-${hi} g/hr`).toBeGreaterThanOrEqual(lo);
       expect(target).toBeLessThanOrEqual(hi);
       // …and the composer emits it.
@@ -340,9 +340,9 @@ describe('Research/18 §11 (:367-376) · during-race CHO/hr by distance', () => 
     // The shipped defect: DEFAULT_RACE_TARGET_G_PER_HR = 75 for any race.
     // §11 (:371) gives a half 30-60, and §1 (:27) makes 60 the threshold
     // above which single-source glucose causes GI distress.
-    const hm = raceCarbsPerHourTarget(13.1, 5400).targetGPerHr;
+    const hm = raceCarbsPerHourTarget(13.1, 5400)!.targetGPerHr;
     expect(hm).toBeLessThanOrEqual(60);
-    expect(hm).toBeLessThan(raceCarbsPerHourTarget(26.2, 11700).targetGPerHr);
+    expect(hm).toBeLessThan(raceCarbsPerHourTarget(26.2, 11700)!.targetGPerHr);
     expect(RACE_CARB_G_PER_HR.m.targetGPerHr).toBe(75);
   });
 
@@ -379,8 +379,8 @@ describe('Research/18 §11 (:367-376) · during-race CHO/hr by distance', () => 
   it('a long race still gets the §1 duration floor (:17-18)', () => {
     // A 3-hour half is governed by the duration table, not the distance
     // row · both are floors, the higher wins.
-    expect(raceCarbsPerHourTarget(13.1, 3 * 3600).targetGPerHr).toBe(75);
-    expect(raceCarbsPerHourTarget(13.1, 5400).targetGPerHr).toBe(45);
+    expect(raceCarbsPerHourTarget(13.1, 3 * 3600)!.targetGPerHr).toBe(75);
+    expect(raceCarbsPerHourTarget(13.1, 5400)!.targetGPerHr).toBe(45);
   });
 });
 

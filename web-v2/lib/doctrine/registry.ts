@@ -63,7 +63,24 @@ import {
   type GoalTier,
 } from '@/lib/plan/goal-tiers';
 import { PLAN_TEMPLATES } from '@/lib/plan/plan-templates';
-import { RACE_CARB_G_PER_HR } from '@/lib/race/distance-doctrine';
+import {
+  RACE_CARB_G_PER_HR,
+  RACE_OPENING_ALLOWANCE,
+  RACE_HR_PCT_LTHR,
+  RACE_HR_PCT_MAX,
+  RACE_WARMUP,
+  RACE_CARB_LOAD,
+  RACE_PRERACE_MEAL_G_PER_KG,
+  RACE_CAFFEINE_FRACTIONS,
+  ULTRA_CAFFEINE_INTERVAL_MIN,
+  warmupTotalMin,
+} from '@/lib/race/distance-doctrine';
+import {
+  DISTANCE_CATEGORIES,
+  DISTANCE_CATEGORY_MAX_MI,
+  distanceCategoryOrNull,
+} from '@/lib/race/distance-category';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
 import { VDOT_FULL_VALUE_DAYS, VDOT_EXPIRY_DAYS, FADE_TAIL_DAYS } from '@/lib/training/vdot';
 import { BASE_BUILD_RATE, MAX_BLOCK_GAIN } from '@/lib/training/fitness-trajectory';
@@ -250,6 +267,18 @@ function within(value: number, [lo, hi]: [number, number], what: string): void {
   if (value < lo || value > hi) {
     throw new Error(`${what}: engine has ${value}, doctrine says ${lo}–${hi}`);
   }
+}
+
+/**
+ * A SIGNED band written the way Research/08 §3.1 writes it — "-2 to +5
+ * sec/mile", "+10 to +20 sec/mile slower". `parseBand` cannot read these: it
+ * strips parentheses and then looks for a hyphen BETWEEN two numbers, which a
+ * leading minus sign and the word "to" both defeat.
+ */
+function signedBand(cell: string): [number, number] {
+  const nums = [...cell.replace(/\([^)]*\)/g, ' ').matchAll(/([+-]?\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]));
+  if (nums.length < 2) throw new Error(`DOCTRINE · no signed band in doctrine cell "${cell}"`);
+  return [nums[0], nums[1]];
 }
 
 function atMost(value: number, ceiling: number, what: string): void {
@@ -6121,6 +6150,406 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  // ══ DISTANCE · which doctrine row a race is ═══════════════════════════════
+  //
+  // 2026-08-18. Every per-distance claim above reads a ROW. Nothing checked
+  // which row a given race gets — and the app carried three incompatible
+  // answers, so a 15-mile race trained as a half and raced as a marathon, and
+  // a distance-unknown race silently received the half's whole race morning.
+  {
+    id: 'DISTANCE.category-boundaries',
+    binds: ['lib/race/distance-category.ts#DISTANCE_CATEGORY_MAX_MI'],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '### 5.1 Daniels VDOT Equivalence (selected fitness levels)',
+    claim:
+      'Doctrine publishes race ROWS, not boundaries: the equivalence table names 5K, 10K, 15K, ' +
+      '10mi, Half and Marathon and says nothing about where one row stops applying. So every ' +
+      'named distance must land in a category, the categories must not go backwards along the ' +
+      'ladder, and where two adjacent named distances fall in different categories the boundary ' +
+      'between them must sit exactly halfway between the two — the stated convention, checkable ' +
+      'against the doc rather than against itself.',
+    check({ cite }) {
+      const ladder = cite
+        .table()
+        .headers.map((h) => ({ label: h, mi: distanceMiFromLabel(h) }))
+        .filter((x): x is { label: string; mi: number } => x.mi != null)
+        .sort((a, b) => a.mi - b.mi);
+      if (ladder.length < 5) {
+        throw new Error(
+          `DOCTRINE · only ${ladder.length} named distances parsed out of the §5.1 header ` +
+            `(${cite.table().headers.join(' | ')}) · the equivalence table has been reshaped`,
+        );
+      }
+      const catOf = (mi: number) => {
+        const c = distanceCategoryOrNull(mi);
+        if (c == null) throw new Error(`no category for the doctrine distance ${mi} mi`);
+        return c;
+      };
+      for (let i = 1; i < ladder.length; i++) {
+        const [a, b] = [ladder[i - 1], ladder[i]];
+        const [ca, cb] = [catOf(a.mi), catOf(b.mi)];
+        const [ia, ib] = [DISTANCE_CATEGORIES.indexOf(ca), DISTANCE_CATEGORIES.indexOf(cb)];
+        if (ib < ia) {
+          throw new Error(
+            `the categorizer goes BACKWARDS: ${a.label} (${a.mi} mi) is '${ca}' but the longer ` +
+              `${b.label} (${b.mi} mi) is '${cb}'`,
+          );
+        }
+        if (ib === ia) continue;
+        if (ib !== ia + 1) {
+          throw new Error(
+            `${a.label} is '${ca}' and the next named distance ${b.label} is '${cb}' · the ` +
+              `categorizer skips a whole doctrine row between two adjacent published distances`,
+          );
+        }
+        const midpoint = (a.mi + b.mi) / 2;
+        const boundary = DISTANCE_CATEGORY_MAX_MI[ca];
+        if (Math.abs(boundary - midpoint) > 0.005) {
+          throw new Error(
+            `the '${ca}'|'${cb}' boundary is ${boundary} mi · doctrine's own adjacent distances ` +
+              `are ${a.label} (${a.mi}) and ${b.label} (${b.mi}), whose midpoint is ` +
+              `${midpoint.toFixed(3)}. Either move the boundary or state a new convention.`,
+          );
+        }
+      }
+    },
+  },
+  {
+    id: 'DISTANCE.threshold-class-floor',
+    binds: ['lib/race/distance-category.ts#DISTANCE_CATEGORY_MAX_MI'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Pace conversion from a race time',
+    claim:
+      'Threshold pace is anchored to "half-marathon pace to 15K pace", so doctrine treats the ' +
+      '15K and the half as ONE lactate-threshold class — a 15K and a 10-miler are ' +
+      'half-marathon-class races. Interval pace is anchored to 3K-5K, a different class. The ' +
+      'categorizer must put the 15K with the half, and must not put the 5K there.',
+    check({ cite }) {
+      const t = cite.table();
+      const milesIn = (cell: string): number[] =>
+        [...cell.matchAll(/(\d+(?:\.\d+)?\s*K|half[- ]marathon|marathon|mile)/gi)]
+          .map((m) => distanceMiFromLabel(m[1].replace(/\s+/g, '')))
+          .filter((x): x is number => x != null);
+
+      const tRace = milesIn(t.cell('T', 'Relationship'));
+      if (tRace.length < 2) {
+        throw new Error(
+          `DOCTRINE · the T row no longer names two race distances: "${t.cell('T', 'Relationship')}"`,
+        );
+      }
+      const tCats = new Set(tRace.map((mi) => distanceCategoryOrNull(mi)));
+      if (tCats.size !== 1 || tCats.has(null)) {
+        throw new Error(
+          `doctrine anchors T to ${tRace.join(' mi and ')} mi as one class, but the categorizer ` +
+            `splits them across ${[...tCats].join(', ')}`,
+        );
+      }
+      const iRace = Math.max(...milesIn(t.cell('I', 'Relationship')));
+      const iCat = distanceCategoryOrNull(iRace);
+      if (iCat != null && tCats.has(iCat)) {
+        throw new Error(
+          `doctrine anchors I to ${iRace} mi and T to a longer class, but the categorizer puts ` +
+            `both in '${iCat}' · the VO2max race and the threshold race are the same row`,
+        );
+      }
+    },
+  },
+  {
+    id: 'DISTANCE.ultra-floor',
+    binds: ['lib/race/distance-category.ts#DISTANCE_CATEGORY_MAX_MI'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 10.1 Carb loading — by distance',
+    claim:
+      'The ultra row names its own floor: doctrine writes it "Ultra (50K+)". So the marathon ' +
+      'row runs up to 50 km and 50 km itself is an ultra. Both old categorizers cut at a flat ' +
+      '30 miles, a number that appears nowhere in Research/.',
+    check({ cite }) {
+      const label = cite.table().rows.map((r) => r[cite.table().headers[0]]).find((l) => /ultra/i.test(l));
+      if (!label) throw new Error('DOCTRINE · §10.1 no longer has an ultra row');
+      const token = matchLiteral(label, /(\d+\s*K)\b/i, 'the ultra row\'s own distance floor')[1];
+      const floorMi = distanceMiFromLabel(token.replace(/\s+/g, ''));
+      if (floorMi == null) throw new Error(`DOCTRINE · cannot resolve the ultra floor "${token}" to miles`);
+      within(DISTANCE_CATEGORY_MAX_MI.m, [floorMi, floorMi], `the marathon row's ceiling (doctrine: ${label})`);
+      if (distanceCategoryOrNull(floorMi) !== 'ultra') {
+        throw new Error(`a ${floorMi} mi race is not categorized as an ultra, but doctrine calls it one`);
+      }
+      if (distanceCategoryOrNull(floorMi - 0.01) !== 'm') {
+        throw new Error(`a race just under ${floorMi} mi is not marathon-class · the floor is in the wrong place`);
+      }
+    },
+  },
+
+  // ══ RACE DAY · the per-distance execution tables ══════════════════════════
+  //
+  // 2026-08-18 · these eight tables were invisible to the doctrine lint for
+  // two months. They are declared `Readonly<Record<RaceDistanceCategory, …>>`,
+  // and the lint's scanner required the literal `Record<DistCategory,` right
+  // after the colon — wrong wrapper AND wrong type name, so all three of its
+  // checks missed every one. The scanner was widened; these are the claims the
+  // widening then demanded.
+  {
+    id: 'RACEDAY.opening-allowance',
+    binds: ['lib/race/distance-doctrine.ts#RACE_OPENING_ALLOWANCE'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '| Distance | First-mile target vs. goal pace | Rationale |',
+    claim:
+      'How much slower than goal pace the first mile runs is set per distance: a 5K opens ' +
+      'essentially at goal pace, a marathon 10-20 s/mi slower. Each row\'s stored band must be ' +
+      'the doctrine band, and what the engine actually prescribes must sit inside it.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'First-mile target vs. goal pace';
+      const docRow: Partial<Record<DistCategory, string>> = {
+        '5k': '5K', '10k': '10K', hm: 'Half marathon', m: 'Marathon',
+      };
+      for (const cat of CATS) {
+        const row = RACE_OPENING_ALLOWANCE[cat];
+        if (cat === 'ultra') {
+          // §3.1 has no ultra row. The engine takes the marathon band's
+          // conservative end, which is the slowest opener doctrine publishes;
+          // assert exactly that rather than letting an invented number pass.
+          const m = RACE_OPENING_ALLOWANCE.m;
+          if (row.firstMileBandSPerMi[0] !== m.firstMileBandSPerMi[0]
+            || row.firstMileBandSPerMi[1] !== m.firstMileBandSPerMi[1]) {
+            throw new Error('the ultra opening band is not the marathon band · §3.1 publishes no ultra row to justify a different one');
+          }
+          if (row.firstMileSPerMi !== m.firstMileBandSPerMi[1]) {
+            throw new Error('the ultra opens somewhere other than the conservative end of the marathon band');
+          }
+          continue;
+        }
+        const band = signedBand(t.cell(docRow[cat]!, col));
+        within(row.firstMileBandSPerMi[0], band, `RACE_OPENING_ALLOWANCE.${cat} band floor`);
+        within(row.firstMileBandSPerMi[1], band, `RACE_OPENING_ALLOWANCE.${cat} band ceiling`);
+        within(row.firstMileSPerMi, band, `RACE_OPENING_ALLOWANCE.${cat} prescribed first mile`);
+      }
+    },
+  },
+  {
+    id: 'RACEDAY.hr-ceilings',
+    binds: [
+      'lib/race/distance-doctrine.ts#RACE_HR_PCT_LTHR',
+      'lib/race/distance-doctrine.ts#RACE_HR_PCT_MAX',
+    ],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '| Distance | %HRmax | %LTHR |',
+    claim:
+      'The heart rate a race can be held at falls as the race lengthens: a 5K sits above ' +
+      'threshold, a marathon well under it. Both the %LTHR and the %HRmax column must match ' +
+      'the row for the distance — the shipped defect was the half\'s LTHR+3 handed to ' +
+      'marathoners, who blew up with the trigger reading fine.',
+    check({ cite }) {
+      const t = cite.table();
+      const docRow: Partial<Record<DistCategory, string>> = {
+        '5k': '5K', '10k': '10K', hm: 'Half', m: 'Marathon',
+      };
+      for (const cat of CATS) {
+        if (cat === 'ultra') {
+          // §6.1 publishes no ultra row · the engine holds the marathon's,
+          // the lowest ceiling doctrine states. Assert it is exactly that.
+          for (const [name, table] of [['LTHR', RACE_HR_PCT_LTHR], ['HRmax', RACE_HR_PCT_MAX]] as const) {
+            if (table.ultra[0] !== table.m[0] || table.ultra[1] !== table.m[1]) {
+              throw new Error(`the ultra %${name} ceiling is not the marathon's · §6.1 has no ultra row to source a different one`);
+            }
+          }
+          continue;
+        }
+        const lthr = parsePctBand(t.cell(docRow[cat]!, '%LTHR'));
+        const hrmax = parsePctBand(t.cell(docRow[cat]!, '%HRmax'));
+        within(RACE_HR_PCT_LTHR[cat][0], lthr, `RACE_HR_PCT_LTHR.${cat} floor`);
+        within(RACE_HR_PCT_LTHR[cat][1], lthr, `RACE_HR_PCT_LTHR.${cat} ceiling`);
+        within(RACE_HR_PCT_MAX[cat][0], hrmax, `RACE_HR_PCT_MAX.${cat} floor`);
+        within(RACE_HR_PCT_MAX[cat][1], hrmax, `RACE_HR_PCT_MAX.${cat} ceiling`);
+      }
+    },
+  },
+  {
+    id: 'RACEDAY.warmup-by-distance',
+    binds: ['lib/race/distance-doctrine.ts#RACE_WARMUP'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '| Race | Total time | Protocol |',
+    claim:
+      'The shorter the race, the longer the warm-up. Each distance\'s prescribed block must ' +
+      'total inside its own doctrine band, and the bands must never rise with distance. The ' +
+      'app used to ship the half\'s 45-minute protocol to marathoners.',
+    check({ cite }) {
+      const t = cite.table();
+      const docRow: Partial<Record<DistCategory, string>> = {
+        '5k': '5K', '10k': '10K', hm: 'Half', m: 'Marathon',
+      };
+      let previousCeiling = Infinity;
+      for (const cat of CATS) {
+        const row = RACE_WARMUP[cat];
+        if (cat === 'ultra') {
+          // §12.1 has no ultra row; Research/10's volume ladder puts the ultra
+          // below the marathon ("walk to start"), so it may share the
+          // marathon's band but never exceed it.
+          if (row.totalMinBand[1] > RACE_WARMUP.m.totalMinBand[1]) {
+            throw new Error('the ultra warm-up runs longer than the marathon\'s · doctrine has it shorter, not longer');
+          }
+          continue;
+        }
+        const band = parseBand(t.cell(docRow[cat]!, 'Total time'));
+        within(row.totalMinBand[0], band, `RACE_WARMUP.${cat} band floor`);
+        within(row.totalMinBand[1], band, `RACE_WARMUP.${cat} band ceiling`);
+        within(warmupTotalMin(row), band, `RACE_WARMUP.${cat} prescribed total minutes`);
+        if (band[1] > previousCeiling) {
+          throw new Error(
+            `the ${cat} warm-up band tops out at ${band[1]} min, above the shorter race's ` +
+              `${previousCeiling} · "the shorter the race, the longer the warmup" is inverted`,
+          );
+        }
+        previousCeiling = band[1];
+      }
+    },
+  },
+  {
+    id: 'RACEDAY.carb-load',
+    binds: ['lib/race/distance-doctrine.ts#RACE_CARB_LOAD'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 10.1 Carb loading — by distance',
+    claim:
+      'Race-week carb loading is per distance — no load under 90 minutes, 7-8 g/kg for a half, ' +
+      '8-12 for a marathon, the same across a longer window for an ultra. The shipped defect ' +
+      'was the HALF row handed to marathoners, under-loaded by about a third. And because the ' +
+      'table IS doctrine\'s own partition of races into protocols, no two of its rows may ' +
+      'collapse into a single engine category: the engine may be finer than doctrine, never ' +
+      'coarser.',
+    check({ cite }) {
+      const t = cite.table();
+      const labelCol = t.headers[0];
+      const docRow: Record<DistCategory, string> = {
+        '5k': '5K, 10K', '10k': '5K, 10K', hm: 'Half marathon', m: 'Marathon', ultra: 'Ultra (50K+)',
+      };
+      for (const cat of CATS) {
+        const cell = t.cell(docRow[cat], 'Protocol');
+        const g = matchLiteral(cell.replace(/[–—]/g, '-'), /(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)\s*g\/kg/, `${docRow[cat]} g/kg band`);
+        const gBand: [number, number] = [Number(g[1]), Number(g[2])];
+        const row = RACE_CARB_LOAD[cat];
+        within(row.gPerKgBand[0], gBand, `RACE_CARB_LOAD.${cat} g/kg floor`);
+        within(row.gPerKgBand[1], gBand, `RACE_CARB_LOAD.${cat} g/kg ceiling`);
+        const h = cell.replace(/[–—]/g, '-').match(/(\d+)-(\d+)\s*h/);
+        if (h == null) {
+          if (row.needsLoad || row.hoursBand != null) {
+            throw new Error(`RACE_CARB_LOAD.${cat} prescribes a loading window, but doctrine states none ("${cell}")`);
+          }
+        } else {
+          if (!row.needsLoad || row.hoursBand == null) {
+            throw new Error(`doctrine gives ${docRow[cat]} a ${h[1]}-${h[2]}h load, but the engine skips it`);
+          }
+          within(row.hoursBand[0], [Number(h[1]), Number(h[2])], `RACE_CARB_LOAD.${cat} hours floor`);
+          within(row.hoursBand[1], [Number(h[1]), Number(h[2])], `RACE_CARB_LOAD.${cat} hours ceiling`);
+        }
+      }
+      // No two doctrine rows may share an engine category.
+      const seen = new Map<string, string>();
+      for (const r of t.rows) {
+        const label = r[labelCol];
+        for (const token of label.split(/[,/]/)) {
+          const mi = distanceMiFromLabel(token.replace(/\(.*/, '').trim());
+          if (mi == null) continue;
+          const cat = distanceCategoryOrNull(mi);
+          if (cat == null) throw new Error(`doctrine row "${label}" names ${mi} mi, which the categorizer cannot place`);
+          const owner = seen.get(cat);
+          if (owner != null && owner !== label) {
+            throw new Error(
+              `doctrine rows "${owner}" and "${label}" both collapse into the engine's '${cat}' · ` +
+                'two different carb-load protocols, one row to serve them',
+            );
+          }
+          seen.set(cat, label);
+        }
+      }
+    },
+  },
+  {
+    id: 'RACEDAY.prerace-meal',
+    binds: ['lib/race/distance-doctrine.ts#RACE_PRERACE_MEAL_G_PER_KG'],
+    doc: 'Research/18-fueling-products.md',
+    anchor: '| Distance | 3-hr meal | 60-min top-up | 15-min top-up |',
+    claim:
+      'The pre-race breakfast scales with the race: 1 g/kg before a 5K, 3-4 before a marathon. ' +
+      'Each row must carry its own doctrine band.',
+    check({ cite }) {
+      const t = cite.table();
+      const docRow: Record<DistCategory, string> = {
+        '5k': '5K', '10k': '10K', hm: 'Half marathon', m: 'Marathon', ultra: 'Ultra',
+      };
+      for (const cat of CATS) {
+        const cell = t.cell(docRow[cat], '3-hr meal').replace(/[–—]/g, '-');
+        const m = matchLiteral(cell, /\((\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?\s*g\/kg\)/, `${docRow[cat]} pre-race meal`);
+        const band: [number, number] = [Number(m[1]), Number(m[2] ?? m[1])];
+        within(RACE_PRERACE_MEAL_G_PER_KG[cat][0], band, `RACE_PRERACE_MEAL_G_PER_KG.${cat} floor`);
+        within(RACE_PRERACE_MEAL_G_PER_KG[cat][1], band, `RACE_PRERACE_MEAL_G_PER_KG.${cat} ceiling`);
+      }
+    },
+  },
+  {
+    id: 'RACEDAY.caffeine-schedule',
+    binds: [
+      'lib/race/distance-doctrine.ts#RACE_CAFFEINE_FRACTIONS',
+      'lib/race/distance-doctrine.ts#ULTRA_CAFFEINE_INTERVAL_MIN',
+    ],
+    doc: 'Research/18-fueling-products.md',
+    anchor: '## 11. During-Race Fueling Protocols by Distance',
+    claim:
+      'Where caffeine goes is per distance and stated as a plan, not a number: pre-race only ' +
+      'for a 5K and 10K, one gel mid-race for a half, two named mile marks for a marathon, and ' +
+      'hourly — not positional — for an ultra. The engine stores positions as fractions of race ' +
+      'distance, so an empty list must mean the doctrine plan has no on-course POSITIONS, and ' +
+      'the ultra\'s emptiness must be paired with a real hourly interval.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'Caffeine plan';
+      const docRow: Record<DistCategory, string> = {
+        '5k': '5K', '10k': '10K', hm: 'Half marathon', m: 'Marathon', ultra: '50K',
+      };
+      for (const cat of CATS) {
+        const plan = t.cell(docRow[cat], col);
+        const fractions = RACE_CAFFEINE_FRACTIONS[cat];
+        if (/^\s*pre-race only\s*$/i.test(plan)) {
+          if (fractions.length > 0) {
+            throw new Error(`doctrine gives ${docRow[cat]} caffeine pre-race only, but the engine schedules ${fractions.length} on course`);
+          }
+          continue;
+        }
+        if (/\/\s*hr\b/i.test(plan)) {
+          // Hourly, not positional · the emptiness is the point, and the
+          // interval has to exist somewhere or nothing is prescribed at all.
+          if (fractions.length > 0) {
+            throw new Error(`doctrine gives ${docRow[cat]} an HOURLY caffeine plan, but the engine schedules it by position`);
+          }
+          if (!(ULTRA_CAFFEINE_INTERVAL_MIN === 60)) {
+            throw new Error(`doctrine states ${docRow[cat]} caffeine per HOUR; the engine's interval is ${ULTRA_CAFFEINE_INTERVAL_MIN} min`);
+          }
+          continue;
+        }
+        const miles = [...plan.matchAll(/mi\s*(\d+(?:\.\d+)?)/gi)].map((m) => Number(m[1]));
+        if (miles.length > 0) {
+          const raceMi = distanceMiFromLabel(docRow[cat]);
+          if (raceMi == null) throw new Error(`cannot resolve ${docRow[cat]} to miles`);
+          if (fractions.length !== miles.length) {
+            throw new Error(
+              `doctrine names ${miles.length} on-course caffeine positions for ${docRow[cat]} ` +
+                `(${plan}); the engine schedules ${fractions.length}`,
+            );
+          }
+          miles.forEach((mi, i) => {
+            within(fractions[i] * raceMi, [mi - 0.5, mi + 0.5], `caffeine stop ${i + 1} for the ${cat}`);
+          });
+          continue;
+        }
+        // "Pre + 1 caf gel mid-race" · a count and a position word, no mile mark.
+        const count = Number(matchLiteral(plan, /(\d+)\s*caf/i, `${docRow[cat]} caffeine gel count`)[1]);
+        if (fractions.length !== count) {
+          throw new Error(`doctrine gives ${docRow[cat]} ${count} on-course caffeinated gel(s); the engine schedules ${fractions.length}`);
+        }
+        if (/mid-race/i.test(plan)) {
+          within(fractions[0], [0.4, 0.6], `the ${cat}'s mid-race caffeine position`);
+        }
+      }
+    },
+  },
   /* ═════════════════════════════════════════════════════════════════════════
    * DOCTRINE-DOSING-2 (2026-08-18) · the caps are ENFORCED now, so these claims
    * are about the engine OBEYING them, not only about the numbers being right.

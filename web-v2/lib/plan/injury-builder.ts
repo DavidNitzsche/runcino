@@ -54,6 +54,7 @@ import { pool } from '@/lib/db/pool';
 import { randomBytes } from 'crypto';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadSettings } from '@/lib/coach/settings';
+import { mutatePlan } from './mutate';
 import {
   resolveInjuryProtocol,
   stageForWeek,
@@ -360,14 +361,6 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
   const maxSessions = freqRow?.f != null && Number(freqRow.f) >= 3 && Number(freqRow.f) <= 7
     ? Number(freqRow.f) : null;
 
-  // Archive any active plan for this user first.
-  await pool.query(
-    `UPDATE training_plans SET archived_iso = NOW()
-      WHERE user_uuid = $1 AND archived_iso IS NULL`,
-    [userId],
-  ).catch(() => {});
-
-  // Create the new INJURY plan.
   const planId = id('pln');
   const today = await runnerToday(userId);
   // Anchor week 0 at the runner's training-week boundary (day after long-run
@@ -376,6 +369,34 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
   const goalISO = addDays(startMonday, totalWeeks * 7 - 1); // end-of-plan date
   const bandLabel = doctrineWeeksLabel(resolved.protocol);
 
+  // Routed through the plan mutation boundary (lib/plan/mutate.ts) as an
+  // 'authorship' mutation: this creates a plan rather than editing one, so
+  // there is no before-state to diff against. The boundary reads the PERSISTED
+  // plan back and validates it, report-only — a rolled-back injury plan would
+  // leave an injured runner with the race plan they must not be running.
+  //
+  // Two things come free with the wrapper that this builder did not have
+  // before: the archive + create + every insert now run in ONE transaction
+  // (they were unbatched `pool.query` calls, so a mid-sequence failure left a
+  // half-written plan with the prior one already archived), and the result is
+  // read back rather than assumed.
+  const boundary = await mutatePlan<string>({
+    userUuid: userId,
+    source: 'injury-builder',
+    todayISO: today,
+    touches: 'authorship',
+    planIdFromResult: (v) => v,
+    detail: { injury_id: injuryId, protocol_key: resolved.protocol.key, total_weeks: totalWeeks },
+    apply: async (pool) => {
+
+  // Archive any active plan for this user first.
+  await pool.query(
+    `UPDATE training_plans SET archived_iso = NOW()
+      WHERE user_uuid = $1 AND archived_iso IS NULL`,
+    [userId],
+  ).catch(() => {});
+
+  // Create the new INJURY plan.
   await pool.query(
     `INSERT INTO training_plans (id, user_id, user_uuid, mode, race_id, goal_iso, authored_state)
      VALUES ($1, 'me', $2, 'maintenance', NULL, $3, $4)`,
@@ -455,6 +476,13 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
         [wkoId, planId, weekId, dateISO, d.dow, d.type, d.distance_mi, d.notes, d.subLabel, userId],
       );
     }
+  }
+
+      return planId;
+    },
+  });
+  if (!boundary.ok) {
+    return { ok: false, reason: 'injury plan write refused by the plan mutation boundary' };
   }
 
   // Plan mutation → invalidate memoized lookup so /today sees the new

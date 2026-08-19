@@ -42,6 +42,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
+import { mutatePlan } from '@/lib/plan/mutate';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,9 +93,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: false, error: 'invalid_suggestion' }, { status: 400 });
   }
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  // Routed through the plan mutation boundary (lib/plan/mutate.ts). Accepting a
+  // standing recommendation applies the coach's forward counsel — type,
+  // distance and/or date — so it is 'structural'. Same gate as the auto-adapter
+  // that proposed it: the runner accepting a change does not exempt the result
+  // from doctrine.
+  const abort = (error: string, status: number) =>
+    ({ kind: 'abort' as const, error, status });
+
+  const boundary = await mutatePlan<
+    | { kind: 'abort'; error: string; status: number }
+    | { kind: 'ok'; applied: { type: string; distance_mi: number | null; date_iso: string } }
+  >({
+    userUuid: userId,
+    source: 'api/plan/workout accept-standing',
+    todayISO: await runnerToday(userId),
+    workoutId,
+    detail: { workout_id: workoutId, proposedType, proposedDistanceMi, proposedDateIso },
+    apply: async (client) => {
 
     // 1. Read · owner-scoped via training_plans.user_uuid join.
     const row = (await client.query<{
@@ -115,10 +132,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       [workoutId, userId],
     )).rows[0];
 
-    if (!row) {
-      await client.query('ROLLBACK');
-      return NextResponse.json({ ok: false, error: 'workout_not_found' }, { status: 404 });
-    }
+    if (!row) return abort('workout_not_found', 404);
 
     // 2. Apply the suggestion. Coherent-downgrade rule mirrors the
     //    auto-adapter (lib/plan/adapt.ts:200-211) · when the new type
@@ -194,22 +208,36 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       [workoutId],
     )).rows[0];
 
-    await client.query('COMMIT');
-
-    return NextResponse.json({
-      ok: true,
-      applied: {
-        type: after.type,
-        distance_mi: after.distance_mi ? Number(after.distance_mi) : null,
-        date_iso: after.date_iso,
-      },
-    });
-  } catch (e: unknown) {
-    await client.query('ROLLBACK').catch(() => {});
+      return {
+        kind: 'ok' as const,
+        applied: {
+          type: after.type,
+          distance_mi: after.distance_mi ? Number(after.distance_mi) : null,
+          date_iso: after.date_iso,
+        },
+      };
+    },
+  }).catch((e: unknown) => {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('[accept-standing] failed:', msg);
-    return NextResponse.json({ ok: false, error: 'server_error', detail: msg }, { status: 500 });
-  } finally {
-    client.release();
+    return null;
+  });
+
+  if (boundary == null) {
+    return NextResponse.json({ ok: false, error: 'server_error' }, { status: 500 });
   }
+  if (!boundary.ok) {
+    return NextResponse.json(
+      { ok: false, error: 'plan_invariant_violation', violations: boundary.violations },
+      { status: 409 },
+    );
+  }
+  const outcome = boundary.value;
+  if (outcome == null) {
+    return NextResponse.json({ ok: false, error: 'server_error' }, { status: 500 });
+  }
+  if (outcome.kind === 'abort') {
+    return NextResponse.json({ ok: false, error: outcome.error }, { status: outcome.status });
+  }
+  return NextResponse.json({ ok: true, applied: outcome.applied });
 }

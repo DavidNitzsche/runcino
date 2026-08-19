@@ -64,12 +64,33 @@ interface CatTable {
   values: Partial<Record<(typeof CATS)[number], string>>;
 }
 
-/** Every `Record<DistCategory, …>` literal in the tree, with its per-category values. */
+/**
+ * Every distance-keyed table literal in the tree, with its per-category values.
+ *
+ * 2026-08-18 · this used to require the literal `Record<\s*DistCategory\s*,`
+ * immediately after the colon, which made it blind to two evasions that were
+ * not evasions at all — just other people's ordinary style:
+ *
+ *   · a WRAPPER. `Readonly<Record<…>>` / `Partial<Record<…>>` put a type
+ *     between the colon and the `Record`, and the scanner stopped looking.
+ *   · a DIFFERENT TYPE NAME. `RaceDistanceCategory` was the same five-member
+ *     union under another name, so nothing keyed to it was ever scanned.
+ *
+ * Together those hid EIGHT per-distance doctrine tables in
+ * lib/race/distance-doctrine.ts — the opening allowance, both HR ceilings, the
+ * warm-up protocol, the carb load, the pre-race meal, the on-course carb rate
+ * and the caffeine schedule — from all three of the checks below. That file is
+ * the one whose header says reading the wrong distance's row wrecks races.
+ *
+ * The scanner now accepts any number of wrapper generics before the `Record`
+ * and any type alias whose name ends in `Category`.
+ */
 function catTables(): CatTable[] {
   const found: CatTable[] = [];
   for (const file of sourceFiles()) {
     const src = fs.readFileSync(file, 'utf8');
-    const decl = /(?:export\s+)?const\s+(\w+)\s*:\s*Record<\s*DistCategory\s*,[\s\S]*?=\s*\{/g;
+    const decl =
+      /(?:export\s+)?const\s+(\w+)\s*:\s*(?:\w+<\s*)*Record<\s*\w*Category\s*,[\s\S]*?=\s*\{/g;
     let d: RegExpExecArray | null;
     while ((d = decl.exec(src))) {
       const open = decl.lastIndex - 1;
@@ -169,6 +190,47 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'resistance dominate"), so both correctly default to the threshold limiter. The values ' +
       'agree because the doctrine agrees; LIMITER.goal-distance-default checks each row ' +
       'separately and fails if either stops naming LT2.',
+    // ── 2026-08-18 · the eight tables the widened scanner can finally see ──
+    // Every one of these shares was already in the code; none of them had ever
+    // been looked at, because the scanner could not read a
+    // `Readonly<Record<RaceDistanceCategory, …>>` declaration.
+    'web-v2/lib/race/distance-doctrine.ts#RACE_HR_PCT_LTHR:m==ultra':
+      'Research/08 §6.1 publishes FOUR rows — 5K, 10K, Half, Marathon — and no ultra. The ' +
+      'engine holds the marathon\'s ceiling, the lowest doctrine states, rather than inventing ' +
+      'one for a distance the table does not cover. RACEDAY.hr-ceilings asserts exactly that ' +
+      'relationship and fails if the ultra ever drifts to a different number without a doctrine ' +
+      'row behind it.',
+    'web-v2/lib/race/distance-doctrine.ts#RACE_HR_PCT_MAX:m==ultra':
+      'Same missing §6.1 ultra row · see RACE_HR_PCT_LTHR:m==ultra.',
+    'web-v2/lib/race/distance-doctrine.ts#RACE_CARB_LOAD:5k==10k':
+      'Research/08 §10.1 gives the 5K and the 10K a SINGLE shared row — the label is literally ' +
+      '"5K, 10K" — because neither race clears the 90-minute gate the whole protocol is ' +
+      'conditioned on. This is doctrine\'s own grouping, not a paste. RACEDAY.carb-load reads ' +
+      'that row and separately asserts no two DIFFERENT doctrine rows collapse into one engine ' +
+      'category.',
+    'web-v2/lib/race/distance-doctrine.ts#RACE_PRERACE_MEAL_G_PER_KG:m==ultra':
+      'Research/18 §"Adjustments by event" gives the Marathon and the Ultra byte-identical ' +
+      '3-hour meals ("Full (3-4 g/kg)"). The values agree because the doc agrees; ' +
+      'RACEDAY.prerace-meal reads each row separately and fails if either drifts.',
+    'web-v2/lib/race/distance-doctrine.ts#RACE_CAFFEINE_FRACTIONS:5k==10k':
+      'Research/18 §11 gives both the 5K and the 10K "Pre-race only" in the Caffeine plan ' +
+      'column — zero on-course positions is doctrine\'s answer for both, not a copied row. ' +
+      'RACEDAY.caffeine-schedule reads each row and requires the list to be empty only when ' +
+      'the doc says pre-race only.',
+    'web-v2/lib/race/distance-doctrine.ts#RACE_CAFFEINE_FRACTIONS:5k==ultra':
+      'The two empties mean DIFFERENT things and the engine tracks the difference elsewhere. ' +
+      'The 5K takes no on-course caffeine at all; the ultra takes 50-100 mg/hr (§11, 50K row) ' +
+      'on an HOURLY schedule, which this positional table cannot express — ' +
+      'ULTRA_CAFFEINE_INTERVAL_MIN carries it and caffeineStopIndexes branches on it before ' +
+      'ever reading this table. RACEDAY.caffeine-schedule asserts the pairing: an empty ultra ' +
+      'list is only acceptable while a real hourly interval exists.',
+    'web-v2/lib/race/distance-doctrine.ts#RACE_CAFFEINE_FRACTIONS:10k==ultra':
+      'Same pre-race-only vs hourly distinction · see RACE_CAFFEINE_FRACTIONS:5k==ultra.',
+    'web-v2/lib/plan/gap-report.ts#RENEGOTIATION_WINDOW_WEEKS:10k==hm':
+      'Not a physiology claim · it is how many weeks before race day a goal-renegotiation card ' +
+      'surfaces. The 10K and the half share T-3 weeks because the trajectory settles at the ' +
+      'same point for both, which the table\'s own header comment has said since it was ' +
+      'written. Recorded as an unbound product table in UNBOUND_TABLES for the same reason.',
     // (DOCTRINE-1b, 2026-08-17) · the three CONSTRAINTS allowlist entries that
     // used to live here are DELETED. hm/m/ultra shared a flat 30% taper floor
     // and no ceiling at all; each row now carries its own floor AND its own
@@ -247,6 +309,12 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'cited sources are Daniels and Pfitzinger book sections rather than a Research/ passage, ' +
       'so there is nothing in Research/ to anchor a claim on. Revisit if a build-window band is ' +
       'ever written into Research/22.',
+    'web-v2/lib/plan/gap-report.ts#RENEGOTIATION_WINDOW_WEEKS':
+      'Not a physiology claim · it is a product decision about how many weeks before race day ' +
+      'a goal-renegotiation card surfaces. Nothing in Research/ states a renegotiation lead ' +
+      'time. Newly visible 2026-08-18 because the table was re-keyed from an inline four-member ' +
+      'union to DistCategory — which is also how the missing \'ultra\' key was found: an ultra ' +
+      'had been falling through to the marathon\'s window.',
     'web-v2/lib/plan/validate.ts#CONSTRAINTS':
       'Partly bound: taperDropMinPct is checked by TAPER.minimum-volume-drop. The other two ' +
       'fields (longRunWoWMaxPct, weeklyVolWoWMaxPct) are week-over-week validator ceilings with ' +
