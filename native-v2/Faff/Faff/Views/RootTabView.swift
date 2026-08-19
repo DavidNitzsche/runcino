@@ -100,6 +100,19 @@ struct RootTabView: View {
     /// Drives hiding the Train tab (no plan to show). Defaults true so the
     /// tab never flash-hides before the first profile fetch resolves.
     @State private var hasTarget: Bool = true
+    /// 2026-08-19 · user_settings.phone_run_enabled — "Start runs from this
+    /// phone." THE single source of truth for whether this phone offers to
+    /// record a run. Defaults true so the affordance never flash-hides before
+    /// the first settings fetch resolves, and so a failed fetch degrades to
+    /// "offer it" rather than stranding a watchless runner with no way to
+    /// start one.
+    ///
+    /// It gates the START A RUN section of RunActionMenu, NOT the RUN tab
+    /// itself. The design's new tab bar hides its RUN pill on this same flag,
+    /// but in THIS tab bar the pill also owns "Log a niggle or sick day" and
+    /// "View all activity" — hiding it here would take away two things the
+    /// setting says nothing about.
+    @State private var phoneRunEnabled: Bool = true
     // Run-menu pushes (watchMirror / treadmill) and all NavigationLink(value:)
     // pushes go through the per-tab `tabPaths` stacks below — a single,
     // poppable navigation mechanism. (Was a separate `pendingRoute` +
@@ -158,6 +171,10 @@ struct RootTabView: View {
                 // AFC fix 2 · was a hardcoded one-off orange (#EE6038) ·
                 // the run accent is the race/tempo slot of the locked palette.
                 accent: Theme.race,
+                // user_settings.phone_run_enabled · see `phoneRunEnabled`.
+                // Covers Outdoor AND Treadmill: both are runs this phone
+                // starts and records.
+                showStartARun: phoneRunEnabled,
                 onOutdoor: { tabPaths[selected, default: []].append(outdoorRoute) },
                 onTreadmill: { tabPaths[selected, default: []].append(.treadmill) },
                 onNiggle: { showSymptomSheet = true },
@@ -411,7 +428,13 @@ struct RootTabView: View {
     private func refreshTarget() async {
         async let pState = (try? await API.fetchProfileState())
         async let pWeek = (try? await API.fetchPlanWeek())
+        // phone_run_enabled rides the same refresh (launch · foreground ·
+        // goal/race change) through the shared SettingsCache, so this adds no
+        // request on the warm path. A miss leaves the default (true) standing.
+        async let pSettings: Void = SettingsCache.shared.warm()
         let (p, week) = await (pState, pWeek)
+        _ = await pSettings
+        let settings = await SettingsCache.shared.read().settings
         // A real plan (any planned or completed run) is the primary signal —
         // a runner with a plan keeps Train even if nextARace / fitnessGoal
         // aren't populated. Goal/race also count (a plan is being built).
@@ -423,6 +446,10 @@ struct RootTabView: View {
         await MainActor.run {
             let next = hasPlan || hasRace || hasGoal
             if next != hasTarget { hasTarget = next }
+            // nil (older backend, or a failed fetch) reads as true — never
+            // hide the recorder because the server did not answer.
+            let phoneRun = settings?.phoneRunEnabled ?? true
+            if phoneRun != phoneRunEnabled { phoneRunEnabled = phoneRun }
             // If Train got hidden out from under the selection, fall back.
             if !next && selected == .train { selected = .today }
         }

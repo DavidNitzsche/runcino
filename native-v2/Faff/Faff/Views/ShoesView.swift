@@ -124,7 +124,9 @@ struct ShoesView: View {
         guard let idx = shoes.firstIndex(where: { $0.id == id }) else { return }
         let s = shoes[idx]
         shoes[idx] = Shoe(id: s.id, brand: s.brand, model: s.model, color: s.color,
-                           mileage: s.mileage, mileage_cap: s.mileage_cap, run_types: s.run_types,
+                           mileage: s.mileage, mileage_cap: s.mileage_cap,
+                           shoe_type: s.shoe_type, retire_at_mi: s.retire_at_mi,
+                           run_types: s.run_types,
                            baseline_mi: s.baseline_mi, retired: retired, preferred: s.preferred, notes: s.notes)
     }
 
@@ -215,7 +217,7 @@ struct ShoesView: View {
             }
             if active.isEmpty {
                 ShoeDetail(shoe: FaffShoe(id: "ph", brand: "", name: "Add your first shoe",
-                                         roles: ["EASY"], miles: 0, lifeMi: 450))
+                                         roles: ["EASY"], miles: 0, lifeMi: kShoeFallbackRetireMi))
                     .opacity(0.4)
             }
         }
@@ -287,7 +289,9 @@ struct ShoesView: View {
             name: s.displayName.isEmpty ? "Shoe \(s.id)" : s.displayName,
             roles: roles,
             miles: s.mileage ?? 0,
-            lifeMi: s.mileage_cap ?? 450,
+            // Server-resolved retirement mileage (Research/17 band for the
+            // shoe's category, or the runner's own cap). Was `?? 450`.
+            lifeMi: s.retireAtMi,
             retired: retired,
             note: s.notes
         )
@@ -336,7 +340,9 @@ struct AddShoeSheet: View {
         // round-trip is safe: seed the field in the runner's display unit,
         // convert back to raw miles on save. The stored column never
         // changes shape.
-        let capMi = editing.flatMap { $0.mileage_cap } ?? 400
+        // The editor seeds from whatever the shoe is actually drawn against,
+        // so opening it never silently rewrites the cap to a different number.
+        let capMi = editing.map { $0.retireAtMi } ?? kShoeFallbackRetireMi
         let baselineMiRaw = editing.flatMap { $0.baseline_mi } ?? 0
         _mileageCap = State(initialValue: String(Int(Units.convertDistance(miles: capMi, to: Units.preference.distance).rounded())))
         _baselineMi = State(initialValue: String(Int(Units.convertDistance(miles: baselineMiRaw, to: Units.preference.distance).rounded())))
@@ -393,7 +399,7 @@ struct AddShoeSheet: View {
                     // label + value both track the runner's display unit;
                     // see the bidirectional conversion note in init above.
                     fieldGroup(label: "SHOE LIFE (\(Units.distanceLabel().uppercased()))") {
-                        styledTextField("400", text: $mileageCap)
+                        styledTextField(String(Int(kShoeFallbackRetireMi)), text: $mileageCap)
                             .keyboardType(.decimalPad)
                     }
 
@@ -499,7 +505,8 @@ struct AddShoeSheet: View {
         // display unit (see init); convert back to raw miles before
         // sending, since mileage_cap/baseline_mi are stored as miles
         // server-side. No-ops when the preference is mi.
-        let capDisplay = Double(mileageCap) ?? Units.convertDistance(miles: 400, to: Units.preference.distance)
+        let capDisplay = Double(mileageCap)
+            ?? Units.convertDistance(miles: kShoeFallbackRetireMi, to: Units.preference.distance)
         let baselineDisplay = Double(baselineMi) ?? 0
         // km → mi is *milesPerKm (0.621371), the inverse of convertDistance's
         // mi → km (*kmPerMile). Confirmed against Units.convertDistance:

@@ -17,6 +17,7 @@ import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 import { computeCadenceFatigue } from '@/lib/training/cadence-fatigue';
 import { heatAdjustedStatus } from './heat-band';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
+import { coerceShoeType, resolveShoeCapMi, type ShoeType } from '@/lib/shoe/lifespan';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
 import { adjustmentLabel as terrainAdjustmentLabel } from '@/lib/terrain/grade-adjust';
 import {
@@ -81,6 +82,11 @@ export interface RunDetailShoe {
   run_types: string[];
   mileage: number | null;
   mileage_cap: number | null;
+  /** Category (lib/shoe/lifespan.ts ShoeType), always resolved. */
+  shoe_type: ShoeType;
+  /** THE retirement mileage this shoe is drawn against · runner's own cap when
+   *  set, else doctrine's band for the category (Research/17-footwear.md). */
+  retire_at_mi: number;
   retired: boolean;
   preferred: boolean;
   notes: string | null;
@@ -805,6 +811,13 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     pool.query(
       `SELECT id, brand, model, color, color2, run_types,
               mileage_cap::numeric AS mileage_cap,
+              -- shoe_type read via to_jsonb so this query works whether or
+              -- not migration 151 has been applied yet (it returns NULL for a
+              -- column that does not exist, and NULL reads as the default
+              -- category). Migrations here are applied by hand, so a query
+              -- naming the column directly would 500 every read between the
+              -- code deploy and the ALTER.
+              to_jsonb(shoes.*) ->> 'shoe_type' AS shoe_type,
               COALESCE(retired, false) AS retired,
               COALESCE(preferred, false) AS preferred,
               notes
@@ -833,6 +846,8 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       run_types: s.run_types ?? [],
       mileage: mi,
       mileage_cap: s.mileage_cap == null ? null : Number(s.mileage_cap),
+      shoe_type: coerceShoeType(s.shoe_type),
+      retire_at_mi: resolveShoeCapMi(s.shoe_type, s.mileage_cap),
       retired: Boolean(s.retired),
       preferred: Boolean(s.preferred),
       notes: s.notes,

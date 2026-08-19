@@ -386,6 +386,22 @@ struct ShoesResponse: Decodable {
     let shoes: [Shoe]?
 }
 
+/// 2026-08-19 · LAST-RESORT retirement mileage, in miles.
+///
+/// The retirement target is the SERVER's answer: `/api/shoe` returns
+/// `retire_at_mi`, resolved by `web-v2/lib/shoe/lifespan.ts` from the shoe's
+/// category against `Research/17-footwear.md` (super shoe 150-250 mi, daily
+/// trainer 400-500, …), with the runner's own `mileage_cap` overriding it.
+/// The phone deliberately carries NO copy of that table — a second table is a
+/// second source of truth, and this app already had four different numbers
+/// (450, 450, 450, 400) sitting where this one constant now is.
+///
+/// This value is used only when the server answered with neither
+/// `retire_at_mi` nor `mileage_cap` — an older backend. It equals the low end
+/// of the daily-trainer band, which is what `DEFAULT_SHOE_TYPE` resolves to
+/// server-side, so the two agree.
+let kShoeFallbackRetireMi: Double = 400
+
 struct Shoe: Decodable, Identifiable {
     let id: Int
     let brand: String?
@@ -393,6 +409,12 @@ struct Shoe: Decodable, Identifiable {
     let color: String?
     let mileage: Double?
     let mileage_cap: Double?
+    /// Shoe category · one of lib/shoe/lifespan.ts ShoeType. nil on an older
+    /// backend; the server sends a resolved value (never null) once migrated.
+    let shoe_type: String?
+    /// THE retirement mileage this shoe is drawn against, resolved server-side
+    /// from category + the runner's own cap. Prefer this over `mileage_cap`.
+    let retire_at_mi: Double?
     let run_types: [String]?
     let baseline_mi: Double?
     let retired: Bool?
@@ -400,6 +422,16 @@ struct Shoe: Decodable, Identifiable {
     let notes: String?
 
     var displayName: String { [brand, model].compactMap { $0 }.joined(separator: " ") }
+
+    /// THE retirement mileage to draw this shoe against. Server's resolved
+    /// answer first, the runner's raw cap next, `kShoeFallbackRetireMi` last.
+    /// A non-positive cap is treated as unset — a "0 mi" typo would otherwise
+    /// make percent-used infinite and read 100% on the shoe's first run.
+    var retireAtMi: Double {
+        if let r = retire_at_mi, r > 0 { return r }
+        if let c = mileage_cap, c > 0 { return c }
+        return kShoeFallbackRetireMi
+    }
 }
 
 // MARK: - Run-detail wire additions (audit 2026-05-29)
@@ -416,11 +448,22 @@ struct RunDetailShoe: Decodable, Identifiable {
     let run_types: [String]?
     let mileage: Double?
     let mileage_cap: Double?
+    /// Shoe category · one of lib/shoe/lifespan.ts ShoeType.
+    let shoe_type: String?
+    /// THE retirement mileage this shoe is drawn against, resolved server-side.
+    let retire_at_mi: Double?
     let retired: Bool?
     let preferred: Bool?
     let notes: String?
 
     var displayName: String { [brand, model].compactMap { $0 }.joined(separator: " ") }
+
+    /// See `Shoe.retireAtMi`.
+    var retireAtMi: Double {
+        if let r = retire_at_mi, r > 0 { return r }
+        if let c = mileage_cap, c > 0 { return c }
+        return kShoeFallbackRetireMi
+    }
 }
 
 /// LTHR-derived HR zone bands (mirrors hr_zones_from_lthr in run-state.ts).

@@ -141,10 +141,8 @@ struct TodayShoePicker: View {
             let converted = Units.convertDistance(miles: mi, to: Units.preference.distance)
             parts.append("\(Int(converted.rounded())) \(Units.distanceLabel())")
         }
-        if let cap = shoe.mileage_cap, cap > 0 {
-            let convertedCap = Units.convertDistance(miles: cap, to: Units.preference.distance)
-            parts.append("of \(Int(convertedCap.rounded())) cap")
-        }
+        let convertedCap = Units.convertDistance(miles: shoe.retireAtMi, to: Units.preference.distance)
+        parts.append("of \(Int(convertedCap.rounded())) cap")
         if shoe.preferred == true { parts.append("preferred") }
         if parts.isEmpty { return "—" }
         return parts.joined(separator: " · ")

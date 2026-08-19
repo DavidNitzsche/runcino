@@ -11,6 +11,7 @@ import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadNextARace } from './race-lookup';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
+import { coerceShoeType, resolveShoeCapMi, type ShoeType } from '@/lib/shoe/lifespan';
 import { loadStravaConnectionStatus } from '@/lib/strava/connection-status';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 
@@ -47,7 +48,7 @@ export interface ProfileState {
     lthr_set_at: string | null;      // ISO timestamp
     zones: ZoneTable | null;         // computed zones (LTHR-based if available, else %MHR)
   };
-  shoes: { id: string; name: string; brand: string; model: string; color: string | null; color2: string | null; notes: string | null; runTypes: string[]; mileage: number; cap: number; pctUsed: number; preferred: boolean | null; retired: boolean; baseline_mi: number }[];
+  shoes: { id: string; name: string; brand: string; model: string; color: string | null; color2: string | null; notes: string | null; runTypes: string[]; mileage: number; cap: number; pctUsed: number; preferred: boolean | null; retired: boolean; baseline_mi: number; shoeType: ShoeType }[];
   nextARace: { slug: string; name: string; date: string; goal: string | null; days_to_race: number } | null;
   /** 2026-06-15 · no-race anchor: the runner's tt_goal_*. Present when there's
    *  no A-race so the briefing voice can say "TRAINING FOR · 10K · 41:35". */
@@ -148,6 +149,13 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     ).then((r) => r.rows[0]),
     pool.query(
       `SELECT id, brand, model, color, color2, notes, run_types, mileage, mileage_cap, retired, preferred,
+              -- shoe_type read via to_jsonb so this query works whether or
+              -- not migration 151 has been applied yet (it returns NULL for a
+              -- column that does not exist, and NULL reads as the default
+              -- category). Migrations here are applied by hand, so a query
+              -- naming the column directly would 500 every read between the
+              -- code deploy and the ALTER.
+              to_jsonb(shoes.*) ->> 'shoe_type' AS shoe_type,
               COALESCE(baseline_mi, 0)::numeric AS baseline_mi
          FROM shoes
         WHERE user_uuid = $1
@@ -203,7 +211,10 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     const tracked = shoeMiles.get(Number(s.id)) ?? 0;
     const baseline = Number(s.baseline_mi ?? 0);
     const m = tracked + baseline;
-    const cap = Number(s.mileage_cap) || 400;
+    // Retirement target · lib/shoe/lifespan.ts is the ONE resolver (was a
+    // local `|| 400`, one of five different defaults across the codebase).
+    const shoeType = coerceShoeType(s.shoe_type);
+    const cap = resolveShoeCapMi(shoeType, s.mileage_cap);
     return {
       id: String(s.id),
       name: `${s.brand} ${s.model}`,
@@ -214,6 +225,7 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       runTypes: s.run_types ?? [],
       mileage: Math.round(m),
       cap, pctUsed: Math.round((m / cap) * 100),
+      shoeType,
       preferred: s.preferred,
       retired: !!s.retired,
       baseline_mi: baseline,

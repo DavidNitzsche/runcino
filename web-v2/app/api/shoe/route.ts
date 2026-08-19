@@ -1,8 +1,9 @@
 /**
  * /api/shoe
  *   GET                                                                     list
- *   POST   { brand, model, color?, run_types?, mileage_cap? }              create
- *   PATCH  { id, mileage?, mileage_cap?, run_types?, retired?, preferred? } update
+ *   POST   { brand, model, color?, run_types?, shoe_type?, mileage_cap? }   create
+ *   PATCH  { id, mileage?, mileage_cap?, shoe_type?, run_types?, retired?,
+ *            preferred? }                                                  update
  *   DELETE { id }                                                            delete
  *
  * Writes to shoes table. Idempotent on id for PATCH/DELETE.
@@ -17,6 +18,12 @@ import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
+import {
+  coerceShoeType,
+  isShoeType,
+  resolveShoeCapMi,
+  SHOE_TYPES,
+} from '@/lib/shoe/lifespan';
 
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -34,6 +41,13 @@ export async function GET(req: NextRequest) {
     pool.query(
       `SELECT id, brand, model, color, color2, run_types,
               mileage_cap::numeric AS mileage_cap,
+              -- shoe_type read via to_jsonb so this query works whether or
+              -- not migration 151 has been applied yet (it returns NULL for a
+              -- column that does not exist, and NULL reads as the default
+              -- category). Migrations here are applied by hand, so a query
+              -- naming the column directly would 500 every read between the
+              -- code deploy and the ALTER.
+              to_jsonb(shoes.*) ->> 'shoe_type' AS shoe_type,
               COALESCE(baseline_mi, 0)::numeric AS baseline_mi,
               COALESCE(retired, false) AS retired,
               COALESCE(preferred, false) AS preferred,
@@ -59,7 +73,15 @@ export async function GET(req: NextRequest) {
       color2: s.color2,
       run_types: s.run_types ?? [],
       mileage: s._mi,
+      // What the runner set, verbatim — null means "never said".
       mileage_cap: s.mileage_cap == null ? null : Number(s.mileage_cap),
+      // Category, and the retirement mileage actually being drawn against.
+      // `retire_at_mi` is the ONE number every client should use for a
+      // progress bar: the runner's own cap when set, else doctrine's band
+      // for that category (Research/17-footwear.md). Clients no longer
+      // carry a fallback of their own.
+      shoe_type: coerceShoeType(s.shoe_type),
+      retire_at_mi: resolveShoeCapMi(s.shoe_type, s.mileage_cap),
       baseline_mi: Number(s.baseline_mi ?? 0),
       retired: Boolean(s.retired),
       preferred: Boolean(s.preferred),
@@ -80,21 +102,44 @@ export async function POST(req: NextRequest) {
   if (!body?.brand || !body?.model) {
     return NextResponse.json({ error: 'brand + model required' }, { status: 400 });
   }
+  // An unknown category would silently become a daily trainer and quietly set
+  // the wrong retirement mileage, so say so instead of guessing.
+  if (body.shoe_type != null && !isShoeType(body.shoe_type)) {
+    return NextResponse.json(
+      { error: `unknown shoe_type: ${body.shoe_type}`, allowed: SHOE_TYPES },
+      { status: 400 },
+    );
+  }
+  // shoe_type joins the INSERT only when the caller actually sent one, so a
+  // create still works on a database where migration 151 has not been applied
+  // yet (the column would not exist to name). Callers that DO send a category
+  // fail loudly there rather than silently dropping it.
+  const cols = ['brand', 'model', 'color', 'run_types', 'mileage', 'mileage_cap', 'baseline_mi'];
+  const vals: any[] = [
+    body.brand,
+    body.model,
+    body.color ?? null,
+    body.run_types ?? [],
+    body.mileage ?? 0,
+    // Stored NULL when the caller doesn't send one (was COALESCE(..., 400),
+    // which baked one category's number into every shoe at write time and made
+    // it impossible to tell "the runner chose 400" from "nobody said"). NULL
+    // now means exactly that, and resolveShoeCapMi answers from the category.
+    body.mileage_cap ?? null,
+    body.baseline_mi ?? 0,
+  ];
+  if (body.shoe_type != null) {
+    cols.push('shoe_type');
+    vals.push(body.shoe_type);
+  }
+  cols.push('retired', 'preferred', 'user_uuid');
+  vals.push(false, false, userId);
   try {
     const r = await pool.query(
-      `INSERT INTO shoes (brand, model, color, run_types, mileage, mileage_cap, baseline_mi, retired, preferred, user_uuid)
-       VALUES ($1, $2, $3, $4, COALESCE($5, 0), COALESCE($6, 400), COALESCE($7, 0), false, false, $8)
+      `INSERT INTO shoes (${cols.join(', ')})
+       VALUES (${vals.map((_, i) => `$${i + 1}`).join(', ')})
        RETURNING id`,
-      [
-        body.brand,
-        body.model,
-        body.color ?? null,
-        body.run_types ?? [],
-        body.mileage ?? 0,
-        body.mileage_cap ?? 400,
-        body.baseline_mi ?? 0,
-        userId,
-      ]
+      vals,
     );
     await bustBriefingCacheForEvent(userId, 'shoe_crud');
     return NextResponse.json({ ok: true, id: r.rows[0].id });
@@ -103,7 +148,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-const ALLOWED_PATCH = new Set(['brand', 'model', 'mileage', 'mileage_cap', 'baseline_mi', 'run_types', 'retired', 'preferred', 'color', 'color2', 'notes']);
+const ALLOWED_PATCH = new Set(['brand', 'model', 'mileage', 'mileage_cap', 'shoe_type', 'baseline_mi', 'run_types', 'retired', 'preferred', 'color', 'color2', 'notes']);
 
 export async function PATCH(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -111,6 +156,14 @@ export async function PATCH(req: NextRequest) {
   const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body?.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  // Same guard as POST. `null` is allowed and meaningful: it clears the
+  // category back to "nobody said", which reads as a daily trainer.
+  if (body.shoe_type != null && !isShoeType(body.shoe_type)) {
+    return NextResponse.json(
+      { error: `unknown shoe_type: ${body.shoe_type}`, allowed: SHOE_TYPES },
+      { status: 400 },
+    );
+  }
 
   const cols: string[] = [];
   const vals: any[] = [body.id, userId];

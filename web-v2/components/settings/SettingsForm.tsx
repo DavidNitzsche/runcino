@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import type { UserSettings } from '@/lib/coach/settings';
+import { PHONE_RUN_SETTING_COPY, type UserSettings } from '@/lib/coach/settings';
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle';
 
 const DOWS = [
@@ -57,6 +57,24 @@ export function SettingsForm({ initial }: { initial: UserSettings }) {
         } />
         <Row k="Push notifications" v={
           <Toggle on={s.push_enabled} onChange={(v) => patch('push_enabled', v)} />
+        } />
+      </Section>
+
+      <Section title="RUNS">
+        <Row k={PHONE_RUN_SETTING_COPY.label} v={
+          <Toggle
+            on={s.phone_run_enabled !== false}
+            onChange={(v) => patch('phone_run_enabled', v)}
+          />
+        } />
+        {/* The two limits, stated once, where the runner turns it on. Neither
+            is fixable from the app: recording is foreground-only (no
+            UIBackgroundModes location entry on the iPhone target) and the
+            phone has no HR sensor. */}
+        <Row k="" v={
+          <span style={{ color: 'var(--mute)', fontSize: 12, maxWidth: 340, display: 'block', textAlign: 'right' }}>
+            {PHONE_RUN_SETTING_COPY.help}
+          </span>
         } />
       </Section>
 

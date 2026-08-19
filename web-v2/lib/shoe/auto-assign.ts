@@ -22,6 +22,7 @@
 import { pool } from '@/lib/db/pool';
 import { matchShoeByGear } from './gear-match';
 import { computeShoeMileage } from './mileage';
+import { resolveShoeCapMi } from './lifespan';
 import { recommendShoe, planTypeToShoeType, type GarageShoe } from './recommend';
 
 export type ShoeAssignResult =
@@ -136,7 +137,14 @@ async function loadGarage(userUuid: string): Promise<GarageShoe[]> {
   const [rows, miles] = await Promise.all([
     pool.query(
       `SELECT id, brand, model, run_types,
-              COALESCE(mileage_cap, 400)::numeric AS cap,
+              mileage_cap::numeric AS cap,
+              -- shoe_type read via to_jsonb so this query works whether or
+              -- not migration 151 has been applied yet (it returns NULL for a
+              -- column that does not exist, and NULL reads as the default
+              -- category). Migrations here are applied by hand, so a query
+              -- naming the column directly would 500 every read between the
+              -- code deploy and the ALTER.
+              to_jsonb(shoes.*) ->> 'shoe_type' AS shoe_type,
               COALESCE(preferred, false) AS preferred,
               COALESCE(retired, false)  AS retired
          FROM shoes
@@ -153,7 +161,10 @@ async function loadGarage(userUuid: string): Promise<GarageShoe[]> {
     // Real tracked miles — NOT the stale stored column — so the
     // lowest-mileage tiebreak actually spreads wear.
     mileage: miles.get(Number(s.id)) ?? 0,
-    cap: s.cap == null ? null : Number(s.cap),
+    // ONE resolver for the retirement target (was `COALESCE(mileage_cap,
+    // 400)` in the SQL — one of five different defaults). Doctrine's band
+    // for the shoe's own category now stands in for a missing cap.
+    cap: resolveShoeCapMi(s.shoe_type, s.cap),
     preferred: s.preferred,
     retired: s.retired,
   }));

@@ -530,7 +530,10 @@ struct ProfileView: View {
                             name: s.name ?? [s.brand, s.model].compactMap { $0 }.joined(separator: " "),
                             roles: roleFor(s),
                             miles: s.mileage ?? 0,
-                            lifeMi: s.cap ?? 450,
+                            // loadProfileState already resolves `cap` through
+                            // lib/shoe/lifespan.ts, so this never needs a
+                            // second default. Was `?? 450`.
+                            lifeMi: s.cap ?? kShoeFallbackRetireMi,
                             retired: s.retired ?? false
                         ))
                     }

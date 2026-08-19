@@ -89,7 +89,9 @@ struct RunShoePickerSheet: View {
 
     private func roleColor(for shoe: RunDetailShoe) -> Color {
         if shoe.preferred == true { return Theme.Shoe.race }
-        if let mi = shoe.mileage, let cap = shoe.mileage_cap, cap > 0, mi / cap > 0.8 {
+        // See TodayPostRunBody.shoeRoleColor · one resolved target, not a
+        // raw cap that may never have been set.
+        if let mi = shoe.mileage, mi / shoe.retireAtMi > 0.8 {
             return Theme.Shoe.recovery
         }
         return Theme.Shoe.easy

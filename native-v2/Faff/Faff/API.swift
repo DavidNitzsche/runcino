@@ -1602,6 +1602,16 @@ struct UserSettings: Decodable {
     let available_days: [String]?
     let briefing_time: String?
     let push_enabled: Bool?
+    /// 2026-08-19 · "Start runs from this phone." THE single source of truth
+    /// for whether this phone offers to record a run. The RUN pill and every
+    /// start-a-run affordance read this one flag.
+    ///
+    /// Absent (nil) means an older backend that predates the field, NOT "off":
+    /// read it through `phoneRunEnabled`, which defaults to true so a stale
+    /// server can never hide the recorder from a runner who has no watch.
+    let phone_run_enabled: Bool?
+    /// nil-safe accessor · see `phone_run_enabled`.
+    var phoneRunEnabled: Bool { phone_run_enabled ?? true }
 }
 
 /// Subset of profile fields the iPhone settings sheet edits. The server
@@ -1907,9 +1917,13 @@ struct ProfileShoe: Decodable, Identifiable {
     let preferred: Bool?
     let retired: Bool?
     let runTypes: [String]?
+    /// Shoe category · one of lib/shoe/lifespan.ts ShoeType. `cap` is already
+    /// resolved against it server-side, so this is for labelling only.
+    let shoeType: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, brand, model, color, mileage, cap, pctUsed, preferred, retired, runTypes
+        case shoeType
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -1924,6 +1938,7 @@ struct ProfileShoe: Decodable, Identifiable {
         self.preferred = try c.decodeIfPresent(Bool.self, forKey: .preferred)
         self.retired = try c.decodeIfPresent(Bool.self, forKey: .retired)
         self.runTypes = try c.decodeIfPresent([String].self, forKey: .runTypes)
+        self.shoeType = try c.decodeIfPresent(String.self, forKey: .shoeType)
     }
 }
 

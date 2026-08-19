@@ -30,6 +30,12 @@ struct RunActionMenu: View {
     /// Accent color · current run's effort tint, lights the toast dot
     /// and the dock fill in the parent. Defaults to the design's orange.
     var accent: Color = Theme.race
+    /// 2026-08-19 · user_settings.phone_run_enabled — "Start runs from this
+    /// phone." False hides the whole START A RUN section (Outdoor AND
+    /// Treadmill: both are runs this phone starts and records) along with its
+    /// divider, leaving the niggle / activity rows. Defaults true so existing
+    /// call sites and previews compile and behave unchanged.
+    var showStartARun: Bool = true
     /// Tap handlers for the four action rows. Parent wires these to
     /// route pushes (Outdoor → WatchMirror if a Faff watch app is
     /// installed on a paired watch, else PhoneRunView — see
@@ -72,8 +78,10 @@ struct RunActionMenu: View {
 
     private var menuContent: some View {
         VStack(spacing: 0) {
-            startSection
-            divider
+            if showStartARun {
+                startSection
+                divider
+            }
             actionRow(
                 icon: "waveform.path.ecg",
                 label: "Log a niggle or sick day",

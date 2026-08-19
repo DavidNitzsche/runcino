@@ -208,7 +208,10 @@ struct TodayPostRunBody: View {
     private var shoeRoleColor: Color {
         guard let shoe = currentShoe else { return subtleText }
         if shoe.preferred == true { return Theme.Shoe.race }
-        if let mi = shoe.mileage, let cap = shoe.mileage_cap, cap > 0, mi / cap > 0.8 {
+        // Retirement target resolved server-side (Research/17 band for the
+        // shoe's category). Was `shoe.mileage_cap`, which silently skipped the
+        // near-retirement tint whenever no cap had been set.
+        if let mi = shoe.mileage, mi / shoe.retireAtMi > 0.8 {
             return Theme.Shoe.recovery
         }
         return Theme.Shoe.easy

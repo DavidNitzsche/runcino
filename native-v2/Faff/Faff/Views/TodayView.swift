@@ -2010,7 +2010,11 @@ struct TodayView: View {
                 model: ps.model,
                 color: ps.color,
                 mileage: ps.mileage,
+                // ps.cap is ALREADY resolved server-side by lib/shoe/lifespan.ts,
+                // so it is both the runner-set cap and the retirement target.
                 mileage_cap: ps.cap,
+                shoe_type: ps.shoeType,
+                retire_at_mi: ps.cap,
                 run_types: ps.runTypes,
                 baseline_mi: nil,
                 retired: ps.retired,
