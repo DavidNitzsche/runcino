@@ -40,29 +40,42 @@
  *       §10 (:355-361), §11 (:367-376).
  */
 
-export type RaceDistanceCategory = '5k' | '10k' | 'hm' | 'm' | 'ultra';
+import {
+  type DistanceCategory,
+  DISTANCE_CATEGORIES,
+  distanceCategoryOrNull,
+} from './distance-category';
+
+/**
+ * 2026-08-18 · categorizer unification. This module used to own its own type
+ * name AND its own boundaries, one of three sets in the app. Both are now
+ * aliases of THE categorizer in ./distance-category.ts.
+ */
+export type RaceDistanceCategory = DistanceCategory;
 
 /** Every category, in doctrine-table order. Tests iterate this. */
-export const RACE_DISTANCE_CATEGORIES: readonly RaceDistanceCategory[] =
-  ['5k', '10k', 'hm', 'm', 'ultra'] as const;
+export const RACE_DISTANCE_CATEGORIES: readonly RaceDistanceCategory[] = DISTANCE_CATEGORIES;
 
 /**
  * Bucket a race distance into the row of the doctrine tables.
  *
- * Boundaries sit between the named distances so decorated/odd distances
- * land on the row whose physiology they actually share: a 15K and a 10-mile
- * race are paced and fuelled as half-marathon-class efforts, a 20-miler as
- * marathon-class. Callers guard `distanceMi > 0`; a missing distance falls
- * to the codebase-canonical half (lib/race/distance.ts) rather than to the
- * cheapest row.
+ * Boundaries sit between the named doctrine distances so decorated/odd
+ * distances land on the row whose physiology they actually share: a 15K and a
+ * 10-mile race are paced and fuelled as half-marathon-class efforts, a
+ * 20-miler as marathon-class. See ./distance-category.ts for which boundaries
+ * doctrine fixes and which are convention.
+ *
+ * NULL when the distance is missing, non-finite or non-positive. This used to
+ * return 'hm' — a distance-unknown race then received the half's HR ceiling,
+ * warm-up, carb load and caffeine schedule, in the one module whose entire
+ * reason for existing is that reading the wrong distance's row wrecks races.
+ * lib/race/distance.ts states the codebase rule: "callers must treat null as
+ * no distance, never default it."
  */
-export function raceDistanceCategory(distanceMi: number | null | undefined): RaceDistanceCategory {
-  if (distanceMi == null || !Number.isFinite(distanceMi) || distanceMi <= 0) return 'hm';
-  if (distanceMi <= 4.4) return '5k';
-  if (distanceMi <= 8.0) return '10k';
-  if (distanceMi <= 15.0) return 'hm';
-  if (distanceMi <= 30.0) return 'm';
-  return 'ultra';
+export function raceDistanceCategory(
+  distanceMi: number | null | undefined,
+): RaceDistanceCategory | null {
+  return distanceCategoryOrNull(distanceMi);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -141,16 +154,19 @@ export const RACE_OPENING_ALLOWANCE: Readonly<Record<RaceDistanceCategory, Openi
   },
 };
 
-export function openingAllowance(distanceMi: number): OpeningAllowanceRow {
-  return RACE_OPENING_ALLOWANCE[raceDistanceCategory(distanceMi)];
+/** Null when the distance is unknown · there is no row to hand back. */
+export function openingAllowance(distanceMi: number | null | undefined): OpeningAllowanceRow | null {
+  const cat = raceDistanceCategory(distanceMi);
+  return cat == null ? null : RACE_OPENING_ALLOWANCE[cat];
 }
 
 /**
  * Seconds-per-mile over goal pace at a position in the race.
  * `atMi` is miles completed (0 = the gun, 1 = the mile-1 marker).
  */
-export function openingAllowanceAtMi(distanceMi: number, atMi: number): number {
+export function openingAllowanceAtMi(distanceMi: number | null | undefined, atMi: number): number | null {
   const row = openingAllowance(distanceMi);
+  if (row == null) return null;
   if (atMi < 1) return row.firstMileSPerMi;
   if (atMi < row.earlyThroughMi) return row.earlySPerMi;
   return 0;
@@ -189,9 +205,13 @@ export interface RaceOpeningPlan {
  * negative split; the resulting split sits inside the cited 1-2% band for
  * every distance, asserted in _race_doctrine.test.ts).
  */
-export function raceOpeningPlan(args: { goalSec: number; distanceMi: number }): RaceOpeningPlan {
+export function raceOpeningPlan(
+  args: { goalSec: number; distanceMi: number | null | undefined },
+): RaceOpeningPlan | null {
   const { goalSec, distanceMi } = args;
-  const row = openingAllowance(distanceMi);
+  const cat = raceDistanceCategory(distanceMi);
+  if (cat == null || distanceMi == null || !(goalSec > 0)) return null;
+  const row = RACE_OPENING_ALLOWANCE[cat];
   const goalPace = goalSec / distanceMi;
 
   const settleMi = Math.min(1, distanceMi);
@@ -202,7 +222,7 @@ export function raceOpeningPlan(args: { goalSec: number; distanceMi: number }): 
   const repayPerMi = giveBackSec / repayMi;
 
   return {
-    category: raceDistanceCategory(distanceMi),
+    category: cat,
     goalPaceSPerMi: goalPace,
     firstMileAllowanceSPerMi: row.firstMileSPerMi,
     earlyAllowanceSPerMi: row.earlySPerMi,
@@ -268,10 +288,15 @@ export interface RaceOpeningSegment {
  * flat goal pace from the gun while the phone's split card said settle:
  * two surfaces, one runner, opposite instructions on race morning.
  */
-export function raceOpeningSegments(args: { goalSec: number; distanceMi: number }): RaceOpeningSegment[] {
+export function raceOpeningSegments(
+  args: { goalSec: number; distanceMi: number | null | undefined },
+): RaceOpeningSegment[] {
   const { goalSec, distanceMi } = args;
-  if (!(goalSec > 0) || !(distanceMi > 0)) return [];
+  if (!(goalSec > 0) || distanceMi == null || !(distanceMi > 0)) return [];
   const plan = raceOpeningPlan(args);
+  // Distance outside every doctrine row → no segments. Consumers already treat
+  // an empty list as "no opening model", which is the honest answer.
+  if (plan == null) return [];
   const settleEnd = Math.min(1, distanceMi);
   const out: RaceOpeningSegment[] = [];
 
@@ -361,6 +386,7 @@ export function raceAbortHrBpm(args: {
   maxHr?: number | null;
 }): number | null {
   const cat = raceDistanceCategory(args.distanceMi);
+  if (cat == null) return null;
   if (args.lthr != null && args.lthr > 0) {
     return Math.round(args.lthr * RACE_HR_PCT_LTHR[cat][1]) + RACE_HR_TRIGGER_MARGIN_BPM;
   }
@@ -456,8 +482,10 @@ export const RACE_WARMUP: Readonly<Record<RaceDistanceCategory, WarmupProtocol>>
   },
 };
 
-export function raceWarmup(distanceMi: number): WarmupProtocol {
-  return RACE_WARMUP[raceDistanceCategory(distanceMi)];
+/** Null when the distance is unknown · there is no protocol to hand back. */
+export function raceWarmup(distanceMi: number | null | undefined): WarmupProtocol | null {
+  const cat = raceDistanceCategory(distanceMi);
+  return cat == null ? null : RACE_WARMUP[cat];
 }
 
 /** Minutes the stride block occupies · ~1 min per stride with recovery. */
@@ -504,8 +532,10 @@ export const RACE_CARB_LOAD: Readonly<Record<RaceDistanceCategory, CarbLoadRow>>
   'ultra': { gPerKgBand: [8, 12], hoursBand: [48, 72], needsLoad: true, citation: 'Research/08 §10.1 (:457)' },
 };
 
-export function raceCarbLoad(distanceMi: number): CarbLoadRow {
-  return RACE_CARB_LOAD[raceDistanceCategory(distanceMi)];
+/** Null when the distance is unknown · there is no load to prescribe. */
+export function raceCarbLoad(distanceMi: number | null | undefined): CarbLoadRow | null {
+  const cat = raceDistanceCategory(distanceMi);
+  return cat == null ? null : RACE_CARB_LOAD[cat];
 }
 
 /** Research/18 §10 (:355-361) — pre-race meal carbohydrate, g/kg, ~3 h out. */
@@ -578,8 +608,13 @@ export interface RaceCarbTarget {
  * duration row. `goalSec` optional — distance alone when the duration is
  * not known (e.g. sizing a training-run gut-rehearsal ramp).
  */
-export function raceCarbsPerHourTarget(distanceMi: number, goalSec?: number | null): RaceCarbTarget {
-  const row = RACE_CARB_G_PER_HR[raceDistanceCategory(distanceMi)];
+export function raceCarbsPerHourTarget(
+  distanceMi: number | null | undefined,
+  goalSec?: number | null,
+): RaceCarbTarget | null {
+  const cat = raceDistanceCategory(distanceMi);
+  if (cat == null) return null;
+  const row = RACE_CARB_G_PER_HR[cat];
   const floor = durationCarbFloorGPerHr(goalSec);
   const target = Math.max(row.targetGPerHr, floor);
   return {
@@ -589,6 +624,22 @@ export function raceCarbsPerHourTarget(distanceMi: number, goalSec?: number | nu
     citation: floor > row.targetGPerHr
       ? `${row.citation} + Research/18 §1 (:17-18) duration floor`
       : row.citation,
+  };
+}
+
+/**
+ * The honest fallback when the race distance is unknown: the §1 DURATION
+ * table alone, which needs no distance. Prescribing by duration is not a
+ * guess — it is the other half of the same doctrine. What it must never do is
+ * silently borrow a distance row, which is what the old 'hm' default did.
+ */
+export function durationOnlyCarbTarget(goalSec: number | null | undefined): RaceCarbTarget {
+  const rate = durationCarbFloorGPerHr(goalSec);
+  return {
+    targetGPerHr: rate,
+    bandGPerHr: [rate, rate],
+    isZero: rate <= 0,
+    citation: 'Research/18 §1 (:13-19) duration table · race distance unknown, no distance row applied',
   };
 }
 
@@ -617,7 +668,7 @@ export const ULTRA_CAFFEINE_INTERVAL_MIN = 60;
  * from the first hour for ultras; none for 5K/10K (pre-race only).
  */
 export function caffeineStopIndexes(args: {
-  distanceMi: number;
+  distanceMi: number | null | undefined;
   /** Mile position of each scheduled stop, in order. */
   stopsMi: number[];
   /** Elapsed minutes at each stop (same order, same length). */
@@ -625,7 +676,9 @@ export function caffeineStopIndexes(args: {
 }): Set<number> {
   const cat = raceDistanceCategory(args.distanceMi);
   const out = new Set<number>();
-  if (args.stopsMi.length === 0) return out;
+  // Distance unknown → no positional schedule to derive. Prescribe nothing
+  // rather than hand out the half's mid-race gel to an unknown event.
+  if (cat == null || args.stopsMi.length === 0) return out;
 
   if (cat === 'ultra') {
     const mins = args.stopsMin ?? [];
@@ -640,7 +693,7 @@ export function caffeineStopIndexes(args: {
   }
 
   for (const frac of RACE_CAFFEINE_FRACTIONS[cat]) {
-    const targetMi = frac * args.distanceMi;
+    const targetMi = frac * (args.distanceMi ?? 0);
     let best = -1;
     let bestGap = Infinity;
     args.stopsMi.forEach((mi, i) => {

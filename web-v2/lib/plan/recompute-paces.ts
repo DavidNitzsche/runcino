@@ -45,7 +45,7 @@ import {
 } from '@/lib/training/vdot';
 import { buildWorkoutSpec, tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
 import { preserveProgressionSql } from './progression-spec';
-import { distanceCategoryOf } from './goal-tiers';
+import { distanceCategoryOrNull } from './goal-tiers';
 import { paceBlendAnchorIsProvisional } from './anchor-provenance';
 
 /**
@@ -328,8 +328,10 @@ export async function recomputePacesForPlan(
   // Same I-pace eligibility rule persistPlan uses (R3 + PACE-I-1):
   // 5K/10K/HM goals carry true VO2max I-pace; marathon/ultra keep the
   // cruise default.
+  // 2026-08-18 · resolved through THE categorizer, which answers null for an
+  // unresolvable distance instead of bucketing 0 as a 5K.
   const goalIPaceEligible = raceDistanceMi != null
-    && ['5k', '10k', 'hm'].includes(distanceCategoryOf(raceDistanceMi));
+    && ['5k', '10k', 'hm'].includes(distanceCategoryOrNull(raceDistanceMi) ?? '');
   // PACE-E-1 · easy/long/recovery anchor tracks CURRENT fitness.
   const easyAnchorTSec = currentT;
 

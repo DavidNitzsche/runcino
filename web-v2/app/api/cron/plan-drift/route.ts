@@ -109,11 +109,11 @@ export async function POST(req: NextRequest) {
       // rebuild that picks race-prep mode. The runner has been in
       // maintenance possibly for months; now it's time to build.
       const maintenancePlan = (await pool.query<{
-        plan_id: string; race_id: string; race_date: string; race_dist_mi: string;
+        plan_id: string; race_id: string; race_date: string; race_meta: any;
       }>(
         `SELECT tp.id::text AS plan_id, tp.race_id::text AS race_id,
                 (rc.meta->>'date')::text AS race_date,
-                (rc.meta->>'distanceMi')::text AS race_dist_mi
+                rc.meta AS race_meta
            FROM training_plans tp
            JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
           WHERE tp.user_uuid = $1
@@ -124,14 +124,27 @@ export async function POST(req: NextRequest) {
       ).catch(() => ({ rows: [] }))).rows[0];
 
       if (maintenancePlan) {
-        const { BUILD_WINDOW_WEEKS } = await import('@/lib/plan/goal-tiers');
-        const { distanceCategoryOf } = await import('@/lib/plan/goal-tiers');
-        const dMi = Number(maintenancePlan.race_dist_mi);
-        const buildWindowDays = BUILD_WINDOW_WEEKS[distanceCategoryOf(dMi)] * 7;
+        const { BUILD_WINDOW_WEEKS, distanceCategoryOrNull } = await import('@/lib/plan/goal-tiers');
+        const { distanceMiOf } = await import('@/lib/plan/generate');
+        // 2026-08-18 · this read `Number(meta->>'distanceMi')`, and a legacy
+        // race row carrying only a distanceLabel gave `Number(null) === 0`,
+        // which the old categorizer bucketed as '5k' — a marathoner got a
+        // 10-week build window instead of 18 and lost eight weeks of build
+        // with no signal. Resolve through the same label-aware parser the
+        // generator uses, and when the distance still cannot be resolved,
+        // skip the transition rather than transition on a guess. The runner
+        // stays in maintenance and the race's own distance gets fixed.
+        const dMi = distanceMiOf(maintenancePlan.race_meta);
+        const cat = distanceCategoryOrNull(dMi);
+        const buildWindowDays = cat == null ? null : BUILD_WINDOW_WEEKS[cat] * 7;
+        if (buildWindowDays == null) {
+          console.warn('[plan-drift] maintenance→race-prep skipped · unresolvable race distance:',
+            maintenancePlan.race_id);
+        }
         const raceMs = new Date(maintenancePlan.race_date + 'T12:00:00Z').getTime();
         const nowMs = Date.now();
         const daysToRace = (raceMs - nowMs) / 86400000;
-        if (daysToRace > 0 && daysToRace <= buildWindowDays) {
+        if (buildWindowDays != null && daysToRace > 0 && daysToRace <= buildWindowDays) {
           // De-dupe within 24h
           const alreadyTransitioned = (await pool.query(
             `SELECT 1 FROM plan_proposals

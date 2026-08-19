@@ -15,7 +15,7 @@ import {
 import { raceCarbsPerHourTarget } from './distance-doctrine';
 
 /** The half's own on-course rate · Research/18 §11 (:371) 30-60 g/hr. */
-const HM_RATE = raceCarbsPerHourTarget(13.1, 5400).targetGPerHr;
+const HM_RATE = raceCarbsPerHourTarget(13.1, 5400)!.targetGPerHr;
 
 const AFC = {
   goalSec: 5400,

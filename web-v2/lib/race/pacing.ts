@@ -229,10 +229,12 @@ export function buildRacePacing(input: {
     // across each phase's span. A 5K phase opens ~+2 s/mi, a marathon's
     // ~+15. Renormalized afterward so Σ(mi·pace) is still exactly the goal.
     const opening = raceOpeningPlan({ goalSec, distanceMi });
+    // Distance outside every doctrine row → no opening arc to layer. The
+    // terrain-only paces still stand; they just get no settle/repay shaping.
     const arced = terrainPaced.map(({ p, pace }) => {
       const start = Math.max(0, p.start_mi!);
       const end = Math.min(distanceMi, p.end_mi!);
-      const adj = openingAdjustmentOverSpan(opening, start, end);
+      const adj = opening == null ? 0 : openingAdjustmentOverSpan(opening, start, end);
       const mid = ((p.start_mi! + p.end_mi!) / 2) / distanceMi;
       const pos = Math.min(1, Math.max(0, mid));
       return { p, pace: pace * (1 + adj / flatPace), pos };

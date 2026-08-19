@@ -50,7 +50,7 @@ describe('composeRaceDetailPacing · effective-target adoption', () => {
     // Research/18 §11 (:372) rate of 60-90 g/hr — not the old `hours × 1.7`
     // house formula (2026-08-17 doctrine audit). Default serving is 22 g.
     const hours = roundTargetSec(12120) / 3600;
-    const rate = raceCarbsPerHourTarget(MARATHON, roundTargetSec(12120)).targetGPerHr;
+    const rate = raceCarbsPerHourTarget(MARATHON, roundTargetSec(12120))!.targetGPerHr;
     expect(rate).toBeGreaterThanOrEqual(60);
     expect(pf.gels.length).toBe(Math.ceil((hours * rate) / 22));
     // Two caffeinated stops, at ~mi 13 and ~mi 20 (:372).
