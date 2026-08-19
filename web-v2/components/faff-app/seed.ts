@@ -903,9 +903,14 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
   // directive. The phase name alone is the load message · the calendar
   // tile + race-day countdown carry the "how far" framing without the
   // count-the-weeks feel that early-block week labels create.
+  // 2026-08-19 · onboarding QA · a runner with NO plan is not "in an active
+  // block", and saying so on their first morning is the same fabrication
+  // class as the hardcoded EASY 4.0 that was removed from the completion
+  // screen. `training.weeks` is the plan; no weeks, no block.
+  const hasAuthoredPlan = (training?.weeks?.length ?? 0) > 0;
   const phaseLabel = training?.currentPhase
     ? `${training.currentPhase} phase`
-    : 'In active block';
+    : hasAuthoredPlan ? 'In active block' : 'No plan yet';
 
   if (aRace) {
     const days = aRace.days;
@@ -2906,7 +2911,10 @@ export async function buildSeed(): Promise<FaffSeed> {
   const horizonNote = goalRace?.daysAway != null && goalRace.daysAway > 0 && goalRace.name
     ? ` · ${goalRace.daysAway}d to ${goalRace.name.split(' ').slice(0, 2).join(' ')}`
     : '';
-  const weekOf = `${glance?.phaseLabel ?? 'Active block'}${horizonNote}`;
+  // 2026-08-19 · onboarding QA · same rule as phaseLabel above: with no plan
+  // authored there is no block, so the header says so rather than asserting
+  // one. `training` is in scope here (line ~2326).
+  const weekOf = `${glance?.phaseLabel ?? ((training?.weeks?.length ?? 0) > 0 ? 'Active block' : 'No plan yet')}${horizonNote}`;
 
   // 2026-06-01 · honest baseline fix. adaptReadiness was setting
   // `readiness.baseline = health.hrv.baseline ?? 60` · the HRV

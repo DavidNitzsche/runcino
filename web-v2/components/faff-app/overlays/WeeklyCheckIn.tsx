@@ -56,8 +56,16 @@ export function WeeklyCheckIn({ open, onClose, seed }: { open: boolean; onClose:
     : (bars[bars.length - 3]?.mi ?? 0);
   const delta = Math.round((recapMi - priorMi) * 10) / 10;
 
-  const phaseFull = seed.goalRace?.phaseLabel ?? 'Active block';
-  const phaseTop = phaseFull.split(' · ')[0] ?? 'Active block';
+  // 2026-08-19 · onboarding QA · "ACTIVE BLOCK" was the fallback for a null
+  // goalRace, which is exactly the runner who has NO block: just-run mode
+  // and anyone who has not added a race or goal yet. season.weekDays is
+  // empty precisely when no plan was authored (seed.ts adaptSeason returns
+  // `weekDays: []` for `!training?.weeks?.length`), so it is the honest
+  // discriminator between "block, phase unknown" and "no block".
+  const hasAuthoredPlan = (seed.season?.weekDays?.length ?? 0) > 0;
+  const blockFallback = hasAuthoredPlan ? 'Active block' : 'No plan yet';
+  const phaseFull = seed.goalRace?.phaseLabel ?? blockFallback;
+  const phaseTop = phaseFull.split(' · ')[0] ?? blockFallback;
   const max = Math.max(1, ...days.map((d) => d.mi));
   const sessionsPlanned = days.filter((d) => d.type !== 'rest' && d.mi > 0).length;
   const sessionsDone = days.filter((d) => d.type !== 'rest' && d.done).length;

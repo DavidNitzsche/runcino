@@ -149,6 +149,31 @@ export function TodayView({
   // line in the post-race composition below.
   const { data: restPurpose } = useTodayPurpose(isRest && !d.done && !isCoachedBlank ? d.iso : undefined);
   const isPostRace = restPurpose?.type === 'post_race';
+  // 2026-08-19 · onboarding QA (five-mode end-to-end run) · THE RUNNER WITH
+  // NO PLAN AT ALL. `/api/onboarding/complete`'s "just run" branch authors
+  // NOTHING by design — "the runner lands on the empty TODAY (add a race or
+  // goal to start a plan)" in its own words. It did not. With no plan row for
+  // the day, `d.type` falls to 'rest' and the page handed them the full REST
+  // kit: the "Rest is training. Sleep, hydrate, mobilize." hero, a rest-day
+  // read that talks about letting "yesterday's run consolidate" (they have
+  // never run), a sleep target, a mobility block and a fuel line — a
+  // prescription for a day Faff never prescribed. Verified live on
+  // qa-justrun-20260819-1231@faff.run.
+  //
+  // This is the plan-less state that `lib/today/composition.ts` already
+  // names: `prescribed: 'none'` — "there is no plan row at all, which is the
+  // only case where the day has no work to lead with". Coached mode has had
+  // its own honest hero since 2026-06-10; this is the same treatment for the
+  // other way of having no prescription.
+  //
+  // Guarded so it can only fire when there is genuinely nothing: no plan row
+  // on ANY day of the visible week, and no planned mileage anywhere in the
+  // season. A runner whose block starts next Monday keeps the normal rest
+  // day — they do have a plan, it just has not opened yet.
+  const isPlanlessBlank =
+    !isCoachedBlank && !isPostRace && !d.done && isRest && !d.planWorkoutId
+    && !seed.week.some((x) => x.planWorkoutId)
+    && !(seed.season?.miles ?? []).some((m) => m > 0);
 
   /* ── deck Decision 1 · post-race week as a real Today state ──────────
      The race summary was fetched inside PostRaceTodayCard, which meant
@@ -431,6 +456,7 @@ export function TodayView({
                 copy swap only. */}
             <div className="htitle">
               {isCoachedBlank ? 'COACHED'
+                : isPlanlessBlank ? 'NO PLAN'
                 : isPostRace ? (restPurpose?.typeTitle ?? 'RACE DONE')
                 : workoutTypeTitle(d.type)}
             </div>
@@ -455,6 +481,8 @@ export function TodayView({
             ) : (
               <div className="rest-coach">{isCoachedBlank
                 ? 'Your coach owns the plan. Faff tracks the work. Runs land here from your watch or Strava.'
+                : isPlanlessBlank
+                ? 'Nothing prescribed. Add a race or a goal and Faff builds the block around it. Runs you log land here either way.'
                 : isPostRace && restPurpose
                 ? [restPurpose.verdict, ...restPurpose.facts].filter(Boolean).join(' ')
                 : KIT.rest.coach}</div>
@@ -536,8 +564,11 @@ export function TodayView({
               })()}
             </div>
           </div>
-          {/* Coached mode: no workout card · there is no Faff workout. */}
-          {!isCoachedBlank && (
+          {/* Coached mode: no workout card · there is no Faff workout.
+              2026-08-19 · same for the plan-less runner: there is no Faff
+              workout for them either, so there is nothing for the card to
+              describe. */}
+          {!isCoachedBlank && !isPlanlessBlank && (
             <WorkoutCard
               d={d}
               done={false}
