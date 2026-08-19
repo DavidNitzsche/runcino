@@ -95,6 +95,33 @@ function deriveLayout(prefs: RawPrefs, weeklyFrequency: number | null): DerivedL
 // ───────────────────────────────────────────────────────────────────────
 const START = '2026-01-05'; // a Monday
 
+/* ── STARTDOW-1 (2026-08-19) · the anchor weekday is an axis, not a constant ──
+ *
+ * This harness ran every one of its ~14k combos off a single Monday `START`,
+ * and `composePlan` skips `frontLoadFirstRun` entirely on a Monday anchor:
+ *
+ *     if (… new Date(input.startMondayISO …).getUTCDay() !== 1) frontLoadFirstRun(…)
+ *
+ * So invariant 8 — "every running day sits on a day the runner said they can
+ * run" — was never once evaluated against the code path that ONBOARDING
+ * actually takes. Onboarding is today-anchored: six days in seven it is not a
+ * Monday. `frontLoadFirstRun` never read `availableDows`, and the sweep could
+ * not see it by construction: a placement invariant tested on one start day is
+ * a placement invariant for one start day.
+ *
+ * Every start weekday of one week, so the anchor lands on each in turn. The
+ * race date is derived from the start, so the race weekday moves with it and
+ * the race-week branch is exercised on all seven too. */
+const STARTS: { name: string; iso: string }[] = [
+  { name: 'sun', iso: '2026-01-04' },
+  { name: 'mon', iso: START },
+  { name: 'tue', iso: '2026-01-06' },
+  { name: 'wed', iso: '2026-01-07' },
+  { name: 'thu', iso: '2026-01-08' },
+  { name: 'fri', iso: '2026-01-09' },
+  { name: 'sat', iso: '2026-01-10' },
+];
+
 interface Scenario {
   raceDistanceMi: number;
   goalSec: number | null;
@@ -104,9 +131,9 @@ interface Scenario {
   weeks: number; // runway in weeks → drives raceDateISO
 }
 
-function buildInput(layout: DerivedLayout, sc: Scenario): ComposePlanInput {
+function buildInput(layout: DerivedLayout, sc: Scenario, startISO: string = START): ComposePlanInput {
   const cat = distanceCategoryOrThrow(sc.raceDistanceMi);
-  const raceDay = new Date(START + 'T12:00:00Z');
+  const raceDay = new Date(startISO + 'T12:00:00Z');
   // race day = start + weeks*7 - 1 (Sunday-ish), mirrors generator-bench
   raceDay.setUTCDate(raceDay.getUTCDate() + sc.weeks * 7 - 1);
   const raceDateISO = raceDay.toISOString().slice(0, 10);
@@ -115,7 +142,7 @@ function buildInput(layout: DerivedLayout, sc: Scenario): ComposePlanInput {
     goalSec: sc.goalSec,
     goalPaceSec: sc.goalSec ? Math.round(sc.goalSec / sc.raceDistanceMi) : null,
     raceDateISO,
-    startMondayISO: START,
+    startMondayISO: startISO,
     level: sc.level,
     recentWeeklyMi: sc.recentWeeklyMi,
     easyDayMedianMi: Math.max(3, Math.round(sc.recentWeeklyMi / 5)),
@@ -231,9 +258,9 @@ function raceDowOf(input: ComposePlanInput): DOW {
 }
 
 /** Run composePlan on a derived layout + scenario, check every week. */
-function evalCase(layout: DerivedLayout, sc: Scenario): { fails: string[]; weeks: number } {
+function evalCase(layout: DerivedLayout, sc: Scenario, startISO: string = START): { fails: string[]; weeks: number } {
   try {
-    const input = buildInput(layout, sc);
+    const input = buildInput(layout, sc, startISO);
     const res = composePlan(input);
     const raceDow = raceDowOf(input);
     const fails: string[] = [];
@@ -309,23 +336,35 @@ describe('DAY PLACEMENT & AVAILABILITY · exhaustive sweep (inv 8, 9, 2)', () =>
     ...QUADS.map((q) => ({ name: `quad-${q.join('')}`, days: q })),
   ];
 
-  it('sweeps availableDows × freq × longDay × scenarios with zero placement violations', () => {
+  // STARTDOW-1 · the axis is only an axis if it actually covers seven weekdays.
+  // A typo'd ISO date would silently sweep Monday twice and re-open the blind
+  // spot this whole change exists to close.
+  it('STARTDOW-1 · the start set covers every weekday exactly once', () => {
+    const dows = STARTS.map((s) => new Date(s.iso + 'T12:00:00Z').getUTCDay());
+    expect([...dows].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(STARTS.map((s) => s.name)).toEqual(
+      dows.map((d) => ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][d]));
+  });
+
+  it('sweeps start-weekday × availableDows × freq × longDay × scenarios with zero placement violations', () => {
+    for (const st of STARTS) {
     for (const av of availSets) {
       for (const freq of FREQS) {
         for (const longDay of LONG_DAYS) {
           for (const { name: scn, sc } of SCENARIOS) {
             const prefs = prefsWithAvail(longDay, av.days);
             const layout = deriveLayout(prefs, freq);
-            const { fails } = evalCase(layout, sc);
+            const { fails } = evalCase(layout, sc, st.iso);
             comboCount++;
             if (fails.length > 0) {
-              const combo = `avail=${av.name} freq=${freq} long=${longDay} sc=${scn} ` +
+              const combo = `start=${st.name} avail=${av.name} freq=${freq} long=${longDay} sc=${scn} ` +
                 `→derived{long=${layout.longRunDow},rest=${layout.restDow},q=[${layout.qualityDows.join(',')}],tdpw=${layout.trainingDaysPerWeek},avail=${layout.availableDows ? '{' + [...layout.availableDows].sort().join(',') + '}' : 'null'}}`;
               allViolations.push({ combo, fails });
             }
           }
         }
       }
+    }
     }
 
     // Emit a compact report to stdout for the harness reader.
@@ -358,7 +397,9 @@ describe('DAY PLACEMENT & AVAILABILITY · exhaustive sweep (inv 8, 9, 2)', () =>
       combos: comboCount,
       violatingCombos: 0,
     });
-  });
+    // STARTDOW-1 · the start weekday multiplied the matrix by seven; the
+    // default 5 s per-test budget is no longer enough for it.
+  }, 180_000);
 
   // ─── LOCALIZATION GUARD (PASSES) ──────────────────────────────────────
   // Proves the defect is confined to the final/race week: NO build week (any
@@ -366,31 +407,77 @@ describe('DAY PLACEMENT & AVAILABILITY · exhaustive sweep (inv 8, 9, 2)', () =>
   // sweep. This is the load-bearing finding — the standard layoutWeek path is
   // correct; only the race-week branch (generate.ts layoutWeek lines ~837-897)
   // ignores availableDows and can't trim protected race-week touches.
+  //
+  // STARTDOW-1 · this one carried the D1 defect in the sharpest form. Week 0 is
+  // a BUILD week, and `frontLoadFirstRun` only ever touches week 0 — so the
+  // guard that claims "no build week ever misplaces a run" was, on a Monday
+  // anchor, asserting it about a function that had not run.
   it('NO non-race (build) week ever violates inv 8/9/2 across the full sweep', () => {
     const buildWeekViolations: string[] = [];
+    for (const st of STARTS) {
     for (const av of availSets) {
       for (const freq of FREQS) {
         for (const longDay of LONG_DAYS) {
           for (const { name: scn, sc } of SCENARIOS) {
             const layout = deriveLayout(prefsWithAvail(longDay, av.days), freq);
             try {
-              const input = buildInput(layout, sc);
+              const input = buildInput(layout, sc, st.iso);
               const res = composePlan(input);
               const raceDow = raceDowOf(input);
               res.weeks.forEach((w, i) => {
                 if (w.isRaceWeek) return; // race-week handled separately
-                const wkLabel = `${av.name}/freq${freq}/long${longDay}/${scn} wk${i + 1}[${w.phase}]`;
+                const wkLabel = `start${st.name}/${av.name}/freq${freq}/long${longDay}/${scn} wk${i + 1}[${w.phase}]`;
                 buildWeekViolations.push(...checkWeek(w as any, wkLabel, layout, null));
                 void raceDow;
               });
             } catch (e: any) {
-              buildWeekViolations.push(`${av.name}/freq${freq}/long${longDay}/${scn}: THREW ${e?.message}`);
+              buildWeekViolations.push(`start${st.name}/${av.name}/freq${freq}/long${longDay}/${scn}: THREW ${e?.message}`);
             }
           }
         }
       }
     }
+    }
     expect(buildWeekViolations).toEqual([]);
+  }, 180_000);
+
+  // ─── FRONTLOAD-AVAIL-1 regression guard (live defect, fixed 2026-08-19) ─
+  //
+  // The named case, kept separate from the sweep so the failure message says
+  // what broke rather than "one of 100k combos". A runner who can run Tue /
+  // Thu / Sat and signs up on a Wednesday: "get them running on day one" must
+  // not answer that by prescribing Wednesday. It may start them Thursday, or
+  // not at all — never on a day they excluded.
+  //
+  // Live account this came off: qa-beginner-20260819-1231@faff.run, whose week
+  // 0 carried `2026-08-19 dow3 easy 1.0mi` against available_days
+  // ["tue","thu","sat"].
+  it('FRONTLOAD-AVAIL-1 · a mid-week start never seats the first run on an excluded day', () => {
+    const avail: DOW[] = [2, 4, 6]; // tue / thu / sat
+    for (const st of STARTS) {
+      for (const freq of [2, 3, 4]) {
+        for (const { name: scn, sc } of SCENARIOS) {
+          const layout = deriveLayout(prefsWithAvail(6, avail), freq);
+          const input = buildInput(layout, sc, st.iso);
+          const wk0 = composePlan(input).weeks[0];
+          const offenders = wk0.days
+            .filter((d) => d.distanceMi > 0 && !avail.includes(d.dow as DOW))
+            .map((d) => `start=${st.name} freq=${freq} ${scn}: wk0 dow${d.dow} ${d.type} ${d.distanceMi}mi`);
+          expect(offenders).toEqual([]);
+        }
+      }
+    }
+  });
+
+  // The other half of the same rule: the front-load must still FIRE when the
+  // anchor day IS available, or the fix would have been "disable the feature".
+  it('FRONTLOAD-AVAIL-1 · the front-load still runs when the anchor day is available', () => {
+    // Anchor Wed (dow 3) and make Wed available. Week 0 must open with a run on
+    // the anchor itself, not several rest days.
+    const layout = deriveLayout(prefsWithAvail(0, [0, 1, 2, 3, 4, 5, 6]), 5);
+    const wk0 = composePlan(buildInput(layout, SCENARIOS[1].sc, '2026-01-07')).weeks[0];
+    const anchor = wk0.days.find((d) => d.dow === 3);
+    expect(anchor?.distanceMi ?? 0).toBeGreaterThan(0);
   });
 
   // ─── PLACE-A regression guard (was a live defect, fixed 2026-06-21) ────
@@ -399,10 +486,13 @@ describe('DAY PLACEMENT & AVAILABILITY · exhaustive sweep (inv 8, 9, 2)', () =>
   // lands off-availability (the race day is the sole exemption). tdpw=3 keeps
   // this pure availability (not entangled with the freq cap).
   it('PLACE-A · race week keeps every touch on an available day (only-weekends)', () => {
-    const layout = deriveLayout(prefsWithAvail(0, [0, 6]), 3);
-    const { fails } = evalCase(layout, SCENARIOS[1].sc); // HM, race Sunday
-    const unavail = fails.filter((s) => s.includes('UNAVAILABLE'));
-    expect(unavail).toEqual([]);
+    // STARTDOW-1 · every anchor weekday, so the race day moves too.
+    for (const st of STARTS) {
+      const layout = deriveLayout(prefsWithAvail(0, [0, 6]), 3);
+      const { fails } = evalCase(layout, SCENARIOS[1].sc, st.iso); // HM
+      const unavail = fails.filter((s) => s.includes('UNAVAILABLE'));
+      expect(unavail, `start=${st.name}`).toEqual([]);
+    }
   });
 
   // ─── PLACE-B regression guard (was a live defect, fixed 2026-06-21) ────
@@ -410,29 +500,35 @@ describe('DAY PLACEMENT & AVAILABILITY · exhaustive sweep (inv 8, 9, 2)', () =>
   // freq trim now drops easy → tune-up → shakeout (race always stays), so
   // freq 1 → race only, freq 2 → race + shakeout.
   it('PLACE-B · freq 1 and 2 race weeks respect the running-day cap', () => {
-    for (const freq of [1, 2]) {
-      const layout = deriveLayout(prefsWithAvail(0, null), freq);
-      const { fails } = evalCase(layout, SCENARIOS[1].sc);
-      const capBreaks = fails.filter((s) => s.includes('run days >'));
-      expect(capBreaks).toEqual([]);
+    for (const st of STARTS) {
+      for (const freq of [1, 2]) {
+        const layout = deriveLayout(prefsWithAvail(0, null), freq);
+        const { fails } = evalCase(layout, SCENARIOS[1].sc, st.iso);
+        const capBreaks = fails.filter((s) => s.includes('run days >'));
+        expect(capBreaks, `start=${st.name} freq=${freq}`).toEqual([]);
+      }
     }
   });
 
   // freq=0 maps to tdpw=3 (gentle couch-to-X floor) → exactly at the 3-touch
   // race-week minimum, so it does NOT overflow. Guards the boundary.
   it('freq=0 (→tdpw 3) does NOT overflow the race week (inv 9 boundary)', () => {
-    const layout = deriveLayout(prefsWithAvail(0, null), 0);
-    const { fails } = evalCase(layout, SCENARIOS[1].sc);
-    expect(fails.filter((s) => s.includes('run days >'))).toEqual([]);
+    for (const st of STARTS) {
+      const layout = deriveLayout(prefsWithAvail(0, null), 0);
+      const { fails } = evalCase(layout, SCENARIOS[1].sc, st.iso);
+      expect(fails.filter((s) => s.includes('run days >')), `start=${st.name}`).toEqual([]);
+    }
   });
 
   // ─── inv 2 holds everywhere, including race week, for every freq ───────
   it('every week is exactly 7 contiguous days for every freq (inv 2)', () => {
     const seen: string[] = [];
-    for (const freq of FREQS) {
-      const layout = deriveLayout(prefsWithAvail(0, [1, 3, 5]), freq);
-      const { fails } = evalCase(layout, SCENARIOS[1].sc);
-      seen.push(...fails.filter((s) => s.includes('day-rows') || s.includes('distinct DOWs') || s.includes('missing DOW')));
+    for (const st of STARTS) {
+      for (const freq of FREQS) {
+        const layout = deriveLayout(prefsWithAvail(0, [1, 3, 5]), freq);
+        const { fails } = evalCase(layout, SCENARIOS[1].sc, st.iso);
+        seen.push(...fails.filter((s) => s.includes('day-rows') || s.includes('distinct DOWs') || s.includes('missing DOW')));
+      }
     }
     expect(seen).toEqual([]);
   });

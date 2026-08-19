@@ -276,6 +276,11 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     }
     const nonRace: ComposeNonRaceInput = {
       startMondayISO, level, recentWeeklyMi, recentLongMi, recentPeakWeeklyMi: recentWeeklyMi,
+      // MAINT-NOBLOCK-1 · the simulator mirrors ONBOARDING, where there are no
+      // logged runs at all — so the measured peak is 0 and the maintenance
+      // block holds the runner's stated volume rather than cutting it by 30%
+      // toward a completed block they do not have.
+      measuredPeakWeeklyMi: 0,
       easyDayMedianMi, longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
       tier, nextRace, lastRaceFinished, rxQuality, tPaceSec, lthr: sim.lthr ?? null,
     };

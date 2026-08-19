@@ -6277,6 +6277,141 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  /* ── MAINT-NOBLOCK-1 (2026-08-19) · the other half of DOCTRINE-MAINTFREQ-1 ─
+   *
+   * That ruling decided §6 Base Building governs this mode rather than §7
+   * Maintenance, and re-pointed FREQUENCY to §6 while leaving VOLUME on §7.
+   * The half that was left behind is what authored a day-one runner reporting
+   * 20-25 mi/wk a 10 mi/wk block with four rest days: §7's fraction is a
+   * fraction OF "last cycle's peak", and a runner on their first day in the app
+   * has no last cycle. The number being cut by 30% was their current volume.
+   */
+  {
+    id: 'MAINTENANCE.no-last-cycle-holds-durable-volume',
+    binds: ['lib/plan/generate.ts#BASE_BUILD_SUSTAINABLE_PCT'],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 6. Base Building / Off-Season Plan',
+    claim:
+      'A runner with no completed block behind them has no "last cycle\'s peak" for §7\'s ' +
+      'fraction to be a fraction of. §6 names the substitute in its own Peak weekly volume ' +
+      'row — "or whatever level the runner can sustain durably" — so the anchor becomes the ' +
+      'volume the runner actually sustains and the block holds it. The engine\'s ' +
+      'BASE_BUILD_SUSTAINABLE_PCT must sit inside §6\'s published band, and must be strictly ' +
+      'above every §7 maintenance fraction: cutting a runner who was never at a peak is the ' +
+      'defect this binds against, and anything past the top of §6\'s band would be a ramp ' +
+      'this mode is not allowed to author.',
+    check({ cite }) {
+      const cell = cite.table().cell('Peak weekly volume', 'Value');
+      if (!/sustain durably/i.test(cell)) {
+        throw new Error(
+          'Research/22 §6 no longer offers "whatever level the runner can sustain durably" as ' +
+            'the anchor for a runner with no last cycle · re-read §6 and re-derive this claim',
+        );
+      }
+      // "80-100% of last cycle's peak (or whatever level the runner can sustain durably)"
+      const band = parseBand(cell);
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      const pct = Number(
+        matchLiteral(
+          src,
+          /const BASE_BUILD_SUSTAINABLE_PCT = (\d*\.?\d+);/,
+          'BASE_BUILD_SUSTAINABLE_PCT',
+        )[1],
+      );
+      if (pct * 100 < band[0]) {
+        throw new Error(
+          `BASE_BUILD_SUSTAINABLE_PCT = ${pct} is under Research/22 §6's base-building floor ` +
+            `(${band[0]}%)`,
+        );
+      }
+      atMost(pct * 100, band[1], 'BASE_BUILD_SUSTAINABLE_PCT');
+      const maintCeiling = Math.max(...TIERS.map((t) => MAINTENANCE_BY_TIER[t].weeklyPctOfPeak));
+      if (!(pct > maintCeiling)) {
+        throw new Error(
+          `BASE_BUILD_SUSTAINABLE_PCT = ${pct} does not exceed the highest §7 maintenance ` +
+            `fraction (${maintCeiling}) · a runner with no completed block is still being cut ` +
+            'toward a peak they never had',
+        );
+      }
+      // And the composer must still be able to TELL the two runners apart. The
+      // discriminator is the measured peak, not the max that erases it.
+      if (!/const hasCompletedBlockPeak = /.test(src)) {
+        throw new Error(
+          'composeMaintenancePlan no longer distinguishes a completed block from a day-one ' +
+            'runner · every runner is back on one fraction',
+        );
+      }
+    },
+  },
+
+  /* ── ZEROSAY-1 (2026-08-19) · the ladder that made §8 unreachable ──────────
+   *
+   * COLDSTART.couch-to-5k-opening below asserts the engine opens a no-history
+   * plan on §8's three numbers, and it passed — while no runner could reach it.
+   * The onboarding deck's lowest history answers resolved to 3 mi/wk and a 2 mi
+   * longest run, so `noVolumeSignal` was false for a runner who had never run,
+   * and they were handed the ordinary maintenance arithmetic instead: one
+   * two-mile run a week. A green engine test over an unreachable branch is the
+   * gap this claim closes.
+   */
+  {
+    id: 'COLDSTART.reachable-from-onboarding',
+    binds: [
+      'lib/onboarding/state.ts#HIST_AVG_MIDPOINTS',
+      'lib/onboarding/state.ts#HIST_LONG_MIDPOINTS',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 8. Couch-to-5K Progression',
+    claim:
+      '§8 is written for "sedentary individuals", and the engine reaches it only through ' +
+      'noVolumeSignal, which requires BOTH reported history numbers to be zero. The front ' +
+      'door therefore has to be able to say zero on both history ladders — a range whose ' +
+      'lowest rung resolves to a non-zero midpoint cannot describe a runner who does not run, ' +
+      'and asserting three miles a week on their behalf is the same fabrication as any other. ' +
+      'Both midpoint tables must carry a genuine zero, both onboarding decks must offer it, ' +
+      'and the trigger must keep reading both numbers.',
+    check({ cite }) {
+      if (!/sedentary/i.test(cite.text())) {
+        throw new Error(
+          'Research/22 §8 no longer describes the sedentary starter · re-read it before ' +
+            'deciding what the deck\'s bottom rung means',
+        );
+      }
+      const zero = (table: Record<string, number>, name: string) => {
+        const min = Math.min(...Object.values(table));
+        if (min !== 0) {
+          throw new Error(
+            `${name}'s lowest value is ${min}, not 0 · a runner who has never run cannot say ` +
+              'so, and Research/22 §8 is unreachable from onboarding',
+          );
+        }
+      };
+      zero(HIST_AVG_MIDPOINTS, 'HIST_AVG_MIDPOINTS');
+      zero(HIST_LONG_MIDPOINTS, 'HIST_LONG_MIDPOINTS');
+      // The trigger reads BOTH numbers, so a zero on one ladder alone does not
+      // reach §8 — which is why the decks set the pair together.
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/const noVolumeSignal = !\(peakAnchor > 0\) && !\(input\.recentLongMi > 0\);/.test(gen)) {
+        throw new Error(
+          'the cold-start trigger no longer reads both reported numbers · re-derive which ' +
+            'answers on the deck have to be zero for it to fire',
+        );
+      }
+      for (const deck of [
+        'web-v2/components/onboarding/Step1bGoalDetails.tsx',
+        'web-v2/components/redesign/onboarding/Step1bGoalDetailsRedesign.tsx',
+      ]) {
+        const src = sourceOf(deck);
+        if ((src.match(/value: '0',/g) ?? []).length < 2) {
+          throw new Error(
+            `${deck} does not offer a zero rung on both history ladders · the engine's ` +
+              'sedentary-starter branch is unreachable from this deck',
+          );
+        }
+      }
+    },
+  },
+
   {
     id: 'TAPER.race-week-easy-duration',
     binds: ['lib/plan/generate.ts#composeRaceWeek.easyMinutes'],

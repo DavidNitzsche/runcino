@@ -100,8 +100,9 @@ const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
 const VALID_WEEKLY_MI = new Set<WeeklyMileage>([0, 5, 15, 25, 35, 45, 55, 65, 75, 85, 95]);
 const VALID_FREQ = new Set<WeeklyFrequency>([0, 1, 2, 3, 4, 5, 6]);
 const VALID_EXPERIENCE = new Set<string>(['beginner', 'intermediate', 'advanced', 'advanced_plus']);
-const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+', '45+', '45-60', '60-80', '80+']);
-const VALID_HIST_LONG = new Set<HistLong>(['0-3', '3-6', '6-10', '10+', '10-16', '16-22', '22+']);
+// ZEROSAY-1 (2026-08-19) · '0' on both ladders · see lib/onboarding/state.ts.
+const VALID_HIST_AVG = new Set<HistAvg>(['0', '0-5', '5-15', '15-25', '25-35', '35+', '45+', '45-60', '60-80', '80+']);
+const VALID_HIST_LONG = new Set<HistLong>(['0', '0-3', '3-6', '6-10', '10+', '10-16', '16-22', '22+']);
 const VALID_HIST_YEARS = new Set<HistYears>(['<1', '1-3', '3-7', '7+']);
 const VALID_RACE_HIST_DISTANCES = new Set<RaceHistoryDistance>(['5k', '10k', 'half', 'marathon', 'other']);
 const VALID_RACE_HIST_WHEN = new Set<RaceHistoryWhen>(['<6mo', '6-12mo', '1-2yr', '2+yr']);
@@ -225,13 +226,27 @@ export async function POST(req: NextRequest) {
   // web signup would fall to the intermediate default → ±20mi/wk mis-tier vs native. Derive it from
   // the years-running + mileage the web deck DOES capture: <1yr or sub-15mpw → beginner; experienced
   // (3-7/7+yr) AND 35+mpw → advanced; else intermediate. Native (sends experienceLevel) is unaffected.
-  const experienceLevel = experienceLevelRaw ?? (
-    (histYears === '<1' || histAvg === '0-5' || histAvg === '5-15') ? 'beginner'
+  // CAP-2-NULL (2026-08-19) · the `: 'intermediate'` fallthrough below is a
+  // DEFAULT for a runner whose answers reached neither beginner nor advanced.
+  // It was also
+  // catching the runner who answered NOTHING: coached onboarding deliberately
+  // posts no volume and no history (see the coached branch below), so every
+  // coached runner was stamped `experience_level: 'intermediate'` off an empty
+  // form. `qa-coached-…` carries it today with nothing behind it. Harmless
+  // while Faff authors them no plan, and load-bearing the moment they switch
+  // modes — a tier is a ±20 mi/wk claim. With no evidence, write no tier:
+  // `experience_level` is nullable, both statements below pass it straight
+  // through, and the UPDATE's COALESCE keeps any value the runner set earlier.
+  const hasExperienceEvidence = histYears != null || histAvg != null
+    || histLong != null || weeklyMi != null;
+  const experienceLevel: string | null = experienceLevelRaw ?? (!hasExperienceEvidence ? null : (
+    // ZEROSAY-1 · '0' is below '0-5', so it is beginner by the same rule.
+    (histYears === '<1' || histAvg === '0' || histAvg === '0-5' || histAvg === '5-15') ? 'beginner'
     : ((histYears === '3-7' || histYears === '7+')
         && (histAvg === '35+' || histAvg === '45+'
             || histAvg === '45-60' || histAvg === '60-80' || histAvg === '80+')) ? 'advanced'
     : 'intermediate'
-  );
+  ));
 
   // 2026-06-03 · race history capture (TASK B4). Accepted on EITHER
   // path · first-race runners on either race or no-race path drive

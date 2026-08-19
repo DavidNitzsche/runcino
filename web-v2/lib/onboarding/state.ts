@@ -51,9 +51,18 @@ export type WeeklyFrequency = 0 | 1 | 2 | 3 | 4 | 5 | 6;
  *  floor, so every runner from 45 to 200 mi/wk was authored the same plan off
  *  the same fabricated fitness. The three rungs above it are the sub-elite and
  *  elite rows of `Research/00a` §"Volume table". `'45+'` is retained: it is
- *  persisted on live profiles and in URLs already issued. */
+ *  persisted on live profiles and in URLs already issued.
+ *
+ *  ZEROSAY-1 (2026-08-19) · `'0'` is new, and it is the OTHER end of the same
+ *  defect HIGHVOL-1 fixed at the top of the ladder. `'0-5'` claimed to contain
+ *  zero and resolved to a midpoint of 3, so a runner who has never run could
+ *  not say so: the engine saw 3 mi/wk, `noVolumeSignal` was false, and the
+ *  Couch-to-5K opening `Research/22` §8 is written for was unreachable from the
+ *  front door. `'0-5'` keeps its value and its midpoint — the band is honest
+ *  for "some, under five" — and now reads "<5" so it no longer promises a zero
+ *  it cannot carry. */
 export type HistAvg =
-  | '0-5' | '5-15' | '15-25' | '25-35' | '35+' | '45+'
+  | '0' | '0-5' | '5-15' | '15-25' | '25-35' | '35+' | '45+'
   | '45-60' | '60-80' | '80+';
 
 /** Longest-recent-run history chip values.
@@ -61,8 +70,12 @@ export type HistAvg =
  *  HIGHVOL-1 · `'10+'` (midpoint 12) was the ceiling. That value is the long-run
  *  ramp's anchor, and the anchor is the 110%-of-prior-30d spike guard, so a
  *  runner whose real long is 20 mi was held to a 13 mi week-1 long with no way
- *  to say otherwise. `'10+'` is retained for rows and URLs already issued. */
-export type HistLong = '0-3' | '3-6' | '6-10' | '10+' | '10-16' | '16-22' | '22+';
+ *  to say otherwise. `'10+'` is retained for rows and URLs already issued.
+ *
+ *  ZEROSAY-1 · `'0'`, for the same reason as HistAvg. `noVolumeSignal` reads
+ *  BOTH numbers, so a zero weekly with a 2 mi longest is still a volume signal
+ *  and the ladder still cannot fire; the deck sets the pair together. */
+export type HistLong = '0' | '0-3' | '3-6' | '6-10' | '10+' | '10-16' | '16-22' | '22+';
 
 /** Years-running history chip values. */
 export type HistYears = '<1' | '1-3' | '3-7' | '7+';
@@ -154,8 +167,8 @@ const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
  *  start cannot know. See `VOLUME.onboarding-ladder-reaches-doctrine`. */
 export const VALID_WEEKLY_MI = new Set<WeeklyMileage>([0, 5, 15, 25, 35, 45, 55, 65, 75, 85, 95]);
 const VALID_FREQ = new Set<WeeklyFrequency>([0, 1, 2, 3, 4, 5, 6]);
-const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+', '45+', '45-60', '60-80', '80+']);
-const VALID_HIST_LONG = new Set<HistLong>(['0-3', '3-6', '6-10', '10+', '10-16', '16-22', '22+']);
+const VALID_HIST_AVG = new Set<HistAvg>(['0', '0-5', '5-15', '15-25', '25-35', '35+', '45+', '45-60', '60-80', '80+']);
+const VALID_HIST_LONG = new Set<HistLong>(['0', '0-3', '3-6', '6-10', '10+', '10-16', '16-22', '22+']);
 const VALID_HIST_YEARS = new Set<HistYears>(['<1', '1-3', '3-7', '7+']);
 
 /**
@@ -447,6 +460,9 @@ export const TT_TIME_LADDERS: Record<TTDistance, string[]> = {
 /** Midpoint mileage values for the history-avg chip — used when piping
  *  the runner-reported number into the plan-builder as a baseline. */
 export const HIST_AVG_MIDPOINTS: Record<HistAvg, number> = {
+  // ZEROSAY-1 · not a midpoint. The runner said they do not run yet, and zero
+  // is the number that says so. It is what makes `noVolumeSignal` reachable.
+  '0': 0,
   '0-5': 3,
   '5-15': 10,
   '15-25': 20,
@@ -463,6 +479,7 @@ export const HIST_AVG_MIDPOINTS: Record<HistAvg, number> = {
 
 /** Midpoint mileage values for the longest-recent-run chip. */
 export const HIST_LONG_MIDPOINTS: Record<HistLong, number> = {
+  '0': 0,   // ZEROSAY-1 · see HIST_AVG_MIDPOINTS['0'].
   '0-3': 2,
   '3-6': 5,
   '6-10': 8,

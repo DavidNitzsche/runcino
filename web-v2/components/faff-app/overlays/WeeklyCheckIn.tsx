@@ -113,7 +113,7 @@ export function WeeklyCheckIn({ open, onClose, seed }: { open: boolean; onClose:
         </div>
         <div className="wc-body">
           <div className="wc-tag">{phaseTop.toUpperCase()}</div>
-          <div className="wc-h">{deltaHeadline(delta)}</div>
+          <div className="wc-h">{deltaHeadline(delta, recapMi, priorMi)}</div>
           <div className="wc-sub">{rangeLabel}</div>
           <div className="wc-stats">
             <div><div className="v">{recapMi}<small> mi</small></div><div className="k">MILES</div></div>
@@ -166,7 +166,12 @@ export function WeeklyCheckIn({ open, onClose, seed }: { open: boolean; onClose:
   );
 }
 
-function deltaHeadline(delta: number): React.ReactNode {
+function deltaHeadline(delta: number, recapMi: number, priorMi: number): React.ReactNode {
+  // 2026-08-19 · onboarding QA D8 · a zero delta between two empty weeks is not
+  // a held line. "Held the line." implies a streak that was maintained, and it
+  // was rendering under NO PLAN YET for a runner who has never logged a mile.
+  // Both weeks empty is the one case where the delta says nothing at all.
+  if (recapMi === 0 && priorMi === 0) return <>Nothing logged yet.</>;
   if (delta > 5) return <>Pushed the load.</>;
   if (delta > 0) return <>Steady gain.</>;
   if (delta === 0) return <>Held the line.</>;

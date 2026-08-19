@@ -75,7 +75,12 @@ const WEEKLY_MI_CHIPS: { value: WeeklyMileage; label: string }[] = [
 const FREQ_CHIPS: WeeklyFrequency[] = [0, 1, 2, 3, 4, 5, 6];
 
 const HIST_AVG_CHIPS: { value: HistAvg; label: string }[] = [
-  { value: '0-5',   label: '0-5' },
+  // ZEROSAY-1 (2026-08-19) · the ladder had no bottom. '0-5' claimed to contain
+  // zero and resolved to 3, so a runner who has never run could not say so and
+  // the Couch-to-5K opening was unreachable from onboarding. See
+  // lib/onboarding/state.ts § HistAvg.
+  { value: '0',     label: 'NONE' },
+  { value: '0-5',   label: '<5' },
   { value: '5-15',  label: '5-15' },
   { value: '15-25', label: '15-25' },
   { value: '25-35', label: '25-35' },
@@ -86,7 +91,8 @@ const HIST_AVG_CHIPS: { value: HistAvg; label: string }[] = [
 ];
 
 const HIST_LONG_CHIPS: { value: HistLong; label: string }[] = [
-  { value: '0-3',  label: '0-3' },
+  { value: '0',    label: 'NONE' },   // ZEROSAY-1
+  { value: '0-3',  label: '<3' },
   { value: '3-6',  label: '3-6' },
   { value: '6-10', label: '6-10' },
   // HIGHVOL-1 · '10+' stays a legal PERSISTED value (live rows and issued URLs
@@ -142,12 +148,27 @@ export function Step1bGoalDetails({ initial, stravaHistory }: Step1bGoalDetailsP
     setState({ ...state, weeklyFreq: v });
   }
 
+  // ZEROSAY-1 · the two history answers move together at zero. `noVolumeSignal`
+  // in the plan engine reads BOTH numbers, so "0 mi/wk" alongside a 2 mi
+  // longest run is still a volume signal and the Couch-to-5K ladder stays
+  // unreachable. NONE on either ladder is one statement — "I don't run yet" —
+  // so it sets both; answering the other ladder with a real distance
+  // contradicts it, and clears it back to unanswered rather than shipping a
+  // pair that disagree.
   function pickHistAvg(v: HistAvg) {
-    setState({ ...state, histAvg: v });
+    setState({
+      ...state,
+      histAvg: v,
+      histLong: v === '0' ? '0' : (state.histLong === '0' ? null : state.histLong),
+    });
   }
 
   function pickHistLong(v: HistLong) {
-    setState({ ...state, histLong: v });
+    setState({
+      ...state,
+      histLong: v,
+      histAvg: v === '0' ? '0' : (state.histAvg === '0' ? null : state.histAvg),
+    });
   }
 
   function pickHistYears(v: HistYears) {
