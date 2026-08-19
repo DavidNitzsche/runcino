@@ -198,6 +198,36 @@ export function atPaceSessionCapMi(
 export const INTERVAL_REP_MINUTES = { min: 3, max: 5 } as const;
 
 /**
+ * SLOT-ROTATE-3 (2026-08-19) · A VO2max SESSION IS A REP SET, AND NEVER ONE BLOCK.
+ *
+ * `Research/04-workout-vocabulary.md` §6.1's "VO2max family overview" gives
+ * every §6 workout a rep-count band, and the smallest lower bound in the whole
+ * column is three — mile repeats "3–6 × 1 mi", 1200s "4–6", 1000s "5–8", 800s
+ * "6–10", 600s "8–12", 400s "8–16", Yasso "4–10". §6's own lead states why:
+ * "each interval should be 3–5 min long", which is a description of
+ * INTERMITTENT work. There is no continuous form of a VO2max session in the
+ * document.
+ *
+ * The engine has enforced the DURATION half since the progression engine landed
+ * and never the COUNT half, and `work_density` — "fewer, longer reps at
+ * constant total volume" — is the lever that walks straight through the gap. It
+ * guards `CONTINUOUS_TEMPO_MINUTES.max` when a THRESHOLD set collapses to one
+ * block, because a continuous tempo is a real §5.2 session; the interval arm
+ * had no equivalent guard, because a continuous VO2max block is not a session
+ * at all. Applied twice it took a 3×7 min rep set to 1×21, and a third time to
+ * 1×24 — a single twenty-four-minute block labelled as intervals.
+ *
+ * It was latent rather than harmless: the ladder only stepped on weeks the
+ * generic string was prescribed, which on a marathon build was four or five,
+ * and it ran out of weeks before it ran out of reps. SLOT-ROTATE-2 steps the
+ * dose ladder every week — that is what keeps a rotating vocabulary climbing —
+ * and surfaced it immediately.
+ *
+ * Bound by `PROGRESSION.interval-rep-count-floor`.
+ */
+export const INTERVAL_MIN_REPS = 3;
+
+/**
  * ZONE-R-1 · an R repetition is 200-600 m and never longer than two minutes.
  *
  * `Research/01-pace-zones-vdot.md` §"Dosing rules — Daniels' caps", R row,
@@ -486,6 +516,12 @@ export function advanceShape(args: {
       // doctrine's canonical progression. Continuity rises, total does not.
       if (shape.reps <= 1) {
         return { shape, change: 'already continuous', capped: true };
+      }
+      // SLOT-ROTATE-3 · §6.1's rep-count bands bottom out at three, and §6 has
+      // no continuous form. Merging reps past that floor is not a denser
+      // version of the session; it is a different session with the wrong label.
+      if (family === 'interval' && shape.reps - 1 < INTERVAL_MIN_REPS) {
+        return { shape, change: 'a VO2max session is a rep set — §6.1 bottoms out at three reps', capped: true };
       }
       const total = totalWorkMinutes(shape);
       next.reps = shape.reps - 1;

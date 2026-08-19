@@ -151,7 +151,15 @@ describe('PROGRESSION-PERSIST-1 · the work shape survives persistence', () => {
     }
     // If the trajectory ever stops owning any session this test would pass
     // vacuously, which would be worse than failing.
-    expect(carried, 'no quality day carried a work shape at all').toBeGreaterThan(3);
+    //
+    // SLOT-ROTATE-2 (2026-08-19) · the count is 1, not 4, because §15's
+    // specific-support vocabulary now fills most of a block's quality days and
+    // a catalogue session carries no `workShape` — the trajectory's job on those
+    // days is to supply the DOSE, not the words. The anti-vacuum guard is what
+    // this line is for and it still does it; the assertion that the ladder
+    // actually moves lives in `_trajectory.test.ts`, against the progression
+    // log, which is where it can be made whoever renders the session.
+    expect(carried, 'no quality day carried a work shape at all').toBeGreaterThan(0);
   });
 
   it('carries the calendar\'s own proposal beside the prescribed one', () => {

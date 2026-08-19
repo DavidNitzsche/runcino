@@ -67,6 +67,7 @@ import {
   selectLever,
   totalWorkMinutes,
   CRUISE_RECOVERY_MIN_PER_WORK_MI,
+  INTERVAL_MIN_REPS,
   INTERVAL_REP_MINUTES,
   LIMITER_LEVERS,
   WEEK_LEVEL_LEVERS,
@@ -335,6 +336,10 @@ export function clampToWeek(shape: WorkShape, weeklyMi: number, family: SessionF
     // the session's own pace. Threshold and interval get the same number they
     // always got, so nothing existing moves.
     minRepMinutes(family, shape.paceSPerMi),
+    // SLOT-ROTATE-3 · and so is the shortest rep COUNT. §6.1's bands bottom out
+    // at three; §5 and §7 state no equivalent floor this module can read, so
+    // they keep the historical 1.
+    family === 'interval' ? INTERVAL_MIN_REPS : 1,
   );
 }
 
@@ -353,10 +358,32 @@ export function clampToAtPaceMinutes(
   /** Doctrine's shortest rep for this family. Defaults to §6's three minutes,
    *  which is what every existing caller was already getting. */
   repFloorMinutes: number = MIN_QUALITY_REP_MINUTES,
+  /**
+   * SLOT-ROTATE-3 · the fewest reps this family's session may be cut to.
+   *
+   * Reps come off before rep length, deliberately — fewer reps of the same
+   * length preserves the session's character, and it is what every caller got
+   * before this argument existed (the default of 1 keeps that exactly).
+   *
+   * `Research/04` §6.1 is the one family where "fewer" has a floor. Every row
+   * of its overview table states a rep-count band and the smallest lower bound
+   * in the column is three, because §6's sessions are intermittent by
+   * definition — there is no one-rep VO2max workout in the document. §5's
+   * threshold family is the contrast and the reason this is not a global rule:
+   * §5.2's continuous tempo is a real, named, one-block session, so cutting a
+   * cruise set to a single rep lands on another session doctrine describes
+   * rather than off the end of the table.
+   *
+   * When even the shortest legal set is over the cap, the cap wins and reps
+   * come off as before. The cap is the safety rule; this is a shape rule.
+   */
+  minReps: number = 1,
 ): WorkShape {
   if (!(cap > 0) || totalWorkMinutes(shape) <= cap) return shape;
+  const wanted = Math.max(1, Math.min(minReps, shape.reps));
+  const lowestReps = wanted * repFloorMinutes <= cap ? wanted : 1;
   let reps = shape.reps;
-  while (reps > 1 && reps * shape.repMinutes > cap) reps--;
+  while (reps > lowestReps && reps * shape.repMinutes > cap) reps--;
   let repMinutes = shape.repMinutes;
   if (reps * repMinutes > cap) {
     repMinutes = Math.max(repFloorMinutes, Math.floor(cap / reps));

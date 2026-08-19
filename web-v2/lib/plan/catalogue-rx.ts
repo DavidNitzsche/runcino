@@ -468,6 +468,26 @@ export interface SlotRequest {
   mpPaceSec?: number | null;
   /** Slugs this week has already spent, so a week never repeats a session. */
   usedThisWeek: ReadonlySet<string>;
+  /**
+   * SLOT-ROTATE-2 · the at-pace minutes the block's overload trajectory has
+   * earned for this slot's track this week, or null to spend the week's whole
+   * share (which is what happened before this existed).
+   *
+   * This is the join between the two halves of a plan. The trajectory owns the
+   * DOSE and steps it week over week on its own doctrine ladder; the catalogue
+   * owns the IDENTITY and rotates it least-recently-used. Passing the one into
+   * the other is what lets a block run a different session every week and still
+   * climb — see `SelectorInput.targetAtPaceMinutes` for what the selector does
+   * with it, and SLOT-ROTATE-2 in `generate.ts` for where the number is from.
+   */
+  targetAtPaceMinutes?: number | null;
+  /**
+   * SLOT-ROTATE-5 · true in the opening part of QUALITY, which is §15's
+   * "Hill / strength (3–4 wks, optional)" block; false once the block is behind
+   * and the week is in "Specific support (4–6 wks)". Null leaves the merged
+   * two-row list, which is what every caller got before this existed.
+   */
+  inHillBlock?: boolean | null;
 }
 
 export type SlotChoice =
@@ -498,6 +518,43 @@ function doctrinePhasesFor(enginePhase: string): DoctrinePhase[] {
 }
 
 /**
+ * SLOT-ROTATE-5 (2026-08-19) · §15's rows are a SEQUENCE, and QUALITY spans two
+ * of them.
+ *
+ * `PHASE_FROM_ENGINE` maps QUALITY onto `['hill_strength', 'specific_support']`
+ * and `selectSlotWorkout` walks that list taking the first phase that yields a
+ * session. So whenever ANY hill session fitted — and one almost always does,
+ * because §8's sessions are effort-prescribed and spend no at-pace share — the
+ * walk stopped at the first entry and `specific_support` was never reached.
+ * §6's rep sessions are placed in `specific_support` and nowhere else, so a
+ * marathon build ran four hill sessions in five QUALITY weeks and could not
+ * reach §6.1's 1200s and 800s at all, whatever `qualityFamilyFor` named.
+ *
+ * §15 does not describe two interchangeable pools. It describes a 3-4 week
+ * "Hill / strength (3–4 wks, optional)" block FOLLOWED by a 4-6 week "Specific
+ * support (4–6 wks)" block, and the engine already knows which of the two a
+ * week is in: `qualityFamilyFor` splits QUALITY on `weeksToPhaseEnd > 2`,
+ * opening with hills and closing with reps. This resolves the merge with that
+ * same split rather than by list order.
+ *
+ * `specific_support` stays available in the hill block. §8.3's and §8.4's own
+ * "When in cycle" rows read "Late base, early specific", so the two genuinely
+ * overlap at that end, and a week whose hill sessions are all on cadence should
+ * still find a threshold session rather than nothing. What is removed is the
+ * reverse: once the hill block is behind, the specific-support row is the row.
+ */
+export function doctrinePhasesForWeek(
+  enginePhase: string,
+  /** True in the opening part of QUALITY — the §15 hill/strength block. Null
+   *  when the caller does not split the phase, which keeps the merged list. */
+  inHillBlock: boolean | null,
+): DoctrinePhase[] {
+  const all = doctrinePhasesFor(enginePhase);
+  if (enginePhase !== 'QUALITY' || inHillBlock == null) return all;
+  return inHillBlock ? all : all.filter((p) => p !== 'hill_strength');
+}
+
+/**
  * The session this slot gets, or the selector's refusal.
  *
  * The loop around `selectWorkout` is the renderability gate: the selector
@@ -508,7 +565,7 @@ function doctrinePhasesFor(enginePhase: string): DoctrinePhase[] {
  * places there instead of on nothing.
  */
 export function selectSlotWorkout(req: SlotRequest): SlotChoice {
-  const phases = doctrinePhasesFor(req.enginePhase);
+  const phases = doctrinePhasesForWeek(req.enginePhase, req.inHillBlock ?? null);
   if (phases.length === 0) {
     return { ok: false, reason: 'phase', detail: `no doctrine phase maps to ${req.enginePhase}` };
   }
@@ -543,6 +600,7 @@ export function selectSlotWorkout(req: SlotRequest): SlotChoice {
         inTaperWindow: req.inTaperWindow,
         cycleCounts: req.history.cycleCounts,
         exclude,
+        targetAtPaceMinutes: req.targetAtPaceMinutes ?? null,
       };
       const res = selectWorkout(input);
       if (res.ok) {
