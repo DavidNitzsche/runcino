@@ -25,11 +25,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import { writeFileSync } from 'node:fs';
 import {
   composePlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type ComposePlanResult,
   type ComposedWeek,
@@ -58,7 +58,7 @@ const DISTANCES = [3.1, 6.2, 13.1, 26.2, 31.07, 62.14]; // 5K,10K,HM,M,50K,100K
 // Slow goal + high volume = the "over-volumed for goal" case.
 // Values are goal pace (s/mi). null = no goal time (just-run path).
 function goalPacesFor(distMi: number): (number | null)[] {
-  const cat = distanceCategoryOfPublic(distMi);
+  const cat = distanceCategoryOrThrow(distMi);
   switch (cat) {
     case '5k':    return [null, 300, 390, 540];   // 5:00, 6:30, 9:00 /mi
     case '10k':   return [null, 330, 420, 600];   // 5:30, 7:00, 10:00 /mi
@@ -103,7 +103,7 @@ function buildInput(opts: {
   longDow: DOW;
   recentLongMi?: number; // explicit override (histLong bucket); else derived
 }): ComposePlanInput {
-  const cat = distanceCategoryOfPublic(opts.distMi);
+  const cat = distanceCategoryOrThrow(opts.distMi);
   // race day = startMonday + planWeeks*7 - 1 (Sunday end, like the bench).
   const raceDay = new Date(START_MONDAY + 'T12:00:00Z');
   raceDay.setUTCDate(raceDay.getUTCDate() + opts.planWeeks * 7 - 1);
@@ -175,7 +175,7 @@ function weekTotal(w: ComposedWeek): number {
 // distance-appropriate peak weekly caps (sanity ceiling, I14). Generous —
 // only catches absurd output (a 5K plan prescribing 50mpw, a marathon 10mpw).
 function peakWeeklyBounds(distMi: number): { floorOk: number; ceil: number } {
-  const cat = distanceCategoryOfPublic(distMi);
+  const cat = distanceCategoryOrThrow(distMi);
   switch (cat) {
     case '5k':    return { floorOk: 8,  ceil: 90 };
     case '10k':   return { floorOk: 10, ceil: 100 };
@@ -186,7 +186,7 @@ function peakWeeklyBounds(distMi: number): { floorOk: number; ceil: number } {
 }
 // distance-appropriate long-run ceiling (I14). Race-day row excluded.
 function longCeil(distMi: number): number {
-  const cat = distanceCategoryOfPublic(distMi);
+  const cat = distanceCategoryOrThrow(distMi);
   switch (cat) {
     case '5k':    return 12;
     case '10k':   return 14;
@@ -257,7 +257,7 @@ function checkPlanVolume(input: ComposePlanInput, res: ComposePlanResult) {
   // CURRENT_PERSISTS is set by the caller (after compose) so every record()
   // in this function is stamped with the plan's persist status.
   const { weeks } = res;
-  const cat = distanceCategoryOfPublic(input.raceDistanceMi);
+  const cat = distanceCategoryOrThrow(input.raceDistanceMi);
   const isBeginner = input.level === 'beginner';
 
   // Peak weekly across NON-taper NON-race weeks (the build peak).
@@ -598,7 +598,7 @@ describe('VOLUME INVARIANT SWEEP · composePlan exhaustive', () => {
               byInvProfile[k].freq[fk] = (byInvProfile[k].freq[fk] ?? 0) + 1;
               const lk = String(v.input.level);
               byInvProfile[k].levels[lk] = (byInvProfile[k].levels[lk] ?? 0) + 1;
-              const dk = distanceCategoryOfPublic(v.input.raceDistanceMi);
+              const dk = distanceCategoryOrThrow(v.input.raceDistanceMi);
               byInvProfile[k].dist[dk] = (byInvProfile[k].dist[dk] ?? 0) + 1;
               const lxd = `${lk}/${dk}`;
               byInvProfile[k].levelXdist[lxd] = (byInvProfile[k].levelXdist[lxd] ?? 0) + 1;

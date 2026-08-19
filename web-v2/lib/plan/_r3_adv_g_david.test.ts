@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import { writeFileSync } from 'node:fs';
 import {
   composePlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type DOW,
 } from './generate';
@@ -14,7 +14,7 @@ const START_MONDAY = '2026-01-05';
 // Reconstruct the David persona EXACTLY as _audit_periodization does.
 function davidInput(): ComposePlanInput {
   const distanceMi = 26.2, goalSec = 10800, weeksOut = 16, weeklyBaseMi = 60;
-  const cat = distanceCategoryOfPublic(distanceMi);
+  const cat = distanceCategoryOrThrow(distanceMi);
   const raceDay = new Date(START_MONDAY + 'T12:00:00Z');
   raceDay.setUTCDate(raceDay.getUTCDate() + weeksOut * 7 - 1);
   return {

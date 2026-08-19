@@ -35,7 +35,6 @@ import {
   sizeBlocks,
   weekStartBoundaryOf,
   daysBetween,
-  distanceCategoryOfPublic,
   embedMidBlockRaces,
   type BlockPlan,
   type DistCategory,
@@ -46,6 +45,7 @@ import {
   type EmbeddedRaceSummary,
 } from './generate';
 import { addDays } from './core';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 
 export interface BlockShapePreviewInput {
   /** Runner-local "today" (YYYY-MM-DD), e.g. from runnerToday(userId). */
@@ -153,7 +153,10 @@ export function previewBlockShape(input: BlockShapePreviewInput): BlockShapePrev
   const isMidBlockSourced = input.isMidBlock !== undefined;
   const isMidBlock = input.isMidBlock ?? false;
 
-  const distanceCategory = distanceCategoryOfPublic(input.raceDistanceMi);
+  // #12 follow-up (2026-08-18) · THE categorizer, direct. `sizeBlocks` on the
+  // next line refuses an unknown distance loudly for the same reason; asking
+  // first keeps the two answers from ever disagreeing.
+  const distanceCategory = distanceCategoryOrThrow(input.raceDistanceMi);
   const { phases } = sizeBlocks(totalWeeksForBlock, input.raceDistanceMi, isMidBlock);
 
   return {

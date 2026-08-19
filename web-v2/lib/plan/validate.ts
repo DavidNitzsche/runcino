@@ -22,7 +22,11 @@
  */
 
 import type { ComposePlanResult, DistCategory } from './generate';
-import { distanceCategoryOfPublic } from './generate';
+// #12 follow-up (2026-08-18) · THE categorizer, direct. This used to import
+// `distanceCategoryOfPublic` from generate.ts — a second name for the same
+// function, re-exported so callers could avoid importing the canonical module,
+// which is how the app grew three categorizers. That re-export is gone.
+import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/distance-category';
 import type { PlanMode } from './goal-tiers';
 import { taperFactor, GENERAL_RAMP_CEILING } from './goal-tiers';
 import { planDosingFindings, type DosingFinding } from './dosing';
@@ -277,7 +281,16 @@ export function validateComposedPlan(
   ctx: PlanValidationContext,
   opts?: ValidateOptions,
 ): void {
-  const cat = distanceCategoryOfPublic(raceDistanceMi);
+  // The categorizer never guesses: an unknown distance is null, not a half
+  // marathon. A plan cannot be validated against a doctrine row we cannot
+  // identify, so this refuses rather than checking it against the wrong one —
+  // the same call this function's own violations make everywhere else.
+  const cat = distanceCategoryOrNull(raceDistanceMi);
+  if (cat == null) {
+    throw new PlanValidationError([
+      `${UNKNOWN_DISTANCE_REASON} (got ${String(raceDistanceMi)}); cannot validate a plan against an unknown event`,
+    ]);
+  }
   const c = CONSTRAINTS[cat];
   const { weeks } = result;
   const violations: string[] = [];

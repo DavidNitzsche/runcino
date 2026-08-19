@@ -41,26 +41,38 @@
  *     byte-identically. Nothing here reaches for a random number or the
  *     clock; rotation is a pure function of training state. See `rankCandidates`.
  *
- * ── Wiring · NOT DONE HERE ─────────────────────────────────────────────────
+ * ── Wiring · DONE, 2026-08-18 (VOCAB-CATALOGUE-1) ──────────────────────────
  *
- * Nothing in `lib/plan/` imports this yet, deliberately. The call sites in
- * `lib/plan/generate.ts` that should consume it, and what each hardcodes today:
+ * `lib/plan/catalogue-rx.ts` is the composer's door onto this module, and
+ * `lib/plan/generate.ts` calls it once per quality slot. What that replaced:
  *
  *   · `inlineFamilyPrescriptions(cat)` — one fixed string per (family,
  *     distance): `'6×90s hills @ 5K-10K effort · 2:30 jog down'` for every
- *     hills slot at every distance, in every week, forever. This is the
- *     catalogue's job: `selectWorkout` returns an entry plus a sized dose.
+ *     hills slot at every distance, in every week, forever. DELETED; the slot
+ *     now takes whichever hill session §15 places there and this module has not
+ *     recently used.
+ *   · `qualityFamilyFor(...)` — picked a FAMILY and handed off to those
+ *     strings, with variety supplied by `Math.floor(weekIdx / 2) % 2`
+ *     alternating hills and fartlek. It still states §15's placement RULING
+ *     (which the doctrine gate checks), but the alternation is gone and
+ *     `rankCandidates` below is the rotation.
+ *   · the `qt === 'race_week_tuneup'` ladder — five hardcoded strings selected
+ *     on raw `raceDistanceMi` thresholds. Now keyed on the canonical
+ *     categorizer. The STRINGS stay: they are Research/08 §9.3's race-week
+ *     primers, and this catalogue is Research/04's training vocabulary, which
+ *     carries no race-week template.
  *   · `inlinePrescriptions(cat)` — the `intervals` / `threshold` / `tempo`
- *     triple, likewise one string each per distance.
- *   · `qualityFamilyFor(cat, phase, weekIdx, weeksToPhaseEnd, slotType)` —
- *     picks a FAMILY and then hands off to those strings, with variety supplied
- *     by `Math.floor(weekIdx / 2) % 2` alternating hills and fartlek. That is
- *     the rotation this module generalises across the whole vocabulary.
- *   · the `qt === 'race_week_tuneup'` ladder — five hardcoded tune-up strings
- *     selected on `raceDistanceMi` thresholds.
- *   · `sizeFromPrescription` / `sizeTempoDay` — already apply the share caps,
- *     but to a string that has already been chosen; they can shrink a session
- *     and cannot decline one.
+ *     triple. Still there, and still the fallback on the slots the overload
+ *     trajectory owns and on the weeks this module REFUSES.
+ *   · `sizeFromPrescription` / `sizeTempoDay` — unchanged and still applied on
+ *     top. They can shrink a session and cannot decline one; this module can
+ *     decline one, and that is the half that was missing.
+ *
+ * The one thing the composer cannot yet take is a shape with no rendering in
+ * `prescription-parser.ts`'s grammar — the unequal-step sequences (§9.2's Mona
+ * fartlek, §13.1's ladders, §12.4's 5K progression, §10.2's combos), §10.1's
+ * alternations and §11.1's two-session days. `catalogue-rx.ts` declines those
+ * and asks again rather than shipping a label the spec builder would not build.
  */
 import {
   AT_PACE_WEEKLY_SHARE_CAP,
@@ -267,6 +279,20 @@ export interface SelectorInput {
    * carry a `perCycleMax`.
    */
   cycleCounts?: Record<string, number>;
+  /**
+   * Slugs the CALLER has already ruled out, for a reason this module cannot
+   * see. Two callers need it and neither is a doctrine question:
+   *
+   *   · a week that has already placed a session may not place it twice, and
+   *     the §16 predicates speak to pace-family clashes rather than to identity.
+   *   · `lib/plan/catalogue-rx.ts` declines a shape it cannot render into the
+   *     engine's prescription grammar and asks again, so the slot lands on the
+   *     next session doctrine places there rather than on nothing.
+   *
+   * An excluded entry is simply not offered; it produces no `Rejection`,
+   * because the reason for it is not doctrine's.
+   */
+  exclude?: ReadonlySet<string>;
 }
 
 /* ──────────────────────────────────────────────────────────── the output ── */
@@ -635,7 +661,7 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
   const {
     phase, distance, tier, weekIndex, weeklyMi, slot, anchors,
     placedThisWeek = [], dayOffset = 0, recent = [],
-    inTaperWindow = false, cycleCounts = {},
+    inTaperWindow = false, cycleCounts = {}, exclude,
   } = input;
 
   const rejected: Rejection[] = [];
@@ -649,6 +675,10 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
 
   for (const entry of WORKOUT_CATALOGUE) {
     if (!families.includes(entry.family)) continue;
+    // Caller-supplied exclusion · see `SelectorInput.exclude`. Silent by
+    // design: the reason is the caller's, not doctrine's, so it does not belong
+    // in the rejection trail alongside §15's and §16's rulings.
+    if (exclude?.has(entry.slug)) continue;
 
     if (!entry.phases.includes(phase)) {
       push(entry.slug, 'phase', `§15 does not place it in the ${phase} phase`);

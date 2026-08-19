@@ -23,10 +23,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import {
   composePlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type DOW,
 } from './generate';
@@ -105,7 +105,7 @@ interface Scenario {
 }
 
 function buildInput(layout: DerivedLayout, sc: Scenario): ComposePlanInput {
-  const cat = distanceCategoryOfPublic(sc.raceDistanceMi);
+  const cat = distanceCategoryOrThrow(sc.raceDistanceMi);
   const raceDay = new Date(START + 'T12:00:00Z');
   // race day = start + weeks*7 - 1 (Sunday-ish), mirrors generator-bench
   raceDay.setUTCDate(raceDay.getUTCDate() + sc.weeks * 7 - 1);

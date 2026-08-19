@@ -56,12 +56,31 @@ describe('DOCTRINE-VOCAB-1 · the plan carries the phase\'s vocabulary', () => {
     // Research/04 §11.2 Canova 2K repeats — "Specific phase; first block 8-10
     // weeks out". Before this the marathon's race-specific block was a generic
     // tempo and a generic cruise-interval session, week after week.
-    expect([...shapes].some((s) => /descend MP/.test(s)), `marathon has no MP session: ${[...shapes]}`).toBe(true);
+    //
+    // VOCAB-CATALOGUE-1 · the zone walk is now rendered from the catalogue
+    // entry's own `zones` (MP → T) rather than from the hand-written string
+    // "5×2K · descend MP → T · 2 min jog". The word "descend" was the engine's;
+    // the arrow is §11.2's ("descend across reps to slightly faster than T").
+    expect([...shapes].some((s) => /MP → T/.test(s)), `marathon has no MP session: ${[...shapes]}`).toBe(true);
     // §10.3 wave tempo — "Specific phase HM/marathon".
     expect([...shapes].some((s) => /wave tempo/.test(s))).toBe(true);
-    // §8/§9 — hills and fartlek before the sharpening end of the block.
-    expect([...shapes].some((s) => /hills/.test(s))).toBe(true);
-    expect([...shapes].some((s) => /min @ 10K effort/.test(s))).toBe(true);
+    // §8 — the hill/strength block before the sharpening end.
+    //
+    // VOCAB-CATALOGUE-1 · this used to assert one hill string and one fartlek
+    // string, because the engine alternated exactly two of them on
+    // `Math.floor(weekIdx / 2) % 2`. §8 writes five hill sessions and the plan
+    // now draws several, so the claim is breadth rather than presence.
+    //
+    // The fartlek assertion is GONE, and its removal is doctrine rather than a
+    // relaxation: §9.5's time-based fartlek — the "6×3 min @ 10K effort" the
+    // engine used to place here — states "When in cycle | Base phase or
+    // trail-running prep", so QUALITY was never its phase. §9.2's Mona fartlek
+    // IS placed through the specific phase, and the catalogue carries it, but
+    // its 2×90s / 4×60s / 4×30s / 4×15s shape is an unequal-step sequence that
+    // `prescription-parser.ts` has no form for; `catalogue-rx.ts` declines it
+    // rather than shipping a label the spec builder would not build.
+    const hillShapes = [...shapes].filter((s) => /hill/i.test(s));
+    expect(hillShapes.length, `marathon draws too few hill sessions: ${hillShapes}`).toBeGreaterThanOrEqual(2);
     // The audit's headline number was three. Anything near it is the defect.
     expect(shapes.size).toBeGreaterThanOrEqual(7);
   });
@@ -69,10 +88,31 @@ describe('DOCTRINE-VOCAB-1 · the plan carries the phase\'s vocabulary', () => {
   it('a 5K build sees speed and hills, and races at 5K pace in the race-specific block', () => {
     const shapes = qualityShapes(FIVE_K);
     expect([...shapes].some((s) => /hills/.test(s))).toBe(true);
-    // §14.1 "12 × 400 at 5K | Classic 5K simulator | 5K race pace".
-    expect([...shapes].some((s) => /@ 5K race pace/.test(s)), `5K has no race-pace session: ${[...shapes]}`).toBe(true);
-    // §12.2 cutdowns — "Specific phase, 5K/10K/HM".
-    expect([...shapes].some((s) => /MP → HM → T → 5K/.test(s))).toBe(true);
+    // §14.1's race-pace rep sessions. VOCAB-CATALOGUE-1 · WHICH of them this
+    // runner gets is now an affordability question, and at 25 mi/wk the answer
+    // is §14.1's "2 × (4 × 400) | 5K to 3K", not its "12 × 400 at 5K": twelve
+    // four-hundreds is 2.98 mi at 5K pace and Daniels' 8% leaves about two on a
+    // week this size. The catalogue states 12 as a fixed count, not a band, so
+    // it declines rather than shipping an eight-rep session under a twelve-rep
+    // name. Bigger weeks get the classic simulator.
+    expect([...shapes].some((s) => /@ 5K[-\s]/.test(s)), `5K has no race-pace session: ${[...shapes]}`).toBe(true);
+    // §12.2 cutdowns — "Specific phase, 5K/10K/HM". VOCAB-CATALOGUE-1 · the
+    // cutdown is no longer PINNED to the late-QUALITY threshold slot; it now
+    // competes there with §5.3's cruise intervals, which §15 places in the same
+    // row, and the selector rotates between them least-recently-used. §12.2's
+    // own Frequency row says "Every 2 weeks specific phase", so a weekly pin was
+    // never what doctrine asked for. A build with more than one such slot draws
+    // both — asserted on the half, which has a race-specific threshold slot as
+    // well as a QUALITY one.
+    const withCutdown = qualityShapes({
+      ...base, goalMode: 'goal', distance: 'half', experienceLevel: 'intermediate',
+      weeklyMileageBucket: 45, weeklyFrequency: 5, planWeeks: 16, goalTimeSec: 6300,
+      longestRunBucket: '10+',
+    });
+    expect(
+      [...withCutdown].some((s) => /MP → HM → T → 10K → 5K/.test(s)),
+      `no §12.2 cutdown anywhere: ${[...withCutdown]}`,
+    ).toBe(true);
     expect(shapes.size).toBeGreaterThanOrEqual(6);
   });
 

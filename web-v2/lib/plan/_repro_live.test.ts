@@ -8,10 +8,10 @@
  * Assert long >= quality on persisted rows.
  */
 import { describe, it } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import {
   composePlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type DOW,
 } from './generate';
@@ -25,7 +25,7 @@ function raceDate(weeks: number): string {
 }
 
 function build(o: Partial<ComposePlanInput> & { raceMi: number; goalSec: number; weeks: number }): ComposePlanInput {
-  const cat = distanceCategoryOfPublic(o.raceMi);
+  const cat = distanceCategoryOrThrow(o.raceMi);
   const goalPaceSec = Math.round(o.goalSec / o.raceMi);
   return {
     raceDistanceMi: o.raceMi,

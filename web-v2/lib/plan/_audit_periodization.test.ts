@@ -21,10 +21,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import {
   composePlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type ComposePlanResult,
   type DOW,
@@ -91,7 +91,7 @@ function buildInput(opts: {
   longRunDow?: DOW;
   restDow?: DOW;
 }): ComposePlanInput {
-  const cat = distanceCategoryOfPublic(opts.raceDistanceMi);
+  const cat = distanceCategoryOrThrow(opts.raceDistanceMi);
   const raceDay = new Date(START_MONDAY + 'T12:00:00Z');
   raceDay.setUTCDate(raceDay.getUTCDate() + opts.weeksOut * 7 - 1);
   const raceDateISO = raceDay.toISOString().slice(0, 10);
@@ -147,7 +147,7 @@ const WEEKS_OUT = [8, 12, 16, 24];
 
 // A reasonable recentLong by distance so the long-floor doesn't crash sizing.
 function recentLongFor(mi: number, vol: number): number {
-  const cat = distanceCategoryOfPublic(mi);
+  const cat = distanceCategoryOrThrow(mi);
   const byCat = cat === '5k' ? 5 : cat === '10k' ? 7 : cat === 'hm' ? 10 : cat === 'm' ? 14 : 18;
   return Math.min(byCat, Math.round(vol * 0.3));
 }
@@ -209,7 +209,7 @@ describe('INV-10 · beginner plans contain NO structured interval reps', () => {
               throw e;
             }
             // Cross-check: isBaseBuildingPlan must agree this is a base-building plan.
-            const cat = distanceCategoryOfPublic(dist.mi);
+            const cat = distanceCategoryOrThrow(dist.mi);
             const baseBuilding = isBaseBuildingPlan(cat, 'beginner');
             const reps = repWorkdays(result);
             if (reps.length > 0) {
@@ -257,7 +257,7 @@ describe('INV-11 · non-beginner plans carry real structured quality', () => {
               weeksOut: 16, recentWeeklyMi: vol, recentLongMi: recentLongFor(dist.mi, vol),
             });
             const result = composePlan(input);
-            const cat = distanceCategoryOfPublic(dist.mi);
+            const cat = distanceCategoryOrThrow(dist.mi);
             const baseBuilding = isBaseBuildingPlan(cat, level);
 
             // Non-ultra non-beginner must NOT be base-building.
@@ -371,7 +371,7 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
   // weeksOut*7 - 1 (Sunday), longRunDow Sun, restDow Sat, qualityDows Tue+Thu.
   const DAVID: ComposePlanInput = (() => {
     const distanceMi = 26.2, goalSec = 10800, weeksOut = 16, weeklyBaseMi = 60;
-    const cat = distanceCategoryOfPublic(distanceMi);
+    const cat = distanceCategoryOrThrow(distanceMi);
     const raceDay = new Date(START_MONDAY + 'T12:00:00Z');
     raceDay.setUTCDate(raceDay.getUTCDate() + weeksOut * 7 - 1);
     return {
@@ -413,7 +413,7 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
 
   it('is NOT contaminated by base-building structure', () => {
     COMBO_COUNT++;
-    const cat = distanceCategoryOfPublic(26.2);
+    const cat = distanceCategoryOrThrow(26.2);
     expect(isBaseBuildingPlan(cat, 'advanced')).toBe(false);
     // No "light fartlek surges @ T effort" beginner sub_label anywhere.
     const contaminated = result.weeks.flatMap(w => w.days)
@@ -512,7 +512,7 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
     COMBO_COUNT++;
     const apInput = { ...DAVID, level: 'advanced_plus' as LevelKey, recentWeeklyMi: 90, easyDayMedianMi: 18, recentLongMi: 18 };
     const ap = composePlan(apInput);
-    expect(isBaseBuildingPlan(distanceCategoryOfPublic(26.2), 'advanced_plus')).toBe(false);
+    expect(isBaseBuildingPlan(distanceCategoryOrThrow(26.2), 'advanced_plus')).toBe(false);
     const apFartlek = ap.weeks.flatMap(w => w.days).filter(d => MIN_SURGE_FARTLEK.test(d.subLabel ?? ''));
     expect(apFartlek, 'advanced_plus marathon contaminated with beginner fartlek').toHaveLength(0);
     const apQuality = ap.weeks.some(w => w.days.some(d => d.isQuality && /\d+\s*[×x]\s*1\s*mi\s*@\s*T|tempo|threshold/i.test(d.subLabel ?? '')));
@@ -531,7 +531,7 @@ describe('EDGE · null/unset level defaults to intermediate periodization', () =
     const id = `EDGE/null-level/${dist.name}`;
     it(id, () => {
       COMBO_COUNT++;
-      expect(isBaseBuildingPlan(distanceCategoryOfPublic(dist.mi), null)).toBe(false);
+      expect(isBaseBuildingPlan(distanceCategoryOrThrow(dist.mi), null)).toBe(false);
       const result = composePlan(buildInput({ level: null, raceDistanceMi: dist.mi, goalSec: dist.goals[1].sec, weeksOut: 16, recentWeeklyMi: 30, recentLongMi: recentLongFor(dist.mi, 30) }));
       // null level must NOT produce the beginner light-fartlek vocabulary.
       const fartlek = result.weeks.flatMap(w => w.days).filter(d => MIN_SURGE_FARTLEK.test(d.subLabel ?? ''));

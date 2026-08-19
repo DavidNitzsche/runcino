@@ -30,10 +30,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import {
   composePlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type ComposePlanResult,
   type DOW,
@@ -64,7 +64,7 @@ const RACES: { label: string; mi: number }[] = [
 // distance. Fast trips 'elite', median ≈ 'intermediate', slow ≈ 'developing'
 // (the over-volumed-for-goal case). NaN/0/null are also probed separately.
 function goalPaces(mi: number): { tag: string; paceSec: number | null }[] {
-  const cat = distanceCategoryOfPublic(mi);
+  const cat = distanceCategoryOrThrow(mi);
   // per-distance [fast, median, slow] sec/mi, chosen to land in distinct tiers
   const triple: Record<string, [number, number, number]> = {
     '5k': [300, 450, 600], // 5:00 / 7:30 / 10:00 per mi
@@ -114,7 +114,7 @@ function buildInput(o: {
   restDow?: DOW;
   qualityDows?: DOW[];
 }): ComposePlanInput {
-  const cat = distanceCategoryOfPublic(o.raceMi);
+  const cat = distanceCategoryOrThrow(o.raceMi);
   const goalSec = o.goalPaceSec != null ? Math.round(o.goalPaceSec * o.raceMi) : null;
   return {
     raceDistanceMi: o.raceMi,

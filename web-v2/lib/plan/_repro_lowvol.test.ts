@@ -5,10 +5,10 @@
  * Print long-by-week + persisted-realized quality-vs-long.
  */
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import {
   composePlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type DOW,
 } from './generate';
@@ -30,7 +30,7 @@ function buildInput(o: {
   weeks: number;
   recentLongMi?: number;
 }): ComposePlanInput {
-  const cat = distanceCategoryOfPublic(o.raceMi);
+  const cat = distanceCategoryOrThrow(o.raceMi);
   const goalPaceSec = o.goalSec != null ? Math.round(o.goalSec / o.raceMi) : null;
   return {
     raceDistanceMi: o.raceMi,
