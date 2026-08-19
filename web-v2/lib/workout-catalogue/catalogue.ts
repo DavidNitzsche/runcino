@@ -667,7 +667,12 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     zones: [],
     effortOnly: true,
     structures: [
-      { kind: 'reps', reps: r(4, 12), rep: b(8, 15, 's'), recoverySec: r(120, 180), recoveryRule: 'Walk down — full recovery (2–3 min)' },
+      {
+        kind: 'reps', reps: r(4, 12), rep: b(8, 15, 's'), recoverySec: r(120, 180),
+        recoveryRule: 'Walk down — full recovery (2–3 min)',
+        // EFFORT-RAMP-1 · §7.3's Reps row is a PROGRESSION, not a band.
+        repBuild: 'Start 4–6, build to 8–12',
+      },
     ],
     atPace: null,
     session: null,
@@ -742,7 +747,12 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     zones: [],
     effortOnly: true,
     structures: [
-      { kind: 'reps', reps: r(8, 16), rep: b(10, 30, 's'), recoverySec: null, recoveryRule: 'Walk or jog back to start; full recovery' },
+      {
+        kind: 'reps', reps: r(8, 16), rep: b(10, 30, 's'), recoverySec: null,
+        recoveryRule: 'Walk or jog back to start; full recovery',
+        // EFFORT-RAMP-1 · §8.2's Reps row states the build inside the band.
+        repBuild: '8–16 (start 8, build to 16)',
+      },
     ],
     atPace: null,
     session: null,

@@ -121,6 +121,25 @@ export interface RepStructure {
   rep: Band;
   recoverySec: RepBand | null;
   recoveryRule: string | null;
+  /**
+   * EFFORT-RAMP-1 (2026-08-19) · present ONLY where the doc states the rep
+   * count as a progression rather than as a flat band, and holding the doc's
+   * own words for it.
+   *
+   * Two rows in `Research/04-workout-vocabulary.md` say it in as many words:
+   *
+   *   · §7.3 hill sprints      · `Reps | Start 4–6, build to 8–12`
+   *   · §8.2 short hill repeats · `Reps | 8–16 (start 8, build to 16)`
+   *
+   * `reps.min` is then the START and `reps.max` the BUILT dose, and `fits`
+   * walks between them on the block's own clock rather than opening at the
+   * ceiling. Every other rep row in the doc — §8.3's "6–10", §8.4's "4–8",
+   * §7.4's "8–12" — is a plain band with no ramp language, and those entries
+   * carry no `repBuild` and are not ramped. The field is the doc's sentence,
+   * so a claim can check that the sentence is still there rather than trusting
+   * a boolean somebody set.
+   */
+  repBuild?: string;
 }
 
 /** A single unbroken effort: a tempo, a long run, a continuous fartlek. */

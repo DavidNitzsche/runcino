@@ -85,6 +85,7 @@ import type {
   DoctrinePhase,
   MeasureUnit,
   PaceZone,
+  RepBand,
   Structure,
   Tier,
 } from './types';
@@ -382,6 +383,36 @@ export interface SelectorInput {
    * Null leaves the old behaviour untouched: spend what the week allows.
    */
   targetAtPaceMinutes?: number | null;
+  /**
+   * EFFORT-RAMP-1 (2026-08-19) · HOW FAR THROUGH THE BLOCK THIS WEEK SITS, 0…1.
+   *
+   * 0 on the block's first week, 1 on its last. The one input the effort-cued
+   * rep ramp needs, and the reason it is a fraction rather than a week count:
+   * doctrine states the ramp as a shape ("start 4–6, build to 8–12") and not as
+   * a schedule, so a twelve-week block and an eighteen-week one both walk the
+   * same band end to end rather than one of them stalling short of it.
+   *
+   * WHY IT IS NOT A PER-SESSION COUNTER. `rankCandidates` rotates identities
+   * least-recently-used, so a runner may see §8.2's short hills on weeks 5, 8
+   * and 12 and not at all in between. A counter that incremented on each
+   * appearance would make the reps a function of how often the rotation
+   * happened to land here, which is not a training state. The block's position
+   * is, and it is the same number whether or not this session shows up.
+   *
+   * WHY NOT THE OVERLOAD TRAJECTORY. `lib/prescription/trajectory.ts` walks a
+   * dose in MINUTES AT PACE. An effort-cued session has no pace and spends no
+   * at-pace share — that is the property that lets it survive the dosing
+   * refusal on a low-volume week, and it is why `targetAtPaceMinutes` above is
+   * deliberately never converted for one (`workPace` returns null, so
+   * `targetMi` is null). There is nothing in the trajectory's currency to
+   * meter, so the ramp lives in the catalogue's own sizing, next to the band it
+   * is walking.
+   *
+   * Absent or null means the caller cannot say where the block is, and the
+   * doctrinal answer to that is the doc's own first word: START. It is never
+   * read for a structure with no `repBuild`.
+   */
+  blockPosition?: number | null;
 }
 
 /* ──────────────────────────────────────────────────────────── the output ── */
@@ -435,6 +466,29 @@ export type SelectorResult =
 /* ────────────────────────────────────────────────────── unit conversion ── */
 
 const M_PER_MI = 1609.344;
+
+/**
+ * EFFORT-RAMP-1 · where inside a stated BUILD this week's rep count sits.
+ *
+ * `Research/04-workout-vocabulary.md` §7.3 writes "Start 4–6, build to 8–12"
+ * and §8.2 writes "8–16 (start 8, build to 16)". Both name a floor to open at
+ * and a ceiling to arrive at, and neither names a weekly increment — so the
+ * engine walks the band the doc gives it, from end to end, across the block.
+ *
+ * Linear and rounded to the nearest whole rep, which is the only shape that
+ * honours both stated ends without inventing a curve between them. Pure in
+ * `(band, position)`: no clock, no counter, no random number, so a plan
+ * regenerates byte-identically.
+ *
+ * A single-week block, or a caller that cannot say where the block is, gets
+ * position 0 — the doc's own "start".
+ */
+export function rampedReps(reps: RepBand, blockPosition: number | null): number {
+  const p = blockPosition == null || !Number.isFinite(blockPosition)
+    ? 0
+    : Math.min(1, Math.max(0, blockPosition));
+  return reps.min + Math.round(p * (reps.max - reps.min));
+}
 
 /** A rep's length in miles, given the work pace for time-based reps. */
 function repMi(value: number, unit: MeasureUnit, paceSPerMi: number | null): number | null {
@@ -491,6 +545,15 @@ function fits(
    * `null` spends the whole allowance, which is what happened before it existed.
    */
   targetMi: number | null = null,
+  /**
+   * EFFORT-RAMP-1 · how far through the block this week sits, 0…1.
+   *
+   * Read by exactly one branch — the effort-cued rep set whose doc row states a
+   * BUILD — because it is the only sizing question the week's at-pace allowance
+   * cannot answer. Everything else in this function is metered in miles at
+   * pace, and an effort-cued session has none. See `SelectorInput.blockPosition`.
+   */
+  blockPosition: number | null = null,
 ): { ok: true; dose: Omit<Dose, 'structure'> } | { ok: false; detail: string } {
   /** The bound the dose is SIZED to · the tighter of allowance and target. */
   const sizeToMi = targetMi != null && targetMi > 0
@@ -516,7 +579,22 @@ function fits(
       const perRep = structure.rep.unit === 's' ? structure.rep.min / 60
         : structure.rep.unit === 'min' ? structure.rep.min
         : 0;
-      return dose(structure.reps.max, 0, structure.reps.max * perRep, structure.recoverySec?.min ?? 0);
+      // EFFORT-RAMP-1 (2026-08-19) · the band is walked, not spent.
+      //
+      // This returned `reps.max` unconditionally, so a runner's first hill
+      // session of a block was their hardest and never got harder — it had
+      // opened at the ceiling. §7.3 and §8.2 both state the rep count as a
+      // build ("Start 4–6, build to 8–12"; "8–16 (start 8, build to 16)"), and
+      // where the doc states one the dose now opens at `reps.min` and arrives
+      // at `reps.max` across the block.
+      //
+      // Where it does NOT — §8.3's flat "6–10", §8.4's flat "4–8" — the count
+      // stays at the top of the band, because the doc gives a band and a ramp
+      // it does not state is a ramp this module invented.
+      const reps = structure.repBuild
+        ? rampedReps(structure.reps, blockPosition)
+        : structure.reps.max;
+      return dose(reps, 0, reps * perRep, structure.recoverySec?.min ?? 0);
     }
     if (structure.kind === 'sequence') {
       const rest = structure.steps.find((s) => s.recoverySec != null)?.recoverySec ?? 0;
@@ -778,7 +856,7 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
     phase, distance, tier, weekIndex, weeklyMi, slot, anchors,
     placedThisWeek = [], dayOffset = 0, recent = [],
     inTaperWindow = false, cycleCounts = {}, exclude,
-    targetAtPaceMinutes = null,
+    targetAtPaceMinutes = null, blockPosition = null,
   } = input;
 
   const rejected: Rejection[] = [];
@@ -871,7 +949,7 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
       // IS its identity, and §5.2's continuous tempo already exists as the
       // shorter session, so it refuses rather than scaling into one.
       const scalesBelowFloor = entry.family === 'long';
-      const f = fits(structure, allowanceMi, pace, entry.effortOnly, scalesBelowFloor, targetMi);
+      const f = fits(structure, allowanceMi, pace, entry.effortOnly, scalesBelowFloor, targetMi, blockPosition);
       if (f.ok) {
         picked = { structure, ...f.dose };
         break;

@@ -71,6 +71,7 @@ import {
 import { DOCTRINE_PHASES } from '@/lib/workout-catalogue/types';
 import {
   combinationViolation,
+  rampedReps,
   LONG_RUN_WEEKLY_SHARE_CAP,
   PHASE_FROM_ENGINE,
 } from '@/lib/workout-catalogue/select';
@@ -356,6 +357,67 @@ function atMost(value: number, ceiling: number, what: string): void {
   }
 }
 
+
+/**
+ * EFFORT-RAMP-1 · a doctrine Reps row that states a BUILD, checked end to end.
+ *
+ * Both ends come out of the doc cell — the START the row opens at and the
+ * BUILT dose it arrives at — and the engine is asked to reproduce both. A check
+ * that hardcoded 4 and 12 would only prove the test agrees with itself; this
+ * one fails the moment the row is reworded, which is what the gate is for.
+ *
+ * `cell` is the doc's own words, e.g. "Start 4–6, build to 8–12" (§7.3) or
+ * "8–16 (start 8, build to 16)" (§8.2).
+ */
+function assertStatedBuild(cell: string, slug: string): void {
+  const dashed = cell.replace(/[–—]/g, '-');
+  const start = dashed.match(/start\s+(\d+)/i);
+  const build = dashed.match(/build\s+to\s+(\d+)(?:\s*-\s*(\d+))?/i);
+  if (!start || !build) {
+    throw new Error(
+      `the Reps row for ${slug} no longer states a start and a build: "${cell}"\n` +
+        '  Doctrine changed. Read the row, then decide whether the engine should still ramp\n' +
+        '  this session at all — do not relax this claim to make it pass.',
+    );
+  }
+  const startAt = Number(start[1]);
+  const builtTo = Number(build[2] ?? build[1]);
+
+  const entry = workoutBySlug(slug);
+  if (!entry) throw new Error(`catalogue has no ${slug}`);
+  const s = entry.structures[0];
+  if (s.kind !== 'reps') throw new Error(`${slug} is not a rep set`);
+  if (s.repBuild == null) {
+    throw new Error(
+      `${slug} carries no \`repBuild\`, so it is sized at the top of its band in every week ` +
+        `of every phase. Doctrine states "${cell}".`,
+    );
+  }
+  if (s.repBuild.replace(/[–—]/g, '-').trim() !== dashed.trim()) {
+    throw new Error(
+      `${slug} quotes "${s.repBuild}" and §-row now reads "${cell}" — re-quote it verbatim`,
+    );
+  }
+  within(s.reps.min, [startAt, startAt], `${slug} opening rep count`);
+  within(s.reps.max, [builtTo, builtTo], `${slug} built rep count`);
+
+  // The ramp itself: it opens where the doc starts, ends where the doc builds
+  // to, and never goes backwards on the way. Sampled across the block rather
+  // than at the two ends alone, because a non-monotone ramp reads to a runner
+  // as a session getting easier mid-block.
+  within(rampedReps(s.reps, 0), [startAt, startAt], `${slug} reps at the block's first week`);
+  within(rampedReps(s.reps, 1), [builtTo, builtTo], `${slug} reps at the block's last week`);
+  within(rampedReps(s.reps, null), [startAt, startAt], `${slug} reps with no block position`);
+  let prev = -Infinity;
+  for (let i = 0; i <= 40; i++) {
+    const n = rampedReps(s.reps, i / 40);
+    if (n < prev) throw new Error(`${slug} rep ramp goes backwards at position ${i / 40}`);
+    if (n < startAt || n > builtTo) {
+      throw new Error(`${slug} rep ramp leaves the doc's ${startAt}-${builtTo} band at ${n}`);
+    }
+    prev = n;
+  }
+}
 
 /** Research/00a §"Volume progression rules" long-run cap, as a fraction band. */
 function resolveShareCap(): [number, number] {
@@ -7764,6 +7826,112 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
             `${entry.slug} carries a clock pace · §8.1's pace column is effort for every row`,
           );
         }
+      }
+    },
+  },
+  /* ── EFFORT-RAMP-1 · the two rep rows doctrine states as a BUILD ───────────
+   *
+   * `fits`'s effort-cued branch returned `structure.reps.max` unconditionally,
+   * so every hill session in every week of every phase went out at the top of
+   * its band: a runner's first hill session of a block was their hardest, and
+   * it never got harder because it had opened at the ceiling. §7.3 and §8.2
+   * both write the rep count as a progression in as many words, and these two
+   * claims hold the engine to the two ends the doc names — the START it opens
+   * at and the BUILT dose it arrives at — by reading both out of the doc rather
+   * than restating them here.
+   *
+   * `VOCAB.hill-band-no-build` is the other half, and the more important one:
+   * it asserts that the rows which state a plain band carry NO ramp. Doctrine
+   * gives §8.3 "6–10" and §8.4 "4–8" with no progression language, and a curve
+   * between those ends would be this module's invention, not research.
+   */
+  {
+    id: 'VOCAB.hill-sprint-build',
+    binds: [
+      'lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE',
+      'lib/workout-catalogue/select.ts#rampedReps',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 7.3 Hill sprints',
+    claim:
+      '§7.3 states the hill-sprint rep count as a progression — "Start 4–6, build to 8–12" — ' +
+      'so the session opens the block at the start the doc names and arrives at the built ' +
+      'dose it names, rather than being prescribed at the ceiling every week.',
+    check({ cite }) {
+      assertStatedBuild(cite.table().cell('Reps', 'Prescription'), 'hill-sprints');
+    },
+  },
+  {
+    id: 'VOCAB.short-hill-build',
+    binds: [
+      'lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE',
+      'lib/workout-catalogue/select.ts#rampedReps',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 8.2 Short hill repeats (10–30 s)',
+    claim:
+      '§8.2 states the short-hill rep count as a progression — "8–16 (start 8, build to 16)" — ' +
+      'so the session opens at eight reps and climbs to sixteen across the block instead of ' +
+      'opening at sixteen.',
+    check({ cite }) {
+      assertStatedBuild(cite.table().cell('Reps', 'Prescription'), 'short-hill-repeats');
+    },
+  },
+  {
+    id: 'VOCAB.hill-band-no-build',
+    binds: ['lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 8.1 Hill family overview',
+    claim:
+      'A rep count doctrine states as a plain band carries no ramp. §8.3\'s "6–10" and §8.4\'s ' +
+      '"4–8" say nothing about building across a block, so those sessions are not ramped — a ' +
+      'curve between the ends of a band the doc does not describe as a progression would be ' +
+      'the engine\'s invention.',
+    check({ cite }) {
+      // Every rep-shaped entry in the catalogue, checked against its OWN cited
+      // rows. The doc's words decide which side of the line an entry is on, so
+      // adding a ramp to an entry whose doctrine states none fails here without
+      // anyone having to add it to a list.
+      const HAS_BUILD = /\bbuild(?:s|ing)?\s+to\b|\bstart\s+\d/i;
+      for (const entry of WORKOUT_CATALOGUE) {
+        for (const s of entry.structures) {
+          if (s.kind !== 'reps') continue;
+          const repsRow = entry.cites.find((c) => /\bReps\b/.test(c) && HAS_BUILD.test(c)) ?? null;
+          if (s.repBuild == null && repsRow != null) {
+            throw new Error(
+              `${entry.slug} cites a rep row stating a build ("${repsRow}") but carries no ` +
+                '`repBuild`, so it is prescribed at the top of its band every week',
+            );
+          }
+          if (s.repBuild != null && !HAS_BUILD.test(s.repBuild)) {
+            throw new Error(
+              `${entry.slug} declares a rep build that states no build: "${s.repBuild}"`,
+            );
+          }
+        }
+      }
+      // And the two §8.1 rows that are bands: the doc's own cell has no build
+      // language, and the engine holds them at the band the doc gives.
+      const t = cite.table();
+      for (const [row, slug] of [
+        ['Medium hill repeats', 'medium-hill-repeats'],
+        ['Long hill repeats', 'long-hill-repeats'],
+      ] as const) {
+        const cell = t.cell(row, 'Reps');
+        if (HAS_BUILD.test(cell)) {
+          throw new Error(
+            `§8.1's "${row}" row now states a build ("${cell}"). Doctrine changed: give ` +
+              `${slug} a \`repBuild\` and re-check the ramp, do not relax this claim.`,
+          );
+        }
+        const s = workoutBySlug(slug)!.structures[0];
+        if (s.kind !== 'reps') throw new Error(`${slug} is not a rep set`);
+        if (s.repBuild != null) {
+          throw new Error(`${slug} ramps its reps, and §8.1 states a flat band: "${cell}"`);
+        }
+        const [lo, hi] = parseBand(cell);
+        within(s.reps.min, [lo, lo], `${slug} band floor`);
+        within(s.reps.max, [hi, hi], `${slug} band ceiling`);
       }
     },
   },

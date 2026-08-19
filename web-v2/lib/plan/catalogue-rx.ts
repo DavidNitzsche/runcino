@@ -498,6 +498,15 @@ export interface SlotRequest {
    * two-row list, which is what every caller got before this existed.
    */
   inHillBlock?: boolean | null;
+  /**
+   * EFFORT-RAMP-1 · how far through the training block this week sits, 0…1.
+   *
+   * The composer's number, because the composer is what knows how long the
+   * block is; the catalogue only knows what the doc says the band is. Passed
+   * straight through — see `SelectorInput.blockPosition` for what the selector
+   * does with it and why it is not the overload trajectory's job.
+   */
+  blockPosition?: number | null;
 }
 
 export type SlotChoice =
@@ -611,6 +620,7 @@ export function selectSlotWorkout(req: SlotRequest): SlotChoice {
         cycleCounts: req.history.cycleCounts,
         exclude,
         targetAtPaceMinutes: req.targetAtPaceMinutes ?? null,
+        blockPosition: req.blockPosition ?? null,
       };
       const res = selectWorkout(input);
       if (res.ok) {

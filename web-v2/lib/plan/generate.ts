@@ -3078,6 +3078,19 @@ function layoutWeek({
             // it opens the phase with hills and closes it with reps — so the
             // two agree by construction rather than by anyone remembering.
             inHillBlock: phase === 'QUALITY' ? weeksToPhaseEnd > 2 : null,
+            // EFFORT-RAMP-1 · where this week sits in the BLOCK, 0…1.
+            //
+            // The block is the plan, not the phase. §7.3's hill sprints are
+            // placed "Year-round" and §8.2's short hills run "1×/week base
+            // phase; 1× every 2 weeks specific", so the build both rows state
+            // is scoped to the training cycle and crosses the phase boundary
+            // with the runner. Re-basing it per phase would drop a runner from
+            // twelve sprints back to four the week BASE ends, which doctrine
+            // nowhere states and no coach would write.
+            //
+            // Pure in `(weekIdx, totalWeeks)` — no clock, no counter — so the
+            // plan still regenerates byte-identically.
+            blockPosition: totalWeeks > 1 ? weekIdx / (totalWeeks - 1) : 0,
           })
         : null;
       if (choice?.ok) {

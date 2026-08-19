@@ -200,6 +200,98 @@ describe('SELECTOR · refusal at low volume', () => {
     expect(res.rejected.some((r) => r.reason === 'does-not-fit-the-week')).toBe(true);
   });
 
+  /* ── EFFORT-RAMP-1 · effort-cued work climbs across the block ───────────── */
+
+  it('opens an effort-cued session at the doc\'s start and builds to its ceiling', () => {
+    // §7.3 "Start 4–6, build to 8–12" and §8.2 "8–16 (start 8, build to 16)".
+    // Before this, `fits` returned `reps.max` unconditionally, so both went out
+    // at 12 and 16 in every week of every phase — a runner's first hill session
+    // of a block was their hardest and never got harder.
+    const seriesFor = (slug: string, phase: SelectorInput['phase'], slot: Slot): number[] => {
+      const out: number[] = [];
+      for (let i = 0; i <= 10; i++) {
+        const res = selectWorkout(base({
+          slot, phase, weeklyMi: 40, distance: 'm',
+          blockPosition: i / 10,
+          exclude: new Set(WORKOUT_CATALOGUE.map((e) => e.slug).filter((s) => s !== slug)),
+        }));
+        expect(res.ok, `${slug} not offered at position ${i / 10}`).toBe(true);
+        if (res.ok) out.push(res.dose.reps);
+      }
+      return out;
+    };
+
+    const sprints = seriesFor('hill-sprints', 'base', 'speed');
+    expect(sprints[0]).toBe(4);
+    expect(sprints[sprints.length - 1]).toBe(12);
+
+    const shortHills = seriesFor('short-hill-repeats', 'base', 'speed');
+    expect(shortHills[0]).toBe(8);
+    expect(shortHills[shortHills.length - 1]).toBe(16);
+
+    // Monotone all the way up. A rep count that dipped mid-block would read to
+    // a runner as the session getting easier.
+    for (const series of [sprints, shortHills]) {
+      for (let i = 1; i < series.length; i++) {
+        expect(series[i], `series went backwards: ${series}`).toBeGreaterThanOrEqual(series[i - 1]);
+      }
+      expect(new Set(series).size, `no ramp at all: ${series}`).toBeGreaterThan(1);
+    }
+  });
+
+  it('leaves a flat doctrine band flat', () => {
+    // §8.3's Reps row is "6–10" and §8.4's is "4–8". Neither states a build, so
+    // neither is ramped — a curve between the ends of a band the doc does not
+    // describe as a progression would be this module's invention.
+    for (const [slug, phase, expected] of [
+      ['medium-hill-repeats', 'base', 10],
+      ['long-hill-repeats', 'hill_strength', 8],
+    ] as const) {
+      const at = (p: number) => {
+        const res = selectWorkout(base({
+          slot: 'intervals', phase, weeklyMi: 45, distance: 'm', blockPosition: p,
+          exclude: new Set(WORKOUT_CATALOGUE.map((e) => e.slug).filter((s) => s !== slug)),
+        }));
+        expect(res.ok, `${slug} not offered at ${p}`).toBe(true);
+        return res.ok ? res.dose.reps : -1;
+      };
+      expect(at(0)).toBe(expected);
+      expect(at(0.5)).toBe(expected);
+      expect(at(1)).toBe(expected);
+    }
+  });
+
+  it('ramps on the block, not on how often the rotation lands here', () => {
+    // The selector rotates identities least-recently-used, so a runner may see
+    // §8.2's short hills on weeks 5, 8 and 12 and not in between. The rep count
+    // must be the same for a given block position whatever the history behind
+    // it, or the dose becomes a function of the rotation rather than of the
+    // runner's training state.
+    const only = new Set(WORKOUT_CATALOGUE.map((e) => e.slug).filter((s) => s !== 'short-hill-repeats'));
+    const at = (weekIndex: number, recent: Array<{ slug: string; weeksAgo: number }>) => {
+      const res = selectWorkout(base({
+        slot: 'speed', phase: 'base', weeklyMi: 40, distance: 'm',
+        weekIndex, blockPosition: 0.5, recent, exclude: only,
+      }));
+      return res.ok ? res.dose.reps : -1;
+    };
+    const never = at(6, []);
+    const runTwice = at(6, [{ slug: 'short-hill-repeats', weeksAgo: 2 }, { slug: 'short-hill-repeats', weeksAgo: 5 }]);
+    const otherWeek = at(11, []);
+    expect(never).toBe(12);          // 8 + round(0.5 × 8)
+    expect(runTwice).toBe(never);
+    expect(otherWeek).toBe(never);
+  });
+
+  it('takes the doc\'s "start" when the caller cannot say where the block is', () => {
+    const res = selectWorkout(base({
+      slot: 'speed', phase: 'base', weeklyMi: 40, distance: 'm',
+      exclude: new Set(WORKOUT_CATALOGUE.map((e) => e.slug).filter((s) => s !== 'hill-sprints')),
+    }));
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.dose.reps).toBe(4);
+  });
+
   it('still offers the low-volume runner what §15\'s base row does carry', () => {
     // Strides and hill sprints have no at-pace share against them, so a 15
     // mi/wk week is not empty — it is a base week, which is the honest answer.
