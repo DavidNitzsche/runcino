@@ -59,9 +59,11 @@ import {
   TIER_TARGETS,
   MAINTENANCE_BY_TIER,
   BUILD_WINDOW_WEEKS,
+  pickPlanMode,
   type DistCategory,
   type GoalTier,
 } from '@/lib/plan/goal-tiers';
+import { openBlockMode } from '@/lib/plan/race-lifecycle';
 import { PLAN_TEMPLATES } from '@/lib/plan/plan-templates';
 import {
   WORKOUT_CATALOGUE,
@@ -638,11 +640,87 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       for (const [file, needle] of [
         ['web-v2/lib/plan/goal-tiers.ts', 'postRaceRecoveryWeeks(lastCat, lastRacePriority)'],
         ['web-v2/lib/plan/generate.ts', 'postRaceRecoveryWeeks(lastCat,'],
+        // 2026-08-19 · the THIRD place a recovery window is now decided: the
+        // open block a runner gets when they finish a race with nothing
+        // booked. It must consult the same scaled reader or a C-race parkrun
+        // would park them in a maintenance-suppressing recovery block.
+        ['web-v2/lib/plan/race-lifecycle.ts', 'postRaceRecoveryWeeks(cat,'],
       ] as const) {
         if (!sourceOf(file).includes(needle)) {
           throw new Error(`${file} decides a recovery window without the effort scale · it will give a tune-up the full A-race hole`);
         }
       }
+    },
+  },
+  {
+    id: 'LIFECYCLE.open-block-recovery-window',
+    binds: [
+      'lib/plan/race-lifecycle.ts#openBlockMode',
+      'lib/plan/goal-tiers.ts#postRaceRecoveryWeeks',
+      'lib/plan/goal-tiers.ts#pickPlanMode',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Total recovery days (no quality) | Days of zero/very-light running |',
+    claim:
+      'A runner who finishes a race with nothing booked is still recovering. The block they ' +
+      'are given must be recovery for the whole doctrine window and only then maintenance, ' +
+      'and that window must be the SAME one pickPlanMode uses for a runner who does have a ' +
+      'race booked. One runner, two entry points, one answer — the failure this guards is ' +
+      'the RECOVERY.quality-ready-day shape, where two surfaces read the same table and gave ' +
+      'opposite advice. The window is also checked against the doc: it must cover at least ' +
+      'the floor of the "total recovery days (no quality)" band for every distance the ' +
+      'engine recognises a recovery window for.',
+    check({ cite, exempt }) {
+      const t = cite.table();
+      const col = 'Total recovery days (no quality)';
+      const RACE_DATE = '2026-03-01';
+      const dayAfter = (n: number) =>
+        new Date(Date.parse(RACE_DATE + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+      const MI: Record<DistCategory, number> = { '5k': 3.1, '10k': 6.2, 'hm': 13.1, 'm': 26.2, 'ultra': 50 };
+
+      for (const cat of CATS) {
+        for (const priority of ['A', 'B', 'C'] as const) {
+          const weeks = postRaceRecoveryWeeks(cat, priority);
+          const engineDays = weeks * 7;
+          // 1 · openBlockMode and pickPlanMode must flip on the same day.
+          for (const day of [0, Math.max(0, engineDays - 1), engineDays, engineDays + 1]) {
+            const todayISO = dayAfter(day);
+            const open = openBlockMode({
+              lastRaceDateISO: RACE_DATE,
+              lastRaceDistanceMi: MI[cat],
+              lastRacePriority: priority,
+              todayISO,
+            });
+            const picked = pickPlanMode(todayISO, null, null, RACE_DATE, MI[cat], priority);
+            const pickedOpen = picked === 'recovery' ? 'recovery' : 'maintenance';
+            if (open !== pickedOpen) {
+              throw new Error(
+                `open block and pickPlanMode disagree for ${cat}/${priority} on day ${day}: ` +
+                  `openBlockMode=${open}, pickPlanMode=${picked}`,
+              );
+            }
+          }
+        }
+        // 2 · and the A-race window covers the doc's floor.
+        const aDays = postRaceRecoveryWeeks(cat, 'A') * 7;
+        const band =
+          cat === 'ultra'
+            ? ([parseBand(t.cell('50K', col))[0], parseBand(t.cell('100-mile', col))[1]] as [number, number])
+            : parseBand(t.cell(DOC_ROW[cat], col));
+        if (aDays < band[0] && exempt(`floor-${cat}`)) continue;
+        if (aDays < band[0]) {
+          throw new Error(
+            `open block leaves recovery after ${aDays} days for ${cat} · doctrine floor is ${band[0]}`,
+          );
+        }
+      }
+    },
+    exempt: {
+      'floor-5k':
+        'Inherited from RECOVERY.post-race-duration: POST_RACE_RECOVERY_WEEKS["5k"] is 0 ' +
+        'because 3-5 days is not expressible in whole weeks. The open block therefore hands ' +
+        'a 5K runner maintenance immediately, which matches pickPlanMode exactly — the ' +
+        'consistency half of this claim still holds. Fix the constant and this entry must go.',
     },
   },
   {

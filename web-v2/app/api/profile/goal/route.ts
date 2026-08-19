@@ -18,6 +18,7 @@ import { generatePlan } from '@/lib/plan/generate';
 import { goalDistanceMiFromCode } from '@/lib/training/vdot';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { patchSettings } from '@/lib/coach/settings';
+import { isCoachedExternally } from '@/lib/plan/coached-gate';
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -117,7 +118,15 @@ export async function POST(req: NextRequest) {
   let plan: Awaited<ReturnType<typeof generatePlan>> | null = null;
   let planError: string | null = null;
   const distMi = goalDistanceMiFromCode(distanceLabel);
-  if (distMi) {
+  // 2026-08-19 · race-shape audit · COACHED RUNNERS AUTHOR NOTHING.
+  // `coached_externally` was honoured at onboarding (seedPlan mode 'coached',
+  // no races row, no training_plans row) and never again — it was read in two
+  // display files and in nothing that authors. A coached runner naming their
+  // goal so Faff can measure progress toward it got a full 16-week block
+  // written against their own coach's. The GOAL still saves (tt_goal_* above
+  // is what the projection and Targets read); only authorship is gated.
+  const coached = await isCoachedExternally(userId);
+  if (distMi && !coached) {
     const weeks = planWeeks ?? 16;
     // Deadline = chosen start + plan_weeks. The plan anchors week 0 at the start.
     const genWith = (anchor: 'today' | 'monday', startISO?: string) => {
@@ -163,5 +172,8 @@ export async function POST(req: NextRequest) {
     plan_weeks: planWeeks,
     plan: plan && plan.ok ? { ok: plan.ok, plan_id: plan.plan_id, weeks: plan.weeks_generated } : null,
     plan_error: toFriendlyPlanError(planError),
+    // So the client can say "goal saved · your coach owns the plan" rather
+    // than rendering a silent no-plan state.
+    ...(coached ? { coached_externally: true } : {}),
   });
 }

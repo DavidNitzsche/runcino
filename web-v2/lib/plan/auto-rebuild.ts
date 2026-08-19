@@ -23,6 +23,8 @@
 
 import { pool } from '@/lib/db/pool';
 import { generatePlan } from '@/lib/plan/generate';
+import { distanceMiFromLabel } from '@/lib/race/distance';
+import { isCoachedExternally, COACHED_SKIP_REASON } from '@/lib/plan/coached-gate';
 
 export type AutoRebuildKind =
   | 'race_date_changed'
@@ -56,11 +58,32 @@ export type AutoRebuildKind =
   | 'easy_drift'
   | 'long_drift'
   | 'quality_drift'
-  | 'goal_gap_widening';
+  | 'goal_gap_widening'
+  /** 2026-08-19 · race-shape audit · a plan with no race ran out of
+   *  prescribed days. `graduateDue` only ever asked about a RACE date, so a
+   *  goal-mode plan had no end at all: sixteen weeks elapsed and Today kept
+   *  rendering the last day forever. Rebuilt toward the goal, not a race. */
+  | 'plan_elapsed';
+
+/** 2026-08-19 · the no-race target. Same shape `generatePlan` already takes
+ *  (GenerateInput.goalTarget) and the same one `rebuildActivePlanForPrefs` has
+ *  regenerated goal-mode plans through since P1-16. */
+export interface RebuildGoalTarget {
+  distanceMi: number;
+  goalSec: number | null;
+  raceDateISO: string;
+}
 
 export interface AutoRebuildInput {
   userUuid: string;
-  raceSlug: string;
+  /** The race to build toward. Exactly one of raceSlug / goalTarget. */
+  raceSlug?: string;
+  /** 2026-08-19 · race-shape audit · the GOAL to build toward, for a runner
+   *  with no race row. Every trigger in this module keyed off a race slug,
+   *  which is why a goal-mode runner's drift signals were detected nightly
+   *  and acted on never: the cron's only rebuild call site was guarded on
+   *  `plan?.race_id` and a goal-mode plan's race_id is NULL. */
+  goalTarget?: RebuildGoalTarget;
   kind: AutoRebuildKind;
   /** Optional from/to context for the audit row. */
   reasons: Record<string, unknown>;
@@ -94,6 +117,19 @@ export interface AutoRebuildResult {
  * UI edit triggers two route hits (PATCH + revalidate).
  */
 export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebuildResult> {
+  // 0. 2026-08-19 · race-shape audit · COACHED RUNNERS ARE NOT REBUILT.
+  // `coached_externally` was honoured at onboarding and nowhere else, so a
+  // coached runner whose race date moved (or whose nightly drift fired) had a
+  // full Faff block authored against their own coach's. Faff is the
+  // measurement layer for this runner; it prescribes nothing.
+  if (await isCoachedExternally(input.userUuid)) {
+    return { ok: false, reason: COACHED_SKIP_REASON };
+  }
+
+  if (!input.raceSlug && !input.goalTarget) {
+    return { ok: false, reason: 'no_target' };
+  }
+
   // 1. Find the active plan + verify its race matches
   const plan = (await pool.query<{ id: string; race_id: string | null }>(
     `SELECT id, race_id FROM training_plans
@@ -104,7 +140,10 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
 
   if (!plan) {
     // No active plan · race_graduate path is OK with this (build fresh).
-    if (input.kind !== 'race_graduate') {
+    // 2026-08-19 · so is a goal-anchored rebuild: 'plan_elapsed' archives the
+    // dead plan before it gets here, and a goal target does not need a prior
+    // plan to be meaningful.
+    if (input.kind !== 'race_graduate' && !input.goalTarget) {
       return { ok: false, reason: 'no_active_plan' };
     }
   }
@@ -112,7 +151,13 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
   // The active plan is for the OLD race (which just finished); we're
   // building the NEW plan for the next A-race. generatePlan archives
   // the old plan inside persistPlan's clearActivePlansFor.
-  if (plan && plan.race_id !== input.raceSlug && input.kind !== 'race_graduate') {
+  // 2026-08-19 · the race-match question only exists for a race-anchored
+  // rebuild. A goal target has no slug to compare, and the plan it replaces is
+  // by definition the goal-mode one (race_id NULL) this user already has.
+  if (
+    input.raceSlug && plan && plan.race_id !== input.raceSlug
+    && input.kind !== 'race_graduate'
+  ) {
     return { ok: false, reason: 'race_mismatch', oldPlanId: plan.id };
   }
 
@@ -141,7 +186,9 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
   let rebuildOk = false;
   let rebuildReason: string | undefined;
   try {
-    const result = await generatePlan({ userId: input.userUuid, raceSlug: input.raceSlug });
+    const result = input.raceSlug
+      ? await generatePlan({ userId: input.userUuid, raceSlug: input.raceSlug })
+      : await generatePlan({ userId: input.userUuid, goalTarget: input.goalTarget! });
     if (result.ok) {
       rebuildOk = true;
       newPlanId = result.plan_id;
@@ -212,6 +259,12 @@ export async function rebuildActivePlanForPrefs(
   userUuid: string,
   changedFields: string[],
 ): Promise<AutoRebuildResult> {
+  // 2026-08-19 · same gate as fireAutoRebuild. A coached runner changing their
+  // long-run day is telling Faff how to READ their week, not asking it to
+  // author one.
+  if (await isCoachedExternally(userUuid)) {
+    return { ok: false, reason: COACHED_SKIP_REASON };
+  }
   type ActivePlanRow = {
     id: string; race_id: string | null; goal_iso: string | null;
     goal_mode: string | null; goal_distance_mi: string | null; goal_sec: string | null;
@@ -303,5 +356,99 @@ export async function rebuildActivePlanForPrefs(
     oldPlanId: plan.id,
     newPlanId,
     proposalId: proposalRow.id,
+  };
+}
+
+/**
+ * 2026-08-19 · race-shape audit · the goal a no-race runner is working toward,
+ * in the shape `generatePlan` takes.
+ *
+ * TWO SOURCES, in order:
+ *
+ *   1. The active plan's OWN record of its goal (`authored_state.goal_mode` +
+ *      `goal_distance_mi` / `goal_sec`, deadline `goal_iso`). This is what
+ *      `rebuildActivePlanForPrefs` has used since P1-16, and it is the right
+ *      first answer for a REBUILD: same goal, same deadline, only the shaping
+ *      changes.
+ *
+ *   2. `profile.tt_goal_*` — the runner's stated fitness goal — when the plan
+ *      has no record of one, or when its deadline has already passed. The
+ *      deadline is re-derived as today + `tt_goal_plan_weeks` (default 16, the
+ *      same default `/api/profile/goal` uses) because there IS no stored date:
+ *      plan_weeks is a LENGTH the runner picked, which the goal route turns
+ *      into a deadline at generation time. Re-deriving from today is what lets
+ *      an elapsed goal plan rebuild at all — the alternative is a deadline in
+ *      the past, which `loadGeneratorInputs` rejects at `totalDays < 14`.
+ *
+ * Null when neither resolves. Callers must treat null as "no target", never
+ * substitute a guess: a plan built to an invented goal is worse than no plan.
+ */
+export async function resolveGoalTarget(
+  userUuid: string,
+  todayISO: string,
+): Promise<RebuildGoalTarget | null> {
+  const plan = (await pool.query<{
+    goal_mode: string | null; goal_distance_mi: string | null;
+    goal_sec: string | null; goal_iso: string | null;
+  }>(
+    `SELECT authored_state->>'goal_mode'        AS goal_mode,
+            authored_state->>'goal_distance_mi' AS goal_distance_mi,
+            authored_state->>'goal_sec'         AS goal_sec,
+            goal_iso::text                      AS goal_iso
+       FROM training_plans
+      WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+      ORDER BY authored_iso DESC LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] as Array<{
+    goal_mode: string | null; goal_distance_mi: string | null;
+    goal_sec: string | null; goal_iso: string | null;
+  }> }))).rows[0];
+
+  const planDistanceMi = plan?.goal_distance_mi != null ? Number(plan.goal_distance_mi) : NaN;
+  const planDeadline = plan?.goal_iso ? String(plan.goal_iso).slice(0, 10) : null;
+  // MIN_RUNWAY_DAYS, not "still in the future". `loadGeneratorInputs` refuses
+  // anything under 14 days ('target < 2 weeks away'), so handing back a
+  // deadline inside that window produces a rebuild that can only fail — and a
+  // failed rebuild lands a `pending` proposal that nothing can ever resolve.
+  // That is the stuck-pending-row shape the 2026-08-17 drift fix closed;
+  // falling through to the profile branch re-derives a full-length runway
+  // from the plan length the runner themselves chose, which is exactly what
+  // POST /api/profile/goal does when they re-set the goal.
+  const MIN_RUNWAY_DAYS = 14;
+  const runwayEnough = planDeadline != null
+    && (Date.parse(planDeadline + 'T12:00:00Z') - Date.parse(todayISO.slice(0, 10) + 'T12:00:00Z'))
+       / 86400000 >= MIN_RUNWAY_DAYS;
+  if (
+    plan?.goal_mode === 'true'
+    && Number.isFinite(planDistanceMi) && planDistanceMi > 0
+    && planDeadline && runwayEnough
+  ) {
+    const secs = plan.goal_sec != null ? Number(plan.goal_sec) : NaN;
+    return {
+      distanceMi: planDistanceMi,
+      goalSec: Number.isFinite(secs) && secs > 0 ? Math.round(secs) : null,
+      raceDateISO: planDeadline,
+    };
+  }
+
+  const prof = (await pool.query<{ dist: string | null; secs: string | null; weeks: string | null }>(
+    `SELECT tt_goal_distance     AS dist,
+            tt_goal_time_seconds AS secs,
+            tt_goal_plan_weeks   AS weeks
+       FROM profile WHERE user_uuid = $1 LIMIT 1`,
+    [userUuid],
+  ).catch(() => ({ rows: [] as Array<{ dist: string | null; secs: string | null; weeks: string | null }> }))).rows[0];
+  if (!prof?.dist) return null;
+  const distanceMi = distanceMiFromLabel(prof.dist);
+  if (distanceMi == null || !(distanceMi > 0)) return null;
+  const weeksRaw = prof.weeks != null ? Number(prof.weeks) : NaN;
+  const weeks = Number.isFinite(weeksRaw) && weeksRaw >= 4 && weeksRaw <= 52
+    ? Math.round(weeksRaw) : 16;
+  const secsRaw = prof.secs != null ? Number(prof.secs) : NaN;
+  return {
+    distanceMi,
+    goalSec: Number.isFinite(secsRaw) && secsRaw > 0 ? Math.round(secsRaw) : null,
+    raceDateISO: new Date(Date.parse(todayISO.slice(0, 10) + 'T12:00:00Z') + weeks * 7 * 86400000)
+      .toISOString().slice(0, 10),
   };
 }

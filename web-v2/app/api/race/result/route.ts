@@ -97,6 +97,10 @@ export async function POST(req: NextRequest) {
       raceSlug: body.slug,
       raceDateISO: (meta.date as string) ?? null,
       distanceMi,
+      // 2026-08-19 · Research/00b scales the recovery window by A/B/C effort,
+      // and the open block (nothing booked after this race) sizes itself off
+      // that window. Absent → treated as A, the longer, safer window.
+      racePriority: typeof meta.priority === 'string' ? meta.priority : null,
       finishS: resolvedS,
     });
 
@@ -110,6 +114,8 @@ export async function POST(req: NextRequest) {
       marathonProjectionSec: chain.marathonProjectionSec,
       planArchived: chain.planArchived,
       nextPlan: chain.nextPlan,
+      // 2026-08-19 · what the runner got when there was no next race booked.
+      openBlock: chain.openBlock,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

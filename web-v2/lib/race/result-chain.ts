@@ -14,8 +14,21 @@
  *   2. vdot_auto_recalc coach_intent (briefing layer signal).
  *   3. Archive the active plan if this race is its goal race
  *      (archive_reason = 'race_completed').
- *   4. Generate a plan for the next A/B race (optional · regeneratePlan).
+ *   4. Generate a plan for the next A/B race (optional · regeneratePlan),
+ *      or — 2026-08-19 — an OPEN BLOCK when there is no next race at all.
  *   5. Bust the briefing cache.
+ *
+ * 2026-08-19 · race-shape audit · step 4 had two branches where it needed
+ * three. Step 3 archives the plan unconditionally; step 4 then looked for
+ * the next A/B race and, finding none, returned `nextPlan = null` and
+ * stopped. That left the runner with ZERO active plans the morning after
+ * their goal race — the state nothing in the app could author its way out
+ * of, because every generator entry needs a target. The third branch hands
+ * off to `lib/plan/open-block.ts`, which owns the decision (coached runners
+ * get nothing by design; recovery vs maintenance comes from Research/00b's
+ * window; a live fitness goal is built toward once that window closes) and
+ * records a plan_proposals row either way, so a planless runner is visible
+ * rather than silent.
  *
  * Fix folded in during extraction: the route called
  * recordProjectionSnapshot(userId, today, distanceMi, vdot, projSec,
@@ -79,6 +92,16 @@ export interface NextPlanResult {
   reason?: string;
 }
 
+/** 2026-08-19 · what the runner got when there was no next race to build to.
+ *  Null when a next A/B race existed (nextPlan covers that case) or when the
+ *  caller asked for no regeneration. */
+export interface OpenBlockResult {
+  ok: boolean;
+  mode: 'recovery' | 'maintenance' | 'goal-build' | null;
+  reason: string;
+  plan_id?: string;
+}
+
 export interface PostResultOutcome {
   vdotBefore: number | null;
   vdotAfter: number | null;
@@ -86,6 +109,7 @@ export interface PostResultOutcome {
   marathonProjectionSec: number | null;
   planArchived: boolean;
   nextPlan: NextPlanResult | null;
+  openBlock: OpenBlockResult | null;
 }
 
 export interface PostResultChainArgs {
@@ -96,6 +120,11 @@ export interface PostResultChainArgs {
    *  in nextPlan.reason instead of silently skipping. */
   raceDateISO: string | null;
   distanceMi: number | null;
+  /** 2026-08-19 · the finished race's A/B/C grading. Research/00b scales the
+   *  recovery window by effort, so the open block cannot size itself without
+   *  it. Absent → treated as A by `postRaceRecoveryWeeks`, the conservative
+   *  direction (longer recovery). */
+  racePriority?: string | null;
   finishS: number;
   /** When false, steps 1-3 + cache bust still run but no next plan is
    *  generated (used by the auto detector for C-priority races so a
@@ -105,6 +134,7 @@ export interface PostResultChainArgs {
 
 export async function runPostResultChain(args: PostResultChainArgs): Promise<PostResultOutcome> {
   const { userId, raceSlug, raceDateISO, distanceMi, finishS } = args;
+  const racePriority = args.racePriority ?? null;
   const regeneratePlan = args.regeneratePlan !== false;
 
   // ── 1. Immediate projection snapshots ──────────────────────────────
@@ -174,6 +204,7 @@ export async function runPostResultChain(args: PostResultChainArgs): Promise<Pos
   // null = no future A/B race found (generation not attempted).
   // { ok: false } = generation was attempted but failed.
   let nextPlan: NextPlanResult | null = null;
+  let openBlock: OpenBlockResult | null = null;
   if (regeneratePlan) {
     try {
       // No .catch here — DB errors throw to the inner catch below so the
@@ -215,8 +246,37 @@ export async function runPostResultChain(args: PostResultChainArgs): Promise<Pos
           compressed,
           reason: gen.reason,
         };
+      } else {
+        // 2026-08-19 · race-shape audit · THE THIRD BRANCH.
+        //
+        // No future A/B race. The plan for the race that just finished was
+        // archived unconditionally three steps up, so at this instant the
+        // runner has ZERO active plans — on the morning after their goal
+        // race. Nothing here used to run: `nextPlan` stayed null and the
+        // cron's mirror said "leave plan as-is", of a plan that is already
+        // archived.
+        //
+        // `authorOpenBlock` owns the whole decision (coached runners get
+        // nothing by design, recovery vs maintenance comes from
+        // Research/00b's window, a live fitness goal is built toward once
+        // that window closes) and records an audit row either way, so a
+        // planless runner is visible in plan_proposals rather than silent.
+        const { authorOpenBlock } = await import('@/lib/plan/open-block');
+        const open = await authorOpenBlock({
+          userUuid: userId,
+          todayISO: today,
+          lastRace: {
+            slug: raceSlug,
+            dateISO: raceDateISO,
+            distanceMi,
+            priority: racePriority,
+          },
+          hasFutureTarget: false,
+          hasActivePlan: false,
+          source: 'result_chain',
+        });
+        openBlock = { ok: open.ok, mode: open.mode, reason: open.reason, plan_id: open.planId };
       }
-      // nextRaceRow undefined → no future A/B race → nextPlan stays null
     } catch (genErr: unknown) {
       const msg = genErr instanceof Error ? genErr.message : String(genErr);
       console.error('[race/result-chain] next-plan step failed:', msg);
@@ -233,5 +293,6 @@ export async function runPostResultChain(args: PostResultChainArgs): Promise<Pos
     marathonProjectionSec: mProjSec,
     planArchived,
     nextPlan,
+    openBlock,
   };
 }
