@@ -600,6 +600,29 @@ export function validateComposedPlan(
     // (Research/00a:754 · 48h between hard sessions). Accept that fold — mirrors the trainingDaysPerWeek<=1
     // allowance — instead of rejecting the ONLY doctrinally-safe plan and leaving the runner with NO plan.
     if (ctx.qualityStrandedByAvailability) continue;
+    // AWAY-1 (2026-08-19) · A WEEK THE RUNNER IS AWAY FOR IS NOT A WEEK THAT
+    // LOST ITS QUALITY SESSION.
+    //
+    // A week whose days are all prescribed as rest is a recorded absence, and
+    // "every quality-phase week requires at least one" has nothing to say about
+    // a week with no running in it. Without this, the only way to record a
+    // holiday was to introduce a violation and be rolled back for it — which is
+    // what `/api/plan/change`'s travel scenario runs into, through
+    // `lib/plan/mutate.ts`, on the one request whose entire content is "these
+    // days are not happening".
+    //
+    // TWO CONDITIONS, AND THE FIRST ONE IS THE LOAD-BEARING ONE. The week must
+    // still HAVE its days. A week with no rows at all is not an absence, it is
+    // a hole — rows deleted, or a write that lost them — and that is a bug this
+    // check is one of the few things positioned to catch. `_mutation_boundary
+    // .test.ts` holds exactly that case.
+    //
+    // Deliberately "no running at all", not "not much": a reduced week still has
+    // to carry its quality, which is what Research/00b's cutback notes say in
+    // as many words ("keep one quality session", "one true quality session
+    // only"). Inert for authoring either way — the generator never writes an
+    // empty week, and `_sweep_allusers.test.ts` fails an `EMPTY_WEEK` outright.
+    if (week.days.length > 0 && !(week.weeklyMi > 0)) continue;
     if (!week.days.some(d => d.isQuality)) {
       violations.push(
         `Week ${week.startISO} (${week.phase}): no quality sessions prescribed — ` +

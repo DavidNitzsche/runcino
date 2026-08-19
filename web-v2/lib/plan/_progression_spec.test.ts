@@ -252,6 +252,15 @@ describe('PROGRESSION-PERSIST-1 · the work shape survives persistence', () => {
         'Clears the spec to NULL on a replan — there is no session left to describe.',
       'web-v2/app/api/plan/workout/[id]/accept-standing/route.ts':
         'Clears the spec to NULL when a standing change replaces the workout.',
+      'web-v2/lib/plan/replan-scenarios.ts':
+        'The "Change the plan" sheet writes a spec on exactly two shapes, and neither is the same ' +
+        'session it replaced. A quality day demoted by a cutback or a re-entry ramp becomes an easy ' +
+        'run and takes the week template\'s easy spec, and a rest day turned into a running day is a ' +
+        'session that did not exist a moment ago — carrying an overload block onto either would be a ' +
+        'false record of what the runner was asked to do, the same reasoning adapt.ts is listed for. ' +
+        'The one row that stays the SAME session, a long run whose distance the ramp cut, is edited ' +
+        'by copying its own spec and removing the at-pace finish, so anything else it carried — a ' +
+        'block included — survives without needing the guard.',
     };
 
     const root = repoRoot();

@@ -1,21 +1,44 @@
 /**
- * POST /api/plan/replan · Phase 2 (3.5) · bad-week re-planning.
+ * POST /api/plan/replan · SUPERSEDED, in part, by POST /api/plan/change.
  *
- * The audit's Part-5 #3 gap: adaptation can downgrade a day, shave a
- * week, reschedule ±2d — but a LOST week (illness, travel, life) left
- * the plan prescribing as if it had happened, diverging permanently.
- * This endpoint re-sequences the remaining block instead.
+ * ─── what was wrong with it ─────────────────────────────────────────────────
  *
- * Body: { reason: 'sick' | 'travel' | 'life', fromISO: string, toISO: string }
+ * This route accepted `{ reason: 'sick' | 'travel' | 'life', fromISO, toISO }`
+ * and had, on 2026-08-19, no caller on either surface. Two defects mattered
+ * more than the missing caller:
+ *
+ *   1. `fromISO` and `toISO` WERE INERT. They were validated, written into the
+ *      audit blob, and never used to change a single row. All three reasons ran
+ *      the same full re-author. The endpoint could not take a named week out;
+ *      it could only rebuild and hope the new shape happened to suit.
+ *   2. It 404'd unless the active plan carried a `race_id`, so a goal-mode or
+ *      just-run runner could not use it at all — for a request ("I am away next
+ *      week") that has nothing to do with whether a race is on file.
+ *
+ * ─── what happens now ───────────────────────────────────────────────────────
+ *
+ *   travel · life → `applyChange({scenario:'travel'})`. The named window is now
+ *     the thing that changes: those days become rest, at most one long run is
+ *     salvaged into a free day in its own week, and the return is ramped so the
+ *     climb back stays under the acute-to-chronic line. Every write goes
+ *     through `lib/plan/mutate.ts`, and the route no longer needs a race_id.
+ *     `POST /api/plan/change` is the richer door — it previews first — and new
+ *     callers should use it. This one stays for the fire-and-forget contract.
+ *
+ *   sick → UNCHANGED. Illness is not a scheduling problem. Research/05's
+ *     return-to-run ladder resizes the block from the runner's re-entry, not
+ *     from the calendar, and a surgical edit cannot express that. So this limb
+ *     still rebuilds and still applies the 50 / 60 / 75% ladder, and it still
+ *     requires a race to build toward.
+ *
+ * ─── the sick path, unchanged ───────────────────────────────────────────────
  *
  * Flow:
  *   1. Rebuild the plan via the SAME generatePlan the auto-rebuild path
  *      uses (archives the current plan, re-derives volume from current
  *      inputs, preserves race + taper shape, seals completed days).
- *   2. reason='sick' → apply the Research/05 return-to-run ladder to the
- *      new plan's first three weeks: 50% / 60% / 75% volume, week-1
- *      quality downgraded to easy. Travel/life skip the ladder — the
- *      re-flow alone is the fix (no illness to respect).
+ *   2. Apply the Research/05 return-to-run ladder to the new plan's first
+ *      three weeks: 50% / 60% / 75% volume, week-1 quality downgraded to easy.
  *   3. Audit row in plan_proposals (kind 'replan', auto_applied — the
  *      runner asked for this explicitly; the diff page shows the result
  *      and a further rebuild can always re-cut it).
@@ -33,6 +56,8 @@ import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { mutatePlan } from '@/lib/plan/mutate';
 import { generatePlan } from '@/lib/plan/generate';
+import { runnerToday } from '@/lib/runtime/runner-tz';
+import { applyChange } from '@/lib/plan/replan-scenarios';
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
@@ -62,7 +87,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Active plan → the race we're still building toward.
+  // TRAVEL and LIFE are the same request — days the runner cannot run — and
+  // they are now answered by editing those days rather than re-authoring the
+  // block. No race_id is needed to answer it, which is the second defect fixed.
+  if (reason !== 'sick') {
+    const todayISO = await runnerToday(userId);
+    const out = await applyChange(userId, todayISO, { scenario: 'travel', fromISO, toISO }, null);
+    if (!out.ok) {
+      const status = out.code === 'no_plan' ? 404
+        : out.code === 'bad_request' ? 400
+        : out.code === 'unavailable' ? 422
+        : 409;
+      return NextResponse.json(
+        {
+          error: out.code,
+          reason: out.reason,
+          ...(out.violations ? { violations: out.violations } : {}),
+          ...(out.findings ? { findings: out.findings } : {}),
+        },
+        { status },
+      );
+    }
+    return NextResponse.json({
+      ok: true,
+      reason,
+      planId: out.planId,
+      // The window is no longer inert · these are the weeks it actually moved.
+      weeksChanged: out.proposal.effect.weeks.map((w) => w.weekIdx),
+      milesDelta: out.proposal.effect.milesDelta,
+      tradeOff: out.proposal.tradeOff,
+    });
+  }
+
+  // Active plan → the race we're still building toward. Illness only.
   const plan = (await pool.query<{ id: string; race_id: string | null }>(
     `SELECT id, race_id FROM training_plans
       WHERE user_uuid = $1::uuid AND archived_iso IS NULL
