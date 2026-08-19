@@ -59,7 +59,8 @@ export interface RenegotiationReasons {
   goal_sec: number;
   trajectory_sec: number;
   gap_sec: number;
-  weeks_remaining: number;
+  /** Null for a no-race goal with no deadline. */
+  weeks_remaining: number | null;
   consecutive_unclosable_days: number;
   /** A/B/C bands from the gap report (A stretch · B tracking · C safe). */
   alternatives: {
@@ -69,7 +70,8 @@ export interface RenegotiationReasons {
   };
   /** The accept seam · the runner's chosen time goes here. */
   accept_path: string;
-  race_slug: string;
+  /** Null in goal mode · the target lives in profile.tt_goal_*, not a race row. */
+  race_slug: string | null;
   keeps_ambition: true;
 }
 
@@ -109,7 +111,13 @@ export function composeRenegotiationReasons(
       b: { sec: b.sec, display: fmtTime(b.sec), label: b.label },
       c: { sec: c.sec, display: fmtTime(c.sec), label: c.label },
     },
-    accept_path: `PATCH /api/race/${gap.raceSlug} { goalSec, source: 'renegotiate' }`,
+    // 2026-08-18 · goal mode has no race row. The revised-target seam for
+    // those runners is the goal itself (POST /api/profile/goal), so the
+    // proposal names the path that actually exists rather than one built
+    // around a null slug.
+    accept_path: gap.raceSlug != null
+      ? `PATCH /api/race/${gap.raceSlug} { goalSec, source: 'renegotiate' }`
+      : `POST /api/profile/goal { seconds, source: 'renegotiate' }`,
     race_slug: gap.raceSlug,
     keeps_ambition: true,
   };

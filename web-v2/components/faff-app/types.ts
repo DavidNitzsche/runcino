@@ -678,7 +678,8 @@ export type ReadinessBriefSeed = {
       b: { sec: number; label: string };
       c: { sec: number; label: string };
     } | null;
-    weeksRemaining: number;
+    /** Null for a no-race goal with no deadline (goal-gap goal mode). */
+    weeksRemaining: number | null;
     daysToRenegotiate: number | null;
     riskFlags: string[];
   } | null;

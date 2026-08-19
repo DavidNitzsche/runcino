@@ -49,6 +49,7 @@ import { computeDecouplingTrend } from './decoupling-trend';
 import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { heatAdjustedStatus } from '@/lib/coach/heat-band';
 import { projectFitnessTrajectory, type FitnessTrajectory } from './fitness-trajectory';
+import { VDOT_GAIN_PER_WEEK_MAX } from './vdot-gain-rate';
 import { loadPlannedTargetVdot } from './plan-target';
 import { expandSpecToPhases, type ExpandedPhase } from './expand-spec';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
@@ -1821,22 +1822,28 @@ export function computeConfidenceInterval(args: {
  * Answers "solidly on track or barely?" by comparing the fitness gap to what
  * the runway can plausibly close, then gating by drift status.
  *
- * BUILD_RATE_VDOT_PER_WEEK IS A CONVENTION, NOT A RESEARCH FINDING (2026-08-18,
- * doctrine sweep). This comment used to cite "Research/00a periodization" for
- * a VDOT-per-week figure; Research/00a never mentions VDOT at all — it is a
- * training-load doc, not a pace-prescription one. Same fabricated-precision
- * shape as simulator.ts's COLD_START_CALIBRATION (CONVENTION.fitness-response-
- * model) and fitness-trajectory.ts's BASE_BUILD_RATE (CONVENTION.trajectory-
- * build-rate — the identical 0.35 constant, duplicated here rather than
- * imported); this is the third instance, flagged but left unfixed by that
- * claim's own comment and closed here. What Research/00a DOES ground is the
- * SHAPE only: aerobic adaptation compounds over a period of weeks and
- * saturates as a trained runner nears their ceiling (§"Aerobic Base
- * Development"). The number itself stays a bounded, tunable midpoint —
- * calibrated so a 3-point gap over a 10-week runway reads MEDIUM — not a
- * doctrine figure.
+ * BUILD_RATE_VDOT_PER_WEEK IS DOCTRINE NOW, AND IT IS NOT A SECOND OPINION
+ * (2026-08-18, gain-rate reconciliation). This comment used to cite
+ * "Research/00a periodization" for a VDOT-per-week figure — Research/00a never
+ * mentions VDOT at all — and the fix at the time was to relabel the 0.35 as a
+ * CONVENTION. That was honest but incomplete: the engine still held three
+ * different rates (0.167-0.25 in goal-ready.ts, 0.35 here and in
+ * fitness-trajectory.ts, a fabricated 0.5 in goal-gap.ts), so the same runner
+ * got a different answer depending on which surface asked.
+ *
+ * `Research/01` §"Testing cadence" states the only per-time VDOT quantum in the
+ * corpus: reassess every 4-6 weeks, +1 VDOT per reassessment — 0.167-0.25
+ * VDOT/wk. This constant is now the FAST edge of that band, re-exported from
+ * lib/training/vdot-gain-rate.ts so there is exactly ONE definition, bound by
+ * ADAPTATION.vdot-gain-rate. What Research/00a DOES ground is the SHAPE only:
+ * adaptation compounds over weeks and saturates near a runner's ceiling
+ * (§"Aerobic Base Development").
+ *
+ * The confidence tiers below are unchanged in shape and now read slightly more
+ * conservatively, which is the point — the old rate declared gaps closable
+ * that doctrine does not support.
  */
-export const BUILD_RATE_VDOT_PER_WEEK = 0.35;
+export const BUILD_RATE_VDOT_PER_WEEK = VDOT_GAIN_PER_WEEK_MAX;
 
 export function computeConfidenceLabel(args: {
   goalSec: number;

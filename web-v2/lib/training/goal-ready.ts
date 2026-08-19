@@ -38,6 +38,7 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { vdotFromRace, formatRaceTime, predictRaceTime } from './vdot';
+import { VDOT_GAIN_PER_DAY_MAX, VDOT_GAIN_PER_DAY_CONSERVATIVE } from './vdot-gain-rate';
 
 export type TTGoalDistance =
   // Legacy onboarding codes (bucketed time).
@@ -71,9 +72,15 @@ const BUCKET_SECONDS: Partial<Record<TTGoalDistance, Record<string, number>>> = 
 
 /** Daniels improvement quantum (Research/01 §Testing cadence): +1 VDOT
  *  per reassessment block of 4–6 weeks. Earliest projection may not
- *  outrun 1/28 pts/day; latest uses the conservative 1/42. */
-const MAX_RATE_PER_DAY = 1 / 28;
-const CONSERVATIVE_RATE_PER_DAY = 1 / 42;
+ *  outrun 1/28 pts/day; latest uses the conservative 1/42.
+ *
+ *  2026-08-18 · gain-rate reconciliation. This module was ALREADY the honest
+ *  one — it derived both edges from the doc while two other modules carried a
+ *  convention (0.35) and a fabrication (0.5). The numbers are unchanged; they
+ *  now come from lib/training/vdot-gain-rate.ts so there is exactly one place
+ *  the band is stated, bound by ADAPTATION.vdot-gain-rate. */
+const MAX_RATE_PER_DAY = VDOT_GAIN_PER_DAY_MAX;                 // 1/28
+const CONSERVATIVE_RATE_PER_DAY = VDOT_GAIN_PER_DAY_CONSERVATIVE; // 1/42
 
 /** Engineering gates for fitting a trend (not physiology — stated so). */
 const MIN_POINTS = 4;

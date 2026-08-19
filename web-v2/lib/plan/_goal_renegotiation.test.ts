@@ -60,6 +60,7 @@ describe('shouldProposeRenegotiation', () => {
 
 function mkGap(): GoalGap {
   return {
+    mode: 'race',
     raceSlug: 'cim-2026',
     raceDateISO: '2026-12-06',
     raceDistanceMi: 26.2,
@@ -70,6 +71,9 @@ function mkGap(): GoalGap {
     // Renegotiation is a trajectory decision, not a limiter one · this fixture
     // exercises the sustained-unclosable path and carries no limiter read.
     limiter: null,
+    // The renegotiation payload does not read the assessment · this fixture
+    // pins the sustained-unclosable path only.
+    assessment: null,
     status: 'unclosable',
     weeksRemaining: 4,
     whatClosesIt: [],

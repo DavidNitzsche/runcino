@@ -245,7 +245,8 @@ export interface ReadinessBrief {
       b: { sec: number; label: string };
       c: { sec: number; label: string };
     } | null;
-    weeksRemaining: number;
+    /** Null for a no-race goal with no deadline. */
+    weeksRemaining: number | null;
     daysToRenegotiate: number | null;
     riskFlags: string[];
   } | null;

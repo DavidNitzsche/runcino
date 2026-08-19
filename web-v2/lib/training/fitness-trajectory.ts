@@ -23,7 +23,7 @@
  *              0, min(MAX_BLOCK_GAIN, planCeiling, buildWeeks × BASE_BUILD_RATE) )
  *       + overPerformanceBonus               // demonstrated · rides under block/plan ceiling
  *   buildWeeks
- *     = max(0, weeksToRace − TAPER_WEEKS)     // taper expresses fitness, doesn't build it
+ *     = max(0, weeksToRace − taperWeeksForDistance(d))  // taper expresses fitness, doesn't build it
  *
  * currentVdot is the responsive fitness estimate (race anchor + training,
  * bestRecentVdot). executionQuality ∈ [0,1] comes from how the runner is
@@ -32,30 +32,36 @@
  * testable function. A runner nailing every session projects the full build
  * rate; one missing/downgrading sessions projects a discounted slope.
  *
- * THE BUILD RATE IS A CONVENTION, NOT A RESEARCH FINDING (2026-08-18, doctrine
- * sweep). This section used to cite "Research/00a periodization" for a VDOT-
- * per-week figure; Research/00a never mentions VDOT at all — it is a
- * training-load doc, not a pace-prescription one. Same fabricated-precision
- * shape already caught once in simulator.ts's COLD_START_CALIBRATION (see
- * CONVENTION.fitness-response-model), now a second instance in the sibling
- * module. What Research/00a DOES ground is the SHAPE only: aerobic adaptation
- * compounds over a period of weeks and saturates as a trained runner nears
- * their ceiling (§"Aerobic Base Development").
- *   · BASE_BUILD_RATE 0.35 VDOT/wk and MAX_BLOCK_GAIN 5.0 are a bounded,
- *     tunable midpoint — not a doctrine number — sized so a projection never
- *     promises more fitness than a single training block plausibly delivers.
- *     The same duplicated convention lives in computeConfidenceLabel
- *     (goal-projection.ts#BUILD_RATE_VDOT_PER_WEEK, also 0.35) — that copy
- *     carries the identical fabricated citation and is unfixed by this pass;
- *     flagged separately rather than edited here (out of this pass's scope).
- *   · TAPER_WEEKS 2 is itself a flat approximation of BLOCK_SHAPE.taperWeeks
- *     (generate.ts; doctrine-bound by TAPER.duration-by-distance), which is
- *     1/2/2/3/3 weeks by distance (5K/10K/HM/M/ultra) — this module treats
- *     every distance as a 2-week taper, undercounting the 3-week marathon and
- *     ultra taper by a week (buildWeeks reads one week too generous for M/
- *     ultra goals) and overcounting the 1-week 5K taper. Not fixed here —
- *     changing buildWeeks changes every runner's projected gain, which is a
- *     product decision, not a citation fix.
+ * THE BUILD RATE IS DOCTRINE, AND THERE IS NOW ONLY ONE OF IT (2026-08-18,
+ * gain-rate reconciliation). This section used to say the rate was a
+ * CONVENTION, because its previous citation ("Research/00a periodization" for a
+ * VDOT-per-week figure) was fabricated — Research/00a never mentions VDOT. That
+ * label was honest but it was not the end of the story: the engine carried
+ * THREE incompatible rates (0.167-0.25 in goal-ready.ts, 0.35 here and in
+ * goal-projection.ts, and a fabricated 0.5 in goal-gap.ts), and only one of
+ * them was read out of the research.
+ *
+ * `Research/01` §"Testing cadence" states the only per-time VDOT quantum in the
+ * whole corpus: reassess every 4-6 weeks, +1 VDOT per reassessment. That is a
+ * band of 0.167-0.25 VDOT/wk. Every rate in the engine now comes from
+ * lib/training/vdot-gain-rate.ts, which derives that band from the doc and is
+ * bound by ADAPTATION.vdot-gain-rate. BASE_BUILD_RATE is its FAST edge (0.25) —
+ * the most permissive rate research supports, so a projection is never
+ * pessimistic by construction, and never promises more than doctrine allows.
+ *
+ * What Research/00a DOES ground is the SHAPE only: aerobic adaptation compounds
+ * over a period of weeks and saturates as a trained runner nears their ceiling
+ * (§"Aerobic Base Development"). MAX_BLOCK_GAIN is sized off the largest single
+ * VDOT swing Research/01 quantifies (the >=2-week layoff drop, 3-5 points).
+ *
+ * TAPER_WEEKS_BY_DISTANCE replaces a flat `TAPER_WEEKS = 2` that was applied at
+ * every distance while the doctrine-bound BLOCK_SHAPE.taperWeeks is 1/2/2/3/3
+ * (5K/10K/HM/M/ultra). buildWeeks was therefore wrong at BOTH ends: a week too
+ * generous for a marathon or ultra goal, a week too mean for a 5K. The table
+ * here is pinned to BLOCK_SHAPE value-for-value by TAPER.trajectory-build-weeks
+ * in the doctrine registry — it is a client-safe copy of one number, not a
+ * second opinion. (This module is imported by a client component, GapPanel.tsx,
+ * so it cannot import the generator, which pulls in `pg`.)
  *
  * Deliberately NOT modeled yet (documented, not hidden):
  *   · Diminishing returns near a runner's ceiling (gains slow as VDOT rises).
@@ -64,10 +70,57 @@
  */
 
 import { predictRaceTime, vdotFromRace } from './vdot';
+import {
+  VDOT_GAIN_PER_WEEK_MAX,
+  MAX_BLOCK_GAIN_VDOT,
+  PROJECTION_NOISE_GRACE_VDOT,
+  noiseGraceSec,
+} from './vdot-gain-rate';
+import {
+  distanceCategoryOrNull,
+  type DistanceCategory,
+} from '@/lib/race/distance-category';
 
-export const BASE_BUILD_RATE = 0.35; // VDOT per week, focused block
-export const MAX_BLOCK_GAIN = 5.0;   // VDOT, ceiling for one block
-export const TAPER_WEEKS = 2;        // no fitness gain modeled in taper
+/** VDOT per week, focused block · the FAST edge of Research/01's 4-6 week,
+ *  +1 VDOT reassessment band. ONE model, defined in vdot-gain-rate.ts. */
+export const BASE_BUILD_RATE = VDOT_GAIN_PER_WEEK_MAX;
+/** VDOT ceiling for one block · the largest single swing Research/01 puts a
+ *  number on (the >=2-week layoff drop, 3-5 points). */
+export const MAX_BLOCK_GAIN = MAX_BLOCK_GAIN_VDOT;
+
+/**
+ * Weeks of taper by race distance · no fitness gain is modelled inside it.
+ *
+ * Value-for-value the same as BLOCK_SHAPE.taperWeeks in lib/plan/generate.ts,
+ * which is bound to Research/08 §9.1's taper-length table by
+ * TAPER.duration-by-distance. This module cannot import the generator (it is
+ * pulled into a client bundle by GapPanel.tsx and generate.ts imports `pg`), so
+ * TAPER.trajectory-build-weeks asserts the two tables are identical rather than
+ * letting them drift. The 10k/hm and m/ultra pairs share a value because
+ * doctrine gives them the same whole-week rounding; both shares are recorded in
+ * the lint's SHARED_ON_PURPOSE with that reason.
+ */
+export const TAPER_WEEKS_BY_DISTANCE: Readonly<Record<DistanceCategory, number>> = {
+  '5k': 1,
+  '10k': 2,
+  'hm': 2,
+  'm': 3,
+  'ultra': 3,
+};
+
+/**
+ * Taper weeks for a race distance. An unknown/unusable distance falls back to
+ * the SHORTEST taper in the table, which is the conservative direction here:
+ * it maximises buildWeeks' denominator nowhere and minimises the gain the
+ * runway cap will allow, so an unreadable distance can never inflate a
+ * projection.
+ */
+export function taperWeeksForDistance(raceDistanceMi: number | null | undefined): number {
+  const cat = distanceCategoryOrNull(raceDistanceMi ?? null);
+  return cat == null
+    ? Math.min(...Object.values(TAPER_WEEKS_BY_DISTANCE))
+    : TAPER_WEEKS_BY_DISTANCE[cat];
+}
 /** Max unconfirmed, training-derived fitness the projection will apply on top
  *  of the race anchor (the "upgrade gear"). Training is a LEAD, not a verdict
  *  (Research/01 §triggers-to-retest) — a race/TT confirms more than this. */
@@ -222,7 +275,10 @@ export function projectFitnessTrajectory(args: {
   // What the runner has actually shown they are, for sizing the remaining build.
   const effectiveCurrentVdot = currentVdot + overPerfBonus;
 
-  const buildWeeks = Math.max(0, weeksToRace - TAPER_WEEKS);
+  // Per-distance taper · a marathon's build is a week shorter than a 5K's
+  // relative to the same weeksToRace, and the old flat 2 got both ends wrong.
+  const taperWeeks = taperWeeksForDistance(raceDistanceMi);
+  const buildWeeks = Math.max(0, weeksToRace - taperWeeks);
   // 2026-06-16 · "the plan trusts itself" (David's doctrine). When the plan is
   // built for the goal and the runner is executing it, project that they REACH
   // the goal — do NOT tax a sound, well-executed plan with a generic population
@@ -292,17 +348,29 @@ export function projectFitnessTrajectory(args: {
   const gapVdotRaw = goalVdot - projectedVdotRaw;
   const gapVdot = Math.round(gapVdotRaw * 10) / 10;
   const gapSec = projectedSec != null ? projectedSec - goalSec : null;
-  // 0.2 VDOT ≈ 10-12s at HM · within noise, call it reachable.
-  const reachable = gapVdotRaw <= 0.2;
+  // ONE noise grace, stated in VDOT (PROJECTION_NOISE_GRACE_VDOT = 0.2), a
+  // fifth of the >=1-point movement Research/01 §"Update logic" re-derives
+  // paces on. The seconds form below is DERIVED from it per distance rather
+  // than being a second, HM-calibrated constant.
+  const reachable = gapVdotRaw <= PROJECTION_NOISE_GRACE_VDOT;
   // 2026-06-12 · the upgrade gear's headline: projected to BEAT the goal beyond
   // noise. Mirrors how the drift detectors let the projection read SHORT.
   // 2026-08-17 · P1-56 follow-up · a below-table goal can't express this in
   // VDOT space (goalVdot is the currentVdot stand-in there, so gapVdotRaw is
   // pinned at ~0 and the old `< -0.2` test could never fire) — read the direct
-  // seconds gap instead. 30s ≈ the same 0.2-VDOT noise margin at HM/M scale.
+  // seconds gap instead.
+  // 2026-08-18 · that seconds threshold was a flat 30, calibrated at HM/M
+  // scale and applied at every distance: 30 seconds is a rout over 5K and
+  // inside the noise over a marathon, so it could never fire correctly for a
+  // 5K runner. It is now the SAME 0.2-VDOT grace, converted to seconds off the
+  // Daniels table at THIS runner's VDOT and THIS distance (~4s at 5K, ~40s at
+  // the marathon). When the conversion is unavailable (no usable VDOT, or an
+  // ultra past the Daniels validity range) the flag stays false rather than
+  // borrowing another distance's number.
+  const graceSec = noiseGraceSec(currentVdot, raceDistanceMi);
   const aheadOfGoal = goalBelowTable
-    ? gapSec != null && gapSec < -30
-    : gapVdotRaw < -0.2;
+    ? gapSec != null && graceSec != null && gapSec < -graceSec
+    : gapVdotRaw < -PROJECTION_NOISE_GRACE_VDOT;
   // Is the plan's prescribed ceiling enough to reach the goal? (Same 0.3 grace.)
   const planBuiltForGoal = plannedTargetVdot != null
     ? plannedTargetVdot >= goalVdot - 0.3

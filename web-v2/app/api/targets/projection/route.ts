@@ -604,6 +604,58 @@ export async function GET(req: NextRequest) {
     // the same series signals above) or a set-a-goal nudge. Additive — the
     // iPhone panel adopts it in the native wave; until then it composes its
     // own line client-side.
+    // ─── the honest read on the GOAL itself ────────────────────────────
+    // Additive. Everything above answers "how far off am I"; this answers
+    // "is this goal the right size, and what is this build genuinely worth".
+    // The engine keeps training toward the stated goal either way — nothing
+    // here re-anchors a pace (feedback_execution_is_the_lever, locked).
+    //
+    // Per-finding context filters (CLAUDE.md, locked 2026-05-19 round 4): each
+    // caution inside the assessment gets its OWN context question, not one
+    // surface-level guard. Resolved individually here:
+    //   · taper / race week      → suppresses the VOLUME caution only
+    //   · anchor age + distance  → drive the EVIDENCE and MARATHON-LAG
+    //                              cautions respectively, and nothing else
+    const goalAssessment = await (async () => {
+      if (goalSec == null || distanceMi == null || !(distanceMi > 0)) return null;
+      try {
+        const { assessGoal } = await import('@/lib/training/goal-assessment');
+        const { taperWeeksForDistance } = await import('@/lib/training/fitness-trajectory');
+        const { recentWeeklyMileageMi } = await import('@/lib/runs/volume');
+        const { runnerToday } = await import('@/lib/runtime/runner-tz');
+        const todayISO = await runnerToday(userId);
+        const weeklyMi = await recentWeeklyMileageMi(userId).catch(() => null);
+        const anchorAgeDays = vdotAnchorDateISO
+          ? Math.floor(
+              (Date.parse(todayISO + 'T12:00:00Z') -
+                Date.parse(String(vdotAnchorDateISO).slice(0, 10) + 'T12:00:00Z')) / 86400000,
+            )
+          : null;
+        const weeksAway = daysAway != null ? daysAway / 7 : null;
+        return assessGoal({
+          distanceMi,
+          goalSec,
+          goalDateISO,
+          todayISO,
+          currentVdot: vdot,
+          executionQuality: traj?.executionQuality ?? null,
+          recentWeeklyMi: weeklyMi,
+          context: {
+            inTaperOrRaceWeek:
+              raceWeek || (weeksAway != null && weeksAway <= taperWeeksForDistance(distanceMi)),
+            // Not resolvable cheaply on this route · left null so the caution
+            // suppresses rather than guessing a recovery phase.
+            inPostRaceRecovery: null,
+            anchorDistanceMi: vdotAnchorDistanceMi,
+            anchorAgeDays,
+            marathonSpecificBlockDone: null,
+          },
+        });
+      } catch {
+        return null;
+      }
+    })();
+
     const summaryLine = composeTargetsSummaryLine({
       status,
       goalSec,
@@ -740,6 +792,11 @@ export async function GET(req: NextRequest) {
       // execution or the plan ceiling. The client uses this to relabel a
       // time-limited goal honestly rather than implying the runner stalled.
       runwayLimited: traj?.runwayLimited ?? false,
+      // 2026-08-18 · the goal assessment. feasibility · safeTargetSec ·
+      // stretchTargetSec · reportAgainstSec · statement · cautions. Everything
+      // derived from the gain model carries basis:'projected' — a client must
+      // never render safe/stretch as measured fitness.
+      goalAssessment,
     });
   } catch (err: any) {
     console.error('[api/targets/projection] failed:', err);

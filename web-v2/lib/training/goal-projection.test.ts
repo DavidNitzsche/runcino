@@ -61,14 +61,22 @@ describe('computeConfidenceInterval', () => {
 });
 
 describe('computeConfidenceLabel', () => {
-  it('David · gap 4:54, ~10wk runway, watching → MEDIUM · doable, not banked', () => {
+  // 2026-08-18 · gain-rate reconciliation. This case USED to read MEDIUM, and
+  // that was the fabricated rate talking. The gap is 3.0 VDOT over a 9.9-week
+  // runway, which needs 0.30 VDOT/wk. Research/01 §"Testing cadence" tops out
+  // at 0.25 (+1 VDOT per 4-6 weeks), so the runway does not cover it and LOW ·
+  // "behind on this runway" is the honest read. At the old 0.35 the same gap
+  // graded closable, which is precisely the over-permissiveness the sweep was
+  // looking for. The TIER BOUNDARIES are unchanged — only the rate they divide
+  // by became doctrine.
+  it('David · gap 4:54, ~10wk runway, watching → LOW · the runway does not cover 0.30 VDOT/wk', () => {
     const label = computeConfidenceLabel({
       goalSec: DAVID_GOAL, raceDistanceMi: HM, vdot: 47.9, daysToRace: 69, status: 'watching',
     });
     expect(label).not.toBeNull();
-    expect(label!.tier).toBe('medium');
-    expect(label!.word).toBe('MEDIUM');
-    expect(label!.descriptor).toBe('doable, not banked');
+    expect(label!.tier).toBe('low');
+    expect(label!.word).toBe('LOW');
+    expect(label!.descriptor).toBe('behind on this runway');
     expect(label!.detail).toContain('4:54 to find');
     expect(label!.detail).toContain('10 weeks');
     expect(Number(label!.evidence.gapVdot)).toBeCloseTo(3.0, 1);

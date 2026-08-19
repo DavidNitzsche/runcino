@@ -47,8 +47,11 @@ export type WorkoutSubLabel =
 // surface real numbers when present + fall back to placeholder strings
 // when null.
 //
-// Pace fields are seconds-per-mile per Daniels Running Formula §VDOT
-// table conventions. HR caps cite the runner's LTHR-derived ceilings
+// Pace fields are seconds-per-mile, the units the VDOT pace table is
+// published in (Research/01-pace-zones-vdot.md §"VDOT lookup table").
+// 2026-08-18 · re-pointed from a bare `per Daniels Running Formula §VDOT table conventions`,
+// which named no file anyone could open.
+// HR caps cite the runner's LTHR-derived ceilings
 // (Friel · Research/03 §6 · 30-min TT field method):
 //   easy      → ~88% LTHR (Z2 ceiling, aerobic)
 //   long      → ~85% LTHR (long-day ceiling, conservative for drift)
