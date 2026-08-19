@@ -1211,6 +1211,158 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         'this gate is not the place to change generated plans; the engine audit owns it.',
     },
   },
+  {
+    id: 'CUTBACK.requested-depth',
+    binds: ['lib/plan/replan-scenarios.ts#REQUESTED_CUTBACK_WEEK_CUT'],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Depth of Cutback by Mileage Tier',
+    claim:
+      'A cutback the RUNNER asks for is the same cutback the generator schedules, so its depth ' +
+      'obeys the same table. One requested depth has to be legal at every mileage tier a runner ' +
+      'of this app can be in, so it sits in the INTERSECTION of the tiers\' reduction bands, not ' +
+      'merely inside one of them.',
+    check({ cite }) {
+      const t = cite.table();
+      const lows = t.rows.map((r) => parseBand(r['% reduction'])[0]);
+      const highs = t.rows.map((r) => parseBand(r['% reduction'])[1]);
+      // The intersection · legal at 20-40 mpw AND at 80+, not just at one of them.
+      const intersection: [number, number] = [Math.max(...lows) / 100, Math.min(...highs) / 100];
+      if (!(intersection[0] <= intersection[1])) {
+        throw new Error(
+          'the tiers\' reduction bands no longer overlap · a single requested depth cannot be ' +
+            'legal for every runner, so the engine needs a tier dimension it does not have',
+        );
+      }
+      const engine = Number(
+        matchLiteral(
+          sourceOf('web-v2/lib/plan/replan-scenarios.ts'),
+          /export const REQUESTED_CUTBACK_WEEK_CUT = (\d*\.?\d+);/,
+          'REQUESTED_CUTBACK_WEEK_CUT',
+        )[1],
+      );
+      within(engine, intersection, `requested cutback · cuts ${(engine * 100).toFixed(0)}%`);
+    },
+  },
+  {
+    id: 'CUTBACK.requested-long-run-band',
+    binds: ['lib/plan/replan-scenarios.ts#REQUESTED_CUTBACK_LONG_CUT_BAND'],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Depth of Cutback by Mileage Tier',
+    claim:
+      'The same table states the long run\'s own reduction separately from the week\'s, in its ' +
+      'Notes column, and every tier names a figure. The engine picks a depth per plan rather ' +
+      'than a fixed one (the following week\'s long is not moving, so too deep a cut turns into ' +
+      'a week-over-week jump), and the band it picks from is exactly the span of the figures ' +
+      'doctrine publishes.',
+    check({ cite }) {
+      const t = cite.table();
+      // Read the long-run figures out of the Notes column · "Drop the long run by 20-30%",
+      // "Long run -25%", "Long run -25-30%", "Long run -30%". Never hand-copied.
+      const pcts: number[] = [];
+      for (const r of t.rows) {
+        const note = String(r['Notes'] ?? '');
+        const m = note.match(/long run[^.]*?((?:\d+\s*[–-]\s*)?\d+)\s*%/i);
+        if (!m) continue;
+        for (const n of m[1].split(/\s*[–-]\s*/)) {
+          const v = Number(n);
+          if (Number.isFinite(v)) pcts.push(v);
+        }
+      }
+      if (pcts.length < 2) {
+        throw new Error(
+          'Research/00b\'s cutback table no longer states a long-run reduction in its Notes ' +
+            'column · re-read it before this band is justified',
+        );
+      }
+      const doctrineBand: [number, number] = [Math.min(...pcts) / 100, Math.max(...pcts) / 100];
+      const src = sourceOf('web-v2/lib/plan/replan-scenarios.ts');
+      const engine = matchLiteral(
+        src,
+        /export const REQUESTED_CUTBACK_LONG_CUT_BAND: readonly \[number, number\] = \[(\d*\.?\d+), (\d*\.?\d+)\];/,
+        'REQUESTED_CUTBACK_LONG_CUT_BAND',
+      );
+      const lo = Number(engine[1]);
+      const hi = Number(engine[2]);
+      if (lo !== doctrineBand[0] || hi !== doctrineBand[1]) {
+        throw new Error(
+          `REQUESTED_CUTBACK_LONG_CUT_BAND is [${lo}, ${hi}] · doctrine's own long-run figures ` +
+            `span [${doctrineBand[0]}, ${doctrineBand[1]}]. The band is read off the table, not chosen.`,
+        );
+      }
+    },
+  },
+  {
+    id: 'CONVENTION.replan-mirrors-the-validator',
+    binds: [
+      'lib/plan/replan-scenarios.ts#REENTRY_ACWR_CEILING',
+      'lib/plan/replan-scenarios.ts#REENTRY_ACWR_CHRONIC_WEEKS',
+      'lib/plan/replan-scenarios.ts#REENTRY_SMALL_STEP_MI',
+      'lib/plan/replan-scenarios.ts#LONG_RUN_WOW_MAX_PCT',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### ACWR risk zones',
+    claim:
+      'CONVENTION, not physiology · these four numbers are not a second reading of doctrine. ' +
+      'The "Change the plan" sheet has to PREDICT what validateComposedPlan will say about a ' +
+      'shape it has not written yet, and the only honest way to do that is to compute against ' +
+      'the validator\'s own numbers. A travel gap creates zero weeks; the climb back has to be ' +
+      'ramped against the same acute-to-chronic line the validator judges it by, or the sheet ' +
+      'shows a runner a change the boundary then rolls back. So the claim is a MIRROR CHECK: ' +
+      'every mirrored constant must still equal the one it mirrors in lib/plan/validate.ts. ' +
+      'The physiology itself is claimed by RAMP.acute-chronic-ratio-red-line, which reads the ' +
+      'ratio and the window out of this same doc.',
+    check() {
+      const validator = sourceOf('web-v2/lib/plan/validate.ts');
+      const sheet = sourceOf('web-v2/lib/plan/replan-scenarios.ts');
+      const pairs: Array<[string, RegExp, RegExp]> = [
+        [
+          'ACWR ceiling',
+          /const ACWR_HIGH_RISK = (\d*\.?\d+);/,
+          /export const REENTRY_ACWR_CEILING = (\d*\.?\d+);/,
+        ],
+        [
+          'ACWR chronic window',
+          /const ACWR_CHRONIC_WEEKS = (\d+);/,
+          /export const REENTRY_ACWR_CHRONIC_WEEKS = (\d+);/,
+        ],
+        [
+          'small-absolute step exemption',
+          /if \(!\(prev > 0\) \|\| curr - prev <= (\d+)\) continue;/,
+          /export const REENTRY_SMALL_STEP_MI = (\d+);/,
+        ],
+      ];
+      for (const [what, vRe, sRe] of pairs) {
+        const a = Number(matchLiteral(validator, vRe, `validate.ts ${what}`)[1]);
+        const b = Number(matchLiteral(sheet, sRe, `replan-scenarios.ts ${what}`)[1]);
+        if (a !== b) {
+          throw new Error(
+            `the ${what} is ${a} in validate.ts and ${b} in replan-scenarios.ts · the sheet ` +
+              'would propose changes the mutation boundary refuses',
+          );
+        }
+      }
+      // The long-run week-over-week ceiling is one number repeated across every
+      // distance row, so the mirror is against the whole column rather than a
+      // single literal · a per-distance split would make one mirrored value wrong.
+      const wow = [...validator.matchAll(/longRunWoWMaxPct: (\d+)/g)].map((m) => Number(m[1]));
+      if (wow.length === 0) throw new Error('validate.ts no longer declares longRunWoWMaxPct');
+      const distinct = [...new Set(wow)];
+      if (distinct.length !== 1) {
+        throw new Error(
+          `validate.ts now carries ${distinct.length} different longRunWoWMaxPct values ` +
+            `(${distinct.join(', ')}) · the sheet mirrors a single number and can no longer do so`,
+        );
+      }
+      const mirrored = Number(
+        matchLiteral(sheet, /export const LONG_RUN_WOW_MAX_PCT = (\d+);/, 'LONG_RUN_WOW_MAX_PCT')[1],
+      );
+      if (mirrored !== distinct[0]) {
+        throw new Error(
+          `LONG_RUN_WOW_MAX_PCT is ${mirrored} · validate.ts's ceiling is ${distinct[0]}`,
+        );
+      }
+    },
+  },
 
   // ══ LONG RUN ══════════════════════════════════════════════════════════════
   {
