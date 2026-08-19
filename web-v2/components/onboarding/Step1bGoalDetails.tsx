@@ -46,7 +46,17 @@ const TT_DISTANCES: { value: TTDistance | null; label: string }[] = [
   { value: '10k', label: '10K' },
 ];
 
+// 2026-08-18 (onboarding QA audit): WeeklyMileage/WeeklyFrequency have carried
+// 0/5 and 0/1/2 since 2026-06-20 for true-beginner support (state.ts — "David:
+// support runners below 15 mi/week" / "0 = not running yet; goal-seekers get a
+// gentle build"), and /api/onboarding/complete + the plan engine both honor
+// them. But this chip list never grew to match — the lowest a WEB signup could
+// physically select was 15 mi/wk and 3 days/wk, so a true beginner (mode 5)
+// could not represent themselves through web onboarding at all. Native already
+// exposes the full 0-6 day range (OnboardingView.swift runQ_daysPerWeek).
 const WEEKLY_MI_CHIPS: { value: WeeklyMileage; label: string }[] = [
+  { value: 0,  label: 'Under 5' },
+  { value: 5,  label: '5-15' },
   { value: 15, label: '15' },
   { value: 25, label: '25' },
   { value: 35, label: '35' },
@@ -54,7 +64,7 @@ const WEEKLY_MI_CHIPS: { value: WeeklyMileage; label: string }[] = [
   { value: 55, label: '55+' },
 ];
 
-const FREQ_CHIPS: WeeklyFrequency[] = [3, 4, 5, 6];
+const FREQ_CHIPS: WeeklyFrequency[] = [0, 1, 2, 3, 4, 5, 6];
 
 const HIST_AVG_CHIPS: { value: HistAvg; label: string }[] = [
   { value: '0-5',   label: '0-5' },
