@@ -45,16 +45,47 @@ describe('HEAT-1 · the heat gate is registered as an adaptation trigger', () =>
     expect(applyNow).toEqual([missed]);
   });
 
-  it('the readiness ruling is untouched · readiness still cannot apply either', () => {
-    // This is the guard against someone reading the heat wiring as licence to
-    // let a wellness score mutate the plan. Heat earns an action because it is
-    // an environmental hazard with a doctrine hard stop; readiness has neither
-    // property, and its membership here is what keeps it informing only.
+  it('readiness still defaults to propose-first · only convergent red opts out', () => {
+    // 2026-08-19 · this test used to read "readiness still cannot apply
+    // either". That was true under the 2026-06-03 ruling and is no longer the
+    // whole picture: the owner has since ruled that readiness MAY change a
+    // session, on a convergence of independent signals, settled overnight.
+    //
+    // What survives unchanged is the guard this test was really written for —
+    // nobody may read the heat wiring as licence to let a wellness score
+    // mutate the plan. Readiness's KIND is still propose-first, so an amber
+    // convergence (two domains) reaches the runner as a banner and touches
+    // nothing. Only an action explicitly carrying `forceApplyNow` — which
+    // `actionsForTrigger` sets on a convergent-RED downgrade and nowhere else
+    // — skips it. See lib/coach/convergence.ts for what red costs to reach.
     expect(PROPOSE_FIRST_TRIGGERS.has('readiness_pullback')).toBe(true);
+
+    const amber: AdaptationAction = {
+      kind: 'note', noteReason: 'readiness_convergence_amber',
+      sourceTrigger: 'readiness_pullback', why: 'two domains',
+    };
+    const red: AdaptationAction = {
+      kind: 'downgrade', workoutIds: ['wko_today'], newType: 'easy',
+      sourceTrigger: 'readiness_pullback', forceApplyNow: true, why: 'three domains',
+    };
+    const split = partitionActionsForCron([amber, red]);
+    expect(split.proposeFirst).toEqual([amber]);
+    expect(split.applyNow).toEqual([red]);
+
     const applyNowKinds: AdaptationTriggerKind[] = [
       'missed_key_workout', 'volume_overshoot', 'pr_bank', 'goal_changed',
     ];
     for (const k of applyNowKinds) expect(PROPOSE_FIRST_TRIGGERS.has(k)).toBe(false);
+  });
+
+  it('heat can never opt out · forceApplyNow is readiness-only, by convention and by test', () => {
+    // A heat verdict is about a place and an hour; the runner may be indoors,
+    // out at 5 a.m., or three states away. It proposes, full stop.
+    const heat: AdaptationAction = {
+      kind: 'downgrade', workoutIds: ['w'], newType: 'easy',
+      sourceTrigger: 'heat_bail', why: 'black flag',
+    };
+    expect(partitionActionsForCron([heat]).proposeFirst).toEqual([heat]);
   });
 });
 

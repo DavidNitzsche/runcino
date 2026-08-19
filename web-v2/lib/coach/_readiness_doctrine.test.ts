@@ -110,8 +110,11 @@ describe('READINESS-2 · load is a post-composite multiplier, not a pillar', () 
   it('a sweet-spot ACWR no longer manufactures readiness points', () => {
     // The shipped defect: identical biometrics, +5 points for having run a
     // normal week. Under the multiplier the sweet spot is exactly neutral.
-    // Fix the sleep target explicitly · computeDynamicSleepTarget also keys
-    // off ACWR, and this test is about the multiplier, not that target.
+    // Fix the sleep target explicitly · this test is about the multiplier, not
+    // the target. (Until 2026-08-19 the target ALSO keyed off ACWR, which is
+    // why the override was needed here; it now keys off weekly mileage, per
+    // Research/00b's own axis, and the override is kept because pinning the
+    // target is still the right way to isolate the multiplier.)
     const sweet = computeReadiness(neutralDay({ loadAcwr: 1.15, loadAcute7: 4.6, loadChronic28: 4 }), 7.5);
     const noLoadData = computeReadiness(neutralDay({ loadAcwr: null, loadAcute7: null, loadChronic28: null }), 7.5);
     expect(sweet.score, 'BuildResearch · D1 §"Why these weights" · a modifier cannot create a score')

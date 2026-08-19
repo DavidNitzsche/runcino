@@ -168,11 +168,40 @@ describe('subjectivePullbackSignal · adapter gating', () => {
     expect(r.reason).not.toMatch(/Research\/|—|!/);
   });
 
-  it('rides readiness_pullback · propose-first, the runner gates the change', async () => {
-    // The subjective pillar joins detectReadinessPullback's evidence;
-    // that trigger kind MUST stay propose-first (banner, never a silent
-    // overnight mutation — David 2026-06-04).
+  it('rides readiness_pullback · one vote of several, never a vote on its own', async () => {
+    // 2026-08-19 · the subjective pillar joins the convergence rule's evidence
+    // as ONE DOMAIN of five. It used to be able to fire the trigger alone
+    // (`subjectiveFired` was its own limb of a four-way OR); under the owner's
+    // convergence ruling it cannot, and lib/coach/_convergence.test.ts proves
+    // that for every domain including this one.
+    //
+    // The kind stays propose-first by default — an amber convergence is a
+    // banner and touches nothing. Only a convergent-RED downgrade carries
+    // `forceApplyNow`, which is the owner's "settled the night before".
     const { PROPOSE_FIRST_TRIGGERS } = await import('@/lib/plan/adapt');
     expect(PROPOSE_FIRST_TRIGGERS.has('readiness_pullback')).toBe(true);
+
+    const { gradeConvergence } = await import('@/lib/coach/convergence');
+    const v = gradeConvergence(
+      {
+        hrvLnRolling: Array.from({ length: 30 }, () => Math.log(60)),
+        hrvLnBaseline: Math.log(60),
+        hrvLnSd60d: 0.1,
+        rhrDaily: Array.from({ length: 30 }, () => 48),
+        rhrBaseline: 48,
+        sleepNightly: Array.from({ length: 30 }, () => 8.2),
+        acwrDaily: Array.from({ length: 30 }, () => 1.0),
+        subjectiveWreckedOnEasy: true,
+        baselineDays: 60,
+        weeklyMpw: 45,
+      },
+      {
+        daysToNextRace: null, daysSinceLastRace: null, postRaceWindowDays: 14,
+        inPlannedCutback: false, illnessActive: false, daysSinceTravel: null,
+        heatFlaggedDaysRecent: 0, alcoholLastNight: false,
+      },
+    );
+    expect(v.converging).toEqual(['subjective']);
+    expect(v.grade).toBe('green');
   });
 });

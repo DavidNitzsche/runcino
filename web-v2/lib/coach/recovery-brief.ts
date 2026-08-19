@@ -18,8 +18,16 @@
  * gate UI rendering on payload presence — the iPhone agent's forward-
  * compat decode already does this.
  *
- * Score weighting · per the execution brief:
- *   HRV 45% · RHR 25% · TSB 20% · sleep adequacy 10%
+ * Score weighting · BuildResearch D1's table, imported from readiness.ts so
+ * there is exactly one of it: HRV 40% · sleep 22% · RHR 18%, renormalised over
+ * the pillars actually present, with training form applied AFTER as a load-
+ * context multiplier rather than as a fourth pillar.
+ *
+ * This header used to read "per the execution brief: HRV 45% · RHR 25% ·
+ * TSB 20% · sleep adequacy 10%". There is no such brief in the repo, and those
+ * weights disagreed with doctrine in the two ways the 2026-08-17 audit had
+ * already fixed in readiness.ts. See the reconciliation block above
+ * `RECOVERY_FORM_MULTIPLIER`.
  *
  * Doctrine sources:
  *   · Pfitzinger Faster Road Racing §"Post-workout recovery monitoring"
@@ -38,6 +46,10 @@ import { computeTrainingForm, type TrainingFormLabel } from './training-form';
 import { loadTrainingState } from './training-state';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
 import { hasSleepSignal, hasHrvSignal, hasRhrSignal, hasRecoverySignal, recoveryCoverage } from './state-presence';
+// 2026-08-19 · ONE weight table and ONE sleep target, imported rather than
+// restated. See the reconciliation blocks below.
+import { READINESS_WEIGHTS, weeklyMpwFor } from './readiness';
+import { sleepTargetForMileage } from './tier-rules';
 
 /* ────────────────────────── Public types ────────────────────────── */
 
@@ -156,23 +168,102 @@ interface TodayRunTimingRow {
 
 /* ────────────────────────── Doctrine constants ────────────────────────── */
 
-/** Hours of sleep target per band of training stress.
- *  Source · Research/00b-recovery-protocols.md §Sleep · "extension table".
- *  + Pfitzinger FRR §Post-workout: bump 30-60 min above habit on hard days.
- *  Long-run mode bumps to 9.0-9.5h. */
-const SLEEP_TARGET_STANDARD_H = 8.5;
-const SLEEP_TARGET_LONG_RUN_H = 9.25;
+/**
+ * Sleep · the extension INCREMENT after a long run. The TARGET itself is
+ * `sleepTargetForMileage` (tier-rules.ts) — see computeSleepTarget below.
+ *
+ * ── 2026-08-19 · sleep-target reconciliation ─────────────────────────────
+ *
+ * This file used to carry a flat 8.5h standard target and a 9.25h long-run
+ * one, citing Research/00b §"Sleep Extension and Sleep Banking". That section
+ * is a DELTA table, not a target table: "Add 60–120 min/night for 5–7+ nights"
+ * is an amount to add to something, and the something is the per-mileage
+ * target in §"Recovery Scaled to Weekly Mileage". Reading a delta as an
+ * absolute is how a 45 mpw runner got an 8.5h bar where doctrine says 8.0h,
+ * and a 90 mpw runner got 8.5h where doctrine says 9.0h — wrong in both
+ * directions at once, because a flat number cannot track a scaling one.
+ *
+ * The 9.25h long-run figure came from a Pfitzinger citation (+30-60 min above
+ * habit on hard days). Book-only citations were closed to zero in the
+ * 2026-08-17 doctrine sweep, so it is re-pointed at the extension table's own
+ * LOW END: +60 min, read out of the doc at run time by the registry claim
+ * SLEEP.extension-is-a-delta-not-a-target rather than written down here as
+ * 0.75.
+ */
+const SLEEP_EXTENSION_LONG_RUN_H = 1.0;
 
 /** HRV rebound timeline per Plews et al. — typical hard-session HRV drop
  *  recovers ~70% within 24h, fully within 48h. We project return-to-baseline
  *  for ~24h post-session (clamped). */
 const HRV_REBOUND_HOURS_DEFAULT = 24;
 
-/** Score weights per execution brief. */
-const W_HRV = 0.45;
-const W_RHR = 0.25;
-const W_TSB = 0.20;
-const W_SLEEP = 0.10;
+/**
+ * ── 2026-08-19 · the second composite, reconciled ────────────────────────
+ *
+ * This file carried its OWN readiness weights — HRV .45 / RHR .25 / TSB .20 /
+ * SLEEP .10 — under the comment "per execution brief", naming no source. No
+ * such brief exists in `BuildResearch/` or `Research/`. It was a second,
+ * unbound readiness model sitting next to the bound one, and it disagreed with
+ * it in exactly the two ways the 2026-08-17 audit had already found and fixed
+ * in `readiness.ts`:
+ *
+ *   · SLEEP AT .10 against doctrine's .22. D1 §"Summary table" puts sleep at
+ *     22%; this halved it and handed the difference to HRV and RHR.
+ *   · LOAD AS A PILLAR. TSB at .20 could add a fifth of the score on its own.
+ *     D1 §2.4 makes load "a 'load context' multiplier in the range [0.85,
+ *     1.10] applied after the biometric composite", and D1 §"Why these
+ *     weights" says as a multiplier "it can't *create* a score; it can only
+ *     modulate one". A runner with no biometrics at all was banking load
+ *     points for having trained.
+ *
+ * Both are now the same shape as `readiness.ts`: the biometric pillars are
+ * weighted by `READINESS_WEIGHTS` — the ONE table, imported rather than
+ * copied, so the two composites can no longer drift — and training form is
+ * applied as a multiplier on the finished composite, never as a term in it.
+ *
+ * The renormalisation added by COLD-4 (2026-08-17) is preserved: a pillar we
+ * cannot see does not vote, and the weights of the pillars we can see are
+ * renormalised so absence is neither rewarded nor punished.
+ *
+ * WHY THE WEIGHTS ARE IMPORTED AND NOT RESTATED. This module's HRV/RHR terms
+ * are percentages-of-extension rather than the raw deviations `readiness.ts`
+ * scores, so the two composites still produce different numbers for different
+ * questions ("how recovered from yesterday" vs "how ready today"). What they
+ * must not do is disagree about how much each PILLAR IS WORTH, which is the
+ * only thing doctrine actually fixes.
+ */
+const W_HRV = READINESS_WEIGHTS.hrv;
+const W_RHR = READINESS_WEIGHTS.rhr;
+const W_SLEEP = READINESS_WEIGHTS.sleep;
+
+/**
+ * Training form as a load-context MULTIPLIER, mirroring
+ * `readiness.ts:loadContextMultiplier` and D1 §2.4's stated [0.85, 1.10]
+ * range. Bands are the Coggan TSB labels `training-form.ts` already uses:
+ * fatigue (TSB well negative) trims, freshness lifts a little, the productive
+ * middle is neutral.
+ *
+ * It cannot manufacture a score, which is D1's requirement. The mechanism is
+ * `computeScore`'s early return: with no biometric pillar present the total
+ * weight is zero and the function returns before the multiplier is ever
+ * reached, so there is nothing for freshness to lift. It modulates a real
+ * reading or it does not run at all.
+ */
+export const RECOVERY_FORM_MULTIPLIER = {
+  overreach: 0.88,
+  fatigued: 0.95,
+  neutral: 1.00,
+  fresh: 1.05,
+} as const;
+
+export function recoveryFormMultiplier(tsb: number | null): number {
+  if (tsb == null || !isFinite(tsb)) return RECOVERY_FORM_MULTIPLIER.neutral;
+  // Coggan bands as carried by training-form.ts labelForTsb.
+  if (tsb <= -30) return RECOVERY_FORM_MULTIPLIER.overreach;
+  if (tsb <= -10) return RECOVERY_FORM_MULTIPLIER.fatigued;
+  if (tsb > 10) return RECOVERY_FORM_MULTIPLIER.fresh;
+  return RECOVERY_FORM_MULTIPLIER.neutral;
+}
 
 /** Fueling window per sports-nutrition consensus (Burke/Jeukendrup):
  *  open <30min post-run, closing 20-30min, closed >30min. */
@@ -317,10 +408,14 @@ export async function loadRecoveryBrief(
 /* ────────────────────────── Pillar computers ────────────────────────── */
 
 function computeSleepTarget(state: CoachState, mode: RecoveryMode) {
-  const baseTarget = mode === 'long_run' ? SLEEP_TARGET_LONG_RUN_H : SLEEP_TARGET_STANDARD_H;
-  // Scale 0.25h up if ACWR ≥ 1.3 (high acute load · Research/00b)
-  const loadBump = (state.loadAcwr ?? 0) >= 1.3 ? 0.25 : 0;
-  const hoursTarget = +(baseTarget + loadBump).toFixed(2);
+  // 2026-08-19 · ONE target, doctrine's own, mileage-scaled. The former flat
+  // 8.5h base and the +0.25h ACWR bump are both gone: Research/00b scales the
+  // recovery requirement to ABSOLUTE training load (mileage), and the ratio
+  // bump was a second axis with nothing behind it.
+  const baseTarget = sleepTargetForMileage(weeklyMpwFor(state));
+  // After a long run, doctrine's sleep-EXTENSION increment applies on top.
+  const extension = mode === 'long_run' ? SLEEP_EXTENSION_LONG_RUN_H : 0;
+  const hoursTarget = +(baseTarget + extension).toFixed(2);
 
   // 2026-06-05 · multi-tenant audit Pattern 1 fix · was:
   //   const personalAvg = state.sleep7Avg ?? hoursTarget;
@@ -332,11 +427,11 @@ function computeSleepTarget(state: CoachState, mode: RecoveryMode) {
   const personalAvg = state.sleep7Avg ?? hoursTarget;
   const hoursDelta = present ? +(hoursTarget - personalAvg).toFixed(2) : 0;
 
+  // The reason names the axis the target actually moved on, so the runner can
+  // check it. Both branches are Research/00b.
   const reason = mode === 'long_run'
     ? 'Long-run carryover · sleep extension drives glycogen + tissue repair'
-    : (loadBump > 0
-        ? 'High ACWR · recovery needs scale with absolute load'
-        : 'Pfitz post-workout window · +30–60min above habit on hard days');
+    : 'Recovery needs scale with weekly mileage';
 
   return { present, hoursTarget, hoursDelta, reason };
 }
@@ -618,11 +713,13 @@ function computeScore(inputs: {
   // Each pillar contributes a 0-100 score · inverted where needed so
   // higher is always "better recovery." HRV/RHR pct above are 0=fully
   // recovered → 100=most extended; invert.
+  //
+  // 2026-08-19 · THREE BIOMETRIC PILLARS ONLY. Training form (TSB) used to sit
+  // here as a fourth term worth .20; it is now a multiplier applied below, per
+  // D1 §2.4. See the RECOVERY_FORM_MULTIPLIER block above.
   const terms: Array<[number | null, number]> = [
     [inputs.hrvPct == null ? null : 100 - inputs.hrvPct, W_HRV],
     [inputs.rhrPct == null ? null : 100 - inputs.rhrPct, W_RHR],
-    // TSB band → score · OPTIMAL/PRODUCTIVE ≈ 70-85, OVERREACH < 40.
-    [inputs.tsb == null ? null : Math.max(0, Math.min(100, 70 + inputs.tsb * 2)), W_TSB],
     [inputs.sleepAdequacyPct, W_SLEEP],
   ];
   let weighted = 0;
@@ -636,7 +733,13 @@ function computeScore(inputs: {
   // this cannot divide by zero · the guard is here so a future caller cannot
   // reintroduce the fabrication by loosening the gate.
   if (totalWeight <= 0) return 0;
-  return Math.max(0, Math.min(100, Math.round(weighted / totalWeight)));
+  const composite = weighted / totalWeight;
+
+  // Load context, applied AFTER the composite and bounded by it. A multiplier
+  // "can't *create* a score; it can only modulate one" (D1), so freshness may
+  // lift a real reading but a runner with no biometrics has nothing to lift.
+  const scored = composite * recoveryFormMultiplier(inputs.tsb);
+  return Math.max(0, Math.min(100, Math.round(scored)));
 }
 
 function bandFromScore(score: number): RecoveryBand {

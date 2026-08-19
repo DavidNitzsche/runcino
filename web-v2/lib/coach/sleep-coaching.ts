@@ -9,11 +9,29 @@
  *
  *   STANDING FLAG (escalation · Research/00b §sleep — recovery
  *   hierarchy #1):
- *     · streak: ≥ STREAK_NIGHTS consecutive nights < 7.0h
- *     · trend:  7-night avg < 6.5h held across two consecutive weeks
- *   Clears silently after 5 consecutive nights ≥ 7.0h. No daily nag —
- *   one standing fact that escalates the surfaces that already exist
- *   (Health card, WHAT-TO-DO line, quality-day forward link).
+ *     · streak: ≥ STREAK_NIGHTS consecutive nights under the floor
+ *     · trend:  7-night avg under the floor, held two consecutive weeks
+ *   Clears silently after 5 consecutive nights at or above the floor.
+ *   No daily nag — one standing fact that escalates the surfaces that
+ *   already exist (Health card, WHAT-TO-DO line, quality-day forward link).
+ *
+ * ── 2026-08-19 · sleep-target reconciliation ──────────────────────────
+ *
+ * This module carried TWO more sleep numbers — a 7.0h nightly bar and a
+ * separate 6.5h trend bar — and neither was read out of the research. 7.0h
+ * sits BELOW doctrine's lowest target (7.5h at 20-40 mpw), so the flag stayed
+ * silent through nights doctrine already counts as a deficit, and it did not
+ * move at all for a runner at 80 mpw whose target is 9h.
+ *
+ * Both are now `sleepFloorForMileage` (tier-rules.ts) — the doctrine target
+ * for the runner's own mileage, less the engine's one named tolerance,
+ * registry-bound as TIER.sleep-floor-rises-with-mileage.
+ *
+ * THE SECOND NUMBER IS GONE ENTIRELY rather than rescaled. A streak and a
+ * trend are two readings of the same deficit, and what distinguishes them is
+ * PERSISTENCE, not depth: the streak is consecutive nights under the floor,
+ * the trend is a 7-night average under the floor held two weeks running. That
+ * removes an invented constant instead of re-deriving one.
  *
  *   SLEEP BANKING (race week · Research/08 §sleep-banking):
  *     active T-7 → race day for the next A-race. Target 8–8.5h; the
@@ -24,17 +42,18 @@
  */
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+// 2026-08-19 · ONE sleep target · Research/00b, mileage-scaled.
+import { sleepFloorForMileage, SLEEP_FLOOR_TOLERANCE_H } from './tier-rules';
+import { computeAcwr } from './acwr';
 
 export const STREAK_NIGHTS = 10;
-const TARGET_H = 7.0;
-const TREND_AVG_H = 6.5;
 const CLEAR_NIGHTS = 5;
 
 export interface SleepCoaching {
   flag: {
     active: true;
     kind: 'streak' | 'trend';
-    /** Consecutive nights under 7.0h ending last night. */
+    /** Consecutive nights under the doctrine floor, ending last night. */
     streakNights: number;
     /** 7-night average, 1dp. */
     avg7: number;
@@ -60,6 +79,12 @@ export interface SleepCoaching {
 export async function computeSleepCoaching(userUuid: string): Promise<SleepCoaching> {
   const today = await runnerToday(userUuid);
 
+  // 2026-08-19 · the floor is doctrine's, scaled to this runner's habitual
+  // weekly mileage. `chronic28` is null until a full chronic window is
+  // observable, in which case doctrine's entry row stands.
+  const load = await computeAcwr(userUuid, today).catch(() => null);
+  const floorH = sleepFloorForMileage(load?.chronic28 != null ? load.chronic28 * 7 : null);
+
   // Last 21 nights, newest first. sample_date is the wake date.
   const nights = (await pool.query<{ d: string; h: string }>(
     `SELECT sample_date::text AS d, value::text AS h
@@ -82,26 +107,36 @@ export async function computeSleepCoaching(userUuid: string): Promise<SleepCoach
       ? Math.round(avg(nights.slice(0, 14).map((n) => n.h)) * 10) / 10
       : avg7;
 
-    // Clear gate first: 5 consecutive ≥ 7.0 → no flag regardless of history.
+    // Clear gate first: 5 consecutive nights at or above the floor → no flag
+    // regardless of history.
     const recentlyCleared = nights.slice(0, CLEAR_NIGHTS).length === CLEAR_NIGHTS
-      && nights.slice(0, CLEAR_NIGHTS).every((n) => n.h >= TARGET_H);
+      && nights.slice(0, CLEAR_NIGHTS).every((n) => n.h >= floorH);
 
     let streakNights = 0;
     for (const n of nights) {
-      if (n.h < TARGET_H) streakNights++;
+      if (n.h < floorH) streakNights++;
       else break;
     }
     const prevWeekAvg = nights.length >= 14
       ? Math.round(avg(nights.slice(7, 14).map((n) => n.h)) * 10) / 10
       : null;
-    const trendActive = avg7 < TREND_AVG_H && prevWeekAvg != null && prevWeekAvg < TREND_AVG_H;
+    // Streak and trend differ by PERSISTENCE, not by depth · one floor.
+    const trendActive = avg7 < floorH && prevWeekAvg != null && prevWeekAvg < floorH;
 
     if (!recentlyCleared && (streakNights >= STREAK_NIGHTS || trendActive)) {
       const kind: 'streak' | 'trend' = streakNights >= STREAK_NIGHTS ? 'streak' : 'trend';
       const headline = kind === 'streak'
-        ? `Night ${streakNights} under 7 hours.`
+        ? `Night ${streakNights} under ${floorH}h.`
         : `Two weeks averaging ${avg7}h.`;
-      const detail = `The plan assumes recovery you're not banking. Fitness is built in the sleep after the work, not the work. Target tonight: in bed for 7:30.`;
+      // 2026-08-19 · coach voice · this line used to read "The plan assumes
+      // recovery you're not banking ... Target tonight: in bed for 7:30",
+      // which is a lecture with a bedtime in it. The owner's standing line is
+      // that a product moralising about a short night is one he deletes. State
+      // the target, state what it is for, stop.
+      // toFixed, not bare addition · 6.8 + 0.7 is 7.499999999999999 in
+      // binary floating point, and the runner should not read that.
+      const targetH = (floorH + SLEEP_FLOOR_TOLERANCE_H).toFixed(1);
+      const detail = `Your mileage puts the target at ${targetH}h. The adaptation from this block lands in that sleep.`;
       // Forward link: is tomorrow a quality day on the active plan?
       const tomorrowQ = (await pool.query<{ type: string; sub_label: string | null }>(
         `SELECT pw.type, pw.sub_label
