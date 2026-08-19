@@ -258,8 +258,29 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
     }
     // The last race-specific week always carries one · closest to the race.
     expect(finishMiOf(rs[rs.length - 1].w.days.find((d) => d.isLong)?.subLabel)).toBeGreaterThan(0);
-    // …and the week's shape is unchanged: two structured sessions either way.
-    for (const { w } of rs) {
+    // DOCTRINE-HMLONG-DOSE-1 (2026-08-18) · the week's shape now DEPENDS on the
+    // cadence, and that is the point of the later ruling rather than a
+    // regression of this one.
+    //
+    // The half's fast-finish long finishes at HM race pace, which Research/01
+    // §"Pace conversion from a race time" places inside T ("~half-marathon pace
+    // to 15K pace"). So a cadence week carrying both it and the cruise session
+    // runs TWO threshold sessions and spends Daniels' 10% weekly allowance
+    // twice — on a 36 mi/wk half, 3.5 mi of finish plus a 4 mi cruise against a
+    // 3.6 mi allowance. §4.5 schedules the fast-finish long "Every 2-3 weeks"
+    // and §15 lists it among the race-specific phase's primary workouts, so on
+    // the weeks it lands it IS the week's threshold work and the cruise session
+    // comes out. That is the same trade DOCTRINE-MPLONG-1 already makes for the
+    // marathon; the marathon simply never collides, because its finish is at MP
+    // and its structured slot at T are different pace families.
+    //
+    // Off-cadence weeks have no finish and keep both structured sessions, so
+    // §15's "2 quality/wk + long run" still describes the phase: on a cadence
+    // week the long run is one of the two.
+    for (const { w } of withRp) {
+      expect(w.days.filter((d) => d.isQuality && d.type !== 'race').length).toBe(1);
+    }
+    for (const { w } of withoutRp) {
       expect(w.days.filter((d) => d.isQuality && d.type !== 'race').length).toBe(2);
     }
   });
@@ -284,6 +305,7 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
     let shaved = 0;
     let offCadence = 0;
     let offCadenceShare = 0;
+    const cadenceFinishes: number[] = [];
     const pinned: string[] = [];
     for (const experienceLevel of ['beginner', 'intermediate', 'advanced'] as const) {
       for (const weeklyMileageBucket of [15, 25, 35, 45]) {
@@ -300,8 +322,10 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
               const long = w.days.find((d) => d.isLong && d.type === 'long');
               if (!long || long.distanceMi <= 0) continue;
               weeks++;
-              const ratio = finishMiOf(long.subLabel) / long.distanceMi;
+              const finishMi = finishMiOf(long.subLabel);
+              const ratio = finishMi / long.distanceMi;
               if (ratio > 0.01 && ratio < 0.48) shaved++;
+              if (ratio > 0.01) cadenceFinishes.push(finishMi);
               if (ratio <= 0.01) {
                 offCadence++;
                 // An off-cadence long has no finish for the floor to take, so
@@ -330,8 +354,27 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
     // …and those weeks sit clear of the floor rather than on it. Before, every
     // race-specific week came out inside a point of 75%.
     expect(offCadenceShare / offCadence).toBeGreaterThan(EASY_SHARE_FLOOR + 0.05);
-    // …and the floor is no longer the every-week mechanism it was at 83%.
-    expect(shaved / weeks).toBeLessThan(0.60);
+    // DOCTRINE-DOSING-2 (2026-08-18) · `shaved` counts any finish sized under
+    // 50% of the long, and it is no longer the intensity floor doing most of
+    // that. `layoutWeek` now caps the finish at Research/01's dosing budget for
+    // the pace it is run at as it authors — "the lesser of 18 mi or 20% of
+    // weekly mi" for an MP finish, 10% for an HM one — so a finish that was
+    // trimmed after the fact is now sized correctly up front. Counting the two
+    // mechanisms together stopped measuring either, so the assertion that used
+    // to bound this ratio is replaced by the two claims that still separate
+    // them:
+    //
+    //   · an off-cadence week is never shaved, because it has no finish to
+    //     shave — asserted directly above by `subLabel === 'LONG'`;
+    //   · a cadence week's finish is still a REAL race-pace session after every
+    //     cap has been applied. §4.5 sizes a fast-finish long as "final 2-6 mi
+    //     at MP or slightly faster", so two miles is the floor, and a finish
+    //     that survived the dosing budget must still reach it.
+    for (const mi of cadenceFinishes) {
+      expect(mi, `a cadence fast-finish long was sized to ${mi}mi, under §4.5's 2-6 mi`)
+        .toBeGreaterThanOrEqual(2);
+    }
+    expect(cadenceFinishes.length).toBeGreaterThan(50);
   });
 });
 

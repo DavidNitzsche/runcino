@@ -72,10 +72,15 @@ import { stripResearchCitations } from './strip-citations';
 import {
   applyProgressionReshape,
   loadProgressionWeek,
+  renderResolution,
   resolveWeekProgression,
   type ProgressionResolution,
   type ProgressionRowContext,
 } from './progression-pass';
+import { paceTagOf } from '@/lib/prescription/trajectory';
+// DOCTRINE-DOSING-2 · Daniels' dosing caps on the WRITE path. See that file's
+// header for why the composer's gate does not cover this one.
+import { dosingBreachIfWritten } from './dose-guard';
 import type { AdaptationBand } from '@/lib/adaptation/adaptation-model';
 
 /**
@@ -1180,6 +1185,34 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
           if (tPace != null) {
             const coreMi = Math.round((1800 / tPace) * 10) / 10;
             const totalMi = Math.round((coreMi + 2) * 2) / 2;
+            // DOCTRINE-DOSING-2 (2026-08-18) · a field test is four to five
+            // miles at threshold, written straight onto a row with raw SQL and
+            // no composer between it and the database. On a 30 mi/wk runner
+            // whose week already carries a T session that is well past
+            // `Research/01`'s 10% weekly cap, and nothing looked. The guard
+            // measures the whole training week as it WOULD be after this write
+            // — the same `weekDosingFindings` the plan gate runs — and skips
+            // the conversion rather than authoring the breach.
+            //
+            // Skipping is safe and reversible: the runner keeps the session the
+            // plan already validated, and `field_test_due` fires again on the
+            // next pass, by which point a rebuild or a bigger week may afford
+            // it. Throwing would roll back the reschedules and injury
+            // downgrades sharing this transaction, which have nothing to do
+            // with the dose.
+            const breach = await dosingBreachIfWritten(client, userId, {
+              workoutId: wid,
+              type: 'tempo',
+              distanceMi: totalMi,
+              subLabel: 'FIELD TEST',
+              atPaceMi: coreMi,
+            });
+            if (breach.length > 0) {
+              console.log(
+                `[adapt] skip field_test ${wid} · would breach Daniels' dosing caps: ${breach[0].message}`,
+              );
+              continue;
+            }
             const spec = {
               kind: 'tempo',
               warmup_mi: 1,
@@ -1247,6 +1280,34 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
         // into "was CRUISE INTERVALS · <why>" on the day itself.
         for (const wid of a.workoutIds) {
           if (!unsealedSet.has(wid)) continue;
+          // DOCTRINE-DOSING-2 (2026-08-18) · the progression gate raises a
+          // session's dose, and `advanceShape` bounds it by
+          // `atPaceSessionCapMi` — one SESSION's share of the week. Nothing
+          // asked what the rest of the week was already spending at that pace,
+          // so a step that is legal on its own could still put the week past
+          // `Research/01`'s weekly column. The guard measures the whole
+          // training week as it would be after this write.
+          //
+          // On a breach the step is skipped, not throttled: the resolution is a
+          // shape (reps × duration × recovery), and silently re-deriving a
+          // smaller one here would put a second dose authority beside the gate.
+          // The runner keeps the session the plan validated, and the pass runs
+          // again next week against whatever the week's volume is then.
+          const reshapeBreach = await dosingBreachIfWritten(client, userId, {
+            workoutId: wid,
+            type: a.reshape.row.type,
+            distanceMi: a.reshape.row.distanceMi ?? 0,
+            subLabel: renderResolution(
+              a.reshape.resolution,
+              paceTagOf(a.reshape.row.subLabel),
+            ),
+          });
+          if (reshapeBreach.length > 0) {
+            console.log(
+              `[adapt] skip reshape ${wid} · would breach Daniels' dosing caps: ${reshapeBreach[0].message}`,
+            );
+            continue;
+          }
           const wrote = await applyProgressionReshape(client, {
             workoutId: wid,
             row: a.reshape.row,

@@ -561,6 +561,29 @@ export function buildWorkoutSpec(
       // T · 2 mi CD" → wu=2, tempo=4, cd=2). Falls back to historical
       // math when the prescription string is absent or unparseable.
       const parsedTempo = parseTempoShape(prescription);
+      // DOCTRINE-FARTLEK-SPEC (2026-08-18) · a TIME-BASED rep set is a rep set,
+      // whatever the day's type says.
+      //
+      // The `threshold` branch below has consulted `timeReps` since
+      // PROGRESSION-1; this one never did, and the beginner's light fartlek is
+      // typed `tempo`. So "5mi E w/ 5×1 min surges @ T effort" — five MINUTES
+      // of work, which `Research/22` §Beginner prescribes as an easy run with a
+      // few pickups — was built as a 2.5-mile CONTINUOUS block at threshold,
+      // with `parseTempoLeadMi` reading the "5mi" that describes the whole run
+      // as if it declared the block. The runner read one workout and the watch
+      // ran another, and it was the single largest source of measured dosing
+      // breach in the archetype corpus: 2.5 mi at T on a 22 mi/wk beginner week
+      // is 11.4%, and the actual session is five minutes.
+      //
+      // This is the same defect MAINT-FARTLEK-SPEC fixed for the maintenance
+      // composer in 2026-06-23 ("fartlek is AEROBIC with surges, not sustained
+      // threshold"), on the one fartlek path that ruling did not reach. The
+      // shape comes back as a time-based rep set — the identical spec the
+      // `threshold` branch builds for hills and fartlek — so `splitDay` counts
+      // the reps' own minutes and nothing downstream needs a new kind.
+      if (!parsedTempo && timeReps) {
+        return timeRepSpec('threshold', timeReps, distance_mi ?? 5, tempo, lthr, prescription, withRules, effortCued);
+      }
       const budget = distance_mi ?? 8;
       // TEMPO-WU-1 (2026-06-23) · reserve WU/CD floors BEFORE sizing the core, mirroring
       // threshold (lines 367-368). Without this, a tiny 2mi budget produced wu=0/cd=0:

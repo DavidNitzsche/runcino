@@ -85,6 +85,8 @@ import {
   RAMP_BASE_RESUME_FRACTION,
   RAMP_BASE_SUSTAINED_RANK,
   resolveRampBase,
+  BASE_REBUILT_SHARE,
+  FAST_FINISH_MIN_MI,
 } from '@/lib/plan/generate';
 import {
   BLEND_GRACE_FRACTION,
@@ -104,6 +106,9 @@ import {
   MARATHON_PACE_WORKOUT_CAP,
   CUMULATIVE_CEILING_KM,
   weeklyShareCap,
+  capEnforced,
+  duplicatePaceFamily,
+  weeklyDoseBudgetMi,
 } from '@/lib/plan/dosing';
 import { CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES } from '@/lib/plan/anchor-provenance';
 import {
@@ -6113,6 +6118,144 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           throw new Error(`CUMULATIVE_CEILING_KM.${pace} invents a ceiling doctrine does not state`);
         }
       }
+    },
+  },
+
+  /* ═════════════════════════════════════════════════════════════════════════
+   * DOCTRINE-DOSING-2 (2026-08-18) · the caps are ENFORCED now, so these claims
+   * are about the engine OBEYING them, not only about the numbers being right.
+   * The three claims above bind the constants; these bind the behaviour that
+   * spends them.
+   * ═════════════════════════════════════════════════════════════════════════ */
+  {
+    id: 'DOSING.one-session-per-pace-family',
+    binds: ['lib/plan/dosing.ts#duplicatePaceFamily', 'lib/plan/generate.ts#qualityTypesFor'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 5.2 Continuous tempo (4–8 mi at threshold)',
+    claim:
+      'A training week runs at most ONE session of any pace family. §5.2 gives the continuous ' +
+      'tempo "1×/week or alternating with cruise intervals" — the two forms of T work alternate ' +
+      'across weeks rather than sharing one. This is what makes Research/01 weekly caps ' +
+      'satisfiable at full doctrinal session size: one session already spends the whole allowance, ' +
+      'so a week carrying two must either breach the cap or halve both.',
+    check({ cite }) {
+      const freq = cite.table().cell('Frequency', 'Prescription');
+      // The doc must still say ONE. If a future edit raises it, the engine's
+      // alternation is no longer what doctrine asks for and this fails loudly.
+      matchLiteral(freq, /1\s*[×x]\s*\/\s*week|1\s*[×x]\/week/i, 'continuous tempo frequency');
+      matchLiteral(freq, /alternating with cruise intervals/i, 'continuous tempo alternation');
+      // And the engine's own predicate must agree about what "same family" means.
+      if (duplicatePaceFamily(['threshold', 'tempo']) !== 'T') {
+        throw new Error('duplicatePaceFamily does not treat cruise intervals and a continuous tempo as the same pace');
+      }
+      if (duplicatePaceFamily(['intervals', 'vo2max']) !== 'I') {
+        throw new Error('duplicatePaceFamily does not treat two rep sessions as the same pace');
+      }
+      if (duplicatePaceFamily(['threshold', 'intervals']) !== null) {
+        throw new Error('duplicatePaceFamily rejects a legal T + I week');
+      }
+    },
+  },
+  {
+    id: 'DOSING.taper-percentage-exemption',
+    binds: ['lib/plan/dosing.ts#capEnforced', 'lib/plan/dosing.ts#weeklyDoseBudgetMi'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 9.2 Marathon taper structure (3 weeks)',
+    claim:
+      'The percentage caps do not govern a taper or a race week, and doctrine says so by ' +
+      'prescribing sessions outside them: §9.2 puts 10-12 mi at MP on a week at 80-90% of peak ' +
+      'and 6-8 mi at MP on a week at 60-70%, both past Research/01 20% of weekly mileage. §9.1 ' +
+      'states the mechanism — "The largest cut is to easy mileage; intensity is preserved through ' +
+      'the taper" — so the share rises BECAUSE the taper is working. The ABSOLUTE ceilings keep ' +
+      'binding through the taper, so preserved never becomes unbounded.',
+    check({ cite }) {
+      const t = cite.table();
+      // Read §9.2's own -3 row and prove its named dose sits outside
+      // Research/01's percentage. Both sides are taken at their KINDEST
+      // reading — the TOP of the volume band (the biggest taper week the row
+      // allows) against the BOTTOM of the MP dose (the smallest session it
+      // asks for) — so this is not the band's extremes being picked to make a
+      // point. If the gentlest reading still breaches, every other does.
+      const mpMi = parseBand(matchLiteral(
+        t.cell('-3', 'Quality session'), /([\d\s–—-]+) mi at MP/i, 'taper -3 MP dose',
+      )[1]);
+      const volPct = parsePctBand(t.cell('-3', 'Volume'));
+      // The smallest peak at which the row's own session could fit inside
+      // Research/01's 20%. Any marathoner peaking below this cannot run the
+      // taper doctrine prescribes AND stay inside the percentage.
+      const minPeakMi = mpMi[0] / MARATHON_PACE_WORKOUT_CAP.pctOfWeekly / volPct[1];
+      // 55 mi/wk is a recreational-competitive marathon peak — the middle of
+      // Research/00a's "Marathon | Recreational competitive | 40-60" row, and
+      // the owner's own class. Stated here rather than read across documents.
+      const RECREATIONAL_PEAK_MI = 55;
+      if (minPeakMi <= RECREATIONAL_PEAK_MI) {
+        throw new Error(
+          `9.2's -3 taper session (${mpMi[0]} mi at MP on a week at ${volPct[1] * 100}% of peak) now ` +
+          `fits inside Research/01's ${MARATHON_PACE_WORKOUT_CAP.pctOfWeekly * 100}% for any peak above ` +
+          `${minPeakMi.toFixed(1)} mi/wk — the exemption this claim justifies no longer covers the ` +
+          'recreational-competitive marathoner and should be re-derived',
+        );
+      }
+      // The engine must exempt the percentage there, and ONLY the percentage.
+      if (capEnforced('taper', 'percentage') || capEnforced('race-week', 'percentage')) {
+        throw new Error('the percentage caps are being enforced on a taper or race week');
+      }
+      if (!capEnforced('taper', 'absolute') || !capEnforced('training', 'percentage')) {
+        throw new Error('capEnforced is exempting more than the taper percentage');
+      }
+      // And the budget must follow the same rule: no percentage bound in a
+      // taper, the absolute ceiling still there.
+      if (Number.isFinite(weeklyDoseBudgetMi(40, 'T', 'taper'))) {
+        throw new Error('weeklyDoseBudgetMi still applies the T percentage inside a taper');
+      }
+      const taperI = weeklyDoseBudgetMi(40, 'I', 'taper');
+      if (!Number.isFinite(taperI) || taperI > 6.3) {
+        throw new Error('weeklyDoseBudgetMi drops the I cumulative ceiling inside a taper');
+      }
+    },
+  },
+  {
+    id: 'MPLONG.fast-finish-floor',
+    binds: ['lib/plan/generate.ts#FAST_FINISH_MIN_MI', 'lib/plan/generate.ts#setLongFinish'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.5 Fast finish long run',
+    claim:
+      'The smallest race-pace finish the engine will schedule is the bottom of the only band ' +
+      'doctrine states for one. §4.5 prescribes the segment as a "final 2-6 mi" block, so a week ' +
+      'whose dosing budget cannot size it to two miles runs the long easy instead of shipping a ' +
+      'mile of race pace under a label that promises a session.',
+    check({ cite }) {
+      // The band is stated in the section prose and in its own field table; read
+      // whichever this section carries, and take its FLOOR.
+      const band = parseBand(matchLiteral(
+        cite.text(), /final ([\d\s–—-]+) mi at MP/i, 'fast-finish segment band',
+      )[1]);
+      within(FAST_FINISH_MIN_MI, [band[0], band[0]], 'fast-finish minimum segment');
+    },
+  },
+  {
+    id: 'DOCTRINE.base-rebuilt-share',
+    binds: ['lib/plan/generate.ts#BASE_REBUILT_SHARE'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'BASE may only be skipped for a runner whose VOLUME is already rebuilt, and the threshold ' +
+      'is the complement of doctrine own deepest planned down week. §"Volume progression rules" ' +
+      'gives "Down weeks | Every 3-4 wk, reduce by 20-30%", so a runner genuinely mid-block on ' +
+      'their deepest deload sits at 70% of their sustained level. Below that the shortfall is a ' +
+      'volume deficit, not a down week — and Research/00b §"Reverse Periodization for Marathon ' +
+      'Recovery" says what to do about it: "progressively rebuild volume first, then add intensity".',
+    check({ cite }) {
+      // The cell reads "Every 3-4 wk, reduce by 20-30%" and carries TWO bands.
+      // `parsePctBand` would take the first (the cadence, 3-4) and read a 96%
+      // floor, so the percentage is matched explicitly before it is parsed.
+      const cell = cite.table().cell('Down weeks', 'Specification');
+      const cut = parseBand(matchLiteral(
+        cell, /reduce by ([\d\s–—-]+)%/i, 'down-week depth',
+      )[1]);
+      // The complement of the DEEPEST cut doctrine sanctions.
+      const floor = 1 - cut[1] / 100;
+      within(BASE_REBUILT_SHARE, [floor, floor], 'base-rebuilt share of sustained volume');
     },
   },
 ];
