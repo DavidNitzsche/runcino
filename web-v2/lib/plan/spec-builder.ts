@@ -32,7 +32,22 @@
  *     hardcodes, no carve-outs.
  */
 
-import { parsePrescription, parseTempoShape, parseTempoLeadMi, parseStrides, parseTimeReps } from './prescription-parser';
+import {
+  parsePrescription,
+  parseTempoShape,
+  parseTempoLeadMi,
+  parseStrides,
+  parseTimeReps,
+  parseSegments,
+  primaryZone,
+  segmentMi,
+  type ParsedSegment,
+} from './prescription-parser';
+// ZONE-R-1 · what a pace zone is worth, resolved in ONE place that
+// `lib/plan/catalogue-rx.ts#anchorsFor` also reads — so the zones the catalogue
+// is allowed to anchor and the zones this file can pace cannot diverge.
+import { resolveZoneAnchors, zonePaceSec } from './zone-anchors';
+import type { PaceZone } from '@/lib/workout-catalogue/types';
 // 2026-08-17 · the stored race abort CALLS doctrine now instead of mirroring
 // its numbers. See the contingency-rules block for what "keep in sync" cost.
 import {
@@ -99,6 +114,36 @@ function strideFields(
     strides_pace_s_per_mi: stridePaceSPerMi,
     strides_recovery_s: STRIDE_RECOVERY_S,
   };
+}
+
+/**
+ * DOCTRINE-TAPERMP-1 · THE marathon-pace expression, as a function.
+ *
+ * It was already "in one place" inside `buildWorkoutSpec` so the long-run
+ * M-finish and the taper's MP block could not disagree. ZONE-R-1 adds a third
+ * reader — `catalogue-rx.ts#anchorsFor`, which has to know what an MP session
+ * would be paced at BEFORE deciding whether to offer one — and a third copy of
+ * a rule is how the first two stopped agreeing in every previous instance of
+ * this in the codebase. So it moves out here and all three call it.
+ *
+ * The rule is unchanged: goal MP "exactly" (`Research/04` §4.4 "Pace | MP
+ * exactly — not faster") ONLY when goal MP genuinely sits in the marathon zone
+ * — slower than threshold, faster than the long-run bulk — else the moderate
+ * T+18 default, which is always in-zone. `Research/01`:130-134 zone order.
+ */
+export function marathonPaceSPerMi(args: {
+  tPaceSec: number;
+  /** The current-fitness T anchor (PACE-E-1). Defaults to `tPaceSec`. */
+  easyAnchorTSec?: number | null;
+  goalPaceSPerMi?: number | null;
+}): number {
+  const { tPaceSec } = args;
+  const easyAnchorT = args.easyAnchorTSec ?? tPaceSec;
+  const longLo = easyAnchorT + 55;
+  const goal = args.goalPaceSPerMi ?? null;
+  return (goal != null && goal > tPaceSec && goal < longLo)
+    ? goal
+    : Math.min(tPaceSec, easyAnchorT) + 18;
 }
 
 export interface SpecBuildResult {
@@ -305,6 +350,139 @@ function timeRepSpec(
   };
 }
 
+// ── Unequal-step sessions ────────────────────────────────────────────────
+
+/**
+ * GRAMMAR-SEQ-1 (2026-08-19) · one step of a session whose steps differ.
+ *
+ * OPTIONAL on the spec, exactly as `rep_duration_s` and `finish_mi` are — the
+ * same wire-compatible move, for the same reason. A spec that has always been a
+ * uniform rep set is byte-identical to before, and the uniform fields
+ * (`rep_count`, `rep_distance_mi`, `rep_pace_s_per_mi`, `rep_rest_s`) are still
+ * populated on a stepped spec with the session's own totals, so a consumer that
+ * has never heard of `steps` still finds a well-formed, runnable rep session
+ * carrying the right total work, the right total recovery and the right dose.
+ *
+ * See `expandSpecToPhases`, which walks `steps` when they are there: the WATCH
+ * never sees this field at all — it receives the flat phase list it has always
+ * received, with one work phase per step. There is no wire change.
+ */
+export interface SpecStep {
+  /** Miles of work in this step. Null only when the step is by-effort and its
+   *  seconds cannot be converted (see `duration_s`). */
+  distance_mi: number | null;
+  /** Seconds of work, for a step doctrine states in time (§9.2's Mona reps). */
+  duration_s: number | null;
+  /** This step's own pace target. Null on a by-effort session. */
+  pace_s_per_mi: number | null;
+  /** Jog recovery AFTER this step. 0 where doctrine says the work is
+   *  continuous — §10.1's alternations, §12.4's progression. */
+  rest_s: number;
+  /** The zone label the prescription declared for this step, for the phase
+   *  label the runner reads. Null where the step declared none. */
+  zone: string | null;
+}
+
+/**
+ * A session built from an unequal-step prescription · §13's ladders, §9.2's
+ * Mona fartlek, §10.1's alternations, §10.2's combos, §12.4's progression.
+ *
+ * Every number here comes out of the prescription string, which the catalogue
+ * rendered from the entry's own cited rows. Nothing is chosen here: the steps,
+ * their zones and their recoveries are read, each zone is priced through the
+ * one zone resolver, and the warm-up and cool-down take the same treatment the
+ * uniform branches give them.
+ *
+ * The shape is NOT trimmed to the day. A ladder with a rung removed is a
+ * different workout, and the selector has already refused this session on any
+ * week that cannot afford it (`sessionAllowanceMi` prices the whole sequence
+ * against Daniels' share before it is ever offered). `capSpecToDistance` is the
+ * last-resort trim, and it says there what it does.
+ */
+function segmentSpec(
+  kind: 'threshold' | 'intervals',
+  segs: ParsedSegment[],
+  budgetMi: number,
+  defaultPaceSec: number,
+  anchors: Partial<Record<PaceZone, number>>,
+  lthr: number | null,
+  prescription: string | null | undefined,
+  withRules: Record<string, unknown>,
+  effortCued: boolean,
+): SpecBuildResult {
+  const byEffort = effortCued || /hill/i.test(String(prescription ?? ''));
+  const steps: SpecStep[] = [];
+  let workMi = 0;
+  let restTotalS = 0;
+  let paceWeighted = 0;
+
+  for (const seg of segs) {
+    const zonePace = zonePaceSec(seg.zone as PaceZone | null, anchors);
+    // A step whose zone this runner cannot price falls back to the session's
+    // own default rather than to a neighbouring zone's number — the selector
+    // does not offer a session with an unanchored zone, so in a composed plan
+    // this arm is only reachable from a restore/adapt path.
+    const pace = byEffort ? null : (zonePace ?? defaultPaceSec);
+    const mi = segmentMi(seg, pace ?? defaultPaceSec);
+    const durationS = seg.unit === 's' ? seg.value : seg.unit === 'min' ? seg.value * 60 : null;
+    steps.push({
+      // Four decimals, not the three `parsePrescription` keeps for a uniform
+      // rep. A 400 m rung is 0.2485 mi and rounds to 0.249 at three — 400.7 m,
+      // which is not what §13.2 wrote. There is no compatibility cost: this
+      // field is new, and the uniform summary below still rounds the way the
+      // old fields always did.
+      distance_mi: mi != null ? Number(mi.toFixed(4)) : null,
+      duration_s: durationS != null ? Math.round(durationS) : null,
+      pace_s_per_mi: pace,
+      rest_s: Math.round(seg.restS),
+      zone: seg.zone ?? null,
+    });
+    if (mi != null) {
+      workMi += mi;
+      if (pace != null) paceWeighted += mi * pace;
+    }
+    restTotalS += seg.restS;
+  }
+
+  const floatMi = restTotalS / 540;
+  const wuFloor = Math.max(0.5, Math.min(1.5, budgetMi * 0.3));
+  const cdFloor = Math.max(0.5, Math.min(1.0, budgetMi * 0.25));
+  const slack = Math.max(0, budgetMi - workMi - floatMi);
+  const wu = Number(Math.max(wuFloor, slack / 2).toFixed(1));
+  const cd = Number(Math.max(cdFloor, slack - wu).toFixed(1));
+
+  // The uniform summary a consumer that does not read `steps` sees. Deliberately
+  // the session's own TOTALS spread evenly rather than a first-step-wins guess:
+  // total work, total recovery and total dose all come out right, which is what
+  // `totalDistanceMiFromSpec`, `splitDay` and the dosing gate ask of it.
+  const n = steps.length;
+  const meanRepMi = n > 0 && workMi > 0 ? Number((workMi / n).toFixed(3)) : 0;
+  const meanRestS = n > 1 ? Math.round(restTotalS / (n - 1)) : 0;
+  const headlinePace = byEffort || workMi <= 0 ? null : Math.round(paceWeighted / workMi);
+
+  return {
+    spec: {
+      kind,
+      warmup_mi: wu,
+      steps,
+      rep_count: n,
+      rep_distance_mi: meanRepMi,
+      rep_pace_s_per_mi: headlinePace,
+      rep_rest_s: meanRestS,
+      cooldown_mi: cd,
+      lthr_bpm: hrLthrBpm(lthr),
+      ...(byEffort ? { by_effort: true } : {}),
+      // The authored prescription is where this workout's IDENTITY lives —
+      // "400-800-1200-1600", "Mona". `subLabelFromSpec` would otherwise re-derive
+      // a generic rep label and the shape would vanish between compose and
+      // persist, which is the drift this file exists to stop.
+      label: prescription ?? undefined,
+      ...withRules,
+    },
+    paceTargetSPerMi: headlinePace,
+  };
+}
+
 /**
  * Build a workout_spec + pace_target for a single workout row.
  *
@@ -478,15 +656,50 @@ export function buildWorkoutSpec(
    * faster than the long-run bulk — else the moderate T+18 default, which is
    * always in-zone. Research/01:130-134 zone order.
    */
-  const marathonPace = (goalPaceSPerMi != null && goalPaceSPerMi > tPaceSec && goalPaceSPerMi < longLo)
-    ? goalPaceSPerMi
-    : Math.min(tPaceSec, easyAnchorT) + 18;
+  const marathonPace = marathonPaceSPerMi({ tPaceSec, easyAnchorTSec: easyAnchorT, goalPaceSPerMi });
   // DOCTRINE-STRIDES-1 · Research/04 §7.2 "Accelerate to mile-to-5K race pace".
   // True I-pace when the caller threaded one; else Daniels' I = T−33 (the same
   // relation the intervals branch documents below). 5K pace is the SLOW end of
   // doctrine's band, so this never over-prescribes.
   const stridePace = iPaceSec ?? (tPaceSec - 33);
   const strides = strideFields(prescription, stridePace);
+
+  /* ── ZONE-R-1 (2026-08-19) · pace the session by the zone it DECLARES ──────
+   *
+   * Until now this file paced a `threshold` slot at T and a rep slot at I
+   * whatever the prescription said. That is why `catalogue-rx.ts` anchored two
+   * zones and declined every session naming a third: §7's R work, §5.4's
+   * sub-threshold intervals, §11.3's marathon-pace sessions and §14.2's
+   * 10K-specific sessions were all in the catalogue, cited, and unreachable.
+   *
+   * `resolveZoneAnchors` is the ONE answer to "what is this zone worth", and
+   * `anchorsFor` in catalogue-rx reads the same function — so "does the spec
+   * builder pace everything the catalogue is allowed to anchor" stops being
+   * something to remember and becomes something that cannot be false.
+   *
+   * BYTE-IDENTICAL FOR EVERY EXISTING PRESCRIPTION, by construction. The
+   * resolver maps T and HM to `tPaceSec` and I and 5K to the same rep pace this
+   * file already used, so `@ T pace` still resolves to T, `@ I-T transition`
+   * still resolves to the rep pace (its first token is I), `@ 5K-10K effort`
+   * still resolves to the rep pace, and `· MP → T ·` still resolves to T (an
+   * arrow clause is paced at its target). A prescription that declares no zone
+   * at all resolves to null and the branch default stands.
+   */
+  const zoneAnchors = resolveZoneAnchors({
+    tPaceSec,
+    // The rep pace this file has always used: the true Daniels I when the
+    // caller threaded one, else the legacy cruise-interval offset the intervals
+    // branch documents below.
+    iPaceSec: iPaceSec ?? interval,
+    marathonPaceSec: marathonPace,
+  });
+  const declaredZone = primaryZone(prescription);
+  const declaredPace = zonePaceSec(declaredZone as PaceZone | null, zoneAnchors);
+  // GRAMMAR-SEQ-1 · an unequal-step session, read BEFORE `parsed` is consulted:
+  // "2mi @ T · 2:30 jog + 4×800m @ I · 90s jog" carries a `4×800m` that
+  // `parsePrescription` would read on its own, building the rep block and
+  // dropping the threshold block in front of it.
+  const segments = parseSegments(prescription);
 
   switch (type) {
     case 'easy':
@@ -671,7 +884,11 @@ export function buildWorkoutSpec(
       };
     }
     case 'threshold': {
-      if (timeReps) return timeRepSpec('threshold', timeReps, distance_mi ?? 7, tPaceSec, lthr, prescription, withRules, effortCued);
+      if (segments) {
+        return segmentSpec('threshold', segments, distance_mi ?? 7, declaredPace ?? tPaceSec,
+          zoneAnchors, lthr, prescription, withRules, effortCued);
+      }
+      if (timeReps) return timeRepSpec('threshold', timeReps, distance_mi ?? 7, declaredPace ?? tPaceSec, lthr, prescription, withRules, effortCued);
       // 2026-06-02 · prefer parsed prescription · falls back to
       // historical defaults when the rx string is absent / unparseable.
       const repCount = parsed?.reps ?? 4;
@@ -703,19 +920,25 @@ export function buildWorkoutSpec(
           // COLD-4 · the calibration intro emits the rep with no pace. Distance,
           // count and rest are unchanged — those come from the prescription
           // library and the runner's own volume, not from the invented VDOT.
-          rep_pace_s_per_mi: effortCued ? null : tPaceSec,
+          // ZONE-R-1 · and the pace is the zone the label DECLARES, which for
+          // every prescription written before this resolves to `tPaceSec`.
+          rep_pace_s_per_mi: effortCued ? null : (declaredPace ?? tPaceSec),
           ...(effortCued ? { by_effort: true } : {}),
           rep_rest_s: restS,
           cooldown_mi: Number(cd.toFixed(1)),
           lthr_bpm: hrLthrBpm(lthr),
           ...withRules,
         },
-        paceTargetSPerMi: effortCued ? null : tPaceSec,
+        paceTargetSPerMi: effortCued ? null : (declaredPace ?? tPaceSec),
       };
     }
     case 'intervals':
     case 'vo2max': {
-      if (timeReps) return timeRepSpec('intervals', timeReps, distance_mi ?? 7, iPaceSec ?? interval, lthr, prescription, withRules, effortCued);
+      if (segments) {
+        return segmentSpec('intervals', segments, distance_mi ?? 7, declaredPace ?? iPaceSec ?? interval,
+          zoneAnchors, lthr, prescription, withRules, effortCued);
+      }
+      if (timeReps) return timeRepSpec('intervals', timeReps, distance_mi ?? 7, declaredPace ?? iPaceSec ?? interval, lthr, prescription, withRules, effortCued);
       // 2026-06-02 · prefer parsed prescription · falls back to
       // historical defaults when the rx string is absent / unparseable.
       const repCount = parsed?.reps ?? 5;
@@ -744,7 +967,10 @@ export function buildWorkoutSpec(
       const cdVal = Number(Math.max(cdFloor, budget - reps * repMi - floatJogTotal - wuVal).toFixed(1));
       // True I-pace when the caller threaded a VDOT-derived one (goal builds);
       // else the legacy T−18 cruise-interval offset (marathon / maintenance).
-      const repPace = iPaceSec ?? interval;
+      // ZONE-R-1 · unless the label declares a zone of its own — §7's R work,
+      // §14.2's 10K sessions. `@ I` and `@ 5K` both resolve to this same number,
+      // so every prescription written before this builds byte-identically.
+      const repPace = declaredPace ?? iPaceSec ?? interval;
       return {
         spec: {
           kind: 'intervals',
@@ -951,6 +1177,27 @@ export function totalDistanceMiFromSpec(
     }
     case 'threshold':
     case 'intervals': {
+      // GRAMMAR-SEQ-1 · an unequal-step session sums its own steps. The uniform
+      // fields below carry the same totals by construction, so this branch and
+      // that one agree; it is here because the steps are the truth and reading
+      // the summary of a thing you are holding is how the two drift.
+      const steps = Array.isArray(s.steps) ? (s.steps as SpecStep[]) : null;
+      if (steps && steps.length > 0) {
+        let work = 0;
+        let restS = 0;
+        let unpriced = false;
+        for (const st of steps) {
+          const mi = Number(st?.distance_mi ?? 0) || 0;
+          if (!(mi > 0)) unpriced = true;
+          work += mi;
+          restS += Number(st?.rest_s ?? 0) || 0;
+        }
+        // A step with no mileage is a by-effort step whose seconds could not be
+        // converted. The day's headline distance is then the honest total, the
+        // same answer a time-based rep set gets two lines down.
+        if (unpriced) return fallbackDistanceMi;
+        return Number((wu + work + restS / 540 + cd).toFixed(1));
+      }
       // DOCTRINE-VOCAB-1 · a time-based rep set has no rep distance to sum.
       // What the runner covers in the prescribed seconds IS the day's mileage,
       // so the headline distance stands. Without this the old sum would have
@@ -1015,6 +1262,42 @@ export function capSpecToDistance(spec: WorkoutSpec, maxMi: number): WorkoutSpec
     s.cooldown_mi = cd;
     s.tempo_distance_mi = Number(Math.max(0.5, maxMi - wu - cd).toFixed(1));
   } else if (kind === 'threshold' || kind === 'intervals') {
+    // GRAMMAR-SEQ-1 · an unequal-step session is a FIXED shape doctrine states
+    // by name, and a ladder with a rung removed is a different workout. So the
+    // easy legs give way first and completely, and only if the work itself
+    // still will not fit does a step come off the END — the ascending ladder
+    // loses its 1600 rather than its 400, which §13.1 says is the rung that
+    // "tests stamina", because losing the opening rung would leave a session
+    // that never warms into its own progression.
+    //
+    // Reaching the second half means the week could not afford this session,
+    // and the selector has already refused it on those weeks
+    // (`sessionAllowanceMi` prices the whole sequence against Daniels' share
+    // before it is offered). This is the last-resort guard for the adapt and
+    // restore paths, which do not run the selector.
+    const stepList = Array.isArray(s.steps) ? [...(s.steps as SpecStep[])] : null;
+    if (stepList && stepList.length > 0) {
+      const wuMin = 0.5, cdMin = 0.5;
+      const sumOf = (list: SpecStep[]) => {
+        let work = 0, restS = 0;
+        for (const st of list) {
+          work += Number(st?.distance_mi ?? 0) || 0;
+          restS += Number(st?.rest_s ?? 0) || 0;
+        }
+        return work + restS / 540;
+      };
+      while (stepList.length > 2 && sumOf(stepList) + wuMin + cdMin > maxMi) stepList.pop();
+      // Nothing recovers into the end of the session.
+      stepList[stepList.length - 1] = { ...stepList[stepList.length - 1], rest_s: 0 };
+      const body = sumOf(stepList);
+      const slack = Math.max(0, maxMi - body);
+      const wu = Number(Math.max(wuMin, slack / 2).toFixed(1));
+      s.steps = stepList;
+      s.rep_count = stepList.length;
+      s.warmup_mi = wu;
+      s.cooldown_mi = Number(Math.max(cdMin, slack - wu).toFixed(1));
+      return s as WorkoutSpec;
+    }
     // DOCTRINE-VOCAB-1 · nothing to scale on a time-based rep set: its work is
     // denominated in seconds, and totalDistanceMiFromSpec already reports the
     // day's headline distance, so `realized` can never exceed maxMi and this

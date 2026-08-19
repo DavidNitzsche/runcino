@@ -87,7 +87,7 @@ export interface IntensitySplit {
  * on this number, and this module never reads them. Any finite value gives the
  * same split.
  */
-const SPEC_PROBE_T_PACE_SEC = 480;
+export const SPEC_PROBE_T_PACE_SEC = 480;
 
 /** Miles of a structured day that are NOT Z1, read from the day's own spec. */
 function hardMilesFromSpec(spec: WorkoutSpec, fallbackMi: number): number {

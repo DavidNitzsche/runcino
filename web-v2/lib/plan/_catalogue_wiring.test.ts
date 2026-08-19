@@ -160,8 +160,29 @@ describe('VOCAB-CATALOGUE-1 · the composer consults it', () => {
   it('carries §11.2 Canova repeats with the zone walk the doc states', () => {
     // "Pace | Start slightly slower than MP; descend across reps to slightly
     // faster than T". The arrow is rendered from the entry's own `zones`.
+    //
+    // ZONE-R-1 (2026-08-19) · asserted on the RENDERING rather than on this
+    // plan's draw. The threshold slot's candidate pool went from five entries
+    // to eight when MP and ST became anchorable, and a least-recently-used
+    // rotation over eight with two catalogue-won slots in the phase does not
+    // land on any particular one — so pinning the claim to a plan measured
+    // whichever way the tie-break fell rather than whether the engine can say
+    // the thing. This asks the question directly, on the entry itself, and it
+    // is the stronger form: it holds for every plan that draws §11.2 rather
+    // than for one that happens to.
+    const entry = WORKOUT_CATALOGUE.find((e) => e.slug === 'canova-2k-repeats');
+    expect(entry, '§11.2 is no longer in the catalogue').toBeTruthy();
+    const structure = entry!.structures.find((s) => s.kind === 'reps');
+    expect(structure, '§11.2 no longer carries a rep structure').toBeTruthy();
+    const rendered = renderPrescription(entry!, {
+      structure: structure!, reps: 4, atPaceMinutes: 0, atPaceMi: 0, recoverySec: 120,
+    });
+    expect(rendered, `§11.2 renders as "${rendered}"`).toMatch(/×2km · MP → T/);
+
+    // And the marathon build still carries marathon-pace work, whichever of the
+    // phase's MP entries the rotation lands on.
     const shapes = qualityShapes(MARATHON);
-    expect(shapes.some((s) => /×2km · MP → T/.test(s)), `no §11.2 session: ${shapes}`).toBe(true);
+    expect(shapes.some((s) => /\bMP\b/.test(s)), `no marathon-pace work at all: ${shapes}`).toBe(true);
   });
 
   it('never places the same session twice in one week', () => {

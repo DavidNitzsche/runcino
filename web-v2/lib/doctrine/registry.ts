@@ -92,7 +92,7 @@ import {
   distanceCategoryOrNull,
 } from '@/lib/race/distance-category';
 import { distanceMiFromLabel } from '@/lib/race/distance';
-import { anchorsFor } from '@/lib/plan/catalogue-rx';
+import { anchorsFor, renderPrescription } from '@/lib/plan/catalogue-rx';
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
 import { VDOT_FULL_VALUE_DAYS, VDOT_EXPIRY_DAYS, FADE_TAIL_DAYS } from '@/lib/training/vdot';
 import {
@@ -164,6 +164,8 @@ import {
   STRIDE_RECOVERY_S,
   STRIDE_DEFAULT_REPS,
   STRIDE_DAYS_PER_WEEK,
+  buildWorkoutSpec,
+  marathonPaceSPerMi,
 } from '@/lib/plan/spec-builder';
 import {
   AT_PACE_SESSION_MI,
@@ -171,9 +173,15 @@ import {
   CRUISE_RECOVERY_MIN_PER_WORK_MI,
   INTERVAL_REP_MINUTES,
   CONTINUOUS_TEMPO_MINUTES,
+  REPETITION_REP_METRES,
+  REPETITION_REP_MINUTES_MAX,
   advanceShape,
   atPaceSessionCapMi,
 } from '@/lib/prescription/levers';
+import { ST_OFFSET_S_PER_MI, resolveZoneAnchors } from '@/lib/plan/zone-anchors';
+import { rPaceFromVdot, racePaceFromVdot, TABLE_RACE_DISTANCE_MI } from '@/lib/training/vdot';
+import { parseSegments, parseZones } from '@/lib/plan/prescription-parser';
+import { SESSION_LADDER } from '@/lib/prescription/trajectory';
 import {
   QUALITY_WARMUP_MI,
   QUALITY_COOLDOWN_MI,
@@ -1963,11 +1971,12 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     anchor: '### Pace conversion from a race time',
     claim:
       'The workout catalogue declines any session whose pace zones the composer cannot anchor, ' +
-      'rather than pacing it by inference. The composer carries two numbers per week — the ' +
-      'threshold pace and the rep pace — and extends them onto two RACE-pace zones using this ' +
-      'table: T is anchored to half-marathon pace, so an @HM session is a T session; I is ' +
-      'anchored to 3K-5K, so an @5K session is an I session. If either relationship stops ' +
-      'holding, the labels the engine writes stop matching the paces the watch runs.',
+      'rather than pacing it by inference. Two of those anchors are RACE-pace relations read ' +
+      'off this table: T is anchored to half-marathon pace, so an @HM session is a T session; ' +
+      'I is anchored to 3K-5K, so an @5K session is an I session. And the set of zones the ' +
+      'catalogue may anchor is exactly the set spec-builder can PACE — every anchored zone must ' +
+      'come back out of buildWorkoutSpec as the rep pace the label promised, or the engine ' +
+      'writes a label the watch does not run.',
     check({ cite }) {
       const t = cite.table();
       const milesIn = (cell: string): number[] =>
@@ -1975,7 +1984,13 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           .map((m) => distanceMiFromLabel(m[1].replace(/\s+/g, '')))
           .filter((x): x is number => x != null);
 
-      const anchors = anchorsFor({ tPaceSec: 435, iPaceSec: 400 });
+      const T_PACE = 435, I_PACE = 400;
+      // The MP anchor is `marathonPaceSPerMi`'s answer for this runner, which is
+      // the point: the composer calls that function to anchor the zone and
+      // `buildWorkoutSpec` calls it to pace the block, so a divergence here
+      // means one of the two stopped calling it.
+      const MP_PACE = marathonPaceSPerMi({ tPaceSec: T_PACE, goalPaceSPerMi: null });
+      const anchors = anchorsFor({ tPaceSec: T_PACE, iPaceSec: I_PACE, mpPaceSec: MP_PACE });
 
       // T's row must still name a half-marathon-class race, or `HM ← T` is an
       // invention rather than a reading.
@@ -2002,18 +2017,344 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error('catalogue-rx anchors 5K to something other than the I pace it claims to read off');
       }
 
-      // The zones the composer deliberately leaves unanchored. Each one is a
-      // pace `buildWorkoutSpec` would not run, so offering it would put a
-      // number on the label the watch never sees. If a future change anchors
-      // one of them, spec-builder has to learn to pace it in the same commit.
-      for (const z of ['ST', '10K', '3K', 'R', 'mile', 'MP', 'M', 'E'] as const) {
-        if (anchors[z] != null) {
+      // ── THE GATE, and it is now the strong form ─────────────────────────
+      //
+      // It used to be a DENYLIST: eight zones named here as forbidden, because
+      // spec-builder paced a threshold slot at T and a rep slot at I whatever
+      // the prescription said. That was the right gate for that engine and it
+      // is the wrong one for this one — ZONE-R-1 made `resolveZoneAnchors` the
+      // single answer to "what is this zone worth" and had buildWorkoutSpec
+      // price its rep off the SAME function, via the zone the prescription
+      // declares.
+      //
+      // So the claim is no longer "these zones are forbidden". It is "every
+      // zone the catalogue anchors comes back out of the spec builder as the
+      // pace the label promised" — checked by building a rep session at each
+      // anchored zone and reading the pace back off the spec it produced.
+      // A future zone added to the anchor set with no pacing behind it fails
+      // here, on the same sentence, without anybody maintaining a list.
+      for (const [zone, expected] of Object.entries(anchors) as Array<[string, number]>) {
+        // E is a band a day carries, never a work target, and no rep set can
+        // declare it. `resolveZoneAnchors` does not emit it; this is the guard
+        // that says so if it ever starts.
+        if (zone === 'E') {
+          throw new Error('catalogue-rx anchors E · easy is a day band, not a rep target');
+        }
+        const rx = `4×1mi @ ${zone} pace · 90s jog`;
+        for (const type of ['threshold', 'intervals'] as const) {
+          const { spec } = buildWorkoutSpec(type, 9, T_PACE, 160, rx, null, null, I_PACE);
+          const built = Number((spec as Record<string, unknown>)?.rep_pace_s_per_mi ?? NaN);
+          if (built !== expected) {
+            throw new Error(
+              `catalogue-rx anchors ${zone} at ${expected} s/mi, but buildWorkoutSpec paces a ` +
+                `${type} session labelled "${rx}" at ${built} s/mi. The label would promise a ` +
+                `pace the watch does not run. Teach spec-builder the zone first.`,
+            );
+          }
+        }
+      }
+
+      // And the reverse direction: a zone the catalogue can name must not be
+      // silently paced as something else. Anything `resolveZoneAnchors` leaves
+      // out has to be a zone the SELECTOR refuses, which it does by construction
+      // — `selectWorkout` declines an entry whose zones are not all anchored.
+      // The one zone that must stay out is E, checked above.
+    },
+  },
+
+  // ══ ZONE-R-1 · THE ZONES THE ENGINE CAN PRICE ═════════════════════════════
+  // The engine could pace two of Research/04's twelve zones. These claims bind
+  // the four it learned — R, the two other published race-pace columns, and
+  // ST — to the rows they were read out of.
+  {
+    id: 'PACE.repetition-is-mile-race-pace',
+    binds: ['lib/training/vdot.ts#rPaceFromVdot'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Pace conversion from a race time',
+    claim:
+      'R pace is mile race pace, read off the published Mile column of the VDOT table rather ' +
+      'than derived from I by an offset. The doc gives R two readings — "~mile race pace, or ' +
+      '~6 sec/400m faster than I" — and the engine takes the first, because the mile is a ' +
+      'column of the table and the second is an offset off a number that is itself derived.',
+    check({ cite }) {
+      const rel = cite.table().cell('R', 'Relationship');
+      if (!/mile\s+race\s+pace/i.test(rel)) {
+        throw new Error(
+          `rPaceFromVdot reads the published Mile column, but Research/01's R row now reads ` +
+            `"${rel}" and no longer names mile race pace`,
+        );
+      }
+      // EVERY ROW of the published table, not a spot check. The engine carries
+      // two columns transcribed as literals (Mile and 3K, both because the raw
+      // Daniels & Gilbert curve measurably diverges from them at short
+      // distances), and a transcription is only trustworthy if something reads
+      // the source. So this walks the doc's own lookup table row by row.
+      const lookup = resolveCitation('Research/01-pace-zones-vdot.md', '## VDOT lookup table').table();
+      const secOf = (cell: string): number => {
+        const p = cell.trim().split(':').map(Number);
+        if (p.some((n) => !Number.isFinite(n))) throw new Error(`unreadable table cell "${cell}"`);
+        return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1];
+      };
+      for (const row of lookup.rows) {
+        const vdot = Number(row['VDOT']);
+        if (!Number.isFinite(vdot)) continue;
+        // The mile IS the R pace, and one mile makes the finish time and the
+        // pace the same number — so this compares seconds to seconds.
+        const mileSec = secOf(row['Mile']);
+        const r = rPaceFromVdot(vdot);
+        if (r == null || Math.abs(r - mileSec) > 1) {
           throw new Error(
-            `catalogue-rx now anchors ${z}; spec-builder paces a threshold slot at T and a rep ` +
-              `slot at I regardless of the prescription, so the label would promise a pace the ` +
-              `watch does not run. Teach spec-builder the zone first.`,
+            `R pace at VDOT ${vdot} is ${r} s/mi; Research/01's Mile column says ${row['Mile']} (${mileSec} s)`,
           );
         }
+        // And the other three race-pace columns the anchor set reads.
+        //
+        // Two tolerances, and the difference between them is the point. 3K is
+        // TRANSCRIBED, so it must reproduce the column to within the table's own
+        // rounding — the doc says so under the table itself: "(Values reproduce
+        // Daniels' published tables; rounded to nearest second.)". 5K and 10K
+        // are inverted from the Daniels & Gilbert equation, and this section's
+        // own opening line scopes that: "within ±2 sec/mi for VDOT 35–70". A
+        // transcribed column held to the equation's tolerance would let a
+        // typo through; an equation column held to the transcription's would
+        // fail on the doc's own stated accuracy.
+        for (const [zone, col, tol] of [
+          ['3K', '3K', 1], ['5K', '5K', 2], ['10K', '10K', 2],
+        ] as const) {
+          const mi = TABLE_RACE_DISTANCE_MI[zone];
+          const docPace = secOf(row[col]) / mi;
+          const engine = racePaceFromVdot(vdot, mi);
+          if (engine == null || Math.abs(engine - docPace) > tol) {
+            throw new Error(
+              `${zone} race pace at VDOT ${vdot} is ${engine} s/mi; Research/01's ${col} column ` +
+                `says ${row[col]} over ${mi} mi = ${docPace.toFixed(1)} s/mi`,
+            );
+          }
+        }
+      }
+    },
+  },
+  {
+    id: 'PACE.sub-threshold-offset',
+    binds: ['lib/plan/zone-anchors.ts#ST_OFFSET_S_PER_MI'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## Pace zone shorthand',
+    claim:
+      'Sub-threshold sits 10-15 s/mi slower than T, and the engine takes the SLOW edge of that ' +
+      'band. §5.4 states which direction the error is dangerous in — "going too hard collapses ' +
+      'the model" — and the session exists to accumulate threshold volume WITHOUT the systemic ' +
+      'cost of tempo, so a midpoint would be a number doctrine does not state, chosen against ' +
+      'the one instruction doctrine does give.',
+    check({ cite }) {
+      const band = parseBand(cite.table().cell('ST', 'Race-pace anchor'));
+      if (ST_OFFSET_S_PER_MI !== band[1]) {
+        throw new Error(
+          `ST_OFFSET_S_PER_MI is ${ST_OFFSET_S_PER_MI}; Research/04's ST row gives ` +
+            `${band[0]}-${band[1]} s/mi slower than T and the engine takes the slow edge`,
+        );
+      }
+      // The anchor set must actually put ST there, or the constant guards nothing.
+      const a = resolveZoneAnchors({ tPaceSec: 435, iPaceSec: 400, marathonPaceSec: 470 });
+      if (a.ST !== 435 + band[1]) {
+        throw new Error(`resolveZoneAnchors puts ST at ${a.ST}; doctrine puts it at ${435 + band[1]}`);
+      }
+      // And this table's own ORDER: ST sits above M on %VO2max, so a
+      // sub-threshold rep may never come out at or slower than the same
+      // runner's marathon pace. Where the two anchors collide — ST is read off
+      // the goal-blended threshold, marathon pace off the current-fitness
+      // anchor — the zone is left UNANCHORED and the session declined, rather
+      // than run at marathon pace under a sub-threshold label.
+      const t = cite.table();
+      const [stLo, stHi] = parseBand(t.cell('ST', '% VO2max'));
+      const [mLo, mHi] = parseBand(t.cell('M', '% VO2max'));
+      if (!(stLo > mLo && stHi > mHi)) {
+        throw new Error(
+          `Research/04's shorthand table no longer puts ST above M on %VO2max ` +
+            `(ST ${stLo}-${stHi}, M ${mLo}-${mHi}) · the refusal below rests on that order`,
+        );
+      }
+      const inverted = resolveZoneAnchors({ tPaceSec: 503, iPaceSec: 460, marathonPaceSec: 515 });
+      if (inverted.ST != null) {
+        throw new Error(
+          `resolveZoneAnchors puts ST at ${inverted.ST} against a marathon pace of 515 · ` +
+            'sub-threshold is never at or slower than marathon pace, and an unpriceable zone ' +
+            'is declined rather than approximated',
+        );
+      }
+    },
+  },
+  {
+    id: 'DOSING.repetition-session-band',
+    binds: ['lib/prescription/levers.ts#AT_PACE_SESSION_MI.repetition'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: "### Dosing rules — Daniels' caps",
+    claim:
+      'One R session tops out at the 8K cumulative ceiling doctrine states in the R row\'s ' +
+      'single-workout cell. The percentage half of that cell is already the weekly share cap; ' +
+      'this is the absolute half, which binds at the top of the volume range where a percentage ' +
+      'stops protecting anyone.',
+    check({ cite }) {
+      const cap = cite.table().cell('R', 'Single-workout cap');
+      const km = cap.match(/max\s*(\d+(?:\.\d+)?)\s*K/i);
+      if (!km) {
+        throw new Error(`Research/01's R single-workout cell no longer states a cumulative ceiling: "${cap}"`);
+      }
+      const maxMi = Number(km[1]) * 1.609344 ** -1 === 0 ? 0 : Number(km[1]) / 1.609344;
+      if (Math.abs(AT_PACE_SESSION_MI.repetition.max - maxMi) > 0.02) {
+        throw new Error(
+          `AT_PACE_SESSION_MI.repetition.max is ${AT_PACE_SESSION_MI.repetition.max} mi; ` +
+            `doctrine's "${cap}" is ${maxMi.toFixed(2)} mi`,
+        );
+      }
+      // The `min` is the reference `warmupCooldownMi` scales the easy legs
+      // against, and it comes from §7.4 — the one section that states an R
+      // session's at-pace total and its warm-up in the same field table.
+      const total = resolveCitation('Research/04-workout-vocabulary.md', '### 7.4 200m repeats')
+        .table().cell('Total', 'Prescription');
+      const [loKm] = parseBand(total);
+      const minMi = loKm / 1.609344;
+      if (Math.abs(AT_PACE_SESSION_MI.repetition.min - minMi) > 0.02) {
+        throw new Error(
+          `AT_PACE_SESSION_MI.repetition.min is ${AT_PACE_SESSION_MI.repetition.min} mi; ` +
+            `Research/04 §7.4's "${total}" floors at ${minMi.toFixed(2)} mi`,
+        );
+      }
+    },
+  },
+  {
+    id: 'PROGRESSION.repetition-rep-window',
+    binds: [
+      'lib/prescription/levers.ts#REPETITION_REP_METRES',
+      'lib/prescription/levers.ts#REPETITION_REP_MINUTES_MAX',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: "### Dosing rules — Daniels' caps",
+    claim:
+      'An R repetition is 200-600 m and never longer than two minutes. Both halves bind and ' +
+      'they are stated in different units on purpose: the metres are the floor a session may be ' +
+      'cut to, and the two minutes is the ceiling the duration lever may grow to — without it ' +
+      'the ladder would walk an R set toward the continuous-tempo ceiling and call it speed work.',
+    check({ cite }) {
+      const cell = cite.table().cell('R', 'Rep length range');
+      const [loM, hiM] = parseBand(cell);
+      if (REPETITION_REP_METRES.min !== loM || REPETITION_REP_METRES.max !== hiM) {
+        throw new Error(
+          `REPETITION_REP_METRES is ${REPETITION_REP_METRES.min}-${REPETITION_REP_METRES.max} m; ` +
+            `doctrine's R rep length cell reads "${cell}"`,
+        );
+      }
+      const mins = cell.match(/(\d+(?:\.\d+)?)\s*min/i);
+      if (!mins) throw new Error(`Research/01's R rep-length cell no longer states a time ceiling: "${cell}"`);
+      if (REPETITION_REP_MINUTES_MAX !== Number(mins[1])) {
+        throw new Error(
+          `REPETITION_REP_MINUTES_MAX is ${REPETITION_REP_MINUTES_MAX}; doctrine says ${mins[1]} min`,
+        );
+      }
+    },
+  },
+  {
+    id: 'PROGRESSION.repetition-ladder-keeps-the-rest',
+    binds: [
+      'lib/prescription/trajectory.ts#SESSION_LADDER.repetition',
+      'lib/prescription/levers.ts#advanceShape',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 7.4 200m repeats',
+    claim:
+      'R work grows by rep COUNT and never by shortening the recovery. §7.4 fixes the rep at ' +
+      '200 m and states the band as a rep count, and its contraindication row forbids the ' +
+      'recovery lever in as many words. Tightening the rest on R work turns speed development ' +
+      'into an anaerobic session, which is a different workout with a different cost.',
+    check({ cite }) {
+      const contra = cite.table().cell('Contraindications', 'Prescription');
+      if (!/don'?t\s+shorten\s+the\s+rest/i.test(contra)) {
+        throw new Error(
+          `§7.4's contraindication row no longer forbids shortening the rest: "${contra}"`,
+        );
+      }
+      if (SESSION_LADDER.repetition.includes('recovery_duration')) {
+        throw new Error('SESSION_LADDER.repetition offers recovery_duration, which §7.4 forbids');
+      }
+      if (SESSION_LADDER.repetition[0] !== 'rep_count') {
+        throw new Error(
+          `§7.4 states the R band as a rep count ("${cite.table().cell('Reps', 'Prescription')}"), ` +
+            `so rep_count is the ladder's first rung; it is ${SESSION_LADDER.repetition[0]}`,
+        );
+      }
+      // And the lever itself must refuse, not merely be absent from the ladder —
+      // a diagnosed limiter can hand `advanceShape` any lever it likes.
+      const res = advanceShape({
+        shape: { reps: 8, repMinutes: 0.75, recoveryMinutes: 3, paceSPerMi: 320, zone: 'ESTABLISHED' },
+        lever: 'recovery_duration',
+        stepMultiplier: 1,
+        weeklyMi: 50,
+        family: 'repetition',
+      });
+      if (!res.capped || res.shape.recoveryMinutes !== 3) {
+        throw new Error('advanceShape shortened an R recovery, which §7.4 forbids');
+      }
+    },
+  },
+  {
+    id: 'VOCAB.unequal-step-grammar',
+    binds: [
+      'lib/plan/prescription-parser.ts#parseSegments',
+      'lib/plan/catalogue-rx.ts#renderPrescription',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 13.2 400-800-1200-1600 ladder',
+    claim:
+      'A session whose steps are not all the same is expressed as its steps, not approximated ' +
+      'into a uniform rep set. §13.2 gives four rungs, each at its own zone and each with its ' +
+      'own recovery; a rendering that flattened them would describe a different workout. The ' +
+      'rendered label parses back to the same step list, so the string the runner reads and the ' +
+      'spec the watch runs are the same object twice.',
+    check({ cite }) {
+      const t = cite.table();
+      const paces = t.cell('Pace by rep length', 'Prescription');
+      const rec = t.cell('Recovery', 'Prescription');
+      // Four rungs in the doc, four steps in the entry, four segments in the
+      // rendered label. If the doc's row changes shape this stops matching.
+      const rungs = [...paces.matchAll(/(\d{3,4})\s*at\s/gi)].map((m) => Number(m[1]));
+      if (rungs.length < 4) {
+        throw new Error(`§13.2's pace-by-rep-length row no longer states four rungs: "${paces}"`);
+      }
+      const entry = WORKOUT_CATALOGUE.find((e) => e.slug === 'ascending-ladder');
+      if (!entry) throw new Error('the ascending ladder is no longer in the catalogue');
+      const structure = entry.structures[0];
+      if (structure.kind !== 'sequence' || structure.steps.length !== rungs.length) {
+        throw new Error(
+          `§13.2 states ${rungs.length} rungs; the catalogue entry carries ` +
+            `${structure.kind === 'sequence' ? structure.steps.length : 0}`,
+        );
+      }
+      for (let i = 0; i < rungs.length; i++) {
+        const step = structure.steps[i];
+        const m = step.unit === 'm' ? step.value : step.value * 1609.344;
+        if (Math.round(m) !== rungs[i]) {
+          throw new Error(`§13.2's rung ${i + 1} is ${rungs[i]} m; the entry carries ${Math.round(m)} m`);
+        }
+      }
+      const rendered = renderPrescription(entry, {
+        structure, reps: structure.steps.length, atPaceMinutes: 0, atPaceMi: 0, recoverySec: 0,
+      });
+      if (!rendered) throw new Error('the ascending ladder no longer renders into the prescription grammar');
+      const back = parseSegments(rendered);
+      if (!back || back.length !== rungs.length) {
+        throw new Error(
+          `"${rendered}" reads back as ${back?.length ?? 0} steps against ${rungs.length} rungs`,
+        );
+      }
+      // Every rung's zone survives the round trip, which is what makes the
+      // ladder a ladder rather than four reps at one pace.
+      const zones = parseZones(rendered);
+      if (new Set(zones).size < 2) {
+        throw new Error(`"${rendered}" declares fewer than two zones · a ladder walks zones`);
+      }
+      // And the recovery row's own numbers reach the label.
+      if (!/\d/.test(rec)) throw new Error(`§13.2's recovery row states no numbers: "${rec}"`);
+      if (back.every((s) => s.restS === 0)) {
+        throw new Error(`§13.2 states a recovery per rung; "${rendered}" carries none`);
       }
     },
   },

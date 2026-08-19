@@ -246,12 +246,110 @@ function expandTempo(
   ];
 }
 
+/**
+ * GRAMMAR-SEQ-1 (2026-08-19) · the phases of an unequal-step session.
+ *
+ * §13's ladders, §9.2's Mona fartlek, §10.1's alternations, §10.2's combos and
+ * §12.4's 5K progression differ from a rep set in exactly one way: the steps are
+ * not all the same. They are otherwise ordinary work-and-recovery, and that is
+ * the whole reason this needs NO WIRE CHANGE.
+ *
+ * The watch decodes a flat list of `WatchPhase` — type, label, duration,
+ * optional distance, optional pace target. A ladder is a flat list of work
+ * phases with different distances and different paces, which is a thing the
+ * watch has been able to run since the day it shipped: `build-workout.ts` marks
+ * a phase `repUnit: 'distance'` when it carries `distanceMi` and `'time'` when
+ * it does not, exactly as it already does for a hill rep and its jog float.
+ * The `steps` array never leaves the server.
+ *
+ * A step with `rest_s` of zero emits no recovery phase, which is what makes
+ * §10.1's alternation continuous — "Recovery | None — continuous" — rather than
+ * a rep set with the rest set to nothing.
+ */
+function expandSteps(
+  s: Record<string, unknown>,
+  easyPaceSec: number | null,
+  recoveryPace: number | null,
+  tolerance: number,
+): ExpandedPhase[] | null {
+  const raw = Array.isArray(s.steps) ? (s.steps as Array<Record<string, unknown>>) : null;
+  if (!raw || raw.length === 0) return null;
+
+  const wu = Number(s.warmup_mi ?? 1.5) || 1.5;
+  const cd = Number(s.cooldown_mi ?? 1.0) || 1.0;
+  const easyEst = easyPaceSec ?? DURATION_EST_S_PER_MI;
+  const byEffort = s.by_effort === true;
+  const phases: ExpandedPhase[] = [];
+
+  phases.push({
+    type: 'warmup',
+    label: 'Warm-up',
+    distanceMi: Number(wu.toFixed(1)),
+    durationSec: Math.round(wu * easyEst),
+    targetPaceSPerMi: easyPaceSec,
+    tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
+  });
+
+  raw.forEach((step, i) => {
+    const mi = Number(step?.distance_mi ?? 0) || 0;
+    const durationS = Number(step?.duration_s ?? 0) || 0;
+    const pace = byEffort ? null : (Number(step?.pace_s_per_mi) || null);
+    const zone = typeof step?.zone === 'string' && step.zone ? String(step.zone) : null;
+    // Doctrine states a step in EITHER a distance or a duration, and the phase
+    // is counted in the unit the workout was written in. §9.2 sizes Mona's reps
+    // in seconds because "90 s hard" is the instruction; the spec still carries
+    // the miles those seconds cover so the day's mileage adds up, but the phase
+    // goes out time-based and `build-workout.ts` marks it repUnit:'time' —
+    // exactly what a hill rep already does.
+    const timed = durationS > 0;
+    const size = timed ? formatSec(durationS) : formatRepLabel(mi);
+    phases.push({
+      type: 'work',
+      label: `${size}${zone ? ` @ ${zone}` : ''} · ${i + 1} of ${raw.length}`,
+      distanceMi: timed ? null : Number(mi.toFixed(2)),
+      durationSec: timed
+        ? Math.round(durationS)
+        : Math.round(mi * (pace ?? DURATION_EST_S_PER_MI)),
+      targetPaceSPerMi: pace,
+      tolerancePaceSPerMi: pace != null ? tolerance : null,
+    });
+    const restS = Number(step?.rest_s ?? 0) || 0;
+    // Zero recovery is doctrine, not a missing field: §10.1's alternations and
+    // §12.4's progression are continuous, and emitting a nil-length recovery
+    // phase would put a transition haptic in the middle of an unbroken effort.
+    if (restS > 0 && i < raw.length - 1) {
+      phases.push({
+        type: 'recovery',
+        label: `Jog ${formatSec(restS)}`,
+        distanceMi: null,
+        durationSec: restS,
+        targetPaceSPerMi: recoveryPace,
+        tolerancePaceSPerMi: recoveryPace != null ? 60 : null,
+      });
+    }
+  });
+
+  phases.push({
+    type: 'cooldown',
+    label: 'Cool-down',
+    distanceMi: Number(cd.toFixed(1)),
+    durationSec: Math.round(cd * easyEst),
+    targetPaceSPerMi: easyPaceSec,
+    tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
+  });
+  return phases;
+}
+
 function expandReps(
   s: Record<string, unknown>,
   easyPaceSec: number | null,
   recoveryPace: number | null,
   tolerance: number,
 ): ExpandedPhase[] {
+  // GRAMMAR-SEQ-1 · an unequal-step session first. A spec with no `steps` is
+  // byte-identical to before.
+  const stepped = expandSteps(s, easyPaceSec, recoveryPace, tolerance);
+  if (stepped) return stepped;
   const wu = Number(s.warmup_mi ?? 1.5) || 1.5;
   const cd = Number(s.cooldown_mi ?? 1.0) || 1.0;
   const reps = Number(s.rep_count ?? 4) || 4;
@@ -506,7 +604,14 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
         // keeps its authored string for its identity, so only the leading
         // "N×" is reconciled — the workout is still "hills", it is just five of
         // them rather than six.
-        const specReps = Number(s.rep_count ?? 0) || 0;
+        // GRAMMAR-SEQ-1 · `rep_count` on a stepped spec counts STEPS, not the
+        // leading group's repeats — "6×(1mi @ MP + 1mi @ 10K)" is six cycles and
+        // twelve steps. Reconciling one against the other would relabel the
+        // alternation as twelve of itself. A stepped session is a fixed shape;
+        // `capSpecToDistance` is the only thing that shortens one, and it drops
+        // steps from the end rather than rewriting a leading count.
+        const stepped = Array.isArray(s.steps) && (s.steps as unknown[]).length > 0;
+        const specReps = stepped ? 0 : (Number(s.rep_count ?? 0) || 0);
         const lead = authored.match(/^(\s*)(\d+)(\s*[×xX]\s*)/);
         const reconciled = specReps > 0 && lead && Number(lead[2]) !== specReps
           ? `${lead[1]}${specReps}${lead[3]}${authored.slice(lead[0].length)}`

@@ -74,10 +74,17 @@ export type QualityFamily = keyof typeof AT_PACE_SESSION_MI;
 export const QUALITY_WARMUP_MI: Record<QualityFamily, number> = {
   threshold: 2,
   interval: 2,
+  // ZONE-R-1 · §7.4's own warm-up row is "Drills + 4 strides" — it states no
+  // mileage, because R work is track work and §17.1 "Standard warmup protocol"
+  // is where the mileage lives: "1. Easy jog | 10–20 min (1–2 mi)" and
+  // "6. Cooldown jog | 10–20 min (1–2 mi)". Bottom of the band, like the two
+  // rows above it.
+  repetition: 1,
 };
 export const QUALITY_COOLDOWN_MI: Record<QualityFamily, number> = {
   threshold: 2,
   interval: 1,
+  repetition: 1,
 };
 
 /**
