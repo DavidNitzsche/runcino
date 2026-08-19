@@ -629,6 +629,16 @@ export function buildGapActions(opts: {
 export const RERAMP_RESUME_FRACTION = 0.70;
 /** §14 "10% rule strictly enforced" on the climb back. */
 export const RERAMP_WEEKLY_GROWTH = 1.10;
+/**
+ * LOWVOL-6 (2026-08-19) · CONVENTION, not doctrine. The smallest pre-absence
+ * weekly average that is a real training signal rather than a stray row. Two
+ * miles is the same "a real run" floor the maintenance composer uses. Doctrine
+ * states no floor at all — §14 works at any volume — so this exists only to
+ * keep a noise reading from shaving a whole block, and it must stay small
+ * enough not to exclude a genuine low-volume runner (the defect it replaced:
+ * a floor of five, above a beginner's entire week).
+ */
+export const RERAMP_MIN_BASE_SIGNAL_MI = 2;
 
 export interface ReRampWeek {
   /** Plan-week start date (plan_weeks.week_start_iso). */
@@ -663,7 +673,28 @@ export function buildReRampActions(opts: {
 }): AdaptationAction[] {
   const { todayISO, daysOff, preAbsenceWeeklyMi, weeks, raceDates } = opts;
   if (classifyGapBand(daysOff) !== 'shave_70_85') return [];   // ≥8d band owns the re-ramp; >14d is propose-only
-  if (!(preAbsenceWeeklyMi >= 5)) return [];                    // no meaningful base signal
+  // ── LOWVOL-6 (2026-08-19) · THE FLOOR WAS ABOVE A BEGINNER'S WHOLE WEEK ────
+  //
+  // This gate read `preAbsenceWeeklyMi >= 5`. A 5-10 mi/wk runner's rolling
+  // four-week average dips under five routinely — a single missed week does
+  // it — and when it does they get NO post-layoff shaving at all: their
+  // authored weeks stand at full volume after eight to fourteen days off,
+  // which is the exact plan §14 exists to prevent, withheld from the runner
+  // least able to absorb it.
+  //
+  // Doctrine states no floor. `Research/22` §14 is written in terms of "70% of
+  // pre-layoff volume", which is meaningful at any volume above zero. What the
+  // gate is really guarding against is a NOISE signal — one stray treadmill row
+  // averaging out to half a mile a week — so the floor is set at the smallest
+  // weekly average that could be a real run, which is the two-mile minimum this
+  // engine already treats as a real run everywhere else (MAINT_MIN_EASY, the
+  // maintenance every-run floor). That is a CONVENTION, not a doctrine number,
+  // and it is recorded as one on COMEBACK.reramp-resume-fraction.
+  //
+  // Everything downstream already degrades gracefully at small numbers: the
+  // shave needs a fraction of at least 5%, only touches rows of a mile or more,
+  // and is capped at half the week.
+  if (!(preAbsenceWeeklyMi >= RERAMP_MIN_BASE_SIGNAL_MI)) return [];
   const actions: AdaptationAction[] = [];
   const protectedRow = (r: GapPlanRow): boolean =>
     (RACE_PROTECTED_TYPES as readonly string[]).includes(r.type)

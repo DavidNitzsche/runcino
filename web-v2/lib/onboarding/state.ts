@@ -27,19 +27,42 @@ export type RaceDistance = '5k' | '10k' | 'half' | 'marathon' | 'none' | 'coache
 export type TTDistance = '1mi' | '5k' | '10k';
 
 /** Weekly mileage chip values (no-race path only). 0 and 5 added 2026-06-20
- *  for true-beginner support (David: support runners below 15 mi/week). */
-export type WeeklyMileage = 0 | 5 | 15 | 25 | 35 | 45 | 55;
+ *  for true-beginner support (David: support runners below 15 mi/week).
+ *
+ *  HIGHVOL-1 (2026-08-19) · 65/75/85/95 added at the top, on the ladder's own
+ *  ten-mile step so the stepper control still walks it. The ladder stopped at
+ *  55, so a runner training in the volumes `Research/00a` §"Volume table"
+ *  calls sub-elite (5K 50-70, marathon 70-110) or elite (marathon 120-160)
+ *  had no way to say so — every one of them collapsed to the same 55 the app
+ *  gives a 55 mi/wk runner. Doctrine's own table names volumes to 200 mi/wk;
+ *  the form has to be able to reach the range doctrine describes. */
+export type WeeklyMileage = 0 | 5 | 15 | 25 | 35 | 45 | 55 | 65 | 75 | 85 | 95;
 
 /** Frequency chip values (no-race path only). 0/1/2 added 2026-06-20 for
  *  true-beginner support (0 = not running yet; goal-seekers get a gentle
  *  build). The plan engine respects 1/2 as the day cap and floors 0. */
 export type WeeklyFrequency = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
-/** Avg-weekly-mi history chip values. Strings because the chip *is* a range. */
-export type HistAvg = '0-5' | '5-15' | '15-25' | '25-35' | '35+' | '45+';
+/** Avg-weekly-mi history chip values. Strings because the chip *is* a range.
+ *
+ *  HIGHVOL-1 (2026-08-19) · `'45+'` was the ceiling, so `history_avg_weekly_mi`
+ *  could never exceed its 50 midpoint. That one number anchors the volume
+ *  curve's start AND (via `conservativeVdotFromMileage`) the cold-start pace
+ *  floor, so every runner from 45 to 200 mi/wk was authored the same plan off
+ *  the same fabricated fitness. The three rungs above it are the sub-elite and
+ *  elite rows of `Research/00a` §"Volume table". `'45+'` is retained: it is
+ *  persisted on live profiles and in URLs already issued. */
+export type HistAvg =
+  | '0-5' | '5-15' | '15-25' | '25-35' | '35+' | '45+'
+  | '45-60' | '60-80' | '80+';
 
-/** Longest-recent-run history chip values. */
-export type HistLong = '0-3' | '3-6' | '6-10' | '10+';
+/** Longest-recent-run history chip values.
+ *
+ *  HIGHVOL-1 · `'10+'` (midpoint 12) was the ceiling. That value is the long-run
+ *  ramp's anchor, and the anchor is the 110%-of-prior-30d spike guard, so a
+ *  runner whose real long is 20 mi was held to a 13 mi week-1 long with no way
+ *  to say otherwise. `'10+'` is retained for rows and URLs already issued. */
+export type HistLong = '0-3' | '3-6' | '6-10' | '10+' | '10-16' | '16-22' | '22+';
 
 /** Years-running history chip values. */
 export type HistYears = '<1' | '1-3' | '3-7' | '7+';
@@ -126,10 +149,10 @@ const VALID_STEPS = new Set([
 ]);
 const VALID_DISTANCES = new Set<RaceDistance>(['5k', '10k', 'half', 'marathon', 'none', 'coached']);
 const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
-const VALID_WEEKLY_MI = new Set<WeeklyMileage>([0, 5, 15, 25, 35, 45, 55]);
+const VALID_WEEKLY_MI = new Set<WeeklyMileage>([0, 5, 15, 25, 35, 45, 55, 65, 75, 85, 95]);
 const VALID_FREQ = new Set<WeeklyFrequency>([0, 1, 2, 3, 4, 5, 6]);
-const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+', '45+']);
-const VALID_HIST_LONG = new Set<HistLong>(['0-3', '3-6', '6-10', '10+']);
+const VALID_HIST_AVG = new Set<HistAvg>(['0-5', '5-15', '15-25', '25-35', '35+', '45+', '45-60', '60-80', '80+']);
+const VALID_HIST_LONG = new Set<HistLong>(['0-3', '3-6', '6-10', '10+', '10-16', '16-22', '22+']);
 const VALID_HIST_YEARS = new Set<HistYears>(['<1', '1-3', '3-7', '7+']);
 
 /**
@@ -427,6 +450,12 @@ export const HIST_AVG_MIDPOINTS: Record<HistAvg, number> = {
   '25-35': 30,
   '35+': 40,       // VAR-06pt2 · stays 40 (byte-stable); now means 35-45
   '45+': 50,       // VAR-06pt2 · 45+ runners start/peak higher (Research/00a:194-206)
+  // HIGHVOL-1 (2026-08-19) · midpoints of the bands themselves; the open-ended
+  // top rung sits at the bottom of Research/00a's marathon-elite row (120-160)
+  // rather than at its middle, keeping the cold-start read conservative.
+  '45-60': 52,
+  '60-80': 70,
+  '80+': 90,
 };
 
 /** Midpoint mileage values for the longest-recent-run chip. */
@@ -435,4 +464,8 @@ export const HIST_LONG_MIDPOINTS: Record<HistLong, number> = {
   '3-6': 5,
   '6-10': 8,
   '10+': 12,
+  // HIGHVOL-1 · the rungs above the old open-ended '10+'.
+  '10-16': 13,
+  '16-22': 19,
+  '22+': 22,
 };

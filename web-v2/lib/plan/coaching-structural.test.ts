@@ -344,12 +344,39 @@ describe('RERAMP-1 · comeback re-ramp of remaining weeks', () => {
     expect(actions).toEqual([]);
   });
 
-  it('no meaningful pre-absence base → no re-ramp', () => {
+  // LOWVOL-6 (2026-08-19) · this used to assert that a 3 mi/wk pre-absence
+  // average produced NOTHING, under a `>= 5` gate. §14 is stated as a
+  // proportion of the runner's own volume, so it applies at 3 mi/wk as much as
+  // at 39 — and a 5-10 mi/wk runner's rolling four-week average drops under
+  // five whenever they miss a week, which is exactly when the shave is needed.
+  // The gate that remains is a NOISE guard: below one real run a week the
+  // reading is not a base signal at all.
+  it('a genuine low-volume base still gets the re-ramp', () => {
+    const w = mkWeek('2026-08-31', [2, 2, 2, 2, 3]);
+    const actions = buildReRampActions({
+      todayISO: TODAY, daysOff: 9, lastRunISO: '2026-08-07',
+      preAbsenceWeeklyMi: 4, weeks: [w], raceDates: [],
+    });
+    expect(actions.length).toBe(1);
+    expect(actions[0].kind).toBe('shave');
+  });
+
+  it('a noise-level pre-absence reading is not a base signal', () => {
     const w = mkWeek('2026-08-31', [10, 12, 10, 10, 17.5]);
     expect(buildReRampActions({
       todayISO: TODAY, daysOff: 9, lastRunISO: '2026-08-07',
-      preAbsenceWeeklyMi: 3, weeks: [w], raceDates: [],
+      preAbsenceWeeklyMi: 1, weeks: [w], raceDates: [],
     })).toEqual([]);
+  });
+
+  it('the shave is never deeper than half the week, however low the base reads', () => {
+    const w = mkWeek('2026-08-31', [10, 12, 10, 10, 17.5]);
+    const actions = buildReRampActions({
+      todayISO: TODAY, daysOff: 9, lastRunISO: '2026-08-07',
+      preAbsenceWeeklyMi: 3, weeks: [w], raceDates: [],
+    });
+    expect(actions.length).toBe(1);
+    expect(actions[0].shaveFraction).toBeLessThanOrEqual(0.5);
   });
 });
 

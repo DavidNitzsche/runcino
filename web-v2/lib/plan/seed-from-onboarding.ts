@@ -59,6 +59,10 @@ import { mutatePlan } from './mutate';
 type Queryable = { query: typeof pool.query };
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildWorkoutSpec, conservativeVdotFromMileage } from './spec-builder';
+// LOWVOL-3 (2026-08-19) · the quality day is composed from doctrine's own caps,
+// the same helper the race-prep composer uses, rather than a flat share.
+import { maxQualityDayMi, type QualityFamily } from './quality-day';
+import { atPaceSessionCapMi, INTERVAL_MIN_REPS } from '@/lib/prescription/levers';
 import { CALIBRATION_INTRO_WEEKS } from './anchor-provenance';
 import {
   tPaceFromVdot, iPaceFromVdot, bestRecentVdot, VDOT_FULL_VALUE_DAYS,
@@ -115,9 +119,23 @@ interface SeedResult {
 const TOTAL_WEEKS = 16;        // Maintenance window per canonical builder.
 // CALIBRATION_INTRO_WEEKS moved to ./anchor-provenance (2026-08-17 · COLD-4)
 // when the race-prep path adopted the same intro. One number, two seeders.
-const MPW_FLOOR   = 8;         // Below 8 mpw, no plan helps; floor at 8.
-const LONG_PCT    = 0.26;      // Long run % of weekly (canonical builder).
-const T_SOLO_PCT  = 0.18;      // Threshold (1 quality/wk · maintenance).
+/**
+ * LOWVOL-3 (2026-08-19) · a DEFAULT for a runner who reported nothing, not a
+ * FLOOR over one who reported something.
+ *
+ * This was `Math.max(MPW_FLOOR, historyAvg)` — "below 8 mpw, no plan helps" —
+ * so a runner who said they run five miles a week was authored eight in week
+ * one, a sixty per cent jump on a base they had just stated, before the ramp
+ * even started. `Research/00a` §"Volume progression rules" caps a novice's
+ * growth at +20-25% over EIGHT weeks; nothing in doctrine licenses 60% in one.
+ * The number itself is uncited and stays a CONVENTION — it is what the seeder
+ * assumes when the runner told us nothing at all and there is no history to
+ * read, and in that case it is a guess either way.
+ */
+const MPW_DEFAULT = 8;
+/** Long run % of weekly · inside Research/00a §"Volume progression rules"
+ *  "Long-run cap | ≤25-30% of weekly volume". */
+const LONG_PCT    = 0.26;
 
 function id(prefix: string): string {
   return `${prefix}_${randomBytes(8).toString('hex')}`;
@@ -243,16 +261,69 @@ type DayKind = 'rest' | 'easy' | 'long' | QualityKind;
  *  Before this, the no-race seeder hardcoded `threshold` for everyone —
  *  so "get faster at a 5K" produced an aerobic hold plan with ZERO speed
  *  work. The goal was captured and then ignored. */
-export function goalQualityType(ttDistance: TTDistance | null, weekIdx: number, calibrating = false): QualityKind {
+export function goalQualityType(
+  ttDistance: TTDistance | null,
+  weekIdx: number,
+  calibrating = false,
+  /**
+   * LOWVOL-3 (2026-08-19) · the week's own volume. A VO2max session is a REP
+   * SET — `Research/04` §6.1 gives every §6 workout a rep-count band and the
+   * smallest lower bound in the column is `INTERVAL_MIN_REPS`, and the document
+   * describes no continuous form of one. A week whose I allowance (Daniels'
+   * 8%, via `atPaceSessionCapMi`) cannot fund that many reps has no §6 session
+   * available to it, so it runs the threshold form instead — which does have a
+   * legitimate small shape, §5.3's cruise intervals down to a single mile.
+   * Omit and the historical behaviour stands.
+   */
+  weeklyMi?: number | null,
+): QualityKind {
   // Calibration intro (cold start, no measured fitness): a gentle, effort-cued
   // threshold — which surfaces a clean VDOT read via the zone-aware path — in
   // place of max-VO2 intervals at a fabricated pace. The daily re-anchor swaps
   // in the real I-pace intervals the moment that read lands. Same threshold a
   // no-goal consistency runner already gets in week 0, so it's not novel load.
   if (calibrating && weekIdx < CALIBRATION_INTRO_WEEKS) return 'threshold';
-  if (ttDistance === '1mi' || ttDistance === '5k') return 'intervals';
-  if (ttDistance === '10k') return weekIdx % 2 === 1 ? 'intervals' : 'threshold';
-  return 'threshold';
+  const wantsIntervals = ttDistance === '1mi' || ttDistance === '5k'
+    || (ttDistance === '10k' && weekIdx % 2 === 1);
+  if (!wantsIntervals) return 'threshold';
+  if (weeklyMi != null && weeklyMi > 0 && !weekAffordsIntervalSet(weeklyMi)) return 'threshold';
+  return 'intervals';
+}
+
+/** 1000 m, the rep this seeder's VO2 session has always been written at. */
+const SEED_INTERVAL_REP_MI = 0.62;
+
+/** True when the week's I allowance funds doctrine's minimum §6 rep set. */
+function weekAffordsIntervalSet(weeklyMi: number): boolean {
+  return Math.floor(atPaceSessionCapMi(weeklyMi, 'interval') / SEED_INTERVAL_REP_MI) >= INTERVAL_MIN_REPS;
+}
+
+/**
+ * LOWVOL-3 · the rep count the week can actually pay for, and the label that
+ * declares it.
+ *
+ * The seeder used to write `'5 × 1000m @ I · 2 min jog'` and
+ * `'Cruise Intervals'` as fixed strings. `buildWorkoutSpec` PARSES the label,
+ * so the first one prescribed 3.1 miles at I-pace on every week regardless of
+ * size — 31% of a 10 mi/wk week against Daniels' 8% — and the second parsed to
+ * nothing and fell through to the builder's own 4×1 mi default. Deriving the
+ * count from `atPaceSessionCapMi` and stating it in the label is the same
+ * repair `DOCTRINE-DOSING-2` made to the maintenance threshold in generate.ts:
+ * the number the runner reads, the number the watch runs, and the number the
+ * dosing gate checks all become one expression.
+ */
+function qualitySubLabel(kind: QualityKind, weeklyMi: number): string {
+  if (kind === 'intervals') {
+    const reps = Math.max(
+      INTERVAL_MIN_REPS,
+      Math.min(8, Math.floor(atPaceSessionCapMi(weeklyMi, 'interval') / SEED_INTERVAL_REP_MI)),
+    );
+    return `${reps} × 1000m @ I · 2 min jog`;
+  }
+  // §5.3 cruise intervals · "3-6 × 1 mi with 1 min jog", floored at one real
+  // mile so a small week gets a true single mile at T rather than a fiction.
+  const reps = Math.max(1, Math.min(6, Math.floor(atPaceSessionCapMi(weeklyMi, 'threshold'))));
+  return `${reps}×1mi @ T pace · 60s jog`;
 }
 
 /** Day-of-week layout for one week.
@@ -269,12 +340,13 @@ function dayShape(
   ttDistance: TTDistance | null,
   weekIdx: number,
   calibrating = false,
+  weeklyMi?: number | null,
 ): Array<{
   type: DayKind;
   isQuality: boolean;
   isLong: boolean;
 }> {
-  const qualityType = goalQualityType(ttDistance, weekIdx, calibrating);
+  const qualityType = goalQualityType(ttDistance, weekIdx, calibrating, weeklyMi);
   const days = Array.from({ length: 7 }, () => ({
     type: 'easy' as DayKind,
     isQuality: false,
@@ -314,10 +386,13 @@ function notesFor(type: string, isCutback: boolean): string {
     return 'Long run at easy conversational pace. Duration builds durability; pace is irrelevant today.';
   }
   if (type === 'threshold') {
-    return 'Threshold session, comfortably hard. 4–6 × 1K at T pace with 60s jog. The aerobic ceiling is the long-term project.';
+    // LOWVOL-3 · the rep count lives on the label, derived from the week's own
+    // threshold allowance. Restating it here made the prose a third copy of a
+    // number the other two derive.
+    return 'Threshold session, comfortably hard. Cruise intervals at T pace with a short jog between. The aerobic ceiling is the long-term project.';
   }
   if (type === 'intervals') {
-    return 'VO2 intervals. 5 × 1000m at 5K effort, 2 min jog between. Short and hard, even splits. This is the top-end speed your goal is built on.';
+    return 'VO2 intervals at 5K effort with a jog between. Short and hard, even splits from the first rep. This is the top-end speed your goal is built on.';
   }
   if (isCutback) {
     return 'Cutback easy, shorter, slower, no agenda. Move blood through the legs and get out of the way of recovery.';
@@ -346,10 +421,33 @@ function distributeVolume(
   // Hard cap: long ≤ 50% of weekly.
   longMi = Math.min(longMi, round1(weeklyMi * 0.50));
 
-  // Threshold: 18% of weekly, min 3mi (was 4 — floor at 4 over-allocated
-  // quality on low-volume weeks, leaving almost nothing for easy days).
+  // ── LOWVOL-3 (2026-08-19) · THE QUALITY DAY IS DOSED, NOT A FLAT SHARE ────
+  //
+  // This was `Math.max(3, round1(weeklyMi * T_SOLO_PCT))` with T_SOLO_PCT =
+  // 0.18, and the absolute floor overrode the percentage at exactly the volumes
+  // the percentage was protecting. On a 10 mi/wk week it authored a 3-mile
+  // threshold day — thirty per cent of the week — against `Research/01`'s
+  // ten. The floor/cap collision is the same shape `SP-6` fixed for the
+  // maintenance long and `DOCTRINE-DOSING-2` fixed for the race-prep tempo; it
+  // survived here because this seeder sizes its own days.
+  //
+  // T_SOLO_PCT itself was uncited. It is gone: the day is now composed by
+  // `composeQualityDay` off the family's own at-pace cap — Daniels' share of
+  // the week (T ≤10%, I ≤8%) and `Research/04` §5.1/§6.1's session band,
+  // whichever binds first — plus §5.3's warm-up and cool-down, which are EASY
+  // miles and were never the hard budget's to spend. Capped at the long run so
+  // the week keeps long-primacy.
   const numQ = shape.filter(d => d.isQuality).length;
-  let threshMi = numQ > 0 ? Math.max(3, round1(weeklyMi * T_SOLO_PCT)) : 0;
+  const qualityFamily: QualityFamily =
+    shape.some((d) => d.isQuality && d.type === 'intervals') ? 'interval' : 'threshold';
+  let threshMi = numQ > 0
+    ? maxQualityDayMi({
+        family: qualityFamily,
+        weeklyMi,
+        paceSPerMi: null,
+        ceilingMi: longMi > 0 ? longMi : null,
+      })
+    : 0;
 
   // Easy days budget = whatever's left.
   const usedMi = longMi + threshMi;
@@ -374,8 +472,6 @@ function distributeVolume(
     const easyIdx = easySlotIdxs.indexOf(i);
     distances[i] = easyIdx < activeEasy ? easyPerDay : 0;
   }
-  // Silence unused-LONG_PCT lint (kept for parity with canonical builder).
-  void LONG_PCT;
   return distances;
 }
 
@@ -503,11 +599,11 @@ async function persistMaintenancePlan(args: {
       ],
     );
 
-    const shape = dayShape(args.layout, args.weeklyFrequency, args.ttDistance, wi, args.calibrating);
     // Use this week's volume as both weeklyMi and peakWeeklyMi so the long
     // run is a fixed proportion of the week (not scaled down relative to a
     // far-off peak the runner hasn't reached yet).
     const thisWeekMi = args.curve.volumeMi[wi];
+    const shape = dayShape(args.layout, args.weeklyFrequency, args.ttDistance, wi, args.calibrating, thisWeekMi);
     const distances = distributeVolume(
       thisWeekMi, shape, args.peakLongMi, thisWeekMi,
     );
@@ -544,14 +640,21 @@ async function persistMaintenancePlan(args: {
       const subLabel =
         effectiveType === 'long' && !isCutback ? null
         : effectiveType === 'long' && isCutback ? 'Long Run · Cutback'
-        : effectiveType === 'threshold' ? 'Cruise Intervals'
-        : effectiveType === 'intervals' ? '5 × 1000m @ I · 2 min jog'
+        // LOWVOL-3 · derived from the week's own at-pace allowance, and READ
+        // BACK by buildWorkoutSpec below. See `qualitySubLabel`.
+        : effectiveType === 'threshold' || effectiveType === 'intervals'
+          ? qualitySubLabel(effectiveType, thisWeekMi)
         : null;
       const wkoId = id('wko');
       // Spec per row · rest returns {spec:null} which the CHECK exempts.
+      // LOWVOL-3 · the label is the PRESCRIPTION, and is parsed as one. It was
+      // passed as `undefined`, so the rep counts the label advertised and the
+      // rep counts the spec built were two independent numbers that happened to
+      // agree only while both were hard-coded. Now the dosed count in the label
+      // is the count the spec carries and the watch runs.
       const { spec, paceTargetSPerMi } = buildWorkoutSpec(
         effectiveType, distances[jsDow], tPaceSec, /* lthr */ null,
-        /* prescription */ undefined, /* maxHr */ null, /* goalPaceSPerMi */ null,
+        /* prescription */ subLabel, /* maxHr */ null, /* goalPaceSPerMi */ null,
         /* iPaceSec */ iPaceSec,
       );
       await args.tx.query(
@@ -639,10 +742,10 @@ export async function seedMaintenancePlanFromOnboarding(
   // Old logic used weeklyMiTarget as the starting point (flat from day 1 at
   // goal mileage), which is wrong for new runners who say "I run 10mi/week
   // but want to reach 25." They get a 25mi week on day 1.
-  const startWeeklyMi = Math.max(
-    MPW_FLOOR,
-    historyAvgWeeklyMi != null && historyAvgWeeklyMi > 0 ? historyAvgWeeklyMi : MPW_FLOOR,
-  );
+  // LOWVOL-3 · a stated base is the base. The default only fills silence.
+  const startWeeklyMi = historyAvgWeeklyMi != null && historyAvgWeeklyMi > 0
+    ? historyAvgWeeklyMi
+    : MPW_DEFAULT;
   const targetWeeklyMi = Math.max(
     startWeeklyMi,
     goals.weeklyMiTarget != null && goals.weeklyMiTarget > 0 ? goals.weeklyMiTarget : startWeeklyMi,

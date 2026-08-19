@@ -449,12 +449,23 @@ export async function buildWatchToday(
     ? (Number(raceRow.meta?.distanceMi) || distanceMiFromLabel(raceRow.meta?.distanceLabel))
     : null;
 
-  // 3. Weekly mileage — MUST match the iPhone modal exactly, otherwise the
-  // watch shows a different number of reps than the modal does. The modal
-  // uses a per-day proxy `Math.max(day.plannedMi * 6, 25)` (it doesn't have
-  // a cheap way to sum the whole week). We do the same here so the two
-  // surfaces agree. We also read the real summed week as a floor, in case
-  // the proxy under-counts (e.g. tomorrow is a recovery day in a hot week).
+  // 3. Weekly mileage — the number `prescriptionFor` doses every quality
+  // session against.
+  //
+  // ── LOWVOL-5 (2026-08-19) · THE PROXY COULD NEVER LOSE ────────────────────
+  //
+  // This read `Number(weeklyMiRow?.mi) || 30` against a proxy of
+  // `Math.max(distanceMi * 6, 25)` and took the HIGHER of the two. Three
+  // fabrications stacked: an empty SUM yields NULL → 0 → the `|| 30` asserted a
+  // thirty-mile week for a runner with no plan rows at all; the proxy asserted
+  // that today's distance is one seventh of a six-day week; and the `Math.max`
+  // meant a real, read, ten-mile week could never win against either. A 10
+  // mi/wk runner was dosed as a 30 mi/wk runner on every spec-less row.
+  //
+  // The plan's own summed week IS the week whenever it has rows, so it is used
+  // whenever it is non-zero. The proxy stays only for the case it was built
+  // for — no rows in the window to read — and is no longer allowed to override
+  // a number we actually have.
   const todayDow = new Date(today + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
   const daysSinceMonday = todayDow === 0 ? 6 : todayDow - 1;
   const weeklyMiRow = (await pool.query(
@@ -462,12 +473,10 @@ export async function buildWatchToday(
       WHERE plan_id = $1
         AND date_iso::date BETWEEN ($2::date - $3::int) AND ($2::date - $3::int + 6)`,
     [plan.id, today, daysSinceMonday]
-  ).catch(() => ({ rows: [{ mi: 30 }] }))).rows[0];
-  const realWeeklyMi = Number(weeklyMiRow?.mi) || 30;
+  ).catch(() => ({ rows: [{ mi: null }] }))).rows[0];  // LOWVOL-5 · a failed read is unknown, not thirty miles
+  const realWeeklyMi = Number(weeklyMiRow?.mi) || 0;
   const proxyWeeklyMi = Math.max(distanceMi * 6, 25);
-  // Use whichever is HIGHER — matches the modal when modal's proxy wins,
-  // and matches reality when the real week is denser than 6×today.
-  const weeklyMi = Math.max(realWeeklyMi, proxyWeeklyMi);
+  const weeklyMi = realWeeklyMi > 0 ? realWeeklyMi : proxyWeeklyMi;
 
   // 4. Generate the same prescription the iPhone modal uses · used as
   //    a fallback (and to source the headline / pacing strings when

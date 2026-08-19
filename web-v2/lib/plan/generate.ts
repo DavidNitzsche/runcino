@@ -627,6 +627,27 @@ async function rampBaseForBuild(
  *
  * Reads the longest run in last 28 days (typically the Sunday long).
  * Returns 0 when no data · caller treats as no floor.
+ *
+ * ── LOWVOL-1 (2026-08-19) · NO DISTANCE FILTER ─────────────────────────────
+ *
+ * This query used to carry `AND (data->>'distanceMi')::numeric >= 8` with the
+ * comment "long-ish only". That filter switched the long-run injury guard OFF
+ * for precisely the runners it protects.
+ *
+ * The value feeds TWO consumers with opposite polarity. As a FLOOR ("never
+ * author a shorter long than the runner just ran") it is only consulted at
+ * `recentLongMi >= 8` anyway, so the filter was redundant there. As the
+ * `rampCeiling` ANCHOR it is the single-session spike guard — `Research/00a`
+ * §"Volume progression rules": "An individual run >110% of longest run in the
+ * prior 30 d raises overuse injury risk by ~64%" — and `rampCeiling` returns
+ * the unbounded doctrine cap when this reads zero. A runner whose real longest
+ * run in 28 days is 6 mi read 0, indistinguishable from no history at all, and
+ * was authored a 10 mi week-1 long: 167% of their own prior-30d longest, the
+ * exact spike the ramp exists to prevent.
+ *
+ * MAX over all runs equals MAX over runs ≥ 8 whenever the longest run is
+ * itself ≥ 8, so this is byte-identical for every runner the old filter did
+ * not silence. It changes only the cohort it was silencing.
  */
 async function recentPeakLongMi(userId: string): Promise<number> {
   const today = await runnerToday(userId);
@@ -636,8 +657,7 @@ async function recentPeakLongMi(userId: string): Promise<number> {
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date
-            >= $2::date - 28
-        AND (data->>'distanceMi')::numeric >= 8`,  // long-ish only
+            >= $2::date - 28`,
     [userId, today]
   ).catch(() => ({ rows: [{ mi: null }] }))).rows[0];
   return Math.round((Number(r?.mi ?? 0)) * 10) / 10;
@@ -2250,7 +2270,14 @@ function layoutWeek({
     // longMiRaw apply. Byte-safe for high recent-long runners (their stepCeil already cleared longCap).
     if (phase === 'TAPER') return longCap;
     if (!recentLongMi || recentLongMi <= 0) return longCap;
-    const seed = Math.round(recentLongMi * 1.10);              // week-0 ≤110% of recent
+    // LOWVOL-1 (2026-08-19) · FLOOR to the half mile, not ROUND to the whole.
+    // `Math.round` can only ever push this ABOVE the multiple it is enforcing,
+    // and proportionally that costs the small runner the most: a 6 mi longest
+    // rounded to 7 is 117%, a 5 to 6 is 120%, against doctrine's flat "should
+    // not exceed 110% of the longest run in the prior 30 days". Flooring can
+    // only reduce, never raise, and lands on the half-mile grid the rest of the
+    // generator rounds to.
+    const seed = Math.floor(recentLongMi * 1.10 * 2) / 2;      // week-0 ≤110% of recent
     const stepCeil = recentLongMi * Math.pow(1.10, weekIdx);   // ≤10%/step geometric climb
     const peakWeekIdx = Math.max(1, totalWeeks - 4);           // reach the cap ~3-4 wk before race
     const linearTarget = seed + Math.max(0, longCap - seed) * Math.min(1, weekIdx / peakWeekIdx);
@@ -4876,7 +4903,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // 2026-06-20 · beginner = base-building structure (light fartlek, no
       // structured I/R reps). Gated to level==='beginner', so intermediate/
       // advanced (incl. David) are unchanged.
-      baseBuilding: isBaseBuildingPlan(distanceCategoryOf(input.raceDistanceMi), input.level),
+      // LOWVOL-2 (2026-08-19) · the runner's own volume is passed so an UNSTATED
+      // experience level cannot route a 5-10 mi/wk runner into the periodized
+      // machine. A STATED level still wins outright.
+      baseBuilding: isBaseBuildingPlan(
+        distanceCategoryOf(input.raceDistanceMi), input.level, input.recentWeeklyMi,
+      ),
       availableDows: input.availableDows ?? null,
       // DOCTRINE-3 · the long run's absolute-time cap is evaluated against the
       // runner's OWN easy pace, at the slow end of the band spec-builder emits
@@ -5129,6 +5161,43 @@ export interface ComposeNonRaceInput {
   bestRecentVdot?: number | null;
 }
 
+/* ── COLD-START-1 (2026-08-19) · the week a runner with NO history gets ──────
+ *
+ * `composeMaintenancePlan` sizes everything off `peakAnchor = max(recentPeak,
+ * recentWeekly)`. For a day-one runner both are zero, and the arithmetic then
+ * produced exactly ONE run: `targetWeekly` 0, the long-run coherence floor
+ * asserted 4 miles anyway (its `recentLongMi > 0` guard let zero fall through
+ * to the `: 4` arm), and `easyMiBudget = max(0, 0 - 4)` left nothing for any
+ * other day. A single four-mile run a week, and for somebody with no recorded
+ * running it is also a first session four miles long.
+ *
+ * Doctrine has an answer for this runner and it is not the maintenance plan.
+ * `Research/22` §"8. Couch-to-5K Progression" is written for exactly "sedentary
+ * individuals who can walk 30 minutes": three days a week with a rest day
+ * between, opening at eight minutes of running per session and topping out at a
+ * thirty-minute continuous run. Those three numbers are transcribed below and
+ * bound by `COLDSTART.couch-to-5k-opening` in the doctrine registry.
+ *
+ * Two things are ours rather than doctrine's, and are labelled as such:
+ *
+ *   · The ramp BETWEEN weeks. §8's ladder is written as run/walk intervals
+ *     whose weeks 5 and 6 hold three different sessions each, which does not
+ *     transcribe to one number per week without picking one. So the climb uses
+ *     the engine's existing novice ramp ceiling — `GENERAL_RAMP_CEILING.
+ *     beginner`, already bound to `Research/00a`'s "+20-25% over 8 weeks" —
+ *     and the §8 peak caps it. That reaches thirty minutes at about the week
+ *     §8 does, without inventing a reading of the a/b/c rows.
+ *   · The minutes→miles conversion, which the plan schema forces: rows carry a
+ *     distance. It is done at the SLOW end of the engine's own easy band so the
+ *     distance cannot imply a pace the runner is not permitted to run.
+ */
+/** `Research/22` §8 · "Days/week | 3 (with rest day between)". */
+const COLD_START_DAYS_PER_WEEK = 3;
+/** `Research/22` §8 week 1 · "8× (60 sec run / 90 sec walk)" — eight minutes of running. */
+const COLD_START_WEEK1_RUN_MIN = 8;
+/** `Research/22` §8 · "Peak workout | 30 min continuous run". */
+const COLD_START_PEAK_RUN_MIN = 30;
+
 /**
  * Compose a 4-week maintenance plan. Single phase 'MAINTENANCE'. The
  * graduate cron regenerates this every 4 weeks until the next race
@@ -5192,8 +5261,73 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     }],
   };
 
+  // COLD-START-1 · no volume signal of ANY kind. Not "a small week" — nothing
+  // to size a week from. See the block comment above composeMaintenancePlan.
+  const noVolumeSignal = !(peakAnchor > 0) && !(input.recentLongMi > 0);
+  /** Slow end of the engine's own easy band — the pace the runner is actually
+   *  permitted to run at, so the minutes→miles conversion cannot imply a
+   *  faster one. Falls back to the bottom of the Daniels table when the runner
+   *  has no goal to derive a threshold pace from, which is the usual day-one
+   *  case. */
+  const coldStartEasySecPerMi = (() => {
+    const t = (input.tPaceSec != null && input.tPaceSec > 0)
+      ? input.tPaceSec
+      : tPaceFromVdot(conservativeVdotFromMileage(0));
+    return (t != null && t > 0) ? t + 120 : null;
+  })();
+
+  /**
+   * COLD-START-1 · `Research/22` §8's opening weeks, in the shape the plan
+   * schema can carry. Three running days spaced with a rest day between, each
+   * the same session — a day-one runner has no long run and no quality day,
+   * and asserting either would be the four-mile "long" this replaces.
+   */
+  function coldStartWeek(weekIdx: number): DayPlan[] {
+    const runMin = Math.min(
+      COLD_START_PEAK_RUN_MIN,
+      COLD_START_WEEK1_RUN_MIN * Math.pow(GENERAL_RAMP_CEILING.beginner, weekIdx),
+    );
+    const perRunMi = coldStartEasySecPerMi != null
+      ? Math.max(0.1, Math.round((runMin * 60 / coldStartEasySecPerMi) * 10) / 10)
+      : 0;
+    // "with a rest day between" · start the day after the rest day and step by
+    // two, honouring the runner's stated frequency when it is lower than three.
+    const wanted = Math.min(
+      COLD_START_DAYS_PER_WEEK,
+      input.trainingDaysPerWeek != null && input.trainingDaysPerWeek > 0
+        ? input.trainingDaysPerWeek : COLD_START_DAYS_PER_WEEK,
+    );
+    const order: number[] = [];
+    for (let i = 1; i <= 6; i++) order.push((input.restDow + i) % 7);
+    const usable = order.filter((d) => input.availableDows == null || input.availableDows.has(d));
+    const runDows = new Set<number>();
+    for (let i = 0; i < usable.length && runDows.size < wanted; i += 2) runDows.add(usable[i]);
+    // A runner whose available days sit adjacent cannot have the rest day
+    // between; they still get their sessions rather than an empty week.
+    for (const d of usable) { if (runDows.size >= wanted) break; runDows.add(d); }
+    const days: DayPlan[] = [];
+    for (let dow = 0; dow < 7; dow++) {
+      if (runDows.has(dow) && perRunMi > 0) {
+        days.push({
+          dow: dow as DOW, type: 'easy', distanceMi: perRunMi, isQuality: false, isLong: false,
+          subLabel: `${Math.round(runMin)} min run/walk`,
+          notes: 'Alternate running and walking for the whole session, and finish able to talk. '
+            + 'Run the minutes, not the miles. Once a few of these are logged the plan sizes itself off what you actually ran.',
+        });
+      } else {
+        days.push({
+          dow: dow as DOW, type: 'rest', distanceMi: 0, isQuality: false, isLong: false,
+          subLabel: 'REST',
+          notes: 'Off. The day between sessions is where the adaptation happens.',
+        });
+      }
+    }
+    return days;
+  }
+
   // Layout one canonical week per slot. Rolling cutback fires every 4th week (weekIdx 3, 7, 11 …).
   function maintenanceWeek(weekIdx: number): DayPlan[] {
+    if (noVolumeSignal) return coldStartWeek(weekIdx);
     const isCutback = (weekIdx + 1) % 4 === 0; // week 4, 8, 12 … = recovery step-down
     const wkWeeklyBase = isCutback ? Math.round(targetWeekly * 0.80) : targetWeekly;
     // SP-6 · 4mi coherence floor, not 8. NS-2 (2026-06-23, ext) · the cutback floor must ALSO respect the
@@ -7475,7 +7609,18 @@ async function loadGeneratorInputs(
     // 2:30/mi of threshold pace, on an aspiration. `history_avg_weekly_mi` is the
     // field that answers this question; when it is absent the honest answer is
     // zero, which the ramp machinery already handles (BRK-2 / CC2-1).
-    if (recentMi <= 0) { recentMi = Number(selfReport?.avg ?? 0) || 0; if (recentMi > 50) recentMi = 50; } // CC-6 · collapse a 55 self-report to the sim/gate's 50 cap (50 vs 55 yield identical paces)
+    // HIGHVOL-1 (2026-08-19) · the `if (recentMi > 50) recentMi = 50` that used
+    // to sit here was written when the onboarding ladder topped out at a '45+'
+    // bucket whose midpoint was 50, so it only ever collapsed a 55 to a 50 and
+    // "50 vs 55 yield identical paces" was true. The ladder now reaches the
+    // sub-elite and elite rows of Research/00a §"Volume table" (to 90 mi/wk),
+    // and against those the clamp is not a rounding convenience — it HALVES a
+    // 100 mi/wk runner's stated base and then paces and sizes their whole plan
+    // off the halved number. A self-report is still only a self-report: it
+    // remains marked `provisional_mileage` through pace_blend, three readers
+    // refuse to inherit it, and the calibration intro runs the opening quality
+    // sessions by effort until a real read lands.
+    if (recentMi <= 0) recentMi = Number(selfReport?.avg ?? 0) || 0;
     if (recentLong <= 0) recentLong = Number(selfReport?.long ?? 0) || 0;
   }
   // COH-1 · clamp the reported longest run to be coherent with weekly volume (the long anchors
