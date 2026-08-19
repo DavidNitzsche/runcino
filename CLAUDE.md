@@ -10,7 +10,15 @@ Read these in order before doing any design or implementation work in this proje
 
 ### 1. Design source of truth
 
-`Design/running-app-design-brief-v2.md`
+**iPhone — `/Volumes/WP/06 Claude Code/Faff/design/0819/design_handoff_faff_iphone_app v5/`**
+
+The approved iPhone design, 2026-08-19. **This is the phone product.** Its palette, typography, tokens and copy are final and are NOT to be reconciled against brief v2 — it supersedes brief v2 for the phone outright. Pure black ground, four surface steps, signal orange `#FF5A1F`, attention amber `#F2B03C` (also the `~` mark for a modelled number), fault red `#FF4438`, no green as a grade, six day-state gradients, Instrument Sans + Archivo 800/112.
+
+Read `README.md` there first — it is the spec — and `docs/faff-iphone-design-contract.md` in this repo, which is what the backend can actually feed and the rules the design cannot break.
+
+**Web and watch — `Design/running-app-design-brief-v2.md`**
+
+Still governs those two surfaces only. Where it and the iPhone design conflict — it forbids orange, the phone accent is orange — **the iPhone design wins for the phone and brief v2 wins for web and watch.** Do not cite it as authoritative for the phone.
 
 The complete design language, locked 2026-06-09 and enforced from build 200: the ten-color palette (byte-for-byte identical on web / iPhone / watch, CI-enforced by `scripts/check-palette-sync.sh`), typography (Oswald ≥16pt display · Inter below · Inter body), mesh doctrine, glass retirement, label grammar, banner caps, and the David-ruled addendum (TweakAccent exemption, phase-identity categorical group). Supersedes v1, which is archived at `Design/running-app-design-brief.md.archived` for reference only.
 
