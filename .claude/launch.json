@@ -49,6 +49,17 @@
       "cwd": "/Volumes/WP/06 Claude Code/Runcino/web-v2",
       "port": 3100,
       "autoPort": false
+    },
+    {
+      "name": "Adaptive Running Engine",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--experimental-strip-types",
+        "server/index.ts"
+      ],
+      "cwd": "/Volumes/WP/06 Claude Code/Runcino/adaptive-engine",
+      "port": 4173,
+      "autoPort": true
     }
   ]
 }

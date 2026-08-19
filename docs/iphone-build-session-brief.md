@@ -60,7 +60,7 @@ scold.
 
 ## The runway is already laid — use it, don't rebuild it
 
-Main is at `545fa384`. Three things landed specifically so this session doesn't start by
+Start from `main` (`c1d1dfc6` or later). Three things landed specifically so this session doesn't start by
 doing them:
 
 **The v5 tokens are in code.** `native-v2/Faff/Faff/ThemeV5.swift` — ground, four surface
