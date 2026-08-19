@@ -44,10 +44,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import {
   composePlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type ComposePlanResult,
   type DOW,
@@ -76,7 +76,7 @@ function buildInput(o: {
   lthr?: number | null;
   maxHr?: number | null;
 }): ComposePlanInput {
-  const cat = distanceCategoryOfPublic(o.raceDistanceMi);
+  const cat = distanceCategoryOrThrow(o.raceDistanceMi);
   const raceDay = new Date(START_MONDAY + 'T12:00:00Z');
   raceDay.setUTCDate(raceDay.getUTCDate() + o.weeksOut * 7 - 1);
   const raceDateISO = raceDay.toISOString().slice(0, 10);
@@ -139,7 +139,7 @@ function persistRealizedMi(
   week: ComposePlanResult['weeks'][number],
   d: ComposePlanResult['weeks'][number]['days'][number],
 ): number {
-  const goalIPaceEligible = ['5k', '10k'].includes(distanceCategoryOfPublic(input.raceDistanceMi));
+  const goalIPaceEligible = ['5k', '10k'].includes(distanceCategoryOrThrow(input.raceDistanceMi));
   const weekT = (week as { tPaceSec?: number | null }).tPaceSec ?? input.tPaceSec;
   // persist only derives a spec when weekT is non-null; otherwise the row keeps
   // d.distanceMi verbatim (no spec, no cap) — which the sweep already bounded.

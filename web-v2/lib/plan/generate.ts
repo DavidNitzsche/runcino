@@ -35,7 +35,7 @@ import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAn
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
-import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, BUILD_WINDOW_WEEKS, type PlanMode, distanceCategoryOf as distanceCategoryOfTier, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING } from './goal-tiers';
+import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING } from './goal-tiers';
 import {
   type AnchorSource, isProvisionalAnchor, paceBlendAnchorIsProvisional,
   CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES,
@@ -73,6 +73,30 @@ import {
   dosePaceOf, weekDosingFindings, duplicatePaceFamily,
   type DosePace, type DosingContext,
 } from './dosing';
+// VOCAB-CATALOGUE-1 (2026-08-18) · the workout vocabulary, wired.
+// `Research/04-workout-vocabulary.md`'s 59 named workouts live in
+// `lib/workout-catalogue/` as cited data, and §15's placement table plus §16's
+// combinations-to-avoid live there as a selection algorithm. Nothing read
+// either of them until this import: the composer looked up ONE hardcoded string
+// per (family, distance), so every hills slot in every week of every plan read
+// the same fifteen words. `catalogue-rx.ts` is the door — see its header for
+// the anchors the composer can honestly supply and the shapes the engine's
+// prescription grammar cannot yet express.
+import {
+  newCatalogueHistory, recordCatalogueChoice, selectSlotWorkout,
+  type CatalogueHistory, type ComposerSlot,
+} from './catalogue-rx';
+import type { PlacedSession } from '@/lib/workout-catalogue/select';
+import type { Tier } from '@/lib/workout-catalogue/types';
+// #12 follow-up (2026-08-18) · THE race-distance categorizer. generate.ts kept
+// four more inline mileage branches after the goal-tiers re-export landed, and
+// they had drifted from it — `>= 31` against the canonical 31.07 ultra floor,
+// `>= 20` against 19.65, a `>= 12` with no canonical equivalent at all, and a
+// `< 7` against 7.75. A race whose distance is unknown returns null here and
+// the caller refuses rather than silently becoming a half marathon.
+import {
+  distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON,
+} from '@/lib/race/distance-category';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
 export type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -561,9 +585,15 @@ async function rampBaseForBuild(
   const lastMi = lastRaceDistanceMi ?? lastRaceFinished?.distanceMi ?? null;
   if (lastRaceFinished?.date && lastMi != null && lastMi > 0) {
     const weeksSince = Math.floor(daysBetween(lastRaceFinished.date, todayISO) / 7);
-    const cat = distanceCategoryOfTier(lastMi);
-    const mandated = BLOCK_SHAPE[cat].taperWeeks + postRaceRecoveryWeeks(cat, lastRacePriority);
-    if (weeksSince >= 0 && weeksSince <= mandated) allowed = Math.max(allowed, mandated);
+    // A HISTORY row, not the goal race, so an unrecognised distance is a real
+    // possibility and refusing the whole authoring for it would be wrong. The
+    // honest answer is that a race whose distance we do not know explains no
+    // mandated interruption, so the short-layoff allowance stands.
+    const cat = distanceCategoryOrNull(lastMi);
+    if (cat != null) {
+      const mandated = BLOCK_SHAPE[cat].taperWeeks + postRaceRecoveryWeeks(cat, lastRacePriority);
+      if (weeksSince >= 0 && weeksSince <= mandated) allowed = Math.max(allowed, mandated);
+    }
   }
   return resolveRampBase({ meanWeeklyMi, weeklySeries: series, allowedInterruptionWeeks: allowed });
 }
@@ -822,10 +852,44 @@ export interface BlockPlan {
 // Re-export goal-tiers' categorizer (which already includes 'ultra') as the
 // single source so block shape, taper length, and the race-pace tag all agree
 // with the tier the plan is sized for. DistCategory now carries 'ultra'.
+// #12 follow-up (2026-08-18) · the re-export is gone and every site in this
+// file now goes to `lib/race/distance-category.ts` directly, through the
+// refusal below. Two things changed with it:
+//
+//   · `distanceCategoryOfPublic` is DELETED. It was a second name for the same
+//     function, exported so other modules could avoid importing the canonical
+//     one — which is how the app grew three categorizers in the first place.
+//     Its callers (the simulate route, and a dozen composer tests) now import
+//     `distanceCategoryOrNull` / `distanceCategoryOrThrow` from the one module.
+//   · Four inline mileage branches in this file that had drifted from the
+//     canonical boundaries are gone: see the `race_week_tuneup` sites.
 export type { DistCategory };
-const distanceCategoryOf = distanceCategoryOfTier;
-export function distanceCategoryOfPublic(raceDistanceMi: number): DistCategory {
-  return distanceCategoryOf(raceDistanceMi);
+
+/**
+ * THE categorizer, with the refusal stated at the point of use.
+ *
+ * `distanceCategoryOrNull` never guesses — a missing, non-finite or
+ * non-positive distance is null, not a half marathon. Every site in this file
+ * that reaches this helper sits BEHIND the entry-point guard in
+ * `generatePlanForUser` ("race distance unrecognized; cannot build a plan for
+ * an unknown distance"), so a null here means a caller skipped that guard.
+ * Failing loudly at the site that skipped it beats composing a plan for the
+ * wrong event, which is the defect the canonical module was written to end.
+ *
+ * The sites that CAN handle an unknown distance gracefully do not use this —
+ * they call `distanceCategoryOrNull` and branch on the null, and there are two:
+ * the last-race lookback in `resolveRampBaseFromEvidence` and the next-race
+ * build window in `composeMaintenancePlan`.
+ */
+function distanceCategoryOf(raceDistanceMi: number): DistCategory {
+  const cat = distanceCategoryOrNull(raceDistanceMi);
+  if (cat == null) {
+    throw new Error(
+      `lib/plan/generate.ts: ${UNKNOWN_DISTANCE_REASON} (got ${String(raceDistanceMi)}). ` +
+        'Guard the caller with distanceCategoryOrNull and refuse, as generatePlanForUser does.',
+    );
+  }
+  return cat;
 }
 
 /** Per-category structural numbers per Research/22 + canonical Daniels. */
@@ -1324,16 +1388,19 @@ export function qualityFamilyFor(
     // Before it, §8.3 and §9.2 place hills and fartlek; at it, reps take over.
     const early = weeksToPhaseEnd > 2;
     if (early && slotType === 'intervals') {
-      // Alternate so neither becomes the only thing the runner ever does.
-      // §8.1 medium hill repeats are 5K-10K effort and §9.1 fartlek spans
-      // 5K-to-mile effort, so the two are interchangeable at this slot.
+      // VOCAB-CATALOGUE-1 · this used to alternate hills and fartlek on
+      // `Math.floor(weekIdx / 2) % 2`, which is a two-entry rotation over a
+      // vocabulary §8 and §9 write as eleven. The rotation now belongs to the
+      // catalogue's selector, which ranks every session §15 places on this slot
+      // by least-recently-used — so the runner sees short, medium and long hill
+      // repeats, the Lydiard circuit, the hill fartlek and the timed fartlek in
+      // turn instead of two strings on a two-week loop.
       //
-      // Halved before the parity test because the rep slot itself only
-      // appears on alternate weeks for some distances — the marathon's
-      // QUALITY mix carries `intervals` on odd weeks only. Testing weekIdx
-      // directly would then be constant on every week this line runs, and
-      // the marathon would have seen fartlek and never a hill.
-      return Math.floor(weekIdx / 2) % 2 === 0 ? 'hills' : 'fartlek';
+      // What survives here is the §15 RULING, which is what the doctrine gate's
+      // VOCAB.phase-placement claim checks: the hill/strength block belongs on
+      // this slot in the early part of QUALITY. `hills` names it, and the
+      // catalogue is free to answer with any family §15 places alongside it.
+      return 'hills';
     }
     // §12.2 cutdowns are named for 5K/10K/HM only. The marathon's threshold
     // slot keeps its cruise intervals.
@@ -1375,27 +1442,18 @@ const FAMILY_NOTES: Partial<Record<WorkoutFamily, string>> = {
   race_specific: 'Race pace, race rhythm. This is the dress rehearsal for the effort.',
 };
 
-function inlineFamilyPrescriptions(cat: DistCategory): Partial<Record<WorkoutFamily, string>> {
-  return {
-    // §8.1 "Medium hill repeats | 60–90 s | 4–6% | 5K–10K effort | 6–10 | 2–3 min jog down"
-    hills:   '6×90s hills @ 5K-10K effort · 2:30 jog down',
-    // §9.1 time-based fartlek · §9.5 "Pre-set work/float repeats"
-    fartlek: '6×3 min @ 10K effort · 2 min easy jog',
-    // §12.2 "Mile cutdowns | 3–6 × 1 mi | each rep 5–15 s/mi faster | 60–90 s jog"
-    cutdown: '4×1 mi · MP → HM → T → 5K · 75s jog',
-    // §10.3 wave tempo · a PHRASE, sized by the caller like `tempo`
-    combo:   'continuous wave tempo · ±10 s/mi around T',
-    // §11.2 Canova 2K repeats
-    marathon_specific: '5×2K · descend MP → T · 2 min jog',
-    // §14.1 "12 × 400 at 5K | Classic 5K simulator | 5K race pace | 60–90 s jog"
-    // §14.2 "2K reps | 4–5 × 2K | 10K race pace | 2–3 min jog"
-    // §14.3 "4 × 2 mi | Predictor session | HM race pace | 60–120 s jog"
-    race_specific:
-        cat === '5k'  ? '12×400m @ 5K race pace · 75s jog'
-      : cat === '10k' ? '4×2km @ 10K race pace · 2:30 jog'
-      :                 '4×2mi @ HM race pace · 90s jog',
-  };
-}
+// VOCAB-CATALOGUE-1 (2026-08-18) · `inlineFamilyPrescriptions` is DELETED.
+//
+// It was one fixed string per (family, distance) — `'6×90s hills @ 5K-10K
+// effort · 2:30 jog down'` for every hills slot at every distance in every week
+// of every plan — and it was the whole vocabulary the engine could express for
+// §15's families. `lib/workout-catalogue/` now holds all 59 of Research/04's
+// named workouts as cited data and `catalogue-rx.ts` renders whichever one the
+// selector places on the slot, so there is nothing left for a fixed table to
+// do. `rx.families` is now the workout_library rows and nothing else; a family
+// with no row and no catalogue session falls through to the generic
+// intervals/threshold/tempo prescription below, exactly as an unseeded family
+// always has.
 
 /** Inline last-resort prescriptions — match the historical doctrine in this
  *  file. Library reads supersede these.
@@ -1418,7 +1476,10 @@ export function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
     tempo:        'continuous tempo',
     citationInterval:  'Research/04-workout-vocabulary.md §6',
     citationThreshold: 'Research/04-workout-vocabulary.md §5',
-    families: inlineFamilyPrescriptions(cat),
+    // VOCAB-CATALOGUE-1 · no inline family table any more. `resolvePrescriptions`
+    // fills this from workout_library where rows exist; the catalogue supplies
+    // the session itself.
+    families: {},
   };
 }
 
@@ -1452,7 +1513,7 @@ export async function resolvePrescriptions(
   // Library row wins; the inline doctrine string is the floor. A family with
   // neither (e.g. `combo` for a 5K, which doctrine does not place there) is
   // simply absent, and qualityFamilyFor never asks for it.
-  const families = { ...inlineFamilyPrescriptions(cat) };
+  const families: Partial<Record<WorkoutFamily, string>> = {};
   VOCAB.forEach((family, i) => {
     const row = vocabT[i];
     // `combo` is a phrase the caller prefixes with a sized distance, so a
@@ -1708,7 +1769,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, catalogueHistory = null, level = null,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -1775,6 +1836,27 @@ function layoutWeek({
   weekTPaceSec?: number | null;
   /** The week's rep pace (s/mi), for the interval track's caps. */
   weekIPaceSec?: number | null;
+  /**
+   * VOCAB-CATALOGUE-1 · the plan's running record of which catalogue sessions
+   * it has already authored. Stateful and ordered, the same contract as
+   * `trajectory`: `composePlan` walks weeks in ascending order and each week's
+   * choices are recorded for the next.
+   *
+   * The selector's rotation is LEAST RECENTLY USED, and its per-cycle caps
+   * ("1x per training cycle") are counted here, so without this every week of a
+   * block would open on the same session — the defect the rotation exists to
+   * prevent. null keeps the pre-2026-08-18 behaviour exactly: the composer
+   * falls back to the fixed `rx` strings, which is what the maintenance and
+   * recovery composers want.
+   */
+  catalogueHistory?: CatalogueHistory | null;
+  /**
+   * The runner's experience tier, for the catalogue's contraindication rows
+   * (§8.5 "not for novice runners", §10.2 "practice each in isolation first").
+   * null → the catalogue is not consulted; the tier gate has no safe default
+   * and guessing one is how a beginner gets handed a Canova block.
+   */
+  level?: LevelKey;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -1809,9 +1891,21 @@ function layoutWeek({
           // RACEWK-SHARP-1 (2026-06-23) · marathon/ultra race-week sharpener must be 5K pace not race
           // pace. Research/08 §9.3 "3 mi w/ 5×1min @ 5K pace, 4-5 days out" — MP is too slow to be a
           // neuromuscular primer. TAPER-phase already used 5K pace (line 1269); race-week now matches.
-          const isUltra = raceDistanceMi >= 31;
-          const isMarathonPlus = raceDistanceMi >= 20; // marathon + ultra; isUltra checks first
-          const isLongRace = raceDistanceMi >= 12;
+          // #12 follow-up (2026-08-18) · THE categorizer, not four raw mileage
+          // thresholds. These read `>= 31` against the canonical 31.07 ultra
+          // floor (so a 31.0-mile race was an ultra here and a marathon
+          // everywhere else), `>= 20` against the canonical 19.65 hm|m line,
+          // `>= 12` against nothing canonical at all, and `< 7` against 7.75 —
+          // four boundaries in one function, none of them the app's.
+          //
+          // The tune-up STRINGS stay as they are: they are Research/08 §9.3's
+          // race-week primers, and `Research/04`'s workout catalogue does not
+          // carry them (it is the training vocabulary, not the race-week
+          // template). What changes is which row a given race lands on.
+          const tuneCat = distanceCategoryOrNull(raceDistanceMi);
+          const isUltra = tuneCat === 'ultra';
+          const isMarathonPlus = tuneCat === 'm' || tuneCat === 'ultra';
+          const isLongRace = tuneCat === 'hm' || isMarathonPlus;
           days.push({
             dow, type: 'race_week_tuneup',
             distanceMi: isLongRace ? 5 : 4,
@@ -1821,11 +1915,11 @@ function layoutWeek({
             // pace) the week before a 100K is physiologically wrong. Research/00a §taper: "intensity preserved"
             // at the runner's training intensity (threshold, not VO2max) for ultra. 5K-SHARP-1 · 5K/10K now
             // uses 5K-pace reps (Research/00a §taper: "intensity preserved"). Shorter reps to match distance.
-            // raceDistanceMi < 7 separates 5K (3.1mi) from 10K (6.2mi).
+            // The 5k row is the canonical categorizer's, not a `< 7` guess.
             subLabel: isUltra ? '5×400m @ T pace · 90s jog'
               : isMarathonPlus ? '5×400m @ 5K pace · 2min jog'
               : isLongRace ? '4×1km @ race pace · 90s jog'
-              : raceDistanceMi < 7 ? '5×200m @ 5K pace · 90s jog'
+              : tuneCat === '5k' ? '5×200m @ 5K pace · 90s jog'
               : '4×400m @ 5K pace · 90s jog',  // 10K
             notes: isUltra
               ? 'Threshold strides, 5 days out. Hold T effort · just under comfortably hard. Brief neuromuscular prime.'
@@ -2481,6 +2575,47 @@ function layoutWeek({
     // any of them is stepped.
     const usedFamilies = new Set<WorkoutFamily>();
     const filledByThisPass = new Set<number>();
+
+    /* ── VOCAB-CATALOGUE-1 · the catalogue picks the session, not a lookup ────
+     *
+     * `qualityFamilyFor` still answers the §15 question it always answered —
+     * does doctrine name a vocabulary family on THIS slot, in this phase, for
+     * this distance — and the doctrine gate's VOCAB.phase-placement claim still
+     * checks its answers against §15's own row keywords. What it no longer does
+     * is CHOOSE the session: it named one family per (phase, slot) and handed
+     * off to one fixed string per (family, distance), so every hills slot in
+     * every week of every plan read the same fifteen words.
+     *
+     * The catalogue answers the second question. Given the phase, distance,
+     * tier, week volume, pace anchors, what the week has already placed and
+     * what the block has already run, `selectSlotWorkout` returns the session
+     * §15 places here that this week can afford, rotated least-recently-used so
+     * a twelve-week block works through the vocabulary before it repeats any of
+     * it. It chooses across every family §15 places on the slot rather than the
+     * one this gate happens to name, which is what retires the old
+     * `Math.floor(weekIdx / 2) % 2` hills/fartlek alternation.
+     *
+     * WHEN IT REFUSES, the fixed string is still there. A refusal is doctrine
+     * speaking — at 15 mi/wk Daniels' share caps genuinely leave too little
+     * at-pace volume for the shortest form of anything §15 places here — and
+     * the fallback below is bounded by the same caps through
+     * `sizeFromPrescription`, so a refusal cannot become a breach either way.
+     */
+    const catalogueTier: Tier | null =
+      (catalogueHistory != null && level != null) ? (level as Tier) : null;
+    const placedThisWeek: PlacedSession[] = [];
+    // §16's rules about the long run only fire if the long run is visible to
+    // them. It is placed above, and its race-pace finish names which of §4's
+    // long runs it is — the same tag `dosePaceOf` reads.
+    if (slots[longRunDow]?.isLong) {
+      placedThisWeek.push({
+        slug: finishSeg?.tag === 'MP' ? 'marathon-pace-long-run'
+          : finishSeg?.tag === 'HM' ? 'fast-finish-long-run'
+          : 'base-long-run',
+        dayOffset: longRunDow,
+      });
+    }
+    const usedSlugs = new Set<string>();
     const resolvedSlots = scheduledQ.dows.map((dow, i) => {
       if (slots[dow] != null || filledByThisPass.has(dow)) return null; // conflict · skip
       filledByThisPass.add(dow);
@@ -2488,10 +2623,48 @@ function layoutWeek({
       const candidateFamily = (baseBuilding || (taperMp && qt === 'tempo'))
         ? null
         : qualityFamilyFor(cat, phase, weekIdx, weeksToPhaseEnd, qt);
+      const slot: ComposerSlot | null =
+        qt === 'threshold' || qt === 'intervals' || qt === 'tempo' ? qt : null;
+      const choice = (candidateFamily && catalogueTier && slot && catalogueHistory)
+        ? selectSlotWorkout({
+            history: catalogueHistory,
+            enginePhase: phase,
+            distance: cat,
+            tier: catalogueTier,
+            weekIdx,
+            weeklyMi,
+            slot,
+            dayOffset: dow,
+            placedThisWeek,
+            // §16 "Fast finish long run before goal race | Adds depletion in
+            // taper window". The taper's LENGTH is Research/08's and the block
+            // planner's, not Research/04's, so the caller states it.
+            inTaperWindow: phase === 'TAPER' || isRaceWeek,
+            tPaceSec: weekTPaceSec,
+            iPaceSec: weekIPaceSec,
+            usedThisWeek: usedSlugs,
+          })
+        : null;
+      if (choice?.ok) {
+        const text = slot === 'tempo' ? choice.phrase : choice.prescription;
+        if (text) {
+          usedSlugs.add(choice.entry.slug);
+          usedFamilies.add(choice.family);
+          placedThisWeek.push({ slug: choice.entry.slug, dayOffset: dow });
+          recordCatalogueChoice(catalogueHistory!, choice.entry.slug, weekIdx);
+          return {
+            dow, qt,
+            vocabFamily: choice.family,
+            vocabRx: text,
+            catalogueNote: choice.note,
+            catalogueAtPaceMi: choice.dose.atPaceMi,
+          };
+        }
+      }
       const vocabFamily = (candidateFamily && !usedFamilies.has(candidateFamily)) ? candidateFamily : null;
       const vocabRx = vocabFamily ? rx.families[vocabFamily] : undefined;
       if (vocabFamily && vocabRx) usedFamilies.add(vocabFamily);
-      return { dow, qt, vocabFamily, vocabRx };
+      return { dow, qt, vocabFamily, vocabRx, catalogueNote: null, catalogueAtPaceMi: null };
     });
 
     /* ── DOCTRINE-DOSING-2 · the week's at-pace budget, before anything is sized ──
@@ -2639,13 +2812,22 @@ function layoutWeek({
      *  percent is under twenty minutes — the CAP wins. It is the safety rule,
      *  a short tempo is recoverable inside the same week, and `Research/00b`
      *  exists because the other error is not. */
-    const sizeTempoDay = (): { tempoMi: number; dayMi: number } => {
+    const sizeTempoDay = (catalogueAtPaceMi: number | null = null): { tempoMi: number; dayMi: number } => {
       const capMi = Math.min(
         atPaceSessionCapMi(weeklyMi, 'threshold'),
         slotBudgetMi('tempo'),
         mpLongAtPaceCapMi ?? Infinity,
       );
-      const byTimeMi = weekTPaceSec != null && weekTPaceSec > 0
+      // VOCAB-CATALOGUE-1 · when the catalogue chose the block, its OWN band is
+      // the doctrine bound and §5.2's twenty-to-forty minutes is not. §5.5's
+      // long tempo is "8-12 mi continuous" and §10.3's wave tempo "4-8 mi
+      // continuous"; sizing either by the continuous-tempo clock would ship a
+      // five-mile block under a label promising a long tempo. `dose.atPaceMi`
+      // already sits inside the entry's band AND inside Daniels' share, so the
+      // minimum of it and the week's own budget is the answer.
+      const byTimeMi = catalogueAtPaceMi != null
+        ? catalogueAtPaceMi
+        : weekTPaceSec != null && weekTPaceSec > 0
         ? (CONTINUOUS_TEMPO_MINUTES.max * 60) / weekTPaceSec
         : Infinity;
       // Half-mile grain, rounded DOWN: the cap is a ceiling, and rounding a
@@ -2756,7 +2938,7 @@ function layoutWeek({
       const step = track != null ? (stepByTrack.get(track) ?? null) : null;
       const qFamily: QualityFamily = qt === 'intervals' ? 'interval' : 'threshold';
       const tempoSized = (doctrinalDaySizing && qt === 'tempo' && !baseBuilding && !taperMp)
-        ? sizeTempoDay()
+        ? sizeTempoDay(slot.catalogueAtPaceMi)
         : null;
       // The fixed string this slot carries when the trajectory does not own it:
       // a §15 vocabulary family, or the catalog entry for a slot whose seed the
@@ -2794,12 +2976,18 @@ function layoutWeek({
                                       // the 0.6 was itself an implicit warm-up/cool-down reserve,
                                       // taken out of the intensity budget.
                                       : `${tempoSized ? tempoSized.tempoMi : Math.max(3, Math.round(qualityMiEach * 0.6))}mi ${vocabRx ?? rx.tempo}`)
+      // #12 follow-up (2026-08-18) · keyed on `cat` — THE categorizer, hoisted
+      // above — rather than on three raw mileage thresholds that disagreed with
+      // it (`>= 31` vs the canonical 31.07 ultra floor, `>= 20` vs 19.65, and a
+      // `>= 12` with no canonical equivalent). The strings themselves are
+      // Research/08 §9.3's race-week primers; `Research/04`'s catalogue is the
+      // training vocabulary and carries no race-week template.
       : qt === 'race_week_tuneup' ? (
-          raceDistanceMi >= 31 ? '5×400m @ T pace · 90s jog'   // ULTRA-TUNE-1: threshold, not I-pace (see race-week note)
-        : raceDistanceMi >= 20 ? '5×400m @ 5K pace · 2min jog' // TAPER-SHARP-1 · marathon: 5K-pace prime
-        : raceDistanceMi >= 12 ? '4×1km @ race pace · 90s jog'  // PP-2 · HM: race-pace prime
-        : cat === '5k' ? '5×200m @ 5K pace · 90s jog'           // 5K-SHARP-1
-        : '4×400m @ 5K pace · 90s jog'                          // 10K-SHARP-1
+          cat === 'ultra' ? '5×400m @ T pace · 90s jog'   // ULTRA-TUNE-1: threshold, not I-pace (see race-week note)
+        : cat === 'm'     ? '5×400m @ 5K pace · 2min jog' // TAPER-SHARP-1 · marathon: 5K-pace prime
+        : cat === 'hm'    ? '4×1km @ race pace · 90s jog'  // PP-2 · HM: race-pace prime
+        : cat === '5k'    ? '5×200m @ 5K pace · 90s jog'   // 5K-SHARP-1
+        : '4×400m @ 5K pace · 90s jog'                     // 10K-SHARP-1
       )
       :                              'QUALITY';
       // 2026-06-02 · the workout_library uses family='threshold' for
@@ -2862,7 +3050,14 @@ function layoutWeek({
         // family is FOR, not from the slot's spec kind. "Hold pace, even
         // splits" is exactly wrong on a hill session, which Research/04 §8.1
         // prescribes by effort precisely because pace cannot hold on a climb.
-        notes: (vocabFamily && FAMILY_NOTES[vocabFamily]) ? FAMILY_NOTES[vocabFamily]!
+        // VOCAB-CATALOGUE-1 · when the catalogue chose the session, the note
+        // names WHICH member of the family the runner is holding and where in
+        // Research/04 it is specified. That is the thing the catalogue added:
+        // the family note says what a hill session is for, and this says
+        // whether it is §8.1's medium repeat or §8.3's long one.
+        notes: slot.catalogueNote
+          ? `${slot.catalogueNote}${vocabFamily && FAMILY_NOTES[vocabFamily] ? ` ${FAMILY_NOTES[vocabFamily]}` : ''}`
+        : (vocabFamily && FAMILY_NOTES[vocabFamily]) ? FAMILY_NOTES[vocabFamily]!
         // DOCTRINE-TAPERMP-1 · Research/04 §4.4 "Pace | MP exactly — not faster".
         // The taper is where a runner is most tempted to test fitness (§9.4
         // "Resist the urge to test fitness"), so the note says the quiet part.
@@ -3899,7 +4094,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // RAMPBASE-1 · ramp from the runner's SUSTAINED base, not from a mandated
   // deload the engine itself prescribed. Falls back to the 28-day mean, which
   // is what every caller that does not supply the field gets.
-  const vols = volumeCurve(input.rampBaseMi ?? input.recentWeeklyMi, blocks, input.level, tierTarget, distanceCategoryOfTier(input.raceDistanceMi), input.tsbAtStart);
+  const vols = volumeCurve(input.rampBaseMi ?? input.recentWeeklyMi, blocks, input.level, tierTarget, distanceCategoryOf(input.raceDistanceMi), input.tsbAtStart);
   // DIST-1 · plan-wide peak weekly volume · scales the marathon/ultra long to its doctrine band.
   const peakWeeklyMi = Math.max(1, ...vols);
   // #13 · the cadence volumeCurve used to deload, threaded into layoutWeek so
@@ -4088,6 +4283,9 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
    * holds or modifies it, and that half is not authored here.
    */
   const trajectory = new OverloadTrajectory();
+  // VOCAB-CATALOGUE-1 · plan-scoped, so the selector's rotation and its
+  // per-cycle caps ("1× per training cycle") count the whole block.
+  const catalogueHistory = newCatalogueHistory();
   // The rep pace persistPlan will use, mirrored here so the trajectory's
   // at-pace caps are computed against the pace actually prescribed. 5K/10K/HM
   // goals carry true Daniels I; marathon and ultra keep the cruise-interval
@@ -4178,6 +4376,13 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       trajectory,
       weekTPaceSec: weekT,
       weekIPaceSec: iPaceForWeek(weekT),
+      // VOCAB-CATALOGUE-1 · the plan's running record of which of
+      // Research/04's named workouts it has already authored. Stepped in
+      // ascending week order, the same contract as `trajectory`, so the
+      // selector's least-recently-used rotation and its per-cycle caps see the
+      // whole block rather than one week.
+      catalogueHistory,
+      level: input.level,
     });
     // 2026-06-23 · SP-4 · race-week chronology guard. layoutWeek positions
     // shakeout/tune-up/easy by a circular days-before-race offset that WRAPS, so for a
@@ -4432,8 +4637,11 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
   let TOTAL_WEEKS = 4;
   if (input.nextRace) {
     const weeksToRace = daysBetween(input.startMondayISO, input.nextRace.date) / 7;
-    const buildCat = distanceCategoryOfTier(input.nextRace.distanceMi);
-    const buildWindow = BUILD_WINDOW_WEEKS[buildCat];
+    // The next race is a CALENDAR row the runner typed; its distance may not
+    // resolve. A maintenance block whose build window we cannot size falls back
+    // to the rolling four-week default rather than sizing off a guessed event.
+    const buildCat = distanceCategoryOrNull(input.nextRace.distanceMi);
+    const buildWindow = buildCat != null ? BUILD_WINDOW_WEEKS[buildCat] : Infinity;
     if (weeksToRace > buildWindow) {
       // MAINT-SKIP-1 (2026-06-24) · floor not round — rounding up would let maintenance
       // eat into the build window. pickPlanMode already routes floor=0 to race-prep,
@@ -5390,7 +5598,7 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
   // two sites could — and did — encode the same doctrine twice and generalise the same wrong row.
   const nonTaperPeakR = Math.max(0, ...composed.weeks.filter((w) => w.phase !== 'TAPER' && !w.isRaceWeek).map((w) => w.weeklyMi ?? 0));
   if (nonTaperPeakR > 0) {
-    const taperCat = distanceCategoryOfTier(raceDistanceMi);
+    const taperCat = distanceCategoryOf(raceDistanceMi);
     const taperWeeks = composed.weeks.filter((w) => w.phase === 'TAPER');
     let priorTaper = Infinity;
     for (let i = 0; i < taperWeeks.length; i++) {

@@ -6,11 +6,11 @@
  * plus the closest near-misses.
  */
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import { writeFileSync } from 'node:fs';
 import {
   composePlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type ComposedWeek,
   type DOW,
@@ -32,7 +32,7 @@ function build(opts: {
   const raceDay = new Date(START_MONDAY + 'T12:00:00Z');
   raceDay.setUTCDate(raceDay.getUTCDate() + opts.planWeeks * 7 - 1);
   const raceDateISO = raceDay.toISOString().slice(0, 10);
-  const cat = distanceCategoryOfPublic(opts.distMi);
+  const cat = distanceCategoryOrThrow(opts.distMi);
   const goalSec = opts.goalPaceSec != null ? Math.round(opts.goalPaceSec * opts.distMi) : null;
   return {
     raceDistanceMi: opts.distMi,
@@ -97,7 +97,7 @@ describe('R3 · S2 persisting-AND-violating sweep', () => {
 
     for (const level of LEVELS) {
       for (const distMi of DISTS) {
-        const cat = distanceCategoryOfPublic(distMi);
+        const cat = distanceCategoryOrThrow(distMi);
         for (const goalPaceSec of PACES[cat]) {
           for (const mpw of MPW) {
             for (const freq of FREQ) {

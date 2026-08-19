@@ -34,8 +34,9 @@
  * resolveCurrentTPace cascade assertions.
  */
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import {
-  composePlan, inlinePrescriptions, distanceCategoryOfPublic,
+  composePlan, inlinePrescriptions,
   type ComposePlanInput, type ComposePlanResult, type DOW, type LevelKey,
 } from './generate';
 import { buildWorkoutSpec, tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
@@ -68,7 +69,7 @@ function buildInput(o: {
   goalPaceSec?: number | null;
   weeks?: number;
 }): ComposePlanInput {
-  const cat = distanceCategoryOfPublic(o.raceMi);
+  const cat = distanceCategoryOrThrow(o.raceMi);
   const weeks = o.weeks ?? 12;
   const goalPaceSec = o.goalPaceSec ?? null;
   const goalSec = goalPaceSec != null ? Math.round(goalPaceSec * o.raceMi) : null;

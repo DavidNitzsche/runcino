@@ -32,9 +32,10 @@
  * Cite: Research/22-plan-templates.md §15 ("tune-up half at HMP-T, 4-6 wk out")
  */
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import {
   composePlan, finalizeComposedPlan, inlinePrescriptions,
-  distanceCategoryOfPublic, type ComposePlanInput, type DOW, type DayPlan,
+   type ComposePlanInput, type DOW, type DayPlan,
 } from './generate';
 import { tPaceFromGoal } from './spec-builder';
 import { GENERAL_RAMP_CEILING } from './goal-tiers';
@@ -66,8 +67,8 @@ function cimInput(midBlockRaces: NonNullable<ComposePlanInput['midBlockRaces']>)
     availableDows: null,
     trainingDaysPerWeek: null,
     crossModes: [],
-    rxQuality: inlinePrescriptions(distanceCategoryOfPublic(raceDistanceMi)),
-    rxRaceSpecific: inlinePrescriptions(distanceCategoryOfPublic(raceDistanceMi)),
+    rxQuality: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
+    rxRaceSpecific: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
     tPaceSec: tPaceFromGoal(goalSec, raceDistanceMi),
     lthr: null,
     maxHr: null,

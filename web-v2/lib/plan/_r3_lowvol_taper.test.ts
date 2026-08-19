@@ -13,7 +13,6 @@ import { writeFileSync } from 'node:fs';
 import {
   composePlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type ComposedWeek,
 } from './generate';

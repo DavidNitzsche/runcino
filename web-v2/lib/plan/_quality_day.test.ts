@@ -18,11 +18,11 @@
  *   2. Consecutive build weeks differ. That is what the whole exercise was for.
  */
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import {
   composePlan,
   finalizeComposedPlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type DOW,
 } from './generate';
@@ -56,8 +56,8 @@ function cimBlock(): ComposePlanInput {
     qualityDows: [2, 4] as DOW[],
     trainingDaysPerWeek: null,
     crossModes: [],
-    rxQuality: inlinePrescriptions(distanceCategoryOfPublic(distanceMi)),
-    rxRaceSpecific: inlinePrescriptions(distanceCategoryOfPublic(distanceMi)),
+    rxQuality: inlinePrescriptions(distanceCategoryOrThrow(distanceMi)),
+    rxRaceSpecific: inlinePrescriptions(distanceCategoryOrThrow(distanceMi)),
     tPaceSec: (goalT != null && currentT != null ? Math.min(goalT, currentT) : goalT) ?? currentT ?? 480,
     lthr: null,
     maxHr: null,

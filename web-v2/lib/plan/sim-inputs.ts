@@ -29,7 +29,6 @@ import {
   daysBetween,
   spacedQualityDowsFromAvailable,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ResolvedPrescriptions,
   composePlan,
   composeMaintenancePlan,
@@ -38,6 +37,7 @@ import {
   weekStartBoundaryOf,
 } from './generate';
 import { lookupTierTarget, pickPlanMode, type PlanMode } from './goal-tiers';
+import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/distance-category';
 import { tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
 import { vdotFromRace, tPaceFromVdot, predictRaceTime } from '@/lib/training/vdot';
 import {
@@ -227,7 +227,11 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     if (d > 365) return { ok: false, reason: 'Race is over a year out · the engine plans within a year.' };
   }
 
-  const cat = distanceCategoryOfPublic(raceDistanceMi);
+  // #12 follow-up (2026-08-18) · THE categorizer, direct. The distance comes
+  // from SIM_DISTANCE_MI, a table of six known events, so a null here means the
+  // table gained a row with no mileage — refuse rather than plan the wrong race.
+  const cat = distanceCategoryOrNull(raceDistanceMi);
+  if (cat == null) return { ok: false, reason: UNKNOWN_DISTANCE_REASON };
   // FID-2 · prefer the real level + phase-aware prescriptions (resolved by the route
   // from workout_library, matching the production engine); fall back to the inline
   // catalog when not provided (e.g. unit tests with no DB).

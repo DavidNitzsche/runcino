@@ -26,11 +26,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import { PERSONAS, type SyntheticRunner } from './synthetic-runners';
 import {
   composePlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   parseGoalSeconds,
   type ComposePlanInput,
   type DOW,
@@ -64,7 +64,7 @@ describe('parseGoalSeconds · accepts multiple goal-time formats', () => {
  * startMondayISO so plan layouts are reproducible across test runs.
  */
 function personaToComposeInput(p: SyntheticRunner): ComposePlanInput {
-  const cat = distanceCategoryOfPublic(p.race.distanceMi);
+  const cat = distanceCategoryOrThrow(p.race.distanceMi);
   // Fixed start date · 2026-01-05 is a Monday.
   const startMondayISO = '2026-01-05';
   // Race day = startMonday + weeksOut × 7. Use Sunday as race day so the

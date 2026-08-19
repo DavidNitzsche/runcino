@@ -13,7 +13,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { validateComposedPlan, PlanValidationError } from '@/lib/plan/validate';
-import { resolvePrescriptions, distanceCategoryOfPublic } from '@/lib/plan/generate';
+import { resolvePrescriptions } from '@/lib/plan/generate';
+import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { buildSimPlan } from '@/lib/plan/sim-inputs';
 import { SIM_DISTANCE_MI, type SimInputs, type SimDistance } from '@/lib/plan/sim-constants';
 import { requireUserId } from '@/lib/auth/session';
@@ -34,8 +35,9 @@ export async function POST(req: NextRequest) {
     let rxOverride: Parameters<typeof buildSimPlan>[1];
     const raceDistMi = body.goalMode === 'justRun' ? SIM_DISTANCE_MI.half : SIM_DISTANCE_MI[body.distance as SimDistance];
     if (raceDistMi) {
-      const cat = distanceCategoryOfPublic(raceDistMi);
+      const cat = distanceCategoryOrNull(raceDistMi);
       try {
+        if (cat == null) throw new Error('unknown sim distance');
         const [rxQuality, rxRaceSpecific] = await Promise.all([
           resolvePrescriptions(cat, 'quality', body.experienceLevel ?? null),
           resolvePrescriptions(cat, 'race_specific', body.experienceLevel ?? null),

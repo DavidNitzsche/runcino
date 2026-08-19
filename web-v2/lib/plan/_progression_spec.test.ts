@@ -15,6 +15,7 @@
  * jsonb column cannot quietly erase the block.
  */
 import fs from 'node:fs';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
@@ -27,7 +28,6 @@ import {
   composePlan,
   finalizeComposedPlan,
   inlinePrescriptions,
-  distanceCategoryOfPublic,
   type ComposePlanInput,
   type DOW,
 } from './generate';
@@ -52,8 +52,8 @@ function cimBlock(): ComposePlanInput {
     bestRecentVdot: 44.1, isMidBlock: false,
     longRunDow: 0 as DOW, restDow: 5 as DOW, qualityDows: [2, 4] as DOW[],
     trainingDaysPerWeek: null, crossModes: [],
-    rxQuality: inlinePrescriptions(distanceCategoryOfPublic(distanceMi)),
-    rxRaceSpecific: inlinePrescriptions(distanceCategoryOfPublic(distanceMi)),
+    rxQuality: inlinePrescriptions(distanceCategoryOrThrow(distanceMi)),
+    rxRaceSpecific: inlinePrescriptions(distanceCategoryOrThrow(distanceMi)),
     tPaceSec: (goalT != null && currentT != null ? Math.min(goalT, currentT) : goalT) ?? currentT ?? 480,
     lthr: null, maxHr: null,
   } as ComposePlanInput;

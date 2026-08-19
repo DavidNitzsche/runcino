@@ -34,11 +34,12 @@
  * in `select.ts`. §17 (warm-up, drills, cool-down) is session scaffolding, not
  * a workout; `quality-day.ts` already owns the warm-up and cool-down bands.
  *
- * ── Nothing here is wired ──────────────────────────────────────────────────
+ * ── Wired, 2026-08-18 ──────────────────────────────────────────────────────
  *
- * This module is standalone and is imported by its tests, the doctrine registry
- * and nothing else yet. The composer call sites that should consume it are
- * named in the module docstring of `select.ts`.
+ * `select.ts` reads this, `lib/plan/catalogue-rx.ts` renders what it chooses
+ * into the engine's prescription grammar, and `lib/plan/generate.ts` calls that
+ * once per quality slot. See `select.ts`'s header for what the wiring replaced
+ * and for the shapes here the engine's grammar cannot yet express.
  */
 import {
   CONTINUOUS_TEMPO_MINUTES,

@@ -92,6 +92,7 @@ import {
   distanceCategoryOrNull,
 } from '@/lib/race/distance-category';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { anchorsFor } from '@/lib/plan/catalogue-rx';
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
 import { VDOT_FULL_VALUE_DAYS, VDOT_EXPIRY_DAYS, FADE_TAIL_DAYS } from '@/lib/training/vdot';
 import {
@@ -1943,6 +1944,67 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       // quality slot this claim should be revisited, not silently widened.
       if (qualityFamilyFor('m', 'BASE', 0, 5, 'intervals') !== null) {
         throw new Error('the engine now places a quality family in BASE · §15 base row is easy volume + strides');
+      }
+    },
+  },
+  {
+    id: 'VOCAB.catalogue-anchors',
+    binds: ['lib/plan/catalogue-rx.ts#anchorsFor'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Pace conversion from a race time',
+    claim:
+      'The workout catalogue declines any session whose pace zones the composer cannot anchor, ' +
+      'rather than pacing it by inference. The composer carries two numbers per week — the ' +
+      'threshold pace and the rep pace — and extends them onto two RACE-pace zones using this ' +
+      'table: T is anchored to half-marathon pace, so an @HM session is a T session; I is ' +
+      'anchored to 3K-5K, so an @5K session is an I session. If either relationship stops ' +
+      'holding, the labels the engine writes stop matching the paces the watch runs.',
+    check({ cite }) {
+      const t = cite.table();
+      const milesIn = (cell: string): number[] =>
+        [...cell.matchAll(/(\d+(?:\.\d+)?\s*K|half[- ]marathon|marathon|mile)/gi)]
+          .map((m) => distanceMiFromLabel(m[1].replace(/\s+/g, '')))
+          .filter((x): x is number => x != null);
+
+      const anchors = anchorsFor({ tPaceSec: 435, iPaceSec: 400 });
+
+      // T's row must still name a half-marathon-class race, or `HM ← T` is an
+      // invention rather than a reading.
+      const tCats = new Set(milesIn(t.cell('T', 'Relationship')).map((mi) => distanceCategoryOrNull(mi)));
+      if (anchors.HM != null && !tCats.has('hm')) {
+        throw new Error(
+          `catalogue-rx anchors HM off the threshold pace, but Research/01's T row now reads ` +
+            `"${t.cell('T', 'Relationship')}" and names no half-marathon-class race`,
+        );
+      }
+      if (anchors.HM != null && anchors.HM !== anchors.T) {
+        throw new Error('catalogue-rx anchors HM to something other than the T pace it claims to read off');
+      }
+
+      // I's row must still name a 5K, or `5K ← I` is likewise an invention.
+      const iCats = new Set(milesIn(t.cell('I', 'Relationship')).map((mi) => distanceCategoryOrNull(mi)));
+      if (anchors['5K'] != null && !iCats.has('5k')) {
+        throw new Error(
+          `catalogue-rx anchors 5K off the rep pace, but Research/01's I row now reads ` +
+            `"${t.cell('I', 'Relationship')}" and names no 5K-class race`,
+        );
+      }
+      if (anchors['5K'] != null && anchors['5K'] !== anchors.I) {
+        throw new Error('catalogue-rx anchors 5K to something other than the I pace it claims to read off');
+      }
+
+      // The zones the composer deliberately leaves unanchored. Each one is a
+      // pace `buildWorkoutSpec` would not run, so offering it would put a
+      // number on the label the watch never sees. If a future change anchors
+      // one of them, spec-builder has to learn to pace it in the same commit.
+      for (const z of ['ST', '10K', '3K', 'R', 'mile', 'MP', 'M', 'E'] as const) {
+        if (anchors[z] != null) {
+          throw new Error(
+            `catalogue-rx now anchors ${z}; spec-builder paces a threshold slot at T and a rep ` +
+              `slot at I regardless of the prescription, so the label would promise a pace the ` +
+              `watch does not run. Teach spec-builder the zone first.`,
+          );
+        }
       }
     },
   },
