@@ -1304,15 +1304,107 @@ function clearSignalCopy(signal: DriftSignal): string {
 // kind).
 // ────────────────────────────────────────────────────────────────────────
 
-/** STRONG · a finished priority A/B race at a SIMILAR distance within
- *  180 days that came in more than 2% slower than the goal's
- *  equivalent. Distance band ±30% of the goal · marathons don't count
- *  against half goals (different endurance skill in Daniels' framework
- *  · a runner can hit VDOT 48 at HM and only VDOT 44 at the marathon
- *  due to fueling/endurance, not lack of fitness for half).
+/**
+ * The extra slowdown a CROSS-DISTANCE anchor must show before it is allowed to
+ * speak, in percent — `Research/02` §13.7's own confidence intervals, reused as
+ * the margin on this detector's triggers.
  *
- *  Picks the FASTEST qualifying race (best fitness expression), not
- *  just the most recent · "what have you shown you can do." */
+ * ── 2026-08-19 · WHY THIS REPLACED A ±30% DISTANCE BAND ──────────────────
+ *
+ * `detectRecentRaceDrift` used to admit only races within ±30% of the goal
+ * distance. For a 5K goal that window is 2.17-4.04 miles, so a 10K raced three
+ * weeks ago — very often the runner's single best piece of evidence — was
+ * dropped before the detector saw it. This is the STRONG detector, so its
+ * silence is the difference between telling a runner they are off-track and
+ * telling them they are on-track.
+ *
+ * The band's stated reason was that "marathons don't count against half goals
+ * · different endurance skill". That reason was already spent about twenty
+ * lines further down, where the detector stopped comparing raw paces and
+ * started VDOT-normalising the race to the goal distance (2026-06-04). Once
+ * both sides are expressed at the same race length, the distance window is not
+ * protecting against anything the normalisation has not already handled — it is
+ * just discarding evidence, hardest at the short distances where a ±30% window
+ * is barely a mile wide.
+ *
+ * What a cross-distance anchor DOES carry is prediction error, and doctrine
+ * publishes that error per span in §13.7 rather than telling anyone to throw
+ * the race away. So the span's stated CI becomes the margin: a cross-distance
+ * race must be that much further off goal before it counts, and a same-distance
+ * race is graded exactly as it was.
+ *
+ * COMPOSES WITH, DOES NOT DOUBLE-COUNT, `PREDICTION.cross-distance-span-bands`.
+ * That model widens the confidence BAND drawn around a projection. This is the
+ * TRIGGER on a drift detector. They read the same doctrine rows for two
+ * different questions and neither is applied twice to one number.
+ *
+ * One-sided rows are the exception that proves the rule. §13.7's "5K →
+ * marathon, no marathon block | ±10% (one-sided pessimistic)" means the error
+ * runs one way: the predicted marathon is optimistic and the real finish is
+ * SLOWER. The detector's equivalent time from a short anchor is therefore
+ * already the runner's best case, and firing on it understates the gap rather
+ * than overstating it. Adding margin there would suppress a signal doctrine
+ * says is conservative, so one-sided spans take no margin at all.
+ */
+/** `crossSpanCi`'s third argument selects between §13.7's two 5K→marathon rows.
+ *  This detector asks about a race the runner has ALREADY RUN, so whether a
+ *  marathon block is in place is not a property of the anchor. `null` takes the
+ *  no-block row, which is the one-sided-pessimistic one — and one-sided rows
+ *  take no margin, so the ambiguity cannot cost the runner a signal. */
+const MARATHON_SPECIFIC_TRAINING_UNKNOWN = null;
+
+function driftAnchorMarginPct(
+  anchorDistanceMi: number,
+  goalDistanceMi: number,
+): number | null {
+  const from = distanceCategoryOrNull(anchorDistanceMi);
+  const to = distanceCategoryOrNull(goalDistanceMi);
+  if (from == null || to == null) return null;
+  if (from === to) return 0;
+
+  // `Research/02` §14 rule 6 takes ultras out of this machinery by name — "use
+  // Cameron or exponent >= 1.10; switch to time-on-feet models beyond 100K" —
+  // so a VDOT normalisation across an ultra boundary is not a prediction
+  // doctrine endorses in either direction. Same-category ultra anchors still
+  // pass above; cross-category ones are declined rather than guessed at.
+  if (from === 'ultra' || to === 'ultra') return null;
+
+  // A span §13.7 states outright. `oneSided` takes no margin, per the note above.
+  const stated = crossSpanCi(anchorDistanceMi, goalDistanceMi, MARATHON_SPECIFIC_TRAINING_UNKNOWN);
+  if (stated != null) return stated.oneSided ? 0 : stated.pct;
+
+  // A span §13.7 does not print. Rather than interpolate a number nobody
+  // published, take the widest published row that BRACKETS this span — a
+  // conservative bound is a doctrine-stated number used where it cannot be too
+  // narrow, which is the opposite of inventing one.
+  //
+  //   · shortening (anchor longer than goal) · the only shortening row §13.7
+  //     publishes is "Marathon → 5K, recent base | ±3%", the widest shortening
+  //     span there is. Every unpublished shortening span (10K→5K, half→10K,
+  //     marathon→half) is a NARROWER extrapolation than that one.
+  //   · lengthening · "5K → marathon, marathon-trained | ±5%" is the widest
+  //     lengthening row with a stated block, and 5K→half is inside it.
+  return anchorDistanceMi > goalDistanceMi
+    ? CROSS_SPAN_CI_PCT.marathonToFiveK
+    : CROSS_SPAN_CI_PCT.shortToMarathonTrained;
+}
+
+/** STRONG · a finished priority A/B race within 180 days whose VDOT, expressed
+ *  at the goal's distance, comes in materially slower than the goal.
+ *
+ *  Any distance is admissible: the comparison is VDOT-normalised to the goal
+ *  distance, and a cross-distance anchor pays for its span with the margin
+ *  `driftAnchorMarginPct` reads out of `Research/02` §13.7.
+ *
+ *  Picks the race showing the BEST FITNESS (highest VDOT), not the fastest raw
+ *  pace and not the most recent · "what have you shown you can do."
+ *
+ *  2026-08-19 · ranking by raw pace was safe only while every candidate sat
+ *  within ±30% of one distance. Across distances it is not a comparison at all
+ *  — a 5K is run faster per mile than a 10K by definition, so a pace ranking
+ *  would have picked the shortest race in the window every time regardless of
+ *  the fitness behind it. VDOT is the quantity that means the same thing at
+ *  every distance, and the detector already computes it. */
 async function detectRecentRaceDrift(
   userUuid: string,
   goalSec: number,
@@ -1322,11 +1414,9 @@ async function detectRecentRaceDrift(
   const today = await runnerToday(userUuid);
   const cutoff = new Date(Date.parse(today + 'T12:00:00Z') - 180 * 86400000)
     .toISOString().slice(0, 10);
-  const minDist = raceDistanceMi * 0.7;
-  const maxDist = raceDistanceMi * 1.3;
-
-  // FASTEST qualifying race · ranked by distance-normalized pace. The runner
-  // has proven this fitness · we use it as the "current fitness" anchor.
+  // FITTEST qualifying race · ranked by VDOT, which is the only quantity
+  // comparable across distances. The runner has proven this fitness · we use it
+  // as the "current fitness" anchor.
   //
   // 2026-06-16 · finish seconds are resolved in JS, NOT cast in SQL.
   // meta.finishTime is an H:MM:SS display string ("1:32:45"); the old
@@ -1354,30 +1444,42 @@ async function detectRecentRaceDrift(
         AND meta->>'priority' IN ('A','B')
         AND meta->>'date' < $2
         AND meta->>'date' >= $3
-        AND (meta->>'distanceMi')::numeric BETWEEN $4 AND $5
+        AND (meta->>'distanceMi')::numeric > 0
         AND (
           (actual_result->>'finishS') IS NOT NULL
           OR NULLIF(meta->>'finishTime','') IS NOT NULL
         )`,
-    [userUuid, today, cutoff, minDist, maxDist],
+    [userUuid, today, cutoff],
   ).catch(() => ({ rows: [] }))).rows;
 
-  // Resolve finish seconds (finishS, else parse the HMS string) and rank by
-  // distance-normalized pace — all in JS, so a string finish can never throw.
-  let best: { slug: string; name: string | null; date: string; dist: number; finishS: number; pace: number } | null = null;
+  // Resolve finish seconds (finishS, else parse the HMS string), admit the
+  // spans doctrine can normalise, and rank by VDOT — all in JS, so a string
+  // finish can never throw and the admission rule stays readable and testable.
+  let best: {
+    slug: string; name: string | null; date: string;
+    dist: number; finishS: number; vdot: number; marginPct: number;
+  } | null = null;
   for (const row of rows) {
     const d = Number(row.dist);
     if (!d || d <= 0) continue;
     const fs = row.finish_s != null ? Number(row.finish_s) : parseRaceTime(row.finish_time);
     if (!fs || fs <= 0) continue;
-    const pace = fs / d;
-    if (!best || pace < best.pace) best = { slug: row.slug, name: row.name, date: row.date, dist: d, finishS: fs, pace };
+    // Null = a span `Research/02` does not normalise (an ultra on one side, an
+    // unrecognised distance). Declined rather than guessed at.
+    const marginPct = driftAnchorMarginPct(d, raceDistanceMi);
+    if (marginPct == null) continue;
+    const v = vdotFromRace(fs, d);
+    if (v == null) continue;
+    if (!best || v > best.vdot) {
+      best = { slug: row.slug, name: row.name, date: row.date, dist: d, finishS: fs, vdot: v, marginPct };
+    }
   }
 
   if (!best) return null;
   const r = { slug: best.slug, name: best.name, date: best.date };
   const dist = best.dist;
   const finishS = best.finishS;
+  const marginPct = best.marginPct;
 
   // 2026-06-04 · compare DISTANCE-NORMALIZED times, not raw paces.
   // Comparing marathon pace (484 s/mi) to half-marathon goal pace
@@ -1389,8 +1491,7 @@ async function detectRecentRaceDrift(
   // that VDOT would yield at the GOAL race's distance. Compare to the
   // goal time. Same fitness, same effort, just normalized to the same
   // race length.
-  const raceVdot = vdotFromRace(finishS, dist);
-  if (raceVdot == null) return null;
+  const raceVdot = best.vdot;
   const equivalentGoalDistTime = predictRaceTime(raceVdot, raceDistanceMi);
   if (equivalentGoalDistTime == null) return null;
   const slowdownPct = (equivalentGoalDistTime - goalSec) / goalSec * 100;
@@ -1412,13 +1513,27 @@ async function detectRecentRaceDrift(
   // 10% maps roughly to "the runner's recent best time corresponds to
   // a VDOT 2 points below the goal VDOT" · in Daniels-speak that's
   // a real fitness gap, not a training-can-close-it gap.
-  if (slowdownPct < 5) return null;
-  const weight: DriftWeight = slowdownPct >= 10 ? 'strong' : 'medium';
+  //
+  // A cross-distance anchor pays for its span first. `marginPct` is §13.7's
+  // published CI for exactly this pair, so the runner is never told they are
+  // drifting on a gap the prediction itself cannot resolve. Same-distance
+  // anchors carry margin 0 and grade at the original 5 / 10.
+  const mediumAt = 5 + marginPct;
+  const strongAt = 10 + marginPct;
+  if (slowdownPct < mediumAt) return null;
+  const weight: DriftWeight = slowdownPct >= strongAt ? 'strong' : 'medium';
+
+  // Say which race and, when it was a different distance, that the span was
+  // paid for. A runner reading "your 10K says you are behind on a 5K goal"
+  // deserves to see the engine account for the translation.
+  const spanNote = marginPct > 0
+    ? ` Different distance, so the gap had to clear an extra ${marginPct.toFixed(1)}% before it counted.`
+    : '';
 
   return {
     kind: 'recent_race',
     weight,
-    detail: `${r.name ?? r.slug} on ${r.date} implies ${formatGoalTime(equivalentGoalDistTime)} at this race's distance · ${slowdownPct.toFixed(1)}% slower than the goal.`,
+    detail: `${r.name ?? r.slug} on ${r.date} implies ${formatGoalTime(equivalentGoalDistTime)} at this race's distance · ${slowdownPct.toFixed(1)}% slower than the goal.${spanNote}`,
     evidence: {
       slug: r.slug,
       raceDate: r.date,
@@ -1428,6 +1543,7 @@ async function detectRecentRaceDrift(
       equivalentGoalDistTime,
       goalSec,
       slowdownPct: Number(slowdownPct.toFixed(2)),
+      crossDistanceMarginPct: marginPct,
     },
   };
 }

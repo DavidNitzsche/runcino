@@ -324,6 +324,10 @@ export async function GET(
     plannedHrCap: planRow?.hr_cap ?? null,
     actualMi: Number(data.distanceMi) || 0,
     actualPaceSPerMi,
+    // Real elapsed time where the row carries one · the recap otherwise derives
+    // it from distance × pace. Drives the Research/18 fuelling-relevance gate.
+    actualDurationSec:
+      Number(data.durationSec) || Number(data.movingTimeS) || Number(data.elapsedTimeS) || null,
     workPaceSPerMi,
     workDistanceMi,
     repCount,

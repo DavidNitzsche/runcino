@@ -723,3 +723,75 @@ describe('deriveRecap · terrain', () => {
     expect(doubleCounted - both).toBeGreaterThan(5);
   });
 });
+
+/**
+ * 2026-08-19 · two things the long-run recap asserted without evidence.
+ *
+ *   · `|| 'HMP'` named a marathoner's own marathon-pace finish "half-marathon
+ *     pace" whenever the workout spec carried no `finish_label`.
+ *   · The drift and fade branches blamed fuelling on ANY long run, including a
+ *     5K runner's 45-minute one, where Research/18 sets the carbohydrate target
+ *     to 0 g/hr and §8 prescribes water only.
+ */
+describe('LONG RUN · the recap says only what it knows', () => {
+  const long = (o: Partial<RecapInput> = {}): RecapInput => ({
+    type: 'long', phase: null, plannedMi: 20, actualMi: 20,
+    actualPaceSPerMi: 480, actualAvgHr: 148, ...o,
+  } as RecapInput);
+
+  it('a missing finish label prints the pace and nothing else', () => {
+    const f = deriveRecap(long({ finishMi: 6, finishPaceSPerMi: 412, finishLabel: null })).facts.join(' ');
+    expect(f).toContain('6mi @ 6:52');
+    expect(f).not.toContain('HMP');
+    expect(f).not.toContain('MP');
+  });
+
+  it('a spec that says "M" still says MP · the label was never the problem', () => {
+    const f = deriveRecap(long({ finishMi: 6, finishPaceSPerMi: 412, finishLabel: 'M' })).facts.join(' ');
+    expect(f).toContain('6mi @ MP 6:52');
+  });
+
+  it('an "HM" spec still says HMP', () => {
+    const f = deriveRecap(long({ finishMi: 4, finishPaceSPerMi: 400, finishLabel: 'HM' })).facts.join(' ');
+    expect(f).toContain('HMP');
+  });
+
+  /** 5 mi with HR climbing and the last third fading · 45 minutes of running. */
+  const fadingSplits = [
+    { mile: 1, paceSPerMi: 520, avgHr: 138 },
+    { mile: 2, paceSPerMi: 525, avgHr: 142 },
+    { mile: 3, paceSPerMi: 530, avgHr: 150 },
+    { mile: 4, paceSPerMi: 570, avgHr: 156 },
+    { mile: 5, paceSPerMi: 575, avgHr: 158 },
+  ];
+
+  it('a 45-minute long run is not told to eat earlier', () => {
+    const f = deriveRecap(long({
+      plannedMi: 5, actualMi: 5, actualPaceSPerMi: 544,
+      actualDurationSec: 45 * 60, actualAvgHr: 149, splits: fadingSplits,
+    })).facts.join(' ');
+    expect(f).toMatch(/HR climbed \d+ bpm/);      // the observation still lands
+    expect(f).not.toMatch(/eating something earlier/);
+    expect(f).not.toMatch(/checking your fueling/);
+    expect(f).toMatch(/effort, not fuel/);
+    expect(f).toMatch(/Too short to be fuel/);
+  });
+
+  it('the same run over two hours keeps the fuelling read', () => {
+    const f = deriveRecap(long({
+      plannedMi: 14, actualMi: 14, actualPaceSPerMi: 514,
+      actualDurationSec: 7200, actualAvgHr: 149, splits: fadingSplits,
+    })).facts.join(' ');
+    expect(f).toMatch(/eating something earlier/);
+    expect(f).toMatch(/checking your fueling/);
+  });
+
+  it('with no duration on the wire it is derived from distance × pace', () => {
+    // 5 mi at 9:04/mi = 45 min · same verdict as the explicit-duration case.
+    const f = deriveRecap(long({
+      plannedMi: 5, actualMi: 5, actualPaceSPerMi: 544,
+      actualAvgHr: 149, splits: fadingSplits,
+    })).facts.join(' ');
+    expect(f).toMatch(/effort, not fuel/);
+  });
+});

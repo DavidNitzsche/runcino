@@ -152,11 +152,58 @@ function grade(a: Arc) {
     // long at the bucket ceiling (correct), so the plan legitimately underreaches — that's expected
     // behaviour, not a defect. Consistent inputs still trigger underreach as before.
     const BUCKET_CEIL: Record<string, number> = { '0-3': 3, '3-6': 6, '6-10': 10, '10+': 999 };
-    const impliedAvgRun = recentWeekly / (a.weeklyFrequency || 1);
+    // SIM-COH-2 (2026-08-19) · the implied average run is over the days the
+    // runner can ACTUALLY run, which is their stated frequency capped by their
+    // available days — not the stated frequency alone.
+    //
+    // The `availableDays` archetypes are where this bit. `f5` with only Sat and
+    // Sun available is a TWO-day plan; measuring its 30 mi/wk self-report over
+    // five days implies a 6-mile average and looks consistent, while over the
+    // two days it can be run it implies FIFTEEN miles a run and busts the very
+    // '6-10' longest-run bucket the archetype also claims. That is precisely
+    // the impossible self-report SIM-COH-1 was written to exempt; it was just
+    // measuring against the wrong denominator to see it.
+    const schedulableDays = Math.min(a.weeklyFrequency || 7, a.availableDays?.length || 7);
+    const impliedAvgRun = recentWeekly / Math.max(1, schedulableDays);
     const inputsConsistent = impliedAvgRun <= (BUCKET_CEIL[a.longestRunBucket] ?? 999);
     if (inputsConsistent) {
+      // The long run is a per-SESSION quantity · a plan running fewer days does
+      // not get a smaller long run, so this band is compared as published.
       if (recentLong >= band.peakLongMiBand[0] && peakLong < band.peakLongMiBand[0] * 0.75) warn(`LONG_UNDERREACH ${cat}/${tier}`, a);
-      if (recentWeekly >= band.peakWeeklyMileageBand[0] && peakWk < band.peakWeeklyMileageBand[0] * 0.75) warn(`WK_UNDERREACH ${cat}/${tier}`, a);
+
+      /* WK-FREQ-1 (2026-08-19) · WEEKLY VOLUME IS A PER-WEEK QUANTITY, SO THE
+       * BAND ONLY MEANS ANYTHING ALONGSIDE THE DAY COUNT IT WAS PUBLISHED FOR.
+       *
+       * Research/22 never states a peak weekly volume on its own. Every plan
+       * table prints `| Days/week |` directly above `| Peak weekly volume |`:
+       * 5K-Advanced is "40-70 mi" at "6-7" days, 10K-Intermediate "30-40 mi" at
+       * "5". `TIER_TARGETS[cat][tier].daysPerWeek` is the engine's read of that
+       * row, and generate.ts overrides it with the runner's own stated
+       * frequency — deliberately, because a 3-day runner gets a 3-day plan.
+       *
+       * Grading that 3-day plan against a 5-day plan's weekly total asks the
+       * engine to deliver five days of volume in three sessions. It cannot,
+       * and it should not want to: `peakLongMiBand` caps the long run and
+       * `longRunShare` caps what fraction of the week it may be, both of them
+       * doctrine-gated. The engine already sits at the TOP of the long-run
+       * band in every one of the archetypes this used to flag — a 5K-Advanced
+       * 3-day peak week is `long 12 + intervals 7 + easy 10`, with the 12 the
+       * ceiling of the published `[8, 12]`. Reaching the unscaled floor would
+       * take two more runs of eleven-plus miles each, i.e. three long runs a
+       * week for a 5K goal. The plan is right; the expectation was wrong.
+       *
+       * So the floor is scaled by the days the plan actually runs against the
+       * days the band's plan runs, capped at 1 so a plan running MORE days than
+       * doctrine's is never given a discount. The precondition scales too,
+       * which makes the check apply to strictly MORE archetypes than before,
+       * not fewer — a low-frequency runner is now graded rather than skipped. */
+      const peakWeek = train.find((w: any) => w.weeklyMi === peakWk);
+      const peakWeekRunDays = peakWeek
+        ? peakWeek.days.filter((d: any) => d.distanceMi > 0).length
+        : band.daysPerWeek;
+      const dayScale = Math.min(1, peakWeekRunDays / Math.max(1, band.daysPerWeek));
+      const wkFloor = band.peakWeeklyMileageBand[0] * dayScale;
+      if (recentWeekly >= wkFloor && peakWk < wkFloor * 0.75) warn(`WK_UNDERREACH ${cat}/${tier}`, a);
     }
     if (a.goalTimeSec && peakLong === 0) warn('NO_LONG', a);
   }
