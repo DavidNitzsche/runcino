@@ -83,7 +83,11 @@ const WEEKLY_FREQ_MIN: WeeklyFrequency = 3;
 const WEEKLY_FREQ_MAX: WeeklyFrequency = 6;
 
 const HIST_AVG_CHIPS: { value: HistAvg; label: string }[] = [
-  { value: '0-5', label: '0-5 mi' },
+  // ZEROSAY-1 (2026-08-19) · see lib/onboarding/state.ts § HistAvg. Without a
+  // zero rung the lowest answer resolved to 3 mi/wk and the Couch-to-5K
+  // opening was unreachable from the front door.
+  { value: '0', label: "I don't run yet" },
+  { value: '0-5', label: 'Under 5 mi' },
   { value: '5-15', label: '5-15 mi' },
   { value: '15-25', label: '15-25 mi' },
   { value: '25-35', label: '25-35 mi' },
@@ -93,7 +97,8 @@ const HIST_AVG_CHIPS: { value: HistAvg; label: string }[] = [
   { value: '80+', label: '80+ mi' },
 ];
 const HIST_LONG_CHIPS: { value: HistLong; label: string }[] = [
-  { value: '0-3', label: '0-3 mi' },
+  { value: '0', label: 'None yet' },   // ZEROSAY-1
+  { value: '0-3', label: 'Under 3 mi' },
   { value: '3-6', label: '3-6 mi' },
   { value: '6-10', label: '6-10 mi' },
   { value: '10-16', label: '10-16 mi' },
@@ -237,14 +242,15 @@ export function Step1bGoalDetailsRedesign({ initial, stravaHistory }: Step1bGoal
               <SubLabel>Avg weekly mi · last 4 weeks</SubLabel>
               <div style={{ display: 'grid', gap: 'var(--sp-5)', marginTop: 'var(--sp-4)' }}>
                 {HIST_AVG_CHIPS.map((c) => (
-                  <Radio key={c.value} checked={state.histAvg === c.value} onChange={() => setState({ ...state, histAvg: c.value })} label={c.label} />
+                  <Radio key={c.value} checked={state.histAvg === c.value} onChange={() => setState({ ...state, histAvg: c.value, histLong: c.value === '0' ? '0' : (state.histLong === '0' ? null : state.histLong) })} label={c.label} />
                 ))}
               </div>
               <div style={{ marginTop: 'var(--sp-7)' }}>
                 <SubLabel>Longest recent run</SubLabel>
                 <div style={{ display: 'grid', gap: 'var(--sp-5)', marginTop: 'var(--sp-4)' }}>
                   {HIST_LONG_CHIPS.map((c) => (
-                    <Radio key={c.value} checked={state.histLong === c.value} onChange={() => setState({ ...state, histLong: c.value })} label={c.label} />
+                    // ZEROSAY-1 · the pair moves together at zero · see Step1bGoalDetails.
+                    <Radio key={c.value} checked={state.histLong === c.value} onChange={() => setState({ ...state, histLong: c.value, histAvg: c.value === '0' ? '0' : (state.histAvg === '0' ? null : state.histAvg) })} label={c.label} />
                   ))}
                 </div>
               </div>

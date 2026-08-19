@@ -3854,20 +3854,82 @@ function layoutWeek({
  *  their first run. The long + quality days and the weekly run count stay
  *  put; only an easy day moves. No-op when the anchor already runs or
  *  there's no easy day to relocate (a low-frequency week that's all
- *  long + quality). */
-function frontLoadFirstRun(days: DayPlan[], anchorDow: number): void {
+ *  long + quality).
+ *
+ *  FRONTLOAD-AVAIL-1 (2026-08-19) · IT NOW READS `availableDows`.
+ *
+ *  It never did, and it is the only placement step in the engine that
+ *  writes a running day without consulting the days the runner said they
+ *  can run. Every runner who signed up mid-week AND named their days got
+ *  their first-ever prescription on a day they had just told us they
+ *  cannot run — live on the beginner QA account, which said Tue/Thu/Sat,
+ *  signed up on a Wednesday, and was handed `dow3 easy 1.0mi`. Week 1
+ *  onward was correct, because week 1 onward never goes through here.
+ *
+ *  The destination is now chosen, not assumed:
+ *    · anchor day available (or availability unset) → the anchor, exactly
+ *      as before. Byte-identical for every plan that was already correct.
+ *    · anchor day UNAVAILABLE → the soonest day the runner CAN run that is
+ *      currently rest and lands before the donor. That still honours the
+ *      rule ("start them as soon as they are able") without prescribing a
+ *      day they ruled out.
+ *    · nothing earlier available → no-op. A runner who cannot run today
+ *      does not need to be started today.
+ *
+ *  The run count is conserved either way (one rest becomes easy, the donor
+ *  becomes rest), so the frequency cap and the long/quality days are
+ *  untouched, and the moved day is always easy → no hard-day adjacency is
+ *  created that was not already there. */
+function frontLoadFirstRun(
+  days: DayPlan[],
+  anchorDow: number,
+  availableDows: Set<number> | null = null,
+  /** FRONTLOAD-SPREAD-1 · refuse a destination that clusters the week onto
+   *  consecutive days. Set by the maintenance composer, whose own MAINT-SPREAD-1
+   *  pass exists to break exactly that pattern and whose weeks are graded on it
+   *  by `_maint_invariants.test.ts` — moving a run onto the anchor without
+   *  asking put 80 maintenance weeks onto three consecutive days. Left OFF for
+   *  `composePlan`, which has never had a spacing rule here and whose plans stay
+   *  byte-identical. */
+  preserveSpread = false,
+): void {
   const todaySlot = days.find((d) => d.dow === anchorDow);
   if (!todaySlot || todaySlot.type !== 'rest') return; // already runs today
   const easies = days.filter((d) => d.type === 'easy' && d.distanceMi > 0);
   if (easies.length === 0) return; // only long/quality this week — leave them
   const offset = (dow: number) => (dow - anchorDow + 7) % 7;
   const donor = easies.reduce((a, b) => (offset(b.dow) > offset(a.dow) ? b : a));
-  todaySlot.type = 'easy';
-  todaySlot.distanceMi = donor.distanceMi;
-  todaySlot.isQuality = false;
-  todaySlot.isLong = false;
-  todaySlot.subLabel = 'EASY';
-  todaySlot.notes = 'First run. Ease in at a conversational pace · the week settles into its rhythm from here.';
+  const candidates: DayPlan[] = (availableDows == null || availableDows.has(anchorDow))
+    ? [todaySlot]
+    : days
+      .filter((d) => d.type === 'rest' && availableDows.has(d.dow) && offset(d.dow) < offset(donor.dow))
+      .sort((a, b) => offset(a.dow) - offset(b.dow));
+  /** Longest run of consecutive calendar days among the week's running days,
+   *  measured from the week's own start — the same shape `_maint_invariants`
+   *  grades on, so this reads the number the gate reads. */
+  const maxConsecutive = (dows: number[]): number => {
+    const offs = dows.map(offset).sort((a, b) => a - b);
+    let best = 0, run = 0, prev = -2;
+    for (const o of offs) { run = o === prev + 1 ? run + 1 : 1; prev = o; best = Math.max(best, run); }
+    return best;
+  };
+  const before = maxConsecutive(days.filter((d) => d.distanceMi > 0).map((d) => d.dow));
+  const dest = candidates.find((c) => {
+    if (!preserveSpread) return true;
+    const after = maxConsecutive(
+      days.filter((d) => d.distanceMi > 0 && d.dow !== donor.dow).map((d) => d.dow).concat(c.dow),
+    );
+    // Two-in-a-row is ordinary; three is the cluster MAINT-SPREAD-1 names. A
+    // week that is already denser than that may not be made denser still.
+    return after <= Math.max(before, 2);
+  });
+  if (dest == null) return; // nothing they can run sooner without clustering the week
+  dest.type = 'easy';
+  dest.distanceMi = donor.distanceMi;
+  dest.isQuality = false;
+  dest.isLong = false;
+  dest.subLabel = 'EASY';
+  dest.notes = 'First run. Ease in at a conversational pace · the week settles into its rhythm from here.';
   donor.type = 'rest';
   donor.distanceMi = 0;
   donor.isQuality = false;
@@ -5252,7 +5314,8 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // weekly count (and the long/quality days) are untouched. Week 1+ keeps
   // the normal day-of-week rhythm. Monday-anchored regens skip this.
   if (weeks.length > 0 && new Date(input.startMondayISO + 'T12:00:00Z').getUTCDay() !== 1) {
-    frontLoadFirstRun(weeks[0].days, new Date(input.startMondayISO + 'T12:00:00Z').getUTCDay());
+    // FRONTLOAD-AVAIL-1 · the destination must be a day the runner can run.
+    frontLoadFirstRun(weeks[0].days, new Date(input.startMondayISO + 'T12:00:00Z').getUTCDay(), input.availableDows ?? null);
   }
 
   // 2026-08-17 · MIDRACE-1 · embed the runner's own B/C races that fall
@@ -5374,6 +5437,16 @@ export interface ComposeNonRaceInput {
   /** Runner's recent peak weekly · last race-prep peak. When unknown,
    *  recentWeeklyMi serves as the proxy. */
   recentPeakWeeklyMi: number;
+  /** MAINT-NOBLOCK-1 (2026-08-19) · the MEASURED peak week, straight out of
+   *  `recentPeakWeeklyMileage`, before it is maxed with the stated volume.
+   *  `recentPeakWeeklyMi` above deliberately erases the difference (DOCTRINE-4
+   *  needs a usable number for the reverse taper), and that erasure is what
+   *  made a day-one runner's CURRENT volume look like a peak they had come
+   *  down from. 0 or null → the runner has no completed block behind them.
+   *  Absent → inferred from `recentPeakWeeklyMi > recentWeeklyMi`, which is
+   *  what a real completed block always looks like against its own 28-day
+   *  mean; that keeps every hand-built harness reading the same as before. */
+  measuredPeakWeeklyMi?: number | null;
   easyDayMedianMi: number;
   longRunDow: DOW;
   restDow: DOW;
@@ -5451,6 +5524,39 @@ const COLD_START_WEEK1_RUN_MIN = 8;
 /** `Research/22` §8 · "Peak workout | 30 min continuous run". */
 const COLD_START_PEAK_RUN_MIN = 30;
 
+/* ── MAINT-NOBLOCK-1 (2026-08-19) · 70% of a block that never happened ──────
+ *
+ * A runner reporting 20-25 mi/wk with a half 116 days out was authored a
+ * 10 mi/wk block with four rest days on their first day in the app. The
+ * arithmetic is `MAINTENANCE_BY_TIER.intermediate.weeklyPctOfPeak = 0.70`
+ * applied to `peakAnchor`, and `Research/22` §7's own row is explicit about
+ * what that percentage is a percentage OF: "Peak weekly volume | ~65% of
+ * **last cycle's peak**". A day-one onboarder has no last cycle. The number
+ * being cut by 30% was their current, sustainable volume.
+ *
+ * Doctrine already decided which section governs this mode. DOCTRINE-MAINTFREQ-1
+ * (see the header on MAINTENANCE_BY_TIER in goal-tiers.ts) ruled that §6 Base
+ * Building / Off-Season governs, not §7 Maintenance, because this mode fires
+ * when the runner HAS a goal race and it is simply not near yet — that runner
+ * is base-building. That ruling re-pointed FREQUENCY to §6 and left VOLUME on
+ * §7. This is the other half of the same ruling.
+ *
+ * §6's row: "Peak weekly volume | 80-100% of last cycle's peak (or whatever
+ * level the runner can sustain durably)". The parenthetical is written for
+ * exactly this runner. With no last cycle to take a percentage of, the anchor
+ * IS the durable level, and the whole of it stands — no reduction, and no
+ * invented build either.
+ *
+ * The discriminator is evidence, not a guess: `recentPeakWeeklyMileage` is a
+ * query over logged runs, and it returns 0 for a runner who has logged none.
+ * A runner who genuinely came down from a block keeps §7's reduction.
+ */
+/** `Research/22` §6 · with no last cycle's peak, the anchor is "whatever level
+ *  the runner can sustain durably" and the block holds it. The 80-100% band in
+ *  the same row applies to a LAST CYCLE'S PEAK, which this runner has none of,
+ *  so it is not a second reduction to apply on top. */
+const BASE_BUILD_SUSTAINABLE_PCT = 1.00;
+
 /**
  * Compose a 4-week maintenance plan. Single phase 'MAINTENANCE'. The
  * graduate cron regenerates this every 4 weeks until the next race
@@ -5467,7 +5573,15 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     ? { ...tierShape, daysPerWeek: input.trainingDaysPerWeek }
     : tierShape;
   const peakAnchor = Math.max(input.recentPeakWeeklyMi, input.recentWeeklyMi);
-  const targetWeekly = Math.round(peakAnchor * shape.weeklyPctOfPeak);
+  // MAINT-NOBLOCK-1 · is there a completed block behind this runner at all?
+  // See the block comment above `BASE_BUILD_SUSTAINABLE_PCT`.
+  const hasCompletedBlockPeak = input.measuredPeakWeeklyMi != null
+    ? input.measuredPeakWeeklyMi > 0
+    : input.recentPeakWeeklyMi > input.recentWeeklyMi;
+  const weeklyPctApplied = hasCompletedBlockPeak
+    ? shape.weeklyPctOfPeak            // Research/22 §7 · ~65% of last cycle's peak
+    : BASE_BUILD_SUSTAINABLE_PCT;      // Research/22 §6 · the durable level, held
+  const targetWeekly = Math.round(peakAnchor * weeklyPctApplied);
   // SP-6 · maintenance long is PROPORTIONAL to recent fitness, not an absolute 8mi floor.
   // The old `max(8, ...)` gave a 15mpw / 5mi-recent runner an 8mi long = 160% of recent +
   // 35% of the week (over both the 110% injury cap and the ~30% proportion cap). Cap at
@@ -5808,6 +5922,35 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     });
   }
 
+  /* ── FRONTLOAD-MAINT-1 (2026-08-19) · maintenance front-loads too ─────────
+   *
+   * "Get them running on day one" was written into `composePlan` and only
+   * `composePlan`, so it never applied to the ONE onboarding path most likely
+   * to need it: a runner whose race sits outside the build window gets a
+   * maintenance block, and `qa-race-…` signed up on a Wednesday and was shown
+   * two rest days before their first run.
+   *
+   * Two exclusions, both deliberate:
+   *
+   *   · COLD START. `Research/22` §8's own parameter row is "Days/week | 3
+   *     (with rest day between)", and `coldStartWeek` places its sessions on
+   *     that spacing. Front-loading one onto the anchor can seat two sessions
+   *     back to back, which is the one thing §8 spells out not to do. A
+   *     sedentary starter waits for their first scheduled day.
+   *   · RECOVERY. `composeRecoveryPlan` deliberately does NOT call this. That
+   *     block only ever exists in the days after a race, where `Research/00b`
+   *     prescribes days of zero-to-very-light running — the exact column the
+   *     engine already mis-spent once (see Rule 7 in CLAUDE.md). "Start them
+   *     today" is an onboarding rule, not a post-race one.
+   *
+   * Ordered after FRONTLOAD-AVAIL-1 on purpose: without that fix this call
+   * would propagate the unavailable-day bug into a second composer.
+   */
+  const maintAnchorDow = new Date(input.startMondayISO + 'T12:00:00Z').getUTCDay();
+  if (weeks.length > 0 && !noVolumeSignal && maintAnchorDow !== 1) {
+    frontLoadFirstRun(weeks[0].days, maintAnchorDow, input.availableDows ?? null, true);
+  }
+
   return {
     weeks,
     blocks,
@@ -5819,6 +5962,13 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       recent_avg_mpw: input.recentWeeklyMi,
       tier: input.tier,
       maintenance_shape: shape,
+      // MAINT-NOBLOCK-1 · `maintenance_shape` is the TIER LOOKUP, and its
+      // weeklyPctOfPeak is no longer always the fraction that ran. Record which
+      // doctrine arm this block was sized by, and the number it used, so the
+      // audit surface cannot quietly disagree with the plan the way
+      // target_weekly_mi did (see VOL-2 in finalizeComposedPlan).
+      volume_anchor: hasCompletedBlockPeak ? 'last_cycle_peak' : 'durable_level',
+      weekly_pct_applied: weeklyPctApplied,
       target_weekly_mi: targetWeekly,
       target_long_mi: targetLong,
       next_race: input.nextRace,
@@ -6644,6 +6794,46 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
   // DOCTRINE-TID-1 (2026-08-17) · the 80/20 constraint, which the engine has
   // never had in any form. Runs LAST, because every pass above moves mileage.
   applyIntensityFloor(composed);
+
+  /* ── VOL-2 (2026-08-19) · authored_state agrees with the plan ──────────────
+   *
+   * VOL-1 above reconciles every week's `weeklyMi` to its realized day-sum, and
+   * MAINT-WEEKLYML-1 re-snapshots `vols` from it. The SCALARS in
+   * `authored_state` were never reconciled to anything, so the audit surface
+   * and the plan disagreed: `qa-race-…` was stored with
+   * `target_weekly_mi = 14` against a block whose days summed to 10, and
+   * `target_long_mi = 4` is written from the same pre-finalize arithmetic.
+   * Those two numbers are the only record of what the engine INTENDED, so a
+   * stale one makes every later "did the plan drift?" read start from fiction.
+   *
+   * Reconciled per mode, because the scalar means a different week in each:
+   *   · maintenance · the block's non-cutback week → the realized MAX.
+   *   · recovery    · the reverse taper's opening week → week 0's realized.
+   * `composePlan` writes neither key, so its authored_state is untouched.
+   *
+   * Runs dead last, after every pass that can move a mile. `vols` is
+   * re-snapshotted here too, so a caller that forgets to do it cannot ship a
+   * plan whose `vols` disagree with its own weeks (generatePlan does it
+   * separately today; this makes the guarantee the function's, not the
+   * caller's). */
+  {
+    const st = composed.authoredState as Record<string, unknown> | undefined;
+    composed.vols = composed.weeks.map((w) => w.weeklyMi);
+    if (st != null) {
+      const realizedLong = Math.max(0, ...composed.weeks.flatMap(
+        (w) => w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi)));
+      if (typeof st.target_weekly_mi === 'number') {
+        st.target_weekly_mi = st.mode === 'recovery'
+          ? (composed.weeks[0]?.weeklyMi ?? 0)
+          : Math.max(0, ...composed.weeks.map((w) => w.weeklyMi));
+      }
+      // 0 is a real answer, not a missing one: the cold-start ladder authors no
+      // long run at all (Research/22 §8 · a day-one runner has no long), and
+      // leaving the pre-finalize scalar behind reported a 4 mi long over a week
+      // of three 0.6 mi run/walks.
+      if (typeof st.target_long_mi === 'number') st.target_long_mi = realizedLong;
+    }
+  }
 }
 
 /**
@@ -7396,6 +7586,10 @@ async function composeForUserInternal(
       // reverse-taper column is headed "Volume vs. peak"; feeding it an average
       // put marathon week 4 at ~46% of true peak against a 70-80% row.
       recentPeakWeeklyMi: Math.max(recentPeakWeeklyMi, inputs.compose.recentWeeklyMi),
+      // MAINT-NOBLOCK-1 · the same query's answer BEFORE the max, so the
+      // composer can tell "came down from 40" from "has logged nothing and
+      // says 20". 0 here is the day-one onboarder.
+      measuredPeakWeeklyMi: recentPeakWeeklyMi,
       easyDayMedianMi: inputs.compose.easyDayMedianMi,
       longRunDow: inputs.compose.longRunDow,
       restDow: inputs.compose.restDow,
