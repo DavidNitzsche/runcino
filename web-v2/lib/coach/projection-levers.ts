@@ -22,6 +22,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { distanceMiOfMeta } from '@/lib/race/distance';
 import { predictRaceTime, formatRaceTime, DANIELS_VDOT_MAX } from '@/lib/training/vdot';
 import { VDOT_PER_ASSESSMENT_BLOCK } from '@/lib/training/vdot-gain-rate';
 import { researchSpanBasePct } from '@/lib/training/goal-projection';
@@ -354,29 +355,46 @@ async function findTuneUpCandidates(
   const fourWeeksBeforeGoal = new Date(goalDateMs - 4 * 7 * 86400 * 1000).toISOString().slice(0, 10);
   const tenWeeksBeforeGoal = new Date(goalDateMs - 10 * 7 * 86400 * 1000).toISOString().slice(0, 10);
 
-  const rows = (await pool.query(
+  // LABEL-ONLY-1 (2026-08-19) · the distance filter used to be a SQL predicate,
+  // `AND (meta->>'distanceMi')::numeric <= $5`. A race row written with a
+  // distance LABEL and no number has NULL there, and `NULL <= 26.2` is NULL,
+  // not true — so every label-only race was excluded from the tune-up lever
+  // outright. Two of the twelve race rows in production are that shape, and the
+  // failure is silent: the lever simply never appears, which is
+  // indistinguishable from "you have no suitable tune-up on the calendar".
+  //
+  // The filter moved to TypeScript, where the label is resolved at read time
+  // through the shared resolver. A row whose distance still will not resolve is
+  // DROPPED rather than defaulted — a tune-up recommendation has to name the
+  // race's distance to the runner, and there is no honest number to name.
+  const rows = (await pool.query<{
+    slug: string; name: string; date: string; priority: string; meta: unknown;
+  }>(
     `SELECT slug, meta->>'name' AS name, meta->>'date' AS date,
             meta->>'priority' AS priority,
-            (meta->>'distanceMi')::numeric AS distance_mi
+            meta
        FROM races
       WHERE user_uuid = $1
         AND slug <> $2
         AND (meta->>'priority') IS DISTINCT FROM 'A'
         AND (meta->>'date')::date >= $3::date
         AND (meta->>'date')::date <= $4::date
-        AND (meta->>'distanceMi')::numeric <= $5::numeric
       ORDER BY (meta->>'date')::date ASC`,
-    [userUuid, goalSlug, tenWeeksBeforeGoal, fourWeeksBeforeGoal, goalDistMi],
-  ).catch(() => ({ rows: [] as Array<{ slug: string; name: string; date: string; priority: string; distance_mi: string }> }))).rows;
+    [userUuid, goalSlug, tenWeeksBeforeGoal, fourWeeksBeforeGoal],
+  ).catch(() => ({ rows: [] as Array<{ slug: string; name: string; date: string; priority: string; meta: unknown }> }))).rows;
 
-  return rows.map((r) => ({
-    slug: r.slug,
-    name: r.name,
-    date: r.date,
-    distanceMi: Number(r.distance_mi),
-    distanceLabel: distanceLabelFor(Number(r.distance_mi)),
-    dateShort: niceDate(r.date),
-  }));
+  return rows
+    .map((r) => ({ r, distanceMi: distanceMiOfMeta(r.meta) }))
+    .filter((x): x is { r: typeof x.r; distanceMi: number } =>
+      x.distanceMi != null && x.distanceMi > 0 && x.distanceMi <= goalDistMi)
+    .map(({ r, distanceMi }) => ({
+      slug: r.slug,
+      name: r.name,
+      date: r.date,
+      distanceMi,
+      distanceLabel: distanceLabelFor(distanceMi),
+      dateShort: niceDate(r.date),
+    }));
 }
 
 function distanceLabelFor(distMi: number): string {

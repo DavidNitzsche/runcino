@@ -64,3 +64,41 @@ export function distanceMiFromLabel(label: string | null | undefined): number | 
   }
   return null;
 }
+
+/**
+ * A race row's distance in miles, resolved at READ time.
+ *
+ * Prefers the numeric `meta.distanceMi`, falls back to parsing the label
+ * (`meta.distanceLabel` → `meta.distance_label` → `meta.name`) through the
+ * parser above. Returns null when nothing resolves — callers MUST treat that
+ * as "unknown distance", never default it.
+ *
+ * ── why this lives here, not only in generate.ts ─────────────────────────────
+ *
+ * `meta.distanceMi` is NULL on every race row written by a path that stores a
+ * label only, which is most of them: verified in production 2026-08-19, 2 of
+ * the 12 race rows carry a label and no number. `generate.ts` has resolved that
+ * at read time since 2026-06-21 and a run of readers was fixed to match — but
+ * the fix was carried as an export from a 7,800-line module, so the consumers
+ * that most needed it either could not reach it without importing the whole
+ * plan engine or reached past it into raw SQL:
+ *
+ *     mi = row.distance_mi ? Number(row.distance_mi) : 0        // → 0
+ *     AND (meta->>'distanceMi')::numeric <= $5                  // → row excluded
+ *
+ * Both shapes make a label-only race INVISIBLE rather than unknown, and that is
+ * the more dangerous of the two failures: a signal that CANNOT fire looks
+ * exactly like a signal with nothing to report. Read-time resolution is the
+ * whole answer — no migration, no backfill, and no second source of truth to
+ * drift from this one.
+ *
+ * `distanceMiOf` in lib/plan/generate.ts is now a re-export of this function,
+ * so its existing call sites and its unit tests are unchanged.
+ */
+export function distanceMiOfMeta(meta: unknown): number | null {
+  const m = (meta ?? null) as Record<string, unknown> | null;
+  const numeric = Number(m?.distanceMi);
+  if (isFinite(numeric) && numeric > 0) return numeric;
+  const label = (m?.distanceLabel ?? m?.distance_label ?? m?.name ?? null) as string | null | undefined;
+  return distanceMiFromLabel(label);
+}

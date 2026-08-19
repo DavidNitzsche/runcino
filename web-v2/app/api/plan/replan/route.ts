@@ -76,7 +76,10 @@ export async function POST(req: NextRequest) {
   try {
     // 1 · regenerate (archives the old plan internally · same path as
     // auto-rebuild race_date_changed).
-    const result = await generatePlan({ userId, raceSlug: String(plan.race_id) });
+    // COACHED-GATE-1 (2026-08-19) · a runner asking to replan after illness or
+    // a missed block is asking for exactly this. Same reasoning as
+    // /api/plan/generate; the gate is for the automatic paths.
+    const result = await generatePlan({ userId, raceSlug: String(plan.race_id), allowCoached: true });
     const newPlanId = result.ok ? (result.plan_id ?? null) : null;
     if (!newPlanId) {
       return NextResponse.json(

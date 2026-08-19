@@ -148,7 +148,12 @@ export async function POST(req: NextRequest) {
   let rebuildOk = false;
   let rebuildReason: string | undefined;
   try {
-    const result = await generatePlan({ userId, raceSlug: planRow.race_id });
+    // COACHED-GATE-1 (2026-08-19) · this branch runs only on ACCEPT — the
+    // runner read a proposal and tapped yes. The automatic half of this loop,
+    // the code that RAISES proposals, is gated (fireAutoRebuild), so a coached
+    // runner should see none; a standing one is a row from before they told us
+    // about their coach, and accepting it is still their decision to make.
+    const result = await generatePlan({ userId, raceSlug: planRow.race_id, allowCoached: true });
     rebuildOk = result.ok;
     newPlanId = result.plan_id;
     rebuildReason = result.reason;

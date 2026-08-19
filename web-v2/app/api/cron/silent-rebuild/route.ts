@@ -24,6 +24,15 @@
  *   · NO plan_proposals row
  *   · NO new coach_intents
  *   · NO "your plan was adapted" banner on Today
+ *   · NO authorship for a runner whose own coach writes their plan
+ *     (COACHED-GATE-1, 2026-08-19). The gate lives at the top of
+ *     `generatePlan`, so this route needs no line of its own — which is the
+ *     point: this is the path that WAS missed when the gate was wired at each
+ *     authoring route by hand. It is automatic and invisible by design, so a
+ *     coached runner would have had their coach's plan quietly rewritten on
+ *     every rules landing, with nothing on any surface to show it. Deliberate
+ *     runner actions can opt out via `GenerateInput.allowCoached`; this is not
+ *     one, and must never pass it.
  *
  * Cite: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md (the rules being landed)
  */

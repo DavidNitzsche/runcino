@@ -23,7 +23,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await generatePlan({ userId, raceSlug });
+    // COACHED-GATE-1 (2026-08-19) · `generatePlan` now refuses to author for a
+    // runner whose own coach writes their plan. This route is a runner pressing
+    // a button that says generate my plan: a decision, not a surprise, and the
+    // gate exists to stop surprises. Overridden explicitly, per call, so the
+    // decision is visible here rather than absent from every call site.
+    const result = await generatePlan({ userId, raceSlug, allowCoached: true });
     if (!result.ok) {
       return NextResponse.json({ error: result.reason ?? 'generation failed' }, { status: 400 });
     }
