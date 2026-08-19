@@ -1253,6 +1253,14 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     conventions: [
       '"Highest accumulated stress workout" is mapped to excluding beginners. The doc names ' +
         'no tier.',
+      'Structure (a) is carried as a `double` with gapHours null, but it is a two-DAY shape — ' +
+        '"14–18 mi easy on Saturday + 6–10 mi MP on Sunday" — not two sessions in one day. It ' +
+        'sits under the same kind because the selector declines every `double` and the two ' +
+        'shapes are declined for different reasons: (a) needs an MP session placed the day ' +
+        'after the long run, which Research/00a\'s 48 h between hard sessions forbids and the ' +
+        'composer enforces; (c), "2-day back-to-back doubles", needs both. Structure (b) is ' +
+        'the one the engine DOES author, as the race-specific long run\'s marathon-pace ' +
+        'finish — see the doctrine claim MP.pre-fatigue-is-the-fast-finish-long.',
     ],
   },
 

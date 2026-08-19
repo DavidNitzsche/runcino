@@ -110,16 +110,34 @@ struct OnboardingView: View {
         let tz = TimeZone.current.identifier
 
         let histAvg: String = {
-            // The "35 to 45 miles" row sets weeklyMi=35 → "35+" (seeds 40 mpw); the "45+ miles"
-            // row sets weeklyMi=45 → "45+" (seeds 50 mpw). Before 2026-06-23 both folded into
-            // "35+", reading a 45+ runner as 38 mpw. Backend accepts "45+" since web-v2 d08847ee.
+            // Native never asks the avg-weekly-mileage history question on its own screen —
+            // it DERIVES the band from the mileage ladder above. Each rung maps to the
+            // backend band whose HIST_AVG_MIDPOINTS value sits nearest the rung's own band
+            // midpoint; ties break downward, so the cold-start read stays conservative.
+            //
+            //   rung  means      → band      midpoint
+            //   35    35-45 mi   → "35+"     40
+            //   45    45-55 mi   → "45+"     50   (exact · unchanged, keeps 45-pickers byte-stable)
+            //   55    55-65 mi   → "45-60"   52
+            //   65    65-75 mi   → "60-80"   70   (exact)
+            //   75    75-85 mi   → "60-80"   70   (tie with 80+ · broken down)
+            //   85    85-95 mi   → "80+"     90   (exact)
+            //   95    95+ mi     → "80+"     90   (open-ended top rung · conservative)
+            //
+            // HIGHVOL-1 (2026-08-19) · before this the ladder ended at 45, so every runner
+            // from 45 to 200 mi/wk sent "45+" and was read as a 50 mi/wk base. That one
+            // number anchors the volume curve's start and the cold-start pace floor.
+            // Every value below is in web-v2 VALID_HIST_AVG.
             switch weeklyMi ?? 0 {
             case ..<5:  return "0-5"
             case ..<15: return "5-15"
             case ..<25: return "15-25"
             case ..<35: return "25-35"
             case ..<45: return "35+"
-            default:    return "45+"
+            case ..<55: return "45+"
+            case ..<65: return "45-60"
+            case ..<85: return "60-80"
+            default:    return "80+"
             }
         }()
 
@@ -698,27 +716,35 @@ struct OnboardingView: View {
     }
 
     // Q2 — weekly mileage
+    //
+    // HIGHVOL-1 (2026-08-19) · the ladder used to stop at a "45+ miles" rung, so a runner
+    // holding 45 and a runner holding 95 sent the same value. Extended to the same eleven
+    // rungs web-v2 offers (WEEKLY_MI_CHIPS in components/onboarding/Step1bGoalDetails.tsx,
+    // all eleven in VALID_WEEKLY_MI). Eleven full-width rows do not fit an iPhone between
+    // the 40pt headline and the pinned Continue, so this one question lays its rows two-up.
     private var runQ_mileage: some View {
-        let labels = ["Under 5 miles", "5 to 15 miles", "15 to 25 miles",
-                      "25 to 35 miles", "35 to 45 miles", "45+ miles"]
-        let vals = [0, 5, 15, 25, 35, 45]
+        let labels = ["Under 5 mi", "5-15 mi", "15-25 mi", "25-35 mi", "35-45 mi", "45-55 mi",
+                      "55-65 mi", "65-75 mi", "75-85 mi", "85-95 mi", "95+ mi"]
+        let vals = [0, 5, 15, 25, 35, 45, 55, 65, 75, 85, 95]
         return runQ("What's your weekly\nmileage right now?",
                     context: "Approximate is fine · your current base, not a peak or goal.",
                     enabled: weeklyMi != nil) {
-            VStack(spacing: 10) {
-                ForEach(Array(labels.enumerated()), id: \.offset) { i, l in
-                    selectRow(l, selected: weeklyMi == vals[i]) {
-                        withAnimation(Theme.Motion.smooth) { weeklyMi = vals[i] }
-                    }
-                }
+            selectPairs(labels, selectedIndex: vals.firstIndex(where: { weeklyMi == $0 })) { i in
+                withAnimation(Theme.Motion.smooth) { weeklyMi = vals[i] }
             }
         }
     }
 
     // Q3 — longest recent run
+    //
+    // HIGHVOL-1 (2026-08-19) · "10+" is still a legal PERSISTED value (live rows and issued
+    // URLs carry it, and web-v2 VALID_HIST_LONG keeps accepting it) but is no longer offered:
+    // an open-ended top rung pinned every long-run anchor above 10 mi to the same 12, and
+    // that anchor is the 110%-of-prior-30d spike guard. Same three rungs the web decks added.
     private var runQ_longestRun: some View {
-        let opts = ["0-3", "3-6", "6-10", "10+"]
-        let labels = ["Up to 3 miles", "3 to 6 miles", "6 to 10 miles", "10+ miles"]
+        let opts = ["0-3", "3-6", "6-10", "10-16", "16-22", "22+"]
+        let labels = ["Up to 3 miles", "3 to 6 miles", "6 to 10 miles",
+                      "10 to 16 miles", "16 to 22 miles", "22+ miles"]
         return runQ("What's the longest run\nyou've done lately?",
                     context: "In the last 4 to 6 weeks. This sets your long-run floor.",
                     enabled: histLong != nil) {
@@ -1047,6 +1073,30 @@ struct OnboardingView: View {
                 .stroke(selected ? Color.white : Color.white.opacity(0.12), lineWidth: 1))
         }
         .buttonStyle(FaffPressStyle())
+    }
+
+    /// Two-up variant of `selectRow`, for a ladder too long to stack full-width.
+    /// Same row primitive, same spacing, same selection affordance — only the
+    /// wrap differs. Used by the weekly-mileage question, whose eleven rungs
+    /// (HIGHVOL-1) would otherwise run off the bottom of the screen. An odd
+    /// final row is left-aligned against a clear filler so the last rung keeps
+    /// the same width as the rest of its column.
+    private func selectPairs(_ labels: [String],
+                             selectedIndex: Int?,
+                             pick: @escaping (Int) -> Void) -> some View {
+        let rowStarts: [Int] = Array(stride(from: 0, to: labels.count, by: 2))
+        return VStack(spacing: 10) {
+            ForEach(rowStarts, id: \.self) { start in
+                HStack(spacing: 10) {
+                    ForEach(Array(start..<min(start + 2, labels.count)), id: \.self) { i in
+                        selectRow(labels[i], selected: selectedIndex == i) { pick(i) }
+                    }
+                    if start + 1 >= labels.count {
+                        Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+                    }
+                }
+            }
+        }
     }
 
     private func chip(text: String, on: Bool, action: @escaping () -> Void) -> some View {

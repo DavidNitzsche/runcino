@@ -493,6 +493,11 @@ import {
 } from '@/lib/training/aerobic-decoupling';
 import { FUELLING_RELEVANT_MIN_MINUTES } from '@/lib/coach/run-recap';
 import { CROSS_SPAN_CI_PCT } from '@/lib/training/goal-projection';
+import {
+  VALID_WEEKLY_MI,
+  HIST_AVG_MIDPOINTS,
+  HIST_LONG_MIDPOINTS,
+} from '@/lib/onboarding/state';
 
 export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   // ══ RECOVERY · the incident ═══════════════════════════════════════════════
@@ -10726,6 +10731,176 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       // fitness behind it.
       if (/if \(!best \|\| pace < best\.pace\)/.test(src)) {
         throw new Error('cross-distance anchors are ranked by raw pace again · only VDOT compares across distances');
+      }
+    },
+  },
+
+  // ══ §11 · the two shapes that are a DAY, not a slot ══════════════════════
+  {
+    id: 'MP.pre-fatigue-is-the-fast-finish-long',
+    binds: [
+      'lib/plan/generate.ts#longFinishSegment',
+      'lib/plan/catalogue-rx.ts#renderPrescription',
+      'lib/workout-catalogue/catalogue.ts#pre-fatigue-mp-work',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 11.4 Pre-fatigue marathon-pace work',
+    claim:
+      "§11.4's continuous structure is \"8 mi easy + immediate 8 mi MP\": half the session easy, " +
+      'half at marathon pace, run without a break. That is a long run with a marathon-pace ' +
+      'finish, and the engine already authors exactly it on the long-run day of the ' +
+      'race-specific phase, at the same half-the-distance share. So the prescription grammar ' +
+      'must keep DECLINING the catalogue sequence rather than rendering it: two ways to say ' +
+      'one session is worse than one, because the runner then gets both in a week that ' +
+      'doctrine gives one, and the second is charged to a budget the first already spent.',
+    check({ cite }) {
+      // (b) out of the doc's own Structures row, as a marathon-pace SHARE.
+      const structures = cite.table().cell('Structures', 'Prescription');
+      const b = structures.match(/\(b\)\s*(\d+(?:\.\d+)?)\s*mi\s+easy\s*\+\s*immediate\s*(\d+(?:\.\d+)?)\s*mi\s+MP/i);
+      if (!b) {
+        throw new Error(
+          `§11.4's Structures row no longer states structure (b) as "N mi easy + immediate N mi MP": "${structures}"`,
+        );
+      }
+      const easyMi = Number(b[1]);
+      const mpMi = Number(b[2]);
+      const docShare = mpMi / (easyMi + mpMi);
+
+      // The engine's own share, read out of the source rather than restated
+      // here. `longFinishSegment` is not exported; the constant is the number
+      // its RACE-SPECIFIC arm returns.
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      const at = src.indexOf('function longFinishSegment(');
+      if (at < 0) throw new Error('longFinishSegment is gone from generate.ts · the fast-finish long has moved');
+      const arm = src.slice(at).split("phase === 'RACE-SPECIFIC'")[1];
+      if (!arm) throw new Error("longFinishSegment no longer has a RACE-SPECIFIC arm · re-read what it writes on the long run");
+      const pct = arm.match(/pct:\s*([0-9.]+)\s*,\s*tag:\s*racePaceTag/);
+      if (!pct) throw new Error("longFinishSegment's RACE-SPECIFIC arm no longer returns a pct at the race-pace tag");
+      const engineShare = Number(pct[1]);
+      if (Math.abs(engineShare - docShare) > 1e-9) {
+        throw new Error(
+          `§11.4(b) is ${(docShare * 100).toFixed(0)}% of the session at MP and the race-specific ` +
+            `long finish is ${(engineShare * 100).toFixed(0)}% · they are no longer the same session, ` +
+            'so the decline below is no longer justified by "the engine already writes it"',
+        );
+      }
+
+      // And the catalogue sequence must still be declined, for the stated
+      // reason: it carries an EASY step, and every segment the grammar emits
+      // becomes a paced work phase on the watch.
+      const entry = WORKOUT_CATALOGUE.find((e) => e.slug === 'pre-fatigue-mp-work');
+      if (!entry) throw new Error('§11.4 is gone from the catalogue');
+      const seq = entry.structures.find((s) => s.kind === 'sequence');
+      if (!seq || seq.kind !== 'sequence') throw new Error("§11.4's continuous structure is no longer a sequence");
+      if (!seq.steps.some((s) => s.zone === 'E')) {
+        throw new Error("§11.4's sequence no longer carries an easy step · doctrine states half of it easy");
+      }
+      const rendered = renderPrescription(entry, {
+        structure: seq, reps: seq.steps.length, atPaceMinutes: 0, atPaceMi: 0, recoverySec: 0,
+      });
+      if (rendered !== null) {
+        throw new Error(
+          `§11.4's sequence now renders as "${rendered}" · the engine has two ways to write one ` +
+            'session, and this one puts a pace target on miles doctrine states as easy',
+        );
+      }
+
+      // §11.1's two-session day has no rendering either, and must not acquire
+      // one by accident: a `double` reaching the runner as a single label would
+      // describe a whole day as one session.
+      const canova = WORKOUT_CATALOGUE.find((e) => e.slug === 'canova-special-block');
+      if (!canova) throw new Error('§11.1 is gone from the catalogue');
+      const dbl = canova.structures.find((s) => s.kind === 'double');
+      if (!dbl) throw new Error("§11.1's structure is no longer a two-session day");
+      const canovaRendered = renderPrescription(canova, {
+        structure: dbl, reps: 1, atPaceMinutes: 0, atPaceMi: 0, recoverySec: 0,
+      });
+      if (canovaRendered !== null) {
+        throw new Error(
+          `§11.1's two-session day now renders as "${canovaRendered}" · one label cannot describe ` +
+            'two sessions six to eight hours apart, and plan_workouts holds one row per day',
+        );
+      }
+    },
+  },
+
+  // ══ ONBOARDING · what the form cannot say, the cold start cannot know ═════
+  {
+    id: 'VOLUME.onboarding-ladder-reaches-doctrine',
+    binds: [
+      'lib/onboarding/state.ts#VALID_WEEKLY_MI',
+      'lib/onboarding/state.ts#HIST_AVG_MIDPOINTS',
+      'lib/onboarding/state.ts#HIST_LONG_MIDPOINTS',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume table — miles per week (km in parentheses)',
+    claim:
+      'Doctrine names training volumes by distance and cohort, up to 200 mi/wk. A runner whose ' +
+      'real volume the onboarding form cannot express is read as whatever its top rung means ' +
+      'instead, and that one number anchors the ramp base, the cold-start pace floor and the ' +
+      "whole first block. So the ladder's ceiling, and the midpoint the engine reads behind it, " +
+      'must both reach at least the sub-elite volume doctrine names for the most demanding ' +
+      'distance this app plans. The open-ended top band is read at the LOW end of the cohort it ' +
+      'opens into, never above it, because an over-read invents fitness nobody claimed. And the ' +
+      "longest-recent-run ladder must reach the long run doctrine's own long-run cap gives a " +
+      'runner at that same sub-elite volume, because that answer is the long-run ramp anchor.',
+    check({ cite }) {
+      const t = cite.table();
+      // Every distance this app plans. The 50K / 100K / 100-mile rows are in
+      // the doc and are deliberately not read: the ladder is not asked to
+      // reach them.
+      const ROWS = ['5K', '10K', 'Half-marathon', 'Marathon'];
+      const subEliteFloor = (row: string) => parseBand(t.row(row)['Sub-elite'])[0];
+      const eliteFloor = (row: string) => parseBand(t.row(row)['Elite'])[0];
+      // The bar is the HARDEST row, not the easiest: a ladder that reaches 5K
+      // sub-elite and stops has still truncated every marathoner above it.
+      const need = Math.max(...ROWS.map(subEliteFloor));
+      // The band is a WEEKLY VOLUME, not a distance, so the cohort an 80+ mi/wk
+      // answer opens into is the highest one the table names at any distance —
+      // the marathon elite row. Reading it against the 5K elite floor instead
+      // would bound a marathoner's volume by a 5K runner's.
+      const openBandCeiling = Math.max(...ROWS.map(eliteFloor));
+
+      const topRung = Math.max(...VALID_WEEKLY_MI);
+      if (topRung < need) {
+        throw new Error(
+          `the weekly-mileage ladder stops at ${topRung} mi/wk · Research/00a §"Volume table" ` +
+            `calls ${need} mi/wk sub-elite, so every runner from ${topRung} up is read as a ` +
+            `${topRung} mi/wk runner and authored the same plan`,
+        );
+      }
+
+      const topMid = Math.max(...Object.values(HIST_AVG_MIDPOINTS));
+      if (topMid < need) {
+        throw new Error(
+          `HIST_AVG_MIDPOINTS tops out at ${topMid} mi/wk · the form can say ${topRung} but the ` +
+            `engine never READS above ${topMid}, and doctrine's sub-elite floor is ${need}`,
+        );
+      }
+      if (topMid > openBandCeiling) {
+        throw new Error(
+          `HIST_AVG_MIDPOINTS' open-ended top band is read as ${topMid} mi/wk, above the ` +
+            `${openBandCeiling} mi/wk floor of doctrine's highest cohort · an open band read ` +
+            'above the cohort it opens into fabricates volume the runner never claimed',
+        );
+      }
+
+      // The long-run ladder, against the same doc's own long-run cap. Measured
+      // at the sub-elite floor rather than at the ladder's ceiling, because the
+      // top rung is open-ended and read at its own low end by design.
+      const capLo = parseBand(
+        resolveCitation(cite.doc, '### Volume progression rules')
+          .table()
+          .cell('Long-run cap', 'Specification'),
+      )[0] / 100;
+      const topLong = Math.max(...Object.values(HIST_LONG_MIDPOINTS));
+      const longNeed = capLo * need;
+      if (topLong < longNeed) {
+        throw new Error(
+          `HIST_LONG_MIDPOINTS tops out at ${topLong} mi · a ${need} mi/wk runner's long run is ` +
+            `${longNeed} mi at Research/00a's own ${capLo * 100}% long-run cap, so the long-run ` +
+            'ramp anchor cannot be stated by the runner it matters most for',
+        );
       }
     },
   },

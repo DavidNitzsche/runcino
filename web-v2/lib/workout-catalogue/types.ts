@@ -176,7 +176,18 @@ export interface AlternationStructure {
   cycles: RepBand;
 }
 
-/** Two sessions in one calendar day · §11.1, and §5.4's double-threshold arm. */
+/**
+ * Two sessions the engine cannot put in one slot · §11.1's same-day block and
+ * §5.4's double-threshold arm.
+ *
+ * `gapHours` is what separates the two readings. Where the doc states hours,
+ * the two sessions share a calendar DAY (§11.1: "~6–8 hours apart"). Where it
+ * is null, the shape spans two days (§11.4's "14–18 mi easy on Saturday + 6–10
+ * mi MP on Sunday"). Both are declined by the selector, for different reasons —
+ * one because `plan_workouts` holds one prescribed session per date, the other
+ * because it wants a hard session the day after the long run. Read `gapHours`
+ * before assuming which.
+ */
 export interface DoubleStructure {
   kind: 'double';
   am: string;
