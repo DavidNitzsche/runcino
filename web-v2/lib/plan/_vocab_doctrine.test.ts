@@ -154,9 +154,26 @@ describe('DOCTRINE-VOCAB-1 · the plan carries the phase\'s vocabulary', () => {
     }
   });
 
-  it('leaves BASE to easy volume, as Research/04 §15\'s base row does', () => {
-    for (const slot of ['intervals', 'threshold', 'tempo'] as const) {
+  it('gives BASE §15\'s base row — speed work, and no T or I session', () => {
+    // DOCTRINE-BASE-2 (2026-08-19) · this test used to assert BASE placed
+    // NOTHING, on the reading that §15's base row "describes what an easy week
+    // already carries". It does not: the row's Primary workouts column names
+    // strides, hill sprints and occasional fartlek/light hills, and its
+    // Frequency column states a ceiling of two quality sessions a week — which
+    // is not a sentence anyone writes about a phase that carries none.
+    //
+    // What must still be true is the other half, and Research/00b states it in
+    // the negative: the reverse taper's first structured week is "Strides +
+    // light fartlek ... No threshold or VO2max". So the rep slot gets §7's
+    // speed family and the two T-family slots get nothing.
+    expect(qualityFamilyFor('m', 'BASE', 0, 5, 'intervals')).toBe('speed');
+    for (const slot of ['threshold', 'tempo'] as const) {
       expect(qualityFamilyFor('m', 'BASE', 0, 5, slot)).toBeNull();
+    }
+    // §15's rows are keyed on PHASE, not on the event — an aerobic base week
+    // is the same week whatever the block is building toward.
+    for (const cat of ['5k', '10k', 'hm', 'm', 'ultra'] as const) {
+      expect(qualityFamilyFor(cat, 'BASE', 0, 5, 'intervals')).toBe('speed');
     }
     // Ultra stays threshold-dominant: Research/00a:311-312 calls I-pace reps
     // "rarely" appropriate, and race-pace rep sessions are not its shape.

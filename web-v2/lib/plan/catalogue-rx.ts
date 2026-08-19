@@ -444,8 +444,18 @@ export function renderContinuousPhrase(entry: CatalogueEntry, dose: Dose): strin
 
 /* ──────────────────────────────────────────────────────────── the wiring ── */
 
-/** The engine's quality slot types, as `SLOT_FAMILIES` names them. */
-export type ComposerSlot = Extract<Slot, 'threshold' | 'intervals' | 'tempo'>;
+/**
+ * The engine's quality slot types, as `SLOT_FAMILIES` names them.
+ *
+ * DOCTRINE-BASE-2 (2026-08-19) · `speed` joins the three. It is the only slot
+ * whose families are what §15's BASE row names — §7's strides and hill sprints,
+ * plus the §8 light hills and §9 fartleks `SLOT_FAMILIES_IN_PHASE` admits there
+ * — and it is deliberately NOT one of the DAY types: the base week's structured
+ * day carries the engine's existing `intervals` type, so nothing new reaches
+ * the database, the mutation boundary or the watch. What changes is which
+ * doctrine row the session is drawn from, not what shape of row is written.
+ */
+export type ComposerSlot = Extract<Slot, 'threshold' | 'intervals' | 'tempo' | 'speed'>;
 
 export interface SlotRequest {
   history: CatalogueHistory;

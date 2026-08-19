@@ -164,15 +164,41 @@ describe('DOCTRINE-BASE-1 · BASE is skipped only for a rebuilt base', () => {
   const baseWeeks = (r: { weeks: Array<{ phase: string }> }) =>
     r.weeks.filter((w) => w.phase === 'BASE').length;
 
-  it('inserts BASE when the runner is below their OWN sustained volume', () => {
+  it('inserts BASE when the runner is below their own sustained volume for no stated reason', () => {
     // 31 mi/wk against a 45 mi sustained level is 69% — under doctrine's
     // deepest sanctioned down week (Research/00a "reduce by 20-30%"), so the
     // shortfall is a deficit rather than a deload. Research/00b's reverse taper
     // is explicit about the order: "progressively rebuild volume first, then
     // add intensity."
-    const r = cim({ meanMi: 31, sustainedMi: 45, baseMi: 31.5, interruptionWeeks: 2, allowedInterruptionWeeks: 4, lifted: true });
+    //
+    // DOCTRINE-BASE-3 (2026-08-19) · `lifted: false` is now load-bearing in
+    // this fixture and used to read `true`. `lifted` means the low stretch sits
+    // inside an interruption the engine itself mandated, and `resolveRampBase`
+    // already discounts those weeks when it sets the ramp base — so counting
+    // the same weeks as detraining here made one authoring answer the question
+    // both ways. Unexplained is what this case is about, and unexplained is
+    // what it now says.
+    const r = cim({ meanMi: 31, sustainedMi: 45, baseMi: 31, interruptionWeeks: 5, allowedInterruptionWeeks: 2, lifted: false });
     expect(31 / 45).toBeLessThan(BASE_REBUILT_SHARE);
     expect(baseWeeks(r)).toBeGreaterThan(0);
+  });
+
+  it('does NOT insert BASE when the dip is the recovery the engine itself prescribed', () => {
+    // DOCTRINE-BASE-3 · the owner's CIM authoring, with his real numbers off
+    // prod at 2026-08-31. The block starts fifteen days after an A-priority
+    // half, so the 28-day mean is mostly the taper before that race plus
+    // Research/00b's own 10-14 day half-marathon recovery window — volumes this
+    // engine wrote. `rampBaseForBuild` extends the allowance to cover
+    // exactly that ("A race the runner actually ran explains its own taper AND
+    // its own recovery window"), and `lifted` is the flag that says it did.
+    //
+    // The VOLUME ramp still applies: `baseMi` is 70% of sustained, not 100%,
+    // so the block opens well below the runner's own level. What does not
+    // happen is three weeks with the intensity taken out on the strength of
+    // weeks doctrine mandated.
+    const r = cim({ meanMi: 16.8, sustainedMi: 43.5, baseMi: 30.5, interruptionWeeks: 3, allowedInterruptionWeeks: 4, lifted: true });
+    expect(16.8 / 43.5).toBeLessThan(BASE_REBUILT_SHARE);
+    expect(baseWeeks(r)).toBe(0);
   });
 
   it('does NOT insert BASE for a runner steadily mid-build', () => {

@@ -2,11 +2,15 @@
 
 exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: per-week structural fingerprint is byte-stable > david-marathon-quality-vocab 1`] = `
 [
-  "wk4: tempo="5mi continuous tempo" ; intervals="10×60s hills @ 5K-10K effort · 2 min jog down"",
+  "wk0: intervals="10×60s hills @ 5K-10K effort · 2 min jog down"",
+  "wk1: intervals="2×90s @ 5K · 90s jog + 4×60s @ 5K · 60s jog + 4×30s · 30s jog + 4×15s @ mile · 15s jog"",
+  "wk2: intervals="5×3 min @ 5K-10K race pace · 2 min jog"",
+  "wk3: intervals="12×8s · by effort · 2 min jog"",
+  "wk4: tempo="5mi continuous tempo" ; intervals="8×3 min hills @ T-10K effort"",
   "wk5: threshold="3×1mi @ T pace · 60s jog" ; intervals="16×10s hills · by effort"",
-  "wk6: tempo="5mi continuous tempo" ; intervals="2×90s @ 5K · 90s jog + 4×60s @ 5K · 60s jog + 4×30s · 30s jog + 4×15s @ mile · 15s jog"",
-  "wk7: threshold="5×1km · MP → 5K · 60s jog" ; intervals="8×3 min hills @ T-10K effort"",
-  "wk8: tempo="5mi continuous tempo" ; intervals="9×800m @ I pace · 2 min jog"",
+  "wk6: tempo="5mi continuous tempo" ; intervals="7×800m @ I pace · 2 min jog"",
+  "wk7: threshold="5×1km · MP → 5K · 60s jog" ; intervals="5×1200m @ I pace · 2 min jog"",
+  "wk8: tempo="5mi continuous tempo" ; intervals="10×60s hills @ 5K-10K effort · 2 min jog down"",
   "wk9: tempo="6.5mi continuous wave tempo" ; intervals="3×12 min @ I-T transition · 60s jog"",
   "wk10: threshold="4×2km · MP → T · 2 min jog"",
   "wk11: tempo="5mi continuous tempo" ; intervals="3×9 min @ I-T transition · 60s jog"",
@@ -19,15 +23,15 @@ exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: p
 
 exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: per-week structural fingerprint is byte-stable > david-marathon-structure 1`] = `
 [
-  "wk0:BASE:60mi:long15:none",
-  "wk1:BASE:60mi:long15:none",
-  "wk2:BASE:62mi:long17:none",
-  "wk3:BASE:47mi:long17:none",
-  "wk4:QUALITY:63mi:long18:tempo+intervals",
+  "wk0:BASE:61mi:long15:intervals",
+  "wk1:BASE:60.5mi:long15:intervals",
+  "wk2:BASE:63mi:long17:intervals",
+  "wk3:BASE:50mi:long17:intervals",
+  "wk4:QUALITY:61.5mi:long18:tempo+intervals",
   "wk5:QUALITY:63.5mi:long19:threshold+intervals",
   "wk6:QUALITY:64mi:long20:tempo+intervals",
   "wk7:QUALITY:50mi:long18:threshold+intervals",
-  "wk8:QUALITY:63.5mi:long21:tempo+intervals",
+  "wk8:QUALITY:63mi:long21:tempo+intervals",
   "wk9:RACE-SPECIFIC:65mi:long22:tempo+intervals",
   "wk10:RACE-SPECIFIC:64mi:long22.5:threshold",
   "wk11:RACE-SPECIFIC:53mi:long19:tempo+intervals",

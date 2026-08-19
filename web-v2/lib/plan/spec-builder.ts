@@ -253,6 +253,29 @@ export function extractFinishSegment(
 // ── Time-based rep sets ──────────────────────────────────────────────────
 
 /**
+ * Does the prescription itself say this session is run by effort?
+ *
+ * It said so one way until now — the word "hills", which
+ * `catalogue-rx.ts:renderPrescription` writes in front of every §8 session for
+ * exactly this reason ("the family word keeps §8's effort-cued sets
+ * recognisable to `buildWorkoutSpec`"). But §8 is not the only effort-cued
+ * section. `zoneClause` renders "· by effort" for any catalogue entry whose doc
+ * row states NO pace at all, and DOCTRINE-BASE-2 makes the first of those
+ * reachable outside §8: `Research/04` §7.3 hill sprints, family `speed`, "Pace
+ * | Max effort, all-out" on an 8-15% grade. Matching only on the family word
+ * would have paced a fifteen-second maximal hill sprint at I pace — a label the
+ * watch does not run, which is the drift this file has twice paid for.
+ *
+ * So the gate reads the token the renderer actually emits. "· by effort" is
+ * written by one function in the codebase and by no hand-authored prescription,
+ * so nothing that was paced before becomes effort-cued now.
+ */
+function prescriptionIsEffortCued(prescription: string | null | undefined): boolean {
+  const p = String(prescription ?? '');
+  return /hill/i.test(p) || /by effort/i.test(p);
+}
+
+/**
  * DOCTRINE-VOCAB-1 (2026-08-17) · a rep set measured in seconds, not metres.
  *
  * `Research/04-workout-vocabulary.md` §8.1 sizes every hill repeat by duration
@@ -284,7 +307,7 @@ function timeRepSpec(
    *  no reachable pace, a cold start has no honest one. */
   effortCued = false,
 ): SpecBuildResult {
-  const byEffort = effortCued || /hill/i.test(String(prescription ?? ''));
+  const byEffort = effortCued || prescriptionIsEffortCued(prescription);
   // WU/CD use the same floors as the distance-based branches.
   const wuFloor = Math.max(0.5, Math.min(1.5, budgetMi * 0.3));
   const cdFloor = Math.max(0.5, Math.min(1.0, budgetMi * 0.25));
@@ -410,7 +433,7 @@ function segmentSpec(
   withRules: Record<string, unknown>,
   effortCued: boolean,
 ): SpecBuildResult {
-  const byEffort = effortCued || /hill/i.test(String(prescription ?? ''));
+  const byEffort = effortCued || prescriptionIsEffortCued(prescription);
   const steps: SpecStep[] = [];
   let workMi = 0;
   let restTotalS = 0;
