@@ -27,6 +27,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { dayKeyFromLocalParts, pgDayKey, addDaysToDayKey } from '@/lib/runtime/day-key';
 import { stripResearchCitations as stripCitationsSafe } from '@/lib/plan/strip-citations';
 import { loadSettings } from '@/lib/coach/settings';
+import { resolveShoeCapMi } from '@/lib/shoe/lifespan';
 import { cadenceTargetFor } from '@/lib/coach/cadence-target';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { resolveBlockState } from '@/lib/faff/block-state';
@@ -2140,7 +2141,10 @@ function adaptShoes(profile: Profile | null): ShoeRec[] {
       roles,                 // full set — editor populates all checkboxes from this
       preferred: s.preferred ?? true,
       mi: Math.round(s.mileage || 0),
-      max: Math.round(s.cap || 400),
+      // `s.cap` is already resolved upstream by loadProfileState via
+      // lib/shoe/lifespan.ts. The old `|| 400` here was a second, silent
+      // default that would have disagreed with it for any non-trainer.
+      max: Math.round(resolveShoeCapMi(s.shoeType, s.cap)),
       baseline_mi: Math.round(s.baseline_mi ?? 0),
     };
   });

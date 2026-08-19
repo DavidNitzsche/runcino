@@ -347,6 +347,13 @@ import {
 } from '@/lib/plan/simulator';
 import type { DoctrineClaim } from './types';
 import { matchLiteral, parseBand, parseBands, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
+import {
+  SHOE_LIFESPAN,
+  SHOE_TYPES,
+  SUPER_SHOE_MAX_SESSIONS_PER_WEEK,
+  defaultCapMi,
+  resolveShoeCapMi,
+} from '@/lib/shoe/lifespan';
 
 const CATS: DistCategory[] = ['5k', '10k', 'hm', 'm', 'ultra'];
 const TIERS: GoalTier[] = ['elite', 'advanced', 'intermediate', 'developing'];
@@ -11160,6 +11167,169 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           `HIST_LONG_MIDPOINTS tops out at ${topLong} mi · a ${need} mi/wk runner's long run is ` +
             `${longNeed} mi at Research/00a's own ${capLo * 100}% long-run cap, so the long-run ` +
             'ramp anchor cannot be stated by the runner it matters most for',
+        );
+      }
+    },
+  },
+  /* -- Footwear -----------------------------------------------------------
+   *
+   * The iPhone design draws a shoe against "that model's retirement mileage".
+   * Nothing in the schema said what kind of shoe it was, so five files each
+   * answered with a hardcoded number and they did not agree: 350, 400, 400,
+   * 400, and 450 across web and the phone. A runner's progress bar meant
+   * whichever file happened to draw it.
+   *
+   * Two claims, because two different things are being asserted:
+   *
+   *   - CONVENTION.shoe-retirement-default: the retirement mileage. The BANDS
+   *     are quoted from Research/17; the single DEFAULT inside each band is a
+   *     convention, and is labelled one.
+   *   - FOOTWEAR.super-shoe-session-cap: how OFTEN a plated shoe is run.
+   *     Genuine doctrine, genuine citation, and a different risk entirely
+   *     (skeletal load, not worn-out foam). Not folded into the bar.
+   */
+  {
+    id: 'CONVENTION.shoe-retirement-default',
+    binds: [
+      'lib/shoe/lifespan.ts#SHOE_LIFESPAN',
+      'lib/shoe/lifespan.ts#defaultCapMi',
+      'lib/shoe/lifespan.ts#resolveShoeCapMi',
+    ],
+    doc: 'Research/17-footwear.md',
+    anchor: '## Mileage Lifespan by Category',
+    claim:
+      'THE RETIREMENT MILEAGE IS A CONVENTION; ONLY THE BAND AROUND IT IS DOCTRINE. Research/17 ' +
+      'bands each category separately - a super shoe is spent at 150-250 mi where a max-cushion ' +
+      'trainer runs 400-600 - and both ends of every band in SHOE_LIFESPAN are read back out of ' +
+      'that table here. What doctrine does NOT do is pick one number inside a band, so the ' +
+      'defaults are a convention: 400 mi for the trainer family and 250 mi for race-day shoes, ' +
+      'both owner-confirmed, and the midpoint of its own band for the two categories neither ' +
+      'anchor names. The provenance is honest about being coarse - the familiar 300-500 mi rule ' +
+      'traces to one 1985 midsole-compression study, and wear varies with surface, body mass and ' +
+      'gait. Every default must sit INSIDE its doctrine band; that is what makes the convention ' +
+      'bounded rather than free. A runner own mileage_cap overrides all of it.',
+    check({ cite }) {
+      const t = cite.table();
+
+      for (const type of SHOE_TYPES) {
+        const spec = SHOE_LIFESPAN[type];
+        const [lo, hi] = parseBand(t.cell(spec.doctrineRow, 'Typical lifespan'));
+
+        // The band is doctrine - both ends, read out of the doc.
+        if (spec.lowMi !== lo || spec.highMi !== hi) {
+          throw new Error(
+            `SHOE_LIFESPAN.${type} carries ${spec.lowMi}-${spec.highMi} mi - Research/17 bands ` +
+              `"${spec.doctrineRow}" at ${lo}-${hi} mi. Re-read the table before changing either.`,
+          );
+        }
+
+        // The default is a convention, but a BOUNDED one: doctrine's own band
+        // is the fence. A default outside it is not a convention any more, it
+        // is a number contradicting the research it claims to sit inside.
+        if (defaultCapMi(type) < lo || defaultCapMi(type) > hi) {
+          throw new Error(
+            `defaultCapMi('${type}') is ${defaultCapMi(type)} mi, outside Research/17's own ` +
+              `${lo}-${hi} mi band for "${spec.doctrineRow}" - a convention may pick a point ` +
+              'inside doctrine, never one outside it.',
+          );
+        }
+      }
+
+      // The two owner-confirmed anchors, named explicitly so a later edit that
+      // drifts them has to argue with this claim rather than slip past it. An
+      // earlier draft defaulted to the low end of every band and would have
+      // retired a race shoe at 150 mi, with a third of its life left - that is
+      // the specific mistake this half of the claim exists to stop.
+      for (const t2 of ['daily_trainer', 'max_cushion', 'stability', 'trail'] as const) {
+        if (defaultCapMi(t2) !== 400) {
+          throw new Error(
+            `trainer-family default for ${t2} is ${defaultCapMi(t2)} mi - owner-confirmed 400`,
+          );
+        }
+      }
+      for (const t2 of ['super_shoe', 'racing_flat'] as const) {
+        if (defaultCapMi(t2) !== 250) {
+          throw new Error(
+            `race-day default for ${t2} is ${defaultCapMi(t2)} mi - owner-confirmed 250`,
+          );
+        }
+      }
+
+      // The doc must not have grown a category the engine silently ignores -
+      // that is precisely how a super shoe would come to be retired like a
+      // trainer, at nearly twice its life.
+      const covered = new Set(SHOE_TYPES.map((t2) => SHOE_LIFESPAN[t2].doctrineRow.toLowerCase()));
+      const missing = t.rows
+        .map((r) => r[t.headers[0]])
+        .filter((label) => label && !covered.has(label.toLowerCase()));
+      if (missing.length > 0) {
+        throw new Error(
+          `Research/17 now bands ${missing.map((m) => `"${m}"`).join(', ')} and lib/shoe/` +
+            'lifespan.ts has no ShoeType for it - a category the engine cannot name is a ' +
+            'category it retires at the daily-trainer default.',
+        );
+      }
+
+      // The resolver must actually USE the category, and an explicit cap must
+      // still beat it - the two behaviours the five old hardcodes destroyed.
+      if (resolveShoeCapMi('super_shoe', null) === resolveShoeCapMi('daily_trainer', null)) {
+        throw new Error(
+          'resolveShoeCapMi returns the same retirement mileage for a super shoe and a daily ' +
+            'trainer - the category is being ignored, which is the original defect.',
+        );
+      }
+      if (resolveShoeCapMi('super_shoe', 275) !== 275) {
+        throw new Error("a runner's explicit mileage_cap must override the convention default");
+      }
+      // A zero/negative cap is unset, not honoured - otherwise a "0 mi" typo
+      // makes percent-used infinite and the shoe reads spent on day one.
+      if (resolveShoeCapMi('track_spike', 0) !== defaultCapMi('track_spike')) {
+        throw new Error('a non-positive mileage_cap must fall back to the default, not be honoured');
+      }
+
+      // The honesty disclosure has to stay in the file it describes.
+      const src = sourceOf('web-v2/lib/shoe/lifespan.ts');
+      if (!/IS A CONVENTION/.test(src)) {
+        throw new Error(
+          'lib/shoe/lifespan.ts no longer says its defaults are a convention - the label is the ' +
+            'whole point, since nothing in Research/ picks a point inside a band.',
+        );
+      }
+    },
+  },
+  {
+    id: 'FOOTWEAR.super-shoe-session-cap',
+    binds: ['lib/shoe/lifespan.ts#SUPER_SHOE_MAX_SESSIONS_PER_WEEK'],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Scenario | Recovery adjustment |',
+    claim:
+      'A plated shoe is capped by HOW OFTEN it is run, not only by how far it has been run. ' +
+      'Research/00b limits high training volume in super shoes to 1-2 sessions per week and ' +
+      'rotates non-plated shoes for daily mileage, because bone and connective tissue absorb the ' +
+      'full load either way: the window saved on muscle damage may be paid back by skeletal load ' +
+      'if mileage in super shoes is unbounded. This is a separate signal from the retirement bar ' +
+      'and must not be folded into it - a shoe can be well inside its mileage and still be worn ' +
+      'too often. The constant is registered but NOT YET WIRED; this claim exists so the number ' +
+      'is gated before anything depends on it.',
+    check({ cite }) {
+      // Read the cap out of the doc's own row rather than restating it here.
+      const row = cite
+        .table()
+        .cell('High volume in super shoes during training', 'Recovery adjustment');
+      const [, hi] = parseBand(row);
+      if (SUPER_SHOE_MAX_SESSIONS_PER_WEEK !== hi) {
+        throw new Error(
+          `SUPER_SHOE_MAX_SESSIONS_PER_WEEK is ${SUPER_SHOE_MAX_SESSIONS_PER_WEEK} - Research/00b ` +
+            `caps super-shoe training at "${row.trim()}", i.e. ${hi} sessions/week.`,
+        );
+      }
+      // The skeletal-load reasoning is why the cap is a frequency and not a
+      // mileage. If that row goes, the constant has lost its justification.
+      const effects = resolveCitation(cite.doc, '### Recovery Effects').table();
+      if (!/same or longer/i.test(effects.cell('Recovery time at the level of bone/connective tissue', 'Direction'))) {
+        throw new Error(
+          'Research/00b no longer says bone/connective-tissue recovery is the same or longer in ' +
+            'super shoes - that is the entire basis for a per-week session cap.',
         );
       }
     },

@@ -8,6 +8,14 @@ import { Tile } from '@/components/redesign/core/Tile';
 import { Badge } from '@/components/redesign/core/Badge';
 import { Button } from '@/components/redesign/core/Button';
 import { Input } from '@/components/redesign/core/Input';
+import { Select } from '@/components/redesign/core/Select';
+import {
+  SHOE_LIFESPAN,
+  SHOE_TYPES,
+  DEFAULT_SHOE_TYPE,
+  defaultCapMi,
+  type ShoeType,
+} from '@/lib/shoe/lifespan';
 import { RangeScale } from '@/components/redesign/graphics/RangeScale';
 import { EmptyState } from '@/components/redesign/feedback/EmptyState';
 import { Dialog } from '@/components/redesign/feedback/Dialog';
@@ -148,7 +156,11 @@ export function GearClient({ seed }: { seed: FaffSeed }) {
 
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
-  const [retireAt, setRetireAt] = useState('350');
+  // Category first · it sets the retirement mileage. Was a bare '350' input
+  // with no category at all, which is how this file came to hold a fifth
+  // different default (Research/17 bands no category at 350).
+  const [shoeType, setShoeType] = useState<ShoeType>(DEFAULT_SHOE_TYPE);
+  const [retireAt, setRetireAt] = useState(String(defaultCapMi(DEFAULT_SHOE_TYPE)));
   const [addBusy, setAddBusy] = useState(false);
   const [retiringId, setRetiringId] = useState<number | null>(null);
   const [retireBusy, setRetireBusy] = useState(false);
@@ -174,15 +186,25 @@ export function GearClient({ seed }: { seed: FaffSeed }) {
       const parts = trimmed.split(/\s+/);
       const brand = parts[0] || 'Brand';
       const model = parts.slice(1).join(' ') || trimmed;
-      const cap = Number(retireAt) || 350;
+      // Send a cap ONLY when the runner moved it off the category's doctrine
+      // default. Leaving it null keeps "nobody said" distinguishable from
+      // "the runner chose this number", so the shoe follows doctrine if the
+      // band is ever revised.
+      const typed = Number(retireAt);
+      const isDefault = !Number.isFinite(typed) || typed <= 0 || typed === defaultCapMi(shoeType);
       const res = await fetch('/api/shoe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand, model, mileage_cap: cap }),
+        body: JSON.stringify({
+          brand, model,
+          shoe_type: shoeType,
+          ...(isDefault ? {} : { mileage_cap: typed }),
+        }),
       });
       if (res.ok) {
         setName('');
-        setRetireAt('350');
+        setShoeType(DEFAULT_SHOE_TYPE);
+        setRetireAt(String(defaultCapMi(DEFAULT_SHOE_TYPE)));
         setAdding(false);
         loadShoes();
       }
@@ -249,7 +271,28 @@ export function GearClient({ seed }: { seed: FaffSeed }) {
             <Tile pad="md" radius="l" tone="raised">
               <div style={{ display: 'grid', gap: 'var(--sp-6)' }}>
                 <Input label="Name" value={name} onChange={setName} helper="e.g. Pegasus 42" full />
-                <Input label="Retire at" type="number" value={retireAt} onChange={setRetireAt} unit="mi" full />
+                <Select
+                  label="Type"
+                  value={shoeType}
+                  options={SHOE_TYPES.map((t) => ({ value: t, label: SHOE_LIFESPAN[t].label }))}
+                  onChange={(v) => {
+                    const next = v as ShoeType;
+                    setShoeType(next);
+                    // Follow the new category's default. A runner who wants a
+                    // different number types over it.
+                    setRetireAt(String(defaultCapMi(next)));
+                  }}
+                  full
+                />
+                <Input
+                  label="Retire at"
+                  type="number"
+                  value={retireAt}
+                  onChange={setRetireAt}
+                  unit="mi"
+                  helper={`${SHOE_LIFESPAN[shoeType].label}: ${SHOE_LIFESPAN[shoeType].lowMi} to ${SHOE_LIFESPAN[shoeType].highMi} mi`}
+                  full
+                />
                 <div style={{ display: 'flex', gap: 'var(--sp-5)', justifyContent: 'flex-end' }}>
                   <Button variant="ghost" size="sm" onClick={() => { setAdding(false); setName(''); }}>Cancel</Button>
                   <Button variant="primary" size="sm" disabled={addBusy} onClick={() => void addShoe()}>

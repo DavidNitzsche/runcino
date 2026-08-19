@@ -14,6 +14,10 @@ const ALLOWED = new Set([
   'units_distance', 'units_temp', 'units_pace',
   'long_run_day', 'rest_day', 'quality_days', 'available_days',
   'briefing_time', 'push_enabled',
+  // 2026-08-19 · "Start runs from this phone." Reveals the RUN pill on the
+  // iPhone. Not plan-shaping — it changes what the phone offers, never what
+  // the plan prescribes, so it deliberately stays out of PLAN_SHAPING.
+  'phone_run_enabled',
 ]);
 
 // Changing which day is long / rest / quality reshapes the plan layout.
@@ -47,6 +51,16 @@ export async function PATCH(req: NextRequest) {
     if (k === 'user_id') continue;
     if (!ALLOWED.has(k)) {
       return NextResponse.json({ error: `not allowed: ${k}` }, { status: 400 });
+    }
+    // phone_run_enabled gates whether the phone offers to record a run at all.
+    // Stored in jsonb, so a string "false" would persist and read back TRUTHY
+    // on every consumer. Reject anything that isn't a real boolean rather than
+    // coercing — a client sending the wrong type should learn that it did.
+    if (k === 'phone_run_enabled' && typeof body[k] !== 'boolean') {
+      return NextResponse.json(
+        { error: 'phone_run_enabled must be a boolean' },
+        { status: 400 },
+      );
     }
     patch[k] = body[k];
   }
