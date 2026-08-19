@@ -13,6 +13,7 @@ import { buildSimPlan } from './sim-inputs';
 import { validateComposedPlan, PlanValidationError } from './validate';
 import { classifyGoalTier, TIER_TARGETS, distanceCategoryOf, BUILD_WINDOW_WEEKS } from './goal-tiers';
 import { recentWeeklyMiFromBucket, recentLongMiFromBucket, SIM_DISTANCE_MI, type SimDistance } from './sim-constants';
+import { ULTRA_UNSUPPORTED_REASON } from './supported-distances';
 import { predictRaceTime } from '@/lib/training/vdot';
 
 const DISTANCES: SimDistance[] = ['5k', '10k', 'half', 'marathon', '50k', '100k'];
@@ -29,6 +30,8 @@ const LONGEST = ['0-3', '3-6', '6-10', '10+'];
 // representative goal times that, with the experience clamp, exercise tiers
 const GOAL_SEC: Record<SimDistance, number> = { '5k': 1350, '10k': 2700, half: 6300, marathon: 13500, '50k': 18000, '100k': 43200 };
 const catOf: Record<SimDistance, '5k' | '10k' | 'hm' | 'm' | 'ultra'> = { '5k': '5k', '10k': '10k', half: 'hm', marathon: 'm', '50k': 'ultra', '100k': 'ultra' };
+const isUltra = (d: SimDistance) => catOf[d] === 'ultra';
+const catOfMi = (mi: number) => distanceCategoryOf(mi);
 const WEEKS: Record<SimDistance, number> = { '5k': 10, '10k': 12, half: 14, marathon: 18, '50k': 22, '100k': 24 };
 
 type Arc = { goalMode: 'goal' | 'justRun' | 'race'; distance: SimDistance; experienceLevel: string | null; weeklyFrequency: number; weeklyMileageBucket: number; longestRunBucket: string; goalTimeSec: number | null; planWeeks: number; raceDateISO?: string; availableDays?: string[]; bestRecentVdotOverride?: number };
@@ -82,6 +85,31 @@ function grade(a: Arc) {
     ...a, startDateISO: '2026-07-06', raceDateISO: a.raceDateISO ?? '', lastRaceFinishedDaysAgo: 0, lastRaceDistance: null,
     raceHistory: [], longRunDay: 'sun', availableDays: a.availableDays ?? [],
   } as any);
+  // ULTRA-OUT-1 (2026-08-19) · ultra archetypes are graded on the REFUSAL, not on
+  // the plan. The owner removed ultra authorship ("lets remove ultra plans and
+  // training for now"), so for these the only correct outcome is a clean, honest
+  // decline carrying the runner-facing reason. They stay in the matrix precisely
+  // so this stays asserted: a sweep that simply dropped 50K and 100K would go
+  // quiet the moment authorship re-opened by accident.
+  //
+  // `justRun` is deliberately NOT in scope. That archetype has no target at
+  // all — the engine plans a generic consistency block off the half-marathon
+  // reference, and the '50k' on the arc is a label the sweep carries, not an
+  // event anyone is training for. Refusing it would deny a plan to a runner
+  // who never asked for an ultra one.
+  if (isUltra(a.distance) && a.goalMode !== 'justRun') {
+    if (built.ok) firm(`ULTRA_AUTHORED ${a.distance}`, a);
+    else if (built.reason !== ULTRA_UNSUPPORTED_REASON) {
+      firm(`ULTRA_WRONG_REFUSAL: ${String(built.reason).slice(0, 40)}`, a);
+    }
+    return;
+  }
+  // And the invariant behind that check, asserted for EVERY archetype rather
+  // than only the ones the matrix labels ultra: whatever the engine decided to
+  // plan for, it is never an ultra distance.
+  if (built.ok && catOfMi(built.raceDistanceMi) === 'ultra') {
+    firm(`ULTRA_AUTHORED_VIA ${a.goalMode}/${a.distance}`, a); return;
+  }
   if (!built.ok) {
     // CC2-2 · a true-zero base (bucket 0) legitimately REFUSES an aggressive or long goal (couch→marathon
     // in 18wk isn't safe) — a clean friendly refusal there is correct, not a failure. But a short BY-FEEL

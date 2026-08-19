@@ -28,7 +28,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, conservativeVdotFromMileage, marathonPaceSPerMi, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, STRIDE_DAYS_PER_WEEK, STRIDE_DEFAULT_REPS, STRIDE_DURATION_S } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
-import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor, DANIELS_MAX_VALID_DISTANCE_MI } from '@/lib/training/vdot';
+import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor } from '@/lib/training/vdot';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
@@ -41,6 +41,7 @@ import {
   CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES,
 } from './anchor-provenance';
 import { isBaseBuildingPlan } from './plan-templates';
+import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
 import { isCoachedExternally, COACHED_SKIP_REASON } from './coached-gate';
 import { distanceMiOfMeta } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
@@ -4297,8 +4298,18 @@ export function enforceRampCeilingAfterEmbedding(
  *  onto the rest of the week. Matches layoutWeek's own coherence minimum. */
 const RAMP_TRIM_MIN_EASY_MI = 3;
 
-/** Bring a composed week down to `targetMi`, easy days first. */
-function trimWeekToVolume(week: ComposedWeek, targetMi: number): void {
+/** Bring a composed week down to `targetMi`, easy days first.
+ *
+ *  `protectLong` (WKRAMP-1, 2026-08-19) · leave the long run out of the
+ *  proportional spill. The long carries its OWN doctrine — the 110%
+ *  single-session spike rule (Research/00a §"Practical load rules"), the 30%
+ *  week-over-week cap in `CONSTRAINTS.longRunWoWMaxPct`, and
+ *  `finalizeComposedPlan`'s `smoothLongWoW` — and it is the session the block
+ *  exists to build. A weekly-total cap that pays for itself out of the long
+ *  would trade the progression doctrine governs for the one it does not.
+ *  MIDRACE-RAMP-1 keeps the old behaviour (it caps a post-race week where
+ *  shrinking the long is the point). */
+function trimWeekToVolume(week: ComposedWeek, targetMi: number, protectLong = false): void {
   const sum = () => Math.round(week.days.reduce((s, d) => s + d.distanceMi, 0) * 10) / 10;
   const easies = week.days.filter((d) => d.type === 'easy' && d.distanceMi > RAMP_TRIM_MIN_EASY_MI);
   const easyMi = easies.reduce((s, d) => s + d.distanceMi, 0);
@@ -4315,12 +4326,31 @@ function trimWeekToVolume(week: ComposedWeek, targetMi: number): void {
   if (surplus > 0.05) {
     // Easy alone could not cover it · scale every non-race day proportionally,
     // which preserves the easy<long ordering layoutWeek established.
-    const trimmable = week.days.filter((d) => d.type !== 'race' && d.distanceMi > 0);
+    const trimmable = week.days.filter((d) => d.type !== 'race' && d.distanceMi > 0 && !(protectLong && d.isLong));
     const total = trimmable.reduce((s, d) => s + d.distanceMi, 0);
     if (total > 0) {
       const scale = Math.max(0, (total - surplus) / total);
       for (const d of trimmable) {
         const next = Math.floor(d.distanceMi * scale * 2) / 2;
+        // WKRAMP-1 (2026-08-19) · THE CAP IS BEST-EFFORT BELOW THE JUNK-RUN FLOOR.
+        //
+        // Sparing the long concentrates the whole surplus onto the other days,
+        // and at low volume a proportional scale drove them under two miles —
+        // 322 of them across the maintenance-invariant matrix, which is the
+        // "junk run" class RP-FREQ-FLOOR exists to hold at zero. A sub-2mi
+        // easy run is misallocation, not training: it costs a session's
+        // logistics and returns almost no stimulus, and it appears on the
+        // runner's week looking like a mistake, because it is one.
+        //
+        // So every run this trim keeps stays at or above the floor, and when
+        // the cap cannot be reached without breaking it the week simply lands
+        // as close as the floor allows. That is the right trade. The ramp
+        // ceiling exists to stop a big absolute jump in load; at the volumes
+        // where this binds the residue is a mile or two, and the acute:chronic
+        // backstop in validate.ts still has the week comfortably in hand.
+        // Trading a real structural defect for a fractional ramp overshoot
+        // would be paying a certain cost for a rounding error.
+        if (protectLong && !d.isLong) { d.distanceMi = Math.max(TRIM_MIN_RUN_MI, next); continue; }
         if (d.isLong || d.isQuality) { d.distanceMi = Math.max(1, next); continue; }
         d.distanceMi = Math.max(0, next);
       }
@@ -4337,6 +4367,111 @@ function trimWeekToVolume(week: ComposedWeek, targetMi: number): void {
   }
   week.weeklyMi = sum();
 }
+
+/**
+ * WKRAMP-1 (2026-08-19) · THE RAMP CEILING, ON THE VOLUME THAT ACTUALLY SHIPS.
+ *
+ * THE DEFECT. `volumeCurve` climbs under `GENERAL_RAMP_CEILING` — 20%/week for
+ * a novice, 15% for a trained runner (Research/00a §"Volume progression
+ * rules"). That ceiling governs the BUDGET. It does not govern the plan: the
+ * budget is a weekly total handed to `layoutWeek`, which sizes each day against
+ * its own floors and caps and hands back a day-sum that can sit well above what
+ * it was given. VOL-1 then reconciles `weeklyMi` to that realized sum — honestly
+ * reporting a number the ramp ceiling never saw.
+ *
+ * The gap opens widest exactly where it hurts most, at the BASE → QUALITY
+ * phase boundary for a runner with almost no base. Marathon / beginner / f5 /
+ * m35 / L0-3, on the 11,598-archetype sweep:
+ *
+ *   wk4 BASE     16 mi   long 4 · easy 3 · easy 3 · easy 3 · easy 3
+ *   wk5 QUALITY  23 mi   long 5 · tempo 5 · easy 4 · tempo 5 · easy 4   +43.8%
+ *
+ * The curve asked for ~19. Two tempo sessions arrived at their own dose, and
+ * the week came out at 23 — a 44% week-over-week jump for a first-time
+ * marathoner whose longest run in the last month is four miles.
+ *
+ * Nothing downstream caught it. `validate.ts`'s `weeklyVolWoWMaxPct` was 50 —
+ * fitted to this generator rather than to doctrine, which is not a guardrail.
+ *
+ * THE RULE. A week may not exceed the largest week the runner has already
+ * completed in this block, times their general ramp ceiling:
+ *
+ *   cap = max(realized volume of every prior non-race week) × ceiling
+ *
+ * One rule, no special cases, and the two regimes doctrine distinguishes fall
+ * out of it:
+ *
+ *   · A STEP onto new ground. While the block climbs, the prior peak IS last
+ *     week, so the cap is last week × ceiling — the ramp doctrine states.
+ *   · A REBOUND after a planned cutback. Research/00b §"What Cutback Weeks Are
+ *     Not" — the reduction is planned, so the return to load is the design, not
+ *     a ramp error. The prior peak is the pre-cutback week, so returning to it
+ *     costs nothing, and the block may still step past it by the ceiling. This
+ *     is why the check reads the peak and not the previous week: measuring a
+ *     rebound against the deload week would punish the runner for deloading,
+ *     which is the same reason `validate.ts` §6 exempts the post-cutback week
+ *     outright.
+ *
+ * WHAT IT DOES NOT TOUCH. The long run (see `trimWeekToVolume`'s `protectLong`)
+ * and the plan's own race week. Taper weeks are in scope but never bind — they
+ * descend from the peak by construction, and the trim only ever removes miles.
+ *
+ * WHERE IT RUNS. `finalizeComposedPlan`, after the VOL-1 reconcile (so it reads
+ * realized volume, not the budget — the same budget-vs-realized trap COH-4 and
+ * MIDRACE-RAMP-1 both document) and after MIDRACE-RAMP-1, before the taper
+ * pass, so the taper descends from the corrected peak.
+ *
+ * Cite: Research/00a-distance-running-training.md §"Volume progression rules"
+ *       (via GENERAL_RAMP_CEILING — one constant, read by the curve, by this
+ *       pass, and by `validate.ts`, so the three cannot diverge)
+ * Cite: Research/00b-recovery-protocols.md §"What Cutback Weeks Are Not"
+ *       (the rebound is the design)
+ * Bound by RAMP.realized-weekly-step-is-the-general-ceiling.
+ */
+export function enforceWeeklyRampCeiling(
+  weeks: ComposedWeek[],
+  vols: number[],
+  level: LevelKey,
+): void {
+  const ceiling = GENERAL_RAMP_CEILING[level ?? 'intermediate'];
+  let priorPeak = 0;
+  let prevMi = 0;
+  for (let wi = 0; wi < weeks.length; wi++) {
+    const w = weeks[wi];
+    if (!w || w.isRaceWeek) continue;
+    const mi = w.weeklyMi ?? 0;
+    // Two references, deliberately different. The CAP is measured against the
+    // prior peak — that is the doctrine reference, and it is what lets a
+    // rebound off a planned cutback return to load for free. The SMALLNESS
+    // exemption is measured against the previous week, because that is how
+    // validate.ts §6 measures it, and the two must agree about which jumps are
+    // too small to be worth calling a jump: at very low volume a %-step is
+    // misleading (6mi → 9mi is +50% but only +3mi, a safe ramp for a cold-start
+    // beginner). Measuring the exemption against the peak instead let a
+    // 5K/advanced archetype keep an 11 → 15.5 week, exactly the case this pass
+    // exists to catch.
+    if (priorPeak > 0 && prevMi > 0) {
+      const cap = priorPeak * ceiling;
+      if (mi > cap && mi - prevMi > WKRAMP_ABS_SLACK_MI) {
+        trimWeekToVolume(w, cap, true);
+        if (Array.isArray(vols) && wi < vols.length) vols[wi] = w.weeklyMi;
+      }
+    }
+    priorPeak = Math.max(priorPeak, w.weeklyMi ?? 0);
+    prevMi = w.weeklyMi ?? 0;
+  }
+}
+
+/** The shortest run WKRAMP-1's trim will leave standing. Mirrors the junk-run
+ *  floor `_maint_invariants.test.ts` holds at zero (a sub-2mi non-long run when
+ *  the week could afford better) and layoutWeek's own per-day coherence
+ *  minimum. */
+const TRIM_MIN_RUN_MI = 2;
+
+/** Absolute slack on the WKRAMP-1 cap · the same 4mi the validator's §6 WoW
+ *  check uses, so the generator and the validator agree about which jumps are
+ *  too small to be meaningful. */
+const WKRAMP_ABS_SLACK_MI = 4;
 
 // ── Pure compose layer (2026-06-02) ─────────────────────────────────────
 // Extracted from generatePlan() so the plan-engine bench can test the
@@ -6371,6 +6506,14 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
     }
   }
 
+  // WKRAMP-1 (2026-08-19) · the general ramp ceiling, on every week's REALIZED
+  // volume. MIDRACE-RAMP-1 above is the same rule scoped to the week after a
+  // tune-up; this is the block-wide case the generator never enforced, which is
+  // how a beginner marathoner was authored a 44% week-over-week step. Runs on
+  // the numbers VOL-1 just wrote and before the taper pass, so the taper
+  // descends from the corrected peak. See the function's own note.
+  enforceWeeklyRampCeiling(composed.weeks, composed.vols, level);
+
   // 2026-06-23 · COH-4 · PROGRESSIVE taper enforcement, AFTER VOL-1 so it sees each week's REALIZED
   // day-sum. The race week's pre-race easy volume often EXCEEDS the volume-curve budget (the layout
   // places easy days the budget didn't account for), so running this on the budget missed it and
@@ -7647,11 +7790,11 @@ async function loadGeneratorInputs(
     // fake-support bug as the race path, just entered via the no-race goal
     // flow instead of Add Race. Same gate, same reason string, so the
     // caller's toFriendlyPlanError path is unchanged either way.
-    if (goalTarget.distanceMi > DANIELS_MAX_VALID_DISTANCE_MI) {
-      return {
-        ok: false,
-        reason: "Ultra plans aren't built yet. The race is on your calendar; training targets stay anchored to your current fitness.",
-      };
+    // ULTRA-OUT-1 (2026-08-19) · the predicate and the runner-facing string now
+    // live in supported-distances.ts, so this path, the race path below and the
+    // simulator cannot drift into three different accounts of the same refusal.
+    if (planAuthorshipUnsupported(goalTarget.distanceMi)) {
+      return { ok: false, reason: ULTRA_UNSUPPORTED_REASON };
     }
     raceDateISO = goalTarget.raceDateISO;
     raceDistanceMi = goalTarget.distanceMi;
@@ -7684,11 +7827,8 @@ async function loadGeneratorInputs(
     // reason. Callers (race POST, /api/plan/generate) surface it as a
     // friendly message; the runner is left on the no-plan / maintenance
     // machinery (see goal-mode / just-run fallback), never on a wrong plan.
-    if (dMi > DANIELS_MAX_VALID_DISTANCE_MI) {
-      return {
-        ok: false,
-        reason: "Ultra plans aren't built yet. The race is on your calendar; training targets stay anchored to your current fitness.",
-      };
+    if (planAuthorshipUnsupported(dMi)) {
+      return { ok: false, reason: ULTRA_UNSUPPORTED_REASON };
     }
     raceDistanceMi = dMi;
     goalSec = parseGoalSeconds(meta.goalDisplay);
@@ -7999,7 +8139,20 @@ async function loadGeneratorInputs(
   ).catch(() => ({ rows: [] as Array<{ slug: string; meta: any }> }))).rows;
   const midBlockRaces: ComposePlanInput['midBlockRaces'] = midBlockRaceRows
     .map((r) => ({ r, m: r.meta || {}, dMi: distanceMiOf(r.meta || {}) }))
-    .filter((x): x is { r: typeof x.r; m: any; dMi: number } => x.dMi != null && x.dMi > 0 && x.dMi <= raceDistanceMi)
+    // ULTRA-OUT-1 (2026-08-19) · an ultra is not a tune-up, stated rather than
+    // inferred. The `dMi <= raceDistanceMi` cap below ALREADY forecloses this
+    // today — the target race can never be an ultra, because the two gates
+    // above refuse to author for one — so an ultra B/C race cannot currently
+    // reach the embedder by arithmetic. That is an accident of two rules
+    // meeting, not a decision, and it would silently reverse the moment the
+    // target-race gate moved. The decision itself: `embedMidBlockRaces` treats
+    // a B race as a hard session with a mini-taper and a four-day easy window,
+    // and 31+ raced miles is not a hard session under any doctrine —
+    // Research/00b's recovery window for a marathon-plus effort is measured in
+    // weeks. Embedding one would be the same fake-support defect as authoring
+    // an ultra plan, wearing a different hat. The block is still authored; the
+    // ultra simply is not scheduled around.
+    .filter((x): x is { r: typeof x.r; m: any; dMi: number } => x.dMi != null && x.dMi > 0 && x.dMi <= raceDistanceMi && !planAuthorshipUnsupported(x.dMi))
     .map(({ r, m, dMi }) => {
       const goalSecMid = parseRaceTime(m.goalDisplay ?? m.goalTime);
       return {

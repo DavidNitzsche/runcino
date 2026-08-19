@@ -313,7 +313,15 @@ describe('DOCTRINE-DOSING-1 · corpus census', () => {
     let breaching = 0;
     const findings: DosingFinding[] = [];
 
-    for (const distance of ['5k', '10k', 'half', 'marathon', '50k'] as SimDistance[]) {
+    // ULTRA-OUT-1 (2026-08-19) · '50k' left this corpus with ultra authorship.
+    // `buildSimPlan` now refuses it, so its 36 archetypes were being silently
+    // skipped by the `if (!r.ok) continue` below — a census quietly measuring
+    // 144 rows while its own gate asserted more than 150. Removed from the list
+    // rather than left to be skipped, and the gate below now asserts the EXACT
+    // matrix size so a shrinking corpus can never hide behind an inequality.
+    const CORPUS_DISTANCES = ['5k', '10k', 'half', 'marathon'] as SimDistance[];
+    const CORPUS_SIZE = 4 * 3 * 4 * 3;
+    for (const distance of CORPUS_DISTANCES) {
       for (const experienceLevel of ['beginner', 'intermediate', 'advanced'] as const) {
         for (const weeklyMileageBucket of [15, 25, 35, 45]) {
           for (const weeklyFrequency of [4, 5, 6]) {
@@ -368,7 +376,10 @@ describe('DOCTRINE-DOSING-1 · corpus census', () => {
     // holds intensity while volume falls and §9.2 prescribes doses outside the
     // percentage by name; `capEnforced` carries that reasoning and
     // DOSING.taper-percentage-exemption binds it to the doc.
-    expect(archetypes).toBeGreaterThan(150);
+    // Every archetype in the matrix must BUILD · a refusal here is a plan the
+    // engine owes a runner and did not write, and it must not be absorbed by a
+    // greater-than.
+    expect(archetypes).toBe(CORPUS_SIZE);
     const enforced = findings.filter((f) => f.enforced);
     expect(
       enforced.length,

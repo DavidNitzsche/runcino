@@ -38,6 +38,7 @@ import {
 } from './generate';
 import { lookupTierTarget, pickPlanMode, type PlanMode } from './goal-tiers';
 import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/distance-category';
+import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
 import { tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
 import { vdotFromRace, tPaceFromVdot, predictRaceTime } from '@/lib/training/vdot';
 import {
@@ -232,6 +233,17 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   // table gained a row with no mileage — refuse rather than plan the wrong race.
   const cat = distanceCategoryOrNull(raceDistanceMi);
   if (cat == null) return { ok: false, reason: UNKNOWN_DISTANCE_REASON };
+  // ULTRA-OUT-1 (2026-08-19) · the simulator refuses exactly what production
+  // refuses. `SIM_DISTANCE_MI` still offers 50K and 100K and the all-user sweep
+  // still walks them — that is deliberate, because a matrix that simply dropped
+  // ultra would stop noticing if authorship quietly re-opened. What it must not
+  // do is BUILD one: this tool mirrors onboarding, and a simulator that happily
+  // composes a plan the live engine declines is a simulator of a different app.
+  // It was also the only remaining reader of the mislabelled PLAN_TEMPLATES
+  // ultra rows, so those rows now reach nothing at all.
+  if (planAuthorshipUnsupported(raceDistanceMi)) {
+    return { ok: false, reason: ULTRA_UNSUPPORTED_REASON };
+  }
   // FID-2 · prefer the real level + phase-aware prescriptions (resolved by the route
   // from workout_library, matching the production engine); fall back to the inline
   // catalog when not provided (e.g. unit tests with no DB).

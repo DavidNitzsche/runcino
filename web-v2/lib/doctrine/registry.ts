@@ -1428,6 +1428,99 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
    * that is transcribed from a Research/ table, at no extra cost.
    */
   {
+    id: 'PLAN.ultra-authorship-is-refused',
+    binds: [
+      'lib/plan/supported-distances.ts#planAuthorshipUnsupported',
+      'lib/plan/supported-distances.ts#ULTRA_UNSUPPORTED_REASON',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 5. Ultramarathon Plans',
+    claim:
+      'Faff does not currently write ultra plans, and it says so rather than substituting a ' +
+      'shorter one. This is a PRODUCT decision, not a doctrine one — Research/22 §5 is intact ' +
+      'and keeps its four ultra sections, which is why the anchor is checked here: the doctrine ' +
+      'is what re-opening authorship would be built from. What doctrine DOES establish is that ' +
+      'those sections are keyed by DISTANCE (50K / 50 Mile / 100K / 100 Mile), while ' +
+      'PLAN_TEMPLATES keys its four ultra rows by EXPERIENCE and copies one doctrine distance ' +
+      'into each — so the engine grades a first-time 100-miler "beginner" and hands them a 50K ' +
+      'plan. Refusing out loud is the honest answer to an axis the engine does not have; ' +
+      'quietly capping an ultra at the marathon model is the defect this codebase has already ' +
+      'paid for twice (raceDistanceCategory(null) returning hm, distanceCategoryOf(0) ' +
+      'returning 5k).',
+    check({ cite }) {
+      const gate = sourceOf('web-v2/lib/plan/supported-distances.ts');
+      matchLiteral(gate, /export function planAuthorshipUnsupported/, 'ultra authorship gate');
+      const reason = matchLiteral(
+        gate,
+        /export const ULTRA_UNSUPPORTED_REASON =\s*\n?\s*"([^"]+)"/,
+        'ultra refusal reason',
+      )[1];
+      // The runner is told plainly. Not a silent null, not a shrug.
+      if (!/ultra/i.test(reason)) {
+        throw new Error(
+          `the ultra refusal reason does not mention the ultra ("${reason}") · the runner has to ` +
+            'be told what Faff declined and why, or the refusal reads as a bug',
+        );
+      }
+
+      // Every authorship entry point refuses. A gate one caller skips is not a
+      // gate — the 2026-07-07 audit found exactly that shape, where the race
+      // path refused and the no-race goal path did not.
+      const ENTRY: Array<[string, string]> = [
+        ['web-v2/lib/plan/generate.ts', 'the race path and the no-race goal path'],
+        ['web-v2/lib/plan/sim-inputs.ts', 'the simulator'],
+      ];
+      for (const [file, what] of ENTRY) {
+        if (!/planAuthorshipUnsupported\(/.test(sourceOf(file))) {
+          throw new Error(`${what} (${file}) no longer consults planAuthorshipUnsupported`);
+        }
+      }
+
+      // And nobody re-inlines the string, which is how three accounts of one
+      // refusal start.
+      for (const [file] of ENTRY) {
+        if (/Ultra plans aren't built yet/.test(stripComments(sourceOf(file)))) {
+          throw new Error(
+            `${file} inlines the ultra refusal text · it must read ULTRA_UNSUPPORTED_REASON so ` +
+              'the three entry points cannot drift into three different explanations',
+          );
+        }
+      }
+
+      // The doctrine is untouched · §5 still carries the four DISTANCE-keyed
+      // subsections that re-opening authorship would have to be built from,
+      // and it is their existence — four distances, no cohorts — that makes
+      // PLAN_TEMPLATES' experience keying provably the wrong axis rather than
+      // merely an odd choice. Read from the file rather than `cite.text()`:
+      // the resolver ends a section at the next heading of ANY level, so §5's
+      // own text stops at the first `###` subsection.
+      const lines = sourceOf('Research/22-plan-templates.md').split('\n');
+      const start = lines.indexOf(cite.section[0]);
+      let stop = lines.length;
+      for (let i = start + 1; i < lines.length; i++) {
+        if (/^## /.test(lines[i])) { stop = i; break; }
+      }
+      const subs = lines.slice(start, stop).filter((l) => /^### /.test(l));
+      for (const d of ['50K', '50 Mile', '100K', '100 Mile']) {
+        if (!subs.some((l) => l.includes(d))) {
+          throw new Error(
+            `Research/22 §5 no longer carries a "${d}" subsection · the ultra doctrine this ` +
+              'refusal defers to is being edited away rather than left intact for when ' +
+              'authorship returns',
+          );
+        }
+      }
+      if (subs.some((l) => /beginner|intermediate|advanced/i.test(l))) {
+        throw new Error(
+          'Research/22 §5 has grown experience-keyed ultra subsections · if doctrine now ' +
+            'publishes ultra plans by cohort, PLAN_TEMPLATES\' ultra rows may finally be ' +
+            'well-formed and this refusal should be re-argued rather than left standing',
+        );
+      }
+    },
+  },
+
+  {
     id: 'TEMPLATE.quality-character-and-volume-match-doctrine',
     binds: [
       'lib/plan/plan-templates.ts#PLAN_TEMPLATES.qualityCharacter',
@@ -1479,6 +1572,25 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           long: parseBand(cell('Peak long run')),
         };
       };
+      // ULTRA-OUT-1 (2026-08-19) · 'ultra' IS EXCLUDED, AND THIS IS THE
+      // STATEMENT OF IT. It was absent from this list before, silently, which
+      // read as an oversight; it is now a decision with a reason and a
+      // tripwire. The reason: Research/22's ultra sections are keyed by
+      // DISTANCE (50K / 50 Mile / 100K / 100 Mile) while PLAN_TEMPLATES' four
+      // ultra rows are keyed by EXPERIENCE, so `section(distance, cohort)`
+      // has no cohort to look up and the comparison this claim makes is not
+      // defined for them. The tripwire: that mismatch is only tolerable
+      // because the rows are unreachable, so assert exactly that before
+      // skipping them.
+      if (!/export function planAuthorshipUnsupported/.test(
+        sourceOf('web-v2/lib/plan/supported-distances.ts'),
+      )) {
+        throw new Error(
+          'the ultra authorship gate is gone · PLAN_TEMPLATES\' four ultra rows are reachable ' +
+            'again, and they map four ultra DISTANCES onto four EXPERIENCE levels. Either ' +
+            'restore the gate or give this claim a distance-keyed ultra comparison.',
+        );
+      }
       for (const cat of ['5k', '10k', 'hm', 'm'] as const) {
         const docDistance = DOC_DISTANCE[cat];
         for (const level of ['beginner', 'intermediate', 'advanced'] as const) {
@@ -7031,8 +7143,12 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'line (bound by CUTBACK.depth), but no source prescribes how fast a runner returns FROM ' +
       'a planned cutback. The factor exists so this curve cannot author a week that the ' +
       'validator would then reject — a plumbing constant, not physiology. What it owes is ' +
-      'exactly that: it must stay strictly under the tightest weeklyVolWoWMaxPct in ' +
-      'CONSTRAINTS, or the generator and the validator disagree and plans fail to build.',
+      'exactly that, and WKRAMP-1 (2026-08-19) made the obligation a sharper one. It used to ' +
+      'be measured against validate.ts\'s flat weeklyVolWoWMaxPct, which was itself fitted to ' +
+      'the generator, so the pair proved nothing. That constant is gone; the re-entry is now ' +
+      'measured against the doctrine it actually rides on — deload depth times re-entry factor ' +
+      'must land at or under the general ramp ceiling, i.e. the week you come back to may not ' +
+      'be a bigger step from the week BEFORE the deload than an ordinary climbing week is.',
     check({ cite }) {
       const gen = sourceOf('web-v2/lib/plan/generate.ts');
       if (/§"Week-over-Week 10% Rule"/.test(gen)) {
@@ -7044,15 +7160,20 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const factor = Number(
         matchLiteral(gen, /lastDeloadVol \* (\d*\.?\d+)/, 'post-deload re-entry cap')[1],
       );
-      const ceilings = [
-        ...sourceOf('web-v2/lib/plan/validate.ts').matchAll(/weeklyVolWoWMaxPct: (\d+)/g),
-      ].map((m) => 1 + Number(m[1]) / 100);
-      if (ceilings.length === 0) throw new Error('CONSTRAINTS no longer declares weeklyVolWoWMaxPct');
-      const tightest = Math.min(...ceilings);
-      if (factor >= tightest) {
+      // The deload the re-entry returns FROM · same file, same curve.
+      const deload = Number(
+        matchLiteral(gen, /const deload = Math\.round\(lastClimb \* (\d*\.?\d+)\);/, 'deload depth')[1],
+      );
+      // Coming back from a `deload`-deep cutback at `factor` puts the week at
+      // `deload * factor` of the pre-cutback week. That is a two-week move, and
+      // it may not out-climb what a single ordinary week is allowed to do.
+      const effective = deload * factor;
+      const rampCeiling = Math.max(...Object.values(GENERAL_RAMP_CEILING));
+      if (effective > rampCeiling) {
         throw new Error(
-          `the post-deload re-entry cap (${factor}) is at or above the tightest WoW ceiling ` +
-            `(${tightest}) · the generator would author weeks its own validator rejects`,
+          `a ${deload} deload followed by a ${factor} re-entry lands at ${effective.toFixed(3)}× ` +
+            `the pre-cutback week · above the ${rampCeiling} general ramp ceiling, so the curve ` +
+            'would use the cutback as a launchpad rather than a recovery',
         );
       }
       // Deload → return is a real pattern; the doc must still say a cutback is
@@ -9958,71 +10079,81 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
 
   {
-    id: 'CONVENTION.validator-weekly-step-ceiling',
-    binds: ['lib/plan/validate.ts#CONSTRAINTS.weeklyVolWoWMaxPct'],
+    id: 'RAMP.acute-chronic-ratio-red-line',
+    binds: ['lib/plan/validate.ts#ACWR_HIGH_RISK', 'lib/plan/validate.ts#ACWR_CHRONIC_WEEKS'],
     doc: 'Research/00a-distance-running-training.md',
-    anchor: '### Volume progression rules',
+    anchor: '### ACWR risk zones',
     claim:
-      'THE VALIDATOR\'S 50%/WEEK VOLUME CEILING IS A CONVENTION. It was the last field of ' +
-      'CONSTRAINTS with nothing watching it, which is why the whole table sat in the lint\'s ' +
-      'unbound-table allowlist. Doctrine reports 5-15% per cycle for trained athletes and ' +
-      '+20-25% over 8 weeks for novices, and no passage anywhere in Research/ states a 50% ' +
-      'week-over-week ceiling. What this claim enforces is that the backstop can never be ' +
-      'STRICTER than the ramp the generator is authorised to author — "one doctrinal quantum, N ' +
-      'disagreeing constants" is the named drift bug here, and a validator tighter than its own ' +
-      'generator rejects correct plans and leaves the runner with none — and that it stays flat ' +
-      'across distances only because doctrine\'s ramp figures carry no distance dimension.',
-    check({ cite, exempt }) {
-      const spec = cite.table().cell('Year-on-year base growth', 'Specification');
-      const trained = parseBand(spec.split(';')[0]);
-      const novice = parseBand(spec.replace(/^[^;]*;\s*/, ''));
-      const loosestDoctrinePct = Math.max(trained[1], novice[1]);
-
+      'The second half of the weekly-volume guard is the acute-to-chronic workload ratio, which ' +
+      'is the instrument doctrine actually publishes for "is this week too big for what I have ' +
+      'been doing". The backstop sits on the row doctrine calls substantially elevated risk, ' +
+      'and both the ratio and the length of the chronic window are READ OUT OF THE DOC — the ' +
+      'risk-zone table for the threshold, the load-metrics table for the 28 days. A week-over-' +
+      'week ratio was the wrong instrument: doctrine builds 20-30% down weeks into every block, ' +
+      'so a WoW ceiling loose enough to permit the rebound cannot catch a real spike, which is ' +
+      'precisely how the old 50% constant survived.',
+    check({ cite }) {
       const src = sourceOf('web-v2/lib/plan/validate.ts');
-      const values = [...src.matchAll(/weeklyVolWoWMaxPct: (\d+)/g)].map((m) => Number(m[1]));
-      if (values.length !== CATS.length) {
-        throw new Error(`CONSTRAINTS declares weeklyVolWoWMaxPct ${values.length} times, expected one per distance`);
-      }
-      // Flat by design · doctrine's ramp figures are keyed to experience, not
-      // to race distance, so a per-distance split here would be invented.
-      if (new Set(values).size !== 1) {
+      // The fitted constant it replaced does not come back. 50%/week was never
+      // in Research/; it tracked whatever generate.ts happened to author, and
+      // a per-distance row for a figure with no distance dimension was the tell.
+      if (/weeklyVolWoWMaxPct/.test(stripComments(src))) {
         throw new Error(
-          `weeklyVolWoWMaxPct now differs by distance (${values.join(', ')}) · doctrine's volume ` +
-            'ramp figures have no distance dimension, so a split needs its own citation',
+          'weeklyVolWoWMaxPct is back in validate.ts · the weekly-volume guard is the ' +
+            'acute:chronic ratio (this claim) plus the §3 ramp-vs-base check, both of which ' +
+            'read their numbers out of Research/00a. A flat week-over-week percentage is the ' +
+            'shape that was fitted to the generator in the first place.',
         );
       }
-      const ceiling = values[0];
+      const engineRatio = Number(
+        matchLiteral(src, /const ACWR_HIGH_RISK = (\d*\.?\d+);/, 'ACWR_HIGH_RISK')[1],
+      );
+      const engineWeeks = Number(
+        matchLiteral(src, /const ACWR_CHRONIC_WEEKS = (\d+);/, 'ACWR_CHRONIC_WEEKS')[1],
+      );
+      matchLiteral(src, /curr \/ chronic > ACWR_HIGH_RISK/, 'ACWR comparison');
 
-      // Never stricter than the generator's own ceiling.
-      const generatorPct = Math.max(...Object.values(GENERAL_RAMP_CEILING).map((v) => (v - 1) * 100));
-      if (ceiling < generatorPct) {
+      // The threshold, out of the risk-zone table · the row doctrine grades as
+      // the high-risk one, not a hand-copied 1.5.
+      const zones = cite.table();
+      const highRows = zones.rows.filter((r) => /^high$/i.test((r['Status'] ?? '').trim()));
+      if (highRows.length !== 1) {
         throw new Error(
-          `the validator rejects at ${ceiling}%/wk while the generator is authorised to climb at ` +
-            `${generatorPct}%/wk · the validator would reject plans the generator correctly ` +
-            'authors, and a rejected plan is no plan at all',
+          `Research/00a §"ACWR risk zones" no longer grades exactly one band "High" ` +
+            `(found ${highRows.length}) · re-read the table before this backstop is justified`,
+        );
+      }
+      const stated = Number((highRows[0][zones.headers[0]] ?? '').replace(/[^\d.]/g, ''));
+      if (!(stated > 0)) {
+        throw new Error('could not read the high-risk ACWR threshold out of the doctrine table');
+      }
+      if (engineRatio !== stated) {
+        throw new Error(
+          `ACWR_HIGH_RISK is ${engineRatio} · doctrine puts the substantially-elevated line at ` +
+            `${stated}. A backstop above it permits what doctrine calls high risk; below it, the ` +
+            'validator would reject inside the caution band the generator is allowed to use.',
         );
       }
 
-      // And the divergence itself · recorded, not hidden.
-      if (ceiling > loosestDoctrinePct && !exempt('flat-50-has-no-doctrine-figure')) {
+      // And the window, out of the load-metrics table one section up.
+      const metrics = resolveCitation(
+        'Research/00a-distance-running-training.md',
+        '### Load metrics',
+      ).table();
+      const chronicDays = Number(
+        (metrics.cell('Chronic load (28-day)', 'Calculation').match(/last (\d+) days/) ?? [])[1],
+      );
+      if (!(chronicDays > 0)) {
         throw new Error(
-          `weeklyVolWoWMaxPct is ${ceiling}% · the loosest weekly ramp figure doctrine publishes ` +
-            `is ${loosestDoctrinePct}%`,
+          'Research/00a §"Load metrics" no longer states the chronic window in days · re-read it',
         );
       }
-    },
-    exempt: {
-      'flat-50-has-no-doctrine-figure':
-        'REAL VIOLATION, DELIBERATELY NOT FIXED. 50%/week is double the loosest ramp figure ' +
-        'Research/00a publishes (novices +20-25%). It cannot be tightened to a doctrine-derived ' +
-        'value: measured against the 11,598-archetype sweep on 2026-08-19, a 25% ceiling fails ' +
-        '1480 archetypes, 35% fails 328, 40% fails 48, and only 45%+ is clean — because the ' +
-        'GENERATOR itself authors week-over-week steps as large as 44% (marathon/beginner/f5/ ' +
-        'm35/L0-3). The validator is calibrated to the generator, not to doctrine. Tightening it ' +
-        'here would reject plans the generator correctly produces and leave those runners with ' +
-        'no plan, which is the exact failure recorded in validate.ts section 6 for recovery ' +
-        'blocks. The defect to chase is the volume curve in generate.ts, which is a different ' +
-        'file and a different owner. Delete this entry when that curve stops producing 44% steps.',
+      if (engineWeeks !== chronicDays / 7) {
+        throw new Error(
+          `ACWR_CHRONIC_WEEKS is ${engineWeeks} · doctrine's chronic load is a ${chronicDays}-day ` +
+            `mean, which is ${chronicDays / 7} weeks`,
+        );
+      }
     },
   },
 
@@ -10657,19 +10788,13 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error('the all-user sweep no longer scales its weekly-volume floor by the band\'s day count');
       }
     },
-    exempt: {
-      '5k.advanced':
-        'KNOWN DIVERGENCE, engine BELOW doctrine (found 2026-08-19 wiring this claim). ' +
-        'Research/22 §"5K — Advanced" publishes 6-7 days/week; TIER_TARGETS has 5. Not ' +
-        'changed here: goal-tiers.ts is owned by the plan-engine work in flight, and the ' +
-        'direction is conservative — a lower daysPerWeek makes the sweep\'s volume ' +
-        'expectation STRICTER, never softer, so nothing is hidden by leaving it. Reported ' +
-        'for a ruling.',
-      '10k.advanced':
-        'KNOWN DIVERGENCE, engine BELOW doctrine (found 2026-08-19 wiring this claim). ' +
-        'Research/22 §"10K — Advanced" publishes 6-7 days/week; TIER_TARGETS has 5. Same ' +
-        'shape and same conservative direction as 5k.advanced.',
-    },
+    // TIERDAYS-1 (2026-08-19) · the two exemptions that stood here are GONE.
+    // 5k.advanced and 10k.advanced both said 5 against doctrine's 6-7; both are
+    // now 6. The ruling they were reported for: change it, because the change
+    // is provably inert on output — `daysPerWeek` has no reader in the
+    // composer, only this gate and the sweep's volume scaling — so the only
+    // thing the divergence was doing was misreporting what the engine believes
+    // doctrine says. See the TIERDAYS-1 note above TIER_TARGETS in goal-tiers.ts.
   },
 
   // ══ DRIFT DETECTION ═══════════════════════════════════════════════════════
