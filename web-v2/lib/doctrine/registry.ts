@@ -83,7 +83,26 @@ import {
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
 import { VDOT_FULL_VALUE_DAYS, VDOT_EXPIRY_DAYS, FADE_TAIL_DAYS } from '@/lib/training/vdot';
-import { BASE_BUILD_RATE, MAX_BLOCK_GAIN } from '@/lib/training/fitness-trajectory';
+import {
+  BASE_BUILD_RATE,
+  MAX_BLOCK_GAIN,
+  TAPER_WEEKS_BY_DISTANCE,
+  taperWeeksForDistance,
+} from '@/lib/training/fitness-trajectory';
+import {
+  ASSESSMENT_BLOCK_WEEKS_FAST,
+  ASSESSMENT_BLOCK_WEEKS_SLOW,
+  VDOT_PER_ASSESSMENT_BLOCK,
+  VDOT_GAIN_PER_WEEK_MAX,
+  VDOT_GAIN_PER_WEEK_CONSERVATIVE,
+  VDOT_GAIN_PER_DAY_MAX,
+  VDOT_GAIN_PER_DAY_CONSERVATIVE,
+  MAX_BLOCK_GAIN_VDOT,
+  LATENT_VDOT_UPGRADE_MAX,
+  PROJECTION_NOISE_GRACE_VDOT,
+  closableSecPerWeek,
+} from '@/lib/training/vdot-gain-rate';
+import { MIN_WEEKLY_MI_FOR_DISTANCE } from '@/lib/training/goal-assessment';
 import { BUILD_RATE_VDOT_PER_WEEK } from '@/lib/training/goal-projection';
 import { expectedDaysForAnchor } from '@/lib/coach/recovery-phase';
 import {
@@ -169,7 +188,7 @@ import {
   OVER_CEILING_MAJORITY,
   raceWindowFor,
 } from '@/lib/coach/easy-discipline';
-import { vdotFromRace } from '@/lib/training/vdot';
+import { vdotFromRace, predictRaceTime } from '@/lib/training/vdot';
 import {
   READINESS_WEIGHTS,
   LOAD_CONTEXT_MULTIPLIER,
@@ -257,6 +276,24 @@ const DOC_ROW: Record<DistCategory, string> = {
   m: 'Marathon',
   ultra: '50K',
 };
+
+/** Seconds a VDOT delta is worth at a distance · the same derivation
+ *  ADAPTATION.closable-gap-is-derived asserts the engine uses, computed here
+ *  independently so the claim compares two routes to the number rather than
+ *  the engine to itself. */
+function secondsForDelta(vdot: number, distanceMi: number, delta: number): number {
+  const now = predictRaceTime(vdot, distanceMi);
+  const fitter = predictRaceTime(vdot + delta, distanceMi);
+  if (now == null || fitter == null) throw new Error('predictRaceTime returned null for an in-table runner');
+  return now - fitter;
+}
+
+/** The seconds form of the projection noise grace, derived the same way. */
+function noiseGraceSecFor(vdot: number, distanceMi: number): number | null {
+  const now = predictRaceTime(vdot, distanceMi);
+  const fitter = predictRaceTime(vdot + PROJECTION_NOISE_GRACE_VDOT, distanceMi);
+  return now == null || fitter == null ? null : now - fitter;
+}
 
 function within(value: number, [lo, hi]: [number, number], what: string): void {
   if (value < lo || value > hi) {
@@ -5304,105 +5341,379 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
 
   /**
-   * 2026-08-18 · doctrine sweep, "not yet seeded" item · a THIRD instance of
-   * the same fabricated-precision shape as CONVENTION.fitness-response-model,
-   * found while seeding this claim. fitness-trajectory.ts's BASE_BUILD_RATE
-   * cited "Research/00a periodization" for a VDOT-per-week figure; Research/00a
-   * mentions VDOT nowhere (it is a training-load doc, not a pace-prescription
-   * one). goal-projection.ts carries an unfixed duplicate of the identical
-   * constant and citation (BUILD_RATE_VDOT_PER_WEEK, also 0.35) — out of this
-   * claim's binds, flagged separately rather than silently repaired here.
+   * 2026-08-18 · THE GAIN-RATE RECONCILIATION. This entry replaces two
+   * CONVENTION claims (CONVENTION.trajectory-build-rate and
+   * CONVENTION.goal-projection-build-rate) that recorded, honestly, that
+   * BASE_BUILD_RATE and BUILD_RATE_VDOT_PER_WEEK (both 0.35) had no research
+   * behind them. Honest, but incomplete: the engine was carrying THREE
+   * different answers to the same physiological question —
+   *
+   *   goal-ready.ts        1/28 and 1/42 per day   read out of Research/01
+   *   fitness-trajectory   0.35 per week           convention
+   *   goal-projection      0.35 per week           convention (duplicate)
+   *   goal-gap.ts          0.50 per week           FABRICATED
+   *
+   * — and the fabricated one was the one deciding whether a runner was told
+   * their goal was still reachable. Its comment read `Per Daniels: realistic
+   * VDOT change in 1 week is ~0.5 pts`; no such figure exists anywhere in
+   * Research/. It survived the 2026-08-17 book-citation sweep because that
+   * sweep greps for `Cite:` and this wrote `Per Daniels:`. The lint now
+   * counts bare attribution phrases too, so the next one fails on sight.
+   *
+   * Research/01 §"Testing cadence" is the only passage in the corpus that
+   * puts VDOT change on a clock, and it states a BAND: reassess every 4-6
+   * weeks, +1 VDOT per reassessment. Every rate in the engine is now that
+   * band, defined once in lib/training/vdot-gain-rate.ts.
    */
   {
-    id: 'CONVENTION.trajectory-build-rate',
-    binds: ['lib/training/fitness-trajectory.ts#BASE_BUILD_RATE', 'lib/training/fitness-trajectory.ts#MAX_BLOCK_GAIN'],
-    doc: 'Research/00a-distance-running-training.md',
-    anchor: '## Aerobic Base Development',
+    id: 'ADAPTATION.vdot-gain-rate',
+    binds: [
+      'lib/training/vdot-gain-rate.ts#VDOT_GAIN_PER_WEEK_MAX',
+      'lib/training/vdot-gain-rate.ts#VDOT_GAIN_PER_WEEK_CONSERVATIVE',
+      'lib/training/fitness-trajectory.ts#BASE_BUILD_RATE',
+      'lib/training/goal-projection.ts#BUILD_RATE_VDOT_PER_WEEK',
+      'lib/training/goal-ready.ts#MAX_RATE_PER_DAY',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Testing cadence — how often to deliberately test',
     claim:
-      'THE TRAJECTORY BUILD RATE IS A CONVENTION, NOT A RESEARCH FINDING. The module cited ' +
-      '"Research/00a periodization" for a VDOT-per-week figure; Research/00a never mentions ' +
-      'VDOT. What Research/00a DOES ground is the SHAPE only: aerobic adaptation compounds over ' +
-      'a period of weeks and saturates as a trained runner nears their ceiling. The numbers stay ' +
-      'a bounded, tunable midpoint — small enough that no projection promises more fitness than ' +
-      'a single training block plausibly delivers — and the output must stay labelled projected, ' +
-      'never measured (the one sin this app has already shipped once: a removed native "Fitness" ' +
-      'tile that read a modelled buildRatio as a measured Stalled/Lagging/Responding verdict).',
+      'The ONLY per-time VDOT quantum in Research/ is here: reassess every 4-6 weeks, +1 VDOT ' +
+      'per reassessment. That is a band of 1/6 to 1/4 VDOT per week, and every modelled gain ' +
+      'rate in the engine must be one edge of it — read out of the doc, not chosen. There must ' +
+      'be exactly ONE definition, because the defect this replaces was three incompatible ' +
+      'answers, the most permissive of which was invented.',
     check({ cite }) {
-      const src = sourceOf('web-v2/lib/training/fitness-trajectory.ts');
-      if (/BASE_BUILD_RATE 0\.35 VDOT\/wk[\s\S]{0,80}Research\/00a periodization/.test(src)) {
-        throw new Error('the fabricated "Research/00a periodization" citation for BASE_BUILD_RATE is back');
+      const text = cite.text();
+      // Both numbers come out of the doc. A check that hardcoded them would
+      // only prove the test agrees with itself.
+      const cadence = /reassessing fitness every\s*(\d+)\s*[-‐-―]\s*(\d+)\s*weeks/i.exec(text);
+      if (!cadence) {
+        throw new Error('Research/01 §Testing cadence no longer states a reassessment cadence in weeks');
       }
-      if (!/IS A CONVENTION, NOT A RESEARCH FINDING/.test(src)) {
-        throw new Error('fitness-trajectory.ts no longer states its build rate is a convention');
+      const [fast, slow] = [Number(cadence[1]), Number(cadence[2])];
+      const quantum = /\+\s*(\d+)\s*VDOT/i.exec(text);
+      if (!quantum) {
+        throw new Error('Research/01 §Testing cadence no longer states a per-reassessment VDOT step');
       }
-      if (!(BASE_BUILD_RATE > 0 && BASE_BUILD_RATE <= 1)) {
-        throw new Error(`BASE_BUILD_RATE = ${BASE_BUILD_RATE} is outside a defensible range`);
-      }
-      if (!(MAX_BLOCK_GAIN > 0 && MAX_BLOCK_GAIN <= 10)) {
-        throw new Error(`MAX_BLOCK_GAIN = ${MAX_BLOCK_GAIN} is outside a defensible range`);
-      }
-      // The ceiling must not bind before the rate can express a real multi-week
-      // block — a MAX_BLOCK_GAIN tighter than a few weeks of BASE_BUILD_RATE
-      // would make the rate meaningless (the cap is all that's ever visible).
-      if (MAX_BLOCK_GAIN < BASE_BUILD_RATE * 4) {
+      const step = Number(quantum[1]);
+
+      if (ASSESSMENT_BLOCK_WEEKS_FAST !== fast || ASSESSMENT_BLOCK_WEEKS_SLOW !== slow) {
         throw new Error(
-          `MAX_BLOCK_GAIN (${MAX_BLOCK_GAIN}) is under 4 weeks of BASE_BUILD_RATE (${BASE_BUILD_RATE}) · ` +
-            'the block ceiling would bind before the weekly rate ever mattered',
+          `reassessment cadence: engine has ${ASSESSMENT_BLOCK_WEEKS_FAST}-${ASSESSMENT_BLOCK_WEEKS_SLOW} weeks, doctrine says ${fast}-${slow}`,
         );
       }
-      if (!/projectedVdot/.test(src)) {
+      if (VDOT_PER_ASSESSMENT_BLOCK !== step) {
+        throw new Error(`VDOT per reassessment: engine has ${VDOT_PER_ASSESSMENT_BLOCK}, doctrine says ${step}`);
+      }
+      const expectMax = step / fast;
+      const expectCons = step / slow;
+      const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+      if (!near(VDOT_GAIN_PER_WEEK_MAX, expectMax)) {
+        throw new Error(`VDOT_GAIN_PER_WEEK_MAX = ${VDOT_GAIN_PER_WEEK_MAX}, doctrine's fast edge is ${expectMax}`);
+      }
+      if (!near(VDOT_GAIN_PER_WEEK_CONSERVATIVE, expectCons)) {
+        throw new Error(
+          `VDOT_GAIN_PER_WEEK_CONSERVATIVE = ${VDOT_GAIN_PER_WEEK_CONSERVATIVE}, doctrine's slow edge is ${expectCons}`,
+        );
+      }
+      if (!near(VDOT_GAIN_PER_DAY_MAX, expectMax / 7) || !near(VDOT_GAIN_PER_DAY_CONSERVATIVE, expectCons / 7)) {
+        throw new Error('the per-day forms have drifted from the per-week band they are derived from');
+      }
+
+      // ONE model · the two build-rate constants must BE the doctrine edge,
+      // not a number that happens to look like it.
+      if (!near(BASE_BUILD_RATE, VDOT_GAIN_PER_WEEK_MAX)) {
+        throw new Error(`BASE_BUILD_RATE = ${BASE_BUILD_RATE} is no longer the doctrine fast edge (${VDOT_GAIN_PER_WEEK_MAX})`);
+      }
+      if (!near(BUILD_RATE_VDOT_PER_WEEK, VDOT_GAIN_PER_WEEK_MAX)) {
+        throw new Error(
+          `BUILD_RATE_VDOT_PER_WEEK = ${BUILD_RATE_VDOT_PER_WEEK} is no longer the doctrine fast edge · ` +
+            'a second, divergent rate is exactly the defect this claim exists to stop',
+        );
+      }
+      for (const f of ['fitness-trajectory', 'goal-projection', 'goal-ready'] as const) {
+        const src = sourceOf(`web-v2/lib/training/${f}.ts`);
+        if (/=\s*0\.35\s*;/.test(src)) {
+          throw new Error(`${f}.ts has re-introduced a literal 0.35 build rate instead of the shared model`);
+        }
+      }
+
+      // The output must stay labelled projected, never measured — the one sin
+      // this app has already shipped once (a native "Fitness" tile that read a
+      // modelled buildRatio as a measured Stalled/Lagging/Responding verdict).
+      const traj = sourceOf('web-v2/lib/training/fitness-trajectory.ts');
+      if (!/projectedVdot/.test(traj)) {
         throw new Error('fitness-trajectory.ts no longer names its output as projected');
       }
-      // The doctrine this DOES rest on must still be there: a saturating curve.
-      if (!/saturate/i.test(cite.text())) {
+      const rate = sourceOf('web-v2/lib/training/vdot-gain-rate.ts');
+      if (!/MODELLED, never measured/.test(rate)) {
+        throw new Error('vdot-gain-rate.ts no longer states that everything it derives is modelled, not measured');
+      }
+    },
+  },
+
+  /**
+   * 2026-08-18 · the two single-shot VDOT magnitudes the engine leans on. Both
+   * are read out of §"Triggers to retest", which is the only place Research/
+   * puts a number on how far a fitness ESTIMATE may move at once.
+   */
+  {
+    id: 'ADAPTATION.single-shot-vdot-magnitudes',
+    binds: [
+      'lib/training/vdot-gain-rate.ts#MAX_BLOCK_GAIN_VDOT',
+      'lib/training/vdot-gain-rate.ts#LATENT_VDOT_UPGRADE_MAX',
+      'lib/training/fitness-trajectory.ts#MAX_BLOCK_GAIN',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Triggers to retest',
+    claim:
+      'Doctrine states no build-block gain ceiling, but it does quantify how far a VDOT ' +
+      'estimate may move at once: a >=2-week layoff drops it 3-5 points, and a race that beats ' +
+      'prediction by >30 sec/mi adds 2-3. The engine caps one block\'s modelled gain at the top ' +
+      'of the layoff band, and sizes the latent headroom it allows an aggressive goal at the top ' +
+      'of the upgrade band. Neither may exceed what doctrine actually states.',
+    check({ cite }) {
+      const t = cite.table();
+      const layoff = t.cell('Returning from layoff ≥2 weeks', 'Action');
+      const drop = [...layoff.matchAll(/(\d+)/g)].map((m) => Number(m[1]));
+      if (drop.length < 2) throw new Error(`could not read the layoff drop band from "${layoff}"`);
+      const maxSwing = Math.max(...drop);
+      if (MAX_BLOCK_GAIN_VDOT !== maxSwing) {
         throw new Error(
-          'Research/00a §"Aerobic Base Development" no longer describes gains saturating · ' +
-            'the only part of this model research grounds has moved',
+          `MAX_BLOCK_GAIN_VDOT = ${MAX_BLOCK_GAIN_VDOT}, doctrine's largest short-interruption swing is ${maxSwing}`,
+        );
+      }
+      if (MAX_BLOCK_GAIN !== MAX_BLOCK_GAIN_VDOT) {
+        throw new Error('fitness-trajectory MAX_BLOCK_GAIN has diverged from the shared ceiling');
+      }
+
+      const upgrade = t.cell('Last race beat predicted time by >30 sec/mi', 'Action');
+      const add = [...upgrade.matchAll(/(\d+)/g)].map((m) => Number(m[1]));
+      if (add.length < 2) throw new Error(`could not read the upgrade band from "${upgrade}"`);
+      const maxUpgrade = Math.max(...add);
+      if (LATENT_VDOT_UPGRADE_MAX !== maxUpgrade) {
+        throw new Error(
+          `LATENT_VDOT_UPGRADE_MAX = ${LATENT_VDOT_UPGRADE_MAX}, doctrine's largest single-observation upgrade is ${maxUpgrade}`,
+        );
+      }
+      // The ceiling must not bind before the rate can express a real block.
+      if (MAX_BLOCK_GAIN_VDOT < VDOT_GAIN_PER_WEEK_MAX * 4) {
+        throw new Error('the block ceiling would bind before four weeks of the weekly rate ever mattered');
+      }
+      // And the latent headroom must never be spent as a gain rate.
+      if (/LATENT_VDOT_UPGRADE_MAX/.test(sourceOf('web-v2/lib/training/fitness-trajectory.ts'))) {
+        throw new Error(
+          'fitness-trajectory.ts is reading the latent upgrade headroom · that number is a ' +
+            'goal-feasibility bound, not fitness the projection may award',
         );
       }
     },
   },
 
   /**
-   * 2026-08-18 · doctrine sweep follow-up · closes the duplicate flagged (but
-   * deliberately left unfixed) by CONVENTION.trajectory-build-rate's own
-   * comment. goal-projection.ts's BUILD_RATE_VDOT_PER_WEEK is the identical
-   * 0.35 constant with the identical fabricated "Research/00a periodization"
-   * citation — a third instance of the same shape, after simulator.ts's
-   * COLD_START_CALIBRATION (CONVENTION.fitness-response-model) and
-   * fitness-trajectory.ts's BASE_BUILD_RATE (CONVENTION.trajectory-build-
-   * rate). Same remediation: honest convention framing, no numeric change.
+   * 2026-08-18 · the display noise grace. Two constants used to express it —
+   * 0.2 VDOT and a flat 30 seconds — and the seconds one was calibrated at
+   * half-marathon scale and applied at every distance, so it could never fire
+   * correctly for a 5K runner (30 seconds is a rout over 5K and inside the
+   * noise over a marathon). There is ONE grace now, stated in VDOT, with the
+   * seconds form derived per distance off the Daniels table.
    */
   {
-    id: 'CONVENTION.goal-projection-build-rate',
-    binds: ['lib/training/goal-projection.ts#BUILD_RATE_VDOT_PER_WEEK'],
-    doc: 'Research/00a-distance-running-training.md',
-    anchor: '## Aerobic Base Development',
+    id: 'ADAPTATION.projection-noise-grace',
+    binds: [
+      'lib/training/vdot-gain-rate.ts#PROJECTION_NOISE_GRACE_VDOT',
+      'lib/training/vdot-gain-rate.ts#noiseGraceSec',
+      'lib/training/fitness-trajectory.ts#projectFitnessTrajectory',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Update logic',
     claim:
-      'BUILD_RATE_VDOT_PER_WEEK IS A CONVENTION, NOT A RESEARCH FINDING — the identical shape ' +
-      'as CONVENTION.trajectory-build-rate and CONVENTION.fitness-response-model. The comment ' +
-      'cited "Research/00a periodization" for a VDOT-per-week figure; Research/00a never ' +
-      'mentions VDOT. What Research/00a DOES ground is the SHAPE only: aerobic adaptation ' +
-      'compounds over a period of weeks and saturates as a trained runner nears their ceiling. ' +
-      'The number stays a bounded, tunable midpoint — calibrated against the confidence-label ' +
-      'tiers it feeds — not a doctrine figure.',
+      'Doctrine re-derives every pace when VDOT moves by a whole point. A display grace that ' +
+      'decides "reachable" or "ahead of goal" must therefore sit strictly INSIDE one point, so ' +
+      'it can never swallow a difference doctrine would act on. It must be stated once, in ' +
+      'VDOT, with any seconds form derived per distance rather than fixed at one distance.',
     check({ cite }) {
-      const src = sourceOf('web-v2/lib/training/goal-projection.ts');
-      if (/pts\/wk[\s\S]{0,80}Research\/00a periodization/.test(src)) {
-        throw new Error('the fabricated "Research/00a periodization" citation for BUILD_RATE_VDOT_PER_WEEK is back');
-      }
-      if (!/IS A CONVENTION, NOT A RESEARCH FINDING/.test(src)) {
-        throw new Error('goal-projection.ts no longer states its build rate is a convention');
-      }
-      if (!(BUILD_RATE_VDOT_PER_WEEK > 0 && BUILD_RATE_VDOT_PER_WEEK <= 1)) {
-        throw new Error(`BUILD_RATE_VDOT_PER_WEEK = ${BUILD_RATE_VDOT_PER_WEEK} is outside a defensible range`);
-      }
-      // The doctrine this DOES rest on must still be there: a saturating curve.
-      if (!/saturate/i.test(cite.text())) {
+      const m = /abs\(new_VDOT\s*-\s*current_VDOT\)\s*>=\s*([\d.]+)/.exec(cite.text());
+      if (!m) throw new Error('Research/01 §Update logic no longer states the actionable VDOT quantum');
+      const actionable = Number(m[1]);
+      if (!(PROJECTION_NOISE_GRACE_VDOT > 0 && PROJECTION_NOISE_GRACE_VDOT < actionable)) {
         throw new Error(
-          'Research/00a §"Aerobic Base Development" no longer describes gains saturating · ' +
-            'the only part of this model research grounds has moved',
+          `PROJECTION_NOISE_GRACE_VDOT = ${PROJECTION_NOISE_GRACE_VDOT} is not strictly inside doctrine's actionable ${actionable}`,
         );
+      }
+      const src = sourceOf('web-v2/lib/training/fitness-trajectory.ts');
+      if (/gapSec\s*!=\s*null\s*&&\s*gapSec\s*<\s*-30\b/.test(src)) {
+        throw new Error('the flat 30-second, HM-calibrated ahead-of-goal threshold is back');
+      }
+      if (/gapVdotRaw\s*<=?\s*-?0\.2\b/.test(src)) {
+        throw new Error('fitness-trajectory.ts has re-introduced a literal 0.2 grace instead of the shared constant');
+      }
+      // Behavioural: the seconds grace must actually differ by distance.
+      const at5k = noiseGraceSecFor(47, 3.10686);
+      const atM = noiseGraceSecFor(47, 26.2188);
+      if (at5k == null || atM == null) throw new Error('the derived seconds grace no longer resolves');
+      if (!(atM > at5k * 3)) {
+        throw new Error(
+          `the seconds grace is not distance-aware: 5K ${at5k.toFixed(1)}s vs marathon ${atM.toFixed(1)}s`,
+        );
+      }
+    },
+  },
+
+  /**
+   * 2026-08-18 · the closable-gap test, which is what actually tells a runner
+   * whether their goal is still on. It used to be a hardcoded 8/18/40/90
+   * sec-per-week ladder justified by the fabricated 0.5 VDOT/wk figure. Two
+   * things were wrong beyond the provenance: the ladder was blind to the
+   * runner's own fitness (a VDOT point is worth far more seconds to a 4:10
+   * marathoner than a 2:30 one), and it was an unwatched per-distance table.
+   */
+  {
+    id: 'ADAPTATION.closable-gap-is-derived',
+    binds: [
+      'lib/training/vdot-gain-rate.ts#closableSecPerWeek',
+      'lib/plan/goal-gap.ts#classifyTrend',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Testing cadence — how often to deliberately test',
+    claim:
+      'How many seconds of finish time a week of training can close is NOT a constant. It is ' +
+      'the doctrine gain rate taken through the Daniels table at this runner\'s fitness and ' +
+      'this distance, so it scales with both. The fabricated "~0.5 pts per week" that justified ' +
+      'the old fixed ladder may never return, and no hardcoded seconds-per-week ladder may ' +
+      'replace it.',
+    check() {
+      const src = sourceOf('web-v2/lib/plan/goal-gap.ts');
+      // Same backtick rule the lint uses: a phrase inside backticks is being
+      // QUOTED — that is how the comment names the citation it deleted — and
+      // only a LIVE attribution counts. Writing down what went wrong has to
+      // stay allowed, or the record of the defect gets deleted to pass a gate.
+      const live = src.replace(/`[^`]*`/g, ' ');
+      if (/Per Daniels/i.test(live)) {
+        throw new Error('the fabricated "Per Daniels" attribution is back in goal-gap.ts');
+      }
+      if (/realistic VDOT change in 1 week/i.test(live)) {
+        throw new Error('the fabricated ~0.5 VDOT/week figure is back in goal-gap.ts');
+      }
+      if (/raceDistanceMi\s*<=\s*3\.5\s*\?\s*8\b/.test(src)) {
+        throw new Error('the hardcoded 8/18/40/90 closable ladder is back in goal-gap.ts');
+      }
+      if (!/closableSecPerWeek\(/.test(src)) {
+        throw new Error('goal-gap.ts no longer derives its closable rate from the shared model');
+      }
+      // Behavioural · it must scale with BOTH distance and fitness.
+      const slow5k = closableSecPerWeek(40, 3.10686);
+      const fast5k = closableSecPerWeek(60, 3.10686);
+      const slowM = closableSecPerWeek(40, 26.2188);
+      if (slow5k == null || fast5k == null || slowM == null) {
+        throw new Error('closableSecPerWeek no longer resolves for in-table runners');
+      }
+      if (!(slowM > slow5k)) {
+        throw new Error('closableSecPerWeek is not distance-aware · a marathon week must be worth more seconds than a 5K week');
+      }
+      if (!(slow5k > fast5k)) {
+        throw new Error('closableSecPerWeek is not fitness-aware · a VDOT point must be worth more seconds to a slower runner');
+      }
+      // And it must be the doctrine rate, not some other one.
+      if (Math.abs(slow5k - secondsForDelta(40, 3.10686, VDOT_GAIN_PER_WEEK_MAX)) > 1e-6) {
+        throw new Error('closableSecPerWeek is no longer sized at the doctrine gain rate');
+      }
+    },
+  },
+
+  /**
+   * 2026-08-18 · the projection's taper. `TAPER_WEEKS = 2` was flat for every
+   * distance while the doctrine-bound BLOCK_SHAPE.taperWeeks is 1/2/2/3/3, so
+   * buildWeeks was wrong at BOTH ends: a week too generous for a marathon or
+   * ultra goal, a week too mean for a 5K.
+   *
+   * The projection module cannot import the generator (a client component
+   * pulls it into the browser bundle and generate.ts imports `pg`), so it
+   * holds a copy — and this claim is what stops a copy from becoming a second
+   * opinion: the two tables must agree value-for-value, and both must sit
+   * inside Research/08 §9.1's own taper-length band.
+   */
+  {
+    id: 'TAPER.trajectory-build-weeks',
+    binds: [
+      'lib/training/fitness-trajectory.ts#TAPER_WEEKS_BY_DISTANCE',
+      'lib/training/fitness-trajectory.ts#taperWeeksForDistance',
+    ],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '| Distance | Taper length | Volume reduction (peak week) |',
+    claim:
+      'The weeks the fitness projection excludes from the build must be the SAME taper the plan ' +
+      'generator actually writes, per distance, and both must be a whole-week rounding of ' +
+      'doctrine\'s taper-length band for that distance. A flat two weeks for every distance ' +
+      'over-credits a marathon build by a week and under-credits a 5K build by a week.',
+    check({ cite }) {
+      const t = cite.table();
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      const docRow: Record<DistCategory, string> = { ...DOC_ROW, ultra: 'Ultra (50K-100M)' };
+      for (const cat of CATS) {
+        const mine = TAPER_WEEKS_BY_DISTANCE[cat];
+        const m = matchLiteral(
+          gen,
+          new RegExp(`'${cat}':\\s*\\{\\s*taperWeeks:\\s*(\\d+)`),
+          `BLOCK_SHAPE['${cat}'].taperWeeks`,
+        );
+        const generator = Number(m[1]);
+        if (mine !== generator) {
+          throw new Error(
+            `TAPER_WEEKS_BY_DISTANCE.${cat} = ${mine} but the generator tapers ${generator} weeks · ` +
+              'the projection would size the build off a taper the plan does not run',
+          );
+        }
+        const [lo, hi] = parseBand(t.cell(docRow[cat], 'Taper length'));
+        within(mine, [Math.ceil(lo / 7), Math.ceil(hi / 7)], `TAPER_WEEKS_BY_DISTANCE.${cat}`);
+      }
+      // An unknown distance must not silently borrow a distance's taper.
+      const unknown = taperWeeksForDistance(null);
+      const shortest = Math.min(...CATS.map((c) => TAPER_WEEKS_BY_DISTANCE[c]));
+      if (unknown !== shortest) {
+        throw new Error(
+          `taperWeeksForDistance(null) = ${unknown} · an unreadable distance must fall back to the ` +
+            `shortest taper (${shortest}), which cannot inflate a projected gain`,
+        );
+      }
+    },
+  },
+
+  /**
+   * 2026-08-18 · the goal assessment's volume caution. It tells a runner that
+   * volume, not speed, is what stands between them and the distance — so the
+   * line it fires under has to be doctrine's, not a feel. Research/00a's
+   * volume table publishes a beginner band per distance and the low edge of
+   * that band is the gentlest honest floor in the corpus.
+   */
+  {
+    id: 'VOLUME.goal-assessment-floor',
+    binds: ['lib/training/goal-assessment.ts#MIN_WEEKLY_MI_FOR_DISTANCE'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume table — miles per week (km in parentheses)',
+    claim:
+      'The weekly mileage below which the goal assessment names volume as the limiter is the LOW ' +
+      'edge of doctrine\'s own beginner ("just finishing") band for that distance. Deliberately ' +
+      'the gentlest number the doc states: this gates a coaching caution, and a caution that ' +
+      'fires on a competent recreational runner is one people learn to ignore.',
+    check({ cite }) {
+      const t = cite.table();
+      const docRow: Record<DistCategory, string> = {
+        '5k': '5K', '10k': '10K', hm: 'Half-marathon', m: 'Marathon', ultra: '50K',
+      };
+      for (const cat of CATS) {
+        const [lo] = parseBand(t.cell(docRow[cat], 'Beginner (just finishing)'));
+        if (MIN_WEEKLY_MI_FOR_DISTANCE[cat] !== lo) {
+          throw new Error(
+            `MIN_WEEKLY_MI_FOR_DISTANCE.${cat} = ${MIN_WEEKLY_MI_FOR_DISTANCE[cat]}, doctrine's beginner floor is ${lo} mi/wk`,
+          );
+        }
+      }
+      // Monotonic: a longer race can never want less weekly volume.
+      for (let i = 1; i < CATS.length; i++) {
+        if (MIN_WEEKLY_MI_FOR_DISTANCE[CATS[i]] <= MIN_WEEKLY_MI_FOR_DISTANCE[CATS[i - 1]]) {
+          throw new Error(`the volume floor does not rise from ${CATS[i - 1]} to ${CATS[i]}`);
+        }
       }
     },
   },

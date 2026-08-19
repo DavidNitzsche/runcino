@@ -751,9 +751,11 @@ function fmtMi(n: number): string {
  *   '5mi @ T'  → '5 mi · sustained & controlled'
  *   anything else (or null) → 'Work block per plan'
  *
- * TODO 2026-05-28 · the jog-rest duration ("90s", "2:00") is doctrine
- * default per Daniels §"I/R workouts"; once the plan emits an explicit
- * rest field this should read it directly.
+ * TODO 2026-05-28 · the jog-rest duration ("90s", "2:00") is the doctrine
+ * default for VO2max repeats (Research/04-workout-vocabulary.md §6.3, 1000m
+ * repeats); once the plan emits an explicit rest field this should read it
+ * directly. 2026-08-18 · re-pointed from a bare `per Daniels §I/R workouts`,
+ * which named no file anyone could open.
  */
 function interpretWorkBody(plannedLabel: string | null): string {
   if (!plannedLabel) return 'Work block per plan';

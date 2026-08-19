@@ -44,8 +44,8 @@ export interface GapReport {
     b: { sec: number; label: string };  // current trajectory
     c: { sec: number; label: string };  // safe / executable
   } | null;
-  /** Weeks remaining until race. */
-  weeksRemaining: number;
+  /** Weeks remaining until race. Null for a no-race goal with no deadline. */
+  weeksRemaining: number | null;
   /** Days until the renegotiation card surfaces (null = don't surface). */
   daysToRenegotiate: number | null;
   /** Risk flags from the simulator (volume ramps, density issues). */
@@ -108,12 +108,16 @@ export async function composeGapReport(userUuid: string): Promise<GapReport | nu
   // identify, so the card offers none rather than borrowing another distance's.
   const cat = distanceCategoryOrNull(gap.raceDistanceMi);
   const renegWeeks = cat == null ? null : RENEGOTIATION_WINDOW_WEEKS[cat];
-  const daysToRenegotiate = renegWeeks == null
+  // 2026-08-18 · a goal with no deadline has no renegotiation lead time to
+  // count down. The classifier never calls such a goal unclosable either, so
+  // this branch is belt-and-braces: no runway, no countdown, no invented one.
+  const weeksLeft = gap.weeksRemaining;
+  const daysToRenegotiate = renegWeeks == null || weeksLeft == null
     ? null
-    : gap.status === 'unclosable' && gap.weeksRemaining <= renegWeeks
+    : gap.status === 'unclosable' && weeksLeft <= renegWeeks
       ? 0   // surface NOW
       : gap.status === 'unclosable'
-        ? Math.max(0, (gap.weeksRemaining - renegWeeks) * 7)
+        ? Math.max(0, (weeksLeft - renegWeeks) * 7)
         : null;
 
   return {
@@ -150,8 +154,10 @@ function composeHeadline(gap: GoalGap): string {
     return `Tracking ${traj} · ${gapStr} behind goal and trending wider.`;
   }
   // unclosable
-  return `Tracking ${traj} · Gap to ${formatTime(gap.goalSec)} is wider than ` +
-    `${gap.weeksRemaining} weeks can close.`;
+  return gap.weeksRemaining != null
+    ? `Tracking ${traj} · Gap to ${formatTime(gap.goalSec)} is wider than ` +
+        `${gap.weeksRemaining} weeks can close.`
+    : `Tracking ${traj} · Gap to ${formatTime(gap.goalSec)} is wider than this runway can close.`;
 }
 
 function composeAlternativeRanges(

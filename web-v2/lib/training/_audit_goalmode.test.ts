@@ -10,7 +10,7 @@
  *      runner whose goal demands 44.5 with 3 weeks left projected the whole
  *      4.5 gain → hero ON PACE while computeConfidenceLabel on the same
  *      payload graded the gap against runway × 0.35 → LOW. The fix caps the
- *      modeled FUTURE gain at buildWeeks × BASE_BUILD_RATE (Research/00a
+ *      modeled FUTURE gain at buildWeeks × BASE_BUILD_RATE (Research/01
  *      periodization · ~0.25–0.4 VDOT/wk, 0.35 midpoint — the SAME rate the
  *      confidence label grades against). Demonstrated over-performance
  *      (2026-06-12 upgrade gear) still rides on top under the block/plan
@@ -32,7 +32,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { projectFitnessTrajectory, BASE_BUILD_RATE, TAPER_WEEKS } from './fitness-trajectory';
+import { projectFitnessTrajectory, BASE_BUILD_RATE, taperWeeksForDistance } from './fitness-trajectory';
 import { computeConfidenceLabel, reconcileStatusWithConfidence, type GoalStatus } from './goal-projection';
 import { predictRaceTime } from './vdot';
 import { composeTargetsSummaryLine, type TargetsSummaryArgs } from './targets-summary';
@@ -61,7 +61,8 @@ describe('P1-14 · trajectory runway cap', () => {
       currentVdot: 40, goalSec, raceDistanceMi: MI_5K,
       weeksToRace: 3, executionQuality: 1.0,
     })!;
-    const buildWeeks = 3 - TAPER_WEEKS; // 1
+    // 2026-08-18 · taper is per-distance now (5K = 1 week, not a flat 2).
+    const buildWeeks = 3 - taperWeeksForDistance(MI_5K); // 2
     expect(traj.buildWeeks).toBeCloseTo(buildWeeks, 5);
     // Modeled gain capped at what the remaining build can deliver (0.051
     // margin · projectedGainVdot is display-rounded to 0.1 VDOT).
@@ -115,7 +116,7 @@ describe('P1-14 · trajectory runway cap', () => {
               });
               if (!traj) continue;
               // 0.051 margin · projectedGainVdot is display-rounded to 0.1.
-              const cap = Math.max(0, weeksToRace - TAPER_WEEKS) * BASE_BUILD_RATE;
+              const cap = Math.max(0, weeksToRace - taperWeeksForDistance(dist)) * BASE_BUILD_RATE;
               if (traj.projectedGainVdot > cap + 0.051) {
                 violations.push(`vdot=${currentVdot} gap=${gap} wk=${weeksToRace} exec=${exec} dist=${dist} → gain ${traj.projectedGainVdot} > cap ${cap.toFixed(2)}`);
               }

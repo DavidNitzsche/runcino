@@ -29,7 +29,7 @@
  * shared contract — if a name differs, reconcile HERE, it is the only coupling
  * point):
  *   · './fitness-trajectory'  → projectFitnessTrajectory, BASE_BUILD_RATE,
- *                               TAPER_WEEKS, FitnessTrajectory.runwayLimited
+ *                               taperWeeksForDistance, FitnessTrajectory.runwayLimited
  *   · './goal-projection'     → executionQualityFromTestPoints(points,
  *                               missedKeyWorkouts, daysSinceLastRun)
  *   · './vdot'                → predictRaceTime, vdotFromRace
@@ -38,7 +38,7 @@ import { describe, it, expect } from 'vitest';
 import {
   projectFitnessTrajectory,
   BASE_BUILD_RATE,
-  TAPER_WEEKS,
+  taperWeeksForDistance,
 } from './fitness-trajectory';
 import { executionQualityFromTestPoints } from './goal-projection';
 import type { GoalProjection } from './goal-projection';
@@ -128,7 +128,8 @@ describe('projectFitnessTrajectory · runway cap scales with executionQuality', 
     expect(broken.projectedGainVdot).toBeLessThan(clean.projectedGainVdot);
 
     // And each tracks its own runway cap (buildWeeks * rate * exec).
-    const cap = (exec: number) => (base.weeksToRace - TAPER_WEEKS) * BASE_BUILD_RATE * exec;
+    const cap = (exec: number) =>
+      (base.weeksToRace - taperWeeksForDistance(HM_MI)) * BASE_BUILD_RATE * exec;
     expect(clean.projectedGainVdot).toBeLessThanOrEqual(cap(1.0) + 0.05);
     expect(broken.projectedGainVdot).toBeLessThanOrEqual(cap(0.5) + 0.05);
   });

@@ -179,6 +179,16 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'marathon-style 3-week taper, and the race-specific stimulus for an ultra is the long ' +
       'run rather than a pace insert. TAPER.duration-by-distance checks both against their own ' +
       'doctrine rows.',
+    'web-v2/lib/training/fitness-trajectory.ts#TAPER_WEEKS_BY_DISTANCE:10k==hm':
+      'This table is a client-safe COPY of generate.ts BLOCK_SHAPE.taperWeeks, pinned to it ' +
+      'value-for-value by TAPER.trajectory-build-weeks, which also checks each distance against ' +
+      'its own Research/08 §9.1 row. The 10K and half share 2 for the same reason BLOCK_SHAPE ' +
+      'does: their 7-10 and 10-14 day bands round to the same whole week. The copy exists ' +
+      'because fitness-trajectory.ts is imported by a client component and generate.ts imports ' +
+      '`pg`.',
+    'web-v2/lib/training/fitness-trajectory.ts#TAPER_WEEKS_BY_DISTANCE:m==ultra':
+      'Same pinned copy · see TAPER_WEEKS_BY_DISTANCE:10k==hm. Research/22 §Ultramarathon ' +
+      'prescribes a marathon-style 3-week taper, which is why BLOCK_SHAPE shares the value too.',
     'web-v2/lib/coach/limiter.ts#DEFAULT_LIMITER:5k==10k':
       'Research/00a §"When each TID applies" gives 5K and 10K a SINGLE shared row, so the two ' +
       'distances have one rationale between them ("Build aerobic capacity broadly") and one ' +
@@ -315,6 +325,12 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'time. Newly visible 2026-08-18 because the table was re-keyed from an inline four-member ' +
       'union to DistCategory — which is also how the missing \'ultra\' key was found: an ultra ' +
       'had been falling through to the marathon\'s window.',
+    'web-v2/lib/training/goal-assessment.ts#SHORT_RUNWAY_WEEKS':
+      'Not a physiology claim · it is the line under which the goal assessment says "this is a ' +
+      'short build" and promises to prioritise arriving healthy. Research/22 publishes plan ' +
+      'DURATIONS per distance but states no threshold below which a build stops working, so ' +
+      'there is no band to bind. The numbers are the shortest plan each distance has in ' +
+      'Research/22, used as a floor rather than a prescription.',
     'web-v2/lib/plan/validate.ts#CONSTRAINTS':
       'Partly bound: taperDropMinPct is checked by TAPER.minimum-volume-drop. The other two ' +
       'fields (longRunWoWMaxPct, weeklyVolWoWMaxPct) are week-over-week validator ceilings with ' +
@@ -487,15 +503,59 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
   // An entry may not come back without somebody saying which of the three it is.
   const BOOK_CITATIONS_PER_FILE: Record<string, number> = {};
 
+  /**
+   * E · BARE ATTRIBUTION. The check below counts citations written as `Cite:`.
+   * That is how the 0.5 VDOT/week fabrication in goal-gap.ts survived the
+   * 2026-08-17 sweep for two months: it was written `Per Daniels: realistic
+   * VDOT change in 1 week is ~0.5 pts`, with no `Cite:` anywhere on the line,
+   * so nothing looked at it. It was not decorative — it justified the ladder
+   * that decided whether a runner was told their goal was still reachable.
+   *
+   * Attribution is attribution however it is phrased. A comment that leans on
+   * a named authority is making a citation and gets counted like one.
+   */
+  const BARE_ATTRIBUTIONS_PER_FILE: Record<string, number> = {};
+
+  it('no comment attributes a number to a named authority without a citation', () => {
+    const RE = /\b(?:per|according to|says|recommends)\s+(?:Daniels|Pfitzinger|Lydiard|Magness|Hudson)\b/i;
+    const counts: Record<string, number> = {};
+    for (const file of sourceFiles()) {
+      const relPath = path.relative(path.join(repoRoot(), 'web-v2'), file);
+      for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+        if (!/^\s*(\/\/|\*|\/\*)/.test(line)) continue; // comments only
+        // A phrase inside backticks is being QUOTED, not asserted — that is
+        // how a comment names the bad citation it is replacing. Strip quoted
+        // spans before looking, so writing down what went wrong is allowed
+        // and only a live attribution counts.
+        const live = line.replace(/`[^`]*`/g, ' ');
+        if (!RE.test(live)) continue;
+        if (/Research\/|docs\/|Design\//.test(line)) continue; // carries a real pointer
+        counts[relPath] = (counts[relPath] ?? 0) + 1;
+      }
+    }
+    expect(
+      counts,
+      'A comment credits a named coach for a number with nothing to open. That is a citation\n' +
+        'wearing plain clothes, and it is how "Per Daniels: realistic VDOT change in 1 week is\n' +
+        '~0.5 pts" — a figure that appears nowhere in Research/ — spent two months deciding\n' +
+        'whether runners were told their goal was reachable. Point it at the passage, or say\n' +
+        'plainly that the number is ours.',
+    ).toEqual(BARE_ATTRIBUTIONS_PER_FILE);
+  });
+
   it('every book-only citation is counted · an uncounted one is verified by nothing', () => {
     const BOOKS = /(Daniels|Pfitzinger|Lydiard|Magness|Hudson|Running Formula|Advanced Marathoning|Faster Road Racing)/;
     const counts: Record<string, number> = {};
     for (const file of sourceFiles()) {
       const rel = path.relative(path.join(repoRoot(), 'web-v2'), file);
       for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-        if (!/\b[Cc]ite:/.test(line)) continue;
+        // Same backtick rule as the bare-attribution check above: a comment
+        // that quotes `Cite:` while explaining a citation it deleted is not
+        // itself making one.
+        const live = line.replace(/`[^`]*`/g, ' ');
+        if (!/\b[Cc]ite:/.test(live)) continue;
         if (/Research\/|docs\/|Design\//.test(line)) continue;
-        if (!BOOKS.test(line)) continue;
+        if (!BOOKS.test(live)) continue;
         counts[rel] = (counts[rel] ?? 0) + 1;
       }
     }

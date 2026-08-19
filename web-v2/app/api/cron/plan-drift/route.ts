@@ -54,6 +54,10 @@ export async function POST(req: NextRequest) {
      *  injured, or re-entering after a gap — the states that widen the
      *  projection in the first place. */
     goal_gap_suppressed_compromised?: number;
+    /** 2026-08-18 · goal-gap now covers no-race goal mode, which has no race
+     *  slug for the auto-rebuild path to key off. Counted so the skip is
+     *  visible in the cron report rather than silent. */
+    goal_gap_skipped_goal_mode?: number;
     error?: string;
   };
   const results: UserResult[] = [];
@@ -375,7 +379,16 @@ export async function POST(req: NextRequest) {
         // plan for this user (the strict plan_id='' match could never
         // hit a real row, so this dedupe was dead before 2026-08-17).
         const recentGapRebuild = await hasPendingProposal(u, '', 'goal_gap_widening').catch(() => false);
-        if (!recentGapRebuild) {
+        // 2026-08-18 · goal-gap now covers no-race goal mode, where there is
+        // no race slug for fireAutoRebuild to match the active plan against
+        // (its race_id check would reject a null anyway). Those runners get
+        // the widening SIGNAL and the goal assessment; the auto-rebuild path
+        // stays race-anchored until the generator has a goal-mode rebuild
+        // entry point. Skipping is the honest behaviour, not a silent no-op:
+        // it is counted so the cron report shows it.
+        if (goalGap.raceSlug == null) {
+          r.goal_gap_skipped_goal_mode = (r.goal_gap_skipped_goal_mode ?? 0) + 1;
+        } else if (!recentGapRebuild) {
           try {
             const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
             await fireAutoRebuild({
