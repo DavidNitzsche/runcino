@@ -15,6 +15,7 @@
  */
 
 import { computeZones, type ZoneTable } from './zones';
+import type { SessionType } from './workout-type';
 import { tPaceFromGoal } from '@/lib/plan/spec-builder';
 import {
   applyHeatToPace,
@@ -22,9 +23,21 @@ import {
   type AbilityTier,
 } from '@/lib/weather/heat-adjustment';
 
-export type WorkoutType =
-  | 'easy' | 'long' | 'tempo' | 'threshold' | 'intervals' | 'race'
-  | 'shakeout' | 'rest' | 'unplanned';
+/**
+ * CONVERGED 2026-08-18 · this was a nine-member union that omitted `fartlek`,
+ * `progression`, `recovery` and `race_week_tuneup`, all of which the generator
+ * emits and `lib/coach/run-purpose.ts` already accepted. The two unions asked
+ * the same question and disagreed on the answer, so `derivePurpose` could be
+ * asked about a day `prescriptionFor` could not. Both now name the same type.
+ *
+ * Widening is safe here: `prescriptionFor`'s switch has a `default` arm, so a
+ * newly-admissible type returns the generic "No workout scheduled" card rather
+ * than failing to compile. That is the same behaviour those types already got
+ * at run time via the `wo.type as WorkoutType` cast in
+ * `lib/watch/build-workout.ts` — the difference is that the cast is no longer
+ * lying about it.
+ */
+export type WorkoutType = SessionType;
 
 export interface PrescriptionStep {
   label: string;          // "Warmup", "Reps", "Recovery", "Cooldown"

@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { prescriptionFor, type WorkoutType } from '@/lib/training/prescriptions';
+import { canonicalSessionType } from '@/lib/training/workout-type';
 import { lookupTempF, baselineTempF } from '@/lib/weather/lookup';
 import { abilityTierFromVdot } from '@/lib/weather/heat-adjustment';
 import {
@@ -18,6 +19,13 @@ import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 
+/**
+ * The types this endpoint can actually build a prescription for · the arms of
+ * `prescriptionFor`'s switch. Deliberately NARROWER than `WorkoutType`, which
+ * now spans every session type the engine authors: the extra members fall to
+ * that switch's `default` arm and would return an empty card, so serving the
+ * runner an honest easy-run prescription is better than an empty one.
+ */
 const VALID: WorkoutType[] = ['easy','long','tempo','threshold','intervals','race','shakeout','rest','unplanned'];
 
 function parseGoalSeconds(s: string | null | undefined): number | null {
@@ -36,7 +44,11 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const sp = req.nextUrl.searchParams;
-  const typeRaw = (sp.get('type') ?? 'easy').toLowerCase() as WorkoutType;
+  // 2026-08-18 · normalise before the allowlist check. `?type=interval` (the
+  // singular spelling 214 production rows carry) used to miss VALID entirely
+  // and fall through to 'easy' — the runner asked for their rep session and
+  // was handed an easy-run card.
+  const typeRaw = canonicalSessionType(sp.get('type')) ?? 'easy';
   const type: WorkoutType = VALID.includes(typeRaw) ? typeRaw : 'easy';
   const weeklyMi = Number(sp.get('weeklyMi')) || 30;
   const targetMiRaw = sp.get('targetMi');

@@ -63,6 +63,17 @@ import {
   type GoalTier,
 } from '@/lib/plan/goal-tiers';
 import { PLAN_TEMPLATES } from '@/lib/plan/plan-templates';
+import {
+  WORKOUT_CATALOGUE,
+  CROSS_REFERENCES,
+  workoutBySlug,
+} from '@/lib/workout-catalogue/catalogue';
+import { DOCTRINE_PHASES } from '@/lib/workout-catalogue/types';
+import {
+  combinationViolation,
+  LONG_RUN_WEEKLY_SHARE_CAP,
+  PHASE_FROM_ENGINE,
+} from '@/lib/workout-catalogue/select';
 import { RACE_CARB_G_PER_HR } from '@/lib/race/distance-doctrine';
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
 import { VDOT_FULL_VALUE_DAYS, VDOT_EXPIRY_DAYS, FADE_TAIL_DAYS } from '@/lib/training/vdot';
@@ -6115,4 +6126,505 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
     },
   },
+  // ══ WORKOUT VOCABULARY · the catalogue agrees with the doc ════════════════
+  /**
+   * `Research/04-workout-vocabulary.md` names 59 workouts and the engine could
+   * produce about a dozen shapes, because session geometry was hardcoded
+   * strings at a handful of sites in `lib/plan/generate.ts` rather than
+   * selected from a catalogue. `lib/workout-catalogue/` is that catalogue.
+   *
+   * Every claim below READS THE NUMBERS OUT OF THE DOC and compares the
+   * catalogue against them, per Rule 7 — a claim that hardcoded both sides
+   * would only prove the catalogue agrees with itself, which is precisely the
+   * failure mode a transcribed doc invites.
+   *
+   * The entry-level citation strings are checked separately, and differently,
+   * by `lib/workout-catalogue/_catalogue.test.ts`: it asserts every quoted row
+   * is still verbatim text in the file. These claims check the NUMBERS; that
+   * test checks the QUOTES.
+   */
+  {
+    id: 'VOCAB.long-run-family',
+    binds: ['lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.1 Long-run family overview',
+    claim:
+      'Each of the five long-run variants carries the distance band §4.1 gives it, and the ' +
+      'marathon-pace and fast-finish variants carry the at-pace segment their row states.',
+    check({ cite }) {
+      const t = cite.table();
+      const expectBand = (row: string, slug: string) => {
+        const entry = workoutBySlug(slug);
+        if (!entry) throw new Error(`catalogue has no ${slug}`);
+        const [lo, hi] = parseBand(t.cell(row, 'Distance/duration'));
+        if (!entry.session) throw new Error(`${slug} states no session band`);
+        // The doc gives the base long run a DURATION band ("90 min – 2:30")
+        // and the rest a distance band, so only the distance rows compare.
+        if (!/mi/.test(t.cell(row, 'Distance/duration'))) return;
+        within(entry.session.min, [Math.min(lo, hi), Math.max(lo, hi)], `${slug} session minimum`);
+        within(entry.session.max, [Math.min(lo, hi), Math.max(lo, hi)], `${slug} session maximum`);
+      };
+      expectBand('Progression long run', 'progression-long-run');
+      expectBand('Marathon-pace long run', 'marathon-pace-long-run');
+      expectBand('Fast finish long run', 'fast-finish-long-run');
+
+      // The dress rehearsal is checked differently, and the difference is the
+      // point. §4.1's overview row gives it "18–22 mi", which is the MARATHON
+      // rehearsal; §4.6's own Distance row reads "18–22 mi (marathon); 12–14 mi
+      // (HM)", and the catalogue serves both distances. So the catalogue band
+      // must CONTAIN the overview band rather than equal it — and it must not
+      // reach past it at the top, which is what would signal a real drift.
+      const dress = workoutBySlug('dress-rehearsal-long-run')!;
+      const [dLo, dHi] = parseBand(t.cell('Dress rehearsal long run', 'Distance/duration'));
+      if (dress.session!.min > dLo) {
+        throw new Error(
+          `dress rehearsal floor is ${dress.session!.min} mi · §4.6 states 12–14 mi for the half, ` +
+            'so the catalogue band must reach at least that low',
+        );
+      }
+      within(dress.session!.max, [dHi, dHi], 'dress rehearsal session maximum');
+
+      // The fast-finish row's own at-pace segment, read out of its pace column.
+      const ff = matchLiteral(
+        t.cell('Fast finish long run', 'Pace structure'),
+        /last (\d+)[–-](\d+) mi/,
+        'fast-finish at-pace segment',
+      );
+      const ffEntry = workoutBySlug('fast-finish-long-run')!;
+      within(ffEntry.atPace!.min, [Number(ff[1]), Number(ff[1])], 'fast-finish at-pace minimum');
+      within(ffEntry.atPace!.max, [Number(ff[2]), Number(ff[2])], 'fast-finish at-pace maximum');
+    },
+  },
+  {
+    id: 'VOCAB.long-run-weekly-share',
+    binds: ['lib/workout-catalogue/select.ts#LONG_RUN_WEEKLY_SHARE_CAP'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.2 Base long run',
+    claim:
+      'A long run caps at 25-30% of weekly mileage. The selector spends the TOP of that band, ' +
+      'and uses it as the bound for every session whose zones carry no Daniels share cap — ' +
+      'those are the E/M/MP zones, which is what a long run is run at.',
+    check({ cite }) {
+      const [lo, hi] = parseBand(
+        matchLiteral(cite.text(), /cap at ~?(\d+[–-]\d+)% of weekly mileage/, 'long-run weekly cap')[1],
+      );
+      within(LONG_RUN_WEEKLY_SHARE_CAP * 100, [lo, hi], 'long-run weekly share cap');
+    },
+  },
+  {
+    id: 'VOCAB.threshold-family',
+    binds: ['lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 5.1 Threshold family overview',
+    claim:
+      'The four threshold sessions carry the rep counts, rep distances and at-pace volumes ' +
+      '§5.1 states for them, and cruise-interval recovery runs one minute per mile of work.',
+    check({ cite }) {
+      const t = cite.table();
+
+      // Cruise intervals · "3–6 × 1 mi or 2–4 × 2 mi", "4–8 mi" at pace.
+      const cruise = workoutBySlug('cruise-intervals')!;
+      const volumeCell = t.cell('Cruise intervals (Daniels)', 'Volume');
+      const shapes = [...volumeCell.matchAll(/(\d+)[–-](\d+)\s*×\s*(\d+)\s*mi/g)];
+      if (shapes.length !== 2) {
+        throw new Error(`§5.1 no longer states two cruise shapes: "${volumeCell}"`);
+      }
+      shapes.forEach((m, i) => {
+        const s = cruise.structures[i];
+        if (!s || s.kind !== 'reps') throw new Error(`cruise-intervals structure ${i} is not a rep set`);
+        within(s.reps.min, [Number(m[1]), Number(m[1])], `cruise shape ${i} minimum reps`);
+        within(s.reps.max, [Number(m[2]), Number(m[2])], `cruise shape ${i} maximum reps`);
+        within(s.rep.min, [Number(m[3]), Number(m[3])], `cruise shape ${i} rep miles`);
+        // "1 min per mi of work" · the recovery scales with the rep length.
+        within(
+          s.recoverySec!.min,
+          [Number(m[3]) * 60, Number(m[3]) * 60],
+          `cruise shape ${i} recovery (1 min per mile of work)`,
+        );
+      });
+      const [cvLo, cvHi] = parseBand(t.cell('Cruise intervals (Daniels)', 'Total at-pace'));
+      within(cruise.atPace!.min, [cvLo, cvLo], 'cruise at-pace minimum');
+      within(cruise.atPace!.max, [cvHi, cvHi], 'cruise at-pace maximum');
+
+      // Continuous tempo · the 3-8 mi distance band beside the minute band.
+      const tempo = workoutBySlug('continuous-tempo')!;
+      const [tLo, tHi] = parseBand(t.cell('Continuous tempo', 'Volume'));
+      within(tempo.atPace!.min, [tLo, tLo], 'continuous tempo distance minimum');
+      within(tempo.atPace!.max, [tHi, tHi], 'continuous tempo distance maximum');
+
+      // Sub-threshold · "5–10 × 1K or 4–6 × 2K", 60-90 s recovery.
+      const st = workoutBySlug('sub-threshold-intervals')!;
+      const stCell = t.cell('Sub-threshold intervals (Norwegian)', 'Volume');
+      const stShapes = [...stCell.matchAll(/(\d+)[–-](\d+)\s*×\s*(\d+)K/g)];
+      if (stShapes.length === 0) throw new Error(`§5.1 no longer states sub-threshold shapes: "${stCell}"`);
+      stShapes.forEach((m, i) => {
+        const s = st.structures[i];
+        if (!s || s.kind !== 'reps') throw new Error(`sub-threshold structure ${i} is not a rep set`);
+        within(s.reps.min, [Number(m[1]), Number(m[1])], `sub-threshold shape ${i} minimum reps`);
+        within(s.reps.max, [Number(m[2]), Number(m[2])], `sub-threshold shape ${i} maximum reps`);
+        within(s.rep.min, [Number(m[3]), Number(m[3])], `sub-threshold shape ${i} rep km`);
+      });
+      const [stRLo, stRHi] = parseBand(t.cell('Sub-threshold intervals (Norwegian)', 'Recovery'));
+      within(st.structures[0].kind === 'reps' ? st.structures[0].recoverySec!.min : -1, [stRLo, stRLo], 'sub-threshold recovery minimum (s)');
+      within(st.structures[0].kind === 'reps' ? st.structures[0].recoverySec!.max : -1, [stRHi, stRHi], 'sub-threshold recovery maximum (s)');
+
+      // Long tempo · 8-12 mi continuous.
+      const lt = workoutBySlug('long-tempo')!;
+      const [ltLo, ltHi] = parseBand(t.cell('Long tempo', 'Total at-pace'));
+      within(lt.atPace!.min, [ltLo, ltLo], 'long tempo at-pace minimum');
+      within(lt.atPace!.max, [ltHi, ltHi], 'long tempo at-pace maximum');
+    },
+  },
+  {
+    id: 'VOCAB.vo2max-family',
+    binds: ['lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 6.1 VO2max family overview',
+    claim:
+      'Every VO2max session carries the rep count band and rep distance §6.1 states in its ' +
+      'row, for all seven rows of the table.',
+    check({ cite }) {
+      const t = cite.table();
+      const rows: Array<[string, string, number]> = [
+        ['Mile repeats (3K/5K)', 'mile-repeats', 1],
+        ['1200m repeats', '1200m-repeats', 1200],
+        ['1000m repeats', '1000m-repeats', 1],
+        ['800m repeats', '800m-repeats', 800],
+        ['600m repeats', '600m-repeats', 600],
+        ['400m repeats', '400m-repeats', 400],
+        ['Yasso 800s', 'yasso-800s', 800],
+      ];
+      for (const [row, slug, repValue] of rows) {
+        const entry = workoutBySlug(slug);
+        if (!entry) throw new Error(`catalogue has no ${slug}`);
+        const s = entry.structures[0];
+        if (s.kind !== 'reps') throw new Error(`${slug} is not a rep set`);
+        const cell = t.cell(row, 'Reps × distance');
+        const [lo, hi] = parseBand(cell.replace(/×.*$/, ''));
+        within(s.reps.min, [lo, lo], `${slug} minimum reps`);
+        within(s.reps.max, [hi, hi], `${slug} maximum reps`);
+        within(s.rep.min, [repValue, repValue], `${slug} rep length`);
+      }
+    },
+  },
+  {
+    id: 'VOCAB.speed-family',
+    binds: ['lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 7.1 Speed family overview',
+    claim:
+      'The four speed sessions carry the rep counts §7.1 states, and the two hill-based ones ' +
+      'are prescribed by effort rather than by a clock pace.',
+    check({ cite }) {
+      const t = cite.table();
+      const rows: Array<[string, string]> = [
+        ['Strides', 'strides'],
+        ['Hill sprints', 'hill-sprints'],
+        ['200m repeats', '200m-repeats'],
+        ['100m repeats', '100m-repeats'],
+      ];
+      for (const [row, slug] of rows) {
+        const entry = workoutBySlug(slug);
+        if (!entry) throw new Error(`catalogue has no ${slug}`);
+        const s = entry.structures[0];
+        if (s.kind !== 'reps') throw new Error(`${slug} is not a rep set`);
+        const [lo, hi] = parseBand(t.cell(row, 'Total'));
+        // The CEILING is the overview's and must match exactly.
+        within(s.reps.max, [hi, hi], `${slug} maximum reps`);
+        // The FLOOR may sit lower, and for the hill sprints it does: §7.1's
+        // Total column reads "6–12 reps" while §7.3's own Reps row reads
+        // "Start 4–6, build to 8–12". The overview states the built dose; the
+        // detail row states where a runner starts, and the catalogue carries
+        // the entry point so a first-time runner is not handed the built one.
+        // It may never sit ABOVE the overview floor, which is the drift that
+        // would matter.
+        if (s.reps.min > lo) {
+          throw new Error(`${slug} starts at ${s.reps.min} reps, above §7.1's floor of ${lo}`);
+        }
+      }
+      // §7.3's pace column is "Max effort uphill" — a number would be wrong.
+      if (!workoutBySlug('hill-sprints')!.effortOnly) {
+        throw new Error('hill sprints must be effort-cued · §7.1 gives them "Max effort uphill"');
+      }
+    },
+  },
+  {
+    id: 'VOCAB.hill-family',
+    binds: ['lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 8.1 Hill family overview',
+    claim:
+      'The three hill-repeat sessions carry the rep durations and rep counts §8.1 states, and ' +
+      'EVERY hill session is prescribed by effort — the table\'s pace column never holds a ' +
+      'number, because a flat-ground pace is unreachable on a 4-6% grade.',
+    check({ cite }) {
+      const t = cite.table();
+      const rows: Array<[string, string, 's' | 'min']> = [
+        ['Short hill repeats', 'short-hill-repeats', 's'],
+        ['Medium hill repeats', 'medium-hill-repeats', 's'],
+        ['Long hill repeats', 'long-hill-repeats', 'min'],
+      ];
+      for (const [row, slug, unit] of rows) {
+        const entry = workoutBySlug(slug);
+        if (!entry) throw new Error(`catalogue has no ${slug}`);
+        const s = entry.structures[0];
+        if (s.kind !== 'reps') throw new Error(`${slug} is not a rep set`);
+        const [dLo, dHi] = parseBand(t.cell(row, 'Duration'));
+        within(s.rep.min, [dLo, dLo], `${slug} rep duration minimum`);
+        within(s.rep.max, [dHi, dHi], `${slug} rep duration maximum`);
+        if (s.rep.unit !== unit) {
+          throw new Error(`${slug} rep unit is ${s.rep.unit}, doctrine states ${unit}`);
+        }
+        const [rLo, rHi] = parseBand(t.cell(row, 'Reps'));
+        within(s.reps.min, [rLo, rLo], `${slug} minimum reps`);
+        within(s.reps.max, [rHi, rHi], `${slug} maximum reps`);
+      }
+      for (const entry of WORKOUT_CATALOGUE.filter((e) => e.family === 'hills')) {
+        if (!entry.effortOnly) {
+          throw new Error(
+            `${entry.slug} carries a clock pace · §8.1's pace column is effort for every row`,
+          );
+        }
+      }
+    },
+  },
+  {
+    id: 'VOCAB.fartlek-family',
+    binds: ['lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 9.1 Fartlek family overview',
+    claim:
+      'The Mona fartlek is 14 reps over 20 minutes in the 2/4/4/4 pattern §9.1 states, and ' +
+      'the catalogue holds every rep of it rather than a summary.',
+    check({ cite }) {
+      const t = cite.table();
+      const structure = t.cell('Mona fartlek', 'Structure');
+      const groups = [...structure.matchAll(/(\d+)\s*×\s*(\d+)\s*s/g)];
+      if (groups.length !== 4) throw new Error(`§9.1 no longer states four Mona groups: "${structure}"`);
+      const mona = workoutBySlug('mona-fartlek')!;
+      const s = mona.structures[0];
+      if (s.kind !== 'sequence') throw new Error('mona-fartlek is not a sequence');
+      const expected = groups.flatMap(([, n, dur]) =>
+        Array.from({ length: Number(n) }, () => Number(dur)),
+      );
+      const actual = s.steps.map((step) => step.value);
+      if (expected.join(',') !== actual.join(',')) {
+        throw new Error(`Mona steps are ${actual.join('/')}, doctrine states ${expected.join('/')}`);
+      }
+      const [total] = parseBand(t.cell('Mona fartlek', 'Total duration'));
+      within(mona.session!.min, [total, total], 'Mona total duration');
+      // Equal float · every step recovers for its own length.
+      for (const step of s.steps) {
+        within(step.recoverySec ?? -1, [step.value, step.value], 'Mona equal float');
+      }
+    },
+  },
+  {
+    id: 'VOCAB.cutdown-family',
+    binds: ['lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 12.1 Cutdown family',
+    claim:
+      'The cutdown sessions carry the rep counts and recovery §12.1 states, including the ' +
+      '60-90 s cruise-style rest that distinguishes a cutdown from a rep set.',
+    check({ cite }) {
+      const t = cite.table();
+      const rows: Array<[string, string]> = [
+        ['Mile cutdowns', 'mile-cutdowns'],
+        ['1K cutdowns', '1k-cutdowns'],
+      ];
+      for (const [row, slug] of rows) {
+        const entry = workoutBySlug(slug);
+        if (!entry) throw new Error(`catalogue has no ${slug}`);
+        const s = entry.structures[0];
+        if (s.kind !== 'reps') throw new Error(`${slug} is not a rep set`);
+        const [lo, hi] = parseBand(t.cell(row, 'Reps × distance').replace(/×.*$/, ''));
+        within(s.reps.min, [lo, lo], `${slug} minimum reps`);
+        within(s.reps.max, [hi, hi], `${slug} maximum reps`);
+        const [rLo, rHi] = parseBand(t.cell(row, 'Recovery'));
+        within(s.recoverySec!.min, [rLo, rLo], `${slug} recovery minimum`);
+        within(s.recoverySec!.max, [rHi, rHi], `${slug} recovery maximum`);
+      }
+      // The continuous ones state a distance band and no recovery at all.
+      const cont = workoutBySlug('continuous-mile-cutdowns')!;
+      const [cLo, cHi] = parseBand(t.cell('Continuous mile cutdown', 'Reps × distance'));
+      within(cont.atPace!.min, [cLo, cLo], 'continuous mile cutdown minimum');
+      within(cont.atPace!.max, [cHi, cHi], 'continuous mile cutdown maximum');
+    },
+  },
+  {
+    id: 'VOCAB.ladder-sequences',
+    binds: ['lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 13.1 Ladder structures',
+    claim:
+      'Each of the four ladders runs the exact rung sequence §13.1 states, in order. A ladder ' +
+      'whose rungs drift is a different workout.',
+    check({ cite }) {
+      const t = cite.table();
+      const rows: Array<[string, string]> = [
+        ['Ascending ladder', 'ascending-ladder'],
+        ['Descending ladder', 'descending-ladder'],
+        ['Pyramid (up-and-down)', 'up-and-down-pyramid'],
+        ['Compressed pyramid', 'compressed-pyramid'],
+      ];
+      for (const [row, slug] of rows) {
+        const entry = workoutBySlug(slug);
+        if (!entry) throw new Error(`catalogue has no ${slug}`);
+        const s = entry.structures[0];
+        if (s.kind !== 'sequence') throw new Error(`${slug} is not a sequence`);
+        const doctrine = t.cell(row, 'Sequence').split('-').map((n) => Number(n.trim()));
+        // §13.2's ladder is written in metres; a 1600 rung is a mile either way.
+        const engine = s.steps.map((step) => (step.unit === 'mi' ? step.value * 1600 : step.value));
+        if (doctrine.join('-') !== engine.join('-')) {
+          throw new Error(`${slug} runs ${engine.join('-')}, doctrine states ${doctrine.join('-')}`);
+        }
+      }
+    },
+  },
+  {
+    id: 'VOCAB.race-specific-half',
+    binds: ['lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 14.3 Half-specific',
+    claim:
+      'The half-specific sessions carry the rep counts, rep distances and recoveries §14.3 ' +
+      'states — including the 4 × 2 mi predictor, the session the doc says indicates readiness ' +
+      'two weeks out.',
+    check({ cite }) {
+      const t = cite.table();
+      const rows: Array<[string, string, number, number]> = [
+        ['4 × 2 mi', '4x2mi-at-hm', 4, 2],
+        ['6 × 1 mi at HM', '6x1mi-at-hm', 6, 1],
+        ['3 × 3 mi at HM', '3x3mi-at-hm', 3, 3],
+        ['8 × 1K at HM', '8x1k-at-hm', 8, 1],
+      ];
+      for (const [row, slug, reps, repLen] of rows) {
+        const entry = workoutBySlug(slug);
+        if (!entry) throw new Error(`catalogue has no ${slug}`);
+        const s = entry.structures[0];
+        if (s.kind !== 'reps') throw new Error(`${slug} is not a rep set`);
+        const structure = t.cell(row, 'Structure');
+        const m = matchLiteral(`${row} ${structure}`, /(\d+)\s*×\s*(\d+)/, `${slug} structure`);
+        within(s.reps.min, [Number(m[1]), Number(m[1])], `${slug} reps`);
+        within(s.reps.max, [Number(m[1]), Number(m[1])], `${slug} reps`);
+        within(s.reps.min, [reps, reps], `${slug} reps (catalogue)`);
+        within(s.rep.min, [repLen, repLen], `${slug} rep length`);
+        const [rLo] = parseBand(t.cell(row, 'Recovery'));
+        const restSec = /min/.test(t.cell(row, 'Recovery')) ? rLo * 60 : rLo;
+        within(s.recoverySec!.min, [restSec, restSec], `${slug} recovery`);
+      }
+    },
+  },
+  {
+    id: 'PLACEMENT.cycle-phases',
+    binds: ['lib/workout-catalogue/types.ts#DOCTRINE_PHASES', 'lib/workout-catalogue/select.ts#PHASE_FROM_ENGINE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## 15. Training-cycle placement summary',
+    claim:
+      'The selector\'s phases are the five §15 names, and every one of them has at least one ' +
+      'workout the catalogue can place in it. A phase with nothing in it is a phase the ' +
+      'composer would fill from somewhere else.',
+    check({ cite }) {
+      const t = cite.table();
+      if (t.rows.length !== DOCTRINE_PHASES.length) {
+        throw new Error(
+          `§15 has ${t.rows.length} phase rows and the engine models ${DOCTRINE_PHASES.length}`,
+        );
+      }
+      for (const phase of DOCTRINE_PHASES) {
+        const n = WORKOUT_CATALOGUE.filter((e) => e.phases.includes(phase)).length;
+        if (n === 0) throw new Error(`no workout is placed in the ${phase} phase`);
+      }
+      // Every engine phase resolves onto §15 phases, and between them they
+      // cover all five — otherwise a doctrine row is unreachable from the app.
+      const covered = new Set(Object.values(PHASE_FROM_ENGINE).flat());
+      for (const phase of DOCTRINE_PHASES) {
+        if (!covered.has(phase)) {
+          throw new Error(`§15's ${phase} row is unreachable from any engine phase`);
+        }
+      }
+    },
+  },
+  {
+    id: 'PLACEMENT.combinations-to-avoid',
+    binds: ['lib/workout-catalogue/select.ts#combinationViolation'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## 16. Combinations to avoid',
+    claim:
+      'Every pairing §16 forbids has a rule that fires on it. A row in that table with no rule ' +
+      'behind it is a combination the composer would happily schedule.',
+    check({ cite }) {
+      const t = cite.table();
+      // Each doctrine row, and a (candidate, already-placed, gap) that must trip it.
+      const probes: Array<[string, () => string | null]> = [
+        ['VO2max + long run within 48 hrs', () =>
+          combinationViolation(workoutBySlug('mile-repeats')!, {
+            dayOffset: 5, placedThisWeek: [{ slug: 'base-long-run', dayOffset: 6 }], inTaperWindow: false,
+          })],
+        ['MP long run + hard tempo within 5 days', () =>
+          combinationViolation(workoutBySlug('continuous-tempo')!, {
+            dayOffset: 3, placedThisWeek: [{ slug: 'marathon-pace-long-run', dayOffset: 6 }], inTaperWindow: false,
+          })],
+        ['Two threshold sessions back-to-back', () =>
+          combinationViolation(workoutBySlug('continuous-tempo')!, {
+            dayOffset: 3, placedThisWeek: [{ slug: 'cruise-intervals', dayOffset: 2 }], inTaperWindow: false,
+          })],
+        ['Fast finish long run before goal race', () =>
+          combinationViolation(workoutBySlug('fast-finish-long-run')!, {
+            dayOffset: 6, placedThisWeek: [], inTaperWindow: true,
+          })],
+        ['400m R-pace day before threshold', () =>
+          combinationViolation(workoutBySlug('continuous-tempo')!, {
+            dayOffset: 3, placedThisWeek: [{ slug: '200m-repeats', dayOffset: 2 }], inTaperWindow: false,
+          })],
+      ];
+      if (t.rows.length !== probes.length) {
+        throw new Error(
+          `§16 states ${t.rows.length} forbidden combinations and the selector implements ${probes.length}`,
+        );
+      }
+      for (const [row, probe] of probes) {
+        // The doc still has the row this probe was written for.
+        t.row(row);
+        if (probe() == null) {
+          throw new Error(`§16 forbids "${row}" and combinationViolation does not fire on it`);
+        }
+      }
+    },
+  },
+  {
+    id: 'VOCAB.catalogue-covers-the-index',
+    binds: ['lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## 18. Workout-name lookup index',
+    claim:
+      'Every workout §18 indexes has an entry in the catalogue, either directly or through a ' +
+      'recorded cross-reference. §18 is the doc\'s own list of what it names, so a workout ' +
+      'added to the doc fails this until it is in the catalogue.',
+    check({ cite }) {
+      const t = cite.table();
+      if (t.rows.length === 0) throw new Error('§18 parsed to zero rows · the index moved');
+      const sections = new Set(WORKOUT_CATALOGUE.map((e) => e.section));
+      const xref = new Set(CROSS_REFERENCES.map((x) => x.at));
+      const missing: string[] = [];
+      for (const row of t.rows) {
+        const refs = String(row.Section ?? '').split(',').map((s) => s.trim());
+        if (refs.length === 0 || refs[0] === '') continue;
+        if (!refs.some((r) => sections.has(r) || xref.has(r))) {
+          missing.push(`${row.Name} → ${row.Section}`);
+        }
+      }
+      if (missing.length > 0) {
+        throw new Error(`§18 names workouts the catalogue does not carry: ${missing.join(' · ')}`);
+      }
+      // And every cross-reference still resolves to a real entry.
+      for (const x of CROSS_REFERENCES) {
+        if (!workoutBySlug(x.resolvesTo)) {
+          throw new Error(`cross-reference ${x.name} points at missing entry ${x.resolvesTo}`);
+        }
+      }
+    },
+  },
 ];
+

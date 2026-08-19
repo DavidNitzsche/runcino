@@ -24,6 +24,7 @@
  *      race → RACE · plan-matched quality within pace target → NAILED IT
  *      · completed quality → SOLID · ≥18 mi → LONGEST.
  */
+import { normalizeWorkoutTypeLoose } from '@/lib/training/workout-type';
 
 export type LogBadge = 'RACE' | 'NAILED IT' | 'SOLID' | 'LONGEST';
 
@@ -93,7 +94,13 @@ export function normalizeDataWorkoutType(v: unknown): string | null {
   if (s === '1') return 'race';
   if (s === '2') return 'long';
   if (s === '3') return 'tempo';
-  return s;
+  // 2026-08-18 · fold `interval` onto `intervals` (and `vo2` / `track` with
+  // it). Production carries both spellings — 214 rows singular, 41 plural —
+  // and `QUALITY_TYPES` below contains only the plural, so every rep session
+  // stored under the singular silently failed to earn its badge. Unrecognised
+  // strings pass through unchanged: the log records what Strava and HealthKit
+  // actually said, and an unfamiliar value is data rather than an error.
+  return normalizeWorkoutTypeLoose(s);
 }
 
 /**
@@ -143,14 +150,20 @@ export function badgeForRun(args: {
   plan: PlanWorkoutLite | null;
 }): LogBadge | null {
   if (args.isRace) return 'RACE';
-  const t = (args.workoutType ?? '').toLowerCase();
+  // Normalised here as well as in `normalizeDataWorkoutType`, because
+  // `resolveWorkoutType` can return a PLAN type read straight from
+  // `plan_workouts.type` without passing through that door. One spelling at
+  // every point that compares against QUALITY_TYPES.
+  const t = normalizeWorkoutTypeLoose(args.workoutType) ?? '';
   const isQuality = QUALITY_TYPES.has(t) || (args.plan?.isQuality ?? false);
   if (isQuality) {
     const target = args.plan?.paceTargetSPerMi ?? null;
     if (
       target != null && target > 0 &&
       args.paceSPerMi != null && args.paceSPerMi > 0 &&
-      ['tempo', 'threshold', 'race_pace'].includes((args.plan?.type ?? t).toLowerCase()) &&
+      ['tempo', 'threshold', 'race_pace'].includes(
+        normalizeWorkoutTypeLoose(args.plan?.type ?? t) ?? '',
+      ) &&
       Math.abs(args.paceSPerMi - target) <= Math.max(10, target * 0.03)
     ) {
       return 'NAILED IT';

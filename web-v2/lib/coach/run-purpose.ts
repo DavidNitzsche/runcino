@@ -27,14 +27,21 @@
  * 2026-05-31); they remain in the type system for internal references
  * only. New code should not export citations on payloads.
  */
+import type { SessionType } from '@/lib/training/workout-type';
+
 export interface Citation {
   slug: string;
   label: string;
 }
 
-export type WorkoutType =
-  | 'easy' | 'long' | 'tempo' | 'threshold' | 'intervals' | 'fartlek'
-  | 'progression' | 'recovery' | 'shakeout' | 'race' | 'rest' | 'unplanned';
+/**
+ * CONVERGED 2026-08-18 · see `lib/training/workout-type.ts`. This union and the
+ * one in `lib/training/prescriptions.ts` answered the same question with
+ * different member lists; both now name `SessionType`. The only member this
+ * gains is `race_week_tuneup`, which falls to the `default` arm of
+ * `derivePurpose`'s switch exactly as an unrecognised cast did before.
+ */
+export type WorkoutType = SessionType;
 
 export type Phase = 'BASE' | 'BUILD' | 'PEAK' | 'TAPER' | 'RECOVERY' | 'OFF';
 
