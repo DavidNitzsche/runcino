@@ -1598,7 +1598,7 @@ function adaptPRs(races: Races | null, log: LogT | null): PR[] {
   }
   return ['5K','10K','HALF','MARATHON']
     .filter(k => byDist[k])
-    .map(k => ({ k, v: byDist[k].val, date: byDist[k].date }));
+    .map(k => ({ k, v: byDist[k].val, date: byDist[k].date, source: byDist[k].source }));
 }
 function paceSec(p: string): number {
   if (!p) return 0;

@@ -532,7 +532,14 @@ export type PlanProposalSeed = {
 };
 
 export type VolumeBar = { mi: number; label: string; current: boolean };
-export type PR = { k: string; v: string; date: string };
+// 2026-08-18 · doctrine sweep — `source` threaded through from adaptPRs so
+// consumers can tell a curated race result (source: 'race') apart from the
+// training-run fallback (source: 'training', already labeled "· training"
+// in `date`, but the raw string wasn't machine-checkable). TargetsView's
+// anchor-line sentence read a training-sourced entry as a flat "Your 5K PR
+// is X" claim with no caveat — this field is what fixes that. Optional so
+// no existing caller needs updating.
+export type PR = { k: string; v: string; date: string; source?: 'race' | 'training' };
 
 // 2026-05-31 · ReadinessBrief envelope · the morning brief structure
 // the design agent renders. Composed by lib/coach/readiness-brief.ts.

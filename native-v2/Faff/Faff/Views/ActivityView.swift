@@ -26,6 +26,11 @@ struct ActivityView: View {
     @State private var profile: ProfileState? =
         AppCache.read(.profileState, as: ProfileState.self)
     @State private var stravaStatus: API.StravaStatusResponse?
+    /// Server-computed personal records (2026-08-18 doctrine sweep fix) ·
+    /// races.actual_result / races.meta.finishTime first, training-run
+    /// fallback only when provisional-labeled. See computeRecords() below
+    /// for why this replaced a purely client-side FASTEST PACE derivation.
+    @State private var personalRecords: PersonalRecordsResponse?
     /// Async-fetch lifecycle for /api/log · drives the FailedLoadBanner
     /// when fetch errors AND there's no cached log to fall back on.
     /// Initial state mirrors the AppCache hydration result so first paint
@@ -108,9 +113,10 @@ struct ActivityView: View {
         if log == nil { await MainActor.run { loadState = .loading } }
         async let p = (try? await API.fetchProfileState())
         async let ss = (try? await API.fetchStravaStatus())
+        async let pr = (try? await API.fetchPersonalRecords())
         do {
             let logState = try await API.fetchLog(limit: fetchLimit)
-            let (pf, sst) = await (p, ss)
+            let (pf, sst, prr) = await (p, ss, pr)
             await MainActor.run {
                 if let logState {
                     self.log = logState
@@ -124,17 +130,19 @@ struct ActivityView: View {
                 }
                 if let pf { self.profile = pf; StravaConnection.set(pf.connections.strava.connected) }
                 if let sst { self.stravaStatus = sst }
+                if let prr { self.personalRecords = prr }
             }
         } catch {
             // Network failure or auth error · keep cached log so the feed
             // stays visible. Banner only shows when log == nil (first run
             // OR post-sign-out cache wipe).
             let msg = loadFailureMessage(error)
-            let (pf, sst) = await (p, ss)
+            let (pf, sst, prr) = await (p, ss, pr)
             await MainActor.run {
                 self.loadState = .failed(msg)
                 if let pf { self.profile = pf; StravaConnection.set(pf.connections.strava.connected) }
                 if let sst { self.stravaStatus = sst }
+                if let prr { self.personalRecords = prr }
             }
         }
     }
@@ -384,16 +392,44 @@ struct ActivityView: View {
     private struct PR { let key: String; let value: String; let caption: String; let color: Color; let unit: String? }
 
     private func computeRecords() -> [PR] {
-        // Honor the range picker — PRs were always all-time even when the
-        // runner picked THIS MONTH. Now records reflect the selected window.
-        let runs = rangeRuns
-        guard !runs.isEmpty else { return [] }
+        var prs: [PR] = []
 
-        // Fastest pace in range (any run, smallest pace)
-        let fastestPace = runs.compactMap { r -> (LogRun, Int)? in
-            guard let secs = paceSeconds(r.pace) else { return nil }
-            return (r, secs)
-        }.min(by: { $0.1 < $1.1 })
+        // 2026-08-18 · doctrine sweep fix (CLAUDE.md Race-data
+        // source-of-truth, sibling of f55798f2). This section used to open
+        // with a "FASTEST PACE" tile computed from ANY run in the selected
+        // range — no gate on whether it was a race, a hard interval rep,
+        // or a downhill GPS blip could headline as a Personal Record
+        // forever. Replaced with the server-computed ladder from
+        // /api/records (lib/race/personal-records.ts): curated race
+        // results (races.actual_result, then races.meta.finishTime)
+        // render bare; a bucket with no curated result falls back to the
+        // fastest whole training run near that distance, always carrying
+        // the provisionalLabel caption so it can never read as
+        // authoritative. Deliberately NOT range-scoped — a personal
+        // record is an all-time fact, matching seed.ts's identical
+        // section on web, which reads races.past unscoped by range too.
+        let raceColors: [String: Color] = [
+            "5k": Color(hex: 0xFC4D64), "10k": Color(hex: 0xD6263C),
+            "half": Color(hex: 0xD03F3F), "marathon": Color(hex: 0x8A6A48),
+        ]
+        for rec in personalRecords?.records ?? [] {
+            let value = rec.paceDisplay ?? rec.timeDisplay
+            let unit = rec.paceDisplay != nil ? "/\(Units.distanceLabel())" : nil
+            let caption: String
+            if rec.provisional {
+                caption = rec.provisionalLabel ?? "Training effort · race to lock in"
+            } else {
+                let parts = [rec.name, rec.dateISO.map(shortDate)].compactMap { $0 }
+                caption = parts.isEmpty ? rec.timeDisplay : parts.joined(separator: " · ")
+            }
+            prs.append(PR(key: "FASTEST \(rec.label.uppercased())", value: value, caption: caption,
+                          color: raceColors[rec.key] ?? Color(hex: 0xFC4D64), unit: unit))
+        }
+
+        // Honor the range picker — training facts below reflect the
+        // selected window (unlike the race PRs above).
+        let runs = rangeRuns
+        guard !runs.isEmpty else { return prs }
 
         // Longest run in range (biggest distance_mi)
         let longestRun = runs.max(by: { $0.distance_mi < $1.distance_mi })
@@ -407,16 +443,10 @@ struct ActivityView: View {
         // Best HR efficiency: lowest avg_hr at high distance
         let mostElev = runs.max(by: { ($0.elev_gain_ft ?? 0) < ($1.elev_gain_ft ?? 0) })
 
-        var prs: [PR] = []
         // 2026-07-07 · units audit — r.pace / t.pace are server-formatted
-        // "M:SS" seconds-per-mile strings (paceSeconds above already parses
-        // them back for the fastest-pace comparison). Re-derive seconds via
-        // the same parser and reformat through Units so PR cards convert
-        // too, rather than displaying the raw server string verbatim.
-        if let (r, secs) = fastestPace {
-            prs.append(PR(key: "FASTEST PACE", value: Units.formatPaceBare(secPerMile: secs), caption: shortDate(r.date),
-                          color: Color(hex: 0xFC4D64), unit: nil))
-        }
+        // "M:SS" seconds-per-mile strings. Re-derive seconds via the same
+        // parser and reformat through Units so PR cards convert too,
+        // rather than displaying the raw server string verbatim.
         if let lr = longestRun {
             prs.append(PR(key: "LONGEST RUN", value: Units.formatDistance(miles: lr.distance_mi),
                           caption: shortDate(lr.date), color: Color(hex: 0xD6263C), unit: Units.distanceLabel()))

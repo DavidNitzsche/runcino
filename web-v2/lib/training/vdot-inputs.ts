@@ -59,6 +59,21 @@ export interface RaceVdotInput {
   priority: string | null;
   distance_mi: number | null;
   finish_seconds: number | null;
+  /**
+   * 2026-08-18 · doctrine sweep · true only when `finish_seconds` came from
+   * the rung-3 Strava date+distance match fallback below (no curated
+   * `actual_result.finishS`/`meta.finishTime`). `races-state.ts` flags its
+   * identical fallback as `finishProvisional`; this loader's copy of the
+   * same pattern didn't expose an equivalent, so nothing downstream could
+   * tell "this candidate's time is an unconfirmed watch/GPS match" apart
+   * from a curated chip time. Additive only — `bestRecentVdot`'s
+   * structural race-candidate type doesn't read this field, so this does
+   * NOT change selection weighting; `effort-authority.ts` documents that
+   * choice deliberately (a race's authority is graded, not discounted, at
+   * selection time). This just makes the provenance visible to any
+   * current or future consumer that needs to label it.
+   */
+  provisional: boolean;
 }
 
 export interface RunVdotInput {
@@ -218,6 +233,9 @@ export async function loadVdotInputs(
     //   3. Strava date+dist match — provisional fallback
     let finishSec: number | null = ar.finishS != null ? Number(ar.finishS) : null;
     if (!finishSec) finishSec = parseRaceTime(m.finishTime as string);
+    // 2026-08-18 · doctrine sweep · track whether finishSec ends up coming
+    // from rung 3 (the Strava match below) rather than rungs 1-2 (curated).
+    let provisional = false;
     if (!finishSec && distMi && m.date) {
       let best: Record<string, unknown> | null = null;
       let bestScore = Infinity;
@@ -234,7 +252,10 @@ export async function loadVdotInputs(
         const score = dayDelta * 10 + miDelta;
         if (score < bestScore) { best = d; bestScore = score; }
       }
-      if (best) finishSec = Number(best.movingTimeS) || Number(best.elapsedTimeS) || null;
+      if (best) {
+        finishSec = Number(best.movingTimeS) || Number(best.elapsedTimeS) || null;
+        provisional = finishSec != null;
+      }
     }
 
     return {
@@ -244,6 +265,7 @@ export async function loadVdotInputs(
       priority: (m.priority as string) ?? null,
       distance_mi: distMi,
       finish_seconds: finishSec,
+      provisional,
     };
   });
 
