@@ -12,6 +12,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
+import { mutatePlan } from '@/lib/plan/mutate';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export async function PATCH(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -70,12 +72,33 @@ export async function PATCH(req: NextRequest) {
   const values = cols.map((c) => updates[c]);
 
   try {
-    const r = await pool.query(
-      `UPDATE plan_workouts SET ${setSql}
-        WHERE plan_id = $1 AND date_iso = $2::text
-        RETURNING date_iso, dow, type, distance_mi, sub_label`,
-      [body.plan_id, body.date_iso, ...values]
-    );
+    // Routed through the plan mutation boundary (lib/plan/mutate.ts). A manual
+    // swap can change type / distance / date, so it is a 'structural' mutation:
+    // the boundary rehydrates the plan before and after and refuses the edit if
+    // it introduced a doctrine violation the plan did not already carry.
+    const boundary = await mutatePlan<{ rowCount: number; row: unknown }>({
+      userUuid: userId,
+      source: 'api/plan/workout PATCH',
+      todayISO: await runnerToday(userId),
+      planId: body.plan_id,
+      detail: { date_iso: body.date_iso, updates },
+      apply: async (tx) => {
+        const res = await tx.query(
+          `UPDATE plan_workouts SET ${setSql}
+            WHERE plan_id = $1 AND date_iso = $2::text
+            RETURNING date_iso, dow, type, distance_mi, sub_label`,
+          [body.plan_id, body.date_iso, ...values]
+        );
+        return { rowCount: res.rowCount ?? 0, row: res.rows[0] };
+      },
+    });
+    if (!boundary.ok) {
+      return NextResponse.json(
+        { error: 'plan_invariant_violation', violations: boundary.violations },
+        { status: 409 },
+      );
+    }
+    const r = { rowCount: boundary.value?.rowCount ?? 0, rows: [boundary.value?.row] };
     if (r.rowCount === 0) return NextResponse.json({ error: 'workout not found' }, { status: 404 });
 
     // Log intent so coach acknowledges the swap once
