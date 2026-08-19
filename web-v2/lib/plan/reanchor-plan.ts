@@ -65,6 +65,7 @@ import { buildWorkoutSpec } from './spec-builder';
 import { preserveProgressionSql } from './progression-spec';
 import { tPaceFromVdot, iPaceFromVdot } from '@/lib/training/vdot';
 import { paceBlendAnchorIsProvisional } from './anchor-provenance';
+import { mutatePlan } from './mutate';
 import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 
 /** Refresh only when fitness moved enough to matter — avoids churning paces on
@@ -193,7 +194,7 @@ export async function reanchorActivePlan(
   const isRacePrep = planRow.mode === 'race-prep' || planRow.race_id != null;
 
   return isRacePrep
-    ? reanchorRacePrep(userId, planRow.id, st, measuredVdot)
+    ? reanchorRacePrep(userId, planRow.id, st, measuredVdot, today)
     : reanchorMaintenance(userId, planRow.id, st, measuredVdot, today);
 }
 
@@ -224,6 +225,7 @@ async function reanchorRacePrep(
   planId: string,
   st: Record<string, any>,
   measuredVdot: number,
+  today: string,
 ): Promise<ReanchorResult | null> {
   const paceBlend = st.pace_blend ?? null;
   if (!shouldReanchorRacePrep(paceBlend, measuredVdot)) return null;
@@ -233,10 +235,20 @@ async function reanchorRacePrep(
     ? Number(paceBlend.season_anchor_vdot) : null;
   const fromSource = (paceBlend?.season_anchor_source as string) ?? null;
 
-  const client = await pool.connect();
-  let recomputed: Awaited<ReturnType<typeof import('./recompute-paces')['recomputePacesForPlan']>> = null;
-  try {
-    await client.query('BEGIN');
+  // Routed through the plan mutation boundary (lib/plan/mutate.ts) as a
+  // 'derivations' mutation. A re-anchor rewrites pace_target_s_per_mi and
+  // workout_spec off a new VDOT; it changes no date, no type, no distance and
+  // no quality flag. The boundary fingerprints those columns before and after
+  // and rolls back if the claim turns out to be false, so the declaration is
+  // proven rather than trusted.
+  const boundary = await mutatePlan<{ workoutsUpdated: number; workoutsSealed: number } | null>({
+    userUuid: userId,
+    source: 'reanchor-plan/race-prep',
+    todayISO: today,
+    planId,
+    touches: 'derivations',
+    detail: { to_vdot: measuredVdot, was_provisional: wasProvisional },
+    apply: async (client) => {
     // GUARD 3 · the marks this run resolves are cleared, so the plan stops
     // advertising a calibration that has ended. `jsonb ||` is a shallow merge,
     // so building the new pace_blend from the old object preserves goal_vdot,
@@ -258,16 +270,21 @@ async function reanchorRacePrep(
     // GUARD 1 · sealed days · owned by recomputePacesForPlan, which skips any
     // future date that already has a run and reports the count.
     const { recomputePacesForPlan } = await import('./recompute-paces');
-    recomputed = await recomputePacesForPlan(planId, measuredVdot, {
+    const res = await recomputePacesForPlan(planId, measuredVdot, {
       source: wasProvisional ? 'reanchor_calibration_end' : 'reanchor_fitness_shift',
       client,
     });
-    await client.query('COMMIT');
-  } catch (e) {
-    await client.query('ROLLBACK').catch(() => null);
-    throw e;
-  } finally {
-    client.release();
+    return res
+      ? { workoutsUpdated: res.workoutsUpdated, workoutsSealed: res.workoutsSealed }
+      : null;
+    },
+  });
+  if (!boundary.ok) {
+    console.error(
+      `[reanchorPlan] race-prep re-anchor REFUSED by the plan mutation boundary · plan=${planId} · ` +
+      boundary.violations.join(' · '),
+    );
+    return null;
   }
 
   try { (await import('./lookup')).bustPlanLookupCache(userId); } catch { /* best-effort */ }
@@ -278,8 +295,8 @@ async function reanchorRacePrep(
     fromVdot,
     toVdot: measuredVdot,
     fromSource,
-    workoutsUpdated: recomputed?.workoutsUpdated ?? 0,
-    workoutsSealed: recomputed?.workoutsSealed ?? 0,
+    workoutsUpdated: boundary.value?.workoutsUpdated ?? 0,
+    workoutsSealed: boundary.value?.workoutsSealed ?? 0,
     clearedProvisional: wasProvisional,
   };
 }
@@ -321,11 +338,18 @@ async function reanchorMaintenance(
     [planId, today, userId],
   )).rows;
 
-  const client = await pool.connect();
+  // Same 'derivations' declaration as the race-prep arm above — paces and specs
+  // only — proven by the boundary's structural fingerprint.
   let updated = 0;
   let sealedCount = 0;
-  try {
-    await client.query('BEGIN');
+  const boundary = await mutatePlan<void>({
+    userUuid: userId,
+    source: 'reanchor-plan/maintenance',
+    todayISO: today,
+    planId,
+    touches: 'derivations',
+    detail: { to_vdot: measuredVdot, rows: wkos.length },
+    apply: async (client) => {
     for (const w of wkos) {
       if (w.sealed) { sealedCount++; continue; }
       const { paceTargetSPerMi, spec } = refreshedPaceAndSpec(
@@ -355,12 +379,14 @@ async function reanchorMaintenance(
       `UPDATE training_plans SET authored_state = $1 WHERE id = $2`,
       [JSON.stringify(newState), planId],
     );
-    await client.query('COMMIT');
-  } catch (e) {
-    await client.query('ROLLBACK');
-    throw e;
-  } finally {
-    client.release();
+    },
+  });
+  if (!boundary.ok) {
+    console.error(
+      `[reanchorPlan] maintenance re-anchor REFUSED by the plan mutation boundary · plan=${planId} · ` +
+      boundary.violations.join(' · '),
+    );
+    return null;
   }
 
   try { (await import('./lookup')).bustPlanLookupCache(userId); } catch { /* best-effort */ }

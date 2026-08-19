@@ -39,6 +39,7 @@ import {
   warmupStridesBlockMin,
   raceCarbLoad,
   raceCarbsPerHourTarget,
+  durationOnlyCarbTarget,
   raceDistanceCategory,
   RACE_PRERACE_MEAL_G_PER_KG,
 } from './distance-doctrine';
@@ -240,7 +241,10 @@ export function computeRaceFueling(args: {
   // Research/18 §11 (:367-376): 5K 0 · 10K 0-30 · HM 30-60 · M 60-90,
   // floor-raised by the §1 duration table when a race runs long for its
   // distance. Doctrine-zero wins over any entered product.
-  const doctrineRate = raceCarbsPerHourTarget(args.distanceMi, goalSec);
+  // An unknown distance has no row here. Fall back to the §1 DURATION table,
+  // which needs no distance — never to another distance's row.
+  const doctrineRate = raceCarbsPerHourTarget(args.distanceMi, goalSec)
+    ?? durationOnlyCarbTarget(goalSec);
   let targetRate: number;
   if (doctrineRate.isZero) {
     targetRate = 0;
@@ -342,6 +346,12 @@ export function composeRaceExecutionPlan(args: {
 }): RaceExecutionPlan | null {
   const { goalSec, distanceMi } = args;
   if (!goalSec || goalSec <= 0 || !distanceMi || distanceMi <= 0) return null;
+  // 2026-08-18 · one resolution of the distance for the whole plan. Every
+  // per-distance table below is read at THIS category; when the distance falls
+  // outside every doctrine row there is no execution plan to compose, and the
+  // caller renders nothing rather than the half's race morning.
+  const cat = raceDistanceCategory(distanceMi);
+  if (cat == null) return null;
 
   const goalPace = goalSec / distanceMi;
   const bGoalSec = args.bGoalSec ?? null;
@@ -358,6 +368,7 @@ export function composeRaceExecutionPlan(args: {
   // cumulative still lands ON the goal, and the resulting negative split
   // stays inside §4.3's 1-2% band at every distance.
   const opening = raceOpeningPlan({ goalSec, distanceMi });
+  if (opening == null) return null;
   const wholeMiles = Math.floor(distanceMi);
   const finalPartial = Number((distanceMi - wholeMiles).toFixed(3));
   const nSplits = wholeMiles + (finalPartial > 0.005 ? 1 : 0);
@@ -446,6 +457,7 @@ export function composeRaceExecutionPlan(args: {
   // Timeline is built BACKWARDS from the corral so the whole block lands
   // inside the distance's own total-time band.
   const wu = raceWarmup(distanceMi);
+  if (wu == null) return null;
   const stridesBlockMin = warmupStridesBlockMin(wu);
   const corralAt = wu.corralMinBeforeGun;
   const stridesAt = corralAt + stridesBlockMin;
@@ -495,7 +507,8 @@ export function composeRaceExecutionPlan(args: {
   // 36-48h — under-loaded by about a third — and to 5K runners, who need
   // no load at all (:450 · supercompensation matters over 90 min).
   const load = raceCarbLoad(distanceMi);
-  const meal = RACE_PRERACE_MEAL_G_PER_KG[raceDistanceCategory(distanceMi)];
+  if (load == null) return null;
+  const meal = RACE_PRERACE_MEAL_G_PER_KG[cat];
   const mealTxt = meal[0] === meal[1] ? `${meal[0]} g/kg` : `${meal[0]}-${meal[1]} g/kg`;
   const loadLine = load.needsLoad && load.hoursBand
     ? `Carb load ${load.gPerKgBand[0]}-${load.gPerKgBand[1]} g/kg/day across the ${load.hoursBand[0]}-${load.hoursBand[1]}h before. Plain food you know.`
@@ -503,7 +516,6 @@ export function composeRaceExecutionPlan(args: {
 
   // Caffeine · Research/18 §11 (:369-372). 5K/10K are pre-race only; the
   // half takes one caffeinated gel mid-race; the marathon takes two.
-  const cat = raceDistanceCategory(distanceMi);
   const caffeineLine =
     cat === '5k' || cat === '10k'
       ? 'Caffeine: pre-race only. Normal coffee 45-60 min before the gun. Nothing on course.'

@@ -13,7 +13,7 @@
  * Sections:
  *   1. System health (cron last-fire, queue depths)
  *   2. Data flow integrity (last 30d runs — completeness checklist)
- *   3. Coach activity (last 14d intents/proposals/actions/briefings)
+ *   3. Coach activity (last 14d intents/proposals/actions + coach log)
  *   4. Plan state (active plan + recent adaptations)
  *   5. Health data quality (samples by source, suspect values)
  *   6. What's missing (RPE gaps, weather gaps, unmatched workouts)
@@ -69,7 +69,50 @@ const checkmark = (b) => b ? '<span class="tone-good">✓</span>' : '<span class
 // ── Section runners ────────────────────────────────────────────────────
 
 async function sectionSystemHealth() {
-  const cronRoutes = ['run-adaptations', 'enrich-weather', 'snapshot-projections', 'notifications', 'keep-warm', 'refresh-briefings', 'promote-courses'];
+  // Scheduler integrity · derived, never hand-maintained.
+  //
+  // 2026-08-19 · this was a hardcoded list of seven route names that was
+  // computed, returned, and NEVER RENDERED — dead data. It still named
+  // 'refresh-briefings', whose route and workflow were both deleted with
+  // the LLM rip, and nothing noticed because nothing read it. A hardcoded
+  // inventory rots; a derived one cannot.
+  //
+  // GitHub Actions is the only real schedule (there is no cron config in
+  // railway.json), so the workflow files are the source of truth. We read
+  // them, pull each cron expression and the /api/cron/<name> it curls,
+  // then cross-check against the routes that actually exist on disk. Both
+  // directions matter: a workflow pointing at a deleted route fails
+  // nightly, and a route with no workflow never runs at all.
+  const cronIntegrity = (() => {
+    const wfDir = path.join(REPO_ROOT, '.github', 'workflows');
+    const routeDir = path.join(REPO_ROOT, 'web-v2', 'app', 'api', 'cron');
+    let workflows = [];
+    let routes = [];
+    try {
+      routes = fs.readdirSync(routeDir).filter((d) => {
+        try { return fs.existsSync(path.join(routeDir, d, 'route.ts')); } catch { return false; }
+      });
+    } catch {}
+    try {
+      workflows = fs.readdirSync(wfDir).filter((f) => f.endsWith('.yml')).map((f) => {
+        const body = fs.readFileSync(path.join(wfDir, f), 'utf8');
+        const crons = [...body.matchAll(/cron:\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
+        const hit = body.match(/\/api\/cron\/([a-z0-9-]+)/);
+        return {
+          file: f,
+          schedule: crons.join(', ') || (/workflow_dispatch/.test(body) ? 'manual only' : '—'),
+          route: hit ? hit[1] : null,
+        };
+      });
+    } catch {}
+    const routeSet = new Set(routes);
+    const wfRoutes = new Set(workflows.map((w) => w.route).filter(Boolean));
+    return {
+      workflows: workflows.sort((a, b) => a.file.localeCompare(b.file)),
+      orphanWorkflows: workflows.filter((w) => w.route && !routeSet.has(w.route)),
+      unscheduledRoutes: routes.filter((r) => !wfRoutes.has(r)).sort(),
+    };
+  })();
 
   // last_adapted_at on David's active plan
   const plan = (await pool.query(
@@ -117,7 +160,7 @@ async function sectionSystemHealth() {
     // table may have user_id not user_uuid; soft-skip
   }
 
-  return { plan, projBySource, weatherFreshness, notifQueue, cronRoutes };
+  return { plan, projBySource, weatherFreshness, notifQueue, cronIntegrity };
 }
 
 async function sectionRunIntegrity() {
@@ -222,16 +265,36 @@ async function sectionCoachActivity() {
     )).rows;
   } catch {}
 
-  // briefings · what surfaces are being rendered
-  const briefingsRecent = (await pool.query(
-    `SELECT surface, mode, generated_at
-       FROM briefings
-      WHERE user_uuid = $1
-      ORDER BY generated_at DESC LIMIT 10`,
-    [DAVID],
-  )).rows;
+  // coach log · what the coach has actually said to the runner.
+  //
+  // 2026-08-19 · this used to read the `briefings` table, which was
+  // neutralized on 2026-05-28 by the zero-LLM rule (lib/coach/cache.ts is
+  // now a no-op shim; /api/coach/facts recomputes deterministically on
+  // every read, so there is nothing to cache) and finally DROPPED from
+  // prod between 2026-08-17 and 2026-08-18. This script kept querying it
+  // and crashed nightly with `relation "briefings" does not exist`, taking
+  // the whole telemetry report down — the one automated thing that would
+  // have told us something else had rotted.
+  //
+  // Re-pointing it at a replacement table would be wrong: the concept is
+  // gone, not moved. "Which surfaces got rendered" stopped being a real
+  // question when rendering stopped being cached. The live question is
+  // whether the coach is SPEAKING — the coach log (lib/coach/coach-log.ts)
+  // is the runner-visible relationship arc, stored as coach_intents rows
+  // with reason 'coach_log_<kind>'.
+  let coachLogRecent = [];
+  try {
+    coachLogRecent = (await pool.query(
+      `SELECT reason, field, ts, value
+         FROM coach_intents
+        WHERE user_uuid = $1
+          AND reason LIKE 'coach_log_%'
+        ORDER BY ts DESC LIMIT 10`,
+      [DAVID],
+    )).rows;
+  } catch {}
 
-  return { intents, intentsRecent, proposals, actions, briefingsRecent };
+  return { intents, intentsRecent, proposals, actions, coachLogRecent };
 }
 
 async function sectionPlanState() {
@@ -494,6 +557,21 @@ function renderHtml(d) {
   </div>
 </div>
 
+<h3>Scheduler · workflows and the routes they hit</h3>
+${(() => { const ci = d.systemHealth.cronIntegrity; return `
+${ci.orphanWorkflows.length === 0 && ci.unscheduledRoutes.length === 0
+  ? '<div class="empty tone-good">Every workflow hits a route that exists, and every cron route has a workflow.</div>'
+  : `<div class="empty tone-bad">${ci.orphanWorkflows.length} workflow(s) point at a deleted route (these fail nightly). ${ci.unscheduledRoutes.length} route(s) have no workflow (these never run): ${esc(ci.unscheduledRoutes.join(', ')) || '—'}</div>`}
+<table>
+<tr><th>Workflow</th><th>Schedule (UTC)</th><th>Route</th></tr>
+${ci.workflows.map(w => `
+<tr>
+  <td class="mono">${esc(w.file)}</td>
+  <td class="mono">${esc(w.schedule)}</td>
+  <td class="${w.route && ci.orphanWorkflows.some(o => o.file === w.file) ? 'tone-bad' : ''}"><code>${esc(w.route ?? '—')}</code></td>
+</tr>`).join('')}
+</table>`; })()}
+
 <h3>Active plan</h3>
 <table>
 <tr><th>Plan ID</th><th>Mode</th><th>Race</th><th>Goal date</th><th>Authored</th><th>Last adapted</th></tr>
@@ -577,17 +655,21 @@ ${d.coachActivity.proposals.map(p => `
 </tr>`).join('')}
 </table>`}
 
-<h3>Briefings rendered · last 10</h3>
-${d.coachActivity.briefingsRecent.length === 0
-  ? '<div class="empty">No briefings cached. Either the fact-reciter is being called inline (no cache) or no surface has been hit.</div>'
+<h3>Coach log · last 10 things the coach said</h3>
+${d.coachActivity.coachLogRecent.length === 0
+  ? '<div class="empty">The coach has not spoken. coach-log.ts writes week_close, phase_boundary, first_ever, fitness_shift, easy_discipline, fitness_evidence, threshold_pattern and race_replacement entries; none are on file. Either updateCoachLog is not running in the daily adaptation pass, or no episode has met its firing bar yet.</div>'
   : `<table>
-<tr><th>Surface</th><th>Mode</th><th>Generated</th></tr>
-${d.coachActivity.briefingsRecent.map(b => `
+<tr><th>Kind</th><th>Headline</th><th>When</th></tr>
+${d.coachActivity.coachLogRecent.map(c => {
+  let title = '';
+  try { title = (JSON.parse(c.value) || {}).title || ''; } catch { title = ''; }
+  return `
 <tr>
-  <td><code>${esc(b.surface)}</code></td>
-  <td>${esc(b.mode)}</td>
-  <td class="mono">${esc(fmtDate(b.generated_at))}</td>
-</tr>`).join('')}
+  <td><code>${esc(String(c.reason).replace(/^coach_log_/, ''))}</code></td>
+  <td>${esc(title || c.field)}</td>
+  <td class="mono">${esc(fmtDate(c.ts))}</td>
+</tr>`;
+}).join('')}
 </table>`}
 
 <!-- ─────────── 4. PLAN STATE ─────────── -->

@@ -627,6 +627,17 @@ export async function loadProgressionWeek(userId: string): Promise<ProgressionWe
  * is there because a future edit that stopped emitting a block would otherwise
  * silently erase the trajectory's shape, which is exactly how this codebase
  * lost `strava_activities.data.splits` and `races.actual_result`.
+ *
+ * PLAN MUTATION BOUNDARY (2026-08-18). `client` must be a transaction the
+ * boundary already owns — today that is always `applyAdaptations`, whose whole
+ * action loop runs inside `mutatePlan`. This function deliberately does not
+ * enter the door itself: it is one statement inside a larger coherent batch,
+ * and validating it alone would judge an intermediate state of that batch.
+ *
+ * What it writes is `workout_spec`, `sub_label`, `original_sub_label` and
+ * `pace_target_s_per_mi` — the geometry of the work inside the session, never
+ * its date, type, distance or quality flag. So even standing alone it could not
+ * move an invariant; the batch it belongs to is what needs the gate.
  */
 export async function applyProgressionReshape(
   client: { query: typeof pool.query },

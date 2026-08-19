@@ -45,7 +45,7 @@ import {
 } from '@/lib/training/vdot';
 import { buildWorkoutSpec, tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
 import { preserveProgressionSql } from './progression-spec';
-import { distanceCategoryOf } from './goal-tiers';
+import { distanceCategoryOrNull } from './goal-tiers';
 import { paceBlendAnchorIsProvisional } from './anchor-provenance';
 
 /**
@@ -203,8 +203,18 @@ const RECOMPUTE_EXEMPT_TYPES = ['rest', 'cross', 'strength', 'shakeout', 'race',
  * · Sealed days (a completed run exists for the date) are never touched —
  *   same predicate as adapt.ts filterUnsealedWorkouts (Rule 15).
  *
- * Pass `client` to run inside an existing transaction (applyAdaptations);
- * otherwise the function manages its own.
+ * ROUTED THROUGH THE PLAN MUTATION BOUNDARY (2026-08-18).
+ *
+ * Every statement this function issues against `plan_workouts` touches only
+ * `pace_target_s_per_mi`, `workout_spec` and `sub_label` — none of which any
+ * invariant in `validate.ts` reads. It is a `'derivations'` mutation, and the
+ * boundary PROVES that claim by fingerprinting the structural columns before
+ * and after rather than taking the declaration on trust.
+ *
+ * Pass `client` to run inside a transaction the boundary ALREADY owns
+ * (`applyAdaptations`, `reanchorPlan`) — the caller's `mutatePlan` covers these
+ * writes and this function must not open a nested one. Omit it and the function
+ * enters the boundary itself.
  */
 export async function recomputePacesForPlan(
   planId: string,
@@ -328,19 +338,18 @@ export async function recomputePacesForPlan(
   // Same I-pace eligibility rule persistPlan uses (R3 + PACE-I-1):
   // 5K/10K/HM goals carry true VO2max I-pace; marathon/ultra keep the
   // cruise default.
+  // 2026-08-18 · resolved through THE categorizer, which answers null for an
+  // unresolvable distance instead of bucketing 0 as a 5K.
   const goalIPaceEligible = raceDistanceMi != null
-    && ['5k', '10k', 'hm'].includes(distanceCategoryOf(raceDistanceMi));
+    && ['5k', '10k', 'hm'].includes(distanceCategoryOrNull(raceDistanceMi) ?? '');
   // PACE-E-1 · easy/long/recovery anchor tracks CURRENT fitness.
   const easyAnchorTSec = currentT;
 
   const { subLabelFromSpec } = await import('@/lib/training/expand-spec');
 
-  const ownClient = opts?.client ? null : await pool.connect();
-  const tx = (opts?.client ?? ownClient!) as { query: typeof pool.query };
   let updated = 0;
   let sealedCount = 0;
-  try {
-    if (ownClient) await tx.query('BEGIN');
+  const core = async (tx: { query: typeof pool.query }): Promise<void> => {
     for (const row of rows) {
       if (row.sealed) { sealedCount++; continue; }
       const t = (row.week_id != null ? weekTByWeekId.get(row.week_id) : null)
@@ -388,12 +397,31 @@ export async function recomputePacesForPlan(
         workouts_updated: updated,
       })],
     );
-    if (ownClient) await tx.query('COMMIT');
-  } catch (e) {
-    if (ownClient) await tx.query('ROLLBACK').catch(() => null);
-    throw e;
-  } finally {
-    if (ownClient) ownClient.release();
+  };
+
+  if (opts?.client) {
+    // The caller's `mutatePlan` already owns this transaction and will validate
+    // its whole batch. Opening a second one here would nest, and re-validating
+    // a subset of the caller's batch would judge an intermediate state.
+    await core(opts.client);
+  } else {
+    const { mutatePlan } = await import('./mutate');
+    const boundary = await mutatePlan<void>({
+      userUuid: plan.user_uuid,
+      source: `recompute-paces/${opts?.source ?? 'standalone'}`,
+      todayISO: today,
+      planId,
+      touches: 'derivations',
+      detail: { vdot: vdotNow, rows: rows.length },
+      apply: async (tx) => { await core(tx); },
+    });
+    if (!boundary.ok) {
+      console.error(
+        `[recomputePacesForPlan] REFUSED by the plan mutation boundary · plan=${planId} · ` +
+        boundary.violations.join(' · '),
+      );
+      return null;
+    }
   }
 
   try {

@@ -15,6 +15,7 @@
  * Cite: docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 2.3
  */
 
+import { type DistCategory, distanceCategoryOrNull } from './goal-tiers';
 import { computeGoalGap, type GoalGap } from './goal-gap';
 import { simulateActivePlan, type SimulatorResult } from './simulator';
 
@@ -61,20 +62,21 @@ export interface GapReport {
  *   - 10K: T-3 weeks
  *   - HM: T-3 weeks
  *   - M: T-4 weeks (more taper volatility, more lead time needed)
+ *   - Ultra: T-5 weeks (the longest taper in Research/08 §9.1, 14-28 days)
+ *
+ * 2026-08-18 · this table used to be keyed to an inline four-member union with
+ * its own boundary function beside it — the third of three incompatible
+ * categorizers in the app, and the only one with no 'ultra' key, so an ultra
+ * fell through the `else` branch onto the marathon's row. It is now keyed to
+ * DistCategory and reads THE categorizer.
  */
-const RENEGOTIATION_WINDOW_WEEKS: Record<'5k' | '10k' | 'hm' | 'm', number> = {
+const RENEGOTIATION_WINDOW_WEEKS: Record<DistCategory, number> = {
   '5k': 2,
   '10k': 3,
   'hm':  3,
   'm':   4,
+  'ultra': 5,
 };
-
-function distanceCategory(mi: number): '5k' | '10k' | 'hm' | 'm' {
-  if (mi <= 3.5) return '5k';
-  if (mi <= 7)   return '10k';
-  if (mi <= 14)  return 'hm';
-  return 'm';
-}
 
 /**
  * Compose the daily gap report. Returns null when the runner has no
@@ -101,14 +103,18 @@ export async function composeGapReport(userUuid: string): Promise<GapReport | nu
   // Alternative ranges · populated when not 'closing'
   const alternativeRanges = composeAlternativeRanges(gap, confidenceBand);
 
-  // Renegotiation window · null when not applicable
-  const cat = distanceCategory(gap.raceDistanceMi);
-  const renegWeeks = RENEGOTIATION_WINDOW_WEEKS[cat];
-  const daysToRenegotiate = gap.status === 'unclosable' && gap.weeksRemaining <= renegWeeks
-    ? 0   // surface NOW
-    : gap.status === 'unclosable'
-      ? Math.max(0, (gap.weeksRemaining - renegWeeks) * 7)
-      : null;
+  // Renegotiation window · null when not applicable, and null when the race
+  // distance is unknown. There is no honest lead time for an event we cannot
+  // identify, so the card offers none rather than borrowing another distance's.
+  const cat = distanceCategoryOrNull(gap.raceDistanceMi);
+  const renegWeeks = cat == null ? null : RENEGOTIATION_WINDOW_WEEKS[cat];
+  const daysToRenegotiate = renegWeeks == null
+    ? null
+    : gap.status === 'unclosable' && gap.weeksRemaining <= renegWeeks
+      ? 0   // surface NOW
+      : gap.status === 'unclosable'
+        ? Math.max(0, (gap.weeksRemaining - renegWeeks) * 7)
+        : null;
 
   return {
     headline,

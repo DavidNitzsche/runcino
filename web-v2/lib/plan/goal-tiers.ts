@@ -21,6 +21,11 @@
  * Cite: Research/22-plan-templates.md
  * Cite: Research/00a-distance-running-training.md §periodization
  */
+import {
+  type DistanceCategory,
+  distanceCategoryOrNull,
+  distanceCategoryOrThrow,
+} from '@/lib/race/distance-category';
 
 export type GoalTier =
   | 'elite'         // sub-elite paces · world-class targets
@@ -28,7 +33,14 @@ export type GoalTier =
   | 'intermediate'  // sub-2:00 HM, sub-4 M, sub-25 5K
   | 'developing';   // first-race / 2:00+ HM, 4:30+ M
 
-export type DistCategory = '5k' | '10k' | 'hm' | 'm' | 'ultra';
+/**
+ * 2026-08-18 · categorizer unification. This used to be its own union literal
+ * next to its own boundary function, one of three in the app. Both are now
+ * aliases of THE categorizer in lib/race/distance-category.ts — the type name
+ * is kept because ~40 files import it, but there is one definition.
+ */
+export type DistCategory = DistanceCategory;
+export { distanceCategoryOrNull };
 
 /**
  * 2026-06-03 · Rule 12 · build-window per distance.
@@ -706,17 +718,21 @@ export function classifyGoalTier(
 }
 
 /**
- * Distance categorization · same buckets as the existing generator
- * but exported as a pure function so the tier classifier doesn't
- * depend on generate.ts. Kept in sync with generate.ts §
- * distanceCategoryOf.
+ * @deprecated Use `distanceCategoryOrNull` from lib/race/distance-category.ts.
+ *
+ * 2026-08-18 · thin wrapper over THE categorizer, kept because ~40 call sites
+ * (including lib/plan/generate.ts and lib/plan/validate.ts, owned by other
+ * work in flight) import this name. Behaviour for a real distance is now
+ * identical to every other surface in the app.
+ *
+ * The one behaviour that intentionally changed: a missing / zero / non-finite
+ * distance used to return '5k' silently, which is how a legacy race row with
+ * no numeric distance got a marathoner a 10-week build window instead of 18.
+ * It now throws. Every call site inside this repo either guards `> 0` first or
+ * resolves the distance through `distanceCategoryOrNull` and handles the null.
  */
 export function distanceCategoryOf(raceDistanceMi: number): DistCategory {
-  if (raceDistanceMi <= 4)  return '5k';
-  if (raceDistanceMi <= 8)  return '10k';
-  if (raceDistanceMi <= 17) return 'hm';
-  if (raceDistanceMi <= 30) return 'm';
-  return 'ultra';
+  return distanceCategoryOrThrow(raceDistanceMi);
 }
 
 /**

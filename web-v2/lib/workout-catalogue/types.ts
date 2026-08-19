@@ -26,10 +26,24 @@
  *     distance's column spent on every distance, and a per-entry membership
  *     list cannot express that mistake.
  */
-import type { DistCategory } from '@/lib/plan/goal-tiers';
+import {
+  DISTANCE_CATEGORIES,
+  type DistanceCategory,
+} from '@/lib/race/distance-category';
 import type { WorkoutFamily } from '@/lib/plan/workout-library';
 
-export type { DistCategory, WorkoutFamily };
+/**
+ * The app's ONE race-distance categorizer · `lib/race/distance-category.ts`.
+ *
+ * Re-exported under the engine's historical name rather than redefined. The
+ * codebase carried three incompatible categorizers until 2026-08-18, which
+ * shipped a 15-mile race trained as a half and raced as a marathon; a
+ * catalogue that declared its own distance union would be the fourth. Only the
+ * ultra floor (50 km) is doctrine — the other three boundaries are documented
+ * convention, and they are stated there, once.
+ */
+export type DistCategory = DistanceCategory;
+export type { WorkoutFamily };
 
 /**
  * The doc's own pace shorthand · `Research/04-workout-vocabulary.md`
@@ -74,7 +88,8 @@ export type Tier = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus';
 
 export const TIERS: readonly Tier[] = ['beginner', 'intermediate', 'advanced', 'advanced_plus'] as const;
 
-export const ALL_DISTANCES: readonly DistCategory[] = ['5k', '10k', 'hm', 'm', 'ultra'] as const;
+/** Every category, from the canonical categorizer. Never a second list. */
+export const ALL_DISTANCES: readonly DistCategory[] = DISTANCE_CATEGORIES;
 
 /** Units the doc states rep and session sizes in. */
 export type MeasureUnit = 'mi' | 'km' | 'm' | 'min' | 's';

@@ -86,6 +86,8 @@ export function pace(totalSec: number, distMi: number): string {
 export function buildPacing(targetSec: number, distMi: number, netElevFt: number): PacingBlock[] {
   if (!targetSec || !distMi) return [];
   const downhill = netElevFt < -100;
+  // Distance outside every doctrine row → no opening arc. The blocks stay
+  // even-effort rather than borrowing another distance's settle.
   const opening = raceOpeningPlan({ goalSec: targetSec, distanceMi: distMi });
   const flatPace = targetSec / distMi;
   /** Net-downhill closing credit, fraction of pace. */
@@ -98,7 +100,7 @@ export function buildPacing(targetSec: number, distMi: number, netElevFt: number
     { start: distMi * 0.80, end: distMi,        color: '#FC4D64', sub: 'empty the tank' },
   ];
   const blocks = spans.map((b, i) => {
-    const adj = openingAdjustmentOverSpan(opening, b.start, b.end) / flatPace;
+    const adj = opening == null ? 0 : openingAdjustmentOverSpan(opening, b.start, b.end) / flatPace;
     const credit = downhill && i >= 2 ? DOWNHILL_CLOSE_CREDIT : 0;
     return { ...b, factor: 1 + adj - credit };
   });
