@@ -136,6 +136,51 @@ least reachable for code-path verification — never invoked.
   UI (email/password is the sole live path). The test suite would not catch
   a regression in the real signup/onboarding flow.
 
+### Web /today — the day-one, zero-history landing surface
+
+Traced (code-read only, not executed under a real session — see live/inferred
+split at the bottom) via `web-v2/app/today/page.tsx` → `buildSeed()`
+(`web-v2/components/faff-app/seed.ts`) → `Shell` → `TodayView`.
+
+- **No crash risk.** Every loader (`loadGlanceState`, `loadHealthState`,
+  `loadTrainingState`, `loadRacesState`, etc.) is wrapped in a `safe()`
+  helper that degrades to `null` on throw. `seed.week` always has 7 real
+  entries even with zero rows in `runs`/`plan_workouts`/`races` —
+  `plannedType` becomes `'unplanned'`, never a missing/null day object, so
+  `TodayView.tsx:118`'s `seed.week[curDay] ?? seed.week[seed.todayIdx]`
+  never falls through to anything undefined.
+- **No fabricated numbers, with one caveat.** VDOT projection stays `null`
+  until a race + physiology VDOT both exist. Readiness cold-starts to
+  `band: 'no-data', score: 0`, and the header ring explicitly renders `'—'`
+  instead of `'0'` for that band (`TodayView.tsx:887`, comment: *"a '0'
+  score reads as broken. Show an em-dash."*). Training-form cold-starts to
+  `{fitness:0, fatigue:0, delta:0, label:'BUILDING'}` but that tile is gated
+  out entirely for a zero-history user. **Caveat, not verified live:** if
+  `loadCoachState` itself returns `null` (a loader failure, not the normal
+  empty-data path), `readinessBrief` is `null` and the ring falls back to a
+  literal `0` next to a green ring instead of the em-dash — only reachable
+  on an actual loader error, flagging for awareness, not fixing blind.
+- **Coached mode is correctly distinct** — `isCoachedBlank` drives a
+  `'COACHED'` hero with *"Your coach owns the plan. Faff tracks the work…"*
+  and explicitly suppresses `WorkoutCard` (*"there is no Faff workout"*,
+  `TodayView.tsx:539-554`). No Faff-authored content leaks through.
+- **Modes 2, 3, and 5 (goal-no-race, just-run, beginner-with-no-plan-yet)
+  are visually indistinguishable from each other, and from an ordinary
+  planned rest day.** All three land on the generic `'REST'` hero with copy
+  *"Rest is training. Sleep, hydrate, mobilize. Let the work land."*
+  (`web-v2/components/faff-app/constants.ts:84`) — copy that implies an
+  active plan exists and today just happens to be a rest day, which is not
+  true for any of these three modes. This isn't a fabricated number, but it
+  fails the "reads honestly with zero history" bar the same way a phantom
+  number would — see Defect 4.
+- **Dead-code finding, same area:** a "goal-ready" tile was built
+  specifically for the distance-goal/no-race mode (`TodayView.tsx:5049,
+  5069, 5104-5107`, populated by `seed.goalReady` whenever there's no
+  `goalRace`), but the tile is wrapped in `{gates.gap ? (...) : null}` and
+  `gates.gap` requires `hasGoalRace === true` — the exact opposite
+  condition. Since the two conditions are mutually exclusive by
+  construction, this tile **can never render for any user**. See Defect 4.
+
 ---
 
 ## Phase 2 — five-mode matrix
@@ -152,7 +197,8 @@ applicable to this mode.
 | Mode persisted correctly, not coerced to default | code — `distance` validated against explicit enum incl. `'coached'`; `experience_level` write-once-unless-explicit fixed 2026-06-21 (was silently stuck at prior value) | code | code | code — `coached_externally` written into `user_settings` via Rule-6-compliant jsonb merge (route.ts:297,404) | code — `weeklyFreq`/`weeklyMi` validated 0–6 / 0,5,15… server-side (route.ts:100-101), no floor |
 | Plan generated where expected / NOT generated where forbidden | **live (engine)** — `race-prep`, freq honored, 0 violations | **live (engine)** — `race-prep` (with TT goal) or **none** (no TT goal, code-verified) | **live (engine)** shows `maintenance` via the *simulator's* preview path, but production `/onboarding/complete` authors **nothing** for this exact case (code, route.ts:641-646) — see note below | code — confirmed **zero DB writes**, no `races` row, no `generatePlan` call for `isCoached` (route.ts:511-516) | **live (engine)** — see beginner-volume row |
 | Weekly frequency honored (3-day ≠ 6-day) | **live (engine)**: requested 5 → actual 5 | **live (engine)**: requested 3 → actual 3 (regression test asserted ≤4, got exactly 3) | **live (engine)**: requested 4 → actual 4 | N/A (no plan) | **live (engine)**: requested 1 → actual 1; requested 0 → floored to 3 by explicit design (`sim-inputs.ts` "0 → couch-to-X floor of 3") |
-| Day-one landing: no crash, no phantom number, honest | **FIXED** — was showing a hardcoded fake workout on every completion (Defect 1); now mode-aware and honest, **live**-verified post-fix | **FIXED**, same as above | **FIXED**, same as above, now correctly says "No plan yet" | **FIXED** — was the worst instance: said "YOUR PLAN IS BUILT" + fake workout for a mode that authors nothing; now says "Faff is tracking… stays out of the prescriptions," **live**-verified | **FIXED**, same mechanism |
+| Onboarding completion screen: no crash, no phantom number, honest | **FIXED** — was showing a hardcoded fake workout on every completion (Defect 1); now mode-aware and honest, **live**-verified post-fix | **FIXED**, same as above | **FIXED**, same as above, now correctly says "No plan yet" | **FIXED** — was the worst instance: said "YOUR PLAN IS BUILT" + fake workout for a mode that authors nothing; now says "Faff is tracking… stays out of the prescriptions," **live**-verified | **FIXED**, same mechanism |
+| Web /today: no crash, no phantom number | **code** — PASS (has a plan, real tiles render) | **code** — PASS on numbers, but see Defect 4 (indistinguishable from rest + a tile that can never render) | **code** — PASS on numbers, same Defect 4 caveat | **code** — PASS, distinct "COACHED" hero, no prescription leaks | **code** — PASS on numbers, same Defect 4 caveat |
 | Beginner gets beginner volume, not scaled-down marathon | N/A | N/A | N/A | N/A | **live (engine)**: beginner/1-day/under-5mi-history → week-0 volume **2 mi total**; beginner/2-day + marathon goal → week-0 **3 mi**, peak **14 mi** (not a scaled marathon peak) |
 
 **Note on Mode 3 row:** the plan simulator (`/api/plan/simulate`,
@@ -225,7 +271,50 @@ via code trace that `canAdvanceFromGoalDetails` already used `== null` (not
 truthy) checks, so `0` was never blocked from advancing — this really was
 purely a missing-chip UI gap, not a deeper validation bug.
 
-### 4 — LOW — pre-existing, not touched — Strava OAuth doesn't return to onboarding step
+### 4 — MEDIUM — plan-less modes on web /today look like an ordinary rest day, and a tile built for Mode 2 can never render (NOT FIXED — flagged for follow-up)
+
+Traced by sub-agent, static read of `web-v2/components/faff-app/seed.ts`,
+`TodayView.tsx`, `lib/today/composition.ts`. Two related findings:
+
+- Modes 2 (distance goal, no race), 3 (just run), and 5 (true beginner with
+  no plan generated yet) all land on the exact same generic `'REST'` hero —
+  title "REST", copy *"Rest is training. Sleep, hydrate, mobilize. Let the
+  work land."* (`web-v2/components/faff-app/constants.ts:84`, reached via
+  `TodayView.tsx:421-471`'s `workNode` fallback branch). That copy implies
+  an active plan with a scheduled rest day, which isn't true for any of
+  these three modes — a runner with genuinely no plan reads the identical
+  message as a runner mid-plan on a legitimate rest day. Not a fabricated
+  *number*, but it fails the same "reads honestly with zero history" bar.
+- A "goal-ready" tile exists specifically for Mode 2
+  (`TodayView.tsx:5049,5069,5104-5107`, fed by `seed.goalReady`, populated
+  exactly when there's no `goalRace`) but is wrapped in a gate
+  (`{gates.gap ? (...) : null}`, `TodayView.tsx:5059`) that requires
+  `hasGoalRace === true` (`lib/today/composition.ts:308-313,334`) — the
+  opposite of when `goalReady` is populated. The two conditions are
+  mutually exclusive by construction, so **this tile can never render for
+  any user, in any state.** Either dead code from an abandoned design, or a
+  real regression where the gate got inverted at some point.
+
+**Why not fixed this round:** `TodayView.tsx` is a ~3,800-line file that is
+the single most load-bearing, most-frequently-touched surface in the app
+(per its own diff history) and is live for every current user, including
+David. The CompletionScreen/Step1bGoalDetails fixes above were small,
+self-contained, and I could concretely verify them live end-to-end via
+unauthenticated HTTP fetches. This one requires touching the shared
+tiles/gates system (`composition.ts`) that other surfaces likely also read,
+and I have no way to visually confirm a Today render in this environment
+without an authenticated session — which, per the constraints on this audit,
+I can't create. Given the risk of misreading the gate interaction and
+silently breaking Today for real users under time pressure, I'm reporting
+this precisely rather than shipping a blind edit. Recommended fix for a
+follow-up session: either invert `gates.gap`'s condition to `!hasGoalRace &&
+goalReady != null` so the Mode-2 tile can actually render, or — if the
+generic rest hero is judged good enough for all three plan-less modes —
+delete the dead `GoalReadyBody` branch and its `seed.goalReady` plumbing
+instead, and separately give the plan-less rest hero mode-aware copy the
+same way Defect 1's fix did for the completion screen.
+
+### 5 — LOW — pre-existing, not touched — Strava OAuth doesn't return to onboarding step
 
 Self-documented in `Step2Signals.tsx`: connecting Strava mid-onboarding sends
 the runner through the OAuth callback and back to `/` (home), not back into
