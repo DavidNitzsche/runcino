@@ -127,8 +127,7 @@ struct InjuryFlareV5: View {
                         .font(.faffText(TypeScaleV5.label13))
                         .foregroundStyle(V5.textSecondary)
                     Text("Not today")
-                        .font(.faffDisplay(TypeScaleV5.display44))
-                        .textCase(.uppercase)
+                        .faffDisplayV5(TypeScaleV5.display44)
                         .foregroundStyle(V5.textPrimary)
                 }
             }
@@ -198,8 +197,7 @@ struct WeekOffV5: View {
                         .font(.faffText(TypeScaleV5.label13))
                         .foregroundStyle(V5.OnPanel.secondary)
                     Text("Week off")
-                        .font(.faffDisplay(TypeScaleV5.display44))
-                        .textCase(.uppercase)
+                        .faffDisplayV5(TypeScaleV5.display44)
                         .foregroundStyle(V5.OnPanel.primary)
                 }
                 Text(model.reason)
@@ -270,8 +268,7 @@ struct OffSeasonV5: View {
                             .foregroundStyle(V5.textSecondary)
                     }
                     Text("Off-season")
-                        .font(.faffDisplay(TypeScaleV5.display44))
-                        .textCase(.uppercase)
+                        .faffDisplayV5(TypeScaleV5.display44)
                         .foregroundStyle(V5.textPrimary)
                 }
             }
@@ -325,8 +322,7 @@ struct DataOutageV5: View {
                                 .foregroundStyle(V5.OnPanel.secondary)
                         }
                         Text(today.panel.type)
-                            .font(.faffDisplay(TypeScaleV5.display56))
-                            .textCase(.uppercase)
+                            .faffDisplayV5(TypeScaleV5.display56)
                             .foregroundStyle(V5.OnPanel.primary)
                     }
                     if let dose = today.panel.dose {

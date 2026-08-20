@@ -300,8 +300,7 @@ struct OnboardingV5: View {
             VStack(alignment: .leading, spacing: V5.S.s16) {
                 VStack(alignment: .leading, spacing: V5.S.s10) {
                     Text("Let\u{2019}s write the plan")
-                        .font(.faffDisplay(TypeScaleV5.display38))
-                        .textCase(.uppercase)
+                        .faffDisplayV5(TypeScaleV5.display38)
                         .foregroundStyle(V5.textPrimary)
                     Text("A few questions, then a real prescription for tomorrow. Nothing here is permanent.")
                         .font(.faffText(TypeScaleV5.body15))
@@ -601,8 +600,7 @@ private struct OnboardingRevealPanel: View {
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(V5.OnPanel.secondary)
             Text(day.sessionType)
-                .font(.faffDisplay(44))
-                .textCase(.uppercase)
+                .faffDisplayV5(44)
                 .foregroundStyle(V5.OnPanel.primary)
             day.dose.text(.faffText(22, weight: .semibold), color: V5.OnPanel.primary)
         }

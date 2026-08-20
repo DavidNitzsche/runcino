@@ -170,6 +170,22 @@ function raceRowAuthority(priority: string | null, hasResult: boolean): Authorit
   return authorityTier(selectionAuthority(priority));
 }
 
+
+/**
+ * "Sunday 13 December 2026". A schedule row was printing the raw ISO date,
+ * which is the database showing through — the same class of leak as
+ * "about 0 min" on a rest day.
+ */
+function raceDateWords(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(String(iso).slice(0, 10) + 'T12:00:00Z');
+  if (Number.isNaN(d.getTime())) return String(iso);
+  const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+               'August', 'September', 'October', 'November', 'December'];
+  return `${DOW[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
@@ -319,7 +335,7 @@ export async function GET(req: NextRequest) {
       if (r.finishProvisionalLabel) detail.push({ id: 'provisional', label: 'Status', sub: null, value: num(r.finishProvisionalLabel, false), action: null });
       return {
         id: r.slug, slug: r.slug, name: r.name,
-        dateLine: r.date ?? '', distance: r.distance_label ?? '',
+        dateLine: raceDateWords(r.date), distance: r.distance_label ?? '',
         priority: r.priority ?? 'C',
         isPast: r.is_past,
         result: hasResult ? num(r.finishTime, r.finishProvisional) : null,

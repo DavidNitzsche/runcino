@@ -236,8 +236,7 @@ struct GalleryV5: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: V5.S.s4) {
             Text("faff v5")
-                .font(.faffDisplay(TypeScaleV5.display44))
-                .textCase(.uppercase)
+                .faffDisplayV5(TypeScaleV5.display44)
                 .foregroundStyle(V5.textPrimary)
             Text("The design system, on glass.")
                 .font(.faffText(TypeScaleV5.body15))

@@ -126,8 +126,7 @@ struct PacesMovedV5: View {
             }
 
             Text(paces.headline)
-                .font(.faffDisplay(TypeScaleV5.display44))
-                .textCase(.uppercase)
+                .faffDisplayV5(TypeScaleV5.display44)
                 .foregroundStyle(V5.textPrimary)
         }
     }

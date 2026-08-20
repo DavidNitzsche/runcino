@@ -173,8 +173,7 @@ struct TodayAfterV5: View {
                         .foregroundStyle(V5.OnPanel.secondary)
                 }
                 Text(model.panel.type)
-                    .font(.faffDisplay(56))
-                    .textCase(.uppercase)
+                    .faffDisplayV5(56)
                     .foregroundStyle(V5.OnPanel.primary)
             }
 

@@ -192,9 +192,12 @@ struct RacesV5: View {
                         .font(.faffText(TypeScaleV5.label13))
                         .foregroundStyle(V5.OnPanel.secondary)
                 }
+                // A race name is a proper noun of arbitrary length, not a
+                // category word. "MY HALF MARATHON" needs 778pt at 56 and
+                // truncated to "MY HALF MARATH…" even at the scale floor.
+                // Names wrap; the one-word graphics (session type, phase) fit.
                 Text(model.panel.type)
-                    .font(.faffDisplay(TypeScaleV5.display56))
-                    .textCase(.uppercase)
+                    .faffDisplayV5(TypeScaleV5.display56, fit: false)
                     .foregroundStyle(V5.OnPanel.primary)
             }
 

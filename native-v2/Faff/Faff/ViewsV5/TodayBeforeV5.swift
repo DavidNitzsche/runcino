@@ -172,7 +172,8 @@ struct TodayBeforeV5: View {
                     panelHeaderButton(systemImage: "calendar") {
                         withAnimation(V5.Motion.fill) { calendarOpen = true }
                     }
-                    panelHeaderButton(text: avatarInitials) {
+                    panelHeaderButton(systemImage: avatarInitials.isEmpty ? "person" : nil,
+                                      text: avatarInitials.isEmpty ? nil : avatarInitials) {
                         withAnimation(V5.Motion.sheet) { accountOpen = true }
                     }
                 }
@@ -199,8 +200,7 @@ struct TodayBeforeV5: View {
                         .foregroundStyle(V5.OnPanel.secondary)
                 }
                 Text(model.panel.type)
-                    .font(.faffDisplay(TypeScaleV5.display56))
-                    .textCase(.uppercase)
+                    .faffDisplayV5(TypeScaleV5.display56)
                     .foregroundStyle(V5.OnPanel.primary)
             }
 
@@ -216,6 +216,9 @@ struct TodayBeforeV5: View {
     }
 
     private var avatarInitials: String {
+        // Initials when we know the name. A person glyph when we do not —
+        // never an empty disc, which is what a blank name rendered and what
+        // reads on device as a control that failed to load.
         let letters = accountName.split(separator: " ").prefix(2).compactMap(\.first)
         return letters.isEmpty ? "" : String(letters).uppercased()
     }

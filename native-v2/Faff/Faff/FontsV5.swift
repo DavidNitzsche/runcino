@@ -318,6 +318,12 @@ extension View {
             .font(.faffDisplay(size))
             .textCase(size >= TypeScaleV5.display38 ? .uppercase : nil)
             .lineLimit(fit ? 1 : nil)
-            .minimumScaleFactor(fit ? 0.82 : 1)
+            // 0.5, not 0.82. The first floor was set from THRESHOLD, which
+            // needs 0.85 — and then the engine handed the Block panel
+            // MAINTENANCE, which needs 0.64 in the same box and truncated to
+            // "MAINTENA…". Truncating a one-word graphic loses information;
+            // scaling it only loses size, and a 28pt Archivo 800 is still a
+            // graphic. Nothing in this register may ever lose a letter.
+            .minimumScaleFactor(fit ? 0.5 : 1)
     }
 }

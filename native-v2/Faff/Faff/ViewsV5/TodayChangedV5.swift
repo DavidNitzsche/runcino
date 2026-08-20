@@ -124,8 +124,7 @@ struct TodayChangedV5: View {
                     .font(.faffText(TypeScaleV5.label13))
                     .foregroundStyle(V5.OnPanel.secondary)
                 Text(panel.type)
-                    .font(.faffDisplay(TypeScaleV5.display56))
-                    .textCase(.uppercase)
+                    .faffDisplayV5(TypeScaleV5.display56)
                     .foregroundStyle(V5.OnPanel.primary)
             }
 

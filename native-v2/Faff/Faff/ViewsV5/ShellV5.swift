@@ -243,6 +243,16 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
     }
 
     var body: some View {
+        // Measure the device's real top inset once, at the root, and publish
+        // it. Every full-bleed panel reads it from the environment — reading
+        // the window from inside a view body deadlocks, which is how the first
+        // attempt crashed on launch.
+        GeometryReader { root in
+            shell.environment(\.v5TopInset, max(root.safeAreaInsets.top, 0))
+        }
+    }
+
+    private var shell: some View {
         ZStack {
             V5.surfacePage.ignoresSafeArea()
 
@@ -332,8 +342,7 @@ struct NotOnPhoneYetV5: View {
                 DayPanel(fill: .quiet) {
                     Color.clear.frame(height: V5.S.s56)
                     Text("Not here yet")
-                        .font(.faffDisplay(TypeScaleV5.display44))
-                        .textCase(.uppercase)
+                        .faffDisplayV5(TypeScaleV5.display44)
                         .foregroundStyle(V5.textPrimary)
                 }
 

@@ -133,6 +133,19 @@ struct BlockV5: View {
 
     private var panel: some View {
         DayPanel(fill: model.panel.fill) {
+            // The place label, the same row Today and Races give it. Block was
+            // the one panel that dropped it, so the screen opened on a bare
+            // date with nothing saying where you were.
+            HStack(alignment: .center, spacing: V5.S.s8) {
+                Text(model.panel.place)
+                    .font(.faffDisplay(20))
+                    .textCase(.uppercase)
+                    .tracking(20 * 0.02)
+                    .foregroundStyle(V5.OnPanel.primary)
+                Spacer(minLength: 0)
+            }
+            .frame(height: 44)
+
             HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
                 Text(model.panel.dateLine)
                     .faffDisplayV5(26, fit: false)
@@ -153,8 +166,7 @@ struct BlockV5: View {
                             .foregroundStyle(V5.OnPanel.secondary)
                     }
                     Text(model.panel.type.uppercased())
-                        .font(.faffDisplay(TypeScaleV5.display56))
-                        .textCase(.uppercase)
+                        .faffDisplayV5(TypeScaleV5.display56)
                         .foregroundStyle(V5.OnPanel.primary)
                 }
 

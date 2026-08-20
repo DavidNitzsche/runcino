@@ -46,7 +46,6 @@
 //
 
 import SwiftUI
-import UIKit
 
 /// The v5 design system's semantic tokens. Named for the prototype's CSS
 /// custom properties. Every v5 screen paints from here, never from a hex.
@@ -281,20 +280,41 @@ enum V5 {
         /// A round header button on a panel.
         static let headerButton: CGFloat = 30
 
-        /// The device's own status-bar inset, read once from the key window.
+        /// The design's status band, and the FLOOR for the real one.
         ///
-        /// The design draws a 44pt status band, but the instruction beside it
-        /// is "build to the actual device safe areas, not a fixed 390×844
-        /// box" — and the two disagree on every device made since. This is the
-        /// real number, with the design's 44 as the floor for the case where
-        /// no window is up yet (a preview, a cold launch).
-        static let statusBarInset: CGFloat = {
-            let inset = UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap(\.windows)
-                .first(where: \.isKeyWindow)?
-                .safeAreaInsets.top
-            return inset.map { max($0, 0) } ?? 44
-        }()
+        /// The handoff draws 44pt and says in the same breath to "build to the
+        /// actual device safe areas, not a fixed 390×844 box" — and the two
+        /// disagree on every device made since. So the real inset arrives
+        /// through the environment (`\.v5TopInset`, published by the shell from
+        /// a GeometryReader) and this is what a preview or a detached screen
+        /// falls back to.
+        ///
+        /// This used to be a lazy `static let` that read
+        /// `UIApplication.shared.connectedScenes` on first touch. It crashed
+        /// on launch — EXC_BREAKPOINT in `_dispatch_once_wait`, because the
+        /// first touch was inside `DayPanel.body`, and reading the window from
+        /// a view body re-entered the same one-time initialiser. Do not put
+        /// UIKit lookups behind a lazy static that a body evaluates.
+        static let statusBarInset: CGFloat = 44
+    }
+}
+
+
+// MARK: - The real safe-area inset
+
+/// The device's own top safe-area inset, published by the shell.
+///
+/// SwiftUI hands this out through `GeometryReader.safeAreaInsets`, which is
+/// the only way to read it that is safe from inside a view body. The shell
+/// measures it once at the root and puts it here; anything drawing a
+/// full-bleed panel reads it rather than asking UIKit.
+private struct V5TopInsetKey: EnvironmentKey {
+    static let defaultValue: CGFloat = V5.Shell.statusBarInset
+}
+
+extension EnvironmentValues {
+    var v5TopInset: CGFloat {
+        get { self[V5TopInsetKey.self] }
+        set { self[V5TopInsetKey.self] = newValue }
     }
 }

@@ -283,6 +283,10 @@ struct DayPanel<Content: View>: View {
     let fill: PanelFill
     @ViewBuilder var content: () -> Content
 
+    /// The device's real inset, published by the shell. Falls back to the
+    /// design's 44 in a preview or a detached screen.
+    @Environment(\.v5TopInset) private var topInset
+
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.s20) {
             content()
@@ -304,7 +308,7 @@ struct DayPanel<Content: View>: View {
         // keeps its ordinary safe-area behaviour. `.ignoresSafeArea` on the
         // background alone does not do this — the background is clipped to
         // the panel's frame, and the frame is what starts too low.
-        .padding(.top, V5.Shell.statusBarInset)
+        .padding(.top, topInset)
         .background(alignment: .top) {
             Group {
                 switch fill {
@@ -315,7 +319,7 @@ struct DayPanel<Content: View>: View {
             .v5Grain()
         }
         .clipShape(PanelShape(radius: V5.R.panel))
-        .padding(.top, -V5.Shell.statusBarInset)
+        .padding(.top, -topInset)
         // Escape the content band's gutter.
         .padding(.horizontal, -V5.S.gutter)
     }
@@ -360,6 +364,14 @@ struct PanelStatPlate: View {
     let stats: [PanelStat]
 
     var body: some View {
+        // A plate with nothing on it is not a plate. A rest day has no pace
+        // band, no ceiling and no effort to state, and the empty translucent
+        // block it used to leave behind read as a control the runner could
+        // press. Nothing to say, nothing drawn.
+        if !stats.isEmpty { plate }
+    }
+
+    private var plate: some View {
         HStack(alignment: .firstTextBaseline, spacing: V5.S.s16) {
             ForEach(stats) { s in
                 VStack(alignment: .leading, spacing: V5.S.s6) {

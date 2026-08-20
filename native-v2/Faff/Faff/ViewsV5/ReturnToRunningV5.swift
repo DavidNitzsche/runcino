@@ -99,8 +99,7 @@ struct ReturnToRunningV5: View {
                     .font(.faffText(TypeScaleV5.label13))
                     .foregroundStyle(V5.textSecondary)
                 Text("Stage \(ret.stage) of \(ret.stageCount)")
-                    .font(.faffDisplay(TypeScaleV5.display44))
-                    .textCase(.uppercase)
+                    .faffDisplayV5(TypeScaleV5.display44)
                     .foregroundStyle(V5.textPrimary)
             }
 

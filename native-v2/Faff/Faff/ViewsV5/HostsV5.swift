@@ -515,7 +515,9 @@ struct SettingsHostV5: View {
 struct FaffV5Root<LiveContent: View>: View {
     @StateObject private var runGate = PhoneRunGate()
     @State private var selected: FaffTabV5 = .today
-    var accountName: String = ""
+    /// Read from the profile rather than passed in, so the account button
+    /// shows the runner's own initials instead of an empty disc.
+    @State private var accountName: String = ""
     @ViewBuilder var live: (LiveRunMode) -> LiveContent
 
     var body: some View {
@@ -538,7 +540,18 @@ struct FaffV5Root<LiveContent: View>: View {
             live: live
         )
         .environmentObject(runGate)
-        .task { await runGate.refresh() }
+        .task {
+            await runGate.refresh()
+            // The profile-state payload is already cached at launch, so this
+            // is a synchronous read in the common case, not a fetch.
+            if let cached = AppCache.read(.profileState, as: ProfileState.self),
+               let name = cached.identity.full_name, !name.isEmpty {
+                accountName = name
+            } else if let fresh = try? await API.fetchProfileState(),
+                      let name = fresh.identity.full_name, !name.isEmpty {
+                accountName = name
+            }
+        }
     }
 }
 
