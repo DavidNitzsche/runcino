@@ -176,7 +176,7 @@ struct RacesV5: View {
 
             HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
                 Text(model.panel.dateLine)
-                    .faffDisplayV5(26, fit: false)
+                    .faffDisplayV5(26, fit: .free)
                     .foregroundStyle(V5.OnPanel.primary)
                 Spacer(minLength: 0)
                 if let weekLine = model.panel.weekLine {
@@ -197,7 +197,7 @@ struct RacesV5: View {
                 // truncated to "MY HALF MARATH…" even at the scale floor.
                 // Names wrap; the one-word graphics (session type, phase) fit.
                 Text(model.panel.type)
-                    .faffDisplayV5(TypeScaleV5.display56, fit: false)
+                    .faffDisplayV5(TypeScaleV5.display56, fit: .name)
                     .foregroundStyle(V5.OnPanel.primary)
             }
 

@@ -241,6 +241,14 @@ enum TypeScaleV5 {
     static let floor:   CGFloat = 12
 }
 
+/// Which of the three things wearing the display register this is.
+/// See `View.faffDisplayV5` for what each one breaks like and why.
+enum DisplayFit {
+    case graphic
+    case name
+    case free
+}
+
 extension View {
     /// The display recipe: Archivo 800/112, uppercase, and it does not clip.
     ///
@@ -294,36 +302,35 @@ extension View {
     /// both move every screen at once.
     ///
     /// ─────────────────────────────────────────────────────────────────────
-    /// WHICH REGISTERS FIT AND WHICH WRAP
+    /// THREE THINGS WEAR THIS REGISTER, AND THEY BREAK DIFFERENTLY
     ///
-    /// Fitting is right for the GRAPHIC — a session type is one word and must
-    /// be one line, so THRESHOLD shrinks the 15% it needs rather than break.
+    /// All three were one boolean, and each wrong setting shipped a different
+    /// failure to the screen before this enum existed.
     ///
-    /// It is wrong for the 26pt date line, and the numbers say why. On a 390
-    /// device the panel gives 350pt; the week line beside it takes 111 and the
-    /// gap 12, leaving 227:
+    /// `.graphic` — a category word: EASY, THRESHOLD, MAINTENANCE, the phase.
+    ///   One line, always. It may shrink but it may never lose a letter, and
+    ///   it may never break: a broken category word is not a graphic. The
+    ///   floor is 0.5 because MAINTENANCE needs 0.64 in a 322pt box, and
+    ///   28pt Archivo 800 is still a graphic.
     ///
-    ///     Thursday 20 August     288.9pt        THURSDAY 20 AUGUST   346.4pt
-    ///     Wednesday 30 September ~353pt
+    /// `.name` — a proper noun of arbitrary length: a race. "MY HALF MARATHON"
+    ///   needs 778pt at 56 and fits at NO scale on one line. Forced to one
+    ///   line it truncated; allowed to wrap freely it broke mid-word into
+    ///   "MY HALF / MARATHO / N". So: up to two lines, scaled to fit, which
+    ///   lets it break at the space instead of inside the word.
     ///
-    /// No shrink floor that keeps 26 legible covers the long end of that, and
-    /// the prototype does not ask for one: its row is a plain CSS flex row, so
-    /// a long date simply WRAPS and the panel gets taller. The panel scrolls,
-    /// so that costs nothing. Wrapping there is the design's own behaviour,
-    /// not a failure of it — pass `fit: false` and let it.
-    ///
-    /// - Parameter fit: false for a register that may legitimately wrap.
-    func faffDisplayV5(_ size: CGFloat, fit: Bool = true) -> some View {
+    /// `.free` — a register that may legitimately run long and whose wrapping
+    ///   costs nothing because the panel scrolls. The 26pt date line: on a 390
+    ///   device the panel gives 350pt, the week line takes 111 and the gap 12,
+    ///   leaving 227, and "Wednesday 30 September" wants ~353. No floor that
+    ///   keeps 26pt legible covers that, and the prototype's own row is a
+    ///   plain CSS flex row that simply wraps.
+
+    func faffDisplayV5(_ size: CGFloat, fit: DisplayFit = .graphic) -> some View {
         self
             .font(.faffDisplay(size))
             .textCase(size >= TypeScaleV5.display38 ? .uppercase : nil)
-            .lineLimit(fit ? 1 : nil)
-            // 0.5, not 0.82. The first floor was set from THRESHOLD, which
-            // needs 0.85 — and then the engine handed the Block panel
-            // MAINTENANCE, which needs 0.64 in the same box and truncated to
-            // "MAINTENA…". Truncating a one-word graphic loses information;
-            // scaling it only loses size, and a 28pt Archivo 800 is still a
-            // graphic. Nothing in this register may ever lose a letter.
-            .minimumScaleFactor(fit ? 0.5 : 1)
+            .lineLimit(fit == .graphic ? 1 : fit == .name ? 2 : nil)
+            .minimumScaleFactor(fit == .free ? 1 : 0.5)
     }
 }

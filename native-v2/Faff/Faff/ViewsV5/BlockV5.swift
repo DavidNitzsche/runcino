@@ -148,7 +148,7 @@ struct BlockV5: View {
 
             HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
                 Text(model.panel.dateLine)
-                    .faffDisplayV5(26, fit: false)
+                    .faffDisplayV5(26, fit: .free)
                     .foregroundStyle(V5.OnPanel.primary)
                 Spacer(minLength: 0)
                 if let weekLine = model.panel.weekLine {
