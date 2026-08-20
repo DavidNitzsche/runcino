@@ -19,6 +19,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { zoneTargetForWorkout } from '@/lib/coach/zone-target';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { loadActivePlan } from '@/lib/plan/lookup';
@@ -404,7 +405,7 @@ export async function GET(req: NextRequest) {
         effortAsked: null,
         effortLogged: rpe?.rpe ?? null,
         verdict: recap.verdict,
-        zoneShares, zoneTarget: zoneTargetFor(todayPlan?.type ?? null),
+        zoneShares, zoneTarget: zoneTargetForWorkout(todayPlan?.type ?? null),
         elevationSamples: indoor ? null : elevationFromSplits(data.splits),
         elevGainFt: data.elevGainFt != null ? Number(data.elevGainFt) : null,
         weekDoneMi: glance.weekDone, weekPlannedMi: glance.weekPlanned,
@@ -632,15 +633,4 @@ function toPrescriptionType(plannedType: string | null): PrescriptionWorkoutType
   }
 }
 
-/** The zone the workout was prescribed to live in — Friel's 5-zone table
- *  (Research/03 §6), same anchor `derivePaces`/hrTargets uses elsewhere.
- *  Null (not a guess) for a type this mapping doesn't cover. */
-function zoneTargetFor(plannedType: string | null): number | null {
-  switch ((plannedType ?? '').toLowerCase()) {
-    case 'easy': case 'recovery': case 'shakeout': case 'long': return 2;
-    case 'tempo': case 'race_week_tuneup': return 3;
-    case 'threshold': case 'intervals': case 'fartlek': case 'progression': return 4;
-    case 'race': return 3;
-    default: return null;
-  }
-}
+

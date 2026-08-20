@@ -24,7 +24,20 @@ struct ScreensCatalogV5: View {
         let make: () -> AnyView
     }
 
-    @State private var showing: String?
+    /// Deep link straight to one screen, so capturing a screenshot is one
+    /// command rather than a sequence of taps:
+    ///
+    ///     xcrun simctl launch <udid> run.faff.app -faffV5Screens 7a
+    ///
+    /// Any argument that matches an entry id opens it on launch.
+    @State private var showing: String? = ScreensCatalogV5.launchArgumentScreen
+
+    static var launchArgumentScreen: String? {
+        let ids = Set(["5a", "5b", "5c", "7a", "8a", "13a", "14a", "15a", "16a",
+                       "17a", "18a-slower", "18a-faster", "19a", "19a-refused",
+                       "not-yet", "system"])
+        return ProcessInfo.processInfo.arguments.first(where: ids.contains)
+    }
 
     private var entries: [Entry] {
         [

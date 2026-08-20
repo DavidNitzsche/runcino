@@ -71,6 +71,7 @@ import {
   workoutBySlug,
 } from '@/lib/workout-catalogue/catalogue';
 import { DOCTRINE_PHASES } from '@/lib/workout-catalogue/types';
+import { ZONE_TARGET } from '@/lib/coach/zone-target';
 import {
   combinationViolation,
   rampedReps,
@@ -11552,6 +11553,46 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           'lib/plan/pace-zones.ts appears to compute a combined/averaged delta across zones · ' +
             'the design contract requires per-zone rows only, with no single headline number',
         );
+      }
+    },
+  },
+  {
+    id: 'ZONETARGET.workout-zone-mapping',
+    binds: ['lib/coach/zone-target.ts#ZONE_TARGET'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '### 5-Zone (ACSM / generic / commercial wearables)',
+    claim:
+      'The v5 Today screen highlights the heart-rate zone a session was prescribed to live ' +
+      'in, which is a physiological assertion and not a label. The five-zone table names ' +
+      'each zone by what it is FOR, and the mapping is read out of that Purpose column: an ' +
+      'easy or long run is the zone whose purpose is aerobic base, a tempo the zone whose ' +
+      'purpose is aerobic capacity, a threshold session the zone whose purpose names LT and ' +
+      'race pace, and VO2max work the zone whose purpose is top-end aerobic and anaerobic. ' +
+      'The last one is the reason this claim exists: intervals were originally mapped onto ' +
+      'the threshold zone, which draws a VO2max session as something it is not.',
+    check({ cite }) {
+      const t = cite.table();
+      // Column 0 is "Zone" ("2 Easy / Aerobic"), column 2 is "Purpose".
+      const zoneFor = (purpose: RegExp, what: string): number => {
+        const row = t.rows.find((r) => purpose.test(Object.values(r)[2] ?? ''));
+        if (!row) throw new Error(`Research/03 five-zone table no longer states a purpose for ${what}`);
+        const label = Object.values(row)[0] ?? '';
+        const n = Number(matchLiteral(label, /^\s*(\d)/, `zone number for ${what}`)[1]);
+        return n;
+      };
+      const pairs: Array<[keyof typeof ZONE_TARGET, RegExp, string]> = [
+        ['aerobicBase', /aerobic base/i, 'aerobic base'],
+        ['aerobicCapacity', /aerobic capacity/i, 'aerobic capacity'],
+        ['threshold', /\bLT\b|race pace/i, 'threshold'],
+        ['vo2max', /top-end aerobic|anaerobic/i, 'VO2max'],
+      ];
+      for (const [key, re, what] of pairs) {
+        const doc = zoneFor(re, what);
+        if (ZONE_TARGET[key] !== doc) {
+          throw new Error(
+            `ZONE_TARGET.${key} is ${ZONE_TARGET[key]}, the five-zone table puts ${what} in zone ${doc}`,
+          );
+        }
       }
     },
   },

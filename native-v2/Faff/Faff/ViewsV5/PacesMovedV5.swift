@@ -256,11 +256,33 @@ struct PacesMovedV5: View {
     /// or `unrepresentative` still falls back to the next-best anchor on the
     /// SERVER; this view only reports which tier the runner picked. There is
     /// deliberately no case here for "go back to my old paces".
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// ONLY ONE OF THE THREE CONFIRMS IS A RACE QUESTION
+    ///
+    /// `V5PaceConfirm.kind` says which section this is, and they are not
+    /// interchangeable:
+    ///
+    ///   race_counted  the slower read, anchored on a race. The runner's
+    ///                 answer is evidence the engine does not have, and it
+    ///                 goes to the server.
+    ///   update        a race-confirmed faster read. The re-anchor already
+    ///                 happened off a real result; the button acknowledges it.
+    ///   dismiss       a modelled read the runner is setting aside.
+    ///
+    /// Posting a representativeness tier for the last two would file an answer
+    /// to a question nobody asked — the same mistake the Races card's
+    /// fact/choice split exists to prevent — and with `raceSlug` nil it would
+    /// post an empty slug on top of that. So the write happens for
+    /// `race_counted` and a real slug, and nowhere else.
     private func confirm(tier: String, settleWith option: V5Row?) {
         guard !isBusy else { return }
         isBusy = true
         Task {
-            _ = try? await API.confirmRaceAuthority(slug: paces.confirm.raceSlug ?? "", tier: tier)
+            if paces.confirm.kind == "race_counted",
+               let slug = paces.confirm.raceSlug, !slug.isEmpty {
+                _ = try? await API.confirmRaceAuthority(slug: slug, tier: tier)
+            }
             await MainActor.run {
                 isBusy = false
                 if let option {
