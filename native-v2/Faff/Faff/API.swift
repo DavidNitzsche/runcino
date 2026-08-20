@@ -510,6 +510,36 @@ enum API {
         }
     }
 
+    /// 2026-08-19 · V5's "Add a pair" (`ShoesV5.swift`). A second `createShoe`
+    /// rather than a changed signature on the one above: the legacy
+    /// `ShoesView.swift` still calls that overload with a client-computed
+    /// `mileageCap` it always sends (its own UI predates `shoe_type`), and
+    /// changing its signature out from under that screen is a second
+    /// screen's regression this file did not need to risk.
+    ///
+    /// This one sends what `POST /api/shoe` actually wants for a type-driven
+    /// create: brand, model, and `shoe_type` — never a client-invented
+    /// mileage_cap. `mileageCap` is included in the body only when the
+    /// runner typed an explicit override; omitted (nil), the server's own
+    /// `resolveShoeCapMi` picks the category default. See the doc comment on
+    /// `ShoesV5.swift` for why no default number is computed here.
+    static func createShoeV5(brand: String, model: String, shoeType: String, mileageCap: Double? = nil) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/shoe"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
+            "brand": brand,
+            "model": model,
+            "shoe_type": shoeType,
+        ]
+        if let mileageCap { body["mileage_cap"] = mileageCap }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
+        }
+    }
+
     /// P2-37 · retire / edit / delete a shoe. PATCH /api/shoe accepts any
     /// of {mileage, mileage_cap, run_types, retired, preferred, brand,
     /// model, color, color2, notes} keyed by id — pass only the fields
