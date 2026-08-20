@@ -16,16 +16,30 @@ import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 
 export interface PlanWeek {
+  /** plan_weeks.id — added 2026-08-19 for /api/v5/block so week rows carry a
+   *  real server identity instead of a synthesised index. */
+  id: string;
   idx: number;
   phase: string;
   startDate: string;
   plannedMi: number;
+  /** plan_weeks.is_race_week / is_cutback — added 2026-08-19 alongside `id`,
+   *  same reason: the Block screen's week-row flag ("Race week" / "Cutback")
+   *  reads the real columns rather than re-deriving them from `days`. */
+  isRaceWeek: boolean;
+  isCutback: boolean;
   days: Array<{
     /** plan_workouts.id — used by TrainView to cross-reference coach_intents
      *  rows (action='plan_adapt_*') that targeted this specific workout. */
     id: string;
     date: string; dow: number; type: string;
     mi: number; label: string | null;
+    /** plan_workouts.is_quality / is_long — added 2026-08-19 for /api/v5/block
+     *  so a day's quality/long flag is the authoritative DB column, the same
+     *  one lib/plan/replan-scenarios.ts reads, rather than a type-string
+     *  heuristic re-derived per caller. */
+    isQuality: boolean;
+    isLong: boolean;
     // 2026-05-30: workout_spec jsonb (migration 120) so the train-view week
     // strip can render real Daniels-VDOT paces per day (P0 #4 backfill)
     // instead of the canonical PACE_DEFAULT placeholder.
@@ -126,11 +140,13 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   )).rows.map((r: any) => ({ label: r.label, startWeekIdx: r.start_week_idx, endWeekIdx: r.end_week_idx }));
 
   const weekRows = (await pool.query(
-    `SELECT id::text AS id, week_idx, week_start_iso FROM plan_weeks WHERE plan_id = $1 ORDER BY week_idx`,
+    `SELECT id::text AS id, week_idx, week_start_iso, is_race_week, is_cutback
+       FROM plan_weeks WHERE plan_id = $1 ORDER BY week_idx`,
     [plan.id]
   )).rows;
   const workouts = (await pool.query(
-    `SELECT id::text AS id, week_id::text AS week_id, date_iso, dow, type, distance_mi, sub_label, workout_spec
+    `SELECT id::text AS id, week_id::text AS week_id, date_iso, dow, type, distance_mi, sub_label, workout_spec,
+            is_quality, is_long
        FROM plan_workouts WHERE plan_id = $1 ORDER BY date_iso`,
     [plan.id]
   )).rows;
@@ -230,6 +246,8 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
           date: d.date_iso, dow: d.dow, type: d.type,
           mi: Number(d.distance_mi) || 0, label: d.sub_label,
           spec: d.workout_spec ?? null,
+          isQuality: d.is_quality === true,
+          isLong: d.is_long === true,
           doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
           activityId: actual?.id ?? null,
           donePaceSec: actual?.paceSec ?? null,
@@ -244,10 +262,13 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
        new Date(Date.parse(w.week_start_iso + 'T00:00:00Z') + 7 * 86400000)
          .toISOString().slice(0, 10) > today);
     return {
+      id: String(w.id),
       idx: w.week_idx,
       phase: phaseFor(w.week_idx),
       startDate: w.week_start_iso,
       plannedMi,
+      isRaceWeek: w.is_race_week === true,
+      isCutback: w.is_cutback === true,
       days,
       isCurrent,
     };

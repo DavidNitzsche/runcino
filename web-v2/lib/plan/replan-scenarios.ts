@@ -246,7 +246,7 @@ interface PlanWeekShape {
   days: PlanDayRow[];
 }
 
-interface PlanShape {
+export interface PlanShape {
   planId: string;
   userUuid: string;
   mode: string;
@@ -1126,25 +1126,18 @@ interface AnotherRacePlanned {
   targetSlug: string | null;
 }
 
-async function planAnotherRace(
-  shape: PlanShape, slug: string, todayISO: string,
-): Promise<AnotherRacePlanned | { unavailable: string }> {
-  // `races` is a jsonb-shaped table · name, date, priority and the distance
-  // label all live in `meta`, and slugs are per-user, not global.
-  const row = (await pool.query<{ slug: string; meta: Record<string, unknown> | null }>(
-    `SELECT slug, meta FROM races WHERE slug = $1 AND user_uuid = $2::uuid LIMIT 1`,
-    [slug, shape.userUuid],
-  )).rows[0];
-  if (!row) return { unavailable: 'That race is not on file yet. Add it first, then come back here.' };
-  const meta = row.meta ?? {};
-  const race = {
-    slug: row.slug,
-    name: typeof meta.name === 'string' && meta.name ? meta.name : row.slug,
-    date: typeof meta.date === 'string' ? meta.date : '',
-    distanceLabel: typeof meta.distanceLabel === 'string' ? meta.distanceLabel : null,
-  };
-  if (!isISO(race.date)) return { unavailable: 'That race has no date on it yet.' };
-
+/**
+ * The three "another race" gates that do NOT depend on which race — whether
+ * this block is even shaped to take a tune-up at all. Extracted 2026-08-19 so
+ * `GET /api/v5/block`'s scenario list (the sheet's up-front availability
+ * check, before the runner has picked a race) can ask this exact question
+ * without a slug, and without re-implementing the rule. `planAnotherRace`
+ * below runs the SAME checks, in the SAME order, via this function — one
+ * place the three refusal strings live.
+ */
+export function anotherRaceBlockGate(
+  shape: PlanShape, todayISO: string,
+): { ok: true } | { unavailable: string } {
   // WHO ACTUALLY EMBEDS A TUNE-UP. `embedMidBlockRaces` runs inside
   // `composePlan`, the race-prep composer, and nowhere else — a maintenance or
   // recovery block is authored by a different function that never sees
@@ -1176,6 +1169,30 @@ async function planAnotherRace(
         + 'to rebuild around. Make one of them the target race first.',
     };
   }
+  return { ok: true };
+}
+
+async function planAnotherRace(
+  shape: PlanShape, slug: string, todayISO: string,
+): Promise<AnotherRacePlanned | { unavailable: string }> {
+  // `races` is a jsonb-shaped table · name, date, priority and the distance
+  // label all live in `meta`, and slugs are per-user, not global.
+  const row = (await pool.query<{ slug: string; meta: Record<string, unknown> | null }>(
+    `SELECT slug, meta FROM races WHERE slug = $1 AND user_uuid = $2::uuid LIMIT 1`,
+    [slug, shape.userUuid],
+  )).rows[0];
+  if (!row) return { unavailable: 'That race is not on file yet. Add it first, then come back here.' };
+  const meta = row.meta ?? {};
+  const race = {
+    slug: row.slug,
+    name: typeof meta.name === 'string' && meta.name ? meta.name : row.slug,
+    date: typeof meta.date === 'string' ? meta.date : '',
+    distanceLabel: typeof meta.distanceLabel === 'string' ? meta.distanceLabel : null,
+  };
+  if (!isISO(race.date)) return { unavailable: 'That race has no date on it yet.' };
+
+  const gate = anotherRaceBlockGate(shape, todayISO);
+  if ('unavailable' in gate) return gate;
   if (race.date <= todayISO) return { unavailable: 'That race has already been run.' };
   if (shape.raceId && race.slug === shape.raceId) {
     return { unavailable: 'That is the race this block is already built for.' };
