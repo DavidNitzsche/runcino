@@ -64,6 +64,20 @@ enum AppCache {
         /// instead of hardcoding America/Los_Angeles, mirroring
         /// runnerTimezoneOrPacific's server-side fallback pattern.
         case profileFields       = "v1.profile.fields"
+
+        // ── v5 surfaces ──
+        // One key per SCREEN rather than per data source, because that is how
+        // the v5 endpoints are shaped. These are what let a v5 screen paint its
+        // real content on frame one: seed @State from AppCache.read at
+        // declaration, then refresh in .task. The design requires that loading
+        // states reserve their exact final layout height and that nothing
+        // appears, disappears, or reflows — a cache hit is how that is true in
+        // practice rather than only in theory.
+        case v5Today             = "v5.today"
+        case v5Block             = "v5.block"
+        case v5Races             = "v5.races"
+        case v5Paces             = "v5.paces"
+        case v5Return            = "v5.return"
     }
 
     /// `UserDefaults.standard` rather than the App Group container —

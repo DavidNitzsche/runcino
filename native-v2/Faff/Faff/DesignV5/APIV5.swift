@@ -727,35 +727,49 @@ struct V5ReturnStage: Decodable, Equatable, Hashable, Identifiable {
 
 extension API {
 
-    private static func v5<T: Decodable>(_ path: String, as: T.Type) async throws -> T? {
+    /// One GET, one cache write. The cache write is what lets the next launch
+    /// paint real content on frame one instead of a placeholder — the design
+    /// requires that loading states reserve their exact final layout height and
+    /// that nothing appears, disappears, or reflows.
+    ///
+    /// Only a 2xx writes. A 4xx/5xx body must never overwrite the last good
+    /// payload, or an outage would erase the screen it was meant to preserve.
+    private static func v5<T: Decodable>(_ path: String,
+                                         cache: AppCache.Key?,
+                                         as: T.Type) async throws -> T? {
         guard let url = URL(string: API.baseURL.absoluteString + path) else { return nil }
         let (data, http) = try await API.authedGET(url)
         guard (200...299).contains(http.statusCode) else { return nil }
-        return try JSONDecoder().decode(T.self, from: data)
+        let decoded = try JSONDecoder().decode(T.self, from: data)
+        if let cache { AppCache.writeRaw(cache, data: data) }
+        return decoded
     }
 
     static func fetchV5Today(date: String? = nil) async throws -> V5Today? {
-        try await v5("/api/v5/today" + (date.map { "?date=\($0)" } ?? ""), as: V5Today.self)
+        // A dated read is history, not today, so it must not overwrite today's
+        // cache entry.
+        try await v5("/api/v5/today" + (date.map { "?date=\($0)" } ?? ""),
+                     cache: date == nil ? .v5Today : nil, as: V5Today.self)
     }
 
     static func fetchV5Block() async throws -> V5Block? {
-        try await v5("/api/v5/block", as: V5Block.self)
+        try await v5("/api/v5/block", cache: .v5Block, as: V5Block.self)
     }
 
     static func fetchV5Races() async throws -> V5Races? {
-        try await v5("/api/v5/races", as: V5Races.self)
+        try await v5("/api/v5/races", cache: .v5Races, as: V5Races.self)
     }
 
     static func fetchV5RaceDetail(slug: String) async throws -> V5RaceDetail? {
-        try await v5("/api/v5/race/\(slug)", as: V5RaceDetail.self)
+        try await v5("/api/v5/race/\(slug)", cache: nil, as: V5RaceDetail.self)
     }
 
     static func fetchV5Paces() async throws -> V5Paces? {
-        try await v5("/api/v5/paces", as: V5Paces.self)
+        try await v5("/api/v5/paces", cache: .v5Paces, as: V5Paces.self)
     }
 
     static func fetchV5Return() async throws -> V5Return? {
-        try await v5("/api/v5/return", as: V5Return.self)
+        try await v5("/api/v5/return", cache: .v5Return, as: V5Return.self)
     }
 
     // ── writes ──
