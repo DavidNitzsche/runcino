@@ -203,6 +203,12 @@ struct ListRow: View {
             }
         }
         .padding(.horizontal, V5.S.tilePad)
+        // A one-line row sits at exactly the 58pt the design specifies: the
+        // label and sub come to 38pt, and this makes up the rest. A row whose
+        // sub WRAPS then keeps the same breathing room instead of growing
+        // past 58 with none — which is what put "…nothing else moves." hard
+        // against "Travel" in the change-the-plan menu.
+        .padding(.vertical, 10)
         .frame(minHeight: 58)
         .frame(maxWidth: .infinity)
         .background(raised ? V5.materialTileRaised : Color.clear)

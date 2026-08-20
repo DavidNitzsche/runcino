@@ -84,6 +84,8 @@ struct BlockV5: View {
     @State private var travelFrom: Date
     @State private var travelTo: Date
     @State private var busy = false
+    /// The session picked in `moveInput`, by date. Nil until one is chosen.
+    @State private var moveFrom: String? = nil
 
     init(model: V5Block,
          onChanged: @escaping (V5PlanChangeProposal) -> Void = { _ in },
@@ -361,6 +363,8 @@ struct BlockV5: View {
                 refusalUpfrontBody(scenario)
             case .travelInput(let scenario):
                 travelInputBody(scenario)
+            case .moveInput(let scenario):
+                moveInputBody(scenario)
             case .proposed(let scenario, let proposal):
                 proposedBody(scenario, proposal)
             case .refused(let scenario, let refusal):
@@ -420,6 +424,90 @@ struct BlockV5: View {
                 stage = .menu
             }
         }
+    }
+
+    // MARK: Move a day
+    //
+    // THIS WEEK ONLY, on purpose. The server's own contract is "a session
+    // changes day" and the menu's own words are "to a rest day in the same
+    // week"; a block-wide list would also outgrow a sheet that sizes itself
+    // to its content. A conflict further out is what Travel and Cut back a
+    // week are for.
+
+    private var currentWeekDays: [V5BlockDay] {
+        (model.weeks.first(where: { $0.isCurrent }) ?? model.weeks.first)?.days ?? []
+    }
+
+    /// Sessions that can still move: a run, still ahead, not already done.
+    private var movableSessions: [V5BlockDay] {
+        currentWeekDays.filter { $0.miles > 0 && $0.isFuture && $0.isDone != true && $0.dateISO != nil }
+    }
+
+    /// Where one can land: a day this week with nothing on it.
+    private var openDays: [V5BlockDay] {
+        currentWeekDays.filter { $0.miles == 0 && $0.isFuture && $0.dateISO != nil }
+    }
+
+    private func moveInputBody(_ scenario: V5Scenario) -> some View {
+        VStack(alignment: .leading, spacing: V5.S.s16) {
+            if movableSessions.isEmpty || openDays.isEmpty {
+                // RULE THREE. Nothing is broken — there is simply nowhere for
+                // a session to go this week, and saying so beats a picker
+                // with one empty side.
+                Alert(text: movableSessions.isEmpty
+                      ? "Nothing left to move this week."
+                      : "No open day this week to move it to.")
+            } else if let from = moveFrom {
+                VStack(alignment: .leading, spacing: V5.S.s10) {
+                    V5SectionLabel(text: "Move it to").padding(.horizontal, V5.S.s4)
+                    ListGroup {
+                        ForEach(openDays) { day in
+                            ListRow(label: Self.dayWords(day.dateISO),
+                                    sub: day.type ?? "Rest",
+                                    onTap: {
+                                        propose(scenario, params: [
+                                            "dateISO": from,
+                                            "toDateISO": day.dateISO ?? "",
+                                        ])
+                                    })
+                        }
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: V5.S.s10) {
+                    V5SectionLabel(text: "Which session").padding(.horizontal, V5.S.s4)
+                    ListGroup {
+                        ForEach(movableSessions) { day in
+                            ListRow(label: day.type ?? "Run",
+                                    sub: Self.dayWords(day.dateISO),
+                                    value: .measured(FaffFmt.milesUnit(day.miles) ?? ""),
+                                    onTap: { moveFrom = day.dateISO })
+                        }
+                    }
+                }
+            }
+            FaffButton("Leave it alone", variant: .ghost, size: .md) {
+                moveFrom = nil
+                stage = .menu
+            }
+        }
+    }
+
+    /// "Friday 22 August" from an ISO day, in the runner's own calendar.
+    private static func dayWords(_ iso: String?) -> String {
+        guard let iso, iso.count >= 10 else { return "That day" }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC") ?? .current
+        var c = DateComponents()
+        c.year = Int(iso.prefix(4))
+        c.month = Int(iso.dropFirst(5).prefix(2))
+        c.day = Int(iso.dropFirst(8).prefix(2))
+        guard let date = cal.date(from: c) else { return iso }
+        let f = DateFormatter()
+        f.calendar = cal
+        f.timeZone = cal.timeZone
+        f.dateFormat = "EEEE d MMMM"
+        return f.string(from: date)
     }
 
     private func dateField(label: String, date: Binding<Date>) -> some View {
@@ -515,6 +603,9 @@ struct BlockV5: View {
         }
         if scenario.id == "travel" {
             stage = .travelInput(scenario)
+        } else if scenario.id == "move_day" {
+            moveFrom = nil
+            stage = .moveInput(scenario)
         } else {
             propose(scenario, params: [:])
         }
@@ -588,6 +679,12 @@ fileprivate enum PlanStage: Equatable {
     case refusalUpfront(V5Scenario)
     /// Travel only: the date-range step before a propose call is possible.
     case travelInput(V5Scenario)
+    /// Move a day: which session, and which rest day it moves to. Without
+    /// this the scenario proposed with no params at all and the engine
+    /// answered "Say which session moves and which day it moves to" — a
+    /// question the runner had no way to answer, drawn as a failure with a
+    /// Retry that could only ask it again.
+    case moveInput(V5Scenario)
     /// A live proposal, read the trade-off, confirm or back out.
     case proposed(V5Scenario, V5PlanChangeProposal)
     /// The engine declined on purpose. `Alert`.
