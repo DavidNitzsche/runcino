@@ -1,0 +1,342 @@
+/**
+ * GET /api/v5/races · the v5 Races destination (design handoff screen 7a).
+ *
+ * TWO AXES, AND BOTH ARE REAL — see `docs/faff-iphone-design-contract.md`
+ * §2 and `lib/training/race-card.ts`'s header. The VERDICT
+ * (`assessGoal()`'s `feasibility`) is always present. The TRIGGER — why
+ * we're asking NOW — may be absent, and four of the eight values the design
+ * lists are not a decision about the goal at all (a fact, or a choice only
+ * the runner can make). This route resolves whichever of those four facts/
+ * choices is real (heat, course-elevation conflict, an unlocked chip time,
+ * two A races) and hands the answer to `composeRaceCard`, which is the pure
+ * half that turns (verdict, trigger) into the wire-shaped card and is
+ * exercised directly by `lib/training/_race_card.test.ts`.
+ *
+ * Also closes three backend gaps named in `docs/design/iphone-v5/BUILD-
+ * PLAN.md`:
+ *   B6 · the projected-finish series (`loadProjectionSeries`) was loaded
+ *        elsewhere and never returned — here it's `trend`/`trendHeadline`.
+ *   B7 · no evidence list of the races that count toward the fitness read —
+ *        here it's `evidence`, built off the exact candidate pool
+ *        `loadVdotInputs` hands `bestRecentVdot`, each row's authority
+ *        graded by `lib/race/effort-authority.ts`'s SELECTION model and a
+ *        provisional (chip-not-locked) race labelled with the CLAUDE.md
+ *        canonical caption rather than presented as a result.
+ *   (unlisted) the schedule's `authority` field, filled in for every past
+ *        race with a result, null (not "unrepresentative") for anything
+ *        still ahead — authority is "once known", not asserted early.
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { pool } from '@/lib/db/pool';
+import { requireUserId } from '@/lib/auth/session';
+import { runnerToday } from '@/lib/runtime/runner-tz';
+import { loadRacesState, PROVISIONAL_FINISH_LABEL, type RaceRow } from '@/lib/coach/races-state';
+import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
+import { loadVdotInputs } from '@/lib/training/vdot-inputs';
+import { parseRaceTime, formatRaceTime, predictRaceTime } from '@/lib/training/vdot';
+import { assessGoal } from '@/lib/training/goal-assessment';
+import { taperWeeksForDistance } from '@/lib/training/fitness-trajectory';
+import { recentWeeklyMileageMi } from '@/lib/runs/volume';
+import { selectionAuthority, authorityTier, type AuthorityTier } from '@/lib/race/effort-authority';
+import { resolveCourseElevation, type ResolveCourseElevationInput } from '@/lib/race/course-elevation';
+import { computeRaceConditions } from '@/lib/training/race-conditions';
+import { loadCoachLog } from '@/lib/coach/coach-log';
+import {
+  composeRaceCard, heatFactCard, courseChangedFactCard, chipLockFactCard, twoARacesChoiceCard,
+  TRIGGER_SUPPRESS_DAYS,
+  type FactChoiceSpec, type FactChoiceTriggerId, type V5DecisionCardOut,
+} from '@/lib/training/race-card';
+
+export const dynamic = 'force-dynamic';
+
+interface V5NumberOut { text: string | null; modelled: boolean; }
+interface V5StatOut { label: string; value: V5NumberOut; tone: string | null; }
+interface V5RowOut { id: string; label: string; sub: string | null; value: V5NumberOut | null; action: string | null; }
+
+const num = (text: string | null, modelled: boolean): V5NumberOut => ({ text, modelled });
+
+// ─── trigger suppression (coach_intents, additive, text-JSON per the
+//     existing convention — see lib/plan/adapt.ts's writeIntent) ───────────
+
+const SUPPRESS_REASON = 'goal_card_dismissed';
+
+async function loadSuppressedTriggers(userId: string, todayISO: string): Promise<Set<FactChoiceTriggerId>> {
+  const cutoff = new Date(Date.parse(todayISO + 'T12:00:00Z') - TRIGGER_SUPPRESS_DAYS * 86400000)
+    .toISOString().slice(0, 10);
+  const rows = await pool.query<{ field: string | null }>(
+    `SELECT field FROM coach_intents
+      WHERE COALESCE(user_uuid::text, user_id) = $1
+        AND reason = $2
+        AND ts >= $3::date`,
+    [userId, SUPPRESS_REASON, cutoff],
+  ).then(r => r.rows).catch(() => []);
+  return new Set(rows.map(r => r.field).filter((f): f is FactChoiceTriggerId =>
+    f === 'heat' || f === 'course_changed' || f === 'chip_lock' || f === 'two_a_races'));
+}
+
+// ─── the four fact/choice detectors — each returns null when it genuinely
+//     cannot resolve, never a fabricated trigger ──────────────────────────
+
+/**
+ * "Chip-time lock approaching" is about the runner's OWN just-run race, not
+ * the next one ahead — `nextA` is always upcoming by construction. Looks at
+ * the most recent PAST race (any priority: a demoted A that already
+ * happened still needs its result locked) within a real recency window —
+ * a provisional result from three months ago is a data-hygiene problem,
+ * not "approaching".
+ */
+async function detectChipLock(past: RaceRow[]): Promise<FactChoiceSpec | null> {
+  const recent = [...past].filter(r => r.days >= -21).sort((a, b) => b.days - a.days)[0] ?? null;
+  if (!recent || !recent.finishTime || !recent.finishProvisional) return null;
+  return chipLockFactCard(recent.name);
+}
+
+async function detectTwoARaces(aRaces: RaceRow[]): Promise<FactChoiceSpec | null> {
+  const upcoming = aRaces.filter(r => !r.is_past).sort((a, b) => a.days - b.days);
+  if (upcoming.length < 2) return null;
+  return twoARacesChoiceCard(
+    { slug: upcoming[0].slug, name: upcoming[0].name },
+    { slug: upcoming[1].slug, name: upcoming[1].name },
+  );
+}
+
+async function detectCourseChanged(race: RaceRow | null, userId: string): Promise<FactChoiceSpec | null> {
+  if (!race || race.is_past) return null;
+  const row = await pool.query<{ course_geometry: unknown }>(
+    `SELECT course_geometry FROM races WHERE slug = $1 AND user_uuid = $2`,
+    [race.slug, userId],
+  ).then(r => r.rows[0] ?? null).catch(() => null);
+  if (!row?.course_geometry) return null;
+  const libRow = await pool.query<{ elevation_gain_ft: number | string | null; net_elevation_ft: number | string | null }>(
+    `SELECT elevation_gain_ft, net_elevation_ft FROM course_library WHERE slug = $1`,
+    [race.slug],
+  ).then(r => r.rows[0] ?? null).catch(() => null);
+  if (!libRow) return null; // nothing curated to conflict with
+  try {
+    const input: ResolveCourseElevationInput = {
+      lib: libRow,
+      geometry: row.course_geometry as ResolveCourseElevationInput['geometry'],
+      nominalDistanceMi: race.distance_mi,
+    };
+    const resolved = resolveCourseElevation(input);
+    if (!resolved.conflict) return null;
+    return courseChangedFactCard(race.name);
+  } catch {
+    return null; // never fake a conflict off a shape we couldn't parse
+  }
+}
+
+async function detectHeat(race: RaceRow | null, userId: string, vdot: number | null): Promise<FactChoiceSpec | null> {
+  if (!race || race.is_past || !race.date || !race.distance_mi || !race.goal) return null;
+  const goalSec = parseRaceTime(race.goal);
+  if (!goalSec) return null;
+  const geo = await pool.query<{ course_geometry: unknown }>(
+    `SELECT course_geometry FROM races WHERE slug = $1 AND user_uuid = $2`,
+    [race.slug, userId],
+  ).then(r => r.rows[0]?.course_geometry ?? null).catch(() => null);
+  const g = geo as { trackPoints?: Array<{ lat?: number | null; lon?: number | null }> } | null;
+  const tp = g?.trackPoints?.find(p => typeof p?.lat === 'number' && typeof p?.lon === 'number');
+  if (!tp?.lat || !tp?.lon) return null; // no course GPS → no honest forecast location
+  try {
+    const cond = await computeRaceConditions({
+      raceSlug: race.slug, raceDateISO: race.date, location: race.location,
+      raceLat: tp.lat, raceLng: tp.lon, distanceMi: race.distance_mi,
+      goalSec, vdot, startTimeLocal: null, todayISO: null,
+    });
+    // Only a REAL forecast (not a climate-normal guess) and a materially hot
+    // read fire this — the same >85°F safety line and doctrine WBGT band
+    // (Research/06:141-148) already used on the race-detail/targets surfaces.
+    if (cond.source !== 'forecast') return null;
+    if (cond.safetyMessage == null && cond.heatBand !== 'hot' && cond.heatBand !== 'extreme') return null;
+    return heatFactCard(race.name, cond.tempF);
+  } catch {
+    return null;
+  }
+}
+
+async function detectReturningFromInjury(userId: string): Promise<boolean> {
+  const r = await pool.query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM injuries
+      WHERE user_uuid = $1 AND (resolved_date IS NULL OR resolved_date >= CURRENT_DATE - INTERVAL '30 days')`,
+    [userId],
+  ).catch(() => ({ rows: [{ n: '0' }] }));
+  return Number(r.rows[0]?.n ?? 0) > 0;
+}
+
+// ─── evidence + schedule ────────────────────────────────────────────────────
+
+function raceRowAuthority(priority: string | null, hasResult: boolean): AuthorityTier | null {
+  if (!hasResult) return null; // "once known" — an upcoming race has nothing to grade yet
+  return authorityTier(selectionAuthority(priority));
+}
+
+export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
+
+  try {
+    const todayISO = await runnerToday(userId);
+    const racesState = await loadRacesState(userId);
+    const upcomingAs = racesState.aRaces.filter(r => !r.is_past).sort((a, b) => a.days - b.days);
+    const nextA: RaceRow | null = upcomingAs[0] ?? racesState.aRace ?? null;
+
+    const suppressed = await loadSuppressedTriggers(userId, todayISO);
+
+    // ── the panel ──────────────────────────────────────────────────────────
+    let panel: {
+      dayState: string; quiet: boolean; place: string; dateLine: string;
+      weekLine: string | null; kicker: string | null; type: string;
+      dose: V5NumberOut | null; stats: V5StatOut[];
+    };
+
+    let card: V5DecisionCardOut | null = null;
+    let evidence: V5RowOut[] = [];
+    let trend: number[] = [];
+    let trendHeadline: V5NumberOut | null = null;
+    let trendFootnotes: string[] = [];
+
+    if (!nextA) {
+      panel = {
+        dayState: 'long', quiet: true, place: 'Races',
+        dateLine: 'No goal race set', weekLine: null, kicker: null,
+        type: 'No goal set', dose: null, stats: [],
+      };
+    } else {
+      const distanceMi = nextA.distance_mi;
+      const goalSec = parseRaceTime(nextA.goal);
+      const goalDateISO = nextA.date;
+
+      const { vdot, anchorDateISO, anchorDistanceMi } = await loadLatestVdotWithAnchor(userId);
+      const weeklyMi = await recentWeeklyMileageMi(userId).catch(() => null);
+      const anchorAgeDays = anchorDateISO
+        ? Math.floor((Date.parse(todayISO + 'T12:00:00Z') - Date.parse(anchorDateISO.slice(0, 10) + 'T12:00:00Z')) / 86400000)
+        : null;
+      const weeksAway = nextA.days / 7;
+      const taperWeeks = distanceMi ? taperWeeksForDistance(distanceMi) : 0;
+
+      const assessment = (distanceMi != null && distanceMi > 0 && goalSec != null && goalDateISO)
+        ? assessGoal({
+            distanceMi, goalSec, goalDateISO, todayISO,
+            currentVdot: vdot, executionQuality: null, recentWeeklyMi: weeklyMi,
+            context: {
+              inTaperOrRaceWeek: nextA.days <= 7 || weeksAway <= taperWeeks,
+              inPostRaceRecovery: null,
+              anchorDistanceMi, anchorAgeDays,
+              marathonSpecificBlockDone: null,
+            },
+          })
+        : null;
+
+      // ── the four fact/choice detectors, in the order the design's own
+      //    table lists them. First real one wins; suppressed ones are
+      //    skipped so an answered trigger doesn't re-fire for its window.
+      let factOrChoice: FactChoiceSpec | null = null;
+      if (!suppressed.has('heat')) factOrChoice = await detectHeat(nextA, userId, vdot);
+      if (!factOrChoice && !suppressed.has('course_changed')) factOrChoice = await detectCourseChanged(nextA, userId);
+      if (!factOrChoice && !suppressed.has('chip_lock')) factOrChoice = await detectChipLock(racesState.past);
+      if (!factOrChoice && !suppressed.has('two_a_races')) factOrChoice = await detectTwoARaces(racesState.aRaces);
+
+      if (assessment) {
+        const returningFromInjury = await detectReturningFromInjury(userId);
+        card = composeRaceCard({ assessment, factOrChoice, returningFromInjury });
+      }
+
+      const projectedSec = assessment?.currentEquivalentSec ?? (vdot != null && distanceMi ? predictRaceTime(vdot, distanceMi) : null);
+      const gapSec = (projectedSec != null && goalSec != null) ? projectedSec - goalSec : null;
+
+      const stats: V5StatOut[] = [
+        { label: 'Goal', value: num(goalSec != null ? formatRaceTime(goalSec) : null, false), tone: null },
+        { label: 'Projected', value: num(projectedSec != null ? formatRaceTime(projectedSec) : null, true), tone: null },
+        {
+          label: 'Gap',
+          value: num(gapSec != null ? `${gapSec > 0 ? '+' : gapSec < 0 ? '−' : ''}${formatRaceTime(Math.abs(gapSec))}` : null, true),
+          tone: gapSec != null && gapSec > 0 ? 'attention' : null,
+        },
+      ];
+
+      panel = {
+        dayState: 'long', quiet: false, place: 'Races',
+        dateLine: 'Next A race',
+        weekLine: upcomingAs.length > 0 ? `${upcomingAs.length} A race${upcomingAs.length === 1 ? '' : 's'} this season` : null,
+        kicker: nextA.days >= 0 ? `${nextA.days} days out` : null,
+        type: nextA.name,
+        dose: num(
+          [nextA.date, nextA.distance_label].filter(Boolean).join(' · ') || null,
+          false,
+        ),
+        stats,
+      };
+
+      // ── B6 · the projected-finish trend, finally returned ──────────────
+      if (distanceMi != null && distanceMi > 0) {
+        const series = await loadProjectionSeries(userId, distanceMi).catch(() => []);
+        trend = series.map(s => s.projectionSec).filter((v): v is number => v != null);
+        trendHeadline = projectedSec != null ? num(formatRaceTime(projectedSec), true) : null;
+        trendFootnotes = anchorDateISO && anchorAgeDays != null
+          ? [`Anchored ${anchorAgeDays}d ago`]
+          : ['No fitness anchor yet · a race or a hard time trial would set one.'];
+        if (trend.length === 0) trendFootnotes = ['Not enough history yet to chart a trend.'];
+      }
+
+      // ── B7 · the evidence list — the exact pool bestRecentVdot selects
+      //    from, each row graded by SELECTION authority and a provisional
+      //    (chip-not-locked) row labelled per CLAUDE.md, never presented
+      //    as a result. ──────────────────────────────────────────────────
+      try {
+        const inputs = await loadVdotInputs(userId, todayISO);
+        evidence = inputs.raceCandidates
+          .slice()
+          .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+          .slice(0, 8)
+          .map((c) => {
+            const tier = authorityTier(selectionAuthority(c.priority));
+            const subParts = [c.date, c.priority ? `${c.priority} race` : null].filter(Boolean) as string[];
+            if (c.provisional) subParts.push(PROVISIONAL_FINISH_LABEL);
+            else subParts.push(tier === 'representative' ? 'Counts fully' : tier === 'compromised' ? 'Counts, reduced weight' : 'Barely counts');
+            return {
+              id: c.slug, label: c.name, sub: subParts.join(' · '),
+              value: num(c.finish_seconds != null ? formatRaceTime(c.finish_seconds) : null, false),
+              action: 'open_race',
+            };
+          });
+      } catch {
+        evidence = [];
+      }
+    }
+
+    // ── the schedule — every race, upcoming ranked, past dimmed ───────────
+    const schedule = [
+      ...racesState.aRaces.filter(r => !r.is_past),
+      ...racesState.upcomingBs,
+      ...racesState.upcomingCs,
+      ...racesState.past,
+    ].map((r) => {
+      const hasResult = !!r.finishTime;
+      const detail: V5RowOut[] = [];
+      if (r.location) detail.push({ id: 'location', label: 'Location', sub: null, value: num(r.location, false), action: null });
+      if (r.gun_time) detail.push({ id: 'gun', label: 'Gun time', sub: null, value: num(r.gun_time, false), action: null });
+      if (r.finishProvisionalLabel) detail.push({ id: 'provisional', label: 'Status', sub: null, value: num(r.finishProvisionalLabel, false), action: null });
+      return {
+        id: r.slug, slug: r.slug, name: r.name,
+        dateLine: r.date ?? '', distance: r.distance_label ?? '',
+        priority: r.priority ?? 'C',
+        isPast: r.is_past,
+        result: hasResult ? num(r.finishTime, r.finishProvisional) : null,
+        detail,
+        authority: raceRowAuthority(r.priority, hasResult),
+      };
+    });
+
+    // ── the log ─────────────────────────────────────────────────────────
+    const logPage = await loadCoachLog(userId, { limit: 6 }).catch(() => ({ entries: [], nextBefore: null }));
+    const coachLog = logPage.entries.map(e => ({ id: e.id, kind: e.kind, date: e.dateISO, body: e.body }));
+
+    return NextResponse.json({
+      panel, card, schedule, trend, trendHeadline, trendFootnotes, evidence, coachLog,
+    });
+  } catch (err: any) {
+    console.error('[api/v5/races] failed:', err);
+    return NextResponse.json({ error: err?.message ?? 'lookup failed' }, { status: 500 });
+  }
+}
