@@ -68,14 +68,21 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     private var fetch: () async throws -> API.V5Fetch<Model>
 
     /// Point this surface at a different read — the same Today surface serving
-    /// a different date, for instance. The cached payload is dropped, because
-    /// it belongs to the day we were looking at a moment ago and showing it
-    /// under a new date would be worse than showing nothing.
+    /// a different date, for instance.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// THE OLD DAY STAYS UP UNTIL THE NEW ONE ARRIVES
+    ///
+    /// This used to clear `model` first, which dropped the screen to its
+    /// cold-start skeleton for the length of a round trip — a black flash
+    /// between two days that are both perfectly fine. Stepping through a week
+    /// should feel like turning a page, not like reloading.
+    ///
+    /// So the current day stays on screen and is replaced only when the next
+    /// one is in hand. If the read fails, the runner is still looking at a
+    /// real day rather than at nothing.
     func rebind(_ newFetch: @escaping () async throws -> API.V5Fetch<Model>) async {
         fetch = newFetch
-        model = nil
-        stale = false
-        absentReason = nil
         await load()
     }
 

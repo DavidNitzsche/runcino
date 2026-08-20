@@ -50,8 +50,6 @@ struct TodayAfterV5: View {
     /// Day stepping, shared with the before-run screen — a finished day is
     /// just as steppable as a planned one.
     var viewingDayLabel: String? = nil
-    var onPrevDay: (() -> Void)? = nil
-    var onNextDay: (() -> Void)? = nil
     var onBackToToday: (() -> Void)? = nil
     var initials: String? = nil
 
@@ -82,13 +80,9 @@ struct TodayAfterV5: View {
          onRowAction: @escaping (V5Row) -> Void = { _ in },
          onPushStrava: @escaping () -> Void = {},
          viewingDayLabel: String? = nil,
-         onPrevDay: (() -> Void)? = nil,
-         onNextDay: (() -> Void)? = nil,
          onBackToToday: (() -> Void)? = nil,
          initials: String? = nil) {
         self.viewingDayLabel = viewingDayLabel
-        self.onPrevDay = onPrevDay
-        self.onNextDay = onNextDay
         self.onBackToToday = onBackToToday
         self.initials = initials
         self.model = model
@@ -155,8 +149,6 @@ struct TodayAfterV5: View {
             PlaceHeaderV5(place: model.panel.place,
                           viewingDayLabel: viewingDayLabel,
                           onBackToToday: onBackToToday,
-                          onPrevDay: onPrevDay,
-                          onNextDay: onNextDay,
                           onCalendar: nil,
                           initials: initials,
                           onAccount: onOpenAccount)

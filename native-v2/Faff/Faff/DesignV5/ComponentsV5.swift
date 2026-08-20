@@ -892,9 +892,6 @@ struct PlaceHeaderV5: View {
     /// Non-nil when the runner has stepped off today.
     var viewingDayLabel: String? = nil
     var onBackToToday: (() -> Void)? = nil
-    /// Day stepping. Omit both on a screen where it makes no sense.
-    var onPrevDay: (() -> Void)? = nil
-    var onNextDay: (() -> Void)? = nil
     var onCalendar: (() -> Void)? = nil
     /// The runner's initials, or nil for a person glyph. Never an empty disc.
     var initials: String? = nil
@@ -926,8 +923,6 @@ struct PlaceHeaderV5: View {
             Spacer(minLength: V5.S.s8)
 
             HStack(spacing: V5.S.s6) {
-                if let onPrevDay { control(systemImage: "chevron.left", action: onPrevDay) }
-                if let onNextDay { control(systemImage: "chevron.right", action: onNextDay) }
                 if let onCalendar { control(systemImage: "calendar", action: onCalendar) }
                 if let onAccount {
                     control(systemImage: (initials?.isEmpty ?? true) ? "person" : nil,

@@ -542,6 +542,10 @@ export async function GET(req: NextRequest) {
   const ctx: V5TodayContext = emptyContext(today, true);
   ctx.todayPlan = todayPlan;
   ctx.weekLine = weekLine;
+  // The phase belongs on every branch that composes a real panel, not just
+  // the after-run one — a before-run day was falling back to the date and
+  // printing it twice, once in the place label and once underneath.
+  ctx.phaseLine = phaseWords(glance.phaseLabel);
   ctx.weekStripDays = weekStripDays;
   ctx.prescription = prescriptionLike;
   // ── the kicker ────────────────────────────────────────────────────────

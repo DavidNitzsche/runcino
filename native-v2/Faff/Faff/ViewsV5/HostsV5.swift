@@ -60,7 +60,13 @@ struct TodayHostV5: View {
     var body: some View {
         Group {
             if let model = surface.model {
+                // Keyed on the day, so stepping between days crossfades
+                // instead of snapping. The old day stays up until the new one
+                // lands (see V5Surface.rebind), so this is a fade between two
+                // real screens and never a fade through nothing.
                 content(model)
+                    .id(model.dateISO)
+                    .transition(.opacity)
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
@@ -85,6 +91,7 @@ struct TodayHostV5: View {
                 coldStart
             }
         }
+        .animation(V5.Motion.fill, value: surface.model?.dateISO)
         // One account sheet for every Today variant. It used to live inside
         // TodayBeforeV5, so the after-run screen and all four state screens
         // had an account button that opened nothing.
@@ -193,8 +200,6 @@ struct TodayHostV5: View {
                          onRowAction: { _ in },
                          onPushStrava: { Task { await pushStrava(model) } },
                          viewingDayLabel: viewingDayLabel,
-                         onPrevDay: { step(-1, from: model) },
-                         onNextDay: { step(1, from: model) },
                          onBackToToday: { backToToday() },
                          initials: initials)
 
@@ -213,8 +218,6 @@ struct TodayHostV5: View {
                           },
                           onPickDay: { id in pickDay(id, in: model) },
                           viewingDayLabel: viewingDayLabel,
-                          onPrevDay: { step(-1, from: model) },
-                          onNextDay: { step(1, from: model) },
                           onBackToToday: { backToToday() })
         }
     }
@@ -897,5 +900,95 @@ struct LiveRunHostV5: View {
             Task { _ = await WatchSync.shared.saveCompletionDurably(data) }
         }
         onDismiss()
+    }
+}
+
+// MARK: - Onboarding
+//
+// ─────────────────────────────────────────────────────────────────────────
+// THE V5 ONBOARDING EXISTED AND NEVER RAN
+//
+// `OnboardingV5.swift` is a complete five-step flow and its only call sites
+// were its own `#Preview` blocks. The launch gate still routed every new
+// signup through the v4 `OnboardingView`, so a runner's very first experience
+// of the app was the design the rest of it had replaced.
+//
+// This is the half that was missing: the submit. The screen collects answers
+// and refuses to invent validation the engine does not have; this turns those
+// answers into the two calls the backend actually wants, and then reads day
+// one back out of the same Today surface the app runs on — rather than
+// composing a preview of it, which would be a second source of truth for the
+// most important screen in the product.
+
+struct OnboardingHostV5: View {
+    /// Fired once the runner has a plan and has seen day one.
+    let onDone: () -> Void
+
+    var body: some View {
+        OnboardingV5(onSubmit: submit, onSeeToday: onDone)
+    }
+
+    private func submit(_ a: OnboardingV5Answers) async -> OnboardingV5Outcome {
+        // ── the plan ──────────────────────────────────────────────────────
+        // `distance` is the goal distance; the route validates it against its
+        // own set and ignores anything it does not know, so there is no client
+        // validation to duplicate here.
+        var payload: [String: Any] = [
+            "distance": a.distance,
+            "timezone": TimeZone.current.identifier,
+            "connectionsSkipped": true,
+        ]
+        if let raceDate = a.raceDate {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            payload["date"] = f.string(from: raceDate)
+        }
+        if !a.goalTime.isEmpty { payload["time"] = a.goalTime }
+        payload["weeklyMi"] = a.weeklyMi
+        payload["weeklyFreq"] = a.daysPerWeek
+
+        // A self-reported recent race is the strongest fitness evidence the
+        // runner can give on day one, and the route models it as raceHistory.
+        if a.fitnessMode == .recent,
+           !a.recentRaceDistance.isEmpty, !a.recentRaceTime.isEmpty {
+            payload["raceHistory"] = [[
+                "distance": a.recentRaceDistance,
+                "time": a.recentRaceTime,
+            ]]
+        }
+
+        do {
+            try await API.completeOnboarding(payload: payload)
+        } catch let e as APIServerError {
+            // The engine declined and said why. That is an answer.
+            return .refused(reason: e.message ?? "That goal is not one we can build a plan toward yet.")
+        } catch {
+            return .refused(reason: "We could not reach the server to build your plan. Try again in a moment.")
+        }
+
+        // ── the week ──────────────────────────────────────────────────────
+        // Availability does NOT go through the onboarding payload; long-run
+        // day and the phone-run switch are settings, and days-per-week lives
+        // on the profile as `weekly_frequency`.
+        _ = try? await API.patchSettings([
+            "long_run_day": a.longRunDay,
+            "phone_run_enabled": a.phoneStart,
+        ])
+        _ = try? await API.updateProfile(["weekly_frequency": a.daysPerWeek])
+        await SettingsCache.shared.invalidate()
+
+        // ── day one ───────────────────────────────────────────────────────
+        // Read it off the real Today surface. A preview composed here would be
+        // a second source of truth for the first screen the runner ever sees.
+        guard case .ok(let today) = (try? await API.fetchV5Today()) ?? .failed else {
+            return .refused(reason: "The plan is being written. It will be on Today in a moment.")
+        }
+        return .success(OnboardingV5DayOne(
+            phaseLine: today.panel.dateLine,
+            dayState: today.panel.state,
+            sessionType: today.panel.type,
+            dose: today.panel.dose.unreadableIfAbsent,
+            coachLine: today.why ?? ""
+        ))
     }
 }
