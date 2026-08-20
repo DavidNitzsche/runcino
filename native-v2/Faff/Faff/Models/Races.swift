@@ -422,6 +422,37 @@ struct RaceAutofillProposal: Decodable {
     let spectators: String?
 }
 
+// MARK: - GPX course search (GET /api/gpx/search, POST /api/gpx/import)
+//
+// 2026-08-20 · Add Race (v5). `RaceAutofillResult` above reads like a course
+// puller from its own doc comment ("pulls race details from a URL or a
+// name") but its `proposed` shape is entirely race-DAY LOGISTICS (start
+// time, bib, parking, …) — no course geometry, no name/date/distance. It
+// cannot fill the Add Race form and it cannot pull a course. The two real
+// course sources are `POST /api/race/strava-course` (a pasted Strava route
+// URL — wrapped by `API.importStravaRoute` already) and this pair: search
+// Strava's route library by the race's own name, then import the chosen
+// candidate. Both act on an EXISTING race (need `slug`), so both run after
+// `createRace`, never before.
+
+struct GpxCandidateV5: Decodable, Identifiable, Hashable {
+    let source: String        // "strava_route" | "strava_starred"
+    let sourceId: String
+    let name: String
+    let distanceMi: Double
+    let elevationGainFt: Double?
+    var id: String { "\(source)-\(sourceId)" }
+}
+
+struct GpxSearchResultV5: Decodable {
+    let candidates: [GpxCandidateV5]
+    let sourcesAttempted: [String]?
+    /// Set when candidates is empty for a recoverable reason — e.g. Strava
+    /// not connected. Shown plainly; a search finding nothing is not a
+    /// failure (rule three).
+    let reason: String?
+}
+
 // MARK: - Race execution plan (race P2)
 //
 // GET /api/race/[slug]/execution-plan → composeRaceExecutionPlan

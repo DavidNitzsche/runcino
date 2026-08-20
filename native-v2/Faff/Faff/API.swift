@@ -1121,6 +1121,43 @@ enum API {
         return (200..<300).contains(http.statusCode)
     }
 
+    /// GET /api/gpx/search?q=&distanceMi= — ranked GPX candidates from the
+    /// user's own Strava routes, matched by race NAME (not a URL — there is
+    /// no "find the course from a race website" endpoint; see the doc
+    /// comment on `GpxCandidateV5`). Returns nil only on a transport failure;
+    /// an empty `candidates` with a `reason` (e.g. Strava not connected) is a
+    /// normal, decoded answer, not a failure.
+    static func searchGpxCandidates(query: String, distanceMi: Double?) async -> GpxSearchResultV5? {
+        var comps = URLComponents(url: baseURL.appendingPathComponent("api/gpx/search"),
+                                   resolvingAgainstBaseURL: false)!
+        var qi = [URLQueryItem(name: "q", value: query)]
+        if let distanceMi { qi.append(URLQueryItem(name: "distanceMi", value: String(distanceMi))) }
+        comps.queryItems = qi
+        guard let url = comps.url else { return nil }
+        do {
+            let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+            guard (200..<300).contains(http.statusCode) else { return nil }
+            return try? JSONDecoder().decode(GpxSearchResultV5.self, from: data)
+        } catch { return nil }
+    }
+
+    /// POST /api/gpx/import — applies one candidate from `searchGpxCandidates`
+    /// onto an existing race. Same "course pull can fail quietly" contract as
+    /// `importStravaRoute`: a Bool, not a thrown error, because a course that
+    /// doesn't attach is not this flow's failure — the race still exists.
+    static func importGpxCandidate(raceSlug: String, source: String, sourceId: String) async -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/gpx/import"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "raceSlug": raceSlug, "source": source, "sourceId": sourceId,
+        ])
+        do {
+            let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+            return (200..<300).contains(http.statusCode)
+        } catch { return false }
+    }
+
     static func setFitnessGoal(distanceLabel: String, goalTime: String, planWeeks: Int, startDate: String? = nil, availableDays: [String] = []) async throws -> (ok: Bool, planError: String?) {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/profile/goal"))
         req.httpMethod = "POST"
