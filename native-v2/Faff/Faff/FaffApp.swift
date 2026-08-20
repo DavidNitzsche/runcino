@@ -23,8 +23,31 @@ struct FaffApp: App {
     /// app since this morning" gaps (the original sleep-stale bug).
     @State private var lastImportAt: Date = .distantPast
 
+    /// QA only, and compiled out of every shipping build.
+    ///
+    /// The v5 surfaces can only be judged against a real runner's data, and
+    /// the ten QA accounts live in production. Their session token works as a
+    /// Bearer, so seeding it here is the difference between reviewing the
+    /// design on fixtures and reviewing it on the thing itself:
+    ///
+    ///     xcrun simctl launch <udid> run.faff.app -faffToken <session-token>
+    ///
+    /// `#if DEBUG` is doing real work — a token-injection path must not exist
+    /// in a build that reaches a device that is not this simulator.
+    private static func seedQATokenIfAsked() {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-faffToken"), i + 1 < args.count else { return }
+        let token = args[i + 1]
+        guard !token.isEmpty else { return }
+        TokenStore.shared.set(token: token, expiresAt: nil, userUuid: nil)
+        UserDefaults.standard.set(true, forKey: "faff.onboarded")
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
+            let _ = FaffApp.seedQATokenIfAsked()
             // Design QA, reached by a launch argument so that looking at the
             // v5 system on a device never means a temporary edit to this file
             // and never risks a half-edited root reaching a build:
