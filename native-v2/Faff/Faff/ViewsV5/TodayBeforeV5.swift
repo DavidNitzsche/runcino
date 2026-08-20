@@ -174,48 +174,15 @@ struct TodayBeforeV5: View {
 
     private var panel: some View {
         DayPanel(fill: model.panel.fill) {
-            HStack(alignment: .center, spacing: V5.S.s8) {
-                // The place label tells the truth about which day is on
-                // screen. A screen headed TODAY showing Tuesday is a lie, so
-                // when the runner steps off today it says which day, and the
-                // way back is right there.
-                Text(viewingDayLabel ?? model.panel.place)
-                    .font(.faffDisplay(20))
-                    .textCase(.uppercase)
-                    .tracking(20 * 0.02)
-                    .foregroundStyle(V5.OnPanel.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-
-                if viewingDayLabel != nil {
-                    Button(action: onBackToToday) {
-                        Text("Today")
-                            .font(.faffText(TypeScaleV5.label12, weight: .semibold))
-                            .foregroundStyle(V5.OnPanel.primary)
-                            .padding(.horizontal, V5.S.s10)
-                            .frame(height: 26)
-                            .background(V5.OnPanel.control, in: Capsule())
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(V5PressStyle())
-                }
-
-                Spacer(minLength: V5.S.s8)
-
-                HStack(spacing: V5.S.s6) {
-                    // Step a day at a time. The strip covers this week; these
-                    // are how the runner leaves it.
-                    panelHeaderButton(systemImage: "chevron.left", action: onPrevDay)
-                    panelHeaderButton(systemImage: "chevron.right", action: onNextDay)
-                    panelHeaderButton(systemImage: "calendar") {
-                        withAnimation(V5.Motion.fill) { calendarOpen = true }
-                    }
-                    panelHeaderButton(systemImage: avatarInitials.isEmpty ? "person" : nil,
-                                      text: avatarInitials.isEmpty ? nil : avatarInitials) {
-                        withAnimation(V5.Motion.sheet) { accountOpen = true }
-                    }
-                }
-            }
+            // The one place header, shared with the after-run screen and the
+            // state screens. This file used to hand-roll its own, which is how
+            // the two Today variants ended up with different controls.
+            PlaceHeaderV5(place: model.panel.place,
+                          viewingDayLabel: viewingDayLabel,
+                          onBackToToday: onBackToToday,
+                          onCalendar: { withAnimation(V5.Motion.fill) { calendarOpen = true } },
+                          initials: avatarInitials.isEmpty ? nil : avatarInitials,
+                          onAccount: { withAnimation(V5.Motion.sheet) { accountOpen = true } })
 
             HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
                 Text(model.panel.dateLine)
