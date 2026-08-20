@@ -229,7 +229,18 @@ struct RootContainer: View {
     @State private var mainReady = false
     @State private var readySurfaces: Set<String> = []
     @State private var revealScheduled = false
-    private static let launchSurfaces: Set<String> = ["today", "train", "health", "targets"]
+    /// The splash holds until every one of these has said it is painted, so
+    /// the app never pops from a half-drawn shell.
+    ///
+    /// The v5 shell has three destinations, not four, and the two it dropped
+    /// (health, targets) have no v5 screens at all — waiting on them would
+    /// hold the splash forever. `-faffLegacy` still runs the v4 shell, and it
+    /// still has all four.
+    private static var launchSurfaces: Set<String> {
+        ProcessInfo.processInfo.arguments.contains("-faffLegacy")
+            ? ["today", "train", "health", "targets"]
+            : ["today", "block", "races"]
+    }
 
     enum GateStep: Equatable {
         case checking

@@ -87,50 +87,65 @@ struct TabBarV5: View {
     let showRun: Bool
     let onRun: () -> Void
 
-    var body: some View {
-        HStack(spacing: showRun ? V5.S.s6 : V5.S.s4) {
-            ForEach(FaffTabV5.allCases) { tab in
-                Button {
-                    guard selected != tab else { return }
-                    selected = tab
-                } label: {
-                    VStack(spacing: V5.S.s4) {
-                        Image(systemName: tab.symbol)
-                            .font(.system(size: 20, weight: .regular))
-                            .frame(height: 22)
-                        Text(tab.label)
-                            .font(.faffText(TypeScaleV5.label12,
-                                            weight: selected == tab ? .semibold : .medium))
-                    }
-                    .foregroundStyle(selected == tab ? V5.textPrimary : V5.textQuiet)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
-                }
-                .buttonStyle(V5PressStyle())
-                .accessibilityAddTraits(selected == tab ? [.isSelected] : [])
-            }
+    /// The prototype's flex ratios: each destination is flex 1, RUN is flex
+    /// 1.1. SwiftUI has no flex, and `layoutPriority` is NOT it — priority
+    /// decides who gets their IDEAL size first, and RUN's ideal size is wide,
+    /// so it ate the bar and squeezed "Today" onto two lines. The ratio has to
+    /// be measured and divided.
+    private static let runFlex: CGFloat = 1.1
 
-            if showRun {
-                Button(action: onRun) {
-                    HStack(spacing: V5.S.s6) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .frame(width: 16, height: 16)
-                        Text("RUN")
-                            .font(.faffText(TypeScaleV5.label14, weight: .bold))
+    var body: some View {
+        GeometryReader { geo in
+            let gap = showRun ? V5.S.s6 : V5.S.s4
+            let slots = CGFloat(FaffTabV5.allCases.count)
+            let gaps = gap * (slots - 1 + (showRun ? 1 : 0))
+            let usable = geo.size.width - V5.S.s12 * 2 - gaps
+            let unit = usable / (slots + (showRun ? Self.runFlex : 0))
+
+            HStack(spacing: gap) {
+                ForEach(FaffTabV5.allCases) { tab in
+                    Button {
+                        guard selected != tab else { return }
+                        selected = tab
+                    } label: {
+                        VStack(spacing: V5.S.s4) {
+                            Image(systemName: tab.symbol)
+                                .font(.system(size: 20, weight: .regular))
+                                .frame(height: 22)
+                            Text(tab.label)
+                                .font(.faffText(TypeScaleV5.label12,
+                                                weight: selected == tab ? .semibold : .medium))
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                        .foregroundStyle(selected == tab ? V5.textPrimary : V5.textQuiet)
+                        .frame(width: unit, height: geo.size.height)
+                        .contentShape(RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
                     }
-                    .foregroundStyle(V5.actionPrimaryText)
-                    .padding(.horizontal, V5.S.s12)
-                    .frame(height: 44)
-                    .frame(maxWidth: .infinity)
-                    .background(V5.materialAction, in: Capsule(style: .continuous))
+                    .buttonStyle(V5PressStyle())
+                    .accessibilityAddTraits(selected == tab ? [.isSelected] : [])
                 }
-                .buttonStyle(V5PressStyle())
-                // flex 1.1 against the destinations' flex 1.
-                .layoutPriority(1.1)
+
+                if showRun {
+                    Button(action: onRun) {
+                        HStack(spacing: V5.S.s6) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .frame(width: 16, height: 16)
+                            Text("RUN")
+                                .font(.faffText(TypeScaleV5.label14, weight: .bold))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(V5.actionPrimaryText)
+                        .frame(width: unit * Self.runFlex, height: 44)
+                        .background(V5.materialAction, in: Capsule(style: .continuous))
+                    }
+                    .buttonStyle(V5PressStyle())
+                }
             }
+            .padding(.horizontal, V5.S.s12)
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .padding(.horizontal, V5.S.s12)
         .frame(height: V5.Shell.tabBarHeight)
         .frame(maxWidth: .infinity)
         .background(V5.surfacePage)
@@ -232,24 +247,37 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
             V5.surfacePage.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Group {
-                    switch selected {
-                    case .today:
-                        NavigationStack(path: path(.today)) {
-                            today(path(.today))
-                                .navigationDestination(for: V5Route.self, destination: route)
-                        }
-                    case .block:
-                        NavigationStack(path: path(.block)) {
-                            block(path(.block))
-                                .navigationDestination(for: V5Route.self, destination: route)
-                        }
-                    case .races:
-                        NavigationStack(path: path(.races)) {
-                            races(path(.races))
-                                .navigationDestination(for: V5Route.self, destination: route)
-                        }
+                // All three destinations stay alive, and only the selected one
+                // is shown. Two reasons, both load-bearing:
+                //
+                //   · The launch gate holds the splash until every destination
+                //     reports it is painted. A `switch` builds one view, so the
+                //     other two would never load and the splash would never
+                //     lift.
+                //   · Switching tabs then paints from state that is already
+                //     there, rather than starting a fetch and reflowing — which
+                //     is the rule the whole design is built on.
+                ZStack {
+                    NavigationStack(path: path(.today)) {
+                        today(path(.today))
+                            .navigationDestination(for: V5Route.self, destination: route)
                     }
+                    .opacity(selected == .today ? 1 : 0)
+                    .allowsHitTesting(selected == .today)
+
+                    NavigationStack(path: path(.block)) {
+                        block(path(.block))
+                            .navigationDestination(for: V5Route.self, destination: route)
+                    }
+                    .opacity(selected == .block ? 1 : 0)
+                    .allowsHitTesting(selected == .block)
+
+                    NavigationStack(path: path(.races)) {
+                        races(path(.races))
+                            .navigationDestination(for: V5Route.self, destination: route)
+                    }
+                    .opacity(selected == .races ? 1 : 0)
+                    .allowsHitTesting(selected == .races)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 

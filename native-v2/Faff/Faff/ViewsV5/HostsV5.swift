@@ -54,7 +54,14 @@ struct TodayHostV5: View {
                 coldStart
             }
         }
-        .task { await surface.load() }
+        // The launch gate holds the splash until every destination says it is
+        // painted. "Painted" includes a surface that resolved to its outage
+        // state — an app that never lifts its splash because the network is
+        // down is worse than one that shows the outage screen honestly.
+        .task {
+            await surface.load()
+            NotificationCenter.default.post(name: .faffSurfaceReady, object: "today")
+        }
         .refreshable { await surface.load() }
     }
 
@@ -235,7 +242,10 @@ struct BlockHostV5: View {
                 .background(V5.surfacePage)
             }
         }
-        .task { await surface.load() }
+        .task {
+            await surface.load()
+            NotificationCenter.default.post(name: .faffSurfaceReady, object: "block")
+        }
         .refreshable { await surface.load() }
     }
 }
@@ -271,7 +281,10 @@ struct RacesHostV5: View {
                 .background(V5.surfacePage)
             }
         }
-        .task { await surface.load() }
+        .task {
+            await surface.load()
+            NotificationCenter.default.post(name: .faffSurfaceReady, object: "races")
+        }
         .refreshable { await surface.load() }
     }
 
