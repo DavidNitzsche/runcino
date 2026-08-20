@@ -140,6 +140,23 @@ export interface GlanceState {
     logged_at: string;
     days_active: number;
   } | null;
+  // Gap B13 (2026-08-19) · the v5 Today surface's injury_flare state. An
+  // OPEN row in `runner_injuries` (resolved_date IS NULL) — the escalation
+  // surface above a niggle (see app/api/injuries/route.ts header). Distinct
+  // from `activeNiggle` above: a niggle modifies the day, an injury replaces
+  // it — the panel goes quiet (no gradient, nothing to prescribe). Most
+  // recent open row wins when more than one is logged.
+  // Optional (not just nullable) so existing GlanceState fixtures/personas
+  // built before this field existed still satisfy the interface structurally.
+  activeInjury?: {
+    id: number;
+    site: string;
+    severity: 'minor' | 'moderate' | 'major';
+    start_date: string;
+    expected_return_date: string | null;
+    return_protocol: string | null;
+    notes: string | null;
+  } | null;
   // STRENGTH-3 (2026-08-17) · recommendedStrengthDays / strengthRecommendation
   // / strengthWeekStatus removed. See the note at the recommender call site.
 }
@@ -594,6 +611,32 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       }
     : null;
 
+  // Gap B13 (2026-08-19) · open injury (runner_injuries.resolved_date IS
+  // NULL). One LIMIT-1 point read, same defensive posture as the niggle/sick
+  // reads immediately above — silent degrade to null if the table doesn't
+  // exist yet so the loader never hard-fails on it.
+  const injuryRow = await pool.query(
+    `SELECT id, site, severity, start_date::text AS start_date,
+            expected_return_date::text AS expected_return_date,
+            return_protocol, notes
+       FROM runner_injuries
+      WHERE user_uuid = $1 AND resolved_date IS NULL
+      ORDER BY start_date DESC
+      LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] as any[] }));
+  const activeInjury = injuryRow.rows[0]
+    ? {
+        id: Number(injuryRow.rows[0].id),
+        site: String(injuryRow.rows[0].site),
+        severity: injuryRow.rows[0].severity as 'minor' | 'moderate' | 'major',
+        start_date: String(injuryRow.rows[0].start_date),
+        expected_return_date: injuryRow.rows[0].expected_return_date ?? null,
+        return_protocol: injuryRow.rows[0].return_protocol ?? null,
+        notes: injuryRow.rows[0].notes ?? null,
+      }
+    : null;
+
   const bandBaseline = await loadReadinessBandBaseline(userId, today);
   const readiness = computeReadiness({
     today, user_id: userId,
@@ -722,5 +765,6 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     todaySkipped,
     activeNiggle,
     activeSick,
+    activeInjury,
   };
 }
