@@ -147,7 +147,8 @@ struct TodayHostV5: View {
             // converged. If the payload cannot show that, this is an ordinary
             // Today and the app says nothing about a change.
             if let changed = model.changed, changed.namesAConvergence {
-                TodayChangedV5(panel: model.panel, convergence: changed)
+                TodayChangedV5(panel: model.panel, convergence: changed,
+                               onOpenAccount: { accountOpen = true })
             } else {
                 TodayBeforeV5(model: model, accountName: accountName,
                               accountWeekLine: model.panel.weekLine ?? "",
@@ -157,6 +158,8 @@ struct TodayHostV5: View {
         case .injuryFlare:
             if let injury = model.injury {
                 InjuryFlareV5(model: injury,
+                              onOpenAccount: { accountOpen = true },
+                              onCheckIn: { row in Task { await checkInNiggle(row.id) } },
                               onReturnToRunning: { path.append(.returnToRunning) })
             } else {
                 TodayBeforeV5(model: model, accountName: accountName,
@@ -166,7 +169,7 @@ struct TodayHostV5: View {
 
         case .weekOff:
             if let off = model.weekOff {
-                WeekOffV5(model: off)
+                WeekOffV5(model: off, onOpenAccount: { accountOpen = true })
             } else {
                 TodayBeforeV5(model: model, accountName: accountName,
                               accountWeekLine: model.panel.weekLine ?? "",
@@ -175,7 +178,7 @@ struct TodayHostV5: View {
 
         case .offSeason:
             if let off = model.offSeason {
-                OffSeasonV5(model: off)
+                OffSeasonV5(model: off, onOpenAccount: { accountOpen = true })
             } else {
                 NotOnPhoneYetV5(reason: nil)
             }
@@ -334,6 +337,18 @@ struct TodayHostV5: View {
         req.httpBody = try? JSONSerialization.data(withJSONObject: [
             "body_part": bodyPart, "severity": 1, "status": "active",
         ])
+        _ = try? await API.authedSend(req)
+        await surface.load()
+    }
+
+    /// The ladder's sibling: the daily flare check-in. The row ids are
+    /// literally the values the endpoint expects, so there is no mapping to
+    /// get wrong.
+    private func checkInNiggle(_ today: String) async {
+        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/niggle/recovery"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["today": today])
         _ = try? await API.authedSend(req)
         await surface.load()
     }
@@ -575,7 +590,10 @@ struct ShoesHostV5: View {
         ShoesV5(shoes: shoes,
                 onWear: { id in Task { await patch(id, ["preferred": true]) } },
                 onRetire: { id in Task { await patch(id, ["retired": true]) } },
-                onAddPair: {},
+                onAddPair: { brand, model, shoeType, mileageCap in
+                    Task { await addPair(brand: brand, model: model,
+                                         shoeType: shoeType, mileageCap: mileageCap) }
+                },
                 onBack: { dismiss() })
             .task { await load() }
             .navigationBarBackButtonHidden(true)
@@ -589,11 +607,21 @@ struct ShoesHostV5: View {
         _ = try? await API.patchShoe(id: id, fields: fields)
         await load()
     }
+
+    /// The cap is nil unless the runner typed one. The retirement band is the
+    /// engine's to resolve from the shoe TYPE — the README is explicit that
+    /// those figures are a backend concern and must not be hardcoded here.
+    private func addPair(brand: String, model: String, shoeType: String, mileageCap: Double?) async {
+        _ = try? await API.createShoeV5(brand: brand, model: model,
+                                        shoeType: shoeType, mileageCap: mileageCap)
+        await load()
+    }
 }
 
 struct SettingsHostV5: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var runGate: PhoneRunGate
+    @State private var stravaConnecting = false
     @State private var model: SettingsV5Model?
 
     var body: some View {
@@ -605,7 +633,7 @@ struct SettingsHostV5: View {
                            onToggleSessionReminders: { v in Task { await patch(["push_enabled": v]) } },
                            onToggleWeeklySummary: { v in Task { await patch(["weekly_summary_enabled": v]) } },
                            onSetUnits: { u in Task { await patch(["units_distance": u]) } },
-                           onToggleStrava: {},
+                           onToggleStrava: { Task { await connectStrava() } },
                            onBack: { dismiss() })
             } else {
                 ScrollView { Skeleton(lines: 6).padding(.horizontal, V5.S.gutter) }
@@ -637,6 +665,14 @@ struct SettingsHostV5: View {
         _ = try? await API.patchSettings(fields)
         await SettingsCache.shared.invalidate()
         await runGate.refresh()
+        await load()
+    }
+
+    private func connectStrava() async {
+        guard !stravaConnecting else { return }
+        stravaConnecting = true
+        _ = await StravaOAuthSession.shared.start()
+        stravaConnecting = false
         await load()
     }
 

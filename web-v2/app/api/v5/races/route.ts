@@ -277,8 +277,11 @@ export async function GET(req: NextRequest) {
         weekLine: upcomingAs.length > 0 ? `${upcomingAs.length} A race${upcomingAs.length === 1 ? '' : 's'} this season` : null,
         kicker: nextA.days >= 0 ? `${nextA.days} days out` : null,
         type: nextA.name,
+        // The panel's own dose line. This printed the raw column — the third
+        // place in this codebase to leak an ISO date into copy, after the
+        // schedule rows and race detail.
         dose: num(
-          [nextA.date, nextA.distance_label].filter(Boolean).join(' · ') || null,
+          [raceDateWords(nextA.date), nextA.distance_label].filter(Boolean).join(' · ') || null,
           false,
         ),
         stats,

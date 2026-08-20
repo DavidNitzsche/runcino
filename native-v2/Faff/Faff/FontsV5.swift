@@ -330,7 +330,12 @@ extension View {
         self
             .font(.faffDisplay(size))
             .textCase(size >= TypeScaleV5.display38 ? .uppercase : nil)
-            .lineLimit(fit == .graphic ? 1 : fit == .name ? 2 : nil)
+            // A name gets three lines, not two. "CALIFORNIA INTERNATIONAL
+            // MARATHON" is 32 characters and does not fit two lines at any
+            // scale that keeps 56pt legible — it truncated to "…INTERNATIONAL
+            // M…". Three lines is not elegant, but a name that loses letters
+            // is a name the runner has to guess at.
+            .lineLimit(fit == .graphic ? 1 : fit == .name ? 3 : nil)
             .minimumScaleFactor(fit == .free ? 1 : 0.5)
     }
 }
