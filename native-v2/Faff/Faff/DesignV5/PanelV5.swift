@@ -186,12 +186,35 @@ enum V5Grain {
 
     static let image: Image = Image(uiImage: make())
 
+    /// Device-resolution grain, so one noise sample is one physical pixel.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// WHY THE FIRST TWO ATTEMPTS LOOKED WRONG
+    ///
+    /// Pass one was full-range white noise and read as visible static.
+    ///
+    /// Pass two dropped the amplitude but kept a second "octave" built as a
+    /// COARSER lattice — a 60-cell grid bilinear-sampled across the tile — at
+    /// a third of the weight. That is backwards. In fractal noise the octaves
+    /// go UP in frequency and DOWN in amplitude; a low-frequency layer at
+    /// meaningful weight is not grain, it is clouds. Tiled at one sample per
+    /// POINT it was 3 device pixels per sample on top of that, so the clumps
+    /// landed around nine pixels across. Blotchy, exactly as it looked.
+    ///
+    /// This renders at the device's own scale and drops the low-frequency
+    /// layer entirely. What is left is per-pixel noise at a low amplitude,
+    /// which is what film grain is and what the design's fine tooth reads as.
+    /// The three colour channels get INDEPENDENT samples, the way feTurbulence
+    /// does — shared samples give neutral grey speckle, independent ones give
+    /// the faint chroma shimmer that keeps the panel from looking printed.
     private static func make() -> UIImage {
-        let n = tileSize
+        // One sample per physical pixel, whatever the device is.
+        let scale = Int(max(UIScreen.main.scale, 1))
+        let n = tileSize * scale
         var px = [UInt8](repeating: 0, count: n * n * 4)
 
         // A fixed-seed xorshift. No Foundation randomness: the tile must be
-        // byte-identical on every launch or the grain shimmers on a redraw.
+        // byte-identical on every launch or the grain crawls on a redraw.
         var state: UInt32 = 0x5A1F_F2B0
         func rand() -> Double {
             state ^= state << 13
@@ -200,51 +223,27 @@ enum V5Grain {
             return Double(state) / Double(UInt32.max)
         }
 
-        // Octave 2 · a coarser lattice at half amplitude, bilinear-sampled.
-        let coarse = n / 3
-        var lattice = [Double](repeating: 0, count: (coarse + 1) * (coarse + 1))
-        for i in lattice.indices { lattice[i] = rand() }
+        // Centred on 0.5 so `overlay` is a no-op on average and a texture
+        // locally. The amplitude is the whole game: at 0.30 it read as static,
+        // and this is the value that reads as a tooth on glass.
+        let deviation = 0.16
 
-        for y in 0..<n {
-            for x in 0..<n {
-                let fy = Double(y) / Double(n) * Double(coarse)
-                let fx = Double(x) / Double(n) * Double(coarse)
-                let y0 = Int(fy), x0 = Int(fx)
-                let ty = fy - Double(y0), tx = fx - Double(x0)
-                let l = lattice[y0 * (coarse + 1) + x0]
-                let r = lattice[y0 * (coarse + 1) + x0 + 1]
-                let bl = lattice[(y0 + 1) * (coarse + 1) + x0]
-                let br = lattice[(y0 + 1) * (coarse + 1) + x0 + 1]
-                let octave2 = (l + (r - l) * tx) * (1 - ty) + (bl + (br - bl) * tx) * ty
-
-                // fractalNoise sums octaves at halving amplitude and stays
-                // CENTRED ON 0.5 — that is what makes overlay a no-op on
-                // average and a texture locally.
-                //
-                // The amplitude matters more than anything else here, and it
-                // is the one thing a first pass gets wrong. Uniform noise over
-                // the full 0…1 range is not what feTurbulence produces: two
-                // octaves of smooth gradient noise concentrate tightly around
-                // the midpoint, and the difference on a device is the gap
-                // between a fine tooth and visible static. Checked on glass,
-                // not by reading the filter spec.
-                let deviation = 0.30
-                for c in 0..<3 {
-                    let n1 = rand(), n2 = octave2
-                    let v = 0.5 + ((n1 * 0.667 + n2 * 0.333) - 0.5) * deviation
-                    px[(y * n + x) * 4 + c] = UInt8(min(max(v, 0), 1) * 255)
-                }
-                // Opaque. The layer's own 50% opacity is the design's stated
-                // strength; noising alpha as well would double-dip it.
-                px[(y * n + x) * 4 + 3] = 255
+        for i in 0..<(n * n) {
+            for c in 0..<3 {
+                let v = 0.5 + (rand() - 0.5) * deviation
+                px[i * 4 + c] = UInt8(min(max(v, 0), 1) * 255)
             }
+            // Opaque. The layer's own 50% opacity is the design's stated
+            // strength; noising alpha as well would double-dip it.
+            px[i * 4 + 3] = 255
         }
 
         let cs = CGColorSpaceCreateDeviceRGB()
         let ctx = CGContext(data: &px, width: n, height: n,
                             bitsPerComponent: 8, bytesPerRow: n * 4, space: cs,
                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-        return UIImage(cgImage: ctx.makeImage()!)
+        return UIImage(cgImage: ctx.makeImage()!,
+                       scale: CGFloat(scale), orientation: .up)
     }
 }
 
