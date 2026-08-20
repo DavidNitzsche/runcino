@@ -35,6 +35,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 // MARK: - A number with its provenance
 
@@ -73,6 +74,48 @@ extension Optional where Wrapped == V5Number {
 
 // MARK: - Shared small shapes
 
+/// How the engine wants a value inked.
+///
+/// ─────────────────────────────────────────────────────────────────────────
+/// WHY TONE IS ON THE WIRE AND NOT DERIVED ON THE PHONE
+///
+/// The prototype draws an out-of-band value in amber, and the obvious client
+/// implementation is `if ran < band.low || ran > band.high`. That is wrong for
+/// the same reason rule one is a system rule: the phone does not hold the band.
+/// It holds a formatted string. The engine knows what was asked, what was run,
+/// what the heat did to the target and whether the workout was a taper session
+/// that is meant to be slow. A client comparison would paint a deliberately
+/// easy taper mile amber and tell the runner they missed.
+///
+/// So the engine says. Absent means neutral, which is the safe default: a
+/// missing tone can only ever under-mark, never accuse.
+///
+/// There is no `good`. Amber means outside the range that was asked for, fault
+/// means we could not read it, and no value is ever graded.
+enum V5Tone: String, Decodable {
+    case neutral
+    /// Outside its target range, stale, or a decision waiting.
+    case attention
+    /// The runner's own current position or value. Never "good".
+    case signal
+    /// We could not read this.
+    case fault
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = V5Tone(rawValue: raw) ?? .neutral
+    }
+
+    var ink: Color {
+        switch self {
+        case .neutral:   return V5.textPrimary
+        case .attention: return V5.attention
+        case .signal:    return V5.signal
+        case .fault:     return V5.fault
+        }
+    }
+}
+
 /// A labelled value on a poster's translucent plate.
 struct V5Stat: Decodable, Equatable, Hashable {
     let label: String
@@ -80,6 +123,8 @@ struct V5Stat: Decodable, Equatable, Hashable {
     /// `"attention"` when the engine wants this drawn amber — a gap behind its
     /// goal. Never a grade, and never green, because there is no green.
     let tone: String?
+
+    var toneValue: V5Tone { tone.flatMap(V5Tone.init(rawValue:)) ?? .neutral }
 }
 
 /// A row in any `ListGroup`.
@@ -93,6 +138,18 @@ struct V5Row: Decodable, Equatable, Hashable, Identifiable {
     /// What tapping it does, as a verb the client switches on. Absent means the
     /// row opens nothing, and therefore draws no chevron.
     let action: String?
+    /// How the engine wants the VALUE inked. See `V5Tone`. Absent is neutral.
+    let tone: String?
+
+    var toneValue: V5Tone { tone.flatMap(V5Tone.init(rawValue:)) ?? .neutral }
+
+    /// Defaults on the two the engine may not send, so adding a field to this
+    /// contract never breaks a construction site.
+    init(id: String, label: String, sub: String? = nil, value: V5Number? = nil,
+         action: String? = nil, tone: String? = nil) {
+        self.id = id; self.label = label; self.sub = sub
+        self.value = value; self.action = action; self.tone = tone
+    }
 }
 
 /// An instruction group: Warm up / Work / Cool down, or a per-mile list.
@@ -101,12 +158,35 @@ struct V5Group: Decodable, Equatable, Hashable, Identifiable {
     let title: String
     let note: String?
     let steps: [V5Step]
+    /// True for the group that carries the actual work, as against the warm up
+    /// and the cool down around it. The design tints the work's tile and keeps
+    /// the bookends quiet; inferring that from POSITION breaks the moment a
+    /// session has two work blocks or none, so the engine says which.
+    let isWork: Bool?
+
+    var work: Bool { isWork ?? false }
+
+    init(id: String, title: String, note: String? = nil,
+         steps: [V5Step], isWork: Bool? = nil) {
+        self.id = id; self.title = title; self.note = note
+        self.steps = steps; self.isWork = isWork
+    }
 }
 
 struct V5Step: Decodable, Equatable, Hashable, Identifiable {
     let id: String
     let main: String
     let sub: V5Number?
+    /// How the engine wants this step's value inked. See `V5Tone`. This is the
+    /// per-mile "ran 11s slow" case, and the engine owns the judgement because
+    /// it is the only side that holds the band and the context around it.
+    let tone: String?
+
+    var toneValue: V5Tone { tone.flatMap(V5Tone.init(rawValue:)) ?? .neutral }
+
+    init(id: String, main: String, sub: V5Number? = nil, tone: String? = nil) {
+        self.id = id; self.main = main; self.sub = sub; self.tone = tone
+    }
 }
 
 // MARK: - Today · GET /api/v5/today
