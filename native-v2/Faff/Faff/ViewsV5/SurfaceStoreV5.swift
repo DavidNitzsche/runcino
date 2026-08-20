@@ -126,7 +126,64 @@ enum V5Surfaces {
 // `Skeleton` reserving its exact height, and a coach line says the session
 // still works because it is stored on the phone.
 
+/// What an outage says, per surface.
+///
+/// ─────────────────────────────────────────────────────────────────────────
+/// THE COPY IS NOT SHARED, AND THE FIRST BUILD SHARED IT
+///
+/// Every surface reused Today's sentence, so the Races tab said "Readiness did
+/// not load. Your score is fine, we just cannot see it." Readiness has nothing
+/// to do with whether the goal is still real. A wrong-but-fluent sentence is
+/// worse than a blank one: it tells the runner we looked at something we never
+/// looked at.
+///
+/// Each one keeps the shape of the design's own example — name what failed,
+/// then say the runner is fine, then say what we cannot see — and each names
+/// the thing THIS screen could not read.
+struct V5OutageCopy {
+    /// The `ErrorNote`. What failed, and that it is our sight, not their data.
+    let note: String
+    /// The quiet line underneath. What is still true while we cannot see.
+    let reassurance: String
+
+    static let today = V5OutageCopy(
+        note: "Readiness did not load. Your score is fine, we just cannot see it.",
+        reassurance: "Today's session is on the phone already, so it runs whether or not we can reach the server. The rest catches up when the connection does."
+    )
+
+    static let block = V5OutageCopy(
+        note: "The block did not load. Your plan is intact, we just cannot see it.",
+        reassurance: "Nothing in it has changed. This is the connection, not the training."
+    )
+
+    static let races = V5OutageCopy(
+        note: "The race read did not load. Your goal and your schedule stand, we just cannot see them.",
+        reassurance: "Nothing here decides anything on its own. It reads again when the connection does."
+    )
+
+    static let raceDetail = V5OutageCopy(
+        note: "This race did not load. The plan for it is unchanged, we just cannot see it.",
+        reassurance: "The pace plan is worked out ahead of time, not on the day."
+    )
+
+    static let paces = V5OutageCopy(
+        note: "The pace read did not load. Your paces are unchanged, we just cannot see them.",
+        reassurance: "Nothing re-anchors while we cannot read it."
+    )
+
+    static let returnLadder = V5OutageCopy(
+        note: "The ladder did not load. Your stage is unchanged, we just cannot see it.",
+        reassurance: "A stage only advances on a session you report, so nothing moved while this was down."
+    )
+
+    static let tomorrow = V5OutageCopy(
+        note: "Tomorrow did not load. We just cannot see it from here.",
+        reassurance: "Whatever the niggle turns into, the day is decided in the morning, not now."
+    )
+}
+
 struct OutageBodyV5: View {
+    var copy: V5OutageCopy = .today
     let onRetry: () -> Void
     /// The height the real content will take. Passed in, so the placeholder
     /// reserves the layout rather than guessing at it.
@@ -134,11 +191,9 @@ struct OutageBodyV5: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
-            ErrorNote(text: "Readiness did not load. Your score is fine, we just cannot see it.",
-                      onRetry: onRetry)
+            ErrorNote(text: copy.note, onRetry: onRetry)
             Skeleton(lines: skeletonLines)
-            CoachSay(text: "Today's session is on the phone already, so it runs whether or not we can reach the server. The rest catches up when the connection does.",
-                     size: .sm)
+            CoachSay(text: copy.reassurance, size: .sm)
         }
     }
 }

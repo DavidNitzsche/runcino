@@ -225,7 +225,7 @@ struct BlockHostV5: View {
                 })
             } else if surface.isOutage {
                 ScrollView {
-                    OutageBodyV5(onRetry: { Task { await surface.load() } })
+                    OutageBodyV5(copy: .block, onRetry: { Task { await surface.load() } })
                         .padding(.horizontal, V5.S.gutter)
                         .padding(.top, V5.S.s40)
                 }
@@ -264,7 +264,7 @@ struct RacesHostV5: View {
                         onEvidenceTap: { _ in })
             } else if surface.isOutage {
                 ScrollView {
-                    OutageBodyV5(onRetry: { Task { await surface.load() } })
+                    OutageBodyV5(copy: .races, onRetry: { Task { await surface.load() } })
                         .padding(.horizontal, V5.S.gutter)
                         .padding(.top, V5.S.s40)
                 }
@@ -315,7 +315,7 @@ struct RaceDetailHostV5: View {
                 RaceDetailV5(raceDetail: d)
             } else if surface.isOutage {
                 ScrollView {
-                    OutageBodyV5(onRetry: { Task { await surface.load() } })
+                    OutageBodyV5(copy: .raceDetail, onRetry: { Task { await surface.load() } })
                         .padding(.horizontal, V5.S.gutter)
                 }
                 .background(V5.surfacePage)
@@ -338,7 +338,7 @@ struct PacesHostV5: View {
                 PacesMovedV5(paces: p, onSettled: { Task { await surface.load() } })
             } else if surface.isOutage {
                 ScrollView {
-                    OutageBodyV5(onRetry: { Task { await surface.load() } })
+                    OutageBodyV5(copy: .paces, onRetry: { Task { await surface.load() } })
                         .padding(.horizontal, V5.S.gutter)
                 }
                 .background(V5.surfacePage)
@@ -361,7 +361,7 @@ struct ReturnHostV5: View {
                 ReturnToRunningV5(ret: r, onCheckedIn: { Task { await surface.load() } })
             } else if surface.isOutage {
                 ScrollView {
-                    OutageBodyV5(onRetry: { Task { await surface.load() } })
+                    OutageBodyV5(copy: .returnLadder, onRetry: { Task { await surface.load() } })
                         .padding(.horizontal, V5.S.gutter)
                 }
                 .background(V5.surfacePage)
@@ -537,7 +537,7 @@ struct InjuryPreviewHostV5: View {
                 }
             } else if surface.isOutage {
                 ScrollView {
-                    OutageBodyV5(onRetry: { Task { await surface.load() } })
+                    OutageBodyV5(copy: .tomorrow, onRetry: { Task { await surface.load() } })
                         .padding(.horizontal, V5.S.gutter)
                         .padding(.top, V5.S.s40)
                 }
