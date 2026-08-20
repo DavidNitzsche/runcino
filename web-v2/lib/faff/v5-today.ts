@@ -169,8 +169,27 @@ export interface V5OffSeason {
   weeklyRange: string | null;
 }
 
+/**
+ * A sick day is not an injury (see `app/api/v5/today/route.ts`'s sick block
+ * for the full comparison). Same shape as `V5Injury` on the wire — a quiet
+ * panel, a verdict, a check-in list — but sourced from `sick_episodes`
+ * (systemic illness: symptoms + fever, self-reported) rather than
+ * `runner_injuries` (a diagnosed musculoskeletal issue), and the check-in
+ * options are a daily TREND (better/same/worse/recovered) that POSTs to
+ * `/api/sick/recovery`, not a one-shot better/same/worse note. `recovered`
+ * clears the episode server-side and Today reverts on its own next load —
+ * there is no `returnAvailable`/ladder screen the way injury has one.
+ */
+export interface V5Sick {
+  symptoms: string[];
+  hasFever: boolean;
+  since: string;
+  verdict: string;
+  checkIn: V5Row[];
+}
+
 export type V5TodayStateWire =
-  | 'before_run' | 'after_run' | 'changed_overnight' | 'injury_flare'
+  | 'before_run' | 'after_run' | 'changed_overnight' | 'injury_flare' | 'sick'
   | 'week_off' | 'off_season' | 'race_day' | 'not_on_phone_yet';
 
 export interface V5Today {
@@ -182,6 +201,11 @@ export interface V5Today {
   why: string | null;
   whereYouAre: V5Row[];
   beforeYouGo: V5Row[];
+  /// Present only when the active plan carries an unacknowledged pace-drop
+  /// event (`lib/plan/pace-drop-event.ts`) — the coach-line entry point onto
+  /// 18a (`V5Route.pacesMoved`), never shown on a state that has nothing new
+  /// to say. See `app/api/v5/today/route.ts`'s pace-note block.
+  paceNote: V5Row | null;
 
   askedVsRan: V5Row[];
   verdict: string | null;
@@ -195,6 +219,7 @@ export interface V5Today {
 
   changed: V5Convergence | null;
   injury: V5Injury | null;
+  sick: V5Sick | null;
   weekOff: V5WeekOff | null;
   offSeason: V5OffSeason | null;
 
@@ -425,6 +450,10 @@ export interface V5TodayContext {
 
   whereYouAre: V5Row[];   // readiness/week-status rows
   beforeYouGo: V5Row[];   // shoe pick, fuel, move/skip rows
+  /// See `V5Today.paceNote`. Only set on the content states (before_run /
+  /// race_day / changed_overnight / after_run) — never on a refusal state,
+  /// which already has its own thing to say.
+  paceNote: V5Row | null;
 
   raceDay: boolean;
 
@@ -443,6 +472,16 @@ export interface V5TodayContext {
     whatChanged: V5Row[];
     checkIn: V5Row[];
     returnAvailable: boolean;
+  } | null;
+  /// See `V5Sick`. Checked in the route right after `injury` — a sick day
+  /// takes the same "quiet panel, not today" treatment, sourced from a
+  /// different table with different fields.
+  sick: {
+    symptoms: string[];
+    hasFever: boolean;
+    since: string;
+    verdict: string;
+    checkIn: V5Row[];
   } | null;
   convergence: V5ConvergenceCtx | null;
 }
@@ -707,6 +746,7 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   why: null,
   whereYouAre: [],
   beforeYouGo: [],
+  paceNote: null,
   askedVsRan: [],
   verdict: null,
   zoneShares: null,
@@ -718,6 +758,7 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   runId: null,
   changed: null,
   injury: null,
+  sick: null,
   weekOff: null,
   offSeason: null,
   notOnPhoneYet: null,
@@ -745,6 +786,25 @@ export function composeV5Today(ctx: V5TodayContext): V5Today {
       whatChanged: ctx.injury.whatChanged,
       checkIn: ctx.injury.checkIn,
       returnAvailable: ctx.injury.returnAvailable,
+    };
+    t.weekStrip = buildWeekStrip(ctx);
+    return t;
+  }
+
+  // ── sick — a quiet panel too, but NOT the same screen as injury (RULE 3).
+  // Checked second: a diagnosed injury owns the screen over a concurrent
+  // sick day, which is the rarer overlap and the one where the injury's own
+  // load restrictions are more specific than "rest, you're sick".
+  if (ctx.sick) {
+    const t = EMPTY_TODAY(ctx.todayISO, 'sick');
+    t.panel.quiet = true;
+    t.panel.type = 'Not today';
+    t.sick = {
+      symptoms: ctx.sick.symptoms,
+      hasFever: ctx.sick.hasFever,
+      since: ctx.sick.since,
+      verdict: ctx.sick.verdict,
+      checkIn: ctx.sick.checkIn,
     };
     t.weekStrip = buildWeekStrip(ctx);
     return t;
@@ -803,6 +863,7 @@ export function composeV5Today(ctx: V5TodayContext): V5Today {
     t.why = ctx.why;
     t.whereYouAre = ctx.whereYouAre;
     t.beforeYouGo = [];
+    t.paceNote = ctx.paceNote;
     t.askedVsRan = built.askedVsRan;
     t.verdict = ctx.recentRun.verdict;
     t.zoneShares = ctx.recentRun.zoneShares;
@@ -843,6 +904,7 @@ export function composeV5Today(ctx: V5TodayContext): V5Today {
   t.why = ctx.why;
   t.whereYouAre = ctx.whereYouAre;
   t.beforeYouGo = ctx.beforeYouGo;
+  t.paceNote = ctx.paceNote;
   t.changed = changed;
   t.weekStrip = buildWeekStrip(ctx);
   return t;

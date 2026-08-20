@@ -52,6 +52,10 @@ struct TodayAfterV5: View {
     var viewingDayLabel: String? = nil
     var onBackToToday: (() -> Void)? = nil
     var initials: String? = nil
+    /// Job 1 · "report sick" — a runner who just finished and feels off
+    /// should not have to wait for tomorrow's Today to say so. Same
+    /// expand-in-place row as the before-run screen; see `SickV5.swift`.
+    var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
 
     /// Which asked-vs-ran / per-mile row is expanded in place. Keyed by the
     /// row's own server id, per the "identity is the server id" rule — never
@@ -127,6 +131,7 @@ struct TodayAfterV5: View {
                 if niggleFlagged != nil {
                     niggleLink
                 }
+                SickReportRowV5(onReport: onReportSick)
                 FaffButton(stravaSent ? "Sent to Strava" : "Send it to Strava",
                            variant: stravaSent ? .secondary : .primary,
                            size: .lg) {

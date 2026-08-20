@@ -258,7 +258,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
           : `Today's fitness covers the goal with room. Race it as planned.`)
       : null;
 
+    // ── result entry (Job 3) ────────────────────────────────────────────
+    //
+    // Rule one, concretely: `race.finishProvisional` (races-state.ts) is
+    // true when the logged finish came from an auto-detected/watch-matched
+    // run rather than a confirmed chip time — "Training effort · race to
+    // lock in", NOT authoritative for fitness (CLAUDE.md's race-data
+    // source-of-truth checklist). `status: 'provisional'` is exactly that
+    // reading; `finish` carries `modelled: race.finishProvisional` so the
+    // client's own `FaffValue` mechanism draws the amber tilde on a
+    // provisional number without this route (or the client) hand-rolling
+    // the mark. `status: 'confirmed'` (a real chip time already locked in)
+    // is deliberately given no entry form at all — nothing left to ask.
+    const resultEntry = {
+      isPast: race.is_past,
+      status: !race.is_past || race.finishTime == null
+        ? null
+        : (race.finishProvisional ? 'provisional' : 'confirmed'),
+      finish: race.finishTime != null ? num(race.finishTime, race.finishProvisional) : null,
+    };
+
     return NextResponse.json({
+      slug: race.slug,
       name: race.name,
       dateLine: [raceDateWords(race.date), race.distance_label].filter(Boolean).join(' · '),
       goal: goalSec != null ? num(formatRaceTime(goalSec), false) : null,
@@ -269,6 +290,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       taperProgress, taperEndpoints, taperCentreLabel,
       gear,
       coachLine,
+      resultEntry,
     });
   } catch (err: any) {
     console.error('[api/v5/race/[slug]] failed:', err);

@@ -117,19 +117,23 @@ extension API {
         return env?.active
     }
 
+    /// `started` MUST be one of `today | yesterday | few_days | week_plus`
+    /// (`web-v2/app/api/sick/route.ts`'s own enum) — NOT an ISO date. This
+    /// used to always send `Self.isoTodayUTC()` here regardless of what the
+    /// caller meant, which the route's validation would have rejected as
+    /// none of its four accepted values; defaulted to `"today"` so the one
+    /// existing call site (`F_Sheets.swift`'s `SymptomReportSheet`, which
+    /// never collected a "started" answer at all) still compiles and now
+    /// posts a value the route actually accepts.
     @discardableResult
-    static func postSick(symptoms: [String], fever: Bool) async throws -> Bool {
+    static func postSick(symptoms: [String], started: String = "today", fever: Bool) async throws -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/sick"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // Field names match web-v2/app/api/sick/route.ts:
-        //   symptoms (string[]) · has_fever (bool) · started (ISO date).
-        // iPhone provides `fever` argument-side for ergonomic call sites;
-        // wire mapping is below.
         let body: [String: Any] = [
             "symptoms": symptoms,
             "has_fever": fever,
-            "started": Self.isoTodayUTC()
+            "started": started
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (_, http) = try await API.authedSend(req)

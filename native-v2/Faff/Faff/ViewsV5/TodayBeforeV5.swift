@@ -161,6 +161,16 @@ struct TodayBeforeV5: View {
     var onNextDay: () -> Void = {}
     var onBackToToday: () -> Void = {}
 
+    /// Job 2 · the coach-line entry point onto 18a (`V5Route.pacesMoved`).
+    /// Present only when `model.paceNote != nil` — the way in must appear
+    /// exactly when there is something to say, never as a standing nudge.
+    var onOpenPacesMoved: () -> Void = {}
+    /// Job 1 · "report sick" — expand-in-place, off Today. `SickReportRowV5`
+    /// collects the backend's own vocabulary (symptom codes, the `started`
+    /// enum); the caller POSTs `/api/sick` and reloads, which is what turns
+    /// this into `SickFlareV5` on the next render.
+    var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
+
     @State private var calendarOpen = false
     @State private var accountOpen = false
     @State private var expandedBeforeRowID: String? = nil
@@ -173,8 +183,10 @@ struct TodayBeforeV5: View {
                     panel
                     groupsSection
                     whySection
+                    paceNoteSection
                     whereYouAreSection
                     beforeYouGoSection
+                    SickReportRowV5(onReport: onReportSick)
                 }
                 .padding(.horizontal, V5.S.gutter)
                 .padding(.bottom, V5.S.s24)
@@ -340,6 +352,23 @@ struct TodayBeforeV5: View {
             VStack(alignment: .leading, spacing: V5.S.s10) {
                 V5SectionLabel(text: "Why this run", color: V5.textSecondary)
                 CoachSay(text: why, size: .md)
+            }
+        }
+    }
+
+    // MARK: - Paces moved · Job 2
+    //
+    // The coach-line entry point onto 18a, right under "Why this run" —
+    // the closest thing on this screen to the route's own comment
+    // ("reached from a coach line, not from the bar"). `model.paceNote` is
+    // non-nil only when the active plan carries an unacknowledged pace-drop
+    // event, so this row appears exactly then and never as a standing nudge.
+
+    @ViewBuilder
+    private var paceNoteSection: some View {
+        if let note = model.paceNote {
+            ListGroup {
+                ListRow(label: note.label, sub: note.sub, onTap: onOpenPacesMoved)
             }
         }
     }

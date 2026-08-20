@@ -22,7 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
-import { loadPaceZoneEvent } from '@/lib/plan/pace-drop-event';
+import { loadPaceZoneEvent, acknowledgePaceZoneEvent } from '@/lib/plan/pace-drop-event';
 import { resolveZonePaces, formatDeltaLabel, formatPaceMinSec } from '@/lib/plan/pace-zones';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
@@ -51,6 +51,16 @@ export async function GET(req: NextRequest) {
   const event = await loadPaceZoneEvent(planRow.id);
   if (!event) {
     return NextResponse.json({ error: 'no_pace_change', reason: 'this plan has never recorded a pace re-anchor' }, { status: 404 });
+  }
+  // Once acknowledged (a race-representativeness answer, or the plain
+  // `POST` below for a non-race dismiss/confirm), the event has nothing
+  // left to say — same "genuine empty state" 404 as never having fired at
+  // all. Without this check, GET kept answering the same pending question
+  // forever: the confirm section would re-render for a question the runner
+  // already answered, and Today's paces-moved entry row (which reads this
+  // same route's success/404 as its gate) would never clear either.
+  if (event.acknowledgedAt) {
+    return NextResponse.json({ error: 'no_pace_change', reason: 'this pace re-anchor has already been settled' }, { status: 404 });
   }
 
   const isRaceEvidence = event.evidenceSource === 'race' && event.evidenceRaceSlug != null;
@@ -168,4 +178,33 @@ export async function GET(req: NextRequest) {
     evidence,
     confirm,
   });
+}
+
+/**
+ * POST /api/v5/paces · body `{ action: 'acknowledge' }`.
+ *
+ * Settles the plan's pending pace-drop event when the runner's answer is
+ * NOT a race-representativeness tier — "Got it" on a modelled dismiss,
+ * "Just a good patch" on a faster-training read, or "Update my paces" on a
+ * faster-race confirm. `POST /api/v5/race-authority` already acknowledges
+ * the race-anchored `representative` tier; this is the sibling for every
+ * other confirm option, so GET above can 404 once ANY of them has been
+ * answered rather than only the one race-tiered path.
+ */
+export async function POST(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
+
+  const planRow = (await pool.query<{ id: string }>(
+    `SELECT id FROM training_plans WHERE user_uuid = $1 AND archived_iso IS NULL
+      ORDER BY authored_iso DESC LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] }))).rows[0];
+  if (!planRow) {
+    return NextResponse.json({ error: 'no_active_plan' }, { status: 404 });
+  }
+
+  await acknowledgePaceZoneEvent(planRow.id);
+  return NextResponse.json({ ok: true });
 }

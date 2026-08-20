@@ -30,11 +30,13 @@ function baseCtx(overrides: Partial<V5TodayContext> = {}): V5TodayContext {
     why: null,
     whereYouAre: [],
     beforeYouGo: [],
+    paceNote: null,
     raceDay: false,
     recentRun: null,
     weekOff: null,
     offSeason: null,
     injury: null,
+    sick: null,
     convergence: null,
     ...overrides,
   };
@@ -64,6 +66,36 @@ describe('composeV5Today · state precedence', () => {
     expect(out.panel.quiet).toBe(true);
     expect(out.injury?.area).toBe('Left calf');
     expect(out.injury?.returnAvailable).toBe(false);
+  });
+
+  it('sick · a quiet panel too, but NOT the injury screen, and checked second', () => {
+    const out = composeV5Today(baseCtx({
+      sick: {
+        symptoms: ['Head cold', 'Fatigue'], hasFever: false,
+        since: 'Flagged today',
+        verdict: 'Rest, not run.',
+        checkIn: [{ id: 'better', label: 'Better today', sub: null, value: null, action: 'trend_better' }],
+      },
+    }));
+    expect(out.state).toBe('sick');
+    expect(out.panel.quiet).toBe(true);
+    expect(out.sick?.symptoms).toContain('Head cold');
+    expect(out.injury).toBeNull();
+  });
+
+  it('sick · an active injury takes the screen over a concurrent sick day', () => {
+    const out = composeV5Today(baseCtx({
+      injury: {
+        area: 'Left calf', since: 'Flagged 2 days ago', verdict: 'Rest, not run.',
+        whatChanged: [], checkIn: [], returnAvailable: false,
+      },
+      sick: {
+        symptoms: ['Fever'], hasFever: true, since: 'Flagged today',
+        verdict: 'Rest, not run.', checkIn: [],
+      },
+    }));
+    expect(out.state).toBe('injury_flare');
+    expect(out.sick).toBeNull();
   });
 
   it('week_off · a deliberate break, rest-hue gradient (not quiet)', () => {

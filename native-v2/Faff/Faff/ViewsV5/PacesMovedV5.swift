@@ -272,8 +272,16 @@ struct PacesMovedV5: View {
     /// Posting a representativeness tier for the last two would file an answer
     /// to a question nobody asked — the same mistake the Races card's
     /// fact/choice split exists to prevent — and with `raceSlug` nil it would
-    /// post an empty slug on top of that. So the write happens for
-    /// `race_counted` and a real slug, and nowhere else.
+    /// post an empty slug on top of that. So the representativeness write
+    /// happens for `race_counted` and a real slug, and nowhere else.
+    ///
+    /// `update` and `dismiss` are not race questions, but they are still
+    /// answers, and doing nothing with them left `GET /api/v5/paces`
+    /// answering the same pending question forever — this screen would
+    /// re-render the "Got it" / "Update my paces" confirm section on every
+    /// future visit even after it had already been tapped once. Both call
+    /// `acknowledgePaceDrop()`, the sibling `POST /api/v5/paces` write for
+    /// every confirm option that is not a race-representativeness tier.
     private func confirm(tier: String, settleWith option: V5Row?) {
         guard !isBusy else { return }
         isBusy = true
@@ -281,6 +289,8 @@ struct PacesMovedV5: View {
             if paces.confirm.kind == "race_counted",
                let slug = paces.confirm.raceSlug, !slug.isEmpty {
                 _ = try? await API.confirmRaceAuthority(slug: slug, tier: tier)
+            } else {
+                _ = try? await API.acknowledgePaceDrop()
             }
             await MainActor.run {
                 isBusy = false

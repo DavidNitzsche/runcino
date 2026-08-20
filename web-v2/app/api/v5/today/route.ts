@@ -32,6 +32,7 @@ import { deriveRecap } from '@/lib/coach/run-recap';
 import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 import { runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
+import { loadPaceZoneEvent } from '@/lib/plan/pace-drop-event';
 import {
   composeV5Today,
   type V5TodayContext,
@@ -41,6 +42,42 @@ import {
 } from '@/lib/faff/v5-today';
 
 export const dynamic = 'force-dynamic';
+
+/** `sick_episodes.symptoms` codes → display copy (18a-style human labels).
+ *  Unknown codes pass through verbatim rather than vanishing — a symptom the
+ *  runner picked should never silently disappear from their own report. */
+const SYMPTOM_LABELS: Record<string, string> = {
+  head_cold: 'Head cold',
+  chest: 'Chest',
+  fever: 'Fever',
+  gi: 'Upset stomach',
+  aches: 'Body aches',
+  fatigue: 'Fatigue',
+  voice: 'Lost voice',
+  other: 'Something else',
+};
+function symptomLabel(code: string): string {
+  return SYMPTOM_LABELS[code] ?? code;
+}
+
+/** Today's own entry point onto 18a (design contract: "reached from a coach
+ *  line, not from the bar"). Present only when the active plan carries an
+ *  UNACKNOWLEDGED pace-drop event — `GET /api/v5/paces` itself now 404s once
+ *  the event is acknowledged (see that route's own comment), so this reads
+ *  the same event and applies the same filter, rather than trusting presence
+ *  alone and showing a stale nudge forever. */
+async function loadPaceNoteRow(planId: string | null): Promise<V5Row | null> {
+  if (!planId) return null;
+  const event = await loadPaceZoneEvent(planId).catch(() => null);
+  if (!event || event.acknowledgedAt) return null;
+  return {
+    id: 'paces-moved',
+    label: event.direction === 'slower' ? 'Paces moved slower' : 'Paces moved faster',
+    sub: 'See what changed and confirm it',
+    value: null,
+    action: 'paces_moved',
+  };
+}
 
 const PHASE_FROM_LABEL: Record<string, PurposePhase> = {
   BASE: 'BASE', base: 'BASE',
@@ -209,6 +246,41 @@ export async function GET(req: NextRequest) {
         { id: 'worse', label: 'Worse', sub: 'Worth a call with someone who can look at it', value: null, action: 'checkin_worse' },
       ],
       returnAvailable,
+    };
+    return NextResponse.json(composeV5Today(ctx));
+  }
+
+  // ── Sick — checked second, a quiet panel too but NOT the injury screen ──
+  //
+  // A sick day is systemic illness (`sick_episodes`: symptoms + fever,
+  // self-reported), not a diagnosed musculoskeletal issue (`runner_injuries`,
+  // the block above). It still pauses today — same quiet, no-gradient
+  // treatment as injury — but the check-in is a daily TREND
+  // (better/same/worse/recovered → `POST /api/sick/recovery`), not a
+  // one-shot note, and 'recovered' clears the episode server-side rather
+  // than gating a return-to-running ladder the way injury's does. An active
+  // injury takes precedence over a concurrent sick day (rarer overlap, and
+  // the injury's load restriction is the more specific one).
+  if (glance.activeSick) {
+    const sick = glance.activeSick;
+    const daysSince = Math.max(0, Math.floor(sick.days_active));
+    const since = daysSince === 0 ? 'Flagged today' : daysSince === 1 ? 'Flagged yesterday' : `Flagged ${daysSince} days ago`;
+    const verdict = sick.has_fever
+      ? 'Rest, not run. A fever means the body is fighting something. Running adds load it does not have to spare.'
+      : 'Rest, not run. Whatever this is gets a real day off before anything asks more of you.';
+    const ctx: V5TodayContext = emptyContext(today, true);
+    ctx.weekStripDays = weekStripDays;
+    ctx.sick = {
+      symptoms: sick.symptoms.map(symptomLabel),
+      hasFever: sick.has_fever,
+      since,
+      verdict,
+      checkIn: [
+        { id: 'better', label: 'Better today', sub: 'Still resting, trending the right way', value: null, action: 'trend_better' },
+        { id: 'same', label: 'About the same', sub: 'Another day off, then reassess', value: null, action: 'trend_same' },
+        { id: 'worse', label: 'Worse', sub: 'Worth a call with someone who can look at it', value: null, action: 'trend_worse' },
+        { id: 'recovered', label: "I'm better, let's run", sub: 'Clears this and hands today back to the plan', value: null, action: 'trend_recovered' },
+      ],
     };
     return NextResponse.json(composeV5Today(ctx));
   }
@@ -443,6 +515,7 @@ export async function GET(req: NextRequest) {
       ctx.why = why;
       ctx.whereYouAre = buildWhereYouAre(glance);
       ctx.recentRun = recentRun;
+      ctx.paceNote = await loadPaceNoteRow(activePlan?.id ?? null);
       return NextResponse.json(composeV5Today(ctx));
     }
   }
@@ -614,6 +687,7 @@ export async function GET(req: NextRequest) {
   ctx.beforeYouGo = beforeYouGo;
   ctx.raceDay = raceDay;
   ctx.convergence = convergence;
+  ctx.paceNote = await loadPaceNoteRow(activePlan?.id ?? null);
 
   return NextResponse.json(composeV5Today(ctx));
 }

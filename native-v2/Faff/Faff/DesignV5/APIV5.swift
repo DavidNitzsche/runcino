@@ -218,6 +218,11 @@ enum V5TodayState: String, Decodable {
     case afterRun = "after_run"
     case changedOvernight = "changed_overnight"
     case injuryFlare = "injury_flare"
+    /// Systemic illness (`sick_episodes`), not a diagnosed injury
+    /// (`runner_injuries`, `.injuryFlare` above). Same quiet, no-gradient
+    /// treatment; a different backing table, verdict copy and check-in
+    /// (a daily trend, not a one-shot note — see `V5Sick`).
+    case sick = "sick"
     case weekOff = "week_off"
     case offSeason = "off_season"
     case raceDay = "race_day"
@@ -323,6 +328,21 @@ struct V5Injury: Decodable, Equatable {
     let returnAvailable: Bool
 }
 
+/// Systemic illness, from `sick_episodes` — NOT `V5Injury`. Same shape on
+/// the wire (a quiet panel, a verdict, a check-in list), because both are
+/// "the engine read it and the answer is not today" — but `checkIn` here is
+/// a daily TREND (better/same/worse/recovered → `POST /api/sick/recovery`),
+/// not a one-shot note, and there is no `returnAvailable` ladder: answering
+/// `recovered` clears the episode server-side and Today reverts to its
+/// normal state on its own next load.
+struct V5Sick: Decodable, Equatable {
+    let symptoms: [String]
+    let hasFever: Bool
+    let since: String
+    let verdict: String
+    let checkIn: [V5Row]
+}
+
 struct V5WeekOff: Decodable, Equatable {
     let reason: String
     let fromISO: String
@@ -354,6 +374,10 @@ struct V5Today: Decodable, Equatable {
     let why: String?
     let whereYouAre: [V5Row]
     let beforeYouGo: [V5Row]
+    /// Today's own entry point onto 18a. Present only when the active plan
+    /// carries an unacknowledged pace-drop event — `V5Route.pacesMoved`,
+    /// "reached from a coach line, not from the bar".
+    let paceNote: V5Row?
 
     // ── after a run ──
     /// The asked-vs-ran table. Effort is the only tappable row.
@@ -374,6 +398,7 @@ struct V5Today: Decodable, Equatable {
     // ── the state screens ──
     let changed: V5Convergence?
     let injury: V5Injury?
+    let sick: V5Sick?
     let weekOff: V5WeekOff?
     let offSeason: V5OffSeason?
 
@@ -694,6 +719,12 @@ struct V5LogEntry: Decodable, Equatable, Hashable, Identifiable {
 // shell exception the README names.
 
 struct V5RaceDetail: Decodable, Equatable {
+    /// Needed to POST a result back against this race. Absent from the
+    /// screen's original contract — `RaceDetailHostV5` used to carry the
+    /// slug on its own and this view never saw it — so a result-entry
+    /// section has to read it off the payload the same way every other
+    /// field here does.
+    let slug: String
     let name: String
     let dateLine: String
     let goal: V5Number?
@@ -711,6 +742,28 @@ struct V5RaceDetail: Decodable, Equatable {
     let taperCentreLabel: String?
     let gear: [V5Row]
     let coachLine: String?
+    /// Whether — and how — this race can take a logged result. Absent
+    /// entirely on an upcoming race (no entry makes sense yet).
+    let resultEntry: V5RaceResultEntry?
+}
+
+/// Job 3 · "no way to enter a race result". Rule-one territory: `status`
+/// distinguishes a chip time that has LOCKED (`"confirmed"`) from one that
+/// is only an auto-detected/watch-matched guess (`"provisional"`,
+/// CLAUDE.md's "Training effort · race to lock in" — explicitly NOT
+/// authoritative for fitness) from nothing logged at all (`nil`). `finish`
+/// carries `modelled: true` on a provisional read, so `FaffValueText`
+/// draws the amber tilde on it automatically — a provisional result cannot
+/// reach this screen looking confirmed even by accident.
+struct V5RaceResultEntry: Decodable, Equatable {
+    let isPast: Bool
+    /// `"confirmed" | "provisional"`, or nil when nothing has been logged
+    /// (or the race hasn't happened yet). `"confirmed"` gets no entry form
+    /// at all — nothing left to ask.
+    let status: String?
+    /// The currently known finish, if any — prefilled into the entry form
+    /// so confirming a provisional time doesn't mean retyping it.
+    let finish: V5Number?
 }
 
 struct V5ElevationMark: Decodable, Equatable, Hashable, Identifiable {
@@ -976,6 +1029,17 @@ extension API {
         var body: [String: Any] = ["slug": slug, "tier": tier]
         if let note { body["note"] = note }
         return try await v5Write("api/v5/race-authority", body: body)
+    }
+
+    /// Sets the plan's pending pace-drop event aside without a race behind
+    /// it — the "Got it" / "Just a good patch" / "Update my paces" (faster
+    /// -race) confirms, none of which are a race-representativeness answer.
+    /// Without this, `GET /api/v5/paces` (which now 404s only once the event
+    /// is acknowledged) would keep answering the same pending question
+    /// forever, and Today's paces-moved entry row would never clear either.
+    @discardableResult
+    static func acknowledgePaceDrop() async throws -> V5Write {
+        try await v5Write("api/v5/paces", body: ["action": "acknowledge"])
     }
 
     /// What a v5 write came back as.
