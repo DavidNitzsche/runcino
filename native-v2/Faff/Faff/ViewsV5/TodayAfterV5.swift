@@ -49,6 +49,9 @@ struct TodayAfterV5: View {
     var onPushStrava: () -> Void
     /// Day stepping, shared with the before-run screen — a finished day is
     /// just as steppable as a planned one.
+    /// A day in the strip was tapped. The id is the plan row's server id, the
+    /// same contract `TodayBeforeV5` uses — identity is never the date.
+    var onPickDay: (String) -> Void = { _ in }
     var viewingDayLabel: String? = nil
     var onBackToToday: (() -> Void)? = nil
     var initials: String? = nil
@@ -83,9 +86,11 @@ struct TodayAfterV5: View {
          onChangeShoe: @escaping () -> Void = {},
          onRowAction: @escaping (V5Row) -> Void = { _ in },
          onPushStrava: @escaping () -> Void = {},
+         onPickDay: @escaping (String) -> Void = { _ in },
          viewingDayLabel: String? = nil,
          onBackToToday: (() -> Void)? = nil,
-         initials: String? = nil) {
+         initials: String? = nil,
+         onReportSick: @escaping (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }) {
         self.viewingDayLabel = viewingDayLabel
         self.onBackToToday = onBackToToday
         self.initials = initials
@@ -97,6 +102,8 @@ struct TodayAfterV5: View {
         self.onChangeShoe = onChangeShoe
         self.onRowAction = onRowAction
         self.onPushStrava = onPushStrava
+        self.onPickDay = onPickDay
+        self.onReportSick = onReportSick
 
         // The one row the server marks actionable in this table is effort.
         // If it has not been answered yet, the scale opens by default —
@@ -170,7 +177,12 @@ struct TodayAfterV5: View {
                 }
             }
 
-            WeekStripV5(days: model.weekStrip.map { $0.strip })
+            // The strip is a WAY THROUGH THE WEEK on every state that shows
+            // it, not only the one before the run. It was inert here — which
+            // is the state the runner is in for most of the day once they
+            // have run.
+            WeekStripV5(days: model.weekStrip.map { $0.strip },
+                        onTap: { day in onPickDay(day.id) })
 
             VStack(alignment: .leading, spacing: V5.S.s2) {
                 if let kicker = model.panel.kicker {

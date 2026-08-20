@@ -410,7 +410,7 @@ struct ElevationProfile: View {
     /// A profile needs at least two readings. With none, the marks were still
     /// drawn — three bare vertical lines floating in an empty box, which reads
     /// as a chart that failed rather than as a course with no stored geometry.
-    /// The named marks are still worth showing; the chart is not.
+    /// Neither the chart nor its marks are drawn without one.
     private var hasSeries: Bool { points.count > 1 }
 
     var body: some View {
@@ -444,7 +444,12 @@ struct ElevationProfile: View {
             .frame(height: height)
             }
 
-            if !marks.isEmpty {
+            // A mark is a POSITION on the profile. With no profile there is
+            // nothing to mark, and the labels sat in an empty box as three
+            // orphan lines — on the race screen they also repeat the pace
+            // plan's own section names a few rows further down. The footnote
+            // below still carries the reason the chart is missing.
+            if hasSeries, !marks.isEmpty {
                 VStack(alignment: .leading, spacing: V5.S.s4) {
                     ForEach(marks) { m in
                         Text(m.label)

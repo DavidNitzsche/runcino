@@ -210,9 +210,13 @@ struct TodayHostV5: View {
                          onChangeShoe: { path.append(.shoes) },
                          onRowAction: { _ in },
                          onPushStrava: { Task { await pushStrava(model) } },
+                         onPickDay: { id in pickDay(id, in: model) },
                          viewingDayLabel: viewingDayLabel,
                          onBackToToday: { backToToday() },
-                         initials: initials)
+                         initials: initials,
+                         onReportSick: { sym, started, fever in
+                             Task { await reportSick(sym, started, fever) }
+                         })
 
         case .beforeRun, .raceDay:
             TodayBeforeLiveV5(model: model,

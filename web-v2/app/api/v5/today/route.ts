@@ -675,7 +675,12 @@ export async function GET(req: NextRequest) {
       : prescriptionType === 'intervals' ? fmtSingle(dp.intervalSec)
       : null)
     : null;
-  ctx.hrCapStat = dp.aerobicCapBpm != null ? `${dp.aerobicCapBpm} bpm` : null;
+  // A ceiling is a ceiling FOR SOMETHING. On a rest day there is no running
+  // to hold under it, and the poster showed "HR ceiling 144 bpm" beside the
+  // word REST. Same guard the pace band already has: no plan, no stat.
+  ctx.hrCapStat = (todayPlan && prescriptionType !== 'rest' && dp.aerobicCapBpm != null)
+    ? `${dp.aerobicCapBpm} bpm`
+    : null;
   // The design's 5a poster shows a third stat, "effort" (an RPE band). No
   // engine constant prescribes one per workout type — Rule 1 in reverse: an
   // invented number is worse than a missing stat. Left null (the panel

@@ -350,7 +350,12 @@ struct TodayBeforeV5: View {
     private var whySection: some View {
         if let why = model.why, !why.isEmpty {
             VStack(alignment: .leading, spacing: V5.S.s10) {
-                V5SectionLabel(text: "Why this run", color: V5.textSecondary)
+                // A rest day has no run to explain. Same coach line, honest
+                // header — the panel's own day state is the only thing that
+                // decides it, so a day the engine calls rest never gets
+                // asked about a run that was never prescribed.
+                V5SectionLabel(text: model.panel.dayState == "rest" ? "Why this day" : "Why this run",
+                               color: V5.textSecondary)
                 CoachSay(text: why, size: .md)
             }
         }
