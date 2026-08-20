@@ -224,9 +224,15 @@ enum V5Grain {
         }
 
         // Centred on 0.5 so `overlay` is a no-op on average and a texture
-        // locally. The amplitude is the whole game: at 0.30 it read as static,
-        // and this is the value that reads as a tooth on glass.
-        let deviation = 0.16
+        // locally.
+        //
+        // The amplitude is the whole game, and it has taken four passes on a
+        // real display to land: 1.0 read as static, 0.30-with-a-clouds-octave
+        // read as blotches, 0.16 was a visible tooth, and this is the one that
+        // reads as a surface rather than as an effect. Grain in this design is
+        // there to keep white type legible on a gradient without a scrim — the
+        // moment it is noticeable AS grain it is doing more than its job.
+        let deviation = 0.085
 
         for i in 0..<(n * n) {
             for c in 0..<3 {

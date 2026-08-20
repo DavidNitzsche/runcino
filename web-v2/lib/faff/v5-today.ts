@@ -85,6 +85,15 @@ export interface V5Panel {
   dayState: V5DayStateWord;
   quiet: boolean;
   place: string;
+  /**
+   * The panel's own line, beside the week line.
+   *
+   * Not literally a date any more. Today fills it with the PHASE — the week
+   * strip already highlights which day it is and the place label already says
+   * TODAY, so spending the panel's one prominent line on "Thursday 20 August"
+   * was spending it on the thing the runner is least likely to be asking.
+   * Where they are in the block is the thing.
+   */
   dateLine: string;
   weekLine: string | null;
   kicker: string | null;
@@ -361,6 +370,8 @@ export interface V5TodayContext {
     originalSubLabel: string | null;
   } | null;
   weekLine: string | null; // "Week 6 of 16"
+  /** The block phase, title-cased for display ("Maintenance", "Base"). */
+  phaseLine: string | null;
 
   weekStripDays: Array<{
     id: string;
@@ -704,7 +715,7 @@ export function composeV5Today(ctx: V5TodayContext): V5Today {
       dayState: dayStateWordFor(ctx.todayPlan?.type),
       quiet: false,
       place: 'Today',
-      dateLine: dateLineFor(ctx.todayISO),
+      dateLine: ctx.phaseLine ?? dateLineFor(ctx.todayISO),
       weekLine: `Logged ${fmtClock(ctx.recentRun.durationSec) ?? ''}`,
       kicker: built.panelKicker,
       type: displayTypeFor(ctx.todayPlan?.type, ctx.todayPlan?.subLabel),
@@ -736,7 +747,7 @@ export function composeV5Today(ctx: V5TodayContext): V5Today {
     dayState: changed ? 'rest' : dayStateWordFor(ctx.todayPlan?.type),
     quiet: false,
     place: 'Today',
-    dateLine: dateLineFor(ctx.todayISO),
+    dateLine: ctx.phaseLine ?? dateLineFor(ctx.todayISO),
     weekLine: changed
       ? (ctx.convergence
           ? `Updated ${ctx.convergence.updatedAt}${ctx.convergence.wasType ? ' · was ' + ctx.convergence.wasType : ''}`

@@ -17,6 +17,7 @@ function baseCtx(overrides: Partial<V5TodayContext> = {}): V5TodayContext {
     raceMode: true,
     todayPlan: null,
     weekLine: 'Week 6 of 16',
+    phaseLine: 'Base',
     weekStripDays: [
       { id: 'w1', dateISO: '2026-08-18', plannedType: 'easy', subLabel: null, isToday: false, isRest: false, isDone: true },
       { id: 'date:2026-08-19', dateISO: TODAY, plannedType: 'easy', subLabel: null, isToday: true, isRest: false, isDone: false },

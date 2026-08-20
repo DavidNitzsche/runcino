@@ -425,6 +425,14 @@ export async function GET(req: NextRequest) {
       const ctx: V5TodayContext = emptyContext(today, true);
       ctx.todayPlan = todayPlan;
       ctx.weekLine = weekLine;
+  // The panel's line, beside the week line. Where the runner is in the block
+  // beats what today's date is: the strip already highlights the day and the
+  // place label already says TODAY.
+  //
+  // `phaseLabel` arrives SHOUTED ("MAINTENANCE", "RACE-SPECIFIC") because it
+  // is an enum, not copy. The display register uppercases what it needs to;
+  // copy should not arrive pre-shouted.
+  ctx.phaseLine = phaseWords(glance.phaseLabel);
       ctx.weekStripDays = weekStripDays;
       ctx.why = why;
       ctx.whereYouAre = buildWhereYouAre(glance);
@@ -587,10 +595,22 @@ export async function GET(req: NextRequest) {
 
 // ── Small local helpers ───────────────────────────────────────────────────
 
+
+/**
+ * "MAINTENANCE" -> "Maintenance", "RACE-SPECIFIC" -> "Race specific".
+ * An enum is not copy; title-case it before it reaches a panel.
+ */
+function phaseWords(label: string | null | undefined): string | null {
+  if (!label) return null;
+  const words = String(label).toLowerCase().replace(/[_-]+/g, ' ').trim();
+  if (!words) return null;
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 function emptyContext(todayISO: string, raceMode: boolean): V5TodayContext {
   return {
     todayISO, raceMode,
-    todayPlan: null, weekLine: null, weekStripDays: [],
+    todayPlan: null, weekLine: null, phaseLine: null, weekStripDays: [],
     prescription: null, weatherKicker: null, paceBandStat: null, hrCapStat: null, effortStat: null, why: null,
     whereYouAre: [], beforeYouGo: [], raceDay: false, recentRun: null,
     weekOff: null, offSeason: null, injury: null, convergence: null,
