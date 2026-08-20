@@ -109,7 +109,12 @@ struct ShoesV5: View {
                     RangeScale(mode: .progress,
                                min: 0, max: shoe.retireAtMi,
                                value: shoe.mileage,
-                               endpoints: (FaffFmt.milesUnit(shoe.mileage) ?? "0 mi",
+                               // The left endpoint used to repeat the shoe's
+                               // mileage, which is already on the title row —
+                               // "no content is ever printed twice on one
+                               // screen". The scale starts at nothing and ends
+                               // at the band; that is what the two ends mean.
+                               endpoints: ("New",
                                            "\(Int(shoe.retireAtMi.rounded())) mi retirement"),
                                size: .s)
                 }

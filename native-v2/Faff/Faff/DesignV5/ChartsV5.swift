@@ -359,8 +359,15 @@ struct ElevationProfile: View {
         return points.map { ($0 - lo) / span }
     }
 
+    /// A profile needs at least two readings. With none, the marks were still
+    /// drawn — three bare vertical lines floating in an empty box, which reads
+    /// as a chart that failed rather than as a course with no stored geometry.
+    /// The named marks are still worth showing; the chart is not.
+    private var hasSeries: Bool { points.count > 1 }
+
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.s10) {
+            if hasSeries {
             ZStack(alignment: .topLeading) {
                 ElevationLine(points: points, closed: true).fill(V5.plotQuiet)
                 ElevationLine(points: points)
@@ -387,6 +394,7 @@ struct ElevationProfile: View {
                 }
             }
             .frame(height: height)
+            }
 
             if !marks.isEmpty {
                 VStack(alignment: .leading, spacing: V5.S.s4) {

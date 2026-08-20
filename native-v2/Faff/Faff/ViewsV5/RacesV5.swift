@@ -109,6 +109,8 @@ struct RacesV5: View {
 
     /// An evidence row with an `action` was tapped.
     var onEvidenceTap: (V5Row) -> Void = { _ in }
+    /// Push race detail for a schedule row.
+    var onOpenRace: (V5RaceRow) -> Void = { _ in }
 
     /// Identity is the server id, never the date — expand-in-place keys off
     /// `V5RaceRow.id`.
@@ -123,7 +125,7 @@ struct RacesV5: View {
                     RaceDecisionCardV5(card: card, onAnswer: onAnswer)
                 }
 
-                RaceScheduleGroupV5(rows: model.schedule, expandedID: $expandedRaceID)
+                RaceScheduleGroupV5(rows: model.schedule, expandedID: $expandedRaceID, onOpen: onOpenRace)
 
                 Tile {
                     TrendBars(values: model.trend,
@@ -410,6 +412,12 @@ struct FlowLayoutV5: Layout {
 struct RaceScheduleGroupV5: View {
     let rows: [V5RaceRow]
     @Binding var expandedID: String?
+    /// Pushes race detail (8a). The README is explicit that 8a is "pushed
+    /// from a schedule row on Races" — the prototype's markup only ever
+    /// toggles the expansion, so the first build read it as expand-only and
+    /// left the whole screen unreachable. The expansion keeps its rows AND
+    /// carries the way in.
+    var onOpen: (V5RaceRow) -> Void = { _ in }
 
     /// ─────────────────────────────────────────────────────────────────────
     /// AHEAD AND BEHIND ARE TWO DIFFERENT LISTS
@@ -456,7 +464,9 @@ struct RaceScheduleGroupV5: View {
 
             VStack(spacing: 0) {
                 ForEach(items) { row in
-                    RaceScheduleRowV5(row: row, isExpanded: expandedID == row.id) {
+                    RaceScheduleRowV5(row: row,
+                                      isExpanded: expandedID == row.id,
+                                      onOpen: { onOpen(row) }) {
                         withAnimation(V5.Motion.expand) {
                             expandedID = (expandedID == row.id) ? nil : row.id
                         }
@@ -472,6 +482,7 @@ struct RaceScheduleGroupV5: View {
 private struct RaceScheduleRowV5: View {
     let row: V5RaceRow
     let isExpanded: Bool
+    let onOpen: () -> Void
     let onTap: () -> Void
 
     /// The upcoming A race — the one the season is currently pointed at.
@@ -532,6 +543,7 @@ private struct RaceScheduleRowV5: View {
                 .padding(.horizontal, V5.S.tilePad)
                 .frame(minHeight: 58)
                 .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
                 .background(isExpanded ? V5.materialControl : Color.clear)
             }
             .buttonStyle(V5PressStyle())
@@ -551,6 +563,14 @@ private struct RaceScheduleRowV5: View {
                             }
                         }
                     }
+
+                    // The way into race detail. Expand-in-place answers "what
+                    // is this race"; the pushed screen answers "how am I going
+                    // to run it", and the design has both.
+                    ListRow(label: "Race detail",
+                            sub: "Course, pace plan, taper, gear",
+                            onTap: onOpen)
+                        .padding(.horizontal, -V5.S.tilePad)
                 }
                 .padding(.horizontal, V5.S.tilePad)
                 .padding(.vertical, V5.S.s10)

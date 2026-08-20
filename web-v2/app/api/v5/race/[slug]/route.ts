@@ -140,7 +140,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
           id: `phase-${i}`,
           label: `Miles ${Math.round(p.start_mi)}-${Math.round(p.end_mi)}`,
           sub: [p.label, p.cue].filter(Boolean).join(' · ') || null,
-          value: num(`${p.display}/mi`, true),
+          // `display` already carries its unit ("6:58/mi"); appending
+          // another produced "6:55/mi/mi" on screen.
+          value: num(p.display, true),
           action: null,
         }));
       } catch { /* pacing is additive */ }

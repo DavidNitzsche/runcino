@@ -339,8 +339,8 @@ struct RootContainer: View {
                     if ProcessInfo.processInfo.arguments.contains("-faffLegacy") {
                         RootTabView()
                     } else {
-                        FaffV5Root { mode in
-                            LiveRunHostV5(mode: mode, onDismiss: {})
+                        FaffV5Root { mode, dismiss in
+                            LiveRunHostV5(mode: mode, onDismiss: dismiss)
                         }
                     }
                 }

@@ -279,7 +279,8 @@ struct RacesHostV5: View {
             if let model = surface.model {
                 RacesV5(model: model,
                         onAnswer: { a in Task { await send(a, model) } },
-                        onEvidenceTap: { _ in })
+                        onEvidenceTap: { _ in },
+                        onOpenRace: { row in path.append(.raceDetail(slug: row.slug)) })
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
@@ -329,6 +330,7 @@ struct RacesHostV5: View {
 
 struct RaceDetailHostV5: View {
     let slug: String
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var surface: V5Surface<V5RaceDetail>
 
     init(slug: String) {
@@ -339,7 +341,7 @@ struct RaceDetailHostV5: View {
     var body: some View {
         Group {
             if let d = surface.model {
-                RaceDetailV5(raceDetail: d)
+                RaceDetailV5(raceDetail: d, onBack: { dismiss() })
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
@@ -430,13 +432,15 @@ struct ReturnHostV5: View {
 }
 
 struct ShoesHostV5: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var shoes: [Shoe] = []
 
     var body: some View {
         ShoesV5(shoes: shoes,
                 onWear: { id in Task { await patch(id, ["preferred": true]) } },
                 onRetire: { id in Task { await patch(id, ["retired": true]) } },
-                onAddPair: {})
+                onAddPair: {},
+                onBack: { dismiss() })
             .task { await load() }
             .navigationBarBackButtonHidden(true)
     }
@@ -452,6 +456,7 @@ struct ShoesHostV5: View {
 }
 
 struct SettingsHostV5: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var runGate: PhoneRunGate
     @State private var model: SettingsV5Model?
 
@@ -464,7 +469,8 @@ struct SettingsHostV5: View {
                            onToggleSessionReminders: { v in Task { await patch(["push_enabled": v]) } },
                            onToggleWeeklySummary: { v in Task { await patch(["weekly_summary_enabled": v]) } },
                            onSetUnits: { u in Task { await patch(["units_distance": u]) } },
-                           onToggleStrava: {})
+                           onToggleStrava: {},
+                           onBack: { dismiss() })
             } else {
                 ScrollView { Skeleton(lines: 6).padding(.horizontal, V5.S.gutter) }
                     .background(V5.surfacePage)
@@ -518,7 +524,7 @@ struct FaffV5Root<LiveContent: View>: View {
     /// Read from the profile rather than passed in, so the account button
     /// shows the runner's own initials instead of an empty disc.
     @State private var accountName: String = ""
-    @ViewBuilder var live: (LiveRunMode) -> LiveContent
+    @ViewBuilder var live: (LiveRunMode, @escaping () -> Void) -> LiveContent
 
     var body: some View {
         RootV5(
@@ -691,8 +697,33 @@ struct LiveRunHostV5: View {
         tracker.state == .running ? tracker.pause() : tracker.start()
     }
 
+    /// ─────────────────────────────────────────────────────────────────────
+    /// ENDING A RUN HAS TO SAVE IT, AND HAS TO LET GO OF THE SCREEN
+    ///
+    /// This used to call `tracker.finish()` and a caller-supplied `onDismiss`
+    /// that was literally `{}`. Two failures at once, and the second one hid
+    /// the first: the recorded run never reached the server, and the console
+    /// is a `fullScreenCover` with no dismiss gesture, so the runner was left
+    /// on a frozen clock with no way out short of force-quitting the app.
+    ///
+    /// The save goes through `WatchSync.saveCompletionDurably`, which is the
+    /// same door the legacy recorder and the watch both use: it writes the
+    /// payload to disk BEFORE attempting the network, so a failed POST is
+    /// "will sync later" and never "run gone". That property is the whole
+    /// reason to reuse it rather than POST from here.
     private func end() {
-        if mode == .outdoor { tracker.finish() }
+        guard mode == .outdoor else {
+            // A treadmill session has no recorder behind it yet — the console
+            // owns its own numbers and nothing has ever been persisted from
+            // it. Leaving is leaving; it must not pretend to have saved.
+            onDismiss()
+            return
+        }
+        tracker.finish()
+        let payload = tracker.buildCompletionPayload(status: "completed")
+        if let data = try? JSONSerialization.data(withJSONObject: payload) {
+            Task { _ = await WatchSync.shared.saveCompletionDurably(data) }
+        }
         onDismiss()
     }
 }

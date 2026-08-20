@@ -98,7 +98,10 @@ struct AppBar: View {
     var onBack: (() -> Void)? = nil
 
     var body: some View {
-        HStack(alignment: .center, spacing: V5.S.s12) {
+        // Top-aligned, not centre-aligned. A long race name wraps to two or
+        // three lines, and a vertically-centred chevron then sits ON the
+        // title. The button belongs beside the FIRST line.
+        HStack(alignment: .top, spacing: V5.S.s12) {
             if let onBack {
                 Button(action: onBack) {
                     Image(systemName: "chevron.left")
@@ -203,6 +206,19 @@ struct ListRow: View {
         .frame(minHeight: 58)
         .frame(maxWidth: .infinity)
         .background(raised ? V5.materialTileRaised : Color.clear)
+        // ─────────────────────────────────────────────────────────────────
+        // WITHOUT THIS, A ROW IS ONLY TAPPABLE ON ITS LETTERS
+        //
+        // `Color.clear` is not hit-testable in SwiftUI, so a row whose only
+        // background is clear has no hit area of its own — the Button's
+        // target collapses onto the glyphs of the label and the chevron, and
+        // the whole middle of the row is dead space.
+        //
+        // It took a while to see because tapping a row usually LOOKS like it
+        // should work: aim at the text and it does. Settings and Shoes read
+        // as dead rows for exactly this reason, and every ListRow in the app
+        // had it.
+        .contentShape(Rectangle())
 
         if let onTap {
             Button(action: onTap) { content }
@@ -266,6 +282,7 @@ struct ExpandingRow<Expanded: View>: View {
                 .padding(.horizontal, V5.S.tilePad)
                 .frame(minHeight: 58)
                 .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
             }
             .buttonStyle(V5PressStyle())
 
@@ -603,6 +620,7 @@ struct FaffRadio: View {
             .padding(.horizontal, V5.S.tilePad)
             .padding(.vertical, V5.S.s16)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(V5PressStyle())
         .animation(V5.Motion.fill, value: checked)

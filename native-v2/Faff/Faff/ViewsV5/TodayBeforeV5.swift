@@ -448,7 +448,23 @@ struct TodayBeforeV5: View {
                     ListRow(label: row.label,
                             sub: row.sub,
                             value: row.value.optionalValue,
-                            onTap: row.action != nil ? { onAccountRowTap(row) } : nil)
+                            // Close the sheet FIRST, then hand the tap up.
+                            // A push that happens while the sheet is still
+                            // presented lands behind it: Settings and Shoes
+                            // both navigated correctly and were invisible,
+                            // which reads as two dead rows.
+                            // Dismiss, THEN navigate — and on separate ticks.
+                            // Pushing while the sheet is still up lands behind
+                            // it; pushing in the same update as the dismissal
+                            // gets coalesced away and nothing happens at all.
+                            // Both failure modes look identical on device: a
+                            // dead row.
+                            onTap: row.action != nil ? {
+                                withAnimation(V5.Motion.sheet) { accountOpen = false }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                    onAccountRowTap(row)
+                                }
+                            } : nil)
                 }
             }
 

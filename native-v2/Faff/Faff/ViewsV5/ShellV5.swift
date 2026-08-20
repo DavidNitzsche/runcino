@@ -247,7 +247,7 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
     @ViewBuilder var block: (Binding<[V5Route]>) -> BlockContent
     @ViewBuilder var races: (Binding<[V5Route]>) -> RacesContent
     @ViewBuilder var route: (V5Route) -> RouteContent
-    @ViewBuilder var live: (LiveRunMode) -> LiveContent
+    @ViewBuilder var live: (LiveRunMode, @escaping () -> Void) -> LiveContent
 
     @State private var paths: [FaffTabV5: [V5Route]] = [:]
     @State private var runPickerOpen = false
@@ -342,8 +342,11 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                 )
             }
         }
+        // The console has no dismiss gesture of its own, so the shell has to
+        // hand it a real way out. It used to be given `{}` at the call site,
+        // which meant End did nothing visible and the runner was stuck.
         .fullScreenCover(item: $liveRun) { mode in
-            live(mode)
+            live(mode, { liveRun = nil })
         }
         .preferredColorScheme(.dark)
     }
