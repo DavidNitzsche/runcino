@@ -157,9 +157,9 @@ struct TodayHostV5: View {
                 TodayChangedV5(panel: model.panel, convergence: changed,
                                onOpenAccount: { accountOpen = true })
             } else {
-                TodayBeforeV5(model: model, accountName: accountName,
+                TodayBeforeLiveV5(model: model, accountName: accountName,
                               accountWeekLine: model.panel.weekLine ?? "",
-                              accountRows: [], calendarWeeks: calendarWeeks(model))
+                              accountRows: [], fallbackCalendarWeeks: calendarWeeks(model))
             }
 
         case .injuryFlare:
@@ -169,18 +169,18 @@ struct TodayHostV5: View {
                               onCheckIn: { row in Task { await checkInNiggle(row.id) } },
                               onReturnToRunning: { path.append(.returnToRunning) })
             } else {
-                TodayBeforeV5(model: model, accountName: accountName,
+                TodayBeforeLiveV5(model: model, accountName: accountName,
                               accountWeekLine: model.panel.weekLine ?? "",
-                              accountRows: [], calendarWeeks: calendarWeeks(model))
+                              accountRows: [], fallbackCalendarWeeks: calendarWeeks(model))
             }
 
         case .weekOff:
             if let off = model.weekOff {
                 WeekOffV5(model: off, onOpenAccount: { accountOpen = true })
             } else {
-                TodayBeforeV5(model: model, accountName: accountName,
+                TodayBeforeLiveV5(model: model, accountName: accountName,
                               accountWeekLine: model.panel.weekLine ?? "",
-                              accountRows: [], calendarWeeks: calendarWeeks(model))
+                              accountRows: [], fallbackCalendarWeeks: calendarWeeks(model))
             }
 
         case .offSeason:
@@ -204,11 +204,11 @@ struct TodayHostV5: View {
                          initials: initials)
 
         case .beforeRun, .raceDay:
-            TodayBeforeV5(model: model,
+            TodayBeforeLiveV5(model: model,
                           accountName: accountName,
                           accountWeekLine: model.panel.weekLine ?? "",
                           accountRows: accountRows,
-                          calendarWeeks: calendarWeeks(model),
+                          fallbackCalendarWeeks: calendarWeeks(model),
                           onAccountRowTap: { row in
                               switch row.action {
                               case "settings": path.append(.settings)
@@ -218,7 +218,8 @@ struct TodayHostV5: View {
                           },
                           onPickDay: { id in pickDay(id, in: model) },
                           viewingDayLabel: viewingDayLabel,
-                          onBackToToday: { backToToday() })
+                          onBackToToday: { backToToday() },
+                          reload: { await surface.load() })
         }
     }
 
