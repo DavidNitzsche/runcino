@@ -702,8 +702,12 @@ struct SettingsHostV5: View {
                 SettingsV5(model: model,
                            onSetLongRunDay: { d in Task { await patch(["long_run_day": Self.dayKey(d)]) } },
                            onSetDaysPerWeek: { n in Task { await patchProfile(["weekly_frequency": n]) } },
-                           onToggleSessionReminders: { v in Task { await patch(["push_enabled": v]) } },
-                           onToggleWeeklySummary: { v in Task { await patch(["weekly_summary_enabled": v]) } },
+                           onToggleSessionReminders: { v in
+                               Task { await setPref("skip_recovery_enabled", v) }
+                           },
+                           onToggleWeeklySummary: { v in
+                               Task { await setPref("weekly_checkin_enabled", v) }
+                           },
                            onSetUnits: { u in Task { await patch(["units_distance": u]) } },
                            onToggleStrava: { Task { await connectStrava() } },
                            onBack: { dismiss() })
@@ -741,18 +745,30 @@ struct SettingsHostV5: View {
     private func load() async {
         await SettingsCache.shared.warm()
         let (settings, profile) = await SettingsCache.shared.read()
+        // THE SCHEDULER READS profile.notification_prefs, NOT settings.
+        // These two switches wrote `push_enabled` (which no notification
+        // category consults) and `weekly_summary_enabled` (which the
+        // settings route's allowlist drops on the floor), and the screen
+        // showed the weekly one as ON no matter what. Both now read and
+        // write the jsonb the cron actually gates on.
+        let prefs = try? await API.fetchNotificationPrefs()
         model = SettingsV5Model(
             longRunDay: Self.dayLabel(settings?.long_run_day ?? "sun"),
             longRunDayOptions: Self.dayNames.map(\.label),
             daysPerWeek: profile?.weekly_frequency ?? 5,
             phoneRunEnabled: settings?.phoneRunEnabled ?? true,
-            sessionReminders: settings?.push_enabled ?? true,
-            weeklySummary: true,
+            sessionReminders: prefs?.skip_recovery_enabled ?? true,
+            weeklySummary: prefs?.weekly_checkin_enabled ?? true,
             units: settings?.units_distance ?? "mi",
             unitsOptions: ["mi", "km"],
             stravaConnected: StravaConnection.isConnected,
             email: profile?.email ?? ""
         )
+    }
+
+    private func setPref(_ key: String, _ value: Bool) async {
+        _ = await API.patchNotificationPref(key: key, value: value)
+        await load()
     }
 
     private func patch(_ fields: [String: Any]) async {
