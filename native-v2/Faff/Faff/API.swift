@@ -1179,7 +1179,7 @@ enum API {
 
     /// Returns (slug, planError). slug is nil on HTTP failure; planError is set when the race
     /// was created but plan generation failed (e.g. runner's mileage too low).
-    static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?, startDate: String? = nil, availableDays: [String] = []) async throws -> (slug: String?, planError: String?) {
+    static func createRace(name: String, date: String, distanceLabel: String?, priority: String = "A", goal: String?, startDate: String? = nil, availableDays: [String] = []) async throws -> (slug: String?, planError: String?, refusal: String?) {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/race"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1190,11 +1190,27 @@ enum API {
         if !availableDays.isEmpty { body["available_days"] = availableDays }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
-        guard (200..<300).contains(http.statusCode) else { return (nil, nil) }
         let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard (200..<300).contains(http.statusCode) else {
+            // ─────────────────────────────────────────────────────────────
+            // A REFUSAL AND AN OUTAGE ARE NOT THE SAME (nil, nil)
+            //
+            // This collapsed a 400 carrying the engine's own reason into the
+            // same value as a dropped connection, so a caller could only ever
+            // show "something went wrong" — the outage treatment — for a
+            // decline the engine had explained perfectly well.
+            //
+            // A 4xx with a reason is an answer and comes back as `refusal`;
+            // anything else stays nil and is a real failure.
+            let reason = (json?["reason"] as? String) ?? (json?["error"] as? String)
+            if (400..<500).contains(http.statusCode), let reason, !reason.isEmpty {
+                return (nil, nil, reason)
+            }
+            return (nil, nil, nil)
+        }
         let slug = json?["slug"] as? String
         let planError = json?["plan_error"] as? String
-        return (slug, planError)
+        return (slug, planError, nil)
     }
 
     /// /api/targets/projection — VDOT + projection_sec + held_days + gap

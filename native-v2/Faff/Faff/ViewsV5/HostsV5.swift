@@ -399,47 +399,57 @@ struct BlockHostV5: View {
 struct RacesHostV5: View {
     @StateObject private var surface = V5Surfaces.races()
     @Binding var path: [V5Route]
+    @State private var addRaceOpen = false
 
     var body: some View {
-        Group {
-            if let model = surface.model {
-                RacesV5(model: model,
-                        onAnswer: { a in Task { await send(a, model) } },
-                        onEvidenceTap: { _ in },
-                        onOpenRace: { row in path.append(.raceDetail(slug: row.slug)) })
-            } else if let reason = surface.absentReason {
-                // The engine answered and the answer is that this does
-                // not apply. Silence, never ErrorNote: nothing failed.
-                ScrollView {
-                    Silence(reason: reason)
-                        .padding(.horizontal, V5.S.gutter)
-                        .padding(.top, V5.S.s40)
-                }
-                .background(V5.surfacePage)
-            } else if surface.isOutage {
-                ScrollView {
-                    OutageBodyV5(copy: .races, onRetry: { Task { await surface.load() } })
-                        .padding(.horizontal, V5.S.gutter)
-                        .padding(.top, V5.S.s40)
-                }
-                .background(V5.surfacePage)
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
-                        RoundedRectangle(cornerRadius: V5.R.panel, style: .continuous)
-                            .fill(V5.surface1).frame(height: 340)
-                        Skeleton(lines: 3)
+        ZStack {
+            Group {
+                if let model = surface.model {
+                    RacesV5(model: model,
+                            onAnswer: { a in Task { await send(a, model) } },
+                            onEvidenceTap: { _ in },
+                            onOpenRace: { row in path.append(.raceDetail(slug: row.slug)) },
+                            onAddRace: { addRaceOpen = true })
+                } else if let reason = surface.absentReason {
+                    ScrollView {
+                        Silence(reason: reason)
+                            .padding(.horizontal, V5.S.gutter)
+                            .padding(.top, V5.S.s40)
                     }
-                    .padding(.horizontal, V5.S.gutter)
+                    .background(V5.surfacePage)
+                } else if surface.isOutage {
+                    ScrollView {
+                        OutageBodyV5(copy: .races, onRetry: { Task { await surface.load() } })
+                            .padding(.horizontal, V5.S.gutter)
+                            .padding(.top, V5.S.s40)
+                    }
+                    .background(V5.surfacePage)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                            RoundedRectangle(cornerRadius: V5.R.panel, style: .continuous)
+                                .fill(V5.surface1).frame(height: 340)
+                            Skeleton(lines: 3)
+                        }
+                        .padding(.horizontal, V5.S.gutter)
+                    }
+                    .background(V5.surfacePage)
                 }
-                .background(V5.surfacePage)
+            }
+            .task {
+                await surface.load()
+                NotificationCenter.default.post(name: .faffSurfaceReady, object: "races")
+            }
+            .refreshable { await surface.load() }
+
+            V5SheetHost(isPresented: $addRaceOpen, title: "Add a race") {
+                AddRaceV5(onCancel: { addRaceOpen = false },
+                          onCreated: { _ in
+                              addRaceOpen = false
+                              Task { await surface.load() }
+                          })
             }
         }
-        .task {
-            await surface.load()
-            NotificationCenter.default.post(name: .faffSurfaceReady, object: "races")
-        }
-        .refreshable { await surface.load() }
     }
 
     /// The card's own answers, sent back verbatim. The client never decides
