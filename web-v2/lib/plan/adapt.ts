@@ -175,6 +175,26 @@ export interface AdaptationTrigger {
   evidence: Record<string, any>;
 }
 
+/**
+ * Gap B3 (2026-08-19) · the structured convergence verdict, carried from
+ * `AdaptationTrigger.evidence` onto an `AdaptationAction` and then into the
+ * `coach_intents.value` jsonb column — see `AdaptationAction.convergence`.
+ * Mirrors `ConvergenceVerdict` (lib/coach/convergence.ts) minus the per-domain
+ * `phrase` (already flattened into the trigger's `evidence.phrases`).
+ */
+export interface AdaptationConvergenceRecord {
+  grade: 'green' | 'amber' | 'red';
+  converging: string[];
+  domains: Array<{
+    domain: string;
+    dragging: boolean;
+    daysSustained: number;
+    suppressedBy: string | null;
+    counts: boolean;
+  }>;
+  rationale: string;
+}
+
 export interface AdaptationAction {
   /** 2026-08-17 · 'field_test' converts one quality day into a 30-minute
    *  threshold field test (type 'tempo', sub_label 'FIELD TEST'), spec
@@ -204,6 +224,21 @@ export interface AdaptationAction {
    *  reconstructs actions without it → treated as apply-now, same
    *  default-to-apply posture as before). */
   sourceTrigger?: AdaptationTriggerKind;
+  /**
+   * Gap B3 (2026-08-19) · the structured verdict `gradeConvergence()` graded
+   * this morning, carried from `detectReadinessPullback`'s trigger through to
+   * the `downgrade` action so `applyAdaptations` can persist it on the
+   * `coach_intents` row instead of letting it evaporate once the prose `why`
+   * is composed. Set only by the `readiness_pullback` red-grade case in
+   * `actionsForTrigger`; every other action kind leaves it undefined, which
+   * `writeIntent` records as `convergence: null`.
+   *
+   * Shape mirrors `ConvergenceVerdict` (lib/coach/convergence.ts) minus the
+   * `phrase` field the trigger's evidence already flattened into `phrases` —
+   * kept here as plain JSON (not the class type) because this is what a jsonb
+   * column holds, not a re-import of the grading module's internal shape.
+   */
+  convergence?: AdaptationConvergenceRecord | null;
   /** 2026-07-06 · 'note' actions · record-only. Writes a coach_intents
    *  row (reason = noteReason, field = workoutIds[0] ?? noteField) and
    *  mutates NOTHING in plan_workouts. Used for: dropped missed work
@@ -1152,6 +1187,17 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
               // silent destruction; this is the explicit kind.
               `UPDATE plan_workouts
                   SET type = $1,
+                      -- Gap B4 (2026-08-19) · original_type was read by
+                      -- adaptation-info.ts (typeChanged) and by the v5 Today
+                      -- surface's "was Threshold" kicker, but no writer ever
+                      -- set it — the column existed, nothing populated it.
+                      -- Same COALESCE-preserve shape as original_sub_label
+                      -- immediately below (Rule 6): never clobber a value an
+                      -- earlier mutation already recorded. References the OLD
+                      -- row's type, evaluated before this statement's own
+                      -- type = $1 takes effect (Postgres evaluates every
+                      -- SET expression against the pre-UPDATE row).
+                      original_type = COALESCE(original_type, type),
                       original_sub_label = COALESCE(original_sub_label, sub_label),
                       sub_label = $3,
                       pace_target_s_per_mi = NULL,
@@ -1168,15 +1214,28 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
             );
           } else {
             // Lateral move between quality kinds (rare · e.g. threshold
-            // → tempo) · just update type, leave the rest.
+            // → tempo) · just update type, leave the rest. Same original_type
+            // preservation as the branch above — a lateral downgrade is still
+            // a downgrade the "was X" kicker needs to name.
             await client.query(
-              `UPDATE plan_workouts SET type = $1 WHERE id = $2`,
+              `UPDATE plan_workouts
+                  SET type = $1,
+                      original_type = COALESCE(original_type, type)
+                WHERE id = $2`,
               [newType, wid]
             );
           }
           await writeIntent(client, userId, reason, wid, {
             kind: a.kind, newType: a.newType, why: a.why,
             source_trigger: a.sourceTrigger ?? null,
+            // Gap B3 (2026-08-19) · the structured convergence verdict that
+            // justified this downgrade, additive alongside the existing prose
+            // `why`. Present only when this downgrade was driven by
+            // readiness_pullback (see actionsForTrigger's 'readiness_pullback'
+            // case, which is the only place that sets `a.convergence`); null
+            // for every other downgrade source (heat_bail, missed-session
+            // catch-up, etc), which have no convergence verdict to carry.
+            convergence: a.convergence ?? null,
           });
           touched++;
         }
@@ -3463,6 +3522,22 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         forceApplyNow: true,
         // The runner is told what changed and why, naming the convergence.
         why: convergenceWhy(t, todayKey.type),
+        // Gap B3 · the structured verdict, so applyAdaptations can persist it
+        // on the coach_intents row instead of discarding everything but this
+        // prose `why`. `t.evidence` is exactly the shape detectReadinessPullback
+        // built (see its return above) — domains already carry dragging /
+        // daysSustained / suppressedBy / counts per the per-finding filter
+        // this rule applies (CLAUDE.md, locked 2026-05-19 round 4).
+        convergence: {
+          grade: grade as 'green' | 'amber' | 'red',
+          converging: Array.isArray((t.evidence as Record<string, unknown>)?.converging)
+            ? (t.evidence as Record<string, unknown>).converging as string[]
+            : [],
+          domains: Array.isArray((t.evidence as Record<string, unknown>)?.domains)
+            ? (t.evidence as Record<string, unknown>).domains as AdaptationConvergenceRecord['domains']
+            : [],
+          rationale: String((t.evidence as Record<string, unknown>)?.rationale ?? ''),
+        },
       }];
     }
     case 'heat_bail': {

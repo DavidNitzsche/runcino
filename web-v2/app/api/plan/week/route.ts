@@ -28,14 +28,16 @@
  * WeekStrip can retire its `is_past && type != "rest"` heuristic. We mirror
  * the canonicalMileageByDay → strava_id resolution from glance-state.ts
  * (see lines 138-170) so the strip agrees with /log on dedupe.
+ *
+ * 2026-08-19 · the loader itself moved to `lib/plan/week-loader.ts` so
+ * `GET /api/v5/today` (the v5 Today composer) can call the SAME function for
+ * its week strip instead of re-deriving this logic or round-tripping through
+ * HTTP. This route is now a thin wrapper — response shape unchanged.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { pool } from '@/lib/db/pool';
-import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { loadSettings } from '@/lib/coach/settings';
-import { trainingWeekWindow } from '@/lib/notifications/week-window';
+import { loadPlanWeek } from '@/lib/plan/week-loader';
 
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -44,221 +46,8 @@ export async function GET(req: NextRequest) {
   // 2026-06-06 · Audit C C6 · runner timezone, not the -7h Pacific hack.
   // Keeps the iPhone week-strip's "today" consistent with /api/watch/today.
   const today = await runnerToday(userId);
-  const dateParam = req.nextUrl.searchParams.get('date') ?? today;
+  const dateParam = req.nextUrl.searchParams.get('date') ?? undefined;
 
-  // 2026-06-16 · Week boundary derives from the runner's long-run day so the
-  // week ENDS on it (their last training day of the cycle). David runs long on
-  // Sunday → Mon–Sun; a Saturday-long runner → Sun–Sat. Was hardcoded Sat–Fri,
-  // which mislabeled the calendar for anyone whose long run isn't Saturday.
-  // 2026-07-06 · adversarial review issue 4: the boundary arithmetic now
-  // lives ONCE in lib/notifications/week-window.ts:trainingWeekWindow —
-  // shared with the weekly check-in cron — instead of being reimplemented
-  // here (duplicated math can drift; shared code can't).
-  const DOW_OF: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
-  const settings = await loadSettings(userId);
-  const longRunDow = DOW_OF[settings.long_run_day] ?? 0;       // default Sunday
-  const dow = new Date(dateParam + 'T12:00:00Z').getUTCDay();  // 0=Sun..6=Sat
-  const { week_start_iso: weekStart, week_end_iso: weekEnd } =
-    trainingWeekWindow(dateParam, dow, longRunDow);
-
-  // Active plan
-  const plan = (await pool.query(
-    `SELECT id FROM training_plans
-      WHERE user_uuid = $1 AND archived_iso IS NULL
-      ORDER BY authored_iso DESC LIMIT 1`,
-    [userId]
-  )).rows[0];
-
-  if (!plan) {
-    return NextResponse.json({
-      plan_id: null,
-      week_start_iso: null,
-      week_end_iso: null,
-      today_iso: today,
-      days: [],
-      message: 'No active plan.',
-    });
-  }
-
-  const rows = (await pool.query(
-    `SELECT id::text AS id, date_iso, dow, type, distance_mi, sub_label
-       FROM plan_workouts
-      WHERE plan_id = $1
-        AND date_iso::date BETWEEN $2::date AND $3::date
-      ORDER BY date_iso ASC`,
-    [plan.id, weekStart, weekEnd]
-  )).rows;
-
-  // 2026-05-28 Phase 17 — Resolve completed strava activity per day so the
-  // iPhone WeekStrip can show real DONE checkmarks instead of the
-  // `is_past && type != "rest"` heuristic. Mirrors glance-state.ts so the
-  // strip agrees with /log on dedupe.
-  //
-  // Best-effort: if the strava table is empty or the helper fails, we still
-  // emit a valid response with completedRunId=null + done_mi=null per day.
-  let actualByDate = new Map<string, { mi: number; id: string | null }>();
-  try {
-    const canonicalByDay = await canonicalMileageByDay(userId, weekStart, weekEnd);
-    const allCanonicalIds = Array.from(canonicalByDay.values()).flatMap((v) => v.canonicalIds);
-    const idLookup = allCanonicalIds.length > 0
-      ? (await pool.query(
-          `SELECT id::text AS row_id, data->>'id' AS strava_id,
-                  COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) AS day
-             FROM runs
-            WHERE id::text = ANY($1::text[])`,
-          [allCanonicalIds],
-        )).rows
-      : [];
-    const idByRow = new Map<string, { strava_id: string | null; day: string }>(
-      idLookup.map((r: any) => [String(r.row_id), { strava_id: r.strava_id ?? null, day: r.day }]),
-    );
-    for (const [day, info] of canonicalByDay) {
-      const firstRow = info.canonicalIds[0];
-      const stravaId = firstRow ? (idByRow.get(firstRow)?.strava_id ?? firstRow) : null;
-      actualByDate.set(day, { mi: info.mi, id: stravaId });
-    }
-  } catch {
-    // Swallow — leaves actualByDate empty so the response falls back to
-    // null/null per day. The WeekStrip just won't show DONE marks.
-    actualByDate = new Map();
-  }
-
-  // 2026-05-31 · expose skipped days. day_actions writes action='skip'
-  // when the runner taps Skip Today (POST /api/today/skip). Web /today
-  // already renders SKIPPED for that day; iPhone WeekStrip was getting
-  // completedRunId=null with no signal to distinguish "skipped" from
-  // "didn't run yet." Now both clients can render the skip glyph.
-  const skippedDates = new Set<string>();
-  try {
-    const r = await pool.query<{ date_iso: string }>(
-      `SELECT date_iso::text AS date_iso
-         FROM day_actions
-        WHERE user_uuid = $1 AND action = 'skip'
-          AND date_iso BETWEEN $2::date AND $3::date`,
-      [userId, weekStart, weekEnd],
-    );
-    for (const row of r.rows) skippedDates.add(row.date_iso);
-  } catch {
-    // Best-effort · skip indicator just won't show this week.
-  }
-
-  // 2026-06-20 · The strip is ONE pill per calendar day. A day can carry more
-  // than one plan_workouts row (e.g. an easy run + a strength session), so a
-  // naive rows.map() emitted a duplicate pill for that date ("21 21"), and a
-  // sparse plan left gaps (a rest day with no row, or only one authored row,
-  // produced a 1-day / non-contiguous strip — Lilley, 2026-06-20). Collapse to
-  // the primary RUNNING workout per day (legacy strength/cross rows fold
-  // out — STRENGTH-3 stopped emitting them, older plans still carry them),
-  // then emit
-  // EXACTLY 7 contiguous days from weekStart so the strip is always 7 pills,
-  // in order, no dupes, no gaps.
-  // 2026-07-07 · today-composition · P1-4 · race_week_tuneup (the taper-week
-  // quality day — see generate.ts) had no entry here, so `prioOf` fell to
-  // the default of 2 (below easy's 3) — on a double-booked day the strip
-  // silently showed the easy pill and hid the tune-up. It's a genuine
-  // quality/sharpening session; priority matches tempo/threshold.
-  const TYPE_PRIORITY: Record<string, number> = {
-    race: 6, long: 5,
-    intervals: 4, tempo: 4, threshold: 4, quality: 4, repetition: 4, fartlek: 4,
-    race_week_tuneup: 4,
-    easy: 3, recovery: 3,
-    cross: 2, xt: 2,
-    strength: 1,
-    rest: 0,
-  };
-  const prioOf = (t: string) => TYPE_PRIORITY[t] ?? 2;
-  const bestByDate = new Map<string, any>();
-  // 2026-07-07 · today-composition · P2-11 · collect EVERY running-type row
-  // per date (legacy strength/cross rows fold out — they aren't a
-  // "double-booked run day" the way two
-  // easy/tempo/long rows sharing a date are). The collapse below picks one
-  // row to show as the pill; runningRowsByDate lets the response say
-  // "there's a second one you're not seeing" without silently hiding it.
-  const NON_RUN_TYPES = new Set(['strength', 'cross', 'xt', 'rest']);
-  const runningRowsByDate = new Map<string, typeof rows>();
-  for (const r of rows) {
-    const prev = bestByDate.get(r.date_iso);
-    if (!prev
-        || prioOf(r.type) > prioOf(prev.type)
-        || (prioOf(r.type) === prioOf(prev.type) && Number(r.distance_mi) > Number(prev.distance_mi))) {
-      bestByDate.set(r.date_iso, r);
-    }
-    if (!NON_RUN_TYPES.has(r.type)) {
-      const arr = runningRowsByDate.get(r.date_iso) ?? [];
-      arr.push(r);
-      runningRowsByDate.set(r.date_iso, arr);
-    }
-  }
-
-  const addDaysISO = (iso: string, n: number): string => {
-    const d = new Date(iso + 'T12:00:00Z');
-    d.setUTCDate(d.getUTCDate() + n);
-    return d.toISOString().slice(0, 10);
-  };
-
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const dISO = addDaysISO(weekStart, i);
-    const r = bestByDate.get(dISO);
-    const actual = actualByDate.get(dISO);
-    const dow = new Date(dISO + 'T12:00:00Z').getUTCDay();
-    // 2026-07-07 · P2-11 · the collapse above picks ONE running row to show
-    // as the pill (bestByDate); when a date carries 2+, the rest are
-    // otherwise invisible on every client surface even though they still
-    // count toward weekly totals (build-workout.ts sums all rows). Surface
-    // the runner-up so clients can at least badge the day instead of
-    // silently dropping it.
-    const runningRows = runningRowsByDate.get(dISO) ?? [];
-    const secondary = runningRows.length > 1
-      ? runningRows.find((row) => row !== r) ?? null
-      : null;
-    return {
-      // 2026-08-19 · a plan day's IDENTITY is its row id, not its date.
-      // Nothing stops two plan_workouts rows sharing (plan_id, date_iso) —
-      // there is no unique index — and the collapse above already handles
-      // exactly that case (see `secondary`). Clients were keying their day
-      // lists on date_iso, which silently merges a double-booked date into
-      // one row and re-uses a stale view when a row is replaced. ADDITIVE:
-      // date_iso is untouched and stays the lookup key for "the day that
-      // holds this calendar date". Null on a synthesised rest day — the
-      // 7-day window emits every date whether or not a row exists for it.
-      plan_workout_id: r?.id ?? null,
-      date_iso: dISO,
-      dow,
-      type: r?.type ?? 'rest',
-      distance_mi: r ? Number(r.distance_mi) || 0 : 0,
-      sub_label: r?.sub_label ?? (r ? null : 'REST'),
-      is_today: dISO === today,
-      is_past: dISO < today,
-      // Phase 17 — real signal, retires the iOS `is_past && type != "rest"`
-      // heuristic in FaffAdapter.buildWeekStrip. Emit even for rest days
-      // (recovery jogs can be logged on rest days).
-      completedRunId: actual?.id ?? null,
-      done_mi: actual ? actual.mi : null,
-      // 2026-05-31 · runner tapped Skip Today (day_actions row).
-      skipped: skippedDates.has(dISO),
-      // 2026-07-07 · P2-11 · the SECOND running-type row on a double-booked
-      // date (e.g. an adapter-collided easy + long), or null when the date
-      // carries at most one. Minimal shape — just enough for a client to
-      // badge the day and show what the collapse is hiding.
-      // The runner-up carries its own row id for the same reason the primary
-      // does — it is the one row on the strip that provably shares a date
-      // with another, so a date key cannot tell the two apart.
-      secondaryRun: secondary
-        ? {
-            plan_workout_id: secondary.id ?? null,
-            type: secondary.type,
-            sub_label: secondary.sub_label ?? null,
-            distance_mi: Number(secondary.distance_mi) || 0,
-          }
-        : null,
-    };
-  });
-
-  return NextResponse.json({
-    plan_id: plan.id,
-    week_start_iso: weekStart,
-    week_end_iso: weekEnd,
-    today_iso: today,
-    days,
-  });
+  const result = await loadPlanWeek(userId, today, dateParam);
+  return NextResponse.json(result);
 }

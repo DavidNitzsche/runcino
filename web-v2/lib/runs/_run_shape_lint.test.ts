@@ -236,7 +236,12 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
     'app/api/admin/tester-watch/route.ts': 'Admin diagnostic · day/distance/maxHr.',
     'app/api/cron/dedupe-runs/route.ts': 'Dedup cron · day only.',
     'app/api/ingest/workout/route.ts': 'Ingest write path · client_workout_id/qualityFlag.',
-    'app/api/plan/week/route.ts': 'Day/id · next batch.',
+    // 2026-08-19 · relocated from app/api/plan/week/route.ts to
+    // lib/plan/week-loader.ts (the v5 Today composer's week-strip loader
+    // now shares this function instead of duplicating it) — same raw
+    // access, same reason, new address. The `day` fragment now goes
+    // through runDaySql(); only the provider `id` key remains raw here.
+    'lib/plan/week-loader.ts': 'Id (provider id) · next batch.',
     'app/api/prescription/route.ts':
       'Reads startLat and startLng, which are not keys on any row (the real one is ' +
       'startLatLng). Same open question as openmeteo.',
