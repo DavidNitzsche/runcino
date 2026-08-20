@@ -180,7 +180,7 @@ struct TodayBeforeV5: View {
 
             HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
                 Text(model.panel.dateLine)
-                    .faffDisplayV5(26)
+                    .faffDisplayV5(26, fit: false)
                     .foregroundStyle(V5.OnPanel.primary)
                 if let weekLine = model.panel.weekLine {
                     Text(weekLine)

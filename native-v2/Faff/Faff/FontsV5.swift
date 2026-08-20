@@ -293,7 +293,26 @@ extension View {
     /// Flagged to David along with the fit behaviour: both live here, and
     /// both move every screen at once.
     ///
-    /// - Parameter fit: false for a deliberately multi-line headline.
+    /// ─────────────────────────────────────────────────────────────────────
+    /// WHICH REGISTERS FIT AND WHICH WRAP
+    ///
+    /// Fitting is right for the GRAPHIC — a session type is one word and must
+    /// be one line, so THRESHOLD shrinks the 15% it needs rather than break.
+    ///
+    /// It is wrong for the 26pt date line, and the numbers say why. On a 390
+    /// device the panel gives 350pt; the week line beside it takes 111 and the
+    /// gap 12, leaving 227:
+    ///
+    ///     Thursday 20 August     288.9pt        THURSDAY 20 AUGUST   346.4pt
+    ///     Wednesday 30 September ~353pt
+    ///
+    /// No shrink floor that keeps 26 legible covers the long end of that, and
+    /// the prototype does not ask for one: its row is a plain CSS flex row, so
+    /// a long date simply WRAPS and the panel gets taller. The panel scrolls,
+    /// so that costs nothing. Wrapping there is the design's own behaviour,
+    /// not a failure of it — pass `fit: false` and let it.
+    ///
+    /// - Parameter fit: false for a register that may legitimately wrap.
     func faffDisplayV5(_ size: CGFloat, fit: Bool = true) -> some View {
         self
             .font(.faffDisplay(size))

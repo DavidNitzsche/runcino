@@ -474,3 +474,61 @@ struct FaffV5Root<LiveContent: View>: View {
         .task { await runGate.refresh() }
     }
 }
+
+// MARK: - Live run
+//
+// The one navigation in the design that leaves the shell entirely. Both
+// consoles need the day's plan — the pace band, the ceiling, the phases — and
+// that comes from the same `/api/watch/today` payload the watch reads, so the
+// phone and the wrist are never prescribing different things.
+
+struct LiveRunHostV5: View {
+    let mode: LiveRunMode
+    let onDismiss: () -> Void
+
+    /// Owned here, for exactly the run's lifetime. The consoles observe and
+    /// tick it; they do not own it, because ending a run has to outlive the
+    /// screen that was showing it.
+    @StateObject private var tracker = PhoneRunTracker()
+    @StateObject private var hr = TreadmillHRStreamer()
+
+    @State private var plan: LiveRunPlanV5?
+    /// True once the workout has been asked for. Until then neither console
+    /// renders, because a live console that appears and then reflows when the
+    /// plan lands is exactly what the design forbids.
+    @State private var asked = false
+
+    var body: some View {
+        Group {
+            switch mode {
+            case .outdoor:
+                LiveRunOutdoorV5(tracker: tracker, hr: hr, plan: plan,
+                                 onPause: togglePause, onEnd: end)
+            case .treadmill:
+                LiveRunTreadmillV5(plan: plan, hr: hr,
+                                   onPause: togglePause, onEnd: end)
+            }
+        }
+        .opacity(asked ? 1 : 0)
+        .task {
+            // A failure here is not an outage screen: the run can still be
+            // recorded, it just has no target to hold. `plan` stays nil and
+            // both consoles already draw their no-target layout.
+            if let w = try? await API.fetchWatchWorkout() {
+                plan = LiveRunPlanV5(workout: w, sessionType: w.name)
+            }
+            asked = true
+            if mode == .outdoor { tracker.start() }
+            await hr.start(from: Date())
+        }
+    }
+
+    private func togglePause() {
+        tracker.state == .running ? tracker.pause() : tracker.start()
+    }
+
+    private func end() {
+        tracker.finish()
+        onDismiss()
+    }
+}

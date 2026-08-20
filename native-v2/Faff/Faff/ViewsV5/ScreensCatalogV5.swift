@@ -127,14 +127,18 @@ struct ScreensCatalogV5: View {
                 } else if let e = entries.first(where: { $0.id == s.id }) {
                     e.make()
                 }
+                // Bottom-left: the top-right of every screen in this design
+                // is a real control (calendar, avatar), and a catalog chrome
+                // button sitting on top of one hides the thing being reviewed.
                 Button("Close") { showing = nil }
                     .font(.faffText(TypeScaleV5.label13, weight: .semibold))
                     .foregroundStyle(V5.actionPrimaryText)
                     .padding(.horizontal, V5.S.s12)
                     .frame(height: 30)
                     .background(V5.materialAction, in: Capsule())
-                    .padding(.trailing, V5.S.gutter)
-                    .padding(.top, V5.S.s56)
+                    .padding(.leading, V5.S.gutter)
+                    .padding(.bottom, V5.S.s24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
             .background(V5.surfacePage)
         }

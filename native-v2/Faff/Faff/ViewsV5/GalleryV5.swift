@@ -44,7 +44,7 @@ struct GalleryV5: View {
                                 V5Ramp.gradient(s)
                                     .v5Grain()
                                 Text(s.rawValue)
-                                    .faffDisplayV5(26)
+                                    .faffDisplayV5(26, fit: false)
                                     .foregroundStyle(V5.OnPanel.primary)
                                     .padding(V5.S.s12)
                             }
