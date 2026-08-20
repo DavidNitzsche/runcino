@@ -371,11 +371,14 @@ struct BlockHostV5: View {
     var body: some View {
         Group {
             if let model = surface.model {
-                BlockV5(model: model, onChanged: { _ in
-                    // A confirmed change re-authors the plan, so both surfaces
-                    // that read it are refetched rather than patched locally.
-                    Task { await surface.load() }
-                })
+                BlockV5(model: model,
+                        onChanged: { _ in
+                            // A confirmed change re-authors the plan, so both
+                            // surfaces that read it are refetched rather than
+                            // patched locally.
+                            Task { await surface.load() }
+                        },
+                        onOpenRunLog: { path.append(.runLog) })
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
@@ -708,9 +711,11 @@ struct FaffV5Root<LiveContent: View>: View {
             today: { path in TodayHostV5(path: path, accountName: accountName) },
             block: { path in BlockHostV5(path: path) },
             races: { path in RacesHostV5(path: path) },
-            route: { route in
+            route: { route, path in
                 switch route {
                 case .raceDetail(let slug): RaceDetailHostV5(slug: slug)
+                case .runLog:               RunLogHostV5(path: path)
+                case .runDetail(let id):    RunDetailHostV5(id: id)
                 case .settings:             SettingsHostV5()
                 case .shoes:                ShoesHostV5()
                 case .pacesMoved:           PacesHostV5()
@@ -990,5 +995,60 @@ struct OnboardingHostV5: View {
             dose: today.panel.dose.unreadableIfAbsent,
             coachLine: today.why ?? ""
         ))
+    }
+}
+
+
+// MARK: - Run history
+//
+// The one surface v5 had no answer for at all: nothing could open a finished
+// run. `GET /api/log` has the history and `GET /api/runs/[id]` has the run;
+// neither was reachable.
+//
+// These take a plain `Model?` rather than a `V5Surface`, because they read the
+// older endpoints that predate the v5 wire contract and do not carry its
+// refusal shape. When those move over, so should these.
+
+struct RunLogHostV5: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var path: [V5Route]
+    @State private var log: LogState?
+
+    var body: some View {
+        Group {
+            if let log {
+                RunLogV5(log: log,
+                         onOpenRun: { id in path.append(.runDetail(id: id)) },
+                         onBack: { dismiss() })
+            } else {
+                ScrollView { Skeleton(lines: 6).padding(.horizontal, V5.S.gutter) }
+                    .background(V5.surfacePage)
+            }
+        }
+        .task { log = try? await API.fetchLog(limit: 120) }
+        .navigationBarBackButtonHidden(true)
+    }
+}
+
+struct RunDetailHostV5: View {
+    let id: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var detail: RunDetail?
+    @State private var recap: RunRecap?
+
+    var body: some View {
+        Group {
+            if let detail {
+                RunDetailV5(detail: detail, recap: recap, onBack: { dismiss() })
+            } else {
+                ScrollView { Skeleton(lines: 8).padding(.horizontal, V5.S.gutter) }
+                    .background(V5.surfacePage)
+            }
+        }
+        .task {
+            detail = try? await API.fetchRunDetail(id: id)
+            recap = try? await API.fetchRunRecap(runId: id)
+        }
+        .navigationBarBackButtonHidden(true)
     }
 }

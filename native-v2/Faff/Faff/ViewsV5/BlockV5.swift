@@ -85,9 +85,12 @@ struct BlockV5: View {
     @State private var travelTo: Date
     @State private var busy = false
 
-    init(model: V5Block, onChanged: @escaping (V5PlanChangeProposal) -> Void = { _ in }) {
+    init(model: V5Block,
+         onChanged: @escaping (V5PlanChangeProposal) -> Void = { _ in },
+         onOpenRunLog: @escaping () -> Void = {}) {
         self.model = model
         self.onChanged = onChanged
+        self.onOpenRunLog = onOpenRunLog
         _planSheetOpen = State(initialValue: false)
         _stage = State(initialValue: .menu)
         _travelFrom = State(initialValue: Date())

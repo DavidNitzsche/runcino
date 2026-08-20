@@ -66,6 +66,9 @@ enum FaffTabV5: String, CaseIterable, Identifiable, Hashable {
 
 enum V5Route: Hashable {
     case raceDetail(slug: String)
+    /// The run history, and one run out of it.
+    case runLog
+    case runDetail(id: String)
     case settings
     case shoes
     /// The paces-moved screen. Reached from a coach line, not from the bar.
@@ -246,7 +249,11 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
     @ViewBuilder var today: (Binding<[V5Route]>) -> TodayContent
     @ViewBuilder var block: (Binding<[V5Route]>) -> BlockContent
     @ViewBuilder var races: (Binding<[V5Route]>) -> RacesContent
-    @ViewBuilder var route: (V5Route) -> RouteContent
+    /// A pushed screen sometimes needs to push again — the run log opens a
+    /// run. It gets the same path the stack is driven by rather than starting
+    /// a nested NavigationStack, which would give the runner two back chains
+    /// and no way to tell which one they were in.
+    @ViewBuilder var route: (V5Route, Binding<[V5Route]>) -> RouteContent
     @ViewBuilder var live: (LiveRunMode, @escaping () -> Void) -> LiveContent
 
     @State private var paths: [FaffTabV5: [V5Route]] = [:]
@@ -285,7 +292,9 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                 ZStack {
                     NavigationStack(path: path(.today)) {
                         today(path(.today))
-                            .navigationDestination(for: V5Route.self, destination: route)
+                            .navigationDestination(for: V5Route.self) { r in
+                                route(r, path(.today))
+                            }
                     }
                     // Flatten before hiding: a blend mode inside (the panel
                     // grain) otherwise composites into the shared context even
@@ -297,7 +306,9 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
 
                     NavigationStack(path: path(.block)) {
                         block(path(.block))
-                            .navigationDestination(for: V5Route.self, destination: route)
+                            .navigationDestination(for: V5Route.self) { r in
+                                route(r, path(.block))
+                            }
                     }
                     // Flatten before hiding: a blend mode inside (the panel
                     // grain) otherwise composites into the shared context even
@@ -309,7 +320,9 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
 
                     NavigationStack(path: path(.races)) {
                         races(path(.races))
-                            .navigationDestination(for: V5Route.self, destination: route)
+                            .navigationDestination(for: V5Route.self) { r in
+                                route(r, path(.races))
+                            }
                     }
                     // Flatten before hiding: a blend mode inside (the panel
                     // grain) otherwise composites into the shared context even
