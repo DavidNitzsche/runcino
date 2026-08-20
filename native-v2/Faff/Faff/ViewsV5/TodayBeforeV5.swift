@@ -115,13 +115,37 @@ struct TodayBeforeV5: View {
     // when one is picked. Both default to no-ops so a caller wiring only the
     // read path still compiles and renders (an empty expansion, not a crash).
     var beforeYouGoOptions: (V5Row) -> [TodayBeforeGoOption] = { _ in [] }
-    var onSelectBeforeYouGoOption: (V5Row, TodayBeforeGoOption) -> Void = { _, _ in }
+    /// `async` and returns whether the row should collapse. A plain pick
+    /// (a shoe, "Skip it") returns true once its write is in flight. A move
+    /// the server refuses returns false — RULE THREE, on screen: the runner
+    /// gets asked (replace this day's run, or keep both as planned) rather
+    /// than watching the row snap shut on a write that did not do what they
+    /// tapped. Collapsing happens after the `await`, never before, so a
+    /// caller that needs to re-expand with different options (the conflict
+    /// case) can decide that from the network's actual answer, not a guess
+    /// made before the request went out.
+    var onSelectBeforeYouGoOption: (V5Row, TodayBeforeGoOption) async -> Bool = { _, _ in true }
 
-    /// A "Where you are" row with an `action` was tapped. Readiness's own
-    /// expansion (the prototype's Sleep/Resting-heart detail) is state the
-    /// wire contract does not carry either (see file header) — the caller
-    /// decides what, if anything, happens.
+    /// A "Where you are" row with an `action` other than `expand-readiness`
+    /// was tapped. Nothing on this screen currently uses this — the readiness
+    /// row expands in place below — but it stays as the escape hatch for any
+    /// future "Where you are" row the design adds.
     var onWhereYouAreRowTap: (V5Row) -> Void = { _ in }
+
+    /// Readiness's own detail — sleep, resting heart rate, the rest of the
+    /// composite score's pillars — each read against ITS OWN rolling
+    /// baseline. `V5Row` has no nested detail on the wire (same gap as
+    /// `beforeYouGo`, see file header), so the caller supplies the resolved
+    /// pillars directly, from `GET /api/readiness/brief`'s own `pillars`
+    /// array (`ReadinessBriefSeed.swift`) — the same composer the full
+    /// readiness sheet reads, so the two can never disagree on a number.
+    ///
+    /// RULE TWO: this expansion shows pillars SIDE BY SIDE, never combined
+    /// into a claim that one caused another or that the score "changed
+    /// because of X" — that convergence story belongs to `TodayChangedV5`,
+    /// which only renders when three domains actually agree. This is just
+    /// the score's own ingredients, each against its own baseline.
+    var readinessPillars: [ReadinessPillar] = []
 
     /// An account-sheet row with an `action` was tapped — e.g. the "start
     /// runs from this phone" switch.
@@ -140,6 +164,7 @@ struct TodayBeforeV5: View {
     @State private var calendarOpen = false
     @State private var accountOpen = false
     @State private var expandedBeforeRowID: String? = nil
+    @State private var readinessExpanded = false
 
     var body: some View {
         ZStack {
@@ -324,10 +349,71 @@ struct TodayBeforeV5: View {
     private var whereYouAreSection: some View {
         ListGroup(header: "Where you are") {
             ForEach(model.whereYouAre) { row in
-                ListRow(label: row.label,
-                        sub: row.sub,
-                        value: row.value.optionalValue,
-                        onTap: row.action != nil ? { onWhereYouAreRowTap(row) } : nil)
+                if row.action == "expand-readiness" {
+                    // Expand in place, same idiom as "Before you go" — never a
+                    // chevron to a screen elsewhere, per the README's one
+                    // interaction pattern for anything that opens.
+                    ExpandingRow(label: row.label,
+                                 sub: row.sub,
+                                 value: row.value.optionalValue,
+                                 question: "What's behind it",
+                                 isExpanded: $readinessExpanded) {
+                        readinessExpansion
+                    }
+                } else if row.action != nil {
+                    ListRow(label: row.label,
+                            sub: row.sub,
+                            value: row.value.optionalValue,
+                            onTap: { onWhereYouAreRowTap(row) })
+                } else {
+                    ListRow(label: row.label, sub: row.sub, value: row.value.optionalValue)
+                }
+            }
+        }
+    }
+
+    /// The composite score's own ingredients — each pillar against ITS OWN
+    /// baseline, standing side by side. Never a sentence that combines them:
+    /// that convergence story is `TodayChangedV5`'s job, and only when three
+    /// domains actually agree (RULE TWO).
+    @ViewBuilder
+    private var readinessExpansion: some View {
+        if readinessPillars.isEmpty {
+            Text("Nothing to show yet.")
+                .font(.faffText(TypeScaleV5.label13))
+                .foregroundStyle(V5.textQuiet)
+        } else {
+            VStack(spacing: V5.S.s6) {
+                ForEach(readinessPillars) { pillar in
+                    HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
+                        VStack(alignment: .leading, spacing: V5.S.s2) {
+                            Text(pillar.label)
+                                .font(.faffText(16, weight: .medium))
+                                .foregroundStyle(V5.textPrimary)
+                            if !pillar.observedSub.isEmpty {
+                                Text(pillar.observedSub)
+                                    .font(.faffText(TypeScaleV5.label13))
+                                    .foregroundStyle(V5.textQuiet)
+                            }
+                        }
+                        Spacer(minLength: V5.S.s8)
+                        VStack(alignment: .trailing, spacing: V5.S.s2) {
+                            Text(pillar.observedValue)
+                                .font(.faffText(TypeScaleV5.body15, weight: .semibold))
+                                .foregroundStyle(V5.textPrimary)
+                            if !pillar.baseline.isEmpty {
+                                Text("vs \(pillar.baseline)")
+                                    .font(.faffText(TypeScaleV5.label13))
+                                    .foregroundStyle(V5.textQuiet)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, V5.S.s14x)
+                    .frame(minHeight: 48)
+                    .frame(maxWidth: .infinity)
+                    .background(V5.materialTile,
+                                in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
+                }
             }
         }
     }
@@ -374,8 +460,17 @@ struct TodayBeforeV5: View {
             VStack(spacing: V5.S.s6) {
                 ForEach(options) { option in
                     Button {
-                        onSelectBeforeYouGoOption(row, option)
-                        withAnimation(V5.Motion.expand) { expandedBeforeRowID = nil }
+                        Task {
+                            let shouldCollapse = await onSelectBeforeYouGoOption(row, option)
+                            if shouldCollapse {
+                                withAnimation(V5.Motion.expand) { expandedBeforeRowID = nil }
+                            }
+                            // Not collapsing leaves this row's binding true;
+                            // `beforeYouGoOptions(row)` is re-read on the next
+                            // render, so a caller that changed what it would
+                            // return (the reschedule conflict, replace/keep
+                            // both) shows the new set in place.
+                        }
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
                             VStack(alignment: .leading, spacing: V5.S.s2) {
@@ -475,7 +570,8 @@ struct TodayBeforeV5: View {
         accountWeekLine: "Week 6 of 16",
         accountRows: TodayBeforeV5Sample.accountRows,
         calendarWeeks: TodayBeforeV5Sample.calendarWeeks,
-        beforeYouGoOptions: TodayBeforeV5Sample.options(for:)
+        beforeYouGoOptions: TodayBeforeV5Sample.options(for:),
+        readinessPillars: TodayBeforeV5Sample.readinessPillars
     )
     .preferredColorScheme(.dark)
 }
@@ -550,6 +646,25 @@ enum TodayBeforeV5Sample {
             return []
         }
     }
+
+    /// "Where you are" → Readiness's own expansion. Decoded through
+    /// `ReadinessPillar` itself (via JSON, not a parallel initialiser) so the
+    /// preview exercises the same decode path `GET /api/readiness/brief`
+    /// goes through. Shape mirrors `ReadinessBriefSeed.swift`'s pillars —
+    /// each value stands against its OWN baseline (RULE TWO: no combined
+    /// causal claim).
+    static let readinessPillars: [ReadinessPillar] = {
+        try! JSONDecoder().decode([ReadinessPillar].self, from: Data(readinessPillarsJSON.utf8))
+    }()
+
+    private static let readinessPillarsJSON = """
+    [
+      { "key": "sleep", "label": "Sleep", "weightPct": 30, "observedValue": "7.2h", "observedSub": "last night", "baseline": "your avg 7.4h", "band": "ready", "weightContribution": 30, "meaning": "", "confounders": [], "trend": [], "citation": "" },
+      { "key": "rhr", "label": "Resting heart rate", "weightPct": 25, "observedValue": "52 bpm", "observedSub": "this morning", "baseline": "your avg 51 bpm", "band": "ready", "weightContribution": 25, "meaning": "", "confounders": [], "trend": [], "citation": "" },
+      { "key": "hrv", "label": "HRV", "weightPct": 25, "observedValue": "64 ms", "observedSub": "this morning", "baseline": "your avg 66 ms", "band": "ready", "weightContribution": 25, "meaning": "", "confounders": [], "trend": [], "citation": "" },
+      { "key": "load", "label": "Training load", "weightPct": 20, "observedValue": "Moderate", "observedSub": "7-day rolling", "baseline": "your usual range", "band": "ready", "weightContribution": 20, "meaning": "", "confounders": [], "trend": [], "citation": "" }
+    ]
+    """
 }
 
 extension V5Today {

@@ -55,6 +55,11 @@ import {
   type ChangeOutcome,
   type PlanShape,
 } from '@/lib/plan/replan-scenarios';
+// Reused rather than re-derived: the iPhone v5 Today calendar sheet (2026-08-20)
+// needs the same title-case type word /today already computes per day
+// ("Threshold" from sub_label "THRESHOLD", "Easy" from a bare type column).
+// One authoring path for "what does this day's type read as", not two.
+import { displayTypeFor } from '@/lib/faff/v5-today';
 
 // ── small local formatters — presentation only, no doctrine here ───────────
 
@@ -226,6 +231,18 @@ export function buildWeeks(state: TrainingState) {
         race: d.type === 'race',
         isToday: d.date === state.today,
         isFuture: d.date > state.today,
+        // 2026-08-20 · iPhone v5 Today calendar sheet reads the whole block
+        // (not just the current week) from this same payload — see
+        // TodayCalendarDay in native-v2. Additive: existing readers
+        // (BlockV5's WeekShape sparkline) only ever destructured
+        // miles/quality/race/isToday/isFuture and ignore unknown keys.
+        dateISO: d.date,
+        type: displayTypeFor(d.type, d.label),
+        // Same rule /api/v5/today's weekStrip uses for isDone (route.ts:162)
+        // — a logged run, or enough distance to count as done. A rest day
+        // carries neither, so it reads as not-done (no status chip), which
+        // is the honest answer: nothing was asked of it to complete.
+        isDone: d.activityId != null || d.doneMi >= 0.5,
       })),
       detail: [
         { id: `${w.id}-long`, label: 'Long run', sub: null, value: num(`${fmtMi(longMi)} mi`), action: null, tone: 'neutral' },

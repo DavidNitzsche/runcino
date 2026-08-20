@@ -521,7 +521,22 @@ export async function GET(req: NextRequest) {
 
   const shoes = await loadShoes(userId);
   const shoeType = planTypeToShoeType(todayPlan?.type ?? null);
-  const shoePick = recommendShoe(shoes, shoeType);
+  // 2026-08-20 · iPhone v5 Today audit. The runner's own quick-swap pick for
+  // `today` (`day_actions` action='shoe', note=shoe_id — POST
+  // /api/today/shoe) beats the recommendation. Without this read the pick
+  // vanished on the very next load: the write landed (and — per that
+  // route's own comment — reconciled onto any run ALREADY logged that day),
+  // but this row kept showing `recommendShoe`'s guess forever, because
+  // nothing here ever asked `day_actions` what the runner actually chose.
+  const shoePickRow = (await pool.query<{ note: string | null }>(
+    `SELECT note FROM day_actions
+      WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'shoe'
+      LIMIT 1`,
+    [userId, today],
+  ).catch(() => ({ rows: [] as any[] }))).rows[0];
+  const pickedShoeId = shoePickRow?.note ?? null;
+  const shoePick = (pickedShoeId ? shoes.find((s) => String(s.id) === pickedShoeId) : undefined)
+    ?? recommendShoe(shoes, shoeType);
 
   const beforeYouGo: V5Row[] = [];
   if (shoePick) {

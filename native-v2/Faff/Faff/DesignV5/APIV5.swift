@@ -434,6 +434,17 @@ struct V5BlockDay: Decodable, Equatable, Hashable, Identifiable {
     let race: Bool
     let isToday: Bool
     let isFuture: Bool
+    /// 2026-08-20 · added alongside the block-day route so the Today
+    /// calendar sheet can list every week, not just the current one, from
+    /// this same payload (`lib/plan/v5-block.ts:buildWeeks`). Optional so a
+    /// stale cached payload from before this field existed still decodes —
+    /// `WeekShape` (Block's own sparkline) never reads these three and is
+    /// unaffected either way.
+    let dateISO: String?
+    /// Title-case display type — "Easy" / "Threshold" / "Rest" — the same
+    /// word `/api/v5/today`'s week strip shows, via `displayTypeFor`.
+    let type: String?
+    let isDone: Bool?
 
     var load: WeekDayLoad {
         WeekDayLoad(miles: miles, quality: quality, race: race,

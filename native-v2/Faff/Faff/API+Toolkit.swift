@@ -410,13 +410,22 @@ extension API {
 
     // MARK: - Per-day shoe override
 
+    /// 2026-08-20 · iPhone v5 Today audit. This sent `"date"` in the body,
+    /// but `web-v2/app/api/today/shoe/route.ts` only reads `date_iso`
+    /// (`{ date_iso?: string; shoe_id?: string }`) — an absent `date_iso`
+    /// falls back to `runnerToday(userId)`, so every call silently wrote to
+    /// "today" regardless of which day was passed in. Harmless while the
+    /// only caller was the legacy Today picker (which only ever set today's
+    /// shoe), but wrong for v5's "Before you go" quick-swap, which can be
+    /// invoked while stepped onto another day. Fixed to the wire key the
+    /// route actually reads.
     @discardableResult
     static func setShoeForDay(date: String, shoeId: Int?) async throws -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/today/shoe"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = [
-            "date": date,
+            "date_iso": date,
             "shoe_id": shoeId as Any
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
