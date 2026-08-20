@@ -478,13 +478,77 @@ struct FaffV5Root<LiveContent: View>: View {
                 case .shoes:                ShoesHostV5()
                 case .pacesMoved:           PacesHostV5()
                 case .returnToRunning:      ReturnHostV5()
-                case .injuryFlare:          TodayHostV5(path: .constant([]))
+                case .injuryFlare:          InjuryPreviewHostV5()
                 }
             },
             live: live
         )
         .environmentObject(runGate)
         .task { await runGate.refresh() }
+    }
+}
+
+// MARK: - What tomorrow becomes
+//
+// "Flagging a niggle in 5b/5c reveals a link to 13a, showing what tomorrow
+//  becomes if the niggle is still there."
+//
+// So this is not today's screen pushed onto itself — it is TOMORROW, asked for
+// by date. `/api/v5/today?date=` already answers that, and the engine decides
+// whether the flare it was just told about turns tomorrow into an injury day.
+// If it does not, the honest answer is that nothing changes, and the screen
+// says so rather than showing a flare that the engine did not call.
+
+struct InjuryPreviewHostV5: View {
+    @StateObject private var surface: V5Surface<V5Today>
+
+    init() {
+        let iso = InjuryPreviewHostV5.tomorrowISO()
+        _surface = StateObject(wrappedValue: V5Surface(cache: nil) {
+            try await API.fetchV5Today(date: iso)
+        })
+    }
+
+    /// The runner's own tomorrow. The device's calendar is the right clock
+    /// here: the server re-resolves the date in the runner's timezone anyway,
+    /// and this is a preview, not a write.
+    private static func tomorrowISO() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date())
+    }
+
+    var body: some View {
+        Group {
+            if let model = surface.model {
+                if let injury = model.injury {
+                    InjuryFlareV5(model: injury)
+                } else {
+                    // A refusal, not an empty state: we read tomorrow and the
+                    // answer is that it still stands.
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                            Silence(reason: "Tomorrow still stands as planned. If the niggle is still there in the morning, say so and the day changes then.")
+                        }
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s40)
+                    }
+                    .background(V5.surfacePage)
+                }
+            } else if surface.isOutage {
+                ScrollView {
+                    OutageBodyV5(onRetry: { Task { await surface.load() } })
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s40)
+                }
+                .background(V5.surfacePage)
+            } else {
+                ScrollView { Skeleton(lines: 5).padding(.horizontal, V5.S.gutter) }
+                    .background(V5.surfacePage)
+            }
+        }
+        .task { await surface.load() }
+        .navigationBarBackButtonHidden(true)
     }
 }
 
