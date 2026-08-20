@@ -204,7 +204,7 @@ struct TodayBeforeV5: View {
                     .foregroundStyle(V5.OnPanel.primary)
             }
 
-            FaffValueText(model.panel.dose.value,
+            FaffValueText(model.panel.dose.unreadableIfAbsent,
                           font: .faffText(28, weight: .semibold),
                           color: V5.OnPanel.primary)
 
@@ -320,7 +320,7 @@ struct TodayBeforeV5: View {
             ForEach(model.whereYouAre) { row in
                 ListRow(label: row.label,
                         sub: row.sub,
-                        value: row.value.value,
+                        value: row.value.optionalValue,
                         onTap: row.action != nil ? { onWhereYouAreRowTap(row) } : nil)
             }
         }
@@ -334,11 +334,11 @@ struct TodayBeforeV5: View {
                 if row.action == nil {
                     // No action, no chevron, no expansion — a purely
                     // informational row like the race-day fuel line.
-                    ListRow(label: row.label, sub: row.sub, value: row.value.value)
+                    ListRow(label: row.label, sub: row.sub, value: row.value.optionalValue)
                 } else {
                     ExpandingRow(label: row.label,
                                  sub: row.sub,
-                                 value: row.value.value,
+                                 value: row.value.optionalValue,
                                  question: row.label,
                                  isExpanded: expandedBinding(for: row.id)) {
                         beforeYouGoExpansion(for: row)
@@ -447,7 +447,7 @@ struct TodayBeforeV5: View {
                 ForEach(accountRows) { row in
                     ListRow(label: row.label,
                             sub: row.sub,
-                            value: row.value.value,
+                            value: row.value.optionalValue,
                             onTap: row.action != nil ? { onAccountRowTap(row) } : nil)
                 }
             }

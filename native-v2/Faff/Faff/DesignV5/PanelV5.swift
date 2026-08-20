@@ -251,6 +251,20 @@ extension View {
     /// The grain layer, at the design's own 50% opacity and overlay blend.
     /// Applied by `DayPanel`; a screen drawing its own gradient surface (the
     /// onboarding reveal poster, a race poster) applies it directly.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// THE `.compositingGroup()` IS LOAD-BEARING
+    ///
+    /// A blend mode composites against whatever is BEHIND it in the rendering
+    /// context, and it escapes an enclosing `.opacity()` unless the layer is
+    /// flattened first. The shell keeps all three destinations alive and hides
+    /// two of them with `.opacity(0)` — so the hidden Block and Races panels
+    /// were still blending their gradients into the shared context, and the
+    /// purple and blue leaked out as a faint hairline round the edge of the
+    /// screen. David spotted it as "a weird outline".
+    ///
+    /// Flattening here means the overlay can only ever see the gradient it is
+    /// sitting on, which is the only thing it was ever supposed to see.
     func v5Grain() -> some View {
         overlay(
             V5Grain.image
@@ -259,6 +273,7 @@ extension View {
                 .blendMode(.overlay)
                 .allowsHitTesting(false)
         )
+        .compositingGroup()
     }
 }
 

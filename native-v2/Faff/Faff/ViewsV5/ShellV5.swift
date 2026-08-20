@@ -99,7 +99,22 @@ struct TabBarV5: View {
             let gap = showRun ? V5.S.s6 : V5.S.s4
             let slots = CGFloat(FaffTabV5.allCases.count)
             let gaps = gap * (slots - 1 + (showRun ? 1 : 0))
-            let usable = geo.size.width - V5.S.s12 * 2 - gaps
+            // ── the bar's own gutter ──────────────────────────────────────
+            //
+            // The prototype writes `bandPad: '0 12px'`, and 12 is right for a
+            // row of ICONS: each destination is centred in its slot, so its
+            // glyph never comes near the edge and the padding is invisible.
+            //
+            // RUN is not an icon. It FILLS its slot, so its right edge lands
+            // exactly on the padding — and at 12 that is 4pt outside the 16pt
+            // gutter every tile, panel and list on the screen above it aligns
+            // to. David caught it: the pill reads as pushed too far right
+            // against a Today label that sits comfortably inside.
+            //
+            // So the bar takes the content gutter. The destinations do not
+            // care (their glyphs are centred either way) and the one control
+            // with a hard edge now lines up with everything above it.
+            let usable = geo.size.width - V5.S.gutter * 2 - gaps
             let unit = usable / (slots + (showRun ? Self.runFlex : 0))
 
             HStack(spacing: gap) {
@@ -143,7 +158,7 @@ struct TabBarV5: View {
                     .buttonStyle(V5PressStyle())
                 }
             }
-            .padding(.horizontal, V5.S.s12)
+            .padding(.horizontal, V5.S.gutter)
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .frame(height: V5.Shell.tabBarHeight)
@@ -272,6 +287,11 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                         today(path(.today))
                             .navigationDestination(for: V5Route.self, destination: route)
                     }
+                    // Flatten before hiding: a blend mode inside (the panel
+                    // grain) otherwise composites into the shared context even
+                    // at zero opacity, and the hidden tabs' gradients bleed out
+                    // as a hairline round the screen edge.
+                    .compositingGroup()
                     .opacity(selected == .today ? 1 : 0)
                     .allowsHitTesting(selected == .today)
 
@@ -279,6 +299,11 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                         block(path(.block))
                             .navigationDestination(for: V5Route.self, destination: route)
                     }
+                    // Flatten before hiding: a blend mode inside (the panel
+                    // grain) otherwise composites into the shared context even
+                    // at zero opacity, and the hidden tabs' gradients bleed out
+                    // as a hairline round the screen edge.
+                    .compositingGroup()
                     .opacity(selected == .block ? 1 : 0)
                     .allowsHitTesting(selected == .block)
 
@@ -286,6 +311,11 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                         races(path(.races))
                             .navigationDestination(for: V5Route.self, destination: route)
                     }
+                    // Flatten before hiding: a blend mode inside (the panel
+                    // grain) otherwise composites into the shared context even
+                    // at zero opacity, and the hidden tabs' gradients bleed out
+                    // as a hairline round the screen edge.
+                    .compositingGroup()
                     .opacity(selected == .races ? 1 : 0)
                     .allowsHitTesting(selected == .races)
                 }

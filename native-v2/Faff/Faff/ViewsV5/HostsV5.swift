@@ -676,12 +676,23 @@ struct LiveRunHostV5: View {
         }
     }
 
+    /// ─────────────────────────────────────────────────────────────────────
+    /// ONLY AN OUTDOOR RUN HAS A TRACKER
+    ///
+    /// These drove `PhoneRunTracker` regardless of mode, and on a treadmill
+    /// that is actively wrong: the treadmill console owns its own clock and
+    /// its own speed/incline state, and there is no GPS involved at all. The
+    /// symptom was unmissable once it was on a device — tapping Pause during
+    /// a TREADMILL run called `tracker.start()`, which asked the runner for
+    /// location permission mid-session, on the one screen the design defines
+    /// as "speed and incline, no GPS".
     private func togglePause() {
+        guard mode == .outdoor else { return }
         tracker.state == .running ? tracker.pause() : tracker.start()
     }
 
     private func end() {
-        tracker.finish()
+        if mode == .outdoor { tracker.finish() }
         onDismiss()
     }
 }

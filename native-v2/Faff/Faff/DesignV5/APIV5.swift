@@ -68,8 +68,25 @@ struct V5Number: Decodable, Equatable, Hashable {
 }
 
 extension Optional where Wrapped == V5Number {
-    /// A missing number is unreadable, not blank.
-    var value: FaffValue { self?.value ?? .unreadable }
+    /// ─────────────────────────────────────────────────────────────────────
+    /// ABSENT IS NOT UNREADABLE, AND THIS USED TO CONFLATE THEM
+    ///
+    /// The first version of this returned `.unreadable` for nil, which is
+    /// right for a STAT — a plate always has three slots, and an empty slot
+    /// means we could not read it — and catastrophically wrong for a ROW.
+    /// `V5Row.value` is nil when the row simply has no value: "Move or skip"
+    /// has none, an upcoming race has no finish time. Those rendered a
+    /// fault-red dash, which is the app's one way of saying "we could not read
+    /// this". On the Races schedule it claimed we had failed to read the
+    /// result of five races that have not been run yet.
+    ///
+    /// So there is no blanket conversion any more. A caller with a slot to
+    /// fill asks for `unreadableIfAbsent`; a caller rendering an optional row
+    /// passes the optional straight through and nil draws nothing.
+    var unreadableIfAbsent: FaffValue { self?.value ?? .unreadable }
+
+    /// nil stays nil. The component draws nothing.
+    var optionalValue: FaffValue? { self?.value }
 }
 
 // MARK: - Shared small shapes
@@ -861,10 +878,12 @@ extension API {
         return .failed
     }
 
-    /// The shape every v5 route uses when it declines.
+    /// The shape every v5 route uses when it declines. `refusal` is the
+    /// clinician gate's key; `reason` is everyone else's.
     private struct V5Refusal: Decodable {
         let error: String?
         let reason: String?
+        let refusal: String?
     }
 
     static func fetchV5Today(date: String? = nil) async throws -> V5Fetch<V5Today> {
@@ -942,41 +961,61 @@ extension API {
     /// owns the fallback to the next-best anchor; there is deliberately no
     /// parameter here for "go back to my old paces".
     @discardableResult
-    static func confirmRaceAuthority(slug: String, tier: String, note: String? = nil) async throws -> Bool {
+    static func confirmRaceAuthority(slug: String, tier: String, note: String? = nil) async throws -> V5Write {
         var body: [String: Any] = ["slug": slug, "tier": tier]
         if let note { body["note"] = note }
-        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/v5/race-authority"))
+        return try await v5Write("api/v5/race-authority", body: body)
+    }
+
+    /// What a v5 write came back as.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// A WRITE CAN BE REFUSED TOO
+    ///
+    /// These used to return a bare `Bool` from the status code and never read
+    /// the body — so a server that declined with a reason ("Bone stress is
+    /// clinician-gated", "That race is not on your schedule any more") had
+    /// that reason thrown away at the transport, and the screen could only
+    /// show a generic nothing-happened. The read path learned this lesson
+    /// already; the write path had not.
+    enum V5Write {
+        case ok
+        /// The engine declined, and said why. Renders as `Alert`.
+        case refused(String)
+        /// We could not complete it. Renders as `ErrorNote`.
+        case failed
+    }
+
+    private static func v5Write(_ path: String, body: [String: Any]) async throws -> V5Write {
+        var req = URLRequest(url: API.baseURL.appendingPathComponent(path))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, http) = try await API.authedSend(req)
-        return (200...299).contains(http.statusCode)
+        let (data, http) = try await API.authedSend(req)
+        if (200...299).contains(http.statusCode) { return .ok }
+        if (400...499).contains(http.statusCode),
+           let r = try? JSONDecoder().decode(V5Refusal.self, from: data) {
+            // `refusal` is what the clinician gate uses; `reason` is what
+            // everything else uses. Either is an answer.
+            if let text = r.refusal ?? r.reason, !text.isEmpty { return .refused(text) }
+        }
+        return .failed
     }
 
     /// The ladder's own check-in. `outcome` is `silent | something_off`.
     @discardableResult
-    static func returnCheckIn(outcome: String) async throws -> Bool {
-        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/v5/return/checkin"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["outcome": outcome])
-        let (_, http) = try await API.authedSend(req)
-        return (200...299).contains(http.statusCode)
+    static func returnCheckIn(outcome: String) async throws -> V5Write {
+        try await v5Write("api/v5/return/checkin", body: ["outcome": outcome])
     }
 
     /// Answer the Races decision card. `action` is one of the card's own
     /// answer actions; the server decides what each one means.
     @discardableResult
-    static func answerGoalCard(action: String, targetSec: Double? = nil, raceSlug: String? = nil) async throws -> Bool {
+    static func answerGoalCard(action: String, targetSec: Double? = nil, raceSlug: String? = nil) async throws -> V5Write {
         var body: [String: Any] = ["action": action]
         if let targetSec { body["targetSec"] = targetSec }
         if let raceSlug { body["raceSlug"] = raceSlug }
-        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/v5/goal-answer"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, http) = try await API.authedSend(req)
-        return (200...299).contains(http.statusCode)
+        return try await v5Write("api/v5/goal-answer", body: body)
     }
 }
 

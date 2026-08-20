@@ -111,6 +111,15 @@ async function loadShoes(userId: string): Promise<GarageShoe[]> {
   }));
 }
 
+
+/** Midpoint of a pace band, seconds per mile. Null unless both edges read. */
+function midSec(lo: number | null | undefined, hi: number | null | undefined): number | null {
+  if (lo == null && hi == null) return null;
+  if (lo == null) return hi ?? null;
+  if (hi == null) return lo;
+  return (lo + hi) / 2;
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
@@ -527,11 +536,30 @@ export async function GET(req: NextRequest) {
   ctx.weekLine = weekLine;
   ctx.weekStripDays = weekStripDays;
   ctx.prescription = prescriptionLike;
-  // The kicker is weather plus duration on a day there is something to do.
-  // On a rest day there is neither, and "about 0 min" is not a duration — it
-  // is the arithmetic showing through. Null, so the panel simply omits the
-  // line rather than printing a number that means nothing.
-  const kickerMin = prescription ? Math.round((prescription.total_mi || 0) * 9) : 0;
+  // ── the kicker ────────────────────────────────────────────────────────
+  //
+  // Duration on a day there is something to do. On a rest day there is
+  // neither, and "about 0 min" is not a duration — it is the arithmetic
+  // showing through — so the panel omits the line entirely.
+  //
+  // It used to multiply the distance by a HARDCODED 9 min/mi. That is a
+  // made-up number reaching a runner's screen, and the honest one was already
+  // in scope: `derivePaces` ran a few lines above and `paceBandStat` reads its
+  // output on the very next statement. So the estimate is now built from the
+  // runner's OWN prescribed pace for the session type, and falls back to
+  // nothing rather than to a constant.
+  const paceForType =
+    prescriptionType === 'easy' ? midSec(dp.easySecLo, dp.easySecHi)
+    : prescriptionType === 'long' ? midSec(dp.longSecLo, dp.longSecHi)
+    : prescriptionType === 'tempo' ? midSec(dp.tempoSecLo, dp.tempoSecHi)
+    : prescriptionType === 'threshold' ? dp.thresholdSec
+    : prescriptionType === 'intervals' ? dp.intervalSec
+    : midSec(dp.easySecLo, dp.easySecHi);
+  const totalMi = prescription ? (prescription.total_mi || 0) : 0;
+  const kickerMin =
+    totalMi > 0 && paceForType != null && paceForType > 0
+      ? Math.round((totalMi * paceForType) / 60)
+      : 0;
   ctx.weatherKicker = kickerMin > 0 ? `about ${kickerMin} min` : null;
   ctx.paceBandStat = todayPlan
     ? (prescriptionType === 'easy' ? fmtBand(dp.easySecLo, dp.easySecHi)

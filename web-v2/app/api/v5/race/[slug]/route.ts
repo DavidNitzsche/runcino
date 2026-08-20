@@ -38,6 +38,22 @@ interface V5NumberOut { text: string | null; modelled: boolean; }
 interface V5RowOut { id: string; label: string; sub: string | null; value: V5NumberOut | null; action: string | null; }
 const num = (text: string | null, modelled: boolean): V5NumberOut => ({ text, modelled });
 
+
+/**
+ * "Sunday 13 December 2026". The schedule list already learned this lesson
+ * (see raceDateWords in app/api/v5/races/route.ts); the detail screen was
+ * still printing the raw column.
+ */
+function raceDateWords(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(String(iso).slice(0, 10) + 'T12:00:00Z');
+  if (Number.isNaN(d.getTime())) return String(iso);
+  const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+               'August', 'September', 'October', 'November', 'December'];
+  return `${DOW[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
@@ -48,7 +64,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     const racesState = await loadRacesState(userId);
     const race = [...racesState.aRaces, ...racesState.upcomingBs, ...racesState.upcomingCs, ...racesState.past]
       .find(r => r.slug === slug);
-    if (!race) return NextResponse.json({ error: 'race not found' }, { status: 404 });
+    if (!race) {
+      // A reason, not a bare status. The phone treats a 4xx as a legible
+      // decline only when the body carries one; without it this 404 wears the
+      // outage treatment and tells the runner we went blind.
+      return NextResponse.json(
+        { error: 'race_not_found', reason: 'That race is not on your schedule any more.' },
+        { status: 404 },
+      );
+    }
 
     const todayISO = await runnerToday(userId);
     const distanceMi = race.distance_mi ?? 0;
@@ -215,7 +239,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
         if (cond?.source === 'forecast' && cond.tempF != null) {
           gear.push({
             id: 'forecast', label: 'Race morning', sub: cond.summary,
-            value: num(`${cond.tempF}°F`, false), action: null,
+            // MODELLED. A forecast is a model's opinion about a morning that
+            // has not happened. Shipping it bare-faced beside a measured
+            // finish time is exactly the sin rule one names, and it is the
+            // more tempting version of it because a temperature FEELS like a
+            // reading.
+            value: num(`${cond.tempF}°F`, true), action: null,
           });
         }
       }
@@ -229,7 +258,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 
     return NextResponse.json({
       name: race.name,
-      dateLine: [race.date, race.distance_label].filter(Boolean).join(' · '),
+      dateLine: [raceDateWords(race.date), race.distance_label].filter(Boolean).join(' · '),
       goal: goalSec != null ? num(formatRaceTime(goalSec), false) : null,
       projected: projectedSec != null ? num(formatRaceTime(projectedSec), true) : null,
       gap: gapSec != null ? num(`${gapSec > 0 ? '+' : gapSec < 0 ? '−' : ''}${formatRaceTime(Math.abs(gapSec))}`, true) : null,

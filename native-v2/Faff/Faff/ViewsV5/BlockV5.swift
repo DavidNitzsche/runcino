@@ -170,7 +170,7 @@ struct BlockV5: View {
                         .foregroundStyle(V5.OnPanel.primary)
                 }
 
-                FaffValueText(model.panel.dose.value,
+                FaffValueText(model.panel.dose.unreadableIfAbsent,
                               font: .faffText(TypeScaleV5.valueMin, weight: .semibold),
                               color: V5.OnPanel.primary)
 
@@ -621,7 +621,11 @@ private struct BlockWeekRow: View {
                                 .font(.faffText(14))
                                 .foregroundStyle(V5.textPrimary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                            FaffValueText(row.value.value, font: .faffText(14), color: V5.textSecondary)
+                            // nil draws nothing. A detail row without a value
+                            // is not a value we failed to read.
+                            if let v = row.value?.value {
+                                FaffValueText(v, font: .faffText(14), color: V5.textSecondary)
+                            }
                         }
                     }
                 }

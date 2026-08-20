@@ -91,9 +91,9 @@ struct RaceDetailV5: View {
 
     private var statsRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
-            stat("Goal", raceDetail.goal.value, ink: V5.textPrimary)
-            stat("Projected", raceDetail.projected.value, ink: V5.textPrimary)
-            stat("Gap", raceDetail.gap.value, ink: gapBehind ? V5.attention : V5.textPrimary)
+            stat("Goal", raceDetail.goal.unreadableIfAbsent, ink: V5.textPrimary)
+            stat("Projected", raceDetail.projected.unreadableIfAbsent, ink: V5.textPrimary)
+            stat("Gap", raceDetail.gap.unreadableIfAbsent, ink: gapBehind ? V5.attention : V5.textPrimary)
         }
         .padding(V5.S.tilePad)
         .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))

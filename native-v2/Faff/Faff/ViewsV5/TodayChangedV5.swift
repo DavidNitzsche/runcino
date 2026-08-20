@@ -128,7 +128,7 @@ struct TodayChangedV5: View {
                     .foregroundStyle(V5.OnPanel.primary)
             }
 
-            FaffValueText(panel.dose.value,
+            FaffValueText(panel.dose.unreadableIfAbsent,
                           font: .faffText(28, weight: .semibold),
                           color: V5.OnPanel.primary)
         }

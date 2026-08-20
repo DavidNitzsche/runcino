@@ -129,7 +129,7 @@ struct RacesV5: View {
                     TrendBars(values: model.trend,
                               highlight: -1,
                               height: 96,
-                              headline: model.trendHeadline.value,
+                              headline: model.trendHeadline.unreadableIfAbsent,
                               headlineLabel: "Projected finish, today",
                               footnotes: model.trendFootnotes)
                 }
@@ -201,7 +201,7 @@ struct RacesV5: View {
                     .foregroundStyle(V5.OnPanel.primary)
             }
 
-            FaffValueText(model.panel.dose.value,
+            FaffValueText(model.panel.dose.unreadableIfAbsent,
                           font: .faffText(28, weight: .semibold),
                           color: V5.OnPanel.primary)
 
@@ -411,12 +411,51 @@ struct RaceScheduleGroupV5: View {
     let rows: [V5RaceRow]
     @Binding var expandedID: String?
 
+    /// ─────────────────────────────────────────────────────────────────────
+    /// AHEAD AND BEHIND ARE TWO DIFFERENT LISTS
+    ///
+    /// The design says "upcoming ranked A/B/C in colour, past races dimmed",
+    /// and the first build honoured the colour half but ran both into one
+    /// unbroken list. On a real schedule — five ahead, six behind — the only
+    /// thing telling them apart was whether a finish time happened to be on
+    /// the row, which means the runner reads every row to find the boundary.
+    ///
+    /// They are separate questions. Ahead is what you are training for; behind
+    /// is what you have done. Two groups, own headers, and the past group
+    /// dimmed as the design asks.
+    private var upcoming: [V5RaceRow] { rows.filter { !$0.isPast } }
+    private var past: [V5RaceRow] { rows.filter(\.isPast) }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+            if !upcoming.isEmpty {
+                group("The schedule", upcoming)
+            }
+            if !past.isEmpty {
+                // "Completed", not "Run" — the tab bar already owns RUN as a
+                // verb, and a header reading RUN over a list of finished races
+                // asks the runner to work out which sense is meant.
+                group("Completed", past)
+                    // "Past races dimmed." One step back, so they read as
+                    // history without becoming unreadable.
+                    .opacity(0.62)
+            }
+        }
+    }
+
+    private func group(_ header: String, _ items: [V5RaceRow]) -> some View {
         VStack(alignment: .leading, spacing: V5.S.s10) {
-            V5SectionLabel(text: "The schedule")
-                .padding(.horizontal, V5.S.s4)
+            HStack(alignment: .firstTextBaseline) {
+                V5SectionLabel(text: header)
+                Spacer(minLength: 0)
+                Text("\(items.count)")
+                    .font(.faffText(TypeScaleV5.label12))
+                    .foregroundStyle(V5.textQuiet)
+            }
+            .padding(.horizontal, V5.S.s4)
+
             VStack(spacing: 0) {
-                ForEach(rows) { row in
+                ForEach(items) { row in
                     RaceScheduleRowV5(row: row, isExpanded: expandedID == row.id) {
                         withAnimation(V5.Motion.expand) {
                             expandedID = (expandedID == row.id) ? nil : row.id
@@ -440,34 +479,55 @@ private struct RaceScheduleRowV5: View {
     /// this mirrors the prototype's own predicate (`rank === 'A' && !done`)
     /// exactly, which also naturally covers the two-A-races-conflict trigger
     /// without extra logic: both upcoming A rows read as "next" at once.
-    private var isNextA: Bool { row.priority == "A" && !row.isPast }
+    private var isNextA: Bool { rank == "A" && !row.isPast }
+
+    /// Nil unless the engine actually gave this race a rank.
+    private var rank: String? {
+        let r = row.priority.uppercased()
+        return ["A", "B", "C"].contains(r) ? r : nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             Button(action: onTap) {
                 HStack(spacing: V5.S.s12) {
-                    Text(row.priority)
+                    // A / B / C are the ranks. Anything else is not a rank —
+                    // one race came through carrying "high", which rendered as
+                    // a truncated "hi…" in a badge that means priority. An
+                    // unranked race gets no badge rather than a wrong one.
+                    Text(rank ?? "")
                         .font(.faffText(12, weight: .bold))
                         .foregroundStyle(isNextA ? V5.actionPrimaryText : V5.textSecondary)
                         .frame(width: 26, height: 26)
-                        .background(isNextA ? V5.signal : V5.materialControl,
+                        .background(rank == nil ? Color.clear
+                                    : (isNextA ? V5.signal : V5.materialControl),
                                     in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                     VStack(alignment: .leading, spacing: V5.S.s2) {
                         Text(row.name)
                             .font(.faffText(15, weight: isNextA ? .bold : .regular))
                             .foregroundStyle(row.isPast ? V5.textSecondary : V5.textPrimary)
-                        Text("\(row.distance) \u{b7} \(row.dateLine)")
+                        // A past race often carries no distance label, which
+                        // left a dangling "· 2026-05-03" hanging off nothing.
+                        Text([row.distance, row.dateLine]
+                                .filter { !$0.isEmpty }
+                                .joined(separator: " \u{b7} "))
                             .font(.faffText(TypeScaleV5.label12))
                             .foregroundStyle(V5.textQuiet)
                     }
 
                     Spacer(minLength: V5.S.s8)
 
-                    FaffValueText(row.result.value,
-                                  font: .faffText(TypeScaleV5.body15),
-                                  color: row.isPast ? V5.textSecondary : (isNextA ? V5.textPrimary : V5.textSecondary))
-                        .lineLimit(1)
+                    // A race that has not been run has no result, and that is
+                    // not a result we failed to read. nil draws nothing; the
+                    // fault-red dash used to sit on every upcoming race and
+                    // claim we could not read five results that do not exist.
+                    if let result = row.result?.value {
+                        FaffValueText(result,
+                                      font: .faffText(TypeScaleV5.body15),
+                                      color: row.isPast ? V5.textSecondary : (isNextA ? V5.textPrimary : V5.textSecondary))
+                            .lineLimit(1)
+                    }
                 }
                 .padding(.horizontal, V5.S.tilePad)
                 .frame(minHeight: 58)
@@ -484,9 +544,11 @@ private struct RaceScheduleRowV5: View {
                                 .font(.faffText(TypeScaleV5.body15))
                                 .foregroundStyle(V5.textPrimary)
                             Spacer(minLength: 0)
-                            FaffValueText(d.value.value,
-                                          font: .faffText(TypeScaleV5.body15),
-                                          color: V5.textSecondary)
+                            if let v = d.value?.value {
+                                FaffValueText(v,
+                                              font: .faffText(TypeScaleV5.body15),
+                                              color: V5.textSecondary)
+                            }
                         }
                     }
                 }

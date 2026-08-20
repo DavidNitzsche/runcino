@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const action = String(body?.action ?? '') as Action;
   if (!ACTIONS.includes(action)) {
-    return NextResponse.json({ ok: false, error: `action must be one of ${ACTIONS.join(', ')}` }, { status: 400 });
+    return NextResponse.json({ ok: false, error: 'bad_action', reason: `That is not an answer this card offers. Expected one of ${ACTIONS.join(', ')}.` }, { status: 400 });
   }
   const targetSec = typeof body?.targetSec === 'number' && Number.isFinite(body.targetSec) ? body.targetSec : null;
   const raceSlug = typeof body?.raceSlug === 'string' && body.raceSlug ? body.raceSlug : null;
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
 
       case 'take': {
         if (targetSec == null || targetSec < 600 || targetSec > 21600) {
-          return NextResponse.json({ ok: false, error: 'targetSec required · 600-21600 seconds' }, { status: 400 });
+          return NextResponse.json({ ok: false, error: 'bad_target', reason: 'That target is outside anything we would build a plan toward.' }, { status: 400 });
         }
         if (!nextA) {
           return NextResponse.json({ ok: false, error: 'no_goal_race', reason: 'No goal race is set to re-state a target against.' }, { status: 404 });
@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
           `SELECT meta, plan FROM races WHERE user_uuid = $1::uuid AND slug = $2 LIMIT 1`,
           [userId, nextA.slug],
         ).then(r => r.rows[0]).catch(() => null);
-        if (!current) return NextResponse.json({ ok: false, error: 'race not found' }, { status: 404 });
+        if (!current) return NextResponse.json({ ok: false, error: 'race_not_found', reason: 'That race is not on your schedule any more.' }, { status: 404 });
         const oldGoalSec = Number(current.plan?.goal?.finish_time_s ?? 0);
         const newMeta = { ...current.meta, goalDisplay };
         const newPlan = { ...current.plan, goal: { ...current.plan?.goal, finish_time_s: targetSec, finish_time_display: goalDisplay } };
@@ -207,9 +207,9 @@ export async function POST(req: NextRequest) {
       }
 
       case 'choose_race': {
-        if (!raceSlug) return NextResponse.json({ ok: false, error: 'raceSlug required for choose_race' }, { status: 400 });
+        if (!raceSlug) return NextResponse.json({ ok: false, error: 'no_race_chosen', reason: 'Say which race is the goal and we will build toward that one.' }, { status: 400 });
         const chosen = upcomingAs.find(r => r.slug === raceSlug);
-        if (!chosen) return NextResponse.json({ ok: false, error: 'race not found among upcoming A races' }, { status: 404 });
+        if (!chosen) return NextResponse.json({ ok: false, error: 'race_not_found', reason: 'That race is not one of your upcoming A races.' }, { status: 404 });
         const others = upcomingAs.filter(r => r.slug !== raceSlug);
         for (const other of others) {
           const current = await pool.query<{ meta: any }>(
@@ -238,7 +238,7 @@ export async function POST(req: NextRequest) {
       }
 
       default:
-        return NextResponse.json({ ok: false, error: 'unhandled action' }, { status: 400 });
+        return NextResponse.json({ ok: false, error: 'unhandled_action', reason: 'That answer is not one this card can act on.' }, { status: 400 });
     }
   } catch (err: any) {
     console.error('[api/v5/goal-answer] failed:', err);
