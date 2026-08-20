@@ -97,6 +97,7 @@ import {
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { anchorsFor, doctrinePhasesForWeek, renderPrescription } from '@/lib/plan/catalogue-rx';
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
+import { MIN_SESSIONS_PER_STAGE } from '@/lib/plan/return-ladder';
 import {
   VDOT_FULL_VALUE_DAYS,
   VDOT_EXPIRY_DAYS,
@@ -11482,6 +11483,74 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           'Research/00b no longer says bone/connective-tissue recovery is the same or longer in ' +
             'super shoes - that is the entire basis for a per-week session cap.',
+        );
+      }
+    },
+  },
+
+  // ── V5 backend surfaces (2026-08-19) · per-zone pace re-anchor, race-
+  // authority, return-to-run ladder ──────────────────────────────────────
+
+  {
+    id: 'RETURN.min-two-sessions-per-stage',
+    binds: ['lib/plan/return-ladder.ts#MIN_SESSIONS_PER_STAGE'],
+    doc: 'Research/05-injury-return-protocols.md',
+    anchor: 'Spend at least 2 sessions at each stage before progressing.',
+    claim:
+      'The check-in-gated ladder (POST /api/v5/return/checkin) must not advance a stage on fewer ' +
+      "than the doctrine's own minimum of 2 silent sessions at the current load. The number is " +
+      'read out of the sentence itself, not hand-copied, so an edit to the doctrine band moves ' +
+      'the gate with it.',
+    check({ cite }) {
+      const text = cite.text();
+      const m = text.match(/at least\s+(\d+)\s+sessions/i);
+      if (!m) {
+        throw new Error(
+          `Research/05 §1.1 no longer states "at least N sessions at each stage" · ` +
+            're-read the section and re-anchor this claim',
+        );
+      }
+      const doctrineMin = Number(m[1]);
+      if (MIN_SESSIONS_PER_STAGE !== doctrineMin) {
+        throw new Error(
+          `MIN_SESSIONS_PER_STAGE is ${MIN_SESSIONS_PER_STAGE} · Research/05 §1.1 says "at least ` +
+            `${doctrineMin} sessions at each stage before progressing"`,
+        );
+      }
+    },
+  },
+
+  {
+    id: 'PACE.zone-reanchor-uses-bound-curve-functions',
+    binds: ['lib/plan/pace-zones.ts#resolveZonePaces'],
+    doc: 'docs/faff-iphone-design-contract.md',
+    anchor: '**Zones do not move by the same amount.**',
+    claim:
+      'GET /api/v5/paces reports THREE independent zone deltas (threshold, interval, rep) off the ' +
+      'canonical Daniels curve this app already binds to doctrine — never a single headline delta, ' +
+      'and never a reinvented offset table (the exact mistake docs/2026-05-19-sim-sweep.md ' +
+      'documents for the deprecated `E = M + 75` / `R = mile-pace` formulas).',
+    check({ cite }) {
+      const text = cite.text();
+      if (!text.includes('threshold `+24 s/mi`') || !text.includes('interval `+22`') || !text.includes('rep `+19`')) {
+        throw new Error(
+          'docs/faff-iphone-design-contract.md no longer states the worked three-point-drop ' +
+            'example ("threshold +24 s/mi, interval +22, rep +19") · re-read the section and ' +
+            're-anchor this claim',
+        );
+      }
+      const src = sourceOf('web-v2/lib/plan/pace-zones.ts');
+      // Built off the SAME bound curve functions PACE.threshold-anchor and
+      // PACE.repetition-is-mile-race-pace already gate — never re-derived.
+      matchLiteral(src, /tPaceFromVdot/, 'resolveZonePaces calls the bound threshold-pace curve');
+      matchLiteral(src, /iPaceFromVdot/, 'resolveZonePaces calls the bound interval-pace curve');
+      matchLiteral(src, /rPaceFromVdot/, 'resolveZonePaces calls the bound rep-pace curve');
+      // And it must never collapse the three rows into one combined delta —
+      // no function in the file computes an average/sum across zones.
+      if (/averageDelta|combinedDelta|headlineDelta|deltas\.reduce/i.test(src)) {
+        throw new Error(
+          'lib/plan/pace-zones.ts appears to compute a combined/averaged delta across zones · ' +
+            'the design contract requires per-zone rows only, with no single headline number',
         );
       }
     },

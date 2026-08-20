@@ -119,7 +119,14 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
   // `bestRecentVdot(...)` — evidence-only, so a null read leaves the plan alone
   // rather than re-anchoring onto another estimate. Best-effort.
   let reanchor: Awaited<ReturnType<typeof reanchorActivePlan>> = null;
-  try { reanchor = await reanchorActivePlan(userUuid, vdot, today); }
+  try {
+    // Thread the winning candidate's provenance through so a phone read of
+    // GET /api/v5/paces days later can tell "a race confirmed this" from
+    // "training evidence modelled this" (lib/plan/pace-drop-event.ts).
+    reanchor = await reanchorActivePlan(userUuid, vdot, today, best
+      ? { source: best.source, refId: best.source === 'race' ? best.slug : best.id }
+      : null);
+  }
   catch { reanchor = null; }
 
   return { vdot, snapshots, reanchor };

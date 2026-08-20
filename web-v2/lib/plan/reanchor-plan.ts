@@ -67,6 +67,21 @@ import { tPaceFromVdot, iPaceFromVdot } from '@/lib/training/vdot';
 import { paceBlendAnchorIsProvisional } from './anchor-provenance';
 import { mutatePlan } from './mutate';
 import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
+import { recordPaceZoneEvent, type PaceZoneEvidenceSource } from './pace-drop-event';
+
+/**
+ * What licensed the new VDOT, as far as the caller can say. Threaded through
+ * from `bestRecentVdot`'s winning candidate (`app/api/cron/snapshot-
+ * projections/route.ts`) or from the race-authority fallback
+ * (`lib/race/next-best-anchor.ts`) so `GET /api/v5/paces` can tell "a race
+ * confirmed this" from "training evidence modelled this" days later. Optional
+ * and best-effort — omitting it just means the pace-drop card reads as
+ * training-modelled with no named race.
+ */
+export interface ReanchorEvidence {
+  source: 'race' | 'run' | null;
+  refId: string | null;
+}
 
 /** Refresh only when fitness moved enough to matter — avoids churning paces on
  *  day-to-day VDOT jitter (the fade/candidate set wiggles ±~0.5). */
@@ -174,6 +189,7 @@ export async function reanchorActivePlan(
   userId: string,
   measuredVdot: number | null,
   today: string,
+  evidence?: ReanchorEvidence | null,
 ): Promise<ReanchorResult | null> {
   // GUARD 2 · a measured read, or nothing happens. A provisional anchor is
   // never upgraded off another provisional one.
@@ -194,8 +210,54 @@ export async function reanchorActivePlan(
   const isRacePrep = planRow.mode === 'race-prep' || planRow.race_id != null;
 
   return isRacePrep
-    ? reanchorRacePrep(userId, planRow.id, st, measuredVdot, today)
-    : reanchorMaintenance(userId, planRow.id, st, measuredVdot, today);
+    ? reanchorRacePrep(userId, planRow.id, st, measuredVdot, today, evidence)
+    : reanchorMaintenance(userId, planRow.id, st, measuredVdot, today, evidence);
+}
+
+/**
+ * The race-authority fallback (`POST /api/v5/race-authority`, HARD
+ * CONSTRAINT: a `compromised`/`unrepresentative` answer must move the plan to
+ * the next-best anchor, not back to the pre-race paces). That is a runner's
+ * deliberate, confirmed answer to a question the engine asked — not the
+ * daily opportunistic self-heal — so it applies UNCONDITIONALLY: it skips
+ * `shouldReanchorRacePrep`/`shouldReanchor`'s "did fitness move enough to
+ * matter" gate entirely. Everything else — the sealed-day guard, the
+ * plan-mutation boundary, the provenance-mark clearing, the pace-drop-event
+ * stamp — is identical to the opportunistic path, because a fallback that
+ * skipped any of THOSE would be a second, less-safe re-anchor mechanism.
+ */
+export async function forceReanchorActivePlan(
+  userId: string,
+  newVdot: number,
+  today: string,
+  evidence?: ReanchorEvidence | null,
+): Promise<ReanchorResult | null> {
+  if (!Number.isFinite(newVdot) || newVdot <= 0) return null;
+
+  const planRow = (await pool.query<{
+    id: string; mode: string | null; race_id: string | null;
+    authored_state: Record<string, unknown> | null;
+  }>(
+    `SELECT id, mode, race_id, authored_state FROM training_plans
+      WHERE user_uuid = $1 AND archived_iso IS NULL
+      ORDER BY authored_iso DESC LIMIT 1`,
+    [userId],
+  )).rows[0];
+  if (!planRow) return null;
+
+  const st = (planRow.authored_state ?? {}) as Record<string, any>;
+  const isRacePrep = planRow.mode === 'race-prep' || planRow.race_id != null;
+
+  return isRacePrep
+    ? reanchorRacePrep(userId, planRow.id, st, newVdot, today, evidence, /* force */ true)
+    : reanchorMaintenance(userId, planRow.id, st, newVdot, today, evidence, /* force */ true);
+}
+
+/** `ReanchorEvidence.source` → the vocabulary `pace-drop-event.ts` stores. */
+function evidenceSourceFor(evidence: ReanchorEvidence | null | undefined): PaceZoneEvidenceSource {
+  if (evidence?.source === 'race') return 'race';
+  if (evidence?.source === 'run') return 'training';
+  return null;
 }
 
 // ── race-prep arm ────────────────────────────────────────────────────────────
@@ -226,9 +288,11 @@ async function reanchorRacePrep(
   st: Record<string, any>,
   measuredVdot: number,
   today: string,
+  evidence?: ReanchorEvidence | null,
+  force = false,
 ): Promise<ReanchorResult | null> {
   const paceBlend = st.pace_blend ?? null;
-  if (!shouldReanchorRacePrep(paceBlend, measuredVdot)) return null;
+  if (!force && !shouldReanchorRacePrep(paceBlend, measuredVdot)) return null;
 
   const wasProvisional = paceBlendAnchorIsProvisional(paceBlend);
   const fromVdot = paceBlend?.season_anchor_vdot != null
@@ -289,6 +353,18 @@ async function reanchorRacePrep(
 
   try { (await import('./lookup')).bustPlanLookupCache(userId); } catch { /* best-effort */ }
 
+  // GET /api/v5/paces reads this days later — the whole reason it exists is
+  // that nothing else durable records "the anchor just moved". Best-effort:
+  // a failure here must not undo a re-anchor that already committed.
+  try {
+    await recordPaceZoneEvent(pool, planId, {
+      fromVdot,
+      toVdot: measuredVdot,
+      evidenceSource: evidenceSourceFor(evidence),
+      evidenceRaceSlug: evidence?.source === 'race' ? evidence.refId : null,
+    });
+  } catch { /* best-effort */ }
+
   return {
     planId,
     mode: 'race-prep',
@@ -309,10 +385,12 @@ async function reanchorMaintenance(
   st: Record<string, any>,
   measuredVdot: number,
   today: string,
+  evidence?: ReanchorEvidence | null,
+  force = false,
 ): Promise<ReanchorResult | null> {
   const anchorVdot = st.anchorVdot != null ? Number(st.anchorVdot) : null;
   const anchorSource = (st.anchorSource as string) ?? null;
-  if (!shouldReanchor(anchorSource, anchorVdot, measuredVdot)) return null;
+  if (!force && !shouldReanchor(anchorSource, anchorVdot, measuredVdot)) return null;
 
   const ttDistance = (st.onboarding_goals?.ttDistance as string) ?? null;
 
@@ -390,6 +468,17 @@ async function reanchorMaintenance(
   }
 
   try { (await import('./lookup')).bustPlanLookupCache(userId); } catch { /* best-effort */ }
+
+  // Same durable stamp as the race-prep arm — best-effort, never undoes a
+  // re-anchor that already committed.
+  try {
+    await recordPaceZoneEvent(pool, planId, {
+      fromVdot: anchorVdot,
+      toVdot: measuredVdot,
+      evidenceSource: evidenceSourceFor(evidence),
+      evidenceRaceSlug: evidence?.source === 'race' ? evidence.refId : null,
+    });
+  } catch { /* best-effort */ }
 
   return {
     planId,
