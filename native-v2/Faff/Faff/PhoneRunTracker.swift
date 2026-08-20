@@ -393,3 +393,33 @@ extension PhoneRunTracker: CLLocationManagerDelegate {
         currentPaceSecPerMi = Int((windowSec / windowDistMi).rounded())
     }
 }
+
+// MARK: - Preview seam
+//
+// Every live property above is `private(set)` on purpose — this class is "a
+// pure state machine testable without UI" (see file header) and nothing
+// outside PhoneRunTracker.swift should be able to set GPS-derived state by
+// hand. A SwiftUI #Preview still needs to show a representative mid-run
+// console (LiveRunOutdoorV5), so this gives it one legal way in: a DEBUG-only
+// seam, compiled out of every release build, that never touches CoreLocation.
+
+#if DEBUG
+extension PhoneRunTracker {
+    /// Stamps the tracker into a specific display state for a #Preview.
+    /// Bypasses GPS entirely — never call this outside DEBUG/preview code.
+    func seedForPreview(state: RunState,
+                        elapsedSec: Int,
+                        distanceMi: Double,
+                        currentPaceSecPerMi: Int?,
+                        lastFixAgeIsStale: Bool = false) {
+        self.state = state
+        self.elapsedSec = elapsedSec
+        self.distanceMi = distanceMi
+        self.currentPaceSecPerMi = currentPaceSecPerMi
+        self.lastFixAgeIsStale = lastFixAgeIsStale
+        self.workoutId = workoutId ?? "preview"
+        self.startedAt = startedAt ?? Date(timeIntervalSinceNow: -Double(elapsedSec))
+        self.authorizationGranted = true
+    }
+}
+#endif

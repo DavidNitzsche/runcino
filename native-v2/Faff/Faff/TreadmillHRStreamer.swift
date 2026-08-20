@@ -121,3 +121,17 @@ final class TreadmillHRStreamer: ObservableObject {
         }
     }
 }
+
+// MARK: - Preview seam
+//
+// `currentBpm` is `private(set)` — real samples only come from HealthKit.
+// DEBUG-only, compiled out of release builds: lets a #Preview show a live HR
+// tile (or the deliberate no-source layout, by simply not calling this).
+
+#if DEBUG
+extension TreadmillHRStreamer {
+    func seedForPreview(bpm: Int?) {
+        currentBpm = bpm
+    }
+}
+#endif
