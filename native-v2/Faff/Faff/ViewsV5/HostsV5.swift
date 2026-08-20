@@ -456,7 +456,6 @@ struct BlockHostV5: View {
 struct RacesHostV5: View {
     @StateObject private var surface = V5Surfaces.races()
     @Binding var path: [V5Route]
-    @State private var addRaceOpen = false
 
     var body: some View {
         ZStack {
@@ -466,7 +465,7 @@ struct RacesHostV5: View {
                             onAnswer: { a in Task { await send(a, model) } },
                             onEvidenceTap: { _ in },
                             onOpenRace: { row in path.append(.raceDetail(slug: row.slug)) },
-                            onAddRace: { addRaceOpen = true })
+                            onAddRace: { path.append(.addRace) })
                 } else if let reason = surface.absentReason {
                     ScrollView {
                         Silence(reason: reason)
@@ -498,14 +497,13 @@ struct RacesHostV5: View {
                 NotificationCenter.default.post(name: .faffSurfaceReady, object: "races")
             }
             .refreshable { await surface.load() }
-
-            V5SheetHost(isPresented: $addRaceOpen, title: "Add a race") {
-                AddRaceV5(onCancel: { addRaceOpen = false },
-                          onCreated: { _ in
-                              addRaceOpen = false
-                              Task { await surface.load() }
-                          })
+            // Coming back from a pushed screen that may have written — adding
+            // a race, answering on the detail — the list behind it is stale.
+            // The stack does not re-run `.task` on pop, so watch the path.
+            .onChange(of: path.isEmpty) { _, isRoot in
+                if isRoot { Task { await surface.load() } }
             }
+
         }
     }
 
@@ -627,6 +625,27 @@ struct ReturnHostV5: View {
             }
         }
         .task { await surface.load() }
+        .navigationBarBackButtonHidden(true)
+    }
+}
+
+/// Adding a race is its own screen. `AddRaceV5` is bare content — it draws
+/// no bar and does not scroll — so the chrome lives here, exactly as
+/// `ShoesV5` and `SettingsV5` carry theirs.
+struct AddRaceHostV5: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                AppBar(title: "Add a race", onBack: { dismiss() })
+                AddRaceV5(onCancel: { dismiss() },
+                          onCreated: { _ in dismiss() })
+                    .padding(.horizontal, V5.S.gutter)
+                    .padding(.bottom, V5.S.s32)
+            }
+        }
+        .background(V5.surfacePage)
         .navigationBarBackButtonHidden(true)
     }
 }
@@ -761,6 +780,7 @@ struct FaffV5Root<LiveContent: View>: View {
                 case .runDetail(let id):    RunDetailHostV5(id: id)
                 case .settings:             SettingsHostV5()
                 case .shoes:                ShoesHostV5()
+                case .addRace:              AddRaceHostV5()
                 case .pacesMoved:           PacesHostV5()
                 case .returnToRunning:      ReturnHostV5()
                 case .injuryFlare:          InjuryPreviewHostV5()

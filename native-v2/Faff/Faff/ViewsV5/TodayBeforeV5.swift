@@ -460,12 +460,25 @@ struct TodayBeforeV5: View {
                     ExpandingRow(label: row.label,
                                  sub: row.sub,
                                  value: row.value.optionalValue,
-                                 question: row.label,
+                                 question: beforeYouGoQuestion(row),
                                  isExpanded: expandedBinding(for: row.id)) {
                         beforeYouGoExpansion(for: row)
                     }
                 }
             }
+        }
+    }
+
+    /// The expansion header names what is being ASKED. The row label names
+    /// the current STATE — "Asics Novablast 5" — so repeating it as the
+    /// question says nothing. Where the label is already the ask ("Move or
+    /// skip") the label stands; the fallback only ever runs for a row whose
+    /// verb this build does not know.
+    private func beforeYouGoQuestion(_ row: V5Row) -> String {
+        switch row.action {
+        case "change_shoe": return "Which shoes"
+        case "move_skip":   return "Move it, or skip it"
+        default:            return row.label
         }
     }
 

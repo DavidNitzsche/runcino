@@ -66,6 +66,11 @@ enum FaffTabV5: String, CaseIterable, Identifiable, Hashable {
 
 enum V5Route: Hashable {
     case raceDetail(slug: String)
+    /// Adding a race. A pushed SCREEN, not a bottom sheet: the form runs to
+    /// name, date, distance, priority, goal and a course import, which is
+    /// far more than a sheet sized to its content can hold without its
+    /// title climbing under the notch and its buttons sliding under the bar.
+    case addRace
     /// The run history, and one run out of it.
     case runLog
     case runDetail(id: String)

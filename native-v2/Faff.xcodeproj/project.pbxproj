@@ -62,6 +62,7 @@
 		4E88DDDEE13FBFC793505EDE /* G_Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE323D928DA355934197F38B /* G_Settings.swift */; };
 		5145860E3D5DA3AF58559C74 /* WatchMirrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E500ED606917B273FF2A51 /* WatchMirrorView.swift */; };
 		528D47BC25D2A7F0CDB54874 /* SurfaceStoreV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = B817BE00E8380E26CE5AC512 /* SurfaceStoreV5.swift */; };
+		53BF589D416A19346C3E3869 /* SickV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF7E6E0D868BFA61684A1B5 /* SickV5.swift */; };
 		57463FD11EB2AB16CE4C44F7 /* HealthCompactGauge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7AF53AC1B5DF3231932FB6 /* HealthCompactGauge.swift */; };
 		58C73FAA4F3A621C91A48076 /* RaceDayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75CB12F69B8E91BD1846A268 /* RaceDayView.swift */; };
 		59394AFC9109506E69E7996F /* TokensV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7CFE2D883A30CAC352006F8 /* TokensV5.swift */; };
@@ -287,6 +288,7 @@
 		79F2EC545B990808978B44F0 /* WatchFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchFixtures.swift; sourceTree = "<group>"; };
 		7A2DDEC15725161C4032FEC9 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
 		7AB076FD4BB8D790F2DB9B79 /* FaceKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceKit.swift; sourceTree = "<group>"; };
+		7BF7E6E0D868BFA61684A1B5 /* SickV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SickV5.swift; sourceTree = "<group>"; };
 		7C1BECCB43A8C9B865BBDCA7 /* HealthSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSeed.swift; sourceTree = "<group>"; };
 		7CBC6B190CCB38D107978B08 /* PhoneRunTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRunTracker.swift; sourceTree = "<group>"; };
 		7E9955658E632F56C2B84C68 /* EmailSignInSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailSignInSheet.swift; sourceTree = "<group>"; };
@@ -546,6 +548,7 @@
 				1EA8EB84CF316484DDD472B3 /* SettingsV5.swift */,
 				180080F47DB86118277DF47B /* ShellV5.swift */,
 				780C121D0D1143740AD376E5 /* ShoesV5.swift */,
+				7BF7E6E0D868BFA61684A1B5 /* SickV5.swift */,
 				F3EEDC7AADDE262E2A9AD515 /* StateScreensV5.swift */,
 				B817BE00E8380E26CE5AC512 /* SurfaceStoreV5.swift */,
 				52B5E856FFADC87375561C98 /* TodayAfterV5.swift */,
@@ -944,6 +947,7 @@
 				5CC15617CBD77E60E78F0B75 /* ShoeView.swift in Sources */,
 				C65E6F1A598D9F8C62912AAE /* ShoesV5.swift in Sources */,
 				39609C4FA97B179028535FD4 /* ShoesView.swift in Sources */,
+				53BF589D416A19346C3E3869 /* SickV5.swift in Sources */,
 				CF1C1E572DC1A191D8D58977 /* SignInView.swift in Sources */,
 				209B9B2415A9DD80ADC7A4B8 /* StateScreensV5.swift in Sources */,
 				2D92791A3F6EEE6824DBACB3 /* StravaConnection.swift in Sources */,

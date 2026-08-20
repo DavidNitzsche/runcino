@@ -210,6 +210,14 @@ struct AddRaceV5: View {
                                enabled: !trimmedName.isEmpty && !courseSearching,
                                action: { Task { await searchCourse() } })
 
+                    // A disabled control with no reason beside it is a dead
+                    // end. Say what is missing.
+                    if trimmedName.isEmpty {
+                        Text("Name the race first \u{b7} the search goes by name.")
+                            .font(.faffText(TypeScaleV5.label13))
+                            .foregroundStyle(V5.textQuiet)
+                    }
+
                     courseSearchResult
                 } else {
                     // A URL was pasted — it wins at save time (matches the

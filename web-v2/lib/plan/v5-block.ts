@@ -117,7 +117,10 @@ export function buildPanel(state: TrainingState) {
     dose: null,
     stats: [
       { label: 'Quality share', value: num(`${qualityShare}%`), tone: 'neutral' },
-      { label: 'Long run', value: num(`${fmtMi(longMi)} mi`), tone: 'neutral' },
+      // A recovery or down week carries no designated long run. "0 mi" reads
+      // as a broken stat — the week has a longest run, it just has no LONG
+      // run. Say the true thing instead of printing a zero.
+      { label: 'Long run', value: num(longMi > 0 ? `${fmtMi(longMi)} mi` : 'None'), tone: 'neutral' },
       { label: "This week's mileage", value: num(`${fmtMi(weekMi)} mi`), tone: 'neutral' },
     ],
   };

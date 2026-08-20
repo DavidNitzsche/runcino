@@ -209,6 +209,33 @@ struct TrendBars: View {
         highlight < 0 ? values.count + highlight : highlight
     }
 
+    /// The bars are scaled against a PADDED domain, not against the series'
+    /// own min and max.
+    ///
+    /// Min-anchored normalisation is quietly dishonest on a series that
+    /// barely moves: three projections of 3:31:40 / 3:31:44 / 3:31:48 —
+    /// eight seconds apart on a three-and-a-half-hour race — would draw as
+    /// empty bar to full bar and read as an enormous swing. And a series
+    /// that does not move at all collapses to the 2pt floor on every bar,
+    /// which looks like a broken chart rather than a flat trend.
+    ///
+    /// So the domain is at least `domainFloorFraction` of the series' own
+    /// magnitude, centred on it, and every bar keeps `barFloorFraction` of
+    /// the height. Equal values draw equal, mid-height bars. A small real
+    /// change draws as a small change. A large one still fills the chart.
+    private static let domainFloorFraction = 0.02
+    private static let barFloorFraction: CGFloat = 0.18
+
+    private func barHeight(_ v: Double, in full: CGFloat) -> CGFloat {
+        let lo = values.min() ?? 0
+        let hiV = values.max() ?? 1
+        let mid = (lo + hiV) / 2
+        let span = Swift.max(hiV - lo, abs(mid) * Self.domainFloorFraction, 0.0001)
+        let frac = CGFloat((v - (mid - span / 2)) / span)
+        let scaled = Self.barFloorFraction + (1 - Self.barFloorFraction) * Swift.min(Swift.max(frac, 0), 1)
+        return Swift.max(scaled * full, 2)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.s12) {
             if let headline {
@@ -223,14 +250,11 @@ struct TrendBars: View {
             }
 
             GeometryReader { geo in
-                let lo = values.min() ?? 0
-                let hiV = values.max() ?? 1
-                let span = Swift.max(hiV - lo, 0.0001)
                 HStack(alignment: .bottom, spacing: 2) {
                     ForEach(Array(values.enumerated()), id: \.offset) { i, v in
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .fill(i == hi ? V5.signal : V5.plotInk.opacity(0.32))
-                            .frame(height: Swift.max((v - lo) / span * geo.size.height, 2))
+                            .frame(height: barHeight(v, in: geo.size.height))
                     }
                 }
                 .frame(height: geo.size.height, alignment: .bottom)

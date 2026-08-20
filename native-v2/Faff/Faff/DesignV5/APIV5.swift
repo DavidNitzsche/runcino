@@ -1131,6 +1131,7 @@ extension V5Today {
         case askedVsRan, verdict, zoneShares, zoneTarget, elevation, onTheBelt
         case shoesWorn, whatThisDidToTheWeek, runId
         case changed, injury, weekOff, offSeason, notOnPhoneYet
+        case paceNote, sick
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -1156,6 +1157,8 @@ extension V5Today {
         weekOff = c.opt(.weekOff)
         offSeason = c.opt(.offSeason)
         notOnPhoneYet = c.opt(.notOnPhoneYet)
+        paceNote = c.opt(.paceNote)
+        sick = c.opt(.sick)
     }
 }
 
@@ -1229,12 +1232,15 @@ extension V5DecisionCard {
 
 extension V5RaceDetail {
     enum K: String, CodingKey {
-        case name, dateLine, goal, projected, gap, elevation, elevationMarks
+        case slug, name, dateLine, goal, projected, gap, elevation, elevationMarks
         case elevationFootnotes, pacePlan, taperProgress, taperEndpoints
-        case taperCentreLabel, gear, coachLine
+        case taperCentreLabel, gear, coachLine, resultEntry
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
+        // The caller already knows the slug — it is the route parameter — so
+        // an older server that does not echo it is not a decode failure.
+        slug = c.text(.slug)
         name = c.text(.name)
         dateLine = c.text(.dateLine)
         goal = c.opt(.goal); projected = c.opt(.projected); gap = c.opt(.gap)
@@ -1247,6 +1253,7 @@ extension V5RaceDetail {
         taperCentreLabel = c.opt(.taperCentreLabel)
         gear = c.list(.gear)
         coachLine = c.opt(.coachLine)
+        resultEntry = c.opt(.resultEntry)
     }
 }
 
