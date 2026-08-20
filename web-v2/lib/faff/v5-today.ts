@@ -64,12 +64,22 @@ export interface V5Row {
   sub: string | null;
   value: V5Number | null;
   action: string | null;
+  /**
+   * How the engine wants the VALUE inked — `'attention' | 'signal' | 'fault'`,
+   * or omitted for neutral. See `V5Tone` in APIV5.swift: absent is the safe
+   * default (can only under-mark), and the phone never derives this itself —
+   * it holds a formatted string, not the band. Optional so every existing
+   * call site (which has nothing to say) stays exactly as it was.
+   */
+  tone?: string | null;
 }
 
 export interface V5Step {
   id: string;
   main: string;
   sub: V5Number | null;
+  /** Per-step ink, same contract as `V5Row.tone`. Optional/omitted = neutral. */
+  tone?: string | null;
 }
 
 export interface V5Group {
@@ -77,6 +87,14 @@ export interface V5Group {
   title: string;
   note: string | null;
   steps: V5Step[];
+  /**
+   * True for the group carrying the actual work, as against the warm up and
+   * cool down around it. See `V5Group.isWork` in APIV5.swift — the client
+   * used to infer this from POSITION, which breaks on two work blocks or
+   * none, so the engine says which. Optional; a group that isn't structured
+   * warm/work/cool (none exist yet) can leave it unset.
+   */
+  isWork?: boolean;
 }
 
 export type V5DayStateWord = 'easy' | 'rest' | 'quality' | 'race' | 'phase' | 'long';
@@ -343,6 +361,19 @@ export interface V5RecentRunCtx {
   inclinePct: number | null;
   askedPaceSPerMi: number | null;
   askedHrCap: number | null;
+  /**
+   * True only when `askedHrCap` resolved from `workout_spec.hr_cap_bpm` — a
+   * genuine "stay under this" ceiling (Daniels easy/long HR cap doctrine).
+   * The route's own resolution falls back to `hr_target_bpm` (a number to
+   * hover near, not a ceiling — set on marathon-pace blocks) and `lthr_bpm`
+   * (a bare physiological reference that quality work is often SUPPOSED to
+   * reach or pass) when no real cap exists. Those two are fine to DISPLAY as
+   * "under {n}" context but wrong to grade against — a threshold session
+   * whose avgHr lands above its own LTHR reference executed exactly as
+   * asked. This flag is what lets the composer tell the difference without
+   * losing the number itself.
+   */
+  askedHrIsHardCap: boolean;
   effortAsked: { lo: number; hi: number } | null;
   effortLogged: number | null;
   verdict: string | null;
@@ -420,6 +451,15 @@ export interface V5TodayContext {
 // Sub-builders
 // ─────────────────────────────────────────────────────────────────────────
 
+// `V5Step.tone` is deliberately left unset by every `toStep` call below.
+// This builder only ever runs off `ctx.prescription` — the PRE-run plan
+// (`V5TodayContext.prescription`'s own doc comment: "null once the runner
+// has logged today's run") — so there is no executed mile to be out of band
+// against yet. There is no "ran" half of the per-mile comparison here for
+// this composer to hold an opinion about; inventing one would be exactly
+// the fabricated-band failure mode this field exists to prevent. The day
+// this builder (or a sibling) starts walking REAL per-mile splits after a
+// run, that is where per-step tone belongs.
 function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
   if (!rx || rx.steps.length === 0) return [];
 
@@ -455,6 +495,9 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
       id: 'warmup', title: 'Warm up',
       note: fmtMi(warm.reduce((s, x) => s + (x.distance_mi ?? 0), 0)),
       steps: warm.map((s, i) => toStep(s, i, 'warmup')),
+      // Never the work — the engine says so explicitly rather than leaving
+      // the client to infer it from this group's position in the list.
+      isWork: false,
     });
   }
   if (work.length > 0) {
@@ -463,6 +506,13 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
       id: 'work', title: warm.length > 0 || cool.length > 0 ? 'Work' : rx.headline,
       note: fmtMi(workMi),
       steps: work.map((s, i) => toStep(s, i, 'work')),
+      // The group carrying the actual work — see V5Group.isWork's doc
+      // comment in APIV5.swift. There is exactly one work group in this
+      // builder's output today (`work` is everything that isn't warmup/
+      // cooldown, collapsed into one group); if a future prescription shape
+      // splits it into two work blocks, both get isWork: true here, which is
+      // the whole reason this is engine-said rather than position-inferred.
+      isWork: true,
     });
   }
   if (cool.length > 0) {
@@ -470,6 +520,7 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
       id: 'cooldown', title: 'Cool down',
       note: fmtMi(cool.reduce((s, x) => s + (x.distance_mi ?? 0), 0)),
       steps: cool.map((s, i) => toStep(s, i, 'cooldown')),
+      isWork: false,
     });
   }
   return groups;
@@ -544,6 +595,18 @@ function buildRecentRun(r: V5RecentRunCtx): {
 } {
   const askedVsRan: V5Row[] = [];
 
+  // Pace's tone is left unset here on purpose. There is no context-aware
+  // band available to this composer for a whole-run average — no tolerance,
+  // no heat adjustment, no "this is a taper session and it is SUPPOSED to be
+  // slow" read reaches this function (that reasoning lives in
+  // lib/coach/run-recap.ts's `deriveRecap`, which is heat/terrain/taper-aware
+  // and already authors `r.verdict` in prose — but does not expose a per-
+  // metric in/out-of-band boolean this composer could reuse honestly). Rule
+  // one's whole point is that a naive `ran > asked` comparison here would be
+  // exactly the bug this field exists to prevent — the wire contract's own
+  // example is this exact row ("a client comparison would paint a
+  // deliberately easy taper mile amber"). Absent stays absent until the
+  // engine actually holds that judgement.
   const askedPaceText = r.askedPaceSPerMi != null ? fmtPace(r.askedPaceSPerMi) : 'by feel';
   askedVsRan.push({
     id: 'pace', label: 'Pace', sub: askedPaceText,
@@ -555,11 +618,25 @@ function buildRecentRun(r: V5RecentRunCtx): {
     sub: r.askedHrCap != null ? `under ${r.askedHrCap}` : null,
     value: num(r.avgHr != null ? `${r.avgHr}` : '—', false),
     action: null,
+    // A stated ceiling is the one band this row's own sub-text already
+    // asserts ("under 146") — exceeding it is unambiguous, no heat/taper
+    // reasoning required. But `askedHrCap` is display-resolved from three
+    // different meanings (see `askedHrIsHardCap`'s doc comment) and only ONE
+    // of them is actually a ceiling; grading against the other two would
+    // paint a threshold session that reached its own LTHR reference as a
+    // miss, when reaching it was the point.
+    tone: (r.askedHrIsHardCap && r.askedHrCap != null && r.avgHr != null && r.avgHr > r.askedHrCap)
+      ? 'attention' : null,
   });
   askedVsRan.push({
     id: 'effort', label: 'Effort',
     sub: r.effortAsked ? `${r.effortAsked.lo} to ${r.effortAsked.hi}` : null,
     value: r.effortLogged != null ? num(`${r.effortLogged} of 10`, false) : null,
+    // The engine hands over an explicit two-sided band (effortAsked.lo/hi) —
+    // outside it is unambiguous, no inference required on either side.
+    tone: (r.effortAsked != null && r.effortLogged != null
+      && (r.effortLogged < r.effortAsked.lo || r.effortLogged > r.effortAsked.hi))
+      ? 'attention' : null,
     // Effort is the only tappable row (design contract, 5b) — present a
     // verb only when it has not been logged yet.
     action: r.effortLogged == null ? 'log_effort' : null,

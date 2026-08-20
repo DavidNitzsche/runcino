@@ -100,6 +100,10 @@ describe('composeV5Today · state precedence', () => {
         runId: 'r1', distanceMi: 8.1, durationSec: 3600, paceSPerMi: 444,
         avgHr: 158, indoor: false, speedMph: null, inclinePct: null,
         askedPaceSPerMi: 440, askedHrCap: 165,
+        // A threshold session's ceiling is an LTHR reference, not a hard
+        // cap (spec-builder.ts only emits hr_cap_bpm for easy/long/
+        // recovery) — false here, matching production for this workout type.
+        askedHrIsHardCap: false,
         effortAsked: { lo: 6, hi: 8 }, effortLogged: 7,
         verdict: 'Banked the threshold.',
         zoneShares: [8, 26, 14, 46, 6], zoneTarget: 4,
@@ -128,7 +132,7 @@ describe('composeV5Today · state precedence', () => {
       recentRun: {
         runId: 'r2', distanceMi: 6, durationSec: 3000, paceSPerMi: 500,
         avgHr: 140, indoor: true, speedMph: 7.2, inclinePct: 1.5,
-        askedPaceSPerMi: null, askedHrCap: null,
+        askedPaceSPerMi: null, askedHrCap: null, askedHrIsHardCap: false,
         effortAsked: null, effortLogged: null,
         verdict: 'Easy miles banked.',
         zoneShares: [40, 50, 10, 0, 0], zoneTarget: null,
@@ -146,6 +150,76 @@ describe('composeV5Today · state precedence', () => {
     expect(out.panel.kicker).toBe('Treadmill · indoor, no GPS');
     // Effort not yet logged — the row is tappable.
     expect(out.askedVsRan.find((r) => r.id === 'effort')?.action).toBe('log_effort');
+  });
+
+  it('after_run · tone (Job 2 wire contract) · effort and hard-HR-cap breaches ink attention, pace never does', () => {
+    const out = composeV5Today(baseCtx({
+      todayPlan: { type: 'easy', subLabel: null, distanceMi: 6, originalType: null, originalSubLabel: null },
+      recentRun: {
+        runId: 'r3', distanceMi: 6, durationSec: 3000, paceSPerMi: 900,
+        avgHr: 160, indoor: false, speedMph: null, inclinePct: null,
+        // Easy day → askedHrCap really is hr_cap_bpm in production, so this
+        // fixture marks it a hard cap and breaches it (160 > 150).
+        askedPaceSPerMi: 500, askedHrCap: 150, askedHrIsHardCap: true,
+        effortAsked: { lo: 2, hi: 4 }, effortLogged: 7, // well outside the band
+        verdict: 'Easy done, but it ran hot.',
+        zoneShares: null, zoneTarget: null,
+        elevationSamples: null, elevGainFt: null,
+        weekDoneMi: 10, weekPlannedMi: 30,
+        shoeWorn: null, niggleFlagged: null,
+      },
+    }));
+    const pace = out.askedVsRan.find((r) => r.id === 'pace');
+    const heart = out.askedVsRan.find((r) => r.id === 'heart');
+    const effort = out.askedVsRan.find((r) => r.id === 'effort');
+    // Rule 1's own worked example: pace never gets a client-computable band
+    // here, so this composer never inks it — see the doc comment above
+    // askedPaceText in buildRecentRun.
+    expect(pace?.tone).toBeUndefined();
+    expect(heart?.tone).toBe('attention'); // 160 > a REAL cap of 150
+    expect(effort?.tone).toBe('attention'); // 7 outside [2, 4]
+  });
+
+  it('after_run · tone · a non-cap HR reference (target/LTHR) never inks attention, even when exceeded', () => {
+    const out = composeV5Today(baseCtx({
+      todayPlan: { type: 'threshold', subLabel: 'THRESHOLD', distanceMi: 8, originalType: null, originalSubLabel: null },
+      recentRun: {
+        runId: 'r4', distanceMi: 8, durationSec: 3300, paceSPerMi: 412,
+        // avgHr ABOVE the displayed number, but askedHrIsHardCap is false —
+        // this is the exact shape of the bug the field prevents: a
+        // threshold session that reached its own LTHR reference must not
+        // read as a miss when reaching it was the point.
+        avgHr: 172, indoor: false, speedMph: null, inclinePct: null,
+        askedPaceSPerMi: 410, askedHrCap: 168, askedHrIsHardCap: false,
+        effortAsked: null, effortLogged: null,
+        verdict: 'Banked the threshold.',
+        zoneShares: null, zoneTarget: 4,
+        elevationSamples: null, elevGainFt: null,
+        weekDoneMi: 30, weekPlannedMi: 45,
+        shoeWorn: null, niggleFlagged: null,
+      },
+    }));
+    expect(out.askedVsRan.find((r) => r.id === 'heart')?.tone).toBeNull();
+  });
+
+  it('race_day / before_run · groups say which one is the work, never inferred from position', () => {
+    const out = composeV5Today(baseCtx({
+      todayPlan: { type: 'threshold', subLabel: 'THRESHOLD', distanceMi: 8, originalType: null, originalSubLabel: null },
+      prescription: {
+        type: 'threshold', headline: 'Threshold', why: 'Extend the ceiling.',
+        total_mi: 8,
+        steps: [
+          { label: 'Warmup', distance_mi: 1.5, note: 'Easy in.' },
+          { label: 'Threshold', distance_mi: 5, pace_target: '6:52/mi', note: 'Steady state.' },
+          { label: 'Cooldown', distance_mi: 1.5, note: 'Easy out.' },
+        ],
+      },
+    }));
+    expect(out.groups).toHaveLength(3);
+    const byId = Object.fromEntries(out.groups.map((g) => [g.id, g]));
+    expect(byId.warmup.isWork).toBe(false);
+    expect(byId.work.isWork).toBe(true);
+    expect(byId.cooldown.isWork).toBe(false);
   });
 
   it('changed_overnight · fires only when THREE domains converged (Rule 2)', () => {

@@ -37,6 +37,40 @@
 //  `LiveRunPhaseWalk`, shared by both live-run screens).
 //
 //  ─────────────────────────────────────────────────────────────────────────
+//  SAVING · WHY THIS VIEW POSTS ITSELF INSTEAD OF HANDING A PAYLOAD UP
+//
+//  A treadmill run used to leave `End` with nothing persisted — the whole
+//  session lived in this view's own `@State` and vanished on dismiss. The
+//  legacy `Views/TreadmillView.swift` (`buildPayload`, ~line 794) is the
+//  wire-shape source of truth: WatchCompletion-shaped JSON POSTed to
+//  `/api/watch/workouts/complete` with `source: "treadmill"`, `indoor: true`,
+//  and per-phase `actualSpeedMph` / `actualInclinePct` — the exact fields
+//  `/api/v5/today` averages to build the "on the belt" card. Drift the shape
+//  and that card goes blank.
+//
+//  `HostsV5.swift` is off-limits for this change (per AGENT-BRIEF), so this
+//  view does not hand a payload up through `onEnd` — `onEnd: () -> Void`
+//  keeps its existing zero-argument shape and needs no wiring change at the
+//  call site. Instead the End button fires the save itself, through
+//  `WatchSync.shared.saveCompletionDurably` — the SAME durable-queue door
+//  `PhoneRunTracker`'s outdoor path uses from `LiveRunHostV5.end()`: the
+//  payload is written to disk before the network call, so a failed POST is
+//  "will sync later," never "run gone" — then calls `onEnd()` exactly as
+//  before. That mirrors the outdoor host's own fire-then-dismiss pattern
+//  (`Task { saveCompletionDurably }` followed immediately by `onDismiss()`,
+//  not awaited) rather than inventing a new one.
+//
+//  Per-phase actuals are captured by walking `LiveRunPhaseWalk` on every 1s
+//  tick (the same clock that already drives `elapsedSec`/`distanceMi`): the
+//  active phase accumulates a running speed/incline average and duration:
+//  when the walk crosses into the next phase, the just-finished phase closes
+//  out — including its slice of `TreadmillHRStreamer.closePhase()`, exactly
+//  the call legacy makes at its own segment boundary. A phase never reached
+//  (the runner ended early) reports `completed: false` and its *nominal*
+//  speed/incline, matching legacy's own fallback for an unreached segment —
+//  inherited, not introduced here.
+//
+//  ─────────────────────────────────────────────────────────────────────────
 //  THE NO-HEART LAYOUT (task's own words)
 //
 //  "The treadmill HEART tile has no source without a watch on the wrist…
@@ -65,9 +99,11 @@ struct LiveRunTreadmillV5: View {
     /// exists for the treadmill — but still gets the tap for its own
     /// bookkeeping (e.g. a future POST/session log).
     let onPause: () -> Void
-    /// Fired on End. Leaves the screen — the caller owns any confirm step
-    /// and the eventual completion save, per AGENT-BRIEF ("does not own
-    /// navigation"). This view does not POST anything itself.
+    /// Fired on End, AFTER this view has already saved the run (see
+    /// "SAVING" in the file header) — leaves the screen. The caller still
+    /// owns navigation/dismissal per AGENT-BRIEF; it just no longer owns
+    /// the completion save, because that save has to live here or not
+    /// happen at all (`HostsV5.swift` is off-limits for this change).
     let onEnd: () -> Void
 
     @State private var elapsedSec: Int = 0
@@ -77,6 +113,36 @@ struct LiveRunTreadmillV5: View {
     @State private var isPaused: Bool = false
     @State private var lastTickAt: Date = .now
     private let startedAt: Date = .now
+    /// Stable id, stamped once. Same role as `TreadmillView`'s `workoutId` —
+    /// backend idempotency key, and reused as the payload's `workoutId` so a
+    /// retried POST from the durable queue overwrites rather than duplicates.
+    private let workoutId: String = "trd_\(UUID().uuidString)"
+    /// Cumulative elevation gain in ft, accumulated each tick from the SET
+    /// incline at that instant (rise = distance × grade) — mirrors legacy's
+    /// `elev` accumulator so a run with a changing incline isn't reported at
+    /// its final grade alone.
+    @State private var elevFt: Double = 0
+    /// Per-phase actuals, keyed by `WatchPhase.index` — this view's analogue
+    /// of legacy's `actualsBySegment`. A phase absent from this dict was
+    /// never reached.
+    @State private var phaseActuals: [Int: PhaseActual] = [:]
+    /// The phase index the tracker currently believes is active, so a
+    /// boundary crossing (detected each tick) can close out the previous
+    /// phase exactly once.
+    @State private var trackedPhaseIndex: Int?
+
+    private struct PhaseActual {
+        var speedSumMph: Double = 0
+        var inclineSumPct: Double = 0
+        var sampleCount: Int = 0
+        var durationSec: Int = 0
+        var completed: Bool = false
+        var avgHr: Int?
+        var maxHr: Int?
+
+        var avgSpeedMph: Double { sampleCount > 0 ? speedSumMph / Double(sampleCount) : 0 }
+        var avgInclinePct: Double { sampleCount > 0 ? inclineSumPct / Double(sampleCount) : 0 }
+    }
 
     init(plan: LiveRunPlanV5?, hr: TreadmillHRStreamer,
          onPause: @escaping () -> Void, onEnd: @escaping () -> Void) {
@@ -154,7 +220,144 @@ struct LiveRunTreadmillV5: View {
         lastTickAt = now
         guard delta > 0 else { return }
         elapsedSec += delta
-        distanceMi += Double(delta) / 3600.0 * speedMph
+        let distDeltaMi = Double(delta) / 3600.0 * speedMph
+        distanceMi += distDeltaMi
+        // Incline-derived climb · rise = run × grade, same arithmetic as
+        // legacy's `elev` accumulator.
+        elevFt += distDeltaMi * 5280.0 * (inclinePct / 100.0)
+        advancePhaseTracking(deltaSec: delta)
+    }
+
+    // MARK: - Phase tracking (for the completion payload)
+    //
+    // No plan → a single synthetic "Just Run" phase, same fallback shape as
+    // legacy's cold path (`segments` returning one open work segment). Every
+    // other case walks `plan.phases` exactly as the UI's `walk` property
+    // does, so the tracked phase and the displayed phase never disagree.
+
+    private var effectivePhases: [WatchPhase] {
+        guard let plan, !plan.phases.isEmpty else {
+            return [WatchPhase(index: 0, type: .work, label: "Just Run", durationSec: 30 * 60,
+                                targetPaceSPerMi: nil, tolerancePaceSPerMi: nil, haptic: .start)]
+        }
+        return plan.phases
+    }
+
+    private func currentPhaseIndex(at elapsedSec: Int) -> Int {
+        guard let plan, !plan.phases.isEmpty else { return 0 }
+        return LiveRunPhaseWalk.walk(phases: plan.phases, elapsedSec: elapsedSec)?.phase.index ?? 0
+    }
+
+    private func advancePhaseTracking(deltaSec: Int) {
+        let idx = currentPhaseIndex(at: elapsedSec)
+        if idx != trackedPhaseIndex {
+            // Crossed into a new phase · the one we just left ran its full
+            // asked duration, same as legacy's auto-advance (`completed: true`).
+            if let prev = trackedPhaseIndex { closeOutPhase(prev, completed: true) }
+            trackedPhaseIndex = idx
+        }
+        var actual = phaseActuals[idx] ?? PhaseActual()
+        actual.speedSumMph += speedMph
+        actual.inclineSumPct += inclinePct
+        actual.sampleCount += 1
+        actual.durationSec += deltaSec
+        phaseActuals[idx] = actual
+    }
+
+    /// Closes the given phase's HR window (`TreadmillHRStreamer.closePhase`)
+    /// and stamps its `completed` flag. Speed/incline/duration are already
+    /// accumulated by `advancePhaseTracking` — this only adds what only a
+    /// boundary crossing (or End) can know.
+    private func closeOutPhase(_ index: Int, completed: Bool) {
+        let hrResult = hr.closePhase()
+        var actual = phaseActuals[index] ?? PhaseActual()
+        actual.completed = completed
+        actual.avgHr = hrResult.avg
+        actual.maxHr = hrResult.max
+        phaseActuals[index] = actual
+    }
+
+    /// Closes out whatever phase is still open when the runner taps End.
+    /// Mirrors legacy's `recordActual` call inside `endAndPost`: the phase in
+    /// progress is "completed" only if its accumulated duration reached the
+    /// asked duration — ending early is an honest partial, not a pass.
+    private func finalizeActivePhaseForEnd(status: String) {
+        guard let idx = trackedPhaseIndex else { return }
+        let askedSec = effectivePhases.first(where: { $0.index == idx })?.durationSec ?? 0
+        let actualSec = phaseActuals[idx]?.durationSec ?? 0
+        closeOutPhase(idx, completed: status == "completed" && actualSec >= askedSec)
+    }
+
+    // MARK: - Completion payload
+    //
+    // WatchCompletion-shaped dict, key-for-key against
+    // `TreadmillView.buildPayload` (Views/TreadmillView.swift ~line 794) —
+    // see the file header for why this view POSTs itself rather than handing
+    // the payload up through `onEnd`.
+
+    private func buildCompletionPayload(status: String) -> [String: Any] {
+        let iso = ISO8601DateFormatter()
+        let phasePayloads: [[String: Any]] = effectivePhases.map { phase in
+            let act = phaseActuals[phase.index]
+            var p: [String: Any] = [
+                "label": phase.label,
+                "type": phase.type.rawValue,
+                "completed": act?.completed ?? false,
+                // A never-reached phase reports its NOMINAL speed/incline
+                // (planned target, or the flat treadmill default), not the
+                // live belt reading at End — the same fallback shape legacy
+                // uses for an unreached segment, inherited here rather than
+                // introduced.
+                "actualSpeedMph": act.map { $0.avgSpeedMph } ?? nominalMph(for: phase),
+                "actualInclinePct": act.map { $0.avgInclinePct } ?? 1.0,
+            ]
+            if let act, act.sampleCount > 0 {
+                let actualDistanceMi = Double(act.durationSec) / 3600.0 * act.avgSpeedMph
+                p["actualDistanceMi"] = (actualDistanceMi * 100).rounded() / 100
+                p["actualDurationSec"] = act.durationSec
+                p["actualPaceSPerMi"] = Int(round(3600.0 / max(0.5, act.avgSpeedMph)))
+                if let avgHr = act.avgHr { p["avgHr"] = avgHr }
+                if let maxHr = act.maxHr { p["maxHr"] = maxHr }
+            }
+            return p
+        }
+        // Session-level HR rollup · separate from the per-phase buffers so it
+        // captures samples landing right at a phase boundary. Nil when no
+        // watch is paired.
+        let sessionHr = hr.closeSession()
+        let roundedDistanceMi = (distanceMi * 100).rounded() / 100
+        var payload: [String: Any] = [
+            "workoutId": workoutId,
+            "startedAt": iso.string(from: startedAt),
+            "completedAt": iso.string(from: .now),
+            "status": status,
+            "totalDistanceMi": roundedDistanceMi,
+            "totalDurationSec": elapsedSec,
+            "elevGainFt": elevFt.rounded(),
+            "elevGainSource": "treadmill_incline",
+            "source": "treadmill",
+            "indoor": true,
+            "phases": phasePayloads,
+        ]
+        if let avgHr = sessionHr.avg { payload["avgHr"] = avgHr }
+        if let maxHr = sessionHr.max { payload["maxHr"] = maxHr }
+        return payload
+    }
+
+    /// Starting belt speed for a phase never reached — from its own target
+    /// pace when the plan set one, else the same flat defaults legacy falls
+    /// back to. Never the live speedMph, which belongs to whichever phase
+    /// the runner actually was on.
+    private func nominalMph(for phase: WatchPhase) -> Double {
+        if let target = phase.targetPaceSPerMi, target > 0 {
+            return (3600.0 / Double(target) * 10).rounded() / 10
+        }
+        switch phase.type {
+        case .warmup:   return 5.5
+        case .work:     return 7.0
+        case .recovery: return 5.0
+        case .cooldown: return 5.0
+        }
     }
 
     // MARK: - Top row
@@ -331,8 +534,29 @@ struct LiveRunTreadmillV5: View {
                 isPaused.toggle()
                 onPause()
             }
-            FaffButton("End", variant: .destructive, size: .lg, action: onEnd)
+            FaffButton("End", variant: .destructive, size: .lg) {
+                endAndSave()
+            }
         }
+    }
+
+    /// Closes out whatever phase was still open, builds the WatchCompletion
+    /// payload, and saves it through the same durable door the outdoor host
+    /// uses — see the file header for why this lives here instead of being
+    /// handed up through `onEnd`. Fire-then-dismiss, not awaited, matching
+    /// `LiveRunHostV5.end()`'s own outdoor pattern exactly: the payload is
+    /// already safe on disk (`saveCompletionDurably` persists before it
+    /// attempts the network) by the time the `Task` is even scheduled, so
+    /// there is nothing correctness-relevant left to wait for before handing
+    /// the screen back to `onEnd`.
+    private func endAndSave() {
+        finalizeActivePhaseForEnd(status: "completed")
+        hr.stop()
+        let payload = buildCompletionPayload(status: "completed")
+        if let data = try? JSONSerialization.data(withJSONObject: payload) {
+            Task { _ = await WatchSync.shared.saveCompletionDurably(data) }
+        }
+        onEnd()
     }
 }
 

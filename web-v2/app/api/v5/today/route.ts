@@ -378,6 +378,12 @@ export async function GET(req: NextRequest) {
       const askedHrCap: number | null = planRow?.workout_spec
         ? Number(planRow.workout_spec.hr_cap_bpm ?? planRow.workout_spec.hr_target_bpm ?? planRow.workout_spec.lthr_bpm) || null
         : null;
+      // Only `hr_cap_bpm` is a genuine "stay under this" ceiling — the other
+      // two links in the fallback above are a target to hover near and a
+      // bare LTHR reference, both fine to fall back to for DISPLAY but wrong
+      // to grade a tone against. See V5RecentRunCtx.askedHrIsHardCap's own
+      // doc comment in lib/faff/v5-today.ts.
+      const askedHrIsHardCap = Boolean(planRow?.workout_spec && Number(planRow.workout_spec.hr_cap_bpm) > 0);
 
       const rpe = (await pool.query<{ rpe: number | null }>(
         `SELECT rpe FROM post_run_rpe WHERE user_uuid = $1 AND activity_id = $2 LIMIT 1`,
@@ -410,7 +416,7 @@ export async function GET(req: NextRequest) {
         distanceMi, durationSec, paceSPerMi,
         avgHr: data.avgHr != null ? Number(data.avgHr) : null,
         indoor, speedMph, inclinePct,
-        askedPaceSPerMi, askedHrCap,
+        askedPaceSPerMi, askedHrCap, askedHrIsHardCap,
         effortAsked: null,
         effortLogged: rpe?.rpe ?? null,
         verdict: recap.verdict,
