@@ -33,15 +33,6 @@ struct FaffApp: App {
                 GalleryV5()
             } else if ProcessInfo.processInfo.arguments.contains("-faffV5Screens") {
                 ScreensCatalogV5()
-            } else if ProcessInfo.processInfo.arguments.contains("-faffV5") {
-                // The whole v5 app against the live backend, behind a launch
-                // argument until it replaces RootContainer outright. The v5
-                // routes have to be deployed before this is worth looking at:
-                // before that every surface correctly shows its cold start,
-                // which proves the loading path and nothing else.
-                FaffV5Root { mode in
-                    LiveRunHostV5(mode: mode, onDismiss: {})
-                }
             } else {
             RootContainer()
                 // v3 is dark-first. Effort mesh paints behind every screen;
@@ -298,7 +289,27 @@ struct RootContainer: View {
                     }
                 })
             case .main:
-                RootTabView()
+                // ── THE PHONE ───────────────────────────────────────────
+                //
+                // The approved v5 design replaces the v4 shell here, INSIDE
+                // the gate rather than above it: signed-out, onboarding and
+                // cold-start policy are unchanged and still belong to this
+                // container. What changed is what "the shell" renders.
+                //
+                // `-faffLegacy` still reaches the v4 shell for one build, so
+                // a problem found on device has somewhere to fall back to
+                // while the v5 endpoints are hours old. That escape hatch
+                // goes when the legacy palette does; the palette gate is
+                // counting the files that still reference it.
+                Group {
+                    if ProcessInfo.processInfo.arguments.contains("-faffLegacy") {
+                        RootTabView()
+                    } else {
+                        FaffV5Root { mode in
+                            LiveRunHostV5(mode: mode, onDismiss: {})
+                        }
+                    }
+                }
                     .overlay {
                         if !mainReady {
                             ZStack {
