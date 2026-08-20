@@ -86,6 +86,8 @@ struct BlockV5: View {
     @State private var busy = false
     /// The session picked in `moveInput`, by date. Nil until one is chosen.
     @State private var moveFrom: String? = nil
+    /// The runner's own upcoming races, for `raceInput`. Nil while loading.
+    @State private var raceCandidates: [V5RaceRow]? = nil
 
     init(model: V5Block,
          onChanged: @escaping (V5PlanChangeProposal) -> Void = { _ in },
@@ -365,6 +367,10 @@ struct BlockV5: View {
                 travelInputBody(scenario)
             case .moveInput(let scenario):
                 moveInputBody(scenario)
+            case .dayInput(let scenario):
+                dayInputBody(scenario)
+            case .raceInput(let scenario):
+                raceInputBody(scenario)
             case .proposed(let scenario, let proposal):
                 proposedBody(scenario, proposal)
             case .refused(let scenario, let refusal):
@@ -414,9 +420,13 @@ struct BlockV5: View {
                 }
                 FaffButton(busy ? "Checking these dates…" : "Check these dates",
                            variant: .primary, size: .lg, enabled: !busy) {
+                    // fromISO / toISO. The route reads exactly these
+                    // (`readRequest` in api/plan/change); "from"/"to" landed
+                    // as undefined and every travel check came back "Give the
+                    // first and last day you are away."
                     propose(scenario, params: [
-                        "from": Self.isoDay(travelFrom),
-                        "to": Self.isoDay(travelTo)
+                        "fromISO": Self.isoDay(travelFrom),
+                        "toISO": Self.isoDay(travelTo)
                     ])
                 }
             }
@@ -493,6 +503,75 @@ struct BlockV5: View {
         }
     }
 
+    // MARK: Add a day · which weekday
+    //
+    // `dow` is 0 = Sunday, the server's own DOW_NAME order. Without this the
+    // scenario proposed with no params and came back "Say which day of the
+    // week becomes a running day" — unanswerable from the sheet.
+
+    private static let dowNames = ["Sunday", "Monday", "Tuesday", "Wednesday",
+                                   "Thursday", "Friday", "Saturday"]
+
+    private func dayInputBody(_ scenario: V5Scenario) -> some View {
+        VStack(alignment: .leading, spacing: V5.S.s16) {
+            VStack(alignment: .leading, spacing: V5.S.s10) {
+                V5SectionLabel(text: "Which day").padding(.horizontal, V5.S.s4)
+                ListGroup {
+                    ForEach(Array(Self.dowNames.enumerated()), id: \.offset) { dow, name in
+                        ListRow(label: name,
+                                onTap: { propose(scenario, params: ["dow": dow]) })
+                    }
+                }
+            }
+            FaffButton("Leave it alone", variant: .ghost, size: .md) { stage = .menu }
+        }
+    }
+
+    // MARK: Add a race · which race
+    //
+    // The runner's own races, read from the Races surface rather than typed.
+    // `another_race` needs a slug and the block payload carries none, so the
+    // scenario proposed empty and came back "Say which race."
+
+    private func loadRaceCandidates() async {
+        guard case .ok(let races) = (try? await API.fetchV5Races()) ?? .failed else {
+            raceCandidates = []
+            return
+        }
+        // Upcoming only, and never the A race — that one IS the block.
+        raceCandidates = races.schedule.filter { !$0.isPast && $0.priority.uppercased() != "A" }
+    }
+
+    @ViewBuilder
+    private func raceInputBody(_ scenario: V5Scenario) -> some View {
+        VStack(alignment: .leading, spacing: V5.S.s16) {
+            if let candidates = raceCandidates {
+                if candidates.isEmpty {
+                    // RULE THREE: nothing failed. There is no B or C race on
+                    // the calendar to fold in.
+                    Alert(text: "No B or C race on the calendar to fold in. Add one from Races first.")
+                } else {
+                    VStack(alignment: .leading, spacing: V5.S.s10) {
+                        V5SectionLabel(text: "Which race").padding(.horizontal, V5.S.s4)
+                        ListGroup {
+                            ForEach(candidates) { race in
+                                ListRow(label: race.name,
+                                        sub: race.dateLine,
+                                        value: .measured(race.priority.uppercased()),
+                                        onTap: { propose(scenario, params: ["raceSlug": race.slug]) })
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("Reading the calendar\u{2026}")
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+            }
+            FaffButton("Leave it alone", variant: .ghost, size: .md) { stage = .menu }
+        }
+    }
+
     /// "Friday 22 August" from an ISO day, in the runner's own calendar.
     private static func dayWords(_ iso: String?) -> String {
         guard let iso, iso.count >= 10 else { return "That day" }
@@ -561,10 +640,30 @@ struct BlockV5: View {
         VStack(alignment: .leading, spacing: V5.S.s16) {
             Alert(text: refusal.reason, tone: .attention)
             VStack(spacing: V5.S.s8) {
-                if scenario.id == "travel" {
+                // Every scenario that ASKED something offers the way back to
+                // the question. The refusal usually names the fix — "Pick a
+                // day that is currently rest" — and sending the runner out to
+                // the menu to start again is a poor answer to that.
+                switch scenario.id {
+                case "travel":
                     FaffButton("Try different dates", variant: .secondary, size: .md) {
                         stage = .travelInput(scenario)
                     }
+                case "extra_day":
+                    FaffButton("Pick another day", variant: .secondary, size: .md) {
+                        stage = .dayInput(scenario)
+                    }
+                case "move_day":
+                    FaffButton("Pick again", variant: .secondary, size: .md) {
+                        moveFrom = nil
+                        stage = .moveInput(scenario)
+                    }
+                case "another_race":
+                    FaffButton("Pick another race", variant: .secondary, size: .md) {
+                        stage = .raceInput(scenario)
+                    }
+                default:
+                    EmptyView()
                 }
                 FaffButton("Leave it alone", variant: .ghost, size: .md) {
                     stage = .menu
@@ -606,6 +705,11 @@ struct BlockV5: View {
         } else if scenario.id == "move_day" {
             moveFrom = nil
             stage = .moveInput(scenario)
+        } else if scenario.id == "extra_day" {
+            stage = .dayInput(scenario)
+        } else if scenario.id == "another_race" {
+            stage = .raceInput(scenario)
+            Task { await loadRaceCandidates() }
         } else {
             propose(scenario, params: [:])
         }
@@ -685,6 +789,10 @@ fileprivate enum PlanStage: Equatable {
     /// question the runner had no way to answer, drawn as a failure with a
     /// Retry that could only ask it again.
     case moveInput(V5Scenario)
+    /// Add a day: which weekday becomes a running day. `dow`, 0 = Sunday.
+    case dayInput(V5Scenario)
+    /// Add a race: which of the runner's own races joins the block.
+    case raceInput(V5Scenario)
     /// A live proposal, read the trade-off, confirm or back out.
     case proposed(V5Scenario, V5PlanChangeProposal)
     /// The engine declined on purpose. `Alert`.
