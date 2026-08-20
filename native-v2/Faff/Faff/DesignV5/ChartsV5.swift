@@ -532,6 +532,9 @@ struct WeekStripV5: View {
                 .frame(maxWidth: .infinity)
                 .background(d.isToday ? Color.white.opacity(0.16) : .clear,
                             in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
+                // Same lesson as every other row: a clear background is not
+                // hit-testable, so without this only the day's two glyphs are.
+                .contentShape(RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
 
                 if let onTap {
                     Button { onTap(d) } label: { cell }.buttonStyle(V5PressStyle())

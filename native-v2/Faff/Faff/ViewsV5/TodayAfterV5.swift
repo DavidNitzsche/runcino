@@ -47,6 +47,13 @@ struct TodayAfterV5: View {
     /// than the niggle row this view composes itself.
     var onRowAction: (V5Row) -> Void
     var onPushStrava: () -> Void
+    /// Day stepping, shared with the before-run screen — a finished day is
+    /// just as steppable as a planned one.
+    var viewingDayLabel: String? = nil
+    var onPrevDay: (() -> Void)? = nil
+    var onNextDay: (() -> Void)? = nil
+    var onBackToToday: (() -> Void)? = nil
+    var initials: String? = nil
 
     /// Which asked-vs-ran / per-mile row is expanded in place. Keyed by the
     /// row's own server id, per the "identity is the server id" rule — never
@@ -73,7 +80,17 @@ struct TodayAfterV5: View {
          onOpenInjuryFlare: @escaping () -> Void = {},
          onChangeShoe: @escaping () -> Void = {},
          onRowAction: @escaping (V5Row) -> Void = { _ in },
-         onPushStrava: @escaping () -> Void = {}) {
+         onPushStrava: @escaping () -> Void = {},
+         viewingDayLabel: String? = nil,
+         onPrevDay: (() -> Void)? = nil,
+         onNextDay: (() -> Void)? = nil,
+         onBackToToday: (() -> Void)? = nil,
+         initials: String? = nil) {
+        self.viewingDayLabel = viewingDayLabel
+        self.onPrevDay = onPrevDay
+        self.onNextDay = onNextDay
+        self.onBackToToday = onBackToToday
+        self.initials = initials
         self.model = model
         self.onOpenAccount = onOpenAccount
         self.onLogEffort = onLogEffort
@@ -135,22 +152,14 @@ struct TodayAfterV5: View {
 
     private var panel: some View {
         DayPanel(fill: model.panel.fill) {
-            HStack(alignment: .center) {
-                Text(model.panel.place)
-                    .font(.faffDisplay(20))
-                    .textCase(.uppercase)
-                    .tracking(20 * 0.02)
-                    .foregroundStyle(V5.OnPanel.primary)
-                Spacer(minLength: V5.S.s8)
-                Button(action: onOpenAccount) {
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(V5.OnPanel.primary)
-                        .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
-                        .background(V5.OnPanel.control, in: Circle())
-                }
-                .buttonStyle(V5PressStyle())
-            }
+            PlaceHeaderV5(place: model.panel.place,
+                          viewingDayLabel: viewingDayLabel,
+                          onBackToToday: onBackToToday,
+                          onPrevDay: onPrevDay,
+                          onNextDay: onNextDay,
+                          onCalendar: nil,
+                          initials: initials,
+                          onAccount: onOpenAccount)
 
             HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
                 Text(model.panel.dateLine)
@@ -193,10 +202,26 @@ struct TodayAfterV5: View {
             stats.first(where: { $0.label.lowercased().contains(needle) })
                 ?? (stats.indices.contains(index) ? stats[index] : nil)
         }
+        // ─────────────────────────────────────────────────────────────────
+        // THE UNIT IS ON THE VALUE ALREADY
+        //
+        // These appended "mi" and "/mi" to values the composer had already
+        // formatted with them, so the poster read "4 mi mi" and "9:22/mi /mi"
+        // and wrapped onto a second line under the weight of it. The unit is
+        // only added when the value does not already carry one.
+        func unitFor(_ v: FaffValue, _ suffix: String) -> String? {
+            v.text.lowercased().hasSuffix(suffix.lowercased()) ? nil : suffix
+        }
         var out: [(FaffValue, String?)] = []
-        if let distance = pick("dist", 0) { out.append((distance.value.value, "mi")) }
+        if let distance = pick("dist", 0) {
+            let v = distance.value.value
+            out.append((v, unitFor(v, "mi")))
+        }
         if let time = pick("time", 1) { out.append((time.value.value, nil)) }
-        if let pace = pick("pace", 2) { out.append((pace.value.value, "/mi")) }
+        if let pace = pick("pace", 2) {
+            let v = pace.value.value
+            out.append((v, unitFor(v, "/mi")))
+        }
         return out
     }
 

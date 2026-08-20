@@ -65,7 +65,19 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     let cachedAt: Date?
 
     private let cacheKey: AppCache.Key?
-    private let fetch: () async throws -> API.V5Fetch<Model>
+    private var fetch: () async throws -> API.V5Fetch<Model>
+
+    /// Point this surface at a different read — the same Today surface serving
+    /// a different date, for instance. The cached payload is dropped, because
+    /// it belongs to the day we were looking at a moment ago and showing it
+    /// under a new date would be worse than showing nothing.
+    func rebind(_ newFetch: @escaping () async throws -> API.V5Fetch<Model>) async {
+        fetch = newFetch
+        model = nil
+        stale = false
+        absentReason = nil
+        await load()
+    }
 
     init(cache: AppCache.Key?, fetch: @escaping () async throws -> API.V5Fetch<Model>) {
         self.cacheKey = cache

@@ -35,6 +35,28 @@ struct TodayHostV5: View {
     /// The runner's own name, for the account sheet.
     var accountName: String = ""
 
+    /// ─────────────────────────────────────────────────────────────────────
+    /// LOOKING AT ANOTHER DAY
+    ///
+    /// The week strip drew seven days and none of them did anything. They are
+    /// the obvious way to ask "what was Tuesday" or "what is Sunday", and
+    /// `/api/v5/today?date=` already answers exactly that — the tomorrow
+    /// preview after a niggle uses the same read.
+    ///
+    /// Nil means today. Anything else is a day the runner asked for, and the
+    /// panel says so and offers the way back, because a screen called TODAY
+    /// showing another day without saying so is a lie.
+    @State private var viewingDate: String?
+    /// The account sheet, hoisted here so every Today variant can open it —
+    /// the after-run screen and all four state screens had a dead button.
+    @State private var accountOpen = false
+
+    /// The runner's initials for the account button, or nil for a glyph.
+    private var initials: String? {
+        let letters = accountName.split(separator: " ").prefix(2).compactMap(\.first)
+        return letters.isEmpty ? nil : String(letters).uppercased()
+    }
+
     var body: some View {
         Group {
             if let model = surface.model {
@@ -61,6 +83,46 @@ struct TodayHostV5: View {
             } else {
                 // Cold start. Reserve the shape the real content will take.
                 coldStart
+            }
+        }
+        // One account sheet for every Today variant. It used to live inside
+        // TodayBeforeV5, so the after-run screen and all four state screens
+        // had an account button that opened nothing.
+        .overlay {
+            V5SheetHost(isPresented: $accountOpen) {
+                VStack(alignment: .leading, spacing: V5.S.s16) {
+                    HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
+                        Text(accountName)
+                            .font(.faffDisplay(20))
+                            .textCase(.uppercase)
+                            .tracking(20 * 0.02)
+                            .foregroundStyle(V5.textPrimary)
+                        Spacer(minLength: V5.S.s12)
+                        Text(surface.model?.panel.weekLine ?? "")
+                            .font(.faffText(TypeScaleV5.label13))
+                            .foregroundStyle(V5.textQuiet)
+                    }
+                    .padding(.horizontal, V5.S.s4)
+
+                    ListGroup {
+                        ForEach(accountRows) { row in
+                            ListRow(label: row.label, sub: row.sub, onTap: {
+                                withAnimation(V5.Motion.sheet) { accountOpen = false }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                    switch row.action {
+                                    case "settings": path.append(.settings)
+                                    case "shoes":    path.append(.shoes)
+                                    default: break
+                                    }
+                                }
+                            })
+                        }
+                    }
+
+                    FaffButton("Close", variant: .secondary) {
+                        withAnimation(V5.Motion.sheet) { accountOpen = false }
+                    }
+                }
             }
         }
         // The launch gate holds the splash until every destination says it is
@@ -120,13 +182,18 @@ struct TodayHostV5: View {
 
         case .afterRun:
             TodayAfterV5(model: model,
-                         onOpenAccount: {},
+                         onOpenAccount: { accountOpen = true },
                          onLogEffort: { rpe in Task { await logEffort(model, rpe) } },
                          onFlagNiggle: { part in Task { await flagNiggle(part) } },
                          onOpenInjuryFlare: { path.append(.injuryFlare) },
                          onChangeShoe: { path.append(.shoes) },
                          onRowAction: { _ in },
-                         onPushStrava: { Task { await pushStrava(model) } })
+                         onPushStrava: { Task { await pushStrava(model) } },
+                         viewingDayLabel: viewingDayLabel,
+                         onPrevDay: { step(-1, from: model) },
+                         onNextDay: { step(1, from: model) },
+                         onBackToToday: { backToToday() },
+                         initials: initials)
 
         case .beforeRun, .raceDay:
             TodayBeforeV5(model: model,
@@ -140,8 +207,67 @@ struct TodayHostV5: View {
                               case "shoes":    path.append(.shoes)
                               default: break
                               }
-                          })
+                          },
+                          onPickDay: { id in pickDay(id, in: model) },
+                          viewingDayLabel: viewingDayLabel,
+                          onPrevDay: { step(-1, from: model) },
+                          onNextDay: { step(1, from: model) },
+                          onBackToToday: { backToToday() })
         }
+    }
+
+    /// The strip hands back a plan row's server id; the date lives beside it
+    /// on the same row. Identity is the id, the date is a lookup — never the
+    /// other way round.
+    private func pickDay(_ id: String, in model: V5Today) {
+        guard let day = model.weekStrip.first(where: { $0.id == id }) else { return }
+        let iso: String? = day.isToday ? nil : day.dateISO
+        guard iso != viewingDate else { return }
+        viewingDate = iso
+        Task {
+            await surface.rebind { try await API.fetchV5Today(date: iso) }
+        }
+    }
+
+    private func backToToday() {
+        guard viewingDate != nil else { return }
+        viewingDate = nil
+        Task { await surface.rebind { try await API.fetchV5Today() } }
+    }
+
+    /// Step one day. Nil means today, so stepping from nil starts at the
+    /// runner's own today rather than at a date the device invented.
+    private func step(_ days: Int, from model: V5Today) {
+        let base = viewingDate ?? model.dateISO
+        guard let d = Self.iso.date(from: base),
+              let next = Calendar.current.date(byAdding: .day, value: days, to: d) else { return }
+        let iso = Self.iso.string(from: next)
+        // Stepping back onto today is going home, not visiting a date.
+        let target: String? = iso == model.dateISO && viewingDate == nil ? nil
+                            : (iso == todayISO(model) ? nil : iso)
+        viewingDate = target
+        Task { await surface.rebind { try await API.fetchV5Today(date: target) } }
+    }
+
+    /// The runner's own today, as the payload reported it when we were on it.
+    private func todayISO(_ model: V5Today) -> String {
+        model.weekStrip.first(where: \.isToday)?.dateISO ?? model.dateISO
+    }
+
+    private static let iso: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    /// "Tue 18 Aug" — what the place label says when it is not today.
+    private var viewingDayLabel: String? {
+        guard let viewingDate, let d = Self.iso.date(from: viewingDate) else { return nil }
+        let f = DateFormatter()
+        f.dateFormat = "EEE d MMM"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f.string(from: d)
     }
 
     /// The account sheet's rows. Not on `V5Today`'s contract — it is a shell

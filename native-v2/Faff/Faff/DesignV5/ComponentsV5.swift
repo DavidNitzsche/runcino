@@ -874,3 +874,88 @@ struct SheetShape: Shape {
         return p
     }
 }
+
+// MARK: - The place header on a day panel
+//
+// Every "place" screen opens with the same row: the place label on the left,
+// round controls on the right. Today, Today-after-the-run and the four state
+// screens each hand-rolled their own, which is how the after-run screen ended
+// up with a dead account button and no way to step between days while the
+// before-run screen had both.
+//
+// One row, one set of behaviours, six call sites.
+
+struct PlaceHeaderV5: View {
+    /// "Today", "Races", "Block" — or the day being looked at, when that is
+    /// not today. A screen headed TODAY showing Tuesday is a lie.
+    let place: String
+    /// Non-nil when the runner has stepped off today.
+    var viewingDayLabel: String? = nil
+    var onBackToToday: (() -> Void)? = nil
+    /// Day stepping. Omit both on a screen where it makes no sense.
+    var onPrevDay: (() -> Void)? = nil
+    var onNextDay: (() -> Void)? = nil
+    var onCalendar: (() -> Void)? = nil
+    /// The runner's initials, or nil for a person glyph. Never an empty disc.
+    var initials: String? = nil
+    var onAccount: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(alignment: .center, spacing: V5.S.s8) {
+            Text(viewingDayLabel ?? place)
+                .font(.faffDisplay(20))
+                .textCase(.uppercase)
+                .tracking(20 * 0.02)
+                .foregroundStyle(V5.OnPanel.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            if viewingDayLabel != nil, let onBackToToday {
+                Button(action: onBackToToday) {
+                    Text("Today")
+                        .font(.faffText(TypeScaleV5.label12, weight: .semibold))
+                        .foregroundStyle(V5.OnPanel.primary)
+                        .padding(.horizontal, V5.S.s10)
+                        .frame(height: 26)
+                        .background(V5.OnPanel.control, in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(V5PressStyle())
+            }
+
+            Spacer(minLength: V5.S.s8)
+
+            HStack(spacing: V5.S.s6) {
+                if let onPrevDay { control(systemImage: "chevron.left", action: onPrevDay) }
+                if let onNextDay { control(systemImage: "chevron.right", action: onNextDay) }
+                if let onCalendar { control(systemImage: "calendar", action: onCalendar) }
+                if let onAccount {
+                    control(systemImage: (initials?.isEmpty ?? true) ? "person" : nil,
+                            text: (initials?.isEmpty ?? true) ? nil : initials,
+                            action: onAccount)
+                }
+            }
+        }
+        .frame(height: 44)
+    }
+
+    private func control(systemImage: String? = nil, text: String? = nil,
+                         action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Group {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 14, weight: .semibold))
+                } else {
+                    Text(text ?? "")
+                        .font(.faffText(12, weight: .semibold))
+                }
+            }
+            .foregroundStyle(V5.OnPanel.primary)
+            .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
+            .background(V5.OnPanel.control, in: Circle())
+            .contentShape(Circle())
+        }
+        .buttonStyle(V5PressStyle())
+    }
+}
