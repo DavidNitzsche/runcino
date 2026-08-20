@@ -25,8 +25,61 @@
 //  onTap, so `ListRow` draws no chevron. That is `ComponentsV5.ListRow`'s
 //  own rule, not something this file has to enforce by hand.
 //
+//  ─────────────────────────────────────────────────────────────────────────
+//  "ADD A PAIR" — EXPAND IN PLACE, TYPE ONLY, NEVER A CAP NUMBER
+//
+//  The prototype draws "Add a pair" as a ghost button wired to a noop — the
+//  handoff never specced what the form inside it holds. Built here as the
+//  same expand-in-place idiom every other picker on this screen uses: the
+//  button itself toggles a form beneath it, never a full-screen picker.
+//
+//  The form collects brand, model, and the shoe's TYPE — never a mileage cap
+//  by default. Per the header above, the retirement band is `POST /api/shoe`'s
+//  job to resolve from `shoe_type` (`web-v2/lib/shoe/lifespan.ts`), so this
+//  screen sends the type and nothing else unless the runner types an explicit
+//  override, which then travels as their own number, not a default this file
+//  invented. That is also why the override field's helper text never states a
+//  mileage figure — the one number this file is not allowed to know.
+//
 
 import SwiftUI
+
+// MARK: - Shoe type, screen-local
+
+/// Mirrors `web-v2/lib/shoe/lifespan.ts`'s `ShoeType`. Local to this screen —
+/// it exists only so the picker has something to show; once picked it
+/// travels to the server as the raw `shoe_type` string, which is the only
+/// place the type→band mapping is allowed to live.
+private enum ShoeTypeV5: String, CaseIterable, Identifiable {
+    case dailyTrainer = "daily_trainer"
+    case maxCushion = "max_cushion"
+    case stability = "stability"
+    case trail = "trail"
+    case superShoe = "super_shoe"
+    case racingFlat = "racing_flat"
+    case tempoTrainer = "tempo_trainer"
+    case trackSpike = "track_spike"
+
+    var id: String { rawValue }
+
+    /// Runner-facing name, matching `SHOE_LIFESPAN[type].label` server-side.
+    var label: String {
+        switch self {
+        case .dailyTrainer: return "Daily trainer"
+        case .maxCushion:   return "Max cushion"
+        case .stability:    return "Stability"
+        case .trail:        return "Trail"
+        case .superShoe:    return "Super shoe"
+        case .racingFlat:   return "Racing flat"
+        case .tempoTrainer: return "Tempo trainer"
+        case .trackSpike:   return "Track spike"
+        }
+    }
+
+    static func matching(label: String) -> ShoeTypeV5? {
+        allCases.first { $0.label == label }
+    }
+}
 
 // MARK: - Screen
 
@@ -38,12 +91,23 @@ struct ShoesV5: View {
     /// case re-confirming the current pair.
     let onWear: (Int) -> Void
     let onRetire: (Int) -> Void
-    let onAddPair: () -> Void
+    /// brand, model, shoe_type (raw `ShoeType` value), and an explicit
+    /// mileage-cap override — nil unless the runner typed one. The caller
+    /// (`ShoesHostV5`) does the actual `POST /api/shoe`; this file only
+    /// collects the answers.
+    let onAddPair: (_ brand: String, _ model: String, _ shoeType: String, _ mileageCapOverride: Double?) -> Void
     var onBack: (() -> Void)? = nil
 
     /// Single-expansion accordion, same as the prototype's `shoeDetail`
     /// state — one card open at a time.
     @State private var openId: Int?
+
+    // "Add a pair" form state.
+    @State private var addingPair = false
+    @State private var newBrand = ""
+    @State private var newModel = ""
+    @State private var newShoeType: ShoeTypeV5 = .dailyTrainer
+    @State private var newCapOverride = ""
 
     private var inRotation: [Shoe] { shoes.filter { $0.retired != true } }
     private var retired: [Shoe] { shoes.filter { $0.retired == true } }
@@ -64,7 +128,18 @@ struct ShoesV5: View {
                         }
                     }
 
-                    FaffButton("Add a pair", variant: .ghost, size: .md, full: true, action: onAddPair)
+                    VStack(alignment: .leading, spacing: V5.S.s12) {
+                        FaffButton(addingPair ? "Cancel" : "Add a pair",
+                                   variant: .ghost, size: .md, full: true) {
+                            withAnimation(V5.Motion.expand) {
+                                addingPair.toggle()
+                                if !addingPair { resetAddPairForm() }
+                            }
+                        }
+                        if addingPair {
+                            addPairForm
+                        }
+                    }
 
                     if !retired.isEmpty {
                         ListGroup(header: "Retired") {
@@ -134,6 +209,48 @@ struct ShoesV5: View {
             }
         }
     }
+
+    // MARK: Add a pair
+
+    private var addPairForm: some View {
+        Tile {
+            FaffInput(label: "Brand", text: $newBrand, placeholder: "Saucony")
+            FaffInput(label: "Model", text: $newModel, placeholder: "Endorphin Speed 4")
+            FaffSelect(label: "Type",
+                       value: newShoeType.label,
+                       options: ShoeTypeV5.allCases.map(\.label),
+                       onChange: { picked in
+                           newShoeType = ShoeTypeV5.matching(label: picked) ?? newShoeType
+                       })
+            FaffInput(label: "Retirement override",
+                      text: $newCapOverride,
+                      placeholder: "Optional",
+                      helper: "Leave blank and \(newShoeType.label)'s own retirement band applies.",
+                      unit: "mi",
+                      keyboard: .numberPad)
+            FaffButton("Save", variant: .primary, size: .md, full: true, enabled: canSaveNewPair) {
+                let trimmedBrand = newBrand.trimmingCharacters(in: .whitespaces)
+                let trimmedModel = newModel.trimmingCharacters(in: .whitespaces)
+                let cap = Double(newCapOverride)
+                onAddPair(trimmedBrand, trimmedModel, newShoeType.rawValue,
+                          (cap != nil && cap! > 0) ? cap : nil)
+                withAnimation(V5.Motion.expand) { addingPair = false }
+                resetAddPairForm()
+            }
+        }
+    }
+
+    private var canSaveNewPair: Bool {
+        !newBrand.trimmingCharacters(in: .whitespaces).isEmpty
+            && !newModel.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private func resetAddPairForm() {
+        newBrand = ""
+        newModel = ""
+        newShoeType = .dailyTrainer
+        newCapOverride = ""
+    }
 }
 
 // MARK: - Preview
@@ -156,7 +273,7 @@ struct ShoesV5: View {
         ],
         onWear: { _ in },
         onRetire: { _ in },
-        onAddPair: {},
+        onAddPair: { _, _, _, _ in },
         onBack: {}
     )
     .preferredColorScheme(.dark)

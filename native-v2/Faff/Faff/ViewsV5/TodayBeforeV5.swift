@@ -463,51 +463,22 @@ struct TodayBeforeV5: View {
     }
 
     // MARK: - Account sheet
+    //
+    // The body is `AccountSheetBodyV5` (`StateScreensV5.swift`) — this used
+    // to be defined here inline as the ONLY copy, until every other place
+    // screen's account button turned out to need the identical sheet and
+    // there was nowhere to reuse it from. Extracted so `TodayHostV5` can
+    // present the same list for the other branches without a second
+    // definition; this screen keeps owning its own `accountOpen` state and
+    // `V5SheetHost` placement, since those are specific to its own layout
+    // (the calendar sheet shares the same z-stack).
 
     private var accountSheetBody: some View {
-        VStack(alignment: .leading, spacing: V5.S.s16) {
-            HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
-                Text(accountName)
-                    .font(.faffDisplay(20))
-                    .textCase(.uppercase)
-                    .tracking(20 * 0.02)
-                    .foregroundStyle(V5.textPrimary)
-                Spacer(minLength: V5.S.s12)
-                Text(accountWeekLine)
-                    .font(.faffText(TypeScaleV5.label13))
-                    .foregroundStyle(V5.textQuiet)
-            }
-            .padding(.horizontal, V5.S.s4)
-
-            ListGroup {
-                ForEach(accountRows) { row in
-                    ListRow(label: row.label,
-                            sub: row.sub,
-                            value: row.value.optionalValue,
-                            // Close the sheet FIRST, then hand the tap up.
-                            // A push that happens while the sheet is still
-                            // presented lands behind it: Settings and Shoes
-                            // both navigated correctly and were invisible,
-                            // which reads as two dead rows.
-                            // Dismiss, THEN navigate — and on separate ticks.
-                            // Pushing while the sheet is still up lands behind
-                            // it; pushing in the same update as the dismissal
-                            // gets coalesced away and nothing happens at all.
-                            // Both failure modes look identical on device: a
-                            // dead row.
-                            onTap: row.action != nil ? {
-                                withAnimation(V5.Motion.sheet) { accountOpen = false }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                    onAccountRowTap(row)
-                                }
-                            } : nil)
-                }
-            }
-
-            FaffButton("Close", variant: .secondary, size: .lg) {
-                withAnimation(V5.Motion.sheet) { accountOpen = false }
-            }
-        }
+        AccountSheetBodyV5(accountName: accountName,
+                            accountWeekLine: accountWeekLine,
+                            accountRows: accountRows,
+                            isOpen: $accountOpen,
+                            onRowTap: onAccountRowTap)
     }
 }
 

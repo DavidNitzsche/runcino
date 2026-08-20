@@ -35,6 +35,68 @@
 import SwiftUI
 import Foundation
 
+// MARK: - Shared account sheet
+//
+// The account sheet's body — runner name, week line, and rows — was
+// previously defined once inside `TodayBeforeV5` (the only screen wired to
+// open it) and nowhere else: `InjuryFlareV5`, `WeekOffV5`, `OffSeasonV5`,
+// `TodayChangedV5` (TodayChangedV5.swift) and `TodayAfterV5` all already
+// exposed an `onOpenAccount` closure, but the host never passed anything
+// but the `{}` default, so the account button on five screens did nothing.
+// Defined once, here, so `TodayHostV5` can present ONE sheet for every
+// place-screen branch that isn't `TodayBeforeV5` (which keeps its own,
+// using this same struct) rather than five copies of the same list.
+
+struct AccountSheetBodyV5: View {
+    let accountName: String
+    let accountWeekLine: String
+    let accountRows: [V5Row]
+    @Binding var isOpen: Bool
+    var onRowTap: (V5Row) -> Void = { _ in }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: V5.S.s16) {
+            HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
+                Text(accountName)
+                    .font(.faffDisplay(20))
+                    .textCase(.uppercase)
+                    .tracking(20 * 0.02)
+                    .foregroundStyle(V5.textPrimary)
+                Spacer(minLength: V5.S.s12)
+                Text(accountWeekLine)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+            }
+            .padding(.horizontal, V5.S.s4)
+
+            ListGroup {
+                ForEach(accountRows) { row in
+                    ListRow(label: row.label,
+                            sub: row.sub,
+                            value: row.value.optionalValue,
+                            // Close the sheet FIRST, then hand the tap up, on
+                            // a separate tick — a push that happens while the
+                            // sheet is still presented lands behind it, and a
+                            // push coalesced into the same update as the
+                            // dismissal gets dropped. Both look identical on
+                            // device: a dead row. See `TodayBeforeV5`, where
+                            // this was worked out originally.
+                            onTap: row.action != nil ? {
+                                withAnimation(V5.Motion.sheet) { isOpen = false }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                    onRowTap(row)
+                                }
+                            } : nil)
+                }
+            }
+
+            FaffButton("Close", variant: .secondary, size: .lg) {
+                withAnimation(V5.Motion.sheet) { isOpen = false }
+            }
+        }
+    }
+}
+
 // MARK: - Shared panel header
 //
 // "Today" + the account button, exactly as the prototype draws it on every
@@ -255,7 +317,6 @@ struct WeekOffV5: View {
 struct OffSeasonV5: View {
     let model: V5OffSeason
     var onOpenAccount: () -> Void = {}
-    var onPlanNextBlock: () -> Void = {}
 
     var body: some View {
         StateScreenScaffold {
@@ -275,11 +336,18 @@ struct OffSeasonV5: View {
         } content: {
             Silence(reason: model.silenceReason)
 
-            ListGroup(header: "This week") {
-                if let weeklyRange = model.weeklyRange {
+            // "Plan the next block" — removed. The prototype itself specs
+            // this row's onClick as a noop (15a.html), and no phone route
+            // exists to send it to: setting a real next-block goal needs
+            // distance + goal time (`POST /api/profile/goal`), which is a
+            // form this screen has no fields for and V5 has no screen for
+            // yet. A row that reopens the same "not built yet" dead end is
+            // worse than no row — see AGENT-BRIEF rule 3, a refusal is
+            // honest, a control that goes nowhere is not.
+            if let weeklyRange = model.weeklyRange {
+                ListGroup(header: "This week") {
                     ListRow(label: "Miles", sub: weeklyRange)
                 }
-                ListRow(label: "Plan the next block", onTap: onPlanNextBlock)
             }
         }
     }
