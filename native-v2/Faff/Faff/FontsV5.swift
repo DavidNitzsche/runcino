@@ -242,10 +242,42 @@ enum TypeScaleV5 {
 }
 
 extension View {
-    /// The display recipe: Archivo 800/112, uppercase.
-    func faffDisplayV5(_ size: CGFloat) -> some View {
+    /// The display recipe: Archivo 800/112, uppercase, and it does not clip.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// WHY THIS SHRINKS, MEASURED RATHER THAN GUESSED
+    ///
+    /// The design asks for the session type at 56px in the display register,
+    /// and for that register to be uppercase. Measured against the real
+    /// binary at wght 800 / wdth 112, in the panel's own 350pt box
+    /// (390 frame, 20pt panel padding each side):
+    ///
+    ///     THRESHOLD   411.8pt      Threshold   314.0pt
+    ///     LONG RUN    346.0pt      Long run    271.1pt
+    ///     EASY        177.4pt      Easy        153.6pt
+    ///
+    /// So the longest ordinary session type overflows by 62pt uppercase, and
+    /// fits with room to spare in mixed case. Both instructions in the handoff
+    /// are real — "treat pixel measurements as exact" and "uppercase" — and on
+    /// this one word they cannot both hold.
+    ///
+    /// Wrapping is the worst of the three outcomes: it turns the graphic into
+    /// two ragged lines and pushes everything below it down, which breaks the
+    /// rule that nothing reflows. Clipping is worse still. So the size holds
+    /// wherever it fits — which is every headline in the design except this
+    /// one — and the rare long word shrinks to the width instead of breaking
+    /// the layout. 0.82 covers THRESHOLD at 0.85 with margin.
+    ///
+    /// Flagged to David: if the intent was mixed case at 56, drop the
+    /// `.textCase` here and every screen follows, because no screen sets it
+    /// itself.
+    ///
+    /// - Parameter fit: false for a deliberately multi-line headline.
+    func faffDisplayV5(_ size: CGFloat, fit: Bool = true) -> some View {
         self
             .font(.faffDisplay(size))
             .textCase(.uppercase)
+            .lineLimit(fit ? 1 : nil)
+            .minimumScaleFactor(fit ? 0.82 : 1)
     }
 }

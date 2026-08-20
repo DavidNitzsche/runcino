@@ -25,6 +25,13 @@ struct FaffApp: App {
 
     var body: some Scene {
         WindowGroup {
+            // Design QA, reached by a launch argument so that looking at the
+            // v5 system on a device never means a temporary edit to this file
+            // and never risks a half-edited root reaching a build:
+            //     xcrun simctl launch <udid> run.faff.app -faffV5Gallery
+            if ProcessInfo.processInfo.arguments.contains("-faffV5Gallery") {
+                GalleryV5()
+            } else {
             RootContainer()
                 // v3 is dark-first. Effort mesh paints behind every screen;
                 // the system canvas under the mesh stays black.
@@ -129,6 +136,7 @@ struct FaffApp: App {
                         await HRAlerter.shared.start()
                     }
                 }
+            }
         }
         // 2026-05-27: re-import HK samples on every background→foreground
         // transition. The `.task` above only fires once per app launch, so

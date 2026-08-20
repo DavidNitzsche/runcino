@@ -218,12 +218,25 @@ enum V5Grain {
                 let octave2 = (l + (r - l) * tx) * (1 - ty) + (bl + (br - bl) * tx) * ty
 
                 // fractalNoise sums octaves at halving amplitude and stays
-                // centred on 0.5, which is what makes overlay a no-op on
+                // CENTRED ON 0.5 — that is what makes overlay a no-op on
                 // average and a texture locally.
-                for c in 0..<4 {
-                    let v = (rand() * 0.667) + (octave2 * 0.333)
+                //
+                // The amplitude matters more than anything else here, and it
+                // is the one thing a first pass gets wrong. Uniform noise over
+                // the full 0…1 range is not what feTurbulence produces: two
+                // octaves of smooth gradient noise concentrate tightly around
+                // the midpoint, and the difference on a device is the gap
+                // between a fine tooth and visible static. Checked on glass,
+                // not by reading the filter spec.
+                let deviation = 0.30
+                for c in 0..<3 {
+                    let n1 = rand(), n2 = octave2
+                    let v = 0.5 + ((n1 * 0.667 + n2 * 0.333) - 0.5) * deviation
                     px[(y * n + x) * 4 + c] = UInt8(min(max(v, 0), 1) * 255)
                 }
+                // Opaque. The layer's own 50% opacity is the design's stated
+                // strength; noising alpha as well would double-dip it.
+                px[(y * n + x) * 4 + 3] = 255
             }
         }
 

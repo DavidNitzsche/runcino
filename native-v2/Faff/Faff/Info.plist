@@ -52,6 +52,8 @@
 		<string>Inter-SemiBold.ttf</string>
 		<string>Inter-Bold.ttf</string>
 		<string>Inter-ExtraBold.ttf</string>
+		<string>InstrumentSans-Variable.ttf</string>
+		<string>Archivo-Variable.ttf</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
