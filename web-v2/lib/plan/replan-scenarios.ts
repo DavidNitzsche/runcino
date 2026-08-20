@@ -1365,7 +1365,15 @@ export async function proposeChange(
     if (p.demoted) second.push('the second quality session becomes an easy run');
     if (p.finishStripped) second.push(`the ${p.finishStripped}-pace finish comes off the long`);
     if (second.length) parts.push(`${cap(joinList(second))}.`);
-    parts.push('You lose a hard week of the build.');
+    // Only when there was a hard week to lose. Said unconditionally, this
+    // told a runner cutting back a RECOVERY week that they were giving up a
+    // hard week of the build — the opposite of what that week is for. The
+    // cost is real when the week carried quality or was already a cutback;
+    // otherwise the miles above are the whole story.
+    const hadQuality = p.week.days.some(d => d.isQuality);
+    if (hadQuality || p.demoted || p.finishStripped) {
+      parts.push('You lose a hard week of the build.');
+    }
     parts.push(`Nothing before or after ${weekNo(p.week.weekIdx)} moves, and the race date does not change.`);
 
     return {
