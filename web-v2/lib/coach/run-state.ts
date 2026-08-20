@@ -864,8 +864,18 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
 
     distance_mi: Number(r.distanceMi) || 0,
     pace, pace_s_per_mi: paceSPerMi,
-    time_moving:  r.timeMoving  || fmtDuration(movingSec)  || null,
-    time_elapsed: r.timeElapsed || fmtDuration(elapsedSec) || null,
+    // ─────────────────────────────────────────────────────────────────
+    // THE SECONDS ARE THE FACT; THE STRING IS SOMEONE ELSE'S FORMATTING
+    //
+    // `r.timeMoving` is a pre-formatted string stored on the row, and some of
+    // them were written by a formatter that never handled hours — a 1h42m
+    // half marathon came back as "102:33". Taking the stored string FIRST
+    // meant no amount of fixing fmtDuration could help.
+    //
+    // So the number wins whenever there is one, and the stored string is the
+    // fallback for rows that carry no seconds at all.
+    time_moving:  fmtDuration(movingSec) || r.timeMoving || null,
+    time_elapsed: fmtDuration(elapsedSec) || r.timeElapsed || null,
     avg_speed_mph: Number(r.avgSpeedMph) || null,
 
     hr_avg: Number(r.avgHr) || null,

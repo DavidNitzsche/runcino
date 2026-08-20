@@ -154,7 +154,17 @@ struct ZoneBar: View {
                     ForEach(Array(shares.enumerated()), id: \.offset) { i, s in
                         let isTarget = target.map { $0 == i + 1 } ?? false
                         RoundedRectangle(cornerRadius: V5.R.r6, style: .continuous)
-                            .fill(isTarget ? V5.signal : V5.plotInk.opacity(0.35))
+                            // Zones step in density, Z1 lightest to Z5
+                            // densest. Without it a bar with no target — a
+                            // finished run, where nothing was "asked for" —
+                            // rendered as one flat grey block and read as a
+                            // single value rather than as a distribution.
+                            //
+                            // Density, not hue: an ordinal ramp says which
+                            // zone without saying anything about whether the
+                            // distribution was good, which this app never does.
+                            .fill(isTarget ? V5.signal
+                                  : V5.plotInk.opacity(0.22 + Double(i) * 0.14))
                             .frame(width: Swift.max(geo.size.width * (s / total) - 2, s > 0 ? 2 : 0))
                     }
                 }
