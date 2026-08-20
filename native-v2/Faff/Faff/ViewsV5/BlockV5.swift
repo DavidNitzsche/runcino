@@ -97,8 +97,12 @@ struct BlockV5: View {
         self.onOpenRunLog = onOpenRunLog
         _planSheetOpen = State(initialValue: false)
         _stage = State(initialValue: .menu)
-        _travelFrom = State(initialValue: Date())
-        _travelTo = State(initialValue: Calendar.current.date(byAdding: .day, value: 6, to: Date()) ?? Date())
+        // TOMORROW, not today. The engine's own rule is "pick a window that
+        // starts tomorrow or later — days already gone are logged, not
+        // planned", so a default of today made the first Check fail every
+        // time.
+        _travelFrom = State(initialValue: Self.tomorrow)
+        _travelTo = State(initialValue: Calendar.current.date(byAdding: .day, value: 6, to: Self.tomorrow) ?? Self.tomorrow)
     }
 
     /// Preview-only: open straight into a given sheet stage, so the longest
@@ -111,8 +115,12 @@ struct BlockV5: View {
         self.onChanged = onChanged
         _planSheetOpen = State(initialValue: true)
         _stage = State(initialValue: previewStage)
-        _travelFrom = State(initialValue: Date())
-        _travelTo = State(initialValue: Calendar.current.date(byAdding: .day, value: 6, to: Date()) ?? Date())
+        // TOMORROW, not today. The engine's own rule is "pick a window that
+        // starts tomorrow or later — days already gone are logged, not
+        // planned", so a default of today made the first Check fail every
+        // time.
+        _travelFrom = State(initialValue: Self.tomorrow)
+        _travelTo = State(initialValue: Calendar.current.date(byAdding: .day, value: 6, to: Self.tomorrow) ?? Self.tomorrow)
     }
 
     var body: some View {
@@ -589,13 +597,19 @@ struct BlockV5: View {
         return f.string(from: date)
     }
 
+    /// The earliest day a plan change can name. Everything before it is
+    /// history, which this sheet does not edit.
+    fileprivate static var tomorrow: Date {
+        Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+    }
+
     private func dateField(label: String, date: Binding<Date>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.faffText(TypeScaleV5.label12))
                 .foregroundStyle(V5.textQuiet)
                 .padding(.horizontal, 2)
-            DatePicker("", selection: date, displayedComponents: .date)
+            DatePicker("", selection: date, in: Self.tomorrow..., displayedComponents: .date)
                 .datePickerStyle(.compact)
                 .labelsHidden()
                 .tint(V5.signal)
