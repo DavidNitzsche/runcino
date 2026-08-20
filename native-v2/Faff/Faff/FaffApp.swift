@@ -31,6 +31,8 @@ struct FaffApp: App {
             //     xcrun simctl launch <udid> run.faff.app -faffV5Gallery
             if ProcessInfo.processInfo.arguments.contains("-faffV5Gallery") {
                 GalleryV5()
+            } else if ProcessInfo.processInfo.arguments.contains("-faffV5Screens") {
+                ScreensCatalogV5()
             } else {
             RootContainer()
                 // v3 is dark-first. Effort mesh paints behind every screen;

@@ -176,8 +176,7 @@ struct RacesV5: View {
 
             HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
                 Text(model.panel.dateLine)
-                    .font(.faffDisplay(26))
-                    .textCase(.uppercase)
+                    .faffDisplayV5(26)
                     .foregroundStyle(V5.OnPanel.primary)
                 Spacer(minLength: 0)
                 if let weekLine = model.panel.weekLine {

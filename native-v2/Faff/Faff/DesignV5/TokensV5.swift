@@ -46,6 +46,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// The v5 design system's semantic tokens. Named for the prototype's CSS
 /// custom properties. Every v5 screen paints from here, never from a hex.
@@ -279,5 +280,21 @@ enum V5 {
         static let appBarHeight: CGFloat = 92
         /// A round header button on a panel.
         static let headerButton: CGFloat = 30
+
+        /// The device's own status-bar inset, read once from the key window.
+        ///
+        /// The design draws a 44pt status band, but the instruction beside it
+        /// is "build to the actual device safe areas, not a fixed 390×844
+        /// box" — and the two disagree on every device made since. This is the
+        /// real number, with the design's 44 as the floor for the case where
+        /// no window is up yet (a preview, a cold launch).
+        static let statusBarInset: CGFloat = {
+            let inset = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows)
+                .first(where: \.isKeyWindow)?
+                .safeAreaInsets.top
+            return inset.map { max($0, 0) } ?? 44
+        }()
     }
 }

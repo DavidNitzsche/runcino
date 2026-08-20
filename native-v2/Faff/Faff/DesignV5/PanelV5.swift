@@ -290,10 +290,21 @@ struct DayPanel<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, V5.S.s20)
         .padding(.bottom, 26)
-        // Reach up behind the status bar. The band above the safe-area inset
-        // is part of the panel, so the gradient starts at the very top of the
-        // display rather than under a black strip.
-        .padding(.top, 0)
+        // ── Reaching behind the status bar ──────────────────────────────
+        //
+        // "Full-bleed gradient panel from the status bar down." The system
+        // draws the clock and the glyphs over whatever is beneath them, so
+        // the gradient has to start at the very top of the display, not below
+        // the safe-area inset — otherwise a black strip sits above it and the
+        // panel reads as a card rather than as the top of the screen.
+        //
+        // Done by pulling the panel UP by the inset and pushing its content
+        // back DOWN by the same amount: the gradient gains the status-bar
+        // band, the content does not move, and the enclosing scroll view
+        // keeps its ordinary safe-area behaviour. `.ignoresSafeArea` on the
+        // background alone does not do this — the background is clipped to
+        // the panel's frame, and the frame is what starts too low.
+        .padding(.top, V5.Shell.statusBarInset)
         .background(alignment: .top) {
             Group {
                 switch fill {
@@ -302,9 +313,9 @@ struct DayPanel<Content: View>: View {
                 }
             }
             .v5Grain()
-            .ignoresSafeArea(edges: .top)
         }
         .clipShape(PanelShape(radius: V5.R.panel))
+        .padding(.top, -V5.Shell.statusBarInset)
         // Escape the content band's gutter.
         .padding(.horizontal, -V5.S.gutter)
     }

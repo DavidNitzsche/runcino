@@ -272,11 +272,32 @@ extension View {
     /// `.textCase` here and every screen follows, because no screen sets it
     /// itself.
     ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// WHERE THE UPPERCASE ACTUALLY APPLIES, ALSO MEASURED
+    ///
+    /// The README calls the display register "uppercase — used as the graphic
+    /// itself (session type, screen headline)", and lists its sizes as
+    /// 76 / 56 / 44 / 38. Those are the graphic. The prototype ALSO puts the
+    /// display face on smaller things that are not graphics — the 26pt date
+    /// line, the 20pt place label, the 15pt group headers — and the 26pt one
+    /// does not survive the transform:
+    ///
+    ///     THURSDAY 20 AUGUST   ~402pt      Thursday 20 August   ~290pt
+    ///
+    /// against roughly 200pt of a row it shares with the week line. Uppercased
+    /// it wraps to two lines and shoves the whole panel down. So the transform
+    /// applies at the sizes the README names as the graphic, and not below
+    /// them. The place label and the group headers are short enough that the
+    /// rule never bites them, and they carry their own tracking anyway.
+    ///
+    /// Flagged to David along with the fit behaviour: both live here, and
+    /// both move every screen at once.
+    ///
     /// - Parameter fit: false for a deliberately multi-line headline.
     func faffDisplayV5(_ size: CGFloat, fit: Bool = true) -> some View {
         self
             .font(.faffDisplay(size))
-            .textCase(.uppercase)
+            .textCase(size >= TypeScaleV5.display38 ? .uppercase : nil)
             .lineLimit(fit ? 1 : nil)
             .minimumScaleFactor(fit ? 0.82 : 1)
     }
