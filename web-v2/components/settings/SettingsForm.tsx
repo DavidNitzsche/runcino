@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { PHONE_RUN_SETTING_COPY, type UserSettings } from '@/lib/coach/settings';
+import { PHONE_RUN_SETTING_COPY } from '@/lib/coach/settings-copy';
+// Type-only, so it is erased at build time and never pulls the pool in.
+import type { UserSettings } from '@/lib/coach/settings';
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle';
 
 const DOWS = [

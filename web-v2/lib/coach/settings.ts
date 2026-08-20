@@ -62,12 +62,11 @@ export const DEFAULT_SETTINGS: UserSettings = {
 /** Runner-facing copy for the phone-run setting. Kept beside the flag so the
  *  web settings surface and the iPhone read the same words. Coach voice: the
  *  two limits are stated as facts, not warnings, and nothing is hyped. */
-export const PHONE_RUN_SETTING_COPY = {
-  label: 'Start runs from this phone',
-  help:
-    'Keep the screen on while you run. The phone stops recording in your pocket. ' +
-    'No heart rate without a watch.',
-} as const;
+// The copy moved to lib/coach/settings-copy.ts, which imports nothing. This
+// module owns the pg pool, and a CLIENT component importing a value from here
+// drags pg into the browser bundle — that is what broke every deploy from
+// 5335af97 onward. Re-exported so server callers keep their import path.
+export { PHONE_RUN_SETTING_COPY } from './settings-copy';
 
 export async function loadSettings(userId: string): Promise<UserSettings> {
   try {
