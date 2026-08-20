@@ -807,6 +807,31 @@ struct V5ReturnStage: Decodable, Equatable, Hashable, Identifiable {
 
 extension API {
 
+    /// What a v5 GET can come back as. Three outcomes, and the middle one is
+    /// the reason this is not just an optional.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// RULE THREE, ON THE TRANSPORT
+    ///
+    /// `GET /api/v5/paces` on a runner whose paces have never moved answers
+    /// 404 `{"error":"no_pace_change","reason":"this plan has never recorded a
+    /// pace re-anchor"}`. That is not a failure. We read it perfectly and the
+    /// answer is that there is nothing to show.
+    ///
+    /// Collapsing it to nil made the screen say "The pace read did not load.
+    /// Your paces are unchanged, we just cannot see them" — which claims we
+    /// went blind when we did not. A refusal wearing the outage treatment is
+    /// the exact mistake the design names, and it reached the transport layer
+    /// because an optional cannot hold the difference.
+    enum V5Fetch<T> {
+        case ok(T)
+        /// The engine answered, and the answer is that this does not apply.
+        /// Carries the engine's own sentence.
+        case absent(String)
+        /// We could not read it. THIS is the outage.
+        case failed
+    }
+
     /// One GET, one cache write. The cache write is what lets the next launch
     /// paint real content on frame one instead of a placeholder — the design
     /// requires that loading states reserve their exact final layout height and
@@ -816,39 +841,56 @@ extension API {
     /// payload, or an outage would erase the screen it was meant to preserve.
     private static func v5<T: Decodable>(_ path: String,
                                          cache: AppCache.Key?,
-                                         as: T.Type) async throws -> T? {
-        guard let url = URL(string: API.baseURL.absoluteString + path) else { return nil }
+                                         as: T.Type) async throws -> V5Fetch<T> {
+        guard let url = URL(string: API.baseURL.absoluteString + path) else { return .failed }
         let (data, http) = try await API.authedGET(url)
-        guard (200...299).contains(http.statusCode) else { return nil }
-        let decoded = try JSONDecoder().decode(T.self, from: data)
-        if let cache { AppCache.writeRaw(cache, data: data) }
-        return decoded
+
+        if (200...299).contains(http.statusCode) {
+            let decoded = try JSONDecoder().decode(T.self, from: data)
+            if let cache { AppCache.writeRaw(cache, data: data) }
+            return .ok(decoded)
+        }
+
+        // A 4xx carrying the engine's own reason is an answer, not a failure.
+        // A 5xx is not: the engine did not decide anything, it fell over.
+        if (400...499).contains(http.statusCode),
+           let body = try? JSONDecoder().decode(V5Refusal.self, from: data),
+           let reason = body.reason, !reason.isEmpty {
+            return .absent(reason)
+        }
+        return .failed
     }
 
-    static func fetchV5Today(date: String? = nil) async throws -> V5Today? {
+    /// The shape every v5 route uses when it declines.
+    private struct V5Refusal: Decodable {
+        let error: String?
+        let reason: String?
+    }
+
+    static func fetchV5Today(date: String? = nil) async throws -> V5Fetch<V5Today> {
         // A dated read is history, not today, so it must not overwrite today's
         // cache entry.
         try await v5("/api/v5/today" + (date.map { "?date=\($0)" } ?? ""),
                      cache: date == nil ? .v5Today : nil, as: V5Today.self)
     }
 
-    static func fetchV5Block() async throws -> V5Block? {
+    static func fetchV5Block() async throws -> V5Fetch<V5Block> {
         try await v5("/api/v5/block", cache: .v5Block, as: V5Block.self)
     }
 
-    static func fetchV5Races() async throws -> V5Races? {
+    static func fetchV5Races() async throws -> V5Fetch<V5Races> {
         try await v5("/api/v5/races", cache: .v5Races, as: V5Races.self)
     }
 
-    static func fetchV5RaceDetail(slug: String) async throws -> V5RaceDetail? {
+    static func fetchV5RaceDetail(slug: String) async throws -> V5Fetch<V5RaceDetail> {
         try await v5("/api/v5/race/\(slug)", cache: nil, as: V5RaceDetail.self)
     }
 
-    static func fetchV5Paces() async throws -> V5Paces? {
+    static func fetchV5Paces() async throws -> V5Fetch<V5Paces> {
         try await v5("/api/v5/paces", cache: .v5Paces, as: V5Paces.self)
     }
 
-    static func fetchV5Return() async throws -> V5Return? {
+    static func fetchV5Return() async throws -> V5Fetch<V5Return> {
         try await v5("/api/v5/return", cache: .v5Return, as: V5Return.self)
     }
 

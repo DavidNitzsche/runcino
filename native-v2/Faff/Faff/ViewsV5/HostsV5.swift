@@ -39,6 +39,15 @@ struct TodayHostV5: View {
         Group {
             if let model = surface.model {
                 content(model)
+            } else if let reason = surface.absentReason {
+                // The engine answered and the answer is that this does
+                // not apply. Silence, never ErrorNote: nothing failed.
+                ScrollView {
+                    Silence(reason: reason)
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s40)
+                }
+                .background(V5.surfacePage)
             } else if surface.isOutage {
                 // Nothing cached and the read failed. The design's own outage
                 // screen needs a Today shell to sit in, and we do not have one,
@@ -223,6 +232,15 @@ struct BlockHostV5: View {
                     // that read it are refetched rather than patched locally.
                     Task { await surface.load() }
                 })
+            } else if let reason = surface.absentReason {
+                // The engine answered and the answer is that this does
+                // not apply. Silence, never ErrorNote: nothing failed.
+                ScrollView {
+                    Silence(reason: reason)
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s40)
+                }
+                .background(V5.surfacePage)
             } else if surface.isOutage {
                 ScrollView {
                     OutageBodyV5(copy: .block, onRetry: { Task { await surface.load() } })
@@ -262,6 +280,15 @@ struct RacesHostV5: View {
                 RacesV5(model: model,
                         onAnswer: { a in Task { await send(a, model) } },
                         onEvidenceTap: { _ in })
+            } else if let reason = surface.absentReason {
+                // The engine answered and the answer is that this does
+                // not apply. Silence, never ErrorNote: nothing failed.
+                ScrollView {
+                    Silence(reason: reason)
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s40)
+                }
+                .background(V5.surfacePage)
             } else if surface.isOutage {
                 ScrollView {
                     OutageBodyV5(copy: .races, onRetry: { Task { await surface.load() } })
@@ -313,6 +340,15 @@ struct RaceDetailHostV5: View {
         Group {
             if let d = surface.model {
                 RaceDetailV5(raceDetail: d)
+            } else if let reason = surface.absentReason {
+                // The engine answered and the answer is that this does
+                // not apply. Silence, never ErrorNote: nothing failed.
+                ScrollView {
+                    Silence(reason: reason)
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s40)
+                }
+                .background(V5.surfacePage)
             } else if surface.isOutage {
                 ScrollView {
                     OutageBodyV5(copy: .raceDetail, onRetry: { Task { await surface.load() } })
@@ -336,6 +372,15 @@ struct PacesHostV5: View {
         Group {
             if let p = surface.model {
                 PacesMovedV5(paces: p, onSettled: { Task { await surface.load() } })
+            } else if let reason = surface.absentReason {
+                // The engine answered and the answer is that this does
+                // not apply. Silence, never ErrorNote: nothing failed.
+                ScrollView {
+                    Silence(reason: reason)
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s40)
+                }
+                .background(V5.surfacePage)
             } else if surface.isOutage {
                 ScrollView {
                     OutageBodyV5(copy: .paces, onRetry: { Task { await surface.load() } })
@@ -359,6 +404,15 @@ struct ReturnHostV5: View {
         Group {
             if let r = surface.model {
                 ReturnToRunningV5(ret: r, onCheckedIn: { Task { await surface.load() } })
+            } else if let reason = surface.absentReason {
+                // The engine answered and the answer is that this does
+                // not apply. Silence, never ErrorNote: nothing failed.
+                ScrollView {
+                    Silence(reason: reason)
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s40)
+                }
+                .background(V5.surfacePage)
             } else if surface.isOutage {
                 ScrollView {
                     OutageBodyV5(copy: .returnLadder, onRetry: { Task { await surface.load() } })
@@ -535,6 +589,15 @@ struct InjuryPreviewHostV5: View {
                     }
                     .background(V5.surfacePage)
                 }
+            } else if let reason = surface.absentReason {
+                // The engine answered and the answer is that this does
+                // not apply. Silence, never ErrorNote: nothing failed.
+                ScrollView {
+                    Silence(reason: reason)
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s40)
+                }
+                .background(V5.surfacePage)
             } else if surface.isOutage {
                 ScrollView {
                     OutageBodyV5(copy: .tomorrow, onRetry: { Task { await surface.load() } })

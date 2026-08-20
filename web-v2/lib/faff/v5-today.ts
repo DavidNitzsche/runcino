@@ -221,9 +221,17 @@ const DOW_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 const MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DOW_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
+/**
+ * "Thursday 20 August" — day, then date, then month.
+ *
+ * The design's own sample data writes it that way, and Block's panel already
+ * did ("20 August") while Today wrote "Thursday August 20". Two date formats
+ * on two tabs of the same app is the kind of thing nobody reports and everyone
+ * notices.
+ */
 export function dateLineFor(iso: string): string {
   const d = new Date(iso + 'T12:00:00Z');
-  return `${DOW_FULL[d.getUTCDay()]} ${MONTH_FULL[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  return `${DOW_FULL[d.getUTCDay()]} ${d.getUTCDate()} ${MONTH_FULL[d.getUTCMonth()]}`;
 }
 
 /** dayState the phone's 6-gradient vocabulary accepts. `plannedType` is the

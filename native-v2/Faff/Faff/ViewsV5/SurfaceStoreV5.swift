@@ -49,6 +49,14 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     /// refresh. If `model` is nil this is the data-outage screen.
     @Published private(set) var stale = false
 
+    /// The engine answered and the answer is that this surface does not apply
+    /// — a runner whose paces have never moved, a runner with no injury on the
+    /// ladder. Carries the engine's own sentence.
+    ///
+    /// This is NOT `stale`. Collapsing the two made a screen with nothing to
+    /// say claim it had gone blind, which is the one thing rule three forbids.
+    @Published private(set) var absentReason: String?
+
     /// A refresh is running. Never used to blank anything.
     @Published private(set) var refreshing = false
 
@@ -57,9 +65,9 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     let cachedAt: Date?
 
     private let cacheKey: AppCache.Key?
-    private let fetch: () async throws -> Model?
+    private let fetch: () async throws -> API.V5Fetch<Model>
 
-    init(cache: AppCache.Key?, fetch: @escaping () async throws -> Model?) {
+    init(cache: AppCache.Key?, fetch: @escaping () async throws -> API.V5Fetch<Model>) {
         self.cacheKey = cache
         self.fetch = fetch
         self.model = cache.flatMap { AppCache.read($0, as: Model.self) }
@@ -67,23 +75,30 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     }
 
     /// True exactly when the design's data-outage screen applies: we have
-    /// nothing at all and the last read failed. Not "we are loading".
-    var isOutage: Bool { model == nil && stale }
+    /// nothing at all and the last read FAILED. Not "we are loading", and not
+    /// "there is nothing here" — that one is `absentReason`.
+    var isOutage: Bool { model == nil && stale && absentReason == nil }
 
     /// True on a genuine cold start — no cache, no failure yet. This is where
     /// a `Skeleton` goes, reserving the real content's height.
-    var isColdStart: Bool { model == nil && !stale }
+    var isColdStart: Bool { model == nil && !stale && absentReason == nil }
 
     func load() async {
         refreshing = true
         defer { refreshing = false }
         do {
-            if let fresh = try await fetch() {
+            switch try await fetch() {
+            case .ok(let fresh):
                 model = fresh
                 stale = false
-            } else {
-                // A non-2xx with no throw. We could not read it; we did not
-                // learn that the answer is no.
+                absentReason = nil
+            case .absent(let reason):
+                // The engine decided. Not an outage, and not something to
+                // paper over with a cached payload from when it did apply.
+                absentReason = reason
+                model = nil
+                stale = false
+            case .failed:
                 stale = true
             }
         } catch is CancellationError {

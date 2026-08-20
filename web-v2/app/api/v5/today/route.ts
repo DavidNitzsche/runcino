@@ -527,7 +527,12 @@ export async function GET(req: NextRequest) {
   ctx.weekLine = weekLine;
   ctx.weekStripDays = weekStripDays;
   ctx.prescription = prescriptionLike;
-  ctx.weatherKicker = prescription ? `about ${Math.round((prescription.total_mi || 0) * 9)} min` : null;
+  // The kicker is weather plus duration on a day there is something to do.
+  // On a rest day there is neither, and "about 0 min" is not a duration — it
+  // is the arithmetic showing through. Null, so the panel simply omits the
+  // line rather than printing a number that means nothing.
+  const kickerMin = prescription ? Math.round((prescription.total_mi || 0) * 9) : 0;
+  ctx.weatherKicker = kickerMin > 0 ? `about ${kickerMin} min` : null;
   ctx.paceBandStat = todayPlan
     ? (prescriptionType === 'easy' ? fmtBand(dp.easySecLo, dp.easySecHi)
       : prescriptionType === 'long' ? fmtBand(dp.longSecLo, dp.longSecHi)
