@@ -192,6 +192,12 @@ struct FaffApp: App {
             lastImportAt = now
             Task {
                 await HealthKitImporter.shared.importIfConnected(daysBack: 2)
+                // AND AGAIN AFTER THE IMPORT LANDS. The post below fires the
+                // instant foregrounding starts, which is right for the Strava
+                // OAuth return but too early for this: the import is what
+                // brings today's run in, so a surface that read before it
+                // finished still shows a day with no run on it.
+                NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
             }
             NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
         }

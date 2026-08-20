@@ -429,8 +429,19 @@ struct TodayAfterV5: View {
                 ListRow(label: row.label, sub: row.sub, value: Self.fv(row.value),
                         onTap: row.action != nil ? { onRowAction(row) } : nil)
             }
-            niggleRow
+            // Only when the server is not already carrying one. Its row is
+            // the persisted truth (with Undo); this screen's is the picker
+            // that SETS one. Both at once read as two identical rows.
+            if serverFlaggedNiggle == nil {
+                niggleRow
+            }
         }
+    }
+
+    /// The flagged niggle as the server sees it, found by the verb rather
+    /// than by the label — the label is copy and copy moves.
+    private var serverFlaggedNiggle: String? {
+        model.whatThisDidToTheWeek.first { $0.action == "undo_niggle" }?.label
     }
 
     @ViewBuilder

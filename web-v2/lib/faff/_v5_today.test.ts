@@ -177,7 +177,7 @@ describe('composeV5Today · state precedence', () => {
     expect(out.elevation).toBeNull(); // design: replaced, not an empty card
     expect(out.onTheBelt).toEqual([
       { label: 'Speed', value: { text: '7.2', modelled: false }, tone: null },
-      { label: 'Incline', value: { text: '1.5%', modelled: false }, tone: null },
+      { label: 'Incline', value: { text: '1.5', modelled: false }, tone: null },
     ]);
     expect(out.panel.kicker).toBe('Treadmill · indoor, no GPS');
     // Effort not yet logged — the row is tappable.

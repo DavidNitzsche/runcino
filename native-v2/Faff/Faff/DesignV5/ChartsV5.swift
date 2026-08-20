@@ -147,9 +147,13 @@ struct ZoneBar: View {
 
     private var total: Double { Swift.max(shares.reduce(0, +), 0.0001) }
 
+    private func width(_ s: Double, in full: CGFloat) -> CGFloat {
+        Swift.max(full * (s / total) - 2, s > 0 ? 2 : 0)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: V5.S.s6) {
-            GeometryReader { geo in
+        GeometryReader { geo in
+            VStack(alignment: .leading, spacing: V5.S.s6) {
                 HStack(spacing: 2) {
                     ForEach(Array(shares.enumerated()), id: \.offset) { i, s in
                         let isTarget = target.map { $0 == i + 1 } ?? false
@@ -165,25 +169,35 @@ struct ZoneBar: View {
                             // distribution was good, which this app never does.
                             .fill(isTarget ? V5.signal
                                   : V5.plotInk.opacity(0.22 + Double(i) * 0.14))
-                            .frame(width: Swift.max(geo.size.width * (s / total) - 2, s > 0 ? 2 : 0))
+                            .frame(width: width(s, in: geo.size.width))
                     }
                 }
-                .frame(height: geo.size.height, alignment: .leading)
-            }
-            .frame(height: height)
+                .frame(height: height, alignment: .leading)
 
-            if labels {
-                HStack(spacing: 2) {
-                    ForEach(Array(shares.enumerated()), id: \.offset) { i, s in
-                        Text("Z\(i + 1)")
-                            .font(.faffText(TypeScaleV5.label12))
-                            .foregroundStyle(target.map { $0 == i + 1 } ?? false ? V5.signal : V5.textQuiet)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .opacity(s > 0 ? 1 : 0.4)
+                // EACH LABEL SITS UNDER ITS OWN BAR.
+                //
+                // Evenly-spaced labels under proportional bars misread badly
+                // the moment a zone is empty: David's half sat entirely in Z4
+                // and Z5, so the first two blocks on screen were a narrow one
+                // and a wide one — under labels that started at Z1. It read as
+                // an easy run. The label row now takes the bar's own widths,
+                // and a zone with no time in it gets no label to point at.
+                if labels {
+                    HStack(spacing: 2) {
+                        ForEach(Array(shares.enumerated()), id: \.offset) { i, s in
+                            Text(s > 0 ? "Z\(i + 1)" : "")
+                                .font(.faffText(TypeScaleV5.label12))
+                                .foregroundStyle(target.map { $0 == i + 1 } ?? false ? V5.signal : V5.textQuiet)
+                                .lineLimit(1)
+                                .fixedSize()
+                                .frame(width: width(s, in: geo.size.width), alignment: .leading)
+                                .clipped()
+                        }
                     }
                 }
             }
         }
+        .frame(height: labels ? height + V5.S.s6 + 15 : height)
     }
 }
 

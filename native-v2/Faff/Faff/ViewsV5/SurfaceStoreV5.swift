@@ -91,6 +91,29 @@ final class V5Surface<Model: Decodable>: ObservableObject {
         self.fetch = fetch
         self.model = cache.flatMap { AppCache.read($0, as: Model.self) }
         self.cachedAt = cache.flatMap { AppCache.writtenAt($0) }
+
+        // FOREGROUND IS A READ.
+        //
+        // Every legacy screen listened for this; none of the v5 screens did,
+        // so a run that landed while the app was open — a HealthKit import on
+        // foreground, a Strava sync — left Today asking for a run the runner
+        // had already done. Watched live: a treadmill run ingested at 13:45
+        // and Today kept showing the pre-run screen until the app was killed.
+        //
+        // Every surface takes the refresh. They are cheap reads, the shell
+        // keeps all three stacks alive, and `load()` never blanks what is
+        // already on screen.
+        foreground = NotificationCenter.default.addObserver(
+            forName: .faffForegroundRefresh, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.load() }
+        }
+    }
+
+    private var foreground: NSObjectProtocol?
+
+    deinit {
+        if let foreground { NotificationCenter.default.removeObserver(foreground) }
     }
 
     /// True exactly when the design's data-outage screen applies: we have

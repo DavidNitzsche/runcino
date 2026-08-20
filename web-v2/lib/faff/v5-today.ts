@@ -684,7 +684,10 @@ function buildRecentRun(r: V5RecentRunCtx): {
   const onTheBelt: V5Stat[] | null = r.indoor
     ? [
         { label: 'Speed', value: num(r.speedMph != null ? r.speedMph.toFixed(1) : '—', false), tone: null },
-        { label: 'Incline', value: num(r.inclinePct != null ? `${r.inclinePct.toFixed(1)}%` : '—', false), tone: null },
+        // Bare number. The screen draws the unit beside it, the same way it
+        // draws "mph" beside the speed — carrying the % here too printed
+        // "1.0% %".
+        { label: 'Incline', value: num(r.inclinePct != null ? r.inclinePct.toFixed(1) : '—', false), tone: null },
       ]
     : null;
 
@@ -720,12 +723,10 @@ function buildRecentRun(r: V5RecentRunCtx): {
       id: 'niggle', label: `${r.niggleFlagged} flagged`,
       sub: 'The coach has it · it shapes tomorrow', value: null, action: 'undo_niggle',
     });
-  } else {
-    whatThisDidToTheWeek.push({
-      id: 'flag-niggle', label: 'Flag a niggle',
-      sub: 'Anything that felt wrong', value: null, action: 'flag_niggle',
-    });
   }
+  // No `flag-niggle` row in the other branch. The SCREEN owns the way to flag
+  // one — an expanding body-part picker that writes — so emitting a row here
+  // too put "Flag a niggle" on the screen twice, once inert and once real.
 
   return { askedVsRan, onTheBelt, elevation, panelStats, panelKicker, shoesWorn, whatThisDidToTheWeek };
 }
