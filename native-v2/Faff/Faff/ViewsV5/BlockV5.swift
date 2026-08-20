@@ -67,6 +67,14 @@ struct BlockV5: View {
     /// Fires once a scenario is actually applied, so the caller can refresh
     /// the cached block (and Today, which the same change can touch).
     var onChanged: (V5PlanChangeProposal) -> Void = { _ in }
+    /// "Browse past runs" — see `RunLogV5.swift`. Block is the plan; once a
+    /// runner is looking at the 16 weeks, "what did I actually run" is the
+    /// natural next question, so the entry point lives here rather than
+    /// buried in the Today calendar sheet (whose rows carry a plan-day id,
+    /// not a run id — see `RunLogV5.swift`'s header for why that path was
+    /// rejected). Nil default so a caller wiring only the read path still
+    /// compiles; the row just does nothing until it is wired.
+    var onOpenRunLog: () -> Void = {}
 
     @State private var openWeekID: String?
     @State private var openLibraryID: String?
@@ -107,6 +115,7 @@ struct BlockV5: View {
                 arcSection
                 coachSection
                 soFarSection
+                runLogRow
                 changePlanRow
                 weeksSection
                 librarySection
@@ -214,6 +223,20 @@ struct BlockV5: View {
             ForEach(model.soFar) { row in
                 ListRow(label: row.label, sub: row.sub, value: row.value?.value)
             }
+        }
+    }
+
+    // MARK: Runs (row)
+    //
+    // The whole history lives in `RunLogV5`, off `GET /api/log` — this row is
+    // the only door to it. Plain `ListGroup` row, same shape `changePlanRow`
+    // below already uses for "opens something that isn't a chevron-list".
+
+    private var runLogRow: some View {
+        ListGroup {
+            ListRow(label: "Runs",
+                    sub: "Everything you've logged, splits and all",
+                    onTap: onOpenRunLog)
         }
     }
 

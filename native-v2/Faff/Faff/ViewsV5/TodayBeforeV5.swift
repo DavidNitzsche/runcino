@@ -61,7 +61,10 @@ struct TodayBeforeGoOption: Identifiable, Equatable {
 }
 
 /// One day row in the calendar sheet. Read-only in the prototype — no day row
-/// carries an `onClick` there, so this type carries no action either.
+/// carries an `onClick` there, so this type carries no action of its own.
+/// The screen wires the tap itself: a day with a `status` (done or today)
+/// reopens through `onPickDay`, the same id-to-date resolution the week
+/// strip already uses — see `calendarSheet` below.
 struct TodayCalendarDay: Identifiable, Equatable {
     let id: String
     let label: String
@@ -447,7 +450,21 @@ struct TodayBeforeV5: View {
                     ForEach(calendarWeeks) { week in
                         ListGroup(header: week.range, footer: week.sub) {
                             ForEach(week.days) { day in
-                                ListRow(label: day.label, sub: day.sub, value: day.status, raised: day.isToday)
+                                // A finished or current day is real: tapping
+                                // it re-opens THAT day the same way stepping
+                                // the week strip does — `onPickDay` already
+                                // resolves an id to a date and reloads Today
+                                // for it, so a "Done" day drops straight into
+                                // the after-run screen it already knows how
+                                // to render. A day that has not happened yet
+                                // has nothing to open, so it stays a plain
+                                // row with no chevron — "never a chevron on a
+                                // row that has nothing to open."
+                                ListRow(label: day.label, sub: day.sub, value: day.status, raised: day.isToday,
+                                        onTap: (day.status != nil || day.isToday) ? {
+                                            onPickDay(day.id)
+                                            withAnimation(V5.Motion.fill) { calendarOpen = false }
+                                        } : nil)
                             }
                         }
                     }
