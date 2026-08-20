@@ -713,6 +713,7 @@ function emptyContext(todayISO: string, raceMode: boolean): V5TodayContext {
     prescription: null, weatherKicker: null, paceBandStat: null, hrCapStat: null, effortStat: null, why: null,
     whereYouAre: [], beforeYouGo: [], raceDay: false, recentRun: null,
     weekOff: null, offSeason: null, injury: null, convergence: null,
+    paceNote: null, sick: null,
   };
 }
 

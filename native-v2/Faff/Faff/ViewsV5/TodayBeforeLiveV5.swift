@@ -48,6 +48,8 @@ struct TodayBeforeLiveV5: View {
     var onPrevDay: () -> Void = {}
     var onNextDay: () -> Void = {}
     var onBackToToday: () -> Void = {}
+    var onOpenPacesMoved: () -> Void = {}
+    var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
     /// Re-reads the Today surface after a write. Owned by `TodayHostV5`'s
     /// own `V5Surface<V5Today>` — this view never holds a surface of its
     /// own, per "a screen does not fetch"; it only writes, then asks the
@@ -85,7 +87,9 @@ struct TodayBeforeLiveV5: View {
             viewingDayLabel: viewingDayLabel,
             onPrevDay: onPrevDay,
             onNextDay: onNextDay,
-            onBackToToday: onBackToToday
+            onBackToToday: onBackToToday,
+            onOpenPacesMoved: onOpenPacesMoved,
+            onReportSick: onReportSick
         )
         .task { await prefetch() }
     }

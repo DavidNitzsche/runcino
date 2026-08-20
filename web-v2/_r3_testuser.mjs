@@ -1,0 +1,11 @@
+import pg from 'pg';
+import fs from 'fs';
+const env = fs.readFileSync('.env.local','utf8');
+const url = env.match(/^DATABASE_URL_RO=(.+)$/m)[1].trim().replace(/^["']|["']$/g,'');
+const c = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
+await c.connect();
+const cols = await c.query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_name='users' ORDER BY ordinal_position`);
+console.log('users columns:', cols.rows.map(r=>r.column_name).join(', '));
+const u = await c.query(`SELECT * FROM users WHERE email='test-onboarding@faff.run'`);
+console.log('\ntest user row:', JSON.stringify(u.rows[0]));
+await c.end();

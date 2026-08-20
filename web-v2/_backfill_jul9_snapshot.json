@@ -1,0 +1,62 @@
+{
+ "id": "-71886754295643",
+ "oldSplits": [
+  {
+   "hr": 134,
+   "mile": 1,
+   "pace": "8:15",
+   "cadence": 146,
+   "elev_ft": 3,
+   "distanceMi": 1
+  },
+  {
+   "hr": 130,
+   "mile": 2,
+   "pace": "5:44",
+   "cadence": 109,
+   "elev_ft": -21,
+   "distanceMi": 1
+  },
+  {
+   "hr": 165,
+   "mile": 3,
+   "pace": "6:57",
+   "cadence": 169,
+   "elev_ft": 14,
+   "distanceMi": 1
+  },
+  {
+   "hr": 160,
+   "mile": 4,
+   "pace": "7:05",
+   "cadence": 134,
+   "elev_ft": 7,
+   "distanceMi": 1
+  },
+  {
+   "hr": 162,
+   "mile": 5,
+   "pace": "7:03",
+   "cadence": 125,
+   "elev_ft": 0,
+   "distanceMi": 1
+  },
+  {
+   "hr": 157,
+   "mile": 6,
+   "pace": "8:27",
+   "cadence": 129,
+   "elev_ft": 4,
+   "distanceMi": 1
+  },
+  {
+   "hr": 158,
+   "mile": 7,
+   "pace": "7:15",
+   "cadence": 156,
+   "elev_ft": 0,
+   "distanceMi": 0.45057471264367815
+  }
+ ],
+ "oldUnreliable": false
+}

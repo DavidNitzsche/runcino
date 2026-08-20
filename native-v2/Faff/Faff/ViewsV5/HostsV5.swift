@@ -174,6 +174,17 @@ struct TodayHostV5: View {
                               accountRows: [], fallbackCalendarWeeks: calendarWeeks(model))
             }
 
+        case .sick:
+            if let sick = model.sick {
+                SickFlareV5(model: sick,
+                            onOpenAccount: { accountOpen = true },
+                            onLogTrend: { row in Task { await logSickTrend(row.action) } })
+            } else {
+                TodayBeforeLiveV5(model: model, accountName: accountName,
+                                  accountWeekLine: model.panel.weekLine ?? "",
+                                  accountRows: [], fallbackCalendarWeeks: calendarWeeks(model))
+            }
+
         case .weekOff:
             if let off = model.weekOff {
                 WeekOffV5(model: off, onOpenAccount: { accountOpen = true })
@@ -219,6 +230,10 @@ struct TodayHostV5: View {
                           onPickDay: { id in pickDay(id, in: model) },
                           viewingDayLabel: viewingDayLabel,
                           onBackToToday: { backToToday() },
+                          onOpenPacesMoved: { path.append(.pacesMoved) },
+                          onReportSick: { sym, started, fever in
+                              Task { await reportSick(sym, started, fever) }
+                          },
                           reload: { await surface.load() })
         }
     }
@@ -354,6 +369,26 @@ struct TodayHostV5: View {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["today": today])
         _ = try? await API.authedSend(req)
+        await surface.load()
+    }
+
+    private func reportSick(_ symptoms: [String], _ started: String, _ hasFever: Bool) async {
+        _ = try? await API.postSick(symptoms: symptoms, started: started, fever: hasFever)
+        await surface.load()
+    }
+
+    /// The sick check-in is a TREND, not a one-shot note: "recovered" clears
+    /// the episode server-side, which the injury flow has no equivalent of.
+    private func logSickTrend(_ action: String?) async {
+        let trend: String
+        switch action {
+        case "trend_better":    trend = "better"
+        case "trend_same":      trend = "same"
+        case "trend_worse":     trend = "worse"
+        case "trend_recovered": trend = "recovered"
+        default: return
+        }
+        _ = try? await API.postSickRecovery(trend: trend)
         await surface.load()
     }
 
@@ -499,7 +534,14 @@ struct RaceDetailHostV5: View {
     var body: some View {
         Group {
             if let d = surface.model {
-                RaceDetailV5(raceDetail: d, onBack: { dismiss() })
+                RaceDetailV5(raceDetail: d,
+                             onSubmitResult: { finish, hr in
+                                 _ = await API.postRaceResult(slug: slug,
+                                                              finishDisplay: finish,
+                                                              avgHrBpm: hr)
+                                 await surface.load()
+                             },
+                             onBack: { dismiss() })
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
