@@ -184,12 +184,14 @@ struct ShoesV5: View {
                     RangeScale(mode: .progress,
                                min: 0, max: shoe.retireAtMi,
                                value: shoe.mileage,
-                               // The left endpoint used to repeat the shoe's
-                               // mileage, which is already on the title row —
-                               // "no content is ever printed twice on one
-                               // screen". The scale starts at nothing and ends
-                               // at the band; that is what the two ends mean.
-                               endpoints: ("New",
+                               // Both ends name the AXIS, not the shoe. "New"
+                               // sat under the bar looking like a badge — a
+                               // pair with 99 miles on it was labelled New —
+                               // when all it ever meant was where the scale
+                               // starts. It says so now. The left end must not
+                               // repeat the mileage on the title row either;
+                               // 0 is the origin, not this shoe's number.
+                               endpoints: ("0 mi",
                                            "\(Int(shoe.retireAtMi.rounded())) mi retirement"),
                                size: .s)
                 }

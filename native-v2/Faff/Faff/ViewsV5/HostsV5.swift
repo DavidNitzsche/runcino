@@ -696,7 +696,7 @@ struct SettingsHostV5: View {
         Group {
             if let model {
                 SettingsV5(model: model,
-                           onSetLongRunDay: { d in Task { await patch(["long_run_day": d]) } },
+                           onSetLongRunDay: { d in Task { await patch(["long_run_day": Self.dayKey(d)]) } },
                            onSetDaysPerWeek: { n in Task { await patchProfile(["weekly_frequency": n]) } },
                            onToggleSessionReminders: { v in Task { await patch(["push_enabled": v]) } },
                            onToggleWeeklySummary: { v in Task { await patch(["weekly_summary_enabled": v]) } },
@@ -712,12 +712,34 @@ struct SettingsHostV5: View {
         .navigationBarBackButtonHidden(true)
     }
 
+    /// THE WIRE SPEAKS SHORTCODES, THE SCREEN SPEAKS WEEKDAYS.
+    ///
+    /// `users.long_run_day` is `sun`…`sat` and the whole plan engine parses
+    /// it that way (`DOW_OF_SHORTCODE` in `lib/plan/adapt.ts`, `dose-guard`).
+    /// This screen listed full weekday names and posted them back verbatim,
+    /// so choosing a long run day would have written "Sunday" into a column
+    /// every reader treats as a three-letter code — and the long run day IS
+    /// the training week's boundary. Onboarding already maps both ways
+    /// (`OnboardingV5.longDayOptions`); Settings does now too.
+    static let dayNames: [(key: String, label: String)] = [
+        ("mon", "Monday"), ("tue", "Tuesday"), ("wed", "Wednesday"),
+        ("thu", "Thursday"), ("fri", "Friday"), ("sat", "Saturday"), ("sun", "Sunday"),
+    ]
+
+    static func dayLabel(_ key: String) -> String {
+        dayNames.first { $0.key == key.lowercased() }?.label ?? key
+    }
+
+    static func dayKey(_ label: String) -> String {
+        dayNames.first { $0.label == label }?.key ?? label.lowercased()
+    }
+
     private func load() async {
         await SettingsCache.shared.warm()
         let (settings, profile) = await SettingsCache.shared.read()
         model = SettingsV5Model(
-            longRunDay: settings?.long_run_day ?? "Sunday",
-            longRunDayOptions: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+            longRunDay: Self.dayLabel(settings?.long_run_day ?? "sun"),
+            longRunDayOptions: Self.dayNames.map(\.label),
             daysPerWeek: profile?.weekly_frequency ?? 5,
             phoneRunEnabled: settings?.phoneRunEnabled ?? true,
             sessionReminders: settings?.push_enabled ?? true,
