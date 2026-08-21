@@ -622,12 +622,21 @@ struct LiveRunTreadmillV5: View {
                 // the amber tilde — rule one is a system rule, not one
                 // screen's fix, so it goes through FaffValueText like every
                 // other modelled number in the app.
+                // A distance we cannot format is one we cannot read, and a
+                // confident "0" is the opposite of that. nil is .unreadable.
                 statColumn(label: "DIST",
-                           value: .from(FaffFmt.miles(distanceMi) ?? "0",
-                                        modelled: distanceIsModelled))
-                statColumn(label: "PACE", value: .measured(currentPaceText))
+                           value: FaffValue.from(FaffFmt.miles(distanceMi),
+                                                 modelled: distanceIsModelled))
+                // PACE here is 3600 / the belt speed the runner typed in.
+                // Nothing sensed it — it inherits the distance's provenance,
+                // because it IS the distance divided by time.
+                statColumn(label: "PACE",
+                           value: FaffValue.from(currentPaceText,
+                                                 modelled: distanceIsModelled))
                 if let bpm = hr.currentBpm {
-                    statColumn(label: "HEART", value: .measured(FaffFmt.bpm(Double(bpm)) ?? "\u{2014}"))
+                    statColumn(label: "HEART",
+                               value: FaffValue.from(FaffFmt.bpm(Double(bpm)),
+                                                     modelled: false))
                 }
             }
             .padding(.vertical, V5.S.s16)

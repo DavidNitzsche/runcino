@@ -192,18 +192,17 @@ fi
 #
 # Same posture as the doctrine registry's `exempt` maps: do not loosen the
 # guard, name the violation.
-EXEMPT_SPEC=(
-  "native-v2/Faff/Faff/ViewsV5/LiveRunTreadmillV5.swift:665|\
-.measured(FaffFmt.bpm(...) ?? \"—\") renders an unreadable heart rate in \
-primary ink instead of fault red. Found by the four-rules audit 2026-08-21; \
-LiveRunTreadmillV5.swift is owned by another workstream and was not edited. \
-The same file also renders belt-derived PACE and DISTANCE as .measured when \
-the screen's own copy says nothing measured them — same fix, same owner."
-)
+# 2026-08-21 · the treadmill console's exemption is RETIRED. It was carried
+# because that file belonged to another workstream mid-audit; that work has
+# landed, so the violations were fixed at the source instead: DIST and PACE
+# both take the belt's own provenance (a belt figure is modelled unless the
+# pedometer measured the same run and agreed), and an unreadable heart rate
+# is .unreadable rather than a dash painted in primary ink.
+EXEMPT_SPEC=()
 
 exempt_reason() {  # $1 = "path:line" → prints the reason, or nothing
   local e key
-  for e in "${EXEMPT_SPEC[@]}"; do
+  for e in ${EXEMPT_SPEC[@]+"${EXEMPT_SPEC[@]}"}; do
     key="${e%%|*}"
     [ "$key" = "$1" ] && { printf '%s' "${e#*|}"; return 0; }
   done
@@ -308,7 +307,7 @@ done < <(composer_sources)
 
 # An exemption that no longer matches a real violation is dead weight, and
 # dead exemptions are how a gate quietly stops meaning anything.
-for e in "${EXEMPT_SPEC[@]}"; do
+for e in ${EXEMPT_SPEC[@]+"${EXEMPT_SPEC[@]}"}; do
   key="${e%%|*}"
   case "$CARRIED" in *"$key"*) ;; *)
     bad "stale exemption · $key no longer matches a violation — delete it from EXEMPT_SPEC" ;;
