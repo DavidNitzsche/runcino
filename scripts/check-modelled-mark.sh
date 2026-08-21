@@ -305,6 +305,98 @@ while IFS= read -r f; do
   fi
 done < <(composer_sources)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# THE WEB SURFACE · guards 8-9
+#
+# Added by the 2026-08-21 WEB audit. Guards 1-3 watch the phone's views and
+# 4-7 watch the phone's WIRE composers (`lib/faff`, `app/api/v5`,
+# `lib/plan/v5-block.ts`). Nothing watched web-v2/components — the command
+# centre — and the audit found rule one broken there in the plainest ways:
+#
+#   · `<div className="pjbig amber">` printed a 46px projected marathon
+#     finish, with globals.css overriding `.pjbig.amber` to #F6F7F8. The
+#     class name asserted the provenance and the rule removed it.
+#   · The workout drawer ran `d.est.replace('~','')` on an estimate the
+#     composer had already marked — the DETAIL view was the dishonest one.
+#
+# These two guards are deliberately narrower than 1-7. Web has no provenance
+# TYPE (no `FaffValue`, no `modelled` on `FaffSeed`), so a guard shaped like
+# guard 5 would have nothing to read, and guard 6's "no hand-drawn tilde" is
+# actively WRONG here: with no type to carry the basis, a typed tilde is the
+# only honesty available — the same reason `glance-adapter.ts` is exempt from
+# guard 6. What can be enforced without the type is:
+#
+#   8 · A MARK, ONCE WRITTEN, MAY NOT BE STRIPPED. Deleting a tilde
+#       downstream of a composer that wrote one is the single worst shape:
+#       it takes an honest number and makes it dishonest, silently, in the
+#       surface a runner opened to look closer.
+#
+#   9 · THE MARK IS DRAWN IN ONE PLACE. `components/faff-app/Modelled.tsx`
+#       owns the character and the token. A view may not paint its own amber
+#       tilde, for the same reason guard 2 exists on the phone.
+#
+# The real fix is a provenance carrier on `FaffSeed`, which is a bigger
+# change than one audit should make to a 2,600-line composer. That is a
+# STANDING FINDING, not a solved problem, and this comment is where it is
+# recorded so the next pass finds it.
+# ─────────────────────────────────────────────────────────────────────────────
+WEB_VIEWS="$ROOT/web-v2/components"
+
+web_sources() {
+  [ -d "$WEB_VIEWS" ] || return 0
+  find "$WEB_VIEWS" \( -name '*.tsx' -o -name '*.ts' \) ! -name '._*' ! -name '*.test.tsx' ! -name '*.test.ts' 2>/dev/null
+}
+
+NWEB=$(web_sources | wc -l | tr -d ' ')
+if [ "$NWEB" = "0" ]; then
+  bad "no web sources found under web-v2/components — guards 8-9 would pass vacuously"
+fi
+
+# ── 8 · a modelled mark may not be stripped downstream ───────────────────────
+#
+# A comment is not code: these guards describe the bug they were written for,
+# so a scan that cannot tell prose from a call site fails on its own docblock.
+# `not_comment` drops any line whose first non-space character opens a
+# comment, in either of the two shapes this codebase uses (`//`, `*`, `/*`,
+# and JSX's `{/*`).
+not_comment() { grep -vE '^[0-9]+:[[:space:]]*(//|\*|/\*|\{/\*)'; }
+
+# The one sanctioned shape: strip the composer's tilde and hand the bare
+# value to <Modelled>, which redraws it in the token. That is a MOVE, not a
+# deletion, and it is what the fix looks like.
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  hits=$(grep -nE "replace\((/\^?~/g?|['\"]~['\"])" "$f" \
+         | not_comment \
+         | grep -vE "<Modelled|// *ok:" || true)
+  if [ -n "$hits" ]; then
+    while IFS= read -r h; do
+      bad "modelled mark stripped · ${f#$ROOT/}:${h%%:*} — render it with <Modelled>, do not delete it"
+      printf '      %s\n' "$(printf '%s' "$h" | cut -d: -f2- | sed 's/^[0-9]*://' | head -c 140)"
+    done <<< "$hits"
+  fi
+done < <(web_sources)
+
+# ── 9 · only Modelled.tsx draws the mark in amber ────────────────────────────
+#
+# A tilde inside a composed STRING is allowed (see the header note); what is
+# not allowed is a second hand-painted amber mark competing with the token.
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  case "$f" in */Modelled.tsx) continue;; esac
+  hits=$(grep -nE "['\"]~['\"]" "$f" | not_comment | grep -vE '// *ok:' || true)
+  if [ -n "$hits" ]; then
+    while IFS= read -r h; do
+      # Only a violation when the same line also names the amber token.
+      line=$(printf '%s' "$h" | cut -d: -f2-)
+      case "$line" in
+        *--eyebrow*|*F3AD38*|*F2B03C*)
+          bad "hand-painted modelled mark · ${f#$ROOT/}:${h%%:*} — use <Modelled> from components/faff-app/Modelled.tsx" ;;
+      esac
+    done <<< "$hits"
+  fi
+done < <(web_sources)
+
 # An exemption that no longer matches a real violation is dead weight, and
 # dead exemptions are how a gate quietly stops meaning anything.
 for e in ${EXEMPT_SPEC[@]+"${EXEMPT_SPEC[@]}"}; do
@@ -330,4 +422,4 @@ if [ -n "$CARRIED" ]; then
   printf '%s' "$CARRIED"
   say ""
 fi
-say "check-modelled-mark OK · $n v5 source file(s) + $NCOMPOSERS composer(s) clean"
+say "check-modelled-mark OK · $n v5 source file(s) + $NCOMPOSERS composer(s) + $NWEB web file(s) clean"

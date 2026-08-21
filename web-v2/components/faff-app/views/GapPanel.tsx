@@ -46,6 +46,7 @@ import { parseRaceTime } from '@/lib/training/vdot';
 import { resolveBGoal } from '@/lib/race/b-goal';
 import { projectFitnessTrajectory } from '@/lib/training/fitness-trajectory';
 import type { GoalStatusRead } from '@/lib/faff/goal-status';
+import { Modelled } from '../Modelled';
 
 interface GapPanelProps {
   goal: GoalRace;
@@ -684,8 +685,13 @@ function TrajectoryHero({ t, raceDateLabel }: {
   raceDateLabel: string;
 }) {
   // Green when the trajectory reaches the goal, gold when it falls short.
-  const projTone = t.reachable ? '#46B97E' : '#F3AD38';
-  const node = (label: string, value: string, hero: boolean, tone: string) => (
+  // 2026-08-21 · web audit · the green was `#46B97E`, which is in neither
+  // brief v2's ten-colour table nor the sanctioned phase-identity group. It
+  // is a 24th hue invented at a call site, and it sat three pixels of hue
+  // from the locked good-state green while meaning the same thing. Moved to
+  // `#3EBD41`. (`check-palette-sync.sh` exempts web, so nothing caught it.)
+  const projTone = t.reachable ? '#3EBD41' : '#F3AD38';
+  const node = (label: string, value: string, hero: boolean, tone: string, modelled = false) => (
     <div style={{ textAlign: 'center', flex: '1 1 0', minWidth: 0 }}>
       <div style={{
         fontSize: 9.5, letterSpacing: '.09em', textTransform: 'uppercase',
@@ -694,7 +700,12 @@ function TrajectoryHero({ t, raceDateLabel }: {
       <div style={{
         fontFamily: 'var(--font-oswald, var(--font-display, inherit))', fontWeight: 600,
         fontSize: hero ? 27 : 19, lineHeight: 1, color: tone, fontVariantNumeric: 'tabular-nums',
-      }}>{value}</div>
+      }}>
+        {/* RULE ONE · two of these three numbers are model output — the
+            current-fitness equivalent and the race-day trajectory. Only the
+            goal is a fact, and it is the one the runner typed. */}
+        {modelled ? <Modelled title="Modelled, not a time you have run">{value}</Modelled> : value}
+      </div>
     </div>
   );
   const arrow = (
@@ -709,9 +720,9 @@ function TrajectoryHero({ t, raceDateLabel }: {
       padding: '15px 14px', borderRadius: 14, marginTop: 16,
       background: 'rgba(255,255,255,.035)', border: '1px solid rgba(255,255,255,.07)',
     }}>
-      {node('Today', t.currentSec != null ? fmtClock(t.currentSec) : '—', false, 'rgba(255,255,255,.62)')}
+      {node('Today', t.currentSec != null ? fmtClock(t.currentSec) : '—', false, 'rgba(255,255,255,.62)', t.currentSec != null)}
       {arrow}
-      {node(raceDateLabel, t.projectedSec != null ? fmtClock(t.projectedSec) : '—', true, projTone)}
+      {node(raceDateLabel, t.projectedSec != null ? fmtClock(t.projectedSec) : '—', true, projTone, t.projectedSec != null)}
       {arrow}
       {node('Goal', fmtClock(t.goalSec), false, 'rgba(255,255,255,.92)')}
     </div>

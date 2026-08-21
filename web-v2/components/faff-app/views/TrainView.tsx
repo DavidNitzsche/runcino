@@ -23,6 +23,7 @@ import { createPortal } from 'react-dom';
 import type { FaffSeed, GoalRace } from '../types';
 import { PHASE, SEASON_TYPE_COLOR, type Mesh, type PhaseKey } from '../constants';
 import { buildAdaptText } from '../adapt-text';
+import { Modelled } from '../Modelled';
 import { formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 // 2026-06-03 · per-distance phase + race-day copy author. Replaces the
 // hardcoded marathon strings in PHASE constants. A half-marathon plan
@@ -1213,7 +1214,16 @@ export function TrainView({
                 : goal.projected;
               return (
                 <>
-                  <div className="pjbig amber">{goal.projected}</div>
+                  {/* RULE ONE · this is a projection off today's fitness,
+                      not a time anybody ran. The class is named `amber` and
+                      globals.css paints it #F6F7F8, so before the mark went
+                      on there was nothing at all separating this from a
+                      measured number. */}
+                  <div className="pjbig amber">
+                    <Modelled title="Projected from today's fitness, not a time you have run">
+                      {goal.projected}
+                    </Modelled>
+                  </div>
                   <div className="pjlab">{sublabel}</div>
                   <div className="pjtrack">
                     <span className="pjzone slow" />
@@ -1230,7 +1240,7 @@ export function TrainView({
                     <span className="pjtick proj" style={{ left: `${projLeftPct}%` }} />
                     <span className="pjlbl" style={{ left: '50%' }}>GOAL<b>{goal.goal}</b></span>
                     {hideProjLabel ? null : (
-                      <span className="pjlbl proj" style={{ left: `${projLeftPct}%` }}>TODAY<b>{projLabelTime}</b></span>
+                      <span className="pjlbl proj" style={{ left: `${projLeftPct}%` }}>TODAY<b><Modelled title="Projected from today's fitness">{projLabelTime}</Modelled></b></span>
                     )}
                   </div>
 
@@ -1260,7 +1270,13 @@ export function TrainView({
                             fontSize: 26, lineHeight: 1, marginTop: 6,
                             fontVariantNumeric: 'tabular-nums', color: status.tone,
                           }}>
-                            {formatRaceTime(trajSec) ?? '·'}
+                            {/* RULE ONE · the race-day read is the plan's
+                                modelled outcome 107 days out, printed to the
+                                second. It gets the mark for the same reason
+                                the today's-fitness number above does. */}
+                            <Modelled title="Where the plan, executed, is modelled to land">
+                              {formatRaceTime(trajSec) ?? '·'}
+                            </Modelled>
                           </div>
                         ) : null}
                       </div>

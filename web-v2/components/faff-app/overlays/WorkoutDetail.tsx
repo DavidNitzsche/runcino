@@ -7,6 +7,7 @@ import { EFF, KIT, PLAN_CUES, ZC, hexA } from '../constants';
 import { deriveSessionSegs, fallbackSessionSegs } from '../session-shape';
 import { decodePolyline, polylineToSvgPath, polylineEndpoints } from '@/lib/route/polyline';
 import { WatchPreviewTimeline } from '../toolkit';
+import { Modelled } from '../Modelled';
 
 // ── forecast helpers (mirrors TodayView · same /api/forecast/${date} source) ──
 type DayForecast = {
@@ -211,7 +212,17 @@ function PlannedBody({ d, seed }: { d: FaffSeed['week'][number]; seed: FaffSeed 
       <div className="wk-keyrow">
         <div><div className="k">DISTANCE</div><div className="v">{d.dist}<small> mi</small></div></div>
         <div><div className="k">TARGET PACE</div><div className="v">{d.pace}<small>{/:/.test(d.pace) ? '/mi' : ''}</small></div></div>
-        <div><div className="k">EST TIME</div><div className="v">{d.est.replace('~','')}</div></div>
+        {/* RULE ONE · this used to be `d.est.replace('~','')`. The composer
+            (components/faff-app/seed.ts) writes "~44 min" and this DELETED
+            the mark, so the drawer a runner opens to look closer was the
+            less honest of the two surfaces showing the same number.
+            `est` still carries the composer's own tilde, so the mark is
+            stripped here and redrawn by <Modelled> in the one token. */}
+        <div><div className="k">EST TIME</div><div className="v">
+          {/^~/.test(d.est)
+            ? <Modelled title="Estimated from target pace and distance">{d.est.replace(/^~/, '')}</Modelled>
+            : d.est}
+        </div></div>
       </div>
       {sg.length > 0 ? (
         <div className="band">

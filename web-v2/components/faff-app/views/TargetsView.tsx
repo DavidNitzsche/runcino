@@ -44,6 +44,7 @@ import { parseRaceTime } from '@/lib/training/vdot';
 import { resolveGoalStatus, formatGapClock, type GoalStatusRead } from '@/lib/faff/goal-status';
 import { resolveRaceRole, resolveProvenance } from '@/lib/faff/race-roles';
 import { StatusChip } from '../StatusChip';
+import { Modelled } from '../Modelled';
 
 export function TargetsView({
   seed, onOpenRace,
@@ -168,7 +169,13 @@ export function TargetsView({
                   lineHeight: 1, marginTop: 6, fontVariantNumeric: 'tabular-nums',
                   color: status?.tone ?? '#fff',
                 }}>
-                  {formatClock(projectedSec)}
+                  {/* RULE ONE · a projection, painted in the status tone —
+                      which means an on-track one takes the same green a
+                      measured PR takes, at the same size, right beside the
+                      goal time. The mark is what separates them. */}
+                  <Modelled title="Projected, not a time you have run">
+                    {formatClock(projectedSec)}
+                  </Modelled>
                 </div>
                 {status ? <div style={{ marginTop: 10 }}><StatusChip read={status} /></div> : null}
               </div>
