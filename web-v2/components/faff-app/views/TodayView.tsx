@@ -5121,7 +5121,14 @@ function Tiles({ seed, onOpenRace, gates }: {
   const [hoverBar, setHoverBar] = useState<number | null>(null);
   const bar = hoverBar != null ? seed.volumeBars[hoverBar] : null;
   const num = bar ? `${bar.mi}` : `${seed.thisWeekMiles}`;
-  const sub = bar ? ` mi · ${bar.label}` : ` mi · 8-wk avg ${seed.weeklyAvg}`;
+  // 2026-08-21 · web audit · was unconditionally ` mi · 8-wk avg ${weeklyAvg}`,
+  // which on a runner with no history read "8-wk avg 0" — a computed average
+  // over nothing, printed beside a real planned number as though the two were
+  // the same kind of fact. An eight-week average nobody has eight weeks for
+  // is not zero, it is absent, and the honest line just drops it.
+  const sub = bar
+    ? ` mi · ${bar.label}`
+    : (seed.weeklyAvg > 0 ? ` mi · 8-wk avg ${seed.weeklyAvg}` : ' mi this week');
 
   if (!gates.show) return null;
 
