@@ -52,6 +52,22 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // RULE THREE, the sibling of the gate above. `raceMode` is satisfied by
+    // having EVER been on a race-prep block, so an off-season runner passes it
+    // with no active plan — and `loadV5Block` answers that with `emptyBlock`:
+    // the word NO BLOCK over an empty phase arc, an empty week list, and five
+    // "Change the plan" scenarios each refused in turn. That is a scaffold
+    // offering to change a plan that does not exist, which is the exact shape
+    // the plan-less-runner fix removed one branch earlier. Today already has
+    // the honest answer for this runner (its own `off_season` state); Block
+    // does not, so Block says so and stops.
+    if (!activePlan) {
+      return NextResponse.json(
+        { error: 'No block is running right now. Set a goal race and the next one gets written around it.' },
+        { status: 404 },
+      );
+    }
+
     const block = await loadV5Block(userId);
     return NextResponse.json(block);
   } catch (e: unknown) {

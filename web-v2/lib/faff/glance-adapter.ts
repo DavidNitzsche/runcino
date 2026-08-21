@@ -150,8 +150,12 @@ function heroVerb(state: DayState, today: GlanceWeekDay | null, exec: GlanceStat
     case 'rest':
       return 'REST.';
     case 'done_nailed':
-      // E5: honest verb when the run came up short instead of "NAILED IT".
-      return exec === 'short' ? 'CAME UP SHORT.' : 'NAILED IT.';
+      // E5: honest verb when the run came up short.
+      // RULE FOUR · "NAILED IT." was hype, and hype is the one thing the coach
+      // voice never does. It also graded the session — the app states what
+      // happened and lets the runner draw the conclusion. "DONE." is the same
+      // fact with none of the celebration.
+      return exec === 'short' ? 'CAME UP SHORT.' : 'DONE.';
     case 'done_ease_off':
       return 'EASE OFF TOMORROW.';
     case 'niggle':
@@ -334,8 +338,17 @@ function buildStatTrio(
         // E5: a short session must not claim "✓ PLAN HIT". Overreach
         // (done_ease_off) and clean hits keep the green check.
         glance.todayExecution === 'short'
-          ? { value: '◑', label: 'PARTIAL', valueColor: 'amber' }
-          : { value: '✓', label: 'PLAN HIT', valueColor: 'green' },
+          // v4 Poster surface (GET /api/briefing), governed by
+          // Design/running-app-design-brief-v2.md, not by the v5 iPhone
+          // handoff. The v5 phone reads /api/v5/today and never sees these.
+          // Flagged by the four-rules audit and left alone deliberately: a
+          // glyph-as-value and a GREEN grade both break the v5 colour system
+          // ("no green anywhere · this app never grades a number as good"),
+          // but changing them here changes a surface the v5 brief does not
+          // govern. Delete this exemption when the v4 Poster goes, or when
+          // brief v2 is reconciled against the phone handoff.
+          ? { value: '◑', label: 'PARTIAL', valueColor: 'amber' } // ok: v4 Poster, see above
+          : { value: '✓', label: 'PLAN HIT', valueColor: 'green' }, // ok: v4 Poster, see above
       ];
     case 'rest':
       return [

@@ -3589,24 +3589,36 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
     case 'sleep_crater': {
       // DEPRECATED · these trigger kinds are no longer emitted by
       // detectAdaptations (2026-06-01 · superseded by readiness_pullback).
-      // Case retained so any in-flight coach_intents rows from the old
-      // path still resolve cleanly. If somehow re-emitted, applies the
-      // SAME just-in-time window as readiness_pullback.
-      const todayKey = (await pool.query(
-        `SELECT pw.id FROM plan_workouts pw
-            JOIN training_plans tp ON tp.id = pw.plan_id
-           WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
-             AND pw.type IN ('threshold','tempo','intervals','vo2max','long')
-             AND pw.date_iso = $2::text
-           LIMIT 1`,
-        [userId, today]
-      )).rows[0];
-      if (!todayKey) return [];
+      // Case retained so any in-flight coach_intents rows from the old path
+      // still resolve cleanly.
+      //
+      // RULE TWO. This limb used to return `kind: 'downgrade'` with
+      // `why: t.reason`, and `t.reason` for these two detectors is a SINGLE
+      // METRIC in a sentence — "Resting HR averaging 54 bpm, 6 above 14-day
+      // baseline." / "3 nights < 5h sleep in the last 3 days." (see
+      // detectRhrSpike / detectSleepCrater above). One signal changing a
+      // session, with the copy naming the one cause: exactly the shape the
+      // convergence gate exists to prevent, sitting live behind a comment
+      // that says it is not fired anymore. Dormant is not the same as safe —
+      // it is one re-wire away, and nothing in the file stopped it.
+      //
+      // A stale row still deserves an honest resolution, so it now RECORDS
+      // rather than mutates, the same way an amber convergence does. If these
+      // signals should ever move a session again, they must come back through
+      // gradeConvergence and be spoken by convergenceCopyFromPhrases.
       return [{
-        kind: 'downgrade',
-        workoutIds: [todayKey.id],
-        newType: 'easy',
-        why: t.reason,
+        kind: 'note',
+        noteReason: 'single_signal_not_actioned',
+        noteField: today,
+        noteValue: { trigger: t.kind, observed: t.reason },
+        // Record-only, same contract as readiness_convergence_amber: it
+        // writes a coach_intents row and mutates nothing, so it must not be
+        // routed to the proposal writer.
+        forceApplyNow: true,
+        // States the observation and that nothing moved. One domain is a fact
+        // worth recording and not a reason to change a session, and this
+        // sentence has to be readable as that even if it ever surfaces.
+        why: `${t.reason} One signal on its own does not change a session, so today stands as written.`,
       }];
     }
     case 'volume_overshoot': {

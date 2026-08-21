@@ -580,8 +580,21 @@ struct V5PlanChangeRefusal: Decodable, Equatable {
 
     /// True when this is the engine declining on purpose. Renders as `Alert`.
     /// False means we could not do it, which renders as `ErrorNote`.
+    ///
+    /// `no_plan` belongs on this side of the line and was on the other one.
+    /// `replan-scenarios.ts` answers it with a fully-formed sentence — "There
+    /// is no active plan to change yet." — which is the engine reading the
+    /// request and declining, exactly like `unavailable`. Treating it as a
+    /// failure dressed a correct answer in the data-outage treatment and put a
+    /// Retry button under it that could never succeed, because nothing was
+    /// broken and nothing would change on a second try.
+    ///
+    /// `plan_moved` stays a failure on purpose: "look again" IS the right
+    /// action there. `bad_request` and `rebuild_failed` stay failures because
+    /// they mean something on our side is wrong, not that the answer is no.
     var isRefusal: Bool {
-        error == "unavailable" || error == "rejected" || error == "dosing_breach"
+        error == "unavailable" || error == "rejected"
+            || error == "dosing_breach" || error == "no_plan"
     }
 }
 

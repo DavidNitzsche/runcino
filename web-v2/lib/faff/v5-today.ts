@@ -11,14 +11,23 @@
  *
  * 1 · A modelled number must never look measured. Every number that reaches
  *     the phone is a `V5Number { text, modelled }` — never a bare string. The
- *     phone's own decoder defaults an ABSENT `modelled` key to `true` (over-
- *     marking is the safe failure), so this file explicitly stamps `false`
- *     on every value below, because every number Today shows the runner IS
- *     measured or IS the day's real prescription — a dose, a pace band, an
- *     HR cap, a logged split, a biometric reading. Today carries no
- *     projections (those live on Races/Paces); see the composer's own header
- *     comment on `num()` for the one place this needs a human to re-check it
- *     if that ever stops being true.
+ *     phone's own decoder defaults an ABSENT `modelled` key to `true`, because
+ *     over-marking is the safe failure.
+ *
+ *     This header used to claim that "Today carries no projections" and that
+ *     every value below could therefore be stamped `false`. That was wrong,
+ *     and it was wrong about the biggest number on the panel. Today's PACE
+ *     BAND, its HR CEILING and every step's pace/HR target come from
+ *     `derivePaces()` / `prescriptionFor()`, which hang off
+ *     `tPaceFromGoal(goal_seconds, …)` — the runner's typed goal time — and
+ *     off the LTHR zone model. Those now ship `modelled: true`.
+ *
+ *     What still ships `false` here is a read of something that happened (a
+ *     logged distance, time, split, heart rate, biometric) or the plan's own
+ *     prescribed dose. If you add a number to this file, name its basis at
+ *     the call site and say why in a comment — never rely on a default.
+ *     `scripts/check-modelled-mark.sh` fails the build on the shapes that
+ *     get this wrong silently.
  *
  * 2 · One signal never changes a session. `changed` (the `changed_overnight`
  *     payload) is built ONLY from a `coach_intents` row whose persisted
@@ -229,11 +238,11 @@ export interface V5Today {
 // ─────────────────────────────────────────────────────────────────────────
 // Rule 1 as a function. The ONLY way a number reaches V5Today.
 //
-// Every call site in this file passes `modelled: false` explicitly — Today
-// has no projected numbers (see the file header). If a future addition to
-// this composer computes something genuinely modelled (a projected finish, a
-// training-derived pace not yet confirmed by a race), it must call
-// `num(text, true)` and say so in a comment, never rely on this default.
+// `modelled` has no default and never will. A default is how the pace band
+// shipped as a hard read for as long as it did: nobody had to decide, so
+// nobody did. Every call site names the basis out loud, and anything derived
+// from a goal time, a zone model, a projection, a doctrine constant or a
+// forecast passes `true`.
 // ─────────────────────────────────────────────────────────────────────────
 
 export function num(text: string | null, modelled: boolean): V5Number {
@@ -516,7 +525,11 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
   };
   const stepSub = (s: V5PrescriptionStepLike): V5Number | null => {
     const text = s.pace_target ?? s.hr_target ?? null;
-    return text ? num(text, false) : null;
+    // Same provenance as the panel's pace band and HR ceiling, and for the
+    // same reason: `prescriptionFor` gets both from `paces(p)` / `hrTargets(p)`,
+    // which are `tPaceFromGoal(...)` and the LTHR zone model. A step that
+    // reads "7:38-7:52/mi" is a modelled target, not a measured one.
+    return text ? num(text, true) : null;
   };
   const toStep = (s: V5PrescriptionStepLike, idx: number, groupKey: string): V5Step => ({
     id: `${groupKey}-${idx}`,
@@ -589,12 +602,25 @@ function buildConvergence(c: V5ConvergenceCtx): V5Convergence | null {
   // the client as one.
   if (c.verdict.converging.length < MIN_CONVERGING_DOMAINS) return null;
 
+  // …and the sentence has to exist. The gate above only counted domains, so a
+  // `plan_adapt_downgrade` row that carried its convergence but lost its `why`
+  // produced `state: 'changed_overnight'` with three domain tiles above a
+  // blank coach line: a screen that says the session changed and names
+  // nothing. `TodayChangedV5` renders `coachLine` verbatim and has no fallback
+  // of its own, and rightly so — the client must not compose an explanation.
+  // No sentence, no story: this is an ordinary Today.
+  if (!c.coachLine.trim()) return null;
+
   const converged: V5ConvergedDomain[] = c.verdict.converging.map((domain, i) => {
     const reading = c.readings[domain];
+    // A domain that counted toward the convergence but whose own reading we
+    // cannot render is unreadable, not measured. `'—'` shipped as
+    // `modelled: false` claimed a hard read of a dash.
+    const text = reading?.value ?? null;
     return {
       id: `${domain}-${i}`,
       domain: domainDisplayName(domain),
-      value: num(reading?.value ?? '—', false),
+      value: num(text, false),
       baseline: reading?.baseline ?? '',
     };
   });
@@ -649,13 +675,18 @@ function buildRecentRun(r: V5RecentRunCtx): {
   const askedPaceText = r.askedPaceSPerMi != null ? fmtPace(r.askedPaceSPerMi) : 'by feel';
   askedVsRan.push({
     id: 'pace', label: 'Pace', sub: askedPaceText,
-    value: num(fmtPace(r.paceSPerMi) ?? '—', false),
+    // RULE ONE. `?? '—'` pre-formatted the dash HERE and shipped it as a
+    // measured string, which defeats the whole type: the phone's own
+    // `FaffValue.from(text:modelled:)` turns a NULL text into `.unreadable`
+    // and paints it fault red. A dash we typed is a measured value that
+    // happens to look like a dash. Null is the honest wire shape.
+    value: num(fmtPace(r.paceSPerMi), false),
     action: null,
   });
   askedVsRan.push({
     id: 'heart', label: 'Heart',
     sub: r.askedHrCap != null ? `under ${r.askedHrCap}` : null,
-    value: num(r.avgHr != null ? `${r.avgHr}` : '—', false),
+    value: num(r.avgHr != null ? `${r.avgHr}` : null, false),
     action: null,
     // A stated ceiling is the one band this row's own sub-text already
     // asserts ("under 146") — exceeding it is unambiguous, no heat/taper
@@ -683,11 +714,17 @@ function buildRecentRun(r: V5RecentRunCtx): {
 
   const onTheBelt: V5Stat[] | null = r.indoor
     ? [
-        { label: 'Speed', value: num(r.speedMph != null ? r.speedMph.toFixed(1) : '—', false), tone: null },
+        // RULE ONE. There is no sensor on a treadmill session — `beltAverages`
+        // rolls up the SETTINGS the runner confirmed on the console, which is
+        // a self-reported figure, not a read. The live console says so in as
+        // many words on the screen before this one ("Distance is from the belt
+        // speed you set · nothing here measured it"); the recap said the
+        // opposite by shipping the same numbers unmarked.
+        { label: 'Speed', value: num(r.speedMph != null ? r.speedMph.toFixed(1) : null, true), tone: null },
         // Bare number. The screen draws the unit beside it, the same way it
         // draws "mph" beside the speed — carrying the % here too printed
         // "1.0% %".
-        { label: 'Incline', value: num(r.inclinePct != null ? r.inclinePct.toFixed(1) : '—', false), tone: null },
+        { label: 'Incline', value: num(r.inclinePct != null ? r.inclinePct.toFixed(1) : null, true), tone: null },
       ]
     : null;
 
@@ -696,9 +733,10 @@ function buildRecentRun(r: V5RecentRunCtx): {
   const elevation = r.indoor ? null : r.elevationSamples;
 
   const panelStats: V5Stat[] = [
-    { label: 'Distance', value: num(fmtMi(r.distanceMi) ?? '—', false), tone: null },
-    { label: 'Time', value: num(fmtClock(r.durationSec) ?? '—', false), tone: null },
-    { label: 'Pace', value: num(fmtPace(r.paceSPerMi) ?? '—', false), tone: null },
+    // Null, not a typed dash — see the askedVsRan pace row above.
+    { label: 'Distance', value: num(fmtMi(r.distanceMi), false), tone: null },
+    { label: 'Time', value: num(fmtClock(r.durationSec), false), tone: null },
+    { label: 'Pace', value: num(fmtPace(r.paceSPerMi), false), tone: null },
   ];
 
   const panelKicker = r.indoor ? 'Treadmill · indoor, no GPS' : null;
@@ -896,9 +934,29 @@ export function composeV5Today(ctx: V5TodayContext): V5Today {
     type: displayTypeFor(ctx.todayPlan?.type, ctx.todayPlan?.subLabel),
     dose: ctx.prescription ? num(fmtMi(ctx.prescription.total_mi) ?? ctx.prescription.headline, false) : null,
     stats: [
-      ...(ctx.paceBandStat ? [{ label: 'Pace band', value: num(ctx.paceBandStat, false), tone: null }] : []),
-      ...(ctx.hrCapStat ? [{ label: 'HR ceiling', value: num(ctx.hrCapStat, false), tone: null }] : []),
-      ...(ctx.effortStat ? [{ label: 'Effort', value: num(ctx.effortStat, false), tone: null }] : []),
+      // RULE ONE. Both of these shipped `false` and neither is a read of
+      // anything that happened.
+      //
+      // The pace band is `derivePaces()`, whose whole tree hangs off
+      // `tPaceFromGoal(goal_seconds, goal_distance_mi)` — the runner's own
+      // TYPED GOAL TIME back-solved to a threshold pace, then offset by fixed
+      // Daniels constants (T+80, T+120, T-18 …). It is a model built on an
+      // aspiration, and it was the largest number on the panel wearing no
+      // mark at all. The design contract names this case in as many words:
+      // the tilde belongs on "any training-derived (not race-confirmed) pace
+      // read", and a goal-derived read is not even training-derived.
+      //
+      // The HR ceiling is `computeZones({ lthr }).z2.upper` — a zone-model
+      // boundary off a stored LTHR. A ceiling derived from a threshold
+      // estimate is not a heart rate anyone measured.
+      //
+      // When a genuinely race-anchored pace read exists, this is the place to
+      // thread its basis through and let it ship `false`. Until then the
+      // honest answer is the humble one — ValuesV5's own rule: over-marking
+      // makes a measured number look modest, under-marking is the sin.
+      ...(ctx.paceBandStat ? [{ label: 'Pace band', value: num(ctx.paceBandStat, true), tone: null }] : []),
+      ...(ctx.hrCapStat ? [{ label: 'HR ceiling', value: num(ctx.hrCapStat, true), tone: null }] : []),
+      ...(ctx.effortStat ? [{ label: 'Effort', value: num(ctx.effortStat, true), tone: null }] : []),
     ],
   };
   t.groups = buildGroups(ctx.prescription);

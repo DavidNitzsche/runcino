@@ -152,7 +152,10 @@ describe('composeV5Today · state precedence', () => {
     expect(out.elevation).toEqual([0, 12, 8, 20]);
     expect(out.onTheBelt).toBeNull();
     expect(out.shoesWorn?.label).toBe('Endorphin Speed 4');
-    // Rule 1: every number here is measured, never modelled.
+    // Rule 1: the RAN side of asked-vs-ran is a read of what happened — a
+    // logged pace, a heart rate off the wrist, the runner's own effort. Those
+    // stay measured. (The ASKED side lives in `sub`, which carries no
+    // provenance field on the wire; see the audit note in v5-today.ts.)
     for (const row of out.askedVsRan) {
       if (row.value) expect(row.value.modelled).toBe(false);
     }
@@ -175,9 +178,13 @@ describe('composeV5Today · state precedence', () => {
     }));
     expect(out.state).toBe('after_run');
     expect(out.elevation).toBeNull(); // design: replaced, not an empty card
+    // RULE ONE, 2026-08-21. A treadmill has no sensor: `beltAverages` rolls up
+    // the SETTINGS the runner confirmed on the console. The live console says
+    // so on the screen before this one ("Distance is from the belt speed you
+    // set · nothing here measured it") and the recap said the opposite.
     expect(out.onTheBelt).toEqual([
-      { label: 'Speed', value: { text: '7.2', modelled: false }, tone: null },
-      { label: 'Incline', value: { text: '1.5', modelled: false }, tone: null },
+      { label: 'Speed', value: { text: '7.2', modelled: true }, tone: null },
+      { label: 'Incline', value: { text: '1.5', modelled: true }, tone: null },
     ]);
     expect(out.panel.kicker).toBe('Treadmill · indoor, no GPS');
     // Effort not yet logged — the row is tappable.
@@ -325,10 +332,14 @@ describe('composeV5Today · state precedence', () => {
     expect(out.state).toBe('race_day');
     expect(out.panel.dayState).toBe('race');
     expect(out.groups).toHaveLength(1);
-    expect(out.groups[0].steps[0].sub?.modelled).toBe(false);
+    // A step's `sub` is its pace or HR target, and both come out of
+    // `prescriptionFor` → `paces(p)` / `hrTargets(p)` → `tPaceFromGoal(...)`.
+    // That is the runner's own typed GOAL TIME back-solved to a threshold pace
+    // and offset by Daniels constants: modelled, not measured.
+    expect(out.groups[0].steps[0].sub?.modelled).toBe(true);
   });
 
-  it('before_run · the default day, dose and stats carry no modelled marks', () => {
+  it('before_run · the dose is the plan\'s own number, the pace band and HR ceiling are modelled', () => {
     const out = composeV5Today(baseCtx({
       todayPlan: { type: 'easy', subLabel: null, distanceMi: 6, originalType: null, originalSubLabel: null },
       paceBandStat: '8:50-9:35/mi', hrCapStat: '146 bpm', effortStat: '2-4',
@@ -340,8 +351,20 @@ describe('composeV5Today · state precedence', () => {
     }));
     expect(out.state).toBe('before_run');
     expect(out.panel.dayState).toBe('easy');
+    // RULE ONE, 2026-08-21. This test used to assert `false` for every stat on
+    // the panel, which is how the pace band shipped as a hard read for as long
+    // as it did: the test agreed with the composer and neither of them had
+    // checked where the number came from.
+    //
+    // The DOSE stays measured — it is the plan's own prescribed distance, a
+    // fact about the plan rather than an estimate of the runner.
     expect(out.panel.dose?.modelled).toBe(false);
-    for (const s of out.panel.stats) expect(s.value.modelled).toBe(false);
+    // The pace band is `derivePaces()` off the runner's typed goal time; the
+    // HR ceiling is the Z2 upper bound of the LTHR zone model. Neither is a
+    // read of anything that happened, so both carry the mark.
+    const byLabel = Object.fromEntries(out.panel.stats.map((s) => [s.label, s.value]));
+    expect(byLabel['Pace band']?.modelled).toBe(true);
+    expect(byLabel['HR ceiling']?.modelled).toBe(true);
     expect(out.groups).toHaveLength(1);
     expect(out.groups[0].title).toBe('Easy aerobic');
   });

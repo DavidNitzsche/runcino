@@ -463,12 +463,33 @@ struct NotOnPhoneYetV5: View {
     /// The engine's own sentence. Falls back to the design's default rather
     /// than to an empty screen.
     var reason: String?
+    /// RULE THREE. This screen is where a coached / just-run / no-race runner
+    /// LIVES, not somewhere they pass through, and it used to have no control
+    /// on it at all. Settings is reachable only through the account button and
+    /// sign-out only through Settings, so the one runner the phone refuses was
+    /// also the one runner who could not sign out of it. A refusal states an
+    /// answer; it does not take the door off.
+    var onOpenAccount: (() -> Void)? = nil
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 DayPanel(fill: .quiet) {
-                    Color.clear.frame(height: V5.S.s56)
+                    if let onOpenAccount {
+                        HStack {
+                            Spacer(minLength: 0)
+                            Button(action: onOpenAccount) {
+                                Image(systemName: "person")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(V5.textPrimary)
+                                    .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
+                                    .background(V5.materialTileRaised, in: Circle())
+                            }
+                            .buttonStyle(V5PressStyle())
+                            .accessibilityLabel("Account and settings")
+                        }
+                    }
+                    Color.clear.frame(height: onOpenAccount == nil ? V5.S.s56 : V5.S.s24)
                     Text("Not here yet")
                         .faffDisplayV5(TypeScaleV5.display44)
                         .foregroundStyle(V5.textPrimary)

@@ -157,7 +157,8 @@ struct RaceDetailV5: View {
                       placeholder: "Optional", unit: "bpm", keyboard: .numberPad)
             FaffButton(submitting ? "Logging…" : "Log result",
                        variant: .primary, size: .md,
-                       enabled: !finishText.trimmingCharacters(in: .whitespaces).isEmpty && !submitting) {
+                       enabled: !finishText.trimmingCharacters(in: .whitespaces).isEmpty && !submitting,
+                       disabledReason: submitting ? nil : "A finish time is the one thing this needs. Heart rate is optional.") {
                 guard !submitting else { return }
                 submitting = true
                 let finish = finishText.trimmingCharacters(in: .whitespaces)

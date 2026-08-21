@@ -689,6 +689,24 @@ export function convergenceCopyFromPhrases(
 ): string | null {
   if (phrases.length === 0) return null;
 
+  // RULE TWO, enforced where the sentence is actually made.
+  //
+  // The three-domain floor was a property of the CALLERS: `gradeConvergence`
+  // only grades red at `redMinDomains`, and `adapt.ts` only downgrades on red.
+  // But this function took a bare `string[]`, so handed one surviving phrase
+  // and a non-null `change` it would cheerfully write "Three short nights.
+  // Today is easy running instead." — a session change blamed on one signal,
+  // in the one composer whose whole job is to make that impossible.
+  //
+  // `convergenceWhy` in lib/plan/adapt.ts reads `phrases` back out of a
+  // persisted evidence blob, so a truncated or legacy row is exactly how you
+  // get there. A sentence that ANNOUNCES A CHANGE needs the convergence that
+  // licensed it; without one there is no honest sentence to write, and null
+  // is the correct answer. Observation-only copy (`change == null`) keeps its
+  // lower bar — saying "your sleep is short, today stands as written" off one
+  // domain is a fact, not a verdict.
+  if (change != null && phrases.length < CONVERGENCE.redMinDomains) return null;
+
   // "a, b and c" · sentence case, no serial comma before "and".
   const list = phrases.length === 1
     ? phrases[0]

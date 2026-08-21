@@ -498,7 +498,12 @@ struct BlockV5: View {
                         ForEach(movableSessions) { day in
                             ListRow(label: day.type ?? "Run",
                                     sub: Self.dayWords(day.dateISO),
-                                    value: .measured(FaffFmt.milesUnit(day.miles) ?? ""),
+                                    // `?? ""` printed a confident blank for a
+                                    // distance we could not read, and a blank
+                                    // reads as "nothing", not as "unknown" —
+                                    // which is the whole reason the optional
+                                    // overload exists. Nil is .unreadable.
+                                    value: .measured(FaffFmt.milesUnit(day.miles)),
                                     onTap: { moveFrom = day.dateISO })
                         }
                     }

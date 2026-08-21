@@ -103,9 +103,19 @@ function titleCase(s: string | null | undefined): string | null {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
-/** "3:12 AM" in the runner's own timezone. */
+/** "3:12 AM" in the runner's own timezone, or "overnight" when we cannot read
+ *  one.
+ *
+ *  RULE ONE. The fallback used to be a literal `'America/Los_Angeles'`, which
+ *  is a fabricated reading dressed as a precise one: a runner in London whose
+ *  timezone read failed was told their session changed at 3:12 AM when it was
+ *  11:12 AM where they were standing, and nothing on the panel hinted the
+ *  clock was a guess. `V5Convergence.updatedAt` is a bare string with no
+ *  provenance field, so there is no mark available to soften it with — which
+ *  leaves saying less. "Updated overnight" is true in every timezone. */
 async function formatLocalClock(userId: string, ts: string): Promise<string> {
-  const tz = await runnerTimezone(userId).catch(() => 'America/Los_Angeles');
+  const tz = await runnerTimezone(userId).catch(() => null);
+  if (!tz) return 'overnight';
   return new Intl.DateTimeFormat('en-US', {
     hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz,
   }).format(new Date(ts));
@@ -225,7 +235,7 @@ export async function GET(req: NextRequest) {
     const verdictBySeverity: Record<string, string> = {
       minor: `Easy running only. The ${inj.site} gets a few easy days before anything harder comes back.`,
       moderate: `Rest, not run. The ${inj.site} gets time to settle before anything reintroduces load.`,
-      major: `Rest, not run. The ${inj.site} needs a real break — this is not a session to run through.`,
+      major: `Rest, not run. The ${inj.site} needs a real break. This is not a session to run through.`,
     };
     const returnAvailable = inj.expected_return_date != null && today >= inj.expected_return_date;
     const ctx: V5TodayContext = emptyContext(today, true);
@@ -570,17 +580,49 @@ export async function GET(req: NextRequest) {
   // ── Before-run panel: prescription, groups, dose, stats ────────────────
   const dp = derivePaces({ lthr: glance.lthr, goal_seconds: glance.raceGoalSeconds, goal_distance_mi: glance.raceGoalDistanceMi });
   const prescriptionType = toPrescriptionType(todayPlan?.type ?? null);
+  // The runner's OWN prescribed pace for this session type, in s/mi. Hoisted
+  // above the fuelling call because two things downstream need it and both
+  // used to invent their own number instead: the kicker (fixed) and the
+  // fuelling duration estimate (fixed here). Null when we cannot read a pace —
+  // callers must degrade, never substitute a constant.
+  const paceForType =
+    prescriptionType === 'easy' ? midSec(dp.easySecLo, dp.easySecHi)
+    : prescriptionType === 'long' ? midSec(dp.longSecLo, dp.longSecHi)
+    : prescriptionType === 'tempo' ? midSec(dp.tempoSecLo, dp.tempoSecHi)
+    : prescriptionType === 'threshold' ? dp.thresholdSec
+    : prescriptionType === 'intervals' ? dp.intervalSec
+    : midSec(dp.easySecLo, dp.easySecHi);
   const prescription = todayPlan
-    ? prescriptionFor(prescriptionType, glance.weekPlanned ?? 30, { lthr: glance.lthr, goal_seconds: glance.raceGoalSeconds, goal_distance_mi: glance.raceGoalDistanceMi }, todayPlan.distanceMi)
+    // `?? 30` handed a 30 mi/wk assumption to a runner whose planned week we
+    // could not read, and prescriptionFor sizes fallback distances and the
+    // marathon-pace gate off exactly that figure. LOWVOL-4 hardened that
+    // function so an unknown week yields no number rather than an invented
+    // one; this caller was quietly reintroducing the constant it removed.
+    // 0 means unknown, which is what the function already knows how to do —
+    // and the day's real distance still comes from `todayPlan.distanceMi`.
+    ? prescriptionFor(prescriptionType, glance.weekPlanned ?? 0, { lthr: glance.lthr, goal_seconds: glance.raceGoalSeconds, goal_distance_mi: glance.raceGoalDistanceMi }, todayPlan.distanceMi)
     : null;
 
   const fuelingType: WorkoutFuelingType =
     prescriptionType === 'long' || prescriptionType === 'race' ? prescriptionType
     : prescriptionType === 'threshold' || prescriptionType === 'tempo' || prescriptionType === 'intervals' ? 'quality'
     : prescriptionType === 'rest' ? 'rest' : 'easy';
+  // RULE ONE. This used to be `total_mi * 9` — the same hardcoded 9 min/mi
+  // the kicker was caught inventing, in the statement right above it, and it
+  // was never migrated when the kicker was. A fuelling plan sized off a
+  // made-up pace decides whether the runner is told to carry gels, so the
+  // fabricated minute count reaches the screen as a real instruction.
+  // `paceForType` is the runner's own prescribed pace and is nil when we
+  // cannot read one — in which case the estimate is 0, computeFueling
+  // prescribes nothing, and the fuel row simply does not appear. A missing
+  // row beats an invented gel.
+  const fuelingDurationEstMin =
+    prescription && paceForType != null && paceForType > 0
+      ? Math.round(((prescription.total_mi || 0) * paceForType) / 60)
+      : 0;
   const fueling = prescription
     ? computeFueling({
-        durationEstMin: Math.round((prescription.total_mi || 0) * 9),
+        durationEstMin: fuelingDurationEstMin,
         distanceMi: prescription.total_mi,
         raceDistanceMi: glance.raceGoalDistanceMi,
         workoutType: fuelingType,
@@ -657,14 +699,9 @@ export async function GET(req: NextRequest) {
   // in scope: `derivePaces` ran a few lines above and `paceBandStat` reads its
   // output on the very next statement. So the estimate is now built from the
   // runner's OWN prescribed pace for the session type, and falls back to
-  // nothing rather than to a constant.
-  const paceForType =
-    prescriptionType === 'easy' ? midSec(dp.easySecLo, dp.easySecHi)
-    : prescriptionType === 'long' ? midSec(dp.longSecLo, dp.longSecHi)
-    : prescriptionType === 'tempo' ? midSec(dp.tempoSecLo, dp.tempoSecHi)
-    : prescriptionType === 'threshold' ? dp.thresholdSec
-    : prescriptionType === 'intervals' ? dp.intervalSec
-    : midSec(dp.easySecLo, dp.easySecHi);
+  // nothing rather than to a constant. `paceForType` is now hoisted above the
+  // fuelling call, which had the identical `* 9` bug and was missed the first
+  // time round — one definition, so a third caller cannot fork it again.
   const totalMi = prescription ? (prescription.total_mi || 0) : 0;
   const kickerMin =
     totalMi > 0 && paceForType != null && paceForType > 0
@@ -732,7 +769,11 @@ function buildWhereYouAre(glance: Awaited<ReturnType<typeof loadGlanceState>>): 
     rows.push({
       id: 'readiness', label: 'Readiness',
       sub: glance.readiness.label ?? null,
-      value: { text: `${glance.readiness.score} / 100`, modelled: false },
+      // RULE ONE. Readiness is a composite score — weighted HRV, RHR, sleep
+      // and load, each banded against a rolling baseline. Nothing measured
+      // it; a model produced it out of things that were. "82 / 100" printed
+      // like a heart rate is the app asserting a precision it does not have.
+      value: { text: `${glance.readiness.score} / 100`, modelled: true },
       action: null,
     });
   }

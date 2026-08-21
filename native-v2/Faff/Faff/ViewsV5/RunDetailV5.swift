@@ -204,7 +204,16 @@ struct RunDetailV5: View {
         if let hr = detail.hr_avg { out.append(("Heart rate, avg", .measured("\(hr) bpm"))) }
         if let hrMax = detail.hr_max { out.append(("Heart rate, max", .measured("\(hrMax) bpm"))) }
         if let cad = detail.cadence_avg { out.append(("Cadence", .measured("\(cad) spm"))) }
-        if let temp = detail.temp_f { out.append(("Temperature", .measured("\(Int(temp.rounded()))\u{00B0}F"))) }
+        // RULE ONE. Nothing on the phone or the watch has a thermometer in it.
+        // A run's temperature is a weather read for a grid square and an hour
+        // bucket — `lib/weather/openmeteo.ts` fetches it from the forecast API
+        // for a recent run and the reanalysis archive for an old one, and the
+        // `apple_hk` path is Apple Weather, which is another model. The wire
+        // carries no source with it (`RunDetail.temp_f` is a bare Double), so
+        // by the type's own rule — if a screen cannot tell, the answer is
+        // modelled — this is modelled. Same shape as the race-morning forecast
+        // that shipped as a hard read.
+        if let temp = detail.temp_f { out.append(("Temperature", .modelled("\(Int(temp.rounded()))\u{00B0}F"))) }
         return out
     }
 

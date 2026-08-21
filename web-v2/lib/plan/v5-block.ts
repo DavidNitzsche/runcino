@@ -81,7 +81,15 @@ function fmtMi(n: number): string {
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
-function num(text: string, modelled = false) {
+// RULE ONE. `modelled` used to default to `false` here, and not one of the
+// eleven call sites below ever passed it — so the entire Block payload shipped
+// "this is a hard read" by omission, decided by nobody. The phone's own
+// decoder defaults an ABSENT `modelled` key to `true` for exactly that reason
+// (over-marking is the safe failure); this helper inverted that at the server.
+// The parameter is required now, so every number on this screen names a basis
+// out loud. `scripts/check-modelled-mark.sh` guard 7 fails the build on a
+// defaulted one.
+function num(text: string, modelled: boolean) {
   return { text, modelled };
 }
 
@@ -116,12 +124,12 @@ export function buildPanel(state: TrainingState) {
     type: phaseLabel,
     dose: null,
     stats: [
-      { label: 'Quality share', value: num(`${qualityShare}%`), tone: 'neutral' },
+      { label: 'Quality share', value: num(`${qualityShare}%`, false), tone: 'neutral' },
       // A recovery or down week carries no designated long run. "0 mi" reads
       // as a broken stat — the week has a longest run, it just has no LONG
       // run. Say the true thing instead of printing a zero.
-      { label: 'Long run', value: num(longMi > 0 ? `${fmtMi(longMi)} mi` : 'None'), tone: 'neutral' },
-      { label: "This week's mileage", value: num(`${fmtMi(weekMi)} mi`), tone: 'neutral' },
+      { label: 'Long run', value: num(longMi > 0 ? `${fmtMi(longMi)} mi` : 'None', false), tone: 'neutral' },
+      { label: "This week's mileage", value: num(`${fmtMi(weekMi)} mi`, false), tone: 'neutral' },
     ],
   };
 }
@@ -177,9 +185,9 @@ export function buildSoFar(state: TrainingState) {
   const totalWeeks = state.weeks.length;
 
   return [
-    { id: 'weeks-in', label: 'Weeks in', sub: null, value: num(`${weeksIn} of ${totalWeeks}`), action: null, tone: 'neutral' },
-    { id: 'miles-run', label: 'Miles run', sub: null, value: num(`${fmtMi(milesDone)} mi`), action: null, tone: 'neutral' },
-    { id: 'quality-done', label: 'Quality sessions', sub: null, value: num(String(qualityDone)), action: null, tone: 'neutral' },
+    { id: 'weeks-in', label: 'Weeks in', sub: null, value: num(`${weeksIn} of ${totalWeeks}`, false), action: null, tone: 'neutral' },
+    { id: 'miles-run', label: 'Miles run', sub: null, value: num(`${fmtMi(milesDone)} mi`, false), action: null, tone: 'neutral' },
+    { id: 'quality-done', label: 'Quality sessions', sub: null, value: num(String(qualityDone), false), action: null, tone: 'neutral' },
   ];
 }
 
@@ -225,7 +233,7 @@ export function buildWeeks(state: TrainingState) {
       id: w.id,
       label: `Wk ${w.idx + 1}`,
       flag: weekFlag(w),
-      miles: num(`${fmtMi(w.plannedMi)} mi`),
+      miles: num(`${fmtMi(w.plannedMi)} mi`, false),
       isCurrent: w.isCurrent,
       days: w.days.map((d) => ({
         id: d.id,
@@ -248,9 +256,9 @@ export function buildWeeks(state: TrainingState) {
         isDone: d.activityId != null || d.doneMi >= 0.5,
       })),
       detail: [
-        { id: `${w.id}-long`, label: 'Long run', sub: null, value: num(`${fmtMi(longMi)} mi`), action: null, tone: 'neutral' },
-        { id: `${w.id}-quality`, label: 'Quality sessions', sub: null, value: num(String(qualityCount)), action: null, tone: 'neutral' },
-        { id: `${w.id}-mileage`, label: 'Mileage', sub: null, value: num(`${fmtMi(w.plannedMi)} mi`), action: null, tone: 'neutral' },
+        { id: `${w.id}-long`, label: 'Long run', sub: null, value: num(`${fmtMi(longMi)} mi`, false), action: null, tone: 'neutral' },
+        { id: `${w.id}-quality`, label: 'Quality sessions', sub: null, value: num(String(qualityCount), false), action: null, tone: 'neutral' },
+        { id: `${w.id}-mileage`, label: 'Mileage', sub: null, value: num(`${fmtMi(w.plannedMi)} mi`, false), action: null, tone: 'neutral' },
       ],
     };
   });

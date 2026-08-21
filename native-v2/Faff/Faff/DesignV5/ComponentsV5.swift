@@ -501,6 +501,21 @@ struct FaffButton: View {
     var size: Size = .lg
     var full: Bool = true
     var enabled: Bool = true
+    /// RULE THREE, made structural.
+    ///
+    /// A control that cannot be used must say WHY, not just dim. Dimming alone
+    /// is the same failure as an empty state standing in for a refusal: the
+    /// answer is "no" and the reason is missing, so the runner is left tapping
+    /// a dead button working out what it wants. `AddRaceV5` had already
+    /// written this by hand next to one of its buttons; four other call sites
+    /// dimmed in silence. Putting it on the component means the next screen
+    /// gets it for nothing, and the reason lives beside the control it
+    /// explains instead of being remembered at each site.
+    ///
+    /// Renders only while `enabled` is false, quiet, under the button. Leave
+    /// nil when the label itself already carries the reason — a button that
+    /// reads "Saving…" has said why it is not tappable.
+    var disabledReason: String? = nil
     let action: () -> Void
 
     init(_ title: String,
@@ -508,12 +523,14 @@ struct FaffButton: View {
          size: Size = .lg,
          full: Bool = true,
          enabled: Bool = true,
+         disabledReason: String? = nil,
          action: @escaping () -> Void) {
         self.title = title
         self.variant = variant
         self.size = size
         self.full = full
         self.enabled = enabled
+        self.disabledReason = disabledReason
         self.action = action
     }
 
@@ -539,18 +556,31 @@ struct FaffButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.faffText(fontSize, weight: variant == .primary ? .bold : .semibold))
-                .foregroundStyle(ink)
-                .frame(maxWidth: full ? .infinity : nil)
-                .padding(.horizontal, full ? 0 : V5.S.s20)
-                .frame(height: height)
-                .background(fill, in: Capsule(style: .continuous))
+        VStack(alignment: .leading, spacing: V5.S.s6) {
+            Button(action: action) {
+                Text(title)
+                    .font(.faffText(fontSize, weight: variant == .primary ? .bold : .semibold))
+                    .foregroundStyle(ink)
+                    .frame(maxWidth: full ? .infinity : nil)
+                    .padding(.horizontal, full ? 0 : V5.S.s20)
+                    .frame(height: height)
+                    .background(fill, in: Capsule(style: .continuous))
+            }
+            .buttonStyle(V5PressStyle())
+            .disabled(!enabled)
+            .opacity(enabled ? 1 : 0.4)
+
+            // The reason, not an apology. Quiet ink, never fault red: nothing
+            // has failed, the control simply is not ready yet.
+            if !enabled, let disabledReason, !disabledReason.isEmpty {
+                Text(disabledReason)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: full ? .infinity : nil, alignment: .leading)
+                    .accessibilityLabel("Unavailable. \(disabledReason)")
+            }
         }
-        .buttonStyle(V5PressStyle())
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.4)
     }
 }
 

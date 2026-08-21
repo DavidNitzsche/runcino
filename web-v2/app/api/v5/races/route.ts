@@ -213,11 +213,19 @@ export async function GET(req: NextRequest) {
     let trendFootnotes: string[] = [];
 
     if (!nextA) {
-      panel = {
-        dayState: 'long', quiet: true, place: 'Races',
-        dateLine: 'No goal race set', weekLine: null, kicker: null,
-        type: 'No goal set', dose: null, stats: [],
-      };
+      // RULE THREE. This used to fall all the way through to a 200 carrying a
+      // "No goal set" panel over `card: null`, `schedule: []`, `evidence: []`,
+      // `trend: []` — a full scaffold with every slot empty and no reason
+      // anywhere in it, so the phone rendered a Races screen that answered
+      // nothing and never said why. Same defect /api/v5/block was fixed for.
+      //
+      // 404 + a reason is what the phone reads as `absentReason`, which
+      // renders `Silence`: a designed refusal, visually distinct from the
+      // outage screen and carrying the engine's own sentence.
+      return NextResponse.json(
+        { error: 'No goal race is set. The projection, the evidence and the schedule are all built around one, so there is nothing here to read yet.' },
+        { status: 404 },
+      );
     } else {
       const distanceMi = nextA.distance_mi;
       const goalSec = parseRaceTime(nextA.goal);
@@ -315,7 +323,16 @@ export async function GET(req: NextRequest) {
             else subParts.push(tier === 'representative' ? 'Counts fully' : tier === 'compromised' ? 'Counts, reduced weight' : 'Barely counts');
             return {
               id: c.slug, label: c.name, sub: subParts.join(' · '),
-              value: num(c.finish_seconds != null ? formatRaceTime(c.finish_seconds) : null, false),
+              // RULE ONE. `false` here contradicted the schedule list further
+              // down this same response, which already passes
+              // `r.finishProvisional` — so one payload showed the same race's
+              // time as a hard chip result in the evidence list and as
+              // modelled in the schedule. The branch knew: it stamps
+              // PROVISIONAL_FINISH_LABEL into `sub` three lines above. A
+              // provisional time is a training effort with a race still to
+              // lock it in, and CLAUDE.md's race-data rule says it must never
+              // render as authoritative race performance.
+              value: num(c.finish_seconds != null ? formatRaceTime(c.finish_seconds) : null, !!c.provisional),
               action: 'open_race',
             };
           });

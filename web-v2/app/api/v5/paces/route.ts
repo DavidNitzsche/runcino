@@ -91,6 +91,17 @@ export async function GET(req: NextRequest) {
     const dateLabel = typeof meta.date === 'string' ? meta.date : null;
     const finishSec = ar.finishS != null ? Number(ar.finishS) : parseRaceTime(meta.finishTime as string);
     const finishText = formatRaceTime(finishSec);
+    // RULE ONE. `actual_result` can hold an AUTO-LOGGED watch time
+    // (`source:'watch_provisional'`) that has not been confirmed against a
+    // chip. It wins the result ladder, but it is a training effort with a
+    // race still to lock it in — the same discriminator `races-state.ts`
+    // derives as `finishProvisional` and the schedule list on /api/v5/races
+    // already ships. The faster-race branch below stamped every finish as
+    // hard evidence, which is precisely the claim a provisional time cannot
+    // make. This is also the number the whole screen argues FROM: the
+    // faster-race variant drops the `~` marks and offers one irreversible
+    // "Update my paces" action on the strength of it.
+    const finishProvisional = ar.provisional === true || ar.source === 'watch_provisional';
     const distMi = meta.distanceMi ? Number(meta.distanceMi) : distanceMiFromLabel(meta.distanceLabel as string);
 
     const raceLabel: string = raceName ?? event.evidenceRaceSlug ?? 'Race';
@@ -125,7 +136,7 @@ export async function GET(req: NextRequest) {
     ? `${raceName ?? 'That race'} is confirmed fitness. Paces move to match.`
     : direction === 'faster-training'
       ? 'Recent training says you are fitter. Paces moved to match, not confirmed by a race.'
-      : 'Threshold, interval and rep pace all moved. The evidence below is what changed — nothing here is a diagnosis.';
+      : 'Threshold, interval and rep pace all moved. The evidence below is what changed. Nothing here is a diagnosis.';
 
   const caption = modelled ? 'Modelled from training · not confirmed by a race' : null;
 
@@ -153,7 +164,7 @@ export async function GET(req: NextRequest) {
       question: 'Did this race count?',
       options: [
         { id: 'representative', label: 'Representative', sub: 'A clean read of where you are', value: null, action: 'representative' },
-        { id: 'compromised', label: 'Compromised', sub: 'Heat, a hill, something off — partly fitness', value: null, action: 'compromised' },
+        { id: 'compromised', label: 'Compromised', sub: 'Heat, a hill, something off · partly fitness', value: null, action: 'compromised' },
         { id: 'unrepresentative', label: "Didn't count", sub: 'Sick, paced someone, ran it as a workout', value: null, action: 'unrepresentative' },
       ],
       actionLabel: null,
@@ -202,7 +213,15 @@ export async function POST(req: NextRequest) {
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!planRow) {
-    return NextResponse.json({ error: 'no_active_plan' }, { status: 404 });
+    // RULE THREE. A bare `error` code with no `reason` fails `v5Write`'s
+    // refusal test on the phone (APIV5.swift wants `refusal ?? reason`
+    // non-empty), so this correct, deliberate decline rendered as the
+    // data-outage ErrorNote — complete with a Retry button that can never
+    // succeed. Every sibling refusal on this route already carries a reason.
+    return NextResponse.json(
+      { error: 'no_active_plan', reason: 'There is no active plan, so there is no pace read to settle.' },
+      { status: 404 },
+    );
   }
 
   await acknowledgePaceZoneEvent(planRow.id);

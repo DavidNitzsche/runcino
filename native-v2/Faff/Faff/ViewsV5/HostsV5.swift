@@ -71,9 +71,12 @@ struct TodayHostV5: View {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
                 ScrollView {
-                    Silence(reason: reason)
-                        .padding(.horizontal, V5.S.gutter)
-                        .padding(.top, V5.S.s40)
+                    VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                        wayOutHeader
+                        Silence(reason: reason)
+                    }
+                    .padding(.horizontal, V5.S.gutter)
+                    .padding(.top, V5.S.s24)
                 }
                 .background(V5.surfacePage)
             } else if surface.isOutage {
@@ -81,9 +84,12 @@ struct TodayHostV5: View {
                 // screen needs a Today shell to sit in, and we do not have one,
                 // so this is the honest floor: the note and the reserved space.
                 ScrollView {
-                    OutageBodyV5(onRetry: { Task { await surface.load() } })
-                        .padding(.horizontal, V5.S.gutter)
-                        .padding(.top, V5.S.s40)
+                    VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                        wayOutHeader
+                        OutageBodyV5(onRetry: { Task { await surface.load() } })
+                    }
+                    .padding(.horizontal, V5.S.gutter)
+                    .padding(.top, V5.S.s24)
                 }
                 .background(V5.surfacePage)
             } else {
@@ -147,7 +153,7 @@ struct TodayHostV5: View {
     private func content(_ model: V5Today) -> some View {
         switch model.state {
         case .notOnPhoneYet:
-            NotOnPhoneYetV5(reason: model.notOnPhoneYet)
+            NotOnPhoneYetV5(reason: model.notOnPhoneYet, onOpenAccount: { accountOpen = true })
 
         case .changedOvernight:
             // RULE TWO. The story only exists when three independent domains
@@ -198,7 +204,7 @@ struct TodayHostV5: View {
             if let off = model.offSeason {
                 OffSeasonV5(model: off, onOpenAccount: { accountOpen = true })
             } else {
-                NotOnPhoneYetV5(reason: nil)
+                NotOnPhoneYetV5(reason: nil, onOpenAccount: { accountOpen = true })
             }
 
         case .afterRun:
@@ -294,6 +300,46 @@ struct TodayHostV5: View {
         f.dateFormat = "EEE d MMM"
         f.timeZone = TimeZone(identifier: "UTC")
         return f.string(from: d)
+    }
+
+    /// RULE THREE · a refusal is a correct answer, and a correct answer still
+    /// needs a way out of the room.
+    ///
+    /// Every content Today draws the account button in its own panel header.
+    /// The refusal and outage branches drew neither — just the reason, alone
+    /// on black. Settings is only reachable through this button, and sign-out
+    /// only through Settings, so a runner the engine refuses (`not_on_phone
+    /// _yet`, off-season, no plan) had no route to either from the surface the
+    /// app opens on. A refusal that traps you is not a correct answer.
+    ///
+    /// Deliberately plain: no gradient panel, no week strip, no big headline.
+    /// There is no day to draw, and dressing a refusal as content is the other
+    /// half of the same mistake.
+    private var wayOutHeader: some View {
+        HStack(alignment: .center, spacing: V5.S.s12) {
+            Text("Today")
+                .font(.faffDisplay(20))
+                .textCase(.uppercase)
+                .tracking(20 * 0.02)
+                .foregroundStyle(V5.textPrimary)
+            Spacer(minLength: 0)
+            Button(action: { accountOpen = true }) {
+                Group {
+                    if let initials {
+                        Text(initials)
+                            .font(.faffText(12, weight: .semibold))
+                    } else {
+                        Image(systemName: "person")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                }
+                .foregroundStyle(V5.textPrimary)
+                .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
+                .background(V5.materialTileRaised, in: Circle())
+            }
+            .buttonStyle(V5PressStyle())
+            .accessibilityLabel("Account and settings")
+        }
     }
 
     /// The account sheet's rows. Not on `V5Today`'s contract — it is a shell

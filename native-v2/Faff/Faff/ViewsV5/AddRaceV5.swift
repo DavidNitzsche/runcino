@@ -267,6 +267,9 @@ struct AddRaceV5: View {
             FaffButton(saving ? "Saving\u{2026}" : "Save",
                        variant: .primary, size: .md, full: false,
                        enabled: canSave && !saving,
+                       // Only the name gates the save; the busy state already
+                       // says why through the label.
+                       disabledReason: saving ? nil : "Name the race first. The date and distance already have defaults.",
                        action: { Task { await save() } })
         }
     }

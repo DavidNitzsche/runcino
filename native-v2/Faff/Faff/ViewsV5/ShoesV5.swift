@@ -134,8 +134,10 @@ struct ShoesV5: View {
                     if !retired.isEmpty {
                         ListGroup(header: "Retired") {
                             ForEach(retired) { shoe in
+                                // Same rule as the in-rotation card below: an
+                                // unknown mileage is unreadable, not zero.
                                 ListRow(label: shoe.displayName,
-                                        value: .measured(FaffFmt.milesUnit(shoe.mileage) ?? "0 mi"))
+                                        value: .measured(FaffFmt.milesUnit(shoe.mileage)))
                             }
                         }
                     }
@@ -173,7 +175,12 @@ struct ShoesV5: View {
                             .font(.faffText(16, weight: .semibold))
                             .foregroundStyle(V5.textPrimary)
                         Spacer(minLength: 0)
-                        FaffValueText(.measured(FaffFmt.milesUnit(shoe.mileage) ?? "0 mi"),
+                        // `?? "0 mi"` printed a hard, measured zero for a shoe
+                        // whose mileage we could not read — the exact failure
+                        // ValuesV5's optional overload exists to prevent, and
+                        // the opposite of what the track two lines below does
+                        // with the same nil. Nil is unreadable, never zero.
+                        FaffValueText(.measured(FaffFmt.milesUnit(shoe.mileage)),
                                       font: .faffText(TypeScaleV5.label13),
                                       color: V5.textQuiet)
                     }

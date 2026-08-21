@@ -94,7 +94,8 @@ struct AddShoeV5: View {
             .frame(maxHeight: .infinity, alignment: .top)
 
             FaffButton("Add to rotation", variant: .primary, size: .lg, full: true,
-                       enabled: !trimmedName.isEmpty) {
+                       enabled: !trimmedName.isEmpty,
+                       disabledReason: "Name the shoe first \u{b7} brand and model is enough.") {
                 let key = Self.types.first { $0.label == typeLabel }?.key ?? "daily_trainer"
                 onAdd(split.brand, split.model, key, Double(startMi) ?? 0)
             }

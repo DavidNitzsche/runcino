@@ -5,25 +5,32 @@ import type { GlanceState, GlanceWeekDay } from '@/lib/coach/glance-state';
 import type { WorkoutSpec } from '@/lib/faff/types';
 
 /**
- * E5 · the done-state must reflect how the run ACTUALLY went, not blanket
- * "NAILED IT". `alex` is the persona that ran today (drives done_nailed); we
- * override `todayExecution` (the verdict glance-state derives from the frozen
- * phases) to exercise each branch. Short stays done_nailed at the STATE level
- * (no new DayState / no iPhone enum change) but flips the verb / stat / prose.
+ * E5 · the done-state must reflect how the run ACTUALLY went, not one blanket
+ * verb. `alex` is the persona that ran today (drives done_nailed); we override
+ * `todayExecution` (the verdict glance-state derives from the frozen phases)
+ * to exercise each branch. Short stays done_nailed at the STATE level (no new
+ * DayState / no iPhone enum change) but flips the verb / stat / prose.
+ *
+ * RULE FOUR, 2026-08-21 · the clean-run verb was "NAILED IT.", which is hype
+ * and also a grade. These two assertions were locking that in, so they were
+ * asserting the defect rather than guarding against it. The verb is "DONE."
+ * now: the same fact, none of the celebration. `scripts/check-coach-voice.sh`
+ * fails the build if it comes back.
  */
 describe('E5 · done-state reflects how the run went', () => {
   const doneGlance = (exec: GlanceState['todayExecution']): GlanceState =>
     ({ ...getPersonaGlanceState('alex'), todayExecution: exec });
 
-  it('nailed → done_nailed · NAILED IT · ✓ PLAN HIT', () => {
+  it('nailed → done_nailed · DONE. · ✓ PLAN HIT', () => {
     const g = doneGlance('nailed');
     expect(resolveDayState(g)).toBe('done_nailed');
     const p = buildPoster(g, 'done_nailed');
-    expect(p.verb).toBe('NAILED IT.');
+    expect(p.verb).toBe('DONE.');
+    expect(p.verb).not.toMatch(/NAILED|CRUSH|AWESOME|!/i);
     expect(p.stat_trio?.some((s) => s.label === 'PLAN HIT')).toBe(true);
   });
 
-  it('short → done_nailed state, but honest copy (no "NAILED IT" / no "PLAN HIT")', () => {
+  it('short → done_nailed state, but honest copy (no clean-run verb / no "PLAN HIT")', () => {
     const g = doneGlance('short');
     expect(resolveDayState(g)).toBe('done_nailed');
     const p = buildPoster(g, 'done_nailed');
@@ -48,7 +55,7 @@ describe('E5 · done-state reflects how the run went', () => {
   it('absent verdict (fixtures / non-watch) defaults to nailed (no regression)', () => {
     const g = doneGlance(null);
     expect(resolveDayState(g)).toBe('done_nailed');
-    expect(buildPoster(g, 'done_nailed').verb).toBe('NAILED IT.');
+    expect(buildPoster(g, 'done_nailed').verb).toBe('DONE.');
   });
 });
 

@@ -212,7 +212,8 @@ struct SickReportRowV5: View {
             }
 
             FaffButton("Report it", variant: .primary, size: .md,
-                       enabled: !selectedSymptoms.isEmpty) {
+                       enabled: !selectedSymptoms.isEmpty,
+                       disabledReason: "Pick at least one symptom \u{b7} it decides how long the plan waits.") {
                 onReport(Array(selectedSymptoms), selectedStarted, selectedSymptoms.contains("fever"))
                 submitted = true
                 withAnimation(V5.Motion.expand) { expanded = false }
