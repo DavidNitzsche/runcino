@@ -157,8 +157,6 @@ struct TodayBeforeV5: View {
     /// Set when the runner has stepped off today. The panel says which day and
     /// offers the way back.
     var viewingDayLabel: String? = nil
-    var onPrevDay: () -> Void = {}
-    var onNextDay: () -> Void = {}
     var onBackToToday: () -> Void = {}
 
     /// Job 2 · the coach-line entry point onto 18a (`V5Route.pacesMoved`).

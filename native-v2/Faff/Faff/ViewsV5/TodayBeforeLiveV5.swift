@@ -45,8 +45,6 @@ struct TodayBeforeLiveV5: View {
     var onAccountRowTap: (V5Row) -> Void = { _ in }
     var onPickDay: (String) -> Void = { _ in }
     var viewingDayLabel: String? = nil
-    var onPrevDay: () -> Void = {}
-    var onNextDay: () -> Void = {}
     var onBackToToday: () -> Void = {}
     var onOpenPacesMoved: () -> Void = {}
     var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
@@ -85,8 +83,6 @@ struct TodayBeforeLiveV5: View {
             onAccountRowTap: onAccountRowTap,
             onPickDay: onPickDay,
             viewingDayLabel: viewingDayLabel,
-            onPrevDay: onPrevDay,
-            onNextDay: onNextDay,
             onBackToToday: onBackToToday,
             onOpenPacesMoved: onOpenPacesMoved,
             onReportSick: onReportSick
