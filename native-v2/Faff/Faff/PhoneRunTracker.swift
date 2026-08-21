@@ -624,6 +624,26 @@ final class PhoneRunTracker: NSObject, ObservableObject {
 
 extension PhoneRunTracker {
 
+    /// ─────────────────────────────────────────────────────────────────────
+    /// ONE SERIAL QUEUE OWNS THE CHECKPOINT FILE
+    ///
+    /// The write used to be `Task.detached(priority: .utility)` and the clear
+    /// a synchronous `removeItem` on the main actor. Nothing ordered them, so
+    /// a write spawned moments before a Discard could land AFTER the delete
+    /// and put the file back.
+    ///
+    /// That is not a cosmetic race. `flushInterruptedRun` runs on the next
+    /// open of the outdoor console and re-POSTs whatever it finds, and the
+    /// recovery guard (`>= 0.25 mi` or `>= 180 s`) passes for any real run.
+    /// So a run the runner deliberately threw away — under a confirm that
+    /// says "this deletes the GPS track and can't be undone" — comes back as
+    /// a "partial" and lands in weekly volume, and from there in fitness.
+    ///
+    /// A serial queue makes the delete strictly follow any write already
+    /// enqueued, and costs nothing: the write was going off the main actor
+    /// anyway, and this drops ~1,080 detached tasks over a three-hour run.
+    private static let checkpointIO = DispatchQueue(label: "run.faff.phone-run-checkpoint")
+
     private static var checkpointURL: URL? {
         guard let dir = try? FileManager.default.url(for: .applicationSupportDirectory,
                                                      in: .userDomainMask,
@@ -650,9 +670,10 @@ extension PhoneRunTracker {
                                     hadGap: trackHasGap)
         guard let url = Self.checkpointURL,
               let data = try? JSONEncoder().encode(cp) else { return }
-        // Off the main thread: the console is being read mid-stride and
-        // must not hitch for a disk write.
-        Task.detached(priority: .utility) {
+        // Off the main thread: the console is being read mid-stride and must
+        // not hitch for a disk write. On the checkpoint queue, so a later
+        // clear cannot be overtaken by this write.
+        Self.checkpointIO.async {
             try? data.write(to: url, options: .atomic)
         }
     }
@@ -660,15 +681,28 @@ extension PhoneRunTracker {
     /// Removes the checkpoint, but only if it is the one for `workoutId` —
     /// so a late clear from a finished run can never delete a live one.
     /// Passing nil clears unconditionally.
+    ///
+    /// Runs on the checkpoint queue, BEHIND any write already enqueued. The
+    /// read-then-delete also has to happen there rather than straddling the
+    /// hop: deciding "this file is the one to remove" on the main actor and
+    /// removing it on the queue would let a write land between the two.
     static func clearCheckpoint(workoutId: String?) {
         guard let url = checkpointURL else { return }
-        if let workoutId,
-           let data = try? Data(contentsOf: url),
-           let cp = try? JSONDecoder().decode(PhoneRunCheckpoint.self, from: data),
-           cp.workoutId != workoutId {
-            return
+        checkpointIO.async {
+            // Only the id is needed, so read only the id. Decoding the whole
+            // `PhoneRunCheckpoint` here would also drag its main-actor-isolated
+            // `Codable` conformance onto this queue, which is the same class of
+            // isolation mistake this queue exists to remove. Behaviour is
+            // unchanged: a file whose id cannot be read is still removed.
+            if let workoutId,
+               let data = try? Data(contentsOf: url),
+               let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+               let existing = obj["workoutId"] as? String,
+               existing != workoutId {
+                return
+            }
+            try? FileManager.default.removeItem(at: url)
         }
-        try? FileManager.default.removeItem(at: url)
     }
 
     /// The checkpoint of a run this process is not recording — i.e. one the
