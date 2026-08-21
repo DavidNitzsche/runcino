@@ -9,7 +9,7 @@
  * and 41 say `intervals`. They mean the same thing, and the split is not
  * cosmetic — `QUALITY_TYPES` in `lib/runs/log-enrich.ts` contains `intervals`
  * and NOT `interval`, so a completed rep session stored under the singular
- * never earned its SOLID / NAILED IT badge. The codebase had already grown
+ * never earned its SOLID / ON TARGET badge. The codebase had already grown
  * workarounds rather than a fix: `run-state.ts` tests for both spellings in one
  * list, `vdot.ts` maps four spellings onto one domain, `effort-map.ts` matches
  * on substrings.

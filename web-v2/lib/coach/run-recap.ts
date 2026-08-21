@@ -619,7 +619,12 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
           } else if (input.voiceBand === 'challenge') {
             facts.push(`${lead} Quicker than the ${paceLabel(easyTgt)} easy target. Keep easy easy.`);
           } else {
-            facts.push(`${lead} A touch quicker than the ${paceLabel(easyTgt)} easy target. Fine, but easy days bank the most when you let them stay genuinely easy.`);
+            // 2026-08-21 · rule four. Was "Fine, but easy days bank the most
+            // when you let them stay genuinely easy." Two problems in one
+            // sentence: "Fine, but" is a grade dressed as a concession, and
+            // "when you let them" puts the shortfall on the runner. The fact
+            // is about easy days, not about him.
+            facts.push(`${lead} A touch quicker than the ${paceLabel(easyTgt)} easy target. Easy days bank the most when they stay genuinely easy.`);
           }
         } else if (delta > 45) {
           facts.push(`${lead} Relaxed and well inside easy · exactly what these days are for.`);

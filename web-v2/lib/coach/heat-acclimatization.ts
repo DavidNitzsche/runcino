@@ -254,6 +254,10 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
   // body's adaptation state with zero RHR evidence. Now: null when
   // we don't have at least 5 RHR readings to compare halves of.
   let rhrTrend: HeatAcclimatization['rhrTrend'] = null;
+  /** How far the second half of the 14-day window sits above the first, bpm.
+   *  Kept so the copy can state its own window instead of asserting a bare
+   *  "climbing" that a differently-windowed reading contradicts. */
+  let rhrDeltaBpm: number | null = null;
   if (rhrSeries.length >= 5) {
     const firstHalf = rhrSeries.slice(0, Math.floor(rhrSeries.length / 2));
     const secondHalf = rhrSeries.slice(Math.floor(rhrSeries.length / 2));
@@ -263,6 +267,7 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
     if (delta > 1) rhrTrend = 'rising';
     else if (delta < -1) rhrTrend = 'falling';
     else rhrTrend = 'plateauing';
+    rhrDeltaBpm = Math.round(delta * 10) / 10;
   }
 
   // HEAT-1 · the actual §4 measurement: HR at a given
@@ -294,7 +299,28 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
   }
   if (rhrTrend === 'rising') {
     // Resting HR climbing during a heat block is strain, not progress.
-    message += ' Resting HR is climbing. That is heat strain, not adaptation. Sleep and fluids before you add any load.';
+    //
+    // ── 2026-08-21 · web audit · two fixes in one sentence ────────────────
+    //
+    // It read: "Resting HR is climbing. That is heat strain, not adaptation.
+    // Sleep and fluids before you add any load."
+    //
+    // 1 · IT CONTRADICTED THE PILLAR ON THE SAME SCREEN. This reads the two
+    //     halves of a 14-day window against each other; the readiness pillar
+    //     three inches up the same Health page reads a 3-day average against
+    //     the runner's long baseline. On 21 August those said, side by side,
+    //     "RHR · 47 bpm · baseline 48 · no change · ON BASELINE" and
+    //     "Resting HR is climbing." Both are honest readings of different
+    //     windows, and stating neither window made them a contradiction
+    //     rather than two facts. The window is now in the sentence.
+    //
+    // 2 · IT PRESCRIBED OFF ONE SIGNAL. "before you add any load" is a
+    //     training instruction issued on the cardiac domain alone, which is
+    //     the rule lib/coach/convergence.ts exists to hold. The observation
+    //     is worth making during a heat block; the instruction is not this
+    //     surface's to give.
+    const amount = rhrDeltaBpm != null ? ` about ${rhrDeltaBpm.toFixed(1)} bpm` : '';
+    message += ` Resting heart rate is up${amount} across this heat window against the days before it. During a heat block that reads as strain rather than adaptation.`;
   }
 
   // Gate the most recent conditions we have against Research/06 §11.

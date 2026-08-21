@@ -977,7 +977,7 @@ export type ActivityRange = {
 };
 export type RecentRun = {
   date: string; effort: string; color: string;
-  name: string; meta: string; badge?: 'NAILED IT'|'SOLID'|'LONGEST'|'PR'|'RACE';
+  name: string; meta: string; badge?: 'ON TARGET'|'SOLID'|'LONGEST'|'PR'|'RACE';
   slug?: string;
   /** 2026-08-17 · Activity recent-runs week grouping + race linking.
    *  iso = run's YYYY-MM-DD · week = log week label ("THIS WEEK" /

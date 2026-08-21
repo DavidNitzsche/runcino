@@ -20,13 +20,13 @@
  *      workoutType='race' so effort donuts color them correctly.
  *
  *   3. BADGES · log-state only ever emitted LONGEST (≥18 mi) which left
- *      the UI's NAILED IT / SOLID branches dead. Real conditions now:
- *      race → RACE · plan-matched quality within pace target → NAILED IT
+ *      the UI's ON TARGET / SOLID branches dead. Real conditions now:
+ *      race → RACE · plan-matched quality within pace target → ON TARGET
  *      · completed quality → SOLID · ≥18 mi → LONGEST.
  */
 import { normalizeWorkoutTypeLoose } from '@/lib/training/workout-type';
 
-export type LogBadge = 'RACE' | 'NAILED IT' | 'SOLID' | 'LONGEST';
+export type LogBadge = 'RACE' | 'ON TARGET' | 'SOLID' | 'LONGEST';
 
 /** A merged-away duplicate row of a canonical run (data.mergedIntoId set). */
 export interface MergedTwin {
@@ -126,7 +126,7 @@ export function matchRaceForRun(
   return null;
 }
 
-/** Quality types that earn SOLID / NAILED IT when completed. Long runs are
+/** Quality types that earn SOLID / ON TARGET when completed. Long runs are
  *  deliberately excluded — LONGEST (≥18 mi) covers the notable ones and a
  *  badge on every long run would be noise. */
 export const QUALITY_TYPES = new Set([
@@ -135,9 +135,9 @@ export const QUALITY_TYPES = new Set([
 ]);
 
 /**
- * Badge for a completed run. Priority: RACE > NAILED IT > SOLID > LONGEST.
+ * Badge for a completed run. Priority: RACE > ON TARGET > SOLID > LONGEST.
  *
- * NAILED IT requires a plan pace target AND the run's average pace within
+ * ON TARGET requires a plan pace target AND the run's average pace within
  * max(10 s/mi, 3%) of it — honest only for steady quality (tempo/threshold);
  * interval sessions' whole-run average includes recovery jog so they settle
  * at SOLID rather than false-negative on the target check.
@@ -166,7 +166,7 @@ export function badgeForRun(args: {
       ) &&
       Math.abs(args.paceSPerMi - target) <= Math.max(10, target * 0.03)
     ) {
-      return 'NAILED IT';
+      return 'ON TARGET';
     }
     return 'SOLID';
   }

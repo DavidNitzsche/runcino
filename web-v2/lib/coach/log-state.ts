@@ -56,7 +56,7 @@ export interface LogRun {
   // - isRace/raceSlug: run matched a races row (same date + distance
   //   within ~12%, or a workoutType='race' flag on any row of the
   //   physical run). Display name comes from races.meta.name.
-  // - badge: RACE > NAILED IT > SOLID > LONGEST (see badgeForRun).
+  // - badge: RACE > ON TARGET > SOLID > LONGEST (see badgeForRun).
   isRace: boolean;
   raceSlug: string | null;
   badge: LogBadge | null;

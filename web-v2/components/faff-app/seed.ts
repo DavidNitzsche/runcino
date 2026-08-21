@@ -1794,7 +1794,7 @@ function adaptActivity(log: LogT | null, races: Races | null): ActivityData {
   // 2026-08-17 · Activity truth fixes. `recent` now carries the FULL loaded
   // log window (ActivityView groups it by week with a Show-more, instead of
   // a flat 8-run cap) and badges come from log-state's badgeForRun wiring
-  // (RACE / NAILED IT / SOLID / LONGEST) — the local ≥18mi LONGEST check
+  // (RACE / ON TARGET / SOLID / LONGEST) — the local ≥18mi LONGEST check
   // moved there. The full history browser (all filter axes, pagination)
   // is deck-pending; this is the minimal grouped window.
   const recent: RecentRun[] = (log?.weeks ?? []).flatMap(w => w.runs.map(r => {

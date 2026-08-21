@@ -104,7 +104,7 @@ export function renderShort(r: Recommendation): string {
   // Confidence is spoken only when it is not high. Hedging a certainty is how
   // a coach stops sounding like one.
   if (r.confidence === 'low') {
-    parts.push('That read is provisional — there is not much to go on yet.');
+    parts.push('That read is provisional · there is not much to go on yet.');
   } else if (r.confidence === 'medium') {
     parts.push('Reasonably confident, not certain.');
   }
@@ -259,7 +259,7 @@ export function recommendFromAdaptation(verdict: {
         action: 'Hold this week’s work where it is.',
         change: 'The planned step up is deferred, not cancelled.',
         reason: weakest?.detail
-          ? `The last block has not been fully absorbed yet — ${weakest.detail}.`
+          ? `The last block has not been fully absorbed yet · ${weakest.detail}.`
           : 'The last block has not been fully absorbed yet.',
         consequence:
           'Repeating a stimulus you have not finished adapting to is how the next one lands better.',
@@ -272,7 +272,7 @@ export function recommendFromAdaptation(verdict: {
         action: 'Ease the coming week rather than adding to it.',
         change: 'Below what the plan had scheduled.',
         reason: weakest?.detail
-          ? `The current load is not producing the response it should — ${weakest.detail}.`
+          ? `The current load is not producing the response it should · ${weakest.detail}.`
           : 'The current load is not producing the response it should.',
         consequence:
           'Backing off now protects the rest of the block. Pushing into this usually costs more weeks than it saves.',

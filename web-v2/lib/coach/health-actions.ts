@@ -814,7 +814,11 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
         signal: 'race_week',
         priority: 'medium',
         action: `Gun time not set · ${daysToRace}d out. Confirm the start time and wave on the race page. Wake-up, fueling, and corral timing hang off it.`,
-        cite: 'races.meta.startTime is empty · race card shows "—".',
+        // 2026-08-21 · was 'races.meta.startTime is empty · race card shows
+        // "—".' — a jsonb path and a column name, read out to a runner, on
+        // the Health page. The cite line exists to show the underlying
+        // NUMBER, not the schema.
+        cite: 'No start time on the race page yet.',
       });
     }
     out.length = 0;

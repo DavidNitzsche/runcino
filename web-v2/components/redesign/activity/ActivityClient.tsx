@@ -87,7 +87,7 @@ function effortInk(effort: string): string {
 }
 
 const BADGE_TONE: Record<NonNullable<RecentRun['badge']>, BadgeTone> = {
-  'NAILED IT': 'easy', SOLID: 'easy', LONGEST: 'long', PR: 'signal', RACE: 'race',
+  'ON TARGET': 'easy', SOLID: 'easy', LONGEST: 'long', PR: 'signal', RACE: 'race',
 };
 
 /** Recent runs' `.k`/`.t` records use the same three-bucket vocabulary

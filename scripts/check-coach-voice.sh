@@ -45,6 +45,18 @@
 #   · web-v2/lib/faff              (the composers behind it)
 #   · web-v2/app/api/v5            (the routes that author copy)
 #   · web-v2/lib/notifications/templates.ts     (lock-screen copy)
+#   · web-v2/lib/coach             (the WEB command centre's composers)
+#   · web-v2/components/faff-app   (the WEB views)
+#
+# ── 2026-08-21 · the web surface was added ───────────────────────────────────
+#
+# The first four entries are the phone and its wire. The web audit found that
+# rule four, like rule one, had no reach into the command centre at all:
+# `lib/coach/health-actions.ts` authors every sentence in the Health page's
+# WHAT TO DO panel, `lib/coach/readiness-brief.ts` authors the morning
+# prescription, `lib/coach/heat-acclimatization.ts` authors the heat block,
+# and `components/faff-app/**` authors the rest. None were scanned. The
+# largest body of coach copy in the product was the part with no gate on it.
 #
 # Comment lines, `#Preview` titles, `fatalError`/`assert` messages and test
 # files are developer-facing and are skipped. A line ending `// ok: <reason>`
@@ -71,7 +83,11 @@ targets() {
        -name '*.swift' ! -name '._*' 2>/dev/null
   find "$ROOT/web-v2/lib/faff" \
        "$ROOT/web-v2/app/api/v5" \
+       "$ROOT/web-v2/lib/coach" \
        -name '*.ts' ! -name '._*' ! -name '*.test.ts' 2>/dev/null
+  find "$ROOT/web-v2/components/faff-app" \
+       \( -name '*.ts' -o -name '*.tsx' \) \
+       ! -name '._*' ! -name '*.test.ts' ! -name '*.test.tsx' 2>/dev/null
   [ -f "$ROOT/web-v2/lib/notifications/templates.ts" ] \
     && printf '%s\n' "$ROOT/web-v2/lib/notifications/templates.ts"
 }

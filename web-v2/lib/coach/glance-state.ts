@@ -99,7 +99,7 @@ export interface GlanceState {
    * E5 · how TODAY's completed run actually went vs what was prescribed.
    * Drives the done-state copy in glance-adapter (resolveDayState +
    * poster/sibling) so a missed or abandoned session no longer reads
-   * "NAILED IT". Derived from the frozen watch-completion phases (same
+   * "ON TARGET". Derived from the frozen watch-completion phases (same
    * source as loadPhaseBreakdown), not doneMi alone — Jun 2 ran the planned
    * mileage but missed 2 of 4 reps, invisible to a distance check.
    *   · 'nailed' — ran today, hit the work (or no negative signal / non-watch)
