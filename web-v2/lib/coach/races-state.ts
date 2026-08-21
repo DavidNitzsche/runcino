@@ -88,6 +88,31 @@ export interface RaceRow {
   // ('Training effort · race to lock in'). Surfaces show it verbatim next
   // to the time instead of inventing their own wording.
   finishProvisionalLabel: string | null;
+  /**
+   * The finish PACE that belongs to `finishTime`, m:ss per mile.
+   *
+   * ── 2026-08-21 · web audit · the pace and the time disagreed ────────────
+   *
+   * Surfaces used to print `matchedRun.pace` beside `finishTime`. That pace
+   * is the WATCH's moving pace over the WATCH's GPS distance, and the finish
+   * time beside it is a curated chip time over the OFFICIAL distance. They
+   * are two different measurements of two different things, rendered as one
+   * row under one OFFICIAL badge:
+   *
+   *     Big Sur Marathon · 3:36:55 · 8:10 /mi · OFFICIAL
+   *
+   * 3:36:55 over 26.2 mi is 8:16/mi. A runner who divides gets a different
+   * answer than the row states, and nothing on the row says which half to
+   * believe. Race-data Rule 3 in CLAUDE.md is explicit that Strava-source
+   * data must never display as authoritative race performance — the rule
+   * was applied to the TIME and the PACE beside it was left unguarded.
+   *
+   * So: a curated finish derives its own pace from itself. Only a
+   * provisional finish — one that came from the matched run in the first
+   * place — keeps the matched run's pace, where the two agree by
+   * construction and the provisional caption is already on the row.
+   */
+  finishPace: string | null;
   pb: boolean | null;
   // Race-morning logistics — read from races.meta (camelCase writer) with
   // snake_case fallbacks for older rows written before the naming settled.
@@ -225,6 +250,9 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
             || ar.authority_tier === 'unrepresentative')
           ? ar.authority_tier
           : null,
+      // Filled below · a curated finish derives its pace from itself, a
+      // provisional one takes the matched run's. See the field's docblock.
+      finishPace: null,
       pb: m.pb ?? null,
       gun_time: m.startTime ?? m.gun_time ?? m.start_time ?? null,
       wave: m.wave ?? null,
@@ -325,6 +353,26 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
         };
       }
     }
+
+    // The finish pace, resolved ONCE so no surface can pair a chip time with
+    // a watch pace again. See the `finishPace` docblock on RaceRow.
+    for (const race of past) {
+      if (race.finishTime == null) { race.finishPace = null; continue; }
+      if (race.finishProvisional) {
+        // The time itself came off the matched run, so the run's pace is the
+        // pace of that same effort. The row already carries the provisional
+        // caption, so both halves are labelled by one label.
+        race.finishPace = race.matchedRun?.pace ?? null;
+        continue;
+      }
+      // Curated finish. Derive from the official distance, or say nothing —
+      // a race whose distance we cannot resolve has no honest pace, and a
+      // blank is a correct answer where a borrowed number is not.
+      const secs = parseClock(race.finishTime);
+      race.finishPace = (secs != null && race.distance_mi != null && race.distance_mi > 0)
+        ? fmtPace(secs / race.distance_mi)
+        : null;
+    }
   }
 
   // (local distanceMiFromLabel fork removed 2026-07-06 · P1-17 — the shared
@@ -332,8 +380,19 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
   // already label-backfilled by the time the match loop reads it.)
   function fmtPace(s: number | null): string | null {
     if (!s || s <= 0) return null;
-    const m = Math.floor(s / 60);
-    return `${m}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+    // Round to the second FIRST. Rounding the remainder on its own printed
+    // "7:60" for anything in the last half-second of a minute.
+    const total = Math.round(s);
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  }
+  /** 'h:mm:ss' or 'mm:ss' → seconds. Null when it does not parse. */
+  function parseClock(t: string | null): number | null {
+    if (!t) return null;
+    const parts = t.split(':').map((x) => parseInt(x, 10));
+    if (parts.some((n) => !isFinite(n))) return null;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return null;
   }
   function fmtDuration(secs: number | null): string | null {
     if (!secs || secs <= 0) return null;

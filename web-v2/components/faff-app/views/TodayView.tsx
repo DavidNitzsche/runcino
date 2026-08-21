@@ -26,6 +26,7 @@ function meshGradient(type: EffortKey): React.CSSProperties {
   } as React.CSSProperties;
 }
 import { buildAdaptText } from '../adapt-text';
+import { Modelled } from '../Modelled';
 import { workoutTypeTitle } from '@/lib/coach/workout-title';
 import { heatAwareDrift, type DriftBand } from '@/lib/coach/heat-band';
 // 2026-08-17 · EARLY/MIDDLE/LATE HR measured off phase-tagged work splits,
@@ -1732,9 +1733,24 @@ function planCadenceTarget(
   const { low, high } = cadenceTargetFor(t, baseline ?? null);
   return `${low}-${high} spm`;
 }
-function hrTargetLabel(d: FaffSeed['week'][number]): { value: string; sub: string } {
+/**
+ * RULE ONE · 2026-08-21 web audit.
+ *
+ * `hrCap` is a ZONE-MODEL output — a percentage of an LTHR that is itself
+ * estimated (`lib/training/zones.ts` lthrZones, Research/08 §6.1). Every
+ * branch below is the same model, and this function used to mark ONE of
+ * them: tempo and intervals got `~168`, race and easy/long got `< 144`.
+ * The runner read one as an estimate and the other as a hard measured
+ * threshold, for two numbers of identical provenance.
+ *
+ * `modelled` is now returned alongside so the caller draws the mark in the
+ * one token (components/faff-app/Modelled.tsx) rather than typing a tilde
+ * into a string. The `<` is kept where it is meaningful — a ceiling is a
+ * different statement from a target — and the mark rides in front of it.
+ */
+function hrTargetLabel(d: FaffSeed['week'][number]): { value: string; sub: string; modelled: boolean } {
   if (d.hrCap != null) {
-    if (d.type === 'tempo' || d.type === 'intervals') return { value: `~${d.hrCap}`, sub: ` bpm · Z4` };
+    if (d.type === 'tempo' || d.type === 'intervals') return { value: `${d.hrCap}`, sub: ` bpm · Z4`, modelled: true };
     // 2026-08-17 · race-day hrCap (lib/plan/spec-builder.ts case 'race') is
     // an HM/M ceiling anchored at 92-100% of LTHR — Research/08 §6.1: "an
     // HM races at 96-100% of LTHR ... Marathon+ -> 92%." That is solidly
@@ -1745,15 +1761,16 @@ function hrTargetLabel(d: FaffSeed['week'][number]): { value: string; sub: strin
     // over with RaceDayHero) fell through to the generic branch below and
     // told the runner to stay under a Z2 ceiling on race effort — the
     // opposite of the pacing plan on the same page.
-    if (d.type === 'race') return { value: `< ${d.hrCap}`, sub: ` bpm · race-effort cap` };
+    if (d.type === 'race') return { value: `< ${d.hrCap}`, sub: ` bpm · race-effort cap`, modelled: true };
     // 2026-06-03 · long runs ALSO cap at Z2 per Rule 16 doctrine
     // (hrCapEasy = hrCapLong = max(89% LTHR, 78% maxHR)). David flagged
     // the Sun 6/7 card showing "<144 bpm · Z3" when 144 IS the Z2 upper
     // cap. Labeling it Z3 implied long runs should run in Z3, which
     // contradicts the cap value. Both easy + long now show Z2.
-    return { value: `< ${d.hrCap}`, sub: ` bpm · Z2 cap` };
+    return { value: `< ${d.hrCap}`, sub: ` bpm · Z2 cap`, modelled: true };
   }
-  return { value: 'by feel', sub: '' };
+  // "by feel" is a refusal, not a modelled number · it takes no mark.
+  return { value: 'by feel', sub: '', modelled: false };
 }
 
 function PlannedHeroV2({
@@ -2012,7 +2029,16 @@ function PlannedHeroV2({
           <div className="stats">
             <div><div className="v">{d.dist}<small> mi</small></div><div className="k">DISTANCE</div></div>
             <div><div className="v">{d.pace}<small>{/:/.test(d.pace) ? '/mi' : ''}</small></div><div className="k">TARGET PACE</div></div>
-            <div><div className="v">{d.est.replace(/^~/, '~')}</div><div className="k">EST TIME</div></div>
+            {/* RULE ONE · was `d.est.replace(/^~/, '~')`, a no-op that
+                replaced the tilde with itself and preserved the mark by
+                accident rather than by design. Drawn in the token now, so
+                EST TIME reads as the estimate it is beside two numbers
+                (DISTANCE, TARGET PACE) that are prescribed. */}
+            <div><div className="v">
+              {/^~/.test(d.est)
+                ? <Modelled title="Estimated from target pace and distance">{d.est.replace(/^~/, '')}</Modelled>
+                : d.est}
+            </div><div className="k">EST TIME</div></div>
           </div>
 
           <div className="effort-band">
@@ -2067,7 +2093,12 @@ function PlannedHeroV2({
         <div className="tgts-h">TARGETS</div>
         <div className="tgt">
           <span className="tk">HEART RATE</span>
-          <span className="tv">{hr.value}<small>{hr.sub}</small></span>
+          <span className="tv">
+            {hr.modelled
+              ? <Modelled title="Modelled from your threshold heart rate, not measured today">{hr.value}</Modelled>
+              : hr.value}
+            <small>{hr.sub}</small>
+          </span>
         </div>
         <div className="tgt">
           <span className="tk">EFFORT</span>
@@ -5317,7 +5348,12 @@ function usePostRaceRace(): {
           provisional: rr.finishProvisional === true || rr.finishSource === 'run_match',
           avgHr: rr.matchedRun?.avg_hr ?? null,
           distanceMi: typeof rr.distanceMi === 'number' ? rr.distanceMi : null,
-          pace: typeof rr.matchedRun?.pace === 'string' ? rr.matchedRun.pace : null,
+          // 2026-08-21 · was `rr.matchedRun.pace` — the watch's GPS pace,
+          // printed directly beside "Chip time · locked in". `finishPace`
+          // is derived from the finish time this banner shows, so the two
+          // numbers on the banner describe the same race. See the field's
+          // docblock in lib/coach/races-state.ts.
+          pace: typeof rr.finishPace === 'string' ? rr.finishPace : null,
         });
       } catch { /* silent · the composition degrades to an ordinary day */ }
     })();

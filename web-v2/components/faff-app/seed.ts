@@ -1554,6 +1554,60 @@ function adaptHealth(
   };
 }
 
+/**
+ * The four PR buckets, and the distance window that defines each one.
+ *
+ * ONE table, read by both passes below. It used to be two: the race pass
+ * matched on the label text and the training pass matched on distance, and
+ * they disagreed about what a half marathon is.
+ */
+const PR_BUCKETS: { key: string; lo: number; hi: number; canonicalMi: number }[] = [
+  { key: '5K',       lo: 3.05, hi: 3.30,  canonicalMi: 3.10686 },
+  { key: '10K',      lo: 6.10, hi: 6.50,  canonicalMi: 6.21371 },
+  { key: 'HALF',     lo: 12.9, hi: 13.5,  canonicalMi: 13.1094 },
+  // The lower edge is 25.0, not the training pass's 25.5, because that is the
+  // edge the race pass has always used (`distance_mi >= 25`). The upper edge
+  // is new and deliberate: an ultra is not a marathon PR.
+  { key: 'MARATHON', lo: 25.0, hi: 27.0,  canonicalMi: 26.2188 },
+];
+
+/**
+ * Which bucket a past race belongs in.
+ *
+ * ── 2026-08-21 · web audit · the fourth sibling of the "missing Sombrero
+ *    Half" bug in CLAUDE.md's race-data table ─────────────────────────────
+ *
+ * This used to read the LABEL for 5K/10K/HALF and fall through to the
+ * DISTANCE only for the marathon. `meta.distanceLabel` is null on every race
+ * row written before the field existed, which in production is most of them:
+ * of David's six finished races, exactly one carries a label. The other five
+ * reached the label ladder, matched nothing, failed `distance_mi >= 25` for
+ * the three halves, and were dropped on the floor.
+ *
+ * What the runner saw: HALF · 1:41:53 · Aug 16, under a heading that says
+ * PERSONAL RECORDS. His actual half PR is 1:34:54 (Disney Half, Feb 1),
+ * six minutes 59 faster, and it was sitting in the RESULTS column two
+ * inches away on the same page. Rose Bowl (1:38:38) and Sombrero (1:40:57)
+ * were invisible for the same reason. The card was not showing his best
+ * half; it was showing his most recent one, because that is the only one
+ * anybody had labelled.
+ *
+ * The fix is the read-time resolution `lib/race/distance.ts` already argues
+ * for at length: label OR number, whichever resolves, never one alone. A
+ * label-only race and a number-only race are both knowable — reading just
+ * one field makes the other kind INVISIBLE rather than unknown, and an
+ * invisible race looks exactly like a race that was never run.
+ */
+function prBucketForRace(distanceLabel: string | null, distanceMi: number | null): string | null {
+  const lbl = (distanceLabel || '').toUpperCase();
+  if (lbl.includes('5K')) return '5K';
+  if (lbl.includes('10K')) return '10K';
+  if (lbl.includes('HALF') || lbl.includes('HM')) return 'HALF';
+  if (lbl.includes('MARATHON')) return 'MARATHON';
+  if (distanceMi == null || !isFinite(distanceMi)) return null;
+  return PR_BUCKETS.find(b => distanceMi >= b.lo && distanceMi <= b.hi)?.key ?? null;
+}
+
 function adaptPRs(races: Races | null, log: LogT | null): PR[] {
   // 1. Race finish times when the runner has logged them.
   const byDist: Record<string, { val: string; date: string; source: 'race' | 'training' }> = {};
@@ -1566,11 +1620,7 @@ function adaptPRs(races: Races | null, log: LogT | null): PR[] {
     // training-derived fallback below can still fill the bucket (labeled
     // "· training"); the race detail page keeps showing the matched effort.
     if (r.finishProvisional) continue;
-    const lbl = (r.distance_label || '').toUpperCase();
-    const key = lbl.includes('5K') ? '5K'
-      : lbl.includes('10K') ? '10K'
-      : lbl.includes('HALF') || lbl.includes('HM') ? 'HALF'
-      : (r.distance_mi != null && r.distance_mi >= 25) ? 'MARATHON' : null;
+    const key = prBucketForRace(r.distance_label, r.distance_mi);
     if (!key) continue;
     const cur = byDist[key];
     if (!cur || compareTimes(r.finishTime, cur.val) < 0) {
@@ -1581,12 +1631,7 @@ function adaptPRs(races: Races | null, log: LogT | null): PR[] {
   //    didn't fill. Looks for runs whose distance lands in the bucket
   //    and picks the one with the fastest overall finish time.
   const allRuns = (log?.weeks ?? []).flatMap(w => w.runs);
-  const buckets: { key: string; lo: number; hi: number }[] = [
-    { key: '5K',       lo: 3.05, hi: 3.30 },
-    { key: '10K',      lo: 6.10, hi: 6.50 },
-    { key: 'HALF',     lo: 12.9, hi: 13.5 },
-    { key: 'MARATHON', lo: 25.5, hi: 27.0 },
-  ];
+  const buckets = PR_BUCKETS;
   for (const b of buckets) {
     if (byDist[b.key]) continue;
     const cands = allRuns.filter(r => r.distance_mi >= b.lo && r.distance_mi <= b.hi && r.pace);
@@ -1594,8 +1639,7 @@ function adaptPRs(races: Races | null, log: LogT | null): PR[] {
     // Pick by fastest pace × distance (= total time).
     cands.sort((a, c) => paceSec(a.pace!) * a.distance_mi - paceSec(c.pace!) * c.distance_mi);
     const best = cands[0];
-    const canonicalMi = b.key === 'MARATHON' ? 26.2188 : b.key === 'HALF' ? 13.1094 : b.key === '10K' ? 6.21371 : 3.10686;
-    const totalSec = paceSec(best.pace!) * canonicalMi;
+    const totalSec = paceSec(best.pace!) * b.canonicalMi;
     byDist[b.key] = {
       val: hms(Math.round(totalSec)),
       date: `${niceLong(best.date)} · training`,
@@ -1678,9 +1722,14 @@ function adaptPastRaces(races: Races | null): FaffSeed['pastRaces'] {
     meta: `${r.date ? shortDate(r.date) : ''}${r.location ? ' · ' + r.location : ''}`,
     result: r.finishTime,
     dateISO: r.date ?? null,
-    // Finish pace from the date+distance-matched run. Presentational only ·
-    // it never upgrades a provisional time into an authoritative one.
-    pace: r.matchedRun?.pace ?? null,
+    // 2026-08-21 · was `r.matchedRun?.pace` — the WATCH's pace over the
+    // WATCH's GPS distance, printed beside a chip time over the OFFICIAL
+    // distance under one OFFICIAL badge. Big Sur read "3:36:55 · 8:10 /mi"
+    // where 3:36:55 over 26.2 mi is 8:16. `finishPace` derives a curated
+    // finish's pace from that finish, so the row can no longer contradict
+    // itself; a provisional finish still carries its matched run's pace,
+    // which is the same effort and already captioned as provisional.
+    pace: r.finishPace ?? null,
     priority: r.priority ?? null,
     // actual_result can itself be a watch-provisional auto-log · still
     // renders as provisional until a chip time locks it in.
