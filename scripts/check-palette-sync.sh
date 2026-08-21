@@ -71,6 +71,47 @@ WATCH_THEME_V5="$ROOT/legacy/native/Faff/FaffWatch Watch App/WatchThemeV5.swift"
 
 fail=0
 
+# ── code_refs · a consumer is a CALL SITE, not a mention ─────────────────────
+# Both self-expiring branches below ask "does anything still reference these
+# tokens". The naive answer greps the file, which counts COMMENTS — and the one
+# file guaranteed to name a token it does not use is the replacement file whose
+# header explains what it replaces. That is how a gate that expires on its own
+# becomes a gate that never expires. Caught on WatchThemeV5.swift, which held
+# the watch branch open by describing the palette it retires.
+#
+# The first fix was to add it to an exclusion list, which is the same failure
+# one level up: an exclusion list is a place every future file has to be
+# remembered into. So strip line comments and judge the code.
+#
+# Named exclusions that REMAIN are principled: they are the declaration sites,
+# where the tokens legitimately appear in code (FaceKit's `Role` maps every
+# case to a Faff.* value). A file is a consumer or it is home.
+#
+# Caveat: `//` inside a string literal is stripped too. That only makes the
+# scan more conservative, and a token named in a string is not a call site.
+code_refs() { # $1=dir  $2=regex  $3.. = basenames to skip (declaration sites)
+  local dir="$1" re="$2"; shift 2
+  local f base skip s
+  while IFS= read -r -d '' f; do
+    base="${f##*/}"
+    case "$base" in ._*) continue;; esac
+    skip=0
+    for s in "$@"; do [ "$base" = "$s" ] && skip=1; done
+    [ "$skip" -eq 1 ] && continue
+    # NO PIPE HERE, deliberately. `sed ... | grep -q` looks obvious and is
+    # wrong under `set -o pipefail`: grep -q exits on the first match, sed
+    # takes SIGPIPE (141), and pipefail reports the PIPELINE as failed — so a
+    # file that matches is recorded as not matching. It only bites files big
+    # enough that sed is still writing when grep quits, which is why it read
+    # as "documentation no longer counts" (7 files) instead of as a bug:
+    # Faces.swift, the largest consumer at 40KB, was the one that vanished.
+    # A here-string keeps the strip and drops the pipe.
+    local stripped
+    stripped=$(sed -e 's,//.*,,' "$f")
+    if grep -qE "$re" <<<"$stripped"; then printf '%s\n' "$f"; fi
+  done < <(find "$dir" -name '*.swift' -type f -print0 2>/dev/null)
+}
+
 need() { # $1=file  $2=grep -E pattern (case-insensitive)  $3=label
   # -e protects patterns that start with "--" (CSS custom properties).
   if ! grep -qiE -e "$2" "$1"; then
@@ -161,9 +202,8 @@ need "$ROOT/native-v2/project.yml" 'Archivo-Variable\.ttf'        'Archivo regis
 # stops asserting the values and starts requiring the declarations be DELETED.
 # Nobody has to remember to come back and remove it.
 LEGACY_PHONE_TOKEN_RE='Theme\.(green|goal|over|dist|rest|race|intervals|warnText|overText)\b|TweakAccent|Theme\.Zone|Theme\.Phase|FaffEffort'
-legacy_phone_files=$(grep -rlE "$LEGACY_PHONE_TOKEN_RE" "$ROOT/native-v2/Faff/Faff" \
-  --include='*.swift' 2>/dev/null \
-  | grep -v '/\._' | grep -v '/Theme\.swift$' | grep -v '/ThemeV5\.swift$' || true)
+legacy_phone_files=$(code_refs "$ROOT/native-v2/Faff/Faff" "$LEGACY_PHONE_TOKEN_RE" \
+  Theme.swift ThemeV5.swift)
 legacy_phone_count=$(printf '%s' "$legacy_phone_files" | grep -c . || true)
 
 if [ "$legacy_phone_count" -gt 0 ]; then
@@ -256,10 +296,10 @@ need "$WATCH_THEME_V5" 'race: *\[Color\] = \[Color\(hex: 0xFF8847\), Color\(hex:
 # branch inverts: it stops asserting the old values and starts requiring the
 # declarations be DELETED. Nobody has to remember to come back and remove it.
 LEGACY_WATCH_TOKEN_RE='Faff\.(live|goal|race|dist|over|redish|rest|ink|mute|dim|brand|bonus|t2|t3|track|liveWash|goalWash|distWash|grayWash|pauseWash|inkDim|onLive)\b|WatchTheme\.C\b|\bRole\.'
-legacy_watch_files=$(grep -rlE "$LEGACY_WATCH_TOKEN_RE" "$ROOT/legacy/native/Faff/FaffWatch Watch App" \
-  --include='*.swift' 2>/dev/null \
-  | grep -v '/\._' | grep -v '/WatchTheme\.swift$' | grep -v '/FaceKit\.swift$' \
-  | grep -v '/WatchThemeV5\.swift$' || true)
+# WatchThemeV5.swift needs NO exclusion — its only mentions of the legacy
+# tokens are in its header, and code_refs does not count comments.
+legacy_watch_files=$(code_refs "$ROOT/legacy/native/Faff/FaffWatch Watch App" "$LEGACY_WATCH_TOKEN_RE" \
+  WatchTheme.swift FaceKit.swift)
 legacy_watch_count=$(printf '%s' "$legacy_watch_files" | grep -c . || true)
 
 if [ "$legacy_watch_count" -gt 0 ]; then
