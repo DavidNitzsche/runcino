@@ -39,6 +39,8 @@
 	<string>Faff Watch writes completed workouts to Apple Health so your training history stays in one place.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Faff records your route, distance and pace during outdoor runs, and keeps recording while your screen is locked.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Faff uses motion data to measure your distance on a treadmill, where there is no GPS.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Anton-Regular.ttf</string>
