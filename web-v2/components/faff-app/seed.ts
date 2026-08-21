@@ -1323,14 +1323,22 @@ function adaptHealth(
        1, true, !hasSleep, 'target'),
     mk('weight', 'WEIGHT',     'lb',  weightCurrent, undefined,
        [Math.max(120, (weightCurrent || 180) - 10), (weightCurrent || 180) + 10],
-       weightSeries, 'good', 1, false, !hasWeight),
+       // 2026-08-21 · web audit · same unconditional 'good' as the VO₂ tile
+       // below. On a runner with no weight data the tile printed "—" and
+       // "NO DATA YET" with a good-state green dot and a green caption,
+       // which is a verdict on a number nobody has.
+       weightSeries, !hasWeight ? 'neutral' : 'good', 1, false, !hasWeight),
     // P2 #11 (2026-05-30): real VO2 trend over 6 months. health-state ships
     // vo2Series as the sparse Apple Health readings. We sort + clamp into
     // a 30-point chart (downsample if 30+ points, pad-with-last if fewer).
     mk('vo2',    'VO₂ APPLE',  '',    vo2Current,    undefined,
        [Math.max(30, (vo2Current || 50) - 8), (vo2Current || 50) + 6],
        packVo2Series(health?.vo2Series ?? [], vo2Current),
-       'good', 1, false, !hasVo2),
+       // 2026-08-21 · web audit · was a bare 'good'. Every other tile in
+       // this list reads `!hasX ? 'neutral' : ...`; this one graded a
+       // metric it had not read, and the tone paints the trend bar — so
+       // the fabricated series above came out in good-state green.
+       !hasVo2 ? 'neutral' : 'good', 1, false, !hasVo2),
     // 2026-06-01 · Health page Quick Wins · 5 new tiles.
     // Wrist temp · Apple Watch nightly skin temp. Doctrine: rises before
     // HRV drops on early illness/overtraining (Research/00b).
@@ -2159,7 +2167,16 @@ function factsFromRuns(runs: LogRun[], miles: number, elev: number): ActivityDat
  *  most recent reading (or 0) if fewer than 2 points exist. */
 function packVo2Series(series: Array<{ date: string; v: number }>, current: number): number[] {
   const sorted = series.slice().sort((a, b) => a.date.localeCompare(b.date));
-  if (sorted.length === 0) return Array(30).fill(current || 0);
+  // 2026-08-21 · web audit · this returned `Array(30).fill(current || 0)`.
+  // With no readings at all that is THIRTY FABRICATED ZEROS, and the tile
+  // renders a series it is given — so a runner with no VO₂ data got a full
+  // thirty-bar chart under a headline reading "—" and a caption reading
+  // "NO DATA YET". The chart said one thing and the two labels either side
+  // of it said the opposite.
+  //
+  // An empty array is the honest answer and the tile already knows what to
+  // do with it: `series.length === 0 && m.noData` renders "no data yet".
+  if (sorted.length === 0) return [];
   const vals = sorted.map((r) => r.v);
   if (vals.length >= 30) {
     const step = vals.length / 30;

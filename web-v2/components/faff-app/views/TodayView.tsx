@@ -5108,6 +5108,15 @@ function Tiles({ seed, onOpenRace, gates }: {
   const goalProjected: string | undefined = (goalTraj?.projectedSec != null
     ? (formatRaceTime(goalTraj.projectedSec) ?? goal?.projected)
     : goal?.projected) ?? undefined;
+  /**
+   * Is there a projection worth calling one?
+   *
+   * BOTH halves are required and that is the point: a number with no status
+   * behind it is a number the engine could not stand behind, and the chip
+   * below already says so ("Projection pending"). Gating the headline on the
+   * same read is what stops the tile disagreeing with its own footer.
+   */
+  const hasProjection = goalProjected != null && goalStatus != null;
   const ready = !goal ? seed.goalReady : null;
   const [hoverBar, setHoverBar] = useState<number | null>(null);
   const bar = hoverBar != null ? seed.volumeBars[hoverBar] : null;
@@ -5146,14 +5155,42 @@ function Tiles({ seed, onOpenRace, gates }: {
               shared read. When resolveGoalStatus returns null there is
               nothing honest to say, so the tile shows the goal and says the
               projection is pending rather than inventing a tier. */}
+          {/* ── 2026-08-21 · web audit · ONE condition, not three ─────────
+              The value, the label and the sub-line each tested something
+              different, so on a cold-start account the tile read, in four
+              consecutive lines:
+
+                  1:42:00
+                  PROJECTED FINISH
+                  Log a recent race to project
+                  Projection pending
+
+              1:42:00 is the runner's own typed goal. He has zero runs and
+              no race result. The tile called his target a projected finish
+              and then told him twice, underneath, that there is no
+              projection. Same shape as the phone's Today pace band on main
+              (83bc6e50, "a goal, printed as a measurement"), surviving here
+              because the LABEL keyed off `goal.projected` while the VALUE
+              fell through `goalProjected ?? goal.goal` and the STATUS came
+              from `resolveGoalStatus`, which can be null while
+              `goal.projected` is set.
+
+              seed.ts fixed its half of this on 2026-08-17 — "Seeding
+              `projected` with the goal meant a runner with no measured
+              fitness saw their own target echoed back as a projection" —
+              and noted the surfaces "already render it ... they were
+              simply never reached". This is the reach.
+
+              `hasProjection` is now the single test. Absence of a
+              projection is a real state, and the tile says so once. */}
           <div className="cdbig" style={{
-            color: !goal?.projected ? '#9099A8' : (goalStatus?.tone ?? '#9099A8'),
+            color: hasProjection ? (goalStatus?.tone ?? '#9099A8') : '#9099A8',
           }}>
-            {goalProjected ?? goal?.goal ?? '—'}
+            {hasProjection ? goalProjected : (goal?.goal ?? '—')}
           </div>
-          <div className="cdlab">{goal?.projected ? 'PROJECTED FINISH' : (goal ? 'TARGET FINISH' : 'NO GOAL SET')}</div>
-          {goal?.projected && goalStatus
-            ? <div className="cdsub">Goal {goal.goal}</div>
+          <div className="cdlab">{hasProjection ? 'PROJECTED FINISH' : (goal ? 'TARGET FINISH' : 'NO GOAL SET')}</div>
+          {hasProjection
+            ? <div className="cdsub">Goal {goal!.goal}</div>
             : (goal ? <div className="cdsub" style={{ opacity: 0.7 }}>Log a recent race to project</div> : <div className="cdsub" style={{ opacity: 0.7 }}>Pick a goal race ›</div>)}
           <div className="cdbar"><div className="cdfill" style={{
             width: `${goal?.goalPct ?? 0}%`,

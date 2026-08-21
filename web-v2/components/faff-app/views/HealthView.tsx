@@ -608,6 +608,21 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
                 </b>
               </div>
             )}
+            {/* 2026-08-21 · web audit · COLD-5's sibling, unfixed.
+                The baseline line above was suppressed on a cold start
+                because `todayScore` falls back to 0 and rendering that is a
+                measured claim about a body nobody has read. This strip has
+                the SAME two fallbacks and was left rendering, so a runner
+                with no HealthKit data saw, three inches under a ring
+                correctly showing "—":
+
+                    0-DAY READINESS        NOW 0 · AVG 0
+
+                Three zeros and a zero-day window, all asserted. Same guard,
+                same reason. The empty trend chart goes with it: seven bars
+                of a series that does not exist is a picture of nothing. */}
+            {band === 'unknown' || band === 'no-data' || weekScores.length === 0 ? null : (
+            <>
             <div className="hh-wk-head" style={{ marginTop: 18 }}>
               <span className="l">{weekScores.length === 7 ? '7-DAY' : `${weekScores.length}-DAY`} READINESS</span>
               <span className="r">
@@ -634,6 +649,8 @@ export function HealthView({ seed }: { seed: FaffSeed }) {
             <div className="hh-wkdays">
               {weekDays.map((d, i) => <span key={i}>{d}</span>)}
             </div>
+            </>
+            )}
           </div>
 
           {/* Drivers column */}
