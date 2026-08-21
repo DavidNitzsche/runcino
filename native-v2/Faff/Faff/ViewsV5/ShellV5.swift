@@ -277,6 +277,62 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
         GeometryReader { root in
             shell.environment(\.v5TopInset, max(root.safeAreaInsets.top, 0))
         }
+        // TAPPING A NOTIFICATION HAS TO LAND SOMEWHERE.
+        //
+        // `NotificationsAppDelegate` opens a `faff://` URL when a notification
+        // is tapped, and its comment said the app "already listens for these
+        // URLs via .onOpenURL". Nothing did. The scheme is registered, but only
+        // for the Strava OAuth callback, so every deep link the sender emits
+        // was opened and silently dropped: the app came forward on whichever
+        // tab it was already on, and a race-morning wake landed on Block if
+        // that is where you left it.
+        //
+        // Six shapes are sent (lib/notifications/templates.ts). They are mapped
+        // here rather than guessed at the call site, so adding a seventh is one
+        // case in one place.
+        .onOpenURL { url in route(url) }
+    }
+
+    /// `faff://<host>/<path…>` onto a tab, and where the tab has a matching
+    /// pushed screen, onto that too. Anything unrecognised falls to Today
+    /// rather than doing nothing — a notification the runner tapped should
+    /// always open something.
+    private func route(_ url: URL) {
+        guard url.scheme == "faff" else { return }
+        let parts = url.path.split(separator: "/").map(String.init)
+
+        switch url.host {
+        case "races":
+            selected = .races
+            // faff://races/{slug} and faff://races/{slug}/checklist both open
+            // the race. v5 has no separate checklist screen — the gear plan
+            // lives on the race detail, which IS the checklist.
+            if let slug = parts.first, !slug.isEmpty {
+                paths[.races] = [.raceDetail(slug: slug)]
+            } else {
+                paths[.races] = []
+            }
+
+        case "plan":
+            selected = .block
+            paths[.block] = []
+
+        case "settings":
+            // faff://settings/integrations/strava/reconnect — Settings is a
+            // pushed screen off Today, and Strava lives on it.
+            selected = .today
+            paths[.today] = [.settings]
+
+        // faff://health has no v5 screen of its own: readiness is an expansion
+        // on Today, which is where this correctly lands.
+        case "today", "health", .none:
+            selected = .today
+            paths[.today] = []
+
+        default:
+            selected = .today
+            paths[.today] = []
+        }
     }
 
     private var shell: some View {

@@ -172,8 +172,17 @@ struct SettingsV5: View {
         VStack(alignment: .leading, spacing: V5.S.s10) {
             V5SectionLabel(text: "Notifications").padding(.horizontal, V5.S.s4)
             VStack(alignment: .leading, spacing: V5.S.s16) {
-                FaffSwitch(label: "Session reminders",
-                           sub: "One notification the evening before a quality day",
+                // NAMES THE CATEGORY THAT ACTUALLY FIRES.
+                //
+                // This switch is `skip_recovery_enabled`, and that category is
+                // enqueued by `POST /api/today/skip` for 07:15 the next
+                // morning. There is no eve-of-quality notification anywhere in
+                // the scheduler, so "one notification the evening before a
+                // quality day" described something that has never been sent —
+                // a switch for a thing that does not exist. Same correction
+                // the legacy and web surfaces took on 2026-08-21.
+                FaffSwitch(label: "Skipped-run check",
+                           sub: "The morning after a skip \u{00B7} are you good for today",
                            isOn: $sessionReminders)
                 FaffSwitch(label: "Weekly summary",
                            sub: "Sunday evening, after the long run",
