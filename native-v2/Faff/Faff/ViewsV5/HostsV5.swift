@@ -662,9 +662,9 @@ struct ShoesHostV5: View {
         ShoesV5(shoes: shoes,
                 onWear: { id in Task { await patch(id, ["preferred": true]) } },
                 onRetire: { id in Task { await patch(id, ["retired": true]) } },
-                onAddPair: { brand, model, shoeType, mileageCap in
+                onAddPair: { brand, model, shoeType, startMi in
                     Task { await addPair(brand: brand, model: model,
-                                         shoeType: shoeType, mileageCap: mileageCap) }
+                                         shoeType: shoeType, startMi: startMi) }
                 },
                 onBack: { dismiss() })
             .task { await load() }
@@ -683,9 +683,13 @@ struct ShoesHostV5: View {
     /// The cap is nil unless the runner typed one. The retirement band is the
     /// engine's to resolve from the shoe TYPE — the README is explicit that
     /// those figures are a backend concern and must not be hardcoded here.
-    private func addPair(brand: String, model: String, shoeType: String, mileageCap: Double?) async {
+    /// `startMi` is miles already on the shoe when it joins the rotation, which
+    /// the API keeps as `baseline_mi` and adds to everything logged after. NOT
+    /// a retirement cap — screen 21a shows no retirement figure, because that
+    /// band belongs to the engine and is gated against Research/17.
+    private func addPair(brand: String, model: String, shoeType: String, startMi: Double) async {
         _ = try? await API.createShoeV5(brand: brand, model: model,
-                                        shoeType: shoeType, mileageCap: mileageCap)
+                                        shoeType: shoeType, baselineMi: startMi)
         await load()
     }
 }

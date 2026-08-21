@@ -95,7 +95,10 @@ struct ShoesV5: View {
     /// mileage-cap override — nil unless the runner typed one. The caller
     /// (`ShoesHostV5`) does the actual `POST /api/shoe`; this file only
     /// collects the answers.
-    let onAddPair: (_ brand: String, _ model: String, _ shoeType: String, _ mileageCapOverride: Double?) -> Void
+    /// Screen 21a's four fields. The last is STARTING MILEAGE — miles already
+    /// on the shoe before faff saw it — not a retirement override. 21a shows
+    /// no retirement figure at all; that band is the engine's.
+    let onAddPair: (_ brand: String, _ model: String, _ shoeType: String, _ startMi: Double) -> Void
     var onBack: (() -> Void)? = nil
 
     /// Single-expansion accordion, same as the prototype's `shoeDetail`
@@ -104,10 +107,6 @@ struct ShoesV5: View {
 
     // "Add a pair" form state.
     @State private var addingPair = false
-    @State private var newBrand = ""
-    @State private var newModel = ""
-    @State private var newShoeType: ShoeTypeV5 = .dailyTrainer
-    @State private var newCapOverride = ""
 
     private var inRotation: [Shoe] { shoes.filter { $0.retired != true } }
     private var retired: [Shoe] { shoes.filter { $0.retired == true } }
@@ -128,17 +127,8 @@ struct ShoesV5: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: V5.S.s12) {
-                        FaffButton(addingPair ? "Cancel" : "Add a pair",
-                                   variant: .ghost, size: .md, full: true) {
-                            withAnimation(V5.Motion.expand) {
-                                addingPair.toggle()
-                                if !addingPair { resetAddPairForm() }
-                            }
-                        }
-                        if addingPair {
-                            addPairForm
-                        }
+                    FaffButton("Add a pair", variant: .ghost, size: .md, full: true) {
+                        withAnimation(V5.Motion.sheet) { addingPair = true }
                     }
 
                     if !retired.isEmpty {
@@ -155,6 +145,15 @@ struct ShoesV5: View {
             }
         }
         .background(V5.surfacePage)
+        .overlay {
+            V5SheetHost(isPresented: $addingPair, tall: true) {
+                AddShoeV5(onCancel: { withAnimation(V5.Motion.sheet) { addingPair = false } },
+                          onAdd: { brand, model, type, startMi in
+                              onAddPair(brand, model, type, startMi)
+                              withAnimation(V5.Motion.sheet) { addingPair = false }
+                          })
+            }
+        }
         .scrollIndicators(.hidden)
     }
 
@@ -213,46 +212,14 @@ struct ShoesV5: View {
     }
 
     // MARK: Add a pair
+    //
+    // Screen 21a is a TALL SHEET, not an expand-in-place tile: it is a form
+    // with its own header and its own primary action, and the handoff draws
+    // it pinned near the top of the screen with the body scrolling inside.
+    // The old inline tile also asked for a "Retirement override" — the 0821
+    // spec deliberately shows no band or retirement number here at all,
+    // because that figure is the engine's and is CI-gated against Research/17.
 
-    private var addPairForm: some View {
-        Tile {
-            FaffInput(label: "Brand", text: $newBrand, placeholder: "Saucony")
-            FaffInput(label: "Model", text: $newModel, placeholder: "Endorphin Speed 4")
-            FaffSelect(label: "Type",
-                       value: newShoeType.label,
-                       options: ShoeTypeV5.allCases.map(\.label),
-                       onChange: { picked in
-                           newShoeType = ShoeTypeV5.matching(label: picked) ?? newShoeType
-                       })
-            FaffInput(label: "Retirement override",
-                      text: $newCapOverride,
-                      placeholder: "Optional",
-                      helper: "Leave blank and \(newShoeType.label)'s own retirement band applies.",
-                      unit: "mi",
-                      keyboard: .numberPad)
-            FaffButton("Save", variant: .primary, size: .md, full: true, enabled: canSaveNewPair) {
-                let trimmedBrand = newBrand.trimmingCharacters(in: .whitespaces)
-                let trimmedModel = newModel.trimmingCharacters(in: .whitespaces)
-                let cap = Double(newCapOverride)
-                onAddPair(trimmedBrand, trimmedModel, newShoeType.rawValue,
-                          (cap != nil && cap! > 0) ? cap : nil)
-                withAnimation(V5.Motion.expand) { addingPair = false }
-                resetAddPairForm()
-            }
-        }
-    }
-
-    private var canSaveNewPair: Bool {
-        !newBrand.trimmingCharacters(in: .whitespaces).isEmpty
-            && !newModel.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    private func resetAddPairForm() {
-        newBrand = ""
-        newModel = ""
-        newShoeType = .dailyTrainer
-        newCapOverride = ""
-    }
 }
 
 // MARK: - Preview

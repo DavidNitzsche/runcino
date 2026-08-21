@@ -821,10 +821,42 @@ struct LogEntry: View {
 struct V5SheetHost<Sheet: View>: View {
     @Binding var isPresented: Bool
     var title: String? = nil
+    /// A sheet whose content is a FORM rather than a short list.
+    ///
+    /// The default sheet sizes itself to its content with no ceiling, which is
+    /// right for four rows and wrong for anything taller: add-a-race grew past
+    /// the notch at the top and under the tab bar at the bottom, and the 0821
+    /// handoff warns that the another-race trade-off runs to six sentences and
+    /// "the sheet must hold its longest realistic string without scrolling".
+    ///
+    /// Tall pins the sheet a proportional inset below the top of the screen and
+    /// lets it fill the rest — the shape screen 21a is drawn as. The CONTENT
+    /// owns its own scroll region, because the design's sheet is a flex column
+    /// with a fixed header, a scrolling middle and a pinned action; a scroll
+    /// wrapped around the whole thing would take the action with it.
+    var tall: Bool = false
+    /// 120 of the design's 844pt frame, as a fraction, so the sheet keeps its
+    /// proportion on every device rather than a fixed gap that swallows a
+    /// small screen.
+    private var topInsetFraction: CGFloat { 120.0 / 844.0 }
     @ViewBuilder var sheet: () -> Sheet
+
+    /// Set from the ZStack's own geometry, so the inset is proportional on
+    /// every device rather than a fixed gap that swallows a small screen.
+    @State private var tallHeight: CGFloat? = nil
 
     var body: some View {
         ZStack(alignment: .bottom) {
+            if tall {
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { tallHeight = geo.size.height * (1 - topInsetFraction) }
+                        .onChange(of: geo.size.height) { _, h in
+                            tallHeight = h * (1 - topInsetFraction)
+                        }
+                }
+                .allowsHitTesting(false)
+            }
             if isPresented {
                 Color.black.opacity(0.72)
                     .ignoresSafeArea()
@@ -843,6 +875,7 @@ struct V5SheetHost<Sheet: View>: View {
                     sheet()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxHeight: tall ? tallHeight : nil, alignment: .top)
                 .padding(.top, 22)
                 .padding(.horizontal, V5.S.tilePad)
                 .padding(.bottom, 34)

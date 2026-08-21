@@ -523,7 +523,11 @@ enum API {
     /// runner typed an explicit override; omitted (nil), the server's own
     /// `resolveShoeCapMi` picks the category default. See the doc comment on
     /// `ShoesV5.swift` for why no default number is computed here.
-    static func createShoeV5(brand: String, model: String, shoeType: String, mileageCap: Double? = nil) async throws {
+    /// `baselineMi` is mileage already on the shoe before faff saw it. The API
+    /// stores it as `baseline_mi` and adds it to every mile logged afterwards,
+    /// so a pair joining the rotation half-worn reads honestly from day one.
+    static func createShoeV5(brand: String, model: String, shoeType: String,
+                             mileageCap: Double? = nil, baselineMi: Double? = nil) async throws {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/shoe"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -533,6 +537,7 @@ enum API {
             "shoe_type": shoeType,
         ]
         if let mileageCap { body["mileage_cap"] = mileageCap }
+        if let baselineMi, baselineMi > 0 { body["baseline_mi"] = baselineMi }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
         guard (200..<300).contains(http.statusCode) else {
