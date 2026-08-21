@@ -382,7 +382,54 @@ export async function loadVdotInputs(
     splits: unknown;
     phases: unknown;
   }>(
-    `SELECT sa.id::text AS id,
+    `-- 2026-08-21 perf · WORK-PHASE aggregation, once.
+     -- This was two correlated subqueries per run row, each carrying its own
+     -- correlated MAX(ci2.id) - so coach_intents was scanned FOUR times for
+     -- every candidate run, and the runner's own timezone makes
+     -- (ts AT TIME ZONE $4)::date non-indexable, so every one of those was a
+     -- full scan. Cost was O(runs x coach_intents): measured on a clone of
+     -- prod, 148 ms at today's 263 intents and 13,958 ms at 10,195, with 3.1
+     -- MILLION buffer hits. An index does NOT save it - every row belongs to
+     -- the same runner with the same reason, so the index scan still walks
+     -- them all (measured: 14,204 -> 14,307 ms).
+     --
+     -- Same answer, computed once per date instead of once per run row.
+     -- Byte-identical result sets verified at both 263 and 10,195 intents:
+     -- 148 -> 72 ms today, 13,958 -> 55 ms at 10,195.
+     --
+     -- MATERIALIZED is load bearing. Inlined, the planner re-runs the
+     -- aggregate once per run row and the win drops to nothing (490 ms).
+     WITH wc AS MATERIALIZED (
+       SELECT DISTINCT ON ((ci.ts AT TIME ZONE $4::text)::date)
+              (ci.ts AT TIME ZONE $4::text)::date AS d, ci.value
+         FROM coach_intents ci
+        WHERE COALESCE(ci.user_uuid, ci.user_id) = $1
+          AND ci.reason = 'watch_completion'
+          -- $2/$3 are TEXT day-keys, compared as text in the outer WHERE.
+          -- Cast through ::text first: a bare $2::date makes Postgres infer
+          -- the PARAMETER as date, and the outer comparison then fails with
+          -- "operator does not exist: text >= date" - which this call site
+          -- swallows, returning an empty evidence list instead of an error.
+          AND (ci.ts AT TIME ZONE $4::text)::date >= $2::text::date
+          AND (ci.ts AT TIME ZONE $4::text)::date <  $3::text::date
+        ORDER BY (ci.ts AT TIME ZONE $4::text)::date, ci.id DESC
+     ), wc_work AS MATERIALIZED (
+       SELECT wc.d,
+              SUM(COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi')::numeric) AS work_mi,
+              SUM(COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi')::numeric
+                  * (phase->>'actualPaceSPerMi')::numeric) AS work_seconds
+         FROM wc,
+              jsonb_array_elements(
+                CASE jsonb_typeof(wc.value::jsonb)
+                  WHEN 'object' THEN wc.value::jsonb->'phases'
+                  ELSE '[]'::jsonb END) AS phase
+        WHERE phase->>'type' = 'work'
+          AND (phase->>'actualPaceSPerMi')::numeric > 0
+          AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi') IS NOT NULL
+          AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi')::numeric > 0
+        GROUP BY wc.d
+     )
+     SELECT sa.id::text AS id,
             ${runDaySql('sa')} AS date,
             ${runWorkoutTypeSql('sa')} AS workout_type,
             ${runDistanceMiSql('sa')} AS distance_mi,
@@ -408,42 +455,8 @@ export async function loadVdotInputs(
             -- prescription values (reps are distance-anchored on the
             -- wire); seconds = Σ(dist × actual pace). Latest completion
             -- per date wins (re-syncs override).
-            (SELECT SUM(COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi')::numeric)
-               FROM coach_intents ci,
-                    jsonb_array_elements(
-                      CASE jsonb_typeof(ci.value::jsonb)
-                        WHEN 'object' THEN ci.value::jsonb->'phases'
-                        ELSE '[]'::jsonb END) AS phase
-              WHERE COALESCE(ci.user_uuid, ci.user_id) = sa.user_uuid
-                AND ci.reason = 'watch_completion'
-                AND (ci.ts AT TIME ZONE $4::text)::date = ${runDaySql('sa')}::date
-                AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
-                              WHERE COALESCE(ci2.user_uuid, ci2.user_id) = sa.user_uuid
-                                AND ci2.reason = 'watch_completion'
-                                AND (ci2.ts AT TIME ZONE $4::text)::date = (ci.ts AT TIME ZONE $4::text)::date)
-                AND phase->>'type' = 'work'
-                AND (phase->>'actualPaceSPerMi')::numeric > 0
-                AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi') IS NOT NULL
-                AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi')::numeric > 0
-            ) AS work_mi,
-            (SELECT SUM(COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi')::numeric * (phase->>'actualPaceSPerMi')::numeric)
-               FROM coach_intents ci,
-                    jsonb_array_elements(
-                      CASE jsonb_typeof(ci.value::jsonb)
-                        WHEN 'object' THEN ci.value::jsonb->'phases'
-                        ELSE '[]'::jsonb END) AS phase
-              WHERE COALESCE(ci.user_uuid, ci.user_id) = sa.user_uuid
-                AND ci.reason = 'watch_completion'
-                AND (ci.ts AT TIME ZONE $4::text)::date = ${runDaySql('sa')}::date
-                AND ci.id = (SELECT MAX(ci2.id) FROM coach_intents ci2
-                              WHERE COALESCE(ci2.user_uuid, ci2.user_id) = sa.user_uuid
-                                AND ci2.reason = 'watch_completion'
-                                AND (ci2.ts AT TIME ZONE $4::text)::date = (ci.ts AT TIME ZONE $4::text)::date)
-                AND phase->>'type' = 'work'
-                AND (phase->>'actualPaceSPerMi')::numeric > 0
-                AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi') IS NOT NULL
-                AND COALESCE(phase->>'actualDistanceMi', phase->>'distanceMi')::numeric > 0
-            ) AS work_seconds,
+            ww.work_mi AS work_mi,
+            ww.work_seconds AS work_seconds,
             -- 2026-06-11 · the prescribed zone for this run's date (if it
             -- matched a plan quality day). Drives the zone-aware VDOT read so a
             -- threshold/marathon-pace effort reads by zone, not as a race.
@@ -457,6 +470,7 @@ export async function loadVdotInputs(
               ORDER BY pw.type
               LIMIT 1) AS plan_type
        FROM runs sa
+       LEFT JOIN wc_work ww ON ww.d = ${runDaySql('sa')}::date
       WHERE sa.user_uuid = $1
         AND ${runNotMergedSql('sa')}
         AND ${runDaySql('sa')} >= $2
