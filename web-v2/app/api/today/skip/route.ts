@@ -145,11 +145,16 @@ async function dayHoldsRace(userId: string, dateIso: string): Promise<boolean> {
  *
  *  2026-08-21 · watch/push audit · TWO defects, one message:
  *
- *  1. The query filtered on `plan_workouts.user_uuid`, which is NULL on every
- *     row inserted since the multi-user cutover — readers must reach the
- *     runner by joining training_plans (the same correction the weekly
- *     check-in took on 2026-08-17). So the lookup matched nothing for
- *     essentially every runner and always fell through to the fallback.
+ *  1. The query read `plan_workouts` by user and date with a bare LIMIT 1 and
+ *     no plan filter. A runner carries MORE THAN ONE plan — David has rows
+ *     from a stale plan and the active one on the very same dates (3 mi vs
+ *     5 mi on 2026-08-23) — so an unordered LIMIT 1 picked an arbitrary plan's
+ *     row, and could quote a session from a plan that is no longer his.
+ *
+ *     (An earlier draft of this comment said `plan_workouts.user_uuid` was
+ *     NULL since the multi-user cutover. It is not: all 4389 rows carry it.
+ *     The join is still the right fix — it is what pins the read to the
+ *     ACTIVE plan — but the reason is plan ambiguity, not a null column.)
  *  2. That fallback was a hardcoded 'easy' / '5.0mi'. The push therefore told
  *     the runner "Today is easy 5.0mi" on a rest day, on an interval day, and
  *     on a 16-mile long-run day alike — a prescription the plan never made,
