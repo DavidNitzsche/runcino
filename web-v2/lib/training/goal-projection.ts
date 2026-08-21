@@ -1452,6 +1452,28 @@ async function detectRecentRaceDrift(
     [userUuid, today, cutoff],
   ).catch(() => ({ rows: [] }))).rows;
 
+  // 2026-08-21 · race-data source-of-truth re-audit · TWO ABSENT FILTERS, one
+  // of them absent ON PURPOSE. Recorded here so the next audit does not
+  // "fix" the deliberate one.
+  //
+  // · `actual_result.provisional` · NOT filtered, and correct. This detector
+  //   only fires DOWNWARD (`slowdownPct` has to clear `mediumAt` before it
+  //   returns anything), and `lib/race/auto-result.ts` §"FITNESS doctrine"
+  //   establishes that both residual errors in a provisional watch time bias
+  //   it FASTER. A provisional row therefore UNDERSTATES a slowdown, so
+  //   admitting it is the conservative direction — the same reasoning that
+  //   admits provisional times to `detectFitnessRegression` and blocks them
+  //   from the upward re-anchor.
+  //
+  // · REPRESENTATIVENESS · genuinely absent, unlike the two re-anchor
+  //   detectors in `lib/plan/adapt.ts`, which call
+  //   `assessRaceRepresentativeness` before moving anything. A B race run in
+  //   heat or on a hard course can raise a `strong` signal here on a
+  //   shortfall that was the day rather than fitness. Not closed in this pass:
+  //   whether a drift signal should be authority-weighted or authority-gated
+  //   is a threshold decision with two defensible answers, and picking one
+  //   silently is how unbacked models get built.
+  //
   // Resolve finish seconds (finishS, else parse the HMS string), admit the
   // spans doctrine can normalise, and rank by VDOT — all in JS, so a string
   // finish can never throw and the admission rule stays readable and testable.

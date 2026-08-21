@@ -125,12 +125,24 @@ export function courseChangedFactCard(raceName: string): FactChoiceSpec {
 /** The race happened, but its finish time is a Strava/watch match, not a
  *  curated chip time (CLAUDE.md race-data rule 3 — the engine's own label
  *  is already "Training effort · race to lock in"; PROVISIONAL_FINISH_LABEL
- *  in lib/coach/races-state.ts). Not authoritative for fitness until locked. */
+ *  in lib/coach/races-state.ts).
+ *
+ *  2026-08-21 · race-data re-audit · the copy used to read "Until it does, it
+ *  doesn't count as fitness evidence", and the engine says the opposite in
+ *  writing. `lib/race/auto-result.ts` §"FITNESS doctrine" lists exactly where
+ *  the provisional flag binds: the UPWARD re-anchor is BLOCKED, but
+ *  `bestRecentVdot` and `runPostResultChain` are "ADMITTED, unchanged", and
+ *  `effort-authority.ts` states that at selection an unconfirmed result "is
+ *  simply the best evidence the runner has". The card was also rendering
+ *  directly above the evidence list on the same screen, which was listing that
+ *  race AS evidence. Two things on one screen cannot disagree about whether a
+ *  race counts, and the true one is that it counts — it just cannot move the
+ *  paces upward until it is locked. */
 export function chipLockFactCard(raceName: string): FactChoiceSpec {
   return {
     kind: 'fact',
     trigger: 'chip_lock',
-    question: `${raceName}'s time hasn't locked yet. Until it does, it doesn't count as fitness evidence.`,
+    question: `${raceName}'s time is still the watch's. It counts, but it can't move your paces up until you lock the chip time in.`,
     answers: [
       { id: 'confirm', label: 'Confirm the time', action: 'confirm', targetSec: null },
       { id: 'leave', label: 'Leave it provisional', action: 'leave', targetSec: null },

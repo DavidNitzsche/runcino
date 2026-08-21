@@ -375,6 +375,41 @@ export interface ResolvedCourseElevation {
   algorithmVersion: string;
 }
 
+/**
+ * Is this resolved elevation trustworthy enough to MOVE A NUMBER?
+ *
+ * 2026-08-21 · race-data source-of-truth re-audit. `confidence` was computed,
+ * returned, unit-tested — and read by nothing. Every consumer took
+ * `elevationGainFt` bare.
+ *
+ * That was survivable while the resolver only handed out measured values it
+ * trusted, but it does not: the `|| !hasCurated` arm of `resolveCourseElevation`
+ * deliberately lets a LOW-confidence trace through when there is no curated
+ * `course_library` row to fall back on — the common case for a race a runner
+ * added themselves. "Low" is not a shade of doubt here, it is self-refuting:
+ * `assessGeometryConfidence` degrades to it for "only N elevation samples per
+ * mile — too coarse for gross gain" and "N m gap between consecutive points —
+ * signal dropout". A number derived from a trace that says that about itself
+ * should still be SHOWN (it beats nothing, which is why the resolver returns
+ * it), but it must not silently become seconds in a projection or a detractor
+ * that decides whether a race re-anchors fitness.
+ *
+ * So the precedence rule stays where it is and the gate lives here, at the
+ * question consumers actually have. This is CLAUDE.md's per-finding context
+ * filter rule: the resolver's precedence describes what the best available
+ * value IS; each consumer still has to ask whether that value is good enough
+ * for what IT does with it.
+ *
+ * Display paths (the race-detail elevation line, the course-changed footnote)
+ * deliberately do NOT call this — they are reporting the measurement, not
+ * arguing from it.
+ */
+export function elevationIsTrustedForAdjustment(
+  resolved: Pick<ResolvedCourseElevation, 'confidence'>,
+): boolean {
+  return resolved.confidence === 'high' || resolved.confidence === 'medium';
+}
+
 export interface ResolveCourseElevationInput {
   lib?: {
     elevation_gain_ft?: number | string | null;

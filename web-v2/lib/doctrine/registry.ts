@@ -5671,8 +5671,26 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       // WIRED · the grade must reach the ranking, and must not reach the value.
       const src = sourceOf('web-v2/lib/training/vdot.ts');
-      if (!/authority: selectionAuthority\(r\.priority\)|const authority = selectionAuthority\(r\.priority\);/.test(src)) {
+      if (!/authority: selectionAuthority\(r\.priority\)|const (declared)?[Aa]uthority = selectionAuthority\(r\.priority\);/.test(src)) {
         throw new Error('bestRecentVdot no longer grades its race candidates');
+      }
+      // 2026-08-21 · race-data re-audit · a RUNNER-REPORTED tier
+      // (`actual_result.authority_tier`, written by POST /api/v5/race-authority)
+      // may now cap that grading. Doctrine's table still sets the base, so the
+      // override has to be DOWNWARD ONLY: the runner knows things the engine
+      // cannot (heat, illness, paced a friend) and so may say a result proves
+      // LESS than its priority implies, but "this parkrun was actually an A
+      // race" is a claim about effort that doctrine's own table already
+      // answers. A Math.max here — or a bare assignment — would turn the
+      // question into the "make me faster" button its own route header
+      // forbids, and would let a runner promote a C race above the
+      // representative floor by tapping a button.
+      if (/const declaredAuthority = selectionAuthority\(r\.priority\);/.test(src)
+          && !/Math\.min\(declaredAuthority,/.test(src)) {
+        throw new Error(
+          'the runner-reported authority tier is no longer clamped downward against the ' +
+            "doctrine grading · a runner's answer may lower what a race proves, never raise it",
+        );
       }
       if (!/\(\(authorityDemoted\(b\) \? 0 : 1\) - \(authorityDemoted\(a\) \? 0 : 1\)\)/.test(src)) {
         throw new Error(

@@ -30,7 +30,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { loadRacesState, PROVISIONAL_FINISH_LABEL, type RaceRow } from '@/lib/coach/races-state';
+import {
+  loadRacesState, PROVISIONAL_FINISH_LABEL, WATCH_PROVISIONAL_FINISH_LABEL, type RaceRow,
+} from '@/lib/coach/races-state';
 import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { parseRaceTime, formatRaceTime, predictRaceTime } from '@/lib/training/vdot';
@@ -51,7 +53,20 @@ export const dynamic = 'force-dynamic';
 
 interface V5NumberOut { text: string | null; modelled: boolean; }
 interface V5StatOut { label: string; value: V5NumberOut; tone: string | null; }
-interface V5RowOut { id: string; label: string; sub: string | null; value: V5NumberOut | null; action: string | null; }
+/**
+ * A list row. `tone` inks the VALUE — 'attention' is the design's word for
+ * "a decision waiting", which is exactly what an unconfirmed finish is.
+ *
+ * 2026-08-21 · race-data re-audit · the field was absent, so the phone (whose
+ * `V5Row` has always decoded `tone` and defaulted it to neutral) drew the
+ * provisional caption in quiet grey. The `~` said "modelled" and the colour
+ * said "settled".
+ */
+interface V5RowOut {
+  id: string; label: string; sub: string | null;
+  value: V5NumberOut | null; action: string | null;
+  tone?: 'attention' | 'signal' | 'fault' | null;
+}
 
 const num = (text: string | null, modelled: boolean): V5NumberOut => ({ text, modelled });
 
@@ -165,9 +180,29 @@ async function detectReturningFromInjury(userId: string): Promise<boolean> {
 
 // ─── evidence + schedule ────────────────────────────────────────────────────
 
-function raceRowAuthority(priority: string | null, hasResult: boolean): AuthorityTier | null {
+/**
+ * The tier to publish for a schedule row.
+ *
+ * 2026-08-21 · race-data re-audit · this used to grade from the declared A/B/C
+ * priority ALONE, so a race the runner had explicitly reported as compromised
+ * or unrepresentative still shipped `authority: 'representative'` to the phone
+ * for as long as it was an A or B race. The runner's own answer
+ * (`actual_result.authority_tier`) is the more specific fact and it wins.
+ *
+ * DOWNWARD ONLY, matching `bestRecentVdot`'s cap and `POST
+ * /api/v5/race-authority`'s own stated doctrine: the runner can tell us their
+ * A race did not count, not that their parkrun did.
+ */
+function raceRowAuthority(
+  priority: string | null,
+  hasResult: boolean,
+  reported: AuthorityTier | null,
+): AuthorityTier | null {
   if (!hasResult) return null; // "once known" — an upcoming race has nothing to grade yet
-  return authorityTier(selectionAuthority(priority));
+  const declared = authorityTier(selectionAuthority(priority));
+  if (!reported || reported === 'representative') return declared;
+  if (declared === 'unrepresentative') return declared; // already at the floor
+  return reported;
 }
 
 
@@ -323,12 +358,26 @@ export async function GET(req: NextRequest) {
           .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
           .slice(0, 8)
           .map((c) => {
-            const tier = authorityTier(selectionAuthority(c.priority));
+            // Same downward-only cap the schedule list applies, so the two
+            // lists in this one response cannot caption the same race
+            // "Counts fully" and "compromised".
+            const tier = raceRowAuthority(c.priority, true, c.runner_authority_tier)!;
             const subParts = [c.date, c.priority ? `${c.priority} race` : null].filter(Boolean) as string[];
-            if (c.provisional) subParts.push(PROVISIONAL_FINISH_LABEL);
+            // The two provisional rungs have different captions, and the
+            // schedule list in this same response already prints the right
+            // one. Printing "Training effort · race to lock in" over an
+            // auto-logged WATCH time said the wrong thing about where the
+            // number came from — the race WAS run, the chip time just isn't
+            // in yet.
+            if (c.provisional) {
+              subParts.push(c.provisionalSource === 'watch'
+                ? WATCH_PROVISIONAL_FINISH_LABEL
+                : PROVISIONAL_FINISH_LABEL);
+            }
             else subParts.push(tier === 'representative' ? 'Counts fully' : tier === 'compromised' ? 'Counts, reduced weight' : 'Barely counts');
             return {
               id: c.slug, label: c.name, sub: subParts.join(' · '),
+              tone: c.provisional ? 'attention' as const : null,
               // RULE ONE. `false` here contradicted the schedule list further
               // down this same response, which already passes
               // `r.finishProvisional` — so one payload showed the same race's
@@ -358,7 +407,13 @@ export async function GET(req: NextRequest) {
       const detail: V5RowOut[] = [];
       if (r.location) detail.push({ id: 'location', label: 'Location', sub: null, value: num(r.location, false), action: null });
       if (r.gun_time) detail.push({ id: 'gun', label: 'Gun time', sub: null, value: num(r.gun_time, false), action: null });
-      if (r.finishProvisionalLabel) detail.push({ id: 'provisional', label: 'Status', sub: null, value: num(r.finishProvisionalLabel, false), action: null });
+      if (r.finishProvisionalLabel) {
+        detail.push({
+          id: 'provisional', label: 'Status', sub: null,
+          value: num(r.finishProvisionalLabel, false), action: null,
+          tone: 'attention',
+        });
+      }
       return {
         id: r.slug, slug: r.slug, name: r.name,
         dateLine: raceDateWords(r.date), distance: r.distance_label ?? '',
@@ -366,7 +421,7 @@ export async function GET(req: NextRequest) {
         isPast: r.is_past,
         result: hasResult ? num(r.finishTime, r.finishProvisional) : null,
         detail,
-        authority: raceRowAuthority(r.priority, hasResult),
+        authority: raceRowAuthority(r.priority, hasResult, r.runnerAuthorityTier),
       };
     });
 

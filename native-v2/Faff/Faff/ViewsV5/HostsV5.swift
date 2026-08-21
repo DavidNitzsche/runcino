@@ -507,12 +507,17 @@ struct RacesHostV5: View {
     @StateObject private var surface = V5Surfaces.races()
     @Binding var path: [V5Route]
 
+    /// What the last card answer came back as, when it came back as anything
+    /// other than "done". Cleared on the next answer and on a successful one.
+    @State private var answerOutcome: V5WriteOutcome?
+
     var body: some View {
         ZStack {
             Group {
                 if let model = surface.model {
                     RacesV5(model: model,
-                            onAnswer: { a in Task { await send(a, model) } },
+                            answerOutcome: answerOutcome,
+                            onAnswer: { a in Task { await send(a) } },
                             onEvidenceTap: { _ in },
                             onOpenRace: { row in path.append(.raceDetail(slug: row.slug)) },
                             onAddRace: { path.append(.addRace) })
@@ -560,10 +565,61 @@ struct RacesHostV5: View {
     /// The card's own answers, sent back verbatim. The client never decides
     /// what an answer means — `action` is the engine's vocabulary and the
     /// engine applies it.
-    private func send(_ a: V5CardAnswer, _ model: V5Races) async {
-        let slug = a.action == "choose_race" ? a.id : model.schedule.first(where: { !$0.isPast })?.slug
-        _ = try? await API.answerGoalCard(action: a.action, targetSec: a.targetSec, raceSlug: slug)
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// A REFUSAL THROWN AWAY IS A BUTTON THAT DOES NOTHING
+    ///
+    /// This used to be `_ = try? await …`. The route answers a bad request
+    /// with a 400 and a sentence, `V5Write` already carries that sentence
+    /// back, and both were dropped on the floor — so the runner tapped, the
+    /// surface reloaded, the same card came back, and nothing on the screen
+    /// said why. See `V5WriteOutcome`: the engine declining is an answer and
+    /// draws `Alert`; a write we could not complete draws `ErrorNote`.
+    @MainActor
+    private func send(_ a: V5CardAnswer) async {
+        answerOutcome = nil
+        let result = (try? await API.answerGoalCard(action: a.action,
+                                                    targetSec: a.targetSec,
+                                                    raceSlug: raceSlug(for: a))) ?? .failed
+        switch result {
+        case .ok:
+            answerOutcome = nil
+        case .refused(let reason):
+            answerOutcome = .refused(reason)
+        case .failed:
+            answerOutcome = .failed("That answer did not reach us. Nothing changed, and the card is still here to answer.")
+        }
         await surface.load()
+    }
+
+    /// Which race an answer is ABOUT, which is not the same race for every
+    /// answer.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// THE CARD ASKED ABOUT ONE RACE AND WE ANSWERED ABOUT ANOTHER
+    ///
+    /// This used to send the first UPCOMING race for every action except
+    /// `choose_race`. But the chip-lock card is raised about the most recent
+    /// PAST race (`detectChipLock` filters `racesState.past`), so "Confirm
+    /// the time" arrived naming a race with nothing provisional on it and
+    /// `POST /api/v5/goal-answer` refused it `not_provisional` every single
+    /// time. The route already had the right fallback — `raceSlug ?? <most
+    /// recent past race>` — and it could never fire, because the phone always
+    /// supplied a slug.
+    ///
+    ///   choose_race     · the race that stays the goal. Only the card knows
+    ///                     which, and it carries it as the answer's own id.
+    ///   confirm / leave · the chip-lock race. Nil on purpose: the route
+    ///                     resolves it from the same query `detectChipLock`
+    ///                     used, and the phone does not hold the race
+    ///                     calendar — `V5RaceRow` has no recency at all, only
+    ///                     `isPast`, so any guess here would be a guess.
+    ///   everything else · `hold`, `take`, `not_now`, `acknowledge`,
+    ///                     `repace` — the route reads its own `nextA` and
+    ///                     ignores whatever we send. Sending the upcoming
+    ///                     slug only made it look load-bearing.
+    private func raceSlug(for a: V5CardAnswer) -> String? {
+        a.action == "choose_race" ? a.id : nil
     }
 }
 
@@ -573,6 +629,10 @@ struct RaceDetailHostV5: View {
     let slug: String
     @Environment(\.dismiss) private var dismiss
     @StateObject private var surface: V5Surface<V5RaceDetail>
+
+    /// What the last result submission came back as. Same rule as the Races
+    /// card: a declined write is an answer, not an outage.
+    @State private var submitOutcome: V5WriteOutcome?
 
     init(slug: String) {
         self.slug = slug
@@ -584,11 +644,9 @@ struct RaceDetailHostV5: View {
             if let d = surface.model {
                 RaceDetailV5(raceDetail: d,
                              onSubmitResult: { finish, hr in
-                                 _ = await API.postRaceResult(slug: slug,
-                                                              finishDisplay: finish,
-                                                              avgHrBpm: hr)
-                                 await surface.load()
+                                 await submitResult(finish: finish, hr: hr)
                              },
+                             submitOutcome: submitOutcome,
                              onBack: { dismiss() })
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
@@ -612,6 +670,26 @@ struct RaceDetailHostV5: View {
         }
         .task { await surface.load() }
         .navigationBarBackButtonHidden(true)
+    }
+
+    /// The result write, with what came back kept.
+    ///
+    /// `API.postRaceResult` answers `Bool`, which cannot tell "that race is
+    /// not on your schedule any more" from a dropped connection — so this
+    /// calls `postRaceResultOutcome` instead and lets the screen draw the
+    /// right one of the two.
+    @MainActor
+    private func submitResult(finish: String, hr: Int?) async {
+        submitOutcome = nil
+        switch await API.postRaceResultOutcome(slug: slug, finishDisplay: finish, avgHrBpm: hr) {
+        case .ok:
+            submitOutcome = nil
+        case .refused(let reason):
+            submitOutcome = .refused(reason)
+        case .failed:
+            submitOutcome = .failed("That time did not save. Nothing was logged, so it is safe to enter it again.")
+        }
+        await surface.load()
     }
 }
 

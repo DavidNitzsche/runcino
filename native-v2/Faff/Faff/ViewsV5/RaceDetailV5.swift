@@ -59,6 +59,11 @@ struct RaceDetailV5: View {
     /// is what actually removes this section — `submitting` only guards the
     /// button for the one round trip.
     var onSubmitResult: (_ finishDisplay: String, _ avgHrBpm: Int?) async -> Void = { _, _ in }
+    /// What the last submission came back as, when it came back as anything
+    /// other than "done". The write used to answer a bare `Bool`, so a race
+    /// the server would not accept and a dropped connection both ended as a
+    /// button that appeared to do nothing.
+    var submitOutcome: V5WriteOutcome? = nil
     var onBack: (() -> Void)? = nil
 
     @State private var resultExpanded = false
@@ -76,6 +81,14 @@ struct RaceDetailV5: View {
                 // brief's stated 20–24 "between groups" range.
                 VStack(alignment: .leading, spacing: V5.S.s24) {
                     statsRow
+
+                    // Above the form rather than inside it: the result
+                    // section stops drawing the moment a time is confirmed,
+                    // and a reason has to survive whatever the refetch does
+                    // to the section it belongs to.
+                    if let submitOutcome {
+                        WriteNote(outcome: submitOutcome)
+                    }
 
                     resultSection
 

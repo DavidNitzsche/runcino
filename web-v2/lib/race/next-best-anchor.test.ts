@@ -23,6 +23,8 @@ function raceAt(slug: string, targetVdot: number, daysAgo: number): RaceVdotInpu
     distance_mi: HALF_MI,
     finish_seconds: finishSeconds,
     provisional: false,
+    provisionalSource: null,
+    runner_authority_tier: null,
   };
 }
 

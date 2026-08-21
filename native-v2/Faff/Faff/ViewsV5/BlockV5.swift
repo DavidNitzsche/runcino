@@ -205,7 +205,7 @@ struct BlockV5: View {
                               color: V5.OnPanel.primary)
 
                 PanelStatPlate(stats: model.panel.stats.map {
-                    PanelStat($0.label, $0.value.value, ink: $0.tone == "attention" ? V5.attention : nil)
+                    PanelStat($0.label, $0.value.value, ink: $0.toneValue.inkOverride)
                 })
             }
         }

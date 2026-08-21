@@ -102,6 +102,11 @@ import SwiftUI
 struct RacesV5: View {
     let model: V5Races
 
+    /// What the last answer came back as, when it came back as anything other
+    /// than "done". Drawn immediately under the card that asked, because a
+    /// refusal answers the question it was given and belongs beside it.
+    var answerOutcome: V5WriteOutcome? = nil
+
     /// A decision-card or fact/choice answer was tapped. What it does next
     /// (POST it, refetch, show a toast) is the composition root's business —
     /// this screen only reports which one.
@@ -132,6 +137,13 @@ struct RacesV5: View {
                     RaceDecisionCardV5(card: card, onAnswer: onAnswer)
                 }
 
+                // Outside the `if` on purpose: an answer can be refused on a
+                // payload that then comes back with no card at all, and the
+                // reason must not vanish with it.
+                if let answerOutcome {
+                    WriteNote(outcome: answerOutcome)
+                }
+
                 RaceScheduleGroupV5(rows: model.schedule, expandedID: $expandedRaceID, onOpen: onOpenRace)
 
                 Tile {
@@ -148,6 +160,7 @@ struct RacesV5: View {
                         ListRow(label: row.label,
                                 sub: row.sub,
                                 value: row.value?.value,
+                                valueInk: row.toneValue.inkOverride,
                                 onTap: row.action != nil ? { onEvidenceTap(row) } : nil)
                     }
                 }
@@ -218,8 +231,13 @@ struct RacesV5: View {
                           font: .faffText(28, weight: .semibold),
                           color: V5.OnPanel.primary)
 
+            // The DECODED tone, not the raw string. `s.tone == "attention"`
+            // matched one of four cases: `fault` and `signal` both fell
+            // through to nil, so a value the engine said it could not read
+            // was inked exactly like one it could. `inkOverride` keeps
+            // neutral nil so the plate holds its own on-panel ink.
             PanelStatPlate(stats: model.panel.stats.map { s in
-                PanelStat(s.label, s.value.value, ink: s.tone == "attention" ? V5.attention : nil)
+                PanelStat(s.label, s.value.value, ink: s.toneValue.inkOverride)
             })
         }
     }
@@ -583,9 +601,14 @@ private struct RaceScheduleRowV5: View {
                                 .foregroundStyle(V5.textPrimary)
                             Spacer(minLength: 0)
                             if let v = d.value?.value {
+                                // The engine's tone, honoured. Dropping it
+                                // put "Status · Watch time · chip time to
+                                // lock in" in quiet grey — the design's own
+                                // word for amber is "a decision waiting",
+                                // and an unlocked chip time is exactly that.
                                 FaffValueText(v,
                                               font: .faffText(TypeScaleV5.body15),
-                                              color: V5.textSecondary)
+                                              color: d.toneValue.inkOverride ?? V5.textSecondary)
                             }
                         }
                     }

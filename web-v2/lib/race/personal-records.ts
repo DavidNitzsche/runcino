@@ -28,7 +28,9 @@
 import { pool } from '@/lib/db/pool';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { distanceMiFromLabel } from '@/lib/race/distance';
-import { PROVISIONAL_FINISH_LABEL, WATCH_PROVISIONAL_FINISH_LABEL } from '@/lib/coach/races-state';
+import {
+  PROVISIONAL_FINISH_LABEL, WATCH_PROVISIONAL_FINISH_LABEL, isProvisionalResult,
+} from '@/lib/coach/races-state';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
 
 // ── Buckets ──────────────────────────────────────────────────────────────────
@@ -177,14 +179,33 @@ export function composePersonalRecords(
       if (ar.finishS != null && Number(ar.finishS) > 0) {
         timeS = Math.round(Number(ar.finishS));
         source = 'race_result';
-        fromWatch = ar.provisional === true || ar.source === 'watch_provisional';
+        fromWatch = isProvisionalResult(ar);
       } else {
         const parsed = parseRaceTime(typeof m.finishTime === 'string' ? m.finishTime : null);
         if (parsed != null && parsed > 0) { timeS = parsed; source = 'race_meta'; }
       }
       if (timeS == null || source == null) continue;
 
-      if (!best || timeS < best.timeS) {
+      // 2026-08-21 · race-data source-of-truth re-audit · CONFIRMED BEATS
+      // FASTER, within the bucket.
+      //
+      // This was `!best || timeS < best.timeS` — time alone. So an
+      // auto-logged WATCH time, which is systematically fast (both residual
+      // errors bias it that way — `lib/race/auto-result.ts`), displaced the
+      // runner's confirmed chip-time PR and the real record vanished off the
+      // card. The row was captioned honestly, so nothing lied; the confirmed
+      // number simply stopped being shown.
+      //
+      // CLAUDE.md's race-data rule is "curated chip times beat raw Strava
+      // elapsed", and that is the same sentence one level down: a confirmed
+      // result outranks an unconfirmed one for the PR slot regardless of the
+      // clock. Among two results of equal confirmation, faster wins, exactly
+      // as before. So the bucket only ever falls back to a provisional time
+      // when there is no confirmed one — which is the ladder, not a new rule.
+      const beatsIncumbent = !best
+        || (best.provisional && !fromWatch)
+        || (best.provisional === fromWatch && timeS < best.timeS);
+      if (beatsIncumbent) {
         best = {
           key: bucket.key,
           label: bucket.label,

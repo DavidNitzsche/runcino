@@ -256,7 +256,7 @@ struct TodayBeforeV5: View {
 
             PanelStatPlate(stats: model.panel.stats.map { stat in
                 PanelStat(stat.label, stat.value.value,
-                          ink: stat.tone == "attention" ? V5.attention : nil)
+                          ink: stat.toneValue.inkOverride)
             })
         }
     }

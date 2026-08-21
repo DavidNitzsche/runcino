@@ -59,7 +59,7 @@ import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode,
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { loadProfileState } from '@/lib/coach/profile-state';
 import { computeCourseImpact } from '@/lib/training/course-impact';
-import { resolveCourseElevation } from '@/lib/race/course-elevation';
+import { resolveCourseElevation, elevationIsTrustedForAdjustment } from '@/lib/race/course-elevation';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
 import { computePacingDiscipline } from '@/lib/coach/pacing-discipline';
 import { computeProjectionLevers } from '@/lib/coach/projection-levers';
@@ -408,14 +408,23 @@ export async function GET(req: NextRequest) {
         geometry: raceRowRes.rows[0]?.course_geometry ?? null,
         nominalDistanceMi: distanceMi,
       });
+      // 2026-08-21 · race-data re-audit · THE TRUST GATE, finally read.
+      // `resolveCourseElevation` lets a LOW-confidence trace through when
+      // there is no curated `course_library` row, and its gain/net went
+      // straight into `computeCourseImpact` as SECONDS in the goal-gap
+      // arithmetic. A trace whose own assessment says "too coarse for gross
+      // gain" or "signal dropout" cannot be allowed to quietly move a
+      // projection. Untrusted → null in, which `computeCourseImpact` already
+      // reads as "course unknown" and prices at zero rather than guessing.
+      const elevTrusted = elevationIsTrustedForAdjustment(resolvedElev);
       const courseImpact = computeCourseImpact(
         {
           distanceMi,
           goalSec,
-          elevationGainFt: resolvedElev.elevationGainFt,
-          netElevationFt: resolvedElev.netElevationFt,
+          elevationGainFt: elevTrusted ? resolvedElev.elevationGainFt : null,
+          netElevationFt: elevTrusted ? resolvedElev.netElevationFt : null,
         },
-        resolvedElev.provenance === 'measured'
+        resolvedElev.provenance === 'measured' && elevTrusted
           ? 'crowd'
           : ((courseLibRow?.source as 'editorial' | 'crowd' | 'stub' | null) ?? null),
       );

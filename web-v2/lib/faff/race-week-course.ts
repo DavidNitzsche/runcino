@@ -96,7 +96,15 @@ export async function loadRaceWeekCourse(
       registered: registeredFromMeta(meta),
       bib: bibRaw && bibRaw.trim() !== '' ? bibRaw : null,
       gunTimeSet: typeof gunTimeRaw === 'string' && gunTimeRaw.trim() !== '',
-      courseSource: (libRow?.source as RaceWeekCourse['courseSource']) ?? null,
+      // 2026-08-21 · race-data re-audit · this reported the LIBRARY row's
+      // label over numbers that came from the GPS track, so a measured
+      // elevation rendered on the race-week card as `editorial` — a
+      // provenance claim about a value that source never supplied. Measured
+      // reads as 'crowd' (measured, not editorially verified), the same
+      // convention the projection route and the web seed already use.
+      courseSource: resolvedElev.provenance === 'measured'
+        ? 'crowd'
+        : ((libRow?.source as RaceWeekCourse['courseSource']) ?? null),
       netElevFt: resolvedElev.netElevationFt,
       gainFt: resolvedElev.elevationGainFt,
       points: elevationPoints(geom),

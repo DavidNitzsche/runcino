@@ -41,10 +41,35 @@
 
 import {
   REPRESENTATIVE_FLOOR,
+  UNREPRESENTATIVE_FLOOR,
   authorityTier,
   selectionAuthority,
   type AuthorityTier,
 } from '@/lib/race/effort-authority';
+
+/**
+ * The authority a RUNNER-REPORTED tier caps a race at. Each value is the
+ * bottom of the band `authorityTier` reports for that name, so a reported tier
+ * and the tier the engine then publishes always agree — `compromised` sits
+ * exactly on `UNREPRESENTATIVE_FLOOR` (the C row), and `unrepresentative` sits
+ * just below it.
+ *
+ * `representative` is deliberately absent: the cap is a floor-lowering lever
+ * only (see the `runner_authority_tier` note on `bestRecentVdot`), so a
+ * runner reporting "representative" leaves the doctrine grading untouched.
+ *
+ * NOT zero. `effort-authority.ts` §"What selection deliberately does NOT
+ * charge" already ruled on this for illness: zeroing at SELECTION would leave
+ * a runner whose only recent race was compromised with no anchor at all, and
+ * "an honest slow number prescribes work that is too easy, [but] no number at
+ * all falls through to a mileage guess that floors at VDOT 30". Ranked, not
+ * removed — the race loses to any better-graded race and keeps its place as a
+ * last-resort floor.
+ */
+const RUNNER_REPORTED_AUTHORITY_CAP: Record<Exclude<AuthorityTier, 'representative'>, number> = {
+  compromised: UNREPRESENTATIVE_FLOOR,
+  unrepresentative: UNREPRESENTATIVE_FLOOR / 2,
+};
 
 /** Distance in km from a label. */
 function kmFromMi(mi: number): number { return mi * 1.609344; }
@@ -1062,7 +1087,27 @@ export interface BelowTableAnchor {
 }
 
 export function bestRecentVdot(
-  races: Array<{ slug: string; name: string; date: string; priority: string | null; distance_mi: number | null; finish_seconds: number | null }>,
+  races: Array<{
+    slug: string; name: string; date: string; priority: string | null;
+    distance_mi: number | null; finish_seconds: number | null;
+    /**
+     * 2026-08-21 · race-data re-audit · the runner's OWN answer to "did this
+     * race count?", stored by `POST /api/v5/race-authority` as
+     * `races.actual_result.authority_tier`. Optional: every caller that never
+     * had it keeps its exact previous behaviour.
+     *
+     * Applied DOWNWARD ONLY at the grading line below. That asymmetry is the
+     * route's own stated doctrine — heat, illness, paced-a-friend and
+     * ran-it-as-a-workout are things the runner knows and the engine does not,
+     * so their report can lower what a result proves; but "representative" on
+     * a race doctrine grades as a hard workout would be the disguised "make me
+     * faster" button the route explicitly refuses to be. Same direction as
+     * `effectiveEffortClass` in representativeness.ts: a downgrade can only
+     * ever lower authority, so honouring one can hold a race below its
+     * declared class but never above it.
+     */
+    runner_authority_tier?: AuthorityTier | null;
+  }>,
   todayISO: string,
   lookbackDays = VDOT_FULL_VALUE_DAYS,
   runs?: Array<{
@@ -1117,7 +1162,22 @@ export function bestRecentVdot(
     // 2026-08-17 · the `if (r.priority === 'C') continue` that stood here is
     // GONE, together with the `IN ('A','B')` filter in vdot-inputs.ts. Every
     // race is a candidate; `authority` below is what decides its weight.
-    const authority = selectionAuthority(r.priority);
+    //
+    // 2026-08-21 · race-data re-audit · the runner's own report caps it,
+    // downward only. `POST /api/v5/race-authority` has been storing this
+    // answer in `races.actual_result.authority_tier` since it shipped, and
+    // NOTHING read it: the route's one-shot `forceReanchorActivePlan` moved
+    // the paces, then the nightly `snapshot-projections` cron re-ran this
+    // function over the same unfiltered pool and the flagged race won
+    // selection again. The runner said "I ran that sick" and by morning the
+    // paces were back. Reading it here makes the answer durable through every
+    // caller at once — the cron, the drift monitor, the generator — because
+    // they all come through this one function.
+    const declaredAuthority = selectionAuthority(r.priority);
+    const reported = r.runner_authority_tier ?? null;
+    const authority = (reported && reported !== 'representative')
+      ? Math.min(declaredAuthority, RUNNER_REPORTED_AUTHORITY_CAP[reported])
+      : declaredAuthority;
     const v = vdotFromRace(r.finish_seconds, r.distance_mi);
     if (v == null) {
       // Below (or above) the [30,85] table — not silently dropped. Below-30

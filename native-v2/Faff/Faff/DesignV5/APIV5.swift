@@ -131,6 +131,19 @@ enum V5Tone: String, Decodable {
         case .fault:     return V5.fault
         }
     }
+
+    /// The ink where the component already HAS a default for an untoned
+    /// value — a quiet row, a value on a gradient panel.
+    ///
+    /// Neutral is nil, not `textPrimary`: "the engine said nothing" must
+    /// leave a value exactly as quiet as it was, and on a poster the page
+    /// ink is the wrong ink outright. Every other case is the engine asking
+    /// for a specific colour, so it gets one.
+    ///
+    /// This exists because the call sites were writing `tone == "attention"`
+    /// against the RAW string, which silently dropped `fault` and `signal` —
+    /// a value the engine said it could not read was drawn as if it had.
+    var inkOverride: Color? { self == .neutral ? nil : ink }
 }
 
 /// A labelled value on a poster's translucent plate.
@@ -1104,6 +1117,45 @@ extension API {
         if let targetSec { body["targetSec"] = targetSec }
         if let raceSlug { body["raceSlug"] = raceSlug }
         return try await v5Write("api/v5/goal-answer", body: body)
+    }
+
+    /// `POST /api/race/result`, with the engine's own answer kept.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// THE SAME LESSON `V5Write` ALREADY LEARNED, ONE ROUTE LATE
+    ///
+    /// `API.postRaceResult` collapses this call into a `Bool` at the
+    /// transport, so a 404 ("that race is not on your schedule any more")
+    /// and a dropped connection arrive at the screen as the same `false` and
+    /// can only be drawn as the outage treatment. A 4xx is an ANSWER.
+    ///
+    /// This route does not speak the v5 refusal shape — its bodies are
+    /// `{ error: "race not found" }`, which is machine text and must never
+    /// be printed at a runner. So a reason is used when the route gives one,
+    /// a 404 maps to the app's own existing sentence for a race that is
+    /// gone, and everything else stays `.failed`. Nothing is invented: the
+    /// phone never writes a reason the engine did not have.
+    static func postRaceResultOutcome(slug: String, finishDisplay: String, avgHrBpm: Int? = nil) async -> V5Write {
+        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/race/result"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = ["slug": slug, "finishDisplay": finishDisplay]
+        if let avgHrBpm { body["avgHrBpm"] = avgHrBpm }
+        guard let payload = try? JSONSerialization.data(withJSONObject: body) else { return .failed }
+        req.httpBody = payload
+        guard let response = try? await API.authedSend(req) else { return .failed }
+        let data = response.0
+        let http = response.1
+        if (200...299).contains(http.statusCode) { return .ok }
+        guard (400...499).contains(http.statusCode) else { return .failed }
+        if let r = try? JSONDecoder().decode(V5Refusal.self, from: data),
+           let text = r.refusal ?? r.reason, !text.isEmpty {
+            return .refused(text)
+        }
+        if http.statusCode == 404 {
+            return .refused("That race is not on your schedule any more.")
+        }
+        return .failed
     }
 }
 

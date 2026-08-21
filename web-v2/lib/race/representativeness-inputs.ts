@@ -16,8 +16,9 @@
  * behaviour, so a data outage cannot silently freeze the fitness model.
  */
 import { pool } from '@/lib/db/pool';
-import { resolveCourseElevation } from './course-elevation';
+import { resolveCourseElevation, elevationIsTrustedForAdjustment } from './course-elevation';
 import { TAPER_RACE_WEEK_PCT_OF_PEAK, distanceCategoryOf } from '@/lib/plan/goal-tiers';
+import { isProvisionalResult } from '@/lib/coach/races-state';
 import {
   assessRepresentativeness,
   type RaceSplit,
@@ -139,8 +140,20 @@ export async function assessRaceRepresentativeness(args: {
     geometry: geom,
     nominalDistanceMi: distanceMi,
   });
-  const elevationGainFt = resolvedElev.elevationGainFt;
-  const netElevationFt = resolvedElev.netElevationFt;
+  // 2026-08-21 · race-data re-audit · THE TRUST GATE, finally read.
+  //
+  // The comment directly above has always described this behaviour, and the
+  // code never implemented it: `resolveCourseElevation` lets a LOW-confidence
+  // trace through whenever there is no curated `course_library` row, and these
+  // two figures went straight into the `course_elevation` and `net_downhill`
+  // detractors — which price how much of a race's shortfall was the day rather
+  // than fitness, and so decide whether that race re-anchors the model. A
+  // watch trace that reports "too coarse for gross gain" about itself must not
+  // get to make that call. Null is the honest input; the detractors already
+  // handle an unknown course by not firing.
+  const elevTrusted = elevationIsTrustedForAdjustment(resolvedElev);
+  const elevationGainFt = elevTrusted ? resolvedElev.elevationGainFt : null;
+  const netElevationFt = elevTrusted ? resolvedElev.netElevationFt : null;
 
   // Mean course altitude, for the Research/06 §7 gate. Only the GPX carries it.
   let altitudeFt: number | null = null;
@@ -258,11 +271,12 @@ export async function assessRaceRepresentativeness(args: {
       illness: sick,
       niggleSeverity: num(niggle?.severity),
       // The flag lib/race/auto-result.ts writes when it adopts a matched watch
-      // run as the finish. Read straight off the row rather than inferred from
-      // `source`, because a future ingest path may add another provisional
-      // source name and the flag is the contract the five display consumers
-      // already honour.
-      resultProvisional: ar.provisional === true,
+      // run as the finish. 2026-08-21 · race-data re-audit · this was the one
+      // consumer reading the flag ALONE while six others read the disjunction
+      // with `source === 'watch_provisional'`. No live gap (auto-result always
+      // writes both) but a rule with two spellings has already drifted once;
+      // there is now exactly one, in races-state.ts.
+      resultProvisional: isProvisionalResult(ar),
     },
     // Empty in production · vdotFromRace reads raw elapsed time and the anchor
     // side does not terrain-adjust races. See the double-counting note in

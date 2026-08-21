@@ -195,7 +195,15 @@ struct PacesMovedV5: View {
     private var evidenceSection: some View {
         ListGroup(header: evidenceHeader) {
             ForEach(paces.evidence) { row in
-                ListRow(label: row.label, sub: row.sub)
+                // `row.value` was decoded and then dropped, so this screen's
+                // one race figure — the finish time the whole re-anchor is
+                // built on — never reached it. It goes through `FaffValueText`
+                // inside `ListRow`, so a provisional finish arrives carrying
+                // its amber mark rather than reading as a locked chip time.
+                ListRow(label: row.label,
+                        sub: row.sub,
+                        value: row.value?.value,
+                        valueInk: row.toneValue.inkOverride)
             }
         }
     }

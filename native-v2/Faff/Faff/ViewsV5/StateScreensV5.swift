@@ -428,7 +428,7 @@ struct DataOutageV5: View {
                 if !today.panel.stats.isEmpty {
                     PanelStatPlate(stats: today.panel.stats.map {
                         PanelStat($0.label, $0.value.value,
-                                  ink: $0.tone == "attention" ? V5.attention : nil)
+                                  ink: $0.toneValue.inkOverride)
                     })
                 }
             }

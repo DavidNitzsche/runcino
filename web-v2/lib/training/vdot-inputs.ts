@@ -43,6 +43,25 @@ import {
 } from '@/lib/runs/run-shape';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
+import { isProvisionalResult } from '@/lib/coach/races-state';
+import type { AuthorityTier } from '@/lib/race/effort-authority';
+
+/** The three names `POST /api/v5/race-authority` accepts and stores. Anything
+ *  else in the column is a value this engine did not write; ignore it rather
+ *  than coercing it into a grading. */
+const RUNNER_AUTHORITY_TIERS: readonly AuthorityTier[] =
+  ['representative', 'compromised', 'unrepresentative'];
+
+function runnerAuthorityTier(ar: Record<string, unknown>): AuthorityTier | null {
+  // `authority_source` guards against reading a tier some future automatic
+  // re-grade wrote: this field is the RUNNER's report, and only the runner's
+  // report is allowed to override doctrine's grading of their own race.
+  if (ar.authority_source !== 'runner') return null;
+  const t = ar.authority_tier;
+  return typeof t === 'string' && (RUNNER_AUTHORITY_TIERS as readonly string[]).includes(t)
+    ? (t as AuthorityTier)
+    : null;
+}
 
 // ── Input shapes — match exactly what bestRecentVdot() accepts ──────────────
 
@@ -60,20 +79,48 @@ export interface RaceVdotInput {
   distance_mi: number | null;
   finish_seconds: number | null;
   /**
-   * 2026-08-18 · doctrine sweep · true only when `finish_seconds` came from
-   * the rung-3 Strava date+distance match fallback below (no curated
-   * `actual_result.finishS`/`meta.finishTime`). `races-state.ts` flags its
-   * identical fallback as `finishProvisional`; this loader's copy of the
-   * same pattern didn't expose an equivalent, so nothing downstream could
-   * tell "this candidate's time is an unconfirmed watch/GPS match" apart
-   * from a curated chip time. Additive only — `bestRecentVdot`'s
-   * structural race-candidate type doesn't read this field, so this does
-   * NOT change selection weighting; `effort-authority.ts` documents that
-   * choice deliberately (a race's authority is graded, not discounted, at
-   * selection time). This just makes the provenance visible to any
-   * current or future consumer that needs to label it.
+   * 2026-08-18 · doctrine sweep · true when `finish_seconds` is NOT a
+   * confirmed result. `races-state.ts` flags the same thing as
+   * `finishProvisional`; this loader's copy of the pattern didn't expose an
+   * equivalent, so nothing downstream could tell "this candidate's time is
+   * an unconfirmed watch/GPS match" apart from a curated chip time.
+   *
+   * TWO ways a candidate is provisional, and the loader must catch both:
+   *   · rung 3 — `finish_seconds` came from the Strava date+distance match
+   *     fallback below (no `actual_result.finishS`, no `meta.finishTime`).
+   *   · rung 1 carrying an AUTO-LOGGED watch time — `actual_result.finishS`
+   *     written by `lib/race/auto-result.ts` with `provisional:true` /
+   *     `source:'watch_provisional'`. 2026-08-21 · this arm was missing.
+   *
+   * Additive to SELECTION only — `bestRecentVdot`'s structural race-candidate
+   * type doesn't read this field, so it does NOT change selection weighting;
+   * `effort-authority.ts` documents that choice deliberately (a race's
+   * authority is graded, not discounted, at selection time). This makes the
+   * provenance visible to consumers that must label it (the v5 evidence list)
+   * or act on it (`/api/v5/goal-answer` action:'confirm').
    */
   provisional: boolean;
+  /**
+   * Which rung the provisional flag came from, so a surface can print the
+   * right caption instead of guessing. `null` when `provisional` is false.
+   * `'watch'` → `WATCH_PROVISIONAL_FINISH_LABEL` ("Watch time · chip time to
+   * lock in"); `'run_match'` → `PROVISIONAL_FINISH_LABEL` ("Training effort ·
+   * race to lock in"). Both labels live in `lib/coach/races-state.ts` so
+   * every surface renders one of exactly two strings verbatim.
+   */
+  provisionalSource: 'watch' | 'run_match' | null;
+  /**
+   * 2026-08-21 · race-data re-audit · the runner's OWN answer to "did this
+   * race count?", stored by `POST /api/v5/race-authority` as
+   * `races.actual_result.authority_tier` (with `authority_source:'runner'`).
+   *
+   * It was write-only. The route re-anchored the plan once, then the nightly
+   * `snapshot-projections` cron re-ran `loadVdotInputs` + `bestRecentVdot`
+   * over the same unfiltered pool and the flagged race won selection again —
+   * so the runner's report of their own race survived until morning and no
+   * longer. `bestRecentVdot` now caps `authority` with it, downward only.
+   */
+  runner_authority_tier: AuthorityTier | null;
 }
 
 export interface RunVdotInput {
@@ -254,7 +301,21 @@ export async function loadVdotInputs(
     if (!finishSec) finishSec = parseRaceTime(m.finishTime as string);
     // 2026-08-18 · doctrine sweep · track whether finishSec ends up coming
     // from rung 3 (the Strava match below) rather than rungs 1-2 (curated).
-    let provisional = false;
+    //
+    // 2026-08-21 · race-data re-audit · rung 1 is NOT unconditionally curated.
+    // `lib/race/auto-result.ts` writes an auto-logged WATCH time straight into
+    // `actual_result.finishS` with `source:'watch_provisional', provisional:
+    // true` — it is the result until a chip time replaces it, but it is not a
+    // confirmed one. `lib/coach/races-state.ts` has always read that flag
+    // (`ar.provisional === true || ar.source === 'watch_provisional'`); this
+    // loader did not, so the same `/api/v5/races` response labelled the same
+    // race "Counts fully" with `modelled:false` in the EVIDENCE list while the
+    // SCHEDULE list carried the amber `~` and "Watch time · chip time to lock
+    // in". Worse, `/api/v5/goal-answer` action:'confirm' gates on this exact
+    // field, so the chip-lock card the app itself raised answered 400
+    // not_provisional. Same two-lists-disagree shape, one rung higher.
+    let provisional = ar.finishS != null && Number(ar.finishS) > 0 && isProvisionalResult(ar);
+    let provisionalSource: RaceVdotInput['provisionalSource'] = provisional ? 'watch' : null;
     if (!finishSec && distMi && m.date) {
       let best: Record<string, unknown> | null = null;
       let bestScore = Infinity;
@@ -274,6 +335,7 @@ export async function loadVdotInputs(
       if (best) {
         finishSec = Number(best.movingTimeS) || Number(best.elapsedTimeS) || null;
         provisional = finishSec != null;
+        provisionalSource = finishSec != null ? 'run_match' : null;
       }
     }
 
@@ -285,6 +347,8 @@ export async function loadVdotInputs(
       distance_mi: distMi,
       finish_seconds: finishSec,
       provisional,
+      provisionalSource,
+      runner_authority_tier: runnerAuthorityTier(ar),
     };
   });
 

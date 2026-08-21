@@ -18,6 +18,32 @@ export const PROVISIONAL_FINISH_LABEL = 'Training effort · race to lock in';
  *  chip time, and no surface may present it as an authoritative PR. */
 export const WATCH_PROVISIONAL_FINISH_LABEL = 'Watch time · chip time to lock in';
 
+/**
+ * THE one test for "is this `actual_result` an unconfirmed finish?".
+ *
+ * 2026-08-21 · race-data source-of-truth re-audit. Seven consumers were each
+ * carrying their own copy of this predicate and they had already drifted into
+ * three variants: the disjunction below, `ar.provisional === true` alone
+ * (`lib/race/representativeness-inputs.ts`), and — worst — no test at all
+ * (`lib/training/vdot-inputs.ts`, which therefore read an auto-logged watch
+ * time as a curated chip time and contradicted this file inside one API
+ * response). Copies of a rule drift; one exported rule cannot.
+ *
+ * The disjunction, not either half:
+ *   · `provisional` is the contract flag `lib/race/auto-result.ts` writes and
+ *     `result-chain.manualResultPatch` clears, so a future provisional ingest
+ *     path only has to set it.
+ *   · `source === 'watch_provisional'` catches a row written before the flag
+ *     existed, and is the safe direction — over-flagging shows a `~` on a
+ *     confirmed time, under-flagging shows a watch guess as a race result.
+ */
+export function isProvisionalResult(
+  actualResult: Record<string, unknown> | null | undefined,
+): boolean {
+  const ar = actualResult ?? {};
+  return ar.provisional === true || ar.source === 'watch_provisional';
+}
+
 export interface RaceRow {
   slug: string;
   name: string;
@@ -45,6 +71,19 @@ export interface RaceRow {
   //   'run_match'     — auto-filled from a date+distance-matched training
   //                     run (ALWAYS provisional · Rule 3)
   finishSource: 'actual_result' | 'meta' | 'run_match' | null;
+  /**
+   * 2026-08-21 · race-data re-audit · the runner's OWN answer to "did this
+   * race count?" (`actual_result.authority_tier`, written by
+   * `POST /api/v5/race-authority` with `authority_source:'runner'`). Null when
+   * they have not been asked, or have not answered.
+   *
+   * Surfaced so a schedule row publishes the tier the runner reported rather
+   * than the one doctrine infers from the declared A/B/C priority — those two
+   * disagree exactly when the runner has told us something the engine could
+   * not know (heat, illness, paced a friend), which is the whole point of the
+   * question.
+   */
+  runnerAuthorityTier: 'representative' | 'compromised' | 'unrepresentative' | null;
   // Non-null exactly when finishProvisional — the render-ready caption
   // ('Training effort · race to lock in'). Surfaces show it verbatim next
   // to the time instead of inventing their own wording.
@@ -148,7 +187,7 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
         ? `${h}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`
         : `${mm}:${String(ss).padStart(2,'0')}`;
       finishSource = 'actual_result';
-      if (ar.provisional === true || ar.source === 'watch_provisional') {
+      if (isProvisionalResult(ar)) {
         finishProvisional = true;
         finishProvisionalLabel = WATCH_PROVISIONAL_FINISH_LABEL;
       }
@@ -179,6 +218,13 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       finishProvisional,
       finishSource,
       finishProvisionalLabel,
+      runnerAuthorityTier:
+        ar?.authority_source === 'runner'
+        && (ar.authority_tier === 'representative'
+            || ar.authority_tier === 'compromised'
+            || ar.authority_tier === 'unrepresentative')
+          ? ar.authority_tier
+          : null,
       pb: m.pb ?? null,
       gun_time: m.startTime ?? m.gun_time ?? m.start_time ?? null,
       wave: m.wave ?? null,

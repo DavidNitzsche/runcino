@@ -174,6 +174,10 @@ struct ListRow: View {
     let label: String
     var sub: String? = nil
     var value: FaffValue? = nil
+    /// Overrides the value's ink, from the engine's own `tone`. Nil keeps the
+    /// row quiet, which is what an untoned value must stay — same contract as
+    /// `PanelStat.ink`, and `V5Tone.inkOverride` is how a caller gets one.
+    var valueInk: Color? = nil
     /// Paints the row one step up. The calendar marks today this way.
     var raised: Bool = false
     var onTap: (() -> Void)? = nil
@@ -193,7 +197,7 @@ struct ListRow: View {
             }
             Spacer(minLength: V5.S.s8)
             if let value {
-                FaffValueText(value, font: .faffText(TypeScaleV5.body15), color: V5.textSecondary)
+                FaffValueText(value, font: .faffText(TypeScaleV5.body15), color: valueInk ?? V5.textSecondary)
                     .multilineTextAlignment(.trailing)
             }
             if onTap != nil {
@@ -398,6 +402,39 @@ struct Alert: View {
                 .frame(width: 3)
                 .padding(.vertical, V5.S.s12)
                 .padding(.leading, V5.S.s6)
+        }
+    }
+}
+
+// MARK: - WriteNote · WHAT CAME BACK FROM A WRITE
+//
+// A tap that posts something has three endings and only one of them is
+// silence. Discarding the result collapses all three into silence: the runner
+// taps, the same card re-renders unchanged, and nothing says why. That is how
+// a write that the engine REFUSED, out loud, with a sentence, reads as a
+// broken button.
+//
+// So the two non-silent endings get the two treatments the design already
+// has, and the line between them is rule three's line: the engine declining
+// is an answer (`Alert`), a write we could not complete is not (`ErrorNote`).
+
+enum V5WriteOutcome: Equatable {
+    /// The engine declined, and said why. Its words, never ours.
+    case refused(String)
+    /// We could not complete it. Never a refusal, and never dressed as one.
+    case failed(String)
+}
+
+struct WriteNote: View {
+    let outcome: V5WriteOutcome
+
+    @ViewBuilder
+    var body: some View {
+        switch outcome {
+        case .refused(let reason):
+            Alert(text: reason, tone: .attention)
+        case .failed(let text):
+            ErrorNote(text: text)
         }
     }
 }

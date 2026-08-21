@@ -768,20 +768,17 @@ enum API {
     /// auto-generates the next A/B race plan. `finishDisplay` is the
     /// "1:29:45" the runner types; the server parses it. `avgHrBpm`
     /// optionally calibrates LTHR. Returns true on a 2xx.
+    ///
+    /// A `Bool` cannot tell a refusal from an outage, so this is now a thin
+    /// read of `postRaceResultOutcome` (APIV5.swift) — the one write path,
+    /// with the engine's own answer intact. A caller that has somewhere to
+    /// PUT a reason should call that directly; the v4 screens here have
+    /// nowhere to put one and still only need "did it land".
     static func postRaceResult(slug: String, finishDisplay: String, avgHrBpm: Int? = nil) async -> Bool {
-        var req = URLRequest(url: baseURL.appendingPathComponent("api/race/result"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        var body: [String: Any] = ["slug": slug, "finishDisplay": finishDisplay]
-        if let hr = avgHrBpm { body["avgHrBpm"] = hr }
-        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return false }
-        req.httpBody = data
-        do {
-            let (_, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
-            return (200..<300).contains(http.statusCode)
-        } catch {
-            return false
+        if case .ok = await postRaceResultOutcome(slug: slug, finishDisplay: finishDisplay, avgHrBpm: avgHrBpm) {
+            return true
         }
+        return false
     }
 
     /// Fetch today's WatchWorkout shape as raw Data so we can forward it

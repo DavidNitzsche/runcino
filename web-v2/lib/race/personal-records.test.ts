@@ -152,3 +152,75 @@ describe('composePersonalRecords — training bests stay outside records', () =>
     expect(out.records.find((r) => r.key === 'marathon')).toBeUndefined();
   });
 });
+
+/**
+ * 2026-08-21 · race-data source-of-truth re-audit · CONFIRMED BEATS FASTER.
+ *
+ * The bucket picked its winner on `timeS < best.timeS` alone. An auto-logged
+ * WATCH result (`lib/race/auto-result.ts`, `source:'watch_provisional'`) is
+ * systematically fast — both residual errors bias it that way — so it
+ * displaced the runner's confirmed chip-time PR and the real record stopped
+ * being displayed. The row was captioned honestly; the confirmed number simply
+ * disappeared.
+ *
+ * CLAUDE.md's race-data rule is "curated chip times beat raw Strava elapsed".
+ * This is that sentence one rung down: within a bucket, a confirmed result
+ * outranks an unconfirmed one regardless of the clock.
+ */
+describe('composePersonalRecords — a watch time cannot hide a confirmed PR', () => {
+  const CONFIRMED = {
+    slug: 'confirmed-5k',
+    meta: { name: 'Carlsbad 5000', date: '2026-03-14', distanceLabel: '5K', priority: 'A' },
+    actual_result: { finishS: 1275, source: 'manual', provisional: false, confirmedAt: '2026-03-15T00:00:00Z' },
+  };
+  // 20:00 on the watch — FASTER than the 21:15 chip time above.
+  const WATCH = {
+    slug: 'watch-5k',
+    meta: { name: 'Turkey Trot', date: '2026-08-10', distanceLabel: '5K', priority: 'B' },
+    actual_result: { finishS: 1200, source: 'watch_provisional', provisional: true },
+  };
+
+  it('the confirmed chip time holds the bucket even though the watch time is faster', () => {
+    const out = composePersonalRecords([WATCH, CONFIRMED], []);
+    const rec = out.records.find((r) => r.key === '5k')!;
+    expect(rec.slug).toBe('confirmed-5k');
+    expect(rec.timeS).toBe(1275);
+    expect(rec.provisional).toBe(false);
+    expect(rec.provisionalLabel).toBeNull();
+  });
+
+  it('order of the input rows does not change the answer', () => {
+    const out = composePersonalRecords([CONFIRMED, WATCH], []);
+    expect(out.records.find((r) => r.key === '5k')!.slug).toBe('confirmed-5k');
+  });
+
+  it('with NO confirmed result the watch time still holds the bucket, captioned', () => {
+    // Ranked, not removed — the fallback ladder is unchanged.
+    const out = composePersonalRecords([WATCH], []);
+    const rec = out.records.find((r) => r.key === '5k')!;
+    expect(rec.slug).toBe('watch-5k');
+    expect(rec.timeS).toBe(1200);
+    expect(rec.provisional).toBe(true);
+    expect(rec.provisionalLabel).toBe('Watch time · chip time to lock in');
+  });
+
+  it('between two confirmed results the faster one still wins', () => {
+    const faster = {
+      slug: 'faster-5k',
+      meta: { name: 'Fast 5K', date: '2026-06-01', distanceLabel: '5K', priority: 'A' },
+      actual_result: { finishS: 1180, source: 'manual', provisional: false },
+    };
+    const out = composePersonalRecords([CONFIRMED, faster], []);
+    expect(out.records.find((r) => r.key === '5k')!.slug).toBe('faster-5k');
+  });
+
+  it('between two watch results the faster one still wins', () => {
+    const slowerWatch = {
+      slug: 'slow-watch-5k',
+      meta: { name: 'Slow Trot', date: '2026-07-04', distanceLabel: '5K', priority: 'C' },
+      actual_result: { finishS: 1400, source: 'watch_provisional', provisional: true },
+    };
+    const out = composePersonalRecords([slowerWatch, WATCH], []);
+    expect(out.records.find((r) => r.key === '5k')!.slug).toBe('watch-5k');
+  });
+});
