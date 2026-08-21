@@ -1,233 +1,251 @@
 # Apple Watch · design brief
 
-For the designer. Written 2026-08-21 against the code as it actually stands, not
-against what we wish were there.
+New app. Clean start. The only design language it inherits is the **iPhone v5
+design** — the one approved 2026-08-19 and now shipping. Nothing from the older
+watch work carries over: not its palette, not its typography, not its faces.
+Treat what exists today as a prototype we learned from and are leaving behind.
 
-The watch is the **execution layer**. The phone is the daily companion and the
-web is the command centre; the watch exists for the moments when someone is
-running and cannot think. Everything below follows from that.
-
----
-
-## 0 · One decision I need from David before you start
-
-**The gradients are a phone language, and the watch is governed by a different,
-locked brief.**
-
-`Design/running-app-design-brief-v2.md` governs web and watch. It specifies a
-ten-colour palette that is byte-identical across surfaces and **forbids orange**.
-CI enforces it — `scripts/check-palette-sync.sh` fails the build if the watch
-palette drifts. The iPhone v5 design (pure black, signal orange `#FF5A1F`, six
-day-state gradients) explicitly supersedes brief v2 **for the phone only**.
-
-So "use our gradients on the watch" is a real amendment to a locked brief, not a
-styling choice. David should make it deliberately.
-
-**My recommendation, and I think it is the strongest version of what he asked
-for:** put the gradient on the **lobby / start face only** — the one screen a
-runner looks at while standing still, before anything begins. Then true black
-for every face during the run. That gets you:
-
-- The brand moment where there is time to notice it.
-- No OLED cost during the part that drains the battery. On an OLED panel a black
-  pixel is an off pixel; a full-screen gradient held for 90 minutes is not free.
-- No fight with the Always-On display, which dims everything and would turn a
-  considered gradient into grey mud.
-- Maximum contrast for the numbers that matter, which is the entire job of every
-  other face.
-
-If David wants the gradient during the run too, that is his call to make — but it
-needs a brief v2 amendment and a documented exemption in the palette gate, and I
-will need to know so I can wire it. **Do not design a gradient run face until he
-has said yes.**
-
-The six day-state gradients are defined in
-`native-v2/Faff/Faff/DesignV5/TokensV5.swift` and rendered by `PanelV5.swift` —
-oklab-interpolated, with a fixed-seed grain layer at 0.085 amplitude. If the
-lobby gradient is approved I will port that renderer, so you can design against
-the phone's exact gradients rather than approximations.
+Written 2026-08-21.
 
 ---
 
-## 1 · What the watch is for
+## 1 · What the watch is
 
-One thing at a time, at arm's length, at running cadence, in the rain, with a
-heart rate of 170.
+The phone is the daily companion. The web is the command centre. **The watch is
+the execution layer** — it exists for the ninety minutes when someone is running
+and cannot think.
 
-- **A face answers one question.** What am I doing right now, and am I doing it
-  right. Everything else is a different face.
-- **Glance, not read.** If it takes a second look, it has failed.
-- **The runner does not navigate.** The workout drives the faces; taps are for
-  the two or three things a runner actually does mid-run.
-- **Never scold.** A missed target is stated, not judged. Coach voice applies
-  here exactly as it does on the phone: short, direct, no hype, no exclamation
-  marks, no emoji, no em dashes.
+That gives it one design principle everything else follows from:
+
+> A face answers exactly one question, at arm's length, at running cadence, in
+> the rain, at 170 bpm. If it takes a second look, it has failed.
+
+The runner does not navigate the watch. The session drives the faces. Taps are
+for the two or three things a person actually does mid-run.
 
 ---
 
-## 2 · Apple's constraints — these are not negotiable
+## 2 · The language it inherits
 
-Design to these or the app gets rejected, or worse, works badly on a wrist.
+Straight from the v5 iPhone design. These are the real values, not
+approximations — build against them.
 
-**The system owns the top-right corner.** The clock is drawn there during almost
-everything and cannot be moved. Nothing important goes near it.
+**Ground and surfaces**
+
+| Token | Value | Use |
+|---|---|---|
+| ground | `#000000` | Every running face. Pure black, OLED-off. |
+| surface 1 | `#0F1011` | Raised sheet |
+| surface 2 | `#17191B` | Tile |
+| surface 3 | `#212427` | Raised tile |
+| surface 4 | `#2A2E32` | Control |
+
+**Accents** — orange is the accent on this surface, and that is deliberate. It
+is what makes a faff screen recognisable at a glance.
+
+| Token | Value | Meaning |
+|---|---|---|
+| signal | `#FF5A1F` | The live thing. Now. Start. |
+| attention | `#F2B03C` | A modelled number, and the `~` mark that marks one |
+| fault | `#FF4438` | Something is wrong |
+
+There is **no green as a grade**. Nothing on this watch tells a runner they are
+being good. Read that twice — it is the single most common thing a running app
+does that this one does not.
+
+**Text** — white at three tiers, and only three: `1.0` primary, `0.72`
+secondary, `0.48` quiet.
+
+**Plot ink** — white `0.62` for a drawn line, `0.16` for its track.
+
+**The six day-state gradients.** Three stops at 135°, locations `[0.00, 0.76,
+1.85]` — the third sits past 1.0 on purpose, so the visible window is the first
+part of a longer ramp. Race alone moves its middle stop to `0.72`.
+
+| State | Stops |
+|---|---|
+| easy | `#3EBD41` → `#1F8A52` → `#0F4A3A` |
+| rest | `#008FEC` → `#4A3A8E` → `#1C1A3A` |
+| quality | `#F3AD38` → `#E85D26` → `#7A2828` |
+| race | `#FF8847` → `#E85D26` → `#7A2828` |
+| long | `#27B4E0` → `#1A6A9E` → `#0C2A5E` |
+| phase | `#B084FF` → `#6A4ACE` → `#2A1A5A` |
+
+They are interpolated in **oklab**, not sRGB — sRGB creases visibly at the
+midpoint. Every gradient panel carries a fine fractal-noise **grain** layer at
+50% opacity in overlay blend, between the gradient and the type. The grain is
+what keeps white type legible on the gradient without a scrim. **It is not
+decoration and it must not be dropped.**
+
+**Shape.** Radii 6 / 10 / 14 / 18 / 22 / 26, pills at 999, and 30 on the bottom
+corners of a full-bleed panel.
+
+**Type.** Instrument Sans for text; Archivo at weight 800 / width 112 for
+display. Note for engineering: Archivo 800/112 is not a named instance — it is
+reached through the variable-font axes.
+
+---
+
+## 3 · Where the gradients go, and where they do not
+
+David asked for the gradients, and specifically wondered about the start screen.
+That instinct is right and I want to make the case for holding it there.
+
+**Gradient: the lobby, and the finish.** The two screens where a runner is
+standing still and has time to look at something. Full bleed, grain on, exactly
+as the phone draws it.
+
+**True black: every face during the run.** Three reasons, all of them real:
+
+- On OLED a black pixel is an off pixel. A full-screen gradient held for ninety
+  minutes is a battery decision, not a styling one.
+- The Always-On display dims everything. A considered gradient becomes grey mud
+  and the numbers on top of it lose their contrast exactly when a wrist is down.
+- Maximum contrast for the one number that matters is the entire job of a
+  running face.
+
+The gradient still gets to do work mid-run without covering the screen — a state
+can be carried by a single edge, a rule, or the colour of one figure. That is
+where I would like to see your thinking.
+
+**Engineering consequence, so nobody is surprised:** the watch palette is
+currently locked to an older ten-colour brief by a CI gate that forbids orange.
+Moving the watch onto v5 means updating that lock. That is my job, not yours —
+flagging it so the change is deliberate.
+
+---
+
+## 4 · Apple's constraints — non-negotiable
+
+Design to these or it gets rejected, or worse, works badly on a wrist.
+
+**The system owns the top-right corner.** The clock is drawn there and cannot be
+moved. Nothing important goes near it.
 
 **Always-On is a separate design, not a dimmed one.** On Series 5 and later the
-screen stays on with the wrist down, redrawing far less often. Design an explicit
-Always-On state for every run face: assume it may be a minute stale, so a
-seconds-ticking timer is a lie in that state. Decide what stays true when it is
-stale — elapsed minutes, distance, the current interval — and what disappears.
+screen stays lit with the wrist down and redraws far less often. Every running
+face needs an explicit Always-On board. Assume it may be a minute stale — which
+means a seconds-ticking timer is a *lie* in that state. Decide what stays true
+when stale, and what disappears.
 
-**Respect the curved corners.** Content that runs to the edge gets clipped by the
-bezel radius. Apple gives us a container shape that follows it.
+**Respect the curved corners.** Content run to the edge is clipped by the bezel
+radius.
 
-**The Digital Crown scrolls; there is no force touch.** It was removed in
-watchOS 7. Any design that hides an action behind a long press needs to justify
-it — a runner will not find it.
+**The Digital Crown scrolls. There is no force touch** — it was removed in
+watchOS 7. Anything hidden behind a long press will not be found by a runner.
 
-**Tap targets are for a moving wrist.** Full-width rows. Nothing that needs
-precision. Assume gloves and sweat.
+**Tap targets are for a moving wrist.** Full-width rows, gloves, sweat, no
+precision.
 
-**Sizes.** 40 / 41 / 42 / 44 / 45 / 46mm, plus the 49mm Ultra. They share
-roughly one aspect ratio, so we author once and scale — see §5, which has a
-problem you need to know about.
+**Sizes.** 40 / 41 / 42 / 44 / 45 / 46mm plus the 49mm Ultra. They share roughly
+one aspect ratio. Author at Ultra (205 × 251 pt) and we scale down — a 40mm lands
+near 0.79, so **anything you set at 16pt renders near 12.6pt on the smallest
+watch.** Either design to survive that, or tell me you want a type floor that
+does not scale and I will build one.
 
-**Type.** SF Compact is Apple's watch face and it is drawn specifically for this
-screen at these sizes. We currently bundle Bebas Neue, Inter and Oswald. See §5.
+**Typography, and a real argument.** SF Compact exists because Apple drew a face
+specifically for reading small text on a small screen at a glance. Instrument
+Sans and Archivo were not drawn for that. My recommendation: **Archivo for the
+hero figure only** — the one enormous number per face, which is the brand — and
+SF Compact for every label, unit and secondary row. If you disagree, say so; I
+would rather have the argument now than after the fleet ships.
 
 ---
 
-## 3 · The fleet — 23 faces already exist
+## 5 · The treadmill, specifically
 
-This is a **redesign of a working fleet**, not a greenfield. Everything below is
-built and shipping in `legacy/native/Faff/FaffWatch Watch App/Faces.swift`. The
-three you design first (§6) set the language; the rest ripple.
+David wants the watch live during a treadmill session, tracking heart rate and
+cadence "and anything else we can". Here is the honest hardware position.
 
-**Before the run**
-`LobbyFace` · `CalibrateFace` · `TodayDoneFace`
+An indoor running session can offer: **heart rate**, **cadence**, estimated
+distance from the calibrated accelerometer, active energy, and on newer watches
+the running-form family — running power, stride length, ground contact time,
+vertical oscillation. Engineering is confirming which of those need which watch;
+design as though heart rate and cadence are certain.
 
-**Running — the steady states**
-`EasyFace` · `SteadyRunFace` · `TempoFace` · `ProgressionFace` · `JustRunFace`
-`HRFace` · `LiveRaceFace`
+The design question is not *can we show cadence*. It is **which of these earns a
+place on the face and which belongs in the summary afterwards.** My instinct is
+that heart rate and cadence are the two a runner can act on mid-run and
+everything else is noise until they stop — but that is a designer's call, not an
+engineer's. Tell me what you want on the face and I will tell you what we can
+actually feed it.
 
-**Running — the structured states**
-`WarmupFace` · `WorkIntervalFace` · `RestFace` · `StridesFace`
+One thing the treadmill face has that the outdoor faces do not: there is no GPS
+and no route, so it has more room. Use it.
 
-**Interruptions and moments**
-`GoFace` · `CountdownView` · `PhaseChangeFace` · `HeadsUpFace` · `MileSplitFace`
-`LandmarkFace` · `FuelFace` · `LivePauseFace`
+---
+
+## 6 · The states the watch has to answer
+
+Derived from the v5 phone, not from the old watch app. This is the fleet — but
+design the three in §7 first and let the rest follow the language.
+
+**Before**
+· Lobby — what today's session is, and start
+· Nothing today — a rest day, stated as a correct answer, not an empty screen
+· Not this watch — the graceful refusal when the session is not one we execute
+
+**Running · steady**
+· Easy · Long · Steady / just-run · Treadmill
+
+**Running · structured**
+· Warm-up · Work interval · Recovery interval · Strides · Tempo / threshold
+· Progression
+
+**Running · race**
+· Race, which is its own thing and should feel like it
+
+**Moments — these interrupt a face, they are not faces you sit on**
+· Countdown into a session · Go · Interval change · Mile or kilometre split
+· Landmark · Fuel · Pause · Heads-up, when heart rate or pace has drifted
 
 **After**
-`CompleteFace` · `SummaryView`
+· Complete · Summary
 
-Two locked layout rules the current faces already follow, and which I would keep
-unless you have a strong reason:
+Two rules that govern all of them, carried straight from the phone:
 
-- The small top label sits on the **OS clock's baseline**, so the app's own
-  eyebrow and the system time read as one line.
-- `TOP_MARGIN == BOTTOM_MARGIN`, with the big rows and their gaps derived from
-  what is left. It is what stops the faces looking like they slid up the screen.
-
----
-
-## 4 · The treadmill ask — what the hardware can actually give
-
-David wants the watch running during a treadmill session, tracking heart rate and
-cadence "and anything else we can". Here is the honest state of it.
-
-**What happens today.** When the phone runs a treadmill session it opens a
-heart-rate bridge to the watch and pings a dead-man timer every two minutes. That
-bridge collects **heart rate only**. The watch's own workout tracker collects
-four things: heart rate, distance, active energy, and running speed. **Cadence is
-not captured anywhere.**
-
-**There is also a bug**, which an engineer is fixing now: a run started on the
-watch is always recorded as an *outdoor* workout, even on a treadmill. That
-matters beyond labelling — HealthKit treats indoor and outdoor running
-differently, indoor leaning on the accelerometer rather than GPS.
-
-**What the hardware can give us on an indoor run.** Subject to engineering
-confirming the deployment target and which models qualify, an indoor running
-session can offer: heart rate, cadence (step rate), estimated distance from the
-calibrated accelerometer, active energy, and on newer watches the running-form
-family — running power, stride length, ground contact time, vertical oscillation.
-
-**So the design question for you** is not "can we show cadence" — it is *which of
-these earns a place on a treadmill face, and which is noise*. My instinct: heart
-rate and cadence are the two a runner can act on mid-run, and everything else
-belongs in the summary afterwards. But that is exactly the call I want a designer
-to make rather than an engineer.
-
-Design a treadmill face on the assumption that heart rate and cadence are live,
-and tell me what else you want; I will come back with what is actually available
-on which watch.
+- **A modelled number must never look measured.** The amber `~` is the mark, and
+  it is a system rule, not one screen's fix. If the watch ever shows a projected
+  or estimated figure, it is marked.
+- **A refusal is a correct answer, not an empty state.** A rest day is not a
+  blank screen, and it must not look like the screen we show when we have lost
+  the data.
 
 ---
 
-## 5 · Two things in the current build you should know about
+## 7 · What I want first — three faces
 
-**The uniform downscale.** Every face is authored once at Ultra size (205 × 251
-points) and scaled uniformly to fit smaller watches — about 0.95 on a 45mm, 0.86
-on a 41mm, **0.79 on a 40mm**. It was the right call at the time: it killed a
-whack-a-mole of per-device tweaks and it guarantees the proportions you approve
-are the proportions that ship.
+Approve the language on these three before anything else is drawn.
 
-The cost is that type shrinks with everything else. Something authored at 16pt
-lands near 12.6pt on a 40mm. If the design leans on small labels, they will be
-small on the smallest watch. Either design to survive 0.79, or tell me you need a
-type floor that does not scale, and I will build one.
+**1 · The lobby.** The one screen with time to be beautiful. Standing still,
+about to start. The gradient goes here. It carries what today's session is, and
+a start control that cannot be missed.
 
-**The custom typefaces.** We bundle Bebas Neue for display, Inter for body,
-Oswald for sub-labels. They are the brand and they look right at hero sizes. But
-SF Compact exists because Apple drew a face specifically for reading small text
-on a small screen at a glance, and none of ours were. My recommendation: keep the
-custom face for the **hero number only** — the one enormous figure per face — and
-move every label, unit and secondary row to SF Compact. If you disagree, say so;
-it is a real design argument and I would rather have it now than after the fleet
-ships.
+**2 · The steady run face.** The workhorse — what a runner looks at two hundred
+times in ninety minutes. If this is right, most of the fleet is right.
+**Deliver its Always-On board as a second artboard**, designed rather than
+dimmed.
 
----
+**3 · The work interval.** The densest state we have: rep number, target,
+current, remaining, and how it is going. If the language survives this face it
+survives everything. This is where a running app either holds its nerve or
+collapses into a dashboard.
 
-## 6 · What I want first — three faces, then the ripple
-
-Design these three and we approve the language before anything ripples.
-
-**1 · The lobby.** The one screen with time to be beautiful. The runner is
-standing still, about to start. This is where the gradient goes if David approves
-it (§0). It has to carry: what today's session is, and a start control that is
-unmissable.
-
-**2 · The steady run face.** The workhorse — `EasyFace` / `SteadyRunFace`. This is
-the one a runner looks at two hundred times in ninety minutes. If it is right,
-most of the fleet is right. **Deliver its Always-On state as a second board**,
-designed rather than dimmed.
-
-**3 · The work interval.** The densest state we have — `WorkIntervalFace`. Rep
-number, target, current, time or distance remaining, and how it is going. If the
-language survives this face it survives everything. This is where a design either
-holds or collapses into a dashboard.
-
-**Deliver each at Ultra 49mm (205 × 251 pt) as the reference**, since that is
-what the build scales from, plus a 40mm rendering of each so we can both see what
-0.79 does to it.
-
-Once those three are approved, the ripple order is: the remaining steady states,
-then the structured states, then the interruption moments, then before-and-after.
+Deliver each at **Ultra 49mm, 205 × 251 pt** as the reference — that is what the
+build scales from — plus a **40mm** rendering of each, so we can both see what
+0.79 does to it before we commit.
 
 ---
 
-## 7 · What I need back
+## 8 · What I need back
 
-- The three faces above, at both sizes, plus the Always-On board.
-- Tokens, not screenshots: every colour, size, weight and spacing as a value I
-  can put in `WatchTheme.swift`. The phone's v5 handoff did this and it is why
-  the phone build matched the design without a negotiation.
-- Where you have deliberately broken a rule from brief v2, say so and say why, so
-  I can either amend the brief or push back — silently diverging is the one thing
-  that costs us a week later.
-- Your answer on §5: the type floor, and SF Compact for labels.
-- Your answer on §4: which treadmill metrics earn a place on the face.
-
-Anything in the current build that is wrong, say so plainly. Twenty-three faces
-exist; that is a reason to be careful about what we throw away, not a reason to
-keep any of it.
+- The three faces, both sizes, plus the Always-On board.
+- **Tokens, not screenshots.** Every colour, size, weight and spacing as a value
+  I can put straight into the watch theme. The v5 phone handoff did exactly this
+  and it is the reason the phone build matched the design with no negotiation.
+- Your answer on typography: the type floor at 40mm, and SF Compact for labels.
+- Your answer on the treadmill: which metrics earn a place on the face.
+- Anywhere you think the v5 language is wrong *for a wrist*, say so and say why.
+  It was drawn for a phone held still in a hand. Some of it will not survive
+  contact with a moving wrist, and I would rather you tell me which parts than
+  quietly bend them.
