@@ -460,10 +460,26 @@ final class HealthKitImporter: ObservableObject {
         let maxHr = w.statistics(for: HKQuantityType(.heartRate))?
             .maximumQuantity()?.doubleValue(for: bpm)
 
-        // Local-date helpers — UTC start converted to the runner's stored
-        // timezone (RunnerTimezone.current) for the `date` + `start_local`
-        // fields the server expects.
-        let pt = RunnerTimezone.current
+        // Local-date helpers — the UTC start rendered as a wall clock for the
+        // `date` + `start_local` fields the server expects.
+        //
+        // 2026-08-21 · ingest audit · the zone is the DEVICE's, and it is sent
+        // with the payload.
+        //
+        // It used to be `RunnerTimezone.current` — the zone cached from the
+        // runner's PROFILE — and no `timezone` field went with it, so the
+        // server had nothing to pin the wall clock to and every apple_watch
+        // row (55 of David's, all of them) stored a bare timestamp that dedup
+        // had to re-attach to a zone by guesswork. Two costs: a run recorded
+        // while travelling was filed under the home zone's wall clock and
+        // calendar day, and the guess is re-made on every read, so the
+        // runner's whole history silently re-clusters if their profile zone
+        // ever changes.
+        //
+        // Device zone + an explicit `timezone` + the absolute `start_utc`
+        // below removes the guess. For a runner at home the two zones are the
+        // same and nothing about the payload changes.
+        let pt = TimeZone.current
         let isoLocal: String = {
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
@@ -487,6 +503,17 @@ final class HealthKitImporter: ObservableObject {
         var payload: [String: Any] = [
             "client_workout_id": w.uuid.uuidString,
             "start_local": isoLocal,
+            // The absolute start instant. HKWorkout.startDate is a Date — an
+            // instant, not a wall clock — so this is the one timestamp in the
+            // payload that needs no zone and cannot be misread. The server
+            // stores it as `data.startUtc` and run-identity dedup prefers it,
+            // which is what lets this run match its Strava twin even when
+            // Strava assigned the activity a different zone from the device's.
+            "start_utc": isoUTC(w.startDate),
+            // The device zone the two fields above were rendered in. Server
+            // stamps it on the row (`data.timezone`) so the wall clock stays
+            // pinnable for good, and re-derives `date` from the pair.
+            "timezone": pt.identifier,
             "date": dateStr,
             "activity_type": "running",
             "distance_mi": (miles * 100).rounded() / 100,
@@ -494,6 +521,24 @@ final class HealthKitImporter: ObservableObject {
             "moving_sec": durationSec,
             "source": "apple_watch",
         ]
+        // 2026-08-21 · ingest audit · indoor / outdoor, straight from HealthKit.
+        //
+        // HKMetadataKeyIndoorWorkout is set by Apple's own Workouts app (and by
+        // any third-party recorder that bothers) and it was never read here, so
+        // a treadmill session run outside the Faff app arrived with no `indoor`
+        // key at all. Every consumer reads `indoor === true`, so absent meant
+        // OUTDOOR: terrain and GAP adjustments applied to a belt
+        // (lib/terrain/run-terrain.ts), an elevation profile rendered from
+        // altimeter noise, the "Treadmill · indoor, no GPS" kicker suppressed
+        // (lib/faff/v5-today.ts), and the run offered to VDOT as an outdoor
+        // effort. HealthKit knows the answer; the app just wasn't asking.
+        //
+        // Only sent when HealthKit actually states it — an absent key stays
+        // absent so the merge upsert cannot overwrite a truer flag another
+        // ingest path (the Faff treadmill tracker) already wrote.
+        if let isIndoor = w.metadata?[HKMetadataKeyIndoorWorkout] as? Bool {
+            payload["indoor"] = isIndoor
+        }
         if let avgPace { payload["avg_pace_min_per_mi"] = avgPace }
         if let avgHr  { payload["avg_hr_bpm"] = Int(avgHr.rounded()) }
         if let maxHr  { payload["max_hr_bpm"] = Int(maxHr.rounded()) }

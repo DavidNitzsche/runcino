@@ -28,6 +28,7 @@ import { getStravaToken } from '@/lib/strava/auth';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { isSubThresholdRun } from '@/lib/runs/length-guard';
+import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { raiseAlert } from '@/lib/ops/alerts';
 
 // Layer 3 (M-1) · optional shared secret carried as ?key=<value> on the
@@ -516,6 +517,12 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<{ da
     name: activity?.name ?? 'Run',
     date,
     startLocal: startLocal.replace('Z', ''),
+    // 2026-08-21 · ingest audit · the ABSOLUTE start instant. `startLocal`
+    // above is athlete-local wall time in whatever zone Strava assigned the
+    // activity, which the device that recorded the same run need not share;
+    // when they differ the two rows land hours apart and never merge.
+    // `start_date` is unambiguous. lib/runs/identity.ts prefers it.
+    startUtc: typeof activity?.start_date === 'string' ? activity.start_date : null,
     distanceMi: Number(distanceMi.toFixed(3)),
     // #3 · NOTE the mixed semantics: durationSec here is ELAPSED (wall-clock,
     // includes stops); watch/HK/pullSync store MOVING/active time in their
@@ -530,7 +537,19 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<{ da
     avgHr: activity?.average_heartrate ?? null,
     maxHr: activity?.max_heartrate ?? null,
     avgCadence: activity?.average_cadence != null ? Number(activity.average_cadence) * 2 : null, // Strava reports halved
-    elevGainFt: activity?.total_elevation_gain != null ? Number(activity.total_elevation_gain) * 3.28084 : null,
+    // 2026-08-21 · ingest audit · run the same barometric-drift guard the
+    // other three ingest paths run, and stamp where the number came from.
+    // This path wrote the raw Strava value with no `elevGainSource` at all, so
+    // its rows were the only ones whose elevation carried no provenance —
+    // indistinguishable, downstream, from a measured one. Strava receives
+    // whatever the watch sent, so it inherits the same drift.
+    ...(() => {
+      const raw = activity?.total_elevation_gain != null
+        ? Math.round(Number(activity.total_elevation_gain) * 3.28084)
+        : null;
+      const sane = sanitizeElevGain({ elevGainFt: raw, distanceMi, splits: [] });
+      return { elevGainFt: sane.value, elevGainSource: sane.source };
+    })(),
     routePolyline: activity?.map?.summary_polyline ?? null,
     type: stravaTypeToFaff(activity),
     ingestedAt: new Date().toISOString(),

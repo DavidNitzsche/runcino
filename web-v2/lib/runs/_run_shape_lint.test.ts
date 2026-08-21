@@ -206,10 +206,14 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
     'lib/coach/calibration.ts': 'Reads data->>\'id\' (the PROVIDER id) · next batch.',
 
     /* ── ingest / sync · write-side, different risk profile ───────────── */
-    'lib/strava/pullSync.ts':
-      'The Strava ingest path. Reads distance_mi and startDate, neither of which is a key ' +
-      'on any row — they are almost certainly reading the INBOUND Strava payload rather ' +
-      'than runs.data. Needs reading before it is touched.',
+    // lib/strava/pullSync.ts · CLEARED 2026-08-21 (ingest audit). The entry
+    // read: "reads distance_mi and startDate, neither of which is a key on any
+    // row — almost certainly reading the INBOUND Strava payload. Needs reading
+    // before it is touched." It was read. The raw access was findCanonicalRow's
+    // match query, and `date` sat first in its COALESCE, so `::timestamptz`
+    // resolved to MIDNIGHT and the ±10-min window could only ever match a run
+    // that started at midnight. The matcher now asks lib/runs/identity.ts
+    // isSameRun and reads its candidate day through runDaySql().
     'lib/strava/push.ts': 'Push path · id/activityId/day/mergedIntoId · next batch.',
     'lib/runs/post-write-hooks.ts': 'Elevation backfill · id/elevGainFt/routePolyline.',
     'lib/weather/openmeteo.ts':

@@ -57,9 +57,53 @@ export const SOURCE_TIER: Record<string, number> = {
   manual:         4,  // Faff manual entry on iPhone
   apple_watch:    3,  // Apple Watch via HK ingest
   apple_health:   2,  // raw HK sample
+  treadmill:      5,  // Faff phone treadmill tracker · same direct-record path as watch/phone
   strava:         1,
   strava_webhook: 1,
 };
+
+/**
+ * 2026-08-21 · ingest audit · the tier a canonical row's OWN values are worth.
+ *
+ * `provenance` only ever records fields that ARRIVED from another row. Every
+ * field a row wrote itself is unstamped, so `tierFor(provenance[key])` returns
+ * 0 for it — which made "does the incoming source outrank what's recorded?"
+ * answer YES for every source above tier 0. The tier ladder was therefore
+ * inverted in practice on first absorption: a tier-1 Strava loser overwrote a
+ * tier-3 Apple-Watch canonical, and a tier-3 HK loser overwrote a tier-5 Faff
+ * watch canonical. Confirmed on 66 of David's rows (e.g. the 2026-06-08 run:
+ * source=watch, provenance distanceMi/startLocal/date <- apple_watch,
+ * movingTimeS/paceSPerMi <- strava).
+ *
+ * The floor is the row's own source. A field is worth AT LEAST what the row
+ * that wrote it is worth, and an absorbed stamp can only raise that.
+ */
+export function existingTierFor(
+  canonicalData: Record<string, unknown> | null | undefined,
+  provenance: Record<string, string> | null | undefined,
+  key: string,
+): number {
+  const ownTier = tierFor(String(canonicalData?.source ?? '') || null);
+  const stampedTier = tierFor(provenance?.[key]);
+  return Math.max(ownTier, stampedTier);
+}
+
+/**
+ * Fields that identify WHEN the run happened. An absorbed row may FILL these
+ * when the canonical has none, but must never OVERWRITE them.
+ *
+ * Overwriting them rewrites the canonical's identity after the clustering that
+ * chose it — the row moves to a different instant (or a different calendar
+ * day), so the next merge pass no longer clusters it with the losers pointing
+ * at it, the absorption that would repair the damage is never planned, and the
+ * flags freeze in a state the engine disagrees with. Eight of David's days sit
+ * in exactly that state; 2026-05-24 is the visible cost (canonical carries
+ * `splits: []` while its loser holds the 12 real per-mile splits, because the
+ * pair stopped clustering before the absorber could put them back).
+ */
+export const IDENTITY_FILL_ONLY = new Set<string>([
+  'date', 'startLocal', 'startUtc', 'timezone',
+]);
 
 function tierFor(source: string | null | undefined): number {
   if (!source) return 0;
@@ -165,7 +209,7 @@ export async function enhanceCanonicalFromAbsorbed(args: {
     }
 
     const canonicalVal = canonicalData[key];
-    const existingTier = tierFor(canonicalProv[key]);
+    const existingTier = existingTierFor(canonicalData, canonicalProv, key);
 
     // Fix 4a · splits are absorbed whenever the canonical lacks REAL per-mile
     // splits and the incoming row has them — TIER-INDEPENDENT — so the L7
@@ -192,6 +236,9 @@ export async function enhanceCanonicalFromAbsorbed(args: {
       updatedData[key] = incomingVal;
       updatedProv[key] = incomingSource;
       fieldsAdded.push(key);
+    } else if (IDENTITY_FILL_ONLY.has(key)) {
+      // Present already · an absorbed row never moves the run in time.
+      fieldsSkipped.push(key + ' (identity field · fill-only, never overwritten)');
     } else if (incomingTier > existingTier) {
       // Higher tier wins · overwrite
       updatedData[key] = incomingVal;

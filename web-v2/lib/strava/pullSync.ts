@@ -20,7 +20,10 @@
  */
 import { pool } from '@/lib/db/pool';
 import { getStravaToken } from '@/lib/strava/auth';
-import { SOURCE_TIER } from '@/lib/runs/canonical';
+import { SOURCE_TIER, existingTierFor, IDENTITY_FILL_ONLY } from '@/lib/runs/canonical';
+import { isSameRun, type RunRow } from '@/lib/runs/identity';
+import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
+import { runDaySql } from '@/lib/runs/run-shape';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { isSubThresholdRun } from '@/lib/runs/length-guard';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
@@ -143,6 +146,14 @@ function stravaToFaffPayload(
     // day (UTC rolls an evening run to tomorrow). Truncate the LOCAL start.
     date: String(act.start_date_local ?? act.start_date ?? '').slice(0, 10) || null,
     startLocal: act.start_date_local,
+    // 2026-08-21 · ingest audit · the ABSOLUTE start instant, kept alongside
+    // the wall clock. `start_date_local` carries a spurious Z and is in the
+    // zone STRAVA assigned the activity from its GPS, which is not always the
+    // zone the runner's device was in — on 2026-08-01 the two differed by two
+    // hours (a run logged at sea) and the Strava row never merged with its
+    // Apple-Watch twin, double-counting 1.34 mi. `start_date` needs no zone
+    // and no inference. lib/runs/identity.ts prefers it. See exactStartUtcMs.
+    startUtc: act.start_date ?? null,
     distanceMi: Number(distanceMi.toFixed(4)),
     movingTimeS: act.moving_time,
     elapsedTimeS: act.elapsed_time,
@@ -226,49 +237,124 @@ async function getStravaActivityDetail(
   return await r.json() as StravaActivityDetail;
 }
 
+/**
+ * The canonical row this Strava activity already exists as, or null.
+ *
+ * 2026-08-21 · ingest audit · REWRITTEN. The old query was:
+ *
+ *   ABS(EXTRACT(EPOCH FROM (
+ *     COALESCE((data->>'date')::timestamptz, (data->>'startLocal')::timestamptz, …)
+ *     - $startIso::timestamptz))) < 600
+ *
+ * `data->>'date'` is a bare `YYYY-MM-DD`, and it is present on effectively
+ * every row, so the COALESCE always resolved to it and `::timestamptz` turned
+ * it into MIDNIGHT. The comparison was therefore "did this run start within
+ * ten minutes of midnight?" — false for every daytime run. Measured on the
+ * 2026-08-01 activity: 81,833 s apart against a 600 s window.
+ *
+ * The ENHANCE branch was consequently unreachable and every Strava activity
+ * took the INSERT branch, laying down a second row for a run the watch or
+ * HealthKit had already delivered and leaving dedup entirely to the nightly
+ * merge cron.
+ *
+ * Now it asks the merge engine. `isSameRun` is the SAME predicate
+ * `autoMergeForDate` and the volume reader use, so the matcher and the merge
+ * can no longer disagree about what counts as the same physical run — the
+ * drift that made a repair job necessary in the first place.
+ */
 async function findCanonicalRow(args: {
   userUuid: string;
+  /** Strava `start_date` · the true UTC instant. */
   startIso: string;
+  /** Strava `start_date_local` · athlete-local wall time, Z-suffixed. */
+  startLocalIso: string;
   distMi: number;
+  movingSec: number;
 }): Promise<{ id: string; data: Record<string, unknown>; provenance: Record<string, string>; shoe_id: number | null } | null> {
-  const { userUuid, startIso, distMi } = args;
+  const { userUuid, startIso, startLocalIso, distMi, movingSec } = args;
+
+  const localDay = String(startLocalIso || startIso || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDay)) return null;
+
+  // Candidates: the canonical rows on the activity's own local day, plus the
+  // days either side. The neighbours matter because the two sides can disagree
+  // about which calendar day a late-evening or early-morning run belongs to —
+  // exactly the disagreement `isSameRun` is there to settle. `isSameRun` still
+  // requires equal local days, so a neighbour only matches when its own `date`
+  // already agrees.
   const r = await pool.query<{
     id: string;
+    user_uuid: string;
     data: Record<string, unknown>;
     provenance: Record<string, string>;
     shoe_id: number | null;
   }>(
     // #4 · CANONICAL_ROW_SQL is the shared canonical-row predicate (see
-    // lib/runs/volume.ts). This query previously used the stricter
-    // "absorbed_into_canonical_at IS NULL AND mergedIntoId = false", which made
-    // it the outlier vs the volume reader and could skip a stale-stamped-but-
-    // canonical row. Keying only on mergedIntoId matches volume; a true loser
-    // still always carries mergedIntoId, so it can never be picked here.
-    `SELECT id::text AS id, data, provenance, shoe_id
+    // lib/runs/volume.ts). Keying only on mergedIntoId matches volume; a true
+    // loser always carries mergedIntoId, so it can never be picked here.
+    `SELECT id::text AS id, user_uuid::text AS user_uuid, data, provenance, shoe_id
        FROM runs
       WHERE user_uuid = $1
         AND ${CANONICAL_ROW_SQL}
-        AND COALESCE(
-              (data->>'date')::timestamptz,
-              (data->>'startLocal')::timestamptz,
-              (data->>'startDate')::timestamptz
-            ) IS NOT NULL
-        AND ABS(EXTRACT(EPOCH FROM (
-              COALESCE(
-                (data->>'date')::timestamptz,
-                (data->>'startLocal')::timestamptz,
-                (data->>'startDate')::timestamptz
-              ) - $2::timestamptz
-            ))) < $3
-        AND ABS(COALESCE(
-              (data->>'distanceMi')::numeric,
-              (data->>'distance_mi')::numeric,
-              0
-            ) - $4::numeric) < $5
-      LIMIT 1`,
-    [userUuid, startIso, MATCH_WINDOW_SEC, distMi, MATCH_DIST_MI],
+        AND ${runDaySql()} BETWEEN $2 AND $3`,
+    [
+      userUuid,
+      new Date(Date.parse(localDay + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10),
+      new Date(Date.parse(localDay + 'T12:00:00Z') + 86400000).toISOString().slice(0, 10),
+    ],
   );
-  return r.rows[0] ?? null;
+  if (r.rows.length === 0) return null;
+
+  const tz = await runnerTimezoneOrPacific(userUuid);
+  const incoming: RunRow = {
+    id: '__incoming__',
+    user_uuid: userUuid,
+    data: {
+      source: 'strava',
+      date: localDay,
+      startLocal: startLocalIso || null,
+      // The absolute instant · makes the comparison exact regardless of which
+      // zone Strava assigned the activity or which zone the device was in.
+      startUtc: startIso || null,
+      distanceMi: distMi,
+      durationSec: movingSec,
+    },
+  };
+
+  for (const row of r.rows) {
+    if (isSameRun(incoming, { id: row.id, user_uuid: row.user_uuid, data: row.data }, tz)) {
+      return { id: row.id, data: row.data, provenance: row.provenance, shoe_id: row.shoe_id };
+    }
+  }
+  // Fallback for rows the identity predicate cannot pin (a legacy row with no
+  // usable timestamp on either side): the original intent, ±10 min on the true
+  // start instant and ±0.15 mi, but comparing against the row's own start
+  // rather than midnight of its date.
+  for (const row of r.rows) {
+    const rowStart = rowStartMsFallback(row.data);
+    if (rowStart == null) continue;
+    const incomingStart = Date.parse(startIso);
+    if (!Number.isFinite(incomingStart)) continue;
+    if (Math.abs(rowStart - incomingStart) >= MATCH_WINDOW_SEC * 1000) continue;
+    const rowDist = Number(row.data?.distanceMi ?? (row.data as Record<string, unknown>)?.distance_mi ?? 0);
+    if (Math.abs(rowDist - distMi) >= MATCH_DIST_MI) continue;
+    return { id: row.id, data: row.data, provenance: row.provenance, shoe_id: row.shoe_id };
+  }
+  return null;
+}
+
+/** Best-effort absolute start for the ±10-min fallback above. Offset-carrying
+ *  values only — a bare wall clock has no defensible instant here, and
+ *  `isSameRun` above has already had its go at those. */
+function rowStartMsFallback(data: Record<string, unknown> | null | undefined): number | null {
+  for (const key of ['startUtc', 'startLocal', 'startDate']) {
+    const v = data?.[key];
+    if (typeof v !== 'string' || !v) continue;
+    if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(v)) continue;
+    const ms = Date.parse(v);
+    if (Number.isFinite(ms)) return ms;
+  }
+  return null;
 }
 
 export interface SyncOneResult {
@@ -342,7 +428,13 @@ export async function pullSyncOneUser(args: {
         continue;
       }
       const startIso = act.start_date;
-      const match = await findCanonicalRow({ userUuid, startIso, distMi });
+      const match = await findCanonicalRow({
+        userUuid,
+        startIso,
+        startLocalIso: act.start_date_local,
+        distMi,
+        movingSec: act.moving_time ?? act.elapsed_time ?? 0,
+      });
 
       // Fetch detail only if matched + canonical missing key fields, OR
       // we're about to insert (always need detail for new inserts).
@@ -366,9 +458,16 @@ export async function pullSyncOneUser(args: {
           const inVal = (payload as Record<string, unknown>)[k];
           if (inVal == null || inVal === '' || (Array.isArray(inVal) && inVal.length === 0)) continue;
           const cVal = (canoData as Record<string, unknown>)[k];
-          const existingTier = tierFor(canoProv[k]);
+          // 2026-08-21 · ingest audit · floor the existing tier at the
+          // canonical row's OWN source (see canonical.ts existingTierFor).
+          // `provenance` only records ABSORBED fields, so an unstamped field
+          // read as tier 0 and this tier-1 Strava enhance overwrote a tier-5
+          // Faff-watch value. Same bug, second site — symmetric fix.
+          const existingTier = existingTierFor(canoData, canoProv, k);
           if (cVal == null || cVal === '' || (Array.isArray(cVal) && cVal.length === 0)) {
             updatedData[k] = inVal; updatedProv[k] = 'strava'; added++;
+          } else if (IDENTITY_FILL_ONLY.has(k)) {
+            // Present already · Strava never moves an existing run in time.
           } else if (incomingTier > existingTier) {
             updatedData[k] = inVal; updatedProv[k] = 'strava'; added++;
           }

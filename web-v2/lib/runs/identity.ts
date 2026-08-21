@@ -33,6 +33,9 @@ const isIana = (tz: unknown): tz is string =>
 
 export function isTrustworthy(row: RunRow): boolean {
   const d = row.data ?? {};
+  if (typeof d.startUtc === 'string' && Number.isFinite(Date.parse(d.startUtc))) {
+    return true;                                                // (0) absolute instant · see exactStartUtcMs
+  }
   if (hasOffset(String(d.startLocal ?? ''))) return true;       // (1) explicit Z / offset
   if (isIana(d.timezone)) return true;                          // (2) explicit IANA tz
   if (PROVIDER_LOCAL.has(String(d.source ?? ''))) return true;  // (3) bare but provider-canonical
@@ -82,7 +85,32 @@ function tzOffsetMs(utcMs: number, tz: string): number {
   const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
   return asUtc - utcMs;
 }
+/**
+ * 2026-08-21 · ingest audit · `startUtc` is the run's ABSOLUTE start instant,
+ * written by the ingest path that actually knows it:
+ *   · pullSync / webhook  → Strava's `start_date` (true UTC)
+ *   · /api/ingest/workout → HKWorkout.startDate, relayed as `start_utc`
+ * Every other field below is a wall clock that has to be re-attached to a zone
+ * by inference, and inference is where the dedup false-negatives came from —
+ * a Strava row whose activity zone (assigned from GPS) differs from the
+ * runner's profile zone lands hours away from its own HealthKit twin. Proven
+ * live on 2026-08-01: strava 13:43:53Z vs apple_watch 15:43:53, same 612 s,
+ * same 1.34 mi, two rows, 1.34 phantom miles.
+ *
+ * Prefer it whenever it is present and parseable. Purely additive: no row
+ * carried this key when the fix landed, so every historical comparison keeps
+ * its exact previous behaviour and only new rows get the exact answer.
+ */
+export function exactStartUtcMs(r: RunRow): number | null {
+  const raw = r.data?.startUtc;
+  if (typeof raw !== 'string' || !raw) return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : null;
+}
+
 function startUtcMs(r: RunRow, defaultTz: string = DEFAULT_TZ): number {
+  const exact = exactStartUtcMs(r);
+  if (exact != null) return exact;
   let s = String(r.data?.startLocal ?? '');
   if (!s) return NaN;
   // Strava's start_date_local carries a spurious Z: it's the athlete's local

@@ -44,6 +44,7 @@ import { runnerTimezoneOrPacific, captureTimezoneFromDevice } from '@/lib/runtim
 import { requireUserId } from '@/lib/auth/session';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { sanitizeSplits } from '@/lib/runs/split-sanity';
+import { omitEmpty } from '@/lib/runs/merge-safe';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
 import { classifyRunDistance, DISTANCE_REVIEW_FLAG, SOFT_DISTANCE_CEILING_MI, HARD_DISTANCE_CEILING_MI } from '@/lib/runs/distance-guard';
 import { bucketHrSamplesByZone, hasHrSamples } from '@/lib/coach/hr-zone-bucket';
@@ -137,7 +138,14 @@ export async function POST(req: NextRequest) {
   if (payloadTz) {
     await captureTimezoneFromDevice(userId, payloadTz).catch(() => { /* best-effort */ });
     if (typeof body.start_local === 'string' && body.start_local) {
-      const utc = toUtcIso(body.start_local, body.source ?? 'apple_watch', payloadTz);
+      // 2026-08-21 · ingest audit · when the client shipped the absolute
+      // instant (`start_utc`), derive the calendar day straight from it. The
+      // wall-clock round trip below is only a re-render of what the client
+      // already computed, so it can confirm the client's `date` but never
+      // correct a client that stamped the wall clock in the wrong zone.
+      const utc = (typeof body.start_utc === 'string' && Number.isFinite(Date.parse(body.start_utc)))
+        ? new Date(body.start_utc).toISOString()
+        : toUtcIso(body.start_local, body.source ?? 'apple_watch', payloadTz);
       const derived = (toLocalWallIso(utc, payloadTz) ?? '').slice(0, 10);
       if (/^\d{4}-\d{2}-\d{2}$/.test(derived) && derived !== body.date) {
         console.log(`[ingest/workout] date re-derived from start_local+tz · client=${body.date} → ${derived} (${payloadTz})`);
@@ -240,6 +248,18 @@ export async function POST(req: NextRequest) {
     name: body.name ?? 'Run',
     date: body.date,
     startLocal: body.start_local ?? `${body.date}T08:00:00`,
+    // 2026-08-21 · ingest audit · the ABSOLUTE start instant, straight from
+    // HKWorkout.startDate (HealthKitImporter ships it as `start_utc`).
+    // `start_local` is a wall clock the client stamped in SOME zone, and when
+    // that zone disagrees with the one Strava assigned the same run's activity
+    // the two rows land hours apart and never merge — 1.34 phantom miles on
+    // 2026-08-01. An instant needs no zone. lib/runs/identity.ts prefers it.
+    // Key OMITTED (not null) on older clients so the merge upsert can never
+    // clobber a value a later build supplied.
+    ...(typeof body.start_utc === 'string' && body.start_utc
+      && Number.isFinite(Date.parse(body.start_utc))
+      ? { startUtc: new Date(body.start_utc).toISOString() }
+      : {}),
     // 2026-07-06 · audit P1-33 · device zone (when the client ships one) ·
     // identity.ts:86 prefers a row's own timezone over the per-user default
     // when reconstructing UTC from a bare wall clock. Absent on legacy
@@ -282,6 +302,13 @@ export async function POST(req: NextRequest) {
       };
     })(),
     tempF: body.temp_f ?? null,
+    // 2026-08-21 · ingest audit · indoor / outdoor from HKMetadataKeyIndoorWorkout
+    // (HealthKitImporter reads it; older builds omit it). Key ABSENT, not
+    // false, when the client didn't state it — every consumer reads
+    // `indoor === true`, so writing a speculative `false` would assert
+    // "outdoor" about a run nobody classified, and would overwrite a truer
+    // flag the Faff treadmill tracker had already written for the same run.
+    ...(typeof body.indoor === 'boolean' ? { indoor: body.indoor } : {}),
     // 2026-06-03 · splits validation · iPhone derives per-mile splits
     // from HKWorkoutRoute GPS timestamps in HealthKitManager.swift
     // buildRoutePayload. When the runner pauses mid-mile, GPS keeps
@@ -309,14 +336,28 @@ export async function POST(req: NextRequest) {
           `(delta ${splitsCheck.deltaS}s)`,
         );
       }
+      // Per-mile physiological guard (2026-07-09) runs AFTER the whole-run
+      // duration check, on the reliable set, so nulling one impossible
+      // mile's pace can't shrink the split-sum and trip the whole-run
+      // gate into dropping every split. Flags the GPS-spike artifact —
+      // a mile whose pace is impossible for its cadence/HR. See
+      // lib/runs/split-sanity.ts.
+      const keptSplits = sanitizeSplits(splitsCheck.reliable ? rawSplits : []);
       return {
-        // Per-mile physiological guard (2026-07-09) runs AFTER the whole-run
-        // duration check, on the reliable set, so nulling one impossible
-        // mile's pace can't shrink the split-sum and trip the whole-run
-        // gate into dropping every split. Flags the GPS-spike artifact —
-        // a mile whose pace is impossible for its cadence/HR. See
-        // lib/runs/split-sanity.ts.
-        splits: sanitizeSplits(splitsCheck.reliable ? rawSplits : []),
+        // 2026-08-21 · ingest audit · Rule 6 · the key is OMITTED, never
+        // written as `[]`, when this payload has no usable splits.
+        //
+        // `jsonb_strip_nulls` protects the merge upsert from a null, but an
+        // EMPTY ARRAY is not null — it survives the strip and wins the `||`,
+        // erasing per-mile splits the absorber pulled onto this canonical from
+        // a sibling row. Confirmed in production: David's 2026-05-24 11.12 mi
+        // long run carries `splits: []` on the canonical while its merged
+        // loser still holds all 12 real per-mile splits, so every splits-fed
+        // surface (slowest mile, drift, decoupling) is blind for that run.
+        //
+        // Same rule as `qualityFlag` below: default preserves, explicit
+        // destruction only. See lib/runs/merge-safe.ts for the contract.
+        ...omitEmpty('splits', keptSplits),
         splits_unreliable: rawSplits.length > 0 ? !splitsCheck.reliable : false,
         splits_validation: splitsCheck.reliable ? null : {
           splitsSumS: splitsCheck.splitsSumS,
@@ -369,13 +410,14 @@ export async function POST(req: NextRequest) {
     // watch app glitched and the 15-min warmup was hand-added). Read
     // the existing row first; if it has warmupAddedManually=true,
     // re-apply the warmup bonus to the new data before insert.
-    const existing = (await pool.query(
-      `SELECT data FROM runs
+    const existingRow = (await pool.query<{ id: string; data: any }>(
+      `SELECT id::text AS id, data FROM runs
         WHERE user_uuid = $1
           AND data->>'client_workout_id' = $2
         LIMIT 1`,
       [userId, body.client_workout_id]
-    )).rows[0]?.data;
+    )).rows[0];
+    const existing = existingRow?.data;
 
     if (existing?.warmupAddedManually) {
       const bonusMi = Number(existing.warmupBonusMi ?? 1.7);
@@ -409,11 +451,24 @@ export async function POST(req: NextRequest) {
       console.log('[ingest/workout] preserved warmup bonus across re-ingest for', body.client_workout_id);
     }
 
-    // Rule 6 — preserve dedup flags across re-ingest. mergedIntoId is set
-    // by autoMergeForDate on loser rows of a dupe cluster; the DELETE-then-
-    // INSERT below wipes it, creating a convergence window until autoMerge
-    // re-fires. Copy it forward so the window never exists.
-    if (existing?.mergedIntoId != null) {
+    // Rule 6 — preserve dedup flags across re-ingest. mergedIntoId is set by
+    // autoMergeForDate on the loser rows of a dupe cluster.
+    //
+    // 2026-08-21 · ingest audit · NARROWED to the case it is actually for.
+    // The write below is an UPSERT (`runs.data || jsonb_strip_nulls(...)`),
+    // so a key this payload omits already survives — copying mergedIntoId onto
+    // the outgoing payload is redundant on the same-id path, and worse than
+    // redundant: `existing` is a snapshot taken before the write, so a flag
+    // another request's autoMerge cleared in between gets RE-APPLIED, which is
+    // how a canonical ends up pointing at a row that points back and volume.ts
+    // zeroes the day (the 2026-06-07 circular-merge bug). The route's own
+    // weather patch carries the same warning a few hundred lines down.
+    //
+    // It is still needed for the legacy-id migration: when `existing` is a row
+    // under an OLDER synthetic id, the DELETE below removes it and the flag
+    // would be lost with it. That is the only case that copies forward.
+    const migratingFromLegacyId = existingRow != null && existingRow.id !== String(stableId);
+    if (migratingFromLegacyId && existing?.mergedIntoId != null) {
       (data as any).mergedIntoId = existing.mergedIntoId;
     }
 
