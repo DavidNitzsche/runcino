@@ -119,8 +119,8 @@ struct SickFlareV5: View {
     }
 
     /// The same small "Today" + account-button row every quiet-panel state
-    /// screen opens with (13a/15a). Inlined rather than shared — the kit's
-    /// equivalent (`PlaceHeaderRow`) is private to `StateScreensV5.swift`.
+    /// screen opens with (13a/15a). The row stays local — `PlaceHeaderRow` is
+    /// private to `StateScreensV5.swift` — but the disc is the kit's.
     private var header: some View {
         HStack(alignment: .center, spacing: V5.S.s8) {
             Text("Today")
@@ -129,15 +129,10 @@ struct SickFlareV5: View {
                 .tracking(20 * 0.02)
                 .foregroundStyle(V5.textPrimary)
             Spacer(minLength: V5.S.s8)
-            Button(action: onOpenAccount) {
-                Text("JR")
-                    .font(.faffText(12, weight: .semibold, scales: false))
-                    .foregroundStyle(V5.textPrimary)
-                    .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
-                    .background(V5.materialControl, in: Circle())
-            }
-            .buttonStyle(V5PressStyle())
-            .v5HeaderTarget("Account and settings")
+            HeaderDiscV5(glyph: .initials("JR"),
+                         label: "Account and settings",
+                         fill: .quiet,
+                         action: onOpenAccount)
         }
     }
 }

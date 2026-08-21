@@ -84,15 +84,10 @@ struct ReturnToRunningV5: View {
                     .tracking(20 * 0.02)
                     .foregroundStyle(V5.textPrimary)
                 Spacer(minLength: 0)
-                Button(action: onOpenAccount) {
-                    Text(initials)
-                        .font(.faffText(12, weight: .semibold, scales: false))
-                        .foregroundStyle(V5.textPrimary)
-                        .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
-                        .background(V5.materialControl, in: Circle())
-                }
-                .buttonStyle(V5PressStyle())
-                .v5HeaderTarget("Account and settings")
+                HeaderDiscV5(glyph: .initials(initials),
+                             label: "Account and settings",
+                             fill: .quiet,
+                             action: onOpenAccount)
             }
 
             VStack(alignment: .leading, spacing: V5.S.s2) {

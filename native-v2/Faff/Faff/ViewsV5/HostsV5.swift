@@ -323,22 +323,13 @@ struct TodayHostV5: View {
                 .tracking(20 * 0.02)
                 .foregroundStyle(V5.textPrimary)
             Spacer(minLength: 0)
-            Button(action: { accountOpen = true }) {
-                Group {
-                    if let initials {
-                        Text(initials)
-                            .font(.faffText(12, weight: .semibold, scales: false))
-                    } else {
-                        Image(systemName: "person")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                }
-                .foregroundStyle(V5.textPrimary)
-                .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
-                .background(V5.materialTileRaised, in: Circle())
-            }
-            .buttonStyle(V5PressStyle())
-            .v5HeaderTarget("Account and settings")
+            // `personSize: 13`, not the kit's 14 — this screen drew its
+            // person glyph a point smaller than the panel headers do and that
+            // is kept as drawn. A designer's ruling, not a refactor's.
+            HeaderDiscV5(glyph: .account(initials, personSize: 13),
+                         label: "Account and settings",
+                         fill: .quietRaised,
+                         action: { accountOpen = true })
         }
     }
 

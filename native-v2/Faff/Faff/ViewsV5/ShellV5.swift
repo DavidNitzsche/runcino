@@ -494,15 +494,13 @@ struct NotOnPhoneYetV5: View {
                     if let onOpenAccount {
                         HStack {
                             Spacer(minLength: 0)
-                            Button(action: onOpenAccount) {
-                                Image(systemName: "person")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(V5.textPrimary)
-                                    .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
-                                    .background(V5.materialTileRaised, in: Circle())
-                            }
-                            .buttonStyle(V5PressStyle())
-                            .v5HeaderTarget("Account and settings")
+                            // 13pt person glyph, matching the other refusal
+                            // screen (`HostsV5.wayOutHeader`) rather than the
+                            // kit's 14. Kept as drawn.
+                            HeaderDiscV5(glyph: .symbol("person", size: 13),
+                                         label: "Account and settings",
+                                         fill: .quietRaised,
+                                         action: onOpenAccount)
                         }
                     }
                     Color.clear.frame(height: onOpenAccount == nil ? V5.S.s56 : V5.S.s24)

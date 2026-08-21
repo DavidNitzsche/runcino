@@ -1081,19 +1081,21 @@ struct SheetShape: Shape {
     }
 }
 
-// MARK: - The header button's tap target
+// MARK: - The round header disc
 //
-// THE SAME 30-POINT DISC IS HAND-ROLLED IN NINE FILES.
+// THE SAME 30-POINT DISC USED TO BE HAND-ROLLED IN NINE FILES.
 //
-// `PlaceHeaderV5` below is the shared one, and each screen's comment explains
-// why it kept a private copy anyway ("not worth promoting to the shared kit
-// for one more call site with the same two-line body"). That held while the
-// body really was two lines. It stopped holding the moment every copy needed
-// the same tap target and the same spoken name, because nine copies is nine
-// chances to forget one — and eight of the nine had already forgotten.
+// Each of the nine carried a comment explaining why it kept a private copy —
+// "not worth promoting to the shared kit for one more call site with the same
+// two-line body". That held while the body really was two lines. It stopped
+// holding the moment every copy needed the same tap target and the same
+// spoken name: the 2026-08-21 accessibility audit had to add both to all nine
+// by hand, and found eight of them missing both. Nine copies were nine
+// chances to forget, and eight had already been taken.
 //
-// Rather than move nine buttons into one component mid-audit, this is the one
-// line each of them was missing.
+// So the disc is one component now. `v5HeaderTarget` below is still its own
+// modifier because the geometry is the interesting part and `AppBar`'s back
+// button hand-rolls the same trick; `HeaderDiscV5` is what screens call.
 
 extension View {
     /// Expands a drawn 30pt header disc to a real tap target and gives it a
@@ -1114,6 +1116,104 @@ extension View {
             .padding(.horizontal, -(width - V5.Shell.headerButton) / 2)
             .padding(.vertical, -(44 - V5.Shell.headerButton) / 2)
             .accessibilityLabel(label)
+    }
+}
+
+/// The round 30pt header disc: an SF Symbol or the runner's initials on a
+/// tinted circle, with a 44pt-tall tap target and a spoken name.
+///
+/// Every "place" header row on the phone is built out of these — the account
+/// button on Today, Today-after, the four state screens, the sick flare, the
+/// two refusal screens; the calendar button beside it; the plus on Races.
+struct HeaderDiscV5: View {
+
+    /// What the disc paints itself out of.
+    ///
+    /// A gradient panel paints with the on-panel set (white at opacity, which
+    /// is the only thing that reads on a colour that moves under it). A quiet
+    /// panel paints with the plain material tokens. `quietRaised` is the same
+    /// quiet ink one surface step up, which is what the two refusal screens
+    /// use — they have no panel behind them to lift the disc off.
+    enum Fill {
+        case onPanel
+        case quiet
+        case quietRaised
+
+        var ink: Color {
+            switch self {
+            case .onPanel:                return V5.OnPanel.primary
+            case .quiet, .quietRaised:    return V5.textPrimary
+            }
+        }
+
+        var disc: Color {
+            switch self {
+            case .onPanel:      return V5.OnPanel.control
+            case .quiet:        return V5.materialControl
+            case .quietRaised:  return V5.materialTileRaised
+            }
+        }
+    }
+
+    /// What is drawn inside the disc. Decoration either way — the button's
+    /// NAME is `label`, and that is what a runner hears.
+    enum Glyph {
+        /// `size` is 14 everywhere the design drew a disc on a panel. The two
+        /// refusal screens drew their person glyph at 13 and that is kept
+        /// rather than quietly normalised: it is a pixel, and this change
+        /// moves none of them. Worth a designer's ruling, not a refactor's.
+        case symbol(String, size: CGFloat = 14)
+        case initials(String)
+
+        /// Initials when we know the runner's name, a person glyph when we do
+        /// not. Never an empty disc, which is what a blank name rendered and
+        /// what reads on device as a control that failed to load.
+        static func account(_ initials: String?, personSize: CGFloat = 14) -> Glyph {
+            guard let initials, !initials.isEmpty else {
+                return .symbol("person", size: personSize)
+            }
+            return .initials(initials)
+        }
+    }
+
+    let glyph: Glyph
+    /// What VoiceOver reads. Without it the initials disc announced "JR" and
+    /// the person glyph announced "person" — the raw SF Symbol name, straight
+    /// through to the runner.
+    let label: String
+    var fill: Fill = .onPanel
+    /// 44 for a disc alone on its side of a header row. 36 for one of a pair
+    /// sitting 6pt apart, which cannot both take 44 without one stealing the
+    /// other's taps — see `v5HeaderTarget`.
+    var targetWidth: CGFloat = 44
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                switch glyph {
+                case let .symbol(name, size):
+                    Image(systemName: name)
+                        .font(.system(size: size, weight: .semibold))
+                case let .initials(text):
+                    // THE INITIALS LIVE INSIDE A FIXED 30-POINT DISC.
+                    //
+                    // Scaled with the reading register they outgrew it: at the
+                    // third accessibility size "JR" rendered as "…" — the
+                    // runner's own initials truncated to an ellipsis in the
+                    // account button. The disc is a fixed graphic, so its two
+                    // letters are sized to the disc, not to the runner's text
+                    // setting. The button's name is what VoiceOver reads.
+                    Text(text)
+                        .font(.faffText(12, weight: .semibold, scales: false))
+                }
+            }
+            .foregroundStyle(fill.ink)
+            .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
+            .background(fill.disc, in: Circle())
+        }
+        .buttonStyle(V5PressStyle())
+        .v5HeaderTarget(label, width: targetWidth)
     }
 }
 
@@ -1166,15 +1266,16 @@ struct PlaceHeaderV5: View {
 
             HStack(spacing: V5.S.s6) {
                 if let onCalendar {
-                    control(systemImage: "calendar",
-                            label: "Training calendar",
-                            action: onCalendar)
+                    HeaderDiscV5(glyph: .symbol("calendar"),
+                                 label: "Training calendar",
+                                 targetWidth: discTargetWidth,
+                                 action: onCalendar)
                 }
                 if let onAccount {
-                    control(systemImage: (initials?.isEmpty ?? true) ? "person" : nil,
-                            text: (initials?.isEmpty ?? true) ? nil : initials,
-                            label: "Account and settings",
-                            action: onAccount)
+                    HeaderDiscV5(glyph: .account(initials),
+                                 label: "Account and settings",
+                                 targetWidth: discTargetWidth,
+                                 action: onAccount)
                 }
             }
         }
@@ -1189,48 +1290,18 @@ struct PlaceHeaderV5: View {
     // on the account button it also clipped the corners off, so the target was
     // smaller than the disc's own bounding box.
     //
-    // The disc still draws at 30. The TARGET is expanded around it to the full
-    // 44pt height of the header row (free — the row is already 44 tall) and to
-    // 36pt wide, which is the disc plus the 6pt gap to its neighbour. The
-    // negative horizontal padding hands the layout back its original 30pt
-    // footprint, so nothing on screen moves.
+    // The disc still draws at 30 and the target grows around it. Two discs
+    // 6pt apart can have 36 each (the disc plus the gap) without either
+    // stealing the other's taps; one disc on its own — the after-run screen
+    // passes no calendar — takes the full 44 with nothing to steal it from.
+    // This row used to hardcode 36 for both cases, so the lone account button
+    // on Today-after was 36 wide for no reason at all.
     //
-    // 36×44 is the ceiling here, not a pass. Reaching a true 44×44 needs the
-    // two header discs to move apart or grow, and both are the design's call
-    // — flagged rather than taken.
+    // 36×44 is the ceiling for the pair, not a pass. Reaching a true 44×44
+    // there needs the two discs to move apart or grow, and both are the
+    // design's call — flagged rather than taken.
     // ─────────────────────────────────────────────────────────────────────
-    private func control(systemImage: String? = nil, text: String? = nil,
-                         label: String,
-                         action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Group {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 14, weight: .semibold))
-                } else {
-                    // THE INITIALS LIVE INSIDE A FIXED 30-POINT DISC.
-                    //
-                    // Scaled with the reading register they outgrew it: at
-                    // the third accessibility size "JR" rendered as "…" —
-                    // the runner's own initials truncated to an ellipsis in
-                    // the account button. The disc is a fixed graphic, so its
-                    // two letters are sized to the disc, not to the runner's
-                    // text setting. The button's NAME is what VoiceOver reads
-                    // and that is set below; the glyph is decoration.
-                    Text(text ?? "")
-                        .font(.faffText(12, weight: .semibold, scales: false))
-                }
-            }
-            .foregroundStyle(V5.OnPanel.primary)
-            .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
-            .background(V5.OnPanel.control, in: Circle())
-            .frame(width: 36, height: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(V5PressStyle())
-        .padding(.horizontal, -3)
-        // The initials disc read out as "JR", and the person glyph read out as
-        // "person" — the raw SF Symbol name, straight through to the runner.
-        .accessibilityLabel(label)
+    private var discTargetWidth: CGFloat {
+        (onCalendar != nil && onAccount != nil) ? 36 : 44
     }
 }

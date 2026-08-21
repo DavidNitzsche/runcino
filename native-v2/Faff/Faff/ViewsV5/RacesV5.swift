@@ -119,9 +119,9 @@ struct RacesV5: View {
     /// Opens the add-race sheet (`AddRaceV5`, off this screen). The design
     /// never drew this affordance — there is no mock for adding a race at
     /// all — so this reuses the exact round panel-header button the READ
-    /// screens already establish (`TodayBeforeV5.panelHeaderButton`, painted
-    /// from `V5.OnPanel.control`, "a round header button on a panel," which
-    /// the README states outright and no other Races element was using).
+    /// screens already establish (`HeaderDiscV5`, painted from
+    /// `V5.OnPanel.control`, "a round header button on a panel," which the
+    /// README states outright and no other Races element was using).
     var onAddRace: () -> Void = {}
 
     /// Identity is the server id, never the date — expand-in-place keys off
@@ -197,7 +197,10 @@ struct RacesV5: View {
                     .tracking(20 * 0.02)
                     .foregroundStyle(V5.OnPanel.primary)
                 Spacer(minLength: V5.S.s12)
-                panelHeaderButton(systemImage: "plus", label: "Add a race", action: onAddRace)
+                // Alone on its side of the header, so it takes the full 44.
+                HeaderDiscV5(glyph: .symbol("plus"),
+                             label: "Add a race",
+                             action: onAddRace)
             }
 
             HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
@@ -240,31 +243,6 @@ struct RacesV5: View {
                 PanelStat(s.label, s.value.value, ink: s.toneValue.inkOverride)
             })
         }
-    }
-
-    /// Verbatim copy of `TodayBeforeV5.panelHeaderButton` — a private helper
-    /// per file, same as `TodayAfterV5` / `TodayChangedV5` / `StateScreensV5`
-    /// each already carry their own. Not worth promoting to the shared kit
-    /// for one more call site with the same two-line body.
-    private func panelHeaderButton(systemImage: String, label: String,
-                                   action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(V5.OnPanel.primary)
-                .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
-                .background(V5.OnPanel.control, in: Circle())
-                // Same treatment as `PlaceHeaderV5.control`: the disc stays 30
-                // and the target grows to the row's full 44pt height. This
-                // button is alone on its side of the header, so it takes the
-                // whole 44 wide as well with nothing to steal it from.
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(V5PressStyle())
-        .padding(-7)
-        // Read out as "plus". The action is adding a race.
-        .accessibilityLabel(label)
     }
 }
 

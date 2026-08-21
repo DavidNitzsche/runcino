@@ -100,16 +100,16 @@ struct AccountSheetBodyV5: View {
 // MARK: - Shared panel header
 //
 // "Today" + the account button, exactly as the prototype draws it on every
-// place screen. Not a DesignV5 kit component — it is four lines of layout
-// repeated four times in this file, not a new primitive for the kit. The ink
-// and control fill are the only thing that differs between a quiet panel
+// place screen. Still local to this file — it is the row, not the disc, and
+// the four state screens are its only callers. The disc itself comes from the
+// kit (`HeaderDiscV5`), which is what stops the fifth copy of it from being
+// written here. The fill is the only thing that differs between a quiet panel
 // (13a/15a, `--text-primary` on `--material-control`) and a gradient one
 // (14a/16a, white on `rgba(255,255,255,.2)`).
 
 private struct PlaceHeaderRow: View {
     var onOpenAccount: () -> Void = {}
-    var ink: Color = V5.textPrimary
-    var controlFill: Color = V5.materialControl
+    var fill: HeaderDiscV5.Fill = .quiet
     /// Placeholder initials — no v5 payload in this file carries the
     /// runner's name. The prototype's own sample data hardcodes "JR" the
     /// same way.
@@ -121,17 +121,12 @@ private struct PlaceHeaderRow: View {
                 .font(.faffDisplay(20))
                 .textCase(.uppercase)
                 .tracking(20 * 0.02)
-                .foregroundStyle(ink)
+                .foregroundStyle(fill.ink)
             Spacer(minLength: V5.S.s8)
-            Button(action: onOpenAccount) {
-                Text(initials)
-                    .font(.faffText(12, weight: .semibold, scales: false))
-                    .foregroundStyle(ink)
-                    .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
-                    .background(controlFill, in: Circle())
-            }
-            .buttonStyle(V5PressStyle())
-            .v5HeaderTarget("Account and settings")
+            HeaderDiscV5(glyph: .initials(initials),
+                         label: "Account and settings",
+                         fill: fill,
+                         action: onOpenAccount)
         }
     }
 }
@@ -263,9 +258,7 @@ struct WeekOffV5: View {
     var body: some View {
         StateScreenScaffold {
             DayPanel(fill: .state(.rest)) {
-                PlaceHeaderRow(onOpenAccount: onOpenAccount,
-                               ink: V5.OnPanel.primary,
-                               controlFill: V5.OnPanel.control)
+                PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
                 VStack(alignment: .leading, spacing: V5.S.s2) {
                     Text(range)
                         .font(.faffText(TypeScaleV5.label13))
@@ -407,9 +400,7 @@ struct DataOutageV5: View {
     var body: some View {
         StateScreenScaffold {
             DayPanel(fill: today.panel.fill) {
-                PlaceHeaderRow(onOpenAccount: onOpenAccount,
-                               ink: V5.OnPanel.primary,
-                               controlFill: V5.OnPanel.control)
+                PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
                 VStack(alignment: .leading, spacing: V5.S.s20) {
                     VStack(alignment: .leading, spacing: V5.S.s2) {
                         if let kicker = today.panel.kicker {

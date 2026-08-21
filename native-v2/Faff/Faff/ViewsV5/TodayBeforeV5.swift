@@ -269,25 +269,6 @@ struct TodayBeforeV5: View {
         return letters.isEmpty ? "" : String(letters).uppercased()
     }
 
-    private func panelHeaderButton(systemImage: String? = nil, text: String? = nil,
-                                   action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Group {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 14, weight: .semibold))
-                } else {
-                    Text(text ?? "")
-                        .font(.faffText(12, weight: .semibold, scales: false))
-                }
-            }
-            .foregroundStyle(V5.OnPanel.primary)
-            .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
-            .background(V5.OnPanel.control, in: Circle())
-        }
-        .buttonStyle(V5PressStyle())
-    }
-
     // MARK: - Instruction groups (Warm up / Work / Cool down)
 
     private var groupsSection: some View {
