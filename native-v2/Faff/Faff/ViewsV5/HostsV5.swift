@@ -1004,7 +1004,14 @@ struct LiveRunHostV5: View {
             // answered. It used to return silently, leaving a live-looking
             // console frozen at 0:00 on every runner's first ever run.
             if mode == .outdoor { tracker.start() }
-            await hr.start(from: Date())
+            // 2026-08-21 · the HR stream is NOT started here any more.
+            // `TreadmillHRStreamer.start` is first-caller-wins on the sample
+            // anchor, and this call fires with "whenever the plan finished
+            // loading" — racing both consoles, which start it themselves with
+            // the run's actual start instant. Whichever won pinned the anchor,
+            // and the console's more accurate one was silently discarded.
+            // Each console owns its own anchor because each console knows
+            // when its run began.
         }
     }
 

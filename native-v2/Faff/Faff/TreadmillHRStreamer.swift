@@ -37,6 +37,9 @@ final class TreadmillHRStreamer: ObservableObject {
     nonisolated private let store = HKHealthStore()
     private var observerActive = false
     private var anchor: HKQueryAnchor?
+    /// The instant this stream is anchored at · the run's start, not the
+    /// screen's. Kept so a later caller with a better answer can re-anchor.
+    private var anchorDate: Date?
 
     /// Buffer for the current phase · cleared by closePhase().
     private var phaseSamples: [Double] = []
@@ -49,7 +52,22 @@ final class TreadmillHRStreamer: ObservableObject {
     /// `when` so historical samples don't leak into the session.
     func start(from when: Date) async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
-        guard !observerActive else { return }
+        // 2026-08-21 · this was a bare `guard !observerActive else { return }`,
+        // so the FIRST caller pinned the sample anchor and every later, more
+        // accurate one was silently discarded. `LiveRunHostV5` used to call it
+        // with "whenever the plan finished loading" and beat the console's own
+        // call with the run's real start instant. That host call is gone, and
+        // this now re-anchors instead of ignoring: a second start with a
+        // different date, before any sample has landed, is someone telling us
+        // the run actually began somewhere else. Once samples exist the
+        // anchor is load-bearing and a re-anchor would discard them, so an
+        // active stream with data stands.
+        if observerActive {
+            guard anchorDate != when, sessionSamples.isEmpty else { return }
+            observerActive = false
+            anchor = nil
+        }
+        anchorDate = when
 
         let hrType = HKQuantityType(.heartRate)
         _ = try? await store.requestAuthorization(toShare: [], read: [hrType])

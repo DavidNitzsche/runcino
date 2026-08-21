@@ -97,6 +97,9 @@ struct LiveRunTreadmillV5: View {
     /// contradicts it and says so — it never replaces it silently. See
     /// IndoorDistanceMeter.swift.
     @StateObject private var meter = IndoorDistanceMeter()
+    /// Observed for `treadmillSessionConfirmed` — the watch's real answer to
+    /// "did your HR session actually open".
+    @ObservedObject private var watchSync = WatchSync.shared
     let plan: LiveRunPlanV5?
     /// Fired on every Pause/Resume tap, in addition to this view's own local
     /// pause (which freezes elapsed/distance immediately for the runner).
@@ -134,6 +137,18 @@ struct LiveRunTreadmillV5: View {
     /// the plan lands — so the plan's own target never reached the belt and
     /// every planned session opened at the flat 8.0 mph fallback.
     @State private var seededFromPlan = false
+    /// Watch HR bridge · 2026-08-21. This console never asked the watch to
+    /// open an indoor HKWorkoutSession at all, so its heart rate came from
+    /// HealthKit's passive every-5-minute baseline rather than the 5-15 s
+    /// stream the legacy console has had since build 137. On a threshold
+    /// session that is the difference between a heart-rate reading and a
+    /// souvenir.
+    @State private var watchHRBridgeUp = false
+    @State private var lastPingAt: Date = .distantPast
+    @State private var lastBridgeAskAt: Date = .distantPast
+    @State private var lastBpmAt: Date?
+    /// The session clock. `@State` so it is not rebuilt on every render.
+    @State private var clock = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
     /// Stable id, stamped once. Same role as `TreadmillView`'s `workoutId` —
     /// backend idempotency key, and reused as the payload's `workoutId` so a
     /// retried POST from the durable queue overwrites rather than duplicates.
@@ -213,11 +228,15 @@ struct LiveRunTreadmillV5: View {
         // ground as 12a, but this screen never reaches for a day-state
         // panel at all; the belt IS the console.
         .background(V5.surfacePage.ignoresSafeArea())
-        .background(
-            TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
-                Color.clear.onChange(of: ctx.date) { _, now in tick(at: now) }
-            }
-        )
+        // Live tick · 2026-08-21. Was a `TimelineView(.periodic(from: .now,
+        // by: 1.0))` inside `.background`, which reads the clock inside `body`
+        // and so closes a feedback loop: render builds a new schedule, the new
+        // schedule yields a new date, the date fires the tick, the tick writes
+        // state, the state re-renders. Measured on the identical construct in
+        // the outdoor recorder at 5,543 ticks in ~15 s. See the matching note
+        // in Views/TreadmillView.swift. A run-loop timer in `.common` mode
+        // fires at a fixed 1 Hz and nothing in `body` reads the clock.
+        .onReceive(clock) { now in tick(at: now) }
         .onChange(of: isRunning) { _, running in
             UIApplication.shared.isIdleTimerDisabled = running
         }
@@ -231,6 +250,11 @@ struct LiveRunTreadmillV5: View {
             meter.start(from: now)
             UIApplication.shared.isIdleTimerDisabled = true
             Task { await hr.start(from: now) }
+            // Ask the watch for a real indoor workout session, so HealthKit
+            // gets 5-15 s samples instead of the passive baseline.
+            lastBridgeAskAt = now
+            lastPingAt = now
+            watchHRBridgeUp = WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
         }
         // The plan arrives AFTER this view is built (the host renders it at
         // `.opacity(0)` while it fetches), and `State(initialValue:)` only
@@ -246,6 +270,20 @@ struct LiveRunTreadmillV5: View {
             UIApplication.shared.isIdleTimerDisabled = false
             hr.stop()
             meter.stop()
+            // Idempotent · safe even if the watch never received the start.
+            WatchSync.shared.stopTreadmillHRSession(sessionId: workoutId)
+        }
+        .onChange(of: hr.currentBpm) { _, bpm in
+            if bpm != nil { lastBpmAt = .now }
+        }
+        .onChange(of: isPaused) { _, paused in
+            // Resuming: re-ask rather than assume the watch session survived.
+            // The watch's dead-man timer is 15 minutes and its start is
+            // idempotent for the same id, so a live session no-ops.
+            guard !paused, startedAt != nil else { return }
+            lastBridgeAskAt = .now
+            lastPingAt = .now
+            watchHRBridgeUp = WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
         }
     }
 
@@ -257,12 +295,47 @@ struct LiveRunTreadmillV5: View {
     // from a sensor).
 
     private func tick(at now: Date) {
+        // Kept alive outside the pause guard: the watch's dead-man timer is
+        // 15 minutes, and a session only pinged while the belt turns dies on
+        // a longer pause with nothing on screen saying so.
+        maintainWatchBridge(at: now)
         // Nothing is running until the runner starts it. The console is built
         // and ticking (at `.opacity(0)`) while the host fetches the plan.
         guard startedAt != nil, !isPaused else { belt.resync(to: now); return }
         belt.advance(to: now, speedMph: speedMph, inclinePct: inclinePct,
                      bpm: hr.currentBpm)
         advancePhaseTracking()
+    }
+
+    /// Ping a confirmed watch HR session, or re-ask for one that never
+    /// confirmed. `treadmillSessionConfirmed` is the watch's actual answer;
+    /// `startTreadmillHRSession`'s return value only says the message was
+    /// sent. Mirrors the legacy console's `maintainWatchBridge`.
+    private func maintainWatchBridge(at now: Date) {
+        guard startedAt != nil else { return }
+        if watchSync.treadmillSessionConfirmed, now.timeIntervalSince(lastPingAt) >= 120 {
+            lastPingAt = now
+            WatchSync.shared.pingTreadmillHRSession(sessionId: workoutId)
+            return
+        }
+        if !watchSync.treadmillSessionConfirmed, now.timeIntervalSince(lastBridgeAskAt) >= 60 {
+            lastBridgeAskAt = now
+            lastPingAt = now
+            watchHRBridgeUp = WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
+        }
+    }
+
+    /// What to say about heart rate, or nothing when it is flowing. "No watch"
+    /// and "your heart rate stopped four minutes ago" are different problems
+    /// and get different sentences.
+    private var hrHint: String? {
+        guard startedAt != nil else { return nil }
+        if let last = lastBpmAt {
+            guard Date().timeIntervalSince(last) >= 120 else { return nil }
+            return "Heart rate stopped \u{00b7} reconnecting to your watch."
+        }
+        guard elapsedSec > 45 else { return nil }
+        return "No heart rate source \u{00b7} running on speed and incline alone."
     }
 
     // MARK: - Phase tracking (for the completion payload)
@@ -405,6 +478,14 @@ struct LiveRunTreadmillV5: View {
             return IndoorDistanceMeter.materiallyDisagree(beltMi: belt.distanceMi, measuredMi: m)
                 ? "belt_contested" : "belt_corroborated"
         }()
+        // Cadence, MEASURED. The phone-driven watch bridge carries heart
+        // rate only — TreadmillHRSession collects nothing else, and the phone
+        // reads HR out of HealthKit rather than over WatchConnectivity — so a
+        // treadmill run has never had a cadence figure, while watch-started
+        // outdoor runs have carried one since WorkoutTracker started reading
+        // CMPedometer.currentCadence. Same pedometer, same carried gate: nil
+        // rather than a zero when the phone was parked on the console.
+        if let cad = meter.avgCadenceSpm { payload["avgCadence"] = cad }
         if let m = meter.rawDistanceMi { payload["pedometerDistanceMi"] = (m * 100).rounded() / 100 }
         if let st = meter.rawSteps { payload["pedometerSteps"] = st }
         if !IndoorDistanceMeter.isSupported { payload["pedometerAvailable"] = false }
@@ -588,11 +669,16 @@ struct LiveRunTreadmillV5: View {
             .padding(.horizontal, V5.S.s12)
             .background(V5.materialTile, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
 
-            if hr.currentBpm == nil {
-                Text("No heart rate source \u{00b7} running on speed and incline alone.")
+            // Was an unconditional "no heart rate source" whenever currentBpm
+            // was nil — which is also true for the first 5-30 s of every run
+            // with a watch on the wrist, and for a feed that died mid-run.
+            // hrHint waits out the latency and tells those two apart.
+            if let hint = hrHint {
+                Text(hint)
                     .font(.faffText(TypeScaleV5.label13))
                     .foregroundStyle(V5.textQuiet)
                     .padding(.horizontal, V5.S.s4)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             // Says what is estimated, or which two numbers disagree, once.
             // The runner did nothing wrong by locking their phone.
@@ -688,6 +774,7 @@ struct LiveRunTreadmillV5: View {
         finalizeActivePhaseForEnd(status: "completed")
         hr.stop()
         meter.stop()
+        WatchSync.shared.stopTreadmillHRSession(sessionId: workoutId)
         let payload = buildCompletionPayload(status: "completed")
         if let data = try? JSONSerialization.data(withJSONObject: payload) {
             Task { _ = await WatchSync.shared.saveCompletionDurably(data) }

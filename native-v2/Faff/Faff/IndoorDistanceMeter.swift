@@ -87,6 +87,18 @@ final class IndoorDistanceMeter: ObservableObject {
     /// Raw cumulative values, for the payload. Nil until the first update.
     @Published private(set) var rawDistanceMi: Double?
     @Published private(set) var rawSteps: Int?
+    /// Live cadence in steps per minute, straight off `CMPedometerData`.
+    /// Nil when the phone is not being carried — a parked phone's zero is not
+    /// a cadence, it is an absence.
+    @Published private(set) var currentCadenceSpm: Int?
+    /// Whole-session mean cadence: total steps over the measured window.
+    /// The phone-driven watch bridge has no cadence channel at all
+    /// (TreadmillHRSession collects heart rate only, and the phone reads HR
+    /// out of HealthKit rather than over WatchConnectivity), so on a treadmill
+    /// this is the only cadence the app can get without a new watch message.
+    /// Same carried gate as the distance: nil unless the phone was on a
+    /// running body.
+    @Published private(set) var avgCadenceSpm: Int?
 
     private let pedometer = CMPedometer()
     private var startedAt: Date?
@@ -109,8 +121,10 @@ final class IndoorDistanceMeter: ObservableObject {
             guard let data, error == nil else { return }
             let meters = data.distance?.doubleValue
             let steps = data.numberOfSteps.intValue
+            // currentCadence is steps per SECOND on CMPedometerData.
+            let cadenceSpm = data.currentCadence.map { $0.doubleValue * 60.0 }
             Task { @MainActor [weak self] in
-                self?.ingest(meters: meters, steps: steps, at: Date())
+                self?.ingest(meters: meters, steps: steps, cadenceSpm: cadenceSpm, at: Date())
             }
         }
     }
@@ -121,7 +135,7 @@ final class IndoorDistanceMeter: ObservableObject {
         pedometer.stopUpdates()
     }
 
-    private func ingest(meters: Double?, steps: Int, at now: Date) {
+    private func ingest(meters: Double?, steps: Int, cadenceSpm: Double?, at now: Date) {
         rawSteps = steps
         if let meters { rawDistanceMi = meters / 1609.344 }
 
@@ -132,8 +146,12 @@ final class IndoorDistanceMeter: ObservableObject {
         let stepsPerMin = Double(steps) / minutes
         guard stepsPerMin >= Self.carriedStepsPerMin else {
             reading = .notCarried
+            currentCadenceSpm = nil
+            avgCadenceSpm = nil
             return
         }
+        avgCadenceSpm = Int(stepsPerMin.rounded())
+        if let c = cadenceSpm, c > 0 { currentCadenceSpm = Int(c.rounded()) }
         guard let mi = rawDistanceMi, mi > 0 else {
             reading = .notCarried
             return

@@ -10,7 +10,7 @@
 //  · Derives segments from the plan's WatchPhase array (warmup/
 //    work/recovery/cooldown). Falls back to a single open-run
 //    segment when no plan / rest day / fetch fails.
-//  · Real timer counts elapsed seconds via TimelineView; pause halts,
+//  · Real timer counts elapsed seconds via a run-loop Timer; pause halts,
 //    skip advances, end POSTs.
 //  · Runner enters actual speed (±0.1 mph) + incline (±0.5%) per
 //    segment via the existing steppers. Initial values come from the
@@ -50,6 +50,10 @@ struct TreadmillView: View {
     // figure — see IndoorDistanceMeter.swift for why not — it corroborates
     // it, or it contradicts it and says so.
     @StateObject private var meter = IndoorDistanceMeter()
+    /// Observed for `treadmillSessionConfirmed` — the watch's real answer to
+    /// "did your HR session actually open", as opposed to "did we manage to
+    /// send the request".
+    @ObservedObject private var watchSync = WatchSync.shared
 
     // ── Plan source · fetched on .task ──────────────────────────────
     @State private var workout: WatchWorkout?
@@ -107,6 +111,18 @@ struct TreadmillView: View {
     /// dead-man timer resets on each ping and auto-ends its HR session
     /// when pings stop (phone died / app killed / runner walked off).
     @State private var lastPingAt: Date = .distantPast
+    /// Wall-clock of the last attempt to (re)open the watch's HR session.
+    @State private var lastBridgeAskAt: Date = .distantPast
+    /// Wall-clock of the last HR sample that actually landed · the difference
+    /// between "no watch" and "the watch stopped talking", which the runner
+    /// deserves to be told apart.
+    @State private var lastBpmAt: Date?
+    /// The session clock. Held in `@State` so it survives body evaluations
+    /// for this view's identity rather than being rebuilt on every render —
+    /// rebuilding it is exactly what turned the old TimelineView into a
+    /// feedback loop. `.common` mode keeps it firing during scroll and
+    /// touch tracking.
+    @State private var clock = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     /// One closed segment. `belt` is the segment's own slice of the single
     /// session integration — speed, distance and pace inside it agree by
@@ -232,17 +248,33 @@ struct TreadmillView: View {
                     .padding(.bottom, 24)
             }
             .foregroundStyle(Theme.txt)
-            // Live tick. Advances the BeltTracker by `now - lastTick` each
-            // frame — one integration for elapsed, distance, elevation, the
-            // open segment's slice and the pace-sample stream. TimelineView at
-            // 1s cadence is plenty for a treadmill counter; saves
-            // battery vs continuous redraw.
-            .background(
-                TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
-                    Color.clear
-                        .onChange(of: ctx.date) { _, now in tick(at: now) }
-                }
-            )
+            // Live tick · 2026-08-21. Was:
+            //
+            //   .background(TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
+            //       Color.clear.onChange(of: ctx.date) { _, now in tick(at: now) } })
+            //
+            // which is a feedback loop, not a clock. `.now` is read inside
+            // `body`, so every re-render builds a NEW schedule anchored at a
+            // new instant, which yields a new `ctx.date`, which fires
+            // `onChange`, which ticks, which writes state, which re-renders.
+            // The same construct was instrumented on the outdoor recorder and
+            // measured at 5,543 ticks in ~15 seconds, saturating the main
+            // actor hard enough that only 2 GPS fixes were accepted in the
+            // same window.
+            //
+            // On the OLD tick that was silent data loss: every sub-second
+            // delta rounded to zero while `lastTickAt` advanced anyway, so
+            // both the seconds and the distance for that interval vanished.
+            // (BeltTracker now accumulates in Double seconds, so a fast tick
+            // is arithmetically harmless — but a saturated main actor still
+            // starves HealthKit delivery, the pedometer callbacks, and the
+            // runner's own taps on the ± steppers.)
+            //
+            // A run-loop timer in `.common` mode fires at a fixed 1 Hz
+            // regardless of rendering, and nothing in `body` reads the clock,
+            // so there is no loop to close. `.onReceive` keeps every state
+            // access inside SwiftUI's normal update cycle.
+            .onReceive(clock) { now in tick(at: now) }
         }
         .task {
             await loadPlan()
@@ -254,6 +286,17 @@ struct TreadmillView: View {
         // path and onDisappear reset it so the flag never leaks app-wide.
         .onChange(of: playing) { _, isPlaying in
             UIApplication.shared.isIdleTimerDisabled = isPlaying
+            // Resuming after a long pause: ask for the watch's HR session
+            // again rather than assuming it survived. The watch's start is
+            // idempotent for the same id, so a live session no-ops.
+            if isPlaying, startedAt != nil, let id = workoutId {
+                lastBridgeAskAt = .now
+                lastPingAt = .now
+                watchHRBridgeUp = WatchSync.shared.startTreadmillHRSession(sessionId: id)
+            }
+        }
+        .onChange(of: hrStreamer.currentBpm) { _, bpm in
+            if bpm != nil { lastBpmAt = .now }
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
@@ -305,6 +348,15 @@ struct TreadmillView: View {
     // MARK: - Tick
 
     private func tick(at now: Date) {
+        // The watch bridge is kept alive OUTSIDE the playing guard, because
+        // it used to live below it: the keepalive only ran while the belt was
+        // turning, the watch's dead-man timer is 15 minutes, and a pause
+        // longer than that auto-ended the watch's HR session. The start call
+        // is guarded on `startedAt == nil`, so nothing ever brought it back —
+        // resume, and heart rate was simply gone for the rest of the run,
+        // with nothing on screen saying so. A paused session is still the
+        // runner's session.
+        maintainWatchBridge(at: now)
         guard playing else { belt.resync(to: now); return }
         // One integration, in BeltTracker: elapsed / distance / elevation /
         // this segment's slice / the pace-sample stream, all from the same
@@ -325,14 +377,36 @@ struct TreadmillView: View {
             idx = next
             adoptTargetOrKeepRunnerSpeed(for: segments[next])
         }
-        // P2-49 · watch keepalive. Every ~2 min while playing, ping the
-        // watch's HR session so its dead-man timer knows the phone is
-        // still driving. Only when the bridge came up · no bridge, no
-        // session to keep alive.
-        if watchHRBridgeUp, let id = workoutId,
-           now.timeIntervalSince(lastPingAt) >= 120 {
+    }
+
+    /// P2-49 · watch keepalive, plus the two things it was missing.
+    ///
+    /// `watchHRBridgeUp` is only "the message was SENT" — the real
+    /// acknowledgement is `WatchSync.treadmillSessionConfirmed`, which was
+    /// written by the reply handler and read nowhere. So a watch that took
+    /// the start message but failed to open its session got pinged for the
+    /// whole run while the runner was told nothing. Now an unconfirmed bridge
+    /// is RE-ASKED rather than pinged into the void, and the topbar says
+    /// there is no live HR.
+    ///
+    /// `TreadmillHRSession.start(sessionId:)` on the watch is idempotent for
+    /// the same id — a live session no-ops, a dead one comes back — so
+    /// re-asking is safe to repeat.
+    private func maintainWatchBridge(at now: Date) {
+        guard startedAt != nil, let id = workoutId else { return }
+        let confirmed = watchSync.treadmillSessionConfirmed
+        // Confirmed and alive · a ping every ~2 min resets the dead-man timer.
+        if confirmed, now.timeIntervalSince(lastPingAt) >= 120 {
             lastPingAt = now
             WatchSync.shared.pingTreadmillHRSession(sessionId: id)
+            return
+        }
+        // Asked, never answered — or answered and then went quiet. Ask again,
+        // no more than once a minute so an absent watch is not hammered.
+        if !confirmed, now.timeIntervalSince(lastBridgeAskAt) >= 60 {
+            lastBridgeAskAt = now
+            lastPingAt = now
+            watchHRBridgeUp = WatchSync.shared.startTreadmillHRSession(sessionId: id)
         }
     }
 
@@ -400,11 +474,14 @@ struct TreadmillView: View {
                     .lineLimit(1)
                 SpecLabel(text: "TREADMILL · GUIDED", size: 10, tracking: 2, color: Theme.txt.opacity(0.6))
             }
-            // Watch-HR-bridge hint · only shows when session has started
-            // but the watch wasn't reachable. Tells the runner what they
-            // need to do to light up the live BPM in the SPEED tile.
-            if startedAt != nil, !watchHRBridgeUp, hrStreamer.currentBpm == nil {
-                Text("Open Faff on your watch for live HR")
+            // Watch-HR-bridge hint. Was gated on `!watchHRBridgeUp`, which
+            // is "we managed to SEND the request" — so a watch that took the
+            // message and failed to open its session showed nothing at all,
+            // and an HR feed that died mid-run (the 15-minute dead-man timer
+            // after a long pause) also showed nothing. Both now say so, and
+            // they say different things, because they are different problems.
+            if let hint = hrHint {
+                Text(hint)
                     .font(.body(10, weight: .semibold))
                     .tracking(0.3)
                     .foregroundStyle(Theme.txt.opacity(0.75))
@@ -479,6 +556,26 @@ struct TreadmillView: View {
             return "Distance is from the belt speed you set · nothing here measured it."
         }
         return nil
+    }
+
+    /// What to say about heart rate, or nothing when it is flowing.
+    ///
+    /// Three distinct states, because "no HR" from a runner with no watch and
+    /// "your HR stopped 4 minutes ago" are not the same message:
+    ///   · never arrived        → tell them how to start it
+    ///   · arrived, then quiet  → tell them it stopped, and that it is coming
+    ///                            back (maintainWatchBridge re-asks)
+    ///   · flowing              → say nothing
+    private var hrHint: String? {
+        guard startedAt != nil else { return nil }
+        if let last = lastBpmAt {
+            guard Date().timeIntervalSince(last) >= 120 else { return nil }
+            return "Heart rate stopped · reconnecting to your watch"
+        }
+        // Give the first sample its 5-30 s of HealthKit latency before
+        // claiming there is nothing there.
+        guard totalSec > 45 else { return nil }
+        return "Open Faff on your watch for live HR"
     }
 
     /// Says what is estimated and why, once, without scolding. The runner
@@ -1067,6 +1164,14 @@ struct TreadmillView: View {
             return IndoorDistanceMeter.materiallyDisagree(beltMi: belt.distanceMi, measuredMi: m)
                 ? "belt_contested" : "belt_corroborated"
         }()
+        // Cadence, MEASURED. The phone-driven watch bridge carries heart
+        // rate only — TreadmillHRSession collects nothing else, and the phone
+        // reads HR out of HealthKit rather than over WatchConnectivity — so a
+        // treadmill run has never had a cadence figure, while watch-started
+        // outdoor runs have carried one since WorkoutTracker started reading
+        // CMPedometer.currentCadence. Same pedometer, same carried gate: nil
+        // rather than a zero when the phone was parked on the console.
+        if let cad = meter.avgCadenceSpm { payload["avgCadence"] = cad }
         if let m = meter.rawDistanceMi {
             payload["pedometerDistanceMi"] = (m * 100).rounded() / 100
         }
