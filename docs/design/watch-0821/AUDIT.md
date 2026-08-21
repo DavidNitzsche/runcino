@@ -281,3 +281,92 @@ The six fonts already shipping (Bebas / Inter / Oswald) have the same gap, so th
 pre-existing compliance issue the v5 pair joins rather than creates. Fixing it means
 restructuring the watch target's resource handling in `project.yml` — worth its own
 commit, where a font-registration regression would be obvious rather than buried.
+
+---
+
+## 13 · Five face files landed · and the README's size table is not the spec
+
+Five agents built the 53 boards in parallel against `WatchKitV5`. All five compile —
+verified by object file, not by exit code: `FacesRunV5.o`, `FacesLobbyV5.o`,
+`FacesControlV5.o`, `FacesPhaseV5.o`, `FacesFinishV5.o`.
+
+### The finding that matters most · README table vs drawn boards
+
+**The handoff README's "Sizes as used" table disagrees with the boards it describes, in
+at least five places.** The README's own instruction settles which wins — "the 2× set is
+the spec" — but every one of these had to be caught by measuring, and one of them had
+already been built into the shared component layer from the table.
+
+| Role | README says | Boards draw | Evidence |
+|---|---|---|---|
+| Hero metric | 46-52 | **44** (Page 1, Work interval), 46 (Heart dropout), 42 (Always-On), 37 (Page 2 four-up) | 88px / 2 |
+| Secondary metric | 26-31 | **36** (Page 1), 33 (Work interval), 35 (Always-On) | 72px / 2 |
+| Lobby Start | "stays at 26 pt on every variant" | 50pt pill, **19pt label** | 104px pill, 38px label; the intervals board's own annotation reads "same 52pt Start" |
+| Coach sentence | 13-17 | **12** on Low battery, Ceiling override, stale plan | 24px / 2 |
+| Target label | 17-19 | 19 lead / 18 others — consistent, the one row that holds | 38px / 36px |
+
+The metric row was not a rounding error, it was a **ratio** error, and the component
+layer caught it: `WMetricRank` had been built from the table at 48/28, a ratio of 1.71,
+while rule 4 and `Metric.heroLeadRatio` both say the lead is ~20% larger than the next.
+The drawn 44/36 is 1.22. **The boards obey the rule the README states; the README's own
+table does not.** Corrected to 44/36/33 with per-rank unit sizes 18/16/15.
+
+Unit treatment was wrong twice as well, and is now measured off Page 1 rather than
+assumed: a graded unit is the SAME hue at .62 (`/mi` is `rgba(62,189,65,.62)`), and an
+ungraded unit is white at **.48**, not .72 (`bpm`, `mi` are `rgba(255,255,255,.48)`).
+
+### Component fixes the agents forced
+
+- **`WKicker` had a real rendering bug.** It drew in the coach register, but every
+  mid-run kicker carries a FIGURE — "Rep 4 of 6 · 1:12 left", "Mile 5 · 44:16". The coach
+  face has no tabular figures, so a live countdown **shuffles horizontally as it ticks**,
+  on the one board a runner reads mid-rep at arm's length. Now takes `figures: Bool` and
+  switches to the telemetry register.
+- **`WTarget`** gained the two ramp weights the lobby needs — a white pill on a lit green
+  ramp is a hole in the poster, so lobby Start is black fill / white label, and the quiet
+  escape is black at 42% so the ramp reads through. Label sizes are now 19 lead / 18
+  others, and the quiet label is white at .86.
+- **`WWordmark`** dimmed the orange dot along with the letters. The dot is the mark; it
+  never dims. Now `wordOpacity` applies to the words only.
+- **`WSensorFault`** was fixed at 17pt against a 44pt pace beside it, which reads as a
+  caption rather than a slot that stopped. Now 19.
+- **`WatchV5.DayState.muted`** added — `#8792A8 → #5A6072 → #25272E`, middle stop at 55%
+  rather than 76%, so the ramp is flatter than a session ramp. Watch-only, no phone
+  counterpart, and it IS the No-session board's only identity because that board carries
+  no display word by design. Locked in the gate.
+
+### Open questions for design — not resolved unilaterally
+
+1. **`#F7DFAF` on Race complete.** The provisional finish time is drawn in a pale cream
+   that appears **exactly once in the whole design file** and nowhere in the addendum,
+   while both READMEs say the provisional chip time is amber. Built as
+   `WatchV5.attention` (#F2B03C) to match the READMEs and the palette. But it may be
+   deliberate rather than a slip: that number sits on the RACE ramp, which is orange, and
+   #F2B03C is much closer to that ground than a pale cream is. If it was a contrast
+   decision it needs to become a token; if it was a slip the file wants correcting.
+2. **The coach-sentence floor.** Three boards draw prose at 12pt against a stated 13-17
+   floor. Built at 12 to match the boards. Worth confirming the floor is 12, or the
+   boards want raising.
+3. **"Start stays at 26 pt"** matches neither the drawn pill (50pt) nor its label (19pt).
+   Built as one fixed-height pill that never moves or resizes between variants, which is
+   what the sentence protects. Confirm 26 was not meant literally.
+
+### Known fidelity gaps, carried
+
+- **Summary's first-screenful rule is honoured by construction, not measurement.** Row
+  heights and gaps are the design's, so the fold lands where drawn on a 45mm face.
+  Nothing in SwiftUI verifies it, and **on a 41mm watch it is unverified.** Callers are
+  told not to grow the averages group past three rows or insert a group above the splits.
+- Where climb sits on Summary is an inference — the design draws only the first
+  screenful, which ends on Mile 1.
+- Page 2's three-metric state (a missing power or elevation drops out) is interpolated at
+  41pt: only the 4-up (37pt) and 2-up (47pt) states are drawn.
+- Several private components duplicate across files and want promoting once the boards
+  are wired: the band strip (7 boards), the progress strip, and a grouped-rows container
+  with squared inner rows.
+
+### Still to come
+
+None of these boards is wired. They are presentation-only, take plain parameters, and no
+call site translates `WatchWorkout` / `WorkoutEngine` into them yet. Paging, haptics and
+the router that swaps a running face for the current phase board are the next unit.

@@ -138,13 +138,23 @@ struct WGrain: View {
 /// How much weight a target carries. `filled` leads; `quiet` is the option
 /// that is equally legitimate but that the runner reaches for less often.
 enum WTargetWeight {
-    /// White fill, black label. One per board, at most.
+    /// White fill, black label, and the label steps up to 19pt. ONE per
+    /// board — the verb that leads. Measured: `Lap` / `Skip rep` / `Drop GPS`
+    /// / `Cut it short` are all 38px = 19pt on #000 over #fff.
     case filled
-    /// Surface-step fill, white label. The default for a second verb.
+    /// Surface-step fill, label white at .86. The default for a second verb.
     case quiet
-    /// Amber fill — a decision waiting, not an error. Used where the board
-    /// itself is a condition (battery, ceiling).
+    /// Amber fill — a decision waiting, not an error, on a board that is
+    /// itself a condition.
     case attention
+    /// On a day-state ramp: BLACK fill, white label. The inverse of `filled`,
+    /// because a white pill on a lit green ramp is a hole in the poster.
+    /// This is the lobby Start.
+    case onRamp
+    /// The quiet escape on a ramp board — black at 42%, so the ramp reads
+    /// through it. "Run anyway" on Rest day, "Just run" on No session:
+    /// present, but nothing here is being sold.
+    case onRampQuiet
 }
 
 struct WTarget: View {
@@ -155,7 +165,7 @@ struct WTarget: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(WatchV5.coach(17, weight: 600))
+                .font(WatchV5.coach(labelSize, weight: 600))
                 .foregroundStyle(foreground)
                 .frame(maxWidth: .infinity)
                 .frame(height: WatchV5.Metric.targetHeight)
@@ -164,18 +174,32 @@ struct WTarget: View {
         .buttonStyle(.plain)
     }
 
+    /// The leading verb is 19pt, everything else 18. Both sit inside the
+    /// handoff's 17-19 target-label band; the step is what makes the lead
+    /// verb lead without giving it a second colour.
+    private var labelSize: CGFloat {
+        switch weight {
+        case .filled, .attention, .onRamp: return 19
+        case .quiet, .onRampQuiet:         return 18
+        }
+    }
+
     private var foreground: Color {
         switch weight {
         case .filled, .attention: return .black
-        case .quiet:              return WatchV5.value
+        case .quiet:              return WatchV5.value.opacity(0.86)
+        case .onRamp:             return WatchV5.value
+        case .onRampQuiet:        return WatchV5.value.opacity(0.86)
         }
     }
 
     private var background: Color {
         switch weight {
-        case .filled:    return WatchV5.value
-        case .quiet:     return WatchV5.surface3
-        case .attention: return WatchV5.attention
+        case .filled:      return WatchV5.value
+        case .quiet:       return WatchV5.surface3
+        case .attention:   return WatchV5.attention
+        case .onRamp:      return WatchV5.ground
+        case .onRampQuiet: return WatchV5.ground.opacity(0.42)
         }
     }
 }
@@ -241,17 +265,38 @@ enum WMetricGrade {
 /// Where a metric sits in the hierarchy. Sizes are the handoff's, and the
 /// hero/secondary gap is what makes the ordering survive a runner who cannot
 /// distinguish green from amber.
+/// MEASURED OFF THE BOARDS, NOT OFF THE README TABLE — they disagree, and the
+/// handoff's own instruction is that the 2x set is the spec.
+///
+/// The README's size table gives "hero metric 46-52, secondary 26-31". No
+/// running face in the file is drawn at either. Page 1 is 88/72px = **44/36pt**,
+/// Work interval 88/66 = 44/33, Page 2 four-up 74 = 37, Always-On 84/70 = 42/35.
+///
+/// The table is not a rounding error, it is a ratio error, and the component
+/// caught it: 48-over-28 is 1.71, while rule 4 and `Metric.heroLeadRatio` both
+/// say the lead is ~20% larger than the next. 44-over-36 is 1.22. The drawn
+/// boards obey the rule the README states; the README's own table does not.
+/// Raised with design — see docs/design/watch-0821/AUDIT.md.
 enum WMetricRank {
     case hero, secondary, tertiary
 
     var size: CGFloat {
         switch self {
-        case .hero:      return 48   // 46-52
-        case .secondary: return 28   // 26-31
-        case .tertiary:  return 22   // 19-28
+        case .hero:      return 44   // Page 1 / Work interval lead
+        case .secondary: return 36   // Page 1 supporting rows
+        case .tertiary:  return 33   // Work interval's denser supporting rows
         }
     }
-    var unitSize: CGFloat { 16 }     // the type floor for a unit
+
+    /// Units are their own step, not a fraction — 18 under a hero, 16 under a
+    /// secondary, and the 16pt unit floor is the type floor for a unit.
+    var unitSize: CGFloat {
+        switch self {
+        case .hero:      return 18
+        case .secondary: return 16
+        case .tertiary:  return 15
+        }
+    }
 }
 
 /// One telemetry reading: the figure, and its unit carrying the meaning.
@@ -265,21 +310,35 @@ struct WMetric: View {
     var unit: String? = nil
     var rank: WMetricRank = .secondary
     var grade: WMetricGrade = .plain
+    /// Explicit override for the boards that are not on the hero/secondary
+    /// ladder — Page 2's four-up is a flat 37pt, Always-On is 42/35. Passing a
+    /// size opts out of `rank.size` only; the unit still steps from the rank.
+    var size: CGFloat? = nil
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(value)
-                .font(WatchV5.number(rank.size))
+                .font(WatchV5.number(size ?? rank.size))
                 .foregroundStyle(grade.color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             if let unit {
                 Text(unit)
                     .font(WatchV5.number(rank.unitSize))
-                    .foregroundStyle(grade == .inBand || grade == .outOfBand
-                                     ? grade.color.opacity(0.72)
-                                     : WatchV5.valueDim)
+                    .foregroundStyle(unitColor)
             }
+        }
+    }
+
+    /// A graded unit is the SAME hue at .62 — it belongs to the figure it sits
+    /// under, so it may not go white and read as a separate ungraded value.
+    /// An ungraded unit is white at .48, the third step. Both measured off
+    /// Page 1: `/mi` is rgba(62,189,65,.62), `bpm` and `mi` are
+    /// rgba(255,255,255,.48).
+    private var unitColor: Color {
+        switch grade {
+        case .inBand, .outOfBand: return grade.color.opacity(0.62)
+        case .plain, .dim:        return WatchV5.valueMute
         }
     }
 }
@@ -320,10 +379,19 @@ struct WKicker: View {
     let text: String
     var color: Color = WatchV5.valueDim
     var size: CGFloat = 12
+    /// Set when the kicker CARRIES A FIGURE — "Rep 4 of 6 · 1:12 left",
+    /// "Mile 5 · 44:16", "Ceiling is 165".
+    ///
+    /// This is not a style preference. The coach face has no tabular figures,
+    /// so a live countdown drawn in it SHUFFLES HORIZONTALLY as it ticks —
+    /// on the one board a runner reads mid-rep, at arm's length, moving. The
+    /// telemetry register is tabular by construction, so a figure-bearing
+    /// kicker uses it and a prose kicker does not.
+    var figures: Bool = false
 
     var body: some View {
         Text(text.uppercased())
-            .font(WatchV5.coach(size, weight: 600))
+            .font(figures ? WatchV5.number(size) : WatchV5.coach(size, weight: 600))
             .tracking(size * 0.08)
             .foregroundStyle(color)
     }
@@ -371,18 +439,25 @@ struct WCoachLine: View {
 /// appears, and never on a number.
 struct WWordmark: View {
     var size: CGFloat = 12
+    /// Opacity of the WORDS only. The dot never dims.
+    ///
+    /// The addendum draws the mark at 62% with the dot at full orange, so a
+    /// single opacity on the whole mark is wrong: it takes the one piece of
+    /// drawn intent in the wordmark down with the letters. The dot is the
+    /// mark — the words are just the name it is attached to.
+    var wordOpacity: Double = 1.0
 
     var body: some View {
         HStack(spacing: 1) {
             Text("faff")
                 .font(WatchV5.display(size))
-                .foregroundStyle(WatchV5.value)
+                .foregroundStyle(WatchV5.value.opacity(wordOpacity))
             Text(".")
                 .font(WatchV5.display(size))
                 .foregroundStyle(WatchV5.signal)
             Text("run")
                 .font(WatchV5.display(size))
-                .foregroundStyle(WatchV5.value)
+                .foregroundStyle(WatchV5.value.opacity(wordOpacity))
         }
     }
 }
@@ -395,10 +470,14 @@ struct WWordmark: View {
 /// rejected, because the runner cannot tell it has stopped moving.
 struct WSensorFault: View {
     let sensor: String
+    /// 19pt so the broken slot carries the optical weight of the three
+    /// untouched values beside it. A fault that reads lighter than the
+    /// numbers around it looks like a caption, not like a slot that stopped.
+    var size: CGFloat = 19
 
     var body: some View {
         Text(sensor)
-            .font(WatchV5.coach(17, weight: 600))
+            .font(WatchV5.coach(size, weight: 600))
             .foregroundStyle(WatchV5.fault)
     }
 }

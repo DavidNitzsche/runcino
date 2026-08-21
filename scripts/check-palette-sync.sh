@@ -287,6 +287,13 @@ need "$WATCH_THEME_V5" 'surface4 *= Color\(hex: 0x2A2E32\)'  'watch v5 surface4 
 need "$WATCH_THEME_V5" 'easy: *\[Color\] = \[Color\(hex: 0x3EBD41\), Color\(hex: 0x1F8A52\), Color\(hex: 0x0F4A3A\)\]' 'watch day-state EASY = phone EASY'
 need "$WATCH_THEME_V5" 'race: *\[Color\] = \[Color\(hex: 0xFF8847\), Color\(hex: 0xE85D26\), Color\(hex: 0x7A2828\)\]' 'watch day-state RACE = phone RACE'
 
+# The muted ramp is WATCH-ONLY and has no phone counterpart: the phone has no
+# board that says "there is no session type to name". It is locked here rather
+# than left as three loose hexes because it IS the No-session board's only
+# identity - that board carries no display word by design.
+need "$WATCH_THEME_V5" 'muted: *\[Color\] = \[Color\(hex: 0x8792A8\), Color\(hex: 0x5A6072\), Color\(hex: 0x25272E\)\]' 'watch day-state MUTED = #8792A8 · #5A6072 · #25272E (No session)'
+need "$WATCH_THEME_V5" 'mutedLocations: *\[Double\] = \[0.00, 0.55, 1.85\]' 'watch MUTED middle stop at 55%, flatter than a session ramp'
+
 # ── 1d · WATCH · the LEGACY ten-colour palette, asserted while it is used ────
 # Same shape as the phone's section 1b, same reason: the 0821 faces land one at
 # a time and a half-migrated skin on a wrist is the outcome worth avoiding.
@@ -477,7 +484,7 @@ fi
 # v5 (0821 handoff) hexes are always allowed; the legacy ten stay allowed only
 # while section 1d says they still have consumers, so the allowlist shrinks on
 # its own as the faces migrate rather than needing a second cleanup pass.
-WATCH_V5_HEX='000000|0F1011|17191B|212427|2A2E32|3EBD41|F2B03C|FF4438|FF5A1F|1F8A52|0F4A3A|008FEC|4A3A8E|1C1A3A|F3AD38|E85D26|7A2828|FF8847|B084FF|6A4ACE|2A1A5A|27B4E0|1A6A9E|0C2A5E'
+WATCH_V5_HEX='000000|0F1011|17191B|212427|2A2E32|3EBD41|F2B03C|FF4438|FF5A1F|1F8A52|0F4A3A|008FEC|4A3A8E|1C1A3A|F3AD38|E85D26|7A2828|FF8847|B084FF|6A4ACE|2A1A5A|27B4E0|1A6A9E|0C2A5E|8792A8|5A6072|25272E'
 WATCH_LEGACY_HEX='D03F3F|FC4D64|F0DF47|F6F7F8|8A90A0|646464|2C2F35'
 if [ "$legacy_watch_count" -gt 0 ]; then
   WATCH_ALLOWED_HEX="$WATCH_V5_HEX|$WATCH_LEGACY_HEX"

@@ -118,8 +118,17 @@ enum WatchV5 {
         static let phase:   [Color] = [Color(hex: 0xB084FF), Color(hex: 0x6A4ACE), Color(hex: 0x2A1A5A)] // v5stop
         static let long:    [Color] = [Color(hex: 0x27B4E0), Color(hex: 0x1A6A9E), Color(hex: 0x0C2A5E)] // v5stop
 
-        static let locations:     [Double] = [0.00, 0.76, 1.85]
-        static let raceLocations: [Double] = [0.00, 0.72, 1.85]
+        /// No session — off-season, a week off, injury, sick. A MUTED ramp,
+        /// and it earns its own entry rather than being a grey wash: the
+        /// board has no display word because there is no session type to
+        /// name, so the ramp is the only thing saying which state this is.
+        /// Its middle stop sits at 55%, not 76% — the ramp is flatter than a
+        /// session ramp on purpose. Measured off the `No session` board.
+        static let muted:   [Color] = [Color(hex: 0x8792A8), Color(hex: 0x5A6072), Color(hex: 0x25272E)]
+
+        static let locations:      [Double] = [0.00, 0.76, 1.85]
+        static let raceLocations:  [Double] = [0.00, 0.72, 1.85]
+        static let mutedLocations: [Double] = [0.00, 0.55, 1.85]
 
         /// A fine grain layer sits OVER the colour and UNDER the type at 50%,
         /// overlay blend. It is what keeps white type legible on the ramp
@@ -136,12 +145,17 @@ enum WatchV5 {
             case "long":                      return long
             case "rest":                      return rest
             case "phase":                     return phase
+            case "none", "off", "muted":      return muted
             default:                          return easy
             }
         }
 
         static func locations(for name: String) -> [Double] {
-            name.lowercased() == "race" ? raceLocations : locations
+            switch name.lowercased() {
+            case "race":                 return raceLocations
+            case "none", "off", "muted": return mutedLocations
+            default:                     return locations
+            }
         }
     }
 
