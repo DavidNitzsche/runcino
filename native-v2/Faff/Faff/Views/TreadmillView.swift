@@ -794,10 +794,11 @@ struct TreadmillView: View {
             ) {
                 if !playing && startedAt == nil {
                     startedAt = .now
-                    // Stamp the workoutId once so the WatchConnectivity
-                    // sessionId, HR streamer anchor, and POST payload all
-                    // agree across pause/resume + retries.
-                    let id = "trd_\(UUID().uuidString)"
+                    // ADOPT the session's id rather than minting a second one.
+                    // The belt checkpoint is keyed by it, so a console id and
+                    // a session id that differ would let a finished run fail
+                    // to clear its own file — or clear someone else's.
+                    let id = session.workoutId
                     workoutId = id
                     // Kick off the HR stream the first time the runner
                     // starts the session · idempotent on re-calls.

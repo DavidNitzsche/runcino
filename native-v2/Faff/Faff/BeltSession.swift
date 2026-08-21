@@ -139,7 +139,17 @@ final class BeltSession: ObservableObject {
     private var plan: [SegmentPlan] = []
     private var timer: Timer?
 
-    init(speedMph: Double = 5.5, inclinePct: Double = 1.0, now: Date = .now) {
+    /// The console's own idempotency key, carried so the checkpoint can be
+    /// matched to the run that wrote it — a finished run must never clear a
+    /// live one's file.
+    let workoutId: String
+
+    /// Defaulted so a console that stamps its id later can simply adopt the
+    /// session's — one id per belt run, generated once, rather than two that
+    /// have to be kept in step.
+    init(workoutId: String = "trd_\(UUID().uuidString)",
+         speedMph: Double = 5.5, inclinePct: Double = 1.0, now: Date = .now) {
+        self.workoutId = workoutId
         self.speedMph = speedMph
         self.inclinePct = inclinePct
         self.belt = BeltTracker(now: now)
@@ -200,6 +210,75 @@ final class BeltSession: ObservableObject {
         setIncline(((inclinePct + delta) * 2).rounded() / 2)
     }
 
+    // ── Durability ──────────────────────────────────────────────────────
+    //
+    // A TREADMILL RUN USED TO PERSIST NOTHING UNTIL "End".
+    //
+    // The outdoor recorder writes a checkpoint every ten seconds and
+    // re-submits it on the next console open, so a mid-run teardown costs at
+    // most ten seconds. The belt had no equivalent, and the teardown is not
+    // hypothetical: any 401 posts `.faffSessionExpired`, whose handler
+    // re-roots to sign-in and destroys the shell holding the live-run cover —
+    // and FaffApp's own comment says that handler "can fire on a perfectly
+    // valid session". An hour on a belt, gone, with nothing on disk.
+    //
+    // Same shape as `PhoneRunCheckpoint` deliberately: same ten-second
+    // cadence, same serial queue so a clear cannot be overtaken by a write,
+    // same id-matched clear so a finished run cannot delete a live one.
+
+    private static let checkpointIO = DispatchQueue(label: "run.faff.belt-checkpoint")
+
+    static var checkpointURL: URL? {
+        guard let dir = try? FileManager.default.url(for: .applicationSupportDirectory,
+                                                     in: .userDomainMask,
+                                                     appropriateFor: nil,
+                                                     create: true) else { return nil }
+        return dir.appendingPathComponent("belt-run-checkpoint.json")
+    }
+
+    private var lastCheckpointAt: Date?
+
+    private func writeCheckpoint(at now: Date, force: Bool = false) {
+        if !force, let last = lastCheckpointAt, now.timeIntervalSince(last) < 10 { return }
+        guard let startedAt else { return }
+        lastCheckpointAt = now
+        let cp = BeltCheckpoint(workoutId: workoutId,
+                                startedAt: startedAt,
+                                updatedAt: now,
+                                elapsedSec: Int(belt.elapsedSec.rounded()),
+                                distanceMi: belt.distanceMi,
+                                elevGainFt: belt.elevGainFt,
+                                speedMph: speedMph,
+                                inclinePct: inclinePct)
+        guard let url = Self.checkpointURL,
+              let data = try? JSONEncoder().encode(cp) else { return }
+        Self.checkpointIO.async { try? data.write(to: url, options: .atomic) }
+    }
+
+    /// Only removes the checkpoint when it is the one for `workoutId`, so a
+    /// late clear from a finished run can never delete a live one.
+    static func clearCheckpoint(workoutId: String?) {
+        guard let url = checkpointURL else { return }
+        checkpointIO.async {
+            if let workoutId,
+               let data = try? Data(contentsOf: url),
+               let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+               let existing = obj["workoutId"] as? String,
+               existing != workoutId {
+                return
+            }
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    /// The checkpoint left by a run this app died in the middle of, if any.
+    static func interruptedRun() -> BeltCheckpoint? {
+        guard let url = checkpointURL,
+              let data = try? Data(contentsOf: url),
+              let cp = try? JSONDecoder().decode(BeltCheckpoint.self, from: data) else { return nil }
+        return cp
+    }
+
     // ── Clock ───────────────────────────────────────────────────────────
 
     /// Begin. Idempotent — a second call resumes rather than restarting.
@@ -212,6 +291,7 @@ final class BeltSession: ObservableObject {
         }
         isRunning = true
         startClock()
+        writeCheckpoint(at: now, force: true)
     }
 
     func pause(at now: Date = .now) {
@@ -277,6 +357,7 @@ final class BeltSession: ObservableObject {
         belt.advance(to: now, speedMph: speedMph, inclinePct: inclinePct, bpm: currentBpm)
         autoAdvanceIfDue()
         tickStamp = now
+        writeCheckpoint(at: now)
     }
 
     /// Auto-advance only INTERMEDIATE segments when they run out. The last
@@ -328,4 +409,21 @@ final class BeltSession: ObservableObject {
         }
         runnerSetSpeed = false
     }
+}
+
+/// What survives a treadmill run the app was killed in the middle of.
+///
+/// Deliberately the belt's TOTALS rather than its sample streams: the point
+/// is that the run exists at all, and a partial sample timeline is worth less
+/// than the distance and the time. Mirrors `PhoneRunCheckpoint`, which makes
+/// the same trade for the same reason.
+struct BeltCheckpoint: Codable {
+    let workoutId: String
+    let startedAt: Date
+    let updatedAt: Date
+    let elapsedSec: Int
+    let distanceMi: Double
+    let elevGainFt: Double
+    let speedMph: Double
+    let inclinePct: Double
 }

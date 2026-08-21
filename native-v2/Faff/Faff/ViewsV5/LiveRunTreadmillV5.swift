@@ -139,7 +139,7 @@ struct LiveRunTreadmillV5: View {
     /// Stable id, stamped once. Same role as `TreadmillView`'s `workoutId` —
     /// backend idempotency key, and reused as the payload's `workoutId` so a
     /// retried POST from the durable queue overwrites rather than duplicates.
-    private let workoutId: String = "trd_\(UUID().uuidString)"
+    private let workoutId: String
     /// Per-phase HEART RATE, closed at the same boundary the recorder closes
     /// its phase. Only HR lives here — the belt's own numbers are
     /// `session.actuals`, because a stale copy of those is the defect.
@@ -155,7 +155,10 @@ struct LiveRunTreadmillV5: View {
         self._hr = ObservedObject(wrappedValue: hr)
         self.onPause = onPause
         self.onEnd = onEnd
+        let id = "trd_\(UUID().uuidString)"
+        self.workoutId = id
         self._session = StateObject(wrappedValue: BeltSession(
+            workoutId: id,
             speedMph: Self.defaultSpeedMph(plan: plan), inclinePct: 1.0))
     }
 
@@ -218,6 +221,15 @@ struct LiveRunTreadmillV5: View {
         .onReceive(session.$tickStamp) { now in
             maintainWatchBridge(at: now)
             attachHrForClosedPhases()
+        }
+        .task {
+            // A belt run this app was killed in the middle of. Same contract
+            // as the outdoor recorder's: re-submitted through the same
+            // durable queue with status "partial", and safe to double-fire
+            // because the endpoint derives its row id from workoutId and
+            // upserts. Runs before this console stamps anything of its own,
+            // so the recovered run can never be confused with the new one.
+            await flushInterruptedBeltRun()
         }
         .onAppear {
             // The host no longer builds this console until the plan has been
@@ -743,6 +755,49 @@ struct LiveRunTreadmillV5: View {
     /// attempts the network) by the time the `Task` is even scheduled, so
     /// there is nothing correctness-relevant left to wait for before handing
     /// the screen back to `onEnd`.
+    /// Re-submit a belt run the app died in the middle of.
+    ///
+    /// Totals only — the checkpoint deliberately does not carry the sample
+    /// streams, so this posts one work phase with the distance, the time and
+    /// the belt settings it had. A partial run that exists beats a complete
+    /// one that does not.
+    private func flushInterruptedBeltRun() async {
+        guard let cp = BeltSession.interruptedRun(), cp.workoutId != workoutId else { return }
+        // Nothing worth recovering. A console opened and closed leaves a
+        // checkpoint too, and re-POSTing a ten-second stub would put a run in
+        // the log the runner never did.
+        guard cp.distanceMi >= 0.1, cp.elapsedSec >= 60 else {
+            BeltSession.clearCheckpoint(workoutId: cp.workoutId)
+            return
+        }
+        let iso = ISO8601DateFormatter()
+        let payload: [String: Any] = [
+            "workoutId": cp.workoutId,
+            "startedAt": iso.string(from: cp.startedAt),
+            "completedAt": iso.string(from: cp.updatedAt),
+            "status": "partial",
+            "totalDistanceMi": (cp.distanceMi * 100).rounded() / 100,
+            "totalDurationSec": cp.elapsedSec,
+            "elevGainFt": cp.elevGainFt.rounded(),
+            "elevGainSource": "treadmill_incline",
+            "source": "treadmill",
+            "indoor": true,
+            "timezone": TimeZone.current.identifier,
+            "phases": [[
+                "label": "Treadmill",
+                "type": "work",
+                "completed": false,
+                "actualSpeedMph": cp.speedMph,
+                "actualInclinePct": cp.inclinePct,
+                "actualDistanceMi": (cp.distanceMi * 100).rounded() / 100,
+                "actualDurationSec": cp.elapsedSec,
+            ]],
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        _ = await WatchSync.shared.saveCompletionDurably(data)
+        BeltSession.clearCheckpoint(workoutId: cp.workoutId)
+    }
+
     private func endAndSave() {
         session.finish()
         attachHrForClosedPhases()
@@ -751,7 +806,14 @@ struct LiveRunTreadmillV5: View {
         WatchSync.shared.stopTreadmillHRSession(sessionId: workoutId)
         let payload = buildCompletionPayload(status: "completed")
         if let data = try? JSONSerialization.data(withJSONObject: payload) {
-            Task { _ = await WatchSync.shared.saveCompletionDurably(data) }
+            Task {
+                _ = await WatchSync.shared.saveCompletionDurably(data)
+                // Only once the run is in the durable queue. Clearing before
+                // that would trade one loss window for another — the queue
+                // survives a kill, and until the run is in it the checkpoint
+                // is the only copy.
+                BeltSession.clearCheckpoint(workoutId: workoutId)
+            }
         }
         onEnd()
     }
