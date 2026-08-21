@@ -31,6 +31,7 @@ import { computeShoeMileage } from '@/lib/shoe/mileage';
 import { coerceShoeType, resolveShoeCapMi } from '@/lib/shoe/lifespan';
 import { recommendShoe, shoeDisplayName, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
+import { outage } from '@/lib/route/failure';
 
 export const dynamic = 'force-dynamic';
 
@@ -292,8 +293,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       coachLine,
       resultEntry,
     });
-  } catch (err: any) {
-    console.error('[api/v5/race/[slug]] failed:', err);
-    return NextResponse.json({ error: err?.message ?? 'lookup failed' }, { status: 500 });
+  } catch (err: unknown) {
+    // Was `err?.message` in the body.
+    return outage('v5/race/[slug]', err);
   }
 }

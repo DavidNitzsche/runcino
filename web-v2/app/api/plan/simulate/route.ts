@@ -18,6 +18,7 @@ import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { buildSimPlan } from '@/lib/plan/sim-inputs';
 import { SIM_DISTANCE_MI, type SimInputs, type SimDistance } from '@/lib/plan/sim-constants';
 import { requireUserId } from '@/lib/auth/session';
+import { outage } from '@/lib/route/failure';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -88,8 +89,11 @@ export async function POST(req: NextRequest) {
         })),
       },
     });
-  } catch (err: any) {
-    console.error('[plan/simulate] error:', err);
-    return NextResponse.json({ ok: false, reason: err?.message ?? 'simulation failed' }, { status: 500 });
+  } catch (err: unknown) {
+    // Was `reason: err?.message`. `reason` is the key the phone reads a
+    // REFUSAL out of, so this put a Postgres string where the engine's own
+    // sentence goes. The 500 kept it from decoding as `.absent`, which is
+    // luck, not design.
+    return outage('plan/simulate', err);
   }
 }

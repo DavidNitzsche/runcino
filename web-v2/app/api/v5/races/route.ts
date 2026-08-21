@@ -48,6 +48,7 @@ import {
   TRIGGER_SUPPRESS_DAYS,
   type FactChoiceSpec, type FactChoiceTriggerId, type V5DecisionCardOut,
 } from '@/lib/training/race-card';
+import { outage } from '@/lib/route/failure';
 
 export const dynamic = 'force-dynamic';
 
@@ -432,8 +433,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       panel, card, schedule, trend, trendHeadline, trendFootnotes, evidence, coachLog,
     });
-  } catch (err: any) {
-    console.error('[api/v5/races] failed:', err);
-    return NextResponse.json({ error: err?.message ?? 'lookup failed' }, { status: 500 });
+  } catch (err: unknown) {
+    // Was `err?.message` in the body.
+    return outage('v5/races', err);
   }
 }

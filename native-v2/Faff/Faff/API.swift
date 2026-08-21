@@ -896,23 +896,43 @@ enum API {
 
     /// POST /api/onboarding/complete · persists the onboarding answers
     /// and (for race-mode) seeds an initial plan. Throws APIServerError
-    /// carrying the server's `{ error, detail }` on any non-2xx — the old
+    /// carrying the server's `{ error, detail }` on a 4xx — the old
     /// silent `return false` let the confirm screen report success while
     /// the server had rolled the whole onboarding txn back (audit P1-1).
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// RULE THREE. A 5xx IS NOT A REFUSAL.
+    ///
+    /// `APIV5.v5()` already keeps this line for every read: a 4xx carrying a
+    /// reason is `.absent`, everything else is `.failed`. This write did not,
+    /// and its one caller turns any `APIServerError` into `.refused(reason:)`
+    /// with the comment "The engine declined and said why."
+    ///
+    /// So the route's own 500 body — `{ error: "onboarding atomic txn
+    /// failed" }`, which is a log line, not a sentence — was rendered to a
+    /// runner on the very first screen they ever see, as though the coach had
+    /// considered their goal and turned it down. No retry, because a refusal
+    /// does not get one. The Postgres failure underneath was invisible.
+    ///
+    /// A 5xx now throws `APIError.badStatus`, which that caller's generic
+    /// `catch` already treats as an outage with a try-again.
     static func completeOnboarding(payload: [String: Any]) async throws {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/onboarding/complete"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
-        guard (200..<300).contains(http.statusCode) else {
-            struct ErrBody: Decodable { let error: String?; let detail: String? }
-            let body = try? JSONDecoder().decode(ErrBody.self, from: data)
-            throw APIServerError(
-                status: http.statusCode,
-                message: body?.error ?? "server error \(http.statusCode)"
-            )
+        if (200..<300).contains(http.statusCode) { return }
+        // The engine fell over. Not a decision, so not a refusal.
+        guard (400..<500).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
         }
+        struct ErrBody: Decodable { let error: String?; let detail: String? }
+        let body = try? JSONDecoder().decode(ErrBody.self, from: data)
+        throw APIServerError(
+            status: http.statusCode,
+            message: body?.error ?? "server error \(http.statusCode)"
+        )
     }
 
     // MARK: - Strava push

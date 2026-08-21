@@ -33,6 +33,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { nextBestVdotExcludingRace } from '@/lib/race/next-best-anchor';
 import { forceReanchorActivePlan } from '@/lib/plan/reanchor-plan';
+import { outage } from '@/lib/route/failure';
 
 const TIERS = ['representative', 'compromised', 'unrepresentative'] as const;
 type Tier = (typeof TIERS)[number];
@@ -40,7 +41,22 @@ type Tier = (typeof TIERS)[number];
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-export async function POST(req: NextRequest) {
+/**
+ * RULE THREE, at the transport edge. This handler had no `try` around it, so
+ * any read that threw left it as an unhandled route error. `outage()` is a
+ * 503 with no `reason` key, which is what the phone maps to its data-outage
+ * screen; the deliberate refusals inside keep their own 4xx and their own
+ * sentence, and stay refusals.
+ */
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  try {
+    return await setRaceAuthority(req);
+  } catch (err) {
+    return outage('v5/race-authority', err);
+  }
+}
+
+async function setRaceAuthority(req: NextRequest): Promise<NextResponse> {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
@@ -57,10 +73,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // RULE THREE. No `.catch`. Empty here means "no such race for you", which
+  // is the 404 below; a failed read is not that answer.
   const raceRow = (await pool.query<{ slug: string }>(
     `SELECT slug FROM races WHERE slug = $1 AND user_uuid = $2`,
     [slug, userId],
-  ).catch(() => ({ rows: [] }))).rows[0];
+  )).rows[0];
   if (!raceRow) {
     return NextResponse.json({ ok: false, error: 'not_found', reason: 'no race matches that slug for this runner' }, { status: 404 });
   }

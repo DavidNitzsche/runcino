@@ -27,6 +27,7 @@ import { resolveZonePaces, formatDeltaLabel, formatPaceMinSec } from '@/lib/plan
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 import { WATCH_PROVISIONAL_FINISH_LABEL, isProvisionalResult } from '@/lib/coach/races-state';
+import { outage } from '@/lib/route/failure';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,16 +43,35 @@ interface V5Row {
 
 function num(text: string | null, modelled: boolean): V5Number { return { text, modelled }; }
 
-export async function GET(req: NextRequest) {
+/**
+ * RULE THREE, at the transport edge. This handler had no `try` around it, so
+ * any read that threw left it as an unhandled route error. `outage()` is a
+ * 503 with no `reason` key, which is what the phone maps to its data-outage
+ * screen; the deliberate refusals inside keep their own 4xx and their own
+ * sentence, and stay refusals.
+ */
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  try {
+    return await readPaces(req);
+  } catch (err) {
+    return outage('v5/paces', err);
+  }
+}
+
+async function readPaces(req: NextRequest): Promise<NextResponse> {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
 
+  // RULE THREE. No `.catch` — an empty result here becomes a 404 refusal
+  // that the phone renders as the whole screen ("There is no active plan"),
+  // so a failed read would tell a runner with a plan that they have none.
+  // The throw reaches the wrapper above and becomes the outage screen.
   const planRow = (await pool.query<{ id: string }>(
     `SELECT id FROM training_plans WHERE user_uuid = $1 AND archived_iso IS NULL
       ORDER BY authored_iso DESC LIMIT 1`,
     [userId],
-  ).catch(() => ({ rows: [] }))).rows[0];
+  )).rows[0];
   if (!planRow) {
     // RULE FOUR. These three reasons render as the WHOLE Paces screen (the
     // phone puts `reason` straight into `Silence`), so they are runner-facing
@@ -244,16 +264,35 @@ export async function GET(req: NextRequest) {
  * other confirm option, so GET above can 404 once ANY of them has been
  * answered rather than only the one race-tiered path.
  */
-export async function POST(req: NextRequest) {
+/**
+ * RULE THREE, at the transport edge. This handler had no `try` around it, so
+ * any read that threw left it as an unhandled route error. `outage()` is a
+ * 503 with no `reason` key, which is what the phone maps to its data-outage
+ * screen; the deliberate refusals inside keep their own 4xx and their own
+ * sentence, and stay refusals.
+ */
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  try {
+    return await settlePaces(req);
+  } catch (err) {
+    return outage('v5/paces', err);
+  }
+}
+
+async function settlePaces(req: NextRequest): Promise<NextResponse> {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
 
+  // RULE THREE. No `.catch` — an empty result here becomes a 404 refusal
+  // that the phone renders as the whole screen ("There is no active plan"),
+  // so a failed read would tell a runner with a plan that they have none.
+  // The throw reaches the wrapper above and becomes the outage screen.
   const planRow = (await pool.query<{ id: string }>(
     `SELECT id FROM training_plans WHERE user_uuid = $1 AND archived_iso IS NULL
       ORDER BY authored_iso DESC LIMIT 1`,
     [userId],
-  ).catch(() => ({ rows: [] }))).rows[0];
+  )).rows[0];
   if (!planRow) {
     // RULE THREE. A bare `error` code with no `reason` fails `v5Write`'s
     // refusal test on the phone (APIV5.swift wants `refusal ?? reason`

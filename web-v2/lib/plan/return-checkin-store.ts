@@ -42,7 +42,14 @@ export async function loadActiveInjuryForReturn(userId: string): Promise<ActiveI
       ORDER BY (resolved_date IS NULL) DESC, start_date DESC
       LIMIT 1`,
     [userId],
-  ).catch(() => ({ rows: [] }))).rows[0];
+    // RULE THREE. No `.catch(() => ({ rows: [] }))` here. Null from this
+    // function means "nothing is flagged", and both callers turn that into a
+    // 404 refusal the phone renders as the entire screen: "Nothing is flagged
+    // right now, so there is no ladder to climb." Told to a runner who IS on
+    // the ladder, because a read failed, that is a wrong answer delivered
+    // with confidence. A throw reaches the route's catch and becomes the
+    // outage screen, which is retryable and true.
+  )).rows[0];
   if (!row) return null;
   const severity = row.severity === 'moderate' || row.severity === 'major' ? row.severity : 'minor';
   return {

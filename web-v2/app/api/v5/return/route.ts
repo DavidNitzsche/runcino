@@ -26,6 +26,7 @@ import {
   computeReturnLadderState, currentStageRow, advancementGateLine,
 } from '@/lib/plan/return-ladder';
 import { MAX_WALK_RUN_STAGE, stageSessionLabel, stageSessionNotes } from '@/lib/plan/injury-protocols';
+import { outage } from '@/lib/route/failure';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,22 @@ function dateLine(iso: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
-export async function GET(req: NextRequest) {
+/**
+ * RULE THREE, at the transport edge. This handler had no `try` around it, so
+ * any read that threw left it as an unhandled route error. `outage()` is a
+ * 503 with no `reason` key, which is what the phone maps to its data-outage
+ * screen; the deliberate refusals inside keep their own 4xx and their own
+ * sentence, and stay refusals.
+ */
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  try {
+    return await readReturn(req);
+  } catch (err) {
+    return outage('v5/return', err);
+  }
+}
+
+async function readReturn(req: NextRequest): Promise<NextResponse> {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;

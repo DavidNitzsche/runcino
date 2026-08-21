@@ -28,6 +28,7 @@
 import { randomBytes, createHash } from 'crypto';
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { outage } from '@/lib/route/failure';
 
 const TOKEN_TTL_DAYS = 90;
 
@@ -54,8 +55,49 @@ function hashToken(t: string): string {
  *      Now returns `null` — callers MUST treat that as 401.
  */
 export async function userIdFromRequest(req: Request | { headers: Headers, url?: string }): Promise<string | null> {
+  const r = await resolveUserId(req);
+  return r.kind === 'user' ? r.userId : null;
+}
+
+/**
+ * What the session read actually found. Three outcomes, not two.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * A DATABASE OUTAGE USED TO SIGN THE RUNNER OUT
+ *
+ * `userIdFromRequest` wrapped the sessions lookup in `try { … } catch { }`
+ * and returned `null` either way, so "no row matches this token" and "the
+ * sessions table could not be read" were the same answer. `requireUserId`
+ * turned that into 401.
+ *
+ * Forced against a dev server with `DATABASE_URL` pointed at a dead port,
+ * holding a perfectly valid Bearer token:
+ *
+ *     [auth] session lookup failed:
+ *     GET /api/v5/today 401 in 53ms   → {"error":"Unauthorized"}
+ *
+ * And a 401 is not a quiet failure on the phone. `API.authedSend` posts
+ * `.faffSessionExpired`; `FaffApp` handles it with `TokenStore.shared.clear()`
+ * and a bounce to the sign-in gate. So a Postgres blip DELETED a valid token
+ * and signed the runner out — and they could not sign back in, because
+ * signing in reads the same database. Told "your session expired", which was
+ * not true, with no way back until the database returned.
+ *
+ * That is rule three at its most expensive: an outage wearing the clothes of
+ * a decision about the runner. So the read failure is now its own outcome
+ * and `requireUserId` answers 503 for it. A 503 is not 401, so the phone
+ * leaves the token alone and shows the outage screen.
+ */
+type SessionResolution =
+  | { kind: 'user'; userId: string }
+  | { kind: 'no-session' }
+  | { kind: 'unreadable'; error: unknown };
+
+async function resolveUserId(
+  req: Request | { headers: Headers, url?: string },
+): Promise<SessionResolution> {
   const token = extractToken(req);
-  if (!token) return null;
+  if (!token) return { kind: 'no-session' };
   const tokenHash = hashToken(token);
   try {
     const r = (await pool.query(
@@ -73,12 +115,17 @@ export async function userIdFromRequest(req: Request | { headers: Headers, url?:
         `UPDATE sessions SET last_used_at = NOW() WHERE session_token = $1`,
         [tokenHash],
       ).catch(() => {});
-      return r.user_uuid;
+      return { kind: 'user', userId: r.user_uuid };
     }
-  } catch (e: any) {
-    console.error('[auth] session lookup failed:', e?.message);
+    // The read SUCCEEDED and matched nothing. This one really is a 401.
+    return { kind: 'no-session' };
+  } catch (e: unknown) {
+    // A refused connection carries an EMPTY `message`, which is why the log
+    // line above this fix read `session lookup failed:` and stopped. Log the
+    // whole error, not one field of it.
+    console.error('[auth] session lookup UNREADABLE (not an expiry):', e);
+    return { kind: 'unreadable', error: e };
   }
-  return null;
 }
 
 /**
@@ -101,11 +148,14 @@ export async function userIdFromRequest(req: Request | { headers: Headers, url?:
 export async function requireUserId(
   req: Request | { headers: Headers, url?: string },
 ): Promise<string | NextResponse> {
-  const userId = await userIdFromRequest(req);
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  return userId;
+  const r = await resolveUserId(req);
+  if (r.kind === 'user') return r.userId;
+  // See `SessionResolution`. A session we could not READ is not a session
+  // that expired, and answering 401 for it made the phone throw away a
+  // valid token. 104 route files call this helper, so the distinction lands
+  // everywhere at once.
+  if (r.kind === 'unreadable') return outage('auth/session', r.error);
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 }
 
 /**
@@ -128,8 +178,10 @@ export async function requireAdmin(
       [auth],
     )).rows[0];
     if (r?.is_admin === true) return auth;
-  } catch (e: any) {
-    console.error('[auth] admin lookup failed:', e?.message);
+  } catch (e: unknown) {
+    // Same shape as the session read above: an unreadable `users` row is not
+    // a runner who lacks the admin flag. 403 is a decision; this is not one.
+    return outage('auth/admin', e);
   }
   return NextResponse.json({ error: 'Forbidden · admin only' }, { status: 403 });
 }

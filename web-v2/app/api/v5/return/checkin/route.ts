@@ -21,12 +21,28 @@ import {
 } from '@/lib/plan/return-checkin-store';
 import { computeReturnLadderState, applyCheckin, advancementGateLine, type ReturnCheckinOutcome } from '@/lib/plan/return-ladder';
 import { MAX_WALK_RUN_STAGE } from '@/lib/plan/injury-protocols';
+import { outage } from '@/lib/route/failure';
 
 export const dynamic = 'force-dynamic';
 
 const OUTCOMES = ['silent', 'something_off'] as const;
 
-export async function POST(req: NextRequest) {
+/**
+ * RULE THREE, at the transport edge. This handler had no `try` around it, so
+ * any read that threw left it as an unhandled route error. `outage()` is a
+ * 503 with no `reason` key, which is what the phone maps to its data-outage
+ * screen; the deliberate refusals inside keep their own 4xx and their own
+ * sentence, and stay refusals.
+ */
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  try {
+    return await submitReturnCheckin(req);
+  } catch (err) {
+    return outage('v5/return/checkin', err);
+  }
+}
+
+async function submitReturnCheckin(req: NextRequest): Promise<NextResponse> {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;

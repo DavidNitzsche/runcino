@@ -22,7 +22,8 @@ import { pool } from '@/lib/db/pool';
 import { zoneTargetForWorkout } from '@/lib/coach/zone-target';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
-import { loadActivePlan } from '@/lib/plan/lookup';
+import { loadActivePlanStrict } from '@/lib/plan/lookup';
+import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 import { loadPlanWeek } from '@/lib/plan/week-loader';
 import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeWorkoutType } from '@/lib/coach/run-purpose';
@@ -168,7 +169,29 @@ function midSec(lo: number | null | undefined, hi: number | null | undefined): n
   return (lo + hi) / 2;
 }
 
-export async function GET(req: NextRequest) {
+/**
+ * The Today surface is 570 lines of composition over ~35 reads. It had no
+ * `try` in it at all, so any one of those reads throwing — a statement
+ * timeout on `plan_workouts`, a dropped connection mid-`runs`, `sorry, too
+ * many clients already` — left the handler by throwing, and the runner got
+ * whatever Next.js emits for an unhandled route error.
+ *
+ * Forced, and each of these was an uncaught throw before this wrapper:
+ * a 57014 on `plan_workouts`, a 57014 on `runs`, a 53300 on `profile`, and
+ * an 08006 on any read at all.
+ *
+ * The body is extracted rather than indented so the diff is this comment
+ * and a wrapper, not a 570-line reflow of code other agents are editing.
+ */
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  try {
+    return await composeToday(req);
+  } catch (err) {
+    return outage('v5/today', err);
+  }
+}
+
+async function composeToday(req: NextRequest): Promise<NextResponse> {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
@@ -177,7 +200,19 @@ export async function GET(req: NextRequest) {
   const today = (url.searchParams.get('date') || await runnerToday(userId)).slice(0, 10);
 
   // ── Race-mode gate ────────────────────────────────────────────────────
-  const activePlan = await loadActivePlan(userId);
+  //
+  // RULE THREE. Everything below this gate is load-bearing in the strongest
+  // sense the rule has: failing it does not omit a section, it tells the
+  // runner the product is not for them. `not_on_phone_yet` reads "Not here
+  // yet · This phone build only coaches toward a goal race", with no retry
+  // and nothing to suggest anything went wrong.
+  //
+  // Both reads used to swallow their own failure into an empty result, so a
+  // Postgres blip and "has never raced through this app" were the same
+  // value, and a marathoner in week 9 of a block got the refusal. `Strict`
+  // and the missing `.catch` are what make a failed read reach the wrapper
+  // above and become the outage screen instead.
+  const activePlan = await loadActivePlanStrict(userId);
   let raceMode = activePlan != null && (activePlan.mode === 'race-prep' || activePlan.race_id != null);
   if (!activePlan) {
     // No active plan right now — still race-mode if this runner has EVER
@@ -186,7 +221,7 @@ export async function GET(req: NextRequest) {
     const everRacePrep = await pool.query(
       `SELECT 1 FROM training_plans WHERE user_uuid = $1 AND (mode = 'race-prep' OR race_id IS NOT NULL) LIMIT 1`,
       [userId],
-    ).catch(() => ({ rows: [] as any[] }));
+    );
     raceMode = everRacePrep.rows.length > 0;
   }
 

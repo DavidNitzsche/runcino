@@ -51,6 +51,7 @@ import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { manualResultPatch, runPostResultChain } from '@/lib/race/result-chain';
 import type { FactChoiceTriggerId } from '@/lib/training/race-card';
+import { outage } from '@/lib/route/failure';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,12 +82,15 @@ export async function POST(req: NextRequest) {
   const targetSec = typeof body?.targetSec === 'number' && Number.isFinite(body.targetSec) ? body.targetSec : null;
   const raceSlug = typeof body?.raceSlug === 'string' && body.raceSlug ? body.raceSlug : null;
 
-  const todayISO = await runnerToday(userId);
-  const racesState = await loadRacesState(userId);
-  const upcomingAs = racesState.aRaces.filter(r => !r.is_past).sort((a, b) => a.days - b.days);
-  const nextA = upcomingAs[0] ?? racesState.aRace ?? null;
-
   try {
+    // These two reads used to sit OUTSIDE this `try`, so a throw in either
+    // left the handler unhandled and became a raw Next.js 500 rather than
+    // the outage body. Both hit the database; both belong inside.
+    const todayISO = await runnerToday(userId);
+    const racesState = await loadRacesState(userId);
+    const upcomingAs = racesState.aRaces.filter(r => !r.is_past).sort((a, b) => a.days - b.days);
+    const nextA = upcomingAs[0] ?? racesState.aRace ?? null;
+
     switch (action) {
       case 'hold': {
         await writeIntent(userId, 'coach_log_goal_answer', nextA?.slug ?? null, { action, race: nextA?.slug ?? null });
@@ -139,7 +143,9 @@ export async function POST(req: NextRequest) {
         const current = await pool.query<{ meta: any; plan: any }>(
           `SELECT meta, plan FROM races WHERE user_uuid = $1::uuid AND slug = $2 LIMIT 1`,
           [userId, nextA.slug],
-        ).then(r => r.rows[0]).catch(() => null);
+        // RULE THREE. No `.catch` — null here answers "that race is gone",
+        // and a failed read must not be able to say that.
+        ).then(r => r.rows[0]);
         if (!current) return NextResponse.json({ ok: false, error: 'race_not_found', reason: 'That race is not on your schedule any more.' }, { status: 404 });
         const oldGoalSec = Number(current.plan?.goal?.finish_time_s ?? 0);
         const newMeta = { ...current.meta, goalDisplay };
@@ -240,8 +246,9 @@ export async function POST(req: NextRequest) {
       default:
         return NextResponse.json({ ok: false, error: 'unhandled_action', reason: 'That answer is not one this card can act on.' }, { status: 400 });
     }
-  } catch (err: any) {
-    console.error('[api/v5/goal-answer] failed:', err);
-    return NextResponse.json({ ok: false, error: err?.message ?? 'failed' }, { status: 500 });
+  } catch (err: unknown) {
+    // Was `err?.message` in the body. The 4xx refusals above still carry
+    // their own `reason` — that split is the whole point of rule three.
+    return outage('v5/goal-answer', err);
   }
 }

@@ -23,7 +23,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserId } from '@/lib/auth/session';
 import { pool } from '@/lib/db/pool';
 import { loadV5Block } from '@/lib/plan/v5-block';
-import { loadActivePlan } from '@/lib/plan/lookup';
+import { loadActivePlanStrict } from '@/lib/plan/lookup';
+import { outage } from '@/lib/route/failure';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,13 +35,17 @@ export async function GET(req: NextRequest) {
 
   try {
     // ── Race-mode gate · mirrors /api/v5/today ──────────────────────────
-    const activePlan = await loadActivePlan(userId);
+    const activePlan = await loadActivePlanStrict(userId);
     let raceMode = activePlan != null && (activePlan.mode === 'race-prep' || activePlan.race_id != null);
     if (!activePlan) {
+      // RULE THREE. No `.catch`. An empty result here drives the 404 refusal
+      // below, so swallowing a failed read told a runner mid-block that there
+      // is no block. The throw reaches this handler's catch and becomes the
+      // outage screen. Same gate, same fix, as /api/v5/today.
       const everRacePrep = await pool.query(
         `SELECT 1 FROM training_plans WHERE user_uuid = $1 AND (mode = 'race-prep' OR race_id IS NOT NULL) LIMIT 1`,
         [userId],
-      ).catch(() => ({ rows: [] as unknown[] }));
+      );
       raceMode = everRacePrep.rows.length > 0;
     }
     if (!raceMode) {
@@ -86,6 +91,7 @@ export async function GET(req: NextRequest) {
     const block = await loadV5Block(userId);
     return NextResponse.json(block);
   } catch (e: unknown) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    // Was `e.message` in the body: a Postgres string on a runner's screen.
+    return outage('v5/block', e);
   }
 }

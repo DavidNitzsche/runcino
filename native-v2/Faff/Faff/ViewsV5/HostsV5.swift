@@ -1451,10 +1451,20 @@ struct OnboardingHostV5: View {
         do {
             try await API.completeOnboarding(payload: payload)
         } catch let e as APIServerError {
-            // The engine declined and said why. That is an answer.
-            return .refused(reason: e.message ?? "That goal is not one we can build a plan toward yet.")
+            // A 4xx only — `completeOnboarding` now throws `badStatus` for a
+            // 5xx, which lands in the generic catch below as an outage. The
+            // engine read the goal and declined. That is an answer.
+            // `?? fallback` here was dead: APIServerError.message is
+            // non-optional, so an EMPTY `error` from the route rendered an
+            // empty amber Alert with no sentence in it. Test the contents.
+            let said = e.message.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .refused(reason: said.isEmpty
+                ? "That goal is not one we can build a plan toward yet."
+                : said)
         } catch {
-            return .refused(reason: "We could not reach the server to build your plan. Try again in a moment.")
+            // Offline, or the engine fell over. Nothing was decided about
+            // this runner's goal, so this is not a refusal.
+            return .outage("We could not reach faff to write your plan. Nothing you entered is lost.")
         }
 
         // ── the week ──────────────────────────────────────────────────────
@@ -1473,8 +1483,10 @@ struct OnboardingHostV5: View {
         // ── day one ───────────────────────────────────────────────────────
         // Read it off the real Today surface. A preview composed here would be
         // a second source of truth for the first screen the runner ever sees.
+        // The plan write above SUCCEEDED. Whatever happened here, the runner
+        // is onboarded, so this must never read as a declined goal.
         guard case .ok(let today) = (try? await API.fetchV5Today()) ?? .failed else {
-            return .refused(reason: "The plan is being written. It will be on Today in a moment.")
+            return .outage("Your plan is written. We could not read day one just now.")
         }
         return .success(OnboardingV5DayOne(
             phaseLine: today.panel.dateLine,

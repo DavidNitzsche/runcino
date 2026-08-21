@@ -187,6 +187,16 @@ enum OnboardingV5Outcome {
     /// close, a runway that cannot carry it. Rendered as `Alert`, no
     /// confirm button.
     case refused(reason: String)
+    /// We could not reach the engine, or it fell over. NOT a decision about
+    /// this runner's goal, so not a refusal: rendered as `ErrorNote` with a
+    /// Retry, which is the treatment rule three reserves for an outage.
+    ///
+    /// This case exists because both halves of the failure used to arrive
+    /// here as `.refused`. A 500 from `/api/onboarding/complete` carries
+    /// `{ error: "onboarding atomic txn failed" }`, and that log line was
+    /// shown to a first-time runner in the amber Alert as if the coach had
+    /// read their goal and turned it down.
+    case outage(String)
 }
 
 // MARK: - The screen
@@ -205,6 +215,8 @@ struct OnboardingV5: View {
     /// availability step, where the submit happened — never advances past
     /// it.
     @State private var refusal: String? = nil
+    /// Kept separate from `refusal` on purpose. See `OnboardingV5Outcome.outage`.
+    @State private var outage: String? = nil
     @State private var dayOne: OnboardingV5DayOne?
 
     private let stepCount = 5
@@ -281,6 +293,7 @@ struct OnboardingV5: View {
 
     private func submit() async {
         refusal = nil
+        outage = nil
         submitting = true
         let outcome = await onSubmit(answers)
         submitting = false
@@ -290,6 +303,10 @@ struct OnboardingV5: View {
             withAnimation(V5.Motion.fill) { step = 4 }
         case .refused(let reason):
             refusal = reason
+        case .outage(let note):
+            // Rule three: kept apart from `refusal` so the two cannot render
+            // as each other. Amber Alert is an answer; ErrorNote is a failure.
+            outage = note
         }
     }
 
@@ -446,6 +463,9 @@ struct OnboardingV5: View {
 
                 if let refusal {
                     Alert(text: refusal, tone: .attention)
+                }
+                if let outage {
+                    ErrorNote(text: outage, onRetry: { Task { await submit() } })
                 }
 
                 Spacer(minLength: V5.S.s24)
