@@ -36,7 +36,19 @@ final class TreadmillHRStreamer: ObservableObject {
     /// callbacks, no awaits on the store directly.
     nonisolated private let store = HKHealthStore()
     private var observerActive = false
+    /// The registered observer, so it can actually be retired. `stop()` used
+    /// to only flip `observerActive`, leaving the query live on the store —
+    /// and `start()` executes a NEW one every time it re-anchors, so a
+    /// console reopened inside one app launch accumulated observers, each
+    /// still firing `drain` with its OWN (earlier) predicate. That is how a
+    /// previous session's heart rate leaks into this one's average.
+    private var observer: HKObserverQuery?
     private var anchor: HKQueryAnchor?
+    /// True while a drain is in flight. See `drain`.
+    private var isDraining = false
+    /// Set when the observer fired during a drain, so the samples it was
+    /// telling us about are collected rather than dropped.
+    private var drainAgain = false
     /// The instant this stream is anchored at · the run's start, not the
     /// screen's. Kept so a later caller with a better answer can re-anchor.
     private var anchorDate: Date?
@@ -67,6 +79,11 @@ final class TreadmillHRStreamer: ObservableObject {
             observerActive = false
             anchor = nil
         }
+        // Retire whatever is registered before registering another. Without
+        // this the old query keeps firing against its old predicate, and its
+        // drains append pre-re-anchor samples into the buffers this run's
+        // avg/max are computed from.
+        retireObserver()
         anchorDate = when
 
         let hrType = HKQuantityType(.heartRate)
@@ -75,22 +92,30 @@ final class TreadmillHRStreamer: ObservableObject {
         let predicate = HKQuery.predicateForSamples(
             withStart: when, end: nil, options: [.strictStartDate]
         )
-        let observer = HKObserverQuery(sampleType: hrType, predicate: predicate) { [weak self] _, _, _ in
+        let q = HKObserverQuery(sampleType: hrType, predicate: predicate) { [weak self] _, _, _ in
             Task { await self?.drain(predicate: predicate) }
         }
-        store.execute(observer)
+        store.execute(q)
+        observer = q
         observerActive = true
 
         // First drain · catches any samples that landed in the gap
         // between the watch starting its workout and our observer
-        // registering.
+        // registering. HealthKit fires the observer on registration too, so
+        // this and that first callback are two drains asking for the same
+        // window — `drain` is non-reentrant precisely because of this pair.
         await drain(predicate: predicate)
     }
 
-    /// Best-effort stop · observer query stays registered (cheap), but
-    /// further drains short-circuit.
+    /// Stop streaming. The observer is retired, not merely muted.
     func stop() {
         observerActive = false
+        retireObserver()
+    }
+
+    private func retireObserver() {
+        if let q = observer { store.stop(q) }
+        observer = nil
     }
 
     /// Capture (avg, max) for the just-closed phase + reset the phase
@@ -104,39 +129,95 @@ final class TreadmillHRStreamer: ObservableObject {
         return (avg, max)
     }
 
-    /// Capture (avg, max) for the whole session.
+    /// Capture (avg, max) for the whole session, and reset.
+    ///
+    /// The reset was missing, and this object outlives a single run: the
+    /// treadmill and outdoor consoles share one instance for the whole
+    /// `LiveRunHostV5` lifetime, and `stop()` then `start()` gives the same
+    /// instance a second run. Without the clear, run two's `avgHr` was the
+    /// mean of run one and run two — and `start`'s re-anchor guard
+    /// (`sessionSamples.isEmpty`) could never be satisfied again either, so
+    /// run two also kept run one's anchor date.
+    ///
+    /// Cleared HERE and not in `stop()` on purpose: `LiveRunHostV5.end()`
+    /// calls `hr.stop()` before `hr.closeSession()`, so clearing on stop
+    /// would drop the heart rate off every phone-recorded outdoor run.
     func closeSession() -> (avg: Int?, max: Int?) {
         let avg = sessionSamples.isEmpty
             ? nil
             : Int((sessionSamples.reduce(0, +) / Double(sessionSamples.count)).rounded())
         let max = sessionSamples.max().map { Int($0.rounded()) }
+        sessionSamples.removeAll(keepingCapacity: false)
+        phaseSamples.removeAll(keepingCapacity: false)
+        anchor = nil
+        anchorDate = nil
         return (avg, max)
     }
 
+    /// ─────────────────────────────────────────────────────────────────────
+    /// WHY THIS IS NON-REENTRANT
+    ///
+    /// `anchor` is read before the HealthKit query and written after it, and
+    /// the `await` between the two releases the main actor. Two drains in
+    /// flight therefore both snapshot the SAME anchor, both get the SAME
+    /// batch back, and both append it — every sample in that window counted
+    /// twice.
+    ///
+    /// It is not a rare interleaving; `start` produces it on every stream.
+    /// `store.execute(observer)` makes HealthKit fire the observer straight
+    /// away, and the line after it awaits a drain of its own. The observer's
+    /// drain runs while that one is suspended, sees `anchor == nil`, and
+    /// re-reads the identical catch-up batch — the samples the watch wrote
+    /// between starting its workout and this stream registering.
+    ///
+    /// Duplicating a whole window leaves `max` alone but pulls `avg` toward
+    /// the duplicated stretch, and that average ships as `actualAvgHr` on the
+    /// phase and `avgHr` on the completion. It is presented as measured, so
+    /// it has to be arithmetically what was measured.
+    ///
+    /// The re-run flag matters as much as the guard: an observer firing
+    /// during a drain is HealthKit saying there are new samples, and simply
+    /// dropping that callback would lose them until the next write.
     private func drain(predicate: NSPredicate) async {
         guard observerActive else { return }
+        if isDraining {
+            drainAgain = true
+            return
+        }
+        isDraining = true
+        defer { isDraining = false }
+
         let hrType = HKQuantityType(.heartRate)
         let bpm = HKUnit.count().unitDivided(by: .minute())
-        let snapshotAnchor = self.anchor
 
-        let (samples, newAnchor): ([HKQuantitySample], HKQueryAnchor?) = await withCheckedContinuation { cont in
-            let q = HKAnchoredObjectQuery(
-                type: hrType, predicate: predicate, anchor: snapshotAnchor, limit: HKObjectQueryNoLimit
-            ) { _, samps, _, anchor, _ in
-                cont.resume(returning: ((samps as? [HKQuantitySample]) ?? [], anchor))
+        repeat {
+            drainAgain = false
+            guard observerActive else { break }
+            let snapshotAnchor = self.anchor
+
+            let (samples, newAnchor): ([HKQuantitySample], HKQueryAnchor?) = await withCheckedContinuation { cont in
+                let q = HKAnchoredObjectQuery(
+                    type: hrType, predicate: predicate, anchor: snapshotAnchor, limit: HKObjectQueryNoLimit
+                ) { _, samps, _, anchor, _ in
+                    cont.resume(returning: ((samps as? [HKQuantitySample]) ?? [], anchor))
+                }
+                store.execute(q)
             }
-            store.execute(q)
-        }
-        self.anchor = newAnchor ?? self.anchor
-        guard !samples.isEmpty else { return }
+            self.anchor = newAnchor ?? self.anchor
+            // A stop that landed while the query was out. Advance the anchor
+            // (so a later start does not re-read this window) but do not feed
+            // a session that has already been closed out.
+            guard observerActive else { break }
+            guard !samples.isEmpty else { continue }
 
-        for s in samples {
-            let v = s.quantity.doubleValue(for: bpm)
-            phaseSamples.append(v)
-            sessionSamples.append(v)
-            // Drive the live display off the newest sample.
-            currentBpm = Int(v.rounded())
-        }
+            for s in samples {
+                let v = s.quantity.doubleValue(for: bpm)
+                phaseSamples.append(v)
+                sessionSamples.append(v)
+                // Drive the live display off the newest sample.
+                currentBpm = Int(v.rounded())
+            }
+        } while drainAgain
     }
 }
 

@@ -332,14 +332,35 @@ final class PhoneRunTracker: NSObject, ObservableObject {
     ///
     /// `.common` mode so a scroll or a sheet animation cannot stall it, and
     /// one immediate tick so the display does not sit a second behind.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// THE TIMER RETIRES ITSELF IF THE TRACKER GOES AWAY UNDER IT
+    ///
+    /// `RunLoop.main` owns this timer independently of the tracker, so a
+    /// tracker that is deallocated mid-run — without `pause`, `finish` or
+    /// `discard` — leaves it scheduled and firing every second for the rest
+    /// of the process. That teardown is reachable, not theoretical: a 401
+    /// from ANY read posts `.faffSessionExpired`, whose handler in
+    /// `FaffApp` re-roots to the sign-in step and destroys the `ShellV5`
+    /// holding the live-run `fullScreenCover`. `FaffApp`'s own note says
+    /// that handler "can fire on a perfectly valid session".
+    ///
+    /// The block takes the timer as its parameter, so the fix needs no
+    /// `deinit`: on the first fire after the tracker is gone it invalidates
+    /// itself, from the run loop's own thread — which is where
+    /// `Timer.invalidate()` is required to be called, and is exactly what a
+    /// `deinit` cannot promise, because the last release can land on any
+    /// executor.
+    ///
+    /// `[weak self]` still belongs on the OUTER closure. On the inner `Task`
+    /// it would need a strong `self` to form the weak reference from, so the
+    /// Timer would retain the tracker (and its location manager) for the life
+    /// of the app.
     private func startClock() {
         clock?.invalidate()
-        // `[weak self]` belongs on the OUTER closure. On the inner `Task` it
-        // still requires a strong `self` to form the weak reference from, so
-        // the Timer would retain the tracker and a run left un-paused would
-        // keep it (and its location manager) alive for the life of the app.
-        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick(at: .now) }
+        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            Task { @MainActor in self.tick(at: .now) }
         }
         RunLoop.main.add(t, forMode: .common)
         clock = t

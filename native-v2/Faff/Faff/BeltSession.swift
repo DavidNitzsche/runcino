@@ -76,8 +76,43 @@ final class BeltSession: ObservableObject {
 
     @Published private(set) var speedMph: Double
     @Published private(set) var inclinePct: Double
-    /// The integrator. Published so the console re-renders each tick.
-    @Published private(set) var belt: BeltTracker
+    /// The integrator.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// DELIBERATELY NOT `@Published` · IT USED TO BE, AND IT COST A COPY OF
+    /// THE WHOLE SAMPLE BUFFER EVERY SECOND
+    ///
+    /// `BeltTracker` is a struct carrying `segSamples: [BeltSample]`, and
+    /// `Published.wrappedValue` exposes only a getter and a setter — no
+    /// `_modify` coroutine. So `belt.advance(...)` is not an in-place
+    /// mutation: it is get, mutate the copy, set. During the mutation the
+    /// wrapper's own storage still holds the original, so the sample array's
+    /// buffer is referenced twice and the `append` inside `advance` triggers
+    /// a full copy-on-write.
+    ///
+    /// Measured, not assumed — a probe that reserves capacity so no growth
+    /// realloc can be mistaken for COW, then appends 200 times through each
+    /// shape:
+    ///
+    ///     @Published struct mutation: buffer reallocated on 200/200 appends
+    ///     plain     struct mutation: buffer reallocated on   0/200 appends
+    ///
+    /// `tick` advances the belt once a second and a sample lands every five,
+    /// so at second t of a segment the copy is t/5 elements. Over a segment
+    /// of T seconds that is Σ(t/5) ≈ T²/10 element copies: 1.3M for an hour,
+    /// 11.7M (~470 MB of memcpy at 40 bytes a sample) for three. Not a leak —
+    /// each copy is freed — but unbounded WORK that grows linearly through
+    /// the run, on the actor that also has to service GPS fixes and HealthKit
+    /// drains. This app has already lost a run to main-actor starvation once
+    /// (see `PhoneRunTracker.startClock`).
+    ///
+    /// Nothing is lost by dropping the wrapper: every mutation site here
+    /// (`begin`/`resync`/`advance`/`closeSegment`) is followed in the same
+    /// synchronous block by a write to `tickStamp`, `isRunning` or
+    /// `closedCount`, all of which are `@Published`. The console re-renders
+    /// on those and re-reads `session.belt` fresh. No `$belt` subscriber
+    /// exists anywhere in the app.
+    private(set) var belt: BeltTracker
     @Published private(set) var isRunning = false
     @Published private(set) var segmentIndex = 0
     /// Bumps whenever a segment closes, so the view can close its heart-rate
@@ -111,7 +146,10 @@ final class BeltSession: ObservableObject {
         self.tickStamp = now
     }
 
-    deinit { timer?.invalidate() }
+    // No `deinit`. `Timer.invalidate()` must be sent on the thread the timer
+    // was installed on (RunLoop.main), and a `deinit` cannot promise that:
+    // it is nonisolated, so the last release can land on any executor. The
+    // clock retires itself instead — see `startClock`.
 
     // ── Plan ────────────────────────────────────────────────────────────
 
@@ -205,10 +243,19 @@ final class BeltSession: ObservableObject {
     /// The closure captures `self` WEAKLY — a reference to this object, not a
     /// copy of its fields — so `tick` reads whatever `speedMph` is at the
     /// moment it runs. That is the whole point of this file.
+    ///
+    /// The block also takes the timer as its parameter and retires it once
+    /// the session is gone. `RunLoop.main` owns this timer independently of
+    /// the session, so a session deallocated mid-run — the console torn down
+    /// without End, which `.faffSessionExpired` does on any 401 — would
+    /// otherwise leave it firing every second for the life of the process.
+    /// Invalidating from the block runs on the run loop's own thread, which
+    /// is where `Timer.invalidate()` is required to be sent.
     private func startClock() {
         guard timer == nil else { return }
-        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.tick(at: Date()) }
+        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            Task { @MainActor in self.tick(at: Date()) }
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t

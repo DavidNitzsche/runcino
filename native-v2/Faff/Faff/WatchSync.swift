@@ -242,8 +242,13 @@ final class WatchSync: NSObject, ObservableObject {
     /// dead-signal environment — a failed POST must never mean data loss.
     ///
     /// Returns `true` when the payload synced during this call, `false` when
-    /// it stayed queued (offline · 5xx · 401). Either way the run is safe on
+    /// it stayed queued (offline · 5xx · 401, a drain already running, or the
+    /// post-failure backoff still holding). Either way the run is safe on
     /// disk; the caller can dismiss.
+    ///
+    /// `false` is now always honest. It used to be readable as `true` off a
+    /// concurrent drain's stale write-back — the console reporting a saved
+    /// run that had just been erased from the queue.
     func saveCompletionDurably(_ data: Data) async -> Bool {
         enqueue(data)
         await flushPendingCompletions()
@@ -336,7 +341,28 @@ final class WatchSync: NSObject, ObservableObject {
 
     /// Guards against a flush that is already running, and against the whole
     /// queue re-POSTing on a failure that will fail identically for all of it.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// WHY `flushing` IS SAFE, AND WHAT WOULD BREAK IT
+    ///
+    /// A check-then-act flag is only atomic if nothing suspends between the
+    /// check and the set. `WatchSync` is `@MainActor` (see the class
+    /// declaration), and every statement from `guard !flushing` down to
+    /// `flushing = true` is synchronous — the UserDefaults read, the empty
+    /// test, the backoff test. So two triggers cannot both observe `false`.
+    ///
+    /// That is a property of the code between those two lines, not of the
+    /// flag. Putting ANY `await` in that span — an async token read, an
+    /// async reachability probe — reintroduces the race the flag exists to
+    /// prevent, and the compiler will not say so: the iPhone target builds
+    /// at `SWIFT_STRICT_CONCURRENCY: minimal`. Set the flag first if
+    /// anything ever needs to await up there.
     private var flushing = false
+    /// Set when a trigger fired during a drain, so the drain loops again
+    /// rather than leaving the newcomer stranded. Without it the guard above
+    /// silently swallows the arrival: `didReceiveUserInfo` enqueues and then
+    /// calls this, and that call returns at the guard having done nothing.
+    private var flushAgain = false
     private var lastFlushFailedAt: Date?
     /// After a whole-queue failure, wait before trying again. Three unthrottled
     /// triggers feed this — session activation, file receive, userInfo receive
@@ -345,44 +371,97 @@ final class WatchSync: NSObject, ObservableObject {
     /// each one posting `.faffSessionExpired`.
     private static let retryBackoffSec: TimeInterval = 60
 
+    /// ─────────────────────────────────────────────────────────────────────
+    /// THE WRITE-BACK REMOVES WHAT LANDED · IT DOES NOT ASSIGN A SNAPSHOT
+    ///
+    /// This is the second half of the `flushing` guard, and without it the
+    /// guard makes a run LESS safe rather than more.
+    ///
+    /// `q` is read once, then every POST releases the main actor for as long
+    /// as the network takes. Five triggers can enqueue into that window:
+    /// session activation, `didReceive file:`, `didReceiveUserInfo`,
+    /// reachability, and `saveCompletionDurably` (treadmill End, outdoor End,
+    /// and the interrupted-run flush). Assigning `pendingCompletions = keep`
+    /// — a list derived entirely from `q` — erases every one of them.
+    ///
+    /// Concretely, and this is now a single interleaving rather than a race:
+    ///
+    ///   1. Queue is [A]. A drain starts, snapshots [A], awaits POST A.
+    ///   2. The watch delivers B. `didReceiveUserInfo` → `enqueue(B)` →
+    ///      queue is [A, B] → it calls this, which returns at `flushing`.
+    ///   3. POST A returns 200. `keep` is empty. The write assigns [].
+    ///
+    /// B is now neither on the server nor on disk. It is gone, and it was
+    /// destroyed by the drain that was told about it. The runner is shown
+    /// "will sync later" and never sees the run again. Gyms are the
+    /// canonical dead-signal environment; this is exactly the loss the
+    /// durable queue exists to prevent.
+    ///
+    /// So: re-read the queue after the POSTs and remove exactly what the
+    /// server accepted. Anything that arrived mid-flight survives by
+    /// construction, and the re-run loop picks it up on the next pass
+    /// instead of stranding it until the next foreground.
     func flushPendingCompletions() async {
         // One at a time. Two triggers arriving together used to run two full
         // drains over the same array and race on the write-back.
-        guard !flushing else { return }
-        let q = pendingCompletions
-        guard !q.isEmpty else { return }
+        guard !flushing else {
+            flushAgain = true
+            return
+        }
         if let failedAt = lastFlushFailedAt,
            Date().timeIntervalSince(failedAt) < Self.retryBackoffSec {
             return
         }
+        guard !pendingCompletions.isEmpty else { return }
         flushing = true
         defer { flushing = false }
 
-        var keep: [Data] = []
-        var anySucceeded = false
-        for (i, data) in q.enumerated() {
-            let ok = await postCompletion(data)
-            if !ok {
-                // The first refusal stops the run: this item and everything
-                // after it stay queued. Whatever made it fail — no session,
-                // no network, the server down — applies to the rest of the
-                // queue too, and walking on earns one repeated failure per
-                // item. With an expired session that was up to fifty POSTs
-                // that all 401, each posting .faffSessionExpired.
-                keep = Array(q[i...])
-                lastFlushFailedAt = Date()
-                break
+        repeat {
+            flushAgain = false
+            let q = pendingCompletions
+            if q.isEmpty { break }
+
+            var landed: [Data] = []
+            var stalled = false
+            for data in q {
+                if await postCompletion(data) {
+                    landed.append(data)
+                } else {
+                    // The first refusal stops the run: this item and
+                    // everything after it stay queued. Whatever made it fail
+                    // — no session, no network, the server down — applies to
+                    // the rest of the queue too, and walking on earns one
+                    // repeated failure per item. With an expired session that
+                    // was up to fifty POSTs that all 401, each posting
+                    // .faffSessionExpired.
+                    lastFlushFailedAt = Date()
+                    stalled = true
+                    break
+                }
             }
-            anySucceeded = true
-        }
-        if keep.isEmpty { lastFlushFailedAt = nil }
-        pendingCompletions = keep
-        // Trigger a plan refresh so TodayView picks up the new completedRunId
-        // and pivots to the post-run view without waiting for the next
-        // foreground wakeup.
-        if anySucceeded {
-            NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
-        }
+
+            if !landed.isEmpty {
+                // Re-read. The queue as it stands NOW includes anything
+                // enqueued while those POSTs were in flight; `q` does not.
+                // One removal per success, so a payload legitimately enqueued
+                // twice loses exactly the copies the server accepted.
+                var live = pendingCompletions
+                for done in landed {
+                    if let i = live.firstIndex(of: done) { live.remove(at: i) }
+                }
+                pendingCompletions = live
+                // Trigger a plan refresh so TodayView picks up the new
+                // completedRunId and pivots to the post-run view without
+                // waiting for the next foreground wakeup.
+                NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+            }
+            if stalled { break }
+            lastFlushFailedAt = nil
+        } while flushAgain
+        // No suspension point between the loop test and the `defer`, so a
+        // `flushAgain` set by another trigger either lands before the test
+        // (and loops) or after `flushing` clears (and starts a fresh drain).
+        // Neither can be dropped.
     }
 
     private func postCompletion(_ data: Data) async -> Bool {
@@ -540,3 +619,21 @@ extension WatchSync: WCSessionDelegate {
         }
     }
 }
+
+// MARK: - Test seam
+//
+// `WatchSync` is a singleton, so the drain's guard flag and its post-failure
+// backoff persist across every test in a bundle: a test that legitimately
+// fails a POST leaves the next one unable to drain at all. Compiled out of
+// release builds, and it resets only the drain's own bookkeeping — never the
+// queue, which is the durability contract and belongs to the caller.
+
+#if DEBUG
+extension WatchSync {
+    func resetDrainStateForTesting() {
+        flushing = false
+        flushAgain = false
+        lastFlushFailedAt = nil
+    }
+}
+#endif
