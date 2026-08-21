@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { pool } from '@/lib/db/pool';
-import { requireUserId } from '@/lib/auth/session';
+import { requireUserId, revokeAllSessionsForUser, tokenFromRequest } from '@/lib/auth/session';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -35,6 +35,16 @@ export async function POST(req: NextRequest) {
     [hash, auth],
   );
 
+  // 2026-08-21 · multi-tenancy audit · a password change ends every other
+  // session. Before this, a token minted under the OLD password stayed
+  // valid for the rest of its 90-day life, so changing the password did
+  // not put out anyone who already had access — which is the main reason
+  // someone changes one. The caller's own session is spared so they stay
+  // signed in on the device they just did this from.
+  const revoked = await revokeAllSessionsForUser(auth, {
+    exceptToken: tokenFromRequest(req),
+  }).catch(() => 0);
+
   const ob = (await pool.query<{ onboarding_complete: boolean }>(
     `SELECT onboarding_complete FROM users WHERE id = $1 LIMIT 1`,
     [auth],
@@ -43,5 +53,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     redirect: ob?.onboarding_complete ? '/today' : '/onboarding',
+    other_sessions_ended: revoked,
   });
 }

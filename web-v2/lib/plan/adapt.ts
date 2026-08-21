@@ -117,7 +117,9 @@ async function filterUnsealedWorkouts(
                  AND NOT (r.data ? 'mergedIntoId')
             ) AS sealed
        FROM plan_workouts pw
-      WHERE pw.id = ANY($2::text[])`,
+       JOIN training_plans tp ON tp.id = pw.plan_id
+      WHERE pw.id = ANY($2::text[])
+        AND tp.user_uuid = $1::uuid`,
     [userUuid, workoutIds],
   ).catch(() => ({ rows: [] as Array<{ id: string; sealed: boolean; date_iso: string }> }));
   const unsealed: string[] = [];

@@ -424,6 +424,17 @@ struct RootContainer: View {
         // A crossfade here would briefly show the cache-warm content under the
         // still-fading-in overlay — a flash before the splash covers it again.
         // enterMain() = instant, no flash.
+        // 2026-08-21 · multi-tenancy audit · reconcile the surface cache with
+        // the session before ANY surface reads it. A cache belonging to a
+        // different runner, or to no live session at all, is dropped here
+        // rather than painted. This runs ahead of the .onboarded shortcut
+        // below because that path goes straight to enterMain().
+        if TokenStore.shared.isSignedIn {
+            if let uuid = TokenStore.shared.userUuid { AppCache.bindOwner(uuid) }
+        } else {
+            AppCache.bindOwner(nil)
+        }
+
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: "faff.onboarded") {
             enterMain(); return
@@ -431,10 +442,20 @@ struct RootContainer: View {
         // Returning user heuristic: any cached surface bytes means they've
         // launched the app before and got real data back. Mark onboarded so
         // they never see the gate.
+        //
+        // 2026-08-21 · multi-tenancy audit · the token requirement below is
+        // load-bearing, not belt-and-braces. A session that EXPIRED rather
+        // than being signed out clears the token but leaves the cache, and
+        // this heuristic then entered the main app with no token at all.
+        // Every refresh 401s, but a 401 with no token in hand is suppressed
+        // rather than raised, so nothing ever bounced to sign-in: the phone
+        // sat there showing the previous runner's plan, runs and health
+        // indefinitely. Cached bytes prove someone used this app before,
+        // never that the person holding it now is that someone.
         let hasCachedSurfaces = AppCache.read(.todayWorkout, as: TodayWorkoutWrapper.self) != nil
             || AppCache.read(.planWeek, as: PlanWeek.self) != nil
             || AppCache.read(.logState, as: LogState.self) != nil
-        if hasCachedSurfaces {
+        if hasCachedSurfaces && TokenStore.shared.isSignedIn {
             defaults.set(true, forKey: "faff.onboarded")
             enterMain(); return
         }

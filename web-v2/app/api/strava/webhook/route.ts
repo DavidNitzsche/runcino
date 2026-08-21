@@ -25,6 +25,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { findSubscriptionByVerifyToken, userIdForAthlete } from '@/lib/strava/webhook';
 import { getStravaToken } from '@/lib/strava/auth';
+import {
+  decideDelete,
+  decideDeauth,
+  activityBelongsToOwner,
+  probeActivityStatus,
+  probeAthleteStatus,
+} from '@/lib/strava/webhook-verify';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { isSubThresholdRun } from '@/lib/runs/length-guard';
@@ -310,6 +317,34 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
   if (objectType === 'athlete') {
     if (aspectType === 'update' && updates?.authorized === 'false') {
       try {
+        // 2026-08-21 · multi-tenancy audit · verify before disconnecting.
+        // A forged athlete-update severed a named runner's Strava link and
+        // parked them on the "Reconnect Strava" screen. If their token
+        // still authenticates, the revocation claim is false.
+        let probeStatus: number | null = null;
+        try {
+          const token = await getStravaToken(userId);
+          probeStatus = await probeAthleteStatus(token);
+        } catch {
+          // No usable token is itself consistent with a real revocation,
+          // but it is also what a transient refresh failure looks like.
+          // decideDeauth(null) refuses; the connection-status reader
+          // already surfaces a dead token on its own.
+          probeStatus = null;
+        }
+        const verdict = decideDeauth(probeStatus);
+        if (!verdict.act) {
+          console.warn(`[strava/webhook] refused deauthorize · reason=${verdict.reason} ` +
+            `strava_status=${probeStatus} owner=${ownerId}`);
+          if (verdict.reason === 'token_still_valid') {
+            await alertWebhookRejected(
+              `webhook deauthorize refused: token for owner_id=${ownerId} still valid · forged event`,
+              { ownerId, objectId, aspectType, stravaStatus: probeStatus },
+            );
+          }
+          await markProcessed(eventRowId, 'skipped', `deauthorize refused: ${verdict.reason}`);
+          return;
+        }
         await pool.query(
           `UPDATE connector_tokens
               SET disconnected_at = NOW(),
@@ -348,6 +383,40 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
   // rows in strava_pushes are untouched (auditable history).
   if (aspectType === 'delete') {
     try {
+      // 2026-08-21 · multi-tenancy audit · VERIFY BEFORE DESTROYING.
+      // Strava does not sign webhook deliveries, and neither remaining
+      // gate on this route is a secret: subscription_id is a small
+      // integer, owner_id is a PUBLIC Strava athlete id. Acting on the
+      // body alone meant anyone on the internet could hard-delete a
+      // named runner's training history one activity id at a time.
+      // Ask Strava — with this runner's own token, the one thing a
+      // forger cannot supply — whether the activity is really gone.
+      // See lib/strava/webhook-verify.ts for the full reasoning.
+      let probeStatus: number | null = null;
+      try {
+        const token = await getStravaToken(userId);
+        probeStatus = await probeActivityStatus(token, objectId);
+      } catch (e: any) {
+        console.warn('[strava/webhook] delete probe could not run:', e?.message);
+        probeStatus = null;
+      }
+      const verdict = decideDelete(probeStatus);
+      if (!verdict.act) {
+        // Refusing is the correct answer here, not a failure. A delete we
+        // could not confirm is not a delete we perform; the nightly poll
+        // heals a genuine deletion we deferred.
+        console.warn(`[strava/webhook] refused delete · reason=${verdict.reason} ` +
+          `strava_status=${probeStatus} owner=${ownerId} object=${objectId}`);
+        if (verdict.reason === 'still_exists') {
+          await alertWebhookRejected(
+            `webhook delete refused: activity ${objectId} still exists on Strava · forged event for owner_id=${ownerId}`,
+            { ownerId, objectId, aspectType, stravaStatus: probeStatus },
+          );
+        }
+        await markProcessed(eventRowId, 'skipped', `delete refused: ${verdict.reason}`);
+        return;
+      }
+
       // M-6 · read the row's local date BEFORE deleting so the day can be
       // re-merged after. If the deleted row was the cluster canonical
       // (possible via pickCanonical's GPS-divergence preference), the
@@ -391,6 +460,22 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
         // Could be 404 (deleted before we fetched) or auth issue. Mark
         // skipped — next webhook/poll will heal.
         await markProcessed(eventRowId, 'skipped', 'fetch returned null');
+        return;
+      }
+      // 2026-08-21 · multi-tenancy audit · the activity must belong to the
+      // athlete the event named. Strava's /activities/{id} can return an
+      // activity the token can merely SEE rather than own, so a forged
+      // create naming a stranger's public activity would land that
+      // stranger's run in this runner's log — inflating their volume and
+      // every fitness read derived from it.
+      if (!activityBelongsToOwner(activity, ownerId)) {
+        console.warn(`[strava/webhook] refused upsert · activity ${objectId} ` +
+          `is not owned by athlete ${ownerId}`);
+        await alertWebhookRejected(
+          `webhook upsert refused: activity ${objectId} not owned by owner_id=${ownerId}`,
+          { ownerId, objectId, aspectType },
+        );
+        await markProcessed(eventRowId, 'skipped', 'activity not owned by owner_id');
         return;
       }
       const upserted = await upsertStravaActivity(userId, activity);

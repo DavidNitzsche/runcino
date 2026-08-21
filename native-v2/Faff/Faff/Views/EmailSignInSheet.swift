@@ -309,6 +309,13 @@ struct EmailSignInSheet: View {
                     expiresAt: resp.expires_at,
                     userUuid: resp.user_uuid
                 )
+                // Multi-tenancy audit 2026-08-21 · bind the surface cache to
+                // whoever just signed in. A different runner than the cache
+                // was holding wipes it here, before any surface can paint.
+                // Without this, runner B landed on runner A's cached plan,
+                // runs and health whenever A's session had expired rather
+                // than being signed out through the button.
+                AppCache.bindOwner(resp.user_uuid)
                 // "/set-password" = invited runner still on the temp password
                 // from their approval email. The session token is live
                 // (persisted above) · swap to the set-password step, which

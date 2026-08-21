@@ -118,10 +118,55 @@ enum AppCache {
         return try? JSONDecoder().decode(type, from: data)
     }
 
-    /// Wipe the cache. Useful for debugging or after a sign-out.
-    /// Exposed for future settings actions; currently unwired.
+    /// Wipe the cache. Called by SessionHygiene.signOut() and by
+    /// `bindOwner` whenever the signed-in identity changes.
     static func clearAll() {
         let keys = store.dictionaryRepresentation().keys.filter { $0.hasPrefix(prefix) }
         for k in keys { store.removeObject(forKey: k) }
+    }
+
+    // MARK: - Identity binding
+    //
+    // 2026-08-21 · multi-tenancy audit. This cache was a single global
+    // UserDefaults namespace with no notion of WHOSE data it held, and
+    // only the explicit sign-out button ever cleared it. Two real leaks
+    // followed from that, and both bypassed the sign-out button:
+    //
+    //   A · a session that EXPIRED rather than being signed out left the
+    //       cache intact. The launch gate then read cached bytes as proof
+    //       of a returning user and entered the main app with no token at
+    //       all, painting the previous runner's plan, runs and health to
+    //       whoever was holding the phone.
+    //   B · signing in cleared nothing, so runner B landed on runner A's
+    //       cached surfaces and only corrected as each refresh returned —
+    //       and a surface whose refresh fails deliberately keeps showing
+    //       the stale model, so a flaky network kept A's data on screen.
+    //
+    // The fix is to give the cache an owner and check it, rather than to
+    // add one more clear() call to one more code path. Every future
+    // sign-in route inherits the guarantee without remembering to.
+
+    private static let ownerKey = prefix + "__owner"
+
+    /// The runner this cache currently holds data for, or nil when the
+    /// cache is unbound (fresh install, or just wiped).
+    static var owner: String? {
+        store.string(forKey: ownerKey)
+    }
+
+    /// Bind the cache to a runner. If the identity differs from what the
+    /// cache already holds — a different account, or no account at all —
+    /// the previous runner's bytes are wiped BEFORE anything can read
+    /// them. Same uuid is a no-op, so a returning runner keeps their
+    /// offline surfaces.
+    ///
+    /// Call this at every point where the signed-in identity is
+    /// established or lost: sign-in, launch, sign-out.
+    static func bindOwner(_ uuid: String?) {
+        let incoming = (uuid?.isEmpty == false) ? uuid! : ""
+        let current = store.string(forKey: ownerKey) ?? ""
+        guard current != incoming else { return }
+        clearAll()   // also drops ownerKey — it carries the prefix
+        if !incoming.isEmpty { store.set(incoming, forKey: ownerKey) }
     }
 }

@@ -320,6 +320,50 @@ export async function revokeSession(token: string): Promise<void> {
   );
 }
 
+/**
+ * Revoke every live session for a user, optionally sparing the one the
+ * caller is currently holding.
+ *
+ * 2026-08-21 · multi-tenancy audit. Changing a password did not touch
+ * the sessions table, so a token minted before the change stayed valid
+ * for the rest of its 90-day TTL. That inverts what a password change
+ * means to the person doing it: the common reason to change a password
+ * is the belief that someone else has access, and the one thing it has
+ * to accomplish — putting that someone out — was the one thing it did
+ * not do. Sessions on other devices survived, on both the invite
+ * first-login path and the admin bootstrap path.
+ *
+ * `exceptToken` keeps the caller signed in on the device they just
+ * changed the password from. Everything else is cut.
+ *
+ * Returns the number of sessions revoked, so callers can report it.
+ */
+export async function revokeAllSessionsForUser(
+  userUuid: string,
+  opts?: { exceptToken?: string | null },
+): Promise<number> {
+  const spare = opts?.exceptToken ? hashToken(opts.exceptToken) : null;
+  const r = await pool.query(
+    `UPDATE sessions
+        SET revoked_at = NOW()
+      WHERE COALESCE(user_uuid::text, user_id) = $1
+        AND revoked_at IS NULL
+        AND ($2::text IS NULL OR session_token <> $2)`,
+    [userUuid, spare],
+  );
+  return r.rowCount ?? 0;
+}
+
+/**
+ * Pull the raw bearer/cookie token off a request. Exported so routes
+ * that need to spare the caller's own session (see
+ * `revokeAllSessionsForUser`) can identify it without re-implementing
+ * the header parsing.
+ */
+export function tokenFromRequest(req: Request | { headers: Headers }): string | null {
+  return extractToken(req);
+}
+
 /** Cron-friendly: purge expired or revoked > 7d old. */
 export async function cleanExpired(): Promise<{ purged: number }> {
   const r = await pool.query(

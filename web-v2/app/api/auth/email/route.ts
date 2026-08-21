@@ -21,7 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { pool } from '@/lib/db/pool';
-import { createSession } from '@/lib/auth/session';
+import { createSession, revokeAllSessionsForUser } from '@/lib/auth/session';
 import { authRateLimited } from '@/lib/auth/rate-limit';
 
 const SESSION_COOKIE = 'faff_session';
@@ -90,6 +90,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<SuccessBody |
         WHERE id = $2`,
       [newHash, userRow.user_uuid],
     );
+    // 2026-08-21 · multi-tenancy audit · the bootstrap branch sets a
+    // password just like /api/auth/set-password does, so it ends other
+    // sessions for the same reason: a token minted before the change
+    // otherwise outlived it by up to 90 days. No token to spare here —
+    // the caller's session is minted below, after this runs.
+    await revokeAllSessionsForUser(userRow.user_uuid).catch(() => {});
     bootstrapped = true;
   }
 
