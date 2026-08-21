@@ -59,6 +59,7 @@
 		468FE2BC3CFB56D3952DA40E /* LiveRunOutdoorV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3319534867031A9898793E4E /* LiveRunOutdoorV5.swift */; };
 		47F3245DF57F054F4D025850 /* NotificationCategories.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCEEE47B94CDA981E430812A /* NotificationCategories.swift */; };
 		49DD1311332CCD7EC88681EC /* Tips.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9883A181E1656DBDC8F3FAFC /* Tips.swift */; };
+		4C046C8BACD88A52701307F8 /* RepeatStepV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46EC493626E589550944B025 /* RepeatStepV5.swift */; };
 		4CACFB0EB456705EF1BAABB5 /* FaffPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEF9EEB865458FD9FBA9054 /* FaffPayloads.swift */; };
 		4CBB899AC37AB8C338E36E6E /* TodayAfterV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B5E856FFADC87375561C98 /* TodayAfterV5.swift */; };
 		4E88DDDEE13FBFC793505EDE /* G_Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE323D928DA355934197F38B /* G_Settings.swift */; };
@@ -257,6 +258,7 @@
 		43619EB76197C5C19037C644 /* TreadmillHRSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillHRSession.swift; sourceTree = "<group>"; };
 		45138C09A08463A9958BCD3F /* CoachFacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachFacts.swift; sourceTree = "<group>"; };
 		46AEF8CAC73238CD1F086945 /* B_Provenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = B_Provenance.swift; sourceTree = "<group>"; };
+		46EC493626E589550944B025 /* RepeatStepV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepeatStepV5.swift; sourceTree = "<group>"; };
 		47B01231CF6EA2F9487242FC /* WorkoutEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutEngine.swift; sourceTree = "<group>"; };
 		480DB4BC3388D23D601E5EB3 /* RouteMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteMapView.swift; sourceTree = "<group>"; };
 		48BEBF7952F4B1AC4D8682B9 /* IdleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleView.swift; sourceTree = "<group>"; };
@@ -398,6 +400,7 @@
 				8FD04D91D8038BA91A4D9E20 /* ChartsV5.swift */,
 				CFC017C2FCF5BCEF864B8086 /* ComponentsV5.swift */,
 				B89B85857DDA2DA69F8C141A /* PanelV5.swift */,
+				46EC493626E589550944B025 /* RepeatStepV5.swift */,
 				F7CFE2D883A30CAC352006F8 /* TokensV5.swift */,
 				C62B9760D4B508FC2FF8DBD0 /* ValuesV5.swift */,
 			);
@@ -941,6 +944,7 @@
 				14640A3705B32648E88B7E91 /* ReadinessBriefSheet.swift in Sources */,
 				269C1642A3928FABA51378F5 /* RecoveryBrief.swift in Sources */,
 				92B4B04DC3045097B60E9AC4 /* RecoveryWindowStrip.swift in Sources */,
+				4C046C8BACD88A52701307F8 /* RepeatStepV5.swift in Sources */,
 				89208AB9C17FEC1DBCC09F60 /* ReturnToRunningV5.swift in Sources */,
 				097BBD3A01CCAB65AC7F4F60 /* RootTabView.swift in Sources */,
 				C0C9C212380204BE7BCDCC04 /* RouteMapView.swift in Sources */,

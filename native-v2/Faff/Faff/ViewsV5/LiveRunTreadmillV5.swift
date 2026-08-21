@@ -556,8 +556,15 @@ struct LiveRunTreadmillV5: View {
                             fill: V5.materialControl, ink: V5.textPrimary) {
                     adjustSpeed(-2)
                 }
+                // 104pt is drawn for "8.0". A belt at "12.0" is one glyph
+                // wider and truncated to "1..." — the console's largest,
+                // most-read number, unreadable at exactly the speeds a fast
+                // runner uses. Shrink to fit rather than clip; the tile keeps
+                // its height either way.
                 Text(Units.formatSpeed(mph: speedMph))
                     .font(.faffText(TypeScaleV5.valueMax, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
                     .foregroundStyle(V5.textPrimary)
                 roundControl(symbol: "plus", diameter: 72, glyphSize: 30,
                             fill: V5.materialAction, ink: V5.actionPrimaryText) {
@@ -606,16 +613,19 @@ struct LiveRunTreadmillV5: View {
         .background(V5.materialTile, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 
+    /// PRESS AND HOLD, not tap-tap-tap. A notch is 0.2 mph, so 6.0 to 9.0 is
+    /// fifteen taps — and a burst of taps is counted as roughly one. See
+    /// `RepeatStepV5` for the measurement. A single deliberate tap is still
+    /// exactly one notch.
     private func roundControl(symbol: String, diameter: CGFloat, glyphSize: CGFloat,
                               fill: Color, ink: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        RepeatStepV5(step: action) {
             Image(systemName: symbol)
                 .font(.system(size: glyphSize, weight: .bold))
                 .foregroundStyle(ink)
                 .frame(width: diameter, height: diameter)
                 .background(fill, in: Circle())
         }
-        .buttonStyle(V5PressStyle())
     }
 
     /// The step and the bounds move in the unit the runner is READING. They

@@ -732,7 +732,12 @@ struct TreadmillView: View {
             VStack(spacing: 5) {
                 SpecLabel(text: label, size: 11, tracking: 2.5, color: Theme.txt.opacity(0.62))
                 HStack(alignment: .lastTextBaseline, spacing: 4) {
+                    // Shrink to fit: the tile is drawn for "8.0" and a belt at
+                    // "12.0" is a glyph wider. Truncating the console's
+                    // largest number is worse than a slightly smaller one.
                     Text(value).font(.display(valueFontSize, weight: .bold)).tracking(-3)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
                         .foregroundStyle(Theme.txt)
                         .shadow(color: .black.opacity(0.32), radius: 22, y: 2)
                     Text(unit).font(.display(valueFontSize * 0.27, weight: .bold)).foregroundStyle(Theme.txt.opacity(0.85))
@@ -752,8 +757,12 @@ struct TreadmillView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 
+    /// PRESS AND HOLD, not tap-tap-tap. See `RepeatStepV5`: a notch is
+    /// 0.2 mph, moving the belt 6.0 to 9.0 was fifteen separate taps, and a
+    /// burst of taps registered as about one. A single deliberate tap is
+    /// still exactly one notch.
     private func bigStepButton(symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        RepeatStepV5(step: action) {
             Text(symbol)
                 .font(.display(32))
                 .foregroundStyle(Theme.txt)
@@ -761,7 +770,6 @@ struct TreadmillView: View {
                 .background(Color.white.opacity(0.18), in: Circle())
                 .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 1))
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Bottom (next-up + ticks + controls)
