@@ -39,6 +39,7 @@ import type { ReadinessHistory } from './readiness-history';
 import type { ReadinessStreak } from './readiness-brief';
 import { tierRulesFor, HARD_RULES, type ExperienceLevel } from './tier-rules';
 import { hasRecoverySignal } from './state-presence';
+import { CONVERGENCE, type ConvergenceDomain } from './convergence';
 
 /**
  * Chronic weekly volume in miles · `loadChronic28` is a 28-day mi/DAY
@@ -319,6 +320,52 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
   const isInformational = rules.tone === 'informational' || rules.tone === 'red-flag-only';
   const isRedFlagOnly = rules.tone === 'red-flag-only';
 
+  /**
+   * RULE TWO, applied where a health action chooses its wording.
+   *
+   * ── 2026-08-21 · web audit ───────────────────────────────────────────────
+   *
+   * This panel ships to WEB (HealthView's WHAT TO DO column) and it was
+   * prescribing session changes off ONE physiological domain:
+   *
+   *     "Tomorrow easy · let HRV recover."            ← autonomic, alone
+   *     "Pull tomorrow's intensity back."             ← cardiac, alone
+   *     "Hold this week at easy."                     ← autonomic, alone
+   *     "Two easy days before the next quality."      ← load, alone
+   *     "Tomorrow easy or rest · HRV and RHR."        ← two domains
+   *     "Tomorrow easy · sleep is short and ..."      ← names ONE worst pillar
+   *
+   * `lib/coach/convergence.ts` is the ruling those break, and it is not a
+   * neighbouring opinion — it is the module written to settle exactly this
+   * question. Its ladder: one domain does nothing, TWO tells the runner and
+   * THE PLAN IS NOT TOUCHED, THREE may change today's session. And the copy
+   * "names the CONVERGENCE, not the metric".
+   *
+   * The tier tone was doing the wrong job here. Whether the app SPEAKS
+   * loudly is a taste setting; whether it may change a session is a
+   * physiology question, and a beginner's body does not corroborate itself
+   * more readily than an advanced runner's. So the tier still picks the
+   * register, and this picks whether an instruction is licensed at all.
+   *
+   * `domains` lists the INDEPENDENT domains the rule's own evidence spans,
+   * in convergence.ts's taxonomy. Two measures of one system count once —
+   * that is the whole point of the word independent.
+   *
+   * Hard rules do not come through here and should not. An active illness,
+   * a moderate niggle, a wrist temperature at the illness threshold and an
+   * ACWR above the injury cap are FACTS about the body or hard safety
+   * ceilings, not readiness signals looking for corroboration.
+   */
+  const voice = (
+    domains: ConvergenceDomain[],
+    observation: string,
+    instruction: string,
+  ): string => {
+    const independent = new Set(domains).size;
+    if (isInformational) return observation;
+    return independent >= CONVERGENCE.redMinDomains ? instruction : observation;
+  };
+
   // When the plan adapter has already absorbed a signal, suppress the
   // duplicate text prescription. "Tomorrow's tempo downgraded to easy.
   // HRV down 5 days." (plan adapt chip) + "Tomorrow easy · let HRV
@@ -414,9 +461,13 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     out.push({
       signal: 'compound',
       priority: 'urgent',
-      action: isInformational
-        ? `HRV down ${hrvStreak.days} days + RHR up ${rhrStreak.days} days · compound pattern.`
-        : 'Tomorrow easy or rest · HRV and RHR are both flagging.',
+      // TWO independent domains · autonomic + cardiac. convergence.ts's
+      // amber rung: the runner is told, THE PLAN IS NOT TOUCHED. The old
+      // copy said "Tomorrow easy or rest", which is the red rung's
+      // instruction sitting one domain above its own evidence. The
+      // observation is the same at every tier, so there is nothing for
+      // `voice` to choose between.
+      action: `HRV down ${hrvStreak.days} days and RHR up ${rhrStreak.days} days. Tomorrow stands as written.`,
       cite: `HRV ${hrvStreak.days}-day low + RHR ${rhrStreak.days}-day high.`,
     });
   }
@@ -434,9 +485,14 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       out.push({
         signal: 'tsb_overreach',
         priority: 'urgent',
-        action: isInformational
-          ? `Form score ${trainingForm.tsb} · overreach band.`
-          : 'Two easy days before the next quality session · you\'re deep in overreach.',
+        // ONE domain · load. Research/15's own critique of ACWR-class load
+        // metrics ("not a stop-light ... couple with HRV trend, RHR, sleep,
+        // and subjective state") is why load never acts alone.
+        action: voice(
+          ['load'],
+          `Form score ${trainingForm.tsb} · overreach band.`,
+          'Two easy days before the next quality session · you\'re deep in overreach.',
+        ),
         cite: `Form score ${trainingForm.tsb} · overreach band.`,
       });
     }
@@ -448,9 +504,14 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       out.push({
         signal: 'hrv_low_streak',
         priority: 'high',
-        action: isInformational
-          ? `HRV at or below baseline ${hrvStreak.days} days running.`
-          : 'Tomorrow easy · let HRV recover.',
+        // ONE domain · autonomic. This branch fires precisely when RHR is
+        // NOT also flagging, so the evidence is a single channel by
+        // construction.
+        action: voice(
+          ['autonomic'],
+          `HRV at or below baseline ${hrvStreak.days} days running.`,
+          'Tomorrow easy · let HRV recover.',
+        ),
         cite: `HRV ${hrvStreak.days}-day low streak.`,
       });
     }
@@ -461,9 +522,12 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       out.push({
         signal: 'rhr_high_streak',
         priority: 'high',
-        action: isInformational
-          ? `RHR up ${rhrStreak.days} days running.`
-          : 'Pull tomorrow\'s intensity back · run easier or shorter.',
+        // ONE domain · cardiac. Fires only when HRV is not also flagging.
+        action: voice(
+          ['cardiac'],
+          `RHR up ${rhrStreak.days} days running.`,
+          'Pull tomorrow\'s intensity back · run easier or shorter.',
+        ),
         cite: `RHR ${rhrStreak.days}-day elevation streak.`,
       });
     }
@@ -491,9 +555,15 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       out.push({
         signal: 'load_spike',
         priority: 'high',
-        action: isInformational
-          ? `ACWR ${state.loadAcwr.toFixed(2)} · spike band for your tier.`
-          : 'Trim 1-2 miles from your next long run · load is spiking.',
+        // ONE domain · load. The hard injury cap above is a safety ceiling
+        // and keeps its instruction; this is the softer band, which is
+        // exactly the "directional sanity check, not a stop-light" the
+        // research warns against acting on alone.
+        action: voice(
+          ['load'],
+          `ACWR ${state.loadAcwr.toFixed(2)} · spike band for your tier.`,
+          'Trim 1-2 miles from your next long run · load is spiking.',
+        ),
         cite: `ACWR ${state.loadAcwr.toFixed(2)} · spike band.`,
       });
     }
@@ -563,9 +633,13 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       out.push({
         signal: 'hrv_cv_destabilizing',
         priority: 'medium',
-        action: isInformational
-          ? `HRV CV ${history.hrvPlews.cv.toFixed(1)}% · destabilizing band.`
-          : 'Hold this week at easy · let your HRV variability settle.',
+        // ONE domain · autonomic. Same channel as the HRV streak above, read
+        // a second way; a second read of one system is not a second signal.
+        action: voice(
+          ['autonomic'],
+          `HRV CV ${history.hrvPlews.cv.toFixed(1)}% · destabilizing band.`,
+          'Hold this week at easy · let your HRV variability settle.',
+        ),
         cite: `RMSSD CV ${history.hrvPlews.cv.toFixed(1)}% · overreach band > 14%.`,
       });
     }
@@ -634,23 +708,55 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       && recentPullBack >= rules.pullbackConsecutiveDays;
 
     if (!planAbsorbed && out.length === 0 && sustainedPullBack) {
-      const worst = [...breakdown.inputs]
-        .filter((i) => i.weight < 0)
-        .sort((a, b) => a.weight - b.weight)[0];
-      const worstLabel = worst
-        ? worst.key === 'sleep' ? 'sleep is short'
-          : worst.key === 'hrv' ? 'HRV is down'
-          : worst.key === 'rhr' ? 'RHR is up'
-          : worst.key === 'load' ? 'load is off-balance'
-          : worst.key === 'hr_recovery' ? 'HR recovery is weaker'
-          : 'signals are mixed'
-        : 'signals are mixed';
+      // 2026-08-21 · web audit · this used to sort the pillars by weight,
+      // take the WORST ONE, and write "Tomorrow easy · sleep is short and
+      // pull-back is sticking." Two rule-two breaks in one sentence: a
+      // session change, and a single named cause for a composite score.
+      //
+      // The honest reading of a sustained low composite is that several
+      // things are down at once — so name them all, in convergence.ts's
+      // READ ORDER (the things a person can check against their own week
+      // first), and let the sentence carry as many as are actually
+      // dragging. Two measures of one system (rhr + hr_recovery) collapse
+      // to one phrase for the same reason they get one vote.
+      const dragging = new Set(
+        breakdown.inputs.filter((i) => i.weight < 0).map((i) => i.key),
+      );
+      const PHRASE: Array<[string, string]> = [
+        ['sleep', 'sleep is short'],
+        ['hrv', 'HRV is down'],
+        ['rhr', 'your resting heart rate is up'],
+        ['load', 'load is off-balance'],
+      ];
+      const phrases = PHRASE
+        .filter(([k]) => dragging.has(k as never))
+        // hr_recovery is the cardiac domain again · it may raise the rhr
+        // phrase but never add a second one of its own.
+        .map(([, p]) => p);
+      if (phrases.length === 0 && dragging.has('hr_recovery' as never)) {
+        phrases.push('your resting heart rate is up');
+      }
+      const list = phrases.length === 0
+        ? 'the picture is mixed'
+        : phrases.length === 1
+          ? phrases[0]
+          : `${phrases.slice(0, -1).join(', ')} and ${phrases[phrases.length - 1]}`;
+      const observation = `${list.charAt(0).toUpperCase()}${list.slice(1)}, ${recentPullBack} of the last ${recentScores.length} days below your normal.`;
       out.push({
         signal: 'compound',
         priority: 'high',
-        action: isInformational
-          ? `Score below 40 ${recentPullBack} of the last ${recentScores.length} days · ${worstLabel}.`
-          : `Tomorrow easy · ${worstLabel} and pull-back is sticking.`,
+        // The domain count comes from the evidence itself, so three genuinely
+        // independent channels dragging for days can still change tomorrow —
+        // which is the ladder working, not an exception to it.
+        action: voice(
+          phrases.map((p) =>
+            p === 'sleep is short' ? 'sleep'
+              : p === 'HRV is down' ? 'autonomic'
+              : p === 'your resting heart rate is up' ? 'cardiac'
+              : 'load') as ConvergenceDomain[],
+          `${observation} Tomorrow stands as written.`,
+          `${observation} Tomorrow easy.`,
+        ),
         cite: `Recent scores: ${recentScores.join('/')}.`,
       });
     }

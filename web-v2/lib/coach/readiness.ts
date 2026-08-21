@@ -251,10 +251,17 @@ export const BAND_Z = {
  *     persistent deviation is a real signal". One night is noise everywhere
  *     in the document.
  *
- *   CORROBORATED · at least two biometric pillars must be dragging.
+ *   CORROBORATED · at least two INDEPENDENT pillars must be dragging.
  *     D1 §3: "three corroborating signals start to look like evidence", and
  *     §2.2 warns RHR alone misses ~30% of cases. A single pillar having a bad
  *     morning is not a body in trouble.
+ *
+ *     Independent is load-bearing, not decorative. The count is over
+ *     `CORROBORATING_KEYS` (sleep · hrv · rhr), NOT every biometric pillar:
+ *     `hr_recovery` reads the same cardiac system as `rhr`, so counting both
+ *     would let one elevated heart rate corroborate itself and clear this
+ *     bar alone. Same ruling, same reasoning, and the same five-domain
+ *     taxonomy as `lib/coach/convergence.ts`.
  */
 export const PULLBACK_MIN_DRAGGING_PILLARS = 2;
 
@@ -662,6 +669,34 @@ export function computeReadiness(
   // create a score — a runner with run history but no biometrics is a
   // cold-start runner, which is already how readiness-brief classifies him.
   const BIOMETRIC_KEYS = new Set<ReadinessInput['key']>(['sleep', 'hrv', 'rhr', 'hr_recovery']);
+  /**
+   * The pillars that may CORROBORATE each other — one vote per independent
+   * physiological domain.
+   *
+   * ── 2026-08-21 · web audit · rule two, the double count ─────────────────
+   *
+   * `draggingPillars` below used to count `BIOMETRIC_KEYS`, which includes
+   * `hr_recovery`. HR recovery and RHR are the same cardiac system read by
+   * the same sensor — `lib/coach/convergence.ts` says so in as many words
+   * and deliberately refuses HR recovery a domain of its own:
+   *
+   *     "HR RECOVERY IS DELIBERATELY NOT A SIXTH DOMAIN. It is the same
+   *      cardiac system RHR measures, from the same sensor ... Admitting it
+   *      would let one elevated heart rate count twice and reach the
+   *      convergence bar on its own."
+   *
+   * That is exactly what happened here. One elevated heart rate drags `rhr`
+   * AND `hr_recovery`, `draggingPillars` reads 2, `corroborated` is true,
+   * and the runner lands in the PULL BACK band — the band that
+   * `readiness-brief.ts` turns into "Skip today's quality" — on a single
+   * bad morning in a single domain. The gate whose whole job was to stop
+   * one number changing a session was counting one number twice.
+   *
+   * HR recovery keeps its 5% weight on the SCORE (it is real signal) and
+   * still counts toward `hasBiometricSignal` (a watch reading is a reading).
+   * It just does not get a second vote on corroboration.
+   */
+  const CORROBORATING_KEYS = new Set<ReadinessInput['key']>(['sleep', 'hrv', 'rhr']);
   const hasBiometricSignal = inputs.some(
     (i) => BIOMETRIC_KEYS.has(i.key) && i.observedV !== 'no data' && i.observedV !== 'building history',
   );
@@ -695,7 +730,7 @@ export function computeReadiness(
 
   // ── The band · read against the runner's own normal ──────────────────────
   const normal = personalNormal(baseline);
-  const draggingPillars = inputs.filter((i) => BIOMETRIC_KEYS.has(i.key) && i.weight < 0).length;
+  const draggingPillars = inputs.filter((i) => CORROBORATING_KEYS.has(i.key) && i.weight < 0).length;
   let band: ReadinessBreakdown['band'];
   let personal: ReadinessBreakdown['personal'] = null;
 

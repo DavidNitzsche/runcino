@@ -35,6 +35,7 @@ import type { CoachState } from '@/lib/topics/types';
 import { buildSynthesis } from './synthesis';
 import { computeTrainingForm } from './training-form';
 import { buildHealthActions, buildThresholdLine, type HealthAction } from './health-actions';
+import { convergencePhrases, type ConvergenceVerdict } from './convergence';
 
 export type PillarKey = 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery';
 export type PillarBand = 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data' | 'unknown';
@@ -413,11 +414,38 @@ export async function loadReadinessBrief(
   // based on band + active streaks + today's planned workout type +
   // subjective override. Authored, not templated · the engine writes
   // one line the runner can act on, citing the trigger.
+  // 2026-08-21 · web audit · RULE TWO. The prescription below may cut a
+  // session, and until now it decided that off ONE pillar streak plus the
+  // band. `gradeConvergence` is the module that owns this question, so the
+  // brief asks it rather than keeping a second, softer opinion. Failure to
+  // load is not a licence to prescribe — a null verdict means the brief can
+  // still speak but may not change the day.
+  const convergence = await (async () => {
+    try {
+      const [{ gradeConvergence }, { loadConvergenceSeries, loadConvergenceContext }] =
+        await Promise.all([
+          import('./convergence'),
+          import('./convergence-loader'),
+        ]);
+      const [series, context] = await Promise.all([
+        loadConvergenceSeries(userId, date, {
+          subjectiveWreckedOnEasy: subjectiveOverride != null
+            && subjectiveOverride.objectiveScore - subjectiveOverride.subjectiveScore >= 15,
+        }),
+        loadConvergenceContext(userId, date),
+      ]);
+      return gradeConvergence(series, context);
+    } catch {
+      return null;
+    }
+  })();
+
   const prescription = composePrescription({
     band: breakdown.band,
     streaks,
     todayWorkoutType: state.todayWorkout?.type ?? null,
     subjectiveOverride,
+    convergence,
   });
 
   // 2026-06-01 · cold-start envelope (web agent brief §2). Null when
@@ -587,14 +615,40 @@ export async function loadReadinessBrief(
  * Doctrine cites: Plews/Buchheit (HRV-guided training), Pfitzinger
  * (sleep is the recovery floor), Daniels (easy is non-negotiable
  * when load is elevated), Saw et al. (subjective beats objective).
+ *
+ * ── 2026-08-21 · web audit · RULE TWO ────────────────────────────────────
+ *
+ * The docblock above says chronic streaks "override band-only guidance",
+ * and the code took that literally: ONE streak in ONE pillar plus a
+ * PULL BACK band was enough to return "Skip today's quality. Easy 30min
+ * only or full rest." The `reason()` helper then wrote the single cause
+ * straight into the copy — "HRV below for 6 days + PULL BACK band" — which
+ * is the second half of the rule broken as well.
+ *
+ * `lib/coach/convergence.ts` is the ruling: three INDEPENDENT domains to
+ * touch the plan, two to speak, and the copy names the convergence rather
+ * than the metric. This composer now asks it instead of holding a private
+ * lower bar. The mapping is direct and there is nothing clever in it:
+ *
+ *   red   (3+ domains)  → the cut branches, as before
+ *   amber (2 domains)   → the runner is told; the plan is not touched
+ *   green / null        → band-only guidance, and band-only guidance may
+ *                         not cut either
+ *
+ * The band is not thrown away. It still decides how the day is DESCRIBED
+ * and it is still what `readiness.ts` computes from the runner's own
+ * normal. It just no longer, on its own, changes what he runs.
  */
 function composePrescription(args: {
   band: ReadinessBreakdown['band'] | 'no-data';
   streaks: ReadinessStreak[];
   todayWorkoutType: string | null;
   subjectiveOverride: ReadinessBrief['subjectiveOverride'];
+  /** The convergence verdict for this morning. Null when it could not be
+   *  graded — which licenses nothing, per the docblock above. */
+  convergence: ConvergenceVerdict | null;
 }): ReadinessBrief['prescription'] {
-  const { band, streaks, todayWorkoutType, subjectiveOverride } = args;
+  const { band, streaks, todayWorkoutType, subjectiveOverride, convergence } = args;
   if (band === 'no-data') return null;
 
   // Local helper · consolidates the return shape and structures the
@@ -644,24 +698,45 @@ function composePrescription(args: {
   const isEasy    = wType === 'easy' || wType === 'recovery';
   const isRest    = wType === 'rest' || wType === '';
 
-  const reason = (frame: string) =>
-    chronicSignal
-      ? `${chronicSignal.pillar.toUpperCase()} below for ${chronicSignal.days} days + ${frame}`
-      : frame;
+  // THE CONVERGENCE, and the sentence that describes it. `convergencePhrases`
+  // is the same read-order list the adaptation layer and the phone use, so
+  // one morning is described in one vocabulary wherever it is read.
+  const converged = convergence?.converging.length ?? 0;
+  const mayCut = convergence?.grade === 'red';
+  const phrases = convergence ? convergencePhrases(convergence) : [];
+  const list = phrases.length === 0
+    ? null
+    : phrases.length === 1
+      ? phrases[0]
+      : `${phrases.slice(0, -1).join(', ')} and ${phrases[phrases.length - 1]}`;
+  // The WHY on any line that changes the day. Names what converged, never
+  // the band and never one pillar. Falls back to the domain count rather
+  // than to a metric name, because a count is still a convergence.
+  const why = list
+    ? `${list.charAt(0).toUpperCase()}${list.slice(1)}.`
+    : `${converged} independent signals are dragging together.`;
 
-  // Hard pull-back when chronic streak compounds with a low band.
   if (band === 'pull-back') {
-    if (chronicSignal && chronicSignal.days >= 5) {
-      if (isQuality) return rx('Skip today\'s quality. Easy 30min only or full rest.', `${reason('PULL BACK band')} · don't add load on a depleted base.`, 'cut', { min: 30 });
-      if (isLong)    return rx('Drop the long to 50-60% distance. No pace targets · jog.', `${reason('PULL BACK band')} · long-run cost will compound.`, 'cut');
-      if (isEasy)    return rx('Cut the easy to 30min. Keep it conversational, walk if needed.', `${reason('PULL BACK band')} · pull back even on easy days.`, 'cut', { min: 30 });
-      return rx('Rest. Or 20-30min walk if you need to move.', `${reason('PULL BACK band')} · the body needs the day off.`, 'rest', { min: 20 });
+    // RED · three independent domains. This is the only rung that may cut.
+    if (mayCut) {
+      if (isQuality) return rx('Skip today\'s quality. Easy 30min only or full rest.', `${why} Don't add load on a depleted base.`, 'cut', { min: 30 });
+      if (isLong)    return rx('Drop the long to 50-60% distance. No pace targets · jog.', `${why} The long-run cost will compound.`, 'cut');
+      if (isEasy)    return rx('Cut the easy to 30min. Keep it conversational, walk if needed.', `${why} Pull back even on easy days.`, 'cut', { min: 30 });
+      return rx('Rest. Or 20-30min walk if you need to move.', `${why} The body needs the day off.`, 'rest', { min: 20 });
     }
-    // Acute pull-back · no streak. Less aggressive.
-    if (isQuality) return rx('Swap quality for easy 30-45min.', 'PULL BACK band today · save the work for a recovered day.', 'cut', { min: 40 });
-    if (isLong)    return rx('Drop long to 70-80% distance. No pace targets.', 'PULL BACK band today · long-run on a bad day costs more than it gains.', 'cut');
-    if (isEasy)    return rx('Easy as planned, but cut 1-2mi if it feels off.', 'PULL BACK band today · easy is already the right call.', 'plan');
-    return rx('Rest as planned. Mobility if you want.', 'PULL BACK band · rest day matches the signal.', 'rest');
+    // AMBER, or a low band with no convergence behind it. The runner is told
+    // what the morning looks like and the day stands. This is the branch the
+    // old code filled with cuts — "Swap quality for easy", "Drop long to
+    // 70-80%" — on the band alone.
+    if (converged >= (convergence ? 2 : Infinity)) {
+      if (isQuality) return rx('Plan stands. Hold the prescribed effort, don\'t chase extra.', `${why} Two signals is worth knowing, not worth changing the day for.`, 'plan');
+      if (isLong)    return rx('Long as planned. No fast finish.', `${why} Two signals is worth knowing, not worth changing the day for.`, 'plan');
+      return rx('Plan stands.', `${why} Two signals is worth knowing, not worth changing the day for.`, 'plan');
+    }
+    if (isQuality) return rx('Plan stands. Warm up long and judge it off the first rep.', 'Score is below your own normal today, and nothing else is corroborating it.', 'plan');
+    if (isLong)    return rx('Long as planned. Cap the effort, no fast finish.', 'Score is below your own normal today, and nothing else is corroborating it.', 'plan');
+    if (isEasy)    return rx('Easy as planned.', 'Score is below your own normal today · easy is already the right call.', 'plan');
+    return rx('Rest as planned. Mobility if you want.', 'Rest day already matches the signal.', 'rest');
   }
 
   if (band === 'moderate') {
