@@ -102,6 +102,14 @@ struct AddRaceV5: View {
     /// runner has had a chance to read whatever came back about the plan or
     /// the course — never fired automatically the instant the POST returns.
     var onCreated: (String) -> Void = { _ in }
+    /// The race is saved and the flow continues on screen 20b.
+    ///
+    /// The 0821 handoff splits these deliberately: the course involves a real
+    /// network round trip, so it gets its own pushed screen rather than a
+    /// second sheet step, and the race is saved BEFORE it — "failure never
+    /// blocks the race from saving, because the race is the important object
+    /// and the course is secondary".
+    var onContinueToCourse: (_ slug: String, _ name: String, _ distanceMi: Double?) -> Void = { _, _, _ in }
 
     // ── the race itself ──────────────────────────────────────────────────
     @State private var name: String = ""
@@ -154,22 +162,55 @@ struct AddRaceV5: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+        // Same shape as 21a: a fixed header, a scrolling middle, and the
+        // primary action pinned at the bottom. The middle is what grows when
+        // a date picker expands in place, and the action must not travel with
+        // it — see V5SheetHost's `tall`.
+        VStack(alignment: .leading, spacing: V5.S.s20) {
+            header
             if let slug = savedSlug {
-                confirmation(slug: slug)
+                ScrollView { confirmation(slug: slug) }
+                    .scrollIndicators(.hidden)
+                    .frame(maxHeight: .infinity, alignment: .top)
             } else {
-                raceFields
-                courseFields
-                if saveFailed {
-                    ErrorNote(text: "Could not save the race. Check your connection and try again.",
-                              onRetry: { Task { await save() } })
+                ScrollView {
+                    VStack(alignment: .leading, spacing: V5.S.s16) {
+                        raceFields
+                        if saveFailed {
+                            ErrorNote(text: "Could not save the race. Check your connection and try again.",
+                                      onRetry: { Task { await save() } })
+                        }
+                    }
+                    .padding(.horizontal, 2)
                 }
-                actionRow
+                .scrollIndicators(.hidden)
+                .frame(maxHeight: .infinity, alignment: .top)
+
+                FaffButton(saving ? "Saving\u{2026}" : "Continue to course",
+                           variant: .primary, size: .lg, full: true,
+                           enabled: canSave && !saving,
+                           disabledReason: saving ? nil : "Name the race first. The date and distance already have defaults.",
+                           action: { Task { await save() } })
             }
         }
     }
 
     // MARK: Race fields
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Button("Cancel", action: onCancel)
+                .font(.faffText(TypeScaleV5.body15, weight: .semibold))
+                .foregroundStyle(V5.textSecondary)
+            Spacer(minLength: V5.S.s8)
+            Text("Add a race")
+                .font(.faffDisplay(17))
+                .foregroundStyle(V5.textPrimary)
+            Spacer(minLength: V5.S.s8)
+            Color.clear.frame(width: 52, height: 1)
+        }
+        .padding(.horizontal, V5.S.s4)
+    }
 
     private var raceFields: some View {
         VStack(alignment: .leading, spacing: V5.S.s16) {
@@ -260,20 +301,6 @@ struct AddRaceV5: View {
 
     // MARK: Actions
 
-    private var actionRow: some View {
-        HStack(spacing: V5.S.s10) {
-            FaffButton("Cancel", variant: .ghost, size: .md, full: false, action: onCancel)
-            Spacer(minLength: 0)
-            FaffButton(saving ? "Saving\u{2026}" : "Save",
-                       variant: .primary, size: .md, full: false,
-                       enabled: canSave && !saving,
-                       // Only the name gates the save; the busy state already
-                       // says why through the label.
-                       disabledReason: saving ? nil : "Name the race first. The date and distance already have defaults.",
-                       action: { Task { await save() } })
-        }
-    }
-
     // MARK: Confirmation
     //
     // The race exists the moment this renders — nothing below is a reason to
@@ -295,12 +322,22 @@ struct AddRaceV5: View {
                 CoachCaveat(text: courseNote)
             }
 
-            FaffButton("Done", variant: .primary, size: .lg, action: { onCreated(slug) })
+            FaffButton("Continue to course", variant: .primary, size: .lg,
+                       action: { onContinueToCourse(slug, trimmedName, Self.distanceMiHint[distance]) })
         }
     }
 
     // MARK: - Save flow
 
+    /// Saves the race, then hands off to 20b.
+    ///
+    /// The course work that used to live here has moved to `CourseImportV5`.
+    /// This function no longer touches a course at all, which is the point of
+    /// the split: the race is committed before anything with a network round
+    /// trip is attempted, so no course failure can cost the runner the race.
+    ///
+    /// `planError` still renders here when it comes back, because that is a
+    /// refusal about the PLAN and it belongs to this step.
     private func save() async {
         saving = true
         saveFailed = false
@@ -311,30 +348,19 @@ struct AddRaceV5: View {
             priority: priorityCode,
             goal: goal.trimmingCharacters(in: .whitespaces).isEmpty ? nil : goal.trimmingCharacters(in: .whitespaces)
         )
+        saving = false
         guard let slug = created?.slug else {
-            saving = false
             saveFailed = true
             return
         }
-
-        var note: String?
-        let trimmedURL = stravaURL.trimmingCharacters(in: .whitespaces)
-        if !trimmedURL.isEmpty {
-            let ok = (try? await API.importStravaRoute(slug: slug, stravaUrl: trimmedURL)) ?? false
-            if !ok {
-                note = "The Strava route could not be imported. Check the link and try again from the race."
-            }
-        } else if let picked = selectedCandidate {
-            let ok = await API.importGpxCandidate(raceSlug: slug, source: picked.source, sourceId: picked.sourceId)
-            if !ok {
-                note = "The course could not be imported. Try again from the race."
-            }
+        // A plan refusal is worth reading before moving on; anything else and
+        // the course step is the next thing the runner wants.
+        if let planError = created?.planError, !planError.isEmpty {
+            self.planError = planError
+            savedSlug = slug
+            return
         }
-
-        saving = false
-        planError = created?.planError
-        courseNote = note
-        savedSlug = slug
+        onContinueToCourse(slug, trimmedName, Self.distanceMiHint[distance])
     }
 
     private func searchCourse() async {

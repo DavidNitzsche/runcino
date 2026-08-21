@@ -71,6 +71,10 @@ enum V5Route: Hashable {
     /// far more than a sheet sized to its content can hold without its
     /// title climbing under the notch and its buttons sliding under the bar.
     case addRace
+    /// 20b · the course import, pushed AFTER the race is saved. Carries what
+    /// 20a collected so the name search and the distance-mismatch note have
+    /// something to work from.
+    case courseImport(slug: String, name: String, distanceMi: Double?)
     /// The run history, and one run out of it.
     case runLog
     case runDetail(id: String)

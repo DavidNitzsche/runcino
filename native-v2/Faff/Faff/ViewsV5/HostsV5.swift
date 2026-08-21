@@ -751,36 +751,59 @@ struct ReturnHostV5: View {
 /// Adding a race is its own screen. `AddRaceV5` is bare content — it draws
 /// no bar and does not scroll — so the chrome lives here, exactly as
 /// `ShoesV5` and `SettingsV5` carry theirs.
+/// 20a · the details sheet, and the hop to 20b.
+///
+/// The 0821 handoff makes this a SHEET rather than a pushed screen, and puts
+/// the course on its own screen behind it, because the course is a real
+/// network round trip and the race must be saved before it — "failure never
+/// blocks the race from saving".
 struct AddRaceHostV5: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var path: [V5Route]
+    @State private var open = true
+
+    var body: some View {
+        ZStack {
+            V5.surfacePage.ignoresSafeArea()
+            V5SheetHost(isPresented: $open, tall: true) {
+                AddRaceV5(onCancel: { close() },
+                          onCreated: { _ in close() },
+                          onContinueToCourse: { slug, name, mi in
+                              // Replace this sheet's route with the course
+                              // screen, so Back from 20b returns to Races
+                              // rather than to a form for a race that now
+                              // exists.
+                              open = false
+                              path = [.courseImport(slug: slug, name: name, distanceMi: mi)]
+                          })
+            }
+        }
+        .navigationBarBackButtonHidden(true)
+        .onChange(of: open) { _, isOpen in
+            // Tapping the scrim is the same as Cancel.
+            if !isOpen, path.last == .addRace { dismiss() }
+        }
+    }
+
+    private func close() {
+        open = false
+        dismiss()
+    }
+}
+
+/// 20b · the course import. The race already exists.
+struct CourseImportHostV5: View {
+    let raceSlug: String
+    let raceName: String
+    let distanceMi: Double?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                AppBar(title: "Add a race", onBack: { dismiss() })
-                // A SAVED RACE HAS TO REACH THE SURFACES THAT WERE REFUSING.
-                //
-                // `V5Surface` reloads on init and on `.faffForegroundRefresh`
-                // and nothing else, so an in-app write is invisible to the
-                // three tabs already alive behind this screen. Adding the very
-                // first race is the write where that matters most: before it
-                // the runner has no plan, so Today is the "not here yet"
-                // refusal — and it stayed on that refusal after the race and
-                // its plan existed, until the app was killed. Watched live on a
-                // fresh account. The v4 TargetsView already posts this after
-                // saving; this is the same courtesy on the v5 path.
-                AddRaceV5(onCancel: { dismiss() },
-                          onCreated: { _ in
-                              NotificationCenter.default.post(
-                                  name: .faffForegroundRefresh, object: nil)
-                              dismiss()
-                          })
-                    .padding(.horizontal, V5.S.gutter)
-                    .padding(.bottom, V5.S.s32)
-            }
-        }
-        .background(V5.surfacePage)
-        .navigationBarBackButtonHidden(true)
+        CourseImportV5(raceSlug: raceSlug,
+                       raceName: raceName,
+                       enteredDistanceMi: distanceMi,
+                       onBack: { dismiss() },
+                       onDone: { dismiss() })
     }
 }
 
@@ -982,7 +1005,9 @@ struct FaffV5Root<LiveContent: View>: View {
                 case .runDetail(let id):    RunDetailHostV5(id: id)
                 case .settings:             SettingsHostV5()
                 case .shoes:                ShoesHostV5()
-                case .addRace:              AddRaceHostV5()
+                case .addRace:              AddRaceHostV5(path: path)
+                case .courseImport(let slug, let name, let mi):
+                    CourseImportHostV5(raceSlug: slug, raceName: name, distanceMi: mi)
                 case .pacesMoved:           PacesHostV5()
                 case .returnToRunning:      ReturnHostV5()
                 case .injuryFlare:          InjuryPreviewHostV5()
