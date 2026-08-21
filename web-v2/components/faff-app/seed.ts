@@ -23,6 +23,7 @@ import type {
 import type { PlannedDay, CompletedRun, EffortKey } from './constants';
 import { predictRaceTime, formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 import { userIdFromCookies } from '@/lib/auth/session';
+import { withRequestMemo } from '@/lib/runtime/request-memo';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { dayKeyFromLocalParts, pgDayKey, addDaysToDayKey } from '@/lib/runtime/day-key';
 import { stripResearchCitations as stripCitationsSafe } from '@/lib/plan/strip-citations';
@@ -2374,7 +2375,18 @@ function emptySeed(): FaffSeed {
   };
 }
 
+/**
+ * 2026-08-21 perf · one render issued 260 database round-trips, 58 of them
+ * byte-identical repeats spread across sequential phases of the build. The
+ * memo scope opened here lasts exactly as long as this render and dies with
+ * it, so opted-in pure reads (see lib/runtime/request-memo.ts) answer once
+ * per request instead of once per caller. Nothing is cached BETWEEN renders.
+ */
 export async function buildSeed(): Promise<FaffSeed> {
+  return withRequestMemo(buildSeedInner);
+}
+
+async function buildSeedInner(): Promise<FaffSeed> {
   // P1 SSR-leak fix (2026-05-30) + sign-in surface (2026-05-31):
   // resolve the runner from the `faff_session` cookie. When the visitor
   // isn't signed in we redirect them to `/login` instead of rendering

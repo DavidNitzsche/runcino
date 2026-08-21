@@ -17,6 +17,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
+import { memo } from '@/lib/runtime/request-memo';
 import { clusterRuns, pickCanonical, type RunRow } from '@/lib/runs/identity';
 
 /**
@@ -62,14 +63,23 @@ export async function mileageByDay(
   fromISO: string,
   toISO: string,
 ): Promise<Map<string, { mi: number; canonicalIds: string[] }>> {
-  const rows = (await pool.query(
-    `SELECT id::text AS id, user_uuid::text AS user_uuid, data
-       FROM runs
-      WHERE user_uuid = $1
-        AND ${CANONICAL_ROW_SQL}
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3`,
-    [userUuid, fromISO, toISO],
-  )).rows as RunRow[];
+  // 2026-08-21 perf · the FETCH is memoized for the request, the clustering
+  // below is not. One render asked for this exact (user, from, to) window up
+  // to 7 times; each repeat re-read and re-detoasted every run row. Callers
+  // still each get their OWN Map built from the shared rows, and neither
+  // clusterRuns nor pickCanonical mutates a RunRow (pickCanonical copies
+  // before sorting), so sharing the fetched rows cannot alias a caller.
+  const rows = await memo(
+    `volume:rows:${userUuid}:${fromISO}:${toISO}`,
+    async () => (await pool.query(
+      `SELECT id::text AS id, user_uuid::text AS user_uuid, data
+         FROM runs
+        WHERE user_uuid = $1
+          AND ${CANONICAL_ROW_SQL}
+          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2 AND $3`,
+      [userUuid, fromISO, toISO],
+    )).rows as RunRow[],
+  );
 
   // 2026-07-06 · audit P1-51 · same runner-tz threading as the write-time
   // merge (merge.ts) — read- and write-time identity MUST use the same
@@ -185,14 +195,21 @@ export async function observableCoverageDays(
  * account's start once and does the arithmetic per date.
  */
 export async function firstRunISO(userUuid: string): Promise<string | null> {
-  const row = (await pool.query<{ first: string | null }>(
-    `SELECT MIN(COALESCE(data->>'date', LEFT(data->>'startLocal', 10))) AS first
-       FROM runs
-      WHERE user_uuid = $1
-        AND ${CANONICAL_ROW_SQL}`,
-    [userUuid],
-  ).catch(() => ({ rows: [] as { first: string | null }[] }))).rows[0];
-  return row?.first ?? null;
+  // 2026-08-21 perf · depends on nothing but the user, and ran 12 times in a
+  // single render (11 of them redundant). The value is a plain string, so
+  // there is nothing a caller could mutate. Memo is request-scoped: an
+  // account whose earliest run changes mid-request is not a real case, and
+  // across requests this reads fresh every time.
+  return memo(`volume:firstRun:${userUuid}`, async () => {
+    const row = (await pool.query<{ first: string | null }>(
+      `SELECT MIN(COALESCE(data->>'date', LEFT(data->>'startLocal', 10))) AS first
+         FROM runs
+        WHERE user_uuid = $1
+          AND ${CANONICAL_ROW_SQL}`,
+      [userUuid],
+    ).catch(() => ({ rows: [] as { first: string | null }[] }))).rows[0];
+    return row?.first ?? null;
+  });
 }
 
 /**

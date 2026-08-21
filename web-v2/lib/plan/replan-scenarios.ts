@@ -285,6 +285,22 @@ export async function loadPlanShape(
   userUuid: string,
   client: { query: typeof pool.query } = pool,
 ): Promise<PlanShape | null> {
+  // 2026-08-21 perf · GET /api/v5/block called this FOUR times per request,
+  // three queries each, all sequential. Memoized only on the default pool:
+  // a caller that passes its own `client` may be inside a transaction reading
+  // its own uncommitted writes, and must never be served another caller's
+  // snapshot. Callers treat PlanShape as read-only (scenarios carry their
+  // edits in override maps rather than mutating days), so one shared instance
+  // is safe. Request-scoped — see lib/runtime/request-memo.ts.
+  if (client !== pool) return loadPlanShapeUncached(userUuid, client);
+  const { memo } = await import('@/lib/runtime/request-memo');
+  return memo(`planShape:${userUuid}`, () => loadPlanShapeUncached(userUuid, client));
+}
+
+async function loadPlanShapeUncached(
+  userUuid: string,
+  client: { query: typeof pool.query } = pool,
+): Promise<PlanShape | null> {
   const plan = (await client.query<{
     id: string; mode: string | null; race_id: string | null; goal_iso: string | null;
   }>(
@@ -295,27 +311,33 @@ export async function loadPlanShape(
   )).rows[0];
   if (!plan) return null;
 
-  const weeks = (await client.query<{
-    id: string; week_idx: number; week_start_iso: string; phase: string | null;
-    is_race_week: boolean | null; is_cutback: boolean | null;
-  }>(
-    `SELECT w.id, w.week_idx, w.week_start_iso, ph.label AS phase, w.is_race_week, w.is_cutback
-       FROM plan_weeks w LEFT JOIN plan_phases ph ON ph.id = w.phase_id
-      WHERE w.plan_id = $1 ORDER BY w.week_idx ASC`,
-    [plan.id],
-  )).rows;
-
-  const days = (await client.query<{
-    id: string; week_id: string | null; date_iso: string; dow: number; type: string;
-    distance_mi: string | null; is_quality: boolean | null; is_long: boolean | null;
-    sub_label: string | null; pace_target_s_per_mi: number | null;
-    workout_spec: Record<string, unknown> | null;
-  }>(
-    `SELECT id, week_id, date_iso, dow, type, distance_mi, is_quality, is_long,
-            sub_label, pace_target_s_per_mi, workout_spec
-       FROM plan_workouts WHERE plan_id = $1 ORDER BY date_iso ASC`,
-    [plan.id],
-  )).rows;
+  // 2026-08-21 perf · both reads need only plan.id, so they were waiting on
+  // each other for nothing. Concurrent halves the round-trip DEPTH of this
+  // loader from three to two.
+  const [weeksRes, daysRes] = await Promise.all([
+    client.query<{
+      id: string; week_idx: number; week_start_iso: string; phase: string | null;
+      is_race_week: boolean | null; is_cutback: boolean | null;
+    }>(
+      `SELECT w.id, w.week_idx, w.week_start_iso, ph.label AS phase, w.is_race_week, w.is_cutback
+         FROM plan_weeks w LEFT JOIN plan_phases ph ON ph.id = w.phase_id
+        WHERE w.plan_id = $1 ORDER BY w.week_idx ASC`,
+      [plan.id],
+    ),
+    client.query<{
+      id: string; week_id: string | null; date_iso: string; dow: number; type: string;
+      distance_mi: string | null; is_quality: boolean | null; is_long: boolean | null;
+      sub_label: string | null; pace_target_s_per_mi: number | null;
+      workout_spec: Record<string, unknown> | null;
+    }>(
+      `SELECT id, week_id, date_iso, dow, type, distance_mi, is_quality, is_long,
+              sub_label, pace_target_s_per_mi, workout_spec
+         FROM plan_workouts WHERE plan_id = $1 ORDER BY date_iso ASC`,
+      [plan.id],
+    ),
+  ]);
+  const weeks = weeksRes.rows;
+  const days = daysRes.rows;
 
   const byWeek = new Map<string, PlanDayRow[]>();
   for (const d of days) {

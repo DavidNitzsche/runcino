@@ -68,14 +68,22 @@ export const DEFAULT_SETTINGS: UserSettings = {
 // 5335af97 onward. Re-exported so server callers keep their import path.
 export { PHONE_RUN_SETTING_COPY } from './settings-copy';
 
+/** Memo key shared by the reader and the writer below. */
+const settingsKey = (userId: string) => `settings:${userId}`;
+
 export async function loadSettings(userId: string): Promise<UserSettings> {
   try {
-    const r = (await pool.query(
+    // 2026-08-21 perf · five identical reads of this row in one render.
+    // Only the RAW row is memoized; the spread below still runs per call, so
+    // every caller gets its own object and no caller can mutate another's
+    // settings. Request-scoped — see lib/runtime/request-memo.ts.
+    const { memo } = await import('@/lib/runtime/request-memo');
+    const r = await memo(settingsKey(userId), async () => (await pool.query(
       `SELECT user_settings FROM profile
         WHERE user_uuid = $1
         ORDER BY (user_uuid = $1) DESC LIMIT 1`,
       [userId]
-    )).rows[0]?.user_settings ?? {};
+    )).rows[0]?.user_settings ?? {});
     return { ...DEFAULT_SETTINGS, ...r };
   } catch {
     return DEFAULT_SETTINGS;
@@ -89,4 +97,8 @@ export async function patchSettings(userId: string, patch: Partial<UserSettings>
       WHERE user_uuid = $1`,
     [userId, JSON.stringify(patch)]
   );
+  // The row just changed · drop the memo so a read-after-write in this same
+  // request sees the write rather than the pre-patch snapshot.
+  const { memoDrop } = await import('@/lib/runtime/request-memo');
+  memoDrop(settingsKey(userId));
 }

@@ -50,6 +50,14 @@ export function normalizeSex(raw: string | null | undefined): BiologicalSex {
  * Generic mechanism · no hardcoded values · works for any user.
  */
 export async function loadBiologicalSex(userId: string): Promise<BiologicalSex> {
+  // 2026-08-21 perf · three identical reads per render for a value that
+  // depends only on the user. Returns a string enum, so there is nothing a
+  // caller can mutate. Request-scoped — see lib/runtime/request-memo.ts.
+  const { memo } = await import('@/lib/runtime/request-memo');
+  return memo(`bioSex:${userId}`, () => resolveBiologicalSex(userId));
+}
+
+async function resolveBiologicalSex(userId: string): Promise<BiologicalSex> {
   const r = await pool.query<{ profile_sex: string | null; users_sex: string | null }>(
     `SELECT p.sex AS profile_sex, u.sex AS users_sex
        FROM users u

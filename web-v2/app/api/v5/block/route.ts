@@ -20,6 +20,7 @@
  * so the off-season gap between blocks still reads as race mode.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { withRequestMemo } from '@/lib/runtime/request-memo';
 import { requireUserId } from '@/lib/auth/session';
 import { pool } from '@/lib/db/pool';
 import { loadV5Block } from '@/lib/plan/v5-block';
@@ -28,7 +29,16 @@ import { outage } from '@/lib/route/failure';
 
 export const dynamic = 'force-dynamic';
 
+// 2026-08-21 perf · read-only surface · one memo scope per request so the
+// opted-in leaf readers (and loadPlanShape, which this route asked for four
+// times) answer once. Scope dies with the response; nothing is cached between
+// requests. If this route ever WRITES, the writer must memoDrop what it
+// invalidates.
 export async function GET(req: NextRequest) {
+  return withRequestMemo(() => handleGET(req));
+}
+
+async function handleGET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;

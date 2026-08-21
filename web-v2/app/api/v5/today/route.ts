@@ -18,6 +18,7 @@
  * lib/coach/glance-state.ts it depends on.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { withRequestMemo } from '@/lib/runtime/request-memo';
 import { pool } from '@/lib/db/pool';
 import { zoneTargetForWorkout } from '@/lib/coach/zone-target';
 import { requireUserId } from '@/lib/auth/session';
@@ -184,11 +185,17 @@ function midSec(lo: number | null | undefined, hi: number | null | undefined): n
  * and a wrapper, not a 570-line reflow of code other agents are editing.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  try {
-    return await composeToday(req);
-  } catch (err) {
-    return outage('v5/today', err);
-  }
+  // 2026-08-21 perf · read-only surface · one memo scope for the request so
+  // the opted-in leaf readers answer once instead of once per caller. Scope
+  // dies with the response; nothing is cached between requests. If this route
+  // ever WRITES, the writer must memoDrop what it invalidates.
+  return withRequestMemo(async () => {
+    try {
+      return await composeToday(req);
+    } catch (err) {
+      return outage('v5/today', err);
+    }
+  });
 }
 
 async function composeToday(req: NextRequest): Promise<NextResponse> {

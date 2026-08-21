@@ -58,6 +58,17 @@ export async function loadEffectiveMaxHr(
   // 2026-06-03 · default to runner TZ instead of server UTC.
   const { runnerToday } = await import('@/lib/runtime/runner-tz');
   const today = todayArg ?? await runnerToday(userId);
+  // 2026-08-21 perf · three queries per call, and a render resolves the same
+  // (user, day) max-HR more than once. Request-scoped only; the returned
+  // record is read-only at every call site. See lib/runtime/request-memo.ts.
+  const { memo } = await import('@/lib/runtime/request-memo');
+  return memo(`maxHr:${userId}:${today}`, () => resolveEffectiveMaxHr(userId, today));
+}
+
+async function resolveEffectiveMaxHr(
+  userId: string,
+  today: string,
+): Promise<EffectiveMaxHr> {
   // 1. Override always wins.
   const overrideRow = await pool.query<{ ovr: number | string | null; stored: number | string | null }>(
     `SELECT max_hr_override AS ovr, max_hr AS stored FROM users WHERE id = $1`,

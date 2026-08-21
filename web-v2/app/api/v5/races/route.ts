@@ -27,6 +27,7 @@
  *        still ahead — authority is "once known", not asserted early.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { withRequestMemo } from '@/lib/runtime/request-memo';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
@@ -222,7 +223,14 @@ function raceDateWords(iso: string | null | undefined): string {
   return `${DOW[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+// 2026-08-21 perf · read-only surface · one memo scope per request. Scope
+// dies with the response; nothing is cached between requests. If this route
+// ever WRITES, the writer must memoDrop what it invalidates.
 export async function GET(req: NextRequest) {
+  return withRequestMemo(() => handleGET(req));
+}
+
+async function handleGET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
