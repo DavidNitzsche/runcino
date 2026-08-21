@@ -207,8 +207,21 @@ struct TodayBeforeV5: View {
 
     // MARK: - Panel
 
+    /// 22b. THE GRADIENT MEANS TODAY. Nothing else earns it.
+    ///
+    /// The day-state ramp is the loudest thing on the screen, and it is what
+    /// makes Today feel like today. A day you have stepped to keeps every
+    /// word — the kicker still names the state, the type still reads EASY —
+    /// but drops the paint, so the two can never be confused at a glance.
+    ///
+    /// This applies FORWARD as well as back. A planned Friday carries a real
+    /// day-state and the gradient would be truthful there, which is exactly
+    /// the trap: truthful and still mistakable for today is the failure this
+    /// screen exists to prevent. One rule, no exceptions, nothing to misread.
+    private var steppedAway: Bool { viewingDayLabel != nil }
+
     private var panel: some View {
-        DayPanel(fill: model.panel.fill) {
+        DayPanel(fill: steppedAway ? .quiet : model.panel.fill) {
             // The one place header, shared with the after-run screen and the
             // state screens. This file used to hand-roll its own, which is how
             // the two Today variants ended up with different controls.
@@ -236,8 +249,13 @@ struct TodayBeforeV5: View {
                 }
             }
 
-            WeekStripV5(days: model.weekStrip.map(\.strip),
-                        onTap: { day in onPickDay(day.id) })
+            // No week strip on a stepped-to day. It is today's own compass —
+            // it marks today, and it is the control that got you here. Leaving
+            // it would draw a "you are here" pip on a screen that is not here.
+            if !steppedAway {
+                WeekStripV5(days: model.weekStrip.map(\.strip),
+                            onTap: { day in onPickDay(day.id) })
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 if let kicker = model.panel.kicker {

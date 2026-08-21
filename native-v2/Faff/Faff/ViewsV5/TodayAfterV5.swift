@@ -157,7 +157,10 @@ struct TodayAfterV5: View {
     // MARK: - Panel
 
     private var panel: some View {
-        DayPanel(fill: model.panel.fill) {
+        // 22b. Same rule as the before-run screen: the gradient means today.
+        // This is the screen a tapped past "Done" row actually lands on, so it
+        // is the one that carries 22b most of the time.
+        DayPanel(fill: viewingDayLabel != nil ? .quiet : model.panel.fill) {
             PlaceHeaderV5(place: model.panel.place,
                           viewingDayLabel: viewingDayLabel,
                           onBackToToday: onBackToToday,
@@ -181,8 +184,12 @@ struct TodayAfterV5: View {
             // it, not only the one before the run. It was inert here — which
             // is the state the runner is in for most of the day once they
             // have run.
-            WeekStripV5(days: model.weekStrip.map { $0.strip },
-                        onTap: { day in onPickDay(day.id) })
+            // No week strip on a stepped-to day — it marks today, and it is
+            // the control that got you here.
+            if viewingDayLabel == nil {
+                WeekStripV5(days: model.weekStrip.map { $0.strip },
+                            onTap: { day in onPickDay(day.id) })
+            }
 
             VStack(alignment: .leading, spacing: V5.S.s2) {
                 if let kicker = model.panel.kicker {

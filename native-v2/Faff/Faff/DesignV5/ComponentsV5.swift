@@ -1249,19 +1249,6 @@ struct PlaceHeaderV5: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
-            if viewingDayLabel != nil, let onBackToToday {
-                Button(action: onBackToToday) {
-                    Text("Today")
-                        .font(.faffText(TypeScaleV5.label12, weight: .semibold))
-                        .foregroundStyle(V5.OnPanel.primary)
-                        .padding(.horizontal, V5.S.s10)
-                        .frame(height: 26)
-                        .background(V5.OnPanel.control, in: Capsule())
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(V5PressStyle())
-            }
-
             Spacer(minLength: V5.S.s8)
 
             HStack(spacing: V5.S.s6) {
@@ -1271,7 +1258,31 @@ struct PlaceHeaderV5: View {
                                  targetWidth: discTargetWidth,
                                  action: onCalendar)
                 }
-                if let onAccount {
+                // 22b. THE WAY BACK STANDS WHERE THE ACCOUNT DISC STANDS,
+                // AND THE ACCOUNT DISC STANDS DOWN.
+                //
+                // A day you have stepped to must not be mistakable for today,
+                // and the strongest tell is that today's furniture is missing.
+                // Settings are two taps away from the real Today; nothing on
+                // a past Tuesday needs them, and leaving the disc there would
+                // leave the screen looking like the one it is not.
+                if viewingDayLabel != nil, let onBackToToday {
+                    Button(action: onBackToToday) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text("Today")
+                                .font(.faffText(TypeScaleV5.label12, weight: .semibold))
+                        }
+                        .foregroundStyle(V5.OnPanel.primary)
+                        .padding(.horizontal, V5.S.s10)
+                        .frame(height: 30)
+                        .background(V5.OnPanel.control, in: Capsule())
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(V5PressStyle())
+                    .accessibilityLabel("Back to today")
+                } else if let onAccount {
                     HeaderDiscV5(glyph: .account(initials),
                                  label: "Account and settings",
                                  targetWidth: discTargetWidth,
