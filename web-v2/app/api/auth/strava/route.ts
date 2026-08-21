@@ -29,6 +29,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import { stateIsFresh } from '@/lib/auth/strava-state';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 
@@ -65,11 +66,12 @@ function getStateSecret(): string {
 }
 
 function signState(payload: string): string {
-  const nonce = randomBytes(8).toString('base64url');
+  const nonce = `${Date.now()}-${randomBytes(8).toString('base64url')}`;
   const data = `${payload}.${nonce}`;
   const hmac = createHmac('sha256', getStateSecret()).update(data).digest('base64url');
   return `${data}.${hmac}`;
 }
+
 
 function verifyState(signedState: string): { userId: string; platform: 'web' | 'ios' } | null {
   const parts = signedState.split('.');
@@ -82,6 +84,10 @@ function verifyState(signedState: string): { userId: string; platform: 'web' | '
   try { provided = Buffer.from(providedHmacB64, 'base64url'); } catch { return null; }
   if (expected.length !== provided.length) return null;
   if (!timingSafeEqual(expected, provided)) return null;
+  // A valid signature is not enough — a signature is valid forever. The
+  // issue time rides inside the signed nonce, so this cannot be tampered
+  // with without breaking the HMAC above.
+  if (!stateIsFresh(nonce)) return null;
   // payload shape: "<user_uuid>" or "<user_uuid>:ios"
   const [userId, platTag] = payload.split(':');
   if (!userId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {

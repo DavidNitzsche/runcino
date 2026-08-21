@@ -1367,6 +1367,29 @@ enum API {
         }
     }
 
+    /// Where the APNs device token is remembered between launches, so
+    /// sign-out can revoke it. Written by `NotificationsAppDelegate`.
+    static let apnsTokenKey = "faff.apns.deviceToken"
+
+    /// DELETE /api/notifications/register on sign-out.
+    ///
+    /// The token itself stays on the device — iOS owns it — so the phone
+    /// remembers it and re-registers on the next sign-in. What this ends is
+    /// the SERVER's belief that this device belongs to this runner. Without
+    /// it a phone kept receiving the previous runner's coaching after they
+    /// signed out of it: their race-morning wake, their weekly check-in.
+    ///
+    /// Must run BEFORE the token is cleared — it is an authenticated call.
+    static func unregisterPushToken() async {
+        guard let token = UserDefaults.standard.string(forKey: apnsTokenKey),
+              !token.isEmpty else { return }
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/notifications/register"))
+        req.httpMethod = "DELETE"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["device_token": token])
+        _ = try? await API.authedSend(req)
+    }
+
     /// POST /api/notifications/ack when the runner taps a rich-notification
     /// action on the lock screen. The web's per-category routing handles
     /// the side-effect (skip un-skip, niggle recovery insert, weekly check-in,

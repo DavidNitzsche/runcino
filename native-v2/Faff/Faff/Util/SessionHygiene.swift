@@ -41,6 +41,19 @@ enum SessionHygiene {
 
         StravaConnection.clear()
         AppCache.clearAll()
+        // Runs recorded but never sent, and the interrupted-run checkpoint.
+        // Both post under whatever token is current when they drain, so
+        // leaving them behind files the previous runner's work into the next
+        // runner's log — a cross-user WRITE, and one nothing in the app can
+        // undo afterwards. `AppCache.bindOwner` calls the same purge on the
+        // expired-session path, which never reaches this button.
+        AppCache.purgeUserTiedStores()
+        // Cached settings are per-person: long run day, days per week,
+        // whether RUN appears in the bar.
+        await SettingsCache.shared.invalidate()
+        // Stop APNs delivering this person's notifications to a device that
+        // is no longer theirs. Best effort — a dead network still signs out.
+        await API.unregisterPushToken()
 
         NotificationCenter.default.post(name: .faffGateReset, object: nil)
     }

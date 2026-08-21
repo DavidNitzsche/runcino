@@ -69,3 +69,49 @@ export async function POST(req: NextRequest) {
 }
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * DELETE /api/notifications/register  body { device_token }
+ *
+ * Sign-out. The token stays in the table — it is a real device and it may
+ * come back — but it is revoked, so the sender skips it.
+ *
+ * 2026-08-21 · nothing revoked a token on sign-out, so a phone kept
+ * receiving the previous runner's coaching after they signed out of it.
+ * `revoked_at` existed and was only ever written by the APNs reaper.
+ *
+ * Scoped to the caller. A runner may only revoke a token registered to
+ * THEM — otherwise anyone holding a device token could silence anyone.
+ */
+export async function DELETE(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
+
+  let body: { device_token?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  if (!body.device_token || typeof body.device_token !== 'string') {
+    return NextResponse.json({ error: 'device_token required' }, { status: 400 });
+  }
+
+  try {
+    const r = await pool.query(
+      `UPDATE device_tokens
+          SET revoked_at = now()
+        WHERE device_token = $1
+          AND COALESCE(user_uuid::text, user_id::text) = $2
+          AND revoked_at IS NULL`,
+      [body.device_token, userId],
+    );
+    return NextResponse.json({ ok: true, revoked: r.rowCount ?? 0 });
+  } catch (e: unknown) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : String(e) },
+      { status: 500 },
+    );
+  }
+}

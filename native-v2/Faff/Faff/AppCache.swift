@@ -167,6 +167,35 @@ enum AppCache {
         let current = store.string(forKey: ownerKey) ?? ""
         guard current != incoming else { return }
         clearAll()   // also drops ownerKey — it carries the prefix
+        // EVERY user-tied local store, not just the surface cache.
+        //
+        // Three others outlived a sign-out, and one of them crosses users on
+        // a WRITE rather than a read: the watch relay queue holds runs that
+        // were recorded but never reached the server, and the drain posts
+        // them with whatever token is current. Runner A's unsent run filed
+        // into runner B's log, under B's name.
+        //
+        // Hung here rather than in `SessionHygiene.signOut()` alone, because
+        // signOut is only the BUTTON. A session that merely expired never
+        // calls it, and that is the path that left a phone sitting on the
+        // previous runner's data with no token at all.
+        purgeUserTiedStores()
         if !incoming.isEmpty { store.set(incoming, forKey: ownerKey) }
+    }
+
+    /// Local stores that belong to a person, not to the device.
+    static func purgeUserTiedStores() {
+        // Runs recorded on the watch or the phone that never reached the
+        // server. They are the previous runner's and nobody else may send
+        // them. Losing an unsent run is bad; filing it under the wrong
+        // runner is worse, and it cannot be undone from inside the app.
+        store.removeObject(forKey: "faff.watch.pendingCompletions.v2")
+        // The interrupted-outdoor-run checkpoint, re-submitted on the next
+        // console open within its 24h window.
+        if let dir = FileManager.default.urls(for: .applicationSupportDirectory,
+                                              in: .userDomainMask).first {
+            try? FileManager.default.removeItem(
+                at: dir.appendingPathComponent("phone-run-checkpoint.json"))
+        }
     }
 }

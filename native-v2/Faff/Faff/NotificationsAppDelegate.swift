@@ -62,6 +62,12 @@ final class NotificationsAppDelegate: NSObject, UIApplicationDelegate, UNUserNot
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        // Kept so SIGN-OUT can revoke it. The token belongs to the device and
+        // iOS hands the same one back on the next launch, so remembering it
+        // costs nothing — but without it we cannot tell the server to stop
+        // sending this runner's notifications to a phone that is no longer
+        // theirs, because by then the delegate has not fired again.
+        UserDefaults.standard.set(token, forKey: API.apnsTokenKey)
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
         Task {
             await API.registerDeviceToken(token, appVersion: appVersion)
