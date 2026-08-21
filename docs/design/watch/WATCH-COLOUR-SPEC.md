@@ -1,3 +1,20 @@
+> **SUPERSEDED · 2026-08-21.** This document is background, not constraint.
+> Do not build from it and do not reconcile against it.
+>
+> The watch is built from the approved design files:
+> `/Volumes/WP/06 Claude Code/Faff/design/0821/design_handoff_faff_watch_app/`
+> (53 boards, 15:49) and `../design_handoff_0821_addendum/` (six screens, 16:17).
+> Audit and build sequencing: `docs/design/watch-0821/AUDIT.md`.
+>
+> Written 09:03-10:56 the same day, before the studio handoff existed. Its six
+> extra metric hues came from a verbal "a bit more faff and fun" aimed at a
+> black-and-white-plus-one-accent draft. David, with the handoff in front of
+> him: "I know what I approved in the watch design files and that's what you
+> should rely on." The handoff's rule 1 makes colour grade on the wrist, so
+> per-metric hues and "a coloured number is read as a graded number" cannot
+> both hold. The six day-state ramps DO survive - they fill a whole screen and
+> cannot be misread as a verdict on one figure.
+
 # Watch · the colour list
 
 Addendum to the watch brief, after the first face pass. The first pass used
