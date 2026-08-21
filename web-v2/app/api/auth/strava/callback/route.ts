@@ -30,12 +30,18 @@ export const dynamic = 'force-dynamic';
 //
 // Now: state = `<payload>.<nonce>.<hmac>` signed at /api/auth/strava
 // connect time. Verification here uses timing-safe compare against
-// a SHA-256 HMAC keyed by STRAVA_STATE_SECRET (falls back to
-// CRON_SECRET). Mismatch → fail redirect, no token write.
+// a SHA-256 HMAC keyed by STRAVA_STATE_SECRET. Mismatch → fail
+// redirect, no token write.
+//
+// 2026-08-21 · the CRON_SECRET fallback is gone here too, and the two
+// sides MUST move together: this function and the signer's
+// `getStateSecret` have to resolve the same key or every callback
+// fails verification. Dropping it on one side only would have been a
+// self-inflicted outage on the connect flow.
 //
 // Cite docs/2026-06-05-backend-audit.html § P0-2.
 function getStateSecret(): string | null {
-  return process.env.STRAVA_STATE_SECRET || process.env.CRON_SECRET || null;
+  return process.env.STRAVA_STATE_SECRET || null;
 }
 
 function verifyState(signedState: string): { userId: string; platform: 'web' | 'ios' } | null {

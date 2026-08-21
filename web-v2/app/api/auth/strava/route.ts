@@ -48,19 +48,27 @@ import { requireUserId } from '@/lib/auth/session';
 //
 // On callback we verify the HMAC (timing-safe compare). Failed
 // verification → 401, no token write. The secret comes from
-// STRAVA_STATE_SECRET; if that's unset we fall back to CRON_SECRET
-// (which is already configured in prod for the cron auth). Throws
-// at signing time if neither is set, so misconfiguration surfaces
-// loudly instead of silently disabling the security gate.
+// STRAVA_STATE_SECRET and nothing else. Throws at signing time if it is
+// unset, so misconfiguration surfaces loudly instead of silently
+// disabling the security gate.
+//
+// 2026-08-21 · the CRON_SECRET fallback is gone. It shipped as a way to
+// deploy the signing gate before a dedicated secret existed, and it did
+// that job — but it left the key that proves "this Strava account belongs
+// to this runner" identical to the key that authenticates the cron
+// endpoints. Two different trust domains, one secret: anything that
+// learned the cron key could mint an OAuth state binding ITS Strava
+// account to someone else's faff account. STRAVA_STATE_SECRET is now set
+// in production (32 random bytes), so the crutch can go.
 //
 // In-flight OAuth flows started before this lands will fail
 // verification on return · runner just clicks Connect Strava again.
 // Cite docs/2026-06-05-backend-audit.html § P0-2.
 
 function getStateSecret(): string {
-  const s = process.env.STRAVA_STATE_SECRET || process.env.CRON_SECRET;
+  const s = process.env.STRAVA_STATE_SECRET;
   if (!s) {
-    throw new Error('STRAVA_STATE_SECRET (or CRON_SECRET) must be set · OAuth state signing requires a server secret');
+    throw new Error('STRAVA_STATE_SECRET must be set · OAuth state signing requires a server secret');
   }
   return s;
 }
