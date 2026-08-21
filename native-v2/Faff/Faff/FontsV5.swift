@@ -102,8 +102,19 @@ enum FaffFaceV5 {
     /// The design's display register: Archivo 800 at width 112, uppercase.
     static let displayWeight: Double = 800
     static let displayWidth:  Double = 112
-    /// Below this the display face is not used at all — fall back to text.
-    static let displayMinSize: CGFloat = 20
+    /// THE FLOOR IS 12, NOT 20 · David's ruling, 2026-08-21.
+    ///
+    /// The 0821 README says the display face is "not used below 20px", but the
+    /// prototype uses it at 15px for EVERY section header on every screen, and
+    /// at 12px on the Races decision card. The two sources contradict, and the
+    /// prototype is what was drawn and reviewed screen by screen — the README's
+    /// line reads as a rule about the display REGISTER (76/56/44/38), not about
+    /// section labels.
+    ///
+    /// While the floor was 20, `faffDisplay(13)` silently returned Instrument
+    /// Sans Bold, so every section label in the app was the wrong family and
+    /// nothing said so. The floor is now the design's own smallest use.
+    static let displayMinSize: CGFloat = 12
 }
 
 /// Instrument Sans weights the design uses. The family's axis stops at 700.
@@ -199,10 +210,16 @@ extension Font {
     }
 
     /// Archivo 800 at width 112 — the display register, always uppercase at the
-    /// call site (`.textCase(.uppercase)`). Not for use below 20pt; smaller
+    /// call site (`.textCase(.uppercase)`). Not for use below 12pt; smaller
     /// callers get the text face instead rather than a squashed display face.
     static func faffDisplay(_ size: CGFloat, tabular: Bool = true) -> Font {
         guard size >= FaffFaceV5.displayMinSize else {
+            // Nothing in the design asks for the display face below its own
+            // smallest use, so a call that does is a mistake at the call site
+            // — and it used to be an INVISIBLE one, quietly handing back a
+            // different family. In debug it now says so out loud.
+            assertionFailure("faffDisplay(\(size)) is below the design's floor of "
+                             + "\(FaffFaceV5.displayMinSize)pt · use faffText for smaller labels")
             return faffText(size, weight: .bold, tabular: tabular)
         }
         if let ct = FaffCoreTextV5.font(
