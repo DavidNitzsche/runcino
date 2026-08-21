@@ -9,7 +9,7 @@
  *   F2  a HISTORICAL quality day (archived plan — no active plan at all
  *       here) resolves workoutType from plan_workouts across ALL plans,
  *       so Year/All-time effort mixes stop over-reading easy.
- *   F3  badge conditions: NAILED IT within pace target, LONGEST ≥18mi,
+ *   F3  badge conditions: ON TARGET within pace target, LONGEST ≥18mi,
  *       no badge on an ordinary easy run.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -117,7 +117,7 @@ describe('loadLogState · Activity truth enrichment', () => {
     const runs = await loadRuns();
     const hist = runs.find(r => r.id === '102')!;
     expect(hist.workoutType).toBe('tempo');
-    expect(hist.badge).toBe('NAILED IT');        // pace 405 on target 405
+    expect(hist.badge).toBe('ON TARGET');        // pace 405 on target 405
   });
 
   it('F3 · LONGEST at 20mi, no badge on an ordinary easy run', async () => {

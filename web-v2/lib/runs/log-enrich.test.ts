@@ -6,7 +6,7 @@
  *       row's generic 'Run'; a non-generic canonical name is never replaced.
  *   F2  race matching — same date + distance within ~12%, or a
  *       workoutType='race' flag on any row of the physical run.
- *   F3  badge conditions — RACE > NAILED IT > SOLID > LONGEST, and the
+ *   F3  badge conditions — RACE > ON TARGET > SOLID > LONGEST, and the
  *       branches the UI renders are all reachable.
  *   F4  workoutType resolution order — race > plan type > run's own flag >
  *       activity type.
@@ -99,11 +99,11 @@ describe('badgeForRun (F3)', () => {
   it('race beats everything', () => {
     expect(badgeForRun({ isRace: true, workoutType: 'race', distanceMi: 13.3, paceSPerMi: 400, plan: null })).toBe('RACE');
   });
-  it('tempo within the pace-target band earns NAILED IT', () => {
+  it('tempo within the pace-target band earns ON TARGET', () => {
     expect(badgeForRun({
       isRace: false, workoutType: 'tempo', distanceMi: 6, paceSPerMi: 412,
       plan: { type: 'tempo', paceTargetSPerMi: 405, isQuality: true },
-    })).toBe('NAILED IT');
+    })).toBe('ON TARGET');
   });
   it('tempo far off target settles at SOLID', () => {
     expect(badgeForRun({

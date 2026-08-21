@@ -82,7 +82,7 @@ describe('SESSION TYPE · the badge path sees one spelling', () => {
     }
   });
 
-  it('NAILED IT still needs a steady-quality plan type', () => {
+  it('ON TARGET still needs a steady-quality plan type', () => {
     const nailed = badgeForRun({
       isRace: false,
       workoutType: 'tempo',
@@ -90,7 +90,7 @@ describe('SESSION TYPE · the badge path sees one spelling', () => {
       paceSPerMi: 420,
       plan: { isQuality: true, type: 'tempo', paceTargetSPerMi: 421 } as never,
     });
-    expect(nailed).toBe('NAILED IT');
+    expect(nailed).toBe('ON TARGET');
     // An interval session's whole-run average includes the recovery jog, so it
     // settles at SOLID rather than false-negativing on the pace target.
     const reps = badgeForRun({
