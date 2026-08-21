@@ -204,7 +204,22 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   const userId = auth;
 
   const url = new URL(req.url);
-  const today = (url.searchParams.get('date') || await runnerToday(userId)).slice(0, 10);
+  const runnerTodayISO = (await runnerToday(userId)).slice(0, 10);
+  const requestedDate = url.searchParams.get('date')?.slice(0, 10) || null;
+  const today = requestedDate || runnerTodayISO;
+  // 22b. THE SCREEN IS NOT IN THE PRESENT TENSE, SO NEITHER IS ITS CONTEXT.
+  //
+  // `loadGlanceState` takes no date — it reads readiness, the seven-night
+  // sleep average and week-to-date mileage as of NOW. Rendered under a
+  // heading that says WED 19 AUG, "Readiness 62 / 100" reads as how ready
+  // the runner was on the Wednesday. It is how ready they are on the Friday
+  // they are reading it.
+  //
+  // This is rule one's sibling: not a modelled number wearing a measured
+  // number's clothes, but a present-tense number wearing a past-tense one's.
+  // The fix is the same shape as the rest of 22b — what belongs to today
+  // stays on today.
+  const isSteppedDay = today !== runnerTodayISO;
 
   // ── Race-mode gate ────────────────────────────────────────────────────
   //
@@ -233,7 +248,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   }
 
   if (!raceMode) {
-    const ctx: V5TodayContext = emptyContext(today, false);
+    const ctx: V5TodayContext = emptyContext(today, false, isSteppedDay);
     return NextResponse.json(composeV5Today(ctx));
   }
 
@@ -280,7 +295,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       major: `Rest, not run. The ${inj.site} needs a real break. This is not a session to run through.`,
     };
     const returnAvailable = inj.expected_return_date != null && today >= inj.expected_return_date;
-    const ctx: V5TodayContext = emptyContext(today, true);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
     ctx.weekStripDays = weekStripDays;
     ctx.injury = {
       area: inj.site.charAt(0).toUpperCase() + inj.site.slice(1),
@@ -321,7 +336,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     const verdict = sick.has_fever
       ? 'Rest, not run. A fever means the body is fighting something. Running adds load it does not have to spare.'
       : 'Rest, not run. Whatever this is gets a real day off before anything asks more of you.';
-    const ctx: V5TodayContext = emptyContext(today, true);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
     ctx.weekStripDays = weekStripDays;
     ctx.sick = {
       symptoms: sick.symptoms.map(symptomLabel),
@@ -372,7 +387,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           sub: '',
         }
       : null;
-    const ctx: V5TodayContext = emptyContext(today, true);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
     ctx.weekStripDays = weekStripDays;
     ctx.weekOff = {
       reason: 'Away from the plan',
@@ -417,7 +432,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       if (hi > 0) weeklyRange = `${lo} to ${hi} miles a week`;
     } catch { /* leave null · no fabricated range */ }
 
-    const ctx: V5TodayContext = emptyContext(today, true);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
     ctx.weekStripDays = weekStripDays;
     ctx.offSeason = {
       sinceLastRace,
@@ -556,7 +571,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         niggleFlagged: glance.activeNiggle?.body_part ?? null,
       };
 
-      const ctx: V5TodayContext = emptyContext(today, true);
+      const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
       ctx.todayPlan = todayPlan;
       ctx.weekLine = weekLine;
   // The panel's line, beside the week line. Where the runner is in the block
@@ -721,7 +736,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
 
   const raceDay = todayPlan?.type === 'race';
 
-  const ctx: V5TodayContext = emptyContext(today, true);
+  const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
   ctx.todayPlan = todayPlan;
   ctx.weekLine = weekLine;
   // The phase belongs on every branch that composes a real panel, not just
@@ -794,9 +809,9 @@ function phaseWords(label: string | null | undefined): string | null {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-function emptyContext(todayISO: string, raceMode: boolean): V5TodayContext {
+function emptyContext(todayISO: string, raceMode: boolean, isSteppedDay = false): V5TodayContext {
   return {
-    todayISO, raceMode,
+    todayISO, raceMode, isSteppedDay,
     todayPlan: null, weekLine: null, phaseLine: null, weekStripDays: [],
     prescription: null, weatherKicker: null, paceBandStat: null, hrCapStat: null, effortStat: null, why: null,
     whereYouAre: [], beforeYouGo: [], raceDay: false, recentRun: null,

@@ -368,4 +368,70 @@ describe('composeV5Today · state precedence', () => {
     expect(out.groups).toHaveLength(1);
     expect(out.groups[0].title).toBe('Easy aerobic');
   });
+  // ────────────────────────────────────────────────────────────────────────
+  // 22b · a stepped-to day carries no present-tense context.
+  //
+  // The bug this locks: `loadGlanceState` takes no date. Readiness, the
+  // seven-night sleep average and week-to-date mileage are read as of NOW and
+  // were being rendered under a heading that said WED 19 AUG. A runner
+  // looking back at Wednesday read Friday's readiness as Wednesday's.
+  describe('stepped-to day', () => {
+    const GLANCE_ROWS = [
+      { id: 'readiness', label: 'Readiness', sub: 'READY',
+        value: { text: '62 / 100', modelled: true }, action: null },
+      { id: 'week', label: 'This week', sub: '31.0 mi planned',
+        value: { text: '18.4 mi', modelled: false }, action: null },
+    ];
+
+    it('drops Where you are when the day is one the runner stepped to', () => {
+      const out = composeV5Today(baseCtx({
+        isSteppedDay: true,
+        whereYouAre: GLANCE_ROWS,
+        todayPlan: { type: 'easy', subLabel: null, distanceMi: 6, originalType: null, originalSubLabel: null },
+      }));
+      expect(out.whereYouAre).toEqual([]);
+    });
+
+    it('keeps Where you are on the runner\'s actual today', () => {
+      const out = composeV5Today(baseCtx({
+        isSteppedDay: false,
+        whereYouAre: GLANCE_ROWS,
+        todayPlan: { type: 'easy', subLabel: null, distanceMi: 6, originalType: null, originalSubLabel: null },
+      }));
+      expect(out.whereYouAre.map((r) => r.id)).toEqual(['readiness', 'week']);
+    });
+
+    // The flag is absent on every context built before this rule existed, and
+    // an undefined flag must mean "this is today" rather than silently
+    // emptying the section for every existing caller.
+    it('treats an absent flag as today', () => {
+      const out = composeV5Today(baseCtx({
+        whereYouAre: GLANCE_ROWS,
+        todayPlan: { type: 'easy', subLabel: null, distanceMi: 6, originalType: null, originalSubLabel: null },
+      }));
+      expect(out.whereYouAre).toHaveLength(2);
+    });
+
+    // The after-run screen is where a tapped "Done" row lands most of the
+    // time, and it has its OWN `whereYouAre` assignment in the composer.
+    it('drops Where you are on the after-run state too', () => {
+      const out = composeV5Today(baseCtx({
+        isSteppedDay: true,
+        whereYouAre: GLANCE_ROWS,
+        recentRun: {
+          runId: 'r1', distanceMi: 6, durationSec: 3234, paceSPerMi: 539,
+          avgHr: 141, indoor: false, speedMph: null, inclinePct: null,
+          askedPaceSPerMi: null, askedHrCap: null, askedHrIsHardCap: false,
+          effortAsked: null, effortLogged: null,
+          verdict: 'Held it honestly.',
+          zoneShares: [30, 55, 15, 0, 0], zoneTarget: null,
+          elevationSamples: [0, 6, 10], elevGainFt: 120,
+          weekDoneMi: 18.4, weekPlannedMi: 31,
+          shoeWorn: null, niggleFlagged: null,
+        },
+      }));
+      expect(out.state).toBe('after_run');
+      expect(out.whereYouAre).toEqual([]);
+    });
+  });
 });

@@ -423,6 +423,25 @@ export interface V5RecentRunCtx {
 
 export interface V5TodayContext {
   todayISO: string;
+  /**
+   * True when `todayISO` is a day the runner has STEPPED TO, not the day it
+   * actually is. Set by the route when the request carries a `date` that is
+   * not the runner's own today.
+   *
+   * 22b's rule, enforced here rather than at the call site: the screen is not
+   * in the present tense, so neither is its context. `loadGlanceState` takes
+   * no date — readiness, the seven-night sleep average and week-to-date
+   * mileage are all read as of NOW. Under a heading that says WED 19 AUG,
+   * "Readiness 62 / 100" reads as how ready the runner was on the Wednesday.
+   * It is how ready they are on the Friday they are reading it.
+   *
+   * This is rule one's sibling: not a modelled number wearing a measured
+   * number's clothes, but a present-tense number wearing a past-tense one's.
+   * It lives in the composer beside rule one's stamping and rule two's gate
+   * because it is the same kind of rule, and because a second client reading
+   * this endpoint would otherwise have to remember it independently.
+   */
+  isSteppedDay?: boolean;
   /** Race-mode gate. False → the whole payload is the notOnPhoneYet refusal. */
   raceMode: boolean;
 
@@ -803,7 +822,12 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   notOnPhoneYet: null,
 });
 
-export function composeV5Today(ctx: V5TodayContext): V5Today {
+export function composeV5Today(rawCtx: V5TodayContext): V5Today {
+  // Applied ONCE, before any state branch reads `whereYouAre` — there are two
+  // assignment sites below and a third would be easy to add without noticing.
+  const ctx: V5TodayContext = rawCtx.isSteppedDay
+    ? { ...rawCtx, whereYouAre: [] }
+    : rawCtx;
   // RULE 3 first: the phone has no screens for coached / just-run /
   // distance-goal-without-a-race. This is a refusal, not an attempt to
   // populate a payload the client cannot render.
