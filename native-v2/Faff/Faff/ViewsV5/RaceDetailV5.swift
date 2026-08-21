@@ -209,8 +209,20 @@ struct RaceDetailV5: View {
                 .font(.faffText(TypeScaleV5.label12))
                 .foregroundStyle(V5.textQuiet)
             FaffValueText(value, font: .faffText(20, weight: .semibold), color: ink)
+                // The third copy of the Goal/Projected/Gap row (the panel
+                // plate and the decision card's target tiles are the other
+                // two), and it fails the same way: three columns across a
+                // phone cannot hold a full marathon time at accessibility
+                // sizes, and it broke as "3:30:0" / "0" and "~3:31:" / "48".
+                // Whole and smaller beats large and shattered.
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Goal, Projected and Gap read as three labels then three values,
+        // three swipes apart. Paired, and the tilde's "estimated" survives
+        // into the pair.
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Course

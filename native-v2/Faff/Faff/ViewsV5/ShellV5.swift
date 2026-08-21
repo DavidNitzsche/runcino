@@ -135,6 +135,10 @@ struct TabBarV5: View {
                             Image(systemName: tab.symbol)
                                 .font(.system(size: 20, weight: .regular))
                                 .frame(height: 22)
+                                // The word is right underneath the glyph. Left
+                                // exposed, the destination reads as its symbol
+                                // name and then its name — "figure.run, Today".
+                                .accessibilityHidden(true)
                             Text(tab.label)
                                 .font(.faffText(TypeScaleV5.label12,
                                                 weight: selected == tab ? .semibold : .medium))
@@ -164,10 +168,22 @@ struct TabBarV5: View {
                         .background(V5.materialAction, in: Capsule(style: .continuous))
                     }
                     .buttonStyle(V5PressStyle())
+                    // "RUN" alone is a word, not an action, and the play glyph
+                    // beside it read out as "play". Says what the tap does and
+                    // what comes back — the pill opens the Outdoor/Treadmill
+                    // sheet, it does not start a run on the spot.
+                    .accessibilityLabel("Start a run")
+                    .accessibilityHint("Choose outdoor or treadmill")
                 }
             }
             .padding(.horizontal, V5.S.gutter)
             .frame(width: geo.size.width, height: geo.size.height)
+            // The bar is the app's three destinations. Named as a tab bar,
+            // VoiceOver offers it to the rotor and announces "tab, 1 of 3"
+            // instead of three loose buttons pinned to the bottom.
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Destinations")
+            .accessibilityAddTraits(.isTabBar)
         }
         .frame(height: V5.Shell.tabBarHeight)
         .frame(maxWidth: .infinity)
@@ -486,7 +502,7 @@ struct NotOnPhoneYetV5: View {
                                     .background(V5.materialTileRaised, in: Circle())
                             }
                             .buttonStyle(V5PressStyle())
-                            .accessibilityLabel("Account and settings")
+                            .v5HeaderTarget("Account and settings")
                         }
                     }
                     Color.clear.frame(height: onOpenAccount == nil ? V5.S.s56 : V5.S.s24)

@@ -48,6 +48,7 @@ struct FaffApp: App {
     var body: some Scene {
         WindowGroup {
             let _ = FaffApp.seedQATokenIfAsked()
+            let _ = A11yDump.installIfRequested()
             // Design QA, reached by a launch argument so that looking at the
             // v5 system on a device never means a temporary edit to this file
             // and never risks a half-edited root reaching a build:

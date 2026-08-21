@@ -278,7 +278,7 @@ struct TodayBeforeV5: View {
                         .font(.system(size: 14, weight: .semibold))
                 } else {
                     Text(text ?? "")
-                        .font(.faffText(12, weight: .semibold))
+                        .font(.faffText(12, weight: .semibold, scales: false))
                 }
             }
             .foregroundStyle(V5.OnPanel.primary)

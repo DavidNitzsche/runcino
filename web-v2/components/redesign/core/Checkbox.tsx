@@ -25,11 +25,39 @@ export function Checkbox({ checked = false, onChange, label, sub, disabled = fal
     <label
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-6)', minHeight: 'var(--hit-min)',
-        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1, ...style,
+        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1,
+        position: 'relative', ...style,
       }}
-      onClick={() => !disabled && onChange && onChange(!checked)}
     >
-      <span style={{
+      {/*
+        Same gap as `Switch`: a `<label>` with an `onClick` and no `<input>`
+        inside it. Not focusable, no role, no `aria-checked` — so the
+        days-available multi-select in onboarding could not be completed with
+        a keyboard or read by a screen reader.
+
+        A real checkbox, visually hidden but still focusable, wrapped by the
+        label that already names it. The drawn square below is unchanged and
+        marked decorative so the state is announced once, from the control,
+        rather than twice.
+      */}
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange && onChange(e.currentTarget.checked)}
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          padding: 0,
+          margin: 0,
+          overflow: 'hidden',
+          clipPath: 'inset(50%)',
+          whiteSpace: 'nowrap',
+          border: 0,
+        }}
+      />
+      <span aria-hidden="true" style={{
         width: 24, height: 24, flex: '0 0 auto', marginTop: 8, borderRadius: 'var(--radius-xs)',
         background: checked ? 'var(--ink-1)' : 'var(--surface-control)', display: 'flex', alignItems: 'center',
         justifyContent: 'center', color: '#000', transition: 'background var(--dur-2) var(--ease-out)',

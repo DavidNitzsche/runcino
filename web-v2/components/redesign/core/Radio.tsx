@@ -15,20 +15,64 @@ export interface RadioProps {
   /** Says what this choice makes the plan do. */
   sub?: string;
   disabled?: boolean;
+  /**
+   * Groups the options that belong together, so arrow keys move between them
+   * and a screen reader says "2 of 5" rather than "2 of 1".
+   *
+   * Left off deliberately by default rather than defaulted to one shared
+   * string: `Step1bGoalDetailsRedesign` renders three independent sets on one
+   * page (weekly average, long run, years running), and a shared name would
+   * fold all three into a single group and let one answer clear another.
+   * Passing it per set is a real improvement and a call-site change; the
+   * audit report names the sets that want it.
+   */
+  name?: string;
   style?: CSSProperties;
 }
 
 /** One of a small set, where the choice reshapes the plan. Used for the five onboarding modes and for experience level. */
-export function Radio({ checked = false, onChange, label, sub, disabled = false, style }: RadioProps) {
+export function Radio({ checked = false, onChange, label, sub, disabled = false, name, style }: RadioProps) {
   return (
     <label
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-6)', minHeight: 'var(--hit-min)',
-        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1, ...style,
+        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1,
+        position: 'relative', ...style,
       }}
-      onClick={() => !disabled && onChange && onChange(true)}
     >
-      <span style={{
+      {/*
+        Third of the three: a `<label>` with an `onClick` and no `<input>`.
+        Onboarding's five mutually exclusive modes had no radio group at all —
+        not focusable, no `aria-checked`, and nothing saying the five belonged
+        to one another. A keyboard user could not pick a mode; a screen-reader
+        user could not tell which was already picked.
+
+        `name` groups them so arrow keys move between the options the way a
+        radio group is meant to, and it is derived from the component rather
+        than asked of every call site. All five onboarding modes render as one
+        group, which is what they are.
+
+        The drawn ring below is unchanged and marked decorative.
+      */}
+      <input
+        type="radio"
+        name={name}
+        checked={checked}
+        disabled={disabled}
+        onChange={() => onChange && onChange(true)}
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          padding: 0,
+          margin: 0,
+          overflow: 'hidden',
+          clipPath: 'inset(50%)',
+          whiteSpace: 'nowrap',
+          border: 0,
+        }}
+      />
+      <span aria-hidden="true" style={{
         width: 24, height: 24, flex: '0 0 auto', marginTop: 8, borderRadius: '50%',
         background: 'var(--surface-control)', boxShadow: checked ? 'inset 0 0 0 7px var(--signal)' : 'none',
         transition: 'box-shadow var(--dur-2) var(--ease-out)',

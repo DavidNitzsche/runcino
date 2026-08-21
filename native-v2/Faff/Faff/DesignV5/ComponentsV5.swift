@@ -59,6 +59,10 @@ struct V5SectionLabel: View {
     let text: String
     var color: Color = V5.textSecondary
     var size: CGFloat = TypeScaleV5.body15
+    /// A section label titles a group, and that is a heading. The one case it
+    /// is not is a label used as a chip or an inline kind marker — the coach
+    /// log's "week-close" tag sits beside a date, not above a group.
+    var isHeading: Bool = true
 
     var body: some View {
         Text(text)
@@ -66,6 +70,15 @@ struct V5SectionLabel: View {
             .textCase(.uppercase)
             .tracking(size * 0.06)
             .foregroundStyle(color)
+            // WITHOUT THIS THE ROTOR FINDS NOTHING.
+            //
+            // Every group on every v5 screen is titled by one of these, and
+            // they were all plain static text. VoiceOver's Headings rotor —
+            // the way a screen reader user skips a screen instead of swiping
+            // through it one element at a time — returned an empty list on
+            // Today, on Races, on all of them. Today alone has six groups and
+            // roughly forty elements; without headings that is forty swipes.
+            .accessibilityAddTraits(isHeading ? .isHeader : [])
     }
 }
 
@@ -109,8 +122,17 @@ struct AppBar: View {
                         .foregroundStyle(V5.textPrimary)
                         .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
                         .background(V5.materialControl, in: Circle())
+                        // Same rule as the header discs: the drawn circle stays
+                        // 30, the target grows to 44 and the negative padding
+                        // gives the layout its 30pt footprint back. Here the
+                        // button is alone on its side of the row, so the full
+                        // 44×44 is reachable with nothing to steal it from.
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .padding(-7)
+                .accessibilityLabel("Back")
             }
             VStack(alignment: .leading, spacing: V5.S.s2) {
                 if let eyebrow {
@@ -295,6 +317,15 @@ struct ExpandingRow<Expanded: View>: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(V5PressStyle())
+            // Expand-in-place is the app's one picker interaction, and the
+            // only thing that said whether a row was open was a chevron that
+            // had rotated 180°. A rotation is not a label.
+            //
+            // There is no `expanded` TRAIT on iOS — UIKit and SwiftUI both
+            // leave it to the element's value — so the state is spoken as the
+            // row's value, which is where VoiceOver reads a control's current
+            // setting from.
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: V5.S.s10) {
@@ -648,10 +679,24 @@ struct FaffSwitch: View {
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .tint(V5.signal)
+                // `Toggle("")` with `.labelsHidden()` hides the label from the
+                // screen AND from VoiceOver, which read the whole row as
+                // "switch button, off" with nothing saying what it switches.
+                // Settings has five of these in a column. The visible label
+                // beside it is a separate element, so a runner swiping the
+                // switches heard five identical unnamed toggles.
+                //
+                // `.labelsHidden()` is still right — the design draws the label
+                // on the left of the row, not attached to the control. This
+                // puts the name back on the control without drawing it twice.
+                .accessibilityLabel(label)
         }
         .padding(.horizontal, V5.S.tilePad)
         .frame(minHeight: 58)
         .frame(maxWidth: .infinity)
+        // One element, one announcement: "Start runs from this phone, sub, switch, on".
+        // Without this the row is three stops on the rotor for one control.
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -697,6 +742,15 @@ struct FaffRadio: View {
         }
         .buttonStyle(V5PressStyle())
         .animation(V5.Motion.fill, value: checked)
+        // WHICH ONE IS CHOSEN, SAID OUT LOUD.
+        //
+        // The filled orange dot is the only thing that says "this is the one",
+        // and a dot is not text. Onboarding's fitness step is five mutually
+        // exclusive options; a VoiceOver runner heard five identical buttons
+        // and no way to tell which was already picked, so the step could not
+        // be completed with any confidence. `.isSelected` is what the rotor
+        // and the "selected" announcement both read.
+        .accessibilityAddTraits(checked ? [.isSelected] : [])
     }
 }
 
@@ -770,13 +824,18 @@ struct FaffStepper: View {
                     .foregroundStyle(V5.textPrimary)
                 Spacer(minLength: V5.S.s8)
                 HStack(spacing: V5.S.s10) {
-                    roundControl("minus") { step(-1) }
+                    roundControl("minus", label: "Decrease \(label.lowercased())") { step(-1) }
                         .disabled(value <= range.lowerBound)
                     Text(String(value))
                         .font(.faffText(20, weight: .semibold))
                         .foregroundStyle(V5.textPrimary)
                         .frame(minWidth: 28)
-                    roundControl("plus") { step(1) }
+                        // The number is the value of the control beside it, not
+                        // a loose numeral. Said as a value it reads
+                        // "Days a week, 5"; said as static text it reads "5".
+                        .accessibilityLabel(label)
+                        .accessibilityValue(String(value))
+                    roundControl("plus", label: "Increase \(label.lowercased())") { step(1) }
                         .disabled(value >= range.upperBound)
                 }
             }
@@ -792,15 +851,27 @@ struct FaffStepper: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func roundControl(_ symbol: String, _ action: @escaping () -> Void) -> some View {
+    private func roundControl(_ symbol: String, label: String,
+                              _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(V5.textPrimary)
                 .frame(width: 34, height: 34)
                 .background(V5.materialControl, in: Circle())
+                // Drawn at 34, tapped at 44. The row has 16pt of vertical
+                // padding and 10pt between the two discs, so the expansion
+                // sits entirely in space the design already leaves empty and
+                // the negative padding keeps the 34pt footprint. Nothing moves.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(V5PressStyle())
+        .padding(-5)
+        // "minus" and "plus" were the SF Symbol names, and that is what
+        // VoiceOver said. Two unnamed steppers on the availability step read
+        // as four identical "plus"/"minus" buttons.
+        .accessibilityLabel(label)
     }
 }
 
@@ -828,6 +899,13 @@ struct FaffInput: View {
                     .keyboardType(keyboard)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    // The field's name is drawn above it as its own Text, and
+                    // `TextField("")` gave the control itself no name at all —
+                    // VoiceOver landed on it and said "text field" with the
+                    // label two swipes back. Add-a-race has four in a column.
+                    // The unit belongs to the field, not to the value, so it
+                    // is spoken as part of what is being asked for.
+                    .accessibilityLabel(unit.map { "\(label), \($0)" } ?? label)
                 if let unit {
                     Text(unit)
                         .font(.faffText(TypeScaleV5.body15))
@@ -860,7 +938,12 @@ struct LogEntry: View {
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.s6) {
             HStack(spacing: V5.S.s8) {
-                V5SectionLabel(text: kind, color: V5.textSecondary, size: TypeScaleV5.label12)
+                // A kind marker beside a date, not a group title — so it wears
+                // the section label's type but not its heading trait. A rotor
+                // full of "week-close" and "discipline" is not a table of
+                // contents.
+                V5SectionLabel(text: kind, color: V5.textSecondary,
+                               size: TypeScaleV5.label12, isHeading: false)
                 Spacer(minLength: 0)
                 Text(date)
                     .font(.faffText(TypeScaleV5.label12))
@@ -929,6 +1012,13 @@ struct V5SheetHost<Sheet: View>: View {
                     .ignoresSafeArea()
                     .onTapGesture { withAnimation(V5.Motion.sheet) { isPresented = false } }
                     .transition(.opacity)
+                    // Tap-outside-to-dismiss is a gesture on a dimmed rectangle,
+                    // which is nothing at all to a runner who cannot see the
+                    // dim. Named, it becomes a reachable control; without it the
+                    // only way out of a sheet was to find the sheet's own
+                    // action, and the refusal sheets deliberately have none.
+                    .accessibilityLabel("Close")
+                    .accessibilityAddTraits(.isButton)
 
                 VStack(alignment: .leading, spacing: V5.S.s16) {
                     if let title {
@@ -951,6 +1041,16 @@ struct V5SheetHost<Sheet: View>: View {
                 .shadow(color: V5.Shadow.color, radius: V5.Shadow.radius, y: V5.Shadow.y)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .ignoresSafeArea(edges: .bottom)
+                // A SHEET IN A ZSTACK DOES NOT HIDE WHAT IT COVERS.
+                //
+                // This is a hand-built presenter, not `.sheet`, so the screen
+                // underneath stays in the accessibility tree. VoiceOver read
+                // straight through the scrim: swipe past the last button on
+                // the change-the-plan sheet and you landed back in the Block
+                // screen behind it, still able to activate rows that the sheet
+                // was covering. `.isModal` is what tells VoiceOver that
+                // everything outside this subtree is off-limits while it is up.
+                .accessibilityAddTraits(.isModal)
             }
         }
         .animation(V5.Motion.sheet, value: isPresented)
@@ -978,6 +1078,42 @@ struct SheetShape: Shape {
                        control: CGPoint(x: rect.minX, y: rect.maxY))
         p.closeSubpath()
         return p
+    }
+}
+
+// MARK: - The header button's tap target
+//
+// THE SAME 30-POINT DISC IS HAND-ROLLED IN NINE FILES.
+//
+// `PlaceHeaderV5` below is the shared one, and each screen's comment explains
+// why it kept a private copy anyway ("not worth promoting to the shared kit
+// for one more call site with the same two-line body"). That held while the
+// body really was two lines. It stopped holding the moment every copy needed
+// the same tap target and the same spoken name, because nine copies is nine
+// chances to forget one — and eight of the nine had already forgotten.
+//
+// Rather than move nine buttons into one component mid-audit, this is the one
+// line each of them was missing.
+
+extension View {
+    /// Expands a drawn 30pt header disc to a real tap target and gives it a
+    /// name, without moving it.
+    ///
+    /// The disc still draws at `V5.Shell.headerButton`. The target grows to
+    /// `width` × 44 and the negative padding hands the layout back the 30pt
+    /// footprint it had, so nothing on screen shifts by a point.
+    ///
+    /// `width` is 44 for a button that stands alone on its side of a header
+    /// row. Two discs 6pt apart cannot both have 44pt of width without one
+    /// taking the other's — pass 36 there (the disc plus the gap) and report
+    /// the shortfall rather than letting the buttons steal each other's taps.
+    func v5HeaderTarget(_ label: String, width: CGFloat = 44) -> some View {
+        self
+            .frame(width: width, height: 44)
+            .contentShape(Rectangle())
+            .padding(.horizontal, -(width - V5.Shell.headerButton) / 2)
+            .padding(.vertical, -(44 - V5.Shell.headerButton) / 2)
+            .accessibilityLabel(label)
     }
 }
 
@@ -1029,10 +1165,15 @@ struct PlaceHeaderV5: View {
             Spacer(minLength: V5.S.s8)
 
             HStack(spacing: V5.S.s6) {
-                if let onCalendar { control(systemImage: "calendar", action: onCalendar) }
+                if let onCalendar {
+                    control(systemImage: "calendar",
+                            label: "Training calendar",
+                            action: onCalendar)
+                }
                 if let onAccount {
                     control(systemImage: (initials?.isEmpty ?? true) ? "person" : nil,
                             text: (initials?.isEmpty ?? true) ? nil : initials,
+                            label: "Account and settings",
                             action: onAccount)
                 }
             }
@@ -1040,7 +1181,26 @@ struct PlaceHeaderV5: View {
         .frame(height: 44)
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // THE HIT AREA IS NOT THE CIRCLE.
+    //
+    // The design draws a 30pt disc. Apple asks for 44×44. `.contentShape(Circle())`
+    // pinned the tap target to exactly the drawn disc, which is 30×30 — and
+    // on the account button it also clipped the corners off, so the target was
+    // smaller than the disc's own bounding box.
+    //
+    // The disc still draws at 30. The TARGET is expanded around it to the full
+    // 44pt height of the header row (free — the row is already 44 tall) and to
+    // 36pt wide, which is the disc plus the 6pt gap to its neighbour. The
+    // negative horizontal padding hands the layout back its original 30pt
+    // footprint, so nothing on screen moves.
+    //
+    // 36×44 is the ceiling here, not a pass. Reaching a true 44×44 needs the
+    // two header discs to move apart or grow, and both are the design's call
+    // — flagged rather than taken.
+    // ─────────────────────────────────────────────────────────────────────
     private func control(systemImage: String? = nil, text: String? = nil,
+                         label: String,
                          action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Group {
@@ -1048,15 +1208,29 @@ struct PlaceHeaderV5: View {
                     Image(systemName: systemImage)
                         .font(.system(size: 14, weight: .semibold))
                 } else {
+                    // THE INITIALS LIVE INSIDE A FIXED 30-POINT DISC.
+                    //
+                    // Scaled with the reading register they outgrew it: at
+                    // the third accessibility size "JR" rendered as "…" —
+                    // the runner's own initials truncated to an ellipsis in
+                    // the account button. The disc is a fixed graphic, so its
+                    // two letters are sized to the disc, not to the runner's
+                    // text setting. The button's NAME is what VoiceOver reads
+                    // and that is set below; the glyph is decoration.
                     Text(text ?? "")
-                        .font(.faffText(12, weight: .semibold))
+                        .font(.faffText(12, weight: .semibold, scales: false))
                 }
             }
             .foregroundStyle(V5.OnPanel.primary)
             .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
             .background(V5.OnPanel.control, in: Circle())
-            .contentShape(Circle())
+            .frame(width: 36, height: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(V5PressStyle())
+        .padding(.horizontal, -3)
+        // The initials disc read out as "JR", and the person glyph read out as
+        // "person" — the raw SF Symbol name, straight through to the runner.
+        .accessibilityLabel(label)
     }
 }

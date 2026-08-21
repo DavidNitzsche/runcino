@@ -205,7 +205,7 @@ struct TodayAfterV5: View {
     /// ceiling / effort — one generic `stats` array, different content by
     /// state. Rendered bare, with no translucent plate: the design's after-run
     /// poster sits its three values directly on the gradient.
-    private var posterStats: [(value: FaffValue, unit: String?)] {
+    private var posterStats: [(value: FaffValue, unit: String?, label: String)] {
         let stats = model.panel.stats
         func pick(_ needle: String, _ index: Int) -> V5Stat? {
             stats.first(where: { $0.label.lowercased().contains(needle) })
@@ -221,15 +221,15 @@ struct TodayAfterV5: View {
         func unitFor(_ v: FaffValue, _ suffix: String) -> String? {
             v.text.lowercased().hasSuffix(suffix.lowercased()) ? nil : suffix
         }
-        var out: [(FaffValue, String?)] = []
+        var out: [(FaffValue, String?, String)] = []
         if let distance = pick("dist", 0) {
             let v = distance.value.value
-            out.append((v, unitFor(v, "mi")))
+            out.append((v, unitFor(v, "mi"), distance.label))
         }
-        if let time = pick("time", 1) { out.append((time.value.value, nil)) }
+        if let time = pick("time", 1) { out.append((time.value.value, nil, time.label)) }
         if let pace = pick("pace", 2) {
             let v = pace.value.value
-            out.append((v, unitFor(v, "/mi")))
+            out.append((v, unitFor(v, "/mi"), pace.label))
         }
         return out
     }
@@ -245,6 +245,24 @@ struct TodayAfterV5: View {
                             .foregroundStyle(V5.OnPanel.secondary)
                     }
                 }
+                // FIVE ELEMENTS FOR THREE NUMBERS, AND NOT ONE OF THEM NAMED.
+                //
+                // The design draws these bare on the gradient — no captions,
+                // because the numbers' shapes tell a sighted runner which is
+                // which (6.02 mi · 54:16 · 9:02 /mi). Spoken, they arrived as
+                // "6.02", "mi", "54:16", "9:02", "/mi": five stops, the units
+                // divorced from their figures, and the middle one a bare
+                // number with nothing at all saying it was the elapsed time.
+                //
+                // The wire already carries the label for each. It is not
+                // drawn — the poster stays exactly as designed — it is only
+                // spoken, which is where the shape cue does not exist.
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(item.label)
+                .accessibilityValue(
+                    [item.value.isModelled ? "estimated" : nil, item.value.text, item.unit]
+                        .compactMap { $0 }.joined(separator: " ")
+                )
             }
         }
     }
@@ -292,7 +310,16 @@ struct TodayAfterV5: View {
                     withAnimation(V5.Motion.expand) { expandedRowID = nil }
                 } label: {
                     Text("\(n)")
-                        .font(.faffText(16))
+                        // TEN CELLS IN A ROW ACROSS A PHONE IS 29 POINTS EACH.
+                        //
+                        // Scaled with the reading register, "10" outgrew its
+                        // cell at the first accessibility size and rendered as
+                        // "…" — the top of the effort scale, unreachable,
+                        // where the runner is being asked to pick a number.
+                        // The grid is a fixed graphic; its digits are sized to
+                        // the cell. The question above it still scales, and
+                        // every cell is named for VoiceOver below.
+                        .font(.faffText(16, scales: false))
                         .foregroundStyle(pendingEffort == n ? V5.actionPrimaryText : V5.textPrimary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 46)
@@ -300,6 +327,20 @@ struct TodayAfterV5: View {
                                     in: RoundedRectangle(cornerRadius: V5.R.r10, style: .continuous))
                 }
                 .buttonStyle(V5PressStyle())
+                // TEN BUTTONS CALLED "1" THROUGH "10", AND NOTHING SAYING
+                // WHAT THEY WERE FOR OR WHICH ONE WAS ALREADY CHOSEN.
+                //
+                // The scale opens in place under the Effort row, so a sighted
+                // runner reads the question from the row above. VoiceOver
+                // moves focus into the expansion and the question is behind
+                // it. And the chosen number is drawn as an orange fill, which
+                // is a colour — nothing announced it.
+                //
+                // The cells are 29pt wide. Ten of them across a phone cannot
+                // each be 44, so the width is the design's to change, not
+                // this file's; it is reported rather than quietly altered.
+                .accessibilityLabel("Effort \(n) of 10")
+                .accessibilityAddTraits(pendingEffort == n ? [.isSelected] : [])
             }
         }
     }
@@ -358,6 +399,12 @@ struct TodayAfterV5: View {
                             .font(.faffText(TypeScaleV5.label13))
                             .foregroundStyle(V5.textQuiet)
                     }
+                    // The leading space is the gap — the HStack has none, so
+                    // the two runs sit flush and the space does the spacing.
+                    // Split across two elements it read out as "58 percent"
+                    // and then, separately, " in zone 2" with a stray space
+                    // in front of it. One element, one sentence.
+                    .accessibilityElement(children: .combine)
                 }
             }
             ZoneBar(shares: shares, target: model.zoneTarget, height: 44, labels: false)

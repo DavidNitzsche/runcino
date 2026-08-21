@@ -21,6 +21,32 @@
 
 import SwiftUI
 
+// ═════════════════════════════════════════════════════════════════════════
+// EVERY GRAPHIC IN THIS FILE IS DRAWN FROM DATA, AND EVERY ONE OF THEM WAS
+// SILENT.
+//
+// The handoff is explicit that nothing here is an asset: "every graphic
+// (route line, elevation profile, week shape, phase bar, zone bar, trend
+// bars, range scales) is drawn from data with inline SVG/CSS". Drawn from
+// data is exactly why they need saying out loud — the data is the content,
+// and a `Capsule` or a `RoundedRectangle` produces no accessibility element
+// at all. Not an unlabelled image: nothing. A VoiceOver runner swiping
+// through Today went from the effort row straight to the shoes, and the zone
+// distribution, the elevation and the pace band simply were not on the
+// screen as far as they were concerned.
+//
+// So each component below collapses to ONE element carrying a sentence that
+// says what the picture says. Rules that apply throughout:
+//
+//   · The sentence states the reading, never a grade. No chart in this app
+//     tells a runner a distribution was good, and neither does its label.
+//   · Where the component already renders a `FaffValue`, the label is built
+//     from the same value so the modelled mark survives into speech — a
+//     projection that reads "3:16:45" out loud where the screen shows
+//     "~3:16:45" is rule one broken in the one place nobody checks.
+//   · Amber "outside the band" is a colour. The label says the words.
+// ═════════════════════════════════════════════════════════════════════════
+
 // MARK: - RangeScale
 //
 // A pill track with the asked-for range marked on it and the runner's current
@@ -128,6 +154,41 @@ struct RangeScale: View {
                 }
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken)
+    }
+
+    /// What the track says, in words. The amber marker is the only thing that
+    /// draws "outside the band", so this is the only place that state exists
+    /// for a runner who is not reading the colour.
+    private var spoken: String {
+        let ends = endpoints.map { "Scale \($0.0) to \($0.1)." } ?? ""
+        switch mode {
+        case .band:
+            guard let b = band else { return ends.isEmpty ? "Pace scale" : ends }
+            let range = "Target band \(fmt(b.low)) to \(fmt(b.high))."
+            guard let value else { return "\(range) No reading yet." }
+            let where_ = outOfRange ? "outside the band" : "inside the band"
+            return "\(range) You are at \(fmt(value)), \(where_)."
+        case .ceiling:
+            guard let b = band else { return ends.isEmpty ? "Ceiling scale" : ends }
+            let ceil = "Ceiling \(fmt(b.high))."
+            guard let value else { return "\(ceil) No reading yet." }
+            return outOfRange
+                ? "\(ceil) You are at \(fmt(value)), above the ceiling."
+                : "\(ceil) You are at \(fmt(value)), under the ceiling."
+        case .progress:
+            guard let value else { return centerLabel ?? "Progress" }
+            let pct = Int((frac(value) * 100).rounded())
+            return centerLabel.map { "\($0). \(pct)% through." } ?? "\(pct)% through."
+        }
+    }
+
+    /// The scale carries raw numbers whose unit lives in the caller's own
+    /// endpoint labels, so this stays a plain figure rather than inventing a
+    /// unit the component does not know.
+    private func fmt(_ v: Double) -> String {
+        v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v)
     }
 }
 
@@ -198,6 +259,24 @@ struct ZoneBar: View {
             }
         }
         .frame(height: labels ? height + V5.S.s6 + 15 : height)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken)
+    }
+
+    /// "Time in zone. Zone 2, 58%. Zone 3, 22%. …" — and, where the session
+    /// asked for one, which zone that was. The bar's density ramp is ordinal
+    /// and the highlight is orange; neither is readable without sight, and
+    /// the percentages are the whole content.
+    private var spoken: String {
+        let parts = shares.enumerated().compactMap { i, s -> String? in
+            guard s > 0 else { return nil }
+            let pct = Int((s / total * 100).rounded())
+            guard pct > 0 else { return nil }
+            return "Zone \(i + 1), \(pct)%"
+        }
+        guard !parts.isEmpty else { return "Time in zone. No reading." }
+        let asked = target.map { " The session asked for zone \($0)." } ?? ""
+        return "Time in zone. " + parts.joined(separator: ". ") + "." + asked
     }
 }
 
@@ -240,6 +319,24 @@ struct TrendBars: View {
     private static let domainFloorFraction = 0.02
     private static let barFloorFraction: CGFloat = 0.18
 
+    /// The shape of the run, not every bar in it. Reading out twelve weeks of
+    /// daily projections one figure at a time is worse than silence; what the
+    /// picture actually shows is a direction and two endpoints.
+    ///
+    /// No units and no "better" or "worse": the series can be a finish time
+    /// (down is faster) or a mileage (up is more), and this component is not
+    /// told which. It says which way the line went and leaves the meaning to
+    /// the headline and footnotes that sit either side of it, both of which
+    /// stay their own elements.
+    private var barsSpoken: String {
+        guard let first = values.first, let last = values.last, values.count > 1 else {
+            return "Trend. Not enough reads to draw."
+        }
+        let dir = last > first ? "rising" : last < first ? "falling" : "flat"
+        return "Trend, \(values.count) reads, \(dir). "
+             + "The highlighted read is number \(hi + 1) of \(values.count)."
+    }
+
     private func barHeight(_ v: Double, in full: CGFloat) -> CGFloat {
         let lo = values.min() ?? 0
         let hiV = values.max() ?? 1
@@ -274,6 +371,13 @@ struct TrendBars: View {
                 .frame(height: geo.size.height, alignment: .bottom)
             }
             .frame(height: height)
+            // The BARS get the label, not the whole component. The headline
+            // above is a `FaffValue` and renders its own amber mark through
+            // `FaffValueText`; folding it into a combined label here would
+            // flatten "estimated, 3:16:45" back to "3:16:45" and lose rule one
+            // in the one place a sighted reader would never notice.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(barsSpoken)
 
             if !footnotes.isEmpty {
                 HStack(spacing: V5.S.s12) {
@@ -350,6 +454,26 @@ struct PhaseBar: View {
                 }
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken)
+    }
+
+    /// The phase names are already drawn under the bar, but which one is
+    /// CURRENT is carried by signal orange and a 4pt marker — colour and a
+    /// tick, nothing else. This is the sentence that says it.
+    private var spoken: String {
+        let shape = phases.map { "\($0.name), \($0.weeks) week\($0.weeks == 1 ? "" : "s")" }
+            .joined(separator: ". ")
+        guard let now = phases.first(where: { $0.current }) else {
+            return "Block phases. \(shape)."
+        }
+        let through = now.at.map { at -> String in
+            let wk = Swift.min(Swift.max(at, 0), 1) * Double(now.weeks)
+            return " You are \(Int(wk.rounded(.down)) + 1) week"
+                 + (Int(wk.rounded(.down)) + 1 == 1 ? "" : "s")
+                 + " into it."
+        } ?? ""
+        return "Block phases. \(shape). Now in \(now.name).\(through)"
     }
 }
 
@@ -413,6 +537,37 @@ struct ElevationProfile: View {
     /// Neither the chart nor its marks are drawn without one.
     private var hasSeries: Bool { points.count > 1 }
 
+    /// A shape, not a reading. The component is handed bare numbers with no
+    /// unit — the caller's own footnote carries "340 ft up" — so this says
+    /// where the climbs are rather than inventing feet.
+    ///
+    /// Thirds, because that is the resolution the eye gets from a 120pt line
+    /// on a phone, and because "rises through the middle, drops to the finish"
+    /// is the thing a runner is actually looking for.
+    private var spoken: String {
+        guard points.count > 1 else { return "Elevation profile. No course stored." }
+        let n = points.count
+        func mean(_ r: Range<Int>) -> Double {
+            let s = points[r.clamped(to: 0..<n)]
+            return s.isEmpty ? 0 : s.reduce(0, +) / Double(s.count)
+        }
+        let a = mean(0..<Swift.max(n / 3, 1))
+        let b = mean(n / 3..<Swift.max(2 * n / 3, n / 3 + 1))
+        let c = mean(2 * n / 3..<n)
+        let span = Swift.max((points.max() ?? 0) - (points.min() ?? 0), 0.0001)
+        func move(_ from: Double, _ to: Double) -> String {
+            let d = (to - from) / span
+            if d > 0.12 { return "climbs" }
+            if d < -0.12 { return "drops" }
+            return "holds"
+        }
+        let start = (points.first ?? 0) < (points.last ?? 0) ? "finishes higher than it starts"
+                  : (points.first ?? 0) > (points.last ?? 0) ? "finishes lower than it starts"
+                  : "finishes level with the start"
+        return "Elevation profile. First third \(move(a, b)) into the middle, "
+             + "last third \(move(b, c)). The course \(start)."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.s10) {
             if hasSeries {
@@ -442,6 +597,12 @@ struct ElevationProfile: View {
                 }
             }
             .frame(height: height)
+            // The line, the two dots and the mark rules are all Shapes, so the
+            // whole chart produced nothing at all. The marks' LABELS are drawn
+            // below and stay their own elements; what is missing without this
+            // is the profile itself.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(spoken)
             }
 
             // A mark is a POSITION on the profile. With no profile there is
@@ -513,6 +674,11 @@ struct DualPoint: View {
             Image(systemName: "arrow.right")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(V5.textQuiet)
+                // Read out as "Right, image" between the two paces, three
+                // times over on the paces-moved screen. The Was and Now
+                // labels either side already carry the direction; the glyph
+                // is drawing, not content.
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: V5.S.s4) {
                 Text(rightLabel)
                     .font(.faffText(TypeScaleV5.label12))
@@ -554,6 +720,14 @@ struct WeekStripDayV5: Identifiable, Equatable {
     let id: String
     /// One letter. M T W T F S S.
     let letter: String
+    /// The weekday spelled out, for speech only — never drawn.
+    ///
+    /// The strip draws single letters, and three of the seven are ambiguous
+    /// out loud: T is Tuesday or Thursday, S is Saturday or Sunday. The wire
+    /// carries `dateISO`, so the unambiguous name is free rather than guessed
+    /// from a position in the row (the strip starts on the runner's own week
+    /// boundary, not always Monday).
+    var weekday: String? = nil
     /// Date number.
     let number: String
     var state: V5.DayState = .easy
@@ -590,11 +764,56 @@ struct WeekStripV5: View {
                 .contentShape(RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
 
                 if let onTap {
-                    Button { onTap(d) } label: { cell }.buttonStyle(V5PressStyle())
+                    Button { onTap(d) } label: { cell }
+                        .buttonStyle(V5PressStyle())
+                        .accessibilityLabel(spoken(d))
                 } else {
-                    cell
+                    cell.accessibilityElement(children: .ignore)
+                        .accessibilityLabel(spoken(d))
                 }
             }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // THE RAIL IS THE ONLY THING THAT SAYS WHAT KIND OF DAY THIS IS, AND IT
+    // IS A COLOURED CAPSULE 4 POINTS TALL.
+    //
+    // Seven cells read out as "M 17", "T 18", "W 19" … "T 20" — the same
+    // shape for today, for a rest day, and for a session already done. A
+    // runner using VoiceOver could not tell which day of the strip was today,
+    // which was the long run, or which they had already run. Two of the seven
+    // labels were also literally identical ("T, 18" and "T, 20" differ only
+    // in the number, and Tuesday/Thursday share a letter).
+    //
+    // The state was doubly unavailable: silent to VoiceOver, and carried by
+    // opacity alone for anyone reading it — the rest / future / done rails
+    // are white at .18, .30 and .55 on a gradient, which measures between
+    // 1.13:1 and 1.98:1. Well under the 3:1 a meaningful graphic needs.
+    // The label is the fix that does not touch the drawing.
+    // ─────────────────────────────────────────────────────────────────────
+    private func spoken(_ d: WeekStripDayV5) -> String {
+        var parts = [d.weekday ?? d.letter, d.number]
+        if d.isToday { parts.append("today") }
+        if d.isRest {
+            parts.append("rest day")
+        } else {
+            parts.append(kind(d.state))
+            if d.isDone { parts.append("done") }
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    /// A day state names WHICH KIND of day this is. It is never a grade, so
+    /// neither is this — "quality" and "long run" are descriptions, not marks.
+    private func kind(_ s: V5.DayState) -> String {
+        switch s {
+        case .easy:    return "easy"
+        case .rest:    return "rest day"
+        case .quality: return "quality session"
+        case .race:    return "race"
+        case .phase:   return "block day"
+        case .long:    return "long run"
         }
     }
 
@@ -648,6 +867,26 @@ struct WeekShape: View {
             .frame(height: geo.size.height, alignment: .bottom)
         }
         .frame(height: height)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken)
+    }
+
+    /// The week's shape as a sentence. Block lists all sixteen weeks this way,
+    /// and the only difference between a cutback week and a peak week — the
+    /// entire reason the component exists — is the height of seven bars.
+    private var spoken: String {
+        let total = days.reduce(0) { $0 + $1.miles }
+        guard total > 0 else { return "Week shape. No miles this week." }
+        let running = days.filter { $0.miles > 0 }.count
+        let quality = days.filter { $0.quality && $0.miles > 0 }.count
+        let biggest = days.max { $0.miles < $1.miles }?.miles ?? 0
+        let mi = { (v: Double) in
+            v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v)
+        }
+        let race = days.contains { $0.race && $0.miles > 0 } ? " Carries a race." : ""
+        return "Week shape. \(mi(total)) miles over \(running) day\(running == 1 ? "" : "s"), "
+             + "biggest day \(mi(biggest)). "
+             + "\(quality) quality session\(quality == 1 ? "" : "s").\(race)"
     }
 
     private func ink(_ d: WeekDayLoad) -> Color {

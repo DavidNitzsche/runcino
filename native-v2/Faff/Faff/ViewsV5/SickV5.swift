@@ -131,12 +131,13 @@ struct SickFlareV5: View {
             Spacer(minLength: V5.S.s8)
             Button(action: onOpenAccount) {
                 Text("JR")
-                    .font(.faffText(12, weight: .semibold))
+                    .font(.faffText(12, weight: .semibold, scales: false))
                     .foregroundStyle(V5.textPrimary)
                     .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
                     .background(V5.materialControl, in: Circle())
             }
             .buttonStyle(V5PressStyle())
+            .v5HeaderTarget("Account and settings")
         }
     }
 }

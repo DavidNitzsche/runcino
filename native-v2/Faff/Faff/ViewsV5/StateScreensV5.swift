@@ -125,12 +125,13 @@ private struct PlaceHeaderRow: View {
             Spacer(minLength: V5.S.s8)
             Button(action: onOpenAccount) {
                 Text(initials)
-                    .font(.faffText(12, weight: .semibold))
+                    .font(.faffText(12, weight: .semibold, scales: false))
                     .foregroundStyle(ink)
                     .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
                     .background(controlFill, in: Circle())
             }
             .buttonStyle(V5PressStyle())
+            .v5HeaderTarget("Account and settings")
         }
     }
 }

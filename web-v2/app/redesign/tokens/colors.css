@@ -181,7 +181,23 @@
   --plot-negative:var(--state-alarm-ink);
   --plot-projection:var(--state-long-ink);
 
-  --focus-ring:0 0 0 3px rgba(243,173,56,.5);
+  /* THE RING WAS THERE AND COULD NOT BE SEEN.
+     ------------------------------------------------------------------
+     Was rgba(243,173,56,.5). Measured against the light theme's own
+     grounds that composites to 1.29:1 on the page and 1.39:1 on a tile —
+     against the 3:1 a focus indicator needs. Half-alpha #F3AD38 is a
+     highlighter on paper; at FULL alpha it still only reaches 1.94:1,
+     so opacity was never the problem. The bright amber cannot carry a
+     ring on a light ground at all.
+
+     --signal is the ink form of the same hue and is already the palette's
+     answer for "this amber, on paper": #CE7008 measures 3.53:1 on a tile
+     and 3.00:1 on the page. Same colour family, same meaning, and it is a
+     token this file already defines rather than a new value.
+
+     The inner white ring separates the outer ring from a dark control so
+     the indicator reads on both, which a single ring on #14120F does not. */
+  --focus-ring:0 0 0 2px var(--surface-1),0 0 0 4px var(--signal);
   --scrim:rgba(20,18,15,.42);
 }
 

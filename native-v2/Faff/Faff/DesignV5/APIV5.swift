@@ -288,10 +288,40 @@ struct V5WeekStripDay: Decodable, Equatable, Hashable, Identifiable {
     let isRest: Bool
 
     var strip: WeekStripDayV5 {
-        WeekStripDayV5(id: id, letter: letter, number: number,
+        WeekStripDayV5(id: id, letter: letter, weekday: Self.weekdayName(dateISO),
+                       number: number,
                        state: V5.DayState(rawValue: dayState) ?? .easy,
                        isToday: isToday, isDone: isDone, isRest: isRest)
     }
+
+    /// "Thursday" from "2026-08-20". Speech only — the strip still draws the
+    /// single letter the design specifies.
+    ///
+    /// Fixed to the POSIX calendar and UTC on purpose: `dateISO` is a plain
+    /// calendar date with no zone, and re-interpreting it in the device's zone
+    /// is how a Sunday becomes a Saturday for anyone west of Greenwich. The
+    /// formatter is localised, so the NAME follows the runner's language even
+    /// though the arithmetic does not move.
+    private static func weekdayName(_ iso: String) -> String? {
+        guard let date = Self.isoParser.date(from: String(iso.prefix(10))) else { return nil }
+        return Self.weekdayFormatter.string(from: date)
+    }
+
+    private static let isoParser: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private static let weekdayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.setLocalizedDateFormatFromTemplate("EEEE")
+        return f
+    }()
 }
 
 /// RULE TWO on the wire.

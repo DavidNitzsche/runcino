@@ -197,7 +197,7 @@ struct RacesV5: View {
                     .tracking(20 * 0.02)
                     .foregroundStyle(V5.OnPanel.primary)
                 Spacer(minLength: V5.S.s12)
-                panelHeaderButton(systemImage: "plus", action: onAddRace)
+                panelHeaderButton(systemImage: "plus", label: "Add a race", action: onAddRace)
             }
 
             HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
@@ -246,15 +246,25 @@ struct RacesV5: View {
     /// per file, same as `TodayAfterV5` / `TodayChangedV5` / `StateScreensV5`
     /// each already carry their own. Not worth promoting to the shared kit
     /// for one more call site with the same two-line body.
-    private func panelHeaderButton(systemImage: String, action: @escaping () -> Void) -> some View {
+    private func panelHeaderButton(systemImage: String, label: String,
+                                   action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(V5.OnPanel.primary)
                 .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
                 .background(V5.OnPanel.control, in: Circle())
+                // Same treatment as `PlaceHeaderV5.control`: the disc stays 30
+                // and the target grows to the row's full 44pt height. This
+                // button is alone on its side of the header, so it takes the
+                // whole 44 wide as well with nothing to steal it from.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(V5PressStyle())
+        .padding(-7)
+        // Read out as "plus". The action is adding a race.
+        .accessibilityLabel(label)
     }
 }
 
@@ -342,6 +352,15 @@ struct RaceDecisionCardV5: View {
                 .font(.faffText(TypeScaleV5.label12))
                 .foregroundStyle(V5.textQuiet)
             FaffValueText(value, font: .faffText(20, weight: .semibold))
+                // Two tiles side by side inside a padded card is about 150pt
+                // each. At the first accessibility text size the stretch
+                // target came out as "~3:16:4" on one line and "5" beneath —
+                // the same shattered-figure failure as the panel plate, in
+                // the one place the runner is being asked to accept or refuse
+                // that exact number. A target you cannot read is not a
+                // decision you can make.
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
@@ -381,8 +400,20 @@ private struct DecisionAnswerButtonV5: View {
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .padding(.horizontal, 12)
-                .frame(minWidth: 96, minHeight: 42)
+                .frame(minWidth: 96, minHeight: 44)
                 .background(fill, in: Capsule(style: .continuous))
+                // "NOT NOW" WAS TAPPABLE ON ITS LETTERS AND NOWHERE ELSE.
+                //
+                // The ghost variant's fill is `Color.clear`, and clear is not
+                // hit-testable in SwiftUI — the same trap `ListRow` records
+                // two files away. Measured live, the button's target was
+                // 56×17: the glyphs, not the pill. The other two came in at
+                // 42 tall, two points under Apple's minimum.
+                //
+                // The pill is drawn exactly as before. 42 → 44 is the two
+                // points that make the target legal, taken inside a layout
+                // that already wraps, so nothing is pushed off a line.
+                .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(V5PressStyle())
     }

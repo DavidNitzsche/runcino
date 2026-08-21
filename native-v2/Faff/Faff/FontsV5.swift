@@ -180,6 +180,86 @@ enum FaffCoreTextV5 {
     }
 }
 
+// MARK: - Dynamic Type
+//
+// ─────────────────────────────────────────────────────────────────────────
+// THE APP DID NOT MOVE ONE POINT BETWEEN "LARGE" AND "AX5".
+//
+// Measured, not assumed: screen 5a rendered at the default content size and
+// at `accessibility-extra-extra-extra-large` were compared pixel by pixel
+// below the status bar and were IDENTICAL. Every size in the v5 kit is a
+// literal — `Font.custom`-equivalent CTFonts here, `.system(size:)` in the
+// thirteen places that use the system face — and none of them is built
+// `relativeTo:` anything. A runner who has turned the system text size all
+// the way up gets 12pt labels, exactly as a runner who has not.
+//
+// WHAT SCALES HERE AND WHAT DOES NOT
+//
+// `faffText` — body 17/15 and label 14/13/12 — SCALES. This is reading text:
+// the coach's line, a row label, a unit, a caption. It is what a low-vision
+// runner needs bigger, and it lives in rows the design already lets grow
+// (`ListRow` is `minHeight: 58`, not `height: 58`).
+//
+// `faffDisplay` — 76/56/44/38 — DOES NOT. The handoff calls that register
+// "the display register used as the graphic itself", gives its sizes as exact
+// pixel measurements, and `faffDisplayV5` already carries measured shrink
+// behaviour tuned to those exact numbers ("THRESHOLD 411.8pt in a 350pt
+// box"). Growing the graphic re-opens every one of those calculations. That
+// is a design decision, and it is flagged rather than taken.
+//
+// The value register (28–104 numerals) is likewise a graphic and stays fixed.
+//
+// WHY IT IS CAPPED
+//
+// Uncapped, 17pt body at AX5 becomes ~53pt and the fixed-canvas panels the
+// design specifies stop being able to hold their own content. A cap is not a
+// refusal to support Dynamic Type — `.dynamicTypeSize(...)` bounding is the
+// documented way to keep a fixed-canvas layout honest — it is the difference
+// between "grows as far as this design can carry" and "clips".
+//
+// The ceiling is `.accessibility1`. That is a 1.6× step up from default and
+// it is where the screens were verified to still hold; past it the week strip
+// and the stats plate are the first to go. The exact size each screen breaks
+// at is in the audit report.
+// ─────────────────────────────────────────────────────────────────────────
+
+enum FaffTypeScalingV5 {
+
+    /// The largest content size the v5 fixed-canvas layout was verified to
+    /// hold. Text stops growing here; the app does not stop working above it.
+    static let ceiling: UIContentSizeCategory = {
+        // AUDIT ESCAPE HATCH · `-faffTypeCeiling <category>` raises or lowers
+        // the cap for one launch so the break point of a screen can be
+        // measured rather than guessed. Debug argument only; nothing in the
+        // product sets it.
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-faffTypeCeiling"), i + 1 < args.count {
+            return UIContentSizeCategory(rawValue: args[i + 1])
+        }
+        return .accessibilityMedium
+    }()
+
+    /// A point size, scaled for the runner's text-size setting and clamped to
+    /// what these layouts carry.
+    ///
+    /// At the default content size `UIFontMetrics.scaledValue(for:)` returns
+    /// its input unchanged, so every screen renders byte-identically to the
+    /// approved design for a runner who has not changed the setting. That is
+    /// the property that makes this safe to turn on across eighteen screens.
+    ///
+    /// `.body` is the metric on purpose: it is the one whose scale curve
+    /// matches reading text, and using a per-size text style would give the
+    /// 12pt label and the 17pt body different growth rates and pull apart
+    /// rows the design draws as one line.
+    static func scaled(_ size: CGFloat) -> CGFloat {
+        let current = UIApplication.shared.preferredContentSizeCategory
+        let capped = current > ceiling ? ceiling : current
+        let metrics = UIFontMetrics(forTextStyle: .body)
+        return metrics.scaledValue(for: size,
+                                   compatibleWith: UITraitCollection(preferredContentSizeCategory: capped))
+    }
+}
+
 // MARK: - The two registers
 
 extension Font {
@@ -193,19 +273,40 @@ extension Font {
     ///     condensing a value that would otherwise wrap.
     ///   - tabular: tabular figures. Default on — the design relies on them
     ///     everywhere numerals sit in a column or tick live.
+    ///   - scales: whether this call follows the runner's text-size setting.
+    ///     Default on — `faffText` is the reading register. Pass `false` for a
+    ///     numeral that is part of a graphic rather than part of a sentence
+    ///     (the value register, a chart's own tick), where growing the number
+    ///     moves the drawing rather than making a sentence easier to read.
     static func faffText(_ size: CGFloat,
                          weight: InstrumentWeight = .regular,
                          width: Double = 100,
-                         tabular: Bool = true) -> Font {
+                         tabular: Bool = true,
+                         scales: Bool = true) -> Font {
+        // THE VALUE REGISTER IS A GRAPHIC, AND IT SHARES THIS FUNCTION.
+        //
+        // `faffText` carries two things the design treats differently: the
+        // reading register (body 17/15, label 14/13/12) and the value register
+        // (28–104 numerals — the post-run poster's 32pt distance, the live
+        // run's 72pt pace). The second is drawn at a size the layout is built
+        // around, exactly like `faffDisplay`, and there is no call-site flag
+        // separating them because until now nothing needed one.
+        //
+        // `TypeScaleV5.valueMin` is where the design's own scale says the
+        // value register starts, so that is the line. Below it, text. At or
+        // above it, a number that is part of a picture.
+        let pt = (scales && size < TypeScaleV5.valueMin)
+            ? FaffTypeScalingV5.scaled(size)
+            : size
         if let ct = FaffCoreTextV5.font(
             postScriptName: FaffFaceV5.textPostScript,
-            size: size,
+            size: pt,
             axes: ["wght": weight.rawValue, "wdth": width],
             tabularFigures: tabular
         ) {
             return Font(ct)
         }
-        let fallback = Font.system(size: size, weight: weight.systemWeight)
+        let fallback = Font.system(size: pt, weight: weight.systemWeight)
         return tabular ? fallback.monospacedDigit() : fallback
     }
 

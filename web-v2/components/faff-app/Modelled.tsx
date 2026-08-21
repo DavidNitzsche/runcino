@@ -74,6 +74,42 @@ export function Modelled({
 }) {
   return (
     <span title={title ?? 'Modelled, not measured'}>
+      {/*
+        RULE ONE WAS SIGHTED-ONLY.
+
+        The amber tilde is `aria-hidden` — correctly, because a bare "~" in a
+        text node is announced as "tilde" by NVDA and JAWS and skipped
+        silently by VoiceOver, and neither of those is "modelled". But hiding
+        it was the whole of the accommodation, and the basis then lived only
+        in `title` on a plain `<span>`: not a reliable accessible description,
+        never reachable by keyboard, and nothing at all on touch.
+
+        So a screen-reader user heard "3:31:48" where the page shows
+        "~3:31:48" in amber. A projection and a finish time read out
+        identically — which is this file's own stated sin, committed in the
+        one place nobody looks.
+
+        The word carries what the glyph carries. Positioned out of flow, so
+        it costs no layout and changes nothing on screen. "Estimated" is the
+        same word the iPhone speaks for the same mark, so the two surfaces
+        say the same thing about the same number.
+      */}
+      <span
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          padding: 0,
+          margin: -1,
+          overflow: 'hidden',
+          clip: 'rect(0 0 0 0)',
+          clipPath: 'inset(50%)',
+          whiteSpace: 'nowrap',
+          borderWidth: 0,
+        }}
+      >
+        {title ?? 'Estimated, not measured'}.{' '}
+      </span>
       <span
         aria-hidden="true"
         style={{

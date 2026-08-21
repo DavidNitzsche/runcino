@@ -337,6 +337,22 @@ struct DayPanel<Content: View>: View {
                 }
             }
             .v5Grain()
+            // THE PANEL IS PAINT, NOT CONTENT.
+            //
+            // The grain layer is a tiled `Image`, and an Image is an
+            // accessibility element whether or not anyone named it. Every v5
+            // screen with a gradient panel therefore carried one unlabelled
+            // element the size of the panel — VoiceOver announced a bare
+            // "image" in the middle of Today, Races and all six state screens,
+            // sitting between the stats plate and the first section below it.
+            //
+            // Everything the panel MEANS is already text on top of it. The
+            // gradient and its grain say nothing a runner needs.
+            //
+            // Hidden INSIDE the background builder, not on the panel: applied
+            // one line down it would take the panel's whole subtree with it
+            // and silence the poster.
+            .accessibilityHidden(true)
         }
         .clipShape(PanelShape(radius: V5.R.panel))
         .padding(.top, -topInset)
@@ -401,8 +417,42 @@ struct PanelStatPlate: View {
                     FaffValueText(s.value,
                                   font: .faffText(17, weight: .semibold),
                                   color: s.ink ?? V5.OnPanel.primary)
+                        // A NUMBER MUST NOT SHATTER.
+                        //
+                        // The plate is three fixed columns across a 390pt
+                        // phone — about 110pt each. At the first accessibility
+                        // text size the Races poster's projected finish came
+                        // out as "~3:16:4" on one line and "5" on the next.
+                        // A finish time broken mid-figure is not a smaller
+                        // problem than a truncated one; it is a wrong number
+                        // that looks like a right one.
+                        //
+                        // So the value holds one line and shrinks to fit
+                        // instead. At the default content size every value in
+                        // the design already fits at full size, so this draws
+                        // nothing differently for a runner who has not changed
+                        // the setting — verified by pixel diff. Above it, the
+                        // figure stays whole and still lands larger than the
+                        // 17pt it started at.
+                        //
+                        // The plate cannot carry accessibility type at its
+                        // designed width. This keeps it honest; making it
+                        // actually large is a layout the design has to give.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // THREE LABELS, THEN THREE VALUES, THREE SWIPES APART.
+                //
+                // The plate is a row of columns, so VoiceOver read it in
+                // layout order: "Goal", "Projected", "Gap", and only then
+                // "Sub 3:30", "estimated 3:16:45", "+2:56". Which number
+                // belonged to which word was left to the runner to count out.
+                //
+                // `.combine` keeps the children's own labels, so the amber
+                // tilde's "estimated" survives into the pair and the stat
+                // reads "Projected, estimated, 3:16:45".
+                .accessibilityElement(children: .combine)
             }
         }
         .padding(.vertical, V5.S.s16)

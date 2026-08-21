@@ -35,11 +35,20 @@ export interface IconProps {
   size?: number;
   /** Override the fill. Defaults to currentColor. */
   strokeColor?: string;
+  /**
+   * What this glyph MEANS, where it carries meaning on its own.
+   *
+   * Almost never needed. An icon in this app sits beside the word it
+   * illustrates or inside a control that `IconButton` has already named, and
+   * in both cases the icon is decoration. Pass this only when the glyph is
+   * the entire content of something and nothing else says what it is.
+   */
+  label?: string;
   style?: CSSProperties;
 }
 
 /** Lucide, vendored in /public/redesign/icons and masked so the glyph takes currentColor. */
-export function Icon({ name, size = 20, strokeColor, style }: IconProps) {
+export function Icon({ name, size = 20, strokeColor, label, style }: IconProps) {
   const url = `/redesign/icons/${name}.svg`;
   const s: CSSProperties = {
     display: 'inline-block',
@@ -57,5 +66,18 @@ export function Icon({ name, size = 20, strokeColor, style }: IconProps) {
     maskSize: 'contain',
     ...style,
   };
-  return <i style={s} role="img" aria-label={name} />;
+  // EVERY DECORATIVE GLYPH WAS ANNOUNCING ITS LUCIDE FILENAME.
+  //
+  // This was unconditionally `role="img" aria-label={name}`, and `name` is
+  // the vendored SVG's filename. So a nav item read out as "sun, image,
+  // Today"; the Select's chevron as "chevron-down, image"; the Stepper's
+  // controls as "minus, image" and "plus, image" beside buttons that
+  // `IconButton` had already named properly. The label was never the icon's
+  // meaning — it was its asset path, leaking into speech on every screen of
+  // the redesign surface.
+  //
+  // Decoration by default, named only when a caller says it carries meaning.
+  return label
+    ? <i style={s} role="img" aria-label={label} />
+    : <i style={s} aria-hidden="true" />;
 }

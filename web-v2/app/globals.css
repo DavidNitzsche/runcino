@@ -7,6 +7,28 @@
 @import "./faff-toolkit.css";
 
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+
+/* KEYBOARD FOCUS · the legacy surface had no indicator of its own.
+   ────────────────────────────────────────────────────────────────────────
+   There is no blanket `outline:none` here, so the browser default survived
+   in most places — but seventeen call sites strip it locally and replace it
+   with a 1px white at 30-40% alpha, a border-colour change, or nothing at
+   all. Both auth pages are in that list, so signing in by keyboard meant
+   tabbing between three fields with no visible focus anywhere.
+
+   One rule, in the locked palette's own Attention amber (#F3AD38), which on
+   this surface's #0A0C10 / #11141A grounds clears the 3:1 a focus indicator
+   needs several times over. `:focus-visible`, not `:focus`, so a mouse click
+   never draws it — this is for the runner navigating by keyboard.
+
+   The two-ring construction puts the ground's own colour inside the amber so
+   the indicator reads on a card, on the mesh, and on a filled button alike.
+   It sits at the top of the file so any local rule can still override it. */
+:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--eyebrow);
+  border-radius:inherit;
+}
 :root{
   --bg:#0A0C10; --card:#11141A; --line:rgba(255,255,255,.08);
   --txt:#F6F7F8; --mute:#8A90A0; --dim:#4B505E;
@@ -97,6 +119,34 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 @media (prefers-reduced-motion: reduce){
   .blobs,.blob{animation:none;}
   .mesh{background:linear-gradient(143deg,var(--c1),var(--c2) 24%,var(--c4) 64%,var(--base) 118%);}
+
+  /* THE FOUR DURATION TOKENS WERE NEVER ZEROED.
+     ------------------------------------------------------------------
+     This block stopped the mesh and nothing else. Ninety-two `transition:`
+     declarations in this file and seventeen more in faff-toolkit.css all
+     read --t-tap / --t-state / --t-sheet / --t-mesh, and every one of them
+     kept running at full duration for a runner who had asked the system
+     for less motion. The redesign surface already does this correctly —
+     redesign/tokens/motion.css zeroes its own --dur-1..4 — and this is the
+     same move on the legacy tokens.
+
+     Zeroing the tokens, not the transitions: state still changes, it just
+     arrives rather than travels. */
+  :root{--t-tap:0s; --t-state:0s; --t-sheet:0s; --t-mesh:0s;}
+
+  /* The four that loop forever and were never suppressed. An infinite
+     animation is the one kind this setting most exists to stop.
+     .brandmark keeps its gradient, it just stops sweeping. */
+  .brandmark{animation:none;}
+  .confetti span{animation:none;}
+  .rb-ov-dot{animation:none;}
+  .main{animation:none;}
+
+  /* The login page keeps its own copy of the mesh under .login-shell, and
+     its keyframes win the cascade over the .blobs rule above on
+     specificity — so the mesh that greets a first-time visitor was the one
+     place this setting was ignored outright. Named explicitly here. */
+  .login-shell .blobs,.login-shell .blob,.login-shell .blobs i{animation:none;}
 }
 .grain{position:absolute;inset:0;z-index:1;opacity:.05;mix-blend-mode:overlay;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
 .fade{position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.36) 0%,rgba(0,0,0,0) 26%,rgba(0,0,0,0) 56%,rgba(0,0,0,.46) 100%);}

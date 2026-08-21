@@ -117,12 +117,13 @@ struct PacesMovedV5: View {
                 Spacer(minLength: 0)
                 Button(action: onOpenAccount) {
                     Text(initials)
-                        .font(.faffText(12, weight: .semibold))
+                        .font(.faffText(12, weight: .semibold, scales: false))
                         .foregroundStyle(V5.textPrimary)
                         .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
                         .background(V5.materialControl, in: Circle())
                 }
                 .buttonStyle(V5PressStyle())
+                .v5HeaderTarget("Account and settings")
             }
 
             Text(paces.headline)
@@ -176,6 +177,15 @@ struct PacesMovedV5: View {
             Text(Theme.V5.modelledMark)
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(V5.attention)
+                // A LONE TILDE IS PUNCTUATION, NOT A MARK.
+                //
+                // On a value the tilde is spoken as "estimated", because
+                // `FaffValueText` names it. Here it is the caption's own
+                // bullet and it reached VoiceOver as a bare "~" element —
+                // announced as "tilde" or swallowed, depending on the voice.
+                // The sentence beside it already says "Modelled from training",
+                // which is the whole content, so the glyph is decoration.
+                .accessibilityHidden(true)
             Text(text)
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(V5.textQuiet)

@@ -46,6 +46,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// The v5 design system's semantic tokens. Named for the prototype's CSS
 /// custom properties. Every v5 screen paints from here, never from a hex.
@@ -246,13 +247,40 @@ enum V5 {
     // ═════════════════════════════════════════════════════════════════════
 
     enum Motion {
-        static let press = Theme.V5.Motion.press            // 120ms
-        static let fill  = Theme.V5.Motion.fill             // 200ms
-        static let sheet = Theme.V5.Motion.sheet            // 320ms
-        static let sheetOffset = Theme.V5.Motion.sheetOffset // 24pt
+        // ─────────────────────────────────────────────────────────────────
+        // REDUCE MOTION · the design's durations, or none of them.
+        //
+        // The design specifies 120ms press, 200ms fill, 320ms sheet. A runner
+        // who has asked the system for less motion gets the same STATE change
+        // with no tween — never a different layout, never a missing step. The
+        // design is unaltered; only its interpolation is.
+        //
+        // Read as a computed `static var`, not a lazy `static let`. TokensV5's
+        // header records why: a lazy static that touches UIKit and is first
+        // evaluated inside a view body re-enters `_dispatch_once_wait` and
+        // traps. `UIAccessibility.isReduceMotionEnabled` is a plain read with
+        // no one-time initialiser behind it, so a computed var is safe where a
+        // lazy let is not.
+        //
+        // Nothing in this system bounces, pulses or scales, so there is no
+        // second animation to suppress — cutting the duration is the whole of
+        // the accommodation.
+        // ─────────────────────────────────────────────────────────────────
+
+        /// True when the runner has asked the system for reduced motion.
+        static var reduced: Bool { UIAccessibility.isReduceMotionEnabled }
+
+        static var press: Animation? { reduced ? nil : Theme.V5.Motion.press }   // 120ms
+        static var fill:  Animation? { reduced ? nil : Theme.V5.Motion.fill }    // 200ms
+        static var sheet: Animation? { reduced ? nil : Theme.V5.Motion.sheet }   // 320ms
+
+        /// The sheet's 24pt rise. Zero under reduce-motion: the sheet still
+        /// appears, it just does not travel.
+        static var sheetOffset: CGFloat { reduced ? 0 : Theme.V5.Motion.sheetOffset }
+
         /// Expand-in-place, the app's one picker interaction. Same curve as a
         /// sheet: a row opening is the same gesture at a smaller scale.
-        static let expand = Theme.V5.Motion.sheet
+        static var expand: Animation? { reduced ? nil : Theme.V5.Motion.sheet }
     }
 
     // ═════════════════════════════════════════════════════════════════════

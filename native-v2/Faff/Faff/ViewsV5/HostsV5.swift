@@ -327,7 +327,7 @@ struct TodayHostV5: View {
                 Group {
                     if let initials {
                         Text(initials)
-                            .font(.faffText(12, weight: .semibold))
+                            .font(.faffText(12, weight: .semibold, scales: false))
                     } else {
                         Image(systemName: "person")
                             .font(.system(size: 13, weight: .semibold))
@@ -338,7 +338,7 @@ struct TodayHostV5: View {
                 .background(V5.materialTileRaised, in: Circle())
             }
             .buttonStyle(V5PressStyle())
-            .accessibilityLabel("Account and settings")
+            .v5HeaderTarget("Account and settings")
         }
     }
 

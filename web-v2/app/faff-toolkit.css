@@ -464,6 +464,15 @@
    ============================================================ */
 .fa-skel { background: linear-gradient(100deg, rgba(255,255,255,.04) 30%, rgba(255,255,255,.1) 50%, rgba(255,255,255,.04) 70%); background-size: 200% 100%; border-radius: 7px; animation: fa-shimmer 1.3s linear infinite; }
 @keyframes fa-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+/* An infinite shimmer under a reduced-motion setting is the exact thing the
+   setting is for, and this one was never suppressed. It also disagrees with
+   the v5 rule the phone follows — "reserves the exact layout height, does not
+   shimmer/pulse" — so stopping it brings the two surfaces into line as well.
+   The placeholder keeps its fill and its reserved height; it just holds
+   still. */
+@media (prefers-reduced-motion: reduce){
+  .fa-skel { animation: none; background: rgba(255,255,255,.06); }
+}
 .fa-skel-line { height: 12px; margin: 7px 0; }
 .fa-skel-line.w40 { width: 40%; } .fa-skel-line.w60 { width: 60%; } .fa-skel-line.w80 { width: 80%; }
 .fa-skel-num { height: 30px; width: 90px; }
