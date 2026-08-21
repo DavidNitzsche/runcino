@@ -5,7 +5,7 @@
   "description": "faff.run v2 — coaching-app rewrite against deck-v1-2026-05-25.html. Replaces legacy/web on cutover.",
   "scripts": {
     "dev": "next dev",
-    "prebuild": "bash ../scripts/check-palette-sync.sh && bash ../scripts/check-modelled-mark.sh && bash ../scripts/check-doctrine.sh",
+    "prebuild": "bash ../scripts/check-palette-sync.sh && bash ../scripts/check-modelled-mark.sh && bash ../scripts/check-doctrine.sh && bash ../scripts/check-wire-keys.sh",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:doctrine": "bash ../scripts/check-doctrine.sh",
+    "test:wire": "bash ../scripts/check-wire-keys.sh",
     "eval:voice": "node ../scripts/voice-eval/run.mjs",
     "test:adapt": "node ../scripts/sim/adaptation.mjs",
     "test:truth": "node ../scripts/sim/truth-contract.mjs"
