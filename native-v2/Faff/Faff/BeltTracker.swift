@@ -14,14 +14,19 @@
 //  Two consoles were each doing that arithmetic inline, and both got a piece
 //  of it wrong (2026-08-21 audit):
 //
-//   · `Views/TreadmillView.swift` integrated the RUN total correctly per
-//     second, then recomputed each PHASE's distance as
-//     `duration / 3600 × speedMph` using whatever speed was set when the
-//     phase closed. Change the belt mid-phase and the whole phase was
-//     credited at the final speed. Proven on David's 2026-08-20 run: the
-//     run total came back 4.26 mi and the single phase 4.25 mi — two numbers
-//     that cannot differ unless the speed moved, and only one of which was
-//     integrated.
+//   · `Views/TreadmillView.swift` integrated the RUN total per second, then
+//     recomputed each PHASE's distance as `duration / 3600 × speedMph` using
+//     whatever speed was set when the phase closed. Change the belt mid-phase
+//     and the whole phase was credited at the final speed. Visible in David's
+//     2026-08-20 run: the run total came back 4.26 mi and the single phase
+//     4.25 mi — two numbers that cannot differ unless the speed moved, and
+//     only one of which was integrated.
+//
+//     (Which speed the integral was fed is a SEPARATE defect, and the one
+//     that actually cost David his distance: the tick ran from a closure
+//     captured in the view, so it integrated a stale copy of the belt speed.
+//     Fixed in BeltSession.swift. This file assumes it is handed the right
+//     speed; that file is what makes that true.)
 //
 //   · `ViewsV5/LiveRunTreadmillV5.swift` averaged speed per TICK
 //     (`speedSum / sampleCount`) rather than per SECOND, so any tick that
@@ -103,6 +108,10 @@ struct BeltSegmentActual: Equatable {
     /// seconds — the modelled share of `distanceMi`.
     var unmeasuredMi: Double
     var samples: [BeltSample]
+    /// Did this segment run for the duration it asked for. Stamped by
+    /// `BeltSession` at the boundary; the tracker itself has no opinion about
+    /// what a plan asked for.
+    var completed: Bool = false
 
     /// Seconds per mile, from duration and distance. Nil for a segment with
     /// no distance rather than a divide-by-zero sentinel.

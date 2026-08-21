@@ -114,29 +114,17 @@ struct LiveRunTreadmillV5: View {
     /// happen at all (`HostsV5.swift` is off-limits for this change).
     let onEnd: () -> Void
 
-    /// The ONE integration of this session. Was four inline accumulators
-    /// with a per-TICK speed average standing in for a per-SECOND integral:
-    /// `speedSum / sampleCount` weighted a 90-second backgrounding gap the
-    /// same as one ordinary second, so `actualDistanceMi` drifted away from
-    /// `totalDistanceMi` on exactly the runs where it mattered. See
-    /// BeltTracker.swift.
-    @State private var belt = BeltTracker()
-    @State private var speedMph: Double
-    @State private var inclinePct: Double
-    @State private var isPaused: Bool = false
-    /// Stamped when the runner actually starts, not when the view is built.
-    /// The console renders at `.opacity(0)` while `LiveRunHostV5` fetches the
-    /// plan, and this used to be `.now` at init — so a slow fetch counted as
-    /// running, on a belt the runner had not stepped onto yet.
-    @State private var startedAt: Date?
-    /// True once the runner has moved the belt themselves. Nothing in this
-    /// view may overwrite a runner's own input with a target after that.
-    @State private var runnerSetSpeed: Bool = false
-    /// Seeded from the plan the first time one arrives. `State(initialValue:)`
-    /// runs ONCE, at the first `init`, and the host builds this view before
-    /// the plan lands — so the plan's own target never reached the belt and
-    /// every planned session opened at the flat 8.0 mph fallback.
-    @State private var seededFromPlan = false
+    /// THE RECORDER. Belt speed, incline, the integrator, the phase cursor
+    /// and the per-phase actuals live in this object, not in this struct.
+    ///
+    /// This console had the same defect the legacy one shipped: the tick ran
+    /// from a closure captured inside a `.background` subtree, so it
+    /// integrated `speedMph` as it stood when the closure was made rather
+    /// than when the runner tapped. It ALSO averaged speed per TICK rather
+    /// than per SECOND. Both are gone — see BeltSession.swift, which is where
+    /// the belt speed now lives, and BeltTracker.swift for the integral.
+    @StateObject private var session: BeltSession
+
     /// Watch HR bridge · 2026-08-21. This console never asked the watch to
     /// open an indoor HKWorkoutSession at all, so its heart rate came from
     /// HealthKit's passive every-5-minute baseline rather than the 5-15 s
@@ -147,34 +135,19 @@ struct LiveRunTreadmillV5: View {
     @State private var lastPingAt: Date = .distantPast
     @State private var lastBridgeAskAt: Date = .distantPast
     @State private var lastBpmAt: Date?
-    /// The session clock. `@State` so it is not rebuilt on every render.
-    @State private var clock = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+
     /// Stable id, stamped once. Same role as `TreadmillView`'s `workoutId` —
     /// backend idempotency key, and reused as the payload's `workoutId` so a
     /// retried POST from the durable queue overwrites rather than duplicates.
     private let workoutId: String = "trd_\(UUID().uuidString)"
-    /// Per-phase actuals, keyed by `WatchPhase.index` — this view's analogue
-    /// of legacy's `actualsBySegment`. A phase absent from this dict was
-    /// never reached.
-    @State private var phaseActuals: [Int: PhaseActual] = [:]
-    /// The phase index the tracker currently believes is active, so a
-    /// boundary crossing (detected each tick) can close out the previous
-    /// phase exactly once.
-    @State private var trackedPhaseIndex: Int?
-
-    /// One closed phase. `belt` is that phase's own slice of the single
-    /// session integration, so its speed, distance and pace agree with each
-    /// other and the slices sum to the run total.
-    ///
-    /// This used to hold `speedSumMph / sampleCount` — a mean over TICKS.
-    /// Ticks are not equal: one covers a second, the next covers however long
-    /// the screen was locked. Weighting is per second now, in BeltTracker.
-    private struct PhaseActual {
-        var belt: BeltSegmentActual
-        var completed: Bool = false
-        var avgHr: Int?
-        var maxHr: Int?
-    }
+    /// Per-phase HEART RATE, closed at the same boundary the recorder closes
+    /// its phase. Only HR lives here — the belt's own numbers are
+    /// `session.actuals`, because a stale copy of those is the defect.
+    @State private var hrByPhase: [Int: (avg: Int?, max: Int?)] = [:]
+    /// How many phase closes we have already attached HR to.
+    @State private var hrClosedCount: Int = 0
+    /// True once the plan has been handed to the recorder.
+    @State private var configured = false
 
     init(plan: LiveRunPlanV5?, hr: TreadmillHRStreamer,
          onPause: @escaping () -> Void, onEnd: @escaping () -> Void) {
@@ -182,16 +155,20 @@ struct LiveRunTreadmillV5: View {
         self._hr = ObservedObject(wrappedValue: hr)
         self.onPause = onPause
         self.onEnd = onEnd
-        self._speedMph = State(initialValue: Self.defaultSpeedMph(plan: plan))
-        self._inclinePct = State(initialValue: 1.0)
+        self._session = StateObject(wrappedValue: BeltSession(
+            speedMph: Self.defaultSpeedMph(plan: plan), inclinePct: 1.0))
     }
 
     // One accumulator, read for the UI. `elapsedSec` and `distanceMi` were
     // separate `@State` advanced in parallel with the phase totals, which is
     // how the two could disagree.
-    private var elapsedSec: Int { belt.elapsedSecInt }
-    private var distanceMi: Double { belt.distanceMi }
-    private var isRunning: Bool { startedAt != nil && !isPaused }
+    private var elapsedSec: Int { session.belt.elapsedSecInt }
+    private var distanceMi: Double { session.belt.distanceMi }
+    private var isRunning: Bool { session.isRunning }
+    private var isPaused: Bool { session.startedAt != nil && !session.isRunning }
+    private var startedAt: Date? { session.startedAt }
+    private var speedMph: Double { session.speedMph }
+    private var inclinePct: Double { session.inclinePct }
 
     private var walk: LiveRunPhaseWalk? {
         guard let plan else { return nil }
@@ -236,17 +213,19 @@ struct LiveRunTreadmillV5: View {
         // the outdoor recorder at 5,543 ticks in ~15 s. See the matching note
         // in Views/TreadmillView.swift. A run-loop timer in `.common` mode
         // fires at a fixed 1 Hz and nothing in `body` reads the clock.
-        .onReceive(clock) { now in tick(at: now) }
-        .onChange(of: isRunning) { _, running in
-            UIApplication.shared.isIdleTimerDisabled = running
+        // The recorder drives itself. This only follows it, for the watch
+        // bridge and the heart-rate window.
+        .onReceive(session.$tickStamp) { now in
+            maintainWatchBridge(at: now)
+            attachHrForClosedPhases()
         }
         .onAppear {
             // The host no longer builds this console until the plan has been
             // asked for, so appearing IS starting. Stamp the clock and anchor
             // the HR stream to the same instant.
             let now = Date()
-            startedAt = now
-            belt.begin(at: now)
+            configurePlanIfNeeded()
+            session.start(at: now)
             meter.start(from: now)
             UIApplication.shared.isIdleTimerDisabled = true
             Task { await hr.start(from: now) }
@@ -261,11 +240,7 @@ struct LiveRunTreadmillV5: View {
         // runs on that first build. Without this the plan's own target never
         // reached the belt and every planned session opened at the flat
         // 8.0 mph fallback. Seed once, and never over a runner's own input.
-        .onChange(of: plan?.phases.count ?? 0) { _, _ in
-            guard !seededFromPlan, !runnerSetSpeed, plan != nil else { return }
-            seededFromPlan = true
-            speedMph = Self.defaultSpeedMph(plan: plan)
-        }
+        .onChange(of: plan?.phases.count ?? 0) { _, _ in configurePlanIfNeeded() }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             hr.stop()
@@ -274,13 +249,19 @@ struct LiveRunTreadmillV5: View {
             WatchSync.shared.stopTreadmillHRSession(sessionId: workoutId)
         }
         .onChange(of: hr.currentBpm) { _, bpm in
+            // Push heart rate INTO the recorder as a plain stored value.
+            // The pace samples carry it, and the recorder must not hold a
+            // closure reaching back into a view to fetch it — that is the
+            // shape this whole change removes.
+            session.currentBpm = bpm
             if bpm != nil { lastBpmAt = .now }
         }
-        .onChange(of: isPaused) { _, paused in
+        .onChange(of: session.isRunning) { _, running in
+            UIApplication.shared.isIdleTimerDisabled = running
             // Resuming: re-ask rather than assume the watch session survived.
             // The watch's dead-man timer is 15 minutes and its start is
             // idempotent for the same id, so a live session no-ops.
-            guard !paused, startedAt != nil else { return }
+            guard running, startedAt != nil else { return }
             lastBridgeAskAt = .now
             lastPingAt = .now
             watchHRBridgeUp = WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
@@ -293,19 +274,6 @@ struct LiveRunTreadmillV5: View {
     // exactly the arithmetic the prototype's own sample data performs
     // client-side (`TREADMILL_RUN`'s pace is derived from speed, not read
     // from a sensor).
-
-    private func tick(at now: Date) {
-        // Kept alive outside the pause guard: the watch's dead-man timer is
-        // 15 minutes, and a session only pinged while the belt turns dies on
-        // a longer pause with nothing on screen saying so.
-        maintainWatchBridge(at: now)
-        // Nothing is running until the runner starts it. The console is built
-        // and ticking (at `.opacity(0)`) while the host fetches the plan.
-        guard startedAt != nil, !isPaused else { belt.resync(to: now); return }
-        belt.advance(to: now, speedMph: speedMph, inclinePct: inclinePct,
-                     bpm: hr.currentBpm)
-        advancePhaseTracking()
-    }
 
     /// Ping a confirmed watch HR session, or re-ask for one that never
     /// confirmed. `treadmillSessionConfirmed` is the watch's actual answer;
@@ -358,40 +326,15 @@ struct LiveRunTreadmillV5: View {
         return LiveRunPhaseWalk.walk(phases: plan.phases, elapsedSec: elapsedSec)?.phase.index ?? 0
     }
 
-    private func advancePhaseTracking() {
-        let idx = currentPhaseIndex(at: elapsedSec)
-        guard idx != trackedPhaseIndex else { return }
-        // Crossed into a new phase · the one we just left ran its full asked
-        // duration, same as legacy's auto-advance (`completed: true`).
-        if trackedPhaseIndex != nil { closeOutPhase(completed: true) }
-        trackedPhaseIndex = idx
-        // The new phase does NOT get the plan's target written into
-        // `speedMph`: the belt is whatever the runner last set it to until
-        // they say otherwise. `nextLineText` already asks for the new speed.
-    }
-
-    /// Closes the open phase: its slice of the belt integration, plus its HR
-    /// window (`TreadmillHRStreamer.closePhase`) and its `completed` flag.
-    private func closeOutPhase(completed: Bool) {
-        guard let index = trackedPhaseIndex else { return }
-        let hrResult = hr.closePhase()
-        phaseActuals[index] = PhaseActual(
-            belt: belt.closeSegment(speedMph: speedMph, bpm: hr.currentBpm),
-            completed: completed,
-            avgHr: hrResult.avg,
-            maxHr: hrResult.max
-        )
-    }
-
-    /// Closes out whatever phase is still open when the runner taps End.
-    /// Mirrors legacy's `recordActual` call inside `endAndPost`: the phase in
-    /// progress is "completed" only if its accumulated duration reached the
-    /// asked duration — ending early is an honest partial, not a pass.
-    private func finalizeActivePhaseForEnd(status: String) {
-        guard let idx = trackedPhaseIndex else { return }
-        let askedSec = effectivePhases.first(where: { $0.index == idx })?.durationSec ?? 0
-        let actualSec = Int(belt.segElapsedSec.rounded())
-        closeOutPhase(completed: status == "completed" && actualSec >= askedSec)
+    /// Attach heart rate to whichever phases the recorder has just closed.
+    /// The recorder owns the boundary; this view owns the HR window.
+    private func attachHrForClosedPhases() {
+        while hrClosedCount < session.closedCount {
+            let closed = hrClosedCount
+            let result = hr.closePhase()
+            hrByPhase[closed] = (result.avg, result.max)
+            hrClosedCount += 1
+        }
     }
 
     // MARK: - Completion payload
@@ -403,8 +346,9 @@ struct LiveRunTreadmillV5: View {
 
     private func buildCompletionPayload(status: String) -> [String: Any] {
         let iso = ISO8601DateFormatter()
-        let phasePayloads: [[String: Any]] = effectivePhases.map { phase in
-            let act = phaseActuals[phase.index]
+        let phasePayloads: [[String: Any]] = effectivePhases.enumerated().map { i, phase in
+            let act = session.actuals[i]
+            let bpm = hrByPhase[i]
             var p: [String: Any] = [
                 "index": phase.index,
                 "label": phase.label,
@@ -415,11 +359,11 @@ struct LiveRunTreadmillV5: View {
                 // live belt reading at End — the same fallback shape legacy
                 // uses for an unreached segment, inherited here rather than
                 // introduced.
-                "actualSpeedMph": act.map { $0.belt.avgSpeedMph } ?? nominalMph(for: phase),
-                "actualInclinePct": act.map { $0.belt.avgInclinePct } ?? 1.0,
+                "actualSpeedMph": act.map { $0.avgSpeedMph } ?? nominalMph(for: phase),
+                "actualInclinePct": act.map { $0.avgInclinePct } ?? 1.0,
             ]
-            if let act, act.belt.durationSec > 0 {
-                let b = act.belt
+            if let act, act.durationSec > 0 {
+                let b = act
                 // The phase's own slice of the integration — never a
                 // recompute from a summary speed.
                 p["actualDistanceMi"] = (b.distanceMi * 100).rounded() / 100
@@ -438,8 +382,8 @@ struct LiveRunTreadmillV5: View {
                     p["unmeasuredSec"] = b.unmeasuredSec
                     p["unmeasuredDistanceMi"] = (b.unmeasuredMi * 100).rounded() / 100
                 }
-                if let avgHr = act.avgHr { p["avgHr"] = avgHr }
-                if let maxHr = act.maxHr { p["maxHr"] = maxHr }
+                if let avgHr = bpm?.avg { p["avgHr"] = avgHr }
+                if let maxHr = bpm?.max { p["maxHr"] = maxHr }
             }
             return p
         }
@@ -449,12 +393,12 @@ struct LiveRunTreadmillV5: View {
         let sessionHr = hr.closeSession()
         var payload: [String: Any] = [
             "workoutId": workoutId,
-            "startedAt": iso.string(from: startedAt ?? Date(timeIntervalSinceNow: -belt.elapsedSec)),
+            "startedAt": iso.string(from: startedAt ?? Date(timeIntervalSinceNow: -session.belt.elapsedSec)),
             "completedAt": iso.string(from: .now),
             "status": status,
-            "totalDistanceMi": (belt.distanceMi * 100).rounded() / 100,
-            "totalDurationSec": belt.elapsedSecInt,
-            "elevGainFt": belt.elevGainFt.rounded(),
+            "totalDistanceMi": (session.belt.distanceMi * 100).rounded() / 100,
+            "totalDurationSec": session.belt.elapsedSecInt,
+            "elevGainFt": session.belt.elevGainFt.rounded(),
             "elevGainSource": "treadmill_incline",
             "source": "treadmill",
             "indoor": true,
@@ -463,19 +407,19 @@ struct LiveRunTreadmillV5: View {
         if let avgHr = sessionHr.avg { payload["avgHr"] = avgHr }
         if let maxHr = sessionHr.max { payload["maxHr"] = maxHr }
         // What this run could not witness. Keys ABSENT on a clean run.
-        if belt.unmeasuredSec >= 1 {
-            payload["unmeasuredSec"] = Int(belt.unmeasuredSec.rounded())
-            payload["unmeasuredDistanceMi"] = (belt.unmeasuredMi * 100).rounded() / 100
+        if session.belt.unmeasuredSec >= 1 {
+            payload["unmeasuredSec"] = Int(session.belt.unmeasuredSec.rounded())
+            payload["unmeasuredDistanceMi"] = (session.belt.unmeasuredMi * 100).rounded() / 100
         }
-        if belt.droppedSec >= 1 {
-            payload["droppedGapSec"] = Int(belt.droppedSec.rounded())
+        if session.belt.droppedSec >= 1 {
+            payload["droppedGapSec"] = Int(session.belt.droppedSec.rounded())
         }
-        if belt.pausedSec >= 1 { payload["pausedSec"] = Int(belt.pausedSec.rounded()) }
+        if session.belt.pausedSec >= 1 { payload["pausedSec"] = Int(session.belt.pausedSec.rounded()) }
         // Provenance, same contract as the legacy console — see
         // Views/TreadmillView.swift buildPayload for the full argument.
         payload["distanceSource"] = {
             guard let m = measuredMi else { return "belt_stated" }
-            return IndoorDistanceMeter.materiallyDisagree(beltMi: belt.distanceMi, measuredMi: m)
+            return IndoorDistanceMeter.materiallyDisagree(beltMi: session.belt.distanceMi, measuredMi: m)
                 ? "belt_contested" : "belt_corroborated"
         }()
         // Cadence, MEASURED. The phone-driven watch bridge carries heart
@@ -489,8 +433,8 @@ struct LiveRunTreadmillV5: View {
         if let m = meter.rawDistanceMi { payload["pedometerDistanceMi"] = (m * 100).rounded() / 100 }
         if let st = meter.rawSteps { payload["pedometerSteps"] = st }
         if !IndoorDistanceMeter.isSupported { payload["pedometerAvailable"] = false }
-        payload["clockDriftSec"] = (belt.clockDriftSec(
-            startedAt: startedAt ?? Date(timeIntervalSinceNow: -belt.elapsedSec),
+        payload["clockDriftSec"] = (session.belt.clockDriftSec(
+            startedAt: startedAt ?? Date(timeIntervalSinceNow: -session.belt.elapsedSec),
             completedAt: .now) * 10).rounded() / 10
         return payload
     }
@@ -499,6 +443,19 @@ struct LiveRunTreadmillV5: View {
     /// pace when the plan set one, else the same flat defaults legacy falls
     /// back to. Never the live speedMph, which belongs to whichever phase
     /// the runner actually was on.
+    /// Hand the recorder the shape of the session, once. The host builds this
+    /// view before the plan lands, so this runs again when it arrives — the
+    /// recorder ignores it after the run has started.
+    private func configurePlanIfNeeded() {
+        guard !configured || session.startedAt == nil else { return }
+        configured = true
+        session.configure(plan: effectivePhases.map {
+            BeltSession.SegmentPlan(durationSec: $0.durationSec,
+                                    targetMph: nominalMph(for: $0),
+                                    targetInclinePct: 1.0)
+        })
+    }
+
     private func nominalMph(for phase: WatchPhase) -> Double {
         if let target = phase.targetPaceSPerMi, target > 0 {
             return (3600.0 / Double(target) * 10).rounded() / 10
@@ -636,14 +593,12 @@ struct LiveRunTreadmillV5: View {
     /// Any belt change is a RUNNER input: `runnerSetSpeed` records that, so
     /// nothing in this view may later overwrite it with a plan target.
     private func adjustSpeed(_ notches: Double) {
-        speedMph = BeltSpeed.stepped(mph: speedMph, by: notches,
-                                     unit: Units.preference.distance)
-        runnerSetSpeed = true
+        session.stepSpeed(notches: notches, unit: Units.preference.distance)
     }
 
     /// Incline is a percent grade on every belt, in every country.
     private func adjustIncline(_ delta: Double) {
-        inclinePct = (min(max(inclinePct + delta, 0.0), 12.0) * 10).rounded() / 10
+        session.stepIncline(delta)
     }
 
     private static func defaultSpeedMph(plan: LiveRunPlanV5?) -> Double {
@@ -706,25 +661,25 @@ struct LiveRunTreadmillV5: View {
     private var measuredMi: Double? { meter.reading.miles }
 
     private var readingsDisagree: Bool {
-        guard let m = measuredMi, belt.distanceMi > 0.1 else { return false }
-        return IndoorDistanceMeter.materiallyDisagree(beltMi: belt.distanceMi, measuredMi: m)
+        guard let m = measuredMi, session.belt.distanceMi > 0.1 else { return false }
+        return IndoorDistanceMeter.materiallyDisagree(beltMi: session.belt.distanceMi, measuredMi: m)
     }
 
     /// A belt figure is modelled unless something measured the same run and
     /// agreed with it. Rule one, applied to the one number on this screen
     /// nobody sensed.
     private var distanceIsModelled: Bool {
-        if belt.distanceIsModelled { return true }
+        if session.belt.distanceIsModelled { return true }
         guard let m = measuredMi else { return true }
-        return IndoorDistanceMeter.materiallyDisagree(beltMi: belt.distanceMi, measuredMi: m)
+        return IndoorDistanceMeter.materiallyDisagree(beltMi: session.belt.distanceMi, measuredMi: m)
     }
 
     /// One quiet line. Names both numbers when they disagree, says what was
     /// estimated when the console was away, and otherwise says nothing.
     private var provenanceNote: String? {
-        if belt.distanceIsModelled { return unmeasuredNote }
+        if session.belt.distanceIsModelled { return unmeasuredNote }
         if readingsDisagree, let m = measuredMi {
-            return "Your phone counted \(Units.formatDistance(miles: m, decimals: 2)) \(Units.distanceLabel()) \u{00b7} the belt speed you set says \(Units.formatDistance(miles: belt.distanceMi, decimals: 2)). Check the belt number."
+            return "Your phone counted \(Units.formatDistance(miles: m, decimals: 2)) \(Units.distanceLabel()) \u{00b7} the belt speed you set says \(Units.formatDistance(miles: session.belt.distanceMi, decimals: 2)). Check the belt number."
         }
         if measuredMi == nil, startedAt != nil, elapsedSec > 120 {
             return "Distance is from the belt speed you set \u{00b7} nothing here measured it."
@@ -733,8 +688,8 @@ struct LiveRunTreadmillV5: View {
     }
 
     private var unmeasuredNote: String {
-        let mins = Int((belt.unmeasuredSec / 60).rounded())
-        let span = mins >= 1 ? "\(mins) min" : "\(Int(belt.unmeasuredSec.rounded())) sec"
+        let mins = Int((session.belt.unmeasuredSec / 60).rounded())
+        let span = mins >= 1 ? "\(mins) min" : "\(Int(session.belt.unmeasuredSec.rounded())) sec"
         return "\(span) ran with the app in the background \u{00b7} that distance is estimated at the belt speed you last set."
     }
 
@@ -759,10 +714,9 @@ struct LiveRunTreadmillV5: View {
     private var buttons: some View {
         HStack(spacing: V5.S.s10) {
             FaffButton(isPaused ? "Resume" : "Pause", variant: .secondary, size: .lg) {
-                // Re-anchor so the paused wall-clock span is never credited
-                // as running when the belt starts again.
-                belt.resync(to: .now)
-                isPaused.toggle()
+                // The recorder owns its own clock, so pause and resume
+                // re-anchor inside the model.
+                session.togglePause()
                 onPause()
             }
             FaffButton("End", variant: .destructive, size: .lg) {
@@ -781,7 +735,8 @@ struct LiveRunTreadmillV5: View {
     /// there is nothing correctness-relevant left to wait for before handing
     /// the screen back to `onEnd`.
     private func endAndSave() {
-        finalizeActivePhaseForEnd(status: "completed")
+        session.finish()
+        attachHrForClosedPhases()
         hr.stop()
         meter.stop()
         WatchSync.shared.stopTreadmillHRSession(sessionId: workoutId)

@@ -6,18 +6,28 @@
 //  WHY
 //
 //  The treadmill console's distance is an integral of the belt speed the
-//  runner TYPED IN. That is a stated number, not a measured one, and the
-//  distinction is not academic — it is the whole of the 2026-08-20 defect:
+//  runner TYPED IN. Nothing measures it. That is a stated number, not a
+//  measured one, and on 2026-08-20 the two came apart:
 //
-//    David ran, changed the belt speed a couple of times, and the app came
-//    back LOWER than the treadmill's own display. The stored row proves the
-//    console's own arithmetic was working — the run's integrated distance
-//    (4.26 mi) is strictly greater than 2250 s at a constant 6.8 mph
-//    (4.25 mi), and its incline-derived elevation (225 ft) is likewise a foot
-//    above what a constant 6.8 would give (224 ft), so at least one belt
-//    change did reach the integrator. The app was reading low because it was
-//    faithfully integrating a number that had gone stale on the screen: he
-//    moved the belt, and nothing told the app.
+//    David ran, moved the belt speed on the app's OWN ± steppers, watched the
+//    number change on screen, and the app came back LOWER than the
+//    treadmill's display. The app was told and did not listen. The recorder
+//    lived in a View struct and ticked from a closure captured inside a
+//    `.background` subtree, so it integrated `speedMph` as it stood when the
+//    closure was made. The display re-read state on every render and was
+//    always right; the integrator's copy was right only until the next tap.
+//
+//    The stored row pins the size of it. The run integrated to 4.26 mi over
+//    2250 s closing at 6.8 mph, and a flat 6.8 for that duration is 4.25 mi —
+//    so the TOTAL time the integrator ever spent above 6.8 is worth 18-54
+//    mph-seconds, one to four minutes out of a 37:30 session. Ten minutes at
+//    +0.4 mph alone would have stored 4.32. Stale most of the time, refreshed
+//    occasionally, which is what an occasionally-rebuilt subtree gives you.
+//
+//  That defect is fixed at its root in BeltSession.swift, which is where the
+//  belt speed now lives. This file is the second half of the answer: even
+//  when the app hears every tap, the number is still only what the runner
+//  told it. So measure something.
 //
 //  The app cannot read the belt. But the phone can measure the runner.
 //  `CMPedometer` is accelerometer-derived and works with no GPS and no
