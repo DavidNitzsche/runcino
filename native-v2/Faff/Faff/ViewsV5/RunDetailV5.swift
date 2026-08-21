@@ -103,7 +103,7 @@ struct RunDetailV5: View {
                         }
                     }
 
-                    if !detail.splits.isEmpty { splitsSection }
+                    if !splitBars.isEmpty { splitsSection }
 
                     if hasZoneData { zoneSection }
 
@@ -219,21 +219,70 @@ struct RunDetailV5: View {
 
     // MARK: - Splits
 
-    private var splitsSection: some View {
-        ListGroup(header: "Splits") {
-            ForEach(detail.splits) { split in
-                ListRow(label: "Mile \(split.mile)",
-                        sub: splitSub(split),
-                        value: .measured(split.pace.map { "\($0)/mi" }))
-            }
+    /// The band a split can be judged against, or nil.
+    ///
+    /// Only the steady kinds carry one — easy, long, recovery — because only
+    /// they ask for a single pace window across the whole run. A threshold or
+    /// interval session has a rep pace, and holding mile three of a session
+    /// with a warmup, six reps and a cooldown against that number would mark
+    /// every recovery jog "outside the target". So a structured session gets
+    /// no band and its bars all draw in signal, which says what is true: these
+    /// are the miles, and this chart is not the place the work gets judged.
+    private var splitBand: (lo: Int, hi: Int)? {
+        guard let spec = detail.planned_spec,
+              let lo = spec.pace_target_s_per_mi_lo,
+              let hi = spec.pace_target_s_per_mi_hi,
+              hi >= lo else { return nil }
+        return (Int(lo.rounded()), Int(hi.rounded()))
+    }
+
+    private var splitBars: [SplitBar] {
+        let band = splitBand
+        let parsed: [(Int, Int)] = detail.splits.compactMap { s in
+            guard let sec = Self.paceSeconds(s.pace) else { return nil }
+            return (s.mile, sec)
+        }
+        // A run of 6.3 miles reports seven splits, and the seventh is three
+        // tenths long. Size it to what it actually covers rather than letting
+        // a fragment draw with a whole mile's weight.
+        let tail: Double = {
+            guard detail.distance_mi > 0, parsed.count > 1 else { return 1 }
+            let remainder = detail.distance_mi - Double(parsed.count - 1)
+            return (remainder > 0 && remainder < 0.95) ? remainder : 1
+        }()
+        return parsed.enumerated().map { i, p in
+            SplitBar(mile: p.0,
+                     paceSec: p.1,
+                     fraction: i == parsed.count - 1 ? tail : 1,
+                     inBand: band.map { p.1 >= $0.lo && p.1 <= $0.hi })
         }
     }
 
-    private func splitSub(_ s: RunSplit) -> String? {
-        var parts: [String] = []
-        if let hr = s.hr { parts.append("\(hr) bpm") }
-        if let e = s.elev_change_ft, e != 0 { parts.append("\(e > 0 ? "+" : "")\(e) ft") }
-        return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
+    private static func paceSeconds(_ s: String?) -> Int? {
+        guard let s, !s.isEmpty else { return nil }
+        let parts = s.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2, parts[1] >= 0, parts[1] < 60 else { return nil }
+        return parts[0] * 60 + parts[1]
+    }
+
+    private var splitsSection: some View {
+        VStack(alignment: .leading, spacing: V5.S.s10) {
+            V5SectionLabel(text: "Splits").padding(.horizontal, V5.S.s4)
+            SplitBars(bars: splitBars)
+                .padding(.top, 18)
+                .padding(.horizontal, V5.S.s12)
+                .padding(.bottom, V5.S.s8)
+                .background(V5.materialTile,
+                            in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
+            if splitBand != nil {
+                // The chart's one colour rule, said once in words. Without it
+                // the grey bars are a code the screen never breaks.
+                Text("Filled where the mile sat inside what the session asked for.")
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+                    .padding(.horizontal, V5.S.s4)
+            }
+        }
     }
 
     // MARK: - Zone bar

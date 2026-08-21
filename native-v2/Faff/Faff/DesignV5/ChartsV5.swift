@@ -943,3 +943,107 @@ struct ConvergenceList: View {
         }
     }
 }
+
+// MARK: - SplitBars
+//
+// 23a's per-mile split chart. One bar per mile, taller for faster, filled in
+// signal when the mile landed inside what the session asked for and in the
+// flat control grey when it did not.
+//
+// Out-of-band is ONE colour in BOTH directions. A mile run fast and a mile run
+// slow are both "not what was asked", and giving fast its own colour would be
+// grading a number good — the same reason no green appears anywhere in this
+// palette as a verdict.
+//
+// Two things this component refuses to invent:
+//
+//   1. THE BAND. If the run carries no target — an unplanned run, or a session
+//      kind whose spec has no pace window — every bar draws in signal and the
+//      spoken label says nothing about a band. Colouring against a made-up
+//      target would be rule one at chart scale: a modelled comparison wearing
+//      a measured chart's clothes.
+//
+//   2. THE TRAILING FRAGMENT. A 6.3 mile run has a seventh "mile" that is
+//      three tenths long, and its pace is measured over that fragment, so it
+//      swings hardest and means least. Drawing it the same width as a whole
+//      mile claims a weight it does not have, so it is drawn at its real
+//      fraction of a mile and named as a part mile when spoken. This is a
+//      deliberate departure from the prototype's equal-width bars, made on
+//      the same principle as the amber tilde: nothing should look like more
+//      than it is.
+struct SplitBar: Identifiable, Equatable {
+    var id: Int { mile }
+    /// 1-based mile number.
+    let mile: Int
+    /// Seconds per mile for this split.
+    let paceSec: Int
+    /// How much of a mile this split actually covers, 0 < fraction <= 1.
+    /// Whole miles are 1. Only a trailing fragment is less.
+    var fraction: Double = 1
+    /// Nil when the run carries no target window.
+    var inBand: Bool? = nil
+}
+
+struct SplitBars: View {
+    let bars: [SplitBar]
+    var height: CGFloat = 74
+
+    /// Same padded-domain reasoning as `TrendBars`: a run held honestly at one
+    /// pace must not draw as a mountain range. The domain is at least this
+    /// fraction of the run's own pace, centred on it.
+    private static let domainFloorFraction = 0.06
+    private static let barFloorFraction: CGFloat = 0.24
+    private static let barMaxWidth: CGFloat = 14
+
+    private func barHeight(_ sec: Int, in full: CGFloat) -> CGFloat {
+        let secs = bars.map { Double($0.paceSec) }
+        let lo = secs.min() ?? 0
+        let hiV = secs.max() ?? 1
+        let mid = (lo + hiV) / 2
+        let span = Swift.max(hiV - lo, mid * Self.domainFloorFraction, 0.0001)
+        // Faster is taller, so the fraction is inverted against pace.
+        let frac = 1 - CGFloat((Double(sec) - (mid - span / 2)) / span)
+        let scaled = Self.barFloorFraction + (1 - Self.barFloorFraction) * Swift.min(Swift.max(frac, 0), 1)
+        return Swift.max(scaled * full, 2)
+    }
+
+    private func spoken(_ b: SplitBar) -> String {
+        let pace = Units.formatPaceBare(secPerMile: b.paceSec)
+        // The FIGURE follows the runner's unit preference; the SPLIT does not.
+        // The backend cuts splits per mile whatever the display unit is, so
+        // calling one "kilometre 4" to match a preference would name it
+        // something it is not.
+        let unitWord = Units.distanceLabel() == "km" ? "kilometre" : "mile"
+        let which = b.fraction < 0.95
+            ? "Part mile \(b.mile), \(Int((b.fraction * 10).rounded())) tenths"
+            : "Mile \(b.mile)"
+        switch b.inBand {
+        case .some(true):  return "\(which), \(pace) per \(unitWord), inside the target."
+        case .some(false): return "\(which), \(pace) per \(unitWord), outside the target."
+        case .none:        return "\(which), \(pace) per \(unitWord)."
+        }
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            HStack(alignment: .bottom, spacing: 5) {
+                ForEach(bars) { b in
+                    UnevenRoundedRectangle(topLeadingRadius: 4, bottomLeadingRadius: 0,
+                                           bottomTrailingRadius: 0, topTrailingRadius: 4,
+                                           style: .continuous)
+                        .fill((b.inBand ?? true) ? V5.signal : V5.materialControl)
+                        .frame(maxWidth: Self.barMaxWidth * CGFloat(b.fraction))
+                        .frame(height: barHeight(b.paceSec, in: geo.size.height))
+                        // Each mile is its own element. Unlike a twelve-week
+                        // trend, where the shape is the story and the figures
+                        // are noise, a runner asking about mile nine wants
+                        // mile nine.
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(spoken(b))
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
+        }
+        .frame(height: height)
+    }
+}
