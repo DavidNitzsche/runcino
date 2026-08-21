@@ -741,8 +741,14 @@ struct SettingsHostV5: View {
 
     /// THE WIRE SPEAKS SHORTCODES, THE SCREEN SPEAKS WEEKDAYS.
     ///
-    /// `users.long_run_day` is `sun`…`sat` and the whole plan engine parses
-    /// it that way (`DOW_OF_SHORTCODE` in `lib/plan/adapt.ts`, `dose-guard`).
+    /// The long run day is `sun`…`sat` and the whole plan engine parses it
+    /// that way (`DOW_OF_SHORTCODE` in `lib/plan/adapt.ts`, `dose-guard`).
+    ///
+    /// The canonical store is `profile.user_settings.long_run_day`, which is
+    /// what `PATCH /api/settings` merges into and what `lib/coach/settings.ts`
+    /// reads. There is ALSO a `users.long_run_day` column; nothing in web-v2
+    /// reads it and onboarding leaves it stale — an earlier version of this
+    /// comment named it as the target, which was wrong.
     /// This screen listed full weekday names and posted them back verbatim,
     /// so choosing a long run day would have written "Sunday" into a column
     /// every reader treats as a three-letter code — and the long run day IS

@@ -7,10 +7,23 @@
  * scenario-availability list. See that file's header for the full picture.
  *
  * READ-ONLY — nothing here writes a row.
+ *
+ * 2026-08-21 · RACE-MODE GATE. This route had none, unlike `/api/v5/today`,
+ * so a runner with no plan at all was handed the whole block scaffold: "NO
+ * BLOCK" over an empty arc, "EVERY WEEK · All 0", and a "Change the plan" row
+ * offering cutback, travel, extra day, another race and move a day against a
+ * plan that does not exist. Every one of those five would have been refused
+ * by the engine, one tap later, with a different reason each time.
+ *
+ * A refusal is a correct answer, not an empty scaffold. The gate mirrors
+ * Today's exactly — including its "has EVER been on a race-prep block" arm,
+ * so the off-season gap between blocks still reads as race mode.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserId } from '@/lib/auth/session';
+import { pool } from '@/lib/db/pool';
 import { loadV5Block } from '@/lib/plan/v5-block';
+import { loadActivePlan } from '@/lib/plan/lookup';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +33,25 @@ export async function GET(req: NextRequest) {
   const userId = auth;
 
   try {
+    // ── Race-mode gate · mirrors /api/v5/today ──────────────────────────
+    const activePlan = await loadActivePlan(userId);
+    let raceMode = activePlan != null && (activePlan.mode === 'race-prep' || activePlan.race_id != null);
+    if (!activePlan) {
+      const everRacePrep = await pool.query(
+        `SELECT 1 FROM training_plans WHERE user_uuid = $1 AND (mode = 'race-prep' OR race_id IS NOT NULL) LIMIT 1`,
+        [userId],
+      ).catch(() => ({ rows: [] as unknown[] }));
+      raceMode = everRacePrep.rows.length > 0;
+    }
+    if (!raceMode) {
+      // 404 + a reason is the shape the phone reads as `absentReason`, which
+      // renders `Silence` — a designed refusal, never the outage screen.
+      return NextResponse.json(
+        { error: 'There is no block yet. Set a goal race and the plan gets written around it.' },
+        { status: 404 },
+      );
+    }
+
     const block = await loadV5Block(userId);
     return NextResponse.json(block);
   } catch (e: unknown) {
