@@ -97,7 +97,22 @@ struct FaffValue: Equatable, Hashable {
     /// a projected/measured discriminator, so the screen never re-decides it.
     static func from(_ text: String?, modelled: Bool) -> FaffValue {
         guard let text else { return .unreadable }
-        return modelled ? .modelled(text) : .measured(text)
+        // THE TILDE MARKS A FIGURE. A phrase carries none.
+        //
+        // The mark means "this number is estimated, not read". Applied to
+        // words it says nothing and reads as a typo: the Races decision card
+        // renders its safe target as a value, and on the returning-from-injury
+        // variant that target is the phrase "Finish healthy" — which came out
+        // as "~Finish healthy". Same for any target the engine words rather
+        // than counts.
+        //
+        // Rule one is not weakened by this: a value with no digits cannot be
+        // over- or under-stated, so there is nothing for the mark to protect.
+        // The moment a digit appears the mark comes back.
+        // Renders plainly either way: a measured value, or a modelled phrase
+        // with no figure in it to qualify.
+        guard modelled, text.contains(where: \.isNumber) else { return .measured(text) }
+        return .modelled(text)
     }
 
     /// True when this value must not be presented as evidence of fitness.

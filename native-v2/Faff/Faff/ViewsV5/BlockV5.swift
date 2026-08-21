@@ -141,7 +141,13 @@ struct BlockV5: View {
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
         .overlay {
-            V5SheetHost(isPresented: $planSheetOpen) {
+            // TALL, because this sheet's tallest state is the reason `tall`
+            // exists. The 0821 handoff warns that another-race with an A race
+            // and a displaced session runs five clauses — the last of them two
+            // sentences, six in total — and that "the sheet must hold its
+            // longest realistic string without scrolling". Sized to content
+            // with no ceiling, that state slid off the top of the screen.
+            V5SheetHost(isPresented: $planSheetOpen, tall: true) {
                 planSheetBody
             }
         }

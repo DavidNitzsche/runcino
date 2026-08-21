@@ -347,14 +347,30 @@ struct OffSeasonV5: View {
         } content: {
             Silence(reason: model.silenceReason)
 
-            // "Plan the next block" — removed. The prototype itself specs
-            // this row's onClick as a noop (15a.html), and no phone route
-            // exists to send it to: setting a real next-block goal needs
-            // distance + goal time (`POST /api/profile/goal`), which is a
-            // form this screen has no fields for and V5 has no screen for
-            // yet. A row that reopens the same "not built yet" dead end is
-            // worse than no row — see AGENT-BRIEF rule 3, a refusal is
-            // honest, a control that goes nowhere is not.
+            // "Plan the next block" — RESTORED, with a real handler.
+            //
+            // It was removed on the reasoning that the prototype specs its
+            // onClick as a noop and no route existed, so the row would be a
+            // dead end. The first half is true and the second is no longer:
+            // the handoff is explicit that the noops in the prototype "need
+            // real handlers in the app but their visual design is final", so
+            // removing a FINAL screen's only action was a scope decision the
+            // design did not make.
+            //
+            // And there is an honest destination now. On this phone a block is
+            // built around a race — that is the whole race-mode premise — so
+            // planning the next block IS adding the race it is built toward.
+            // `.faffOpenRaceSetup` is the same hop onboarding uses at the end
+            // of its own flow, handled at the shell: select Races, push
+            // add-a-race. One route, two entry points, no new dead end.
+            ListGroup {
+                ListRow(label: "Plan the next block",
+                        sub: "Pick the race it is built around",
+                        onTap: {
+                            NotificationCenter.default.post(name: .faffOpenRaceSetup, object: nil)
+                        })
+            }
+
             if let weeklyRange = model.weeklyRange {
                 ListGroup(header: "This week") {
                     ListRow(label: "Miles", sub: weeklyRange)
