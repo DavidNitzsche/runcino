@@ -24,12 +24,14 @@
  * are computed from today, and David confirmed two of them by hand).
  *
  *   1 · Group the day's rows by the mergedIntoId flags already on them.
- *   2 · In each group find an ANCHOR: a bare-wall-clock row from a device
- *       source. Its instant is that wall clock read in the runner's zone.
- *   3 · For every other row in the group, test its two candidate readings
- *       (Z-as-UTC, Z-as-local) against the anchor. Exactly one lands within
- *       15 minutes → that is its true instant.
- *   4 · Ambiguous or anchorless groups are SKIPPED and listed, not guessed.
+ *   2 · List every instant each row's stored startLocal COULD mean — one for a
+ *       bare wall clock or an explicit offset, two for a `Z` (as UTC, or as a
+ *       wall clock wearing a Z).
+ *   3 · Keep the instants EVERY row in the group can mean. One run has one
+ *       start, so exactly one should survive. That is the answer.
+ *   4 · Groups where none or several survive are SKIPPED and listed with the
+ *       reason, not guessed. Two rows carrying the identical string are the
+ *       common case: nothing in the data distinguishes their readings.
  *
  * WHAT IT BUYS
  *
@@ -139,23 +141,53 @@ describe.skipIf(!RO)('startUtc backfill proposal · READ-ONLY', () => {
       const proposedForDay = new Map<string, { iso: string; reading: string }>();
       for (const [key, group] of groups) {
         if (group.length < 2) continue;   // nothing to reconcile
-        const anchor = group.find((r) => {
-          const c = candidates(r, TZ);
-          return c.length === 1 && c[0].reading === 'bare-wall-clock' && DEVICE_LOCAL.has(src(r));
-        });
-        if (!anchor) {
-          skipped.push(`${day} group=${key} · no unambiguous device anchor · ${group.map((r) => `${r.id}/${src(r) || 'null'}/${r.data?.startLocal}`).join(' ')}`);
+
+        // CONSENSUS. Every row in the group describes ONE run, so exactly one
+        // instant should be readable from all of them. Take each row's
+        // candidate readings, keep the instants every row can produce, and
+        // require that exactly one survives.
+        //
+        // This is strictly stronger than anchoring on a device row, and it is
+        // what makes the `apple_health` pairs decidable: on 2026-05-15 the
+        // null-source row reads 12:11:34Z (either 12:11 UTC or 12:11 Pacific)
+        // and the apple_health row reads 19:11:34Z (either 19:11 UTC or 19:11
+        // Pacific). The only instant both can mean is 19:11:34Z. Neither row's
+        // SOURCE says which convention it used — which is exactly why the
+        // per-source strip in 846f3509 had to be reverted — but the pair says.
+        //
+        // Two rows carrying the IDENTICAL string produce identical candidate
+        // sets, so two instants survive and the group is correctly refused:
+        // nothing in the data distinguishes the readings.
+        const perRow = group.map((r) => ({ r, cands: candidates(r, TZ) }));
+        if (perRow.some((x) => x.cands.length === 0)) {
+          skipped.push(`${day} group=${key} · a row has no readable start · ${group.map((r) => `${r.id}/${src(r) || 'null'}/${r.data?.startLocal}`).join(' ')}`);
           continue;
         }
-        const anchorMs = candidates(anchor, TZ)[0].ms;
-        for (const r of group) {
-          const cands = candidates(r, TZ);
-          const fits = cands.filter((c) => Math.abs(c.ms - anchorMs) <= TOLERANCE_MS);
-          if (fits.length !== 1) {
-            skipped.push(`${day} row=${r.id}/${src(r) || 'null'}/${r.data?.startLocal} · ${fits.length} candidate readings fit the anchor · not proposed`);
-            continue;
-          }
-          proposedForDay.set(r.id, { iso: new Date(fits[0].ms).toISOString(), reading: fits[0].reading });
+        const consensus = perRow[0].cands.filter((c) =>
+          perRow.every((x) => x.cands.some((o) => Math.abs(o.ms - c.ms) <= TOLERANCE_MS)));
+        // Collapse near-duplicates so a pair minutes apart counts once.
+        const distinct: number[] = [];
+        for (const c of consensus) {
+          if (!distinct.some((m) => Math.abs(m - c.ms) <= TOLERANCE_MS)) distinct.push(c.ms);
+        }
+        if (distinct.length !== 1) {
+          const why = distinct.length === 0
+            ? 'no instant every row can mean'
+            : `${distinct.length} instants every row can mean · nothing in the data picks between them`;
+          skipped.push(`${day} group=${key} · ${why} · ${group.map((r) => `${r.id}/${src(r) || 'null'}/${r.data?.startLocal}`).join(' ')}`);
+          continue;
+        }
+        const agreed = distinct[0];
+        // Prefer a device-stamped bare wall clock as the reported witness when
+        // one is present — it is the reading a human can check against.
+        const witness = perRow.find((x) => DEVICE_LOCAL.has(src(x.r))
+          && x.cands.some((c) => Math.abs(c.ms - agreed) <= TOLERANCE_MS && c.reading === 'bare-wall-clock'));
+        for (const { r, cands } of perRow) {
+          const fit = cands.find((c) => Math.abs(c.ms - agreed) <= TOLERANCE_MS)!;
+          proposedForDay.set(r.id, {
+            iso: new Date(agreed).toISOString(),
+            reading: fit.reading + (witness ? ` · agrees with ${src(witness.r)} ${witness.r.id}` : ' · group consensus'),
+          });
         }
       }
       if (proposedForDay.size === 0) continue;

@@ -15,6 +15,7 @@
  * side wrote its wall clock in.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { mergePreserve, omitEmpty } from './merge-safe';
 import { existingTierFor, IDENTITY_FILL_ONLY, SOURCE_TIER } from './canonical';
 import { isSameRun, isTrustworthy, clusterRuns, type RunRow } from './identity';
@@ -127,6 +128,41 @@ describe('identity fields are fill-only · absorption never moves a run in time'
     for (const k of ['distanceMi', 'splits', 'avgHr', 'elevGainFt']) {
       expect(IDENTITY_FILL_ONLY.has(k)).toBe(false);
     }
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 2b · the shoe follows the run, not the row
+ *
+ * The shoe lives on a COLUMN, so the absorber's `data` walk never saw it: a
+ * hand-picked shoe stayed on whichever row was canonical when the runner
+ * picked it, and a later merge that promoted a different row made the pick
+ * invisible — lib/shoe/mileage.ts sums canonical rows only. 16 of David's
+ * runs, 123.5 mi, every one of them a manual pick.
+ *
+ * The move is one guarded statement, so this pins the three properties that
+ * make it safe rather than re-running Postgres.
+ * ═══════════════════════════════════════════════════════════════════════ */
+describe('absorbed shoe · the guards that keep the move safe', () => {
+  const src = readFileSync(new URL('./canonical.ts', import.meta.url), 'utf8');
+  const stmt = /UPDATE runs c\b[\s\S]*?RETURNING c\.shoe_id/.exec(src)?.[0] ?? '';
+
+  it('the absorber moves the shoe at all', () => {
+    expect(stmt).not.toBe('');
+  });
+
+  it('never clobbers a shoe the canonical already has', () => {
+    expect(stmt).toMatch(/c\.shoe_id IS NULL/);
+  });
+
+  it('only moves a shoe that exists', () => {
+    expect(stmt).toMatch(/l\.shoe_id IS NOT NULL/);
+  });
+
+  it('carries shoe_auto_assigned_at across · a manual pick stays manual', () => {
+    // That NULL stamp is the marker the day-level shoe route checks before it
+    // overrides. Dropping it would silently demote a hand pick to an auto one.
+    expect(stmt).toMatch(/shoe_auto_assigned_at\s*=\s*l\.shoe_auto_assigned_at/);
   });
 });
 

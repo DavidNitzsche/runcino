@@ -249,8 +249,41 @@ export async function enhanceCanonicalFromAbsorbed(args: {
     }
   }
 
-  // Special routing: gear / gear_id → shoe_id
+  // Special routing: the absorbed row's OWN shoe, then gear → shoe_id.
+  //
+  // 2026-08-21 · ingest audit · the shoe rides on a COLUMN, not on `data`, so
+  // the field walk above never saw it and only the Strava `gear` object was
+  // ever routed. A shoe the runner picked by hand therefore stayed on whatever
+  // row was canonical when they picked it, and if the merge later promoted a
+  // different row the pick went invisible: lib/shoe/mileage.ts sums canonical
+  // rows only. Live cost — 16 of David's runs, 123.5 mi, all of them manual
+  // picks (`shoe_auto_assigned_at IS NULL`), attributed to no shoe at all, so
+  // every retirement number reads that much low.
+  //
+  // The loser's own shoe goes first because it is either the runner's pick or
+  // an earlier auto-assign, both of which beat re-deriving one from gear text.
+  // `shoe_auto_assigned_at` rides along so a manual pick stays marked manual —
+  // that NULL stamp is what stops the day-level shoe route from overriding it.
   let shoeAttributed: number | null = null;
+  if (canonical.shoe_id == null) {
+    const moved = await pool.query<{ shoe_id: number }>(
+      `UPDATE runs c
+          SET shoe_id = l.shoe_id, shoe_auto_assigned_at = l.shoe_auto_assigned_at
+         FROM runs l
+        WHERE c.id = $1::BIGINT
+          AND l.id = $2::BIGINT
+          AND c.shoe_id IS NULL
+          AND l.shoe_id IS NOT NULL
+       RETURNING c.shoe_id`,
+      [canonicalId, absorbedRow.id],
+    ).catch(() => ({ rows: [] as Array<{ shoe_id: number }> }));
+    const movedId = moved.rows[0]?.shoe_id;
+    if (movedId != null) {
+      canonical.shoe_id = movedId;
+      shoeAttributed = movedId;
+      fieldsAdded.push('shoe_id (from absorbed row ' + absorbedRow.id + ')');
+    }
+  }
   if (canonical.shoe_id == null) {
     const gear = (incomingData as Record<string, unknown>).gear;
     const gearId = (incomingData as Record<string, unknown>).gear_id;
