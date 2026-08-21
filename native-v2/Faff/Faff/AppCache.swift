@@ -114,8 +114,34 @@ enum AppCache {
     /// was never written, or the on-disk shape no longer matches the
     /// type (e.g. wire schema drifted between app versions).
     static func read<T: Decodable>(_ key: Key, as type: T.Type) -> T? {
-        guard let data = readRaw(key) else { return nil }
+        guard let data = readRaw(key), fresh(key) else { return nil }
         return try? JSONDecoder().decode(type, from: data)
+    }
+
+    /// A CACHED DAY IS STILL A DAY, AND DAYS EXPIRE.
+    ///
+    /// `writtenAt` was recorded from the beginning and read by nothing. The
+    /// cache had no age check at all and was cleared only by sign-out or by a
+    /// change of owner, so a phone that had been offline since yesterday
+    /// rendered YESTERDAY'S session as today's — the prescription, the week
+    /// line, the strip — with nothing on screen saying it was old. The
+    /// surface store's `stale` flag only fires when a REFRESH fails; a cold
+    /// launch with no network never refreshes, so it never fired.
+    ///
+    /// Twelve hours, not twenty-four: the point is that a cached payload must
+    /// not survive the boundary between one training day and the next, and a
+    /// runner who reads Today at 06:00 and again at 06:00 is two days apart.
+    /// Past it the cache misses, the surface asks the network, and a failure
+    /// there is the honest data-outage screen rather than a confident wrong
+    /// day.
+    static let maxAgeSec: TimeInterval = 12 * 60 * 60
+
+    static func fresh(_ key: Key, now: Date = Date()) -> Bool {
+        // No timestamp means it predates `writeRaw` stamping one. Treat it as
+        // expired rather than trusted — the payload is at least that old.
+        guard let at = writtenAt(key) else { return false }
+        let age = now.timeIntervalSince(at)
+        return age >= 0 && age <= maxAgeSec
     }
 
     /// Wipe the cache. Called by SessionHygiene.signOut() and by

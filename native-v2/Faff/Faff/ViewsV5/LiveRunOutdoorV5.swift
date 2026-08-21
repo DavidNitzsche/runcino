@@ -530,6 +530,19 @@ struct LiveRunOutdoorV5: View {
 // than inline statements in the `#Preview` trailing closure — a Void method
 // call as a bare statement ahead of the final View expression does not
 // type-check inside a `@ViewBuilder` body.
+//
+// THE WHOLE REGION IS `#if DEBUG`, AND HAS TO BE.
+//
+// `seedForPreview` is a DEBUG-only seam on `PhoneRunTracker` and
+// `TreadmillHRStreamer` — deliberately, so nothing can stamp a fake GPS
+// state into a shipping build. But `#Preview` itself is NOT debug-only: the
+// macro expands in Release too, so these helpers were compiled against
+// symbols that do not exist there. `xcodebuild -configuration Release`
+// failed with 12 errors, which means an ARCHIVE failed, which means
+// TestFlight was blocked and nothing said so until someone tried it.
+// Debug builds and the simulator never saw it.
+
+#if DEBUG
 
 @MainActor
 private func outdoorMidRunPreview() -> some View {
@@ -608,3 +621,5 @@ private func outdoorGapPreview() -> some View {
 #Preview("Outdoor · track has a gap") {
     outdoorGapPreview()
 }
+
+#endif  // DEBUG · previews only

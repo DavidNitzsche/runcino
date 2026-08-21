@@ -820,6 +820,12 @@ struct LiveRunTreadmillV5: View {
 }
 
 // MARK: - Preview
+//
+// `#if DEBUG` for the whole region: `seedForPreview` is a DEBUG-only seam,
+// but `#Preview` expands in Release too, so this failed the archive. See the
+// matching note in LiveRunOutdoorV5.swift.
+
+#if DEBUG
 
 private func previewPlan() -> LiveRunPlanV5 {
     LiveRunPlanV5(
@@ -866,3 +872,5 @@ private func treadmillNoHeartPreview() -> some View {
 #Preview("Treadmill · no heart source") {
     treadmillNoHeartPreview()
 }
+
+#endif  // DEBUG · previews only

@@ -35,7 +35,7 @@ struct ScreensCatalogV5: View {
     static var launchArgumentScreen: String? {
         let ids = Set(["5a", "5b", "5c", "7a", "8a", "13a", "14a", "15a", "16a",
                        "17a", "18a-slower", "18a-faster", "19a", "19a-refused",
-                       "not-yet", "system"])
+                       "not-yet", "system", "sick-tmp"])
         return ProcessInfo.processInfo.arguments.first(where: ids.contains)
     }
 
@@ -94,8 +94,11 @@ struct ScreensCatalogV5: View {
             Entry(id: "19a-refused", title: "Return · clinician gated", sub: "A refusal, not a disabled button") {
                 AnyView(ReturnToRunningV5(ret: ReturnToRunningV5Sample.refused))
             },
+            Entry(id: "sick-tmp", title: "Sick flare", sub: "TEMP verification entry") {
+                AnyView(SickFlareV5(model: .sampleV5))
+            },
             Entry(id: "not-yet", title: "Not on the phone yet", sub: "A refusal, not a screen set") {
-                AnyView(NotOnPhoneYetV5(reason: nil))
+                AnyView(NotOnPhoneYetV5(reason: nil, onOpenAccount: {}))
             },
         ]
     }
