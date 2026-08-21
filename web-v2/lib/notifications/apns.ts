@@ -46,6 +46,13 @@ export type NotificationCategory =
   | 'weekly_checkin'
   | 'niggle_sick'
   | 'streak'
+  /** 2026-08-21 · watch/push audit · split out of 'streak'. The Sunday
+   *  race-countdown push used to ride the streak bucket, so it was gated by
+   *  a toggle labelled "Streak milestones" — for a category that is
+   *  deliberately dead. It keeps FAFF_MILESTONE as its iOS category (see
+   *  apnsCategoryId) because that registration carries no action buttons and
+   *  neither does the countdown, so nothing on the device changes. */
+  | 'race_countdown'
   | 'strava_reconnect';
 
 /** UNNotificationCategory identifier the iOS app registers — must match the
@@ -58,6 +65,12 @@ export function apnsCategoryId(c: NotificationCategory): string {
     case 'weekly_checkin':   return 'FAFF_WEEKLY';
     case 'niggle_sick':      return 'FAFF_NIGGLE';
     case 'streak':           return 'FAFF_MILESTONE';
+    // Deliberately the SAME iOS category as 'streak': FAFF_MILESTONE is
+    // registered with an empty actions array (NotificationCategories.swift),
+    // which is exactly what a no-action countdown wants. Emitting a new,
+    // unregistered id would render an actionless alert too — but only by
+    // accident, and it would break the moment someone gave it buttons.
+    case 'race_countdown':   return 'FAFF_MILESTONE';
     case 'strava_reconnect': return 'FAFF_STRAVA_RECON';
   }
 }

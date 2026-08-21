@@ -210,6 +210,34 @@ export async function dispatchNotification(
           [tok.device_token],
         ).catch(() => {});
       }
+      // 2026-08-21 · watch/push audit · ALSO reap 400 BadDeviceToken.
+      //
+      // Only 410 was ever reaped, so tokens Apple rejects with 400 stayed
+      // active forever and every future notification re-sent to all of them.
+      // In prod one runner had 22 active tokens, 19 of them last seen over a
+      // month ago: a single push fanned out to 22 APNs calls, 21 rejections,
+      // 22 notifications_log rows, and a fresh ops alert — and the whole
+      // delivery history reads 1 delivered out of 174.
+      //
+      // The 7-day guard is the safety catch. BadDeviceToken also means
+      // "right token, wrong environment", so a bad APNS_PRODUCTION flag
+      // would otherwise let this reap every live device in one pass. A token
+      // the app has checked in with inside the last week is a live install
+      // and is never reaped — that failure is an env problem, and the
+      // ops_alert is the correct response to it, not revocation.
+      if (
+        result.reason === 'apns_rejected' &&
+        result.status === 400 &&
+        /BadDeviceToken/i.test(result.detail ?? '')
+      ) {
+        await pool.query(
+          `UPDATE device_tokens
+              SET revoked_at = now()
+            WHERE device_token = $1
+              AND last_seen_at < now() - interval '7 days'`,
+          [tok.device_token],
+        ).catch(() => {});
+      }
     }
   }
 

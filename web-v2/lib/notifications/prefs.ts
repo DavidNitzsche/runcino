@@ -19,6 +19,17 @@ export interface NotificationPrefs {
   weekly_checkin_enabled: boolean;
   niggle_sick_enabled: boolean;
   streak_enabled: boolean;
+  /** 2026-08-21 · watch/push audit. Category F carried TWO notifications on
+   *  one flag: streak milestones (7/14/30/100 days) and the race countdown
+   *  (12/10/8/6/4/2 weeks out). Streak milestones are deliberately dead —
+   *  the only call site has been commented out since 2026-06-03 and the web
+   *  settings row was deleted 2026-08-17 — so `streak_enabled` was a switch
+   *  labelled for a notification that can never fire, silently governing a
+   *  different one that fires every Sunday morning with no label of its own.
+   *  Race countdown now has its own gate. Defaults true, so no runner's
+   *  delivery changes; the merge in loadNotificationPrefs supplies the key
+   *  for every profile row written before this shipped. */
+  race_countdown_enabled: boolean;
   strava_reconnect_enabled: boolean;
   race_day_wake_time: string;     // 'HH:MM'
   weekly_checkin_time: string;    // 'HH:MM' (Sunday)
@@ -34,6 +45,7 @@ export const DEFAULT_PREFS: NotificationPrefs = {
   weekly_checkin_enabled: true,
   niggle_sick_enabled: true,
   streak_enabled: true,
+  race_countdown_enabled: true,
   strava_reconnect_enabled: true,
   race_day_wake_time: '05:30',
   weekly_checkin_time: '20:00',
@@ -87,9 +99,6 @@ export function bustPrefsCache(userId: string): void {
 //   readiness_enabled          → niggle_sick_enabled   (morning niggle/sick checks)
 //   workout_reminder_enabled   → skip_recovery_enabled (the workout-nudge category)
 //   recap_enabled              → weekly_checkin_enabled (weekly recap/check-in)
-//   race_countdown_enabled     → race_eve_enabled      (race-proximity messaging;
-//                                race_day_enabled stays phone-untogglable per
-//                                deck §SETTINGS · RACE-DAY LOCK)
 //   reconnect_enabled          → strava_reconnect_enabled
 //   streak_enabled             → streak_enabled        (already canonical)
 //   adaptation_enabled         → (no engine category yet · accepted +
@@ -101,9 +110,18 @@ export const PHONE_PREF_ALIASES: Record<string, keyof NotificationPrefs> = {
   readiness_enabled: 'niggle_sick_enabled',
   workout_reminder_enabled: 'skip_recovery_enabled',
   recap_enabled: 'weekly_checkin_enabled',
-  race_countdown_enabled: 'race_eve_enabled',
   reconnect_enabled: 'strava_reconnect_enabled',
 };
+
+// 2026-08-21 · watch/push audit · `race_countdown_enabled` was an ALIAS here,
+// rewriting onto race_eve_enabled. It is now a CANONICAL key in its own right
+// (the gate on the Sunday race-countdown push), so the alias had to go: left
+// in place, translatePhonePrefKeys would have turned a race-countdown toggle
+// into a race-eve toggle, and phoneAliasView — which dualShapePrefsBody
+// spreads AFTER the canonical prefs — would have overwritten the real stored
+// value with race_eve's on the way back out. Pre-2026-07-06 phone builds that
+// still PATCH the old key now write the countdown flag, which is what that
+// switch was labelled for anyway.
 
 /** Phone-only keys that have no canonical counterpart yet. Accepted on
  *  PATCH and stored verbatim so the phone's toggle round-trips; the
@@ -185,6 +203,7 @@ export function categoryEnabled(prefs: NotificationPrefs, c: NotificationCategor
     case 'weekly_checkin':   return prefs.weekly_checkin_enabled;
     case 'niggle_sick':      return prefs.niggle_sick_enabled;
     case 'streak':           return prefs.streak_enabled;
+    case 'race_countdown':   return prefs.race_countdown_enabled;
     case 'strava_reconnect': return prefs.strava_reconnect_enabled;
   }
 }

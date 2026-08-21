@@ -92,21 +92,36 @@ struct NotificationPrefsList: View {
                     sub: "Evening-before brief at T-21h",
                     bind: bindPref(\.race_eve_enabled, "race_eve_enabled"))
                 divider()
-                row("Workout reminders",
-                    sub: "Pre-run brief on planned days",
+                // 2026-08-21 · watch/push audit · copy corrected to what
+                // actually fires. "Workout reminders · Pre-run brief on
+                // planned days" described a notification that does not
+                // exist; the category is the morning-after check when you
+                // skipped a run.
+                row("Skipped-run check",
+                    sub: "Morning after a skip · are you good for today",
                     bind: bindPref(\.skip_recovery_enabled, "skip_recovery_enabled"))
                 divider()
+                // Fires on the runner's long-run day, not Sunday — the
+                // training week ends on user_settings.long_run_day (locked
+                // 2026-06-16) — and it recaps the week behind, with no
+                // week-ahead content in it.
                 row("Weekly check-in",
-                    sub: "Sunday recap + week-ahead context",
+                    sub: "Evening of your long-run day · the week you just did",
                     bind: bindPref(\.weekly_checkin_enabled, "weekly_checkin_enabled"))
                 divider()
                 row("Niggle / sick check",
                     sub: "Daily check-in when something is active",
                     bind: bindPref(\.niggle_sick_enabled, "niggle_sick_enabled"))
                 divider()
-                row("Streak milestones",
-                    sub: "7 · 14 · 30 · 100 day streaks",
-                    bind: bindPref(\.streak_enabled, "streak_enabled"))
+                // 2026-08-21 · replaces "Streak milestones · 7 · 14 · 30 ·
+                // 100 day streaks". Streak milestones cannot fire: the only
+                // call site has been commented out since 2026-06-03 on
+                // David's anti-streak ruling, and web deleted its row on
+                // 2026-08-17. What that switch actually governed server-side
+                // was the Sunday race countdown, which now has its own flag.
+                row("Race countdown",
+                    sub: "Sunday morning at 12 · 10 · 8 · 6 · 4 · 2 weeks out",
+                    bind: bindPref(\.race_countdown_enabled, "race_countdown_enabled"))
                 divider()
                 row("Strava reconnect",
                     sub: "Nudge when the token goes stale",
@@ -183,7 +198,10 @@ struct NotificationPrefs: Codable, Equatable {
     var skip_recovery_enabled: Bool
     var weekly_checkin_enabled: Bool
     var niggle_sick_enabled: Bool
+    /// Kept on the wire so an existing runner's stored value round-trips,
+    /// but no longer surfaced: streak milestones are deliberately dead.
     var streak_enabled: Bool
+    var race_countdown_enabled: Bool
     var strava_reconnect_enabled: Bool
 
     static let defaults = NotificationPrefs(
@@ -194,18 +212,19 @@ struct NotificationPrefs: Codable, Equatable {
         weekly_checkin_enabled: true,
         niggle_sick_enabled: true,
         streak_enabled: true,
+        race_countdown_enabled: true,
         strava_reconnect_enabled: true
     )
 
     enum CodingKeys: String, CodingKey {
         case master_enabled, race_day_enabled, race_eve_enabled
         case skip_recovery_enabled, weekly_checkin_enabled, niggle_sick_enabled
-        case streak_enabled, strava_reconnect_enabled
+        case streak_enabled, race_countdown_enabled, strava_reconnect_enabled
     }
     init(master_enabled: Bool, race_day_enabled: Bool, race_eve_enabled: Bool,
          skip_recovery_enabled: Bool, weekly_checkin_enabled: Bool,
          niggle_sick_enabled: Bool, streak_enabled: Bool,
-         strava_reconnect_enabled: Bool) {
+         race_countdown_enabled: Bool, strava_reconnect_enabled: Bool) {
         self.master_enabled = master_enabled
         self.race_day_enabled = race_day_enabled
         self.race_eve_enabled = race_eve_enabled
@@ -213,6 +232,7 @@ struct NotificationPrefs: Codable, Equatable {
         self.weekly_checkin_enabled = weekly_checkin_enabled
         self.niggle_sick_enabled = niggle_sick_enabled
         self.streak_enabled = streak_enabled
+        self.race_countdown_enabled = race_countdown_enabled
         self.strava_reconnect_enabled = strava_reconnect_enabled
     }
     init(from decoder: Decoder) throws {
@@ -224,6 +244,7 @@ struct NotificationPrefs: Codable, Equatable {
         self.weekly_checkin_enabled = (try? c.decode(Bool.self, forKey: .weekly_checkin_enabled)) ?? true
         self.niggle_sick_enabled = (try? c.decode(Bool.self, forKey: .niggle_sick_enabled)) ?? true
         self.streak_enabled = (try? c.decode(Bool.self, forKey: .streak_enabled)) ?? true
+        self.race_countdown_enabled = (try? c.decode(Bool.self, forKey: .race_countdown_enabled)) ?? true
         self.strava_reconnect_enabled = (try? c.decode(Bool.self, forKey: .strava_reconnect_enabled)) ?? true
     }
 }

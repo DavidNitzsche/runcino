@@ -61,6 +61,7 @@ const ALLOWED_KEYS = new Set<keyof typeof DEFAULT_PREFS>([
   'weekly_checkin_enabled',
   'niggle_sick_enabled',
   'streak_enabled',
+  'race_countdown_enabled',
   'strava_reconnect_enabled',
   'race_day_wake_time',
   'weekly_checkin_time',

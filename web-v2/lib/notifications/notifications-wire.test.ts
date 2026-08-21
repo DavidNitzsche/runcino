@@ -35,10 +35,12 @@ import {
   renderStreakMilestone,
   renderRaceCountdown,
   renderStravaReconnect,
+  type RenderedTemplate,
 } from './templates';
 import { trainingWeekWindow } from './week-window';
 import {
   DEFAULT_PREFS,
+  categoryEnabled,
   translatePhonePrefKeys,
   phoneAliasView,
   dualShapePrefsBody,
@@ -209,10 +211,16 @@ describe('prefs wire tolerance', () => {
     expect(t.niggle_sick_enabled).toBe(false);      // readiness
     expect(t.skip_recovery_enabled).toBe(false);    // workout_reminder
     expect(t.weekly_checkin_enabled).toBe(true);    // recap
-    expect(t.race_eve_enabled).toBe(false);         // race_countdown
     expect(t.strava_reconnect_enabled).toBe(true);  // reconnect
     expect(t.streak_enabled).toBe(true);            // shared key
     expect(t.adaptation_enabled).toBe(false);       // passthrough
+    // 2026-08-21 · race_countdown_enabled is now a CANONICAL key (it gates
+    // the Sunday countdown push in its own right), not an alias onto
+    // race_eve_enabled. It passes through untouched, and translation must
+    // NOT write race_eve_enabled off the back of it — that is what would
+    // silently flip the race-eve toggle.
+    expect(t.race_countdown_enabled).toBe(false);
+    expect('race_eve_enabled' in t).toBe(false);
     // no phone alias key survives translation
     for (const phoneKey of Object.keys(PHONE_PREF_ALIASES)) {
       expect(phoneKey in t, phoneKey).toBe(false);
@@ -245,10 +253,14 @@ describe('prefs wire tolerance', () => {
     const view = phoneAliasView(prefs, { adaptation_enabled: false });
     expect(view.readiness_enabled).toBe(false);
     expect(view.workout_reminder_enabled).toBe(false);
-    expect(view.race_countdown_enabled).toBe(false);
     expect(view.recap_enabled).toBe(true);
     expect(view.reconnect_enabled).toBe(true);
     expect(view.adaptation_enabled).toBe(false);
+    // race_countdown_enabled is canonical now, so the alias view must not
+    // derive it. dualShapePrefsBody spreads this view AFTER the canonical
+    // prefs; a derived key here would overwrite the runner's real setting
+    // with race_eve's on the way back out.
+    expect('race_countdown_enabled' in view).toBe(false);
   });
 
   it('phone PATCH → canonical → alias view round-trips every toggle', () => {
@@ -256,7 +268,10 @@ describe('prefs wire tolerance', () => {
     const prefs = { ...DEFAULT_PREFS, ...t } as NotificationPrefs;
     const view = phoneAliasView(prefs, t);
     for (const [k, v] of Object.entries(phoneBody)) {
+      // Canonical keys land on prefs directly; only true aliases round-trip
+      // through the derived view.
       if (k === 'streak_enabled') { expect(prefs.streak_enabled).toBe(v); continue; }
+      if (k === 'race_countdown_enabled') { expect(prefs.race_countdown_enabled).toBe(v); continue; }
       expect(view[k], k).toBe(v);
     }
   });
@@ -323,5 +338,193 @@ describe('prefs wire tolerance', () => {
     const dual = dualShapePrefsBody(DEFAULT_PREFS, {});
     expect('prefs' in dual).toBe(false);
     expect('ok' in dual).toBe(false);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────
+// 5. Coach voice + category gating · 2026-08-21 watch/push audit
+//
+// Every one of these pins something that was WRONG in prod before this
+// audit, not a behaviour we merely hope holds.
+// ──────────────────────────────────────────────────────────────
+
+describe('coach voice', () => {
+  // Same corpus as the `templates` describe above, plus the variants a real
+  // runner can actually hit (no plan row, rest day, a phase-carrying
+  // countdown) — the old fixtures only ever rendered the happy path, which
+  // is why a hardcoded "easy 5.0mi" survived so long.
+  const corpus: RenderedTemplate[] = [
+    renderRaceDay({ race_id: 'r', race_name: 'AFC', race_slug: 'afc', gun_time_local: '7:00', uber_pickup_local: '6:25', distance: '13.1' }),
+    renderRaceEve({ race_id: 'r', race_slug: 'afc', shakeout_done: false }),
+    renderSleepBanking({ race_id: 'r', race_slug: 'afc', race_name: 'AFC', days_to_race: 2, tonight_iso: '2026-08-13' }),
+    renderSkipRecovery({ user_id: 'u', date_iso: '2026-07-06', planned_today_verb: 'intervals', planned_today_distance: '6.1mi' }),
+    renderSkipRecovery({ user_id: 'u', date_iso: '2026-07-06', planned_today_verb: 'rest', planned_today_distance: null }),
+    renderSkipRecovery({ user_id: 'u', date_iso: '2026-07-06', planned_today_verb: null, planned_today_distance: null }),
+    renderWeeklyCheckin({ user_id: 'u', week_start_iso: '2026-06-29', actual_mi: 19.7, planned_mi: 43.8, days_run: 4, days_total: 4 }),
+    renderWeeklyCheckin({ user_id: 'u', week_start_iso: '2026-06-29', actual_mi: 19.7, planned_mi: 0, days_run: 3, days_total: 7 }),
+    renderNiggleCheck({ user_id: 'u', niggle_id: 7, date_iso: '2026-07-06', body_part: 'calf', days_active: 1 }),
+    renderSickCheck({ user_id: 'u', episode_id: 9, date_iso: '2026-07-06', days_active: 1 }),
+    renderRaceCountdown({ user_id: 'u', race_id: 'r', race_slug: 'afc', race_name: 'AFC', weeks_to_race: 6, phase_next: 'peak block' }),
+    renderStravaReconnect({ user_id: 'u', date_iso: '2026-07-06' }),
+  ];
+
+  it('no template shouts, jokes in emoji, or uses an em dash', () => {
+    // CLAUDE.md "Coach voice": short, direct, no hype, no exclamation marks,
+    // no emoji, no em dashes.
+    const emoji = /\p{Extended_Pictographic}/u;
+    for (const tpl of corpus) {
+      const text = `${tpl.title} ${tpl.body}`;
+      expect(text, tpl.title).not.toContain('!');
+      expect(text, tpl.title).not.toContain('—'); // em dash
+      expect(emoji.test(text), tpl.title).toBe(false);
+    }
+  });
+
+  it('every rendered sentence starts with a capital', () => {
+    // renderRaceCountdown dropped races.meta->>'phase_next' (lowercase in the
+    // DB) straight after a full stop: "…6 weeks to AFC. peak block starts
+    // Sunday."
+    for (const tpl of corpus) {
+      for (const sentence of tpl.body.split(/(?<=\.)\s+/)) {
+        const first = sentence.trim().charAt(0);
+        if (!first || !/\p{L}/u.test(first)) continue; // digits/symbols open fine
+        expect(first, `${tpl.title} :: ${sentence}`).toBe(first.toUpperCase());
+      }
+    }
+  });
+
+  it('the skip nudge never opens by naming the miss', () => {
+    // Was title 'YESTERDAY · SKIPPED' — the runner's miss in caps on the lock
+    // screen, ahead of anything useful. Never scold.
+    for (const tpl of corpus.filter((t) => t.category === 'skip_recovery')) {
+      expect(tpl.title.startsWith('TODAY')).toBe(true);
+    }
+  });
+});
+
+describe('skip recovery invents nothing about today', () => {
+  it('a missing plan row renders no prescription', () => {
+    // The caller used to fall back to a hardcoded easy / 5.0mi, so this push
+    // told every runner their day was an easy five whatever it actually was.
+    const tpl = renderSkipRecovery({
+      user_id: 'u', date_iso: '2026-07-06',
+      planned_today_verb: null, planned_today_distance: null,
+    });
+    expect(tpl.title).toBe('TODAY');
+    expect(tpl.body).not.toMatch(/mi\b/);
+    expect(tpl.body).not.toMatch(/easy/i);
+  });
+
+  it('a rest day says rest, and asks for nothing', () => {
+    const tpl = renderSkipRecovery({
+      user_id: 'u', date_iso: '2026-07-06',
+      planned_today_verb: 'rest', planned_today_distance: null,
+    });
+    expect(tpl.title).toBe('TODAY · REST');
+    expect(tpl.body).toContain('Nothing to run today.');
+  });
+
+  it('a real plan row is named exactly', () => {
+    const tpl = renderSkipRecovery({
+      user_id: 'u', date_iso: '2026-07-06',
+      planned_today_verb: 'intervals', planned_today_distance: '6.1mi',
+    });
+    expect(tpl.title).toBe('TODAY · INTERVALS 6.1MI');
+  });
+});
+
+describe('weekly check-in counts against the plan, not the calendar', () => {
+  it('a complete four-day week reads 4 of 4', () => {
+    // Was a hardcoded days_total of 7: a four-day runner who ran all four was
+    // shown "4 of 7 days" — a clean week rendered as three misses.
+    const tpl = renderWeeklyCheckin({
+      user_id: 'u', week_start_iso: '2026-06-29',
+      actual_mi: 31.2, planned_mi: 31.0, days_run: 4, days_total: 4,
+    });
+    expect(tpl.body.startsWith('4 of 4 days.')).toBe(true);
+  });
+
+  it('drops the pair when no plan governed the week', () => {
+    const tpl = renderWeeklyCheckin({
+      user_id: 'u', week_start_iso: '2026-06-29',
+      actual_mi: 19.7, planned_mi: 0, days_run: 3, days_total: 7,
+    });
+    expect(tpl.title).toBe('WEEK DONE · 19.7 MI');
+    expect(tpl.title).not.toContain('0.0');
+  });
+});
+
+describe('category gating', () => {
+  it('race countdown has its own category and its own switch', () => {
+    // It rode the 'streak' bucket, so the only switch a runner could see was
+    // labelled "Streak milestones" — a category whose sole call site has been
+    // commented out since 2026-06-03.
+    const tpl = renderRaceCountdown({
+      user_id: 'u', race_id: 'r', race_slug: 'afc', race_name: 'AFC', weeks_to_race: 6,
+    });
+    expect(tpl.category).toBe('race_countdown');
+    // Keeps the registered, action-less iOS category so no device changes.
+    expect(tpl.apns_category_id).toBe('FAFF_MILESTONE');
+    expect(apnsCategoryId('race_countdown')).toBe('FAFF_MILESTONE');
+
+    const off = { ...DEFAULT_PREFS, race_countdown_enabled: false };
+    expect(categoryEnabled(off, 'race_countdown')).toBe(false);
+    // Turning the countdown off must not take streak (or anything else) with it.
+    expect(categoryEnabled(off, 'streak')).toBe(true);
+
+    const streakOff = { ...DEFAULT_PREFS, streak_enabled: false };
+    expect(categoryEnabled(streakOff, 'race_countdown')).toBe(true);
+  });
+
+  it('every category a template can emit is gateable, and the master kills all', () => {
+    const cats = new Set(
+      [
+        renderRaceDay({ race_id: 'r', race_name: 'AFC', race_slug: 'afc', gun_time_local: '7:00', distance: '13.1' }),
+        renderRaceEve({ race_id: 'r', race_slug: 'afc', shakeout_done: true }),
+        renderSleepBanking({ race_id: 'r', race_slug: 'afc', race_name: 'AFC', days_to_race: 3, tonight_iso: '2026-08-13' }),
+        renderSkipRecovery({ user_id: 'u', date_iso: '2026-07-06', planned_today_verb: 'easy', planned_today_distance: '5.0mi' }),
+        renderWeeklyCheckin({ user_id: 'u', week_start_iso: '2026-06-29', actual_mi: 40, planned_mi: 43, days_run: 6, days_total: 6 }),
+        renderNiggleCheck({ user_id: 'u', niggle_id: 7, date_iso: '2026-07-06', body_part: 'calf', days_active: 2 }),
+        renderSickCheck({ user_id: 'u', episode_id: 9, date_iso: '2026-07-06', days_active: 3 }),
+        renderStreakMilestone({ user_id: 'u', streak_days: 30, is_longest_ever: false }),
+        renderRaceCountdown({ user_id: 'u', race_id: 'r', race_slug: 'afc', race_name: 'AFC', weeks_to_race: 6 }),
+        renderStravaReconnect({ user_id: 'u', date_iso: '2026-07-06' }),
+      ].map((t) => t.category),
+    );
+    for (const c of cats) {
+      // A category nothing can switch off is a category the runner cannot
+      // decline. Flipping its own flag must silence it.
+      const key = `${c}_enabled` as keyof typeof DEFAULT_PREFS;
+      expect(key in DEFAULT_PREFS, c).toBe(true);
+      expect(categoryEnabled({ ...DEFAULT_PREFS, [key]: false }, c), c).toBe(false);
+      expect(categoryEnabled({ ...DEFAULT_PREFS, master_enabled: false }, c), c).toBe(false);
+    }
+  });
+});
+
+describe('race day states only what is known', () => {
+  it('omits the gun time and the distance when the race row has neither', () => {
+    // Not one of the 16 race rows in prod carries meta.gun_time or
+    // meta.start_time, and the caller defaulted to '07:00' / '13.1' — so the
+    // loudest push in the product would have told a marathoner their race
+    // went off at 7:00 over 13.1 miles.
+    const tpl = renderRaceDay({
+      race_id: 'r', race_slug: 'cim', race_name: 'CIM',
+      gun_time_local: null, distance: null,
+    });
+    expect(tpl.body).toBe('Kit on the chair.');
+    expect(tpl.body).not.toContain('7:00');
+    expect(tpl.body).not.toContain('13.1');
+  });
+
+  it('states everything it does know', () => {
+    const tpl = renderRaceDay({
+      race_id: 'r', race_slug: 'cim', race_name: 'CIM',
+      gun_time_local: '7:00', uber_pickup_local: '6:25', distance: '26.2',
+    });
+    expect(tpl.body).toBe('Gun 7:00. Uber pickup 6:25. Kit on the chair · 26.2 ahead.');
+    // Race day is the one push allowed to wake the runner.
+    expect(tpl.bypass_quiet_hours).toBe(true);
+    expect(tpl.interruption_level).toBe('time-sensitive');
   });
 });

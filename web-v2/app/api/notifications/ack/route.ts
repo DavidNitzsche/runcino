@@ -41,6 +41,7 @@ type Category =
   | 'weekly_checkin'
   | 'niggle_sick'
   | 'streak'
+  | 'race_countdown'
   | 'strava_reconnect';
 
 interface AckBody {
@@ -71,8 +72,9 @@ export async function POST(req: NextRequest) {
   }
   const action = body.action.toLowerCase();
 
-  // 1. Stamp the ack on the log row (if we can find it).
-  await stampLogAck(body, action);
+  // 1. Stamp the ack on the log row (if we can find it). Scoped to the
+  // caller — see stampLogAck.
+  await stampLogAck(userId, body, action);
 
   // 2. Route by category.
   let sideEffect: Record<string, unknown> = { side_effect: 'none' };
@@ -105,12 +107,21 @@ export async function POST(req: NextRequest) {
 // Ack log update
 // ──────────────────────────────────────────────────────────────
 
-async function stampLogAck(body: AckBody, action: string): Promise<void> {
+async function stampLogAck(userId: string, body: AckBody, action: string): Promise<void> {
   try {
+    // 2026-08-21 · watch/push audit · both statements were unscoped: they
+    // matched on a caller-supplied notification_id / dedup_key alone, so an
+    // authenticated runner could stamp ack_action + ack_at onto ANOTHER
+    // runner's notifications_log row. Only ack columns, so nothing leaks
+    // outward, but it is a cross-user write and it corrupts the ack
+    // telemetry the delivery audits read. Ownership now comes from the
+    // Bearer token, the same rule /api/watch/workouts/complete adopted on
+    // 2026-05-30.
     if (body.notification_id != null) {
       await pool.query(
-        `UPDATE notifications_log SET ack_action = $1, ack_at = now() WHERE id = $2`,
-        [action, body.notification_id],
+        `UPDATE notifications_log SET ack_action = $1, ack_at = now()
+          WHERE id = $2 AND COALESCE(user_uuid, user_id) = $3`,
+        [action, body.notification_id, userId],
       );
       return;
     }
@@ -119,10 +130,10 @@ async function stampLogAck(body: AckBody, action: string): Promise<void> {
         `UPDATE notifications_log SET ack_action = $1, ack_at = now()
           WHERE id = (
             SELECT id FROM notifications_log
-             WHERE dedup_key = $2
+             WHERE dedup_key = $2 AND COALESCE(user_uuid, user_id) = $3
              ORDER BY fired_at DESC LIMIT 1
           )`,
-        [action, body.dedup_key],
+        [action, body.dedup_key, userId],
       );
     }
   } catch (err) {

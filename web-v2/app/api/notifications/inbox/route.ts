@@ -39,8 +39,18 @@ export async function GET(req: NextRequest) {
     //   3. payload->'aps'->'alert'->>…  — defensive: any hypothetical
     //      historical row shaped like a raw APNs body (prod probe
     //      2026-07-06 found zero, but the fallback costs nothing)
+    // 2026-08-21 · watch/push audit · DISTINCT ON (dedup_key). dispatch.ts
+    // writes one log row PER DEVICE TOKEN, so a runner with several
+    // registered devices saw the same nudge repeated once per device in the
+    // bell sheet. In prod that was 22 rows for one notification. Token
+    // reaping (dispatch.ts, same audit) shrinks the fan-out, but the inbox
+    // is a per-NOTIFICATION view and should not depend on that: collapse to
+    // the newest row per dedup_key. Rows with a NULL dedup_key are their own
+    // group and all survive, which is the safe direction.
     const rows = (await pool.query(
-      `SELECT id, category,
+      `SELECT * FROM (
+        SELECT DISTINCT ON (COALESCE(dedup_key, id::text))
+              id, category,
               COALESCE(
                 payload->>'title',
                 payload->'tpl'->>'title',
@@ -52,16 +62,19 @@ export async function GET(req: NextRequest) {
                 payload->'aps'->'alert'->>'body'
               ) AS body,
               fired_at::text AS fired_at,
+              fired_at AS fired_at_ts,
               delivered,
               ack_action,
               ack_at::text AS ack_at,
               dedup_key
          FROM notifications_log
-        WHERE user_id = $1
+        WHERE COALESCE(user_uuid, user_id) = $1
           AND fired_at > NOW() - ($2 || ' days')::interval
           AND (delivered IS NULL OR delivered = true)
-        ORDER BY fired_at DESC
-        LIMIT $3`,
+        ORDER BY COALESCE(dedup_key, id::text), fired_at DESC
+      ) d
+      ORDER BY d.fired_at_ts DESC
+      LIMIT $3`,
       [userId, String(days), limit],
     )).rows;
 

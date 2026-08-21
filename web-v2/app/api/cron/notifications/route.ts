@@ -144,6 +144,7 @@ export async function POST(req: NextRequest) {
     skipped_no_tokens: 0,
     skipped_apns_not_configured: 0,
     skipped_quiet: 0,
+    skipped_stale: 0,
     retry_pending: 0,
     gave_up: 0,
     failed: 0,
@@ -192,18 +193,62 @@ export async function POST(req: NextRequest) {
  *  change). */
 const MAX_DRAIN_ATTEMPTS = 8;
 
+/**
+ * How long past its fire_at a queued notification is still worth sending.
+ *
+ * 2026-08-21 · watch/push audit. The drain had NO expiry: a row that could
+ * not go out — quiet hours (which defer indefinitely and do not even count
+ * an attempt), no device token, an APNs blip — was dispatched whenever it
+ * finally could, however long after the moment it was written for. The sharp
+ * case: race eve fires 21:00 local, and a runner whose quiet_hours_start is
+ * 21:00 or earlier had that row held until quiet_hours_end — so "RACE
+ * TOMORROW. Early to bed. Kit prepped?" landed at 06:00 on race morning.
+ * Sleep banking (same category, same 21:00 slot) had the same hole.
+ *
+ * Hours are per-category because the cost of lateness is: a wake-up call
+ * after the gun is worthless, a stale token nudge is merely late.
+ */
+const MAX_STALENESS_HOURS: Record<string, number> = {
+  race_day: 6,          // a wake-up delivered after the race has started
+  race_eve: 6,          // must never cross midnight into race morning
+  skip_recovery: 12,    // "still feeling it?" only means today
+  niggle_sick: 12,      // "how is it this morning?"
+  weekly_checkin: 12,   // the week it summarises has to still be yesterday
+  race_countdown: 24,   // week counts are coarse; a day late still reads true
+  streak: 24,
+  strava_reconnect: 72, // not time-anchored — the token stays broken
+};
+const DEFAULT_STALENESS_HOURS = 24;
+
 async function drainPending(stats: any): Promise<void> {
   const due = (await pool.query(
-    `SELECT id, user_id, category, payload
+    // stale_hours is computed in SQL, not from a parsed timestamp: node-pg
+    // mis-shifts tz-less timestamps, and this decides whether a runner gets
+    // woken. Let Postgres do the subtraction.
+    `SELECT id, user_id, category, payload,
+            EXTRACT(EPOCH FROM (now() - fire_at)) / 3600.0 AS stale_hours
        FROM notifications_pending
       WHERE processed_at IS NULL AND fire_at <= now()
       ORDER BY fire_at ASC
       LIMIT 200`,
-  )).rows as Array<{ id: number; user_id: string; category: string; payload: any }>;
+  )).rows as Array<{ id: number; user_id: string; category: string; payload: any; stale_hours: string | number }>;
 
   for (const row of due) {
     stats.drained++;
     try {
+      // Expiry check BEFORE dispatch — a notification about a moment that
+      // has passed is not a late notification, it is a wrong one.
+      const staleHours = Number(row.stale_hours) || 0;
+      const limit = MAX_STALENESS_HOURS[row.category] ?? DEFAULT_STALENESS_HOURS;
+      if (staleHours > limit) {
+        stats.skipped_stale++;
+        await markProcessed(row.id, {
+          outcome: 'expired',
+          stale_hours: Math.round(staleHours * 10) / 10,
+          limit_hours: limit,
+        });
+        continue;
+      }
       // The pending row carries the fully-rendered template (we stored it
       // pre-rendered at enqueue time so what was decided IS what fires).
       // Bookkeeping keys the drain adds (_attempts, _last_error, _final,
@@ -422,8 +467,42 @@ function userLocalTomorrow(tz: string): string {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
+/**
+ * The UTC instant of `HH:MM` wall-clock on a given runner-local calendar
+ * date. Same offset-probe trick as lib/notifications/enqueue.ts's
+ * todayAtHourLocal, generalised off "today" so the race-day wake can be
+ * queued the evening before.
+ */
+function localInstant(tz: string, dateISO: string, hour: number, minute: number): Date {
+  const [y, m, d] = dateISO.split('-').map((x) => parseInt(x, 10));
+  const guess = Date.UTC(y, m - 1, d, hour, minute, 0);
+  const probe = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const p: Record<string, string> = {};
+  for (const part of probe.formatToParts(new Date(guess))) p[part.type] = part.value;
+  const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+  return new Date(guess - (asUtc - guess));
+}
+
 /** Returns true iff the user-local clock is inside the fire window
- *  [HH:MM, HH:MM + slackMin). */
+ *  [HH:MM, HH:MM + slackMin).
+ *
+ *  2026-08-21 · watch/push audit · every caller now passes a window measured
+ *  in HOURS, not the old 30 minutes. Prod evidence: the GitHub Actions cron
+ *  does not deliver the ticks it declares. On 2026-08-16 (AFC race day) it
+ *  ticked at ~04:05 UTC and then not again until ~15:51 — an 11h45m gap that
+ *  swallowed the whole 13:00-13:30 UTC race-day-wake window. Every other
+ *  category survived because its row, once enqueued, waits in the queue; the
+ *  scheduler-side categories died outright, and `race_day` has NEVER enqueued
+ *  a single row in the lifetime of the table, AFC morning included.
+ *
+ *  A 30-minute window on an unreliable ticker is a coin flip. Widening the
+ *  catchment costs nothing — enqueueIfFresh gates on the dedup key, so ten
+ *  ticks inside one window still produce one row — and the drain's
+ *  MAX_STALENESS_HOURS is what keeps a late row from arriving wrong. */
 function isAtLocalTime(hour: number, minute: number, hm: string, slackMin = 30): boolean {
   const [h, m] = hm.split(':').map(Number);
   const userMin = hour * 60 + minute;
@@ -493,19 +572,39 @@ async function scheduleTimeBased(stats: any): Promise<void> {
     //   Fire on race-day, at prefs.race_day_wake_time (default 05:30)
     //   Bypasses quiet hours unconditionally (deck §A QUIET HRS).
     // ──────────────────────────────────────────────────────────
-    if (prefs.race_day_enabled && isAtLocalTime(clk.hour, clk.minute, prefs.race_day_wake_time)) {
-      const today = clk.dateISO;
-      const race = await raceOnDate(u.user_id, today);
-      if (race) {
+    //
+    //   2026-08-21 · watch/push audit · REWRITTEN. This used to require a
+    //   cron tick to land inside the 30 minutes after the wake time, and
+    //   then enqueue with fire_at = now. On a ticker that skips 11 hours at
+    //   a stretch that is a lottery, and the table says it never once won:
+    //   zero race_day rows have ever been enqueued, including the morning
+    //   of AFC. Now the row is queued with fire_at = the wake INSTANT, and
+    //   it is queued for tomorrow's race as well as today's — so one tick
+    //   anywhere in the ~24h beforehand is enough, and the queue does the
+    //   waiting. Idempotent on `race-day:{race_id}`.
+    if (prefs.race_day_enabled) {
+      const [wakeH, wakeM] = prefs.race_day_wake_time.split(':').map(Number);
+      for (const dayISO of [clk.dateISO, userLocalTomorrow(u.tz)]) {
+        const race = await raceOnDate(u.user_id, dayISO);
+        if (!race) continue;
+        const fireAt = localInstant(u.tz, dayISO, wakeH || 0, wakeM || 0);
+        // A wake-up whose moment is already well past is not worth queuing;
+        // the drain would expire it anyway (MAX_STALENESS_HOURS.race_day).
+        if (fireAt.getTime() < Date.now() - MAX_STALENESS_HOURS.race_day * 3600_000) continue;
         const tpl = renderRaceDay({
           race_id: race.slug,
           race_slug: race.slug,
           race_name: race.name ?? race.slug,
-          gun_time_local: race.gun_time_local ?? '07:00',
+          // No invented gun time / distance. Every race row in prod carries
+          // NEITHER meta.gun_time NOR meta.start_time, so the old
+          // `?? '07:00'` and `?? '13.1'` defaults meant this push would have
+          // told the runner their marathon went off at 7:00 over 13.1 miles.
+          // The template drops what it does not know.
+          gun_time_local: race.gun_time_local,
           uber_pickup_local: race.uber_pickup_local ?? null,
-          distance: race.distance_label ?? '13.1',
+          distance: race.distance_label,
         });
-        if (await enqueueIfFresh(u.user_id, tpl, new Date())) {
+        if (await enqueueIfFresh(u.user_id, tpl, fireAt)) {
           stats.enqueued_b++; // counted under B/A bucket
         }
       }
@@ -514,7 +613,12 @@ async function scheduleTimeBased(stats: any): Promise<void> {
     // ──────────────────────────────────────────────────────────
     // CATEGORY B — race eve at 21:00 if a race is in next 24h
     // ──────────────────────────────────────────────────────────
-    if (prefs.race_eve_enabled && isAtLocalTime(clk.hour, clk.minute, '21:00')) {
+    //
+    //   2026-08-21 · the shake-out read is only honest once the day is
+    //   mostly done, so this still waits until the afternoon — but it now
+    //   accepts any tick from 15:00 local onward and pins fire_at to 21:00,
+    //   instead of needing a tick inside 21:00-21:30.
+    if (prefs.race_eve_enabled && isAtLocalTime(clk.hour, clk.minute, '15:00', 8 * 60)) {
       const tomorrow = userLocalTomorrow(u.tz);
       const race = await raceOnDate(u.user_id, tomorrow);
       if (race) {
@@ -523,7 +627,8 @@ async function scheduleTimeBased(stats: any): Promise<void> {
           race_slug: race.slug,
           shakeout_done: await shakeoutDoneToday(u.user_id),
         });
-        if (await enqueueIfFresh(u.user_id, tpl, new Date())) {
+        const fireAt = localInstant(u.tz, clk.dateISO, 21, 0);
+        if (await enqueueIfFresh(u.user_id, tpl, fireAt)) {
           stats.enqueued_b++;
         }
       }
@@ -541,9 +646,14 @@ async function scheduleTimeBased(stats: any): Promise<void> {
     //   Now: fire on long_run_day evening, sum the week that ends that
     //   day. David (long_run_day=sun) is byte-identical: still Sunday.
     // ──────────────────────────────────────────────────────────
+    //
+    //   2026-08-21 · window widened from 30 min to 4 h (checkin_time →
+    //   +4h, still the same local evening). The summary is computed HERE,
+    //   at enqueue, so this must stay after the check-in hour — a summary
+    //   built at 06:00 would not contain the long run it is summarising.
     if (
       prefs.weekly_checkin_enabled &&
-      isAtLocalTime(clk.hour, clk.minute, prefs.weekly_checkin_time)
+      isAtLocalTime(clk.hour, clk.minute, prefs.weekly_checkin_time, 4 * 60)
     ) {
       const settings = await loadSettings(u.user_id);
       const DOW_OF: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
@@ -558,7 +668,7 @@ async function scheduleTimeBased(stats: any): Promise<void> {
           actual_mi: summary.actual_mi,
           planned_mi: summary.planned_mi,
           days_run: summary.days_run,
-          days_total: 7,
+          days_total: summary.days_planned,
         });
         if (await enqueueIfFresh(u.user_id, tpl, new Date())) {
           stats.enqueued_d++;
@@ -569,7 +679,11 @@ async function scheduleTimeBased(stats: any): Promise<void> {
     // ──────────────────────────────────────────────────────────
     // CATEGORY E — daily niggle/sick check at 07:15 local
     // ──────────────────────────────────────────────────────────
-    if (prefs.niggle_sick_enabled && isAtLocalTime(clk.hour, clk.minute, '07:15')) {
+    //
+    //   2026-08-21 · window widened 30 min → 4h45m, stopping at noon: the
+    //   body asks "how is it this morning?", so it must not enqueue into
+    //   the afternoon.
+    if (prefs.niggle_sick_enabled && isAtLocalTime(clk.hour, clk.minute, '07:15', 285)) {
       const today = clk.dateISO;
       const niggle = await activeNiggle(u.user_id);
       if (niggle) {
@@ -604,10 +718,17 @@ async function scheduleTimeBased(stats: any): Promise<void> {
     //   Fire on a Sunday morning when the NEXT A-race is at one
     //   of the magic week counts (deck §F TRIGGER variant 2).
     // ──────────────────────────────────────────────────────────
+    // 2026-08-21 · watch/push audit · was `prefs.streak_enabled`. Streak
+    // milestones are deliberately dead (the only caller has been commented
+    // out since 2026-06-03; the web settings row was deleted 2026-08-17), so
+    // this push — the one half of the F bucket that actually fires — was
+    // governed by a toggle labelled for the half that never can.
     if (
-      prefs.streak_enabled &&
+      prefs.race_countdown_enabled &&
       dow === 0 &&
-      isAtLocalTime(clk.hour, clk.minute, '09:00')
+      // 2026-08-21 · window widened 30 min → 6h. A week count is not
+      // clock-sensitive; it only has to land on the Sunday.
+      isAtLocalTime(clk.hour, clk.minute, '09:00', 6 * 60)
     ) {
       const race = await nextARace(u.user_id, clk.dateISO);
       if (race && [12, 10, 8, 6, 4, 2].includes(race.weeks_to_race)) {
@@ -720,7 +841,7 @@ async function weekSummary(
   todayISO: string,
   dow: number,
   longRunDow: number,
-): Promise<{ week_start_iso: string; actual_mi: number; planned_mi: number; days_run: number } | null> {
+): Promise<{ week_start_iso: string; actual_mi: number; planned_mi: number; days_run: number; days_planned: number } | null> {
   // 2026-07-06 · audit P1-24 · two fixes in one:
   //   1. was `SUM(distance_mi) … COUNT(DISTINCT start_time::date)` on
   //      runs — neither column exists (jsonb-body table) · the query
@@ -751,20 +872,30 @@ async function weekSummary(
     // through the ACTIVE plan — which also drops the direct
     // pw.user_uuid filter (null on all new inserts; readers must join
     // via training_plans, per the multi-user audit).
+    // 2026-08-21 · watch/push audit · also count the RUNNING days the plan
+    // held. The template's denominator was a hardcoded 7, so a runner on a
+    // four-day week who ran all four read "4 of 7 days" — a complete week
+    // rendered as three misses. rest rows are excluded; DISTINCT because a
+    // day can carry more than one plan row (e.g. a double).
     const planned = await pool.query(
-      `SELECT COALESCE(SUM(pw.distance_mi), 0)::float AS planned_mi
+      `SELECT COALESCE(SUM(pw.distance_mi), 0)::float AS planned_mi,
+              COUNT(DISTINCT pw.date_iso) FILTER (WHERE pw.type <> 'rest')::int AS days_planned
          FROM plan_workouts pw
          JOIN training_plans tp ON tp.id = pw.plan_id
         WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
           AND pw.date_iso >= $2 AND pw.date_iso <= $3`,
       [userId, week_start_iso, week_end_iso],
-    ).catch(() => ({ rows: [{ planned_mi: 0 }] }));
+    ).catch(() => ({ rows: [{ planned_mi: 0, days_planned: 0 }] }));
 
+    // No plan rows for the week → fall back to 7, the honest denominator for
+    // "days" when there is nothing prescribed to count against.
+    const daysPlanned = Number(planned.rows[0]?.days_planned) || 0;
     return {
       week_start_iso,
       actual_mi: Math.round(actualMi * 10) / 10,
       planned_mi: planned.rows[0]?.planned_mi ?? 0,
       days_run: daysRun,
+      days_planned: daysPlanned > 0 ? daysPlanned : 7,
     };
   } catch {
     return null;

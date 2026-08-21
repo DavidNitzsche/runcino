@@ -52,15 +52,24 @@ export interface RaceDaySlots {
   race_id: string;
   race_name: string;        // 'America\'s Finest City'
   race_slug: string;        // 'afc-2026'
-  gun_time_local: string;   // '7:00'
-  uber_pickup_local?: string | null; // '6:25' or null
-  distance: string;         // '13.1' (half) or '26.2'
+  /** races.meta gun_time / start_time. NULL is the common case — as of
+   *  2026-08-21 not one of the 16 race rows in prod carries either key.
+   *  The caller used to paper over that with `?? '07:00'` and the distance
+   *  with `?? '13.1'`, so the loudest, most trusted push in the product
+   *  would have told a marathoner their race went off at 7:00 over 13.1
+   *  miles. A push that wakes someone on race morning states only what is
+   *  known. */
+  gun_time_local?: string | null;   // '7:00'
+  uber_pickup_local?: string | null; // '6:25'
+  distance?: string | null;          // '13.1' (half) or '26.2'
 }
 
 export function renderRaceDay(s: RaceDaySlots): RenderedTemplate {
-  const body = s.uber_pickup_local
-    ? `Gun ${s.gun_time_local}. Uber pickup ${s.uber_pickup_local}. Kit on the chair · ${s.distance} ahead.`
-    : `Gun ${s.gun_time_local}. Kit on the chair · ${s.distance} ahead.`;
+  const parts: string[] = [];
+  if (s.gun_time_local) parts.push(`Gun ${s.gun_time_local}.`);
+  if (s.uber_pickup_local) parts.push(`Uber pickup ${s.uber_pickup_local}.`);
+  parts.push(s.distance ? `Kit on the chair · ${s.distance} ahead.` : 'Kit on the chair.');
+  const body = parts.join(' ');
   return {
     category: 'race_day',
     title: `RACE DAY · ${s.race_name.toUpperCase()}`,
@@ -155,15 +164,34 @@ export function renderSleepBanking(s: SleepBankingSlots): RenderedTemplate {
 export interface SkipRecoverySlots {
   user_id: string;
   date_iso: string;          // YYYY-MM-DD of TODAY (the day the runner might run)
-  planned_today_verb: string; // 'easy' | 'long' | 'tempo' | 'intervals' | 'progression'
-  planned_today_distance: string; // '6.1mi' or '5.0mi'
+  /** 'easy' | 'long' | 'tempo' | 'intervals' | 'progression' … , 'rest' when
+   *  the plan holds a rest day, or NULL when the lookup found nothing.
+   *  2026-08-21 · watch/push audit · this used to be a bare string with a
+   *  hardcoded 'easy' / '5.0mi' fallback baked into the caller, so a failed
+   *  or empty plan lookup told the runner their day was an easy 5 miles
+   *  whatever it actually was. A fabricated prescription is worse than a
+   *  quieter message: null now renders a line that claims nothing. */
+  planned_today_verb: string | null;
+  planned_today_distance: string | null; // '6.1mi'
 }
 
 export function renderSkipRecovery(s: SkipRecoverySlots): RenderedTemplate {
+  const isRest = s.planned_today_verb === 'rest';
+  const hasPlan = s.planned_today_verb != null && !isRest;
+  // The title leads with TODAY, not with the skip. 'YESTERDAY · SKIPPED' put
+  // the runner's miss in caps on the lock screen before offering anything —
+  // a verdict, not a coach. The skip stays in the body as the plain fact it
+  // is, and the question does the work.
+  const title = hasPlan
+    ? `TODAY · ${String(s.planned_today_verb).toUpperCase()}${s.planned_today_distance ? ` ${s.planned_today_distance.toUpperCase()}` : ''}`
+    : isRest
+      ? 'TODAY · REST'
+      : 'TODAY';
+  const middle = isRest ? ' Nothing to run today.' : '';
   return {
     category: 'skip_recovery',
-    title: 'YESTERDAY · SKIPPED',
-    body: `Today is ${s.planned_today_verb} ${s.planned_today_distance}. Still feeling it?`,
+    title,
+    body: `You skipped yesterday.${middle} Still feeling it?`,
     interruption_level: 'active',
     dedup_key: `skip-recovery:${s.user_id}:${s.date_iso}`,
     action_buttons: [
@@ -191,15 +219,25 @@ export interface WeeklyCheckinSlots {
   actual_mi: number;
   planned_mi: number;
   days_run: number;
-  days_total: number;     // typically 7
+  /** Running days the PLAN held this week — not 7. 2026-08-21 · watch/push
+   *  audit · the caller passed a literal 7, so a four-day-a-week runner who
+   *  ran all four of their days was told "4 of 7 days": a clean week
+   *  rendered as three misses. Falls back to 7 only when the week held no
+   *  plan rows at all, where 7 is the honest denominator for "days". */
+  days_total: number;
 }
 
 export function renderWeeklyCheckin(s: WeeklyCheckinSlots): RenderedTemplate {
   const actual = s.actual_mi.toFixed(1);
   const planned = s.planned_mi.toFixed(1);
+  // A 0.0 denominator (no active plan for the week) is not a target the
+  // runner missed — drop the pair rather than render "19.7 / 0.0 MI".
+  const title = s.planned_mi > 0
+    ? `WEEK DONE · ${actual} / ${planned} MI`
+    : `WEEK DONE · ${actual} MI`;
   return {
     category: 'weekly_checkin',
-    title: `WEEK DONE · ${actual} / ${planned} MI`,
+    title,
     body: `${s.days_run} of ${s.days_total} days. How'd it feel?`,
     interruption_level: 'active',
     dedup_key: `weekly-checkin:${s.user_id}:${s.week_start_iso}`,
@@ -259,7 +297,7 @@ export function renderSickCheck(s: SickCheckSlots): RenderedTemplate {
   const dayUnit = s.days_active === 1 ? 'DAY' : 'DAYS';
   return {
     category: 'niggle_sick',
-    title: `SICK · ${dayUnit === 'DAY' ? '' : ''}${s.days_active} ${dayUnit}`.trim(),
+    title: `SICK · ${s.days_active} ${dayUnit}`,
     body: 'How is it this morning? Scale of better, same, worse, recovered.',
     interruption_level: 'active',
     // 2026-07-06 · audit P1-25 · sick check emits its OWN iOS category.
@@ -322,11 +360,21 @@ export interface RaceCountdownSlots {
 }
 
 export function renderRaceCountdown(s: RaceCountdownSlots): RenderedTemplate {
-  const phaseLine = s.phase_next
-    ? ` ${s.phase_next} starts Sunday.`
+  // races.meta->>'phase_next' arrives lowercase ('peak block', 'taper'), and
+  // the old template dropped it straight after a full stop — "…to AFC. peak
+  // block starts Sunday."
+  const phase = s.phase_next?.trim();
+  const phaseLine = phase
+    ? ` ${phase.charAt(0).toUpperCase()}${phase.slice(1)} starts Sunday.`
     : '';
   return {
-    category: 'streak',  // shares the F bucket; the deck calls it "milestone family"
+    // 2026-08-21 · watch/push audit · was 'streak'. It shared the F prefs
+    // bucket with streak milestones, whose only call site has been commented
+    // out since 2026-06-03 and whose settings row was deleted 2026-08-17 —
+    // so the one switch a runner could see was labelled for the dead half
+    // and silently governed this one. Its own category, its own gate.
+    category: 'race_countdown',
+    apns_category_id: 'FAFF_MILESTONE',
     title: `${s.weeks_to_race} WEEKS · ${s.race_name.toUpperCase()}`,
     body: `${s.weeks_to_race} weeks to ${s.race_name}.${phaseLine}`,
     interruption_level: 'passive',
@@ -353,7 +401,8 @@ export function renderStravaReconnect(s: StravaReconnectSlots): RenderedTemplate
   return {
     category: 'strava_reconnect',
     title: 'STRAVA STOPPED SYNCING',
-    body: 'Token expired. 1 tap to fix.',
+    // '1 tap to fix' was app voice with a digit opening the sentence.
+    body: 'Your Strava token expired. Reconnect to resume syncing.',
     interruption_level: 'active',
     dedup_key: `strava-reconnect:${s.user_id}:${s.date_iso}`,
     action_buttons: [

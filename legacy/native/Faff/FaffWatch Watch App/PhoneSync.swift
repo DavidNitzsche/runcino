@@ -330,7 +330,20 @@ extension PhoneSync: WCSessionDelegate {
             }
         case "stopTreadmillHR":
             Task { @MainActor in
-                await TreadmillHRSession.shared.end()
+                // 2026-08-21 · watch/push audit · match the sessionId before
+                // ending, exactly as the durable transferUserInfo path below
+                // already does. Without it, a late or replayed stop for a
+                // PREVIOUS session killed the live one — the phone crashing
+                // mid-treadmill and relaunching into a new session is the
+                // real sequence (TreadmillHRSession.start() documents that
+                // exact restart), and the watch would then sample no HR for
+                // the rest of the run with nothing on screen to explain it.
+                let live = TreadmillHRSession.shared
+                if live.isActive, live.sessionId != sessionId, !sessionId.isEmpty {
+                    replyHandler(["status": "ignored-stale", "sessionId": sessionId])
+                    return
+                }
+                await live.end()
                 replyHandler(["status": "stopped", "sessionId": sessionId])
             }
         default:

@@ -142,31 +142,56 @@ async function dayHoldsRace(userId: string, dateIso: string): Promise<boolean> {
 }
 
 /** Read tomorrow's planned workout to slot into the recovery notification.
- *  Falls back to 'easy 5.0mi' if no plan row — matches deck §C SLOTS
- *  default phrasing. */
+ *
+ *  2026-08-21 · watch/push audit · TWO defects, one message:
+ *
+ *  1. The query filtered on `plan_workouts.user_uuid`, which is NULL on every
+ *     row inserted since the multi-user cutover — readers must reach the
+ *     runner by joining training_plans (the same correction the weekly
+ *     check-in took on 2026-08-17). So the lookup matched nothing for
+ *     essentially every runner and always fell through to the fallback.
+ *  2. That fallback was a hardcoded 'easy' / '5.0mi'. The push therefore told
+ *     the runner "Today is easy 5.0mi" on a rest day, on an interval day, and
+ *     on a 16-mile long-run day alike — a prescription the plan never made,
+ *     presented as the plan.
+ *
+ *  Now: joined through the ACTIVE plan, and a miss returns nulls so the
+ *  template says nothing about today rather than inventing it. A rest row
+ *  returns verb 'rest' so the template can name it.
+ */
 async function lookupPlannedWorkout(
   userId: string,
   dateIso: string,
-): Promise<{ verb: string; distance: string }> {
+): Promise<{ verb: string | null; distance: string | null }> {
   try {
     const r = await pool.query(
-      `SELECT type, distance_mi FROM plan_workouts
-        WHERE user_uuid = $1 AND date_iso = $2 LIMIT 1`,
+      `SELECT pw.type, pw.distance_mi
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1
+          AND tp.archived_iso IS NULL
+          AND pw.date_iso = $2
+        ORDER BY (pw.type = 'rest') ASC
+        LIMIT 1`,
       [userId, dateIso],
     );
     const row = r.rows[0];
-    if (!row) return { verb: 'easy', distance: '5.0mi' };
+    if (!row) return { verb: null, distance: null };
     const verbMap: Record<string, string> = {
       easy: 'easy', long: 'long', tempo: 'tempo', threshold: 'threshold',
       intervals: 'intervals', progression: 'progression', recovery: 'recovery',
       fartlek: 'fartlek', rest: 'rest', shakeout: 'shakeout',
     };
+    const verb = verbMap[row.type] ?? null;
+    if (verb == null || verb === 'rest') return { verb: verb ?? null, distance: null };
+    const mi = row.distance_mi == null ? null : Number(row.distance_mi);
     return {
-      verb: verbMap[row.type] ?? 'easy',
-      distance: `${Number(row.distance_mi ?? 5).toFixed(1)}mi`,
+      verb,
+      distance: mi != null && mi > 0 ? `${mi.toFixed(1)}mi` : null,
     };
   } catch {
-    return { verb: 'easy', distance: '5.0mi' };
+    // A DB hiccup is not knowledge about the runner's day. Say nothing.
+    return { verb: null, distance: null };
   }
 }
 

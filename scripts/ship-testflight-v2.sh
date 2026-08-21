@@ -123,9 +123,14 @@ echo "→ Generating native-v2 Xcode project from project.yml…"
 # Ensure the watch app source is symlinked into v2 so it ships in the same
 # .ipa as legacy did. (Watch app SOURCE stays at legacy/; the symlink lets
 # the v2 Xcode project compile it as part of the same bundle.)
-if [ ! -e "$NATIVE_V2/Faff/FaffWatch Watch App" ]; then
+# The link is RELATIVE (../../legacy/…) and committed that way. An absolute
+# link resolves to whichever checkout minted it, so a git worktree — or a
+# clone at any other path — compiled the OTHER tree's watch sources, or a
+# dangling link (which `-e` reports as missing, so this block then tried
+# `ln -s` over an existing name and errored). `-L` tests the link itself.
+if [ ! -L "$NATIVE_V2/Faff/FaffWatch Watch App" ] && [ ! -e "$NATIVE_V2/Faff/FaffWatch Watch App" ]; then
   echo "→ Linking watch app source from legacy/…"
-  ln -s "$ROOT/legacy/native/Faff/FaffWatch Watch App" \
+  ln -s "../../legacy/native/Faff/FaffWatch Watch App" \
         "$NATIVE_V2/Faff/FaffWatch Watch App"
 fi
 
