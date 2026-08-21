@@ -1034,6 +1034,13 @@ struct SplitBars: View {
                         .fill((b.inBand ?? true) ? V5.signal : V5.materialControl)
                         .frame(maxWidth: Self.barMaxWidth * CGFloat(b.fraction))
                         .frame(height: barHeight(b.paceSec, in: geo.size.height))
+                        // EACH MILE CLAIMS AN EQUAL SHARE OF THE WIDTH, and
+                        // the bar sits centred inside its share, capped at 14.
+                        // Capping the bar alone left every mile hugging the
+                        // leading edge with dead space trailing — the chart
+                        // read as a run that stopped early rather than one
+                        // that filled the tile.
+                        .frame(maxWidth: .infinity)
                         // Each mile is its own element. Unlike a twelve-week
                         // trend, where the shape is the story and the figures
                         // are noise, a runner asking about mile nine wants
