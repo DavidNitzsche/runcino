@@ -31,17 +31,30 @@
 //  context) and handed down as a `let`, per the AGENT-BRIEF shape.
 //
 //  ─────────────────────────────────────────────────────────────────────────
-//  THE TWO LIMITS THE DESIGN DOES NOT ACCOUNT FOR
+//  THE LIMITS THE DESIGN DOES NOT ACCOUNT FOR
 //
-//  1 · Phone run recording is foreground-only (`PhoneRunTracker`:
-//      `allowsBackgroundLocationUpdates = false`). This screen keeps the
-//      idle timer disabled for the run's duration and restores it on exit —
-//      mirrors `PhoneRunView`'s own `.onChange(of: tracker.state)` /
-//      `.onDisappear` pair exactly.
+//  1 · Recording continues with the screen locked (`PhoneRunTracker` now
+//      holds a background-location assertion). The idle timer is still
+//      disabled for the run's duration and restored on exit, because a
+//      console you can glance at is better than one you have to wake — but
+//      it is no longer load-bearing, and `tracker.backgroundRecordingEnabled`
+//      says so if a build ever ships without the entitlement.
 //  2 · A GPS drop is `tracker.lastFixAgeIsStale`. That is RULE THREE
 //      territory: "we could not read this," not a zero and not a silent
 //      undercounted number. Rendered as `ErrorNote`, not folded into the
 //      pace tile.
+//  3 · There is a wait before the first fix, and during it the distance is
+//      not zero — it is unread. Printing "0.00" there is RULE ONE the wrong
+//      way round: a number the screen does not have, dressed as one it does.
+//      `tracker.hasFirstFix` gates it.
+//  4 · Location can be refused outright, which is an ANSWER and has to look
+//      like one. `Alert` (attention rail, an action, no fault red), never
+//      the `ErrorNote` the network-outage case uses, and never a live-looking
+//      console frozen at 0:00 — which is what this screen used to show,
+//      because it read neither authorization flag.
+//  5 · A stretch nobody could measure (`tracker.trackHasGap`) makes the
+//      distance read SHORT. Nothing is guessed across it; the runner is told
+//      instead.
 //
 //  A third limit the design doesn't name, but the machinery forces: a
 //  no-watch outdoor runner (the exact runner `PhoneRunTracker` exists for —
@@ -161,12 +174,30 @@ struct LiveRunPhaseWalk {
         return "\(m):" + String(format: "%02d", s)
     }
 
-    /// "Interval 2 of 4 · 0.6 mi to go" for a repeated work phase, or the
-    /// phase's own label for anything else — a warm-up is a warm-up, not
-    /// "Interval 1 of 1".
+    /// "Interval 2 of 4", or the phase's own label — a warm-up is a warm-up,
+    /// not "Interval 1 of 1".
+    var lineHead: String {
+        (isWork && workCount > 1) ? "Interval \(workIndex) of \(workCount)" : phase.label
+    }
+
+    /// The remaining figure carrying its own provenance · RULE ONE.
+    ///
+    /// A time countdown is a real clock run against a prescribed duration:
+    /// measured. A distance rep's "0.6 mi to go" is NOT — it is that rep's
+    /// planned distance scaled by how much of the plan's own TIME estimate
+    /// has elapsed (`WatchPhase.distanceMi`'s doc comment calls that figure
+    /// an estimate in as many words), so it is a model of where the runner
+    /// probably is, and it takes the mark. It was previously printed as a
+    /// bare string indistinguishable from the measured case.
+    var remainingValue: FaffValue {
+        remainingMi != nil ? .modelled(remainingShort) : .measured(remainingShort)
+    }
+
+    /// "Interval 2 of 4 · 0.6 mi to go" as one flat string. 12b builds its
+    /// own line out of `lineHead`/`remainingShort`; 12a renders `lineHead` +
+    /// `remainingValue` so the mark survives (see `intervalLine`).
     var lineText: String {
-        let head = (isWork && workCount > 1) ? "Interval \(workIndex) of \(workCount)" : phase.label
-        return "\(head) · \(remainingShort) to go"
+        "\(lineHead) · \(remainingShort) to go"
     }
 }
 
@@ -195,25 +226,55 @@ struct LiveRunOutdoorV5: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if tracker.authorizationDenied {
+                // RULE THREE · this is an answer, not an outage. Attention
+                // rail and a way to act on it, never fault red, and never
+                // the console it replaces.
+                locationRefused
+            } else {
+                console
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(V5.surfacePage.ignoresSafeArea())
+        // The run clock is NOT driven from here any more. This screen used
+        // to carry `TimelineView(.periodic(from: .now, by: 1.0))` in a
+        // `.background`, ticking the tracker from `.onChange(of: ctx.date)`.
+        // `.now` is read inside `body`, so every re-render re-anchored the
+        // schedule, which produced a new date, which fired the tick, which
+        // wrote `@Published elapsedSec`, which re-rendered. Measured on the
+        // simulator: 5,543 ticks in fifteen seconds, and only two GPS fixes
+        // accepted in the same window because the loop had the main actor.
+        // `PhoneRunTracker` owns its clock now — see `startClock` there.
+        // The view redraws because `elapsedSec` changes, which is the right
+        // direction for that dependency to run in.
+        // Keep the screen awake for the run's duration only, restore on
+        // exit — mirrors PhoneRunView's own onChange/onDisappear pair. This
+        // is now a convenience rather than the thing holding the run up:
+        // recording survives a locked screen (LIMIT 1).
+        .onChange(of: tracker.state) { _, state in
+            UIApplication.shared.isIdleTimerDisabled = (state == .running)
+            if state == .running, hr.currentBpm == nil {
+                Task { await hr.start(from: tracker.startedAt ?? .now) }
+            }
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+            hr.stop()
+        }
+    }
+
+    // MARK: - The console
+
+    private var console: some View {
+        VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: V5.S.s16) {
                 topRow
                 distTile
                 paceTile
                 heartTile
-                if let walk {
-                    Text(walk.lineText)
-                        .font(.faffText(20, weight: .medium))
-                        .foregroundStyle(V5.textPrimary)
-                        .lineSpacing(2)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, V5.S.s4)
-                }
-                if tracker.lastFixAgeIsStale {
-                    // RULE THREE: a GPS drop is "we could not read this," not
-                    // a silently undercounted distance folded into the tile.
-                    ErrorNote(text: "GPS signal dropped. Distance may undercount until it returns.")
-                }
+                if let walk { intervalLine(walk) }
+                signalNote
             }
             .padding(.horizontal, V5.S.s20)
             .padding(.top, V5.S.s8)
@@ -225,28 +286,73 @@ struct LiveRunOutdoorV5: View {
                 .padding(.top, V5.S.s12)
                 .padding(.bottom, V5.S.s16)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(V5.surfacePage.ignoresSafeArea())
-        // No internal timer on the tracker — this screen ticks it, exactly
-        // the idiom PhoneRunView already uses.
-        .background(
-            TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
-                Color.clear.onChange(of: ctx.date) { _, now in tracker.tick(at: now) }
-            }
-        )
-        // LIMIT 1 · foreground-only GPS means a locked screen stops the run.
-        // Keep the screen awake for the run's duration only, restore on
-        // exit — mirrors PhoneRunView's own onChange/onDisappear pair.
-        .onChange(of: tracker.state) { _, state in
-            UIApplication.shared.isIdleTimerDisabled = (state == .running)
-            if state == .running, hr.currentBpm == nil {
-                Task { await hr.start(from: tracker.startedAt ?? .now) }
-            }
+    }
+
+    /// One note at a time, in the order the runner needs them. Before the
+    /// first fix nothing else is knowable; a live drop outranks a historical
+    /// gap; and the missing-entitlement case is last because it is a build
+    /// problem, not a run problem, and should never appear at all.
+    @ViewBuilder
+    private var signalNote: some View {
+        if !tracker.hasFirstFix && tracker.state == .running {
+            Silence(reason: "Finding GPS. Distance and pace start when the signal locks.")
+        } else if tracker.lastFixAgeIsStale {
+            // RULE THREE: a GPS drop is "we could not read this," not a
+            // silently undercounted distance folded into the tile.
+            ErrorNote(text: "GPS signal dropped. Distance holds where it is until it comes back.")
+        } else if tracker.trackHasGap {
+            Alert(text: "Part of this run could not be measured. Nothing was filled in across the gap, so the distance reads short.")
+        } else if !tracker.backgroundRecordingEnabled && tracker.state == .running {
+            Alert(text: "This build can only record while the app is open. Keep the screen on until you end the run.")
         }
-        .onDisappear {
-            UIApplication.shared.isIdleTimerDisabled = false
-            hr.stop()
+    }
+
+    /// "Interval 2 of 4 · ~0.6 mi to go". The figure goes through
+    /// `FaffValueText` rather than into the string, so a distance derived
+    /// from the plan's time estimate carries the mark and a real countdown
+    /// does not — see `LiveRunPhaseWalk.remainingValue`.
+    private func intervalLine(_ walk: LiveRunPhaseWalk) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text("\(walk.lineHead) \u{00b7} ")
+            FaffValueText(walk.remainingValue, font: .faffText(20, weight: .medium))
+            Text(" to go")
         }
+        .font(.faffText(20, weight: .medium))
+        .foregroundStyle(V5.textPrimary)
+        .lineSpacing(2)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, V5.S.s4)
+    }
+
+    // MARK: - Location refused
+    //
+    // The screen this replaces read neither `authorizationGranted` nor
+    // `authorizationDenied`, so a runner who had said no — or who had not
+    // been asked yet — got the full live console, frozen at 0:00, with a
+    // button labelled "Pause" as the only thing that would start anything.
+
+    private var locationRefused: some View {
+        VStack(alignment: .leading, spacing: V5.S.s16) {
+            topRow
+            Alert(text: "Location is off for Faff. There is no route, distance or pace to record without it.")
+            Text("Turn it on in Settings, then start the run again.")
+                .font(.faffText(TypeScaleV5.body15))
+                .foregroundStyle(V5.textSecondary)
+                .lineSpacing(3)
+                .padding(.horizontal, V5.S.s4)
+            FaffButton("Open Settings", variant: .secondary, size: .lg) {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Spacer(minLength: 0)
+            FaffButton("Back", variant: .ghost, size: .lg, action: onEnd)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, V5.S.s20)
+        .padding(.top, V5.S.s8)
+        .padding(.bottom, V5.S.s16)
     }
 
     // MARK: - Top row
@@ -272,9 +378,12 @@ struct LiveRunOutdoorV5: View {
                     .font(.faffText(14))
                     .tracking(14 * 0.04)
                     .foregroundStyle(V5.textQuiet)
-                Text(FaffFmt.miles(tracker.distanceMi) ?? "0")
-                    .font(.faffText(32, weight: .semibold))
-                    .foregroundStyle(V5.textPrimary)
+                // Before the first fix this is not zero, it is unread. The
+                // old `?? "0"` printed a measurement the screen did not have,
+                // and a runner who set off during the lock wait read it as a
+                // broken tracker.
+                FaffValueText(tracker.hasFirstFix ? .measured(Self.liveMiles(tracker.distanceMi)) : .unreadable,
+                              font: .faffText(32, weight: .semibold))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -295,6 +404,20 @@ struct LiveRunOutdoorV5: View {
         // between the kit's r22/r26 tokens, so it is taken verbatim rather
         // than rounded to the nearest named radius.
         .background(V5.materialTile, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    /// Two decimals, and ONLY here.
+    ///
+    /// `FaffFmt.miles` is the system's distance format and gives one decimal,
+    /// which is right everywhere a distance is a finished fact. It is wrong on
+    /// a console being read mid-stride: it holds at "0" for the first 0.05 mi
+    /// and then steps 0.1 at a time, so the tile reads as broken for the first
+    /// few hundred metres of every run and as frozen for forty seconds at a
+    /// stretch after that. The shipped legacy console already used two
+    /// decimals here for exactly this reason. Every non-live distance still
+    /// goes through `FaffFmt.miles`.
+    static func liveMiles(_ mi: Double) -> String {
+        String(format: "%.2f", mi)
     }
 
     // MARK: - Pace tile
@@ -445,10 +568,43 @@ private func outdoorNoHeartPreview() -> some View {
     return LiveRunOutdoorV5(tracker: tracker, hr: hr, plan: plan, onPause: {}, onEnd: {})
 }
 
+/// The first ten seconds of every outdoor run, and the state the screen used
+/// to render as a measured "0.00".
+@MainActor
+private func outdoorFindingGpsPreview() -> some View {
+    let tracker = PhoneRunTracker()
+    tracker.seedForPreview(state: .running, elapsedSec: 6, distanceMi: 0,
+                           currentPaceSecPerMi: nil, hasFirstFix: false)
+    let hr = TreadmillHRStreamer()
+    let plan = LiveRunPlanV5(sessionType: "Easy", totalMi: 5, phases: [], workoutHrCeilingBpm: nil)
+    return LiveRunOutdoorV5(tracker: tracker, hr: hr, plan: plan, onPause: {}, onEnd: {})
+}
+
+/// A stretch nobody could measure. The distance is honest and short, and the
+/// screen says so rather than filling the hole in.
+@MainActor
+private func outdoorGapPreview() -> some View {
+    let tracker = PhoneRunTracker()
+    tracker.seedForPreview(state: .running, elapsedSec: 24 * 60, distanceMi: 2.9,
+                           currentPaceSecPerMi: 468, trackHasGap: true)
+    let hr = TreadmillHRStreamer()
+    hr.seedForPreview(bpm: 149)
+    let plan = LiveRunPlanV5(sessionType: "Easy", totalMi: 6, phases: [], workoutHrCeilingBpm: 152)
+    return LiveRunOutdoorV5(tracker: tracker, hr: hr, plan: plan, onPause: {}, onEnd: {})
+}
+
 #Preview("Outdoor · mid-run") {
     outdoorMidRunPreview()
 }
 
 #Preview("Outdoor · no heart source") {
     outdoorNoHeartPreview()
+}
+
+#Preview("Outdoor · finding GPS") {
+    outdoorFindingGpsPreview()
+}
+
+#Preview("Outdoor · track has a gap") {
+    outdoorGapPreview()
 }

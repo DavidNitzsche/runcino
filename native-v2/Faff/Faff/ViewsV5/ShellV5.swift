@@ -198,10 +198,14 @@ struct RunPickerV5: View {
                    sub: "Speed and incline, no GPS",
                    action: onTreadmill)
 
-            // A limit the design does not account for, and the runner finds out
-            // the hard way otherwise: recording is foreground-only. Said here,
-            // where the choice is made, rather than after a lost run.
-            Text("Recording needs the app open and the screen on. A phone in a pocket stops the run.")
+            // This used to read "Recording needs the app open and the screen
+            // on. A phone in a pocket stops the run." — true of the old
+            // foreground-only recorder, and false as of the background
+            // location entitlement (native-v2/project.yml · UIBackgroundModes).
+            // Left here rather than deleted because the runner still has to
+            // know the run keeps going with the phone away, and that the app
+            // is the thing holding it: force-quitting still ends it.
+            Text("An outdoor run keeps recording with your screen locked and the phone in a pocket. Closing the app ends it.")
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(V5.textQuiet)
                 .fixedSize(horizontal: false, vertical: true)

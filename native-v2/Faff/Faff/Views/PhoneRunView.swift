@@ -73,15 +73,16 @@ struct PhoneRunView: View {
                 }
             }
             .foregroundStyle(Theme.txt)
-            // Live tick — identical cadence/pattern to TreadmillView.tick:
-            // TimelineView drives a 1s pulse, tracker.tick(at:) advances the
-            // published elapsedSec from its own start/pause bookkeeping.
-            .background(
-                TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
-                    Color.clear
-                        .onChange(of: ctx.date) { _, now in tracker.tick(at: now) }
-                }
-            )
+            // The 1s tick used to live here, as
+            // `TimelineView(.periodic(from: .now, by: 1.0))` in a
+            // `.background` calling `tracker.tick(at:)` from
+            // `.onChange(of: ctx.date)`. `.now` is read inside `body`, so
+            // every re-render re-anchored the schedule → new date → tick →
+            // `@Published` write → re-render. Measured spinning at thousands
+            // of ticks a second on the simulator, starving the main actor so
+            // hard that CoreLocation's own callbacks stopped landing.
+            // `PhoneRunTracker` owns its clock now (see `startClock`); this
+            // view redraws off `elapsedSec` like any other published value.
         }
         .task {
             plannedWorkout = try? await API.fetchWatchWorkout()

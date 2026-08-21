@@ -63,14 +63,38 @@ targets:
         # Restoring with an honest "watch-only" framing.
         NSHealthShareUsageDescription: "Faff reads HR, HRV, sleep, VO2max, and workouts from Apple Health to compute training zones and adapt your plan."
         NSHealthUpdateUsageDescription: "Faff Watch writes completed workouts to Apple Health so your training history stays in one place."
-        # Phone-only GPS run recorder (wave3b/phone-gps-recording ·
-        # PhoneRunTracker.swift). Foreground-only — no "Always" string, no
-        # UIBackgroundModes location entry, allowsBackgroundLocationUpdates
-        # stays false. Wording matches the watch target's existing
-        # NSLocationWhenInUseUsageDescription (see the FaffWatch Watch App
-        # target further down this file) — same feature, same purpose,
-        # different device — for a consistent App Review story.
-        NSLocationWhenInUseUsageDescription: "Faff records your route during outdoor runs so you can see where you ran."
+        # Phone-only GPS run recorder (PhoneRunTracker.swift). Wording
+        # matches the watch target's existing NSLocationWhenInUseUsage
+        # Description (see the FaffWatch Watch App target further down this
+        # file) — same feature, same purpose, different device — for a
+        # consistent App Review story.
+        #
+        # 2026-08-21 · the string now says the recording continues with the
+        # screen off, because it does. See UIBackgroundModes below.
+        NSLocationWhenInUseUsageDescription: "Faff records your route, distance and pace during outdoor runs, and keeps recording while your screen is locked."
+        # REQUIRED for a phone-recorded outdoor run. Without it, locking the
+        # screen suspends the app: CoreLocation stops delivering while the
+        # run clock keeps accruing, and the first fix on return gets
+        # differenced against the pre-suspend one — so the whole gap lands
+        # as a single straight-line jump. A 2 mi out-and-back with the phone
+        # in a pocket recorded ~16 minutes and ~0.00 mi. Same class of loss
+        # as the watch's WKBackgroundModes: workout-processing entry above,
+        # and lost the same way if it is edited into Info.plist instead of
+        # here — xcodegen regenerates that file from this block.
+        #
+        # When-in-use authorization is sufficient: an app may set
+        # allowsBackgroundLocationUpdates under when-in-use as long as this
+        # key is declared, and iOS shows the blue location indicator for the
+        # duration. No NSLocationAlwaysAndWhenInUseUsageDescription is
+        # added, and no "Always" prompt is shown.
+        #
+        # PhoneRunTracker re-reads this key at runtime
+        # (`backgroundLocationDeclared`) rather than assuming it: setting
+        # allowsBackgroundLocationUpdates without it raises an exception, so
+        # if a regen ever drops the key the recorder degrades to
+        # foreground-only instead of crashing.
+        UIBackgroundModes:
+          - location
         # v3 fonts registration · TTFs live in Faff/Faff/Resources/Fonts.
         # Must match the actual filenames in Copy Bundle Resources or
         # iOS skips them at registration time.

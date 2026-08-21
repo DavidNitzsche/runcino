@@ -38,7 +38,7 @@
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Faff Watch writes completed workouts to Apple Health so your training history stays in one place.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Faff records your route during outdoor runs so you can see where you ran.</string>
+	<string>Faff records your route, distance and pace during outdoor runs, and keeps recording while your screen is locked.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Anton-Regular.ttf</string>
@@ -60,6 +60,10 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

@@ -934,9 +934,11 @@ struct LiveRunHostV5: View {
     let mode: LiveRunMode
     let onDismiss: () -> Void
 
-    /// Owned here, for exactly the run's lifetime. The consoles observe and
-    /// tick it; they do not own it, because ending a run has to outlive the
-    /// screen that was showing it.
+    /// Owned here, for exactly the run's lifetime. The consoles observe it;
+    /// they neither own nor drive it, because ending a run has to outlive the
+    /// screen that was showing it — and because a run whose clock depends on
+    /// a view rendering is a run that stops when the view does not. The
+    /// tracker keeps its own clock (`PhoneRunTracker.startClock`).
     @StateObject private var tracker = PhoneRunTracker()
     @StateObject private var hr = TreadmillHRStreamer()
 
@@ -945,20 +947,39 @@ struct LiveRunHostV5: View {
     /// renders, because a live console that appears and then reflows when the
     /// plan lands is exactly what the design forbids.
     @State private var asked = false
+    /// The End confirm. A run is hours of work and End is a single tap next
+    /// to Pause; it used to finish, save and dismiss with no step in between.
+    @State private var confirmingEnd = false
+    /// Set when a run this app died in the middle of was recovered on the way
+    /// in — see `.task`. Shown once, on this console, because there is
+    /// nowhere else the runner would think to look for it.
+    @State private var recovered: PhoneRunCheckpoint?
 
     var body: some View {
         Group {
             switch mode {
             case .outdoor:
+                // A run worth keeping gets a confirm; an empty console — the
+                // refusal screen's "Back", or a mode opened by accident —
+                // just leaves, because there is nothing to be sure about.
                 LiveRunOutdoorV5(tracker: tracker, hr: hr, plan: plan,
-                                 onPause: togglePause, onEnd: end)
+                                 onPause: togglePause,
+                                 onEnd: { if hasRecordedRun { confirmingEnd = true } else { end() } })
             case .treadmill:
                 LiveRunTreadmillV5(plan: plan, hr: hr,
                                    onPause: togglePause, onEnd: end)
             }
         }
         .opacity(asked ? 1 : 0)
+        .overlay { if mode == .outdoor { endConfirmSheet } }
         .task {
+            // A run the app was killed in the middle of, re-submitted through
+            // the same durable queue a normal End uses. Done BEFORE this
+            // session starts, so the checkpoint on disk belongs to exactly
+            // one run at a time. Idempotent at the server (row id derives
+            // from workoutId), so this can never duplicate a run that did
+            // manage to save.
+            if mode == .outdoor { recovered = PhoneRunTracker.flushInterruptedRun() }
             // A failure here is not an outage screen: the run can still be
             // recorded, it just has no target to hold. `plan` stays nil and
             // both consoles already draw their no-target layout.
@@ -966,9 +987,71 @@ struct LiveRunHostV5: View {
                 plan = LiveRunPlanV5(workout: w, sessionType: w.name)
             }
             asked = true
+            // Safe before authorization has been answered: the tracker
+            // remembers the request and starts itself when the prompt is
+            // answered. It used to return silently, leaving a live-looking
+            // console frozen at 0:00 on every runner's first ever run.
             if mode == .outdoor { tracker.start() }
             await hr.start(from: Date())
         }
+    }
+
+    /// ─────────────────────────────────────────────────────────────────────
+    /// THE END CONFIRM
+    ///
+    /// Three shapes, because there are three different things End can mean:
+    ///
+    ///   · a real run   → say what is about to be saved, and save it;
+    ///   · nothing yet  → there is no run here to keep, so leaving is
+    ///                    leaving, and it must not claim to have saved
+    ///                    anything (the old path POSTed a 0.00 mi run, which
+    ///                    the backend's sub-threshold guard then had to throw
+    ///                    away — a lie that happened to be caught downstream);
+    ///   · refused      → location is off, so the button is just a way out.
+    @ViewBuilder
+    private var endConfirmSheet: some View {
+        V5SheetHost(isPresented: $confirmingEnd, title: hasRecordedRun ? "End the run" : "Leave") {
+            VStack(alignment: .leading, spacing: V5.S.s16) {
+                if let recovered {
+                    Alert(text: "A run the app was interrupted during was saved on the way in: "
+                          + "\(String(format: "%.2f", recovered.distanceMi)) mi.")
+                }
+                Text(endSheetBody)
+                    .font(.faffText(TypeScaleV5.body15))
+                    .foregroundStyle(V5.textSecondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                FaffButton(hasRecordedRun ? "End and save" : "Leave", variant: .primary, size: .lg) {
+                    confirmingEnd = false
+                    end()
+                }
+                FaffButton("Keep running", variant: .ghost, size: .lg) {
+                    confirmingEnd = false
+                }
+            }
+        }
+    }
+
+    /// Enough to be a run: the same thresholds the backend's sub-threshold
+    /// guard uses (lib/runs/length-guard.ts · < 0.25 mi AND < 180 s is a tap
+    /// test), asked here so the answer on screen matches the answer the
+    /// server would give.
+    private var hasRecordedRun: Bool {
+        tracker.distanceMi >= 0.25 || tracker.elapsedSec >= 180
+    }
+
+    private var endSheetBody: String {
+        guard hasRecordedRun else {
+            return "Nothing has been recorded yet, so there is nothing to save."
+        }
+        let dist = String(format: "%.2f", tracker.distanceMi)
+        let m = tracker.elapsedSec / 60, s = tracker.elapsedSec % 60
+        let clock = "\(m):" + String(format: "%02d", s)
+        var line = "Saves \(dist) mi in \(clock)."
+        if tracker.trackHasGap {
+            line += " Part of the track could not be measured, so the distance reads short."
+        }
+        return line
     }
 
     /// ─────────────────────────────────────────────────────────────────────
@@ -1008,10 +1091,35 @@ struct LiveRunHostV5: View {
             onDismiss()
             return
         }
+        hr.stop()
+        // Nothing worth keeping: throw it away rather than POST a run the
+        // backend will only discard. `discard()` also clears the checkpoint,
+        // so the recovery path does not resurrect it on the next open.
+        guard hasRecordedRun else {
+            tracker.discard()
+            onDismiss()
+            return
+        }
         tracker.finish()
-        let payload = tracker.buildCompletionPayload(status: "completed")
+        // The phone is recording the ROUTE. That does not mean there is no
+        // wrist: a watch worn on an outdoor run writes HR into HealthKit
+        // exactly as it does on a treadmill, and this path used to drop
+        // every one of those samples on the floor, so a phone-recorded run
+        // reached the coach engine with no heart rate at all.
+        let sessionHr = hr.closeSession()
+        let id = tracker.workoutId
+        let payload = tracker.buildCompletionPayload(status: "completed",
+                                                     avgHr: sessionHr.avg,
+                                                     maxHr: sessionHr.max)
         if let data = try? JSONSerialization.data(withJSONObject: payload) {
-            Task { _ = await WatchSync.shared.saveCompletionDurably(data) }
+            Task {
+                _ = await WatchSync.shared.saveCompletionDurably(data)
+                // Only once the payload is in the durable queue. A crash in
+                // the gap leaves the checkpoint intact and the run
+                // recoverable; clearing it at `finish()` would have opened a
+                // window where the run existed nowhere.
+                PhoneRunTracker.clearCheckpoint(workoutId: id)
+            }
         }
         onDismiss()
     }
