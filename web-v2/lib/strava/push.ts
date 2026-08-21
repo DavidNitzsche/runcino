@@ -91,14 +91,14 @@ export async function pushRunToStrava(
     }
   }
   if (!runRow?.data) {
-    return { pushId: -1, status: 'failed', error: 'run not found' };
+    return recordUnpushable(userId, runId, 'run not found');
   }
   const run = runRow.data;
 
   // P21 — if this run was merged into another, skip; the canonical one
   // is what should push.
   if (run.mergedIntoId) {
-    return { pushId: -1, status: 'failed', error: 'merged run, skip push' };
+    return recordUnpushable(userId, runId, 'merged run, skip push');
   }
 
   const prefs = (await pool.query(
@@ -176,9 +176,12 @@ export async function pushRunToStrava(
     form.append('data_type', 'tcx');
     form.append('name', title);
     form.append('description', description);
-    form.append('trainer', 'false');
+    // A treadmill session is not an outdoor run that happens to lack GPS.
+    // Strava's `trainer` flag is what tags it indoor; without it the
+    // activity lands as a normal run with no route.
+    form.append('trainer', isIndoorRun(run) ? 'true' : 'false');
     form.append('commute', 'false');
-    form.append('sport_type', opts.isRace ? 'Run' : 'Run');
+    form.append('sport_type', 'Run');
     // private/visibility — Strava maps "private" → activity_visibility=only_me etc.
     // For now we leave default and set via PUT after upload (cheaper than embedding here).
 
@@ -266,6 +269,45 @@ export async function suggestTitleForRun(userId: string, runId: string): Promise
   return titleFor({ ...run, type: runType ?? run.type }, 'type_phases');
 }
 
+/**
+ * Write a terminal strava_pushes row for a run that can never be pushed —
+ * it doesn't resolve, or it was merged into a canonical sibling.
+ *
+ * 2026-08-21 · these two branches used to return before the INSERT. The
+ * strava-push-poll cron caps retries with `COUNT(*) < 3` over the rows for
+ * a run, so a push that never wrote a row never advanced the count: the
+ * 2026-05-31 merged run had been re-attempted on every cron pass since
+ * June, twice an hour, silently. Recording the attempt is what makes the
+ * cap mean anything.
+ */
+async function recordUnpushable(
+  userId: string,
+  runId: string,
+  reason: string,
+): Promise<PushResult> {
+  try {
+    const row = (await pool.query(
+      `INSERT INTO strava_pushes (user_uuid, run_id, status, error_message, completed_at)
+       VALUES ($1, $2, 'failed', $3, NOW())
+       RETURNING id`,
+      [userId, runId, reason],
+    )).rows[0];
+    return { pushId: Number(row?.id ?? -1), status: 'failed', error: reason };
+  } catch {
+    return { pushId: -1, status: 'failed', error: reason };
+  }
+}
+
+/**
+ * Is this run indoor? Watch ingest stamps `indoor: true` and
+ * `source: 'treadmill'`; older rows may carry only one of the two.
+ */
+export function isIndoorRun(run: any): boolean {
+  if (!run || typeof run !== 'object') return false;
+  if (run.indoor === true) return true;
+  return String(run.source ?? '').toLowerCase() === 'treadmill';
+}
+
 async function markFailed(pushId: number, message: string) {
   await pool.query(
     `UPDATE strava_pushes SET status = 'failed', error_message = $1, completed_at = NOW()
@@ -339,20 +381,43 @@ export async function resolvePendingPush(
     return { pushId, status: 'uploaded', stravaActivityId: j.activity_id };
   }
 
+  // 2026-08-21 · Strava's verdict is not always in `error`. A rejected
+  // upload comes back as { error: null, status: "There was an error
+  // processing your activity.", activity_id: null } — indistinguishable
+  // from "still processing" if you only read `error` and `activity_id`.
+  // That is how six treadmill pushes sat 'pending' for a full 24h and then
+  // got buried under the sweep's invented message instead of Strava's own.
+  // Read both fields; the terminal `status` strings are documented on
+  // https://developers.strava.com/docs/uploads/.
   const err: string = typeof j.error === 'string' ? j.error : '';
-  if (err) {
-    if (/duplicate/i.test(err)) {
+  const statusText: string = typeof j.status === 'string' ? j.status : '';
+  const verdict = err || (isTerminalUploadStatus(statusText) ? statusText : '');
+  if (verdict) {
+    if (/duplicate/i.test(verdict)) {
       await pool.query(
         `UPDATE strava_pushes SET status = 'duplicate', completed_at = NOW(), error_message = $1 WHERE id = $2`,
-        [err.slice(0, 500), pushId]
+        [verdict.slice(0, 500), pushId]
       );
       return { pushId, status: 'duplicate' };
     }
-    await markFailed(pushId, err);
-    return { pushId, status: 'failed', error: err };
+    await markFailed(pushId, verdict);
+    return { pushId, status: 'failed', error: verdict };
   }
 
   return { pushId, status: 'pending' }; // still processing
+}
+
+/**
+ * Does this Strava upload `status` string mean the upload is done and will
+ * never produce an activity? "Your activity is still being processed." and
+ * "Your activity is ready." are the two non-failures; anything naming an
+ * error, a rejection, or a deletion is terminal. Unrecognized strings stay
+ * pending — a new Strava wording should slow us down, not fail a good push.
+ */
+function isTerminalUploadStatus(status: string): boolean {
+  if (!status) return false;
+  if (/still being processed|is ready/i.test(status)) return false;
+  return /error|fail|not (?:a )?valid|unsupported|duplicate|deleted|reject/i.test(status);
 }
 
 /**

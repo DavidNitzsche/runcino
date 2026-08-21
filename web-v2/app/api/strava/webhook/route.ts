@@ -36,7 +36,7 @@ import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { isSubThresholdRun } from '@/lib/runs/length-guard';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
-import { raiseAlert } from '@/lib/ops/alerts';
+import { alertWebhookRejected } from '@/lib/strava/webhook-alerts';
 
 // Layer 3 (M-1) · optional shared secret carried as ?key=<value> on the
 // callback URL registered with Strava. Strava echoes the full callback URL
@@ -48,29 +48,6 @@ function secretKeyOk(req: NextRequest): boolean {
   const expected = process.env.STRAVA_WEBHOOK_SECRET_PATH;
   if (!expected) return true;
   return req.nextUrl.searchParams.get('key') === expected;
-}
-
-// Rejected-event alert with a 6h dedup so a scanner burst can't flood
-// ops_alerts. Best-effort — alerting must never break the ACK path.
-async function alertWebhookRejected(message: string, metadata: Record<string, unknown>): Promise<void> {
-  try {
-    const recent = await pool.query(
-      `SELECT 1 FROM ops_alerts
-        WHERE kind = 'webhook_failure'
-          AND created_at > NOW() - INTERVAL '6 hours'
-        LIMIT 1`,
-    );
-    if (recent.rows.length > 0) return;
-    await raiseAlert({
-      kind: 'webhook_failure',
-      severity: 'error',
-      message,
-      metadata,
-      source: 'strava/webhook',
-    });
-  } catch (e: any) {
-    console.error('[strava/webhook] alert write failed:', e?.message);
-  }
 }
 
 export const dynamic = 'force-dynamic';
@@ -195,6 +172,7 @@ export async function POST(req: NextRequest) {
   } catch (e: unknown) {
     console.error(`[strava/webhook] subscription lookup failed: ${e instanceof Error ? e.message : String(e)}`);
     await alertWebhookRejected(
+      'our_fault',
       `webhook subscription lookup threw: ${e instanceof Error ? e.message : String(e)}`,
       { subscriptionId, ownerId, objectId, aspectType },
     );
@@ -207,6 +185,7 @@ export async function POST(req: NextRequest) {
     // strava_webhook_subscriptions was empty (Jun 5-9). A rejection here is
     // either an attack or a broken subscription table — both worth an alert.
     await alertWebhookRejected(
+      'our_fault',
       `webhook event rejected: unknown subscription_id=${subscriptionId} (empty/stale strava_webhook_subscriptions?)`,
       { subscriptionId, ownerId, objectId, aspectType },
     );
@@ -227,6 +206,7 @@ export async function POST(req: NextRequest) {
   if (!ownerProfile) {
     console.warn(`[strava/webhook] unknown owner_id=${ownerId} · no profile.strava_athlete_id match · rejecting`);
     await alertWebhookRejected(
+      'not_a_user',
       `webhook event rejected: unknown owner_id=${ownerId}`,
       { subscriptionId, ownerId, objectId, aspectType },
     );
@@ -338,6 +318,7 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
             `strava_status=${probeStatus} owner=${ownerId}`);
           if (verdict.reason === 'token_still_valid') {
             await alertWebhookRejected(
+              'forged',
               `webhook deauthorize refused: token for owner_id=${ownerId} still valid · forged event`,
               { ownerId, objectId, aspectType, stravaStatus: probeStatus },
             );
@@ -409,6 +390,7 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
           `strava_status=${probeStatus} owner=${ownerId} object=${objectId}`);
         if (verdict.reason === 'still_exists') {
           await alertWebhookRejected(
+            'forged',
             `webhook delete refused: activity ${objectId} still exists on Strava · forged event for owner_id=${ownerId}`,
             { ownerId, objectId, aspectType, stravaStatus: probeStatus },
           );
@@ -472,6 +454,7 @@ async function processWebhookEvent(args: ProcessArgs): Promise<void> {
         console.warn(`[strava/webhook] refused upsert · activity ${objectId} ` +
           `is not owned by athlete ${ownerId}`);
         await alertWebhookRejected(
+          'forged',
           `webhook upsert refused: activity ${objectId} not owned by owner_id=${ownerId}`,
           { ownerId, objectId, aspectType },
         );

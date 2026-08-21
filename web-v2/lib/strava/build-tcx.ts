@@ -17,6 +17,9 @@
  * - Single-lap when no phases (Apple Watch Workouts, manual).
  * - HR + cadence per-lap averages (not per-second; Strava re-derives).
  * - GPS track from route_polyline when present.
+ * - A POSITION-LESS track when there is no polyline (treadmill / indoor).
+ *   Every TCX we emit carries a <Track>. See stationaryTrackpoints() for
+ *   why a laps-only file cannot be left as-is.
  * - Altitude is SYNTHESIZED (Option C): a smooth half-sine profile whose
  *   total climb equals the run's real elevGainFt. A polyline carries no
  *   elevation, and Strava's DEM on the sparse summary polyline spiked to
@@ -74,8 +77,11 @@ export function buildTcx(opts: BuildOpts): string {
       }];
 
   // GPS track from the route polyline, distributed across the lap timeline.
-  // No polyline → empty track → no <Track> emitted (byte-identical to the
-  // laps-only output we shipped before).
+  // 2026-08-21 · no polyline no longer means no track. A laps-only TCX is
+  // accepted by POST /uploads (an upload id comes back) and then fails
+  // ASYNCHRONOUSLY inside Strava's processor — every treadmill push David
+  // made since 2026-07-15 sat 'pending' until the 24h sweep buried it.
+  // Indoor runs now get position-less trackpoints instead.
   const firstStartMs = Date.parse(laps[0].startUtc);
   const lastEndMs = Date.parse(laps[laps.length - 1].startUtc)
     + laps[laps.length - 1].durationSec * 1000;
@@ -84,7 +90,7 @@ export function buildTcx(opts: BuildOpts): string {
   const gainMeters = opts.elevGainFt != null ? opts.elevGainFt * 0.3048 : null;
   const track = opts.routePolyline
     ? trackpointsFromPolyline(opts.routePolyline, firstStartMs, lastEndMs, totalMeters, gainMeters, opts.splits ?? null, opts.durationSec)
-    : [];
+    : stationaryTrackpoints(laps, totalMeters, gainMeters);
 
   const lapXml = laps.map((lap, i) => {
     const isLast = i === laps.length - 1;
@@ -92,9 +98,16 @@ export function buildTcx(opts: BuildOpts): string {
     const lapEndMs = lapStartMs + lap.durationSec * 1000;
     const lapTps = track.filter((tp) =>
       tp.timeMs >= lapStartMs && (isLast ? tp.timeMs <= lapEndMs : tp.timeMs < lapEndMs));
+    // <Position> is optional in the TCX schema and absent on every indoor
+    // export — omit it rather than inventing coordinates.
     const trackXml = lapTps.length > 0
-      ? `\n      <Track>${lapTps.map((tp) => `
-        <Trackpoint><Time>${new Date(tp.timeMs).toISOString()}</Time><Position><LatitudeDegrees>${tp.lat.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${tp.lng.toFixed(6)}</LongitudeDegrees></Position>${tp.altitudeM != null ? `<AltitudeMeters>${tp.altitudeM.toFixed(1)}</AltitudeMeters>` : ''}<DistanceMeters>${tp.cumDistM.toFixed(1)}</DistanceMeters></Trackpoint>`).join('')}
+      ? `\n      <Track>${lapTps.map((tp) => {
+        const pos = tp.lat != null && tp.lng != null
+          ? `<Position><LatitudeDegrees>${tp.lat.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${tp.lng.toFixed(6)}</LongitudeDegrees></Position>`
+          : '';
+        return `
+        <Trackpoint><Time>${new Date(tp.timeMs).toISOString()}</Time>${pos}${tp.altitudeM != null ? `<AltitudeMeters>${tp.altitudeM.toFixed(1)}</AltitudeMeters>` : ''}<DistanceMeters>${tp.cumDistM.toFixed(1)}</DistanceMeters></Trackpoint>`;
+      }).join('')}
       </Track>`
       : '';
     return `
@@ -200,6 +213,100 @@ function xmlEsc(s: string): string {
           .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
+/** One shared trackpoint shape. lat/lng are null on an indoor run. */
+interface Trackpoint {
+  timeMs: number;
+  lat: number | null;
+  lng: number | null;
+  cumDistM: number;
+  altitudeM: number | null;
+}
+
+/** Seconds between synthesized indoor trackpoints, and the hard cap. */
+const STATIONARY_STEP_SEC = 5;
+const STATIONARY_MAX_POINTS = 4000;
+
+/**
+ * Trackpoints for a run with no route — treadmill, or any indoor session.
+ *
+ * WHY THIS EXISTS. Until 2026-08-21 a run without a polyline produced a
+ * TCX with laps and no <Track> at all. POST /uploads accepts that file and
+ * hands back an upload id, so the push looked fine; Strava's processor then
+ * rejects it minutes later. GET /uploads/{id} on every one of David's
+ * treadmill pushes returns:
+ *
+ *   { "error": null,
+ *     "status": "There was an error processing your activity.",
+ *     "activity_id": null }
+ *
+ * Six pushes across two treadmill runs died this way; every outdoor push in
+ * the same window succeeded. A treadmill's belt distance and elapsed time
+ * are real measurements — they just arrive without coordinates, which is
+ * exactly what a position-less Trackpoint is for. <Position> is optional in
+ * the TCX schema and indoor exports from treadmill-capable watches omit it.
+ *
+ * What we do NOT synthesize: per-point heart rate. The lap already carries
+ * the measured average; painting it onto every trackpoint would render a
+ * flat line that reads as a recorded HR trace. Distance and time within a
+ * lap are interpolated linearly, which for a belt at a fixed speed is what
+ * actually happened, not a model of it.
+ *
+ * Altitude, when the run reports elevation gain, rises monotonically across
+ * the run rather than following the outdoor half-sine: a constant incline
+ * climbs and never descends, so a rising ramp is the honest shape.
+ */
+function stationaryTrackpoints(
+  laps: Array<{ startUtc: string; durationSec: number; distanceMeters: number }>,
+  totalMeters: number,
+  gainMeters: number | null,
+): Trackpoint[] {
+  const totalDur = laps.reduce((s, l) => s + Math.max(0, l.durationSec), 0);
+  if (totalDur <= 0) return [];
+
+  // Prefer per-lap distance; a phase row missing actualDistanceMi leaves the
+  // lap at 0, so fall back to spreading the activity total across duration.
+  const lapDist = laps.map((l) => Math.max(0, l.distanceMeters) || 0);
+  const lapSum = lapDist.reduce((a, b) => a + b, 0);
+  const distanceTotal = lapSum > 0 ? lapSum : totalMeters;
+
+  const step = Math.max(
+    STATIONARY_STEP_SEC,
+    Math.ceil(totalDur / STATIONARY_MAX_POINTS),
+  );
+
+  const out: Trackpoint[] = [];
+  const altitudeAt = (cum: number): number | null =>
+    gainMeters == null ? null
+      : gainMeters * (distanceTotal > 0 ? Math.min(1, cum / distanceTotal) : 0);
+
+  let cumDist = 0;
+  for (let i = 0; i < laps.length; i++) {
+    const dur = Math.max(0, laps[i].durationSec);
+    if (dur <= 0) continue;
+    const startMs = Date.parse(laps[i].startUtc);
+    if (!Number.isFinite(startMs)) continue;
+    const lapMeters = lapSum > 0 ? lapDist[i] : distanceTotal * (dur / totalDur);
+    const lapStartDist = cumDist;
+
+    const add = (tSec: number) => {
+      const frac = Math.min(1, tSec / dur);
+      const cum = lapStartDist + lapMeters * frac;
+      out.push({
+        timeMs: startMs + Math.round(tSec * 1000),
+        lat: null,
+        lng: null,
+        cumDistM: cum,
+        altitudeM: altitudeAt(cum),
+      });
+    };
+
+    for (let t = 0; t < dur; t += step) add(t);
+    add(dur); // always land the exact lap boundary
+    cumDist = lapStartDist + lapMeters;
+  }
+  return out;
+}
+
 const EARTH_M = 6371008.8; // mean Earth radius, meters
 
 function haversineMeters(a: [number, number], b: [number, number]): number {
@@ -228,7 +335,7 @@ function trackpointsFromPolyline(
   gainMeters: number | null,
   splits: Array<{ mile: number; durationSec: number }> | null,
   durationSec: number,
-): Array<{ timeMs: number; lat: number; lng: number; cumDistM: number; altitudeM: number | null }> {
+): Trackpoint[] {
   const pts = decodePolyline(encoded);
   if (pts.length < 2) return [];
   const cum: number[] = [0];

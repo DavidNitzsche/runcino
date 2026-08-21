@@ -33,14 +33,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // 1. Sweep: pending > 24h → failed. Strava drops the upload id after
-    //    ~a day, so these can never resolve; mark them terminal so the UI
-    //    stops showing "Processing…" forever and offers a retry instead.
+    // 1. Sweep: pending > 24h → failed. Mark them terminal so the UI stops
+    //    showing "Processing…" forever and offers a retry instead.
+    //
+    //    2026-08-21 · this used to say "upload id expired", which was not
+    //    true and sent the treadmill investigation down the wrong road:
+    //    GET /uploads/{id} still answered days later, with a real Strava
+    //    error we were not reading. resolvePendingPush now reads Strava's
+    //    `status` as well as `error`, so a rejected upload lands terminal
+    //    on the next pass and this sweep should almost never fire. When it
+    //    does, say what we actually know.
     const swept = (await pool.query(
       `UPDATE strava_pushes
           SET status = 'failed',
               completed_at = NOW(),
-              error_message = COALESCE(error_message, 'unresolved after 24h (upload id expired)')
+              error_message = COALESCE(error_message, 'no verdict from Strava within 24h')
         WHERE status = 'pending'
           AND pushed_at < NOW() - INTERVAL '24 hours'
         RETURNING id`,
