@@ -67,6 +67,7 @@ IOS_THEME_V5="$ROOT/native-v2/Faff/Faff/ThemeV5.swift"
 IOS_FONTS_V5="$ROOT/native-v2/Faff/Faff/FontsV5.swift"
 WATCH_THEME="$ROOT/legacy/native/Faff/FaffWatch Watch App/WatchTheme.swift"
 WATCH_FACEKIT="$ROOT/legacy/native/Faff/FaffWatch Watch App/FaceKit.swift"
+WATCH_THEME_V5="$ROOT/legacy/native/Faff/FaffWatch Watch App/WatchThemeV5.swift"
 
 fail=0
 
@@ -217,16 +218,72 @@ fi
 # need "$WEB_TRAIN" "return '#FF7733'" 'phase PEAK = #FF7733'
 # need "$WEB_TRAIN" "return '#56E0B0'" 'phase TAPER = #56E0B0'
 
-# Watch tokens
-need "$WATCH_THEME"   'green *= Color\(hex: 0x3EBD41\)'  'watch C.green = #3EBD41'
-need "$WATCH_THEME"   'amber *= Color\(hex: 0xF3AD38\)'  'watch C.amber = #F3AD38'
-need "$WATCH_THEME"   'orange *= Color\(hex: 0xD03F3F\)' 'watch C.orange = #D03F3F (Redish · race/now · token name kept)'
-need "$WATCH_THEME"   'warn *= Color\(hex: 0xFC4D64\)'   'watch C.warn = #FC4D64'
-need "$WATCH_FACEKIT" 'live *= Color\(hex: 0x3EBD41\)'   'watch Faff.live = #3EBD41'
-need "$WATCH_FACEKIT" 'goal *= Color\(hex: 0xF3AD38\)'   'watch Faff.goal = #F3AD38'
-need "$WATCH_FACEKIT" 'over *= Color\(hex: 0xFC4D64\)'   'watch Faff.over = #FC4D64'
-need "$WATCH_FACEKIT" 'dist *= Color\(hex: 0x27B4E0\)'   'watch Faff.dist = #27B4E0'
-need "$WATCH_FACEKIT" 'bonus *= Color\(hex: 0xF0DF47\)'  'watch Faff.bonus = #F0DF47 (Light Yellow)'
+# ── 1c · WATCH · the 0821 handoff palette ───────────────────────────────────
+# WHICH DOCUMENT RULES THE WRIST (2026-08-21): the studio watch handoff at
+#   /Volumes/WP/06 Claude Code/Faff/design/0821/design_handoff_faff_watch_app/
+# plus its 16:17 addendum. Brief v2 is SUPERSEDED for the watch, exactly as it
+# was for the phone at v5. Three docs in docs/design/watch/ that predate the
+# handoff by five hours carry a supersession header and are NOT the spec.
+# David, with the handoff in front of him: "I know what I approved in the watch
+# design files and that's what you should rely on."
+#
+# The wrist is the one surface in the product with a GREEN, and that is a
+# ruling, not a drift: colour grades on the wrist because the runner has one
+# instrument and one question. Everywhere else a green number would end an
+# argument before it starts. Do not "fix" this by syncing it to the phone.
+need "$WATCH_THEME_V5" 'band *= Color\(hex: 0x3EBD41\)'      'watch v5 band green = #3EBD41 (inside the prescribed band · the ONLY metric that grades)'
+need "$WATCH_THEME_V5" 'attention *= Color\(hex: 0xF2B03C\)' 'watch v5 attention = #F2B03C (out of band / condition / decision waiting)'
+need "$WATCH_THEME_V5" 'fault *= Color\(hex: 0xFF4438\)'     'watch v5 fault = #FF4438 (words only, never a figure)'
+need "$WATCH_THEME_V5" 'signal *= Color\(hex: 0xFF5A1F\)'    'watch v5 signal = #FF5A1F (drawn intent only, never on a number)'
+need "$WATCH_THEME_V5" 'ground *= Color\(hex: 0x000000\)'    'watch v5 ground = #000000'
+need "$WATCH_THEME_V5" 'surface1 *= Color\(hex: 0x0F1011\)'  'watch v5 surface1 = #0F1011'
+need "$WATCH_THEME_V5" 'surface2 *= Color\(hex: 0x17191B\)'  'watch v5 surface2 = #17191B'
+need "$WATCH_THEME_V5" 'surface3 *= Color\(hex: 0x212427\)'  'watch v5 surface3 = #212427'
+need "$WATCH_THEME_V5" 'surface4 *= Color\(hex: 0x2A2E32\)'  'watch v5 surface4 = #2A2E32'
+
+# Day-state ramps · byte-identical to the phone. The ramp is the session's
+# identity ACROSS the product, so a wrist/phone divergence here is the exact
+# cross-surface drift this whole gate exists to prevent.
+need "$WATCH_THEME_V5" 'easy: *\[Color\] = \[Color\(hex: 0x3EBD41\), Color\(hex: 0x1F8A52\), Color\(hex: 0x0F4A3A\)\]' 'watch day-state EASY = phone EASY'
+need "$WATCH_THEME_V5" 'race: *\[Color\] = \[Color\(hex: 0xFF8847\), Color\(hex: 0xE85D26\), Color\(hex: 0x7A2828\)\]' 'watch day-state RACE = phone RACE'
+
+# ── 1d · WATCH · the LEGACY ten-colour palette, asserted while it is used ────
+# Same shape as the phone's section 1b, same reason: the 0821 faces land one at
+# a time and a half-migrated skin on a wrist is the outcome worth avoiding.
+#
+# THIS BLOCK EXPIRES ON ITS OWN. When no file under the watch target outside
+# WatchTheme.swift / FaceKit.swift references a legacy token any more, the
+# branch inverts: it stops asserting the old values and starts requiring the
+# declarations be DELETED. Nobody has to remember to come back and remove it.
+LEGACY_WATCH_TOKEN_RE='Faff\.(live|goal|race|dist|over|redish|rest|ink|mute|dim|brand|bonus|t2|t3|track|liveWash|goalWash|distWash|grayWash|pauseWash|inkDim|onLive)\b|WatchTheme\.C\b|\bRole\.'
+legacy_watch_files=$(grep -rlE "$LEGACY_WATCH_TOKEN_RE" "$ROOT/legacy/native/Faff/FaffWatch Watch App" \
+  --include='*.swift' 2>/dev/null \
+  | grep -v '/\._' | grep -v '/WatchTheme\.swift$' | grep -v '/FaceKit\.swift$' \
+  | grep -v '/WatchThemeV5\.swift$' || true)
+legacy_watch_count=$(printf '%s' "$legacy_watch_files" | grep -c . || true)
+
+if [ "$legacy_watch_count" -gt 0 ]; then
+  need "$WATCH_THEME"   'green *= Color\(hex: 0x3EBD41\)'  'watch C.green = #3EBD41'
+  need "$WATCH_THEME"   'amber *= Color\(hex: 0xF3AD38\)'  'watch C.amber = #F3AD38'
+  need "$WATCH_THEME"   'orange *= Color\(hex: 0xD03F3F\)' 'watch C.orange = #D03F3F (Redish · race/now · token name kept)'
+  need "$WATCH_THEME"   'warn *= Color\(hex: 0xFC4D64\)'   'watch C.warn = #FC4D64'
+  need "$WATCH_FACEKIT" 'live *= Color\(hex: 0x3EBD41\)'   'watch Faff.live = #3EBD41'
+  need "$WATCH_FACEKIT" 'goal *= Color\(hex: 0xF3AD38\)'   'watch Faff.goal = #F3AD38'
+  need "$WATCH_FACEKIT" 'over *= Color\(hex: 0xFC4D64\)'   'watch Faff.over = #FC4D64'
+  need "$WATCH_FACEKIT" 'dist *= Color\(hex: 0x27B4E0\)'   'watch Faff.dist = #27B4E0'
+  need "$WATCH_FACEKIT" 'bonus *= Color\(hex: 0xF0DF47\)'  'watch Faff.bonus = #F0DF47 (Light Yellow)'
+else
+  if grep -qE 'live *= Color\(hex: 0x3EBD41\)|goal *= Color\(hex: 0xF3AD38\)' "$WATCH_FACEKIT"; then
+    echo "PALETTE LOCK FAIL · legacy watch palette has no consumers left but is still declared"
+    echo "  No face under the watch target references Faff.* / WatchTheme.C / Role."
+    echo "  any more. The 0821 migration is complete, so the old palette must go:"
+    echo "    1. delete the Faff enum + Role from FaceKit.swift and C from WatchTheme.swift"
+    echo "    2. delete section 1d of this script (this whole if/else)"
+    echo "    3. drop the legacy hexes from WATCH_ALLOWED_HEX below"
+    echo "  Two palettes in one app is how a half-migrated skin ships."
+    fail=1
+  fi
+fi
 
 # ── 2 · RETIRED-HEX TRIPWIRE ────────────────────────────────────────────────
 # Dead by the AFC cutover. Historical comment mentions are filtered by
@@ -377,7 +434,16 @@ fi
 # quietly shipping: every `Color(hex: 0x......)` literal anywhere under the
 # watch app target must be one of the ten locked hexes or a sanctioned
 # neutral (near-white ink / mid-gray mute / dim / progress-track gray).
-WATCH_ALLOWED_HEX='3EBD41|F3AD38|D03F3F|27B4E0|FC4D64|F0DF47|F6F7F8|8A90A0|646464|2C2F35'
+# v5 (0821 handoff) hexes are always allowed; the legacy ten stay allowed only
+# while section 1d says they still have consumers, so the allowlist shrinks on
+# its own as the faces migrate rather than needing a second cleanup pass.
+WATCH_V5_HEX='000000|0F1011|17191B|212427|2A2E32|3EBD41|F2B03C|FF4438|FF5A1F|1F8A52|0F4A3A|008FEC|4A3A8E|1C1A3A|F3AD38|E85D26|7A2828|FF8847|B084FF|6A4ACE|2A1A5A|27B4E0|1A6A9E|0C2A5E'
+WATCH_LEGACY_HEX='D03F3F|FC4D64|F0DF47|F6F7F8|8A90A0|646464|2C2F35'
+if [ "$legacy_watch_count" -gt 0 ]; then
+  WATCH_ALLOWED_HEX="$WATCH_V5_HEX|$WATCH_LEGACY_HEX"
+else
+  WATCH_ALLOWED_HEX="$WATCH_V5_HEX"
+fi
 watch_hex_hits=$(grep -rinoE 'Color\(hex: *0x[0-9A-Fa-f]{6}\)' \
   "$ROOT/legacy/native/Faff/FaffWatch Watch App" \
   --include='*.swift' 2>/dev/null \
@@ -387,7 +453,7 @@ watch_hex_hits=$(grep -rinoE 'Color\(hex: *0x[0-9A-Fa-f]{6}\)' \
 if [ -n "$watch_hex_hits" ]; then
   echo "WATCH HEX-LINT FAIL · off-palette literal outside the allowlist:"
   echo "$watch_hex_hits"
-  echo "  Fix: use a Faff.* token (WatchTheme.swift / FaceKit.swift) — an"
+  echo "  Fix: use a WatchV5.* token (WatchThemeV5.swift) — an"
   echo "  alpha step of a locked hue over black, not a new hex. If this is"
   echo "  a deliberate new semantic, propose the brief v2 change first,"
   echo "  then add its hex to WATCH_ALLOWED_HEX here."
@@ -419,6 +485,10 @@ if [ "$fail" -eq 0 ]; then
   if [ "$legacy_phone_count" -gt 0 ]; then
     echo "  · legacy phone palette still asserted — $legacy_phone_count file(s) under native-v2 reference it."
     echo "    When that reaches 0, this gate flips and requires the legacy block deleted from Theme.swift."
+  fi
+  if [ "${legacy_watch_count:-0}" -gt 0 ]; then
+    echo "  · legacy watch palette still asserted — $legacy_watch_count face file(s) not yet on the 0821 tokens."
+    echo "    When that reaches 0, this gate flips and requires Faff/Role deleted from FaceKit.swift."
   fi
 fi
 exit $fail
