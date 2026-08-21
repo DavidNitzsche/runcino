@@ -87,6 +87,28 @@ struct RunDetailV5: View {
     /// with no chevron — "never a chevron on a row that has nothing to open."
     var onChangeShoe: (() -> Void)? = nil
 
+    /// 8b · the decisions the runner took on the wrist. Empty (the default)
+    /// draws nothing — most runs have none, and an empty "What you decided"
+    /// group would imply the runner decided nothing when they simply ran the
+    /// session as written.
+    ///
+    /// THE COMPOSITION SEAM. The wire carries QUANTITIES, not sentences — the
+    /// phone owns this copy, so a revision to the wording never touches the
+    /// payload. When the watch's completion fields land, the map from wire to
+    /// `WristDecision` goes in ONE factory, not spread across call sites.
+    ///
+    /// One ruling already made, because the two rules collide and the
+    /// collision is not obvious. The drawn ceiling row reads "Ran to 174 ·
+    /// the ceiling was 165, and it was 27 degrees". Nothing in this product
+    /// has a thermometer: a run's temperature is a weather model for a grid
+    /// square and an hour bucket, which by rule one must carry the amber
+    /// mark. But this register forbids amber on a decision, ever. Marking it
+    /// breaks the register; leaving it bare breaks rule one. So the clause is
+    /// DROPPED — the addendum explicitly permits it and the sentence stands
+    /// as "Ran to 174 · the ceiling was 165." Dropping a modelled clause is
+    /// the only move that satisfies both rules.
+    var wristDecisions: [WristDecision] = []
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -115,6 +137,15 @@ struct RunDetailV5: View {
                                     sub: shoeMileageSub(shoe),
                                     onTap: onChangeShoe)
                         }
+                    }
+
+                    // EVIDENCE BEFORE JUDGEMENT. 8a's rule, which applies
+                    // to 8b for the same reason: a verdict that arrives
+                    // before its evidence reads as a mood. The decisions are
+                    // the runner's own, so they sit above the coach's line,
+                    // never under it.
+                    if !wristDecisions.isEmpty {
+                        WristDecisionsV5(decisions: wristDecisions)
                     }
 
                     if let recap, !recap.verdict.isEmpty {
