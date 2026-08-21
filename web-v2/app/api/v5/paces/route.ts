@@ -45,12 +45,15 @@ export async function GET(req: NextRequest) {
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!planRow) {
-    return NextResponse.json({ error: 'no_pace_change', reason: 'no active plan' }, { status: 404 });
+    // RULE FOUR. These three reasons render as the WHOLE Paces screen (the
+    // phone puts `reason` straight into `Silence`), so they are runner-facing
+    // copy, not log lines. They read as sentences now.
+    return NextResponse.json({ error: 'no_pace_change', reason: 'There is no active plan, so there are no paces to move yet.' }, { status: 404 });
   }
 
   const event = await loadPaceZoneEvent(planRow.id);
   if (!event) {
-    return NextResponse.json({ error: 'no_pace_change', reason: 'this plan has never recorded a pace re-anchor' }, { status: 404 });
+    return NextResponse.json({ error: 'no_pace_change', reason: 'Your paces have not moved since this plan was written.' }, { status: 404 });
   }
   // Once acknowledged (a race-representativeness answer, or the plain
   // `POST` below for a non-race dismiss/confirm), the event has nothing
@@ -60,7 +63,7 @@ export async function GET(req: NextRequest) {
   // already answered, and Today's paces-moved entry row (which reads this
   // same route's success/404 as its gate) would never clear either.
   if (event.acknowledgedAt) {
-    return NextResponse.json({ error: 'no_pace_change', reason: 'this pace re-anchor has already been settled' }, { status: 404 });
+    return NextResponse.json({ error: 'no_pace_change', reason: 'You have already settled this one. The new bands are on Today.' }, { status: 404 });
   }
 
   const isRaceEvidence = event.evidenceSource === 'race' && event.evidenceRaceSlug != null;

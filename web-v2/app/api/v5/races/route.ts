@@ -222,8 +222,14 @@ export async function GET(req: NextRequest) {
       // 404 + a reason is what the phone reads as `absentReason`, which
       // renders `Silence`: a designed refusal, visually distinct from the
       // outage screen and carrying the engine's own sentence.
+      // `error` is the code and `reason` is the sentence — the phone's
+      // `V5Refusal` decoder needs `reason` non-empty or this lands on the
+      // outage screen instead of `Silence` (see the note in block/route.ts).
       return NextResponse.json(
-        { error: 'No goal race is set. The projection, the evidence and the schedule are all built around one, so there is nothing here to read yet.' },
+        {
+          error: 'no_goal_race',
+          reason: 'No goal race is set. The projection, the evidence and the schedule are all built around one, so there is nothing here to read yet.',
+        },
         { status: 404 },
       );
     } else {

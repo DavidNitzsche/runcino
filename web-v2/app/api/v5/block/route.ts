@@ -44,10 +44,22 @@ export async function GET(req: NextRequest) {
       raceMode = everRacePrep.rows.length > 0;
     }
     if (!raceMode) {
-      // 404 + a reason is the shape the phone reads as `absentReason`, which
-      // renders `Silence` — a designed refusal, never the outage screen.
+      // RULE THREE. The comment here used to say "404 + a reason is the shape
+      // the phone reads as `absentReason`" — and the body carried no `reason`
+      // at all. `API.v5(...)` in APIV5.swift decodes `V5Refusal` and requires
+      // `reason` non-empty before it returns `.absent`; a 4xx with only
+      // `error` falls straight through to `.failed`. So the fix that stopped
+      // Block handing a plan-less runner a scaffold replaced it with the
+      // DATA-OUTAGE screen: "The block did not load. Your plan is intact, we
+      // just cannot see it." We could see it perfectly. The answer was no.
+      //
+      // `error` is the code, `reason` is the sentence. /api/v5/race/[slug]
+      // already had this right and says so in its own comment.
       return NextResponse.json(
-        { error: 'There is no block yet. Set a goal race and the plan gets written around it.' },
+        {
+          error: 'no_block',
+          reason: 'There is no block yet. Set a goal race and the plan gets written around it.',
+        },
         { status: 404 },
       );
     }
@@ -63,7 +75,10 @@ export async function GET(req: NextRequest) {
     // does not, so Block says so and stops.
     if (!activePlan) {
       return NextResponse.json(
-        { error: 'No block is running right now. Set a goal race and the next one gets written around it.' },
+        {
+          error: 'no_active_block',
+          reason: 'No block is running right now. Set a goal race and the next one gets written around it.',
+        },
         { status: 404 },
       );
     }

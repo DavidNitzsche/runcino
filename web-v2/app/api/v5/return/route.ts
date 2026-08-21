@@ -41,7 +41,8 @@ export async function GET(req: NextRequest) {
 
   const injury = await loadActiveInjuryForReturn(userId);
   if (!injury) {
-    return NextResponse.json({ error: 'no_active_injury', reason: 'no injury currently tracked' }, { status: 404 });
+    // Runner-facing: the phone renders this as the whole screen.
+    return NextResponse.json({ error: 'no_active_injury', reason: 'Nothing is flagged right now, so there is no ladder to climb.' }, { status: 404 });
   }
 
   const resolved = protocolForInjury(injury);
