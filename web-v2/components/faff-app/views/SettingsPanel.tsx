@@ -16,6 +16,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { FaError } from '../toolkit';
 
 type Endpoint = '/api/profile' | '/api/settings';
 type Kind = 'text' | 'number' | 'select' | 'day' | 'multiday' | 'multi' | 'date' | 'height' | 'weight' | 'tzmode';
@@ -124,22 +125,70 @@ export function SettingsPanel({ email, subscriptionLabel, onOpenPaywall }: {
 }) {
   const router = useRouter();
   const [vals, setVals] = useState<Record<string, any>>({});
-  const [loaded, setLoaded] = useState(false);
+  /**
+   * RULE THREE · a refusal is a correct answer; a failure is not a fact.
+   *
+   * ── 2026-08-21 · web audit · THE TRUST BUG, second instance ─────────────
+   *
+   * This was `loaded: boolean`, filled by
+   *
+   *     fetch('/api/profile').then(r => r.ok ? r.json() : {}).catch(() => ({}))
+   *
+   * so a 401, a 500, a dropped connection and a genuinely empty profile all
+   * collapsed into `{}` — and then `displayValue` rendered EVERY ROW as
+   * "Not set". Observed live: a page whose own header read "David · Los
+   * Angeles · Advanced runner" listed Name, Sex, Experience, Days per week,
+   * Long run and eleven more as "Not set", and offered CONNECT STRAVA to an
+   * account whose runs were already syncing.
+   *
+   * `ProfileView.tsx`'s `PhysiologyBlock` names this exact bug in its own
+   * comment and fixed it on 2026-08-17 with four states. This is the
+   * sibling panel that did not get the fix, and it is the worse place for
+   * it: these rows are EDITABLE. A runner who believes "Days per week ·
+   * Not set" taps it, gets an empty editor, and PATCHes a value over
+   * settings that were fine.
+   *
+   * Four states, same as the sibling. A failure says so and offers a retry;
+   * it never answers the question it could not read.
+   */
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'signed-out'>('loading');
+  const [reloadKey, setReloadKey] = useState(0);
   const [editing, setEditing] = useState<FieldSpec | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const loaded = status === 'ready';
 
   useEffect(() => {
     let alive = true;
-    Promise.all([
-      fetch('/api/profile').then(r => r.ok ? r.json() : {}).catch(() => ({})),
-      fetch('/api/settings').then(r => r.ok ? r.json() : {}).catch(() => ({})),
-    ]).then(([prof, sett]) => {
+    setStatus('loading');
+    // `read` keeps the three outcomes apart instead of flattening them: the
+    // object on success, and a marker otherwise so the caller can tell
+    // "signed out" from "broke" from "empty".
+    const read = (url: string) =>
+      fetch(url)
+        .then(async (r) => {
+          if (r.status === 401 || r.status === 403) return { __state: 'signed-out' as const };
+          if (!r.ok) return { __state: 'error' as const };
+          return { __state: 'ok' as const, body: await r.json().catch(() => ({})) };
+        })
+        .catch(() => ({ __state: 'error' as const }));
+
+    Promise.all([read('/api/profile'), read('/api/settings')]).then(([prof, sett]) => {
       if (!alive) return;
-      setVals({ ...prof, ...sett });
-      setLoaded(true);
+      if (prof.__state === 'signed-out' || sett.__state === 'signed-out') {
+        setStatus('signed-out');
+        return;
+      }
+      // EITHER read failing means the merged picture is incomplete, and half
+      // a settings page rendered as whole is the bug in miniature.
+      if (prof.__state === 'error' || sett.__state === 'error') {
+        setStatus('error');
+        return;
+      }
+      setVals({ ...(prof.body ?? {}), ...(sett.body ?? {}) });
+      setStatus('ready');
     });
     return () => { alive = false; };
-  }, []);
+  }, [reloadKey]);
 
   async function save(spec: FieldSpec, value: any) {
     // Optimistic local update.
@@ -172,6 +221,33 @@ export function SettingsPanel({ email, subscriptionLabel, onOpenPaywall }: {
   async function signOut() {
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
     window.location.href = '/';
+  }
+
+  // A failure is stated, not answered around. The rows are editable, so
+  // showing them at all while the real values are unknown invites a runner
+  // to overwrite settings that were fine — the panel stands down instead.
+  if (status === 'error') {
+    return (
+      <div className="band">
+        <div className="fll">SETTINGS</div>
+        <div className="setlist" style={{ padding: 14 }}>
+          <FaError
+            text="Could not load your settings. They are stored, not lost."
+            onRetry={() => setReloadKey((k) => k + 1)}
+          />
+        </div>
+      </div>
+    );
+  }
+  if (status === 'signed-out') {
+    return (
+      <div className="band">
+        <div className="fll">SETTINGS</div>
+        <div className="setlist" style={{ padding: 14, color: 'var(--fa-mute)' }}>
+          Sign in to see your settings.
+        </div>
+      </div>
+    );
   }
 
   return (

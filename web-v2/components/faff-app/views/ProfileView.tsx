@@ -176,7 +176,27 @@ export function ProfileView({ seed, onOpenPro, onOpenPaywall }: { seed: FaffSeed
           one place. Auto-focuses the Reconnect button when the page is
           loaded with the /me#strava-card hash. */}
       <div id="strava-card">
-        <StravaConnectionCard initial={{ connected: false }} />
+        {/* 2026-08-21 · web audit · this was `initial={{ connected: false }}`,
+            a hardcoded literal. The card's own comment says it is "seeded
+            from the SSR-computed initial.state ... so first paint shows the
+            right CTA", and the call site handed it a constant, so first
+            paint said NOT CONNECTED for everybody — including a runner whose
+            Strava row three inches below read "Synced just now". If
+            /api/strava/status then failed for any reason, the card STAYED
+            wrong: a connected account offered a CONNECT STRAVA button beside
+            evidence of its own working sync.
+
+            The truth is already on this page. `seed.connections` is what the
+            row below renders, computed server-side from the same profile,
+            so the card and the row can no longer disagree at first paint. */}
+        <StravaConnectionCard initial={(() => {
+          const s = seed.connections.find((c) => c.id === 'strava');
+          return {
+            connected: s?.on ?? false,
+            state: (s?.on ? 'connected' : 'disconnected') as 'connected' | 'disconnected',
+            lastSyncAgo: undefined,
+          };
+        })()} />
       </div>
 
       <div className="fa-rows">
