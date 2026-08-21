@@ -290,6 +290,22 @@ Workout adjustment in wind ≥15 mph: convert intervals to **effort/HR-based** o
 
 ### Race performance loss by elevation (sea-level acclimatized)
 
+> **Altitude is NOT implemented anywhere in the engine, deliberately.** No
+> prescribed training pace is adjusted for it; altitude reaches the engine only
+> through race-result representativeness gating. That is recorded as a live
+> exemption on `HEAT.time-on-feet-triggers` in the doctrine registry rather
+> than left as a silent gap.
+>
+> Two reasons, both current as of 2026-08-21. The runner this app serves trains
+> and races near sea level, so the adjustment would be zero every day. And this
+> table and Section 12's single-line fallback (+0.5% per 1,000 ft above 3,000
+> ft acclimatized, +1% acute) do not agree — Section 12 is a linear
+> approximation of the curve below, and the curve is the model. Building an
+> adjustment on the unreconciled pair would be worse than not having one.
+>
+> **When altitude does matter, this table is the source and Section 12 is the
+> fallback**, the same relationship Section 1 and Section 12 have for heat.
+
 | Elevation (ft) | Elevation (m) | Acute (day 1–3) | After 3 weeks acclimatization | Endurance event slowdown |
 | --- | --- | --- | --- | --- |
 | 1,000 | 305 | <1% | <0.5% | Negligible |
@@ -523,6 +539,15 @@ Sodium target in heat:       300–700 mg Na+/hr; up to 1,000 mg/hr for salty sw
 ## Section 12 — Quick Reference: Single-Number Slowdown
 
 If only one number is available for a given runner, use this fallback table for marathon pace, mid-pack runner, full sun, sea level, calm wind:
+
+> **This table is a FALLBACK, and the engine does not use it.** Section 1 is the
+> model: three columns by runner speed, stated for dry conditions (Td <55F).
+> This one collapses that to a single column and bakes in FULL SUN, which is
+> why it reads slightly higher — 8% against Section 1's 7.5% at 80F for a 3:30
+> runner. The two are not in conflict; they state different conditions. Use
+> Section 1 wherever the runner's pace and the dewpoint are known, which in
+> this app is always. Recorded 2026-08-21 after the difference was mistaken
+> for a contradiction during a doctrine audit.
 
 | Tair (°F) | Slowdown |
 | --- | --- |
