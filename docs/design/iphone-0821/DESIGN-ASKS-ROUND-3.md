@@ -108,6 +108,30 @@ equal widths back, say so and I will revert it.
 
 ---
 
+## 7 · Two phone screens the 0821 set does not draw · raised by the watch build
+
+Both come from the watch handoff's commitment that "the watch does not quietly
+forget" — every decision taken on the wrist surfaces on the phone.
+
+**A decision needs a shape, and the asked-vs-ran table is the wrong one.**
+The wrist can lift a ceiling, skip a rep as a deliberate choice rather than a
+failure, or extend a recovery. Neither 5b nor 23a has anywhere to put that.
+The asked-vs-ran table compares numbers; a decision is a choice with a reason,
+and routing it through that table flattens it into a delta — which reads as a
+miss. This is rule two's territory: the copy has to name why the runner
+decided, not just what changed.
+
+**The hours after a race, holding a watch time and no chip time.** The phone
+has a race-day mode. It has nothing for the window between crossing the line
+and the result being official — which is precisely when the runner looks at
+it most. The watch hands off to this screen and it does not exist. The
+race-data rule already governs what it may claim: a watch clock is a training
+effort until the chip time lands, and must never render as a personal record.
+
+Neither will be improvised into 5b. Holding for a drawn shape.
+
+---
+
 ## Not asks · things 0821 got right that are now built
 
 Worth saying, because these were judgement calls that could have gone wrong:
