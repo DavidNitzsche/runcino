@@ -139,6 +139,7 @@
 		BD055CFEF09795F990AD96F3 /* Watch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E036C5FD2EC231D2FCDC1A /* Watch.swift */; };
 		BE16EF93C69109B2763FC577 /* GalleryV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4141967D7277D2DF4252A9A /* GalleryV5.swift */; };
 		BE1AE0E4AC08E6B55B1B87D7 /* StravaOAuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC9DAF37D0E9B3DAE9FFDF1 /* StravaOAuthSession.swift */; };
+		BF345B2841440AC313D24867 /* WatchKitV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB189A1C29F682554E49956 /* WatchKitV5.swift */; };
 		C04EABC1AFE4F8CEAC64F2F5 /* TodayPostRunBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1BDC045093EBA34631A9F1 /* TodayPostRunBody.swift */; };
 		C0C9C212380204BE7BCDCC04 /* RouteMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480DB4BC3388D23D601E5EB3 /* RouteMapView.swift */; };
 		C15EE0BC579F47C8A968C3EC /* InstrumentSans-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C7A948A8CE27FEC77B951274 /* InstrumentSans-Variable.ttf */; };
@@ -245,6 +246,7 @@
 		180080F47DB86118277DF47B /* ShellV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellV5.swift; sourceTree = "<group>"; };
 		188559D9B23742DBC413C75E /* ProView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProView.swift; sourceTree = "<group>"; };
 		1AA31DB52794BE1700934B01 /* PaceDrift.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaceDrift.swift; sourceTree = "<group>"; };
+		1AB189A1C29F682554E49956 /* WatchKitV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchKitV5.swift; sourceTree = "<group>"; };
 		1B4214411E5A308A6B07D6E4 /* ToolkitPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolkitPayloads.swift; sourceTree = "<group>"; };
 		1D4E8F519A9E24A36E4D0BC7 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
 		1EA8EB84CF316484DDD472B3 /* SettingsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsV5.swift; sourceTree = "<group>"; };
@@ -552,6 +554,7 @@
 				760B92E89CF0E2EF5EEB8265 /* TreadmillHRView.swift */,
 				5D626345B3F0B0BDED8857D3 /* WatchFaces.swift */,
 				79F2EC545B990808978B44F0 /* WatchFixtures.swift */,
+				1AB189A1C29F682554E49956 /* WatchKitV5.swift */,
 				91FC1DB4EC397EFC1B67BFE9 /* WatchTheme.swift */,
 				6C80F049A1BE98B3445C2549 /* WatchThemeV5.swift */,
 				8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */,
@@ -879,6 +882,7 @@
 				087938D53B0E81241BFCCA7A /* TreadmillHRView.swift in Sources */,
 				9F33022A531EBF8A5C922A47 /* WatchFaces.swift in Sources */,
 				08CF7BD58B8FA3767E595667 /* WatchFixtures.swift in Sources */,
+				BF345B2841440AC313D24867 /* WatchKitV5.swift in Sources */,
 				0C7CECA6722DD1B30C6C89EB /* WatchTheme.swift in Sources */,
 				20AEFCE629FD7E7D0C7021C2 /* WatchThemeV5.swift in Sources */,
 				2FFA12FF938E115A5971545D /* WatchWorkoutModels.swift in Sources */,
