@@ -633,6 +633,20 @@ struct FaffButton: View {
                     .padding(.horizontal, full ? 0 : V5.S.s20)
                     .frame(height: height)
                     .background(fill, in: Capsule(style: .continuous))
+                    // THE HIT AREA IS THE CAPSULE, NOT THE INK.
+                    //
+                    // `.ghost` fills with `Color.clear`, and a clear
+                    // background does not hit-test in SwiftUI. That left
+                    // every ghost button tappable only where it had drawn
+                    // something — which for a centred label is a fraction of
+                    // the 44pt row it appears to occupy. "Leave it alone" is
+                    // the escape from the change-the-plan sheet, and it was
+                    // reachable only by hitting the glyphs.
+                    //
+                    // Stated once here rather than at the call sites, because
+                    // the variant that needs it most is the one whose author
+                    // is least likely to think about a background.
+                    .contentShape(Capsule(style: .continuous))
             }
             .buttonStyle(V5PressStyle())
             .disabled(!enabled)
@@ -1314,5 +1328,72 @@ struct PlaceHeaderV5: View {
     // ─────────────────────────────────────────────────────────────────────
     private var discTargetWidth: CGFloat {
         (onCalendar != nil && onAccount != nil) ? 36 : 44
+    }
+}
+
+// MARK: - WristDecisions · 8b
+//
+// The four decisions the watch sends up — bail taken, ceiling lifted, rep
+// skipped, recovery extended — as their own group on run detail.
+//
+// THE REGISTER IS THE WHOLE DIFFICULTY, and it is subtractive. A decision is
+// a STATEMENT: no colour, no chevron, nothing tappable. None of it is
+// editable after the fact, so nothing may look like it is.
+//
+// No amber, no red, no green on a decision, ever. Amber means out of range
+// or provisional, and a choice the coach offered is neither — colouring it
+// grades it. That is why this component takes plain `String`s and not
+// `FaffValue`s: the type's whole job is to stamp a mark, and there is no
+// mark that belongs here.
+//
+// The phone may not retroactively grade a choice the watch offered. The
+// watch said taking the bail is not a failed run, it is a shorter one. If
+// the phone disagrees, the wrist offer stops being honest the second time it
+// fires — and it fires once per run, so the runner meets it again next week.
+//
+// Rows, not tiles inside tiles. No dividers: the row rhythm is the
+// separation.
+struct WristDecision: Identifiable, Equatable {
+    let id: String
+    /// The decision in the runner's own words, as the wrist put it. The
+    /// phone repeats the watch's verb; it does not rename it.
+    let statement: String
+    /// The evidence the coach used, then what was asked. A decision with no
+    /// reason beside it reads as a lapse, so this is not optional.
+    let reason: String
+}
+
+struct WristDecisionsV5: View {
+    let decisions: [WristDecision]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: V5.S.s10) {
+            V5SectionLabel(text: "What you decided").padding(.horizontal, V5.S.s4)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(decisions) { d in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(d.statement)
+                            .font(.faffText(TypeScaleV5.body17))
+                            .foregroundStyle(V5.textPrimary)
+                        Text(d.reason)
+                            .font(.faffText(TypeScaleV5.label14))
+                            .lineSpacing(TypeScaleV5.label14 * 0.45)
+                            .foregroundStyle(V5.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 14)
+                    // One element per decision. Read as two separate strings
+                    // it becomes "Cut it short at mile 6" followed by an
+                    // orphaned fragment, and the reason is the only thing
+                    // keeping the statement from sounding like a confession.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(d.statement). \(d.reason)")
+                }
+            }
+            .padding(.vertical, V5.S.s6)
+            .background(V5.materialTile,
+                        in: RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
+        }
     }
 }
