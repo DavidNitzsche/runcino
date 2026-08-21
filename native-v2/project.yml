@@ -95,6 +95,13 @@ targets:
         # foreground-only instead of crashing.
         UIBackgroundModes:
           - location
+        # Indoor distance · CMPedometer (IndoorDistanceMeter.swift, 2026-08-21).
+        # A treadmill run has no GPS, so the only MEASURED distance the phone
+        # can offer is accelerometer-derived. Without this string the pedometer
+        # call silently returns nothing and the run falls back to the belt
+        # speed the runner typed in. The watch target already carries the same
+        # key further down this file.
+        NSMotionUsageDescription: "Faff uses motion data to measure your distance on a treadmill, where there is no GPS."
         # v3 fonts registration · TTFs live in Faff/Faff/Resources/Fonts.
         # Must match the actual filenames in Copy Bundle Resources or
         # iOS skips them at registration time.

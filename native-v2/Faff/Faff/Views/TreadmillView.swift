@@ -44,6 +44,12 @@ struct TreadmillView: View {
 
     // ── Live HR feed (HK · build 136) ───────────────────────────────
     @StateObject private var hrStreamer = TreadmillHRStreamer()
+    // ── Measured indoor distance (CoreMotion · 2026-08-21) ──────────
+    // The belt speed below is a number the runner TYPED. This is the only
+    // number on this screen a sensor produced. It does not replace the belt
+    // figure — see IndoorDistanceMeter.swift for why not — it corroborates
+    // it, or it contradicts it and says so.
+    @StateObject private var meter = IndoorDistanceMeter()
 
     // ── Plan source · fetched on .task ──────────────────────────────
     @State private var workout: WatchWorkout?
@@ -52,18 +58,19 @@ struct TreadmillView: View {
     // ── Live session state ──────────────────────────────────────────
     /// Index into `segments` for the active segment.
     @State private var idx: Int = 0
-    /// Seconds elapsed within the current segment (counts UP from 0).
-    @State private var elapsedInSeg: Int = 0
-    /// Cumulative elapsed seconds across the whole session.
-    @State private var totalSec: Int = 0
-    /// Cumulative distance in miles, accumulated each tick from speedMph.
-    @State private var dist: Double = 0
-    /// Cumulative elevation gain in ft · accumulated each tick from the set
-    /// incline (rise = distance × grade) so incline reflects as real climb.
-    @State private var elev: Double = 0
+    /// The ONE integration of this session · elapsed, distance, elevation,
+    /// per-segment slices and the pace-sample stream. Was four separate
+    /// accumulators here plus a second, disagreeing distance formula in
+    /// `recordActual`; see BeltTracker.swift's header for what that cost.
+    @State private var belt = BeltTracker()
     /// Current runner-input speed (mph). Initialized per segment from
     /// the plan's target; runner adjusts via steppers.
     @State private var speedMph: Double = 5.5
+    /// True once the runner has moved the belt themselves inside the CURRENT
+    /// segment. A runner's own input is the only measurement this console
+    /// has, so a segment boundary must not overwrite it with the plan's
+    /// target — see `adoptTargetOrKeepRunnerSpeed`.
+    @State private var runnerSetSpeed: Bool = false
     /// Current runner-input incline (%).
     @State private var inclinePct: Double = 1.0
     /// Timer playing vs paused.
@@ -83,10 +90,6 @@ struct TreadmillView: View {
     /// Per-segment actuals captured at segment end (or on Skip/End).
     /// Keyed by segment index. Stored as arrays so swift-friendly.
     @State private var actualsBySegment: [Int: PhaseActual] = [:]
-    /// Wall-clock instant of the last tick · used by TimelineView to
-    /// derive `delta` since we last advanced state, so background
-    /// pauses don't double-count.
-    @State private var lastTickAt: Date = .now
 
     /// Confirm-end prompt before POST.
     @State private var showEndConfirm: Bool = false
@@ -105,11 +108,11 @@ struct TreadmillView: View {
     /// when pings stop (phone died / app killed / runner walked off).
     @State private var lastPingAt: Date = .distantPast
 
+    /// One closed segment. `belt` is the segment's own slice of the single
+    /// session integration — speed, distance and pace inside it agree by
+    /// construction, and the slices sum to the run total.
     private struct PhaseActual {
-        var avgSpeedMph: Double
-        var avgInclinePct: Double
-        var distanceMi: Double
-        var durationSec: Int
+        var belt: BeltSegmentActual
         var completed: Bool
         // Live HR from TreadmillHRStreamer · null when no watch is
         // paired or HK hasn't surfaced any samples yet for this phase.
@@ -229,8 +232,9 @@ struct TreadmillView: View {
                     .padding(.bottom, 24)
             }
             .foregroundStyle(Theme.txt)
-            // Live tick. Drives elapsedInSeg / totalSec / dist forward
-            // by `delta = now - lastTickAt` each frame. TimelineView at
+            // Live tick. Advances the BeltTracker by `now - lastTick` each
+            // frame — one integration for elapsed, distance, elevation, the
+            // open segment's slice and the pace-sample stream. TimelineView at
             // 1s cadence is plenty for a treadmill counter; saves
             // battery vs continuous redraw.
             .background(
@@ -253,6 +257,7 @@ struct TreadmillView: View {
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+            meter.stop()
             if let id = workoutId {
                 WatchSync.shared.stopTreadmillHRSession(sessionId: id)
             }
@@ -286,24 +291,29 @@ struct TreadmillView: View {
         }
     }
 
+    // MARK: - Derived clock reads
+    //
+    // One accumulator, read three ways. These were three separate `@State`
+    // Ints being advanced in parallel, which is how the run total and the
+    // per-phase totals were able to disagree in the first place.
+
+    /// Seconds elapsed within the current segment (counts UP from 0).
+    private var elapsedInSeg: Int { Int(belt.segElapsedSec) }
+    /// Cumulative elapsed seconds across the whole session.
+    private var totalSec: Int { belt.elapsedSecInt }
+
     // MARK: - Tick
 
     private func tick(at now: Date) {
-        guard playing else { lastTickAt = now; return }
-        let delta = max(0, Int(now.timeIntervalSince(lastTickAt).rounded()))
-        lastTickAt = now
-        guard delta > 0 else { return }
-        // Advance elapsed counters.
-        elapsedInSeg += delta
-        totalSec += delta
-        // Distance accumulates · mph × hours = miles
-        let distDeltaMi = Double(delta) / 3600.0 * speedMph
-        dist += distDeltaMi
-        // Elevation accumulates from the set incline · rise = run × grade.
-        // A treadmill at incline% over distDeltaMi miles climbs
-        // distDeltaMi × 5280 × (incline / 100) feet. Reflects incline as real
-        // elevation gain so a harder treadmill run isn't recorded as flat.
-        elev += distDeltaMi * 5280.0 * (inclinePct / 100.0)
+        guard playing else { belt.resync(to: now); return }
+        // One integration, in BeltTracker: elapsed / distance / elevation /
+        // this segment's slice / the pace-sample stream, all from the same
+        // delta. Sub-second remainders are carried, not truncated, and a
+        // delta that means "the app was backgrounded" is credited at the
+        // last known belt speed AND counted as unmeasured rather than
+        // silently becoming distance that looks measured.
+        belt.advance(to: now, speedMph: speedMph, inclinePct: inclinePct,
+                     bpm: hrStreamer.currentBpm)
         // Auto-advance only INTERMEDIATE segments when they run out. The
         // last (or only) segment never auto-advances or auto-ends — the
         // runner can keep going past the target (run longer if they want)
@@ -313,10 +323,7 @@ struct TreadmillView: View {
             recordActual(forSegment: idx, completed: true)
             let next = idx + 1
             idx = next
-            elapsedInSeg = 0
-            let nseg = segments[next]
-            speedMph = nseg.mph
-            inclinePct = nseg.inc
+            adoptTargetOrKeepRunnerSpeed(for: segments[next])
         }
         // P2-49 · watch keepalive. Every ~2 min while playing, ping the
         // watch's HR session so its dead-man timer knows the phone is
@@ -329,27 +336,57 @@ struct TreadmillView: View {
         }
     }
 
+    /// Close the open segment.
+    ///
+    /// 2026-08-21 · this used to recompute the segment's distance as
+    /// `duration / 3600 × speedMph` — the belt speed at the instant the
+    /// segment closed, applied retroactively to the whole segment. Change
+    /// the belt mid-segment and every second before the change was credited
+    /// at the speed after it. Now the segment reports its own slice of the
+    /// session integration, so its distance, its time-weighted mean speed
+    /// and its pace cannot disagree with each other or with the run total.
+    ///
+    /// The old `min(elapsedInSeg, seg.dur * 2)` cap on intermediate segments
+    /// is gone with it: it was defending against a backgrounding glitch by
+    /// truncating the DURATION while leaving the distance alone, which made
+    /// the pace wrong to hide that the clock was wrong. BeltTracker bounds
+    /// the gap itself, at the point where the gap actually happens, and
+    /// records what it could not witness.
     private func recordActual(forSegment i: Int, completed: Bool) {
-        let seg = segments[i]
-        // The last/only segment is open-ended — the runner can keep going
-        // past the target — so record its true elapsed time. Intermediate
-        // segments auto-advance at their target, so an over-target value
-        // there means a clock glitch (e.g. backgrounding); cap it at 2×.
-        let isLast = i == segments.count - 1
-        let durActual = isLast ? elapsedInSeg : min(elapsedInSeg, seg.dur * 2)
         // Close the HR phase here · returns (avg, max) for everything
         // streamed since the last phase boundary and clears the phase
         // buffer for the next segment.
         let hr = hrStreamer.closePhase()
         actualsBySegment[i] = PhaseActual(
-            avgSpeedMph: speedMph,
-            avgInclinePct: inclinePct,
-            distanceMi: Double(durActual) / 3600.0 * speedMph,
-            durationSec: durActual,
+            belt: belt.closeSegment(speedMph: speedMph, bpm: hrStreamer.currentBpm),
             completed: completed,
             avgHr: hr.avg,
             maxHr: hr.max
         )
+    }
+
+    /// A new segment carries a new TARGET. It does not carry a new
+    /// measurement.
+    ///
+    /// The old behaviour set `speedMph` to the plan's target at every
+    /// boundary. That number is then what distance integrates against — so
+    /// the moment a segment turned over, the app started crediting distance
+    /// at a speed the belt was not running at, and kept doing it until the
+    /// runner happened to touch the steppers. A runner who had already
+    /// adjusted down because the plan's pace was wrong for them got
+    /// overwritten silently, every boundary, in the direction of the plan.
+    ///
+    /// So: adopt the target only when the runner has not set the belt
+    /// themselves in the segment just finished. When they have, their number
+    /// stands and the new target is offered as a one-tap match instead
+    /// (`matchTargetChip`) — a prescription the runner confirms, never a
+    /// measurement the app assumes.
+    private func adoptTargetOrKeepRunnerSpeed(for seg: TreadSeg) {
+        if !runnerSetSpeed {
+            speedMph = seg.mph
+            inclinePct = seg.inc
+        }
+        runnerSetSpeed = false
     }
 
     // MARK: - Topbar
@@ -377,26 +414,94 @@ struct TreadmillView: View {
             }
             HStack(alignment: .top, spacing: 0) {
                 topStat("TIME", formatClock(totalSec))
-                // 2026-07-07 · units audit — `dist` (the internal accumulator
-                // driving the recorded run's totalDistanceMi) stays miles;
-                // only this display string converts. Units.formatDistance
-                // no-ops back to the exact "%.1f" mi reading when the
-                // preference is mi (default, byte-safe for every existing
-                // runner). Was "%.2f mi" fixed 2-decimal — Units.formatDistance
-                // defaults to 1 decimal like every other distance display in
-                // the app; kept 2 decimals here via the explicit param since
-                // treadmill distance benefits from the finer live read.
-                topStat("DISTANCE", "\(Units.formatDistance(miles: dist, decimals: 2)) \(Units.distanceLabel())")
+                // 2026-07-07 · units audit — `belt.distanceMi` (the internal
+                // accumulator driving the recorded run's totalDistanceMi)
+                // stays miles; only this display string converts.
+                // Units.formatDistance no-ops back to the exact "%.1f" mi
+                // reading when the preference is mi (default, byte-safe for
+                // every existing runner). Kept at 2 decimals via the explicit
+                // param since treadmill distance benefits from the finer
+                // live read.
+                //
+                // 2026-08-21 · the mark. When part of this distance was
+                // credited across seconds the app did not witness (screen
+                // locked, app backgrounded), the number is partly an estimate
+                // and says so — amber tilde, same mark the rest of the app
+                // uses for a modelled number. Rule one is a system rule, not
+                // one screen's fix.
+                topStat("DISTANCE",
+                        "\(Units.formatDistance(miles: belt.distanceMi, decimals: 2)) \(Units.distanceLabel())",
+                        modelled: distanceIsModelled)
                 topStat("PHASE", "\(min(idx + 1, segments.count))/\(segments.count)")
+            }
+            if let note = provenanceNote {
+                Text(note)
+                    .font(.body(10, weight: .semibold))
+                    .foregroundStyle(Theme.warnText.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func topStat(_ k: String, _ v: String) -> some View {
+    // MARK: - Where this run's distance comes from
+    //
+    // The belt figure is an integral of a STATED speed. Nothing measured it,
+    // so under rule one it is modelled and wears the amber mark — unless a
+    // carried phone's pedometer independently lands on the same number, which
+    // is corroboration and takes the mark off.
+
+    /// The pedometer's own reading, when the phone was actually on the runner.
+    private var measuredMi: Double? { meter.reading.miles }
+
+    /// True when the two readings are telling different stories.
+    private var readingsDisagree: Bool {
+        guard let m = measuredMi, belt.distanceMi > 0.1 else { return false }
+        return IndoorDistanceMeter.materiallyDisagree(beltMi: belt.distanceMi, measuredMi: m)
+    }
+
+    /// The displayed distance is measured only when something measured it.
+    private var distanceIsModelled: Bool {
+        if belt.distanceIsModelled { return true }          // credited across a gap
+        guard let m = measuredMi else { return true }        // nothing corroborates it
+        return IndoorDistanceMeter.materiallyDisagree(beltMi: belt.distanceMi, measuredMi: m)
+    }
+
+    /// One quiet line under the stats. Names both numbers when they disagree,
+    /// says what was estimated when the app was away, and otherwise says
+    /// nothing at all. Never scolds, never picks for the runner.
+    private var provenanceNote: String? {
+        if belt.distanceIsModelled { return unmeasuredNote }
+        if readingsDisagree, let m = measuredMi {
+            return "Your phone counted \(Units.formatDistance(miles: m, decimals: 2)) \(Units.distanceLabel()) · the belt speed you set says \(Units.formatDistance(miles: belt.distanceMi, decimals: 2)). Check the belt number."
+        }
+        if measuredMi == nil, startedAt != nil, totalSec > 120 {
+            return "Distance is from the belt speed you set · nothing here measured it."
+        }
+        return nil
+    }
+
+    /// Says what is estimated and why, once, without scolding. The runner
+    /// did nothing wrong by locking their phone.
+    private var unmeasuredNote: String {
+        let mins = Int((belt.unmeasuredSec / 60).rounded())
+        let span = mins >= 1 ? "\(mins) min" : "\(Int(belt.unmeasuredSec.rounded())) sec"
+        return "\(span) ran with the app in the background · that distance is estimated at the belt speed you last set."
+    }
+
+    private func topStat(_ k: String, _ v: String, modelled: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             SpecLabel(text: k, size: 9, tracking: 1.5, color: Theme.txt.opacity(0.58))
-            Text(v).font(.display(21, weight: .bold)).tracking(-0.5)
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                if modelled {
+                    Text(Theme.V5.modelledMark)
+                        .font(.display(21, weight: .bold))
+                        .scaleEffect(0.62, anchor: .bottomTrailing)
+                        .foregroundStyle(Theme.warnText)
+                        .accessibilityLabel("estimated")
+                }
+                Text(v).font(.display(21, weight: .bold)).tracking(-0.5)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -413,6 +518,7 @@ struct TreadmillView: View {
                 .background(Color.white.opacity(0.18), in: Capsule())
                 .overlay(Capsule().stroke(Color.white.opacity(0.32), lineWidth: 1))
                 .background(.ultraThinMaterial, in: Capsule())
+            if let target = pendingTargetMph { matchTargetChip(target) }
             Spacer()
             HStack(alignment: .lastTextBaseline, spacing: 6) {
                 Text(isOverTarget ? "+\(formatClock(overInSeg))" : formatClock(remainingInSeg))
@@ -424,6 +530,27 @@ struct TreadmillView: View {
                     .foregroundStyle(isOverTarget ? Theme.green.opacity(0.85) : Theme.txt.opacity(0.6))
             }
         }
+    }
+
+    /// The segment's asked speed, one tap away, when the belt is not on it.
+    /// This is what replaced silently writing the target into `speedMph` at
+    /// every boundary: the app can ASK for a speed, but only the runner can
+    /// tell it what the belt is doing.
+    private func matchTargetChip(_ target: Double) -> some View {
+        Button { setSpeed(target) } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.right").font(.system(size: 10, weight: .bold))
+                Text("SET \(Units.formatSpeed(mph: target))")
+                    .font(.body(11, weight: .extraBold))
+                    .tracking(1.2)
+            }
+            .foregroundStyle(Theme.warnText)
+            .padding(.horizontal, 11).padding(.vertical, 7)
+            .background(Theme.warnText.opacity(0.14), in: Capsule())
+            .overlay(Capsule().stroke(Theme.warnText.opacity(0.45), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Set belt to \(Units.formatSpeed(mph: target)) \(Units.speedLabel())")
     }
 
     private var remainingInSeg: Int {
@@ -465,7 +592,7 @@ struct TreadmillView: View {
                 label: "SPEED",
                 // 2026-07-07 · units audit — DISPLAY ONLY. The internal
                 // `speedMph` state (and the ±0.1 stepper below) stays mph —
-                // that's what accumulates `dist` each tick and what the
+                // that's what the BeltTracker integrates each tick and what the
                 // POST payload's actualSpeedMph carries. Only the number
                 // shown and the unit label convert. Units.formatSpeed
                 // no-ops back to the exact "%.1f" mph reading when the
@@ -479,8 +606,16 @@ struct TreadmillView: View {
                 // is paired, sub stays pace-only. paceStr still computes
                 // off speedMph (mph) — pace display converts separately.
                 sub: hrSubLine(pace: paceDisplayStr(speedMph)),
-                onMinus: { speedMph = max(0.5, round((speedMph - 0.1) * 10) / 10) },
-                onPlus:  { speedMph = min(12, round((speedMph + 0.1) * 10) / 10) }
+                // 2026-08-21 · units audit round 2. The step and the bounds
+                // now move in the unit the runner is READING. They stepped in
+                // mph regardless of preference, so a km runner's tap moved the
+                // display by 0.161 km/h and no sequence of taps reached a
+                // round km/h number — on a belt whose own console steps in
+                // 0.1 km/h. The accumulator is still mph; only the notch and
+                // the ceiling are the runner's. No-ops to the exact previous
+                // 0.1 mph / 0.5–12.0 behaviour for a mi runner.
+                onMinus: { setSpeed(BeltSpeed.stepped(mph: speedMph, by: -1, unit: Units.preference.distance)) },
+                onPlus:  { setSpeed(BeltSpeed.stepped(mph: speedMph, by:  1, unit: Units.preference.distance)) }
             )
             consoleTile(
                 label: "INCLINE",
@@ -628,13 +763,20 @@ struct TreadmillView: View {
                     // starts the session · idempotent on re-calls.
                     let anchor = startedAt ?? .now
                     Task { await hrStreamer.start(from: anchor) }
+                    // Start measuring at the same instant the run starts, so
+                    // the pedometer's window and the belt's window are the
+                    // same window and the two numbers are comparable.
+                    meter.start(from: anchor)
+                    belt.begin(at: anchor)
                     // Ask the watch to open a parallel indoor-running
                     // workout session so HK gets fast HR samples (5-15s
                     // cadence) instead of the passive every-5-min baseline.
                     // Best-effort · falls through when watch not reachable.
                     watchHRBridgeUp = WatchSync.shared.startTreadmillHRSession(sessionId: id)
                 }
-                lastTickAt = .now
+                // Re-anchor the integrator so the paused wall-clock span is
+                // never credited as running when play resumes.
+                belt.resync(to: .now)
                 playing.toggle()
             }
             controlBtn(icon: "forward.fill", label: "Skip", style: .secondary) { advance() }
@@ -681,16 +823,28 @@ struct TreadmillView: View {
         return s.sub.isEmpty ? s.label.uppercased() : "\(s.label.uppercased()) \(s.sub)"
     }
 
+    /// The runner's own belt input. Records that THEY set it, so the next
+    /// segment boundary offers its target instead of overwriting them.
+    private func setSpeed(_ mph: Double) {
+        speedMph = mph
+        runnerSetSpeed = true
+    }
+
     private func advance() {
         guard idx + 1 < segments.count else { return }
         recordActual(forSegment: idx, completed: false)   // skipped before timer ran out
         let nextIdx = idx + 1
         withAnimation(.easeInOut(duration: 0.4)) {
             idx = nextIdx
-            elapsedInSeg = 0
-            speedMph = segments[nextIdx].mph
-            inclinePct = segments[nextIdx].inc
+            adoptTargetOrKeepRunnerSpeed(for: segments[nextIdx])
         }
+    }
+
+    /// The current segment's target speed, when it differs from what the
+    /// belt is actually set to. Nil when they agree — nothing to offer.
+    private var pendingTargetMph: Double? {
+        guard let seg = segments[safe: idx] else { return nil }
+        return abs(seg.mph - speedMph) > 0.05 ? seg.mph : nil
     }
 
     private func formatClock(_ s: Int) -> String {
@@ -749,6 +903,7 @@ struct TreadmillView: View {
         // Stop streaming new HR samples · session rollup happens inside
         // buildPayload via closeSession().
         hrStreamer.stop()
+        meter.stop()
         // Tell the watch to end its parallel HR workout session so the
         // watch returns to passive HR sensing. Idempotent · safe even
         // if the watch never received the start.
@@ -797,18 +952,53 @@ struct TreadmillView: View {
         let phasePayloads: [[String: Any]] = segments.enumerated().map { i, seg in
             let act = actualsBySegment[i]
             var phase: [String: Any] = [
+                // `index` was never sent. The endpoint declares it and the v5
+                // console keys its own actuals by it; without it a consumer
+                // can only infer phase identity from array position.
+                "index": i,
                 "label": seg.label,
                 "type": treadKindToWatchType(seg.kind),
                 "completed": act?.completed ?? false,
-                "actualSpeedMph": act?.avgSpeedMph ?? seg.mph,
-                "actualInclinePct": act?.avgInclinePct ?? seg.inc,
+                // A phase the runner never reached reports its NOMINAL target,
+                // and carries no duration or distance at all — the absence is
+                // what says "this did not happen".
+                "actualSpeedMph": act.map { $0.belt.avgSpeedMph } ?? seg.mph,
+                "actualInclinePct": act.map { $0.belt.avgInclinePct } ?? seg.inc,
             ]
-            if let act {
-                phase["actualDistanceMi"] = (act.distanceMi * 100).rounded() / 100
-                phase["actualDurationSec"] = act.durationSec
-                // Approximate pace from speed for backend's split row.
-                let paceSec = Int(round(3600.0 / max(0.5, act.avgSpeedMph)))
-                phase["actualPaceSPerMi"] = paceSec
+            if let act, act.belt.durationSec > 0 {
+                let b = act.belt
+                phase["actualDistanceMi"] = (b.distanceMi * 100).rounded() / 100
+                phase["actualDurationSec"] = b.durationSec
+                // Pace from THIS phase's own duration and distance, not from
+                // a speed reading. With a time-weighted mean speed these are
+                // the same number by construction — computing it the defining
+                // way keeps it that way if either side ever changes.
+                if let pace = b.paceSPerMi { phase["actualPaceSPerMi"] = pace }
+                // 2026-08-21 · the belt's own speed timeline, ~5 s cadence
+                // plus a sample at every speed change. This is what the
+                // server's deriveSplitsFromPaceSamples walks to build real
+                // per-mile splits: every treadmill run before this one landed
+                // with `splits: []` because the treadmill payload carried no
+                // paceSamples at all, so run detail had no splits and the HR
+                // zone bar had nothing to bucket.
+                //
+                // These samples are REAL, not modelled: they are the speed the
+                // runner set, at the second they set it, which is the only
+                // measurement a belt gives us and is exactly what the run
+                // total is already integrated from. Deriving splits
+                // server-side from one (speed, duration) pair instead would
+                // have invented a flat pace for a run whose speed moved — a
+                // modelled number wearing a measured number's clothes.
+                if !b.samples.isEmpty {
+                    phase["paceSamples"] = b.paceSamplesPayload
+                    let hrs = b.hrSamplesPayload
+                    if !hrs.isEmpty { phase["hrSamples"] = hrs }
+                }
+                // What this phase could not witness. Absent when zero.
+                if b.unmeasuredSec > 0 {
+                    phase["unmeasuredSec"] = b.unmeasuredSec
+                    phase["unmeasuredDistanceMi"] = (b.unmeasuredMi * 100).rounded() / 100
+                }
                 // Per-phase HR from live HK stream · null when no watch.
                 if let avgHr = act.avgHr { phase["avgHr"] = avgHr }
                 if let maxHr = act.maxHr { phase["maxHr"] = maxHr }
@@ -827,12 +1017,12 @@ struct TreadmillView: View {
             "startedAt": iso.string(from: started),
             "completedAt": iso.string(from: .now),
             "status": status,
-            "totalDistanceMi": (dist * 100).rounded() / 100,
+            "totalDistanceMi": (belt.distanceMi * 100).rounded() / 100,
             "totalDurationSec": totalSec,
             // Incline-derived elevation gain · so a treadmill run with incline
             // shows real climb instead of flat (0 ft). Source flags it as
             // incline-derived, not barometric.
-            "elevGainFt": elev.rounded(),
+            "elevGainFt": belt.elevGainFt.rounded(),
             "elevGainSource": "treadmill_incline",
             // kcal stays null on iPhone-treadmill v1 · backend
             // resolveCalories tier 3 estimator picks up.
@@ -842,6 +1032,54 @@ struct TreadmillView: View {
         ]
         if let avgHr = sessionHr.avg { payload["avgHr"] = avgHr }
         if let maxHr = sessionHr.max { payload["maxHr"] = maxHr }
+        // 2026-08-21 · what this run could not witness, carried on the wire
+        // rather than left for a reader to infer. Keys are ABSENT on a clean
+        // run so the merge upsert can never clobber a sibling payload, and so
+        // an untouched run's shape is byte-identical to before.
+        if belt.unmeasuredSec >= 1 {
+            payload["unmeasuredSec"] = Int(belt.unmeasuredSec.rounded())
+            payload["unmeasuredDistanceMi"] = (belt.unmeasuredMi * 100).rounded() / 100
+        }
+        if belt.droppedSec >= 1 {
+            // A gap longer than the credit ceiling. Counted to nothing, and
+            // said out loud so the run does not quietly look shorter than the
+            // wall clock for no stated reason.
+            payload["droppedGapSec"] = Int(belt.droppedSec.rounded())
+        }
+        if belt.pausedSec >= 1 { payload["pausedSec"] = Int(belt.pausedSec.rounded()) }
+
+        // ── Where this run's distance came from ──────────────────────────
+        // `totalDistanceMi` is the belt integral, because that is the number
+        // the runner watched for the whole session and swapping it for
+        // another reading without asking would be its own defect. What ships
+        // alongside it is the provenance, so no reader has to guess:
+        //
+        //   belt_stated       · integrated from a speed the runner typed.
+        //                       Nothing measured it.
+        //   belt_corroborated · a carried phone's pedometer independently
+        //                       landed within tolerance of it.
+        //   belt_contested    · a carried phone measured a materially
+        //                       different distance. Both numbers ship; this
+        //                       endpoint does not get to pick, and neither
+        //                       does this screen.
+        payload["distanceSource"] = {
+            guard let m = measuredMi else { return "belt_stated" }
+            return IndoorDistanceMeter.materiallyDisagree(beltMi: belt.distanceMi, measuredMi: m)
+                ? "belt_contested" : "belt_corroborated"
+        }()
+        if let m = meter.rawDistanceMi {
+            payload["pedometerDistanceMi"] = (m * 100).rounded() / 100
+        }
+        if let st = meter.rawSteps { payload["pedometerSteps"] = st }
+        if !IndoorDistanceMeter.isSupported { payload["pedometerAvailable"] = false }
+
+        // ── The run's own clock audit ────────────────────────────────────
+        // Every second between the first play and now is running time, paused
+        // time, or time the tracker declined to credit. If they do not add up
+        // to the wall clock, ticks were dropped — which is precisely the
+        // failure that used to need a row read out of the database to spot.
+        // The run proves it every time now.
+        payload["clockDriftSec"] = (belt.clockDriftSec(startedAt: started, completedAt: .now) * 10).rounded() / 10
         return payload
     }
 

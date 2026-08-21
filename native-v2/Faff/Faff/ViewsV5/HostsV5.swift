@@ -957,20 +957,32 @@ struct LiveRunHostV5: View {
 
     var body: some View {
         Group {
-            switch mode {
-            case .outdoor:
-                // A run worth keeping gets a confirm; an empty console — the
-                // refusal screen's "Back", or a mode opened by accident —
-                // just leaves, because there is nothing to be sure about.
-                LiveRunOutdoorV5(tracker: tracker, hr: hr, plan: plan,
-                                 onPause: togglePause,
-                                 onEnd: { if hasRecordedRun { confirmingEnd = true } else { end() } })
-            case .treadmill:
-                LiveRunTreadmillV5(plan: plan, hr: hr,
-                                   onPause: togglePause, onEnd: end)
+            // 2026-08-21 · this was built unconditionally and merely hidden
+            // with `.opacity(asked ? 1 : 0)`. A hidden view is still a live
+            // view: the treadmill console's clock was already ticking, and its
+            // `State(initialValue:)` seeds — including the belt's starting
+            // speed — were resolved against a `plan` that had not arrived, so
+            // every planned session opened at the flat fallback speed and
+            // counted the fetch as running. Build it when there is something
+            // to build it from.
+            if asked {
+                switch mode {
+                case .outdoor:
+                    // A run worth keeping gets a confirm; an empty console —
+                    // the refusal screen's "Back", or a mode opened by
+                    // accident — just leaves, because there is nothing to be
+                    // sure about.
+                    LiveRunOutdoorV5(tracker: tracker, hr: hr, plan: plan,
+                                     onPause: togglePause,
+                                     onEnd: { if hasRecordedRun { confirmingEnd = true } else { end() } })
+                case .treadmill:
+                    LiveRunTreadmillV5(plan: plan, hr: hr,
+                                       onPause: togglePause, onEnd: end)
+                }
+            } else {
+                V5.surfacePage.ignoresSafeArea()
             }
         }
-        .opacity(asked ? 1 : 0)
         .overlay { if mode == .outdoor { endConfirmSheet } }
         .task {
             // A run the app was killed in the middle of, re-submitted through

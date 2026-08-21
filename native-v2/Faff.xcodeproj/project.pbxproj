@@ -155,6 +155,8 @@
 		E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80D79010E6307A7B819FD164 /* TokenStore.swift */; };
 		E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DDE304E9C6471D398E2D102 /* Briefing.swift */; };
 		E1D19AD240AAA3B18043EF2F /* TreadmillHRStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */; };
+		BE17AC4E11D0000000000002 /* BeltTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE17AC4E11D0000000000001 /* BeltTracker.swift */; };
+		BE17AC4E11D0000000000004 /* IndoorDistanceMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE17AC4E11D0000000000003 /* IndoorDistanceMeter.swift */; };
 		E3FA651A77FAF9DC15B217FE /* RunDetailV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FF8F02690033B47196AEF42 /* RunDetailV5.swift */; };
 		E54713F776795DC8AB4F468D /* ChimePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87DEABD97368BE1C69024791 /* ChimePlayer.swift */; };
 		EAF8355DE9CD72C8C10FFD51 /* A_Signals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ABAABCF2CDD7B4DBC82200 /* A_Signals.swift */; };
@@ -356,6 +358,8 @@
 		CC98F967EA1071686B9F86C0 /* TodayBeforeV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayBeforeV5.swift; sourceTree = "<group>"; };
 		CD71B88D7D0751ABFACD1479 /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
 		CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillHRStreamer.swift; sourceTree = "<group>"; };
+		BE17AC4E11D0000000000001 /* BeltTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeltTracker.swift; sourceTree = "<group>"; };
+		BE17AC4E11D0000000000003 /* IndoorDistanceMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndoorDistanceMeter.swift; sourceTree = "<group>"; };
 		CE323D928DA355934197F38B /* G_Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = G_Settings.swift; sourceTree = "<group>"; };
 		CFC017C2FCF5BCEF864B8086 /* ComponentsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComponentsV5.swift; sourceTree = "<group>"; };
 		D2E15DBC78C7149E2AA0EB45 /* WeekStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekStrip.swift; sourceTree = "<group>"; };
@@ -647,6 +651,8 @@
 				9EC4B08F6610A04777F2FC2E /* ThemeV5.swift */,
 				80D79010E6307A7B819FD164 /* TokenStore.swift */,
 				CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */,
+				BE17AC4E11D0000000000001 /* BeltTracker.swift */,
+				BE17AC4E11D0000000000003 /* IndoorDistanceMeter.swift */,
 				5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */,
 				88951A9181D51E114B2B4F0F /* Components */,
 				00A40C55CB0AA30B6F69D363 /* DesignV5 */,
@@ -979,6 +985,8 @@
 				DDEC03C890DF05DF53ECDF7F /* TrainView.swift in Sources */,
 				B1A6E0DF54B3924387506BAA /* TrainingCalendarView.swift in Sources */,
 				E1D19AD240AAA3B18043EF2F /* TreadmillHRStreamer.swift in Sources */,
+				BE17AC4E11D0000000000002 /* BeltTracker.swift in Sources */,
+				BE17AC4E11D0000000000004 /* IndoorDistanceMeter.swift in Sources */,
 				93719A4457B3D049C1A86D64 /* TreadmillView.swift in Sources */,
 				74D86F02898E21A4BFE78C3F /* Units.swift in Sources */,
 				D750DCF6D7FC785D59A8C918 /* ValuesV5.swift in Sources */,
