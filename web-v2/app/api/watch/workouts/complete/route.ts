@@ -37,6 +37,13 @@ import { sanitizeSplits } from '@/lib/runs/split-sanity';
 import { splitTimesReliable, splitsSumSeconds } from '@/lib/runs/split-coverage';
 import { requireUserId } from '@/lib/auth/session';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
+import { deriveSplitsFromPaceSamples } from '@/lib/runs/derive-splits';
+import { bucketHrSamplesByZone } from '@/lib/coach/hr-zone-bucket';
+import { computeZones } from '@/lib/training/zones';
+
+/** Seconds of slack between a run's wall clock and the time it accounts for.
+ *  Covers the End-confirm tap, the final partial tick, and the POST itself. */
+const CLOCK_DRIFT_TOLERANCE_SEC = 45;
 import { classifyRunDistance, DISTANCE_REVIEW_FLAG, SOFT_DISTANCE_CEILING_MI, HARD_DISTANCE_CEILING_MI } from '@/lib/runs/distance-guard';
 import { runnerTimezone, runnerToday } from '@/lib/runtime/runner-tz';
 import { toUtcIso, toLocalWallIso } from '@/lib/runs/normalize-time';
@@ -73,6 +80,14 @@ interface WatchCompletionPhaseBody {
   // Treadmill-only extras (TreadmillView.buildPayload)
   actualSpeedMph?: number;
   actualInclinePct?: number;
+  // 2026-08-21 · seconds inside this phase the console did not witness
+  // (screen locked / app backgrounded), and the distance credited across
+  // them at the last known belt speed. Absent on a clean phase. A treadmill
+  // has no sensor of its own, so an unwitnessed second is the one place its
+  // distance stops being a reading and becomes an estimate — recorded here
+  // rather than left for a reader to infer.
+  unmeasuredSec?: number;
+  unmeasuredDistanceMi?: number;
 }
 interface WatchCompletionBody {
   workoutId: string;
@@ -108,6 +123,30 @@ interface WatchCompletionBody {
   // both shapes; the read site prefers camel and falls back to snake.
   routePolyline?: string | null;
   route_polyline?: string | null;
+  // 2026-08-21 · run-level totals of the same. `droppedGapSec` is time the
+  // console declined to credit at all: a gap longer than its ceiling, which
+  // is how a phone left in a locker stops becoming a fourteen-mile run.
+  unmeasuredSec?: number;
+  unmeasuredDistanceMi?: number;
+  droppedGapSec?: number;
+  pausedSec?: number;
+  // 2026-08-21 · where an INDOOR run's distance came from. A treadmill has
+  // no odometer the phone can read, so `totalDistanceMi` is integrated from
+  // the belt speed the runner typed in — a stated number, not a measured
+  // one, and the 2026-08-20 defect in full: the runner moved the belt and
+  // nothing told the app, so the app read low against the machine's own
+  // display. `IndoorDistanceMeter` (CoreMotion) now provides a second,
+  // genuinely measured reading when the phone was carried.
+  //   'belt_stated'       nothing measured it
+  //   'belt_corroborated' a carried phone agreed within tolerance
+  //   'belt_contested'    a carried phone measured materially differently
+  distanceSource?: string;
+  pedometerDistanceMi?: number;
+  pedometerSteps?: number;
+  pedometerAvailable?: boolean;
+  // The client's own audit of its clock: wall time minus (running + paused +
+  // declined). Non-zero means the tracker dropped ticks.
+  clockDriftSec?: number;
   // Device-measured elevation GAIN in feet, from the watch's barometer-fused
   // altitude (build 17x+). camelCase — same wire-contract lesson as
   // routePolyline (the Encodable struct emits camelCase; a snake_case read
@@ -314,6 +353,90 @@ export async function POST(req: NextRequest) {
   // Fix 4b · derive whole-run avgHr once (null when phases carry no HR).
   const wholeRunHr = wholeRunAvgHr(body.phases);
 
+  // ── The run's clock, checked ─────────────────────────────────────────────
+  // Every second between the run's start and its finish is running time,
+  // paused time, or time the tracker declined to credit. If those do not add
+  // up to the wall clock, ticks were dropped — a run silently shorter than it
+  // really was, which is exactly the class of defect that used to need a row
+  // read out of the database to notice. Checked on the server too, because
+  // the client's own arithmetic is the thing under suspicion.
+  //
+  // Stored only when it FAILS, so a clean run's shape is unchanged and any
+  // row carrying `clockAudit` is a row worth looking at.
+  const clockAudit = (() => {
+    const startMs = Date.parse(startUtc ?? '');
+    const endMs = Date.parse(toUtcIso(body.completedAt, source, tz) ?? '');
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+    const wallSec = (endMs - startMs) / 1000;
+    if (!(wallSec > 0)) return null;
+    const accounted = totalSec + (Number(body.pausedSec) || 0) + (Number(body.droppedGapSec) || 0);
+    const driftSec = Math.round(wallSec - accounted);
+    // A few seconds is the End-confirm tap and the final partial tick.
+    if (Math.abs(driftSec) <= CLOCK_DRIFT_TOLERANCE_SEC) return null;
+    console.warn(
+      `[watch/complete] clock drift ${driftSec}s on ${body.workoutId} · ` +
+      `wall ${Math.round(wallSec)}s vs counted ${totalSec}s + paused ` +
+      `${Number(body.pausedSec) || 0}s + declined ${Number(body.droppedGapSec) || 0}s. ` +
+      `Distance is integrated from the same clock, so it is short by the same share.`,
+    );
+    return {
+      driftSec,
+      wallSec: Math.round(wallSec),
+      countedSec: totalSec,
+      pausedSec: Number(body.pausedSec) || 0,
+      declinedSec: Number(body.droppedGapSec) || 0,
+      // What the client thought its own drift was. A disagreement between
+      // this and driftSec means the client's clock and the wall clock parted
+      // company before the payload was even built.
+      clientDriftSec: Number.isFinite(Number(body.clockDriftSec))
+        ? Number(body.clockDriftSec) : null,
+    };
+  })();
+
+  // ── HR zone distribution · 2026-08-21 ────────────────────────────────────
+  // `/api/ingest/workout` has done this since 2026-06-04; this endpoint never
+  // has, so the PRIMARY source — the watch is tier-5 and wins canonical
+  // selection — landed every run with no `hrZonePcts` at all, and the run
+  // detail page fell through to the per-split-average derivation that the
+  // 06-04 fix existed to replace. A treadmill run was worse off still: it
+  // shipped no samples of any kind until BeltTracker started emitting them,
+  // so there was nothing to bucket at ingest OR at render.
+  //
+  // The samples live per PHASE here rather than per split, so hand the
+  // bucketer one synthetic split holding all of them — it only ever walks
+  // `hrSamples`, and counting time-even samples IS time-weighting.
+  //
+  // Null (key absent) when LTHR is unset or no phase carries samples, which
+  // is the pre-fix state and what the render-time fallback already handles.
+  let computedHrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number } | null = null;
+  const phaseHrSamples = (body.phases ?? []).flatMap((p) =>
+    Array.isArray(p.hrSamples) ? p.hrSamples : [],
+  ).filter((h) => Number(h?.bpm) > 0);
+  if (phaseHrSamples.length > 0) {
+    try {
+      const lthrRow = await pool.query<{ lthr: number | null }>(
+        `SELECT lthr FROM profile WHERE user_uuid = $1 ORDER BY (user_uuid=$1) DESC LIMIT 1`,
+        [userId],
+      );
+      const lthr = lthrRow.rows[0]?.lthr;
+      if (lthr) {
+        const table = computeZones({ lthr });
+        if (table) {
+          const bucketed = bucketHrSamplesByZone(
+            [{ hrSamples: phaseHrSamples.map((h) => ({ bpm: Number(h.bpm), tSec: Number(h.tSec) })) }],
+            table,
+          );
+          const sum = bucketed.z1 + bucketed.z2 + bucketed.z3 + bucketed.z4 + bucketed.z5;
+          if (sum > 0) computedHrZonePcts = bucketed;
+        }
+      }
+    } catch (e: unknown) {
+      // Non-fatal · the render-time fallback covers us.
+      console.warn('[watch/complete] zone bucketing failed:',
+        e instanceof Error ? e.message : String(e));
+    }
+  }
+
   // 2026-06-09 · regression-audit G5 · stamp workoutType from the matched
   // plan day — the EXACT mirror of /api/ingest/workout's stamp (landed the
   // same day). Without this the field was source-asymmetric: HK-ingested
@@ -450,6 +573,45 @@ export async function POST(req: NextRequest) {
     // the HK import path fills it via the apple_watch sibling row +
     // enhanceCanonicalFromAbsorbed as before.
     routePolyline: body.routePolyline ?? body.route_polyline ?? null,
+    // 2026-08-21 · distance provenance for an indoor belt run. A treadmill
+    // distance is always ∫(belt speed)·dt — there is no odometer to read —
+    // and `distanceSource` says so plainly. `distanceModelled` is the
+    // narrower claim: part of that integral ran over seconds the console
+    // could not witness, so the number is an estimate and every surface that
+    // shows it owes it the amber mark. Keys ABSENT (not null) on a clean run
+    // and on every non-treadmill source, so the merge upsert can never
+    // clobber a sibling's value and an untouched run's shape is unchanged.
+    // Key ABSENT when we could not compute it, so a re-POST from an older
+    // client cannot clobber a distribution a richer payload already wrote.
+    ...(computedHrZonePcts ? { hrZonePcts: computedHrZonePcts } : {}),
+    ...(source === 'treadmill' ? { distanceSource: 'belt_integrated' } : {}),
+    ...(Number(body.unmeasuredSec) > 0
+      ? {
+          unmeasuredSec: Math.round(Number(body.unmeasuredSec)),
+          unmeasuredDistanceMi: Number(body.unmeasuredDistanceMi) || 0,
+          distanceModelled: true,
+        }
+      : {}),
+    ...(Number(body.droppedGapSec) > 0
+      ? { droppedGapSec: Math.round(Number(body.droppedGapSec)) }
+      : {}),
+    // The second, measured reading and the verdict on the two. Stored
+    // whether or not they agree — a contested run keeps both numbers so the
+    // question stays answerable later, and `distanceModelled` above already
+    // tells every surface whether the headline figure earned the amber mark.
+    ...(typeof body.distanceSource === 'string' && body.distanceSource !== ''
+      ? { distanceSource: body.distanceSource }
+      : {}),
+    ...(Number.isFinite(Number(body.pedometerDistanceMi))
+      ? { pedometerDistanceMi: Number(body.pedometerDistanceMi) }
+      : {}),
+    ...(Number.isFinite(Number(body.pedometerSteps))
+      ? { pedometerSteps: Math.round(Number(body.pedometerSteps)) }
+      : {}),
+    ...(body.distanceSource === 'belt_stated' || body.distanceSource === 'belt_contested'
+      ? { distanceModelled: true }
+      : {}),
+    ...(clockAudit ? { clockAudit } : {}),
   };
   // Splits reliability guard — same check as iPhone ingest (finding 1.7).
   // deriveSplitsFromPaceSamples can yield an n-1 array when the final
@@ -701,110 +863,3 @@ function stableBigintFromString(s: string): number {
   return parseInt(hex, 16);
 }
 
-/**
- * deriveSplitsFromPaceSamples — derive genuine per-mile splits from the
- * watch's 5-second paceSamples stream.
- *
- * 2026-06-06 · This replaces the prior strategy of relying on iPhone HK
- * ingest to produce splits.  The iPhone path was fragile:
- *   · The reconciliation guard (round 71, fixed round 90) was comparing
- *     sumOfFullMileTimes to workout.duration WITHOUT the trailing fractional
- *     mile, silently dropping splits on every run since 2026-05-29.
- *   · Even when fixed, the iPhone HK ingest fires ~30-60s after the watch
- *     endpoint, so the watch canonical row always wins tier-5 and the iPhone
- *     HK row (tier-2 loser) has to be absorbed. With no splits on the apple_
- *     watch row there's nothing to absorb.
- *
- * The watch already sends the FULL GPS-pace sample stream (one sample every
- * ~5 seconds, distMi cumulative, tSec from phase-start).  Walking those
- * samples to find mile-boundary crossings is identical to what iPhone's
- * perMileSplits does from HKWorkoutRoute locations — just run server-side
- * instead of on the phone.
- *
- * Algorithm:
- *   · Flatten all phases into a single distMi + tSec timeline with offsets.
- *   · Walk sample pairs; when distMi crosses a whole-mile boundary, linearly
- *     interpolate the exact tSec at the crossing.
- *   · per-mile elapsed = crossingTime[N] − crossingTime[N-1].
- *   · Average HR from hrSamples in the same time window.
- *   · Guard: 120s ≤ elapsed ≤ 3600s per mile (same sanity range as iPhone).
- *
- * Returns null when:
- *   · no phase has paceSamples with distMi populated
- *   · fewer than 1 full mile completed
- */
-function deriveSplitsFromPaceSamples(
-  phases: WatchCompletionPhaseBody[]
-): Array<{ mile: number; pace: string; hr: number | null; paceSecPerMi: number }> | null {
-  if (!Array.isArray(phases) || phases.length === 0) return null;
-
-  // Flatten phases into a single timeline with dist + time offsets
-  interface FlatSample { tSec: number; distMi: number; bpm: number | null }
-  const flat: FlatSample[] = [];
-  let distOffset = 0;
-  let tOffset = 0;
-
-  for (const phase of phases) {
-    const ps = phase.paceSamples ?? [];
-    const hs = phase.hrSamples ?? [];
-    if (ps.length === 0) { distOffset += Number(phase.actualDistanceMi ?? 0); tOffset += Number(phase.actualDurationSec ?? 0); continue; }
-
-    // HR lookup for this phase by tSec
-    const hrByT = new Map<number, number>();
-    for (const h of hs) { if (h.bpm != null && h.bpm > 0) hrByT.set(h.tSec, h.bpm); }
-
-    for (const s of ps) {
-      if (s.distMi == null) continue;
-      flat.push({
-        tSec: s.tSec + tOffset,
-        distMi: s.distMi + distOffset,
-        bpm: hrByT.get(s.tSec) ?? null,
-      });
-    }
-
-    // Advance offsets by the phase's actual values (not sample-derived)
-    // so rounding in GPS doesn't accumulate across phases
-    distOffset += Number(phase.actualDistanceMi ?? (ps[ps.length-1]?.distMi ?? 0));
-    tOffset += Number(phase.actualDurationSec ?? (ps[ps.length-1]?.tSec ?? 0));
-  }
-
-  if (flat.length < 2) return null;
-  flat.sort((a, b) => a.tSec - b.tSec);
-
-  const splits: Array<{ mile: number; pace: string; hr: number | null; paceSecPerMi: number }> = [];
-  let mileNo = 1;
-  let prevCrossT = 0;
-
-  for (let i = 1; i < flat.length; i++) {
-    const prev = flat[i - 1];
-    const curr = flat[i];
-    const span = curr.distMi - prev.distMi;
-    if (span <= 0) continue;
-
-    // One sample pair can cross multiple mile boundaries (e.g. a fast downhill)
-    while (curr.distMi >= mileNo && prev.distMi < mileNo) {
-      const frac = (mileNo - prev.distMi) / span;
-      const crossT = prev.tSec + frac * (curr.tSec - prev.tSec);
-      const elapsedSec = Math.round(crossT - prevCrossT);
-
-      if (elapsedSec >= 120 && elapsedSec <= 3600) {
-        // Average HR from samples in this mile's window
-        const windowSamples = flat.filter(s => s.tSec >= prevCrossT && s.tSec <= crossT && s.bpm != null);
-        const avgHr = windowSamples.length > 0
-          ? Math.round(windowSamples.reduce((sum, s) => sum + (s.bpm!), 0) / windowSamples.length)
-          : null;
-
-        splits.push({
-          mile: mileNo,
-          pace: `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, '0')}`,
-          hr: avgHr,
-          paceSecPerMi: elapsedSec,
-        });
-      }
-      prevCrossT = crossT;
-      mileNo++;
-    }
-  }
-
-  return splits.length > 0 ? splits : null;
-}

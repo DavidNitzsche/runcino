@@ -32,6 +32,7 @@ import { deriveRecap } from '@/lib/coach/run-recap';
 import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 import { runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
+import { beltAverages } from '@/lib/runs/belt-averages';
 import { loadPaceZoneEvent } from '@/lib/plan/pace-drop-event';
 import {
   composeV5Today,
@@ -428,11 +429,14 @@ export async function GET(req: NextRequest) {
         ).catch(() => ({ rows: [] as any[] }))).rows[0];
         let payload: any = intent?.value ?? null;
         if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
-        const phases: any[] = Array.isArray(payload?.phases) ? payload.phases : [];
-        const speeds = phases.map((p) => Number(p.actualSpeedMph)).filter((v) => isFinite(v) && v > 0);
-        const inclines = phases.map((p) => Number(p.actualInclinePct)).filter((v) => isFinite(v));
-        if (speeds.length) speedMph = speeds.reduce((s, v) => s + v, 0) / speeds.length;
-        if (inclines.length) inclinePct = inclines.reduce((s, v) => s + v, 0) / inclines.length;
+        // 2026-08-21 · this was a PLAIN mean over every phase in the
+        // payload — including phases the runner never reached (which carry
+        // the plan's nominal target by design, and no duration), and
+        // weighting a 2-minute recovery the same as a 20-minute work block.
+        // See lib/runs/belt-averages.ts for the argument and the tests.
+        const belt = beltAverages(payload?.phases);
+        speedMph = belt.speedMph;
+        inclinePct = belt.inclinePct;
       }
 
       const zonePcts = data.hrZonePcts as Record<string, number> | undefined;
