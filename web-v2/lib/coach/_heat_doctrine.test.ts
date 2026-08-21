@@ -128,7 +128,7 @@ describe('HEAT-1 · doctrine conformance · Research/06 §§3, 4, 11', () => {
       const v = evaluateHeatGate({ tairF: 90, humidityPct: 60, cloudCoverPct: 100 });
       expect(v.wbgtF).toBeCloseTo(82, 1);
       expect(v.action, 'Research/06:484 · WBGT >=80°F · convert to easy time-on-feet').toBe('easy_time_on_feet');
-      expect(v.citation).toContain(':484');
+      expect(v.citation).toContain('WBGT >=80°F');
     });
 
     it('dew point >=70°F makes quality time-based and RPE-driven (:483)', () => {
@@ -155,7 +155,7 @@ describe('HEAT-1 · doctrine conformance · Research/06 §§3, 4, 11', () => {
       const v = evaluateHeatGate({ tairF: 82, humidityPct: 50, cloudCoverPct: 100, dewpointF: 80 });
       expect(v.wbgtF).toBeCloseTo(72, 1);
       expect(v.action, 'Research/06:494 · Td >=80°F · evaporative cooling fails').toBe('cancel');
-      expect(v.citation).toContain(':494');
+      expect(v.citation).toContain('Td >=80°F');
     });
 
     it('AQI >200 cancels, 151-200 is easy time on feet (:487, :496)', () => {
@@ -183,7 +183,7 @@ describe('HEAT-1 · doctrine conformance · Research/06 §§3, 4, 11', () => {
         const v = evaluateHeatGate(input);
         expect(v.fires).toBe(true);
         expect(v.proposeFirst).toBe(true);
-        expect(v.citation).toMatch(/Research\/06:/);
+        expect(v.citation).toMatch(/Research\/06 §/);
       }
     });
 

@@ -179,7 +179,13 @@ import {
   duplicatePaceFamily,
   weeklyDoseBudgetMi,
 } from '@/lib/plan/dosing';
-import { CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES } from '@/lib/plan/anchor-provenance';
+import {
+  CALIBRATION_INTRO_WEEKS,
+  EFFORT_CUED_TYPES,
+  isProvisionalAnchor,
+  isUnverifiedAnchor,
+  paceBlendAnchorIsProvisional,
+} from '@/lib/plan/anchor-provenance';
 import {
   STRIDE_DURATION_S,
   STRIDE_RECOVERY_S,
@@ -271,8 +277,21 @@ import {
   INTERVAL_ADJUSTMENT_FACTOR,
   effortSlowdownPct,
 } from '@/lib/training/heat-model';
-import { WBGT_FLAGS, heatBandForFlag } from '@/lib/coach/heat-gate';
+import {
+  WBGT_FLAGS,
+  heatBandForFlag,
+  // 2026-08-21 · the eight thresholds that used to cite line numbers.
+  HEAT_DOSE_TAIR_F,
+  HEAT_DOSE_WBGT_F,
+  TD_TIME_ON_FEET_F,
+  WBGT_TIME_ON_FEET_F,
+  WBGT_BAIL_F,
+  TD_BAIL_F,
+  AQI_BAIL,
+  AQI_TIME_ON_FEET_LOW,
+} from '@/lib/coach/heat-gate';
 import { HEAT_HR_CONFOUNDER, heatHrBumpBpm } from '@/lib/weather/heat-adjustment';
+import { MAUGHAN_HEAT_SLOWDOWN, maughanSlowdownPct, abilityTierFromVdot } from '@/lib/training/heat-model';
 import type { AbilityTier } from '@/lib/training/heat-model';
 import {
   REPRESENTATIVE_FLOOR,
@@ -2389,6 +2408,95 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
 
   // ══ INTENSITY DISTRIBUTION · the 80/20 rule ═══════════════════════════════
+  /**
+   * 2026-08-21 · the OTHER end of the easy-share floor.
+   *
+   * CLAUDE.md §Rule 7 lists "polarized intensity distribution" as unwatched,
+   * and half of it is: `INTENSITY.easy-share-floor` pins Z1 and nothing looks
+   * at Z2 or Z3 at all. The engine has no middle-band or hard-band constant to
+   * bind — there is no `HARD_SHARE_CEILING` anywhere — so this claim binds what
+   * the engine DOES carry, which is two independent ceilings on the same
+   * quantity that had never been checked against each other:
+   *
+   *   · `1 - EASY_SHARE_FLOOR` — 25% of the week, the most that may not be easy
+   *   · `AT_PACE_WEEKLY_SHARE_CAP` — 10% T + 8% I + 5% R, per pace
+   *
+   * Two ceilings on the same miles, from two different doctrine files, that
+   * nothing reconciled. If the per-pace caps summed above the easy floor's
+   * remainder the engine would be able to author a week that satisfies Daniels
+   * and violates the TID at the same time, and both gates would pass it.
+   *
+   * The doc's TID table is the arbiter, read at run time. Doctrine's two
+   * distance-running shapes — Polarized and Pyramidal, which §"When each TID
+   * applies" assigns to every distance the engine plans — both spend ~20% of
+   * the week outside Z1. That is the number the engine's ceilings are held
+   * against: high enough to author the shapes doctrine prescribes, and not so
+   * high that the per-pace caps can add up past it.
+   */
+  {
+    id: 'INTENSITY.non-easy-remainder',
+    binds: [
+      'lib/plan/intensity-distribution.ts#EASY_SHARE_FLOOR',
+      'lib/prescription/levers.ts#AT_PACE_WEEKLY_SHARE_CAP',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '| Distribution | Z1 (easy) | Z2 (threshold) | Z3 (hard) | Hallmarks |',
+    claim:
+      'A training week is a distribution across three zones, not a floor on one of them. The two ' +
+      'shapes doctrine assigns to distance running each spend about a fifth of the week outside ' +
+      'Z1, and the engine carries two separate ceilings on that fifth — the easy-share floor and ' +
+      'the per-pace weekly caps. They have to agree: the caps may not sum past what the floor ' +
+      'leaves, and the floor may not leave less than the shapes need.',
+    check({ cite }) {
+      const table = cite.table();
+      const zoneSum = (shape: string) =>
+        (['Z2 (threshold)', 'Z3 (hard)'] as const)
+          .map((col) => parseBand(table.cell(shape, col))[1])
+          .reduce((a, b) => a + b, 0);
+
+      // Every row must still read as a distribution, or the table was edited
+      // into something this claim cannot reason about.
+      for (const row of table.rows) {
+        const label = String(row[table.headers[0]]).trim();
+        if (!label) continue;
+        const z1 = parseBand(row['Z1 (easy)'])[1];
+        if (!(z1 >= 50 && z1 <= 100)) {
+          throw new Error(`TID row "${label}" no longer states a Z1 share (${row['Z1 (easy)']})`);
+        }
+      }
+
+      // The two shapes §"When each TID applies" assigns to 5K through marathon.
+      const shapes = ['Polarized', 'Pyramidal'] as const;
+      const needed = Math.max(...shapes.map(zoneSum));
+      const enginePct = Number(((1 - EASY_SHARE_FLOOR) * 100).toFixed(4));
+
+      if (enginePct + 1e-9 < needed) {
+        throw new Error(
+          `the easy floor leaves ${enginePct}% of a week for everything that is not easy, and doctrine's ` +
+            `${shapes.join(' / ')} shapes want ${needed}% · the engine cannot author the distribution it prescribes`,
+        );
+      }
+
+      const capSum = Number(
+        (Object.values(AT_PACE_WEEKLY_SHARE_CAP).reduce((a, b) => a + b, 0) * 100).toFixed(4),
+      );
+      if (capSum > enginePct + 1e-9) {
+        throw new Error(
+          `the per-pace weekly caps sum to ${capSum}% of a week and the easy floor leaves ${enginePct}% · ` +
+            'a week can satisfy Daniels and break the TID at the same time, and both gates would pass it',
+        );
+      }
+      // The reverse direction is not an error — the caps SHOULD sit at or under
+      // the remainder — but a large gap means the easy floor is doing no work,
+      // which is worth failing on rather than discovering later.
+      if (enginePct - capSum > 10) {
+        throw new Error(
+          `the easy floor leaves ${enginePct}% but nothing may spend more than ${capSum}% · the floor has ` +
+            'stopped binding, so the intensity distribution is governed by the per-pace caps alone',
+        );
+      }
+    },
+  },
   {
     id: 'INTENSITY.easy-share-floor',
     binds: ['lib/plan/intensity-distribution.ts#EASY_SHARE_FLOOR', 'lib/plan/generate.ts#applyIntensityFloor'],
@@ -3717,6 +3825,282 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
     },
   },
+  /**
+   * 2026-08-21 · the largest unwatched physiology table in the app.
+   *
+   * `MAUGHAN_HEAT_SLOWDOWN` is twenty-seven numbers transcribed by hand from
+   * `Research/06` §1, and every heat-adjusted pace, projection and race verdict
+   * in the engine flows through it. Its own comment says "Research/06 §1 table,
+   * verbatim" — which was true when it was written and is exactly the kind of
+   * assertion that rots silently, because nothing read the doc back.
+   *
+   * The two adjacent columns are the trap this whole gate exists for. The doc
+   * heads them "3:30 marathoner" and "4:30+ marathoner"; the engine names them
+   * `midPaceMarathonerPct` and `slowMarathonerPct`. Read one row off by a
+   * column and an eighty-degree morning costs a mid-pack runner 11.5% instead
+   * of 7.5% — the same shape as the recovery-column defect in CLAUDE.md §Rule 7.
+   */
+  {
+    id: 'HEAT.maughan-slowdown-table',
+    binds: [
+      'lib/training/heat-model.ts#MAUGHAN_HEAT_SLOWDOWN',
+      'lib/training/heat-model.ts#maughanSlowdownPct',
+    ],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: '| Tair (°F) | Tair (°C) | Elite slowdown | 3:30 marathoner | 4:30+ marathoner |',
+    claim:
+      'Marathon slowdown against a 50F baseline is stated per air temperature and per ability, ' +
+      'in three separate columns that widen with heat: at 90F an elite loses 6% where a 4:30 ' +
+      'marathoner loses 19%. Every cell the engine carries is the cell doctrine states, in the ' +
+      'column doctrine states it in.',
+    check({ cite }) {
+      const table = cite.table();
+      // The doc's own column headings, not the engine's field names. Reading
+      // them in the doc's order is what makes a column swap fail here.
+      const COLUMNS = [
+        ['Elite slowdown', 'elitePct'],
+        ['3:30 marathoner', 'midPaceMarathonerPct'],
+        ['4:30+ marathoner', 'slowMarathonerPct'],
+      ] as const;
+
+      const docRows = table.rows.filter((r) => /^\d+$/.test(String(r[table.headers[0]]).trim()));
+      if (docRows.length !== MAUGHAN_HEAT_SLOWDOWN.length) {
+        throw new Error(
+          `doctrine states ${docRows.length} temperature rows, the engine carries ` +
+            `${MAUGHAN_HEAT_SLOWDOWN.length} · a row was added or dropped without the table being re-read`,
+        );
+      }
+
+      for (const [i, docRow] of docRows.entries()) {
+        const tairF = Number(docRow[table.headers[0]]);
+        const engineRow = MAUGHAN_HEAT_SLOWDOWN[i];
+        if (engineRow.tairF !== tairF) {
+          throw new Error(
+            `row ${i} is ${tairF}F in doctrine and ${engineRow.tairF}F in the engine · the tables have ` +
+              'drifted out of step, so every cell below this row is being compared against the wrong temperature',
+          );
+        }
+        for (const [column, field] of COLUMNS) {
+          // parseBand strips the "(optimum)" annotation on the 40/50F rows.
+          const [want] = parseBand(table.cell(String(tairF), column));
+          const got = engineRow[field];
+          if (Math.abs(got - want) > 1e-9) {
+            throw new Error(
+              `at ${tairF}F doctrine's "${column}" is ${want}% and the engine's ${field} is ${got}%`,
+            );
+          }
+        }
+      }
+
+      // The interpolator must agree with the table at the bracket points it
+      // interpolates between, or the constant is right and nothing reads it.
+      for (const [column, field] of COLUMNS) {
+        const tier = field === 'elitePct' ? 'elite' : field === 'midPaceMarathonerPct' ? 'mid_pack' : 'slow';
+        for (const row of MAUGHAN_HEAT_SLOWDOWN) {
+          const got = maughanSlowdownPct(row.tairF, tier);
+          if (Math.abs(got - row[field]) > 1e-9) {
+            throw new Error(
+              `maughanSlowdownPct(${row.tairF}, '${tier}') is ${got}% but doctrine's "${column}" row says ${row[field]}%`,
+            );
+          }
+        }
+      }
+
+      // Below the optimum there is no penalty · the doc's baseline sentence
+      // ("relative to the same runner's expected time at 50 F") read as a rule.
+      if (maughanSlowdownPct(45, 'slow') !== 0 || maughanSlowdownPct(50, 'slow') !== 0) {
+        throw new Error('the model charges a heat penalty at or below the 50F optimum');
+      }
+
+      // And the three columns must stay ORDERED at every temperature doctrine
+      // states one. The doc's own rule under the table: "faster runners
+      // accumulate less heat over the race; slower runners ... slow
+      // disproportionately." An unordered set of columns means they were
+      // transcribed into the wrong fields even if every number is present.
+      for (const row of MAUGHAN_HEAT_SLOWDOWN) {
+        if (!(row.elitePct <= row.midPaceMarathonerPct && row.midPaceMarathonerPct <= row.slowMarathonerPct)) {
+          throw new Error(
+            `at ${row.tairF}F the columns are out of order (${row.elitePct} / ${row.midPaceMarathonerPct} / ` +
+              `${row.slowMarathonerPct}) · doctrine says the slower runner always pays more`,
+          );
+        }
+      }
+
+      // The tier the engine picks decides WHICH column a runner is charged, so
+      // it is part of the same claim. Daniels' marathon bands: the doc's own
+      // column headings are a 3:30 and a 4:30+ marathoner, which is the split
+      // abilityTierFromVdot implements.
+      if (abilityTierFromVdot(65) !== 'elite' || abilityTierFromVdot(50) !== 'mid_pack' || abilityTierFromVdot(38) !== 'slow') {
+        throw new Error('abilityTierFromVdot no longer separates the three columns doctrine states');
+      }
+    },
+  },
+  /* ── 2026-08-21 · the eight heat thresholds that cited LINE NUMBERS ────────
+   *
+   * `lib/coach/heat-gate.ts` carries the highest line-number-citation debt in
+   * the repo — `Research/06:483`, `:493`, `:496` and a dozen more. Rule 7's
+   * first instruction is "anchor on quoted text, never a line number", and
+   * these eight constants were guarded only by hand-written `.toBe(85)`
+   * assertions in `_heat_doctrine.test.ts` that hardcode both sides. A test
+   * that hardcodes both sides only proves the test agrees with itself, which
+   * is the exact failure this gate exists to stop.
+   *
+   * The three claims below read the numbers back out of the doc's own tables.
+   * They also close a bug the file's own header records: the shipped code
+   * applied the WBGT number, 75, to AIR temperature, so an ordinary 75F morning
+   * counted as heat-acclimation stimulus. Two adjacent thresholds in one
+   * sentence, swapped — the same shape as the recovery columns in CLAUDE.md
+   * §Rule 7, and the reason both are asserted against the sentence itself.
+   */
+  {
+    id: 'HEAT.acclimation-dose-thresholds',
+    binds: [
+      'lib/coach/heat-gate.ts#HEAT_DOSE_TAIR_F',
+      'lib/coach/heat-gate.ts#HEAT_DOSE_WBGT_F',
+    ],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: 'Heat dose:   Tair ≥85°F or WBGT ≥75°F; or post-run sauna 25–40 min @ 175–195°F',
+    claim:
+      'A session only counts as heat-acclimation stimulus above one threshold in AIR temperature ' +
+      'and a different, lower one in WBGT. They are two numbers in one sentence and they are not ' +
+      'interchangeable: applying the WBGT number to air temperature turns an ordinary 75F morning ' +
+      'into adaptation the runner never got.',
+    check({ cite }) {
+      const m = cite.section[0].match(/Tair\s*≥\s*(\d+)\s*°F\s*or\s*WBGT\s*≥\s*(\d+)\s*°F/);
+      if (!m) {
+        throw new Error(
+          'the heat-dose sentence no longer states an air temperature and a WBGT · re-read the protocol block',
+        );
+      }
+      const [tair, wbgt] = [Number(m[1]), Number(m[2])];
+      if (HEAT_DOSE_TAIR_F !== tair) {
+        throw new Error(`HEAT_DOSE_TAIR_F is ${HEAT_DOSE_TAIR_F}, doctrine's air-temperature dose is ${tair}F`);
+      }
+      if (HEAT_DOSE_WBGT_F !== wbgt) {
+        throw new Error(`HEAT_DOSE_WBGT_F is ${HEAT_DOSE_WBGT_F}, doctrine's WBGT dose is ${wbgt}F`);
+      }
+      // The swap that shipped. WBGT is a composite that already includes air
+      // temperature, so its threshold is necessarily the lower of the two —
+      // which is what made the mistake silent rather than obvious.
+      if (!(HEAT_DOSE_WBGT_F < HEAT_DOSE_TAIR_F)) {
+        throw new Error(
+          'the WBGT dose is no longer below the air-temperature dose · the two thresholds have been ' +
+            'swapped or equalised, which is how a 75F morning became acclimation stimulus once already',
+        );
+      }
+    },
+  },
+  {
+    id: 'HEAT.time-on-feet-triggers',
+    binds: [
+      'lib/coach/heat-gate.ts#TD_TIME_ON_FEET_F',
+      'lib/coach/heat-gate.ts#WBGT_TIME_ON_FEET_F',
+      'lib/coach/heat-gate.ts#AQI_TIME_ON_FEET_LOW',
+    ],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: '### When to convert to time-on-feet (drop pace targets)',
+    claim:
+      'Past a stated dewpoint, WBGT or air-quality index, a session stops carrying a pace target ' +
+      'and becomes time on feet. The engine holds the three triggers doctrine states in that ' +
+      'table, at the numbers the table states them at, and the two it does not implement are ' +
+      'recorded as violations rather than dropped.',
+    check({ cite, exempt }) {
+      const table = cite.table();
+      const triggers = table.rows.map((r) => String(r[table.headers[0]]));
+      /** The number on the row whose trigger text matches, read at run time. */
+      const trigger = (re: RegExp, what: string): number => {
+        const row = triggers.find((t) => re.test(t));
+        if (!row) {
+          throw new Error(
+            `doctrine no longer lists a ${what} trigger for time-on-feet · rows are: ${triggers.join(' · ')}`,
+          );
+        }
+        return parseBand(row)[0];
+      };
+      const cases: ReadonlyArray<readonly [RegExp, string, number, string]> = [
+        [/^Td\b/, 'dewpoint', TD_TIME_ON_FEET_F, 'TD_TIME_ON_FEET_F'],
+        [/^WBGT\b/, 'WBGT', WBGT_TIME_ON_FEET_F, 'WBGT_TIME_ON_FEET_F'],
+        [/^AQI\b/, 'air-quality', AQI_TIME_ON_FEET_LOW, 'AQI_TIME_ON_FEET_LOW'],
+      ];
+      for (const [re, what, engine, name] of cases) {
+        const want = trigger(re, what);
+        if (engine !== want) throw new Error(`${name} is ${engine}, doctrine's ${what} trigger is ${want}`);
+      }
+      // Two triggers doctrine states here have no engine constant at all.
+      // Recorded rather than quietly dropped — the exemption is what makes the
+      // gap visible in CI instead of invisible in a comment.
+      const gate = sourceOf('web-v2/lib/coach/heat-gate.ts');
+      if (!/WIND_TIME_ON_FEET_MPH/.test(gate) && !exempt('wind-trigger-unimplemented')) {
+        throw new Error('no engine constant converts a session to time-on-feet on sustained wind');
+      }
+      if (!/ALTITUDE_TIME_ON_FEET_FT/.test(gate) && !exempt('altitude-trigger-unimplemented')) {
+        throw new Error('no engine constant converts a session to time-on-feet on altitude exposure');
+      }
+    },
+    exempt: {
+      'wind-trigger-unimplemented':
+        'Research/06 §11 states "Wind ≥20 mph sustained | Intervals: time-based or move to track loops" ' +
+        'and the engine has no constant for it. The wind machinery that exists (WIND_GATE_MPH, the ' +
+        'headwind and tailwind tables) discounts a RACE RESULT after the fact; nothing changes what is ' +
+        'prescribed on a windy morning. Recorded rather than fixed here because adding a trigger means ' +
+        'deciding what the phone says when a session loses its pace target, which is a surface decision.',
+      'altitude-trigger-unimplemented':
+        'Research/06 §11 states "Altitude >7,000 ft + first 7 days | Time-on-feet only; no quality" and ' +
+        'the engine has no constant for it. This is the same gap CLAUDE.md §Rule 7 records as "altitude ' +
+        'pace conversions": altitude reaches the engine only through race representativeness, never ' +
+        'through prescription, so there is no altitude-aware training path for this trigger to sit on.',
+    },
+  },
+  {
+    id: 'HEAT.hard-bail-triggers',
+    binds: [
+      'lib/coach/heat-gate.ts#WBGT_BAIL_F',
+      'lib/coach/heat-gate.ts#TD_BAIL_F',
+      'lib/coach/heat-gate.ts#AQI_BAIL',
+    ],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: '### Hard bail triggers (cancel/postpone)',
+    claim:
+      'Past a stated WBGT, dewpoint or air-quality index the session is cancelled rather than ' +
+      'adjusted. These are the outermost thresholds in the app and the only ones where the right ' +
+      'answer is to send the runner home, so each must be the number doctrine states and each must ' +
+      'sit outside its own time-on-feet trigger.',
+    check({ cite }) {
+      const table = cite.table();
+      const triggers = table.rows.map((r) => String(r[table.headers[0]]));
+      const trigger = (re: RegExp, what: string): number => {
+        const row = triggers.find((t) => re.test(t));
+        if (!row) {
+          throw new Error(`doctrine no longer lists a ${what} bail trigger · rows are: ${triggers.join(' · ')}`);
+        }
+        return parseBand(row)[0];
+      };
+      const cases: ReadonlyArray<readonly [RegExp, string, number, string, number]> = [
+        [/^WBGT\b/, 'WBGT', WBGT_BAIL_F, 'WBGT_BAIL_F', WBGT_TIME_ON_FEET_F],
+        [/^Td\b/, 'dewpoint', TD_BAIL_F, 'TD_BAIL_F', TD_TIME_ON_FEET_F],
+        [/^AQI\b/, 'air-quality', AQI_BAIL, 'AQI_BAIL', AQI_TIME_ON_FEET_LOW],
+      ];
+      for (const [re, what, engine, name, softer] of cases) {
+        const want = trigger(re, what);
+        if (engine !== want) throw new Error(`${name} is ${engine}, doctrine's ${what} bail trigger is ${want}`);
+        if (!(engine > softer)) {
+          throw new Error(
+            `${name} (${engine}) is not above its own time-on-feet trigger (${softer}) · the ladder has ` +
+              'collapsed, so a runner is sent home at the condition that was only meant to drop the pace target',
+          );
+        }
+      }
+      // The black-flag bail must agree with the top of the WBGT flag table it
+      // shares a doc section with. One ACSM number, transcribed twice.
+      const blackFlagTop = WBGT_FLAGS[WBGT_FLAGS.length - 2]?.maxF;
+      if (blackFlagTop !== WBGT_BAIL_F) {
+        throw new Error(
+          `the WBGT flag table's last bounded band ends at ${blackFlagTop}F and WBGT_BAIL_F is ${WBGT_BAIL_F} · ` +
+            'the same ACSM black-flag threshold is transcribed twice and the copies disagree',
+        );
+      }
+    },
+  },
   {
     id: 'HR.heat-confounder-band',
     binds: ['lib/weather/heat-adjustment.ts#HEAT_HR_CONFOUNDER', 'lib/weather/heat-adjustment.ts#heatHrBumpBpm'],
@@ -4760,6 +5144,138 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  /**
+   * SELFREPORT-1 (2026-08-21) · a PR the runner typed is not a race the app saw.
+   *
+   * `generate.ts` seeds `bestRecentVdot` from `profile.race_history` when a
+   * runner has NO measured signal at all — the PARITY-1 cold-start path, zero
+   * runs and zero races on file. The anchor derived from it was then persisted
+   * as `season_anchor_source: 'measured_vdot'`,
+   * `season_anchor_provisional: false`, which is the COLD-3 defect on a second
+   * data source: a number nobody verified, indistinguishable downstream from a
+   * chip time.
+   *
+   * The doctrine is Rule 3 rather than Rule 1, and the distinction matters. A
+   * typed race time IS a performance — Rule 1's "what counts as evidence" list
+   * opens with "a race" — so this is not the fabrication `provisional_mileage`
+   * records, and the engine goes on pacing off it. What Rule 3 adds is that a
+   * race enters at an authority the model must first ESTIMATE, from the
+   * conditions it was run in. This claim reads that factor list out of the doc
+   * and holds it against the fields a `race_history` row actually carries. None
+   * of them answers any factor, so the authority Rule 3 asks for cannot be
+   * computed, and full authority — which is what `measured_vdot` grants — is
+   * the one answer the rule forbids by construction.
+   *
+   * Hence the split in `anchor-provenance.ts`: `self_reported_race` fails
+   * `isUnverifiedAnchor` (may not be inherited, may not be graded against) and
+   * passes `isProvisionalAnchor` (may still price paces and assess a goal).
+   */
+  {
+    id: 'EVIDENCE.self-reported-race-is-not-measured',
+    binds: [
+      'lib/plan/anchor-provenance.ts#AnchorSource',
+      'lib/plan/anchor-provenance.ts#isUnverifiedAnchor',
+      'lib/plan/generate.ts#seasonAnchorSource',
+    ],
+    doc: 'Design/engine-doctrine-evidence-and-levers.md',
+    anchor: "## Rule 3 · A race result's authority scales with how representative it was",
+    claim:
+      'A race result enters the fitness model at an authority the engine must first estimate ' +
+      'from the conditions it was run in. A self-reported onboarding PR carries a distance ' +
+      'bucket, a time and a when-raced bucket, and answers none of those factors, so it may ' +
+      'not be stamped as measured, inherited into a later block as the season baseline, or ' +
+      'graded against as if the app had watched the runner run it.',
+    check({ cite }) {
+      // ── the doctrine, read at run time ────────────────────────────────────
+      // Rule 3's own bullet list of what modulates a result's authority.
+      const factors = cite.section
+        .filter((l) => /^\s*-\s+\S/.test(l))
+        .map((l) => l.replace(/^\s*-\s+/, '').trim());
+      if (factors.length < 4) {
+        throw new Error(
+          `Rule 3 now lists ${factors.length} authority factors · re-read the section before trusting this claim`,
+        );
+      }
+
+      // ── what a self-reported row actually carries ─────────────────────────
+      const rh = sourceOf('web-v2/lib/training/race-history.ts');
+      const iface = matchLiteral(
+        rh, /export interface RaceHistoryEntry \{([\s\S]*?)\n\}/, 'RaceHistoryEntry',
+      )[1];
+      const fields = [...iface.matchAll(/^\s*(\w+)\??:/gm)].map((m) => m[1]);
+      if (fields.length === 0) throw new Error('RaceHistoryEntry has no fields · the shape was refactored away');
+
+      // What each field the row carries actually tells us. Three questions —
+      // WHICH event, HOW FAST, HOW LONG AGO — and Rule 3 asks none of them.
+      // Note `whenRaced` is recency, not "did they race all-out": it is a
+      // bucket ('<6mo', '6-12mo'), so it does not even carry a date.
+      const ANSWERS: Record<string, string> = {
+        distance: 'which event',
+        otherDistanceMi: 'which event',
+        timeSec: 'how fast',
+        whenRaced: 'how long ago, to the nearest half-year bucket',
+      };
+      const unaccounted = fields.filter((f) => !(f in ANSWERS));
+      if (unaccounted.length > 0) {
+        throw new Error(
+          `RaceHistoryEntry gained ${unaccounted.join(', ')} · onboarding is collecting something new about a ` +
+            'self-reported race, and whether it answers one of Rule 3\'s authority factors is a judgement ' +
+            'a person has to make. Re-read the factor list against the new field, then update this map.',
+        );
+      }
+      // Rule 3's factors are about the CONDITIONS of the performance. Nothing
+      // the row carries is a condition, so the authority the rule requires
+      // cannot be estimated at any value — including the full authority
+      // `measured_vdot` grants.
+      const conditionWords = /course|elevation|terrain|heat|humid|wind|pacing|split|taper|fatigue|illness|all-out/i;
+      const unconditioned = factors.filter((f) => conditionWords.test(f));
+      if (unconditioned.length < 4) {
+        throw new Error(
+          `only ${unconditioned.length} of Rule 3's ${factors.length} factors still read as conditions of the ` +
+            'performance · the rule was rewritten, so re-derive this claim instead of trusting it',
+        );
+      }
+
+      // ── the engine's answer to that ───────────────────────────────────────
+      if (!isUnverifiedAnchor('self_reported_race')) {
+        throw new Error('a self-reported anchor is readable as fitness again · isUnverifiedAnchor lets it through');
+      }
+      if (isProvisionalAnchor('self_reported_race')) {
+        throw new Error(
+          'self_reported_race was folded into isProvisionalAnchor · that withholds the pace and the goal ' +
+            'verdict from a runner who gave us a real race, which is not what Rule 3 asks for',
+        );
+      }
+      if (!paceBlendAnchorIsProvisional({ season_anchor_source: 'self_reported_race' })) {
+        throw new Error('the persisted-anchor guard no longer refuses a self-reported anchor');
+      }
+      if (paceBlendAnchorIsProvisional({ season_anchor_source: 'measured_vdot' })) {
+        throw new Error('the guard now refuses a measured anchor too · it has stopped discriminating');
+      }
+
+      // ── the stamp, at the places it is written ────────────────────────────
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      // The seeder must RECORD which it handed over, at the site it reads
+      // profile.race_history. Without this the composer cannot tell them apart.
+      if (!/bestVdotFromRaceHistory\([\s\S]{0,400}?bestRecentVdotSelfReported\s*=/.test(gen)) {
+        throw new Error(
+          'the race_history seeding site no longer records that what it produced was self-reported',
+        );
+      }
+      // And every writer of season_anchor_source must consult it. A literal
+      // 'measured_vdot' sitting next to bestRecentVdot is the original bug.
+      for (const m of gen.matchAll(/season_anchor_source:\s*'measured_vdot'/g)) {
+        const at = m.index ?? 0;
+        const around = gen.slice(Math.max(0, at - 300), at + 200);
+        if (/input\.bestRecentVdot|inputs\.compose\.bestRecentVdot/.test(around)) {
+          throw new Error(
+            "a pace_blend still hardcodes season_anchor_source: 'measured_vdot' beside bestRecentVdot · " +
+              'that number may have come from profile.race_history',
+          );
+        }
+      }
+    },
+  },
   // ══ RACE REPRESENTATIVENESS · rule 8 ══════════════════════════════════════
   // Design/adaptive-progression-engine.md rule 8: "Do not re-anchor downward
   // from every poor race. Diagnose first." These claims hold the diagnosis to
@@ -6670,6 +7186,22 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       caps.hm = Number(
         matchLiteral(fn, /return ctx\.level === 'beginner' \? \d+ : (\d+);/, 'longRunCapMi hm')[1],
       );
+      // 2026-08-21 · the OTHER two halves of that branch. The regex above
+      // discards the beginner value and never sees the stepping-stone value at
+      // all, so two of `longRunCapMi`'s seven returns were unwatched — and the
+      // header-comment loop below iterates only the caps this object holds, so
+      // "≤ 14 mi (HM beginner)" and "≤ 22 mi" were not being checked for
+      // staleness either, on the exact comment that already went stale once.
+      const hmBeginnerCap = Number(
+        matchLiteral(fn, /return ctx\.level === 'beginner' \? (\d+) : \d+;/, 'longRunCapMi hm beginner')[1],
+      );
+      const hmSteppingStoneCap = Number(
+        matchLiteral(
+          fn,
+          /if \(ctx\.isSteppingStoneToMarathon\) return (\d+);/,
+          'longRunCapMi hm stepping-stone',
+        )[1],
+      );
       for (const cat of CATS) {
         const band = TIER_TARGETS[cat].elite.peakLongMiBand[1];
         if (caps[cat] !== band) {
@@ -6691,9 +7223,58 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
             'Research/22 §"Marathon — Advanced" prescribes',
         );
       }
+      // ── the two half-marathon branches the ternary hides ──────────────────
+      //
+      // Both are BACKSTOPS, so the direction that matters is that neither
+      // rejects a long run Research/22 prescribes for the runner it applies to.
+      //
+      // Beginner. Research/22 §"Half Marathon — Beginner" peaks the long run at
+      // 10-12 mi. The cap sits above that band on purpose — the validator is
+      // behind the builder, not a second opinion — but it must not creep up to
+      // the standalone cap, or the branch stops meaning anything.
+      const hmBeginnerDoc = parseBand(
+        resolveCitation('Research/22-plan-templates.md', '### Half Marathon — Beginner')
+          .table()
+          .cell('Peak long run', 'Value'),
+      );
+      if (hmBeginnerCap < hmBeginnerDoc[1]) {
+        throw new Error(
+          `longRunCapMi('hm', beginner) = ${hmBeginnerCap} rejects the ${hmBeginnerDoc[1]} mi peak long run ` +
+            'Research/22 §"Half Marathon — Beginner" prescribes',
+        );
+      }
+      if (hmBeginnerCap >= (caps.hm ?? 0)) {
+        throw new Error(
+          `longRunCapMi('hm', beginner) = ${hmBeginnerCap} is not below the standalone cap ${caps.hm} · ` +
+            'the beginner branch has stopped tightening anything',
+        );
+      }
+      // Stepping stone. validate.ts's own comment is explicit that the NUMBER
+      // is doctrine (Research/22's "Marathon — Intermediate" peak long run) and
+      // the 168-day TRIGGER is a product decision. This binds the half that is
+      // doctrine, and only that half.
+      const steppingStoneDoc = parseBand(
+        resolveCitation('Research/22-plan-templates.md', '### Marathon — Intermediate')
+          .table()
+          .cell('Peak long run', 'Value'),
+      );
+      if (hmSteppingStoneCap !== steppingStoneDoc[1]) {
+        throw new Error(
+          `the stepping-stone cap is ${hmSteppingStoneCap} mi but Research/22 §"Marathon — Intermediate" ` +
+            `peaks the long run at ${steppingStoneDoc[1]} mi · a half inside a marathon block is capped as ` +
+            'the marathon build it feeds, or the branch is citing a number that is not there',
+        );
+      }
+      if (hmSteppingStoneCap > (caps.m ?? 0)) {
+        throw new Error(
+          `the stepping-stone cap ${hmSteppingStoneCap} exceeds the marathon cap ${caps.m} · a half is being ` +
+            'allowed a longer long run than the marathon it is a stepping stone to',
+        );
+      }
+
       // The header comment must still describe the function.
       const header = src.slice(0, src.indexOf('interface PlanConstraints'));
-      for (const [cat, mi] of Object.entries(caps)) {
+      for (const [cat, mi] of Object.entries({ ...caps, 'hm beginner': hmBeginnerCap, 'hm stepping-stone': hmSteppingStoneCap })) {
         if (!new RegExp(`≤ ?${mi} mi`).test(header)) {
           throw new Error(
             `the long-run cap comment no longer lists ${mi} mi (${cat}) · it went stale once ` +

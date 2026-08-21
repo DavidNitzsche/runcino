@@ -56,7 +56,14 @@ sources() {
 #
 # Every one of these is PROJECTED by the engine's own admission. `basis` is the
 # literal string 'projected' on GoalAssessment and covers the first four.
-MODELLED_FIELDS='safeTargetSec|stretchTargetSec|reportAgainstSec|weeksToReach|projectionSec|projectedSec|currentEquivalentSec|requiredVdot'
+# 2026-08-21 · the trajectory's VDOT fields joined this list. They are already
+# decoded into ToolkitPayloads and no v5 view prints them yet, which is the
+# cheapest moment to close the door: every one is an output of
+# `projectFitnessTrajectory`, whose gain rate is a MODEL (bound by
+# ADAPTATION.vdot-gain-rate to Research/01's reassessment band, not measured on
+# this runner). A VDOT the plan is "projected to deliver" printed as a bare
+# number is rule one broken in the plainest possible way.
+MODELLED_FIELDS='safeTargetSec|stretchTargetSec|reportAgainstSec|weeksToReach|projectionSec|projectedSec|currentEquivalentSec|requiredVdot|projectedVdot|projectedGainVdot|plannedTargetVdot|projectedRaceDayVdot'
 
 say "check-modelled-mark · rule one"
 

@@ -33,7 +33,7 @@ export const CITATION_HEAT_GATE = {
   label: 'Research/06 · Weather Adjustments §§3, 11',
 };
 
-/** ACSM / KSI flag · Research/06:141-148. */
+/** ACSM / KSI flag · Research/06 §3 "| WBGT (°F) | WBGT (°C) | Flag | Action |". */
 export type HeatFlag = 'white' | 'green' | 'yellow' | 'red' | 'black' | 'unknown';
 
 /**
@@ -80,7 +80,10 @@ export interface HeatGateVerdict {
   citation: string;
 }
 
-// ─── Research/06:172 · heat acclimation dose ──────────────────────────
+// ─── heat acclimation dose ────────────────────────────────────────────
+// Research/06 §4 Protocol. Bound by HEAT.acclimation-dose-thresholds,
+// which reads both numbers back out of that sentence rather than
+// trusting this transcription.
 //
 // "Heat dose: Tair >=85°F or WBGT >=75°F". The shipped code applied the
 // WBGT number, 75, to AIR temperature, so an ordinary 75°F morning
@@ -89,7 +92,9 @@ export interface HeatGateVerdict {
 export const HEAT_DOSE_TAIR_F = 85;
 export const HEAT_DOSE_WBGT_F = 75;
 
-// ─── Research/06:141-148 · WBGT flag table, verbatim ──────────────────
+// ─── Research/06 §3 · WBGT flag table, verbatim ───────────────────────
+// Anchored by HEAT.band-taxonomy-is-wbgt on the header row
+// "| WBGT (°F) | WBGT (°C) | Flag | Action |".
 export const WBGT_FLAGS: ReadonlyArray<{
   maxF: number;          // upper bound of the band, °F
   flag: HeatFlag;
@@ -104,24 +109,33 @@ export const WBGT_FLAGS: ReadonlyArray<{
   { maxF: Infinity, flag: 'black', action: 'cancel',        note: 'Cease outdoor sessions.' },
 ] as const;
 
-// ─── Research/06:481-487 · convert to time-on-feet ────────────────────
-/** Td >= this → quality goes time-based and RPE-driven (:483). */
+// ─── convert to time-on-feet ──────────────────────────────────────────
+// Research/06 §11 "When to convert to time-on-feet (drop pace targets)".
+// Bound by HEAT.time-on-feet-triggers, which reads each trigger's number
+// off that table at run time.
+/** Td >= this → quality goes time-based and RPE-driven.
+ *  Bound by HEAT.time-on-feet-triggers. */
 export const TD_TIME_ON_FEET_F = 70;
-/** WBGT >= this → all hard sessions convert to easy time-on-feet (:484). */
+/** WBGT >= this → all hard sessions convert to easy time-on-feet.
+ *  Bound by HEAT.time-on-feet-triggers. */
 export const WBGT_TIME_ON_FEET_F = 80;
 
-// ─── Research/06:489-499 · hard bail triggers ─────────────────────────
-/** WBGT > this → ACSM black flag (:493). */
+// ─── hard bail triggers ───────────────────────────────────────────────
+// Research/06 §11 "Hard bail triggers (cancel/postpone)". Bound by
+// HEAT.hard-bail-triggers, which also asserts each bail sits outside its
+// own time-on-feet trigger.
+/** WBGT > this → ACSM black flag. Bound by HEAT.hard-bail-triggers. */
 export const WBGT_BAIL_F = 86;
-/** Td >= this → evaporative cooling fails (:494). */
+/** Td >= this → evaporative cooling fails. Bound by HEAT.hard-bail-triggers. */
 export const TD_BAIL_F = 80;
-/** AQI > this → acute health risk (:496). */
+/** AQI > this → acute health risk. Bound by HEAT.hard-bail-triggers. */
 export const AQI_BAIL = 200;
-/** AQI in this band → easy time-on-feet <=30 min or indoors (:487). */
+/** AQI in this band → easy time-on-feet <=30 min or indoors.
+ *  Bound by HEAT.time-on-feet-triggers. */
 export const AQI_TIME_ON_FEET_LOW = 151;
 
 /**
- * WBGT approximation · Research/06:135-137, verbatim:
+ * WBGT approximation · Research/06 §3 "### Computation", verbatim:
  *
  *   WBGT_approx (°F) ~= Tair - ((100 - RH) / 5) + solar_correction
  *   solar_correction: full_sun = +5°F, partial = +2°F, overcast = 0°F
@@ -147,7 +161,7 @@ export function wbgtApproxF(
   return tairF - ((100 - rh) / 5) + solar;
 }
 
-/** Flag band for a WBGT reading · Research/06:141-148. */
+/** Flag band for a WBGT reading · Research/06 §3 WBGT flag table. */
 export function flagForWbgt(wbgtF: number): { flag: HeatFlag; action: HeatGateAction; note: string } {
   for (const band of WBGT_FLAGS) {
     if (wbgtF <= band.maxF) return { flag: band.flag, action: band.action, note: band.note };
@@ -178,7 +192,7 @@ export function flagForWbgt(wbgtF: number): { flag: HeatFlag; action: HeatGateAc
 // missing input.
 export type HeatBandWord = 'neutral' | 'warm' | 'hot' | 'extreme';
 
-/** WBGT flag → the word the UI shows. Research/06:141-148 band for band. */
+/** WBGT flag → the word the UI shows. Research/06 §3 band for band. */
 export function heatBandForFlag(flag: HeatFlag): HeatBandWord | null {
   switch (flag) {
     case 'white':
@@ -274,7 +288,7 @@ export function evaluateHeatGate(input: HeatGateInput): HeatGateVerdict {
     action: 'normal',
     flag: wbgtF != null ? flagForWbgt(wbgtF).flag : 'unknown',
     headline: 'Conditions are fine. Run it as written.',
-    citation: 'Research/06:141-148 · WBGT flag table',
+    citation: 'Research/06 §3 · WBGT flag table',
   };
   const consider = (
     action: HeatGateAction, flag: HeatFlag, headline: string, citation: string,
@@ -286,7 +300,7 @@ export function evaluateHeatGate(input: HeatGateInput): HeatGateVerdict {
   if (wbgtF != null) {
     const band = flagForWbgt(wbgtF);
     consider(band.action, band.flag, `WBGT ${Math.round(wbgtF)}°F. ${band.note}`,
-      'Research/06:141-148 · WBGT flag table');
+      'Research/06 §3 · WBGT flag table');
   }
 
   // 2 · Convert to time-on-feet (:481-487). Its own reading, not the
@@ -295,34 +309,34 @@ export function evaluateHeatGate(input: HeatGateInput): HeatGateVerdict {
   if (wbgtF != null && wbgtF >= WBGT_TIME_ON_FEET_F) {
     consider('easy_time_on_feet', 'black',
       `WBGT ${Math.round(wbgtF)}°F. Hard sessions become easy time on feet. Drop the pace targets.`,
-      'Research/06:484 · WBGT >=80°F · all hard sessions convert to easy time-on-feet');
+      'Research/06 §11 · WBGT >=80°F · all hard sessions convert to easy time-on-feet');
   }
   if (dewpointF != null && dewpointF >= TD_TIME_ON_FEET_F && dewpointF < TD_BAIL_F) {
     consider('reduce_intensity', best.flag === 'unknown' ? 'red' : best.flag,
       `Dew point ${Math.round(dewpointF)}°F. Run the quality session on time and effort, not pace.`,
-      'Research/06:483 · Td >=70°F · quality sessions time-based, RPE-driven');
+      'Research/06 §11 · Td >=70°F · quality sessions time-based, RPE-driven');
   }
 
   // 3 · Hard bail (:489-499). Each row is its own check.
   if (wbgtF != null && wbgtF > WBGT_BAIL_F) {
     consider('cancel', 'black',
       `WBGT ${Math.round(wbgtF)}°F. Black flag. Not outdoors today.`,
-      'Research/06:493 · WBGT >86°F · ACSM black flag');
+      'Research/06 §11 · WBGT >86°F · ACSM black flag');
   }
   if (dewpointF != null && dewpointF >= TD_BAIL_F) {
     consider('cancel', 'black',
       `Dew point ${Math.round(dewpointF)}°F. Sweat stops cooling you at this point. Move it indoors or postpone.`,
-      'Research/06:494 · Td >=80°F · evaporative cooling fails');
+      'Research/06 §11 · Td >=80°F · evaporative cooling fails');
   }
   if (input.aqi != null && Number.isFinite(input.aqi)) {
     if (input.aqi > AQI_BAIL) {
       consider('cancel', best.flag,
         `AQI ${Math.round(input.aqi)}. Indoors today.`,
-        'Research/06:496 · AQI >200 · acute health risk');
+        'Research/06 §11 · AQI >200 · acute health risk');
     } else if (input.aqi >= AQI_TIME_ON_FEET_LOW) {
       consider('easy_time_on_feet', best.flag,
         `AQI ${Math.round(input.aqi)}. Easy, 30 minutes at most, or indoors.`,
-        'Research/06:487 · AQI 151-200 · easy time-on-feet <=30 min or indoors');
+        'Research/06 §11 · AQI 151-200 · easy time-on-feet <=30 min or indoors');
     }
   }
 
@@ -342,7 +356,7 @@ export function evaluateHeatGate(input: HeatGateInput): HeatGateVerdict {
 }
 
 /**
- * Does this day count as heat-acclimation stimulus? Research/06:172 ·
+ * Does this day count as heat-acclimation stimulus? Research/06 §4 ·
  * "Tair >=85°F or WBGT >=75°F". Either satisfies the dose.
  */
 export function isHeatDoseDay(

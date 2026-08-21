@@ -605,7 +605,11 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
     // between them and are the obvious next two to clear.
     'lib/plan/generate.ts': 29,
     'lib/plan/adapt.ts': 24,
-    'lib/coach/heat-gate.ts': 17,
+    // 2026-08-21 · heat-gate.ts taken from 17 to ZERO. Its eight thresholds
+    // now carry registry claims (HEAT.acclimation-dose-thresholds,
+    // .time-on-feet-triggers, .hard-bail-triggers) that read the numbers out
+    // of Research/06's own tables, so the line references had nothing left to
+    // do. A file at zero is not listed, so it cannot creep back to one.
     'lib/plan/spec-builder.ts': 12,
     'lib/coach/strength-recommender.ts': 11,
     'lib/plan/injury-builder.ts': 7,

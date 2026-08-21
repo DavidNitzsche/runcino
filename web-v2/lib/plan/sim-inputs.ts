@@ -81,6 +81,11 @@ export interface SimBuildOk {
     goalPaceSec: number | null;
     tPaceSec: number;
     bestRecentVdot: number | null;
+    /** SELFREPORT-1 · true when `bestRecentVdot` above came from the runner's
+     *  typed race history rather than a race the app observed. Surfaced here
+     *  because the sim's whole job is to show what onboarding would author, and
+     *  "we paced you off a number you typed" is part of that answer. */
+    bestRecentVdotSelfReported: boolean;
     recentWeeklyMi: number;
     recentLongMi: number;
     longRunDow: DOW;
@@ -115,6 +120,17 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   const bestRecentVdot = sim.bestRecentVdotOverride != null && sim.bestRecentVdotOverride > 0
     ? sim.bestRecentVdotOverride
     : bestVdotFromHistory(sim.raceHistory);
+  // SELFREPORT-1 (2026-08-21) · prod's `loadGeneratorInputs` records whether the
+  // anchor it produced came from the runner's keyboard or from a race the app
+  // observed, and the composer stamps `season_anchor_source` off that. The sim
+  // has to record the same thing or PARITY-1 is broken in the one place it was
+  // written to hold: identical self-reports would author identically-shaped
+  // plans carrying DIFFERENT provenance, and the sim would be the optimistic one.
+  //
+  // The override stands in for a measured read — it is the sim's way of saying
+  // "this runner has a race on file" — so only the history path is marked.
+  const bestRecentVdotSelfReported =
+    !(sim.bestRecentVdotOverride != null && sim.bestRecentVdotOverride > 0) && bestRecentVdot != null;
 
   // layout (loadGeneratorInputs §2)
   let longRunDow = dayKeyToDow(sim.longRunDay);
@@ -256,7 +272,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       raceDistanceMi, goalSec, goalPaceSec, raceDateISO, startMondayISO, level,
       recentWeeklyMi, easyDayMedianMi, recentLongMi,
       recentQualityDistanceMi: undefined, recentQualityPerWeek: undefined,
-      bestRecentVdot, tsbAtStart: undefined, horizonRaces: undefined,
+      bestRecentVdot, bestRecentVdotSelfReported, tsbAtStart: undefined, horizonRaces: undefined,
       isMidBlock: sim.isMidBlock ?? false,
       longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
       rxQuality, rxRaceSpecific, tPaceSec, lthr: sim.lthr ?? null, maxHr: sim.maxHr ?? null,
@@ -310,7 +326,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
           recentWeeklyMi: holdPeakWeekly, easyDayMedianMi,
           recentLongMi: Math.max(holdPeakLong, 1),
           recentQualityDistanceMi: undefined, recentQualityPerWeek: undefined,
-          bestRecentVdot, tsbAtStart: undefined, horizonRaces: undefined, isMidBlock: false,
+          bestRecentVdot, bestRecentVdotSelfReported, tsbAtStart: undefined, horizonRaces: undefined, isMidBlock: false,
           longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
           rxQuality, rxRaceSpecific, tPaceSec, lthr: sim.lthr ?? null, maxHr: sim.maxHr ?? null,
         };
@@ -342,7 +358,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     composed,
     derived: {
       mode, raceDistanceMi, raceDateISO, goalPaceSec, tPaceSec,
-      bestRecentVdot: bestRecentVdot ?? null, recentWeeklyMi, recentLongMi,
+      bestRecentVdot: bestRecentVdot ?? null, bestRecentVdotSelfReported, recentWeeklyMi, recentLongMi,
       longRunDow, restDow, qualityDows, trainingDaysPerWeek, distanceCategory: cat,
     },
     validateCtx: {

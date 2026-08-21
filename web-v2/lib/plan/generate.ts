@@ -37,7 +37,7 @@ import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-input
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING } from './goal-tiers';
 import {
-  type AnchorSource, isProvisionalAnchor, paceBlendAnchorIsProvisional,
+  type AnchorSource, isProvisionalAnchor, isUnverifiedAnchor, paceBlendAnchorIsProvisional,
   CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES,
 } from './anchor-provenance';
 import { isBaseBuildingPlan } from './plan-templates';
@@ -4586,6 +4586,13 @@ export interface ComposePlanInput {
    *  anchor blend source (Rule 3). When < tier-implied VDOT, early
    *  weeks anchor to this and ramp toward the goal tier. */
   bestRecentVdot?: number;
+  /** SELFREPORT-1 (2026-08-21) · TRUE when `bestRecentVdot` above came from
+   *  `profile.race_history` — a PR the runner typed into onboarding — rather
+   *  than from a race or run the app observed. PARITY-1 seeds it that way when
+   *  there is no measured signal at all, and the anchor it produced was stamped
+   *  `measured_vdot`. See `AnchorSource` in ./anchor-provenance for why that is
+   *  its own tier and not a relabelling of either neighbour. */
+  bestRecentVdotSelfReported?: boolean;
   /** 2026-07-07 · AUDIT P1-56 · set ONLY when bestRecentVdot is undefined AND
    *  the runner's best race/run implied a VDOT below the Daniels table floor
    *  of 30 (not "no data" — a demonstrated pace that doesn't map onto the
@@ -5017,14 +5024,24 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // handed (generatePlan refuses to inherit a provisional one, so an inherited
   // anchor present here is always measured); a fresh authoring reports whether
   // anything was actually measured.
+  // SELFREPORT-1 (2026-08-21) · `bestRecentVdot != null` used to be read as
+  // "something was measured". It is not: PARITY-1 seeds it from the PR the
+  // runner typed into onboarding when nothing WAS measured, and the anchor then
+  // went out stamped `measured_vdot`, `season_anchor_provisional: false`, with
+  // zero runs and zero races on file. The seeder now says which it handed over.
   const seasonAnchorSource: AnchorSource = input.seasonAnchorVdot != null
     ? (input.seasonAnchorSource ?? 'measured_vdot')
     : input.bestRecentVdot != null
-      ? 'measured_vdot'
+      ? (input.bestRecentVdotSelfReported ? 'self_reported_race' : 'measured_vdot')
       : currentTResolved.tier === 'below_table_anchor'
         ? 'below_table_anchor'
         : 'provisional_mileage';
   const anchorIsProvisional = isProvisionalAnchor(seasonAnchorSource);
+  // SELFREPORT-1 · the persisted boolean answers the READER's question ("may I
+  // believe this as fitness"), which is the wider one. `anchorIsProvisional`
+  // above answers the narrower one and drives what this authoring withholds
+  // from the runner. See ./anchor-provenance for why they are not the same.
+  const anchorIsUnverified = isUnverifiedAnchor(seasonAnchorSource);
 
   // 2026-06-03 · mid-block doctrine RULE 3 (pace anchor blend) · when bestRecentVdot
   // implies a T-pace slower than goal-T, anchor early-week paces to currentT and blend
@@ -5392,7 +5409,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         // readers were treating it as one. `season_anchor_provisional` is the
         // single boolean a reader checks before believing the VDOT.
         season_anchor_source: seasonAnchorSource,
-        season_anchor_provisional: anchorIsProvisional,
+        season_anchor_provisional: anchorIsUnverified,
         goal_vdot: goalVdot,
         build_weeks: composeBuildWeeks,
         measured_progress_fraction: input.measuredProgressFraction ?? null,
@@ -5485,6 +5502,11 @@ export interface ComposeNonRaceInput {
    *  next race-prep authoring had no evidence baseline at all — the second
    *  violation named in Design/engine-doctrine-evidence-and-levers.md. */
   bestRecentVdot?: number | null;
+  /** SELFREPORT-1 (2026-08-21) · as on `ComposePlanInput`. The non-race
+   *  composers write `bestRecentVdot` straight into `pace_blend` as the season
+   *  anchor the NEXT build measures progress against, so a typed PR reaching
+   *  that column unmarked is the same laundering on a quieter path. */
+  bestRecentVdotSelfReported?: boolean;
 }
 
 /* ── COLD-START-1 (2026-08-19) · the week a runner with NO history gets ──────
@@ -5973,8 +5995,9 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       target_long_mi: targetLong,
       next_race: input.nextRace,
       // EVIDENCE-2 · carry the season anchor forward (see ComposeNonRaceInput).
+      // SELFREPORT-1 · the anchor's provenance, not an assumption about it.
       ...(input.bestRecentVdot != null
-        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, season_anchor_source: 'measured_vdot' as AnchorSource, season_anchor_provisional: false, goal_vdot: null, build_weeks: TOTAL_WEEKS, measured_progress_fraction: null } }
+        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, season_anchor_source: (input.bestRecentVdotSelfReported ? 'self_reported_race' : 'measured_vdot') as AnchorSource, season_anchor_provisional: input.bestRecentVdotSelfReported === true, goal_vdot: null, build_weeks: TOTAL_WEEKS, measured_progress_fraction: null } }
         : {}),
       citations: blocks.phases.map((p) => p.citation),
     },
@@ -6196,8 +6219,9 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
       // EVIDENCE-2 · a recovery block wrote NO pace anchor, so the race-prep
       // authoring that follows it found none and fell through to the calendar
       // blend ungated. Record the fitness the block was entered at.
+      // SELFREPORT-1 · the anchor's provenance, not an assumption about it.
       ...(input.bestRecentVdot != null
-        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, season_anchor_source: 'measured_vdot' as AnchorSource, season_anchor_provisional: false, goal_vdot: null, build_weeks: weeks.length, measured_progress_fraction: null } }
+        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, season_anchor_source: (input.bestRecentVdotSelfReported ? 'self_reported_race' : 'measured_vdot') as AnchorSource, season_anchor_provisional: input.bestRecentVdotSelfReported === true, goal_vdot: null, build_weeks: weeks.length, measured_progress_fraction: null } }
         : {}),
       citations: blocks.phases.map((p) => p.citation),
     },
@@ -7525,20 +7549,39 @@ async function composeForUserInternal(
       // Carrying it forward launders a self-report into the season's fitness
       // baseline permanently: every subsequent rebuild inherits it, and
       // measuredProgressFraction then grades real running against an invented
-      // starting point. `derived_from.bestRecentVdot` (rung 2) is measured by
-      // construction — it is null when nothing was measured — and rung 3 is
-      // today's own measurement. Only rung 1 needed the guard.
+      // starting point.
+      //
+      // SELFREPORT-1 (2026-08-21) · the sentence that used to sit here — "rung 2
+      // is measured by construction, it is null when nothing was measured" —
+      // stopped being true when PARITY-1 began seeding `bestRecentVdot` from
+      // `profile.race_history`. `derived_from.bestRecentVdot` records whatever
+      // the authoring was handed, so on a cold-start plan it holds the PR the
+      // runner typed, and rung 2 walked straight past rung 1's guard with it.
+      // Rung 2 now inherits the PLAN's provenance, and rung 3 inherits this
+      // authoring's own, so whichever rung wins, the source recorded is the
+      // source that won.
       const priorAnchorProvisional = paceBlendAnchorIsProvisional(priorSt?.pace_blend);
-      const seasonAnchor: number | null =
-        (!priorAnchorProvisional && priorSt?.pace_blend?.season_anchor_vdot != null ? Number(priorSt.pace_blend.season_anchor_vdot) : null)
-        ?? (priorSt?.derived_from?.bestRecentVdot != null ? Number(priorSt.derived_from.bestRecentVdot) : null)
-        ?? (inputs.compose.bestRecentVdot != null ? Number(inputs.compose.bestRecentVdot) : null);
+      const priorAnchorSource = priorSt?.pace_blend?.season_anchor_source;
+      let seasonAnchorInheritedSource: AnchorSource = 'measured_vdot';
+      let seasonAnchor: number | null = null;
+      if (!priorAnchorProvisional && priorSt?.pace_blend?.season_anchor_vdot != null) {
+        seasonAnchor = Number(priorSt.pace_blend.season_anchor_vdot);
+      } else if (priorSt?.derived_from?.bestRecentVdot != null) {
+        seasonAnchor = Number(priorSt.derived_from.bestRecentVdot);
+        // The prior plan's own stamp is the only record of where its
+        // `bestRecentVdot` came from. A prior plan that predates the stamp
+        // carries none, and reads measured — unchanged from before.
+        if (priorAnchorProvisional) seasonAnchorInheritedSource = (priorAnchorSource as AnchorSource | undefined) ?? 'provisional_mileage';
+      } else if (inputs.compose.bestRecentVdot != null) {
+        seasonAnchor = Number(inputs.compose.bestRecentVdot);
+        if (inputs.compose.bestRecentVdotSelfReported) seasonAnchorInheritedSource = 'self_reported_race';
+      }
       if (seasonAnchor != null) {
         const goalVdotNow = vdotFromRace(inputs.compose.goalSec, inputs.compose.raceDistanceMi);
         inputs.compose.seasonAnchorVdot = seasonAnchor;
-        // Everything that survives the guard above is measured, so the
-        // inherited provenance is measured too.
-        inputs.compose.seasonAnchorSource = 'measured_vdot';
+        // SELFREPORT-1 · the provenance of the rung that actually won. Rung 1
+        // is measured by the guard above; rungs 2 and 3 carry their own.
+        inputs.compose.seasonAnchorSource = seasonAnchorInheritedSource;
         inputs.compose.measuredProgressFraction = measuredProgressFraction(
           seasonAnchor,
           inputs.compose.bestRecentVdot ?? null,
@@ -7620,6 +7663,7 @@ async function composeForUserInternal(
       tPaceSec: inputs.compose.tPaceSec,
       lthr: inputs.compose.lthr,
       bestRecentVdot: inputs.compose.bestRecentVdot ?? null,   // EVIDENCE-2
+      bestRecentVdotSelfReported: inputs.compose.bestRecentVdotSelfReported,  // SELFREPORT-1
     };
     composed = mode === 'recovery'
       ? composeRecoveryPlan(nonRaceInput)
@@ -8248,6 +8292,13 @@ async function loadGeneratorInputs(
   // it (sim-inputs.bestVdotFromHistory), so this restores SIM↔PROD parity. Fires only when no measured
   // signal exists — never overrides a real bestVdotPick. Raw vdotFromRace to match the sim exactly.
   let bestRecentVdot = bestVdotPick?.vdot ?? undefined;
+  // SELFREPORT-1 (2026-08-21) · whether the number below came from the app's
+  // own observations or from the runner's keyboard. It was not recorded, and
+  // `composePlan` read "bestRecentVdot is set" as "something was measured" —
+  // so a runner with zero runs and zero races on file had the PR they typed
+  // persisted as `season_anchor_source: 'measured_vdot'`, inherited into every
+  // rebuild, and graded against as if the app had watched them run it.
+  let bestRecentVdotSelfReported = false;
   if (bestRecentVdot === undefined) {
     const rhRow = (await pool.query<{ race_history: any }>(
       `SELECT race_history FROM profile WHERE user_uuid = $1 LIMIT 1`, [userId],
@@ -8255,6 +8306,7 @@ async function loadGeneratorInputs(
     // LSP2-2 · 180d window (~6mo = '<6mo' bucket midpoint 90d ≤ 180d · '6-12mo' midpoint 270d > 180d).
     // A PR from 8+ months ago does not reflect current fitness; cap to recent races only.
     bestRecentVdot = bestVdotFromRaceHistory(Array.isArray(rhRow?.race_history) ? rhRow.race_history : [], 180);
+    bestRecentVdotSelfReported = bestRecentVdot != null;
   }
   // 2026-07-07 · AUDIT P1-56 · belowTableAnchor (from computeBestRecentVdot) is
   // the runner's best race/run when NO candidate produced an in-table VDOT —
@@ -8433,6 +8485,9 @@ async function loadGeneratorInputs(
       recentQualityDistanceMi: recentQualityDist > 0 ? recentQualityDist : undefined,
       recentQualityPerWeek: recentQualityPW > 0 ? recentQualityPW : undefined,
       bestRecentVdot,
+      // SELFREPORT-1 · carried alongside the number, never re-derived. The
+      // composer cannot tell a typed PR from an observed one by looking at it.
+      bestRecentVdotSelfReported,
       // 2026-07-07 · AUDIT P1-56 · threaded to composePlan's currentT/easyAnchorTSec
       // resolveCurrentTPace calls; null when bestRecentVdot is already set (a
       // measured VDOT always wins, this is a fallback signal only).
