@@ -223,12 +223,17 @@ struct TodayBeforeV5: View {
                 Text(model.panel.dateLine)
                     .faffDisplayV5(26, fit: .free)
                     .foregroundStyle(V5.OnPanel.primary)
+                // "justify-content:space-between" — the date sits left, the
+                // week line right (5a markup, dc.html:533). The Spacer used
+                // to sit AFTER the week line, which hugged both to the left
+                // and made 5a the only panel in the app whose date row reads
+                // differently from its own after-run sibling.
+                Spacer(minLength: 0)
                 if let weekLine = model.panel.weekLine {
                     Text(weekLine)
-                        .font(.faffText(TypeScaleV5.body15))
+                        .font(.faffText(TypeScaleV5.label13))
                         .foregroundStyle(V5.OnPanel.secondary)
                 }
-                Spacer(minLength: 0)
             }
 
             WeekStripV5(days: model.weekStrip.map(\.strip),
@@ -237,7 +242,7 @@ struct TodayBeforeV5: View {
             VStack(alignment: .leading, spacing: 2) {
                 if let kicker = model.panel.kicker {
                     Text(kicker)
-                        .font(.faffText(TypeScaleV5.body15))
+                        .font(.faffText(TypeScaleV5.label13))
                         .foregroundStyle(V5.OnPanel.secondary)
                 }
                 Text(model.panel.type)
@@ -479,8 +484,10 @@ struct TodayBeforeV5: View {
     /// verb this build does not know.
     private func beforeYouGoQuestion(_ row: V5Row) -> String {
         switch row.action {
-        case "change_shoe": return "Which shoes"
-        case "move_skip":   return "Move it, or skip it"
+        // The prototype writes both of these out — "Which pair" and
+        // "Move or skip this run" — so they are copy, not paraphrase.
+        case "change_shoe": return "Which pair"
+        case "move_skip":   return "Move or skip this run"
         default:            return row.label
         }
     }

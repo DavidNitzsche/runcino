@@ -202,25 +202,36 @@ struct InjuryFlareV5: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: V5.S.inGroup) {
+            // The prototype draws this as plain tappable rows in one tile,
+            // with the logged note as a quiet 13pt line BELOW the tile
+            // (13a markup: a `ListRow` per option, then `injury.checkedNote`
+            // at `font-size:13px;color:var(--text-secondary);padding:0 4px`).
+            //
+            // It used to be an `ExpandingRow` whose expanded content was
+            // `EmptyView()`, which drew a chevron on a row that had nothing
+            // to open — the one affordance the behaviour rules name outright
+            // — and put the note inside the row instead of under the group.
+            // 19a's ladder check-in already renders the prototype's shape;
+            // the README says 19a uses the "same expand-in-place pattern as
+            // 13a", so the two now actually match.
+            VStack(alignment: .leading, spacing: V5.S.s10) {
                 V5SectionLabel(text: "How does it feel today")
-                ListGroup {
+                VStack(spacing: 0) {
                     ForEach(model.checkIn) { row in
-                        ExpandingRow(
-                            label: row.label,
-                            sub: row.sub,
-                            question: "Logged. Noted for today.",
-                            isExpanded: Binding(
-                                get: { checkedRowID == row.id },
-                                set: { expanded in
-                                    withAnimation(V5.Motion.expand) {
-                                        checkedRowID = expanded ? row.id : nil
-                                    }
-                                    if expanded { onCheckIn(row) }
-                                }
-                            )
-                        ) { EmptyView() }
+                        ListRow(label: row.label, sub: row.sub) {
+                            checkedRowID = row.id
+                            onCheckIn(row)
+                        }
                     }
+                }
+                .background(V5.materialTile,
+                            in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
+
+                if let checked = model.checkIn.first(where: { $0.id == checkedRowID }) {
+                    Text(checked.sub ?? "Logged.")
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textSecondary)
+                        .padding(.horizontal, V5.S.s4)
                 }
             }
 

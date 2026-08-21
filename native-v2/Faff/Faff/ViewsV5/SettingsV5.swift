@@ -13,11 +13,17 @@
 //  contract names them explicitly:
 //
 //  · The phone-run switch is THE single source of truth for whether RUN
-//    appears in the tab bar everywhere. It writes `phone_run_enabled`
-//    straight through `API.patchSettings(_:)`, then invalidates
-//    `SettingsCache.shared` so the bar updates without a relaunch — see
-//    `Util/SettingsCache.swift`. Nothing else in this file talks to the
-//    network directly.
+//    appears in the tab bar everywhere, so it reports outward through
+//    `onSetPhoneRun` and the composition root does the write. It used to
+//    write `phone_run_enabled` straight through `API.patchSettings(_:)` and
+//    invalidate `SettingsCache.shared`, on the belief that the bar would
+//    then update without a relaunch. It did not: the pill reads
+//    `PhoneRunGate.enabled`, a `@Published` only written by the gate's own
+//    `refresh()`, and invalidating the cache does not republish it. The root
+//    already refreshes the gate on every other settings patch, so routing
+//    this switch the same way is what actually makes it the source of truth
+//    the design describes. The direct write survives as the nil fallback so
+//    a preview still toggles; nothing else here talks to the network.
 //
 //  · Sign out calls `SessionHygiene.signOut()` and nothing else. That
 //    function already posts `.faffGateReset` itself, so there is no
@@ -62,6 +68,14 @@ struct SettingsV5: View {
     let onToggleWeeklySummary: (Bool) -> Void
     let onSetUnits: (String) -> Void
     let onToggleStrava: () -> Void
+    /// The phone-run switch, routed OUT to the composition root when the
+    /// caller supplies it. See the file header: invalidating `SettingsCache`
+    /// alone does not republish `PhoneRunGate.enabled`, so the RUN pill kept
+    /// its old state until the next launch. The root's own `patch(_:)` does
+    /// the invalidate AND the gate refresh, which is what makes this switch
+    /// the single source of truth the design says it is. Nil falls back to
+    /// the direct write, so a preview still toggles.
+    var onSetPhoneRun: ((Bool) -> Void)? = nil
     var onBack: (() -> Void)? = nil
 
     @State private var longRunDay: String
@@ -78,6 +92,7 @@ struct SettingsV5: View {
          onToggleWeeklySummary: @escaping (Bool) -> Void,
          onSetUnits: @escaping (String) -> Void,
          onToggleStrava: @escaping () -> Void,
+         onSetPhoneRun: ((Bool) -> Void)? = nil,
          onBack: (() -> Void)? = nil) {
         self.model = model
         self.onSetLongRunDay = onSetLongRunDay
@@ -86,6 +101,7 @@ struct SettingsV5: View {
         self.onToggleWeeklySummary = onToggleWeeklySummary
         self.onSetUnits = onSetUnits
         self.onToggleStrava = onToggleStrava
+        self.onSetPhoneRun = onSetPhoneRun
         self.onBack = onBack
         _longRunDay = State(initialValue: model.longRunDay)
         _daysPerWeek = State(initialValue: model.daysPerWeek)
@@ -135,9 +151,13 @@ struct SettingsV5: View {
         // The phone-run switch is the ONE control here that talks to the
         // network directly — see the file header.
         .onChange(of: phoneRunEnabled) { _, newValue in
-            Task {
-                try? await API.patchSettings(["phone_run_enabled": newValue])
-                await SettingsCache.shared.invalidate()
+            if let onSetPhoneRun {
+                onSetPhoneRun(newValue)
+            } else {
+                Task {
+                    try? await API.patchSettings(["phone_run_enabled": newValue])
+                    await SettingsCache.shared.invalidate()
+                }
             }
         }
     }

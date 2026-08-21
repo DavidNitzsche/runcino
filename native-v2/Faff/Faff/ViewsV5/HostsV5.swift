@@ -773,8 +773,9 @@ struct SettingsHostV5: View {
                            onToggleWeeklySummary: { v in
                                Task { await setPref("weekly_checkin_enabled", v) }
                            },
-                           onSetUnits: { u in Task { await patch(["units_distance": u]) } },
+                           onSetUnits: { u in Task { await patch(["units_distance": Self.unitKey(u)]) } },
                            onToggleStrava: { Task { await connectStrava() } },
+                           onSetPhoneRun: { v in Task { await patch(["phone_run_enabled": v]) } },
                            onBack: { dismiss() })
             } else {
                 ScrollView { Skeleton(lines: 6).padding(.horizontal, V5.S.gutter) }
@@ -813,6 +814,25 @@ struct SettingsHostV5: View {
         dayNames.first { $0.label == label }?.key ?? label.lowercased()
     }
 
+    /// The units row is a `Select`, and a `Select` shows what it is given.
+    /// The prototype's own options are label/value pairs —
+    /// `[{ value: 'mi', label: 'Miles' }, { value: 'km', label: 'Kilometres' }]`
+    /// — so the row reads "Miles" and the wire keeps "mi". This host used to
+    /// hand the row the wire codes themselves, so Settings showed the runner
+    /// two-letter codes on device while the screen's own `#Preview` showed
+    /// the words. Same shape as `dayNames` above: labels out, keys in.
+    static let unitNames: [(key: String, label: String)] = [
+        ("mi", "Miles"), ("km", "Kilometres"),
+    ]
+
+    static func unitLabel(_ key: String) -> String {
+        unitNames.first { $0.key == key.lowercased() }?.label ?? key
+    }
+
+    static func unitKey(_ label: String) -> String {
+        unitNames.first { $0.label == label }?.key ?? label.lowercased()
+    }
+
     private func load() async {
         await SettingsCache.shared.warm()
         let (settings, profile) = await SettingsCache.shared.read()
@@ -830,8 +850,8 @@ struct SettingsHostV5: View {
             phoneRunEnabled: settings?.phoneRunEnabled ?? true,
             sessionReminders: prefs?.skip_recovery_enabled ?? true,
             weeklySummary: prefs?.weekly_checkin_enabled ?? true,
-            units: settings?.units_distance ?? "mi",
-            unitsOptions: ["mi", "km"],
+            units: Self.unitLabel(settings?.units_distance ?? "mi"),
+            unitsOptions: Self.unitNames.map(\.label),
             stravaConnected: StravaConnection.isConnected,
             email: profile?.email ?? ""
         )

@@ -250,7 +250,11 @@ struct OutageBodyV5: View {
         VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
             ErrorNote(text: copy.note, onRetry: onRetry)
             Skeleton(lines: skeletonLines)
-            CoachSay(text: copy.reassurance, size: .sm)
+            // `size="md"` in 16a's markup, and every other CoachSay in the
+            // v5 set is md. This one was the only sm, which read as a
+            // smaller, quieter coach on the one screen where the point is
+            // that the session is still fine.
+            CoachSay(text: copy.reassurance, size: .md)
         }
     }
 }
