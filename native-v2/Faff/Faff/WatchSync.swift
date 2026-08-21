@@ -208,12 +208,30 @@ final class WatchSync: NSObject, ObservableObject {
 
     // MARK: Receive completions from watch (via transferUserInfo)
 
+    /// The cap drops the NEWEST, not the oldest.
+    ///
+    /// This file's own docblock, twenty lines down, says "a failed POST must
+    /// never mean data loss" — and the trim was `removeFirst`, which discards
+    /// the runs that have been waiting longest and are therefore the ones
+    /// least likely to be recoverable from anywhere else. A watch run that
+    /// failed to send last week outranks one recorded ten seconds ago that is
+    /// still sitting in memory upstream.
+    ///
+    /// Fifty completions is already far past any honest backlog, so reaching
+    /// the cap at all means something is wrong. Refusing the newest at least
+    /// fails in the direction that keeps the older evidence.
     fileprivate func enqueue(_ data: Data) {
         var q = pendingCompletions
+        guard q.count < Self.maxPending else {
+            lastSyncStatus = "Relay queue full · \(q.count) runs still unsent"
+            return
+        }
         q.append(data)
-        if q.count > 50 { q.removeFirst(q.count - 50) }
         pendingCompletions = q
     }
+
+    /// Far past any honest backlog. Reaching it means the drain is failing.
+    static let maxPending = 50
 
     /// Durable save for iPhone-authored completions (treadmill console ·
     /// audit P1-21). The payload is the same WatchCompletion wire shape the
@@ -316,16 +334,48 @@ final class WatchSync: NSObject, ObservableObject {
         )
     }
 
+    /// Guards against a flush that is already running, and against the whole
+    /// queue re-POSTing on a failure that will fail identically for all of it.
+    private var flushing = false
+    private var lastFlushFailedAt: Date?
+    /// After a whole-queue failure, wait before trying again. Three unthrottled
+    /// triggers feed this — session activation, file receive, userInfo receive
+    /// — and each used to fan out the entire queue back to back. With an
+    /// expired session that is up to fifty POSTs that all 401, fifty times,
+    /// each one posting `.faffSessionExpired`.
+    private static let retryBackoffSec: TimeInterval = 60
+
     func flushPendingCompletions() async {
+        // One at a time. Two triggers arriving together used to run two full
+        // drains over the same array and race on the write-back.
+        guard !flushing else { return }
         let q = pendingCompletions
         guard !q.isEmpty else { return }
+        if let failedAt = lastFlushFailedAt,
+           Date().timeIntervalSince(failedAt) < Self.retryBackoffSec {
+            return
+        }
+        flushing = true
+        defer { flushing = false }
+
         var keep: [Data] = []
         var anySucceeded = false
-        for data in q {
+        for (i, data) in q.enumerated() {
             let ok = await postCompletion(data)
-            if !ok { keep.append(data) }
-            else { anySucceeded = true }
+            if !ok {
+                // The first refusal stops the run: this item and everything
+                // after it stay queued. Whatever made it fail — no session,
+                // no network, the server down — applies to the rest of the
+                // queue too, and walking on earns one repeated failure per
+                // item. With an expired session that was up to fifty POSTs
+                // that all 401, each posting .faffSessionExpired.
+                keep = Array(q[i...])
+                lastFlushFailedAt = Date()
+                break
+            }
+            anySucceeded = true
         }
+        if keep.isEmpty { lastFlushFailedAt = nil }
         pendingCompletions = keep
         // Trigger a plan refresh so TodayView picks up the new completedRunId
         // and pivots to the post-run view without waiting for the next

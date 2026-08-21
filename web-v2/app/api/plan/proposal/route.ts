@@ -67,6 +67,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { outage } from '@/lib/route/failure';
 import { requireUserId } from '@/lib/auth/session';
 import { generatePlan } from '@/lib/plan/generate';
 
@@ -86,17 +87,25 @@ export async function POST(req: NextRequest) {
   }
 
   // 1. Pull the proposal · verify ownership
-  const proposal = (await pool.query<{
-    id: number;
-    plan_id: string | null;
-    proposal_kind: string;
-    status: string;
-  }>(
-    `SELECT id, plan_id, proposal_kind, status
-       FROM plan_proposals
-      WHERE id = $1 AND user_uuid = $2`,
-    [proposalId, userId],
-  ).catch(() => ({ rows: [] }))).rows[0];
+  // A FAILED READ IS NOT "NOT FOUND". Swallowing the error made a dropped
+  // connection indistinguishable from a proposal that does not exist, and
+  // 404 is a statement about the runner's data.
+  let proposal: { id: number; plan_id: string | null; proposal_kind: string; status: string } | undefined;
+  try {
+    proposal = (await pool.query<{
+      id: number;
+      plan_id: string | null;
+      proposal_kind: string;
+      status: string;
+    }>(
+      `SELECT id, plan_id, proposal_kind, status
+         FROM plan_proposals
+        WHERE id = $1 AND user_uuid = $2`,
+      [proposalId, userId],
+    )).rows[0];
+  } catch (e) {
+    return outage('api/plan/proposal', e);
+  }
 
   if (!proposal) {
     return NextResponse.json({ error: 'proposal not found' }, { status: 404 });
@@ -113,18 +122,28 @@ export async function POST(req: NextRequest) {
     await pool.query(
       `UPDATE plan_proposals
           SET status = 'dismissed', resolved_at = NOW()
-        WHERE id = $1`,
-      [proposalId],
+        WHERE id = $1 AND user_uuid = $2`,
+      [proposalId, userId],
     );
     return NextResponse.json({ ok: true, status: 'dismissed' });
   }
 
   // 2b. Accept path · resolve the underlying race, rebuild
-  const planRow = (await pool.query<{ race_id: string | null }>(
-    `SELECT race_id FROM training_plans
-      WHERE id = $1 AND user_uuid = $2`,
-    [proposal.plan_id, userId],
-  ).catch(() => ({ rows: [] }))).rows[0];
+  // AND THIS ONE IS DESTRUCTIVE. Below, a missing race_id permanently
+  // dismisses the proposal — so swallowing the error meant a thirty-second
+  // Postgres blip threw away a live proposal the runner never saw, with no
+  // way back. "We could not read it" and "the plan is gone" are different
+  // answers and only one of them may destroy anything.
+  let planRow: { race_id: string | null } | undefined;
+  try {
+    planRow = (await pool.query<{ race_id: string | null }>(
+      `SELECT race_id FROM training_plans
+        WHERE id = $1 AND user_uuid = $2`,
+      [proposal.plan_id, userId],
+    )).rows[0];
+  } catch (e) {
+    return outage('api/plan/proposal', e);
+  }
 
   if (!planRow?.race_id) {
     // The plan referenced by the proposal is gone or has no race · we
@@ -133,8 +152,8 @@ export async function POST(req: NextRequest) {
       `UPDATE plan_proposals
           SET status = 'dismissed', resolved_at = NOW(),
               reasons = reasons || jsonb_build_object('dismiss_reason', 'plan_missing_or_no_race')
-        WHERE id = $1`,
-      [proposalId],
+        WHERE id = $1 AND user_uuid = $2`,
+      [proposalId, userId],
     );
     return NextResponse.json({
       ok: false,
