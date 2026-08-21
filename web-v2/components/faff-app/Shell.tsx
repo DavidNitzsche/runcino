@@ -2,22 +2,67 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { MESH, PHASE, type Mesh, type PhaseKey, type ViewKey } from './constants';
 import type { FaffSeed } from './types';
 import { Sidebar } from './Sidebar';
-import { TodayView } from './views/TodayView';
-import { TrainView } from './views/TrainView';
-import { HealthView } from './views/HealthView';
-import { TargetsView } from './views/TargetsView';
-import { ActivityView } from './views/ActivityView';
-import { ProfileView } from './views/ProfileView';
-import { RaceView, type RaceDetailSeed } from './views/RaceView';
+import type { RaceDetailSeed } from './views/RaceView';
 import { Drawer } from './overlays/Drawer';
-import { WorkoutDetail } from './overlays/WorkoutDetail';
 import { WeeklyCheckIn } from './overlays/WeeklyCheckIn';
 import { Paywall } from './overlays/Paywall';
 import { Pro } from './overlays/Pro';
-import { RunDetailModal } from './overlays/RunDetailModal';
+
+/* 2026-08-21 · bundle measurement.
+ *
+ * Every signed-in route (/, /today, /training, /plan, /health, /goal,
+ * /goal/[slug], /log, /me, /profile, /runs/[id]) renders this same Shell,
+ * and the Shell used to import all seven views statically. Webpack put
+ * them in one shared chunk: 446 kB raw / 117 kB gzipped, shipped to every
+ * page. A runner opening /today downloaded HealthView, RaceView,
+ * TargetsView, ProfileView and SettingsPanel before seeing a single
+ * number — First Load JS was 233 kB on all eleven routes.
+ *
+ * Only one view is ever mounted at a time (`{view === 'x' && <XView/>}`
+ * below), and none of them animate in or out, so splitting them is a
+ * drop-in. `ssr` stays on the default (true): the initial view is still
+ * server-rendered into the HTML, so nothing about first paint changes —
+ * only the hydration chunk is fetched separately.
+ *
+ * The two overlays split here are the two that already return null when
+ * closed (WorkoutDetail:68, RunDetailModal:107), so unmounting them is
+ * behaviourally identical. Drawer / WeeklyCheckIn / Paywall / Pro stay
+ * static on purpose: they stay mounted and animate out via an `open`
+ * class, and unmounting them would kill the exit transition.
+ *
+ * `navigate()` sets the view synchronously and pushes the route after, so
+ * a tab switch would otherwise show an empty <main> for as long as the
+ * chunk takes to arrive. The idle prefetch below warms every view once
+ * the first paint is done, which keeps switching instant while keeping
+ * the code off the critical path.
+ */
+const TodayView    = dynamic(() => import('./views/TodayView').then(m => m.TodayView));
+const TrainView    = dynamic(() => import('./views/TrainView').then(m => m.TrainView));
+const HealthView   = dynamic(() => import('./views/HealthView').then(m => m.HealthView));
+const TargetsView  = dynamic(() => import('./views/TargetsView').then(m => m.TargetsView));
+const ActivityView = dynamic(() => import('./views/ActivityView').then(m => m.ActivityView));
+const ProfileView  = dynamic(() => import('./views/ProfileView').then(m => m.ProfileView));
+const RaceView     = dynamic(() => import('./views/RaceView').then(m => m.RaceView));
+const WorkoutDetail  = dynamic(() => import('./overlays/WorkoutDetail').then(m => m.WorkoutDetail));
+const RunDetailModal = dynamic(() => import('./overlays/RunDetailModal').then(m => m.RunDetailModal));
+
+/** Warm the split view/overlay chunks once the page is idle, so a sidebar
+ *  tab switch never waits on a network round-trip. */
+function prefetchSplitChunks() {
+  void import('./views/TodayView');
+  void import('./views/TrainView');
+  void import('./views/HealthView');
+  void import('./views/TargetsView');
+  void import('./views/ActivityView');
+  void import('./views/ProfileView');
+  void import('./views/RaceView');
+  void import('./overlays/WorkoutDetail');
+  void import('./overlays/RunDetailModal');
+}
 
 const ROUTE_TO_VIEW: Record<string, ViewKey> = {
   '/':           'today',
@@ -61,6 +106,27 @@ export function Shell({ seed, initial = 'today', raceSeed, autoOpenRunId }: { se
     try {
       if (localStorage.getItem('faffSb') === '1') setSbCollapsed(true);
     } catch { /* SSR safety */ }
+  }, []);
+
+  // Warm the code-split views once the browser is idle. See the block
+  // comment on prefetchSplitChunks above: this is what keeps a sidebar
+  // tab switch instant now that the views are no longer in the first-load
+  // chunk. requestIdleCallback isn't in Safari <17, hence the timeout.
+  useEffect(() => {
+    const ric = (window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    }).requestIdleCallback;
+    if (ric) {
+      const id = ric(prefetchSplitChunks, { timeout: 3000 });
+      return () => {
+        const cic = (window as unknown as {
+          cancelIdleCallback?: (h: number) => void;
+        }).cancelIdleCallback;
+        cic?.(id);
+      };
+    }
+    const t = setTimeout(prefetchSplitChunks, 1500);
+    return () => clearTimeout(t);
   }, []);
 
   // 2026-06-05 · multi-tenant audit Pattern 3 fix · capture browser TZ on
