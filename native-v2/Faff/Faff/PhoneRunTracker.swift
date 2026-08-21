@@ -86,6 +86,9 @@ struct PhoneRunCheckpoint: Codable {
     let startedAt: Date
     let updatedAt: Date
     let elapsedSec: Int
+    /// Defaults to 0 so a checkpoint written before this field existed still
+    /// decodes — an interrupted run must never be lost to a schema change.
+    var movingSec: Int = 0
     let distanceMi: Double
     let polyline: String?
     let hadGap: Bool
@@ -109,6 +112,20 @@ final class PhoneRunTracker: NSObject, ObservableObject {
     /// rather than incremented, so a tick that is late or missed entirely
     /// self-corrects on the next one instead of losing that time for good.
     @Published private(set) var elapsedSec: Int = 0
+    /// Time the runner was actually MOVING, in seconds.
+    ///
+    /// David's ruling, 2026-08-21: record both and let fitness read this one.
+    /// There is no auto-pause, so `elapsedSec` counts a stoplight — which is
+    /// the honest answer to "how long were you out" and the wrong one to
+    /// compute a pace from, and pace is what VDOT is built on. Throwing either
+    /// away is irreversible, so both ship.
+    ///
+    /// Accumulated from exactly the intervals that credited DISTANCE, using
+    /// the same Doppler stationary test — so moving time and distance can
+    /// never disagree about whether the runner was running.
+    @Published private(set) var movingSec: Int = 0
+    /// Wall-clock of the last fix that counted as moving.
+    private var lastMovingAt: Date?
     /// Cumulative GPS distance in miles · integrated fix-to-fix across the
     /// whole run. Never recomputed from an average, and never re-derived
     /// from duration × a pace.
@@ -392,6 +409,8 @@ final class PhoneRunTracker: NSObject, ObservableObject {
         Self.clearCheckpoint(workoutId: workoutId)
         state = .idle
         elapsedSec = 0
+        movingSec = 0
+        lastMovingAt = nil
         distanceMi = 0
         currentPaceSecPerMi = nil
         routeCoords = []
@@ -523,6 +542,11 @@ final class PhoneRunTracker: NSObject, ObservableObject {
             "status": status, // "completed" | "partial" | "abandoned"
             "totalDistanceMi": roundedDistanceMi,
             "totalDurationSec": elapsedSec,
+            // Both, always. Elapsed answers "how long were you out"; moving
+            // is what pace and therefore VDOT are computed from. Readers
+            // already prefer movingSec over durationSec (lib/coach/log-state,
+            // training-state) — the phone simply never sent it.
+            "movingSec": movingSec,
             "source": "phone",
             "indoor": false,
             "timezone": TimeZone.current.identifier,
@@ -599,6 +623,7 @@ extension PhoneRunTracker {
                                     startedAt: startedAt,
                                     updatedAt: now,
                                     elapsedSec: elapsedSeconds(at: now),
+                                    movingSec: movingSec,
                                     distanceMi: distanceMi,
                                     polyline: encodedPolyline(),
                                     hadGap: trackHasGap)
@@ -681,6 +706,7 @@ extension PhoneRunTracker {
             "status": "partial",
             "totalDistanceMi": (cp.distanceMi * 100).rounded() / 100,
             "totalDurationSec": cp.elapsedSec,
+            "movingSec": cp.movingSec,
             "source": "phone",
             "indoor": false,
             "timezone": TimeZone.current.identifier,
@@ -811,6 +837,14 @@ extension PhoneRunTracker: CLLocationManagerDelegate {
         }
 
         distanceMi += delta / 1609.344
+        // The same interval that earned the distance earns the moving time.
+        // Capped at the bridgeable-gap window, so a gap the recorder already
+        // refused to credit as distance cannot arrive here as time either.
+        if let lastAt = lastMovingAt {
+            let gap = loc.timestamp.timeIntervalSince(lastAt)
+            if gap > 0, gap <= GPS.bridgeableGapSec { movingSec += Int(gap.rounded()) }
+        }
+        lastMovingAt = loc.timestamp
     }
 
     /// Trailing-window pace, differenced from the credited-distance

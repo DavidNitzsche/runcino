@@ -96,6 +96,9 @@ interface WatchCompletionBody {
   status?: string;            // 'completed' | 'partial' | 'abandoned'
   totalDistanceMi?: number | null;
   totalDurationSec?: number;
+  /// Seconds the runner was actually MOVING. Optional — the watch and the
+  /// treadmill console do not send it, and older phone builds did not either.
+  movingSec?: number;
   avgHr?: number | null;
   maxHr?: number | null;
   avgCadence?: number | null;
@@ -275,8 +278,20 @@ export async function POST(req: NextRequest) {
   const startLocal = (startLocalWall ?? '').replace(/\.\d+$/, '');
   const totalSec = Number(body.totalDurationSec) || 0;
   const totalMi = Number(body.totalDistanceMi) || 0;
-  const avgPace = totalSec > 0 && totalMi > 0
-    ? formatPace(Math.round(totalSec / totalMi))
+  // MOVING TIME IS WHAT PACE IS COMPUTED FROM · David's ruling 2026-08-21.
+  //
+  // Both are recorded. `durationSec` stays elapsed — the honest answer to how
+  // long the runner was out, stoplights included. But pace divides by moving
+  // time where the recorder measured it, because pace is what VDOT is built
+  // on and a junction should not make a runner look slower than they ran.
+  //
+  // Falls back to elapsed when the sender has no moving figure, which is every
+  // watch run, every treadmill run, and every phone build before this one —
+  // so nothing changes shape, it just gets more accurate where it can.
+  const movingSec = Number(body.movingSec) || 0;
+  const paceSec = movingSec > 0 ? movingSec : totalSec;
+  const avgPace = paceSec > 0 && totalMi > 0
+    ? formatPace(Math.round(paceSec / totalMi))
     : null;
   const indoor = body.indoor === true;
 
@@ -496,7 +511,10 @@ export async function POST(req: NextRequest) {
     startLocal: startLocal || `${date}T08:00:00`,
     distanceMi: totalMi,
     durationSec: totalSec,
-    timeMoving: totalSec > 0 ? formatMmSs(totalSec) : null,
+    // `timeMoving` meant elapsed, which is what it is NOT. Named honestly now
+    // and null rather than a lie when nothing measured it.
+    movingSec: movingSec > 0 ? movingSec : null,
+    timeMoving: movingSec > 0 ? formatMmSs(movingSec) : null,
     avgPaceMinPerMi: avgPace,
     // Fix 4b · option (A) + labeling. `avgHr` is the CANONICAL read = WHOLE-RUN
     // (derived from phase samples); `avgHrRaw` preserves the watch's native
