@@ -128,6 +128,24 @@ struct OnboardingView: View {
             // from 45 to 200 mi/wk sent "45+" and was read as a 50 mi/wk base. That one
             // number anchors the volume curve's start and the cold-start pace floor.
             // Every value below is in web-v2 VALID_HIST_AVG.
+            //
+            // ZEROSAY-1 · PHONE PARITY (2026-08-21). The web deck carries a NONE
+            // rung on both history ladders (`HIST_AVG_CHIPS` / `HIST_LONG_CHIPS`
+            // in components/onboarding/Step1bGoalDetails.tsx) precisely so a
+            // runner who does not run yet can say so: HIST_AVG_MIDPOINTS['0'] is
+            // 0, and zero on BOTH ladders is what makes generate.ts's
+            // `noVolumeSignal` true and the run/walk (Couch-to-5K) opening
+            // reachable. This deck had no way to say it. Its bottom mileage rung
+            // is "Under 5 mi", which resolved to "0-5" → midpoint 3, so a runner
+            // who is not running at all was authored off a 3 mi/wk base and got
+            // the ordinary maintenance arithmetic instead of the ladder.
+            //
+            // The deck already asks the question in plain words one screen
+            // earlier — "Not running right now" is the bottom rung of the
+            // frequency ladder. Zero days a week AND the bottom mileage rung is
+            // an unambiguous "I do not run yet"; a runner who picked a real
+            // mileage band is never overridden.
+            if weeklyFreq == 0 && (weeklyMi ?? 0) == 0 { return "0" }
             switch weeklyMi ?? 0 {
             case ..<5:  return "0-5"
             case ..<15: return "5-15"
@@ -742,8 +760,14 @@ struct OnboardingView: View {
     // an open-ended top rung pinned every long-run anchor above 10 mi to the same 12, and
     // that anchor is the 110%-of-prior-30d spike guard. Same three rungs the web decks added.
     private var runQ_longestRun: some View {
-        let opts = ["0-3", "3-6", "6-10", "10-16", "16-22", "22+"]
-        let labels = ["Up to 3 miles", "3 to 6 miles", "6 to 10 miles",
+        // ZEROSAY-1 · PHONE PARITY (2026-08-21) · the "0" rung. Same reason as
+        // the histAvg derivation above: HIST_LONG_MIDPOINTS['0'] is 0, and the
+        // run/walk opening needs zero on BOTH ladders. Without this the lowest
+        // a phone signup could say was "Up to 3 miles" → midpoint 2, so a
+        // runner who has not run at all was given a 2-mile long-run floor they
+        // have never met. The web deck has carried this rung since ZEROSAY-1.
+        let opts = ["0", "0-3", "3-6", "6-10", "10-16", "16-22", "22+"]
+        let labels = ["I don't run yet", "Up to 3 miles", "3 to 6 miles", "6 to 10 miles",
                       "10 to 16 miles", "16 to 22 miles", "22+ miles"]
         return runQ("What's the longest run\nyou've done lately?",
                     context: "In the last 4 to 6 weeks. This sets your long-run floor.",

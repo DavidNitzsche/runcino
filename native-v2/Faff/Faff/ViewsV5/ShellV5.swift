@@ -420,6 +420,23 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                 )
             }
         }
+        // ── THE END OF ONBOARDING HAD NOWHERE TO LAND ────────────────────
+        //
+        // Onboarding's last screen offers "Set up a race", and the gate answers
+        // it by posting `.faffOpenRaceSetup` (FaffApp.swift). The only listeners
+        // were `RootTabView` and `TargetsView` — both v4, both reachable only
+        // under `-faffLegacy`. On the shipping shell the notification went
+        // nowhere: a runner who had just asked to train for a race was dropped
+        // on Today with no race, no plan, and the "not here yet" refusal, which
+        // is the answer for a mode they had not chosen.
+        //
+        // Onboarding never captures a race (it posts `distance:"none"` by
+        // design — the plan is authored when the race is added), so this hop IS
+        // the race path. It has to arrive somewhere.
+        .onReceive(NotificationCenter.default.publisher(for: .faffOpenRaceSetup)) { _ in
+            selected = .races
+            paths[.races] = [.addRace]
+        }
         // The console has no dismiss gesture of its own, so the shell has to
         // hand it a real way out. It used to be given `{}` at the call site,
         // which meant End did nothing visible and the runner was stuck.

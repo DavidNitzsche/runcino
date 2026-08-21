@@ -99,6 +99,16 @@ struct SettingsV5: View {
         phoneRunEnabled ? "RUN sits in the bottom bar" : "Your watch starts every session"
     }
 
+    /// The weekly summary fires on the runner's own long-run evening — the
+    /// cron reads `user_settings.long_run_day` and sums the week that ends
+    /// that day (`app/api/cron/notifications/route.ts`). This line used to say
+    /// "Sunday evening" to everyone, so a runner who had just chosen Saturday
+    /// two rows above was told the wrong night by the row underneath. The
+    /// backend was right; the sentence was the only thing that was wrong.
+    private var weeklySummarySub: String {
+        "\(longRunDay) evening, after the long run"
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -185,7 +195,7 @@ struct SettingsV5: View {
                            sub: "The morning after a skip \u{00B7} are you good for today",
                            isOn: $sessionReminders)
                 FaffSwitch(label: "Weekly summary",
-                           sub: "Sunday evening, after the long run",
+                           sub: weeklySummarySub,
                            isOn: $weeklySummary)
             }
             .padding(V5.S.tilePad)

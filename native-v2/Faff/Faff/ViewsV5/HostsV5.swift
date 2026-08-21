@@ -643,8 +643,23 @@ struct AddRaceHostV5: View {
         ScrollView {
             VStack(spacing: 0) {
                 AppBar(title: "Add a race", onBack: { dismiss() })
+                // A SAVED RACE HAS TO REACH THE SURFACES THAT WERE REFUSING.
+                //
+                // `V5Surface` reloads on init and on `.faffForegroundRefresh`
+                // and nothing else, so an in-app write is invisible to the
+                // three tabs already alive behind this screen. Adding the very
+                // first race is the write where that matters most: before it
+                // the runner has no plan, so Today is the "not here yet"
+                // refusal — and it stayed on that refusal after the race and
+                // its plan existed, until the app was killed. Watched live on a
+                // fresh account. The v4 TargetsView already posts this after
+                // saving; this is the same courtesy on the v5 path.
                 AddRaceV5(onCancel: { dismiss() },
-                          onCreated: { _ in dismiss() })
+                          onCreated: { _ in
+                              NotificationCenter.default.post(
+                                  name: .faffForegroundRefresh, object: nil)
+                              dismiss()
+                          })
                     .padding(.horizontal, V5.S.gutter)
                     .padding(.bottom, V5.S.s32)
             }
@@ -1169,34 +1184,119 @@ struct OnboardingHostV5: View {
         OnboardingV5(onSubmit: submit, onSeeToday: onDone)
     }
 
+    /// The mileage rungs `/api/onboarding/complete` accepts (`VALID_WEEKLY_MI`).
+    /// Anything else is dropped on the floor by the route, silently, so the
+    /// stepper's arbitrary integer has to be snapped to a legal rung before it
+    /// is sent. Snapping DOWN, never up: the cold-start volume curve and the
+    /// pace floor both read this number, and over-reporting a base is the
+    /// direction that hurts.
+    /// The route requires a non-empty `name` and 400s without one. Signup
+    /// already captured it, so this reads it back rather than asking again —
+    /// the same source the v4 deck greets the runner from. The fallback is the
+    /// v4 deck's own, so a nameless invite still gets past the gate instead of
+    /// being stranded on a refusal it cannot answer.
+    private static func resolvedName() async -> String {
+        let n = (try? await API.fetchProfileState())?.identity.full_name ?? ""
+        let trimmed = n.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? "Runner" : trimmed
+    }
+
+    private static let validWeeklyMi = [0, 5, 15, 25, 35, 45, 55, 65, 75, 85, 95]
+
+    private static func snapWeeklyMi(_ mi: Int) -> Int {
+        validWeeklyMi.last(where: { $0 <= mi }) ?? 0
+    }
+
+    /// The band `history_avg_weekly_mi` is derived from, mirroring the v4
+    /// deck's own derivation (`OnboardingView.onboardingPayload`) so the two
+    /// front doors seed the engine identically. Every value is in the route's
+    /// `VALID_HIST_AVG`.
+    private static func histAvgBand(_ mi: Int) -> String {
+        switch mi {
+        case ..<5:  return "0-5"
+        case ..<15: return "5-15"
+        case ..<25: return "15-25"
+        case ..<35: return "25-35"
+        case ..<45: return "35+"
+        case ..<55: return "45+"
+        case ..<65: return "45-60"
+        case ..<85: return "60-80"
+        default:    return "80+"
+        }
+    }
+
     private func submit(_ a: OnboardingV5Answers) async -> OnboardingV5Outcome {
         // ── the plan ──────────────────────────────────────────────────────
         // `distance` is the goal distance; the route validates it against its
         // own set and ignores anything it does not know, so there is no client
         // validation to duplicate here.
+        //
+        // EVERY FIELD BELOW WAS CHECKED AGAINST THE ROUTE'S OWN VALIDATORS
+        // (2026-08-21 onboarding audit). Four of them did not survive the trip:
+        //
+        //   · `name` was never sent, and the route answers `400 name is
+        //     required` before it reads anything else. Every submit from this
+        //     screen refused, with the server's own sentence, no matter what
+        //     the runner answered. The screen has no name field — signup
+        //     already took it — so it is read back off the profile.
+        //   · `weeklyMi` was sent unconditionally from a `10...70` stepper.
+        //     `VALID_WEEKLY_MI` is a fixed rung set, so 24 (the stepper's own
+        //     default) was dropped, AND it was sent for runners who never
+        //     answered a volume question at all — a new runner was claiming a
+        //     24 mi/wk base they had not reported.
+        //   · `weeklyFreq` came off a `2...7` stepper; the route's `VALID_FREQ`
+        //     stops at 6, so a seven-day runner's frequency was dropped.
+        //   · `longRunDay` was patched through /api/settings AFTER this call —
+        //     but this call is what authors the plan, and the generator reads
+        //     `user_settings.long_run_day` while composing. The long run day is
+        //     the training week's boundary, so the first block was built on the
+        //     default Sunday and only later weeks would honour the answer. It
+        //     belongs in this payload, which the route already accepts.
         var payload: [String: Any] = [
             "distance": a.distance,
             "timezone": TimeZone.current.identifier,
             "connectionsSkipped": true,
+            "longRunDay": a.longRunDay,
+            "weeklyFreq": min(max(a.daysPerWeek, 0), 6),
         ]
+        // The route requires a name and the runner already gave one at signup.
+        payload["name"] = await Self.resolvedName()
         if let raceDate = a.raceDate {
             let f = DateFormatter()
             f.dateFormat = "yyyy-MM-dd"
             payload["date"] = f.string(from: raceDate)
         }
         if !a.goalTime.isEmpty { payload["time"] = a.goalTime }
-        payload["weeklyMi"] = a.weeklyMi
-        payload["weeklyFreq"] = a.daysPerWeek
+
+        // VOLUME IS ONLY SENT WHEN THE RUNNER ANSWERED A VOLUME QUESTION.
+        // `weeklyMi` is the follow-up field for exactly one fitness mode; the
+        // other four ask something else, and the stepper's default is not an
+        // answer. A number nobody gave is a modelled number wearing a measured
+        // number's clothes, which is the one thing this app does not do.
+        if a.fitnessMode == .consistent {
+            let mi = Self.snapWeeklyMi(a.weeklyMi)
+            payload["weeklyMi"] = mi
+            payload["histAvg"] = Self.histAvgBand(mi)
+        }
+        // "New to structured training" is the one mode that states a tier the
+        // runner chose themselves. The others leave `experience_level` to the
+        // route's own derivation rather than asserting a ±20 mi/wk claim off an
+        // answer to a different question.
+        if a.fitnessMode == .new { payload["experienceLevel"] = "beginner" }
 
         // A self-reported recent race is the strongest fitness evidence the
-        // runner can give on day one, and the route models it as raceHistory.
-        if a.fitnessMode == .recent,
-           !a.recentRaceDistance.isEmpty, !a.recentRaceTime.isEmpty {
-            payload["raceHistory"] = [[
-                "distance": a.recentRaceDistance,
-                "time": a.recentRaceTime,
-            ]]
-        }
+        // runner can give on day one — and it is NOT sent, because this screen
+        // does not collect what the route needs. `validateRaceHistory` requires
+        // `distance` from a fixed set, `timeSec` as an integer, and `whenRaced`
+        // from `<6mo|6-12mo|1-2yr|2+yr`; the screen has two free-text fields and
+        // never asks when. The previous code posted `{distance: "Half
+        // marathon", time: "1:38:12"}`, which fails all three checks and was
+        // dropped entry-by-entry with no error — the runner's PR looked
+        // accepted and reached nothing. Sending a `whenRaced` the runner never
+        // gave would be inventing evidence, so this stays unsent until the
+        // screen asks the question (the v4 deck already does: distance chips, a
+        // finish-time wheel, and a recency selector).
+        _ = a.recentRaceDistance
 
         do {
             try await API.completeOnboarding(payload: payload)
@@ -1208,14 +1308,16 @@ struct OnboardingHostV5: View {
         }
 
         // ── the week ──────────────────────────────────────────────────────
-        // Availability does NOT go through the onboarding payload; long-run
-        // day and the phone-run switch are settings, and days-per-week lives
-        // on the profile as `weekly_frequency`.
+        // What is left after the payload: the phone-run switch, which is a
+        // setting and not an onboarding field. `long_run_day` and
+        // `weekly_frequency` now ride the payload above (they had to — the plan
+        // is authored inside that call), and are re-sent here only so the two
+        // stores agree if the route ever stops accepting them.
         _ = try? await API.patchSettings([
             "long_run_day": a.longRunDay,
             "phone_run_enabled": a.phoneStart,
         ])
-        _ = try? await API.updateProfile(["weekly_frequency": a.daysPerWeek])
+        _ = try? await API.updateProfile(["weekly_frequency": min(max(a.daysPerWeek, 0), 6)])
         await SettingsCache.shared.invalidate()
 
         // ── day one ───────────────────────────────────────────────────────
