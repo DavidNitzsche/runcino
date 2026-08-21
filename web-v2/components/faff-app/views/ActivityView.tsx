@@ -27,7 +27,27 @@ export function ActivityView({ seed, onOpenRun }: { seed: FaffSeed; onOpenRun?: 
   const [range, setRange] = useState<'month'|'year'|'all'>('year');
   const d = seed.activity.ranges[range];
   const max = Math.max(...d.vol.map(x => x.v));
-  const avgVal = Math.round(d.vol.reduce((s, x) => s + x.v, 0) / d.vol.length);
+  /**
+   * The average line, over the buckets that have actually HAPPENED.
+   *
+   * 2026-08-21 · web audit. This divided by `d.vol.length`, and the year
+   * view always emits twelve months — including the ones still in the
+   * future. On 21 August, 1,087 miles over eight months of running was
+   * divided by twelve and drawn as "AVG 91", a line that sat BELOW EVERY
+   * BAR ON THE CHART. His real average was 136. An average no observation
+   * reaches is visibly not an average, and it is the sort of number a
+   * runner checks his own arithmetic against and loses.
+   *
+   * Averaging to the last bucket carrying miles is the honest window: a
+   * zero month mid-year is a real zero (injury, a break) and still counts,
+   * while the unlived tail of the axis does not. The 'month' and 'all'
+   * ranges end on a bucket with data, so this leaves them as they were.
+   */
+  const lastWithData = d.vol.reduce((last, x, i) => (x.v > 0 ? i : last), -1);
+  const elapsed = lastWithData >= 0 ? d.vol.slice(0, lastWithData + 1) : [];
+  const avgVal = elapsed.length
+    ? Math.round(elapsed.reduce((s, x) => s + x.v, 0) / elapsed.length)
+    : 0;
 
   // Donut math.
   const C = 2 * Math.PI * 42;
@@ -256,7 +276,7 @@ function RecentRunsLog({ recent, onOpenRun }: { recent: RecentRun[]; onOpenRun?:
                 {r.badge === 'RACE' && r.raceSlug ? (
                   <a className="lb race" href={`/goal/${r.raceSlug}`} onClick={(e) => e.stopPropagation()}>RACE</a>
                 ) : r.badge ? (
-                  <span className={`lb ${r.badge === 'NAILED IT' || r.badge === 'SOLID' ? 'ok' : r.badge === 'RACE' ? 'race' : 'pr'}`}>{r.badge}</span>
+                  <span className={`lb ${r.badge === 'ON TARGET' || r.badge === 'SOLID' ? 'ok' : r.badge === 'RACE' ? 'race' : 'pr'}`}>{r.badge}</span>
                 ) : null}
                 <span className="lgo">›</span>
               </div>
