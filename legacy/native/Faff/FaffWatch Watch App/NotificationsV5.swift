@@ -98,9 +98,13 @@ struct FaffNotificationContent {
     /// `.runUnread` — see `FaffNotificationBoard`.
     let targetLabel: String?
 
-    /// What the target opens, when there is one. Carried through so the
-    /// handoff to the phone names the run rather than the app.
-    let runId: String?
+    /// What the target opens, when there is one — the app's own URL, sent by
+    /// the server (`renderRunUnread` sends `faff://today`). Carried through
+    /// so the handoff names the SCREEN rather than just waking the app: the
+    /// phone already knows how to route one of these, and inventing a second
+    /// addressing scheme for the wrist would be a second thing to keep in
+    /// sync with the shell's router.
+    let deeplink: String?
 
     /// The push's dedup key, carried for the anti-nag ledger the SERVER owns.
     /// The watch cannot suppress a notification the OS has already delivered;
@@ -112,14 +116,14 @@ struct FaffNotificationContent {
          kicker: String? = nil,
          sentence: String,
          targetLabel: String? = nil,
-         runId: String? = nil,
+         deeplink: String? = nil,
          dedupKey: String? = nil) {
         self.board = board
         self.lede = lede
         self.kicker = kicker
         self.sentence = sentence
         self.targetLabel = targetLabel
-        self.runId = runId
+        self.deeplink = deeplink
         self.dedupKey = dedupKey
     }
 
@@ -327,7 +331,19 @@ enum FaffNotificationFixtures {
         kicker: "14 mi · still unread",
         sentence: "The long run is in but not judged · this week's shape waits on it.",
         targetLabel: FaffNotificationCopy.openOnPhone,
-        runId: "run-2026-08-20-long"
+        deeplink: "faff://today"
+    )
+
+    /// The same board with the copy the SERVER actually sends today
+    /// (`renderRunUnread`, templates.ts). Kept beside the design fixture on
+    /// purpose: the shell is the thing being reviewed, and the two previews
+    /// side by side are what shows it holds a phrase it was not drawn with.
+    static let runUnreadAsSent = FaffNotificationContent(
+        board: .runUnread,
+        kicker: "The long run is in",
+        sentence: "Not judged yet · this week's shape waits on how it felt.",
+        targetLabel: FaffNotificationCopy.openOnPhone,
+        deeplink: "faff://today"
     )
 
     /// Not a design board — the long-tail check the design does not draw. A
@@ -357,4 +373,8 @@ enum FaffNotificationFixtures {
 
 #Preview("Notification moved · long lede") {
     V5NotificationBoard(content: FaffNotificationFixtures.sessionMovedLong)
+}
+
+#Preview("Notification unread run · as sent") {
+    V5NotificationBoard(content: FaffNotificationFixtures.runUnreadAsSent) { }
 }
