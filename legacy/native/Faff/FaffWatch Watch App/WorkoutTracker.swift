@@ -68,6 +68,96 @@ final class WorkoutTracker: NSObject, ObservableObject {
         distanceSourceUnavailable = true
     }
 
+    // ── Running power (V5 Page 2) ──────────────────────────────────
+    //
+    // Watts, from HKQuantityType(.runningPower). OPTIONAL on purpose and
+    // optional all the way to the board: running power needs an Apple Watch
+    // that produces it and a run that lets it (it does not come off a
+    // treadmill), so "no power" is an ordinary outcome, not a failure. The
+    // design is explicit that an absent value DROPS THE SLOT — Page 2 becomes
+    // a three-metric board — and never becomes a placeholder or a zero. That
+    // only works if this is nil rather than 0, so it is nil.
+    /// Current running power in watts. nil until a real sample lands, and nil
+    /// again once samples stop (see `checkPowerStaleness`).
+    @Published private(set) var powerWatts: Int?
+    /// Whole-run aggregates, same shape as avgHr / avgCadence. Read BEFORE
+    /// `end()` if a completion wants them; reset per run in `start()`.
+    private var powSum = 0
+    private var powCount = 0
+    var avgPowerWatts: Int? { powCount > 0 ? Int((Double(powSum) / Double(powCount)).rounded()) : nil }
+    /// Wall-clock time of the last real power sample; drives the staleness
+    /// watchdog below.
+    private var lastPowerSampleAt: Date?
+    /// Power samples are more sporadic than HR, so a longer fuse than the
+    /// 20 s used for the band.
+    private static let powerStaleAfterSec: TimeInterval = 30
+
+    /// Same argument as `checkHrStaleness()`, applied to power: HealthKit is
+    /// event-driven, so a runner who steps onto a treadmill mid-run (or whose
+    /// watch simply stops producing power) would otherwise keep a frozen
+    /// wattage on Page 2 forever. Dropping back to nil makes the board do the
+    /// thing the design asked for — lose the slot — instead of showing a
+    /// number that stopped being true.
+    ///
+    /// Polled from `applyDeviceReading` (the device monitor's 2 s tick), NOT
+    /// from the engine's 1 Hz clock: the monitor already runs for exactly the
+    /// lifetime of a run, and this pass does not edit WorkoutEngine.
+    private func checkPowerStaleness() {
+        guard powerWatts != nil, let last = lastPowerSampleAt else { return }
+        if Date.now.timeIntervalSince(last) >= Self.powerStaleAfterSec {
+            powerWatts = nil
+        }
+    }
+
+    // ── Device conditions (V5 `Low battery` / `Water lock` / Always-On) ──
+    //
+    // Everything here describes the WATCH, not the run. None of it may
+    // influence recording: rule 8 says a flat battery, a locked screen and a
+    // dark display all leave the run running. These are published for boards
+    // to read and for nothing else.
+    /// Battery 0…100, or nil when the device will not report a level. The
+    /// `Low battery` board draws this because it is a real reading.
+    @Published private(set) var batteryPercent: Int?
+    /// Minutes of running the watch can still hold, MEASURED from this run's
+    /// own drain — or nil. Never a constant. See `BatteryDrainEstimator`: it
+    /// needs two observed battery-level transitions before it will answer, so
+    /// nil is common, especially early. The board drops the clause; it does
+    /// not guess.
+    @Published private(set) var batteryProjectedMinutes: Int?
+    /// True while watchOS water lock is engaged. Recording continues — this
+    /// flag pauses nothing, ends nothing and gates no sensor. The board's job
+    /// is to prove exactly that.
+    @Published private(set) var isWaterLocked = false
+    /// True while the display is in Always-On / wrist-down reduced luminance.
+    /// Pushed in from SwiftUI via `.faffTracksLuminance(tracker)` — there is
+    /// no imperative API for it (see `WatchLuminanceBridge`).
+    @Published private(set) var isLuminanceReduced = false
+
+    /// Set by the SwiftUI luminance bridge. Deliberately NOT reset in
+    /// `start()`/`end()`: it describes the display, not the run.
+    func setLuminanceReduced(_ reduced: Bool) {
+        guard reduced != isLuminanceReduced else { return }
+        isLuminanceReduced = reduced
+    }
+
+    /// Polls battery + water lock for the lifetime of a run. Lazy so the
+    /// WKInterfaceDevice opt-in never happens for an app that never runs.
+    private lazy var deviceMonitor: WatchDeviceMonitor = WatchDeviceMonitor { [weak self] reading in
+        self?.applyDeviceReading(reading)
+    }
+
+    /// Republish only on change. The monitor ticks every 2 s; firing
+    /// `objectWillChange` on every tick would re-render every bound face
+    /// twice a minute for no new information.
+    private func applyDeviceReading(_ reading: WatchDeviceMonitor.Reading) {
+        if batteryPercent != reading.batteryPercent { batteryPercent = reading.batteryPercent }
+        if batteryProjectedMinutes != reading.batteryProjectedMinutes {
+            batteryProjectedMinutes = reading.batteryProjectedMinutes
+        }
+        if isWaterLocked != reading.isWaterLocked { isWaterLocked = reading.isWaterLocked }
+        checkPowerStaleness()
+    }
+
     private var mockTask: Task<Void, Never>?
     private var mockPaused = false
     /// The pace the simulator mock oscillates around (s/mi). The engine sets
@@ -150,6 +240,11 @@ final class WorkoutTracker: NSObject, ObservableObject {
             HKQuantityType(.distanceWalkingRunning),
             HKQuantityType(.activeEnergyBurned),
             HKQuantityType(.runningSpeed),   // device pace (treadmill + outdoor), not just GPS
+            // Running power (watchOS 9+, deployment target here is 10.0 so no
+            // availability guard is needed). Added to THIS set rather than a
+            // second request — a second requestAuthorization call would put a
+            // second consent sheet in front of the runner.
+            HKQuantityType(.runningPower),
             HKObjectType.workoutType(),
             HKSeriesType.workoutRoute(),
         ]
@@ -211,7 +306,19 @@ final class WorkoutTracker: NSObject, ObservableObject {
         smoothedPaceSec = 0
         lastHrSampleAt = nil   // P2-53 · fresh watchdog per run
         distanceSourceUnavailable = false   // P2-56 · fresh per run
+        // Power is fresh per run for the same reason distance is: a wattage
+        // carried over from the last run reads as live on Page 2.
+        powerWatts = nil; powSum = 0; powCount = 0; lastPowerSampleAt = nil
         mockPaused = false
+
+        // Device conditions come online for the whole run — including in the
+        // simulator, where they simply report whatever the sim reports (no
+        // water lock, and whatever battery simctl is faking). Started BEFORE
+        // the simulator early-return below so the state surface is identical
+        // on both paths, and before the `available` guard so a watch that
+        // cannot open an HKWorkoutSession still gets its battery board.
+        deviceMonitor.start()
+
         #if targetEnvironment(simulator)
         startSimulatorMock(); return
         #endif
@@ -222,7 +329,14 @@ final class WorkoutTracker: NSObject, ObservableObject {
         do {
             let s = try HKWorkoutSession(healthStore: healthStore, configuration: config)
             let b = s.associatedWorkoutBuilder()
-            b.dataSource = HKLiveWorkoutDataSource(healthStore: healthStore, workoutConfiguration: config)
+            let ds = HKLiveWorkoutDataSource(healthStore: healthStore, workoutConfiguration: config)
+            // Running power is NOT part of the default collection set for a
+            // running configuration — it has to be asked for by name. Harmless
+            // on a watch that cannot produce it or a runner who denied the
+            // read: no samples land, `powerWatts` stays nil, and Page 2 draws
+            // three metrics. Non-throwing, so it cannot break Start.
+            ds.enableCollection(for: HKQuantityType(.runningPower), predicate: nil)
+            b.dataSource = ds
             s.delegate = self
             b.delegate = self
             session = s
@@ -292,6 +406,10 @@ final class WorkoutTracker: NSObject, ObservableObject {
 
     /// Pause the tracked session (stoplight / water stop). Live sampling
     /// and the route halt; resume() picks them back up.
+    ///
+    /// The device monitor deliberately keeps polling through a pause: the
+    /// battery still drains while the runner stands at the lights, and a
+    /// water lock engaged during a pause still needs its board.
     func pause() {
         #if targetEnvironment(simulator)
         mockPaused = true; return
@@ -314,6 +432,15 @@ final class WorkoutTracker: NSObject, ObservableObject {
     func end() async {
         mockTask?.cancel(); mockTask = nil
         pedometer.stopUpdates()
+        // BEFORE the guard below — that guard returns early on the simulator
+        // path and on a run that never opened a session, and the monitor is
+        // started on both of those paths too. Stopping it here is the only
+        // placement that always runs.
+        deviceMonitor.stop()
+        // Monitoring is off, so these are no longer things we know. Claiming
+        // a water lock we can no longer observe would be the same class of
+        // lie as a frozen heart rate.
+        batteryPercent = nil; batteryProjectedMinutes = nil; isWaterLocked = false
         guard let session, let builder else { isRecording = false; return }
         locationManager.stopUpdatingLocation()
         let end = Date()
@@ -391,8 +518,13 @@ final class WorkoutTracker: NSObject, ObservableObject {
         b.delegate = self
         // Recreate the live data source (Apple's documented recovery
         // pattern) so post-recovery samples keep landing in the builder.
-        b.dataSource = HKLiveWorkoutDataSource(healthStore: healthStore,
-                                               workoutConfiguration: s.workoutConfiguration)
+        let ds = HKLiveWorkoutDataSource(healthStore: healthStore,
+                                         workoutConfiguration: s.workoutConfiguration)
+        // Same opt-in as start() — the recreated data source starts from
+        // defaults, so power has to be re-enabled or Page 2 silently loses
+        // its slot for the rest of a recovered run.
+        ds.enableCollection(for: HKQuantityType(.runningPower), predicate: nil)
+        b.dataSource = ds
         session = s
         builder = b
         // Fresh route builder — the pre-crash one (and its un-finished route
@@ -427,6 +559,19 @@ final class WorkoutTracker: NSObject, ObservableObject {
         // uncatchable NSException (the mile-1 crash — see start()). A
         // recovered run gets haptic-only cues; ChimePlayer.play() safely
         // no-ops while inactive.
+
+        // Device conditions back online. The battery estimator starts a fresh
+        // measurement window here, which is correct: the pre-crash window
+        // died with the old process and there is no honest way to reconstruct
+        // it. `batteryProjectedMinutes` therefore stays nil for a while after
+        // a recovery — the right answer, not a regression.
+        deviceMonitor.start()
+        // Power is a live read, so a recovered run starts it empty and lets
+        // the first post-recovery sample fill it. The aggregates are NOT
+        // reset: on this path the engine's own accumulators are already
+        // known to cover post-recovery time only (see recoveredStats()).
+        powerWatts = nil
+        lastPowerSampleAt = nil
 
         isRecording = true
         seedFromBuilderStatistics()
@@ -505,7 +650,8 @@ final class WorkoutTracker: NSObject, ObservableObject {
 
     // MARK: - Apply samples (main actor)
 
-    fileprivate func apply(hr: Int?, dist: Double?, energy: Int?, speedMps: Double? = nil) {
+    fileprivate func apply(hr: Int?, dist: Double?, energy: Int?, speedMps: Double? = nil,
+                           powerW: Double? = nil) {
         if let hr, hr > 0 {
             heartRate = hr
             lastHrSampleAt = .now       // P2-53 · marks this reading live
@@ -524,6 +670,18 @@ final class WorkoutTracker: NSObject, ObservableObject {
             let clamped = min(max(raw, 150), 2400)        // 2:30…40:00 /mi sanity band
             smoothedPaceSec = smoothedPaceSec == 0 ? clamped : smoothedPaceSec * 0.7 + clamped * 0.3
             paceSPerMi = Int(smoothedPaceSec.rounded())
+        }
+        // Running power. Sanity-banded the same way pace is: a running human
+        // is a low-hundreds-of-watts machine, so anything outside 20…2000 W
+        // is a sensor artefact and is dropped rather than drawn. Out-of-band
+        // samples do NOT refresh `lastPowerSampleAt`, so a sensor producing
+        // only junk correctly ages out to nil instead of holding the slot.
+        if let powerW, powerW >= 20, powerW <= 2000 {
+            let w = Int(powerW.rounded())
+            powerWatts = w
+            lastPowerSampleAt = .now
+            powSum += w
+            powCount += 1
         }
     }
 
@@ -600,6 +758,7 @@ extension WorkoutTracker: HKLiveWorkoutBuilderDelegate {
         var dist: Double?
         var energy: Int?
         var speed: Double?
+        var power: Double?
         for type in collectedTypes {
             guard let qt = type as? HKQuantityType,
                   let stats = workoutBuilder.statistics(for: qt) else { continue }
@@ -611,12 +770,16 @@ extension WorkoutTracker: HKLiveWorkoutBuilderDelegate {
                 if let q = stats.sumQuantity() { energy = Int(q.doubleValue(for: .kilocalorie()).rounded()) }
             } else if qt == HKQuantityType(.runningSpeed) {
                 if let q = stats.mostRecentQuantity() { speed = q.doubleValue(for: mps) }
+            } else if qt == HKQuantityType(.runningPower) {
+                if let q = stats.mostRecentQuantity() { power = q.doubleValue(for: .watt()) }
             }
         }
         // Capture by value — the loop is done mutating these, and capturing the
         // `var`s directly in the concurrent Task is a Swift 6 error.
-        let hrV = hr, distV = dist, energyV = energy, speedV = speed
-        Task { @MainActor in self.apply(hr: hrV, dist: distV, energy: energyV, speedMps: speedV) }
+        let hrV = hr, distV = dist, energyV = energy, speedV = speed, powerV = power
+        Task { @MainActor in
+            self.apply(hr: hrV, dist: distV, energy: energyV, speedMps: speedV, powerW: powerV)
+        }
     }
 }
 

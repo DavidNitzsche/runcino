@@ -328,6 +328,334 @@ extension WatchWorkout {
     }
 }
 
+// MARK: - Incoming · 0821 lobby glance (additive · 2026-08-21 · server 82d3b1f7)
+//
+// GET /api/watch/today gained three OPTIONAL objects that ride BOTH
+// branches of the response — the one with a `workout` and the one with
+// only a `message`. Server side they are declared in
+// web-v2/lib/watch/build-workout.ts (WatchWeekStrip / WatchSessionMoved /
+// WatchDayState / WatchTodayGlance):
+//
+//   · weekStrip    → the lobby's "This week" page
+//   · sessionMoved → the "the session already moved" lobby variant
+//   · dayState     → the two structured empty states (rest / no session)
+//
+// Everything here is ADDITIVE. A payload that predates these keys decodes
+// exactly as it decoded before, because each object is optional AND is
+// read with `try?` at the envelope, so a malformed or newer-shaped glance
+// object can never cost the runner the workout it arrived beside.
+//
+// Two conventions carried over from the rest of this file:
+//
+//   · Ints go through the lenient helpers (M-13). A fractional `dow` must
+//     not be able to invalidate a day's payload the way readinessScore
+//     67.4 once did.
+//   · The wire's string enumerations — `state`, `kind`, `actionKind` — are
+//     decoded as RAW STRINGS, not Swift enums. A value a newer server
+//     invents has to read as "unrecognised" at the face, not throw here.
+//     Typed accessors sit next to each one for callers that want a case.
+
+/// One day of the lobby's week strip. `state` is the design's three-way
+/// read; `isPast` rides alongside it so a past day nobody ran is not drawn
+/// as though it were still to come.
+struct WatchWeekStripDay: Codable, Identifiable {
+    /// Stable identity for SwiftUI · the wire has no per-day id.
+    var id: String { dateIso }
+    let dateIso: String
+    /// 0=Sun .. 6=Sat
+    let dow: Int
+    /// The strip's 10 pt day letter.
+    let letter: String
+    /// "done" · "today" · "remaining" — raw, see the note above.
+    let state: String
+    let isPast: Bool
+    /// plan_workouts.type · "rest" on a synthesised rest day.
+    let type: String
+    let plannedMi: Double
+    /// Canonical actual mileage. nil when nothing was run — never a zero
+    /// standing in for one.
+    let doneMi: Double?
+
+    var isToday: Bool { state == "today" }
+    var isDone: Bool { state == "done" }
+
+    private enum CodingKeys: String, CodingKey {
+        case dateIso, dow, letter, state, isPast, type, plannedMi, doneMi
+    }
+
+    init(dateIso: String, dow: Int, letter: String, state: String, isPast: Bool,
+         type: String, plannedMi: Double, doneMi: Double? = nil) {
+        self.dateIso = dateIso
+        self.dow = dow
+        self.letter = letter
+        self.state = state
+        self.isPast = isPast
+        self.type = type
+        self.plannedMi = plannedMi
+        self.doneMi = doneMi
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.dateIso = try c.decode(String.self, forKey: .dateIso)
+        // Lenient (M-13) · a day-of-week that arrives 3.0 is still Wednesday.
+        self.dow = try c.lenientInt(forKey: .dow)
+        self.letter = try c.decodeIfPresent(String.self, forKey: .letter) ?? ""
+        self.state = try c.decodeIfPresent(String.self, forKey: .state) ?? "remaining"
+        self.isPast = try c.decodeIfPresent(Bool.self, forKey: .isPast) ?? false
+        self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? "rest"
+        self.plannedMi = try c.decodeIfPresent(Double.self, forKey: .plannedMi) ?? 0
+        self.doneMi = try c.decodeIfPresent(Double.self, forKey: .doneMi)
+    }
+}
+
+/// The lobby's "This week" page · seven days plus "18 of 42 mi". Projected
+/// server-side from the SAME week loader /api/plan/week and /api/v5/today
+/// read, so the wrist's week and the phone's week cannot disagree.
+struct WatchWeekStrip: Codable {
+    let weekStartIso: String
+    let weekEndIso: String
+    /// Miles actually run across the window, one decimal.
+    let milesDone: Double
+    /// Miles the plan asked for across the window, one decimal.
+    let milesPlanned: Double
+    /// Always seven, in day order.
+    let days: [WatchWeekStripDay]
+
+    private enum CodingKeys: String, CodingKey {
+        case weekStartIso, weekEndIso, milesDone, milesPlanned, days
+    }
+
+    init(weekStartIso: String, weekEndIso: String, milesDone: Double,
+         milesPlanned: Double, days: [WatchWeekStripDay]) {
+        self.weekStartIso = weekStartIso
+        self.weekEndIso = weekEndIso
+        self.milesDone = milesDone
+        self.milesPlanned = milesPlanned
+        self.days = days
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.weekStartIso = try c.decode(String.self, forKey: .weekStartIso)
+        self.weekEndIso = try c.decode(String.self, forKey: .weekEndIso)
+        self.milesDone = try c.decodeIfPresent(Double.self, forKey: .milesDone) ?? 0
+        self.milesPlanned = try c.decodeIfPresent(Double.self, forKey: .milesPlanned) ?? 0
+        self.days = try c.decodeIfPresent([WatchWeekStripDay].self, forKey: .days) ?? []
+    }
+}
+
+/// Lobby variant · the session ALREADY changed, and the reason is stated
+/// once. Deliberately carries no score: readinessScore / readinessLabel on
+/// WatchWorkout are untouched and separate — this is not them.
+struct WatchSessionMoved: Codable {
+    /// The coach's own reason, citation-scrubbed at source.
+    let reason: String?
+    /// What the day used to be · "was six miles".
+    let wasLine: String?
+    /// The two composed into the one line the board draws.
+    let line: String
+    let originalType: String?
+    let originalSubLabel: String?
+    let originalDistanceMi: Double?
+    /// AdaptationInfo.kind · "downgrade" · "reschedule" · "shave" · …
+    let kind: String?
+    let adaptedAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case reason, wasLine, line, originalType, originalSubLabel
+        case originalDistanceMi, kind, adaptedAt
+    }
+
+    init(reason: String? = nil, wasLine: String? = nil, line: String,
+         originalType: String? = nil, originalSubLabel: String? = nil,
+         originalDistanceMi: Double? = nil, kind: String? = nil,
+         adaptedAt: String? = nil) {
+        self.reason = reason
+        self.wasLine = wasLine
+        self.line = line
+        self.originalType = originalType
+        self.originalSubLabel = originalSubLabel
+        self.originalDistanceMi = originalDistanceMi
+        self.kind = kind
+        self.adaptedAt = adaptedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.reason = try c.decodeIfPresent(String.self, forKey: .reason)
+        self.wasLine = try c.decodeIfPresent(String.self, forKey: .wasLine)
+        // `line` is the only thing the board actually draws. The server
+        // emits nothing at all rather than a line it cannot compose, so an
+        // object that arrives without one has nothing to say either.
+        self.line = try c.decode(String.self, forKey: .line)
+        self.originalType = try c.decodeIfPresent(String.self, forKey: .originalType)
+        self.originalSubLabel = try c.decodeIfPresent(String.self, forKey: .originalSubLabel)
+        self.originalDistanceMi = try c.decodeIfPresent(Double.self, forKey: .originalDistanceMi)
+        self.kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        self.adaptedAt = try c.decodeIfPresent(String.self, forKey: .adaptedAt)
+    }
+}
+
+/// Why there is no prescribed session. `kind == "rest"` is a planned rest
+/// day and is its own board; every other value is the No-session board.
+/// The flat `message` string still rides the response beside this, so a
+/// deployed watch that knows nothing of dayState keeps working.
+struct WatchDayState: Codable {
+    /// "rest" · "no_session"
+    let kind: String
+    /// nil on rest · otherwise "injury" · "sick" · "week_off" ·
+    /// "off_season" · "no_plan" · "nothing_scheduled".
+    let reason: String?
+    /// Display lede · "Nothing today" · "Week off" · "Off-season".
+    let title: String
+    /// The reasoned coach sentence. A clause whose evidence is missing is
+    /// dropped at source rather than guessed, so this is safe to draw whole.
+    let coachLine: String
+    /// The board's one target · "Run anyway" · "Just run".
+    let actionLabel: String
+    /// "run_anyway" · "just_run"
+    let actionKind: String
+    /// Evidence behind `coachLine`, carried separately so the watch can
+    /// recompose it. nil when unknown — never a zero standing in for one.
+    let weekMilesDone: Double?
+    let weekMilesPlanned: Double?
+    /// "Sunday" · the day this week's long run falls on.
+    let longRunDayName: String?
+    let longRunIsPast: Bool
+    let longRunDone: Bool
+    /// "Monday" plus its date · when the block resumes. Week-off only.
+    let resumesDayName: String?
+    let resumesIso: String?
+
+    var isRestDay: Bool { kind == "rest" }
+    var isJustRun: Bool { actionKind == "just_run" }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, reason, title, coachLine, actionLabel, actionKind
+        case weekMilesDone, weekMilesPlanned
+        case longRunDayName, longRunIsPast, longRunDone
+        case resumesDayName, resumesIso
+    }
+
+    init(kind: String, reason: String? = nil, title: String, coachLine: String,
+         actionLabel: String, actionKind: String,
+         weekMilesDone: Double? = nil, weekMilesPlanned: Double? = nil,
+         longRunDayName: String? = nil, longRunIsPast: Bool = false,
+         longRunDone: Bool = false, resumesDayName: String? = nil,
+         resumesIso: String? = nil) {
+        self.kind = kind
+        self.reason = reason
+        self.title = title
+        self.coachLine = coachLine
+        self.actionLabel = actionLabel
+        self.actionKind = actionKind
+        self.weekMilesDone = weekMilesDone
+        self.weekMilesPlanned = weekMilesPlanned
+        self.longRunDayName = longRunDayName
+        self.longRunIsPast = longRunIsPast
+        self.longRunDone = longRunDone
+        self.resumesDayName = resumesDayName
+        self.resumesIso = resumesIso
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "no_session"
+        self.reason = try c.decodeIfPresent(String.self, forKey: .reason)
+        self.title = try c.decode(String.self, forKey: .title)
+        self.coachLine = try c.decodeIfPresent(String.self, forKey: .coachLine) ?? ""
+        self.actionLabel = try c.decodeIfPresent(String.self, forKey: .actionLabel) ?? "Just run"
+        self.actionKind = try c.decodeIfPresent(String.self, forKey: .actionKind) ?? "just_run"
+        self.weekMilesDone = try c.decodeIfPresent(Double.self, forKey: .weekMilesDone)
+        self.weekMilesPlanned = try c.decodeIfPresent(Double.self, forKey: .weekMilesPlanned)
+        self.longRunDayName = try c.decodeIfPresent(String.self, forKey: .longRunDayName)
+        self.longRunIsPast = try c.decodeIfPresent(Bool.self, forKey: .longRunIsPast) ?? false
+        self.longRunDone = try c.decodeIfPresent(Bool.self, forKey: .longRunDone) ?? false
+        self.resumesDayName = try c.decodeIfPresent(String.self, forKey: .resumesDayName)
+        self.resumesIso = try c.decodeIfPresent(String.self, forKey: .resumesIso)
+    }
+}
+
+/// The three glance objects on their own. Because JSONDecoder ignores keys
+/// it was not asked for, this decodes straight out of the FULL
+/// /api/watch/today body as well as out of a bridge payload carrying only
+/// the glance — the iPhone relay can forward either without reshaping.
+struct WatchTodayGlance: Codable {
+    let weekStrip: WatchWeekStrip?
+    let sessionMoved: WatchSessionMoved?
+    let dayState: WatchDayState?
+
+    var isEmpty: Bool { weekStrip == nil && sessionMoved == nil && dayState == nil }
+
+    private enum CodingKeys: String, CodingKey {
+        case weekStrip, sessionMoved, dayState
+    }
+
+    init(weekStrip: WatchWeekStrip? = nil, sessionMoved: WatchSessionMoved? = nil,
+         dayState: WatchDayState? = nil) {
+        self.weekStrip = weekStrip
+        self.sessionMoved = sessionMoved
+        self.dayState = dayState
+    }
+
+    /// Never throws on the glance itself. Each object is read with `try?`:
+    /// a shape this build does not understand reads as absent, which is
+    /// exactly what every build before it saw.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.weekStrip = (try? c.decodeIfPresent(WatchWeekStrip.self, forKey: .weekStrip)) ?? nil
+        self.sessionMoved = (try? c.decodeIfPresent(WatchSessionMoved.self, forKey: .sessionMoved)) ?? nil
+        self.dayState = (try? c.decodeIfPresent(WatchDayState.self, forKey: .dayState)) ?? nil
+    }
+}
+
+/// The whole GET /api/watch/today body · either branch. `workout` and
+/// `message` are mutually exclusive on the wire; the glance rides both.
+///
+/// The workout is decoded STRICTLY on purpose. A workout that fails to
+/// decode has to surface (PhoneSync records it in lastSyncError — M-13 was
+/// exactly that failure going silent); a glance object that fails to decode
+/// must not, because the runner can still execute the session without it.
+struct WatchTodayResponse: Codable {
+    let workout: WatchWorkout?
+    /// The flat line every deployed watch already renders on a rest /
+    /// no-plan day. Unchanged, and still the fallback when `dayState` is
+    /// absent.
+    let message: String?
+    let weekStrip: WatchWeekStrip?
+    let sessionMoved: WatchSessionMoved?
+    let dayState: WatchDayState?
+
+    var glance: WatchTodayGlance {
+        WatchTodayGlance(weekStrip: weekStrip, sessionMoved: sessionMoved, dayState: dayState)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case workout, message, weekStrip, sessionMoved, dayState
+    }
+
+    init(workout: WatchWorkout? = nil, message: String? = nil,
+         weekStrip: WatchWeekStrip? = nil, sessionMoved: WatchSessionMoved? = nil,
+         dayState: WatchDayState? = nil) {
+        self.workout = workout
+        self.message = message
+        self.weekStrip = weekStrip
+        self.sessionMoved = sessionMoved
+        self.dayState = dayState
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.workout = try c.decodeIfPresent(WatchWorkout.self, forKey: .workout)
+        self.message = try c.decodeIfPresent(String.self, forKey: .message)
+        let g = try WatchTodayGlance(from: decoder)
+        self.weekStrip = g.weekStrip
+        self.sessionMoved = g.sessionMoved
+        self.dayState = g.dayState
+    }
+}
+
 // MARK: - Outgoing · completion writeback (phase 6)
 
 // MARK: - Tier 1 telemetry samples
@@ -489,6 +817,155 @@ struct WatchCompletion: Encodable {
     /// coarse Open-Meteo polyline estimate (lib/runs/elev-from-gps.ts). nil
     /// when no valid vertical fixes were collected (indoor, simulator).
     var elevGainFt: Double? = nil
+
+    // ── 0821 · the three wrist decisions (additive · 2026-08-21) ─────────
+    //
+    // The bail already rides the completion's rule outcomes. These are the
+    // three decisions the runner could take on the wrist and the payload
+    // had nowhere to put. Server side: web-v2/app/api/watch/workouts/
+    // complete/route.ts (WatchCompletionBody.ceilingLift / repSkips /
+    // recoveryExtensions).
+    //
+    // camelCase is not a style choice here. WatchCompletion is Encodable
+    // with NO CodingKeys, so the wire IS these stored-property names — a
+    // server reading route_polyline while Swift emitted routePolyline
+    // silently dropped every GPS track for a day (6616d766). The CI gate
+    // scripts/check-wire-keys.sh reads this struct's property names and
+    // requires each to exist in web-v2, which is why these types are
+    // NESTED here rather than declared beside it: the extractor walks this
+    // struct's braces, so a nested field is watched and a sibling struct's
+    // field is not.
+    //
+    // TWO CONTRACTS THESE SHAPES HOLD:
+    //
+    //  1 · A DECISION IS NOT A LAPSE, AND THE DATA SAYS SO. A phase's
+    //      `completed == false` means "this rep did not happen" and says
+    //      nothing about why — a rep the runner chose to skip and a rep
+    //      that fell over when the watch died are the same value. So a
+    //      skip is an EXPLICIT record, never a flag inferred from the
+    //      phase array. "Was this chosen?" is answered by a field.
+    //
+    //  2 · EVERY DECISION CARRIES ITS OWN QUANTITIES. The phone owns the
+    //      sentences; what has to arrive is every number they need — the
+    //      reading AND the limit, never a delta ("ran to 174, the ceiling
+    //      was 165", not "+9 over"); which rep and out of how many; how
+    //      many extensions and between which reps.
+    //
+    // NOT carried: temperature. Nothing here has a thermometer — a run's
+    // temperature is a weather model for a grid square and an hour bucket.
+    // The phone gets that clause from the run row's own enrichment, and
+    // drops it when it is absent. Sending it from the wrist would launder
+    // a model into a reading.
+    //
+    // SEND ONLY WHAT EXISTS. All three are nil by default and the
+    // synthesized Encodable emits nothing at all for a nil (encodeIfPresent
+    // semantics), so an unremarkable run's payload is byte-identical to the
+    // one it sent before this shipped. Never assign an EMPTY array: the
+    // server merges onto runs.data, and `[]` would overwrite a sibling
+    // payload's real value with nothing. Use the record… helpers below,
+    // which only ever create an array by putting something in it.
+
+    /// The HR ceiling was lifted FOR THE DAY. Singular by design: the board
+    /// asks once and the answer holds for the rest of the run.
+    struct CeilingLift: Encodable {
+        /// The ceiling that was in force, bpm.
+        let ceilingBpm: Int?
+        /// What HR actually read at the moment it was lifted, bpm.
+        let readingBpm: Int?
+        let phaseIndex: Int?
+        let phaseLabel: String?
+        let atMi: Double?
+        let atSec: Int?
+
+        init(ceilingBpm: Int? = nil, readingBpm: Int? = nil,
+             phaseIndex: Int? = nil, phaseLabel: String? = nil,
+             atMi: Double? = nil, atSec: Int? = nil) {
+            self.ceilingBpm = ceilingBpm
+            self.readingBpm = readingBpm
+            self.phaseIndex = phaseIndex
+            self.phaseLabel = phaseLabel
+            self.atMi = atMi
+            self.atSec = atSec
+        }
+    }
+
+    /// One rep the runner CHOSE to skip. Distinct from a phase carrying
+    /// `completed == false`, which is every OTHER way a rep fails to happen.
+    struct RepSkip: Encodable {
+        /// 1-based · which rep was skipped ("the fourth rep").
+        let repIndex: Int?
+        /// How many reps the session asked for ("of six").
+        let repCount: Int?
+        /// How many were actually run ("Five of six"). nil when the watch
+        /// does not know — the phone drops that half of the line rather
+        /// than computing it.
+        let repsCompleted: Int?
+        let phaseIndex: Int?
+        let phaseLabel: String?
+        let atMi: Double?
+        let atSec: Int?
+
+        init(repIndex: Int? = nil, repCount: Int? = nil, repsCompleted: Int? = nil,
+             phaseIndex: Int? = nil, phaseLabel: String? = nil,
+             atMi: Double? = nil, atSec: Int? = nil) {
+            self.repIndex = repIndex
+            self.repCount = repCount
+            self.repsCompleted = repsCompleted
+            self.phaseIndex = phaseIndex
+            self.phaseLabel = phaseLabel
+            self.atMi = atMi
+            self.atSec = atSec
+        }
+    }
+
+    /// One recovery extension · one entry per +30 s, so the count is the
+    /// array length ("Twice") and the boundaries are on the entries
+    /// ("between reps two and four").
+    struct RecoveryExtension: Encodable {
+        /// 1-based · the rep just finished.
+        let afterRepIndex: Int?
+        /// 1-based · the rep it delayed.
+        let beforeRepIndex: Int?
+        let repCount: Int?
+        /// Seconds THIS one extension added.
+        let addedSec: Int?
+        let phaseIndex: Int?
+        let phaseLabel: String?
+        let atSec: Int?
+
+        init(afterRepIndex: Int? = nil, beforeRepIndex: Int? = nil,
+             repCount: Int? = nil, addedSec: Int? = nil,
+             phaseIndex: Int? = nil, phaseLabel: String? = nil, atSec: Int? = nil) {
+            self.afterRepIndex = afterRepIndex
+            self.beforeRepIndex = beforeRepIndex
+            self.repCount = repCount
+            self.addedSec = addedSec
+            self.phaseIndex = phaseIndex
+            self.phaseLabel = phaseLabel
+            self.atSec = atSec
+        }
+    }
+
+    /// nil unless the runner lifted the ceiling. Omitted from the wire when nil.
+    var ceilingLift: CeilingLift? = nil
+    /// nil unless at least one rep was skipped BY CHOICE. Never `[]` — see
+    /// recordRepSkip.
+    var repSkips: [RepSkip]? = nil
+    /// nil unless at least one recovery was extended. Never `[]` — see
+    /// recordRecoveryExtension.
+    var recoveryExtensions: [RecoveryExtension]? = nil
+
+    /// Append one skip, holding the wire contract: the field is either
+    /// absent or a non-empty array. Assigning `[]` by hand would clobber a
+    /// sibling payload's value on the server's jsonb merge.
+    mutating func recordRepSkip(_ skip: RepSkip) {
+        repSkips = (repSkips ?? []) + [skip]
+    }
+
+    /// Append one extension. Same contract as recordRepSkip.
+    mutating func recordRecoveryExtension(_ ext: RecoveryExtension) {
+        recoveryExtensions = (recoveryExtensions ?? []) + [ext]
+    }
 }
 
 // MARK: - Training fueling (time-anchored gel plan)
