@@ -8607,6 +8607,114 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  /**
+   * 2026-08-21 · THE THIRD BUCKET. `INTENSITY.non-easy-remainder` binds
+   * Research/00a's TID table, which is a TWO-way split above Z1: threshold and
+   * hard. `DOSING.weekly-cap-column` binds each pace's individual ceiling.
+   * Between them sits the sentence Research/01 puts directly under the caps
+   * table, and it is the only place in the corpus that GROUPS them:
+   *
+   *   "Polarized distribution Daniels recommends: 70–80% E, 10–15% M+T,
+   *    10–15% I+R."
+   *
+   * The engine measures two buckets — easy and quality — so it can satisfy
+   * every per-pace cap and every TID row and still author a week whose M+T
+   * group is nowhere near where Daniels puts it. This claim closes that by
+   * requiring the ceilings the engine DOES carry to fit inside the groups, and
+   * by requiring the easy floor to be a distribution Daniels recognises rather
+   * than a number beside one.
+   *
+   * It also records, rather than hides, that doctrine says two things here.
+   * The caps table's Weekly-cap column reads "n/a" for M, and
+   * `DOSING.marathon-pace-workout-ceiling` REQUIRES the engine to record that
+   * silence as null. This sentence bounds M anyway, in a group. The engine
+   * implements the table and not the sentence; the exemption below says so.
+   */
+  {
+    id: 'DOSING.daniels-three-bucket-distribution',
+    binds: [
+      'lib/prescription/levers.ts#AT_PACE_WEEKLY_SHARE_CAP',
+      'lib/plan/intensity-distribution.ts#EASY_SHARE_FLOOR',
+      'lib/plan/dosing.ts#weeklyShareCap',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: 'Polarized distribution Daniels recommends:',
+    claim:
+      'Daniels splits a week three ways, not two: easy, the marathon-and-threshold group, and ' +
+      'the interval-and-repetition group, each with its own band. The engine only ever measures ' +
+      'easy against everything-else, so the per-pace caps have to be grouped Daniels\' way and ' +
+      'checked against his bands — a week can honour every individual cap, clear the easy floor, ' +
+      'and still put its quality in the wrong two-thirds of the distribution.',
+    check({ cite, exempt }) {
+      // All three bands read out of the sentence itself, in the order it states
+      // them: E, then M+T, then I+R.
+      const bands = parseBands(cite.section[0]).map(([lo, hi]) => [lo / 100, hi / 100] as const);
+      if (bands.length !== 3) {
+        throw new Error(
+          `the polarized-distribution sentence now states ${bands.length} bands, not the three ` +
+            'this claim groups the engine into · re-read it before touching anything',
+        );
+      }
+      const [easyBand, mtBand, irBand] = bands;
+
+      // 1 · The easy floor has to BE a distribution Daniels recognises.
+      if (EASY_SHARE_FLOOR < easyBand[0] - 1e-9 || EASY_SHARE_FLOOR > easyBand[1] + 1e-9) {
+        throw new Error(
+          `EASY_SHARE_FLOOR is ${EASY_SHARE_FLOOR}, outside Daniels' easy band ` +
+            `${easyBand[0]}-${easyBand[1]} · the engine's floor is not a polarized week`,
+        );
+      }
+
+      // 2 · I+R. Both members carry a weekly cap, so the group's ceiling is
+      // the sum of them and it must fit inside the group's band.
+      const irCeiling = AT_PACE_WEEKLY_SHARE_CAP.interval + AT_PACE_WEEKLY_SHARE_CAP.repetition;
+      if (irCeiling > irBand[1] + 1e-9) {
+        throw new Error(
+          `the I and R weekly caps sum to ${(irCeiling * 100).toFixed(1)}% of a week, past ` +
+            `Daniels' I+R ceiling of ${(irBand[1] * 100).toFixed(0)}%`,
+        );
+      }
+
+      // 3 · M+T. T carries a weekly cap; M's is null by doctrine's own silence.
+      const tCeiling = AT_PACE_WEEKLY_SHARE_CAP.threshold;
+      if (tCeiling > mtBand[1] + 1e-9) {
+        throw new Error(
+          `the T weekly cap alone is ${(tCeiling * 100).toFixed(1)}% of a week, past Daniels' ` +
+            `M+T ceiling of ${(mtBand[1] * 100).toFixed(0)}% before a single marathon-pace mile is added`,
+        );
+      }
+      if (weeklyShareCap('M') === null && !exempt('m-weekly-share-is-unbounded')) {
+        throw new Error(
+          'nothing caps weekly marathon-pace volume, so the M+T group cannot be held to ' +
+            `${(mtBand[0] * 100).toFixed(0)}-${(mtBand[1] * 100).toFixed(0)}% of a week`,
+        );
+      }
+
+      // 4 · The two doctrine statements have to be able to hold at once. What
+      // the easy floor leaves must cover what the engine's own ceilings spend.
+      const spend = tCeiling + irCeiling;
+      const remainder = 1 - EASY_SHARE_FLOOR;
+      if (spend > remainder + 1e-9) {
+        throw new Error(
+          `the engine's weekly caps allow ${(spend * 100).toFixed(1)}% of a week above easy, ` +
+            `but its own easy floor leaves ${(remainder * 100).toFixed(1)}% · a week can satisfy ` +
+            'the caps and break the floor with both gates green',
+        );
+      }
+    },
+    exempt: {
+      'm-weekly-share-is-unbounded':
+        'Research/01 says two things about marathon pace and the engine implements one of them. ' +
+        'The caps table\'s Weekly-cap column reads "n/a" for M, and DOSING.marathon-pace-workout-' +
+        'ceiling requires weeklyShareCap(\'M\') to stay null so the engine cannot invent a ceiling ' +
+        'doctrine does not state. This sentence bounds M anyway, inside the M+T group. Both cannot ' +
+        'be satisfied by a constant, because the fix is not a constant: the engine measures easy ' +
+        'against everything-else and has no notion of the M bucket at all, so there is nothing to ' +
+        'cap. Closing this means intensity-distribution.ts growing a three-bucket split, which is ' +
+        'engine work and not a number. Delete this entry when it does.',
+    },
+  },
+
   // ══ DISTANCE · which doctrine row a race is ═══════════════════════════════
   //
   // 2026-08-18. Every per-distance claim above reads a ROW. Nothing checked

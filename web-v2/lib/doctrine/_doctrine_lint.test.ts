@@ -722,4 +722,48 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
     expect(counts).toEqual(BOOK_CITATIONS_PER_FILE);
   });
 
+  /**
+   * 2026-08-21 · A CONSTANT THAT SAYS WHO WATCHES IT MUST BE TELLING THE TRUTH.
+   *
+   * Engine files write `Watched by \`AREA.claim-id\`` beside a constant, which
+   * is the first thing anyone reads when deciding whether a number is safe to
+   * change. Every one of the five in easy-discipline.ts named a claim that does
+   * not exist — the claims had been renamed (PACE.easy-hr-ceiling-observational
+   * → EASY.hr-ceiling-observational, and four more of the same shape) and the
+   * file was never updated.
+   *
+   * The constants really were watched, so nothing was unguarded. What was
+   * broken is the thing a person uses to FIND the guard, and a pointer that
+   * resolves to nothing reads exactly like a constant nobody is watching. Both
+   * failure directions are bad: an unwatched constant claiming a watcher, and a
+   * watched constant whose watcher cannot be found.
+   */
+  it('every "Watched by" reference names a claim that exists', () => {
+    const ids = new Set(DOCTRINE_REGISTRY.map((c) => c.id));
+    const RE = /[Ww]atched by `([A-Z][A-Z0-9]*\.[a-z0-9-]+)`/g;
+    const dead: string[] = [];
+    let seen = 0;
+    for (const file of sourceFiles()) {
+      if (file.includes(`${path.sep}doctrine${path.sep}`)) continue;
+      fs.readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          for (const m of line.matchAll(RE)) {
+            seen++;
+            if (!ids.has(m[1])) dead.push(`${rel(file)}:${i + 1}  ${m[1]}`);
+          }
+        });
+    }
+    // Same anti-no-op guard as the short-form citation check: a matcher that
+    // matches nothing reports every file clean.
+    expect(seen, 'the "Watched by" matcher found no references at all · it has stopped reading').toBeGreaterThan(0);
+    expect(
+      dead,
+      'These comments name a doctrine claim that is not in the registry. Either the claim was\n' +
+        'renamed (re-point the comment at its current id) or it never existed (the constant is\n' +
+        'unwatched and needs a claim, not a comment saying it has one).\n  ' +
+        dead.join('\n  '),
+    ).toEqual([]);
+  });
+
 });

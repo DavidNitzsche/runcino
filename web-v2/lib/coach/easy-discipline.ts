@@ -94,7 +94,7 @@ import { distanceMiFromLabel } from '@/lib/race/distance';
  * how hard it is fair to accuse a runner of running, this module takes the
  * more permissive one. An accusation should clear the highest bar doctrine
  * offers, not the lowest.
- * Watched by `PACE.easy-hr-ceiling-observational`.
+ * Watched by `EASY.hr-ceiling-observational`.
  */
 export const EASY_HRMAX_CEILING_PCT = 0.78;
 
@@ -104,7 +104,7 @@ export const EASY_HRMAX_FLOOR_PCT = 0.65;
 /**
  * Heat confound threshold, absolute. `Research/03` §"Limitations and
  * Confounders" · row "Heat (≥25°C)" → HR rises +5-20 bpm at fixed effort.
- * 25 °C = 77 °F. Watched by `HR.heat-confounds-easy-read`.
+ * 25 °C = 77 °F. Watched by `EASY.heat-confounds-the-read`.
  */
 export const HEAT_CONFOUND_TEMP_C = 25;
 export const HEAT_CONFOUND_TEMP_F = HEAT_CONFOUND_TEMP_C * 1.8 + 32;
@@ -125,7 +125,7 @@ export const HEAT_CONFOUND_TEMP_F = HEAT_CONFOUND_TEMP_C * 1.8 + 32;
  * the real GAP-vs-raw delta is used (see `TERRAIN_CONFOUND_GAP_PCT`). Until
  * then net climb is the only terrain signal on the run rows, and it undercounts
  * a genuinely hilly out-and-back whose net gain is near zero.
- * Watched by `TERRAIN.hill-confounds-easy-read`.
+ * Watched by `EASY.terrain-confounds-the-read`.
  */
 export const TERRAIN_CONFOUND_FT_PER_MI = 50;
 
@@ -150,7 +150,7 @@ export const MIN_EASY_RUN_MI = 2;
  * drift (>30 min steady)" → HR rises +5-15% over 60 min at fixed effort. A long
  * easy run therefore legitimately averages a higher HR than a short one, so
  * past this duration the HR reading is not comparable and the run contributes
- * to the pace basis only. Watched by `HR.drift-confounds-easy-read`.
+ * to the pace basis only. Watched by `EASY.drift-confounds-the-read`.
  */
 export const DRIFT_CONFOUND_MINUTES = 60;
 
@@ -887,7 +887,7 @@ export async function loadEasyDiscipline(
  * After: `Research/00b` §"Recovery by Distance" · "Total recovery days (no
  * quality)" upper bound — the column the 52174bcd incident proved is easy to
  * confuse with its neighbour, so it is named explicitly here.
- * Watched by `RACE.easy-read-context-window`.
+ * Watched by `EASY.post-race-context-window` and `EASY.pre-race-context-window`.
  */
 export function raceWindowFor(distanceMi: number | null, isAfter: boolean): number {
   // 2026-08-19 · race-shape audit · the `?? 13.1` default is a LAST resort and
