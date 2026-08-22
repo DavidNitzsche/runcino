@@ -300,6 +300,31 @@ enum WatchV5 {
     static let separator = "\u{00B7}"   // ·
 }
 
+// MARK: - Font registration
+//
+// watchOS has no `UIAppFonts` for this target, so the bundled TTFs are
+// registered with CoreText at launch. Moved here from WatchTheme.swift when
+// the legacy face kit was deleted — it was the one live thing left in that
+// file, and losing it would silently drop Archivo and Instrument Sans to San
+// Francisco everywhere at once, which is exactly the failure the family-name
+// guard below exists to catch rather than to suffer.
+
+enum WatchFonts {
+    private static var registered = false
+
+    static func register() {
+        guard !registered else { return }
+        registered = true
+        var urls: [URL] = []
+        urls += Bundle.main.urls(forResourcesWithExtension: "ttf", subdirectory: nil) ?? []
+        urls += Bundle.main.urls(forResourcesWithExtension: "ttf", subdirectory: "Fonts") ?? []
+        var seen = Set<String>()
+        for url in urls where seen.insert(url.lastPathComponent).inserted {
+            CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        }
+    }
+}
+
 // MARK: - Variable-axis plumbing
 //
 // The portable half of the phone's FaffCoreTextV5. No UIKit: watchOS has no

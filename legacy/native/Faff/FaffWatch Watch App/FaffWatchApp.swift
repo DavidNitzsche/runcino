@@ -10,7 +10,7 @@ import SwiftUI
 @main
 struct FaffWatch_Watch_AppApp: App {
     init() {
-        WatchTheme.registerFonts()
+        WatchFonts.register()
         // App-level UserDefaults registrations. `register(defaults:)` only
         // applies when a key hasn't been set yet — so existing testers who
         // manually toggled Sound OFF keep that value; new installs (and

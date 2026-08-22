@@ -410,6 +410,38 @@ final class WorkoutTracker: NSObject, ObservableObject {
     /// The device monitor deliberately keeps polling through a pause: the
     /// battery still drains while the runner stands at the lights, and a
     /// water lock engaged during a pause still needs its board.
+    /// The runner answered "Drop GPS" on the battery board.
+    ///
+    /// This is a CHOICE the design offers, not a failure: the board names the
+    /// cost in the same breath as the button ("GPS is most of that spend"), so
+    /// the runner is not asked to work out that the pace read and the route
+    /// are the same switch.
+    ///
+    /// What it does, honestly:
+    ///  · Location updates stop. The route polyline ENDS HERE and resumes
+    ///    never — the run keeps a partial track rather than a fabricated one.
+    ///  · The run keeps recording. Distance continues from HealthKit's own
+    ///    motion-derived source, which is less accurate and does not stop.
+    ///  · Pace becomes untrusted, so nothing on a running face grades from
+    ///    here on. The same posture as a treadmill, and for the same reason:
+    ///    there is no trustworthy pace, so nothing may pose as one.
+    ///
+    /// Irreversible within the run, deliberately. Re-acquiring a fix would
+    /// stitch a straight line across whatever was covered in between, which is
+    /// the same defect that made a 2 mi out-and-back record as 0.00 mi.
+    func dropGPS() {
+        guard !gpsDropped else { return }
+        gpsDropped = true
+        locationManager.stopUpdatingLocation()
+        // Marks pace as untrusted for the rest of the run — the running faces
+        // read this exactly as they read a treadmill.
+        markDistanceSourceUnavailable()
+    }
+
+    /// True once the runner has traded the route for battery. Sticky for the
+    /// life of the run.
+    @Published private(set) var gpsDropped = false
+
     func pause() {
         #if targetEnvironment(simulator)
         mockPaused = true; return

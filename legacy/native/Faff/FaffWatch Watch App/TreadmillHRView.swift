@@ -1,19 +1,28 @@
 //
-//  TreadmillHRView.swift   (FaffWatch · build matched to iPhone 137)
+//  TreadmillHRView.swift
+//  FaffWatch
 //
-//  Minimal watch display for when the iPhone has us streaming HR for
-//  a treadmill session. The runner's looking at their phone, not the
-//  watch · the watch view is just for the occasional wrist-glance and
-//  the emergency-stop affordance (if the iPhone's stop message doesn't
-//  reach us for some reason).
+//  The watch as a heart-rate strap. The iPhone's TreadmillView starts a
+//  session over WatchConnectivity, the watch takes the screen, and the phone
+//  keeps the controls — the belt is in front of the runner and the wrist is
+//  not where they are looking.
 //
-//  Composition:
-//    · "TREADMILL" eyebrow
-//    · Big BPM hero · the only meaningful live value here
-//    · "Phone has the controls" status line so the runner doesn't
-//      hunt for buttons
-//    · "Stop" → ends the watch session locally (the iPhone is the
-//      canonical workout owner · this is just a safety hatch)
+//  NOT IN THE 0821 BOARD SET. There is no drawn board for this surface, so
+//  everything below is the handoff's RULES applied to a screen the handoff
+//  does not cover, rather than a board copied from it. Flagged in
+//  docs/design/watch-0821/AUDIT.md rather than presented as spec:
+//
+//   · A treadmill has no trustworthy pace, so nothing here grades and every
+//     value is white. That is the same reason the treadmill running faces are
+//     white throughout.
+//   · The heart rate is a MEASURED value with no band, so it is white at full
+//     opacity and its unit steps down — it is not amber, because amber means
+//     out of range and there is no range here.
+//   · Red would name a sensor, and no sensor has failed. The old version drew
+//     the wordmark and the STOP button in the race red, which is a coloured
+//     non-graded element and the thing rule 1 exists to prevent.
+//   · Stop is a 50pt full-width pill like every other target, and it is not
+//     destructive — the phone owns the session and ending it saves.
 //
 
 import SwiftUI
@@ -22,66 +31,50 @@ struct TreadmillHRView: View {
     @ObservedObject private var hr = TreadmillHRSession.shared
 
     var body: some View {
-        ResponsiveFace {
-            VStack(spacing: 0) {
-                HStack {
-                    Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5)
-                        .foregroundStyle(Faff.race)
-                    Spacer()
+        WBoard {
+            VStack(alignment: .leading, spacing: 0) {
+
+                HStack(alignment: .firstTextBaseline) {
+                    WWordmark(size: 12)
+                    Spacer(minLength: 6)
                     Text(elapsedLabel)
-                        .font(WatchTheme.body(11, .semibold))
-                        .foregroundStyle(Faff.t2)
-                        .monospacedDigit()
+                        .font(WatchV5.number(13))
+                        .foregroundStyle(WatchV5.valueLabel)
                 }
-                .padding(.leading, 8).padding(.trailing, 4).padding(.top, 14)
 
                 Spacer(minLength: 0)
 
-                Text("TREADMILL")
-                    .font(WatchTheme.body(10, .bold))
-                    .tracking(2)
-                    .foregroundStyle(Faff.t2)
+                WKicker(text: "Treadmill")
 
-                // Big BPM hero · "—" until first sample, "162" once it lands.
-                Text(hr.currentBpm > 0 ? "\(hr.currentBpm)" : "—")
-                    .font(WatchTheme.display(72))
-                    .foregroundStyle(Faff.ink)
-                    .monospacedDigit()
-                Text("BPM")
-                    .font(WatchTheme.body(11, .bold))
-                    .tracking(1.5)
-                    .foregroundStyle(Faff.t2.opacity(0.85))
+                // The one figure this screen exists for. "--" until the first
+                // sample lands: an absent reading is drawn as absent, never as
+                // a zero, because a zero heart rate is a claim and a dash is
+                // an admission.
+                WMetric(
+                    value: hr.currentBpm > 0 ? "\(hr.currentBpm)" : "--",
+                    unit: "bpm",
+                    rank: .hero
+                )
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 0)
 
-                Text("Phone has the controls")
-                    .font(WatchTheme.body(10, .medium))
-                    .foregroundStyle(Faff.t2)
-                    .multilineTextAlignment(.center)
+                // Says where the controls are, because the runner's hands are
+                // on the belt and the wrist is not where they are looking.
+                WCoachLine(text: "The phone has the controls.", size: 13)
 
-                Button(action: stop) {
-                    Text("STOP")
-                        .font(WatchTheme.body(13, .bold))
-                        .tracking(1.5)
-                        .foregroundStyle(Faff.ink)
-                        .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(Faff.race.opacity(0.18), in: Capsule())
-                        .overlay(Capsule().stroke(Faff.race.opacity(0.5), lineWidth: 1))
+                WTargetStack {
+                    WTarget(label: "Stop", weight: .quiet, action: stop)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 18)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
+    /// "--" before the first sample rather than "0:00": the session has a
+    /// start time or it does not, and a zero clock claims it started now.
     private var elapsedLabel: String {
-        guard let started = hr.startedAt else { return "—" }
-        let secs = max(0, Int(Date().timeIntervalSince(started)))
-        let m = secs / 60, s = secs % 60
-        return "\(m):\(s < 10 ? "0" : "")\(s)"
+        guard let started = hr.startedAt else { return "--" }
+        return WFmt.clock(max(0, Int(Date().timeIntervalSince(started))))
     }
 
     private func stop() {

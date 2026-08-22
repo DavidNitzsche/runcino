@@ -220,26 +220,12 @@ struct WatchRunSurfaceV5: View {
     /// What is unfinished, as a FACT rather than a warning — the runner may
     /// already have decided about it. nil on a steady run, which drops the
     /// line rather than finding something to say.
-    private var unfinishedSummary: String? {
-        let remaining = workPhases.filter { $0.index > (engine.currentPhase?.index ?? -1) }.count
-        guard remaining > 0 else { return nil }
-        return remaining == 1 ? "One rep unfinished" : "\(spelled(remaining)) reps unfinished"
-    }
+    private var unfinishedSummary: String? { engine.unfinishedSummary }
 
     /// The one confirmation that earns a coach sentence, because skipping a
     /// rep is the decision the coach has an opinion about. It gives the
     /// opinion, then honours either answer with no second ask.
-    private var skipOpinion: String {
-        let banked = repIndex - 1
-        guard banked > 0 else {
-            return "Nothing banked yet \(WatchV5.separator) this is the rep the session is built on."
-        }
-        let left = repCount - banked
-        if left <= 2 {
-            return "\(spelled(banked).capitalized) are banked \(WatchV5.separator) the last \(spelled(left)) are where the session earns its name."
-        }
-        return "\(spelled(banked).capitalized) are banked \(WatchV5.separator) \(spelled(left)) left to go."
-    }
+    private var skipOpinion: String { engine.skipOpinion }
 
     /// Whole numbers up to twenty are spelled, which is the copy rule the
     /// server composes to as well.
@@ -412,11 +398,11 @@ struct WatchRunSurfaceV5: View {
     private var workPhases: [WatchPhase] {
         engine.workout.phases.filter { $0.type == .work }
     }
-    private var repCount: Int { max(1, workPhases.count) }
-    private var repIndex: Int {
-        guard let current = engine.currentPhase, current.type == .work else { return 1 }
-        return (workPhases.firstIndex { $0.index == current.index } ?? 0) + 1
-    }
+    /// Prefer the engine's own cursor over re-deriving it. Two counts of the
+    /// same thing is how a board ends up saying "rep 3 of 6" while the engine
+    /// is running rep 4.
+    private var repCount: Int { max(1, engine.repCountForDisplay) }
+    private var repIndex: Int { max(1, engine.repIndexForDisplay) }
 
     /// A figure plus the band it is being judged against. The gauge and the
     /// grade travel together deliberately: a board cannot say "green" and
@@ -854,5 +840,41 @@ struct WatchFinishSurfaceV5: View {
     private var totals: [FinishSummaryRow] {
         guard let climb = WFmt.elevation(tracker.elevGainM * 3.28084) else { return [] }
         return [FinishSummaryRow("Climb", climb + " ft")]
+    }
+}
+
+// MARK: - Recovery receipt
+
+/// What a recovered run's END & SAVE lands on. The same summary board the
+/// normal finish uses, because a run that survived a crash is still a run and
+/// deserves the same receipt — the only difference is that its numbers come
+/// from the recovered completion rather than from a live engine.
+struct WatchRecoveryReceiptV5: View {
+    let summary: WatchRootModel.RecoverySummary
+    let onDone: () -> Void
+
+    var body: some View {
+        FinishSummaryBoard(
+            distance: WFmt.miles(summary.completion.totalDistanceMi ?? 0),
+            duration: WFmt.clock(summary.completion.totalDurationSec),
+            averages: averages,
+            splits: [],
+            totals: []
+        )
+        .onTapGesture(perform: onDone)
+    }
+
+    /// Splits are deliberately empty. A recovered run's per-mile detail is
+    /// reconstructed server-side from the pace samples, and drawing an empty
+    /// or partial ladder here would state something the watch does not know.
+    private var averages: [FinishSummaryRow] {
+        var rows: [FinishSummaryRow] = []
+        if let mi = summary.completion.totalDistanceMi, mi > 0.05 {
+            let sec = Double(summary.completion.totalDurationSec)
+            if let p = WFmt.pace(Int(sec / mi)) { rows.append(FinishSummaryRow("Pace", p + " /mi")) }
+        }
+        if let hr = summary.completion.avgHr { rows.append(FinishSummaryRow("Heart", "\(hr) avg")) }
+        if let cad = summary.completion.avgCadence { rows.append(FinishSummaryRow("Cadence", "\(cad) spm")) }
+        return rows
     }
 }

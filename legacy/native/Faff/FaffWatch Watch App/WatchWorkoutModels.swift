@@ -958,6 +958,26 @@ struct WatchCompletion: Encodable {
     /// Append one skip, holding the wire contract: the field is either
     /// absent or a non-empty array. Assigning `[]` by hand would clobber a
     /// sibling payload's value on the server's jsonb merge.
+    /// Contingency-rule outcomes — the bail, taken or declined.
+    ///
+    /// This field was MISSING until 2026-08-21, and the gap was invisible from
+    /// both ends: the server has read `ruleOutcomes` since 2026-06-09 and
+    /// `run-recap.ts` already distinguishes a taken bail from a declined one,
+    /// while the engine detected breaches and offered the board. There was
+    /// simply no Swift property in between, so every answer the runner gave
+    /// died on the wrist. Nothing errored, nothing logged; the recap just
+    /// never saw a bail.
+    ///
+    /// `nil` when no rule fired, never `[]` — the server merges onto a jsonb
+    /// column and an empty array would clobber what a sibling payload wrote.
+    var ruleOutcomes: [WorkoutEngine.RuleOutcome]? = nil
+
+    /// Append one outcome. Creates the array only by putting something in it,
+    /// so `[]` can never be assigned by accident.
+    mutating func recordRuleOutcome(_ outcome: WorkoutEngine.RuleOutcome) {
+        ruleOutcomes = (ruleOutcomes ?? []) + [outcome]
+    }
+
     mutating func recordRepSkip(_ skip: RepSkip) {
         repSkips = (repSkips ?? []) + [skip]
     }

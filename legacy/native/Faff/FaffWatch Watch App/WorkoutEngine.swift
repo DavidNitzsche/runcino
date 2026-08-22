@@ -83,6 +83,38 @@ final class WorkoutEngine: ObservableObject {
     /// Always false on workouts that don't ship a ceiling.
     @Published private(set) var hrOverCeiling: Bool = false
 
+    // ─── The four wrist decisions (0821 · README §5, §7) ────────────
+    // Published so the boards can read them without asking twice. The
+    // records themselves are private — a board asks "has this been
+    // answered", never "what exactly was written down". See the
+    // `MARK: - The four wrist decisions` section near the bottom for
+    // the API, the wire mapping and the reasoning.
+
+    /// True once the bail question has been ANSWERED, either way. The bail
+    /// fires once per run (README §7), so this is what a board checks before
+    /// offering it — a declined bail closes the question exactly as firmly
+    /// as a taken one.
+    @Published private(set) var bailAnswered = false
+    /// Which way it was answered. Meaningless until `bailAnswered`.
+    @Published private(set) var bailTaken = false
+    /// True once the runner answered "Lift it for today" on the ceiling
+    /// board. Singular by design: the board asks once and the answer holds
+    /// for the rest of the run, which is also why `hrOverCeiling` stops
+    /// firing from that moment (a ceiling lifted for the day is not a
+    /// ceiling you keep being warned about).
+    @Published private(set) var ceilingLifted = false
+    /// 1-based ordinals of the reps the runner CHOSE to skip. Read by a
+    /// board to guarantee the second half of README §5's skip rule: no
+    /// second ask, and no nag on the next rep.
+    @Published private(set) var skippedRepOrdinals: Set<Int> = []
+    /// Seconds ADDED to the current phase by "+30 sec" on the recovery
+    /// face. Folded into `phaseRemainingSec` / `phaseProgress` / the tick's
+    /// completion test, so the button adds to the number the runner is
+    /// actually watching rather than to a number kept somewhere else.
+    /// Reset to 0 on every phase boundary — an extension buys time in THIS
+    /// recovery and never leaks into the next one.
+    @Published private(set) var phaseAddedSec: Int = 0
+
     let workout: WatchWorkout
 
     /// The run recorder underneath the phase clock. Set by the root model
@@ -270,13 +302,17 @@ final class WorkoutEngine: ObservableObject {
         if p.repUnit == .distance, let d = p.distanceMi, d > 0 {
             return min(1, phaseCoveredMi / d)
         }
-        guard p.durationSec > 0 else { return 0 }
-        return min(1, Double(phaseElapsedSec) / Double(p.durationSec))
+        let dur = p.durationSec + phaseAddedSec
+        guard dur > 0 else { return 0 }
+        return min(1, Double(phaseElapsedSec) / Double(dur))
     }
 
+    /// Time left in the current phase, INCLUDING any "+30 sec" the runner
+    /// added to this recovery. This is the number the extend-recovery board
+    /// draws, so the button has to move it — see `recordRecoveryExtension`.
     var phaseRemainingSec: Int {
         guard let p = currentPhase else { return 0 }
-        return max(0, p.durationSec - phaseElapsedSec)
+        return max(0, p.durationSec + phaseAddedSec - phaseElapsedSec)
     }
 
     /// Miles left in the current phase · nil unless this is a distance rep.
@@ -413,6 +449,7 @@ final class WorkoutEngine: ObservableObject {
         firedFuelIndices.removeAll()
         firedGels.removeAll()
         hrOverCeiling = false
+        clearDecisions()
         lastMileIndex = 0
         lastMileElapsedSec = 0
         planComplete = false
@@ -521,6 +558,7 @@ final class WorkoutEngine: ObservableObject {
         results = []
         didFireAlmostDone = false
         firedGels = []
+        clearDecisions()
         planComplete = false
         isPaused = false
         pauseStart = nil
@@ -683,7 +721,14 @@ final class WorkoutEngine: ObservableObject {
         // live HR exceeds it, flip the flag; the Easy face owns the visual
         // snap-to-red and hold-until-recovered behaviour. Cleared as soon as
         // HR drops back below the ceiling so the alert is honest, not sticky.
-        if let ceiling = workout.hrCeilingBpm, ceiling > 0 {
+        //
+        // 0821 · `!ceilingLifted` — once the runner has answered "Lift it for
+        // today" on the ceiling board (README §7), the limit is not in force
+        // any more, so the guardrail stops flipping red for the rest of the
+        // run. The else-branch below clears a flag that was already up. The
+        // decision itself is NOT forgotten: it rides the completion as
+        // `ceilingLift` and surfaces on the phone.
+        if let ceiling = workout.hrCeilingBpm, ceiling > 0, !ceilingLifted {
             let hr = tracker?.heartRate ?? 0
             let over = hr > ceiling
             if hrOverCeiling != over { hrOverCeiling = over }
@@ -922,7 +967,11 @@ final class WorkoutEngine: ObservableObject {
         } else if phase.repUnit == .distance, let d = phase.distanceMi {
             finished = phaseCoveredMi >= d || noDistanceSource
         } else {
-            finished = phaseElapsedSec >= phase.durationSec
+            // `+ phaseAddedSec` · an extended recovery ends when the EXTENDED
+            // clock runs out, not when the prescribed one does. Zero on every
+            // phase the runner didn't extend, so this is byte-identical to the
+            // old test for every other rep.
+            finished = phaseElapsedSec >= phase.durationSec + phaseAddedSec
         }
         if finished {
             advance(completedCurrent: true)
@@ -952,6 +1001,7 @@ final class WorkoutEngine: ObservableObject {
             planComplete = true
             phaseStart = .now
             phaseElapsedSec = 0
+            if phaseAddedSec != 0 { phaseAddedSec = 0 }
             didFireAlmostDone = false
             phaseHrSum = 0; phaseHrCount = 0; phaseHrMax = 0
             phaseCadSum = 0; phaseCadCount = 0
@@ -975,6 +1025,9 @@ final class WorkoutEngine: ObservableObject {
         phaseStartMi = coveredMi
         phaseElapsedSec = 0
         totalElapsedSec = bankedSec
+        // A "+30 sec" bought time in the recovery we are LEAVING. It does not
+        // travel — the next rep gets the duration the plan prescribed.
+        if phaseAddedSec != 0 { phaseAddedSec = 0 }
         didFireAlmostDone = false
         // Reset per-phase aggregates so the next rep starts clean.
         phaseHrSum = 0; phaseHrCount = 0; phaseHrMax = 0
@@ -1157,6 +1210,502 @@ final class WorkoutEngine: ObservableObject {
         pendingRpeResultsIndex = nil
     }
 
+    // MARK: - The four wrist decisions (0821 · 2026-08-21)
+    //
+    // A runner can decide four things mid-run: take or decline the bail,
+    // lift the HR ceiling for the day, skip a rep, extend a recovery. Until
+    // now the engine acted on none of them and remembered none of them, so
+    // every one of them reached the phone as an absence — a rep that simply
+    // did not happen, a ceiling that was simply exceeded.
+    //
+    // THE ONE RULE THAT SHAPES THIS WHOLE SECTION: a decision is not a
+    // lapse, and the DATA has to say so. `WatchCompletionPhase.completed ==
+    // false` means "this rep did not happen" and says nothing about why — a
+    // rep the runner chose to skip and a rep that fell over when the watch
+    // died are the same value on that field. So a chosen skip is an
+    // EXPLICIT record with its own quantities, never a flag the phone
+    // infers from the phase array. The phone must never have to guess which
+    // one it was, because on the one screen whose register says "you chose
+    // it, we did not lose it", guessing wrong calls a choice a failure.
+    //
+    // NEVER AN EMPTY ARRAY. All three array/optional wire fields are nil
+    // until something is actually recorded, and they are populated through
+    // `WatchCompletion.recordRepSkip` / `.recordRecoveryExtension`, which
+    // only ever create an array by putting something in it. The server
+    // merges onto runs.data, so `[]` would overwrite a value a sibling
+    // payload already wrote (Rule 6). The engine holds its own records in
+    // plain Swift arrays and maps them at build time; an empty engine array
+    // produces an ABSENT wire field, not an empty one.
+    //
+    // These records are also carried through the crash-recovery snapshot.
+    // "The watch does not quietly forget" has to survive the watch dying —
+    // a ceiling lift the runner answered at mile 4 must still reach the
+    // phone if the process is killed at mile 9.
+
+    /// A contingency-rule outcome, in the exact shape the server already
+    /// reads (`ruleOutcomes` on the completion body · run-recap.ts reasons
+    /// about `kind` / `breached` / `actionTaken`). The BAIL is the only rule
+    /// the watch fires today, and both answers are recorded: taken is
+    /// `actionTaken: true`, declined is `actionTaken: false` with
+    /// `breached: true` still standing, because the rule DID trip — the
+    /// runner just chose to push through, and the recap says "noted, not
+    /// judged" rather than nothing at all.
+    struct RuleOutcome: Codable, Equatable {
+        /// "bail" | "abort" | "pass" — matches run-recap.ts's reader.
+        let kind: String
+        /// Names the rule, e.g. "Bail line". The recap lowercases it into
+        /// "the bail line tripped and you pushed through".
+        let label: String
+        /// The rule tripped. Always true here: the board is only offered
+        /// because the engine saw the breach.
+        let breached: Bool
+        /// Whether the runner took the action the rule offered.
+        let actionTaken: Bool
+        let atMi: Double?
+    }
+
+    /// Engine-side record of the ceiling lift. Kept separate from
+    /// `WatchCompletion.CeilingLift` (which is Encodable only) so it can
+    /// ride the Codable crash snapshot.
+    struct CeilingLiftRecord: Codable {
+        let ceilingBpm: Int?
+        let readingBpm: Int?
+        let phaseIndex: Int?
+        let phaseLabel: String?
+        let atMi: Double?
+        let atSec: Int?
+    }
+
+    /// Engine-side record of one CHOSEN rep skip.
+    ///
+    /// `repsCompleted` is deliberately NOT stored here. "Five of six" is a
+    /// count of the whole run and the run isn't over at the moment of the
+    /// skip — the runner may well go on to finish reps five and six. It is
+    /// computed once, at completion-build time, from the banked phase
+    /// results. Storing the mid-run figure would ship a number that is true
+    /// for one second and wrong for the rest of the session.
+    struct RepSkipRecord: Codable {
+        let repIndex: Int
+        let repCount: Int
+        let phaseIndex: Int?
+        let phaseLabel: String?
+        let atMi: Double?
+        let atSec: Int?
+    }
+
+    /// Engine-side record of ONE press of "+30 sec". One entry per press:
+    /// the count is the array length ("Twice"), never a summed field, so
+    /// the phone can say how many and between which reps without the watch
+    /// pre-deciding the sentence.
+    struct RecoveryExtensionRecord: Codable {
+        let afterRepIndex: Int?
+        let beforeRepIndex: Int?
+        let repCount: Int?
+        let addedSec: Int
+        let phaseIndex: Int?
+        let phaseLabel: String?
+        let atSec: Int?
+    }
+
+    private var bailOutcome: RuleOutcome?
+    private var ceilingLiftRecord: CeilingLiftRecord?
+    private var repSkipRecords: [RepSkipRecord] = []
+    private var recoveryExtensionRecords: [RecoveryExtensionRecord] = []
+
+    /// Wipe every decision. Called from `start()` and `reset()` so a second
+    /// run in the same app session can never inherit the first one's
+    /// answers.
+    private func clearDecisions() {
+        bailAnswered = false
+        bailTaken = false
+        ceilingLifted = false
+        if !skippedRepOrdinals.isEmpty { skippedRepOrdinals = [] }
+        if phaseAddedSec != 0 { phaseAddedSec = 0 }
+        bailOutcome = nil
+        ceilingLiftRecord = nil
+        repSkipRecords = []
+        recoveryExtensionRecords = []
+        // Manual laps ride along here: same lifetime, same reason — they are
+        // things this runner did on this run, and a second run in the same
+        // app session must not inherit them.
+        lapCount = 0
+        lastLapElapsedSec = 0
+    }
+
+    // MARK: Read-only state the boards need
+
+    /// How many work reps the session asked for. 1 on an easy/long/just-run
+    /// session (the backend expands those as a single `.work` phase), which
+    /// is why the boards route on session shape and not on this number.
+    var repCountForDisplay: Int {
+        workout.phases.filter { $0.type == .work }.count
+    }
+
+    /// 1-based ordinal of the rep the runner is IN, or — on a recovery /
+    /// cooldown — the rep they just finished. 0 during a warm-up, before
+    /// any rep has started, which a progress strip renders as "none done"
+    /// rather than as rep zero.
+    var repIndexForDisplay: Int {
+        let upTo = min(currentIndex + 1, workout.phases.count)
+        guard upTo > 0 else { return 0 }
+        return workout.phases.prefix(upTo).filter { $0.type == .work }.count
+    }
+
+    /// 1-based ordinal of the NEXT work rep after the current phase, or nil
+    /// when the session has no more reps. This is the "before" half of an
+    /// extension's "between reps two and three".
+    private var nextWorkRepOrdinal: Int? {
+        guard let pos = workout.phases.indices.first(where: {
+            $0 > currentIndex && workout.phases[$0].type == .work
+        }) else { return nil }
+        return workout.phases.prefix(pos + 1).filter { $0.type == .work }.count
+    }
+
+    /// The live recovery countdown, including every "+30 sec" already
+    /// pressed. Named for the board that draws it so a call site cannot
+    /// accidentally freeze it: this is a computed read of live state, and
+    /// re-reading it every tick is the point.
+    var recoveryRemainingSec: Int { phaseRemainingSec }
+
+    /// Whether the bail can still be offered. It fires ONCE per run
+    /// (README §7) and a declined bail closes it as firmly as a taken one —
+    /// re-asking a question the runner already answered is the nag the rule
+    /// exists to prevent.
+    var canOfferBail: Bool { state == .running && !bailAnswered }
+
+    /// Whether THIS rep has already been skipped. The skip advances the
+    /// phase immediately, so in practice this guards a double-tap; it is
+    /// public because the second half of README §5's skip rule ("no second
+    /// ask and no nag on the next rep") is a claim a board should be able
+    /// to check rather than assume.
+    func didSkipRep(ordinal: Int) -> Bool { skippedRepOrdinals.contains(ordinal) }
+
+    /// How many recoveries have been extended so far, in presses.
+    var recoveryExtensionCount: Int { recoveryExtensionRecords.count }
+
+    /// What the End-confirm board states as a fact before it asks anything:
+    /// "Two reps unfinished". Nil when there is nothing outstanding to
+    /// name.
+    ///
+    /// Reps only. A single-work-phase session (easy, long, recovery, just
+    /// run) has exactly one `.work` phase covering the whole run, so
+    /// "One rep unfinished" would be a true sentence in the wrong register
+    /// for a runner who is simply stopping a mile early — the board drops
+    /// the line rather than say it.
+    var unfinishedSummary: String? {
+        guard !planComplete, !isSingleWorkSession else { return nil }
+        let total = repCountForDisplay
+        guard total > 0 else { return nil }
+        let done = results.filter { $0.type == "work" && $0.completed }.count
+        let outstanding = max(0, total - done)
+        guard outstanding > 0 else { return nil }
+        return "\(Self.spell(outstanding).capitalized) \(outstanding == 1 ? "rep" : "reps") unfinished"
+    }
+
+    /// The coach's opinion on skipping THIS rep — the one confirmation that
+    /// earns a sentence, because it is the one decision the coach has a
+    /// view on. Copy rules: second person, present tense, 8-40 words, no
+    /// exclamation marks, no emoji, no em dashes, never scolding, and
+    /// nothing it cannot stand behind.
+    var skipOpinion: String {
+        let total = repCountForDisplay
+        let n = max(1, repIndexForDisplay)
+        let left = max(0, total - n)
+        let banked = max(0, n - 1)
+        if left == 0 {
+            return "This is the last one. Everything before it is already banked, so this rep is the only thing that can still change how the session reads."
+        }
+        if banked == 0 {
+            return "You are on the first rep. Skipping this early usually means the target was set too hard, not that you are done. Ease the pace and hold it if you can."
+        }
+        let bankedPart = "\(Self.spell(banked).capitalized) \(banked == 1 ? "rep is" : "reps are") banked"
+        let leftPart = "\(Self.spell(left)) \(left == 1 ? "remains" : "remain")"
+        return "\(bankedPart) and \(leftPart). The session still counts without this one. The reps at the end are the ones that change anything."
+    }
+
+    /// Small numbers spelled out, the way every other line on these boards
+    /// writes them ("Two reps unfinished"). Falls back to digits past
+    /// twelve, where words start reading worse than figures.
+    private static func spell(_ n: Int) -> String {
+        let words = ["zero", "one", "two", "three", "four", "five", "six",
+                     "seven", "eight", "nine", "ten", "eleven", "twelve"]
+        return words.indices.contains(n) ? words[n] : String(n)
+    }
+
+    /// Distance right now, 2 dp, or nil when nothing meaningful has banked.
+    /// A decision taken at 0.0 mi carries no mile — better absent than a
+    /// zero the phone would render as "at mile 0".
+    private func atMiNow() -> Double? {
+        let mi = coveredMi
+        return mi > 0.01 ? (mi * 100).rounded() / 100 : nil
+    }
+
+    // MARK: The four record… calls (the router calls these from a button)
+
+    /// The bail, answered. `taken: true` = "Cut it short", `false` = "Run it
+    /// out". BOTH are recorded: a declined bail is a decision the recap
+    /// reasons about ("noted, not judged"), and recording only the taken one
+    /// would make the wire unable to tell "declined" from "never asked".
+    ///
+    /// Fires once per run. A second call is ignored, which is what makes
+    /// "no second ask" a property of the engine rather than a discipline
+    /// the boards have to keep.
+    ///
+    /// This RECORDS the answer; it does not itself cut the run short. What
+    /// "cut it short" does to the plan is a routing decision (end the run,
+    /// end the rep, drop to easy), and the engine already exposes each of
+    /// those as its own call. Pair this with one of them.
+    ///
+    /// ORDER MATTERS · record the answer BEFORE acting on it. The completion
+    /// is built at the moment the run ends, so `finish(save:)` first and
+    /// `recordBail` second would end the run and then write the decision on
+    /// a payload that has already been sealed.
+    func recordBail(taken: Bool, label: String = "Bail line") {
+        guard state == .running, !bailAnswered else { return }
+        bailAnswered = true
+        bailTaken = taken
+        bailOutcome = RuleOutcome(
+            kind: "bail",
+            label: label,
+            breached: true,
+            actionTaken: taken,
+            atMi: atMiNow()
+        )
+        // No haptic. The question already carried one when it was ASKED
+        // (Haptics.Moment.bailOffered, fired by whoever put the board up);
+        // the answer is a button the runner just pressed while looking at
+        // the screen, and the visual is the confirmation. Haptics.swift's
+        // vocabulary is full and deliberately has no "answered" moment.
+        saveSnapshot()
+    }
+
+    /// "Lift it for today" on the ceiling board. Records the ceiling that
+    /// was in force AND the reading at the moment it was lifted, as two
+    /// separate figures — never a delta. "Ran to 174, the ceiling was 165"
+    /// is a fact the phone can phrase; "+9 over" has already thrown away
+    /// the half of it the phone might need.
+    ///
+    /// A reading of 0 or nil is recorded as ABSENT, not as zero: the strap
+    /// dropping out is not a heart rate of nothing.
+    ///
+    /// From here on the guardrail stops flipping red (see the tick's
+    /// ceiling block) — the ceiling was lifted, so continuing to warn about
+    /// it would be the nag the board exists to replace. The decision itself
+    /// rides the completion and surfaces on the phone; the watch does not
+    /// quietly forget it.
+    func recordCeilingLift(readingBpm: Int?) {
+        guard state == .running, !ceilingLifted else { return }
+        ceilingLifted = true
+        if hrOverCeiling { hrOverCeiling = false }
+        ceilingLiftRecord = CeilingLiftRecord(
+            ceilingBpm: workout.hrCeilingBpm.flatMap { $0 > 0 ? $0 : nil },
+            readingBpm: readingBpm.flatMap { $0 > 0 ? $0 : nil },
+            phaseIndex: currentPhase?.index,
+            phaseLabel: currentPhase?.label,
+            atMi: atMiNow(),
+            atSec: totalElapsedSec
+        )
+        // No haptic, for the same reason as `recordBail`: the ceiling board
+        // buzzed when it asked, and this is the runner answering it.
+        saveSnapshot()
+    }
+
+    /// "Skip anyway" on the skip-confirm board. The engine knows which rep
+    /// it is, so the caller passes nothing.
+    ///
+    /// This is the WHOLE action: it writes the explicit skip record and then
+    /// ends the rep. Do not follow it with `endCurrentPhase()` — that would
+    /// skip a second rep.
+    ///
+    /// The phase it ends banks with `completed: false`, exactly like every
+    /// other early end, and that is fine precisely BECAUSE the skip record
+    /// exists alongside it: the phone reads the record to know the rep was
+    /// chosen away, and never has to interpret the phase flag.
+    ///
+    /// No-ops outside a work rep, and no-ops on a rep already skipped.
+    func recordRepSkip() {
+        guard state == .running, !planComplete,
+              let p = currentPhase, p.type == .work else { return }
+        let ordinal = repIndexForDisplay
+        guard ordinal > 0, !skippedRepOrdinals.contains(ordinal) else { return }
+        skippedRepOrdinals.insert(ordinal)
+        repSkipRecords.append(RepSkipRecord(
+            repIndex: ordinal,
+            repCount: repCountForDisplay,
+            phaseIndex: p.index,
+            phaseLabel: p.label,
+            atMi: atMiNow(),
+            atSec: totalElapsedSec
+        ))
+        // Advance BEFORE persisting: the snapshot then holds both the skip
+        // record and the banked (incomplete) phase, so a crash one second
+        // later recovers a run that agrees with itself.
+        advance(completedCurrent: false)
+        saveSnapshot()
+    }
+
+    /// One press of "+30 sec" on the recovery face. Adds the time to the
+    /// number the runner is watching (`phaseRemainingSec`, which the board
+    /// reads live) and records one entry per press — the count is the array
+    /// length, so "Twice" is a fact about the data rather than a counter the
+    /// watch maintained.
+    ///
+    /// Records which reps it sat between: the rep just finished, and the rep
+    /// it delayed.
+    ///
+    /// Recovery phases only. "+30 sec" mid-rep is not a thing the design
+    /// offers, and silently extending a work interval would corrupt the rep
+    /// the whole session is built around.
+    func recordRecoveryExtension(addedSec: Int = 30) {
+        guard state == .running, !planComplete, addedSec > 0,
+              let p = currentPhase, p.type == .recovery else { return }
+        phaseAddedSec += addedSec
+        recoveryExtensionRecords.append(RecoveryExtensionRecord(
+            afterRepIndex: repIndexForDisplay > 0 ? repIndexForDisplay : nil,
+            beforeRepIndex: nextWorkRepOrdinal,
+            repCount: repCountForDisplay > 0 ? repCountForDisplay : nil,
+            addedSec: addedSec,
+            phaseIndex: p.index,
+            phaseLabel: p.label,
+            atSec: totalElapsedSec
+        ))
+        // The countdown just jumped back up; clear the ending-countdown
+        // window so the runner does not see a stale "3" for one tick and
+        // so the final-beat haptic fires again at the NEW boundary.
+        if endingCountdownSec != nil { endingCountdownSec = nil }
+        // No haptic. The runner is looking at the number they just changed,
+        // and it changed by thirty. A buzz on top of that is a second
+        // channel saying what the screen already said.
+        saveSnapshot()
+    }
+
+    // MARK: Wire mapping
+    //
+    // Engine records → the completion's fields. Each mapper returns nil for
+    // "nothing to say" so the caller can leave the field absent. Nothing
+    // here ever produces an empty array.
+
+    /// The rule outcomes for this run, or nil when no rule was answered.
+    /// Today that is the bail and only the bail.
+    var ruleOutcomesForWire: [RuleOutcome]? {
+        guard let bailOutcome else { return nil }
+        return [bailOutcome]
+    }
+
+    /// Fold every recorded decision onto a completion that has already been
+    /// built. Shared by the live-finish path and the crash-recovery path so
+    /// the two can never drift apart.
+    ///
+    /// `repsCompleted` is resolved HERE, from the phases the completion is
+    /// actually carrying, because it is a whole-run count — see
+    /// `RepSkipRecord`.
+    private static func applyDecisions(
+        to completion: inout WatchCompletion,
+        ceilingLift: CeilingLiftRecord?,
+        repSkips: [RepSkipRecord],
+        recoveryExtensions: [RecoveryExtensionRecord],
+        ruleOutcomes: [RuleOutcome]? = nil
+    ) {
+        // The bail, taken or declined. Both answers travel: a declined bail is
+        // evidence the runner was offered the out and chose to finish, which
+        // the recap reasons about differently from never having been asked.
+        ruleOutcomes?.forEach { completion.recordRuleOutcome($0) }
+
+        if let l = ceilingLift {
+            completion.ceilingLift = WatchCompletion.CeilingLift(
+                ceilingBpm: l.ceilingBpm,
+                readingBpm: l.readingBpm,
+                phaseIndex: l.phaseIndex,
+                phaseLabel: l.phaseLabel,
+                atMi: l.atMi,
+                atSec: l.atSec
+            )
+        }
+        // Whole-run tally of reps actually run, for "Five of six".
+        let repsRun = completion.phases.filter { $0.type == "work" && $0.completed }.count
+        for s in repSkips {
+            completion.recordRepSkip(WatchCompletion.RepSkip(
+                repIndex: s.repIndex,
+                repCount: s.repCount > 0 ? s.repCount : nil,
+                repsCompleted: repsRun,
+                phaseIndex: s.phaseIndex,
+                phaseLabel: s.phaseLabel,
+                atMi: s.atMi,
+                atSec: s.atSec
+            ))
+        }
+        for e in recoveryExtensions {
+            completion.recordRecoveryExtension(WatchCompletion.RecoveryExtension(
+                afterRepIndex: e.afterRepIndex,
+                beforeRepIndex: e.beforeRepIndex,
+                repCount: e.repCount,
+                addedSec: e.addedSec,
+                phaseIndex: e.phaseIndex,
+                phaseLabel: e.phaseLabel,
+                atSec: e.atSec
+            ))
+        }
+    }
+
+    // MARK: - Controls the 0821 boards drive
+    //
+    // Thin wrappers over behaviour the engine already had. They exist so a
+    // board can be a closure and a label, with no state machine of its own.
+
+    /// Pause / resume from the one control that does both.
+    func togglePause() {
+        isPaused ? resume() : pause()
+    }
+
+    /// Manual lap, from the steady-run controls. Banks the split internally
+    /// and marks it with a haptic.
+    ///
+    /// Deliberately does NOT fire a takeover: the engine's only split cue
+    /// reads "Mile N", and a lap the runner cut by hand is not a mile
+    /// boundary. Drawing one would be the first number on these boards that
+    /// is not a reading. The automatic mile splits are untouched — this
+    /// keeps its own bookkeeping so a manual lap cannot renumber them.
+    func lap() {
+        guard state == .running else { return }
+        lapCount += 1
+        lastLapElapsedSec = totalElapsedSec
+        // `.split` · the same family a mile boundary belongs to (a note
+        // about effort that has not changed), which is exactly what a lap
+        // the runner cut by hand is. Named through the moment vocabulary
+        // rather than the frozen legacy palette.
+        Haptics.play(moment: .split)
+        saveSnapshot()
+    }
+
+    /// Laps the runner cut by hand, and the clock at the last one.
+    private(set) var lapCount: Int = 0
+    private(set) var lastLapElapsedSec: Int = 0
+    /// Seconds since the last manual lap (or since the start).
+    var lapElapsedSec: Int { max(0, totalElapsedSec - lastLapElapsedSec) }
+
+    /// End confirm. `save: true` closes the run out normally — completed in
+    /// overtime, abandoned mid-plan — and the completion (decisions and all)
+    /// goes up the usual way. `save: false` is Discard: the run is thrown
+    /// away and nothing is sent.
+    ///
+    /// Known limit, stated rather than hidden: discard still ENDS the
+    /// HealthKit session through the tracker's normal `end()`, which writes
+    /// the HKWorkout to Health. Leaving a live session running would be
+    /// worse (battery, a phantom workout, a recovery prompt on next
+    /// launch), and discarding an active HK session needs a tracker call
+    /// that does not exist yet. What discard reliably guarantees is that no
+    /// faff completion is built and none is sent.
+    func finish(save: Bool) {
+        guard state == .running else { return }
+        if save { abandon(); return }
+        stopTimer()
+        Self.clearSnapshot()
+        if let tracker {
+            Task { await tracker.end() }
+        }
+        reset()
+    }
+
     // MARK: - Crash-recovery snapshot (RK-3 · 2026-06-09)
     //
     // All engine state (results, banked time, phase cursor) is in-memory —
@@ -1187,9 +1736,67 @@ final class WorkoutEngine: ObservableObject {
         let results: [WatchCompletionPhase]
         let savedAtEpoch: Double
 
+        // ─── The wrist decisions (0821 · 2026-08-21) ─────────────────
+        // OPTIONAL, and that is load-bearing: a snapshot written by an
+        // older build has no such key, and the synthesized decoder reads
+        // an Optional with decodeIfPresent — so an in-flight run that
+        // started before this shipped still recovers instead of failing
+        // to decode and losing the whole run.
+        //
+        // Decisions are here at all because "the watch does not quietly
+        // forget" has to survive the watch dying. A ceiling lifted at
+        // mile 4 must still reach the phone when the process is killed
+        // at mile 9.
+        var decisions: Decisions? = nil
+
+        struct Decisions: Codable {
+            var ceilingLift: CeilingLiftRecord? = nil
+            var repSkips: [RepSkipRecord]? = nil
+            var recoveryExtensions: [RecoveryExtensionRecord]? = nil
+            var bail: RuleOutcome? = nil
+            /// Seconds added to the phase that was in flight, so a
+            /// recovered recovery does not silently shed its extension.
+            var phaseAddedSec: Int? = nil
+
+            var isEmpty: Bool {
+                ceilingLift == nil && (repSkips?.isEmpty ?? true)
+                    && (recoveryExtensions?.isEmpty ?? true) && bail == nil
+                    && (phaseAddedSec ?? 0) == 0
+            }
+        }
+
         func decodedWorkout() -> WatchWorkout? {
             try? JSONDecoder().decode(WatchWorkout.self, from: workoutJSON)
         }
+    }
+
+    /// The decisions taken so far, packed for the snapshot. Nil when the run
+    /// has been unremarkable, so an ordinary run's snapshot is the same size
+    /// it always was.
+    private var decisionsForSnapshot: RunSnapshot.Decisions? {
+        let d = RunSnapshot.Decisions(
+            ceilingLift: ceilingLiftRecord,
+            repSkips: repSkipRecords.isEmpty ? nil : repSkipRecords,
+            recoveryExtensions: recoveryExtensionRecords.isEmpty ? nil : recoveryExtensionRecords,
+            bail: bailOutcome,
+            phaseAddedSec: phaseAddedSec > 0 ? phaseAddedSec : nil
+        )
+        return d.isEmpty ? nil : d
+    }
+
+    /// The inverse of `decisionsForSnapshot`, for the RESUME path.
+    private func restoreDecisions(_ d: RunSnapshot.Decisions?) {
+        clearDecisions()
+        guard let d else { return }
+        ceilingLiftRecord = d.ceilingLift
+        ceilingLifted = d.ceilingLift != nil
+        repSkipRecords = d.repSkips ?? []
+        skippedRepOrdinals = Set(repSkipRecords.map { $0.repIndex })
+        recoveryExtensionRecords = d.recoveryExtensions ?? []
+        bailOutcome = d.bail
+        bailAnswered = d.bail != nil
+        bailTaken = d.bail?.actionTaken ?? false
+        phaseAddedSec = max(0, d.phaseAddedSec ?? 0)
     }
 
     static let snapshotKey = "faff.watch.activeRunSnapshot.v1"
@@ -1219,7 +1826,8 @@ final class WorkoutEngine: ObservableObject {
             phaseElapsedSec: phaseElapsedSec,
             phaseStartMi: phaseStartMi,
             results: results,
-            savedAtEpoch: Date.now.timeIntervalSince1970
+            savedAtEpoch: Date.now.timeIntervalSince1970,
+            decisions: decisionsForSnapshot
         )
         if let data = try? JSONEncoder().encode(snap) {
             UserDefaults.standard.set(data, forKey: Self.snapshotKey)
@@ -1277,6 +1885,15 @@ final class WorkoutEngine: ObservableObject {
             }
         }
         hrOverCeiling = false
+        // Restore every decision the runner had already taken. Without this
+        // a crash would quietly un-answer the bail (the board would ask a
+        // second time), un-lift the ceiling (the guardrail would start
+        // flashing again at a limit the runner had already dismissed), and
+        // drop the skips and extensions off the completion entirely. Absent
+        // on a snapshot written before this shipped, which reads as "no
+        // decisions" — the honest answer for a build that could not take
+        // any.
+        restoreDecisions(snap.decisions)
         isPaused = false
         pauseStart = nil
         prepDrift()
@@ -1386,7 +2003,7 @@ final class WorkoutEngine: ObservableObject {
         let totalAvgHr = stats.avgHr ?? phaseHrWeighted
         let totalMaxHr = stats.maxHr ?? phaseMaxHr
 
-        return WatchCompletion(
+        var out = WatchCompletion(
             workoutId: workoutId,
             startedAt: iso.string(from: startDate),
             completedAt: iso.string(from: .now),
@@ -1401,6 +2018,25 @@ final class WorkoutEngine: ObservableObject {
             routePolyline: nil,   // pre-crash route died with the old process
             elevGainFt: nil       // partial post-crash climb would mislead
         )
+        // Decisions survive the crash. They were persisted to the snapshot at
+        // the moment they were taken, so an END & SAVE after a watch reboot
+        // still tells the phone that the runner lifted the ceiling, skipped
+        // rep four and bought thirty seconds twice. The route and the climb
+        // died with the old process; the decisions did not.
+        if let d = snapshot?.decisions {
+            applyDecisions(
+                to: &out,
+                ceilingLift: d.ceilingLift,
+                repSkips: d.repSkips ?? [],
+                recoveryExtensions: d.recoveryExtensions ?? [],
+                // The snapshot carries the bail so a run that died at mile 9
+                // still reports a decision taken at mile 4. This is a static
+                // recovery path with no live engine, so it reads the answer
+                // off the snapshot rather than off `ruleOutcomesForWire`.
+                ruleOutcomes: d.bail.map { [$0] }
+            )
+        }
+        return out
     }
 
     // MARK: - GPS polyline encoder
@@ -1558,7 +2194,7 @@ final class WorkoutEngine: ObservableObject {
             return (m * 3.28084 * 10).rounded() / 10
         }()
 
-        return WatchCompletion(
+        var out = WatchCompletion(
             // P1-34 · per-start session suffix so a same-day restart/double
             // never collides with an earlier completion's row. See
             // sessionSuffix(for:) doc above.
@@ -1576,5 +2212,38 @@ final class WorkoutEngine: ObservableObject {
             routePolyline: routePolyline,
             elevGainFt: elevGainFt
         )
+        // The wrist decisions ride the SAME POST — no second request, no
+        // separate endpoint. Fields stay absent when nothing was decided, so
+        // an unremarkable run's body is byte-identical to what it sent before
+        // any of this existed.
+        //
+        // ONE DECISION IS STILL GROUNDED, and it is stated here rather than
+        // left to be discovered: THE BAIL. The server has read
+        // `ruleOutcomes` since 2026-06-09 (complete/route.ts, and run-recap
+        // reasons about it — a taken bail leads the facts, a declined one
+        // gets "noted, not judged"), but `WatchCompletion` in
+        // WatchWorkoutModels.swift has no such stored property, so there is
+        // no field to write it to and an extension cannot add one. The
+        // engine records BOTH answers and survives a crash with them
+        // (`recordBail`, `ruleOutcomesForWire`); they simply cannot leave
+        // the watch yet.
+        //
+        // The whole fix is one property on that struct plus its helper,
+        // which is that file's owner to add:
+        //
+        //     var ruleOutcomes: [WorkoutEngine.RuleOutcome]? = nil
+        //     mutating func recordRuleOutcome(_ o: WorkoutEngine.RuleOutcome) {
+        //         ruleOutcomes = (ruleOutcomes ?? []) + [o]
+        //     }
+        //
+        // and then, here:  ruleOutcomesForWire?.forEach { out.recordRuleOutcome($0) }
+        Self.applyDecisions(
+            to: &out,
+            ceilingLift: ceilingLiftRecord,
+            repSkips: repSkipRecords,
+            recoveryExtensions: recoveryExtensionRecords,
+            ruleOutcomes: ruleOutcomesForWire
+        )
+        return out
     }
 }

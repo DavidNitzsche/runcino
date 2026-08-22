@@ -294,43 +294,21 @@ need "$WATCH_THEME_V5" 'race: *\[Color\] = \[Color\(hex: 0xFF8847\), Color\(hex:
 need "$WATCH_THEME_V5" 'muted: *\[Color\] = \[Color\(hex: 0x8792A8\), Color\(hex: 0x5A6072\), Color\(hex: 0x25272E\)\]' 'watch day-state MUTED = #8792A8 · #5A6072 · #25272E (No session)'
 need "$WATCH_THEME_V5" 'mutedLocations: *\[Double\] = \[0.00, 0.55, 1.85\]' 'watch MUTED middle stop at 55%, flatter than a session ramp'
 
-# ── 1d · WATCH · the LEGACY ten-colour palette, asserted while it is used ────
-# Same shape as the phone's section 1b, same reason: the 0821 faces land one at
-# a time and a half-migrated skin on a wrist is the outcome worth avoiding.
+# ── 1d · WATCH · the legacy palette is GONE (2026-08-21) ────────────────────
+# The self-expiring branch that used to live here did its job and expired. All
+# nine consumers migrated to the 0821 tokens, FaceKit.swift / WatchTheme.swift /
+# ResponsiveFace.swift were deleted with the faces they drew, and the branch
+# inverted on its own to demand exactly that — nobody had to remember.
 #
-# THIS BLOCK EXPIRES ON ITS OWN. When no file under the watch target outside
-# WatchTheme.swift / FaceKit.swift references a legacy token any more, the
-# branch inverts: it stops asserting the old values and starts requiring the
-# declarations be DELETED. Nobody has to remember to come back and remove it.
-LEGACY_WATCH_TOKEN_RE='Faff\.(live|goal|race|dist|over|redish|rest|ink|mute|dim|brand|bonus|t2|t3|track|liveWash|goalWash|distWash|grayWash|pauseWash|inkDim|onLive)\b|WatchTheme\.C\b|\bRole\.'
-# WatchThemeV5.swift needs NO exclusion — its only mentions of the legacy
-# tokens are in its header, and code_refs does not count comments.
-legacy_watch_files=$(code_refs "$ROOT/legacy/native/Faff/FaffWatch Watch App" "$LEGACY_WATCH_TOKEN_RE" \
-  WatchTheme.swift FaceKit.swift)
-legacy_watch_count=$(printf '%s' "$legacy_watch_files" | grep -c . || true)
-
-if [ "$legacy_watch_count" -gt 0 ]; then
-  need "$WATCH_THEME"   'green *= Color\(hex: 0x3EBD41\)'  'watch C.green = #3EBD41'
-  need "$WATCH_THEME"   'amber *= Color\(hex: 0xF3AD38\)'  'watch C.amber = #F3AD38'
-  need "$WATCH_THEME"   'orange *= Color\(hex: 0xD03F3F\)' 'watch C.orange = #D03F3F (Redish · race/now · token name kept)'
-  need "$WATCH_THEME"   'warn *= Color\(hex: 0xFC4D64\)'   'watch C.warn = #FC4D64'
-  need "$WATCH_FACEKIT" 'live *= Color\(hex: 0x3EBD41\)'   'watch Faff.live = #3EBD41'
-  need "$WATCH_FACEKIT" 'goal *= Color\(hex: 0xF3AD38\)'   'watch Faff.goal = #F3AD38'
-  need "$WATCH_FACEKIT" 'over *= Color\(hex: 0xFC4D64\)'   'watch Faff.over = #FC4D64'
-  need "$WATCH_FACEKIT" 'dist *= Color\(hex: 0x27B4E0\)'   'watch Faff.dist = #27B4E0'
-  need "$WATCH_FACEKIT" 'bonus *= Color\(hex: 0xF0DF47\)'  'watch Faff.bonus = #F0DF47 (Light Yellow)'
-else
-  if grep -qE 'live *= Color\(hex: 0x3EBD41\)|goal *= Color\(hex: 0xF3AD38\)' "$WATCH_FACEKIT"; then
-    echo "PALETTE LOCK FAIL · legacy watch palette has no consumers left but is still declared"
-    echo "  No face under the watch target references Faff.* / WatchTheme.C / Role."
-    echo "  any more. The 0821 migration is complete, so the old palette must go:"
-    echo "    1. delete the Faff enum + Role from FaceKit.swift and C from WatchTheme.swift"
-    echo "    2. delete section 1d of this script (this whole if/else)"
-    echo "    3. drop the legacy hexes from WATCH_ALLOWED_HEX below"
-    echo "  Two palettes in one app is how a half-migrated skin ships."
-    fail=1
-  fi
-fi
+# Kept as a tombstone rather than a silent deletion because the shape is worth
+# copying: a gate that asserts an old value WHILE it still has consumers, and
+# then flips to demanding its removal when it does not, is the only version of
+# "migrate this eventually" that cannot rot. The phone's section 1b is still
+# running the same play with 48 files to go.
+#
+# WATCH_ALLOWED_HEX below is now the v5 set alone; there is no legacy half to
+# fall back to, so a resurrected #D03F3F fails immediately.
+legacy_watch_count=0
 
 # ── 2 · RETIRED-HEX TRIPWIRE ────────────────────────────────────────────────
 # Dead by the AFC cutover. Historical comment mentions are filtered by
@@ -486,12 +464,7 @@ fi
 # while section 1d says they still have consumers, so the allowlist shrinks on
 # its own as the faces migrate rather than needing a second cleanup pass.
 WATCH_V5_HEX='000000|0F1011|17191B|212427|2A2E32|3EBD41|F2B03C|FF4438|FF5A1F|1F8A52|0F4A3A|008FEC|4A3A8E|1C1A3A|F3AD38|E85D26|7A2828|FF8847|B084FF|6A4ACE|2A1A5A|27B4E0|1A6A9E|0C2A5E|8792A8|5A6072|25272E'
-WATCH_LEGACY_HEX='D03F3F|FC4D64|F0DF47|F6F7F8|8A90A0|646464|2C2F35'
-if [ "$legacy_watch_count" -gt 0 ]; then
-  WATCH_ALLOWED_HEX="$WATCH_V5_HEX|$WATCH_LEGACY_HEX"
-else
-  WATCH_ALLOWED_HEX="$WATCH_V5_HEX"
-fi
+WATCH_ALLOWED_HEX="$WATCH_V5_HEX"
 # 2026-08-21 · the WidgetKit extension (complications + Smart Stack) is a
 # SECOND directory under the watch surface, and the sweep above only ever knew
 # about one. A complication is the surface rule 12 protects most — "nothing on
@@ -543,9 +516,8 @@ if [ "$fail" -eq 0 ]; then
     echo "  · legacy phone palette still asserted — $legacy_phone_count file(s) under native-v2 reference it."
     echo "    When that reaches 0, this gate flips and requires the legacy block deleted from Theme.swift."
   fi
-  if [ "${legacy_watch_count:-0}" -gt 0 ]; then
-    echo "  · legacy watch palette still asserted — $legacy_watch_count face file(s) not yet on the 0821 tokens."
-    echo "    When that reaches 0, this gate flips and requires Faff/Role deleted from FaceKit.swift."
+  if false; then
+    :
   fi
 fi
 exit $fail

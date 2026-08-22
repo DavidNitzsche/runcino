@@ -157,6 +157,10 @@ final class WatchRootModel: ObservableObject {
     @Published private(set) var recoverySummary: RecoverySummary?
     private var recoveredResume: (workout: WatchWorkout, snapshot: WorkoutEngine.RunSnapshot)?
     private var recoveredSnapshot: WorkoutEngine.RunSnapshot?
+    /// The recovered HKWorkoutSession, held so "Throw it away" can end AND
+    /// discard it. The tracker adopts it for the live readouts, but discard
+    /// needs the session object itself and there is no un-adopt.
+    private var recoveredSession: HKWorkoutSession?
     private var didAttemptRecovery = false
 
     /// Called once at first root appearance. If HealthKit hands back a
@@ -214,6 +218,7 @@ final class WatchRootModel: ObservableObject {
                 WorkoutEngine.clearSnapshot()
                 return
             }
+            recoveredSession = session
             tracker.adoptRecoveredSession(session)
             // Pair the snapshot with THIS session only when their start
             // times agree — a stale snapshot from an older crashed run must
@@ -272,6 +277,23 @@ final class WatchRootModel: ObservableObject {
         }
     }
 
+    /// Throw away a recovered run. The addendum draws this as text at 42%
+    /// with no pill, deliberately — a filled pill beside a filled pill is how
+    /// a run gets thrown away by accident.
+    ///
+    /// The HKWorkoutSession is ended and discarded, so nothing reaches
+    /// HealthKit and nothing is POSTed. That is destructive and irreversible,
+    /// which is exactly why it is the unpilled option.
+    func discardRecovered() {
+        guard let session = recoveredSession else {
+            recoveredRun = nil
+            return
+        }
+        recoveredRun = nil
+        recoveredSession = nil
+        Task { await tracker.endAndDiscardRecovered(session) }
+    }
+
     func dismissRecoverySummary() {
         recoverySummary = nil
     }
@@ -296,20 +318,16 @@ struct WorkoutRootView: View {
     @ObservedObject private var treadmillHR = TreadmillHRSession.shared
     @StateObject private var model = WatchRootModel()
 
-    /// Visual-regression fixture: `-face <name>` renders one face with the
-    /// canonical values so scripts/watch can diff it. Short-circuits the app.
-    private static var fixtureFace: String? {
-        let args = ProcessInfo.processInfo.arguments
-        guard let i = args.firstIndex(of: "-face"), i + 1 < args.count else { return nil }
-        return args[i + 1]
-    }
+    // The `-face` visual-regression harness is GONE, with the fixtures it
+    // rendered. It diffed against docs/design/watch-app.html, which the 0821
+    // handoff retires, so its 24 reference images all describe faces that no
+    // longer ship. Re-pointing it at the new boards is real work and worth
+    // doing; leaving it in place pointing at a dead design would have been a
+    // green harness proving nothing, which is the failure mode this build has
+    // hit four times already. See docs/design/watch-0821/AUDIT.md.
 
     var body: some View {
-        if let face = Self.fixtureFace {
-            WatchFixtureView(face: face)
-        } else {
-            appBody
-        }
+        appBody
     }
 
     private var appBody: some View {
@@ -349,19 +367,33 @@ struct WorkoutRootView: View {
             TreadmillHRView()
         } else if let summary = model.recoverySummary {
             // END & SAVE receipt — the recovered run's numbers, then home.
-            SummaryView(workout: summary.workout, completion: summary.completion) {
-                model.dismissRecoverySummary()
-            }
+            WatchRecoveryReceiptV5(
+                summary: summary,
+                onDone: { model.dismissRecoverySummary() }
+            )
         } else if let recovered = model.recoveredRun {
             // RK-3 — a run outlived its process (crash / reboot mid-run).
             // Live elapsed / distance / HR from the re-attached session,
             // plus RESUME (when the snapshot reconstructed) and END & SAVE.
-            RecoveredRunView(
-                tracker: model.tracker,
-                canResume: recovered.canResume,
-                saving: recovered.saving,
-                onResume: { model.resumeRecovered() },
-                onEndSave: { model.endAndSaveRecovered() }
+            // The addendum draws this one. It leads with the EVIDENCE that
+            // the run is really there — nobody trusts an offer to resume
+            // something the watch cannot describe — and "Throw it away" is
+            // text at 42% with no pill, the same rule as Discard on the end
+            // confirmation.
+            PreSessionRecoveredRunBoard(
+                startedAt: WFmt.clock(model.tracker.liveElapsedSec) + " ago",
+                distance: WFmt.miles(model.tracker.distanceMi),
+                duration: WFmt.clock(model.tracker.liveElapsedSec),
+                carryOnLabel: recovered.canResume ? "Carry on" : "Save it as is",
+                onCarryOn: {
+                    // Without a snapshot the engine cannot be rebuilt, so the
+                    // honest offer is to save what exists rather than to
+                    // pretend the session can continue.
+                    recovered.canResume ? model.resumeRecovered()
+                                        : model.endAndSaveRecovered()
+                },
+                onSaveAsIs: { model.endAndSaveRecovered() },
+                onDiscard: { model.discardRecovered() }
             )
         } else if let engine = model.engine {
             // ── The 0821 boards ──────────────────────────────────────────
@@ -389,12 +421,20 @@ struct WorkoutRootView: View {
                     seconds: max(1, engine.countdownValue)
                 )
             case .idle, .running:
+                // The decision seam, wired in exactly one place. Every one of
+                // these is recorded on the run and surfaces on the phone —
+                // the watch does not quietly forget what the runner chose.
                 WatchRunSurfaceV5(engine: engine, tracker: model.tracker)
-                    .onEndAndSave { engine.abandon() }
-                    .onDiscardRun {
-                        // Thrown away on purpose. reset() drops the run
-                        // without building a completion, so nothing is sent.
-                        model.reset()
+                    .onEndAndSave { engine.finish(save: true) }
+                    .onDiscardRun { engine.finish(save: false) }
+                    .onCeilingLift { bpm in engine.recordCeilingLift(readingBpm: bpm) }
+                    .onRepSkip { _, _ in engine.recordRepSkip() }
+                    .onRecoveryExtend { added in engine.recordRecoveryExtension(addedSec: added) }
+                    .onDropGPS {
+                        // The runner traded the route for the run. Distance
+                        // survives from motion; the polyline ends here, which
+                        // is the honest outcome of the choice they made.
+                        model.tracker.dropGPS()
                     }
             }
         } else {
@@ -404,22 +444,52 @@ struct WorkoutRootView: View {
             // (no target, no rep structure) so the user can run anytime —
             // rest days, when the phone hasn't paired, or when they want
             // to override today's plan and just go.
-            TabView {
-                idleHome.tag(0)
-                ResponsiveFace {
-                    JustRunFace(onStart: { model.start(.makeJustRun()) })
-                }.tag(1)
-                ResponsiveFace {
-                    ReadinessGlanceView(readiness: phone.readiness ?? Self.simulatorReadiness)
-                }.tag(2)
-            }
-            .tabViewStyle(.page)
+            // ── ONE lobby, no side tabs ──────────────────────────────────
+            //
+            // The 0821 design pages poster → breakdown → week and stops. The
+            // two tabs that used to live beside it are deliberately gone:
+            //
+            //  · JUST RUN was an escape hatch parked one swipe right of every
+            //    lobby. The design gives the escape a home ON the board that
+            //    needs it — "Run anyway" on Rest day, "Plain run" on a stale
+            //    or absent plan — so it appears where it is true and nowhere
+            //    else.
+            //
+            //  · The READINESS GLANCE was a score. The design is explicit
+            //    that readiness never appears as a score, because a score on
+            //    a lobby is a thing to argue with at 6am; it appears as a
+            //    session that has ALREADY changed, with the reason stated
+            //    once. That is `sessionMoved` on the poster, and a second
+            //    surface showing the number would undo the ruling.
+            idleHome
         }
     }
 
     @ViewBuilder
     private var idleHome: some View {
-        if let workout = phone.todayWorkout ?? Self.simulatorWorkout {
+        // ── dayState WINS over a workout, deliberately ───────────────────
+        //
+        // The server ships the session beside `dayState` when an open injury,
+        // a logged sick day or a travel week holds, so a deployed watch keeps
+        // running the plan exactly as before. A 0821 build must not: the
+        // design says the watch does NOT prescribe through an injury, a
+        // sickness or a week off — it carries the engine's own sentence and
+        // offers a plain run.
+        //
+        // The first draft of this router had it the other way round and would
+        // have drawn a threshold session to a runner the plan already knows is
+        // injured. Caught by the session wiring the widget, which has to make
+        // the same call and could not make it differently without the
+        // complication contradicting the lobby.
+        if let dayState = phone.dayState {
+            V5LobbyRefusal(
+                lede: dayState.isRestDay ? dayState.title : nil,
+                sentence: dayState.coachLine,
+                escapeLabel: dayState.actionLabel,
+                ramp: dayState.isRestDay ? .rest : .noSession,
+                onEscape: { model.start(.makeJustRun()) }
+            )
+        } else if let workout = phone.todayWorkout ?? Self.simulatorWorkout {
             if model.stalePending && workout.isExpired {
                 // RK-2 — the cached plan is past its window and a refetch is
                 // out. The moment a fresh payload lands, `isExpired` reads
@@ -443,17 +513,6 @@ struct WorkoutRootView: View {
                     onStart: { model.start(workout) }
                 )
             }
-        } else if let dayState = phone.dayState {
-            // A refusal with a REASON, in its own ramp, so it reads as a
-            // state of the plan rather than a screen that failed to load.
-            // The escape is present but quiet: nothing here is being sold.
-            V5LobbyRefusal(
-                lede: dayState.isRestDay ? dayState.title : nil,
-                sentence: dayState.coachLine,
-                escapeLabel: dayState.actionLabel,
-                ramp: dayState.isRestDay ? .rest : .noSession,
-                onEscape: { model.start(.makeJustRun()) }
-            )
         } else if phone.noWorkoutMessage != nil {
             // Older server, or a payload with no structured day state. The
             // sentence is all we have, so the board carries it rather than
@@ -514,183 +573,10 @@ struct WorkoutRootView: View {
     }
 }
 
-/// Rest / race / no-plan day — nothing to execute (watch-app.html §A ·
-/// rest day): green eyebrow, a plain "REST" hero, and the body read.
-private struct NoWorkoutView: View {
-    let message: String
-    var body: some View {
-        ResponsiveFace {
-            VStack(spacing: 0) {
-                HStack {
-                    Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(Faff.race)
-                    Spacer()
-                }
-                .padding(.leading, 8).padding(.top, 14)   // FAFF baseline level with the OS clock
-                Spacer()
-                // Big green REST + the body read (no "REST DAY" eyebrow — that's "rest" twice).
-                Text("REST").font(WatchTheme.display(80)).foregroundStyle(Faff.live)
-                Text(message)
-                    .font(WatchTheme.body(13, .medium)).foregroundStyle(Faff.t2)
-                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 180).padding(.top, 8)
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, 14).padding(.bottom, 12)
-        }
-    }
-}
 
-/// RK-2 — the cached plan is expired and a refetch is in flight. Amber
-/// STALE hero + status line; once the phone proves unreachable (or ~10s
-/// pass) a START ANYWAY capsule appears so race morning with the phone in
-/// a gear bag never bricks the start.
-private struct StalePlanView: View {
-    let overrideAvailable: Bool
-    let onStartAnyway: () -> Void
 
-    var body: some View {
-        ResponsiveFace {
-            VStack(spacing: 0) {
-                HStack {
-                    Text("FAFF").font(WatchTheme.display(15)).italic().tracking(1.5).foregroundStyle(Faff.race)
-                    Spacer()
-                }
-                .padding(.leading, 8).padding(.top, 14)   // FAFF baseline level with the OS clock
-                Spacer()
-                Text("STALE").font(WatchTheme.display(64)).foregroundStyle(Faff.goal)
-                Text(overrideAvailable
-                     ? "Phone unreachable. Cached session only."
-                     : "Syncing today's session.")
-                    .font(WatchTheme.body(13, .medium)).foregroundStyle(Faff.t2)
-                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 180).padding(.top, 6)
-                if !overrideAvailable {
-                    ProgressView().tint(Faff.goal).padding(.top, 8)
-                }
-                Spacer()
-                if overrideAvailable {
-                    Button(action: onStartAnyway) {
-                        Text("START ANYWAY")
-                            .font(.custom("HelveticaNeue-Bold", size: 16)).tracking(1.5)
-                            .foregroundStyle(Color.black)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .background(Capsule().fill(Faff.goal))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 15)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, 14).padding(.bottom, 12)
-        }
-    }
-}
 
-/// RK-3 — a run outlived its process. Live reads come straight off the
-/// re-attached session (builder elapsed, tracker distance/HR); RESUME
-/// re-enters the guided workout at the snapshot's phase, END & SAVE closes
-/// the session out properly so the HKWorkout + completion are never lost.
-private struct RecoveredRunView: View {
-    @ObservedObject var tracker: WorkoutTracker
-    let canResume: Bool
-    let saving: Bool
-    let onResume: () -> Void
-    let onEndSave: () -> Void
-
-    private var distText: String {
-        tracker.distanceMi > 0 ? String(format: "%.2f", tracker.distanceMi) : "—"
-    }
-    private var hrText: String {
-        tracker.heartRate > 0 ? "♥\(tracker.heartRate)" : "♥—"
-    }
-    private func elapsedText() -> String {
-        let s = tracker.liveElapsedSec
-        return s >= 3600 ? PaceFormat.hms(s) : PaceFormat.clock(s)
-    }
-
-    var body: some View {
-        ResponsiveFace {
-            GeometryReader { geo in
-                let h = geo.size.height
-                ZStack {
-                    Color.black.ignoresSafeArea()
-                    VStack(alignment: .leading, spacing: 0) {
-                        FaceLabel(text: "RECOVERED", color: Faff.goal, size: h * 0.06)
-                            .topTagInset(h)
-                        VStack(alignment: .leading, spacing: h * 0.012) {
-                            TimelineView(.periodic(from: .now, by: 1)) { _ in
-                                BigValue(text: elapsedText(), role: .neutral, size: h * 0.14)
-                            }
-                            BigValue(text: distText, role: .dist, size: h * 0.14)
-                            BigValue(text: hrText, role: .neutral, size: h * 0.14)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                        if saving {
-                            HStack {
-                                Spacer()
-                                ProgressView().tint(Faff.goal)
-                                Spacer()
-                            }
-                            .padding(.vertical, h * 0.035)
-                        } else {
-                            VStack(spacing: h * 0.018) {
-                                if canResume {
-                                    Button(action: onResume) {
-                                        HStack(spacing: h * 0.028) {
-                                            Image(systemName: "play.fill")
-                                                .font(.system(size: h * 0.048, weight: .bold))
-                                            Text("RESUME")
-                                                .font(.custom("HelveticaNeue-Bold", size: h * 0.072))
-                                                .tracking(1.5)
-                                        }
-                                        .foregroundStyle(Faff.onLive)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, h * 0.020)
-                                        .background(Capsule().fill(Faff.live))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                Button(action: onEndSave) {
-                                    Text("END & SAVE")
-                                        .font(.custom("HelveticaNeue-Bold", size: h * 0.072))
-                                        .tracking(1.5)
-                                        .foregroundStyle(.white)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, h * 0.020)
-                                        .background(Capsule().fill(Faff.brand))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, h * 0.075)
-                    .padding(.bottom, h * 0.045)
-                }
-            }
-        }
-    }
-}
-
-/// No workout received yet — prompt the user to open the iPhone app.
-private struct WaitingForPhoneView: View {
-    var body: some View {
-        ResponsiveFace {
-            VStack(spacing: 10) {
-                ProgressView().tint(Faff.race)
-                Text("Open Faff on your iPhone to load today's workout.")
-                    .font(WatchTheme.body(12, .medium))
-                    .foregroundStyle(Faff.t2)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-}
 
 #Preview("Workout") {
     // Preview can't reach a phone; show the idle screen from the sample.
-    IdleView(workout: .sample) { }
 }
