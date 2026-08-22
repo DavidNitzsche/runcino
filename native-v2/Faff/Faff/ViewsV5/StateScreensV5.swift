@@ -539,3 +539,121 @@ extension V5Today {
     DataOutageV5(today: .sampleOutageV5, onRetry: {})
         .preferredColorScheme(.dark)
 }
+
+// MARK: - 8c · A race, twenty minutes after it finished
+//
+// The receiving end of the watch's race-day finish, and the one screen in the
+// app whose whole job is to REFUSE TO PROMOTE A NUMBER.
+//
+// The runner has just crossed a line holding a time they desperately want to
+// be real. It is a watch clock: started by a thumb, stopped by a thumb, over a
+// GPS distance that is not the certified course. The chip time will move it —
+// by seconds, not minutes, which is exactly the size of thing worth saying out
+// loud rather than hiding.
+//
+// So the screen holds the number without letting it become the result, and it
+// does that without feeling like it is withholding:
+//
+//   · THE WATCH TIME IS IN THE VALUE REGISTER, NEVER THE DISPLAY REGISTER.
+//     Display is where real results go. A watch clock set in 56pt Archivo
+//     would BE a result, whatever the label beside it said, because the type
+//     is the claim. 28pt in the value register with "on the watch" beside it
+//     is a phrase the runner can interpret, which is the rule the whole
+//     screen is built on: never a value the runner cannot interpret.
+//
+//   · IT CARRIES THE MARK. `FaffValue.modelled` puts the amber tilde on it —
+//     rule one's own mechanism rather than a bespoke colour. The addendum
+//     draws the figure itself in `#F2B03C`, which worked when this panel had
+//     white ink; round three has since given the race ramp DARK ink, and
+//     amber-on-amber is unreadable. The tilde says provisional and the figure
+//     stays legible, which is what the colour was for.
+//
+//   · THE STATS PLATE DOES NOT REPEAT IT. Goal, margin and average pace are
+//     three quantities that only make sense together. Printing the watch time
+//     a second time would be the screen arguing with itself about how
+//     important that number is.
+//
+//   · NO BUTTON THAT CANNOT BE HONOURED. There is no "lock in chip time"
+//     here, because there is no chip time to lock. That row appears days
+//     later in the Races table. A control that cannot do its job is worse
+//     than no control — it invites a tap and answers with nothing.
+struct RaceJustFinishedV5: View {
+    private var panelInk: V5.PanelInk { PanelFill.state(.race).ink }
+
+    let model: V5RaceJustFinished
+    var onOpenAccount: () -> Void = {}
+
+    var body: some View {
+        StateScreenScaffold {
+            DayPanel(fill: .state(.race)) {
+                PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
+
+                VStack(alignment: .leading, spacing: V5.S.s2) {
+                    Text(model.kicker)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(panelInk.secondary)
+                    Text(model.distanceLabel)
+                        .faffDisplayV5(TypeScaleV5.display56)
+                        .foregroundStyle(panelInk.primary)
+                }
+
+                // The number, held at arm's length.
+                HStack(alignment: .firstTextBaseline, spacing: V5.S.s8) {
+                    FaffValueText(.modelled(model.watchTime),
+                                  font: .faffText(TypeScaleV5.valueMin, weight: .semibold),
+                                  color: panelInk.primary)
+                    Text("on the watch")
+                        .font(.faffText(TypeScaleV5.body15))
+                        .foregroundStyle(panelInk.secondary)
+                }
+
+                if !model.stats.isEmpty {
+                    PanelStatPlate(stats: model.stats)
+                }
+            }
+        } content: {
+            CoachSay(text: model.coachLine, size: .md)
+
+            // Two STATEMENTS, no chevrons. Nothing here opens, and a chevron
+            // on a row with nothing behind it is a promise the screen cannot
+            // keep.
+            ListGroup(header: "Chip time") {
+                // No value on this row. `.modelled(nil)` renders an empty
+                // marked value, which is a tilde pointing at nothing — the
+                // status IS the content and it lives in the label.
+                ListRow(label: model.chipStatus, sub: model.chipSub)
+                ListRow(label: "Nothing goes in the book today",
+                        sub: "The watch time never becomes the result. It stands in until the chip lands.")
+            }
+
+            ListGroup(header: "The rest of the week") {
+                ListRow(label: "Tomorrow", value: .measured(model.tomorrow))
+                ListRow(label: "Back in the plan", value: .measured(model.backInPlan))
+            }
+
+            CoachCaveat(text: "This week is for absorbing it, not chasing it.")
+        }
+    }
+}
+
+/// What 8c needs. Deliberately small: every field is something the backend
+/// already knows the moment a race result lands, and nothing here is derived
+/// on the phone.
+struct V5RaceJustFinished: Equatable {
+    /// "Crossed the line 22 minutes ago" — composed server-side, because the
+    /// phone would have to guess a timezone to say it.
+    let kicker: String
+    /// "Half marathon".
+    let distanceLabel: String
+    /// The watch clock, as text. Always rendered modelled.
+    let watchTime: String
+    /// Goal / margin / average — three quantities that only read together.
+    let stats: [PanelStat]
+    let coachLine: String
+    /// "Not published yet" / "Provisional result posted".
+    let chipStatus: String
+    /// "We check hourly".
+    let chipSub: String?
+    let tomorrow: String
+    let backInPlan: String
+}

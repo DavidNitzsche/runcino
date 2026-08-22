@@ -278,6 +278,10 @@ struct RunDetail: Decodable, Identifiable {
     let planned_spec: WorkoutSpec?     // Migration 120 structured spec
     let planned_sub_label: String?
     let planned_distance_mi: Double?
+    /// 8b · what the runner decided on the wrist. Empty for almost every run.
+    let ceiling_lift: RunCeilingLift?
+    let rep_skips: [RunRepSkip]
+    let recovery_extensions: [RunRecoveryExtension]
 
     enum CodingKeys: String, CodingKey {
         case id, date, start_local, name, source, type
@@ -288,6 +292,7 @@ struct RunDetail: Decodable, Identifiable {
         case phase_breakdown
         case suffer_score, kudos, shoe_id, shoes, hr_zones_from_lthr
         case planned_spec, planned_sub_label, planned_distance_mi
+        case ceiling_lift, rep_skips, recovery_extensions
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -328,6 +333,9 @@ struct RunDetail: Decodable, Identifiable {
         self.planned_spec = try c.decodeIfPresent(WorkoutSpec.self, forKey: .planned_spec)
         self.planned_sub_label = try c.decodeIfPresent(String.self, forKey: .planned_sub_label)
         self.planned_distance_mi = try c.decodeIfPresent(Double.self, forKey: .planned_distance_mi)
+        self.ceiling_lift = try? c.decodeIfPresent(RunCeilingLift.self, forKey: .ceiling_lift)
+        self.rep_skips = (try? c.decode([RunRepSkip].self, forKey: .rep_skips)) ?? []
+        self.recovery_extensions = (try? c.decode([RunRecoveryExtension].self, forKey: .recovery_extensions)) ?? []
     }
 }
 
@@ -350,6 +358,39 @@ struct PhaseBreakdown: Decodable, Identifiable {
     let avg_cadence: Int?
     let completed: Bool
     let status: String?                    // "on" | "fast" | "slow" | nil
+}
+
+/// 8b · the ceiling the runner lifted, as the watch recorded it.
+///
+/// Both figures, never a delta. "+9 over" is what a backend naturally
+/// produces and it is unreadable at a glance, which is why the drawn row
+/// spells the reading and the limit out separately.
+struct RunCeilingLift: Decodable {
+    let ceilingBpm: Int?
+    let readingBpm: Int?
+    let phaseLabel: String?
+    let atMi: Double?
+}
+
+/// A rep the runner CHOSE to skip.
+///
+/// An explicit record, never inferred. A chosen skip and a dropped rep are
+/// the same `completed: false`, and on a screen whose register says a
+/// decision is not a lapse they must not read the same.
+struct RunRepSkip: Decodable, Identifiable {
+    var id: Int { repIndex }
+    let repIndex: Int
+    let repCount: Int?
+    let repsCompleted: Int?
+    let phaseLabel: String?
+}
+
+/// One +30s the runner added to a recovery. One entry per extension, so the
+/// count is the array length and the boundaries live on the entries.
+struct RunRecoveryExtension: Decodable {
+    let afterRepIndex: Int?
+    let beforeRepIndex: Int?
+    let addedSec: Int?
 }
 
 struct RunSplit: Decodable, Identifiable {

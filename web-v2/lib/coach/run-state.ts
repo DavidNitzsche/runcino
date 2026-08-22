@@ -289,6 +289,18 @@ export interface RunDetail {
   /** plan_workouts.distance_mi for the matching row; used as the "planned
    *  distance" axis when the spec ships rep-only structures. */
   planned_distance_mi: number | null;
+  /** 8b · the decisions the runner took on the wrist mid-run, passed
+   *  through from `runs.data` exactly as the watch recorded them.
+   *
+   *  Passed through, not interpreted. The phone owns the copy — the wire
+   *  carries QUANTITIES so a wording change never touches the payload, and
+   *  every record carries its own reason because a decision without one
+   *  reads as a lapse. Absent (not null, not []) when there was no such
+   *  decision, which is Rule 6: a re-POST that omits one must not clobber
+   *  a sibling. */
+  ceiling_lift: Record<string, unknown> | null;
+  rep_skips: Array<Record<string, unknown>>;
+  recovery_extensions: Array<Record<string, unknown>>;
   /** 2026-06-01 · Aerobic decoupling on long, steady-state runs. The
    *  pace-to-HR drift signal · Research/15 §cardiac decoupling. Joel  // TODO: no matching heading in Research/15 — content exists but heading not anchored
    *  Friel bands: <5% race-ready, 5-7% building, >7% poor. Null when
@@ -996,6 +1008,11 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     planned_spec,
     planned_sub_label,
     planned_distance_mi,
+    ceiling_lift: (r.ceilingLift as Record<string, unknown> | undefined) ?? null,
+    rep_skips: Array.isArray(r.repSkips) ? (r.repSkips as Array<Record<string, unknown>>) : [],
+    recovery_extensions: Array.isArray(r.recoveryExtensions)
+      ? (r.recoveryExtensions as Array<Record<string, unknown>>)
+      : [],
     aerobic_decoupling: (() => {
       // Skip interval / tempo / race · those aren't steady-state by
       // design, and the helper would mostly return null but cheaper

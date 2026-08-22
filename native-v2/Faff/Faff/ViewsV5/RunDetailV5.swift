@@ -109,6 +109,90 @@ struct RunDetailV5: View {
     /// the only move that satisfies both rules.
     var wristDecisions: [WristDecision] = []
 
+    /// THE COMPOSITION SEAM, and the only place wire quantities become
+    /// sentences. The wire carries figures precisely so a wording change never
+    /// touches the payload; this is where the wording lives.
+    ///
+    /// Every row states its own reason. A decision with no reason beside it
+    /// reads as a lapse, which is the one thing this register exists to
+    /// prevent — so a record that cannot produce a reason produces no row at
+    /// all rather than a bare statement.
+    ///
+    /// The bail is not here. It rides `ruleOutcomes` and predates these
+    /// fields; it joins this list when that path is read.
+    private var decisionsFromWire: [WristDecision] {
+        var out: [WristDecision] = []
+
+        // Ceiling · READING AND LIMIT, never a delta. "+9 over" is what a
+        // backend naturally produces and it is unreadable at a glance.
+        //
+        // The drawn row ends "and it was 27 degrees". Dropped, and not for
+        // brevity: nothing in this product has a thermometer, so a run's
+        // temperature is a weather model for a grid square and an hour
+        // bucket. Rule one says mark it; this register forbids amber on a
+        // decision, ever. It can be neither marked nor left bare, so it
+        // cannot honestly appear — and the sentence stands without it.
+        if let lift = detail.ceiling_lift,
+           let reading = lift.readingBpm, let ceiling = lift.ceilingBpm {
+            out.append(.init(id: "ceiling",
+                             statement: "Lifted the ceiling for the day",
+                             reason: "Ran to \(reading) \u{00B7} the ceiling was \(ceiling)"))
+        }
+
+        // Skips · one row each, named by ordinal, because "skipped the fourth
+        // rep" is what the runner did and "1 rep skipped" is a tally.
+        for skip in detail.rep_skips {
+            let done: String? = {
+                guard let c = skip.repsCompleted, let n = skip.repCount else { return nil }
+                return "\(Self.spelled(c).capitalized) of \(Self.spelled(n))"
+            }()
+            let reason = [done, "you chose it, we did not lose it"]
+                .compactMap { $0 }.joined(separator: " \u{00B7} ")
+            out.append(.init(id: "skip-\(skip.repIndex)",
+                             statement: "Skipped the \(Self.ordinal(skip.repIndex)) rep",
+                             reason: reason))
+        }
+
+        // Recovery · ONE row for all of them. Four separate rows saying the
+        // same thing would make one ordinary decision look like a pattern of
+        // them, which is the screen grading a choice by repetition.
+        if !detail.recovery_extensions.isEmpty {
+            let added = detail.recovery_extensions.compactMap(\.addedSec).reduce(0, +)
+            let n = detail.recovery_extensions.count
+            let bounds = detail.recovery_extensions.compactMap { e -> Int? in e.afterRepIndex }
+            let between: String? = {
+                guard let lo = bounds.min(), let hi = bounds.max(), lo != hi else {
+                    return bounds.first.map { "after rep \(Self.spelled($0))" }
+                }
+                return "between reps \(Self.spelled(lo)) and \(Self.spelled(hi + 1))"
+            }()
+            let howMany = n == 1 ? "Once" : n == 2 ? "Twice" : "\(Self.spelled(n).capitalized) times"
+            out.append(.init(id: "recovery",
+                             statement: added > 0
+                                ? "Took \(added) seconds more recovery"
+                                : "Took more recovery",
+                             reason: [howMany, between].compactMap { $0 }.joined(separator: ", ")))
+        }
+        return out
+    }
+
+    private static func ordinal(_ n: Int) -> String {
+        let words = ["", "first", "second", "third", "fourth", "fifth", "sixth",
+                     "seventh", "eighth", "ninth", "tenth"]
+        return n >= 1 && n < words.count ? words[n] : "\(n)th"
+    }
+
+    private static func spelled(_ n: Int) -> String {
+        let words = ["zero", "one", "two", "three", "four", "five", "six",
+                     "seven", "eight", "nine", "ten"]
+        return n >= 0 && n < words.count ? words[n] : "\(n)"
+    }
+
+    /// What the group actually draws: whatever the caller passed, or the wire.
+    private var resolvedDecisions: [WristDecision] {
+        wristDecisions.isEmpty ? decisionsFromWire : wristDecisions
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -144,8 +228,8 @@ struct RunDetailV5: View {
                     // before its evidence reads as a mood. The decisions are
                     // the runner's own, so they sit above the coach's line,
                     // never under it.
-                    if !wristDecisions.isEmpty {
-                        WristDecisionsV5(decisions: wristDecisions)
+                    if !resolvedDecisions.isEmpty {
+                        WristDecisionsV5(decisions: resolvedDecisions)
                     }
 
                     if let recap, !recap.verdict.isEmpty {
