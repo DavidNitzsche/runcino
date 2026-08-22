@@ -452,6 +452,7 @@ BRAND_SWEEP_EXEMPT='linear-gradient\( *95deg|// *55% +emerald'
 hits=$(grep -rinE "(#|0x)($RETIRED)|rgba?\( *($RETIRED_RGBA) *[,)]" \
   "$ROOT/native-v2/Faff/Faff" \
   "$ROOT/legacy/native/Faff/FaffWatch Watch App" \
+  "$ROOT/legacy/native/Faff/FaffWatch Widgets" \
   --include='*.css' --include='*.ts' --include='*.tsx' --include='*.swift' \
   2>/dev/null | grep -viE "$HIST_FILTER" | grep -vE "$BRAND_SWEEP_EXEMPT" \
   | grep -v '/\._' \
@@ -491,8 +492,17 @@ if [ "$legacy_watch_count" -gt 0 ]; then
 else
   WATCH_ALLOWED_HEX="$WATCH_V5_HEX"
 fi
+# 2026-08-21 · the WidgetKit extension (complications + Smart Stack) is a
+# SECOND directory under the watch surface, and the sweep above only ever knew
+# about one. A complication is the surface rule 12 protects most — "nothing on
+# a watch face or complication is ever coloured" — so a hex literal landing
+# there unwatched is the worst version of this gap, not the mildest. Same
+# allowlist, same expiry behaviour: the widget uses WatchV5 only, so it
+# contributes nothing to the legacy count and cannot hold the legacy block
+# open on its own.
 watch_hex_hits=$(grep -rinoE 'Color\(hex: *0x[0-9A-Fa-f]{6}\)' \
   "$ROOT/legacy/native/Faff/FaffWatch Watch App" \
+  "$ROOT/legacy/native/Faff/FaffWatch Widgets" \
   --include='*.swift' 2>/dev/null \
   | grep -viE "($WATCH_ALLOWED_HEX)" \
   | grep -v '/\._' || true)

@@ -134,6 +134,16 @@ if [ ! -L "$NATIVE_V2/Faff/FaffWatch Watch App" ] && [ ! -e "$NATIVE_V2/Faff/Faf
         "$NATIVE_V2/Faff/FaffWatch Watch App"
 fi
 
+# Same for the WidgetKit extension (complications + Smart Stack). Its sources
+# live beside the watch app in legacy/ for the same reason and are linked the
+# same relative way — an absolute link compiles the wrong checkout's sources
+# from a git worktree.
+if [ ! -L "$NATIVE_V2/Faff/FaffWatch Widgets" ] && [ ! -e "$NATIVE_V2/Faff/FaffWatch Widgets" ]; then
+  echo "→ Linking watch widget extension source from legacy/…"
+  ln -s "../../legacy/native/Faff/FaffWatch Widgets" \
+        "$NATIVE_V2/Faff/FaffWatch Widgets"
+fi
+
 echo "→ Shipping Faff-v2 build $BUILD to TestFlight (team $ASC_TEAM_ID)…"
 rm -rf /tmp/Faff-v2.xcarchive /tmp/Faff-v2-export
 cat > /tmp/FaffV2ExportOptions.plist <<PLIST
