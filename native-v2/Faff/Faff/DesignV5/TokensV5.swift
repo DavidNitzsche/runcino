@@ -169,15 +169,20 @@ enum V5 {
             control:   .white.opacity(0.20),
             statusBar: .dark)
 
+        /// Secondary is THE SAME INK at reduced opacity, never a lighter
+        /// colour — a second hue on a moving background is a second thing to
+        /// reconcile. .72 lands on 4.5:1 exactly against the quality start,
+        /// which is on the line rather than over it, so secondary sits at .82.
+        ///
         /// The plate inverts with the ink. A translucent WHITE plate on a light
         /// ramp is the second-worst contrast on the screen after the lede —
         /// it lifts the background toward the type instead of away from it.
         static let onLightRamp = PanelInk(
             primary:   Theme.V5.DayState.darkInk,
-            secondary: Theme.V5.DayState.darkInk.opacity(0.80),
-            quiet:     Theme.V5.DayState.darkInk.opacity(0.64),
-            plate:     Theme.V5.DayState.darkInk.opacity(0.14),
-            control:   Theme.V5.DayState.darkInk.opacity(0.18),
+            secondary: Theme.V5.DayState.darkInk.opacity(0.82),
+            quiet:     Theme.V5.DayState.darkInk.opacity(0.82),
+            plate:     Theme.V5.DayState.darkInk.opacity(0.13),
+            control:   Theme.V5.DayState.darkInk.opacity(0.16),
             statusBar: .light)
     }
 

@@ -92,38 +92,34 @@ extension Theme {
             /// Design stop positions, as fractions of the panel. Stop 3 sits
             /// past 1.0 on purpose; clamp when handing these to SwiftUI.
             static let locations:     [Double] = [0.00, 0.76, 1.85]
-            /// The two LIGHT ramps — quality and race — move their middle stop
-            /// to 72%.
+            /// The two LIGHT ramps — quality and race — put their middle stop
+            /// at 52%.
             ///
-            /// Not cosmetic. These are the ramps that carry dark ink, and the
-            /// dark terminal `#7A2828` fails against dark ink. Pulling the mid
-            /// stop earlier keeps that terminal below the text block entirely,
-            /// so a three-line lede on a tall panel never reaches it. Round
-            /// three, item 3.
-            static let darkInkLocations: [Double] = [0.00, 0.72, 1.85]
+            /// An earlier pass moved it to 72% to keep text clear of the dark
+            /// terminal. Reverted on David's ruling: 72% flattens the panel
+            /// into one orange field, and that flatness was most of what
+            /// looked wrong in the first place. The terminal sits at 185%, so
+            /// text never reaches it regardless.
+            static let darkInkLocations: [Double] = [0.00, 0.52, 1.85]
 
-            /// Ink for the two light ramps. A near-black warm neutral, chosen
-            /// against the ramp rather than against the page.
+            /// Ink for the two light ramps.
             ///
-            /// MEASURED against the ramps themselves, not quoted from the
-            /// handoff: 9.56:1 on the quality start, 7.82:1 on the race
-            /// start, and 5.31:1 on the shared mid stop. The mid stop is the
-            /// number that matters — it is the darkest colour any text on
-            /// these ramps reaches. All three clear AA, where white on the
-            /// quality start was 1.94:1 on the surface the runner reads first
-            /// every day.
+            /// DRAWN FROM THE RAMP'S OWN DEEP END, not a neutral black.
+            /// Neutral black on saturated amber reads as a costume — the ink
+            /// has to belong to the same family as the colour under it.
+            /// `#3A1410` is the terminal `#7A2828` carried further down.
             ///
-            /// Round three quotes 10.6 and 5.8 for the first and third of
-            /// those. Its 1.94 for white matches this calculation exactly, so
-            /// the method agrees and the dark-ink figures are simply a little
-            /// optimistic. The ruling stands either way — the margin over AA
-            /// is comfortable, not marginal.
+            /// MEASURED, composited, against the ramps themselves: 8.42:1 on
+            /// the quality start, 6.89:1 on the race start, 4.68:1 on the
+            /// shared mid stop. The mid stop is the number that matters,
+            /// being the darkest colour any text reaches. White on the
+            /// quality start was 1.94:1.
             ///
-            /// The fix is deliberately NOT a scrim and NOT a darker ramp.
-            /// Both cost the panel the thing it exists for, which is that the
-            /// colour IS the day state; muting it to make text legible trades
-            /// the signal for the label.
-            static let darkInk = Color(hex: 0x1A1208) // v5stop
+            /// The ramp itself is untouched — every hex, every stop, the full
+            /// progression. No scrim, no darker ramp, no desaturation: the
+            /// colour IS the day state, and muting it to make text legible
+            /// trades the signal for the label.
+            static let darkInk = Color(hex: 0x3A1410) // v5stop
 
             /// Every gradient panel carries a fine fractalNoise grain layer at
             /// 50% opacity, `mix-blend-mode: overlay`, between the gradient and
