@@ -286,6 +286,30 @@ extension View {
 // MARK: - The panel
 
 /// What a panel is painted with.
+extension PanelFill {
+    /// The ink this fill requires.
+    ///
+    /// A SCREEN THAT OWNS THE FILL MUST READ THIS, NOT THE ENVIRONMENT.
+    ///
+    /// `DayPanel` publishes the same value through `\.v5PanelInk`, and that
+    /// works for anything BELOW it in the view tree — `PanelStatPlate`,
+    /// `PlaceHeaderV5`, any child struct placed inside the content closure.
+    /// It does NOT work for the screen that renders the panel: `TodayBeforeV5`
+    /// builds its header and lede inside its OWN body, which sits above
+    /// `DayPanel` in the tree, so its `@Environment` resolves to the default
+    /// white set no matter what the panel publishes underneath it.
+    ///
+    /// That is not a bug in the environment, it is what environment means —
+    /// values travel down. A view cannot read what its own child sets. The
+    /// screens compute the ink from the fill they already hold.
+    var ink: V5.PanelInk {
+        switch self {
+        case .state(let s): return s.ink
+        case .quiet:        return .onDarkRamp
+        }
+    }
+}
+
 enum PanelFill: Equatable {
     /// A day-state gradient, with grain.
     case state(V5.DayState)
@@ -302,6 +326,16 @@ enum PanelFill: Equatable {
 struct DayPanel<Content: View>: View {
     let fill: PanelFill
     @ViewBuilder var content: () -> Content
+
+    /// The ink this panel's own fill requires, published to everything drawn
+    /// inside it. A `.quiet` panel is surface-2, which is dark, so it keeps
+    /// the white set.
+    private var ink: V5.PanelInk {
+        switch fill {
+        case .state(let s): return s.ink
+        case .quiet:        return .onDarkRamp
+        }
+    }
 
     /// The device's real inset, published by the shell. Falls back to the
     /// design's 44 in a preview or a detached screen.
@@ -329,6 +363,18 @@ struct DayPanel<Content: View>: View {
         // background alone does not do this — the background is clipped to
         // the panel's frame, and the frame is what starts too low.
         .padding(.top, topInset)
+        // Everything inside the panel takes the ramp's ink.
+        //
+        // NOT the status bar. Round three asks for its glyphs too, and they do
+        // sit on our surface — the panel reaches behind the clock. But the
+        // status bar style is a window-level property: `.preferredColorScheme`
+        // here would flip the ENTIRE app to light, and every dark surface below
+        // the panel with it. Doing it honestly needs the hosting controller to
+        // publish a style, which is a shell change, not a panel one. Left as
+        // white glyphs on the two light ramps and reported rather than faked —
+        // the grain layer keeps them readable, and it is a far smaller failure
+        // than the 1.94:1 lede this commit fixes.
+        .environment(\.v5PanelInk, ink)
         .background(alignment: .top) {
             Group {
                 switch fill {
@@ -397,6 +443,7 @@ struct PanelStat: Identifiable, Equatable {
 }
 
 struct PanelStatPlate: View {
+    @Environment(\.v5PanelInk) private var panelInk
     let stats: [PanelStat]
 
     var body: some View {
@@ -413,10 +460,10 @@ struct PanelStatPlate: View {
                 VStack(alignment: .leading, spacing: V5.S.s6) {
                     Text(s.label)
                         .font(.faffText(TypeScaleV5.label12))
-                        .foregroundStyle(V5.OnPanel.secondary)
+                        .foregroundStyle(panelInk.secondary)
                     FaffValueText(s.value,
                                   font: .faffText(17, weight: .semibold),
-                                  color: s.ink ?? V5.OnPanel.primary)
+                                  color: s.ink ?? panelInk.primary)
                         // A NUMBER MUST NOT SHATTER.
                         //
                         // The plate is three fixed columns across a 390pt
@@ -457,6 +504,6 @@ struct PanelStatPlate: View {
         }
         .padding(.vertical, V5.S.s16)
         .padding(.horizontal, V5.S.tilePad)
-        .background(V5.OnPanel.plate, in: RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
+        .background(panelInk.plate, in: RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
     }
 }

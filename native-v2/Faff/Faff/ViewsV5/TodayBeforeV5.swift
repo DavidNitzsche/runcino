@@ -220,8 +220,14 @@ struct TodayBeforeV5: View {
     /// screen exists to prevent. One rule, no exceptions, nothing to misread.
     private var steppedAway: Bool { viewingDayLabel != nil }
 
+    /// Named once, because the ink has to come from the SAME value the panel
+    /// is filled with. Computing them separately is how a stepped-to quality
+    /// day would end up with a quiet fill and dark ink.
+    private var panelFill: PanelFill { steppedAway ? .quiet : model.panel.fill }
+    private var panelInk: V5.PanelInk { panelFill.ink }
+
     private var panel: some View {
-        DayPanel(fill: steppedAway ? .quiet : model.panel.fill) {
+        DayPanel(fill: panelFill) {
             // The one place header, shared with the after-run screen and the
             // state screens. This file used to hand-roll its own, which is how
             // the two Today variants ended up with different controls.
@@ -235,7 +241,7 @@ struct TodayBeforeV5: View {
             HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
                 Text(model.panel.dateLine)
                     .faffDisplayV5(26, fit: .free)
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
                 // "justify-content:space-between" — the date sits left, the
                 // week line right (5a markup, dc.html:533). The Spacer used
                 // to sit AFTER the week line, which hugged both to the left
@@ -245,7 +251,7 @@ struct TodayBeforeV5: View {
                 if let weekLine = model.panel.weekLine {
                     Text(weekLine)
                         .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.OnPanel.secondary)
+                        .foregroundStyle(panelInk.secondary)
                 }
             }
 
@@ -261,16 +267,16 @@ struct TodayBeforeV5: View {
                 if let kicker = model.panel.kicker {
                     Text(kicker)
                         .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.OnPanel.secondary)
+                        .foregroundStyle(panelInk.secondary)
                 }
                 Text(model.panel.type)
                     .faffDisplayV5(TypeScaleV5.display56)
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
             }
 
             FaffValueText(model.panel.dose.unreadableIfAbsent,
                           font: .faffText(28, weight: .semibold),
-                          color: V5.OnPanel.primary)
+                          color: panelInk.primary)
 
             PanelStatPlate(stats: model.panel.stats.map { stat in
                 PanelStat(stat.label, stat.value.value,

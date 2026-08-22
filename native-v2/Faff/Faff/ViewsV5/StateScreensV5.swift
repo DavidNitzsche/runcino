@@ -108,6 +108,7 @@ struct AccountSheetBodyV5: View {
 // (14a/16a, white on `rgba(255,255,255,.2)`).
 
 private struct PlaceHeaderRow: View {
+    @Environment(\.v5PanelInk) private var panelInk
     var onOpenAccount: () -> Void = {}
     var fill: HeaderDiscV5.Fill = .quiet
     /// Placeholder initials — no v5 payload in this file carries the
@@ -121,7 +122,7 @@ private struct PlaceHeaderRow: View {
                 .font(.faffDisplay(20))
                 .textCase(.uppercase)
                 .tracking(20 * 0.02)
-                .foregroundStyle(fill.ink)
+                .foregroundStyle(fill.ink(panelInk))
             Spacer(minLength: V5.S.s8)
             HeaderDiscV5(glyph: .initials(initials),
                          label: "Account and settings",
@@ -250,6 +251,7 @@ struct InjuryFlareV5: View {
 // the coach line states the break as a fact and names what comes back.
 
 struct WeekOffV5: View {
+    private var panelInk: V5.PanelInk { PanelFill.state(.rest).ink }
     let model: V5WeekOff
     var onOpenAccount: () -> Void = {}
 
@@ -262,14 +264,14 @@ struct WeekOffV5: View {
                 VStack(alignment: .leading, spacing: V5.S.s2) {
                     Text(range)
                         .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.OnPanel.secondary)
+                        .foregroundStyle(panelInk.secondary)
                     Text("Week off")
                         .faffDisplayV5(TypeScaleV5.display44)
-                        .foregroundStyle(V5.OnPanel.primary)
+                        .foregroundStyle(panelInk.primary)
                 }
                 Text(model.reason)
                     .font(.faffText(TypeScaleV5.body15))
-                    .foregroundStyle(V5.OnPanel.secondary)
+                    .foregroundStyle(panelInk.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         } content: {
@@ -390,6 +392,7 @@ struct OffSeasonV5: View {
 // to say" about a session that is, in fact, sitting on the phone right now.
 
 struct DataOutageV5: View {
+    private var panelInk: V5.PanelInk { today.panel.fill.ink }
     /// The last Today payload we could read — `V5Surface.model` when
     /// `stale == true`. The panel is real content, not a placeholder: the
     /// outage is in readiness and the weekly stats, not in today's session.
@@ -406,15 +409,15 @@ struct DataOutageV5: View {
                         if let kicker = today.panel.kicker {
                             Text(kicker)
                                 .font(.faffText(TypeScaleV5.label13))
-                                .foregroundStyle(V5.OnPanel.secondary)
+                                .foregroundStyle(panelInk.secondary)
                         }
                         Text(today.panel.type)
                             .faffDisplayV5(TypeScaleV5.display56)
-                            .foregroundStyle(V5.OnPanel.primary)
+                            .foregroundStyle(panelInk.primary)
                     }
                     if let dose = today.panel.dose {
                         FaffValueText(dose.value, font: .faffText(28, weight: .semibold),
-                                      color: V5.OnPanel.primary)
+                                      color: panelInk.primary)
                     }
                 }
                 if !today.panel.stats.isEmpty {

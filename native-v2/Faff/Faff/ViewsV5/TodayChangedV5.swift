@@ -46,6 +46,7 @@
 import SwiftUI
 
 struct TodayChangedV5: View {
+    private var panelInk: V5.PanelInk { PanelFill.state(.rest).ink }
     /// The new session — already downgraded, e.g. type "Easy", dose "5 mi".
     /// Read `type` and `dose` only; `dayState` is deliberately not used for
     /// the panel fill (see header comment).
@@ -107,7 +108,7 @@ struct TodayChangedV5: View {
                     .font(.faffDisplay(20))
                     .textCase(.uppercase)
                     .tracking(20 * 0.02)
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
                 Spacer(minLength: 0)
                 HeaderDiscV5(glyph: .initials(initials),
                              label: "Account and settings",
@@ -118,15 +119,15 @@ struct TodayChangedV5: View {
             VStack(alignment: .leading, spacing: V5.S.s2) {
                 Text(kicker)
                     .font(.faffText(TypeScaleV5.label13))
-                    .foregroundStyle(V5.OnPanel.secondary)
+                    .foregroundStyle(panelInk.secondary)
                 Text(panel.type)
                     .faffDisplayV5(TypeScaleV5.display56)
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
             }
 
             FaffValueText(panel.dose.unreadableIfAbsent,
                           font: .faffText(28, weight: .semibold),
-                          color: V5.OnPanel.primary)
+                          color: panelInk.primary)
         }
     }
 }

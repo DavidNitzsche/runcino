@@ -1140,6 +1140,7 @@ extension View {
 /// button on Today, Today-after, the four state screens, the sick flare, the
 /// two refusal screens; the calendar button beside it; the plus on Races.
 struct HeaderDiscV5: View {
+    @Environment(\.v5PanelInk) private var panelInk
 
     /// What the disc paints itself out of.
     ///
@@ -1153,16 +1154,20 @@ struct HeaderDiscV5: View {
         case quiet
         case quietRaised
 
-        var ink: Color {
+        /// The panel's ink is passed IN rather than read here. An enum has no
+        /// position in the view tree, so it cannot resolve an environment
+        /// value — and `.onPanel` is exactly the case whose answer depends on
+        /// which panel. The view supplies it.
+        func ink(_ panel: V5.PanelInk) -> Color {
             switch self {
-            case .onPanel:                return V5.OnPanel.primary
+            case .onPanel:                return panel.primary
             case .quiet, .quietRaised:    return V5.textPrimary
             }
         }
 
-        var disc: Color {
+        func disc(_ panel: V5.PanelInk) -> Color {
             switch self {
-            case .onPanel:      return V5.OnPanel.control
+            case .onPanel:      return panel.control
             case .quiet:        return V5.materialControl
             case .quietRaised:  return V5.materialTileRaised
             }
@@ -1222,9 +1227,9 @@ struct HeaderDiscV5: View {
                         .font(.faffText(12, weight: .semibold, scales: false))
                 }
             }
-            .foregroundStyle(fill.ink)
+            .foregroundStyle(fill.ink(panelInk))
             .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
-            .background(fill.disc, in: Circle())
+            .background(fill.disc(panelInk), in: Circle())
         }
         .buttonStyle(V5PressStyle())
         .v5HeaderTarget(label, width: targetWidth)
@@ -1242,6 +1247,11 @@ struct HeaderDiscV5: View {
 // One row, one set of behaviours, six call sites.
 
 struct PlaceHeaderV5: View {
+    /// Drawn inside the panel — a child of `DayPanel`, so the environment is
+    /// the right source. The place word, the way-back chip and the header
+    /// discs all take the ramp's ink.
+    @Environment(\.v5PanelInk) private var panelInk
+
     /// "Today", "Races", "Block" — or the day being looked at, when that is
     /// not today. A screen headed TODAY showing Tuesday is a lie.
     let place: String
@@ -1259,7 +1269,7 @@ struct PlaceHeaderV5: View {
                 .font(.faffDisplay(20))
                 .textCase(.uppercase)
                 .tracking(20 * 0.02)
-                .foregroundStyle(V5.OnPanel.primary)
+                .foregroundStyle(panelInk.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
@@ -1288,10 +1298,10 @@ struct PlaceHeaderV5: View {
                             Text("Today")
                                 .font(.faffText(TypeScaleV5.label12, weight: .semibold))
                         }
-                        .foregroundStyle(V5.OnPanel.primary)
+                        .foregroundStyle(panelInk.primary)
                         .padding(.horizontal, V5.S.s10)
                         .frame(height: 30)
-                        .background(V5.OnPanel.control, in: Capsule())
+                        .background(panelInk.control, in: Capsule())
                         .contentShape(Capsule())
                     }
                     .buttonStyle(V5PressStyle())

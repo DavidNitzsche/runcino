@@ -740,16 +740,21 @@ struct WeekStripV5: View {
     let days: [WeekStripDayV5]
     var onTap: ((WeekStripDayV5) -> Void)? = nil
 
+    /// The strip is drawn INSIDE the panel, so it takes the ramp's ink. Unlike
+    /// the screens that own the fill, this is a child of `DayPanel` and the
+    /// environment resolves correctly here.
+    @Environment(\.v5PanelInk) private var panelInk
+
     var body: some View {
         HStack(spacing: V5.S.s4) {
             ForEach(days) { d in
                 let cell = VStack(spacing: V5.S.s8) {
                     Text(d.letter)
                         .font(.faffText(TypeScaleV5.label12))
-                        .foregroundStyle(d.isToday ? V5.OnPanel.primary : V5.OnPanel.quiet)
+                        .foregroundStyle(d.isToday ? panelInk.primary : panelInk.quiet)
                     Text(d.number)
                         .font(.faffText(16, weight: d.isToday ? .semibold : .regular))
-                        .foregroundStyle(d.isToday ? V5.OnPanel.primary : V5.OnPanel.secondary)
+                        .foregroundStyle(d.isToday ? panelInk.primary : panelInk.secondary)
                     Capsule()
                         .fill(rail(d))
                         .frame(maxWidth: 22)
@@ -757,7 +762,7 @@ struct WeekStripV5: View {
                 }
                 .padding(.vertical, V5.S.s10)
                 .frame(maxWidth: .infinity)
-                .background(d.isToday ? Color.white.opacity(0.16) : .clear,
+                .background(d.isToday ? panelInk.plate : .clear,
                             in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
                 // Same lesson as every other row: a clear background is not
                 // hit-testable, so without this only the day's two glyphs are.
@@ -818,9 +823,9 @@ struct WeekStripV5: View {
     }
 
     private func rail(_ d: WeekStripDayV5) -> Color {
-        if d.isRest { return Color.white.opacity(0.18) }
-        if d.isToday { return V5.OnPanel.primary }
-        return Color.white.opacity(d.isDone ? 0.55 : 0.30)
+        if d.isRest { return panelInk.primary.opacity(0.18) }
+        if d.isToday { return panelInk.primary }
+        return panelInk.primary.opacity(d.isDone ? 0.55 : 0.30)
     }
 }
 

@@ -30,6 +30,12 @@ import SwiftUI
 import Foundation
 
 struct TodayAfterV5: View {
+    /// Same rule as the before-run screen: the ink comes from the same
+    /// value the panel is filled with, computed here rather than read from
+    /// the environment, because this view sits ABOVE the panel that
+    /// publishes it.
+    private var panelFill: PanelFill { viewingDayLabel != nil ? .quiet : model.panel.fill }
+    private var panelInk: V5.PanelInk { panelFill.ink }
     let model: V5Today
 
     var onOpenAccount: () -> Void
@@ -160,7 +166,7 @@ struct TodayAfterV5: View {
         // 22b. Same rule as the before-run screen: the gradient means today.
         // This is the screen a tapped past "Done" row actually lands on, so it
         // is the one that carries 22b most of the time.
-        DayPanel(fill: viewingDayLabel != nil ? .quiet : model.panel.fill) {
+        DayPanel(fill: panelFill) {
             PlaceHeaderV5(place: model.panel.place,
                           viewingDayLabel: viewingDayLabel,
                           onBackToToday: onBackToToday,
@@ -171,12 +177,12 @@ struct TodayAfterV5: View {
             HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
                 Text(model.panel.dateLine)
                     .font(.faffDisplay(26))
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
                 Spacer(minLength: 0)
                 if let weekLine = model.panel.weekLine {
                     Text(weekLine)
                         .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.OnPanel.secondary)
+                        .foregroundStyle(panelInk.secondary)
                 }
             }
 
@@ -195,11 +201,11 @@ struct TodayAfterV5: View {
                 if let kicker = model.panel.kicker {
                     Text(kicker)
                         .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.OnPanel.secondary)
+                        .foregroundStyle(panelInk.secondary)
                 }
                 Text(model.panel.type)
                     .faffDisplayV5(56)
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
             }
 
             posterStatsRow
@@ -245,11 +251,11 @@ struct TodayAfterV5: View {
         HStack(alignment: .firstTextBaseline, spacing: V5.S.s24 + V5.S.s4) {
             ForEach(Array(posterStats.enumerated()), id: \.offset) { _, item in
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    FaffValueText(item.value, font: .faffText(32, weight: .semibold), color: V5.OnPanel.primary)
+                    FaffValueText(item.value, font: .faffText(32, weight: .semibold), color: panelInk.primary)
                     if let unit = item.unit {
                         Text(unit)
                             .font(.faffText(14))
-                            .foregroundStyle(V5.OnPanel.secondary)
+                            .foregroundStyle(panelInk.secondary)
                     }
                 }
                 // FIVE ELEMENTS FOR THREE NUMBERS, AND NOT ONE OF THEM NAMED.

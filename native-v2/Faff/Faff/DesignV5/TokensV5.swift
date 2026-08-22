@@ -138,14 +138,57 @@ enum V5 {
 
     /// Type on a day-state gradient. The prototype hard-codes these, so they
     /// are STATED, not inferred.
-    enum OnPanel {
-        static let primary   = Color.white
-        static let secondary = Color.white.opacity(0.78)
-        static let quiet     = Color.white.opacity(0.62)
+    /// Ink for everything drawn INSIDE a gradient panel.
+    ///
+    /// Was five static whites. It is now a set, because two of the six ramps
+    /// are light enough that white type fails AA on them — see
+    /// `DayState.wantsDarkInk`. A panel publishes its set through
+    /// `\.v5PanelInk` and its content reads it, so a screen never decides
+    /// which ink it is on.
+    ///
+    /// EVERYTHING INSIDE THE PANEL, NOTHING OUTSIDE IT. Below the panel the
+    /// page is black and the ink is white again — those call sites use
+    /// `V5.textPrimary`, not this.
+    struct PanelInk {
+        let primary: Color
+        let secondary: Color
+        let quiet: Color
         /// The translucent stats plate a panel carries. STATED.
-        static let plate     = Color.white.opacity(0.16)
+        let plate: Color
         /// A round header button on a panel. STATED.
-        static let control   = Color.white.opacity(0.20)
+        let control: Color
+        /// What the status bar glyphs must be for this ramp. The panel reaches
+        /// behind the clock, so the system's own ink is on our surface.
+        let statusBar: ColorScheme
+
+        static let onDarkRamp = PanelInk(
+            primary:   .white,
+            secondary: .white.opacity(0.78),
+            quiet:     .white.opacity(0.62),
+            plate:     .white.opacity(0.16),
+            control:   .white.opacity(0.20),
+            statusBar: .dark)
+
+        /// The plate inverts with the ink. A translucent WHITE plate on a light
+        /// ramp is the second-worst contrast on the screen after the lede —
+        /// it lifts the background toward the type instead of away from it.
+        static let onLightRamp = PanelInk(
+            primary:   Theme.V5.DayState.darkInk,
+            secondary: Theme.V5.DayState.darkInk.opacity(0.80),
+            quiet:     Theme.V5.DayState.darkInk.opacity(0.64),
+            plate:     Theme.V5.DayState.darkInk.opacity(0.14),
+            control:   Theme.V5.DayState.darkInk.opacity(0.18),
+            statusBar: .light)
+    }
+
+    /// The default ink set. Kept as `OnPanel` so the 49 existing call sites
+    /// keep reading, and because most panels really are dark-ramped.
+    enum OnPanel {
+        static let primary   = PanelInk.onDarkRamp.primary
+        static let secondary = PanelInk.onDarkRamp.secondary
+        static let quiet     = PanelInk.onDarkRamp.quiet
+        static let plate     = PanelInk.onDarkRamp.plate
+        static let control   = PanelInk.onDarkRamp.control
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -181,8 +224,19 @@ enum V5 {
         /// and every ramp's dark terminal sits past the panel edge on purpose
         /// so the deep end stays only just darker.
         var locations: [Double] {
-            self == .race ? Theme.V5.DayState.raceLocations : Theme.V5.DayState.locations
+            wantsDarkInk ? Theme.V5.DayState.darkInkLocations : Theme.V5.DayState.locations
         }
+
+        /// Is this ramp light enough that white type fails on it?
+        ///
+        /// ONE BOOLEAN ON THE RAMP TOKEN, not a per-screen decision. Quality
+        /// and race both open on a light warm stop; every other ramp starts
+        /// dark enough for white. Any new ramp answers this question once,
+        /// here, and every panel in the app follows.
+        var wantsDarkInk: Bool { self == .quality || self == .race }
+
+        /// The ink set a panel filled with this ramp hands to its content.
+        var ink: V5.PanelInk { wantsDarkInk ? .onLightRamp : .onDarkRamp }
 
         /// `--state-easy` / `--state-rest` / `--state-quality` / `--state-race`
         /// · the flat accent that stands for this day state where a gradient
@@ -344,5 +398,21 @@ extension EnvironmentValues {
     var v5TopInset: CGFloat {
         get { self[V5TopInsetKey.self] }
         set { self[V5TopInsetKey.self] = newValue }
+    }
+}
+
+/// The ink set for whatever gradient panel the reader is inside.
+///
+/// Defaults to the dark-ramp (white) set, so anything drawn OUTSIDE a panel —
+/// or inside a `.quiet` one — keeps the ink it always had. `DayPanel`
+/// publishes the set its own fill requires; nothing else should set this.
+private struct V5PanelInkKey: EnvironmentKey {
+    static let defaultValue: V5.PanelInk = .onDarkRamp
+}
+
+extension EnvironmentValues {
+    var v5PanelInk: V5.PanelInk {
+        get { self[V5PanelInkKey.self] }
+        set { self[V5PanelInkKey.self] = newValue }
     }
 }
