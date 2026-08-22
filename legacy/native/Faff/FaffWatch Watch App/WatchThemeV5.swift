@@ -369,6 +369,24 @@ enum WatchCoreText {
         let produced = CTFontCreateWithFontDescriptor(descriptor, size, nil)
 
         // Did we get the face we asked for, or San Francisco wearing its name?
+        //
+        // COMPARE FAMILY NAMES. Two traps here, and I fell into both:
+        //
+        //  1. The TTF's nameID 1 is "Archivo SemiBold", not "Archivo" — that
+        //     is the name of the file's DEFAULT INSTANCE, not of the family.
+        //     Reading the name table and "fixing" the guard to match it is
+        //     the wrong move; CoreText reports the TYPOGRAPHIC family
+        //     (nameID 16), which is "Archivo", and that is what this compares.
+        //
+        //  2. PostScript name is NOT usable as an identity check on a
+        //     variable font. Ask for `Archivo-SemiBold` with wght/wdth set and
+        //     CoreText hands back `Archivo-SemiBold_wght3200000_wdth700000`.
+        //     A guard comparing PostScript names therefore fails on EVERY
+        //     axis-bearing call, returns nil, and drops every display word in
+        //     the app to the system fallback. Verified by probe, not by
+        //     reading: `CTFontCopyPostScriptName` after applying axes.
+        //
+        // The family survives variation, so it is the stable identity.
         let family = CTFontCopyFamilyName(produced) as String
         let wanted = postScriptName.hasPrefix("Archivo")
             ? WatchV5.FontNames.displayFamily
