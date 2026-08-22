@@ -214,14 +214,14 @@ function composeCopy(
   // Sentence case · capitalize the phrase after the · so each clause
   // reads as its own sentence (Davids locked copy rule 2026-06-01).
   const phrase = signal.detail.charAt(0).toUpperCase() + signal.detail.slice(1);
-  if (workout.type === 'intervals') {
-    return `Coach still recommends easing this run · ${phrase}.`;
-  }
+  // RULE FOUR · the app does not refer to itself in the third person. "Coach
+  // still recommends" is software describing its own output; a coach says
+  // the thing. Nothing else in the v5 voice names the coach as an actor.
   if (workout.type === 'long') {
-    return `Coach still recommends pulling back today's long · ${phrase}.`;
+    return `Pulling back today's long still stands · ${phrase}.`;
   }
-  // tempo / threshold
-  return `Coach still recommends easing this run · ${phrase}.`;
+  // intervals / tempo / threshold
+  return `Easing this run still stands · ${phrase}.`;
 }
 
 // ─── accepted-proposal check ───────────────────────────────────────────

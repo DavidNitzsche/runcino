@@ -147,6 +147,26 @@ struct TodayBeforeV5: View {
     /// the score's own ingredients, each against its own baseline.
     var readinessPillars: [ReadinessPillar] = []
 
+    /// RULE THREE · the pillar read FAILED, as opposed to coming back empty.
+    ///
+    /// These two used to be one empty array, and the screen said "Nothing to
+    /// show yet." for both. That is the outage wearing the refusal's clothes
+    /// — the mirror of the bug rule three is usually quoted for, and the more
+    /// dangerous half: it asserts we looked and found nothing when we never
+    /// looked at all. `V5OutageCopy`'s own note says it plainly, that a
+    /// wrong-but-fluent sentence tells the runner we read something we did
+    /// not.
+    var readinessPillarsUnread: Bool = false
+
+    /// The same distinction, per row, for the before-you-go lists.
+    ///
+    /// Per-row rather than per-screen because the lists have different
+    /// sources: the shoe list is its own fetch and can fail on its own, the
+    /// move list is derived from the Today payload already on screen and
+    /// cannot. CLAUDE.md's per-finding context rule — a parent guard does not
+    /// propagate, each finding asks its own question.
+    var beforeYouGoUnread: (V5Row) -> Bool = { _ in false }
+
     /// An account-sheet row with an `action` was tapped — e.g. the "start
     /// runs from this phone" switch.
     var onAccountRowTap: (V5Row) -> Void = { _ in }
@@ -421,7 +441,9 @@ struct TodayBeforeV5: View {
     @ViewBuilder
     private var readinessExpansion: some View {
         if readinessPillars.isEmpty {
-            Text("Nothing to show yet.")
+            Text(readinessPillarsUnread
+                 ? "The breakdown did not load. The score above still stands, we just cannot open it up."
+                 : "No pillar has enough nights behind it to break the score down yet.")
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(V5.textQuiet)
         } else {
@@ -510,7 +532,9 @@ struct TodayBeforeV5: View {
     private func beforeYouGoExpansion(for row: V5Row) -> some View {
         let options = beforeYouGoOptions(row)
         if options.isEmpty {
-            Text("Nothing to change here yet.")
+            Text(beforeYouGoUnread(row)
+                 ? "This list did not load. Nothing about today changed."
+                 : "Nothing to change here yet.")
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(V5.textQuiet)
         } else {

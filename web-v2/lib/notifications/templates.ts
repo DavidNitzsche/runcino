@@ -101,7 +101,10 @@ export interface RaceEveSlots {
 export function renderRaceEve(s: RaceEveSlots): RenderedTemplate {
   const opener = s.shakeout_done
     ? 'Light shake-out done.'
-    : 'Shake-out skipped. That\'s fine.';
+    // "That's fine" was absolution nobody asked for, on the lock screen the
+    // night before a race. A miss is STATED, never judged — and grading it
+    // favourably is still grading it.
+    : 'Shake-out skipped.';
   return {
     category: 'race_eve',
     title: 'RACE TOMORROW',

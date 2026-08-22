@@ -233,6 +233,16 @@ struct V5OutageCopy {
         reassurance: "A stage only advances on a session you report, so nothing moved while this was down."
     )
 
+    static let runDetail = V5OutageCopy(
+        note: "This run did not load. It is still in your log, we just cannot see it.",
+        reassurance: "A run that is already recorded does not change while we cannot read it."
+    )
+
+    static let runLog = V5OutageCopy(
+        note: "The log did not load. Every run you have done is still there, we just cannot see them.",
+        reassurance: "Nothing is counted from this screen. It reads again when the connection does."
+    )
+
     static let tomorrow = V5OutageCopy(
         note: "Tomorrow did not load. We just cannot see it from here.",
         reassurance: "Whatever the niggle turns into, the day is decided in the morning, not now."

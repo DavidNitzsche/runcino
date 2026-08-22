@@ -511,15 +511,22 @@ export function computeReadiness(
     // 2026-06-26 · name the baseline number in the prose (the tile's
     // observedSub isn't shown on iPhone), and end on what it means for today.
     const hrvBase = Math.round(state.hrvBaseline);
+    // RULE TWO · this is ONE domain's tile. The ladder in
+    // `lib/coach/convergence.ts` is explicit: one domain dragging changes
+    // nothing, two are worth saying, three may touch the session. A pillar
+    // tile that says "green light for hard work" or "ease off" has skipped
+    // straight to the third rung on the strength of the first. The tile
+    // reports its own reading against its own baseline; what that means for
+    // the session is the composer's call, and only once three domains agree.
     const meaning = (pct >= 15
-      ? `Well above your ${hrvBase}ms baseline. Fully recovered · green light for hard work.`
+      ? `Well above your ${hrvBase}ms baseline. Highest the week has read.`
       : pct >= 5
         ? `Above your ${hrvBase}ms baseline. Recovered and ready.`
         : pct >= -5
           ? `Right on your ${hrvBase}ms baseline. No recovery flag · train as planned.`
           : pct >= -15
             ? `Below your ${hrvBase}ms baseline. Could be stress, sleep, or building load. Watch tomorrow.`
-            : `Well below your ${hrvBase}ms baseline. The week's been low. Ease off and check rest.`) + lutealNote;
+            : `Well below your ${hrvBase}ms baseline. The week has run low throughout.`) + lutealNote;
     inputs.push({
       key: 'hrv', label: 'HRV · 40%', weight: w,
       // G3 (2026-06-09) · health-state now feeds the 7-day MEDIAN
@@ -557,7 +564,11 @@ export function computeReadiness(
         ? `Right on your ${rhrBase} bpm baseline. No fatigue or illness signal.`
         : delta <= 4
           ? `A few beats above your ${rhrBase} bpm baseline. Could be sleep, dehydration, or a volume bump. One day is fine · watch for a streak.`
-          : `Notably above your ${rhrBase} bpm baseline. Sleep, illness, dehydration, or overreach. If it holds 3+ days, ease the load.`;
+          // RULE TWO · cardiac is one domain. "Ease the load" is a session
+          // change prescribed off a single number, which the convergence
+          // ladder puts three domains away. The tile names what it read and
+          // what would make the reading firmer; the load call is not its own.
+          : `Notably above your ${rhrBase} bpm baseline. Worth a second reading tomorrow before it means anything.`;
     inputs.push({
       key: 'rhr', label: 'RHR · 18%', weight: w,
       observedV: `${state.rhrCurrent} bpm · 3d avg`,
@@ -599,10 +610,17 @@ export function computeReadiness(
     const meaning = r < 0.8
       ? `${acuteWk.toFixed(0)}mi this week vs your ~${baseWk.toFixed(0)}mi base. Fresh legs, low fatigue · fine for a cutback. Only a worry if it stays here for weeks.`
       : r <= 1.3
-        ? `${acuteWk.toFixed(0)}mi this week against your ~${baseWk.toFixed(0)}mi base. Sweet spot per Gabbett · the ratio is not pulling the score either way.`
+        // Two things left this tile. A researcher's surname is a citation,
+        // and a citation belongs in the code and the doctrine registry, not
+        // in a sentence a runner reads at 6am — nothing else the coach says
+        // names its source. And "Coach factors this into today's
+        // prescription" is the app talking about itself in the third person
+        // while also promising a session change off one domain, which the
+        // convergence ladder puts two domains away.
+        ? `${acuteWk.toFixed(0)}mi this week against your ~${baseWk.toFixed(0)}mi base. In the range the ramp is meant to sit in · the ratio is not pulling the score either way.`
         : r <= 1.5
           ? `${acuteWk.toFixed(0)}mi this week runs above your ~${baseWk.toFixed(0)}mi base. Elevated ramp · trims the score ${Math.round((1 - loadMult) * 100)}%.`
-          : `Above 1.5 · Gabbett's elevated-injury-risk band. Trims the score ${Math.round((1 - loadMult) * 100)}%. Coach factors this into today's prescription.`;
+          : `${acuteWk.toFixed(0)}mi this week against a ~${baseWk.toFixed(0)}mi base is the injury-risk band. Trims the score ${Math.round((1 - loadMult) * 100)}%.`;
     const acwrWord = r < 0.8 ? 'Fresh' : r < 1.0 ? 'Building' : r <= 1.3 ? 'In range'
       : r < 1.5 ? 'Elevated' : 'High';
     inputs.push({

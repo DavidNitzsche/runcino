@@ -29,11 +29,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const { id } = await params;
+  // RULE THREE · `error` is the code, `reason` is the sentence. Both 404s
+  // here are correct ANSWERS — the run is not this runner's, or there is no
+  // id to look one up by — and the phone can only tell an answer from an
+  // outage by finding a `reason` in the body. Without one it draws the
+  // data-outage treatment and tells the runner we went blind on a run we
+  // read perfectly well.
   if (!id || id === 'null' || id === 'undefined') {
-    return NextResponse.json({ error: 'no activity id' }, { status: 404 });
+    return NextResponse.json(
+      { error: 'no_activity_id', reason: 'There is no run to open here.' },
+      { status: 404 },
+    );
   }
   const detail = await loadRunDetail(userId, id);
-  if (!detail) return NextResponse.json({ error: 'run not found' }, { status: 404 });
+  if (!detail) {
+    return NextResponse.json(
+      { error: 'run_not_found', reason: 'That run is not in your log any more.' },
+      { status: 404 },
+    );
+  }
   // 2026-05-31: cache dropped to revalidate-only. The original 5-minute
   // browser cache assumed run history was immutable, but shoe_id (PATCH
   // path below) and weather enrichment (cron) both mutate the payload.
@@ -54,14 +68,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
-    return NextResponse.json({ error: 'invalid body' }, { status: 400 });
+    return NextResponse.json({ error: 'invalid_body', reason: 'That change did not come through clean. Reload and it will.' }, { status: 400 });
   }
 
   // shoe_id: number | null (P32)
   if ('shoe_id' in body) {
     const shoeId: number | null = body.shoe_id === null ? null : Number(body.shoe_id);
     if (shoeId !== null && !Number.isFinite(shoeId)) {
-      return NextResponse.json({ error: 'shoe_id must be integer or null' }, { status: 400 });
+      return NextResponse.json({ error: 'bad_shoe_id', reason: 'That is not a shoe in your garage.' }, { status: 400 });
     }
     try {
       // First try the direct match (real Strava activityId in data.id /
@@ -118,7 +132,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
       if (updated.rowCount === 0) {
-        return NextResponse.json({ error: 'run not found' }, { status: 404 });
+        return NextResponse.json({ error: 'run_not_found', reason: 'That run is not in your log any more.' }, { status: 404 });
       }
       // Mileage is computed on read (lib/shoe/mileage.ts) — nothing to
       // recompute or store here. Bust the briefing cache so the next
@@ -131,5 +145,5 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  return NextResponse.json({ error: 'no recognized fields' }, { status: 400 });
+  return NextResponse.json({ error: 'no_recognized_fields', reason: 'Nothing in that change is something this run holds.' }, { status: 400 });
 }

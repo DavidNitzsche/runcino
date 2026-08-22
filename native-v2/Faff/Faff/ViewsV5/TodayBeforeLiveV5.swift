@@ -56,6 +56,12 @@ struct TodayBeforeLiveV5: View {
 
     @State private var shoes: [Shoe] = []
     @State private var pillars: [ReadinessPillar] = []
+    /// RULE THREE · which of the prefetches FAILED, as against came back
+    /// with nothing in it. Both used to collapse into an empty array, and
+    /// the screen then told the runner there was nothing to show — a claim
+    /// about their data made on the strength of a read that never landed.
+    @State private var pillarsUnread = false
+    @State private var shoesUnread = false
     @State private var block: V5Block? = nil
     @State private var moveConflict: MoveConflict? = nil
 
@@ -80,6 +86,8 @@ struct TodayBeforeLiveV5: View {
             beforeYouGoOptions: options(for:),
             onSelectBeforeYouGoOption: select,
             readinessPillars: pillars,
+            readinessPillarsUnread: pillarsUnread,
+            beforeYouGoUnread: { row in row.action == "change_shoe" && shoesUnread },
             onAccountRowTap: onAccountRowTap,
             onPickDay: onPickDay,
             viewingDayLabel: viewingDayLabel,
@@ -97,15 +105,25 @@ struct TodayBeforeLiveV5: View {
     // the runner has to scroll past the panel and instruction groups before
     // reaching either list, which is normally enough time for three small
     // reads to land, and it means neither expansion pops from empty to
-    // populated mid-interaction. A failed read just leaves that list empty
-    // — `beforeYouGoExpansion` already renders "Nothing to change here yet."
-    // rather than an error for exactly this case.
+    // populated mid-interaction.
+    //
+    // A failed read is NOT an empty list. This used to leave the list empty
+    // and let the expansion say "Nothing to change here yet." for both, on
+    // the reasoning that an error was too loud for a list the runner had to
+    // go looking for. The volume was the right instinct and the sentence was
+    // the wrong one: it is a claim about the runner's garage, made when we
+    // never opened it. The two states are separate now and both stay quiet.
 
     private func prefetch() async {
         async let shoesFetch: ShoesResponse? = try? API.fetchShoes()
         async let pillarsFetch: ReadinessBriefSeed? = try? API.fetchReadinessBrief()
         async let blockFetch: API.V5Fetch<V5Block>? = try? API.fetchV5Block()
         let (s, p, b) = await (shoesFetch, pillarsFetch, blockFetch)
+        // nil is "we could not read it"; a payload with an empty list is
+        // "we read it and there is nothing". Only the second one is a
+        // sentence about the runner.
+        shoesUnread = s == nil
+        pillarsUnread = p == nil
         shoes = s?.shoes ?? []
         pillars = p?.pillars ?? []
         if case .ok(let value)? = b { block = value }

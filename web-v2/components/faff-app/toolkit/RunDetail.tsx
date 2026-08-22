@@ -53,7 +53,7 @@ export function RPEEntryCard({
       })
       .catch((e) => {
         if (alive) {
-          setErr(e instanceof Error ? e.message : String(e));
+          setErr('That did not come through. Nothing here changed.');
           setState('error');
         }
       });
@@ -75,7 +75,7 @@ export function RPEEntryCard({
       onSaved?.(rpe, notes);
       setTimeout(() => setState('idle'), 1400);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr('That did not save. Nothing was written, so it is safe to try again.');
       setState('error');
     }
   }
@@ -124,10 +124,10 @@ export function RPEEntryCard({
         onClick={save}
         disabled={rpe === null || state === 'saving'}
       >
-        {state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved ✓' : 'Save RPE'}
+        {state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved' : 'Save RPE'}
       </button>
       {state === 'error' ? (
-        <FaError text={`Couldn't save. ${err ?? ''}`.trim()} onRetry={save} />
+        <FaError text={"That did not save. Nothing was written, so it is safe to try again."} onRetry={save} />
       ) : null}
     </div>
   );

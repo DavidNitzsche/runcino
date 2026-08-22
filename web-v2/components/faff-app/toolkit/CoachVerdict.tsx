@@ -78,7 +78,7 @@ export function RunPurposeCard({
       })
       .catch((e) => {
         if (alive) {
-          setErr(e instanceof Error ? e.message : String(e));
+          setErr('That did not come through. Nothing here changed.');
           setState('error');
         }
       });
@@ -96,7 +96,7 @@ export function RunPurposeCard({
     );
   }
   if (state === 'error') {
-    return <FaError text={`Couldn't load today's purpose. ${err ?? ''}`.trim()} />;
+    return <FaError text={"Today's purpose did not come through. The session itself is unchanged."} />;
   }
   if (!data || !data.verdict) return null;
 
@@ -158,7 +158,7 @@ export function RunRecapCard({
       })
       .catch((e) => {
         if (alive) {
-          setErr(e instanceof Error ? e.message : String(e));
+          setErr('That did not come through. Nothing here changed.');
           setState('error');
         }
       });
@@ -174,7 +174,7 @@ export function RunRecapCard({
     );
   }
   if (state === 'error') {
-    return <FaError text={`Couldn't load the recap. ${err ?? ''}`.trim()} />;
+    return <FaError text={"The recap did not come through. The run is logged either way."} />;
   }
   if (!data || !data.verdict) return null;
 
@@ -258,7 +258,7 @@ export function PostRunCheckinChips({
       setReply(reply);
       if (reply && onComplete) onComplete(reply);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr('That did not save. Nothing was written, so it is safe to try again.');
     } finally {
       setBusy(false);
     }
@@ -301,7 +301,13 @@ export function PostRunCheckinChips({
           </button>
         ))}
       </div>
-      {err ? <p className="fa-prov" style={{ color: 'var(--over)' }}>{err}</p> : null}
+      {/* Same as Settings: `err` is a raw `Error.message`. Its presence is
+          the signal; the sentence is not the exception's to write. */}
+      {err ? (
+        <p className="fa-prov" style={{ color: 'var(--over)' }}>
+          That did not go through. Nothing was logged, so it is safe to send again.
+        </p>
+      ) : null}
       <button
         type="button"
         className="fa-submit"

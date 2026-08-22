@@ -76,7 +76,7 @@ function useIntents({
       })
       .catch((e) => {
         if (alive) {
-          setErr(e instanceof Error ? e.message : String(e));
+          setErr('That did not come through. Nothing here changed.');
           setState('error');
         }
       });
@@ -254,7 +254,7 @@ export function WhatChangedExpander({
     );
   }
   if (state === 'error') {
-    return <FaError text={`Couldn't load adaptation history. ${err ?? ''}`.trim()} />;
+    return <FaError text={"The record of plan changes did not come through. Your plan is unchanged."} />;
   }
   if (!rows || rows.length === 0) {
     return (
@@ -316,11 +316,11 @@ export function CoachActivityTimeline({
     );
   }
   if (state === 'error') {
-    return <FaError text={`Couldn't load coach activity. ${err ?? ''}`.trim()} />;
+    return <FaError text={"The coach log did not come through. Nothing in it decides anything on its own."} />;
   }
   if (!rows || rows.length === 0) {
     return (
-      <FaEmpty text="No coach activity yet · check back after a few workouts." />
+      <FaEmpty text="Nothing logged yet · this fills in the first time the plan moves." />
     );
   }
 

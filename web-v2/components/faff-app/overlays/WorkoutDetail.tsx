@@ -496,21 +496,26 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
                   const raw = (j as { error?: string }).error ?? `HTTP ${r.status}`;
                   // eslint-disable-next-line no-console
                   console.error('[restore] backend error', { raw, status: r.status, body: j, workoutId: d.planWorkoutId });
+                  // Every arm here is a REFUSAL except the first and last,
+                  // and those two are the outage. Both used to say "Try
+                  // again in a moment" — an apology with a promise in it
+                  // that nothing here can keep — and the parse arm named
+                  // the request model at the runner ("malformed").
                   const friendly = /operator does not exist|relation|column.*does not exist/i.test(raw)
-                      ? 'Cannot restore right now. Try again in a moment.'
+                      ? 'The restore did not go through. Your session stands as it is.'
                     : raw === 'not_adapted'         ? 'This run has no original to restore.'
                     : raw === 'missing_originals'   ? 'No original on record for this run.'
                     : raw === 'cannot_restore_past' ? "Can't restore a completed run."
                     : raw === 'workout_not_found'   ? "Couldn't find this run."
-                    : raw === 'workoutId_required' || raw === 'invalid_json' ? 'Restore request was malformed.'
-                    : 'Cannot restore right now. Try again in a moment.';
+                    : raw === 'workoutId_required' || raw === 'invalid_json' ? 'That did not go through clean. Reload and it will.'
+                    : 'The restore did not go through. Your session stands as it is.';
                   setRestoreErr(friendly);
                   return;
                 }
                 setRestored(true);
                 router.refresh();
               } catch {
-                setRestoreErr('Could not reach the server. Check your connection and try again.');
+                setRestoreErr('You are offline. Nothing was written, so this works when you are back.');
               } finally {
                 setRestoring(false);
               }

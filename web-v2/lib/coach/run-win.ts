@@ -195,7 +195,7 @@ function winRecovery(input: WinInput): string | null {
     if (input.actualPaceSPerMi >= input.plannedPaceSPerMi - 5) {
       return 'Easy and honest · legs stayed fresh';
     }
-    return 'Recovery run logged · could have been easier';
+    return 'Recovery run logged · ran above the recovery band';
   }
   return 'Easy day banked';
 }
@@ -619,7 +619,7 @@ function winTreadmill(input: WinInput): string | null {
     if (recoverySpeeds.length >= 2) {
       const maxRecovery = Math.max(...recoverySpeeds);
       if (maxRecovery <= 5.5) {
-        return `Disciplined recovery jogs · the reps did the work, not the jog. That's exactly the setup.`;
+        return `Recovery jogs stayed slow · the reps did the work, not the jog.`;
       }
     }
   }

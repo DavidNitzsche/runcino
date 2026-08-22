@@ -105,13 +105,13 @@ describe('composeAcknowledgeSentence matrix', () => {
   it('solid reads acknowledge cleanly per category', () => {
     expect(composeAcknowledgeSentence({
       yesterdayCategory: 'quality', yesterdayName: 'tempo', band: 'solid', todayCategory: 'easy',
-    })).toBe("Yesterday's tempo landed and you came out clean · good sign.");
+    })).toBe("Yesterday's tempo landed and you came out clean.");
     expect(composeAcknowledgeSentence({
       yesterdayCategory: 'long', yesterdayName: 'long run', band: 'solid', todayCategory: 'easy',
     })).toBe('Long run banked and the body took it well.');
     expect(composeAcknowledgeSentence({
       yesterdayCategory: 'easy', yesterdayName: 'easy day', band: 'solid', todayCategory: 'quality',
-    })).toBe("Yesterday's easy stayed easy · exactly right.");
+    })).toBe("Yesterday's easy stayed easy.");
   });
   it('voice · no em dashes, no exclamation marks, no citations, anywhere in the matrix', () => {
     const cats = ['quality', 'long', 'easy', 'other'] as const;

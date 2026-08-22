@@ -216,7 +216,10 @@ function fromCoachProposal(p: CoachProposalInput): CoachDecision {
     ? 'Switch to an injury-return plan'
     : isIllness
       ? 'Take the recovery week'
-      : 'The coach has a proposal';
+      // Its two siblings say what the change IS. This one named the speaker
+      // instead, in the third person, on the card where the runner most
+      // needs to know what is being asked of them.
+      : 'There is a change to look at';
   const acceptVerb = isInjury
     ? 'BUILD THE INJURY PLAN'
     : isIllness

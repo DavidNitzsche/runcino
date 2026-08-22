@@ -608,7 +608,10 @@ function composeNextHard(
       dateISO: today,
       label: 'NO QUALITY QUEUED',
       hoursUntil: 0,
-      trajectoryChip: 'Easy week · let HRV drift back to baseline',
+      // This branch is "no quality queued" and reads no HRV at all, so the
+      // old chip ("let HRV drift back to baseline") asserted a reason it had
+      // no evidence for. The honest chip is the fact the branch is built on.
+      trajectoryChip: 'No quality on the board this week',
     };
   }
   const todayMs = Date.parse(today + 'T12:00:00Z');
@@ -783,7 +786,9 @@ export function authorOneLine(
   if (band === 'depleted') return 'Sleep is the only thing that fixes this.';
   if (band === 'dragging') {
     if (ctx.sleepDeficit > 3) return 'Sleep tonight matters · debt is real.';
-    return 'HRV down · easy tomorrow non-negotiable.';
+    // RULE TWO · "easy tomorrow" is a session change, named off one domain.
+    // "Non-negotiable" also puts an order where the voice puts a statement.
+    return 'HRV is down. Tomorrow stands as written.';
   }
   if (band === 'recovering') {
     if (ctx.hrvDrop > 12) return 'Sleep tonight matters.';
@@ -832,7 +837,10 @@ export function authorTrajectoryChip(
   if (mode === 'long_run') {
     return "Monday's easy will determine Tuesday quality";
   }
-  if (band === 'depleted') return 'Add a recovery day before next hard';
+  // RULE TWO · adding a day to the plan is a session change, and the band on
+  // its own is not the three domains that licenses one. The chip states the
+  // band and leaves the calendar alone.
+  if (band === 'depleted') return 'Depleted band into the next hard day';
   if (ctx.sleepDeficit > 2) return 'SLEEP TONIGHT MATTERS';
   if (ctx.hrvDrop > 10) return 'HRV will set the cap';
   if (ctx.hoursUntil < 30 && ctx.nextType === 'intervals') return 'Tight turn · easy run tomorrow';

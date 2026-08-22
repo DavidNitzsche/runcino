@@ -85,7 +85,7 @@ export function NotificationPrefsList({ initial }: { initial?: NotificationPrefs
       })
       .catch((e) => {
         if (alive) {
-          setErr(e instanceof Error ? e.message : String(e));
+          setErr('That did not come through. Nothing here changed.');
           setState('error');
         }
       });
@@ -112,7 +112,7 @@ export function NotificationPrefsList({ initial }: { initial?: NotificationPrefs
     } catch (e) {
       // Roll back on failure
       setPrefs(prefs);
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr('That did not save. Nothing was written, so it is safe to try again.');
       setState('error');
     }
   }
@@ -131,7 +131,7 @@ export function NotificationPrefsList({ initial }: { initial?: NotificationPrefs
     );
   }
   if (state === 'error' && !prefs) {
-    return <FaError text={`Couldn't load notification settings. ${err ?? ''}`.trim()} />;
+    return <FaError text={"Your notification settings did not come through. Nothing changed."} />;
   }
   if (!prefs) return null;
 
@@ -160,9 +160,13 @@ export function NotificationPrefsList({ initial }: { initial?: NotificationPrefs
           </div>
         </div>
       ))}
+      {/* `err` holds a raw `Error.message` and used to be rendered here
+          verbatim, so a fetch failure printed a JavaScript exception at a
+          runner as if it were something the coach said. The variable is
+          the SIGNAL that something failed; the sentence is ours. */}
       {state === 'error' && err ? (
         <p className="fa-prov" style={{ color: 'var(--over)', padding: '8px 16px' }}>
-          {err}
+          That toggle did not save. Nothing changed.
         </p>
       ) : null}
     </div>

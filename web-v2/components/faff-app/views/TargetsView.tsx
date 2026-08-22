@@ -406,7 +406,7 @@ function GoalRenegotiationCard({
       onDone();
     } catch (e) {
       setBusy(null);
-      setError(e instanceof Error ? e.message : String(e));
+      setError('That did not save. Nothing was written, so it is safe to try again.');
     }
   }
 
@@ -426,7 +426,7 @@ function GoalRenegotiationCard({
       window.location.reload();
     } catch (e) {
       setBusy(null);
-      setError(e instanceof Error ? e.message : String(e));
+      setError('That did not save. Nothing was written, so it is safe to try again.');
     }
   }
 
@@ -484,7 +484,7 @@ function GoalRenegotiationCard({
         </div>
       ) : null}
       {error ? (
-        <div style={{ marginTop: 10, fontSize: 11.5, color: '#FC4D64' }}>Could not save: {error}</div>
+        <div style={{ marginTop: 10, fontSize: 11.5, color: '#FC4D64' }}>{error}</div>
       ) : null}
     </div>
   );

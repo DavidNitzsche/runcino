@@ -1254,7 +1254,15 @@ enum API {
             //
             // A 4xx with a reason is an answer and comes back as `refusal`;
             // anything else stays nil and is a real failure.
-            let reason = (json?["reason"] as? String) ?? (json?["error"] as? String)
+            //
+            // `reason` ONLY. The `?? error` fallback that used to sit here
+            // put the route's machine text on a runner's screen — "race slug
+            // unavailable", "name + date required" — which is the opposite
+            // failure to the one this block was written to fix, and just as
+            // bad: a wrong-but-fluent sentence tells the runner something we
+            // never said. `error` is the code, `reason` is the sentence, and
+            // only the sentence is printable. The route carries both now.
+            let reason = json?["reason"] as? String
             if (400..<500).contains(http.statusCode), let reason, !reason.isEmpty {
                 return (nil, nil, reason)
             }

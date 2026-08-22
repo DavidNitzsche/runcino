@@ -438,7 +438,12 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     out.push({
       signal: 'load_spike',
       priority: 'urgent',
-      action: 'Trim 2-3 miles from your next long run · load is in the injury-risk band.',
+      // RULE TWO · load is ONE domain. Trimming the long run is a session
+      // change, and the convergence ladder puts a session change three
+      // domains away. The chip states the reading; the plan is not touched
+      // from here. Every other urgent chip in this file that changes a
+      // session goes through `voice()`, which requires the convergence.
+      action: 'Your load is in the injury-risk band against your own base.',
       cite: `ACWR ${state.loadAcwr.toFixed(2)} · above ${HARD_RULES.acwrInjuryHardCap} hard cap.`,
     });
   }
@@ -449,7 +454,12 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     out.push({
       signal: 'compound',
       priority: 'urgent',
-      action: `Take 2-3 easy days · score has been pull-back ${HARD_RULES.pullbackForcedAck} days running.`,
+      // The composite score IS built from several domains, but the sentence
+      // names one number, and rule two is a rule about the sentence: a line
+      // blaming one figure is a bug even when the figure is right. State the
+      // run of days; the days-off call belongs to a composer that can name
+      // which domains are dragging.
+      action: `Your score has sat in pull-back ${HARD_RULES.pullbackForcedAck} days running.`,
       cite: `Recent scores: ${last7Scores.join('/')}.`,
     });
   }
@@ -838,7 +848,7 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     const todayInModerate = breakdown.band === 'moderate';
 
     // 2026-06-05 · multi-tenant audit Pattern 2 + Pattern 5 fix · the
-    // empty-state ladder fires "All quiet · keep doing what you're
+    // empty-state ladder fires "All quiet · nothing tripping
     // doing" with the runner's score in tow, regardless of whether
     // that score was backed by real recovery data. For a Strava-only
     // runner with LOAD signal only, no actions trip · "all quiet"
@@ -886,7 +896,7 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
     return [{
       signal: 'on_course',
       priority: 'on-course',
-      action: 'All quiet · keep doing what you\'re doing.',
+      action: 'All quiet · nothing tripping today.',
       cite: `Today ${breakdown.score} · recent: ${trendStr}.`,
     }];
   }

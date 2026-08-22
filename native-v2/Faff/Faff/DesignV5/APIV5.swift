@@ -990,9 +990,17 @@ extension API {
 
         // A 4xx carrying the engine's own reason is an answer, not a failure.
         // A 5xx is not: the engine did not decide anything, it fell over.
+        //
+        // `refusal ?? reason`, not `reason` alone. The write path has read
+        // both keys since the clinician gate landed; this one read only
+        // `reason`, so a GET that declined with `refusal` — the key the gate
+        // uses, and the key any route that later grows a gate will reach for —
+        // fell through to `.failed` and wore the data-outage screen. That is
+        // the production shape rule three exists to forbid, sitting one key
+        // away from firing. The two paths read the same body now.
         if (400...499).contains(http.statusCode),
            let body = try? JSONDecoder().decode(V5Refusal.self, from: data),
-           let reason = body.reason, !reason.isEmpty {
+           let reason = body.refusal ?? body.reason, !reason.isEmpty {
             return .absent(reason)
         }
         return .failed
@@ -1031,6 +1039,28 @@ extension API {
 
     static func fetchV5Return() async throws -> V5Fetch<V5Return> {
         try await v5("/api/v5/return", cache: .v5Return, as: V5Return.self)
+    }
+
+    /// Run detail, through the v5 refusal shape.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// A RUN THAT IS NOT YOURS IS AN ANSWER
+    ///
+    /// `API.fetchRunDetail` returns `RunDetail?`, so "that run is not in your
+    /// log any more" and a dropped connection arrive at the screen as the
+    /// same nil — and `RunDetailHostV5` drew both as a `Skeleton` that never
+    /// resolves. That is worse than the outage treatment rule three forbids:
+    /// it is the COLD-START treatment, which claims we are still looking.
+    /// `SurfaceStoreV5` keeps `isColdStart`, `isOutage` and `absentReason`
+    /// apart for exactly this reason; this route now speaks the same three.
+    ///
+    /// `/api/runs/[id]` carries a `reason` on both of its 404s, so a decline
+    /// comes back as `.absent` with the engine's own sentence.
+    static func fetchV5RunDetail(id: String) async throws -> V5Fetch<RunDetail> {
+        // Leading slash: `v5` concatenates onto `baseURL.absoluteString`
+        // rather than appending a path component, so every path it is given
+        // carries its own separator.
+        try await v5("/api/runs/\(id)", cache: nil, as: RunDetail.self)
     }
 
     // ── writes ──

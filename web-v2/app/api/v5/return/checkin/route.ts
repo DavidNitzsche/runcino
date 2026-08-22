@@ -51,14 +51,19 @@ async function submitReturnCheckin(req: NextRequest): Promise<NextResponse> {
   const outcome = typeof body?.outcome === 'string' ? (body.outcome as ReturnCheckinOutcome) : null;
   if (!outcome || !OUTCOMES.includes(outcome)) {
     return NextResponse.json(
-      { ok: false, error: 'bad_request', reason: `outcome must be one of ${OUTCOMES.join(', ')}` },
+      // RULE FOUR · `v5Write` prints `reason` at the runner. A field name and
+      // a list of enum values is a message to a client, not to a person.
+      { ok: false, error: 'bad_request', reason: 'That is not one of the answers this check-in takes.' },
       { status: 400 },
     );
   }
 
   const injury = await loadActiveInjuryForReturn(userId);
   if (!injury) {
-    return NextResponse.json({ ok: false, error: 'no_active_injury', reason: 'no injury currently tracked' }, { status: 404 });
+    // The GET on this same ladder already says this as a sentence
+    // ("Nothing is flagged right now, so there is no ladder to climb.");
+    // this one was still a log line, and it renders as an `Alert`.
+    return NextResponse.json({ ok: false, error: 'no_active_injury', reason: 'Nothing is flagged right now, so there is no stage to check in on.' }, { status: 404 });
   }
 
   const resolved = protocolForInjury(injury);

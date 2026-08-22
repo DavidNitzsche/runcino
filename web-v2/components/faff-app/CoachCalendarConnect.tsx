@@ -34,14 +34,14 @@ export function CoachCalendarConnect({ cal }: {
       });
       const j = await r.json().catch(() => ({} as { error?: string }));
       if (!r.ok) {
-        setError(j.error ?? `failed (HTTP ${r.status})`);
+        setError('That did not go through. Nothing was connected.');
         return;
       }
       setOpen(false);
       setUrl('');
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'network error');
+      setError('That did not save. Nothing was written, so it is safe to try again.');
     } finally {
       setBusy(false);
     }

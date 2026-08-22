@@ -154,7 +154,10 @@ export function composeAcknowledgeSentence(a: AcknowledgeInput): string {
       return `The long run emptied the tank · respect that in today's session.`;
     }
     if (a.yesterdayCategory === 'easy') {
-      return `You called yesterday's easy day a beatdown · an easy day should not do that, and it feeds this morning's call.`;
+      // WAS: "· an easy day should not do that, and it feeds this morning's
+      // call." The middle clause corrects the runner for how the day went,
+      // which is not something they chose. State it and move.
+      return `You called yesterday's easy day a beatdown. That feeds this morning's call.`;
     }
     return `Yesterday read harder than it should have · noted for today's call.`;
   }
@@ -165,14 +168,14 @@ export function composeAcknowledgeSentence(a: AcknowledgeInput): string {
       }
       return `Yesterday's ${n} was work · hold today's targets, not more.`;
     }
-    if (a.yesterdayCategory === 'long') return `Solid work in the long run · the legs will still carry some of it today.`;
+    if (a.yesterdayCategory === 'long') return `The long run is still in the legs today.`;
     if (a.yesterdayCategory === 'easy') return `Yesterday's easy ran a touch heavy · worth keeping today honest.`;
     return `Yesterday was work · today runs off that.`;
   }
   // solid
-  if (a.yesterdayCategory === 'quality') return `Yesterday's ${n} landed and you came out clean · good sign.`;
+  if (a.yesterdayCategory === 'quality') return `Yesterday's ${n} landed and you came out clean.`;
   if (a.yesterdayCategory === 'long') return `Long run banked and the body took it well.`;
-  if (a.yesterdayCategory === 'easy') return `Yesterday's easy stayed easy · exactly right.`;
+  if (a.yesterdayCategory === 'easy') return `Yesterday's easy stayed easy.`;
   return `Yesterday went in the book clean.`;
 }
 

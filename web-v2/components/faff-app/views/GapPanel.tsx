@@ -197,7 +197,11 @@ function deriveSegs(goalSec: number, projSec: number, goal: GoalRace): GapSeg[] 
       tag: 'Fixed',
       doctrine: courseHasReal
         ? courseDoctrineCopy(FIXED_COURSE, goal)
-        : `Rolling profiles cost ~${fmtDelta(FIXED_COURSE)} versus a flat reference. Plan for it, don't fight it. course_library editorial annotations will tighten this number once they ship per race.`,
+        // The dropped third sentence named an internal table (`course_library`)
+        // and promised a future release ("once they ship per race"), in prose
+        // a runner reads on the gap breakdown. Nothing else the coach says
+        // talks about its own roadmap, and no runner can act on either half.
+        : `Rolling profiles cost about ${fmtDelta(FIXED_COURSE)} against a flat course. Plan for it, do not fight it.`,
       src: courseHasReal
         ? `course_library · ${goal.courseSource ?? 'editorial'} (${goal.courseElevGainFtPerMi ?? 0} ft/mi)`
         : 'course_library · editorial',
@@ -609,8 +613,8 @@ export function GapPanel({ goal, series, anchor, status: statusRead }: GapPanelP
       truthSub = `Executed clean it still projects <b>${fmtClock(traj.projectedSec ?? 0)}</b>. The fix is a more aggressive plan, not a harder you · the peak quality work needs to be faster.`;
     } else {
       const execWord = traj.executionQuality >= 0.9
-        ? 'You\'re nailing your sessions'
-        : traj.executionQuality >= 0.7 ? 'You\'re hitting most of your sessions' : 'Some sessions are slipping';
+        ? 'Every session has landed'
+        : traj.executionQuality >= 0.7 ? 'Most sessions have landed' : 'Not every session has landed';
       truthHl = `<em>${fmtDelta(traj.gapSec ?? 0)}</em> from ${goalLabel} on this trajectory.`;
       truthSub = `${execWord}, and the plan is built for it · the build closes the last <b>${fmtDelta(traj.gapSec ?? 0)}</b>, about <b>+${traj.rateShortfallPerWeek}/wk</b> more fitness than you\'re on pace for. Within reach.`;
     }

@@ -129,7 +129,7 @@ export function ManualHealthSheet({
       // Auto-close after a beat. The runner can tap Done sooner.
       setTimeout(() => { onClose?.(); }, 1600);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr('That did not save. Nothing was written, so it is safe to try again.');
     } finally {
       setBusy(false);
     }
@@ -264,7 +264,7 @@ export function NewGoalSheet({ onSaved, onClose }: { onSaved?: () => void; onClo
       onSaved?.();
       onClose?.();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr('That did not save. Nothing was written, so it is safe to try again.');
     } finally {
       setBusy(false);
     }
@@ -401,7 +401,7 @@ export function SymptomReportSheet({ onSaved, onClose }: { onSaved?: () => void;
       onSaved?.();
       onClose?.();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr('That did not save. Nothing was written, so it is safe to try again.');
     } finally {
       setBusy(false);
     }

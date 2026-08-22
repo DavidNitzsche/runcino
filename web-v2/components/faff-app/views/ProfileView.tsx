@@ -446,7 +446,7 @@ function ProfileToggleRows() {
       if (field === 'phone_hr_alerts') setPhoneHrAlerts(next);
       else setAutoPush(next);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr('That did not save. Nothing was written, so it is safe to try again.');
     } finally {
       setBusy(null);
     }

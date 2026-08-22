@@ -48,7 +48,13 @@ export async function POST(req: NextRequest) {
   const userId = auth;
   const body = await req.json().catch(() => null);
   if (!body?.name || !body?.date) {
-    return NextResponse.json({ error: 'name + date required' }, { status: 400 });
+    // RULE THREE · `error` is the code, `reason` is the sentence. The phone
+    // prints `reason` and nothing else, so a decline with no sentence wears
+    // the data-outage treatment on a screen where nothing has gone wrong.
+    return NextResponse.json(
+      { error: 'name_date_required', reason: 'A race needs a name and a date before it can go on the schedule.' },
+      { status: 400 },
+    );
   }
   // 2026-06-05 · backend audit P0-8 · slug is the PRIMARY KEY of races and
   // two users picking identical names would have collided.
@@ -124,7 +130,13 @@ export async function POST(req: NextRequest) {
       if ((await claimSlug(slug)).rowCount === 0) {
         // Suffixed slug ALSO foreign-owned (would need an 8-hex uuid-prefix
         // collision) — refuse rather than merge into someone else's row.
-        return NextResponse.json({ error: 'race slug unavailable' }, { status: 409 });
+        return NextResponse.json(
+          {
+            error: 'race_slug_unavailable',
+            reason: 'That name is already taken on the schedule. Give this one a different name and it saves.',
+          },
+          { status: 409 },
+        );
       }
     }
     await bustBriefingCacheForEvent(userId, 'race_crud');
@@ -279,7 +291,7 @@ export async function PATCH(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const body = await req.json().catch(() => null);
-  if (!body?.slug) return NextResponse.json({ error: 'slug required' }, { status: 400 });
+  if (!body?.slug) return NextResponse.json({ error: 'slug_required', reason: 'No race was named, so there is nothing to change.' }, { status: 400 });
 
   try {
     // Scope existence + ownership: a runner can only PATCH a race they own.
@@ -287,7 +299,7 @@ export async function PATCH(req: NextRequest) {
       `SELECT meta FROM races WHERE slug = $1 AND user_uuid = $2`,
       [body.slug, userId],
     )).rows[0];
-    if (!existing) return NextResponse.json({ error: 'race not found' }, { status: 404 });
+    if (!existing) return NextResponse.json({ error: 'race_not_found', reason: 'That race is not on your schedule any more.' }, { status: 404 });
     const meta = { ...existing.meta };
     // Editable plain fields. goal_safe + bib + wave + startTime + registered
     // come from the Faff race-detail editable hero so the runner can stash
@@ -471,7 +483,7 @@ export async function DELETE(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const body = await req.json().catch(() => null);
-  if (!body?.slug) return NextResponse.json({ error: 'slug required' }, { status: 400 });
+  if (!body?.slug) return NextResponse.json({ error: 'slug_required', reason: 'No race was named, so there is nothing to change.' }, { status: 400 });
   try {
     // 2026-06-01 · BEFORE delete · check if this race is the current
     // plan's goal. If so we'll auto-rebuild after the delete (the plan

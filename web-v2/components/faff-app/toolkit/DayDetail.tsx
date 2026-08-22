@@ -99,7 +99,7 @@ export function WatchPreviewTimeline({
       })
       .catch((e) => {
         if (alive) {
-          setErr(e instanceof Error ? e.message : String(e));
+          setErr('That did not come through. Nothing here changed.');
           setState('error');
         }
       });
@@ -114,7 +114,7 @@ export function WatchPreviewTimeline({
     );
   }
   if (state === 'error') {
-    return <FaError text={`Couldn't load watch preview. ${err ?? ''}`.trim()} />;
+    return <FaError text={"The watch preview did not come through. What your watch already holds is unchanged."} />;
   }
   if (!data?.workout?.phases?.length) return null;
 

@@ -129,6 +129,16 @@ struct AddRaceV5: View {
     // ── save flow ─────────────────────────────────────────────────────────
     @State private var saving: Bool = false
     @State private var saveFailed: Bool = false
+    /// RULE THREE · the engine read the request and the answer is no.
+    ///
+    /// `API.createRace` has returned a `refusal` since the transport learned
+    /// that a 4xx is an answer, and this screen threw it away: every decline
+    /// landed on `saveFailed` and drew the data-outage `ErrorNote` — "Could
+    /// not save the race. Check your connection and try again." — complete
+    /// with a Retry that would decline identically for as long as the runner
+    /// pressed it. The connection was fine. We had the sentence and printed
+    /// a different one.
+    @State private var saveRefusal: String?
     @State private var savedSlug: String?
     @State private var planError: String?
     @State private var courseNote: String?
@@ -176,8 +186,13 @@ struct AddRaceV5: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: V5.S.s16) {
                         raceFields
-                        if saveFailed {
-                            ErrorNote(text: "Could not save the race. Check your connection and try again.",
+                        // A refusal is an ANSWER. `Alert`, no Retry — there
+                        // is nothing to retry, and offering one would be the
+                        // screen pretending it had not understood.
+                        if let saveRefusal {
+                            Alert(text: saveRefusal, tone: .attention)
+                        } else if saveFailed {
+                            ErrorNote(text: "That did not save. Nothing was written, so it is safe to try again.",
                                       onRetry: { Task { await save() } })
                         }
                     }
@@ -341,6 +356,7 @@ struct AddRaceV5: View {
     private func save() async {
         saving = true
         saveFailed = false
+        saveRefusal = nil
         let created = try? await API.createRace(
             name: trimmedName,
             date: isoDate,
@@ -350,7 +366,14 @@ struct AddRaceV5: View {
         )
         saving = false
         guard let slug = created?.slug else {
-            saveFailed = true
+            // The engine's own sentence when it gave one; the outage note
+            // only when it did not. Nothing is invented here — the phone
+            // never writes a reason the engine did not have.
+            if let refusal = created?.refusal, !refusal.isEmpty {
+                saveRefusal = refusal
+            } else {
+                saveFailed = true
+            }
             return
         }
         // A plan refusal is worth reading before moving on; anything else and

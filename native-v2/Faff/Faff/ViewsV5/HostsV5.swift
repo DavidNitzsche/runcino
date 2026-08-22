@@ -1529,6 +1529,13 @@ struct RunLogHostV5: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var path: [V5Route]
     @State private var log: LogState?
+    /// RULE THREE · the read failed and we have nothing.
+    ///
+    /// This used to be the absence of `log` and nothing else, so a dropped
+    /// connection drew the cold-start `Skeleton` — forever, with no retry.
+    /// A skeleton is a claim that we are still looking. When we have stopped
+    /// looking it is the one thing the screen must not say.
+    @State private var outage = false
 
     var body: some View {
         Group {
@@ -1536,13 +1543,26 @@ struct RunLogHostV5: View {
                 RunLogV5(log: log,
                          onOpenRun: { id in path.append(.runDetail(id: id)) },
                          onBack: { dismiss() })
+            } else if outage {
+                ScrollView {
+                    OutageBodyV5(copy: .runLog, onRetry: { Task { await load() } }, skeletonLines: 6)
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s24)
+                }
+                .background(V5.surfacePage)
             } else {
                 ScrollView { Skeleton(lines: 6).padding(.horizontal, V5.S.gutter) }
                     .background(V5.surfacePage)
             }
         }
-        .task { log = try? await API.fetchLog(limit: 120) }
+        .task { await load() }
         .navigationBarBackButtonHidden(true)
+    }
+
+    private func load() async {
+        outage = false
+        let fetched = try? await API.fetchLog(limit: 120)
+        if let fetched { log = fetched } else { outage = true }
     }
 }
 
@@ -1551,20 +1571,60 @@ struct RunDetailHostV5: View {
     @Environment(\.dismiss) private var dismiss
     @State private var detail: RunDetail?
     @State private var recap: RunRecap?
+    /// RULE THREE, the three states kept apart.
+    ///
+    /// One `RunDetail?` used to carry all three: a run that is not this
+    /// runner's, a failed read, and a read still in flight all arrived as
+    /// nil, and the screen drew a `Skeleton` that never resolved. The
+    /// refusal case is the one the design names by name — a correct answer
+    /// wearing the loading treatment is the same lie as one wearing the
+    /// outage treatment, and it is a quieter lie, so it survived longer.
+    @State private var absentReason: String?
+    @State private var outage = false
 
     var body: some View {
         Group {
             if let detail {
                 RunDetailV5(detail: detail, recap: recap, onBack: { dismiss() })
+            } else if let absentReason {
+                // The engine read it and the answer is no. `Silence`, never
+                // `ErrorNote`: nothing failed.
+                ScrollView {
+                    Silence(reason: absentReason)
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s24)
+                }
+                .background(V5.surfacePage)
+            } else if outage {
+                ScrollView {
+                    OutageBodyV5(copy: .runDetail, onRetry: { Task { await load() } }, skeletonLines: 8)
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s24)
+                }
+                .background(V5.surfacePage)
             } else {
                 ScrollView { Skeleton(lines: 8).padding(.horizontal, V5.S.gutter) }
                     .background(V5.surfacePage)
             }
         }
-        .task {
-            detail = try? await API.fetchRunDetail(id: id)
-            recap = try? await API.fetchRunRecap(runId: id)
-        }
+        .task { await load() }
         .navigationBarBackButtonHidden(true)
+    }
+
+    private func load() async {
+        absentReason = nil
+        outage = false
+        switch (try? await API.fetchV5RunDetail(id: id)) {
+        case .ok(let value)?:
+            detail = value
+            // The recap is an enrichment, not the screen. A recap that does
+            // not come back leaves the run itself perfectly readable, so its
+            // absence must not reach any of the three states above.
+            recap = try? await API.fetchRunRecap(runId: id)
+        case .absent(let reason)?:
+            absentReason = reason
+        default:
+            outage = true
+        }
     }
 }

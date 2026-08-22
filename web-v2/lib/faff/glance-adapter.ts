@@ -882,7 +882,7 @@ export function buildSibling(glance: GlanceState, state: DayState): SiblingPaylo
         state,
         title,
         tiles,
-        prose: 'Big day banked. Tomorrow goes easier than the plan says.',
+        prose: 'Long one is in. Tomorrow goes easier than the plan says.',
         action_tile_index: 0,
       };
     case 'race_week':

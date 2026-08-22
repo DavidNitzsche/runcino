@@ -68,7 +68,11 @@ async function setRaceAuthority(req: NextRequest): Promise<NextResponse> {
 
   if (!slug || !tier || !TIERS.includes(tier)) {
     return NextResponse.json(
-      { ok: false, error: 'bad_request', reason: `slug and tier (one of ${TIERS.join(', ')}) are required` },
+      // RULE FOUR · `reason` is printed at the runner by `v5Write`, so it is
+      // copy, not a log line. Naming a request field and a list of enum
+      // values at someone who just tapped an answer chip is the engine
+      // talking to its own client with the runner in the room.
+      { ok: false, error: 'bad_request', reason: 'That is not one of the answers this question offers.' },
       { status: 400 },
     );
   }
@@ -80,7 +84,7 @@ async function setRaceAuthority(req: NextRequest): Promise<NextResponse> {
     [slug, userId],
   )).rows[0];
   if (!raceRow) {
-    return NextResponse.json({ ok: false, error: 'not_found', reason: 'no race matches that slug for this runner' }, { status: 404 });
+    return NextResponse.json({ ok: false, error: 'not_found', reason: 'That race is not on your schedule any more.' }, { status: 404 });
   }
 
   const confirmedAt = new Date().toISOString();

@@ -47,13 +47,13 @@ export async function POST(req: NextRequest) {
   const userId = auth;
 
   const body = await req.json().catch(() => null);
-  if (!body?.slug) return NextResponse.json({ error: 'slug required' }, { status: 400 });
+  if (!body?.slug) return NextResponse.json({ error: 'slug_required', reason: 'No race was named, so there is nothing to record a time against.' }, { status: 400 });
 
   // Accept either finishS (seconds) or finishDisplay ("1:29:45") — resolve to seconds.
   const finishS = body.finishS != null ? Number(body.finishS) : null;
   const fromDisplay = body.finishDisplay ? parseRaceTime(String(body.finishDisplay)) : null;
   const resolvedS = (finishS && finishS > 0) ? finishS : (fromDisplay && fromDisplay > 0 ? fromDisplay : null);
-  if (!resolvedS) return NextResponse.json({ error: 'finishS or finishDisplay required' }, { status: 400 });
+  if (!resolvedS) return NextResponse.json({ error: 'finish_required', reason: 'A finish time is the one thing this needs.' }, { status: 400 });
 
   const avgHrBpm = body.avgHrBpm != null ? Number(body.avgHrBpm) : null;
 
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       `SELECT meta FROM races WHERE slug = $1 AND user_uuid = $2`,
       [body.slug, userId],
     )).rows[0];
-    if (!raceRow) return NextResponse.json({ error: 'race not found' }, { status: 404 });
+    if (!raceRow) return NextResponse.json({ error: 'race_not_found', reason: 'That race is not on your schedule any more.' }, { status: 404 });
 
     const meta = (raceRow.meta ?? {}) as Record<string, unknown>;
     const distanceMi = meta.distanceMi

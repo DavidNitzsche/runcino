@@ -626,20 +626,37 @@ struct RaceJustFinishedV5: View {
             ListGroup(header: "Chip time") {
                 // THE QUALIFIER IS AMBER, AND IT IS A RIGHT-HAND VALUE.
                 //
-                // 8b draws "Not published yet" on the left with "We check
-                // hourly" on the right in `#F2B03C`. It was built as a plain
-                // sub-line, which loses both the position and the colour.
+                // 8c draws "Not published yet" on the left with "We check
+                // hourly" on the right in amber. Built as a plain sub-line it
+                // lost both the position and the colour.
                 //
-                // Amber is right here and it is not the amber that was dropped
-                // from the panel: a result that is not published yet is stale
-                // evidence, which is exactly what amber means. And this row is
-                // BELOW the panel, on the black page, where the ramp's dark
-                // ink does not reach and amber-on-amber cannot happen.
+                // Amber is right here and it is NOT the amber that had to be
+                // dropped from the panel: a result that is not published yet
+                // is stale evidence, which is exactly what amber means. And
+                // this row sits BELOW the panel, on the black page, where the
+                // ramp's dark ink does not reach and amber-on-amber cannot
+                // happen.
                 ListRow(label: model.chipStatus,
                         value: model.chipSub.map { FaffValue.measured($0) },
                         valueInk: V5.attention)
-                ListRow(label: "Nothing goes in the book today",
-                        sub: "The watch time never becomes the result. It stands in until the chip lands.")
+                // WAS: "Nothing goes in the book today" over "The watch time
+                // never becomes the result."
+                //
+                // Two denials stacked — "Nothing", then "never" — in the one
+                // row on the one screen whose brief is to hold the number
+                // WITHOUT feeling like it is withholding. The facts were
+                // right and the grammar was doing the opposite job: the label
+                // led on what the runner does not get, and the only sentence
+                // giving the watch time any standing was the second half of
+                // the sub.
+                //
+                // The same two facts, stated forward. "Stands in" is the
+                // whole ruling in two words — real enough to work with, not
+                // the one that counts — which is exactly what the register
+                // upstairs already says by putting it in the value register
+                // with a tilde on it.
+                ListRow(label: "The book waits for the chip",
+                        sub: "The watch time stands in until it lands. The official one is what goes on the record.")
             }
 
             ListGroup(header: "The rest of the week") {

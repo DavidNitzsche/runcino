@@ -389,7 +389,7 @@ function tempoExecution(input: RecapInput): string | null {
     if (Math.abs(vsTarget) <= 5) {
       // Right on target — just report consistency
       return drift >= 8
-        ? `Hit the target early but faded ${drift}s across the block. Still a solid effort.`
+        ? `Hit the target early, faded ${drift}s across the block.`
         : drift <= -8
           ? `Built into it · back half ${Math.abs(drift)}s quicker. ${spreadDesc} overall.`
           : `Work miles landed on the ${paceLabel(target) ?? 'target'} mark · ${spreadDesc} through the block.`;
@@ -507,7 +507,7 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
         : `You took the bail${takenBail.atMi != null ? ` at mile ${Number(takenBail.atMi).toFixed(0)}` : ''} · smart, not a fail. The stimulus was already banked; forcing the rest buys fatigue, not fitness.`,
     );
   } else if (declinedBail) {
-    facts.push(`The ${String(declinedBail.label ?? 'bail line').toLowerCase()} tripped and you pushed through · noted, not judged. Watch tomorrow's readiness.`);
+    facts.push(`The ${String(declinedBail.label ?? 'bail line').toLowerCase()} tripped and you pushed through. Watch tomorrow's readiness.`);
   }
 
   // Voice doctrine (David, 2026-05-31): plain English. No PhD jargon.

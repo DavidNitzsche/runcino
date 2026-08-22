@@ -1481,7 +1481,7 @@ function StandingRecAdvisory({
       }
       onAccepted();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr('That did not save. Nothing was written, so it is safe to try again.');
       setBusy(false);
     }
   }
@@ -1537,10 +1537,10 @@ function StandingRecAdvisory({
 /** Map raw API errors to a one-liner the runner can act on. */
 function friendlyAcceptError(raw: string): string {
   const r = raw.toLowerCase();
-  if (r.includes('workout_not_found')) return 'Run not found · try refreshing.';
-  if (r.includes('no_changes')) return 'No change to apply.';
-  if (r.includes('invalid')) return 'Coach suggestion is malformed · please reload.';
-  return 'Could not apply right now. Try again in a moment.';
+  if (r.includes('workout_not_found')) return 'That run is not in your log any more.';
+  if (r.includes('no_changes')) return 'Nothing to change.';
+  if (r.includes('invalid')) return 'That change did not come through clean. Reload and it will.';
+  return 'That did not apply. The session stands as written.';
 }
 
 /* ───────────────  PlannedHeroV2 (Run Detail Planned · Easy)  ───────────────
@@ -1901,14 +1901,15 @@ function PlannedHeroV2({
         // is there.
         // eslint-disable-next-line no-console
         console.error('[restore] backend error', { raw, status: r.status, body: j, workoutId: d.planWorkoutId });
+        // See the twin of this block in overlays/WorkoutDetail.tsx.
         const friendly = /operator does not exist|relation|column.*does not exist/i.test(raw)
-            ? 'Cannot restore right now. Try again in a moment.'
+            ? 'The restore did not go through. Your session stands as it is.'
           : raw === 'not_adapted'        ? 'This run has no original to restore.'
           : raw === 'missing_originals'  ? 'No original on record for this run.'
           : raw === 'cannot_restore_past' ? "Can't restore a completed run."
           : raw === 'workout_not_found'  ? "Couldn't find this run."
-          : raw === 'workoutId_required' || raw === 'invalid_json' ? 'Restore request was malformed.'
-          : 'Cannot restore right now. Try again in a moment.';
+          : raw === 'workoutId_required' || raw === 'invalid_json' ? 'That did not go through clean. Reload and it will.'
+          : 'The restore did not go through. Your session stands as it is.';
         setRestoreErr(friendly);
         return;
       }
@@ -1916,7 +1917,7 @@ function PlannedHeroV2({
       router.refresh();
     } catch (e) {
       // Network / fetch threw before getting a JSON response.
-      setRestoreErr('Could not reach the server. Check your connection and try again.');
+      setRestoreErr('You are offline. Nothing was written, so this works when you are back.');
       void e;
     } finally {
       setRestoring(false);
@@ -2210,7 +2211,7 @@ function deriveRecap(d: FaffSeed['week'][number], runData: RunSummary | null): s
     if (d.type === 'easy' && z2 >= 60)
       return 'Held Zone 2 the whole way and never let the pace creep. The quiet aerobic work the plan wants.';
     if ((d.type === 'tempo' || d.type === 'intervals') && z4 >= 25)
-      return 'Got into the threshold band and held it. Plan called for it, you delivered.';
+      return 'Got into the threshold band and held it. That is the session.';
     if (d.type === 'long' && z2 >= 50)
       return 'Aerobic the whole way. The miles bank for race day.';
   }
@@ -5287,12 +5288,19 @@ function Tiles({ seed, onOpenRace, gates }: {
         // middot acts like a period · the clause after it starts
         // a new sentence and capitalizes.
         const FORM_HELPER: Record<string, string> = {
-          OVERREACH:    'Acute load above your baseline. Pull back this week.',
+          // RULE TWO · every one of these is derived from ONE figure (the
+          // training-stress balance), and three of them used to prescribe a
+          // change to the week off it: "pull back this week", "don't add new
+          // load this week", "build back up". The convergence ladder puts a
+          // session change three independent domains away, and this is one.
+          // The helper says what the number reads; the week is not moved
+          // from a form gauge.
+          OVERREACH:    'Acute load is above your baseline.',
           LOADED:       'Running hot · Productive but watch sleep + recovery.',
           PRODUCTIVE:   'Productive training · Fatigue and fitness balanced.',
-          'RACE-READY': "Primed for a race. Don't add new load this week.",
-          DETRAINING:   'Too fresh for too long · Fitness eroding. Build back up.',
-          BUILDING:     'Building your baseline · More data coming.',
+          'RACE-READY': 'Primed for a race · Fatigue is as low as it gets.',
+          DETRAINING:   'Too fresh for too long · Load has been light enough to show.',
+          BUILDING:     'Building your baseline · Fills in over the first weeks.',
         };
         const formColor = FORM_COLOR[seed.form.label] ?? '#8A90A0';
         const formHelper = FORM_HELPER[seed.form.label] ?? null;

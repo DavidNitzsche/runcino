@@ -146,7 +146,15 @@ struct RunDetailV5: View {
                 guard let c = skip.repsCompleted, let n = skip.repCount else { return nil }
                 return "\(Self.spelled(c).capitalized) of \(Self.spelled(n))"
             }()
-            let reason = [done, "you chose it, we did not lose it"]
+            // "you chose it, we did not lose it" used to close this row.
+            // It denies a charge nobody made, and raising the failure in
+            // order to deny it is how the failure gets into the room —
+            // the same shape as a recap saying "noted, not judged", which
+            // announces the rule instead of following it. The reason is
+            // now what the record actually holds: the watch offered the
+            // stop, the runner took it. Whose decision it was is the one
+            // fact this register exists to carry.
+            let reason = [done, "the watch offered the stop and you took it"]
                 .compactMap { $0 }.joined(separator: " \u{00B7} ")
             out.append(.init(id: "skip-\(skip.repIndex)",
                              statement: "Skipped the \(Self.ordinal(skip.repIndex)) rep",
@@ -167,11 +175,22 @@ struct RunDetailV5: View {
                 return "between reps \(Self.spelled(lo)) and \(Self.spelled(hi + 1))"
             }()
             let howMany = n == 1 ? "Once" : n == 2 ? "Twice" : "\(Self.spelled(n).capitalized) times"
-            out.append(.init(id: "recovery",
-                             statement: added > 0
-                                ? "Took \(added) seconds more recovery"
-                                : "Took more recovery",
-                             reason: [howMany, between].compactMap { $0 }.joined(separator: ", ")))
+            // THE ROW'S OWN CONTRACT, ENFORCED.
+            //
+            // "A record that cannot produce a reason produces no row at all.
+            // A decision with nothing beside it reads as a lapse." Without
+            // `between` — every extension recorded with no rep boundary —
+            // the reason collapsed to the single word "Twice", which is a
+            // tally, not a reason, and left the statement standing on its
+            // own in all but the literal sense. The guard the comment
+            // promised was never written for this row; it is written now.
+            if let between {
+                out.append(.init(id: "recovery",
+                                 statement: added > 0
+                                    ? "Took \(added) seconds more recovery"
+                                    : "Took more recovery",
+                                 reason: "\(howMany), \(between)"))
+            }
         }
         return out
     }
@@ -179,7 +198,20 @@ struct RunDetailV5: View {
     private static func ordinal(_ n: Int) -> String {
         let words = ["", "first", "second", "third", "fourth", "fifth", "sixth",
                      "seventh", "eighth", "ninth", "tenth"]
-        return n >= 1 && n < words.count ? words[n] : "\(n)th"
+        if n >= 1 && n < words.count { return words[n] }
+        // A twenty-rep set is rare and a mile session is not, so the numeric
+        // fallback does get reached. `"\(n)th"` spelled 21, 22 and 23 as
+        // "21th", "22th", "23th" — printed at a runner, in a row whose whole
+        // job is to read as something a person said.
+        let lastTwo = abs(n) % 100
+        let last = abs(n) % 10
+        let suffix: String
+        if (11...13).contains(lastTwo) { suffix = "th" }
+        else if last == 1 { suffix = "st" }
+        else if last == 2 { suffix = "nd" }
+        else if last == 3 { suffix = "rd" }
+        else { suffix = "th" }
+        return "\(n)\(suffix)"
     }
 
     private static func spelled(_ n: Int) -> String {

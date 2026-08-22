@@ -122,7 +122,7 @@ describe('composeMorningBrief', () => {
   it('voice · full paragraph carries no em dash, no exclamation, no citation', () => {
     const b = composeMorningBrief({
       ...base,
-      acknowledgeSentence: "Yesterday's easy stayed easy · exactly right.",
+      acknowledgeSentence: "Yesterday's easy stayed easy.",
       raceName: 'AFC Half',
       daysToRace: 6,
     });

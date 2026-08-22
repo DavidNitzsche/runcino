@@ -53,7 +53,7 @@ export function ReconnectBanner({
         if (alive) setStatus(j as StravaStatus);
       })
       .catch((e) => {
-        if (alive) setErr(e instanceof Error ? e.message : String(e));
+        if (alive) setErr('That did not come through. Nothing here changed.');
       })
       .finally(() => {
         if (alive) setLoading(false);

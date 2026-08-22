@@ -560,7 +560,19 @@ export function TrainView({
           if (incoming && (isMid || isNow)) {
             const v = verbForKind(incoming.kind);
             const noun = incoming.newType ? ` to ${incoming.newType}` : '';
-            adapt = { kind: 'incoming', copy: `Adapted: ${v}${noun} · ${shortWhy(incoming.why)}` };
+            // RULE TWO · this row used to end in `shortWhy(incoming.why)`,
+            // which mapped the adapter's own sentence onto one of eight
+            // single-signal tags: "RHR spike", "sleep deficit", "volume
+            // cap", "missed session". The adapt itself is convergent by
+            // construction — `lib/coach/convergence.ts` will not let the
+            // plan move on fewer than three independent domains — so the
+            // tag was the CARD inventing a single cause for a change that
+            // never had one, and printing it on the calendar permanently.
+            // "A sentence blaming one number is a bug even when the number
+            // is right." The row states the change; the reason it can state
+            // in full lives in the briefing voice, where there is room for
+            // three domains.
+            adapt = { kind: 'incoming', copy: `Adapted: ${v}${noun}` };
           }
           // Outgoing: any adapt to a LATER week's workout, applied within
           // 3 days after this DONE workout (treats this week's result as
@@ -2064,23 +2076,19 @@ function fmtPace(sec: number | null | undefined): string {
   const s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
 }
-/** Trim coach_intents adapt `why` strings into a 5-6 word tag for the
- *  KEY WORKOUTS row. Full prose lives in the briefing voice; this card
- *  just wants enough to know what the signal was. */
-function shortWhy(why: string): string {
-  if (!why) return 'signal';
-  const w = why.toLowerCase();
-  if (w.includes('rhr'))             return 'RHR spike';
-  if (w.includes('sleep'))           return 'sleep deficit';
-  if (w.includes('niggle'))          return 'niggle';
-  if (w.includes('sick'))            return 'illness';
-  if (w.includes('injury'))          return 'injury';
-  if (w.includes('overshoot') || w.includes('cap')) return 'volume cap';
-  if (w.includes('missed') || w.includes('uncompleted')) return 'missed session';
-  if (w.includes('vdot') || w.includes('pr'))            return 'PR / VDOT bump';
-  // Fall back to first 6 words.
-  return why.split(/\s+/).slice(0, 6).join(' ');
-}
+// `shortWhy` lived here: it mapped the adapter's `why` onto one of eight
+// single-signal tags ("RHR spike", "sleep deficit", "volume cap", "missed
+// session"), returned the literal word "signal" when the `why` was empty,
+// and its output was printed on the KEY WORKOUTS row as the reason a
+// session changed.
+//
+// Deleted rather than softened. RULE TWO is not a rule about how loudly a
+// cause is named, it is a rule that one cause is never the answer: the plan
+// adapter cannot move a session on fewer than three independent domains
+// (`lib/coach/convergence.ts`), so any one-word cause on that row was a
+// fiction about a decision that had three. The row states the change now.
+// The reason belongs where three domains fit.
+
 function formatDate(iso: string): string {
   if (!iso) return '·';
   // Parse as LOCAL date, not UTC. new Date("2026-06-28") parses as UTC

@@ -681,8 +681,14 @@ function composePrescription(args: {
     }
     if (obj - sub >= 15) {
       return rx(
-        'Ease back regardless of plan. Easy 20-30min only or full rest.',
-        `Subjective ${sub} vs objective ${obj} · the body knows when the numbers don't.`,
+        // RULE TWO, in the copy. "Regardless of plan" is the violation said
+        // out loud: one gap between the runner's own read and the composite
+        // overriding the written session. The prescription is unchanged
+        // (`intent: 'cut'` is engine behaviour and is flagged separately);
+        // what changes is that the sentence no longer claims a single
+        // reading outranks the plan. It names the gap and what follows.
+        'Easy 20-30min or full rest today.',
+        `You read ${sub}, the numbers read ${obj}. Your own read is the one that counts on a gap this wide.`,
         'cut',
         { min: 25 },
       );

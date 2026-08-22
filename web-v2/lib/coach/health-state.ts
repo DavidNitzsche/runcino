@@ -1097,7 +1097,12 @@ async function loadOverview(
       parts.push(`${signals.hrvBelowBaselineDays} days HRV below baseline`);
     }
     const paragraph = parts.length > 0
-      ? `Recent stretch · ${parts.join(' · ')}. ${signals.hrvBelowBaselineDays >= 5 || signals.sleepBelowBaselineDays >= 5 ? 'Time for a true recovery day before the next quality block.' : 'Watch tomorrow morning · if HRV is still under, ease the next quality.'}`
+      // RULE TWO · at most two domains are read here (sleep, autonomic), and
+      // both old tails changed a session off them: "time for a true recovery
+      // day", "ease the next quality". Two domains is the rung where the
+      // runner is TOLD and the plan is not touched. Both tails now stop at
+      // telling.
+      ? `Recent stretch · ${parts.join(' · ')}. ${signals.hrvBelowBaselineDays >= 5 || signals.sleepBelowBaselineDays >= 5 ? 'Long enough now to show up in the next quality block.' : 'Watch tomorrow morning.'}`
       : `Last week tracked clean · sleep + HRV stayed at or above baseline. Maintenance work is doing its job.`;
     story = {
       paragraph,

@@ -163,7 +163,7 @@ export function CoachDecisionCard({
       setResolved((prev) => new Set(prev).add(decision.key));
       router.refresh();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr('That did not save. Nothing was written, so it is safe to try again.');
     } finally {
       setBusy(null);
     }
@@ -230,7 +230,7 @@ export function CoachDecisionCard({
         )}
       </div>
 
-      {err ? <div className="cd-err">Could not save. {err}</div> : null}
+      {err ? <div className="cd-err">{err}</div> : null}
     </div>
   );
 }

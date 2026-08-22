@@ -36,7 +36,7 @@ export function pickCannedReply(
     if (e === 'chatty' && b === 'fresh')  return 'Easy day done right. Aerobic miles in the bank.';
     if (e === 'chatty' && b === 'worked') return 'Chatty pace, legs feeling it. Normal for the week.';
     if (e === 'chatty' && b === 'cooked') return "Easy was easy but the legs are flagging. Worth watching.";
-    if (e === 'controlled' && b === 'fresh')  return 'Controlled effort, body fresh. Solid execution.';
+    if (e === 'controlled' && b === 'fresh')  return 'Controlled effort, body fresh. That is the easy day working.';
     if (e === 'controlled' && b === 'worked') return 'Held it in check. Legs absorbed the work.';
     if (e === 'controlled' && b === 'cooked') return "Held the lid on but body's spent. Worth watching.";
     if (e === 'pushed' && b === 'fresh')  return "Easy that wasn't easy. Body says fresh · fitness keeps showing up.";
@@ -57,7 +57,7 @@ export function pickCannedReply(
     if (e === 'nailed' && b === 'fresh')  return "Targets hit and the body's holding. That's the green light.";
     if (e === 'nailed' && b === 'worked') return 'Reps landed clean. Body felt it, normal after quality.';
     if (e === 'nailed' && b === 'cooked') return "Hit the splits but the body's emptied. Recovery matters tomorrow.";
-    if (e === 'grinded' && b === 'fresh')  return 'Grinded through it. Body bouncing back, strong sign.';
+    if (e === 'grinded' && b === 'fresh')  return 'Ground through it. Body already back.';
     if (e === 'grinded' && b === 'worked') return 'Hard work, body knows it. The session got done.';
     if (e === 'grinded' && b === 'cooked') return 'Grinded and emptied the tank. Honor that tomorrow.';
     if (e === 'missed' && b === 'fresh')  return "Reps slipped but body's intact. We'll regroup next session.";
@@ -68,7 +68,7 @@ export function pickCannedReply(
   // Long run.
   if (k === 'long') {
     if (e === 'strong' && b === 'fresh')  return "Long run strong end to end. That's the engine building.";
-    if (e === 'strong' && b === 'worked') return 'Held strong, finished with miles in the legs. Good rep.';
+    if (e === 'strong' && b === 'worked') return 'Held strong, finished with miles in the legs.';
     if (e === 'strong' && b === 'cooked') return 'Strong through but emptied the well. Tomorrow easy.';
     if (e === 'faded' && b === 'fresh')  return 'Faded late but body bouncing back. Endurance still building.';
     if (e === 'faded' && b === 'worked') return 'Late miles got hard. Body worked. Normal for a stretch run.';
