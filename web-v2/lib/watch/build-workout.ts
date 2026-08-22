@@ -29,6 +29,10 @@ import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 import { distanceMiFromLabel as sharedDistanceMiFromLabel } from '@/lib/race/distance';
 import { loadSettings } from '@/lib/coach/settings';
+// 0821 watch design · the lobby's week page reads the SAME loader
+// /api/plan/week and /api/v5/today read. Nothing about the week is
+// re-derived here — see projectWeekStrip.
+import { loadPlanWeek, type PlanWeekResult } from '@/lib/plan/week-loader';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
 
@@ -115,9 +119,122 @@ export interface WatchWorkout {
   unitsDistance?: 'mi' | 'km';
 }
 
+// ── 0821 watch design · additive lobby fields ───────────────────────────
+//
+// Three boards in the 0821 handoff need state the payload never carried.
+// All of it is ADDITIVE and OPTIONAL: a deployed watch that does not know
+// these keys decodes exactly what it decoded before. camelCase throughout,
+// per the wire contract (`routePolyline` / `6616d766` — a snake_case read
+// silently dropped every GPS track for a day).
+//
+//   · weekStrip    → lobby page 3, "This week"
+//   · sessionMoved → lobby variant, "the session already moved"
+//   · dayState     → the two structured empty states (Rest day / No session)
+
+/** One day of the lobby's week strip. `state` is the design's three-way
+ *  read; `isPast` is carried alongside it so a past day nobody ran is not
+ *  drawn as though it were still to come. */
+export interface WatchWeekStripDay {
+  dateIso: string;
+  /** 0=Sun .. 6=Sat */
+  dow: number;
+  /** The strip's 10 pt day letter — the one annotation exception in the
+   *  design's type floor, read as a row rather than individually. */
+  letter: string;
+  state: 'done' | 'today' | 'remaining';
+  isPast: boolean;
+  /** plan_workouts.type · 'rest' on a synthesised rest day. */
+  type: string;
+  plannedMi: number;
+  /** Canonical actual mileage for the day. Null when nothing was run. */
+  doneMi: number | null;
+}
+
+/** The lobby's "This week" page · seven days plus `18 of 42 mi`.
+ *  Projected verbatim from `lib/plan/week-loader.ts:loadPlanWeek` — the
+ *  same loader `/api/plan/week` and `/api/v5/today` read, so the watch's
+ *  week and the phone's week cannot disagree. Nothing is re-derived here. */
+export interface WatchWeekStrip {
+  weekStartIso: string;
+  weekEndIso: string;
+  /** Miles actually run across the window, one decimal. */
+  milesDone: number;
+  /** Miles the plan asked for across the window, one decimal. */
+  milesPlanned: number;
+  days: WatchWeekStripDay[];
+}
+
+/** Lobby variant · the session ALREADY changed, and the reason is stated
+ *  once. Deliberately carries no score: the design refuses to put a
+ *  readiness number on the lobby, because a score at 6am is a thing to
+ *  argue with. `readinessScore` / `readinessLabel` on WatchWorkout are
+ *  untouched and separate — this is not them. */
+export interface WatchSessionMoved {
+  /** The coach's own reason, citation-scrubbed at source. "Six hours of sleep" */
+  reason: string | null;
+  /** What the day used to be. "was six miles" / "was cruise intervals" */
+  wasLine: string | null;
+  /** The two composed into the one line the board draws.
+   *  "Six hours of sleep · was six miles" */
+  line: string;
+  originalType: string | null;
+  originalSubLabel: string | null;
+  originalDistanceMi: number | null;
+  /** AdaptationInfo.kind · 'downgrade' | 'reschedule' | 'shave' | … */
+  kind: string | null;
+  adaptedAt: string | null;
+}
+
+/** Why there is no prescribed session. `rest` is a planned rest day and is
+ *  its own board; every other value is the No-session board. */
+export type WatchDayStateKind = 'rest' | 'no_session';
+export type WatchNoSessionReason =
+  | 'injury' | 'sick' | 'week_off' | 'off_season' | 'no_plan' | 'nothing_scheduled';
+
+/** The two structured empty states. The flat `message` string stays on the
+ *  response beside this, unchanged, so deployed watches keep working. */
+export interface WatchDayState {
+  kind: WatchDayStateKind;
+  /** Null on `rest`. */
+  reason: WatchNoSessionReason | null;
+  /** Display lede · "Nothing today" / "Week off" / "Off-season". */
+  title: string;
+  /** The reasoned coach sentence, composed to the copy rules (8–40 words,
+   *  second person, no exclamation marks, no em dashes — separator `·`).
+   *  A clause whose evidence is missing is DROPPED rather than guessed. */
+  coachLine: string;
+  /** The board's one target. Rest day offers the run it did not ask for;
+   *  No session offers a plain unprescribed run, which is a real thing this
+   *  product records rather than a fallback. */
+  actionLabel: 'Run anyway' | 'Just run';
+  actionKind: 'run_anyway' | 'just_run';
+  /** Evidence behind `coachLine`, carried separately so the watch can
+   *  recompose it. Null when unknown — never a zero standing in for one. */
+  weekMilesDone: number | null;
+  weekMilesPlanned: number | null;
+  /** "Sunday" · the day this week's long run falls on. */
+  longRunDayName: string | null;
+  longRunIsPast: boolean;
+  longRunDone: boolean;
+  /** "Monday" + its date · when the block resumes. Week-off only. */
+  resumesDayName: string | null;
+  resumesIso: string | null;
+}
+
+/** Fields that ride BOTH branches of the response. Every one optional. */
+export interface WatchTodayGlance {
+  weekStrip?: WatchWeekStrip | null;
+  sessionMoved?: WatchSessionMoved | null;
+  /** Present on the message branch always. Present on the WORKOUT branch
+   *  only when a genuine no-session condition holds (open injury, logged
+   *  sick day, travel week) — the workout still ships beside it, so an old
+   *  build runs the session and a 0821 build draws the No-session board. */
+  dayState?: WatchDayState | null;
+}
+
 export type WatchTodayResponse =
-  | { workout: WatchWorkout; message?: undefined }
-  | { workout?: undefined; message: string };
+  | ({ workout: WatchWorkout; message?: undefined } & WatchTodayGlance)
+  | ({ workout?: undefined; message: string } & WatchTodayGlance);
 
 // ── Parsers ─────────────────────────────────────────────────────────────
 
@@ -373,6 +490,299 @@ export function classifySession(
   }
 }
 
+// ── 0821 watch design · lobby builders ──────────────────────────────────
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+function dowOfIso(iso: string): number {
+  return new Date(iso + 'T12:00:00Z').getUTCDay();
+}
+
+const SMALL_NUMBERS = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen',
+  'eighteen', 'nineteen', 'twenty',
+];
+
+/** Prose distance for a coach sentence. Whole numbers up to twenty are
+ *  spelled ("was six miles"); anything else stays a figure ("34 miles",
+ *  "6.5 miles"). This is the rule the design's own two examples follow —
+ *  it is coach register, not telemetry, and telemetry never comes through
+ *  here. */
+export function milesInWords(mi: number): string {
+  const rounded = Math.round(mi * 10) / 10;
+  const isWhole = Math.abs(rounded - Math.round(rounded)) < 0.05;
+  const n = Math.round(rounded);
+  const word = isWhole && n >= 1 && n <= 20 ? SMALL_NUMBERS[n] : String(rounded);
+  const unit = isWhole && n === 1 ? 'mile' : 'miles';
+  return `${word} ${unit}`;
+}
+
+/** Project `loadPlanWeek`'s result onto the wire. NOTHING is re-derived:
+ *  the days, the actuals and the window all come from the shared loader. */
+export function projectWeekStrip(week: PlanWeekResult): WatchWeekStrip | null {
+  if (!week.week_start_iso || !week.week_end_iso || week.days.length === 0) return null;
+  let milesDone = 0;
+  let milesPlanned = 0;
+  const days: WatchWeekStripDay[] = week.days.map((d) => {
+    const doneMi = d.done_mi != null ? Math.round(d.done_mi * 10) / 10 : null;
+    // Same "did this day happen" predicate /api/v5/today's week strip uses,
+    // so the two strips cannot disagree about a day.
+    const ran = d.completedRunId != null || (d.done_mi != null && d.done_mi >= 0.5);
+    milesDone += doneMi ?? 0;
+    milesPlanned += Number(d.distance_mi) || 0;
+    return {
+      dateIso: d.date_iso,
+      dow: d.dow,
+      letter: DAY_LETTERS[d.dow] ?? '',
+      state: d.is_today ? 'today' : ran ? 'done' : 'remaining',
+      isPast: d.is_past,
+      type: d.type,
+      plannedMi: Math.round((Number(d.distance_mi) || 0) * 10) / 10,
+      doneMi,
+    };
+  });
+  return {
+    weekStartIso: week.week_start_iso,
+    weekEndIso: week.week_end_iso,
+    milesDone: Math.round(milesDone * 10) / 10,
+    milesPlanned: Math.round(milesPlanned * 10) / 10,
+    days,
+  };
+}
+
+/** This week's long run and whether it has already happened. Prefers the
+ *  authored `long` row; falls back to the week's biggest planned day. Null
+ *  when the week has nothing that reads as a long run. */
+function longRunOfWeek(week: PlanWeekResult): { dayName: string; isPast: boolean; done: boolean } | null {
+  const candidates = week.days.filter((d) => Number(d.distance_mi) > 0);
+  if (candidates.length === 0) return null;
+  const long = candidates.find((d) => d.type === 'long')
+    ?? candidates.reduce((a, b) => (Number(b.distance_mi) > Number(a.distance_mi) ? b : a));
+  if (!long) return null;
+  return {
+    dayName: DAY_NAMES[long.dow] ?? '',
+    isPast: long.is_past,
+    done: long.completedRunId != null || (long.done_mi != null && long.done_mi >= 0.5),
+  };
+}
+
+/** The Rest-day board. "Nothing today · you ran 34 miles this week and the
+ *  long one was Sunday. Resting is the work."
+ *
+ *  Every clause is dropped rather than guessed when its evidence is absent:
+ *  a week with nothing in it does not get told it ran zero miles, and a long
+ *  run that was scheduled and missed is not reported as having happened. */
+export function buildRestDayState(week: WatchWeekStrip | null, raw: PlanWeekResult | null): WatchDayState {
+  const long = raw ? longRunOfWeek(raw) : null;
+  const milesDone = week?.milesDone ?? null;
+  const clauses: string[] = [];
+  if (milesDone != null && milesDone >= 0.5) {
+    clauses.push(`you ran ${milesInWords(milesDone)} this week`);
+  }
+  if (long) {
+    if (long.isPast && long.done) clauses.push(`the long one was ${long.dayName}`);
+    else if (!long.isPast) clauses.push(`the long one is ${long.dayName}`);
+  }
+  const evidence = clauses.length === 2
+    ? `${clauses[0]} and ${clauses[1]}`
+    : clauses[0] ?? null;
+  const coachLine = evidence
+    ? `Nothing today · ${evidence}. Resting is the work.`
+    : 'Nothing today. Resting is the work.';
+  return {
+    kind: 'rest',
+    reason: null,
+    title: 'Nothing today',
+    coachLine,
+    actionLabel: 'Run anyway',
+    actionKind: 'run_anyway',
+    weekMilesDone: milesDone,
+    weekMilesPlanned: week?.milesPlanned ?? null,
+    longRunDayName: long?.dayName ?? null,
+    longRunIsPast: long?.isPast ?? false,
+    longRunDone: long?.done ?? false,
+    resumesDayName: null,
+    resumesIso: null,
+  };
+}
+
+/** The No-session board · off-season, a week off, an open injury, a logged
+ *  sick day, or no plan at all. One sentence per reason, each of them a
+ *  reason rather than a refusal, and the target is always a plain run: an
+ *  unprescribed run is a real thing this product records, not a fallback. */
+export function buildNoSessionState(
+  reason: WatchNoSessionReason,
+  opts: {
+    week: WatchWeekStrip | null;
+    raw: PlanWeekResult | null;
+    resumesIso?: string | null;
+    injurySite?: string | null;
+  },
+): WatchDayState {
+  const resumesIso = opts.resumesIso ?? null;
+  const resumesDayName = resumesIso ? (DAY_NAMES[dowOfIso(resumesIso)] ?? null) : null;
+  const site = opts.injurySite ? String(opts.injurySite).toLowerCase() : null;
+
+  let title: string;
+  let coachLine: string;
+  switch (reason) {
+    case 'week_off':
+      title = 'Week off';
+      coachLine = resumesDayName
+        ? `The block resumes ${resumesDayName}. Walk, swim, or do nothing. None of it goes in the book.`
+        : 'The block resumes when you get back. Walk, swim, or do nothing. None of it goes in the book.';
+      break;
+    case 'off_season':
+      title = 'Off-season';
+      coachLine = 'No block is running. Run it if you want it. Nothing today is measured against a plan.';
+      break;
+    case 'injury':
+      title = 'Not today';
+      coachLine = site
+        ? `The ${site} is still open, so nothing is prescribed. Anything you run today is a plain run.`
+        : 'Nothing is prescribed while this settles. Anything you run today is a plain run.';
+      break;
+    case 'sick':
+      title = 'Not today';
+      coachLine = 'You logged a sick day, so nothing is prescribed. Anything you run today is a plain run.';
+      break;
+    case 'no_plan':
+      title = 'No session';
+      coachLine = 'No plan is running. Anything you run today is a plain run, recorded and nothing more.';
+      break;
+    default:
+      title = 'No session';
+      coachLine = 'Nothing on the calendar today. Anything you run is a plain run, recorded and nothing more.';
+      break;
+  }
+
+  const long = opts.raw ? longRunOfWeek(opts.raw) : null;
+  return {
+    kind: 'no_session',
+    reason,
+    title,
+    coachLine,
+    actionLabel: 'Just run',
+    actionKind: 'just_run',
+    weekMilesDone: opts.week?.milesDone ?? null,
+    weekMilesPlanned: opts.week?.milesPlanned ?? null,
+    longRunDayName: long?.dayName ?? null,
+    longRunIsPast: long?.isPast ?? false,
+    longRunDone: long?.done ?? false,
+    resumesDayName,
+    resumesIso,
+  };
+}
+
+/** Injury / sick / week-off detection for the No-session board.
+ *
+ *  Three LIMIT-1 point reads mirroring `lib/coach/glance-state.ts` (the
+ *  niggle/sick/injury block) and `/api/v5/today`'s AWAY scan, in that
+ *  surface's own precedence: an open injury owns the day over a concurrent
+ *  sick day, and both own it over travel. Read here rather than through
+ *  `loadGlanceState` because the watch payload needs three booleans, not a
+ *  readiness computation — and this endpoint is on the wrist's critical
+ *  path. Every read degrades to null on failure: a missing table or a
+ *  Postgres blip must not cost the runner their workout. */
+async function loadNoSessionReason(
+  userId: string,
+  today: string,
+  planId: string | null,
+): Promise<{ reason: WatchNoSessionReason; resumesIso: string | null; injurySite: string | null } | null> {
+  const injury = (await pool.query<{ site: string }>(
+    `SELECT site FROM runner_injuries
+      WHERE user_uuid = $1 AND resolved_date IS NULL
+      ORDER BY start_date DESC LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] as Array<{ site: string }> }))).rows[0];
+  if (injury) return { reason: 'injury', resumesIso: null, injurySite: injury.site ?? null };
+
+  const sick = (await pool.query<{ id: number }>(
+    `SELECT id FROM sick_episodes
+      WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
+      ORDER BY logged_at DESC LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] as Array<{ id: number }> }))).rows[0];
+  if (sick) return { reason: 'sick', resumesIso: null, injurySite: null };
+
+  // Week off · `replan-scenarios.ts`'s travel scenario zeroes the window's
+  // rows and labels them AWAY. That is the only deliberate break this engine
+  // can currently NAME — a planned zero week has no distinct signal and is
+  // deliberately not guessed at, here or on the phone.
+  if (planId) {
+    const away = (await pool.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM plan_workouts
+        WHERE plan_id = $1 AND date_iso = $2::text AND sub_label = 'AWAY'`,
+      [planId, today],
+    ).catch(() => ({ rows: [{ n: '0' }] }))).rows[0];
+    if (Number(away?.n) > 0) {
+      const next = (await pool.query<{ date_iso: string }>(
+        `SELECT date_iso::text AS date_iso FROM plan_workouts
+          WHERE plan_id = $1 AND date_iso > $2 AND sub_label IS DISTINCT FROM 'AWAY'
+          ORDER BY date_iso ASC LIMIT 1`,
+        [planId, today],
+      ).catch(() => ({ rows: [] as Array<{ date_iso: string }> }))).rows[0];
+      return { reason: 'week_off', resumesIso: next?.date_iso ?? null, injurySite: null };
+    }
+  }
+  return null;
+}
+
+/** Lobby variant · "the session already moved".
+ *
+ *  Reads `lib/coach/adaptation-info.ts` for THIS plan and pulls the row for
+ *  today's workout. Emits nothing at all when the day was not adapted, or
+ *  when the adaptation left nothing honest to say — silence beats an
+ *  unfalsifiable claim, and a lobby that announces a change it cannot name
+ *  is worse than one that says nothing.
+ *
+ *  The loader's only entry point is plan-wide (one LATERAL join over the
+ *  plan's workouts, the same call `loadTrainingState` already makes), so
+ *  this reads the plan and keeps one row. Calling it is the instruction:
+ *  re-deriving "was it adapted" from `original_*` here would be a second
+ *  answer to a question that already has one. */
+async function loadSessionMoved(
+  planId: string,
+  workoutId: string | null,
+  currentDistanceMi: number,
+): Promise<WatchSessionMoved | null> {
+  if (!workoutId) return null;
+  const { loadAdaptationInfoByPlanIds } = await import('@/lib/coach/adaptation-info');
+  type AInfo = import('@/lib/coach/adaptation-info').AdaptationInfo;
+  const byId = await loadAdaptationInfoByPlanIds([planId]).catch(() => new Map<string, AInfo>());
+  const info = byId.get(String(workoutId));
+  if (!info || !info.wasAdapted) return null;
+
+  // "was six miles" when the dose moved; otherwise the name it used to
+  // carry. Distance leads because that is the change the runner is standing
+  // in the dark about to execute.
+  const distanceChanged = info.originalDistanceMi != null
+    && Math.abs(info.originalDistanceMi - currentDistanceMi) > 0.05;
+  const priorName = info.originalSubLabel ?? info.originalType ?? null;
+  const wasLine = distanceChanged && info.originalDistanceMi != null
+    ? `was ${milesInWords(info.originalDistanceMi)}`
+    : priorName
+      ? `was ${priorName.toLowerCase()}`
+      : null;
+
+  const reason = info.reason?.trim() ? info.reason.trim().replace(/\s*[.·]\s*$/, '') : null;
+  if (!reason && !wasLine) return null;
+  const line = reason && wasLine ? `${reason} · ${wasLine}` : (reason ?? wasLine!);
+
+  return {
+    reason,
+    wasLine,
+    line,
+    originalType: info.originalType,
+    originalSubLabel: info.originalSubLabel,
+    originalDistanceMi: info.originalDistanceMi,
+    kind: info.kind,
+    adaptedAt: info.adaptedAt,
+  };
+}
+
 export async function buildWatchToday(
   userId: string,
   /** Override "today" for testing/smoke. Defaults to PT-adjusted now. */
@@ -391,14 +801,43 @@ export async function buildWatchToday(
       ORDER BY authored_iso DESC LIMIT 1`,
     [userId]
   )).rows[0];
-  if (!plan) return { message: "No active plan." };
+  // 0821 · the lobby's week page. Loaded here so BOTH branches of the
+  // response can carry it — a rest day still has a week behind it, and the
+  // rest board's own sentence is built out of the same rows. Best-effort:
+  // never fail the payload over the week strip.
+  const rawWeek: PlanWeekResult | null = await loadPlanWeek(userId, today).catch(() => null);
+  const weekStrip = rawWeek ? projectWeekStrip(rawWeek) : null;
+
+  if (!plan) {
+    // No plan row at all. Off-season is the one this product can NAME: a
+    // runner who has been on a race-prep block before is between blocks,
+    // not a runner the product has never coached. Mirrors /api/v5/today's
+    // own race-mode gate.
+    const everRacePrep = (await pool.query(
+      `SELECT 1 FROM training_plans
+        WHERE user_uuid = $1 AND (mode = 'race-prep' OR race_id IS NOT NULL) LIMIT 1`,
+      [userId],
+    ).catch(() => ({ rows: [] as unknown[] }))).rows.length > 0;
+    return {
+      message: "No active plan.",
+      weekStrip,
+      dayState: buildNoSessionState(everRacePrep ? 'off_season' : 'no_plan', { week: weekStrip, raw: rawWeek }),
+    };
+  }
+
+  // 0821 · injury / sick / travel — the No-session board's reasons. Resolved
+  // BEFORE the plan row is read, because an open injury owns the day whether
+  // or not the calendar still carries a session for it. When a workout DOES
+  // exist it still ships beside this, so a deployed watch runs the session
+  // unchanged and a 0821 build draws No session instead.
+  const noSession = await loadNoSessionReason(userId, today, String(plan.id)).catch(() => null);
 
   // A calendar day can briefly carry more than one row (e.g. an authored rest
   // placeholder plus a run moved in via /api/today/reschedule). Pick the
   // primary RUNNING row over rest/strength so the hero never shows "Rest day"
   // for a day that actually has a run. Mirrors the /api/plan/week priority.
   const wo = (await pool.query(
-    `SELECT date_iso, dow, type, distance_mi, sub_label, workout_spec, pace_target_s_per_mi
+    `SELECT id::text AS id, date_iso, dow, type, distance_mi, sub_label, workout_spec, pace_target_s_per_mi
        FROM plan_workouts
       WHERE plan_id = $1 AND date_iso = $2::text
       ORDER BY CASE type
@@ -413,11 +852,42 @@ export async function buildWatchToday(
     [plan.id, today]
   )).rows[0];
 
-  if (!wo) return { message: "Nothing on the calendar today." };
-  if (wo.type === 'rest') return { message: "Rest day. Recover hard." };
+  // `message` stays byte-identical on every one of these branches — it is
+  // what every deployed watch renders, and the structured `dayState` beside
+  // it is purely additive.
+  const noSessionState = noSession
+    ? buildNoSessionState(noSession.reason, {
+        week: weekStrip, raw: rawWeek,
+        resumesIso: noSession.resumesIso, injurySite: noSession.injurySite,
+      })
+    : null;
+
+  if (!wo) {
+    return {
+      message: "Nothing on the calendar today.",
+      weekStrip,
+      dayState: noSessionState
+        ?? buildNoSessionState('nothing_scheduled', { week: weekStrip, raw: rawWeek }),
+    };
+  }
+  if (wo.type === 'rest') {
+    return {
+      message: "Rest day. Recover hard.",
+      weekStrip,
+      // A no-session reason outranks a planned rest day: "Week off" is a
+      // truer answer than "Nothing today" when the whole window is zeroed.
+      dayState: noSessionState ?? buildRestDayState(weekStrip, rawWeek),
+    };
+  }
 
   const distanceMi = Number(wo.distance_mi) || 0;
-  if (distanceMi <= 0) return { message: "Rest day. Recover hard." };
+  if (distanceMi <= 0) {
+    return {
+      message: "Rest day. Recover hard.",
+      weekStrip,
+      dayState: noSessionState ?? buildRestDayState(weekStrip, rawWeek),
+    };
+  }
 
   // 2. Pull profile inputs for the prescription (LTHR + race goal)
   const prof = (await pool.query(
@@ -1009,5 +1479,11 @@ export async function buildWatchToday(
     /* don't fail the watch payload over readiness — best effort only */
   }
 
-  return { workout };
+  // 0821 · "the session already moved". Deliberately NOT readiness: the
+  // design refuses to put a score on the lobby, so this says what changed
+  // and why, once, and the score stays on the fields it already lived on.
+  const sessionMoved = await loadSessionMoved(String(plan.id), wo.id ?? null, distanceMi)
+    .catch(() => null);
+
+  return { workout, weekStrip, sessionMoved, dayState: noSessionState };
 }

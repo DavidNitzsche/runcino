@@ -118,6 +118,90 @@ interface WatchCompletionBody {
     kind?: string; label?: string; breached?: boolean;
     actionTaken?: boolean; atMi?: number | null;
   }> | null;
+  // ── 0821 watch design · the other three wrist decisions ─────────────────
+  //
+  // The bail already rides `ruleOutcomes` above. These are the three the
+  // watch could take and had nowhere to put. All optional, all camelCase
+  // (the watch's WatchCompletion is Encodable with NO CodingKeys, so the
+  // wire IS the Swift property names — a snake_case read once dropped every
+  // GPS track, `6616d766`).
+  //
+  // TWO CONTRACTS THESE SHAPES MUST HOLD, and the reasons they exist:
+  //
+  //  1 · A DECISION IS NOT A LAPSE, AND THE DATA SAYS SO. A phase's
+  //      `completed: false` means "this rep did not happen" and says nothing
+  //      about why: a rep the runner chose to skip and a rep that fell over
+  //      when the watch died are the same value. The phone's run-detail
+  //      screen draws "Five of six · you chose it, we did not lose it", so
+  //      if it had to infer which one it was it would eventually infer wrong
+  //      and call a choice a failure on the one screen whose job is not to.
+  //      `repSkips` is therefore an explicit record, never a flag derived
+  //      from the phase array. "Was this chosen?" is answered by a field.
+  //
+  //  2 · EVERY DECISION CARRIES ITS OWN QUANTITIES. Those rows render with
+  //      no colour, no chevron and nothing tappable, so the reason is the
+  //      only thing that separates a decision from a bare fact. The phone
+  //      owns the sentences; what has to arrive here is every NUMBER those
+  //      sentences need — the reading AND the limit (never a delta: "ran to
+  //      174, the ceiling was 165", not "+9 over"), which rep and out of how
+  //      many, how many extensions and between which reps.
+  //
+  // On temperature: the ceiling row's "and it was 27 degrees" clause is NOT
+  // carried here. Nothing in this product has a thermometer — a run's
+  // temperature is a weather model for a grid square and an hour bucket —
+  // and the watch measures it least of all. It reaches the phone from the
+  // run row's own `tempF`, written by the weather enrichment, which is
+  // absent often enough that the phone must already be able to drop the
+  // clause. Putting a number the watch cannot read on the watch's own wire
+  // would launder a model into a reading.
+
+  /** The ceiling was lifted FOR THE DAY. Singular by design: the board asks
+   *  once and the answer holds. Carries the reading and the limit as two
+   *  separate figures. */
+  ceilingLift?: {
+    /** The ceiling that was in force, bpm. */
+    ceilingBpm?: number | null;
+    /** What heart rate actually read when the runner lifted it, bpm. */
+    readingBpm?: number | null;
+    phaseIndex?: number | null;
+    phaseLabel?: string | null;
+    atMi?: number | null;
+    atSec?: number | null;
+  } | null;
+
+  /** Reps the runner CHOSE to skip. One entry per skip. Distinct from a
+   *  phase carrying `completed: false`, which is every other way a rep can
+   *  fail to happen. */
+  repSkips?: Array<{
+    /** 1-based · which rep was skipped ("the fourth rep"). */
+    repIndex?: number | null;
+    /** How many reps the session asked for ("of six"). */
+    repCount?: number | null;
+    /** How many were actually run ("Five of six"). Filled by the watch at
+     *  completion, when it knows; null when it does not, and the phone
+     *  drops that half of the line rather than computing it. */
+    repsCompleted?: number | null;
+    phaseIndex?: number | null;
+    phaseLabel?: string | null;
+    atMi?: number | null;
+    atSec?: number | null;
+  }> | null;
+
+  /** Recovery the runner extended. One entry per +30 s, so the count is the
+   *  array length ("Twice") and the boundaries are on the entries
+   *  ("between reps two and four"). */
+  recoveryExtensions?: Array<{
+    /** 1-based · the rep just finished. */
+    afterRepIndex?: number | null;
+    /** 1-based · the rep it delayed. */
+    beforeRepIndex?: number | null;
+    repCount?: number | null;
+    /** Seconds this one extension added. */
+    addedSec?: number | null;
+    phaseIndex?: number | null;
+    phaseLabel?: string | null;
+    atSec?: number | null;
+  }> | null;
   // GPS polyline shipped directly by the watch app (build 172+). Eliminates
   // the separate iPhone HK import hop that was the sole GPS source.
   // 2026-06-08 · the watch's WatchCompletion (Encodable, no CodingKeys)
@@ -492,6 +576,15 @@ export async function POST(req: NextRequest) {
       e instanceof Error ? e.message : String(e));
   }
 
+  // 2026-08-21 · 0821 watch design · normalise the three wrist decisions
+  // before the row is built. Normalising rather than storing raw so a
+  // garbage reading, a rep index of zero or an empty array never reaches a
+  // screen that would have to draw it as a fact. The full unmodified payload
+  // still lands in `coach_intents.value` above, so nothing is lost either way.
+  const ceilingLift = normalizeCeilingLift(body.ceilingLift);
+  const repSkips = normalizeRepSkips(body.repSkips);
+  const recoveryExtensions = normalizeRecoveryExtensions(body.recoveryExtensions);
+
   const data: any = {
     id: effectiveWorkoutId,
     activityId: effectiveWorkoutId,
@@ -541,6 +634,22 @@ export async function POST(req: NextRequest) {
     ...(Array.isArray(body.ruleOutcomes) && body.ruleOutcomes.length > 0
       ? { ruleOutcomes: body.ruleOutcomes }
       : {}),
+    // 2026-08-21 · 0821 watch design · the other three wrist decisions.
+    // The bail rides `ruleOutcomes` immediately above; these are the three
+    // that had nowhere to land. Each is a DECISION, recorded so the phone
+    // never has to infer one from the phase array — a chosen skip and a
+    // dropped rep are the same `completed: false` and must not read the
+    // same on a screen whose register says a decision is not a lapse.
+    //
+    // Keys are ABSENT (not null, not []) when the run carries no such
+    // decision, so the merge upsert below cannot clobber a value a richer
+    // sibling payload already wrote — the same Rule 6 posture as
+    // `qualityFlag`, `status` and `hrZonePcts`. Three separate top-level
+    // keys rather than one envelope, for the same reason: each survives a
+    // re-POST that omits the others.
+    ...(ceilingLift ? { ceilingLift } : {}),
+    ...(repSkips.length > 0 ? { repSkips } : {}),
+    ...(recoveryExtensions.length > 0 ? { recoveryExtensions } : {}),
     // 2026-06-06 · derive genuine per-mile splits from the watch's
     // paceSamples stream.  Each phase ships ~5s-cadence samples with
     // cumulative distMi + tSec.  Walking those to find mile crossings
@@ -832,7 +941,7 @@ export async function POST(req: NextRequest) {
     // Deploy marker. Kept (small + harmless) so future audits can detect
     // when this endpoint's behavior changes without depending on side
     // effects. Bump the suffix on behavioral changes.
-    api_version: 'watch-complete/p22-upsert',
+    api_version: 'watch-complete/p23-wrist-decisions',
     // Strava-table write outcome surfaced explicitly: harmless on
     // success, and on failure tells the watch agent + audit harnesses
     // exactly what went wrong without log access.
@@ -842,6 +951,105 @@ export async function POST(req: NextRequest) {
 }
 
 // ── helpers ──
+
+/** Finite number or null. Never 0-for-missing: a zero rep index and an
+ *  absent one mean different things to a screen that names the rep. */
+function num(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Positive 1-based index, or null. */
+function idx(v: unknown): number | null {
+  const n = num(v);
+  return n != null && n >= 1 ? Math.round(n) : null;
+}
+
+/** Heart rate inside the same physiological bounds the run-level guard uses
+ *  (F20, 30–230 bpm). A reading outside them is a sensor artefact, and a
+ *  ceiling row that prints one is worse than a row that drops the figure. */
+function bpm(v: unknown): number | null {
+  const n = num(v);
+  return n != null && n >= 30 && n <= 230 ? Math.round(n) : null;
+}
+
+/** 0821 · normalise the ceiling lift. Returns null when neither figure
+ *  survived, because "the ceiling was lifted" with no reading and no limit
+ *  is a claim the phone cannot state and must not imply. */
+function normalizeCeilingLift(raw: WatchCompletionBody['ceilingLift']): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const ceilingBpm = bpm(raw.ceilingBpm);
+  const readingBpm = bpm(raw.readingBpm);
+  if (ceilingBpm == null && readingBpm == null) return null;
+  const out: Record<string, unknown> = { ceilingBpm, readingBpm };
+  const phaseIndex = num(raw.phaseIndex);
+  if (phaseIndex != null) out.phaseIndex = Math.round(phaseIndex);
+  if (typeof raw.phaseLabel === 'string' && raw.phaseLabel !== '') out.phaseLabel = raw.phaseLabel;
+  const atMi = num(raw.atMi);
+  if (atMi != null && atMi >= 0) out.atMi = Math.round(atMi * 100) / 100;
+  const atSec = num(raw.atSec);
+  if (atSec != null && atSec >= 0) out.atSec = Math.round(atSec);
+  return out;
+}
+
+/** 0821 · normalise the chosen rep skips. An entry with no rep index is
+ *  dropped: "skipped a rep" without saying which one gives the phone
+ *  nothing it can render, and a decision it cannot name reads as a miss. */
+function normalizeRepSkips(raw: WatchCompletionBody['repSkips']): Array<Record<string, unknown>> {
+  if (!Array.isArray(raw)) return [];
+  const out: Array<Record<string, unknown>> = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const repIndex = idx(r.repIndex);
+    if (repIndex == null) continue;
+    const e: Record<string, unknown> = { repIndex };
+    const repCount = idx(r.repCount);
+    if (repCount != null) e.repCount = repCount;
+    const repsCompleted = num(r.repsCompleted);
+    if (repsCompleted != null && repsCompleted >= 0) e.repsCompleted = Math.round(repsCompleted);
+    const phaseIndex = num(r.phaseIndex);
+    if (phaseIndex != null) e.phaseIndex = Math.round(phaseIndex);
+    if (typeof r.phaseLabel === 'string' && r.phaseLabel !== '') e.phaseLabel = r.phaseLabel;
+    const atMi = num(r.atMi);
+    if (atMi != null && atMi >= 0) e.atMi = Math.round(atMi * 100) / 100;
+    const atSec = num(r.atSec);
+    if (atSec != null && atSec >= 0) e.atSec = Math.round(atSec);
+    out.push(e);
+  }
+  return out;
+}
+
+/** 0821 · normalise the recovery extensions. One entry per extension, so
+ *  the phone counts the array rather than trusting a total it would then
+ *  have to reconcile against the boundaries. An entry with neither boundary
+ *  nor added seconds carries nothing and is dropped. */
+function normalizeRecoveryExtensions(
+  raw: WatchCompletionBody['recoveryExtensions'],
+): Array<Record<string, unknown>> {
+  if (!Array.isArray(raw)) return [];
+  const out: Array<Record<string, unknown>> = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const afterRepIndex = idx(r.afterRepIndex);
+    const beforeRepIndex = idx(r.beforeRepIndex);
+    const addedSecRaw = num(r.addedSec);
+    const addedSec = addedSecRaw != null && addedSecRaw > 0 ? Math.round(addedSecRaw) : null;
+    if (afterRepIndex == null && beforeRepIndex == null && addedSec == null) continue;
+    const e: Record<string, unknown> = {};
+    if (afterRepIndex != null) e.afterRepIndex = afterRepIndex;
+    if (beforeRepIndex != null) e.beforeRepIndex = beforeRepIndex;
+    if (addedSec != null) e.addedSec = addedSec;
+    const repCount = idx(r.repCount);
+    if (repCount != null) e.repCount = repCount;
+    const phaseIndex = num(r.phaseIndex);
+    if (phaseIndex != null) e.phaseIndex = Math.round(phaseIndex);
+    if (typeof r.phaseLabel === 'string' && r.phaseLabel !== '') e.phaseLabel = r.phaseLabel;
+    const atSec = num(r.atSec);
+    if (atSec != null && atSec >= 0) e.atSec = Math.round(atSec);
+    out.push(e);
+  }
+  return out;
+}
 
 function formatMmSs(secs: number): string {
   const m = Math.floor(secs / 60);

@@ -363,6 +363,48 @@ export interface RunData {
    *  Zero rows carry it in the live census. */
   ruleOutcomes?: unknown[];
 
+  /* ── wrist decisions · 0821 watch design, 2026-08-21 ──────────────────
+   *
+   * The four things a runner can decide mid-run. The bail is `ruleOutcomes`
+   * above; these are the other three. All THREE ARE ABSENT ON EVERY
+   * HISTORICAL ROW — nothing before 2026-08-21 could record them, and no
+   * watch build emits them yet, so a reader must treat absence as "this run
+   * predates the field", never as "no decision was taken".
+   *
+   * They exist as their own keys because `phase.completed === false` cannot
+   * tell a choice from a lapse, and the phone's run-detail rows state that a
+   * decision is not a lapse. Written by
+   * `app/api/watch/workouts/complete/route.ts`, normalised there.
+   */
+
+  /** The heart-rate ceiling was lifted for the day. Reading AND limit are
+   *  carried separately and neither is a delta — the row reads "ran to 174,
+   *  the ceiling was 165". Either figure may be null. */
+  ceilingLift?: {
+    ceilingBpm?: number | null;
+    readingBpm?: number | null;
+    phaseIndex?: number; phaseLabel?: string;
+    atMi?: number; atSec?: number;
+  };
+
+  /** Reps the runner CHOSE to skip, one entry each. `repIndex` is 1-based
+   *  and always present on a stored entry. */
+  repSkips?: Array<{
+    repIndex: number;
+    repCount?: number; repsCompleted?: number;
+    phaseIndex?: number; phaseLabel?: string;
+    atMi?: number; atSec?: number;
+  }>;
+
+  /** Recovery extensions, one entry per +30 s. The COUNT is the array
+   *  length; the boundaries are on the entries. */
+  recoveryExtensions?: Array<{
+    afterRepIndex?: number; beforeRepIndex?: number;
+    repCount?: number; addedSec?: number;
+    phaseIndex?: number; phaseLabel?: string;
+    atSec?: number;
+  }>;
+
   /** The watch's own id for the completion this row came from. 28% / 42%.
    *  Also the `coach_intents.field` value the full payload is filed under. */
   watchCompletionRef?: string;
