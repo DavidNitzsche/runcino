@@ -228,6 +228,24 @@ enum WatchV5 {
         return .system(size: size, weight: .heavy).width(.expanded)
     }
 
+    /// SF Rounded, for everything that is neither a coach sentence nor a
+    /// display word: target labels, kickers, row labels, statements of fact.
+    ///
+    /// MEASURED, not assumed. The 0821 file declares `ui-rounded` 61 times and
+    /// `Instrument Sans` 17, and every one of those 17 is a COACH SENTENCE -
+    /// "Three are banked - the last three are where the session earns its
+    /// name", "About 40 minutes - GPS is most of that spend". There is no
+    /// Instrument Sans kicker, label or button in the whole design.
+    ///
+    /// So rounded is the DEFAULT register and the coach face is the exception,
+    /// which is exactly what the README says in words: Instrument Sans is "the
+    /// only face used for prose". A target label is not prose.
+    ///
+    /// No `monospacedDigit()` here - use `number()` for anything that ticks.
+    static func label(_ size: CGFloat, _ weight: Font.Weight = .bold) -> Font {
+        .system(size: size, weight: weight, design: .rounded)
+    }
+
     /// Coach register. Prose only.
     static func coach(_ size: CGFloat, weight: Double = 500) -> Font {
         if let ct = WatchCoreText.font(postScriptName: FontNames.textPostScript,

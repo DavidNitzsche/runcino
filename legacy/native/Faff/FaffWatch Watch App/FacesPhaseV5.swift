@@ -59,20 +59,26 @@
 //    The Strides countdown takes the `size:` override at 75pt for the same
 //    reason: that board IS one figure.
 //
-//  NEEDS 3 · WKicker renders in the coach register (Instrument Sans). The
-//    design's phase labels sit inside the ui-rounded container — they are SF
-//    Rounded Bold, uppercase, .08em, like every other figure on the board.
-//    WKicker's own doc comment says it is for "a phase label", so the intent
-//    is clearly that phase labels use it; the face family is the mismatch.
-//    Either WKicker gains a `register` parameter or the design's phase label
-//    is conceded to the coach face. Used as-is here.
+//  NEEDS 3 · CLOSED, in this file's favour. WKicker rendered in the coach
+//    register; the design's phase labels sit inside the ui-rounded container
+//    and are SF Rounded Bold, uppercase, .08em, like every other figure on
+//    the board. Checking the rest of the file settled it: all twenty kickers
+//    in the 0821 handoff are ui-rounded, and there is no kicker anywhere in
+//    it drawn in Instrument Sans. So WKicker lost its `figures` switch and is
+//    the telemetry register outright, and its default colour moved from .72
+//    to the .62 the design actually draws. The phase labels here are
+//    unchanged at the call site and now render as drawn.
 //
-//  NEEDS 4 · The band gauge, the rep strip and the progress strip are drawn
-//    on page 1 too (they are in "Page 1 primary" and "Page 1 off band"), so
-//    they belong in WatchKitV5 alongside WMetric, not here. They are local
-//    to this file only because this file may not edit that one. When the
-//    running faces land, lift WBandGauge / WRepStrip / WProgressStrip out
-//    and delete these three.
+//  NEEDS 4 · CLOSED. The band gauge, the rep strip and the progress strip are
+//    page 1's too, and are now `WBandStrip` and `WProgressStrip` in
+//    WatchKitV5. The rep strip was not a third object — it is the progress
+//    strip cut into segments — so it is the same type reached through a
+//    second initialiser, and the white-versus-orange fill that Threshold and
+//    Race need is a named `WProgressTone` rather than a colour a board picks.
+//    Two corrections came with the move: the white fill was `valueDim` (.72)
+//    and the design draws it at .62, and the mark on the band strip was
+//    centred on its position where the design places it by its leading edge,
+//    the way CSS `left` does. Both boards shift by a few points.
 //
 //  NEEDS 5 · WBoard pads 10pt at the sides and 10pt at the bottom. The phase
 //    boards in the design pad 8pt / 7pt (16px / 14px), and the moments pad
@@ -141,103 +147,6 @@ struct WBandReading {
     let marker: Double
 
     var grade: WMetricGrade { inBand ? .inBand : .outOfBand }
-}
-
-// MARK: - Strips
-//
-// NEEDS 4: these three are page 1's too, and belong in WatchKitV5.
-
-/// The pace band: a track, the prescribed segment lit inside it, and the mark
-/// showing where the runner actually is.
-///
-/// Green and the gauge say the same thing twice on purpose — the colour is the
-/// half-second read, the gauge is the detail if you want it. Out of band the
-/// lit segment goes WHITE rather than amber: the band has not changed, only
-/// the runner's position in it, and two ambers would read as two problems.
-struct WBandGauge: View {
-    let bandStart: Double
-    let bandEnd: Double
-    let marker: Double
-    var inBand: Bool = true
-
-    private let track: CGFloat = 5    // 10px
-    private let dot: CGFloat = 8      // 16px
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let s = clamp(bandStart)
-            let e = clamp(bandEnd)
-            let m = clamp(marker)
-
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(WatchV5.value.opacity(0.16))
-                    .frame(height: track)
-
-                Capsule()
-                    .fill(inBand ? WatchV5.band.opacity(0.34)
-                                 : WatchV5.value.opacity(0.34))
-                    .frame(width: max(0, e - s) * w, height: track)
-                    .offset(x: s * w)
-
-                Circle()
-                    .fill(inBand ? WatchV5.band : WatchV5.attention)
-                    .frame(width: dot, height: dot)
-                    .offset(x: m * w - dot / 2)
-            }
-            .frame(width: w, height: dot)
-        }
-        .frame(height: dot)
-    }
-
-    private func clamp(_ v: Double) -> Double { min(max(v, 0), 1) }
-}
-
-/// The rep strip: one segment per rep, the ones behind you filled.
-///
-/// Reps and not distance, because inside a session with a rep count the
-/// runner's question is "how many left", and a distance bar answers a question
-/// nobody is asking mid-interval. Orange here is drawn intent — the shape of
-/// the session, not a verdict — and it is never on a number, so rule 3 holds.
-struct WRepStrip: View {
-    let total: Int
-    /// Reps done INCLUDING the one in progress: "Rep 3 / 6" lights three.
-    let done: Int
-
-    var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<max(total, 1), id: \.self) { i in
-                Capsule()
-                    .fill(i < done ? WatchV5.signal : WatchV5.value.opacity(0.16))
-                    .frame(height: 4)
-            }
-        }
-        .frame(height: 4)
-    }
-}
-
-/// A continuous progress bar, filled white.
-///
-/// White and not orange, and the handoff says why: on the quality and race
-/// ramps signal orange sits within a few points of the board's own palette and
-/// would read as a live warning on the hardest sessions. Threshold and Race
-/// use this; Work interval and Recovery use the rep strip above.
-struct WProgressStrip: View {
-    let fraction: Double
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(WatchV5.value.opacity(0.16))
-                Capsule()
-                    .fill(WatchV5.valueDim)
-                    .frame(width: min(max(fraction, 0), 1) * geo.size.width)
-            }
-            .frame(height: 4)
-        }
-        .frame(height: 4)
-    }
 }
 
 // MARK: - The phase scaffold
@@ -323,8 +232,8 @@ struct WPhaseWarmUp: View {
             WMetric(value: pace.value, unit: pace.unit,
                     rank: .tertiary, grade: pace.grade)
 
-            WBandGauge(bandStart: pace.bandStart,
-                       bandEnd: pace.bandEnd,
+            WBandStrip(start: pace.bandStart,
+                       end: pace.bandEnd,
                        marker: pace.marker,
                        inBand: pace.inBand)
                 .padding(.vertical, 2)
@@ -366,8 +275,8 @@ struct WPhaseWorkInterval: View {
             WMetric(value: pace.value, unit: pace.unit,
                     rank: .hero, grade: pace.grade)
 
-            WBandGauge(bandStart: pace.bandStart,
-                       bandEnd: pace.bandEnd,
+            WBandStrip(start: pace.bandStart,
+                       end: pace.bandEnd,
                        marker: pace.marker,
                        inBand: pace.inBand)
                 .padding(.vertical, 2)
@@ -379,7 +288,7 @@ struct WPhaseWorkInterval: View {
                 WMetric(value: distance, unit: distanceUnit, rank: .tertiary)
             }
         } footer: {
-            WRepStrip(total: repCount, done: repIndex)
+            WProgressStrip(total: repCount, done: repIndex)
                 .padding(.bottom, 6)
         }
     }
@@ -413,7 +322,7 @@ struct WPhaseRecovery: View {
                 }
             }
         } footer: {
-            WRepStrip(total: repCount, done: repIndex)
+            WProgressStrip(total: repCount, done: repIndex)
                 .padding(.bottom, 6)
         }
     }
@@ -442,7 +351,7 @@ struct WPhaseStrides: View {
             WMetric(value: remaining, rank: .hero, size: 75)   // 150px
                 .frame(maxHeight: .infinity, alignment: .center)
         } footer: {
-            WRepStrip(total: strideCount, done: strideIndex)
+            WProgressStrip(total: strideCount, done: strideIndex)
                 .padding(.bottom, 6)
         }
     }
@@ -478,8 +387,8 @@ struct WPhaseThreshold: View {
             WMetric(value: pace.value, unit: pace.unit,
                     rank: .hero, grade: pace.grade, size: 42)
 
-            WBandGauge(bandStart: pace.bandStart,
-                       bandEnd: pace.bandEnd,
+            WBandStrip(start: pace.bandStart,
+                       end: pace.bandEnd,
                        marker: pace.marker,
                        inBand: pace.inBand)
                 .padding(.vertical, 2)
@@ -497,7 +406,9 @@ struct WPhaseThreshold: View {
                 WMetric(value: elapsed, rank: .tertiary, size: 31)
             }
         } footer: {
-            WProgressStrip(fraction: progress)
+            // `.quiet` — white. Threshold and Race sit on the quality and
+            // race ramps, where signal orange would read as a live warning.
+            WProgressStrip(fraction: progress, tone: .quiet)
                 .padding(.bottom, 6)
         }
     }
@@ -542,8 +453,8 @@ struct WPhaseRace: View {
             WMetric(value: pace.value, unit: pace.unit,
                     rank: .hero, grade: pace.grade, size: 42)
 
-            WBandGauge(bandStart: pace.bandStart,
-                       bandEnd: pace.bandEnd,
+            WBandStrip(start: pace.bandStart,
+                       end: pace.bandEnd,
                        marker: pace.marker,
                        inBand: pace.inBand)
                 .padding(.vertical, 2)
@@ -561,7 +472,9 @@ struct WPhaseRace: View {
                 WMetric(value: elapsed, rank: .tertiary, size: 31)
             }
         } footer: {
-            WProgressStrip(fraction: progress)
+            // `.quiet` — white. Threshold and Race sit on the quality and
+            // race ramps, where signal orange would read as a live warning.
+            WProgressStrip(fraction: progress, tone: .quiet)
                 .padding(.bottom, 6)
         }
     }
@@ -654,7 +567,7 @@ struct WMomentPhaseChange: View {
                             .minimumScaleFactor(0.6)
                         Text(bandUnit)
                             .font(WatchV5.number(13))
-                            .foregroundStyle(WatchV5.band.opacity(0.72))
+                            .foregroundStyle(WatchV5.band.opacity(0.62))
                     }
                 }
             }

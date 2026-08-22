@@ -22,31 +22,26 @@
 //  is being retired face by face.
 //
 //  ─────────────────────────────────────────────────────────────────────────
-//  NEEDS: three gaps in the shared vocabulary (WatchKitV5.swift /
-//  WatchThemeV5.swift). Nothing shared was edited to close them — each is
-//  worked around locally and named here so the shared fix can be made once,
-//  deliberately, rather than four times by accident.
+//  NEEDS: three gaps in the shared vocabulary. ALL THREE ARE NOW CLOSED and
+//  every local workaround has been deleted — this file reaches for the shared
+//  component in each case.
 //
-//  1. NEEDS: `WatchV5.DayState.muted` — the "No session" board is drawn on a
-//     muted grey-blue ramp (#8792A8 → #5A6072 → #25272E) that is not in the
-//     token file, and a board may not carry a raw hex. Worked around with
-//     `V5LobbyMutedRamp`, built from stepped white over `ground`: the same
-//     lightness ramp, on-palette, no new literals. It is close, not exact.
+//  1. `WatchV5.DayState.muted` — CLOSED. The "No session" board's grey-blue
+//     ramp is a token now (#8792A8 → #5A6072 → #25272E, with its own flatter
+//     55% middle stop), so `V5LobbyMutedRamp` is gone and the board goes
+//     through `WGradientBoard` like every other ramp board. The workaround
+//     approximated the ramp with stepped white and said so; this is the real
+//     one.
 //
-//  2. NEEDS: a target weight that sits ON A RAMP. `WTarget` offers filled
-//     (white/black), quiet (surface3) and attention (amber). The lobby's Start
-//     is the inverse — BLACK fill, white label — because the ramp has already
-//     said what kind of day it is, and the escapes on Rest day / No session
-//     are black at 42% so the ramp still reads through them. An opaque
-//     surface3 pill on a green ramp reads as a hole. Worked around with
-//     `V5LobbyTarget`, which reuses `WatchV5.Metric.targetHeight` so rule 6
-//     stays a single constant.
+//  2. A target weight that sits ON A RAMP — CLOSED. `WTargetWeight` gained
+//     `.onRamp` (black fill, white label, because the ramp has already said
+//     what kind of day it is) and `.onRampQuiet` (black at 42%, so the ramp
+//     reads through the escape). `V5LobbyTarget` is gone.
 //
-//  3. NEEDS: a grouped-rows container. `WRow` rounds every row at 10pt, so a
-//     stack of them reads as separate pills; the design's page-2 lists are one
-//     10pt group with 1pt fill gaps between squared rows. Worked around with
-//     `V5LobbyGroup`. `WRow` is still used for the standalone Gels tile, which
-//     genuinely is one rounded row.
+//  3. A grouped-rows container — CLOSED. `WRowGroup` + `WGroupRow` draw the
+//     design's one 10pt plate with squared inner rows and 1pt fill gaps.
+//     `WRow` is still the right component for the standalone Gels tile, which
+//     genuinely is one rounded row, and it is still used for it.
 //
 //  KNOWN DISCREPANCY, resolved toward the design file:
 //     The handoff README says "Start stays at 26 pt on every variant so the
@@ -74,12 +69,17 @@ enum V5LobbyRamp: String {
     case long
     case race
     case rest
-    /// No session at all. Not a day state — see NEEDS 1. Named `noSession`
-    /// rather than `none` so it can never be read as `Optional.none` at a
-    /// call site.
+    /// No session at all — off-season, a week off, injury, sick. Named
+    /// `noSession` rather than `none` so it can never be read as
+    /// `Optional.none` at a call site.
     case noSession
 
-    var wireName: String { rawValue }
+    /// The string `WatchV5.DayState.forSession` switches on. Every case but
+    /// one is its own raw value; `noSession` maps to the wire's `none`, which
+    /// is what selects the muted ramp and its flatter middle stop.
+    var wireName: String {
+        self == .noSession ? "none" : rawValue
+    }
 }
 
 /// One row of a page-2 breakdown: a race segment or a workout step.
@@ -156,77 +156,6 @@ struct V5LobbySession {
     }
 }
 
-// MARK: - Ramp pieces
-
-/// See NEEDS 1. The muted ramp for a board with no session on it, built from
-/// stepped white over the true-black ground so it carries no hex of its own.
-/// Locations mirror `WatchV5.DayState.locations`, clamped the same way `WRamp`
-/// clamps them.
-private struct V5LobbyMutedRamp: View {
-    var body: some View {
-        let locs = WatchV5.DayState.locations
-        LinearGradient(
-            stops: [
-                .init(color: WatchV5.value.opacity(0.42), location: min(1.0, locs[0])),
-                .init(color: WatchV5.value.opacity(0.24), location: min(1.0, locs[1])),
-                .init(color: WatchV5.value.opacity(0.06), location: min(1.0, locs[2])),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .background(WatchV5.ground)
-        .overlay(WGrain())
-    }
-}
-
-/// A board on a ramp — the shared `WGradientBoard` for the six day states, and
-/// the muted ramp for the seventh case that has no day state.
-private struct V5LobbyBoard<Content: View>: View {
-    let ramp: V5LobbyRamp
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        if ramp == .noSession {
-            WBoard(background: AnyView(V5LobbyMutedRamp())) { content() }
-        } else {
-            WGradientBoard(session: ramp.wireName) { content() }
-        }
-    }
-}
-
-// MARK: - Targets on a ramp
-
-/// See NEEDS 2. Height comes from `WatchV5.Metric.targetHeight` so rule 6
-/// stays one constant, and there is deliberately no destructive role here: a
-/// destructive verb is `WDestructive`, text at 42% with no pill (rule 7).
-private struct V5LobbyTarget: View {
-    enum Role {
-        /// Start. Black on the ramp, white label — the screen has already said
-        /// what kind of day this is.
-        case start
-        /// The escape that is present but not being sold: "Run anyway",
-        /// "Just run". Black at 42%, so the ramp still reads through it.
-        case quiet
-    }
-
-    let label: String
-    var role: Role = .start
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(WatchV5.coach(role == .start ? 19 : 17, weight: 700))
-                .foregroundStyle(role == .start ? WatchV5.value : WatchV5.value.opacity(0.86))
-                .frame(maxWidth: .infinity)
-                .frame(height: WatchV5.Metric.targetHeight)
-                .background(role == .start ? WatchV5.ground : WatchV5.ground.opacity(0.42),
-                            in: Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 // MARK: - 1 · The poster
 //
 // Pre-run, Lobby long, Lobby threshold, Lobby intervals, Lobby race and Lobby
@@ -243,7 +172,7 @@ struct V5LobbyPoster: View {
     let onStart: () -> Void
 
     var body: some View {
-        V5LobbyBoard(ramp: session.ramp) {
+        WGradientBoard(session: session.ramp.wireName) {
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
 
@@ -261,25 +190,25 @@ struct V5LobbyPoster: View {
                     if let qualifier = session.qualifier {
                         Text(qualifier)
                             .font(WatchV5.number(15))
-                            .foregroundStyle(WatchV5.value.opacity(0.86))
+                            .foregroundStyle(WatchV5.prose)
                             .multilineTextAlignment(.center)
                     }
                     if let band = session.band {
                         Text(band)
                             .font(WatchV5.number(session.bandSize))
-                            .foregroundStyle(WatchV5.value.opacity(0.82))
+                            .foregroundStyle(WatchV5.valueStated)
                             .padding(.top, 4)
                     }
                     if let sub = session.bandSub {
                         Text(sub)
                             .font(WatchV5.number(15))
-                            .foregroundStyle(WatchV5.value.opacity(0.82))
+                            .foregroundStyle(WatchV5.valueStated)
                     }
                     if let note = session.note {
                         // The reason, stated once, in the coach's register.
                         // Never a score: a score on a lobby is a thing to
                         // argue with at 6am.
-                        WCoachLine(text: note, size: 14, color: WatchV5.value.opacity(0.92))
+                        WCoachLine(text: note, size: 14, color: WatchV5.proseOnRamp)
                             .multilineTextAlignment(.center)
                             .padding(.top, 4)
                     }
@@ -291,7 +220,7 @@ struct V5LobbyPoster: View {
                 WPageDots(count: pageCount, index: pageIndex)
                     .padding(.bottom, WatchV5.Metric.readingToStack)
 
-                V5LobbyTarget(label: startLabel, role: .start, action: onStart)
+                WTarget(label: startLabel, weight: .onRamp, action: onStart)
             }
             .frame(maxHeight: .infinity)
         }
@@ -315,7 +244,7 @@ struct V5LobbyRefusal: View {
     let onEscape: () -> Void
 
     var body: some View {
-        V5LobbyBoard(ramp: ramp) {
+        WGradientBoard(session: ramp.wireName) {
             VStack(alignment: .leading, spacing: 0) {
                 Spacer(minLength: 0)
 
@@ -327,12 +256,12 @@ struct V5LobbyRefusal: View {
                     }
                     WCoachLine(text: sentence,
                                size: lede == nil ? 15 : 14,
-                               color: WatchV5.value.opacity(lede == nil ? 1.0 : 0.92))
+                               color: lede == nil ? WatchV5.value : WatchV5.proseOnRamp)
                 }
 
                 Spacer(minLength: 0)
 
-                V5LobbyTarget(label: escapeLabel, role: .quiet, action: onEscape)
+                WTarget(label: escapeLabel, weight: .onRampQuiet, action: onEscape)
                     .padding(.top, WatchV5.Metric.readingToStack)
             }
             .frame(maxHeight: .infinity)
@@ -353,7 +282,7 @@ struct V5LobbyCountdown: View {
     let seconds: Int
 
     var body: some View {
-        V5LobbyBoard(ramp: ramp) {
+        WGradientBoard(session: ramp.wireName) {
             Text("\(seconds)")
                 .font(WatchV5.number(130))
                 .foregroundStyle(WatchV5.value)
@@ -367,36 +296,6 @@ struct V5LobbyCountdown: View {
 // One swipe from the poster. Black ground and stepped fills, because this is a
 // list to read standing still rather than a thing to glance at, and the ramp's
 // job was already done on page 1.
-
-/// See NEEDS 3. One group, 10pt outside, 1pt fill gaps, squared rows inside.
-private struct V5LobbyGroup: View {
-    let steps: [V5LobbyStep]
-
-    var body: some View {
-        VStack(spacing: 1) {
-            ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
-                HStack(alignment: .firstTextBaseline) {
-                    Text(step.name)
-                        .font(WatchV5.number(13))
-                        .foregroundStyle(step.emphasised ? WatchV5.value : WatchV5.valueDim)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    Spacer(minLength: 8)
-                    Text(step.value)
-                        .font(WatchV5.number(16))
-                        .foregroundStyle(WatchV5.value)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 7)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(step.emphasised ? WatchV5.surface3 : WatchV5.surface2)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: WatchV5.Metric.rowRadius, style: .continuous))
-    }
-}
 
 /// The same page for a race plan ("The plan", plus the gel points) and for any
 /// session with steps ("The steps"). Anything with no breakdown has NO second
@@ -415,9 +314,31 @@ struct V5LobbyBreakdown: View {
     var body: some View {
         WBoard {
             VStack(alignment: .leading, spacing: 8) {
-                WKicker(text: kicker, color: WatchV5.value.opacity(0.62))
+                WKicker(text: kicker)
 
-                V5LobbyGroup(steps: steps)
+                // One plate, squared rows, 1pt fill gaps — the design's page-2
+                // list, not a stack of pills. Steps in FILL: surface3 over
+                // surface2 is how the row the session is actually about says
+                // so, without a border.
+                WRowGroup {
+                    ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
+                        WGroupRow(fill: step.emphasised ? WatchV5.surface3
+                                                        : WatchV5.surface2) {
+                            Text(step.name)
+                                .font(WatchV5.number(13))
+                                .foregroundStyle(step.emphasised ? WatchV5.value
+                                                                 : WatchV5.valueDim)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        } trailing: {
+                            Text(step.value)
+                                .font(WatchV5.number(16))
+                                .foregroundStyle(WatchV5.value)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                    }
+                }
 
                 if let footerName, let footerValue {
                     WRow(fill: WatchV5.surface1) {
@@ -466,7 +387,7 @@ struct V5LobbyWeek: View {
     var body: some View {
         WBoard {
             VStack(alignment: .leading, spacing: 0) {
-                WKicker(text: "This week", color: WatchV5.value.opacity(0.62))
+                WKicker(text: "This week")
 
                 HStack(alignment: .bottom, spacing: 4) {
                     ForEach(Array(days.enumerated()), id: \.offset) { _, day in

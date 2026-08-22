@@ -25,42 +25,30 @@
 //  design review.
 //
 //
-//  ── NEEDS ────────────────────────────────────────────────────────────────
-//  Things a shared component would have given me. I have NOT edited
-//  WatchKitV5.swift; each is worked around locally and each workaround is
-//  marked at its definition.
+//  ── NEEDS · ALL FOUR CLOSED ──────────────────────────────────────────────
+//  This file carried four local workarounds for gaps in WatchKitV5. All four
+//  are now shared components and every workaround here has been deleted.
 //
-//  NEEDS 1 · `WMetricRank` sizes do not fit a running face.
-//      The ranks are hero 48 / secondary 28 / tertiary 22. Every running face
-//      in the design file is drawn at hero 44 (88px) and secondary 36 (72px),
-//      with the structured phase boards at 44 / 33 (66px). 48 over 28 is a
-//      1.71 ratio; the handoff's own rule 4 and `Metric.heroLeadRatio` both
-//      say ~1.20, which is what 44 over 36 gives. So the ranks appear to have
-//      been calibrated against a denser board family, and using them here
-//      would shrink heart rate, distance and elapsed by eight points and
-//      break the ratio rule the same component documents.
-//      Wanted: either corrected rank sizes, or `WMetric(size:)` as an
-//      explicit override. Worked around with `FaceMetric` below, which still
-//      takes its colours from `WMetricGrade` so the colour rule stays in the
-//      shared vocabulary.
+//  NEEDS 1 · `WMetricRank` sizes did not fit a running face — CLOSED.
+//      The ranks were the README table's (hero 48 / secondary 28 / tertiary
+//      22) and every running face in the design file is drawn at 44 / 36.
+//      They have since been re-measured off the boards to 44 / 36 / 33 with a
+//      per-rank unit step, and `WMetric` gained `size:` and `unitSize:`
+//      overrides for the boards off that ladder. `FaceMetric` is gone.
 //
-//  NEEDS 2 · There is no shared band strip.
-//      The lit-band-and-marker strip under the lead pace appears on Page 1
-//      primary, Page 1 off band, Warm-up, Work interval, Recovery, Threshold
-//      and Race — seven boards across at least two files. It also encodes a
-//      rule (the lit segment goes white the moment the marker leaves it, so
-//      the strip never shows two greens). Worked around with `FaceBandStrip`
-//      below; it should be promoted to `WBandStrip` in WatchKitV5 before the
-//      structured-phase file re-implements it.
+//  NEEDS 2 · There was no shared band strip — CLOSED. It appeared on seven
+//      boards across two files and it carries a rule. It is `WBandStrip` now,
+//      and the rule (the lit segment goes white the moment the mark leaves
+//      it) is stated at the component rather than in each caller.
 //
-//  NEEDS 3 · There is no shared progress strip.
-//      Page 1's distance-against-prescribed bar (orange fill on a white .16
-//      track) is the same object as the Work interval board's rep segments.
-//      Worked around with `FaceProgressStrip` below.
+//  NEEDS 3 · There was no shared progress strip — CLOSED. Page 1's
+//      distance-against-prescribed bar is the same object as Work interval's
+//      rep segments, so `WProgressStrip` is one type with two initialisers,
+//      and its two fills are a named `WProgressTone` rather than a colour a
+//      board picks.
 //
-//  NEEDS 4 · `WMetric` draws a graded unit at `grade.color.opacity(0.72)`.
-//      Every graded unit in the design file is at .62 (`rgba(62,189,65,.62)`,
-//      `rgba(242,176,60,.62)`). `FaceMetric` uses .62.
+//  NEEDS 4 · `WMetric` drew a graded unit at .72 — CLOSED. It is .62 in the
+//      shared component now, which is what the design file draws.
 //
 //  Not worth a change, recorded so the next reader does not re-measure:
 //  `WPageDots` draws 4pt dots at 4pt spacing; the design draws 4.5 at 6. The
@@ -122,124 +110,6 @@ struct FaceBand {
     }
 }
 
-// MARK: - Telemetry row
-//
-// NEEDS 1's workaround. `WMetric` with an explicit size would delete this
-// whole type; it is deliberately kept to the same shape (figure, then unit
-// carrying the meaning) so the swap is mechanical.
-//
-// There is no `label` parameter here either, and that is not an oversight:
-// units carry the meaning and POSITION carries the identity. Adding a label
-// would reintroduce the labelled-metric grammar the design replaced, on the
-// one surface with the least room for it.
-
-private struct FaceMetric: View {
-    let value: String
-    var unit: String? = nil
-    /// Points. From the board, not from a rank — see NEEDS 1.
-    let size: CGFloat
-    let unitSize: CGFloat
-    var grade: WMetricGrade = .plain
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {   // 10px
-            Text(value)
-                .font(WatchV5.number(size))
-                .foregroundStyle(grade.color)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            if let unit {
-                Text(unit)
-                    .font(WatchV5.number(unitSize))
-                    .foregroundStyle(unitColour)
-                    .lineLimit(1)
-            }
-        }
-    }
-
-    /// A graded unit is drawn in its own hue at .62; an ungraded one is always
-    /// the white mute step, whatever the figure above it is doing.
-    private var unitColour: Color {
-        switch grade {
-        case .inBand, .outOfBand: return grade.color.opacity(0.62)   // NEEDS 4
-        case .plain, .dim:        return WatchV5.valueMute
-        }
-    }
-}
-
-// MARK: - Band strip
-//
-// NEEDS 2's workaround.
-
-/// The lit band under the lead pace, with the runner's mark on it.
-///
-/// Green and the strip say the same thing twice on purpose: the colour is the
-/// half-second read, the strip is the detail if you want it. When the mark
-/// leaves the band the mark goes amber AND the lit segment goes white — the
-/// segment is no longer where the runner is, so it stops claiming a hue.
-private struct FaceBandStrip: View {
-    let band: FaceBand
-    let grade: WMetricGrade
-
-    private let track: CGFloat = 5   // 10px
-    private let mark:  CGFloat = 8   // 16px
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(WatchV5.value.opacity(0.16))
-                    .frame(height: track)
-
-                Capsule()
-                    .fill(litColour.opacity(0.34))
-                    .frame(width: max(0, w * (band.end - band.start)), height: track)
-                    .offset(x: w * clamped(band.start))
-
-                Circle()
-                    .fill(grade.color)
-                    .frame(width: mark, height: mark)
-                    .offset(x: min(max(0, w * clamped(band.marker)), max(0, w - mark)))
-            }
-            .frame(width: w, height: geo.size.height, alignment: .leading)
-        }
-        .frame(height: mark)
-        .allowsHitTesting(false)
-    }
-
-    private var litColour: Color {
-        grade == .inBand ? WatchV5.band : WatchV5.value
-    }
-
-    private func clamped(_ v: Double) -> Double { min(max(v, 0), 1) }
-}
-
-// MARK: - Progress strip
-//
-// NEEDS 3's workaround.
-
-/// Distance against the prescribed distance. Orange is drawn intent, not a
-/// grade (rule 3) — it is allowed here because a strip is not a figure, and
-/// the same object carries the rep count on the structured boards.
-private struct FaceProgressStrip: View {
-    /// 0-1.
-    let fraction: Double
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(WatchV5.value.opacity(0.16))
-                Capsule()
-                    .fill(WatchV5.signal)
-                    .frame(width: geo.size.width * min(max(fraction, 0), 1))
-            }
-        }
-        .frame(height: 4)   // 8px
-        .allowsHitTesting(false)
-    }
-}
-
 // MARK: - Page 1 · primary  /  Page 1 · off band
 
 /// The board the runner is on for most of a run: pace, heart rate, distance,
@@ -284,22 +154,23 @@ struct RunFacePrimary: View {
                 Spacer(minLength: 0)
 
                 VStack(alignment: .leading, spacing: 3) {   // 6px
-                    FaceMetric(value: pace, unit: paceUnit,
-                               size: 44, unitSize: 18,      // 88 / 36
-                               grade: grade.metric)
+                    // 88 / 36 in the 2× set, which is `.hero` exactly.
+                    WMetric(value: pace, unit: paceUnit,
+                            rank: .hero, grade: grade.metric)
 
                     if grade.drawsBand, let band {
-                        FaceBandStrip(band: band, grade: grade.metric)
+                        WBandStrip(start: band.start,
+                                   end: band.end,
+                                   marker: band.marker,
+                                   inBand: grade == .inBand)
                             .padding(.top, 1)               // 2px
                             .padding(.bottom, 4)            // 8px
                     }
 
-                    FaceMetric(value: heartRate, unit: heartRateUnit,
-                               size: 36, unitSize: 16)      // 72 / 32
-                    FaceMetric(value: distance, unit: distanceUnit,
-                               size: 36, unitSize: 16)
-                    FaceMetric(value: elapsed,
-                               size: 36, unitSize: 16)
+                    // 72 / 32, which is `.secondary` exactly.
+                    WMetric(value: heartRate, unit: heartRateUnit, rank: .secondary)
+                    WMetric(value: distance, unit: distanceUnit, rank: .secondary)
+                    WMetric(value: elapsed, rank: .secondary)
                 }
                 .padding(.leading, 1)                       // 2px
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -308,7 +179,9 @@ struct RunFacePrimary: View {
 
                 VStack(spacing: 7) {                        // 14px
                     if let distanceProgress {
-                        FaceProgressStrip(fraction: distanceProgress)
+                        // `.intent` — orange. Page 1 is on black, so the
+                        // reason Threshold and Race go white does not apply.
+                        WProgressStrip(fraction: distanceProgress)
                     }
                     WPageDots(count: pageCount, index: pageIndex)
                 }
@@ -356,10 +229,13 @@ struct RunFacePerformance: View {
 
                 VStack(alignment: .leading, spacing: gap(rows.count)) {
                     ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
-                        FaceMetric(value: row.value, unit: row.unit,
-                                   size: size(rows.count),
-                                   unitSize: unitSize(rows.count),
-                                   grade: step(i, of: rows.count))
+                        // Off the hero/secondary ladder entirely — this board
+                        // resizes with how many rows survived — so both the
+                        // figure and its unit are passed.
+                        WMetric(value: row.value, unit: row.unit,
+                                grade: step(i, of: rows.count),
+                                size: size(rows.count),
+                                unitSize: unitSize(rows.count))
                     }
                 }
                 .padding(.leading, 1)
@@ -452,14 +328,13 @@ struct RunFaceTreadmillPrimary: View {
                 Spacer(minLength: 0)
 
                 VStack(alignment: .leading, spacing: 4) {   // 8px
-                    FaceMetric(value: pace, unit: paceUnit,
-                               size: 44, unitSize: 17)      // 88 / 34
-                    FaceMetric(value: distance, unit: distanceUnit,
-                               size: 36, unitSize: 16)
-                    FaceMetric(value: heartRate, unit: heartRateUnit,
-                               size: 36, unitSize: 16)
-                    FaceMetric(value: elapsed,
-                               size: 36, unitSize: 16)
+                    // 88 / 34 — hero, with a unit one point under the
+                    // ladder's, so the unit step is passed and the size is
+                    // not.
+                    WMetric(value: pace, unit: paceUnit, rank: .hero, unitSize: 17)
+                    WMetric(value: distance, unit: distanceUnit, rank: .secondary)
+                    WMetric(value: heartRate, unit: heartRateUnit, rank: .secondary)
+                    WMetric(value: elapsed, rank: .secondary)
                 }
                 .padding(.leading, 1)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -505,15 +380,15 @@ struct RunFaceAlwaysOn: View {
                 Spacer(minLength: 0)
 
                 VStack(alignment: .leading, spacing: 8) {   // 16px
-                    FaceMetric(value: pace, unit: paceUnit,
-                               size: 42, unitSize: 17,      // 84 / 34
-                               grade: grade.metric)
-                    FaceMetric(value: distance, unit: distanceUnit,
-                               size: 35, unitSize: 16,      // 70 / 32
-                               grade: .dim)
-                    FaceMetric(value: elapsedMinutes, unit: elapsedUnit,
-                               size: 35, unitSize: 16,
-                               grade: .dim)
+                    WMetric(value: pace, unit: paceUnit,
+                            grade: grade.metric,
+                            size: 42, unitSize: 17)         // 84 / 34
+                    WMetric(value: distance, unit: distanceUnit,
+                            grade: .dim,
+                            size: 35, unitSize: 16)         // 70 / 32
+                    WMetric(value: elapsedMinutes, unit: elapsedUnit,
+                            grade: .dim,
+                            size: 35, unitSize: 16)
                 }
                 .padding(.leading, 1)
                 .frame(maxWidth: .infinity, alignment: .leading)

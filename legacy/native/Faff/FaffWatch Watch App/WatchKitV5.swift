@@ -16,6 +16,45 @@
 
 import SwiftUI
 
+// MARK: - The steps between `value` and `valueDim`
+//
+// WatchThemeV5 declares three white steps — 1.0, .72, .48 — and the 0821 file
+// draws four more between and below them. Every board that wanted one reached
+// for `.opacity()` at the call site, which is how a step becomes a literal and
+// a literal becomes a drift: five boards asking for "the coach's sentence"
+// brightness were spelling it three different ways.
+//
+// These are DERIVATIONS of `value`, not new hues, so they carry no hex and the
+// palette gate has nothing to assert about them. They live here rather than in
+// WatchThemeV5 only because this pass may not edit that file; move them up to
+// sit beside `valueDim` and `valueMute` the next time it is open, and delete
+// this extension.
+extension WatchV5 {
+
+    /// A coach sentence drawn OVER a day-state ramp — Complete, the lobby's
+    /// one note, the rest-day refusal. Brighter than `prose` because the ramp
+    /// is competing with it. Measured: `rgba(255,255,255,.92)`.
+    static let proseOnRamp = Color.white.opacity(0.92)
+
+    /// A coach sentence on a black board — the battery board, the ceiling
+    /// override, first launch, the stale plan. The only sentence on a board
+    /// the runner is standing still to read, so it sits above `valueDim`.
+    /// Measured: `rgba(255,255,255,.86)`.
+    static let prose       = Color.white.opacity(0.86)
+
+    /// A FACT stated under the hero and not itself a metric — Complete's
+    /// "48:12 · 8:01 /mi", the lobby's band line. Measured:
+    /// `rgba(255,255,255,.82)`.
+    static let valueStated = Color.white.opacity(0.82)
+
+    /// Kickers, grouped-row labels, and the unit under a figure on a board
+    /// that is not a running face. BELOW `valueDim`, not above it: this step
+    /// is the one that gets out of the way. Measured: every kicker in the
+    /// 0821 file is `rgba(255,255,255,.62)` or `.5`, and the graded unit's
+    /// white twin is `.62` as well.
+    static let valueLabel  = Color.white.opacity(0.62)
+}
+
 // MARK: - Board scaffold
 
 /// Every board. True-black ground, and the top 22pt left empty because the
@@ -165,7 +204,7 @@ struct WTarget: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(WatchV5.coach(labelSize, weight: 600))
+                .font(WatchV5.label(labelSize, labelWeight >= 800 ? .heavy : .bold))
                 .foregroundStyle(foreground)
                 .frame(maxWidth: .infinity)
                 .frame(height: WatchV5.Metric.targetHeight)
@@ -181,6 +220,20 @@ struct WTarget: View {
         switch weight {
         case .filled, .attention, .onRamp: return 19
         case .quiet, .onRampQuiet:         return 18
+        }
+    }
+
+    /// MEASURED, not chosen. Every target label in the design file is drawn
+    /// at `font-weight:800` — Start 38px/800, Save 38px/800, Drop GPS and
+    /// Keep it all 36px/800, Lift it for today 34px/800, Open on iPhone
+    /// 32px/800 — except the quiet escape on a ramp, which is 700 ("Run
+    /// anyway" and "Just run", both 32px/700 on black at 42%). This was 600
+    /// across the board, which is why two files hand-rolled their own ramp
+    /// target at 700 and 800 rather than reach for this one.
+    private var labelWeight: Double {
+        switch weight {
+        case .onRampQuiet: return 700
+        default:           return 800
         }
     }
 
@@ -214,7 +267,7 @@ struct WDestructive: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(WatchV5.coach(15))
+                .font(WatchV5.label(15, .semibold))
                 .foregroundStyle(WatchV5.destructive)
                 .frame(maxWidth: .infinity)
                 .frame(height: WatchV5.Metric.targetHeight)
@@ -312,11 +365,22 @@ struct WMetric: View {
     var grade: WMetricGrade = .plain
     /// Explicit override for the boards that are not on the hero/secondary
     /// ladder — Page 2's four-up is a flat 37pt, Always-On is 42/35. Passing a
-    /// size opts out of `rank.size` only; the unit still steps from the rank.
+    /// size opts out of `rank.size` only; the unit still steps from the rank
+    /// unless `unitSize` is given too.
     var size: CGFloat? = nil
+    /// Explicit override for the unit. The per-rank step is right on the
+    /// running faces it was measured from; the boards that set `size` are
+    /// mostly off that ladder and carry their own unit step with them
+    /// (Page 1's hero is 44/18, the treadmill's is 44/17, Page 2's two-up is
+    /// 47/19). Overriding one without the other is what produced a 47pt
+    /// figure wearing a 16pt unit.
+    var unitSize: CGFloat? = nil
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
+        // 10px in the 2× set. Every figure-and-unit pair in the design file
+        // is at this gap — Page 1, the phase boards, the finish, the summary
+        // header — so it is one number and not a per-board choice.
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
             Text(value)
                 .font(WatchV5.number(size ?? rank.size))
                 .foregroundStyle(grade.color)
@@ -324,8 +388,9 @@ struct WMetric: View {
                 .minimumScaleFactor(0.6)
             if let unit {
                 Text(unit)
-                    .font(WatchV5.number(rank.unitSize))
+                    .font(WatchV5.number(unitSize ?? rank.unitSize))
                     .foregroundStyle(unitColor)
+                    .lineLimit(1)
             }
         }
     }
@@ -371,29 +436,209 @@ struct WMetricStack: View {
     }
 }
 
+// MARK: - Strips
+//
+// The two horizontal bars in the system. Both were written privately in two
+// files before they lived here — the band strip on seven boards across two
+// files, the progress strip in three shapes across two — and the band strip
+// carries a RULE, which is the reason it may not be re-derived per board.
+
+/// The prescribed band under the lead pace, with the runner's mark on it.
+///
+/// Green and the strip say the same thing twice on purpose: the colour is the
+/// half-second read, the strip is the detail if you want it.
+///
+/// **THE RULE: the lit segment goes WHITE the moment the mark leaves it.**
+/// The band has not changed, only the runner's position in it — so the lit
+/// segment stops claiming a hue rather than turning amber, and the strip never
+/// shows two greens or two ambers. That is why this takes `inBand` and not a
+/// `WMetricGrade`: a grade could be handed `.plain` or `.dim` and the strip
+/// would have to invent an answer, and an ungraded pace has no band to draw.
+///
+/// Positions are FRACTIONS of the strip's width, which is how the design file
+/// places them (`left:18%`, `right:34%`, marker `left:52%`). The scale is the
+/// session's business, not this view's.
+struct WBandStrip: View {
+    /// Leading edge of the lit segment, 0-1.
+    let start: Double
+    /// Trailing edge of the lit segment, 0-1.
+    let end: Double
+    /// Where the runner is, on the same scale, 0-1.
+    let marker: Double
+    /// Drives both the lit segment and the mark. See the rule above.
+    var inBand: Bool = true
+
+    /// 10px and 16px in the 2× set. The mark deliberately overhangs the
+    /// track: it is a position on the band, not a segment of it.
+    private let track: CGFloat = 5
+    private let mark:  CGFloat = 8
+
+    var body: some View {
+        GeometryReader { geo in
+            let w    = geo.size.width
+            let lead = CGFloat(clamped(start)) * w
+            let lit  = max(0, CGFloat(clamped(end)) * w - lead)
+            // The design positions the mark by its LEADING edge, the way CSS
+            // `left` does. The second clamp keeps a mark at 1.0 fully on the
+            // strip instead of half off the right of the board.
+            let dot  = min(CGFloat(clamped(marker)) * w, max(0, w - mark))
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(WatchV5.value.opacity(0.16))
+                    .frame(height: track)
+
+                Capsule()
+                    .fill(litColour.opacity(0.34))
+                    .frame(width: lit, height: track)
+                    .offset(x: lead)
+
+                Circle()
+                    .fill(inBand ? WatchV5.band : WatchV5.attention)
+                    .frame(width: mark, height: mark)
+                    .offset(x: dot)
+            }
+            .frame(width: w, height: geo.size.height, alignment: .leading)
+        }
+        .frame(height: mark)
+        .allowsHitTesting(false)
+    }
+
+    private var litColour: Color {
+        inBand ? WatchV5.band : WatchV5.value
+    }
+
+    private func clamped(_ v: Double) -> Double { min(max(v, 0), 1) }
+}
+
+/// What a progress strip is allowed to be filled with.
+///
+/// Not a style choice. Orange is drawn intent (rule 3) and is allowed on a
+/// strip because a strip is not a figure — but on the quality and race ramps
+/// signal orange sits within a few points of the board's own palette and would
+/// read as a live warning on the hardest sessions, so those boards fill white.
+/// The design says so in as many words on the Threshold board.
+enum WProgressTone {
+    /// Signal orange. Page 1's distance bar, and the rep segments.
+    case intent
+    /// White at .62. Threshold and Race.
+    case quiet
+
+    var fill: Color {
+        switch self {
+        case .intent: return WatchV5.signal
+        case .quiet:  return WatchV5.valueLabel
+        }
+    }
+}
+
+/// How far through. One object in two shapes, because they ARE one object:
+/// Page 1 draws distance against the prescribed distance as a continuous bar,
+/// and Work interval draws the same bar cut into one segment per rep.
+///
+/// Segments where there is a rep count, continuous where there is not — inside
+/// a session with reps the runner's question is "how many left", and a
+/// distance bar answers a question nobody is asking mid-interval.
+struct WProgressStrip: View {
+
+    // `Kind` and not `Shape`: a nested `Shape` shadows SwiftUI's protocol of
+    // that name inside this type.
+    private enum Kind {
+        case continuous(Double)
+        case segments(total: Int, done: Int)
+    }
+
+    private let kind: Kind
+    private let tone: WProgressTone
+
+    /// Continuous. `fraction` is 0-1 and is clamped.
+    init(fraction: Double, tone: WProgressTone = .intent) {
+        self.kind = .continuous(fraction)
+        self.tone = tone
+    }
+
+    /// Segmented. `done` counts the rep IN PROGRESS: "Rep 3 / 6" lights three.
+    init(total: Int, done: Int, tone: WProgressTone = .intent) {
+        self.kind = .segments(total: total, done: done)
+        self.tone = tone
+    }
+
+    /// 8px in the 2× set, on every board that draws one.
+    private let thickness: CGFloat = 4
+    private let track: Color = WatchV5.value.opacity(0.16)
+
+    var body: some View {
+        Group {
+            switch kind {
+            case .continuous(let fraction):
+                GeometryReader { geo in
+                    let done = CGFloat(min(max(fraction, 0), 1)) * geo.size.width
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(track)
+                        Capsule()
+                            .fill(tone.fill)
+                            .frame(width: done)
+                    }
+                    .frame(height: thickness)
+                }
+            case .segments(let total, let done):
+                HStack(spacing: 3) {   // 6px
+                    ForEach(0..<max(total, 1), id: \.self) { i in
+                        Capsule()
+                            .fill(i < done ? tone.fill : track)
+                            .frame(height: thickness)
+                    }
+                }
+            }
+        }
+        .frame(height: thickness)
+        .allowsHitTesting(false)
+    }
+}
+
 // MARK: - Words
 
-/// Uppercase kicker — a phase label, a list heading, the source line on a
-/// notification. 11-13pt, .08em tracking.
+/// Uppercase kicker — a phase label, a list heading, the evidence line over a
+/// question. 11-13pt, .08em tracking, in the TELEMETRY register.
+///
+/// The register is not a preference and it is not a parameter. Two arguments
+/// arrive at the same place:
+///
+///  · The design file draws twenty kickers and every one of them is
+///    `ui-rounded` — the phase labels on all six structured boards, the lobby
+///    list headings, Split, Paused, the controls headers, the fault and
+///    coach-question boards, the notification. Two of them state the family
+///    explicitly rather than inheriting it. There is no kicker anywhere in the
+///    0821 file drawn in Instrument Sans.
+///  · Most kickers CARRY A FIGURE — "Rep 4 of 6 · 1:12 left", "Mile 5 ·
+///    44:16", "Ceiling is 165", "9 days old". The coach face has no tabular
+///    figures, so a live countdown drawn in it shuffles horizontally as it
+///    ticks, on the one board a runner reads mid-rep, at arm's length,
+///    moving. The telemetry register is tabular by construction.
+///
+/// So this took a `figures: Bool` and the answer was always true. The
+/// parameter is gone rather than defaulted, because a register a board can
+/// opt out of is a register that drifts.
+///
+/// The default colour is the .62 step, which is what every kicker on a black
+/// board is drawn at bar the four that go to .5 (`valueMute`), amber or
+/// orange — all of which pass a colour.
 struct WKicker: View {
     let text: String
-    var color: Color = WatchV5.valueDim
+    var color: Color = WatchV5.valueLabel
     var size: CGFloat = 12
-    /// Set when the kicker CARRIES A FIGURE — "Rep 4 of 6 · 1:12 left",
-    /// "Mile 5 · 44:16", "Ceiling is 165".
-    ///
-    /// This is not a style preference. The coach face has no tabular figures,
-    /// so a live countdown drawn in it SHUFFLES HORIZONTALLY as it ticks —
-    /// on the one board a runner reads mid-rep, at arm's length, moving. The
-    /// telemetry register is tabular by construction, so a figure-bearing
-    /// kicker uses it and a prose kicker does not.
-    var figures: Bool = false
 
     var body: some View {
         Text(text.uppercased())
-            .font(figures ? WatchV5.number(size) : WatchV5.coach(size, weight: 600))
+            .font(WatchV5.number(size))
             .tracking(size * 0.08)
             .foregroundStyle(color)
+            // A kicker is one line by construction. Controls hangs a rep
+            // count and a live clock off one ("Rep 4 of 6 · 1:12 left"), and
+            // a kicker that wrapped there would move the reading block down
+            // mid-rep.
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
     }
 }
 
@@ -477,7 +722,7 @@ struct WSensorFault: View {
 
     var body: some View {
         Text(sensor)
-            .font(WatchV5.coach(size, weight: 600))
+            .font(WatchV5.label(size, .semibold))
             .foregroundStyle(WatchV5.fault)
     }
 }
@@ -503,6 +748,62 @@ struct WRow<Leading: View, Trailing: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(fill, in: RoundedRectangle(cornerRadius: WatchV5.Metric.rowRadius,
                                                style: .continuous))
+    }
+}
+
+/// A GROUP of rows — the lobby's page-2 lists, the summary's three plates.
+///
+/// The design draws these as ONE plate: a single 10pt radius on the outside,
+/// squared rows inside it, separated by a 1pt gap that the ground shows
+/// through. `WRow` rounds every row at 10pt, which is right for one row and
+/// reads as a stack of separate pills the moment there are three — so both
+/// files that needed a list built their own clipped VStack rather than use it.
+///
+/// `WRow` stays, and is still the right answer for a genuinely single row: the
+/// lobby's Gels footer is one row and is drawn as one rounded tile in the
+/// design.
+///
+/// Content is a ViewBuilder rather than a `[Row]` array on purpose. The two
+/// lists that use it carry different type scales (the lobby is 13/16, the
+/// summary 12/15 and 12/14) and the summary emphasises by FILL between groups
+/// while the lobby emphasises by fill within one — a row model general enough
+/// for both would be a second layout language.
+struct WRowGroup<Content: View>: View {
+    /// 2px in the 2× set. The gap is ground showing through the plate, which
+    /// is why it is a spacing and not a divider: there are no borders
+    /// anywhere in this design.
+    private let gap: CGFloat = 1
+
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(spacing: gap) { content() }
+            .clipShape(RoundedRectangle(cornerRadius: WatchV5.Metric.rowRadius,
+                                        style: .continuous))
+    }
+}
+
+/// One row INSIDE a `WRowGroup`. Squared, because the group carries the
+/// radius; a rounded row inside a clipped plate is the pill stack again.
+///
+/// Rows step in FILL, never in borders — `surface2` against `surface3` is how
+/// the lobby says which step the session is actually about, and `surface1`
+/// against `surface2` is how the summary separates splits from averages.
+struct WGroupRow<Leading: View, Trailing: View>: View {
+    var fill: Color = WatchV5.surface2
+    @ViewBuilder var leading: () -> Leading
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            leading()
+            Spacer(minLength: 8)
+            trailing()
+        }
+        .padding(.horizontal, 8)    // 16px
+        .padding(.vertical, 7)      // 13px, rounded up
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(fill)
     }
 }
 

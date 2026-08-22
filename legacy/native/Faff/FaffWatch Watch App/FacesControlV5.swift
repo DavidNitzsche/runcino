@@ -43,57 +43,36 @@
 //  (see `FaceExtendRecoveryV5`).
 //
 //
-//  NEEDS — shared-component changes these boards would want. NONE were made;
-//  every one is worked around locally, and the workaround is marked at its
-//  call site so it can be deleted when the component catches up.
+//  NEEDS — shared-component changes these boards wanted. ALL FOUR ARE CLOSED
+//  and every local workaround has been deleted.
 //
-//  NEEDS: `WSensorFault` is fixed at coach(17). The `Heart dropout` board
-//         draws "No heart signal" at 19pt so the broken slot sits at the same
-//         optical weight as the three untouched values around it. Used at 17
-//         here; the slot reads a little light against a 46pt pace.
+//  NEEDS: `WSensorFault` was fixed at coach(17) — CLOSED. It carries a `size`
+//         now and defaults to 19, which is what the `Heart dropout` board
+//         draws so the broken slot sits at the same optical weight as the
+//         three untouched values around it. The call site takes the default.
 //
-//  NEEDS: `WKicker` renders in the coach register. Every mid-run kicker in
-//         the 0821 file is drawn in the TELEMETRY register instead, because
-//         they carry figures — "Rep 4 of 6 · 1:12 left", "Ceiling is 165",
-//         "Skip rep 4" — and the coach face has no tabular figures, so a
-//         countdown inside a kicker would shuffle horizontally as it ticks.
-//         Worked around with the private `WFigureKicker` below. If `WKicker`
-//         gains a register parameter, delete it.
+//  NEEDS: `WKicker` rendered in the coach register — CLOSED. The whole 0821
+//         file draws its kickers in the TELEMETRY register, and most of them
+//         carry figures ("Rep 4 of 6 · 1:12 left", "Ceiling is 165", "Skip
+//         rep 4") where the coach face's non-tabular digits would shuffle
+//         horizontally as they tick. `WKicker` is the telemetry register
+//         outright now, with no switch, and the private `WFigureKicker` is
+//         gone. Its one-line clamp went upstream with it.
 //
-//  NEEDS: `WTarget` is fixed at coach(17). The design steps the LEAD verb one
-//         notch up (19pt on Lap / Skip rep / Start) and leaves the rest at 18.
-//         The handoff's own type table says "Target label 17-19", so 17 is
-//         inside the band; the lead verb just does not lead on size here.
+//  NEEDS: `WTarget` was fixed at coach(17) — CLOSED. It steps the lead verb
+//         to 19 and leaves the rest at 18, both inside the handoff's stated
+//         17-19 target-label band.
 //
-//  NEEDS: there is no token between `valueDim` (.72) and `value` (1.0). The
-//         design uses .62 for a stated fact and .86 for a coach sentence on a
-//         condition board. Both are mapped to `valueDim`, which is the closer
-//         honest token in each case, rather than inventing an opacity.
+//  NEEDS: there was no token between `valueDim` (.72) and `value` (1.0) —
+//         CLOSED. `WatchV5.prose` (.86) and `WatchV5.valueStated` (.82) exist,
+//         along with `.proseOnRamp` (.92) and `.valueLabel` (.62). The coach
+//         sentences on the battery and ceiling-override boards use `.prose`,
+//         which is what the design draws them at.
 //
 
 import SwiftUI
 
 // MARK: - Local vocabulary
-
-/// A kicker drawn in the telemetry register rather than the coach register,
-/// because it carries a figure. See the NEEDS note at the top of the file.
-///
-/// 11-13pt, uppercase, .08em tracking — the handoff's kicker spec, in the one
-/// face that has tabular figures.
-private struct WFigureKicker: View {
-    let text: String
-    var color: Color = WatchV5.valueMute
-    var size: CGFloat = 12
-
-    var body: some View {
-        Text(text.uppercased())
-            .font(WatchV5.number(size))
-            .tracking(size * 0.08)
-            .foregroundStyle(color)
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
-    }
-}
 
 /// A figure and its unit, off the running face.
 ///
@@ -101,7 +80,7 @@ private struct WFigureKicker: View {
 /// sizes. These boards are moments and conditions, and rule 9 says a moment
 /// reduces density at a size no other board uses — so the size is passed
 /// rather than ranked. The unit follows `WMetric`'s own grammar exactly: a
-/// coloured figure's unit is that colour at .72, a white figure's unit is
+/// coloured figure's unit is that colour at .62, a white figure's unit is
 /// `valueMute`.
 private struct WFigure: View {
     let value: String
@@ -121,7 +100,7 @@ private struct WFigure: View {
             if let unit {
                 Text(unit)
                     .font(WatchV5.number(max(15, size * 0.34)))
-                    .foregroundStyle(coloured ? color.opacity(0.72) : WatchV5.valueMute)
+                    .foregroundStyle(coloured ? color.opacity(0.62) : WatchV5.valueMute)
             }
         }
     }
@@ -176,7 +155,7 @@ struct FaceControlsV5: View {
     var body: some View {
         WBoard {
             VStack(alignment: .leading, spacing: 6) {
-                WFigureKicker(text: header)
+                WKicker(text: header, color: WatchV5.valueMute)
                     .padding(.leading, 2)
 
                 Spacer(minLength: 0)
@@ -261,7 +240,7 @@ struct FaceSkipConfirmV5: View {
                 Spacer(minLength: 0)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    WFigureKicker(text: repLabel, color: WatchV5.attention)
+                    WKicker(text: repLabel, color: WatchV5.attention)
                     WCoachLine(text: coachLine, size: 15, color: WatchV5.value)
                 }
                 .padding(.leading, 2)
@@ -300,7 +279,7 @@ struct FaceExtendRecoveryV5: View {
                 Spacer(minLength: 0)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    WFigureKicker(text: "Recovery")
+                    WKicker(text: "Recovery", color: WatchV5.valueMute)
                     // 52pt — the top of the hero band. The number the runner
                     // is watching, and the one the button changes.
                     Text(wClock(secondsRemaining))
@@ -351,7 +330,7 @@ struct FaceGPSAcquiringV5: View {
                 VStack(alignment: .leading, spacing: 5) {
                     WDisplayWord(text: "No fix yet", size: 26, color: WatchV5.attention)
                     WCoachLine(text: "Start anyway \(WatchV5.separator) the pace catches up within a minute.",
-                               size: 14)
+                               size: 14, color: WatchV5.prose)
                 }
                 .padding(.leading, 2)
 
@@ -399,8 +378,8 @@ struct FaceHeartDropoutV5: View {
                 WMetric(value: pace, unit: paceUnit, rank: .hero,
                         grade: paceInBand ? .inBand : .outOfBand)
 
-                // The broken slot. Words, never a figure.
-                // NEEDS: fixed at 17pt; the design draws it at 19.
+                // The broken slot. Words, never a figure. 19pt by
+                // default, which is what the design draws.
                 WSensorFault(sensor: "No heart signal")
 
                 WMetric(value: distance, unit: distanceUnit, rank: .secondary)
@@ -447,10 +426,10 @@ struct FaceLowBatteryV5: View {
                 Spacer(minLength: 0)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    WFigureKicker(text: "Battery")
+                    WKicker(text: "Battery", color: WatchV5.valueMute)
                     WFigure(value: "\(percent)%", size: 44,
                             color: WatchV5.attention, coloured: true)
-                    WCoachLine(text: sentence, size: 13)
+                    WCoachLine(text: sentence, size: 13, color: WatchV5.prose)
                         .padding(.top, 3)
                 }
                 .padding(.leading, 2)
@@ -489,7 +468,7 @@ struct FaceWaterLockV5: View {
                 WDisplayWord(text: "Locked", size: 22, color: WatchV5.valueDim)
                 WFigure(value: distance, unit: distanceUnit, size: 38)
                 WFigure(value: elapsed, size: 28, color: WatchV5.valueDim)
-                WCoachLine(text: "Turn the crown to unlock.", size: 13)
+                WCoachLine(text: "Turn the crown to unlock.", size: 13, color: WatchV5.valueLabel)
                     .padding(.top, 4)
 
                 Spacer(minLength: 0)
@@ -531,7 +510,7 @@ struct FaceBailOfferedV5: View {
                 Spacer(minLength: 0)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    WFigureKicker(text: evidence, color: WatchV5.attention)
+                    WKicker(text: evidence, color: WatchV5.attention)
                     WCoachLine(text: judgement, size: 14.5, color: WatchV5.value)
                 }
                 .padding(.leading, 2)
@@ -611,11 +590,11 @@ struct FaceCeilingOverrideV5: View {
                 Spacer(minLength: 0)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    WFigureKicker(text: "Ceiling is \(ceiling)")
+                    WKicker(text: "Ceiling is \(ceiling)", color: WatchV5.valueMute)
                     WFigure(value: bpm, unit: "bpm", size: 44,
                             color: WatchV5.attention, coloured: true)
                     if let coachLine {
-                        WCoachLine(text: coachLine, size: 13)
+                        WCoachLine(text: coachLine, size: 13, color: WatchV5.prose)
                             .padding(.top, 4)
                     }
                 }
@@ -654,7 +633,7 @@ struct FaceSpokenCueV5: View {
             VStack(alignment: .leading, spacing: 7) {
                 Spacer(minLength: 0)
 
-                WFigureKicker(text: "Coach", color: WatchV5.signal)
+                WKicker(text: "Coach", color: WatchV5.signal)
                 WCoachLine(text: line, size: 17, color: WatchV5.value)
 
                 Spacer(minLength: 0)

@@ -24,52 +24,42 @@
 //  legacy Faff.* palette. Wiring them to the engine is a separate change.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-//  NEEDS — six things the shared kit cannot currently express. Per the build
-//  constraint NONE of these were made: WatchKitV5.swift and WatchThemeV5.swift
-//  are untouched and each is worked around locally, below. Anyone landing these
-//  upstream should delete the corresponding workaround here.
+//  NEEDS — six things the shared kit could not express. FIVE ARE NOW CLOSED
+//  and their workarounds are deleted; one stands, deliberately.
 //
-//  NEEDS 1 · `WTargetWeight` has no case for a target sitting ON a full-bleed
-//    ramp. Complete and Race complete both draw Save as BLACK fill with a WHITE
-//    label — "Save is black on the colour because the colour is the point"
-//    (dc.html, Complete). `.filled` is white-on-black and `.quiet` is surface3,
-//    which on a gradient reads as a grey smudge rather than a hole punched in
-//    the colour. Worked around: `WFinishSaveTarget`, private to this file, same
-//    50pt / full width / Capsule geometry as WTarget.
+//  NEEDS 1 · CLOSED. `WTargetWeight` gained `.onRamp` — black fill, white
+//    label, because "Save is black on the colour because the colour is the
+//    point" (dc.html, Complete). `WFinishSaveTarget` is gone and both finish
+//    boards call `WTarget`. FacesLobbyV5 had written the same private target
+//    for the lobby's Start; there is one now, not three.
 //
-//  NEEDS 2 · `WWordmark` takes no colour or opacity. The first-launch board
-//    draws the lettering at 62% white with the dot at full `signal`. Worked
-//    around with `.opacity(0.62)` on the whole mark, which also dims the dot —
-//    the one visible deviation from the addendum on that board. A `dim: Bool`
-//    or a `lettering: Color` parameter on WWordmark closes it properly.
+//  NEEDS 2 · CLOSED. `WWordmark` carries `wordOpacity`, which dims the
+//    LETTERING ONLY. The addendum draws the mark at 62% with the dot at full
+//    `signal`, and the old workaround — `.opacity(0.62)` on the whole view —
+//    took the one piece of drawn intent in the mark down with the letters.
+//    The dot is now at full orange, as drawn.
 //
-//  NEEDS 3 · `WMetric` has no muted grade (48% white) and its rank ladder is
-//    fixed at hero 48 / secondary 28 / tertiary 22 pt with a 16pt unit. None of
-//    these boards is a running face, and none of their figures is on that
-//    ladder: 38 / 31 / 22 / 16 / 15 / 14 pt. `WMetricGrade` also has no `.mute`
-//    for the stale prescription, which WatchThemeV5 explicitly says is what
-//    `valueMute` is for. Worked around by drawing the figures with
-//    `WatchV5.number(_:)` + `value` / `valueDim` / `valueMute` directly. Rule 4
-//    is not at risk: it governs running faces, and none of these is one.
+//  NEEDS 3 · CLOSED for the ladder, STANDS for the muted grade. `WMetric`
+//    carries `size:` and `unitSize:` overrides now, and the ranks have been
+//    re-measured off the boards. There is still no `.mute` grade for the stale
+//    prescription, so the stale-plan dose is still drawn with
+//    `WatchV5.number(_:)` + `valueMute` directly. Rule 4 is not at risk: it
+//    governs running faces and none of these is one.
 //
-//  NEEDS 4 · There is no prose opacity step between `value` (1.0) and
-//    `valueDim` (0.72). The coach lines on these six boards are drawn at .82,
-//    .86 and .92 — brighter than valueDim because they are the only sentence on
-//    a board the runner is standing still to read. Worked around with
-//    `WatchV5.value.opacity(_:)`, which is a token derivation and not a literal.
-//    A `valueProse` step in WatchThemeV5 would make the intent legible.
+//  NEEDS 4 · CLOSED. The steps between `value` and `valueDim` are tokens:
+//    `WatchV5.proseOnRamp` (.92), `.prose` (.86), `.valueStated` (.82) and
+//    `.valueLabel` (.62). Every `.opacity(_:)` on this file's prose is gone.
 //
-//  NEEDS 5 · `WDestructive` is fixed at `Metric.targetHeight` (50pt). The
-//    addendum draws "Throw it away" at 26pt tall. Used AS IS and deliberately
-//    not worked around — rule 7 is about the absence of a pill, not the height,
+//  NEEDS 5 · STANDS, and is still the right call. `WDestructive` is fixed at
+//    `Metric.targetHeight` (50pt); the addendum draws "Throw it away" at 26pt
+//    tall. Used AS IS — rule 7 is about the absence of a pill, not the height,
 //    and a hand-rolled destructive verb is exactly the thing that component
 //    exists to prevent.
 //
-//  NEEDS 6 · `WRow` gives every row its own 10pt radius. The Summary design
-//    draws a group as ONE 10pt-radius plate with square inner rows separated by
-//    a 1pt gap in the ground. Used AS IS: the rule the component encodes ("rows
-//    step in FILL, never in borders") is the load-bearing part and it holds. A
-//    `WRowGroup` that clips a VStack of square rows would land the plate.
+//  NEEDS 6 · CLOSED. `WRowGroup` + `WGroupRow` draw the design's one
+//    10pt-radius plate with squared inner rows and a 1pt gap of ground
+//    between them. `WSummaryGroup` is gone. `WRow` keeps its own radius and
+//    is still right for a genuinely single row.
 // ─────────────────────────────────────────────────────────────────────────────
 //
 //  ONE DESIGN DISCREPANCY, resolved toward the READMEs:
@@ -82,29 +72,6 @@
 //
 
 import SwiftUI
-
-// MARK: - Local workaround · the Save target on a ramp
-//
-// NEEDS 1. Black fill, white label, on the colour. Same geometry as WTarget so
-// that when a `.onColour` weight lands upstream this can be deleted and the
-// call sites swapped with no layout change.
-
-private struct WFinishSaveTarget: View {
-    let label: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(WatchV5.coach(19, weight: 800))   // 38px ÷ 2; README target label 17-19
-                .foregroundStyle(WatchV5.value)
-                .frame(maxWidth: .infinity)
-                .frame(height: WatchV5.Metric.targetHeight)
-                .background(WatchV5.ground, in: Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-}
 
 // MARK: - 8 · Finish · Complete
 //
@@ -151,7 +118,7 @@ struct FinishCompleteBoard: View {
                             .minimumScaleFactor(0.6)
                         Text(distanceUnit)
                             .font(WatchV5.number(15))       // 30px
-                            .foregroundStyle(WatchV5.value.opacity(0.62))
+                            .foregroundStyle(WatchV5.valueLabel)
                     }
 
                     // Duration and pace read as one quantity here, not two
@@ -159,20 +126,20 @@ struct FinishCompleteBoard: View {
                     // the sanctioned separator.
                     Text("\(duration) \(WatchV5.separator) \(pace)")
                         .font(WatchV5.number(17))           // 34px
-                        .foregroundStyle(WatchV5.value.opacity(0.82))
+                        .foregroundStyle(WatchV5.valueStated)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
 
                     WCoachLine(text: coachLine,
                                size: 14,                    // 28px
-                               color: WatchV5.value.opacity(0.92))
+                               color: WatchV5.proseOnRamp)
                         .padding(.top, 3)                   // 6px
                 }
 
                 Spacer(minLength: 0)
 
                 WTargetStack {
-                    WFinishSaveTarget(label: saveLabel, action: onSave)
+                    WTarget(label: saveLabel, weight: .onRamp, action: onSave)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -221,7 +188,7 @@ struct FinishRaceCompleteBoard: View {
 
                     Text(goalComparison)
                         .font(WatchV5.number(16))           // 32px
-                        .foregroundStyle(WatchV5.value.opacity(0.86))
+                        .foregroundStyle(WatchV5.prose)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
 
@@ -233,7 +200,7 @@ struct FinishRaceCompleteBoard: View {
                 Spacer(minLength: 0)
 
                 WTargetStack {
-                    WFinishSaveTarget(label: saveLabel, action: onSave)
+                    WTarget(label: saveLabel, weight: .onRamp, action: onSave)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -259,20 +226,23 @@ struct FinishSummaryRow: Identifiable, Hashable {
 /// A grouped plate of rows. Rows step in FILL, never in borders (there are no
 /// borders anywhere in this design), and the fill step is what says which group
 /// a row belongs to.
+///
+/// One plate with squared rows inside it, not a stack of rounded ones — that
+/// is `WRowGroup`'s whole job, and it is why this is a thin wrapper over it
+/// rather than a layout of its own. All that is left here is the summary's
+/// own type scale.
 private struct WSummaryGroup: View {
     let rows: [FinishSummaryRow]
     let fill: Color
     let valueSize: CGFloat
 
     var body: some View {
-        // 2px in the 2× set. NEEDS 6: the design clips the whole group to one
-        // 10pt plate; WRow rounds each row individually.
-        VStack(spacing: 1) {
+        WRowGroup {
             ForEach(rows) { row in
-                WRow(fill: fill) {
+                WGroupRow(fill: fill) {
                     Text(row.label)
                         .font(WatchV5.number(12))           // 24px
-                        .foregroundStyle(WatchV5.valueDim)
+                        .foregroundStyle(WatchV5.valueLabel)
                         .lineLimit(1)
                 } trailing: {
                     Text(row.value)
@@ -301,7 +271,11 @@ private struct WSummaryGroup: View {
 ///
 /// with climb and miles two onward below the fold. The row heights, the 1pt
 /// row gaps and the 5pt group gaps here are the design's, so that fold lands
-/// where it was drawn. **Do not insert a group above `splits`** and do not grow
+/// where it was drawn. (The rows got 2pt shorter when this board moved off
+/// `WRow` and onto `WGroupRow`: `WRow` pads 10/8 and the design pads 16px/13px
+/// = 8/6.5. The fold moved down by that much, in the safe direction — a whole
+/// extra row of headroom, not half of one.) **Do not insert a group above
+/// `splits`** and do not grow
 /// `averages` past three rows — either one pushes Mile 1 under the fold and
 /// breaks the rule silently, because nothing in SwiftUI can measure it back.
 ///
@@ -401,11 +375,11 @@ struct PreSessionFirstLaunchBoard: View {
     var body: some View {
         WBoard {
             VStack(alignment: .leading, spacing: 0) {
-                // NEEDS 2: the addendum draws the lettering at 62% with the dot
-                // at full orange; WWordmark has no colour parameter, so the
-                // whole mark is dimmed and the dot goes with it.
-                WWordmark(size: 12)                         // 24px
-                    .opacity(0.62)
+                // The addendum draws the lettering at 62% with the dot at
+                // full orange. `wordOpacity` dims the words only — the dot is
+                // the mark, and the letters are just the name it is attached
+                // to.
+                WWordmark(size: 12, wordOpacity: 0.62)      // 24px
                     .padding(.leading, 3)                   // 6px
 
                 Spacer(minLength: 0)
@@ -414,7 +388,7 @@ struct PreSessionFirstLaunchBoard: View {
                     WDisplayWord(text: lede, size: 22)      // 44px
                     WCoachLine(text: coachLine,
                                size: 13,                    // 26px
-                               color: WatchV5.value.opacity(0.86))
+                               color: WatchV5.prose)
                 }
                 .padding(.leading, 3)
 
@@ -464,9 +438,10 @@ struct PreSessionStalePlanBoard: View {
                             color: WatchV5.attention,
                             size: 12)                       // 24px
 
-                    // NEEDS 3: the stale prescription is exactly what
-                    // WatchThemeV5 says `valueMute` is for, but WMetric has no
-                    // muted grade, so the dose is drawn directly.
+                    // NEEDS 3 (the half that stands): the stale
+                    // prescription is exactly what WatchThemeV5 says
+                    // `valueMute` is for, but WMetricGrade still has no muted
+                    // case, so the dose is drawn directly.
                     HStack(alignment: .firstTextBaseline, spacing: 6) {  // 12px
                         WDisplayWord(text: sessionType,
                                      size: 22,              // 44px
@@ -485,7 +460,7 @@ struct PreSessionStalePlanBoard: View {
                     // is the spec — so 12 it is, noted rather than rounded up.
                     WCoachLine(text: coachLine,
                                size: 12,
-                               color: WatchV5.value.opacity(0.86))
+                               color: WatchV5.prose)
                         .padding(.top, 3)                   // 6px
                 }
 
