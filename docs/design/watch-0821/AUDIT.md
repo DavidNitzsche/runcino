@@ -370,3 +370,96 @@ ungraded unit is white at **.48**, not .72 (`bpm`, `mi` are `rgba(255,255,255,.4
 None of these boards is wired. They are presentation-only, take plain parameters, and no
 call site translates `WatchWorkout` / `WorkoutEngine` into them yet. Paging, haptics and
 the router that swaps a running face for the current phase board are the next unit.
+
+---
+
+## 14 · Built, wired, audited · 2026-08-21
+
+The app builds, launches, and draws correct boards on a watchOS simulator. Both targets
+green, palette gate green, wire gate green in both directions (82 phone / 72 watch-in /
+48 watch-out), 45 watch tests passing.
+
+### The audit's headline, and how I missed it
+
+An adversarial audit found **rule 1 broken on every unprescribed phase**. `paceZone`
+initialises to `.onTarget` and is assigned only inside a work phase carrying a target, so
+every warm-up, recovery, cool-down and untargeted session reached the router reading "on
+target" when nothing had been compared. The router mapped that straight to green.
+
+**I had a screenshot of exactly this on screen and read it as correct.** The Warm-up board
+drew `6:47 /mi` in band green with no band behind it, and I called it evidence the rules
+were holding. Looking beats compiling. It does not beat checking.
+
+`grade()` now takes its evidence — treadmill, band present, reading present — and returns
+white unless all three say otherwise. Confirmed on a rebuild: the same fixture now draws
+amber with the strip's lit segment white, because the grade is derived rather than
+defaulted.
+
+### Also found and fixed
+
+| Rule | Was |
+|---|---|
+| 1 | A missing pace (`--`) drawn in green for the first minute of every outdoor run |
+| 2 | A belt run with no strap drew `--` for heart rate; the dropout test sat inside the non-treadmill branch |
+| 11 | Extend recovery was a **fully dead seam** — declared, exposed as a modifier, wired at the call site, never called |
+
+**Six boards existed only as previews**, while commit `8a0db6a6` claimed "the router mounts
+all 53". `WPhaseRace` — the board the entire race surface is built around — and
+`WPhaseThreshold`, whose only reason to exist is average pace, were both lost to a switch
+on `WatchPhase.type`, which cannot tell a race mile from a rep because the wire calls both
+`.work`. Routing is now by session shape.
+
+**Fuel fired on training runs.** The gate read `!isRace`, inverted, so a full-bleed
+race-orange panel took the screen mid-easy-run while race day never saw it.
+
+**Heads-up drew a sentence that was not true.** The engine's payload is distance-remaining
+and it was passed into the band slot, rendering `BAND IS 0.2` under an "Ease off" verb.
+
+Plus: an em dash reaching a drawn board, a race lobby drawing `0:00` for an absent goal, a
+km runner's lobby showing mile pace, `FROM 41:02 AGO` beside a duration of 41:02, a skip
+confirm naming the phase rather than the rep, and both pills on the recovered-run board
+reading the same words.
+
+### Known-good, verified rather than assumed
+
+Rules 3, 4, 5, 6, 7, 8, 9, 12, 13 hold. No exclamation marks, no emoji, and now no em
+dashes in any user-facing string across the watch target or the widget extension.
+
+### Still open
+
+- **The Summary's duration sits directly under the system clock.** Seen in a simulator
+  capture: `15:01` renders immediately below the OS `9:44`, right-aligned, reading as one
+  stacked pair. Inside the 22pt clearance and so not a rule-5 break, but it competes with
+  the one corner the app is told not to compete with. Wants the design's own header layout
+  checked against `FinishSummaryBoard`.
+- **The `-face` visual-regression harness is retired, not replaced.** It diffed against
+  `docs/design/watch-app.html`, which the 0821 handoff supersedes; all 24 reference images
+  describe faces that no longer ship. Re-pointing it at the new boards is real work and
+  worth doing — a green harness over a dead design is the failure this build hit five
+  times.
+- **`FAFF_RUN_UNREAD` is not registered on the phone.** The watch registers it; iOS renders
+  the alert with no button until `NotificationCategories.swift` gains the same id.
+- **No server template for "Session moved."** The board, the category and the payload field
+  all exist; nothing enqueues the push. The `aps.category` fix unblocked it.
+- **Nothing is device-verified.** `runningPower` on a real watch, water lock while
+  foregrounded, the widget's rendering-mode discriminator, and every haptic texture are
+  reasoned rather than felt.
+- **The battery projection returns nil for roughly the first 40 minutes of a run**, by
+  design — two quantised level-crossings are what make it honest, and the board drops the
+  clause rather than guessing.
+
+### The pattern this build kept hitting
+
+Six distinct times, a check reported success while testing nothing:
+
+1. `BUILD SUCCEEDED` over a file the project had never heard of
+2. `pipefail` + an early-exiting `grep -q`, turning a match into a failure, only on large inputs
+3. a gate script run from `/tmp`, where `ROOT` resolved to `/` and every path was wrong
+4. a wire-key extractor that matched zero structs and reported "all present"
+5. `xcodebuild` installing a stale `.app` after a failed build — found by the iPhone session
+6. a font guard whose "fix" compared PostScript names, which CoreText mangles when
+   variation axes are applied — the fix for a silent fallback would have been the silent
+   fallback
+
+Every one was green. The only defence that worked was checking the artefact — the `.o`
+file, the key list, the bundled font, the pixels — never the exit code.
