@@ -161,26 +161,41 @@ struct RangeScale: View {
     /// What the track says, in words. The amber marker is the only thing that
     /// draws "outside the band", so this is the only place that state exists
     /// for a runner who is not reading the colour.
+    ///
+    /// THE ENDPOINTS ARE PART OF THE SENTENCE, NOT A FALLBACK.
+    ///
+    /// `ends` used to be computed and then used only on the three paths where
+    /// there was no value to report — so every time the scale actually had
+    /// something to say, the caller's own endpoint labels were dropped. The
+    /// component ignores its children, and those labels are drawn as children,
+    /// so nothing else was carrying them.
+    ///
+    /// `.progress` was the expensive case. `ShoesV5` passes
+    /// `endpoints: ("0 mi", "350 mi retirement")` and the spoken string was
+    /// "62% through." — 62% of an amount VoiceOver never stated. A shoe's
+    /// mileage against its retirement threshold is the entire content of that
+    /// card, and it was unavailable.
     private var spoken: String {
-        let ends = endpoints.map { "Scale \($0.0) to \($0.1)." } ?? ""
+        let ends = endpoints.map { " Scale \($0.0) to \($0.1)." } ?? ""
         switch mode {
         case .band:
-            guard let b = band else { return ends.isEmpty ? "Pace scale" : ends }
+            guard let b = band else { return ends.isEmpty ? "Pace scale" : "Pace scale.\(ends)" }
             let range = "Target band \(fmt(b.low)) to \(fmt(b.high))."
-            guard let value else { return "\(range) No reading yet." }
+            guard let value else { return "\(range) No reading yet.\(ends)" }
             let where_ = outOfRange ? "outside the band" : "inside the band"
-            return "\(range) You are at \(fmt(value)), \(where_)."
+            return "\(range) You are at \(fmt(value)), \(where_).\(ends)"
         case .ceiling:
-            guard let b = band else { return ends.isEmpty ? "Ceiling scale" : ends }
+            guard let b = band else { return ends.isEmpty ? "Ceiling scale" : "Ceiling scale.\(ends)" }
             let ceil = "Ceiling \(fmt(b.high))."
-            guard let value else { return "\(ceil) No reading yet." }
+            guard let value else { return "\(ceil) No reading yet.\(ends)" }
             return outOfRange
-                ? "\(ceil) You are at \(fmt(value)), above the ceiling."
-                : "\(ceil) You are at \(fmt(value)), under the ceiling."
+                ? "\(ceil) You are at \(fmt(value)), above the ceiling.\(ends)"
+                : "\(ceil) You are at \(fmt(value)), under the ceiling.\(ends)"
         case .progress:
-            guard let value else { return centerLabel ?? "Progress" }
+            guard let value else { return (centerLabel ?? "Progress") + ends }
             let pct = Int((frac(value) * 100).rounded())
-            return centerLabel.map { "\($0). \(pct)% through." } ?? "\(pct)% through."
+            let head = centerLabel.map { "\($0). \(pct)% through." } ?? "\(pct)% through."
+            return head + ends
         }
     }
 
@@ -269,9 +284,32 @@ struct ZoneBar: View {
     /// good — and it recedes behind the signal fill exactly as the handoff
     /// wants. The three named hexes are also new colours against a byte-locked
     /// palette, so they would need their own exemption to exist at all.
-    private func restFill(_ zoneIndex: Int) -> Color {
-        V5.plotInk.opacity(0.22 + Double(zoneIndex) * 0.14)
+    /// THE RAMP KEEPS ITS FIVE STEPS; IT NO LONGER STARTS BELOW VISIBLE.
+    ///
+    /// It ran `.22 + i*.14` of `plotInk`, which is white at .136 through .484.
+    /// Against the `materialTile` these bars sit on that is 1.51:1 at Z1,
+    /// 2.06:1 at Z2 and 2.81:1 at Z3 — three of the five segments under the
+    /// 3:1 a graphic needs to be read, and Z1 effectively not drawn. The
+    /// segment's EXTENT is the content here (how much time sat in that zone),
+    /// so a segment you cannot find the ends of carries nothing, and the
+    /// `minShare` floor that guarantees a small zone is at least 6% of the bar
+    /// was guaranteeing 6% of something invisible.
+    ///
+    /// Re-based to .55…1.0 of `plotInk` — white .341 through .620, which is
+    /// 3.12:1 at Z1 and 7.37:1 at Z5. Still five ordinal steps, still density
+    /// rather than hue, still receding behind the signal fill. The range is
+    /// compressed, so adjacent steps sit at 1.22–1.27:1 against each other
+    /// rather than 1.32–1.37:1; they are separated by a 2pt gap of tile and
+    /// each is read against the tile, not against its neighbour.
+    ///
+    /// `static` and internal so `V5ContrastTests` measures THIS ramp rather
+    /// than a copy of the arithmetic. A contrast test that restates the
+    /// formula only proves the test agrees with itself.
+    static func restFill(_ zoneIndex: Int) -> Color {
+        V5.plotInk.opacity(0.55 + Double(zoneIndex) * 0.1125)
     }
+
+    private func restFill(_ zoneIndex: Int) -> Color { Self.restFill(zoneIndex) }
 
     var body: some View {
         GeometryReader { geo in
@@ -765,6 +803,16 @@ struct DualPoint: View {
         .padding(.horizontal, V5.S.tilePad)
         .padding(.vertical, V5.S.s16)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // SIX STOPS, IN LAYOUT ORDER, THREE TIMES OVER.
+        //
+        // The row is a pair of columns plus a gap column, so VoiceOver read
+        // "Was", "estimated 6:44", "Now", "estimated 7:08", "Moved", "+24" as
+        // six separate elements — and `PacesMovedV5` stacks three of these, so
+        // the runner counted eighteen swipes and matched each figure to the
+        // word two stops back. `.combine` keeps the children's own labels, so
+        // the amber tilde's "estimated" survives into the joined sentence.
+        // Same fix, same reason, as `PanelStatPlate`.
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1061,6 +1109,27 @@ struct SplitBars: View {
     private static let barFloorFraction: CGFloat = 0.24
     private static let barMaxWidth: CGFloat = 14
 
+    /// AN OUT-OF-BAND MILE HAS TO BE VISIBLE TO COUNT.
+    ///
+    /// This drew `V5.materialControl` (#2A2E32) on the `V5.materialTile`
+    /// (#17191B) these bars sit on — 1.29:1. The bar was very nearly the tile.
+    /// And the fill is the ONLY thing separating a mile that sat inside what
+    /// the session asked for from one that did not: the height axis carries
+    /// pace. The screen even prints the rule underneath ("Filled where the
+    /// mile sat inside what the session asked for"), which is the proof the
+    /// colour is load-bearing rather than decorative.
+    ///
+    /// `plotInk` is the token for "a drawn bar that is not the highlighted
+    /// one", which is exactly this, and it measures 7.37:1 on a tile. The
+    /// highlight still reads as the highlight.
+    ///
+    /// `static` and internal so `V5ContrastTests` measures THIS choice rather
+    /// than a copy of it — a contrast test that restates the token only proves
+    /// the test agrees with itself.
+    static func barFill(inBand: Bool?) -> Color {
+        (inBand ?? true) ? V5.signal : V5.plotInk
+    }
+
     private func barHeight(_ sec: Int, in full: CGFloat) -> CGFloat {
         let secs = bars.map { Double($0.paceSec) }
         let lo = secs.min() ?? 0
@@ -1097,7 +1166,7 @@ struct SplitBars: View {
                     UnevenRoundedRectangle(topLeadingRadius: 4, bottomLeadingRadius: 0,
                                            bottomTrailingRadius: 0, topTrailingRadius: 4,
                                            style: .continuous)
-                        .fill((b.inBand ?? true) ? V5.signal : V5.materialControl)
+                        .fill(Self.barFill(inBand: b.inBand))
                         .frame(maxWidth: Self.barMaxWidth * CGFloat(b.fraction))
                         .frame(height: barHeight(b.paceSec, in: geo.size.height))
                         // EACH MILE CLAIMS AN EQUAL SHARE OF THE WIDTH, and
@@ -1118,5 +1187,14 @@ struct SplitBars: View {
             .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
         }
         .frame(height: height)
+        // A RUN OF ELEMENTS WITH NOTHING SAYING WHAT THE RUN IS.
+        //
+        // Each bar names itself ("Mile 9, 7:42 per mile, inside the target"),
+        // which is right — a runner asking about mile nine wants mile nine.
+        // But twenty of them arrived with no announcement, so the first one
+        // read as a stray sentence in the middle of the screen. `.contain`
+        // groups them under one name without collapsing the per-mile detail.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Splits, \(bars.count) miles")
     }
 }

@@ -127,7 +127,7 @@ struct TodayChangedV5: View {
 
             FaffValueText(panel.dose.unreadableIfAbsent,
                           font: .faffText(28, weight: .semibold),
-                          color: panelInk.primary)
+                          color: panelInk.primary, mark: panelInk.mark)
         }
     }
 }

@@ -33,10 +33,34 @@ struct Brandmark: View {
         case .swept:
             logo
                 .foregroundStyle(.clear)
-                .overlay { AnimatedSweep().mask(logo) }
+                // REDUCE MOTION REACHES THE SPLASH TOO.
+                //
+                // `AnimatedSweep` is a `TimelineView(.animation)` — a
+                // perpetual, never-settling animation, and it is on the first
+                // thing the app draws on every cold launch plus the sign-in
+                // screen. It was the one animation in the app that did not go
+                // through `V5.Motion`, so it was also the one that ignored the
+                // setting. A runner who has asked the system for less motion
+                // gets the mark, held still, in the sweep's own colours.
+                .overlay { sweepOrStill.mask(logo) }
+                // The logo is an `Image`, so it is an accessibility element and
+                // announced itself by asset name — "FaffLogo". It is the brand
+                // mark on a splash; it says nothing a runner needs.
+                .accessibilityHidden(true)
         case .mono:
             logo
                 .foregroundStyle(Theme.txt)
+                .accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder
+    private var sweepOrStill: some View {
+        if V5.Motion.reduced {
+            LinearGradient(colors: Theme.Brand.sweepStops,
+                           startPoint: .leading, endPoint: .trailing)
+        } else {
+            AnimatedSweep()
         }
     }
 }

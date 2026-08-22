@@ -238,6 +238,14 @@ struct SickReportRowV5: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(V5PressStyle())
+        // WHICH SYMPTOMS ARE ALREADY TICKED IS THE STATE OF THIS FORM.
+        //
+        // It was carried by a 10pt orange dot and nothing else, so VoiceOver
+        // read seven identical "Sore throat, button" rows with no way to tell
+        // the picked ones from the rest — and this list decides how long the
+        // plan waits. `FaffRadio` already carries `.isSelected`; this
+        // hand-rolled checkbox never got it.
+        .accessibilityAddTraits(checked ? [.isSelected] : [])
     }
 
     private func startedChip(_ opt: (code: String, label: String)) -> some View {
@@ -251,9 +259,21 @@ struct SickReportRowV5: View {
                 .padding(.horizontal, V5.S.s14x)
                 .frame(height: 34)
                 .background(selected ? V5.signal : V5.materialTileRaised, in: Capsule())
-                .contentShape(Capsule())
+                // THE CHIP DRAWS AT 34 AND IS TAPPED AT 44.
+                //
+                // Same geometry as `v5HeaderTarget`: grow the target, then
+                // hand the layout back the 34pt footprint it had, so nothing
+                // on screen moves by a point. A 34pt-tall chip is 10pt short
+                // of what Apple asks, and these five sit in a row a runner is
+                // reaching for while ill.
+                .frame(height: 44)
+                .contentShape(Rectangle())
+                .padding(.vertical, -5)
         }
         .buttonStyle(V5PressStyle())
+        // Which of the five is chosen is fill colour only — orange chip,
+        // grey chip. Nothing spoke it.
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
 

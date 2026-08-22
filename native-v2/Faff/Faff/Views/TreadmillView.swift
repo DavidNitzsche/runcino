@@ -663,7 +663,7 @@ struct TreadmillView: View {
 
     private func consoleTile(label: String, value: String, unit: String, valueFontSize: CGFloat, sub: String, onMinus: @escaping () -> Void, onPlus: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
-            bigStepButton(symbol: "−", action: onMinus)
+            bigStepButton(symbol: "−", spoken: "Decrease \(label.lowercased())", action: onMinus)
             VStack(spacing: 5) {
                 SpecLabel(text: label, size: 11, tracking: 2.5, color: Theme.txt.opacity(0.62))
                 HStack(alignment: .lastTextBaseline, spacing: 4) {
@@ -684,7 +684,7 @@ struct TreadmillView: View {
                     .frame(height: 12)
             }
             .frame(maxWidth: .infinity)
-            bigStepButton(symbol: "+", action: onPlus)
+            bigStepButton(symbol: "+", spoken: "Increase \(label.lowercased())", action: onPlus)
         }
         .padding(14)
         .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
@@ -696,8 +696,9 @@ struct TreadmillView: View {
     /// 0.2 mph, moving the belt 6.0 to 9.0 was fifteen separate taps, and a
     /// burst of taps registered as about one. A single deliberate tap is
     /// still exactly one notch.
-    private func bigStepButton(symbol: String, action: @escaping () -> Void) -> some View {
-        RepeatStepV5(step: action) {
+    private func bigStepButton(symbol: String, spoken: String,
+                               action: @escaping () -> Void) -> some View {
+        RepeatStepV5(step: action, accessibilityLabel: spoken) {
             Text(symbol)
                 .font(.display(32))
                 .foregroundStyle(Theme.txt)

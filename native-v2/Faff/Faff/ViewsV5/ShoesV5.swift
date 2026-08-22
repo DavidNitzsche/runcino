@@ -203,6 +203,7 @@ struct ShoesV5: View {
                 }
             }
             .buttonStyle(V5PressStyle())
+            .accessibilityValue(open ? "Expanded" : "Collapsed")
 
             if open {
                 HStack(spacing: V5.S.s8) {

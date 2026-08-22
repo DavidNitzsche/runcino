@@ -188,6 +188,21 @@ struct RacesV5: View {
     /// `PanelStatPlate` of Goal / Projected / Gap. Gap renders amber when
     /// the engine flags it; Projected always carries the modelled mark
     /// because a projected finish is modelled by definition.
+    ///
+    /// THE INK COMES FROM THE FILL, NOT FROM A CONSTANT.
+    ///
+    /// This screen sits ABOVE its own `DayPanel`, so `@Environment(\.v5PanelInk)`
+    /// would resolve to the default white set no matter what the panel
+    /// publishes underneath it — the same reason `TodayBeforeV5` computes it.
+    /// Races never did, and its own sample carries `dayState: "race"`, one of
+    /// the two LIGHT ramps. Every line in this panel — the place label, the
+    /// date, the week line, the kicker, the race name, the dose — was drawing
+    /// white on it, measured on device at 2.47:1 through 2.68:1, while the
+    /// `PanelStatPlate` below them (a child, so the environment reaches it)
+    /// correctly drew dark. One panel, two inks, and the half this screen
+    /// owned was the failing half.
+    private var panelInk: V5.PanelInk { model.panel.fill.ink }
+
     private var heroPanel: some View {
         DayPanel(fill: model.panel.fill) {
             HStack(alignment: .center, spacing: V5.S.s12) {
@@ -195,7 +210,7 @@ struct RacesV5: View {
                     .font(.faffDisplay(20))
                     .textCase(.uppercase)
                     .tracking(20 * 0.02)
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
                 Spacer(minLength: V5.S.s12)
                 // Alone on its side of the header, so it takes the full 44.
                 HeaderDiscV5(glyph: .symbol("plus"),
@@ -206,12 +221,12 @@ struct RacesV5: View {
             HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
                 Text(model.panel.dateLine)
                     .faffDisplayV5(26, fit: .free)
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
                 Spacer(minLength: 0)
                 if let weekLine = model.panel.weekLine {
                     Text(weekLine)
                         .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.OnPanel.secondary)
+                        .foregroundStyle(panelInk.secondary)
                 }
             }
 
@@ -219,7 +234,7 @@ struct RacesV5: View {
                 if let kicker = model.panel.kicker {
                     Text(kicker)
                         .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.OnPanel.secondary)
+                        .foregroundStyle(panelInk.secondary)
                 }
                 // A race name is a proper noun of arbitrary length, not a
                 // category word. "MY HALF MARATHON" needs 778pt at 56 and
@@ -227,12 +242,12 @@ struct RacesV5: View {
                 // Names wrap; the one-word graphics (session type, phase) fit.
                 Text(model.panel.type)
                     .faffDisplayV5(TypeScaleV5.display56, fit: .name)
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
             }
 
             FaffValueText(model.panel.dose.unreadableIfAbsent,
                           font: .faffText(28, weight: .semibold),
-                          color: V5.OnPanel.primary)
+                          color: panelInk.primary, mark: panelInk.mark)
 
             // The DECODED tone, not the raw string. `s.tone == "attention"`
             // matched one of four cases: `fault` and `signal` both fell
@@ -600,6 +615,7 @@ private struct RaceScheduleRowV5: View {
                 .background(isExpanded ? V5.materialControl : Color.clear)
             }
             .buttonStyle(V5PressStyle())
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: V5.S.s10) {

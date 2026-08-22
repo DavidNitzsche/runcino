@@ -31,9 +31,32 @@
 
 import SwiftUI
 
+//  ─────────────────────────────────────────────────────────────────────────
+//  AND WHY IT HAS TO CARRY ITS OWN ACCESSIBILITY
+//
+//  The `DragGesture` above is what makes press-and-hold possible, and it is
+//  also what made these four controls INOPERABLE under VoiceOver. VoiceOver
+//  does not deliver touches; a double-tap dispatches an ACTIVATE action, which
+//  a raw gesture never receives. A `Button` would have got that for free, and
+//  a `Button` is exactly what this component exists to not be.
+//
+//  So the accessibility side is stated explicitly: a name, the button trait,
+//  and an activate action that calls `step()` once. One notch per double-tap
+//  is the right behaviour anyway — press-and-hold is a sighted-touch
+//  affordance, and the runner who needs fifteen notches gets fifteen
+//  activations rather than nothing at all.
+//
+//  This is a live-run screen. Before this, speed and incline could not be
+//  changed at all with VoiceOver on, mid-run, on a moving belt.
+//
+
 struct RepeatStepV5<Label: View>: View {
     /// Called once per notch, including the first.
     let step: () -> Void
+    /// What VoiceOver reads, and what its double-tap activates. Required —
+    /// the glyph inside is an SF Symbol, so without this the control announced
+    /// itself as "minus" or "plus".
+    let accessibilityLabel: String
     @ViewBuilder var label: () -> Label
 
     /// A tap shorter than this is exactly one notch and nothing repeats.
@@ -84,5 +107,11 @@ struct RepeatStepV5<Label: View>: View {
                     }
             )
             .onDisappear { repeater?.cancel() }
+            // The gesture above is invisible to an assistive client. These
+            // four lines are the whole of what makes the control usable.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { step() }
     }
 }

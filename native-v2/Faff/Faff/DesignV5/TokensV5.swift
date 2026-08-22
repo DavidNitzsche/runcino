@@ -157,13 +157,24 @@ enum V5 {
         let plate: Color
         /// A round header button on a panel. STATED.
         let control: Color
-        /// The ink for the modelled-number tilde on this ramp.
+        /// The modelled-number tilde, ON THIS PANEL.
         ///
-        /// Amber on every dark ramp, which is what the mark is. On the two
-        /// LIGHT ramps it is the panel ink instead: those ramps open on the
-        /// warm amber-orange stops the attention colour is drawn from, and
-        /// amber on them measures about 1.05:1 — the mark disappears exactly
-        /// where rule one needs it most. See `FaffValueText.mark`.
+        /// RULE ONE'S MARK HAS TO BE VISIBLE TO BE A MARK.
+        ///
+        /// Amber `#F2B03C` is the mark everywhere else in the app and measures
+        /// 9.3:1 on a tile, so it was hard-coded into `FaffValueText`. On the
+        /// two LIGHT ramps it is amber on amber: 1.45:1 on the stats plate.
+        /// The one glyph that says "this number is estimated rather than
+        /// measured" was the least legible thing on the panel, and Races draws
+        /// a projected finish time on exactly that plate.
+        ///
+        /// No colour in the locked palette reads as "attention" against a warm
+        /// orange ground — signal, attention and fault are all in that family.
+        /// So on a light ramp the mark keeps its GLYPH and gives up its hue:
+        /// a dark tilde immediately before the value, which is still the only
+        /// thing distinguishing "~3:16:45" from "3:16:45" and is now actually
+        /// readable. An invisible amber mark breaks rule one; a visible dark
+        /// one does not.
         let mark: Color
         /// What the status bar glyphs must be for this ramp. The panel reaches
         /// behind the clock, so the system's own ink is on our surface.
@@ -178,20 +189,39 @@ enum V5 {
             mark:      V5.attention,
             statusBar: .dark)
 
-        /// Secondary is THE SAME INK at reduced opacity, never a lighter
-        /// colour — a second hue on a moving background is a second thing to
-        /// reconcile. .72 lands on 4.5:1 exactly against the quality start,
-        /// which is on the line rather than over it, so secondary sits at .82.
+        /// ON A LIGHT RAMP THERE IS NO OPACITY LEFT TO SPEND.
         ///
-        /// The plate inverts with the ink. A translucent WHITE plate on a light
-        /// ramp is the second-worst contrast on the screen after the lede —
-        /// it lifts the background toward the type instead of away from it.
+        /// The previous pass carried the dark-ramp habit across: secondary and
+        /// quiet at .82, on the reasoning that a tier is the same ink held
+        /// back. Measured against the real oklab ramp that does not survive.
+        /// A panel's ramp runs 8.4:1 at its light corner to 3.0:1 at its deep
+        /// one, so the ink starts the row with headroom and has none left by
+        /// the end of it — and the .82 haircut costs a further 1.3–1.6×.
+        /// The week strip's 12pt letters and 16pt numbers, which sit at panel
+        /// depths 0.30 to 0.60, measured 3.43:1 and 3.34:1 at their worst
+        /// cell against the 4.5:1 that normal text requires.
+        ///
+        /// So the three tiers collapse to ONE INK here and the hierarchy is
+        /// carried by size and weight, which the design already varies from
+        /// 12pt through 56pt. Same worst cell: 4.35:1 and 4.22:1.
+        ///
+        /// THE PLATE AND THE CONTROL INVERT WITH THE INK — properly.
+        ///
+        /// They were `darkInk` at .13 and .16, described as "the plate inverts
+        /// with the ink" because "a white plate lifts the background toward
+        /// the type instead of away from it". That sentence is true of WHITE
+        /// type, which is what these panels used to carry. Under DARK ink it
+        /// is backwards: a dark plate pulls the background down toward the
+        /// ink and eats the contrast the plate exists to give. Measured on
+        /// the stats plate's own 12pt label, worst column: 2.49:1 with the
+        /// dark plate, 4.94:1 with a light one. A plate lifts AWAY from its
+        /// ink, and on a light ramp that means lighter.
         static let onLightRamp = PanelInk(
             primary:   Theme.V5.DayState.darkInk,
-            secondary: Theme.V5.DayState.darkInk.opacity(0.82),
-            quiet:     Theme.V5.DayState.darkInk.opacity(0.82),
-            plate:     Theme.V5.DayState.darkInk.opacity(0.13),
-            control:   Theme.V5.DayState.darkInk.opacity(0.16),
+            secondary: Theme.V5.DayState.darkInk,
+            quiet:     Theme.V5.DayState.darkInk,
+            plate:     .white.opacity(0.22),
+            control:   .white.opacity(0.28),
             mark:      Theme.V5.DayState.darkInk,
             statusBar: .light)
     }
@@ -204,6 +234,7 @@ enum V5 {
         static let quiet     = PanelInk.onDarkRamp.quiet
         static let plate     = PanelInk.onDarkRamp.plate
         static let control   = PanelInk.onDarkRamp.control
+        static let mark      = PanelInk.onDarkRamp.mark
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -235,10 +266,9 @@ enum V5 {
             }
         }
 
-        /// Stop positions. The two dark-ink ramps — quality and race — move
-        /// their middle stop earlier, to 52%; every ramp's dark terminal sits
-        /// past the panel edge on purpose so the deep end stays only just
-        /// darker.
+        /// Stop positions. The race ramp alone moves its middle stop earlier,
+        /// and every ramp's dark terminal sits past the panel edge on purpose
+        /// so the deep end stays only just darker.
         var locations: [Double] {
             wantsDarkInk ? Theme.V5.DayState.darkInkLocations : Theme.V5.DayState.locations
         }

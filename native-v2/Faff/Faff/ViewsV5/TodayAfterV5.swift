@@ -251,7 +251,8 @@ struct TodayAfterV5: View {
         HStack(alignment: .firstTextBaseline, spacing: V5.S.s24 + V5.S.s4) {
             ForEach(Array(posterStats.enumerated()), id: \.offset) { _, item in
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    FaffValueText(item.value, font: .faffText(32, weight: .semibold), color: panelInk.primary)
+                    FaffValueText(item.value, font: .faffText(32, weight: .semibold),
+                                  color: panelInk.primary, mark: panelInk.mark)
                     if let unit = item.unit {
                         Text(unit)
                             .font(.faffText(14))

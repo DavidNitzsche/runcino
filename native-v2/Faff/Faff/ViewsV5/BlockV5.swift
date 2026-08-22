@@ -161,6 +161,20 @@ struct BlockV5: View {
     //  fidelity even though the task's own bullet list only calls out the
     //  three pieces below it.
 
+    /// The ink this panel's own fill requires, computed rather than read from
+    /// the environment — this view sits ABOVE its own `DayPanel`, so
+    /// `@Environment(\.v5PanelInk)` would resolve to the default white set no
+    /// matter what the panel publishes beneath it. Same reason `TodayBeforeV5`
+    /// computes it, and the same defect `RacesV5` carried.
+    ///
+    /// Block's own sample is `phase`, a dark ramp, so this screen LOOKED
+    /// correct in the catalogue. But `V5Panel.dayState` is a free string off
+    /// the wire and `dayStateWordFor` in `web-v2/lib/faff/v5-today.ts` returns
+    /// `quality` for threshold / tempo / intervals / fartlek / progression /
+    /// vo2max and `race` for a race — both LIGHT ramps. A block screen opened
+    /// on a threshold day would have drawn white on it.
+    private var panelInk: V5.PanelInk { model.panel.fill.ink }
+
     private var panel: some View {
         DayPanel(fill: model.panel.fill) {
             // The place label, the same row Today and Races give it. Block was
@@ -171,7 +185,7 @@ struct BlockV5: View {
                     .font(.faffDisplay(20))
                     .textCase(.uppercase)
                     .tracking(20 * 0.02)
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
                 Spacer(minLength: 0)
             }
             .frame(height: 44)
@@ -179,12 +193,12 @@ struct BlockV5: View {
             HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
                 Text(model.panel.dateLine)
                     .faffDisplayV5(26, fit: .free)
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
                 Spacer(minLength: 0)
                 if let weekLine = model.panel.weekLine {
                     Text(weekLine)
                         .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.OnPanel.secondary)
+                        .foregroundStyle(panelInk.secondary)
                 }
             }
 
@@ -193,16 +207,16 @@ struct BlockV5: View {
                     if let kicker = model.panel.kicker {
                         Text(kicker)
                             .font(.faffText(TypeScaleV5.label13))
-                            .foregroundStyle(V5.OnPanel.secondary)
+                            .foregroundStyle(panelInk.secondary)
                     }
                     Text(model.panel.type.uppercased())
                         .faffDisplayV5(TypeScaleV5.display56)
-                        .foregroundStyle(V5.OnPanel.primary)
+                        .foregroundStyle(panelInk.primary)
                 }
 
                 FaffValueText(model.panel.dose.unreadableIfAbsent,
                               font: .faffText(TypeScaleV5.valueMin, weight: .semibold),
-                              color: V5.OnPanel.primary)
+                              color: panelInk.primary, mark: panelInk.mark)
 
                 PanelStatPlate(stats: model.panel.stats.map {
                     PanelStat($0.label, $0.value.value, ink: $0.toneValue.inkOverride)
@@ -866,8 +880,21 @@ private struct BlockWeekRow: View {
                 .frame(minHeight: 58)
                 .frame(maxWidth: .infinity)
                 .background(isOpen ? V5.materialControl : Color.clear)
+                // THE SAME CLEAR-BACKGROUND BUG, IN THE ONE PLACE IT WAS LEFT.
+                //
+                // `Color.clear` does not hit-test, so a CLOSED week row had no
+                // hit area of its own and collapsed onto its glyphs. The whole
+                // middle of the row is a `WeekShape`, which is a Shape and
+                // hit-tests nothing either — so the dead zone was most of the
+                // row, and every row in a block starts closed. `ListRow` and
+                // `FaffButton` both carry this; this hand-rolled row did not.
+                .contentShape(Rectangle())
             }
             .buttonStyle(V5PressStyle())
+            // A rotated chevron is not a label, and there is no `expanded`
+            // trait on iOS — the state goes in the value, same as
+            // `ExpandingRow`.
+            .accessibilityValue(isOpen ? "Expanded" : "Collapsed")
 
             if isOpen {
                 VStack(alignment: .leading, spacing: V5.S.s10) {

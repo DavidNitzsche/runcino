@@ -136,30 +136,13 @@ struct FaffValueText: View {
     var color: Color = V5.textPrimary
     /// The tilde renders at this fraction of the value's size.
     var markScale: CGFloat = 0.62
-    /// The ink for the MARK, which is amber everywhere except on the two
-    /// light day-state ramps.
+    /// The ink of the tilde itself.
     ///
-    /// ─────────────────────────────────────────────────────────────────────
-    /// WHY THIS IS A PARAMETER AND NOT A CONSTANT
-    ///
-    /// It was `V5.attention` outright, which was correct while every gradient
-    /// panel was dark. Round three gave the quality and race ramps dark ink,
-    /// and those two ramps OPEN ON THE MARK'S OWN COLOUR — their first stops
-    /// are the warm amber-orange the attention token is drawn from, and amber
-    /// on them measures about 1.05:1. On 8c the tilde in front of the watch
-    /// time was a faint squiggle that is not there at a glance.
-    ///
-    /// That is rule one failing in the one place it is load-bearing: a
-    /// modelled number whose mark cannot be seen IS a number that looks
-    /// measured. The screen's whole job is to refuse to promote that time.
-    ///
-    /// So on a light ramp the mark takes the panel's own ink. It stops being
-    /// amber, which is a real loss — amber is what makes the mark catch the
-    /// eye. But nothing amber can catch the eye on an amber field, and a
-    /// legible mark in the wrong colour beats an invisible one in the right
-    /// colour. The alternative is a second, darker amber, which is a new hex
-    /// against a byte-locked palette and a designer's call, not a build's.
-    /// Flagged in the report rather than taken.
+    /// Amber everywhere the ground is dark, which is almost everywhere. The
+    /// exception is a LIGHT day-state panel, where amber-on-amber measures
+    /// 1.45:1 and the one glyph carrying rule one becomes the least legible
+    /// thing on the screen. Those call sites pass `panelInk.mark`, which keeps
+    /// the tilde and drops the hue. See `V5.PanelInk.mark`.
     var mark: Color = V5.attention
 
     init(_ value: FaffValue,

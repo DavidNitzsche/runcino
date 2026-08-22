@@ -417,7 +417,7 @@ struct DataOutageV5: View {
                     }
                     if let dose = today.panel.dose {
                         FaffValueText(dose.value, font: .faffText(28, weight: .semibold),
-                                      color: panelInk.primary)
+                                      color: panelInk.primary, mark: panelInk.mark)
                     }
                 }
                 if !today.panel.stats.isEmpty {

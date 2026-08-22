@@ -188,6 +188,7 @@
 		EFAA4C1C630B5B39F42C3003 /* RecorderConcurrencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A85664CAD8235007F2987E2 /* RecorderConcurrencyTests.swift */; };
 		F36FFE86BA1F5C6A8215B496 /* PanelV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89B85857DDA2DA69F8C141A /* PanelV5.swift */; };
 		F64C10EDC3372CCA402D5759 /* OnboardingV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8825DD5FD2222468737B3C2 /* OnboardingV5.swift */; };
+		F70FE052B115F95BFC68C5BD /* V5ContrastTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A738F6B07437E922761372 /* V5ContrastTests.swift */; };
 		F78C87C61CF8C1E957424497 /* FaffWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB78B57C63F6CAA75CB24270 /* FaffWatchApp.swift */; };
 		F9DA343CAB8DDF3C41954887 /* Archivo-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3ED7487505A037C4114A81C1 /* Archivo-Variable.ttf */; };
 		FC0ECB647C054902767A8C7E /* BlockV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95083B2C82E448D42B6FAF88 /* BlockV5.swift */; };
@@ -436,6 +437,7 @@
 		ED93C1BD27C8E4828D6A7984 /* APIV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIV5.swift; sourceTree = "<group>"; };
 		EE83C39CFEEB37B8BCCE8162 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F2606EFDB59295AF72C865CB /* FaffWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWidgetSnapshot.swift; sourceTree = "<group>"; };
+		F3A738F6B07437E922761372 /* V5ContrastTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5ContrastTests.swift; sourceTree = "<group>"; };
 		F3EEDC7AADDE262E2A9AD515 /* StateScreensV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateScreensV5.swift; sourceTree = "<group>"; };
 		F5049AFA827E5D99EA69F5D0 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		F7CFE2D883A30CAC352006F8 /* TokensV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokensV5.swift; sourceTree = "<group>"; };
@@ -470,6 +472,7 @@
 				3A85664CAD8235007F2987E2 /* RecorderConcurrencyTests.swift */,
 				15FB44D69A865618A457AB74 /* SignInFlowTests.swift */,
 				AE82F287C2BEA6D3A6A74D35 /* V5ContractTests.swift */,
+				F3A738F6B07437E922761372 /* V5ContrastTests.swift */,
 				0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */,
 			);
 			path = FaffTests;
@@ -974,6 +977,7 @@
 				EFAA4C1C630B5B39F42C3003 /* RecorderConcurrencyTests.swift in Sources */,
 				6BE40F3E6AA911AD15D8C08E /* SignInFlowTests.swift in Sources */,
 				303AD12FAA2419ECDCF2D562 /* V5ContractTests.swift in Sources */,
+				F70FE052B115F95BFC68C5BD /* V5ContrastTests.swift in Sources */,
 				FCE849E5CE19B79865639C37 /* WatchRelayQueueTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

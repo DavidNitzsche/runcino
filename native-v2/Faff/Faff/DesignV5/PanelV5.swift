@@ -464,10 +464,6 @@ struct PanelStatPlate: View {
                     FaffValueText(s.value,
                                   font: .faffText(17, weight: .semibold),
                                   color: s.ink ?? panelInk.primary,
-                                  // The mark follows the ramp too. The Races
-                                  // poster carries the projected finish, and
-                                  // its `~` was amber-on-amber the moment the
-                                  // race ramp took dark ink.
                                   mark: panelInk.mark)
                         // A NUMBER MUST NOT SHATTER.
                         //

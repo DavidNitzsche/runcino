@@ -522,7 +522,8 @@ struct LiveRunTreadmillV5: View {
                 .foregroundStyle(V5.textSecondary)
             HStack(spacing: V5.S.s16 + V5.S.s2) {
                 roundControl(symbol: "minus", diameter: 72, glyphSize: 30,
-                            fill: V5.materialControl, ink: V5.textPrimary) {
+                            fill: V5.materialControl, ink: V5.textPrimary,
+                            spoken: "Slow the belt down") {
                     adjustSpeed(-2)
                 }
                 // 104pt is drawn for "8.0". A belt at "12.0" is one glyph
@@ -536,7 +537,8 @@ struct LiveRunTreadmillV5: View {
                     .minimumScaleFactor(0.65)
                     .foregroundStyle(V5.textPrimary)
                 roundControl(symbol: "plus", diameter: 72, glyphSize: 30,
-                            fill: V5.materialAction, ink: V5.actionPrimaryText) {
+                            fill: V5.materialAction, ink: V5.actionPrimaryText,
+                            spoken: "Speed the belt up") {
                     adjustSpeed(2)
                 }
             }
@@ -561,14 +563,16 @@ struct LiveRunTreadmillV5: View {
                 .foregroundStyle(V5.textSecondary)
             HStack(spacing: V5.S.s16) {
                 roundControl(symbol: "minus", diameter: 60, glyphSize: 26,
-                            fill: V5.materialControl, ink: V5.textPrimary) {
+                            fill: V5.materialControl, ink: V5.textPrimary,
+                            spoken: "Lower the incline") {
                     adjustIncline(-0.5)
                 }
                 Text(FaffFmt.oneDecimal(inclinePct) ?? "0.0")
                     .font(.faffText(68, weight: .semibold))
                     .foregroundStyle(V5.textPrimary)
                 roundControl(symbol: "plus", diameter: 60, glyphSize: 26,
-                            fill: V5.materialAction, ink: V5.actionPrimaryText) {
+                            fill: V5.materialAction, ink: V5.actionPrimaryText,
+                            spoken: "Raise the incline") {
                     adjustIncline(0.5)
                 }
             }
@@ -587,8 +591,9 @@ struct LiveRunTreadmillV5: View {
     /// `RepeatStepV5` for the measurement. A single deliberate tap is still
     /// exactly one notch.
     private func roundControl(symbol: String, diameter: CGFloat, glyphSize: CGFloat,
-                              fill: Color, ink: Color, action: @escaping () -> Void) -> some View {
-        RepeatStepV5(step: action) {
+                              fill: Color, ink: Color, spoken: String,
+                              action: @escaping () -> Void) -> some View {
+        RepeatStepV5(step: action, accessibilityLabel: spoken) {
             Image(systemName: symbol)
                 .font(.system(size: glyphSize, weight: .bold))
                 .foregroundStyle(ink)

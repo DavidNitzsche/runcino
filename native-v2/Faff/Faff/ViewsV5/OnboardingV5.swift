@@ -273,6 +273,15 @@ struct OnboardingV5: View {
                     .frame(maxWidth: .infinity)
             }
         }
+        // WHERE YOU ARE IN THE WIZARD WAS A ROW OF CAPSULES AND NOTHING ELSE.
+        //
+        // A `Capsule` publishes no accessibility element, so this drew the
+        // only "step N of M" the flow has and VoiceOver saw nothing at all.
+        // Onboarding is the one flow a runner cannot skip and cannot go back
+        // to later; not knowing how many screens are left is the difference
+        // between finishing it and abandoning it.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(step + 1) of \(stepCount)")
     }
 
     // MARK: - Navigation

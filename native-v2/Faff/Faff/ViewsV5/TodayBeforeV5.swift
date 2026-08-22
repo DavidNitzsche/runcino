@@ -296,7 +296,7 @@ struct TodayBeforeV5: View {
 
             FaffValueText(model.panel.dose.unreadableIfAbsent,
                           font: .faffText(28, weight: .semibold),
-                          color: panelInk.primary)
+                          color: panelInk.primary, mark: panelInk.mark)
 
             PanelStatPlate(stats: model.panel.stats.map { stat in
                 PanelStat(stat.label, stat.value.value,
@@ -620,6 +620,16 @@ struct TodayBeforeV5: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(V5.surfacePage)
         .ignoresSafeArea(edges: .top)
+        // THIS IS A MODAL, AND IT IS THE ONLY ONE THAT SAYS SO BY HAND.
+        //
+        // `V5SheetHost` carries `.isModal` for every sheet in the app, but the
+        // training calendar is not a sheet — it is a hand-rolled full-screen
+        // ZStack layer over Today. Opaque paint hides the screen underneath
+        // from a sighted runner; it does nothing to the accessibility tree.
+        // Without this a VoiceOver runner swipes past the last calendar row
+        // straight into the Today panel behind it and can activate rows that
+        // are not on screen.
+        .accessibilityAddTraits(.isModal)
     }
 
     // MARK: - Account sheet

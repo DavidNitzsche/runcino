@@ -531,6 +531,16 @@ struct Skeleton: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(V5.S.tilePad)
         .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
+        // `.accessibilityLabel` ALONE WAS A NO-OP HERE.
+        //
+        // A label names an element; it does not create one. Every child of
+        // this stack is a `RoundedRectangle`, and a Shape publishes nothing to
+        // the accessibility tree — so there was no element for "Loading" to
+        // attach to and VoiceOver skipped the placeholder in silence. The
+        // runner heard the section header, then the section after it, with the
+        // loading tile simply absent. `children: .ignore` is what promotes the
+        // container into an element of its own.
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Loading")
     }
 }

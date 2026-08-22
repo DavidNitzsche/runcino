@@ -539,6 +539,16 @@ struct RunDetailV5: View {
                 // ScrollView's vertical pan (same fix `RoutePolylineCard`
                 // already carries).
                 .allowsHitTesting(false)
+                // `.allowsHitTesting(false)` suppresses TOUCH, not the
+                // accessibility tree. `MKMapView` is an accessibility element
+                // and publishes its own annotations and overlays as children,
+                // so VoiceOver walked into the map and read out MapKit's
+                // furniture in the middle of the run. The map is a picture of
+                // a route the runner already ran; everything it means is the
+                // splits and the elevation profile below it, both of which
+                // carry their own data. One named element, then move on.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Route map")
         } else {
             // RULE THREE, applied to a chart rather than a session: a run
             // with no GPS has no map. Say so instead of drawing an empty
