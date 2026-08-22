@@ -452,9 +452,50 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
     //   · kebab      `§Volume-Progression-Rules` → a heading containing all its words
     // Bare words (`§HRV`, `§taper`) and line references (`Research/22:635`) are skipped.
     const CITE = /Research\/([0-9A-Za-z._-]+\.md)\s+§(\d+(?:\.\d+)*|[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)/g;
+    //
+    // ── THE SHORT FORM WAS NOT BEING CHECKED (2026-08-21) ──────────────────
+    //
+    // `CITE` requires the `.md`, so `Research/00a §312` matched nothing here.
+    // It also matched nothing in the line-number check below, which looks for
+    // a COLON (`Research/00a:312`). A line number written with a § therefore
+    // slipped between the two checks, and four of them were sitting in
+    // lib/plan/generate.ts: `§308`, `§309`, `§311`, `§312` — the 10K, half,
+    // 50K and 100K rows of a table that has no numbered sections at all.
+    //
+    // Their CONTENT was accurate, which is exactly why this matters: nothing
+    // was going to catch them until someone inserted a paragraph in Research/
+    // and the anchors silently came to mean four different rows. That is the
+    // failure Rule 7 forbids line-number citations to prevent.
+    //
+    // Short-form citations are now resolved through the same heading check.
+    const SHORT_CITE = /Research\/([0-9]{2}[a-z]?|[0-9]{2})\s+§(\d+(?:\.\d+)*)/g;
+    // A gate that extracts nothing and reports "all clean" is worse than no
+    // gate. This one is the reason the four above went unseen for months, so
+    // it says out loud how many citations it actually looked at.
+    let shortSeen = 0;
+    const shortToDoc = new Map<string, string>();
+    for (const d of docs) {
+      const stem = d.match(/^([0-9]{2}[a-z]?)-/)?.[1];
+      if (stem) shortToDoc.set(stem, d);
+    }
     for (const file of sourceFiles()) {
       const src = fs.readFileSync(file, 'utf8');
       src.split('\n').forEach((line, i) => {
+        for (const m of line.matchAll(SHORT_CITE)) {
+          shortSeen++;
+          const doc = shortToDoc.get(m[1]);
+          if (!doc) {
+            dead.push(`${rel(file)}:${i + 1}  Research/${m[1]} §${m[2]}  (no such doc)`);
+            continue;
+          }
+          const key = `Research/${doc} §${m[2]}`;
+          if (KNOWN_UNANCHORED.has(key)) continue;
+          const heads = headingsOf.get(doc) ?? [];
+          const ok = heads.some((h) =>
+            new RegExp(`^(section )?${m[2].replace(/\./g, '\\.')}([.\\s)—-]|$)`).test(h),
+          );
+          if (!ok) dead.push(`${rel(file)}:${i + 1}  Research/${m[1]} §${m[2]}  (no such section — a line number?)`);
+        }
         for (const m of line.matchAll(CITE)) {
           const [doc, section] = [m[1], m[2]];
           const key = `Research/${doc} §${section}`;
@@ -474,6 +515,11 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
         }
       });
     }
+    expect(
+      shortSeen,
+      'the short-form §citation extractor matched nothing · it has stopped reading the source ' +
+        'and every "no such section" it is not reporting is invisible again',
+    ).toBeGreaterThan(100);
     expect(
       dead,
       'These §section citations do not match any heading in the doc they name. Re-point them at\n' +

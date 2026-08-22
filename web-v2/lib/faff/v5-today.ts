@@ -220,6 +220,10 @@ export interface V5Today {
   verdict: string | null;
   zoneShares: number[] | null;
   zoneTarget: number | null;
+  /// Every zone the session asked for, ascending. A race prescribes a SET —
+  /// a half is Z4 AND Z5 (Research/08 §6.1 × Research/03 §4) — and `zoneTarget`
+  /// is null whenever that set is not a single zone. Empty asserts nothing.
+  zoneTargets: number[] | null;
   elevation: number[] | null;
   onTheBelt: V5Stat[] | null;
   shoesWorn: V5Row | null;
@@ -413,6 +417,7 @@ export interface V5RecentRunCtx {
   verdict: string | null;
   zoneShares: number[] | null;
   zoneTarget: number | null;
+  zoneTargets: number[] | null;
   elevationSamples: number[] | null;
   elevGainFt: number | null;
   weekDoneMi: number;
@@ -809,6 +814,7 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   verdict: null,
   zoneShares: null,
   zoneTarget: null,
+  zoneTargets: null,
   elevation: null,
   onTheBelt: null,
   shoesWorn: null,
@@ -931,6 +937,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.verdict = ctx.recentRun.verdict;
     t.zoneShares = ctx.recentRun.zoneShares;
     t.zoneTarget = ctx.recentRun.zoneTarget;
+    t.zoneTargets = ctx.recentRun.zoneTargets;
     t.elevation = built.elevation;
     t.onTheBelt = built.onTheBelt;
     t.shoesWorn = built.shoesWorn;

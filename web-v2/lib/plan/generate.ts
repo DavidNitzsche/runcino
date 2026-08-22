@@ -1696,7 +1696,7 @@ export function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
         cat === '5k'    ? '5×800m @ I pace · 90s jog'
       : cat === '10k'   ? '4×1km @ I pace · 2:00 jog'
       : cat === 'hm'    ? '6×800m @ I pace · 90s jog'
-      : cat === 'ultra' ? '3×1mi @ I-T transition · 2:00 jog' // ULTRA-IREP-1 (2026-06-23): Research/00a §312 cap = 2-3×1600m "rarely" for 100K; 5× over-counts; 3× stays within doctrine max
+      : cat === 'ultra' ? '3×1mi @ I-T transition · 2:00 jog' // ULTRA-IREP-1 (2026-06-23): Research/00a §"Workout dose by race distance" cap = 2-3×1600m "rarely" for 100K; 5× over-counts; 3× stays within doctrine max
       :                   '5×1mi @ I-T transition · 2:00 jog',
     threshold:
         cat === '5k'  ? '3×1mi @ T pace · 60s jog'
@@ -1759,7 +1759,7 @@ export async function resolvePrescriptions(
   return {
     families,
     intervals:        intervalsT?.prescriptionText  ?? fallback.intervals,
-    // HM-RSPEC-1 (2026-06-23): HM race-specific threshold should be 5×1mi (Research/00a §309
+    // HM-RSPEC-1 (2026-06-23): HM race-specific threshold should be 5×1mi (Research/00a §"Workout dose by race distance"
     // "5–6×1mi at half-marathon pace"), not the quality-phase 3×1mi. The DB row wins when present;
     // fallback distinguishes race-specific from quality for the HM inline prescription.
     threshold:        thresholdT?.prescriptionText
@@ -2776,7 +2776,7 @@ function layoutWeek({
           // Running the rep session twice broke §6.2's "every 7-10 days" and
           // put 2× the 8% I budget in one week.
           ? (cat === '5k'   ? ['intervals', 'threshold']
-           : cat === '10k'  ? ['intervals', 'threshold']   // RACE-SPEC-10K-1 (2026-06-23): 10K race-specific dominates with I-pace reps (Research/00a §308 "3–4×2km at 10K pace"), mirrors 5K
+           : cat === '10k'  ? ['intervals', 'threshold']   // RACE-SPEC-10K-1 (2026-06-23): 10K race-specific dominates with I-pace reps (Research/00a §"Workout dose by race distance" "3–4×2km at 10K pace"), mirrors 5K
            // DOCTRINE-HMLONG-DOSE-1 · on the week the half's fast-finish long
            // lands, the CRUISE session comes out — the direct analogue of
            // DOCTRINE-MPLONG-1, forced by a collision the marathon does not
@@ -2836,7 +2836,7 @@ function layoutWeek({
            : cat === 'hm'   ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['intervals', 'tempo'])
            : cat === 'ultra'
                // ULTRA-QUAL-1 (2026-06-23): ultra training is threshold-dominant; I-pace intervals are
-               // "rarely" appropriate (Research/00a §311 "3×1600m at 10K pace (rarely)").
+               // "rarely" appropriate (Research/00a §"Workout dose by race distance" "3×1600m at 10K pace (rarely)").
                // DOCTRINE-DOSING-2 · the pair was `['threshold','tempo']` — both
                // T, and 20% of the week at threshold. Research/22's ultra sample
                // peak weeks show what the second session actually is: the 50K's

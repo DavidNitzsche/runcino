@@ -71,7 +71,7 @@ import {
   workoutBySlug,
 } from '@/lib/workout-catalogue/catalogue';
 import { DOCTRINE_PHASES } from '@/lib/workout-catalogue/types';
-import { ZONE_TARGET } from '@/lib/coach/zone-target';
+import { ZONE_TARGET, raceZoneTargets, zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 import {
   combinationViolation,
   rampedReps,
@@ -230,7 +230,7 @@ import {
   gradeFactor,
   treadmillEffectiveGradePct,
 } from '@/lib/terrain/grade-adjust';
-import { friel7Zones, lthrZones, pctMaxZones } from '@/lib/training/zones';
+import { friel7Zones, lthrZones, pctMaxZones, PCT_MAX_ZONE_BANDS } from '@/lib/training/zones';
 import { lthrFromMaxHr } from '@/lib/training/lthr';
 import {
   EASY_HRMAX_CEILING_PCT,
@@ -12190,6 +12190,137 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         if (ZONE_TARGET[key] !== doc) {
           throw new Error(
             `ZONE_TARGET.${key} is ${ZONE_TARGET[key]}, the five-zone table puts ${what} in zone ${doc}`,
+          );
+        }
+      }
+    },
+  },
+
+  /**
+   * 2026-08-21 · THE RACE ZONE. `ZONETARGET.workout-zone-mapping` above is a
+   * correct claim that did not cover the defect beside it. It reads the
+   * five-zone table's Purpose column and confirms zone 3's purpose is "aerobic
+   * capacity" — true — while `zoneTargetForWorkout` quietly routed `race`
+   * through that same zone-3 constant. Nothing ever asked whether a RACE is an
+   * aerobic-capacity effort. It is not, at any distance the app can be handed.
+   *
+   * Round three of the iPhone handoff said a race prescribes Z4 and Z5. That
+   * was refused on the right principle — a design ruling does not move a
+   * physiological constant — and the refusal left the wrong constant standing.
+   * Doctrine settles it without needing either opinion: §6.1 publishes the race
+   * heart-rate band per distance and §4's zones are bands of the same quantity,
+   * so the answer is an overlap, and it is DIFFERENT PER DISTANCE. The single
+   * answer was the deeper defect; zone 3 was wrong for all four rows.
+   *
+   * This claim hardcodes nothing on either side. It parses §6.1's %HRmax column
+   * and §4's zone bands out of their own docs, computes the overlap itself, and
+   * requires the engine to return exactly that.
+   */
+  {
+    id: 'ZONETARGET.race-zone-comes-from-the-race-hr-band',
+    binds: [
+      'lib/coach/zone-target.ts#raceZoneTargets',
+      'lib/coach/zone-target.ts#zoneTargetsForWorkout',
+      'lib/training/zones.ts#PCT_MAX_ZONE_BANDS',
+    ],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '| Distance | %HRmax | %LTHR |',
+    claim:
+      'A race is run at the heart rate its DISTANCE allows, and the five ACSM zones are bands ' +
+      'of that same quantity, so the zone a race asks for is the overlap of the two published ' +
+      'tables rather than a judgement. A 5K and a 10K sit entirely in the top zone; a marathon ' +
+      'sits entirely in the threshold zone; a half straddles the boundary and genuinely asks ' +
+      'for both. No race distance doctrine publishes reaches down into the aerobic-capacity ' +
+      'zone at all — the marathon, the slowest of them, begins exactly at its ceiling — which ' +
+      'is what the engine used to return for every race from 5K to marathon.',
+    check({ cite }) {
+      // Side A · the race band, out of Research/08 §6.1's own %HRmax column.
+      const raceBands = cite.table();
+      // Side B · the zone bands, out of Research/03 §4's own table. Resolved
+      // here rather than imported so BOTH sides of the overlap are read from
+      // doctrine at run time — a claim that hardcodes either one only proves
+      // the test agrees with itself.
+      const zoneRows = resolveCitation(
+        'Research/03-heart-rate-zones.md',
+        '### 5-Zone (ACSM / generic / commercial wearables)',
+      ).table();
+      const zoneBands = zoneRows.rows.map((r) => parsePctBand(r['% HRmax']));
+      if (zoneBands.length !== PCT_MAX_ZONE_BANDS.length) {
+        throw new Error(
+          `Research/03 §4 now publishes ${zoneBands.length} zones · PCT_MAX_ZONE_BANDS carries ` +
+            `${PCT_MAX_ZONE_BANDS.length}, so every zone index in the app has shifted`,
+        );
+      }
+      zoneBands.forEach(([lo, hi], i) => {
+        const [eLo, eHi] = PCT_MAX_ZONE_BANDS[i];
+        if (Math.abs(eLo - lo) > 0.001 || Math.abs(eHi - hi) > 0.001) {
+          throw new Error(
+            `PCT_MAX_ZONE_BANDS[${i}] is ${eLo}-${eHi}, Research/03 §4 zone ${i + 1} is ${lo}-${hi}`,
+          );
+        }
+      });
+
+      // The overlap, computed from the docs and from nothing else.
+      const zonesFromDoc = (lo: number, hi: number) =>
+        zoneBands.reduce<number[]>(
+          (acc, [zLo, zHi], i) => (Math.min(hi, zHi) - Math.max(lo, zLo) > 0 ? [...acc, i + 1] : acc),
+          [],
+        );
+
+      const docRow: Partial<Record<DistCategory, string>> = {
+        '5k': '5K', '10k': '10K', hm: 'Half', m: 'Marathon',
+      };
+      // A distance inside each category, for driving the engine end to end.
+      const miIn: Record<DistCategory, number> = {
+        '5k': 3.1, '10k': 6.2, hm: 13.1, m: 26.2, ultra: 31,
+      };
+      for (const cat of CATS) {
+        // §6.1 has no ultra row; RACEDAY.hr-ceilings already requires the ultra
+        // ceiling to BE the marathon's, so its zone follows from that claim.
+        const band = cat === 'ultra'
+          ? RACE_HR_PCT_MAX.ultra
+          : parsePctBand(raceBands.cell(docRow[cat]!, '%HRmax'));
+        const want = zonesFromDoc(band[0], band[1]);
+        if (want.length === 0) {
+          throw new Error(`§6.1's ${cat} band ${band[0]}-${band[1]} overlaps no zone · one of the two tables has changed shape`);
+        }
+        const got = raceZoneTargets(miIn[cat]);
+        if (got.join(',') !== want.join(',')) {
+          throw new Error(
+            `a ${cat} race is prescribed zone(s) ${got.join('+') || 'none'}, but §6.1's ` +
+              `${(band[0] * 100).toFixed(0)}-${(band[1] * 100).toFixed(0)}% HRmax band lands in ` +
+              `zone(s) ${want.join('+')} of Research/03 §4`,
+          );
+        }
+        // And the same answer has to survive the switch the route actually calls.
+        const viaSwitch = zoneTargetsForWorkout('race', miIn[cat]);
+        if (viaSwitch.join(',') !== want.join(',')) {
+          throw new Error(
+            `zoneTargetsForWorkout('race', ${miIn[cat]}) returns ${viaSwitch.join('+') || 'none'} ` +
+              `while raceZoneTargets returns ${want.join('+')} · the switch has its own answer again`,
+          );
+        }
+      }
+
+      // The specific wrongness this claim was written for: zone 3 was returned
+      // for every race, and doctrine puts no race in it.
+      const aerobicCapacity = ZONE_TARGET.aerobicCapacity;
+      for (const cat of CATS) {
+        if (raceZoneTargets(miIn[cat]).includes(aerobicCapacity)) {
+          throw new Error(
+            `a ${cat} race is still prescribed zone ${aerobicCapacity} · §6.1 puts no race ` +
+              'distance inside the aerobic-capacity band',
+          );
+        }
+      }
+
+      // An unknown distance must assert nothing rather than pick a row. Same
+      // rule lib/race/distance.ts states for every other per-distance table.
+      for (const unknown of [null, undefined, 0, NaN]) {
+        if (raceZoneTargets(unknown as number | null).length !== 0) {
+          throw new Error(
+            `a race with distance ${String(unknown)} is prescribed a zone · an unknown distance ` +
+              'must highlight nothing, never default to a row',
           );
         }
       }

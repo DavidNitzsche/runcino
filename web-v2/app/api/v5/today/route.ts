@@ -20,7 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withRequestMemo } from '@/lib/runtime/request-memo';
 import { pool } from '@/lib/db/pool';
-import { zoneTargetForWorkout } from '@/lib/coach/zone-target';
+import { zoneTargetForWorkout, zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { loadActivePlanStrict } from '@/lib/plan/lookup';
@@ -563,7 +563,12 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         effortAsked: null,
         effortLogged: rpe?.rpe ?? null,
         verdict: recap.verdict,
-        zoneShares, zoneTarget: zoneTargetForWorkout(todayPlan?.type ?? null),
+        zoneShares,
+        // The race row's zone is its DISTANCE's row in Research/08 §6.1, so the
+        // planned distance has to travel with the type. `zoneTarget` stays for
+        // the phone's existing Int decode and is null when the ask is a set.
+        zoneTarget: zoneTargetForWorkout(todayPlan?.type ?? null, todayPlan?.distanceMi ?? null),
+        zoneTargets: zoneTargetsForWorkout(todayPlan?.type ?? null, todayPlan?.distanceMi ?? null),
         elevationSamples: indoor ? null : elevationFromSplits(data.splits),
         elevGainFt: data.elevGainFt != null ? Number(data.elevGainFt) : null,
         weekDoneMi: glance.weekDone, weekPlannedMi: glance.weekPlanned,

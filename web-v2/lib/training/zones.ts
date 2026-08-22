@@ -90,26 +90,56 @@ export function friel7Zones(lthr: number): ZoneTable {
 
 // ── %MHR-based fallback (Coggan/Daniels-ish 5-zone) ─────────────────────
 
-/** %HRmax zones — the consumer-wearable default. Use only when LTHR unknown. */
+/**
+ * The five ACSM zones as FRACTIONS OF HRmax, Z1…Z5, low then high.
+ *
+ * Lifted out of `pctMaxZones` on 2026-08-21 so it can be named and reused
+ * rather than re-typed. `lib/coach/zone-target.ts` reads it to work out which
+ * zone a race's published HR band actually lands in — a derivation that had
+ * previously been done by hand, and wrongly.
+ *
+ * Cite: Research/03-heart-rate-zones.md §4, the table under
+ * "### 5-Zone (ACSM / generic / commercial wearables)". `HR.pct-hrmax-zones`
+ * and `ZONETARGET.race-zone-comes-from-the-race-hr-band` both parse that table
+ * at run time; neither hardcodes the numbers below on the doctrine side.
+ */
+export const PCT_MAX_ZONE_BANDS: readonly (readonly [number, number])[] = [
+  [0.50, 0.60],
+  [0.60, 0.70],
+  [0.70, 0.80],
+  [0.80, 0.90],
+  [0.90, 1.00],
+];
+
+/**
+ * %HRmax zones — the consumer-wearable default. Use only when LTHR unknown.
+ *
+ * The citation used to read "§3 + §5". Neither is this table: §3 is
+ * "Field-Testing HRmax" and §5 is the Karvonen %HRR system, whose own
+ * "Karvonen vs. %HRmax" subsection exists precisely to say that the two are
+ * NOT the same prescription at the same percentage. The table reproduced here
+ * is §4's five-zone ACSM one, and that is what it now cites.
+ */
 export function pctMaxZones(maxHr: number): ZoneTable {
   const r = (lo: number, hi: number) => ({
     lower: Math.round(maxHr * lo),
     upper: Math.round(maxHr * hi),
   });
+  const b = PCT_MAX_ZONE_BANDS;
   return {
     method: 'pct-mhr',
     anchor: { label: 'MaxHR', bpm: maxHr },
-    citation: 'Research/03-heart-rate-zones.md §3 + §5 (%MHR fallback)',
+    citation: 'Research/03-heart-rate-zones.md §4 (5-Zone ACSM %HRmax fallback)',
     zones: [
-      { idx: 1, label: 'Very Light', shortLabel: 'Z1', ...r(0.50, 0.60),
+      { idx: 1, label: 'Very Light', shortLabel: 'Z1', ...r(...b[0]),
         purpose: 'Warmup, cooldown, recovery' },
-      { idx: 2, label: 'Aerobic',    shortLabel: 'Z2', ...r(0.60, 0.70),
+      { idx: 2, label: 'Aerobic',    shortLabel: 'Z2', ...r(...b[1]),
         purpose: 'Aerobic base, long runs' },
-      { idx: 3, label: 'Moderate',   shortLabel: 'Z3', ...r(0.70, 0.80),
+      { idx: 3, label: 'Moderate',   shortLabel: 'Z3', ...r(...b[2]),
         purpose: 'Marathon pace, steady' },
-      { idx: 4, label: 'Threshold',  shortLabel: 'Z4', ...r(0.80, 0.90),
+      { idx: 4, label: 'Threshold',  shortLabel: 'Z4', ...r(...b[3]),
         purpose: 'Tempo, lactate threshold' },
-      { idx: 5, label: 'Maximum',    shortLabel: 'Z5', ...r(0.90, 1.00),
+      { idx: 5, label: 'Maximum',    shortLabel: 'Z5', ...r(...b[4]),
         purpose: 'VO2 max intervals, short bursts' },
     ],
   };
