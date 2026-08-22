@@ -435,6 +435,13 @@ extension PhoneSync {
     /// `workout` non-nil is the success branch; `message` non-nil is the
     /// no-session branch. Both are nil only from a caller that has resolved
     /// nothing, and that writes nothing.
+    ///
+    /// PRECEDENCE IS THE ROUTER'S, NOT ITS OWN. `WorkoutRootView.idleHome`
+    /// draws the session when there is one and falls to `dayState` only when
+    /// there is not — a no-session reason can ride BESIDE a workout, and the
+    /// router still runs the session. The face follows the app, so the order
+    /// here is the same order. If that precedence ever changes, change it in
+    /// both places or the complication starts contradicting the lobby.
     func writeWidgetSnapshot(workout: WatchWorkout?,
                              message: String?,
                              glance: WatchTodayGlance?,
@@ -458,22 +465,46 @@ extension PhoneSync {
             return
         }
 
-        // A no-session reason (injury · sick · week off) rides BESIDE a
-        // workout when the calendar still carries one — the server ships both
-        // on purpose so a deployed watch runs the session unchanged and an
-        // 0821 build draws No session instead (build-workout.ts, the
-        // `noSessionState` comment). The face follows the app: if the lobby
-        // is refusing the day, the complication does not go on prescribing it.
+        // ── The session ──
+        //
+        // Every string comes out of `WatchLobbyAdapter`, which is the one
+        // place that knows both the wire's shape and the design's vocabulary.
+        // Deriving a second ramp here — off paceLabel, off the phase shape,
+        // off anything — would be a second answer to a question that already
+        // has one, and the two answers would drift the first time a session
+        // type was added.
+        //
+        // Ledes are stored RAW, not uppercased. `WDisplayWord` uppercases at
+        // draw time (WatchKitV5.swift), the lobby stores `workout.name` raw,
+        // and `FaffWidgetContent`'s own no-plan lede is sentence case — so
+        // raw is what keeps the shelf comparable with everything around it.
+        if let w = workout {
+            let name = w.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let dose = WatchLobbyAdapter.dose(for: w)
+            FaffWidgetStore.write(FaffSessionSnapshot(
+                sessionDay: day,
+                ramp: WatchLobbyAdapter.ramp(for: w).wireName,
+                lede: name.isEmpty ? nil : name,
+                dose: dose.isEmpty ? nil : dose,
+                workoutId: w.workoutId
+            ))
+            return
+        }
+
+        // ── No session, with a reason ──
         if let ds = glance?.dayState {
             let title = ds.title.trimmingCharacters(in: .whitespacesAndNewlines)
             FaffWidgetStore.write(FaffSessionSnapshot(
                 sessionDay: day,
-                ramp: ds.isRestDay ? "rest" : "none",
-                // `title` IS the display lede on the wire ("Nothing today" ·
-                // "Week off" · "Off-season"). Nothing is invented here and
-                // nothing is composed — an empty title drops the register
-                // rather than being filled in.
-                lede: title.isEmpty ? nil : title.uppercased(),
+                ramp: (ds.isRestDay ? V5LobbyRamp.rest : .noSession).wireName,
+                // ONE DELIBERATE DIVERGENCE from the router, which draws no
+                // lede on the No-session board. That board has a coach
+                // sentence under the space where a lede would go; a
+                // complication has no sentence register at all, so dropping
+                // the lede there leaves the face with nothing on it. `title`
+                // is what the wire calls the display lede ("Nothing today" ·
+                // "Week off" · "Off-season") and it is drawn, not composed.
+                lede: title.isEmpty ? nil : title,
                 // No dose on either board. There is no dose.
                 dose: nil,
                 workoutId: nil
@@ -481,120 +512,33 @@ extension PhoneSync {
             return
         }
 
-        if let w = workout {
-            FaffWidgetStore.write(FaffSessionSnapshot(
-                sessionDay: day,
-                ramp: Self.rampName(for: w),
-                lede: Self.lede(for: w),
-                dose: Self.dose(for: w),
-                workoutId: w.workoutId
-            ))
-            return
-        }
-
-        // No dayState, no workout — a flat `noWorkout` line from a phone build
-        // that does not forward the glance yet. The message is byte-stable by
-        // server contract, so the one branch worth separating is separated:
-        // a rest day is a rest day, and "No active plan." is NOT one and must
-        // not be drawn on a wrist as though the runner had been told to rest.
-        // Both ledes are the design's own board names, not composed prose,
-        // and both are superseded the moment `dayState` starts arriving.
+        // ── No session, and no reason on the wire ──
+        //
+        // A flat `noWorkout` line from a phone build that does not forward the
+        // glance yet. The message is byte-stable by server contract, so the
+        // one branch worth separating is separated: a rest day is a rest day,
+        // and "No active plan." is NOT one and must not be drawn on a wrist as
+        // though the runner had been told to rest. Both ledes are the design's
+        // own board names, not composed prose, and both are superseded the
+        // moment `dayState` starts arriving.
         let isRest = (message ?? "").lowercased().hasPrefix("rest day")
         FaffWidgetStore.write(FaffSessionSnapshot(
             sessionDay: day,
-            ramp: isRest ? "rest" : "none",
-            lede: isRest ? "REST" : "NO SESSION",
+            ramp: (isRest ? V5LobbyRamp.rest : .noSession).wireName,
+            lede: isRest ? "Rest" : "No session",
             dose: nil,
             workoutId: nil
         ))
     }
 
-    // ── Derivations · session snapshot ──
-
-    /// The ramp name the lobby hands `WatchV5.DayState.forSession` — the
-    /// `V5LobbyRamp.wireName` vocabulary (easy · quality · long · race · rest
-    /// · none), so the face and the lobby cannot pick different gradients for
-    /// the same day.
-    ///
-    /// The wire carries no `sessionClass` field, so this re-derives it from
-    /// what the payload does carry, strongest signal first:
-    ///
-    ///   1. `isRace` — the server sets it from `type === 'race'`.
-    ///   2. `paceLabel` — server-side `paceLabelFor(wo.type)`, the closest
-    ///      thing on the wire to the class itself.
-    ///   3. `displayHint` — set for long and tempo specifically.
-    ///   4. the session's name.
-    ///   5. the SHAPE of the phases. `paceLabel` is "" for the four types
-    ///      `paceLabelFor` has no case for (race_week_tuneup, fartlek,
-    ///      progression, vo2max) and every one of them is a quality session;
-    ///      reps and jog recoveries are what those look like from here.
-    static func rampName(for w: WatchWorkout) -> String {
-        if w.isRace { return "race" }
-
-        switch (w.paceLabel ?? "").uppercased() {
-        case "L":      return "long"
-        case "T", "I": return "quality"
-        case "R":      return "race"
-        case "E":      return "easy"
-        default:       break
-        }
-
-        switch (w.displayHint ?? "").lowercased() {
-        case "tempo":      return "quality"
-        case "hr", "pace": return "long"
-        default:           break
-        }
-
-        let n = w.name.lowercased()
-        if n.contains("long")                                     { return "long" }
-        if n.contains("race")                                     { return "race" }
-        if n.contains("threshold") || n.contains("tempo")
-            || n.contains("interval") || n.contains("fartlek")
-            || n.contains("progression") || n.contains("vo2")
-            || n.contains("tune-up") || n.contains("tune up")
-            || n.contains("repeat")                               { return "quality" }
-        if n.contains("rest")                                     { return "rest" }
-
-        let workPhases = w.phases.filter { $0.type == .work }.count
-        let hasRecovery = w.phases.contains { $0.type == .recovery }
-        if workPhases > 1 || hasRecovery { return "quality" }
-
-        return "easy"
-    }
-
-    /// The display word. `workout.name` is `plan_workouts.sub_label` where the
-    /// plan authored one and the type word otherwise, which is the same string
-    /// IdleView already puts at the top of the lobby — so the face and the app
-    /// say the same word. Empty reads as absent, never as "".
-    static func lede(for w: WatchWorkout) -> String? {
-        let n = w.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return n.isEmpty ? nil : n.uppercased()
-    }
-
-    /// The dose, one line, in the runner's own unit.
-    ///
-    /// Formatted HERE and not in the widget, on purpose: `unitsDistance` is a
-    /// display preference that the units audit already has one place for, and
-    /// a widget re-deriving it would be a second place for that audit to
-    /// regress. Same conversion IdleView's `distanceText` uses, so the two
-    /// read identically. No distance → no dose: the register drops rather
-    /// than drawing a dash.
-    static func dose(for w: WatchWorkout) -> String? {
-        guard let mi = w.distanceMi, mi > 0 else { return nil }
-        let isKm = w.unitsDistance == "km"
-        let value = isKm ? mi / 0.621371 : mi
-        return String(format: "%.1f", value) + (isKm ? " km" : " mi")
-    }
-
     // ── Derivations · which day ──
 
-    /// `yyyy-MM-dd`, shape only. Cheap, allocation-free, and enough: this is
-    /// guarding against a field that is empty or something else entirely, not
-    /// validating a calendar.
+    /// `yyyy-MM-dd`, shape only. Enough for what it guards: a field that is
+    /// empty, or something else entirely. It is not validating a calendar —
+    /// the store parses the string properly when it measures staleness.
     static func looksLikeDay(_ s: String) -> Bool {
         guard s.count == 10 else { return false }
-        let c = Array(s)
-        for (i, ch) in c.enumerated() {
+        for (i, ch) in Array(s).enumerated() {
             if i == 4 || i == 7 {
                 if ch != "-" { return false }
             } else if !ch.isNumber {
