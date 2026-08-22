@@ -18,6 +18,10 @@ struct FaffWatch_Watch_AppApp: App {
         UserDefaults.standard.register(defaults: [
             "audibleAlerts": true,
         ])
+        // The three notification boards are useless until their categories
+        // are registered — without this the OS draws its own plain alert and
+        // the custom long-look never runs.
+        WatchNotificationCategories.register()
     }
     var body: some Scene {
         WindowGroup {
@@ -29,5 +33,11 @@ struct FaffWatch_Watch_AppApp: App {
         .backgroundTask(.urlSession(PhoneSync.bgSessionId)) {
             await PhoneSync.shared.ensureBackgroundSession()
         }
+
+        // The custom long-look interfaces. Session moved, Race tomorrow and
+        // Yesterday-is-unread each get the app's own board rather than the
+        // system alert — one shell, and an action only on the one that
+        // genuinely has one.
+        FaffNotificationScenes()
     }
 }

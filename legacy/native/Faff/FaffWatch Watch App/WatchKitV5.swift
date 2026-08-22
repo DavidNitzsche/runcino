@@ -648,13 +648,28 @@ struct WDisplayWord: View {
     let text: String
     var size: CGFloat = 36
     var color: Color = WatchV5.value
+    /// One line on a board, because a moment word is a WORD and a second line
+    /// would make it a sentence. Notifications are the exception: their lede
+    /// is a phrase ("SESSION MOVED"), long enough to shrink itself unreadable
+    /// in a 178pt column rather than wrap.
+    var lineLimit: Int = 1
+    /// Letterspacing, for the boards that carry it.
+    var tracking: CGFloat = 0
+    /// The design draws multi-line display type at `line-height: .92`.
+    /// `.leading(.tight)` is the closest SwiftUI gets; without it a two-line
+    /// lede opens up by about 4pt and the block stops reading as one
+    /// statement. Only meaningful when `lineLimit > 1`.
+    var tightLeading: Bool = false
 
     var body: some View {
         Text(text.uppercased())
-            .font(WatchV5.display(size))
+            .font(tightLeading ? WatchV5.display(size).leading(.tight)
+                               : WatchV5.display(size))
+            .tracking(tracking)
             .foregroundStyle(color)
-            .lineLimit(1)
+            .lineLimit(lineLimit)
             .minimumScaleFactor(0.5)
+            .fixedSize(horizontal: false, vertical: lineLimit > 1)
     }
 }
 

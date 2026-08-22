@@ -64,6 +64,7 @@
 		468FE2BC3CFB56D3952DA40E /* LiveRunOutdoorV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3319534867031A9898793E4E /* LiveRunOutdoorV5.swift */; };
 		47F3245DF57F054F4D025850 /* NotificationCategories.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCEEE47B94CDA981E430812A /* NotificationCategories.swift */; };
 		49DD1311332CCD7EC88681EC /* Tips.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9883A181E1656DBDC8F3FAFC /* Tips.swift */; };
+		4AE44E43FBEEA3FBDE76BA3F /* NotificationsControllerV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = A568CF011D15B9560E0B84FE /* NotificationsControllerV5.swift */; };
 		4BB5EDC05DDAD175677A4710 /* OFL-InstrumentSans.txt in Resources */ = {isa = PBXBuildFile; fileRef = 270299E44E94590D5B9B8501 /* OFL-InstrumentSans.txt */; };
 		4C046C8BACD88A52701307F8 /* RepeatStepV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46EC493626E589550944B025 /* RepeatStepV5.swift */; };
 		4C04E6EEAF70561518C6B8AE /* FacesPhaseV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65249910DF92E049E10A8228 /* FacesPhaseV5.swift */; };
@@ -118,6 +119,7 @@
 		9A55E4A4D05E1B6F8E03515E /* AddRaceV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = C29FB6AFE3C447E23C510022 /* AddRaceV5.swift */; };
 		9AE98D4A316A6880817CB236 /* E_Nudges.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7483C37B55D5EABF86C7B744 /* E_Nudges.swift */; };
 		9B3E451CF3B7AD7C1E660B4D /* FacesRunV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A41B00785D5F02EC55BA73 /* FacesRunV5.swift */; };
+		9BECA13115FCEB33FE3453FB /* NotificationsV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC24C8E4CE9F0ADF56DB2CB /* NotificationsV5.swift */; };
 		9CFEBBFA3F3370E991138836 /* PhoneSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D7420891F1F0024E3D933 /* PhoneSync.swift */; };
 		9D4EFA11F803DC6352341222 /* NudgeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A9245F66AE1A50C76E2FF3 /* NudgeSheet.swift */; };
 		A11A3E74B3A9B30D43030CAA /* B_Provenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46AEF8CAC73238CD1F086945 /* B_Provenance.swift */; };
@@ -325,6 +327,7 @@
 		607A158397177D21CBC58EB8 /* TreadmillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillView.swift; sourceTree = "<group>"; };
 		65249910DF92E049E10A8228 /* FacesPhaseV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacesPhaseV5.swift; sourceTree = "<group>"; };
 		6A73B3AC3DBBAEBE4A7A5E7C /* FacesFinishV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacesFinishV5.swift; sourceTree = "<group>"; };
+		6AC24C8E4CE9F0ADF56DB2CB /* NotificationsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsV5.swift; sourceTree = "<group>"; };
 		6C80F049A1BE98B3445C2549 /* WatchThemeV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchThemeV5.swift; sourceTree = "<group>"; };
 		6D2418C21CF2BDF76B22187B /* HealthKitImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitImporter.swift; sourceTree = "<group>"; };
 		6E06A7E99186B27147ADDE22 /* API+Toolkit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "API+Toolkit.swift"; sourceTree = "<group>"; };
@@ -379,6 +382,7 @@
 		A0C2C08025A102B779831008 /* WatchDeviceState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchDeviceState.swift; sourceTree = "<group>"; };
 		A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthView.swift; sourceTree = "<group>"; };
 		A4141967D7277D2DF4252A9A /* GalleryV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryV5.swift; sourceTree = "<group>"; };
+		A568CF011D15B9560E0B84FE /* NotificationsControllerV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsControllerV5.swift; sourceTree = "<group>"; };
 		A6142CF93DF4BB8739EB299D /* TodayPreRunBodyV3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayPreRunBodyV3.swift; sourceTree = "<group>"; };
 		A69925035C6326F0327A2787 /* HowItWentPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HowItWentPanel.swift; sourceTree = "<group>"; };
 		A6CDCA6D9D915AA28A0458FB /* BeltSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeltSession.swift; sourceTree = "<group>"; };
@@ -594,6 +598,8 @@
 				1D4E8F519A9E24A36E4D0BC7 /* Haptics.swift */,
 				9FCF573DA7A5C1E3F9FBC5A1 /* Info.plist */,
 				BFA85E15978E6315D144D85E /* MIGRATION_PLAN.md */,
+				A568CF011D15B9560E0B84FE /* NotificationsControllerV5.swift */,
+				6AC24C8E4CE9F0ADF56DB2CB /* NotificationsV5.swift */,
 				1AA31DB52794BE1700934B01 /* PaceDrift.swift */,
 				8B2D7420891F1F0024E3D933 /* PhoneSync.swift */,
 				43619EB76197C5C19037C644 /* TreadmillHRSession.swift */,
@@ -954,6 +960,8 @@
 				F78C87C61CF8C1E957424497 /* FaffWatchApp.swift in Sources */,
 				533CAEF551723F2A36BFBA9C /* FaffWidgetSnapshot.swift in Sources */,
 				FDFB5B7B4C41C8B3C7BBF7C8 /* Haptics.swift in Sources */,
+				4AE44E43FBEEA3FBDE76BA3F /* NotificationsControllerV5.swift in Sources */,
+				9BECA13115FCEB33FE3453FB /* NotificationsV5.swift in Sources */,
 				9276B87CB0A938E3DF8E70EA /* PaceDrift.swift in Sources */,
 				9CFEBBFA3F3370E991138836 /* PhoneSync.swift in Sources */,
 				12C8B803062A13AD7088FE18 /* TreadmillHRSession.swift in Sources */,

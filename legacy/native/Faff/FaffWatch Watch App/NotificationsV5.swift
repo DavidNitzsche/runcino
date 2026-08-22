@@ -206,21 +206,10 @@ private enum FaffNotificationMetric {
 // `.leading(.tight)` when it is not 1) so this view can be deleted and the
 // display register has exactly one implementation again. Not done here — this
 // pass may not edit WatchKitV5.swift.
-private struct V5NotificationLede: View {
-    let text: String
-
-    var body: some View {
-        Text(text.uppercased())
-            // `.leading(.tight)` is the closest SwiftUI gets to the design's
-            // `line-height:.92`. Without it a two-line lede opens up by ~4pt
-            // and the block stops reading as one statement.
-            .font(WatchV5.display(FaffNotificationMetric.ledeSize).leading(.tight))
-            .tracking(FaffNotificationMetric.ledeTracking)
-            .foregroundStyle(WatchV5.value)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
+// V5NotificationLede is GONE. It existed because WDisplayWord could not wrap
+// or carry tracking, so a notification's phrase-length lede had to be
+// hand-rolled — which is how a shared component quietly stops being shared.
+// Both properties are on WDisplayWord now.
 
 // MARK: - The shell
 
@@ -259,7 +248,14 @@ struct V5NotificationBoard: View {
                     }
 
                     if let lede = content.lede {
-                        V5NotificationLede(text: lede)
+                        WDisplayWord(
+                            text: lede,
+                            size: FaffNotificationMetric.ledeSize,
+                            lineLimit: 2,
+                            tracking: FaffNotificationMetric.ledeTracking,
+                            tightLeading: true
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
                     // The consequence. Never a grade on the runner: "the long
