@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  The ONLY capability this extension needs. It reads a snapshot the
+	  watch app wrote to the shared group and draws it — no HealthKit, no
+	  location, no network. Same group id both existing targets already
+	  declare (FaffWatch Watch App.entitlements, Faff.entitlements), so
+	  nothing new is provisioned in the Developer portal.
+
+	  Deliberately NOT here: com.apple.developer.healthkit. An extension
+	  that cannot read Health cannot leak it, and a widget that asked for
+	  it would put a second HealthKit consumer in the App Review story for
+	  no drawn pixel.
+	-->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.run.faff.app</string>
+	</array>
+</dict>
+</plist>

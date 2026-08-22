@@ -47,6 +47,34 @@
 import SwiftUI
 import CoreText
 
+// MARK: - Color(hex:)
+//
+// This lived in FaceKit.swift, the LEGACY face kit, until 2026-08-21. Two
+// reasons it moved here, one structural and one that broke a build:
+//
+//  1. FaceKit is scheduled for deletion. When the last face migrates off the
+//     brief-v2 palette, check-palette-sync.sh inverts and demands the Faff
+//     enum and Role be removed. Every token in this file would have gone with
+//     them. A token layer may not depend on the layer it replaces.
+//
+//  2. The widget extension target compiles WatchThemeV5.swift and does NOT
+//     compile FaceKit.swift - correctly, since a complication has no business
+//     with the old face kit. That produced 60 "no exact matches in call to
+//     initializer" errors in this file the moment the target was added, all
+//     of them cascade from one missing extension.
+//
+// FaceKit still calls Color(hex:) and still resolves it: same module, same
+// target. It just no longer OWNS it.
+extension Color {
+    init(hex: UInt32) {
+        self.init(
+            red:   Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue:  Double(hex & 0xFF) / 255
+        )
+    }
+}
+
 enum WatchV5 {
 
     // ───── Ground and containment ─────

@@ -197,6 +197,13 @@ targets:
       - path: Faff/FaffWatch Watch App
         excludes:
           - "**/.DS_Store"
+      # The widget's snapshot shelf, compiled into the APP as well as the
+      # extension — the extension reads it, the app writes it. It is one file
+      # of Foundation + WidgetKit with no design tokens and no SwiftUI, so it
+      # carries none of the widget's view layer across with it. The call site
+      # the app still needs is described in a `// NEEDS:` at the foot of that
+      # file; until it exists the widget correctly draws its no-plan board.
+      - path: Faff/FaffWatch Widgets/FaffWidgetSnapshot.swift
     info:
       path: Faff/FaffWatch Watch App/Info.plist
       properties:
@@ -243,3 +250,93 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: faff
         INFOPLIST_KEY_CFBundleIconName: AppIcon
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      # The WidgetKit extension is EMBEDDED IN THE WATCH APP, not in the
+      # iPhone app. A watchOS widget extension that rides in the phone bundle
+      # is not installed on the wrist and its complication never appears in
+      # the face gallery.
+      - target: FaffWatch Widgets
+        embed: true
+        codeSign: true
+
+  # ── WidgetKit extension · complications + the Smart Stack widget ─────────
+  #
+  # The 0821 watch handoff, README § "Screens · 9 · Before the app opens".
+  # Three complication sizes and one Smart Stack card, all drawing the same
+  # thing: today's session type and its dose. Sources live in legacy/ beside
+  # the watch app they belong to and are symlinked in the same way
+  # (native-v2/Faff/FaffWatch Widgets → ../../legacy/native/Faff/FaffWatch Widgets),
+  # so the two wrist targets stay in one place.
+  #
+  # BUNDLE ID: Apple requires an extension's id to be prefixed by its HOST's
+  # id, and the host here is the watch app — run.faff.app.watchkitapp. Hence
+  # run.faff.app.watchkitapp.widgets. Getting this wrong is an upload-time
+  # rejection, not a build error, which is the same class of failure the
+  # watch app's own comment above records.
+  #
+  # The Swift settings below are NOT cargo-culted from the watch app: the two
+  # targets share the WatchThemeV5/WatchKitV5 sources, which were authored
+  # against SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor. Compiling the same files
+  # under a different isolation default is how one file gets two meanings.
+  FaffWatch Widgets:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: Faff/FaffWatch Widgets
+        excludes:
+          - "**/.DS_Store"
+          # AppleDouble sidecars. The repo lives on an exFAT volume that
+          # mints `._*` for every file; xcodegen's globbing would otherwise
+          # hand swiftc a 4KB binary blob named `._Foo.swift`.
+          - "**/._*"
+          - "Info.plist"
+          - "*.entitlements"
+      # Shared with the watch app, compiled into both. The extension is a
+      # separate process and cannot link the app's binary, so the tokens and
+      # the component vocabulary are compiled twice on purpose — the
+      # alternative is a second copy of the palette, which is exactly what
+      # check-palette-sync.sh exists to prevent.
+      - path: Faff/FaffWatch Watch App/WatchThemeV5.swift
+      - path: Faff/FaffWatch Watch App/WatchKitV5.swift
+      # Instrument Sans + Archivo. watchOS has no UIAppFonts path into an
+      # extension and the app's runtime registration runs against the APP's
+      # main bundle, so the extension ships and registers its own copy
+      # (FaffWidgetFonts.swift). Same TTFs, same directory, no second source
+      # of truth for the typefaces.
+      - path: Faff/FaffWatch Watch App/Fonts
+        type: folder
+        buildPhase: resources
+        excludes:
+          - "**/.DS_Store"
+          - "**/._*"
+    info:
+      path: Faff/FaffWatch Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: faff
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: run.faff.app.watchkitapp.widgets
+        SDKROOT: watchos
+        TARGETED_DEVICE_FAMILY: "4"
+        # Matches the watch app. The extension cannot be newer than its host.
+        WATCHOS_DEPLOYMENT_TARGET: "10.0"
+        SUPPORTS_MACCATALYST: NO
+        SWIFT_VERSION: "5.0"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_STRICT_CONCURRENCY: minimal
+        SWIFT_UPCOMING_FEATURE_STRICT_CONCURRENCY: NO
+        # App Group only — the extension reads a snapshot the watch app wrote
+        # and draws it. No HealthKit: an extension that cannot read Health
+        # cannot leak it, and asking would add a HealthKit consumer to the
+        # App Review story for no drawn pixel.
+        CODE_SIGN_ENTITLEMENTS: Faff/FaffWatch Widgets/FaffWatch Widgets.entitlements
+        # DELIBERATELY ABSENT: ASSETCATALOG_COMPILER_APPICON_NAME. A widget
+        # extension has no icon of its own — the complication gallery uses the
+        # watch app's. Naming an AppIcon set this target does not ship warns on
+        # every build.
+        #
+        # ALSO ABSENT: SKIP_INSTALL. The watch app embeds the same way and does
+        # not set it; the embed build phase, not this flag, is what puts the
+        # .appex inside the host.

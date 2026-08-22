@@ -22,15 +22,10 @@ import SwiftUI
 
 // MARK: - Faff palette (canonical tokens — single source of truth)
 
-extension Color {
-    init(hex: UInt32) {
-        self.init(
-            red:   Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >> 8) & 0xFF) / 255,
-            blue:  Double(hex & 0xFF) / 255
-        )
-    }
-}
+// Color(hex:) MOVED to WatchThemeV5.swift (2026-08-21). It is still called
+// throughout this file and still resolves - same module - but the new token
+// layer owns it now, because this file is the one scheduled for deletion and
+// because the widget extension compiles WatchThemeV5 without compiling this.
 
 // LOCKED TEN-COLOR PALETTE (brief v2, AFC fix 4) · byte-for-byte with
 // WatchTheme.C, iPhone Theme.swift, and web globals.css :root.

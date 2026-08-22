@@ -19,6 +19,8 @@
 		08EDED0D96612584E3C15A70 /* A11yDump.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F35B32A76C4221652B197B /* A11yDump.swift */; };
 		097BBD3A01CCAB65AC7F4F60 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894094955F354E1174579A70 /* RootTabView.swift */; };
 		0C7CECA6722DD1B30C6C89EB /* WatchTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91FC1DB4EC397EFC1B67BFE9 /* WatchTheme.swift */; };
+		0E261A9EF327806D8F23CDBF /* WatchKitV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB189A1C29F682554E49956 /* WatchKitV5.swift */; };
+		10084EFCD48FE0F9C5C0CA8E /* WatchThemeV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C80F049A1BE98B3445C2549 /* WatchThemeV5.swift */; };
 		10AA3116544E4E9AE0559A9B /* SessionHygiene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 872674AC672B720B19FB3D93 /* SessionHygiene.swift */; };
 		10B0FB5796B31155C12CDF83 /* ScreensCatalogV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AFCF59C06ED8C5C087F66C /* ScreensCatalogV5.swift */; };
 		121AAA50A62B2D18163E4040 /* K_TargetsProjectionDepth.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8C0E49F71B6BB27E246B9C6 /* K_TargetsProjectionDepth.swift */; };
@@ -27,6 +29,7 @@
 		14640A3705B32648E88B7E91 /* ReadinessBriefSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */; };
 		14C9CA2FFD11F545E83DE1A9 /* ColdStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81938656B7079C01BB12693C /* ColdStartView.swift */; };
 		16105FF9F23FE470CECECD32 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 139264554EDD5A64F64E384F /* Assets.xcassets */; };
+		16676927C72B44D5C7D84EE5 /* FaffWidgetContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E20B32808244C5EC8C98C05 /* FaffWidgetContent.swift */; };
 		1CCD6EF18C3EFBE8C114FB8D /* SettingsV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EA8EB84CF316484DDD472B3 /* SettingsV5.swift */; };
 		209B9B2415A9DD80ADC7A4B8 /* StateScreensV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3EEDC7AADDE262E2A9AD515 /* StateScreensV5.swift */; };
 		20AEFCE629FD7E7D0C7021C2 /* WatchThemeV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C80F049A1BE98B3445C2549 /* WatchThemeV5.swift */; };
@@ -73,7 +76,9 @@
 		4E88DDDEE13FBFC793505EDE /* G_Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE323D928DA355934197F38B /* G_Settings.swift */; };
 		5145860E3D5DA3AF58559C74 /* WatchMirrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E500ED606917B273FF2A51 /* WatchMirrorView.swift */; };
 		528D47BC25D2A7F0CDB54874 /* SurfaceStoreV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = B817BE00E8380E26CE5AC512 /* SurfaceStoreV5.swift */; };
+		533CAEF551723F2A36BFBA9C /* FaffWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2606EFDB59295AF72C865CB /* FaffWidgetSnapshot.swift */; };
 		53BF589D416A19346C3E3869 /* SickV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF7E6E0D868BFA61684A1B5 /* SickV5.swift */; };
+		555322FBB6B41AD02414A8BF /* FaffWidgetProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D399E6BD092E5FEF2DA13466 /* FaffWidgetProvider.swift */; };
 		57463FD11EB2AB16CE4C44F7 /* HealthCompactGauge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7AF53AC1B5DF3231932FB6 /* HealthCompactGauge.swift */; };
 		58C73FAA4F3A621C91A48076 /* RaceDayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75CB12F69B8E91BD1846A268 /* RaceDayView.swift */; };
 		59394AFC9109506E69E7996F /* TokensV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7CFE2D883A30CAC352006F8 /* TokensV5.swift */; };
@@ -91,8 +96,10 @@
 		6D9687543F5EBEA6E7422E8F /* HealthSegmentedControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F097DD1FEE235AC5D4AD178 /* HealthSegmentedControl.swift */; };
 		70AD94734D10C3965FA2F513 /* ThemeV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EC4B08F6610A04777F2FC2E /* ThemeV5.swift */; };
 		74D86F02898E21A4BFE78C3F /* Units.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6A293892BB32DC4273DE50 /* Units.swift */; };
+		782AC5CD75A4DEB9208B6506 /* FaffSmartStackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB61CC30CD62C9D33A506E4 /* FaffSmartStackView.swift */; };
 		7A0F250BA4DA7F45225E8030 /* Races.swift in Sources */ = {isa = PBXBuildFile; fileRef = 174FE8C6F00184359AC974B6 /* Races.swift */; };
 		7A3DF73FFED76D4FB846FA85 /* BeltSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6CDCA6D9D915AA28A0458FB /* BeltSession.swift */; };
+		7A933A8B78FCB57C924E31B9 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = 91C95506B64A47635328790C /* Fonts */; };
 		7BA20DF305E7C6B57ACE9606 /* CoachLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8264F35BB460D8D47D1D7B3F /* CoachLog.swift */; };
 		7D5AC76382E13C4B1B7DDACF /* CoachLogCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FA8A61F587D45BC203FAA79 /* CoachLogCard.swift */; };
 		7D6EEA014498E248E262CC14 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DBDD89E184A2A60C766D18F /* OnboardingView.swift */; };
@@ -108,6 +115,7 @@
 		92B4B04DC3045097B60E9AC4 /* RecoveryWindowStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5F68CF60A53A86E84CD6B2 /* RecoveryWindowStrip.swift */; };
 		93719A4457B3D049C1A86D64 /* TreadmillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607A158397177D21CBC58EB8 /* TreadmillView.swift */; };
 		961FBF4DEC67B3CAD676A523 /* ReadinessGlanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 590886F21D4DD966A37DE610 /* ReadinessGlanceView.swift */; };
+		966B569573538B582276AF4E /* FaffWidgetFonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A73D90521CDA78AC481F8D8D /* FaffWidgetFonts.swift */; };
 		96AB4DF9DC78C005205930DA /* ResponsiveFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D23DD51213DA16F555FCAA /* ResponsiveFace.swift */; };
 		970019D556F270E9EA059FB3 /* CourseImportV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EA6E4EA5BC58D6CDD52FE13 /* CourseImportV5.swift */; };
 		97C0A9C35C5B8D867ADBB661 /* F_Sheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8887459C81D2BD8B503FAFE /* F_Sheets.swift */; };
@@ -122,6 +130,7 @@
 		9F33022A531EBF8A5C922A47 /* WatchFaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D626345B3F0B0BDED8857D3 /* WatchFaces.swift */; };
 		A11A3E74B3A9B30D43030CAA /* B_Provenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46AEF8CAC73238CD1F086945 /* B_Provenance.swift */; };
 		A2205010201940343C1796E2 /* ToolkitPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B4214411E5A308A6B07D6E4 /* ToolkitPayloads.swift */; };
+		A2BEE994D2DF7B2FCF1B1290 /* FaffWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B66BB20F1C8DE49B6D9600 /* FaffWidgetBundle.swift */; };
 		A2E9E71A2FA154AA15B03FC3 /* NotificationInboxSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430D66F00D99D78BC50D43E3 /* NotificationInboxSheet.swift */; };
 		A4B00D17F9CD81D6D57E75E3 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3021BAFCB3395A359AD25A3C /* TodayView.swift */; };
 		A4BFA53D2EB8255A25E154AD /* DragSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84E231F45E68801F45CA43EB /* DragSheet.swift */; };
@@ -155,6 +164,7 @@
 		CBF05C82C08D2CAD384C3008 /* ActiveWorkoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A82679266351BEBAFB330F1 /* ActiveWorkoutView.swift */; };
 		CC56F6522DB4029831F4ECE1 /* BeltTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BBD87A2B7AEEDE1D12808EB /* BeltTrackerTests.swift */; };
 		CF1C1E572DC1A191D8D58977 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A2DDEC15725161C4032FEC9 /* SignInView.swift */; };
+		D0882F637FE348F184468398 /* FaffWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2606EFDB59295AF72C865CB /* FaffWidgetSnapshot.swift */; };
 		D1097CBDA1F05F55910B5163 /* StravaReconnectBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BE2FACB96AFFAE039358E11 /* StravaReconnectBanner.swift */; };
 		D2D6BC52AB864AD678DF3709 /* Primitives.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E0F934EAB1B1CC2AD163825 /* Primitives.swift */; };
 		D3BC37653D9BE02DAEABE840 /* C_CoachTransparency.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD01DD17592B8872CD72B36 /* C_CoachTransparency.swift */; };
@@ -173,8 +183,10 @@
 		E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80D79010E6307A7B819FD164 /* TokenStore.swift */; };
 		E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DDE304E9C6471D398E2D102 /* Briefing.swift */; };
 		E1D19AD240AAA3B18043EF2F /* TreadmillHRStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */; };
+		E3F08F2316C2909AF8B3AB8B /* FaffWatch Widgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 574046EFA57DAA5E3FA61AB5 /* FaffWatch Widgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E3FA651A77FAF9DC15B217FE /* RunDetailV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FF8F02690033B47196AEF42 /* RunDetailV5.swift */; };
 		E54713F776795DC8AB4F468D /* ChimePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87DEABD97368BE1C69024791 /* ChimePlayer.swift */; };
+		EAD8082D43F043285EFCABAD /* FaffComplicationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B9D4547CDA7A3180224CA48 /* FaffComplicationViews.swift */; };
 		EAF8355DE9CD72C8C10FFD51 /* A_Signals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ABAABCF2CDD7B4DBC82200 /* A_Signals.swift */; };
 		EB4A118FB7E42C2751A6709D /* ReadinessBriefSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CF1EF57B25870ED0684678F /* ReadinessBriefSeed.swift */; };
 		ED3DBAEF3FFB60390FE0317B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE83C39CFEEB37B8BCCE8162 /* ContentView.swift */; };
@@ -213,9 +225,27 @@
 			remoteGlobalIDString = D9BD02B3EBCA6139CDCA3B00;
 			remoteInfo = Faff;
 		};
+		A1C5DD2CBDA6A21B5E8E8A88 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 71044FC49B493BB4714930F0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B68CA05EC1909CDF78B46F24;
+			remoteInfo = "FaffWatch Widgets";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		272BFFCC41AAEEE6C12F1389 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				E3F08F2316C2909AF8B3AB8B /* FaffWatch Widgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E78D6D288A9B14BD0D2F8FB6 /* Embed Watch Content */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -237,6 +267,7 @@
 		081F3BDD4979D92FC6A19386 /* TodayRecoveryPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayRecoveryPanel.swift; sourceTree = "<group>"; };
 		09ABAABCF2CDD7B4DBC82200 /* A_Signals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = A_Signals.swift; sourceTree = "<group>"; };
 		0A82679266351BEBAFB330F1 /* ActiveWorkoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutView.swift; sourceTree = "<group>"; };
+		0B9D4547CDA7A3180224CA48 /* FaffComplicationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffComplicationViews.swift; sourceTree = "<group>"; };
 		0BBD87A2B7AEEDE1D12808EB /* BeltTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeltTrackerTests.swift; sourceTree = "<group>"; };
 		0C18DDEE14414B527EFBB143 /* FaffMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffMesh.swift; sourceTree = "<group>"; };
 		0CDBF2DFC432A591DA62EDEF /* Oswald-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Oswald-SemiBold.ttf"; sourceTree = "<group>"; };
@@ -254,6 +285,7 @@
 		188559D9B23742DBC413C75E /* ProView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProView.swift; sourceTree = "<group>"; };
 		1AA31DB52794BE1700934B01 /* PaceDrift.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaceDrift.swift; sourceTree = "<group>"; };
 		1AB189A1C29F682554E49956 /* WatchKitV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchKitV5.swift; sourceTree = "<group>"; };
+		1AB61CC30CD62C9D33A506E4 /* FaffSmartStackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffSmartStackView.swift; sourceTree = "<group>"; };
 		1B4214411E5A308A6B07D6E4 /* ToolkitPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolkitPayloads.swift; sourceTree = "<group>"; };
 		1D4E8F519A9E24A36E4D0BC7 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
 		1EA8EB84CF316484DDD472B3 /* SettingsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsV5.swift; sourceTree = "<group>"; };
@@ -265,6 +297,7 @@
 		29E036C5FD2EC231D2FCDC1A /* Watch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Watch.swift; sourceTree = "<group>"; };
 		2D2748856DA0BE8CFF0A0E62 /* LearnArticleSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnArticleSheet.swift; sourceTree = "<group>"; };
 		2E0F934EAB1B1CC2AD163825 /* Primitives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Primitives.swift; sourceTree = "<group>"; };
+		2E20B32808244C5EC8C98C05 /* FaffWidgetContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWidgetContent.swift; sourceTree = "<group>"; };
 		3021BAFCB3395A359AD25A3C /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		309A3C38F033A266C6A92A5D /* StravaConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaConnection.swift; sourceTree = "<group>"; };
 		327F1896B45C80B0A713921B /* CountdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountdownView.swift; sourceTree = "<group>"; };
@@ -296,6 +329,7 @@
 		52B5E856FFADC87375561C98 /* TodayAfterV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayAfterV5.swift; sourceTree = "<group>"; };
 		55518C844B260CE6FDF06C5C /* RaceEditSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaceEditSheet.swift; sourceTree = "<group>"; };
 		563BE14031D81E39DC6ED1EB /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fonts; path = Faff/Faff/Resources/Fonts; sourceTree = SOURCE_ROOT; };
+		574046EFA57DAA5E3FA61AB5 /* FaffWatch Widgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "FaffWatch Widgets.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		58ADF42EDED4C71FB0AD2CDD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		590886F21D4DD966A37DE610 /* ReadinessGlanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessGlanceView.swift; sourceTree = "<group>"; };
 		5A39B98C5EC62375867B3D43 /* Faff.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Faff.entitlements; sourceTree = "<group>"; };
@@ -347,6 +381,7 @@
 		8FCD25057781DAE979CCDBFC /* ShoesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoesView.swift; sourceTree = "<group>"; };
 		8FD04D91D8038BA91A4D9E20 /* ChartsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartsV5.swift; sourceTree = "<group>"; };
 		918DFA9C4478972044408D2A /* MorningBriefBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MorningBriefBlock.swift; sourceTree = "<group>"; };
+		91C95506B64A47635328790C /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fonts; path = "Faff/FaffWatch Watch App/Fonts"; sourceTree = SOURCE_ROOT; };
 		91FC1DB4EC397EFC1B67BFE9 /* WatchTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTheme.swift; sourceTree = "<group>"; };
 		95083B2C82E448D42B6FAF88 /* BlockV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockV5.swift; sourceTree = "<group>"; };
 		9883A181E1656DBDC8F3FAFC /* Tips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tips.swift; sourceTree = "<group>"; };
@@ -364,6 +399,7 @@
 		A6142CF93DF4BB8739EB299D /* TodayPreRunBodyV3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayPreRunBodyV3.swift; sourceTree = "<group>"; };
 		A69925035C6326F0327A2787 /* HowItWentPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HowItWentPanel.swift; sourceTree = "<group>"; };
 		A6CDCA6D9D915AA28A0458FB /* BeltSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeltSession.swift; sourceTree = "<group>"; };
+		A73D90521CDA78AC481F8D8D /* FaffWidgetFonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWidgetFonts.swift; sourceTree = "<group>"; };
 		A946A92F47DD42163C1A409F /* RaceName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaceName.swift; sourceTree = "<group>"; };
 		A954B02519E4D94FB0775C18 /* FontsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontsV5.swift; sourceTree = "<group>"; };
 		AB1BDC045093EBA34631A9F1 /* TodayPostRunBody.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayPostRunBody.swift; sourceTree = "<group>"; };
@@ -377,6 +413,7 @@
 		B7BC29B2BF1F273F9E653AEB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B817BE00E8380E26CE5AC512 /* SurfaceStoreV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurfaceStoreV5.swift; sourceTree = "<group>"; };
 		B89B85857DDA2DA69F8C141A /* PanelV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelV5.swift; sourceTree = "<group>"; };
+		B8B66BB20F1C8DE49B6D9600 /* FaffWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWidgetBundle.swift; sourceTree = "<group>"; };
 		B9DA4E35CB6828B2EA70A434 /* NotificationsAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsAppDelegate.swift; sourceTree = "<group>"; };
 		BB5B89100A345745753B0C8B /* HealthBarCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthBarCard.swift; sourceTree = "<group>"; };
 		BEB309AB7B2E3BF539872275 /* I_RunDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = I_RunDetail.swift; sourceTree = "<group>"; };
@@ -399,6 +436,7 @@
 		CFC017C2FCF5BCEF864B8086 /* ComponentsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComponentsV5.swift; sourceTree = "<group>"; };
 		D2E15DBC78C7149E2AA0EB45 /* WeekStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekStrip.swift; sourceTree = "<group>"; };
 		D3843DD3013BCFD88312736A /* IndoorDistanceMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndoorDistanceMeter.swift; sourceTree = "<group>"; };
+		D399E6BD092E5FEF2DA13466 /* FaffWidgetProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWidgetProvider.swift; sourceTree = "<group>"; };
 		D3F9F97249181DA2EB82D25D /* TodayShoePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayShoePicker.swift; sourceTree = "<group>"; };
 		D4F35B32A76C4221652B197B /* A11yDump.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = A11yDump.swift; sourceTree = "<group>"; };
 		D731B92BA006865E34779D2A /* BebasNeue-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BebasNeue-Regular.ttf"; sourceTree = "<group>"; };
@@ -417,6 +455,7 @@
 		ED93C1BD27C8E4828D6A7984 /* APIV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIV5.swift; sourceTree = "<group>"; };
 		EE0C78AC3D1E5FE8777CB224 /* SummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryView.swift; sourceTree = "<group>"; };
 		EE83C39CFEEB37B8BCCE8162 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		F2606EFDB59295AF72C865CB /* FaffWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWidgetSnapshot.swift; sourceTree = "<group>"; };
 		F3EEDC7AADDE262E2A9AD515 /* StateScreensV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateScreensV5.swift; sourceTree = "<group>"; };
 		F5049AFA827E5D99EA69F5D0 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		F7CFE2D883A30CAC352006F8 /* TokensV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokensV5.swift; sourceTree = "<group>"; };
@@ -482,6 +521,20 @@
 				563BE14031D81E39DC6ED1EB /* Fonts */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		5BFDA8DD3AC0007456A13871 /* FaffWatch Widgets */ = {
+			isa = PBXGroup;
+			children = (
+				0B9D4547CDA7A3180224CA48 /* FaffComplicationViews.swift */,
+				1AB61CC30CD62C9D33A506E4 /* FaffSmartStackView.swift */,
+				B8B66BB20F1C8DE49B6D9600 /* FaffWidgetBundle.swift */,
+				2E20B32808244C5EC8C98C05 /* FaffWidgetContent.swift */,
+				A73D90521CDA78AC481F8D8D /* FaffWidgetFonts.swift */,
+				D399E6BD092E5FEF2DA13466 /* FaffWidgetProvider.swift */,
+				F2606EFDB59295AF72C865CB /* FaffWidgetSnapshot.swift */,
+			);
+			path = "FaffWatch Widgets";
 			sourceTree = "<group>";
 		};
 		63DBFAB43C7F7BD31DF0D25E /* Toolkit */ = {
@@ -558,6 +611,7 @@
 				15A41B00785D5F02EC55BA73 /* FacesRunV5.swift */,
 				162F4E9C0CB7F4A9A9298265 /* FaffWatch Watch App.entitlements */,
 				DB78B57C63F6CAA75CB24270 /* FaffWatchApp.swift */,
+				91C95506B64A47635328790C /* Fonts */,
 				1D4E8F519A9E24A36E4D0BC7 /* Haptics.swift */,
 				48BEBF7952F4B1AC4D8682B9 /* IdleView.swift */,
 				9FCF573DA7A5C1E3F9FBC5A1 /* Info.plist */,
@@ -640,6 +694,7 @@
 				D2AF09DF27FB96213F809229 /* Faff */,
 				0A0B437F099D018266433028 /* FaffTests */,
 				8E817150E79B4BCF0540B7B1 /* FaffWatch Watch App */,
+				5BFDA8DD3AC0007456A13871 /* FaffWatch Widgets */,
 			);
 			path = Faff;
 			sourceTree = "<group>";
@@ -681,6 +736,7 @@
 				B6BF22DF1BD412FB1CA83446 /* Faff.app */,
 				801D9B1925F0DC65C5E66C0D /* FaffTests.xctest */,
 				79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */,
+				574046EFA57DAA5E3FA61AB5 /* FaffWatch Widgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -764,6 +820,24 @@
 			productReference = 801D9B1925F0DC65C5E66C0D /* FaffTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		B68CA05EC1909CDF78B46F24 /* FaffWatch Widgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C54F7D7D75D7B1CF10E8D57C /* Build configuration list for PBXNativeTarget "FaffWatch Widgets" */;
+			buildPhases = (
+				BEBCC024C1C0A33F3C8DF444 /* Sources */,
+				E83BAA221D85392A05F125A1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "FaffWatch Widgets";
+			packageProductDependencies = (
+			);
+			productName = "FaffWatch Widgets";
+			productReference = 574046EFA57DAA5E3FA61AB5 /* FaffWatch Widgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		D9BD02B3EBCA6139CDCA3B00 /* Faff */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 86D9C3CDB32A47295A6B93AA /* Build configuration list for PBXNativeTarget "Faff" */;
@@ -790,10 +864,12 @@
 			buildPhases = (
 				52D899BE7ED33FECEC2CE254 /* Sources */,
 				999AB72C752EF118488838DD /* Resources */,
+				272BFFCC41AAEEE6C12F1389 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				E18ECFC0A4A87A41AF4994CB /* PBXTargetDependency */,
 			);
 			name = "FaffWatch Watch App";
 			packageProductDependencies = (
@@ -812,6 +888,10 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					9AF6A38CFEF69B65F1C70EEC = {
+						DevelopmentTeam = F26TM6BCR3;
+						ProvisioningStyle = Automatic;
+					};
+					B68CA05EC1909CDF78B46F24 = {
 						DevelopmentTeam = F26TM6BCR3;
 						ProvisioningStyle = Automatic;
 					};
@@ -842,6 +922,7 @@
 				D9BD02B3EBCA6139CDCA3B00 /* Faff */,
 				9AF6A38CFEF69B65F1C70EEC /* FaffTests */,
 				F0F86E55A2FD163346E0F089 /* FaffWatch Watch App */,
+				B68CA05EC1909CDF78B46F24 /* FaffWatch Widgets */,
 			);
 		};
 /* End PBXProject section */
@@ -875,6 +956,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E83BAA221D85392A05F125A1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A933A8B78FCB57C924E31B9 /* Fonts in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -894,6 +983,7 @@
 				4C04E6EEAF70561518C6B8AE /* FacesPhaseV5.swift in Sources */,
 				9B3E451CF3B7AD7C1E660B4D /* FacesRunV5.swift in Sources */,
 				F78C87C61CF8C1E957424497 /* FaffWatchApp.swift in Sources */,
+				533CAEF551723F2A36BFBA9C /* FaffWidgetSnapshot.swift in Sources */,
 				FDFB5B7B4C41C8B3C7BBF7C8 /* Haptics.swift in Sources */,
 				33B4FF295A8A74B4CFA43AEF /* IdleView.swift in Sources */,
 				9276B87CB0A938E3DF8E70EA /* PaceDrift.swift in Sources */,
@@ -1073,6 +1163,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BEBCC024C1C0A33F3C8DF444 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EAD8082D43F043285EFCABAD /* FaffComplicationViews.swift in Sources */,
+				782AC5CD75A4DEB9208B6506 /* FaffSmartStackView.swift in Sources */,
+				A2BEE994D2DF7B2FCF1B1290 /* FaffWidgetBundle.swift in Sources */,
+				16676927C72B44D5C7D84EE5 /* FaffWidgetContent.swift in Sources */,
+				966B569573538B582276AF4E /* FaffWidgetFonts.swift in Sources */,
+				555322FBB6B41AD02414A8BF /* FaffWidgetProvider.swift in Sources */,
+				D0882F637FE348F184468398 /* FaffWidgetSnapshot.swift in Sources */,
+				0E261A9EF327806D8F23CDBF /* WatchKitV5.swift in Sources */,
+				10084EFCD48FE0F9C5C0CA8E /* WatchThemeV5.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -1085,6 +1191,11 @@
 			isa = PBXTargetDependency;
 			target = F0F86E55A2FD163346E0F089 /* FaffWatch Watch App */;
 			targetProxy = 0A0DB7EF2A01E8779D699655 /* PBXContainerItemProxy */;
+		};
+		E18ECFC0A4A87A41AF4994CB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B68CA05EC1909CDF78B46F24 /* FaffWatch Widgets */;
+			targetProxy = A1C5DD2CBDA6A21B5E8E8A88 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1179,6 +1290,29 @@
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
+		};
+		2F137924A47717ADD43C21DE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Faff/FaffWatch Widgets/FaffWatch Widgets.entitlements";
+				INFOPLIST_FILE = "Faff/FaffWatch Widgets/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = run.faff.app.watchkitapp.widgets;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_UPCOMING_FEATURE_STRICT_CONCURRENCY = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
 		};
 		30805860F3A8D2C943329571 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -1310,6 +1444,29 @@
 			};
 			name = Release;
 		};
+		B8EDFF02414F1620B23F5C25 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Faff/FaffWatch Widgets/FaffWatch Widgets.entitlements";
+				INFOPLIST_FILE = "Faff/FaffWatch Widgets/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = run.faff.app.watchkitapp.widgets;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_UPCOMING_FEATURE_STRICT_CONCURRENCY = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
 		EC1680180FF9B5DDF0B4FCDA /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1378,6 +1535,15 @@
 			buildConfigurations = (
 				0D95FB212EAB452FEF8FF123 /* Debug */,
 				730A99E08A5CCDDD01792ABC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C54F7D7D75D7B1CF10E8D57C /* Build configuration list for PBXNativeTarget "FaffWatch Widgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2F137924A47717ADD43C21DE /* Debug */,
+				B8EDFF02414F1620B23F5C25 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
