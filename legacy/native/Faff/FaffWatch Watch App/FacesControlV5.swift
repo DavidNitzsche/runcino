@@ -198,7 +198,7 @@ struct FaceEndConfirmV5: View {
                         // the coach does not comment on it here.
                         Text(unfinished)
                             .font(WatchV5.number(16))
-                            .foregroundStyle(WatchV5.valueDim)
+                            .foregroundStyle(WatchV5.valueLabel)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -382,8 +382,8 @@ struct FaceHeartDropoutV5: View {
                 // default, which is what the design draws.
                 WSensorFault(sensor: "No heart signal")
 
-                WMetric(value: distance, unit: distanceUnit, rank: .secondary)
-                WMetric(value: elapsed, rank: .tertiary, grade: .dim)
+                WMetric(value: distance, unit: distanceUnit, rank: .secondary, size: 31)
+                WMetric(value: elapsed, rank: .tertiary, grade: .dim, size: 26)
 
                 Spacer(minLength: 0)
             }

@@ -588,7 +588,7 @@ extension PhoneSync: WCSessionDelegate {
         Task { @MainActor in
             if failed {
                 if self.syncState == .sending {
-                    self.syncState = .failed("Transfer failed — uploading directly")
+                    self.syncState = .failed("Transfer failed · uploading directly")
                 }
             } else {
                 if self.syncState == .sending { self.syncState = .sent }

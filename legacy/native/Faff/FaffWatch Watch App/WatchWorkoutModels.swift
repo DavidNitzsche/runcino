@@ -124,6 +124,45 @@ struct WatchRule: Codable, Equatable {
     var isBail: Bool { kind == "bail" }
 }
 
+/// A line the coach says, and the same line drawn on the wrist for the three
+/// seconds it is spoken.
+///
+/// RULE 10: a spoken cue is ALWAYS also drawn. Audio is a delivery route,
+/// never a second content channel — one runner has headphones in, one has
+/// them in a pocket, and both get the same sentence. That is why this carries
+/// exactly one `text` and not a spoken twin: two fields would eventually
+/// disagree, and the runner with no headphones would be the one who lost.
+struct WatchSpokenCue: Codable, Equatable, Identifiable {
+    let id: String
+    let text: String
+    /// "distance" | "phase" | "fraction" — names which of the three below is
+    /// the live one. Flat rather than a tagged union because the lenient
+    /// decoders cannot express one.
+    let trigger: String
+    let atMi: Double?
+    let phaseIndex: Int?
+    let atFraction: Double?
+    let holdSec: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case id, text, trigger, atMi, phaseIndex, atFraction, holdSec
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id          = (try? c.decode(String.self, forKey: .id)) ?? UUID().uuidString
+        self.text        = (try? c.decode(String.self, forKey: .text)) ?? ""
+        self.trigger     = (try? c.decode(String.self, forKey: .trigger)) ?? "fraction"
+        self.atMi        = try? c.decodeIfPresent(Double.self, forKey: .atMi)
+        self.phaseIndex  = c.lenientIntIfPresent(forKey: .phaseIndex)
+        self.atFraction  = try? c.decodeIfPresent(Double.self, forKey: .atFraction)
+        self.holdSec     = c.lenientIntIfPresent(forKey: .holdSec) ?? 3
+    }
+
+    /// A cue with nothing to say is not a cue.
+    var isDrawable: Bool { !text.isEmpty }
+}
+
 struct WatchPhase: Codable, Identifiable {
     /// Stable identity for SwiftUI lists · the cursor index assigned at
     /// decode time (the backend payload has no per-phase id).
@@ -265,12 +304,14 @@ struct WatchWorkout: Codable {
     let unitsDistance: String?
     /// Contingency rules. See `WatchRule`.
     let rules: [WatchRule]?
+    /// Lines the coach says, each also drawn. See `WatchSpokenCue`.
+    let spokenCues: [WatchSpokenCue]?
 
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
         case readinessScore, readinessLabel, distanceMi, paceLabel
         case isRace, goalSec, strategyLabel, gelsMi, fueling, hrCeilingBpm
-        case displayHint, unitsDistance, rules
+        case displayHint, unitsDistance, rules, spokenCues
     }
 
     init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
@@ -280,7 +321,8 @@ struct WatchWorkout: Codable {
          isRace: Bool = false, goalSec: Int? = nil, strategyLabel: String? = nil, gelsMi: [Double]? = nil,
          fueling: WatchFueling? = nil, hrCeilingBpm: Int? = nil,
          displayHint: String? = nil, unitsDistance: String? = nil,
-         rules: [WatchRule]? = nil) {
+         rules: [WatchRule]? = nil,
+         spokenCues: [WatchSpokenCue]? = nil) {
         self.workoutId = workoutId
         self.name = name
         self.summary = summary
@@ -301,6 +343,7 @@ struct WatchWorkout: Codable {
         self.displayHint = displayHint
         self.unitsDistance = unitsDistance
         self.rules = rules
+        self.spokenCues = spokenCues
     }
 
     init(from decoder: Decoder) throws {
@@ -328,6 +371,7 @@ struct WatchWorkout: Codable {
         self.unitsDistance = try c.decodeIfPresent(String.self, forKey: .unitsDistance)
         // Lenient: a malformed rules array must never cost the workout.
         self.rules = (try? c.decodeIfPresent([WatchRule].self, forKey: .rules)) ?? nil
+        self.spokenCues = (try? c.decodeIfPresent([WatchSpokenCue].self, forKey: .spokenCues)) ?? nil
         // Re-stamp each phase with its cursor index. CRITICAL: pass through
         // repUnit + distanceMi too — earlier this constructor only carried
         // the first 7 fields forward, which silently dropped repUnit (→ .time)

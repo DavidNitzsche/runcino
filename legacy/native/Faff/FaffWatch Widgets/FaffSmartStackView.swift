@@ -164,7 +164,7 @@ private struct FaffWidgetTarget: View {
 
     var body: some View {
         Text(label)
-            .font(WatchV5.coach(14, weight: 700))
+            .font(WatchV5.label(14, .heavy))
             .foregroundStyle(WatchV5.value)
             .lineLimit(1)
             .minimumScaleFactor(0.7)

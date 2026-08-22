@@ -749,7 +749,7 @@ final class WorkoutEngine: ObservableObject {
         // would DELAY the cue for a slow runner, increasing bonk risk.
         // Race day uses workout.gelsMi (literal aid-station positions) —
         // see the distance-anchored block below; the two paths coexist.
-        if let fueling = workout.fueling, fueling.needed, !isRace {
+        if let fueling = workout.fueling, fueling.needed, isRace {
             let mins = totalElapsedSec / 60
             for (i, mark) in fueling.atMins.enumerated() {
                 if mins >= mark && !firedFuelIndices.contains(i) {
@@ -1049,7 +1049,7 @@ final class WorkoutEngine: ObservableObject {
                 // Long-run HM/M finish: announce the lift to race pace, NOT
                 // "REP n/m". Reuses the .phase takeover (PhaseChangeFace) —
                 // title uppercases to "FINISH"; sub carries the segment + pace.
-                let target = p.targetPaceSPerMi.map { "\(PaceFormat.mmss($0))/mi" } ?? "—:—"
+                let target = p.targetPaceSPerMi.map { "\(PaceFormat.mmss($0))/mi" } ?? ""
                 flash(.phase(title: "Finish", sub: "\(p.label) · \(target)"), for: 2.2)
             } else if p.type == .work {
                 // Entering a work rep — brief 1.5 s GO card. Two reads:
@@ -1057,7 +1057,7 @@ final class WorkoutEngine: ObservableObject {
                 // "GO" wordmark on the face — the takeover IS the cue.
                 let totalWorks = workout.phases.filter { $0.type == .work }.count
                 let n = workout.phases.prefix(currentIndex + 1).filter { $0.type == .work }.count
-                let target = p.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? "—:—"
+                let target = p.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? ""
                 flash(.go(rep: "REP \(n) / \(totalWorks)", target: target), for: 1.5)
             }
         }

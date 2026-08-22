@@ -146,6 +146,13 @@ enum WInterrupt: Equatable {
     case bailOffered
     case ceilingOverride
     case waterLock
+    /// The limit, named, with the number that broke it. Same grammar as a
+    /// band crossing because it is the same class of event — it takes the
+    /// screen and gives it back. The QUESTION that may follow is
+    /// `.ceilingOverride`, which does not.
+    case ceilingBreach
+    /// The coach's line, drawn for the seconds it is spoken. RULE 10.
+    case spokenCue(String)
     case moment(WMomentKind)
     case lowBattery
     case gpsAcquiring
@@ -156,6 +163,7 @@ enum WInterrupt: Equatable {
         switch self {
         case .bailOffered, .ceilingOverride: return false
         case .waterLock, .lowBattery, .gpsAcquiring: return false
+        case .ceilingBreach, .spokenCue: return true
         case .moment: return true
         }
     }
@@ -189,6 +197,13 @@ final class WatchRouterV5: ObservableObject {
     @Published var runPage: Int = 0
     /// Set when the coach asks something. Cleared only by an answer.
     @Published var pendingQuestion: WInterrupt? = nil
+    /// The breach moment, which returns the screen on its own.
+    @Published var ceilingBreachShowing = false
+    /// The coach's line, while it is being said. Nil the rest of the time.
+    @Published var spokenCueText: String? = nil
+    /// Cue ids already said. A line is said once — repeating it is the nag
+    /// the anti-nag rule forbids.
+    var firedCueIds: Set<String> = []
 
     enum Confirm: Equatable {
         case end
@@ -200,6 +215,8 @@ final class WatchRouterV5: ObservableObject {
     func interrupt(engine: WorkoutEngine, tracker: WorkoutTracker) -> WInterrupt? {
         if let q = pendingQuestion { return q }
         if tracker.isWaterLocked { return .waterLock }
+        if ceilingBreachShowing { return .ceilingBreach }
+        if let cue = spokenCueText { return .spokenCue(cue) }
         if let cue = engine.transition { return .moment(Self.moment(from: cue)) }
         if engine.isPaused { return .moment(.paused) }
         return nil
@@ -225,8 +242,29 @@ final class WatchRouterV5: ObservableObject {
     /// A treadmill run NEVER grades: there is no trustworthy pace on a belt,
     /// and amber on a running face means one thing only. The caller passes
     /// `treadmill` and this returns `.treadmill` regardless of the zone.
-    static func grade(_ zone: PaceZone, treadmill: Bool) -> FacePaceGrade {
-        if treadmill { return .untrusted }
+    static func grade(_ zone: PaceZone,
+                      treadmill: Bool,
+                      hasBand: Bool,
+                      hasReading: Bool) -> FacePaceGrade {
+        // NOTHING GRADES UNLESS SOMETHING GRADED IT.
+        //
+        // `paceZone` on the engine initialises to `.onTarget` and is assigned
+        // ONLY inside a work phase that carries a target pace. So a warm-up, a
+        // recovery, a cool-down and every session with no prescribed target
+        // arrive here reading "on target" when nothing was ever compared, and
+        // the old one-line map turned that into green.
+        //
+        // Green means the runner is inside the band the session asked for. It
+        // is the only colour in this product that grades, and asserting it
+        // over an unmeasured value is the single worst thing this file can do.
+        // The design says it plainly on the Page 1 off-band note: white is a
+        // plain measurement with no band to be inside of.
+        //
+        // Three ways to have nothing to say, and all three are white:
+        //  · a belt, where there is no trustworthy pace at all
+        //  · no band on this phase, so there is no inside to be on
+        //  · no reading yet, in the first minute of every outdoor run
+        if treadmill || !hasBand || !hasReading { return .untrusted }
         return zone == .onTarget ? .inBand : .outOfBand
     }
 }
@@ -242,6 +280,11 @@ struct WatchRunSurfaceV5: View {
     /// The battery board is offered once per run, not once per crossing —
     /// a percentage that flickers over the threshold must not re-ask.
     @State private var batteryOffered = false
+    /// The ceiling question is asked at most once per run.
+    @State private var ceilingAsked = false
+    @State private var ceilingBreachTask: Task<Void, Never>? = nil
+    /// The previous mile's split, so the next one can be compared to it.
+    @State private var lastSplitSec: Int? = nil
 
     // ── The decision seam ───────────────────────────────────────────────
     //
@@ -272,6 +315,18 @@ struct WatchRunSurfaceV5: View {
     }
     private var livePace: (value: String, unit: String) {
         WFmt.paceWithUnit(tracker.paceSPerMi, units: units) ?? ("--", WFmt.isKm(units) ? "/km" : "/mi")
+    }
+    /// Is there a live pace reading at all? "--" is not a slow pace.
+    private var hasPaceReading: Bool { tracker.paceSPerMi > 0 }
+    /// Does the phase in flight prescribe a band to be inside of?
+    private var hasBand: Bool { band(for: engine.currentPhase) != nil }
+
+    /// The one graded value on the face, with its evidence stated.
+    private var paceGrade: FacePaceGrade {
+        WatchRouterV5.grade(engine.paceZone,
+                            treadmill: isTreadmill,
+                            hasBand: hasBand,
+                            hasReading: hasPaceReading)
     }
 
     /// What is unfinished, as a FACT rather than a warning — the runner may
@@ -326,18 +381,38 @@ struct WatchRunSurfaceV5: View {
         // re-raised itself every thirty seconds would be the nag the anti-nag
         // rule exists to prevent.
         .onChange(of: engine.hrOverCeiling) { _, over in
-            // The ceiling used to state a limit the runner had no way to
-            // answer, and an unanswerable limit becomes an alert they learn
-            // to swipe. Now it takes an answer.
             guard over, !engine.ceilingLifted, router.pendingQuestion == nil else { return }
-            router.pendingQuestion = .ceilingOverride
-            Haptics.play(moment: .ceilingOverride)
+            // The BREACH first: the limit, named, with the number that broke
+            // it. It takes the screen and gives it back, like a band crossing.
+            router.ceilingBreachShowing = true
+            Haptics.play(moment: .ceilingBreach)
+            ceilingBreachTask?.cancel()
+            ceilingBreachTask = Task {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                router.ceilingBreachShowing = false
+                // Then, only if the runner is STILL over it, the question —
+                // because a limit stated once is information and a limit
+                // stated twice with no way to answer is the alert they learn
+                // to swipe. Offered once per run.
+                try? await Task.sleep(for: .seconds(60))
+                guard !Task.isCancelled,
+                      engine.hrOverCeiling,
+                      !engine.ceilingLifted,
+                      !ceilingAsked,
+                      router.pendingQuestion == nil else { return }
+                ceilingAsked = true
+                router.pendingQuestion = .ceilingOverride
+                Haptics.play(moment: .ceilingOverride)
+            }
         }
         .onChange(of: engine.canOfferBail) { _, canOffer in
             guard canOffer, engine.shouldOfferBailNow, router.pendingQuestion == nil else { return }
             router.pendingQuestion = .bailOffered
             Haptics.play(moment: .bailOffered)
         }
+        .onChange(of: tracker.distanceMi) { _, _ in fireDueCue() }
+        .onChange(of: engine.currentIndex) { _, _ in fireDueCue() }
         .onChange(of: tracker.batteryPercent) { _, pct in
             // 15% is the threshold, and the board is offered once. Below it
             // the run still records — no sensor blocks the run — so this is
@@ -349,6 +424,42 @@ struct WatchRunSurfaceV5: View {
         }
     }
 
+    /// Say the next cue that has come due, if any, and draw it for its hold.
+    ///
+    /// One at a time and once each: `firedCueIds` is checked before the trigger
+    /// so a distance that oscillates across a mile marker cannot say the same
+    /// line twice. A cue never interrupts a question — the coach does not talk
+    /// over their own asking.
+    private func fireDueCue() {
+        guard router.pendingQuestion == nil,
+              router.spokenCueText == nil,
+              let cues = engine.workout.spokenCues else { return }
+        guard let due = cues.first(where: { cue in
+            guard cue.isDrawable, !router.firedCueIds.contains(cue.id) else { return false }
+            switch cue.trigger {
+            case "distance":
+                guard let at = cue.atMi else { return false }
+                return tracker.distanceMi >= at
+            case "phase":
+                guard let idx = cue.phaseIndex else { return false }
+                return engine.currentIndex >= idx
+            case "fraction":
+                guard let f = cue.atFraction, let total = engine.workout.distanceMi, total > 0 else { return false }
+                return tracker.distanceMi >= total * f
+            default:
+                return false
+            }
+        }) else { return }
+
+        router.firedCueIds.insert(due.id)
+        router.spokenCueText = due.text
+        Haptics.play(moment: .coachLine)
+        Task {
+            try? await Task.sleep(for: .seconds(max(2, due.holdSec)))
+            router.spokenCueText = nil
+        }
+    }
+
     // MARK: The face
 
     @ViewBuilder
@@ -357,11 +468,35 @@ struct WatchRunSurfaceV5: View {
             RunFaceAlwaysOn(
                 pace: livePace.value,
                 paceUnit: livePace.unit,
-                grade: WatchRouterV5.grade(engine.paceZone, treadmill: isTreadmill),
+                grade: paceGrade,
                 distance: dist.value,
                 distanceUnit: dist.unit,
                 elapsedMinutes: String(max(0, engine.totalElapsedSec / 60))
             )
+        } else if let phase = engine.currentPhase, phase.type == .recovery, router.controlsShowing {
+            // RULE 11 · anything the runner can answer is answered where it is
+            // asked. Extend recovery lives on the recovery face rather than in
+            // controls, because it is only true for ninety seconds — and the
+            // countdown stays LIVE while the buttons show, so +30 sec adds to
+            // the number the runner is watching. That is the whole reason the
+            // design draws it here.
+            //
+            // This seam was declared, exposed as a modifier and wired at the
+            // call site, and nothing ever called it. A dead seam reads as
+            // finished work from every angle except the runner's.
+            FaceExtendRecoveryV5(
+                secondsRemaining: engine.recoveryRemainingSec,
+                onAddThirty: {
+                    engine.recordRecoveryExtension(addedSec: 30)
+                    onRecoveryExtend(30)
+                },
+                onGoNow: {
+                    engine.endCurrentPhase()
+                    router.controlsShowing = false
+                }
+            )
+            .contentShape(Rectangle())
+            .onTapGesture { router.controlsShowing = false }
         } else if let phase = engine.currentPhase, isStructured(phase) {
             // Structured sessions swap the running face for the phase board
             // automatically at each change, announced by the Phase change
@@ -387,7 +522,22 @@ struct WatchRunSurfaceV5: View {
 
     @ViewBuilder
     private var primaryPage: some View {
-        if isTreadmill {
+        if tracker.heartRate <= 0 {
+            // Rule 2 before anything else: a sensor we could not read is
+            // NAMED, in words, and that is as true on a belt as it is
+            // outdoors. This test used to sit inside the non-treadmill
+            // branch, so a belt run with no strap drew a dash where the
+            // design puts "No heart signal" — and a dash is exactly the
+            // stale-looking non-answer the rule exists to forbid.
+            FaceHeartDropoutV5(
+                pace: livePace.value,
+                paceUnit: livePace.unit,
+                paceInBand: paceGrade == .inBand,
+                distance: dist.value,
+                distanceUnit: dist.unit,
+                elapsed: WFmt.clock(engine.totalElapsedSec)
+            )
+        } else if isTreadmill {
             RunFaceTreadmillPrimary(
                 pace: livePace.value,
                 paceUnit: livePace.unit,
@@ -397,23 +547,11 @@ struct WatchRunSurfaceV5: View {
                 elapsed: WFmt.clock(engine.totalElapsedSec),
                 pageIndex: 0, pageCount: 2
             )
-        } else if tracker.heartRate <= 0 {
-            // One slot broken, three untouched. Red names the SENSOR and
-            // never renders a figure — a stale last-known number is worse
-            // than none, because the runner cannot tell it has stopped.
-            FaceHeartDropoutV5(
-                pace: livePace.value,
-                paceUnit: livePace.unit,
-                paceInBand: engine.paceZone == .onTarget && !isTreadmill,
-                distance: dist.value,
-                distanceUnit: dist.unit,
-                elapsed: WFmt.clock(engine.totalElapsedSec)
-            )
         } else {
             RunFacePrimary(
                 pace: livePace.value,
                 paceUnit: livePace.unit,
-                grade: WatchRouterV5.grade(engine.paceZone, treadmill: false),
+                grade: paceGrade,
                 band: band(for: engine.currentPhase),
                 heartRate: WFmt.whole(tracker.heartRate) ?? "--",
                 distance: dist.value,
@@ -457,36 +595,121 @@ struct WatchRunSurfaceV5: View {
     @ViewBuilder
     private func phaseBoard(_ phase: WatchPhase) -> some View {
         let pace = livePace.value
-        let grade = WatchRouterV5.grade(engine.paceZone, treadmill: isTreadmill)
+        let grade = paceGrade
+        let reading = self.reading(pace, grade: grade, phase: phase)
 
+        // ROUTING IS BY SESSION SHAPE, NOT BY PHASE TYPE ALONE.
+        //
+        // `WatchPhase.type` is only warmup/work/recovery/cooldown, so a
+        // threshold block, a race mile and a set of strides all arrive as
+        // `.work`. Switching on type alone gave every one of them the
+        // rep-interval board — which meant WPhaseRace, the board the entire
+        // race surface is built around, and WPhaseThreshold, whose whole
+        // reason to exist is average pace, were unreachable in the shipped
+        // app while existing as previews.
         switch phase.type {
         case .warmup:
             WPhaseWarmUp(
                 remaining: WFmt.short(engine.phaseRemainingSec),
-                pace: reading(pace, grade: grade, phase: phase),
+                pace: reading,
                 heartRate: WFmt.whole(tracker.heartRate)
             )
+
         case .recovery:
-            // Extend recovery lives HERE, not in controls, because it is only
-            // true for ninety seconds. The countdown stays live while the
-            // buttons show — +30 sec adds to the number the runner is
-            // watching, which is the whole reason it is drawn on this board.
             WPhaseRecovery(
                 remaining: WFmt.short(engine.phaseRemainingSec),
                 heartRate: WFmt.whole(tracker.heartRate),
-                repIndex: repIndex, repCount: repCount
+                repIndex: repIndex,
+                repCount: repCount
             )
+
         case .work:
-            WPhaseWorkInterval(
-                repIndex: repIndex, repCount: repCount,
-                remaining: WFmt.short(engine.phaseRemainingSec),
-                pace: reading(pace, grade: grade, phase: phase),
-                heartRate: WFmt.whole(tracker.heartRate),
-                distance: dist.value
-            )
+            if engine.workout.isRace {
+                WPhaseRace(
+                    mileLabel: raceMileLabel,
+                    goalLabel: raceGoalLabel,
+                    pace: reading,
+                    onGoal: onGoalDelta,
+                    distance: dist.value,
+                    distanceUnit: dist.unit,
+                    elapsed: WFmt.clock(engine.totalElapsedSec),
+                    progress: engine.phaseProgress
+                )
+            } else if isStrides(phase) {
+                WPhaseStrides(
+                    strideIndex: repIndex,
+                    strideCount: repCount,
+                    remaining: WFmt.short(engine.phaseRemainingSec)
+                )
+            } else if isThreshold(phase) {
+                // Average pace earns its row on this board and nowhere else:
+                // a threshold block is judged over its whole length, not
+                // instant by instant.
+                WPhaseThreshold(
+                    blockIndex: repIndex,
+                    blockCount: repCount,
+                    pace: reading,
+                    averagePace: WFmt.paceWithUnit(averagePaceSPerMi, units: units)?.value,
+                    heartRate: WFmt.whole(tracker.heartRate),
+                    elapsed: WFmt.clock(engine.totalElapsedSec),
+                    progress: engine.phaseProgress
+                )
+            } else {
+                WPhaseWorkInterval(
+                    repIndex: repIndex,
+                    repCount: repCount,
+                    remaining: WFmt.short(engine.phaseRemainingSec),
+                    pace: reading,
+                    heartRate: WFmt.whole(tracker.heartRate),
+                    distance: dist.value
+                )
+            }
+
         case .cooldown:
             EmptyView()
         }
+    }
+
+    /// A stride is named, not typed. The wire has no strides phase, so the
+    /// label is the only evidence — and a session that does not say "stride"
+    /// does not get the strides board.
+    private func isStrides(_ phase: WatchPhase) -> Bool {
+        phase.label.lowercased().contains("stride")
+    }
+
+    /// Threshold and tempo blocks. `paceLabel` is the plan's own zone tag, so
+    /// it is preferred; the label is the fallback for payloads that omit it.
+    private func isThreshold(_ phase: WatchPhase) -> Bool {
+        if (engine.workout.paceLabel ?? "").uppercased() == "T" { return true }
+        let l = phase.label.lowercased()
+        return l.contains("threshold") || l.contains("tempo") || l.contains("cruise")
+    }
+
+    /// "Mile 9" — where the runner is, not which phase index they are in.
+    private var raceMileLabel: String {
+        let n = Int(tracker.distanceMi) + 1
+        return (WFmt.isKm(units) ? "Km " : "Mile ") + String(n)
+    }
+
+    /// "sub 3:30". Absent when the race carries no goal, so the register
+    /// drops rather than drawing a zero.
+    private var raceGoalLabel: String? {
+        guard let g = engine.workout.goalSec, g > 0 else { return nil }
+        return "sub " + WFmt.clock(g)
+    }
+
+    /// "−0:22" against the goal pace, signed. nil until there is enough
+    /// distance to say anything — a delta off the first hundred metres is
+    /// noise, and drawing it would be a claim the run cannot support.
+    private var onGoalDelta: String? {
+        guard let goal = engine.workout.goalSec, goal > 0,
+              let total = engine.workout.distanceMi, total > 0,
+              tracker.distanceMi >= 0.5 else { return nil }
+        let goalPace = Double(goal) / total
+        let projected = Double(engine.totalElapsedSec) / tracker.distanceMi
+        let deltaSec = Int(((projected - goalPace) * total).rounded())
+        let sign = deltaSec <= 0 ? "\u{2212}" : "+"
+        return sign + WFmt.short(abs(deltaSec))
     }
 
     /// Which rep of how many. Derived from the engine's own phase list rather
@@ -500,6 +723,17 @@ struct WatchRunSurfaceV5: View {
     /// is running rep 4.
     private var repCount: Int { max(1, engine.repCountForDisplay) }
     private var repIndex: Int { max(1, engine.repIndexForDisplay) }
+
+    /// "8:15–8:45 /mi" — the band the phase prescribes, as words. nil when
+    /// there is none, and the board then has nothing to announce.
+    private var bandLabel: String? {
+        guard let phase = engine.currentPhase,
+              let target = phase.targetPaceSPerMi, target > 0,
+              let tol = phase.tolerancePaceSPerMi, tol > 0,
+              let lo = WFmt.paceWithUnit(target + tol, units: units),
+              let hi = WFmt.paceWithUnit(target - tol, units: units) else { return nil }
+        return "\(lo.value)–\(hi.value) \(lo.unit)"
+    }
 
     /// A figure plus the band it is being judged against. The gauge and the
     /// grade travel together deliberately: a board cannot say "green" and
@@ -534,6 +768,16 @@ struct WatchRunSurfaceV5: View {
     @ViewBuilder
     private func interruptLayer(_ interrupt: WInterrupt) -> some View {
         switch interrupt {
+        case .ceilingBreach:
+            FaceCeilingBreachV5(
+                bpm: WFmt.whole(tracker.heartRate) ?? "--",
+                ceiling: WFmt.whole(engine.workout.hrCeilingBpm) ?? "--"
+            )
+        case .spokenCue(let text):
+            // The coach's line in its own register with NOTHING else on the
+            // board. The orange kicker marks WHO is talking, not how it is
+            // going — the one place orange appears mid-run.
+            FaceSpokenCueV5(line: text)
         case .waterLock:
             // The run keeps recording, so the board's job is to prove it:
             // two moving numbers and the way out.
@@ -554,16 +798,30 @@ struct WatchRunSurfaceV5: View {
         case .go:
             WMomentGo(session: sessionClass)
         case .phaseChange(let title, let sub):
-            WMomentPhaseChange(word: title, detail: sub ?? "", band: nil)
+            WMomentPhaseChange(word: title, detail: sub ?? "", band: bandLabel)
         case .split(let mile, let paceSec):
-            WMomentSplit(label: "Mile \(mile)", time: WFmt.pace(paceSec) ?? "--")
+            WMomentSplit(
+                label: (WFmt.isKm(units) ? "Km " : "Mile ") + String(mile),
+                time: WFmt.short(paceSec),
+                comparison: splitComparison(paceSec)
+            )
         case .fuel(let index, let total):
             WMomentFuel(index: index, total: total)
-        case .headsUp(let value, let quicken):
+        case .headsUp(_, _):
+            // The engine's cue payload is the DISTANCE REMAINING to the
+            // boundary, not a band. Passing it through drew "BAND IS 0.2"
+            // under an "Ease off" verb — a sentence that is not true, in
+            // amber, on a board whose whole job is to name the band the
+            // runner has left.
+            //
+            // The band comes from the phase, and the direction from which
+            // side of it the runner is on. Both are known here; neither was
+            // being used.
             WMomentHeadsUp(
-                direction: quicken ? .quicken : .easeOff,
-                pace: WFmt.pace(tracker.paceSPerMi) ?? "--",
-                band: value
+                direction: engine.paceDeltaSPerMi < 0 ? .easeOff : .quicken,
+                pace: livePace.value,
+                paceUnit: livePace.unit,
+                band: bandLabel ?? livePace.unit
             )
         case .paused:
             WMomentPaused(
@@ -573,6 +831,15 @@ struct WatchRunSurfaceV5: View {
                 onEnd: { router.confirm = .end }
             )
         }
+    }
+
+    /// "4 sec quicker" against the previous split, or nil for the first one
+    /// and for a difference too small to be a fact rather than noise.
+    private func splitComparison(_ paceSec: Int) -> String? {
+        guard let prev = lastSplitSec else { return nil }
+        let delta = paceSec - prev
+        guard abs(delta) >= 3 else { return nil }
+        return "\(abs(delta)) sec " + (delta < 0 ? "quicker" : "slower")
     }
 
     /// The session's ramp name, for the one moment that carries a colour
@@ -693,7 +960,10 @@ struct WatchRunSurfaceV5: View {
             // opinion, then honours either answer with no second ask and no
             // nag on the next rep.
             FaceSkipConfirmV5(
-                repLabel: engine.currentPhase?.label ?? "this rep",
+                // "Skip rep 4", not "INTERVAL 4/5". The board's whole
+                // argument is that Skip without a named rep is a question the
+                // runner cannot answer, and the phase label is not that name.
+                repLabel: "Skip rep \(repIndex)",
                 coachLine: skipOpinion,
                 onSkipAnyway: {
                     onRepSkip(repIndex, repCount)
@@ -771,14 +1041,19 @@ enum WatchLobbyAdapter {
     /// nil when the session prescribes none, and the board then draws one
     /// fewer register rather than an empty one.
     static func band(for workout: WatchWorkout) -> String? {
+        // Units-aware, like every other surface. This was the one place that
+        // appended a literal " /mi", so a km runner's lobby showed mile pace
+        // while their running face showed kilometres.
+        let u = workout.unitsDistance
         guard let phase = workout.phases.first(where: { $0.type == .work }),
               let target = phase.targetPaceSPerMi, target > 0,
-              let base = WFmt.pace(target) else { return nil }
+              let base = WFmt.paceWithUnit(target, units: u) else { return nil }
         guard let tol = phase.tolerancePaceSPerMi, tol > 0,
-              let lo = WFmt.pace(target - tol), let hi = WFmt.pace(target + tol) else {
-            return base + " /mi"
+              let lo = WFmt.paceWithUnit(target + tol, units: u),
+              let hi = WFmt.paceWithUnit(target - tol, units: u) else {
+            return base.value + " " + base.unit
         }
-        return "\(lo)–\(hi) /mi"
+        return "\(lo.value)–\(hi.value) \(lo.unit)"
     }
 
     /// "9 DAYS OLD".
@@ -846,8 +1121,16 @@ struct WatchLobbySurfaceV5: View {
                     ramp: WatchLobbyAdapter.ramp(for: workout),
                     lede: workout.name,
                     dose: WatchLobbyAdapter.dose(for: workout),
-                    qualifier: workout.isRace ? WFmt.clock(workout.goalSec ?? 0) : nil,
-                    band: WatchLobbyAdapter.band(for: workout),
+                    // Race morning's third register is the GOAL, in the band
+                    // slot with its word — "Goal 3:29:59" — not a bare clock
+                    // in the qualifier slot the design reserves for a closing
+                    // instruction. A race with no goal drops the register
+                    // rather than drawing 0:00.
+                    qualifier: nil,
+                    band: workout.isRace
+                        ? (workout.goalSec.map { "Goal " + WFmt.clock($0) })
+                        : WatchLobbyAdapter.band(for: workout),
+                    bandSub: workout.isRace ? WatchLobbyAdapter.band(for: workout) : nil,
                     // Readiness appears as a session that has ALREADY changed,
                     // with the reason stated once — never as a score, because
                     // a score on a lobby is a thing to argue with at 6am.
@@ -933,14 +1216,27 @@ struct WatchFinishSurfaceV5: View {
                 distanceUnit: dist.unit,
                 duration: duration,
                 pace: pace,
-                coachLine: "",
+                coachLine: completeLine,
                 onSave: { showingSummary = true }
             )
         }
     }
 
+    /// One line of judgement on the run. Says what the session was FOR when
+    /// the watch can stand behind it, and says nothing when it cannot —
+    /// silence over an unfalsifiable claim, which on this board means the
+    /// phone's summary gets the last word instead.
+    private var completeLine: String {
+        if engine.workout.phases.contains(where: { $0.type == .work && $0.targetPaceSPerMi != nil }) {
+            return "That is the session. The rest is on the phone."
+        }
+        return "Logged. The rest is on the phone."
+    }
+
     /// "Under 3:29:59" / "Over 3:29:59". Under the goal, and nothing else —
     /// the coach's sentence can wait for the phone.
+    /// "Under 3:29:59". Empty when the race carries no goal — the board then
+    /// draws one fewer register rather than an empty 16pt line.
     private var goalComparison: String {
         guard let goal = engine.workout.goalSec, goal > 0 else { return "" }
         let verb = engine.totalElapsedSec <= goal ? "Under" : "Over"
@@ -1008,5 +1304,22 @@ struct WatchRecoveryReceiptV5: View {
         if let hr = summary.completion.avgHr { rows.append(FinishSummaryRow("Heart", "\(hr) avg")) }
         if let cad = summary.completion.avgCadence { rows.append(FinishSummaryRow("Cadence", "\(cad) spm")) }
         return rows
+    }
+}
+
+// MARK: - Wall-clock helper
+
+/// "7:11" — when a run actually started, from how long ago it was.
+///
+/// The recovered-run board leads with evidence that the run is really there,
+/// and a duration labelled "ago" is not that evidence: it drew "FROM 41:02
+/// AGO" beside a duration of 41:02, which is one number wearing two hats.
+enum WatchRunStart {
+    static func label(secondsAgo: Int) -> String {
+        let started = Date().addingTimeInterval(-Double(max(0, secondsAgo)))
+        let f = DateFormatter()
+        f.locale = .current
+        f.setLocalizedDateFormatFromTemplate("j:mm")
+        return f.string(from: started)
     }
 }

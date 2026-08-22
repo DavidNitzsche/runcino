@@ -381,10 +381,17 @@ struct WorkoutRootView: View {
             // text at 42% with no pill, the same rule as Discard on the end
             // confirmation.
             PreSessionRecoveredRunBoard(
-                startedAt: WFmt.clock(model.tracker.liveElapsedSec) + " ago",
+                // The WALL CLOCK the run began at — "from 7:11" — not its
+                // duration with "ago" bolted on, which drew "FROM 41:02 AGO"
+                // and printed the same number twice on one board.
+                startedAt: WatchRunStart.label(secondsAgo: model.tracker.liveElapsedSec),
                 distance: WFmt.miles(model.tracker.distanceMi),
                 duration: WFmt.clock(model.tracker.liveElapsedSec),
-                carryOnLabel: recovered.canResume ? "Carry on" : "Save it as is",
+                // Without a snapshot the engine cannot be rebuilt, so the
+                // honest lead verb is the one that is actually available —
+                // but it must not be the SAME words as the quiet option
+                // below it, which is what "Save it as is" twice produced.
+                carryOnLabel: recovered.canResume ? "Carry on" : "Save what is there",
                 onCarryOn: {
                     // Without a snapshot the engine cannot be rebuilt, so the
                     // honest offer is to save what exists rather than to
