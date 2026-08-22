@@ -517,7 +517,7 @@ final class WorkoutEngine: ObservableObject {
         pauseStart = .now
         transition = nil
         tracker?.pause()
-        Haptics.play(.transitionCooldown)
+        Haptics.play(moment: .paused)
         saveSnapshot()
     }
 
@@ -537,7 +537,7 @@ final class WorkoutEngine: ObservableObject {
         pauseStart = nil
         isPaused = false
         tracker?.resume()
-        Haptics.play(.transitionWork)
+        Haptics.play(moment: .resumed)
         saveSnapshot()
     }
 
@@ -758,7 +758,7 @@ final class WorkoutEngine: ObservableObject {
                     // renders GEL (big) · n of m (big). Persists until
                     // swiped down — see flash() and dismissTransition().
                     let total = max(fueling.gels, fueling.atMins.count)
-                    Haptics.play(.transitionCooldown)
+                    Haptics.play(moment: .fuel)
                     flash(.fuel(index: i + 1, total: total), for: 5, persistent: true)
                 }
             }
@@ -908,7 +908,8 @@ final class WorkoutEngine: ObservableObject {
             let lapSec = max(1, totalElapsedSec - lastMileElapsedSec)
             lastMileElapsedSec = totalElapsedSec
             lastMileIndex = mileIndex
-            Haptics.play(.transitionWork)
+            noteMileBand(inBand: paceZone == .onTarget)
+            Haptics.play(moment: .split)
             flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 6.0)
         } else if mileIndex > lastMileIndex {
             // Suppressed the flash, but still advance the mile bookkeeping
@@ -1011,10 +1012,10 @@ final class WorkoutEngine: ObservableObject {
             // Snapshot the plan-done state (results now hold every phase) so
             // a crash during overtime still recovers a complete run.
             persistSnapshot()
-            Haptics.play(.end)
+            Haptics.play(moment: .finish)
             // No takeover face for plan-done — the live face already
             // signals overtime by flipping the distance row to .bonus
-            // purple + counting up, and Haptics.play(.end) just fired
+            // purple + counting up, and the finish haptic just fired
             // above. The extra full-screen wordmark flash was clutter.
             saveSnapshot()
             return
@@ -1318,6 +1319,7 @@ final class WorkoutEngine: ObservableObject {
     private func clearDecisions() {
         bailAnswered = false
         bailTaken = false
+        milesAdrift = 0
         ceilingLifted = false
         if !skippedRepOrdinals.isEmpty { skippedRepOrdinals = [] }
         if phaseAddedSec != 0 { phaseAddedSec = 0 }
@@ -1372,6 +1374,66 @@ final class WorkoutEngine: ObservableObject {
     /// re-asking a question the runner already answered is the nag the rule
     /// exists to prevent.
     var canOfferBail: Bool { state == .running && !bailAnswered }
+
+    // MARK: The bail — evidence, judgement, and when to ask
+    //
+    // "The strongest thing the phone has that no watch app does: the coach
+    // asking rather than the runner quietly failing." It fires ONCE per run,
+    // when the evidence is in, and both answers are legitimate.
+    //
+    // Two conditions, and both must hold. A rule must exist (the plan decides
+    // whether this session HAS a bail — an easy run does not), and the runner
+    // must actually be adrift. Firing on a rule alone would ask the question
+    // of somebody having a good day.
+
+    /// The plan's bail rule for this session, if it carries one.
+    var bailRule: WatchRule? { workout.rules?.first(where: { $0.isBail }) }
+
+    /// Consecutive whole miles the runner has finished outside the band.
+    /// Reset the moment a mile lands inside it — the question is about a
+    /// pattern, not about one bad mile.
+    private(set) var milesAdrift: Int = 0
+
+    /// Whether to put the board up right now.
+    ///
+    /// Deliberately conservative: two full miles adrift, on a session whose
+    /// plan carries a bail rule, and never in the first mile. A coach that
+    /// asks too early is a coach the runner stops believing.
+    var shouldOfferBailNow: Bool {
+        guard bailRule != nil, !bailAnswered, state == .running else { return false }
+        return milesAdrift >= 2
+    }
+
+    /// Called at each mile boundary with whether that mile finished in band.
+    func noteMileBand(inBand: Bool) {
+        milesAdrift = inBand ? 0 : milesAdrift + 1
+    }
+
+    /// The evidence, quietly. Prefers what the plan sent; composes from the
+    /// engine's own count when the wire does not carry it.
+    var bailEvidence: String {
+        if let e = bailRule?.evidence, !e.isEmpty { return e }
+        let n = max(2, milesAdrift)
+        return "\(Self.spell(n).capitalized) miles adrift"
+    }
+
+    /// The judgement, in the coach's register. Same precedence.
+    ///
+    /// Silence over an unfalsifiable claim: when the plan sends no judgement
+    /// and the session is one the engine cannot reason about, this returns
+    /// the honest general case rather than inventing a physiological claim
+    /// about a session it does not understand.
+    var bailJudgement: String {
+        if let j = bailRule?.judgement, !j.isEmpty { return j }
+        let done = repIndexForDisplay - 1
+        if done >= 2 {
+            return "The stimulus is already banked \(Self.mid) forcing the rest buys fatigue, not fitness."
+        }
+        return "Holding this pace is costing more than it is building \(Self.mid) a shorter run still counts."
+    }
+
+    /// The one Unicode character with a job. Never an em dash.
+    private static let mid = "\u{00B7}"
 
     /// Whether THIS rep has already been skipped. The skip advances the
     /// phase immediately, so in practice this guards a double-tap; it is
@@ -1701,7 +1763,12 @@ final class WorkoutEngine: ObservableObject {
         stopTimer()
         Self.clearSnapshot()
         if let tracker {
-            Task { await tracker.end() }
+            // DISCARD, not end. `end()` finishes the builder and writes the
+            // HKWorkout to Health — a runner who threw a run away still found
+            // it in their rings. `discard()` is the call that actually means
+            // discard, and it clears the session so the next launch's recovery
+            // sweep cannot resurrect what was just thrown away.
+            Task { await tracker.discard() }
         }
         reset()
     }
@@ -1900,7 +1967,7 @@ final class WorkoutEngine: ObservableObject {
         workoutJSONCache = snap.workoutJSON
         lastSnapshotElapsedSec = totalElapsedSec
         persistSnapshot()
-        Haptics.play(.transitionWork)
+        Haptics.play(moment: .resumed)
         startTimer()
     }
 
@@ -2071,7 +2138,7 @@ final class WorkoutEngine: ObservableObject {
         // .finished transition (the root model's auto-send) can read it.
         completion = buildCompletion(status: status)
         state = .finished
-        Haptics.play(.end)
+        Haptics.play(moment: .finish)
         // Persist the HKWorkout + GPS route to Health (async, best-effort).
         if let tracker {
             Task { await tracker.end() }

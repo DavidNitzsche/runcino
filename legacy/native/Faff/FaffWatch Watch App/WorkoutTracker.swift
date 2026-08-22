@@ -461,6 +461,43 @@ final class WorkoutTracker: NSObject, ObservableObject {
     }
 
     /// Stop the session and persist the HKWorkout + route to Health.
+    /// Throw the run away. Nothing reaches Health, nothing is POSTed.
+    ///
+    /// The design gives "Discard it" no filled pill — it is text at 42% —
+    /// precisely because this is irreversible, and until now it was ALSO
+    /// dishonest: the discard path called `end()`, which finishes the builder
+    /// and writes the HKWorkout to Health. A runner who threw a run away
+    /// still found it in their activity rings.
+    ///
+    /// `discardWorkout()` is the HealthKit call that actually means discard.
+    /// The session is ended first because a live session outliving its
+    /// builder is how a run gets recovered on the next launch — which would
+    /// resurrect exactly the run the runner just threw away.
+    func discard() async {
+        mockTask?.cancel(); mockTask = nil
+        pedometer.stopUpdates()
+        deviceMonitor.stop()
+        batteryPercent = nil; batteryProjectedMinutes = nil; isWaterLocked = false
+        locationManager.stopUpdatingLocation()
+        guard let session, let builder else { isRecording = false; self.session = nil; self.builder = nil; return }
+        let end = Date()
+        session.stopActivity(with: end)
+        session.end()
+        do {
+            try await builder.endCollection(at: end)
+            try await builder.discardWorkout()
+        } catch {
+            // Best effort. A failure here leaves an orphaned builder, which
+            // the next launch's recovery sweep will find and offer to save —
+            // annoying, but it never invents data and never silently keeps
+            // what the runner asked to be rid of.
+        }
+        isRecording = false
+        self.session = nil
+        self.builder = nil
+        self.routeBuilder = nil
+    }
+
     func end() async {
         mockTask?.cancel(); mockTask = nil
         pedometer.stopUpdates()

@@ -75,6 +75,55 @@ enum WatchRepUnit: String, Codable {
     case time, distance
 }
 
+/// A contingency rule from the plan's spec — the shape that makes the bail
+/// offer possible at all.
+///
+/// The server has shipped `rules` since 2026-06-09 and this model never
+/// decoded it, so the strongest thing in the design — the coach asking rather
+/// than the runner quietly failing — could not fire. Same silent class as the
+/// missing `ruleOutcomes`: the wire carried it, nothing errored, and the
+/// feature simply never happened.
+struct WatchRule: Codable, Equatable {
+    /// "bail" | "abort" | "pass". Only `bail` draws a board.
+    let kind: String
+    /// "hr" | "pace".
+    let metric: String?
+    /// "<=" | ">".
+    let op: String?
+    let value: Double?
+    /// "work" | "finish" | "overall" | "mile-5".
+    let scope: String?
+    let action: String?
+    let label: String?
+    /// 2026-08-21 · the board draws these as two registers — the evidence
+    /// quietly, then the judgement in the coach's voice. Optional so an older
+    /// payload still decodes, and the engine composes them when absent.
+    let evidence: String?
+    let judgement: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, metric, op, value, scope, action, label, evidence, judgement
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // Lenient throughout: a rule the watch cannot read must never cost the
+        // workout, so every field but `kind` is optional and `kind` falls back
+        // to a value that draws nothing.
+        self.kind      = (try? c.decode(String.self, forKey: .kind)) ?? "pass"
+        self.metric    = try? c.decodeIfPresent(String.self, forKey: .metric)
+        self.op        = try? c.decodeIfPresent(String.self, forKey: .op)
+        self.value     = try? c.decodeIfPresent(Double.self, forKey: .value)
+        self.scope     = try? c.decodeIfPresent(String.self, forKey: .scope)
+        self.action    = try? c.decodeIfPresent(String.self, forKey: .action)
+        self.label     = try? c.decodeIfPresent(String.self, forKey: .label)
+        self.evidence  = try? c.decodeIfPresent(String.self, forKey: .evidence)
+        self.judgement = try? c.decodeIfPresent(String.self, forKey: .judgement)
+    }
+
+    var isBail: Bool { kind == "bail" }
+}
+
 struct WatchPhase: Codable, Identifiable {
     /// Stable identity for SwiftUI lists · the cursor index assigned at
     /// decode time (the backend payload has no per-phase id).
@@ -214,12 +263,14 @@ struct WatchWorkout: Codable {
     // that render a Text(...) string read it. nil/unrecognized → "mi",
     // matching every payload before this field existed.
     let unitsDistance: String?
+    /// Contingency rules. See `WatchRule`.
+    let rules: [WatchRule]?
 
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
         case readinessScore, readinessLabel, distanceMi, paceLabel
         case isRace, goalSec, strategyLabel, gelsMi, fueling, hrCeilingBpm
-        case displayHint, unitsDistance
+        case displayHint, unitsDistance, rules
     }
 
     init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
@@ -228,7 +279,8 @@ struct WatchWorkout: Codable {
          distanceMi: Double? = nil, paceLabel: String? = nil,
          isRace: Bool = false, goalSec: Int? = nil, strategyLabel: String? = nil, gelsMi: [Double]? = nil,
          fueling: WatchFueling? = nil, hrCeilingBpm: Int? = nil,
-         displayHint: String? = nil, unitsDistance: String? = nil) {
+         displayHint: String? = nil, unitsDistance: String? = nil,
+         rules: [WatchRule]? = nil) {
         self.workoutId = workoutId
         self.name = name
         self.summary = summary
@@ -248,6 +300,7 @@ struct WatchWorkout: Codable {
         self.hrCeilingBpm = hrCeilingBpm
         self.displayHint = displayHint
         self.unitsDistance = unitsDistance
+        self.rules = rules
     }
 
     init(from decoder: Decoder) throws {
@@ -273,6 +326,8 @@ struct WatchWorkout: Codable {
         self.hrCeilingBpm = c.lenientIntIfPresent(forKey: .hrCeilingBpm)
         self.displayHint = try c.decodeIfPresent(String.self, forKey: .displayHint)
         self.unitsDistance = try c.decodeIfPresent(String.self, forKey: .unitsDistance)
+        // Lenient: a malformed rules array must never cost the workout.
+        self.rules = (try? c.decodeIfPresent([WatchRule].self, forKey: .rules)) ?? nil
         // Re-stamp each phase with its cursor index. CRITICAL: pass through
         // repUnit + distanceMi too — earlier this constructor only carried
         // the first 7 fields forward, which silently dropped repUnit (→ .time)

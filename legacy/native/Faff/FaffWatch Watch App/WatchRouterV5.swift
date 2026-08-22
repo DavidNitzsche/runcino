@@ -72,6 +72,51 @@ enum WFmt {
         String(format: mi >= 100 ? "%.1f" : "%.2f", max(0, mi))
     }
 
+    // ── Units ────────────────────────────────────────────────────────────
+    //
+    // Every internal number stays in miles and seconds-per-mile — the engine,
+    // the drift thresholds, the wire. ONLY this last formatting step converts,
+    // which is the same rule WatchWorkout.mmssWithUnit already follows and the
+    // reason a km runner's pace-drift maths is identical to a mi runner's.
+    //
+    // The unit STRING travels with the value, as a pair, because the boards
+    // take a unit parameter and a value that arrived without its unit is how
+    // a face ends up drawing kilometres labelled "mi".
+
+    private static let milesPerKm = 0.621371
+
+    /// True only for exactly "km" — anything else, including nil and any
+    /// value a newer server invents, renders as miles. That is the same
+    /// default every payload had before the field existed.
+    static func isKm(_ pref: String?) -> Bool { pref == "km" }
+
+    /// Distance, in the runner's unit, with the unit that matches it.
+    static func distance(_ mi: Double, units: String?) -> (value: String, unit: String) {
+        isKm(units) ? (miles(mi / milesPerKm), "km") : (miles(mi), "mi")
+    }
+
+    /// Pace, in the runner's unit. nil in, nil out — an absent pace is drawn
+    /// as absent whatever the unit.
+    static func paceWithUnit(_ secPerMi: Int?, units: String?) -> (value: String, unit: String)? {
+        guard let s = secPerMi, s > 0, s < 3600 else { return nil }
+        if isKm(units) {
+            let perKm = max(0, Int((Double(s) * milesPerKm).rounded()))
+            return ("\(perKm / 60):" + String(format: "%02d", perKm % 60), "/km")
+        }
+        return ("\(s / 60):" + String(format: "%02d", s % 60), "/mi")
+    }
+
+    /// Elevation. Feet in miles-land, metres in km-land — a runner who thinks
+    /// in kilometres does not think in feet.
+    static func elevation(_ metres: Double?, units: String?) -> (value: String, unit: String)? {
+        guard let m = metres else { return nil }
+        if isKm(units) {
+            return ((m >= 0 ? "+" : "") + String(Int(m.rounded())), "m")
+        }
+        let ft = m * 3.28084
+        return ((ft >= 0 ? "+" : "") + String(Int(ft.rounded())), "ft")
+    }
+
     /// A whole number with no decimal point — cadence, watts, bpm.
     static func whole(_ v: Int?) -> String? {
         guard let v, v > 0 else { return nil }
@@ -194,6 +239,9 @@ struct WatchRunSurfaceV5: View {
     @ObservedObject var engine: WorkoutEngine
     @ObservedObject var tracker: WorkoutTracker
     @StateObject private var router = WatchRouterV5()
+    /// The battery board is offered once per run, not once per crossing —
+    /// a percentage that flickers over the threshold must not re-ask.
+    @State private var batteryOffered = false
 
     // ── The decision seam ───────────────────────────────────────────────
     //
@@ -216,6 +264,15 @@ struct WatchRunSurfaceV5: View {
     /// A treadmill run is white throughout — no pace verdict at all, because
     /// the incline is unknown and the copy rules forbid an unfalsifiable claim.
     private var isTreadmill: Bool { tracker.distanceSourceUnavailable }
+
+    /// The runner's distance unit, straight off the payload.
+    private var units: String? { engine.workout.unitsDistance }
+    private var dist: (value: String, unit: String) {
+        WFmt.distance(tracker.distanceMi, units: units)
+    }
+    private var livePace: (value: String, unit: String) {
+        WFmt.paceWithUnit(tracker.paceSPerMi, units: units) ?? ("--", WFmt.isKm(units) ? "/km" : "/mi")
+    }
 
     /// What is unfinished, as a FACT rather than a warning — the runner may
     /// already have decided about it. nil on a steady run, which drops the
@@ -260,6 +317,36 @@ struct WatchRunSurfaceV5: View {
         // Wrist down. Three values, no ticking second, and it takes the whole
         // screen because there is nothing else the runner can act on.
         .faffTracksLuminance(tracker)
+
+        // ── What raises a question ───────────────────────────────────────
+        //
+        // Each of these fires ONCE and then stops asking. `pendingQuestion`
+        // is cleared only by an answer, never by a timer, because these are
+        // the two shapes in the app that wait — and a battery board that
+        // re-raised itself every thirty seconds would be the nag the anti-nag
+        // rule exists to prevent.
+        .onChange(of: engine.hrOverCeiling) { _, over in
+            // The ceiling used to state a limit the runner had no way to
+            // answer, and an unanswerable limit becomes an alert they learn
+            // to swipe. Now it takes an answer.
+            guard over, !engine.ceilingLifted, router.pendingQuestion == nil else { return }
+            router.pendingQuestion = .ceilingOverride
+            Haptics.play(moment: .ceilingOverride)
+        }
+        .onChange(of: engine.canOfferBail) { _, canOffer in
+            guard canOffer, engine.shouldOfferBailNow, router.pendingQuestion == nil else { return }
+            router.pendingQuestion = .bailOffered
+            Haptics.play(moment: .bailOffered)
+        }
+        .onChange(of: tracker.batteryPercent) { _, pct in
+            // 15% is the threshold, and the board is offered once. Below it
+            // the run still records — no sensor blocks the run — so this is
+            // an offer to spend less, not a warning to act on.
+            guard let pct, pct <= 15, !batteryOffered, router.pendingQuestion == nil else { return }
+            batteryOffered = true
+            router.pendingQuestion = .lowBattery
+            Haptics.play(moment: .conditionNotice)
+        }
     }
 
     // MARK: The face
@@ -268,9 +355,11 @@ struct WatchRunSurfaceV5: View {
     private var faceLayer: some View {
         if tracker.isLuminanceReduced {
             RunFaceAlwaysOn(
-                pace: WFmt.pace(tracker.paceSPerMi) ?? "--",
+                pace: livePace.value,
+                paceUnit: livePace.unit,
                 grade: WatchRouterV5.grade(engine.paceZone, treadmill: isTreadmill),
-                distance: WFmt.miles(tracker.distanceMi),
+                distance: dist.value,
+                distanceUnit: dist.unit,
                 elapsedMinutes: String(max(0, engine.totalElapsedSec / 60))
             )
         } else if let phase = engine.currentPhase, isStructured(phase) {
@@ -300,8 +389,10 @@ struct WatchRunSurfaceV5: View {
     private var primaryPage: some View {
         if isTreadmill {
             RunFaceTreadmillPrimary(
-                pace: WFmt.pace(tracker.paceSPerMi) ?? "--",
-                distance: WFmt.miles(tracker.distanceMi),
+                pace: livePace.value,
+                paceUnit: livePace.unit,
+                distance: dist.value,
+                distanceUnit: dist.unit,
                 heartRate: WFmt.whole(tracker.heartRate) ?? "--",
                 elapsed: WFmt.clock(engine.totalElapsedSec),
                 pageIndex: 0, pageCount: 2
@@ -311,18 +402,22 @@ struct WatchRunSurfaceV5: View {
             // never renders a figure — a stale last-known number is worse
             // than none, because the runner cannot tell it has stopped.
             FaceHeartDropoutV5(
-                pace: WFmt.pace(tracker.paceSPerMi) ?? "--",
+                pace: livePace.value,
+                paceUnit: livePace.unit,
                 paceInBand: engine.paceZone == .onTarget && !isTreadmill,
-                distance: WFmt.miles(tracker.distanceMi),
+                distance: dist.value,
+                distanceUnit: dist.unit,
                 elapsed: WFmt.clock(engine.totalElapsedSec)
             )
         } else {
             RunFacePrimary(
-                pace: WFmt.pace(tracker.paceSPerMi) ?? "--",
+                pace: livePace.value,
+                paceUnit: livePace.unit,
                 grade: WatchRouterV5.grade(engine.paceZone, treadmill: false),
                 band: band(for: engine.currentPhase),
                 heartRate: WFmt.whole(tracker.heartRate) ?? "--",
-                distance: WFmt.miles(tracker.distanceMi),
+                distance: dist.value,
+                distanceUnit: dist.unit,
                 elapsed: WFmt.clock(engine.totalElapsedSec),
                 pageIndex: 0, pageCount: 2
             )
@@ -334,9 +429,11 @@ struct WatchRunSurfaceV5: View {
     private var performancePage: some View {
         RunFacePerformance(
             cadence: WFmt.whole(tracker.cadence) ?? "--",
-            averagePace: WFmt.pace(averagePaceSPerMi) ?? "--",
+            averagePace: WFmt.paceWithUnit(averagePaceSPerMi, units: units)?.value ?? "--",
+            averagePaceUnit: (WFmt.isKm(units) ? "/km" : "/mi") + " avg",
             power: isTreadmill ? nil : WFmt.whole(tracker.powerWatts),
-            elevation: isTreadmill ? nil : WFmt.elevation(tracker.elevGainM * 3.28084),
+            elevation: isTreadmill ? nil : WFmt.elevation(tracker.elevGainM, units: units)?.value,
+            elevationUnit: WFmt.isKm(units) ? "m" : "ft",
             pageIndex: 1, pageCount: 2
         )
     }
@@ -359,7 +456,7 @@ struct WatchRunSurfaceV5: View {
 
     @ViewBuilder
     private func phaseBoard(_ phase: WatchPhase) -> some View {
-        let pace = WFmt.pace(tracker.paceSPerMi) ?? "--"
+        let pace = livePace.value
         let grade = WatchRouterV5.grade(engine.paceZone, treadmill: isTreadmill)
 
         switch phase.type {
@@ -385,7 +482,7 @@ struct WatchRunSurfaceV5: View {
                 remaining: WFmt.short(engine.phaseRemainingSec),
                 pace: reading(pace, grade: grade, phase: phase),
                 heartRate: WFmt.whole(tracker.heartRate),
-                distance: WFmt.miles(tracker.distanceMi)
+                distance: dist.value
             )
         case .cooldown:
             EmptyView()
@@ -490,6 +587,27 @@ struct WatchRunSurfaceV5: View {
     @ViewBuilder
     private func questionBoard(_ interrupt: WInterrupt) -> some View {
         switch interrupt {
+        case .bailOffered:
+            // Evidence quietly first, then the judgement in the coach's own
+            // register, then two verbs. "Cut it short" leads on fill — not
+            // because it is the recommendation, but because it is the one the
+            // runner will not press by themselves, and a coach that only ever
+            // offers the brave option is not offering anything.
+            FaceBailOfferedV5(
+                evidence: engine.bailEvidence,
+                judgement: engine.bailJudgement,
+                onCutItShort: {
+                    engine.recordBail(taken: true)
+                    router.pendingQuestion = nil
+                    // Taking it is not a failed run, it is a shorter one, and
+                    // the run detail will say so.
+                    engine.finish(save: true)
+                },
+                onRunItOut: {
+                    engine.recordBail(taken: false)
+                    router.pendingQuestion = nil
+                }
+            )
         case .ceilingOverride:
             FaceCeilingOverrideV5(
                 bpm: WFmt.whole(tracker.heartRate) ?? "--",
@@ -643,7 +761,8 @@ enum WatchLobbyAdapter {
     /// it is one short string and never a sentence.
     static func dose(for workout: WatchWorkout) -> String {
         if let mi = workout.distanceMi, mi > 0 {
-            return WFmt.miles(mi) + " mi"
+            let d = WFmt.distance(mi, units: workout.unitsDistance)
+            return d.value + " " + d.unit
         }
         return "\(max(1, workout.totalEstimatedMinutes)) min"
     }
@@ -776,17 +895,24 @@ struct WatchFinishSurfaceV5: View {
 
     @State private var showingSummary = false
 
-    private var distance: String { WFmt.miles(tracker.distanceMi) }
+    private var units: String? { engine.workout.unitsDistance }
+    private var dist: (value: String, unit: String) {
+        WFmt.distance(tracker.distanceMi, units: units)
+    }
+    private var distance: String { dist.value }
     private var duration: String { WFmt.clock(engine.totalElapsedSec) }
     private var pace: String {
         guard tracker.distanceMi > 0.05 else { return "--" }
-        return WFmt.pace(Int(Double(engine.totalElapsedSec) / tracker.distanceMi)) ?? "--"
+        let secPerMi = Int(Double(engine.totalElapsedSec) / tracker.distanceMi)
+        guard let p = WFmt.paceWithUnit(secPerMi, units: units) else { return "--" }
+        return p.value + " " + p.unit
     }
 
     var body: some View {
         if showingSummary {
             FinishSummaryBoard(
                 distance: distance,
+                distanceUnit: dist.unit,
                 duration: duration,
                 averages: averages,
                 splits: splits,
@@ -804,6 +930,7 @@ struct WatchFinishSurfaceV5: View {
             FinishCompleteBoard(
                 session: WatchLobbyAdapter.ramp(for: engine.workout).rawValue,
                 distance: distance,
+                distanceUnit: dist.unit,
                 duration: duration,
                 pace: pace,
                 coachLine: "",
@@ -821,16 +948,19 @@ struct WatchFinishSurfaceV5: View {
     }
 
     private var averages: [FinishSummaryRow] {
-        var rows: [FinishSummaryRow] = [FinishSummaryRow("Pace", pace + " /mi")]
+        var rows: [FinishSummaryRow] = [FinishSummaryRow("Pace", pace)]
         if let hr = tracker.avgHr { rows.append(FinishSummaryRow("Heart", "\(hr) avg")) }
         if let cad = tracker.avgCadence { rows.append(FinishSummaryRow("Cadence", "\(cad) spm")) }
         return rows
     }
 
     private var splits: [FinishSummaryRow] {
-        engine.splits.enumerated().compactMap { (i, split) -> FinishSummaryRow? in
-            guard let p = WFmt.pace(split.paceSPerMi) else { return nil }
-            return FinishSummaryRow("Mile \(i + 1)", p)
+        // "Mile" vs "Km" — the row label follows the unit, because a row
+        // reading "Mile 3 · 4:03/km" is two different units in one sentence.
+        let noun = WFmt.isKm(units) ? "Km" : "Mile"
+        return engine.splits.enumerated().compactMap { (i, split) -> FinishSummaryRow? in
+            guard let p = WFmt.paceWithUnit(split.paceSPerMi, units: units) else { return nil }
+            return FinishSummaryRow("\(noun) \(i + 1)", p.value)
         }
     }
 
@@ -838,8 +968,8 @@ struct WatchFinishSurfaceV5: View {
     /// first screenful still ends on a whole row — a sliced row reads as a
     /// bug rather than an invitation to scroll.
     private var totals: [FinishSummaryRow] {
-        guard let climb = WFmt.elevation(tracker.elevGainM * 3.28084) else { return [] }
-        return [FinishSummaryRow("Climb", climb + " ft")]
+        guard let climb = WFmt.elevation(tracker.elevGainM, units: units) else { return [] }
+        return [FinishSummaryRow("Climb", climb.value + " " + climb.unit)]
     }
 }
 
@@ -871,7 +1001,9 @@ struct WatchRecoveryReceiptV5: View {
         var rows: [FinishSummaryRow] = []
         if let mi = summary.completion.totalDistanceMi, mi > 0.05 {
             let sec = Double(summary.completion.totalDurationSec)
-            if let p = WFmt.pace(Int(sec / mi)) { rows.append(FinishSummaryRow("Pace", p + " /mi")) }
+            if let p = WFmt.paceWithUnit(Int(sec / mi), units: nil) {
+                rows.append(FinishSummaryRow("Pace", p.value + " " + p.unit))
+            }
         }
         if let hr = summary.completion.avgHr { rows.append(FinishSummaryRow("Heart", "\(hr) avg")) }
         if let cad = summary.completion.avgCadence { rows.append(FinishSummaryRow("Cadence", "\(cad) spm")) }
