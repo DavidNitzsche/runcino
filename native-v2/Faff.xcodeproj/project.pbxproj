@@ -141,6 +141,7 @@
 		AAF411FFC548C34FA08F3A29 /* WorkoutRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9F1D1BCD775FDA96459FBA9 /* WorkoutRootView.swift */; };
 		ABA8B73ABAB07391B459D29A /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71B88D7D0751ABFACD1479 /* API.swift */; };
 		ACA6645F1B466A2A24E43209 /* HealthKitImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D2418C21CF2BDF76B22187B /* HealthKitImporter.swift */; };
+		ACD4562E5E4883B123C27304 /* WatchRouterV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2A42FABAA22658215C406B /* WatchRouterV5.swift */; };
 		AD3CC94D0BD982BE1DE30211 /* APIV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED93C1BD27C8E4828D6A7984 /* APIV5.swift */; };
 		B1A6E0DF54B3924387506BAA /* TrainingCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 339FE2F9F859B2369B4348E2 /* TrainingCalendarView.swift */; };
 		B4BA0E10F8F54E818E92E24F /* CountdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 327F1896B45C80B0A713921B /* CountdownView.swift */; };
@@ -378,6 +379,7 @@
 		8A7AF53AC1B5DF3231932FB6 /* HealthCompactGauge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCompactGauge.swift; sourceTree = "<group>"; };
 		8B2D7420891F1F0024E3D933 /* PhoneSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSync.swift; sourceTree = "<group>"; };
 		8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchWorkoutModels.swift; sourceTree = "<group>"; };
+		8C2A42FABAA22658215C406B /* WatchRouterV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRouterV5.swift; sourceTree = "<group>"; };
 		8FCD25057781DAE979CCDBFC /* ShoesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoesView.swift; sourceTree = "<group>"; };
 		8FD04D91D8038BA91A4D9E20 /* ChartsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartsV5.swift; sourceTree = "<group>"; };
 		918DFA9C4478972044408D2A /* MorningBriefBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MorningBriefBlock.swift; sourceTree = "<group>"; };
@@ -627,6 +629,7 @@
 				5D626345B3F0B0BDED8857D3 /* WatchFaces.swift */,
 				79F2EC545B990808978B44F0 /* WatchFixtures.swift */,
 				1AB189A1C29F682554E49956 /* WatchKitV5.swift */,
+				8C2A42FABAA22658215C406B /* WatchRouterV5.swift */,
 				91FC1DB4EC397EFC1B67BFE9 /* WatchTheme.swift */,
 				6C80F049A1BE98B3445C2549 /* WatchThemeV5.swift */,
 				8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */,
@@ -997,6 +1000,7 @@
 				9F33022A531EBF8A5C922A47 /* WatchFaces.swift in Sources */,
 				08CF7BD58B8FA3767E595667 /* WatchFixtures.swift in Sources */,
 				BF345B2841440AC313D24867 /* WatchKitV5.swift in Sources */,
+				ACD4562E5E4883B123C27304 /* WatchRouterV5.swift in Sources */,
 				0C7CECA6722DD1B30C6C89EB /* WatchTheme.swift in Sources */,
 				20AEFCE629FD7E7D0C7021C2 /* WatchThemeV5.swift in Sources */,
 				2FFA12FF938E115A5971545D /* WatchWorkoutModels.swift in Sources */,

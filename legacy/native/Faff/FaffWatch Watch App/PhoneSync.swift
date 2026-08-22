@@ -28,6 +28,34 @@ final class PhoneSync: NSObject, ObservableObject {
     @Published private(set) var readiness: WatchReadiness?
     /// Set instead of `todayWorkout` on rest/race/no-plan days.
     @Published private(set) var noWorkoutMessage: String?
+
+    /// The 0821 lobby glance — `weekStrip` / `sessionMoved` / `dayState`, the
+    /// three OPTIONAL objects `GET /api/watch/today` carries on BOTH branches
+    /// of its response (web-v2/lib/watch/build-workout.ts).
+    ///
+    /// One published container rather than three published fields: they are
+    /// one read of one day and a router that saw two of them updated and the
+    /// third not would be drawing half of yesterday. The three accessors
+    /// below reach into it, so `phone.dayState` reads the same either way.
+    ///
+    /// PERSISTENCE. Nothing new is stored for these. They ride the SAME
+    /// WatchConnectivity application context the workout rides, and
+    /// WatchConnectivity persists the last received context across app
+    /// launches — which is what `activate()`'s
+    /// `apply(session.receivedApplicationContext)` has always been reading.
+    /// An offline watch therefore has the glance on exactly the terms it has
+    /// the workout: whatever the phone last delivered, until it delivers
+    /// another. Adding a second shelf for it would be a second answer to a
+    /// question that already has one.
+    @Published private(set) var todayGlance: WatchTodayGlance?
+
+    /// The lobby's "This week" page. nil until a glance-carrying payload lands.
+    var weekStrip: WatchWeekStrip? { todayGlance?.weekStrip }
+    /// "The session already moved" — the coach's one line, never a score.
+    var sessionMoved: WatchSessionMoved? { todayGlance?.sessionMoved }
+    /// The structured empty state (rest · no-session). The flat
+    /// `noWorkoutMessage` still rides beside it and is still the fallback.
+    var dayState: WatchDayState? { todayGlance?.dayState }
     /// True once we've received any context (so the UI can distinguish
     /// "nothing yet" from "synced, but no workout today").
     @Published private(set) var hasSynced: Bool = false
@@ -175,8 +203,12 @@ final class PhoneSync: NSObject, ObservableObject {
         let session = WCSession.default
         session.delegate = self
         session.activate()
-        // Whatever the iPhone last delivered is already waiting here.
-        apply(session.receivedApplicationContext)
+        // Whatever the iPhone last delivered is already waiting here — this is
+        // also where an offline watch gets the day back, workout and glance
+        // alike, since WatchConnectivity persists the last received context.
+        // Flagged as a REPLAY: it may be days old, so it must not stamp the
+        // widget shelf with today's date on the strength of the wall clock.
+        apply(session.receivedApplicationContext, replayed: true)
         // Push up anything queued while we were offline / token-less.
         Task { await flushDirectCompletions() }
     }
@@ -235,18 +267,54 @@ final class PhoneSync: NSObject, ObservableObject {
 
     // MARK: Apply incoming context / reply
 
-    fileprivate func apply(_ payload: [String: Any]) {
+    /// `replayed` is true when the payload is the LAST context the phone
+    /// delivered, being re-read out of `receivedApplicationContext` at launch
+    /// or on activation, rather than one that has just arrived. It changes
+    /// exactly one thing: a replayed payload that carries no evidence of the
+    /// day it was built for does not get stamped with today's date on the
+    /// widget shelf. See `writeWidgetSnapshot`.
+    fileprivate func apply(_ payload: [String: Any], replayed: Bool = false) {
         // Auth token the iPhone shares so the watch can post completions
         // directly. Persist it; if it changed, retry any queued completions.
         if let token = payload["authToken"] as? String, !token.isEmpty, token != authToken {
             authToken = token
             Task { await flushDirectCompletions() }
         }
+        // Sign-out. The phone has no key for this today (its `logout()` clears
+        // TokenStore and pushes nothing), so this is the hook rather than a
+        // live path — one boolean and the shelf is wiped. Deliberately NOT
+        // wired to the 401/403 branch below: an access token expiring is not
+        // the runner signing out, and clearing a good prescription off their
+        // watch face every time a token ages would be a worse bug than the
+        // one this closes.
+        if payload["signedOut"] as? Bool == true {
+            signOut()
+            return
+        }
         // Readiness rides alongside the workout (or arrives on its own) — decode
         // it independently so a rest/race day still lights up the glance.
         if let rData = payload["readiness"] as? Data,
            let r = try? JSONDecoder().decode(WatchReadiness.self, from: rData) {
             readiness = r
+        }
+        // The 0821 glance. Read with `try?` end to end and BEFORE the workout,
+        // so it is published whether or not the workout that arrived beside it
+        // decodes — and so that a glance object this build cannot parse costs
+        // nothing. It never touches `lastSyncError`: the runner can execute
+        // the session without a week strip, so a glance failure is not a sync
+        // failure. The workout decode below is untouched and still strict.
+        //
+        // `arrivedGlance` is deliberately a LOCAL as well as being published.
+        // The published one is sticky — a payload with no glance in it leaves
+        // the last one standing, the same way a payload with no workout leaves
+        // the last workout standing. The widget snapshot below must NOT be
+        // built off that sticky copy: yesterday's `dayState: week_off` beside
+        // today's bare rest line would put "WEEK OFF" on the face for a day
+        // nobody said that about. The snapshot sees only this payload's own
+        // evidence.
+        let arrivedGlance = Self.decodeGlance(from: payload)
+        if let g = arrivedGlance {
+            todayGlance = g
         }
         if let data = payload["workout"] as? Data {
             // Decode failures keep the current workout but are RECORDED —
@@ -261,16 +329,290 @@ final class PhoneSync: NSObject, ObservableObject {
                 noWorkoutMessage = nil
                 hasSynced = true
                 lastSyncError = nil
+                writeWidgetSnapshot(workout: workout, message: nil, glance: arrivedGlance, replayed: replayed)
             } catch {
                 lastSyncError = "Workout decode failed: \(error.localizedDescription)"
                 print("[PhoneSync] workout decode failed: \(error)")
+                // AND NOTHING IS WRITTEN TO THE WIDGET SHELF. This is the
+                // branch that matters. We do not know what today holds, so
+                // the last good snapshot stays where it is and goes stale
+                // honestly — the widget draws it at 48% under "2 days old",
+                // which is true. Clearing it here, or writing a rest board
+                // because a decode failed, would replace something true with
+                // something invented. Do not "helpfully" add a write here.
             }
         } else if let message = payload["noWorkout"] as? String {
             todayWorkout = nil
             noWorkoutMessage = message
             hasSynced = true
+            writeWidgetSnapshot(workout: nil, message: message, glance: arrivedGlance, replayed: replayed)
         }
-        // Empty/unknown payloads leave current state untouched.
+        // Empty/unknown payloads leave current state untouched — and write no
+        // snapshot. A context carrying only a refreshed authToken has resolved
+        // nothing about the day and must not spend a reload saying so.
+    }
+
+    /// Wipe every trace of the signed-in runner from this watch, including the
+    /// widget shelf. `FaffWidgetStore.clear()` is the purpose-built destructive
+    /// call (the shelf's default path always preserves), so this is the only
+    /// place it is used.
+    func signOut() {
+        authToken = nil
+        todayWorkout = nil
+        todayGlance = nil
+        readiness = nil
+        noWorkoutMessage = nil
+        lastSyncError = nil
+        hasSynced = false
+        FaffWidgetStore.clear()
+    }
+
+    // MARK: The 0821 glance · where it is read out of
+
+    /// Pull the glance out of a bridge payload.
+    ///
+    /// TWO sources, in order, because the phone relay has two shapes:
+    ///
+    ///  · `glance` — a Data blob carrying either a bare `WatchTodayGlance` or
+    ///    a whole `/api/watch/today` body. `WatchTodayGlance` decodes both
+    ///    (JSONDecoder ignores keys it was not asked for), so the phone can
+    ///    forward either without reshaping. This is the key the REST branch
+    ///    needs: today the phone sends only `noWorkout: <String>` there and
+    ///    the day's weekStrip/dayState never leave the phone.
+    ///  · `workout` — on a session day the phone forwards the ENTIRE response
+    ///    body under this key (WatchSync.syncTodayToWatch: `ctx["workout"] =
+    ///    data`), so the glance is already inside it and needs no new wire.
+    ///
+    /// Never throws, never records an error. A shape this build does not
+    /// understand reads as absent, which is what every build before it saw.
+    private static func decodeGlance(from payload: [String: Any]) -> WatchTodayGlance? {
+        let d = JSONDecoder()
+        if let raw = payload["glance"] as? Data,
+           let g = try? d.decode(WatchTodayGlance.self, from: raw), !g.isEmpty {
+            return g
+        }
+        if let raw = payload["workout"] as? Data,
+           let g = try? d.decode(WatchTodayGlance.self, from: raw), !g.isEmpty {
+            return g
+        }
+        return nil
+    }
+}
+
+// MARK: - The widget shelf (complications + Smart Stack)
+//
+// A widget process is not this process: no WCSession, no network, no
+// PhoneSync. Everything it draws it reads off the App Group shelf, and this
+// is the only thing that writes it — the call site
+// FaffWidgetSnapshot.swift's `// NEEDS:` note specifies.
+//
+// The rules that note lays down, and which the code below keeps:
+//
+//   · Success → a session snapshot.
+//   · noWorkout / rest → the rest snapshot.
+//   · DECODE FAILURE → nothing is written. Handled in `apply` itself, where
+//     the catch has no write in it at all.
+//   · Sign-out → FaffWidgetStore.clear(). See `signOut()`.
+//
+// And the two prohibitions:
+//
+//   · Not on every message. `FaffWidgetStore.write` no-ops on an identical
+//     payload, and every field below is derived deterministically from the
+//     payload, so a re-push of the same day re-derives the same snapshot and
+//     spends no reload. `writtenAt` moving is why the store's guard compares
+//     on `sameContent` rather than `==`.
+//   · Not for a day other than the one the payload is for. `sessionDay` is
+//     taken from the payload's OWN evidence — the week strip's today, or the
+//     day baked into `workoutId` (the server builds it as
+//     `<userId>-<yyyy-MM-dd>`) — and falls back to the wall clock only for a
+//     payload that has JUST arrived. A replayed context with no day in it
+//     writes nothing rather than restamping a three-day-old rest day as today.
+
+extension PhoneSync {
+
+    /// Write what the day resolved to, or return without writing.
+    ///
+    /// `workout` non-nil is the success branch; `message` non-nil is the
+    /// no-session branch. Both are nil only from a caller that has resolved
+    /// nothing, and that writes nothing.
+    func writeWidgetSnapshot(workout: WatchWorkout?,
+                             message: String?,
+                             glance: WatchTodayGlance?,
+                             replayed: Bool) {
+        guard workout != nil || message != nil else { return }
+
+        // The day the payload is FOR, never "now" unless now is all we have
+        // and the payload is fresh.
+        let day: String
+        if let iso = glance?.weekStrip?.days.first(where: { $0.isToday })?.dateIso,
+           Self.looksLikeDay(iso) {
+            day = iso
+        } else if let id = workout?.workoutId, let iso = Self.dayFromWorkoutId(id) {
+            day = iso
+        } else if !replayed {
+            day = FaffWidgetStore.dayString()
+        } else {
+            // Replayed context, no day in it. Whatever is on the shelf was
+            // written when this context was live and carries the right day;
+            // leave it and let it age honestly.
+            return
+        }
+
+        // A no-session reason (injury · sick · week off) rides BESIDE a
+        // workout when the calendar still carries one — the server ships both
+        // on purpose so a deployed watch runs the session unchanged and an
+        // 0821 build draws No session instead (build-workout.ts, the
+        // `noSessionState` comment). The face follows the app: if the lobby
+        // is refusing the day, the complication does not go on prescribing it.
+        if let ds = glance?.dayState {
+            let title = ds.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            FaffWidgetStore.write(FaffSessionSnapshot(
+                sessionDay: day,
+                ramp: ds.isRestDay ? "rest" : "none",
+                // `title` IS the display lede on the wire ("Nothing today" ·
+                // "Week off" · "Off-season"). Nothing is invented here and
+                // nothing is composed — an empty title drops the register
+                // rather than being filled in.
+                lede: title.isEmpty ? nil : title.uppercased(),
+                // No dose on either board. There is no dose.
+                dose: nil,
+                workoutId: nil
+            ))
+            return
+        }
+
+        if let w = workout {
+            FaffWidgetStore.write(FaffSessionSnapshot(
+                sessionDay: day,
+                ramp: Self.rampName(for: w),
+                lede: Self.lede(for: w),
+                dose: Self.dose(for: w),
+                workoutId: w.workoutId
+            ))
+            return
+        }
+
+        // No dayState, no workout — a flat `noWorkout` line from a phone build
+        // that does not forward the glance yet. The message is byte-stable by
+        // server contract, so the one branch worth separating is separated:
+        // a rest day is a rest day, and "No active plan." is NOT one and must
+        // not be drawn on a wrist as though the runner had been told to rest.
+        // Both ledes are the design's own board names, not composed prose,
+        // and both are superseded the moment `dayState` starts arriving.
+        let isRest = (message ?? "").lowercased().hasPrefix("rest day")
+        FaffWidgetStore.write(FaffSessionSnapshot(
+            sessionDay: day,
+            ramp: isRest ? "rest" : "none",
+            lede: isRest ? "REST" : "NO SESSION",
+            dose: nil,
+            workoutId: nil
+        ))
+    }
+
+    // ── Derivations · session snapshot ──
+
+    /// The ramp name the lobby hands `WatchV5.DayState.forSession` — the
+    /// `V5LobbyRamp.wireName` vocabulary (easy · quality · long · race · rest
+    /// · none), so the face and the lobby cannot pick different gradients for
+    /// the same day.
+    ///
+    /// The wire carries no `sessionClass` field, so this re-derives it from
+    /// what the payload does carry, strongest signal first:
+    ///
+    ///   1. `isRace` — the server sets it from `type === 'race'`.
+    ///   2. `paceLabel` — server-side `paceLabelFor(wo.type)`, the closest
+    ///      thing on the wire to the class itself.
+    ///   3. `displayHint` — set for long and tempo specifically.
+    ///   4. the session's name.
+    ///   5. the SHAPE of the phases. `paceLabel` is "" for the four types
+    ///      `paceLabelFor` has no case for (race_week_tuneup, fartlek,
+    ///      progression, vo2max) and every one of them is a quality session;
+    ///      reps and jog recoveries are what those look like from here.
+    static func rampName(for w: WatchWorkout) -> String {
+        if w.isRace { return "race" }
+
+        switch (w.paceLabel ?? "").uppercased() {
+        case "L":      return "long"
+        case "T", "I": return "quality"
+        case "R":      return "race"
+        case "E":      return "easy"
+        default:       break
+        }
+
+        switch (w.displayHint ?? "").lowercased() {
+        case "tempo":      return "quality"
+        case "hr", "pace": return "long"
+        default:           break
+        }
+
+        let n = w.name.lowercased()
+        if n.contains("long")                                     { return "long" }
+        if n.contains("race")                                     { return "race" }
+        if n.contains("threshold") || n.contains("tempo")
+            || n.contains("interval") || n.contains("fartlek")
+            || n.contains("progression") || n.contains("vo2")
+            || n.contains("tune-up") || n.contains("tune up")
+            || n.contains("repeat")                               { return "quality" }
+        if n.contains("rest")                                     { return "rest" }
+
+        let workPhases = w.phases.filter { $0.type == .work }.count
+        let hasRecovery = w.phases.contains { $0.type == .recovery }
+        if workPhases > 1 || hasRecovery { return "quality" }
+
+        return "easy"
+    }
+
+    /// The display word. `workout.name` is `plan_workouts.sub_label` where the
+    /// plan authored one and the type word otherwise, which is the same string
+    /// IdleView already puts at the top of the lobby — so the face and the app
+    /// say the same word. Empty reads as absent, never as "".
+    static func lede(for w: WatchWorkout) -> String? {
+        let n = w.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return n.isEmpty ? nil : n.uppercased()
+    }
+
+    /// The dose, one line, in the runner's own unit.
+    ///
+    /// Formatted HERE and not in the widget, on purpose: `unitsDistance` is a
+    /// display preference that the units audit already has one place for, and
+    /// a widget re-deriving it would be a second place for that audit to
+    /// regress. Same conversion IdleView's `distanceText` uses, so the two
+    /// read identically. No distance → no dose: the register drops rather
+    /// than drawing a dash.
+    static func dose(for w: WatchWorkout) -> String? {
+        guard let mi = w.distanceMi, mi > 0 else { return nil }
+        let isKm = w.unitsDistance == "km"
+        let value = isKm ? mi / 0.621371 : mi
+        return String(format: "%.1f", value) + (isKm ? " km" : " mi")
+    }
+
+    // ── Derivations · which day ──
+
+    /// `yyyy-MM-dd`, shape only. Cheap, allocation-free, and enough: this is
+    /// guarding against a field that is empty or something else entirely, not
+    /// validating a calendar.
+    static func looksLikeDay(_ s: String) -> Bool {
+        guard s.count == 10 else { return false }
+        let c = Array(s)
+        for (i, ch) in c.enumerated() {
+            if i == 4 || i == 7 {
+                if ch != "-" { return false }
+            } else if !ch.isNumber {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// The server builds `workoutId` as `<userId>-<yyyy-MM-dd>`
+    /// (build-workout.ts). The trailing ten characters are therefore the day
+    /// the session was prescribed FOR — which is what staleness is measured
+    /// against, and which survives the payload sitting in a persisted context
+    /// for three days before this watch reads it again.
+    static func dayFromWorkoutId(_ id: String) -> String? {
+        guard id.count >= 10 else { return nil }
+        let tail = String(id.suffix(10))
+        return looksLikeDay(tail) ? tail : nil
     }
 }
 
@@ -281,7 +623,8 @@ extension PhoneSync: WCSessionDelegate {
                              activationDidCompleteWith state: WCSessionActivationState,
                              error: Error?) {
         Task { @MainActor in
-            self.apply(session.receivedApplicationContext)
+            // Same replayed context as activate() reads — same flag.
+            self.apply(session.receivedApplicationContext, replayed: true)
             self.requestTodayWorkout()
         }
     }

@@ -364,17 +364,38 @@ struct WorkoutRootView: View {
                 onEndSave: { model.endAndSaveRecovered() }
             )
         } else if let engine = model.engine {
+            // ── The 0821 boards ──────────────────────────────────────────
+            // Presentation only; the state machine above is unchanged. The
+            // old ActiveWorkoutView / CountdownView / SummaryView are no
+            // longer reached from here and go with the legacy palette.
             switch engine.state {
             case .finished:
                 // Completion is auto-sent on the .finished transition (see
                 // WatchRootModel) — Done just dismisses + resets.
-                SummaryView(workout: engine.workout, completion: engine.completion) {
-                    model.reset()
-                }
+                //
+                // Race day gets its own board because the clock is NOT the
+                // result and must not pose as one: amber until the chip time
+                // lands, and the coach's sentence waits for the phone.
+                WatchFinishSurfaceV5(
+                    engine: engine,
+                    tracker: model.tracker,
+                    onDone: { model.reset() }
+                )
             case .countingDown:
-                CountdownView(engine: engine)
+                // The last frame of the lobby, not a new place — the
+                // session's own ramp, one numeral, nothing else moving.
+                V5LobbyCountdown(
+                    ramp: WatchLobbyAdapter.ramp(for: engine.workout),
+                    seconds: max(1, engine.countdownValue)
+                )
             case .idle, .running:
-                ActiveWorkoutView(engine: engine, tracker: model.tracker)
+                WatchRunSurfaceV5(engine: engine, tracker: model.tracker)
+                    .onEndAndSave { engine.abandon() }
+                    .onDiscardRun {
+                        // Thrown away on purpose. reset() drops the run
+                        // without building a completion, so nothing is sent.
+                        model.reset()
+                    }
             }
         } else {
             // Home: lobby/rest (default) → JUST RUN (escape hatch — one
@@ -403,17 +424,54 @@ struct WorkoutRootView: View {
                 // RK-2 — the cached plan is past its window and a refetch is
                 // out. The moment a fresh payload lands, `isExpired` reads
                 // false and this branch falls back to the normal START.
-                StalePlanView(
-                    overrideAvailable: model.staleOverrideAvailable,
-                    onStartAnyway: { model.startAnyway(workout) }
+                // Amber, not red: stale evidence is what amber means
+                // everywhere in this product, and nothing FAILED to read.
+                // The prescription is still drawn at 48% — hiding it would
+                // be pretending we do not have it.
+                PreSessionStalePlanBoard(
+                    ageKicker: WatchLobbyAdapter.ageLabel(for: workout),
+                    sessionType: workout.name,
+                    sessionDose: WatchLobbyAdapter.dose(for: workout),
+                    onRunAnyway: { model.startAnyway(workout) },
+                    onPlainRun: { model.start(.makeJustRun()) }
                 )
             } else {
-                IdleView(workout: workout) { model.start(workout) }
+                WatchLobbySurfaceV5(
+                    workout: workout,
+                    weekStrip: phone.weekStrip,
+                    sessionMoved: phone.sessionMoved,
+                    onStart: { model.start(workout) }
+                )
             }
-        } else if let message = phone.noWorkoutMessage {
-            NoWorkoutView(message: message)
+        } else if let dayState = phone.dayState {
+            // A refusal with a REASON, in its own ramp, so it reads as a
+            // state of the plan rather than a screen that failed to load.
+            // The escape is present but quiet: nothing here is being sold.
+            V5LobbyRefusal(
+                lede: dayState.isRestDay ? dayState.title : nil,
+                sentence: dayState.coachLine,
+                escapeLabel: dayState.actionLabel,
+                ramp: dayState.isRestDay ? .rest : .noSession,
+                onEscape: { model.start(.makeJustRun()) }
+            )
+        } else if phone.noWorkoutMessage != nil {
+            // Older server, or a payload with no structured day state. The
+            // sentence is all we have, so the board carries it rather than
+            // inventing a reason it does not know.
+            V5LobbyRefusal(
+                lede: nil,
+                sentence: phone.noWorkoutMessage ?? "",
+                escapeLabel: "Just run",
+                ramp: .noSession,
+                onEscape: { model.start(.makeJustRun()) }
+            )
         } else {
-            WaitingForPhoneView()
+            // Nothing has ever arrived. This is the WHOLE of onboarding on
+            // the wrist: the plan is made on the phone and this app is a
+            // receiver, so the board says that and stops.
+            PreSessionFirstLaunchBoard(
+                onPlainRun: { model.start(.makeJustRun()) }
+            )
         }
     }
 
