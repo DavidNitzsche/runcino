@@ -1008,19 +1008,53 @@ struct V5SheetHost<Sheet: View>: View {
     /// Set from the ZStack's own geometry, so the inset is proportional on
     /// every device rather than a fixed gap that swallows a small screen.
     @State private var tallHeight: CGFloat? = nil
+    /// The whole screen's height, for the ordinary sheet's ceiling.
+    @State private var screenHeight: CGFloat? = nil
+    /// What the content wants, measured. Compared against the ceiling to
+    /// decide whether this sheet needs to scroll at all.
+    @State private var contentHeight: CGFloat = 0
+
+    /// AN ORDINARY SHEET NOW HAS A CEILING, AND DEGRADES INSTEAD OF CLIPPING.
+    ///
+    /// It used to size to its content with no maximum, which is right for four
+    /// rows and silently wrong past that — add-a-race put its title under the
+    /// clock and its buttons under the tab bar, and nothing said so.
+    ///
+    /// 76% of the screen. The six-sentence another-race trade-off fits a
+    /// 390×844 screen with room to spare, so this changes nothing today; it is
+    /// here because six sentences is the longest string we have WRITTEN, not
+    /// the longest one that can occur. The reason it fits is worth keeping:
+    /// the sentences are the coach's, not a form's. If a sheet ever needs more
+    /// than six, the fix is the copy.
+    private var maxHeightFraction: CGFloat { 0.76 }
+
+    private var ceiling: CGFloat? {
+        guard !tall, let screenHeight else { return nil }
+        return screenHeight * maxHeightFraction
+    }
+
+    /// Only scroll when the content actually exceeds the ceiling. A ScrollView
+    /// takes every point it is offered, so wrapping unconditionally would
+    /// stretch a four-row sheet to three-quarters of the screen.
+    private var needsScroll: Bool {
+        guard let ceiling else { return false }
+        return contentHeight > ceiling
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            if tall {
-                GeometryReader { geo in
-                    Color.clear
-                        .onAppear { tallHeight = geo.size.height * (1 - topInsetFraction) }
-                        .onChange(of: geo.size.height) { _, h in
-                            tallHeight = h * (1 - topInsetFraction)
-                        }
-                }
-                .allowsHitTesting(false)
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear {
+                        screenHeight = geo.size.height
+                        if tall { tallHeight = geo.size.height * (1 - topInsetFraction) }
+                    }
+                    .onChange(of: geo.size.height) { _, h in
+                        screenHeight = h
+                        if tall { tallHeight = h * (1 - topInsetFraction) }
+                    }
             }
+            .allowsHitTesting(false)
             if isPresented {
                 Color.black.opacity(0.72)
                     .ignoresSafeArea()
@@ -1034,7 +1068,7 @@ struct V5SheetHost<Sheet: View>: View {
                     .accessibilityLabel("Close")
                     .accessibilityAddTraits(.isButton)
 
-                VStack(alignment: .leading, spacing: V5.S.s16) {
+                let body = VStack(alignment: .leading, spacing: V5.S.s16) {
                     if let title {
                         Text(title)
                             .font(.faffDisplay(20))
@@ -1046,7 +1080,22 @@ struct V5SheetHost<Sheet: View>: View {
                     sheet()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(maxHeight: tall ? tallHeight : nil, alignment: .top)
+                .background {
+                    GeometryReader { g in
+                        Color.clear
+                            .onAppear { contentHeight = g.size.height }
+                            .onChange(of: g.size.height) { _, h in contentHeight = h }
+                    }
+                }
+
+                Group {
+                    if needsScroll {
+                        ScrollView { body }.scrollIndicators(.visible)
+                    } else {
+                        body
+                    }
+                }
+                .frame(maxHeight: tall ? tallHeight : ceiling, alignment: .top)
                 .padding(.top, 22)
                 .padding(.horizontal, V5.S.tilePad)
                 .padding(.bottom, 34)

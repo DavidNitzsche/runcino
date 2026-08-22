@@ -51,6 +51,27 @@ struct RouteMapView: UIViewRepresentable {
     /// the dark_nolabels tiles for a clean route (David 2026-06-17).
     var showLabels: Bool = true
 
+    /// The pace window the session asked for, seconds per mile. When present,
+    /// the route stops grading and starts answering the same question the
+    /// split chart answers.
+    ///
+    /// ROUND THREE, ITEM 4 · THE ROUTE FOLLOWS THE SPLITS. The old colouring
+    /// was a five-hue quintile ramp with green at the fast end, which grades a
+    /// number good — out everywhere else in this palette, and wrong on its own
+    /// terms: a fast mile inside an easy run is off the prescription, not
+    /// good. The 0821 line asking for a single-hue opacity ramp does not fix
+    /// it either; darker still looks worse, so an opacity ramp is a quieter
+    /// verdict rather than no verdict.
+    ///
+    /// Two flat fills carry no gradient of judgement at all, and the payoff is
+    /// that the grey stretch on the map and the grey bar in the chart are THE
+    /// SAME MILE. The two graphics answer each other instead of competing,
+    /// which is worth more than either being individually cleverer.
+    ///
+    /// Nil — an unplanned run, or a session kind with no single pace window —
+    /// draws the whole line in signal and asserts nothing.
+    var paceBand: (lo: Int, hi: Int)? = nil
+
     /// True when this run colors by HR zone (steady effort + per-mile HR + zone
     /// bands present, and not a structured/phase workout). The single rule, used
     /// by both the route coloring and the card's legend so they never diverge.
@@ -86,8 +107,24 @@ struct RouteMapView: UIViewRepresentable {
         UIColor(Color(hex: 0x27B4E0)),
     ]
 
+    /// In the window, or out of it. ONE grey in BOTH directions — a mile run
+    /// fast and a mile run slow are both "not what was asked", and giving fast
+    /// its own colour would grade it good.
+    ///
+    /// The grey is `materialControl`, the same token the split chart uses, so
+    /// the same mile reads the same in both graphics. The handoff names
+    /// `#3A3E42`, a hair lighter for legibility on a dark basemap; that is a
+    /// new hex against a byte-locked palette, so the shared token wins unless
+    /// it proves too dark to read on the map.
+    static func bandColor(_ paceSec: Double, _ band: (lo: Int, hi: Int)?) -> UIColor {
+        guard let band else { return UIColor(V5.signal) }
+        let inBand = paceSec >= Double(band.lo) && paceSec <= Double(band.hi)
+        return UIColor(inBand ? V5.signal : V5.materialControl)
+    }
+
     /// Continuous warm→cool ramp across the five bucket colors · t in 0…1.
-    /// Lets the pace line fade between buckets instead of hard-switching.
+    /// RETAINED for the HR-zone axis's own palette only — a zone is an
+    /// identity, not a grade, and round three does not touch it.
     static func rampColor(_ t: Double) -> UIColor {
         let cs = bucketColors
         let tt = max(0, min(1, t)) * Double(cs.count - 1)
@@ -255,11 +292,7 @@ struct RouteMapView: UIViewRepresentable {
             for p in validPhases { let s = cum; cum += p.mi * scale; spans.append((s, cum, Double(p.sec))) }
             let w = max(0.35, min(0.65, total * 0.08))  // boundary fade wide enough to be visible at map scale
             valueFn = { d in RouteMapView.phaseValue(d, spans, w) }
-            let vals = validPhases.map { Double($0.sec) }.sorted()
-            let lo = vals[Int(Double(vals.count - 1) * 0.1)]
-            let hi = vals[Int(Double(vals.count - 1) * 0.9)]
-            let span = max(1, hi - lo)
-            colorFn = { v in RouteMapView.rampColor((v - lo) / span) }
+            colorFn = { [paceBand] v in RouteMapView.bandColor(v, paceBand) }
         } else if RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits, phases: phases) {
             // Steady · per-mile HR → zone position, SMOOTH, on the zone palette.
             let hrs = RouteMapView.perMileFilled(splits.map { ($0.hr).flatMap { $0 > 0 ? Double($0) : nil } })
@@ -272,12 +305,8 @@ struct RouteMapView: UIViewRepresentable {
             // Per-mile PACE, SMOOTH, on the pace palette.
             let paces = RouteMapView.perMileFilled(splits.map { paceToSec($0.pace).flatMap { $0 > 0 ? Double($0) : nil } })
             guard !paces.isEmpty else { return [] }
-            let sorted = paces.sorted()
-            let lo = sorted[Int(Double(sorted.count - 1) * 0.1)]
-            let hi = sorted[Int(Double(sorted.count - 1) * 0.9)]
-            let span = max(1, hi - lo)
             valueFn = { d in RouteMapView.mileSmooth(d, paces) }
-            colorFn = { v in RouteMapView.rampColor((v - lo) / span) }
+            colorFn = { [paceBand] v in RouteMapView.bandColor(v, paceBand) }
         }
 
         guard let value = valueFn, let color = colorFn else { return [] }

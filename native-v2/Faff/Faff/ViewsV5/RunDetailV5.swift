@@ -375,7 +375,13 @@ struct RunDetailV5: View {
                          splits: detail.splits,
                          phases: RouteMapView.phaseSamples(from: detail.phase_breakdown),
                          effort: mappedEffort,
-                         hrZones: detail.hr_zones_from_lthr?.ranges ?? [])
+                         hrZones: detail.hr_zones_from_lthr?.ranges ?? [],
+                         // THE SAME BAND THE SPLIT CHART USES. That is the
+                         // whole point of round three item 4 — the grey
+                         // stretch on the map and the grey bar in the chart
+                         // must be the same mile, or the two graphics compete
+                         // instead of answering each other.
+                         paceBand: splitBand)
                 .frame(height: 200)
                 .clipShape(RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
                 // Purely visual: MapKit hit-tests its region even when

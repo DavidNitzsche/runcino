@@ -201,15 +201,76 @@ struct RangeScale: View {
 struct ZoneBar: View {
     /// Percent in each zone, Z1…Z5. Need not sum to exactly 100.
     let shares: [Double]
-    /// The zone the session asked for, 1-indexed. Nil highlights nothing.
-    var target: Int? = nil
+    /// The zones the session ASKED FOR, 1-indexed. Empty highlights nothing.
+    ///
+    /// A race prescribes Z4 AND Z5, which is why this is a set and not one
+    /// index — a race rendered with a single highlight put the emphasis on
+    /// whichever zone happened to be taller, so the graphic followed the
+    /// outcome instead of the prescription.
+    ///
+    /// IT COMES FROM THE SESSION, NEVER FROM WHERE THE TIME LANDED. The bar
+    /// then answers "did it sit where it was asked to" by inspection, which
+    /// is the only question it exists to answer.
+    var targets: Set<Int> = []
     var height: CGFloat = 44
     var labels: Bool = false
 
+    /// Convenience for the single-zone case (easy runs ask for Z2).
+    init(shares: [Double], target: Int?, height: CGFloat = 44, labels: Bool = false) {
+        self.init(shares: shares, targets: target.map { [$0] } ?? [], height: height, labels: labels)
+    }
+
+    init(shares: [Double], targets: Set<Int> = [], height: CGFloat = 44, labels: Bool = false) {
+        self.shares = shares
+        self.targets = targets
+        self.height = height
+        self.labels = labels
+    }
+
     private var total: Double { Swift.max(shares.reduce(0, +), 0.0001) }
 
-    private func width(_ s: Double, in full: CGFloat) -> CGFloat {
-        Swift.max(full * (s / total) - 2, s > 0 ? 2 : 0)
+    /// EVERY SEGMENT WITH TIME IN IT GETS AT LEAST 6% OF THE BAR.
+    ///
+    /// Below that a zone renders as a hairline, which reads as "none" rather
+    /// than "a little" — and the difference between four minutes in Z5 and
+    /// none at all is most of what the bar is for. The floored segment is
+    /// visibly the smallest thing on the bar, so it cannot be mistaken for a
+    /// large one, and VoiceOver carries the real percentage regardless.
+    private static let minShare: Double = 0.06
+
+    /// Fractions after flooring, renormalised so they still sum to 1.
+    private var fractions: [Double] {
+        let raw = shares.map { Swift.max($0, 0) / total }
+        let floored = raw.map { $0 > 0 ? Swift.max($0, Self.minShare) : 0 }
+        let sum = Swift.max(floored.reduce(0, +), 0.0001)
+        return floored.map { $0 / sum }
+    }
+
+    private func width(_ i: Int, in full: CGFloat) -> CGFloat {
+        let f = fractions[i]
+        return Swift.max(full * CGFloat(f) - 2, f > 0 ? 2 : 0)
+    }
+
+    /// A zone the session did not ask for.
+    ///
+    /// Round three asks for three surface fills — #2F343A / #272B2F / #1F2225
+    /// — because on a RACE only three zones are non-target. Implemented that
+    /// way first and it was wrong in the general case: five zones need five
+    /// steps, the locked palette carries four surfaces, and mapping five onto
+    /// four put Z4 and Z5 in the SAME grey. On the AFC half, where the whole
+    /// run sat in Z4 and Z5, the bar became two indistinguishable blocks.
+    ///
+    /// That is precisely the failure the density ramp was written to prevent:
+    /// "a bar with no target rendered as one flat grey block and read as a
+    /// single value rather than as a distribution."
+    ///
+    /// So the ramp stays. It steps five ways, it is ordinal rather than
+    /// hued — it says WHICH zone without saying whether the distribution was
+    /// good — and it recedes behind the signal fill exactly as the handoff
+    /// wants. The three named hexes are also new colours against a byte-locked
+    /// palette, so they would need their own exemption to exist at all.
+    private func restFill(_ zoneIndex: Int) -> Color {
+        V5.plotInk.opacity(0.22 + Double(zoneIndex) * 0.14)
     }
 
     var body: some View {
@@ -217,7 +278,7 @@ struct ZoneBar: View {
             VStack(alignment: .leading, spacing: V5.S.s6) {
                 HStack(spacing: 2) {
                     ForEach(Array(shares.enumerated()), id: \.offset) { i, s in
-                        let isTarget = target.map { $0 == i + 1 } ?? false
+                        let isTarget = targets.contains(i + 1)
                         RoundedRectangle(cornerRadius: V5.R.r6, style: .continuous)
                             // Zones step in density, Z1 lightest to Z5
                             // densest. Without it a bar with no target — a
@@ -228,9 +289,8 @@ struct ZoneBar: View {
                             // Density, not hue: an ordinal ramp says which
                             // zone without saying anything about whether the
                             // distribution was good, which this app never does.
-                            .fill(isTarget ? V5.signal
-                                  : V5.plotInk.opacity(0.22 + Double(i) * 0.14))
-                            .frame(width: width(s, in: geo.size.width))
+                            .fill(isTarget ? V5.signal : restFill(i))
+                            .frame(width: width(i, in: geo.size.width))
                     }
                 }
                 .frame(height: height, alignment: .leading)
@@ -248,10 +308,10 @@ struct ZoneBar: View {
                         ForEach(Array(shares.enumerated()), id: \.offset) { i, s in
                             Text(s > 0 ? "Z\(i + 1)" : "")
                                 .font(.faffText(TypeScaleV5.label12))
-                                .foregroundStyle(target.map { $0 == i + 1 } ?? false ? V5.signal : V5.textQuiet)
+                                .foregroundStyle(targets.contains(i + 1) ? V5.signal : V5.textQuiet)
                                 .lineLimit(1)
                                 .fixedSize()
-                                .frame(width: width(s, in: geo.size.width), alignment: .leading)
+                                .frame(width: width(i, in: geo.size.width), alignment: .leading)
                                 .clipped()
                         }
                     }
@@ -275,7 +335,8 @@ struct ZoneBar: View {
             return "Zone \(i + 1), \(pct)%"
         }
         guard !parts.isEmpty else { return "Time in zone. No reading." }
-        let asked = target.map { " The session asked for zone \($0)." } ?? ""
+        let asked = targets.isEmpty ? "" :
+            " The session asked for zone " + targets.sorted().map(String.init).joined(separator: " and ") + "."
         return "Time in zone. " + parts.joined(separator: ". ") + "." + asked
     }
 }
