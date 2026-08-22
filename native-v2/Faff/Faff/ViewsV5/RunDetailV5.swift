@@ -407,6 +407,40 @@ struct RunDetailV5: View {
         return (z.z1 + z.z2 + z.z3 + z.z4 + z.z5) > 0
     }
 
+    /// The zone the session ASKED for, mirroring `lib/coach/zone-target.ts`
+    /// (ACSM five-zone table, `Research/03` §4) — which is the same mapping
+    /// `V5Today.zoneTarget` already hands the after-run screen. 23a reads no
+    /// such field, so it derives the target from the run's own type rather
+    /// than leaving the graphic mute.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// THE ONE CASE THAT STAYS NIL, AND WHY IT IS ONLY ONE
+    ///
+    /// Round three says the target "comes from the session's own prescription"
+    /// and that "a race targets Z4/Z5". `zoneTargetForWorkout` maps race to
+    /// zone 3, off §4's own Purpose column, with a doctrine claim watching it.
+    /// A design ruling does not move a physiological constant, so the constant
+    /// stands — but drawing Z3 on a race would put the design's own screen at
+    /// odds with the ruling that commissioned it, so a race highlights nothing
+    /// and the bar states the distribution without answering.
+    ///
+    /// This screen previously passed nil for EVERY run for that reason, which
+    /// was the wrong size of retreat: the two sources disagree on races alone.
+    /// On an easy, long, threshold or interval run they name the same zone, so
+    /// there was never a conflict to dodge — and a bar with nothing highlighted
+    /// cannot answer "did it sit where it was asked to", which is the only
+    /// question it exists for.
+    private var zoneTarget: Int? {
+        switch (detail.type ?? "").lowercased() {
+        case "easy", "recovery", "shakeout", "long":  return 2
+        case "tempo", "progression", "mp":            return 3
+        case "threshold", "fartlek":                  return 4
+        case "intervals", "vo2max":                   return 5
+        // Race: see above. Rest and anything unrecognised: nothing was asked.
+        default:                                       return nil
+        }
+    }
+
     private var zoneSection: some View {
         Tile {
             Text("Where the heart sat")
@@ -414,7 +448,7 @@ struct RunDetailV5: View {
                 .foregroundStyle(V5.textSecondary)
             ZoneBar(shares: [detail.hrZonePcts.z1, detail.hrZonePcts.z2, detail.hrZonePcts.z3,
                              detail.hrZonePcts.z4, detail.hrZonePcts.z5],
-                    target: nil, height: 44, labels: true)
+                    target: zoneTarget, height: 44, labels: true)
         }
     }
 

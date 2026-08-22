@@ -157,6 +157,14 @@ enum V5 {
         let plate: Color
         /// A round header button on a panel. STATED.
         let control: Color
+        /// The ink for the modelled-number tilde on this ramp.
+        ///
+        /// Amber on every dark ramp, which is what the mark is. On the two
+        /// LIGHT ramps it is the panel ink instead: those ramps open on the
+        /// warm amber-orange stops the attention colour is drawn from, and
+        /// amber on them measures about 1.05:1 — the mark disappears exactly
+        /// where rule one needs it most. See `FaffValueText.mark`.
+        let mark: Color
         /// What the status bar glyphs must be for this ramp. The panel reaches
         /// behind the clock, so the system's own ink is on our surface.
         let statusBar: ColorScheme
@@ -167,6 +175,7 @@ enum V5 {
             quiet:     .white.opacity(0.62),
             plate:     .white.opacity(0.16),
             control:   .white.opacity(0.20),
+            mark:      V5.attention,
             statusBar: .dark)
 
         /// Secondary is THE SAME INK at reduced opacity, never a lighter
@@ -183,6 +192,7 @@ enum V5 {
             quiet:     Theme.V5.DayState.darkInk.opacity(0.82),
             plate:     Theme.V5.DayState.darkInk.opacity(0.13),
             control:   Theme.V5.DayState.darkInk.opacity(0.16),
+            mark:      Theme.V5.DayState.darkInk,
             statusBar: .light)
     }
 
@@ -225,9 +235,10 @@ enum V5 {
             }
         }
 
-        /// Stop positions. The race ramp alone moves its middle stop earlier,
-        /// and every ramp's dark terminal sits past the panel edge on purpose
-        /// so the deep end stays only just darker.
+        /// Stop positions. The two dark-ink ramps — quality and race — move
+        /// their middle stop earlier, to 52%; every ramp's dark terminal sits
+        /// past the panel edge on purpose so the deep end stays only just
+        /// darker.
         var locations: [Double] {
             wantsDarkInk ? Theme.V5.DayState.darkInkLocations : Theme.V5.DayState.locations
         }

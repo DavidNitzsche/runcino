@@ -33,9 +33,9 @@ struct ScreensCatalogV5: View {
     @State private var showing: String? = ScreensCatalogV5.launchArgumentScreen
 
     static var launchArgumentScreen: String? {
-        let ids = Set(["5a", "5b", "5c", "7a", "8a", "13a", "14a", "15a", "16a",
+        let ids = Set(["5a", "5b", "5c", "7a", "8a", "8c", "13a", "14a", "15a", "16a",
                        "17a", "18a-slower", "18a-faster", "19a", "19a-refused",
-                       "not-yet", "system"])
+                       "22a", "23a", "not-yet", "system"])
         return ProcessInfo.processInfo.arguments.first(where: ids.contains)
     }
 
@@ -65,6 +65,28 @@ struct ScreensCatalogV5: View {
             },
             Entry(id: "8a", title: "Race detail", sub: "AppBar and a plain list") {
                 AnyView(RaceDetailV5(raceDetail: .v5Sample))
+            },
+            // THE NEW WORK WAS NEVER ADDED HERE, AND THAT IS HOW 8c SHIPPED
+            // UNREACHABLE.
+            //
+            // `RaceJustFinishedV5` had no route, no host, no catalog entry and
+            // not even a `#Preview`: it compiled, the build said SUCCEEDED, and
+            // no runner or reviewer could get to it. A drawn screen with no way
+            // in is indistinguishable from one that was never built.
+            //
+            // These three do not create a production path — 8c still needs a
+            // real `V5TodayState` and a backend that says a race just landed.
+            // They make the screens REVIEWABLE, which is the gap that let the
+            // first one go unnoticed.
+            Entry(id: "8c", title: "Race · twenty minutes after", sub: "Holds the number, refuses to promote it") {
+                AnyView(RaceJustFinishedV5(model: .sampleV5))
+            },
+            Entry(id: "22a", title: "Past runs", sub: "The history, off Block") {
+                AnyView(RunLogV5(log: RunLogV5Sample.log))
+            },
+            Entry(id: "23a", title: "Run detail", sub: "Splits, route, zones, what you decided") {
+                AnyView(RunDetailV5(detail: RunDetailV5Sample.outdoor,
+                                    recap: RunDetailV5Sample.recap))
             },
             Entry(id: "13a", title: "Injury flare", sub: "Not today") {
                 AnyView(InjuryFlareV5(model: .sampleV5))

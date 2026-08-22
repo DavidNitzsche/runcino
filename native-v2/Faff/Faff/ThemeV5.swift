@@ -73,9 +73,12 @@ extension Theme {
         // STOPS are the locked part, the interpolation is the renderer's.
         //
         // Position hints from the design's own ramps: stop 1 at 0%, stop 2 at
-        // 76% (race: 72%), stop 3 at 185%, with an easing hint either side of
-        // the middle stop and the dark terminal deliberately past the panel edge
-        // so the deep end stays only just darker.
+        // 76%, stop 3 at 185%, with an easing hint either side of the middle
+        // stop and the dark terminal deliberately past the panel edge so the
+        // deep end stays only just darker.
+        //
+        // The two LIGHT ramps — quality AND race — take `darkInkLocations`
+        // instead, which puts the middle stop at 52%. See that constant.
         //
         // `v5stop` on each line exempts these from the retired-hex tripwire in
         // check-palette-sync.sh, the same way `gstop` exempts the hero-gradient

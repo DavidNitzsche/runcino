@@ -125,9 +125,31 @@ struct CourseImportV5: View {
                 ListGroup {
                     ForEach(candidates) { c in
                         ListRow(label: c.name,
-                                sub: mismatchNote(for: c),
                                 value: FaffValue.from(FaffFmt.milesUnit(c.distanceMi), modelled: false),
                                 onTap: { Task { await attach(c) } })
+                    }
+                }
+                // THE MISMATCH NOTE IS AMBER, AND IT CARRIES THE `~`.
+                //
+                // 20b draws it that way and the colour is doing real work: a
+                // found distance that disagrees with what the runner typed is
+                // "outside its expected range", which is what amber means. It
+                // was built as a quiet sub-line, where it read as one more
+                // grey detail on the row it is meant to interrupt.
+                //
+                // The `~` here is a CAPTION mark, drawn as the design draws
+                // it, not `FaffValue.modelled` on the distance. The course
+                // distance is measured off the course file; marking the VALUE
+                // would say it was estimated, which is a different claim and
+                // would blunt the one mark rule one depends on.
+                ForEach(candidates) { c in
+                    if let note = mismatchNote(for: c) {
+                        Text("\u{7E} \(note)")
+                            .font(.faffText(TypeScaleV5.label13))
+                            .foregroundStyle(V5.attention)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, V5.S.s4)
+                            .accessibilityLabel(note)
                     }
                 }
                 if let attachFailed {

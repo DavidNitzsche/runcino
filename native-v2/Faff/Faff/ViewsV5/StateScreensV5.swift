@@ -601,7 +601,13 @@ struct RaceJustFinishedV5: View {
                 HStack(alignment: .firstTextBaseline, spacing: V5.S.s8) {
                     FaffValueText(.modelled(model.watchTime),
                                   font: .faffText(TypeScaleV5.valueMin, weight: .semibold),
-                                  color: panelInk.primary)
+                                  color: panelInk.primary,
+                                  // THE MARK IS THE WHOLE SCREEN. This is the
+                                  // number the runner wants to be real, and
+                                  // the tilde is the only thing saying it is
+                                  // not. In amber it sat on the race ramp's
+                                  // own hue and could not be seen.
+                                  mark: panelInk.mark)
                     Text("on the watch")
                         .font(.faffText(TypeScaleV5.body15))
                         .foregroundStyle(panelInk.secondary)
@@ -618,10 +624,20 @@ struct RaceJustFinishedV5: View {
             // on a row with nothing behind it is a promise the screen cannot
             // keep.
             ListGroup(header: "Chip time") {
-                // No value on this row. `.modelled(nil)` renders an empty
-                // marked value, which is a tilde pointing at nothing — the
-                // status IS the content and it lives in the label.
-                ListRow(label: model.chipStatus, sub: model.chipSub)
+                // THE QUALIFIER IS AMBER, AND IT IS A RIGHT-HAND VALUE.
+                //
+                // 8b draws "Not published yet" on the left with "We check
+                // hourly" on the right in `#F2B03C`. It was built as a plain
+                // sub-line, which loses both the position and the colour.
+                //
+                // Amber is right here and it is not the amber that was dropped
+                // from the panel: a result that is not published yet is stale
+                // evidence, which is exactly what amber means. And this row is
+                // BELOW the panel, on the black page, where the ramp's dark
+                // ink does not reach and amber-on-amber cannot happen.
+                ListRow(label: model.chipStatus,
+                        value: model.chipSub.map { FaffValue.measured($0) },
+                        valueInk: V5.attention)
                 ListRow(label: "Nothing goes in the book today",
                         sub: "The watch time never becomes the result. It stands in until the chip lands.")
             }
@@ -656,4 +672,31 @@ struct V5RaceJustFinished: Equatable {
     let chipSub: String?
     let tomorrow: String
     let backInPlan: String
+}
+
+extension V5RaceJustFinished {
+    /// 8c's own drawn content, verbatim from the addendum. Sample data, the
+    /// same way every other screen in `ScreensCatalogV5` is sampled — this is
+    /// what makes the screen reviewable while it still has no production
+    /// route, and the absence of exactly this is why it went unnoticed that
+    /// nothing could reach it.
+    static let sampleV5 = V5RaceJustFinished(
+        kicker: "Crossed the line 22 minutes ago",
+        distanceLabel: "Half",
+        watchTime: "1:29:44",
+        stats: [
+            PanelStat("Goal", .measured("1:32:00")),
+            PanelStat("Inside by", .measured("2:16")),
+            PanelStat("Average", .measured("6:51 /mi")),
+        ],
+        coachLine: "You went under it. The chip will move that by seconds, not minutes \u{00B7} so hold the feeling and let the result catch up.",
+        chipStatus: "Not published yet",
+        chipSub: "We check hourly",
+        tomorrow: "Nothing",
+        backInPlan: "Thursday")
+}
+
+#Preview("8c \u{00B7} Race, twenty minutes after") {
+    RaceJustFinishedV5(model: .sampleV5)
+        .preferredColorScheme(.dark)
 }

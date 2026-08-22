@@ -45,7 +45,10 @@ struct RunLogV5: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                AppBar(title: "Runs", eyebrow: eyebrow, onBack: onBack)
+                // 22a's drawn AppBar title. "Runs" was the Block row's label
+                // leaking into the screen it opens; the screen is a history,
+                // and the drawn title says so.
+                AppBar(title: "Past runs", eyebrow: eyebrow, onBack: onBack)
 
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                     if log.weeks.isEmpty {

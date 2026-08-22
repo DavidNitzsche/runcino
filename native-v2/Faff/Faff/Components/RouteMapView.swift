@@ -75,8 +75,27 @@ struct RouteMapView: UIViewRepresentable {
     /// True when this run colors by HR zone (steady effort + per-mile HR + zone
     /// bands present, and not a structured/phase workout). The single rule, used
     /// by both the route coloring and the card's legend so they never diverge.
+    ///
+    /// A PRESCRIPTION OUTRANKS THE AXIS. Round three item 4 asks the route to
+    /// follow the splits, and the payoff it names is that "the grey stretch on
+    /// the map and the grey bar in the chart are THE SAME MILE". The zone axis
+    /// broke exactly that, and it broke it in the only case the ruling was
+    /// written for: `RunDetailV5.splitBand` hands a band to steady runs ONLY —
+    /// easy, long, recovery — which is the same set that turns this on. So an
+    /// easy run with HR zones drew a five-hue ramp beside a two-fill chart,
+    /// and the two graphics competed on the one screen that shows both.
+    ///
+    /// Worse on its own terms: the zone ramp puts GREEN at Z2, and Z2 is where
+    /// an easy run is asked to sit. A hue that lands on the prescription is
+    /// the chart saying "good", which this palette never does.
+    ///
+    /// A zone is still an identity, not a grade, so the axis is kept where
+    /// nothing was prescribed — an unplanned run has no band, and there the
+    /// zone ramp says which zone without answering a question nobody asked.
     static func usesHrZones(effort: FaffEffort, hrZones: [HRZoneRange],
-                            splits: [RunSplit], phases: [PhaseSample]) -> Bool {
+                            splits: [RunSplit], phases: [PhaseSample],
+                            paceBand: (lo: Int, hi: Int)? = nil) -> Bool {
+        guard paceBand == nil else { return false }
         guard phases.filter({ $0.mi > 0 && $0.sec > 0 }).count < 2 else { return false }
         guard [.easy, .long, .recovery].contains(effort) else { return false }
         guard hrZones.count >= 2 else { return false }
@@ -224,9 +243,15 @@ struct RouteMapView: UIViewRepresentable {
         // Baseline line drawn first (always visible · belt + suspenders). Match
         // the color axis so it never peeks the wrong hue at segment joints:
         // mid-zone green under an HR route, coral under a pace route.
-        let hrMode = RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits, phases: phases)
+        let hrMode = RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits,
+                                              phases: phases, paceBand: paceBand)
         let baseline = ColoredPolyline(coordinates: coords, count: coords.count)
-        baseline.strokeColor = hrMode ? RouteMapView.zoneColors[1] : UIColor(Color(hex: 0xD03F3F))
+        // With a band the whole line is one of two flat fills, so the underlay
+        // takes the in-band fill rather than a third colour that could peek
+        // through at a joint and read as a mile that was neither.
+        baseline.strokeColor = paceBand != nil
+            ? UIColor(V5.signal)
+            : (hrMode ? RouteMapView.zoneColors[1] : UIColor(Color(hex: 0xD03F3F)))
         baseline.strokeWidth = 5
         map.addOverlay(baseline, level: .aboveLabels)
 
@@ -293,7 +318,8 @@ struct RouteMapView: UIViewRepresentable {
             let w = max(0.35, min(0.65, total * 0.08))  // boundary fade wide enough to be visible at map scale
             valueFn = { d in RouteMapView.phaseValue(d, spans, w) }
             colorFn = { [paceBand] v in RouteMapView.bandColor(v, paceBand) }
-        } else if RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits, phases: phases) {
+        } else if RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits,
+                                           phases: phases, paceBand: paceBand) {
             // Steady · per-mile HR → zone position, SMOOTH, on the zone palette.
             let hrs = RouteMapView.perMileFilled(splits.map { ($0.hr).flatMap { $0 > 0 ? Double($0) : nil } })
             guard !hrs.isEmpty else { return [] }
