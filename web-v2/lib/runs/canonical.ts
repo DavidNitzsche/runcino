@@ -221,6 +221,40 @@ export async function enhanceCanonicalFromAbsorbed(args: {
         updatedData[key] = incomingVal;
         updatedProv[key] = incomingSource;
         fieldsAdded.push('splits (absorbed real per-mile · tier-independent)');
+        // 2026-08-21 · backend audit · THE FLAG DESCRIBED THE SPLITS WE JUST
+        // REPLACED, so it cannot survive them.
+        //
+        // `splits_unreliable` is a verdict on one specific splits array.
+        // /api/watch/workouts/complete sets it true and drops the array to []
+        // when the derived per-mile times fail splitTimesReliable; it has no
+        // path that ever sets it back to false (the iPhone ingest route does,
+        // which is why only watch-canonical rows carry the stale flag). This
+        // branch then fills the same row with REAL per-mile splits off the
+        // HealthKit sibling — and left the old verdict sitting on top of the
+        // new data.
+        //
+        // Four readers gate on it and all four silently drop the run:
+        // lib/coach/pacing-discipline.ts (SQL `IS NOT TRUE` — the run leaves
+        // the query entirely), lib/training/goal-projection.ts
+        // (judgeTestPointExecution skips split-based judging),
+        // lib/execution/reconstruct.ts, and /api/runs/[id]/recap. In prod
+        // that is 6 canonical runs, among them a 13.13 mi and a 14.02 mi long
+        // run — the longest efforts on the calendar, which is exactly where
+        // pacing discipline is the signal worth having.
+        //
+        // Deleting rather than setting false: absent is what an untouched run
+        // carries, and re-deriving a verdict here would mean re-running the
+        // reliability check against an array this function did not compute.
+        // `splits_validation` is the reconciliation that PRODUCED the verdict,
+        // so it goes with it — leaving it behind would document a decision
+        // about data the row no longer holds.
+        if ('splits_unreliable' in updatedData || 'splits_validation' in updatedData) {
+          delete updatedData.splits_unreliable;
+          delete updatedData.splits_validation;
+          delete updatedProv.splits_unreliable;
+          delete updatedProv.splits_validation;
+          fieldsAdded.push('splits_unreliable (cleared · verdict was about the replaced splits)');
+        }
       } else {
         fieldsSkipped.push('splits (canonical already has real per-mile, or incoming has none)');
       }

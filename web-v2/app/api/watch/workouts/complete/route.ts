@@ -753,7 +753,32 @@ export async function POST(req: NextRequest) {
     // more than a whole mile (a genuinely missing mile).
     const splitsSumS = splitsSumSeconds(data.splits as Array<Record<string, unknown>>);
     if (!splitTimesReliable(splitsSumS, totalSec, totalMi)) {
-      data.splits = [];
+      // 2026-08-21 · backend audit · Rule 6 · DELETE THE KEY, DO NOT WRITE `[]`.
+      //
+      // This used to assign `data.splits = []`. The upsert below merges with
+      // `runs.data || jsonb_strip_nulls(EXCLUDED.data)`, and `jsonb_strip_nulls`
+      // removes NULLS — an empty array is not null. So `[]` survived the strip,
+      // won the `||`, and replaced whatever the row already held.
+      //
+      // What it replaced is the point. `lib/runs/canonical.ts` absorbs REAL
+      // per-mile splits off the HealthKit/Strava twin onto the canonical row,
+      // tier-independently, precisely because the watch's own derivation often
+      // has none. The next re-POST of the same workoutId — a durable-queue
+      // retry, a re-sync, a cross-day fork re-send — wiped them back to empty
+      // and the run went blind again: slowest mile, HR drift, aerobic
+      // decoupling and threshold adherence all read per-mile splits.
+      //
+      // The same fix already exists one directory over: `omitEmpty` in
+      // lib/runs/merge-safe.ts, applied at app/api/ingest/workout/route.ts:360.
+      // It was never applied to this route — the tier-5 writer that always wins
+      // canonical selection — so the guard was asymmetric across the two
+      // ingest paths that share the column.
+      //
+      // Deleting the key means "this payload says nothing about splits", which
+      // is the truth: the derivation failed its reliability check. An explicit
+      // clear, if one is ever wanted, belongs in a purpose-built `data -
+      // 'splits'` statement like the qualityFlag one below.
+      delete data.splits;
       data.splits_unreliable = true;
     } else {
       // Reliable whole-run → apply the per-mile physiological guard so a

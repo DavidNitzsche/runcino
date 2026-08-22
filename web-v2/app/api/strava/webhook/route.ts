@@ -615,7 +615,28 @@ async function upsertStravaActivity(userId: string, activity: any): Promise<{ da
       const raw = activity?.total_elevation_gain != null
         ? Math.round(Number(activity.total_elevation_gain) * 3.28084)
         : null;
+      // 2026-08-21 · backend audit · Rule 6 · `'absent'` IS NOT A VALUE, SO DO
+      // NOT WRITE IT. `sanitizeElevGain` returns `{ value: null, source:
+      // 'absent' }` when it has nothing to say. Under the merge upsert
+      // (`runs.data || jsonb_strip_nulls(EXCLUDED.data)`) the null `elevGainFt`
+      // is correctly stripped and the row keeps its real number — but
+      // `elevGainSource: 'absent'` is a non-null string, so it survived and
+      // OVERWROTE the provenance of that surviving number. The row then read
+      // "1,240 ft, provenance absent": a measurement with its origin erased.
+      //
+      // That state is not inert. `lib/runs/post-write-hooks.ts` re-derives
+      // elevation exactly when `data->>'elevGainSource' = 'absent'`, so a
+      // barometric reading the watch actually measured gets replaced by a
+      // GPS/DEM estimate on the next write. Confirmed in production
+      // (faff_readonly, 2026-08-21): 9 rows carry `elevGainSource: 'absent'`
+      // alongside a non-null `elevGainFt`.
+      //
+      // The watch route already does this correctly — it only assigns when
+      // `elevSane.value != null`. This is that guard, applied to the writer
+      // that lacked it. Both keys absent means the payload is silent about
+      // elevation, which is what a failed sanitise actually means.
       const sane = sanitizeElevGain({ elevGainFt: raw, distanceMi, splits: [] });
+      if (sane.value == null) return {};
       return { elevGainFt: sane.value, elevGainSource: sane.source };
     })(),
     routePolyline: activity?.map?.summary_polyline ?? null,

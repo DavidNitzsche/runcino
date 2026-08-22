@@ -221,7 +221,16 @@ struct TargetsView: View {
                 TargetsProjectionPanel(summary: p, trainingState: trainingState)
                 if let age = profile?.physiology.vdot_anchor_age_days {
                     let stale = age >= 120
-                    Text("ANCHOR · \((profile?.physiology.vdot_anchor_name ?? "RACE EFFORT").uppercased()) · \(age)D\(stale ? " · STALE" : "")")
+                    // 2026-08-21 · backend audit · `vdot_anchor_name` is nil when
+                    // the VDOT was anchored on a TRAINING RUN, not a race:
+                    // profile-state.ts only fills it when a `races` row matches the
+                    // anchor date within a day, and `bestRecentVdot` picks run
+                    // candidates freely. Defaulting the nil case to "RACE EFFORT"
+                    // did not merely omit provenance, it invented it — and this is
+                    // the NO-RACE hero, so a runner with no races on file was told
+                    // his anchor was one. ProfileView.swift:307 already models the
+                    // honest branch; this is the same rule, said the same way.
+                    Text("ANCHOR · \((profile?.physiology.vdot_anchor_name ?? "RECENT TRAINING").uppercased()) · \(age)D\(stale ? " · STALE" : "")")
                         .font(.body(10, weight: .bold)).tracking(1.2)
                         .foregroundStyle(stale ? Theme.Accent.amberBright : Theme.txt.opacity(0.55))
                         .padding(.horizontal, 4)
@@ -624,7 +633,11 @@ struct TargetsView: View {
                         // §13.7) — same threshold as the web Health page.
                         if let age = profile?.physiology.vdot_anchor_age_days {
                             let stale = age >= 120
-                            Text("ANCHOR · \((profile?.physiology.vdot_anchor_name ?? "RACE EFFORT").uppercased()) · \(age)D\(stale ? " · STALE — A TUNE-UP RACE RE-RATES IT" : "")")
+                            // 2026-08-21 · backend audit · same invented provenance
+                            // as the no-race hero above, and compounded here: the
+                            // stale clause read "STALE — A TUNE-UP RACE RE-RATES IT"
+                            // under a label claiming the anchor already WAS a race.
+                            Text("ANCHOR · \((profile?.physiology.vdot_anchor_name ?? "RECENT TRAINING").uppercased()) · \(age)D\(stale ? " · STALE — A TUNE-UP RACE RE-RATES IT" : "")")
                                 .font(.body(10, weight: .bold))
                                 .tracking(1.2)
                                 .foregroundStyle(stale ? Theme.Accent.amberBright : Theme.txt.opacity(0.55))

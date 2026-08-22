@@ -82,8 +82,54 @@ export async function POST(req: NextRequest): Promise<NextResponse<SuccessBody |
   }
 
   // Bootstrap branch · admin + unverified only
+  //
+  // 2026-08-21 · backend audit · THIS BRANCH SET A PASSWORD WITHOUT CHECKING ONE.
+  //
+  // The condition was `is_admin === true && email_verified_at == null`, and the
+  // body of it hashed whatever password arrived and stored it. No invite token,
+  // no email proof, no `bcrypt.compare` — and it runs BEFORE the compare below,
+  // so reaching it skipped authentication entirely. Anyone who knew an admin's
+  // email address could POST a password of their choosing and own the account;
+  // `revokeAllSessionsForUser` on the way out then cut the real admin's live
+  // sessions. It did not even require `password_hash` to be unset, so it was a
+  // takeover of a fully provisioned account, not just a first-run convenience.
+  //
+  // Checked against production (faff_readonly, 2026-08-21): the single admin
+  // row, dnitch85@me.com, already carries `email_verified_at`, so the branch is
+  // shut for it and no account is exposed right now. That is a property of the
+  // data, not of the code. Admins are only ever made by DDL or a seed script —
+  // `lib/auth/access-requests.ts` never grants the flag — and every such row is
+  // born `email_verified_at IS NULL`. So the hole reopens the moment a second
+  // admin is provisioned, and stays open until that admin happens to log in
+  // before an attacker does. Provisioning an admin should not start a race.
+  //
+  // Two conditions added, both necessary:
+  //
+  //   · a shared secret in `x-faff-bootstrap-token`, FAIL-CLOSED when
+  //     ADMIN_BOOTSTRAP_TOKEN is unset. Unset-means-allow is the vacuous-pass
+  //     shape this codebase already rejects in all thirteen cron routes, which
+  //     answer 503 rather than proceeding; this matches them.
+  //   · `password_hash IS NULL`. Bootstrap means "this account has no password
+  //     yet", and that is the only thing it should be able to do. Overwriting
+  //     an existing hash is a reset, and a reset needs the old password
+  //     (/api/auth/set-password) or a mailed token — never an unauthenticated
+  //     POST.
+  //
+  // Both are cheap and neither touches the normal login path below.
+  const bootstrapToken = process.env.ADMIN_BOOTSTRAP_TOKEN;
+  const bootstrapHeader = req.headers.get('x-faff-bootstrap-token');
+  const bootstrapAuthorised =
+    typeof bootstrapToken === 'string'
+    && bootstrapToken.length > 0
+    && bootstrapHeader === bootstrapToken;
+
   let bootstrapped = false;
-  if (userRow.is_admin === true && userRow.email_verified_at == null) {
+  if (
+    userRow.is_admin === true
+    && userRow.email_verified_at == null
+    && userRow.password_hash == null
+    && bootstrapAuthorised
+  ) {
     const newHash = await bcrypt.hash(password, 12);
     await pool.query(
       `UPDATE users SET password_hash = $1, email_verified_at = NOW(), updated_at = NOW()

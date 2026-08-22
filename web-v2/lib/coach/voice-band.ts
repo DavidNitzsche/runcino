@@ -42,6 +42,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import type { CoachState } from '@/lib/topics/types';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { parseRaceTime } from '@/lib/training/vdot';
 
 /* ────────────────────────── Public types ────────────────────────── */
 
@@ -101,16 +102,68 @@ export async function computeVoiceBand(
   // through the app's race lifecycle isn't double-counted.
   // 2026-06-03 · runner TZ anchors the recency cutoff.
   const today = await runnerToday(userUuid);
-  const raceTableRows = (await pool.query<{ date_iso: string; distance_mi: string; finish_seconds: string }>(
-    `SELECT date_iso::text, distance_mi::text, finish_seconds::text
+  // 2026-08-21 · backend audit · THIS QUERY NAMED COLUMNS THE TABLE DOES NOT HAVE.
+  //
+  // It selected `date_iso`, `distance_mi` and `finish_seconds` from `races`.
+  // `races` is the jsonb-shaped table — slug, meta, actual_result, plan,
+  // course_geometry — and has never had any of the three. Postgres answered
+  // 42703 `column "date_iso" does not exist`, the `.catch` below turned that
+  // into `rows: []`, and the band read the empty array as "this runner has
+  // never raced".
+  //
+  // Nothing surfaced it because the failure is indistinguishable from the
+  // cold-start case the function is explicitly designed to handle: a runner
+  // with no races SHOULD land in `calibration`, and that is what a schema
+  // error produced too. The reason string even said so — "no recent race
+  // history" — which is the loudest form of this bug class, an outage wearing
+  // the clothes of a finding about the runner.
+  //
+  // Live cost, measured against production (faff_readonly, 2026-08-21):
+  // the one runner with data has ELEVEN races on file, SIX of them inside the
+  // window with a real `actual_result.finishS` — two marathons and four halves,
+  // including the 2026-08-16 half at 6113 s. His `profile.race_history` is `[]`,
+  // so with the table read failing there was no second source: raceCount 0,
+  // vdotConfidence 0, band `calibration`. A competitive marathoner was being
+  // coached in the register reserved for a runner the app has never met.
+  //
+  // Rewritten against the real shape, using the source-of-truth ladder from
+  // CLAUDE.md §Race-data: `actual_result.finishS` (curated chip time) first,
+  // `meta.finishTime` (legacy display string) second. Distance comes from
+  // `meta.distanceMi`, falling back to the label through the same
+  // `distanceMiFromLabel` every other race reader uses — no third copy of the
+  // rules. Rows that resolve to neither a time nor a distance are dropped in
+  // the loop below, exactly as before.
+  type RaceTableRow = {
+    date_iso: string | null;
+    distance_mi: string | null;
+    distance_label: string | null;
+    finish_seconds: string | null;
+    finish_time: string | null;
+  };
+  const raceTableRows = (await pool.query<RaceTableRow>(
+    `SELECT (meta->>'date')          AS date_iso,
+            (meta->>'distanceMi')    AS distance_mi,
+            (meta->>'distanceLabel') AS distance_label,
+            (actual_result->>'finishS') AS finish_seconds,
+            (meta->>'finishTime')       AS finish_time
        FROM races
       WHERE user_uuid = $1::uuid
-        AND finish_seconds IS NOT NULL
-        AND finish_seconds > 0
-        AND date_iso::date >= $3::date - $2::int
-      ORDER BY date_iso DESC`,
+        AND meta->>'date' IS NOT NULL
+        AND (meta->>'date')::date >= $3::date - $2::int
+        AND (
+          (actual_result->>'finishS') IS NOT NULL
+          OR (meta->>'finishTime') IS NOT NULL
+        )
+      ORDER BY (meta->>'date') DESC`,
     [userUuid, RACE_RECENT_DAYS, today],
-  ).catch(() => ({ rows: [] as Array<{ date_iso: string; distance_mi: string; finish_seconds: string }> }))).rows;
+  ).catch((e: unknown) => {
+    // Loud, because silence is what let the broken column names live here.
+    // The empty fallback is still the right POSTURE on failure — an unknown
+    // runner gets the most hedged register — but it must never again be the
+    // only trace that the read did not happen.
+    console.error('[voice-band] race history read FAILED (not an absence of races):', e);
+    return { rows: [] as RaceTableRow[] };
+  })).rows;
 
   const profileRow = (await pool.query<{ race_history: any }>(
     `SELECT race_history FROM profile WHERE user_uuid = $1::uuid LIMIT 1`,
@@ -121,10 +174,17 @@ export async function computeVoiceBand(
   const raceSigs: RaceSig[] = [];
 
   for (const r of raceTableRows) {
-    const distMi = Number(r.distance_mi);
-    const timeSec = Number(r.finish_seconds);
-    if (!Number.isFinite(distMi) || !Number.isFinite(timeSec)) continue;
-    const dateMs = Date.parse(r.date_iso + 'T12:00:00Z');
+    // Distance: the stored number, else the label through the shared parser.
+    const distMi = r.distance_mi != null && r.distance_mi !== ''
+      ? Number(r.distance_mi)
+      : distanceMiFromLabel(r.distance_label);
+    // Time: curated chip seconds first, legacy display string second.
+    const timeSec = r.finish_seconds != null && r.finish_seconds !== ''
+      ? Number(r.finish_seconds)
+      : parseRaceTime(r.finish_time);
+    if (distMi == null || !Number.isFinite(distMi) || distMi <= 0) continue;
+    if (timeSec == null || !Number.isFinite(timeSec) || timeSec <= 0) continue;
+    const dateMs = Date.parse(String(r.date_iso) + 'T12:00:00Z');
     if (!Number.isFinite(dateMs)) continue;
     raceSigs.push({ distanceMi: distMi, timeSec, dateMs });
   }
@@ -354,14 +414,26 @@ async function computeVdotConfidence(userUuid: string): Promise<number> {
   // Phase B · one canonical dedup. run_v counts each physical run once.
   const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(today, 180), today);
   const rows = (await pool.query<{ kind: string; vdot: number | null }>(
+    // 2026-08-21 · backend audit · same phantom columns as the history read
+    // above (`finish_seconds`, `date_iso`), and worse here: the invalid
+    // reference aborts the WHOLE statement, so the perfectly valid `run_v`
+    // CTE never returned either. Both counts came back zero for every user,
+    // `raceCount === 0 && runCount === 0` returned 0, and because
+    // VDOT_CONF_CHALLENGE_FLOOR is 0.7 the `challenge` band was unreachable
+    // by anyone, no matter how many races they had logged. Rewritten against
+    // the jsonb shape with the same actual_result → meta ladder.
     `WITH race_v AS (
        SELECT 'race' AS kind,
               -- VDOT computed at read · no stored snapshot
               NULL::numeric AS vdot
          FROM races
         WHERE user_uuid = $1::uuid
-          AND finish_seconds IS NOT NULL AND finish_seconds > 0
-          AND date_iso::date >= $2::date - 180
+          AND meta->>'date' IS NOT NULL
+          AND (meta->>'date')::date >= $2::date - 180
+          AND (
+            (actual_result->>'finishS') IS NOT NULL
+            OR (meta->>'finishTime') IS NOT NULL
+          )
      ),
      run_v AS (
        SELECT 'run' AS kind,
@@ -375,7 +447,10 @@ async function computeVdotConfidence(userUuid: string): Promise<number> {
      )
      SELECT * FROM race_v UNION ALL SELECT * FROM run_v`,
     [userUuid, today, canonicalIds],
-  ).catch(() => ({ rows: [] as Array<{ kind: string; vdot: number | null }> }))).rows;
+  ).catch((e: unknown) => {
+    console.error('[voice-band] vdot-confidence candidate read FAILED (not zero candidates):', e);
+    return { rows: [] as Array<{ kind: string; vdot: number | null }> };
+  })).rows;
 
   const raceCount = rows.filter((r) => r.kind === 'race').length;
   const runCount = rows.filter((r) => r.kind === 'run').length;

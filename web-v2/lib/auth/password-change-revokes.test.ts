@@ -17,7 +17,16 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 /** Route body with the import block stripped, so `indexOf` finds real
  *  call sites rather than the `import { … }` line naming the same symbol. */
 const body = (p: string) => {
-  const src = read(p);
+  // 2026-08-21 · backend audit · strip COMMENTS as well as imports before the
+  // offset scans below. They locate code by `indexOf`, so a doc comment that
+  // merely NAMES `revokeAllSessionsForUser` while explaining the branch landed
+  // an earlier offset than the call and inverted the ordering assertion — the
+  // test was reading prose and reporting on it as if it were code. Stripping
+  // comments makes the checks strictly tighter: the symbol now has to appear
+  // in an executable position to satisfy them at all.
+  const src = read(p)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
   const lines = src.split('\n');
   const lastImport = lines.reduce((acc, l, i) => (/^import\s/.test(l) ? i : acc), -1);
   return lines.slice(lastImport + 1).join('\n');

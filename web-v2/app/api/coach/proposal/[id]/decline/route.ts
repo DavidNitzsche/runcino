@@ -58,7 +58,22 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
   }
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+    // 2026-08-21 · backend audit · this used to discard `auth` and answer a
+    // hardcoded 401. `requireUserId` returns 503 when the sessions table was
+    // UNREADABLE rather than empty (see lib/auth/session.ts) precisely so a
+    // database blip is not reported as an expired session — and the phone
+    // acts on the difference: `API.authedSend` treats 401 as
+    // .faffSessionExpired, which clears the Keychain token and bounces to the
+    // sign-in gate, from which the runner cannot get back in because signing
+    // in reads the same database. Returning the response as built preserves
+    // 401-for-401 and 503-for-outage. These two routes were the only two of
+    // 139 that overwrote it.
+    // Cast, not a re-wrap: `requireUserId` returns NextResponse<unknown>
+    // because the body differs by outcome (401 {error} vs the 503 envelope
+    // from lib/route/failure). Re-wrapping it to satisfy the declared union
+    // is what produced the hardcoded 401 in the first place — the status has
+    // to travel with the response.
+    return auth as NextResponse<DeclineErr>;
   }
   const userId = auth;
 

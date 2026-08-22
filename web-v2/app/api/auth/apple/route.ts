@@ -159,9 +159,47 @@ export async function POST(req: NextRequest) {
   }
 
   // Apple's email lives in the verified JWT claims on first sign-in (and
-  // sometimes on every sign-in for relay emails). Trust claims.email over
-  // body.email · the body could be forged, the token has been verified.
-  const email: string | null = (claims.email ?? body.email ?? null) || null;
+  // sometimes on every sign-in for relay emails).
+  //
+  // 2026-08-21 · backend audit · ACCOUNT TAKEOVER. This line used to read
+  //
+  //     const email = (claims.email ?? body.email ?? null) || null;
+  //
+  // under a comment that said "trust claims.email over body.email · the body
+  // could be forged, the token has been verified" — and then fell through to
+  // the forgeable value in exactly the case that matters. Apple sends the
+  // `email` claim on the FIRST authorization and omits it on every repeat, so
+  // `claims.email` is absent for most real tokens, and the `??` handed the
+  // decision to the request body.
+  //
+  // `email` is not a display field here. Twenty lines below it is the key that
+  // resolves a pre-existing account:
+  //
+  //     SELECT id FROM users WHERE email = $1     → userUuid
+  //     INSERT INTO profile (user_uuid, apple_user_id, …)
+  //     createSession(userUuid)                   → 90-day token
+  //
+  // So anyone holding ANY Apple ID that can authorize audience `run.faff.app`
+  // — their own, freshly made — could POST a valid emailless identity token
+  // with `{"email":"<victim>"}` and be issued a session as the victim. Their
+  // `apple_user_id` was written onto the victim's profile on the way through,
+  // making the takeover persistent: every later sign-in matches at branch 1
+  // and no longer needs the forged body at all. The invite-only gate below is
+  // no obstacle — it only runs when `userUuid` is still null, and this path
+  // resolves one.
+  //
+  // The signature, issuer, audience and expiry checks above are all correct.
+  // They prove the token came from Apple. They say nothing about whose mailbox
+  // the sender controls, and only the signed claim does.
+  //
+  // Restricting to `claims.email` does not break the account-linking flow it
+  // was written for: Apple DOES send the claim on first authorization, which is
+  // the only time linking legitimately happens. A returning user is matched by
+  // `apple_user_id` at branch 1, where no email is needed.
+  //
+  // `body.email` is now ignored entirely rather than merely deprioritised —
+  // an unused-but-accepted field is how this came back once already.
+  const email: string | null = (claims.email ?? null) || null;
 
   // Find or create the profile row.
   // 1) Direct apple_user_id match wins (returning Apple user, already linked).
