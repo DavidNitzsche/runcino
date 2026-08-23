@@ -35,6 +35,7 @@ import {
   renderStreakMilestone,
   renderRaceCountdown,
   renderStravaReconnect,
+  renderRunUnread,
   type RenderedTemplate,
 } from './templates';
 import { trainingWeekWindow } from './week-window';
@@ -99,9 +100,14 @@ describe('buildApnsBody', () => {
     expect(without.aps.category).toBe(apnsCategoryId('niggle_sick')); // FAFF_NIGGLE
   });
 
-  it('sets no aps.category when there are no action buttons', () => {
+  it('sets aps.category even with no action buttons', () => {
+    // 2026-08-21 · this assertion used to be its own inverse. The category
+    // is what names the BOARD, not what draws the buttons, so gating it on
+    // action_buttons meant every deliberately actionless notification
+    // ("Session moved", "Race tomorrow") could never reach the custom
+    // long-look the design draws for it.
     const { aps } = buildApnsBody({ ...baseArgs, action_buttons: [] });
-    expect('category' in aps).toBe(false);
+    expect(aps.category).toBe(apnsCategoryId('niggle_sick'));
   });
 });
 
@@ -489,6 +495,7 @@ describe('category gating', () => {
         renderStreakMilestone({ user_id: 'u', streak_days: 30, is_longest_ever: false }),
         renderRaceCountdown({ user_id: 'u', race_id: 'r', race_slug: 'afc', race_name: 'AFC', weeks_to_race: 6 }),
         renderStravaReconnect({ user_id: 'u', date_iso: '2026-07-06' }),
+        renderRunUnread({ user_id: 'u', run_date_iso: '2026-08-20', category: 'long', distance_mi: 14 }),
       ].map((t) => t.category),
     );
     for (const c of cats) {
@@ -526,5 +533,67 @@ describe('race day states only what is known', () => {
     // Race day is the one push allowed to wake the runner.
     expect(tpl.bypass_quiet_hours).toBe(true);
     expect(tpl.interruption_level).toBe('time-sensitive');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────
+// 0821 watch handoff § 9 · B8 · "yesterday is unread"
+// ──────────────────────────────────────────────────────────────
+
+describe('yesterday is unread · one target, one firing', () => {
+  it('keys the dedup on the RUN, not on the day it fired', () => {
+    // This is what makes "fires once" mean once. A key carrying today's
+    // date would roll over every midnight, and the design's whole
+    // instruction about this notification is that a second one is a nag.
+    const a = renderRunUnread({ user_id: 'u', run_date_iso: '2026-08-20', category: 'long', distance_mi: 14 });
+    const b = renderRunUnread({ user_id: 'u', run_date_iso: '2026-08-20', category: 'quality', distance_mi: 8 });
+    expect(a.dedup_key).toBe('run-unread:u:2026-08-20');
+    expect(b.dedup_key).toBe(a.dedup_key);
+  });
+
+  it('offers exactly one action, and it opens rather than answers', () => {
+    const t = renderRunUnread({ user_id: 'u', run_date_iso: '2026-08-20', category: 'long', distance_mi: 14 });
+    expect(t.action_buttons).toHaveLength(1);
+    expect(t.action_buttons![0].identifier).toBe('OPEN_ON_IPHONE');
+    expect(t.action_buttons![0].title).toBe('Open on iPhone');
+    expect(t.action_buttons![0].destructive).toBeUndefined();
+    // Judging a run is a screen. An action that answered here would be
+    // asking the runner to grade a session from a lock screen.
+    expect(t.data.deeplink).toBe('faff://today');
+  });
+
+  it('carries its own iOS category, and buildApnsBody emits it', () => {
+    const t = renderRunUnread({ user_id: 'u', run_date_iso: '2026-08-20', category: 'long', distance_mi: 14 });
+    expect(t.apns_category_id).toBe(apnsCategoryId('run_unread'));
+    const body = buildApnsBody({
+      device_token: 'tok', category: t.category, title: t.title, body: t.body,
+      action_buttons: t.action_buttons, apns_category_id: t.apns_category_id,
+      data: t.data, dedup_key: t.dedup_key,
+    } as SendPushArgs);
+    expect(body.aps.category).toBe('FAFF_RUN_UNREAD');
+  });
+
+  it('ships the design\'s own kicker, lede and consequence', () => {
+    const long = renderRunUnread({ user_id: 'u', run_date_iso: '2026-08-20', category: 'long', distance_mi: 14 });
+    const quality = renderRunUnread({ user_id: 'u', run_date_iso: '2026-08-20', category: 'quality', distance_mi: 8.4 });
+    expect(long.data.kicker_text).toBe('14 mi · still unread');
+    expect(quality.data.kicker_text).toBe('8.4 mi · still unread');
+    expect(long.title).toBe('The long run is in but not judged');
+    expect(quality.title).toBe('The session is in but not judged');
+    for (const t of [long, quality]) {
+      expect(t.body).toBe("This week's shape waits on it.");
+      expect(t.body).not.toMatch(/!/);
+      expect(t.body).not.toMatch(/[\u2014\u2013]/);   // no em or en dash
+      expect(t.interruption_level).toBe('active');
+      expect(t.bypass_quiet_hours).toBeFalsy();       // nothing here is worth a wake-up
+      // The kicker is TEXT. A colour token here is how a board draws the
+      // word "AMBER" in amber.
+      expect('kicker' in t.data).toBe(false);
+    }
+  });
+
+  it('drops the dose from the kicker rather than guessing it', () => {
+    const t = renderRunUnread({ user_id: 'u', run_date_iso: '2026-08-20', category: 'long' });
+    expect(t.data.kicker_text).toBe('Still unread');
   });
 });

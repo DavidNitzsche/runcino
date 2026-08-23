@@ -24,9 +24,11 @@
  *
  *   2. SCHEDULE TIME-BASED CATEGORIES
  *      For every active user, evaluate B (race eve T-21:00), D (Sunday
- *      20:00 weekly check-in), and F race-countdown thresholds. Enqueue
- *      rows when due. Idempotent — the pending dedup_key prevents
- *      duplicate rows landing for the same key within 24h.
+ *      20:00 weekly check-in), F race-countdown thresholds, and H
+ *      ("yesterday is unread", 08:00 local). Enqueue rows when due.
+ *      Idempotent — the pending dedup_key prevents duplicate rows landing
+ *      for the same key within 24h, and H carries its own once-ever and
+ *      seven-day gates on top, because "fires once" is not "once a day".
  *
  * Event-based categories (C skip recovery, E niggle/sick daily, F streak,
  * G strava reconnect) are enqueued at their originating writes — the cron
@@ -51,8 +53,15 @@ import {
   renderSkipRecovery,
   renderStravaReconnect,
   renderStreakMilestone,
+  renderRunUnread,
   type RenderedTemplate,
 } from '@/lib/notifications/templates';
+// 0821 watch handoff § 9 · B8 · "yesterday is unread". The read side of the
+// ask-then-ignore loop already knows what the runner did and did not tell us
+// about yesterday; this schedules off it rather than re-deriving it.
+import {
+  loadYesterdaySignals, hasSubjectiveSignal, categorizeWorkoutType,
+} from '@/lib/coach/acknowledge';
 import { loadNotificationPrefs, categoryEnabled } from '@/lib/notifications/prefs';
 import { loadSettings } from '@/lib/coach/settings';
 import { mileageByDay } from '@/lib/runs/volume';
@@ -152,6 +161,7 @@ export async function POST(req: NextRequest) {
     enqueued_d: 0,
     enqueued_e: 0,
     enqueued_f_race: 0,
+    enqueued_h_unread: 0,
     errors: [] as string[],
   };
 
@@ -216,6 +226,10 @@ const MAX_STALENESS_HOURS: Record<string, number> = {
   weekly_checkin: 12,   // the week it summarises has to still be yesterday
   race_countdown: 24,   // week counts are coarse; a day late still reads true
   streak: 24,
+  // "Yesterday is unread" is about YESTERDAY. Delivered the following
+  // evening it is asking about the day before last, which is a different
+  // sentence from the one that was written.
+  run_unread: 8,
   strava_reconnect: 72, // not time-anchored — the token stays broken
 };
 const DEFAULT_STALENESS_HOURS = 24;
@@ -745,7 +759,99 @@ async function scheduleTimeBased(stats: any): Promise<void> {
         }
       }
     }
+
+    // ──────────────────────────────────────────────────────────
+    // CATEGORY H — yesterday is unread
+    //   0821 watch handoff § 9. A run is IN and the runner has not
+    //   read it: no RPE, no check-in chip, no morning rating. The
+    //   design's whole instruction about this one is that it fires
+    //   ONCE, because "a second reminder would make it a nag".
+    //
+    //   Morning window, 08:00 local through noon. Later than that and
+    //   the day it is asking about is no longer the day the runner
+    //   would name if you asked them.
+    // ──────────────────────────────────────────────────────────
+    if (prefs.run_unread_enabled && isAtLocalTime(clk.hour, clk.minute, '08:00', 4 * 60)) {
+      const unread = await unreadRunYesterday(u.user_id, clk.dateISO).catch(() => null);
+      if (unread) {
+        const tpl = renderRunUnread({
+          user_id: u.user_id,
+          run_date_iso: unread.run_date_iso,
+          category: unread.category,
+          distance_mi: unread.distance_mi,
+        });
+        if (await enqueueIfFresh(u.user_id, tpl, new Date())) {
+          stats.enqueued_h_unread++;
+        }
+      }
+    }
   }
+}
+
+/**
+ * B8 · is yesterday's run in, and still unread?
+ *
+ * "Unread" is the runner's own read, not the engine's: RPE, a check-in
+ * chip, a morning rating. The engine's grade lands automatically and needs
+ * nobody; what the week's shape actually waits on is how it felt, which is
+ * exactly the loop lib/coach/acknowledge.ts was built to close. So this
+ * asks that module rather than re-deriving the same five signals here.
+ *
+ * Narrow on purpose:
+ *
+ *   · Only a long or a quality session. An unjudged recovery jog does not
+ *     change anything downstream, so there is nothing true to say about it.
+ *     Off-plan, ten miles is the one distance that names itself.
+ *   · Never twice for the same run — an all-time check on that run's key,
+ *     because the dispatcher's own gate is 24 hours and 24 hours is not
+ *     "once".
+ *   · Never twice in seven days across DIFFERENT runs either. A runner who
+ *     does not use check-ins would otherwise get this every morning they
+ *     ran, which is the same nag arriving under a different date. The copy
+ *     doctrine's own rule: an observation about a pattern is written at
+ *     most twice, and the pattern here is "you are not reading your runs".
+ *
+ * Returns null on any read failure. A notification is never worth a 500 on
+ * the cron.
+ */
+async function unreadRunYesterday(
+  userId: string,
+  todayISO: string,
+): Promise<{ run_date_iso: string; category: 'long' | 'quality'; distance_mi: number } | null> {
+  const yesterdayISO = new Date(Date.parse(todayISO + 'T12:00:00Z') - 86400000)
+    .toISOString().slice(0, 10);
+
+  // Cheap gate first — one query — so a runner who has already been told
+  // never pays for the five-signal read below.
+  const gate = (await pool.query<{ ever: boolean; recent: boolean }>(
+    `SELECT
+       EXISTS(SELECT 1 FROM notifications_log
+               WHERE dedup_key = $1 AND delivered = true) AS ever,
+       EXISTS(SELECT 1 FROM notifications_log
+               WHERE dedup_key LIKE $2 AND delivered = true
+                 AND fired_at > now() - interval '7 days') AS recent`,
+    [`run-unread:${userId}:${yesterdayISO}`, `run-unread:${userId}:%`],
+  ).catch(() => ({ rows: [{ ever: true, recent: true }] }))).rows[0];
+  if (!gate || gate.ever || gate.recent) return null;
+
+  const signals = await loadYesterdaySignals(userId, todayISO);
+  if (signals.ranMi <= 0) return null;
+  if (hasSubjectiveSignal(signals)) return null;
+
+  const hit = (category: 'long' | 'quality') => ({
+    run_date_iso: signals.yesterdayISO,
+    category,
+    // Canonical miles · the kicker's dose. loadYesterdaySignals already
+    // rounds this off canonicalMileageByDay, so nothing is re-derived.
+    distance_mi: signals.ranMi,
+  });
+  const cat = categorizeWorkoutType(signals.plannedType);
+  if (cat === 'long') return hit('long');
+  if (cat === 'quality') return hit('quality');
+  // Off-plan. Ten miles is a long run whatever the calendar called it;
+  // anything shorter is left alone rather than guessed at.
+  if (signals.plannedType == null && signals.ranMi >= 10) return hit('long');
+  return null;
 }
 
 // ──────────────────────────────────────────────────────────────

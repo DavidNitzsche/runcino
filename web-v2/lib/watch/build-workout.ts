@@ -78,6 +78,16 @@ export interface WatchPhase {
    *  for breach detection. Never an instruction to stop · the watch
    *  OFFERS, the runner chooses. */
   ruleLabel?: string | null;
+  /** 0821 watch design · B7 · the same bail in the two registers the
+   *  board draws it in. `ruleEvidence` is the quiet factual half
+   *  ("Heart rate over 167 and still climbing"); `ruleJudgement` is the
+   *  coach's half ("The stimulus is already banked · forcing the rest of
+   *  the reps buys fatigue, not fitness"). `ruleLabel` is UNCHANGED and
+   *  still carries the whole line — deployed watches read it and must
+   *  keep working. Null on a rule whose registers cannot be separated
+   *  honestly. */
+  ruleEvidence?: string | null;
+  ruleJudgement?: string | null;
 }
 
 export interface WatchWorkout {
@@ -105,7 +115,14 @@ export interface WatchWorkout {
    *  op: '<='|'>', value, scope: 'work'|'finish'|'overall'|'mile-5',
    *  action: string|null, label}. The watch detects breaches and offers
    *  CONTINUE / TAKE THE BAIL; outcomes ride the completion payload's
-   *  optional `rule_outcomes`. */
+   *  optional `rule_outcomes`.
+   *
+   *  2026-08-21 · 0821 design · B7 · each bail/abort rule additionally
+   *  carries `evidence` and `judgement` (both string|null) beside the
+   *  untouched `label`. See splitRuleRegisters. Kept as a loose record
+   *  array because the shape is the SPEC's, read straight out of the
+   *  authored jsonb — narrowing it here would assert a contract this
+   *  builder does not own. */
   rules?: Array<Record<string, unknown>> | null;
   /** 2026-07-07 · units audit — the runner's distance display preference
    *  (profile.user_settings.units_distance, 'mi'/'km'). Optional +
@@ -117,6 +134,53 @@ export interface WatchWorkout {
    *  and pace-drift math are untouched; only the last-mile string
    *  formatting step converts. */
   unitsDistance?: 'mi' | 'km';
+  /** 0821 watch design · B5 · the lines the coach says in the ear, and
+   *  draws on the wrist for the seconds it is saying them. Handful per
+   *  session, never a script. Optional + additive: a deployed watch that
+   *  does not know the key runs exactly as it ran before. */
+  spokenCues?: WatchSpokenCue[] | null;
+}
+
+// ── 0821 watch design · B5 · spoken cues ────────────────────────────────
+//
+// Design rule 10: "A spoken cue is always also drawn. Audio is a delivery
+// route, never a second content channel. Two runners — headphones in,
+// headphones in a pocket — get the same sentence." So there is ONE field,
+// carrying ONE sentence, and the watch is expected to speak it and draw it
+// off the same string. There is deliberately no `audioText` twin: the
+// moment two strings exist, they diverge.
+//
+// The trigger has to be evaluable on the wrist with no network and no
+// server round-trip, so it is expressed against things the watch already
+// tracks: covered distance, the phase cursor, and the fraction of the
+// session's planned distance that is behind the runner.
+
+/** How the watch decides the cue is due. Exactly one of `atMi`,
+ *  `phaseIndex`, `atFraction` is non-null, named by this discriminator —
+ *  a flat struct rather than a tagged union, because the watch's decoders
+ *  are lenient-optional and a union would be the one shape they cannot
+ *  express. */
+export type WatchCueTrigger = 'distance' | 'phase' | 'fraction';
+
+export interface WatchSpokenCue {
+  /** Stable within one session. The watch fires each id at most once,
+   *  which is what makes a cue a cue rather than a nag. */
+  id: string;
+  /** The sentence. Spoken AND drawn, verbatim, same string. */
+  text: string;
+  trigger: WatchCueTrigger;
+  /** trigger 'distance' · fire when covered distance crosses this, in
+   *  MILES (the wire is miles everywhere · unitsDistance is display only). */
+  atMi?: number | null;
+  /** trigger 'phase' · fire as this index of `phases` becomes current. */
+  phaseIndex?: number | null;
+  /** trigger 'fraction' · 0..1 of the session's planned distance. Used
+   *  where the meaningful position is proportional (halfway) rather than
+   *  a fixed mile. */
+  atFraction?: number | null;
+  /** Seconds the line holds the screen. The design gives a spoken cue
+   *  three seconds and then hands the screen back. */
+  holdSec: number;
 }
 
 // ── 0821 watch design · additive lobby fields ───────────────────────────
@@ -676,6 +740,237 @@ export function buildNoSessionState(
   };
 }
 
+// ── 0821 · B5 · composing the cues ──────────────────────────────────────
+
+/** Minimum miles between two cues. Two lines inside the same mile is a
+ *  script, and a script is the thing the design says a cue is not. */
+const CUE_MIN_SPACING_MI = 1.0;
+/** The design's own count: "a handful per session, not a script." */
+const CUE_MAX = 3;
+/** Design § 7 · the line holds the board for the three seconds it is spoken. */
+const CUE_HOLD_SEC = 3;
+
+interface CueCandidate extends WatchSpokenCue {
+  /** Where this lands in miles, for ordering + spacing only. Never on the wire. */
+  _atMiResolved: number;
+}
+
+/** Miles of planned distance BEFORE a phase index. Used to order a
+ *  phase-triggered cue against the distance-triggered ones. Falls back to
+ *  the duration share when the phases carry no distances. */
+function milesBeforePhase(phases: WatchPhase[], index: number, totalMi: number): number {
+  let mi = 0;
+  let haveDistance = false;
+  for (let i = 0; i < index && i < phases.length; i++) {
+    if (phases[i].distanceMi != null) { mi += Number(phases[i].distanceMi); haveDistance = true; }
+  }
+  if (haveDistance) return mi;
+  const totalSec = phases.reduce((s, p) => s + (p.durationSec || 0), 0);
+  if (totalSec <= 0) return 0;
+  let sec = 0;
+  for (let i = 0; i < index && i < phases.length; i++) sec += phases[i].durationSec || 0;
+  return (sec / totalSec) * totalMi;
+}
+
+/**
+ * The lines the coach says in the ear and draws on the wrist.
+ *
+ * Rules this obeys, all of them from the 0821 handoff:
+ *   · ONE string per cue · spoken and drawn are the same sentence (rule 10).
+ *   · At most three per session, at least a mile apart. The design's word
+ *     is "a handful", and the failure mode is a script.
+ *   · A cue that would reference a target the payload does not carry is
+ *     DROPPED, not softened. A session with no pace band gets no line
+ *     telling the runner to hold a pace band.
+ *   · Coach register · second person, present tense, no exclamation marks,
+ *     no em dashes ( · is the joiner), never scolding.
+ *
+ * Deterministic and pure — no DB, no clock, no LLM. Same session in, same
+ * cues out, which is what makes the once-per-id contract on the wrist mean
+ * anything.
+ */
+export function composeSpokenCues(opts: {
+  sessionClass: SessionClass;
+  distanceMi: number;
+  phases: WatchPhase[];
+}): WatchSpokenCue[] {
+  const { sessionClass, phases } = opts;
+  const totalMi = Number(opts.distanceMi) || 0;
+  if (totalMi <= 0) return [];
+  if (sessionClass === 'rest' || sessionClass === 'other') return [];
+
+  const workIdx = phases
+    .map((p, i) => ({ p, i }))
+    .filter((x) => x.p.type === 'work');
+  const finish = phases.map((p, i) => ({ p, i })).find((x) => x.p.isFinishSegment);
+  const hasFinish = finish != null && finish.p.targetPaceSPerMi != null;
+
+  const out: CueCandidate[] = [];
+  const atDistance = (id: string, atMi: number, text: string) => {
+    out.push({ id, text, trigger: 'distance', atMi: Math.round(atMi * 10) / 10, holdSec: CUE_HOLD_SEC, _atMiResolved: atMi });
+  };
+  const atFraction = (id: string, f: number, text: string) => {
+    out.push({ id, text, trigger: 'fraction', atFraction: f, holdSec: CUE_HOLD_SEC, _atMiResolved: f * totalMi });
+  };
+  const atPhase = (id: string, index: number, text: string) => {
+    out.push({
+      id, text, trigger: 'phase', phaseIndex: index, holdSec: CUE_HOLD_SEC,
+      _atMiResolved: milesBeforePhase(phases, index, totalMi),
+    });
+  };
+
+  // The one line every distance-anchored session ends on. The design gives
+  // it verbatim, so it is used verbatim.
+  const LAST_TWO = 'Last two miles. Hold what you have · this is the part that counts.';
+
+  switch (sessionClass) {
+    case 'easy': {
+      if (totalMi >= 3) {
+        atDistance('easy-effort', 1,
+          'Easy day. If you cannot hold a conversation, you are running it too hard.');
+      }
+      break;
+    }
+    case 'long': {
+      atFraction('long-halfway', 0.5,
+        'Halfway. Nothing is decided yet · a long run is made in its last third.');
+      if (hasFinish) {
+        atPhase('long-finish', finish!.i,
+          'The finish starts here. Race pace from now to the door, and no faster.');
+      } else if (totalMi >= 6) {
+        atDistance('long-last-two', totalMi - 2, LAST_TWO);
+      }
+      break;
+    }
+    case 'threshold': {
+      if (workIdx.length > 0) {
+        atPhase('threshold-open', workIdx[0].i,
+          'Threshold is comfortably hard. If the first rep burns, the pace is wrong, not your legs.');
+      }
+      if (workIdx.length > 1) {
+        atPhase('threshold-last', workIdx[workIdx.length - 1].i,
+          'Last one. Run it at the pace of the first · that is the whole point of the session.');
+      }
+      break;
+    }
+    case 'interval': {
+      if (workIdx.length > 0) {
+        atPhase('interval-open', workIdx[0].i,
+          'First rep sets the session. Run the pace you can repeat, not the pace you have today.');
+      }
+      if (workIdx.length > 1) {
+        atPhase('interval-last', workIdx[workIdx.length - 1].i,
+          'Last rep. Match the first one · a set of reps is read by its slowest.');
+      }
+      break;
+    }
+    case 'race': {
+      // Only when the opening phase actually carries a target. Telling a
+      // runner to hold a pace nobody sent is the unfalsifiable claim.
+      const openHasTarget = phases.find((p) => p.type === 'work')?.targetPaceSPerMi != null;
+      if (openHasTarget && totalMi >= 3) {
+        atDistance('race-open', 1,
+          'First mile. Hold the opening pace you were given · time taken early is paid back twice.');
+      }
+      atFraction('race-halfway', 0.5,
+        'Halfway. The second half is the race · hold the pace and stay patient.');
+      if (totalMi >= 6) atDistance('race-last-two', totalMi - 2, LAST_TWO);
+      break;
+    }
+  }
+
+  // Order by where they land, keep them a mile apart, cap the handful.
+  const kept: CueCandidate[] = [];
+  for (const c of out.sort((a, b) => a._atMiResolved - b._atMiResolved)) {
+    if (c._atMiResolved < 0 || c._atMiResolved > totalMi) continue;
+    const prev = kept[kept.length - 1];
+    if (prev && c._atMiResolved - prev._atMiResolved < CUE_MIN_SPACING_MI) continue;
+    kept.push(c);
+    if (kept.length >= CUE_MAX) break;
+  }
+  return kept.map(({ _atMiResolved, ...cue }) => cue);
+}
+
+// ── 0821 · B7 · the bail in two registers ───────────────────────────────
+
+/** Seconds-per-mile → "7:10". */
+function paceMmSs(sPerMi: number): string {
+  const s = Math.round(sPerMi);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/**
+ * The bail, split into what was measured and what the coach makes of it.
+ *
+ * The board draws these in two different registers: the evidence quietly
+ * first, then the judgement in the coach's voice. `label` — the one string
+ * the deployed watch reads — is NOT touched by any of this; these ride
+ * beside it.
+ *
+ * Composed from the rule's OWN structured fields (kind / metric / value /
+ * scope / action), not by re-authoring the label, so a rule stored months
+ * ago in `workout_spec.rules` splits correctly today with no migration.
+ * The fallback for a shape this does not recognise is the label's own `·`
+ * break, which is where the two registers already sit in every rule the
+ * spec-builder writes; and where there is no break, the judgement is null
+ * rather than invented.
+ *
+ * `pass` rules get nothing: they are post-run confirmation criteria, not a
+ * decision offered to a runner mid-session, and there is no judgement to
+ * make about a threshold nobody has crossed yet.
+ */
+export function splitRuleRegisters(
+  rule: Record<string, unknown>,
+): { evidence: string | null; judgement: string | null } {
+  const none = { evidence: null, judgement: null };
+  const kind = String(rule.kind ?? '');
+  if (kind !== 'bail' && kind !== 'abort') return none;
+
+  const metric = String(rule.metric ?? '');
+  const scope = String(rule.scope ?? '');
+  const action = rule.action == null ? null : String(rule.action);
+  const value = Number(rule.value);
+  const checkpointMi = /^mile-(\d+(?:\.\d+)?)$/.exec(scope)?.[1] ?? null;
+
+  if (Number.isFinite(value)) {
+    if (metric === 'hr' && action === 'drop_to_easy') {
+      return {
+        evidence: `Heart rate over ${Math.round(value)} and still climbing`,
+        judgement: 'The stimulus is already banked · forcing the rest of the reps buys fatigue, not fitness.',
+      };
+    }
+    if (metric === 'hr' && action === 'cut_finish_half') {
+      return {
+        evidence: `Heart rate over ${Math.round(value)} through the finish`,
+        judgement: 'Cut the finish in half and jog the rest home · the long run itself is already in the bank.',
+      };
+    }
+    if (metric === 'hr' && action === 'switch_to_b_goal' && checkpointMi) {
+      return {
+        evidence: `Mile ${checkpointMi} heart rate over ${Math.round(value)}`,
+        judgement: 'The A goal is gone from here · run the B plan and finish the race that is still in front of you.',
+      };
+    }
+    if (metric === 'pace' && action === 'switch_to_b_goal' && checkpointMi) {
+      return {
+        evidence: `Mile ${checkpointMi} pace slower than ${paceMmSs(value)}`,
+        judgement: 'The A goal is out of reach at this pace · switch to the B plan and hold that instead.',
+      };
+    }
+  }
+
+  // Unrecognised shape · fall back to the label's own break. Never guess a
+  // judgement that is not written down.
+  const label = typeof rule.label === 'string' ? rule.label : null;
+  if (!label) return none;
+  const at = label.indexOf(' · ');
+  if (at < 0) return { evidence: label.trim(), judgement: null };
+  return {
+    evidence: label.slice(0, at).trim() || null,
+    judgement: label.slice(at + 3).trim() || null,
+  };
+}
+
 /** Injury / sick / week-off detection for the No-session board.
  *
  *  Three LIMIT-1 point reads mirroring `lib/coach/glance-state.ts` (the
@@ -1165,15 +1460,22 @@ export async function buildWatchToday(
     ? ((wo.workout_spec as Record<string, unknown>).rules as Array<Record<string, unknown>>)
     : null;
   if (specRules && specRules.length > 0) {
-    workout.rules = specRules;
-    const bail = specRules.find((r) => r.kind === 'bail');
+    // 0821 · B7 · evidence and judgement ride BESIDE the untouched label.
+    // Spread-then-add: nothing the spec authored is dropped or rewritten,
+    // and a deployed watch reading only `label` sees exactly what it saw.
+    const decorated: Array<Record<string, unknown>> =
+      specRules.map((r) => ({ ...r, ...splitRuleRegisters(r) }));
+    workout.rules = decorated;
+    const bail = decorated.find((r) => r.kind === 'bail');
     if (bail) {
+      const registers = splitRuleRegisters(bail);
       for (const p of workout.phases) {
-        if (bail.scope === 'work' && p.type === 'work' && !p.isFinishSegment) {
-          p.ruleLabel = String(bail.label);
-        } else if (bail.scope === 'finish' && p.isFinishSegment) {
-          p.ruleLabel = String(bail.label);
-        }
+        const scoped = (bail.scope === 'work' && p.type === 'work' && !p.isFinishSegment)
+          || (bail.scope === 'finish' && p.isFinishSegment);
+        if (!scoped) continue;
+        p.ruleLabel = String(bail.label);
+        p.ruleEvidence = registers.evidence;
+        p.ruleJudgement = registers.judgement;
       }
     }
   }
@@ -1478,6 +1780,17 @@ export async function buildWatchToday(
   } catch {
     /* don't fail the watch payload over readiness — best effort only */
   }
+
+  // 0821 · B5 · the spoken cues. Composed LAST, after every branch that
+  // can still rewrite the phase list (the race branch splices its opening
+  // segments in above), because a phase-triggered cue points at an index
+  // and an index that moved afterwards points at the wrong sentence.
+  const spokenCues = composeSpokenCues({
+    sessionClass,
+    distanceMi,
+    phases: workout.phases,
+  });
+  if (spokenCues.length > 0) workout.spokenCues = spokenCues;
 
   // 0821 · "the session already moved". Deliberately NOT readiness: the
   // design refuses to put a score on the lobby, so this says what changed
