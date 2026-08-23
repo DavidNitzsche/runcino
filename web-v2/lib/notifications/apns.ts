@@ -53,6 +53,11 @@ export type NotificationCategory =
    *  apnsCategoryId) because that registration carries no action buttons and
    *  neither does the countdown, so nothing on the device changes. */
   | 'race_countdown'
+  /** 2026-08-21 · 0821 watch handoff § 9 · a run is logged but the runner
+   *  has not read it yet (no RPE, no check-in chip, no morning rating).
+   *  Fires ONCE for that run · a second reminder would make it a nag. */
+  | 'run_unread'
+  | 'session_moved'
   | 'strava_reconnect';
 
 /** UNNotificationCategory identifier the iOS app registers — must match the
@@ -71,6 +76,14 @@ export function apnsCategoryId(c: NotificationCategory): string {
     // unregistered id would render an actionless alert too — but only by
     // accident, and it would break the moment someone gave it buttons.
     case 'race_countdown':   return 'FAFF_MILESTONE';
+    // Its own id, because it has its own single action ("Open on iPhone")
+    // and none of the registered categories carries that one. Until the
+    // phone and the watch register it, iOS renders the alert with no
+    // buttons and the body tap still routes on faff.deeplink — late, not
+    // wrong. renderRunUnread sets apns_category_id explicitly to the same
+    // string, so this stays the one place the id is written down.
+    case 'run_unread':       return 'FAFF_RUN_UNREAD';
+    case 'session_moved':    return 'FAFF_SESSION_MOVED';
     case 'strava_reconnect': return 'FAFF_STRAVA_RECON';
   }
 }
@@ -322,12 +335,26 @@ export function buildApnsBody(args: SendPushArgs): { aps: Record<string, unknown
     'interruption-level': args.interruption_level ?? 'active',
     'mutable-content': 1,
   };
-  // Rich actions → set aps.category so iOS resolves the registered category.
-  // apns_category_id override first (P1-25 · FAFF_SICK split), else the
-  // canonical per-bucket mapping.
-  if (args.action_buttons && args.action_buttons.length > 0) {
-    aps.category = args.apns_category_id ?? apnsCategoryId(args.category);
-  }
+  // aps.category so iOS resolves the registered category. apns_category_id
+  // override first (P1-25 · FAFF_SICK split), else the canonical per-bucket
+  // mapping.
+  //
+  // 2026-08-21 · 0821 watch handoff · THIS USED TO BE GATED ON
+  // `action_buttons.length > 0`, and the gate was backwards.
+  //
+  // The category is not what draws buttons. It is what tells the device
+  // WHICH BOARD this is, and the watch's custom long-look interfaces are
+  // registered against it. So a notification defined by having no action —
+  // "Session moved" and "Race tomorrow", where the design says an action
+  // appears "only when there genuinely is one" — was the exact set that
+  // could never reach its own board: no buttons, therefore no category,
+  // therefore the system's plain alert. The one property that makes those
+  // boards correct was the property that stopped them rendering.
+  //
+  // An actionless category is a proven shape here, not a new risk:
+  // FAFF_MILESTONE has shipped with an empty actions array since the
+  // countdown split, and renders no buttons.
+  aps.category = args.apns_category_id ?? apnsCategoryId(args.category);
   const faff: Record<string, unknown> = {
     kind: args.category,
     ...(args.data ?? {}),

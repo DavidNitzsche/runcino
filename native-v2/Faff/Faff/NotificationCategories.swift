@@ -21,6 +21,11 @@ import UserNotifications
 enum NotificationCategoryId {
     static let raceDay        = "FAFF_RACE_DAY"
     static let raceEve        = "FAFF_RACE_EVE"
+    /// 2026-08-23 · the unread-run nudge. Emitted by `renderRunUnread`
+    /// (web-v2/lib/notifications/templates.ts) with `apns_category_id:
+    /// 'FAFF_RUN_UNREAD'`. Registered on the watch too, deliberately with a
+    /// different action set — see the watch's WatchNotificationCategories.
+    static let runUnread      = "FAFF_RUN_UNREAD"
     static let skipRecov      = "FAFF_SKIP_RECOV"
     static let weekly         = "FAFF_WEEKLY"
     static let niggle         = "FAFF_NIGGLE"
@@ -42,6 +47,7 @@ enum NotificationActionId {
     // Race day / eve — open-only
     static let openRace      = "OPEN_RACE"
     static let openChecklist = "OPEN_CHECKLIST"
+    static let openOnPhone   = "OPEN_ON_IPHONE"
 
     // Skip recovery
     static let ready         = "READY"
@@ -93,6 +99,31 @@ enum NotificationCategories {
                 UNNotificationAction(
                     identifier: NotificationActionId.openChecklist,
                     title: "OPEN CHECKLIST",
+                    options: [.foreground]
+                )
+            ],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        // B2 · RUN UNREAD — one OPEN action.
+        //
+        // The server has been sending this category since 2026-08-21 and the
+        // phone did not register it, so iOS drew the alert with no button. The
+        // body tap still routed on `faff.deeplink`, which is why nothing
+        // looked broken: the notification arrived, it just quietly lost the
+        // one verb it has.
+        //
+        // Title case, not caps, unlike its siblings above. The design's rule
+        // is that this board never grades the runner for forgetting - it
+        // states the cost to the plan - and shouting the verb undoes that in
+        // the one place a runner sees it before they open anything.
+        let runUnread = UNNotificationCategory(
+            identifier: NotificationCategoryId.runUnread,
+            actions: [
+                UNNotificationAction(
+                    identifier: NotificationActionId.openOnPhone,
+                    title: "Open on iPhone",
                     options: [.foreground]
                 )
             ],
@@ -235,7 +266,7 @@ enum NotificationCategories {
             options: []
         )
 
-        return [raceDay, raceEve, skipRecov, weekly, niggle, sick, milestone, stravaReconnect]
+        return [raceDay, raceEve, runUnread, skipRecov, weekly, niggle, sick, milestone, stravaReconnect]
     }
 
     /// Map a UNNotificationCategory identifier to the wire-level kind the
@@ -248,6 +279,7 @@ enum NotificationCategories {
         switch id {
         case NotificationCategoryId.raceDay:         return "race_day"
         case NotificationCategoryId.raceEve:         return "race_eve"
+        case NotificationCategoryId.runUnread:       return "run_unread"
         case NotificationCategoryId.skipRecov:       return "skip_recovery"
         case NotificationCategoryId.weekly:          return "weekly_checkin"
         case NotificationCategoryId.niggle:          return "niggle_sick"

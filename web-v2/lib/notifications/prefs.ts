@@ -30,6 +30,13 @@ export interface NotificationPrefs {
    *  delivery changes; the merge in loadNotificationPrefs supplies the key
    *  for every profile row written before this shipped. */
   race_countdown_enabled: boolean;
+  /** 2026-08-21 · 0821 watch handoff § 9 · "yesterday is unread". Defaults
+   *  true, and loadNotificationPrefs's merge supplies the key for every
+   *  profile row written before this shipped, so no DDL and no backfill. */
+  run_unread_enabled: boolean;
+  /** The session-moved nudge. Defaults ON: a plan that changed overnight and
+   *  said nothing is the surprise this exists to prevent. */
+  session_moved_enabled: boolean;
   strava_reconnect_enabled: boolean;
   race_day_wake_time: string;     // 'HH:MM'
   weekly_checkin_time: string;    // 'HH:MM' (Sunday)
@@ -46,6 +53,8 @@ export const DEFAULT_PREFS: NotificationPrefs = {
   niggle_sick_enabled: true,
   streak_enabled: true,
   race_countdown_enabled: true,
+  run_unread_enabled: true,
+  session_moved_enabled: true,
   strava_reconnect_enabled: true,
   race_day_wake_time: '05:30',
   weekly_checkin_time: '20:00',
@@ -204,6 +213,8 @@ export function categoryEnabled(prefs: NotificationPrefs, c: NotificationCategor
     case 'niggle_sick':      return prefs.niggle_sick_enabled;
     case 'streak':           return prefs.streak_enabled;
     case 'race_countdown':   return prefs.race_countdown_enabled;
+    case 'run_unread':       return prefs.run_unread_enabled;
+    case 'session_moved':    return prefs.session_moved_enabled;
     case 'strava_reconnect': return prefs.strava_reconnect_enabled;
   }
 }

@@ -22,6 +22,8 @@ interface NotificationPrefs {
   niggle_sick_enabled: boolean;
   streak_enabled: boolean;
   race_countdown_enabled: boolean;
+  run_unread_enabled: boolean;
+  session_moved_enabled: boolean;
   strava_reconnect_enabled: boolean;
   race_day_wake_time: string;
   weekly_checkin_time: string;
@@ -54,6 +56,11 @@ const ROW_DEFS: Array<{
   // 2026-08-21 · the race countdown used to ride streak_enabled, so deleting
   // that row left it firing with nothing to switch it off. Own flag, own row.
   { key: 'race_countdown_enabled', label: 'Race countdown', sub: 'Sunday morning at 12 · 10 · 8 · 6 · 4 · 2 weeks out' },
+  // 2026-08-21 · 0821 watch handoff § 9 · B8. Once for a run, and at most
+  // once a week whatever happens — the row says so, because a switch whose
+  // frequency the runner cannot predict gets turned off.
+  { key: 'run_unread_enabled', label: 'Unread run', sub: 'Morning after a long or hard run you have not judged · once' },
+  { key: 'session_moved_enabled', label: 'Session moved', sub: 'When readiness changed today\u2019s session overnight' },
   { key: 'strava_reconnect_enabled', label: 'Strava reconnect', sub: 'Nudge when the token goes stale' },
 ];
 

@@ -417,3 +417,143 @@ export function renderStravaReconnect(s: StravaReconnectSlots): RenderedTemplate
     },
   };
 }
+
+// ──────────────────────────────────────────────────────────────
+// H · YESTERDAY IS UNREAD (0821 watch handoff § 9 · B8)
+// ──────────────────────────────────────────────────────────────
+//
+// "'Yesterday is unread' has one target and an amber kicker, and fires
+// once — a second reminder would make it a nag."
+//
+// The run is IN. What is missing is the runner's own read of it: no RPE,
+// no check-in chip, no morning rating. Until that lands, the adapter is
+// working off pace and heart rate alone on a session where how it felt is
+// the signal that matters, which is why the consequence clause is about
+// the week rather than about the notification.
+//
+// One action, and it is an open, not an answer: judging a run is a screen,
+// not a button. Everything the shell cannot route falls to Today (see
+// ShellV5.route), which is where the unread run is surfaced, so the
+// deeplink is the one that exists rather than one invented for this push.
+
+/** Slots for the session-moved nudge.
+ *
+ *  The watch board, the `FAFF_SESSION_MOVED` category and the payload's own
+ *  `sessionMoved` object all existed before this template did, so the change
+ *  reached the lobby and never reached a lock screen. This is the missing
+ *  half. */
+export interface SessionMovedSlots {
+  user_id: string;
+  /** YYYY-MM-DD of the day that changed. Anchors the dedup key, so a plan
+   *  adapted twice in one day notifies once. */
+  date_iso: string;
+  /** What the session became, in the plan's own words. "Easy 4 mi". */
+  now_label: string;
+  /** What it was. Null when the previous shape is unknown — the sentence
+   *  then states the change without claiming what it replaced. */
+  was_label?: string | null;
+  /** Why, in the coach's register and already composed upstream.
+   *  "Six hours of sleep". Null drops the clause rather than inventing one. */
+  reason?: string | null;
+}
+
+/** Session moved · NO ACTION.
+ *
+ *  The design is explicit that an action appears "only when there genuinely
+ *  is one", and there is none here: the session has already changed, the
+ *  runner has nothing to approve, and a button would imply otherwise.
+ *
+ *  That property is exactly what used to stop this reaching a wrist —
+ *  `buildApnsBody` set `aps.category` only when a template carried action
+ *  buttons, so the one board defined by having none could never route to its
+ *  custom long-look. Fixed 2026-08-21; this template depends on that fix.
+ */
+export function renderSessionMoved(s: SessionMovedSlots): RenderedTemplate {
+  // Evidence, then the change. Never a grade: the plan moved, the runner did
+  // not fail. Clauses drop rather than guess.
+  const consequence = s.was_label
+    ? `Today is ${s.now_label} \u00b7 it was ${s.was_label}.`
+    : `Today is ${s.now_label}.`;
+  return {
+    category: 'session_moved',
+    title: s.reason ? s.reason : 'Today changed overnight',
+    body: consequence,
+    // Not time-sensitive: the session has already changed and will still have
+    // changed in an hour. An interruption here would be the app raising its
+    // voice about its own bookkeeping.
+    interruption_level: 'active',
+    apns_category_id: 'FAFF_SESSION_MOVED',
+    dedup_key: `session-moved:${s.user_id}:${s.date_iso}`,
+    // No action_buttons, deliberately. See above.
+    data: {
+      deeplink: 'faff://today',
+      date_iso: s.date_iso,
+      kicker_text: 'Session moved',
+    },
+  };
+}
+
+export interface RunUnreadSlots {
+  user_id: string;
+  /** YYYY-MM-DD of the run · the dedup key's own once-only anchor. */
+  run_date_iso: string;
+  /** 'long' | 'quality' · what the plan asked for that day. Names the
+   *  session in the lede; both read the same underneath. */
+  category: 'long' | 'quality';
+  /** Canonical miles run. The design's kicker states the dose before it
+   *  states the state ("14 mi · still unread"), which is the same
+   *  type-then-dose order the complications use. Null drops the clause
+   *  rather than guessing it. */
+  distance_mi?: number | null;
+}
+
+/** "14" · "6.5" · miles for a kicker, never trailing a dead decimal. */
+function milesForKicker(mi: number): string {
+  const r = Math.round(mi * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+export function renderRunUnread(s: RunUnreadSlots): RenderedTemplate {
+  const mi = s.distance_mi != null && s.distance_mi > 0 ? milesForKicker(s.distance_mi) : null;
+  return {
+    category: 'run_unread',
+    // 2026-08-21 · the design draws this board, so the design's own words
+    // are what ship: kicker, lede, consequence, verbatim. It is also the
+    // one deliberate break from the CAPS title convention in this file.
+    // The deck's rule is "SCREAMING CAPS only on the title, and only when
+    // data warrants it" — a nudge about an unjudged run does not warrant
+    // it, and shouting at a runner about paperwork is how a switch gets
+    // turned off.
+    title: s.category === 'long'
+      ? 'The long run is in but not judged'
+      : 'The session is in but not judged',
+    body: "This week's shape waits on it.",
+    interruption_level: 'active',
+    // FAFF_RUN_UNREAD is registered on the phone (NotificationCategories)
+    // and on the watch's long-look. An unregistered id renders the alert
+    // with no buttons — the body still opens the app and routes on
+    // faff.deeplink, so this degrades to a plain tap rather than to
+    // nothing.
+    apns_category_id: 'FAFF_RUN_UNREAD',
+    // Keyed on the RUN, not on the day this fired. The dispatcher's 24h
+    // window is not what makes this fire once; the scheduler's all-time
+    // check on this key is (see unreadRunYesterday in the cron).
+    dedup_key: `run-unread:${s.user_id}:${s.run_date_iso}`,
+    action_buttons: [
+      // No authentication_required and no destructive flag: this opens a
+      // screen. Whether it opens in the foreground is a UNNotificationAction
+      // option declared on the device, not something the payload can say.
+      { identifier: 'OPEN_ON_IPHONE', title: 'Open on iPhone' },
+    ],
+    data: {
+      deeplink: 'faff://today',
+      run_date_iso: s.run_date_iso,
+      // The amber kicker, as TEXT. There is deliberately no colour token
+      // beside it: the wrist does not need to be told which hue its own
+      // kicker takes, and two fields one rename apart — one holding a
+      // colour, one holding words — is how a board ends up drawing the
+      // word "AMBER" in amber.
+      kicker_text: mi ? `${mi} mi · still unread` : 'Still unread',
+    },
+  };
+}
