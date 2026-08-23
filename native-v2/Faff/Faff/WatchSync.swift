@@ -175,6 +175,24 @@ final class WatchSync: NSObject, ObservableObject {
             } else if let msg = obj["message"] as? String {
                 ctx["noWorkout"] = msg
             }
+            // THE GLANCE, ON BOTH BRANCHES.
+            //
+            // The 0821 lobby pages poster → breakdown → week, shows a session
+            // that has already changed with the reason stated once, and draws
+            // a reasoned refusal on a rest day. All three read `weekStrip`,
+            // `sessionMoved` and `dayState`, which the server has emitted
+            // since 2026-08-21 and this relay threw away: the line above
+            // re-serialises ONLY `obj["workout"]`, so every glance object was
+            // built, sent over the network, parsed here, and dropped one hop
+            // before the decoder written for it.
+            //
+            // Nothing errored. The week page simply never appeared, and a
+            // rest day fell back to the bare message string.
+            //
+            // The whole body goes under its own key rather than replacing
+            // `ctx["workout"]`, because a deployed watch decodes that key
+            // strictly as a WatchWorkout and would reject the envelope.
+            ctx["glance"] = raw
             // Readiness for the watch glance (P1-30). Fall back to the last
             // good payload so a transient /api/readiness failure doesn't
             // blank an already-lit glance.

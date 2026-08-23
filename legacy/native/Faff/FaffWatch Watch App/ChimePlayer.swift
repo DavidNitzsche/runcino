@@ -75,7 +75,23 @@ final class ChimePlayer {
             try session.setCategory(.playback, mode: .default,
                                     options: [.duckOthers])
             try session.setActive(true, options: [])
-            try engine.start()
+            // engine.start() MOVED to play(). Activation of the AVAudioSession must
+
+            // happen before HKWorkoutSession takes over — that is the uncatchable
+
+            // NSException the comments in WorkoutTracker describe, and it is why
+
+            // activate() is called unconditionally. But the ENGINE is a separate
+
+            // thing: it spins a real-time render thread pulling the mixer at 44.1kHz
+
+            // for the whole run, whether or not a single chime ever plays. An
+
+            // active-but-idle session is cheap; an idle running engine is not.
+
+            // AVAudioEngine.start() does not touch AVAudioSession, so starting it
+
+            // lazily does not re-enter the crash path.
             isActive = true
         } catch {
             // No audio — leave isActive=false, Haptics.chime() will skip
@@ -103,6 +119,7 @@ final class ChimePlayer {
     /// from any thread during a live workout.
     func play() {
         guard isActive, let buffer else { return }
+        if !engine.isRunning { try? engine.start() }
         player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
         if !player.isPlaying { player.play() }
     }

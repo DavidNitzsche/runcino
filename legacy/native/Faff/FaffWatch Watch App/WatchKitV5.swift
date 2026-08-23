@@ -138,6 +138,7 @@ struct WGrain: View {
             .blendMode(.overlay)
             .opacity(WatchV5.DayState.grainOpacity)
             .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     /// 64×64 is large enough that the repeat is invisible at watch scale and
@@ -271,6 +272,15 @@ struct WDestructive: View {
                 .foregroundStyle(WatchV5.destructive)
                 .frame(maxWidth: .infinity)
                 .frame(height: WatchV5.Metric.targetHeight)
+                // WITHOUT THIS the target is the text glyphs, roughly
+                // 60x18pt, not the 396x50 the frame declares. A .frame does
+                // not make its empty region hittable; WTarget gets away with
+                // it because its Capsule background fills the frame and is.
+                // Rule 6 says every target is 50pt with no exceptions, and
+                // this was the exception — benignly, since the hard-to-hit
+                // button is the one that throws a run away, but a drawn rule
+                // and a built rule must agree.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -363,23 +373,23 @@ struct WMetric: View {
     var unit: String? = nil
     var rank: WMetricRank = .secondary
     var grade: WMetricGrade = .plain
-    /// Explicit override for the boards that are not on the hero/secondary
-    /// ladder — Page 2's four-up is a flat 37pt, Always-On is 42/35. Passing a
-    /// size opts out of `rank.size` only; the unit still steps from the rank
-    /// unless `unitSize` is given too.
     var size: CGFloat? = nil
-    /// Explicit override for the unit. The per-rank step is right on the
-    /// running faces it was measured from; the boards that set `size` are
-    /// mostly off that ladder and carry their own unit step with them
-    /// (Page 1's hero is 44/18, the treadmill's is 44/17, Page 2's two-up is
-    /// 47/19). Overriding one without the other is what produced a 47pt
-    /// figure wearing a 16pt unit.
+    /// Explicit unit size for the boards off the rank ladder.
     var unitSize: CGFloat? = nil
+    /// ACCESSIBILITY ONLY. Draws nothing, ever.
+    ///
+    /// This component deliberately takes no drawn label — units carry the
+    /// meaning and POSITION carries the identity. But position is exactly
+    /// what VoiceOver destroys: it linearises the board, so a runner using
+    /// it hears "7:42", "/mi", "154", "bpm", "5.72", "mi", "44:16" as seven
+    /// unlabelled stops, and the elapsed time has no unit at all by design.
+    ///
+    /// So the no-label rule holds where it was written — on the drawn board —
+    /// and does not extend to a channel that draws nothing. A runner who
+    /// cannot see the layout gets told what each number is.
+    var role: String? = nil
 
     var body: some View {
-        // 10px in the 2× set. Every figure-and-unit pair in the design file
-        // is at this gap — Page 1, the phase boards, the finish, the summary
-        // header — so it is one number and not a per-board choice.
         HStack(alignment: .firstTextBaseline, spacing: 5) {
             Text(value)
                 .font(WatchV5.number(size ?? rank.size))
@@ -392,6 +402,44 @@ struct WMetric: View {
                     .foregroundStyle(unitColor)
                     .lineLimit(1)
             }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(a11yLabel)
+    }
+
+    /// "Pace, 7:42 per mile, in band". The GRADE is folded in here because
+    /// this is the only non-visual channel that can carry it — the band strip
+    /// is silent, and rule 4's size step conveys hierarchy, not whether the
+    /// runner is holding the ask.
+    private var a11yLabel: String {
+        var parts: [String] = []
+        if let role { parts.append(role) }
+        parts.append(value.replacingOccurrences(of: WatchV5.separator, with: ","))
+        if let unit { parts.append(Self.spoken(unit)) }
+        switch grade {
+        case .inBand:    parts.append("in band")
+        case .outOfBand: parts.append("outside the band")
+        case .plain, .dim: break
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    /// Units are drawn short and said long. "/mi" reads as "slash em eye".
+    private static func spoken(_ unit: String) -> String {
+        switch unit {
+        case "/mi":     return "per mile"
+        case "/km":     return "per kilometre"
+        case "/mi avg": return "average, per mile"
+        case "/km avg": return "average, per kilometre"
+        case "mi":      return "miles"
+        case "km":      return "kilometres"
+        case "bpm":     return "beats per minute"
+        case "spm":     return "steps per minute"
+        case "W":       return "watts"
+        case "ft":      return "feet"
+        case "m":       return "metres"
+        case "min":     return "minutes"
+        default:        return unit
         }
     }
 
@@ -502,6 +550,7 @@ struct WBandStrip: View {
         }
         .frame(height: mark)
         .allowsHitTesting(false)
+        .accessibilityHidden(true)   // the grade it carries is spoken by WMetric
     }
 
     private var litColour: Color {
@@ -593,6 +642,7 @@ struct WProgressStrip: View {
         }
         .frame(height: thickness)
         .allowsHitTesting(false)
+        .accessibilityHidden(true)   // the grade it carries is spoken by WMetric
     }
 }
 
@@ -719,6 +769,8 @@ struct WWordmark: View {
                 .font(WatchV5.display(size))
                 .foregroundStyle(WatchV5.value.opacity(wordOpacity))
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("faff dot run")
     }
 }
 
@@ -761,6 +813,7 @@ struct WRow<Leading: View, Trailing: View>: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
         .background(fill, in: RoundedRectangle(cornerRadius: WatchV5.Metric.rowRadius,
                                                style: .continuous))
     }

@@ -200,10 +200,10 @@ final class WatchDeviceMonitor {
     /// Water lock is the reason this is 2 s and not 30 s: the board that
     /// proves the run is still alive should appear promptly. The tick itself
     /// is two property reads, so the cost is the timer, not the work.
-    static let tickInterval: TimeInterval = 2
+    static let tickInterval: TimeInterval = 5
     /// Battery level is quantised in coarse steps; sampling it faster than
     /// this buys nothing and costs a little. ~30 s.
-    private static let batteryEveryNTicks = 15
+    private static let batteryEveryNTicks = 6
 
     private let onReading: (Reading) -> Void
     private var timer: Timer?

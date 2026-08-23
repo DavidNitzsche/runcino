@@ -191,6 +191,17 @@ struct WatchPhase: Codable, Identifiable {
     /// omit it → false. The router shows the FINISH face (not the rep face)
     /// and the engine fires a FINISH boundary cue instead of "REP n/m".
     let isFinishSegment: Bool
+    /// 2026-08-23 · the server has carried this since DOCTRINE-STRIDES-1 and
+    /// this model never read it, so the router matched `label.contains("stride")`
+    /// instead and said so in a comment: "the wire has no strides phase". It
+    /// does. The board worked only because `expand-spec.ts` happens to emit
+    /// "Stride N of M" — rename that label and strides silently stopped.
+    let isStrideSegment: Bool
+    /// The contingency line drawn under a phase target. Emitted since
+    /// 2026-08-21, never decoded.
+    let ruleLabel: String?
+    let ruleEvidence: String?
+    let ruleJudgement: String?
 
     /// The backend payload omits `index` (the phases array is ordered
     /// and the watch walks it with a cursor).  We assign it during
@@ -199,7 +210,8 @@ struct WatchPhase: Codable, Identifiable {
     init(index: Int, type: WatchPhaseType, label: String, durationSec: Int,
          targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?, haptic: WatchHaptic,
          repUnit: WatchRepUnit = .time, distanceMi: Double? = nil, hrTargetBpm: Int? = nil,
-         isFinishSegment: Bool = false) {
+         isFinishSegment: Bool = false, isStrideSegment: Bool = false,
+         ruleLabel: String? = nil, ruleEvidence: String? = nil, ruleJudgement: String? = nil) {
         self.index = index
         self.type = type
         self.label = label
@@ -211,10 +223,15 @@ struct WatchPhase: Codable, Identifiable {
         self.distanceMi = distanceMi
         self.hrTargetBpm = hrTargetBpm
         self.isFinishSegment = isFinishSegment
+        self.isStrideSegment = isStrideSegment
+        self.ruleLabel = ruleLabel
+        self.ruleEvidence = ruleEvidence
+        self.ruleJudgement = ruleJudgement
     }
 
     private enum CodingKeys: String, CodingKey {
         case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm, isFinishSegment
+        case isStrideSegment, ruleLabel, ruleEvidence, ruleJudgement
     }
 
     /// Decoding without an index — used only when a phase is decoded in
@@ -222,7 +239,12 @@ struct WatchPhase: Codable, Identifiable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.index = 0
-        self.type = try c.decode(WatchPhaseType.self, forKey: .type)
+        // A value a newer server invents must read as unrecognised, not
+        // throw. `type`, `haptic` and `repUnit` each took the whole workout
+        // down on an unknown string — so adding a fifth phase type server-side
+        // was a breaking change for every deployed watch. The file's own
+        // doctrine says this, and applied it to the glance's enums only.
+        self.type = (try? c.decode(WatchPhaseType.self, forKey: .type)) ?? .work
         self.label = try c.decode(String.self, forKey: .label)
         // Lenient Int decodes (M-13): server-derived numerics can arrive
         // fractional (durationSec = pace × miles, etc). Int first, Double
@@ -230,11 +252,15 @@ struct WatchPhase: Codable, Identifiable {
         self.durationSec = try c.lenientInt(forKey: .durationSec)
         self.targetPaceSPerMi = c.lenientIntIfPresent(forKey: .targetPaceSPerMi)
         self.tolerancePaceSPerMi = c.lenientIntIfPresent(forKey: .tolerancePaceSPerMi)
-        self.haptic = try c.decode(WatchHaptic.self, forKey: .haptic)
+        self.haptic = (try? c.decode(WatchHaptic.self, forKey: .haptic)) ?? .start
         self.repUnit = try c.decodeIfPresent(WatchRepUnit.self, forKey: .repUnit) ?? .time
         self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
         self.hrTargetBpm = c.lenientIntIfPresent(forKey: .hrTargetBpm)
         self.isFinishSegment = try c.decodeIfPresent(Bool.self, forKey: .isFinishSegment) ?? false
+        self.isStrideSegment = ((try? c.decodeIfPresent(Bool.self, forKey: .isStrideSegment)) ?? nil) ?? false
+        self.ruleLabel = (try? c.decodeIfPresent(String.self, forKey: .ruleLabel)) ?? nil
+        self.ruleEvidence = (try? c.decodeIfPresent(String.self, forKey: .ruleEvidence)) ?? nil
+        self.ruleJudgement = (try? c.decodeIfPresent(String.self, forKey: .ruleJudgement)) ?? nil
     }
 
     func encode(to encoder: Encoder) throws {
@@ -365,7 +391,11 @@ struct WatchWorkout: Codable {
         self.goalSec = c.lenientIntIfPresent(forKey: .goalSec)
         self.strategyLabel = try c.decodeIfPresent(String.self, forKey: .strategyLabel)
         self.gelsMi = try c.decodeIfPresent([Double].self, forKey: .gelsMi)
-        self.fueling = try c.decodeIfPresent(WatchFueling.self, forKey: .fueling)
+        // `try?`, like `rules` and `spokenCues`. WatchFueling hard-decodes all
+        // nine of its fields, so ONE missing key threw and took the entire
+        // day's payload with it — the exact shape of the M-13 incident, whose
+        // mitigation was applied to its two siblings and not to this.
+        self.fueling = (try? c.decodeIfPresent(WatchFueling.self, forKey: .fueling)) ?? nil
         self.hrCeilingBpm = c.lenientIntIfPresent(forKey: .hrCeilingBpm)
         self.displayHint = try c.decodeIfPresent(String.self, forKey: .displayHint)
         self.unitsDistance = try c.decodeIfPresent(String.self, forKey: .unitsDistance)
@@ -1070,6 +1100,13 @@ struct WatchCompletion: Encodable {
     /// `nil` when no rule fired, never `[]` — the server merges onto a jsonb
     /// column and an empty array would clobber what a sibling payload wrote.
     var ruleOutcomes: [WorkoutEngine.RuleOutcome]? = nil
+
+    /// Seconds the runner held the clock. The server declares `pausedSec` and
+    /// only the treadmill ever sent it, so a watch run paused at a stoplight
+    /// failed the clock audit: `accounted = totalSec + pausedSec + droppedGapSec`
+    /// came up short by exactly the pause. nil rather than 0 when nothing was
+    /// paused, so the field is absent on the wire like every other optional.
+    var pausedSec: Int? = nil
 
     /// Append one outcome. Creates the array only by putting something in it,
     /// so `[]` can never be assigned by accident.

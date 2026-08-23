@@ -140,13 +140,24 @@ struct WBandReading {
     /// Inside the prescribed band. The ONLY thing in this system that turns
     /// something green, and it is false the instant the runner leaves it.
     let inBand: Bool
+    /// The real three-state grade. `inBand` alone collapsed `.untrusted` into
+    /// `.outOfBand`, so a treadmill, a dropped GPS and the first minute of
+    /// every outdoor run painted "--" in attention amber on all five phase
+    /// boards — the exact assertion-over-nothing the router forbids on Page 1
+    /// and lost everywhere else.
+    var metric: WMetricGrade = .plain
+    /// False when the phase prescribes no band. The gauge is then not drawn:
+    /// a band with no target is not a band, and a fabricated one puts the
+    /// mark dead-centre and claims the runner is exactly on a target that
+    /// does not exist.
+    var hasBand: Bool = true
     /// The lit segment, as fractions of the gauge's width.
     let bandStart: Double
     let bandEnd: Double
     /// Where the runner is, as a fraction of the gauge's width.
     let marker: Double
 
-    var grade: WMetricGrade { inBand ? .inBand : .outOfBand }
+    var grade: WMetricGrade { metric }
 }
 
 // MARK: - The phase scaffold
@@ -232,11 +243,14 @@ struct WPhaseWarmUp: View {
             WMetric(value: pace.value, unit: pace.unit,
                     rank: .tertiary, grade: pace.grade)
 
-            WBandStrip(start: pace.bandStart,
+            if pace.hasBand {
+
+                WBandStrip(start: pace.bandStart,
                        end: pace.bandEnd,
                        marker: pace.marker,
                        inBand: pace.inBand)
                 .padding(.vertical, 2)
+            }
 
             if let heartRate {
                 WMetric(value: heartRate, unit: "bpm", rank: .tertiary)
@@ -275,11 +289,14 @@ struct WPhaseWorkInterval: View {
             WMetric(value: pace.value, unit: pace.unit,
                     rank: .hero, grade: pace.grade)
 
-            WBandStrip(start: pace.bandStart,
+            if pace.hasBand {
+
+                WBandStrip(start: pace.bandStart,
                        end: pace.bandEnd,
                        marker: pace.marker,
                        inBand: pace.inBand)
                 .padding(.vertical, 2)
+            }
 
             if let heartRate {
                 WMetric(value: heartRate, unit: "bpm", rank: .tertiary)
@@ -387,11 +404,14 @@ struct WPhaseThreshold: View {
             WMetric(value: pace.value, unit: pace.unit,
                     rank: .hero, grade: pace.grade, size: 42)
 
-            WBandStrip(start: pace.bandStart,
+            if pace.hasBand {
+
+                WBandStrip(start: pace.bandStart,
                        end: pace.bandEnd,
                        marker: pace.marker,
                        inBand: pace.inBand)
                 .padding(.vertical, 2)
+            }
 
             // Average pace is white. Only the live figure grades — an average
             // that turned green would be a second verdict on the same run.
@@ -453,11 +473,14 @@ struct WPhaseRace: View {
             WMetric(value: pace.value, unit: pace.unit,
                     rank: .hero, grade: pace.grade, size: 42)
 
-            WBandStrip(start: pace.bandStart,
+            if pace.hasBand {
+
+                WBandStrip(start: pace.bandStart,
                        end: pace.bandEnd,
                        marker: pace.marker,
                        inBand: pace.inBand)
                 .padding(.vertical, 2)
+            }
 
             // White, even though it is a verdict of sorts. Rule 1 gives the
             // grade to the pace and only the pace; a second graded figure on a

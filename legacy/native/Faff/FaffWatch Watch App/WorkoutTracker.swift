@@ -50,7 +50,12 @@ final class WorkoutTracker: NSObject, ObservableObject {
     @Published private(set) var distanceMi: Double = 0   // cumulative
     @Published private(set) var paceSPerMi: Int = 0      // instantaneous (GPS)
     @Published private(set) var cadence: Int = 0         // spm (live; Phase-2 on device)
-    @Published private(set) var activeEnergyKcal: Int = 0
+    /// NOT @Published, deliberately. Its only reader is the completion
+    /// builder at the end of the run — it is on no board. Publishing it meant
+    /// roughly 5,400 whole-surface invalidations per run for a number nobody
+    /// looks at, because WatchRunSurfaceV5 observes the tracker as one object
+    /// and any published write re-evaluates the entire body.
+    private(set) var activeEnergyKcal: Int = 0
     @Published private(set) var isRecording = false
     /// P2-56 · true once a distance-based phase has gone the whole run with
     /// essentially no distance banked (HealthKit denied / session failed to
@@ -205,6 +210,13 @@ final class WorkoutTracker: NSObject, ObservableObject {
     /// aggregate hrSum/hrCount are untouched here — they already stopped
     /// accumulating the moment apply(hr:) stopped being called with a real
     /// value, so avgHr is already honest; this only fixes the LIVE read.
+    /// Stamp the HR sample clock as fresh without a sample. Used on resume:
+    /// the watchdog does not run while paused, so the clock would otherwise
+    /// age through the pause and declare a sensor failure that never happened.
+    func markHrSampleFresh() {
+        lastHrSampleAt = .now
+    }
+
     func checkHrStaleness() {
         guard heartRate > 0, let last = lastHrSampleAt else { return }
         if Date.now.timeIntervalSince(last) >= Self.hrStaleAfterSec {
@@ -285,7 +297,14 @@ final class WorkoutTracker: NSObject, ObservableObject {
     /// pattern, not needed on watchOS.)
     private func startLocationUpdates() {
         locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        // Best, not BestForNavigation. The latter is the highest-power mode on
+        // the platform and exists for turn-by-turn with the screen lit. This
+        // app uses locations for the route polyline, the completion
+        // coordinates and barometric elevation ONLY — pace and distance come
+        // from HealthKit runningSpeed, as the comments further down say. So
+        // nothing on any board changes, and the expensive sensor fusion was
+        // being paid for a line on a map.
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = 5
         switch locationManager.authorizationStatus {
         case .notDetermined:
@@ -355,7 +374,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
                     let spm = Int((c.doubleValue * 60).rounded())   // steps/sec → steps/min
                     guard spm > 0, spm < 320 else { return }
                     Task { @MainActor in
-                        self.cadence = spm; self.cadSum += spm; self.cadCount += 1
+                        if self.cadence != spm { self.cadence = spm }; self.cadSum += spm; self.cadCount += 1
                     }
                 }
             }
@@ -496,6 +515,10 @@ final class WorkoutTracker: NSObject, ObservableObject {
         self.session = nil
         self.builder = nil
         self.routeBuilder = nil
+        // end() does this and discard() did not, so a thrown-away run left the
+        // .playback + .duckOthers session active — the watch kept overriding
+        // silent mode and ducking the runner's music indefinitely.
+        ChimePlayer.shared.deactivate()
     }
 
     func end() async {
@@ -618,7 +641,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
                 let spm = Int((c.doubleValue * 60).rounded())
                 guard spm > 0, spm < 320 else { return }
                 Task { @MainActor in
-                    self.cadence = spm; self.cadSum += spm; self.cadCount += 1
+                    if self.cadence != spm { self.cadence = spm }; self.cadSum += spm; self.cadCount += 1
                 }
             }
         }

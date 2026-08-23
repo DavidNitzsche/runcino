@@ -105,7 +105,21 @@ final class TreadmillHRSession: NSObject, ObservableObject {
     /// us cleanly · happens on app crash + relaunch).
     func start(sessionId: String) {
         if isActive, self.sessionId == sessionId { return }
-        if isActive { Task { await end() } }
+        // Close the OLD session by value, not by property. `end()` is async,
+        // so the Task ran after this synchronous body finished and operated on
+        // the session this method had just created — invalidating the new
+        // watchdog, discarding the new workout and clearing isActive. The one
+        // scenario the comment above says this handles is the one it broke,
+        // and it leaked the old HKWorkoutSession too, which kept sampling
+        // system-side until the next launch's recovery sweep found it.
+        if isActive {
+            let staleSession = session
+            let staleBuilder = builder
+            session = nil
+            builder = nil
+            isActive = false
+            Task { await Self.closeOut(session: staleSession, builder: staleBuilder) }
+        }
 
         guard HKHealthStore.isHealthDataAvailable() else { return }
         let config = HKWorkoutConfiguration()
@@ -140,6 +154,25 @@ final class TreadmillHRSession: NSObject, ObservableObject {
     /// End the session. Discards the HKWorkout (we don't want a duplicate
     /// "Indoor Run" in Apple Health · the iPhone treadmill POST is the
     /// canonical source). Idempotent.
+    /// Close a session by VALUE, so a restart cannot tear down the session it
+    /// just created. Deliberately `static` and deliberately takes its
+    /// arguments: there is no path from here to `self.session`, which is what
+    /// makes the restart race unrepresentable rather than merely fixed.
+    private static func closeOut(session: HKWorkoutSession?,
+                                 builder: HKLiveWorkoutBuilder?) async {
+        guard let session, let builder else { return }
+        let endAt = Date()
+        session.stopActivity(with: endAt)
+        session.end()
+        do {
+            try await builder.endCollection(at: endAt)
+            try await builder.discardWorkout()
+        } catch {
+            // Best effort. The HR samples already streamed to HealthKit are
+            // untouched either way — they are their own rows.
+        }
+    }
+
     func end() async {
         watchdog?.invalidate()
         watchdog = nil

@@ -194,4 +194,10 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
-echo "check-wire-keys OK · phone + watch, both directions"
+echo "check-wire-keys OK · every declared key resolves in web-v2"
+echo "  NOTE: this gate is ONE-DIRECTIONAL. It asserts that every key Swift"
+echo "  declares appears somewhere in web-v2. It CANNOT see a server field"
+echo "  with no Swift property — which is exactly how isStrideSegment,"
+echo "  ruleLabel, ruleEvidence and ruleJudgement were emitted for days and"
+echo "  silently undecodable while this script printed OK. The summary line"
+echo "  used to say \"both directions\" and that was the claim, not the check."

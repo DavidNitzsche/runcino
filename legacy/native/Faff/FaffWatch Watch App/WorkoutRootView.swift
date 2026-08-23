@@ -49,6 +49,19 @@ final class WatchRootModel: ObservableObject {
     private var staleTimeoutTask: Task<Void, Never>?
 
     func start(_ workout: WatchWorkout) {
+        // A second tap before the authorization await returns used to build a
+        // SECOND engine on the same tracker. bind() keeps only the newer one,
+        // but the first has already called tracker.start() and begun its
+        // countdown — and each start() zeroes distanceMi, hrSum, maxHr and the
+        // smoothed pace while the HealthKit session keeps running. The run
+        // silently loses its first seconds and its aggregates.
+        //
+        // `self.engine` is assigned synchronously at the end of this method —
+        // the only `await` lives inside a detached Task — so this guard alone
+        // closes the window. A `launching` flag would look more careful and
+        // guard nothing, because it would be set and cleared inside one
+        // synchronous call.
+        guard engine == nil else { return }
         // Flag 6 (backend audit 2026-06-02) — refuse to start a stale
         // workout. Risk: runner opens the watch app the next morning
         // before iPhone has pushed today's payload via WCSession, and
@@ -433,7 +446,18 @@ struct WorkoutRootView: View {
                 // the watch does not quietly forget what the runner chose.
                 WatchRunSurfaceV5(engine: engine, tracker: model.tracker)
                     .onEndAndSave { engine.finish(save: true) }
-                    .onDiscardRun { engine.finish(save: false) }
+                    .onDiscardRun {
+                        // BOTH calls, and the second is the one that matters.
+                        // `finish(save:)` sets the engine to .idle but never
+                        // nils it, and the router renders the running surface
+                        // for .idle as well as .running — so a discarded run
+                        // left a DEAD engine on screen with the clock frozen
+                        // and every exit closed: End & Save, Pause, Lap and
+                        // Skip all guard on .running and silently refuse. The
+                        // only way out was force-quitting the app.
+                        engine.finish(save: false)
+                        model.reset()
+                    }
                     .onCeilingLift { bpm in engine.recordCeilingLift(readingBpm: bpm) }
                     .onRepSkip { _, _ in engine.recordRepSkip() }
                     .onRecoveryExtend { added in engine.recordRecoveryExtension(addedSec: added) }

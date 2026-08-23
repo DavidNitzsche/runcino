@@ -308,6 +308,13 @@ struct WatchRunSurfaceV5: View {
     /// the incline is unknown and the copy rules forbid an unfalsifiable claim.
     private var isTreadmill: Bool { tracker.distanceSourceUnavailable }
 
+    /// True when something opaque is drawn over the running face.
+    private var isCovered: Bool {
+        router.interrupt(engine: engine, tracker: tracker) != nil
+            || router.controlsShowing
+            || router.confirm != nil
+    }
+
     /// The runner's distance unit, straight off the payload.
     private var units: String? { engine.workout.unitsDistance }
     private var dist: (value: String, unit: String) {
@@ -354,6 +361,15 @@ struct WatchRunSurfaceV5: View {
             // Always present. A fault or a moment sits ON it, never instead
             // of it, so the run never stops being visible (rule 8).
             faceLayer
+                // Rule 8 keeps the run VISIBLE under every fault and every
+                // question, which is right. But nothing removed it from the
+                // ACCESSIBILITY tree, so with a confirm sheet up VoiceOver
+                // walked the covered board's numbers interleaved with the
+                // three choices — and the last stop was "Discard it", a
+                // full-width button that throws the run away. Rule 7 defends
+                // that with fill weight, which is a purely visual defence:
+                // to VoiceOver all three buttons are identical.
+                .accessibilityHidden(isCovered)
 
             // ── What is interrupting ─────────────────────────────────────
             if let interrupt = router.interrupt(engine: engine, tracker: tracker) {
@@ -362,7 +378,13 @@ struct WatchRunSurfaceV5: View {
             }
 
             // ── Controls, reached by tapping the face ────────────────────
-            if router.controlsShowing, router.confirm == nil {
+            // Not on a recovery: that phase answers its own question on the
+            // face (rule 11), and `controlsShowing` drives BOTH, so the
+            // opaque controls board was covering the +30 sec board one layer
+            // down. The seam was unreachable twice over.
+            if router.controlsShowing,
+               router.confirm == nil,
+               engine.currentPhase?.type != .recovery {
                 controlsLayer
             }
             if let confirm = router.confirm {
@@ -372,6 +394,14 @@ struct WatchRunSurfaceV5: View {
         // Wrist down. Three values, no ticking second, and it takes the whole
         // screen because there is nothing else the runner can act on.
         .faffTracksLuminance(tracker)
+        .onDisappear {
+            // The ceiling task sleeps 3s + 60s before writing @Published
+            // state. Without this it outlives the run by over a minute,
+            // retains the router, engine and tracker, and can raise the
+            // ceiling question on a surface that no longer exists.
+            ceilingBreachTask?.cancel()
+            ceilingBreachTask = nil
+        }
 
         // ── What raises a question ───────────────────────────────────────
         //
@@ -406,8 +436,12 @@ struct WatchRunSurfaceV5: View {
                 Haptics.play(moment: .ceilingOverride)
             }
         }
-        .onChange(of: engine.canOfferBail) { _, canOffer in
-            guard canOffer, engine.shouldOfferBailNow, router.pendingQuestion == nil else { return }
+        // Observe the EVIDENCE, not the eligibility flag. `canOfferBail` is
+        // true from the moment the run starts, and `onChange` does not fire on
+        // first evaluation — so the only edge it ever saw was true→false, and
+        // the entire bail feature was one dead observer away from working.
+        .onChange(of: engine.milesAdrift) { _, _ in
+            guard engine.canOfferBail, engine.shouldOfferBailNow, router.pendingQuestion == nil else { return }
             router.pendingQuestion = .bailOffered
             Haptics.play(moment: .bailOffered)
         }
@@ -504,10 +538,24 @@ struct WatchRunSurfaceV5: View {
             phaseBoard(phase)
                 .contentShape(Rectangle())
                 .onTapGesture { router.controlsShowing = true }
+                // A bare onTapGesture creates no accessibility element and no
+                // action, so VoiceOver's double-tap had nothing to activate —
+                // which would mean Pause, Lap and End run had no reachable
+                // entry point at all during a run.
+                .accessibilityAction(.default) { router.controlsShowing = true }
+                .accessibilityLabel("Controls")
+                .accessibilityHint("Pause, lap or end the run")
         } else {
             runningPages
                 .contentShape(Rectangle())
                 .onTapGesture { router.controlsShowing = true }
+                // A bare onTapGesture creates no accessibility element and no
+                // action, so VoiceOver's double-tap had nothing to activate —
+                // which would mean Pause, Lap and End run had no reachable
+                // entry point at all during a run.
+                .accessibilityAction(.default) { router.controlsShowing = true }
+                .accessibilityLabel("Controls")
+                .accessibilityHint("Pause, lap or end the run")
         }
     }
 
@@ -661,7 +709,10 @@ struct WatchRunSurfaceV5: View {
                     remaining: WFmt.short(engine.phaseRemainingSec),
                     pace: reading,
                     heartRate: WFmt.whole(tracker.heartRate),
-                    distance: dist.value
+                    // THIS rep's distance, not the whole run's. On rep 3 of a
+                    // 4x1mi session the board read 3.85 under a per-rep label.
+                    distance: WFmt.distance(engine.phaseCoveredMi, units: units).value,
+                    distanceUnit: WFmt.distance(engine.phaseCoveredMi, units: units).unit
                 )
             }
 
@@ -670,11 +721,13 @@ struct WatchRunSurfaceV5: View {
         }
     }
 
-    /// A stride is named, not typed. The wire has no strides phase, so the
-    /// label is the only evidence — and a session that does not say "stride"
-    /// does not get the strides board.
+    /// The wire DOES say so — `isStrideSegment`, carried since
+    /// DOCTRINE-STRIDES-1 and undecoded until 2026-08-23. The label match
+    /// stays as a fallback for payloads written before the flag, but the flag
+    /// is the evidence: routing on prose meant renaming "Stride 3 of 6"
+    /// anywhere upstream would have silently retired the board.
     private func isStrides(_ phase: WatchPhase) -> Bool {
-        phase.label.lowercased().contains("stride")
+        phase.isStrideSegment || phase.label.lowercased().contains("stride")
     }
 
     /// Threshold and tempo blocks. `paceLabel` is the plan's own zone tag, so
@@ -742,10 +795,21 @@ struct WatchRunSurfaceV5: View {
         let b = band(for: phase)
         return WBandReading(
             value: value,
+            // The unit was never set, so every phase board drew a /km figure
+            // under a hardcoded "/mi" default — the same defect the lobby's
+            // band line already had fixed once.
+            unit: livePace.unit,
             inBand: grade == .inBand,
-            bandStart: b?.start ?? 0.25,
-            bandEnd: b?.end ?? 0.75,
-            marker: b?.marker ?? 0.5
+            // The REAL grade. `inBand` alone made .untrusted read as amber.
+            metric: grade.metricGrade,
+            // No fabricated band. `band(for:)` returns nil when the phase
+            // prescribes no target, and the old fallback invented one at
+            // 25-75% with the mark dead-centre — asserting a target that does
+            // not exist and claiming the runner was exactly on it.
+            hasBand: b != nil,
+            bandStart: b?.start ?? 0,
+            bandEnd: b?.end ?? 0,
+            marker: b?.marker ?? 0
         )
     }
 
@@ -800,13 +864,23 @@ struct WatchRunSurfaceV5: View {
         case .phaseChange(let title, let sub):
             WMomentPhaseChange(word: title, detail: sub ?? "", band: bandLabel)
         case .split(let mile, let paceSec):
+            let _ = recordSplit(paceSec)
             WMomentSplit(
                 label: (WFmt.isKm(units) ? "Km " : "Mile ") + String(mile),
                 time: WFmt.short(paceSec),
                 comparison: splitComparison(paceSec)
             )
         case .fuel(let index, let total):
+            // PERSISTENT by design — at mile 14 a lit panel is what gets seen,
+            // so it does not time out. But `dismissTransition()` had no caller
+            // anywhere in the V5 boards, and WBoard's ground is opaque and
+            // hit-testable, so the takeover swallowed the tap-to-controls
+            // gesture. The runner could not pause, could not end the run and
+            // could not see pace until the next phase boundary — up to 52
+            // minutes on a long segment, and forever on a single-phase race.
             WMomentFuel(index: index, total: total)
+                .contentShape(Rectangle())
+                .onTapGesture { engine.dismissTransition() }
         case .headsUp(_, _):
             // The engine's cue payload is the DISTANCE REMAINING to the
             // boundary, not a band. Passing it through drew "BAND IS 0.2"
@@ -831,6 +905,14 @@ struct WatchRunSurfaceV5: View {
                 onEnd: { router.confirm = .end }
             )
         }
+    }
+
+    /// Remember this split so the next one has something to compare against.
+    /// `lastSplitSec` was declared and never assigned, so the comparison
+    /// register never once appeared.
+    private func recordSplit(_ paceSec: Int) -> Int {
+        DispatchQueue.main.async { lastSplitSec = paceSec }
+        return paceSec
     }
 
     /// "4 sec quicker" against the previous split, or nil for the first one
@@ -1253,7 +1335,10 @@ struct WatchFinishSurfaceV5: View {
     private var splits: [FinishSummaryRow] {
         // "Mile" vs "Km" — the row label follows the unit, because a row
         // reading "Mile 3 · 4:03/km" is two different units in one sentence.
-        let noun = WFmt.isKm(units) ? "Km" : "Mile"
+        // A structured session's splits are one row per WORK REP, so calling
+        // them miles reads "Mile 1 - 6:31" for a seven-minute threshold rep.
+        let hasReps = engine.workout.phases.filter { $0.type == .work }.count > 1
+        let noun = hasReps ? "Rep" : (WFmt.isKm(units) ? "Km" : "Mile")
         return engine.splits.enumerated().compactMap { (i, split) -> FinishSummaryRow? in
             guard let p = WFmt.paceWithUnit(split.paceSPerMi, units: units) else { return nil }
             return FinishSummaryRow("\(noun) \(i + 1)", p.value)

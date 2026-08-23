@@ -164,6 +164,13 @@ final class WorkoutEngine: ObservableObject {
     private var firedFuelIndices: Set<Int> = []
     /// When the current pause began (nil when running).
     private var pauseStart: Date?
+    /// Total seconds the runner held the clock. Sent on the completion so the
+    /// server's clock audit can account for it: `totalDurationSec` excludes
+    /// paused time by design while `startedAt` is the real wall-clock start,
+    /// so without this every run paused longer than the 45s tolerance wrote a
+    /// clockAudit row and warned about dropped ticks that never happened. The
+    /// row is meant to mean "worth looking at"; most of them meant a stoplight.
+    private(set) var totalPausedSec: Int = 0
     /// Wall-clock seconds already banked from completed phases (so the
     /// total clock survives the per-phase resets).
     private var bankedSec: Int = 0
@@ -438,6 +445,13 @@ final class WorkoutEngine: ObservableObject {
     }
 
     func start() {
+        // A payload with no phases decodes happily and used to freeze the
+        // clock: tick() returns early on a nil currentPhase BEFORE publishing
+        // elapsed, so the run recorded in HealthKit while the face showed
+        // 0:00 for ninety minutes and the completion carried a zero duration.
+        // The overtime branch already publishes elapsed correctly, so the fix
+        // is to start there rather than to special-case the tick.
+        if workout.phases.isEmpty { planComplete = true }
         guard state == .idle || state == .countingDown else { return }
         state = .running
         currentIndex = 0
@@ -534,9 +548,15 @@ final class WorkoutEngine: ObservableObject {
         guard state == .running, isPaused, let ps = pauseStart else { return }
         let delta = Date.now.timeIntervalSince(ps)
         phaseStart = phaseStart.addingTimeInterval(delta)
+        totalPausedSec += Int(delta.rounded())
         pauseStart = nil
         isPaused = false
         tracker?.resume()
+        // The staleness watchdog is not ticked while paused, so lastHrSampleAt
+        // ages through the pause and fires the instant the run resumes —
+        // drawing "No heart signal" for twenty seconds after every pause
+        // longer than twenty seconds. Nothing failed; nobody was looking.
+        tracker?.markHrSampleFresh()
         Haptics.play(moment: .resumed)
         saveSnapshot()
     }
@@ -633,9 +653,20 @@ final class WorkoutEngine: ObservableObject {
         // so the whole face tree re-rendered 4×/s for the entire workout.
         // Combined with the changed-value guards in tick(), this cuts
         // render churn ~4× over a 3.5 h race.
+        // WRIST DOWN COSTS LESS (2026-08-23). In Always-On the watch redraws
+        // about once a minute, and every one of the ~60 ticks between those
+        // redraws was doing the full job: publishing elapsed, re-evaluating
+        // drift, and invalidating a surface nobody can read. The clock is
+        // wall-clock anchored — the comment above says so, and that is exactly
+        // what makes this safe — so a 5 s tick cannot drift; it just tells the
+        // truth less often while nobody is looking.
+        //
+        // The interval is re-read every iteration, so the wrist coming up
+        // restores 1 Hz within one tick rather than at the next phase.
         ticker = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
+                let dimmed = self?.tracker?.isLuminanceReduced ?? false
+                try? await Task.sleep(for: .seconds(dimmed ? 5 : 1))
                 guard let self else { return }
                 self.tick()
             }
@@ -749,7 +780,7 @@ final class WorkoutEngine: ObservableObject {
         // would DELAY the cue for a slow runner, increasing bonk risk.
         // Race day uses workout.gelsMi (literal aid-station positions) —
         // see the distance-anchored block below; the two paths coexist.
-        if let fueling = workout.fueling, fueling.needed, isRace {
+        if let fueling = workout.fueling, fueling.needed, !isRace {
             let mins = totalElapsedSec / 60
             for (i, mark) in fueling.atMins.enumerated() {
                 if mins >= mark && !firedFuelIndices.contains(i) {
@@ -959,7 +990,18 @@ final class WorkoutEngine: ObservableObject {
         // movement — fall back to time so the run advances instead of
         // hanging. 0.05 mi is the same "meaningful distance" floor
         // recordCurrentPhase() already uses elsewhere in this file.
-        let noDistanceSource = phaseCoveredMi < 0.05
+        // `phaseAddedSec` is EXCLUDED from this test deliberately. A
+        // time-based phase cannot normally reach 1.5x its own duration — but
+        // an extended recovery can: two "+30 sec" presses hold a 120s
+        // recovery to 180s, which is exactly the threshold, and a runner
+        // standing at a fountain covers well under 80 metres in that time.
+        // `distanceSourceUnavailable` is sticky for the whole run, so two
+        // taps on a button the design put there on purpose turned an outdoor
+        // run into a treadmill run: Page 1 swapped, pace stopped grading, and
+        // power and climb dropped off Page 2 for good.
+        let extended = phaseAddedSec > 0
+        let noDistanceSource = !extended
+            && phaseCoveredMi < 0.05
             && phaseElapsedSec >= Int(Double(max(phase.durationSec, 60)) * 1.5)
         if noDistanceSource { tracker?.markDistanceSourceUnavailable() }
         let finished: Bool
@@ -1320,6 +1362,7 @@ final class WorkoutEngine: ObservableObject {
         bailAnswered = false
         bailTaken = false
         milesAdrift = 0
+        totalPausedSec = 0
         ceilingLifted = false
         if !skippedRepOrdinals.isEmpty { skippedRepOrdinals = [] }
         if phaseAddedSec != 0 { phaseAddedSec = 0 }
@@ -1392,7 +1435,7 @@ final class WorkoutEngine: ObservableObject {
     /// Consecutive whole miles the runner has finished outside the band.
     /// Reset the moment a mile lands inside it — the question is about a
     /// pattern, not about one bad mile.
-    private(set) var milesAdrift: Int = 0
+    @Published private(set) var milesAdrift: Int = 0
 
     /// Whether to put the board up right now.
     ///
@@ -2304,6 +2347,8 @@ final class WorkoutEngine: ObservableObject {
         //     }
         //
         // and then, here:  ruleOutcomesForWire?.forEach { out.recordRuleOutcome($0) }
+        // Absent when nothing was paused, so the field never ships a zero.
+        out.pausedSec = totalPausedSec > 0 ? totalPausedSec : nil
         Self.applyDecisions(
             to: &out,
             ceilingLift: ceilingLiftRecord,

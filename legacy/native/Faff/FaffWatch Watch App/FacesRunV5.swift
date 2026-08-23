@@ -66,6 +66,18 @@ import SwiftUI
 /// runner to hold. This enum exists so a face cannot be handed `.dim` or
 /// `.plain` for its lead pace by accident, and so the treadmill's "there is no
 /// trustworthy pace on a belt" is a named state rather than an omission.
+extension FacePaceGrade {
+    /// The three-state grade as the shared component's own enum. Exists so a
+    /// board cannot collapse `.untrusted` into `.outOfBand` on the way past.
+    var metricGrade: WMetricGrade {
+        switch self {
+        case .inBand:    return .inBand
+        case .outOfBand: return .outOfBand
+        case .untrusted: return .plain
+        }
+    }
+}
+
 enum FacePaceGrade {
     /// Inside the prescribed band. The only green in the product.
     case inBand
@@ -156,7 +168,7 @@ struct RunFacePrimary: View {
                 VStack(alignment: .leading, spacing: 3) {   // 6px
                     // 88 / 36 in the 2× set, which is `.hero` exactly.
                     WMetric(value: pace, unit: paceUnit,
-                            rank: .hero, grade: grade.metric)
+                            rank: .hero, grade: grade.metric, role: "Pace")
 
                     if grade.drawsBand, let band {
                         WBandStrip(start: band.start,
@@ -168,9 +180,9 @@ struct RunFacePrimary: View {
                     }
 
                     // 72 / 32, which is `.secondary` exactly.
-                    WMetric(value: heartRate, unit: heartRateUnit, rank: .secondary)
-                    WMetric(value: distance, unit: distanceUnit, rank: .secondary)
-                    WMetric(value: elapsed, rank: .secondary)
+                    WMetric(value: heartRate, unit: heartRateUnit, rank: .secondary, role: "Heart rate")
+                    WMetric(value: distance, unit: distanceUnit, rank: .secondary, role: "Distance")
+                    WMetric(value: elapsed, rank: .secondary, role: "Elapsed")
                 }
                 .padding(.leading, 1)                       // 2px
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -331,10 +343,10 @@ struct RunFaceTreadmillPrimary: View {
                     // 88 / 34 — hero, with a unit one point under the
                     // ladder's, so the unit step is passed and the size is
                     // not.
-                    WMetric(value: pace, unit: paceUnit, rank: .hero, unitSize: 17)
-                    WMetric(value: distance, unit: distanceUnit, rank: .secondary)
-                    WMetric(value: heartRate, unit: heartRateUnit, rank: .secondary)
-                    WMetric(value: elapsed, rank: .secondary)
+                    WMetric(value: pace, unit: paceUnit, rank: .hero, unitSize: 17, role: "Pace")
+                    WMetric(value: distance, unit: distanceUnit, rank: .secondary, role: "Distance")
+                    WMetric(value: heartRate, unit: heartRateUnit, rank: .secondary, role: "Heart rate")
+                    WMetric(value: elapsed, rank: .secondary, role: "Elapsed")
                 }
                 .padding(.leading, 1)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -382,13 +394,13 @@ struct RunFaceAlwaysOn: View {
                 VStack(alignment: .leading, spacing: 8) {   // 16px
                     WMetric(value: pace, unit: paceUnit,
                             grade: grade.metric,
-                            size: 42, unitSize: 17)         // 84 / 34
+                            size: 42, unitSize: 17, role: "Pace")         // 84 / 34
                     WMetric(value: distance, unit: distanceUnit,
                             grade: .dim,
-                            size: 35, unitSize: 16)         // 70 / 32
+                            size: 35, unitSize: 16, role: "Distance")         // 70 / 32
                     WMetric(value: elapsedMinutes, unit: elapsedUnit,
                             grade: .dim,
-                            size: 35, unitSize: 16)
+                            size: 35, unitSize: 16, role: "Elapsed")
                 }
                 .padding(.leading, 1)
                 .frame(maxWidth: .infinity, alignment: .leading)
