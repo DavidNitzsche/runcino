@@ -459,4 +459,18 @@ enum FaffNotificationHandoff {
     private static func remember(_ deeplink: String) {
         UserDefaults.standard.set(deeplink, forKey: pendingKey)
     }
+
+    /// Re-send a tap that happened before WCSession was up.
+    ///
+    /// `remember(_:)` existed and nothing ever read it back, so a runner who
+    /// tapped "Open on iPhone" from a cold watch had their request written to
+    /// UserDefaults and left there permanently. Called once on launch, and it
+    /// clears the key first so a failure to reach the phone cannot leave a
+    /// stale deeplink to fire days later against a different day's run.
+    static func flushPending() {
+        let d = UserDefaults.standard
+        guard let url = d.string(forKey: pendingKey) else { return }
+        d.removeObject(forKey: pendingKey)
+        openOnPhone(url)
+    }
 }

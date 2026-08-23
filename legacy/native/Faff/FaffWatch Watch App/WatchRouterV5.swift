@@ -531,6 +531,24 @@ struct WatchRunSurfaceV5: View {
             )
             .contentShape(Rectangle())
             .onTapGesture { router.controlsShowing = false }
+        } else if engine.planComplete {
+            // OVERTIME. The plan is done and the runner is still going.
+            //
+            // `advance()` resets phaseElapsedSec and phaseStart but does NOT
+            // move currentIndex, so the phase board kept drawing the LAST rep
+            // with a fresh countdown and an empty progress strip — "Rep 4 / 4"
+            // restarting after a 4x1mi session. The engine's comment says the
+            // live face "already signals overtime by flipping the distance row
+            // to bonus purple", which was true of the retired ActiveWorkoutView
+            // and of nothing in the 0821 boards.
+            //
+            // So: the plain running face, not a phase board. There is no rep
+            // to be inside of any more, and the design has no overtime board —
+            // it has a session that ended and a runner who kept running, which
+            // is exactly what Page 1 already draws.
+            runningPages
+                .contentShape(Rectangle())
+                .onTapGesture { router.controlsShowing = true }
         } else if let phase = engine.currentPhase, isStructured(phase) {
             // Structured sessions swap the running face for the phase board
             // automatically at each change, announced by the Phase change
@@ -783,9 +801,9 @@ struct WatchRunSurfaceV5: View {
         guard let phase = engine.currentPhase,
               let target = phase.targetPaceSPerMi, target > 0,
               let tol = phase.tolerancePaceSPerMi, tol > 0,
-              let lo = WFmt.paceWithUnit(target + tol, units: units),
-              let hi = WFmt.paceWithUnit(target - tol, units: units) else { return nil }
-        return "\(lo.value)–\(hi.value) \(lo.unit)"
+              let quick = WFmt.paceWithUnit(target - tol, units: units),
+              let steady = WFmt.paceWithUnit(target + tol, units: units) else { return nil }
+        return "\(quick.value)–\(steady.value) \(quick.unit)"
     }
 
     /// A figure plus the band it is being judged against. The gauge and the
@@ -1130,12 +1148,17 @@ enum WatchLobbyAdapter {
         guard let phase = workout.phases.first(where: { $0.type == .work }),
               let target = phase.targetPaceSPerMi, target > 0,
               let base = WFmt.paceWithUnit(target, units: u) else { return nil }
+        // FASTER END FIRST. For pace a bigger clock is a SLOWER runner, so
+        // `target - tol` is the quick edge and `target + tol` is the slow one.
+        // Naming them lo/hi by arithmetic rather than by meaning printed the
+        // band backwards — "6:41-6:21" — which reads as a range that runs the
+        // wrong way and was on screen for one commit.
         guard let tol = phase.tolerancePaceSPerMi, tol > 0,
-              let lo = WFmt.paceWithUnit(target + tol, units: u),
-              let hi = WFmt.paceWithUnit(target - tol, units: u) else {
+              let quick = WFmt.paceWithUnit(target - tol, units: u),
+              let steady = WFmt.paceWithUnit(target + tol, units: u) else {
             return base.value + " " + base.unit
         }
-        return "\(lo.value)–\(hi.value) \(lo.unit)"
+        return "\(quick.value)–\(steady.value) \(quick.unit)"
     }
 
     /// "9 DAYS OLD".

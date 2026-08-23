@@ -348,8 +348,10 @@ struct WorkoutRootView: View {
             .onAppear {
                 // Crash recovery: if a run was in progress when the app crashed or the
                 // watch rebooted, restore the engine from the snapshot (RK-3, 2026-06-09).
-                Task { await model.attemptRecovery() }
                 phone.activate()
+                // A notification tap made before WCSession was up is queued in
+                // UserDefaults and was never read back. One line closes it.
+                FaffNotificationHandoff.flushPending()
                 phone.requestTodayWorkout()
                 // RK-3 — ask HealthKit for a session that outlived its
                 // process (crash / reboot mid-run). One-shot; no-op on a

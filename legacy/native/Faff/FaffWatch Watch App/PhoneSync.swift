@@ -72,16 +72,11 @@ final class PhoneSync: NSObject, ObservableObject {
         case failed(String)
     }
     @Published private(set) var syncState: SyncState = .idle
-
-    /// True when `todayWorkout` is set but its `expiresAt` has already passed —
-    /// the watch is showing yesterday's plan. IdleView should prompt the runner
-    /// to sync the iPhone (W-5).
-    var staleWorkout: Bool {
-        guard let w = todayWorkout else { return false }
-        let iso = ISO8601DateFormatter()
-        guard let exp = iso.date(from: w.expiresAt) else { return false }
-        return exp < Date.now
-    }
+    // `staleWorkout` DELETED (2026-08-23). It had no callers and was broken in
+    // the same way RK-2 was: a default ISO8601DateFormatter cannot parse the
+    // server's fractional seconds, so it always returned false. A staleness
+    // check that always says "fresh" is worse than none — use
+    // `WatchWorkout.isExpired`, which routes through parseExpiry.
 
     private override init() { super.init() }
 

@@ -336,6 +336,16 @@ enum WatchFonts {
 
 enum WatchCoreText {
 
+    /// Built fonts, keyed by everything that identifies one.
+    ///
+    /// Each call built a variation CFDictionary, a CTFontDescriptor, a CTFont
+    /// and then copied the family name out to compare it. That is fine once
+    /// and wasteful at render rate — and `display()` / `coach()` are called
+    /// per body evaluation on every board that carries a word. The whole app
+    /// needs perhaps a dozen entries.
+    private static var cache: [String: CTFont] = [:]
+
+
     /// Four-character axis tag as the OSType CoreText wants.
     static func axisTag(_ tag: String) -> Int {
         tag.utf8.reduce(0) { ($0 << 8) | Int($1) }
@@ -345,6 +355,11 @@ enum WatchCoreText {
                      size: CGFloat,
                      axes: [String: Double],
                      tabularFigures: Bool) -> CTFont? {
+
+        let key = postScriptName + "|\(size)|" + axes.sorted { $0.key < $1.key }
+            .map { "\($0.key):\($0.value)" }.joined(separator: ",")
+            + (tabularFigures ? "|t" : "")
+        if let hit = cache[key] { return hit }
 
         var attributes: [CFString: Any] = [kCTFontNameAttribute: postScriptName as CFString]
 
@@ -393,6 +408,7 @@ enum WatchCoreText {
             : WatchV5.FontNames.textFamily
         guard family == wanted else { return nil }
 
+        cache[key] = produced
         return produced
     }
 }
