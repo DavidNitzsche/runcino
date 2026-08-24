@@ -160,6 +160,10 @@ final class WorkoutEngine: ObservableObject {
     // Internal (not private) so @testable tests can roll phaseStart
     // backward to simulate elapsed wall-clock time without real delays.
     var phaseStart: Date = .now
+    /// Rolling distance-progress watch — see the stall check in `tick()`.
+    /// Reset by `start()` so a new run never inherits the last one's stall.
+    private var stallWatchMi: Double = 0
+    private var stallWatchSec: Int = 0
     /// Cumulative GPS distance (mi) at the moment the current phase began —
     /// lets a distance rep measure how far you've run *within* this rep.
     private var phaseStartMi: Double = 0
@@ -456,7 +460,6 @@ final class WorkoutEngine: ObservableObject {
         // 0:00 for ninety minutes and the completion carried a zero duration.
         // The overtime branch already publishes elapsed correctly, so the fix
         // is to start there rather than to special-case the tick.
-        if workout.phases.isEmpty { planComplete = true }
         guard state == .idle || state == .countingDown else { return }
         state = .running
         currentIndex = 0
@@ -471,7 +474,18 @@ final class WorkoutEngine: ObservableObject {
         clearDecisions()
         lastMileIndex = 0
         lastMileElapsedSec = 0
+        stallWatchMi = coveredMi
+        stallWatchSec = 0
         planComplete = false
+        // AFTER the reset, not before it. This guard was fifteen lines higher
+        // up and `planComplete = false` cleared it on the way past, so the
+        // overtime branch of tick() was never taken and tick() returned at
+        // `guard let phase = currentPhase` before publishing elapsed. A
+        // phase-less payload then recorded in HealthKit while the face showed
+        // 0:00, and fifty minutes of running POSTed as a zero-second abandoned
+        // run — which is verbatim the failure the comment above claims to have
+        // fixed. The fix was present and dead.
+        if workout.phases.isEmpty { planComplete = true }
         workoutStart = .now
         phaseStart = .now
         phaseStartMi = coveredMi
@@ -1031,7 +1045,17 @@ final class WorkoutEngine: ObservableObject {
         let isLongBuildPhase = currentPhase?.type == .work
             && currentPhase?.isFinishSegment == false
             && workout.phases.contains { $0.isFinishSegment }
-        let mileIndex = Int(coveredMi)
+        // THE RUNNER'S OWN UNIT, not miles with a kilometre label.
+        //
+        // This was `Int(coveredMi)` and the router draws the result as
+        // `(isKm ? "Km " : "Mile ") + index`. So a metric runner got "Km 1"
+        // after a MILE, carrying a mile's split time — every split wrong by
+        // 61%, on the number a runner checks most.
+        //
+        // The lap duration needs no conversion once the index is right: it is
+        // measured between crossings of whatever unit this counts.
+        let coveredInUnit = readsKm ? coveredMi * 1.609344 : coveredMi
+        let mileIndex = Int(coveredInUnit)
         // A RACE ALWAYS SPLITS.
         //
         // This gate exists so a mile boundary does not take the screen in the
@@ -1129,9 +1153,56 @@ final class WorkoutEngine: ObservableObject {
         // run into a treadmill run: Page 1 swapped, pace stopped grading, and
         // power and climb dropped off Page 2 for good.
         let extended = phaseAddedSec > 0
+
+        // A SOURCE THAT STOPS, NOT ONLY ONE THAT NEVER STARTED.
+        //
+        // The test below asks `phaseCoveredMi < 0.05`, which only ever catches
+        // a phase that had no distance from its first second. Two holes came
+        // out of that:
+        //
+        //   · GPS dying half a mile into a one-mile rep leaves phaseCoveredMi
+        //     at 0.5, so the fallback never fires and `finished` never becomes
+        //     true. The rep cannot end. The runner is stuck on it for the rest
+        //     of the session and must hand-skip every remaining phase.
+        //
+        //   · A treadmill is never detected at all. The 1.5x threshold is
+        //     unreachable for a TIME phase, which ends at 1.0x its own
+        //     duration, and an open-ended just-run carries a 24h ceiling —
+        //     so the fallback would fire at 36 hours. `isTreadmill` reads this
+        //     flag to stop grading pace and drop the outdoor-only rows, so a
+        //     belt run drew the outdoor face throughout.
+        //
+        // So: watch whether distance is PROGRESSING, on a rolling window that
+        // does not care which phase we are in or how long it was meant to be.
+        //
+        // Six minutes, deliberately long. This flag is sticky for the whole
+        // run, and a false positive permanently strips pace grading from an
+        // outdoor run — a worse outcome than a belt run keeping the outdoor
+        // face. No outdoor runner covers under a hundredth of a mile in six
+        // minutes of a run they have not paused.
+        if state == .running && !isPaused {
+            if coveredMi - stallWatchMi > 0.01 {
+                stallWatchMi = coveredMi
+                stallWatchSec = totalElapsedSec
+            } else if totalElapsedSec - stallWatchSec >= 360 {
+                tracker?.markDistanceSourceUnavailable()
+            }
+        }
+
+        // DETECTING A DEAD SOURCE IS NOT THE SAME AS FINISHING THE PHASE.
+        //
+        // Conflating them ended a ten-minute warm-up six minutes in the moment
+        // GPS went quiet, which is worse than the bug: the phase still has a
+        // duration and the runner still owes it. A distance phase with no
+        // usable source falls back to its own TIME estimate, exactly as it
+        // always did — what changes is that a source which DIES MID-PHASE now
+        // qualifies for that fallback, where before only one that never
+        // started did.
+        let sourceDead = tracker?.distanceSourceUnavailable == true
+        let pastTimeEstimate = phaseElapsedSec >= Int(Double(max(phase.durationSec, 60)) * 1.5)
         let noDistanceSource = !extended
-            && phaseCoveredMi < 0.05
-            && phaseElapsedSec >= Int(Double(max(phase.durationSec, 60)) * 1.5)
+            && (phaseCoveredMi < 0.05 || sourceDead)
+            && pastTimeEstimate
         if noDistanceSource { tracker?.markDistanceSourceUnavailable() }
         let finished: Bool
         if isSinglePhaseDistanceRun, let total = workout.distanceMi {

@@ -57,18 +57,46 @@ struct PaceDriftEvaluator {
 
     /// Feed the latest sampled pace. `now` is injectable for testing the
     /// sustained-drift timer deterministically.
+    /// The zone last returned, so the thresholds can widen in the direction
+    /// the runner is already in. Starts on target: a run has not drifted until
+    /// it has drifted.
+    private var lastZone: PaceZone = .onTarget
+
     mutating func update(currentPaceSPerMi: Int, now: Date = Date()) -> Result {
         let delta = currentPaceSPerMi - targetPaceSPerMi
         let magnitude = abs(delta)
 
+        // HYSTERESIS AT THE EDGES.
+        //
+        // A bare threshold repaints the wrist's only graded colour every time
+        // the pace crosses it, and a runner holding one steady effort sits ON
+        // the edge by definition — measured at 79 flips in four minutes with a
+        // pace wandering 399 to 404 against a 391 ± 10 band. The upstream EWMA
+        // smoothing cannot help: it removes noise, and this is not noise, it
+        // is a boundary.
+        //
+        // So leaving a zone costs more than entering it: once out of the band
+        // the runner must come back inside it by `edgeMargin` before the
+        // colour returns, and the same going the other way. The number is
+        // small — three seconds a mile is under the accuracy of a GPS pace —
+        // so nothing legible changes except the flicker.
+        let edgeMargin = 3
+        let wasOnTarget = lastZone == .onTarget
+        let wasOffTarget = lastZone == .offTarget
+        let onTargetLimit = wasOnTarget ? toleranceSPerMi + edgeMargin
+                                        : toleranceSPerMi - edgeMargin
+        let hardLimit = wasOffTarget ? hardDriftSPerMi - edgeMargin
+                                     : hardDriftSPerMi + edgeMargin
+
         let zone: PaceZone
-        if magnitude <= toleranceSPerMi {
+        if magnitude <= max(0, onTargetLimit) {
             zone = .onTarget
-        } else if magnitude <= hardDriftSPerMi {
+        } else if magnitude <= max(0, hardLimit) {
             zone = .drifting
         } else {
             zone = .offTarget
         }
+        lastZone = zone
 
         var fire = false
         if magnitude > toleranceSPerMi {
