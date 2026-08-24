@@ -246,6 +246,19 @@ export interface V5Today {
   shoeOptions: V5Row[];
   /** Encoded route for the map. Null when the run has none. */
   routePolyline: string | null;
+  /** Per-mile splits, for the map's colouring and its legend. */
+  routeSplits: Array<{
+    mile: number; pace: string | null; hr: number | null;
+    cadence: number | null; elev_change_ft: number | null;
+  }>;
+  /** Workout phases, so reps colour at their true pace. Empty on a steady run. */
+  routePhases: Array<{ mi: number; sec: number }>;
+  /** The runner's own HR zone bands. Empty at cold start. */
+  hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
+  /** The pace window the session asked for, seconds per mile. */
+  paceBand: { lo: number; hi: number } | null;
+  /** True only when an instrument measured the climb. See lib/runs/elevation.ts. */
+  elevGainMeasured: boolean;
   /**
    * The run's MEASURED climb, in feet.
    *
@@ -555,12 +568,29 @@ export interface V5RecentRunCtx {
   zoneTargets: number[] | null;
   elevationSamples: number[] | null;
   elevGainFt: number | null;
+  /** True only when an instrument measured the climb. See lib/runs/elevation.ts. */
+  elevGainMeasured: boolean;
   /**
    * The run's encoded route, when it has one. Null on a treadmill and null
    * when no GPS was recorded — both honest absences the card says out loud
    * rather than drawing an empty frame.
    */
   routePolyline: string | null;
+  /**
+   * WHAT THE MAP IS ALLOWED TO SAY.
+   *
+   * A route drawn with none of this tells the runner only where they went,
+   * which they already knew. With it, the same component colours by HR zone
+   * on a steady day and by phase on a structured one — the axis that matters
+   * for THAT session.
+   */
+  routeSplits: Array<{
+    mile: number; pace: string | null; hr: number | null;
+    cadence: number | null; elev_change_ft: number | null;
+  }>;
+  routePhases: Array<{ mi: number; sec: number }>;
+  hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
+  paceBand: { lo: number; hi: number } | null;
   weekDoneMi: number;
   weekPlannedMi: number | null;
   shoeWorn: { id: string; name: string; mi: number } | null;
@@ -859,7 +889,12 @@ function buildRecentRun(r: V5RecentRunCtx): {
   elevation: number[] | null;
   routePolyline: string | null;
   elevGainFt: number | null;
+  elevGainMeasured: boolean;
   shoeOptions: V5Row[];
+  routeSplits: V5Today['routeSplits'];
+  routePhases: V5Today['routePhases'];
+  hrZones: V5Today['hrZones'];
+  paceBand: V5Today['paceBand'];
   panelStats: V5Stat[];
   panelKicker: string | null;
   shoesWorn: V5Row | null;
@@ -1055,7 +1090,7 @@ function buildRecentRun(r: V5RecentRunCtx): {
   // one — an expanding body-part picker that writes — so emitting a row here
   // too put "Flag a niggle" on the screen twice, once inert and once real.
 
-  return { askedVsRan, onTheBelt, shoeOptions, elevation, routePolyline: r.indoor ? null : r.routePolyline, elevGainFt: r.indoor ? null : r.elevGainFt, panelStats, panelKicker, shoesWorn, whatThisDidToTheWeek };
+  return { askedVsRan, onTheBelt, shoeOptions, elevation, routeSplits: r.indoor ? [] : r.routeSplits, routePhases: r.indoor ? [] : r.routePhases, hrZones: r.hrZones, paceBand: r.paceBand, routePolyline: r.indoor ? null : r.routePolyline, elevGainFt: r.indoor ? null : r.elevGainFt, elevGainMeasured: r.indoor ? false : r.elevGainMeasured, panelStats, panelKicker, shoesWorn, whatThisDidToTheWeek };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1087,7 +1122,12 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   elevation: null,
   routePolyline: null,
   elevGainFt: null,
+  elevGainMeasured: false,
   shoeOptions: [],
+  routeSplits: [],
+  routePhases: [],
+  hrZones: [],
+  paceBand: null,
   onTheBelt: null,
   shoesWorn: null,
   whatThisDidToTheWeek: [],
@@ -1230,7 +1270,12 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.zoneTargets = ctx.recentRun.zoneTargets;
     t.elevation = built.elevation;
     t.routePolyline = built.routePolyline;
+    t.routeSplits = built.routeSplits;
+    t.routePhases = built.routePhases;
+    t.hrZones = built.hrZones;
+    t.paceBand = built.paceBand;
     t.elevGainFt = built.elevGainFt;
+    t.elevGainMeasured = built.elevGainMeasured;
     t.onTheBelt = built.onTheBelt;
     t.shoesWorn = built.shoesWorn;
     t.shoeOptions = built.shoeOptions;

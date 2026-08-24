@@ -487,7 +487,7 @@ struct RunRecoveryExtension: Decodable {
     let addedSec: Int?
 }
 
-struct RunSplit: Decodable, Identifiable {
+struct RunSplit: Decodable, Identifiable, Equatable {
     var id: Int { mile }
     let mile: Int
     let pace: String?
@@ -609,7 +609,7 @@ struct HRZonesFromLTHR: Decodable {
     let ranges: [HRZoneRange]?
 }
 
-struct HRZoneRange: Decodable, Identifiable {
+struct HRZoneRange: Decodable, Identifiable, Equatable {
     var id: String { label }
     let label: String
     let lower: Double?

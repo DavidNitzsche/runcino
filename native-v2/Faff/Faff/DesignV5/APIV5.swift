@@ -175,6 +175,20 @@ struct V5Stat: Decodable, Equatable, Hashable {
 }
 
 /// A row in any `ListGroup`.
+/// One workout phase's distance and duration, for colouring reps at their
+/// true pace rather than smearing them into mile averages.
+struct V5RoutePhase: Decodable, Equatable {
+    let mi: Double
+    let sec: Int
+}
+
+/// The pace window the session asked for, seconds per mile. When present the
+/// route stops grading and answers the same question the split chart answers.
+struct V5PaceBand: Decodable, Equatable {
+    let lo: Int
+    let hi: Int
+}
+
 struct V5Row: Decodable, Equatable, Hashable, Identifiable {
     /// Server id where the row stands for a real record; otherwise a synthesised
     /// stable key. Identity is never the date.
@@ -478,6 +492,17 @@ struct V5Today: Decodable, Equatable {
     /// zeros in that case, which drew a flat line at sea level and was
     /// indistinguishable from a genuinely flat run.
     let elevation: [Double]?
+    /// Per-mile splits, phases, zone bands and the asked pace window — what
+    /// lets the map colour by the axis that matters for THIS session instead
+    /// of drawing one flat line that says only where the runner went.
+    let routeSplits: [RunSplit]
+    let routePhases: [V5RoutePhase]
+    let hrZones: [HRZoneRange]
+    let paceBand: V5PaceBand?
+    /// True only when an instrument measured the climb. A `gps_derived` figure
+    /// is arithmetic over the weakest axis of a GPS fix and runs 2.3x the
+    /// barometer on this runner's data; it must never print as measured.
+    let elevGainMeasured: Bool
     /// The run's encoded route. Null on a treadmill and null when no GPS was
     /// recorded; the card says which rather than drawing an empty frame.
     let routePolyline: String?
@@ -1315,6 +1340,7 @@ extension V5Today {
         case dateISO, state, panel, weekStrip, groups, why, whereYouAre, beforeYouGo
         case askedVsRan, verdict, zoneShares, zoneTargets, zoneTarget, elevation, onTheBelt
         case routePolyline, elevGainFt, shoeOptions
+        case routeSplits, routePhases, hrZones, paceBand, elevGainMeasured
         case shoesWorn, whatThisDidToTheWeek, runId
         case changed, injury, weekOff, offSeason, notOnPhoneYet
         case paceNote, sick
@@ -1342,6 +1368,11 @@ extension V5Today {
         elevation = c.opt(.elevation)
         routePolyline = c.opt(.routePolyline)
         elevGainFt = c.opt(.elevGainFt)
+        routeSplits = c.list(.routeSplits)
+        routePhases = c.list(.routePhases)
+        hrZones = c.list(.hrZones)
+        paceBand = c.opt(.paceBand)
+        elevGainMeasured = c.opt(.elevGainMeasured) ?? false
         shoeOptions = c.list(.shoeOptions)
         onTheBelt = c.opt(.onTheBelt)
         shoesWorn = c.opt(.shoesWorn)

@@ -22,6 +22,10 @@ import { withRequestMemo } from '@/lib/runtime/request-memo';
 import { pool } from '@/lib/db/pool';
 import { rowOrNull } from '@/lib/db/read';
 import { zoneTargetForWorkout, zoneTargetsForWorkout } from '@/lib/coach/zone-target';
+import { computeZones } from '@/lib/training/zones';
+import { pickElevationGain } from '@/lib/runs/elevation';
+import { rowsOrNull } from '@/lib/db/read';
+import { resolveThresholdHr } from '@/lib/training/lthr';
 import { requireUserId } from '@/lib/auth/session';
 import { composeWhy } from '@/lib/faff/why-voice';
 import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
@@ -40,7 +44,10 @@ import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
-import { runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
+import {
+  runDaySql, runNotMergedSql, runDistanceMiSql,
+  runElevGainFtSql, runElevGainSourceSql, runSourceSql, runMergedIntoIdSql,
+} from '@/lib/runs/run-shape';
 import { runFacts } from '@/lib/runs/run-facts';
 import { beltAverages } from '@/lib/runs/belt-averages';
 import { loadPaceZoneEvent } from '@/lib/plan/pace-drop-event';
@@ -732,6 +739,40 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         [userId, rpeIds],
       ).catch(() => ({ rows: [] as any[] }))).rows[0];
 
+      // Every climb figure this run carries, its own and its absorbed twins'.
+      // `rowsOrNull`, not a `.catch(() => [])`. The difference matters here:
+      // an empty twin list means "this run has no absorbed twins", while a
+      // FAILED read means "a better instrument may exist and I could not see
+      // it". Collapsing the two would let a `gps_derived` figure win by
+      // default the moment the database hiccuped — which is precisely how the
+      // wrong number got on screen in the first place.
+      const elevTwins = await rowsOrNull<{ ft: string | null; src: string | null; ingest: string | null }>(
+        'v5/today · absorbed twin elevation',
+        pool.query(
+          `SELECT ${runElevGainFtSql()} AS ft, ${runElevGainSourceSql()} AS src, ${runSourceSql()} AS ingest
+             FROM runs
+            WHERE ${runMergedIntoIdSql()} = $1`,
+          [String(runRow.id)],
+        ),
+      );
+      // The read failed → refuse rather than guess. A climb the runner cannot
+      // trust is worse than no climb, and the profile still draws.
+      const elevationReading = elevTwins === null
+        ? null
+        : pickElevationGain([
+            { ft: data.elevGainFt as number | null, source: data.elevGainSource as string | null, ingest: data.source as string | null },
+            ...elevTwins.map((t) => ({ ft: t.ft == null ? null : Number(t.ft), source: t.src, ingest: t.ingest })),
+          ]);
+
+      // The runner's own zone bands, from their threshold heart rate. Null
+      // at true cold start — never fabricated, and an absent band simply
+      // falls the map back to the pace gradient.
+      const thresholdHr = await resolveThresholdHr(userId).catch(() => null);
+      const zoneTable = thresholdHr ? computeZones({ lthr: thresholdHr.bpm }) : null;
+      const hrZoneRanges = zoneTable
+        ? zoneTable.zones.map((z) => ({ label: z.shortLabel, lower: z.lower, upper: z.upper }))
+        : [];
+
       const recap = deriveRecap({
         type: purposeType, phase: purposePhase,
         plannedMi: todayPlan?.distanceMi ?? 0,
@@ -801,12 +842,58 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         zoneTarget: zoneTargetForWorkout(todayPlan?.type ?? null, todayPlan?.distanceMi ?? null),
         zoneTargets: zoneTargetsForWorkout(todayPlan?.type ?? null, todayPlan?.distanceMi ?? null),
         elevationSamples: indoor ? null : elevationFromSplits(data.splits),
-        elevGainFt: data.elevGainFt != null ? Number(data.elevGainFt) : null,
+        // THE BEST INSTRUMENT, not the row's own field.
+        //
+        // The canonical row for 2026-08-24 holds 128 ft from `gps_derived`
+        // while the twin the merge absorbed holds 13 ft from the watch's
+        // BAROMETER. The runner knew: "I can promise you it was not" 128.
+        // Reading `data.elevGainFt` takes whichever instrument happened to
+        // win the merge, and the merge did not rank instruments.
+        //
+        // Null when nothing trustworthy measured it — a refusal, not a zero.
+        elevGainFt: elevationReading?.ft ?? null,
+        elevGainMeasured: elevationReading?.measured ?? false,
         // THE ROUTE, which this surface never carried. Run detail has drawn a
         // real map from this exact key for months; the post-run card drew an
         // elevation sparkline, labelled it "Route", and left the runner's
         // 2054-character polyline on the row unread.
         routePolyline: indoor ? null : firstPolyline(data),
+        // WHAT THE MAP IS ALLOWED TO SAY.
+        //
+        // The route drew a flat single-colour line because this surface sent
+        // it a polyline and nothing else. `RouteMapView` has coloured by HR
+        // zone on steady runs and by phase on structured ones since June —
+        // it just needs the run's own splits, its phases, the runner's zone
+        // bands and the window the session asked for. Without them a map
+        // tells the runner only where they went, which they already knew.
+        routeSplits: indoor || !Array.isArray(data.splits)
+          ? []
+          : (data.splits as Array<Record<string, unknown>>).map((sp, i) => ({
+              mile: Number(sp.mile ?? sp.split ?? i + 1) || i + 1,
+              pace: typeof sp.pace === 'string' ? sp.pace : null,
+              hr: sp.hr != null && Number.isFinite(Number(sp.hr)) ? Math.round(Number(sp.hr)) : null,
+              cadence: sp.cadence != null && Number.isFinite(Number(sp.cadence)) ? Math.round(Number(sp.cadence)) : null,
+              elev_change_ft: sp.elev_change_ft != null && Number.isFinite(Number(sp.elev_change_ft))
+                ? Math.round(Number(sp.elev_change_ft)) : null,
+            })),
+        // Phases colour the reps at their TRUE pace instead of smearing them
+        // into mile averages — the whole reason a rep session's map is worth
+        // drawing at all.
+        routePhases: indoor
+          ? []
+          : completionPhases.flatMap((ph: any) => {
+              const mi = Number(ph.distanceMi ?? ph.distance_mi);
+              const sec = Number(ph.durationSec ?? ph.duration_sec);
+              return Number.isFinite(mi) && mi > 0 && Number.isFinite(sec) && sec > 0
+                ? [{ mi, sec: Math.round(sec) }]
+                : [];
+            }),
+        hrZones: hrZoneRanges,
+        // The window the split chart already grades against, so the grey
+        // stretch on the map and the grey bar in the chart are the same mile.
+        paceBand: askedPaceSPerMi != null
+          ? { lo: Math.round(askedPaceSPerMi - 15), hi: Math.round(askedPaceSPerMi + 15) }
+          : null,
         weekDoneMi: glance.weekDone, weekPlannedMi: glance.weekPlanned,
         // The garage, so the card can offer a menu instead of sending the
         // runner to another screen to answer a question about this run.

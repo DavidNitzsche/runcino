@@ -718,6 +718,23 @@ struct TodayAfterV5: View {
         }
     }
 
+    /// Names the axis the map is drawn along, in the runner's words.
+    ///
+    /// It has to agree with what `RouteMapView` actually did, so it asks the
+    /// same three questions in the same order the component does: a
+    /// prescription outranks the axis, phases outrank the per-mile gradient,
+    /// and HR only colours a steady run when the bands and the readings are
+    /// both there.
+    private var routeLegend: String {
+        if model.paceBand != nil { return "shaded against your target pace" }
+        if !model.routePhases.isEmpty { return "shaded by rep" }
+        let steady = mappedEffort == .easy || mappedEffort == .long || mappedEffort == .recovery
+        let hasHr = model.routeSplits.contains { $0.hr != nil }
+        if steady && hasHr && !model.hrZones.isEmpty { return "shaded by heart-rate zone" }
+        if model.routeSplits.count > 1 { return "shaded by pace, mile by mile" }
+        return "where you went"
+    }
+
     /// Which axis the map colours along, from the day's own state.
     ///
     /// The same choice `RunDetailV5.mappedEffort` makes from `detail.type` —
@@ -781,25 +798,25 @@ struct TodayAfterV5: View {
                     .font(.faffText(TypeScaleV5.label13))
                     .foregroundStyle(V5.textSecondary)
                 Spacer(minLength: 0)
-                // Absent is absent. A run with no recorded climb says nothing
-                // here rather than asserting a measured zero.
-                if let ft = model.elevGainFt, ft > 0 {
-                    HStack(spacing: 4) {
-                        FaffValueText(.measured("\(ft)"), font: .faffText(15, weight: .semibold), color: V5.textPrimary)
-                        Text("ft up")
-                            .font(.faffText(TypeScaleV5.label13))
-                            .foregroundStyle(V5.textQuiet)
-                    }
-                }
+                // WHAT THE COLOUR MEANS, where a bare climb figure used to sit.
+                //
+                // "128 ft up" in the corner of a map answered a question
+                // nobody asked of a map, and left the actual question — what
+                // are these colours telling me — unanswered. The climb belongs
+                // under the elevation profile, which is the graphic about
+                // climbing. This line names the axis.
+                Text(routeLegend)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
             }
 
             if coords.count >= 2 {
                 RouteMapView(coords: coords,
-                             splits: [],
-                             phases: [],
+                             splits: model.routeSplits,
+                             phases: model.routePhases.map { PhaseSample(mi: $0.mi, sec: $0.sec) },
                              effort: mappedEffort,
-                             hrZones: [],
-                             paceBand: nil)
+                             hrZones: model.hrZones,
+                             paceBand: model.paceBand.map { (lo: $0.lo, hi: $0.hi) })
                     .frame(height: 200)
                     .clipShape(RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
                     // MapKit hit-tests its region even when non-interactive,
@@ -822,6 +839,17 @@ struct TodayAfterV5: View {
             // a row of zeros now, so an absent profile means absent.
             if points.count > 1 {
                 ElevationProfile(points: points, height: 110)
+            }
+            // The climb, under the graphic that is about climbing, and only
+            // when an instrument measured it. `gps_derived` is arithmetic over
+            // GPS altitude — it read 128 ft on a run the watch's barometer put
+            // at 13, and 3195 ft on an eleven-miler the barometer put at 57.
+            // Rule one: a derived number must never wear a measurement's
+            // clothes, so an unmeasured climb prints nothing at all.
+            if let ft = model.elevGainFt, ft > 0, model.elevGainMeasured {
+                Text("\(ft) ft of climb")
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
             }
         }
     }

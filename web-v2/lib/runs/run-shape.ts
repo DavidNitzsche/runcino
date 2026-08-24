@@ -749,6 +749,23 @@ export { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
  * today (145 rows satisfy both predicates, 0 carry a JSON-null marker), so the
  * two agree by luck rather than by construction. Use this one.
  */
+/**
+ * WHICH INSTRUMENT MEASURED THE CLIMB.
+ *
+ * `raw` is the watch's barometer; `gps_derived` is arithmetic over GPS
+ * altitude and runs 2.3x the barometer on real data. A climb figure without
+ * its source is unrankable, so the two are always read together. See
+ * `lib/runs/elevation.ts` for the trust order.
+ */
+export function runElevGainSourceSql(alias = ''): string {
+  return `NULLIF(${col(alias)}->>'elevGainSource','')`;
+}
+
+/** The canonical row this one was absorbed into, or NULL when it IS canonical. */
+export function runMergedIntoIdSql(alias = ''): string {
+  return `NULLIF(${col(alias)}->>'mergedIntoId','')`;
+}
+
 export function runNotMergedSql(alias = ''): string {
   return `NOT (${col(alias)} ? 'mergedIntoId')`;
 }

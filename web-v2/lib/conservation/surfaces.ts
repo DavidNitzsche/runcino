@@ -118,10 +118,14 @@ function posterCtx(shape: RunShape, data: RunData): V5TodayContext {
       zoneTarget: null,
       zoneTargets: null,
       elevationSamples: null,
-      elevGainFt: (data.elevGainFt as number | null) ?? null,
+      elevGainFt: (data.elevGainFt as number | null) ?? null, elevGainMeasured: true,
       // Not conserved by any law here — the harness grades numbers, and a
       // polyline is a picture. Null so the map's refusal branch is what this
       // fixture exercises; the map itself is covered by the Swift sweep.
+      routeSplits: [],
+      routePhases: [],
+      hrZones: [],
+      paceBand: null,
       routePolyline: null,
       weekDoneMi: facts.distanceMi ?? 0,
       weekPlannedMi: null,
