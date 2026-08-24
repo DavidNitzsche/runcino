@@ -489,6 +489,16 @@ final class WorkoutEngine: ObservableObject {
         if UserDefaults.standard.bool(forKey: "audibleAlerts") {
             ChimePlayer.shared.play()
         }
+        // GO. The design lists it as a moment and the board exists; nothing
+        // fired it. The countdown ended and the running face simply appeared,
+        // so the loudest board in the app was drawn for a state it was never
+        // reached in — it was being spent on work-rep boundaries instead,
+        // where it had nothing to say.
+        //
+        // Carries no payload on purpose: `WMomentGo` draws the word on the
+        // session's own ramp, and at this instant the session type is the
+        // only thing there is to say.
+        flash(.go(rep: "", target: ""), for: 1.2)
         startTimer()
         saveSnapshot()
     }
@@ -820,7 +830,30 @@ final class WorkoutEngine: ObservableObject {
             if let r {
                 if paceZone != r.zone { paceZone = r.zone }
                 if paceDeltaSPerMi != r.deltaSPerMi { paceDeltaSPerMi = r.deltaSPerMi }
-                if r.fireHaptic { Haptics.almostDone() }
+                if r.fireHaptic {
+                    // THE DRIFT CUE NOW DRAWS ITSELF.
+                    //
+                    // This used to be a haptic and nothing else. The board for
+                    // it exists — WMomentHeadsUp, "ease off / pick it up" with
+                    // the band underneath, §4 of the handoff — and drift never
+                    // reached it. The runner felt a tap with no way to know
+                    // what it meant, which is the same failure rule 10 forbids
+                    // for audio: a delivery route is not a content channel.
+                    //
+                    // Worse, the board WAS being drawn — for the almost-done
+                    // cue, whose "Band is ..." line is not true at a phase
+                    // boundary. Each event was wearing the other's clothes.
+                    //
+                    // Truthful here by construction: driftEval only exists on a
+                    // work phase with a target, so there is always a band to
+                    // name.
+                    // The texture names the direction, matching the word the
+                    // board is about to draw. A single texture for both would
+                    // be a tap the runner cannot act on without looking.
+                    Haptics.play(moment: r.deltaSPerMi < 0 ? .headsUpEaseOff
+                                                           : .headsUpPickItUp)
+                    flash(.headsUp(value: ""), for: 2.6)
+                }
             }
         }
 
@@ -860,7 +893,19 @@ final class WorkoutEngine: ObservableObject {
         if shouldFire {
             didFireAlmostDone = true
             Haptics.almostDone()
-            flash(.headsUp(value: headsUpValue), for: 2.6)
+            // NO VISUAL, deliberately, and this is a gap rather than a fix.
+            //
+            // This used to flash `.headsUp`, which the router draws as the
+            // ease-off / pick-it-up correction — a board whose content is the
+            // band the runner is being held to. At a phase boundary that
+            // sentence is not true, and on a single-phase run with no
+            // prescribed band it rendered literally as "Band is /mi".
+            //
+            // The handoff's §4 has no board for "almost done"; its heads-up IS
+            // the correction. So rather than invent one, the cue stays haptic
+            // for now and the missing board is a question for David.
+            // `headsUpValue` — the remaining distance — is what it would carry.
+            _ = headsUpValue
         }
 
         // Live ending countdown (time-based reps). Fires for BOTH work
@@ -1112,13 +1157,40 @@ final class WorkoutEngine: ObservableObject {
                 let target = p.targetPaceSPerMi.map { "\(PaceFormat.mmss($0))/mi" } ?? ""
                 flash(.phase(title: "Finish", sub: "\(p.label) · \(target)"), for: 2.2)
             } else if p.type == .work {
-                // Entering a work rep — brief 1.5 s GO card. Two reads:
-                // which rep ("REP 2 / 4") + target pace ("6:47"). No
-                // "GO" wordmark on the face — the takeover IS the cue.
+                // Entering a work rep. Two reads: which rep ("Rep 2 of 4") and
+                // the target pace ("6:47").
+                //
+                // THIS USED TO FIRE `.go` AND THE TWO READS WERE THROWN AWAY.
+                // The router's `.go` case draws `WMomentGo`, which is the word
+                // GO on a session ramp and nothing else — so the engine
+                // computed the rep number and the target, said in its own
+                // comment that those strings ARE the content and that there
+                // should be no GO wordmark, and the board drew exactly the GO
+                // wordmark and discarded both. Every rep of every interval
+                // session showed the same content-free screen at the one
+                // moment the runner most needs to know which rep they are on
+                // and what pace it asks for.
+                //
+                // `.phase` is the board that was drawn for this: word, detail,
+                // and the band underneath. `.go` is the start of the RUN, and
+                // it now fires there — see `start()`.
                 let totalWorks = workout.phases.filter { $0.type == .work }.count
                 let n = workout.phases.prefix(currentIndex + 1).filter { $0.type == .work }.count
-                let target = p.targetPaceSPerMi.map { PaceFormat.mmss($0) } ?? ""
-                flash(.go(rep: "REP \(n) / \(totalWorks)", target: target), for: 1.5)
+                // The pace is said ONCE. The router draws the prescribed band
+                // under this board whenever the phase has a tolerance
+                // ("6:45-7:00 /mi"), so repeating the point target in the
+                // detail line would say the same thing twice on a board whose
+                // whole job is to be read in a second and a half. The target
+                // appears here only when there is no band to carry it.
+                let rep = "Rep \(n) of \(totalWorks)"
+                let hasBand = (p.tolerancePaceSPerMi ?? 0) > 0 && (p.targetPaceSPerMi ?? 0) > 0
+                let sub: String
+                if !hasBand, let t = p.targetPaceSPerMi, t > 0 {
+                    sub = "\(rep) · \(PaceFormat.mmss(t))/mi"
+                } else {
+                    sub = rep
+                }
+                flash(.phase(title: p.label, sub: sub), for: 1.6)
             }
         }
         // Tier 2 RPE prompt — if a pending RPE was queued by the prior

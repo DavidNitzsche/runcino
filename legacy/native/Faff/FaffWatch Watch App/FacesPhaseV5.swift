@@ -329,7 +329,13 @@ struct WMomentHeadsUp: View {
     var paceUnit: String = "/mi"
     /// The band itself. "8:15–8:45" — the sentence is composed here so the
     /// copy lives in one place.
-    let band: String
+    /// The band, or nil when the phase prescribes none.
+    ///
+    /// OPTIONAL because the router used to pass `bandLabel ?? livePace.unit`,
+    /// so a phase with no prescribed band drew the sentence "Band is /mi".
+    /// A board whose whole job is to name the band the runner has left cannot
+    /// invent one; if there is none, the line goes.
+    let band: String?
 
     var body: some View {
         WBoard {
@@ -340,11 +346,13 @@ struct WMomentHeadsUp: View {
                 WMetric(value: pace, unit: paceUnit,
                         rank: .hero, grade: .outOfBand, size: 48)
 
-                Text("Band is \(band)")
-                    .font(WatchV5.number(18))                    // 36px
-                    .foregroundStyle(WatchV5.valueDim)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
+                if let band {
+                    Text("Band is \(band)")
+                        .font(WatchV5.number(18))                    // 36px
+                        .foregroundStyle(WatchV5.valueDim)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
             }
         }
     }

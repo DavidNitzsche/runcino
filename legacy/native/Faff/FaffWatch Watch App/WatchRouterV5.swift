@@ -827,13 +827,27 @@ struct WatchRunSurfaceV5: View {
 
     /// "8:15–8:45 /mi" — the band the phase prescribes, as words. nil when
     /// there is none, and the board then has nothing to announce.
-    private var bandLabel: String? {
+    /// The prescribed band, split into figure and unit.
+    ///
+    /// SPLIT because `WMomentPhaseChange` draws the two at different weights —
+    /// the figure in band green, the unit at 62% of it — and it appends the
+    /// unit itself. Handing it a string that already ended in one drew
+    /// "6:45–7:00 /mi /mi" on every work-rep boundary of every interval
+    /// session. Invisible in review because the preview fixture passed a band
+    /// with no unit, so the harness showed a board the router never produced.
+    private var bandParts: (value: String, unit: String)? {
         guard let phase = engine.currentPhase,
               let target = phase.targetPaceSPerMi, target > 0,
               let tol = phase.tolerancePaceSPerMi, tol > 0,
               let quick = WFmt.paceWithUnit(target - tol, units: units),
               let steady = WFmt.paceWithUnit(target + tol, units: units) else { return nil }
-        return "\(quick.value)–\(steady.value) \(quick.unit)"
+        return ("\(quick.value)–\(steady.value)", quick.unit)
+    }
+
+    /// The band as one sentence-ready string, for the boards that compose it
+    /// into prose ("Band is 6:45–7:00 /mi") rather than typesetting it.
+    private var bandLabel: String? {
+        bandParts.map { "\($0.value) \($0.unit)" }
     }
 
     // `reading(_:grade:phase:)` and its `WBandReading` return type were
@@ -890,7 +904,9 @@ struct WatchRunSurfaceV5: View {
         case .go:
             WMomentGo(session: sessionClass)
         case .phaseChange(let title, let sub):
-            WMomentPhaseChange(word: title, detail: sub ?? "", band: bandLabel)
+            WMomentPhaseChange(word: title, detail: sub ?? "",
+                               band: bandParts?.value,
+                               bandUnit: bandParts?.unit ?? livePace.unit)
         case .split(let mile, let paceSec):
             let _ = recordSplit(paceSec)
             WMomentSplit(
@@ -923,7 +939,9 @@ struct WatchRunSurfaceV5: View {
                 direction: engine.paceDeltaSPerMi < 0 ? .easeOff : .quicken,
                 pace: livePace.value,
                 paceUnit: livePace.unit,
-                band: bandLabel ?? livePace.unit
+                // nil, never a unit standing in for a band. The fallback used
+                // to be `livePace.unit`, which drew the sentence "Band is /mi".
+                band: bandLabel
             )
         case .paused:
             WMomentPaused(

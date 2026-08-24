@@ -287,9 +287,18 @@ struct FacePreviewView: View {
         switch name {
         case "mgo":
             return AnyView(WMomentGo(session: "easy"))
-        case "mphase":
+        case "mphasenoband":
+            // A rep with a target but no tolerance: no band line, so the
+            // detail carries the pace instead. The pace is present exactly
+            // once either way.
             return AnyView(WMomentPhaseChange(word: "Work",
-                detail: "Rep 4 of 6 \(sep) 3 min", band: "6:45\u{2013}7:00"))
+                detail: "Rep 4 of 6 \(sep) 6:47/mi", band: nil))
+        case "mphase":
+            // What the engine now actually sends at a work-rep boundary: the
+            // phase label, the rep count, and the band underneath. The pace is
+            // said once — it is on the band line, not repeated in the detail.
+            return AnyView(WMomentPhaseChange(word: "Work",
+                detail: "Rep 4 of 6", band: "6:45\u{2013}7:00", bandUnit: "/mi"))
         case "msplit":
             return AnyView(WMomentSplit(label: "Mile 5", time: "7:48",
                 comparison: "4 sec quicker"))
