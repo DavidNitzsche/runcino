@@ -103,9 +103,21 @@ export function composeWhy(parts: WhyParts): string {
   push(parts.dayNote);
 
   if (parts.dayNote) {
-    // The plan has spoken for this day. Only admit a generic fact that carries
-    // information neither authored sentence did.
-    for (const f of parts.facts) push(f);
+    // THE PLAN HAS SPOKEN. The generic layer stops here, and it has to.
+    //
+    // `derivePurpose` is keyed on the workout TYPE and nothing else, so its
+    // facts are written for the average week that type appears in. Printed
+    // after two authored sentences they are at best a repetition and at worst
+    // a contradiction. Both were live on this runner's screen:
+    //
+    //   easy · "Recovery easy · conversational, no surges." then
+    //          "Conversational pace · should feel like nothing." — twice.
+    //   long · "Long run back · easy effort." then "The long run is the single
+    //          most important run of your marathon week." — during a post-race
+    //          RECOVERY block, where it is simply not true.
+    //
+    // Short and direct beats complete. The prescription, the fuelling and the
+    // pace band all have their own places on the screen; this line answers why.
     return out.join(' ');
   }
 

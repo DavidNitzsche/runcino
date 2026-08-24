@@ -61,6 +61,27 @@ describe('composeWhy · the plan speaks before the generic layer does', () => {
     expect(why).not.toContain('Easy day.');
   });
 
+  it('drops the generic FACTS too · they repeat, and on a recovery block they lie', () => {
+    // Both of these were live on this runner's screen against production data.
+    const repeats = composeWhy({
+      phaseRationale: 'Post-race recovery · Americas Finest City. Easy running only · no quality.',
+      dayNote: 'Recovery easy · conversational, no surges.',
+      verdict: '', facts: ['Conversational pace · should feel like nothing.'],
+    });
+    expect(repeats.match(/onversational/g)!.length).toBe(1);
+
+    const contradicts = composeWhy({
+      phaseRationale: 'Post-race recovery · Americas Finest City. Easy running only · no quality.',
+      dayNote: 'Long run back · easy effort.',
+      verdict: 'Long run.',
+      facts: ['The long run is the single most important run of your marathon week.'],
+    });
+    expect(contradicts).not.toContain('most important run');
+    expect(contradicts).toBe(
+      'Post-race recovery · Americas Finest City. Easy running only · no quality. Long run back · easy effort.',
+    );
+  });
+
   it('answers a rest day, which the generic layer cannot', () => {
     // A rest day has no `todayPlan`, so `derivePurpose` sees 'unplanned' and
     // produces nothing at all. The row for that date is not empty.
