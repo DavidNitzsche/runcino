@@ -165,17 +165,30 @@ struct FaffValueText: View {
                 .foregroundStyle(color)
 
         case .modelled:
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text(Theme.V5.modelledMark)
-                    .font(font)
-                    .scaleEffect(markScale, anchor: .bottomTrailing)
-                    .foregroundStyle(mark)
-                    .accessibilityLabel("estimated")
-                Text(value.text)
-                    .font(font)
-                    .foregroundStyle(color)
-            }
-            .accessibilityElement(children: .combine)
+            // THE MARK IS NO LONGER DRAWN. David, 2026-08-21: "we dont need
+            // the tilde. its obvious and implied the number is calculated".
+            //
+            // He is right, and the evidence is that he had to ask what it
+            // was. A mark nobody can interpret is noise in front of a number,
+            // which is the opposite of the job.
+            //
+            // It was also redundant with the words already beside every one
+            // of these values. "Pace band" and "HR ceiling" are prescriptions
+            // by name. Races says "Projected". 8c's watch time is labelled
+            // "on the watch", and that phrase — not a glyph — is what stops
+            // it reading as a result. Rule one asked for a value the runner
+            // can interpret; the labels were already carrying it.
+            //
+            // THE DISTINCTION IS KEPT, ONLY THE GLYPH IS GONE. `FaffValue`
+            // still knows the basis, the wire still carries `modelled`, and
+            // VoiceOver still says "estimated" before the figure — a spoken
+            // word has none of the ambiguity a symbol had. So the day a
+            // screen needs to show provenance visually again, the data is
+            // there and this is a one-line change back.
+            Text(value.text)
+                .font(font)
+                .foregroundStyle(color)
+                .accessibilityLabel("estimated \(value.text)")
 
         case .unreadable:
             Text(value.text)

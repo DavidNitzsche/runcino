@@ -490,7 +490,45 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     plannedMi: todayPlan?.distanceMi ?? 0,
     raceDistanceMi: glance.raceGoalDistanceMi, weeksToRace: null,
   });
-  const why = [purpose.verdict, ...purpose.facts].filter(Boolean).join(' ');
+  // "WHY THIS RUN" HAS TO ANSWER WHY, NOT DESCRIBE THE RUN.
+  //
+  // David, 2026-08-21: "this is not really saying WHY its just what the run
+  // is." He was reading "Easy day. Conversational pace · should feel like
+  // nothing." — three clauses, none of them a reason.
+  //
+  // `derivePurpose` cannot do better on its own: it is keyed on the workout
+  // TYPE, the phase and the race distance, so the most it can produce is a
+  // description of the session in front of you. It does not know a race
+  // happened, where in the block this week sits, or what the phase is for.
+  // For a RECOVERY phase it adds no fact at all — only BASE, PEAK and TAPER
+  // get one — which is why this particular screen read so thin.
+  //
+  // The reason was already authored, cited, and sitting unread. `generatePlan`
+  // writes a rationale onto every phase it builds; this runner's says
+  // "Post-race recovery · Americas Finest City. Easy running only · no
+  // quality." with `Research/00a §recovery + Pfitzinger` behind it. That IS
+  // the why, in the plan's own words, and nothing on Today ever asked for it.
+  //
+  // So the phase rationale leads and the session description follows. Nothing
+  // is invented — this is engine copy the plan committed to when it chose the
+  // block, which is exactly what the runner is owed when they ask why.
+  const phaseRationale = activePlan
+    ? ((await pool.query<{ rationale: string | null }>(
+        `SELECT pp.rationale
+           FROM plan_weeks pw
+           JOIN plan_phases pp ON pp.id = pw.phase_id
+          WHERE pw.plan_id = $1 AND pw.week_start_iso <= $2
+          ORDER BY pw.week_start_iso DESC LIMIT 1`,
+        [activePlan.id, today],
+      ).catch(() => ({ rows: [] }))).rows[0]?.rationale ?? null)
+    : null;
+  const why = [phaseRationale, purpose.verdict, ...purpose.facts]
+    .filter(Boolean)
+    // The phase rationale often opens by naming the block, and the verdict is
+    // a one-word restatement of the type. "Post-race recovery … Easy running
+    // only · no quality. Easy day." says easy three times.
+    .filter((part, i, all) => i === 0 || !(phaseRationale && /easy running only/i.test(phaseRationale) && /^easy day\.?$/i.test(String(part).trim())))
+    .join(' ');
 
   // ── Already ran today? → after_run (5b/5c) ─────────────────────────────
   const ranToday = glanceToday && glanceToday.doneMi >= 0.5;
