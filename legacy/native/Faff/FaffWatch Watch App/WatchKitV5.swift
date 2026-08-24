@@ -762,7 +762,21 @@ struct WDisplayWord: View {
             //
             // This file's own comment already said shrinking was the wrong
             // answer here; the modifier just never learned about lineLimit.
-            .minimumScaleFactor(lineLimit > 1 ? 1.0 : 0.5)
+            // 0.75 on a wrapped lede, not 1.0.
+            //
+            // It was 1.0 because `.leading(.tight)` made SwiftUI prefer
+            // shrinking to half size over wrapping at all — but that modifier
+            // is gone, and forbidding any shrink then broke the other end: a
+            // race segment called "Hurricane climb" wrapped INSIDE the word,
+            // "HURRICA / NE CLIMB", because no line could hold "HURRICANE" at
+            // the size asked for. Stepping the size by the longest word helps
+            // and cannot be exact — Archivo 800 at width 112 is far wider than
+            // a character count suggests.
+            //
+            // A floor lets the type give up a quarter of itself to keep a word
+            // whole, which is the right trade: a name broken across a line
+            // break is harder to read than the same name a few points smaller.
+            .minimumScaleFactor(lineLimit > 1 ? 0.75 : 0.5)
             .fixedSize(horizontal: false, vertical: lineLimit > 1)
     }
 }

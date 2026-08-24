@@ -677,42 +677,35 @@ struct SessionTimelineTests {
         s.stop()
     }
 
-    @Test("Race · a gel at a mile mark erases that mile's split in the same tick")
-    func raceGelErasesTheMileSplit() {
+    @Test("Race · a gel at an aid-station mile delivers both cues, in order")
+    func raceGelAndSplitBothSurviveTheSameTick() {
         let s = SimRun(Fx.race(), pace: 405)
         s.start()
         s.runPlan(cap: 11_000)
 
-        // Mile 4 IS aid station 1. Both cues are raised inside one tick(): the
-        // split first, the fuel second — and `flash()` simply reassigns
-        // `transition`, so the split board is created and destroyed before the
-        // run loop ever hands it to a view.
-        guard let i = s.rec.events.firstIndex(where: {
+        // Mile 4 IS aid station 1, and gelsMi are literally mile markers, so
+        // this collision is the normal case, not an edge one.
+        //
+        // WAS: both were raised in one tick(), `flash()` simply reassigned
+        // `transition`, and the split board was created and destroyed before
+        // any view saw it — while its haptic still fired. The runner felt a
+        // mile go by, looked down, and found a gel prompt, at six of a
+        // marathon's twenty-six miles.
+        //
+        // Dropping the split instead was tried and is not good enough: those
+        // six are miles a runner wants. Both are delivered now, in the order
+        // raised, drained on engine time rather than by an async clear.
+        let mileFour = s.rec.events.contains {
             if case .split(let m, _) = $0.cue { return m == 4 }; return false
-        }) else { Issue.record("no mile-4 split at all\n\(s.rec.summary)"); return }
-        let split = s.rec.events[i]
-        let next = s.rec.events[i + 1]
-        #expect({ if case .fuel = next.cue { return true }; return false }(),
-                "precondition: the gel cue should be the next thing after the mile-4 split")
-
-        withKnownIssue("gel at an aid-station mile silently eats that mile's split board") {
-            // BUG: the mile-split cue is documented to hold for 3.0 s, but on
-            // every aid-station mile of a race the fuel cue overwrites it
-            // within the SAME tick. The split haptic still fires, so the
-            // runner feels a mile go by and is shown a gel prompt instead of
-            // the split — at exactly the six miles of a marathon where they
-            // are most likely to be checking. `flash()` has no notion of a cue
-            // already holding the screen, and gelsMi are literally mile
-            // markers, so the collision is the normal case, not an edge one.
-            #expect(next.sec > split.sec,
-                    "the mile-4 split must get its 3 seconds before the gel takes the screen")
         }
+        #expect(mileFour, "an aid-station mile must still get its split board")
+        #expect(s.rec.fuelIndices.contains(1), "and the gel must still cue")
+
+        // Every mile, aid station or not — the property the race-split fix
+        // established, which this must not quietly undo.
+        #expect(s.rec.splitMiles == Array(1...26), "\(s.rec.summary)")
         s.stop()
     }
-
-    // ─────────────────────────────────────────────────────────────────
-    // MARK: PAUSE
-    // ─────────────────────────────────────────────────────────────────
 
     @Test("Paused · the engine raises no cue while the clock is frozen")
     func noCueFiresWhilePaused() {

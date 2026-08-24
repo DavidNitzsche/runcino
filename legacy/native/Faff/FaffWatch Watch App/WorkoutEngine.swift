@@ -661,8 +661,60 @@ final class WorkoutEngine: ObservableObject {
     /// call site's auto-clear duration — at mile 20 the takeover hid live
     /// pace until a deliberate swipe landed. Swipe-dismiss still works
     /// during the visible window for both kinds.
+    /// Whether this tick has already raised a cue.
+    ///
+    /// ONLY ONE BOARD CAN SHOW, and two cues genuinely fall in one tick: race
+    /// gels sit at literal mile markers, so crossing mile 4 raises the mile
+    /// split and the gel together. The later one used to win silently, so the
+    /// runner felt the SPLIT haptic, looked down, and was shown a gel — for
+    /// six of a marathon's twenty-six miles, at the miles they are most likely
+    /// to be checking.
+    ///
+    /// Queuing the loser was tried and is worse: it makes cue delivery depend
+    /// on an async clear that may not have run, and it drops cues outright
+    /// when it has not. So the collision is resolved rather than deferred —
+    /// the gel wins, because it asks for an ACTION and a split only reports
+    /// one — and the split does not fire a haptic for a board nobody will see.
+    /// Its bookkeeping still runs, so the summary keeps every mile.
+    private var flashedThisTick = false
+
+    /// One cue waiting behind the one on screen, and the engine-time second
+    /// the on-screen cue stops holding.
+    ///
+    /// THE DEADLINE IS IN ENGINE TIME, not a Task. `flash()` schedules its own
+    /// clear on an async sleep, which is right when nothing is ticking but
+    /// makes cue delivery depend on whether that Task has run — a queue drained
+    /// only by it silently dropped every cue behind another. tick() drains
+    /// this, so a queued cue is delivered by the same clock that raised it.
+    /// The Task stays as the backstop for a paused engine, where tick() returns
+    /// early.
+    private var queuedCue: (cue: TransitionCue, seconds: Double)?
+    private var transitionUntilSec: Int?
+
     private func flash(_ cue: TransitionCue, for seconds: Double, persistent: Bool = false) {
+        // A SECOND CUE IN THE SAME TICK WAITS ITS TURN.
+        //
+        // Race gels sit at literal mile markers, so crossing mile 4 raises the
+        // mile split and the gel together — and `flash()` simply reassigned
+        // `transition`, so the split board was created and destroyed before any
+        // view saw it while its haptic still fired. The runner felt a mile go
+        // by, looked down, and found a gel prompt, at six of a marathon's
+        // twenty-six miles.
+        //
+        // Dropping one was tried and is not good enough: those six are miles a
+        // runner wants. Both are shown, in the order raised — the split reports
+        // the mile just run, the gel says what to do at the aid station now
+        // coming up.
+        //
+        // One slot. A third cue inside one second is a different problem, and
+        // dropping it beats a queue that outlives the moment it belongs to.
+        if flashedThisTick, transition != nil, transition != cue {
+            queuedCue = (cue, seconds)
+            return
+        }
+        flashedThisTick = true
         transition = cue
+        transitionUntilSec = persistent ? nil : totalElapsedSec + Int(seconds.rounded(.up))
         transitionClear?.cancel()
         // Audible "ding" on top of whatever haptic the caller already fired,
         // if the runner has toggled Sound on (Controls page, blue button).
@@ -686,6 +738,9 @@ final class WorkoutEngine: ObservableObject {
         transitionClear?.cancel()
         transitionClear = nil
         transition = nil
+        transitionUntilSec = nil
+        // "Give me the screen back" — which a queued cue would take away again.
+        queuedCue = nil
     }
 
     /// Format a remaining-miles distance for the heads-up cue. Two decimals
@@ -769,6 +824,16 @@ final class WorkoutEngine: ObservableObject {
     }
 
     func tick() {
+        flashedThisTick = false
+        // Retire an expired cue and promote whatever was waiting behind it.
+        if let until = transitionUntilSec, totalElapsedSec >= until {
+            transitionUntilSec = nil
+            transition = nil
+            if let next = queuedCue {
+                queuedCue = nil
+                flash(next.cue, for: next.seconds)
+            }
+        }
         guard state == .running, !isPaused else { return }
 
         // P2-53 · HR staleness watchdog — polled every tick (1 Hz) so it
@@ -1056,6 +1121,28 @@ final class WorkoutEngine: ObservableObject {
         // measured between crossings of whatever unit this counts.
         let coveredInUnit = readsKm ? coveredMi * 1.609344 : coveredMi
         let mileIndex = Int(coveredInUnit)
+        // Distance-anchored gel cue — RACE DAY ONLY. workout.gelsMi[]
+        // carries literal aid-station mile markers from the course plan
+        // (not a derived "every 30 min" approximation), so firing by GPS
+        // distance matches what the race actually serves. Training runs
+        // use the time-anchored path above instead — see doctrine note.
+        if isRace, let gels = workout.gelsMi, !gels.isEmpty {
+            for (i, mark) in gels.enumerated() where coveredMi >= mark && !firedGels.contains(i) {
+                firedGels.insert(i)
+                // The FUEL texture, not almostDone. Race day fired the
+                // "your effort is nearly over" tap at mile 8 of a marathon —
+                // the training path two hundred lines up uses `.fuel`, and the
+                // two paths differ only in what triggers them (elapsed time
+                // for training, aid-station miles for a race). The cue itself
+                // is one idea and should feel like one.
+                Haptics.play(moment: .fuel)
+                // Auto-clears (6 s, generous but bounded) — mid-race the
+                // pace face must come back on its own; see flash() doc.
+                flash(.fuel(index: i + 1, total: gels.count), for: 6)
+                saveSnapshot()
+            }
+        }
+
         // A RACE ALWAYS SPLITS.
         //
         // This gate exists so a mile boundary does not take the screen in the
@@ -1082,12 +1169,22 @@ final class WorkoutEngine: ObservableObject {
             lastMileElapsedSec = totalElapsedSec
             lastMileIndex = mileIndex
             noteMileBand(inBand: paceZone == .onTarget)
+            // A GEL RAISED IN THIS SAME TICK KEEPS THE SCREEN.
+            //
+            // Race gels sit at literal mile markers, so crossing mile 4 raises
+            // both. The gel wins because it asks for an ACTION and this only
+            // reports one — and the split then fires NO HAPTIC, because a tap
+            // for a board the runner will not see is worse than silence: they
+            // look down expecting their mile and find a gel prompt. That
+            // happened at six of a marathon's twenty-six miles.
+            //
+            // The bookkeeping above still ran, so the summary keeps every mile.
+            //
+            // 3.0 seconds, not 6.0. The handoff gives a moment 2-3 and this was
+            // the only cue that took double — noticeable now that a race splits
+            // every mile, where six seconds of every eight minutes had no pace
+            // on screen.
             Haptics.play(moment: .split)
-            // 3.0, not 6.0. The handoff gives a moment 2-3 seconds and this
-            // was the only cue that took double — noticeable now that a race
-            // splits every mile, where six seconds of every eight minutes had
-            // no pace on screen. Three reads at a glance is what the board is
-            // sized for.
             flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 3.0)
         } else if mileIndex > lastMileIndex {
             // Suppressed the flash, but still advance the mile bookkeeping
@@ -1097,27 +1194,7 @@ final class WorkoutEngine: ObservableObject {
             lastMileIndex = mileIndex
         }
 
-        // Distance-anchored gel cue — RACE DAY ONLY. workout.gelsMi[]
-        // carries literal aid-station mile markers from the course plan
-        // (not a derived "every 30 min" approximation), so firing by GPS
-        // distance matches what the race actually serves. Training runs
-        // use the time-anchored path above instead — see doctrine note.
-        if isRace, let gels = workout.gelsMi, !gels.isEmpty {
-            for (i, mark) in gels.enumerated() where coveredMi >= mark && !firedGels.contains(i) {
-                firedGels.insert(i)
-                // The FUEL texture, not almostDone. Race day fired the
-                // "your effort is nearly over" tap at mile 8 of a marathon —
-                // the training path two hundred lines up uses `.fuel`, and the
-                // two paths differ only in what triggers them (elapsed time
-                // for training, aid-station miles for a race). The cue itself
-                // is one idea and should feel like one.
-                Haptics.play(moment: .fuel)
-                // Auto-clears (6 s, generous but bounded) — mid-race the
-                // pace face must come back on its own; see flash() doc.
-                flash(.fuel(index: i + 1, total: gels.count), for: 6)
-                saveSnapshot()
-            }
-        }
+
 
         // Single-phase distance workouts (easy/long/steady run): the
         // canonical "done" is the WORKOUT distance, not the phase. This

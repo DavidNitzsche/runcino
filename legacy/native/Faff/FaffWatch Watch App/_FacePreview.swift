@@ -298,6 +298,11 @@ struct FacePreviewView: View {
             // once either way.
             return AnyView(WMomentPhaseChange(word: "Work",
                 detail: "Rep 4 of 6 \(sep) 6:47/mi", band: nil))
+        case "mphaselong":
+            // A race course segment, which is a place name rather than a word.
+            return AnyView(WMomentPhaseChange(word: "Hurricane climb",
+                detail: "10:38/mi \(sep) hold effort",
+                band: "10:26\u{2013}10:50", bandUnit: "/mi"))
         case "mphase":
             // What the engine now actually sends at a work-rep boundary: the
             // phase label, the rep count, and the band underneath. The pace is

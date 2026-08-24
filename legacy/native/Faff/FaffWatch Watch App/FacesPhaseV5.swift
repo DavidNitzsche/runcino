@@ -200,10 +200,34 @@ struct WMomentPhaseChange: View {
     var band: String? = nil
     var bandUnit: String = "/mi"
 
+    /// The display size, stepped down by the LONGEST WORD.
+    ///
+    /// A rep label is one short word ("Work", "Threshold") and fits at 38pt.
+    /// A race segment is a place name off the course plan — "Hurricane climb",
+    /// "Carmel run-in" — and at 38 those truncated to "HURRICANE C...": a
+    /// moment that exists to say where the runner is, cutting the name in half.
+    ///
+    /// Allowing two lines alone made it worse, wrapping mid-word to
+    /// "HURRIC / ANE C...", because at 38pt no line can hold even one of those
+    /// words. So the measure is the longest WORD rather than the whole string:
+    /// that is what actually has to fit a line, and once it does the wrap lands
+    /// on the space where it belongs.
+    ///
+    /// Same rule the lobby already uses for its lede, which steps 36 / 28 / 22
+    /// with name length for exactly this reason.
+    private var wordSize: CGFloat {
+        let longest = word.split(separator: " ").map(\.count).max() ?? word.count
+        switch longest {
+        case ...6: return 38
+        case ...9: return 30
+        default:   return 24
+        }
+    }
+
     var body: some View {
         WBoard {
             WMomentFrame(spacing: 7) {
-                WDisplayWord(text: word, size: 38)       // 76px
+                WDisplayWord(text: word, size: wordSize, lineLimit: 2)
 
                 Text(detail)
                     .font(WatchV5.number(22))            // 44px
