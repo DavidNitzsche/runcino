@@ -183,6 +183,9 @@ struct ScreensCatalogV5: View {
             Entry(id: "8d", title: "Race detail · no result", sub: "Run, not yet locked in") {
                 AnyView(RaceDetailV5(raceDetail: .v5SampleNoResult))
             },
+            Entry(id: "8e", title: "Race detail · no goal time", sub: "No pace plan to draw") {
+                AnyView(RaceDetailV5(raceDetail: .v5SampleNoGoal))
+            },
             Entry(id: "23b", title: "Run detail · no GPS", sub: "Treadmill, no route card") {
                 AnyView(RunDetailV5(detail: RunDetailV5Sample.treadmill))
             },

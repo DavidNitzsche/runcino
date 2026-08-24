@@ -201,14 +201,49 @@ struct RaceDetailV5: View {
         raceDetail.resultEntry?.isPast == true ? "Result" : "Projected"
     }
 
+    /// AN UNSET GOAL IS NOT AN UNREADABLE ONE.
+    ///
+    /// All three columns rendered through `unreadableIfAbsent`, which turns
+    /// nil into `FaffValue.unreadable` — a FAULT RED dash that VoiceOver reads
+    /// as "could not be read". The add-a-race sheet calls a goal time
+    /// "Optional", so a race entered without one drew two red dashes claiming
+    /// a data failure that never happened. Fault red is defined as "we could
+    /// not read this value" and "never used to render a real value"; rule
+    /// three is the same idea in the other direction, that a designed absence
+    /// must not wear the outage's clothes.
+    ///
+    /// There is no fourth `FaffBasis` for "absent by design", and inventing
+    /// one is the design system's call, not this screen's. So the column is
+    /// simply not drawn: nothing is claimed about a number nobody entered.
+    /// A read that genuinely failed does not reach this screen at all — the
+    /// route answers `outage()` for the whole payload.
+    static func showsColumns(goal: String?, middle: String?, gap: String?) -> (goal: Bool, middle: Bool, gap: Bool, any: Bool) {
+        let g = goal?.isEmpty == false
+        let m = middle?.isEmpty == false
+        let p = gap?.isEmpty == false
+        return (g, m, p, g || m || p)
+    }
+
+    @ViewBuilder
     private var statsRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
-            stat("Goal", raceDetail.goal.unreadableIfAbsent, ink: V5.textPrimary)
-            stat(middleStatLabel, raceDetail.projected.unreadableIfAbsent, ink: V5.textPrimary)
-            stat("Gap", raceDetail.gap.unreadableIfAbsent, ink: gapBehind ? V5.attention : V5.textPrimary)
+        let cols = Self.showsColumns(goal: raceDetail.goal?.text,
+                                     middle: raceDetail.projected?.text,
+                                     gap: raceDetail.gap?.text)
+        if cols.any {
+            HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
+                if cols.goal {
+                    stat("Goal", raceDetail.goal.unreadableIfAbsent, ink: V5.textPrimary)
+                }
+                if cols.middle {
+                    stat(middleStatLabel, raceDetail.projected.unreadableIfAbsent, ink: V5.textPrimary)
+                }
+                if cols.gap {
+                    stat("Gap", raceDetail.gap.unreadableIfAbsent, ink: gapBehind ? V5.attention : V5.textPrimary)
+                }
+            }
+            .padding(V5.S.tilePad)
+            .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
         }
-        .padding(V5.S.tilePad)
-        .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
     }
 
     private func stat(_ label: String, _ value: FaffValue, ink: Color) -> some View {
@@ -409,6 +444,29 @@ extension V5RaceDetail {
             pacePlan: r.pacePlan, taperProgress: nil, taperEndpoints: [], taperCentreLabel: nil,
             gear: [], coachLine: r.coachLine,
             resultEntry: V5RaceResultEntry(isPast: true, status: nil, finish: nil)
+        )
+    }()
+
+    /// AN UPCOMING RACE ENTERED WITHOUT A GOAL TIME.
+    ///
+    /// The add-a-race sheet calls goal time "Optional" in as many words, and
+    /// `app/api/v5/race/[slug]/route.ts` only builds a pace plan when a goal
+    /// exists — so this is not a corner case, it is what a C race looks like.
+    /// It had no sample and no route into the catalog, and `pacePlanSection`
+    /// drew the words "PACE PLAN" over nothing at all until 2026-08-24.
+    ///
+    /// Kept as its own entry rather than folded into one of the samples above
+    /// so the empty state stays LOOKED AT rather than reasoned about.
+    static let v5SampleNoGoal: V5RaceDetail = {
+        let r = v5Sample
+        return V5RaceDetail(
+            slug: "clarksburg-half", name: "Clarksburg Half",
+            dateLine: "Half marathon · Sunday 24 November · 13 weeks out",
+            goal: nil, projected: r.projected, gap: nil,
+            elevation: r.elevation, elevationMarks: [], elevationFootnotes: r.elevationFootnotes,
+            pacePlan: [], taperProgress: nil, taperEndpoints: [], taperCentreLabel: nil,
+            gear: [], coachLine: nil,
+            resultEntry: V5RaceResultEntry(isPast: false, status: nil, finish: nil)
         )
     }()
 }
