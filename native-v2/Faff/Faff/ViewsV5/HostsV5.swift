@@ -220,6 +220,7 @@ struct TodayHostV5: View {
                          onPickDay: { id in pickDay(id, in: model) },
                          viewingDayLabel: viewingDayLabel,
                          onBackToToday: { backToToday() },
+                         onPageWeek: { step($0 * 7, from: model) },
                          initials: initials,
                          onReportSick: { sym, started, fever in
                              Task { await reportSick(sym, started, fever) }
@@ -241,6 +242,7 @@ struct TodayHostV5: View {
                           onPickDay: { id in pickDay(id, in: model) },
                           viewingDayLabel: viewingDayLabel,
                           onBackToToday: { backToToday() },
+                          onPageWeek: { step($0 * 7, from: model) },
                           onOpenPacesMoved: { path.append(.pacesMoved) },
                           onReportSick: { sym, started, fever in
                               Task { await reportSick(sym, started, fever) }

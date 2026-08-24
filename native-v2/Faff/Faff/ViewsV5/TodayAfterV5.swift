@@ -34,7 +34,9 @@ struct TodayAfterV5: View {
     /// value the panel is filled with, computed here rather than read from
     /// the environment, because this view sits ABOVE the panel that
     /// publishes it.
-    private var panelFill: PanelFill { viewingDayLabel != nil ? .quiet : model.panel.fill }
+    /// Same ruling as the before-run screen: a stepped-to day keeps the
+    /// gradient and the strip, and the words carry the tense.
+    private var panelFill: PanelFill { model.panel.fill }
     private var panelInk: V5.PanelInk { panelFill.ink }
     let model: V5Today
 
@@ -60,6 +62,8 @@ struct TodayAfterV5: View {
     var onPickDay: (String) -> Void = { _ in }
     var viewingDayLabel: String? = nil
     var onBackToToday: (() -> Void)? = nil
+    /// Page the week strip. -1 back a week, +1 forward.
+    var onPageWeek: (Int) -> Void = { _ in }
     var initials: String? = nil
     /// Job 1 · "report sick" — a runner who just finished and feels off
     /// should not have to wait for tomorrow's Today to say so. Same
@@ -95,10 +99,12 @@ struct TodayAfterV5: View {
          onPickDay: @escaping (String) -> Void = { _ in },
          viewingDayLabel: String? = nil,
          onBackToToday: (() -> Void)? = nil,
+         onPageWeek: @escaping (Int) -> Void = { _ in },
          initials: String? = nil,
          onReportSick: @escaping (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }) {
         self.viewingDayLabel = viewingDayLabel
         self.onBackToToday = onBackToToday
+        self.onPageWeek = onPageWeek
         self.initials = initials
         self.model = model
         self.onOpenAccount = onOpenAccount
@@ -190,12 +196,9 @@ struct TodayAfterV5: View {
             // it, not only the one before the run. It was inert here — which
             // is the state the runner is in for most of the day once they
             // have run.
-            // No week strip on a stepped-to day — it marks today, and it is
-            // the control that got you here.
-            if viewingDayLabel == nil {
-                WeekStripV5(days: model.weekStrip.map { $0.strip },
-                            onTap: { day in onPickDay(day.id) })
-            }
+            WeekStripV5(days: model.weekStrip.map { $0.strip },
+                        onTap: { day in onPickDay(day.id) },
+                        onPageWeek: { onPageWeek($0) })
 
             VStack(alignment: .leading, spacing: V5.S.s2) {
                 if let kicker = model.panel.kicker {

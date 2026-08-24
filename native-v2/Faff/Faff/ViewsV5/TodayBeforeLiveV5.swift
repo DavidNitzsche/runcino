@@ -46,6 +46,8 @@ struct TodayBeforeLiveV5: View {
     var onPickDay: (String) -> Void = { _ in }
     var viewingDayLabel: String? = nil
     var onBackToToday: () -> Void = {}
+    /// Page the week strip. -1 back a week, +1 forward.
+    var onPageWeek: (Int) -> Void = { _ in }
     var onOpenPacesMoved: () -> Void = {}
     var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
     /// Re-reads the Today surface after a write. Owned by `TodayHostV5`'s
@@ -92,6 +94,7 @@ struct TodayBeforeLiveV5: View {
             onPickDay: onPickDay,
             viewingDayLabel: viewingDayLabel,
             onBackToToday: onBackToToday,
+            onPageWeek: onPageWeek,
             onOpenPacesMoved: onOpenPacesMoved,
             onReportSick: onReportSick
         )

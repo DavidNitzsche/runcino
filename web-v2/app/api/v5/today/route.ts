@@ -562,7 +562,6 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         askedPaceSPerMi, askedHrCap, askedHrIsHardCap,
         effortAsked: null,
         effortLogged: rpe?.rpe ?? null,
-        startedLocal: typeof data.startLocal === 'string' ? data.startLocal : null,
         verdict: recap.verdict,
         zoneShares,
         // The race row's zone is its DISTANCE's row in Research/08 §6.1, so the

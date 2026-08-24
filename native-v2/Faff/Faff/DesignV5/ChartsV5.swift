@@ -849,10 +849,26 @@ struct WeekStripV5: View {
     let days: [WeekStripDayV5]
     var onTap: ((WeekStripDayV5) -> Void)? = nil
 
+    /// Page the whole strip a week at a time. -1 back, +1 forward.
+    ///
+    /// A horizontal drag, not a swipe gesture, because the strip's day cells
+    /// are tappable and it sits inside a vertically-scrolling page. The
+    /// threshold below has to clear a tap without stealing the scroll.
+    var onPageWeek: ((Int) -> Void)? = nil
+
     /// The strip is drawn INSIDE the panel, so it takes the ramp's ink. Unlike
     /// the screens that own the fill, this is a child of `DayPanel` and the
     /// environment resolves correctly here.
     @Environment(\.v5PanelInk) private var panelInk
+
+    /// A drag counts as a week page when it is decisively sideways.
+    ///
+    /// Both conditions matter. The distance clears a tap on a day cell — a
+    /// finger moves a few points on any real tap. The ratio keeps the parent
+    /// ScrollView's vertical pan: a drag that is mostly downward is the
+    /// runner scrolling the page, and the strip must not swallow it.
+    private static let pageMinDx: CGFloat = 44
+    private static let pageDominance: CGFloat = 1.5
 
     var body: some View {
         HStack(spacing: V5.S.s4) {
@@ -887,6 +903,25 @@ struct WeekStripV5: View {
                 }
             }
         }
+        .contentShape(Rectangle())
+        .gesture(pageGesture)
+        // A gesture is not reachable by VoiceOver — the same trap that left
+        // the treadmill's speed controls inoperable mid-run. These are the
+        // spoken way through the weeks.
+        .accessibilityAction(named: "Previous week") { onPageWeek?(-1) }
+        .accessibilityAction(named: "Next week") { onPageWeek?(1) }
+    }
+
+    private var pageGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onEnded { v in
+                guard let onPageWeek else { return }
+                let dx = v.translation.width
+                let dy = v.translation.height
+                guard abs(dx) >= Self.pageMinDx else { return }
+                guard abs(dx) > abs(dy) * Self.pageDominance else { return }
+                onPageWeek(dx < 0 ? 1 : -1)
+            }
     }
 
     // ─────────────────────────────────────────────────────────────────────

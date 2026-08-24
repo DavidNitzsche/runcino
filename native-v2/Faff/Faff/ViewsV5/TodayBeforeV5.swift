@@ -178,6 +178,8 @@ struct TodayBeforeV5: View {
     /// offers the way back.
     var viewingDayLabel: String? = nil
     var onBackToToday: () -> Void = {}
+    /// Page the week strip. -1 back a week, +1 forward.
+    var onPageWeek: (Int) -> Void = { _ in }
 
     /// Job 2 · the coach-line entry point onto 18a (`V5Route.pacesMoved`).
     /// Present only when `model.paceNote != nil` — the way in must appear
@@ -243,7 +245,16 @@ struct TodayBeforeV5: View {
     /// Named once, because the ink has to come from the SAME value the panel
     /// is filled with. Computing them separately is how a stepped-to quality
     /// day would end up with a quiet fill and dark ink.
-    private var panelFill: PanelFill { steppedAway ? .quiet : model.panel.fill }
+    /// DAVID, 2026-08-21, OVERRULING ROUND THREE ITEM 2: "If I go back to a
+    /// past run, it should not change like this and remove the week strip
+    /// etc. Keep everything just change the info below the week strip."
+    ///
+    /// So the panel keeps its day-state gradient and its week strip on a
+    /// stepped-to day. What round three was protecting against — a past day
+    /// mistaken for today — is carried by the words instead, which is where
+    /// round three itself said tense belongs: the place label reads FRI 21
+    /// AUG rather than TODAY, and a "‹ Today" chip sits beside it.
+    private var panelFill: PanelFill { model.panel.fill }
     private var panelInk: V5.PanelInk { panelFill.ink }
 
     private var panel: some View {
@@ -275,13 +286,10 @@ struct TodayBeforeV5: View {
                 }
             }
 
-            // No week strip on a stepped-to day. It is today's own compass —
-            // it marks today, and it is the control that got you here. Leaving
-            // it would draw a "you are here" pip on a screen that is not here.
-            if !steppedAway {
-                WeekStripV5(days: model.weekStrip.map(\.strip),
-                            onTap: { day in onPickDay(day.id) })
-            }
+            // The strip stays on every day, and pages a week at a time.
+            WeekStripV5(days: model.weekStrip.map(\.strip),
+                        onTap: { day in onPickDay(day.id) },
+                        onPageWeek: { onPageWeek($0) })
 
             VStack(alignment: .leading, spacing: 2) {
                 if let kicker = model.panel.kicker {
