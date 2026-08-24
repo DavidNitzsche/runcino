@@ -33,7 +33,8 @@ struct ScreensCatalogV5: View {
     @State private var showing: String? = ScreensCatalogV5.launchArgumentScreen
 
     static var launchArgumentScreen: String? {
-        let ids = Set(["5a", "5b", "5c", "7a", "8a", "8c", "13a", "14a", "15a", "16a",
+        let ids = Set(["5a", "5b", "5c", "6a", "6a-longest", "6a-refusal",
+                       "7a", "8a", "8c", "11a", "13a", "14a", "15a", "16a",
                        "17a", "18a-slower", "18a-faster", "19a", "19a-refused",
                        "22a", "23a", "not-yet", "system"])
         return ProcessInfo.processInfo.arguments.first(where: ids.contains)
@@ -59,6 +60,32 @@ struct ScreensCatalogV5: View {
                                      onOpenAccount: {}, onLogEffort: { _ in },
                                      onFlagNiggle: { _ in }, onOpenInjuryFlare: {},
                                      onChangeShoe: {}, onRowAction: { _ in }, onPushStrava: {}))
+            },
+            // BLOCK — THE SECOND TAB — HAD NO ENTRY HERE UNTIL 2026-08-24.
+            //
+            // Same gap 8c is scolded for below, on a bigger screen: `BlockV5`
+            // and its change-the-plan sheet had three `#Preview`s and nothing
+            // else, and its samples were `fileprivate`, so the only way to look
+            // at the app's second tab was the Xcode canvas. The two sheet
+            // states below are the ones the design contract says are hardest
+            // to get right — the longest realistic trade-off string (§6, which
+            // must hold "without scrolling") and a refusal (which must not read
+            // as an error).
+            Entry(id: "6a", title: "Block", sub: "The shape of the whole block") {
+                AnyView(BlockV5(model: .sample))
+            },
+            Entry(id: "6a-longest", title: "Change the plan · longest", sub: "Five clauses, six sentences") {
+                AnyView(BlockV5(model: .sample,
+                                previewStage: .proposed(.sampleAnotherRaceScenario,
+                                                        .sampleAnotherRaceLongest)))
+            },
+            Entry(id: "6a-refusal", title: "Change the plan · refusal", sub: "A correct answer, not an error") {
+                AnyView(BlockV5(model: .sample,
+                                previewStage: .refused(.sampleTravelScenario,
+                                                       .sampleTravelRefusal)))
+            },
+            Entry(id: "11a", title: "Sick", sub: "Not an injury") {
+                AnyView(SickFlareV5(model: .sampleV5))
             },
             Entry(id: "7a", title: "Races", sub: "Is the goal still real") {
                 AnyView(RacesV5(model: RacesV5.sample))

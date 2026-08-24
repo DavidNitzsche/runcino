@@ -518,6 +518,23 @@ struct PhaseBar: View {
         Swift.max(Double(phases.reduce(0) { $0 + $1.weeks }), 0.0001)
     }
 
+    /// One staggered label row. 12px type on a 1.25 line box, rounded.
+    private var labelRowHeight: CGFloat { 15 }
+
+    /// One segment's drawn width. The single source of truth for both the bar
+    /// and the name under it — the two drifting apart is the whole bug the
+    /// label row below documents.
+    func segmentWidth(_ p: PhaseSegment, in total: CGFloat) -> CGFloat {
+        total * CGFloat(Double(p.weeks) / totalWeeks) - 2
+    }
+
+    /// Where segment `idx` starts, accounting for the 2pt gap the bar's HStack
+    /// puts between segments.
+    func segmentStart(_ idx: Int, in total: CGFloat) -> CGFloat {
+        let weeksBefore = phases.prefix(idx).reduce(0) { $0 + $1.weeks }
+        return total * CGFloat(Double(weeksBefore) / totalWeeks)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.s6) {
             GeometryReader { geo in
@@ -542,16 +559,55 @@ struct PhaseBar: View {
             }
             .frame(height: height)
 
-            HStack(spacing: 2) {
-                ForEach(phases) { p in
-                    Text(p.name)
-                        .font(.faffText(TypeScaleV5.label12))
-                        .foregroundStyle(p.current ? V5.signal : V5.textQuiet)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            // A PHASE NAME HAS TO STAND UNDER ITS OWN PHASE.
+            //
+            // The bar above sizes each segment by that phase's share of the
+            // block — `geo.size.width * (weeks / totalWeeks)`. This row used
+            // `.frame(maxWidth: .infinity)`, which gives every name an EQUAL
+            // share instead. The two only agree for the first phase, so on a
+            // real 16-week block (Base 8 · Quality 4 · Race specific 3 ·
+            // Taper 1) the bar reads 50/25/19/6 while the names read
+            // 25/25/25/25: "Quality" sat under Base's segment, and "Taper"
+            // sat a third of the bar to the left of the sliver it names. A
+            // runner reading "when does the taper start" off this chart read
+            // the wrong week.
+            //
+            // Same proportional width as the segment, so each name begins
+            // where its phase begins. `fixedSize` before the frame lets a
+            // name wider than its own sliver spill to the right rather than
+            // truncate — a phase is allowed to be one week long, and "Taper"
+            // is not allowed to become "Ta…". The final phase hugs the bar's
+            // right edge so the spill goes inward instead of off-screen.
+            //
+            // AND THE NAMES ARE STAGGERED, because at their true positions
+            // they do not fit on one line. A 16-week block ends with a 3-week
+            // "Race specific" and a 1-week "Taper": at 12px those two names
+            // want ~135pt and ~36pt but their segments start only ~60pt
+            // apart, so a single row rendered "Race specTaiper" — two labels
+            // printed through each other. Verified on the simulator.
+            //
+            // Shrinking to fit is not available: the design's type floor is
+            // "nothing renders smaller than 12px", and a phase name that
+            // truncates to "Ta…" is worse than one that moves down a line.
+            // So odd-indexed names drop to a second row. Neighbours can then
+            // never collide, and every name still BEGINS where its phase
+            // begins, which is the thing the chart is for.
+            GeometryReader { geo in
+                ZStack(alignment: .topLeading) {
+                    ForEach(Array(phases.enumerated()), id: \.element.id) { idx, p in
+                        Text(p.name)
+                            .font(.faffText(TypeScaleV5.label12))
+                            .foregroundStyle(p.current ? V5.signal : V5.textQuiet)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(width: Swift.max(segmentWidth(p, in: geo.size.width), 1),
+                                   alignment: idx == phases.count - 1 ? .trailing : .leading)
+                            .offset(x: segmentStart(idx, in: geo.size.width),
+                                    y: idx.isMultiple(of: 2) ? 0 : labelRowHeight)
+                    }
                 }
             }
+            .frame(height: phases.count > 1 ? labelRowHeight * 2 : labelRowHeight)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spoken)

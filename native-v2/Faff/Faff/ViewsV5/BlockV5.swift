@@ -105,10 +105,16 @@ struct BlockV5: View {
         _travelTo = State(initialValue: Calendar.current.date(byAdding: .day, value: 6, to: Self.tomorrow) ?? Self.tomorrow)
     }
 
-    /// Preview-only: open straight into a given sheet stage, so the longest
+    /// QA-only: open straight into a given sheet stage, so the longest
     /// trade-off string and the refusal state can be inspected without
     /// simulating taps through the menu.
-    fileprivate init(model: V5Block,
+    ///
+    /// Reachable from `ScreensCatalogV5` as well as from `#Preview`. It was
+    /// `fileprivate`, which meant the only way to look at the change-the-plan
+    /// sheet was the Xcode canvas — the same "drawn but unreachable" shape
+    /// that let screen 8c ship without anyone seeing it. A screen nobody can
+    /// open on a device is a screen nobody reviews.
+    init(model: V5Block,
                       onChanged: @escaping (V5PlanChangeProposal) -> Void = { _ in },
                       previewStage: PlanStage) {
         self.model = model
@@ -813,9 +819,9 @@ struct BlockV5: View {
 
 // MARK: - Sheet stage
 
-/// The plan-change sheet's own state machine. `Equatable` so `#Preview` can
-/// seed it directly without simulating taps.
-fileprivate enum PlanStage: Equatable {
+/// The plan-change sheet's own state machine. `Equatable` so `#Preview` and
+/// `ScreensCatalogV5` can seed it directly without simulating taps.
+enum PlanStage: Equatable {
     /// Five scenarios on offer.
     case menu
     /// `scenario.available == false` — known from the menu payload itself.
@@ -931,7 +937,7 @@ private struct BlockWeekRow: View {
 // than inventing a simplified stand-in.
 
 extension V5Block {
-    fileprivate static var sample: V5Block {
+    static var sample: V5Block {
         guard let data = sampleJSON.data(using: .utf8),
               let block = try? JSONDecoder().decode(V5Block.self, from: data) else {
             fatalError("BlockV5 sample JSON failed to decode")
@@ -1055,12 +1061,12 @@ extension V5Block {
 }
 
 extension V5Scenario {
-    fileprivate static var sampleAnotherRaceScenario: V5Scenario {
+    static var sampleAnotherRaceScenario: V5Scenario {
         V5Scenario(id: "another_race", label: "I entered another race",
                    sub: "Add a race to the calendar", available: true, refusal: nil)
     }
 
-    fileprivate static var sampleTravelScenario: V5Scenario {
+    static var sampleTravelScenario: V5Scenario {
         V5Scenario(id: "travel", label: "I am away", sub: "Pick your dates",
                    available: true, refusal: nil)
     }
@@ -1074,7 +1080,7 @@ extension V5PlanChangeProposal {
     /// C-race, 5 sentences with no displacement clause) — built here per the
     /// spec in README-v5-handoff.md and the design contract §6, in the same
     /// voice and clause shape as the contract's five real strings.
-    fileprivate static var sampleAnotherRaceLongest: V5PlanChangeProposal {
+    static var sampleAnotherRaceLongest: V5PlanChangeProposal {
         let json = """
         {
           "ok": true,
@@ -1104,7 +1110,7 @@ extension V5PlanChangeProposal {
 extension V5PlanChangeRefusal {
     /// The design contract's own quoted refusal (§6, "the sheet must be able
     /// to refuse"): a two-week travel window is genuinely unsatisfiable.
-    fileprivate static var sampleTravelRefusal: V5PlanChangeRefusal {
+    static var sampleTravelRefusal: V5PlanChangeRefusal {
         let json = """
         {
           "ok": false,

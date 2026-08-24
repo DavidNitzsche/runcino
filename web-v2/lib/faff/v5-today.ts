@@ -310,24 +310,81 @@ export function dayStateWordFor(plannedType: string | null | undefined): V5DaySt
   return 'easy';
 }
 
+/** The display register holds a NAME. Prescription syntax means it does not.
+ *
+ *  `sub_label` is written by two different kinds of author. Some rows carry a
+ *  runner-facing NAME ("THRESHOLD", "FIELD TEST", "MEDIUM-LONG"). Others carry
+ *  the whole prescription, derived from the spec by `subLabelFromSpec`
+ *  (lib/training/expand-spec.ts) — "2 mi WU · 4 mi @ T · 2 mi CD",
+ *  "3×1mi @ T pace · 60s jog", "LONG · 4mi @ MP", "EASY · 40 MIN".
+ *
+ *  Both landed in `V5Panel.type`, which the phone draws at 56pt Archivo with
+ *  `lineLimit(1)` and `minimumScaleFactor(0.5)` (FontsV5.swift:447). A
+ *  prescription therefore shrank to 28pt and then TRUNCATED — a threshold day
+ *  read "3×1MI @ T PACE · 6…" as the day's headline, losing the recovery spec
+ *  mid-number. Same defect class as the `EASY (MEDIUM)` label
+ *  `_sublabel_voice.test.ts` was written for: engine shorthand in the display
+ *  register. That test only scans for parentheses and doubled type words, so
+ *  every prescription-shaped label walked straight past it.
+ *
+ *  The prescription is not lost by rejecting it here — it is what `groups`
+ *  (Warm up / Work / Cool down) renders directly below, in full, at body size.
+ *  The headline's job is to name the day. */
+const PRESCRIPTION_SHAPE = /[@×+/]|\b(?:WU|CD)\b|\d\s*(?:mi|km|m|s|min|sec)\b|·|\.\s|\d\s*x\s*\d/i;
+
+/** The display budget for a one-line 56pt headline. "CRUISE INTERVALS" (16) is
+ *  the longest name the generator writes and the longest that holds the line
+ *  without dropping below the design's 20px Archivo floor. */
+const DISPLAY_NAME_MAX = 16;
+
+/** A `sub_label` reads as a name — short, and free of prescription syntax.
+ *
+ *  The floor matters as much as the ceiling: the pace-zone letters the engine
+ *  uses internally ("T", "I", "M", "R") are shorthand, not names, and a
+ *  one-letter 56pt headline says nothing to a runner. */
+export function subLabelIsName(subLabel: string | null | undefined): boolean {
+  const s = (subLabel ?? '').trim();
+  if (!s) return false;
+  if (s.toUpperCase() === 'REST') return false;
+  if (s.length < 3 || s.length > DISPLAY_NAME_MAX) return false;
+  return !PRESCRIPTION_SHAPE.test(s);
+}
+
+/** De-shout an enum. Only a string that is ENTIRELY uppercase is one — a label
+ *  already written as copy ("Cruise Intervals") keeps its own casing rather
+ *  than being flattened to "Cruise intervals". */
+function deshout(s: string): string {
+  if (s !== s.toUpperCase()) return s;
+  return s.charAt(0) + s.slice(1).toLowerCase();
+}
+
 /** Title-case display type ("Easy" / "Threshold" / "Long" / "Race" / "Rest").
  *  The client uppercases it at the call site (design contract, V5Panel.type
  *  doc comment) — this stays Title Case so it also reads fine anywhere the
  *  client does NOT uppercase (e.g. inside a coach-voice sentence). */
 export function displayTypeFor(plannedType: string | null | undefined, subLabel?: string | null): string {
-  if (subLabel && subLabel.trim() && subLabel.trim().toUpperCase() !== 'REST') {
-    // sub_label already carries the runner-facing name for quality/tuneup
-    // sessions ("THRESHOLD", "FIELD TEST") — title-case it rather than
-    // re-deriving from the raw type column.
-    const s = subLabel.trim();
-    return s.charAt(0) + s.slice(1).toLowerCase();
-  }
-  const word = dayStateWordFor(plannedType);
-  switch (word) {
+  // sub_label carries the runner-facing name for quality/tuneup sessions
+  // ("THRESHOLD", "FIELD TEST") — prefer it, but only when it IS a name.
+  if (subLabelIsName(subLabel)) return deshout(String(subLabel).trim());
+
+  // Otherwise name the session from its own type column. This stays finer
+  // grained than `dayStateWordFor`, which collapses every quality variant to
+  // the single gradient word "quality" — the gradient has six buckets, the
+  // headline does not have to.
+  const t = (plannedType ?? '').trim().toLowerCase();
+  switch (t) {
     case 'long': return 'Long';
     case 'race': return 'Race';
+    case 'race_week_tuneup': return 'Tune-up';
+    case 'threshold': return 'Threshold';
+    case 'tempo': return 'Tempo';
+    case 'intervals': return 'Intervals';
+    case 'fartlek': return 'Fartlek';
+    case 'progression': return 'Progression';
+    case 'vo2max': return 'VO2 max';
     case 'quality': return 'Quality';
-    case 'rest': return 'Rest';
+    case 'recovery': return 'Recovery';
+    case 'rest': case '': case 'unplanned': return 'Rest';
     default: return 'Easy';
   }
 }
