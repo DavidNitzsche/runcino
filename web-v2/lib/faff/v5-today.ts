@@ -222,6 +222,19 @@ export interface V5Today {
 
   askedVsRan: V5Row[];
   verdict: string | null;
+  /// The recap's own supporting sentences, under the verdict. One or two,
+  /// plain English, already composed by `lib/coach/run-recap.ts` — quoted
+  /// verbatim, never re-worded here, the same contract `coachLine` keeps.
+  facts: string[];
+  /// The four-to-ten word line `lib/coach/run-win.ts` writes when the run has
+  /// a real thing to point at. Null far more often than not, and a null is the
+  /// engine declining, not a gap to fill.
+  win: string | null;
+  /// What the weather did to the session, when it did anything. Null on a
+  /// neutral day, and a neutral day must draw nothing rather than a heading.
+  conditionsNote: string | null;
+  /// Forward-looking, and the only sentence here that is about next time.
+  coachTip: string | null;
   zoneShares: number[] | null;
   zoneTarget: number | null;
   /// Every zone the session asked for, ascending. A race prescribes a SET —
@@ -459,6 +472,17 @@ export interface V5RecentRunCtx {
   speedMph: number | null;
   inclinePct: number | null;
   askedPaceSPerMi: number | null;
+  /**
+   * The distance the plan asked for, in miles. Null on a day with no plan row.
+   *
+   * THE TABLE IS CALLED ASKED VS RAN AND HAD NO DISTANCE IN IT. Pace, heart
+   * and effort, on a day the runner covered 11.0 miles against a prescribed 5
+   * — the single largest thing that happened to that session, and the one
+   * reading the screen did not carry. `plannedMi` reached `deriveRecap` and
+   * was read by no branch there either; this is the same number, finally
+   * arriving somewhere it is printed.
+   */
+  askedMi: number | null;
   askedHrCap: number | null;
   /**
    * True only when `askedHrCap` resolved from `workout_spec.hr_cap_bpm` — a
@@ -476,6 +500,22 @@ export interface V5RecentRunCtx {
   effortAsked: { lo: number; hi: number } | null;
   effortLogged: number | null;
   verdict: string | null;
+  /**
+   * The rest of what `deriveRecap` wrote, which until now stopped here.
+   *
+   * The recap engine returns four things — a verdict, one or two plain-English
+   * facts, an optional forward-looking tip and an optional conditions note —
+   * and `run-win.ts` adds a fifth. This context took the verdict and dropped
+   * the others on the floor, so the sentences were composed, returned,
+   * decoded by `RunRecap` on the phone, and never drawn.
+   *
+   * Empty array / null are honest absences: `deriveRecap` genuinely returns no
+   * conditions note on a neutral day and no win when the signal is too thin.
+   */
+  facts: string[];
+  win: string | null;
+  conditionsNote: string | null;
+  coachTip: string | null;
   zoneShares: number[] | null;
   zoneTarget: number | null;
   zoneTargets: number[] | null;
@@ -786,6 +826,33 @@ function buildRecentRun(r: V5RecentRunCtx): {
    * are both safe.
    */
   const shownPaceSPerMi = reconcilePaceWithClock(r.distanceMi, r.durationSec, r.paceSPerMi);
+  // DISTANCE LEADS, because it is the first thing that can differ and the
+  // only one that changes what every row under it means. A pace read across
+  // 11 miles is not a pace read across the 5 that were asked for, and a
+  // reader who does not know the distance moved cannot interpret the three
+  // rows below.
+  //
+  // NO TONE, DELIBERATELY, and this is the one row where that needs saying
+  // out loud. Eleven against five is unambiguous arithmetic, so unlike pace
+  // there is no honest-band problem — the reason the row stays uncoloured is
+  // the other rule. A runner who feels good and adds six miles has not
+  // failed anything; a runner who cut a long run short for a reason the coach
+  // would have agreed with has not either. Amber on this row would grade both
+  // as faults, and the screen does not know which happened. It states both
+  // numbers and lets the verdict — which HAS the context — do the talking.
+  //
+  // The row appears even when the two agree. A table called asked-vs-ran that
+  // shows distance only when it went wrong is a table that means something
+  // different on a good day, and the runner learns to read its absence.
+  const askedMiText = fmtMi(r.askedMi);
+  if (askedMiText) {
+    askedVsRan.push({
+      id: 'distance', label: 'Distance',
+      sub: `asked ${askedMiText}`,
+      value: num(fmtMi(r.distanceMi), false),
+      action: null,
+    });
+  }
 
   // Pace's tone is left unset here on purpose. There is no context-aware
   // band available to this composer for a whole-run average — no tolerance,
@@ -939,6 +1006,10 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   paceNote: null,
   askedVsRan: [],
   verdict: null,
+  facts: [],
+  win: null,
+  conditionsNote: null,
+  coachTip: null,
   zoneShares: null,
   zoneTarget: null,
   zoneTargets: null,
@@ -1074,6 +1145,12 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.paceNote = ctx.paceNote;
     t.askedVsRan = built.askedVsRan;
     t.verdict = ctx.recentRun.verdict;
+    // QUOTED, NEVER RE-WRITTEN. One voice, one composer — the same rule
+    // `coachLine` keeps above. This branch's only job is to stop dropping them.
+    t.facts = ctx.recentRun.facts;
+    t.win = ctx.recentRun.win;
+    t.conditionsNote = ctx.recentRun.conditionsNote;
+    t.coachTip = ctx.recentRun.coachTip;
     t.zoneShares = ctx.recentRun.zoneShares;
     t.zoneTarget = ctx.recentRun.zoneTarget;
     t.zoneTargets = ctx.recentRun.zoneTargets;

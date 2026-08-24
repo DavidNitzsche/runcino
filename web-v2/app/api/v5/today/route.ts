@@ -32,6 +32,7 @@ import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeW
 import { prescriptionFor, derivePaces, type WorkoutType as PrescriptionWorkoutType } from '@/lib/training/prescriptions';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { deriveRecap } from '@/lib/coach/run-recap';
+import { deriveWin } from '@/lib/coach/run-win';
 import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 import { runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
@@ -568,27 +569,39 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       const durationSec = Number(data.durationSec) || Number(data.movingTimeS) || Number(data.elapsedTimeS) || null;
       const paceSPerMi = Number(data.paceSPerMi) || (durationSec && distanceMi ? durationSec / distanceMi : null);
 
+      // The watch's own completion payload for this day.
+      //
+      // THIS QUERY USED TO RUN ONLY FOR A TREADMILL, which is why the win
+      // line composed on this route never saw a rep. `deriveWin`'s interval
+      // branch prefers real phases and falls back to a per-mile heuristic
+      // when it has none — and on the one run type where per-rep detail is
+      // the whole story, this route was always handing it the fallback. The
+      // recap route has read the same row unconditionally all along; the two
+      // now agree. Same SQL, same `#HHmm`-tolerant field match — see
+      // `lib/coach/run-state.ts` loadPhaseBreakdown for that regex's history.
+      const intent = (await pool.query<{ value: any }>(
+        `SELECT value FROM coach_intents
+          WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
+            AND (CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
+                      THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
+                      ELSE ts::date = $2::date END)
+          ORDER BY ts DESC LIMIT 1`,
+        [userId, today],
+      ).catch(() => ({ rows: [] as any[] }))).rows[0];
+      let completion: any = intent?.value ?? null;
+      if (typeof completion === 'string') { try { completion = JSON.parse(completion); } catch { completion = null; } }
+      const completionPhases: any[] = Array.isArray(completion?.phases) ? completion.phases : [];
+
       // Treadmill telemetry — averaged across watch_completion phases
       // (Gap B12). Speed/incline live per-phase, not on the run row itself.
       let speedMph: number | null = null, inclinePct: number | null = null;
       if (indoor) {
-        const intent = (await pool.query<{ value: any }>(
-          `SELECT value FROM coach_intents
-            WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
-              AND (CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
-                        THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
-                        ELSE ts::date = $2::date END)
-            ORDER BY ts DESC LIMIT 1`,
-          [userId, today],
-        ).catch(() => ({ rows: [] as any[] }))).rows[0];
-        let payload: any = intent?.value ?? null;
-        if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
         // 2026-08-21 · this was a PLAIN mean over every phase in the
         // payload — including phases the runner never reached (which carry
         // the plan's nominal target by design, and no duration), and
         // weighting a 2-minute recovery the same as a 20-minute work block.
         // See lib/runs/belt-averages.ts for the argument and the tests.
-        const belt = beltAverages(payload?.phases);
+        const belt = beltAverages(completionPhases);
         speedMph = belt.speedMph;
         inclinePct = belt.inclinePct;
       }
@@ -647,9 +660,41 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         avgHr: data.avgHr != null ? Number(data.avgHr) : null,
         indoor, speedMph, inclinePct,
         askedPaceSPerMi, askedHrCap, askedHrIsHardCap,
+        // The same number this route already hands `deriveRecap` as
+        // `plannedMi`, now also reaching the table named asked-vs-ran.
+        askedMi: todayPlan?.distanceMi ?? null,
         effortAsked: null,
         effortLogged: rpe?.rpe ?? null,
         verdict: recap.verdict,
+        // `deriveRecap` returns four sentences and this route was forwarding
+        // one. The other three were composed on every request and discarded.
+        facts: recap.facts,
+        conditionsNote: recap.conditions_note,
+        coachTip: recap.coach_tip,
+        win: deriveWin({
+          type: purposeType, phase: purposePhase,
+          plannedMi: todayPlan?.distanceMi ?? 0,
+          plannedPaceSPerMi: askedPaceSPerMi,
+          plannedHrCap: askedHrCap,
+          actualMi: distanceMi,
+          actualPaceSPerMi: paceSPerMi,
+          actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
+          splits: Array.isArray(data.splits) ? data.splits : undefined,
+          verdict: recap.verdict,
+          weather: null,
+          indoor,
+          source: typeof data.source === 'string' ? data.source : undefined,
+          phases: completionPhases.length > 0
+            ? completionPhases.map((p: any) => ({
+                type: p.type ?? null,
+                verdict: p.verdict ?? null,
+                actualPaceSPerMi: Number(p.actualPaceSPerMi) || null,
+                targetPaceSPerMi: Number(p.targetPaceSPerMi) || null,
+                actualDistanceMi: Number(p.actualDistanceMi) || null,
+                isFinishSegment: p.isFinishSegment === true,
+              }))
+            : undefined,
+        }),
         zoneShares,
         // The race row's zone is its DISTANCE's row in Research/08 §6.1, so the
         // planned distance has to travel with the type. `zoneTarget` stays for

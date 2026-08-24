@@ -220,6 +220,29 @@ function recentRunFor(cell: Cell): V5TodayContext['recentRun'] {
     speedMph: r.speedMph,
     inclinePct: r.inclinePct,
     askedPaceSPerMi: cell.state === 'race_day' ? null : 537,
+    // ASKED DISTANCE, varied deliberately rather than nulled. A fixture that
+    // sets a new field to null everywhere adds a column to the matrix and
+    // exercises nothing — the sweep would report thousands of fresh cells and
+    // have tested the absence branch alone. Three readings are covered here:
+    // the two numbers agreeing, a genuine overshoot, and an honest absence on
+    // a day nothing was prescribed.
+    //
+    // The overshoot is not invented: `bad_merge_337` IS his 2026-08-23 row,
+    // and the prescription that day was 5 miles against the 11.01 he ran. So
+    // that cell now carries both of that row's defects at once — a pace its
+    // own clock disproves, and a distance row where asked and ran differ by
+    // more than double.
+    askedMi: cell.state === 'off_season' || cell.state === 'no_goal'
+      ? null
+      : (cell.shape === 'bad_merge_337' ? 5 : r.distanceMi),
+    // The four recap strings that were composed, returned, decoded and never
+    // drawn. Non-empty on the nominal path so a rule that asserts they REACH
+    // a surface can fail if they stop; null/[] where deriveRecap genuinely
+    // returns nothing, so the absence branch stays covered too.
+    facts: r.avgHr != null ? ['Your heart rate held steady through the second half.'] : [],
+    win: cell.shape === 'zero_runs' ? null : 'Longest run of the block so far.',
+    conditionsNote: r.indoor ? null : 'It was 78 degrees and humid.',
+    coachTip: cell.state === 'race_week' ? 'Keep the next two days short.' : null,
     askedHrCap: r.avgHr != null ? 146 : null,
     askedHrIsHardCap: cell.state === 'base' || cell.state === 'peak',
     effortAsked: { lo: 2, hi: 4 },

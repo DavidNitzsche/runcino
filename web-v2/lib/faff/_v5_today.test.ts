@@ -136,6 +136,8 @@ describe('composeV5Today · state precedence', () => {
         // cap (spec-builder.ts only emits hr_cap_bpm for easy/long/
         // recovery) — false here, matching production for this workout type.
         askedHrIsHardCap: false,
+        askedMi: 8,
+        facts: [], win: null, conditionsNote: null, coachTip: null,
         effortAsked: { lo: 6, hi: 8 }, effortLogged: 7,
         verdict: 'Banked the threshold.',
         zoneShares: [8, 26, 14, 46, 6], zoneTarget: 4, zoneTargets: [4],
@@ -146,7 +148,8 @@ describe('composeV5Today · state precedence', () => {
       },
     }));
     expect(out.state).toBe('after_run');
-    expect(out.askedVsRan).toHaveLength(3);
+    // Four rows, not three. Distance leads — see buildRecentRun's note.
+    expect(out.askedVsRan.map((r) => r.id)).toEqual(['distance', 'pace', 'heart', 'effort']);
     expect(out.askedVsRan.find((r) => r.id === 'effort')?.action).toBeNull(); // already logged
     expect(out.zoneShares).toEqual([8, 26, 14, 46, 6]);
     expect(out.elevation).toEqual([0, 12, 8, 20]);
@@ -168,6 +171,8 @@ describe('composeV5Today · state precedence', () => {
         runId: 'r2', distanceMi: 6, durationSec: 3000, paceSPerMi: 500,
         avgHr: 140, indoor: true, speedMph: 7.2, inclinePct: 1.5,
         askedPaceSPerMi: null, askedHrCap: null, askedHrIsHardCap: false,
+        askedMi: null,
+        facts: [], win: null, conditionsNote: null, coachTip: null,
         effortAsked: null, effortLogged: null,
         verdict: 'Easy miles banked.',
         zoneShares: [40, 50, 10, 0, 0], zoneTarget: null, zoneTargets: [],
@@ -200,6 +205,8 @@ describe('composeV5Today · state precedence', () => {
         // Easy day → askedHrCap really is hr_cap_bpm in production, so this
         // fixture marks it a hard cap and breaches it (160 > 150).
         askedPaceSPerMi: 500, askedHrCap: 150, askedHrIsHardCap: true,
+        askedMi: null,
+        facts: [], win: null, conditionsNote: null, coachTip: null,
         effortAsked: { lo: 2, hi: 4 }, effortLogged: 7, // well outside the band
         verdict: 'Easy done, but it ran hot.',
         zoneShares: null, zoneTarget: null, zoneTargets: [],
@@ -230,6 +237,8 @@ describe('composeV5Today · state precedence', () => {
         // read as a miss when reaching it was the point.
         avgHr: 172, indoor: false, speedMph: null, inclinePct: null,
         askedPaceSPerMi: 410, askedHrCap: 168, askedHrIsHardCap: false,
+        askedMi: null,
+        facts: [], win: null, conditionsNote: null, coachTip: null,
         effortAsked: null, effortLogged: null,
         verdict: 'Banked the threshold.',
         zoneShares: null, zoneTarget: 4, zoneTargets: [4],
@@ -422,6 +431,8 @@ describe('composeV5Today · state precedence', () => {
           runId: 'r1', distanceMi: 6, durationSec: 3234, paceSPerMi: 539,
           avgHr: 141, indoor: false, speedMph: null, inclinePct: null,
           askedPaceSPerMi: null, askedHrCap: null, askedHrIsHardCap: false,
+          askedMi: null,
+          facts: [], win: null, conditionsNote: null, coachTip: null,
           effortAsked: null, effortLogged: null,
           verdict: 'Held it honestly.',
           zoneShares: [30, 55, 15, 0, 0], zoneTarget: null, zoneTargets: [],

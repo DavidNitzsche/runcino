@@ -141,6 +141,12 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
     surface: { file: 'web-v2/app/api/coach/intents/route.ts', token: 'reason' },
   },
   {
+    id: 'coach_intents.value',
+    verdict: 'surfaced',
+    holds: 'The watch completion, phase by phase: per-rep target, actual, HR, the device verdict (hit/drifted/missed/incomplete) and its seconds in and out of the pace band.',
+    surface: { file: 'web-v2/lib/coach/run-state.ts', token: 'time_in_tolerance_sec' },
+  },
+  {
     id: 'plan_proposals.reasons',
     verdict: 'surfaced',
     holds: 'The reasons a replan is being proposed. Rendered on the proposal card.',

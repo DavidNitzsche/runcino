@@ -426,6 +426,23 @@ struct V5Today: Decodable, Equatable {
     /// The asked-vs-ran table. Effort is the only tappable row.
     let askedVsRan: [V5Row]
     let verdict: String?
+    /// The recap's supporting sentences, under the verdict.
+    ///
+    /// `deriveRecap` has returned four things since it was written — a
+    /// verdict, one or two plain-English facts, an optional forward-looking
+    /// tip and an optional conditions note — and this screen took the verdict.
+    /// The others were composed on every request and dropped. One or two
+    /// short sentences; empty is a real answer.
+    let facts: [String]
+    /// `lib/coach/run-win.ts`'s four-to-ten word line, when the run has a real
+    /// thing to point at. Null far more often than not, and a null is the
+    /// engine declining rather than a gap to fill.
+    let win: String?
+    /// What the weather did to the session. Null on a neutral day, and a
+    /// neutral day draws nothing rather than a heading over nothing.
+    let conditionsNote: String?
+    /// The only sentence here that is about next time.
+    let coachTip: String?
     /// Percent in each of five zones.
     let zoneShares: [Double]?
     /// The zone(s) the session asked for, ascending.
@@ -1266,6 +1283,7 @@ extension V5Today {
         case shoesWorn, whatThisDidToTheWeek, runId
         case changed, injury, weekOff, offSeason, notOnPhoneYet
         case paceNote, sick
+        case facts, win, conditionsNote, coachTip
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -1279,6 +1297,10 @@ extension V5Today {
         beforeYouGo = c.list(.beforeYouGo)
         askedVsRan = c.list(.askedVsRan)
         verdict = c.opt(.verdict)
+        facts = c.list(.facts)
+        win = c.opt(.win)
+        conditionsNote = c.opt(.conditionsNote)
+        coachTip = c.opt(.coachTip)
         zoneShares = c.opt(.zoneShares)
         zoneTargets = c.opt(.zoneTargets)
         zoneTarget = c.opt(.zoneTarget)
