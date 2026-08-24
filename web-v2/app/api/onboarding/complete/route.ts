@@ -77,66 +77,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { dayKeyInTz } from '@/lib/runtime/day-key';
-import {
-  HIST_AVG_MIDPOINTS,
-  HIST_LONG_MIDPOINTS,
-  type HistAvg,
-  type HistLong,
-  type HistYears,
-  type TTDistance,
-  type WeeklyMileage,
-  type WeeklyFrequency,
-  type RaceHistoryEntry,
-  type RaceHistoryDistance,
-  type RaceHistoryWhen,
-} from '@/lib/onboarding/state';
+import { deriveOnboardingComplete, isRefusal } from '@/lib/onboarding/complete-inputs';
 import { seedMaintenancePlanFromOnboarding } from '@/lib/plan/seed-from-onboarding';
 import { generatePlan } from '@/lib/plan/generate';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { distanceMiFromLabel } from '@/lib/race/distance'; // 2026-07-06 · P1-17 · shared label→mi parser
 
-const VALID_DISTANCES = new Set(['5k', '10k', 'half', 'marathon', 'none', 'coached']);
-const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
-const VALID_WEEKLY_MI = new Set<WeeklyMileage>([0, 5, 15, 25, 35, 45, 55, 65, 75, 85, 95]);
-const VALID_FREQ = new Set<WeeklyFrequency>([0, 1, 2, 3, 4, 5, 6]);
-const VALID_EXPERIENCE = new Set<string>(['beginner', 'intermediate', 'advanced', 'advanced_plus']);
-// ZEROSAY-1 (2026-08-19) · '0' on both ladders · see lib/onboarding/state.ts.
-const VALID_HIST_AVG = new Set<HistAvg>(['0', '0-5', '5-15', '15-25', '25-35', '35+', '45+', '45-60', '60-80', '80+']);
-const VALID_HIST_LONG = new Set<HistLong>(['0', '0-3', '3-6', '6-10', '10+', '10-16', '16-22', '22+']);
-const VALID_HIST_YEARS = new Set<HistYears>(['<1', '1-3', '3-7', '7+']);
-const VALID_RACE_HIST_DISTANCES = new Set<RaceHistoryDistance>(['5k', '10k', 'half', 'marathon', 'other']);
-const VALID_RACE_HIST_WHEN = new Set<RaceHistoryWhen>(['<6mo', '6-12mo', '1-2yr', '2+yr']);
-const RACE_HISTORY_MAX_ENTRIES = 3;
-
-/** Validate + normalize the body.raceHistory array. Skips bad entries
- *  rather than rejecting the whole request · partial-input tolerance. */
-function validateRaceHistory(raw: unknown): RaceHistoryEntry[] {
-  if (!Array.isArray(raw)) return [];
-  const out: RaceHistoryEntry[] = [];
-  for (const item of raw) {
-    if (out.length >= RACE_HISTORY_MAX_ENTRIES) break;
-    if (!item || typeof item !== 'object') continue;
-    const r = item as Record<string, unknown>;
-    const distance = r.distance as string | undefined;
-    const timeSec = Number(r.timeSec);
-    const whenRaced = r.whenRaced as string | undefined;
-    if (!distance || !VALID_RACE_HIST_DISTANCES.has(distance as RaceHistoryDistance)) continue;
-    if (!Number.isFinite(timeSec) || timeSec < 60 || timeSec > 3600 * 50) continue;
-    if (!whenRaced || !VALID_RACE_HIST_WHEN.has(whenRaced as RaceHistoryWhen)) continue;
-    const entry: RaceHistoryEntry = {
-      distance: distance as RaceHistoryDistance,
-      timeSec: Math.round(timeSec),
-      whenRaced: whenRaced as RaceHistoryWhen,
-    };
-    if (distance === 'other') {
-      const otherMi = Number(r.otherDistanceMi);
-      if (!Number.isFinite(otherMi) || otherMi <= 0 || otherMi > 200) continue;
-      entry.otherDistanceMi = otherMi;
-    }
-    out.push(entry);
-  }
-  return out;
-}
+// The validators and the derivation moved to lib/onboarding/complete-inputs.ts
+// (2026-08-24, byte-identical) so the front door can be walked with no
+// database, no session and no HTTP. This route is the only production caller;
+// `lib/onboarding/_onboarding_e2e.test.ts` is the other one.
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -146,170 +96,29 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
-  // ── Validate inputs ──────────────────────────────────────────────
-  const distance = typeof body.distance === 'string' && VALID_DISTANCES.has(body.distance)
-    ? body.distance : null;
-  if (!distance) {
-    return NextResponse.json({ error: 'distance is required' }, { status: 400 });
-  }
-
-  // 'coached' (2026-06-10 · fifth onboarding mode): the runner's own
-  // coach owns the plan. Not a race path, not a maintenance path —
-  // Faff authors NOTHING and acts as the measurement layer.
-  const isCoached = distance === 'coached';
-  const isRace = distance !== 'none' && !isCoached;
-  const date: string | null = isRace && isValidDate(body.date) ? body.date : null;
-  if (isRace && !date) {
-    return NextResponse.json({ error: 'race date is required when a race distance is picked' }, { status: 400 });
-  }
-
-  const time: string | null = isValidTime(body.time) ? body.time : null;
-
-  const name = typeof body.name === 'string' ? body.name.trim() : '';
-  if (!name) {
-    return NextResponse.json({ error: 'name is required' }, { status: 400 });
-  }
-
-  const timezone = typeof body.timezone === 'string' && body.timezone.length > 0
-    ? body.timezone : null;
-  if (!timezone) {
-    return NextResponse.json({ error: 'timezone is required' }, { status: 400 });
-  }
-
-  const connectionsSkipped = Boolean(body.connectionsSkipped);
-
-  // ── Step 1b fields ──────────────────────────────────────────────
-  // 2026-06-10: volume + history persist on EVERY running path now —
-  // race paths walk Step 1b too, because a cold-start race plan needs
-  // a self-reported baseline (generate.ts seeds recentWeeklyMi /
-  // recentLongMi from these when run history is empty). TT goal stays
-  // no-race-only (a race-path runner already named their goal). Null is
-  // always fine — coached posts none of these.
-  const ttDistance = !isRace && typeof body.ttDistance === 'string'
-      && VALID_TT_DISTANCES.has(body.ttDistance as TTDistance)
-    ? (body.ttDistance as TTDistance) : null;
-  const ttTime = !isRace && ttDistance && typeof body.ttTime === 'string'
-      && body.ttTime.length > 0 && body.ttTime.length <= 32
-    ? body.ttTime : null;
-  // 2026-06-15 · exact goal time in seconds (native sends it for goal mode).
-  // Drives the goal-readiness projection precisely instead of the ±1.5min
-  // bucket midpoint. Stored in user_settings (no migration); read back by
-  // loadGoalReadyProjection. Sane band: 3:00–4:00:00.
-  const ttTimeSeconds = !isRace && ttDistance
-      && Number.isFinite(Number(body.ttTimeSeconds))
-      && Number(body.ttTimeSeconds) >= 180 && Number(body.ttTimeSeconds) <= 14400
-    ? Math.round(Number(body.ttTimeSeconds)) : null;
-  const weeklyMi = Number.isFinite(Number(body.weeklyMi))
-      && VALID_WEEKLY_MI.has(Number(body.weeklyMi) as WeeklyMileage)
-    ? (Number(body.weeklyMi) as WeeklyMileage) : null;
-  const weeklyFreq = Number.isFinite(Number(body.weeklyFreq))
-      && VALID_FREQ.has(Number(body.weeklyFreq) as WeeklyFrequency)
-    ? (Number(body.weeklyFreq) as WeeklyFrequency) : null;
-  const histAvg = typeof body.histAvg === 'string'
-      && VALID_HIST_AVG.has(body.histAvg as HistAvg)
-    ? (body.histAvg as HistAvg) : null;
-  const histLong = typeof body.histLong === 'string'
-      && VALID_HIST_LONG.has(body.histLong as HistLong)
-    ? (body.histLong as HistLong) : null;
-  const histYears = typeof body.histYears === 'string'
-      && VALID_HIST_YEARS.has(body.histYears as HistYears)
-    ? (body.histYears as HistYears) : null;
-  // Self-reported experience level (onboarding asks it directly now). Persists
-  // to profile.experience_level (migration 106) — the cold-start input that
-  // runner-calibration + the plan volume curve read. Previously this field was
-  // accepted by JSON parse and dropped on the floor, so every onboarded runner
-  // fell to the intermediate default regardless of what they picked.
-  const experienceLevelRaw = (typeof body.experienceLevel === 'string'
-      && VALID_EXPERIENCE.has(body.experienceLevel))
-    ? body.experienceLevel : null;
-  // CAP-2 (2026-06-23) · the WEB onboarding deck doesn't ask experience directly (native does), so a
-  // web signup would fall to the intermediate default → ±20mi/wk mis-tier vs native. Derive it from
-  // the years-running + mileage the web deck DOES capture: <1yr or sub-15mpw → beginner; experienced
-  // (3-7/7+yr) AND 35+mpw → advanced; else intermediate. Native (sends experienceLevel) is unaffected.
-  // CAP-2-NULL (2026-08-19) · the `: 'intermediate'` fallthrough below is a
-  // DEFAULT for a runner whose answers reached neither beginner nor advanced.
-  // It was also
-  // catching the runner who answered NOTHING: coached onboarding deliberately
-  // posts no volume and no history (see the coached branch below), so every
-  // coached runner was stamped `experience_level: 'intermediate'` off an empty
-  // form. `qa-coached-…` carries it today with nothing behind it. Harmless
-  // while Faff authors them no plan, and load-bearing the moment they switch
-  // modes — a tier is a ±20 mi/wk claim. With no evidence, write no tier:
-  // `experience_level` is nullable, both statements below pass it straight
-  // through, and the UPDATE's COALESCE keeps any value the runner set earlier.
-  const hasExperienceEvidence = histYears != null || histAvg != null
-    || histLong != null || weeklyMi != null;
-  const experienceLevel: string | null = experienceLevelRaw ?? (!hasExperienceEvidence ? null : (
-    // ZEROSAY-1 · '0' is below '0-5', so it is beginner by the same rule.
-    (histYears === '<1' || histAvg === '0' || histAvg === '0-5' || histAvg === '5-15') ? 'beginner'
-    : ((histYears === '3-7' || histYears === '7+')
-        && (histAvg === '35+' || histAvg === '45+'
-            || histAvg === '45-60' || histAvg === '60-80' || histAvg === '80+')) ? 'advanced'
-    : 'intermediate'
-  ));
-
-  // 2026-06-03 · race history capture (TASK B4). Accepted on EITHER
-  // path · first-race runners on either race or no-race path drive
-  // voice-band → calibration · prior race finishers → guided/challenge.
-  const raceHistory = validateRaceHistory(body.raceHistory);
-
-  // Convert chip ranges → integer midpoints for the DB (history_* columns).
-  // The original chip strings are still recoverable from the bucket order
-  // if we ever want them back; for plan-gen we only need a numeric seed.
-  const histAvgMi = histAvg ? HIST_AVG_MIDPOINTS[histAvg] : null;
-  const histLongMi = histLong ? HIST_LONG_MIDPOINTS[histLong] : null;
-
-  // ── Sync users.timezone (canonical) + users.name + sex/age ───────
-  // The data plan §2 names users.timezone as the canonical timezone
-  // column (read by state-loader, briefing time logic). Without this
-  // mirror, the onboarding runner's tz lives in profile.timezone only
-  // and the coach engine never sees it — Q-07 in OPEN_QUESTIONS.md.
+  // ── Validate + derive ────────────────────────────────────────────
+  // Every validator, every fallback and every derivation lives in
+  // lib/onboarding/complete-inputs.ts. `timezone` is read here first only
+  // because `dayKeyInTz` needs it to resolve the runner's own today, which
+  // the start-date clamp measures against.
   //
-  // 2026-05-30 pass-4: also accept birthday / sex / height_cm from the
-  // onboarding body. Per docs/ONBOARDING_AUDIT.md T2-physiology, these
-  // SHOULD be asked at onboarding (not as a separate profile edit weeks
-  // later). UI form upgrades coming; backend accepts them now so the
-  // form can wire any time without another API change.
-  const birthday = typeof body.birthday === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.birthday)
-    ? body.birthday : null;
-  const sex = typeof body.sex === 'string' && /^(M|F|m|f|male|female)$/i.test(body.sex)
-    ? (body.sex.toUpperCase().startsWith('M') ? 'M' : 'F') : null;
-  const heightCm = Number.isFinite(Number(body.height_cm))
-    && Number(body.height_cm) >= 120 && Number(body.height_cm) <= 230
-    ? Number(body.height_cm) : null;
-  const ageNum = birthday ? (() => {
-    const b = new Date(birthday + 'T12:00:00Z');
-    if (isNaN(b.getTime())) return null;
-    const now = new Date();
-    let a = now.getUTCFullYear() - b.getUTCFullYear();
-    const before = now.getUTCMonth() < b.getUTCMonth() ||
-      (now.getUTCMonth() === b.getUTCMonth() && now.getUTCDate() < b.getUTCDate());
-    if (before) a--;
-    return (a >= 13 && a <= 100) ? a : null;
-  })() : null;
-
-  // 2026-06-10 · scheduling (David: "ask when they want to start · what
-  // day the long runs should be on"). longRunDay → user_settings.long_run_day
-  // (the jsonb field the generator reads via loadSettings). startDate →
-  // the plan's week-0 anchor (clamped to [runner-today, +21d]). Both null
-  // on coached + legacy clients; generators then default (today / Sunday).
-  const VALID_DAY_KEYS = new Set(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']);
-  const longRunDay = typeof body.longRunDay === 'string' && VALID_DAY_KEYS.has(body.longRunDay)
-    ? (body.longRunDay as string) : null;
-  // Rest day must not collide with the long run; the generator overwrites
-  // a shared slot with the long and would leave the week rest-less.
-  const restDay = longRunDay ? (longRunDay === 'sat' ? 'mon' : 'sat') : null;
   // dayKeyInTz carries the same UTC fallback for an unparseable zone, but
   // keeps the "which day is it for this runner" question in one place
   // (lib/runtime/day-key.ts) instead of an inline try/catch per caller.
-  const todayInTz = dayKeyInTz(new Date(), timezone);
-  const startDate = (() => {
-    if (typeof body.startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.startDate)) return null;
-    const hi = new Date(todayInTz + 'T12:00:00Z');
-    hi.setUTCDate(hi.getUTCDate() + 21);
-    const hiISO = hi.toISOString().slice(0, 10);
-    return (body.startDate >= todayInTz && body.startDate <= hiISO) ? body.startDate : null;
-  })();
+  const tzForToday = typeof body.timezone === 'string' && body.timezone.length > 0
+    ? body.timezone : 'UTC';
+  const todayInTz = dayKeyInTz(new Date(), tzForToday);
+  const derived = deriveOnboardingComplete(body, todayInTz);
+  if (isRefusal(derived)) {
+    return NextResponse.json({ error: derived.error }, { status: derived.status });
+  }
+  const {
+    distance, isCoached, isRace, date, time, name, timezone, connectionsSkipped,
+    ttDistance, ttTime, ttTimeSeconds, weeklyMi, weeklyFreq,
+    histAvg, histLong, histYears, experienceLevel, raceHistory,
+    histAvgMi, histLongMi, birthday, sex, heightCm, ageNum,
+    longRunDay, restDay, startDate,
+  } = derived;
   // The user_settings patch merged into profile.user_settings (jsonb).
   const settingsPatch: Record<string, unknown> = { coached_externally: isCoached };
   if (longRunDay) { settingsPatch.long_run_day = longRunDay; settingsPatch.rest_day = restDay; }
@@ -668,13 +477,6 @@ export async function POST(req: NextRequest) {
     redirect: '/onboarding?step=done',
     ...(seedPlan ? { plan: seedPlan } : {}),
   });
-}
-
-function isValidDate(v: any): v is string {
-  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
-}
-function isValidTime(v: any): v is string {
-  return typeof v === 'string' && /^\d{1,2}:\d{2}(:\d{2})?$/.test(v);
 }
 
 /** Slug for the races row. Mirrors POST /api/race's slugify exactly so
