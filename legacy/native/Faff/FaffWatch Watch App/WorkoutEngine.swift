@@ -2213,6 +2213,13 @@ final class WorkoutEngine: ObservableObject {
     // from the recovery point. Completed phases carry their full timelines
     // through `results`.
 
+    /// One recorded split, in a Codable shape — the live `mileSplits` is a
+    /// tuple, which Codable cannot synthesise.
+    struct SnapshotSplit: Codable, Equatable {
+        let unitIndex: Int
+        let sec: Int
+    }
+
     struct RunSnapshot: Codable {
         let workoutId: String
         /// The full WatchWorkout payload, JSON-encoded — recovery rebuilds
@@ -2225,6 +2232,11 @@ final class WorkoutEngine: ObservableObject {
         let phaseElapsedSec: Int
         let phaseStartMi: Double
         let results: [WatchCompletionPhase]
+        /// Every unit boundary crossed so far. Decoded leniently so a snapshot
+        /// written before this field still restores — a run that survived a
+        /// crash losing its splits is a smaller loss than one that will not
+        /// restore at all.
+        var mileSplits: [SnapshotSplit]?
         let savedAtEpoch: Double
 
         // ─── The wrist decisions (0821 · 2026-08-21) ─────────────────
@@ -2317,6 +2329,7 @@ final class WorkoutEngine: ObservableObject {
             phaseElapsedSec: phaseElapsedSec,
             phaseStartMi: phaseStartMi,
             results: results,
+            mileSplits: mileSplits.map { SnapshotSplit(unitIndex: $0.unitIndex, sec: $0.sec) },
             savedAtEpoch: Date.now.timeIntervalSince1970,
             decisions: decisionsForSnapshot
         )
@@ -2346,6 +2359,10 @@ final class WorkoutEngine: ObservableObject {
         planComplete = snap.planComplete || snap.currentIndex >= count
         bankedSec = snap.bankedSec
         results = snap.results
+        // A recovered run keeps the miles it already ran. Without this the
+        // receipt fell back to one row per work phase — the same defect the
+        // finish summary had, arriving by a different door.
+        mileSplits = (snap.mileSplits ?? []).map { (unitIndex: $0.unitIndex, sec: $0.sec) }
         workoutStart = Date(timeIntervalSince1970: snap.startedAtEpoch)
         // Continue the phase clock from where the last snapshot left it.
         // The dead window (crash → relaunch) is NOT credited to the phase —
