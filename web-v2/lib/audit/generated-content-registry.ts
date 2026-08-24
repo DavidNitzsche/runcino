@@ -376,6 +376,8 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'A GATE. Same as sql-scan.ts.',
   'web-v2/lib/audit/generated-content-registry.ts':
     'A GATE. This file.',
+  'web-v2/lib/faff/surface-sweep-matrix.ts':
+    'A GATE. Same shape as the doctrine registry: the runner states, data shapes, boundaries and rules that _surface_sweep.test.ts and check-surface-sweep.sh drive, never consulted at runtime. It is deliberately a separate module rather than inlined in the test so the cold half of check-surface-sweep.sh can count the axes and the rules with sed on a container that has no toolchain.',
   'web-v2/lib/plan/synthetic-runners.ts':
     'Test fixtures for the plan-engine bench. Test-only is correct.',
   'web-v2/lib/faff/personas.ts':

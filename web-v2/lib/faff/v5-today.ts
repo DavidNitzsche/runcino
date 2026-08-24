@@ -52,6 +52,10 @@
  *     file quotes it rather than re-writing it, so the voice cannot fork.
  */
 
+// The only import this file has. `lib/runs/run-shape.ts` imports nothing
+// itself, so the composer stays pure and unit-testable without a database.
+import { reconcilePaceWithClock } from '../runs/run-shape';
+
 // ─────────────────────────────────────────────────────────────────────────
 // Wire types — one-to-one with APIV5.swift
 // ─────────────────────────────────────────────────────────────────────────
@@ -702,7 +706,30 @@ function buildConvergence(c: V5ConvergenceCtx): V5Convergence | null {
       id: `${domain}-${i}`,
       domain: domainDisplayName(domain),
       value: num(text, false),
-      baseline: reading?.baseline ?? '',
+      // …and the same argument applies to the line UNDER it, which `?? ''`
+      // left blank.
+      //
+      // The two halves of this tile come from different moments. `converging`
+      // was persisted to `coach_intents` overnight, when the domain had a
+      // reading worth converging on. `readings` is built at REQUEST time, and
+      // every entry in the route is behind its own null guard — no
+      // `hrvBaseline` this morning, no `readings.autonomic`. So a domain that
+      // genuinely drove last night's decision can arrive here with nothing to
+      // show for itself, and it drew as a fault-red dash over empty space,
+      // directly beneath a coach line saying that domain had been dragging for
+      // three days. The screen asserted the reading mattered and that it could
+      // not be read, at once.
+      //
+      // The dash is right — `.unreadable` means exactly "we could not read
+      // this", and this morning we cannot. The blank line under it was the
+      // defect: Rule 3 says a refusal states its reason rather than leaving a
+      // labelled row standing over nothing.
+      //
+      // The tile stays rather than being dropped, deliberately. It counted
+      // toward the ≥3 gate above, and silently removing it would leave the
+      // screen showing two tiles under a sentence about three domains — the
+      // same contradiction, moved.
+      baseline: reading?.baseline ?? 'No reading this morning',
     };
   });
 
@@ -741,6 +768,25 @@ function buildRecentRun(r: V5RecentRunCtx): {
 } {
   const askedVsRan: V5Row[] = [];
 
+  /**
+   * THE PACE THIS SCREEN MAY PRINT, checked against the clock printed beside
+   * it. Not `r.paceSPerMi` directly — see `reconcilePaceWithClock`.
+   *
+   * `runPaceSecPerMi` fixed the 3:37/mi fiction at the READ, which repaired
+   * the route that goes through it. This composer takes a CONTEXT, and a
+   * context is assembled by a call site: the surface sweep drove the real
+   * 2026-08-23 row into it (11.01 mi, 5298s on the watch's own clock, a
+   * stored 217 s/mi from a Strava moving time) and the panel printed
+   * "11 mi · 1:28:18 · 3:37/mi" — three numbers, two of which disprove the
+   * third, on one poster.
+   *
+   * The panel is the last place the contradiction can be caught, so it is
+   * caught here too. Same arithmetic, one definition, no doctrine claim: a
+   * row is judged only against its own other facts, so an elite and a walker
+   * are both safe.
+   */
+  const shownPaceSPerMi = reconcilePaceWithClock(r.distanceMi, r.durationSec, r.paceSPerMi);
+
   // Pace's tone is left unset here on purpose. There is no context-aware
   // band available to this composer for a whole-run average — no tolerance,
   // no heat adjustment, no "this is a taper session and it is SUPPOSED to be
@@ -761,7 +807,7 @@ function buildRecentRun(r: V5RecentRunCtx): {
     // `FaffValue.from(text:modelled:)` turns a NULL text into `.unreadable`
     // and paints it fault red. A dash we typed is a measured value that
     // happens to look like a dash. Null is the honest wire shape.
-    value: num(fmtPace(r.paceSPerMi), false),
+    value: num(fmtPace(shownPaceSPerMi), false),
     action: null,
   });
   askedVsRan.push({
@@ -817,13 +863,37 @@ function buildRecentRun(r: V5RecentRunCtx): {
     // Null, not a typed dash — see the askedVsRan pace row above.
     { label: 'Distance', value: num(fmtMi(r.distanceMi), false), tone: null },
     { label: 'Time', value: num(fmtClock(r.durationSec), false), tone: null },
-    { label: 'Pace', value: num(fmtPace(r.paceSPerMi), false), tone: null },
+    { label: 'Pace', value: num(fmtPace(shownPaceSPerMi), false), tone: null },
   ];
 
   const panelKicker = r.indoor ? 'Treadmill · indoor, no GPS' : null;
 
   const shoesWorn: V5Row | null = r.shoeWorn
-    ? { id: r.shoeWorn.id, label: r.shoeWorn.name, sub: `${fmtMi(r.shoeWorn.mi) ?? '0 mi'} on them`, value: null, action: 'change_shoe' }
+    // RULE THREE, the honest-degrade half, and the distinction is on the
+    // INPUT rather than on `fmtMi`'s output.
+    //
+    // `fmtMi` returns null for a missing figure AND for zero, so `?? '0 mi'`
+    // collapsed the two: a shoe with no recorded mileage and a shoe with none
+    // yet run printed the same line, and only one of those is something
+    // somebody actually knows.
+    //
+    // The first draft of this fix inverted the defect — it treated every
+    // falsy `fmtMi` as unknown, which relabels a genuinely brand-new shoe as
+    // untracked. `shoes.mileage` is NOT NULL DEFAULT 0, so ZERO is the common
+    // case and absent is the rare one; getting that backwards would have made
+    // the line wrong more often, not less.
+    //
+    // So: a number that is really there prints, zero included. Only a value
+    // that is absent or unreadable declines. `Number()` first because a
+    // Postgres `numeric` arrives over node-pg as a STRING, and
+    // `Number.isFinite('212')` is false.
+    ? {
+        id: r.shoeWorn.id, label: r.shoeWorn.name,
+        sub: r.shoeWorn.mi != null && Number.isFinite(Number(r.shoeWorn.mi))
+          ? `${fmtMi(r.shoeWorn.mi) ?? '0 mi'} on them`
+          : 'Mileage not tracked',
+        value: null, action: 'change_shoe',
+      }
     : null;
 
   const doneMi = Math.round((r.weekDoneMi) * 10) / 10;
