@@ -94,11 +94,26 @@ function posterCtx(shape: RunShape, data: RunData): V5TodayContext {
       speedMph: null,
       inclinePct: null,
       askedPaceSPerMi: shape.planned?.paceSPerMi ?? null,
+      // ASKED DISTANCE is wired from the shape's own prescription rather than
+      // nulled, because it is a number this harness can CONSERVE: the poster's
+      // asked-vs-ran table prints it beside the distance actually run, and the
+      // `prescribed 5, ran 11` shape exists here precisely so the pair can be
+      // checked. A null here would have added the row to the wire and left it
+      // untested on every shape that has a plan.
+      askedMi: shape.planned?.distanceMi ?? null,
       askedHrCap: null,
       askedHrIsHardCap: false,
       effortAsked: null,
       effortLogged: null,
       verdict: null,
+      // The four recap strings. Null / empty is the honest shape for a
+      // harness that does not run the recap engine on this path — the poster
+      // must not invent prose, and `deriveRecap` is driven directly on its
+      // own hop below, where its output IS checked.
+      facts: [],
+      win: null,
+      conditionsNote: null,
+      coachTip: null,
       zoneShares: shape.zones ? [shape.zones.z1, shape.zones.z2, shape.zones.z3, shape.zones.z4, shape.zones.z5] : null,
       zoneTarget: null,
       zoneTargets: null,
