@@ -1,0 +1,81 @@
+# Watch face build standard
+
+Every board is built and checked against this. It is not style guidance — each
+line is a defect that actually shipped on 2026-08-23 and was caught by David
+looking at a screenshot.
+
+## Sizing
+
+1. **Everything in a per-point calculation scales.** A literal `4` inside a
+   "width per point of type size" cost swamped the fractions at size 1 and made
+   every board render at a third of its size. A constant inside a ratio is a
+   bug with a plausible face.
+2. **One size per column. No `minimumScaleFactor` on a metric value.** It let
+   whichever row overflowed quietly opt out, so the row carrying a unit rendered
+   visibly smaller than its neighbours. If the width estimate is wrong the fix
+   is the estimate, not a per-row escape hatch.
+3. **Units are short.** `avg`, not `/mi avg`. No `on goal`. The longest string
+   in the column sets the size for every row in it, so a nine-character unit
+   costs ~4pt of type on all four.
+4. **Size comes from available height ÷ metric count, capped by width.** Never
+   a fixed ladder.
+
+## Labels
+
+5. **No labels. Anywhere.** Not on metrics, not phase names. A runner who
+   configured a threshold session does not need the word THRESHOLD; that screen
+   is designed for somebody meeting it for the first time mid-marathon, which is
+   nobody. Removing the phase label handed the numbers ~20pt.
+6. **The accessibility layer stays explicit.** `accessibilityLabel` carries the
+   word the screen does not draw.
+
+## Answerability
+
+7. **A graded metric needs its band.** Colour says whether the runner is holding
+   the ask; it never says what the ask IS, which is the only thing that lets
+   them correct. The lit segment is the target, the dot is the runner.
+8. **The band reserves its own height.** It is drawn inside the graded row's
+   slot; without a reserve it lands on top of the row below. Tightening the
+   line spacing is what exposed this.
+9. **The lit segment goes white the moment the mark leaves it.** The strip can
+   never show two greens, so it agrees with the number above it by construction.
+
+## Placement
+
+10. **Nothing in the top strip.** The system clock owns it and the app cannot
+    restyle or move it. Two pieces of small grey text sharing that line read as
+    clutter.
+11. **Reference info is centred at the foot**, and may sit 12pt into the bottom
+    inset — safe there because the corner curve bites at the CORNERS and the
+    middle of the bottom edge is the flattest point on the display. The same
+    offset on the left edge would not be safe.
+12. **Optical alignment for non-numeric text.** Every row's frame starts at the
+    same margin; the glyph does not. An uppercase T has almost no left side
+    bearing where digits do — measured 13.0 vs 15.0pt. Nudge the text, not the
+    frame.
+13. **Colour is coaching state, never metric identity.** Neutral by default;
+    green on target; amber drifting; red names a sensor in words and never a
+    figure.
+
+## The shell
+
+14. Usable content is **196pt on a 46mm** (30/22 insets, full-bleed) — not the
+    150 a titled screen gets, and not the 143 of a plain scene. Vertical paging
+    with chrome hidden costs nothing.
+15. Telemetry is **SF Compact Rounded, `.monospacedDigit()`**. Archivo is for
+    branded display moments and never on a number that changes every second.
+
+## Verification — this is where the failures actually came from
+
+16. **Build to the path you install from.** `-target` without `-derivedDataPath`
+    writes somewhere else, and installing the stale binary made a working
+    migration look broken.
+17. **Check the binary's mtime before trusting a screenshot.**
+18. **Screenshots lie about corners.** The corner mask is not in the framebuffer,
+    so edge fit cannot be judged from one. Simulator window > screenshot; real
+    device > both.
+19. **Ugly fixtures, always**: `12:34`, `1:11:48`, `10:59`, `100.0`, `1,002`,
+    `--:--`, `89`, `204`. Round numbers hide width bugs — the size bug survived
+    a 12-cell matrix because the matrix used short values.
+20. **After touching a shared component, re-check EVERY board**, not the ones
+    you changed. That is exactly how the width bug reached David.
