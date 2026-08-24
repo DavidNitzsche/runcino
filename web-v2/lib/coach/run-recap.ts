@@ -36,6 +36,7 @@ import {
 import { composeEffortFactor } from '@/lib/terrain/grade-adjust';
 import type { RunTerrain } from '@/lib/terrain/run-terrain';
 import { reconcilePaceWithClock } from '@/lib/runs/run-shape';
+import { miNum, fmtPaceSlash } from '@/lib/format/run';
 
 /**
  * Minutes of running below which `Research/18` prescribes no fuelling at all,
@@ -185,13 +186,18 @@ function judgedPace(observedSPerMi: number, t: RecapInput['terrain']): number {
   return f === 1 ? observedSPerMi : observedSPerMi / f;
 }
 
-function paceLabel(spm: number | null | undefined): string | null {
-  if (!spm || spm <= 0) return null;
-  // Round to whole seconds FIRST, then split — rounding spm%60 on its own
-  // rolls 59.6s to "60" and prints "6:60/mi" instead of carrying to 7:00.
-  const total = Math.round(spm);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}/mi`;
-}
+/**
+ * MIGRATED 2026-08-24 · this file's own pace formatter. It was the ONLY one
+ * in the repo that rounded to whole seconds before splitting, and its comment
+ * is the reason `lib/format/run.ts` does the same for everybody:
+ *
+ *   "rounding spm%60 on its own rolls 59.6s to 60 and prints 6:60/mi"
+ *
+ * Its DISTANCE formatting was the other half of the poster-versus-recap
+ * split — eight open-coded fixed-one-decimal sites, printing "3.0 mi"
+ * beside the poster's "3.1 mi" for one float. Those now call `miNum`.
+ */
+const paceLabel = fmtPaceSlash;
 
 /**
  * Read the rep-by-rep pacing pattern for an interval / cruise session and
@@ -570,7 +576,7 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       } else {
         const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
         facts.push(
-          `Long run done · ${input.actualMi.toFixed(1)} mi${hrPart} · kept it aerobic.`,
+          `Long run done · ${miNum(input.actualMi)} mi${hrPart} · kept it aerobic.`,
         );
       }
       /* 2026-08-19 · FUEL IS A CAUSE ONLY ONCE THE RUN IS LONG ENOUGH TO HAVE
@@ -630,7 +636,7 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       // range, so compare actual to the easy target and say what happened:
       // honest-easy, a touch quick (the one easy-day mistake worth flagging),
       // or relaxed. Falls back to a by-feel line when there's no target pace.
-      const lead = `Easy ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}.`;
+      const lead = `Easy ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}.`;
       const easyTgt = input.plannedPaceSPerMi ?? null;
       const easyAct = input.actualPaceSPerMi ?? null;
       if (easyTgt && easyAct && judgeableAgainstTarget(input)) {
@@ -682,10 +688,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       const workPaceStr = paceLabel(input.workPaceSPerMi);
       const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
       const leadLine = workPaceStr && input.workDistanceMi
-        ? `Tempo done · ${input.workDistanceMi.toFixed(1)} mi @ ${workPaceStr.replace('/mi', '')}${hrPart}.`
+        ? `Tempo done · ${miNum(input.workDistanceMi)} mi @ ${workPaceStr.replace('/mi', '')}${hrPart}.`
         : workPaceStr
           ? `Tempo done · ${workPaceStr} tempo block${hrPart}.`
-          : `Tempo done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
+          : `Tempo done · ${miNum(input.actualMi)} mi total${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
       facts.push(leadLine);
       // Execution analysis: how did the work block actually go?
       // Reads work-phase splits vs target — specific to this run.
@@ -744,7 +750,7 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
             ? `Reps done · ${repStr}${hrPart}.`
             : workPaceStr
               ? `Reps done · ${workPaceStr} work avg${hrPart}.`
-              : `Reps done · ${input.actualMi.toFixed(1)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualAvgHr ? ', HR ' + input.actualAvgHr : ''}.`;
+              : `Reps done · ${miNum(input.actualMi)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualAvgHr ? ', HR ' + input.actualAvgHr : ''}.`;
       }
       facts.push(leadLine);
       facts.push(pacing.fact ?? `Building the top end · these stack.`);
@@ -759,7 +765,7 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
 
     case 'recovery':
     case 'shakeout': {
-      facts.push(`Recovery jog · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}. Just blood flow. Box checked.`);
+      facts.push(`Recovery jog · ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}. Just blood flow. Box checked.`);
       return {
         verdict: 'Legs cleared.',
         facts,
@@ -769,7 +775,7 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
     }
 
     case 'race': {
-      facts.push(`Race · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`);
+      facts.push(`Race · ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`);
       return {
         verdict: 'Raced it.',
         facts,
@@ -779,7 +785,7 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
     }
 
     default: {
-      facts.push(`Logged · ${input.actualMi.toFixed(1)} mi${paceStr ? ' at ' + paceStr : ''}.`);
+      facts.push(`Logged · ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}.`);
       return {
         verdict: 'Logged.',
         facts,

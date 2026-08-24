@@ -24,6 +24,7 @@
  */
 
 import type { GlanceState, GlanceWeekDay } from '@/lib/coach/glance-state';
+import { miNum, fmtPace as fmtPaceShared } from '@/lib/format/run';
 import { derivePaces } from '@/lib/training/prescriptions';
 import type {
   DayState,
@@ -210,7 +211,7 @@ export function buildPoster(glance: GlanceState, state: DayState): PosterPayload
   const hero_number =
     (state === 'done_nailed' || state === 'done_ease_off') && today
       ? {
-          value: today.doneMi.toFixed(today.doneMi % 1 === 0 ? 0 : 1),
+          value: miNum(today.doneMi) ?? '0',
           unit: 'MI',
           duration: null,
         }
@@ -259,7 +260,7 @@ function buildStatTrio(
       // the body context (week mi · RHR · sleep) the runner glances at
       // before stepping out.
       return [
-        { value: glance.weekDone.toFixed(1), label: 'WEEK MI' },
+        { value: (miNum(glance.weekDone) ?? '0'), label: 'WEEK MI' },
         {
           value: glance.rhrCurrent != null ? String(glance.rhrCurrent) : '—',
           label: 'RHR BPM',
@@ -318,7 +319,7 @@ function buildStatTrio(
       const estTime = today.plannedMi > 0 && lMid != null ? formatEstTime(today.plannedMi, lMid) : '—';
       const horizon = glance.daysToARace != null
         ? { value: `${glance.daysToARace}d`, label: 'TO RACE', valueColor: 'race' as const }
-        : { value: glance.weekDone.toFixed(1), label: 'WEEK MI' };
+        : { value: (miNum(glance.weekDone) ?? '0'), label: 'WEEK MI' };
       return [
         {
           value: today.plannedMi > 0
@@ -333,8 +334,8 @@ function buildStatTrio(
     case 'done_nailed':
     case 'done_ease_off':
       return [
-        { value: today.doneMi.toFixed(1), label: 'BANKED MI' },
-        { value: glance.weekDone.toFixed(1), label: 'WEEK MI' },
+        { value: (miNum(today.doneMi) ?? '0'), label: 'BANKED MI' },
+        { value: (miNum(glance.weekDone) ?? '0'), label: 'WEEK MI' },
         // E5: a short session must not claim "✓ PLAN HIT". Overreach
         // (done_ease_off) and clean hits keep the green check.
         glance.todayExecution === 'short'
@@ -352,7 +353,7 @@ function buildStatTrio(
       ];
     case 'rest':
       return [
-        { value: glance.weekDone.toFixed(1), label: 'WEEK MI' },
+        { value: (miNum(glance.weekDone) ?? '0'), label: 'WEEK MI' },
         { value: glance.sleep7Avg != null ? glance.sleep7Avg.toFixed(1) : '—', label: 'SLEEP 7D' },
         { value: glance.rhrCurrent != null ? String(glance.rhrCurrent) : '—', label: 'RHR BPM' },
       ];
@@ -363,7 +364,7 @@ function buildStatTrio(
           label: 'DAYS',
           valueColor: 'race',
         },
-        { value: glance.weekDone.toFixed(1), label: 'WEEK MI' },
+        { value: (miNum(glance.weekDone) ?? '0'), label: 'WEEK MI' },
         { value: glance.sleep7Avg != null ? glance.sleep7Avg.toFixed(1) : '—', label: 'SLEEP 7D' },
       ];
     case 'new_user':
@@ -701,11 +702,7 @@ function buildWorkoutBreakdown(
 
 /** Format seconds-per-mile as "m:ss" (mirrors WorkoutBreakdown's fmtPace).
  *  Used by buildWorkoutBreakdown when pulling real numbers off the spec. */
-function fmtPace(secondsPerMi: number): string {
-  const m = Math.floor(secondsPerMi / 60);
-  const s = Math.round(secondsPerMi % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+const fmtPace = (secondsPerMi: number): string => fmtPaceShared(secondsPerMi) ?? '';
 
 /**
  * Week easy-pace anchor · midpoint of the nearest authored easy spec band
@@ -745,11 +742,13 @@ function fuelCheckpointsMi(distMi: number): number[] {
   return out;
 }
 
-/** Format a mile count: integer when whole, 1 decimal otherwise. */
-function fmtMi(n: number): string {
-  if (Number.isInteger(n)) return String(n);
-  return n.toFixed(1);
-}
+/**
+ * MIGRATED 2026-08-24 · the briefing poster's mile formatter. Its raw
+ * `toFixed(1)` was the recap's rounding, on a value `glance-state.ts` had
+ * already rounded with the poster's — two rules stacked on one number.
+ * `miNum` is now the single rule. See `lib/format/run.ts`.
+ */
+const fmtMi = (n: number): string => miNum(n) ?? '0';
 
 /**
  * Parse a plan's freeform `plannedLabel` into a readable body sentence.

@@ -42,6 +42,10 @@ type RunDetail = {
   power_avg_w: number | null;
   /** A5 — GPS splits unreliable; do not render MILE SPLITS. */
   splits_unreliable?: boolean;
+  /** The splits do not sum to this run's distance. See `splits_note`. */
+  splits_cover_run?: boolean | null;
+  /** One line saying so, when they do not. Null otherwise. */
+  splits_note?: string | null;
   splits: Array<{
     mile: number;
     pace: string | null;
@@ -211,6 +215,17 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
               {data.splits_unreliable && (
                 <div style={{ fontSize: 11, opacity: 0.5, margin: '12px 0', lineHeight: 1.5 }}>
                   GPS pacing not shown. Splits couldn't be verified for this run.
+                </div>
+              )}
+              {/* The DISTANCE verdict, beside the time verdict above. A run
+                  can fail either alone, and 26 production rows fail this one
+                  while passing that one. The rows below are still drawn —
+                  their paces and heart rates were measured — but the table
+                  is not a decomposition of the run, and drawing it silently
+                  lets it read as one. */}
+              {!data.splits_unreliable && data.splits_note && (
+                <div style={{ fontSize: 11, opacity: 0.5, margin: '12px 0', lineHeight: 1.5 }}>
+                  {data.splits_note}
                 </div>
               )}
               {!data.splits_unreliable && data.splits?.length > 0 && (() => {

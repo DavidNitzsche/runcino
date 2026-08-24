@@ -19,6 +19,7 @@ import {
   type MergedTwin, type RaceForMatch, type PlanWorkoutLite, type LogBadge,
 } from '@/lib/runs/log-enrich';
 import { runFacts } from '@/lib/runs/run-facts';
+import { fmtPace, fmtClock } from '@/lib/format/run';
 
 export interface LogRun {
   id: string;
@@ -122,19 +123,14 @@ export interface LogState {
 
 function pad(n: number): string { return String(n).padStart(2, '0'); }
 
-function fmtPaceFromSec(s: number | null): string | null {
-  if (!s || s <= 0 || !isFinite(s)) return null;
-  return `${Math.floor(s / 60)}:${pad(Math.round(s % 60))}`;
-}
-
-function fmtDuration(secs: number | null): string | null {
-  if (!secs || secs <= 0 || !isFinite(secs)) return null;
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = Math.round(secs % 60);
-  if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
-  return `${m}:${pad(s)}`;
-}
+/**
+ * MIGRATED 2026-08-24 · the Log's own pace and clock copies. Both split
+ * before rounding, so a 419.6 s/mi mile printed "6:60" here; both now go
+ * through `lib/format/run.ts`. The Log's distance rounding already agreed
+ * with the poster's — see `roundTo`, which is now the one rule for it.
+ */
+const fmtPaceFromSec = fmtPace;
+const fmtDuration = fmtClock;
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 function fmtDay(iso: string): string {

@@ -29,8 +29,9 @@ import {
 } from '@/lib/runs/log-enrich';
 import { runFacts } from '@/lib/runs/run-facts';
 import { distanceMiFromLabel } from '@/lib/race/distance';
-import { reconcileRun, coherentPace, coherentMovingSec, coherentElapsedSec } from '@/lib/runs/coherence';
+import { reconcileRun, reconcileSplitsTotal, coherentPace, coherentMovingSec, coherentElapsedSec } from '@/lib/runs/coherence';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
+import { fmtPace as fmtPaceNoUnit, fmtClock } from '@/lib/format/run';
 // THE one enum-to-word table. Imported, never restated — see `type_display`.
 import { displayTypeFor } from '@/lib/faff/v5-today';
 
@@ -245,6 +246,25 @@ export interface RunDetail {
    *  true, MILE SPLITS should not be displayed and split-based
    *  heuristics (drift, fade) should not fire. */
   splits_unreliable?: boolean;
+  /**
+   * Whether the split rows below sum to THIS run's distance — the distance
+   * verdict, beside `splits_unreliable`'s time verdict. They are different
+   * questions and a run can fail either alone.
+   *
+   * Null when no split carries a distance to check. False on 26 production
+   * rows, all of them carrying a trailing split whose `distanceMi` was a
+   * duration in disguise (see `reconcileSplitsTotal`, and the note in
+   * `HealthKitImporter.perMileSplits`).
+   *
+   * A surface that prints a per-mile table must print `splits_note` with it
+   * when this is false. The rows are still worth showing — their paces and
+   * heart rates were measured — but the table is not a decomposition of the
+   * run, and saying nothing lets it read as one.
+   */
+  splits_cover_run?: boolean | null;
+  /** One sentence for the runner when `splits_cover_run` is false. Null
+   *  otherwise. Coach voice: states the discrepancy, does not scold. */
+  splits_note?: string | null;
   suffer_score: number | null;
   kudos: number | null;
   // P2 #10 (2026-05-30): average running power from HealthKit for the
@@ -398,21 +418,32 @@ export interface RunDetail {
   } | null;
 }
 
-function fmtPace(s: number | null): string | null {
-  if (!s || s <= 0 || !isFinite(s)) return null;
-  const m = Math.floor(s / 60);
-  const r = Math.round(s % 60);
-  return `${m}:${String(r).padStart(2, '0')}`;
+/**
+ * What a split array actually adds up to, in miles, for `splits_note`.
+ *
+ * Reads the same distance-bearing keys as `reconcileSplitsTotal` so the
+ * sentence quotes the number the verdict was reached on. Two spellings of
+ * this sum would let the note disagree with the refusal that produced it.
+ */
+function fmtSplitSum(rows: unknown[]): string {
+  let total = 0;
+  for (const raw of rows) {
+    if (!raw || typeof raw !== 'object') continue;
+    const s = raw as Record<string, unknown>;
+    const mi = Number(s.distanceMi ?? s.mi)
+      || (Number(s.distance) ? Number(s.distance) / 1609.344 : 0);
+    if (Number.isFinite(mi) && mi > 0) total += mi;
+  }
+  return `${total.toFixed(2)} mi`;
 }
 
-function fmtDuration(secs: number | null): string | null {
-  if (!secs || secs <= 0 || !isFinite(secs)) return null;
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = Math.round(secs % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+/**
+ * MIGRATED 2026-08-24 · run detail's own pace and clock copies, both with
+ * the split-before-round carry (`6:60`). They now name the shared module.
+ * See `lib/format/run.ts`.
+ */
+const fmtPace = fmtPaceNoUnit;
+const fmtDuration = fmtClock;
 
 export async function loadRunDetail(userId: string, activityId: string): Promise<RunDetail | null> {
   // The id passed in is whatever the briefing surfaced — could be a real
@@ -621,23 +652,57 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const movingSec  = coherentMovingSec(r);
   const elapsedSec = coherentElapsedSec(r);
 
+  // THE run distance, through the same reconciler as the clocks above, so
+  // the number the splits are checked against is the number in the heading.
+  const distanceMi = reconcileRun(r).distanceMi;
+
   // Splits — normalize various source shapes. Per-split `phase` tag is
   // filled in after phaseBreakdown loads (a few lines down) · null here
   // because we don't know yet, and a later pass walks the splits + phase
   // cumulative-distance map to attach the right tag per mile.
   const rawSplits: any[] = Array.isArray(r.splits) ? r.splits as any[] : [];
-  const splitsRaw: RunSplit[] = rawSplits
-    // Drop trailing fractional stubs: HealthKitImporter appends a synthetic
-    // last split for the gap between GPS-stop and watch-timer-stop. For a 6mi
-    // run the stub is ~0.047mi — it shows as a 7th row with average pace (no
-    // real GPS signal). Only the last entry can be a stub; all real full-mile
-    // splits have distanceMi = 1.0. Keep the entry if distanceMi is absent
-    // (non-Faff sources don't send it) or ≥ 0.5 (real half-mile+ segment).
-    .filter((s: any, i: number, arr: any[]) => {
-      if (i !== arr.length - 1) return true; // never drop non-last splits
-      const distMi = Number(s.distanceMi ?? s.distance_mi) || null;
-      return distMi === null || distMi >= 0.5;
-    })
+
+  /* ── does this array decompose THIS run? ──────────────────────────────
+   *
+   * `HealthKitImporter` appends a trailing split for the stretch between
+   * GPS stopping and the watch timer stopping. Until 2026-08-24 its
+   * `distanceMi` was `tailSecs / avgPace` — a duration in a distance field,
+   * reverse-engineered to zero out a server time-check that no longer
+   * exists. On a run with a long pause the fabricated tail is LARGE: the
+   * 2026-08-23 row's is 0.88 mi, and on 2026-06-04 and 2026-07-07 it is
+   * over a full mile.
+   *
+   * The filter that used to stand here kept any trailing split of 0.5 mi or
+   * more, on the reasoning that a real stub is "~0.047mi". Every fabricated
+   * tail clears that bar, so all of them survived and rendered as an extra
+   * mile at the run's average pace. 2026-08-23 drew TWELVE mile rows for an
+   * eleven-mile run.
+   *
+   * A size threshold cannot tell a measured remainder from a manufactured
+   * one. Arithmetic can: a decomposition of this run sums to this run.
+   * `reconcileSplitsTotal` is the one place that question is answered, and
+   * asking it twice — with the trailing split and without — says which of
+   * the two arrays is the real decomposition, with no threshold at all. */
+  const coversWithTail = reconcileSplitsTotal({ splits: rawSplits }, distanceMi);
+  const withoutTail = rawSplits.slice(0, -1);
+  const coversWithoutTail = rawSplits.length > 1
+    ? reconcileSplitsTotal({ splits: withoutTail }, distanceMi)
+    : null;
+
+  // Drop the trailing split only when dropping it is what makes the array
+  // add up. Never when the array already adds up, and never as a guess.
+  const usableSplits: any[] = (coversWithTail === false && coversWithoutTail === true)
+    ? withoutTail
+    : rawSplits;
+
+  /**
+   * True when what run detail is about to draw sums to the run it sits
+   * under. False when it does not, and the surface must say so — see
+   * `splits_note`. Null when no split carries a distance to check.
+   */
+  const splitsCoverRun = reconcileSplitsTotal({ splits: usableSplits }, distanceMi);
+
+  const splitsRaw: RunSplit[] = usableSplits
     .map((s: any, i: number) => {
     // Resolve seconds-per-mile across every source shape we see:
     //   · paceSPerMi    (legacy)
@@ -694,7 +759,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // any run over 1.5mi regardless of pace shape.  The frontend then
   // shows "No mile splits available" until the absorber rebuilds the
   // canonical with HK's real splits (or a backfill endpoint forces it).
-  const totalDistMi = Number(r.distanceMi) || Number(r.distance_mi) || 0;
+  const totalDistMi = distanceMi ?? 0;
   const splits: RunSplit[] = (
     splitsRaw.length === 1
     && totalDistMi > 1.5
@@ -1107,6 +1172,16 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     has_route: Boolean(r.summaryPolyline || r.routePolyline || r.startLatLng),
     route_polyline: r.summaryPolyline ?? r.routePolyline ?? null,
     splits_unreliable: r.splits_unreliable === true,
+    splits_cover_run: splits.length > 0 ? splitsCoverRun : null,
+    splits_note: (splits.length > 0 && splitsCoverRun === false)
+      // Said plainly, in a line, because a refusal is an answer. The number
+      // is deliberately the sum the array actually holds: the runner can see
+      // for themselves that it is not the run's distance, which is the whole
+      // claim. No scolding, and no invitation to fix something they cannot.
+      ? `These splits add up to ${fmtSplitSum(usableSplits)}, not the ${
+          distanceMi != null ? distanceMi.toFixed(2) : '—'
+        } mi of this run. Mile paces below are what the watch recorded; the run's own distance and time are in the header.`
+      : null,
     splits,
     hrZonePcts,
     easy_share_heat_adj: easyShareHeatAdj,

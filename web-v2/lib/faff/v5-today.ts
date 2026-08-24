@@ -276,28 +276,17 @@ const MIN_CONVERGING_DOMAINS = 3; // CONVERGENCE.redMinDomains, lib/coach/conver
 // Small formatting helpers
 // ─────────────────────────────────────────────────────────────────────────
 
-export function fmtMi(mi: number | null | undefined): string | null {
-  if (mi == null || !isFinite(mi) || mi <= 0) return null;
-  const rounded = Math.round(mi * 10) / 10;
-  return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)} mi`;
-}
-
-export function fmtPace(sPerMi: number | null | undefined): string | null {
-  if (sPerMi == null || !isFinite(sPerMi) || sPerMi <= 0) return null;
-  const m = Math.floor(sPerMi / 60);
-  const s = Math.round(sPerMi % 60);
-  return `${m}:${String(s).padStart(2, '0')}/mi`;
-}
-
-export function fmtClock(sec: number | null | undefined): string | null {
-  if (sec == null || !isFinite(sec) || sec <= 0) return null;
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = Math.round(sec % 60);
-  return h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${m}:${String(s).padStart(2, '0')}`;
-}
+/**
+ * MIGRATED 2026-08-24 · these three were the poster's own copies and the de
+ * facto house style; they now re-export `lib/format/run.ts` so the recap,
+ * which had its own, cannot disagree with them again. See that module for
+ * the 3.05 incident and for the `6:60/mi` carry these copies both had.
+ *
+ * Re-exported rather than deleted because they are imported by name across
+ * the app, and a rename is churn with no reader-visible benefit.
+ */
+import { fmtMi, fmtClock, fmtPaceSlash as fmtPace } from '@/lib/format/run';
+export { fmtMi, fmtClock, fmtPace };
 
 const DOW_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

@@ -332,7 +332,14 @@ describe('deriveRecap · type=tempo/threshold', () => {
     expect(r.verdict).toBe('Tempo done.');
     // df2e3527 replaced the tempo filler phrase with the factual lead line ·
     // no work-phase or split signal here, so the recap is the totals line.
-    expect(r.facts.join(' ')).toContain('Tempo done · 6.0 mi total at 7:35/mi, avg HR 168.');
+    //
+    // "6 mi", not "6.0 mi", since 2026-08-24. The recap used to write its own
+    // distances with a raw one-decimal `toFixed`, which is the losing half of
+    // the poster-versus-recap split (3.05 read "3.1 mi" above and "3.0 mi"
+    // here). Both now go through `lib/format/run.ts`, whose rule is the
+    // poster's long-standing one: a whole number loses its `.0`. The change
+    // to this line IS the convergence, not a regression against it.
+    expect(r.facts.join(' ')).toContain('Tempo done · 6 mi total at 7:35/mi, avg HR 168.');
   });
 
   it('threshold in hot weather with ≥4% slowdown adds heat-cost fact', () => {

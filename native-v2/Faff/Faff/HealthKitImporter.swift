@@ -450,10 +450,7 @@ final class HealthKitImporter: ObservableObject {
     /// Per-mile splits attached when the workout has an HKWorkoutRoute.
     private nonisolated func buildPayload(for w: HKWorkout) async -> [String: Any] {
         let bpm = HKUnit.count().unitDivided(by: .minute())
-        let meters = w.statistics(for: HKQuantityType(.distanceWalkingRunning))?
-            .sumQuantity()?.doubleValue(for: .meter())
-            ?? w.totalDistance?.doubleValue(for: .meter()) ?? 0
-        let miles = meters / 1609.344
+        let miles = Self.workoutDistanceMi(w)
         let durationSec = Int(w.duration.rounded())
         let avgHr = w.statistics(for: HKQuantityType(.heartRate))?
             .averageQuantity()?.doubleValue(for: bpm)
@@ -608,17 +605,19 @@ final class HealthKitImporter: ObservableObject {
             for s in splits.splits {
                 var split: [String: Any] = [
                     "mile": s.mile,
-                    "pace": s.pace,
                     "elev_ft": s.elevDeltaFt,
-                    // 2026-06-06 round 93 · include distanceMi so the
-                    // server validator multiplies pace × distanceMi per
-                    // split. Without it the server defaults to 1.0 for
-                    // every split, undercounting the trailing fraction
-                    // and producing a deltaS that fails the ≤ 5s check.
-                    // Full-mile splits have distanceMi = 1.0; the
-                    // trailing split has distanceMi < 1.0.
+                    // The split's share of the run, in miles. Full-mile splits
+                    // carry 1.0; the trailing split carries the workout's own
+                    // measured residual. Summed over the array this equals the
+                    // run's distance, which is what lets run detail present it
+                    // as a decomposition — see `reconcileSplitsTotal`.
                     "distanceMi": s.distanceMi,
                 ]
+                // An ABSENT `pace` key, not a null one, when nothing measured
+                // it. The trailing split is the only one that can be in this
+                // state, and every reader downstream already treats a missing
+                // pace as "unknown" rather than as zero.
+                if let pace = s.pace { split["pace"] = pace }
                 if let hr = await avgHRInWindow(start: s.startTime, end: s.endTime) {
                     split["hr"] = Int(hr.rounded())
                 }
@@ -736,21 +735,112 @@ final class HealthKitImporter: ObservableObject {
         }
     }
 
+    /// How far the splits' own distances may sum from the run's distance
+    /// before the array stops being a decomposition OF that run.
+    ///
+    /// Kept byte-identical to `MAX_SPLIT_SUM_DRIFT_MI` in
+    /// `web-v2/lib/runs/coherence.ts`. The writer and the reader must not
+    /// disagree about what "decomposes the run" means: an array this side
+    /// emits should be one `reconcileSplitsTotal` will present, and an array
+    /// this side refuses is one that would be refused there anyway.
+    //
+    // `nonisolated` · `perMileSplits` runs off the main actor, and both this
+    // constant and `workoutDistanceMi` below are read from inside it. A
+    // `Double` is Sendable and neither touches actor state, so there is
+    // nothing to isolate them for.
+    nonisolated static let maxSplitSumDriftMi = 0.25
+
+    /**
+     What a GPS track's whole-mile count means against the run's own distance.
+
+     Lifted out of `perMileSplits` so it can be tested directly: that method
+     is `private`, takes an `HKWorkout` and reads `CLLocation` arrays, so none
+     of it is reachable from a test — and this is the entire arithmetic of
+     whether a split array decomposes its run. Same reasoning as
+     `web-v2/lib/runs/derive-splits.ts`, which was lifted out of a route for
+     exactly this reason. Behaviour is unchanged by the move.
+     */
+    enum SplitsVerdict: Equatable {
+        /// GPS marked more whole miles than the run contains. The track is
+        /// not a decomposition of this run and no subset of it can be
+        /// salvaged, because nothing says which mile is the invented one.
+        case refuse
+        /// Sound, and the run ends partway through a mile. `residualMi` is
+        /// the measured remainder the trailing split should carry.
+        case tail(residualMi: Double)
+        /// Sound, and the miles land flush enough that a trailing split
+        /// would carry less than the payload's smallest expressible
+        /// distance. Emit nothing rather than a 0.00-mile row.
+        case none
+    }
+
+    nonisolated static func splitsVerdict(
+        milesCrossed: Int,
+        workoutMiles: Double
+    ) -> SplitsVerdict {
+        // No distance to judge against — the caller keeps whatever GPS found,
+        // which is what it did before this check existed.
+        guard workoutMiles > 0 else { return .none }
+        let residual = workoutMiles - Double(milesCrossed)
+        if -residual > maxSplitSumDriftMi { return .refuse }
+        // HALF of the smallest distance the payload can express, not a whole
+        // one. `distance_mi` is written to two decimals, so a residual rounds
+        // to a visible 0.01 mi from 0.005 up — and the threshold has to sit
+        // where the rounding does, because a double cannot hold the decimals
+        // this arithmetic produces. `11.01 - 11.0` is 0.009999999999999787,
+        // which a `>= 0.01` test rejects, and the 2026-08-23 run would have
+        // lost its remainder to the same binary residue that made the poster
+        // and the recap disagree about 3.05 miles.
+        return residual >= 0.005 ? .tail(residualMi: residual) : .none
+    }
+
+    /// The workout's OWN measured distance, in miles.
+    ///
+    /// One derivation, used by the payload's `distance_mi` and by the split
+    /// deriver that has to agree with it. Two spellings of this would be two
+    /// opinions about how far the run was, which is the shape of defect this
+    /// whole area exists to stop.
+    private nonisolated static func workoutDistanceMi(_ w: HKWorkout) -> Double {
+        let meters = w.statistics(for: HKQuantityType(.distanceWalkingRunning))?
+            .sumQuantity()?.doubleValue(for: .meter())
+            ?? w.totalDistance?.doubleValue(for: .meter()) ?? 0
+        return meters / 1609.344
+    }
+
     private struct SplitsResult {
         struct Split {
             let mile: Int
-            let pace: String
+            /// The split's measured pace, or nil when nothing measured it.
+            ///
+            /// OPTIONAL SINCE 2026-08-24. The trailing split covers the stretch
+            /// between the last GPS fix and the watch stopping, and GPS by
+            /// definition recorded no pace for it. It used to be given the
+            /// run's average pace, which is a modelled number presented in a
+            /// measurement's field. A nil here serialises as an ABSENT `pace`
+            /// key, which every reader already handles: the server's
+            /// `splitsSumSeconds` contributes zero for it, `sanitizeSplits`
+            /// passes it through untouched, and run detail renders "—".
+            let pace: String?
             let elevDeltaFt: Int
             let startTime: Date     // for per-split HR/cadence query (P40 enrichment)
             let endTime: Date
-            /// Actual distance this split covers, in miles.
-            /// 1.0 for every full-mile split; < 1.0 for the trailing
-            /// fractional-mile split appended after the main loop.
-            /// The server validator (`validateSplitsAgainstDuration`)
-            /// multiplies pace × distanceMi per split — without this
-            /// field it defaults to 1.0 and undercounts the total time
-            /// by the trailing-fraction amount, producing a deltaS that
-            /// exceeds its ≤ 5s tolerance and drops the splits.
+            /// Actual distance this split covers, in MILES.
+            ///
+            /// 1.0 for every full-mile split. For the trailing split this is
+            /// the workout's own residual — `workoutMiles − fullMileCount` —
+            /// and it is a MEASURED quantity: HealthKit's distance total minus
+            /// the miles GPS confirmed.
+            ///
+            /// It was not always. Until 2026-08-24 it was `tailSecs / avgPace`,
+            /// a value chosen so that `pace × distanceMi == tailSecs` exactly,
+            /// in order to zero out a server check that has since been replaced
+            /// (see `splitTimesReliable`, which now tolerates an uncounted
+            /// tail outright). That made this field a DURATION wearing a
+            /// distance's name, and it is why 26 production rows carried split
+            /// arrays that did not sum to their own run — 11.88 mi of splits
+            /// under an 11.01 mi heading on 2026-08-23, where the 392 s the
+            /// runner spent stopped became 0.88 mi of running that never
+            /// happened.
             let distanceMi: Double
         }
         let splits: [Split]
@@ -824,84 +914,95 @@ final class HealthKitImporter: ObservableObject {
             }
         }
 
-        // 2026-06-07 round 94 · SYNTHETIC TRAILING SPLIT (watch-level fields only).
+        // ── THE ARRAY MUST DECOMPOSE THE RUN ──────────────────────────────
         //
-        // Round 93's GPS-residual approach (`distSoFar - lastMileMark`) never
-        // fired because for this run GPS completed almost exactly N full miles
-        // with no measurable residual. The real 43s gap is between
-        // `locs.last.timestamp` (GPS stopped recording) and `workout.endDate`
-        // (watch timer stopped). GPS never captured that time; it's invisible
-        // to any locs-based calculation.
+        // Everything below answers one question: does this array of splits
+        // add up to the run it claims to be a decomposition of? Both halves
+        // are pure arithmetic against the workout's OWN distance. There is no
+        // threshold on human speed here and no physiological claim.
+
+        let workoutMiles = Self.workoutDistanceMi(workout)
+
+        // Mile BOUNDARIES CROSSED, which is not the same as splits emitted:
+        // the 120–3600 s gate above drops a mile whose GPS clock is corrupt
+        // without rewinding `mileNo`. Both checks below are about how far the
+        // GPS track ran, so both count crossings; `splits.count` would
+        // under-count by exactly the dropped miles and quietly weaken them.
+        let milesCrossed = mileNo - 1
+
+        // 1 · GPS INTEGRATED MILES THE RUN DOES NOT CONTAIN → REFUSE.
         //
-        // Correct approach: compute the tail entirely from watch-level fields:
+        // `distSoFar` sums the distance between consecutive fixes with no
+        // filter beyond `horizontalAccuracy <= 50`. At that accuracy budget
+        // the jitter between two fixes is real distance to this loop, and on
+        // a slow or stop-start session it integrates into whole miles that
+        // were never run. Both 2026-08-01 rows are this: 4 full-mile splits
+        // on a 1.34 mi run, 3 on a 0.84 mi run, the first "mile" clocked at
+        // 2:14 beside a cadence of 458 spm.
         //
-        //   tailSecs    = Int(workout.duration) - splitsSumS
-        //                 = exact time unaccounted for by the N full-mile splits
+        // A run cannot contain more whole miles than its own measured
+        // distance. When it appears to, the GPS track is not a decomposition
+        // of this run and no subset of it can be salvaged — there is no way
+        // to tell which of the miles is the invented one. Refusing the array
+        // is the honest answer, and the run keeps its distance, its clock and
+        // its heart rate. A refusal is a correct answer, not an empty state.
         //
-        //   avgPace     = splitsSumS / splits.count   (seconds per mile)
+        // The tolerance is `MAX_SPLIT_SUM_DRIFT_MI`, byte-identical to the
+        // read side's in `web-v2/lib/runs/coherence.ts` — an array this
+        // accepts must be one that `reconcileSplitsTotal` will present, and
+        // an array it refuses is one that would be refused there anyway. The
+        // two must not disagree about what "decomposes the run" means.
+        // Both halves are one decision, and it is `splitsVerdict` — a pure
+        // function beside this one so the arithmetic is testable without an
+        // HKWorkout. Nothing below re-derives it.
+        let verdict = Self.splitsVerdict(milesCrossed: milesCrossed, workoutMiles: workoutMiles)
+
+        if verdict == .refuse {
+            NSLog("[perMileSplits] REFUSED · GPS integrated \(milesCrossed) whole miles "
+                + "against a workout distance of \(workoutMiles) mi · "
+                + "the track does not decompose this run")
+            return nil
+        }
+
+        // 2 · THE TRAILING SPLIT CARRIES THE MEASURED RESIDUAL.
         //
-        //   tailDistMi  = Double(tailSecs) / avgPace
-        //                 → ensures pace × distanceMi = tailSecs exactly
-        //                 → server validator: splitsSumS + tailSecs = durationS
-        //                 → deltaS = 0 → reliable = true
+        // A run almost always ends partway through a mile, so the full-mile
+        // splits above stop short of the run's distance. That remainder is
+        // known exactly — it is the workout's own distance minus the miles
+        // GPS confirmed — and it needs no modelling.
         //
-        //   displayPace = avgPace formatted as "M:SS"
-        //                 (displayed as the trailing split's pace; it's the
-        //                 run's average pace because we have no GPS signal for
-        //                 this period. The web/iPhone renders this split like
-        //                 any other, labelled by mile number only.)
+        // What it does NOT have is a pace. The stretch it covers is the one
+        // GPS did not record: between the last fix and the watch stopping.
+        // Until 2026-08-24 this split was given the run's average pace and a
+        // `distanceMi` of `tailSecs / avgPace`, reverse-engineered so that
+        // `pace × distanceMi` equalled the unaccounted seconds exactly and a
+        // then-current server check saw deltaS = 0. That check is gone —
+        // `splitTimesReliable` now tolerates an uncounted tail by design —
+        // and what the reverse-engineering left behind was a duration in a
+        // distance field. On 2026-08-23 the 392 s the runner spent stopped
+        // became 0.88 mi, and twelve splits summed to 11.88 mi under an
+        // 11.01 mi heading.
         //
-        // Guard: tailSecs > 0 AND splits.count > 0.
-        // tailSecs ≤ 0 means GPS covered MORE time than workout.duration
-        // (impossible in normal operation) → skip.
-        // splits.count == 0 means no full miles completed (sub-1mi run) → skip.
-        if !splits.isEmpty {
-            let splitsSumS = splits.reduce(0) { sum, s in
-                let parts = s.pace.split(separator: ":").compactMap { Int($0) }
-                guard parts.count == 2 else { return sum }
-                return sum + parts[0] * 60 + parts[1]
-            }
-            let durationS = Int(workout.duration.rounded())
-            let tailSecs  = durationS - splitsSumS
-            // diagnostic · remove after splits bug resolved
-            NSLog("[perMileSplits] --- summary ---")
-            NSLog("[perMileSplits] GPS splits emitted: \(splits.count)")
-            NSLog("[perMileSplits] splitsSumS=\(splitsSumS) (reduce over \(splits.count) pace strings)")
-            NSLog("[perMileSplits] workout.duration=\(workout.duration) → durationS=\(durationS)")
-            NSLog("[perMileSplits] tailSecs=\(tailSecs) (durationS-splitsSumS)")
-            // verify the reduce matched the raw secs values logged above
-            for (idx, s) in splits.enumerated() {
-                let parts = s.pace.split(separator: ":").compactMap { Int($0) }
-                let reparsed = parts.count == 2 ? parts[0]*60+parts[1] : -1
-                NSLog("[perMileSplits] re-parse check mile \(idx+1): \"\(s.pace)\" → \(reparsed)s")
-            }
-            if tailSecs > 0 {
-                let avgPaceSecPerMi = splitsSumS / splits.count
-                let tailDistMi      = Double(tailSecs) / Double(avgPaceSecPerMi)
-                let avgMins         = avgPaceSecPerMi / 60
-                let avgSecs         = avgPaceSecPerMi % 60
-                let tailPace        = "\(avgMins):\(String(format: "%02d", avgSecs))"
-                // diagnostic · remove after splits bug resolved
-                NSLog("[perMileSplits] avgPaceSecPerMi=\(avgPaceSecPerMi) (splitsSumS/splits.count = \(splitsSumS)/\(splits.count))")
-                NSLog("[perMileSplits] tailDistMi=\(tailDistMi) (tailSecs/avgPace = \(tailSecs)/\(avgPaceSecPerMi))")
-                NSLog("[perMileSplits] trailing split: pace=\"\(tailPace)\" distanceMi=\(tailDistMi)")
-                // verify server math closes
-                let serverTrailingContrib = Double(avgPaceSecPerMi) * tailDistMi
-                NSLog("[perMileSplits] server check: avgPace×tailDistMi=\(serverTrailingContrib) (should=\(tailSecs))")
-                NSLog("[perMileSplits] server check: splitsSumS+trailing=\(Double(splitsSumS)+serverTrailingContrib) (should=\(durationS))")
-                splits.append(.init(
-                    mile: mileNo,
-                    pace: tailPace,
-                    elevDeltaFt: 0,          // no GPS signal for this period
-                    startTime: mileStartTime, // last full-mile GPS mark
-                    endTime: workout.endDate, // watch stop (not locs.last)
-                    distanceMi: tailDistMi
-                ))
-            } else {
-                NSLog("[perMileSplits] tailSecs≤0 — no trailing split emitted")
-            }
-        } else {
-            NSLog("[perMileSplits] splits.isEmpty — no full miles, no trailing split")
+        // So: distance measured, pace refused.
+        //
+        // Only when the full-mile splits are COMPLETE. If the gate above
+        // dropped a mile, the array is already missing a chunk that is not at
+        // the end, and a trailing split sized to close the total would hide
+        // that hole rather than report it — the run would sum correctly while
+        // one of its miles was silently redistributed into the tail. Leave the
+        // array short instead and let `reconcileSplitsTotal` refuse it at the
+        // read, which is the true answer: this array does not decompose the
+        // run, and it does not know where the missing piece went.
+        if case .tail(let residualMi) = verdict,
+           !splits.isEmpty, splits.count == milesCrossed {
+            splits.append(.init(
+                mile: mileNo,
+                pace: nil,               // GPS recorded no pace for this stretch
+                elevDeltaFt: 0,          // and no elevation either
+                startTime: mileStartTime, // last full-mile GPS mark
+                endTime: workout.endDate, // watch stop (not locs.last)
+                distanceMi: residualMi
+            ))
         }
 
         // 2026-06-06 round 92 · RECONCILIATION GUARD REMOVED.

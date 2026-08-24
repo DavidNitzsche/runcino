@@ -234,9 +234,41 @@ export async function buildRaceRetro(args: {
   const { userId, race, nextA, actualResult, plan, libGeometry, todayISO } = args;
   const ar = (actualResult ?? {}) as Record<string, unknown>;
 
-  const distanceMi = race.distance_mi
-    ?? num((plan?.race as Record<string, unknown> | undefined)?.distance_mi)
-    ?? 13.1;
+  /**
+   * DELETED 2026-08-24 · the `plan.race.distance_mi` rung that used to sit
+   * between these two.
+   *
+   * `races.plan.race` is a six-field snapshot of the race identity frozen at
+   * the moment the LEGACY GPX planner ran (`legacy/web/lib/types.ts:136`).
+   * Nothing in web-v2 has ever written it — every writer here either seeds
+   * `plan` as `'{}'` or spreads it preserving only `goal` — so it is
+   * write-once, and it has drifted: its `distance_mi` is the raw measured
+   * GPX distance while `meta.distanceMi` is the canonical one, and its
+   * `name` and `date` are not touched when the race is renamed or moved.
+   *
+   * It was UNREACHABLE AS A VALUE, and that is measured rather than
+   * reasoned. Over production 2026-08-24 (`faff_readonly`, 18 races):
+   *
+   *     rows carrying plan.race.distance_mi ......... 7
+   *     rows with meta.distanceMi missing ........... 3
+   *     rows with BOTH — the only way here .......... 0
+   *
+   * The two sets cannot overlap by construction: the legacy planner writes
+   * `meta.distanceMi` unconditionally on any row it gives a `plan.race` to
+   * (`legacy/web/app/races/new/page.tsx:364`, and the field is required in
+   * `legacy/web/lib/storage-types.ts:64`), so rung 1 always answers first.
+   * Every evaluation of this rung returned undefined and fell through.
+   *
+   * WHAT REMAINS TRUE AND IS NOT FIXED HERE: rung 1 IS null on 3 of 18
+   * rows — label-only races, `lib/race/distance.ts:78` documents the same
+   * count — and each of those lands on the 13.1 default below. That default
+   * is a half marathon's distance handed to a race of unknown length, and
+   * it is now the single visible fallback rather than the third of three.
+   * `distanceMiOfMeta` (lib/race/distance.ts:100) carries a `meta.name` rung
+   * that would resolve some of them; wiring it changes what those rows
+   * report, so it belongs to whoever owns the race surface, not here.
+   */
+  const distanceMi = race.distance_mi ?? 13.1;
 
   // ── Finish · provenance already resolved by races-state ────────────────
   const finishS = (num(ar.finishS) != null && Number(ar.finishS) > 0)

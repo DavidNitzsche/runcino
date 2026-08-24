@@ -68,7 +68,20 @@ while IFS= read -r d; do
   full="$NATIVE/$d"
   [ -d "$full" ] || continue
   # -L: the watch sources reach the iOS project through a symlinked directory.
-  find -L "$full" -name '*.swift' -type f -print0 2>/dev/null \
+  #
+  # `! -name '._*'` · AppleDouble sidecars. This repo lives on an exFAT-ish
+  # volume that writes a `._Foo.swift` resource-fork file beside every
+  # `Foo.swift`. They are not source, nothing tracks them, and no generator
+  # will ever put them in project.pbxproj — but they end in `.swift`, so this
+  # sweep counted 195 of them as "on disk, uncompiled" and failed the gate on
+  # a tree with nothing wrong with it.
+  #
+  # A gate that cannot pass on a clean checkout stops being read, which is
+  # worse than not having it: the real finding this exists for (a genuinely
+  # uncompiled Swift file, invisible because it builds clean and is absent
+  # from the binary) would arrive in a wall of noise and be scrolled past.
+  # The same exclusion is already in the TypeScript lints' file walkers.
+  find -L "$full" -name '*.swift' ! -name '._*' -type f -print0 2>/dev/null \
     | while IFS= read -r -d '' f; do basename "$f"; done >> "$tmp/on_disk"
 done < "$tmp/src_dirs"
 sort -u "$tmp/on_disk" -o "$tmp/on_disk"
