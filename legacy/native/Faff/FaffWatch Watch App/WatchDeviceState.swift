@@ -32,6 +32,7 @@
 import Foundation
 import SwiftUI
 import WatchKit
+import Combine
 
 // MARK: - Battery drain estimator
 

@@ -99,6 +99,7 @@ import SwiftUI
 import UserNotifications
 import WatchConnectivity
 import WatchKit
+import Combine
 
 // MARK: - Category identifiers
 
