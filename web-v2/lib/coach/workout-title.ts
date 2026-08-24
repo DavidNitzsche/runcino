@@ -71,5 +71,23 @@ const TITLE_BY_TYPE: Record<string, string> = {
 export function workoutTypeTitle(type: WorkoutType | string | null | undefined): string {
   if (!type) return 'UNPLANNED';
   const key = String(type).toLowerCase();
-  return TITLE_BY_TYPE[key] ?? key.toUpperCase();
+  const mapped = TITLE_BY_TYPE[key];
+  if (mapped) return mapped;
+
+  // AN UNMAPPED TYPE MUST NOT REACH THE GLASS AS A RAW ENUM.
+  //
+  // The fallback used to be `key.toUpperCase()`, which is how a plan type
+  // headlined a screen in 44pt Archivo as `RACE_WEEK_TUNEUP` — the token
+  // itself, underscores and all, in the display register. The map has covered
+  // that particular type since, but the fallback is the actual defect and it
+  // was still waiting for the next type nobody remembered to add here.
+  //
+  // Underscores become spaces so the worst case is a clumsy phrase rather than
+  // something that reads as a leaked database value. `check-enum-register.sh`
+  // fails the build when a type the plan can emit has no entry above, so this
+  // is a floor, never a substitute for the map.
+  return key.replace(/_/g, ' ').toUpperCase();
 }
+
+/** The vocabulary this map covers. Exported so gates can enumerate it. */
+export const TITLED_WORKOUT_TYPES: readonly string[] = Object.keys(TITLE_BY_TYPE);

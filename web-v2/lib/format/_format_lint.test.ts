@@ -49,6 +49,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
+import * as WF from '@/lib/wire-format/format';
 import {
   roundTo, miNum, fmtMi, fmtMi2,
   fmtPace, fmtPaceSlash, fmtPaceBand,
@@ -162,10 +163,10 @@ const ALLOW: Record<string, string> = {
     "PLAN-SIDE · a fixed-one-decimal distance (the recap rounding). Queued; not on the poster/recap path where the split was visible.",
   "lib/plan/drift-monitor.ts":
     "PLAN-SIDE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
+  "lib/wire-format/format.ts":
+    "THE CROSS-LANGUAGE PARITY CONTRACT, and the one legitimate second implementation. Its counterpart is `FaffFmt` in native-v2/.../ValuesV5.swift, and `_format_vectors.test.ts` generates the table that pins the two together. It cannot simply re-export this module because its PRESENTATION differs on purpose — `paceDeltaSec` prints `+24 s/mi` where `fmtDelta` prints `+0:24`, and `clock(0)` answers `0:00` where `fmtClock(0)` answers null, because a live timer legitimately reads zero and a finished run does not. What must NOT differ is the arithmetic, and `both modules round the total before splitting it` below proves that on every shared vector rather than trusting this note.",
   "lib/plan/generate.ts":
     "PLAN-SIDE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
-  "lib/plan/pace-zones.ts":
-    "PLAN-SIDE · a clock split before rounding (prints `6:60`). Queued; not on the poster/recap path where the split was visible.",
   "lib/plan/replan-scenarios.ts":
     "PLAN-SIDE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
   "lib/plan/simulator.ts":
@@ -253,6 +254,25 @@ function sourceFiles(): string[] {
  * finding was filed exactly that way in this repo. Over-reporting is the
  * right direction for a lint; under-reporting is how the split survived.
  */
+/**
+ * Comments out, before anything is matched.
+ *
+ * `lib/wire-format/format.ts` documents the `6:60` defect by SHOWING it —
+ *
+ *     const s = Math.round(sPerMi % 60);   // 479.7 gives 59.7 -> 60
+ *
+ * — and this lint duly flagged the file that fixed it. Same trap the SQL
+ * scanner hit today with doc comments opening on SELECT: a scanner that reads
+ * prose reports prose, and the first false alarm is what teaches everyone to
+ * ignore the next true one. The explanation has to be allowed to quote the
+ * thing it explains.
+ */
+function stripComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+}
+
 function idiomsIn(src: string): string[] {
   const hits: string[] = [];
 
@@ -277,7 +297,7 @@ describe('format lint · one way to write a run down', () => {
     for (const file of sourceFiles()) {
       const r = rel(file);
       if (r === FORMAT_MODULE || ALLOW[r]) continue;
-      const hits = idiomsIn(fs.readFileSync(file, 'utf8'));
+      const hits = idiomsIn(stripComments(fs.readFileSync(file, 'utf8')));
       if (hits.length > 0) violations.push(`${r} — ${hits.join(' / ')}`);
     }
     console.log(`\n=== FORMAT IDIOMS · ${Object.keys(ALLOW).length} known, ${violations.length} new ===`);
@@ -389,5 +409,41 @@ describe('format lint · one way to write a run down', () => {
       expect(fmtClock(bad as number)).toBeNull();
       expect(fmtFinish(bad as number)).toBeNull();
     }
+  });
+
+  /**
+   * THE ONE THING THE TWO FORMATTERS MAY NOT DISAGREE ABOUT.
+   *
+   * `lib/wire-format/format.ts` is exempted above because it is the parity
+   * contract with Swift and its presentation differs deliberately. That
+   * exemption is only safe while the ARITHMETIC is identical — round the
+   * total, then split it; never round a part.
+   *
+   * Nineteen formatters got this wrong the same way: `Math.round(s % 60)`
+   * carries to 60 without the minute hearing about it, so 479.7 s/mi printed
+   * `7:60/mi` and 3599.7 s printed `59:60`. This walks the values where the
+   * carry actually bites — every tenth of a second either side of a minute
+   * boundary — and requires both modules to land on the same minute and the
+   * same second.
+   */
+  it('both modules round the total before splitting it', () => {
+    const boundaries: number[] = [];
+    for (const base of [0, 60, 119, 120, 419, 420, 479, 480, 3599, 3600, 3659, 3660]) {
+      for (let d = -9; d <= 9; d++) boundaries.push(Number((base + d / 10).toFixed(1)));
+    }
+    const cases = boundaries.filter((v) => v > 0);
+    expect(cases.length).toBeGreaterThanOrEqual(150);
+
+    const disagree: string[] = [];
+    for (const v of cases) {
+      const a = fmtPace(v);
+      const b = WF.paceMinSec(v);
+      if (a !== b) disagree.push(`pace ${v}: format/run ${a} vs wire-format ${b}`);
+      // No formatter may ever emit a 60 in the seconds place.
+      for (const [name, out] of [['format/run', a], ['wire-format', b]] as const) {
+        if (out && /:\s*60\b/.test(out)) disagree.push(`${name} printed a 60 in the seconds place for ${v}: ${out}`);
+      }
+    }
+    expect(disagree, 'the two formatters disagree on the carry, or one printed :60').toEqual([]);
   });
 });

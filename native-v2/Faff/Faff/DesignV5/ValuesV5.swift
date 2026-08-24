@@ -117,6 +117,26 @@ struct FaffValue: Equatable, Hashable {
 
     /// True when this value must not be presented as evidence of fitness.
     var isModelled: Bool { basis == .modelled }
+
+    /// WHAT A SCREEN READER SAYS, and since 2026-08-21 the ONLY thing carrying
+    /// rule one at the point of render.
+    ///
+    /// The amber tilde was retired because nobody could interpret it. The
+    /// distinction was explicitly kept — "the wire still carries `modelled`,
+    /// and VoiceOver still says estimated before the figure" — which makes
+    /// this string the whole visible-to-assistive-tech half of the rule.
+    ///
+    /// It lives here rather than inline in `FaffValueText.body` so it can be
+    /// tested. A rule whose last remaining carrier sits inside a view body is
+    /// a rule nothing can check, and this one has already lost its other
+    /// carrier once.
+    var voiceOverLabel: String {
+        switch basis {
+        case .measured:   return text
+        case .modelled:   return "estimated \(text)"
+        case .unreadable: return "could not be read"
+        }
+    }
 }
 
 // MARK: - Rendering
@@ -188,13 +208,13 @@ struct FaffValueText: View {
             Text(value.text)
                 .font(font)
                 .foregroundStyle(color)
-                .accessibilityLabel("estimated \(value.text)")
+                .accessibilityLabel(value.voiceOverLabel)
 
         case .unreadable:
             Text(value.text)
                 .font(font)
                 .foregroundStyle(V5.fault)
-                .accessibilityLabel("could not be read")
+                .accessibilityLabel(value.voiceOverLabel)
         }
     }
 }

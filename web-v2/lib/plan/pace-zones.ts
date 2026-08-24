@@ -22,6 +22,7 @@
  * functions directly and never collapses the three rows into one delta.
  */
 import { tPaceFromVdot, iPaceFromVdot, rPaceFromVdot } from '@/lib/training/vdot';
+import { paceMinSec } from '@/lib/wire-format/format';
 
 export type PaceZoneName = 'Threshold' | 'Interval' | 'Rep';
 
@@ -67,10 +68,13 @@ export function formatDeltaLabel(deltaSec: number | null): string | null {
   return `${rounded > 0 ? '+' : ''}${rounded} s/mi`;
 }
 
-/** "6:12" per-mile pace display. Null passthrough for an unreadable value. */
+/**
+ * "6:12" per-mile pace display. Null passthrough for an unreadable value.
+ *
+ * Delegates to `lib/wire-format/format.ts`, which is the one implementation
+ * the iPhone's `FaffFmt` is pinned against. This used to round the remainder
+ * and could print `6:60`.
+ */
 export function formatPaceMinSec(sPerMi: number | null): string | null {
-  if (sPerMi == null || !Number.isFinite(sPerMi) || sPerMi <= 0) return null;
-  const m = Math.floor(sPerMi / 60);
-  const s = Math.round(sPerMi % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
+  return paceMinSec(sPerMi);
 }

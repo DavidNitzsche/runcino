@@ -930,7 +930,7 @@ enum RunDetailV5Sample {
     private static let samplePolyline =
         "kbnaFxzhkV??`AmA?_A?_@@]@w@?[?_@?e@?a@Ac@?_@?a@?a@?c@?a@?a@?_@?e@?a@Ac@"
 
-    private static let outdoorJSON = """
+    static let outdoorJSON = """
     {
       "id": "run_9f21",
       "date": "2026-09-18",
@@ -971,7 +971,7 @@ enum RunDetailV5Sample {
     }
     """
 
-    private static let treadmillJSON = """
+    static let treadmillJSON = """
     {
       "id": "run_2b7a",
       "date": "2026-09-16",
@@ -993,7 +993,7 @@ enum RunDetailV5Sample {
     }
     """
 
-    private static let recapJSON = """
+    static let recapJSON = """
     {
       "ok": true,
       "runId": "run_9f21",
@@ -1030,7 +1030,7 @@ enum RunDetailV5Sample {
     // 6:42 and 6:56 with 90-second jogs between them, which is a runner
     // executing a tune-up and going out slightly hot. Mile four is a rep and a
     // jog averaged together and means neither.
-    private static let intervalsJSON = """
+    static let intervalsJSON = """
     {
       "id": "run_aug11",
       "date": "2026-08-11",
@@ -1160,7 +1160,7 @@ enum RunDetailV5Sample {
         return s
     }()
 
-    private static let intervalsRecapJSON = """
+    static let intervalsRecapJSON = """
     {
       "ok": true,
       "runId": "run_aug11",
