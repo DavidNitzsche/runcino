@@ -30,7 +30,7 @@ import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 import { loadPlanWeek } from '@/lib/plan/week-loader';
 import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeWorkoutType } from '@/lib/coach/run-purpose';
-import { prescriptionFor, derivePaces, type WorkoutType as PrescriptionWorkoutType } from '@/lib/training/prescriptions';
+import { prescriptionFor, derivePaces, narrowToPrescriptionType } from '@/lib/training/prescriptions';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
@@ -654,9 +654,45 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       // doc comment in lib/faff/v5-today.ts.
       const askedHrIsHardCap = Boolean(planRow?.workout_spec && Number(planRow.workout_spec.hr_cap_bpm) > 0);
 
+      // THE EFFORT THE RUNNER LOGGED, looked up under EVERY id it could have
+      // been filed under rather than the first one that happens to exist.
+      //
+      // This was `activity_id = $2` with `data.activityId ?? data.id ??
+      // runRow.id` — a precedence ladder over three identities, which is the
+      // same shape as the clock ladders and fails the same way. The phone
+      // posts to /api/runs/{id}/rpe using the `runId` this route handed it,
+      // which is `runRow.id`; but `data.id` exists on watch rows, so the
+      // ladder stopped one rung early and looked under a key nothing wrote.
+      // Reported on 2026-08-24: an effort of 3 was saved correctly and the
+      // row still offered to log one.
+      //
+      // Both spellings are live in production — a Strava row filed under
+      // `18638945777`, a watch row under its primary key — so preferring
+      // either one strands the other. The row is unique per (user, activity),
+      // so matching the SET cannot pick up someone else's answer.
+      //
+      // `user_id::text` as well as `user_uuid`: the writer matches both (the
+      // column is TEXT for legacy reasons and older rows carry 'me'), and a
+      // reader narrower than its writer is how a saved value becomes an
+      // unsaved one.
+      const rpeIds = Array.from(new Set(
+        [data.activityId, data.id, runRow.id].filter((v) => v != null).map(String),
+      ));
       const rpe = (await pool.query<{ rpe: number | null }>(
-        `SELECT rpe FROM post_run_rpe WHERE user_uuid = $1 AND activity_id = $2 LIMIT 1`,
-        [userId, data.activityId ?? data.id ?? runRow.id],
+        `SELECT rpe FROM post_run_rpe
+          WHERE (user_uuid = $1 OR user_id::text = $1::text)
+            AND activity_id = ANY($2::text[])
+          -- THE RUNNER'S OWN ANSWER WINS. pullSync auto-imports Strava's
+          -- perceived_exertion and stamps it 'auto-imported from strava',
+          -- and its dedup check looks under ONE id spelling -- so a run the
+          -- runner answered under its primary key can still collect a second,
+          -- later row from the importer. Ordering by time alone would then
+          -- replace what he said with what Strava guessed. His own entry is
+          -- the measurement here; the import is a copy of one.
+          ORDER BY (notes IS DISTINCT FROM 'auto-imported from strava') DESC,
+                   logged_at DESC
+          LIMIT 1`,
+        [userId, rpeIds],
       ).catch(() => ({ rows: [] as any[] }))).rows[0];
 
       const recap = deriveRecap({
@@ -1088,18 +1124,8 @@ function dowName(iso: string): string {
  * each mapped to the nearest case prescriptionFor implements, not dropped
  * to a blank card.
  */
-function toPrescriptionType(plannedType: string | null): PrescriptionWorkoutType {
-  const t = (plannedType ?? '').toLowerCase();
-  switch (t) {
-    case 'easy': case 'long': case 'tempo': case 'threshold': case 'intervals':
-    case 'race': case 'shakeout': case 'rest': case 'unplanned':
-      return t as PrescriptionWorkoutType;
-    case 'race_week_tuneup': return 'threshold';
-    case 'recovery': return 'easy';
-    case 'fartlek': case 'progression': return 'tempo';
-    case 'vo2max': return 'intervals';
-    default: return 'easy';
-  }
-}
+// 2026-08-24 · lifted to lib/training/prescriptions.ts (byte-identical) so the
+// watch, which casts instead of narrowing, has the same function to reach for.
+const toPrescriptionType = narrowToPrescriptionType;
 
 

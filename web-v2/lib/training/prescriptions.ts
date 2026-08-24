@@ -81,6 +81,33 @@ function padToTarget(
  */
 export type WorkoutType = SessionType;
 
+/**
+ * The plan's raw `type` column, narrowed to a type `prescriptionFor`'s switch
+ * actually implements.
+ *
+ * Lifted here 2026-08-24 from `app/api/v5/today/route.ts` (byte-identical) for
+ * the reason the union's own comment above states and then leaves standing:
+ * four of the types the generator emits — `race_week_tuneup`, `fartlek`,
+ * `progression`, `recovery` — reach the `default` arm and come back as
+ * `total_mi: 0`, "No workout scheduled". The phone narrows them away before
+ * asking. `lib/watch/build-workout.ts` casts and asks anyway, so on the watch
+ * a race-week tune-up whose `workout_spec` is missing has nothing to fall back
+ * on. One definition, so a third caller cannot fork it again.
+ */
+export function narrowToPrescriptionType(plannedType: string | null): WorkoutType {
+  const t = (plannedType ?? '').toLowerCase();
+  switch (t) {
+    case 'easy': case 'long': case 'tempo': case 'threshold': case 'intervals':
+    case 'race': case 'shakeout': case 'rest': case 'unplanned':
+      return t as WorkoutType;
+    case 'race_week_tuneup': return 'threshold';
+    case 'recovery': return 'easy';
+    case 'fartlek': case 'progression': return 'tempo';
+    case 'vo2max': return 'intervals';
+    default: return 'easy';
+  }
+}
+
 export interface PrescriptionStep {
   label: string;          // "Warmup", "Reps", "Recovery", "Cooldown"
   distance_mi?: number;   // e.g. 1.5

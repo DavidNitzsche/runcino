@@ -189,7 +189,11 @@ export async function loadAdaptationInput(
           `SELECT COUNT(*)::text AS total,
                   COUNT(*) FILTER (WHERE rpe >= 8)::text AS hard
              FROM post_run_rpe
-            WHERE user_uuid = $1 AND logged_at >= $2::date AND logged_at < $3::date`,
+            -- Both user columns: post_run_rpe.user_id is TEXT and predates
+            -- user_uuid, so older rows carry 'me' and no uuid. A reader
+            -- narrower than the writer counts a logged effort as unlogged.
+            WHERE (user_uuid = $1 OR user_id::text = $1::text)
+              AND logged_at >= $2::date AND logged_at < $3::date`,
           [userUuid, fromISO, todayISO],
         )
       ).rows[0],

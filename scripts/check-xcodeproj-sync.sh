@@ -68,7 +68,15 @@ while IFS= read -r d; do
   full="$NATIVE/$d"
   [ -d "$full" ] || continue
   # -L: the watch sources reach the iOS project through a symlinked directory.
-  find -L "$full" -name '*.swift' -type f -print0 2>/dev/null \
+  # `! -name '._*'` is load-bearing, not tidiness. This repo lives on an
+  # exFAT volume that writes an AppleDouble sidecar beside every file, so
+  # `Foo.swift` acquires a `._Foo.swift` that matches `*.swift` and is not
+  # source. One agent's worktree carried 207 of them and this gate failed
+  # there while passing here — a gate whose result depends on whose disk it
+  # runs on is worse than no gate, because the first false alarm is what
+  # teaches everyone to ignore the next true one. The same sidecars have
+  # already corrupted git packs and broken find-driven swiftc on this volume.
+  find -L "$full" -name '*.swift' ! -name '._*' -type f -print0 2>/dev/null \
     | while IFS= read -r -d '' f; do basename "$f"; done >> "$tmp/on_disk"
 done < "$tmp/src_dirs"
 sort -u "$tmp/on_disk" -o "$tmp/on_disk"

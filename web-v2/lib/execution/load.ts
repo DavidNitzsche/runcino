@@ -294,7 +294,9 @@ async function loadRpe(
     const r = await pool.query<{ day: string; rpe: number | null }>(
       `SELECT to_char(logged_at, 'YYYY-MM-DD') AS day, MAX(rpe) AS rpe
          FROM post_run_rpe
-        WHERE user_uuid = $1 AND logged_at >= $2::date AND logged_at < $3::date
+        -- Both user columns; see lib/runs/_identity_lint.test.ts.
+        WHERE (user_uuid = $1 OR user_id::text = $1::text)
+          AND logged_at >= $2::date AND logged_at < $3::date
         GROUP BY 1`,
       [userUuid, fromISO, toISO],
     );
