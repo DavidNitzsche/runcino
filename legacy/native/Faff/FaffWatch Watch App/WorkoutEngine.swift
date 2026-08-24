@@ -160,6 +160,119 @@ final class WorkoutEngine: ObservableObject {
     // Internal (not private) so @testable tests can roll phaseStart
     // backward to simulate elapsed wall-clock time without real delays.
     var phaseStart: Date = .now
+    // MARK: Auto-pause
+    //
+    // Standing at a light, waiting at a crossing, stopping to tie a lace. Every
+    // mainstream running watch pauses itself for these and this one did not, so
+    // a two-minute wait diluted the mile it fell in and the run's average pace
+    // with it.
+    //
+    // THE THRESHOLD IS APPLE'S, not one I picked. Their outdoor auto-pause
+    // triggers below roughly 2 mph — which is not a slow run, it is standing or
+    // shuffling — and matching it means a runner who has used any other watch
+    // gets the behaviour they already expect. Speed is derived over a fifteen
+    // second window rather than instantaneously, because a single GPS fix is
+    // worth about five metres of noise and fifteen seconds of standing still is
+    // unambiguous where two seconds is not.
+    //
+    // Resume needs 3 mph over five seconds. The gap between the two is
+    // deliberate: without it a runner idling at the boundary would flap the
+    // clock, and a clock that flaps is worse than one that waits a beat.
+    //
+    // OFF FOR A RACE. Race elapsed is gun-to-mat (audit W-3) and manual pause
+    // is already blocked there for the same reason — a watch that stops itself
+    // at an aid station would desync every number on the race board.
+    //
+    // OFF WITH NO DISTANCE SOURCE. On a belt, distance is the thing that is
+    // missing, so "not moving" is the normal state and auto-pause would stop
+    // the run within a minute of starting.
+    private static let autoPauseWindowSec = 15
+    private static let autoResumeWindowSec = 5
+    private static let autoPauseSpeedMph = 2.0
+    private static let autoResumeSpeedMph = 3.0
+    /// Rolling marks for the two windows.
+    private var autoPauseMarkMi: Double = 0
+    private var autoPauseMarkSec: Int = 0
+    private var autoResumeMarkMi: Double = 0
+    private var autoResumeMarkSec: Int = 0
+    /// Consecutive paused ticks showing motion — the only clock that still
+    /// runs once the engine's own has stopped.
+    private var pausedTicksMoving: Int = 0
+    /// True when THIS pause was the watch's decision, so it may undo it. A
+    /// pause the runner asked for is theirs to end.
+    private(set) var pausedAutomatically = false
+
+    /// Whether the runner wants it. Default ON, which is what every other
+    /// running watch does — a setting nobody finds is a setting nobody has.
+    var autoPauseEnabled: Bool {
+        UserDefaults.standard.object(forKey: "autoPause") as? Bool ?? true
+    }
+
+    private func updateAutoPause() {
+        guard autoPauseEnabled, !isRace, state == .running,
+              tracker?.distanceSourceUnavailable != true,
+              // NOT UNTIL THE RUN HAS MOVED AT ALL.
+              //
+              // A run whose distance has never advanced has no basis for
+              // deciding the runner has stopped — that is a treadmill, a dead
+              // GPS, or a session that has not started moving yet, and the
+              // stall watch is what speaks to those. Without this the watch
+              // pauses itself fifteen seconds into every run that cannot
+              // measure distance, and then cannot un-pause, because resuming
+              // needs the very signal that is missing.
+              coveredMi > 0 else { return }
+
+        if isPaused {
+            guard pausedAutomatically else { return }   // theirs to end
+
+            // THE RESUME WINDOW IS COUNTED IN TICKS, NOT IN ELAPSED SECONDS.
+            //
+            // `totalElapsedSec` is frozen while paused — that is the whole
+            // point of a pause — so measuring the window against it can never
+            // reach the threshold and the watch pauses itself for good. The
+            // ticker keeps calling `tick()` throughout, so a tick is the only
+            // clock still running here.
+            if coveredMi - autoResumeMarkMi > 0 || (tracker?.cadence ?? 0) >= 30 {
+                pausedTicksMoving += 1
+            } else {
+                pausedTicksMoving = 0
+                autoResumeMarkMi = coveredMi
+            }
+            if pausedTicksMoving >= Self.autoResumeWindowSec {
+                pausedTicksMoving = 0
+                pausedAutomatically = false
+        pausedTicksMoving = 0
+                resume()
+            }
+            return
+        }
+
+        let secs = totalElapsedSec - autoPauseMarkSec
+        guard secs >= Self.autoPauseWindowSec else { return }
+        let mph = (coveredMi - autoPauseMarkMi) / (Double(secs) / 3600)
+        autoPauseMarkMi = coveredMi
+        autoPauseMarkSec = totalElapsedSec
+
+        // CADENCE IS THE TIEBREAK, and it is why this is not a distance test
+        // alone. Distance stops advancing for two completely different
+        // reasons: the runner stopped, or the watch stopped being able to see
+        // them. Under a bridge, in a tunnel, in a city canyon, a runner at
+        // full effort reads zero miles an hour — and pausing them there loses
+        // the very stretch the clock is meant to be counting.
+        //
+        // Legs do not lie. Cadence comes off the motion sensors and does not
+        // care about GPS, so a runner going nowhere at 170 spm is running and
+        // a runner going nowhere at 0 spm is standing at a light. Thirty is
+        // well under any gait — a slow walk is about ninety.
+        let movingByCadence = (tracker?.cadence ?? 0) >= 30
+        if mph < Self.autoPauseSpeedMph, !movingByCadence {
+            autoResumeMarkMi = coveredMi
+            autoResumeMarkSec = totalElapsedSec
+            pausedAutomatically = true
+            pause()
+        }
+    }
+
     /// Engine-time second of the last aggregate sample, so each one can be
     /// weighted by the time it actually represents. See the sampling block in
     /// `tick()`.
@@ -499,6 +612,9 @@ final class WorkoutEngine: ObservableObject {
         stallWatchSec = 0
         lastAggregateSec = 0
         mileSplits = []
+        autoPauseMarkMi = coveredMi; autoPauseMarkSec = 0
+        autoResumeMarkMi = coveredMi; autoResumeMarkSec = 0
+        pausedAutomatically = false
         planComplete = false
         // AFTER the reset, not before it. This guard was fifteen lines higher
         // up and `planComplete = false` cleared it on the way past, so the
@@ -887,6 +1003,12 @@ final class WorkoutEngine: ObservableObject {
                 flash(next.cue, for: next.seconds)
             }
         }
+        // BEFORE the pause guard, deliberately. Auto-pause has to be able to
+        // UN-pause, and everything below this line stops running the moment
+        // the clock freezes — so calling it any later would give a watch that
+        // pauses itself and can never start again.
+        updateAutoPause()
+
         guard state == .running, !isPaused else { return }
 
         // P2-53 · HR staleness watchdog — polled every tick (1 Hz) so it
@@ -2150,6 +2272,9 @@ final class WorkoutEngine: ObservableObject {
 
     /// Pause / resume from the one control that does both.
     func togglePause() {
+        // A pause the runner asked for is theirs to end, and a resume they
+        // asked for clears the watch's claim on the last one.
+        pausedAutomatically = false
         isPaused ? resume() : pause()
     }
 

@@ -830,38 +830,33 @@ struct WatchRunSurfaceV5: View {
     /// noise, and drawing it would be a claim the run cannot support.
     private var onGoalDelta: String? {
         guard let goal = engine.workout.goalSec, goal > 0,
-              let total = engine.workout.distanceMi, total > 0 else { return nil }
+              let total = engine.workout.distanceMi, total > 0,
+              tracker.distanceMi >= 0.5 else { return nil }
 
-        // ENOUGH OF THE RACE TO BE WORTH PROJECTING FROM.
+        // AGAINST THE CLOCK, NOT AGAINST A PREDICTION.
         //
-        // The gate was a flat half mile, which is a tenth of a 5K and a
-        // fiftieth of a marathon — and this projects the runner's average pace
-        // across the WHOLE distance, so at mile 0.5 of a marathon every second
-        // of pace error is multiplied by 26.2. Caught in a simulated race,
-        // where the board drew "−172:59" in the first mile: arithmetically
-        // faithful to a noisy average, and a claim the run cannot support.
+        // This used to project the whole race from the runner's average pace
+        // so far. Measured against real race-paced long runs out of this
+        // runner's own history, that projection is a MEDIAN ELEVEN MINUTES
+        // WRONG a tenth of the way in, and twenty-three at worst — and it
+        // barely improves until halfway. Gating it later and capping the
+        // outliers, which is what I did first, only hides how little it knows.
+        // A number that confident and that wrong is the -172:59 defect again
+        // wearing a smaller coat.
         //
-        // Before the gun settles a runner is in a crowd, on a cold GPS fix,
-        // going out fast. A tenth of the race is the earliest this means
-        // anything — 2.6 miles into a marathon, 0.5 into a 5K, which is where
-        // the old constant happened to be right.
-        let minMi = max(0.5, total * 0.10)
-        guard tracker.distanceMi >= minMi else { return nil }
-
+        // So it is not a projection any more. It is where the runner stands
+        // against goal pace RIGHT NOW: the time they should have taken to
+        // cover what they have covered, against what they actually took.
+        // That is an accounting identity with no forecast in it, it is what a
+        // paper pace band on a wrist says, and it is what runners actually
+        // pace off.
+        //
+        // Early on it is naturally small rather than wildly amplified, which
+        // is why the 0.5 mi gate is now enough on its own and the twenty
+        // minute sanity cap could go: the arithmetic can no longer run away.
         let goalPace = Double(goal) / total
-        let projected = Double(engine.totalElapsedSec) / tracker.distanceMi
-        let deltaSec = Int(((projected - goalPace) * total).rounded())
-
-        // A DELTA THIS LARGE IS NOT A PROJECTION, IT IS A SENSOR PROBLEM.
-        //
-        // Twenty minutes either side covers any real race — a marathoner
-        // blowing up loses minutes, not an hour — and beyond it the input is
-        // more likely a GPS drop or a stopped watch than a runner. Drawing it
-        // anyway also breaks the format: `WFmt.short` is m:ss, so an hour of
-        // error renders as "172:59", which reads like a clock and is not one.
-        // Silence over an unfalsifiable claim, which is the rule everywhere
-        // else on these boards.
-        guard abs(deltaSec) < 20 * 60 else { return nil }
+        let owed = goalPace * tracker.distanceMi
+        let deltaSec = Int((Double(engine.totalElapsedSec) - owed).rounded())
 
         let sign = deltaSec <= 0 ? "\u{2212}" : "+"
         return sign + WFmt.short(abs(deltaSec))
@@ -1027,6 +1022,29 @@ struct WatchRunSurfaceV5: View {
     /// "4 sec quicker" against the previous split, or nil for the first one
     /// and for a difference too small to be a fact rather than noise.
     private func splitComparison(_ paceSec: Int) -> String? {
+        // ON A RACE, THE COMPARISON IS THE GOAL — NOT THE LAST MILE.
+        //
+        // "4 sec quicker" against the previous mile is the right line on a
+        // training run, where the previous mile is the only reference there
+        // is. In a race the runner has a number they came to hit, and the
+        // question at every marker is the same one: was that mile on pace.
+        // Comparing to the mile before instead answers a question nobody
+        // asked, and a runner drifting steadily reads "on pace" every mile
+        // while falling further behind — the drift is invisible precisely
+        // because each mile resembles the one before it.
+        //
+        // The cumulative standing is on the race face; this is the per-mile
+        // half of the same question, which is what a runner actually paces
+        // off between markers.
+        if engine.workout.isRace,
+           let goal = engine.workout.goalSec, goal > 0,
+           let total = engine.workout.distanceMi, total > 0 {
+            let goalPace = Int((Double(goal) / total).rounded())
+            let delta = paceSec - goalPace
+            if abs(delta) < 3 { return "on goal pace" }
+            return "\(abs(delta)) sec " + (delta < 0 ? "under goal" : "over goal")
+        }
+
         guard let prev = lastSplitSec else { return nil }
         let delta = paceSec - prev
         guard abs(delta) >= 3 else { return nil }

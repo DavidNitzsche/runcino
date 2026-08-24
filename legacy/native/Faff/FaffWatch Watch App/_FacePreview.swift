@@ -316,6 +316,14 @@ struct FacePreviewView: View {
             return AnyView(WMomentAlmostDone(value: "0.25"))
         case "malmostrep":
             return AnyView(WMomentAlmostDone(value: "0.40", unit: "km left"))
+        case "msplitrace":
+            // A race mile, compared to the goal rather than to the mile
+            // before it — the question a runner asks at every marker.
+            return AnyView(WMomentSplit(label: "Mile 9", time: "7:52",
+                                        comparison: "6 sec under goal"))
+        case "msplitracebehind":
+            return AnyView(WMomentSplit(label: "Mile 21", time: "8:14",
+                                        comparison: "16 sec over goal"))
         case "msplit":
             return AnyView(WMomentSplit(label: "Mile 5", time: "7:48",
                 comparison: "4 sec quicker"))
