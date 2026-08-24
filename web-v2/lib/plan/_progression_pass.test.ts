@@ -131,46 +131,53 @@ function priorOf(prescribed: WorkShape, authored = prescribed): Map<'threshold' 
 
 /* --------------------------------------------------------------- 1 · when */
 
-describe('progressionPassDue · once per training week, on the runner\'s boundary', () => {
-  // David runs long on Sunday (dow 0) → his training week is Mon-Sun, so it
-  // STARTS on Monday. A Saturday-long runner's starts on Sunday.
+describe('progressionPassDue · once per training week, on the Sunday boundary', () => {
+  // SUPERSEDED, 2026-08-21. These asserted the long-run-day boundary, under
+  // which a Sunday-long runner's week started on Monday. David moved the week
+  // to Sunday-to-Saturday for everyone, so the boundary these locked is gone.
+  //
+  // The PROPERTIES survive unchanged and are what the rewrite protects: the
+  // pass fires once, on the first day of the week, catches up a missed tick
+  // for two days, and refuses to rewrite a week the runner is already inside.
   it('fires on the first day of the training week and not before', () => {
-    const mon = progressionPassDue({
-      todayISO: '2026-09-07', todayDow: 1, longRunDow: 0, lastPassWeekStartISO: null,
-    });
-    expect(mon.due).toBe(true);
-    expect(mon.weekStartISO).toBe('2026-09-07');
-    expect(mon.weekEndISO).toBe('2026-09-13');
-
-    // The Sunday before is the END of the previous week, not the start of this
-    // one — its own week began six days earlier and has long since fired.
     const sun = progressionPassDue({
-      todayISO: '2026-09-06', todayDow: 0, longRunDow: 0, lastPassWeekStartISO: '2026-08-31',
+      todayISO: '2026-09-06', todayDow: 0, longRunDow: 0, lastPassWeekStartISO: null,
     });
-    expect(sun.due).toBe(false);
-    expect(sun.weekStartISO).toBe('2026-08-31');
+    expect(sun.due).toBe(true);
+    expect(sun.weekStartISO).toBe('2026-09-06');
+    expect(sun.weekEndISO).toBe('2026-09-12');
+
+    // The Saturday before is the END of the previous week, not the start of
+    // this one — its own week began six days earlier and has long since fired.
+    const sat = progressionPassDue({
+      todayISO: '2026-09-05', todayDow: 6, longRunDow: 0, lastPassWeekStartISO: '2026-08-30',
+    });
+    expect(sat.due).toBe(false);
+    expect(sat.weekStartISO).toBe('2026-08-30');
   });
 
-  it('anchors on the runner\'s long-run day, not on Monday', () => {
-    // A Saturday-long runner (dow 6): the week runs Sun-Sat, so Sunday is day
-    // one. Anchoring on ISO Monday would read one week's evidence against
-    // another week's plan — the same defect the weekly check-in cron had.
-    const satRunner = progressionPassDue({
-      todayISO: '2026-09-06', todayDow: 0, longRunDow: 6, lastPassWeekStartISO: null,
-    });
-    expect(satRunner.due).toBe(true);
-    expect(satRunner.weekStartISO).toBe('2026-09-06');
-    expect(satRunner.weekEndISO).toBe('2026-09-12');
-    // And Monday is mid-week for them.
+  it('gives every runner the same boundary, whatever day they run long', () => {
+    // This used to anchor on the long-run day. It no longer does, and this is
+    // what proves the parameter is inert: a Saturday-long runner and a
+    // Sunday-long runner get the identical week.
+    for (const longRunDow of [0, 3, 6]) {
+      const w = progressionPassDue({
+        todayISO: '2026-09-06', todayDow: 0, longRunDow, lastPassWeekStartISO: null,
+      });
+      expect(w.due, `longRunDow ${longRunDow}`).toBe(true);
+      expect(w.weekStartISO).toBe('2026-09-06');
+      expect(w.weekEndISO).toBe('2026-09-12');
+    }
+    // And Monday is day two for all of them.
     expect(progressionPassDue({
       todayISO: '2026-09-07', todayDow: 1, longRunDow: 6, lastPassWeekStartISO: null,
     }).dayIndex).toBe(1);
   });
 
   it('never fires twice for the same week', () => {
-    for (const [iso, dow] of [['2026-09-07', 1], ['2026-09-08', 2], ['2026-09-09', 3]] as const) {
+    for (const [iso, dow] of [['2026-09-06', 0], ['2026-09-07', 1], ['2026-09-08', 2]] as const) {
       expect(progressionPassDue({
-        todayISO: iso, todayDow: dow, longRunDow: 0, lastPassWeekStartISO: '2026-09-07',
+        todayISO: iso, todayDow: dow, longRunDow: 0, lastPassWeekStartISO: '2026-09-06',
       }).due, `${iso} re-fired`).toBe(false);
     }
   });
@@ -178,16 +185,16 @@ describe('progressionPassDue · once per training week, on the runner\'s boundar
   it('catches up on a missed cron tick, but does not resolve a week half-run', () => {
     // A lost cron tick must not cost the runner a whole cycle...
     for (let d = 0; d <= PASS_CATCHUP_DAYS; d++) {
-      const iso = ['2026-09-07', '2026-09-08', '2026-09-09'][d];
+      const iso = ['2026-09-06', '2026-09-07', '2026-09-08'][d];
       expect(progressionPassDue({
-        todayISO: iso, todayDow: 1 + d, longRunDow: 0, lastPassWeekStartISO: null,
+        todayISO: iso, todayDow: d, longRunDow: 0, lastPassWeekStartISO: null,
       }).due, `day ${d} should still catch up`).toBe(true);
     }
     // ...but by midweek the quality days have started landing. Next week's
     // pass reads the same evidence plus this week's, which is strictly better
     // than rewriting a week the runner is already inside.
     expect(progressionPassDue({
-      todayISO: '2026-09-10', todayDow: 4, longRunDow: 0, lastPassWeekStartISO: null,
+      todayISO: '2026-09-09', todayDow: 3, longRunDow: 0, lastPassWeekStartISO: null,
     }).due).toBe(false);
   });
 });

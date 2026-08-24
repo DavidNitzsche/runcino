@@ -156,43 +156,58 @@ describe('templates', () => {
 });
 
 // ──────────────────────────────────────────────────────────────
-// 3. trainingWeekWindow — long-run-day boundary (P1-24 / week P2)
+// 3. trainingWeekWindow — Sunday-to-Saturday boundary
+//
+// SUPERSEDED, 2026-08-21. These asserted the long-run-day boundary: the week
+// ended on the runner's long_run_day and started the day after. David moved
+// it to a plain Sunday-to-Saturday week, so the rule these locked is gone and
+// the assertions are rewritten rather than deleted — the PROPERTY they were
+// protecting still matters, and it is the one that broke before: every day of
+// a week must map to the same window, so the strip and the totals cannot
+// disagree. Only the boundary changed.
 // ──────────────────────────────────────────────────────────────
 
 describe('trainingWeekWindow', () => {
-  it('Sunday-long runner (David): week is Mon–Sun, check-in day window ends today', () => {
-    // 2026-07-05 is a Sunday · long_run_day=sun (dow 0)
+  it('a Sunday opens the week', () => {
     const w = trainingWeekWindow('2026-07-05', 0, 0);
-    expect(w.week_start_iso).toBe('2026-06-29'); // Monday
-    expect(w.week_end_iso).toBe('2026-07-05');   // the long-run Sunday itself
+    expect(w.week_start_iso).toBe('2026-07-05');
+    expect(w.week_end_iso).toBe('2026-07-11');
   });
 
-  it('Saturday-long runner: week is Sun–Sat, NOT ISO Monday-anchored', () => {
-    // 2026-07-04 is a Saturday · long_run_day=sat (dow 6)
+  it('a Saturday closes it', () => {
     const w = trainingWeekWindow('2026-07-04', 6, 6);
-    expect(w.week_start_iso).toBe('2026-06-28'); // Sunday
-    expect(w.week_end_iso).toBe('2026-07-04');   // the long-run Saturday
+    expect(w.week_start_iso).toBe('2026-06-28');
+    expect(w.week_end_iso).toBe('2026-07-04');
   });
 
   it('mid-week date maps into the containing week', () => {
-    // Wednesday 2026-07-01 (dow 3) for a Sunday-long runner → Mon Jun 29 – Sun Jul 5
+    // Wednesday 2026-07-01 (dow 3) → Sun Jun 28 – Sat Jul 4.
     const w = trainingWeekWindow('2026-07-01', 3, 0);
-    expect(w.week_start_iso).toBe('2026-06-29');
-    expect(w.week_end_iso).toBe('2026-07-05');
+    expect(w.week_start_iso).toBe('2026-06-28');
+    expect(w.week_end_iso).toBe('2026-07-04');
   });
 
-  it('week start lands on the day AFTER the long run for every long-run day', () => {
+  it('gives the same window whatever the long-run day is', () => {
+    // The parameter is still accepted so no call site had to change, and is
+    // now ignored. This is what proves it.
     for (let longRunDow = 0; longRunDow < 7; longRunDow++) {
-      // evaluate ON the long-run day (dow === longRunDow), any fixed date
-      // with a known dow: 2026-07-06 is a Monday (dow 1). Shift the date
-      // so its dow matches longRunDow.
-      const base = Date.parse('2026-07-06T12:00:00Z'); // Monday
-      const shift = (longRunDow - 1 + 7) % 7;
-      const dateISO = new Date(base + shift * 86400000).toISOString().slice(0, 10);
-      const w = trainingWeekWindow(dateISO, longRunDow, longRunDow);
-      expect(w.week_end_iso).toBe(dateISO); // fires on long-run day → window ends today
-      const span = (Date.parse(w.week_end_iso) - Date.parse(w.week_start_iso)) / 86400000;
-      expect(span).toBe(6); // 7 inclusive days
+      const w = trainingWeekWindow('2026-07-01', 3, longRunDow);
+      expect(w.week_start_iso).toBe('2026-06-28');
+      expect(w.week_end_iso).toBe('2026-07-04');
+    }
+  });
+
+  it('always spans seven inclusive days, Sunday through Saturday', () => {
+    const base = Date.parse('2026-07-06T12:00:00Z'); // a Monday
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(base + i * 86400000);
+      const iso = d.toISOString().slice(0, 10);
+      const w = trainingWeekWindow(iso, d.getUTCDay(), 0);
+      const span = (Date.parse(w.week_end_iso + 'T12:00:00Z')
+                  - Date.parse(w.week_start_iso + 'T12:00:00Z')) / 86400000;
+      expect(span).toBe(6);
+      expect(new Date(w.week_start_iso + 'T12:00:00Z').getUTCDay()).toBe(0);
+      expect(new Date(w.week_end_iso + 'T12:00:00Z').getUTCDay()).toBe(6);
     }
   });
 });
