@@ -282,6 +282,34 @@ export function fmtMi(mi: number | null | undefined): string | null {
   return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)} mi`;
 }
 
+/**
+ * SPECFIRST-1 (2026-08-24) · a REP distance, in the unit it was written in.
+ *
+ * `fmtMi` rounds to a tenth of a mile, which is the right resolution for a
+ * day's total and the wrong one for a rep: a 400 m rep is 0.249 mi and came
+ * out of it as "0.2 mi", a fifth off, directly under a headline reading
+ * "5×400 m @ T pace". One card, two numbers, neither agreeing with the other.
+ *
+ * Track reps are written in metres and this renders them in metres — the same
+ * distance, said the way the workout says it, never a different distance. A
+ * rep at or above the mile, and anything not near a track distance, falls
+ * through to the mile formatter as before.
+ */
+const TRACK_M = [200, 300, 400, 600, 800, 1000, 1200, 1500] as const;
+export function fmtRepDistance(mi: number | null | undefined): string | null {
+  if (mi == null || !isFinite(mi) || mi <= 0) return null;
+  // A mile is a mile. Without this guard 1.0 mi (1609.3 m) lands within 1% of
+  // 1600 m and a runner reading "5 × 1 mi" would be shown "5 × 1600 m".
+  if (mi >= 0.98) return fmtMi(mi);
+  const m = mi * 1609.344;
+  for (const t of TRACK_M) {
+    if (Math.abs(m - t) / t <= 0.01) return t === 1000 ? '1 km' : `${t} m`;
+  }
+  // Not a track distance. Below half a mile a tenth is too coarse to be true.
+  if (mi < 0.5) return `${(Math.round(mi * 100) / 100).toFixed(2)} mi`;
+  return fmtMi(mi);
+}
+
 export function fmtPace(sPerMi: number | null | undefined): string | null {
   if (sPerMi == null || !isFinite(sPerMi) || sPerMi <= 0) return null;
   const m = Math.floor(sPerMi / 60);
@@ -653,7 +681,14 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
 
   const stepMain = (s: V5PrescriptionStepLike): string => {
     if (s.reps != null && s.reps > 0) {
-      const rd = fmtMi(s.rep_distance_mi);
+      // SPECFIRST-1 · a rep is counted in the unit it was WRITTEN in. Doctrine
+      // sizes a hill rep, a Mona surge and a stride in seconds (Research/04
+      // §8.1, §9.2, §7.2) and a cruise interval in distance; the spec carries
+      // whichever, and `spec-card.ts` puts the seconds in `duration`. Reading
+      // only `rep_distance_mi` here collapsed every time-based set to a bare
+      // "6 reps" — including the shakeout's "4 × 20 sec" strides, which this
+      // builder has been dropping the "20 sec" from since it shipped.
+      const rd = fmtRepDistance(s.rep_distance_mi) ?? s.duration ?? null;
       return rd ? `${s.reps} × ${rd}` : `${s.reps} reps`;
     }
     const dist = fmtMi(s.distance_mi);

@@ -30,7 +30,8 @@ import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 import { loadPlanWeek } from '@/lib/plan/week-loader';
 import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeWorkoutType } from '@/lib/coach/run-purpose';
-import { prescriptionFor, derivePaces, type WorkoutType as PrescriptionWorkoutType } from '@/lib/training/prescriptions';
+import { derivePaces, hrTargets, type WorkoutType as PrescriptionWorkoutType } from '@/lib/training/prescriptions';
+import { cardFromSpec, cardWithoutSpec, type SpecCard } from '@/lib/training/spec-card';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
@@ -812,15 +813,94 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     : prescriptionType === 'threshold' ? dp.thresholdSec
     : prescriptionType === 'intervals' ? dp.intervalSec
     : midSec(dp.easySecLo, dp.easySecHi);
-  const prescription = todayPlan
-    // `?? 30` handed a 30 mi/wk assumption to a runner whose planned week we
-    // could not read, and prescriptionFor sizes fallback distances and the
-    // marathon-pace gate off exactly that figure. LOWVOL-4 hardened that
-    // function so an unknown week yields no number rather than an invented
-    // one; this caller was quietly reintroducing the constant it removed.
-    // 0 means unknown, which is what the function already knows how to do —
-    // and the day's real distance still comes from `todayPlan.distanceMi`.
-    ? prescriptionFor(prescriptionType, glance.weekPlanned ?? 0, { lthr: glance.lthr, goal_seconds: glance.raceGoalSeconds, goal_distance_mi: glance.raceGoalDistanceMi }, todayPlan.distanceMi)
+  /* ── SPECFIRST-1 (2026-08-24) · THE CARD AND THE WATCH DESCRIBED DIFFERENT
+   *    WORKOUTS ON EVERY QUALITY DAY ────────────────────────────────────────
+   *
+   * This line used to be `prescriptionFor(...)`. That function's rep distance
+   * is a literal — `const repMi = 1` for threshold, `0.5` for intervals — and
+   * its rep COUNT is dosed off the runner's weekly mileage, not read off the
+   * day. The watch has executed `plan_workouts.workout_spec` since 2026-06-02,
+   * when the same bug was found and fixed one surface over
+   * (`lib/training/expand-spec.ts`'s own header records it). Today was never
+   * migrated, so the two surfaces have disagreed ever since.
+   *
+   * Verified against production 2026-08-24 over `faff_readonly`, every
+   * non-archived plan: 41 quality days, 40 disagreeing with their own spec;
+   * 34 of the 35 future-dated. "5×400 m @ T pace · 2 min jog" rendered as
+   * "2 × 1 mile reps". "3×7 min @ I · 60s jog" rendered as "5 × 800m". The
+   * widest pace gap was 87 s/mi, on a runner the card was sending out FASTER
+   * than the plan.
+   *
+   * The spec is now the only structural source. `cardFromSpec` runs the SAME
+   * `expandSpecToPhases` the watch runs, off the same easy-pace anchor, and
+   * renders those phases as steps instead of re-deriving them.
+   */
+  const specRow = todayPlan && activePlan
+    ? (await pool.query<{ workout_spec: any; sub_label: string | null; pace_target_s_per_mi: number | null }>(
+        `SELECT workout_spec, sub_label, pace_target_s_per_mi
+           FROM plan_workouts WHERE plan_id = $1 AND date_iso = $2 LIMIT 1`,
+        [activePlan.id, today],
+        // A failed read is UNKNOWN, not "no spec". Falling silently to the
+        // no-spec card would turn a database blip into a permanently thinner
+        // card with no way to tell the two apart, which is the swallowed-catch
+        // shape this codebase has paid for before. It still degrades to the
+        // honest card below, and it says so in the log.
+      ).catch((e) => { console.error('[v5/today] plan spec read failed', e); return { rows: [] as any[] }; })).rows[0]
+    : null;
+
+  /* The runner's OWN easy-pace anchor, read exactly the way
+   * `lib/watch/build-workout.ts` reads it: the nearest authored easy (then
+   * long) band in THIS plan. Deriving it any other way here would put the two
+   * surfaces back on separate numbers for every warm-up, cool-down and jog
+   * recovery — the same class of split this change exists to close.
+   * Null → by-feel edges, never a fabricated pace (P1-47). */
+  const easyBandRow = activePlan
+    ? (await pool.query<{ lo: number | null; hi: number | null }>(
+        `SELECT (workout_spec->>'pace_target_s_per_mi_lo')::float AS lo,
+                (workout_spec->>'pace_target_s_per_mi_hi')::float AS hi
+           FROM plan_workouts
+          WHERE plan_id = $1
+            AND workout_spec->>'kind' IN ('easy', 'long')
+            AND workout_spec->>'pace_target_s_per_mi_lo' IS NOT NULL
+            AND workout_spec->>'pace_target_s_per_mi_hi' IS NOT NULL
+          ORDER BY (workout_spec->>'kind' = 'easy') DESC,
+                   ABS(date_iso::date - $2::date) ASC
+          LIMIT 1`,
+        [activePlan.id, today],
+      ).catch((e) => { console.error('[v5/today] easy band read failed', e); return { rows: [] as any[] }; })).rows[0]
+    : null;
+  const easyPaceAnchor = easyBandRow?.lo != null && easyBandRow?.hi != null
+    ? Math.round((Number(easyBandRow.lo) + Number(easyBandRow.hi)) / 2)
+    : null;
+
+  const hrBands = hrTargets({ lthr: glance.lthr, goal_seconds: glance.raceGoalSeconds, goal_distance_mi: glance.raceGoalDistanceMi });
+  // Same tolerance the watch applies, so the band the phone quotes is the band
+  // the wrist grades against.
+  const cardTolerance =
+    prescriptionType === 'threshold' || prescriptionType === 'intervals' ? 8
+    : prescriptionType === 'race' ? 12 : 20;
+
+  const prescription: SpecCard | null = todayPlan
+    ? (cardFromSpec({
+        spec: specRow?.workout_spec ?? null,
+        type: prescriptionType,
+        subLabel: specRow?.sub_label ?? todayPlan.subLabel ?? null,
+        distanceMi: todayPlan.distanceMi,
+        easyPaceSec: easyPaceAnchor,
+        hr: hrBands,
+        toleranceSec: cardTolerance,
+      })
+      // No spec on the row, or a spec kind the expander does not know. The
+      // card then carries only what the row itself holds. RULE THREE — a
+      // refusal is a correct answer, and a fabricated rep distance is worse
+      // than a card that says less.
+      ?? cardWithoutSpec({
+        type: prescriptionType,
+        subLabel: specRow?.sub_label ?? todayPlan.subLabel ?? null,
+        distanceMi: todayPlan.distanceMi,
+        paceTargetSPerMi: specRow?.pace_target_s_per_mi ?? null,
+        hr: hrBands,
+      }))
     : null;
 
   const fuelingType: WorkoutFuelingType =
@@ -836,9 +916,20 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // cannot read one — in which case the estimate is 0, computeFueling
   // prescribes nothing, and the fuel row simply does not appear. A missing
   // row beats an invented gel.
+  //
+  // SPECFIRST-1 · and it now asks the PLAN first. `paceForType` is derived
+  // from the runner's LTHR and race goal; `plan_workouts.pace_target_s_per_mi`
+  // and the plan's own authored easy band are what the generator actually
+  // wrote for this day. Where a real stored number exists it wins, for the
+  // same reason the card's structure now does: read before derive. The
+  // derived figure stays as the last rung, and 0 (no gels) stays below that.
+  const fuelPaceSPerMi =
+    specRow?.pace_target_s_per_mi ?? (
+      prescriptionType === 'easy' || prescriptionType === 'long' ? easyPaceAnchor : null
+    ) ?? paceForType;
   const fuelingDurationEstMin =
-    prescription && paceForType != null && paceForType > 0
-      ? Math.round(((prescription.total_mi || 0) * paceForType) / 60)
+    prescription && fuelPaceSPerMi != null && fuelPaceSPerMi > 0
+      ? Math.round(((prescription.total_mi || 0) * fuelPaceSPerMi) / 60)
       : 0;
   const fueling = prescription
     ? computeFueling({

@@ -144,7 +144,7 @@ export interface Prescription {
   } | null;
 }
 
-interface ProfileInputs {
+export interface ProfileInputs {
   lthr?: number | null;
   goal_seconds?: number | null;        // race goal total seconds
   goal_distance_mi?: number | null;    // race distance
@@ -241,7 +241,12 @@ function weatherSummary(p: ProfileInputs): Prescription['weather'] {
   };
 }
 
-function hrTargets(p: ProfileInputs) {
+/** SPECFIRST-1 · exported so `lib/training/spec-card.ts` quotes the SAME zone
+ *  band strings this file does. A zone is the runner's own physiology (LTHR →
+ *  Friel bands), not a session structure, so it is safe to share across both
+ *  card sources — and sharing it is what stops the two rendering "Z4" two
+ *  different ways. */
+export function hrTargets(p: ProfileInputs) {
   const z = p.lthr ? computeZones({ lthr: p.lthr }) : null;
   if (!z) return null;
   const get = (idx: number) => {
@@ -314,6 +319,67 @@ export function derivePaces(p: ProfileInputs): DerivedPaceTargets {
 
 // ── Per-workout builders ────────────────────────────────────────────────
 
+/**
+ * SPECFIRST-1 (2026-08-24) · the prose half of a prescription, split out from
+ * the numbers.
+ *
+ * `prescriptionFor` computes two different kinds of thing in one pass: WHY a
+ * session type exists (a fixed sentence per type, true of every threshold day
+ * ever written) and WHAT this particular session is (counts, rep distances,
+ * paces — sized off a template). Only the second half can disagree with an
+ * authored `workout_spec`, and only the second half did.
+ *
+ * `lib/training/spec-card.ts` composes the card's structure from the spec and
+ * needs the first half unchanged. Exporting it here keeps ONE copy of the
+ * sentence rather than a second that drifts — the same reason
+ * `subLabelFromSpec` lives beside `expandSpecToPhases` instead of in the
+ * generator.
+ *
+ * The headline deliberately carries no count. "Threshold · 3 × 1 mile reps"
+ * was the fabrication in the headline itself; the day's real structure comes
+ * from the spec, and its authored name from `subLabelFromSpec`.
+ */
+export function sessionRationale(type: WorkoutType): { headline: string; why: string; citation: string } {
+  switch (type) {
+    case 'easy': return {
+      headline: 'Easy aerobic',
+      why: 'Build the aerobic engine without taxing the legs. The discipline is keeping it easy.',
+      citation: 'Research/00a-distance-running-training.md §easy-volume' };
+    case 'long': return {
+      headline: 'Long run',
+      why: 'The single most important workout of the week. Time on feet builds everything else.',
+      citation: 'Research/00a §long-run' };
+    case 'threshold': return {
+      headline: 'Threshold reps',
+      why: 'Lift the lactate threshold · the engine\'s ceiling. The pace you could hold for an hour.',
+      citation: 'Research/04 §intervals-and-threshold' };
+    case 'tempo': return {
+      headline: 'Tempo',
+      why: 'Sub-threshold steady · teach the body to clear lactate, not bury it. Marathon pace territory.',
+      citation: 'Research/04 §tempo' };
+    case 'intervals': return {
+      headline: 'Intervals',
+      why: 'VO2 max · the engine\'s peak output. Short reps at race-finish effort.',
+      citation: 'Research/04 §intervals' };
+    case 'shakeout': return {
+      headline: 'Pre-race shakeout',
+      why: 'Fire the neuromuscular system without taxing it. Loosen the legs.',
+      citation: 'Research/08-pacing-and-race-week.md §day-before' };
+    case 'race': return {
+      headline: 'Race day',
+      why: 'All training points here. Execute the plan.',
+      citation: 'Research/08 §race-execution' };
+    case 'rest': return {
+      headline: 'Rest day',
+      why: 'Rest is the work. Glycogen restocks, micro-tears repair, the nervous system resets.',
+      citation: 'Research/00b-recovery-protocols.md §rest-physiology' };
+    default: return {
+      headline: 'No workout scheduled',
+      why: 'When a plan is active, the workout for this day will appear here.',
+      citation: '' };
+  }
+}
+
 export function prescriptionFor(
   type: WorkoutType,
   weeklyMi: number,
@@ -325,6 +391,8 @@ export function prescriptionFor(
 ): Prescription {
   const pc = paces(p);
   const hr = hrTargets(p);
+  // SPECFIRST-1 · one copy of the type-level prose, shared with spec-card.ts.
+  const rationale = sessionRationale(type);
 
   switch (type) {
     case 'easy': {
@@ -338,8 +406,8 @@ export function prescriptionFor(
       return {
         type, total_mi: total,
         headline: 'Easy aerobic',
-        why: 'Build the aerobic engine without taxing the legs. The discipline is keeping it easy.',
-        citation: 'Research/00a-distance-running-training.md §easy-volume',
+        why: rationale.why,
+        citation: rationale.citation,
         zones: hr?.table,
         steps: [{
           label: 'Run',
@@ -377,8 +445,8 @@ export function prescriptionFor(
       return {
         type, total_mi: total,
         headline: hasMpSegment ? 'Long run · marathon-pace finish' : 'Long run · aerobic',
-        why: 'The single most important workout of the week. Time on feet builds everything else.',
-        citation: 'Research/00a §long-run',
+        why: rationale.why,
+        citation: rationale.citation,
         zones: hr?.table,
         steps,
       };
@@ -404,8 +472,8 @@ export function prescriptionFor(
       return {
         type, total_mi: Math.round(total * 10) / 10,
         headline: `Threshold · ${reps} × 1 mile reps`,
-        why: 'Lift the lactate threshold · the engine\'s ceiling. The pace you could hold for an hour.',
-        citation: 'Research/04 §intervals-and-threshold',
+        why: rationale.why,
+        citation: rationale.citation,
         zones: hr?.table,
         steps: [
           { label: 'Warmup', distance_mi: wuMi, pace_target: pc.easy ?? 'easy', hr_target: hr?.z1 ?? 'Z1',
@@ -446,8 +514,8 @@ export function prescriptionFor(
       return {
         type, total_mi: total,
         headline: `Tempo · ${tempoMi} continuous miles`,
-        why: 'Sub-threshold steady · teach the body to clear lactate, not bury it. Marathon pace territory.',
-        citation: 'Research/04 §tempo',
+        why: rationale.why,
+        citation: rationale.citation,
         zones: hr?.table,
         steps: [
           { label: 'Warmup', distance_mi: wuMi, pace_target: pc.easy ?? 'easy', hr_target: hr?.z1 ?? 'Z1',
@@ -480,8 +548,8 @@ export function prescriptionFor(
       return {
         type, total_mi: Math.round(total * 10) / 10,
         headline: `Intervals · ${reps} × 800m`,
-        why: 'VO2 max · the engine\'s peak output. Short reps at race-finish effort.',
-        citation: 'Research/04 §intervals',
+        why: rationale.why,
+        citation: rationale.citation,
         zones: hr?.table,
         steps: [
           { label: 'Warmup', distance_mi: wuMi, pace_target: pc.easy ?? 'easy', hr_target: hr?.z1 ?? 'Z1',
@@ -503,8 +571,8 @@ export function prescriptionFor(
       return {
         type, total_mi: 2,
         headline: 'Pre-race shakeout',
-        why: 'Fire the neuromuscular system without taxing it. Loosen the legs.',
-        citation: 'Research/08-pacing-and-race-week.md §day-before',
+        why: rationale.why,
+        citation: rationale.citation,
         zones: hr?.table,
         steps: [
           { label: 'Run', distance_mi: 2, pace_target: pc.easy ?? 'easy', hr_target: hr?.z1 ?? 'Z1',
@@ -520,8 +588,8 @@ export function prescriptionFor(
       return {
         type, total_mi: total,
         headline: 'Race day',
-        why: 'All training points here. Execute the plan.',
-        citation: 'Research/08 §race-execution',
+        why: rationale.why,
+        citation: rationale.citation,
         zones: hr?.table,
         steps: [
           { label: 'Race', distance_mi: total,
@@ -536,8 +604,8 @@ export function prescriptionFor(
       return {
         type, total_mi: 0,
         headline: 'Rest day',
-        why: 'Rest is the work. Glycogen restocks, micro-tears repair, the nervous system resets.',
-        citation: 'Research/00b-recovery-protocols.md §rest-physiology',
+        why: rationale.why,
+        citation: rationale.citation,
         zones: null,
         steps: [{
           label: 'Today',
@@ -550,8 +618,8 @@ export function prescriptionFor(
       return {
         type, total_mi: 0,
         headline: 'No workout scheduled',
-        why: 'When a plan is active, the workout for this day will appear here.',
-        citation: '',
+        why: rationale.why,
+        citation: rationale.citation,
         zones: hr?.table,
         steps: [],
       };
