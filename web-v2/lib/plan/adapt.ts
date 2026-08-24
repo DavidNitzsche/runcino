@@ -46,9 +46,10 @@
  *      own tier bands and shaved compliant runners daily; the plan's own
  *      prescription is the baseline now, the experience cap is only the
  *      no-schedule fallback). One shave per rolling 7 days (cooldown).
- *      Suppressed while a RECOVERY block is active (2026-08-24): that block
- *      is authored as a fraction of PEAK, so it cannot state what the runner
- *      can safely carry — see the filter in detectVolumeOvershoot.
+ *      2026-08-24 · the baseline is FLOORED at the runner's own 28-day
+ *      chronic load, and the detector is silent inside a recovery block.
+ *      A prescription deliberately set below the runner is not a load
+ *      ceiling. See `OvershootContext`.
  *      → Shave next 7d by 17% (proportional).
  *      Cite: Research/00a-distance-running-training.md §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
  *
@@ -770,18 +771,90 @@ export function buildReRampActions(opts: {
 }
 
 /**
+ * Context that decides whether an over-prescription week is EVIDENCE of
+ * overreaching or merely evidence that the prescription was small.
+ *
+ * 2026-08-24 · owner's ruling · "keep auto-apply, but it must not fire on a
+ * positive deviation. Running more than prescribed stops triggering a cut."
+ * Taken literally that deletes the detector, because a positive deviation is
+ * the only thing it has ever fired on — see the note above `chronicWeeklyMi`
+ * for what the ruling turns out to mean once the arithmetic is written down.
+ */
+export interface OvershootContext {
+  /**
+   * The runner's own established weekly load, mi/wk, measured over the 28 days
+   * ENDING BEFORE the trailing window under judgement. Null when there is not
+   * enough observable history to state one.
+   *
+   * THE DEFECT THIS CLOSES. The baseline was the plan's own prescription for
+   * the trailing week, and nothing stopped that prescription from being a
+   * DELIBERATE reduction. A runner two weeks past a half is inside a recovery
+   * block that prescribes 17mi against a 40-47mi habitual base; he ran 32,
+   * which is well UNDER what his body carries every ordinary week, and the
+   * detector read it as 88% over and wanted 17% off his next seven days.
+   *
+   * A prescription set below the runner on purpose is not a statement about
+   * what the runner can absorb, so it cannot be allowed to drag the injury
+   * threshold below the runner's own chronic load. The baseline is now the
+   * LARGER of the two. Genuine overreach still fires: chronic 45, plan 50,
+   * ran 70 → 70 > 56.25, unchanged.
+   *
+   * This is the general form of the ruling — "ran more than prescribed"
+   * warrants a cut only when it is also more than the runner is used to —
+   * and it covers cutback weeks, tapers and race weeks by the same
+   * arithmetic rather than by enumerating plan-shape flags.
+   *
+   * Cite: Research/15-wearable-data.md §"Acute:Chronic Workload Ratio (ACWR)"
+   *       — `acute_load_7d / chronic_load_28d`. The 28-day rolling average IS
+   *       the chronic load, and the doc's own framing is that the acute week
+   *       is judged against it, never against an arbitrary denominator.
+   */
+  chronicWeeklyMi?: number | null;
+  /**
+   * True when the active block is a doctrine-prescribed recovery block.
+   *
+   * A second, independent guard, on the RESPONSE rather than on the
+   * arithmetic. Research/00b's post-race protocols are a prescribed REBUILD —
+   * the half's 14-day table, the marathon's four-week reverse taper — and what
+   * they restrict is quality and intensity, not distance. Shaving 17% off a
+   * recovery block cuts the rebuild doctrine is asking for (including the
+   * day-14 long run that hands off to the next block) while doing nothing
+   * about the thing recovery actually protects. Wrong instrument, so it does
+   * not fire at all.
+   *
+   * Cite: Research/00b-recovery-protocols.md §"Week-by-Week Protocols"
+   */
+  recoveryBlock?: boolean;
+}
+
+/**
  * Volume-overshoot firing predicate (2026-07-06 · P1-55). Baseline is
  * what the ACTIVE PLAN scheduled for the trailing window when that is
  * meaningful (≥5mi — race-week/taper trailing windows schedule less
  * and are filtered upstream anyway); the experience cap is only the
  * no-schedule fallback. Fires when completed exceeds baseline by >25%.
+ *
+ * 2026-08-24 · the baseline is now floored at the runner's own chronic load
+ * and the whole predicate is silenced inside a recovery block. See
+ * `OvershootContext`. An omitted context is byte-identical to the old
+ * behaviour, which is what keeps the existing invariant tests meaningful.
  */
 export function overshootFires(
   completedMi: number,
   scheduledMi: number | null,
   capMi: number,
+  ctx: OvershootContext = {},
 ): boolean {
-  const baseline = scheduledMi != null && scheduledMi >= 5 ? scheduledMi : capMi;
+  // Guard A · doctrine guard on the response. Nothing about a recovery block
+  // is answered by cutting distance.
+  if (ctx.recoveryBlock === true) return false;
+  const prescribed = scheduledMi != null && scheduledMi >= 5 ? scheduledMi : capMi;
+  // Guard B · arithmetic guard on the baseline. A deliberately-small
+  // prescription may not lower the bar beneath the runner's own chronic load.
+  const chronic = ctx.chronicWeeklyMi != null && ctx.chronicWeeklyMi > 0
+    ? ctx.chronicWeeklyMi
+    : 0;
+  const baseline = Math.max(prescribed, chronic);
   return completedMi > baseline * 1.25;
 }
 
@@ -3153,6 +3226,21 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
   // the generator's tier bands and fired on compliant runners).
   // 2026-06-02 · smart-dedup at 0.1 mi (was MAX-per-day · undercounted
   // legit same-day doubles). See lib/runs/volume.ts for the rule.
+  //
+  // 2026-08-24 · THE TWO WINDOWS NOW MATCH. `vol` was `>= today - 7` with no
+  // upper bound — eight days, today's part-finished run included — while
+  // `sched` was `BETWEEN today - 7 AND today - 1`, seven days, today's
+  // prescription excluded. Every comparison therefore counted a run on the
+  // completed side whose matching plan row it had already dropped from the
+  // baseline, biasing the ratio upward by roughly one day's mileage. It shows
+  // in the incident's own numbers: 32mi completed included today's 4.0, and
+  // 17mi scheduled excluded today's 4.0 row. Both windows are now the same
+  // seven CLOSED days [today-7, today-1]; a day still in progress is not
+  // evidence about itself.
+  //
+  // `chronic` is the 28 days ending where the acute window begins — separated
+  // deliberately, so the week under judgement cannot inflate its own ceiling.
+  // Research/15 §ACWR: acute_load_7d / chronic_load_28d.
   const r = (await pool.query(
     `WITH dedup AS (
        SELECT (data->>'date')::date AS d,
@@ -3161,10 +3249,14 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
          FROM runs
         WHERE user_uuid = $1
           AND NOT (data ? 'mergedIntoId')
-          AND (data->>'date')::date >= $2::date - 7
+          AND (data->>'date')::date BETWEEN $2::date - 35 AND $2::date - 1
         GROUP BY 1, 2
      ), vol AS (
        SELECT COALESCE(SUM(mi), 0) AS mi FROM dedup
+        WHERE d BETWEEN $2::date - 7 AND $2::date - 1
+     ), chronic AS (
+       SELECT COALESCE(SUM(mi), 0) AS mi FROM dedup
+        WHERE d BETWEEN $2::date - 35 AND $2::date - 8
      ), sched AS (
        SELECT COALESCE(SUM(pw.distance_mi), 0) AS mi
          FROM plan_workouts pw
@@ -3172,10 +3264,17 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
         WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
           AND pw.date_iso::date BETWEEN $2::date - 7 AND $2::date - 1
           AND pw.type NOT IN ('rest', 'strength')
+     ), mode AS (
+       SELECT tp.mode::text AS mode, tp.authored_state->>'mode' AS state_mode
+         FROM training_plans tp
+        WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+        ORDER BY tp.authored_iso DESC LIMIT 1
      ), p AS (
        SELECT experience_level FROM profile WHERE user_uuid = $1
      )
-     SELECT vol.mi, sched.mi AS scheduled_mi, p.experience_level FROM vol, sched, p`,
+     SELECT vol.mi, chronic.mi AS chronic_mi, sched.mi AS scheduled_mi,
+            mode.mode, mode.state_mode, p.experience_level
+       FROM vol, chronic, sched, p LEFT JOIN mode ON TRUE`,
     [userId, today]
   )).rows[0];
   if (!r) return null;
@@ -3184,16 +3283,34 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
   if (!cap) return null;
   const mi = Number(r.mi);
   const scheduledMi = r.scheduled_mi != null ? Number(r.scheduled_mi) : null;
-  if (overshootFires(mi, scheduledMi, cap)) {
-    const baseline = scheduledMi != null && scheduledMi >= 5 ? scheduledMi : cap;
-    const baselineLabel = scheduledMi != null && scheduledMi >= 5
-      ? `${Math.round(baseline)}mi scheduled`
-      : `${lvl} cap ${cap}mi`;
+  // The chronic window is 28 days; `weeklyAvgFromWindow` refuses to state an
+  // average off under a week of observable history rather than inventing a
+  // collapse (COLD-2). Null then flows through as "no chronic floor", which
+  // leaves the old prescription-only baseline in place for a cold-start
+  // runner — the population the floor was never about.
+  const chronicCovered = await observableCoverageDays(userId, isoDaysBefore(today, 8), 28)
+    .catch(() => 0);
+  const chronicWeeklyMi = weeklyAvgFromWindow(Number(r.chronic_mi ?? 0), chronicCovered, 28);
+  const recoveryBlock = r.mode === 'recovery' || r.state_mode === 'recovery';
+  if (overshootFires(mi, scheduledMi, cap, { chronicWeeklyMi, recoveryBlock })) {
+    const prescribed = scheduledMi != null && scheduledMi >= 5 ? scheduledMi : cap;
+    const baseline = Math.max(prescribed, chronicWeeklyMi ?? 0);
+    // Name whichever quantity actually set the bar. Saying "17mi scheduled"
+    // when the bar was the runner's own 43mi base is the sentence that made
+    // the original defect read as reasonable.
+    const baselineLabel = chronicWeeklyMi != null && chronicWeeklyMi > prescribed
+      ? `your usual ${Math.round(chronicWeeklyMi)}mi week`
+      : scheduledMi != null && scheduledMi >= 5
+        ? `${Math.round(prescribed)}mi scheduled`
+        : `${lvl} cap ${cap}mi`;
     return {
       kind: 'volume_overshoot',
       severity: 'warn',
       reason: `Last 7d ${Math.round(mi)}mi exceeds ${baselineLabel} by >25%.`,
-      evidence: { last7d_mi: mi, scheduled_7d_mi: scheduledMi, baseline_mi: baseline, cap, level: lvl },
+      evidence: {
+        last7d_mi: mi, scheduled_7d_mi: scheduledMi, baseline_mi: baseline,
+        chronic_weekly_mi: chronicWeeklyMi, cap, level: lvl,
+      },
     };
   }
   return null;
@@ -3698,9 +3815,19 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         [userId, today]
       )).rows;
       if (next7.length === 0) return [];
-      const baselineWhy = t.evidence.scheduled_7d_mi != null && Number(t.evidence.scheduled_7d_mi) >= 5
-        ? `${Math.round(Number(t.evidence.scheduled_7d_mi))}mi scheduled`
-        : `${t.evidence.level} cap`;
+      // 2026-08-24 · name whichever quantity actually set the bar. When the
+      // chronic floor is what the week cleared, "exceeded 17mi scheduled" is
+      // both wrong and the sentence that made the shave look reasonable.
+      const chronicMi = t.evidence.chronic_weekly_mi != null
+        ? Number(t.evidence.chronic_weekly_mi) : null;
+      const scheduled7d = t.evidence.scheduled_7d_mi != null
+        ? Number(t.evidence.scheduled_7d_mi) : null;
+      const prescribedMi = scheduled7d != null && scheduled7d >= 5 ? scheduled7d : null;
+      const baselineWhy = chronicMi != null && chronicMi > (prescribedMi ?? 0)
+        ? `your usual ${Math.round(chronicMi)}mi week`
+        : prescribedMi != null
+          ? `${Math.round(prescribedMi)}mi scheduled`
+          : `${t.evidence.level} cap`;
       return [{
         kind: 'shave',
         workoutIds: next7.map((r: any) => r.id),
