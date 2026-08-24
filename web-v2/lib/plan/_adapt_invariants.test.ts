@@ -51,6 +51,7 @@ import {
   gapAlreadyHandled,
   isStaleMissed,
   overshootFires,
+  overshootSuppressedByPlanMode,
   partitionActionsForCron,
   plusDaysISO,
   type AdaptationAction,
@@ -407,6 +408,36 @@ describe('P1-55 · volume overshoot vs the plan it came from', () => {
     expect(overshootFires(55, 42, EXPERIENCE_CAPS_MI.beginner)).toBe(true);
     // 25% over exactly → does not fire (strict >).
     expect(overshootFires(52.5, 42, EXPERIENCE_CAPS_MI.beginner)).toBe(false);
+  });
+
+  it('a RECOVERY block cannot baseline the finding · the owner is not overshooting by coming back', () => {
+    // 2026-08-24 · live on the owner. Post-AFC recovery block scheduled 17mi
+    // for the trailing week; he ran 32mi against twelve clean weeks averaging
+    // 41 and a real peak of 52.3. The arithmetic fires — that is the point:
+    // the baseline, not the comparison, is what is wrong.
+    expect(overshootFires(32, 17, EXPERIENCE_CAPS_MI.advanced)).toBe(true);
+    expect(overshootSuppressedByPlanMode('recovery')).toBe(true);
+
+    // And the safety net is not switched off with it: the experience cap still
+    // governs, and 32mi never approached it for an advanced runner. A runner
+    // who genuinely overreaches in recovery is still caught.
+    expect(overshootFires(32, null, EXPERIENCE_CAPS_MI.advanced)).toBe(false);
+    expect(overshootFires(120, null, EXPERIENCE_CAPS_MI.advanced)).toBe(true);
+  });
+
+  it('suppresses ONLY recovery · a down week or taper run through is a real overshoot', () => {
+    // A recovery block is reduced against a peak the runner already reached,
+    // so shaving it cuts below a demonstrated load. Every other mode's
+    // schedule is a claim about the block the runner is actually in, and
+    // running straight through it is the finding working.
+    for (const mode of ['race-prep', 'maintenance', 'goal-build', 'coached', '']) {
+      expect(overshootSuppressedByPlanMode(mode), mode).toBe(false);
+    }
+    // An unreadable plan mode must not silently disable the finding.
+    expect(overshootSuppressedByPlanMode(null)).toBe(false);
+    expect(overshootSuppressedByPlanMode(undefined)).toBe(false);
+    // Stored casing/padding must not decide a safety filter.
+    expect(overshootSuppressedByPlanMode(' Recovery ')).toBe(true);
   });
 
   it('falls back to the tier-aligned experience cap when the plan scheduled nothing meaningful', () => {

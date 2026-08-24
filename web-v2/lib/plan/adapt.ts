@@ -46,6 +46,9 @@
  *      own tier bands and shaved compliant runners daily; the plan's own
  *      prescription is the baseline now, the experience cap is only the
  *      no-schedule fallback). One shave per rolling 7 days (cooldown).
+ *      Suppressed while a RECOVERY block is active (2026-08-24): that block
+ *      is authored as a fraction of PEAK, so it cannot state what the runner
+ *      can safely carry — see the filter in detectVolumeOvershoot.
  *      → Shave next 7d by 17% (proportional).
  *      Cite: Research/00a-distance-running-training.md §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
  *
@@ -780,6 +783,34 @@ export function overshootFires(
 ): boolean {
   const baseline = scheduledMi != null && scheduledMi >= 5 ? scheduledMi : capMi;
   return completedMi > baseline * 1.25;
+}
+
+/**
+ * 2026-08-24 · plan modes whose SCHEDULE cannot serve as the overshoot
+ * baseline, because the engine authored it below the runner on purpose.
+ *
+ * `overshootFires` prefers the plan's own prescription over the static
+ * experience cap (P1-55). That preference is only sound while the schedule is
+ * a claim about what this runner should be carrying. A recovery block makes no
+ * such claim: `composeRecoveryPlan` sets each week to
+ * RECOVERY_WEEKLY_PCT_OF_BASE, read from a column headed "Volume vs. **peak**"
+ * (Research/00b §"Marathon Recovery (4-week reverse taper)"). Divide completed
+ * volume by a deliberate fraction of peak and every honest return to running
+ * reads as an overshoot.
+ *
+ * ONLY recovery. A down week or a taper is also reduced, and a runner who runs
+ * straight through one HAS overshot their prescription — that is the finding
+ * doing its job, and race-week rows are already excluded from the shave. The
+ * difference is that recovery is reduced relative to a peak the runner has
+ * already demonstrated, so shaving it cuts them below a load they are known to
+ * tolerate; a down week is reduced relative to the very block they are in.
+ *
+ * Suppressing the finding does not suppress the safety net — it removes an
+ * unusable baseline. A runner who genuinely overreaches during recovery is
+ * still caught by the experience cap, which is what the cap is for.
+ */
+export function overshootSuppressedByPlanMode(planMode: string | null | undefined): boolean {
+  return (planMode ?? '').trim().toLowerCase() === 'recovery';
 }
 
 /**
@@ -3084,6 +3115,37 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
     [userId, today],
   ).catch(() => ({ rows: [] as unknown[] }));
   if (raced.rows.length > 0) return null;
+
+  // Per-finding context filter (2026-08-24) · a RECOVERY block's prescription
+  // is not a safety baseline. See `overshootSuppressedByPlanMode` for why the
+  // mode decides it; this is the read that feeds it.
+  //
+  // Live on the owner, 2026-08-24: 32mi run against the 17mi post-AFC recovery
+  // block, against twelve clean weeks averaging 41 and a real peak of 52.3 —
+  // read as "exceeded 17mi scheduled", one 17% shave of the next 7 days,
+  // apply-now, the 8/30 long run included. Nothing about 32mi is a doctrine
+  // risk: Research/00a §"Volume progression rules" sizes spike risk against
+  // the runner's OWN recent load (longest run in the prior 30d, the 5-15%
+  // per-cycle band), and 32 sits below every trailing week he has run.
+  //
+  // WHY NOT JUST WIDEN THE RACE FILTER. The `raced` filter above is this same
+  // idea one window too short — 7 days, while the recovery block it belongs to
+  // spans the doctrine recovery window (`postRaceRecoveryWeeks` · 1-4 weeks by
+  // distance and A/B/C priority). Yesterday the race filter suppressed this;
+  // today (race + 8) it lapsed with six days of the block still to run. Keying
+  // on the block covers exactly as long as the depressed schedule is live, at
+  // any recovery length, with no second window to keep in sync.
+  //
+  // Reads the newest active plan's mode, falling back to the authored_state
+  // copy — the same predicate the plan-drift cron's recovery reader uses.
+  const activeMode = (await pool.query<{ mode: string | null }>(
+    `SELECT COALESCE(mode, authored_state->>'mode') AS mode
+       FROM training_plans
+      WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+      ORDER BY authored_iso DESC LIMIT 1`,
+    [userId],
+  ).catch(() => ({ rows: [] as Array<{ mode: string | null }> }))).rows[0]?.mode ?? null;
+  if (overshootSuppressedByPlanMode(activeMode)) return null;
 
   // Last 7d completed volume vs what the ACTIVE PLAN scheduled for the
   // same trailing window (2026-07-06 · P1-55 · the plan's own
