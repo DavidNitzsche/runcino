@@ -844,7 +844,40 @@ export function runElevGainFt(d: RunData): number | null {
  * faithfully. Well past any honest pause pattern, and comfortably tight enough
  * to catch a third party's arithmetic error.
  */
-const MAX_PAUSED_SHARE = 0.5;
+export const MAX_PAUSED_SHARE = 0.5;
+
+/**
+ * The reconciliation itself, as a function of three numbers — so every surface
+ * that prints a pace beside a clock can hold the same invariant without
+ * re-deriving the arithmetic or re-declaring the constant.
+ *
+ * Extracted 2026-08-24 by the surface sweep. `runPaceSecPerMi` fixed the READ,
+ * which repaired every surface reading through it at once — but a composer
+ * assembles its context from whatever the call site hands it, and a call site
+ * that builds one WITHOUT going through the read had no guard at all. The
+ * sweep drove the real 2026-08-23 row (11.01 mi, 5298s elapsed, a stored
+ * 217 s/mi) straight into `composeV5Today` and `deriveRecap` and both printed
+ * 3:37/mi again — the panel beside a clock that disproves it, the recap in
+ * prose. One definition, three call sites, no way to drift.
+ *
+ * Returns the pace to trust: the stored one when the row's own clock allows
+ * it, the elapsed pace when it does not, and null when there is nothing to
+ * go on. It never invents a pace the row did not support.
+ */
+export function reconcilePaceWithClock(
+  distanceMi: number | null | undefined,
+  elapsedSec: number | null | undefined,
+  storedPaceSPerMi: number | null | undefined,
+): number | null {
+  const mi = pos(distanceMi);
+  const elapsed = pos(elapsedSec);
+  const stored = pos(storedPaceSPerMi);
+  if (stored == null) return mi != null && elapsed != null ? elapsed / mi : null;
+  if (mi == null || elapsed == null) return stored;
+  const elapsedPace = elapsed / mi;
+  const impliedPausedShare = 1 - stored / elapsedPace;
+  return impliedPausedShare > MAX_PAUSED_SHARE ? elapsedPace : stored;
+}
 
 /**
  * Average pace in seconds per mile.
@@ -885,15 +918,8 @@ export function runPaceSecPerMi(d: RunData): number | null {
   const direct = pos(d.paceSPerMi);
   const elapsed = pos(d.durationSec) ?? pos(d.elapsedTimeS);
 
-  if (direct != null) {
-    // Believe the stored pace unless the row's own clock contradicts it.
-    if (mi != null && mi > 0 && elapsed != null && elapsed > 0) {
-      const elapsedPace = elapsed / mi;
-      const impliedPausedShare = 1 - (direct / elapsedPace);
-      if (impliedPausedShare > MAX_PAUSED_SHARE) return elapsedPace;
-    }
-    return direct;
-  }
+  // Believe the stored pace unless the row's own clock contradicts it.
+  if (direct != null) return reconcilePaceWithClock(mi, elapsed, direct);
 
   const sec = runMovingSec(d);
   return mi != null && mi > 0 && sec != null ? sec / mi : null;

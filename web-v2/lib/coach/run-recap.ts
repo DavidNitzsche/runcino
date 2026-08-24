@@ -35,6 +35,7 @@ import {
 } from '@/lib/coach/weather-adjust';
 import { composeEffortFactor } from '@/lib/terrain/grade-adjust';
 import type { RunTerrain } from '@/lib/terrain/run-terrain';
+import { reconcilePaceWithClock } from '@/lib/runs/run-shape';
 
 /**
  * Minutes of running below which `Research/18` prescribes no fuelling at all,
@@ -451,7 +452,34 @@ function judgeableAgainstTarget(input: RecapInput): boolean {
 }
 
 export function deriveRecap(input: RecapInput): RecapPayload {
-  const payload = deriveRecapCore(input);
+  /**
+   * THE PACE THIS RECAP MAY SPEAK, checked against the run's own clock before
+   * a single sentence is written.
+   *
+   * This is the function that said it out loud. David's 2026-08-23 run stored
+   * an 11.01 mile distance, 5298 seconds on his watch — 8:01/mi, what he ran —
+   * and a `paceSPerMi` of 217 that a Strava moving time invented. The recap
+   * read the second and told him:
+   *
+   *   "Easy 11.0 mi at 3:37/mi. A touch quicker than the 9:22/mi easy target."
+   *
+   * `runPaceSecPerMi` closed that at the READ, and the route that feeds this
+   * function goes through it. But `RecapInput` is a plain object: the recap
+   * route is not the only caller, `actualDurationSec` sits right there beside
+   * the pace, and the surface sweep proved the contradiction walks straight
+   * back in through any call site that assembles the input by hand.
+   *
+   * So the reconciliation happens here too, against the input's own facts.
+   * Every fact, verdict and target comparison below is then written off ONE
+   * pace, which is the whole point: the recap cannot praise a pace the run's
+   * own clock disproves, and it cannot contradict the panel printing the same
+   * run two inches above it.
+   */
+  const honest = reconcilePaceWithClock(input.actualMi, input.actualDurationSec, input.actualPaceSPerMi);
+  const reconciled: RecapInput = honest === input.actualPaceSPerMi
+    ? input
+    : { ...input, actualPaceSPerMi: honest };
+  const payload = deriveRecapCore(reconciled);
   // Terrain speaks last. The lead fact is what the runner did; this is the
   // one sentence about what the ground (or the belt) did to it. Only present
   // when the terrain actually changed how the run should be read — a flat

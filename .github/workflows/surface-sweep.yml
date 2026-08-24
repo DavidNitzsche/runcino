@@ -1,0 +1,80 @@
+# Surface conformance sweep.
+#
+# Sibling of plan-engine-bench.yml. That one proves a PLAN is well-formed
+# across the runner matrix. This one proves the SURFACES a runner reads hold
+# their contract across every runner state × awkward data shape × calendar
+# boundary — each cell driving the real composers (composeV5Today, composeWhy,
+# deriveRecap, resolveBlockState, resolveRampScope, racePlateFor and the race
+# resolvers) and asserting each does one of three things: renders the truth,
+# refuses, or degrades honestly. Never the fourth — a plausible wrong answer.
+#
+# Why it exists: on 2026-08-24 the owner found four visible defects on one
+# screen in twenty minutes that a six-agent audit had missed. Every one of them
+# only broke under a CONDITION, and a condition is exactly what a fixture
+# lacks. See web-v2/lib/faff/surface-sweep-matrix.ts for the full account.
+#
+# The gate also runs on every Railway build via web-v2's `prebuild`
+# (scripts/check-surface-sweep.sh). This workflow is the PR-time half, so a
+# regression is caught before merge rather than at deploy.
+
+name: Surface sweep
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web-v2/lib/faff/**'
+      - 'web-v2/lib/coach/run-recap.ts'
+      - 'web-v2/lib/runs/run-shape.ts'
+      - 'web-v2/app/api/v5/**'
+      - 'scripts/check-surface-sweep.sh'
+      - '.github/workflows/surface-sweep.yml'
+  pull_request:
+    paths:
+      - 'web-v2/lib/faff/**'
+      - 'web-v2/lib/coach/run-recap.ts'
+      - 'web-v2/lib/runs/run-shape.ts'
+      - 'web-v2/app/api/v5/**'
+      - 'scripts/check-surface-sweep.sh'
+      - '.github/workflows/surface-sweep.yml'
+  workflow_dispatch: {}
+
+jobs:
+  sweep:
+    name: Sweep every runner state × data shape × boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # The cold guard FIRST, deliberately, before node exists. It is the half
+      # that catches the failure this sweep exists to prevent one level up — a
+      # sweep that runs zero cells and reports clean — and running it on a
+      # container with no toolchain is what proves it needs none.
+      - name: Matrix floor and control coverage (no toolchain)
+        run: bash scripts/check-surface-sweep.sh
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: web-v2/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web-v2
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: web-v2
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Run the surface sweep
+        run: bash scripts/check-surface-sweep.sh
+
+      # The composers the sweep drives have their own hand-built unit tests.
+      # Both halves matter: the sweep finds what nobody thought of, and these
+      # pin the specific cases somebody did.
+      - name: Run the composer unit tests
+        working-directory: web-v2
+        run: npx vitest run lib/faff/ lib/coach/run-recap.test.ts lib/runs/
