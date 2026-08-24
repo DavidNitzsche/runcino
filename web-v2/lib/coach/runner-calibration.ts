@@ -191,6 +191,16 @@ export async function refreshRunnerCalibration(userUuid: string): Promise<Runner
   const today = await runnerToday(userUuid);
 
   // Count completed workouts in the last 14d
+  //
+  // 2026-08-24 · `plan_workouts.date_iso` is a TEXT day key. Every comparison
+  // below used to put it against a `date`, and Postgres refused all three:
+  //   (r.data->>'date')::date = pw.date_iso   → operator does not exist: date = text
+  //   pw.date_iso >= $2::date - 14            → operator does not exist: text >= date
+  // The `.catch` underneath turned that into `{n:'0', q:'0'}`, which is
+  // indistinguishable from an honest cold start — so `data_quality` was pinned
+  // at 'cold-start' for every runner since this was written, and the
+  // `>= 3 → building` / `>= 8 → calibrated` gate could never open. Verified
+  // against prod on 2026-08-24: 0 as shipped, 7 with the casts.
   const counts = (await pool.query<{ n: string; q: string }>(
     `SELECT
        COUNT(*)::text AS n,
@@ -198,16 +208,20 @@ export async function refreshRunnerCalibration(userUuid: string): Promise<Runner
        FROM plan_workouts pw
        JOIN training_plans tp ON tp.id = pw.plan_id
        JOIN runs r ON r.user_uuid = $1::uuid
-            AND (r.data->>'date')::date = pw.date_iso
+            AND (r.data->>'date')::date = pw.date_iso::date
             AND r.id = ANY($3::bigint[])
       WHERE tp.user_uuid = $1::uuid
         AND tp.archived_iso IS NULL
-        AND pw.date_iso >= $2::date - 14
-        AND pw.date_iso <  $2::date`,
+        AND pw.date_iso::date >= $2::date - 14
+        AND pw.date_iso::date <  $2::date`,
     // Phase B · one canonical dedup. A dupe would inflate workoutCount/quality
     // and trip the calibrated/building data-quality gate early.
     [userUuid, today, await getCanonicalRunIds(userUuid, isoDaysBefore(today, 14), today)],
-  ).catch(() => ({ rows: [{ n: '0', q: '0' }] }))).rows[0];
+  ).catch((e) => {
+    // A swallowed type error looks exactly like an honest empty result. Say so.
+    console.error('[runner-calibration] completed-workout count failed:', e);
+    return { rows: [{ n: '0', q: '0' }] };
+  })).rows[0];
   const workoutCount = Number(counts?.n ?? 0);
   const qualityCount = Number(counts?.q ?? 0);
 

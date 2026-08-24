@@ -50,6 +50,7 @@ import {
   runDaySql,
   runDateKeySql,
   runDistanceMiSql,
+  runNotMergedSql,
   runTypeSql,
   runWorkoutTypeSql,
   runWeatherTempFSql,
@@ -718,15 +719,32 @@ async function checkQualityDrift(
             COALESCE(r.data->'startLatLng'->>1, r.data->>'startLng', r.data->>'start_longitude') AS start_lon
        FROM plan_workouts pw
        JOIN training_plans tp ON tp.id = pw.plan_id
+       -- 2026-08-24 · pw.date_iso is TEXT. Both comparisons below used to
+       -- meet a date uncast, and Postgres refused the whole statement
+       -- ("operator does not exist: date = text"). The .catch below turned
+       -- that into an empty result set, so the PACE axis of the drift monitor
+       -- returned no sessions for any runner, ever, since it was written.
+       -- Verified against prod on 2026-08-24: 0 rows as shipped, 11 real
+       -- quality sessions with the casts (AFC block, 21 days to 2026-07-15).
+       --
+       -- The canonical-row predicate is part of the same fix, not a bonus. A
+       -- physical run lands as up to three rows (watch + Apple Health +
+       -- Strava); joining on the day alone returned each session two or three
+       -- times, which would have weighted those days that many times over in
+       -- the median the moment the join started matching.
        LEFT JOIN runs r ON r.user_uuid = $1::uuid
-            AND (r.data->>'date')::date = pw.date_iso
+            AND (r.data->>'date')::date = pw.date_iso::date
+            AND ${runNotMergedSql('r')}
        WHERE tp.id = $2
          AND pw.is_quality = true
-         AND pw.date_iso >= $3::date - INTERVAL '21 days'
-         AND pw.date_iso <  $3::date
+         AND pw.date_iso::date >= $3::date - INTERVAL '21 days'
+         AND pw.date_iso::date <  $3::date
          AND pw.pace_target_s_per_mi IS NOT NULL`,
     [userUuid, plan.id, await runnerToday(userUuid)],
-  ).catch(() => ({ rows: [] }))).rows;
+  ).catch((e) => {
+    console.error('[drift-monitor] quality-drift read failed:', e);
+    return { rows: [] };
+  })).rows;
 
   const adjustedActuals: number[] = [];
   const planneds: number[] = [];
@@ -928,10 +946,18 @@ async function loadPlanEasyDayMedian(planId: string, today: string): Promise<num
        FROM plan_workouts
       WHERE plan_id = $1
         AND type = 'easy'
-        AND date_iso >= $2::date
-        AND date_iso <  $2::date + INTERVAL '21 days'`,
+        -- 2026-08-24 · date_iso is TEXT · see checkQualityDrift. As shipped
+        -- this raised "operator does not exist: text >= date" and the null it
+        -- fell back to reads as "the plan prescribes no easy days", which is
+        -- what the easy-distance drift axis has been told all along. Verified
+        -- against prod: error as shipped, 8.5 mi with the casts.
+        AND date_iso::date >= $2::date
+        AND date_iso::date <  $2::date + INTERVAL '21 days'`,
     [planId, today],
-  ).catch(() => ({ rows: [{ med: null }] }))).rows[0];
+  ).catch((e) => {
+    console.error('[drift-monitor] plan easy-day median failed:', e);
+    return { rows: [{ med: null }] };
+  })).rows[0];
   const m = Number(r?.med);
   return Number.isFinite(m) && m > 0 ? Math.round(m * 2) / 2 : null;
 }
@@ -964,10 +990,16 @@ async function loadPlanLongRunMedian(planId: string, today: string): Promise<num
        FROM plan_workouts
       WHERE plan_id = $1
         AND type = 'long'
-        AND date_iso >= $2::date - INTERVAL '14 days'
-        AND date_iso <  $2::date + INTERVAL '14 days'`,
+        -- 2026-08-24 · date_iso is TEXT · see checkQualityDrift. Verified
+        -- against prod: "operator does not exist: text >= timestamp without
+        -- time zone" as shipped, 16.5 mi with the casts.
+        AND date_iso::date >= $2::date - INTERVAL '14 days'
+        AND date_iso::date <  $2::date + INTERVAL '14 days'`,
     [planId, today],
-  ).catch(() => ({ rows: [{ med: null }] }))).rows[0];
+  ).catch((e) => {
+    console.error('[drift-monitor] plan long-run median failed:', e);
+    return { rows: [{ med: null }] };
+  })).rows[0];
   const m = Number(r?.med);
   return Number.isFinite(m) && m > 0 ? Math.round(m * 2) / 2 : null;
 }

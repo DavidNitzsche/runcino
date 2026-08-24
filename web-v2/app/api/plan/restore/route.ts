@@ -169,7 +169,11 @@ export async function POST(req: NextRequest) {
           SET type                  = $2::text,
               sub_label             = $3,
               distance_mi           = $4,
-              date_iso              = $5::date,
+              -- date_iso is a TEXT day key and $5 is already YYYY-MM-DD
+              -- (both sources are selected as text above). The ::date this
+              -- carried relied on an assignment-context I/O cast back to text
+              -- to store the same string it started as. Text in, text out.
+              date_iso              = $5::text,
               is_quality            = $6,
               workout_spec          = $7::jsonb,
               pace_target_s_per_mi  = $8,
