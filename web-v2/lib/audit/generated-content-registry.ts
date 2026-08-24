@@ -378,6 +378,12 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'A GATE. This file.',
   'web-v2/lib/plan/synthetic-runners.ts':
     'Test fixtures for the plan-engine bench. Test-only is correct.',
+  'web-v2/lib/conservation/laws.ts':
+    'A GATE. The conservation laws — distance in equals distance out, a pace equals its own surface\'s time over its own distance, splits sum to the run. Consulted by _run_conservation.test.ts, never at runtime. Same shape as the doctrine registry.',
+  'web-v2/lib/conservation/shapes.ts':
+    'Test fixtures for the conservation harness. Fourteen run shapes derived from a read-only census of the live table on 2026-08-24, including the 2026-08-23 row verbatim. Test-only is correct.',
+  'web-v2/lib/conservation/surfaces.ts':
+    'A GATE. Reads one run the way each screen reads it, through the real composers where a pure seam exists. Test-only is correct; wiring it would make the harness part of the thing it measures.',
   'web-v2/lib/faff/personas.ts':
     'Test fixtures for the glance adapter. The `?persona=` simulator bypass its header describes does not exist in the live route; the fixtures still earn their place in the adapter test.',
   'web-v2/lib/faff/state-tokens.ts':

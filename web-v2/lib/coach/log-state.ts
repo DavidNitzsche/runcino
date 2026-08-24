@@ -17,6 +17,7 @@ import {
   resolveWorkoutType, badgeForRun,
   type MergedTwin, type RaceForMatch, type PlanWorkoutLite, type LogBadge,
 } from '@/lib/runs/log-enrich';
+import { runFacts } from '@/lib/runs/run-facts';
 
 export interface LogRun {
   id: string;
@@ -323,9 +324,16 @@ export async function loadLogState(
   const rawRuns: LogRun[] = rows.map((r: any) => {
     const a = r.data;
     const date = a.date || (a.startLocal ?? '').slice(0, 10);
-    const sPerMi = Number(a.paceSPerMi) || null;
+    // The log prints the MOVING clock. Distance, clock and pace are read as
+    // one set so the three cannot disagree: this row used to take
+    // `a.paceSPerMi` and the moving-time COALESCE independently, and a run
+    // carrying a Strava moving time of 2389s beside a watch `durationSec` of
+    // 5298 printed 39:49 next to a pace of 8:01 — an eleven-mile run at eleven
+    // miles an hour. See `lib/runs/run-facts.ts`.
+    const facts = runFacts(a, { basis: 'moving' });
+    const sPerMi = facts.paceSecPerMi;
     const activityType: string | null = a.type ?? null;
-    const distanceMi = Number(a.distanceMi) || 0;
+    const distanceMi = facts.distanceMi ?? 0;
     const twins = twinsByCanonical.get(String(r.row_id)) ?? [];
     // workoutType hint from the PHYSICAL run — canonical row first, then
     // any merged twin (the Strava twin carries workout_type '1' = race).
@@ -370,13 +378,18 @@ export async function loadLogState(
       source: a.source ?? 'strava',
       type: activityType,
       distance_mi: distanceMi,
-      pace: a.avgPaceMinPerMi || fmtPaceFromSec(sPerMi) || null,
-      // #2 · COALESCE the moving-time key. Webhook-ingested runs carry
-      // movingSec/durationSec, not movingTimeS, so time_moving rendered blank
-      // for them. Order: movingTimeS (pullSync/watch/HK) → movingSec (webhook)
-      // → durationSec (webhook elapsed, last resort).
-      time_moving: fmtDuration(Number(a.movingTimeS) || Number(a.movingSec) || Number(a.durationSec) || null),
-      time_moving_sec: Number(a.movingTimeS) || Number(a.movingSec) || Number(a.durationSec) || null,
+      // THE NUMBER FIRST, NOT THE STORED STRING. `a.avgPaceMinPerMi` is a
+      // display string some other writer formatted, and on a merged row it can
+      // be the one figure that DISAGREES with the clock printed beside it.
+      // Deriving from the same set that produced `time_moving` is what keeps
+      // the two columns of this table telling the same story.
+      pace: fmtPaceFromSec(sPerMi) || a.avgPaceMinPerMi || null,
+      // #2 · the moving-time COALESCE used to be spelled out here, in an order
+      // that differed from run detail's and from Today's. All three now read
+      // `runFacts`, which also refuses a moving time the row's own elapsed
+      // clock disproves.
+      time_moving: fmtDuration(facts.timeSec),
+      time_moving_sec: facts.timeSec,
       avg_hr: Number(a.avgHr) || null,
       max_hr: Number(a.maxHr) || null,
       cadence: Number(a.avgCadence) || null,
