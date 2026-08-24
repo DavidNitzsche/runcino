@@ -349,7 +349,7 @@ export async function enhanceCanonicalFromAbsorbed(args: {
     if (!existingRpe) {
       await pool.query(
         `INSERT INTO post_run_rpe (user_id, user_uuid, activity_id, rpe, notes, logged_at)
-         VALUES ($1, $1, $2, $3, $4, NOW())`,
+         VALUES ($1::text, $1::uuid, $2, $3, $4, NOW())`,
         [absorbedRow.user_uuid, canonicalId, Math.round(rpeRaw),
          `auto-imported from ${incomingSource}`],
       );

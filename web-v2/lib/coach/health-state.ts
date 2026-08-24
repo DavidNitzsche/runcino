@@ -4,6 +4,7 @@
  * for the HEALTH surface. Reads from health_samples.
  */
 import { pool } from '@/lib/db/pool';
+import { rowsOrNull } from '@/lib/db/read';
 import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
@@ -921,24 +922,34 @@ async function loadRunForm(userId: string, today: string): Promise<HealthState['
 
 /** Last 7 days of readiness_snapshots. Empty when cold-start. */
 async function loadDailyReadiness(userId: string, today: string): Promise<HealthState['dailyReadiness']> {
-  try {
-    const r = await pool.query<{ sample_date: string; score: number | string; band: string }>(
-      `SELECT sample_date::text, score, band
+  // 2026-08-24 · swallowed-failure sweep · this asked for `sample_date` and for
+  // a `user_id` column, and `readiness_snapshots` has neither — the day column
+  // is `snapshot_date` and the only owner column is `user_uuid`. Postgres
+  // answered `column "sample_date" does not exist` every time, and the bare
+  // `catch` turned that into "cold start, no readiness yet". Prod on 2026-08-24
+  // holds 85 snapshots; the primary runner has one for all eight days in this
+  // window (2026-08-17 through 2026-08-24, scores 67/71/65/79/68/57/56/53).
+  // Every one of them was invisible to the coach.
+  const rows = await rowsOrNull<{ snapshot_date: string; score: number | string; band: string }>(
+    'coach/health-state · dailyReadiness',
+    pool.query<{ snapshot_date: string; score: number | string; band: string }>(
+      `SELECT snapshot_date::text AS snapshot_date, score, band
          FROM readiness_snapshots
-        WHERE COALESCE(user_uuid::text, user_id::text) = $1
-          AND sample_date >= ($2::date - interval '7 days')
-          AND sample_date <= $2::date
-        ORDER BY sample_date ASC`,
+        WHERE user_uuid = $1::uuid
+          AND snapshot_date >= ($2::date - interval '7 days')
+          AND snapshot_date <= $2::date
+        ORDER BY snapshot_date ASC`,
       [userId, today],
-    );
-    return r.rows.map((row) => ({
-      date: row.sample_date,
-      score: Number(row.score),
-      band: row.band,
-    }));
-  } catch {
-    return [];
-  }
+    ),
+  );
+  // `[]` here means cold start and is read as such downstream. A failed read is
+  // not a cold start, but this field has no third state on the wire, so it
+  // returns empty AND logs rather than pretending either way.
+  return (rows ?? []).map((row) => ({
+    date: row.snapshot_date,
+    score: Number(row.score),
+    band: row.band,
+  }));
 }
 
 /** Body temperature · sample_type='body_temperature'. Currently never

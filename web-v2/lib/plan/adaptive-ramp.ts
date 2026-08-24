@@ -48,6 +48,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export interface RampOpportunity {
@@ -175,17 +176,31 @@ export async function detectRampSignals(
   const belowTierUpper = peakHeadroomMi > tierWeeklyUpper * 0.05;  // ≥ 5% headroom
 
   // 5. Cooldown · no bump applied in last 7 days
-  const lastBumpRow = await pool.query<{ ts: Date | string }>(
-    `SELECT ts FROM coach_intents
-      WHERE COALESCE(user_uuid::text, user_id) = $1
+  //
+  // 2026-08-24 · swallowed-failure sweep · `coach_intents.user_id` is `uuid`,
+  // so `COALESCE(user_uuid::text, user_id)` gave Postgres two types it cannot
+  // match and the read threw on every call. `.catch(() => undefined)` then fell
+  // to `daysSinceLastBump = 999`, i.e. "no bump in nearly three years" — the
+  // cooldown was OPEN for every runner on every evaluation, which is the one
+  // answer that lets a ramp fire back-to-back.
+  const lastBump = await rowOrNull<{ ts: Date | string }>(
+    'plan/adaptive-ramp · lastBump cooldown',
+    pool.query<{ ts: Date | string }>(
+      `SELECT ts FROM coach_intents
+      WHERE COALESCE(user_uuid, user_id) = $1::uuid
         AND reason = 'plan_adapt_bump'
       ORDER BY ts DESC LIMIT 1`,
-    [userId],
-  ).then((r) => r.rows[0]).catch(() => undefined);
-  const daysSinceLastBump = lastBumpRow?.ts
-    ? Math.floor((Date.now() - new Date(lastBumpRow.ts).getTime()) / 86400000)
+      [userId],
+    ),
+  );
+  // A failed read is not "no recent bump". The cooldown holds CLOSED when it
+  // cannot see, because a ramp we cannot justify must not fire. `999` stays the
+  // sentinel for a genuine no-bump-on-record; a failure is its own state.
+  const bumpReadFailed = lastBump === null;
+  const daysSinceLastBump = lastBump?.ts
+    ? Math.floor((Date.now() - new Date(lastBump.ts).getTime()) / 86400000)
     : 999;
-  const noBumpRecent = daysSinceLastBump >= COOLDOWN_DAYS;
+  const noBumpRecent = !bumpReadFailed && daysSinceLastBump >= COOLDOWN_DAYS;
 
   return {
     readinessGreen,

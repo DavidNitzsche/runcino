@@ -20,6 +20,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
+import { outage } from '@/lib/route/failure';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { enqueueNotification, nextMorning0715 } from '@/lib/notifications/enqueue';
 import { renderSkipRecovery } from '@/lib/notifications/templates';
@@ -56,10 +58,14 @@ export async function GET(req: NextRequest) {
       [userId, date],
     );
     return NextResponse.json({ skipped: row.rows.length > 0, date });
-  } catch (err: any) {
-    // Migration not applied yet → degrade to `skipped: false` rather than
-    // 500ing. Same posture as glance-state.ts:268.
-    return NextResponse.json({ skipped: false, date });
+  } catch (err) {
+    // 2026-08-24 · swallowed-failure sweep · `skipped: false` is what the phone
+    // uses to decide whether to draw the day as skipped, so a failed read
+    // un-skipped a day the runner had explicitly skipped. `day_actions` has
+    // been migrated since 2026-05; the "migration not applied yet" reasoning
+    // this catch was written under no longer holds, and it was covering a real
+    // outage. A read we could not do is an outage, and says so.
+    return outage('today/skip', err);
   }
 }
 
@@ -118,8 +124,7 @@ export async function POST(req: NextRequest) {
 
 /** True when `dateIso` is a race day for this runner — either the
  *  active plan holds a race-type row that day, or a races-table entry
- *  carries that meta date. Fails open to false (a DB hiccup must not
- *  block the skip itself; worst case the nudge fires as before). */
+ *  carries that meta date. Fails CLOSED to true — see the catch. */
 async function dayHoldsRace(userId: string, dateIso: string): Promise<boolean> {
   try {
     const r = await pool.query(
@@ -136,8 +141,15 @@ async function dayHoldsRace(userId: string, dateIso: string): Promise<boolean> {
       [userId, dateIso],
     );
     return r.rows.length > 0;
-  } catch {
-    return false;
+  } catch (e) {
+    // 2026-08-24 · swallowed-failure sweep · fails CLOSED. `false` means "no
+    // race tomorrow", and the only caller uses that to decide whether to wake
+    // the runner with a skip-recovery push. So a failed read sent "YESTERDAY ·
+    // SKIPPED. still feeling it?" at 07:15 on a race morning — the exact thing
+    // this guard was added for after AFC Half, 2026-08-16. A guard that cannot
+    // see stays quiet.
+    logReadFailure('today/skip · dayHoldsRace', e);
+    return true;
   }
 }
 

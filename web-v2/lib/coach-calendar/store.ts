@@ -13,8 +13,43 @@
  * and serves what's on hand; the save endpoint refreshes inline so the
  * runner sees their workouts the moment they connect. No new cron, no
  * new infra.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 2026-08-24 · `coach_reads_cache` DOES NOT EXIST IN PRODUCTION.
+ *
+ * Checked with `faff_readonly` on 2026-08-24, and against every file in
+ * `db/migrations`: nothing creates it. So the whole loop below runs on a
+ * relation that is not there —
+ *
+ *   · `readCache` threw and `.catch(() => ({ rows: [] }))` reported a cache
+ *     MISS, which is a perfectly ordinary thing for a cache to report;
+ *   · the miss set `expired`, which kicked `refreshCoachCalendar`;
+ *   · that fetched the runner's real ICS feed over the network, then threw on
+ *     the INSERT, into `void …catch(() => {})`;
+ *   · `getCoachCalendarStatus` returned `events: []`, `lastError: null` —
+ *     "connected, and your coach has scheduled nothing."
+ *
+ * Every load re-fetched the feed and threw the parsed events away. The runner
+ * saw an empty calendar and no error, and the ICS host saw traffic.
+ *
+ * `lastError` now carries the storage failure, because a status object with a
+ * `lastError` field is exactly where a failure belongs. DDL to fix it properly
+ * is a PROPOSAL:
+ *
+ *   CREATE TABLE coach_reads_cache (
+ *     user_id           text NOT NULL,
+ *     user_uuid         uuid NOT NULL,
+ *     read_kind         text NOT NULL,
+ *     cache_key         text NOT NULL,
+ *     content           jsonb NOT NULL,
+ *     computed_at       timestamptz NOT NULL DEFAULT now(),
+ *     ttl_at            timestamptz,
+ *     source_state_hash text,
+ *     PRIMARY KEY (user_uuid, read_kind, cache_key)
+ *   );
  */
 import { pool } from '@/lib/db/pool';
+import { attempt, rowOrNull } from '@/lib/db/read';
 import { fetchIcsFeed, type CoachCalendarEvent } from './ics';
 
 const KIND = 'coach_calendar';
@@ -84,7 +119,15 @@ export async function refreshCoachCalendar(userId: string): Promise<
   // coach_reads_cache keeps the legacy text user_id PK-mate ('me'-default
   // single-user era) — write it as uuid-text like every post-2026-06-10
   // writer. See the profile/user_prefs landmine notes.
-  await pool.query(
+  //
+  // The write is allowed to fail — a calendar we fetched but could not cache is
+  // still a calendar we fetched, and the events go back to the caller either
+  // way. It is not allowed to fail QUIETLY: without this the whole feature was
+  // a network round-trip whose result went in the bin, and the runner saw an
+  // empty calendar with no error on it.
+  const stored = await attempt(
+    'coach-calendar · cache write',
+    pool.query(
     `INSERT INTO coach_reads_cache (user_id, user_uuid, read_kind, cache_key, content, computed_at, ttl_at, source_state_hash)
      VALUES ($1::text, $1::uuid, $2, $3, $4::jsonb, NOW(), NOW() + interval '${TTL_HOURS} hours', $5)
      ON CONFLICT (user_uuid, read_kind, cache_key) DO UPDATE
@@ -93,22 +136,39 @@ export async function refreshCoachCalendar(userId: string): Promise<
            ttl_at = EXCLUDED.ttl_at,
            source_state_hash = EXCLUDED.source_state_hash,
            user_id = EXCLUDED.user_id`,
-    [userId, KIND, KEY, JSON.stringify(content), url],
+      [userId, KIND, KEY, JSON.stringify(content), url],
+    ),
   );
+
+  // A fetch that worked but could not be stored is reported as a failure to
+  // the caller, because the next read will find nothing and the runner would
+  // otherwise be told their coach has scheduled nothing. `attempt` has already
+  // logged the driver's own words.
+  if (!stored.ok) return { ok: false, error: 'calendar could not be saved' };
 
   return result.ok ? { ok: true, events: result.events } : { ok: false, error: result.error };
 }
 
+/**
+ * The cached feed.
+ *
+ *   · a row      → the cache HIT
+ *   · `undefined`→ a genuine cache MISS (nothing stored yet)
+ *   · `null`     → the cache could not be READ. Not a miss. See the header.
+ */
 async function readCache(userId: string): Promise<
-  { content: CacheContent; ttlAt: string | null; sourceHash: string | null } | null
+  { content: CacheContent; ttlAt: string | null; sourceHash: string | null } | undefined | null
 > {
-  const r = await pool.query<{ content: CacheContent; ttl_at: string | null; source_state_hash: string | null }>(
-    `SELECT content, ttl_at, source_state_hash FROM coach_reads_cache
+  const row = await rowOrNull<{ content: CacheContent; ttl_at: string | null; source_state_hash: string | null }>(
+    'coach-calendar · readCache',
+    pool.query<{ content: CacheContent; ttl_at: string | null; source_state_hash: string | null }>(
+      `SELECT content, ttl_at, source_state_hash FROM coach_reads_cache
       WHERE user_uuid = $1 AND read_kind = $2 AND cache_key = $3 LIMIT 1`,
-    [userId, KIND, KEY],
-  ).catch(() => ({ rows: [] as Array<{ content: CacheContent; ttl_at: string | null; source_state_hash: string | null }> }));
-  const row = r.rows[0];
-  if (!row?.content) return null;
+      [userId, KIND, KEY],
+    ),
+  );
+  if (row === null) return null;
+  if (!row?.content) return undefined;
   return { content: row.content, ttlAt: row.ttl_at, sourceHash: row.source_state_hash };
 }
 
@@ -121,6 +181,20 @@ export async function getCoachCalendarStatus(userId: string): Promise<CoachCalen
   if (!url) return { urlSet: false, events: [], fetchedAt: null, lastError: null };
 
   const cached = await readCache(userId);
+
+  // `null` = the cache could not be read at all. That is NOT a miss, and it
+  // must not render as "your coach has scheduled nothing". Say so on
+  // `lastError`, which is the field this status object already has for exactly
+  // this, and do not kick a refresh that will only fail to store.
+  if (cached === null) {
+    return {
+      urlSet: true,
+      events: [],
+      fetchedAt: null,
+      lastError: 'Calendar storage is unavailable. Your feed is still connected.',
+    };
+  }
+
   const expired = !cached
     || (cached.ttlAt != null && new Date(cached.ttlAt).getTime() < Date.now())
     || cached.sourceHash !== url;

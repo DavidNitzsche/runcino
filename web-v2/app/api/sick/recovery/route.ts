@@ -20,6 +20,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { attempt } from '@/lib/db/read';
 import { requireUserId } from '@/lib/auth/session';
 
 type SickTrend = 'better' | 'same' | 'worse' | 'recovered';
@@ -64,9 +65,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'no active sick episode' }, { status: 404 });
     }
 
-    await pool.query(
-      `INSERT INTO sick_recovery (episode_id, response) VALUES ($1, $2)`,
-      [active.id, body.today],
+    // 2026-08-24 · swallowed-failure sweep · `sick_recovery` does not exist in
+    // production — migration 117 declares it alongside `sick_episodes` and only
+    // the first table landed. This INSERT threw, the handler answered 500
+    // "recovery insert failed", and the `cleared_at` update below never ran. A
+    // runner tapping "recovered" got an error and stayed marked sick, so the
+    // plan stayed paused. Clearing the episode is what they asked for; the
+    // append-only trend row is not worth blocking it. Creating the table is a
+    // DDL PROPOSAL; the statement is already in migration 117.
+    await attempt(
+      'api/sick/recovery · trend row',
+      pool.query(
+        `INSERT INTO sick_recovery (episode_id, response) VALUES ($1, $2)`,
+        [active.id, body.today],
+      ),
     );
 
     if (body.today === 'recovered') {

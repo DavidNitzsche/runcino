@@ -56,6 +56,8 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
+import { intentValueField } from '@/lib/coach/intent-value';
 import { runnerTimezone } from '@/lib/runtime/runner-tz';
 import { renderSessionMoved } from './templates';
 import { enqueueNotification, nextMorning0715 } from './enqueue';
@@ -195,8 +197,22 @@ export async function snapshotSession(
  */
 export async function adapterReasonFor(workoutId: string): Promise<string | null> {
   try {
-    const row = (await pool.query<{ why: string | null; reason: string | null }>(
-      `SELECT ci.value->>'why' AS why, ci.reason
+    // 2026-08-24 · swallowed-failure sweep · this read `ci.value->>'why'`.
+    // `coach_intents.value` is a TEXT column, not jsonb — `writeIntent` stores
+    // `JSON.stringify(value)` into it — so Postgres answered `operator does not
+    // exist: text ->> unknown` on every single call and the `catch` below
+    // returned null. The push shipped with no reason on it, always, and "the
+    // adapter had nothing to say" is a plausible thing for a notification to
+    // decide. Verified against prod on 2026-08-24: the same read done properly
+    // returns "Long run on 2026-08-22 was missed. Recorded for the volume
+    // picture; long runs are never crammed back in."
+    //
+    // The cast has to happen in TS, not SQL. 169 of the 269 rows in prod are
+    // not JSON-shaped at all (older writers stored bare strings), so a blanket
+    // `value::jsonb` would trade this error for `invalid input syntax for type
+    // json` on the majority of the table.
+    const row = (await pool.query<{ value: string | null; reason: string | null }>(
+      `SELECT ci.value, ci.reason
          FROM coach_intents ci
         WHERE ci.field = $1
           AND ci.reason LIKE 'plan_adapt%'
@@ -204,14 +220,15 @@ export async function adapterReasonFor(workoutId: string): Promise<string | null
         LIMIT 1`,
       [workoutId],
     )).rows[0];
-    const raw = row?.why?.trim();
+    const raw = intentValueField(row?.value ?? null, 'why')?.trim();
     if (!raw) return null;
     const { stripResearchCitations } = await import('@/lib/plan/strip-citations');
     const clean = stripResearchCitations(raw).trim();
     if (!clean) return null;
     const first = clean.split(/(?<=\.)\s+/)[0]?.trim() ?? clean;
     return first.replace(/\s*[.·]\s*$/, '') || null;
-  } catch {
+  } catch (e) {
+    logReadFailure('notifications/session-moved · adapterReasonFor', e);
     return null;
   }
 }

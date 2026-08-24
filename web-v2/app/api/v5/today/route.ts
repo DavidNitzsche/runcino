@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withRequestMemo } from '@/lib/runtime/request-memo';
 import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import { zoneTargetForWorkout, zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 import { requireUserId } from '@/lib/auth/session';
 import { composeWhy } from '@/lib/faff/why-voice';
@@ -302,10 +303,18 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
             ORDER BY week_start_iso DESC LIMIT 1`,
           [activePlan.id, today],
         ).catch(() => ({ rows: [] as any[] }))).rows[0];
-        const total = (await pool.query<{ n: string }>(
-          `SELECT COUNT(*)::text AS n FROM plan_weeks WHERE plan_id = $1`,
-          [activePlan.id],
-        ).catch(() => ({ rows: [{ n: '0' }] }))).rows[0];
+        // 2026-08-24 · swallowed-failure sweep · the fallback was
+        // `{ n: '0' }`, and this string goes straight onto the runner's Today
+        // screen: a failed count rendered "Week 5 of 0". A line we cannot fill
+        // is a line we do not draw.
+        const total = await rowOrNull<{ n: string }>(
+          'v5/today · plan week count',
+          pool.query<{ n: string }>(
+            `SELECT COUNT(*)::text AS n FROM plan_weeks WHERE plan_id = $1`,
+            [activePlan.id],
+          ),
+        );
+        if (!total || Number(total.n) <= 0) return null;
         return w ? `Week ${w.week_idx + 1} of ${total.n}` : null;
       })()
     : null;

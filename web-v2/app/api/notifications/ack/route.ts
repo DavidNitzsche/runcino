@@ -31,6 +31,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { attempt } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { requireUserId } from '@/lib/auth/session';
 
@@ -228,9 +229,24 @@ async function ackNiggleSick(
       [userId],
     )).rows[0];
     if (!active) return { side_effect: 'no_active_sick_episode' };
-    await pool.query(
-      `INSERT INTO sick_recovery (episode_id, response) VALUES ($1, $2)`,
-      [active.id, action],
+    // 2026-08-24 · swallowed-failure sweep · `sick_recovery` does not exist in
+    // production. Migration 117 creates both `sick_episodes` and
+    // `sick_recovery`; only the first landed. So this INSERT threw, and it
+    // threw BEFORE the `cleared_at` update below — meaning a runner who
+    // answered "recovered" never had their episode cleared and the plan stayed
+    // paused on an illness they had told us was over.
+    //
+    // The trend log is a nice-to-have; clearing the episode is the thing the
+    // runner asked for. Order and blast radius both change: the append-only log
+    // is best-effort and loud, the state change always runs. Creating the table
+    // is a DDL PROPOSAL — see `db/migrations/117_sick_episodes.sql`, which
+    // already carries the exact statement.
+    await attempt(
+      'notifications/ack · sick_recovery trend',
+      pool.query(
+        `INSERT INTO sick_recovery (episode_id, response) VALUES ($1, $2)`,
+        [active.id, action],
+      ),
     );
     if (action === 'recovered') {
       await pool.query(`UPDATE sick_episodes SET cleared_at = now() WHERE id = $1`, [active.id]);

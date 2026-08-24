@@ -29,6 +29,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withRequestMemo } from '@/lib/runtime/request-memo';
 import { pool } from '@/lib/db/pool';
+import { rowOrNull, rowsOrNull } from '@/lib/db/read';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import {
@@ -77,16 +78,29 @@ const num = (text: string | null, modelled: boolean): V5NumberOut => ({ text, mo
 
 const SUPPRESS_REASON = 'goal_card_dismissed';
 
-async function loadSuppressedTriggers(userId: string, todayISO: string): Promise<Set<FactChoiceTriggerId>> {
+/** The dismissed triggers, or `null` when the suppression read FAILED. */
+async function loadSuppressedTriggers(userId: string, todayISO: string): Promise<Set<FactChoiceTriggerId> | null> {
   const cutoff = new Date(Date.parse(todayISO + 'T12:00:00Z') - TRIGGER_SUPPRESS_DAYS * 86400000)
     .toISOString().slice(0, 10);
-  const rows = await pool.query<{ field: string | null }>(
-    `SELECT field FROM coach_intents
-      WHERE COALESCE(user_uuid::text, user_id) = $1
+  // 2026-08-24 · swallowed-failure sweep · `coach_intents.user_id` is `uuid`,
+  // so `COALESCE(user_uuid::text, user_id)` was `COALESCE types text and uuid
+  // cannot be matched` and this threw on every render. `.catch(() => [])` made
+  // it "nothing is suppressed", which is why a fact/choice card the runner had
+  // already dismissed came back on the next load, every time.
+  const rows = await rowsOrNull<{ field: string | null }>(
+    'v5/races · loadSuppressedTriggers',
+    pool.query<{ field: string | null }>(
+      `SELECT field FROM coach_intents
+      WHERE COALESCE(user_uuid, user_id) = $1::uuid
         AND reason = $2
         AND ts >= $3::date`,
-    [userId, SUPPRESS_REASON, cutoff],
-  ).then(r => r.rows).catch(() => []);
+      [userId, SUPPRESS_REASON, cutoff],
+    ),
+  );
+  // A failed read is not an empty suppression set. Returning null lets the
+  // caller hold every trigger back rather than re-ask a question the runner
+  // has already answered.
+  if (rows === null) return null;
   return new Set(rows.map(r => r.field).filter((f): f is FactChoiceTriggerId =>
     f === 'heat' || f === 'course_changed' || f === 'chip_lock' || f === 'two_a_races'));
 }
@@ -171,13 +185,31 @@ async function detectHeat(race: RaceRow | null, userId: string, vdot: number | n
   }
 }
 
-async function detectReturningFromInjury(userId: string): Promise<boolean> {
-  const r = await pool.query<{ n: string }>(
-    `SELECT count(*)::text AS n FROM injuries
-      WHERE user_uuid = $1 AND (resolved_date IS NULL OR resolved_date >= CURRENT_DATE - INTERVAL '30 days')`,
-    [userId],
-  ).catch(() => ({ rows: [{ n: '0' }] }));
-  return Number(r.rows[0]?.n ?? 0) > 0;
+/**
+ * 2026-08-24 · swallowed-failure sweep · this counted rows in `injuries`.
+ * There is no such table. Every other consumer in the app — glance-state,
+ * adapt.ts Q-08, injury-builder, build-workout, the whole /api/injuries
+ * surface — reads `runner_injuries`; this one reader invented a name.
+ * Postgres answered `relation "injuries" does not exist` on every call, and the
+ * `.catch` handed back `'0'`, so the races surface has told every runner they
+ * are not coming back from anything. Prod on 2026-08-24 holds an open,
+ * unresolved left-calf injury logged 2026-08-21 — the corrected query returns
+ * 1 for that runner and this one returned 0.
+ *
+ * Returns null when the read fails: "no injury" is a claim about the runner's
+ * body and must not be minted out of an error.
+ */
+async function detectReturningFromInjury(userId: string): Promise<boolean | null> {
+  const row = await rowOrNull<{ n: string }>(
+    'v5/races · detectReturningFromInjury',
+    pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM runner_injuries
+      WHERE user_uuid = $1::uuid AND (resolved_date IS NULL OR resolved_date >= CURRENT_DATE - INTERVAL '30 days')`,
+      [userId],
+    ),
+  );
+  if (row == null) return null;
+  return Number(row.n ?? 0) > 0;
 }
 
 // ─── evidence + schedule ────────────────────────────────────────────────────
@@ -306,14 +338,26 @@ async function handleGET(req: NextRequest) {
       //    table lists them. First real one wins; suppressed ones are
       //    skipped so an answered trigger doesn't re-fire for its window.
       let factOrChoice: FactChoiceSpec | null = null;
-      if (!suppressed.has('heat')) factOrChoice = await detectHeat(nextA, userId, vdot);
-      if (!factOrChoice && !suppressed.has('course_changed')) factOrChoice = await detectCourseChanged(nextA, userId);
-      if (!factOrChoice && !suppressed.has('chip_lock')) factOrChoice = await detectChipLock(racesState.past);
-      if (!factOrChoice && !suppressed.has('two_a_races')) factOrChoice = await detectTwoARaces(racesState.aRaces);
+      //    `suppressed === null` means the dismissal read failed. Every
+      //    trigger stays down: asking a question the runner has already
+      //    answered is worse than not asking, and we cannot tell which.
+      if (suppressed !== null) {
+        if (!suppressed.has('heat')) factOrChoice = await detectHeat(nextA, userId, vdot);
+        if (!factOrChoice && !suppressed.has('course_changed')) factOrChoice = await detectCourseChanged(nextA, userId);
+        if (!factOrChoice && !suppressed.has('chip_lock')) factOrChoice = await detectChipLock(racesState.past);
+        if (!factOrChoice && !suppressed.has('two_a_races')) factOrChoice = await detectTwoARaces(racesState.aRaces);
+      }
 
       if (assessment) {
         const returningFromInjury = await detectReturningFromInjury(userId);
-        card = composeRaceCard({ assessment, factOrChoice, returningFromInjury });
+        // null = the injury read failed. The card keeps its non-injury framing
+        // rather than asserting a body state it could not check; the failure is
+        // in the log, not smuggled into the copy.
+        card = composeRaceCard({
+          assessment,
+          factOrChoice,
+          returningFromInjury: returningFromInjury === true,
+        });
       }
 
       const projectedSec = assessment?.currentEquivalentSec ?? (vdot != null && distanceMi ? predictRaceTime(vdot, distanceMi) : null);

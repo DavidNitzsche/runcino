@@ -27,6 +27,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { computeReadiness, computeDynamicSleepTarget, weeklyMpwFor, lutealAdjustedHrvBaseline, READINESS_WEIGHTS, type ReadinessBreakdown, type ReadinessInput } from './readiness';
@@ -1503,8 +1504,13 @@ async function loadColdStart(
         AND sample_type = 'sleep_hours'
         AND sample_date >= $2::date - INTERVAL '14 days'`,
     [userId, today],
-  ).catch(() => ({ rows: [{ n: '0' }] }))).rows[0];
-  const nightsLogged = Math.min(NIGHTS_NEEDED, Number(sleepCount?.n ?? 0));
+    // 2026-08-24 · swallowed-failure sweep · `n: '0'` tells the runner they
+    // have logged no sleep at all, and the surface below uses that to decide
+    // whether health is connected. A failed read is not an unworn watch.
+  ).catch((e) => { logReadFailure('coach/readiness-brief · sleep nights', e); return null; }));
+  if (sleepCount == null) return null;
+  const sleepRow = sleepCount.rows[0];
+  const nightsLogged = Math.min(NIGHTS_NEEDED, Number(sleepRow?.n ?? 0));
 
   // Health connected · check user_profiles for a non-null connection
   // marker. We use sleep_hours presence in the last 14d as a proxy

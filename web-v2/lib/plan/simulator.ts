@@ -111,6 +111,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { predictRaceTime } from '@/lib/training/vdot';
 
 export interface SimulatorInput {
@@ -414,22 +415,36 @@ export async function simulateActivePlan(userUuid: string): Promise<SimulatorRes
     week_idx: number; start_iso: string; phase: string;
     weekly_mi: string; quality_sessions: string; long_run_mi: string;
   }>(
+    // 2026-08-24 · swallowed-failure sweep · this derived the week index with
+    // `FLOOR((pw.date_iso - tp.start_date) / 7)`. Two things wrong with that in
+    // one expression: `training_plans` has no `start_date` column at all, and
+    // `plan_workouts.date_iso` is TEXT, so even with one there would be no
+    // `text - date` to subtract. Postgres answered `column tp.start_date does
+    // not exist` on every call; `.catch(() => ({ rows: [] }))` produced zero
+    // weeks and the very next line turned that into `return null` — "this
+    // runner has no plan to simulate". The simulator has never simulated
+    // anything, and `gap-report` has had nothing to report.
+    //
+    // The week index is not a thing to derive. `plan_weeks` stores it, along
+    // with `week_start_iso` and the phase, and `plan_workouts.week_id` points
+    // at it — the same join `week-loader` and `dose-guard` already use.
+    // Verified against prod on 2026-08-24 for the live plan
+    // (pln_eb73331e19230ad9): zero rows as shipped, two real weeks here.
     `SELECT
-       FLOOR((pw.date_iso - tp.start_date) / 7)::int AS week_idx,
-       (tp.start_date + (FLOOR((pw.date_iso - tp.start_date) / 7) * 7))::text AS start_iso,
-       COALESCE(pp.label, 'BUILD') AS phase,
-       SUM(pw.distance_mi)::text AS weekly_mi,
+       w.week_idx                     AS week_idx,
+       w.week_start_iso               AS start_iso,
+       COALESCE(pp.label, 'BUILD')    AS phase,
+       SUM(pw.distance_mi)::text      AS weekly_mi,
        SUM(CASE WHEN pw.is_quality THEN 1 ELSE 0 END)::text AS quality_sessions,
        MAX(CASE WHEN pw.is_long THEN pw.distance_mi ELSE 0 END)::text AS long_run_mi
      FROM plan_workouts pw
-     JOIN training_plans tp ON tp.id = pw.plan_id
-     LEFT JOIN plan_phases pp ON pp.plan_id = pw.plan_id
-       AND FLOOR((pw.date_iso - tp.start_date) / 7) BETWEEN pp.start_week_idx AND pp.end_week_idx
-     WHERE tp.id = $1
-     GROUP BY week_idx, tp.start_date, pp.label
-     ORDER BY week_idx`,
+     JOIN plan_weeks w ON w.id = pw.week_id
+     LEFT JOIN plan_phases pp ON pp.id = w.phase_id
+     WHERE pw.plan_id = $1
+     GROUP BY w.week_idx, w.week_start_iso, pp.label
+     ORDER BY w.week_idx`,
     [plan.id],
-  ).catch(() => ({ rows: [] }))).rows;
+  ).catch((e) => { logReadFailure('plan/simulator · weekly aggregation', e); return { rows: [] }; })).rows;
   if (wkRows.length === 0) return null;
 
   const weeks: SimulatorWeek[] = wkRows.map((w) => ({

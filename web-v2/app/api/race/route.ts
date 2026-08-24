@@ -9,6 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { normalizeGoalDisplay } from '@/lib/plan/goal-display'; // CAP-3 · distance-aware goal canonicalization
 import { generatePlan } from '@/lib/plan/generate';
@@ -422,13 +423,19 @@ export async function PATCH(req: NextRequest) {
         // profile so the response can carry the before/after diff. No
         // explicit before column for VDOT — best estimate is the most
         // recent vdot_auto_recalc intent.
+        // 2026-08-24 · swallowed-failure sweep · `coach_intents.user_id` is
+        // `uuid`, so `COALESCE(user_uuid::text, user_id)` gave `COALESCE types
+        // text and uuid cannot be matched` and this threw every time. The
+        // `.catch` returned no rows, so `vdotBefore` was always null and the
+        // before/after diff this block exists to produce has never had a
+        // "before" in it.
         const priorVdot = await pool.query<{ value: string }>(
           `SELECT value FROM coach_intents
-            WHERE COALESCE(user_uuid::text, user_id) = $1
+            WHERE COALESCE(user_uuid, user_id) = $1::uuid
               AND reason = 'vdot_auto_recalc'
             ORDER BY ts DESC LIMIT 1`,
           [userId]
-        ).catch(() => ({ rows: [] }));
+        ).catch((e) => { logReadFailure('api/race · priorVdot', e); return { rows: [] }; });
         const priorLthr = await pool.query<{ lthr: number | null }>(
           `SELECT lthr FROM profile WHERE user_uuid = $1`,
           [userId]

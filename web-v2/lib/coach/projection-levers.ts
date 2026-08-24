@@ -22,6 +22,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { distanceMiOfMeta } from '@/lib/race/distance';
 import { predictRaceTime, formatRaceTime, DANIELS_VDOT_MAX } from '@/lib/training/vdot';
 import { VDOT_PER_ASSESSMENT_BLOCK } from '@/lib/training/vdot-gain-rate';
@@ -240,7 +241,10 @@ export async function computeProjectionLevers(
   }
 
   // Rule 2 · threshold block vs sharpen
-  if (input.gap.fitness > 60 && planThresholdCount < 2) {
+  // `null` = the threshold-session count could not be read. Neither the
+  // "add threshold work" lever nor the "you already have enough" lever is
+  // offered on a number we do not have; both are claims about the plan.
+  if (input.gap.fitness > 60 && planThresholdCount != null && planThresholdCount < 2) {
     const proj = projWithVdotBump(input.currentVdot, VDOT_BUMP_THRESHOLD, distMi);
     if (proj != null) {
       out.push({
@@ -255,7 +259,7 @@ export async function computeProjectionLevers(
         lvtag: 'Trainable · 3 weeks of Tue/Thu cruise intervals',
       });
     }
-  } else if (planThresholdCount >= 2) {
+  } else if (planThresholdCount != null && planThresholdCount >= 2) {
     // Already on it · the sharpen lever protects the work in flight.
     const proj = projWithVdotBump(input.currentVdot, VDOT_BUMP_SHARPEN, distMi);
     if (proj != null) {
@@ -419,7 +423,7 @@ function niceDate(iso: string): string {
 async function countUpcomingThresholdWorkouts(
   userUuid: string,
   windowDays: number,
-): Promise<number> {
+): Promise<number | null> {
   // 2026-06-03 · runner TZ for "today" + future cutoff.
   const { runnerToday } = await import('@/lib/runtime/runner-tz');
   const today = await runnerToday(userUuid);
@@ -437,6 +441,10 @@ async function countUpcomingThresholdWorkouts(
               LOWER(pw.type) LIKE '%cruise%'
             )`,
     [userUuid, windowDays, today],
-  ).catch(() => ({ rows: [{ n: '0' }] }))).rows[0];
-  return Number(row?.n ?? 0);
+    // 2026-08-24 · swallowed-failure sweep · zero threshold sessions is the
+    // observation that makes the lever recommend adding some. Not a number to
+    // invent out of a dropped connection.
+  ).catch((e) => { logReadFailure('coach/projection-levers · threshold count', e); return null; }));
+  if (row == null) return null;
+  return Number(row.rows[0]?.n ?? 0);
 }

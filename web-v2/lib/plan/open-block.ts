@@ -40,6 +40,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { generatePlan } from '@/lib/plan/generate';
 import { resolveGoalTarget } from '@/lib/plan/auto-rebuild';
 import { isCoachedExternally, COACHED_SKIP_REASON } from '@/lib/plan/coached-gate';
@@ -134,7 +135,10 @@ export async function authorOpenBlock(input: AuthorOpenBlockInput): Promise<Open
         AND status = 'pending'
         AND created_at >= NOW() - interval '3 days'`,
     [userUuid],
-  ).catch(() => ({ rowCount: 0 }))).rowCount;
+    // 2026-08-24 · swallowed-failure sweep · fails CLOSED. `rowCount: 0` reads
+    // as "no standing proposal", so a failed read wrote a second one. A
+    // proposal we cannot prove is absent is treated as present.
+  ).catch((e) => { logReadFailure('plan/open-block · standing proposal', e); return { rowCount: 1 }; })).rowCount;
   if (standing) return { ok: false, mode: null, reason: 'already_pending' };
 
   const mode = openBlockMode({

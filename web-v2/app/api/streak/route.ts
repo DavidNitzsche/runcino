@@ -16,6 +16,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
+import { outage } from '@/lib/route/failure';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { addDaysToDayKey } from '@/lib/runtime/day-key';
@@ -24,7 +26,7 @@ export const dynamic = 'force-dynamic';
 
 const MILESTONES = [7, 14, 30, 100] as const;
 
-async function computeRunStreak(userId: string): Promise<number> {
+async function computeRunStreak(userId: string): Promise<number | null> {
   try {
     // to_char, not ::date · node-pg parses a pg `date` into a JS Date at
     // LOCAL midnight, and the day key was then read back off the UTC
@@ -56,12 +58,18 @@ async function computeRunStreak(userId: string): Promise<number> {
       cursor = addDaysToDayKey(cursor, -1);
     }
     return count;
-  } catch {
-    return 0;
+  } catch (e) {
+    // 2026-08-24 · swallowed-failure sweep · `0` is a streak, and it is the one
+    // that reads as "you broke it". A runner forty days deep saw zero on a
+    // dropped connection, and the milestone check compared against a fabricated
+    // zero `longestPrior`, which makes every milestone "your longest ever".
+    // Null is not a streak. Callers decide what to do with not knowing.
+    logReadFailure('streak', e);
+    return null;
   }
 }
 
-async function longestPriorStreak(userId: string): Promise<number> {
+async function longestPriorStreak(userId: string): Promise<number | null> {
   // Cheap approximation · the same forward-walk on all known dates,
   // remembering the longest gap-free run. Good enough for the "longest
   // ever" comparison the pill cares about.
@@ -87,8 +95,14 @@ async function longestPriorStreak(userId: string): Promise<number> {
       if (cur > longest) longest = cur;
     }
     return longest;
-  } catch {
-    return 0;
+  } catch (e) {
+    // 2026-08-24 · swallowed-failure sweep · `0` is a streak, and it is the one
+    // that reads as "you broke it". A runner forty days deep saw zero on a
+    // dropped connection, and the milestone check compared against a fabricated
+    // zero `longestPrior`, which makes every milestone "your longest ever".
+    // Null is not a streak. Callers decide what to do with not knowing.
+    logReadFailure('streak', e);
+    return null;
   }
 }
 
@@ -106,6 +120,11 @@ export async function GET(req: NextRequest) {
     computeRunStreak(userId),
     longestPriorStreak(userId),
   ]);
+  // A streak we could not count is not a streak of zero. The phone renders a
+  // 5xx as the retryable outage state, which is the truth here.
+  if (current === null || longestPrior === null) {
+    return outage('api/streak', new Error('streak read failed'));
+  }
 
   const isMilestoneToday = (MILESTONES as readonly number[]).includes(current);
   const nextMs = nextMilestoneAfter(current);

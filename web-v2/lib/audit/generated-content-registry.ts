@@ -376,6 +376,10 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'A GATE. Same as sql-scan.ts.',
   'web-v2/lib/audit/generated-content-registry.ts':
     'A GATE. This file.',
+  'web-v2/lib/audit/swallow-scan.ts':
+    'A GATE. Same shape as sql-scan.ts: consulted by _swallow_scan.test.ts and check-swallowed-failure.sh, never at runtime. It finds the places where a database failure becomes a plausible answer — the `.catch(() => empty)` that hid four broken date_iso comparisons for months.',
+  'web-v2/lib/audit/swallowed-failure-registry.ts':
+    'A GATE. The argued exemption list swallow-scan.ts is checked against, plus the empty-result ratchet. Test-only is its correct state.',
   'web-v2/lib/plan/synthetic-runners.ts':
     'Test fixtures for the plan-engine bench. Test-only is correct.',
   'web-v2/lib/faff/personas.ts':

@@ -18,6 +18,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { sendPush, type SendPushArgs, apnsIsConfigured, isInQuietHours, type NotificationCategory } from './apns';
 import { runnerTimezone } from '@/lib/runtime/runner-tz';
 import { loadNotificationPrefs, categoryEnabled } from './prefs';
@@ -72,8 +73,13 @@ async function recentlySent(dedupKey: string, withinHours = 24): Promise<boolean
       [dedupKey, String(withinHours)],
     );
     return r.rows.length > 0;
-  } catch {
-    return false;
+  } catch (e) {
+    // 2026-08-24 · swallowed-failure sweep · fails CLOSED. `false` means "not
+    // sent yet", so a failed read sent the push AGAIN — the failure mode of a
+    // de-dup gate that guesses is a runner woken twice by the same message.
+    // Suppressing one notification is recoverable; sending a duplicate is not.
+    logReadFailure('notifications/dispatch · recentlySent', e);
+    return true;
   }
 }
 
