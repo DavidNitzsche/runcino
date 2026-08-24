@@ -600,6 +600,7 @@ struct WatchRunSurfaceV5: View {
             pace: livePace.value,
             paceUnit: livePace.unit,
             grade: paceGrade.workoutGrade,
+            band: workoutBand,
             // nil NAMES the sensor on the board rather than drawing a dash.
             // True on a belt too — a missing strap is a missing strap.
             heartRate: tracker.heartRate > 0 ? WFmt.whole(tracker.heartRate) : nil,
@@ -642,11 +643,35 @@ struct WatchRunSurfaceV5: View {
     /// the telemetry under it keeps page 1's order, so when the board swaps
     /// mid-session the only thing that moved is the word.
     private func phaseBoard(_ phase: WatchPhase) -> some View {
-        PhaseFaceV6(
+        let m = phaseMetrics(phase)
+        return PhaseFaceV6(
             phase: phaseName(phase),
             context: phaseContext(phase),
-            metrics: phaseMetrics(phase)
+            band: workoutBand,
+            // DERIVED, never a constant. The graded metric is on row 1 in a
+            // work or warm-up phase, row 0 in a race, and on no row at all in
+            // a recovery. A literal here would have drawn the gauge under the
+            // countdown on five of the six boards.
+            bandRow: m.firstIndex { $0.role == "Pace" } ?? 0,
+            metrics: m
         )
+    }
+
+    /// The prescribed band in the shape the foundation draws, or nil.
+    ///
+    /// Rule 7 of the build standard: a graded metric needs its band. The V6
+    /// port carried `paceGrade` across and left this behind, so the running
+    /// faces coloured the pace and never said what it was being coloured
+    /// against. It survived review because the preview harness supplied a
+    /// band by hand — the screenshots were right about a screen that did not
+    /// exist.
+    ///
+    /// nil when the phase prescribes no target, and nil on a belt, where
+    /// there is no trustworthy pace to put a mark on.
+    private var workoutBand: (start: Double, end: Double, marker: Double, inBand: Bool)? {
+        guard !isTreadmill, let b = band(for: engine.currentPhase) else { return nil }
+        return (start: b.start, end: b.end, marker: b.marker,
+                inBand: paceGrade == .inBand)
     }
 
     private func phaseName(_ phase: WatchPhase) -> String {
@@ -706,6 +731,27 @@ struct WatchRunSurfaceV5: View {
                 }
                 m.append(WorkoutMetric(value: dist.value, unit: dist.unit, role: "Distance"))
                 m.append(WorkoutMetric(value: WFmt.clock(engine.totalElapsedSec), role: "Elapsed"))
+                return m
+            }
+            if isStrides(phase) {
+                // A STRIDE DOES NOT SHOW PACE.
+                //
+                // It is fifteen to twenty-five seconds of near-maximum
+                // turnover, and GPS pace over that window is mostly lag: the
+                // figure peaks after the stride has ended. Drawing it invites
+                // the runner to chase a number that is describing the previous
+                // ten seconds.
+                //
+                // Cadence is what a stride is actually for, it responds
+                // instantly, and it is the one the runner can act on. No band
+                // either — the plan prescribes no pace target for a stride, so
+                // `band(for:)` returns nil and nothing here needs to force it.
+                var m = [WorkoutMetric(value: WFmt.short(engine.phaseRemainingSec),
+                                       role: "Time left in stride")]
+                if let c = WFmt.whole(tracker.cadence) {
+                    m.append(WorkoutMetric(value: c, unit: "spm", role: "Cadence"))
+                }
+                if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
                 return m
             }
             var m = [WorkoutMetric(value: WFmt.short(engine.phaseRemainingSec), role: "Time left in rep"), paced]

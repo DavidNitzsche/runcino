@@ -36,6 +36,14 @@ struct RunFaceV6: View {
     let pace: String
     var paceUnit: String = "/mi"
     let grade: MetricGrade
+    /// The prescribed band under the pace, when the session prescribes one.
+    ///
+    /// This was missing from the whole V6 generation and the omission was
+    /// invisible, because the preview harness passed a band that the router
+    /// never did — so every board reviewed on screen had a gauge and every
+    /// board a runner would actually see had none. A graded number with no
+    /// band says "you are wrong" and refuses to say what right was.
+    var band: (start: Double, end: Double, marker: Double, inBand: Bool)? = nil
     let heartRate: String?
     let distance: String
     var distanceUnit: String = "mi"
@@ -43,38 +51,25 @@ struct RunFaceV6: View {
 
     var body: some View {
         WorkoutPage {
-            if let heartRate {
-                WorkoutMetricStack(metrics: [
-                    WorkoutMetric(value: pace, unit: paceUnit, grade: grade, role: "Pace"),
-                    WorkoutMetric(value: heartRate, unit: "bpm", role: "Heart rate"),
-                    WorkoutMetric(value: distance, unit: distanceUnit, role: "Distance"),
-                    WorkoutMetric(value: elapsed, role: "Elapsed"),
-                ])
-            } else {
-                // RULE 2 · a sensor we could not read is NAMED, in words. The
-                // other three slots are untouched, so the failure reads as one
-                // slot rather than one screen — and a greyed last-known number
-                // was explicitly rejected, because the runner cannot tell it
-                // has stopped moving.
-                VStack(alignment: .leading, spacing: 0) {
-                    WorkoutMetricStack(metrics: [
-                        WorkoutMetric(value: pace, unit: paceUnit, grade: grade, role: "Pace"),
-                    ])
-                    .frame(maxHeight: .infinity)
-
-                    Text("No heart signal")
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                        .foregroundStyle(WatchV5.fault)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel("Heart rate unavailable")
-
-                    WorkoutMetricStack(metrics: [
-                        WorkoutMetric(value: distance, unit: distanceUnit, role: "Distance"),
-                        WorkoutMetric(value: elapsed, role: "Elapsed"),
-                    ])
-                    .frame(maxHeight: .infinity)
-                }
-            }
+            // ONE STACK, ALWAYS. Four rows whether or not the strap is
+            // reading, so every number keeps its size and its position.
+            //
+            // The first version built three stacks — pace, then the fault
+            // sentence, then distance and time — and each sized itself
+            // independently, so the pace came out visibly larger than the two
+            // numbers under it. One column rendered at three sizes, which is
+            // the thing the whole sizing rule exists to prevent. It looked
+            // fine in isolation and was obvious the moment the board was set
+            // beside the others on a contact sheet.
+            WorkoutMetricStack(band: band, bandRow: 0, metrics: [
+                WorkoutMetric(value: pace, unit: paceUnit, grade: grade, role: "Pace"),
+                heartRate.map {
+                    WorkoutMetric(value: $0, unit: "bpm", role: "Heart rate")
+                } ?? WorkoutMetric(value: "No heart signal", fault: true,
+                                   role: "Heart rate unavailable"),
+                WorkoutMetric(value: distance, unit: distanceUnit, role: "Distance"),
+                WorkoutMetric(value: elapsed, role: "Elapsed"),
+            ])
         }
     }
 }
@@ -113,6 +108,13 @@ struct PerfFaceV6: View {
 
 /// Wrist down. Three values, and NO ticking second — a second that the
 /// display cannot redraw is a lie.
+///
+/// AND NO BAND, for the same reason. The gauge's whole content is where the
+/// mark sits relative to the lit segment; at the always-on refresh rate that
+/// position is a minute stale, and a stale mark is a more confident lie than a
+/// stale number — it is drawn as a position rather than read as a figure. The
+/// pace still grades, because the colour survives being a minute old in a way
+/// that a coordinate does not.
 struct AlwaysOnFaceV6: View {
     let pace: String
     var paceUnit: String = "/mi"
@@ -157,12 +159,19 @@ struct PhaseFaceV6: View {
     /// rather than telemetry, which is why it sits centred at the foot rather
     /// than on the column with everything else.
     var context: String? = nil
+    /// The prescribed band and where the runner is in it, drawn under the
+    /// metric that is being graded. Without it the board says "you are on
+    /// target" and never says what the target is — which is fine until the
+    /// moment a runner drifts and needs to correct.
+    var band: (start: Double, end: Double, marker: Double, inBand: Bool)? = nil
+    /// Which row the band belongs under. 0 unless the graded metric moved.
+    var bandRow: Int = 0
     let metrics: [WorkoutMetric]
 
     var body: some View {
         WorkoutPage {
             VStack(alignment: .leading, spacing: 0) {
-                WorkoutMetricStack(metrics: metrics)
+                WorkoutMetricStack(band: band, bandRow: bandRow, metrics: metrics)
 
                 if let context {
                     Text(context)
