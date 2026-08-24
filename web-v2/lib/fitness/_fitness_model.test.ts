@@ -446,3 +446,121 @@ describe('the doctrine example shape', () => {
     expect(hiSec - loSec).toBeGreaterThan(60);   // wide enough to mean something
   });
 });
+
+// ---------------------------------------------------------------------------
+// 7 · A TRAINING READ IS A FLOOR, NOT A CROSS-CHECK
+//
+// Regression, 2026-08-24. Every corroboration test above hands the model RACE
+// corroborators. Live data does the opposite: David has exactly one race in
+// the window and thirty training runs, so the case these tests covered was the
+// case production never produces. Reading those runs as disagreeing evidence
+// priced his band at ±8% and dropped the tier to `low` eight days after a
+// chip-timed A half — an HM range of 1:33:30 to 1:50:30 around a race he had
+// just run.
+//
+// `vdot.ts:vdotFromRun` states the contract those candidates are built under:
+// "bestRecentVdot takes the MAX, so this can only RAISE current fitness from
+// honest training, never lower it." A candidate that cannot lower the point
+// estimate cannot widen the band beneath it either.
+// ---------------------------------------------------------------------------
+
+describe('a slow training run is not evidence against a race', () => {
+  const anchor = raceC({ vdot: 44.1, age: 8, name: 'Americas Finest City' });
+
+  it('a slow in-window run leaves the band exactly where the race alone puts it', () => {
+    const alone = resolve([anchor]);
+    // An easy five-miler inside a post-race recovery block. It clears the
+    // honesty gate on HR in August heat and reads as a "virtual race" at VDOT
+    // 37.1. It is not a race, and it is not disagreement.
+    const withRun = resolve([anchor, runC({ vdot: 37.1, age: 39, id: 'easy-5' })]);
+    expect(width(withRun)).toBeCloseTo(width(alone), 2);
+    expect(withRun.vdotLo).toBeCloseTo(alone.vdotLo, 2);
+    expect(withRun.vdotHi).toBeCloseTo(alone.vdotHi, 2);
+  });
+
+  it('no number of slow runs drags the band of a fresh race', () => {
+    const alone = resolve([anchor]);
+    const buried = resolve([
+      anchor,
+      runC({ vdot: 39.9, age: 1, id: 'r1' }),
+      runC({ vdot: 39.3, age: 3, id: 'r2' }),
+      runC({ vdot: 38.2, age: 47, id: 'r3' }),
+      runC({ vdot: 37.1, age: 39, id: 'r4' }),
+    ]);
+    expect(width(buried)).toBeCloseTo(width(alone), 2);
+  });
+
+  it('a fresh race does not lose its tier to the training around it', () => {
+    // The whole defect in one assertion. Before the fix this returned 'low' —
+    // the app telling a runner it is unsure what he can race, eight days after
+    // watching him race it.
+    const e = resolve([anchor, runC({ vdot: 37.1, age: 39, id: 'easy-5' })]);
+    expect(e.confidence).toBe('medium');
+  });
+
+  it('a training run cannot lift the tier either · it is not a cross-check', () => {
+    // The rule cuts both ways. A run that AGREES is still not a race, so it
+    // must not buy the second piece of evidence that 'high' requires.
+    const e = resolve([anchor, runC({ vdot: 44.0, age: 10, id: 'agrees' })]);
+    expect(e.confidence).toBe('medium');
+  });
+
+  it('a real race in the window still widens and still corroborates', () => {
+    // The fix must not deafen the model to actual evidence.
+    const alone = resolve([anchor]);
+    const disagreeing = resolve([anchor, raceC({ vdot: 39, age: 20, slug: 'other-half' })]);
+    expect(width(disagreeing)).toBeGreaterThan(width(alone));
+    expect(disagreeing.confidence).toBe('low');
+  });
+
+  it('says which kind of evidence is missing, not that there is none', () => {
+    // "Nothing else recent to cross-check it against" is false on a runner
+    // with thirty logged runs. Name the gap honestly: no other RACE.
+    const e = resolve([anchor, runC({ vdot: 39.9, age: 1, id: 'r1' })]);
+    expect(e.basis).toContain('No other race in the window');
+    expect(e.basis).not.toContain('Nothing else recent');
+    // Still one line, still coach voice.
+    expect(e.basis.split('\n')).toHaveLength(1);
+    expect(e.basis).not.toMatch(/[—!·]/);
+  });
+
+  it('keeps saying "nothing else recent" when there genuinely is nothing', () => {
+    expect(resolve([anchor]).basis).toContain('Nothing else recent');
+  });
+});
+
+describe('disagreement is measured in both directions', () => {
+  // The old spread seeded its reduce at `best.vdot` on the stated grounds that
+  // "the anchor is the maximum of the distribution". It is not: fresh-race
+  // precedence seats David's 44.1 half above training reads of 45.1, and it
+  // can seat a fresh race above an older FASTER race the same way. A
+  // corroborator above the anchor was silently discarded instead of priced.
+  const anchor = raceC({ vdot: 44, age: 3, slug: 'fresh-slow' });
+
+  it('a corroborating race faster than the anchor widens the band too', () => {
+    const alone = resolve([anchor]);
+    const withFaster = resolve([anchor, raceC({ vdot: 49, age: 30, slug: 'older-fast' })]);
+    expect(width(withFaster)).toBeGreaterThan(width(alone));
+  });
+
+  it('and costs the tier, just as a comparable disagreement below does', () => {
+    // NOT symmetric in VDOT points, and it should not be: the band is priced
+    // in percent of FINISH TIME, and the VDOT-to-time curve is not linear.
+    // Off a 44 anchor at the half, five points down is 10.88% of finish time
+    // and five points up is 8.87%. So the comparison here is made at
+    // comparable TIME disagreement — 51 is 11.97% above, 39 is 10.88% below —
+    // rather than at equal VDOT steps, which would be comparing two different
+    // sized disagreements and calling the difference an asymmetry.
+    const above = resolve([anchor, raceC({ vdot: 51, age: 30, slug: 'above' })]);
+    const below = resolve([anchor, raceC({ vdot: 39, age: 30, slug: 'below' })]);
+    expect(above.confidence).toBe('low');
+    expect(below.confidence).toBe('low');
+  });
+
+  it('still never moves the point estimate', () => {
+    const e = resolve([anchor, raceC({ vdot: 49, age: 30, slug: 'b' })]);
+    expect(e.vdot).toBe(44);
+    expect(e.vdotLo).toBeGreaterThanOrEqual(e.vdot);
+    expect(e.vdotHi).toBeLessThanOrEqual(e.vdot);
+  });
+});

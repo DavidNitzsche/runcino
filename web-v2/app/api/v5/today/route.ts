@@ -37,6 +37,10 @@ import { computeShoeMileage } from '@/lib/shoe/mileage';
 import { runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
 import { beltAverages } from '@/lib/runs/belt-averages';
 import { loadPaceZoneEvent } from '@/lib/plan/pace-drop-event';
+import { loadVdotInputs } from '@/lib/training/vdot-inputs';
+import { bestRecentVdot } from '@/lib/training/vdot';
+import { resolveFitness } from '@/lib/fitness/fitness-model';
+import { buildFitnessRow } from '@/lib/faff/fitness-read';
 import {
   composeV5Today,
   type V5TodayContext,
@@ -254,6 +258,13 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   }
 
   const glance = await loadGlanceState(userId);
+
+  // The coach's read of what the runner can race today. Model A of the
+  // adaptive-progression split, which has been correct, tested and unreachable
+  // since it was written — its only importer was /api/coach/read, and nothing
+  // called that. David ruled the placement: under "Where you are", beside
+  // readiness and week mileage.
+  const fitnessRow = await loadFitnessRow(userId, today);
 
   // The last race behind the runner, and how long ago. Read once here rather
   // than only inside the off-season branch, because "why this run" needs it
@@ -665,7 +676,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   ctx.phaseLine = phaseWords(glance.phaseLabel);
       ctx.weekStripDays = weekStripDays;
       ctx.why = why;
-      ctx.whereYouAre = buildWhereYouAre(glance);
+      ctx.whereYouAre = buildWhereYouAre(glance, fitnessRow);
       ctx.recentRun = recentRun;
       ctx.paceNote = await loadPaceNoteRow(activePlan?.id ?? null);
       return NextResponse.json(composeV5Today(ctx));
@@ -867,7 +878,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // honesty note on this field.
   ctx.effortStat = null;
   ctx.why = why;
-  ctx.whereYouAre = buildWhereYouAre(glance);
+  ctx.whereYouAre = buildWhereYouAre(glance, fitnessRow);
   ctx.beforeYouGo = beforeYouGo;
   ctx.raceDay = raceDay;
   ctx.convergence = convergence;
@@ -901,7 +912,48 @@ function emptyContext(todayISO: string, raceMode: boolean, isSteppedDay = false)
   };
 }
 
-function buildWhereYouAre(glance: Awaited<ReturnType<typeof loadGlanceState>>): V5Row[] {
+/**
+ * The fitness read, as one row. Never throws.
+ *
+ * Its own failure must not cost the runner the rest of "Where you are" — a
+ * null here drops one row, where a rejection would blank Today. Same posture
+ * as `/api/coach/read`'s `quiet()` helper, which was written for this exact
+ * reason: "a partial answer is useful and a 500 is not."
+ *
+ * FLOOR-1 · `inputs.runFloorMi` is threaded into `bestRecentVdot` rather than
+ * letting it take its 4.0 default, so this route's candidate set is the same
+ * one the projection cron, the drift monitor and the plan generator see. A
+ * 5K-goal runner gets a different set on the same day otherwise, which is the
+ * "cron computes a VDOT while drift sees none" hazard vdot-inputs.ts names.
+ */
+async function loadFitnessRow(userId: string, todayISO: string): Promise<V5Row | null> {
+  try {
+    const inputs = await loadVdotInputs(userId, todayISO);
+    const { best, considered } = bestRecentVdot(
+      inputs.raceCandidates,
+      todayISO,
+      undefined,
+      inputs.runCandidates,
+      inputs.runFloorMi,
+    );
+    const estimate = resolveFitness({ best, considered });
+    // "Has this runner trained at all" decides refusal-vs-silence, not
+    // whether we could produce an estimate. Someone with runs on the board
+    // and no current race is owed the sentence; a brand new account is not.
+    const hasAnyTraining =
+      inputs.runCandidates.length > 0 || inputs.raceCandidates.length > 0;
+    return buildFitnessRow(estimate, { hasAnyTraining });
+  } catch (err) {
+    console.warn('[v5/today] fitness read unreadable:',
+      err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+function buildWhereYouAre(
+  glance: Awaited<ReturnType<typeof loadGlanceState>>,
+  fitnessRow: V5Row | null,
+): V5Row[] {
   const rows: V5Row[] = [];
   if (glance.readiness?.score != null) {
     rows.push({
@@ -915,6 +967,11 @@ function buildWhereYouAre(glance: Awaited<ReturnType<typeof loadGlanceState>>): 
       action: null,
     });
   }
+  // After readiness, before the week. Readiness is how the runner is TODAY,
+  // fitness is what they are worth, the week is what they have done. The
+  // section reads in that order. Null when the read failed or when there is
+  // no runner to read yet; a refusal is a row, not a null.
+  if (fitnessRow) rows.push(fitnessRow);
   rows.push({
     id: 'week', label: 'This week',
     sub: glance.weekPlanned != null ? `${glance.weekPlanned.toFixed(1)} mi planned` : null,

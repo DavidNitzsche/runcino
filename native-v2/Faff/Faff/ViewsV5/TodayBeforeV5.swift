@@ -855,6 +855,7 @@ extension V5Today {
       "why": "Base miles are the floor the rest of the block stands on. Saturday is the run that needs your legs \\u00b7 today just keeps the engine turning over.",
       "whereYouAre": [
         { "id": "readiness", "label": "Readiness", "sub": "Inside your own normal", "value": { "text": "64", "modelled": false }, "action": "expand-readiness" },
+        { "id": "fitness", "label": "Half fitness", "sub": "That comes off Americas Finest City eight days ago, and you have not raced since.", "value": { "text": "1:39:00 \\u2013 1:44:30", "modelled": true }, "action": null },
         { "id": "week", "label": "This week", "sub": "34 of 44 mi planned", "value": { "text": "77%", "modelled": false }, "action": null }
       ],
       "beforeYouGo": [

@@ -194,6 +194,18 @@ export interface FitnessEstimate {
   /** Slower edge of the band. The LOWER VDOT. See `vdotLo`. */
   vdotHi: number;
   confidence: FitnessConfidence;
+  /**
+   * The anchor's own race distance, in miles.
+   *
+   * Already the input to every width decision in this file, and it was the one
+   * thing a consumer could not recover from the output: `considered` carries
+   * no distance, and `races` prices every key off the same two band edges, so
+   * nothing downstream could tell whether this read came off a 10K or a
+   * marathon. A surface that wants to report the range at the distance the
+   * evidence actually covers needs to know which one that is. Reported, not
+   * decided — same posture as `basis`.
+   */
+  anchorDistanceMi: number | null;
   /** Why the band is this wide, in one plain line the runner could verify. */
   basis: string;
   /** Provenance of every candidate that informed the band. */
@@ -338,6 +350,30 @@ export function resolveFitness(input: {
   // floor", which is not a cross-check). Identity comparison first because
   // `best` IS `considered[0]` by construction; the index fallback covers a
   // caller that reconstructed the array.
+  //
+  // A TRAINING READ IS A FLOOR, NOT A CROSS-CHECK (2026-08-24). This filter
+  // used to accept any in-window candidate, which read a slow training run as
+  // evidence DISAGREEING with the anchor. It is not, and `vdot.ts` says so in
+  // its own words at `vdotFromRun`: "bestRecentVdot takes the MAX, so this can
+  // only RAISE current fitness from honest training, never lower it." Every
+  // run candidate is built under that max-only contract - it is a "virtual
+  // race" reading of a run that was not a race, admitted by the honesty gate
+  // on workout type OR avg HR ≥ 80% of max. So a run that comes in LOW says
+  // "the runner did not demonstrate more than this today", which is
+  // consistent with a faster anchor, not in conflict with it.
+  //
+  // This module already cites the doctrine that settles it, three constants
+  // up in `candidateWeight`: Research/01 §"Triggers to retest" - only a race
+  // or field test updates VDOT. A source that cannot update the point estimate
+  // cannot be the thing that widens the band around it either.
+  //
+  // Found on live data. David's anchor is a chip-timed A half from 8 days ago
+  // (1:41:53). His only other in-window candidates are training runs, two of
+  // them easy running inside a post-race recovery block that cleared the HR
+  // gate in August heat. Reading those as disagreement priced the band at ±8%
+  // and dropped the tier to `low`: an HM range of 1:33:30-1:50:30 around a
+  // half he had just run. The band was 17 minutes wide because the model was
+  // asking easy runs how fast he can race.
   const corroborating = considered.filter((c, i) => {
     if (c === best) return false;
     // Reconstructed array: `considered[0]` is the anchor by construction, so a
@@ -346,22 +382,33 @@ export function resolveFitness(input: {
     // reads as agreement and would hand out an unearned 'high'.
     if (i === 0 && c.source === best.source && c.vdot === best.vdot
       && c.age_days === best.age_days) return false;
+    if (c.source !== 'race') return false;
     return c.age_days <= VDOT_FULL_VALUE_DAYS;
   });
   const evidenceCount = 1 + corroborating.length;
 
   // Disagreement, priced in percent of finish time at the anchor's distance so
-  // it is directly comparable with the §13.7 span percentages. The anchor is
-  // the maximum of the distribution, so every corroborating read is at or below
-  // it and the spread is the distance to the most pessimistic one.
+  // it is directly comparable with the §13.7 span percentages.
+  //
+  // MEASURED IN BOTH DIRECTIONS. This used to seed the reduce at `best.vdot`
+  // on the stated grounds that "the anchor is the maximum of the distribution,
+  // so every corroborating read is at or below it". That is not true, and
+  // David's own data is the counterexample: `bestRecentVdot`'s fresh-race
+  // precedence seats his 44.1 half from 8 days ago above training reads of
+  // 45.1, so `considered` runs ABOVE the anchor. The seed silently discarded
+  // any such candidate instead of pricing it. Now the spread is the largest
+  // absolute deviation among corroborating races, either side - a fresher race
+  // that reads slower than an older one is a genuine disagreement whichever
+  // way round the two land, and the band has to hold both. This can only ever
+  // widen a band, never narrow one, which is the safe direction for a module
+  // whose whole job is to not overstate how well it knows the number.
   const anchorSec = predictRaceTime(best.vdot, anchorDistMi);
   let spreadPct = 0;
   if (anchorSec != null && anchorSec > 0 && corroborating.length > 0) {
-    const slowestVdot = corroborating.reduce(
-      (min, c) => (c.vdot < min ? c.vdot : min), best.vdot);
-    const slowestSec = predictRaceTime(slowestVdot, anchorDistMi);
-    if (slowestSec != null) {
-      spreadPct = Math.max(0, ((slowestSec - anchorSec) / anchorSec) * 100);
+    for (const c of corroborating) {
+      const otherSec = predictRaceTime(c.vdot, anchorDistMi);
+      if (otherSec == null) continue;
+      spreadPct = Math.max(spreadPct, Math.abs((otherSec - anchorSec) / anchorSec) * 100);
     }
   }
 
@@ -448,6 +495,11 @@ export function resolveFitness(input: {
     best, anchorAge, evidenceCount, spreadPct, staleAnchor,
     trainingAnchored, staleOverride,
     disagreementDrove: disagreementPct > (staleOverride ? STALE_INPUT_PCT : basePct * mult),
+    // Whether there was in-window training to look at, so the no-cross-check
+    // line can say WHICH kind of evidence is missing. "Nothing else recent"
+    // would be false on a runner with thirty logged runs and one race.
+    hasInWindowTraining: considered.some(
+      (c) => c !== best && c.source === 'run' && c.age_days <= VDOT_FULL_VALUE_DAYS),
   });
 
   return {
@@ -455,6 +507,7 @@ export function resolveFitness(input: {
     vdotLo,
     vdotHi,
     confidence,
+    anchorDistanceMi: Number.isFinite(anchorDistMi) ? anchorDistMi : null,
     basis,
     considered: considered.map((c) => ({
       vdot: c.vdot,
@@ -481,6 +534,7 @@ function buildBasis(a: {
   trainingAnchored: boolean;
   staleOverride: boolean;
   disagreementDrove: boolean;
+  hasInWindowTraining: boolean;
 }): string {
   const head = `Anchored on ${anchorLabel(a.best)}, ${pluralDays(a.anchorAge)}.`;
 
@@ -508,6 +562,13 @@ function buildBasis(a: {
   if (a.evidenceCount >= 2) {
     const others = a.evidenceCount - 1;
     return `${head} ${others === 1 ? 'One other recent effort agrees' : `${others} other recent efforts agree`} within ${spread} percent.`;
+  }
+  // The anchor is a race and no other race is in the window. Say that, rather
+  // than "nothing else recent" — training is not nothing, it just is not the
+  // kind of evidence that can confirm a race (Research/01 §"Triggers to
+  // retest": only a race or field test updates VDOT).
+  if (a.hasInWindowTraining) {
+    return `${head} No other race in the window to check it against, and training runs cannot confirm a race.`;
   }
   return `${head} Nothing else recent to cross-check it against.`;
 }
