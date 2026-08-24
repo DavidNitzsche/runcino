@@ -69,7 +69,7 @@ struct SpokenCueTests {
     @Test func aSplitSaysTheMileAndTheTime() {
         let s = line(.split(mile: 5, paceSec: 468),
                      splitLabel: "Mile 5", splitTime: "7:48")
-        #expect(s == "Mile 5. 7 48.")
+        #expect(s == "Mile five, seven forty-eight.")
     }
 
     @Test func aRaceSplitCarriesTheGoalComparison() {
@@ -78,14 +78,14 @@ struct SpokenCueTests {
         let s = line(.split(mile: 9, paceSec: 472),
                      splitLabel: "Mile 9", splitTime: "7:52",
                      splitComparison: "6 sec under goal")
-        #expect(s == "Mile 9. 7 52. 6 sec under goal.")
+        #expect(s == "Mile nine, seven fifty-two. Six seconds under goal.")
     }
 
     @Test func aWholeMinuteSplitIsSaidAsMinutes() {
         // "8:00" handed to a synthesiser raw reads "eight hundred".
         let s = line(.split(mile: 2, paceSec: 480),
                      splitLabel: "Mile 2", splitTime: "8:00")
-        #expect(s == "Mile 2. 8 minutes.")
+        #expect(s == "Mile two, eight flat.")
     }
 
     @Test func aPhaseChangeSaysTheWordAndTheCount() {
@@ -95,11 +95,11 @@ struct SpokenCueTests {
         let s = line(.phaseChange(title: "Work", sub: "Rep 4 of 6"),
                      phaseWord: "Work", phaseDetail: "Rep 4 of 6",
                      band: "6:45–7:00 /mi")
-        #expect(s == "Work. Rep 4 of 6.")
+        #expect(s == "Work, rep four of six.")
     }
 
     @Test func fuelSaysWhichOfHowMany() {
-        #expect(line(.fuel(index: 2, total: 3)) == "Gel. 2 of 3.")
+        #expect(line(.fuel(index: 2, total: 3)) == "Gel, two of three.")
     }
 
     @Test func aDriftCueSaysTheWordTheBoardDRAWS() {
@@ -110,13 +110,31 @@ struct SpokenCueTests {
         // to make impossible. Found by rendering the lines to audio.
         let s = line(.headsUp(value: "", quicken: false),
                      band: "6:45–7:00 /mi", pace: "7:14", driftVerb: "Ease off")
-        #expect(s == "Ease off. 7 14. Band is 6 45 to 7 minutes per mile.")
+        #expect(s == "Ease off. Seven fourteen, band is six forty-five to seven flat per mile.")
     }
 
     @Test func aDriftCueWithNoBandDoesNotInventOne() {
         let s = line(.headsUp(value: "", quicken: false), pace: "7:14",
                      driftVerb: "Pick it up")
-        #expect(s == "Pick it up. 7 14.")
+        #expect(s == "Pick it up. Seven fourteen.")
+    }
+
+    @Test func aClockIsSaidTheWayASplitIsCalledOut() {
+        // The three that give a machine away when it gets them wrong.
+        #expect(SpokenCues.spokenClock("7:48") == "seven forty-eight")
+        #expect(SpokenCues.spokenClock("7:05") == "seven oh five")
+        #expect(SpokenCues.spokenClock("7:00") == "seven flat")
+    }
+
+    @Test func onlyOneSecondIsSingular() {
+        #expect(SpokenCues.spokenPhrase("1 sec quicker") == "one second quicker")
+        #expect(SpokenCues.spokenPhrase("6 sec under goal") == "six seconds under goal")
+    }
+
+    @Test func aQuarterMileIsSaidAsAQuarterMile() {
+        #expect(SpokenCues.spokenDistance("0.25", unit: "mi") == "a quarter mile")
+        #expect(SpokenCues.spokenDistance("0.5", unit: "mi") == "half a mile")
+        #expect(SpokenCues.spokenDistance("0.12", unit: "mi") == "0.12 miles")
     }
 
     @Test func unitsAreSpokenAsWordsNotSymbols() {
@@ -129,7 +147,7 @@ struct SpokenCueTests {
 
     @Test func almostDoneSaysWhatIsLeft() {
         #expect(line(.almostDone(value: "0.25", unit: "mi left"),
-                     almostDone: "0.25 mi") == "0.25 miles to go.")
+                     almostDone: "0.25 mi") == "a quarter mile to go.")
         #expect(line(.almostDone(value: "0.40", unit: "km left"),
                      almostDone: "0.40 km") == "0.40 kilometres to go.")
     }

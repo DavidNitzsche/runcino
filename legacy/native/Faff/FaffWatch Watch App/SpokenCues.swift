@@ -52,6 +52,23 @@ final class SpokenCues {
     private let synth = AVSpeechSynthesizer()
     private var sessionReady = false
 
+    /// Samantha, chosen by ear against Daniel, Eddy and Flo — David, 2026-08-24.
+    ///
+    /// PREFERRED, NOT REQUIRED. Which voices a watch actually has installed is
+    /// not ours to decide: Apple's genuinely natural ones are Enhanced or
+    /// Premium quality and must be downloaded by the runner, and Siri's own
+    /// voice is not available to third-party apps at all. So this asks for the
+    /// best Samantha it can find, prefers a higher-quality variant if the
+    /// runner has one, and falls back to the system default rather than
+    /// refusing to speak.
+    private lazy var voice: AVSpeechSynthesisVoice? = {
+        let all = AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language.hasPrefix("en") }
+        let samantha = all.filter { $0.name.localizedCaseInsensitiveContains("Samantha") }
+        let best = samantha.max { a, b in a.quality.rawValue < b.quality.rawValue }
+        return best ?? AVSpeechSynthesisVoice(language: Locale.preferredLanguages.first)
+    }()
+
     private init() {}
 
     /// Say a line, ducking whatever the runner is listening to.
@@ -66,6 +83,7 @@ final class SpokenCues {
             synth.stopSpeaking(at: .immediate)
         }
         let u = AVSpeechUtterance(string: line)
+        u.voice = voice
         // A shade under default. These land mid-effort and a runner reading
         // a board at the same time should not be racing the voice.
         u.rate = AVSpeechUtteranceDefaultSpeechRate * 0.95
@@ -121,18 +139,23 @@ extension SpokenCues {
             // is a sentence nobody can act on at a rep boundary. The word and
             // the count; the band is on the board for the eye.
             guard let w = phaseWord else { return nil }
-            if let d = phaseDetail, !d.isEmpty { return "\(w). \(d)." }
+            // A COMMA, NOT A FULL STOP. "Work. Rep 4 of 6." makes a
+            // synthesiser stop dead between two halves of one thought, which
+            // is most of what made this sound like a machine reading a form.
+            if let d = phaseDetail, !d.isEmpty {
+                return "\(w), \(lowerFirst(spokenPhrase(d)))."
+            }
             return "\(w)."
 
         case .split:
             // The one cue a runner most wants without looking.
             guard let l = splitLabel, let t = splitTime else { return nil }
-            var s = "\(l). \(spokenClock(t))."
-            if let c = splitComparison, !c.isEmpty { s += " \(c)." }
+            var s = "\(spokenPhrase(l)), \(spokenClock(t))."
+            if let c = splitComparison, !c.isEmpty { s += " \(upperFirst(spokenPhrase(c)))." }
             return s
 
         case .fuel(let index, let total):
-            return "Gel. \(index) of \(total)."
+            return "Gel, \(spokenCount(index)) of \(spokenCount(total))."
 
         case .headsUp:
             // THE VOICE SAYS WHAT THE BOARD SAYS. It said "Off the band",
@@ -143,31 +166,107 @@ extension SpokenCues {
             // exactly what this file was written to make impossible. Caught by
             // rendering the lines to audio and reading them back.
             guard let p = pace, let verb = driftVerb else { return nil }
-            if let b = band { return "\(verb). \(spokenClock(p)). Band is \(spokenBand(b))." }
-            return "\(verb). \(spokenClock(p))."
+            if let b = band {
+                return "\(verb). \(upperFirst(spokenClock(p))), band is \(spokenBand(b))."
+            }
+            return "\(verb). \(upperFirst(spokenClock(p)))."
 
         case .almostDone:
             guard let v = almostDone else { return nil }
             // "0.25 mi" would be read "point two five M I".
             let parts = v.split(separator: " ").map(String.init)
             guard parts.count == 2 else { return "\(v) to go." }
-            return "\(parts[0]) \(spokenUnit(parts[1])) to go."
+            return "\(spokenDistance(parts[0], unit: parts[1])) to go."
 
         case .paused:
             return nil
         }
     }
 
-    /// "7:48" reads as "seven forty-eight" if handed to a synthesiser raw —
-    /// which is a number, not a time. Spelled so it is heard as one.
-    private static func spokenClock(_ s: String) -> String {
+    // MARK: - Saying numbers the way a runner says them
+    //
+    // ORTHOGRAPHY IS NOT CONTENT. The board draws "6 sec under goal" and the
+    // voice says "six seconds under goal" — that is the same sentence rendered
+    // for a different sense, exactly as the board renders it in tabular
+    // figures and the voice does not. Rule 10 asks that both runners get the
+    // same sentence, not the same characters.
+
+    /// A clock, as a split is actually called out.
+    ///
+    /// "7:48" handed to a synthesiser raw is read "seven hundred forty-eight";
+    /// spelled as two bare integers it becomes "seven, forty-eight" with a
+    /// gap in the middle. Neither is what a person says. A runner says "seven
+    /// forty-eight", "seven oh five", and "seven flat" — and the last two are
+    /// the ones that give it away as a machine when it gets them wrong.
+    static func spokenClock(_ s: String) -> String {
         let parts = s.split(separator: ":").map(String.init)
         guard parts.count == 2, let m = Int(parts[0]), let sec = Int(parts[1]) else { return s }
-        if sec == 0 { return "\(m) minutes" }
-        return "\(m) \(sec)"
+        let mins = spokenCount(m)
+        if sec == 0 { return "\(mins) flat" }
+        if sec < 10 { return "\(mins) oh \(spokenCount(sec))" }
+        return "\(mins) \(spokenCount(sec))"
     }
 
-    /// "6:45–7:00" is two clocks and a dash. Said as a range.
+    /// Small numbers as words. A synthesiser reads "4" correctly, but a line
+    /// that mixes digits and words reads as a form being filled in rather than
+    /// a person talking.
+    static func spokenCount(_ n: Int) -> String {
+        let ones = ["zero","one","two","three","four","five","six","seven","eight","nine",
+                    "ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen",
+                    "seventeen","eighteen","nineteen"]
+        let tens = ["","","twenty","thirty","forty","fifty"]
+        if n < 0 { return String(n) }
+        if n < 20 { return ones[n] }
+        if n < 60 {
+            let t = tens[n / 10], o = n % 10
+            return o == 0 ? t : "\(t)-\(ones[o])"
+        }
+        return String(n)
+    }
+
+    /// Sentence case. A synthesiser does not read capitals, but the tests read
+    /// these strings and a line that says "seven fifty-two. six seconds" is a
+    /// line nobody proofread — and the next person to add a branch copies the
+    /// shape they find.
+    static func upperFirst(_ s: String) -> String {
+        guard let f = s.first else { return s }
+        return String(f).uppercased() + s.dropFirst()
+    }
+
+    static func lowerFirst(_ s: String) -> String {
+        guard let f = s.first else { return s }
+        return String(f).lowercased() + s.dropFirst()
+    }
+
+    /// A phrase the board composed, spoken. "6 sec under goal" ->
+    /// "six seconds under goal".
+    static func spokenPhrase(_ s: String) -> String {
+        var words = s.split(separator: " ").map(String.init)
+        for i in words.indices {
+            if let n = Int(words[i]) { words[i] = spokenCount(n) }
+            else if words[i] == "sec" { words[i] = "seconds" }
+            else if words[i] == "min" { words[i] = "minutes" }
+        }
+        // "one seconds" is the giveaway nobody forgives.
+        if let i = words.firstIndex(of: "seconds"), i > 0, words[i - 1] == "one" {
+            words[i] = "second"
+        }
+        return words.joined(separator: " ")
+    }
+
+    /// A distance, said rather than read. "0.25 miles" is "point two five
+    /// miles"; a runner says "a quarter mile".
+    static func spokenDistance(_ value: String, unit: String) -> String {
+        let u = spokenUnit(unit)
+        switch value {
+        case "0.25": return u.hasPrefix("mile") ? "a quarter mile" : "a quarter of a kilometre"
+        case "0.5", "0.50": return u.hasPrefix("mile") ? "half a mile" : "half a kilometre"
+        case "0.75": return u.hasPrefix("mile") ? "three quarters of a mile" : "three quarters of a kilometre"
+        default: return "\(value) \(u)"
+        }
+    }
+
+    /// "6:45-7:00" is two clocks and a dash. Said as a range.
     private static func spokenBand(_ b: String) -> String {
         let cleaned = b.replacingOccurrences(of: "\u{2013}", with: " to ")
                        .replacingOccurrences(of: "-", with: " to ")
