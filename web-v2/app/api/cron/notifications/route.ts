@@ -39,6 +39,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { apnsHost } from '@/lib/notifications/apns';
 import { raiseAlert } from '@/lib/ops/alerts';
@@ -831,7 +832,16 @@ async function unreadRunYesterday(
                WHERE dedup_key LIKE $2 AND delivered = true
                  AND fired_at > now() - interval '7 days') AS recent`,
     [`run-unread:${userId}:${yesterdayISO}`, `run-unread:${userId}:%`],
-  ).catch(() => ({ rows: [{ ever: true, recent: true }] }))).rows[0];
+    // GENUINELY FINE, and argued: this is a de-dup gate, and the fabricated
+    // `{ ever: true, recent: true }` is the SUPPRESSING answer. A failed read
+    // therefore sends no push rather than a possibly duplicate one, which is
+    // the direction a failure should fall for something that wakes a runner up.
+    // It logs now — a gate that silently suppresses everything looks exactly
+    // like a quiet week.
+  ).catch((e) => {
+    logReadFailure('cron/notifications · run-unread dedup gate', e);
+    return { rows: [{ ever: true, recent: true }] };
+  })).rows[0];
   if (!gate || gate.ever || gate.recent) return null;
 
   const signals = await loadYesterdaySignals(userId, todayISO);
@@ -991,7 +1001,15 @@ async function weekSummary(
         WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
           AND pw.date_iso >= $2 AND pw.date_iso <= $3`,
       [userId, week_start_iso, week_end_iso],
-    ).catch(() => ({ rows: [{ planned_mi: 0, days_planned: 0 }] }));
+      // 2026-08-24 · swallowed-failure sweep · the fabricated
+      // `{ planned_mi: 0, days_planned: 0 }` did not stay zero: `days_planned`
+      // fell through to the 7-day default below and `planned_mi` went out as
+      // 0, so a failed read became "you were prescribed nothing this week and
+      // ran N of 7 days" — an adherence number computed against a denominator
+      // nobody wrote. A week summary the engine could not build is a week
+      // summary it should not send.
+    ).catch((e) => { logReadFailure('cron/notifications · weekSummary planned', e); return null; });
+    if (planned === null) return null;
 
     // No plan rows for the week → fall back to 7, the honest denominator for
     // "days" when there is nothing prescribed to count against.

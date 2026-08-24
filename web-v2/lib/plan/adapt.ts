@@ -66,6 +66,7 @@
  * plan changed.
  */
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore, mileageByDay, observableCoverageDays, weeklyAvgFromWindow } from '@/lib/runs/volume';
 import { paceBlendAnchorIsProvisional } from './anchor-provenance';
@@ -126,7 +127,16 @@ async function filterUnsealedWorkouts(
       WHERE pw.id = ANY($2::text[])
         AND tp.user_uuid = $1::uuid`,
     [userUuid, workoutIds],
-  ).catch(() => ({ rows: [] as Array<{ id: string; sealed: boolean; date_iso: string }> }));
+    // GENUINELY FINE, and argued: an empty result here means NO id is treated
+    // as unsealed, so every action is skipped. A failed read therefore mutates
+    // nothing, which is the safe direction for a guard whose whole job is to
+    // protect a session the runner has already run. It logs now, because
+    // "adaptation touched nothing" and "adaptation could not see" produced the
+    // same run of `[plan/seal]`-free silence.
+  ).catch((e) => {
+    logReadFailure('plan/adapt · filterUnsealedWorkouts', e);
+    return { rows: [] as Array<{ id: string; sealed: boolean; date_iso: string }> };
+  });
   const unsealed: string[] = [];
   for (const row of r.rows) {
     if (row.sealed) {
@@ -4116,7 +4126,7 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       try {
         await pool.query(
           `INSERT INTO coach_proposals (user_uuid, user_id, proposal_type, payload, status, created_at)
-           VALUES ($1, $1::text, 'illness_adjust', $2::jsonb, 'pending', NOW())
+           VALUES ($1::uuid, $1::text, 'illness_adjust', $2::jsonb, 'pending', NOW())
            ON CONFLICT DO NOTHING`,
           [userId, JSON.stringify({
             reason: t.reason,
@@ -4140,7 +4150,7 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       try {
         await pool.query(
           `INSERT INTO coach_proposals (user_uuid, user_id, proposal_type, payload, status, created_at)
-           VALUES ($1, $1::text, 'injury_adjust', $2::jsonb, 'pending', NOW())
+           VALUES ($1::uuid, $1::text, 'injury_adjust', $2::jsonb, 'pending', NOW())
            ON CONFLICT DO NOTHING`,
           [userId, JSON.stringify({
             reason: t.reason,

@@ -5,6 +5,7 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { coherentElapsedSec, coherentPace, coherentMovingSec } from '@/lib/runs/coherence';
 
 /** The one provisional-finish label every surface renders verbatim.
  *  Wording is the CLAUDE.md race-data Rule 3 canonical example. */
@@ -328,7 +329,11 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
         // movingSec/durationSec, not movingTimeS, so a strict movingTimeS read
         // returns null for them. Order: movingTimeS (pullSync/watch/HK) →
         // movingSec (webhook) → elapsedTimeS (last resort).
-        const movingSec = Number(best.movingTimeS) || Number(best.movingSec) || Number(best.elapsedTimeS) || null;
+        // 2026-08-24 · reconciled. A matched training run standing in for a
+        // missing race result: the wall clock is the honest stand-in for a
+        // chip time (see lib/race/auto-result.ts), and the old ladder never
+        // reached `durationSec`, so on a watch row it read the moving time.
+        const movingSec = coherentElapsedSec(best) ?? coherentMovingSec(best);
         // #29 · only mark provisional when we actually fall back to the matched
         // run's raw time (race.finishTime was null). A curated finish already
         // present — actual_result ALWAYS wins, then meta — stays authoritative.
@@ -346,7 +351,10 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
         }
         race.matchedRun = {
           activity_id: best.id ?? best.activityId ?? `${best.date}-${Number(best.distanceMi).toFixed(2)}`,
-          pace: best.avgPaceMinPerMi ?? fmtPace(Number(best.paceSPerMi) || null),
+          // The display string is the ELAPSED-clock pace and `paceSPerMi` the
+          // MOVING one; preferring the string here printed a different pace
+          // than the recap printed for the same run. Reconciled, one basis.
+          pace: fmtPace(coherentPace(best)?.secPerMi ?? null),
           avg_hr: Number(best.avgHr) || null,
           cadence: Number(best.avgCadence) || null,
           elev_gain_ft: Number(best.elevGainFt) || null,

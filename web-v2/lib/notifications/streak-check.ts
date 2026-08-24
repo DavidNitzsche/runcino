@@ -32,6 +32,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { addDaysToDayKey } from '@/lib/runtime/day-key';
 import { enqueueNotification } from './enqueue';
@@ -41,10 +42,14 @@ const MILESTONES = [7, 14, 30, 100] as const;
 
 export async function maybeFireStreakMilestone(userId: string): Promise<void> {
   const streak = await computeRunStreak(userId);
+  // A failed read is not a streak. No push is built on a number we invented.
+  if (streak === null) return;
   if (!MILESTONES.includes(streak as any)) return;
 
   // Is this the runner's longest-ever streak? Compare against prior records.
   const longest = await longestPriorStreak(userId);
+  // Same rule: `0` here would make every milestone "your longest ever".
+  if (longest === null) return;
   const isLongestEver = streak > longest;
 
   const tpl = renderStreakMilestone({
@@ -60,7 +65,7 @@ export async function maybeFireStreakMilestone(userId: string): Promise<void> {
  * run today yet). Reads strava_activities — same source the rest of the
  * app uses.
  */
-async function computeRunStreak(userId: string): Promise<number> {
+async function computeRunStreak(userId: string): Promise<number | null> {
   try {
     // to_char keeps the calendar day a string end to end; node-pg parses a
     // pg `date` to LOCAL midnight and the key was read back off the UTC
@@ -92,8 +97,14 @@ async function computeRunStreak(userId: string): Promise<number> {
       cursor = addDaysToDayKey(cursor, -1);
     }
     return count;
-  } catch {
-    return 0;
+  } catch (e) {
+    // 2026-08-24 · swallowed-failure sweep · `0` is a streak, and it is the one
+    // that reads as "you broke it". A runner forty days deep saw zero on a
+    // dropped connection, and the milestone check compared against a fabricated
+    // zero `longestPrior`, which makes every milestone "your longest ever".
+    // Null is not a streak. Callers decide what to do with not knowing.
+    logReadFailure('streak', e);
+    return null;
   }
 }
 
@@ -103,7 +114,7 @@ async function computeRunStreak(userId: string): Promise<number> {
  * for previously-sent streak milestones. If we've never fired one before,
  * returns 0.
  */
-async function longestPriorStreak(userId: string): Promise<number> {
+async function longestPriorStreak(userId: string): Promise<number | null> {
   try {
     const r = await pool.query(
       `SELECT payload->'data'->>'streak_days' AS days
@@ -119,7 +130,13 @@ async function longestPriorStreak(userId: string): Promise<number> {
       if (Number.isFinite(n) && n > max) max = n;
     }
     return max;
-  } catch {
-    return 0;
+  } catch (e) {
+    // 2026-08-24 · swallowed-failure sweep · `0` is a streak, and it is the one
+    // that reads as "you broke it". A runner forty days deep saw zero on a
+    // dropped connection, and the milestone check compared against a fabricated
+    // zero `longestPrior`, which makes every milestone "your longest ever".
+    // Null is not a streak. Callers decide what to do with not knowing.
+    logReadFailure('streak', e);
+    return null;
   }
 }

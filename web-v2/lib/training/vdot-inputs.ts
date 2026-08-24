@@ -45,6 +45,7 @@ import { distanceMiFromLabel } from '@/lib/race/distance';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
 import { isProvisionalResult } from '@/lib/coach/races-state';
 import type { AuthorityTier } from '@/lib/race/effort-authority';
+import { coherentElapsedSec, coherentMovingSec } from '@/lib/runs/coherence';
 
 /** The three names `POST /api/v5/race-authority` accepts and stores. Anything
  *  else in the column is a value this engine did not write; ignore it rather
@@ -333,7 +334,14 @@ export async function loadVdotInputs(
         if (score < bestScore) { best = d; bestScore = score; }
       }
       if (best) {
-        finishSec = Number(best.movingTimeS) || Number(best.elapsedTimeS) || null;
+        // 2026-08-24 · reconciled. This is a race finish standing in for a
+        // missing curated result, so it wants the wall clock (Research/15:
+        // the chip time over the certified course is canonical, and elapsed
+        // is the closest a watch holds to it). The old ladder read
+        // `movingTimeS` first and never reached `durationSec` at all, so on a
+        // watch row it took the moving time — and on a row whose moving time
+        // its own clock disproves, it took the disproved one.
+        finishSec = coherentElapsedSec(best) ?? coherentMovingSec(best);
         provisional = finishSec != null;
         provisionalSource = finishSec != null ? 'run_match' : null;
       }

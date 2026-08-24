@@ -19,6 +19,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
@@ -309,24 +310,39 @@ async function medianDailyMi(
 async function peakWeekMi(userUuid: string, daysBack: number): Promise<number | null> {
   // 2026-06-03 · runner TZ anchors the lookback.
   const today = await runnerToday(userUuid);
-  const r = (await pool.query<{ peak: string | null }>(
-    // 2026-06-01 - MAX-per-day dedupe before weekly SUM. See
-    // lib/plan/generate.ts for context.
-    `WITH per_day AS (
+  // 2026-08-24 · swallowed-failure sweep · `$3::date - $2` left `$2` with no
+  // type. Postgres could not resolve `date - <unknown>` the way the code meant
+  // it (`date - integer`) and answered `operator does not exist: date >=
+  // integer`; the `.catch` returned `peak: null`, so `volume_ceiling_mi` has
+  // been null for every runner since this was written. Verified against prod on
+  // 2026-08-24: null as shipped, 39.81 mi with `$2::int`.
+  //
+  // Sibling of the `date_iso` family — a comparison that only fails once real
+  // parameters arrive, so nothing static ever saw it.
+  const r = await rowOrNull<{ peak: string | null }>(
+    'coach/runner-calibration · peakWeekMi',
+    pool.query<{ peak: string | null }>(
+      // 2026-06-01 - MAX-per-day dedupe before weekly SUM. See
+      // lib/plan/generate.ts for context.
+      `WITH per_day AS (
        SELECT (data->>'date')::date AS d,
               MAX((data->>'distanceMi')::numeric) AS mi
          FROM runs
         WHERE user_uuid = $1::uuid
           AND NOT (data ? 'mergedIntoId')
-          AND (data->>'date')::date >= $3::date - $2
+          AND (data->>'date')::date >= $3::date - $2::int
         GROUP BY 1
      ), weekly AS (
        SELECT DATE_TRUNC('week', d) AS wk, SUM(mi) AS mi
          FROM per_day GROUP BY wk
      )
      SELECT MAX(mi)::text AS peak FROM weekly`,
-    [userUuid, daysBack, today],
-  ).catch(() => ({ rows: [{ peak: null }] }))).rows[0];
+      [userUuid, daysBack, today],
+    ),
+  );
+  // null covers both "the read failed" and "no weeks on record". Both are
+  // written to `volume_ceiling_mi` as NULL, which is already the column's
+  // "unknown", and the failure is in the log either way.
   const m = Number(r?.peak);
   return Number.isFinite(m) && m > 0 ? Math.round(m * 2) / 2 : null;
 }

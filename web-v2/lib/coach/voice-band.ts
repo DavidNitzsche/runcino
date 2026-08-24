@@ -38,6 +38,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import type { CoachState } from '@/lib/topics/types';
@@ -63,7 +64,8 @@ export interface VoiceBandReason {
     vdotConfidence: number;            // 0-1 derived from candidate spread
     hasCalibrationCompleted: boolean;
     activeNiggleOrSick: boolean;
-    subjectiveObjectiveMismatchDays: number;
+    /** `null` when the read FAILED — not zero. Zero is a measurement. */
+    subjectiveObjectiveMismatchDays: number | null;
     goalOffProjectedFor14d: boolean;
   };
 }
@@ -297,7 +299,12 @@ export async function computeVoiceBand(
     confidence -= 0.05;
     reasons.push('active niggle / sick / wrecked check-in');
   }
-  if (subjectiveObjectiveMismatchDays >= SUBJECTIVE_DISAGREE_DAYS_FOR_SOFTCAP && band === 'challenge') {
+  // `null` means the mismatch read failed. The softcap does not fire on
+  // evidence that was never gathered — and, equally, the absence of the softcap
+  // must not be read as "no disagreement". The null is carried into `signals`.
+  if (subjectiveObjectiveMismatchDays != null
+      && subjectiveObjectiveMismatchDays >= SUBJECTIVE_DISAGREE_DAYS_FOR_SOFTCAP
+      && band === 'challenge') {
     band = 'guided';
     confidence -= 0.05;
     reasons.push(`subjective vs objective disagreement ${subjectiveObjectiveMismatchDays}+ days`);
@@ -477,14 +484,23 @@ async function computeVdotConfidence(userUuid: string): Promise<number> {
 async function countSubjectiveObjectiveMismatchDays(
   userUuid: string,
   lookbackDays: number,
-): Promise<number> {
+): Promise<number | null> {
   // 2026-06-03 · runner TZ anchors the readiness-snapshot lookback.
   const today = await runnerToday(userUuid);
-  const result = (await pool.query<{ mismatch_days: string }>(
-    `WITH days AS (
+  // 2026-08-24 · swallowed-failure sweep · the `objective` CTE read
+  // `readiness_snapshots.sample_date` and `.value`. That table has neither — the
+  // columns are `snapshot_date` and `score`, and there is no `user_id` on it at
+  // all. Postgres answered `column "sample_date" does not exist` on every call
+  // and the `.catch` handed back `mismatch_days: '0'`, which reads as "the
+  // runner's own sense of themselves agrees with the numbers, every day".
+  // That is a claim, made without looking, over 85 real snapshots in prod.
+  const result = await rowOrNull<{ mismatch_days: string }>(
+    'coach/voice-band · subjective-objective mismatch',
+    pool.query<{ mismatch_days: string }>(
+      `WITH days AS (
        SELECT ts::date AS d, rating
          FROM check_ins
-        WHERE COALESCE(user_uuid, user_id) = $1
+        WHERE COALESCE(user_uuid, user_id) = $1::uuid
           AND ts >= NOW() - ($2::text || ' days')::interval
      ),
      scored AS (
@@ -498,19 +514,22 @@ async function countSubjectiveObjectiveMismatchDays(
          FROM days
      ),
      objective AS (
-       SELECT sample_date AS d, value::numeric AS objective_score
+       SELECT snapshot_date AS d, score::numeric AS objective_score
          FROM readiness_snapshots
-        WHERE COALESCE(user_uuid, user_id) = $1
-          AND sample_date >= $3::date - $2::int
+        WHERE user_uuid = $1::uuid
+          AND snapshot_date >= $3::date - $2::int
      )
      SELECT COUNT(*)::text AS mismatch_days
        FROM scored s JOIN objective o ON o.d = s.d
       WHERE s.subjective_score IS NOT NULL
         AND ABS(s.subjective_score - o.objective_score) >= 15`,
-    [userUuid, lookbackDays, today],
-  ).catch(() => ({ rows: [{ mismatch_days: '0' }] }))).rows[0];
-
-  return Number(result?.mismatch_days ?? 0);
+      [userUuid, lookbackDays, today],
+    ),
+  );
+  // A failed read is not zero mismatched days. Return null and let the caller
+  // decide; the band must not soften on evidence it never gathered.
+  if (result == null) return null;
+  return Number(result.mismatch_days ?? 0);
 }
 
 /**

@@ -801,10 +801,41 @@ export function runMovingSec(d: RunData): number | null {
   return pos(d.movingTimeS) ?? pos(d.movingSec) ?? pos(d.durationSec);
 }
 
-/** Finish seconds as the VDOT path defines it — `durationSec` first.
- *  Mirrors `runFinishSecSql`, including its known bias toward paused time. */
+/**
+ * Finish seconds — the clock a fitness estimate should be built on.
+ *
+ * ⚠ 2026-08-24 · THIS DID NOT MIRROR `runFinishSecSql`, AND SAID IT DID.
+ *
+ * The SQL fragment was reordered on 2026-08-17 to put `movingTimeS` first
+ * (pace is distance over time spent *running*; see its header). This accessor
+ * was not, and kept `durationSec` first while its own docstring claimed to
+ * mirror the SQL "including its known bias toward paused time" — a sentence
+ * describing an order the SQL had already stopped using. On the 28 production
+ * rows where the two keys differ the pair returned different numbers, by up to
+ * 2909 seconds.
+ *
+ * Latent rather than live: nothing outside the tests called this. That is the
+ * only reason it never shipped a wrong VDOT, and it is not a reason to leave
+ * it. A helper that answers a question differently from its own SQL twin is
+ * the same contradiction one level up.
+ *
+ * Now: moving time when the row's own elapsed clock supports it, the elapsed
+ * clock when it does not. That agrees with the SQL's intent AND refuses the
+ * shape the SQL cannot see — a stored moving time implying more than
+ * `MAX_PAUSED_SHARE` of the run was paused. Unlike `runMovingSec` this never
+ * returns null when any clock exists: a finish time may fall back to
+ * wall-clock, because a race that took an hour took an hour.
+ */
 export function runFinishSec(d: RunData): number | null {
-  return pos(d.durationSec) ?? pos(d.movingTimeS) ?? pos(d.movingSec) ?? pos(d.elapsedTimeS);
+  const elapsed = pos(d.durationSec) ?? pos(d.elapsedTimeS);
+  const moving = pos(d.movingTimeS) ?? pos(d.movingSec);
+  if (moving != null) {
+    if (elapsed == null) return moving;
+    const pausedShare = 1 - moving / elapsed;
+    if (pausedShare >= 0 && pausedShare <= MAX_PAUSED_SHARE) return moving;
+    return elapsed;
+  }
+  return elapsed;
 }
 
 /** Elapsed (wall-clock) seconds. Strava-era only. */
@@ -844,7 +875,40 @@ export function runElevGainFt(d: RunData): number | null {
  * faithfully. Well past any honest pause pattern, and comfortably tight enough
  * to catch a third party's arithmetic error.
  */
-const MAX_PAUSED_SHARE = 0.5;
+export const MAX_PAUSED_SHARE = 0.5;
+
+/**
+ * The reconciliation itself, as a function of three numbers — so every surface
+ * that prints a pace beside a clock can hold the same invariant without
+ * re-deriving the arithmetic or re-declaring the constant.
+ *
+ * Extracted 2026-08-24 by the surface sweep. `runPaceSecPerMi` fixed the READ,
+ * which repaired every surface reading through it at once — but a composer
+ * assembles its context from whatever the call site hands it, and a call site
+ * that builds one WITHOUT going through the read had no guard at all. The
+ * sweep drove the real 2026-08-23 row (11.01 mi, 5298s elapsed, a stored
+ * 217 s/mi) straight into `composeV5Today` and `deriveRecap` and both printed
+ * 3:37/mi again — the panel beside a clock that disproves it, the recap in
+ * prose. One definition, three call sites, no way to drift.
+ *
+ * Returns the pace to trust: the stored one when the row's own clock allows
+ * it, the elapsed pace when it does not, and null when there is nothing to
+ * go on. It never invents a pace the row did not support.
+ */
+export function reconcilePaceWithClock(
+  distanceMi: number | null | undefined,
+  elapsedSec: number | null | undefined,
+  storedPaceSPerMi: number | null | undefined,
+): number | null {
+  const mi = pos(distanceMi);
+  const elapsed = pos(elapsedSec);
+  const stored = pos(storedPaceSPerMi);
+  if (stored == null) return mi != null && elapsed != null ? elapsed / mi : null;
+  if (mi == null || elapsed == null) return stored;
+  const elapsedPace = elapsed / mi;
+  const impliedPausedShare = 1 - stored / elapsedPace;
+  return impliedPausedShare > MAX_PAUSED_SHARE ? elapsedPace : stored;
+}
 
 /**
  * Average pace in seconds per mile.
@@ -885,15 +949,8 @@ export function runPaceSecPerMi(d: RunData): number | null {
   const direct = pos(d.paceSPerMi);
   const elapsed = pos(d.durationSec) ?? pos(d.elapsedTimeS);
 
-  if (direct != null) {
-    // Believe the stored pace unless the row's own clock contradicts it.
-    if (mi != null && mi > 0 && elapsed != null && elapsed > 0) {
-      const elapsedPace = elapsed / mi;
-      const impliedPausedShare = 1 - (direct / elapsedPace);
-      if (impliedPausedShare > MAX_PAUSED_SHARE) return elapsedPace;
-    }
-    return direct;
-  }
+  // Believe the stored pace unless the row's own clock contradicts it.
+  if (direct != null) return reconcilePaceWithClock(mi, elapsed, direct);
 
   const sec = runMovingSec(d);
   return mi != null && mi > 0 && sec != null ? sec / mi : null;

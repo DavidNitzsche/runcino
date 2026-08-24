@@ -241,6 +241,24 @@ struct RunDetailV5: View {
                         }
                     }
 
+                    // THE REPS COME BEFORE THE SPLIT CHART, and on a rep
+                    // session that ordering is the whole point. A runner
+                    // opening a tune-up wants rep three; the split chart
+                    // cannot show them rep three, because mile two of that
+                    // session is the back of rep one, a recovery jog and the
+                    // front of rep two averaged into one bar. Evidence at the
+                    // grain the session was actually run at, then the shape of
+                    // the whole run underneath it.
+                    //
+                    // RULE THREE. Built only when there is something to build
+                    // from; a run with no phases draws nothing at all rather
+                    // than a header over an empty list.
+                    if !repPieces.isEmpty || toleranceLine != nil {
+                        RepBreakdownV5(title: repSectionTitle,
+                                       pieces: repPieces,
+                                       toleranceLine: toleranceLine)
+                    }
+
                     if !splitBars.isEmpty { splitsSection }
 
                     if hasZoneData { zoneSection }
@@ -264,12 +282,7 @@ struct RunDetailV5: View {
                         WristDecisionsV5(decisions: resolvedDecisions)
                     }
 
-                    if let recap, !recap.verdict.isEmpty {
-                        CoachSay(text: recap.verdict, size: .md)
-                    }
-                    if let tip = recap?.coach_tip, !tip.isEmpty {
-                        CoachCaveat(text: tip)
-                    }
+                    recapSection
                 }
                 .padding(.horizontal, V5.S.gutter)
                 .padding(.bottom, V5.S.s32)
@@ -288,13 +301,35 @@ struct RunDetailV5: View {
         "run", "workout", "treadmill", "treadmill run", "outdoor run", "indoor run",
     ]
 
-    private var title: String {
+    var title: String {
         if let name = detail.name?.trimmingCharacters(in: .whitespacesAndNewlines),
            !name.isEmpty, !Self.genericNames.contains(name.lowercased()) {
             return name
         }
+        // AN ENUM IS NOT A NAME.
+        //
+        // This used to title-case `detail.type` and hand it to the display
+        // register, which is uppercase — so a race-week tune-up headlined
+        // RACE_WEEK_TUNEUP, a column value printed at a runner in 44pt
+        // Archivo. Every other surface reads `/api/v5/today`, which has run
+        // its `displayTypeFor` table since it was written; this payload
+        // simply never carried the word.
+        //
+        // The table is NOT copied here. That is this file's own zone-target
+        // lesson, one screen down: the local copy of `zone-target.ts` had
+        // drifted from the original before anyone noticed. The server sends
+        // `type_display` now and this reads it.
+        if let display = detail.type_display?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !display.isEmpty {
+            return display
+        }
+        // A server that predates the field. Underscores still may not reach
+        // the glass, so the fallback breaks the enum apart rather than
+        // shipping it whole — "Race week tuneup" is wrong-ish, "RACE_WEEK_
+        // TUNEUP" is a leak.
         if let type = detail.type, !type.isEmpty {
-            return type.prefix(1).uppercased() + type.dropFirst()
+            let words = type.replacingOccurrences(of: "_", with: " ")
+            return words.prefix(1).uppercased() + words.dropFirst()
         }
         return "Run"
     }
@@ -326,18 +361,52 @@ struct RunDetailV5: View {
         HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
             stat("Distance", .measured(FaffFmt.milesUnit(detail.distance_mi)))
             stat("Time", .measured(detail.time_moving ?? detail.time_elapsed))
-            stat("Pace", .measured(detail.pace.map { "\($0)/mi" }))
+            stat("Pace", .measured(detail.pace.map { "\($0)/mi" }), asked: askedPaceText)
         }
         .padding(V5.S.tilePad)
         .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
     }
 
-    private func stat(_ label: String, _ value: FaffValue) -> some View {
+    /// The pace the coach's verdict was judged against, when printing it
+    /// beside a whole-run average is an honest comparison.
+    ///
+    /// THIS SCREEN SHOWED A PACE WITH NOTHING TO READ IT AGAINST. 5b's table
+    /// is literally called asked-vs-ran; run detail, opened from history,
+    /// carried only the ran side. `evaluated_pace_s_per_mi` has been on the
+    /// recap wire since the frozen-target fix and was in none of the phone's
+    /// `CodingKeys`, so the screen had no way to say what was asked.
+    ///
+    /// SUPPRESSED ON A STRUCTURED SESSION, and that guard is the whole
+    /// difficulty. On a rep workout the evaluated target is the REP pace —
+    /// 6:52 for the 2026-08-11 tune-up — and the poster's pace is the average
+    /// of a warm-up, four reps, three jogs and a cool-down, 7:18. Printing
+    /// "asked 6:52" under "7:18/mi" invites the runner to subtract two
+    /// numbers that were never about the same thing, and would read as a
+    /// 26-second miss on a session they executed. Those sessions carry their
+    /// ask per rep in the list below instead, where it belongs.
+    ///
+    /// RULE ONE. A target pace comes out of the plan's pace table: modelled.
+    /// The word "asked" is what carries that now the tilde is retired, and
+    /// VoiceOver says "estimated" before the figure.
+    var askedPaceText: String? {
+        guard workPhases.isEmpty,
+              let sec = recap?.evaluatedPaceSPerMi, sec > 0,
+              let text = FaffFmt.pace(secPerMi: Double(sec)) else { return nil }
+        return text
+    }
+
+    private func stat(_ label: String, _ value: FaffValue, asked: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: V5.S.s6) {
             Text(label)
                 .font(.faffText(TypeScaleV5.label12))
                 .foregroundStyle(V5.textQuiet)
             FaffValueText(value, font: .faffText(20, weight: .semibold), color: V5.textPrimary)
+            if let asked {
+                Text("asked \(asked)")
+                    .font(.faffText(TypeScaleV5.label12))
+                    .foregroundStyle(V5.textQuiet)
+                    .accessibilityLabel("asked estimated \(asked) per mile")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -364,6 +433,222 @@ struct RunDetailV5: View {
         return out
     }
 
+    // MARK: - What the coach actually said
+    //
+    // `RunRecap` decodes `facts`, `win` and `conditions_note` and this screen
+    // drew `verdict` and `coach_tip`. The other three arrived on every fetch
+    // and were discarded — the same drop 5b had, in a second place.
+    //
+    // Same order, same reasoning, same one-voice rule as `TodayAfterV5`'s
+    // `recapSection`. Kept as two implementations rather than one shared
+    // component on purpose: 5b reads `V5Today` and this reads `RunRecap`, two
+    // wire shapes that carry the same five strings under different names, and
+    // a shared view would need an adapter longer than either body.
+
+    @ViewBuilder
+    private var recapSection: some View {
+        let verdict = recap?.verdict.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let win = recap?.win?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let facts = (recap?.facts ?? []).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let conditions = recap?.conditions_note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if !verdict.isEmpty || !win.isEmpty || !facts.isEmpty || !conditions.isEmpty {
+            Tile {
+                if !win.isEmpty {
+                    Text(win)
+                        .font(.faffText(TypeScaleV5.body17, weight: .semibold))
+                        .foregroundStyle(V5.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !verdict.isEmpty {
+                    Text(verdict)
+                        .font(.faffText(TypeScaleV5.body17))
+                        .foregroundStyle(V5.textPrimary)
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(facts, id: \.self) { fact in
+                    Text(fact)
+                        .font(.faffText(TypeScaleV5.body15))
+                        .foregroundStyle(V5.textSecondary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !conditions.isEmpty {
+                    Text(conditions)
+                        .font(.faffText(TypeScaleV5.label14))
+                        .foregroundStyle(V5.textQuiet)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+
+        if let tip = recap?.coach_tip?.trimmingCharacters(in: .whitespacesAndNewlines), !tip.isEmpty {
+            CoachCaveat(text: tip)
+        }
+    }
+
+    // MARK: - Rep by rep · P44's phase breakdown, finally drawn
+    //
+    // THE COMPOSITION SEAM. `RepBreakdownV5` takes formatted strings; this is
+    // the one place a wire phase becomes words, exactly as `decisionsFromWire`
+    // is the one place a wire quantity becomes a decision sentence.
+
+    private var phases: [PhaseBreakdown] { detail.phase_breakdown ?? [] }
+
+    private var workPhases: [PhaseBreakdown] { phases.filter { $0.type == "work" } }
+
+    /// The rep indices the runner CHOSE to skip, as an explicit record.
+    ///
+    /// Never inferred from `completed: false`. A dropped rep and a rep the
+    /// watch offered to stop are the same byte on the wire, and on a screen
+    /// whose register says a decision is not a lapse they must not read the
+    /// same. `RunDetail.rep_skips` is the only thing that can tell them apart.
+    ///
+    /// `RunRepSkip.repIndex` counts REPS (the fourth rep), while
+    /// `PhaseBreakdown.index` counts PHASES (the seventh phase, because the
+    /// jogs are in there too). Resolved by position within the work phases,
+    /// which is the only mapping the two shapes share.
+    var chosenSkipPhaseIndices: Set<Int> {
+        let skipped = Set(detail.rep_skips.map(\.repIndex))
+        guard !skipped.isEmpty else { return [] }
+        var out: Set<Int> = []
+        for (ordinal, phase) in workPhases.enumerated() where skipped.contains(ordinal + 1) {
+            out.insert(phase.index)
+        }
+        return out
+    }
+
+    /// "Rep by rep" when the session was a rep set, "Piece by piece" when it
+    /// was a warm-up, a block and a cool-down. Naming a two-phase tempo "Rep
+    /// by rep" would call something a rep that the plan never called one.
+    var repSectionTitle: String {
+        workPhases.count >= 2 ? "Rep by rep" : "Piece by piece"
+    }
+
+    /// The phases, as words.
+    ///
+    /// EMPTY ON A SINGLE-PHASE SESSION, deliberately. When the watch recorded
+    /// one phase, that phase IS the run — the poster at the top of this screen
+    /// already carries its distance, its time and its pace, and restating them
+    /// in a list of one is a section that says nothing. The tolerance line
+    /// below still draws, because that is a fact the poster does not hold.
+    var repPieces: [RepPiece] {
+        guard phases.count > 1 else { return [] }
+        let chosen = chosenSkipPhaseIndices
+        return phases.map { p in
+            let isChosenSkip = chosen.contains(p.index)
+            return RepPiece(
+                id: p.index,
+                label: p.label.isEmpty ? Self.fallbackLabel(p) : p.label,
+                isWork: p.type == "work",
+                actualPace: p.actual_pace.map { "\($0)/mi" },
+                // A RECOVERY JOG'S "TARGET" IS NOT A TARGET.
+                //
+                // The server writes easy pace into `target_pace` for every
+                // recovery and cool-down phase because the watch needs a
+                // number to draw a band against. On 2026-08-11 that made a
+                // 90-second jog "miss" its 8:57 by two and a half minutes,
+                // which is what a jog between two hard kilometres is supposed
+                // to look like. Printing "asked 8:57" beside it would assert
+                // a prescription the plan never wrote.
+                askedPace: p.type == "work" ? p.target_pace : nil,
+                detail: Self.pieceDetail(p),
+                verdictPhrase: isChosenSkip ? nil : Self.verdictPhrase(p),
+                chosen: isChosenSkip
+            )
+        }
+    }
+
+    private static func fallbackLabel(_ p: PhaseBreakdown) -> String {
+        switch p.type {
+        case "warmup":   return "Warm-up"
+        case "cooldown": return "Cool-down"
+        case "recovery": return "Recovery"
+        case "work":     return "Rep \(p.index + 1)"
+        default:         return "Phase \(p.index + 1)"
+        }
+    }
+
+    /// Distance, duration and heart rate, in that order, joined by the middle
+    /// dot. Every one of them is a reading, so every one is measured; a phase
+    /// that carried none of them produces no line rather than an empty one.
+    private static func pieceDetail(_ p: PhaseBreakdown) -> String? {
+        var parts: [String] = []
+        if let mi = FaffFmt.milesUnit(p.actual_distance_mi) { parts.append(mi) }
+        if let sec = p.actual_duration_sec, let clock = FaffFmt.clock(sec: Double(sec)) {
+            parts.append(clock)
+        }
+        if let hr = p.avg_hr { parts.append("HR \(hr)") }
+        return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
+    }
+
+    /// The watch's grade, in plain words.
+    ///
+    /// THE WORD IS THE WHOLE TREATMENT. No amber, no red, no green — see
+    /// `RepBreakdownV5`'s header for why a section that grades every rep in
+    /// isolation would be arguing with the coach's own verdict two inches
+    /// below it, which has the heat and the terrain this list does not.
+    ///
+    /// The wire's four grades and what each one actually means:
+    ///
+    ///   hit        · mean pace in band AND at least 70% of samples in band
+    ///   drifted    · mean pace in band, under 70% of samples in band
+    ///   missed     · mean pace outside the band
+    ///   incomplete · the phase ended before reaching its target
+    ///
+    /// "Drifted" is the one worth spelling out. It is not a worse "hit" — the
+    /// average was fine and the execution sawed — so the phrase names the
+    /// sawing rather than implying a smaller miss.
+    ///
+    /// A RECOVERY JOG IS NEVER GRADED. The device graded it against easy pace
+    /// because that is the only number it had; jogging slowly between hard
+    /// kilometres is the instruction, not a miss, and repeating the device's
+    /// word here would print "outside the band" against a phase executed
+    /// exactly as written. `nil` says the honest thing: nothing to grade.
+    static func verdictPhrase(_ p: PhaseBreakdown) -> String? {
+        guard p.type == "work" else { return nil }
+        switch p.verdict {
+        case "hit":        return "In the band"
+        case "drifted":    return "In and out of the band"
+        case "missed":     return "Outside the band"
+        case "incomplete": return "Ended before its target"
+        default:           return nil
+        }
+    }
+
+    /// The watch's tolerance arithmetic across the work, as one sentence.
+    ///
+    /// THE MOST HONEST SENTENCE AVAILABLE ABOUT A SESSION, and it has been on
+    /// the wire, computed by the device against the server's own tolerance,
+    /// reaching no screen. On 2026-08-23 the work block carried 90 seconds
+    /// inside the band against 2280 outside it. The run detail said nothing.
+    ///
+    /// WORK PHASES ONLY. The device also counts a warm-up and a cool-down
+    /// against easy pace, and rolling those in would let a long steady
+    /// cool-down drown the four kilometres the session was actually about.
+    /// `lib/runs/run-shape.ts`'s `workToleranceShare` filters the same way,
+    /// for the same reason.
+    ///
+    /// "IT GRADED" IS LOAD-BEARING. In + out is shorter than the work's real
+    /// duration — the device only counts a second it had a pace for — so the
+    /// denominator is graded time, not elapsed time, and the sentence says so
+    /// rather than quietly presenting one as the other.
+    var toleranceLine: String? {
+        var inSec = 0, outSec = 0
+        var counted = 0
+        for p in workPhases {
+            guard let i = p.time_in_tolerance_sec, let o = p.time_out_of_tolerance_sec else { continue }
+            inSec += i; outSec += o; counted += 1
+        }
+        let total = inSec + outSec
+        guard counted > 0, total > 0,
+              let inside = FaffFmt.clock(sec: Double(inSec)),
+              let graded = FaffFmt.clock(sec: Double(total)) else { return nil }
+        return "The watch had you inside the target pace for \(inside) of the \(graded) of work it graded."
+    }
+
     // MARK: - Splits
 
     /// The band a split can be judged against, or nil.
@@ -383,11 +668,14 @@ struct RunDetailV5: View {
         return (Int(lo.rounded()), Int(hi.rounded()))
     }
 
-    private var splitBars: [SplitBar] {
+    var splitBars: [SplitBar] {
         let band = splitBand
-        let parsed: [(Int, Int)] = detail.splits.compactMap { s in
+        // `hr` travels with the mile from here. It has sat in `RunSplit`
+        // unread since the type was written — see `SplitBar.hr` for what it is
+        // and is not allowed to do with it while round three item 5 is open.
+        let parsed: [(mile: Int, sec: Int, hr: Int?)] = detail.splits.compactMap { s in
             guard let sec = Self.paceSeconds(s.pace) else { return nil }
-            return (s.mile, sec)
+            return (s.mile, sec, s.hr)
         }
         // A run of 6.3 miles reports seven splits, and the seventh is three
         // tenths long. Size it to what it actually covers rather than letting
@@ -398,10 +686,11 @@ struct RunDetailV5: View {
             return (remainder > 0 && remainder < 0.95) ? remainder : 1
         }()
         return parsed.enumerated().map { i, p in
-            SplitBar(mile: p.0,
-                     paceSec: p.1,
+            SplitBar(mile: p.mile,
+                     paceSec: p.sec,
                      fraction: i == parsed.count - 1 ? tail : 1,
-                     inBand: band.map { p.1 >= $0.lo && p.1 <= $0.hi })
+                     inBand: band.map { p.sec >= $0.lo && p.sec <= $0.hi },
+                     hr: p.hr)
         }
     }
 
@@ -605,6 +894,27 @@ enum RunDetailV5Sample {
     static let outdoor: RunDetail = decode(outdoorJSON)
     static let treadmill: RunDetail = decode(treadmillJSON)
     static let recap: RunRecap = decodeRecap(recapJSON)
+    /// The 2026-08-11 race-week tune-up, as production actually holds it.
+    static let intervals: RunDetail = decode(intervalsJSON)
+    static let intervalsRecap: RunRecap = decodeRecap(intervalsRecapJSON)
+
+    /// THE ONE CASE PRODUCTION CANNOT YET SUPPLY, and the one the register
+    /// exists for.
+    ///
+    /// The same 2026-08-11 payload with the fourth rep marked as a stop the
+    /// watch offered and the runner took. NOT a real row: `rep_skips` is the
+    /// 8b wrist-decision contract, it shipped days ago, and no run in
+    /// production carries one yet (checked at `faff_readonly`, 2026-08-24 —
+    /// zero rows with `repSkips`). Constructed and said so, rather than left
+    /// undrawable until someone happens to skip a rep.
+    ///
+    /// It is worth constructing because it is the rule that is easiest to
+    /// break and hardest to notice: `completed: false` is the same byte
+    /// whether the coach offered the stop or the runner lost the rep, and a
+    /// screen that grades both identically tells a runner who took the offer
+    /// that they failed. The drawn row must carry no verdict, no dash where a
+    /// pace would be, and a sentence naming whose decision it was.
+    static let intervalsWithSkip: RunDetail = decode(intervalsSkipJSON)
 
     private static func decode(_ json: String) -> RunDetail {
         // swiftlint:disable:next force_try
@@ -695,7 +1005,181 @@ enum RunDetailV5Sample {
       "coach_tip": "Mile five ran hot. Worth a check on effort next time it happens twice in a row.",
       "conditions_note": null,
       "win": null,
-      "intervals_adjusted_target_s_per_mi": null
+      "intervals_adjusted_target_s_per_mi": null,
+      "prescribed_pace_s_per_mi": null,
+      "plan_now_pace_s_per_mi": 555,
+      "evaluated_pace_s_per_mi": 555
+    }
+    """
+
+    // ─────────────────────────────────────────────────────────────────────
+    // THE RUN THAT STARTED THIS. Not invented: every number below is read
+    // out of production at `faff_readonly` on 2026-08-24.
+    //
+    //   plan_workouts    · race_week_tuneup, 5.5 mi, "1.5 mi WU · 4×1km @
+    //                      race pace · 90s jog · 1 mi CD", rep pace 412 s/mi
+    //   coach_intents    · reason 'watch_completion', field
+    //                      "…-2026-08-11#1842", NINE phases, each with its
+    //                      own target, actual, HR, verdict and tolerance
+    //                      counters
+    //   runs.data.splits · seven mile splits with heart rate on each
+    //
+    // The two together are the argument for the whole section. The splits say
+    // mile three ran 6:37 and mile four ran 8:16, which is a chart of a run
+    // that surged and faded. The phases say four kilometre reps at 6:21, 6:27,
+    // 6:42 and 6:56 with 90-second jogs between them, which is a runner
+    // executing a tune-up and going out slightly hot. Mile four is a rep and a
+    // jog averaged together and means neither.
+    private static let intervalsJSON = """
+    {
+      "id": "run_aug11",
+      "date": "2026-08-11",
+      "start_local": "2026-08-11T18:42:04",
+      "name": "Run",
+      "source": "watch",
+      "type": "race_week_tuneup",
+      "type_display": "Tune-up",
+      "distance_mi": 6.34,
+      "pace": "7:18",
+      "pace_s_per_mi": 438,
+      "time_moving": "46:16",
+      "time_elapsed": "46:16",
+      "hr_avg": 165,
+      "hr_max": 175,
+      "cadence_avg": 169,
+      "elev_gain_ft": 2330,
+      "has_route": false,
+      "route_polyline": null,
+      "splits": [
+        { "mile": 1, "pace": "7:44", "hr": 124, "cadence": 140, "elev_change_ft": 505 },
+        { "mile": 2, "pace": "6:40", "hr": 146, "cadence": 144, "elev_change_ft": 11 },
+        { "mile": 3, "pace": "6:37", "hr": 168, "cadence": 166, "elev_change_ft": -22 },
+        { "mile": 4, "pace": "8:16", "hr": 158, "cadence": 131, "elev_change_ft": 5 },
+        { "mile": 5, "pace": "6:47", "hr": 159, "cadence": 137, "elev_change_ft": 7 },
+        { "mile": 6, "pace": "7:50", "hr": 155, "cadence": 130, "elev_change_ft": -2 },
+        { "mile": 7, "pace": "7:19", "hr": 155, "cadence": 152, "elev_change_ft": 0 }
+      ],
+      "hrZonePcts": { "z1": 1, "z2": 12, "z3": 22, "z4": 48, "z5": 17 },
+      "zoneTargets": [4],
+      "planned_sub_label": "1.5 mi WU · 4×1km @ race pace · 90s jog · 1 mi CD",
+      "planned_distance_mi": 5.5,
+      "phase_breakdown": [
+        { "index": 0, "label": "Warm-up", "type": "warmup",
+          "target_pace": "8:57", "target_pace_sec": 537, "tolerance_pace_sec": null,
+          "actual_pace": "7:55", "actual_distance_mi": 1.5, "actual_duration_sec": 714,
+          "avg_hr": 135, "max_hr": 155, "avg_cadence": 159, "completed": true,
+          "status": null, "verdict": "missed",
+          "time_in_tolerance_sec": 25, "time_out_of_tolerance_sec": 675 },
+        { "index": 1, "label": "Interval \u{00B7} 1 km", "type": "work",
+          "target_pace": "6:52", "target_pace_sec": 412, "tolerance_pace_sec": 8,
+          "actual_pace": "6:21", "actual_distance_mi": 0.62, "actual_duration_sec": 237,
+          "avg_hr": 164, "max_hr": 169, "avg_cadence": 174, "completed": true,
+          "status": "fast", "verdict": "missed",
+          "time_in_tolerance_sec": 15, "time_out_of_tolerance_sec": 225 },
+        { "index": 2, "label": "Jog 1:30", "type": "recovery",
+          "target_pace": "8:57", "target_pace_sec": 537, "tolerance_pace_sec": null,
+          "actual_pace": "8:14", "actual_distance_mi": 0.18, "actual_duration_sec": 90,
+          "avg_hr": 164, "max_hr": 170, "avg_cadence": 160, "completed": true,
+          "status": null, "verdict": "hit",
+          "time_in_tolerance_sec": 70, "time_out_of_tolerance_sec": 20 },
+        { "index": 3, "label": "Interval \u{00B7} 1 km", "type": "work",
+          "target_pace": "6:52", "target_pace_sec": 412, "tolerance_pace_sec": 8,
+          "actual_pace": "6:27", "actual_distance_mi": 0.62, "actual_duration_sec": 242,
+          "avg_hr": 169, "max_hr": 173, "avg_cadence": 171, "completed": true,
+          "status": "fast", "verdict": "missed",
+          "time_in_tolerance_sec": 15, "time_out_of_tolerance_sec": 225 },
+        { "index": 4, "label": "Jog 1:30", "type": "recovery",
+          "target_pace": "8:57", "target_pace_sec": 537, "tolerance_pace_sec": null,
+          "actual_pace": "14:17", "actual_distance_mi": 0.1, "actual_duration_sec": 90,
+          "avg_hr": 127, "max_hr": 173, "avg_cadence": 116, "completed": true,
+          "status": null, "verdict": "missed",
+          "time_in_tolerance_sec": 5, "time_out_of_tolerance_sec": 85 },
+        { "index": 5, "label": "Interval \u{00B7} 1 km", "type": "work",
+          "target_pace": "6:52", "target_pace_sec": 412, "tolerance_pace_sec": 8,
+          "actual_pace": "6:42", "actual_distance_mi": 0.62, "actual_duration_sec": 250,
+          "avg_hr": 168, "max_hr": 175, "avg_cadence": 168, "completed": true,
+          "status": "on", "verdict": "drifted",
+          "time_in_tolerance_sec": 155, "time_out_of_tolerance_sec": 95 },
+        { "index": 6, "label": "Jog 1:30", "type": "recovery",
+          "target_pace": "8:57", "target_pace_sec": 537, "tolerance_pace_sec": null,
+          "actual_pace": "16:46", "actual_distance_mi": 0.09, "actual_duration_sec": 90,
+          "avg_hr": 155, "max_hr": 175, "avg_cadence": 115, "completed": true,
+          "status": null, "verdict": "missed",
+          "time_in_tolerance_sec": 0, "time_out_of_tolerance_sec": 90 },
+        { "index": 7, "label": "Interval \u{00B7} 1 km", "type": "work",
+          "target_pace": "6:52", "target_pace_sec": 412, "tolerance_pace_sec": 8,
+          "actual_pace": "6:56", "actual_distance_mi": 0.62, "actual_duration_sec": 259,
+          "avg_hr": 160, "max_hr": 174, "avg_cadence": 162, "completed": true,
+          "status": "on", "verdict": "drifted",
+          "time_in_tolerance_sec": 170, "time_out_of_tolerance_sec": 90 },
+        { "index": 8, "label": "Cool-down", "type": "cooldown",
+          "target_pace": "8:57", "target_pace_sec": 537, "tolerance_pace_sec": null,
+          "actual_pace": "8:25", "actual_distance_mi": 1.0, "actual_duration_sec": 507,
+          "avg_hr": 161, "max_hr": 174, "avg_cadence": 154, "completed": true,
+          "status": null, "verdict": "missed",
+          "time_in_tolerance_sec": 15, "time_out_of_tolerance_sec": 490 }
+      ],
+      "shoes": []
+    }
+    """
+
+    /// The real payload with the fourth rep turned into a taken offer:
+    /// `completed: false`, no actual pace, no verdict, and a `rep_skips`
+    /// entry naming it as the runner's own call. The recovery jog after it
+    /// goes too — there is nothing to recover from.
+    private static let intervalsSkipJSON: String = {
+        // SINGLE LINES, EACH UNIQUE IN THE SOURCE. A multi-line search string
+        // inside a Swift literal depends on the closing delimiter's own
+        // indentation matching the target's, which is exactly the kind of
+        // thing that fails silently and leaves a "constructed" fixture
+        // identical to the one it was constructed from.
+        //
+        // 6:56, 160/174/162 and 170/90 each occur once in the payload, on
+        // phase seven and nowhere else. `edits` is walked with a check that
+        // every one landed.
+        let edits: [(String, String)] = [
+            ("\"actual_pace\": \"6:56\", \"actual_distance_mi\": 0.62, \"actual_duration_sec\": 259,",
+             "\"actual_pace\": null, \"actual_distance_mi\": null, \"actual_duration_sec\": null,"),
+            ("\"avg_hr\": 160, \"max_hr\": 174, \"avg_cadence\": 162, \"completed\": true,",
+             "\"avg_hr\": null, \"max_hr\": null, \"avg_cadence\": null, \"completed\": false,"),
+            ("\"time_in_tolerance_sec\": 170, \"time_out_of_tolerance_sec\": 90 }",
+             "\"time_in_tolerance_sec\": null, \"time_out_of_tolerance_sec\": null }"),
+            // `verdict: "drifted"` is deliberately LEFT ON the phase. The
+            // watch graded the rep before the runner took the stop, and the
+            // row must still print no verdict — proving the guard is in the
+            // composer and not an accident of the fixture.
+            ("\"shoes\": []",
+             "\"rep_skips\": [ { \"repIndex\": 4, \"repCount\": 4, \"repsCompleted\": 3, "
+             + "\"phaseLabel\": \"Interval \u{00B7} 1 km\" } ], \"shoes\": []"),
+        ]
+        var s = intervalsJSON
+        for (from, to) in edits {
+            assert(s.contains(from), "intervalsSkipJSON: no match for \(from)")
+            s = s.replacingOccurrences(of: from, with: to)
+        }
+        return s
+    }()
+
+    private static let intervalsRecapJSON = """
+    {
+      "ok": true,
+      "runId": "run_aug11",
+      "date": "2026-08-11",
+      "type": "race_week_tuneup",
+      "type_display": "Tune-up",
+      "phase": "RACE-SPECIFIC",
+      "verdict": "Four reps on the rail, and the first two went out quick. Race pace is 6:52 and you opened at 6:21.",
+      "facts": [
+        "4 reps at 6:21, 6:27, 6:42, 6:56. HR climbed to 175.",
+        "The set faded 35 seconds a mile from first rep to last."
+      ],
+      "coach_tip": "Open the next set at the number, not under it. The back half is where the tune-up is won.",
+      "conditions_note": null,
+      "win": "4 on the rail \u{00B7} clean set.",
+      "intervals_adjusted_target_s_per_mi": 412,
+      "prescribed_pace_s_per_mi": 412,
+      "plan_now_pace_s_per_mi": 412,
+      "evaluated_pace_s_per_mi": 412
     }
     """
 }

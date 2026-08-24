@@ -12,9 +12,49 @@
  * DELETE /api/goals/[id]          → hard delete (no soft-delete column)
  *
  * Cite: docs/SYSTEM_DOCTRINE.md §3 input tiers (T6 pro features).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 2026-08-24 · THE TABLE DOES NOT EXIST IN PRODUCTION.
+ *
+ * `personal_goals` is named by these four statements and by nothing else in the
+ * app, and there is no migration that creates it — checked against prod with
+ * `faff_readonly` on 2026-08-24, and against every file in `db/migrations`.
+ *
+ * So GET threw `relation "personal_goals" does not exist` on every call, and
+ * `.catch(() => ({ rows: [] }))` turned that into `{ ok: true, goals: [] }`.
+ * A 200 saying the runner has no goals. Not "this is not available" — no
+ * goals, stated confidently, forever.
+ *
+ * Until the table exists this route cannot answer, and the honest answer to a
+ * question you cannot answer is to say so. `outage()` is the one way a route
+ * reports that it could not read (lib/route/failure.ts): 5xx, coach voice, no
+ * `reason` key, so the phone renders it as a retryable outage and never as a
+ * refusal or an empty state.
+ *
+ * The DDL to make this work is a PROPOSAL, not something this change runs:
+ *
+ *   CREATE TABLE personal_goals (
+ *     id          bigserial PRIMARY KEY,
+ *     user_uuid   uuid NOT NULL,
+ *     goal_type   text NOT NULL CHECK (goal_type IN
+ *                   ('volume','speed','distance','habit','health','strength')),
+ *     target      text NOT NULL,
+ *     current     text,
+ *     deadline    date,
+ *     tolerance   text,
+ *     rationale   text,
+ *     created_at  timestamptz NOT NULL DEFAULT now(),
+ *     updated_at  timestamptz NOT NULL DEFAULT now()
+ *   );
+ *   CREATE INDEX personal_goals_user_idx ON personal_goals (user_uuid, deadline);
+ *
+ * ('strength' is in the CHECK because STRENGTH-3 kept existing rows readable
+ * while gating new writes — see `VALID_GOAL_TYPES` below.)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { rowsOrNull } from '@/lib/db/read';
+import { outage } from '@/lib/route/failure';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
@@ -29,17 +69,23 @@ export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
-  const r = await pool.query(
-    `SELECT id, goal_type, target, current, deadline::text AS deadline,
+  const rows = await rowsOrNull(
+    'api/goals · list',
+    pool.query(
+      `SELECT id, goal_type, target, current, deadline::text AS deadline,
             tolerance, rationale, created_at::text AS created_at,
             updated_at::text AS updated_at
        FROM personal_goals
       WHERE user_uuid = $1
         AND (deadline IS NULL OR deadline >= CURRENT_DATE)
       ORDER BY deadline ASC NULLS LAST, created_at DESC`,
-    [userId],
-  ).catch(() => ({ rows: [] }));
-  return NextResponse.json({ ok: true, goals: r.rows });
+      [userId],
+    ),
+  );
+  // A failed read is not an empty goal list. See the header for why this read
+  // fails on every call today.
+  if (rows === null) return outage('api/goals', new Error('personal_goals read failed'));
+  return NextResponse.json({ ok: true, goals: rows });
 }
 
 export async function POST(req: NextRequest) {

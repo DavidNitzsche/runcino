@@ -35,6 +35,7 @@
 		21605BCF7352F46F697713E0 /* RacesV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A369BFF325F4DEEBD7624B8 /* RacesV5.swift */; };
 		21BAA9938430A3B59A7DA1FF /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5049AFA827E5D99EA69F5D0 /* ProfileView.swift */; };
 		229CE8256592129ABC9D1B51 /* _HostileInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F33906E8E9A4F77E54E81A16 /* _HostileInputTests.swift */; };
+		22C1AC7BD6F0A73BCEB07E17 /* RepBreakdownV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C67FC57A7AA49F34251FE7F /* RepBreakdownV5.swift */; };
 		22DC594B5818D987FD7101EB /* Brandmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232F9F14460F13DDC369F512 /* Brandmark.swift */; };
 		25318CCEE66333F7171C635D /* FacesFinishV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A73B3AC3DBBAEBE4A7A5E7C /* FacesFinishV5.swift */; };
 		269C1642A3928FABA51378F5 /* RecoveryBrief.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14E6C4CECAB490A0F91D63C3 /* RecoveryBrief.swift */; };
@@ -111,6 +112,7 @@
 		7D5AC76382E13C4B1B7DDACF /* CoachLogCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FA8A61F587D45BC203FAA79 /* CoachLogCard.swift */; };
 		7D6EEA014498E248E262CC14 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DBDD89E184A2A60C766D18F /* OnboardingView.swift */; };
 		8207DC567E0A8DE57DBFB58B /* CoachPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44CBB9357A15E48DAFCBEEA /* CoachPayloads.swift */; };
+		82507340C4146ED7B38C2832 /* V5PostRunSurfacesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C367E8791B53FBF3C23ADD /* V5PostRunSurfacesTests.swift */; };
 		83B9F89A53AF34654F0DCC3D /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600BF38DD79CB8A08592B03 /* Theme.swift */; };
 		870C68D997241F93D1463F7A /* RunRecapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7DCC89200E2D445651FD810 /* RunRecapView.swift */; };
 		87890ED4F2226911CA00FFD1 /* ComponentsV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFC017C2FCF5BCEF864B8086 /* ComponentsV5.swift */; };
@@ -279,6 +281,7 @@
 /* Begin PBXFileReference section */
 		0165EB077E98C01384F34584 /* RunShoePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunShoePickerSheet.swift; sourceTree = "<group>"; };
 		0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRelayQueueTests.swift; sourceTree = "<group>"; };
+		04C367E8791B53FBF3C23ADD /* V5PostRunSurfacesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5PostRunSurfacesTests.swift; sourceTree = "<group>"; };
 		0743519D766EECA60297B74F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		081F3BDD4979D92FC6A19386 /* TodayRecoveryPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayRecoveryPanel.swift; sourceTree = "<group>"; };
 		09ABAABCF2CDD7B4DBC82200 /* A_Signals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = A_Signals.swift; sourceTree = "<group>"; };
@@ -391,6 +394,7 @@
 		8B2D7420891F1F0024E3D933 /* PhoneSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSync.swift; sourceTree = "<group>"; };
 		8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchWorkoutModels.swift; sourceTree = "<group>"; };
 		8C2A42FABAA22658215C406B /* WatchRouterV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRouterV5.swift; sourceTree = "<group>"; };
+		8C67FC57A7AA49F34251FE7F /* RepBreakdownV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepBreakdownV5.swift; sourceTree = "<group>"; };
 		8CC881ECD5A5FD781AFD226A /* _SessionTimelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = _SessionTimelineTests.swift; sourceTree = "<group>"; };
 		8FCD25057781DAE979CCDBFC /* ShoesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoesView.swift; sourceTree = "<group>"; };
 		8FD04D91D8038BA91A4D9E20 /* ChartsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartsV5.swift; sourceTree = "<group>"; };
@@ -499,6 +503,7 @@
 				8FD04D91D8038BA91A4D9E20 /* ChartsV5.swift */,
 				CFC017C2FCF5BCEF864B8086 /* ComponentsV5.swift */,
 				B89B85857DDA2DA69F8C141A /* PanelV5.swift */,
+				8C67FC57A7AA49F34251FE7F /* RepBreakdownV5.swift */,
 				46EC493626E589550944B025 /* RepeatStepV5.swift */,
 				F7CFE2D883A30CAC352006F8 /* TokensV5.swift */,
 				C62B9760D4B508FC2FF8DBD0 /* ValuesV5.swift */,
@@ -519,6 +524,7 @@
 				F3A738F6B07437E922761372 /* V5ContrastTests.swift */,
 				F61803F39A7F14262E27C4D4 /* V5GaugeGeometryTests.swift */,
 				82E415054AF8F3E0C1B04391 /* V5PlanSheetCopyTests.swift */,
+				04C367E8791B53FBF3C23ADD /* V5PostRunSurfacesTests.swift */,
 				EE6DEE8E1E5A40B942A2E036 /* V5RaceStatsColumnsTests.swift */,
 				0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */,
 			);
@@ -1091,6 +1097,7 @@
 				F70FE052B115F95BFC68C5BD /* V5ContrastTests.swift in Sources */,
 				06D85202CC7B5FEA024A919D /* V5GaugeGeometryTests.swift in Sources */,
 				F9EAEA6A32A4C57CDB1EAE91 /* V5PlanSheetCopyTests.swift in Sources */,
+				82507340C4146ED7B38C2832 /* V5PostRunSurfacesTests.swift in Sources */,
 				1E2A914A6F9494BD4D0F69E4 /* V5RaceStatsColumnsTests.swift in Sources */,
 				FCE849E5CE19B79865639C37 /* WatchRelayQueueTests.swift in Sources */,
 			);
@@ -1184,6 +1191,7 @@
 				14640A3705B32648E88B7E91 /* ReadinessBriefSheet.swift in Sources */,
 				269C1642A3928FABA51378F5 /* RecoveryBrief.swift in Sources */,
 				92B4B04DC3045097B60E9AC4 /* RecoveryWindowStrip.swift in Sources */,
+				22C1AC7BD6F0A73BCEB07E17 /* RepBreakdownV5.swift in Sources */,
 				4C046C8BACD88A52701307F8 /* RepeatStepV5.swift in Sources */,
 				89208AB9C17FEC1DBCC09F60 /* ReturnToRunningV5.swift in Sources */,
 				097BBD3A01CCAB65AC7F4F60 /* RootTabView.swift in Sources */,

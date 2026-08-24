@@ -22,6 +22,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { generatePlan } from '@/lib/plan/generate';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { isCoachedExternally, COACHED_SKIP_REASON } from '@/lib/plan/coached-gate';
@@ -219,7 +220,10 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
       input.source,
       newPlanId ?? null,
     ],
-  ).catch(() => ({ rows: [{ id: -1 }] }))).rows[0];
+    // `-1` is a sentinel, not an id — no row has it, so a caller can tell the
+    // proposal was not written. It logs now; a proposal that silently failed to
+    // record looked identical to one that recorded fine.
+  ).catch((e) => { logReadFailure('plan/auto-rebuild · proposal insert', e); return { rows: [{ id: -1 }] }; })).rows[0];
 
   return {
     ok: rebuildOk,
@@ -348,7 +352,10 @@ export async function rebuildActivePlanForPrefs(
       rebuildOk ? 'auto_applied' : 'pending',
       newPlanId ?? null,
     ],
-  ).catch(() => ({ rows: [{ id: -1 }] }))).rows[0];
+    // `-1` is a sentinel, not an id — no row has it, so a caller can tell the
+    // proposal was not written. It logs now; a proposal that silently failed to
+    // record looked identical to one that recorded fine.
+  ).catch((e) => { logReadFailure('plan/auto-rebuild · proposal insert', e); return { rows: [{ id: -1 }] }; })).rows[0];
 
   return {
     ok: rebuildOk,

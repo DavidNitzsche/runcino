@@ -19,6 +19,7 @@
  *   (the script is the canonical hand-runnable mirror of this lib)
  */
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { getStravaToken } from '@/lib/strava/auth';
 import { SOURCE_TIER, existingTierFor, IDENTITY_FILL_ONLY } from '@/lib/runs/canonical';
 import { isSameRun, type RunRow } from '@/lib/runs/identity';
@@ -503,7 +504,7 @@ export async function pullSyncOneUser(args: {
             if (!existing) {
               await pool.query(
                 `INSERT INTO post_run_rpe (user_id, user_uuid, activity_id, rpe, notes, logged_at)
-                 VALUES ($1, $1, $2, $3, 'auto-imported from strava', NOW())`,
+                 VALUES ($1::text, $1::uuid, $2, $3, 'auto-imported from strava', NOW())`,
                 [userUuid, match.id, rpe],
               );
               out.rpeWritten++;
@@ -580,10 +581,21 @@ export async function pullSyncOneUser(args: {
           if (rpe >= 1 && rpe <= 10) {
             const rpeRes = await pool.query(
               `INSERT INTO post_run_rpe (user_id, user_uuid, activity_id, rpe, notes, logged_at)
-               VALUES ($1, $1, $2, $3, 'auto-imported from strava', NOW())
+               VALUES ($1::text, $1::uuid, $2, $3, 'auto-imported from strava', NOW())
                ON CONFLICT DO NOTHING`,
               [userUuid, String(act.id), rpe],
-            ).catch(() => ({ rowCount: 0 } as { rowCount: number | null }));
+            // 2026-08-24 · swallowed-failure sweep · `post_run_rpe.user_id` is
+            // `text` and `.user_uuid` is `uuid`, so `VALUES ($1, $1, …)` asked
+            // Postgres to deduce two types for one parameter: `inconsistent
+            // types deduced for parameter $1`. Every RPE arriving with a Strava
+            // import threw, `.catch` returned `rowCount: 0`, and `out.rpeWritten`
+            // stayed at zero — a sync that reported writing no RPE because it
+            // could not write any, in the same words it would use if there had
+            // been none to write. Both sides are cast now.
+            ).catch((e) => {
+              logReadFailure('strava/pullSync · post_run_rpe insert', e);
+              return { rowCount: 0 } as { rowCount: number | null };
+            });
             if ((rpeRes.rowCount ?? 0) > 0) out.rpeWritten++;
           }
         }

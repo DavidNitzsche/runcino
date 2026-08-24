@@ -9,6 +9,7 @@
  * the response-shape docs, which still apply verbatim.
  */
 import { pool } from '@/lib/db/pool';
+import { rowsOrNull } from '@/lib/db/read';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { loadSettings } from '@/lib/coach/settings';
 import { trainingWeekWindow } from '@/lib/notifications/week-window';
@@ -50,6 +51,16 @@ export interface PlanWeekResult {
   today_iso: string;
   days: PlanWeekDay[];
   message?: string;
+  /**
+   * True when the skip read FAILED rather than came back empty.
+   *
+   * `PlanWeekDay.skipped` is a plain boolean on the wire and has to stay one,
+   * so this is the flag that lets a caller tell "no day was skipped" apart from
+   * "we could not find out". Absent means the read succeeded. A surface that
+   * draws a skip marker should say nothing rather than assert an unskipped week
+   * when this is set — a refusal is a correct answer, an empty state is not.
+   */
+  skipStateUnknown?: true;
 }
 
 /**
@@ -151,19 +162,92 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
   }
 
   const skippedDates = new Set<string>();
-  try {
-    const r = await pool.query<{ date_iso: string }>(
+  // 2026-08-24 · swallowed-failure sweep · `day_actions.date_iso` is a TEXT day
+  // key, exactly like `plan_workouts.date_iso`, and this compared it against a
+  // `date` on both ends of a BETWEEN: `operator does not exist: text >= date`.
+  // The bare `catch` turned that into "no days were skipped", so the week strip
+  // has never shown a skip marker for anybody. Prod on 2026-08-24 holds 10 skip
+  // rows for the primary runner — 2026-08-12 and 2026-08-15 land inside a
+  // single seven-day window, and both were invisible.
+  //
+  // Cast BOTH sides, per `lib/runs/_plan_date_join_lint.test.ts`.
+  const skipRows = await rowsOrNull<{ date_iso: string }>(
+    'plan/week-loader · day_actions skip',
+    pool.query<{ date_iso: string }>(
       `SELECT date_iso::text AS date_iso
          FROM day_actions
         WHERE user_uuid = $1 AND action = 'skip'
-          AND date_iso BETWEEN $2::date AND $3::date`,
+          AND date_iso::date BETWEEN $2::date AND $3::date`,
       [userId, weekStart, weekEnd],
-    );
-    for (const row of r.rows) skippedDates.add(row.date_iso);
-  } catch {
-    // Best-effort · skip indicator just won't show this week.
-  }
+    ),
+  );
+  // null = the read failed. Distinguish it from "nothing was skipped" so the
+  // strip can stay quiet rather than assert an unskipped week it never saw.
+  const skipReadFailed = skipRows === null;
+  for (const row of skipRows ?? []) skippedDates.add(row.date_iso);
 
+  const days = shapePlanWeekDays(rows as PlanWorkoutRow[], {
+    weekStart,
+    today,
+    actualByDate,
+    skippedDates,
+  });
+
+  return {
+    plan_id: plan.id,
+    week_start_iso: weekStart,
+    week_end_iso: weekEnd,
+    today_iso: today,
+    days,
+    // Carried on the LOADER's return, not the shaper's: the shaper is pure and
+    // never touched a database, so it has no read to have failed. A week whose
+    // skip read errored must not assert an unskipped week it never saw.
+    ...(skipReadFailed ? { skipStateUnknown: true as const } : {}),
+  };
+}
+
+/** One `plan_workouts` row, as the week window selects it. */
+export interface PlanWorkoutRow {
+  id: string;
+  date_iso: string;
+  dow: number;
+  type: string;
+  distance_mi: number | string;
+  sub_label: string | null;
+  notes?: string | null;
+}
+
+/**
+ * THE AUTHORED WEEK BECOMES THE WEEK THE RUNNER SEES, HERE.
+ *
+ * Extracted 2026-08-24 so it can be driven with no database. Byte-identical
+ * logic; `loadPlanWeek` above is now its only production caller.
+ *
+ * It exists as a seam because two of its rules LOSE information, and losing
+ * information is exactly the kind of step a conservation harness has to be
+ * able to stand at:
+ *
+ *   · THE COLLAPSE. Two rows on one date become one day. The loser survives
+ *     only as `secondaryRun`, carrying type, label and distance — its spec,
+ *     its pace target and its quality flag do not come back. A day authored
+ *     twice can be shown once.
+ *   · THE SYNTHESIS. Seven days are emitted whether or not a row exists, and
+ *     a missing one is rendered as REST. A rest day the engine never authored
+ *     is indistinguishable on the strip from one it did.
+ *
+ * Both are deliberate and both are correct for the screen. Neither was
+ * observable from outside this function until now.
+ */
+export function shapePlanWeekDays(
+  rows: PlanWorkoutRow[],
+  ctx: {
+    weekStart: string;
+    today: string;
+    actualByDate: Map<string, { mi: number; id: string | null }>;
+    skippedDates: Set<string>;
+  },
+): PlanWeekDay[] {
+  const { weekStart, today, actualByDate, skippedDates } = ctx;
   const TYPE_PRIORITY: Record<string, number> = {
     race: 6, long: 5,
     intervals: 4, tempo: 4, threshold: 4, quality: 4, repetition: 4, fartlek: 4,
@@ -230,11 +314,6 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
     };
   });
 
-  return {
-    plan_id: plan.id,
-    week_start_iso: weekStart,
-    week_end_iso: weekEnd,
-    today_iso: today,
-    days,
-  };
+
+  return days;
 }

@@ -21,6 +21,7 @@
  *   Cite: Research/08-pacing-and-race-week.md §taper
  */
 import { pool } from '@/lib/db/pool';
+import { logReadFailure, rowOrNull } from '@/lib/db/read';
 import type { PoolClient } from 'pg';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
@@ -768,17 +769,35 @@ async function rampBaseForBuild(
  * itself ≥ 8, so this is byte-identical for every runner the old filter did
  * not silence. It changes only the cohort it was silencing.
  */
-async function recentPeakLongMi(userId: string): Promise<number> {
+/**
+ * The runner's longest run in the last 28 days, or `null` when the read FAILED.
+ *
+ * 2026-08-24 · swallowed-failure sweep · this returned a plain number and the
+ * `.catch` fabricated `{ mi: null }`, which `Number(null ?? 0)` turned into
+ * **0**. Zero is not a neutral value here: `composePlan` treats
+ * `recentLong <= 0` as a cold start and re-seeds the whole volume curve from
+ * the runner's onboarding self-report. So one failed read could hand a
+ * marathoner a beginner's plan, built off a number they typed in months ago,
+ * with nothing anywhere saying the read had failed.
+ *
+ * Null now means "we could not look". Zero still means "no runs in 28 days",
+ * which is a real state and keeps its old behaviour.
+ */
+async function recentPeakLongMi(userId: string): Promise<number | null> {
   const today = await runnerToday(userId);
-  const r = (await pool.query<{ mi: string | null }>(
-    `SELECT MAX((data->>'distanceMi')::numeric)::text AS mi
+  const r = await rowOrNull<{ mi: string | null }>(
+    'plan/generate · recentPeakLongMi',
+    pool.query<{ mi: string | null }>(
+      `SELECT MAX((data->>'distanceMi')::numeric)::text AS mi
        FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date
             >= $2::date - 28`,
-    [userId, today]
-  ).catch(() => ({ rows: [{ mi: null }] }))).rows[0];
+      [userId, today],
+    ),
+  );
+  if (r === null) return null;
   return Math.round((Number(r?.mi ?? 0)) * 10) / 10;
 }
 
@@ -990,7 +1009,17 @@ export function qualityLookbackDays(
  * tightening it changes who reads as mid-block for every runner, which is a
  * behaviour change this fix deliberately does not make.
  */
-async function detectMidBlock(userId: string): Promise<boolean> {
+/**
+ * Has this runner been doing quality lately? `null` when we could not find out.
+ *
+ * 2026-08-24 · swallowed-failure sweep · all three signals fabricated
+ * `{ n: '0' }` on failure, and zero is the answer that means "no quality" —
+ * which drops a runner mid-build back to BASE and re-authors their plan around
+ * it. Three OR'd signals made it worse, not better: any one of them failing
+ * quietly removed a chance to say yes. A signal that could not be read is not a
+ * signal that said no.
+ */
+async function detectMidBlock(userId: string): Promise<boolean | null> {
   // 2026-06-03 · David flagged · was only checking ACTIVE plan for
   // prescribed quality · rebuilds ARCHIVE the active plan, so a runner
   // who's been doing quality for weeks gets dropped back to BASE because
@@ -1018,7 +1047,8 @@ async function detectMidBlock(userId: string): Promise<boolean> {
         AND pw.type IN ('threshold','tempo','intervals','vo2max')
         AND pw.date_iso::date BETWEEN ($2::date - $3::int) AND $2::date`,
     [userId, today, lookback]
-  ).catch(() => ({ rows: [{ n: '0' }] }));
+  ).catch((e) => { logReadFailure('plan/generate · detectMidBlock signal 1 · prescribed quality', e); return null; });
+  if (r1 === null) return null;
   if (Number(r1.rows[0]?.n ?? 0) >= 2) return true;
 
   // Signal 2 · runs with quality-effort tag.
@@ -1034,7 +1064,8 @@ async function detectMidBlock(userId: string): Promise<boolean> {
               OR LOWER(COALESCE(r.data->>'workoutType', '')) ~ '(tempo|threshold|interval|vo2|race)'
             )`,
     [userId, today, lookback]
-  ).catch(() => ({ rows: [{ n: '0' }] }));
+  ).catch((e) => { logReadFailure('plan/generate · detectMidBlock signal 2 · quality-tagged runs', e); return null; });
+  if (r2 === null) return null;
   if (Number(r2.rows[0]?.n ?? 0) >= 2) return true;
 
   // Signal 3 · HR-based effort detection · ≥2 runs in last 28d with
@@ -1062,7 +1093,8 @@ async function detectMidBlock(userId: string): Promise<boolean> {
                 0
               ) >= $2`,
       [userId, hrThreshold, today, lookback]
-    ).catch(() => ({ rows: [{ n: '0' }] }));
+    ).catch((e) => { logReadFailure('plan/generate · detectMidBlock signal 3 · HR effort', e); return null; });
+    if (r3 === null) return null;
     if (Number(r3.rows[0]?.n ?? 0) >= 2) return true;
   }
 
@@ -7778,23 +7810,39 @@ async function composeForUserInternal(
   // clearActivePlansFor never runs on a bad plan — runner's active plan untouched.
   let trailingAvgWeeklyMi: number | null = null;
   {
-    const priorPeakRow = (await pool.query<{ peak_long: string | null }>(
-      `SELECT MAX(pw.distance_mi)::text AS peak_long
+    // 2026-08-24 · swallowed-failure sweep · both of these fed VALIDATOR
+    // inputs, and both fabricated `null` on failure. `null` is the documented
+    // "skip this check" value for each: `priorPlanPeakLongMi: null` skips the
+    // corruption check, `trailingAvgWeeklyMi: null` skips the peak-vs-trailing
+    // ramp check. So a dropped connection did not merely lose a number — it
+    // switched off two of the gates standing between a bad plan and the
+    // runner's legs, silently, on the write path. Both reads now refuse.
+    const priorPeakRow = await rowOrNull<{ peak_long: string | null }>(
+      'plan/generate · priorPlanPeakLongMi',
+      pool.query<{ peak_long: string | null }>(
+        `SELECT MAX(pw.distance_mi)::text AS peak_long
          FROM plan_workouts pw
          JOIN training_plans tp ON tp.id = pw.plan_id
         WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL AND pw.type = 'long'`,
-      [userId],
-    ).catch(() => ({ rows: [{ peak_long: null }] }))).rows[0];
+        [userId],
+      ),
+    );
     // F13: query trailing 28d actual mileage for peak-vs-trailing ramp check.
-    const trailingRow = (await pool.query<{ avg_weekly: string | null }>(
-      `SELECT (SUM((data->>'distanceMi')::numeric) / 4.0)::text AS avg_weekly
+    const trailingRow = await rowOrNull<{ avg_weekly: string | null }>(
+      'plan/generate · trailingAvgWeeklyMi',
+      pool.query<{ avg_weekly: string | null }>(
+        `SELECT (SUM((data->>'distanceMi')::numeric) / 4.0)::text AS avg_weekly
          FROM runs
         WHERE user_uuid = $1
           AND NOT (data ? 'mergedIntoId')
           AND (data->>'date')::date >= $2::date - INTERVAL '28 days'
           AND (data->>'date')::date < $2::date`,
-      [userId, todayISO],
-    ).catch(() => ({ rows: [{ avg_weekly: null }] }))).rows[0];
+        [userId, todayISO],
+      ),
+    );
+    if (priorPeakRow === null || trailingRow === null) {
+      return { ok: false, reason: 'could not read your training history · try again in a moment' };
+    }
     trailingAvgWeeklyMi = trailingRow?.avg_weekly != null
       ? Number(trailingRow.avg_weekly)
       : null;
@@ -8335,9 +8383,21 @@ async function loadGeneratorInputs(
   if (!openTarget && totalWeeks < 3) return { ok: false, reason: 'plan needs at least 3 weeks runway' };
 
   const isMidBlock = await detectMidBlock(userId);
+  // A plan authored on "no quality detected" when we simply could not look
+  // rewrites a mid-build runner back to BASE. Refuse instead.
+  if (isMidBlock === null) {
+    return { ok: false, reason: 'could not read your recent training · try again in a moment' };
+  }
   let recentMi = await recentWeeklyMileage(userId);
   const easyFloor = await easyDayMedianMi(userId);
-  let recentLong = await recentPeakLongMi(userId);
+  const recentLongRead = await recentPeakLongMi(userId);
+  // A plan authored on a failed read is a plan authored on a fabricated
+  // history. Refuse — the runner keeps the plan they have, and the refusal is
+  // a correct answer with a reason on it, not an empty state.
+  if (recentLongRead === null) {
+    return { ok: false, reason: 'could not read your recent runs · try again in a moment' };
+  }
+  let recentLong = recentLongRead;
   // 2026-06-10 persona-suite fix · cold-start race plans. A brand-new
   // runner has NO runs, so recentMi/recentLong read 0 and the ramp from
   // zero to race-prep peaks trips the progression validator (26.2mi

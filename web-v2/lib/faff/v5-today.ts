@@ -52,6 +52,10 @@
  *     file quotes it rather than re-writing it, so the voice cannot fork.
  */
 
+// The only import this file has. `lib/runs/run-shape.ts` imports nothing
+// itself, so the composer stays pure and unit-testable without a database.
+import { reconcilePaceWithClock } from '../runs/run-shape';
+
 // ─────────────────────────────────────────────────────────────────────────
 // Wire types — one-to-one with APIV5.swift
 // ─────────────────────────────────────────────────────────────────────────
@@ -218,6 +222,19 @@ export interface V5Today {
 
   askedVsRan: V5Row[];
   verdict: string | null;
+  /// The recap's own supporting sentences, under the verdict. One or two,
+  /// plain English, already composed by `lib/coach/run-recap.ts` — quoted
+  /// verbatim, never re-worded here, the same contract `coachLine` keeps.
+  facts: string[];
+  /// The four-to-ten word line `lib/coach/run-win.ts` writes when the run has
+  /// a real thing to point at. Null far more often than not, and a null is the
+  /// engine declining, not a gap to fill.
+  win: string | null;
+  /// What the weather did to the session, when it did anything. Null on a
+  /// neutral day, and a neutral day must draw nothing rather than a heading.
+  conditionsNote: string | null;
+  /// Forward-looking, and the only sentence here that is about next time.
+  coachTip: string | null;
   zoneShares: number[] | null;
   zoneTarget: number | null;
   /// Every zone the session asked for, ascending. A race prescribes a SET —
@@ -330,7 +347,22 @@ export function dayStateWordFor(plannedType: string | null | undefined): V5DaySt
  *  The prescription is not lost by rejecting it here — it is what `groups`
  *  (Warm up / Work / Cool down) renders directly below, in full, at body size.
  *  The headline's job is to name the day. */
-const PRESCRIPTION_SHAPE = /[@×+/]|\b(?:WU|CD)\b|\d\s*(?:mi|km|m|s|min|sec)\b|·|\.\s|\d\s*x\s*\d/i;
+/*  2026-08-24 · THE PARENTHETICAL IS NOW REJECTED HERE, AT RUN TIME.
+ *
+ *  The note above says `_sublabel_voice.test.ts` covers `EASY (MEDIUM)`. It
+ *  does, but only as a SOURCE SCAN: it looks for `subLabel: '…'` single-quoted
+ *  literals in three files. A parenthetical assembled in a template literal,
+ *  rendered by `catalogue-rx.renderPrescription`, or carried in a trajectory
+ *  step's `label` never appears as a literal in those three files and walks
+ *  past it — and then past this gate too, because nothing here objected to a
+ *  bracket. `subLabelIsName('EASY (MEDIUM)')` returned true, and the phone
+ *  drew "Easy (medium)" at 56 points.
+ *
+ *  A run-time gate and a source scan are not substitutes for one another. The
+ *  scan catches the label before it is written; this catches it however it was
+ *  made. No label in the live table carries a bracket — the census returns
+ *  zero rows for `sub_label ~ '\('` — so nothing legitimate is lost. */
+const PRESCRIPTION_SHAPE = /[@×+/()[\]]|\b(?:WU|CD)\b|\d\s*(?:mi|km|m|s|min|sec)\b|·|\.\s|\d\s*x\s*\d/i;
 
 /** The display budget for a one-line 56pt headline. "CRUISE INTERVALS" (16) is
  *  the longest name the generator writes and the longest that holds the line
@@ -455,6 +487,17 @@ export interface V5RecentRunCtx {
   speedMph: number | null;
   inclinePct: number | null;
   askedPaceSPerMi: number | null;
+  /**
+   * The distance the plan asked for, in miles. Null on a day with no plan row.
+   *
+   * THE TABLE IS CALLED ASKED VS RAN AND HAD NO DISTANCE IN IT. Pace, heart
+   * and effort, on a day the runner covered 11.0 miles against a prescribed 5
+   * — the single largest thing that happened to that session, and the one
+   * reading the screen did not carry. `plannedMi` reached `deriveRecap` and
+   * was read by no branch there either; this is the same number, finally
+   * arriving somewhere it is printed.
+   */
+  askedMi: number | null;
   askedHrCap: number | null;
   /**
    * True only when `askedHrCap` resolved from `workout_spec.hr_cap_bpm` — a
@@ -472,6 +515,22 @@ export interface V5RecentRunCtx {
   effortAsked: { lo: number; hi: number } | null;
   effortLogged: number | null;
   verdict: string | null;
+  /**
+   * The rest of what `deriveRecap` wrote, which until now stopped here.
+   *
+   * The recap engine returns four things — a verdict, one or two plain-English
+   * facts, an optional forward-looking tip and an optional conditions note —
+   * and `run-win.ts` adds a fifth. This context took the verdict and dropped
+   * the others on the floor, so the sentences were composed, returned,
+   * decoded by `RunRecap` on the phone, and never drawn.
+   *
+   * Empty array / null are honest absences: `deriveRecap` genuinely returns no
+   * conditions note on a neutral day and no win when the signal is too thin.
+   */
+  facts: string[];
+  win: string | null;
+  conditionsNote: string | null;
+  coachTip: string | null;
   zoneShares: number[] | null;
   zoneTarget: number | null;
   zoneTargets: number[] | null;
@@ -702,7 +761,30 @@ function buildConvergence(c: V5ConvergenceCtx): V5Convergence | null {
       id: `${domain}-${i}`,
       domain: domainDisplayName(domain),
       value: num(text, false),
-      baseline: reading?.baseline ?? '',
+      // …and the same argument applies to the line UNDER it, which `?? ''`
+      // left blank.
+      //
+      // The two halves of this tile come from different moments. `converging`
+      // was persisted to `coach_intents` overnight, when the domain had a
+      // reading worth converging on. `readings` is built at REQUEST time, and
+      // every entry in the route is behind its own null guard — no
+      // `hrvBaseline` this morning, no `readings.autonomic`. So a domain that
+      // genuinely drove last night's decision can arrive here with nothing to
+      // show for itself, and it drew as a fault-red dash over empty space,
+      // directly beneath a coach line saying that domain had been dragging for
+      // three days. The screen asserted the reading mattered and that it could
+      // not be read, at once.
+      //
+      // The dash is right — `.unreadable` means exactly "we could not read
+      // this", and this morning we cannot. The blank line under it was the
+      // defect: Rule 3 says a refusal states its reason rather than leaving a
+      // labelled row standing over nothing.
+      //
+      // The tile stays rather than being dropped, deliberately. It counted
+      // toward the ≥3 gate above, and silently removing it would leave the
+      // screen showing two tiles under a sentence about three domains — the
+      // same contradiction, moved.
+      baseline: reading?.baseline ?? 'No reading this morning',
     };
   });
 
@@ -741,6 +823,52 @@ function buildRecentRun(r: V5RecentRunCtx): {
 } {
   const askedVsRan: V5Row[] = [];
 
+  /**
+   * THE PACE THIS SCREEN MAY PRINT, checked against the clock printed beside
+   * it. Not `r.paceSPerMi` directly — see `reconcilePaceWithClock`.
+   *
+   * `runPaceSecPerMi` fixed the 3:37/mi fiction at the READ, which repaired
+   * the route that goes through it. This composer takes a CONTEXT, and a
+   * context is assembled by a call site: the surface sweep drove the real
+   * 2026-08-23 row into it (11.01 mi, 5298s on the watch's own clock, a
+   * stored 217 s/mi from a Strava moving time) and the panel printed
+   * "11 mi · 1:28:18 · 3:37/mi" — three numbers, two of which disprove the
+   * third, on one poster.
+   *
+   * The panel is the last place the contradiction can be caught, so it is
+   * caught here too. Same arithmetic, one definition, no doctrine claim: a
+   * row is judged only against its own other facts, so an elite and a walker
+   * are both safe.
+   */
+  const shownPaceSPerMi = reconcilePaceWithClock(r.distanceMi, r.durationSec, r.paceSPerMi);
+  // DISTANCE LEADS, because it is the first thing that can differ and the
+  // only one that changes what every row under it means. A pace read across
+  // 11 miles is not a pace read across the 5 that were asked for, and a
+  // reader who does not know the distance moved cannot interpret the three
+  // rows below.
+  //
+  // NO TONE, DELIBERATELY, and this is the one row where that needs saying
+  // out loud. Eleven against five is unambiguous arithmetic, so unlike pace
+  // there is no honest-band problem — the reason the row stays uncoloured is
+  // the other rule. A runner who feels good and adds six miles has not
+  // failed anything; a runner who cut a long run short for a reason the coach
+  // would have agreed with has not either. Amber on this row would grade both
+  // as faults, and the screen does not know which happened. It states both
+  // numbers and lets the verdict — which HAS the context — do the talking.
+  //
+  // The row appears even when the two agree. A table called asked-vs-ran that
+  // shows distance only when it went wrong is a table that means something
+  // different on a good day, and the runner learns to read its absence.
+  const askedMiText = fmtMi(r.askedMi);
+  if (askedMiText) {
+    askedVsRan.push({
+      id: 'distance', label: 'Distance',
+      sub: `asked ${askedMiText}`,
+      value: num(fmtMi(r.distanceMi), false),
+      action: null,
+    });
+  }
+
   // Pace's tone is left unset here on purpose. There is no context-aware
   // band available to this composer for a whole-run average — no tolerance,
   // no heat adjustment, no "this is a taper session and it is SUPPOSED to be
@@ -761,7 +889,7 @@ function buildRecentRun(r: V5RecentRunCtx): {
     // `FaffValue.from(text:modelled:)` turns a NULL text into `.unreadable`
     // and paints it fault red. A dash we typed is a measured value that
     // happens to look like a dash. Null is the honest wire shape.
-    value: num(fmtPace(r.paceSPerMi), false),
+    value: num(fmtPace(shownPaceSPerMi), false),
     action: null,
   });
   askedVsRan.push({
@@ -817,13 +945,37 @@ function buildRecentRun(r: V5RecentRunCtx): {
     // Null, not a typed dash — see the askedVsRan pace row above.
     { label: 'Distance', value: num(fmtMi(r.distanceMi), false), tone: null },
     { label: 'Time', value: num(fmtClock(r.durationSec), false), tone: null },
-    { label: 'Pace', value: num(fmtPace(r.paceSPerMi), false), tone: null },
+    { label: 'Pace', value: num(fmtPace(shownPaceSPerMi), false), tone: null },
   ];
 
   const panelKicker = r.indoor ? 'Treadmill · indoor, no GPS' : null;
 
   const shoesWorn: V5Row | null = r.shoeWorn
-    ? { id: r.shoeWorn.id, label: r.shoeWorn.name, sub: `${fmtMi(r.shoeWorn.mi) ?? '0 mi'} on them`, value: null, action: 'change_shoe' }
+    // RULE THREE, the honest-degrade half, and the distinction is on the
+    // INPUT rather than on `fmtMi`'s output.
+    //
+    // `fmtMi` returns null for a missing figure AND for zero, so `?? '0 mi'`
+    // collapsed the two: a shoe with no recorded mileage and a shoe with none
+    // yet run printed the same line, and only one of those is something
+    // somebody actually knows.
+    //
+    // The first draft of this fix inverted the defect — it treated every
+    // falsy `fmtMi` as unknown, which relabels a genuinely brand-new shoe as
+    // untracked. `shoes.mileage` is NOT NULL DEFAULT 0, so ZERO is the common
+    // case and absent is the rare one; getting that backwards would have made
+    // the line wrong more often, not less.
+    //
+    // So: a number that is really there prints, zero included. Only a value
+    // that is absent or unreadable declines. `Number()` first because a
+    // Postgres `numeric` arrives over node-pg as a STRING, and
+    // `Number.isFinite('212')` is false.
+    ? {
+        id: r.shoeWorn.id, label: r.shoeWorn.name,
+        sub: r.shoeWorn.mi != null && Number.isFinite(Number(r.shoeWorn.mi))
+          ? `${fmtMi(r.shoeWorn.mi) ?? '0 mi'} on them`
+          : 'Mileage not tracked',
+        value: null, action: 'change_shoe',
+      }
     : null;
 
   const doneMi = Math.round((r.weekDoneMi) * 10) / 10;
@@ -869,6 +1021,10 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   paceNote: null,
   askedVsRan: [],
   verdict: null,
+  facts: [],
+  win: null,
+  conditionsNote: null,
+  coachTip: null,
   zoneShares: null,
   zoneTarget: null,
   zoneTargets: null,
@@ -1004,6 +1160,12 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.paceNote = ctx.paceNote;
     t.askedVsRan = built.askedVsRan;
     t.verdict = ctx.recentRun.verdict;
+    // QUOTED, NEVER RE-WRITTEN. One voice, one composer — the same rule
+    // `coachLine` keeps above. This branch's only job is to stop dropping them.
+    t.facts = ctx.recentRun.facts;
+    t.win = ctx.recentRun.win;
+    t.conditionsNote = ctx.recentRun.conditionsNote;
+    t.coachTip = ctx.recentRun.coachTip;
     t.zoneShares = ctx.recentRun.zoneShares;
     t.zoneTarget = ctx.recentRun.zoneTarget;
     t.zoneTargets = ctx.recentRun.zoneTargets;

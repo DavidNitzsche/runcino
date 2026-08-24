@@ -141,6 +141,12 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
     surface: { file: 'web-v2/app/api/coach/intents/route.ts', token: 'reason' },
   },
   {
+    id: 'coach_intents.value',
+    verdict: 'surfaced',
+    holds: 'The watch completion, phase by phase: per-rep target, actual, HR, the device verdict (hit/drifted/missed/incomplete) and its seconds in and out of the pace band.',
+    surface: { file: 'web-v2/lib/coach/run-state.ts', token: 'time_in_tolerance_sec' },
+  },
+  {
     id: 'plan_proposals.reasons',
     verdict: 'surfaced',
     holds: 'The reasons a replan is being proposed. Rendered on the proposal card.',
@@ -370,14 +376,28 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'Same ruling as strength-recommender. The weekly confirmed/skipped verdict has no surface because strength has no surface.',
   'web-v2/lib/doctrine/registry.ts':
     'A GATE. Test-only is its correct state — it is consulted by check-doctrine.sh, not at runtime.',
+  'web-v2/lib/runs/derived-registry.ts':
+    'A GATE. Same shape as the doctrine registry: the list of places two stored values describe one thing, consulted by lib/runs/_coherence_gate.test.ts and check-derived-consistency.sh, never at runtime. The reconciler it documents (lib/runs/coherence.ts) IS wired, on every surface that prints a pace or a duration; this file holds the winner rules, the production counts and the controls that prove each guard fires.',
   'web-v2/lib/audit/sql-scan.ts':
     'A GATE. Same shape as the doctrine registry: consulted by _generated_content_gate.test.ts and check-generated-content.sh, never at runtime.',
   'web-v2/lib/audit/module-graph.ts':
     'A GATE. Same as sql-scan.ts.',
   'web-v2/lib/audit/generated-content-registry.ts':
     'A GATE. This file.',
+  'web-v2/lib/faff/surface-sweep-matrix.ts':
+    'A GATE. Same shape as the doctrine registry: the runner states, data shapes, boundaries and rules that _surface_sweep.test.ts and check-surface-sweep.sh drive, never consulted at runtime. It is deliberately a separate module rather than inlined in the test so the cold half of check-surface-sweep.sh can count the axes and the rules with sed on a container that has no toolchain.',
+  'web-v2/lib/audit/swallow-scan.ts':
+    'A GATE. Same shape as sql-scan.ts: consulted by _swallow_scan.test.ts and check-swallowed-failure.sh, never at runtime. It finds the places where a database failure becomes a plausible answer — the `.catch(() => empty)` that hid four broken date_iso comparisons for months.',
+  'web-v2/lib/audit/swallowed-failure-registry.ts':
+    'A GATE. The argued exemption list swallow-scan.ts is checked against, plus the empty-result ratchet. Test-only is its correct state.',
   'web-v2/lib/plan/synthetic-runners.ts':
     'Test fixtures for the plan-engine bench. Test-only is correct.',
+  'web-v2/lib/conservation/laws.ts':
+    'A GATE. The conservation laws — distance in equals distance out, a pace equals its own surface\'s time over its own distance, splits sum to the run. Consulted by _run_conservation.test.ts, never at runtime. Same shape as the doctrine registry.',
+  'web-v2/lib/conservation/shapes.ts':
+    'Test fixtures for the conservation harness. Fourteen run shapes derived from a read-only census of the live table on 2026-08-24, including the 2026-08-23 row verbatim. Test-only is correct.',
+  'web-v2/lib/conservation/surfaces.ts':
+    'A GATE. Reads one run the way each screen reads it, through the real composers where a pure seam exists. Test-only is correct; wiring it would make the harness part of the thing it measures.',
   'web-v2/lib/faff/personas.ts':
     'Test fixtures for the glance adapter. The `?persona=` simulator bypass its header describes does not exist in the live route; the fixtures still earn their place in the adapter test.',
   'web-v2/lib/faff/state-tokens.ts':
