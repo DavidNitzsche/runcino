@@ -299,6 +299,13 @@ struct FacePreviewView: View {
             // said once — it is on the band line, not repeated in the detail.
             return AnyView(WMomentPhaseChange(word: "Work",
                 detail: "Rep 4 of 6", band: "6:45\u{2013}7:00", bandUnit: "/mi"))
+        case "malmost":
+            // The last quarter mile of a distance phase. One figure, one word:
+            // the lowest-density board in the app, which is what a moment is
+            // supposed to be.
+            return AnyView(WMomentAlmostDone(value: "0.25"))
+        case "malmostrep":
+            return AnyView(WMomentAlmostDone(value: "0.40", unit: "km left"))
         case "msplit":
             return AnyView(WMomentSplit(label: "Mile 5", time: "7:48",
                 comparison: "4 sec quicker"))

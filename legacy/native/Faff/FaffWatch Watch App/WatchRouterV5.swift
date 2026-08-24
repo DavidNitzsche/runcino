@@ -178,6 +178,7 @@ enum WMomentKind: Equatable {
     case split(mile: Int, paceSec: Int)
     case fuel(index: Int, total: Int)
     case headsUp(value: String, quicken: Bool)
+    case almostDone(value: String, unit: String)
     case paused
 }
 
@@ -235,6 +236,7 @@ final class WatchRouterV5: ObservableObject {
         case .split(let mileNo, let paceSec): return .split(mile: mileNo, paceSec: paceSec)
         case .fuel(let index, let total):     return .fuel(index: index, total: total)
         case .headsUp(let value):             return .headsUp(value: value, quicken: false)
+        case .almostDone(let v, let u):       return .almostDone(value: v, unit: u)
         }
     }
 
@@ -943,6 +945,8 @@ struct WatchRunSurfaceV5: View {
                 // to be `livePace.unit`, which drew the sentence "Band is /mi".
                 band: bandLabel
             )
+        case .almostDone(let value, let unit):
+            WMomentAlmostDone(value: value, unit: unit)
         case .paused:
             WMomentPaused(
                 distance: WFmt.miles(tracker.distanceMi),

@@ -42,6 +42,11 @@ final class WorkoutEngine: ObservableObject {
         case phase(title: String, sub: String?)    // orange, race phase change
         case fuel(index: Int, total: Int)          // GEL · n of m takeover, persistent
         case split(mileNo: Int, paceSec: Int)      // MILE N · m:ss flash, every auto-lap
+        /// "0.25 LEFT" — a distance phase about to close. Its own case, because
+        /// it used to borrow `.headsUp` and the router drew that as the drift
+        /// correction: a board naming a band, at a boundary where no band is
+        /// being asked for.
+        case almostDone(value: String, unit: String)
     }
 
     // MARK: Published surface (views bind to these)
@@ -657,9 +662,25 @@ final class WorkoutEngine: ObservableObject {
     /// Format a remaining-miles distance for the heads-up cue. Two decimals
     /// down to 0.1 (e.g. 0.25), one decimal at 0.1+, "0.05" floor when very
     /// close. Trailing zeros stripped so 0.20 reads "0.2".
+    /// True when the runner reads in kilometres.
+    private var readsKm: Bool { workout.unitsDistance == "km" }
+
+    /// The unit word the almost-done board draws under its figure.
+    private var remainingUnit: String { readsKm ? "km left" : "mi left" }
+
+    /// The remaining distance, IN THE RUNNER'S OWN UNIT.
+    ///
+    /// This used to format miles unconditionally. Everything the runner is
+    /// tracked in is converted at the edge — pace, distance, elevation all go
+    /// through `WFmt` with the units preference — and this one did not, so a
+    /// kilometre runner was told "0.25 left" a quarter of a MILE from the end,
+    /// which is 0.4 km. Same family as the phase boards drawing a /km figure
+    /// under a hardcoded "/mi": a number converted everywhere except the one
+    /// place that computed it itself.
     private func formatMiRemaining(_ mi: Double) -> String {
-        if mi < 0.1 { return String(format: "%.2f", mi) }
-        let s = String(format: "%.2f", mi)
+        let v = readsKm ? mi * 1.609344 : mi
+        if v < 0.1 { return String(format: "%.2f", v) }
+        let s = String(format: "%.2f", v)
         // strip trailing zero ("0.20" → "0.2") but keep "0.25" as-is
         if s.hasSuffix("0") { return String(s.dropLast()) }
         return s
@@ -818,7 +839,15 @@ final class WorkoutEngine: ObservableObject {
                     // swiped down — see flash() and dismissTransition().
                     let total = max(fueling.gels, fueling.atMins.count)
                     Haptics.play(moment: .fuel)
-                    flash(.fuel(index: i + 1, total: total), for: 5, persistent: true)
+                    // AUTO-CLEARS, like the race path. These two differ in what
+                    // triggers them — elapsed time here, aid-station miles
+                    // there — and that difference is deliberate. Persisting on
+                    // one and not the other was not: a gel cue you miss is
+                    // recoverable, and a pace face you cannot get back is the
+                    // failure the router already had to patch with a tap
+                    // gesture. Six seconds of a lit orange panel is a lit
+                    // panel; the runner can also tap it away.
+                    flash(.fuel(index: i + 1, total: total), for: 6)
                 }
             }
         }
@@ -893,19 +922,13 @@ final class WorkoutEngine: ObservableObject {
         if shouldFire {
             didFireAlmostDone = true
             Haptics.almostDone()
-            // NO VISUAL, deliberately, and this is a gap rather than a fix.
-            //
-            // This used to flash `.headsUp`, which the router draws as the
-            // ease-off / pick-it-up correction — a board whose content is the
-            // band the runner is being held to. At a phase boundary that
-            // sentence is not true, and on a single-phase run with no
-            // prescribed band it rendered literally as "Band is /mi".
-            //
-            // The handoff's §4 has no board for "almost done"; its heads-up IS
-            // the correction. So rather than invent one, the cue stays haptic
-            // for now and the missing board is a question for David.
-            // `headsUpValue` — the remaining distance — is what it would carry.
-            _ = headsUpValue
+            // Its own cue now, carrying the remaining distance — which is what
+            // this comment block has said the flash should show since it was
+            // written ("a one-shot .headsUp flash with the remaining miles").
+            // It borrowed `.headsUp`, and the router drew that as the drift
+            // correction: a board naming the band, at a boundary where no band
+            // is being asked for.
+            flash(.almostDone(value: headsUpValue, unit: remainingUnit), for: 2.6)
         }
 
         // Live ending countdown (time-based reps). Fires for BOTH work
@@ -1021,7 +1044,12 @@ final class WorkoutEngine: ObservableObject {
             lastMileIndex = mileIndex
             noteMileBand(inBand: paceZone == .onTarget)
             Haptics.play(moment: .split)
-            flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 6.0)
+            // 3.0, not 6.0. The handoff gives a moment 2-3 seconds and this
+            // was the only cue that took double — noticeable now that a race
+            // splits every mile, where six seconds of every eight minutes had
+            // no pace on screen. Three reads at a glance is what the board is
+            // sized for.
+            flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 3.0)
         } else if mileIndex > lastMileIndex {
             // Suppressed the flash, but still advance the mile bookkeeping
             // so the NEXT split (when we leave the work phase) reads the
@@ -1875,25 +1903,15 @@ final class WorkoutEngine: ObservableObject {
         isPaused ? resume() : pause()
     }
 
-    /// Manual lap, from the steady-run controls. Banks the split internally
-    /// and marks it with a haptic.
-    ///
-    /// Deliberately does NOT fire a takeover: the engine's only split cue
-    /// reads "Mile N", and a lap the runner cut by hand is not a mile
-    /// boundary. Drawing one would be the first number on these boards that
-    /// is not a reading. The automatic mile splits are untouched — this
-    /// keeps its own bookkeeping so a manual lap cannot renumber them.
-    func lap() {
-        guard state == .running else { return }
-        lapCount += 1
-        lastLapElapsedSec = totalElapsedSec
-        // `.split` · the same family a mile boundary belongs to (a note
-        // about effort that has not changed), which is exactly what a lap
-        // the runner cut by hand is. Named through the moment vocabulary
-        // rather than the frozen legacy palette.
-        Haptics.play(moment: .split)
-        saveSnapshot()
-    }
+    // `lap()` was deleted 2026-08-24 with the Lap verb it existed for.
+    //
+    // Nothing could reach it: the controls board's steady-run slot is gone,
+    // because Lap was the one verb in this app whose effect the runner could
+    // not see — no board in the app draws a lap figure, so pressing it
+    // dismissed the controls and left every number on screen identical.
+    //
+    // The counters below stay: the automatic mile-split path writes them, and
+    // `lapElapsedSec` is the clock since the last one.
 
     /// Laps the runner cut by hand, and the clock at the last one.
     private(set) var lapCount: Int = 0

@@ -270,6 +270,49 @@ struct WMomentSplit: View {
     }
 }
 
+/// Almost done.
+///
+/// The last quarter mile of a distance phase — the end of an easy run, or a
+/// distance rep about to close.
+///
+/// THIS BOARD RESTORES SOMETHING THE ENGINE ALWAYS INTENDED. Its own comment
+/// describes the cue as "a one-shot `.headsUp` flash with the remaining miles
+/// (0.25 LEFT)", and the V6 router routed `.headsUp` to the drift correction
+/// instead — a board whose content is the band the runner is being held to,
+/// which is not true at a phase boundary and rendered literally as "Band is
+/// /mi" on a run with no band. The cue was then made haptic-only, so the
+/// runner felt a tap with nothing to read.
+///
+/// Time-based reps get the live 10→0 countdown instead. Distance does not get
+/// a live count on purpose: GPS jitter on the hundredths column makes it
+/// unstable, so distance gets one flash and time gets the tick.
+///
+/// The lowest-density board in the app, which is what rule 9 asks of a moment:
+/// one figure and one word.
+struct WMomentAlmostDone: View {
+    /// "0.25" · "0.03". The unit is baked in by the engine where it is not
+    /// miles, so this draws whatever it is given.
+    let value: String
+    /// "mi left" · "km left". NAMED, because the figure alone is ambiguous the
+    /// moment a runner reads in kilometres — and the engine used to compute
+    /// this one in miles whatever the preference said.
+    var unit: String = "mi left"
+
+    var body: some View {
+        WBoard {
+            WMomentFrame(spacing: 4) {
+                Text(value)
+                    .font(WatchV5.number(66))
+                    .foregroundStyle(WatchV5.value)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+
+                WKicker(text: unit, size: 13)
+            }
+        }
+    }
+}
+
 /// Fuel.
 ///
 /// RACE ONLY, from the plan's own gel points, and the one moment that takes a
