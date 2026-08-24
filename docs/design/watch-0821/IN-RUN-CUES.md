@@ -116,3 +116,64 @@ asymmetry should be a decision.
 **Manual laps are unreachable.** `markLap()` has no callers since the Lap verb
 was removed from controls, and `lapCount` / `lastLapElapsedSec` are still
 maintained for a lap nothing can cut.
+
+---
+
+## Recorded voice-over: tested, rejected — 2026-08-24
+
+**Do not re-attempt fragment stitching.** David listened to it and the answer
+was "the stitched one sounds really bad."
+
+The idea was to replace Apple's synthesiser with a real recorded voice (tested
+via Artlist AI VO, Eleven v3, voice "Suburb", American). It cannot work, and
+the reason is structural rather than a matter of finding a better voice or a
+better vendor.
+
+**A recorded voice cannot say a sentence that does not exist yet.** A vendor
+renders finished audio files ahead of time. The cues here are assembled at
+run time out of numbers nobody knows until the runner produces them, so the
+sentence has to be built on the wrist from parts.
+
+**Pre-rendering whole sentences is not a way out.** One mile-split line is
+mile number x pace x delta-to-goal — 26 x ~660 x ~240, low millions of clips.
+At even 30 KB a clip that is tens of gigabytes, against a watch app budget
+measured in tens of megabytes. Cost was never the constraint; single words
+came back at 1 credit each and the whole 99-word vocabulary is ~150 credits.
+Size and combinatorics are the constraint.
+
+**So the only option was stitching**, and stitching is what sounds bad. Each
+fragment is rendered in isolation, which gives every word sentence-final
+intonation — falling pitch, full stop. Glued together they read as a station
+announcement rather than a person. The A/B is preserved: one line rendered
+whole against the same line rendered as six words and concatenated.
+
+Two further problems that would have remained even if the seams had passed:
+
+- **Race course segment names are unbounded.** Cues like "Hurricane climb"
+  come from the course plan, cannot be pre-recorded, and would either go
+  silent or fall back to the synthesiser — two voices inside one race.
+- **Licensing is unresolved.** Artlist's terms cover voice-over in content.
+  Shipping their AI voice as bundled assets inside a distributed app is a
+  different use. Cheap to confirm before committing; expensive to unwind
+  after it is in a build.
+
+**What this leaves.** `AVSpeechSynthesizer`, which synthesises live and can
+therefore say anything. Its weakness is exactly the numbers this app speaks
+most, so the lever that remains is saying *less*, not saying it in a better
+voice.
+
+### The voice tier is a device fact, not a code choice
+
+Apple ships every watch the **Compact** tier. **Enhanced** and **Premium** are
+downloads, and Siri's own voice is closed to third-party apps. The watchOS
+26.5 simulator runtime contains **zero** `.ttsbundle` assets — voices arrive
+on demand — so the simulator cannot answer what a real wrist will sound like.
+**Confirm the installed tier on the device before judging the voice again.**
+What David heard was the floor.
+
+The selector now ranks **quality first** and uses his name preference only to
+break a tie inside a tier (`5d7eb4d5`). The version before it filtered to
+Samantha and only then took her best quality, which would have ignored a
+better voice installed under another name — a preference for the good voice
+that behaved as a preference for the bad one.
+
