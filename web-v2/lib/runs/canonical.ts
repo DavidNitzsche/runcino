@@ -438,7 +438,12 @@ export async function enhanceCanonicalFromAbsorbed(args: {
   if (typeof rpeRaw === 'number' && rpeRaw >= 1 && rpeRaw <= 10) {
     // Check if there's already an RPE row for this activity
     const existingRpe = (await pool.query(
-      `SELECT id FROM post_run_rpe WHERE user_uuid = $1 AND activity_id = $2 LIMIT 1`,
+      // A DEDUP READ, so narrowness fails OPEN: a miss here does not hide a
+      // row, it writes a SECOND one for the same run. Match both user
+      // columns for the same reason the writer does.
+      `SELECT id FROM post_run_rpe
+        WHERE (user_uuid = $1 OR user_id::text = $1::text) AND activity_id = $2
+        LIMIT 1`,
       [absorbedRow.user_uuid, canonicalId],
     )).rows[0];
     if (!existingRpe) {

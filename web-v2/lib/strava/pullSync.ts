@@ -498,7 +498,15 @@ export async function pullSyncOneUser(args: {
           const rpe = Math.round(payload.perceived_exertion);
           if (rpe >= 1 && rpe <= 10) {
             const existing = (await pool.query(
-              `SELECT id FROM post_run_rpe WHERE user_uuid = $1 AND activity_id = $2 LIMIT 1`,
+              // A DEDUP READ, so a miss fails OPEN and writes a SECOND row for
+              // a run the runner already answered. Match both user columns —
+              // user_id is TEXT and predates user_uuid, so a manually-logged
+              // row can carry 'me' and no uuid and be invisible here.
+              // The id spelling is still single and still a real gap; see the
+              // exemption in lib/runs/_identity_lint.test.ts.
+              `SELECT id FROM post_run_rpe
+                WHERE (user_uuid = $1 OR user_id::text = $1::text) AND activity_id = $2
+                LIMIT 1`,
               [userUuid, match.id],
             )).rows[0];
             if (!existing) {
