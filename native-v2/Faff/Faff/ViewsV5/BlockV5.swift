@@ -370,12 +370,24 @@ struct BlockV5: View {
     // A two-step contract, not a button: propose, read the trade-off, then
     // confirm or back out. See `PlanStage` below for the state machine.
 
-    private var sheetSubtitle: String {
-        if case .menu = stage {
-            return "Tell the coach and the block gets rewritten around it"
-        }
-        return "The coach has read the rest of the block"
-    }
+    /// THE SUBTITLE ONLY CLAIMS A READ THAT HAPPENED.
+    ///
+    /// This was `.menu` versus everything else, so every stage that is still
+    /// COLLECTING the question — the travel date range, which session moves,
+    /// which weekday to add, which race to add — sat under the sentence "The
+    /// coach has read the rest of the block". Nothing had been sent yet.
+    /// Seen on device: opening "I am away" shows a From/To picker and a
+    /// "Check these dates" button under a line saying the block had already
+    /// been read.
+    ///
+    /// The two refusal-shaped stages were wrong the same way for a different
+    /// reason. `refusalUpfront` comes out of the MENU payload — the engine
+    /// declined without reading anything — and `failed` is the coach not
+    /// being reachable at all, which is the one state where claiming a read
+    /// is furthest from true. That is the failure `V5OutageCopy` names in as
+    /// many words: a wrong-but-fluent sentence tells the runner we read
+    /// something we did not.
+    private var sheetSubtitle: String { stage.sheetSubtitle }
 
     @ViewBuilder
     private var planSheetBody: some View {
@@ -844,6 +856,52 @@ enum PlanStage: Equatable {
     case refused(V5Scenario, V5PlanChangeRefusal)
     /// Something broke, or the token went stale. `ErrorNote`.
     case failed(V5Scenario, V5PlanChangeRefusal)
+
+    /// Whether the coach has actually been asked anything yet at this stage.
+    ///
+    /// Only `proposed` and `refused` follow a real propose call. `menu` and
+    /// the four input stages are still collecting the question;
+    /// `refusalUpfront` was declined by the MENU payload without a call; and
+    /// `failed` is the coach not being reachable at all.
+    var coachHasRead: Bool {
+        switch self {
+        case .proposed, .refused: return true
+        case .menu, .refusalUpfront, .travelInput, .moveInput, .dayInput, .raceInput, .failed:
+            return false
+        }
+    }
+
+    /// THE SUBTITLE ONLY CLAIMS A READ THAT HAPPENED.
+    ///
+    /// This was `.menu` versus everything else, so every stage that is still
+    /// COLLECTING the question — the travel date range, which session moves,
+    /// which weekday to add, which race to add — sat under the sentence "The
+    /// coach has read the rest of the block". Nothing had been sent yet.
+    /// Seen on device: opening "I am away" shows a From/To picker and a
+    /// "Check these dates" button under a line saying the block had already
+    /// been read.
+    ///
+    /// The two refusal-shaped stages were wrong the same way for a different
+    /// reason. `refusalUpfront` comes out of the MENU payload — the engine
+    /// declined without reading anything — and `failed` is the coach not
+    /// being reachable at all, which is the one state where claiming a read
+    /// is furthest from true. That is the failure `V5OutageCopy` names in as
+    /// many words: a wrong-but-fluent sentence tells the runner we read
+    /// something we did not.
+    var sheetSubtitle: String {
+        switch self {
+        case .menu:
+            return "Tell the coach and the block gets rewritten around it"
+        case .travelInput, .moveInput, .dayInput, .raceInput:
+            return "Say what changed and the coach reads the block around it"
+        case .refusalUpfront:
+            return "This one the coach will not do, and why"
+        case .failed:
+            return "The coach could not be reached"
+        case .proposed, .refused:
+            return "The coach has read the rest of the block"
+        }
+    }
 }
 
 // MARK: - Block week row
