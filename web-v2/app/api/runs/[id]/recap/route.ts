@@ -137,9 +137,13 @@ export async function GET(
 
   const actualPaceSPerMi = runc.paceSecPerMi;
   const actualElapsedSec = runc.elapsedSec;
-  // Null rather than zero when the row carries no distance: `deriveRecap`'s
-  // own gates read 0 as "ran nothing", which is a different claim from "we do
-  // not know how far this was". No production row hits this today.
+  // `?? 0` is kept from the read this replaces, deliberately and not by
+  // inertia: `deriveRecap` and `deriveWin` both take `actualMi: number`, and
+  // widening that signature to nullable is a change to the recap ENGINE with
+  // its own blast radius, not to this route's reads. Worth knowing that the
+  // two are not the same claim — 0 says "ran nothing", null would say "we do
+  // not know how far this was" — but no canonical row in production reaches
+  // it: all 256 carry a distance the reconciler accepts.
   const actualMi = runc.distanceMi ?? 0;
   const actualAvgHr = runAvgHr(data as RunData);
   const actualMaxHr = runMaxHr(data as RunData);
