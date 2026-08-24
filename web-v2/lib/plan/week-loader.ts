@@ -164,6 +164,64 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
     // Best-effort · skip indicator just won't show this week.
   }
 
+  const days = shapePlanWeekDays(rows as PlanWorkoutRow[], {
+    weekStart,
+    today,
+    actualByDate,
+    skippedDates,
+  });
+
+  return {
+    plan_id: plan.id,
+    week_start_iso: weekStart,
+    week_end_iso: weekEnd,
+    today_iso: today,
+    days,
+  };
+}
+
+/** One `plan_workouts` row, as the week window selects it. */
+export interface PlanWorkoutRow {
+  id: string;
+  date_iso: string;
+  dow: number;
+  type: string;
+  distance_mi: number | string;
+  sub_label: string | null;
+  notes?: string | null;
+}
+
+/**
+ * THE AUTHORED WEEK BECOMES THE WEEK THE RUNNER SEES, HERE.
+ *
+ * Extracted 2026-08-24 so it can be driven with no database. Byte-identical
+ * logic; `loadPlanWeek` above is now its only production caller.
+ *
+ * It exists as a seam because two of its rules LOSE information, and losing
+ * information is exactly the kind of step a conservation harness has to be
+ * able to stand at:
+ *
+ *   · THE COLLAPSE. Two rows on one date become one day. The loser survives
+ *     only as `secondaryRun`, carrying type, label and distance — its spec,
+ *     its pace target and its quality flag do not come back. A day authored
+ *     twice can be shown once.
+ *   · THE SYNTHESIS. Seven days are emitted whether or not a row exists, and
+ *     a missing one is rendered as REST. A rest day the engine never authored
+ *     is indistinguishable on the strip from one it did.
+ *
+ * Both are deliberate and both are correct for the screen. Neither was
+ * observable from outside this function until now.
+ */
+export function shapePlanWeekDays(
+  rows: PlanWorkoutRow[],
+  ctx: {
+    weekStart: string;
+    today: string;
+    actualByDate: Map<string, { mi: number; id: string | null }>;
+    skippedDates: Set<string>;
+  },
+): PlanWeekDay[] {
+  const { weekStart, today, actualByDate, skippedDates } = ctx;
   const TYPE_PRIORITY: Record<string, number> = {
     race: 6, long: 5,
     intervals: 4, tempo: 4, threshold: 4, quality: 4, repetition: 4, fartlek: 4,
@@ -230,11 +288,6 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
     };
   });
 
-  return {
-    plan_id: plan.id,
-    week_start_iso: weekStart,
-    week_end_iso: weekEnd,
-    today_iso: today,
-    days,
-  };
+
+  return days;
 }

@@ -347,7 +347,22 @@ export function dayStateWordFor(plannedType: string | null | undefined): V5DaySt
  *  The prescription is not lost by rejecting it here — it is what `groups`
  *  (Warm up / Work / Cool down) renders directly below, in full, at body size.
  *  The headline's job is to name the day. */
-const PRESCRIPTION_SHAPE = /[@×+/]|\b(?:WU|CD)\b|\d\s*(?:mi|km|m|s|min|sec)\b|·|\.\s|\d\s*x\s*\d/i;
+/*  2026-08-24 · THE PARENTHETICAL IS NOW REJECTED HERE, AT RUN TIME.
+ *
+ *  The note above says `_sublabel_voice.test.ts` covers `EASY (MEDIUM)`. It
+ *  does, but only as a SOURCE SCAN: it looks for `subLabel: '…'` single-quoted
+ *  literals in three files. A parenthetical assembled in a template literal,
+ *  rendered by `catalogue-rx.renderPrescription`, or carried in a trajectory
+ *  step's `label` never appears as a literal in those three files and walks
+ *  past it — and then past this gate too, because nothing here objected to a
+ *  bracket. `subLabelIsName('EASY (MEDIUM)')` returned true, and the phone
+ *  drew "Easy (medium)" at 56 points.
+ *
+ *  A run-time gate and a source scan are not substitutes for one another. The
+ *  scan catches the label before it is written; this catches it however it was
+ *  made. No label in the live table carries a bracket — the census returns
+ *  zero rows for `sub_label ~ '\('` — so nothing legitimate is lost. */
+const PRESCRIPTION_SHAPE = /[@×+/()[\]]|\b(?:WU|CD)\b|\d\s*(?:mi|km|m|s|min|sec)\b|·|\.\s|\d\s*x\s*\d/i;
 
 /** The display budget for a one-line 56pt headline. "CRUISE INTERVALS" (16) is
  *  the longest name the generator writes and the longest that holds the line

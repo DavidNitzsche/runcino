@@ -27,6 +27,7 @@ import {
   type MergedTwin,
   type RaceForMatch,
 } from '@/lib/runs/log-enrich';
+import { runFacts } from '@/lib/runs/run-facts';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 // THE one enum-to-word table. Imported, never restated — see `type_display`.
@@ -584,16 +585,25 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     }
   })();
 
-  // Pace — prefer formatted, else derive from seconds.
-  const paceSPerMi = Number(r.paceSPerMi) || null;
-  const pace = r.avgPaceMinPerMi
-    || r.pace
-    || fmtPace(paceSPerMi)
-    || null;
-
-  // Moving / elapsed time
-  const movingSec  = Number(r.movingTimeS) || Number(r.duration_sec) || null;
-  const elapsedSec = Number(r.elapsedTimeS) || Number(r.duration_sec) || null;
+  // DISTANCE, CLOCK AND PACE, READ AS ONE SET.
+  //
+  // These were three independent reads and each was wrong in its own way.
+  // `paceSPerMi` took the stored key without checking it against the row's own
+  // clock — on 2026-08-23 that key held 3:37/mi for an eleven-mile run. And
+  // both time reads named `duration_sec`, in snake_case, which is a key that
+  // exists on ZERO rows: the census spells it `durationSec`. On the 24
+  // canonical rows whose only clock IS `durationSec`, both of these resolved
+  // to null and run detail fell through to a pre-formatted display string —
+  // the same string that once rendered a 1h42m half as "102:33".
+  //
+  // Run detail prints the moving clock, so its pace is the moving pace.
+  const facts = runFacts(r, { basis: 'moving' });
+  const paceSPerMi = facts.paceSecPerMi;
+  // The stored display strings are the LAST resort now, not the first. A
+  // string another writer formatted cannot be checked against anything.
+  const pace = fmtPace(paceSPerMi) || r.avgPaceMinPerMi || r.pace || null;
+  const movingSec = facts.timeSec;
+  const elapsedSec = facts.elapsedSec;
 
   // Splits — normalize various source shapes. Per-split `phase` tag is
   // filled in after phaseBreakdown loads (a few lines down) · null here
@@ -729,8 +739,12 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     userId,
     stravaCalories: Number(r.calories) || null,
     startLocal: r.startLocal as string | null,
-    movingTimeS: Number(r.movingTimeS) || Number(r.durationSec) || Number(r.elapsedTimeS) || 0,
-    distanceMi: Number(r.distanceMi) || 0,
+    // A FOURTH ladder over the same four keys lived here, in a different
+    // order again, inside the same function as the three above. The calorie
+    // estimate and the health-sample window it opens are now measured against
+    // the same clock the screen prints.
+    movingTimeS: movingSec ?? 0,
+    distanceMi: facts.distanceMi ?? 0,
     avgHr: Number(r.avgHr) || null,
   });
 
@@ -953,7 +967,8 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     // only source there is.
     type_display: displayTypeFor(plannedRow?.type ?? r.type ?? null, planned_sub_label),
 
-    distance_mi: Number(r.distanceMi) || 0,
+    // Same set as `pace` and `time_moving` above, so the three agree.
+    distance_mi: facts.distanceMi ?? 0,
     pace, pace_s_per_mi: paceSPerMi,
     // ─────────────────────────────────────────────────────────────────
     // THE SECONDS ARE THE FACT; THE STRING IS SOMEONE ELSE'S FORMATTING

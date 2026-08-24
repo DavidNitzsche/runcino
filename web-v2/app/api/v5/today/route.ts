@@ -36,6 +36,7 @@ import { deriveWin } from '@/lib/coach/run-win';
 import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 import { runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
+import { runFacts } from '@/lib/runs/run-facts';
 import { beltAverages } from '@/lib/runs/belt-averages';
 import { loadPaceZoneEvent } from '@/lib/plan/pace-drop-event';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
@@ -565,9 +566,17 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     if (runRow) {
       const data = runRow.data ?? {};
       const indoor = data.indoor === true || data.source === 'treadmill';
-      const distanceMi = Number(data.distanceMi) || 0;
-      const durationSec = Number(data.durationSec) || Number(data.movingTimeS) || Number(data.elapsedTimeS) || null;
-      const paceSPerMi = Number(data.paceSPerMi) || (durationSec && distanceMi ? durationSec / distanceMi : null);
+      // The poster prints the ELAPSED clock beside the distance, so its pace
+      // is the elapsed pace. Read as a set rather than key by key: this block
+      // used to take `data.paceSPerMi` on its own, and on 2026-08-23 that key
+      // held a Strava moving pace of 3:37/mi stamped onto a row whose own
+      // `durationSec` said 8:01. The poster printed `11.0 mi · 1:28:18 ·
+      // 3:37/mi` — three numbers that cannot all be true — and the recap
+      // below, which reads the same variables, repeated it in prose.
+      const facts = runFacts(data, { basis: 'elapsed' });
+      const distanceMi = facts.distanceMi ?? 0;
+      const durationSec = facts.timeSec;
+      const paceSPerMi = facts.paceSecPerMi;
 
       // The watch's own completion payload for this day.
       //
