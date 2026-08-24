@@ -310,25 +310,28 @@ struct RootContainer: View {
                     }
                 })
             case .onboarding:
-                OnboardingView(onComplete: { outcome in
-                    complete(deepHealthImport: true)
-                    // Route to the chosen next step. RootTabView + TargetsView
-                    // are created synchronously when .main mounts (behind the
-                    // splash), so they're already listening; the short delay
-                    // just lets the splash crossfade finish before the setup
-                    // sheet presents.
-                    switch outcome {
-                    case .justRun:
-                        break
-                    case .setupGoal, .setupRace:
-                        let name: Notification.Name = outcome == .setupRace
-                            ? .faffOpenRaceSetup : .faffOpenGoalSetup
-                        Task { @MainActor in
-                            try? await Task.sleep(nanoseconds: 1_100_000_000)
-                            NotificationCenter.default.post(name: name, object: nil)
-                        }
-                    }
-                })
+                // ── THE FRONT DOOR IS THE V5 DECK ───────────────────────
+                //
+                // `fb04496e` (2026-08-20) is titled "…and v5 onboarding
+                // finally runs." It did not. This line still built
+                // `OnboardingView`, so the whole five-step v5 flow —
+                // `OnboardingStepScaffold`, `GoalDateField`,
+                // `OnboardingRevealPanel`, and the rung-snapping that stops
+                // `/api/onboarding/complete` silently dropping an illegal
+                // mileage — was complete, tested and unreachable. A new
+                // signup's first impression was the design the rest of the
+                // app replaced.
+                //
+                // THE OUTCOME ROUTING IS GONE BECAUSE V5 DOES NOT DEFER.
+                // The v4 deck finished without a plan and posted
+                // `.faffOpenGoalSetup` / `.faffOpenRaceSetup` so a sheet could
+                // finish the job a moment after the splash. `OnboardingHostV5`
+                // submits to `/api/onboarding/complete` itself — its own
+                // docstring is "fired once the runner has a plan and has seen
+                // day one" — so there is nothing left to hand off. Keeping the
+                // notifications would open a setup sheet over a plan that
+                // already exists.
+                OnboardingHostV5(onDone: { complete(deepHealthImport: true) })
             case .main:
                 // ── THE PHONE ───────────────────────────────────────────
                 //
