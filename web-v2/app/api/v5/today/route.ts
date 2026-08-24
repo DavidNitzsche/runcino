@@ -609,7 +609,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   const ranToday = glanceToday && glanceToday.doneMi >= 0.5;
   if (ranToday) {
     const runRow = (await pool.query<{ id: string; data: Record<string, any> }>(
-      `SELECT id::text AS id, data FROM runs
+      `SELECT id::text AS id, data, shoe_id FROM runs
         WHERE user_uuid = $1 AND ${runNotMergedSql()}
           AND ${runDaySql()} = $2
         ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
@@ -790,9 +790,28 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
 
       const shoes = await loadShoes(userId);
       const shoeType = planTypeToShoeType(todayPlan?.type ?? null);
-      const shoeRow = data.shoe_id != null
-        ? shoes.find((s) => String(s.id) === String(data.shoe_id)) ?? recommendShoe(shoes, shoeType)
-        : recommendShoe(shoes, shoeType);
+      // THE SHOE HE ACTUALLY WORE, or nothing.
+      //
+      // This read `data.shoe_id` — the jsonb key — which is NULL on every row
+      // in the database. The assignment lives in the `shoe_id` COLUMN, which
+      // the query did not even select. So the expression fell through to
+      // `recommendShoe` every single time, and the card printed a
+      // RECOMMENDATION under a heading that says "Shoes you wore".
+      //
+      // He picked Asics Superblast 3 today; the column says 2, the pick
+      // landed, and the card went on showing Novablast 5 — a suggestion the
+      // engine made, rendered as a fact about his morning. That is rule one
+      // with the labels swapped: not a modelled number looking measured, but
+      // a modelled OBJECT looking observed.
+      //
+      // A recommendation belongs on the BEFORE-run screen, where it is a
+      // suggestion about a run not yet taken. After the run there is only
+      // what was worn, and "we don't know" is the honest answer when nothing
+      // was assigned — the row then offers the picker instead of asserting.
+      const assignedShoeId = runRow.shoe_id ?? data.shoe_id ?? null;
+      const shoeRow = assignedShoeId != null
+        ? shoes.find((sh) => String(sh.id) === String(assignedShoeId)) ?? null
+        : null;
 
       const recentRun: V5RecentRunCtx = {
         runId: runRow.id,

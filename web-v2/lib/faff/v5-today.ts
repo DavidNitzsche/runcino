@@ -1029,7 +1029,16 @@ function buildRecentRun(r: V5RecentRunCtx): {
 
   const panelKicker = r.indoor ? 'Treadmill · indoor, no GPS' : null;
 
-  const shoesWorn: V5Row | null = r.shoeWorn
+  // NOTHING ASSIGNED IS A STATE, NOT AN ABSENCE.
+  //
+  // The row used to be built only when a shoe was known, so a run with no
+  // assignment lost the whole section — and with it the only way to say which
+  // pair it was. It now draws with the question unanswered and the picker
+  // attached, which is the honest-degrade half of rule three: a refusal that
+  // still lets the runner act.
+  const shoesWorn: V5Row | null = (r.shoeWorn == null && (r.shoeOptions ?? []).length > 0)
+    ? { id: 'shoe-unknown', label: 'Not recorded', sub: 'Pick the pair you wore', value: null, action: 'change_shoe' }
+    : r.shoeWorn
     // RULE THREE, the honest-degrade half, and the distinction is on the
     // INPUT rather than on `fmtMi`'s output.
     //
