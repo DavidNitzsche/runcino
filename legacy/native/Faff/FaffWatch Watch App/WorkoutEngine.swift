@@ -994,7 +994,24 @@ final class WorkoutEngine: ObservableObject {
             && currentPhase?.isFinishSegment == false
             && workout.phases.contains { $0.isFinishSegment }
         let mileIndex = Int(coveredMi)
-        let allowSplitFlash = currentPhase?.type != .work || isEasyBandSingleWork || isLongBuildPhase
+        // A RACE ALWAYS SPLITS.
+        //
+        // This gate exists so a mile boundary does not take the screen in the
+        // middle of a 400m rep, and it asks "is this a work phase" — which is
+        // the right question for an interval session and the wrong one for a
+        // race, because a race's course segments are ALSO typed `.work`.
+        //
+        // A marathon therefore failed every exemption: several work phases, so
+        // not `isEasyBandSingleWork`; no finish segment, so not
+        // `isLongBuildPhase`. `allowSplitFlash` was false for the entire race
+        // and every mile passed in silence — no board and no haptic, because
+        // both live inside this branch. The single most-wanted number in a
+        // marathon was the one thing the watch would not say.
+        //
+        // A course segment is not a rep. The distinction the gate wants is
+        // "am I in a short effort I should not interrupt", and a race never is.
+        let allowSplitFlash = isRace || currentPhase?.type != .work
+            || isEasyBandSingleWork || isLongBuildPhase
         if allowSplitFlash, mileIndex > lastMileIndex {
             // If GPS jumps multiple integers in one tick (rare, e.g. a sim
             // teleport), we only flash the most-recent mile rather than
@@ -1021,7 +1038,13 @@ final class WorkoutEngine: ObservableObject {
         if isRace, let gels = workout.gelsMi, !gels.isEmpty {
             for (i, mark) in gels.enumerated() where coveredMi >= mark && !firedGels.contains(i) {
                 firedGels.insert(i)
-                Haptics.almostDone()
+                // The FUEL texture, not almostDone. Race day fired the
+                // "your effort is nearly over" tap at mile 8 of a marathon —
+                // the training path two hundred lines up uses `.fuel`, and the
+                // two paths differ only in what triggers them (elapsed time
+                // for training, aid-station miles for a race). The cue itself
+                // is one idea and should feel like one.
+                Haptics.play(moment: .fuel)
                 // Auto-clears (6 s, generous but bounded) — mid-race the
                 // pace face must come back on its own; see flash() doc.
                 flash(.fuel(index: i + 1, total: gels.count), for: 6)
