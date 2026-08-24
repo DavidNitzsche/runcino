@@ -207,12 +207,20 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
   // /api/race fires the auto-rebuild hook when this changes (A↔B/C).
   const [priority, setPriority] = useState<'A' | 'B' | 'C'>(r.priority ?? 'A');
   // 2026-05-30: post-race retro state. Hero swaps to a result card when
-  // race.isPast — finishTime free-text edit (HMS) + PB toggle persist to
-  // races.actual_result via PATCH /api/race.
+  // race.isPast — finishTime free-text edit (HMS) + PB toggle.
+  //
+  // CORRECTED 2026-08-24 · the comment here used to say the finish time
+  // "persist[s] to races.actual_result via PATCH /api/race". It did not:
+  // that route only ever wrote `meta.finishTime`, the losing rung. The edit
+  // now goes through POST /api/race/result, which writes both. See
+  // `commitFinish`. The PB toggle below is genuinely a meta field and
+  // correctly stays on PATCH.
   const [finishTime, setFinishTime] = useState(r.finishTime ?? '');
   const [pb, setPb] = useState(r.pb);
   const [savingFinish, setSavingFinish] = useState(false);
   const [finishAck, setFinishAck] = useState<'saved' | 'error' | null>(null);
+  /** A refused edit, said in a line. Null when there is nothing to say. */
+  const [finishNote, setFinishNote] = useState<string | null>(null);
   // 2026-06-02 · GPX upload. Triggers a hidden <input type="file">, POSTs
   // multipart/form-data to /api/race/gpx, then router.refresh() so the new
   // routePath + course annotations land without a hard reload.
@@ -315,19 +323,85 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
     return () => clearTimeout(t);
   }, [autoRebuildToast]);
 
+  /**
+   * Record a corrected chip time.
+   *
+   * ── WHY THIS DOES NOT PATCH `meta.finishTime` ──────────────────────────
+   *
+   * It used to. `PATCH /api/race` writes `races.meta.finishTime` and nothing
+   * else (`app/api/race/route.ts:332`, the retro passthrough loop), and
+   * `meta.finishTime` is the LOSING rung of every read ladder in the app:
+   * `races-state.ts`, `personal-records.ts`, `vdot-inputs.ts`, `goal-gap.ts`,
+   * `v5/paces`, `goal-projection.ts` and `voice-band.ts` all take
+   * `actual_result.finishS` first and only fall to meta when it is absent.
+   *
+   * Measured over production 2026-08-24 (`faff_readonly`): of 18 races, six
+   * carry `actual_result.finishS` and FIVE of those six carry no
+   * `meta.finishTime` at all. So on five of six finished races this editor
+   * said "saved", wrote a row, and changed nothing any surface reads. The
+   * PR table, the VDOT input and the goal gap all kept the old time.
+   *
+   * `POST /api/race/result` is the write that lands: one statement, both
+   * rungs, `actual_result` merged Rule-6 style and `meta.finishTime` mirrored
+   * beside it, then the post-result chain (projection snapshots, the VDOT
+   * coach intent, the plan archive) that a corrected time should re-run.
+   *
+   * That endpoint is also the one that stamps `source: 'manual'` and
+   * `provisional: false`, which is what CLAUDE.md's race-data rule requires:
+   * a curated chip time must beat an auto-logged watch result rather than
+   * sit beside it under a name that reads the same.
+   */
   async function commitFinish(text: string) {
     const trimmed = (text || '').trim();
-    // Normalize anything HMS-shaped to canonical H:MM:SS. Empty clears it.
-    const normalized = trimmed === '' ? null : (parseHMS(trimmed) > 0 ? fmtHMS(parseHMS(trimmed)) : trimmed);
-    setFinishTime(normalized ?? '');
+    const secs = parseHMS(trimmed);
+
+    // ── REFUSALS ────────────────────────────────────────────────────────
+    // Both of these used to "save": the old path would PATCH arbitrary text
+    // straight into `meta.finishTime`, or null it while `actual_result` kept
+    // the real time. Neither did what the acknowledgement claimed.
+    if (trimmed === '') {
+      // Clearing is not something this app can do. There is no path in
+      // web-v2 that erases an `actual_result`, and blanking only the meta
+      // mirror would leave every reader still showing the old time under an
+      // apparently empty field. Say so rather than acknowledge a no-op.
+      setFinishTime(r.finishTime ?? '');
+      setFinishNote('A recorded finish time cannot be cleared here. Type the correct time over it.');
+      setTimeout(() => setFinishNote(null), 5000);
+      return;
+    }
+    if (secs <= 0) {
+      setFinishTime(r.finishTime ?? '');
+      setFinishNote('That is not a time. Use h:mm:ss, for example 1:41:53.');
+      setTimeout(() => setFinishNote(null), 5000);
+      return;
+    }
+
+    const normalized = fmtHMS(secs);
+    setFinishTime(normalized);
     setSavingFinish(true);
-    const { ok, recalc } = await patchRace(r.slug, { finishTime: normalized });
+    let ok = false;
+    let recalc: RecalcResult | null = null;
+    try {
+      const res = await fetch('/api/race/result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: r.slug, finishS: secs }),
+      });
+      ok = res.ok;
+      if (ok) {
+        const j = await res.json().catch(() => ({}));
+        if (j?.vdotAfter != null) {
+          recalc = { vdotBefore: j.vdotBefore ?? null, vdotAfter: j.vdotAfter };
+        }
+      }
+    } catch { ok = false; }
     setSavingFinish(false);
     setFinishAck(ok ? 'saved' : 'error');
     setTimeout(() => setFinishAck(null), 1800);
-    if (recalc && (recalc.vdotAfter != null || recalc.lthrAfter != null)) {
-      setRecalcToast(recalc);
-    }
+    if (recalc) setRecalcToast(recalc);
+    // The correction changed the authoritative result, so every surface that
+    // reads it is now stale on this client.
+    if (ok) router.refresh();
   }
   async function commitPb(next: boolean) {
     setPb(next);
@@ -495,6 +569,15 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
                 {finishAck === 'saved' && <span style={{ marginLeft: 8, color: 'var(--green)' }}> · saved</span>}
                 {finishAck === 'error' && <span style={{ marginLeft: 8, color: 'var(--over)' }}> · retry</span>}
               </div>
+              {/* A refused edit says what it refused and why. Previously both
+                  of these cases acknowledged "saved" and wrote a row nothing
+                  reads — the blank-out in particular left every surface still
+                  showing the old time under an empty field. */}
+              {finishNote && (
+                <div className="rp-countl" style={{ marginTop: 6, color: 'var(--mute)', textTransform: 'none', letterSpacing: 0 }}>
+                  {finishNote}
+                </div>
+              )}
               {/* 2026-08-17 · provenance honesty. A watch-auto-written or
                   run-matched finish is labeled provisional with a one-tap
                   confirm (POST /api/race/result). Correct it by editing the

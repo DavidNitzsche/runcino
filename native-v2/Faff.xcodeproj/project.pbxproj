@@ -177,6 +177,7 @@
 		D4E3F4875BAFEC6F6D5FDCC7 /* HRAlerter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EABD5D3321534861E82F02 /* HRAlerter.swift */; };
 		D59C57B5BFC8646851663ABF /* I_RunDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEB309AB7B2E3BF539872275 /* I_RunDetail.swift */; };
 		D750DCF6D7FC785D59A8C918 /* ValuesV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = C62B9760D4B508FC2FF8DBD0 /* ValuesV5.swift */; };
+		D890CBD5BB89DD7C8418A0D5 /* _SplitsDecompositionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5714B50567FAC68FA7473384 /* _SplitsDecompositionTests.swift */; };
 		D92EA33FB4285F4A8AB859C9 /* NotificationsAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9DA4E35CB6828B2EA70A434 /* NotificationsAppDelegate.swift */; };
 		DB7051BAA1747F4009026BA6 /* HowItWentPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A69925035C6326F0327A2787 /* HowItWentPanel.swift */; };
 		DCE2223693C29FA234BD04EE /* H_Race.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ABD39EA42BBBD797873A1DE /* H_Race.swift */; };
@@ -344,6 +345,7 @@
 		52B5E856FFADC87375561C98 /* TodayAfterV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayAfterV5.swift; sourceTree = "<group>"; };
 		55518C844B260CE6FDF06C5C /* RaceEditSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaceEditSheet.swift; sourceTree = "<group>"; };
 		563BE14031D81E39DC6ED1EB /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fonts; path = Faff/Faff/Resources/Fonts; sourceTree = SOURCE_ROOT; };
+		5714B50567FAC68FA7473384 /* _SplitsDecompositionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = _SplitsDecompositionTests.swift; sourceTree = "<group>"; };
 		574046EFA57DAA5E3FA61AB5 /* FaffWatch Widgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "FaffWatch Widgets.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		58ADF42EDED4C71FB0AD2CDD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		5A39B98C5EC62375867B3D43 /* Faff.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Faff.entitlements; sourceTree = "<group>"; };
@@ -514,6 +516,7 @@
 		0A0B437F099D018266433028 /* FaffTests */ = {
 			isa = PBXGroup;
 			children = (
+				5714B50567FAC68FA7473384 /* _SplitsDecompositionTests.swift */,
 				0BBD87A2B7AEEDE1D12808EB /* BeltTrackerTests.swift */,
 				58ADF42EDED4C71FB0AD2CDD /* Info.plist */,
 				FA3B687F7BD1375763E551FE /* NetworkFence.swift */,
@@ -1100,6 +1103,7 @@
 				82507340C4146ED7B38C2832 /* V5PostRunSurfacesTests.swift in Sources */,
 				1E2A914A6F9494BD4D0F69E4 /* V5RaceStatsColumnsTests.swift in Sources */,
 				FCE849E5CE19B79865639C37 /* WatchRelayQueueTests.swift in Sources */,
+				D890CBD5BB89DD7C8418A0D5 /* _SplitsDecompositionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

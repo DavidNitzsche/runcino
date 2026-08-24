@@ -62,8 +62,19 @@ import { mergePreserve } from '@/lib/runs/merge-safe';
 const EXEMPT: Record<string, string> = {
   'SPLITS_DO_NOT_SUM · merged-disagree':
     'REAL, AND IT IS IN THE DATA. The production row for 2026-08-23 stores `distanceMi` 11.01 and twelve splits summing to 11.88 — eleven whole miles and a 0.879 remainder — against a run the same row says was 11.01 miles. Header and split list disagree by 7.9%, and a runner scrolling run detail can see it. The cause is in split derivation rather than in any reader, so it is reported here and fixed there. Whoever fixes it deletes this line.',
-  'SURFACES_ROUND_DIFFERENTLY · legacy-movingsec':
-    'REAL, AND COSMETIC. 3.05 miles reads as "3.1 mi" on the poster and "3.0 mi" in the recap, because `fmtMi` in lib/faff/v5-today.ts rounds half up and the recap\'s own formatter does not. Two screens, two numbers, one run. There are 48 pace and duration formatters in this repo and no canonical module; this is one symptom of that and belongs to consolidating them, not to a correctness fix landed beside it.',
+  // DELETED 2026-08-24 · 'SURFACES_ROUND_DIFFERENTLY · legacy-movingsec'.
+  //
+  // It read: 3.05 miles renders "3.1 mi" on the poster and "3.0 mi" in the
+  // recap, and belongs to consolidating the repo's formatters rather than to
+  // a correctness fix landed beside it. That consolidation happened —
+  // `lib/format/run.ts` is now the one rule, `lib/format/_format_lint.test.ts`
+  // polices it, and the poster, recap, log, run detail and both briefing
+  // surfaces read through it. This law stopped firing, so the entry goes,
+  // which is the staleness contract working as designed.
+  //
+  // The count in that note was low: the sweep found 132 named formatters,
+  // not 48, plus ~35 inline. 67 files are still on the migration queue and
+  // are listed with reasons in the format lint's own allowlist.
 };
 
 /**

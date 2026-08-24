@@ -21,6 +21,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import type { WorkoutSpec } from '@/lib/faff/types';
 import { heatAdjustedStatus } from './heat-band';
+import { roundTo } from '@/lib/format/run';
 
 export interface GlanceWeekDay {
   date: string;            // ISO YYYY-MM-DD
@@ -408,7 +409,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       plannedType: planRow?.type ?? (plan ? 'rest' : 'unplanned'),
       plannedLabel: planRow?.sub_label ?? null,
       plannedSpec,
-      doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
+      doneMi: actual ? roundTo(actual.mi, 1) : 0,
       activityId: actual?.id ?? null,
       isToday: date === today,
       isPast: date < today,
@@ -417,7 +418,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   });
 
   // Week done — sum from weekDays we already loaded
-  const weekDone = Math.round(weekDays.reduce((s, d) => s + d.doneMi, 0) * 10) / 10;
+  const weekDone = roundTo(weekDays.reduce((s, d) => s + d.doneMi, 0), 1);
 
   // Sleep
   const sleep = (await pool.query(
