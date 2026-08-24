@@ -41,6 +41,7 @@
 		303AD12FAA2419ECDCF2D562 /* V5ContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE82F287C2BEA6D3A6A74D35 /* V5ContractTests.swift */; };
 		30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2B62D9179AAC7D41426156 /* FaffApp.swift */; };
 		335EB81D74D63A27EC090AF5 /* BeltTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 176915BD59E5A612696563E5 /* BeltTracker.swift */; };
+		336FE9D364D8CE5D40A570AC /* FaffSmartStackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB61CC30CD62C9D33A506E4 /* FaffSmartStackView.swift */; };
 		36B9DFECC527B9516F2E9D87 /* AppCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = E642C82A6F2C85D02FB33076 /* AppCache.swift */; };
 		389B0803B48A9E1E69A77F7E /* GlossarySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81788CFF9C25B33E02A88C61 /* GlossarySheet.swift */; };
 		38DC900855E6F660E50D1865 /* OFL-Archivo.txt in Resources */ = {isa = PBXBuildFile; fileRef = F837D3062179A0805C934482 /* OFL-Archivo.txt */; };
@@ -70,6 +71,7 @@
 		4CACFB0EB456705EF1BAABB5 /* FaffPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADEF9EEB865458FD9FBA9054 /* FaffPayloads.swift */; };
 		4CBB899AC37AB8C338E36E6E /* TodayAfterV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B5E856FFADC87375561C98 /* TodayAfterV5.swift */; };
 		4E88DDDEE13FBFC793505EDE /* G_Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE323D928DA355934197F38B /* G_Settings.swift */; };
+		50AB24CF8800755A3B9CCA79 /* FaffComplicationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B9D4547CDA7A3180224CA48 /* FaffComplicationViews.swift */; };
 		5145860E3D5DA3AF58559C74 /* WatchMirrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E500ED606917B273FF2A51 /* WatchMirrorView.swift */; };
 		528D47BC25D2A7F0CDB54874 /* SurfaceStoreV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = B817BE00E8380E26CE5AC512 /* SurfaceStoreV5.swift */; };
 		533CAEF551723F2A36BFBA9C /* FaffWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2606EFDB59295AF72C865CB /* FaffWidgetSnapshot.swift */; };
@@ -82,6 +84,7 @@
 		5CC15617CBD77E60E78F0B75 /* ShoeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADD08DB3E4484B1FC6C0C0F8 /* ShoeView.swift */; };
 		5E96515E4E3AEB50C7224C2F /* TargetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89D7554D68355339D82D6F51 /* TargetsView.swift */; };
 		621F3BF05BA2F7DBEAAD2033 /* J_CoachVerdict.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED073449FE88CA9532AFF720 /* J_CoachVerdict.swift */; };
+		63C6AC43E35C1C167EF6CBDF /* _FacePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 997FEBC00F6B932860648500 /* _FacePreview.swift */; };
 		650D0C3ED3CEC1CA9863BC0C /* TodayChangedV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0124D264EEFDA136F90DDA /* TodayChangedV5.swift */; };
 		661A5023FC889EDA87B6F560 /* Fonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E27550579AE4BDFA95531DD /* Fonts.swift */; };
 		69DC55B9E2B4A094BCF9B2D1 /* PhoneRunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAA1CCA3DF5D33860D0F8DA9 /* PhoneRunView.swift */; };
@@ -144,6 +147,7 @@
 		B7A4614D920CC943C7E2CEB4 /* HealthSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1BECCB43A8C9B865BBDCA7 /* HealthSeed.swift */; };
 		BB4BDF90BCB0400D90CCC711 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = 563BE14031D81E39DC6ED1EB /* Fonts */; };
 		BD055CFEF09795F990AD96F3 /* Watch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E036C5FD2EC231D2FCDC1A /* Watch.swift */; };
+		BDCBA5E2AE44B58C6AD6AE10 /* FaffWidgetContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E20B32808244C5EC8C98C05 /* FaffWidgetContent.swift */; };
 		BE16EF93C69109B2763FC577 /* GalleryV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4141967D7277D2DF4252A9A /* GalleryV5.swift */; };
 		BE1AE0E4AC08E6B55B1B87D7 /* StravaOAuthSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC9DAF37D0E9B3DAE9FFDF1 /* StravaOAuthSession.swift */; };
 		BF345B2841440AC313D24867 /* WatchKitV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB189A1C29F682554E49956 /* WatchKitV5.swift */; };
@@ -371,6 +375,7 @@
 		91C95506B64A47635328790C /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fonts; path = "Faff/FaffWatch Watch App/Fonts"; sourceTree = SOURCE_ROOT; };
 		95083B2C82E448D42B6FAF88 /* BlockV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockV5.swift; sourceTree = "<group>"; };
 		9883A181E1656DBDC8F3FAFC /* Tips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tips.swift; sourceTree = "<group>"; };
+		997FEBC00F6B932860648500 /* _FacePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = _FacePreview.swift; sourceTree = "<group>"; };
 		9BE2FACB96AFFAE039358E11 /* StravaReconnectBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaReconnectBanner.swift; sourceTree = "<group>"; };
 		9CF1EF57B25870ED0684678F /* ReadinessBriefSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSeed.swift; sourceTree = "<group>"; };
 		9DBDD89E184A2A60C766D18F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -587,6 +592,7 @@
 		8E817150E79B4BCF0540B7B1 /* FaffWatch Watch App */ = {
 			isa = PBXGroup;
 			children = (
+				997FEBC00F6B932860648500 /* _FacePreview.swift */,
 				B7BC29B2BF1F273F9E653AEB /* Assets.xcassets */,
 				87DEABD97368BE1C69024791 /* ChimePlayer.swift */,
 				EE83C39CFEEB37B8BCCE8162 /* ContentView.swift */,
@@ -953,7 +959,10 @@
 				4C04E6EEAF70561518C6B8AE /* FacesPhaseV5.swift in Sources */,
 				9B3E451CF3B7AD7C1E660B4D /* FacesRunV5.swift in Sources */,
 				484DFA221C704DBC9C376466 /* FacesRunV6.swift in Sources */,
+				50AB24CF8800755A3B9CCA79 /* FaffComplicationViews.swift in Sources */,
+				336FE9D364D8CE5D40A570AC /* FaffSmartStackView.swift in Sources */,
 				F78C87C61CF8C1E957424497 /* FaffWatchApp.swift in Sources */,
+				BDCBA5E2AE44B58C6AD6AE10 /* FaffWidgetContent.swift in Sources */,
 				533CAEF551723F2A36BFBA9C /* FaffWidgetSnapshot.swift in Sources */,
 				FDFB5B7B4C41C8B3C7BBF7C8 /* Haptics.swift in Sources */,
 				4AE44E43FBEEA3FBDE76BA3F /* NotificationsControllerV5.swift in Sources */,
@@ -973,6 +982,7 @@
 				FE5F82DC4942E609C7F38E7A /* WorkoutFoundation.swift in Sources */,
 				AAF411FFC548C34FA08F3A29 /* WorkoutRootView.swift in Sources */,
 				97FF3141FF9E86C28E4B824B /* WorkoutTracker.swift in Sources */,
+				63C6AC43E35C1C167EF6CBDF /* _FacePreview.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
