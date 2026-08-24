@@ -68,7 +68,15 @@ while IFS= read -r d; do
   full="$NATIVE/$d"
   [ -d "$full" ] || continue
   # -L: the watch sources reach the iOS project through a symlinked directory.
-  find -L "$full" -name '*.swift' -type f -print0 2>/dev/null \
+  # `! -name '._*'` · APPLEDOUBLE SIDECARS ARE NOT SOURCE.
+  #
+  # The repo lives on an exFAT volume, which has no resource forks, so macOS
+  # writes a `._Foo.swift` beside every `Foo.swift` it touches. They match
+  # `*.swift`, they are regular files, and xcodegen correctly ignores them —
+  # so every one of them landed in "on disk, uncompiled" and failed this gate.
+  # Editing ANY Swift file on this volume broke the build check, which trains
+  # everyone to ignore it. They are already in .gitignore (`._*`).
+  find -L "$full" -name '*.swift' -type f ! -name '._*' -print0 2>/dev/null \
     | while IFS= read -r -d '' f; do basename "$f"; done >> "$tmp/on_disk"
 done < "$tmp/src_dirs"
 sort -u "$tmp/on_disk" -o "$tmp/on_disk"

@@ -55,7 +55,24 @@ struct V5Number: Decodable, Equatable, Hashable {
         text = try c.decodeIfPresent(String.self, forKey: .text)
         // Absent flag reads as MODELLED, never as measured. Over-marking makes
         // a real number look humble; under-marking is the sin.
-        modelled = try c.decodeIfPresent(Bool.self, forKey: .modelled) ?? true
+        //
+        // UNREADABLE READS AS MODELLED TOO, and it used to throw.
+        //
+        // This was `try c.decodeIfPresent(Bool.self, ...)`, so a `modelled`
+        // that arrived as anything but a JSON bool — `"true"`, `1`, whatever a
+        // driver or a jsonb column hands back — did not fall to the safe
+        // default the line above it promises. It raised, out through the
+        // enclosing `V5Number`, out through the row, out through the payload,
+        // and took the entire screen with it. The one field carrying rule one
+        // was the most brittle field in the contract.
+        //
+        // Now: a flag we cannot read is treated exactly like a flag that was
+        // never sent. There is no third answer, and "measured" is never it.
+        if let flag = try? c.decodeIfPresent(Bool.self, forKey: .modelled) {
+            modelled = flag ?? true
+        } else {
+            modelled = true
+        }
     }
 
     init(text: String?, modelled: Bool) {

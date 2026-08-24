@@ -55,6 +55,7 @@
 // The only import this file has. `lib/runs/run-shape.ts` imports nothing
 // itself, so the composer stays pure and unit-testable without a database.
 import { reconcilePaceWithClock } from '../runs/run-shape';
+import * as WF from '../wire-format/format';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Wire types — one-to-one with APIV5.swift
@@ -276,27 +277,35 @@ const MIN_CONVERGING_DOMAINS = 3; // CONVERGENCE.redMinDomains, lib/coach/conver
 // Small formatting helpers
 // ─────────────────────────────────────────────────────────────────────────
 
+/*
+ * THESE THREE NOW DELEGATE. See `lib/wire-format/format.ts`.
+ *
+ * They used to round the REMAINDER — `Math.round(sPerMi % 60)` — which can
+ * carry to 60 without the minute ever hearing about it. This composer printed
+ * `7:60/mi` for 479.7 s/mi and `59:60` for 3599.7 s, while the phone, rounding
+ * the total first, printed `8:00` and `1:00:00` for the same values. One run,
+ * two surfaces, two different numbers, and nothing could see it because the
+ * two implementations are in different languages.
+ *
+ * The null-guards below are kept exactly as they were: only the arithmetic
+ * moved. `fmtClock` still declines at zero even though the canonical `clock`
+ * accepts it, because this composer's callers rely on that.
+ */
+
 export function fmtMi(mi: number | null | undefined): string | null {
   if (mi == null || !isFinite(mi) || mi <= 0) return null;
-  const rounded = Math.round(mi * 10) / 10;
-  return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)} mi`;
+  return WF.milesUnit(mi);
 }
 
 export function fmtPace(sPerMi: number | null | undefined): string | null {
   if (sPerMi == null || !isFinite(sPerMi) || sPerMi <= 0) return null;
-  const m = Math.floor(sPerMi / 60);
-  const s = Math.round(sPerMi % 60);
-  return `${m}:${String(s).padStart(2, '0')}/mi`;
+  const p = WF.paceMinSec(sPerMi);
+  return p == null ? null : `${p}/mi`;
 }
 
 export function fmtClock(sec: number | null | undefined): string | null {
   if (sec == null || !isFinite(sec) || sec <= 0) return null;
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = Math.round(sec % 60);
-  return h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${m}:${String(s).padStart(2, '0')}`;
+  return WF.clock(sec);
 }
 
 const DOW_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

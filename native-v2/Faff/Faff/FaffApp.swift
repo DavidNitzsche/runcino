@@ -188,8 +188,20 @@ struct FaffApp: App {
             // this call is safe to make unconditionally — and it must run
             // BEFORE the HK 30s guard, which returns early.
             Task { await WatchSync.shared.refresh() }
+
+            // THE SURFACE REFRESH GOES FIRST AND IS NEVER THROTTLED.
+            //
+            // It used to sit BELOW the HealthKit guard, so returning to the
+            // app within thirty seconds of the last foreground refreshed
+            // nothing at all — every V5Surface observes this notification, and
+            // it was not posted. The screen went on drawing a value the server
+            // had already corrected, and `stale` stayed false because `stale`
+            // means "a refresh failed", not "no refresh was attempted".
+            // See Util/ForegroundWork.swift.
+            NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+
             let now = Date()
-            guard now.timeIntervalSince(lastImportAt) > 30 else { return }
+            guard ForegroundWork.shouldImport(now: now, lastImportAt: lastImportAt) else { return }
             lastImportAt = now
             Task {
                 await HealthKitImporter.shared.importIfConnected(daysBack: 2)
@@ -200,7 +212,6 @@ struct FaffApp: App {
                 // finished still shows a day with no run on it.
                 NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
             }
-            NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
         }
     }
 }
