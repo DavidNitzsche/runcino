@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# pre-push · the repo's only automated gate that runs on a Mac.
+#
+# Before this file existed, .git/hooks/pre-push was a bare symlink to
+# scripts/check-web-build.sh. That works, but a symlink can hold exactly one
+# check and is invisible to git — nobody cloning this repo gets it, and nobody
+# reviewing a diff can see it change. So the hook became a real, versioned
+# dispatcher and the symlink's job moved inside it, unchanged.
+#
+# To activate (once per clone):
+#     git config core.hooksPath .githooks
+#
+# To check it is active:
+#     git config --get core.hooksPath      # → .githooks
+#
+# To deactivate:
+#     git config --unset core.hooksPath    # falls back to .git/hooks
+#
+# To skip in an emergency (say so in the push message):
+#     git push --no-verify
+#
+# WHAT RUNS, AND WHY HERE
+#
+#   check-web-build.sh   · always. Typechecks web-v2 so a missing import is
+#                          caught here rather than by the sixteenth failed
+#                          Railway deploy in a row.
+#
+#   check-watch.sh       · only when the push touches watch code. Runs the
+#                          watch engine suite and audits rendered board
+#                          geometry. It cannot live in web-v2's prebuild
+#                          beside check-palette-sync.sh and check-doctrine.sh,
+#                          because Railway's build container has no Xcode: it
+#                          would either break every deploy or skip itself on
+#                          every deploy. A pre-push hook is the only automated
+#                          thing in this repo that is guaranteed to be on a Mac
+#                          with a simulator.
+#
+# Set FAFF_WATCH_FAST=1 to skip the board rendering half (tests only).
+# ─────────────────────────────────────────────────────────────────────────────
+set -uo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+ZERO=0000000000000000000000000000000000000000
+
+# ── which paths is this push actually carrying? ──────────────────────────────
+# git feeds a pre-push hook one line per ref on stdin:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# When the range cannot be resolved — a brand-new branch the remote has never
+# seen, or the hook invoked by hand with no stdin — we do NOT guess. We assume
+# everything changed and run every check. A gate that opts itself out on the
+# ambiguous case is a gate that opts itself out.
+changed=""
+scoped=1
+while read -r _lref lsha _rref rsha; do
+  [ -z "${lsha:-}" ] && continue
+  [ "$lsha" = "$ZERO" ] && continue            # branch deletion, nothing to check
+  if [ "${rsha:-$ZERO}" != "$ZERO" ] && git cat-file -e "$rsha" 2>/dev/null; then
+    changed="$changed$(git diff --name-only "$rsha" "$lsha")"$'\n'
+  else
+    scoped=0
+  fi
+done
+
+if [ "$scoped" = "1" ] && [ -z "$changed" ]; then
+  scoped=0   # no stdin at all (manual invocation)
+fi
+
+touches_watch() {
+  [ "$scoped" = "0" ] && return 0
+  printf '%s' "$changed" | grep -qE \
+    '^(legacy/native/Faff/FaffWatch|native-v2/project\.yml|native-v2/Faff\.xcodeproj/|scripts/watch/|scripts/check-watch\.sh)'
+}
+
+# ── 1 · web typecheck (unchanged behaviour) ──────────────────────────────────
+if ! bash "$ROOT/scripts/check-web-build.sh"; then
+  exit 1
+fi
+
+# ── 2 · watch gate ───────────────────────────────────────────────────────────
+if touches_watch; then
+  args=()
+  [ "${FAFF_WATCH_FAST:-0}" = "1" ] && args+=(--fast)
+  if ! bash "$ROOT/scripts/check-watch.sh" "${args[@]+"${args[@]}"}"; then
+    echo ""
+    echo "✗ Watch gate FAILED. Push aborted."
+    echo "  Fix the above, or override with: git push --no-verify"
+    echo "  Standard: docs/design/watch-0821/FACE-QC.md"
+    exit 1
+  fi
+fi
+
+exit 0
