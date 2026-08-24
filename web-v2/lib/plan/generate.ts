@@ -874,25 +874,121 @@ async function easyDayMedianMi(userId: string): Promise<number> {
   return Math.round(m * 2) / 2;
 }
 
+// ── DOCTRINE-MIDBLOCK-1 (2026-08-24) · the quality window skips the days
+//    doctrine itself blanked ────────────────────────────────────────────────
+//
+// THE DEFECT. `detectMidBlock` asks "has this runner done quality in the last
+// 28 days" and reads the answer as evidence about the RUNNER. After a race it
+// is not: `Research/00b-recovery-protocols.md` §"Recovery by Distance" has a
+// column headed "Total recovery days (no quality)" — 10-14 days for a half,
+// 21-28 for a marathon — and the engine spends it, labelling the phase
+// "Post-race recovery · Easy running only · no quality." So doctrine removes
+// quality from the window, the engine obeys, and then the detector reads the
+// obedience as an absence of fitness. Two opposite states — "has not been
+// doing quality" and "was told not to do quality" — produce the same count.
+//
+// The consequence is not hypothetical. `isMidBlock` false makes `sizeBlocks`
+// insert a full BASE phase, so a runner who has just raced can be handed weeks
+// of easy running plus strides days after a hard race effort. It is worst
+// exactly where the mandated window is longest: after a MARATHON the window is
+// four weeks, so an authoring one month later looks back over 28 days that
+// doctrine guaranteed would be empty, and every signal reads zero.
+//
+// THE RULE. The window is extended by the number of days inside it that
+// doctrine mandated as no-quality. It measures 28 days of ELIGIBLE training,
+// not 28 days of calendar — the days doctrine blanked do not get to count as
+// evidence of anything.
+//
+// WHY KEYED ON THE RACE, NOT ON THE PLAN'S PHASE LABEL. The tempting version
+// reads the authored rows and asks what was PRESCRIBED — "prescribed no
+// quality" being different from "prescribed quality and skipped it". It is
+// rejected for the reason DOCTRINE-BASE-3 already rejected it one gate over:
+// it would let a prescription outrank doctrine, so a plan that authored
+// quality inside a window `Research/00b` says is recovery would make the
+// runner's compliance with doctrine read as a deficit. The mandated-window
+// test asks instead what DOCTRINE says the window was for, which is knowable
+// without trusting any particular plan authored over it. `postRaceRecoveryWeeks`
+// is the same reader `rampBaseForBuild`, `pickPlanMode` and `openBlockMode`
+// already spend, so the four agree by construction.
+//
+// WHY A TAPER DOES NOT EXTEND IT. A taper is not a no-quality window, and
+// doctrine is explicit that it must not become one. `Research/08` §9.1's Rules
+// read "The largest cut is to easy mileage; intensity is preserved through the
+// taper", and its §15 mistake table names "Cutting all intensity in taper |
+// Sluggish legs". A tapering runner is still doing quality, so the detector
+// sees it and needs no allowance. Only the post-race window is blanked by
+// doctrine, and only it is skipped here.
+//
+// SELF-LIMITING IN BOTH DIRECTIONS. The extension is the OVERLAP between the
+// mandated window and the last 28 days, so it shrinks to zero as the race
+// recedes and the window returns to a flat 28 days. A race that has not yet
+// been run, or one whose distance does not resolve to a category, extends
+// nothing. Runners with no finished race are byte-identical to today.
+/** The quality-detection window, before any mandated-no-quality allowance. */
+export const QUALITY_LOOKBACK_DAYS = 28;
+
+/**
+ * How many days `detectMidBlock` looks back for this authoring.
+ *
+ * Pure, and exported for direct unit testing and for the doctrine gate — the
+ * worktree has no DB pool, and a claim that cannot exercise the real function
+ * is a claim that only proves the test agrees with itself.
+ */
+export function qualityLookbackDays(
+  todayISO: string,
+  lastRace: { date: string; distanceMi: number; priority?: string | null } | null,
+): number {
+  if (!lastRace?.date || !(lastRace.distanceMi > 0)) return QUALITY_LOOKBACK_DAYS;
+  const cat = distanceCategoryOrNull(lastRace.distanceMi);
+  // A history row, not the goal race, so an unrecognised distance is a real
+  // possibility. It explains no mandated window, so the flat window stands.
+  if (cat == null) return QUALITY_LOOKBACK_DAYS;
+  const noQualityDays = postRaceRecoveryWeeks(cat, lastRace.priority ?? null) * 7;
+  if (!(noQualityDays > 0)) return QUALITY_LOOKBACK_DAYS;
+  const sinceRace = daysBetween(lastRace.date, todayISO);
+  if (!(sinceRace > 0)) return QUALITY_LOOKBACK_DAYS;   // not yet run
+  // Days 1…noQualityDays after the race are the ones doctrine blanked. Count
+  // those that fall inside the base window, i.e. are at most 28 days ago.
+  const firstK = Math.max(1, sinceRace - QUALITY_LOOKBACK_DAYS);
+  const lastK = Math.min(noQualityDays, sinceRace);
+  const blanked = Math.max(0, lastK - firstK + 1);
+  return QUALITY_LOOKBACK_DAYS + blanked;
+}
+
 /**
  * 2026-06-01 · detect whether the runner is mid-block · has been doing
- * quality work in the last 28 days. Two signals (either is enough):
+ * quality work recently. THREE signals, any one of which is enough:
  *
- *   1. The active plan_workouts has a completed quality workout
- *      (threshold / intervals / tempo) in the last 28 days · checks
- *      both the prescribed type AND the matched actual run.
- *   2. The runs feed has runs with high HR (≥85% HRmax estimate ·
- *      threshold-effort) in the last 28 days even without an explicit
- *      type tag · catches Strava-imported quality work that wasn't
- *      labeled.
+ *   1. `plan_workouts` carries a PRESCRIBED quality row (threshold /
+ *      tempo / intervals / vo2max) in the window, across the active plan
+ *      and any plan archived in the last 30 days — a rebuild archives the
+ *      active plan, so yesterday's block still counts.
+ *   2. The runs feed has runs the importer TAGGED as quality or as a race.
+ *   3. The runs feed has runs at ≥85% of effective max HR — catches real
+ *      quality work that arrived from Strava or the watch untagged.
  *
- * Returns true if either fires. When true, sizeBlocks skips BASE so a
- * mid-block runner doesn't get dropped back into a fresh aerobic phase
- * by an auto-rebuild.
+ * Each fires at ≥2 occurrences. Returns true if any fires. When true,
+ * `sizeBlocks` may skip BASE so a mid-block runner isn't dropped back into
+ * a fresh aerobic phase by an auto-rebuild — "may", because the call site
+ * conjoins this with `baseRebuilt`, a VOLUME test (see DOCTRINE-BASE-1).
+ * This function answers only "has there been quality"; it is not on its own
+ * a licence to skip BASE.
+ *
+ * The window is `qualityLookbackDays`, not a flat 28 days — see
+ * DOCTRINE-MIDBLOCK-1 above for why the post-race no-quality window doctrine
+ * mandates is skipped rather than counted against the runner.
  *
  * False-positive risk · a one-off hard run won't trigger #1 (it
- * checks PRESCRIBED type, not just one-off effort). #2 needs sustained
+ * checks PRESCRIBED type, not just one-off effort). #3 needs sustained
  * HR signal · single-day spike doesn't count.
+ *
+ * KNOWN SHARPNESS LIMIT, recorded rather than fixed: signal 1 counts plan
+ * ROWS, so one calendar session that appears in both the active plan and a
+ * recently-archived one counts twice. The ≥2 threshold is therefore a
+ * weaker statement than "two distinct sessions" whenever more than one
+ * non-ancient plan overlaps the window. It is left alone here because
+ * tightening it changes who reads as mid-block for every runner, which is a
+ * behaviour change this fix deliberately does not make.
  */
 async function detectMidBlock(userId: string): Promise<boolean> {
   // 2026-06-03 · David flagged · was only checking ACTIVE plan for
@@ -903,7 +999,14 @@ async function detectMidBlock(userId: string): Promise<boolean> {
   //
   // 2026-06-03 · runner TZ anchors all "last 28d" windows.
   const today = await runnerToday(userId);
-  // Signal 1 · prescribed quality in last 28d across all NON-ANCIENT
+  // DOCTRINE-MIDBLOCK-1 · 28 days of ELIGIBLE training, not 28 days of
+  // calendar. See the header above: the days `Research/00b` mandates as
+  // "total recovery days (no quality)" are days the engine itself emptied,
+  // so they are skipped rather than counted as an absence of quality.
+  const { lastRaceFinished } = await loadLastRaceFinished(userId, today)
+    .catch(() => ({ lastRaceFinished: null }));
+  const lookback = qualityLookbackDays(today, lastRaceFinished);
+  // Signal 1 · prescribed quality in the window across all NON-ANCIENT
   // plans (active OR archived within last 30 days · the plan that
   // just got archived by today's rebuild still counts).
   const r1 = await pool.query<{ n: string }>(
@@ -913,8 +1016,8 @@ async function detectMidBlock(userId: string): Promise<boolean> {
       WHERE tp.user_uuid = $1
         AND (tp.archived_iso IS NULL OR tp.archived_iso > NOW() - interval '30 days')
         AND pw.type IN ('threshold','tempo','intervals','vo2max')
-        AND pw.date_iso::date BETWEEN ($2::date - 28) AND $2::date`,
-    [userId, today]
+        AND pw.date_iso::date BETWEEN ($2::date - $3::int) AND $2::date`,
+    [userId, today, lookback]
   ).catch(() => ({ rows: [{ n: '0' }] }));
   if (Number(r1.rows[0]?.n ?? 0) >= 2) return true;
 
@@ -925,12 +1028,12 @@ async function detectMidBlock(userId: string): Promise<boolean> {
       WHERE r.user_uuid = $1
         AND NOT (r.data ? 'mergedIntoId')
         AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date
-            >= $2::date - 28
+            >= $2::date - $3::int
         AND (
               LOWER(COALESCE(r.data->>'type', '')) IN ('tempo','threshold','intervals','vo2max','race')
               OR LOWER(COALESCE(r.data->>'workoutType', '')) ~ '(tempo|threshold|interval|vo2|race)'
             )`,
-    [userId, today]
+    [userId, today, lookback]
   ).catch(() => ({ rows: [{ n: '0' }] }));
   if (Number(r2.rows[0]?.n ?? 0) >= 2) return true;
 
@@ -952,13 +1055,13 @@ async function detectMidBlock(userId: string): Promise<boolean> {
         WHERE r.user_uuid = $1
           AND NOT (r.data ? 'mergedIntoId')
           AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date
-              >= $3::date - 28
+              >= $3::date - $4::int
           AND COALESCE(
                 (r.data->>'avgHr')::numeric,
                 (r.data->>'avg_hr')::numeric,
                 0
               ) >= $2`,
-      [userId, hrThreshold, today]
+      [userId, hrThreshold, today, lookback]
     ).catch(() => ({ rows: [{ n: '0' }] }));
     if (Number(r3.rows[0]?.n ?? 0) >= 2) return true;
   }

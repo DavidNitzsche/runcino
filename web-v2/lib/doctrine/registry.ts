@@ -156,6 +156,8 @@ import {
   BASE_REBUILT_SHARE,
   BASE_QUALITY_TYPES,
   FAST_FINISH_MIN_MI,
+  QUALITY_LOOKBACK_DAYS,
+  qualityLookbackDays,
 } from '@/lib/plan/generate';
 import {
   BLEND_GRACE_FRACTION,
@@ -792,6 +794,113 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         'because 3-5 days is not expressible in whole weeks. The open block therefore hands ' +
         'a 5K runner maintenance immediately, which matches pickPlanMode exactly — the ' +
         'consistency half of this claim still holds. Fix the constant and this entry must go.',
+    },
+  },
+  {
+    id: 'DOCTRINE.midblock-window-skips-mandated-no-quality',
+    binds: [
+      'lib/plan/generate.ts#QUALITY_LOOKBACK_DAYS',
+      'lib/plan/generate.ts#qualityLookbackDays',
+      'lib/plan/generate.ts#detectMidBlock',
+      'lib/plan/goal-tiers.ts#postRaceRecoveryWeeks',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Total recovery days (no quality) | Days of zero/very-light running |',
+    claim:
+      'The mid-block detector asks whether the runner has been doing quality, and after a race ' +
+      'doctrine has already answered for them: this table\'s "total recovery days (no quality)" ' +
+      'column mandates 10-14 days without quality after a half and 21-28 after a marathon, and ' +
+      'the engine spends exactly that window authoring a phase whose own rationale reads "Easy ' +
+      'running only · no quality". A flat 28-day count therefore reads the engine\'s own ' +
+      'prescription as an absence of fitness, and cannot tell "has not been doing quality" from ' +
+      '"was told not to do quality". The window skips the days doctrine blanked, so the detector ' +
+      'always sees training from BEFORE the race rather than a window doctrine guaranteed empty. ' +
+      'A taper is deliberately NOT allowed for: Research/08 §9.1 keeps intensity through it.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'Total recovery days (no quality)';
+      const MI: Record<DistCategory, number> = { '5k': 3.1, '10k': 6.2, 'hm': 13.1, 'm': 26.2, 'ultra': 50 };
+      const RACE = '2026-03-01';
+      const dayAfter = (n: number) =>
+        new Date(Date.parse(RACE + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+
+      // 1 · The engine's no-quality window is the doc's, for the two distances
+      //     whose bands this claim leans on. Read out of the table, not copied.
+      for (const cat of ['hm', 'm'] as const) {
+        const band = parseBand(t.cell(DOC_ROW[cat], col));
+        const engineDays = postRaceRecoveryWeeks(cat, 'A') * 7;
+        if (engineDays < band[0] || engineDays > band[1]) {
+          throw new Error(
+            `POST_RACE_RECOVERY_WEEKS.${cat} spends ${engineDays} no-quality days · ` +
+              `doctrine's band for ${DOC_ROW[cat]} is ${band[0]}-${band[1]}`,
+          );
+        }
+      }
+
+      // 2 · THE PROPERTY THE FIX EXISTS FOR. While the runner is inside the
+      //     mandated no-quality window, the detector must be looking back past
+      //     the race — otherwise every signal reads a window doctrine emptied.
+      //     A flat 28-day window fails this for any race ≥28 days back, which
+      //     is precisely the marathon case (21-28 mandated days).
+      for (const cat of CATS) {
+        for (const priority of ['A', 'B', 'C'] as const) {
+          const engineDays = postRaceRecoveryWeeks(cat, priority) * 7;
+          if (engineDays <= 0) continue;   // 5K · no whole-week window to skip
+          for (let d = 1; d <= engineDays; d++) {
+            const look = qualityLookbackDays(dayAfter(d), {
+              date: RACE, distanceMi: MI[cat], priority,
+            });
+            if (look <= d) {
+              throw new Error(
+                `${cat}/${priority}: ${d} days after the race the detector looks back ${look} ` +
+                  'days · it sees only the window doctrine mandated be empty, so a runner who ' +
+                  'obeyed their recovery block reads as a runner who stopped training',
+              );
+            }
+          }
+        }
+      }
+
+      // 3 · Self-limiting. Once the mandated window has fallen out of the base
+      //     window entirely, the lookback is flat again — this buys an
+      //     allowance, not a permanently longer memory.
+      const far = qualityLookbackDays(dayAfter(28 + QUALITY_LOOKBACK_DAYS + 1), {
+        date: RACE, distanceMi: MI.m, priority: 'A',
+      });
+      if (far !== QUALITY_LOOKBACK_DAYS) {
+        throw new Error(`the allowance outlives the window it explains · lookback is ${far}`);
+      }
+
+      // 4 · No finished race, or one whose distance resolves to nothing, buys
+      //     nothing. Every runner without a race is byte-identical to before.
+      if (qualityLookbackDays(dayAfter(10), null) !== QUALITY_LOOKBACK_DAYS) {
+        throw new Error('a runner with no finished race no longer gets the flat window');
+      }
+      if (qualityLookbackDays(dayAfter(10), { date: RACE, distanceMi: 0, priority: 'A' })
+          !== QUALITY_LOOKBACK_DAYS) {
+        throw new Error('an unresolvable race distance extends the window · it explains nothing');
+      }
+
+      // 5 · A taper must NOT extend it. Research/08 §9.1: "intensity is
+      //     preserved through the taper", so a tapering runner is doing
+      //     quality and the detector can see it unaided. The only allowance
+      //     this function grants is keyed on a FINISHED race.
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      if (/function qualityLookbackDays[\s\S]{0,1400}TAPER/.test(src)) {
+        throw new Error(
+          'qualityLookbackDays reasons about TAPER · doctrine keeps intensity through a taper, ' +
+          'so a taper is not a blanked window and must buy no allowance',
+        );
+      }
+
+      // 6 · And the detector actually spends it. A pure function nobody calls
+      //     is the failure mode this gate was built for.
+      if (!/const lookback = qualityLookbackDays\(today, lastRaceFinished\)/.test(src)) {
+        throw new Error('detectMidBlock no longer resolves its window through qualityLookbackDays');
+      }
+      if (/date_iso::date BETWEEN \(\$2::date - 28\)/.test(src)) {
+        throw new Error('detectMidBlock still carries a hard-coded 28-day quality window');
+      }
     },
   },
   {
