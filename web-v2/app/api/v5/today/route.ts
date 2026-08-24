@@ -41,6 +41,7 @@ import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { bestRecentVdot } from '@/lib/training/vdot';
 import { resolveFitness } from '@/lib/fitness/fitness-model';
 import { buildFitnessRow } from '@/lib/faff/fitness-read';
+import { reconcileHrZones, coherentPace, coherentDurationSec } from '@/lib/runs/coherence';
 import {
   composeV5Today,
   type V5TodayContext,
@@ -565,8 +566,14 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       const data = runRow.data ?? {};
       const indoor = data.indoor === true || data.source === 'treadmill';
       const distanceMi = Number(data.distanceMi) || 0;
-      const durationSec = Number(data.durationSec) || Number(data.movingTimeS) || Number(data.elapsedTimeS) || null;
-      const paceSPerMi = Number(data.paceSPerMi) || (durationSec && distanceMi ? durationSec / distanceMi : null);
+      // 2026-08-24 · reconciled. The old pair read `paceSPerMi` straight off
+      // the row, which on 2026-08-23 was 217 s/mi — 3:37 for eleven miles —
+      // beside a `durationSec` of 5298 this same expression had already picked
+      // up. The phone's post-run card therefore printed a distance and a time
+      // that agreed and a pace that agreed with neither.
+      const clockRead = coherentDurationSec(data);
+      const durationSec = clockRead?.sec ?? null;
+      const paceSPerMi = coherentPace(data)?.secPerMi ?? null;
 
       // Treadmill telemetry — averaged across watch_completion phases
       // (Gap B12). Speed/incline live per-phase, not on the run row itself.
@@ -593,7 +600,14 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         inclinePct = belt.inclinePct;
       }
 
-      const zonePcts = data.hrZonePcts as Record<string, number> | undefined;
+      // 2026-08-24 · reconciled. A five-zero object is truthy and well-shaped,
+      // so this used to hand the phone `[0,0,0,0,0]` and the zone bar rendered
+      // nothing — on 5 canonical rows carrying a MEASURED average of 135-145
+      // bpm. A run with a heart rate spent its time in some zone; a flat zero
+      // distribution is a computation that produced nothing, drawn as a chart.
+      // `lib/coach/run-state.ts` has guarded this since 2026-05-31 and the
+      // phone route never picked the guard up.
+      const zonePcts = reconcileHrZones(data);
       const zoneShares = zonePcts
         ? [zonePcts.z1 ?? 0, zonePcts.z2 ?? 0, zonePcts.z3 ?? 0, zonePcts.z4 ?? 0, zonePcts.z5 ?? 0]
         : null;

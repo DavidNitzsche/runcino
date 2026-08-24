@@ -72,6 +72,7 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { fmtFinish, runPostResultChain, type PostResultOutcome } from './result-chain';
+import { coherentElapsedSec } from '@/lib/runs/coherence';
 
 /** How far back the detector looks for unresulted races. */
 export const AUTO_RESULT_LOOKBACK_DAYS = 14;
@@ -171,7 +172,22 @@ export function provisionalResultPatch(run: RunCandidate): {
   // to it, and it errs slow, which is the safe side. Moving time is kept as the
   // fallback for ingest paths that carry no elapsed field at all — a slightly
   // fast result beats no result, and `provisional: true` says which it is.
-  const secs = Number(d.elapsedTimeS) || Number(d.movingTimeS) || Number(d.movingSec) || null;
+  // 2026-08-24 · THE LADDER ABOVE WAS RIGHT AND DID NOT WORK.
+  //
+  // "Elapsed first" is the correct doctrine and this line implemented it by
+  // reading `elapsedTimeS` first. But `elapsedTimeS` is a BYTE COPY of
+  // `movingTimeS` on all 29 `watch` rows and all 32 `strava` rows in
+  // production — only the old-Strava era (84 of 88) and `apple_health` (12 of
+  // 14) store a genuine wall clock there. So on exactly the rows this function
+  // exists for, watch-provisional race results, it read the moving time it was
+  // written to avoid, and the systematic fast bias the comment above describes
+  // was never actually removed.
+  //
+  // The real wall clock on a watch row is `durationSec`, which this ladder
+  // never reached. `coherentElapsedSec` puts it first and keeps `elapsedTimeS`
+  // as the fallback for the eras where it means something.
+  const secs = coherentElapsedSec(d)
+    ?? (Number(d.movingTimeS) || Number(d.movingSec) || null);
   if (!secs || secs <= 0) return null;
   const avgHr = Number(d.avgHr) || null;
   return {

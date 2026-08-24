@@ -28,6 +28,7 @@ import {
   type RaceForMatch,
 } from '@/lib/runs/log-enrich';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { coherentPace, coherentMovingSec, coherentElapsedSec } from '@/lib/runs/coherence';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 
 export interface RunSplit {
@@ -536,16 +537,40 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     }
   })();
 
-  // Pace — prefer formatted, else derive from seconds.
-  const paceSPerMi = Number(r.paceSPerMi) || null;
-  const pace = r.avgPaceMinPerMi
-    || r.pace
-    || fmtPace(paceSPerMi)
-    || null;
+  // ── Pace and the clocks · reconciled, 2026-08-24 ────────────────────────
+  //
+  // TWO BUGS LIVED IN THE FIVE LINES THIS REPLACES, and together they are why
+  // run detail printed `39:49` for David's 2026-08-23 run while the poster for
+  // the same run printed `1:28:18`.
+  //
+  // 1 · `Number(r.duration_sec)` — THERE IS NO SUCH KEY. `r` is the run's own
+  //     `data` blob, which spells it `durationSec`; `duration_sec` is a column
+  //     on the unrelated plan-phase rows further down this file. Both rungs
+  //     evaluated to NaN on every row ever, so the ladders were really
+  //     `movingTimeS || null` and `elapsedTimeS || null`, and the watch's own
+  //     total clock was never consulted. That is the run-shape.ts bug class: a
+  //     literal nobody checks, resolving to a null indistinguishable from "not
+  //     measured".
+  //
+  // 2 · Even with the key fixed, `movingTimeS` was 2389s against a 5298s
+  //     clock — 54.9% of an eleven-mile run "paused" — because the merge
+  //     absorbed Strava's moving time onto the watch's row without its
+  //     matching clock. `elapsedTimeS` is no help: on all 29 watch rows and
+  //     all 32 strava rows in production it is a byte copy of `movingTimeS`.
+  //
+  // The reconciler answers both. `movingSec` is null when the row disproves
+  // it — deliberately not backfilled from the wall clock, because presenting
+  // elapsed as moving is a different measurement wearing this one's name.
+  const paceRead = coherentPace(r);
+  const paceSPerMi = paceRead?.secPerMi ?? null;
+  // `r.avgPaceMinPerMi` is no longer preferred either: it is the ELAPSED-clock
+  // pace on 115 of 115 production rows while `paceSPerMi` is the MOVING one,
+  // so preferring the string printed a different number here than the recap
+  // printed for the same run.
+  const pace = fmtPace(paceSPerMi) || null;
 
-  // Moving / elapsed time
-  const movingSec  = Number(r.movingTimeS) || Number(r.duration_sec) || null;
-  const elapsedSec = Number(r.elapsedTimeS) || Number(r.duration_sec) || null;
+  const movingSec  = coherentMovingSec(r);
+  const elapsedSec = coherentElapsedSec(r);
 
   // Splits — normalize various source shapes. Per-split `phase` tag is
   // filled in after phaseBreakdown loads (a few lines down) · null here
@@ -681,7 +706,10 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     userId,
     stravaCalories: Number(r.calories) || null,
     startLocal: r.startLocal as string | null,
-    movingTimeS: Number(r.movingTimeS) || Number(r.durationSec) || Number(r.elapsedTimeS) || 0,
+    // The calorie window. Reconciled, and elapsed when moving is refused —
+    // a window sized off a disproved 2389s would have missed 48 minutes of
+    // HealthKit samples on the 2026-08-23 run.
+    movingTimeS: movingSec ?? elapsedSec ?? 0,
     distanceMi: Number(r.distanceMi) || 0,
     avgHr: Number(r.avgHr) || null,
   });

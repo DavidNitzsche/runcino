@@ -306,11 +306,34 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   let lthrMethod: string | null = p?.lthr_method ?? null;
   if (lthr == null) {
     // Try to derive from race data — half-marathon avg HR is the best proxy
+    // 2026-08-24 · THIS GATE COULD SEE ONE RACE OUT OF SIX.
+    //
+    // It required BOTH keys on `meta`, but `meta.finishTime` and
+    // `meta.avgHrBpm` are written only by /api/race/result and PATCH
+    // /api/race. Every result that arrived through the `actual_result` path —
+    // rose-bowl, disney, la-marathon, big-sur, sombrero — carries neither, so
+    // it was invisible here. In production exactly 1 of 18 rows satisfied the
+    // predicate, and the runner's LTHR was derived from that single race while
+    // three other HR-carrying races sat unread.
+    //
+    // `actual_result` is the canonical store (CLAUDE.md, race-data lock), so
+    // it leads both ladders. The HR ladder also spans the two key spellings:
+    // no row carries both, and the current writers emit `avgHrBpm`.
     const raceWithHr = (await pool.query(
-      `SELECT meta FROM races
+      `SELECT meta,
+              COALESCE(
+                NULLIF(actual_result->>'avgHrBpm','')::numeric,
+                NULLIF(actual_result->>'avgHr','')::numeric,
+                NULLIF(meta->>'avgHrBpm','')::numeric
+              ) AS avg_hr_bpm
+         FROM races
         WHERE user_uuid = $1
-          AND meta->>'finishTime' IS NOT NULL
-          AND meta->>'avgHrBpm' IS NOT NULL
+          AND COALESCE(actual_result->>'finishS', meta->>'finishTime') IS NOT NULL
+          AND COALESCE(
+                NULLIF(actual_result->>'avgHrBpm','')::numeric,
+                NULLIF(actual_result->>'avgHr','')::numeric,
+                NULLIF(meta->>'avgHrBpm','')::numeric
+              ) IS NOT NULL
         ORDER BY (meta->>'date') DESC NULLS LAST LIMIT 5`,
       [userId]
     ).catch(() => ({ rows: [] }))).rows;
@@ -328,9 +351,12 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       // handles "resolved but not close to a known race distance" honestly.
       const distanceMi = m.distanceMi != null ? Number(m.distanceMi) : distanceMiFromLabel(m.distanceLabel);
       if (distanceMi == null) continue;
+      // The HR now comes off the resolved column, not off `meta` alone.
+      const avgHrBpm = Number(row.avg_hr_bpm);
+      if (!Number.isFinite(avgHrBpm) || avgHrBpm <= 0) continue;
       const est = estimateLTHR({
         raceDistanceMi: distanceMi,
-        avgHrBpm: Number(m.avgHrBpm),
+        avgHrBpm,
       });
       if (est) {
         lthr = est.lthr;

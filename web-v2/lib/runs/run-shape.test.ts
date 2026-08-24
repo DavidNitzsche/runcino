@@ -118,13 +118,33 @@ describe('accessors · null for absent, never a default', () => {
     expect(runMovingSec({ movingTimeS: 0 })).toBeNull();
   });
 
-  it('the two duration accessors mirror their SQL ladders', () => {
+  it('the two duration accessors answer two different questions', () => {
+    // A real 2026-06-11 row: 3.5 minutes of pauses on a 6.9 mile run.
     const d: RunData = { movingTimeS: 3112, elapsedTimeS: 3112, durationSec: 3326 };
     expect(runMovingSec(d)).toBe(3112);
-    expect(runFinishSec(d)).toBe(3326); // the paused-time-inclusive read
+    // 2026-08-24 · this used to assert 3326 — `durationSec`, "the
+    // paused-time-inclusive read" — which encoded a divergence rather than a
+    // decision: `runFinishSecSql` had been reordered to prefer moving time on
+    // 2026-08-17 and this accessor was not, while its docstring claimed the
+    // two mirrored. A 6.4% paused share is an ordinary run, so the finish
+    // clock is the moving one, exactly as the SQL says.
+    expect(runFinishSec(d)).toBe(3112);
     // the 4-row early-HealthKit era, whose only duration key is movingSec
     expect(runMovingSec({ movingSec: 3720 })).toBe(3720);
     expect(runFinishSec({ movingSec: 3720 })).toBe(3720);
+  });
+
+  it('a finish time falls back to the wall clock when moving time is disproved', () => {
+    // David's 2026-08-23 row. `movingTimeS` 2389 against a 5298s clock is
+    // 54.9% "paused" for eleven miles, so it cannot be the finish time — but
+    // unlike `runMovingSec`, a finish time must still answer, because the run
+    // demonstrably took 5298 seconds.
+    const d: RunData = {
+      distanceMi: 11.01, durationSec: 5298, movingTimeS: 2389,
+      movingSec: 2389, elapsedTimeS: 2389,
+    };
+    expect(runFinishSec(d)).toBe(5298);
+    expect(runMovingSec(d)).toBe(2389); // the raw ladder, deliberately unchanged
   });
 
   it('out-of-band heart rates read as absent, not as measurements', () => {

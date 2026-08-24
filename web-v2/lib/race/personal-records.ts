@@ -32,6 +32,7 @@ import {
   PROVISIONAL_FINISH_LABEL, WATCH_PROVISIONAL_FINISH_LABEL, isProvisionalResult,
 } from '@/lib/coach/races-state';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
+import { coherentElapsedSec, coherentMovingSec } from '@/lib/runs/coherence';
 
 // ── Buckets ──────────────────────────────────────────────────────────────────
 
@@ -232,7 +233,13 @@ export function composePersonalRecords(
         const d = run.data ?? {};
         const mi = Number(d.distanceMi);
         if (!(mi >= bucket.runMinMi && mi <= bucket.runMaxMi)) continue;
-        const timeS = Number(d.movingTimeS) || Number(d.movingSec) || Number(d.elapsedTimeS) || 0;
+        // 2026-08-24 · reconciled. This is the fastest TRAINING run near a
+        // race distance, shown as a provisional record. A row whose stored
+        // moving time its own clock disproves would be the fastest by a wide
+        // margin and would take the slot — the phantom-PR shape CLAUDE.md's
+        // race-data checklist exists for, arriving through a different door.
+        // No production row lands in a bucket today; the mechanism is live.
+        const timeS = coherentMovingSec(d) ?? coherentElapsedSec(d) ?? 0;
         if (!(timeS > 0)) continue;
         if (!best || timeS / mi < best.timeS / (best.distanceMi ?? bucket.mi)) {
           best = {

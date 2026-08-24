@@ -84,7 +84,13 @@ export async function POST(req: NextRequest) {
     elevGainFt: body.elev_gain_ft ?? null,
     tempF: null,
     splits: [],
-    hrZonePcts: { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 },
+    // 2026-08-24 · null, not five zeros. A manual entry carries no HR
+    // samples, so it has no zone distribution — and `{z1:0,...,z5:0}` is not
+    // "no distribution", it is a claim that the runner spent no time in any
+    // zone, which every reader that does not guard renders as a bar of
+    // nothing. This route was manufacturing the exact shape 5 canonical rows
+    // already carry. Absent is what "we did not measure this" looks like.
+    hrZonePcts: null,
     routePolyline: null,
     notes: body.notes ?? null,
     // 2026-07-06 · P1-26 · distance quarantine. Key ABSENT (not null) on

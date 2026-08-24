@@ -26,6 +26,7 @@ import { requireUserId } from '@/lib/auth/session';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
+import { coherentPace, coherentElapsedSec } from '@/lib/runs/coherence';
 import type { Phase, WorkoutType } from '@/lib/coach/run-purpose';
 
 export const dynamic = 'force-dynamic';
@@ -37,26 +38,6 @@ const PHASE_FROM_LABEL: Record<string, Phase> = {
   TAPER: 'TAPER', taper: 'TAPER',
   RECOVERY: 'RECOVERY', recovery: 'RECOVERY',
 };
-
-/**
- * Parse an "M:SS" / "MM:SS" pace string to seconds-per-mile.
- *
- * E4: watch + Apple-Health runs store the human-readable pace in
- * `data.avgPaceMinPerMi` ("8:09") and leave the numeric `data.paceSPerMi`
- * null. The recap previously read only `paceSPerMi`, so `actualPaceSPerMi`
- * was null on every watch/HK run — the dominant pace shape — dropping pace
- * from the recap facts and disabling the pace-gated wins (winTempo/winLong,
- * which both bail when `actualPaceSPerMi` is null). Any runner, any
- * watch/HK-sourced run. Returns null on absent/garbage input (cold-start
- * safe; numeric `paceSPerMi` still wins when present).
- */
-function parsePaceToSec(v: unknown): number | null {
-  if (typeof v !== 'string') return null;
-  const m = v.trim().match(/^(\d+):([0-5]?\d)$/);
-  if (!m) return null;
-  const sec = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
-  return sec > 0 ? sec : null;
-}
 
 /** Most common value in a list (ties resolve to the first seen). Picks the
  *  representative frozen work-phase target across reps (E3). */
@@ -210,9 +191,27 @@ export async function GET(
     ? data.splits as any[]
     : undefined;
 
-  // E4: numeric pace wins when present; else recover it from the "M:SS"
-  // string (watch/HK rows). Single source for both deriveRecap + deriveWin.
-  const actualPaceSPerMi = Number(data.paceSPerMi) || parsePaceToSec(data.avgPaceMinPerMi);
+  // E4 (2026-08-24 · rewritten): the pace is RECONCILED against the row's own
+  // clock, not picked off a key.
+  //
+  // This line used to read `Number(data.paceSPerMi) || parsePaceToSec(...)`,
+  // and on 2026-08-23 that made the recap say: "Easy 11.0 mi at 3:37/mi. A
+  // touch quicker than the 9:22/mi easy target." The row stored `paceSPerMi`
+  // 217 beside a `durationSec` of 5298 for 11.01 miles — 8:01/mi — because the
+  // merge absorbed Strava's moving time onto the watch's row without its
+  // matching clock.
+  //
+  // Preferring the NUMBER also disagreed with lib/coach/log-state.ts, which
+  // preferred the STRING. Those are two different quantities (the string is an
+  // elapsed-clock pace on 115 of 115 rows), so the same run printed two paces
+  // on two screens even when nothing was corrupt. Both read the reconciler now.
+  const paceRead = coherentPace(data);
+  const actualPaceSPerMi = paceRead?.secPerMi ?? null;
+
+  // The wall clock. `durationSec` first, `elapsedTimeS` only as a fallback —
+  // the same ladder this file already used, now in one place, and refusing a
+  // value the row's own arithmetic disproves.
+  const actualElapsedSec = coherentElapsedSec(data);
 
   // E3: evaluate a completed run against what it was PRESCRIBED AT THE TIME
   // (the frozen phase target baked into the watch completion), not the live
@@ -306,7 +305,7 @@ export async function GET(
     source: typeof data.source === 'string' ? data.source : null,
     indoor: data.indoor === true,
     distanceMi: Number(data.distanceMi) || null,
-    durationSec: Number(data.durationSec) || Number(data.movingTimeS) || Number(data.elapsedTimeS) || null,
+    durationSec: actualElapsedSec,
     paceSPerMi: actualPaceSPerMi || null,
     elevGainFt: Number(data.elevGainFt) || null,
     elevGainSource: typeof data.elevGainSource === 'string' ? data.elevGainSource : null,
@@ -326,8 +325,7 @@ export async function GET(
     actualPaceSPerMi,
     // Real elapsed time where the row carries one · the recap otherwise derives
     // it from distance × pace. Drives the Research/18 fuelling-relevance gate.
-    actualDurationSec:
-      Number(data.durationSec) || Number(data.movingTimeS) || Number(data.elapsedTimeS) || null,
+    actualDurationSec: actualElapsedSec,
     workPaceSPerMi,
     workDistanceMi,
     repCount,
