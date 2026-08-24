@@ -834,14 +834,69 @@ export function runElevGainFt(d: RunData): number | null {
   return num(d.elevGainFt);
 }
 
-/** Average pace in seconds per mile, from the numeric key or derived from
- *  distance and moving time. Null when neither is available. */
+/**
+ * The largest share of a run that may plausibly be paused before its stored
+ * moving-time pace stops being believable.
+ *
+ * Half. A runner waiting at lights, refilling a bottle or stopping to stretch
+ * can lose a lot of a run to pauses; losing MORE than half of it and still
+ * calling the remainder the same session is not a run this app has to render
+ * faithfully. Well past any honest pause pattern, and comfortably tight enough
+ * to catch a third party's arithmetic error.
+ */
+const MAX_PAUSED_SHARE = 0.5;
+
+/**
+ * Average pace in seconds per mile.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * A ROW CAN CARRY TWO PACES, AND ONE OF THEM CAN BE FICTION.
+ *
+ * 2026-08-24. David's 11.01 mile run on 2026-08-23 stored `durationSec` 5298
+ * and `paceSPerMi` 217. The first is his watch's own clock and works out to
+ * 8:01/mi, which is what he ran. The second is 3:37/mi, and its `movingSec` of
+ * 2389 implies 16.6 mph for eleven miles.
+ *
+ * It came from Strava. Faff pushed the run there, Strava returned a moving
+ * time that cannot be right, and the merge stamped it onto the canonical row
+ * beside the watch's own figures rather than instead of them. This function
+ * returned the stored key without question, so every surface that reads a pace
+ * read the fiction — including the recap, which told him "Easy 11.0 mi at
+ * 3:37/mi. A touch quicker than the 9:22/mi easy target."
+ *
+ * Six of his canonical rows disagree with themselves by more than 15 s/mi.
+ *
+ * THE ROW IS CHECKED AGAINST ITSELF. Moving time cannot exceed elapsed time,
+ * so a stored pace implies a paused share, and a paused share above
+ * `MAX_PAUSED_SHARE` is not a pause — it is a bad number. When that happens
+ * the elapsed clock wins, because it is the one measurement the device that
+ * ran the session made itself.
+ *
+ * This is arithmetic, not physiology: no doctrine claim, and no threshold on
+ * human speed. A row is only ever judged against its own other facts, so it
+ * stays correct for an elite and for a walker alike.
+ *
+ * Fixed at the READ, deliberately. It repairs every surface and every
+ * historical row at once, with no migration and no rewriting of what the
+ * sources actually said.
+ */
 export function runPaceSecPerMi(d: RunData): number | null {
-  const direct = pos(d.paceSPerMi);
-  if (direct != null) return direct;
   const mi = runDistanceMi(d);
+  const direct = pos(d.paceSPerMi);
+  const elapsed = pos(d.durationSec) ?? pos(d.elapsedTimeS);
+
+  if (direct != null) {
+    // Believe the stored pace unless the row's own clock contradicts it.
+    if (mi != null && mi > 0 && elapsed != null && elapsed > 0) {
+      const elapsedPace = elapsed / mi;
+      const impliedPausedShare = 1 - (direct / elapsedPace);
+      if (impliedPausedShare > MAX_PAUSED_SHARE) return elapsedPace;
+    }
+    return direct;
+  }
+
   const sec = runMovingSec(d);
-  return mi != null && sec != null ? sec / mi : null;
+  return mi != null && mi > 0 && sec != null ? sec / mi : null;
 }
 
 /** True when this row is a dedup loser. Presence of the key is the signal;
