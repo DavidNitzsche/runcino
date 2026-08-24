@@ -337,6 +337,11 @@ struct WTargetStack<Content: View>: View {
 }
 
 // MARK: - Telemetry
+//
+// `WMetricStack` and `WSensorFault` were deleted 2026-08-24. Neither had a
+// single construction site: the running faces went to `WorkoutMetricStack` on
+// the foundation, and the one board that names a sensor does it through
+// `WorkoutMetric(fault:)` so the failure keeps its slot in the column.
 
 /// What a number means, which is what decides whether it may be coloured.
 ///
@@ -497,33 +502,6 @@ struct WMetric: View {
     }
 }
 
-/// The running-face stack: up to four metrics, one left edge, lead first.
-///
-/// The cap is rule 4 and it is enforced rather than documented — a fifth
-/// metric is dropped, loudly in debug, because a running face that grew a
-/// fifth row is a bug and should not render as if it were a design.
-struct WMetricStack: View {
-    let metrics: [WMetric]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(capped.enumerated()), id: \.offset) { _, m in
-                m
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var capped: [WMetric] {
-        if metrics.count > WatchV5.Metric.maxMetricsPerFace {
-            assertionFailure(
-                "A running face may hold four metrics (rule 4); got \(metrics.count)."
-            )
-            return Array(metrics.prefix(WatchV5.Metric.maxMetricsPerFace))
-        }
-        return metrics
-    }
-}
 
 // MARK: - Strips
 //
@@ -842,23 +820,6 @@ struct WWordmark: View {
 
 // MARK: - Faults
 
-/// Red names a SENSOR, never a value (rule 2). This component takes a
-/// `sensor` string and has no parameter for a figure, so the rule cannot be
-/// broken through it — a stale or greyed last-known number was explicitly
-/// rejected, because the runner cannot tell it has stopped moving.
-struct WSensorFault: View {
-    let sensor: String
-    /// 19pt so the broken slot carries the optical weight of the three
-    /// untouched values beside it. A fault that reads lighter than the
-    /// numbers around it looks like a caption, not like a slot that stopped.
-    var size: CGFloat = 19
-
-    var body: some View {
-        Text(sensor)
-            .font(WatchV5.label(size, .semibold))
-            .foregroundStyle(WatchV5.fault)
-    }
-}
 
 // MARK: - Rows
 
