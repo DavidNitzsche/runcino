@@ -170,10 +170,58 @@ struct V5LobbyPoster: View {
     var pageIndex: Int = 0
     var startLabel: String = "Start"
     let onStart: () -> Void
+    /// "Indoors". Present on a session that could plausibly be run on a belt,
+    /// absent on one that could not (a race).
+    ///
+    /// A QUIET SECOND TARGET, not a toggle and not a question after the tap.
+    /// Apple's own Workout app makes this choice every time and so does every
+    /// other running watch, because the app cannot know: GPS silence means a
+    /// treadmill and it means a tunnel, and the only thing that can tell them
+    /// apart is the runner. Inferring it — which is what this app did — takes
+    /// six minutes to decide and gets a lost fix wrong.
+    ///
+    /// `onRampQuiet` weight, the same register Rest day's "Run anyway" uses:
+    /// present, one tap, and nothing here is being sold.
+    var onStartIndoors: (() -> Void)? = nil
 
     var body: some View {
         WGradientBoard(session: session.ramp.wireName) {
             VStack(spacing: 0) {
+                // INDOORS SITS IN THE TOP LEFT, which is empty on every
+                // variant of this board — the system clock owns the right of
+                // that line and nothing owns the left.
+                //
+                // It was a second full-width pill under Start first, and that
+                // is what the target vocabulary would suggest. Rendered, it
+                // cost the poster its lede: EASY fell from 36pt to about 22
+                // and THRESHOLD compressed until it competed with the clock,
+                // on every session, to carry a choice most runners make once a
+                // month. Start also stopped sitting where it sits on every
+                // other variant, which is the one thing the lobby's own spec
+                // says must never move.
+                //
+                // A DELIBERATE EXCEPTION TO RULE 6, and the only one. That
+                // rule exists so a target is reliable when a runner is moving,
+                // sweating, or deciding under pressure — a fault, a
+                // confirmation, a mid-run control. This one is pressed
+                // standing still, before the run, with full attention, and it
+                // is the cheapest possible thing to undo: start the wrong way
+                // and you end the run and start it again.
+                if let onStartIndoors {
+                    HStack {
+                        Button(action: onStartIndoors) {
+                            Text("Indoors")
+                                .font(WatchV5.label(13, .bold))
+                                .foregroundStyle(WatchV5.value.opacity(0.86))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(WatchV5.ground.opacity(0.42), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        Spacer(minLength: 0)
+                    }
+                }
+
                 Spacer(minLength: 0)
 
                 // TYPE RHYTHM, not a flat 4pt gap.
@@ -193,6 +241,15 @@ struct V5LobbyPoster: View {
                             .font(WatchV5.number(session.doseSize))
                             .foregroundStyle(WatchV5.value)
                             .multilineTextAlignment(.center)
+                            // TAKES THE HEIGHT IT NEEDS, so the pressure lands
+                            // on the spacers instead of on the words. Without
+                            // this a poster short of room truncated a
+                            // deliberately two-line dose to "2 x 3 mi..." — the
+                            // same failure the full-bleed collapse produced
+                            // this morning, arriving from a different
+                            // direction. A register that silently drops half
+                            // its content is worse than a tighter layout.
+                            .fixedSize(horizontal: false, vertical: true)
                             .padding(.top, session.doseSize * 0.22)
                     }
                     if let qualifier = session.qualifier {

@@ -48,7 +48,7 @@ final class WatchRootModel: ObservableObject {
     @Published private(set) var staleOverrideAvailable = false
     private var staleTimeoutTask: Task<Void, Never>?
 
-    func start(_ workout: WatchWorkout) {
+    func start(_ workout: WatchWorkout, indoors: Bool = false) {
         // A second tap before the authorization await returns used to build a
         // SECOND engine on the same tracker. bind() keeps only the newer one,
         // but the first has already called tracker.start() and begun its
@@ -79,10 +79,15 @@ final class WatchRootModel: ObservableObject {
         // workout lands (phone unreachable / timeout) the runner gets a
         // clearly-labeled START ANYWAY override to run the cached session.
         if workout.isExpired {
+            // The indoor choice is lost across a stale refresh, deliberately:
+            // the runner is about to be shown the lobby again with a fresher
+            // session, and carrying a decision across a board they have to
+            // re-answer is how a setting ends up applied to a run nobody asked
+            // it for.
             beginStaleRefresh()
             return
         }
-        launch(workout)
+        launch(workout, indoors: indoors)
     }
 
     /// Explicit override from the STALE state — run the cached workout
@@ -113,7 +118,7 @@ final class WatchRootModel: ObservableObject {
         staleOverrideAvailable = false
     }
 
-    private func launch(_ workout: WatchWorkout) {
+    private func launch(_ workout: WatchWorkout, indoors: Bool = false) {
         clearStale()
         Task {
             // Prompt for HealthKit (+ location) before the session starts
@@ -121,6 +126,19 @@ final class WatchRootModel: ObservableObject {
             await tracker.requestAuthorization()
             let engine = WorkoutEngine(workout: workout)
             engine.tracker = tracker
+            if indoors {
+                // DECLARED, not discovered. `isTreadmill` reads
+                // `distanceSourceUnavailable`, which until now was only ever
+                // set by inference — six minutes of no distance progress, or a
+                // phase running well past its estimate. That is late, and it
+                // cannot tell a treadmill from a tunnel.
+                //
+                // The runner just told us. Setting it here means the belt run
+                // grades nothing from its first second, draws no band it will
+                // not judge, and is never auto-paused for standing still on a
+                // machine that is moving under them.
+                tracker.markDistanceSourceUnavailable()
+            }
             bind(engine)
             engine.beginCountdown()
         }
@@ -550,7 +568,8 @@ struct WorkoutRootView: View {
                     workout: workout,
                     weekStrip: phone.weekStrip,
                     sessionMoved: phone.sessionMoved,
-                    onStart: { model.start(workout) }
+                    onStart: { model.start(workout) },
+                    onStartIndoors: { model.start(workout, indoors: true) }
                 )
             }
         } else if phone.noWorkoutMessage != nil {

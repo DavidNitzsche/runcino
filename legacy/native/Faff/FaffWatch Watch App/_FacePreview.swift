@@ -364,6 +364,15 @@ struct FacePreviewView: View {
 
     private func lobby() -> AnyView? {
         switch name {
+        case "lobbyindoors":
+            return AnyView(V5LobbyPoster(session: V5LobbyFixtures.easy,
+                pageCount: 2, pageIndex: 0, onStart: { },
+                onStartIndoors: { }))
+        case "lobbyindoorslong":
+            // The densest poster that can still be run on a belt.
+            return AnyView(V5LobbyPoster(session: V5LobbyFixtures.threshold,
+                pageCount: 3, pageIndex: 0, onStart: { },
+                onStartIndoors: { }))
         case "lobbyeasy":
             return AnyView(V5LobbyPoster(session: V5LobbyFixtures.easy,
                 pageCount: 2, pageIndex: 0) { })

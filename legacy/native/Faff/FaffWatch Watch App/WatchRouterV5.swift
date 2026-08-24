@@ -1419,6 +1419,10 @@ struct WatchLobbySurfaceV5: View {
     let weekStrip: WatchWeekStrip?
     let sessionMoved: WatchSessionMoved?
     let onStart: () -> Void
+    /// Start the same session as an indoor run. nil on a race — a marathon is
+    /// not run on a belt, and offering it there is a target that can only be
+    /// pressed by mistake.
+    var onStartIndoors: (() -> Void)? = nil
 
     private var steps: [V5LobbyStep] { WatchLobbyAdapter.steps(for: workout) }
     private var units: String? { workout.unitsDistance }
@@ -1451,7 +1455,8 @@ struct WatchLobbySurfaceV5: View {
                 ),
                 pageCount: pageCount,
                 pageIndex: 0,
-                onStart: onStart
+                onStart: onStart,
+                onStartIndoors: workout.isRace ? nil : onStartIndoors
             )
             .tag(0)
 
