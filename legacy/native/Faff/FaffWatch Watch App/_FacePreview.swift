@@ -383,7 +383,7 @@ struct FacePreviewView: View {
                 totals: [FinishSummaryRow("Climb", "312 ft")]))
         case "firstlaunch":
             return AnyView(PreSessionFirstLaunchBoard { })
-        default: return notifications()
+        default: return notifications() ?? widgets()
         }
     }
 
@@ -392,6 +392,105 @@ struct FacePreviewView: View {
     // One shell. An action appears only when there GENUINELY is one — "session
     // moved" and "race tomorrow" have none, and giving them a target would
     // make the notification a thing to dismiss rather than a thing to read.
+
+    /// The three complication sizes and the Smart Stack card.
+    ///
+    /// Drawn at their real slot dimensions on a plate, because the system
+    /// normally supplies both and neither is reachable from a preview. The
+    /// point is not the plate — it is whether the CONTENT rule holds at each
+    /// size: type first, dose second, and the dose is what goes when the space
+    /// runs out.
+    ///
+    /// RULE 12 IS THE ONE TO CHECK HERE. Nothing on a complication is ever
+    /// coloured — no band green, no attention amber, no ramp. A complication
+    /// is not during a run; it sits in the corner of the eye for sixteen hours,
+    /// and a grade there is a verdict the runner did not ask for and cannot
+    /// dismiss. Staleness steps in OPACITY instead, because a dimmer number
+    /// does not read as a graded one.
+    private func widgets() -> AnyView? {
+        func snap(_ ramp: String, _ lede: String, _ dose: String) -> FaffSessionSnapshot {
+            FaffSessionSnapshot(sessionDay: "2026-08-24", ramp: ramp, lede: lede, dose: dose)
+        }
+        let easy  = FaffWidgetContent(.current(snap("easy", "Easy", "6 mi")))
+        let long  = FaffWidgetContent(.current(snap("quality", "Threshold", "2 × 3 mi")))
+        let stale = FaffWidgetContent(.stale(snap("easy", "Easy", "6 mi"), daysOld: 9))
+        let none  = FaffWidgetContent(.noPlan)
+        /// The slot, on a ground the harness has to supply itself.
+        ///
+        /// `ramp` matters more than it looks. The Smart Stack card paints its
+        /// gradient with `.containerBackground(for: .widget)`, which is inert
+        /// outside a real widget container — so rendered plainly it comes out
+        /// on black, and reviewing that would have reported a missing gradient
+        /// that is not missing. The harness supplies the container's ground so
+        /// what is reviewed is what ships.
+        ///
+        /// Complications get no ramp, and that is the design: rule 12. The card
+        /// earns the gradient they do not, because it appears for a few seconds
+        /// on a wrist-raise rather than sitting in the corner of the eye all day.
+        /// The slot, on a ground the harness has to supply itself.
+        ///
+        /// `ramp` matters more than it looks. The Smart Stack card paints its
+        /// gradient with `.containerBackground(for: .widget)`, which is inert
+        /// outside a real widget container — so rendered plainly it comes out
+        /// on black, and reviewing that would have reported a missing gradient
+        /// that is not missing. The harness supplies the container's ground so
+        /// what is reviewed is what ships.
+        ///
+        /// Complications get no ramp, and that is the design: rule 12. The card
+        /// earns the gradient they do not, because it appears for a few seconds
+        /// on a wrist-raise rather than sitting in the corner of the eye all day.
+        ///
+        /// SIZES HERE ARE APPROXIMATE and flagged as such. WidgetKit hands each
+        /// family its own slot and does not publish the numbers; these are close
+        /// enough to judge whether the content rule holds — type first, dose
+        /// second, dose is what goes — and not close enough to judge a 2pt
+        /// margin. That check needs the widget on a real face.
+        func plate<V: View>(_ w: CGFloat, _ h: CGFloat, ramp: String? = nil,
+                            @ViewBuilder _ v: () -> V) -> AnyView {
+            AnyView(
+                v()
+                    // THE CONTAINER'S MARGINS, supplied by hand.
+                    //
+                    // `containerBackground(for: .widget)` deliberately strips a
+                    // view's content margins because WidgetKit puts them back.
+                    // Outside a real widget nothing does: rendered unconstrained
+                    // this card's ink starts at x=2.5pt, and clipping it to a
+                    // plate then cut the lede mid-glyph on both edges. That
+                    // would have read as a layout bug in the card and is a
+                    // missing container.
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 6)
+                    .frame(width: w, height: h)
+                    .background { if let ramp { WRamp(session: ramp) } }
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(WatchV5.ground.ignoresSafeArea())
+            )
+        }
+        switch name {
+        case "compcircular":
+            return plate(52, 52) { FaffCircularComplication(content: easy) }
+        case "compcircularstale":
+            return plate(52, 52) { FaffCircularComplication(content: stale) }
+        case "comprect":
+            return plate(160, 40) { FaffRectangularComplication(content: easy) }
+        case "comprectlong":
+            return plate(160, 40) { FaffRectangularComplication(content: long) }
+        case "compcorner":
+            return plate(60, 60) { FaffCornerComplication(content: easy) }
+        case "smartstack":
+            return plate(178, 84, ramp: "easy") { FaffSmartStackView(content: easy) }
+        case "smartstacklong":
+            return plate(178, 84, ramp: "quality") { FaffSmartStackView(content: long) }
+        case "smartstackstale":
+            return plate(178, 84, ramp: "easy") { FaffSmartStackView(content: stale) }
+        case "smartstacknone":
+            return plate(178, 84, ramp: "easy") { FaffSmartStackView(content: none) }
+        case "compcircularnone":
+            return plate(52, 52) { FaffCircularComplication(content: none) }
+        default: return nil
+        }
+    }
 
     private func notifications() -> AnyView? {
         switch name {

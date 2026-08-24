@@ -212,6 +212,19 @@ targets:
       # the app still needs is described in a `// NEEDS:` at the foot of that
       # file; until it exists the widget correctly draws its no-plan board.
       - path: Faff/FaffWatch Widgets/FaffWidgetSnapshot.swift
+      # REVIEW HARNESS ONLY — remove these three with _FacePreview.swift.
+      #
+      # The widget's VIEW layer, compiled into the app so `-face` can render a
+      # complication and the Smart Stack card beside the boards they belong to.
+      # Those surfaces are otherwise only visible by adding the widget to a
+      # watch face by hand, which is not a thing a review pass can do
+      # repeatably — and a surface nobody renders is a surface nobody checks.
+      #
+      # The boundary above is deliberate and this crosses it, which is why it
+      # goes out with the harness rather than staying.
+      - path: Faff/FaffWatch Widgets/FaffWidgetContent.swift
+      - path: Faff/FaffWatch Widgets/FaffComplicationViews.swift
+      - path: Faff/FaffWatch Widgets/FaffSmartStackView.swift
     info:
       path: Faff/FaffWatch Watch App/Info.plist
       properties:

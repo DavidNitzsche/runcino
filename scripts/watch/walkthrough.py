@@ -84,6 +84,16 @@ FAM = [
    ("racecomplete","Race day","provisional chip time in amber; this hands off to the phone"),
    ("summary","Summary","the only scrolling board, so the only one allowed more than four numbers"),
    ("firstlaunch","Before there is a plan",None)]),
+ ("Complications and the Smart Stack", "The surfaces that carry the session before the app is ever opened. Rendered here for content only — WidgetKit hands each family its own slot and supplies its own margins, so a 2pt edge cannot be judged outside a real widget container.",
+  [("compcircular","Circular","the dose alone: a runner glancing at a face knows what day it is"),
+   ("compcircularstale","Circular · stale","staleness steps in OPACITY, never in hue — rule 12"),
+   ("comprect","Rectangular","type then dose, and the dose is what goes when space runs out"),
+   ("comprectlong","Rectangular · longer dose",None),
+   ("compcorner","Corner","the type sits in the slot; the dose rides the curved widget label"),
+   ("smartstack","Smart Stack","the lobby with the poster cropped out — the one widget surface that earns a ramp"),
+   ("smartstacklong","Smart Stack · quality",None),
+   ("smartstackstale","Smart Stack · stale","amber is allowed HERE: this is not a watch face"),
+   ("smartstacknone","Smart Stack · no plan","a sentence replaces the target rather than joining it")]),
  ("Notifications", "One shell: source line, the change as the lede, the consequence in the coach's register, and a target only when there genuinely is one.",
   [("notifmoved","Session moved","no action — and giving it one would make it a thing to dismiss rather than read"),
    ("notifmovedlong","Longer lede",None),
@@ -153,7 +163,7 @@ GAPS = [
  ("The controls board is not Apple's Three Bottom Controls", "It is three stacked full-width pills. Apple's arrangement is two 35pt round slots and one 46pt centre slot, which take icons, not the words Lap / Pause / End run. Real design question, not an oversight — flagging rather than deciding."),
  ("Device-only checks", "Corner clipping at the bottom margin, running power on a belt, water lock, haptic textures, and Always-On rendering all need a real watch. The simulator does not draw the corner mask, so a screenshot can never settle edge fit."),
  ("The review harness is still mounted", "<code>_FacePreview.swift</code> and its mount in <code>WorkoutRootView</code> are what let you see any board on demand. They come out before ship — left in so you can drive this yourself tomorrow."),
- ("Complications and the Smart Stack widget", "Not rebuilt in this pass. They live in a separate target and are the last surface still on the old layout."),
+ ("Widget margins need a real face", "The complications and the Smart Stack card are built and correct, and the widget target compiles clean — an earlier note here calling them &ldquo;still on the old layout&rdquo; was wrong. What cannot be checked from a harness is their margins: <code>containerBackground(for: .widget)</code> deliberately strips a view's content margins because WidgetKit puts them back, so rendered outside a widget the card's ink starts at 2.5pt. The renders above approximate the container. Judging a 2pt edge needs the widget on a real face."),
 ]
 
 SIZES = [("42","threshold"),("46","threshold"),("49","threshold"),
@@ -233,7 +243,7 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);
 out.append('<div class="wrap"><header class="top">')
 out.append('<h1>Watch faces<span class="dot">.</span> Every board</h1>')
 out.append('<p class="lede">Sixty boards on the native foundation, each one rendered on a real simulator and checked against Apple’s own layout guides. Nine defects are written up below — six of them looked correct in a screenshot, which is the part worth reading.</p>')
-out.append('<div class="meta"><span class="chip">60 boards</span><span class="chip">3 watch sizes</span><span class="chip">9 defects fixed</span><span class="chip">4 rulings locked</span><span class="chip">1 open</span></div>')
+out.append('<div class="meta"><span class="chip">60 boards</span><span class="chip">3 watch sizes</span><span class="chip">9 defects fixed</span><span class="chip">5 rulings locked</span><span class="chip">1 open</span></div>')
 import re as _re
 def slug(t):
     return _re.sub(r"[^a-z0-9]+","-", t.lower().split("—")[0].strip()).strip("-")
@@ -254,20 +264,24 @@ for t,verdict,how in RULED:
     out.append(f'<div class="card ok"><h3>{t}</h3><p><b>{verdict}</b></p><p class="how">{how}</p></div>')
 out.append('</div>')
 
-out.append('<h2 id="controls-shape">Controls, redesigned</h2>')
-out.append('''<p class="sec-note">Apple's kit draws this job as two 35pt round slots and one 46pt centre slot. Rendered, it left two thirds of the display empty and shrank each target from about 9,250pt&sup2; of area to 1,660 — the wrong direction on a moving wrist at mile 20. Dead.</p>
-<p class="sec-note">What replaced it came from David: <em>&ldquo;end run can be RED and Pause can be ORANGE.&rdquo;</em> That turns out to do more than colour the buttons. The previous attempt made the lead verb huge and demoted End run to a grey text line purely so the three would not read as equals. Once the verbs are coloured they no longer need to differ in size to differ in kind — so all three go back to equal bands filling the screen, and every one is a full-size target.</p>
-<p class="sec-note"><b>Colour is safe on this board and nowhere else.</b> The palette keeps colour off everything but the graded metric because a coloured number reads as a graded number. This board has no numbers on it. Nothing is present that a hue could be mistaken for a judgement about. It also matches Apple, whose own Workout controls are a red End and an amber Pause.</p>''')
+out.append('<h2 id="controls-shape">Controls, redesigned and shipped</h2>')
+out.append('''<p class="sec-note">Apple's kit draws this job as two 35pt round slots and one 46pt centre slot. Rendered, it left two thirds of the display empty and shrank each target from about 9,250pt&sup2; of area to 1,660 — the wrong direction on a moving wrist at mile 20. Dead, and recorded here only so nobody proposes it again.</p>
+<p class="sec-note">What replaced it came from David: <em>&ldquo;end run can be RED and Pause can be ORANGE.&rdquo;</em> That does more than colour the buttons. The previous attempt made the lead verb huge and demoted End run to a grey text line purely so the three would not read as equals. Once they are coloured they no longer need to differ in size to differ in kind — so all three go back to equal bands filling the screen, and every one is a full-size target.</p>
+<p class="sec-note"><b>Colour is safe on this board and nowhere else.</b> The palette keeps colour off everything but the graded metric because a coloured number reads as a graded number. This board has no numbers on it. Nothing is present that a hue could be mistaken for a judgement about. It also matches Apple, whose own Workout controls are a red End and an amber Pause. <b>Amber, never signal orange</b> — <code>#FF5A1F</code> sits about ten degrees from fault red and the two bands read as one colour stacked; rendered and settled, not argued.</p>''')
 out.append('<div class="grid">')
-for n,c,sub in [("ctlamber","Attention amber · shipping","three equal targets, count at the foot like every phase board"),
-                ("ctlorange","Signal orange · rejected","#FF5A1F sits about ten degrees from fault red — stacked adjacently they do not separate"),
-                ("ctlambertext","End run as text · rejected","loses target area and reads unfinished rather than careful"),
-                ("ctlambersteady","Steady run","Lap leads; the header says where you are")]:
+for n,c,sub in [("controls","Steady run · two verbs","Lap is gone; Pause and End run grow to 83pt each"),
+                ("controlsrep","Inside a rep · three","Skip rep leads, and the header names the rep"),
+                ("endconfirm","End confirm","still the handoff's white pill — see the note below"),
+                ("skipconfirm","Skip confirm","the one confirmation that earns a coach sentence")]:
     out.append(board(n,c,sub))
 out.append('</div>')
-out.append('''<div class="cards"><div class="card rec"><h3>Why amber and not orange</h3>
-<p>The concern was raised before the render and the render settled it: put signal orange above fault red and the two bands read as one colour at arm's length. Attention amber separates cleanly, and it already means <em>a condition, a decision waiting</em>, which is what a pause is.</p>
-<p class="how">The count moved from a kicker at the top to a centred line at the foot. It had been sharing the system clock's line, and controls was the one board in the app where reference information sat above the thing it referred to — so moving between a running face and its controls moved it. Now it does not.</p></div></div>''')
+out.append('''<div class="cards"><div class="card rec"><h3>Why Lap had to go, not be renamed</h3>
+<p>It was the only verb in the app whose effect the runner could not see. It closed the current segment — and no board draws a lap figure. Not page 1, not page 2, not any phase board. <code>lapCount</code> and <code>lastLapElapsedSec</code> live in the engine and are never rendered, so the controls dismissed and every number on screen was identical. That is why it read as unclear: a verb with an invisible effect cannot be understood from its label.</p>
+<p>Renaming it <em>Split</em> was built and rejected — a better-named invisible action is still invisible. Nothing is lost by removing it: the run auto-splits every mile, the summary lists those splits, and the Split moment announces each one as it lands.</p>
+<p class="how">Inside a rep the slot returns as Skip rep, which has an obvious referent and a visible consequence, so that one was never in question.</p></div>
+<div class="card ask"><h3>Still open: the colour thread stops at the confirms</h3>
+<p>You now tap a red <em>End run</em> and land on a white <em>End and save</em>. The confirm boards still use the handoff's treatment — filled white affirmative, grey escape, discard as text with no pill — which §5 and rule 7 both specify.</p>
+<p class="how">Carrying red through to <em>End and save</em> would follow the eye and mark the moment of commitment. Leaving it keeps the confirm deliberately calm. Not changed either way, because it is a design call rather than a defect.</p></div></div>''')
 
 for t,note,items in FAM:
     anc=slug(t)
