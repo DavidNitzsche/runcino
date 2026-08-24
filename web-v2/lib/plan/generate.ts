@@ -6446,6 +6446,111 @@ export function specForComposedDay(
   return { paceTargetSPerMi: built.paceTargetSPerMi, spec: built.spec };
 }
 
+/** What one composed day becomes in `plan_workouts`. The columns a reader can
+ *  actually see, in the values the INSERT binds. */
+export interface PersistedDayShape {
+  type: string;
+  distanceMi: number;
+  paceTargetSPerMi: number | null;
+  workoutSpec: ReturnType<typeof buildWorkoutSpec>['spec'];
+  isQuality: boolean;
+  isLong: boolean;
+  notes: string;
+  subLabel: string | null;
+  /** True when a seal overrode the freshly-composed prescription. */
+  sealed: boolean;
+}
+
+/**
+ * THE AUTHORED DAY BECOMES THE STORED DAY, HERE.
+ *
+ * Extracted 2026-08-24 from `persistPlan`'s row loop — byte-identical logic,
+ * zero behaviour change — so the hop can be driven with no database. It is a
+ * LOSSY hop and that is why it needed a seam: `distance_mi` is the SPEC's
+ * summed total, not the composed day's `distanceMi`, so a quality session
+ * composed as a 4-mile core is stored as its 8-mile whole; and `sub_label` is
+ * re-derived from the spec, so the composer's own string can be replaced.
+ *
+ * `lib/conservation/_plan_conservation.test.ts` says in as many words that it
+ * enters AROUND this function rather than through it. Now it can enter through
+ * it, and so can the onboarding sweep — see
+ * `lib/onboarding/_onboarding_e2e.test.ts`.
+ */
+export function persistedDayShape(
+  d: DayPlan,
+  /** The week's blended T-pace, or the plan-wide goal-T when the week has none. */
+  weekT: number | null,
+  args: {
+    lthr: number | null;
+    maxHr: number | null;
+    goalPaceSec: number | null;
+    easyAnchorTSec: number | null;
+    goalIPaceEligible: boolean;
+    belowTableAnchor?: BelowTableAnchor | null;
+  },
+  /** The prior plan's prescription for this date, when the day is sealed. */
+  sealed?: SealedPrescription | null,
+): PersistedDayShape {
+  // 2026-06-01 · derive pace_target + workout_spec at insert time (web agent
+  // gap brief). Was leaving both NULL waiting on the backfill cron · now every
+  // freshly-generated quality row carries its target pace + structured spec
+  // from day one. Reuses lib/plan/spec-builder.ts (single source of truth · the
+  // backfill cron uses the same helper).
+  const derived = specForComposedDay(d, weekT, args);
+  const paceTargetSPerMi: number | null = derived.paceTargetSPerMi;
+  let workoutSpec: ReturnType<typeof buildWorkoutSpec>['spec'] = derived.spec;
+  // 2026-06-21 · cap the spec's REALIZED distance at the clamped day distance.
+  // The post-compose easy/quality≤long sweep clamps d.distanceMi, but the
+  // PERSISTED distance is the spec's summed segments — which can exceed it
+  // (fixed-shape tempo, float-jog overshoot) and ship a quality run longer than
+  // the week's long on short-race plans (round-2 CRITICAL). No-op when the spec
+  // already fits (David byte-for-byte same).
+  workoutSpec = capSpecToDistance(workoutSpec, d.distanceMi);
+  // PROGRESSION-PERSIST-1 (2026-08-17) · carry the trajectory's decision into
+  // the row. Without this the shape died here and the adaptation model's "hold
+  // the current stimulus" had nothing to hold — see lib/plan/progression-spec.ts.
+  // Attached AFTER the distance cap so the block describes the session actually
+  // prescribed: `capSpecToDistance` can trim a rep, and a block disagreeing with
+  // the spec beside it would be the same drift in a new field.
+  if (workoutSpec && d.workShape) {
+    workoutSpec = {
+      ...workoutSpec,
+      ...progressionSpecFields({
+        shape: d.workShape,
+        lever: d.progressionLever ?? null,
+        zone: d.challengeZone ?? null,
+        repsOverride: Number((workoutSpec as Record<string, unknown>).rep_count ?? 0) || null,
+      }),
+    };
+  }
+  // 2026-06-02 · distance_mi reflects the TOTAL run · WU + core + floats + CD ·
+  // so the headline number matches the breakdown. Was: stored just the core
+  // (e.g. "4×1 mi @ T" → 4.0) while the sub_label said "2 mi WU · 4 mi @ T ·
+  // 2 mi CD" (= 8 mi). The runner's math didn't tie. See
+  // spec-builder.totalDistanceMiFromSpec for the inclusion rules.
+  const totalDistanceMi = totalDistanceMiFromSpec(workoutSpec, d.distanceMi);
+  // 2026-06-03 · iPhone agent Tier 2.d brief · sub_label derived from the spec
+  // instead of the rx template string. The spec is the authored truth · deriving
+  // sub_label from it means the chip title and the spec can never drift. Falls
+  // back to d.subLabel when the spec is null (rest/cross/strength).
+  const derivedSubLabel = subLabelFromSpec(workoutSpec) ?? d.subLabel;
+  return {
+    type: sealed?.type ?? d.type,
+    distanceMi: sealed?.distance_mi ?? totalDistanceMi,
+    paceTargetSPerMi: sealed?.pace_target_s_per_mi ?? paceTargetSPerMi,
+    // A sealed spec came out of a prior `persistPlan`, so it IS one of these;
+    // `SealedPrescription` types the column as `unknown` because it reads it
+    // back out of jsonb.
+    workoutSpec: (sealed?.workout_spec as ReturnType<typeof buildWorkoutSpec>['spec']) ?? workoutSpec,
+    isQuality: sealed?.is_quality ?? d.isQuality,
+    isLong: sealed?.is_long ?? d.isLong,
+    // notes coalesce '' · the column is NOT NULL (persona-suite catch).
+    notes: (sealed?.notes ?? d.notes) ?? '',
+    subLabel: sealed?.sub_label ?? derivedSubLabel,
+    sealed: sealed != null,
+  };
+}
+
 async function persistPlan(client: PoolClient, args: {
   userId: string; raceSlug: string | null; raceDateISO: string;
   blocks: BlockPlan; weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean; tPaceSec?: number | null }>;
@@ -6594,71 +6699,26 @@ async function persistPlan(client: PoolClient, args: {
       // fall back to plan-wide goal-T. Plain assignment from week's own
       // tPaceSec (set on every ComposedWeek by composePlan).
       const weekT = (w as { tPaceSec?: number | null }).tPaceSec ?? args.tPaceSec;
-      const derived = specForComposedDay(d, weekT, args);
-      let paceTargetSPerMi: number | null = derived.paceTargetSPerMi;
-      let workoutSpec: ReturnType<typeof buildWorkoutSpec>['spec'] = derived.spec;
-      // 2026-06-02 · distance_mi now reflects the TOTAL run · WU + core +
-      // floats + CD · so the headline number matches the breakdown.
-      // Was: stored just the core (e.g. "4×1 mi @ T" → 4.0) while the
-      // sub_label said "2 mi WU · 4 mi @ T · 2 mi CD" (= 8 mi). The
-      // runner's math didn't tie. See spec-builder.totalDistanceMiFromSpec
-      // for the inclusion rules.
-      // 2026-06-21 · cap the spec's REALIZED distance at the clamped day
-      // distance. The post-compose easy/quality≤long sweep clamps
-      // d.distanceMi, but the PERSISTED distance is the spec's summed segments
-      // — which can exceed it (fixed-shape tempo, float-jog overshoot) and ship
-      // a quality run longer than the week's long on short-race plans (round-2
-      // CRITICAL). No-op when the spec already fits (David byte-for-byte same).
-      workoutSpec = capSpecToDistance(workoutSpec, d.distanceMi);
-      // PROGRESSION-PERSIST-1 (2026-08-17) · carry the trajectory's decision
-      // into the row. Without this the shape died here and the adaptation
-      // model's "hold the current stimulus" had nothing to hold — see
-      // lib/plan/progression-spec.ts. Attached AFTER the distance cap so the
-      // block describes the session actually prescribed: `capSpecToDistance`
-      // can trim a rep, and a block disagreeing with the spec beside it would
-      // be the same drift in a new field.
-      if (workoutSpec && d.workShape) {
-        workoutSpec = {
-          ...workoutSpec,
-          ...progressionSpecFields({
-            shape: d.workShape,
-            lever: d.progressionLever ?? null,
-            zone: d.challengeZone ?? null,
-            repsOverride: Number((workoutSpec as Record<string, unknown>).rep_count ?? 0) || null,
-          }),
-        };
-      }
-      const totalDistanceMi = totalDistanceMiFromSpec(workoutSpec, d.distanceMi);
-      // 2026-06-03 · iPhone agent Tier 2.d brief · sub_label derived
-      // from spec instead of the rx template string. The spec is the
-      // authored truth · deriving sub_label from it means the chip
-      // title and the spec can never drift. Falls back to d.subLabel
-      // when spec is null (rest/cross/strength).
-      const derivedSubLabel = subLabelFromSpec(workoutSpec) ?? d.subLabel;
       // 2026-06-03 · Rule 15 · seal completed days. If the prior
       // active plan had a row for this date AND a completed run
       // exists, OVERRIDE the freshly-composed prescription with the
       // prior's. The runner trained against the prior prescription ·
       // changing it after-the-fact would make every retro lie.
       const sealed = args.sealedSnapshot.get(dateISO);
-      const finalType = sealed?.type ?? d.type;
-      const finalDistanceMi = sealed?.distance_mi ?? totalDistanceMi;
-      const finalPaceSec = sealed?.pace_target_s_per_mi ?? paceTargetSPerMi;
-      const finalSpec = sealed?.workout_spec ?? workoutSpec;
-      const finalSubLabel = sealed?.sub_label ?? derivedSubLabel;
-      const finalIsQuality = sealed?.is_quality ?? d.isQuality;
-      const finalIsLong = sealed?.is_long ?? d.isLong;
-      const finalNotes = sealed?.notes ?? d.notes;
+      // The spec derivation, the distance cap, the progression block, the
+      // spec-summed total and the spec-derived sub_label all live in
+      // `persistedDayShape` (extracted 2026-08-24, byte-identical) so the
+      // onboarding sweep can drive this hop without a database.
+      const row = persistedDayShape(d, weekT, args, sealed);
       if (sealed) {
         logSealSkip('persistPlan/rebuild', args.userId, dateISO);
       }
       // dow stored as 1=Mon..7=Sun in our convention? Use what plan_workouts expects.
       // We pass dow 0..6 (Sun..Sat). Existing reader treats numeric dow + sub_label.
       workoutRows.push(
-        [wkoId, planId, weekId, dateISO, d.dow, finalType, finalDistanceMi,
-         finalPaceSec, finalSpec ? JSON.stringify(finalSpec) : null,
-         // notes coalesce '' · column is NOT NULL (persona-suite catch).
-         finalIsQuality, finalIsLong, finalNotes ?? '', finalSubLabel]
+        [wkoId, planId, weekId, dateISO, d.dow, row.type, row.distanceMi,
+         row.paceTargetSPerMi, row.workoutSpec ? JSON.stringify(row.workoutSpec) : null,
+         row.isQuality, row.isLong, row.notes, row.subLabel]
       );
     }
 

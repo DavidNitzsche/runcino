@@ -134,7 +134,20 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
 
   // layout (loadGeneratorInputs §2)
   let longRunDow = dayKeyToDow(sim.longRunDay);
-  let restDow = dayKeyToDow(sim.restDay ?? 'sat');
+  // REST-COLLIDE-1 (2026-08-24) · the default was a bare 'sat', so a runner who
+  // picks SATURDAY long runs was simulated with the long run and the rest day
+  // on the same day. `POST /api/onboarding/complete` has guarded that since
+  // 2026-06-10 — `restDay = longRunDay === 'sat' ? 'mon' : 'sat'`, because "the
+  // generator overwrites a shared slot with the long and would leave the week
+  // rest-less" — so the colliding layout is one production cannot build.
+  //
+  // It was not harmless. With the slot taken, `composeRecoveryPlan` placed the
+  // post-race long run on a WEDNESDAY for every Saturday-long runner, and
+  // `_plan_conservation.test.ts` sweeps `longRunDay: 'sat'` across 448 of its
+  // 896 archetypes — half that gate has been grading a runner who does not
+  // exist. The route's own rule, applied here, so the two front doors seed the
+  // same layout.
+  let restDow = dayKeyToDow(sim.restDay ?? (sim.longRunDay === 'sat' ? 'mon' : 'sat'));
   let qualityDows: DOW[] = [dayKeyToDow('tue'), dayKeyToDow('thu')];
   let availableDows: Set<number> | null = null;
   const avail = (sim.availableDays ?? []).map((d) => dayKeyToDow(d));

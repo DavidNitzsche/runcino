@@ -30,7 +30,7 @@ import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 import { loadPlanWeek } from '@/lib/plan/week-loader';
 import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeWorkoutType } from '@/lib/coach/run-purpose';
-import { prescriptionFor, derivePaces, type WorkoutType as PrescriptionWorkoutType } from '@/lib/training/prescriptions';
+import { prescriptionFor, derivePaces, narrowToPrescriptionType } from '@/lib/training/prescriptions';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
@@ -1088,18 +1088,8 @@ function dowName(iso: string): string {
  * each mapped to the nearest case prescriptionFor implements, not dropped
  * to a blank card.
  */
-function toPrescriptionType(plannedType: string | null): PrescriptionWorkoutType {
-  const t = (plannedType ?? '').toLowerCase();
-  switch (t) {
-    case 'easy': case 'long': case 'tempo': case 'threshold': case 'intervals':
-    case 'race': case 'shakeout': case 'rest': case 'unplanned':
-      return t as PrescriptionWorkoutType;
-    case 'race_week_tuneup': return 'threshold';
-    case 'recovery': return 'easy';
-    case 'fartlek': case 'progression': return 'tempo';
-    case 'vo2max': return 'intervals';
-    default: return 'easy';
-  }
-}
+// 2026-08-24 · lifted to lib/training/prescriptions.ts (byte-identical) so the
+// watch, which casts instead of narrowing, has the same function to reach for.
+const toPrescriptionType = narrowToPrescriptionType;
 
 
