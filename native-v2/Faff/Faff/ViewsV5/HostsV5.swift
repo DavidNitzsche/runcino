@@ -147,6 +147,7 @@ struct TodayHostV5: View {
             NotificationCenter.default.post(name: .faffSurfaceReady, object: "today")
         }
         .refreshable { await surface.load() }
+        .v5ReloadOnForeground { await surface.load() }
     }
 
     @ViewBuilder
@@ -489,6 +490,7 @@ struct BlockHostV5: View {
             NotificationCenter.default.post(name: .faffSurfaceReady, object: "block")
         }
         .refreshable { await surface.load() }
+        .v5ReloadOnForeground { await surface.load() }
     }
 }
 
@@ -543,6 +545,7 @@ struct RacesHostV5: View {
                 NotificationCenter.default.post(name: .faffSurfaceReady, object: "races")
             }
             .refreshable { await surface.load() }
+        .v5ReloadOnForeground { await surface.load() }
             // Coming back from a pushed screen that may have written — adding
             // a race, answering on the detail — the list behind it is stale.
             // The stack does not re-run `.task` on pop, so watch the path.

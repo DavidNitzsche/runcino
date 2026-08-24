@@ -285,3 +285,50 @@ final class PhoneRunGate: ObservableObject {
         enabled = await SettingsCache.shared.read().settings?.phoneRunEnabled ?? true
     }
 }
+
+// MARK: - Coming back to a screen that has been sitting there
+//
+// THE V5 SURFACES NEVER RELOADED ON FOREGROUND, AND NOTHING SAID SO.
+//
+// `.task` runs when a view first appears. The three tab destinations live
+// inside a `TabView` and are never torn down, so for a warm app it ran once
+// per process and never again. Everything after that came from pull-to-refresh
+// — a gesture a runner has no reason to know is load-bearing.
+//
+// So an app left in the background overnight showed yesterday: an adaptation
+// the coach made at 4am, a plan edited on the web, a run synced off the watch,
+// a correction made to the data. All of it invisible until the runner either
+// force-quit or happened to pull down.
+//
+// `.faffForegroundRefresh` has existed the whole time and every listener for
+// it is in the v4 `Views/` directory. The v5 port carried over the screens and
+// not the signal, which is the quiet kind of regression: nothing broke, a
+// behaviour simply stopped happening, and no test asks "is this still fresh".
+//
+// Throttled because the app posts twice on purpose — once the instant
+// foregrounding starts, so the Strava banner clears after an OAuth return, and
+// again once the HealthKit import lands, because that is what brings today's
+// run in. Both are wanted; two identical fetches a second apart are not.
+extension View {
+    func v5ReloadOnForeground(_ reload: @escaping () async -> Void) -> some View {
+        modifier(V5ForegroundReload(reload: reload))
+    }
+}
+
+private struct V5ForegroundReload: ViewModifier {
+    let reload: () async -> Void
+    @State private var lastAt: Date = .distantPast
+
+    /// Long enough to coalesce the two deliberate posts, short enough that a
+    /// runner who backgrounds and returns still gets a fresh read.
+    private static let throttleSec: TimeInterval = 3
+
+    func body(content: Content) -> some View {
+        content.onReceive(NotificationCenter.default.publisher(for: .faffForegroundRefresh)) { _ in
+            let now = Date()
+            guard now.timeIntervalSince(lastAt) > Self.throttleSec else { return }
+            lastAt = now
+            Task { await reload() }
+        }
+    }
+}
