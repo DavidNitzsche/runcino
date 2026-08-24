@@ -124,11 +124,13 @@ enum WFmt {
         return String(v)
     }
 
-    /// Elevation gain → "+482". Signed, because a climb reads as a climb.
-    static func elevation(_ feet: Double?) -> String? {
-        guard let f = feet else { return nil }
-        return (f >= 0 ? "+" : "") + String(Int(f.rounded()))
-    }
+    // `elevation(_ feet: Double?)` was deleted 2026-08-24.
+    //
+    // It took FEET while `elevation(_:units:)` immediately above takes METRES,
+    // and both were named `elevation` and returned an optional off one Double.
+    // The only thing separating them was remembering to write `units:`, and
+    // forgetting it understated a climb by 3.28x with no type error and no
+    // warning. It had no callers; the tracker reports metres.
 }
 
 // MARK: - What is interrupting the run
@@ -397,6 +399,13 @@ struct WatchRunSurfaceV5: View {
         // Wrist down. Three values, no ticking second, and it takes the whole
         // screen because there is nothing else the runner can act on.
         .faffTracksLuminance(tracker)
+        // ONE EVENT, ONE SENTENCE. On the cue changing, not in the body — a
+        // view body runs many times for a single moment, and a voice that
+        // repeats itself on every re-render is worse than no voice.
+        .onChange(of: engine.transition) { _, cue in
+            guard let cue else { return }
+            speak(WatchRouterV5.moment(from: cue))
+        }
         .onDisappear {
             // The ceiling task sleeps 3s + 60s before writing @Published
             // state. Without this it outlives the run by over a minute,
@@ -592,8 +601,37 @@ struct WatchRunSurfaceV5: View {
         TabView(selection: $router.runPage) {
             primaryPage.tag(0)
             performancePage.tag(1)
+            // Only when there IS something coming. An easy run has no
+            // structure to show, and an empty page is never drawn to even a
+            // count.
+            if upNextSteps.count > 1 {
+                RunUpNextV6(steps: upNextSteps).tag(2)
+            }
         }
         .tabViewStyle(.verticalPage)
+    }
+
+    /// The rest of the session from where the runner is, current phase first.
+    ///
+    /// Phases already banked are dropped rather than greyed: a runner mid-rep
+    /// is asking what is LEFT, and a list they have to scroll past their own
+    /// history to read answers a different question.
+    private var upNextSteps: [RunUpNextV6.Step] {
+        let phases = engine.workout.phases
+        guard phases.count > 1 else { return [] }
+        return phases.enumerated()
+            .filter { $0.offset >= engine.currentIndex }
+            .map { (i, p) in
+                RunUpNextV6.Step(
+                    id: i,
+                    name: p.label,
+                    dose: p.repUnit == .distance && p.distanceMi != nil
+                        ? { let d = WFmt.distance(p.distanceMi ?? 0, units: units)
+                            return d.value + " " + d.unit }()
+                        : WFmt.short(p.durationSec),
+                    current: i == engine.currentIndex
+                )
+            }
     }
 
     @ViewBuilder
@@ -828,38 +866,33 @@ struct WatchRunSurfaceV5: View {
     /// noise, and drawing it would be a claim the run cannot support.
     private var onGoalDelta: String? {
         guard let goal = engine.workout.goalSec, goal > 0,
-              let total = engine.workout.distanceMi, total > 0 else { return nil }
+              let total = engine.workout.distanceMi, total > 0,
+              tracker.distanceMi >= 0.5 else { return nil }
 
-        // ENOUGH OF THE RACE TO BE WORTH PROJECTING FROM.
+        // AGAINST THE CLOCK, NOT AGAINST A PREDICTION.
         //
-        // The gate was a flat half mile, which is a tenth of a 5K and a
-        // fiftieth of a marathon — and this projects the runner's average pace
-        // across the WHOLE distance, so at mile 0.5 of a marathon every second
-        // of pace error is multiplied by 26.2. Caught in a simulated race,
-        // where the board drew "−172:59" in the first mile: arithmetically
-        // faithful to a noisy average, and a claim the run cannot support.
+        // This used to project the whole race from the runner's average pace
+        // so far. Measured against real race-paced long runs out of this
+        // runner's own history, that projection is a MEDIAN ELEVEN MINUTES
+        // WRONG a tenth of the way in, and twenty-three at worst — and it
+        // barely improves until halfway. Gating it later and capping the
+        // outliers, which is what I did first, only hides how little it knows.
+        // A number that confident and that wrong is the -172:59 defect again
+        // wearing a smaller coat.
         //
-        // Before the gun settles a runner is in a crowd, on a cold GPS fix,
-        // going out fast. A tenth of the race is the earliest this means
-        // anything — 2.6 miles into a marathon, 0.5 into a 5K, which is where
-        // the old constant happened to be right.
-        let minMi = max(0.5, total * 0.10)
-        guard tracker.distanceMi >= minMi else { return nil }
-
+        // So it is not a projection any more. It is where the runner stands
+        // against goal pace RIGHT NOW: the time they should have taken to
+        // cover what they have covered, against what they actually took.
+        // That is an accounting identity with no forecast in it, it is what a
+        // paper pace band on a wrist says, and it is what runners actually
+        // pace off.
+        //
+        // Early on it is naturally small rather than wildly amplified, which
+        // is why the 0.5 mi gate is now enough on its own and the twenty
+        // minute sanity cap could go: the arithmetic can no longer run away.
         let goalPace = Double(goal) / total
-        let projected = Double(engine.totalElapsedSec) / tracker.distanceMi
-        let deltaSec = Int(((projected - goalPace) * total).rounded())
-
-        // A DELTA THIS LARGE IS NOT A PROJECTION, IT IS A SENSOR PROBLEM.
-        //
-        // Twenty minutes either side covers any real race — a marathoner
-        // blowing up loses minutes, not an hour — and beyond it the input is
-        // more likely a GPS drop or a stopped watch than a runner. Drawing it
-        // anyway also breaks the format: `WFmt.short` is m:ss, so an hour of
-        // error renders as "172:59", which reads like a clock and is not one.
-        // Silence over an unfalsifiable claim, which is the rule everywhere
-        // else on these boards.
-        guard abs(deltaSec) < 20 * 60 else { return nil }
+        let owed = goalPace * tracker.distanceMi
+        let deltaSec = Int((Double(engine.totalElapsedSec) - owed).rounded())
 
         let sign = deltaSec <= 0 ? "\u{2212}" : "+"
         return sign + WFmt.short(abs(deltaSec))
@@ -888,6 +921,15 @@ struct WatchRunSurfaceV5: View {
     /// session. Invisible in review because the preview fixture passed a band
     /// with no unit, so the harness showed a board the router never produced.
     private var bandParts: (value: String, unit: String)? {
+        // NOT ON A BELT. `paceGrade` has always known this — it takes
+        // `treadmill:` and returns `.untrusted` — and the running face's own
+        // gauge is suppressed indoors. This was not, so the phase-change
+        // moment announced "6:45-7:00 /mi" at every rep of a treadmill session
+        // while the face beside it deliberately refused to grade the same
+        // number. There is no trustworthy pace on a belt, and a board that
+        // names a band the app will not judge is asking the runner to hold
+        // something nothing is measuring.
+        guard !isTreadmill else { return nil }
         guard let phase = engine.currentPhase,
               let target = phase.targetPaceSPerMi, target > 0,
               let tol = phase.tolerancePaceSPerMi, tol > 0,
@@ -940,7 +982,13 @@ struct WatchRunSurfaceV5: View {
             // The run keeps recording, so the board's job is to prove it:
             // two moving numbers and the way out.
             FaceWaterLockV5(
-                distance: WFmt.miles(tracker.distanceMi),
+                // `WFmt.miles` does NOT convert — `WFmt.distance` does. Four
+                // boards called the first and let `distanceUnit` fall back to
+                // its "mi" default, so a kilometre runner got miles here and
+                // kilometres everywhere else. The parameter existed; nobody
+                // passed it, and the default hid it.
+                distance: dist.value,
+                distanceUnit: dist.unit,
                 elapsed: WFmt.clock(engine.totalElapsedSec)
             )
         case .moment(let kind):
@@ -948,6 +996,61 @@ struct WatchRunSurfaceV5: View {
         case .bailOffered, .ceilingOverride, .lowBattery, .gpsAcquiring:
             questionBoard(interrupt)
         }
+    }
+
+    /// Everything a moment draws, derived once.
+    ///
+    /// THE BOARD AND THE VOICE READ THIS, and that is the point. Rule 10 says
+    /// a spoken cue is always also drawn and audio is a delivery route rather
+    /// than a second content channel — which is a promise about two code paths
+    /// staying in step, and promises of that shape are exactly what has broken
+    /// all over this app today. So they do not stay in step by discipline:
+    /// there is one derivation, and both consume it.
+    struct MomentValues {
+        var splitLabel: String?
+        var splitTime: String?
+        var splitComparison: String?
+        var phaseWord: String?
+        var phaseDetail: String?
+        var band: String?
+        var pace: String?
+        var almostDone: String?
+    }
+
+    private func momentValues(_ kind: WMomentKind) -> MomentValues {
+        var v = MomentValues()
+        switch kind {
+        case .phaseChange(let title, let sub):
+            v.phaseWord = title
+            v.phaseDetail = sub
+            v.band = bandParts.map { $0.value + " " + $0.unit }
+        case .split(let mile, let paceSec):
+            v.splitLabel = (WFmt.isKm(units) ? "Km " : "Mile ") + String(mile)
+            v.splitTime = WFmt.short(paceSec)
+            v.splitComparison = splitComparison(paceSec)
+        case .headsUp:
+            v.pace = livePace.value
+            v.band = bandLabel
+        case .almostDone(let value, let unit):
+            v.almostDone = value + " " + unit.replacingOccurrences(of: " left", with: "")
+        case .go, .fuel, .paused:
+            break
+        }
+        return v
+    }
+
+    /// Say what the board says. Called on the cue CHANGING, not on every
+    /// render — a moment is one event and a body can run many times for it.
+    private func speak(_ kind: WMomentKind) {
+        let v = momentValues(kind)
+        guard let line = SpokenCues.line(
+            for: kind, sessionClass: sessionClass,
+            splitLabel: v.splitLabel, splitTime: v.splitTime,
+            splitComparison: v.splitComparison,
+            phaseWord: v.phaseWord, phaseDetail: v.phaseDetail,
+            band: v.band, pace: v.pace, almostDone: v.almostDone
+        ) else { return }
+        SpokenCues.shared.say(line)
     }
 
     @ViewBuilder
@@ -961,10 +1064,11 @@ struct WatchRunSurfaceV5: View {
                                bandUnit: bandParts?.unit ?? livePace.unit)
         case .split(let mile, let paceSec):
             let _ = recordSplit(paceSec)
+            let v = momentValues(kind)
             WMomentSplit(
-                label: (WFmt.isKm(units) ? "Km " : "Mile ") + String(mile),
-                time: WFmt.short(paceSec),
-                comparison: splitComparison(paceSec)
+                label: v.splitLabel ?? "",
+                time: v.splitTime ?? "",
+                comparison: v.splitComparison
             )
         case .fuel(let index, let total):
             // PERSISTENT by design — at mile 14 a lit panel is what gets seen,
@@ -999,7 +1103,8 @@ struct WatchRunSurfaceV5: View {
             WMomentAlmostDone(value: value, unit: unit)
         case .paused:
             WMomentPaused(
-                distance: WFmt.miles(tracker.distanceMi),
+                distance: dist.value,
+                distanceUnit: dist.unit,
                 elapsed: WFmt.clock(engine.totalElapsedSec),
                 onResume: { engine.isPaused ? engine.resume() : engine.pause() },
                 onEnd: { router.confirm = .end }
@@ -1018,6 +1123,29 @@ struct WatchRunSurfaceV5: View {
     /// "4 sec quicker" against the previous split, or nil for the first one
     /// and for a difference too small to be a fact rather than noise.
     private func splitComparison(_ paceSec: Int) -> String? {
+        // ON A RACE, THE COMPARISON IS THE GOAL — NOT THE LAST MILE.
+        //
+        // "4 sec quicker" against the previous mile is the right line on a
+        // training run, where the previous mile is the only reference there
+        // is. In a race the runner has a number they came to hit, and the
+        // question at every marker is the same one: was that mile on pace.
+        // Comparing to the mile before instead answers a question nobody
+        // asked, and a runner drifting steadily reads "on pace" every mile
+        // while falling further behind — the drift is invisible precisely
+        // because each mile resembles the one before it.
+        //
+        // The cumulative standing is on the race face; this is the per-mile
+        // half of the same question, which is what a runner actually paces
+        // off between markers.
+        if engine.workout.isRace,
+           let goal = engine.workout.goalSec, goal > 0,
+           let total = engine.workout.distanceMi, total > 0 {
+            let goalPace = Int((Double(goal) / total).rounded())
+            let delta = paceSec - goalPace
+            if abs(delta) < 3 { return "on goal pace" }
+            return "\(abs(delta)) sec " + (delta < 0 ? "under goal" : "over goal")
+        }
+
         guard let prev = lastSplitSec else { return nil }
         let delta = paceSec - prev
         guard abs(delta) >= 3 else { return nil }
@@ -1260,7 +1388,9 @@ enum WatchLobbyAdapter {
             V5LobbyStep(
                 name: phase.label,
                 value: phase.repUnit == .distance && phase.distanceMi != nil
-                    ? WFmt.miles(phase.distanceMi ?? 0) + " mi"
+                    ? { let d = WFmt.distance(phase.distanceMi ?? 0,
+                                              units: workout.unitsDistance)
+                        return d.value + " " + d.unit }()
                     : WFmt.short(phase.durationSec),
                 emphasised: phase.type == .work
             )
@@ -1289,8 +1419,13 @@ struct WatchLobbySurfaceV5: View {
     let weekStrip: WatchWeekStrip?
     let sessionMoved: WatchSessionMoved?
     let onStart: () -> Void
+    /// Start the same session as an indoor run. nil on a race — a marathon is
+    /// not run on a belt, and offering it there is a target that can only be
+    /// pressed by mistake.
+    var onStartIndoors: (() -> Void)? = nil
 
     private var steps: [V5LobbyStep] { WatchLobbyAdapter.steps(for: workout) }
+    private var units: String? { workout.unitsDistance }
     /// A single-phase session has nothing to break down, so it pages
     /// poster → week rather than drawing a one-row list.
     private var hasBreakdown: Bool { steps.count > 1 }
@@ -1320,7 +1455,8 @@ struct WatchLobbySurfaceV5: View {
                 ),
                 pageCount: pageCount,
                 pageIndex: 0,
-                onStart: onStart
+                onStart: onStart,
+                onStartIndoors: workout.isRace ? nil : onStartIndoors
             )
             .tag(0)
 
@@ -1337,8 +1473,9 @@ struct WatchLobbySurfaceV5: View {
             if let strip = weekStrip {
                 V5LobbyWeek(
                     days: WatchLobbyAdapter.days(from: strip),
-                    milesRun: WFmt.miles(strip.milesDone),
-                    milesPlanned: WFmt.miles(strip.milesPlanned),
+                    milesRun: WFmt.distance(strip.milesDone, units: units).value,
+                    milesPlanned: WFmt.distance(strip.milesPlanned, units: units).value,
+                    unit: WFmt.distance(strip.milesPlanned, units: units).unit,
                     pageCount: pageCount,
                     pageIndex: pageCount - 1
                 )
@@ -1438,10 +1575,24 @@ struct WatchFinishSurfaceV5: View {
         // A structured session's splits are one row per WORK REP, so calling
         // them miles reads "Mile 1 - 6:31" for a seven-minute threshold rep.
         let hasReps = engine.workout.phases.filter { $0.type == .work }.count > 1
-        let noun = hasReps ? "Rep" : (WFmt.isKm(units) ? "Km" : "Mile")
-        return engine.splits.enumerated().compactMap { (i, split) -> FinishSummaryRow? in
-            guard let p = WFmt.paceWithUnit(split.paceSPerMi, units: units) else { return nil }
-            return FinishSummaryRow("\(noun) \(i + 1)", p.value)
+        if hasReps {
+            return engine.splits.enumerated().compactMap { (i, split) -> FinishSummaryRow? in
+                guard let p = WFmt.paceWithUnit(split.paceSPerMi, units: units) else { return nil }
+                return FinishSummaryRow("Rep \(i + 1)", p.value)
+            }
+        }
+        // A RUN WITH NO REPS SPLITS BY DISTANCE, NOT BY PHASE.
+        //
+        // `engine.splits` is one row per work phase, and an easy, long or
+        // just-run session is ONE work phase — so this drew a single row
+        // labelled "Mile 1" carrying the whole run's average pace. A six-mile
+        // run opened at 8:00 and finished at 6:00 showed "Mile 1 · 6:20", and
+        // the runner reads that as their opening mile.
+        //
+        // The engine records every unit boundary now, so the rows are real.
+        let noun = WFmt.isKm(units) ? "Km" : "Mile"
+        return engine.mileSplits.map { split in
+            FinishSummaryRow("\(noun) \(split.unitIndex)", WFmt.short(split.sec))
         }
     }
 
@@ -1464,9 +1615,14 @@ struct WatchRecoveryReceiptV5: View {
     let summary: WatchRootModel.RecoverySummary
     let onDone: () -> Void
 
+    /// The recovered run's own units — a run that survived a crash is still
+    /// that runner's run, and its receipt should not switch them to miles.
+    private var units: String? { summary.workout.unitsDistance }
+
     var body: some View {
         FinishSummaryBoard(
-            distance: WFmt.miles(summary.completion.totalDistanceMi ?? 0),
+            distance: WFmt.distance(summary.completion.totalDistanceMi ?? 0, units: units).value,
+            distanceUnit: WFmt.distance(summary.completion.totalDistanceMi ?? 0, units: units).unit,
             duration: WFmt.clock(summary.completion.totalDurationSec),
             averages: averages,
             splits: [],

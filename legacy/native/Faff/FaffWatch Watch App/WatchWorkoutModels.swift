@@ -1481,6 +1481,13 @@ enum PaceFormat {
 
     /// "2:15" from 135 seconds (durations / elapsed clocks).
     static func clock(_ seconds: Int) -> String {
+        // CLAMPED, as `mmss` already was. Without it a negative reads "0:-5":
+        // the minute divides to zero and the remainder keeps its sign, so the
+        // string is not merely wrong, it is malformed. Nothing feeds these a
+        // negative today, and the two that could — an elapsed derived from a
+        // clock that moved backwards, a delta against a goal — are exactly the
+        // shapes that have gone negative in this engine before.
+        let seconds = max(0, seconds)
         let m = seconds / 60
         let s = seconds % 60
         return "\(m):\(String(format: "%02d", s))"
@@ -1492,6 +1499,7 @@ enum PaceFormat {
     /// Ultra's 208-pt aperture. (Was h:mm:ss; user flagged the clipping
     /// during the cooldown-overtime audit.)
     static func hms(_ seconds: Int) -> String {
+        let seconds = max(0, seconds)
         let h = seconds / 3600
         let m = (seconds % 3600) / 60
         let s = seconds % 60
@@ -1501,6 +1509,7 @@ enum PaceFormat {
 
     /// "3:50" — hours:minutes, for goal/projection at race scale.
     static func hm(_ seconds: Int) -> String {
+        let seconds = max(0, seconds)
         let h = seconds / 3600
         let m = (seconds % 3600) / 60
         return "\(h):\(String(format: "%02d", m))"

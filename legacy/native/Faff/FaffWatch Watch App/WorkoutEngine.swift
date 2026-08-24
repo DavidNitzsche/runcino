@@ -160,10 +160,135 @@ final class WorkoutEngine: ObservableObject {
     // Internal (not private) so @testable tests can roll phaseStart
     // backward to simulate elapsed wall-clock time without real delays.
     var phaseStart: Date = .now
+    // MARK: Auto-pause
+    //
+    // Standing at a light, waiting at a crossing, stopping to tie a lace. Every
+    // mainstream running watch pauses itself for these and this one did not, so
+    // a two-minute wait diluted the mile it fell in and the run's average pace
+    // with it.
+    //
+    // THE THRESHOLD IS APPLE'S, not one I picked. Their outdoor auto-pause
+    // triggers below roughly 2 mph — which is not a slow run, it is standing or
+    // shuffling — and matching it means a runner who has used any other watch
+    // gets the behaviour they already expect. Speed is derived over a fifteen
+    // second window rather than instantaneously, because a single GPS fix is
+    // worth about five metres of noise and fifteen seconds of standing still is
+    // unambiguous where two seconds is not.
+    //
+    // Resume needs 3 mph over five seconds. The gap between the two is
+    // deliberate: without it a runner idling at the boundary would flap the
+    // clock, and a clock that flaps is worse than one that waits a beat.
+    //
+    // OFF FOR A RACE. Race elapsed is gun-to-mat (audit W-3) and manual pause
+    // is already blocked there for the same reason — a watch that stops itself
+    // at an aid station would desync every number on the race board.
+    //
+    // OFF WITH NO DISTANCE SOURCE. On a belt, distance is the thing that is
+    // missing, so "not moving" is the normal state and auto-pause would stop
+    // the run within a minute of starting.
+    private static let autoPauseWindowSec = 15
+    private static let autoResumeWindowSec = 5
+    private static let autoPauseSpeedMph = 2.0
+    private static let autoResumeSpeedMph = 3.0
+    /// Rolling marks for the two windows.
+    private var autoPauseMarkMi: Double = 0
+    private var autoPauseMarkSec: Int = 0
+    private var autoResumeMarkMi: Double = 0
+    private var autoResumeMarkSec: Int = 0
+    /// Consecutive paused ticks showing motion — the only clock that still
+    /// runs once the engine's own has stopped.
+    private var pausedTicksMoving: Int = 0
+    /// True when THIS pause was the watch's decision, so it may undo it. A
+    /// pause the runner asked for is theirs to end.
+    private(set) var pausedAutomatically = false
+
+    /// Whether the runner wants it. Default ON, which is what every other
+    /// running watch does — a setting nobody finds is a setting nobody has.
+    var autoPauseEnabled: Bool {
+        UserDefaults.standard.object(forKey: "autoPause") as? Bool ?? true
+    }
+
+    private func updateAutoPause() {
+        guard autoPauseEnabled, !isRace, state == .running,
+              tracker?.distanceSourceUnavailable != true,
+              // NOT UNTIL THE RUN HAS MOVED AT ALL.
+              //
+              // A run whose distance has never advanced has no basis for
+              // deciding the runner has stopped — that is a treadmill, a dead
+              // GPS, or a session that has not started moving yet, and the
+              // stall watch is what speaks to those. Without this the watch
+              // pauses itself fifteen seconds into every run that cannot
+              // measure distance, and then cannot un-pause, because resuming
+              // needs the very signal that is missing.
+              coveredMi > 0 else { return }
+
+        if isPaused {
+            guard pausedAutomatically else { return }   // theirs to end
+
+            // THE RESUME WINDOW IS COUNTED IN TICKS, NOT IN ELAPSED SECONDS.
+            //
+            // `totalElapsedSec` is frozen while paused — that is the whole
+            // point of a pause — so measuring the window against it can never
+            // reach the threshold and the watch pauses itself for good. The
+            // ticker keeps calling `tick()` throughout, so a tick is the only
+            // clock still running here.
+            if coveredMi - autoResumeMarkMi > 0 || (tracker?.cadence ?? 0) >= 30 {
+                pausedTicksMoving += 1
+            } else {
+                pausedTicksMoving = 0
+                autoResumeMarkMi = coveredMi
+            }
+            if pausedTicksMoving >= Self.autoResumeWindowSec {
+                pausedTicksMoving = 0
+                pausedAutomatically = false
+        pausedTicksMoving = 0
+                resume()
+            }
+            return
+        }
+
+        let secs = totalElapsedSec - autoPauseMarkSec
+        guard secs >= Self.autoPauseWindowSec else { return }
+        let mph = (coveredMi - autoPauseMarkMi) / (Double(secs) / 3600)
+        autoPauseMarkMi = coveredMi
+        autoPauseMarkSec = totalElapsedSec
+
+        // CADENCE IS THE TIEBREAK, and it is why this is not a distance test
+        // alone. Distance stops advancing for two completely different
+        // reasons: the runner stopped, or the watch stopped being able to see
+        // them. Under a bridge, in a tunnel, in a city canyon, a runner at
+        // full effort reads zero miles an hour — and pausing them there loses
+        // the very stretch the clock is meant to be counting.
+        //
+        // Legs do not lie. Cadence comes off the motion sensors and does not
+        // care about GPS, so a runner going nowhere at 170 spm is running and
+        // a runner going nowhere at 0 spm is standing at a light. Thirty is
+        // well under any gait — a slow walk is about ninety.
+        let movingByCadence = (tracker?.cadence ?? 0) >= 30
+        if mph < Self.autoPauseSpeedMph, !movingByCadence {
+            autoResumeMarkMi = coveredMi
+            autoResumeMarkSec = totalElapsedSec
+            pausedAutomatically = true
+            pause()
+        }
+    }
+
     /// Engine-time second of the last aggregate sample, so each one can be
     /// weighted by the time it actually represents. See the sampling block in
     /// `tick()`.
     private var lastAggregateSec: Int = 0
+    /// Every unit boundary the run has crossed, and the time it took.
+    ///
+    /// The data was flowing through `tick()` and being thrown away: the split
+    /// cue is built from `lapSec` and nothing kept it. So the finish summary
+    /// had nothing per-mile to show and fell back to one row per WORK PHASE —
+    /// which on an easy run is one phase, drawn as "Mile 1" carrying the whole
+    /// run's average. A six-mile run opened at 8:00 and finished at 6:00 read
+    /// as a single 6:20 opening mile.
+    ///
+    /// Recorded whether or not the cue was drawn: the mile happened either way,
+    /// and a split suppressed inside a rep still belongs in the summary.
+    private(set) var mileSplits: [(unitIndex: Int, sec: Int)] = []
     /// Rolling distance-progress watch — see the stall check in `tick()`.
     /// Reset by `start()` so a new run never inherits the last one's stall.
     private var stallWatchMi: Double = 0
@@ -427,15 +552,13 @@ final class WorkoutEngine: ObservableObject {
         }
     }
 
-    /// Zone for a banked/live split pace vs its own target (for coloring
-    /// the splits + session map without re-running the live evaluator).
-    func zone(forPace pace: Int?, target: Int?) -> PaceZone {
-        guard let pace, let target else { return .onTarget }
-        let d = abs(pace - target)
-        if d <= 10 { return .onTarget }
-        if d <= 15 { return .drifting }
-        return .offTarget
-    }
+    // `zone(forPace:target:)` was deleted 2026-08-24.
+    //
+    // It hardcoded 10 and 15 and never read the phase's own tolerance, so it
+    // disagreed with the live evaluator wherever a band was not 10 wide: on a
+    // 20 s/mi easy band a delta of 18 graded green live and red here. Two
+    // answers to "is this pace on target" is one too many, and it had no
+    // callers — `PaceDriftEvaluator` is the only grader.
 
     // MARK: Lifecycle
 
@@ -488,6 +611,10 @@ final class WorkoutEngine: ObservableObject {
         stallWatchMi = coveredMi
         stallWatchSec = 0
         lastAggregateSec = 0
+        mileSplits = []
+        autoPauseMarkMi = coveredMi; autoPauseMarkSec = 0
+        autoResumeMarkMi = coveredMi; autoResumeMarkSec = 0
+        pausedAutomatically = false
         planComplete = false
         // AFTER the reset, not before it. This guard was fifteen lines higher
         // up and `planComplete = false` cleared it on the way past, so the
@@ -551,6 +678,22 @@ final class WorkoutEngine: ObservableObject {
     /// User tapped "End interval" — bank the current phase as ended
     /// early and advance.
     func endCurrentPhase() {
+        // NOT WHILE PAUSED. `pause()` freezes the clock and clears the board;
+        // `tick()` returns early. This did not check, so advancing from a
+        // paused run raised a "Rep 2 of 6" takeover for a rep whose clock is
+        // not running — and the router ranks a live transition ABOVE the
+        // paused board, so the paused screen was replaced by an announcement
+        // for a rep that had not started.
+        //
+        // It also left `resume()` unsound: that shifts `phaseStart` forward by
+        // the WHOLE pause, which is only correct if the phase in flight is the
+        // one that was in flight when the pause began. After a mid-pause
+        // advance it drove `phaseElapsedSec` to −6 on a 90-second rep, so the
+        // rep counted down from more than its own duration and
+        // `totalElapsedSec` went backwards with it.
+        //
+        // One guard closes both.
+        guard !isPaused else { return }
         guard state == .running, !planComplete else { return }
         advance(completedCurrent: false)
     }
@@ -860,6 +1003,12 @@ final class WorkoutEngine: ObservableObject {
                 flash(next.cue, for: next.seconds)
             }
         }
+        // BEFORE the pause guard, deliberately. Auto-pause has to be able to
+        // UN-pause, and everything below this line stops running the moment
+        // the clock freezes — so calling it any later would give a watch that
+        // pauses itself and can never start again.
+        updateAutoPause()
+
         guard state == .running, !isPaused else { return }
 
         // P2-53 · HR staleness watchdog — polled every tick (1 Hz) so it
@@ -1000,7 +1149,13 @@ final class WorkoutEngine: ObservableObject {
             if let r {
                 if paceZone != r.zone { paceZone = r.zone }
                 if paceDeltaSPerMi != r.deltaSPerMi { paceDeltaSPerMi = r.deltaSPerMi }
-                if r.fireHaptic {
+                // A BELT CANNOT DRIFT. The runner sets a speed and the belt
+                // holds it; a pace read that wanders on a treadmill is the
+                // watch's estimate wandering, not the runner. "Ease off" there
+                // is a correction for something they did not do, and they
+                // cannot act on it without changing a machine that is already
+                // right.
+                if r.fireHaptic, tracker?.distanceSourceUnavailable != true {
                     // THE DRIFT CUE NOW DRAWS ITSELF.
                     //
                     // This used to be a haptic and nothing else. The board for
@@ -1213,6 +1368,7 @@ final class WorkoutEngine: ObservableObject {
             // teleport), we only flash the most-recent mile rather than
             // queuing several — the runner can't process N flashes anyway.
             let lapSec = max(1, totalElapsedSec - lastMileElapsedSec)
+            mileSplits.append((unitIndex: mileIndex, sec: lapSec))
             lastMileElapsedSec = totalElapsedSec
             lastMileIndex = mileIndex
             noteMileBand(inBand: paceZone == .onTarget)
@@ -1234,6 +1390,8 @@ final class WorkoutEngine: ObservableObject {
             Haptics.play(moment: .split)
             flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 3.0)
         } else if mileIndex > lastMileIndex {
+            mileSplits.append((unitIndex: mileIndex,
+                               sec: max(1, totalElapsedSec - lastMileElapsedSec)))
             // Suppressed the flash, but still advance the mile bookkeeping
             // so the NEXT split (when we leave the work phase) reads the
             // correct mile number and the correct banked split duration.
@@ -2120,6 +2278,9 @@ final class WorkoutEngine: ObservableObject {
 
     /// Pause / resume from the one control that does both.
     func togglePause() {
+        // A pause the runner asked for is theirs to end, and a resume they
+        // asked for clears the watch's claim on the last one.
+        pausedAutomatically = false
         isPaused ? resume() : pause()
     }
 
@@ -2183,6 +2344,13 @@ final class WorkoutEngine: ObservableObject {
     // from the recovery point. Completed phases carry their full timelines
     // through `results`.
 
+    /// One recorded split, in a Codable shape — the live `mileSplits` is a
+    /// tuple, which Codable cannot synthesise.
+    struct SnapshotSplit: Codable, Equatable {
+        let unitIndex: Int
+        let sec: Int
+    }
+
     struct RunSnapshot: Codable {
         let workoutId: String
         /// The full WatchWorkout payload, JSON-encoded — recovery rebuilds
@@ -2195,6 +2363,11 @@ final class WorkoutEngine: ObservableObject {
         let phaseElapsedSec: Int
         let phaseStartMi: Double
         let results: [WatchCompletionPhase]
+        /// Every unit boundary crossed so far. Decoded leniently so a snapshot
+        /// written before this field still restores — a run that survived a
+        /// crash losing its splits is a smaller loss than one that will not
+        /// restore at all.
+        var mileSplits: [SnapshotSplit]?
         let savedAtEpoch: Double
 
         // ─── The wrist decisions (0821 · 2026-08-21) ─────────────────
@@ -2287,6 +2460,7 @@ final class WorkoutEngine: ObservableObject {
             phaseElapsedSec: phaseElapsedSec,
             phaseStartMi: phaseStartMi,
             results: results,
+            mileSplits: mileSplits.map { SnapshotSplit(unitIndex: $0.unitIndex, sec: $0.sec) },
             savedAtEpoch: Date.now.timeIntervalSince1970,
             decisions: decisionsForSnapshot
         )
@@ -2316,6 +2490,10 @@ final class WorkoutEngine: ObservableObject {
         planComplete = snap.planComplete || snap.currentIndex >= count
         bankedSec = snap.bankedSec
         results = snap.results
+        // A recovered run keeps the miles it already ran. Without this the
+        // receipt fell back to one row per work phase — the same defect the
+        // finish summary had, arriving by a different door.
+        mileSplits = (snap.mileSplits ?? []).map { (unitIndex: $0.unitIndex, sec: $0.sec) }
         workoutStart = Date(timeIntervalSince1970: snap.startedAtEpoch)
         // Continue the phase clock from where the last snapshot left it.
         // The dead window (crash → relaunch) is NOT credited to the phase —

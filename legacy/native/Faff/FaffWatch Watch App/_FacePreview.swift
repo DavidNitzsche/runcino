@@ -91,6 +91,21 @@ struct FacePreviewView: View {
             return AnyView(PerfFaceV6(cadence: "176", averagePace: "9:14"))
         // MARK: Always-On
 
+        case "upnext":
+            return AnyView(RunUpNextV6(steps: [
+                .init(id: 0, name: "Work", dose: "400 m", current: true),
+                .init(id: 1, name: "Recovery", dose: "90 sec", current: false),
+                .init(id: 2, name: "Work", dose: "400 m", current: false),
+                .init(id: 3, name: "Recovery", dose: "90 sec", current: false),
+                .init(id: 4, name: "Cool-down", dose: "10 min", current: false),
+            ]))
+        case "upnextrace":
+            return AnyView(RunUpNextV6(steps: [
+                .init(id: 0, name: "Hurricane climb", dose: "19:00", current: true),
+                .init(id: 1, name: "Point descent", dose: "12:00", current: false),
+                .init(id: 2, name: "Coast miles", dose: "52:00", current: false),
+                .init(id: 3, name: "Carmel run-in", dose: "25:00", current: false),
+            ]))
         case "alwayson":
             return AnyView(AlwaysOnFaceV6(pace: "7:42", grade: .onTarget,
                            distance: "5.72", elapsedMinutes: "44"))
@@ -316,6 +331,14 @@ struct FacePreviewView: View {
             return AnyView(WMomentAlmostDone(value: "0.25"))
         case "malmostrep":
             return AnyView(WMomentAlmostDone(value: "0.40", unit: "km left"))
+        case "msplitrace":
+            // A race mile, compared to the goal rather than to the mile
+            // before it — the question a runner asks at every marker.
+            return AnyView(WMomentSplit(label: "Mile 9", time: "7:52",
+                                        comparison: "6 sec under goal"))
+        case "msplitracebehind":
+            return AnyView(WMomentSplit(label: "Mile 21", time: "8:14",
+                                        comparison: "16 sec over goal"))
         case "msplit":
             return AnyView(WMomentSplit(label: "Mile 5", time: "7:48",
                 comparison: "4 sec quicker"))
@@ -341,6 +364,15 @@ struct FacePreviewView: View {
 
     private func lobby() -> AnyView? {
         switch name {
+        case "lobbyindoors":
+            return AnyView(V5LobbyPoster(session: V5LobbyFixtures.easy,
+                pageCount: 2, pageIndex: 0, onStart: { },
+                onStartIndoors: { }))
+        case "lobbyindoorslong":
+            // The densest poster that can still be run on a belt.
+            return AnyView(V5LobbyPoster(session: V5LobbyFixtures.threshold,
+                pageCount: 3, pageIndex: 0, onStart: { },
+                onStartIndoors: { }))
         case "lobbyeasy":
             return AnyView(V5LobbyPoster(session: V5LobbyFixtures.easy,
                 pageCount: 2, pageIndex: 0) { })
