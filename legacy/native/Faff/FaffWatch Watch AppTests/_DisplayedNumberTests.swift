@@ -584,7 +584,7 @@ struct DisplayedNumberEngineTests {
         e.reset()
     }
 
-    @Test func avgHrIsTickWeightedNotTimeWeighted() {
+    @Test func avgHrAndCadenceAreWeightedByTimeNotByTick() {
         // BUG: the per-phase HR / cadence averages accumulate ONE sample per
         // tick (`phaseHrSum += hr` in tick()), but the engine's tick interval
         // is not constant: `startTimer()` sleeps 5 s instead of 1 s whenever
@@ -622,21 +622,20 @@ struct DisplayedNumberEngineTests {
         // The phase really lasted 70 s — that part is right.
         #expect(p?.actualDurationSec == 70)
 
-        withKnownIssue("avgHr is a mean over ticks, and ticks are 5× apart in Always-On") {
-            // TRUTH, time-weighted: (200×60 + 100×10) / 70 = 13000 / 70
-            //                     = 185.71 → 186 bpm.
-            #expect(p?.avgHr == 186)
-        }
-        withKnownIssue("avgCadence has the identical defect") {
-            // TRUTH: (190×60 + 160×10) / 70 = 13000 / 70 = 185.71 → 186 spm.
-            #expect(p?.avgCadence == 186)
-        }
-
-        // What it ACTUALLY reports, for the record:
-        //   HR:  (200×12 + 100×10) / 22 = 3400 / 22 = 154.5 → 155
-        //   Cad: (190×12 + 160×10) / 22 = 3880 / 22 = 176.4 → 176
-        #expect(p?.avgHr == 155)
-        #expect(p?.avgCadence == 176)
+        // FIXED 2026-08-24. Each sample is weighted by the seconds it stands
+        // for, derived from the clock rather than from an assumed 1 Hz — the
+        // tick loop sleeps FIVE seconds whenever the display is dimmed, which
+        // is the whole of every wrist-down stretch.
+        //
+        // WAS: a mean over ticks, so a minute of not looking contributed
+        // twelve samples against ten seconds of looking contributing ten, and
+        // the run's saved averages leaned five to one toward the parts the
+        // runner happened to be watching. HR reported 155 against a true 186.
+        //
+        // (200×60 + 100×10) / 70 = 13000 / 70 = 185.71 → 186 bpm
+        // (190×60 + 160×10) / 70 = 13000 / 70 = 185.71 → 186 spm
+        #expect(p?.avgHr == 186)
+        #expect(p?.avgCadence == 186)
         e.reset()
     }
 
@@ -1109,26 +1108,31 @@ struct DisplayedNumberEngineTests {
 
         e.pause()
         // 120 s of real wall clock elapses while the runner stands still.
+        // BOTH clocks have to move: rolling `phaseStart` alone models time
+        // passing but not a PAUSE passing, and the engine would then close a
+        // zero-length pause on the way out.
         e.phaseStart = e.phaseStart.addingTimeInterval(-120)
+        e.pauseStart = e.pauseStart?.addingTimeInterval(-120)
         e.abandon()
 
         let p = e.completion?.phases.first
         // The run's own clock is right: the pause is excluded.
         #expect(e.completion?.totalDurationSec == 300)
 
-        withKnownIssue("phase duration includes the paused seconds the total excludes") {
-            #expect(p?.actualDurationSec == 300)
-        }
-        withKnownIssue("and the phase's average pace is diluted by the same amount") {
-            // 300 s over 0.50 mi = 600 s/mi = 10:00/mi.
-            #expect(p?.actualPaceSPerMi == 600)
-        }
-
-        // What it actually records: 420 s over 0.50 mi = 840 s/mi = 14:00/mi.
-        #expect(p?.actualDurationSec == 420)
-        #expect(p?.actualPaceSPerMi == 840)
-        // And the ledger no longer balances.
-        #expect(p?.actualDurationSec != e.completion?.totalDurationSec)
+        // FIXED 2026-08-24. `abandon()` closes a standing pause before it
+        // records, so the phase and the run agree.
+        //
+        // WAS: `phaseStart` is only shifted forward by `resume()` and
+        // `recordCurrentPhase()` measures raw, so ending from the paused
+        // board folded the pause into the phase — 420 s over 0.50 mi recorded
+        // as 14:00/mi for a stretch actually run at 10:00, while the run's own
+        // totalDurationSec correctly said 300 s. Two numbers from one run that
+        // disagreed, and the phase record is what the phone grades on.
+        #expect(p?.actualDurationSec == 300)
+        // 300 s over 0.50 mi = 600 s/mi = 10:00/mi.
+        #expect(p?.actualPaceSPerMi == 600)
+        // The ledger balances.
+        #expect(p?.actualDurationSec == e.completion?.totalDurationSec)
         e.reset()
     }
 

@@ -160,6 +160,10 @@ final class WorkoutEngine: ObservableObject {
     // Internal (not private) so @testable tests can roll phaseStart
     // backward to simulate elapsed wall-clock time without real delays.
     var phaseStart: Date = .now
+    /// Engine-time second of the last aggregate sample, so each one can be
+    /// weighted by the time it actually represents. See the sampling block in
+    /// `tick()`.
+    private var lastAggregateSec: Int = 0
     /// Rolling distance-progress watch — see the stall check in `tick()`.
     /// Reset by `start()` so a new run never inherits the last one's stall.
     private var stallWatchMi: Double = 0
@@ -172,7 +176,14 @@ final class WorkoutEngine: ObservableObject {
     /// engine ticks past the threshold more than once). Reset on start/reset.
     private var firedFuelIndices: Set<Int> = []
     /// When the current pause began (nil when running).
-    private var pauseStart: Date?
+    /// When the standing pause began, or nil when running.
+    ///
+    /// Internal, not private, for the same reason `phaseStart` is: a test
+    /// simulating a pause has to be able to age it. Rolling `phaseStart` alone
+    /// models wall clock passing but not a pause passing, so a test could set
+    /// up "ended while paused" and the engine would see a zero-length pause.
+    /// Production never writes this from outside.
+    var pauseStart: Date?
     /// Total seconds the runner held the clock. Sent on the completion so the
     /// server's clock audit can account for it: `totalDurationSec` excludes
     /// paused time by design while `startedAt` is the real wall-clock start,
@@ -476,6 +487,7 @@ final class WorkoutEngine: ObservableObject {
         lastMileElapsedSec = 0
         stallWatchMi = coveredMi
         stallWatchSec = 0
+        lastAggregateSec = 0
         planComplete = false
         // AFTER the reset, not before it. This guard was fifteen lines higher
         // up and `planComplete = false` cleared it on the way past, so the
@@ -491,6 +503,7 @@ final class WorkoutEngine: ObservableObject {
         phaseStartMi = coveredMi
         phaseHrSum = 0; phaseHrCount = 0; phaseHrMax = 0
         phaseCadSum = 0; phaseCadCount = 0
+        lastAggregateSec = totalElapsedSec
         phaseHrSamples = []; phasePaceSamples = []; phaseLastSampleSec = -5
         tracker?.start()
         prepDrift()
@@ -560,6 +573,19 @@ final class WorkoutEngine: ObservableObject {
     /// would mislabel every unstructured run the app has.
     func abandon() {
         guard state == .running else { return }
+        // A RUN ENDED WHILE PAUSED CLOSES THE PAUSE FIRST.
+        //
+        // `phaseStart` is only shifted forward by `resume()`, and
+        // `recordCurrentPhase()` measures with the raw
+        // `elapsedSincePhaseStart()`. So ending from the paused board folded
+        // the standing pause into the phase record: five minutes over half a
+        // mile plus a two-minute wait recorded as 420 s and 14:00 per mile,
+        // while the run's own `totalDurationSec` correctly said 300 s and
+        // 10:00. Two numbers from one run that do not agree, and the phase
+        // record is the one the phone grades the session on.
+        //
+        // Reachable in two taps — the paused board's own End run.
+        if isPaused { resume() }
         if planComplete { finish(status: "completed"); return }
         if workout.isOpenEnded {
             recordCurrentPhase(completed: true)
@@ -859,16 +885,37 @@ final class WorkoutEngine: ObservableObject {
         publishElapsed(elapsedSincePhaseStart())
         snapshotIfDue()
 
-        // Sample per-phase aggregates from the tracker once per tick (1 Hz).
-        // recordCurrentPhase() turns these into true averages on phase end.
+        // WEIGHTED BY THE SECONDS EACH SAMPLE STANDS FOR, not by tick.
+        //
+        // The comment here used to say "once per tick (1 Hz)" and the loop is
+        // not 1 Hz: `startTimer()` sleeps FIVE seconds whenever the display is
+        // luminance-reduced, which is the whole of every wrist-down stretch.
+        // So a minute spent not looking contributed twelve samples and ten
+        // seconds of looking contributed ten, and the mean leaned five to one
+        // toward the parts of a run the runner happened to be watching.
+        //
+        // Measured: a minute at 200 bpm wrist-down plus ten seconds at 100 bpm
+        // wrist-up is 186 bpm; the engine reported 155.
+        //
+        // `buildCompletion()` then rolls these up weighted by the phase's own
+        // duration, on the stated assumption that each is a true average — so
+        // the error survived into the saved run and into whatever the phone
+        // grades on.
+        //
+        // The weight is derived from the clock rather than from a known
+        // interval, because tests roll the clock in arbitrary jumps and the
+        // sleep itself changes with the wrist. Clamped to at least one second
+        // so a tick that lands inside the same second still counts once.
+        let sampleWeight = max(1, totalElapsedSec - lastAggregateSec)
+        lastAggregateSec = totalElapsedSec
         if let hr = tracker?.heartRate, hr > 0 {
-            phaseHrSum += hr
-            phaseHrCount += 1
+            phaseHrSum += hr * sampleWeight
+            phaseHrCount += sampleWeight
             phaseHrMax = max(phaseHrMax, hr)
         }
         if let cad = tracker?.cadence, cad > 0 {
-            phaseCadSum += cad
-            phaseCadCount += 1
+            phaseCadSum += cad * sampleWeight
+            phaseCadCount += sampleWeight
         }
 
         // Tier 1 timeline samples (5-second cadence). The aggregates
@@ -1352,6 +1399,7 @@ final class WorkoutEngine: ObservableObject {
         // Reset per-phase aggregates so the next rep starts clean.
         phaseHrSum = 0; phaseHrCount = 0; phaseHrMax = 0
         phaseCadSum = 0; phaseCadCount = 0
+        lastAggregateSec = totalElapsedSec
         phaseHrSamples = []; phasePaceSamples = []; phaseLastSampleSec = -5
         prepDrift()
         // Phase boundary — refresh the recovery snapshot (the just-banked
