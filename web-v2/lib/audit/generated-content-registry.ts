@@ -14,7 +14,8 @@
  *       `end_week_idx`. Fixed 89bab20d; Today now leads with it.
  *   2 · `plan_workouts.notes` — a sentence per day, on all 4431 rows, while
  *       Today composed its own copy from a function keyed on the workout type.
- *       Fixed here; see `lib/plan/day-note.ts`.
+ *       Fixed 19c11b44: `week-loader.ts` selects it and `lib/faff/why-voice.ts`
+ *       writes it into the sentence Today renders.
  *   3 · `lib/plan/block-preview.ts` — a module, its tests and an API route,
  *       imported by nothing outside itself. Still dead; see BLOCK-PREVIEW below.
  *
@@ -111,7 +112,7 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
     id: 'plan_workouts.notes',
     verdict: 'surfaced',
     holds: 'Why THIS day. "Extra rest · still recovering." "Long run back · easy effort." NOT NULL, 4431 of 4431 rows.',
-    surface: { file: 'web-v2/lib/plan/day-note.ts', token: 'SELECT pw.notes' },
+    surface: { file: 'web-v2/lib/plan/week-loader.ts', token: 'notes' },
   },
   {
     id: 'plan_workouts.original_type',
