@@ -507,12 +507,37 @@ struct LiveRunOutdoorV5: View {
         return (target - tol, target + tol)
     }
 
+    /// THE SCALE ALWAYS CONTAINS THE RUNNER'S OWN PACE.
+    ///
+    /// `RangeScale` clamps its marker to [0, 1], so a value outside the scale
+    /// pins to an edge and stops moving — and the endpoint label underneath it
+    /// then states a range the runner is not in. Caught on the simulator at
+    /// screen 12a: a recovery jog inside a threshold session targets 8:40–9:20,
+    /// which gave a scale of 8:00–11:00, and the runner going 7:32 got a marker
+    /// welded to the left edge above a label reading "8:00".
+    ///
+    /// The asymmetric headroom below (40 fast, 100 slow) is right for drift —
+    /// fatigue moves a live pace slower — but a RECOVERY phase is exactly where
+    /// a runner is habitually far too fast, so 40 s/mi is not enough. Rather
+    /// than widen the default and make every scale coarser, the bounds simply
+    /// grow to admit whatever the runner is actually doing, with a little air
+    /// so the marker is never flush against the end.
     static func paceScaleBounds(band: (low: Int, high: Int)?, currentSecPerMi: Int?) -> (min: Double, max: Double) {
+        var lo: Double
+        var hi: Double
         if let band {
-            return (Double(band.low - 40), Double(band.high + 100))
+            lo = Double(band.low - 40)
+            hi = Double(band.high + 100)
+        } else {
+            let center = Double(currentSecPerMi ?? 480)
+            lo = center - 60
+            hi = center + 90
         }
-        let center = Double(currentSecPerMi ?? 480)
-        return (center - 60, center + 90)
+        if let current = currentSecPerMi.map(Double.init) {
+            lo = Swift.min(lo, current - 15)
+            hi = Swift.max(hi, current + 15)
+        }
+        return (lo, hi)
     }
 
     /// The current phase's own HR target wins over the workout-level
@@ -545,7 +570,7 @@ struct LiveRunOutdoorV5: View {
 #if DEBUG
 
 @MainActor
-private func outdoorMidRunPreview() -> some View {
+func outdoorMidRunPreview() -> some View {
     let tracker = PhoneRunTracker()
     tracker.seedForPreview(state: .running, elapsedSec: 18 * 60 + 42,
                            distanceMi: 2.4, currentPaceSecPerMi: 452)
@@ -572,7 +597,7 @@ private func outdoorMidRunPreview() -> some View {
 }
 
 @MainActor
-private func outdoorNoHeartPreview() -> some View {
+func outdoorNoHeartPreview() -> some View {
     let tracker = PhoneRunTracker()
     tracker.seedForPreview(state: .running, elapsedSec: 18 * 60 + 42,
                            distanceMi: 2.4, currentPaceSecPerMi: 452)
@@ -584,7 +609,7 @@ private func outdoorNoHeartPreview() -> some View {
 /// The first ten seconds of every outdoor run, and the state the screen used
 /// to render as a measured "0.00".
 @MainActor
-private func outdoorFindingGpsPreview() -> some View {
+func outdoorFindingGpsPreview() -> some View {
     let tracker = PhoneRunTracker()
     tracker.seedForPreview(state: .running, elapsedSec: 6, distanceMi: 0,
                            currentPaceSecPerMi: nil, hasFirstFix: false)
@@ -596,7 +621,7 @@ private func outdoorFindingGpsPreview() -> some View {
 /// A stretch nobody could measure. The distance is honest and short, and the
 /// screen says so rather than filling the hole in.
 @MainActor
-private func outdoorGapPreview() -> some View {
+func outdoorGapPreview() -> some View {
     let tracker = PhoneRunTracker()
     tracker.seedForPreview(state: .running, elapsedSec: 24 * 60, distanceMi: 2.9,
                            currentPaceSecPerMi: 468, trackHasGap: true)

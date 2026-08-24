@@ -33,15 +33,20 @@ struct ScreensCatalogV5: View {
     @State private var showing: String? = ScreensCatalogV5.launchArgumentScreen
 
     static var launchArgumentScreen: String? {
-        let ids = Set(["5a", "5b", "5c", "6a", "6a-longest", "6a-refusal",
-                       "7a", "8a", "8c", "11a", "13a", "14a", "15a", "16a",
-                       "17a", "18a-slower", "18a-faster", "19a", "19a-refused",
-                       "22a", "23a", "not-yet", "system"])
-        return ProcessInfo.processInfo.arguments.first(where: ids.contains)
+        return ProcessInfo.processInfo.arguments.first(where: allIDs.contains)
     }
 
-    private var entries: [Entry] {
-        [
+    /// Derived from `entries`, never hand-maintained. It used to be a literal
+    /// `Set` written out beside the list, so adding an entry and forgetting
+    /// the set produced a screen that was in the picker but NOT openable by
+    /// `-faffV5Screens <id>` — the deep link silently did nothing. A second
+    /// copy of a list is a second thing to forget.
+    static var allIDs: Set<String> { Set(entries.map(\.id)).union(["system"]) }
+
+    private var entries: [Entry] { Self.entries }
+
+    private static var entries: [Entry] {
+        var out: [Entry] = [
             Entry(id: "5a", title: "Today · before the run", sub: "The day's prescription") {
                 AnyView(TodayBeforeV5(model: .sampleBeforeRun,
                                       accountName: "Jamie Rowe",
@@ -83,9 +88,6 @@ struct ScreensCatalogV5: View {
                 AnyView(BlockV5(model: .sample,
                                 previewStage: .refused(.sampleTravelScenario,
                                                        .sampleTravelRefusal)))
-            },
-            Entry(id: "11a", title: "Sick", sub: "Not an injury") {
-                AnyView(SickFlareV5(model: .sampleV5))
             },
             Entry(id: "7a", title: "Races", sub: "Is the goal still real") {
                 AnyView(RacesV5(model: RacesV5.sample))
@@ -146,7 +148,98 @@ struct ScreensCatalogV5: View {
             Entry(id: "not-yet", title: "Not on the phone yet", sub: "A refusal, not a screen set") {
                 AnyView(NotOnPhoneYetV5(reason: nil))
             },
+
+            // ── Screens that had a #Preview and nothing else ──────────────
+            //
+            // Everything below was drawn, compiled, and unreachable on a
+            // device. Settings, the shoe list, the add-a-race sheet, the
+            // provisional and no-result race details, the run detail without
+            // GPS, and SEVEN of the eight Races verdicts — the shapes the
+            // design contract cares most about, because they are the ones
+            // that decide whether a decision reads as a decision.
+            Entry(id: "10a", title: "Settings", sub: "The switches, and what they own") {
+                AnyView(SettingsV5(model: SettingsV5Model(
+                    longRunDay: "Sunday",
+                    longRunDayOptions: ["Friday", "Saturday", "Sunday"],
+                    daysPerWeek: 5, phoneRunEnabled: true, sessionReminders: true,
+                    weeklySummary: true, units: "Miles",
+                    unitsOptions: ["Miles", "Kilometres"],
+                    stravaConnected: true, email: "jamie@rowe.run"),
+                    onSetLongRunDay: { _ in }, onSetDaysPerWeek: { _ in },
+                    onToggleSessionReminders: { _ in }, onToggleWeeklySummary: { _ in },
+                    onSetUnits: { _ in }, onToggleStrava: {}))
+            },
+            Entry(id: "11a", title: "Shoes", sub: "Mileage against a retirement point") {
+                AnyView(ShoesV5(shoes: ShoesV5CatalogSample.shoes,
+                                onWear: { _ in }, onRetire: { _ in },
+                                onAddPair: { _, _, _, _ in }))
+            },
+            Entry(id: "20a", title: "Add a race", sub: "The sheet, on its own") {
+                AnyView(AddRaceSheetCatalogHost())
+            },
+            Entry(id: "8b", title: "Race detail · provisional", sub: "Strava elapsed, not a result") {
+                AnyView(RaceDetailV5(raceDetail: .v5SampleProvisional))
+            },
+            Entry(id: "8d", title: "Race detail · no result", sub: "Run, not yet locked in") {
+                AnyView(RaceDetailV5(raceDetail: .v5SampleNoResult))
+            },
+            Entry(id: "23b", title: "Run detail · no GPS", sub: "Treadmill, no route card") {
+                AnyView(RunDetailV5(detail: RunDetailV5Sample.treadmill))
+            },
+            Entry(id: "sick", title: "Sick", sub: "Not an injury") {
+                AnyView(SickFlareV5(model: .sampleV5))
+            },
+            Entry(id: "7a-behind", title: "Races · behind", sub: "The goal needs more than fitness shows") {
+                AnyView(RacesV5(model: RacesV5Sample.decode("behind")))
+            },
+            Entry(id: "7a-stale", title: "Races · stale", sub: "Set before the flare") {
+                AnyView(RacesV5(model: RacesV5Sample.decode("stale")))
+            },
+            Entry(id: "7a-injury", title: "Races · injury", sub: "A decision under a flare") {
+                AnyView(RacesV5(model: RacesV5Sample.decode("injury")))
+            },
+            Entry(id: "7a-weather", title: "Races · race-morning heat", sub: "A fact, not a decision") {
+                AnyView(RacesV5(model: RacesV5Sample.decode("weather")))
+            },
+            Entry(id: "7a-course", title: "Races · course changed", sub: "A fact, not a decision") {
+                AnyView(RacesV5(model: RacesV5Sample.decode("course")))
+            },
+            Entry(id: "7a-lock", title: "Races · chip-time lock", sub: "A fact, not a decision") {
+                AnyView(RacesV5(model: RacesV5Sample.decode("lock")))
+            },
+            Entry(id: "7a-two", title: "Races · two A races", sub: "A choice, not a verdict") {
+                AnyView(RacesV5(model: RacesV5Sample.decode("races")))
+            },
         ]
+
+        // The live-run screens build their samples from DEBUG-only preview
+        // helpers, so they are reachable in a debug build only. They are the
+        // two screens a runner stares at for an hour at a time, which makes
+        // them the last ones that should have been unreviewable.
+        #if DEBUG
+        out += [
+            Entry(id: "12a", title: "Live run · outdoor", sub: "Mid-run, with heart") {
+                AnyView(outdoorMidRunPreview())
+            },
+            Entry(id: "12a-noheart", title: "Live run · no heart source", sub: "A dash, not a zero") {
+                AnyView(outdoorNoHeartPreview())
+            },
+            Entry(id: "12a-gps", title: "Live run · finding GPS", sub: "Before the first fix") {
+                AnyView(outdoorFindingGpsPreview())
+            },
+            Entry(id: "12a-gap", title: "Live run · track has a gap", sub: "The line the phone did not see") {
+                AnyView(outdoorGapPreview())
+            },
+            Entry(id: "12b", title: "Live run · treadmill", sub: "Speed and incline, no GPS") {
+                AnyView(treadmillWithHeartPreview())
+            },
+            Entry(id: "12b-noheart", title: "Treadmill · no heart source", sub: "Foreground-only, no watch") {
+                AnyView(treadmillNoHeartPreview())
+            },
+        ]
+        #endif
+
+        return out
     }
 
     var body: some View {
@@ -208,6 +301,51 @@ struct ScreensCatalogV5: View {
     }
 
     private struct Showing: Identifiable { let id: String }
+}
+
+// MARK: - Samples the catalog owns
+//
+// Kept here rather than widening a `#Preview`'s inline literal, so the screens
+// themselves stay untouched.
+
+enum ShoesV5CatalogSample {
+    /// One pair near its retirement point, one already past it, one barely
+    /// worn, one retired — the four states the list has to tell apart.
+    static let shoes: [Shoe] = [
+        Shoe(id: 1, brand: "Saucony", model: "Endorphin Speed 4", color: nil,
+             mileage: 214, mileage_cap: nil, shoe_type: "super", retire_at_mi: 250,
+             run_types: nil, baseline_mi: nil, retired: false, preferred: true, notes: nil),
+        Shoe(id: 2, brand: "ASICS", model: "Novablast 5", color: nil,
+             mileage: 386, mileage_cap: nil, shoe_type: "daily_trainer", retire_at_mi: 400,
+             run_types: nil, baseline_mi: nil, retired: false, preferred: false, notes: nil),
+        Shoe(id: 3, brand: "Nike", model: "Vaporfly 3", color: nil,
+             mileage: 58, mileage_cap: nil, shoe_type: "super", retire_at_mi: 250,
+             run_types: nil, baseline_mi: nil, retired: false, preferred: false, notes: nil),
+        Shoe(id: 4, brand: "Nike", model: "Pegasus 40", color: nil,
+             mileage: 412, mileage_cap: nil, shoe_type: "daily_trainer", retire_at_mi: 400,
+             run_types: nil, baseline_mi: nil, retired: true, preferred: false, notes: nil),
+    ]
+}
+
+/// The add-a-race sheet is a sheet, so it needs a host to be looked at.
+///
+/// Mirrors `AddRaceHostV5` — `tall: true` and NO `title:` — rather than the
+/// screen's own `#Preview`, which passes `title: "Add a race"` and so draws
+/// the name twice: once as the screen's own 56pt "ADD A RACE" and again as
+/// the sheet bar's "Add a race" underneath it. That is the 0821 rule "no
+/// content is ever printed twice on one screen" broken in the review harness
+/// rather than in the app, which is its own trap: it shows a reviewer a
+/// defect the runner never sees, and hides the layout the runner does.
+struct AddRaceSheetCatalogHost: View {
+    @State private var open = true
+    var body: some View {
+        ZStack {
+            V5.surfacePage.ignoresSafeArea()
+            V5SheetHost(isPresented: $open, tall: true) {
+                AddRaceV5()
+            }
+        }
+    }
 }
 
 #Preview { ScreensCatalogV5() }

@@ -661,7 +661,7 @@ private struct RaceScheduleRowV5: View {
 // card: …)` struct literals — so a preview exercises the exact decode path
 // a real payload would go through, lenient extensions included.
 
-private enum RacesV5Sample {
+enum RacesV5Sample {
 
     struct Spec {
         let shape: String        // "decision" | "fact" | "choice"

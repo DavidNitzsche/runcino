@@ -12,6 +12,7 @@
 		0565B4AAF1E1AC26C3DE1F75 /* WatchSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */; };
 		05EEB9EB948603B0592062F2 /* TodayShoePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3F9F97249181DA2EB82D25D /* TodayShoePicker.swift */; };
 		06733C4049CBBF30D8DF2EA1 /* API+Toolkit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E06A7E99186B27147ADDE22 /* API+Toolkit.swift */; };
+		06D85202CC7B5FEA024A919D /* V5GaugeGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61803F39A7F14262E27C4D4 /* V5GaugeGeometryTests.swift */; };
 		078244894854B58646D93CF0 /* FacesControlV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8199CD282C5F9AF41DCFFAB5 /* FacesControlV5.swift */; };
 		087938D53B0E81241BFCCA7A /* TreadmillHRView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760B92E89CF0E2EF5EEB8265 /* TreadmillHRView.swift */; };
 		08EDED0D96612584E3C15A70 /* A11yDump.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F35B32A76C4221652B197B /* A11yDump.swift */; };
@@ -449,6 +450,7 @@
 		F3A738F6B07437E922761372 /* V5ContrastTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5ContrastTests.swift; sourceTree = "<group>"; };
 		F3EEDC7AADDE262E2A9AD515 /* StateScreensV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateScreensV5.swift; sourceTree = "<group>"; };
 		F5049AFA827E5D99EA69F5D0 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		F61803F39A7F14262E27C4D4 /* V5GaugeGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5GaugeGeometryTests.swift; sourceTree = "<group>"; };
 		F7CFE2D883A30CAC352006F8 /* TokensV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokensV5.swift; sourceTree = "<group>"; };
 		F837D3062179A0805C934482 /* OFL-Archivo.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-Archivo.txt"; sourceTree = "<group>"; };
 		F8825DD5FD2222468737B3C2 /* OnboardingV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingV5.swift; sourceTree = "<group>"; };
@@ -485,6 +487,7 @@
 				15FB44D69A865618A457AB74 /* SignInFlowTests.swift */,
 				AE82F287C2BEA6D3A6A74D35 /* V5ContractTests.swift */,
 				F3A738F6B07437E922761372 /* V5ContrastTests.swift */,
+				F61803F39A7F14262E27C4D4 /* V5GaugeGeometryTests.swift */,
 				0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */,
 			);
 			path = FaffTests;
@@ -997,6 +1000,7 @@
 				6BE40F3E6AA911AD15D8C08E /* SignInFlowTests.swift in Sources */,
 				303AD12FAA2419ECDCF2D562 /* V5ContractTests.swift in Sources */,
 				F70FE052B115F95BFC68C5BD /* V5ContrastTests.swift in Sources */,
+				06D85202CC7B5FEA024A919D /* V5GaugeGeometryTests.swift in Sources */,
 				FCE849E5CE19B79865639C37 /* WatchRelayQueueTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -32,6 +32,7 @@ import { coerceShoeType, resolveShoeCapMi } from '@/lib/shoe/lifespan';
 import { recommendShoe, shoeDisplayName, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
 import { outage } from '@/lib/route/failure';
+import { racePlateFor } from '@/lib/faff/race-plate';
 
 export const dynamic = 'force-dynamic';
 
@@ -158,9 +159,30 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     }));
 
     // ── goal / projected / gap ─────────────────────────────────────────────
+    //
+    // A RACE THAT HAS ALREADY BEEN RUN IS NOT PROJECTED.
+    //
+    // Every field below shipped without ever consulting `race.is_past`, which
+    // this route already reads two blocks down for `resultEntry`. So opening a
+    // race from last weekend showed today's fitness PROJECTED onto it, a gap
+    // against that projection, a pace plan for how to run it, and a coach line
+    // reading "That can still close." about a result already in the book.
+    //
+    // Past and finished: the middle column holds what the runner actually ran
+    // and the gap is measured against the goal — both `modelled: false`,
+    // because a finish time is a read, not a model. The client relabels that
+    // column "Result" off `resultEntry.isPast`.
+    //
+    // Past and unfinished (a DNS, or a result not logged yet): no projection
+    // and no gap. There is nothing honest to put there.
     const { vdot } = await loadLatestVdotWithAnchor(userId);
-    const projectedSec = vdot != null && distanceMi > 0 ? predictRaceTime(vdot, distanceMi) : null;
-    const gapSec = (projectedSec != null && goalSec != null) ? projectedSec - goalSec : null;
+    const plate = racePlateFor({
+      isPast: race.is_past,
+      goalSec,
+      finishSec: parseRaceTime(race.finishTime),
+      projectedSec: vdot != null && distanceMi > 0 ? predictRaceTime(vdot, distanceMi) : null,
+    });
+    const gapSec = plate.gapSec;
 
     // ── B11 · taper progress ───────────────────────────────────────────────
     let taperProgress: number | null = null;
@@ -253,7 +275,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       }
     } catch { /* gear is additive */ }
 
-    const coachLine = gapSec != null
+    // Both of these sentences are about a race still to come — one says the
+    // gap "can still close", the other says to "race it as planned". Neither
+    // is a thing to say about a race already run, so a past race gets no
+    // coach line here and the result section speaks for itself.
+    const coachLine = (plate.showsForwardLooking && gapSec != null)
       ? (gapSec > 0
           ? `Today's fitness projects ${formatRaceTime(Math.abs(gapSec))} behind the goal. That can still close.`
           : `Today's fitness covers the goal with room. Race it as planned.`)
@@ -284,10 +310,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       name: race.name,
       dateLine: [raceDateWords(race.date), race.distance_label].filter(Boolean).join(' · '),
       goal: goalSec != null ? num(formatRaceTime(goalSec), false) : null,
-      projected: projectedSec != null ? num(formatRaceTime(projectedSec), true) : null,
-      gap: gapSec != null ? num(`${gapSec > 0 ? '+' : gapSec < 0 ? '−' : ''}${formatRaceTime(Math.abs(gapSec))}`, true) : null,
+      // Past: the finish the runner recorded, and a gap measured against the
+      // goal — reads, not models, so no tilde. Upcoming: a projection off
+      // VDOT, which is a model and carries the mark.
+      projected: plate.middleSec != null
+        ? num(formatRaceTime(plate.middleSec), plate.middleModelled)
+        : null,
+      gap: gapSec != null
+        ? num(`${gapSec > 0 ? '+' : gapSec < 0 ? '−' : ''}${formatRaceTime(Math.abs(gapSec))}`, plate.gapModelled)
+        : null,
       elevation, elevationMarks, elevationFootnotes,
-      pacePlan,
+      // How to pace a race that has already been run is not advice. The
+      // course marks above are still derived from the same pacing call,
+      // because the course itself did not stop being that shape.
+      pacePlan: plate.showsForwardLooking ? pacePlan : [],
       taperProgress, taperEndpoints, taperCentreLabel,
       gear,
       coachLine,

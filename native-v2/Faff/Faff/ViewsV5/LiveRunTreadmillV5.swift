@@ -858,14 +858,14 @@ private func previewPlan() -> LiveRunPlanV5 {
 // body.
 
 @MainActor
-private func treadmillWithHeartPreview() -> some View {
+func treadmillWithHeartPreview() -> some View {
     let hr = TreadmillHRStreamer()
     hr.seedForPreview(bpm: 158)
     return LiveRunTreadmillV5(plan: previewPlan(), hr: hr, onPause: {}, onEnd: {})
 }
 
 @MainActor
-private func treadmillNoHeartPreview() -> some View {
+func treadmillNoHeartPreview() -> some View {
     let hr = TreadmillHRStreamer()
     return LiveRunTreadmillV5(plan: previewPlan(), hr: hr, onPause: {}, onEnd: {})
 }

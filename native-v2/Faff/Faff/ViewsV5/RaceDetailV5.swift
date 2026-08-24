@@ -193,10 +193,18 @@ struct RaceDetailV5: View {
         (raceDetail.gap?.text ?? "").hasPrefix("+")
     }
 
+    /// "Projected" is a claim about the future. On a race that has already
+    /// been run the middle column holds the finish the runner actually
+    /// recorded, so the label has to say so — the route stops projecting a
+    /// past race and sends the result in that slot instead.
+    private var middleStatLabel: String {
+        raceDetail.resultEntry?.isPast == true ? "Result" : "Projected"
+    }
+
     private var statsRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
             stat("Goal", raceDetail.goal.unreadableIfAbsent, ink: V5.textPrimary)
-            stat("Projected", raceDetail.projected.unreadableIfAbsent, ink: V5.textPrimary)
+            stat(middleStatLabel, raceDetail.projected.unreadableIfAbsent, ink: V5.textPrimary)
             stat("Gap", raceDetail.gap.unreadableIfAbsent, ink: gapBehind ? V5.attention : V5.textPrimary)
         }
         .padding(V5.S.tilePad)
@@ -240,12 +248,22 @@ struct RaceDetailV5: View {
     }
 
     // MARK: Pace plan · named sections, never a per-mile chart
+    //
+    // Guarded on `isEmpty` the way the gear section above already is. The
+    // route only builds a pace plan when the race carries a GOAL TIME, and
+    // the add-a-race form says in as many words that a goal time is
+    // "Optional" — so any race entered without one drew the words "PACE
+    // PLAN" over nothing at all. A header standing over an empty list is a
+    // header promising something the screen does not have.
 
+    @ViewBuilder
     private var pacePlanSection: some View {
-        VStack(alignment: .leading, spacing: V5.S.s16) {
-            V5SectionLabel(text: "Pace plan").padding(.horizontal, V5.S.s4)
-            ForEach(raceDetail.pacePlan) { row in
-                paceSection(row)
+        if !raceDetail.pacePlan.isEmpty {
+            VStack(alignment: .leading, spacing: V5.S.s16) {
+                V5SectionLabel(text: "Pace plan").padding(.horizontal, V5.S.s4)
+                ForEach(raceDetail.pacePlan) { row in
+                    paceSection(row)
+                }
             }
         }
     }

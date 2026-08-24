@@ -438,14 +438,19 @@ private struct RaceDateFieldV5: View {
 
 // MARK: - Preview
 
+// Hosted the way `AddRaceHostV5` hosts it — `tall: true`, and NO `title:`.
+//
+// This preview used to pass `title: "Add a race"`, which drew the name twice:
+// the screen's own 56pt "ADD A RACE" with the sheet bar's "Add a race"
+// directly under it. Production never did that, so the preview showed a
+// reviewer a duplication the runner never sees, and hid the layout the runner
+// does. A preview that does not host the screen the way the app hosts it is
+// not a preview of the screen.
 #Preview("Add race") {
     ZStack {
         V5.surfacePage.ignoresSafeArea()
-        VStack {
-            Spacer()
-            V5SheetHost(isPresented: .constant(true), title: "Add a race") {
-                AddRaceV5()
-            }
+        V5SheetHost(isPresented: .constant(true), tall: true) {
+            AddRaceV5()
         }
     }
 }
