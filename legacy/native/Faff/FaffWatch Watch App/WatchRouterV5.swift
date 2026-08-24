@@ -806,8 +806,14 @@ struct WatchRunSurfaceV5: View {
 
     /// "Mile 9" — where the runner is, not which phase index they are in.
     private var raceMileLabel: String {
-        let n = Int(tracker.distanceMi) + 1
-        return (WFmt.isKm(units) ? "Km " : "Mile ") + String(n)
+        // THE RUNNER'S OWN UNIT. This was `Int(tracker.distanceMi) + 1` under
+        // a "Km " prefix — the same defect as the mile-anchored split cue, one
+        // board over and still standing after that one was fixed. A metric
+        // runner nine miles into a marathon was told "Km 10" when they had
+        // covered 14.5, on the header of the board they read most.
+        let km = WFmt.isKm(units)
+        let covered = km ? tracker.distanceMi * 1.609344 : tracker.distanceMi
+        return (km ? "Km " : "Mile ") + String(Int(covered) + 1)
     }
 
     /// "sub 3:30". Absent when the race carries no goal, so the register

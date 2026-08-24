@@ -1285,13 +1285,22 @@ final class WorkoutEngine: ObservableObject {
             if isRace {
                 // Race: a phase boundary is a new course segment — orange
                 // flip with the new target + a two-word cue.
-                let sub = p.targetPaceSPerMi.map { "\(PaceFormat.mmss($0))/mi · hold effort" }
+                // `mmssWithUnit`, not a "/mi" literal. It was written by the
+                // units audit for exactly this and had ZERO callers, while
+                // three cue strings a few lines apart each hardcoded the unit —
+                // so a kilometre runner read "6:47/mi · hold effort" directly
+                // above a band the router had converted to /km. Two units on
+                // one board, at the moment the board exists to state a pace.
+                let sub = p.targetPaceSPerMi.map {
+                    PaceFormat.mmssWithUnit($0, unitsPref: workout.unitsDistance) + " · hold effort"
+                }
                 flash(.phase(title: p.label, sub: sub), for: 1.8)
             } else if p.isFinishSegment {
                 // Long-run HM/M finish: announce the lift to race pace, NOT
                 // "REP n/m". Reuses the .phase takeover (PhaseChangeFace) —
                 // title uppercases to "FINISH"; sub carries the segment + pace.
-                let target = p.targetPaceSPerMi.map { "\(PaceFormat.mmss($0))/mi" } ?? ""
+                let target = p.targetPaceSPerMi
+                    .map { PaceFormat.mmssWithUnit($0, unitsPref: workout.unitsDistance) } ?? ""
                 flash(.phase(title: "Finish", sub: "\(p.label) · \(target)"), for: 2.2)
             } else if p.type == .work {
                 // Entering a work rep. Two reads: which rep ("Rep 2 of 4") and
@@ -1323,7 +1332,7 @@ final class WorkoutEngine: ObservableObject {
                 let hasBand = (p.tolerancePaceSPerMi ?? 0) > 0 && (p.targetPaceSPerMi ?? 0) > 0
                 let sub: String
                 if !hasBand, let t = p.targetPaceSPerMi, t > 0 {
-                    sub = "\(rep) · \(PaceFormat.mmss(t))/mi"
+                    sub = rep + " · " + PaceFormat.mmssWithUnit(t, unitsPref: workout.unitsDistance)
                 } else {
                     sub = rep
                 }

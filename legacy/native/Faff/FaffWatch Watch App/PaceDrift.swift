@@ -98,8 +98,20 @@ struct PaceDriftEvaluator {
         }
         lastZone = zone
 
+        // THE CUE FOLLOWS THE ZONE, NOT THE RAW THRESHOLD.
+        //
+        // A regression I introduced with the hysteresis above: the zone
+        // widened by three seconds a mile and this gate did not, so inside
+        // that strip the evaluator returned `.onTarget` and `fireHaptic` in
+        // the same breath. The pace number stayed band-green while the watch
+        // buzzed and took the screen with an "Ease off" board naming a band
+        // the runner was not outside. A grade and a correction that disagree
+        // are worse than either alone.
+        //
+        // One source of truth: if the zone says the runner is holding it, no
+        // cue fires.
         var fire = false
-        if magnitude > toleranceSPerMi {
+        if zone != .onTarget {
             if driftStartedAt == nil {
                 driftStartedAt = now
                 firedForCurrentEpisode = false
