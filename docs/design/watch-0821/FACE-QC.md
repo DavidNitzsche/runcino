@@ -108,3 +108,42 @@ to change one of these, you are reverting a decision, not correcting a bug.
     stay; the name goes. It is not lost — the phase-change moment announces it
     in the display register at the transition, and the board underneath then
     never repeats it. Removing it handed the numbers about 20pt.
+
+## Controls (locked 2026-08-24)
+
+25. **Colour carries the hierarchy on the controls board, and only there.**
+    White leads, amber pauses, red ends. Everywhere else colour is reserved for
+    the graded metric, because a coloured number reads as a graded number —
+    this board has no numbers on it, so nothing is present that a hue could be
+    mistaken for a judgement about. Apple's own Workout controls are a red End
+    and an amber Pause.
+    **Amber, never signal orange.** `#FF5A1F` is about ten degrees from fault
+    red `#FF4438`; stacked adjacently the two bands read as one colour at arm's
+    length. Rendered and confirmed, not argued.
+    Red as a filled target does not break rule 7: End run is not the
+    destructive step, it opens End confirm, where the discard is still text.
+
+26. **No Lap verb on a steady run.** It was the only verb in this app whose
+    effect the runner could not see — it closed the current segment, and no
+    board draws a lap figure. `lapCount` and `lastLapElapsedSec` exist in the
+    engine and are never rendered, so the controls dismissed and every number
+    on screen was identical. Renaming it "Split" was rejected: a better-named
+    invisible action is still invisible. Nothing is lost — the run auto-splits
+    every mile, the summary lists them, and the Split moment announces each one.
+    Inside a rep the slot returns as Skip rep, which has a visible consequence.
+
+27. **A gap under the clock is measured from the clock, not from the top.**
+    The system clock's ink ends at 27.5 on a 42mm, 31 on a 46mm and 33.5 on an
+    Ultra — no fixed offset and no clean fraction. `Guides.clockInkBottom`
+    carries the measured value and `clockClearance` derives from it. A fixed
+    36pt clearance gave gaps of 16.5 / 13 / 10.5 across the three watches.
+
+28. **A line pinned to the foot is measured from the bezel, not the content
+    box.** Apple's bottom inset is 12.5 on a 42mm and 19 on an Ultra, so a
+    fixed offset put the same line under the corner curve on one watch and
+    floating on another. Use `Guides.bottomInset`.
+
+29. **Both ends of a full-height stack are pinned; the item height is what
+    falls out.** In normal flow the foot line's position is whatever is left
+    over, which gave the controls board 4pt above its first button and 20pt
+    below its last. Pin top and bottom, derive the rest.

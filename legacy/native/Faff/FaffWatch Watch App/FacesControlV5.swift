@@ -117,23 +117,36 @@ private func wClock(_ seconds: Int) -> String {
 // Reached by tapping the running face, dismissed by tapping elsewhere. Three
 // verbs and no telemetry: the runner came here to do something, not to read.
 
-/// Which session the controls were opened from — which is what decides the
-/// first verb.
+/// Which session the controls were opened from — which is what decides whether
+/// there is a first verb at all.
 ///
-/// Lap has no meaning when the session is already cutting its own laps, so
-/// inside a rep it becomes **Skip rep**: the same slot, the same target, a
-/// verb that applies. This is one enum and not two views on purpose — the
-/// slot must not move between them.
+/// A steady run used to lead with **Lap**, and Lap was the only verb in this
+/// app whose effect the runner could not see. It closed the current segment,
+/// and no board draws a lap figure — not page 1, not page 2, not any phase
+/// board. `lapCount` and `lastLapElapsedSec` live in the engine and are never
+/// rendered. So the controls dismissed and every number on screen was
+/// identical, which is exactly how it read: "it's not clear what LAP does."
+///
+/// Renaming it to Split was considered and rejected — a better-named invisible
+/// action is still invisible. It is gone instead, and nothing is lost: the run
+/// already auto-splits every mile, the summary lists those splits, and the
+/// Split moment announces each one as it lands.
+///
+/// Inside a rep the slot returns as **Skip rep**, which has an obvious referent
+/// and a visible consequence.
 enum WControlsMode: Equatable {
-    /// A steady run. The first verb is Lap, and it leads on fill because it
-    /// is the only one of the three that does not interrupt the run.
+    /// A steady run. TWO verbs — Pause and End run — and they grow to fill the
+    /// space the third one was taking.
     case steady
-    /// Inside a rep of a structured session. The first verb is Skip rep.
+    /// Inside a rep of a structured session. Skip rep leads.
     case structured
+
+    /// Whether a lead verb is drawn at all.
+    var hasLead: Bool { self == .structured }
 
     var leadVerb: String {
         switch self {
-        case .steady:     return "Lap"
+        case .steady:     return ""
         case .structured: return "Skip rep"
         }
     }
@@ -141,10 +154,31 @@ enum WControlsMode: Equatable {
 
 /// Boards `Controls` and `Controls structured`.
 ///
-/// `header` is the caller's, and it is not decoration: on a steady run it
-/// says where the runner is (`Mile 5 · 44:16`), and inside a rep it NAMES THE
-/// REP (`Rep 4 of 6 · 1:12 left`), because Skip without that is a question
-/// the runner cannot answer.
+/// COLOUR CARRIES THE HIERARCHY. The verbs are equal in size and unequal in
+/// kind, and colour is what says so: white leads, amber pauses, red ends.
+///
+/// This is safe here and nowhere else in the app. The palette keeps colour off
+/// everything but the graded metric because a coloured number reads as a graded
+/// number — and this board has no numbers on it, so nothing is present that a
+/// hue could be mistaken for a judgement about. It also matches Apple, whose
+/// own Workout controls are a red End and an amber Pause.
+///
+/// AMBER, NOT SIGNAL ORANGE. #FF5A1F sits about ten degrees from fault red
+/// #FF4438; stacked adjacently the two bands read as one colour at arm's
+/// length. Amber separates, and already means "a condition, a decision
+/// waiting", which is what a pause is.
+///
+/// RED IS A FILLED TARGET HERE and that does not break rule 7. End run is not
+/// the destructive step — it opens End confirm, where the actual discard is
+/// still a text line with no pill.
+///
+/// `header` is the caller's and it is not decoration: on a steady run it says
+/// where the runner is (`Mile 5 · 44:16`), and inside a rep it NAMES THE REP
+/// (`Rep 4 of 6 · 1:12 left`), because Skip without that is a question the
+/// runner cannot answer. It sits centred at the FOOT, where every phase board
+/// puts its count — this board used to put it at the top, which made it the one
+/// place in the app where reference information sat above the thing it referred
+/// to, and put it on the line the system clock owns.
 struct FaceControlsV5: View {
     var mode: WControlsMode = .steady
     let header: String
@@ -152,21 +186,72 @@ struct FaceControlsV5: View {
     let onPause: () -> Void
     let onEnd: () -> Void
 
+    private var g: WatchLayout.Guides { WatchLayout.current }
+
+    /// BOTH ENDS ARE PINNED, because flow cannot balance them: in flow the
+    /// foot line's position is whatever is left over, which gave 4pt between
+    /// the clock's ink and the first button and 20pt between the last button
+    /// and the count.
+    ///
+    /// The running faces already settle the top number — their first ink lands
+    /// 12pt below the clock's — so this starts its first band at the same
+    /// distance, and the count keeps its phase-board position 12pt below the
+    /// last band. The band height then falls out of the two rather than being
+    /// chosen.
+    ///
+    /// BOTH ARE DERIVED, not fixed. Fixed pads met per-device bezels and came
+    /// apart: 16.5 / 13 / 10.5 above and 7 / 12.5 / 13.5 below, across the
+    /// three watches. `clockClearance` already sits 5pt under the clock's real
+    /// ink, so 7 more puts the first band 12pt off it everywhere; and 33 less
+    /// the bottom inset puts the last band 12pt above a count that is itself
+    /// pinned to the bezel.
+    private var topPad: CGFloat { 7 }
+    private var footPad: CGFloat { 33 - g.bottomInset }
+
     var body: some View {
         WBoard {
-            VStack(alignment: .leading, spacing: 6) {
-                WKicker(text: header, color: WatchV5.valueMute)
-                    .padding(.leading, 2)
-
-                Spacer(minLength: 0)
-
-                WTargetStack {
-                    WTarget(label: mode.leadVerb, weight: .filled, action: onLead)
-                    WTarget(label: "Pause", action: onPause)
-                    WTarget(label: "End run", action: onEnd)
+            ZStack(alignment: .bottom) {
+                VStack(spacing: 5) {
+                    if mode.hasLead {
+                        band(mode.leadVerb, fill: WatchV5.value, ink: .black, action: onLead)
+                    }
+                    band("Pause", fill: WatchV5.attention, ink: .black, action: onPause)
+                    band("End run", fill: WatchV5.fault, ink: .white, action: onEnd)
                 }
+                .padding(.top, topPad)
+                .padding(.bottom, footPad)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Text(header)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .tracking(0.4)
+                    .foregroundStyle(.white.opacity(0.42))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    // Measured from the BEZEL, not the content box, so the line
+                    // sits the same 12pt off the bottom of every watch. Apple's
+                    // bottom inset is 12.5 on a 42mm and 19 on an Ultra, so a
+                    // fixed offset put this under the corner curve on one and
+                    // floating on the other.
+                    .offset(y: g.bottomInset - 8)
             }
         }
+    }
+
+    private func band(_ label: String, fill: Color, ink: Color,
+                      action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(WatchV5.label(19, .heavy))
+                .foregroundStyle(ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(fill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 

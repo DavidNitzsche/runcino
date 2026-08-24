@@ -1025,16 +1025,10 @@ struct WatchRunSurfaceV5: View {
         FaceControlsV5(
             mode: engine.currentPhase?.type == .work ? .structured : .steady,
             header: controlsHeader,
-            onLead: {
-                if engine.currentPhase?.type == .work {
-                    router.confirm = .skipRep
-                } else {
-                    // A steady run has no rep to end, so Lap closes the
-                    // current segment the same way an auto-lap would.
-                    engine.endCurrentPhase()
-                    router.controlsShowing = false
-                }
-            },
+            // Only ever called inside a rep: a steady run draws no lead verb,
+            // because the one it used to draw was Lap and Lap changed nothing
+            // the runner could see. See WControlsMode.
+            onLead: { router.confirm = .skipRep },
             onPause: {
                 engine.isPaused ? engine.resume() : engine.pause()
                 router.controlsShowing = false

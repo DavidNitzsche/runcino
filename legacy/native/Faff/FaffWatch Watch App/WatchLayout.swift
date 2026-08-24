@@ -51,6 +51,16 @@ enum WatchLayout {
         /// First text baseline under the top margin.
         let firstBaseline: CGFloat
 
+        /// Where the SYSTEM CLOCK's ink actually ends, measured on each device.
+        ///
+        /// 27.5 on a 42mm, 31 on a 46mm, 33.5 on an Ultra — it does not sit at
+        /// a fixed offset and it does not scale with the display either. A
+        /// board that wants a consistent gap under the time has to work from
+        /// the real number: a fixed 36pt clearance produced gaps of 16.5, 13
+        /// and 10.5 across the three, which is a 6pt spread on the one edge
+        /// every board shares.
+        let clockInkBottom: CGFloat
+
         /// Where content must start to clear the SYSTEM CLOCK.
         ///
         /// Apple's content box starts at 18 on a 46mm and the clock's own ink
@@ -62,8 +72,9 @@ enum WatchLayout {
         ///
         /// This is the number the design's own rule 5 was reaching for when it
         /// said "the top 22pt of every board is empty". 22 was measured off the
-        /// design file's shell; this is measured off the device.
-        var clockClearance: CGFloat { 36 }
+        /// design file's shell; this is measured off the device — and off THIS
+        /// device, rather than off the one the guide table was built on.
+        var clockClearance: CGFloat { clockInkBottom + 5 }
 
         /// `Three Bottom Controls`: two 35pt side slots and one 46pt centre
         /// slot, all sharing a centre line.
@@ -110,6 +121,7 @@ enum WatchLayout {
                 pill: CGRect(x: pill.minX, y: pill.minY + dh,
                              width: pill.width + dw, height: pill.height),
                 firstBaseline: firstBaseline,
+                clockInkBottom: clockInkBottom,
                 sideControl: sideControl, centerControl: centerControl,
                 controlCenterY: controlCenterY + dh,
                 sideControlX: (sideControlX.leading, sideControlX.trailing + dw),
@@ -140,7 +152,7 @@ enum WatchLayout {
             screen: CGSize(width: 184, height: 224),
             margins: CGRect(x: 10.5, y: 12.5, width: 163, height: 199),
             pill: CGRect(x: 10.5, y: 162.5, width: 163, height: 51),
-            firstBaseline: 29,
+            firstBaseline: 29, clockInkBottom: 27.5,
             sideControl: 34, centerControl: 44.5, controlCenterY: 194.5,
             sideControlX: (10.5, 139.5), centerControlX: 69.8,
             listHeaderRule: 45.8, scrollFold: 194,
@@ -150,7 +162,7 @@ enum WatchLayout {
             screen: CGSize(width: 208, height: 248),
             margins: CGRect(x: 15, y: 18, width: 178, height: 212),
             pill: CGRect(x: 15, y: 180.5, width: 178, height: 52.5),
-            firstBaseline: 34.2,
+            firstBaseline: 34.2, clockInkBottom: 31,
             sideControl: 35, centerControl: 46, controlCenterY: 212.5,
             sideControlX: (15, 158), centerControlX: 81,
             listHeaderRule: 59.8, scrollFold: 207.2,
@@ -160,7 +172,7 @@ enum WatchLayout {
             screen: CGSize(width: 205, height: 251),
             margins: CGRect(x: 15.5, y: 19, width: 174, height: 213),
             pill: CGRect(x: 15.5, y: 181.5, width: 174, height: 54),
-            firstBaseline: 36.5,
+            firstBaseline: 36.5, clockInkBottom: 33.5,
             sideControl: 36, centerControl: 47, controlCenterY: 214,
             sideControlX: (15.5, 153.5), centerControlX: 79,
             listHeaderRule: 63.5, scrollFold: 211.2,
@@ -214,6 +226,7 @@ enum WatchLayout {
             margins: r(base.margins),
             pill: r(base.pill),
             firstBaseline: base.firstBaseline * sy,
+            clockInkBottom: base.clockInkBottom * sy,
             sideControl: base.sideControl * sx,
             centerControl: base.centerControl * sx,
             controlCenterY: base.controlCenterY * sy,
