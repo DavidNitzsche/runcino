@@ -499,10 +499,10 @@ struct WatchRunSurfaceV5: View {
     @ViewBuilder
     private var faceLayer: some View {
         if tracker.isLuminanceReduced {
-            RunFaceAlwaysOn(
+            AlwaysOnFaceV6(
                 pace: livePace.value,
                 paceUnit: livePace.unit,
-                grade: paceGrade,
+                grade: paceGrade.workoutGrade,
                 distance: dist.value,
                 distanceUnit: dist.unit,
                 elapsedMinutes: String(max(0, engine.totalElapsedSec / 60))
@@ -578,67 +578,44 @@ struct WatchRunSurfaceV5: View {
     }
 
     /// Page 1 ◀▶ page 2. Tridots, and the page survives a phase board.
+    /// Page 1 and page 2, on the native foundation.
+    ///
+    /// VERTICAL paging, Crown-navigable, per the 2026-08-23 ruling: watchOS
+    /// puts the indicator beside the Crown and Apple's own guidance is that
+    /// vertical is "more effective than horizontal pagination" here. The
+    /// tridots the 0821 design drew at the bottom are gone with the gesture
+    /// they belonged to.
     private var runningPages: some View {
         TabView(selection: $router.runPage) {
             primaryPage.tag(0)
             performancePage.tag(1)
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
+        .tabViewStyle(.verticalPage)
     }
 
     @ViewBuilder
     private var primaryPage: some View {
-        if tracker.heartRate <= 0 {
-            // Rule 2 before anything else: a sensor we could not read is
-            // NAMED, in words, and that is as true on a belt as it is
-            // outdoors. This test used to sit inside the non-treadmill
-            // branch, so a belt run with no strap drew a dash where the
-            // design puts "No heart signal" — and a dash is exactly the
-            // stale-looking non-answer the rule exists to forbid.
-            FaceHeartDropoutV5(
-                pace: livePace.value,
-                paceUnit: livePace.unit,
-                paceInBand: paceGrade == .inBand,
-                distance: dist.value,
-                distanceUnit: dist.unit,
-                elapsed: WFmt.clock(engine.totalElapsedSec)
-            )
-        } else if isTreadmill {
-            RunFaceTreadmillPrimary(
-                pace: livePace.value,
-                paceUnit: livePace.unit,
-                distance: dist.value,
-                distanceUnit: dist.unit,
-                heartRate: WFmt.whole(tracker.heartRate) ?? "--",
-                elapsed: WFmt.clock(engine.totalElapsedSec),
-                pageIndex: 0, pageCount: 2
-            )
-        } else {
-            RunFacePrimary(
-                pace: livePace.value,
-                paceUnit: livePace.unit,
-                grade: paceGrade,
-                band: band(for: engine.currentPhase),
-                heartRate: WFmt.whole(tracker.heartRate) ?? "--",
-                distance: dist.value,
-                distanceUnit: dist.unit,
-                elapsed: WFmt.clock(engine.totalElapsedSec),
-                pageIndex: 0, pageCount: 2
-            )
-        }
+        RunFaceV6(
+            pace: livePace.value,
+            paceUnit: livePace.unit,
+            grade: paceGrade.workoutGrade,
+            // nil NAMES the sensor on the board rather than drawing a dash.
+            // True on a belt too — a missing strap is a missing strap.
+            heartRate: tracker.heartRate > 0 ? WFmt.whole(tracker.heartRate) : nil,
+            distance: dist.value,
+            distanceUnit: dist.unit,
+            elapsed: WFmt.clock(engine.totalElapsedSec)
+        )
     }
 
-    /// Page 2. Power and elevation DROP OUT when unavailable rather than
-    /// drawing a placeholder — the board becomes three metrics, or two.
     private var performancePage: some View {
-        RunFacePerformance(
+        PerfFaceV6(
             cadence: WFmt.whole(tracker.cadence) ?? "--",
             averagePace: WFmt.paceWithUnit(averagePaceSPerMi, units: units)?.value ?? "--",
-            averagePaceUnit: (WFmt.isKm(units) ? "/km" : "/mi") + " avg",
+            averagePaceUnit: WFmt.isKm(units) ? "/km" : "/mi",
             power: isTreadmill ? nil : WFmt.whole(tracker.powerWatts),
             elevation: isTreadmill ? nil : WFmt.elevation(tracker.elevGainM, units: units)?.value,
-            elevationUnit: WFmt.isKm(units) ? "m" : "ft",
-            pageIndex: 1, pageCount: 2
+            elevationUnit: WFmt.isKm(units) ? "m" : "ft"
         )
     }
 
@@ -658,84 +635,92 @@ struct WatchRunSurfaceV5: View {
         }
     }
 
-    @ViewBuilder
+    /// Every structured phase, on the native foundation.
+    ///
+    /// One board shape, not six. The phase is named once in a fixed slot and
+    /// the telemetry under it keeps page 1's order, so when the board swaps
+    /// mid-session the only thing that moved is the word.
     private func phaseBoard(_ phase: WatchPhase) -> some View {
-        let pace = livePace.value
-        let grade = paceGrade
-        let reading = self.reading(pace, grade: grade, phase: phase)
+        PhaseFaceV6(
+            phase: phaseName(phase),
+            detail: phaseDetail(phase),
+            metrics: phaseMetrics(phase)
+        )
+    }
 
-        // ROUTING IS BY SESSION SHAPE, NOT BY PHASE TYPE ALONE.
-        //
-        // `WatchPhase.type` is only warmup/work/recovery/cooldown, so a
-        // threshold block, a race mile and a set of strides all arrive as
-        // `.work`. Switching on type alone gave every one of them the
-        // rep-interval board — which meant WPhaseRace, the board the entire
-        // race surface is built around, and WPhaseThreshold, whose whole
-        // reason to exist is average pace, were unreachable in the shipped
-        // app while existing as previews.
+    private func phaseName(_ phase: WatchPhase) -> String {
+        if engine.workout.isRace { return raceMileLabel }
         switch phase.type {
-        case .warmup:
-            WPhaseWarmUp(
-                remaining: WFmt.short(engine.phaseRemainingSec),
-                pace: reading,
-                heartRate: WFmt.whole(tracker.heartRate)
-            )
+        case .warmup:   return "Warm-up"
+        case .recovery: return "Recovery"
+        case .cooldown: return "Cool-down"
+        case .work:
+            if isStrides(phase) { return "Strides" }
+            if isThreshold(phase) { return "Threshold" }
+            return "Work"
+        }
+    }
 
+    /// The count and the clock are the same thought on a rep board, so they
+    /// share the label line rather than taking a metric slot each.
+    private func phaseDetail(_ phase: WatchPhase) -> String? {
+        let left = WFmt.short(engine.phaseRemainingSec)
+        if engine.workout.isRace { return raceGoalLabel }
+        switch phase.type {
+        case .work:
+            return isStrides(phase)
+                ? "\(repIndex) of \(repCount)"
+                : "\(repIndex) of \(repCount) \(WatchV5.separator) \(left)"
+        case .warmup, .recovery, .cooldown:
+            return left
+        }
+    }
+
+    /// WHICH numbers, in what order. The only genuinely product decision on
+    /// these boards — everything else belongs to the foundation.
+    private func phaseMetrics(_ phase: WatchPhase) -> [WorkoutMetric] {
+        let hr = WFmt.whole(tracker.heartRate)
+        let paced = WorkoutMetric(value: livePace.value, unit: livePace.unit,
+                                  grade: paceGrade.workoutGrade, role: "Pace")
+
+        switch phase.type {
         case .recovery:
-            WPhaseRecovery(
-                remaining: WFmt.short(engine.phaseRemainingSec),
-                heartRate: WFmt.whole(tracker.heartRate),
-                repIndex: repIndex,
-                repCount: repCount
-            )
+            // No pace. A recovery is not asking for one, and drawing a number
+            // nobody is being held to is how a board starts lying.
+            var m: [WorkoutMetric] = [
+                WorkoutMetric(value: WFmt.short(engine.phaseRemainingSec), role: "Time left")
+            ]
+            if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
+            return m
+
+        case .warmup, .cooldown:
+            var m = [paced]
+            if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
+            m.append(WorkoutMetric(value: dist.value, unit: dist.unit, role: "Distance"))
+            return m
 
         case .work:
             if engine.workout.isRace {
-                WPhaseRace(
-                    mileLabel: raceMileLabel,
-                    goalLabel: raceGoalLabel,
-                    pace: reading,
-                    onGoal: onGoalDelta,
-                    distance: dist.value,
-                    distanceUnit: dist.unit,
-                    elapsed: WFmt.clock(engine.totalElapsedSec),
-                    progress: engine.phaseProgress
-                )
-            } else if isStrides(phase) {
-                WPhaseStrides(
-                    strideIndex: repIndex,
-                    strideCount: repCount,
-                    remaining: WFmt.short(engine.phaseRemainingSec)
-                )
-            } else if isThreshold(phase) {
-                // Average pace earns its row on this board and nowhere else:
-                // a threshold block is judged over its whole length, not
-                // instant by instant.
-                WPhaseThreshold(
-                    blockIndex: repIndex,
-                    blockCount: repCount,
-                    pace: reading,
-                    averagePace: WFmt.paceWithUnit(averagePaceSPerMi, units: units)?.value,
-                    heartRate: WFmt.whole(tracker.heartRate),
-                    elapsed: WFmt.clock(engine.totalElapsedSec),
-                    progress: engine.phaseProgress
-                )
-            } else {
-                WPhaseWorkInterval(
-                    repIndex: repIndex,
-                    repCount: repCount,
-                    remaining: WFmt.short(engine.phaseRemainingSec),
-                    pace: reading,
-                    heartRate: WFmt.whole(tracker.heartRate),
-                    // THIS rep's distance, not the whole run's. On rep 3 of a
-                    // 4x1mi session the board read 3.85 under a per-rep label.
-                    distance: WFmt.distance(engine.phaseCoveredMi, units: units).value,
-                    distanceUnit: WFmt.distance(engine.phaseCoveredMi, units: units).unit
-                )
+                var m = [paced]
+                if let d = onGoalDelta {
+                    m.append(WorkoutMetric(value: d, unit: "on goal", role: "Against goal"))
+                }
+                m.append(WorkoutMetric(value: dist.value, unit: dist.unit, role: "Distance"))
+                m.append(WorkoutMetric(value: WFmt.clock(engine.totalElapsedSec), role: "Elapsed"))
+                return m
             }
-
-        case .cooldown:
-            EmptyView()
+            var m = [paced]
+            if isThreshold(phase),
+               let avg = WFmt.paceWithUnit(averagePaceSPerMi, units: units) {
+                // Average pace earns a row on a threshold block and nowhere
+                // else: that block is judged over its length, not instant by
+                // instant.
+                m.append(WorkoutMetric(value: avg.value, unit: avg.unit + " avg", role: "Average pace"))
+            }
+            if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
+            let rep = WFmt.distance(engine.phaseCoveredMi, units: units)
+            m.append(WorkoutMetric(value: rep.value, unit: rep.unit, role: "Rep distance"))
+            return m
         }
     }
 

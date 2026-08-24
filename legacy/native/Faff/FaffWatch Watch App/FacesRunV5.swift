@@ -67,6 +67,17 @@ import SwiftUI
 /// `.plain` for its lead pace by accident, and so the treadmill's "there is no
 /// trustworthy pace on a belt" is a named state rather than an omission.
 extension FacePaceGrade {
+    /// Bridge to the native foundation's grade while both generations exist.
+    /// `.untrusted` becomes `.neutral`: a belt, a dropped GPS and the first
+    /// minute of a run all mean "nothing graded this", which is white.
+    var workoutGrade: MetricGrade {
+        switch self {
+        case .inBand:    return .onTarget
+        case .outOfBand: return .drifting
+        case .untrusted: return .neutral
+        }
+    }
+
     /// The three-state grade as the shared component's own enum. Exists so a
     /// board cannot collapse `.untrusted` into `.outOfBand` on the way past.
     var metricGrade: WMetricGrade {

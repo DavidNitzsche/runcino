@@ -61,6 +61,7 @@
 		456E4CFA1CB168E314A39A1D /* FaffMesh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C18DDEE14414B527EFBB143 /* FaffMesh.swift */; };
 		468FE2BC3CFB56D3952DA40E /* LiveRunOutdoorV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3319534867031A9898793E4E /* LiveRunOutdoorV5.swift */; };
 		47F3245DF57F054F4D025850 /* NotificationCategories.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCEEE47B94CDA981E430812A /* NotificationCategories.swift */; };
+		484DFA221C704DBC9C376466 /* FacesRunV6.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCE561B22AA8DF2CB1C87B37 /* FacesRunV6.swift */; };
 		49DD1311332CCD7EC88681EC /* Tips.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9883A181E1656DBDC8F3FAFC /* Tips.swift */; };
 		4AE44E43FBEEA3FBDE76BA3F /* NotificationsControllerV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = A568CF011D15B9560E0B84FE /* NotificationsControllerV5.swift */; };
 		4BB5EDC05DDAD175677A4710 /* OFL-InstrumentSans.txt in Resources */ = {isa = PBXBuildFile; fileRef = 270299E44E94590D5B9B8501 /* OFL-InstrumentSans.txt */; };
@@ -428,6 +429,7 @@
 		D8887459C81D2BD8B503FAFE /* F_Sheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = F_Sheets.swift; sourceTree = "<group>"; };
 		DAA1CCA3DF5D33860D0F8DA9 /* PhoneRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRunView.swift; sourceTree = "<group>"; };
 		DB78B57C63F6CAA75CB24270 /* FaffWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWatchApp.swift; sourceTree = "<group>"; };
+		DCE561B22AA8DF2CB1C87B37 /* FacesRunV6.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacesRunV6.swift; sourceTree = "<group>"; };
 		DCEEE47B94CDA981E430812A /* NotificationCategories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationCategories.swift; sourceTree = "<group>"; };
 		E1AFCF59C06ED8C5C087F66C /* ScreensCatalogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreensCatalogV5.swift; sourceTree = "<group>"; };
 		E2B28F9C8F4604550364F9BC /* WorkoutTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTracker.swift; sourceTree = "<group>"; };
@@ -593,6 +595,7 @@
 				71C4F2E6374884D975BBC496 /* FacesLobbyV5.swift */,
 				65249910DF92E049E10A8228 /* FacesPhaseV5.swift */,
 				15A41B00785D5F02EC55BA73 /* FacesRunV5.swift */,
+				DCE561B22AA8DF2CB1C87B37 /* FacesRunV6.swift */,
 				162F4E9C0CB7F4A9A9298265 /* FaffWatch Watch App.entitlements */,
 				DB78B57C63F6CAA75CB24270 /* FaffWatchApp.swift */,
 				91C95506B64A47635328790C /* Fonts */,
@@ -949,6 +952,7 @@
 				DE224649DDD289495E37715D /* FacesLobbyV5.swift in Sources */,
 				4C04E6EEAF70561518C6B8AE /* FacesPhaseV5.swift in Sources */,
 				9B3E451CF3B7AD7C1E660B4D /* FacesRunV5.swift in Sources */,
+				484DFA221C704DBC9C376466 /* FacesRunV6.swift in Sources */,
 				F78C87C61CF8C1E957424497 /* FaffWatchApp.swift in Sources */,
 				533CAEF551723F2A36BFBA9C /* FaffWidgetSnapshot.swift in Sources */,
 				FDFB5B7B4C41C8B3C7BBF7C8 /* Haptics.swift in Sources */,

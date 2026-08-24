@@ -90,16 +90,24 @@ struct WorkoutPage<Content: View>: View {
             ZStack(alignment: .topLeading) {
                 background.ignoresSafeArea()
 
+                // ORDER MATTERS. scenePadding FIRST, then the frame.
+                //
+                // The other way round lays the content out at full screen
+                // width and then insets the result, so the trailing edge ends
+                // up past the display — a right-aligned detail on the phase
+                // header rendered as "9:5" with the rest off-screen. Padding
+                // first means the content is measured inside the margins,
+                // which is what a margin is.
+                //
+                // Apple's own margin, from the runtime rather than a constant:
+                // 13pt on a 42mm, 15 on a 46mm, 16.5 on Ultra. Plain
+                // .padding() is a flat 8 everywhere and is wrong here.
                 content()
+                    .scenePadding(.horizontal)
                     .frame(width: full.size.width,
                            height: full.size.height - WorkoutShellMetrics.top - WorkoutShellMetrics.bottom,
                            alignment: .topLeading)
                     .offset(y: WorkoutShellMetrics.top)
-                    // Apple's own margin, from the runtime rather than a
-                    // constant: 13pt on a 42mm, 15 on a 46mm, 16.5 on Ultra.
-                    // Plain .padding() is a flat 8 everywhere and is wrong for
-                    // a top-level margin.
-                    .scenePadding(.horizontal)
             }
         }
         .ignoresSafeArea()
