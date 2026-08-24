@@ -383,6 +383,28 @@ struct FacePreviewView: View {
                 totals: [FinishSummaryRow("Climb", "312 ft")]))
         case "firstlaunch":
             return AnyView(PreSessionFirstLaunchBoard { })
+        default: return notifications()
+        }
+    }
+
+    // MARK: - Notifications
+    //
+    // One shell. An action appears only when there GENUINELY is one — "session
+    // moved" and "race tomorrow" have none, and giving them a target would
+    // make the notification a thing to dismiss rather than a thing to read.
+
+    private func notifications() -> AnyView? {
+        switch name {
+        case "notifmoved":
+            return AnyView(V5NotificationBoard(content: FaffNotificationFixtures.sessionMoved))
+        case "notifmovedlong":
+            return AnyView(V5NotificationBoard(content: FaffNotificationFixtures.sessionMovedLong))
+        case "notifrace":
+            return AnyView(V5NotificationBoard(content: FaffNotificationFixtures.raceTomorrow))
+        case "notifunread":
+            return AnyView(V5NotificationBoard(content: FaffNotificationFixtures.runUnread) { })
+        case "notifunreadsent":
+            return AnyView(V5NotificationBoard(content: FaffNotificationFixtures.runUnreadAsSent) { })
         default: return nil
         }
     }

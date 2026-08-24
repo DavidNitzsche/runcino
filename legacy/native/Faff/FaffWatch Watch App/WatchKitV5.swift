@@ -746,20 +746,45 @@ struct WDisplayWord: View {
     var lineLimit: Int = 1
     /// Letterspacing, for the boards that carry it.
     var tracking: CGFloat = 0
-    /// The design draws multi-line display type at `line-height: .92`.
-    /// `.leading(.tight)` is the closest SwiftUI gets; without it a two-line
-    /// lede opens up by about 4pt and the block stops reading as one
-    /// statement. Only meaningful when `lineLimit > 1`.
+    /// The design draws multi-line display type at `line-height: .92`, and
+    /// `.leading(.tight)` looks like the SwiftUI equivalent. IT IS NOT, and
+    /// this flag no longer does anything.
+    ///
+    /// Measured: "SESSION MOVED" at 23pt with `lineLimit(2)` wraps onto two
+    /// lines at its full size. Add `.leading(.tight)` and the same string
+    /// collapses onto ONE line at an 8pt cap height — about 11pt of type,
+    /// under half the specified size, and visibly smaller than the coach
+    /// sentence beneath it. Tight leading apparently changes what SwiftUI
+    /// considers a fitting layout, and shrinking wins over wrapping.
+    ///
+    /// So the notification lede — the one thing that board exists to say —
+    /// has been drawing at half size, while the file's own comment said in
+    /// words that shrinking was the wrong answer. A modifier added to buy 4pt
+    /// of leading cost 12pt of type.
+    ///
+    /// Kept as a parameter so the call sites still read as intent, and so the
+    /// next person to reach for it finds this note instead of the bug.
     var tightLeading: Bool = false
 
     var body: some View {
         Text(text.uppercased())
-            .font(tightLeading ? WatchV5.display(size).leading(.tight)
-                               : WatchV5.display(size))
+            .font(WatchV5.display(size))
             .tracking(tracking)
             .foregroundStyle(color)
             .lineLimit(lineLimit)
-            .minimumScaleFactor(0.5)
+            // SHRINKING IS ONLY ALLOWED WHERE WRAPPING IS NOT.
+            //
+            // A one-line moment word ("GO", "DONE") has nowhere to go but
+            // smaller. A lede that is permitted two lines does, and with the
+            // scale floor left on it SwiftUI took the cheaper option: it shrank
+            // "SESSION MOVED" onto one line at the full 0.5 floor rather than
+            // wrapping it. Measured on the notification board at an 8pt cap
+            // height — 11pt of the 23pt the design fixes the lede at, less than
+            // half, and smaller than the sentence underneath it.
+            //
+            // This file's own comment already said shrinking was the wrong
+            // answer here; the modifier just never learned about lineLimit.
+            .minimumScaleFactor(lineLimit > 1 ? 1.0 : 0.5)
             .fixedSize(horizontal: false, vertical: lineLimit > 1)
     }
 }

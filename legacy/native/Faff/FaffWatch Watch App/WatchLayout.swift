@@ -84,6 +84,31 @@ enum WatchLayout {
         /// These are absolute y values from the top of the display.
         let infographicRows: [CGFloat]
 
+        /// The same guides, reported against the real display.
+        ///
+        /// The margins, control slots and rows are kept exactly as Apple
+        /// measured them; only `screen` and the widths that hang off the right
+        /// margin follow the device.
+        func onScreen(_ size: CGSize) -> Guides {
+            guard size != screen else { return self }
+            let dw = size.width - screen.width
+            return Guides(
+                screen: size,
+                margins: CGRect(x: margins.minX, y: margins.minY,
+                                width: margins.width + dw, height: margins.height),
+                pill: CGRect(x: pill.minX, y: pill.minY,
+                             width: pill.width + dw, height: pill.height),
+                firstBaseline: firstBaseline,
+                sideControl: sideControl, centerControl: centerControl,
+                controlCenterY: controlCenterY,
+                sideControlX: (sideControlX.leading, sideControlX.trailing + dw),
+                centerControlX: centerControlX + dw / 2,
+                listHeaderRule: listHeaderRule,
+                scrollFold: scrollFold + (size.height - screen.height),
+                infographicRows: infographicRows
+            )
+        }
+
         var contentWidth: CGFloat { margins.width }
         var leading: CGFloat { margins.minX }
         var top: CGFloat { margins.minY }
@@ -135,8 +160,22 @@ enum WatchLayout {
         let h = Int(b.height.rounded())
         if let exact = guides[h] { return exact }
         // Nearest shipped size within a few points, else scale the 46mm guide.
+        //
+        // A NEAR MATCH KEEPS APPLE'S MARGINS AND THE DEVICE'S OWN SIZE.
+        //
+        // Returning the table row verbatim handed callers the size of the
+        // watch the row was measured on, not the one in the user's hand — and
+        // both current watches are near matches, not exact ones: the Series 11
+        // 42mm is 187x223 against the kit's 184x224, and the Ultra 3 is
+        // 211x257 against the Ultra 2's 205x251. Every board is pinned to
+        // `screen`, so the ramp stopped 3pt short of the left and right bezels
+        // on both, which is precisely the full-bleed failure this was pinned
+        // to fix. Caught only by rendering on all three sizes.
+        //
+        // The margins are still Apple's, unscaled: they are a physical
+        // thumb-and-bezel measurement, not a fraction of the display.
         if let near = guides.keys.min(by: { abs($0 - h) < abs($1 - h) }), abs(near - h) <= 6 {
-            return guides[near]!
+            return guides[near]!.onScreen(CGSize(width: b.width, height: b.height))
         }
         return scaled(to: CGSize(width: b.width, height: b.height))
     }
