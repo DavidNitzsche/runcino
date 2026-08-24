@@ -443,6 +443,28 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   }
 
   // ── The plan is live. Resolve today's prescription context. ───────────
+  // THE PLAN FOR THE DAY BEING ASKED ABOUT, NOT FOR THIS WEEK.
+  //
+  // `loadGlanceState` takes no date. Its `weekDays` is always the CURRENT
+  // training week, so `glance.weekDays.find(d => d.date === today)` returns
+  // undefined the moment `today` is a date outside it — and the day fell
+  // through to null, which the composer renders as REST with "no specific
+  // plan today · run by feel".
+  //
+  // So paging the week strip forward showed every future day as a rest day,
+  // on a plan that has a seven-mile long run sitting right there. Backwards
+  // worked, but only by accident: a stepped-to day inside the current week is
+  // still in `weekDays`.
+  //
+  // `planWeek` IS date-aware — `loadPlanWeek(userId, today)` windows on the
+  // date it was given — so `todayWeekDay` already holds the right row. Glance
+  // stays first because it carries the adaptation provenance (what the day
+  // WAS before the coach moved it), which the plan row alone cannot say.
+  //
+  // Same root cause as the readiness figures that were rendering under a past
+  // date's heading. That was fixed by blanking the section; this is the same
+  // date-blind source feeding the headline itself. The real repair is a
+  // `loadGlanceState(userId, date)`, which is a wider change than this.
   const todayPlan = glanceToday && glanceToday.plannedType !== 'unplanned'
     ? {
         type: glanceToday.plannedType,
@@ -450,6 +472,14 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         distanceMi: glanceToday.plannedMi,
         originalType: glanceToday.adaptation?.originalType ?? null,
         originalSubLabel: glanceToday.adaptation?.originalSubLabel ?? null,
+      }
+    : todayWeekDay && todayWeekDay.type !== 'rest'
+    ? {
+        type: todayWeekDay.type,
+        subLabel: todayWeekDay.sub_label,
+        distanceMi: todayWeekDay.distance_mi,
+        originalType: null,
+        originalSubLabel: null,
       }
     : null;
 

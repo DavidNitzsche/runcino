@@ -204,8 +204,19 @@ struct TodayBeforeV5: View {
                     groupsSection
                     whySection
                     paceNoteSection
-                    whereYouAreSection
-                    beforeYouGoSection
+                    // A GROUP WITH NO ROWS DRAWS NOTHING, NOT A BARE HEADER.
+                    //
+                    // These rendered unconditionally, so a payload with an
+                    // empty list left "WHERE YOU ARE" sitting over blank
+                    // space. That reads as a section that failed to load —
+                    // the outage treatment, on a screen that is fine — which
+                    // is rule three inside out.
+                    //
+                    // Live the moment the stepped-day rule started blanking
+                    // this list on purpose: correct data, empty section,
+                    // orphan header.
+                    if !model.whereYouAre.isEmpty { whereYouAreSection }
+                    if !model.beforeYouGo.isEmpty { beforeYouGoSection }
                     SickReportRowV5(onReport: onReportSick)
                 }
                 .padding(.horizontal, V5.S.gutter)
