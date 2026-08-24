@@ -68,7 +68,16 @@ while IFS= read -r d; do
   full="$NATIVE/$d"
   [ -d "$full" ] || continue
   # -L: the watch sources reach the iOS project through a symlinked directory.
-  find -L "$full" -name '*.swift' -type f -print0 2>/dev/null \
+  #
+  # `! -name '._*'` · 2026-08-24. macOS writes an AppleDouble sidecar beside
+  # every file on a volume with no native resource-fork support, and this repo
+  # lives on one. `._V5ContractTests.swift` is four kilobytes of Finder
+  # metadata, not a Swift source, and xcodegen rightly never puts it in the
+  # project — so this gate reported thirteen "on disk, uncompiled" files and
+  # told the author to run a regeneration that could not possibly fix it.
+  # A gate that fails for a reason no edit can address teaches people to
+  # ignore it, which is worse than not having it.
+  find -L "$full" -name '*.swift' ! -name '._*' -type f -print0 2>/dev/null \
     | while IFS= read -r -d '' f; do basename "$f"; done >> "$tmp/on_disk"
 done < "$tmp/src_dirs"
 sort -u "$tmp/on_disk" -o "$tmp/on_disk"

@@ -2615,6 +2615,15 @@ function CompletedHeroV2({
               <div><div className="v">{resolvedPace ?? '·'}<small>/mi</small></div><div className="k">AVG PACE</div></div>
             </div>
 
+            {/* ZONES-SUM-1 (2026-08-24) · a distribution of nothing is not a
+                distribution. This block drew "TIME IN ZONES" with a blank bar
+                and five "Z1 0%" rows whenever the shares summed to zero —
+                which is every run whose stored distribution the reconciler
+                refuses, and five canonical rows carry exactly that beside a
+                MEASURED average of 135-145 bpm. RULE THREE: say nothing here
+                rather than draw an empty chart of a real run. The avg/peak HR
+                still show in the stat row above. */}
+            {zonePcts.reduce((a: number, b: number) => a + b, 0) > 0 && (
             <div className="zones">
               <div className="zhead">
                 <span>TIME IN ZONES</span>
@@ -2634,6 +2643,7 @@ function CompletedHeroV2({
                 ))}
               </div>
             </div>
+            )}
 
             <div className="cond">
               <div>

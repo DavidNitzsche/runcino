@@ -29,7 +29,8 @@ import {
 } from '@/lib/runs/log-enrich';
 import { runFacts } from '@/lib/runs/run-facts';
 import { distanceMiFromLabel } from '@/lib/race/distance';
-import { reconcileRun, coherentPace, coherentMovingSec, coherentElapsedSec } from '@/lib/runs/coherence';
+import { reconcileRun, reconcileHrZones, coherentPace, coherentMovingSec, coherentElapsedSec } from '@/lib/runs/coherence';
+import { apportionToHundred } from './hr-zone-bucket';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 // THE one enum-to-word table. Imported, never restated — see `type_display`.
 import { displayTypeFor } from '@/lib/faff/v5-today';
@@ -299,7 +300,15 @@ export interface RunDetail {
   has_route: boolean;
   route_polyline: string | null;  // Strava-encoded polyline if available
   splits: RunSplit[];
-  hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number };
+  /**
+   * ZONES-SUM-1 (2026-08-24) · NULLABLE. Null means this run has no zone
+   * distribution we can stand behind — either nothing measured it, or the
+   * stored one contradicts the row's own average heart rate and
+   * `reconcileHrZones` refused it. Renderers must hide the chart, not draw
+   * five empty bars: five zeros is a claim about where the runner's heart
+   * spent an hour, and it is false. When non-null the five sum to 100.
+   */
+  hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number } | null;
   /** LTHR-anchored zone ranges. 2026-07-06 · P1-43 · `lthr` now resolves via
    *  resolveThresholdHr (stored profile.lthr → effective-maxHr crosswalk) so
    *  maxHr-only runners get personalized zones instead of nothing. `method`
@@ -708,23 +717,24 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // but no per-zone breakdown was computed at write-time. Without this
   // check, the post-run hero's Z1-Z5 bar reads empty on completed runs
   // that DO have avg+max+per-mile HR (David's Tue tempo: 156/172 avg/pk).
+  //
+  // ZONES-SUM-1 (2026-08-24) · THE TWO SURFACES DISAGREED ABOUT WHAT COUNTS.
+  //
+  // The gate here was `sum > 0`, hand-rolled. `/api/v5/today` asks
+  // `reconcileHrZones`, which requires the five to sum to 100 ± 2. So a stored
+  // distribution summing to, say, 60 was drawn as a chart on web run detail
+  // and refused on the phone — one row, two answers, which is the whole shape
+  // `lib/runs/coherence.ts` exists to end. Both ask the reconciler now.
+  //
+  // A refusal still falls through to re-deriving from the samples, which is
+  // the right order: the STORED value is what is disproved, not the run.
   const hrPctsRaw = r.hrZonePcts ?? r.hr_zones ?? null;
-  const hrPctsSum = hrPctsRaw
-    ? (Number(hrPctsRaw.z1) || 0) + (Number(hrPctsRaw.z2) || 0)
-      + (Number(hrPctsRaw.z3) || 0) + (Number(hrPctsRaw.z4) || 0)
-      + (Number(hrPctsRaw.z5) || 0)
-    : 0;
-  const hrZonePcts = (hrPctsRaw && hrPctsSum > 0)
-    ? {
-        z1: Number(hrPctsRaw.z1) || 0, z2: Number(hrPctsRaw.z2) || 0,
-        z3: Number(hrPctsRaw.z3) || 0, z4: Number(hrPctsRaw.z4) || 0,
-        z5: Number(hrPctsRaw.z5) || 0,
-      }
+  const hrZonePcts = reconcileHrZones({ ...r, hrZonePcts: hrPctsRaw } as never)
     // 2026-06-04 · prefer per-sample bucketing when raw HR samples
     // are present (watch path). Falls through to deriveHrZones
     // (per-split-avg) for older runs or Strava-source that ships
     // only summary HR per split. See lib/coach/hr-zone-bucket.ts.
-    : await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits);
+    ?? await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits);
 
   // Bring the user's LTHR-anchored zone ranges so the modal can render
   // an actionable "where your HR landed" panel.
@@ -823,7 +833,10 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const heatBumpBpm = heatSlowdownPct >= 6 ? heatBumpRawBpm : 0;
   if (heatBumpBpm > 0) {
     const adj = await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits, heatBumpBpm);
-    easyShareHeatAdj = Math.round((adj.z1 ?? 0) + (adj.z2 ?? 0));
+    // ZONES-SUM-1 · a refusal stays a refusal. There is no heat-adjusted easy
+    // share when there was no distribution to adjust, and 0% easy on a hot day
+    // is a claim, not a blank.
+    easyShareHeatAdj = adj ? Math.round(adj.z1 + adj.z2) : null;
   }
 
   const phaseBreakdown = await loadPhaseBreakdown(userId, day, heatSlowdownPct);
@@ -1745,10 +1758,13 @@ async function deriveHrZones(
   avgHr: number | string | null,
   splits: RunSplit[],
   hrOffsetBpm = 0,
-): Promise<{ z1: number; z2: number; z3: number; z4: number; z5: number }> {
-  const empty = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+): Promise<{ z1: number; z2: number; z3: number; z4: number; z5: number } | null> {
+  // ZONES-SUM-1 · null, not five zeros. Nothing to distribute is the ABSENCE
+  // of a distribution, and returning one shaped like a distribution is how
+  // five canonical rows came to carry `{0,0,0,0,0}` beside a measured average
+  // of 135-145 bpm. See lib/coach/hr-zone-bucket.ts.
   const hr = Number(avgHr);
-  if (!hr) return empty;
+  if (!hr) return null;
 
   // Pull LTHR for zone bands
   const lthrRow = await pool.query(
@@ -1756,9 +1772,9 @@ async function deriveHrZones(
     [userId]
   ).catch(() => ({ rows: [] }));
   const lthr = lthrRow.rows[0]?.lthr;
-  if (!lthr) return empty;
+  if (!lthr) return null;
   const z = computeZones({ lthr });
-  if (!z) return empty;
+  if (!z) return null;
 
   // Classify a HR reading. Friel's bands leave 1-bpm gaps between zones
   // (e.g. Z2 upper 144, Z3 lower 146 at LTHR=162). A reading of 145 used to
@@ -1789,16 +1805,15 @@ async function deriveHrZones(
       const k = `z${zone.idx}` as keyof typeof counts;
       counts[k]++;
     }
-    if (total > 0) return {
-      z1: Math.round(counts.z1 / total * 100),
-      z2: Math.round(counts.z2 / total * 100),
-      z3: Math.round(counts.z3 / total * 100),
-      z4: Math.round(counts.z4 / total * 100),
-      z5: Math.round(counts.z5 / total * 100),
-    };
+    // ZONES-SUM-1 · largest remainder, so the five add to exactly 100. Five
+    // independent roundings over one denominator could land on 99 or 101, and
+    // the web renderers set each bar's width straight from its percentage.
+    const share = apportionToHundred([counts.z1, counts.z2, counts.z3, counts.z4, counts.z5]);
+    if (share) return { z1: share[0], z2: share[1], z3: share[2], z4: share[3], z5: share[4] };
   }
 
-  // No splits — assign 100% to the band the avg HR falls in.
+  // No splits — assign 100% to the band the avg HR falls in. Already sums.
+  const empty = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
   const zone = classify(hr - hrOffsetBpm);
   const k = `z${zone.idx}` as keyof typeof empty;
   return { ...empty, [k]: 100 };
@@ -1823,8 +1838,7 @@ async function deriveHrZonesFromSamples(
   avgHr: number | string | null,
   splits: RunSplit[],
   hrOffsetBpm = 0,
-): Promise<{ z1: number; z2: number; z3: number; z4: number; z5: number }> {
-  const empty = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
+): Promise<{ z1: number; z2: number; z3: number; z4: number; z5: number } | null> {
   const { bucketHrSamplesByZone, hasHrSamples } = await import('./hr-zone-bucket');
   const rawArr = Array.isArray(rawSplits)
     ? rawSplits as Parameters<typeof bucketHrSamplesByZone>[0]
@@ -1838,8 +1852,8 @@ async function deriveHrZonesFromSamples(
     [userId],
   ).catch(() => ({ rows: [] }));
   const lthr = lthrRow.rows[0]?.lthr;
-  if (!lthr) return empty;
+  if (!lthr) return null;
   const table = computeZones({ lthr });
-  if (!table) return empty;
+  if (!table) return null;
   return bucketHrSamplesByZone(rawArr, table, hrOffsetBpm);
 }

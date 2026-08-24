@@ -31,6 +31,14 @@
  */
 import type { ZoneTable } from '@/lib/training/zones';
 
+/* ZONES-SUM-1 (2026-08-24) · the apportionment lives in `lib/runs/coherence.ts`
+ * with the rest of the arithmetic that makes a row agree with itself, and is
+ * re-exported here for the callers already reaching for it. One implementation:
+ * the read path normalises a STORED distribution with the same function this
+ * write path uses to build one, so the two cannot round differently. */
+import { apportionToHundred } from '@/lib/runs/coherence';
+export { apportionToHundred };
+
 export interface HrSample {
   bpm?: number;
   tSec?: number;
@@ -52,8 +60,6 @@ export type ZonePcts = {
   z4: number;
   z5: number;
 };
-
-const EMPTY: ZonePcts = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
 
 /**
  * Classify one HR reading into a zone idx (1-5). Exact match first;
@@ -82,9 +88,12 @@ function classify(bpm: number, table: ZoneTable): number {
 }
 
 /**
- * Walk every HR sample across every split and aggregate time per
- * zone. Returns z1-z5 percentages summing to 100 (or 0 if no usable
- * samples found).
+ * Walk every HR sample across every split and aggregate time per zone.
+ *
+ * Returns five percentages summing to exactly 100, or NULL when there is
+ * nothing to distribute — no zone table (the runner has no LTHR) or no usable
+ * sample. Null is a refusal and callers must treat it as one: five zeros is a
+ * different claim, and it is false. See ZONES-SUM-1 above.
  *
  * Time-weighted because samples are time-evenly-spaced · counting
  * samples == counting seconds (modulo the constant interval). No
@@ -103,8 +112,8 @@ export function bucketHrSamplesByZone(
   // against zones shifted up by the bump (the HR analog of heat-band.ts
   // widening the pace band). Default 0 = no change for every existing caller.
   hrOffsetBpm = 0,
-): ZonePcts {
-  if (!table) return EMPTY;
+): ZonePcts | null {
+  if (!table) return null;
   const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   let total = 0;
   for (const s of splits ?? []) {
@@ -117,14 +126,9 @@ export function bucketHrSamplesByZone(
       total++;
     }
   }
-  if (total === 0) return EMPTY;
-  return {
-    z1: Math.round((counts[1] / total) * 100),
-    z2: Math.round((counts[2] / total) * 100),
-    z3: Math.round((counts[3] / total) * 100),
-    z4: Math.round((counts[4] / total) * 100),
-    z5: Math.round((counts[5] / total) * 100),
-  };
+  const share = apportionToHundred([counts[1], counts[2], counts[3], counts[4], counts[5]]);
+  if (!share) return null;
+  return { z1: share[0], z2: share[1], z3: share[2], z4: share[3], z5: share[4] };
 }
 
 /**

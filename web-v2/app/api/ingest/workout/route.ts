@@ -183,8 +183,12 @@ export async function POST(req: NextRequest) {
         const table = computeZones({ lthr });
         if (table) {
           const bucketed = bucketHrSamplesByZone(rawSplitsForZones, table);
-          const sum = bucketed.z1 + bucketed.z2 + bucketed.z3 + bucketed.z4 + bucketed.z5;
-          if (sum > 0) computedHrZonePcts = bucketed;
+          // ZONES-SUM-1 (2026-08-24) · the bucketer now REFUSES with null
+          // rather than returning five zeros, so the hand-rolled `sum > 0`
+          // gate this used to carry has moved inside it. Five zeros written
+          // here is how five canonical rows came to hold a distribution of
+          // nothing beside a measured average heart rate.
+          computedHrZonePcts = bucketed;
         }
       }
     } catch (e: unknown) {
