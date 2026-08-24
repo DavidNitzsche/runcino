@@ -79,3 +79,32 @@ looking at a screenshot.
     a 12-cell matrix because the matrix used short values.
 20. **After touching a shared component, re-check EVERY board**, not the ones
     you changed. That is exactly how the width bug reached David.
+
+## Rulings that override the 0821 handoff (locked 2026-08-24)
+
+The handoff is the design bible and these four lines of it are superseded.
+They are recorded here because each one is a place where reading the handoff
+alone would lead you to "fix" the build back into a defect. If you are about
+to change one of these, you are reverting a decision, not correcting a bug.
+
+21. **Metrics on a running face are all the same size.** The handoff's rule 4
+    says "the metric that matters is first and ~20% larger than the next, so
+    the hierarchy survives a runner who cannot distinguish the two hues."
+    Overridden: the column is one size. Hierarchy comes from order and from
+    the band, which is a stronger cue than 20% of point size and does not cost
+    the other three rows any height.
+
+22. **The delta against goal carries no unit.** `−0:22` with `sub 3:30` at the
+    foot, signed always. Not "on goal", which is seven characters of label
+    wearing a unit's clothes and would set the type size for all four rows.
+
+23. **Green marks today on the week strip.** This is a second meaning for the
+    colour that rule 1 reserves for "inside the band". Accepted: the strip is a
+    position marker and not a figure, so it does not read as a graded number.
+    Do not extend the exception to anything that is a number.
+
+24. **No phase name on a steady-state board.** The handoff's §3 says each phase
+    board "names the phase, the count, and the target band". The count and band
+    stay; the name goes. It is not lost — the phase-change moment announces it
+    in the display register at the transition, and the board underneath then
+    never repeats it. Removing it handed the numbers about 20pt.
