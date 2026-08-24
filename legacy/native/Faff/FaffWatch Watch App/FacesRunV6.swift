@@ -134,38 +134,54 @@ struct AlwaysOnFaceV6: View {
 
 // MARK: - Structured phases
 
-/// Every phase board is the same shape: the phase named once in the same slot,
-/// then telemetry under it in page 1's order, so the muscle memory survives
-/// the board swapping underneath the runner mid-session.
+/// Every phase board is the same shape: numbers, and one quiet line at the
+/// foot saying where you are in the session.
+///
+/// NO PHASE LABEL. It went the same way the metric labels went, and for the
+/// same reason — the runner configured this session and knows they are running
+/// a threshold block. A word at the top saying THRESHOLD is designed for
+/// somebody meeting the screen for the first time while running a marathon,
+/// which is nobody.
+///
+/// It went through two worse versions first. Both the name and the count
+/// started in the top strip, where they landed beside the system clock and
+/// competed with it. Splitting them helped; removing the name entirely is what
+/// actually fixed it, and it handed the numbers back about 20pt.
+///
+/// The name still exists — VoiceOver announces it, because the accessibility
+/// layer stays explicit exactly where the visual one is minimal.
 struct PhaseFaceV6: View {
+    /// "Work", "Recovery", "Threshold", "Mile 9". NEVER DRAWN.
     let phase: String
-    /// "Rep 3 of 6", "1:12 left". Carries figures, so it is set in the
-    /// telemetry register with tabular digits — a countdown in a proportional
-    /// face shuffles sideways as it ticks.
-    var detail: String? = nil
+    /// "3 of 6", "sub 3:30". The one thing on the board that is reference
+    /// rather than telemetry, which is why it sits centred at the foot rather
+    /// than on the column with everything else.
+    var context: String? = nil
     let metrics: [WorkoutMetric]
 
     var body: some View {
         WorkoutPage {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(phase.uppercased())
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .tracking(1)
-                        .foregroundStyle(.white.opacity(0.62))
-                    if let detail {
-                        Spacer(minLength: 6)
-                        Text(detail)
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(.white.opacity(0.62))
-                    }
-                }
-                .accessibilityElement(children: .combine)
-                .padding(.bottom, 2)
-
                 WorkoutMetricStack(metrics: metrics)
+
+                if let context {
+                    Text(context)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .tracking(0.4)
+                        .foregroundStyle(.white.opacity(0.42))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        // Pushed into the bottom inset, which is safe HERE and
+                        // would not be on the left edge: the corner curve bites
+                        // at the corners, and the horizontal centre of the
+                        // bottom edge is the least curved point on the display.
+                        // An offset rather than a smaller inset, so the metric
+                        // stack keeps its full region.
+                        .offset(y: 12)
+                }
             }
+            .accessibilityLabel(phase)
         }
     }
 }
@@ -202,7 +218,8 @@ struct PhaseFaceV6: View {
 }
 
 #Preview("Work interval") {
-    PhaseFaceV6(phase: "Work", detail: "3 of 6 · 1:12", metrics: [
+    PhaseFaceV6(phase: "Work", context: "3 of 6", metrics: [
+        WorkoutMetric(value: "1:12", role: "Time left in rep"),
         WorkoutMetric(value: "6:48", unit: "/mi", grade: .onTarget, role: "Pace"),
         WorkoutMetric(value: "168", unit: "bpm", role: "Heart rate"),
         WorkoutMetric(value: "0.42", unit: "mi", role: "Rep distance"),
@@ -210,7 +227,7 @@ struct PhaseFaceV6: View {
 }
 
 #Preview("Recovery") {
-    PhaseFaceV6(phase: "Recovery", detail: "1:12", metrics: [
+    PhaseFaceV6(phase: "Recovery", metrics: [
         WorkoutMetric(value: "1:12", role: "Time left"),
         WorkoutMetric(value: "148", unit: "bpm", role: "Heart rate"),
     ])

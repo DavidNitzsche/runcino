@@ -242,16 +242,27 @@ struct WorkoutMetricStack: View {
     }
 
     /// Digit advance for SF Compact Rounded semibold, as a fraction of point
-    /// size. Measured off the rendered matrix rather than assumed: a 4-glyph
-    /// value at 46pt occupied ~114pt of the 178pt content width.
+    /// size.
     private static let digitAdvance: CGFloat = 0.62
+    /// Units are drawn at 0.38 of the value's size.
     private static let unitRatio: CGFloat = 0.38
+    /// Gap between value and unit, ALSO as a fraction of point size.
+    private static let gapRatio: CGFloat = 0.12
 
-    /// Widest the value + unit can be drawn at `size`.
-    private func width(of m: WorkoutMetric, at size: CGFloat) -> CGFloat {
-        let v = CGFloat(m.value.count) * size * Self.digitAdvance
-        guard let u = m.unit else { return v }
-        return v + 4 + CGFloat(u.count) * size * Self.unitRatio * Self.digitAdvance
+    /// How many points of width one point of type size costs, for this metric.
+    ///
+    /// EVERYTHING HERE SCALES. The first version added a literal 4pt gap
+    /// inside a per-unit-size calculation, so at size 1 the constant dominated
+    /// the fractions and the whole board collapsed: "-0:22 on goal" resolved
+    /// to about 20pt instead of 40, and every face rendered a third of the
+    /// size it should have. A constant in a ratio is not a constant, it is a
+    /// bug with a plausible face.
+    private func widthPerPoint(_ m: WorkoutMetric) -> CGFloat {
+        var w = CGFloat(m.value.count) * Self.digitAdvance
+        if let u = m.unit {
+            w += Self.gapRatio + CGFloat(u.count) * Self.unitRatio * Self.digitAdvance
+        }
+        return max(0.5, w)
     }
 
     var body: some View {
@@ -272,7 +283,7 @@ struct WorkoutMetricStack: View {
             // because a column whose rows are different sizes is not a column.
             let byHeight = pitch / 1.08
             let byWidth = shown
-                .map { m in g.size.width / max(1, width(of: m, at: 1)) }
+                .map { g.size.width / widthPerPoint($0) }
                 .min() ?? byHeight
             let size = min(ceiling(n), byHeight, byWidth)
 

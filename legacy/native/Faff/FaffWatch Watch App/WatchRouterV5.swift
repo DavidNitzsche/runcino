@@ -643,7 +643,7 @@ struct WatchRunSurfaceV5: View {
     private func phaseBoard(_ phase: WatchPhase) -> some View {
         PhaseFaceV6(
             phase: phaseName(phase),
-            detail: phaseDetail(phase),
+            context: phaseContext(phase),
             metrics: phaseMetrics(phase)
         )
     }
@@ -661,19 +661,13 @@ struct WatchRunSurfaceV5: View {
         }
     }
 
-    /// The count and the clock are the same thought on a rep board, so they
-    /// share the label line rather than taking a metric slot each.
-    private func phaseDetail(_ phase: WatchPhase) -> String? {
-        let left = WFmt.short(engine.phaseRemainingSec)
+    /// The count only. The clock used to share this line and is now the lead
+    /// metric on the board, because it is the number the runner is actually
+    /// watching during a rep.
+    private func phaseContext(_ phase: WatchPhase) -> String? {
         if engine.workout.isRace { return raceGoalLabel }
-        switch phase.type {
-        case .work:
-            return isStrides(phase)
-                ? "\(repIndex) of \(repCount)"
-                : "\(repIndex) of \(repCount) \(WatchV5.separator) \(left)"
-        case .warmup, .recovery, .cooldown:
-            return left
-        }
+        guard phase.type == .work else { return nil }
+        return "\(repIndex) of \(repCount)"
     }
 
     /// WHICH numbers, in what order. The only genuinely product decision on
@@ -694,7 +688,7 @@ struct WatchRunSurfaceV5: View {
             return m
 
         case .warmup, .cooldown:
-            var m = [paced]
+            var m = [WorkoutMetric(value: WFmt.short(engine.phaseRemainingSec), role: "Time left"), paced]
             if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
             m.append(WorkoutMetric(value: dist.value, unit: dist.unit, role: "Distance"))
             return m
@@ -703,19 +697,23 @@ struct WatchRunSurfaceV5: View {
             if engine.workout.isRace {
                 var m = [paced]
                 if let d = onGoalDelta {
-                    m.append(WorkoutMetric(value: d, unit: "on goal", role: "Against goal"))
+                    // No unit. "on goal" is seven characters and would set the
+                    // size ceiling for the whole column — a long word beside a
+                    // figure is a label, which this design does not have. The
+                    // sign carries the meaning and the header says the goal.
+                    m.append(WorkoutMetric(value: d, role: "Against goal"))
                 }
                 m.append(WorkoutMetric(value: dist.value, unit: dist.unit, role: "Distance"))
                 m.append(WorkoutMetric(value: WFmt.clock(engine.totalElapsedSec), role: "Elapsed"))
                 return m
             }
-            var m = [paced]
+            var m = [WorkoutMetric(value: WFmt.short(engine.phaseRemainingSec), role: "Time left in rep"), paced]
             if isThreshold(phase),
                let avg = WFmt.paceWithUnit(averagePaceSPerMi, units: units) {
                 // Average pace earns a row on a threshold block and nowhere
                 // else: that block is judged over its length, not instant by
                 // instant.
-                m.append(WorkoutMetric(value: avg.value, unit: avg.unit + " avg", role: "Average pace"))
+                m.append(WorkoutMetric(value: avg.value, unit: "avg", role: "Average pace"))
             }
             if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
             let rep = WFmt.distance(engine.phaseCoveredMi, units: units)
