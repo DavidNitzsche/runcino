@@ -601,8 +601,37 @@ struct WatchRunSurfaceV5: View {
         TabView(selection: $router.runPage) {
             primaryPage.tag(0)
             performancePage.tag(1)
+            // Only when there IS something coming. An easy run has no
+            // structure to show, and an empty page is never drawn to even a
+            // count.
+            if upNextSteps.count > 1 {
+                RunUpNextV6(steps: upNextSteps).tag(2)
+            }
         }
         .tabViewStyle(.verticalPage)
+    }
+
+    /// The rest of the session from where the runner is, current phase first.
+    ///
+    /// Phases already banked are dropped rather than greyed: a runner mid-rep
+    /// is asking what is LEFT, and a list they have to scroll past their own
+    /// history to read answers a different question.
+    private var upNextSteps: [RunUpNextV6.Step] {
+        let phases = engine.workout.phases
+        guard phases.count > 1 else { return [] }
+        return phases.enumerated()
+            .filter { $0.offset >= engine.currentIndex }
+            .map { (i, p) in
+                RunUpNextV6.Step(
+                    id: i,
+                    name: p.label,
+                    dose: p.repUnit == .distance && p.distanceMi != nil
+                        ? { let d = WFmt.distance(p.distanceMi ?? 0, units: units)
+                            return d.value + " " + d.unit }()
+                        : WFmt.short(p.durationSec),
+                    current: i == engine.currentIndex
+                )
+            }
     }
 
     @ViewBuilder

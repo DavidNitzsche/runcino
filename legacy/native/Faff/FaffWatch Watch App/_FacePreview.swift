@@ -91,6 +91,21 @@ struct FacePreviewView: View {
             return AnyView(PerfFaceV6(cadence: "176", averagePace: "9:14"))
         // MARK: Always-On
 
+        case "upnext":
+            return AnyView(RunUpNextV6(steps: [
+                .init(id: 0, name: "Work", dose: "400 m", current: true),
+                .init(id: 1, name: "Recovery", dose: "90 sec", current: false),
+                .init(id: 2, name: "Work", dose: "400 m", current: false),
+                .init(id: 3, name: "Recovery", dose: "90 sec", current: false),
+                .init(id: 4, name: "Cool-down", dose: "10 min", current: false),
+            ]))
+        case "upnextrace":
+            return AnyView(RunUpNextV6(steps: [
+                .init(id: 0, name: "Hurricane climb", dose: "19:00", current: true),
+                .init(id: 1, name: "Point descent", dose: "12:00", current: false),
+                .init(id: 2, name: "Coast miles", dose: "52:00", current: false),
+                .init(id: 3, name: "Carmel run-in", dose: "25:00", current: false),
+            ]))
         case "alwayson":
             return AnyView(AlwaysOnFaceV6(pace: "7:42", grade: .onTarget,
                            distance: "5.72", elapsedMinutes: "44"))

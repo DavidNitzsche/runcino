@@ -245,3 +245,77 @@ struct PhaseFaceV6: View {
 #Preview("Always-On") {
     AlwaysOnFaceV6(pace: "7:42", grade: .onTarget, distance: "5.72", elapsedMinutes: "44")
 }
+
+// MARK: - What is coming
+
+/// The rest of the session, from where the runner is standing.
+///
+/// The one thing the running surface could not answer. Mid-rep a runner
+/// wondering "how many left, and what is after this" had to remember, because
+/// every board shows the phase in flight and nothing else — the lobby's
+/// breakdown page exists but is gone the moment Start is pressed.
+///
+/// A THIRD PAGE, not a new gesture. The faces already page vertically and
+/// carry Apple's own page indicator, so this costs the runner nothing to find
+/// and nothing to learn. It is drawn only when there IS something coming: the
+/// design's rule that an empty page is never drawn to even a count applies
+/// exactly here, and on an easy run there is no structure to show.
+///
+/// No countdown, no live figure. This is the one board on the running surface
+/// that is reference rather than telemetry, and putting a ticking number on it
+/// would make it compete with the face the runner came from.
+struct RunUpNextV6: View {
+    struct Step: Identifiable {
+        let id: Int
+        let name: String
+        let dose: String
+        /// The one in flight. Drawn in fill, not in a border — there are no
+        /// borders anywhere in this design.
+        let current: Bool
+    }
+
+    let steps: [Step]
+
+    var body: some View {
+        WorkoutPage {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(steps) { s in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(s.name)
+                                .font(.system(size: 15, weight: s.current ? .semibold : .regular,
+                                              design: .rounded))
+                                .foregroundStyle(s.current ? WatchV5.value
+                                                           : WatchV5.value.opacity(0.62))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            Spacer(minLength: 4)
+                            Text(s.dose)
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(s.current ? WatchV5.value
+                                                           : WatchV5.value.opacity(0.62))
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 7)
+                        .background(s.current ? WatchV5.surface3 : .clear,
+                                    in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    }
+                }
+                // The last row clears the bottom curve rather than dying under it.
+                .padding(.bottom, 14)
+            }
+        }
+    }
+}
+
+#Preview("Up next · mid-session") {
+    RunUpNextV6(steps: [
+        .init(id: 0, name: "Work", dose: "400 m", current: true),
+        .init(id: 1, name: "Recovery", dose: "90 sec", current: false),
+        .init(id: 2, name: "Work", dose: "400 m", current: false),
+        .init(id: 3, name: "Recovery", dose: "90 sec", current: false),
+        .init(id: 4, name: "Cool-down", dose: "10 min", current: false),
+    ])
+}
