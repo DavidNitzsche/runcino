@@ -516,9 +516,27 @@ final class WorkoutEngine: ObservableObject {
     /// User ended the run from the active screen. In overtime the plan is
     /// already done, so this is a normal "completed" finish; mid-plan it's an
     /// abandon.
+    ///
+    /// An OPEN-ENDED session is neither. A just-run is one work phase under a
+    /// 24h ceiling that exists so the phase never ends on its own — the
+    /// runner ending it is not them cutting the plan short, it is the only
+    /// way the session can finish. Asking `planComplete` there asks a
+    /// question with no true answer and always got the wrong one: every
+    /// just-run came back `abandoned`, with its single work phase recorded
+    /// `completed: false`. Downstream that is the difference between a run
+    /// that happened and one that came apart — `reconstruct.ts` reads
+    /// `abandoned`/`partial` as "did not run to its end," and the phase flag
+    /// is what `glance-state` counts. Today the readers are lenient enough
+    /// that nothing visibly broke; the next one to trust the label plainly
+    /// would mislabel every unstructured run the app has.
     func abandon() {
         guard state == .running else { return }
         if planComplete { finish(status: "completed"); return }
+        if workout.isOpenEnded {
+            recordCurrentPhase(completed: true)
+            finish(status: "completed")
+            return
+        }
         recordCurrentPhase(completed: false)
         finish(status: "abandoned")
     }

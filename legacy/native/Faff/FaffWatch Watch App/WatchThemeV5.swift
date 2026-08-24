@@ -161,7 +161,14 @@ enum WatchV5 {
         /// A fine grain layer sits OVER the colour and UNDER the type at 50%,
         /// overlay blend. It is what keeps white type legible on the ramp
         /// without a scrim. Not decoration — do not drop it.
-        static let grainOpacity: Double = 0.5
+        /// 0.28, not the design file's 0.5.
+        ///
+        /// The 0.5 is an SVG figure, and SVG's feTurbulence fractalNoise is
+        /// far lower contrast than a per-pixel random tile — the two are not
+        /// the same texture at the same opacity. Matching the NUMBER produced
+        /// visible noise over the ramp; matching the INTENT ("what keeps white
+        /// type legible without a scrim") is what this value is for.
+        static let grainOpacity: Double = 0.28
 
         /// The ramp for a session, by the class the wire already carries
         /// (`SessionClass` in lib/watch/build-workout.ts).
@@ -270,14 +277,16 @@ enum WatchV5 {
     enum Metric {
         /// The system clock owns the top corner and the app cannot restyle it,
         /// so the top of every board stays empty. Handoff rule 5.
-        static let clockClearance: CGFloat = 22
+        // LAYOUT MARGINS LIVE IN WatchLayout.swift, from Apple's own UI kit.
+        // They are per-device and not a fraction, so they cannot be constants
+        // here. What remains below is design-system spacing: the numbers the
+        // 0821 handoff specifies for the relationship BETWEEN elements, which
+        // is a different question from where the content rectangle sits.
 
-        static let sidePadding:    CGFloat = 10   // 8-11 in the design
-        static let bottomPadding:  CGFloat = 10   // 8-12
-
-        /// EVERY target, no exceptions — including faults and confirmations.
-        /// Full width, pill radius. The hand pressing them is wet and moving.
-        /// Handoff rule 6.
+        /// The design's figure. Apple's guide gives 51 / 52.5 / 54 by size and
+        /// `WatchLayout.current.pillHeight` is what the components actually
+        /// use — this is kept as the design's stated intent and as the number
+        /// to check a rendering against.
         static let targetHeight:   CGFloat = 50
         static let targetGap:      CGFloat = 5
         /// Reading block to the target stack.

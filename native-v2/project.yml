@@ -306,6 +306,11 @@ targets:
       # check-palette-sync.sh exists to prevent.
       - path: Faff/FaffWatch Watch App/WatchThemeV5.swift
       - path: Faff/FaffWatch Watch App/WatchKitV5.swift
+      # WatchKitV5 reads Apple's per-device layout guides, so the extension
+      # needs them too. Same shape as the Color(hex:) split: a shared file
+      # gained a dependency and only one of the two targets that compile it
+      # was told.
+      - path: Faff/FaffWatch Watch App/WatchLayout.swift
       # Instrument Sans + Archivo. watchOS has no UIAppFonts path into an
       # extension and the app's runtime registration runs against the APP's
       # main bundle, so the extension ships and registers its own copy

@@ -279,6 +279,34 @@ struct WatchPhase: Codable, Identifiable {
 }
 
 struct WatchWorkout: Codable {
+
+    /// An OPEN-ENDED session — one work phase with a ceiling nobody reaches,
+    /// finished when the runner says so rather than when the plan runs out.
+    /// `makeJustRun()` is the only thing that builds this shape: a single
+    /// `.work` phase, no target pace, and a 24h duration ceiling placed there
+    /// precisely so the phase never ends on its own.
+    ///
+    /// Why the engine needs to know: `abandon()` decides `completed` vs
+    /// `abandoned` on whether the plan ran out first, which is the right
+    /// question for a prescribed session and a meaningless one here. Every
+    /// just-run therefore came back stamped `abandoned` — the runner ending
+    /// the run IS how a just-run completes. Verified in prod: the one
+    /// just-run on record (2026-08-21, 9.14 mi) is also the ONLY `abandoned`
+    /// row in the entire runs table.
+    ///
+    /// Both conditions are accepted because either alone could drift: the id
+    /// prefix is the contract the backend already stores and both builders
+    /// (here and native-v2 Models/Watch.swift) emit, while the shape check
+    /// still holds if that prefix is ever renamed. A planned easy/long/
+    /// recovery run also expands to one `.work` phase (expand-spec.ts), so
+    /// the 12h floor — not the phase count — is what keeps those out.
+    var isOpenEnded: Bool {
+        if workoutId.hasPrefix("just-run-") { return true }
+        guard phases.count == 1, let only = phases.first else { return false }
+        return only.type == .work
+            && only.targetPaceSPerMi == nil
+            && only.durationSec >= 12 * 60 * 60
+    }
     let workoutId: String
     let name: String
     let summary: String

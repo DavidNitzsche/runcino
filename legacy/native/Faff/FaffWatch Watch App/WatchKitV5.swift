@@ -70,15 +70,25 @@ struct WBoard<Content: View>: View {
     var scrolls: Bool = false
     @ViewBuilder var content: () -> Content
 
+    private var g: WatchLayout.Guides { WatchLayout.current }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
+            // Only the ground bleeds. A full-bleed ramp must reach the bezel;
+            // content must not.
             background.ignoresSafeArea()
+
             content()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, WatchV5.Metric.clockClearance)
-                .padding(.horizontal, WatchV5.Metric.sidePadding)
-                .padding(.bottom, scrolls ? 0 : WatchV5.Metric.bottomPadding)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.top, g.margins.minY)
+                .padding(.horizontal, g.margins.minX)
+                .padding(.bottom, scrolls ? 0 : g.screen.height - g.margins.maxY)
         }
+        // The system safe area is IGNORED on purpose and replaced with
+        // Apple's own layout-guide margins — see WatchLayout.swift for the
+        // numbers and for why the system's own insets are the wrong tool
+        // here (they reserve a navigation title area this app does not use,
+        // costing 36% of a 46mm display).
         .ignoresSafeArea()
     }
 }
@@ -134,6 +144,7 @@ struct WRamp: View {
 struct WGrain: View {
     var body: some View {
         Image(uiImage: WGrain.tile)
+            .interpolation(.none)
             .resizable(resizingMode: .tile)
             .blendMode(.overlay)
             .opacity(WatchV5.DayState.grainOpacity)
@@ -141,16 +152,25 @@ struct WGrain: View {
             .accessibilityHidden(true)
     }
 
-    /// 64×64 is large enough that the repeat is invisible at watch scale and
-    /// small enough to cost nothing. Built once, on first use.
     static let tile: UIImage = {
+        // 64x64 PIXELS at scale 2, so the tile measures 32pt and one noise
+        // pixel lands on exactly one device pixel. The first version built the
+        // same bitmap at scale 1, so every noise pixel was blown up to a 2x2
+        // block — which is why it read as coarse video noise rather than as
+        // film grain, and why it was the first thing anyone noticed about the
+        // lobby.
         let side = 64
         var pixels = [UInt8](repeating: 0, count: side * side * 4)
         // A fixed LCG, not Int.random: same tile every launch, on every watch.
         var seed: UInt64 = 0x5A1F_F2B0_3C3E_BD41
         for i in 0..<(side * side) {
             seed = seed &* 6364136223846793005 &+ 1442695040888963407
-            let v = UInt8((seed >> 33) & 0x3F) &+ 0x70   // mid-grey ± a little
+            // Centred on mid-grey, which is the identity for an overlay blend,
+            // and only +/-10. The old range was 0x70...0xAF - asymmetric, and
+            // up to +47 off neutral, so the grain was not far off a second
+            // texture competing with the ramp.
+            let n = Int((seed >> 33) & 0x1F) - 16          // -16 ... +15
+            let v = UInt8(clamping: 128 + (n * 10) / 16)   // 118 ... 137
             pixels[i * 4 + 0] = v
             pixels[i * 4 + 1] = v
             pixels[i * 4 + 2] = v
@@ -164,7 +184,7 @@ struct WGrain: View {
               let cg = ctx.makeImage() else {
             return UIImage()
         }
-        return UIImage(cgImage: cg)
+        return UIImage(cgImage: cg, scale: 2, orientation: .up)
     }()
 }
 
@@ -208,7 +228,7 @@ struct WTarget: View {
                 .font(WatchV5.label(labelSize, labelWeight >= 800 ? .heavy : .bold))
                 .foregroundStyle(foreground)
                 .frame(maxWidth: .infinity)
-                .frame(height: WatchV5.Metric.targetHeight)
+                .frame(height: WatchLayout.current.pill.height)
                 .background(background, in: Capsule())
         }
         .buttonStyle(.plain)
@@ -271,7 +291,7 @@ struct WDestructive: View {
                 .font(WatchV5.label(15, .semibold))
                 .foregroundStyle(WatchV5.destructive)
                 .frame(maxWidth: .infinity)
-                .frame(height: WatchV5.Metric.targetHeight)
+                .frame(height: WatchLayout.current.pill.height)
                 // WITHOUT THIS the target is the text glyphs, roughly
                 // 60x18pt, not the 396x50 the frame declares. A .frame does
                 // not make its empty region hittable; WTarget gets away with
