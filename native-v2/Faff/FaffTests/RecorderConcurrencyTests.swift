@@ -28,6 +28,34 @@ import CoreLocation
 
 final class RecorderConcurrencyTests: XCTestCase {
 
+    // Every request this class can make is intercepted and failed.
+    //
+    // `test_overlappingDurableSaves` used to register nothing, on the written
+    // assumption that "every POST fails at the network layer, which is the
+    // offline case." That assumption held only on a machine with no route to
+    // faff.run. On a developer Mac it does not: the simulator carries a real
+    // Keychain session, the POSTs SUCCEED, and the eight synthetic
+    // `phone_conc_*` completions land in the PRODUCTION runs table under the
+    // signed-in runner. That happened on 2026-08-21 — eight phantom 2 mi runs
+    // on a real training day, which then outvoted that day's actual 9.14 mi
+    // run for the week strip's tap target.
+    //
+    // `TestStubProtocol.canInit` returns true for every request and, with no
+    // responder set, fails it. So the offline case is now actually offline,
+    // and no test in this file can reach a live backend regardless of what a
+    // future test adds.
+    override func setUp() async throws {
+        try await super.setUp()
+        URLProtocol.registerClass(TestStubProtocol.self)
+        SignInFlowTests.responder = nil
+    }
+
+    override func tearDown() async throws {
+        URLProtocol.unregisterClass(TestStubProtocol.self)
+        SignInFlowTests.responder = nil
+        try await super.tearDown()
+    }
+
     /// `didUpdateLocations` is `nonisolated` and CoreLocation calls it on the
     /// queue the manager was created on — not the main actor. It hops via
     /// `Task { @MainActor }`. This hammers that hop from a background queue
@@ -103,9 +131,10 @@ final class RecorderConcurrencyTests: XCTestCase {
             ])
         }
 
-        // No URLProtocol stub registered here on purpose: every POST fails at
-        // the network layer, which is the offline case, and the queue must
-        // still hold every payload afterwards.
+        // Every POST fails at the network layer — the class-level
+        // `TestStubProtocol` refuses all of them (see setUp) — which is the
+        // offline case, and the queue must still hold every payload
+        // afterwards.
         await withTaskGroup(of: Void.self) { group in
             for i in 0..<8 {
                 group.addTask { @MainActor in

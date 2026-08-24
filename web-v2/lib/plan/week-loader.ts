@@ -97,18 +97,43 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
     const idLookup = allCanonicalIds.length > 0
       ? (await pool.query(
           `SELECT id::text AS row_id, data->>'id' AS strava_id,
+                  COALESCE((data->>'distanceMi')::numeric, 0)::float8 AS mi,
                   ${runDaySql()} AS day
              FROM runs
             WHERE id::text = ANY($1::text[])`,
           [allCanonicalIds],
         )).rows
       : [];
-    const idByRow = new Map<string, { strava_id: string | null; day: string }>(
-      idLookup.map((r: any) => [String(r.row_id), { strava_id: r.strava_id ?? null, day: r.day }]),
+    const idByRow = new Map<string, { strava_id: string | null; day: string; mi: number }>(
+      idLookup.map((r: any) => [
+        String(r.row_id),
+        { strava_id: r.strava_id ?? null, day: r.day, mi: Number(r.mi) || 0 },
+      ]),
     );
+    // 2026-08-23 · the day's PRIMARY run is its longest, not whichever row the
+    // cluster happened to emit first.
+    //
+    // This read `info.canonicalIds[0]`, and that index is not ordered by
+    // anything: mileageByDay builds the list from an unordered `SELECT … FROM
+    // runs`, so on any day carrying two physical runs the strip's
+    // `completedRunId` was an arbitrary pick. It broke in prod on 2026-08-21 —
+    // a 9.14 mi just-run shared the day with a 2 mi phantom, the phantom won
+    // the index, and the day's tap target resolved to the run the runner never
+    // did while the real one was unreachable from the strip.
+    //
+    // Longest-wins is the same "which run was the session" rule the rest of
+    // the coach layer uses, and it is deterministic; the row id breaks a tie so
+    // two equal-distance runs can't flip between renders. `mi` stays the day's
+    // SUM — a genuine double is two runs' worth of volume, and only the tap
+    // target has to choose one.
     for (const [day, info] of canonicalByDay) {
-      const firstRow = info.canonicalIds[0];
-      const stravaId = firstRow ? (idByRow.get(firstRow)?.strava_id ?? firstRow) : null;
+      const primary = info.canonicalIds
+        .slice()
+        .sort((a, b) => {
+          const dm = (idByRow.get(b)?.mi ?? 0) - (idByRow.get(a)?.mi ?? 0);
+          return dm !== 0 ? dm : a.localeCompare(b);
+        })[0];
+      const stravaId = primary ? (idByRow.get(primary)?.strava_id ?? primary) : null;
       actualByDate.set(day, { mi: info.mi, id: stravaId });
     }
   } catch {
