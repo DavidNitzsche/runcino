@@ -125,7 +125,7 @@ enum V5Ramp {
 
     /// The number of stops handed to SwiftUI. Dense enough that SwiftUI's own
     /// sRGB interpolation between neighbours is below a JND.
-    private static let samples = 33
+    private static let samples = 65
 
     /// Build a SwiftUI gradient for a day state, sampled in oklab across the
     /// 0…1 window the panel actually shows.
@@ -137,12 +137,49 @@ enum V5Ramp {
         )
     }
 
+    /// How many smoothing passes run over the sampled ramp.
+    ///
+    /// THE CREASE THIS REMOVES. The CSS colour-hint easing is
+    /// `pow(t, log(0.5)/log(h))`, and its slope at `t = 0` is INFINITE for any
+    /// exponent below 1. That is harmless at the top of the panel, where the
+    /// first segment starts and there is nothing above it to disagree with.
+    /// It is not harmless at the middle stop: the first segment ARRIVES there
+    /// at a slope near 1.1 and the second LEAVES at infinity, so the rate of
+    /// colour change jumps discontinuously at one line across the panel.
+    ///
+    /// The colour is continuous — only its derivative is not — which is
+    /// exactly the condition the eye reads as a hard edge rather than as
+    /// banding. On the easy ramp the middle stop sits at 76%, and that is
+    /// where David saw "a pretty hard diagonal line from the light to dark
+    /// colour".
+    ///
+    /// More samples cannot fix it: the kink is in the function, not in how
+    /// finely it is measured. Smoothing the SAMPLED values does, because it
+    /// makes the first derivative continuous while leaving every authored stop
+    /// where the design put it — the endpoints are never touched, and the
+    /// filter is symmetric, so the ramp keeps its shape and loses its corner.
+    private static let smoothingPasses = 3
+
     static func stops(colors: [Color], locations: [Double]) -> [Gradient.Stop] {
         let lab = colors.map(Oklab.fromSRGB)
-        return (0..<samples).map { i in
-            let p = Double(i) / Double(samples - 1)     // 0…1, the visible window
-            return Gradient.Stop(color: Oklab.toSRGB(sample(lab, locations, at: p)),
-                                 location: p)
+        var pts = (0..<samples).map { i -> (L: Double, a: Double, b: Double, alpha: Double) in
+            sample(lab, locations, at: Double(i) / Double(samples - 1))
+        }
+        // A symmetric 1-2-1 kernel over the interior. Endpoints are pinned so
+        // the ramp still begins and ends on the design's own colours.
+        for _ in 0..<smoothingPasses {
+            var next = pts
+            for i in 1..<(pts.count - 1) {
+                next[i] = (
+                    L:     (pts[i - 1].L     + 2 * pts[i].L     + pts[i + 1].L)     / 4,
+                    a:     (pts[i - 1].a     + 2 * pts[i].a     + pts[i + 1].a)     / 4,
+                    b:     (pts[i - 1].b     + 2 * pts[i].b     + pts[i + 1].b)     / 4,
+                    alpha: (pts[i - 1].alpha + 2 * pts[i].alpha + pts[i + 1].alpha) / 4)
+            }
+            pts = next
+        }
+        return pts.enumerated().map { i, c in
+            Gradient.Stop(color: Oklab.toSRGB(c), location: Double(i) / Double(samples - 1))
         }
     }
 

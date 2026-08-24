@@ -607,6 +607,22 @@ struct TodayBeforeV5: View {
             AppBar(title: "Training calendar", onBack: {
                 withAnimation(V5.Motion.fill) { calendarOpen = false }
             })
+            // OPENS ON THIS WEEK, NOT ON THE TOP OF THE BLOCK.
+            //
+            // David: "on the full cal view we are seeing wk 1 even though its
+            // in the past. it should always load with THIS WEEK at the top,
+            // focused."
+            //
+            // A ScrollView starts at its content's origin, which here is the
+            // first week of the block — so the calendar opened further into
+            // the past every week of a build, and by week twelve the runner
+            // would land on eleven weeks of history before finding today.
+            //
+            // The past is kept and reachable by scrolling up; only the resting
+            // position moves. Anchored `.top` rather than centred so this week
+            // sits where the eye starts, with next week already visible under
+            // it — the two the runner opened the calendar to see.
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                     ForEach(calendarWeeks) { week in
@@ -629,12 +645,25 @@ struct TodayBeforeV5: View {
                                         } : nil)
                             }
                         }
+                        // `scrollTo` addresses this id. ForEach's own identity
+                        // is not enough — the proxy needs it on the view.
+                        .id(week.id)
                     }
                 }
                 .padding(.horizontal, V5.S.gutter)
                 .padding(.bottom, V5.S.s24)
             }
             .scrollIndicators(.hidden)
+            .onAppear {
+                // No animation: this is where the sheet OPENS, not somewhere
+                // it travels to. A visible scroll would say the runner had
+                // been moved, when in fact they were never anywhere else.
+                guard let week = calendarWeeks.first(where: { w in
+                    w.days.contains(where: \.isToday)
+                }) else { return }
+                proxy.scrollTo(week.id, anchor: .top)
+            }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(V5.surfacePage)
