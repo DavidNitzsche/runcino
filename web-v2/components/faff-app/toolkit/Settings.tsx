@@ -60,7 +60,13 @@ const ROW_DEFS: Array<{
   // once a week whatever happens — the row says so, because a switch whose
   // frequency the runner cannot predict gets turned off.
   { key: 'run_unread_enabled', label: 'Unread run', sub: 'Morning after a long or hard run you have not judged · once' },
-  { key: 'session_moved_enabled', label: 'Session moved', sub: 'When readiness changed today\u2019s session overnight' },
+  // 2026-08-24 \u00b7 was 'When readiness changed today's session overnight'. That
+  // described a readiness-driven auto-change, and readiness went propose-first
+  // on 2026-06-04 \u2014 it asks in a banner, it does not move a session behind the
+  // runner's back. The sender that now exists fires on ANY adaptation that
+  // leaves the day reading differently: a rescheduled session, a shortened
+  // one, a niggle response. The row says what it does.
+  { key: 'session_moved_enabled', label: 'Session moved', sub: 'Morning after the plan changed today\u2019s session' },
   { key: 'strava_reconnect_enabled', label: 'Strava reconnect', sub: 'Nudge when the token goes stale' },
 ];
 

@@ -64,8 +64,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'failed to list users', detail: e.message }, { status: 500 });
   }
 
-  const results: Array<{ user_id: string; triggers: number; applied: number; proposed: number; error?: string }> = [];
+  const results: Array<{
+    user_id: string; triggers: number; applied: number; proposed: number;
+    /** 2026-08-24 · a session-moved push was enqueued for this runner because
+     *  the day they wake into genuinely reads differently after the pass. */
+    session_moved?: boolean;
+    error?: string;
+  }> = [];
   for (const uid of userIds) {
+    let sessionMoved = false;
     try {
       const { triggers, actions } = await detectAdaptations(uid);
 
@@ -119,7 +126,37 @@ export async function POST(req: NextRequest) {
         // twice: Jul 1 + Jul 6 on David's plan). Partition on each
         // action's OWN sourceTrigger tag instead.
         const { applyNow, proposeFirst } = partitionActionsForCron(actions);
+
+        // 2026-08-24 · SESSION MOVED · the sender `renderSessionMoved` never
+        // had. Photograph the day the runner wakes into, on BOTH sides of the
+        // apply, and let the two labels decide. The owner's ruling is that it
+        // fires "gated on the label genuinely differing, not on the adapter
+        // merely having run", and a before/after diff is the only gate that
+        // can honour that — `applyAdaptations` returns a row count, and
+        // `AdaptationInfo.wasAdapted` compares against the plan AS AUTHORED
+        // and so stays true long after the change stopped being news.
+        //
+        // Best-effort on both sides: a notification never fails an
+        // adaptation pass, and a snapshot that could not be read simply
+        // means no push (snapshotSession throws rather than reporting a
+        // missing session, so a DB blip cannot masquerade as "it vanished").
+        const moved = await import('@/lib/notifications/session-moved');
+        const movedTarget = await moved.nextMorningTarget(uid).catch(() => null);
+        const movedBefore = movedTarget
+          ? await moved.snapshotSession(uid, movedTarget.dateIso).catch(() => undefined)
+          : undefined;
+
         applied = await applyAdaptations(uid, applyNow);
+
+        if (movedTarget && movedBefore !== undefined) {
+          try {
+            const movedAfter = await moved.snapshotSession(uid, movedTarget.dateIso);
+            const res = await moved.notifySessionMoved({
+              userId: uid, target: movedTarget, before: movedBefore, after: movedAfter,
+            });
+            if (res.sent) sessionMoved = true;
+          } catch { /* non-blocking · see above */ }
+        }
 
         // The propose-first portion (if any) still gets proposed.
         if (proposeFirst.length > 0) {
@@ -157,7 +194,7 @@ export async function POST(req: NextRequest) {
           [uid],
         );
       }
-      results.push({ user_id: uid, triggers: triggers.length, applied, proposed });
+      results.push({ user_id: uid, triggers: triggers.length, applied, proposed, session_moved: sessionMoved });
     } catch (e: any) {
       results.push({ user_id: uid, triggers: 0, applied: 0, proposed: 0, error: e?.message ?? String(e) });
       await raiseAlert({
