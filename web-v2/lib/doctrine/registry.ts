@@ -141,6 +141,10 @@ import {
   RERAMP_MIN_BASE_SIGNAL_MI,
   RERAMP_WEEKLY_GROWTH,
   classifyGapBand,
+  OVERSHOOT_RACE_RECENCY_DAYS,
+  OVERSHOOT_RACE_LOOKBACK_DAYS,
+  overshootRaceRecencyDays,
+  raceSuppressesOvershoot,
 } from '@/lib/plan/adapt';
 import { EASY_SHARE_FLOOR } from '@/lib/plan/intensity-distribution';
 import {
@@ -561,6 +565,108 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         '3 days, 1 overshoots the ceiling by 2. The engine takes 0 because over-resting a 5K ' +
         'runner costs a whole training week, and the sub-week protocol is carried by the ' +
         'day-level recovery composer rather than the plan-mode gate.',
+    },
+  },
+  {
+    id: 'RECOVERY.overshoot-race-recency-is-per-distance',
+    binds: [
+      'lib/plan/adapt.ts#OVERSHOOT_RACE_RECENCY_DAYS',
+      'lib/plan/adapt.ts#overshootRaceRecencyDays',
+      'lib/plan/adapt.ts#raceSuppressesOvershoot',
+      'lib/plan/adapt.ts#detectVolumeOvershoot',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Total recovery days (no quality) | Days of zero/very-light running |',
+    claim:
+      'A race legitimately inflates completed volume for as long as doctrine still calls the ' +
+      'runner recovering, and the volume-overshoot finding stays quiet for that whole window. ' +
+      'How long that is comes from this table\'s "total recovery days (no quality)" column and ' +
+      'is different for every distance — 5K 3-5 days, 10K 5-7, half 10-14, marathon 21-28, the ' +
+      'ultras 14-42. The engine\'s window must land inside its distance\'s band, must actually ' +
+      'be spent (still suppressing on the last doctrine day, live the day after), and must ' +
+      'agree with POST_RACE_RECOVERY_WEEKS, which is read off this same column.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'Total recovery days (no quality)';
+      const MI: Record<DistCategory, number> = { '5k': 3.1, '10k': 6.2, 'hm': 13.1, 'm': 26.2, 'ultra': 50 };
+      const RACE = '2026-03-01';
+      const dayAfter = (n: number) =>
+        new Date(Date.parse(RACE + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+
+      for (const cat of CATS) {
+        // The single 'ultra' bucket spans four doctrine rows; checked against
+        // the widest of them, exactly as RECOVERY.post-race-duration does.
+        const band =
+          cat === 'ultra'
+            ? ([parseBand(t.cell('50K', col))[0], parseBand(t.cell('100-mile', col))[1]] as [number, number])
+            : parseBand(t.cell(DOC_ROW[cat], col));
+        const days = OVERSHOOT_RACE_RECENCY_DAYS[cat];
+
+        // 1 · the constant sits inside the band the doc states for its row.
+        within(days, band, `OVERSHOOT_RACE_RECENCY_DAYS.${cat} = ${days} days`);
+
+        // 2 · the lookup reaches that row from a real race distance, rather
+        //     than the table being right and nothing reading it.
+        if (overshootRaceRecencyDays(MI[cat]) !== days) {
+          throw new Error(
+            `overshootRaceRecencyDays(${MI[cat]}mi) returned ` +
+              `${overshootRaceRecencyDays(MI[cat])}, but the ${cat} row is ${days}`,
+          );
+        }
+
+        // 3 · the window is SPENT — suppressing on its last day, live the day
+        //     after. A constant nothing acts on is decoration.
+        if (!raceSuppressesOvershoot(RACE, dayAfter(days), MI[cat])) {
+          throw new Error(`a ${cat} race stops suppressing before its own day ${days}`);
+        }
+        if (raceSuppressesOvershoot(RACE, dayAfter(days + 1), MI[cat])) {
+          throw new Error(`a ${cat} race still suppresses on day ${days + 1}, past its window`);
+        }
+
+        // 4 · THE DEFECT THIS CLAIM EXISTS TO STOP. The window must cover at
+        //     least the FLOOR of the doc's band. The old flat 7 days failed
+        //     this for the half (floor 10) and the marathon (floor 21).
+        if (!raceSuppressesOvershoot(RACE, dayAfter(band[0]), MI[cat])) {
+          throw new Error(
+            `a ${cat} race is unprotected on day ${band[0]}, inside doctrine's own ` +
+              `${band[0]}-${band[1]} day no-quality window`,
+          );
+        }
+
+        // 5 · two constants read off ONE doctrine column may not disagree.
+        //     POST_RACE_RECOVERY_WEEKS expresses the same band in whole weeks
+        //     and takes 0 for the 5K, which is not expressible that way (see
+        //     RECOVERY.post-race-duration · floor-5k); wherever it states a
+        //     duration at all, the two must be the same number of days.
+        const weeksAsDays = POST_RACE_RECOVERY_WEEKS[cat] * 7;
+        if (weeksAsDays > 0 && weeksAsDays !== days) {
+          throw new Error(
+            `POST_RACE_RECOVERY_WEEKS.${cat} is ${weeksAsDays} days and ` +
+              `OVERSHOOT_RACE_RECENCY_DAYS.${cat} is ${days} — same column, two answers`,
+          );
+        }
+      }
+
+      // 6 · an unresolvable race distance takes the widest window, never a
+      //     substituted row. lib/race/distance.ts: callers must treat null as
+      //     "unknown", and here the safe reading of unknown is the longest.
+      const widest = Math.max(...CATS.map((c) => OVERSHOOT_RACE_RECENCY_DAYS[c]));
+      if (OVERSHOOT_RACE_LOOKBACK_DAYS !== widest) {
+        throw new Error(
+          `OVERSHOOT_RACE_LOOKBACK_DAYS is ${OVERSHOOT_RACE_LOOKBACK_DAYS}, but the widest ` +
+            `window in the table is ${widest} — the SQL would not see the race it must judge`,
+        );
+      }
+      for (const unknown of [null, undefined, 0, NaN]) {
+        if (overshootRaceRecencyDays(unknown) !== widest) {
+          throw new Error(`an unresolvable race distance (${String(unknown)}) does not take the widest window`);
+        }
+      }
+
+      // 7 · a race that has not happened yet suppresses nothing.
+      if (raceSuppressesOvershoot('2026-04-01', RACE, 26.2)) {
+        throw new Error('a FUTURE race silences a finding about training already completed');
+      }
     },
   },
   {

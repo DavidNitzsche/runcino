@@ -142,6 +142,12 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'ultra. 4 weeks (28 d) is the only whole-week value inside both, so the shared value is ' +
       'the doctrine answer rather than a paste. RECOVERY.post-race-duration checks it against ' +
       'the widest ultra band.',
+    'web-v2/lib/plan/adapt.ts#OVERSHOOT_RACE_RECENCY_DAYS:m==ultra':
+      'The same shared doctrine answer as POST_RACE_RECOVERY_WEEKS:m==ultra above, in days ' +
+      'rather than weeks: Research/00b gives the marathon 21-28 and the ultras 14-42, and 28 ' +
+      'is the marathon ceiling sitting inside the ultra band. ' +
+      'RECOVERY.overshoot-race-recency-is-per-distance checks each row against its own band ' +
+      'and separately requires the two constants to agree, so a drift in either is caught.',
     'web-v2/lib/plan/goal-tiers.ts#RECOVERY_WEEKLY_PCT_OF_BASE:m==ultra':
       'Deliberate and documented at goal-tiers.ts:97 — the ultra reuses the marathon reverse ' +
       'taper because Research/00b has no ultra-specific week-by-week protocol. The hole is ' +

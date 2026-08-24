@@ -70,6 +70,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore, mileageByDay, observableCoverageDays, weeklyAvgFromWindow } from '@/lib/runs/volume';
 import { paceBlendAnchorIsProvisional } from './anchor-provenance';
 import { distanceMiOfMeta } from '@/lib/race/distance';
+import { distanceCategoryOrNull, type DistanceCategory } from '@/lib/race/distance-category';
 import type { ExperienceLevel } from '@/lib/coach/profile-state';
 import { logSealSkip } from './seal';
 import { mutatePlan } from './mutate';
@@ -884,6 +885,111 @@ export function overshootFires(
  */
 export function overshootSuppressedByPlanMode(planMode: string | null | undefined): boolean {
   return (planMode ?? '').trim().toLowerCase() === 'recovery';
+}
+
+/**
+ * OVERSHOOT-RACE-1 (2026-08-24) · how long a finished race keeps the
+ * volume-overshoot finding quiet, PER DISTANCE, in days.
+ *
+ * `detectVolumeOvershoot` has always had a race-recency filter — a race inside
+ * the trailing window legitimately spikes completed volume (the race itself,
+ * plus warm-up and cool-down, on top of the week), and that is not an
+ * overshoot to shave a recovering runner for. The window was a flat 7 days,
+ * hardcoded in the SQL, asserting physiology with nothing bound to it.
+ *
+ * It disagrees with the doc it was implicitly citing. Research/00b
+ * §"Recovery by Distance" publishes a "total recovery days (no quality)" band
+ * per distance — 5K 3-5, 10K 5-7, half 10-14, marathon 21-28, the ultras
+ * 14-42. Only the 10K's band reaches 7. A half-marathoner was unprotected
+ * from day 8; a marathoner was unprotected for three of the four weeks
+ * doctrine says they are still recovering.
+ *
+ * Found on the owner, 2026-08-24: a half raced on 08-16, and on 08-24 — day
+ * 8 — the flat window missed it by one day. That specific case is now covered
+ * twice over by the guards added the same morning (the chronic-load floor in
+ * `overshootFires`, and `overshootSuppressedByPlanMode`), so this is the
+ * constant being made honest rather than a live defect being fixed.
+ *
+ * WHY THE TOP OF EACH BAND. This window SUPPRESSES a finding; it prescribes
+ * nothing. Sitting at the ceiling means the finding stays quiet for exactly as
+ * long as doctrine still calls the runner recovering, and the safety net is
+ * untouched — a genuine overreach is still caught by the experience cap and by
+ * the chronic-load floor, neither of which this filter can reach.
+ *
+ * These are the same numbers as `POST_RACE_RECOVERY_WEEKS` expressed in days
+ * (0/7/14/28/28) wherever that constant is non-zero, and the claim below
+ * asserts that agreement rather than trusting it. The one row that differs is
+ * the 5K: whole weeks cannot express 3-5 days, which is why
+ * POST_RACE_RECOVERY_WEEKS takes 0 and RECOVERY.post-race-duration carries a
+ * `floor-5k` exemption saying so. A window measured in DAYS has no such
+ * problem, so the 5K gets its doctrine ceiling here.
+ *
+ * Bound by RECOVERY.overshoot-race-recency-is-per-distance.
+ *
+ * Cite: Research/00b-recovery-protocols.md §"Recovery by Distance" — the
+ *       "Total recovery days (no quality)" column
+ */
+export const OVERSHOOT_RACE_RECENCY_DAYS: Record<DistanceCategory, number> = {
+  '5k': 5,
+  '10k': 7,
+  'hm': 14,
+  'm': 28,
+  'ultra': 28,
+};
+
+/**
+ * The widest window in the table. The SQL cannot pick a band before it knows
+ * the race's distance, so it looks back this far and the per-race decision is
+ * made in TypeScript, where the label-aware distance parser lives.
+ */
+export const OVERSHOOT_RACE_LOOKBACK_DAYS = Math.max(
+  ...Object.values(OVERSHOOT_RACE_RECENCY_DAYS),
+);
+
+/**
+ * The recency window for one race's distance.
+ *
+ * An UNRESOLVABLE distance takes the widest window, and that is a deliberate
+ * asymmetry. `distanceMiOfMeta` returns null when a row carries neither a
+ * numeric distance nor a label its parser recognises — rarer than a
+ * label-only row (2 of the 12 in production on 2026-08-19), because those
+ * still resolve, but not impossible. We cannot rule out that such a row is a
+ * marathon, and the two errors are not symmetric: over-suppressing costs a
+ * finding the chronic-load floor and the experience cap would still catch,
+ * while under-suppressing shaves the plan of someone who may be four days
+ * past a marathon. Never a substituted row — the widest window is "we don't
+ * know", not "call it a half".
+ */
+export function overshootRaceRecencyDays(distanceMi: number | null | undefined): number {
+  const cat = distanceCategoryOrNull(distanceMi);
+  return cat == null ? OVERSHOOT_RACE_LOOKBACK_DAYS : OVERSHOOT_RACE_RECENCY_DAYS[cat];
+}
+
+/** Whole days from `fromIso` to `toIso`, noon-anchored so DST cannot shift it. */
+function isoDaysApart(fromIso: string, toIso: string): number {
+  const a = Date.parse(fromIso.slice(0, 10) + 'T12:00:00Z');
+  const b = Date.parse(toIso.slice(0, 10) + 'T12:00:00Z');
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return NaN;
+  return Math.round((b - a) / 86400000);
+}
+
+/**
+ * Does this race still suppress the volume-overshoot finding today?
+ *
+ * Race day itself counts as day 0, so the window is inclusive at both ends —
+ * a half suppresses on days 0 through 14 and is live on day 15. A race in the
+ * FUTURE suppresses nothing: it has not inflated any completed volume, and a
+ * scheduled race must never silence a finding about training already done.
+ */
+export function raceSuppressesOvershoot(
+  raceDateIso: string | null | undefined,
+  todayIso: string,
+  distanceMi: number | null | undefined,
+): boolean {
+  if (!raceDateIso) return false;
+  const elapsed = isoDaysApart(raceDateIso, todayIso);
+  if (!Number.isFinite(elapsed) || elapsed < 0) return false;
+  return elapsed <= overshootRaceRecencyDays(distanceMi);
 }
 
 /**
@@ -3180,14 +3286,24 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
   // a race inside the trailing window legitimately spikes completed
   // volume (race + WU/CD on top of the week) — that's not an overshoot
   // to punish the recovery week for.
-  const raced = await pool.query(
-    `SELECT 1 FROM races
+  //
+  // 2026-08-24 · the window used to be a flat `$2::date - 7`, one number
+  // asserting physiology for every distance from a 5K to a 100-miler, and
+  // shorter than Research/00b's own band for four of the five. It is now
+  // per-distance and read off the race that actually falls in the window —
+  // see OVERSHOOT_RACE_RECENCY_DAYS. The SQL widens to the longest band
+  // because it cannot resolve a label-only distance; the decision is made
+  // below, through the same parser every other race reader uses.
+  const raced = await pool.query<{ race_date: string | null; meta: unknown }>(
+    `SELECT meta->>'date' AS race_date, meta
+       FROM races
       WHERE user_uuid = $1::uuid
-        AND (meta->>'date')::date BETWEEN $2::date - 7 AND $2::date
-      LIMIT 1`,
-    [userId, today],
-  ).catch(() => ({ rows: [] as unknown[] }));
-  if (raced.rows.length > 0) return null;
+        AND (meta->>'date')::date BETWEEN $2::date - $3::int AND $2::date`,
+    [userId, today, OVERSHOOT_RACE_LOOKBACK_DAYS],
+  ).catch(() => ({ rows: [] as Array<{ race_date: string | null; meta: unknown }> }));
+  if (raced.rows.some((r) => raceSuppressesOvershoot(r.race_date, today, distanceMiOfMeta(r.meta)))) {
+    return null;
+  }
 
   // Per-finding context filter (2026-08-24) · a RECOVERY block's prescription
   // is not a safety baseline. See `overshootSuppressedByPlanMode` for why the
@@ -3201,13 +3317,17 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
   // the runner's OWN recent load (longest run in the prior 30d, the 5-15%
   // per-cycle band), and 32 sits below every trailing week he has run.
   //
-  // WHY NOT JUST WIDEN THE RACE FILTER. The `raced` filter above is this same
-  // idea one window too short — 7 days, while the recovery block it belongs to
-  // spans the doctrine recovery window (`postRaceRecoveryWeeks` · 1-4 weeks by
-  // distance and A/B/C priority). Yesterday the race filter suppressed this;
-  // today (race + 8) it lapsed with six days of the block still to run. Keying
-  // on the block covers exactly as long as the depressed schedule is live, at
-  // any recovery length, with no second window to keep in sync.
+  // WHY BOTH THIS AND THE RACE FILTER. The `raced` filter above was this same
+  // idea one window too short — a flat 7 days, while the recovery block it
+  // belongs to spans the doctrine recovery window. That constant has since
+  // been made per-distance (OVERSHOOT_RACE_RECENCY_DAYS), which closes the
+  // one-day miss that started this, but the two guards still answer different
+  // questions and neither subsumes the other. The race filter asks whether a
+  // RACE recently inflated completed volume, and needs a race row to do it.
+  // This one asks whether the SCHEDULE is a usable baseline, and holds for
+  // exactly as long as the depressed block is live — including a recovery
+  // block whose race row carries no resolvable distance, and one the runner
+  // is still in after its distance's doctrine window has run out.
   //
   // Reads the newest active plan's mode, falling back to the authored_state
   // copy — the same predicate the plan-drift cron's recovery reader uses.
