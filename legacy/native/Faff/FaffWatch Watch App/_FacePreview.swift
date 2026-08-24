@@ -202,6 +202,57 @@ struct FacePreviewView: View {
     private func controls() -> AnyView? {
         let sep = WatchV5.separator
         switch name {
+        case "ctltwo":
+            return AnyView(FaceControlsTonedV1(mode: .steady, showsLead: false,
+                header: "Mile 5 \(sep) 44:16",
+                pauseTone: WatchV5.attention,
+                onLead: {}, onPause: {}, onEnd: {}))
+        case "ctlsplit":
+            return AnyView(FaceControlsTonedV1(mode: .steady,
+                leadOverride: "Split",
+                header: "Mile 5 \(sep) 44:16",
+                pauseTone: WatchV5.attention,
+                onLead: {}, onPause: {}, onEnd: {}))
+        case "ctlamber":
+            return AnyView(FaceControlsTonedV1(mode: .structured,
+                header: "Rep 4 of 6 \(sep) 1:12 left",
+                pauseTone: WatchV5.attention,
+                onLead: {}, onPause: {}, onEnd: {}))
+        case "ctlorange":
+            return AnyView(FaceControlsTonedV1(mode: .structured,
+                header: "Rep 4 of 6 \(sep) 1:12 left",
+                pauseTone: WatchV5.signal,
+                onLead: {}, onPause: {}, onEnd: {}))
+        case "ctlambertext":
+            return AnyView(FaceControlsTonedV1(mode: .structured,
+                header: "Rep 4 of 6 \(sep) 1:12 left",
+                pauseTone: WatchV5.attention, endFilled: false,
+                onLead: {}, onPause: {}, onEnd: {}))
+        case "ctlambersteady":
+            return AnyView(FaceControlsTonedV1(mode: .steady,
+                header: "Mile 5 \(sep) 44:16",
+                pauseTone: WatchV5.attention,
+                onLead: {}, onPause: {}, onEnd: {}))
+        case "ctlbands":
+            return AnyView(FaceControlsBandsV1(mode: .steady,
+                header: "Mile 5 \(sep) 44:16", onLead: {}, onPause: {}, onEnd: {}))
+        case "ctlbandsrep":
+            return AnyView(FaceControlsBandsV1(mode: .structured,
+                header: "Rep 4 of 6 \(sep) 1:12 left", onLead: {}, onPause: {}, onEnd: {}))
+        case "ctlweighted":
+            return AnyView(FaceControlsWeightedV1(mode: .steady,
+                header: "Mile 5 \(sep) 44:16", onLead: {}, onPause: {}, onEnd: {}))
+        case "ctlweightedrep":
+            return AnyView(FaceControlsWeightedV1(mode: .structured,
+                header: "Rep 4 of 6 \(sep) 1:12 left", onLead: {}, onPause: {}, onEnd: {}))
+        case "controlsapple":
+            return AnyView(FaceControlsAppleV1(mode: .steady,
+                header: "Mile 5 \(sep) 44:16",
+                onLead: {}, onPause: {}, onEnd: {}))
+        case "controlsapplerep":
+            return AnyView(FaceControlsAppleV1(mode: .structured,
+                header: "Rep 4 of 6 \(sep) 1:12 left",
+                onLead: {}, onPause: {}, onEnd: {}))
         case "controls":
             return AnyView(FaceControlsV5(mode: .steady,
                 header: "Mile 5 \(sep) 44:16",

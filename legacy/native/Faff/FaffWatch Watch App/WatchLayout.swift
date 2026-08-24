@@ -92,24 +92,42 @@ enum WatchLayout {
         func onScreen(_ size: CGSize) -> Guides {
             guard size != screen else { return self }
             let dw = size.width - screen.width
+            let dh = size.height - screen.height
             return Guides(
                 screen: size,
+                // The content box grows with the display in BOTH axes, so the
+                // bottom inset stays the one Apple measured. The first version
+                // of this grew only the width, which left the extra height as
+                // dead space under the content: the Ultra 3 is 6pt taller than
+                // the Ultra 2 row it borrows, so a foot line pinned to the
+                // content box sat 19pt off the bezel there and 5.5pt off it on
+                // the 42mm. Same board, same code, three different feet.
                 margins: CGRect(x: margins.minX, y: margins.minY,
-                                width: margins.width + dw, height: margins.height),
-                pill: CGRect(x: pill.minX, y: pill.minY,
+                                width: margins.width + dw, height: margins.height + dh),
+                // Anything positioned from the TOP but belonging to the BOTTOM
+                // moves with the bottom: the pill and the control row keep
+                // their distance from the bezel rather than from the clock.
+                pill: CGRect(x: pill.minX, y: pill.minY + dh,
                              width: pill.width + dw, height: pill.height),
                 firstBaseline: firstBaseline,
                 sideControl: sideControl, centerControl: centerControl,
-                controlCenterY: controlCenterY,
+                controlCenterY: controlCenterY + dh,
                 sideControlX: (sideControlX.leading, sideControlX.trailing + dw),
                 centerControlX: centerControlX + dw / 2,
                 listHeaderRule: listHeaderRule,
-                scrollFold: scrollFold + (size.height - screen.height),
+                scrollFold: scrollFold + dh,
                 infographicRows: infographicRows
             )
         }
 
         var contentWidth: CGFloat { margins.width }
+
+        /// How far the content box stops short of the bottom bezel.
+        ///
+        /// Apple's own value per device and NOT the same on all three — 12.5 on
+        /// a 42mm, 18 on a 46mm, 19 on an Ultra. A board that wants a fixed
+        /// distance from the bezel has to work from this rather than assume it.
+        var bottomInset: CGFloat { screen.height - margins.maxY }
         var leading: CGFloat { margins.minX }
         var top: CGFloat { margins.minY }
         var bottom: CGFloat { screen.height - margins.maxY }

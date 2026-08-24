@@ -122,6 +122,17 @@ DEFECTS = [
   "A check that fires on the boards that are right teaches you to ignore it. It isolates type with a high pass now — glyphs are high-frequency, a ramp is not."),
 ]
 
+RULED = [
+ ("Metrics are all one size", "Equal size, confirmed.",
+  "Overrides the handoff's rule 4, which asks for the first metric ~20% larger. Hierarchy comes from order and from the band instead, which is a stronger cue than 20% of point size and costs the other rows no height."),
+ ("The delta carries no unit", "The minus sign is fine, confirmed.",
+  "<code>−0:22</code> against <code>sub 3:30</code> at the foot, signed always. &ldquo;On goal&rdquo; was seven characters of label wearing a unit's clothes, and would have set the type size for all four rows."),
+ ("Green marks today on the week strip", "Confirmed.",
+  "A second meaning for the colour rule 1 reserves for in-band. Accepted because the strip is a position marker and not a figure — the exception does not extend to anything that is a number."),
+ ("No phase name on a steady-state board", "Confirmed.",
+  "Overrides §3, which asks each phase board to name the phase. The name is not lost: the phase-change moment announces it in the display register at the transition and the board underneath never repeats it. Worth about 20pt to the numbers."),
+]
+
 DECISIONS = [
  ("Equal metric sizes, or a 20% hero?",
   "The design's rule 4 says &ldquo;the metric that matters is first and ~20% larger than the next, so the hierarchy survives a runner who cannot distinguish the two hues.&rdquo; You asked for the opposite — <em>&ldquo;I wish 6:31 could be the same size as the other numbers and everything was consistent&rdquo;</em> — and every board here is built equal-size.",
@@ -198,6 +209,9 @@ h3{font-family:Archivo,sans-serif;font-weight:600;font-size:18px;margin:0 0 6px;
 .card.ask{background:var(--surface);box-shadow:inset 3px 0 0 var(--attention)}
 .card.gap{background:var(--surface);box-shadow:inset 3px 0 0 var(--ink3)}
 .card.bug{background:var(--surface);box-shadow:inset 3px 0 0 var(--fault)}
+.card.ok{background:var(--surface);box-shadow:inset 3px 0 0 var(--band)}
+.card.ok p b{color:var(--band);font-weight:600}
+.card.rec{background:var(--surface2);box-shadow:inset 3px 0 0 var(--signal)}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;
   background:var(--surface2);padding:1px 5px;border-radius:4px;color:var(--ink)}
 .how code{background:#1F2327}
@@ -219,13 +233,13 @@ footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);
 out.append('<div class="wrap"><header class="top">')
 out.append('<h1>Watch faces<span class="dot">.</span> Every board</h1>')
 out.append('<p class="lede">Sixty boards on the native foundation, each one rendered on a real simulator and checked against Apple’s own layout guides. Nine defects are written up below — six of them looked correct in a screenshot, which is the part worth reading.</p>')
-out.append('<div class="meta"><span class="chip">60 boards</span><span class="chip">3 watch sizes</span><span class="chip">9 defects fixed</span><span class="chip">4 decisions for you</span></div>')
+out.append('<div class="meta"><span class="chip">60 boards</span><span class="chip">3 watch sizes</span><span class="chip">9 defects fixed</span><span class="chip">4 rulings locked</span><span class="chip">1 open</span></div>')
 import re as _re
 def slug(t):
     return _re.sub(r"[^a-z0-9]+","-", t.lower().split("—")[0].strip()).strip("-")
 out.append('<nav class="toc"><a href="#found">What I found</a><a href="#decisions">Your call</a>')
 for t,_,_ in FAM: out.append(f'<a href="#{slug(t)}">{html.escape(t.split(" —")[0])}</a>')
-out.append('<a href="#sizes">Three sizes</a><a href="#gaps">Not done</a></nav>')
+out.append('<a href="#controls-shape">Control shape</a><a href="#sizes">Three sizes</a><a href="#gaps">Not done</a></nav>')
 out.append('</header>')
 
 out.append('<h2 id="found">What I found</h2>')
@@ -234,11 +248,26 @@ for t,body,how in DEFECTS:
     out.append(f'<div class="card bug"><h3>{t}</h3><p>{body}</p><p class="how">{how}</p></div>')
 out.append('</div>')
 
-out.append('<h2 id="decisions">Four things that are your call</h2>')
-out.append('<p class="sec-note">Each of these is a place where the design file and a ruling of yours disagree, or where I picked a convention you have not seen. I have built the version I think is right and flagged it rather than quietly choosing.</p><div class="cards">')
-for t,body,how in DECISIONS:
-    out.append(f'<div class="card ask"><h3>{t}</h3><p>{body}</p><p class="how">{how}</p></div>')
+out.append('<h2 id="decisions">Four rulings, now locked</h2>')
+out.append('<p class="sec-note">Each was a place where the 0821 handoff and a ruling of David\'s disagreed. All four are confirmed and written into <code>docs/design/watch-0821/FACE-QC.md</code>, because reading the handoff alone would lead the next person to &ldquo;fix&rdquo; the build back into the defect.</p><div class="cards">')
+for t,verdict,how in RULED:
+    out.append(f'<div class="card ok"><h3>{t}</h3><p><b>{verdict}</b></p><p class="how">{how}</p></div>')
 out.append('</div>')
+
+out.append('<h2 id="controls-shape">Controls, redesigned</h2>')
+out.append('''<p class="sec-note">Apple's kit draws this job as two 35pt round slots and one 46pt centre slot. Rendered, it left two thirds of the display empty and shrank each target from about 9,250pt&sup2; of area to 1,660 — the wrong direction on a moving wrist at mile 20. Dead.</p>
+<p class="sec-note">What replaced it came from David: <em>&ldquo;end run can be RED and Pause can be ORANGE.&rdquo;</em> That turns out to do more than colour the buttons. The previous attempt made the lead verb huge and demoted End run to a grey text line purely so the three would not read as equals. Once the verbs are coloured they no longer need to differ in size to differ in kind — so all three go back to equal bands filling the screen, and every one is a full-size target.</p>
+<p class="sec-note"><b>Colour is safe on this board and nowhere else.</b> The palette keeps colour off everything but the graded metric because a coloured number reads as a graded number. This board has no numbers on it. Nothing is present that a hue could be mistaken for a judgement about. It also matches Apple, whose own Workout controls are a red End and an amber Pause.</p>''')
+out.append('<div class="grid">')
+for n,c,sub in [("ctlamber","Attention amber · shipping","three equal targets, count at the foot like every phase board"),
+                ("ctlorange","Signal orange · rejected","#FF5A1F sits about ten degrees from fault red — stacked adjacently they do not separate"),
+                ("ctlambertext","End run as text · rejected","loses target area and reads unfinished rather than careful"),
+                ("ctlambersteady","Steady run","Lap leads; the header says where you are")]:
+    out.append(board(n,c,sub))
+out.append('</div>')
+out.append('''<div class="cards"><div class="card rec"><h3>Why amber and not orange</h3>
+<p>The concern was raised before the render and the render settled it: put signal orange above fault red and the two bands read as one colour at arm's length. Attention amber separates cleanly, and it already means <em>a condition, a decision waiting</em>, which is what a pause is.</p>
+<p class="how">The count moved from a kicker at the top to a centred line at the foot. It had been sharing the system clock's line, and controls was the one board in the app where reference information sat above the thing it referred to — so moving between a running face and its controls moved it. Now it does not.</p></div></div>''')
 
 for t,note,items in FAM:
     anc=slug(t)
