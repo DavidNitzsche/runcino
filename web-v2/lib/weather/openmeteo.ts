@@ -831,3 +831,103 @@ export async function enrichRecent(daysBack: number = 14, batchSize: number = 20
   }
   return { enriched, attempted: rows.length };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Current conditions
+//
+// David's gate on the watch heat adjustment, 2026-08-24: "should be current
+// temp. if we cant do current temp then we cannot build this feature."
+//
+// Everything else in this file answers a different question. `fetchRunWeather`
+// reads the ARCHIVE for a run that already happened. `fetchDayForecast` reads
+// an HOURLY forecast and interpolates the runner's window — right for drawing
+// a temp range on a planned day, wrong for a band the runner is about to be
+// asked to hold, because an hourly bucket for a 06:30 run can be an hour stale
+// before the first step.
+//
+// Open-Meteo's `current=` block is a separate 15-minute-interval observation
+// and serves `dew_point_2m` directly, so the §12 surcharge no longer has to be
+// estimated from relative humidity.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CurrentConditions {
+  temp_f: number;
+  /** Measured, not estimated from RH. Research/06 §12 wants the real one. */
+  dewpoint_f: number | null;
+  humidity_pct: number | null;
+  wind_mph: number | null;
+  cloud_cover_pct: number | null;
+  precip_in: number | null;
+  weather_code: number | null;
+  /** Observation time, UTC ISO. */
+  observed_at: string;
+  /** How old the observation is at the moment of the call. */
+  age_min: number;
+}
+
+/**
+ * Live conditions at a point. Returns null on any failure — and null must be
+ * read as "do not adjust", never as "adjust by zero from a guessed number".
+ *
+ * `maxAgeMin` is the staleness gate David asked for: if the observation is
+ * older than this, the adjustment is DROPPED rather than quietly served stale.
+ * Open-Meteo's current block updates every 15 minutes, so 90 covers a normal
+ * refresh cycle plus a wide margin without ever silently aging into a forecast.
+ */
+export async function fetchCurrentConditions(
+  lat: number,
+  lng: number,
+  maxAgeMin: number = 90,
+): Promise<CurrentConditions | null> {
+  if (!isFinite(lat) || !isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast` +
+      `?latitude=${lat}` +
+      `&longitude=${lng}` +
+      `&current=temperature_2m,relative_humidity_2m,dew_point_2m,` +
+      `wind_speed_10m,cloud_cover,precipitation,weather_code` +
+      `&temperature_unit=fahrenheit` +
+      `&windspeed_unit=mph` +
+      `&precipitation_unit=inch` +
+      `&timezone=UTC`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const json: any = await r.json();
+    const c = json?.current;
+    if (!c) return null;
+
+    const tempF = finiteNum(c.temperature_2m);
+    if (tempF == null) return null;  // no temperature, no adjustment
+
+    // Open-Meteo returns current.time WITHOUT a zone suffix under timezone=UTC.
+    const observedISO = typeof c.time === 'string' ? c.time : null;
+    if (!observedISO) return null;
+    const observedMs = Date.parse(
+      observedISO.endsWith('Z') ? observedISO : observedISO + 'Z',
+    );
+    if (!isFinite(observedMs)) return null;
+    const ageMin = (Date.now() - observedMs) / 60000;
+
+    // A clock-skewed future reading is as untrustworthy as a stale one.
+    if (ageMin > maxAgeMin || ageMin < -30) return null;
+
+    return {
+      temp_f: tempF,
+      dewpoint_f: finiteNum(c.dew_point_2m),
+      humidity_pct: finiteNum(c.relative_humidity_2m),
+      wind_mph: finiteNum(c.wind_speed_10m),
+      cloud_cover_pct: finiteNum(c.cloud_cover),
+      precip_in: finiteNum(c.precipitation),
+      weather_code: finiteNum(c.weather_code),
+      observed_at: new Date(observedMs).toISOString(),
+      age_min: Math.max(0, Math.round(ageMin)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function finiteNum(v: unknown): number | null {
+  return typeof v === 'number' && isFinite(v) ? v : null;
+}

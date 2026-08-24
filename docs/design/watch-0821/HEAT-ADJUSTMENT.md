@@ -280,3 +280,78 @@ adjustment locally.
    it shipped, for the same reason.
 5. **Does the runner get a way to say "indoors" before starting?** That resolves
    the treadmill risk properly rather than by suppression.
+
+---
+
+## What shipped — 2026-08-24 (`4253a031`)
+
+The gate held: Open-Meteo's `current=` block was verified against the live API
+*before* any code was written. It serves a 15-minute observation and
+`dew_point_2m` directly, so the §12 surcharge is now measured rather than
+estimated from relative humidity. Nothing in this repo had ever requested it.
+
+**Landed**
+
+1. **`fetchCurrentConditions`** (`lib/weather/openmeteo.ts`) — current
+   conditions plus the staleness gate decision 1 demanded. Older than 90
+   minutes, or clock-skewed into the future, returns null. **Null means do not
+   adjust** — never "adjust by zero", never an invented temperature.
+2. **`lib/watch/heat.ts`** — decides by how much, and nothing else. Every
+   number comes from the shared Research/06 model. Targets move; the band never
+   widens; races are skipped; no second bail-out threshold competes with the §3
+   WBGT gate that already exists.
+3. **The double-pricing fix** — see below. This is the part that mattered.
+4. **`WatchFueling.heatAdjusted`** (decision 4) — the same observation that
+   eases the targets now prices the fuel, so the two cannot disagree about the
+   weather.
+5. **`heatNote`** on the wire — the lobby's one sentence, present only when
+   targets actually moved.
+
+### The bug this change created, and the guard that caught the guard
+
+The recap grades a completed run against `frozenTargetSPerMi`, which it reads
+out of the **watch completion payload** — the band the watch was *given*. Easing
+that band means the recap's own Research/06 correction in `intervalPacing` was
+about to price the same day's heat a **second time**, and a hot run would have
+read better than the identical effort in the cold.
+
+This document predicted that in decision 3. What was not obvious until the code
+existed: **this feature is what activates it.** Before the easing, the recap's
+own correction *was* the implementation of "judged against the eased band", and
+removing it would have been the regression.
+
+The server therefore records what it asked for — a `coach_intents` row, no wire
+change, no watch change, no DDL — and the recap reads it back and declines to
+price heat it did not apply. Heat still *speaks*; it just stops moving the
+number twice.
+
+Then the swallowed-failure gate (`lib/audit/_swallow_scan.test.ts`) caught the
+error path: returning `0` from a **failed** read would let a lost database
+connection reintroduce the double-pricing. Its test is whether you can honestly
+finish *"absent and failed lead to the same outcome, because ___"* — and here
+you cannot. `loadHeatEasingPct` now returns null via `rowOrNull`, and the recap
+**fails closed** on null: assume eased, grade slightly harder rather than
+flatter the run. On a cool day that costs nothing, because the correction is ~0.
+
+12 new tests. 4601 web tests green at the time of commit, 0 type errors.
+
+## What did NOT ship, and why
+
+- **The watch does not yet DRAW `heatNote`.** The field is on the wire and set
+  correctly; the Swift lobby has no view for it. Server-side is complete and
+  additive — a watch that ignores the field is unaffected.
+- **Decision 2 (the phone shows the eased band) is BLOCKED, not deferred.**
+  `/api/v5/today` and `lib/faff/v5-today.ts` belong to another session and must
+  not be edited from here. **Until that lands, the phone and the wrist will
+  print different numbers for the same session on a hot day** — precisely what
+  decision 2 forbids. This is the single most important follow-up.
+- **Decision 5 (the runner says "indoors" at Start)** is unimplemented. It is a
+  watch UI change, not a server one, and `isTreadmill` still infers from
+  `tracker.distanceSourceUnavailable`.
+- **Race fuelling still passes `tempF: null`.** Race conditions are priced in
+  the execution plan; wiring this one too would be the double-pricing again, in
+  the fuelling column.
+
+No new physiology constant was introduced, so no Rule 7 registry claim is owed.
+The two constants added — a 90-minute staleness window and a 1 s/mi
+meaningfulness floor — assert nothing about the body.
