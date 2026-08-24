@@ -162,14 +162,32 @@ therefore say anything. Its weakness is exactly the numbers this app speaks
 most, so the lever that remains is saying *less*, not saying it in a better
 voice.
 
-### The voice tier is a device fact, not a code choice
+### The voice tier: measured, and there is no better one
 
-Apple ships every watch the **Compact** tier. **Enhanced** and **Premium** are
-downloads, and Siri's own voice is closed to third-party apps. The watchOS
-26.5 simulator runtime contains **zero** `.ttsbundle` assets — voices arrive
-on demand — so the simulator cannot answer what a real wrist will sound like.
-**Confirm the installed tier on the device before judging the voice again.**
-What David heard was the floor.
+Settled by enumerating the runtime rather than reasoning about it. Of the
+**68** voices watchOS 26.5 offers, **all 68 report quality 1**. Not one
+Enhanced, not one Premium, in any language. The en-US voices are not even
+Compact — their identifiers read
+`com.apple.voice.**super-compact**.en-US.Samantha`, a tier below the one
+iOS and macOS start at, and the audio comes out at 22.05 kHz.
+
+**There is no download, no setting and no code change that makes the watch
+sound better.** Chasing Enhanced or Premium was the wrong instinct and cost
+a detour through macOS System Settings that was irrelevant twice over: the
+Mac's own tier does not travel to the wrist, and the wrist has no tier to
+raise. The quality-first selector (`5d7eb4d5`) is still correct and still
+changes nothing audible today — it only stops a future OS that DID ship a
+better voice from being ignored.
+
+Also worth knowing when demoing: `say -v Samantha` on a Mac renders
+**compact**, which is a tier ABOVE the watch. Any sample rendered on the host
+flatters the product. To hear the truth, synthesise inside the watch runtime
+and pull the file out — `AVSpeechSynthesizer.write(_:toBufferCallback:)` into
+an `AVAudioFile` under `NSTemporaryDirectory()`, whose simulator path is a
+real host path.
+
+So the voice is a fixed constraint. **Fewer words is the only lever**, which
+is what the copy pass spends.
 
 The selector now ranks **quality first** and uses his name preference only to
 break a tie inside a tier (`5d7eb4d5`). The version before it filtered to
