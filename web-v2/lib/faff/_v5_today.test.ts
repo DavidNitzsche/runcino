@@ -137,6 +137,7 @@ describe('composeV5Today · state precedence', () => {
         // recovery) — false here, matching production for this workout type.
         askedHrIsHardCap: false,
         effortAsked: { lo: 6, hi: 8 }, effortLogged: 7,
+        startedLocal: '2026-08-19T07:04:00',
         verdict: 'Banked the threshold.',
         zoneShares: [8, 26, 14, 46, 6], zoneTarget: 4, zoneTargets: [4],
         elevationSamples: [0, 12, 8, 20], elevGainFt: 340,
@@ -169,6 +170,7 @@ describe('composeV5Today · state precedence', () => {
         avgHr: 140, indoor: true, speedMph: 7.2, inclinePct: 1.5,
         askedPaceSPerMi: null, askedHrCap: null, askedHrIsHardCap: false,
         effortAsked: null, effortLogged: null,
+        startedLocal: '2026-08-19T07:04:00',
         verdict: 'Easy miles banked.',
         zoneShares: [40, 50, 10, 0, 0], zoneTarget: null, zoneTargets: [],
         elevationSamples: [0, 4, 8], elevGainFt: 120,
@@ -201,6 +203,7 @@ describe('composeV5Today · state precedence', () => {
         // fixture marks it a hard cap and breaches it (160 > 150).
         askedPaceSPerMi: 500, askedHrCap: 150, askedHrIsHardCap: true,
         effortAsked: { lo: 2, hi: 4 }, effortLogged: 7, // well outside the band
+        startedLocal: '2026-08-19T07:04:00',
         verdict: 'Easy done, but it ran hot.',
         zoneShares: null, zoneTarget: null, zoneTargets: [],
         elevationSamples: null, elevGainFt: null,
@@ -231,6 +234,7 @@ describe('composeV5Today · state precedence', () => {
         avgHr: 172, indoor: false, speedMph: null, inclinePct: null,
         askedPaceSPerMi: 410, askedHrCap: 168, askedHrIsHardCap: false,
         effortAsked: null, effortLogged: null,
+        startedLocal: '2026-08-19T07:04:00',
         verdict: 'Banked the threshold.',
         zoneShares: null, zoneTarget: 4, zoneTargets: [4],
         elevationSamples: null, elevGainFt: null,
@@ -423,6 +427,7 @@ describe('composeV5Today · state precedence', () => {
           avgHr: 141, indoor: false, speedMph: null, inclinePct: null,
           askedPaceSPerMi: null, askedHrCap: null, askedHrIsHardCap: false,
           effortAsked: null, effortLogged: null,
+          startedLocal: '2026-08-19T07:04:00',
           verdict: 'Held it honestly.',
           zoneShares: [30, 55, 15, 0, 0], zoneTarget: null, zoneTargets: [],
           elevationSamples: [0, 6, 10], elevGainFt: 120,

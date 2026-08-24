@@ -414,6 +414,11 @@ export interface V5RecentRunCtx {
   askedHrIsHardCap: boolean;
   effortAsked: { lo: number; hi: number } | null;
   effortLogged: number | null;
+  /** The run's own local wall-clock start, `2026-08-23T07:04:00`. Read as a
+   *  STRING, never parsed into a Date — it is already local, and node-pg
+   *  mis-shifts a tz-less timestamp. Null when the source never recorded
+   *  one. */
+  startedLocal: string | null;
   verdict: string | null;
   zoneShares: number[] | null;
   zoneTarget: number | null;
@@ -797,6 +802,29 @@ function buildRecentRun(r: V5RecentRunCtx): {
 // The composer
 // ─────────────────────────────────────────────────────────────────────────
 
+/**
+ * "Logged 7:04am" from a local wall-clock string.
+ *
+ * The clock is sliced out of the string rather than parsed into a Date. The
+ * value is ALREADY local — turning it into a Date and back re-applies a zone
+ * the runner is not in, which is the node-pg timestamp trap one layer up.
+ *
+ * The meridiem is a deliberate addition to the drawn "Logged 7:04". The
+ * design's example is a morning run and reads fine; the same format on an
+ * evening run says 7:04 for 19:04, which is a value the runner cannot
+ * interpret — the rule this poster is built on.
+ */
+export function loggedAtLine(startedLocal: string | null): string | null {
+  if (!startedLocal) return null;
+  const m = /T(\d{2}):(\d{2})/.exec(startedLocal);
+  if (!m) return null;
+  const h24 = Number(m[1]);
+  const min = m[2];
+  if (!Number.isFinite(h24) || h24 < 0 || h24 > 23) return null;
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `Logged ${h12}:${min}${h24 < 12 ? 'am' : 'pm'}`;
+}
+
 const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   dateISO: todayISO,
   state,
@@ -922,7 +950,22 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
       quiet: false,
       place: 'Today',
       dateLine: ctx.phaseLine ?? dateLineFor(ctx.todayISO),
-      weekLine: `Logged ${fmtClock(ctx.recentRun.durationSec) ?? ''}`,
+      // WHEN IT WAS LOGGED, NOT HOW LONG IT TOOK.
+      //
+      // This slot used to print `Logged ${fmtClock(durationSec)}` — the
+      // ELAPSED TIME, formatted as a clock and captioned with a word meaning
+      // "at". An eleven-mile run read "Logged 1:28:18": nonsense as a time of
+      // day, and the exact figure already standing in the stats row two lines
+      // below it.
+      //
+      // The 0821 README names this case in its own words — "No content is
+      // ever printed twice on one screen (e.g. elapsed time appears once, not
+      // repeated in a stats plate below it)" — and the drawn panel reads
+      // "Logged 7:04".
+      //
+      // Null rather than a substitute when the run carries no start time. An
+      // empty slot is honest; the duration in it was not.
+      weekLine: loggedAtLine(ctx.recentRun.startedLocal),
       kicker: built.panelKicker,
       type: displayTypeFor(ctx.todayPlan?.type, ctx.todayPlan?.subLabel),
       dose: null,

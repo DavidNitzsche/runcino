@@ -304,8 +304,25 @@ struct TodayAfterV5: View {
                 )
             }
         }
+        // THREE GUARANTEES, NOT ONE.
+        //
+        // `ViewThatFits` above keeps the three numbers the same size. It is a
+        // single mechanism, and a single mechanism is how this shipped broken
+        // twice: it depends on the parent proposing a real width, and if
+        // anything ever proposes an unbounded one it silently picks the
+        // largest candidate and the row overflows.
+        //
+        // So the row does not rely on it. `lineLimit(1)` makes a wrap
+        // physically impossible — that alone is what stops "8:01/mi" ever
+        // breaking into "8:01/" over "mi", whatever the width turns out to
+        // be. `minimumScaleFactor` then shrinks rather than truncates if
+        // every candidate is still too wide, which can happen at the largest
+        // accessibility text sizes on the narrowest phone.
+        //
+        // `fixedSize` is deliberately NOT here. It forces the ideal width and
+        // would clip off the edge of the panel instead of scaling.
         .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: false)
+        .minimumScaleFactor(0.5)
     }
 
     // MARK: - Asked vs ran
