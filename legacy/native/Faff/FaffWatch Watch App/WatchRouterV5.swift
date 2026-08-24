@@ -399,6 +399,13 @@ struct WatchRunSurfaceV5: View {
         // Wrist down. Three values, no ticking second, and it takes the whole
         // screen because there is nothing else the runner can act on.
         .faffTracksLuminance(tracker)
+        // ONE EVENT, ONE SENTENCE. On the cue changing, not in the body — a
+        // view body runs many times for a single moment, and a voice that
+        // repeats itself on every re-render is worse than no voice.
+        .onChange(of: engine.transition) { _, cue in
+            guard let cue else { return }
+            speak(WatchRouterV5.moment(from: cue))
+        }
         .onDisappear {
             // The ceiling task sleeps 3s + 60s before writing @Published
             // state. Without this it outlives the run by over a minute,
@@ -885,6 +892,15 @@ struct WatchRunSurfaceV5: View {
     /// session. Invisible in review because the preview fixture passed a band
     /// with no unit, so the harness showed a board the router never produced.
     private var bandParts: (value: String, unit: String)? {
+        // NOT ON A BELT. `paceGrade` has always known this — it takes
+        // `treadmill:` and returns `.untrusted` — and the running face's own
+        // gauge is suppressed indoors. This was not, so the phase-change
+        // moment announced "6:45-7:00 /mi" at every rep of a treadmill session
+        // while the face beside it deliberately refused to grade the same
+        // number. There is no trustworthy pace on a belt, and a board that
+        // names a band the app will not judge is asking the runner to hold
+        // something nothing is measuring.
+        guard !isTreadmill else { return nil }
         guard let phase = engine.currentPhase,
               let target = phase.targetPaceSPerMi, target > 0,
               let tol = phase.tolerancePaceSPerMi, tol > 0,
@@ -953,6 +969,61 @@ struct WatchRunSurfaceV5: View {
         }
     }
 
+    /// Everything a moment draws, derived once.
+    ///
+    /// THE BOARD AND THE VOICE READ THIS, and that is the point. Rule 10 says
+    /// a spoken cue is always also drawn and audio is a delivery route rather
+    /// than a second content channel — which is a promise about two code paths
+    /// staying in step, and promises of that shape are exactly what has broken
+    /// all over this app today. So they do not stay in step by discipline:
+    /// there is one derivation, and both consume it.
+    struct MomentValues {
+        var splitLabel: String?
+        var splitTime: String?
+        var splitComparison: String?
+        var phaseWord: String?
+        var phaseDetail: String?
+        var band: String?
+        var pace: String?
+        var almostDone: String?
+    }
+
+    private func momentValues(_ kind: WMomentKind) -> MomentValues {
+        var v = MomentValues()
+        switch kind {
+        case .phaseChange(let title, let sub):
+            v.phaseWord = title
+            v.phaseDetail = sub
+            v.band = bandParts.map { $0.value + " " + $0.unit }
+        case .split(let mile, let paceSec):
+            v.splitLabel = (WFmt.isKm(units) ? "Km " : "Mile ") + String(mile)
+            v.splitTime = WFmt.short(paceSec)
+            v.splitComparison = splitComparison(paceSec)
+        case .headsUp:
+            v.pace = livePace.value
+            v.band = bandLabel
+        case .almostDone(let value, let unit):
+            v.almostDone = value + " " + unit.replacingOccurrences(of: " left", with: "")
+        case .go, .fuel, .paused:
+            break
+        }
+        return v
+    }
+
+    /// Say what the board says. Called on the cue CHANGING, not on every
+    /// render — a moment is one event and a body can run many times for it.
+    private func speak(_ kind: WMomentKind) {
+        let v = momentValues(kind)
+        guard let line = SpokenCues.line(
+            for: kind, sessionClass: sessionClass,
+            splitLabel: v.splitLabel, splitTime: v.splitTime,
+            splitComparison: v.splitComparison,
+            phaseWord: v.phaseWord, phaseDetail: v.phaseDetail,
+            band: v.band, pace: v.pace, almostDone: v.almostDone
+        ) else { return }
+        SpokenCues.shared.say(line)
+    }
+
     @ViewBuilder
     private func momentBoard(_ kind: WMomentKind) -> some View {
         switch kind {
@@ -964,10 +1035,11 @@ struct WatchRunSurfaceV5: View {
                                bandUnit: bandParts?.unit ?? livePace.unit)
         case .split(let mile, let paceSec):
             let _ = recordSplit(paceSec)
+            let v = momentValues(kind)
             WMomentSplit(
-                label: (WFmt.isKm(units) ? "Km " : "Mile ") + String(mile),
-                time: WFmt.short(paceSec),
-                comparison: splitComparison(paceSec)
+                label: v.splitLabel ?? "",
+                time: v.splitTime ?? "",
+                comparison: v.splitComparison
             )
         case .fuel(let index, let total):
             // PERSISTENT by design — at mile 14 a lit panel is what gets seen,

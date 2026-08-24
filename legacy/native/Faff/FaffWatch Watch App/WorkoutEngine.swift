@@ -1149,7 +1149,13 @@ final class WorkoutEngine: ObservableObject {
             if let r {
                 if paceZone != r.zone { paceZone = r.zone }
                 if paceDeltaSPerMi != r.deltaSPerMi { paceDeltaSPerMi = r.deltaSPerMi }
-                if r.fireHaptic {
+                // A BELT CANNOT DRIFT. The runner sets a speed and the belt
+                // holds it; a pace read that wanders on a treadmill is the
+                // watch's estimate wandering, not the runner. "Ease off" there
+                // is a correction for something they did not do, and they
+                // cannot act on it without changing a machine that is already
+                // right.
+                if r.fireHaptic, tracker?.distanceSourceUnavailable != true {
                     // THE DRIFT CUE NOW DRAWS ITSELF.
                     //
                     // This used to be a haptic and nothing else. The board for
