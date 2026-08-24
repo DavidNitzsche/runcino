@@ -78,7 +78,7 @@ struct SpokenCueTests {
         let s = line(.split(mile: 9, paceSec: 472),
                      splitLabel: "Mile 9", splitTime: "7:52",
                      splitComparison: "6 sec under goal")
-        #expect(s == "Mile nine, seven fifty-two. Six seconds under goal.")
+        #expect(s == "Mile nine, seven fifty-two. Six under.")
     }
 
     @Test func aWholeMinuteSplitIsSaidAsMinutes() {
@@ -110,7 +110,7 @@ struct SpokenCueTests {
         // to make impossible. Found by rendering the lines to audio.
         let s = line(.headsUp(value: "", quicken: false),
                      band: "6:45–7:00 /mi", pace: "7:14", driftVerb: "Ease off")
-        #expect(s == "Ease off. Seven fourteen, band is six forty-five to seven flat per mile.")
+        #expect(s == "Ease off. Seven fourteen.")
     }
 
     @Test func aDriftCueWithNoBandDoesNotInventOne() {
@@ -234,5 +234,74 @@ struct VoicePreferenceTests {
         let unlisted = SpokenCues.rank(
             quality: compact, name: "Zarvox", language: "en-US").1
         #expect(ranks.allSatisfy { $0 > unlisted })
+    }
+}
+
+// MARK: - Saying it short
+
+/// David heard the long lines and they were too long. A synthesiser is worst
+/// at exactly what these cues are most made of — runs of numbers — so the
+/// lever is fewer words, not a better voice.
+@MainActor
+struct ShorterCueTests {
+
+    private func line(_ kind: WMomentKind,
+                      splitLabel: String? = nil, splitTime: String? = nil,
+                      splitComparison: String? = nil,
+                      band: String? = nil, pace: String? = nil,
+                      driftVerb: String? = nil) -> String? {
+        SpokenCues.line(for: kind, sessionClass: "race",
+                        splitLabel: splitLabel, splitTime: splitTime,
+                        splitComparison: splitComparison,
+                        phaseWord: nil, phaseDetail: nil,
+                        band: band, pace: pace,
+                        almostDone: nil, driftVerb: driftVerb)
+    }
+
+    @Test("a drift cue is handed the band and still does not say it")
+    func theBandStaysOnTheBoard() {
+        // The parameter is deliberately still there. This is the test that
+        // makes wiring it back in fail rather than merely look different.
+        let withBand = line(.headsUp(value: "", quicken: false),
+                            band: "6:45–7:00 /mi", pace: "7:14",
+                            driftVerb: "Pick it up")
+        let without = line(.headsUp(value: "", quicken: false),
+                           pace: "7:14", driftVerb: "Pick it up")
+        #expect(withBand == without)
+        #expect(withBand == "Pick it up. Seven fourteen.")
+    }
+
+    @Test("a comparison drops the unit and the noun")
+    func comparisonIsSaidShort() {
+        #expect(SpokenCues.spokenComparison("6 sec under goal") == "six under")
+        #expect(SpokenCues.spokenComparison("12 sec over goal") == "twelve over")
+        #expect(SpokenCues.spokenComparison("4 sec quicker") == "four quicker")
+        #expect(SpokenCues.spokenComparison("9 sec slower") == "nine slower")
+    }
+
+    @Test("on goal pace keeps its noun")
+    func onGoalPaceSurvivesIntact() {
+        // "goal" is only dropped when it TRAILS. Strip it here and the line
+        // becomes "On pace" — a different claim, since a training run says
+        // that against the previous mile and a race says it against the goal.
+        #expect(SpokenCues.spokenComparison("on goal pace") == "on goal pace")
+    }
+
+    @Test("the split cue is shorter than the line it replaced")
+    func theSplitLineGotShorter() {
+        let s = line(.split(mile: 9, paceSec: 472),
+                     splitLabel: "Mile 9", splitTime: "7:52",
+                     splitComparison: "6 sec under goal")
+        #expect(s == "Mile nine, seven fifty-two. Six under.")
+        let words = (s ?? "").split(separator: " ").count
+        #expect(words == 6)  // was 9
+    }
+
+    @Test("a training split still compares to the mile before")
+    func trainingSplitKeepsItsWord() {
+        let s = line(.split(mile: 3, paceSec: 468),
+                     splitLabel: "Mile 3", splitTime: "7:48",
+                     splitComparison: "4 sec quicker")
+        #expect(s == "Mile three, seven forty-eight. Four quicker.")
     }
 }

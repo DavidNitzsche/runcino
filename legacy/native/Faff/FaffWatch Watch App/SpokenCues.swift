@@ -181,7 +181,9 @@ extension SpokenCues {
             // The one cue a runner most wants without looking.
             guard let l = splitLabel, let t = splitTime else { return nil }
             var s = "\(spokenPhrase(l)), \(spokenClock(t))."
-            if let c = splitComparison, !c.isEmpty { s += " \(upperFirst(spokenPhrase(c)))." }
+            if let c = splitComparison, !c.isEmpty {
+                s += " \(upperFirst(spokenComparison(c)))."
+            }
             return s
 
         case .fuel(let index, let total):
@@ -195,10 +197,16 @@ extension SpokenCues {
             // same event, which is exactly the thing rule 10 forbids and
             // exactly what this file was written to make impossible. Caught by
             // rendering the lines to audio and reading them back.
+            //
+            // THE BAND IS DELIBERATELY NOT SPOKEN, and `band` is deliberately
+            // still a parameter so that stays visible. "Ease off. Seven
+            // fourteen, band is six forty-five to seven flat per mile" is
+            // eleven words of numbers arriving mid-effort, and by the end of
+            // it the runner has lost the one number that mattered. The
+            // direction and the current pace are the whole instruction; the
+            // range is on the board for the eye, exactly as the rep band is
+            // at a phase change. Do not wire this back in.
             guard let p = pace, let verb = driftVerb else { return nil }
-            if let b = band {
-                return "\(verb). \(upperFirst(spokenClock(p))), band is \(spokenBand(b))."
-            }
             return "\(verb). \(upperFirst(spokenClock(p)))."
 
         case .almostDone:
@@ -284,6 +292,27 @@ extension SpokenCues {
         return words.joined(separator: " ")
     }
 
+    /// A split's comparison, said the way a runner says it.
+    ///
+    /// The board draws "6 sec under goal" because the eye reads a whole label
+    /// at a glance. The ear does not — it receives one word at a time, and by
+    /// "goal" the runner is three words past the six. So the voice drops the
+    /// unit and the noun and says "six under", which is what a person shouting
+    /// from the kerb says. Same content, rendered for a different sense.
+    ///
+    /// "on goal pace" keeps its noun: there is no number to protect there, and
+    /// "on goal" alone reads as a fragment.
+    static func spokenComparison(_ s: String) -> String {
+        var words = s.split(separator: " ").map(String.init)
+        words.removeAll { $0 == "sec" || $0 == "seconds" }
+        // Only a TRAILING "goal" — "on goal pace" must survive intact.
+        if words.count > 1, words.last == "goal" { words.removeLast() }
+        for i in words.indices {
+            if let n = Int(words[i]) { words[i] = spokenCount(n) }
+        }
+        return words.joined(separator: " ")
+    }
+
     /// A distance, said rather than read. "0.25 miles" is "point two five
     /// miles"; a runner says "a quarter mile".
     static func spokenDistance(_ value: String, unit: String) -> String {
@@ -294,15 +323,6 @@ extension SpokenCues {
         case "0.75": return u.hasPrefix("mile") ? "three quarters of a mile" : "three quarters of a kilometre"
         default: return "\(value) \(u)"
         }
-    }
-
-    /// "6:45-7:00" is two clocks and a dash. Said as a range.
-    private static func spokenBand(_ b: String) -> String {
-        let cleaned = b.replacingOccurrences(of: "\u{2013}", with: " to ")
-                       .replacingOccurrences(of: "-", with: " to ")
-        return cleaned.split(separator: " ").map { part -> String in
-            part.contains(":") ? spokenClock(String(part)) : spokenUnit(String(part))
-        }.joined(separator: " ")
     }
 
     /// "/mi" is a symbol, and a synthesiser reads it as "slash M I". Every
