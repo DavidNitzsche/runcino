@@ -34,6 +34,7 @@ import { loadSettings } from '@/lib/coach/settings';
 // /api/plan/week and /api/v5/today read. Nothing about the week is
 // re-derived here — see projectWeekStrip.
 import { loadPlanWeek, type PlanWeekResult } from '@/lib/plan/week-loader';
+import { adjustPhasesForHeat, heatNote, recordHeatEasing } from '@/lib/watch/heat';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
 
@@ -110,6 +111,14 @@ export interface WatchWorkout {
   fueling?: { needed: boolean; gels: number; atMins: number[]; gPerHr: number; totalCarbsG: number; isRehearsal: boolean; heatAdjusted: boolean; shortLine: string; why: string } | null;
   hrCeilingBpm?: number | null;
   displayHint?: string | null;
+  /** 2026-08-24 · heat · the lobby's one sentence about today's conditions,
+   *  e.g. "84 degrees, dewpoint 66. Targets eased for the heat." Present ONLY
+   *  when the targets on this payload were actually eased, so its presence is
+   *  the fact and its absence is not a silent failure. Nothing on a running
+   *  face mentions weather — a runner mid-effort cannot act on a temperature,
+   *  and the band already carries the adjustment. Optional + additive: a watch
+   *  that does not decode it is unaffected. See lib/watch/heat.ts. */
+  heatNote?: string | null;
   /** 2026-06-09 Phase 2 (3.2) · contingency rules from workout_spec.rules
    *  (spec-builder composeContingencyRules). Optional + additive on the
    *  wire. Shape: {kind: 'pass'|'bail'|'abort', metric: 'hr'|'pace',
@@ -1390,6 +1399,22 @@ export async function buildWatchToday(
     if (last.type === 'cooldown') last.haptic = 'transition-cooldown';
   }
 
+  // 6b. Heat · David 2026-08-24, decision 1: current temperature, or this
+  //     feature does not get built. Runs AFTER the phase list is final and
+  //     BEFORE totals are computed, so an eased distance phase's estimate
+  //     moves with its target. Race is skipped inside; every failure path
+  //     leaves the phases untouched. See lib/watch/heat.ts.
+  const preHeatSec = phases.reduce((s, p) => s + p.durationSec, 0);
+  const heat = await adjustPhasesForHeat(userId, phases, {
+    isRace: wo.type === 'race',
+    intervalStyle: isIntervalWorkout,
+    totalSec: preHeatSec,
+  }).catch(() => null);
+  // Remember what we asked for, so the recap does not price the same heat a
+  // second time when it grades this run against the band we just eased.
+  // Fire-and-forget: see lib/watch/heat.ts.
+  if (heat?.applied) void recordHeatEasing(userId, today, heat);
+
   // 7. Workout-level fields
   const totalSec = phases.reduce((s, p) => s + p.durationSec, 0);
   const totalEstimatedMinutes = Math.round(totalSec / 60);
@@ -1454,6 +1479,10 @@ export async function buildWatchToday(
              : wo.type === 'tempo' ? 'tempo'
              : null,
     unitsDistance,
+    // Null unless the targets above were actually eased. `heatNote` returns
+    // null for every not-applied outcome, so this cannot claim an adjustment
+    // that did not happen.
+    heatNote: heat ? heatNote(heat) : null,
   };
 
   // 2026-06-09 Phase 2 (3.2) · thread contingency rules from the spec.
@@ -1740,7 +1769,12 @@ export async function buildWatchToday(
         // run's own duration-driven fuel).
         raceDistanceMi: goal_distance_mi ?? null,
         workoutType: fuelingType,
-        tempF: null, // forecast wiring is the weather-cron fix's job (M-15)
+        // 2026-08-24 · wired. Was null since it shipped, which is why
+        // WatchFueling.heatAdjusted was permanently false on the wire. Same
+        // observation that eased the targets, so fuel and pace cannot
+        // disagree about the weather. Null on any failure path, which
+        // computeFueling reads as "no heat correction".
+        tempF: heat?.tempF ?? null,
         daysToARace,
         raceFuelTargetGPerHr: fuelRow?.fuel_target_g_per_hr ?? null,
         gelCarbsG: fuelRow?.fuel_gel_carbs_g ?? null,

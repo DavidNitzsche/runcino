@@ -56,6 +56,18 @@ export interface RecapInput {
   type: WorkoutType;
   phase: Phase | null;
   plannedMi: number;
+  /**
+   * 2026-08-24 · heat · TRUE when the target below was ALREADY eased for the
+   * heat before the runner was given it (lib/watch/heat.ts). The recap grades
+   * against the band the runner was ASKED to hold, so when that band already
+   * carries the correction this file must not apply its own on top. Without
+   * this flag a hot run reads better than the identical effort in the cold,
+   * because the same Research/06 slowdown is spent twice.
+   *
+   * Heat still SPEAKS — the prose framing keys on the conditions, not on this
+   * flag — it just stops moving the number a second time.
+   */
+  targetAlreadyHeatEased?: boolean;
   /** Plan-side target pace (s/mi). null when by-feel. */
   plannedPaceSPerMi?: number | null;
   /** Plan-side HR cap (bpm). null when by-feel. */
@@ -220,6 +232,7 @@ function intervalPacing(
   slowdownPct: number,
   avgHr: number | null,
   terrain: RecapInput['terrain'],
+  targetAlreadyHeatEased: boolean = false,
 ): { fact: string | null; adjTarget: number | null } {
   const clean = (reps ?? []).filter((p) => typeof p === 'number' && p > 0);
   if (!targetSPerMi || clean.length < 2) {
@@ -231,7 +244,13 @@ function intervalPacing(
   // Adjust the rep target by the halved amount; still surface the heat framing
   // whenever it's genuinely warm (keyed on the full slowdown), so a hot day
   // still reads "heat-adjusted" even though the magnitude is halved.
-  const repSlowdownPct = slowdownPct / 2;
+  //
+  // ...UNLESS the target arrived already eased. The watch payload now applies
+  // this same Research/06 correction before the runner ever sees the band
+  // (lib/watch/heat.ts), and the recap reads that eased band back out of the
+  // completion as `frozenTargetSPerMi`. Applying the halved slowdown on top of
+  // an already-eased number spends one day's heat twice.
+  const repSlowdownPct = targetAlreadyHeatEased ? 0 : slowdownPct / 2;
   // 2026-08-17 · THIS IS THE ONLY PLACE IN THE RECAP WHERE TWO CONDITIONS
   // STACK. Heat and hills both make the same target pace harder to hit, and
   // two independent code paths each "helpfully" forgiving the day is how one
@@ -721,6 +740,7 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
         weather?.slowdownPct ?? 0,
         input.actualAvgHr ?? null,
         input.terrain,
+        input.targetAlreadyHeatEased === true,
       );
       // Lead with the RESULT, not the prescription: how many reps landed in
       // the acceptable range (same band as the per-rep graph · prescribed
