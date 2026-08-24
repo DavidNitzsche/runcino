@@ -17,12 +17,14 @@ struct SpokenCueTests {
                       splitComparison: String? = nil,
                       phaseWord: String? = nil, phaseDetail: String? = nil,
                       band: String? = nil, pace: String? = nil,
-                      almostDone: String? = nil) -> String? {
+                      almostDone: String? = nil,
+                      driftVerb: String? = nil) -> String? {
         SpokenCues.line(for: kind, sessionClass: "easy",
                         splitLabel: splitLabel, splitTime: splitTime,
                         splitComparison: splitComparison,
                         phaseWord: phaseWord, phaseDetail: phaseDetail,
-                        band: band, pace: pace, almostDone: almostDone)
+                        band: band, pace: pace, almostDone: almostDone,
+                        driftVerb: driftVerb)
     }
 
     // MARK: - Nothing is said that is not also drawn
@@ -100,22 +102,36 @@ struct SpokenCueTests {
         #expect(line(.fuel(index: 2, total: 3)) == "Gel. 2 of 3.")
     }
 
-    @Test func aDriftCueNamesTheBandBecauseTheRunnerIsNotLooking() {
-        // This is the one cue whose whole purpose is to be acted on by
-        // somebody with their eyes on the road, so it carries the band.
+    @Test func aDriftCueSaysTheWordTheBoardDRAWS() {
+        // It said "Off the band", which the board never draws — the board
+        // draws the direction. A runner with headphones in and a runner
+        // looking at the wrist were getting different words for one event,
+        // which is the thing rule 10 forbids and the thing this file exists
+        // to make impossible. Found by rendering the lines to audio.
         let s = line(.headsUp(value: "", quicken: false),
-                     band: "6:45–7:00 /mi", pace: "7:14")
-        #expect(s == "Off the band. 7 14. Band is 6 45 to 7 minutes /mi.")
+                     band: "6:45–7:00 /mi", pace: "7:14", driftVerb: "Ease off")
+        #expect(s == "Ease off. 7 14. Band is 6 45 to 7 minutes per mile.")
     }
 
     @Test func aDriftCueWithNoBandDoesNotInventOne() {
-        let s = line(.headsUp(value: "", quicken: false), pace: "7:14")
-        #expect(s == "Off pace. 7 14.")
+        let s = line(.headsUp(value: "", quicken: false), pace: "7:14",
+                     driftVerb: "Pick it up")
+        #expect(s == "Pick it up. 7 14.")
+    }
+
+    @Test func unitsAreSpokenAsWordsNotSymbols() {
+        // "/mi" reads as "slash M I".
+        #expect(SpokenCues.spokenUnit("/mi") == "per mile")
+        #expect(SpokenCues.spokenUnit("/km") == "per kilometre")
+        #expect(SpokenCues.spokenUnit("mi") == "miles")
+        #expect(SpokenCues.spokenUnit("km") == "kilometres")
     }
 
     @Test func almostDoneSaysWhatIsLeft() {
         #expect(line(.almostDone(value: "0.25", unit: "mi left"),
-                     almostDone: "0.25 mi") == "0.25 mi to go.")
+                     almostDone: "0.25 mi") == "0.25 miles to go.")
+        #expect(line(.almostDone(value: "0.40", unit: "km left"),
+                     almostDone: "0.40 km") == "0.40 kilometres to go.")
     }
 
     @Test func aMissingFigureProducesSilenceRatherThanAFragment() {
@@ -123,7 +139,7 @@ struct SpokenCueTests {
         // into a runner's ear is worse than nothing.
         #expect(line(.split(mile: 5, paceSec: 468), splitLabel: "Mile 5") == nil)
         #expect(line(.phaseChange(title: "Work", sub: nil)) == nil)
-        #expect(line(.headsUp(value: "", quicken: false)) == nil)
+        #expect(line(.headsUp(value: "", quicken: false), driftVerb: "Ease off") == nil)
         #expect(line(.almostDone(value: "0.25", unit: "mi left")) == nil)
     }
 }

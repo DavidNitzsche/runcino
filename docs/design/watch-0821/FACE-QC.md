@@ -155,3 +155,98 @@ to change one of these, you are reverting a decision, not correcting a bug.
     with no pill. Colour on the controls board is there to separate three verbs
     at a glance. A confirmation has already narrowed the choice, so the job
     changes from separating to slowing down.
+
+## The gate (locked 2026-08-24)
+
+Everything above was, until now, a standard a person had to remember to apply.
+The 33 engine tests spent months in a target no buildable project contained —
+they had never once run, and the first execution found a real defect. Rules 16
+to 20 are the same shape: each is a thing you have to remember to do, and the
+whole reason they are written down is that somebody did not.
+
+`scripts/check-watch.sh` runs them.
+
+```
+bash scripts/check-watch.sh          # tests + board geometry   (~85 s)
+bash scripts/check-watch.sh --fast   # tests only, no simulator (~25 s)
+```
+
+Quiet on success — one line:
+
+```
+watch OK · 177 test cases (177 @Test declarations); 20 boards inside Apple's content box
+```
+
+### What it checks
+
+1. **The project is fresh.** `xcodegen generate` runs first. `native-v2/project.yml`
+   is the only file that knows which sources belong to the watch targets, and a
+   stale checked-in `pbxproj` is exactly how 33 tests ran where 177 exist. If the
+   regenerated project differs from the one in git the gate says so and tells you
+   to stage it.
+2. **Every test actually ran.** The suite runs, and then the executed case count
+   is compared against the number of `@Test` declarations in
+   `FaffWatch Watch AppTests/`. The floor is derived from the source, not
+   hardcoded, so adding a test file raises it automatically and dropping one out
+   of the target fails the gate. This is the guard that matters most: xcodebuild
+   prints `** TEST SUCCEEDED **` over `Executed 0 tests` without blinking, and it
+   prints a green summary line for a run that restarted after a crash — counting
+   only the launches after it.
+3. **The boards fit.** Twenty boards — one from each of the eight `_FacePreview`
+   categories, biased toward the ugliest fixture in each — are rendered on the
+   46mm and audited by `scripts/watch/geom.py` against Apple's content box. A
+   board that renders blank fails too; geom.py alone prints `EMPTY` and moves on.
+   This is a floor, not a substitute for rule 20: after touching a shared
+   component, still re-check every board.
+
+### Two things it does that look like paranoia and are not
+
+- **The tests run serially** (`-parallel-testing-enabled NO`). Under xcodebuild's
+  default parallel testing the suite is split across cloned simulators and
+  `HostileInputTests` — which drives the engine through a hand-rolled clock on
+  the main actor — reported 11 expectation failures that do not exist. Same tree,
+  same commit, green when serialised.
+- **The tests and the render use different simulators.** `shoot.sh` installs a
+  plain app build under `run.faff.app.watchkitapp`, the same bundle id the test
+  host runs as, and that build has no `PlugIns/…AppTests.xctest` inside it.
+  Render then test on one watch and the run dies with *"Failed to load test
+  bundle"* while the summary names whichever test was in flight — a healthy test
+  reported as a product failure. The render half keeps the 46mm (geom.py's
+  margins are that device's); the tests take any other watch.
+
+### Where it is wired, and why not where the other gates are
+
+`check-palette-sync.sh` and `check-doctrine.sh` hang off `web-v2`'s `prebuild`,
+so they run on every Railway build. **This one cannot.** Railway's container has
+no Xcode, no simulators and no watchOS SDK, so wiring it there gives you a choice
+between breaking every deploy and teaching the script to skip itself when Xcode
+is absent — which is every Railway build. A gate that always skips is the exact
+failure this file exists to fix, wearing a CI badge.
+
+So it is wired to the only automated thing in this repo that is guaranteed to be
+on a Mac: the **pre-push hook**. `.git/hooks/pre-push` used to be a bare symlink
+to `scripts/check-web-build.sh`; that is now a versioned dispatcher at
+`.githooks/pre-push` which runs the web typecheck exactly as before and then runs
+this gate — but only when the push actually carries watch changes
+(`legacy/native/Faff/FaffWatch*`, `native-v2/project.yml`,
+`native-v2/Faff.xcodeproj/`, `scripts/watch/`, `scripts/check-watch.sh`). When
+the pushed range cannot be resolved it runs everything rather than guessing.
+
+Activate it once per clone:
+
+```
+git config core.hooksPath .githooks
+```
+
+`FAFF_WATCH_FAST=1 git push` skips the render half. `git push --no-verify` skips
+the lot — say so in the push message if you use it.
+
+If no watch simulator is booted the render half is **skipped, not failed**, and
+the run says which boards were not looked at. Booting a watch takes a minute and
+a push is not the moment to do it silently.
+
+### Before a TestFlight build
+
+The hook is a floor, not the ceiling. `scripts/ship-testflight-v2.sh` does not
+call this gate; run the full thing by hand before shipping a build, together
+with the full board sweep that rule 20 asks for.

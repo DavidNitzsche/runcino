@@ -110,7 +110,8 @@ extension SpokenCues {
                      phaseDetail: String?,
                      band: String?,
                      pace: String?,
-                     almostDone: String?) -> String? {
+                     almostDone: String?,
+                     driftVerb: String?) -> String? {
         switch kind {
         case .go:
             return nil
@@ -134,16 +135,23 @@ extension SpokenCues {
             return "Gel. \(index) of \(total)."
 
         case .headsUp:
-            // The direction and the band, because this cue exists to be acted
-            // on and the runner is by definition not looking at the wrist.
-            guard let p = pace else { return nil }
-            let verb = (band != nil) ? "Off the band" : "Off pace"
+            // THE VOICE SAYS WHAT THE BOARD SAYS. It said "Off the band",
+            // which the board never draws — the board draws the direction,
+            // "Ease off" or "Pick it up". A runner with headphones in and a
+            // runner looking at the wrist were getting different words for the
+            // same event, which is exactly the thing rule 10 forbids and
+            // exactly what this file was written to make impossible. Caught by
+            // rendering the lines to audio and reading them back.
+            guard let p = pace, let verb = driftVerb else { return nil }
             if let b = band { return "\(verb). \(spokenClock(p)). Band is \(spokenBand(b))." }
             return "\(verb). \(spokenClock(p))."
 
         case .almostDone:
             guard let v = almostDone else { return nil }
-            return "\(v) to go."
+            // "0.25 mi" would be read "point two five M I".
+            let parts = v.split(separator: " ").map(String.init)
+            guard parts.count == 2 else { return "\(v) to go." }
+            return "\(parts[0]) \(spokenUnit(parts[1])) to go."
 
         case .paused:
             return nil
@@ -164,7 +172,21 @@ extension SpokenCues {
         let cleaned = b.replacingOccurrences(of: "\u{2013}", with: " to ")
                        .replacingOccurrences(of: "-", with: " to ")
         return cleaned.split(separator: " ").map { part -> String in
-            part.contains(":") ? spokenClock(String(part)) : String(part)
+            part.contains(":") ? spokenClock(String(part)) : spokenUnit(String(part))
         }.joined(separator: " ")
+    }
+
+    /// "/mi" is a symbol, and a synthesiser reads it as "slash M I". Every
+    /// unit that reaches the voice is spelled as the word a runner would say.
+    static func spokenUnit(_ u: String) -> String {
+        switch u {
+        case "/mi": return "per mile"
+        case "/km": return "per kilometre"
+        case "mi":  return "miles"
+        case "km":  return "kilometres"
+        case "bpm": return "beats"
+        case "spm": return "steps per minute"
+        default:    return u
+        }
     }
 }

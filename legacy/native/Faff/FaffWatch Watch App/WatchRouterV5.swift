@@ -1015,6 +1015,9 @@ struct WatchRunSurfaceV5: View {
         var band: String?
         var pace: String?
         var almostDone: String?
+        /// The word the drift BOARD draws — "Ease off" or "Pick it up". The
+        /// voice says the same one.
+        var driftVerb: String?
     }
 
     private func momentValues(_ kind: WMomentKind) -> MomentValues {
@@ -1031,6 +1034,8 @@ struct WatchRunSurfaceV5: View {
         case .headsUp:
             v.pace = livePace.value
             v.band = bandLabel
+            v.driftVerb = (engine.paceDeltaSPerMi < 0
+                           ? WHeadsUpDirection.easeOff : .quicken).verb
         case .almostDone(let value, let unit):
             v.almostDone = value + " " + unit.replacingOccurrences(of: " left", with: "")
         case .go, .fuel, .paused:
@@ -1048,7 +1053,8 @@ struct WatchRunSurfaceV5: View {
             splitLabel: v.splitLabel, splitTime: v.splitTime,
             splitComparison: v.splitComparison,
             phaseWord: v.phaseWord, phaseDetail: v.phaseDetail,
-            band: v.band, pace: v.pace, almostDone: v.almostDone
+            band: v.band, pace: v.pace, almostDone: v.almostDone,
+            driftVerb: v.driftVerb
         ) else { return }
         SpokenCues.shared.say(line)
     }
