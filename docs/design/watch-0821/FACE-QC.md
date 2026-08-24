@@ -147,3 +147,11 @@ to change one of these, you are reverting a decision, not correcting a bug.
     falls out.** In normal flow the foot line's position is whatever is left
     over, which gave the controls board 4pt above its first button and 20pt
     below its last. Pin top and bottom, derive the rest.
+
+30. **The colour thread stops at the confirmations.** Controls are coloured;
+    End confirm and Skip confirm are not. Tapping a red *End run* lands on a
+    white *End and save*, and that is deliberate — §5 and rule 7 both ask for a
+    calm confirmation: filled white affirmative, grey escape, discard as text
+    with no pill. Colour on the controls board is there to separate three verbs
+    at a glance. A confirmation has already narrowed the choice, so the job
+    changes from separating to slowing down.
