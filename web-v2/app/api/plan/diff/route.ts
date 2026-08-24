@@ -72,15 +72,21 @@ type ChangeKind =
 async function loadPlanMeta(userId: string, planId: string): Promise<PlanMeta | null> {
   const r = (await pool.query<{
     id: string;
-    label: string | null;
+    mode: string | null;
     authored_iso: string | null;
     archived_iso: string | null;
     total_miles: number | string | null;
     week_count: number | string | null;
   }>(
+    // 2026-08-24 · swallowed-failure sweep · `training_plans` has no `label`
+    // column — it has `mode` — so this threw `column p.label does not exist` on
+    // every call. There is no `.catch` here, so the throw escaped a
+    // `Promise.all` and the whole /api/plan/diff route 500'd: loud, but the
+    // endpoint has never returned a diff. `mode` is the plan's own descriptor
+    // and is what the UI's `label` slot wants.
     `SELECT
        p.id,
-       p.label,
+       p.mode,
        p.authored_iso::text  AS authored_iso,
        p.archived_iso::text  AS archived_iso,
        COALESCE(SUM(pw.distance_mi), 0) AS total_miles,
@@ -89,14 +95,14 @@ async function loadPlanMeta(userId: string, planId: string): Promise<PlanMeta | 
        LEFT JOIN plan_workouts pw ON pw.plan_id = p.id
       WHERE p.id = $1
         AND COALESCE(p.user_uuid::text, p.user_id) = $2
-      GROUP BY p.id, p.label, p.authored_iso, p.archived_iso
+      GROUP BY p.id, p.mode, p.authored_iso, p.archived_iso
       LIMIT 1`,
     [planId, userId],
   )).rows[0];
   if (!r) return null;
   return {
     id: r.id,
-    label: r.label ?? '(unlabeled)',
+    label: r.mode ?? '(unlabeled)',
     authoredIso: r.authored_iso,
     archivedIso: r.archived_iso,
     totalMiles: Number(r.total_miles) || 0,

@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { detectDrift, hasPendingProposal } from '@/lib/plan/drift-monitor';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
 import {
@@ -193,7 +194,12 @@ export async function POST(req: NextRequest) {
                 AND proposal_kind = 'maintenance_to_raceprep'
                 AND created_at >= NOW() - interval '24 hours'`,
             [u],
-          ).catch(() => ({ rowCount: 0 }))).rowCount;
+            // 2026-08-24 · swallowed-failure sweep · this guard fails CLOSED now.
+    // `rowCount: 0` means "not already done", so `.catch(() => ({ rowCount: 0 }))`
+    // made a failed read say "go ahead" — the one answer that turns a de-dupe
+    // check into a duplicate-action generator. A guard that cannot see must
+    // assume the thing it guards against has already happened.
+  ).catch((e) => { logReadFailure('cron/plan-drift · dedupe guard', e); return { rowCount: 1 }; })).rowCount;
           if (!alreadyTransitioned) {
             try {
               const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
@@ -296,7 +302,12 @@ export async function POST(req: NextRequest) {
                 AND reasons->>'previous_race' = $2
                 AND created_at >= NOW() - interval '24 hours'`,
             [u, finishedRow.race_id],
-          ).catch(() => ({ rowCount: 0 }))).rowCount;
+            // 2026-08-24 · swallowed-failure sweep · this guard fails CLOSED now.
+    // `rowCount: 0` means "not already done", so `.catch(() => ({ rowCount: 0 }))`
+    // made a failed read say "go ahead" — the one answer that turns a de-dupe
+    // check into a duplicate-action generator. A guard that cannot see must
+    // assume the thing it guards against has already happened.
+  ).catch((e) => { logReadFailure('cron/plan-drift · dedupe guard', e); return { rowCount: 1 }; })).rowCount;
 
           if (!alreadyGraduated) {
             try {
@@ -351,7 +362,12 @@ export async function POST(req: NextRequest) {
               AND proposal_kind = 'plan_elapsed'
               AND created_at >= NOW() - interval '24 hours'`,
           [u],
-        ).catch(() => ({ rowCount: 0 }))).rowCount;
+          // 2026-08-24 · swallowed-failure sweep · this guard fails CLOSED now.
+    // `rowCount: 0` means "not already done", so `.catch(() => ({ rowCount: 0 }))`
+    // made a failed read say "go ahead" — the one answer that turns a de-dupe
+    // check into a duplicate-action generator. A guard that cannot see must
+    // assume the thing it guards against has already happened.
+  ).catch((e) => { logReadFailure('cron/plan-drift · dedupe guard', e); return { rowCount: 1 }; })).rowCount;
         if (!alreadyRebuilt) {
           try {
             const { fireAutoRebuild, resolveGoalTarget } = await import('@/lib/plan/auto-rebuild');
@@ -505,7 +521,12 @@ export async function POST(req: NextRequest) {
               AND proposal_kind = 'recovery_complete'
               AND created_at >= NOW() - interval '24 hours'`,
           [u],
-        ).catch(() => ({ rowCount: 0 }))).rowCount;
+          // 2026-08-24 · swallowed-failure sweep · this guard fails CLOSED now.
+    // `rowCount: 0` means "not already done", so `.catch(() => ({ rowCount: 0 }))`
+    // made a failed read say "go ahead" — the one answer that turns a de-dupe
+    // check into a duplicate-action generator. A guard that cannot see must
+    // assume the thing it guards against has already happened.
+  ).catch((e) => { logReadFailure('cron/plan-drift · dedupe guard', e); return { rowCount: 1 }; })).rowCount;
         if (!alreadyTransitioned) {
           try {
             const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');

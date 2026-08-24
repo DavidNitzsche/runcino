@@ -18,6 +18,7 @@
  * the field names; the Swift decoder will refuse them.
  */
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { prescriptionFor, type WorkoutType, type PrescriptionStep } from '@/lib/training/prescriptions';
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
 import { parseRaceTime as parseRaceGoalSec } from '@/lib/training/vdot';
@@ -1238,7 +1239,10 @@ export async function buildWatchToday(
       WHERE plan_id = $1
         AND date_iso::date BETWEEN ($2::date - $3::int) AND ($2::date - $3::int + 6)`,
     [plan.id, today, daysSinceMonday]
-  ).catch(() => ({ rows: [{ mi: null }] }))).rows[0];  // LOWVOL-5 · a failed read is unknown, not thirty miles
+    // LOWVOL-5 · a failed read is unknown, not thirty miles. It still falls to
+    // the proxy below, same as an empty window, so it logs — otherwise a
+    // fabricated weekly volume and a genuinely planless week are one value.
+  ).catch((e) => { logReadFailure('watch/build-workout · weekly mi', e); return { rows: [{ mi: null }] }; })).rows[0];
   const realWeeklyMi = Number(weeklyMiRow?.mi) || 0;
   const proxyWeeklyMi = Math.max(distanceMi * 6, 25);
   const weeklyMi = realWeeklyMi > 0 ? realWeeklyMi : proxyWeeklyMi;

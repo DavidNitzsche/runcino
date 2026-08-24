@@ -45,6 +45,7 @@
  * Cite: docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md §Rule 15
  */
 import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import type { PoolClient } from 'pg';
 
 /**
@@ -58,19 +59,37 @@ import type { PoolClient } from 'pg';
  * mutable (callers may write).
  */
 export async function isDaySealed(userUuid: string, dateIso: string): Promise<boolean> {
-  const r = (await pool.query<{ n: string }>(
-    `SELECT (
+  // 2026-08-24 · swallowed-failure sweep · `$1` was bare on BOTH sides of the
+  // sum. `runs.user_uuid` is `uuid` and `coach_intents.user_id::text` is text,
+  // so Postgres deduced `$1` as text from the second subquery and then refused
+  // the first: `operator does not exist: text = uuid`. Verified against prod on
+  // 2026-08-24 — it threw for every user and every date. The `.catch` under it
+  // returned `n: '0'`, so `isDaySealed` answered FALSE for every completed day
+  // this app has ever had, and Rule 15 has never once held a write back.
+  //
+  // Both sides are pinned explicitly now: uuid where the column is uuid, text
+  // where the comparison is text. A bare `$1` shared across two differently
+  // typed columns is the shape to watch for.
+  const r = await rowOrNull<{ n: string }>(
+    'plan/seal · isDaySealed',
+    pool.query<{ n: string }>(
+      `SELECT (
        (SELECT COUNT(*) FROM runs
-         WHERE user_uuid = $1
+         WHERE user_uuid = $1::uuid
            AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date = $2::date
            AND NOT (data ? 'mergedIntoId'))
        + (SELECT COUNT(*) FROM coach_intents
-         WHERE COALESCE(user_uuid::text, user_id::text) = $1
+         WHERE COALESCE(user_uuid::text, user_id::text) = $1::text
            AND reason = 'watch_completion'
            AND ts::date = $2::date)
      )::text AS n`,
-    [userUuid, dateIso],
-  ).catch(() => ({ rows: [{ n: '0' }] }))).rows[0];
+      [userUuid, dateIso],
+    ),
+  );
+  // A read that FAILED is not a day we know to be mutable. This guard exists to
+  // protect a run the runner has already done; when it cannot see, it seals.
+  // Refusing to write is recoverable, overwriting a completed session is not.
+  if (r === null) return true;
   return Number(r?.n ?? 0) > 0;
 }
 

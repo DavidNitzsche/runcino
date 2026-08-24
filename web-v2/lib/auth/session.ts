@@ -28,6 +28,7 @@
 import { randomBytes, createHash } from 'crypto';
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { outage } from '@/lib/route/failure';
 
 const TOKEN_TTL_DAYS = 90;
@@ -332,11 +333,20 @@ export async function createSession(
   // (worst case: the first-login event is missed, not the login).
   let firstLogin = false;
   try {
+    // Same text/uuid mismatch as `revokeAllSessionsForUser` below — both
+    // columns are `uuid`. This one threw too, so the probe answered "not a
+    // first login" for every login the app has ever served and the funnel
+    // instrumentation it was built for measured nothing.
     firstLogin = (await pool.query(
-      `SELECT 1 FROM sessions WHERE COALESCE(user_uuid::text, user_id) = $1 LIMIT 1`,
+      `SELECT 1 FROM sessions WHERE COALESCE(user_uuid, user_id) = $1::uuid LIMIT 1`,
       [userUuid],
     )).rows.length === 0;
-  } catch { firstLogin = false; }
+  } catch (e) {
+    // Genuinely best-effort: a probe failure must never block a login. But it
+    // is a probe failure, not a measurement of "this user has signed in before".
+    logReadFailure('auth/session · firstLogin probe', e);
+    firstLogin = false;
+  }
 
   await pool.query(
     `INSERT INTO sessions (user_id, user_uuid, session_token, expires_at, kind, user_agent, ip_address, created_at)
@@ -395,10 +405,21 @@ export async function revokeAllSessionsForUser(
   opts?: { exceptToken?: string | null },
 ): Promise<number> {
   const spare = opts?.exceptToken ? hashToken(opts.exceptToken) : null;
+  // 2026-08-24 · swallowed-failure sweep · this said
+  // `COALESCE(user_uuid::text, user_id) = $1`. Both `sessions.user_uuid` and
+  // `sessions.user_id` are `uuid`, so casting one side to text and not the
+  // other gave Postgres `COALESCE types text and uuid cannot be matched`, and
+  // the UPDATE threw on EVERY call. Both call sites catch it — set-password
+  // with `.catch(() => 0)` — so the 2026-08-21 fix that made a password change
+  // end every other session has never ended one, and the route answered
+  // `other_sessions_ended: 0` as though that were a count.
+  //
+  // A token minted under the old password stayed valid for its full 90-day
+  // life, which is the exact property the fix was written to remove.
   const r = await pool.query(
     `UPDATE sessions
         SET revoked_at = NOW()
-      WHERE COALESCE(user_uuid::text, user_id) = $1
+      WHERE COALESCE(user_uuid, user_id) = $1::uuid
         AND revoked_at IS NULL
         AND ($2::text IS NULL OR session_token <> $2)`,
     [userUuid, spare],

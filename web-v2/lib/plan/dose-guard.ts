@@ -43,6 +43,7 @@
  * the plan already validated, which is by construction inside doctrine.
  */
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { trainingWeekWindow } from '@/lib/notifications/week-window';
 import { weekDosingFindings, type DosingFinding, type DosingWeek } from './dosing';
 import type { IntensityDay } from './intensity-distribution';
@@ -111,16 +112,23 @@ export async function dosingBreachIfWritten(
       date_iso: string; plan_id: string; long_run_day: string | null;
       phase: string | null; is_race_week: boolean | null;
     }>(
+      // 2026-08-24 · swallowed-failure sweep · this joined `user_settings`,
+      // which does not exist in production — the long-run day lives on
+      // `users.long_run_day` (the settings table was folded in). Postgres
+      // answered `relation "user_settings" does not exist` on EVERY call, the
+      // `catch` at the bottom of this function returned `[]`, and so the
+      // dosing detector has reported zero breaches for every write it has ever
+      // guarded. Nothing about "no findings" looked wrong.
       `SELECT pw.date_iso::text AS date_iso,
               pw.plan_id,
-              us.long_run_day,
+              u.long_run_day,
               ph.label AS phase,
               w.is_race_week
          FROM plan_workouts pw
          JOIN training_plans tp ON tp.id = pw.plan_id
          LEFT JOIN plan_weeks  w  ON w.id = pw.week_id
          LEFT JOIN plan_phases ph ON ph.id = w.phase_id
-         LEFT JOIN user_settings us ON us.user_uuid = tp.user_uuid
+         LEFT JOIN users u ON u.id = tp.user_uuid
         WHERE pw.id = $1 AND tp.user_uuid = $2::uuid AND tp.archived_iso IS NULL
         LIMIT 1`,
       [proposed.workoutId, userId],
@@ -181,7 +189,12 @@ export async function dosingBreachIfWritten(
     };
 
     return weekDosingFindings(week).filter((f) => f.enforced);
-  } catch {
+  } catch (e) {
+    // "No breach" and "could not check for a breach" are the same value to
+    // every caller of this function, and that is exactly how a dead join hid
+    // here for the detector's whole life. It stays `[]` — a dosing guard must
+    // not block a write it failed to evaluate — but it is never silent again.
+    logReadFailure('plan/dose-guard · dosingBreachIfWritten', e);
     return [];
   }
 }

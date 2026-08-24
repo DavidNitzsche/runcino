@@ -10,6 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { pool } from '@/lib/db/pool';
+import { logReadFailure, rowOrNull } from '@/lib/db/read';
+import { outage } from '@/lib/route/failure';
 import { requireUserId, revokeAllSessionsForUser, tokenFromRequest } from '@/lib/auth/session';
 
 export async function POST(req: NextRequest) {
@@ -41,14 +43,36 @@ export async function POST(req: NextRequest) {
   // not put out anyone who already had access — which is the main reason
   // someone changes one. The caller's own session is spared so they stay
   // signed in on the device they just did this from.
-  const revoked = await revokeAllSessionsForUser(auth, {
-    exceptToken: tokenFromRequest(req),
-  }).catch(() => 0);
+  //
+  // 2026-08-24 · swallowed-failure sweep · this was `.catch(() => 0)`, and the
+  // UPDATE inside `revokeAllSessionsForUser` threw on every call (text/uuid
+  // COALESCE — see that function). So the revocation never happened AND the
+  // response below reported `other_sessions_ended: 0` as if it were a count.
+  // The query is fixed; the count is now `null` when the revoke failed, so the
+  // number on the wire is never a number we did not measure.
+  let revoked: number | null;
+  try {
+    revoked = await revokeAllSessionsForUser(auth, { exceptToken: tokenFromRequest(req) });
+  } catch (e) {
+    logReadFailure('auth/set-password · revokeAllSessionsForUser', e);
+    revoked = null;
+  }
 
-  const ob = (await pool.query<{ onboarding_complete: boolean }>(
-    `SELECT onboarding_complete FROM users WHERE id = $1 LIMIT 1`,
-    [auth],
-  ).catch(() => ({ rows: [] as Array<{ onboarding_complete: boolean }> }))).rows[0];
+  // 2026-08-24 · swallowed-failure sweep · this was
+  // `.catch(() => ({ rows: [] }))`, and the row it could not read decides where
+  // the runner lands. A failed read became `ob === undefined` became
+  // `onboarding_complete` falsy became `/onboarding` — so one dropped
+  // connection sends a fully onboarded runner back through setup, with their
+  // password already changed. Load-bearing: a failure is an outage, not a
+  // destination.
+  const ob = await rowOrNull<{ onboarding_complete: boolean }>(
+    'auth/set-password · onboarding_complete',
+    pool.query<{ onboarding_complete: boolean }>(
+      `SELECT onboarding_complete FROM users WHERE id = $1 LIMIT 1`,
+      [auth],
+    ),
+  );
+  if (ob === null) return outage('auth/set-password', new Error('onboarding_complete read failed'));
 
   return NextResponse.json({
     ok: true,

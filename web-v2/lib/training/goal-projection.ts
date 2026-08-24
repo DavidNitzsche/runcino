@@ -43,6 +43,8 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { rowsOrNull } from '@/lib/db/read';
+import { intentValueField } from '@/lib/coach/intent-value';
 import { isoDaysBefore } from '@/lib/runs/volume';
 import { predictRaceTime, vdotFromRace, tPaceFromVdot, vdotFromTpace, parseRaceTime } from './vdot';
 import { computeDecouplingTrend } from './decoupling-trend';
@@ -1757,22 +1759,38 @@ async function detectTempoPaceDrift(
  *  adapter doesn't fire unless something's tripping it · sustained
  *  firing is a fitness drift signal. */
 async function detectPlanAdapterDrift(userUuid: string): Promise<DriftSignal | null> {
-  const r = (await pool.query<{ count: number | string }>(
-    `SELECT COUNT(DISTINCT date_trunc('week', ci.ts)) AS count
+  // 2026-08-17 · a volume_overshoot shave fires when the runner ran MORE than
+  // the plan scheduled. Counting it as evidence that they are not absorbing the
+  // plan is exactly inverted. The trigger that caused each action is stamped on
+  // the intent; rows written before that stamp carry no source_trigger and keep
+  // their prior treatment.
+  //
+  // 2026-08-24 · swallowed-failure sweep · that exclusion was written as
+  // `ci.value->>'source_trigger'` and `coach_intents.value` is a TEXT column.
+  // `operator does not exist: text ->> unknown`, every call, caught into
+  // `rows: []`, `if (!r) return null` — so the fix that meant to drop ONE
+  // trigger from the count instead dropped the whole signal. `detectPlanAdapterDrift`
+  // has returned null for every runner since. Both weeks and exclusion are
+  // resolved in TS now; see lib/coach/intent-value.ts for why not in SQL.
+  const rows = await rowsOrNull<{ wk: string; value: string | null }>(
+    'training/goal-projection · planAdapterDrift',
+    pool.query<{ wk: string; value: string | null }>(
+      `SELECT date_trunc('week', ci.ts)::text AS wk, ci.value
        FROM coach_intents ci
-      WHERE COALESCE(ci.user_uuid, ci.user_id::uuid) = $1::uuid
+      WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
         AND ci.reason IN ('plan_adapt_downgrade','plan_adapt_shave')
-        AND ci.ts >= NOW() - INTERVAL '28 days'
-        -- 2026-08-17 · a volume_overshoot shave fires when the runner ran MORE
-        -- than the plan scheduled. Counting it as evidence that they are not
-        -- absorbing the plan is exactly inverted. The trigger that caused each
-        -- action is now stamped on the intent; rows written before that stamp
-        -- carry no source_trigger and keep their prior treatment.
-        AND COALESCE(ci.value->>'source_trigger', '') <> 'volume_overshoot'`,
-    [userUuid],
-  ).catch(() => ({ rows: [] }))).rows[0];
-  if (!r) return null;
-  const weeksWithAdapts = Number(r.count);
+        AND ci.ts >= NOW() - INTERVAL '28 days'`,
+      [userUuid],
+    ),
+  );
+  // A failed read is not "the adapter has been quiet". No signal either way.
+  if (rows === null) return null;
+  const weeks = new Set<string>();
+  for (const row of rows) {
+    if (intentValueField(row.value, 'source_trigger') === 'volume_overshoot') continue;
+    weeks.add(row.wk);
+  }
+  const weeksWithAdapts = weeks.size;
   if (weeksWithAdapts < 2) return null;
 
   return {

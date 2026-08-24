@@ -178,8 +178,10 @@ function fmt(sec: number | null): string | null {
  * Which of the four "this IS a decision" triggers names why we're asking,
  * given the verdict `assessGoal` already computed and whether the runner is
  * currently on (or just off) the return-to-run ladder. Exported for the
- * route, which resolves `returningFromInjury` from the `injuries` table —
- * this function stays pure and takes the answer as a bool.
+ * route, which resolves `returningFromInjury` from the `runner_injuries` table —
+ * this function stays pure and takes the answer as a bool. (The route said
+ * `injuries` until 2026-08-24; no such table exists, so the answer was always
+ * false. See `detectReturningFromInjury`.)
  */
 export function decisionTriggerForVerdict(
   feasibility: GoalFeasibility,

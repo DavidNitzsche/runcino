@@ -1,8 +1,19 @@
 /**
  * /api/goals/[id] — update or delete a personal_goals row.
+ *
+ * 2026-08-24 · `personal_goals` does not exist in production — see the header
+ * of `app/api/goals/route.ts` for the check and the DDL proposal. Both
+ * statements below threw `relation "personal_goals" does not exist`, and
+ * `.catch(() => ({ rows: [] }))` turned that into `rows.length === 0`, which is
+ * this file's test for "goal not found". So the runner got a clean 404 telling
+ * them their goal is not there, on a table that is not there.
+ *
+ * A read that failed is not a 404. It is an outage, and it says so.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { rowsOrNull } from '@/lib/db/read';
+import { outage } from '@/lib/route/failure';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
@@ -37,19 +48,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const setClauses = cols.map((c, i) => `${c} = $${i + 3}`).join(', ');
   const values = cols.map((c) => updates[c]);
 
-  const r = await pool.query(
-    `UPDATE personal_goals SET ${setClauses}, updated_at = NOW()
+  const rows = await rowsOrNull(
+    'api/goals/[id] · patch',
+    pool.query(
+      `UPDATE personal_goals SET ${setClauses}, updated_at = NOW()
       WHERE id = $1 AND user_uuid = $2
       RETURNING id, goal_type, target, current, deadline::text AS deadline,
                 tolerance, rationale, updated_at::text AS updated_at`,
-    [Number(id), userId, ...values],
-  ).catch(() => ({ rows: [] }));
+      [Number(id), userId, ...values],
+    ),
+  );
+  if (rows === null) return outage('api/goals/[id]', new Error('personal_goals update failed'));
 
-  if (r.rows.length === 0) {
+  if (rows.length === 0) {
     return NextResponse.json({ ok: false, error: 'goal not found' }, { status: 404 });
   }
   await bustBriefingCacheForEvent(userId, 'profile_edit').catch(() => {});
-  return NextResponse.json({ ok: true, goal: r.rows[0] });
+  return NextResponse.json({ ok: true, goal: rows[0] });
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
@@ -59,14 +74,18 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const { id } = await params;
   if (!id) return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 });
 
-  const r = await pool.query(
-    `DELETE FROM personal_goals WHERE id = $1 AND user_uuid = $2 RETURNING id`,
-    [Number(id), userId],
-  ).catch(() => ({ rows: [] }));
+  const gone = await rowsOrNull<{ id: number }>(
+    'api/goals/[id] · delete',
+    pool.query<{ id: number }>(
+      `DELETE FROM personal_goals WHERE id = $1 AND user_uuid = $2 RETURNING id`,
+      [Number(id), userId],
+    ),
+  );
+  if (gone === null) return outage('api/goals/[id]', new Error('personal_goals delete failed'));
 
-  if (r.rows.length === 0) {
+  if (gone.length === 0) {
     return NextResponse.json({ ok: false, error: 'goal not found' }, { status: 404 });
   }
   await bustBriefingCacheForEvent(userId, 'profile_edit').catch(() => {});
-  return NextResponse.json({ ok: true, deleted: r.rows[0].id });
+  return NextResponse.json({ ok: true, deleted: gone[0].id });
 }
