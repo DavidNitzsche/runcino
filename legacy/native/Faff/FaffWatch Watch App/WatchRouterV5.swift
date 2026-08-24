@@ -124,11 +124,13 @@ enum WFmt {
         return String(v)
     }
 
-    /// Elevation gain → "+482". Signed, because a climb reads as a climb.
-    static func elevation(_ feet: Double?) -> String? {
-        guard let f = feet else { return nil }
-        return (f >= 0 ? "+" : "") + String(Int(f.rounded()))
-    }
+    // `elevation(_ feet: Double?)` was deleted 2026-08-24.
+    //
+    // It took FEET while `elevation(_:units:)` immediately above takes METRES,
+    // and both were named `elevation` and returned an optional off one Double.
+    // The only thing separating them was remembering to write `units:`, and
+    // forgetting it understated a climb by 3.28x with no type error and no
+    // warning. It had no callers; the tracker reports metres.
 }
 
 // MARK: - What is interrupting the run
@@ -940,7 +942,13 @@ struct WatchRunSurfaceV5: View {
             // The run keeps recording, so the board's job is to prove it:
             // two moving numbers and the way out.
             FaceWaterLockV5(
-                distance: WFmt.miles(tracker.distanceMi),
+                // `WFmt.miles` does NOT convert — `WFmt.distance` does. Four
+                // boards called the first and let `distanceUnit` fall back to
+                // its "mi" default, so a kilometre runner got miles here and
+                // kilometres everywhere else. The parameter existed; nobody
+                // passed it, and the default hid it.
+                distance: dist.value,
+                distanceUnit: dist.unit,
                 elapsed: WFmt.clock(engine.totalElapsedSec)
             )
         case .moment(let kind):
@@ -999,7 +1007,8 @@ struct WatchRunSurfaceV5: View {
             WMomentAlmostDone(value: value, unit: unit)
         case .paused:
             WMomentPaused(
-                distance: WFmt.miles(tracker.distanceMi),
+                distance: dist.value,
+                distanceUnit: dist.unit,
                 elapsed: WFmt.clock(engine.totalElapsedSec),
                 onResume: { engine.isPaused ? engine.resume() : engine.pause() },
                 onEnd: { router.confirm = .end }
@@ -1260,7 +1269,9 @@ enum WatchLobbyAdapter {
             V5LobbyStep(
                 name: phase.label,
                 value: phase.repUnit == .distance && phase.distanceMi != nil
-                    ? WFmt.miles(phase.distanceMi ?? 0) + " mi"
+                    ? { let d = WFmt.distance(phase.distanceMi ?? 0,
+                                              units: workout.unitsDistance)
+                        return d.value + " " + d.unit }()
                     : WFmt.short(phase.durationSec),
                 emphasised: phase.type == .work
             )
@@ -1291,6 +1302,7 @@ struct WatchLobbySurfaceV5: View {
     let onStart: () -> Void
 
     private var steps: [V5LobbyStep] { WatchLobbyAdapter.steps(for: workout) }
+    private var units: String? { workout.unitsDistance }
     /// A single-phase session has nothing to break down, so it pages
     /// poster → week rather than drawing a one-row list.
     private var hasBreakdown: Bool { steps.count > 1 }
@@ -1337,8 +1349,9 @@ struct WatchLobbySurfaceV5: View {
             if let strip = weekStrip {
                 V5LobbyWeek(
                     days: WatchLobbyAdapter.days(from: strip),
-                    milesRun: WFmt.miles(strip.milesDone),
-                    milesPlanned: WFmt.miles(strip.milesPlanned),
+                    milesRun: WFmt.distance(strip.milesDone, units: units).value,
+                    milesPlanned: WFmt.distance(strip.milesPlanned, units: units).value,
+                    unit: WFmt.distance(strip.milesPlanned, units: units).unit,
                     pageCount: pageCount,
                     pageIndex: pageCount - 1
                 )
@@ -1478,9 +1491,14 @@ struct WatchRecoveryReceiptV5: View {
     let summary: WatchRootModel.RecoverySummary
     let onDone: () -> Void
 
+    /// The recovered run's own units — a run that survived a crash is still
+    /// that runner's run, and its receipt should not switch them to miles.
+    private var units: String? { summary.workout.unitsDistance }
+
     var body: some View {
         FinishSummaryBoard(
-            distance: WFmt.miles(summary.completion.totalDistanceMi ?? 0),
+            distance: WFmt.distance(summary.completion.totalDistanceMi ?? 0, units: units).value,
+            distanceUnit: WFmt.distance(summary.completion.totalDistanceMi ?? 0, units: units).unit,
             duration: WFmt.clock(summary.completion.totalDurationSec),
             averages: averages,
             splits: [],

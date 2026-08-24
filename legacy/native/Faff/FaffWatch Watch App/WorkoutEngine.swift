@@ -439,15 +439,13 @@ final class WorkoutEngine: ObservableObject {
         }
     }
 
-    /// Zone for a banked/live split pace vs its own target (for coloring
-    /// the splits + session map without re-running the live evaluator).
-    func zone(forPace pace: Int?, target: Int?) -> PaceZone {
-        guard let pace, let target else { return .onTarget }
-        let d = abs(pace - target)
-        if d <= 10 { return .onTarget }
-        if d <= 15 { return .drifting }
-        return .offTarget
-    }
+    // `zone(forPace:target:)` was deleted 2026-08-24.
+    //
+    // It hardcoded 10 and 15 and never read the phase's own tolerance, so it
+    // disagreed with the live evaluator wherever a band was not 10 wide: on a
+    // 20 s/mi easy band a delta of 18 graded green live and red here. Two
+    // answers to "is this pace on target" is one too many, and it had no
+    // callers — `PaceDriftEvaluator` is the only grader.
 
     // MARK: Lifecycle
 

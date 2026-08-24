@@ -387,6 +387,9 @@ struct V5LobbyWeek: View {
     let days: [V5LobbyDay]
     let milesRun: String
     let milesPlanned: String
+    /// "mi" or "km". The board used to say "mi" in its own body, so a
+    /// kilometre runner read a converted figure under a mile's label.
+    var unit: String = "mi"
     var pageCount: Int = 3
     var pageIndex: Int = 2
 
@@ -422,7 +425,7 @@ struct V5LobbyWeek: View {
                     Text(milesRun)
                         .font(WatchV5.number(27))
                         .foregroundStyle(WatchV5.value)
-                    Text("of \(milesPlanned) mi")
+                    Text("of \(milesPlanned) \(unit)")
                         .font(WatchV5.number(15))
                         .foregroundStyle(WatchV5.valueMute)
                 }

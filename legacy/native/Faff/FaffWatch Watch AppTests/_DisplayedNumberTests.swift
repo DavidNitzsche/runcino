@@ -228,12 +228,14 @@ struct DisplayedNumberFormatterTests {
         // pass `units:`. Forgetting it silently draws a metre count as
         // feet, understating a climb by 3.28×.
         //
-        // Currently harmless: the single-argument (feet) overload has no
-        // caller anywhere in the target. Not a shipped bug, so no
-        // withKnownIssue — but pinned here so it stays visible, because
-        // this is the exact grammar the two fixed unit bugs had.
-        #expect(WFmt.elevation(147.0) == "+147")                    // 147 FEET
-        #expect(WFmt.elevation(147.0, units: "mi")?.value == "+482") // 147 METRES
+        // CLOSED 2026-08-24 by deleting the feet overload. It had no caller —
+        // the tracker reports metres — and the only thing separating the two
+        // was remembering to write `units:`, with no type error and no warning
+        // if you did not. This is the exact grammar the fixed unit bugs had.
+        //
+        // One `elevation` remains and it takes METRES.
+        #expect(WFmt.elevation(147.0, units: "mi")?.value == "+482") // 147 m -> ft
+        #expect(WFmt.elevation(147.0, units: "km")?.value == "+147") // 147 m stays
     }
 
     // ── WFmt.whole ───────────────────────────────────────────────────
@@ -284,18 +286,23 @@ struct DisplayedNumberFormatterTests {
         #expect(PaceFormat.hm(59) == "0:00")        // under a minute reads 0:00
     }
 
-    @Test func paceFormat_clockHasNoNegativeGuardUnlikeMmss() {
-        // `mmss` floors at zero and says so in its own doc comment; `clock`,
-        // `hms` and `hm` do not, and a negative escapes as a malformed
-        // string rather than a clamped one.
+    @Test func paceFormat_everyClockFormatterClampsAtZero() {
+        // FIXED 2026-08-24. `mmss` floored at zero and said so in its own doc
+        // comment; `clock`, `hms` and `hm` did not, so a negative escaped as
+        // "0:-5" — the minute divides to zero and the remainder keeps its
+        // sign, which is not merely wrong but malformed.
         //
-        // NOT marked as a bug: all three are currently unreachable — the
-        // only PaceFormat entry point with a live caller is `mmss` (three
-        // sites in WorkoutEngine). Pinned so that wiring one of them to a
-        // delta, a countdown, or a "time to goal" is a decision made with
-        // this in view.
-        #expect(PaceFormat.clock(-5) == "0:-5")
-        #expect(PaceFormat.hms(-5) == "0:-5")
+        // None had a live caller, which is why it was pinned rather than
+        // fixed at first. Clamped anyway: the two things that could plausibly
+        // be wired to them — an elapsed off a clock that moved backwards, a
+        // delta against a goal — are exactly the shapes that have gone
+        // negative in this engine before.
+        #expect(PaceFormat.clock(-5) == "0:00")
+        #expect(PaceFormat.hms(-5) == "0:00")
+        #expect(PaceFormat.hm(-5) == "0:00")
+        // And the positive cases are untouched.
+        #expect(PaceFormat.clock(135) == "2:15")
+        #expect(PaceFormat.hms(13_800) == "3:50")
     }
 }
 
@@ -956,29 +963,19 @@ struct DisplayedNumberEngineTests {
                 "no correction may fire while the zone reads on target")
     }
 
-    @Test func engineZoneHelperIgnoresThePhaseTolerance() {
-        // `WorkoutEngine.zone(forPace:target:)` hardcodes 10 / 15 and never
-        // reads the phase's own tolerance, so it disagrees with the live
-        // evaluator for any band that is not exactly 10 s/mi wide: on a
-        // 20 s/mi easy band, a Δ of 18 is GREEN live and RED here.
+    @Test func onlyOneThingGradesAPace() {
+        // `WorkoutEngine.zone(forPace:target:)` was deleted 2026-08-24. It
+        // hardcoded 10 / 15 and never read the phase's own tolerance, so it
+        // disagreed with the live evaluator for any band that is not exactly
+        // 10 s/mi wide: on a 20 s/mi easy band a delta of 18 was GREEN live
+        // and RED there. It had no caller, and two answers to "is this pace on
+        // target" is one too many.
         //
-        // NOT marked as a bug: the helper has no caller anywhere in the
-        // target — the splits and session-map views it was written to
-        // colour do not use it. Pinned so that wiring it up is a decision
-        // taken with this divergence in view.
-        let e = WorkoutEngine(workout: makeEasyRun(units: "mi"))
-        #expect(e.zone(forPace: 498, target: 480) == .offTarget)          // Δ 18
-
+        // `PaceDriftEvaluator` is the grader. This pins the case that used to
+        // disagree.
         var live = PaceDriftEvaluator(targetPaceSPerMi: 480, toleranceSPerMi: 20)
-        #expect(live.update(currentPaceSPerMi: 498).zone == .onTarget)
-
-        // Its own documented edges, for completeness.
-        #expect(e.zone(forPace: 490, target: 480) == .onTarget)           // Δ 10
-        #expect(e.zone(forPace: 491, target: 480) == .drifting)           // Δ 11
-        #expect(e.zone(forPace: 495, target: 480) == .drifting)           // Δ 15
-        #expect(e.zone(forPace: 496, target: 480) == .offTarget)          // Δ 16
-        #expect(e.zone(forPace: nil, target: 480) == .onTarget)
-        #expect(e.zone(forPace: 496, target: nil) == .onTarget)
+        #expect(live.update(currentPaceSPerMi: 498).zone == .onTarget,
+                "a delta of 18 is inside a 20 s/mi band")
     }
 
     // MARK: - Elapsed accounting
