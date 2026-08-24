@@ -39,6 +39,10 @@ struct TodayAfterV5: View {
     /// gradient and the strip, and the words carry the tense.
     private var panelFill: PanelFill { model.panel.fill }
     private var panelInk: V5.PanelInk { panelFill.ink }
+    /// The garage, when the payload did not carry one. See `shoeRow`.
+    @State private var fetchedShoes: [V5Row] = []
+    @State private var shoesLoading = false
+    @State private var shoePickerOpen = false
     let model: V5Today
 
     var onOpenAccount: () -> Void
@@ -592,51 +596,116 @@ struct TodayAfterV5: View {
     // map, never a zero — the treadmill run gets its own card, not a hollow
     // version of the outdoor one.
 
-    /// PICK THE SHOE WHERE THE QUESTION IS ASKED.
+    /// PICK THE SHOE WITHOUT LEAVING THE RUN.
     ///
-    /// This row used to push the whole Shoes screen — leaving the run, and
-    /// the run's own answer, to go and manage a garage. A garage is a handful
-    /// of pairs, so the list rides along on the payload and the choice
-    /// happens here.
+    /// Three attempts, and the first two both failed the same way. It pushed
+    /// the whole Shoes screen — answering a question about THIS run by
+    /// sending the runner somewhere else. Then it became a popup Menu, which
+    /// worked and never navigated, but drew no affordance at all: the row
+    /// looked exactly like a dead row, so the only way to discover it was to
+    /// tap something that appeared inert.
     ///
-    /// It falls back to the old navigation when the server sent no options:
-    /// an empty menu is a dead tap, and a dead tap is worse than a longer
-    /// route to the same place.
+    /// `ExpandingRow` is the answer this screen already had. It is what "Flag
+    /// a niggle" and "Not feeling right" use two inches below — a chevron, a
+    /// verb, and a list that opens IN PLACE. The picker should not have been
+    /// a new interaction; it should have been the one already here.
     @ViewBuilder
     private func shoeRow(_ shoe: V5Row) -> some View {
-        if model.shoeOptions.isEmpty {
-            ListRow(label: shoe.label, sub: shoe.sub, value: Self.fv(shoe.value),
-                    onTap: shoe.action != nil ? onChangeShoe : nil)
+        let options = shoeChoices
+        if options.count <= 1 {
+            // One pair, or none loaded yet: nothing to choose between. Draw it
+            // plain — no chevron, because a chevron promises somewhere to go.
+            ListRow(label: shoe.label, sub: shoe.sub, value: Self.fv(shoe.value), onTap: nil)
+                .task { await loadShoesIfNeeded() }
         } else {
-            Menu {
-                ForEach(model.shoeOptions, id: \.id) { opt in
-                    Button {
-                        guard opt.id != shoe.id else { return }
-                        onPickShoe(opt.id)
-                    } label: {
-                        // A tick on the pair already worn, so the menu says
-                        // what is currently true rather than only offering
-                        // alternatives.
-                        if opt.id == shoe.id {
-                            Label(opt.label, systemImage: "checkmark")
-                        } else if let sub = opt.sub, !sub.isEmpty {
-                            Text("\(opt.label) · \(sub)")
-                        } else {
-                            Text(opt.label)
+            ExpandingRow(label: shoe.label,
+                         sub: shoe.sub,
+                         value: .measured("Change"),
+                         question: "Which pair did you wear",
+                         isExpanded: $shoePickerOpen) {
+                VStack(spacing: V5.S.s6) {
+                    ForEach(options, id: \.id) { opt in
+                        Button {
+                            if opt.id != shoe.id { onPickShoe(opt.id) }
+                            withAnimation(V5.Motion.expand) { shoePickerOpen = false }
+                        } label: {
+                            HStack(spacing: V5.S.s6) {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(opt.label)
+                                        .font(.faffText(TypeScaleV5.body15))
+                                        .foregroundStyle(V5.textPrimary)
+                                    // The mileage rides along, so the list says
+                                    // the same thing about a pair that the row
+                                    // above says about the worn one.
+                                    if let sub = opt.sub, !sub.isEmpty {
+                                        Text(sub)
+                                            .font(.faffText(TypeScaleV5.label13))
+                                            .foregroundStyle(V5.textQuiet)
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                                if opt.id == shoe.id {
+                                    Image(systemName: "checkmark")
+                                        .font(.faffText(TypeScaleV5.label13, weight: .semibold))
+                                        .foregroundStyle(V5.textSecondary)
+                                }
+                            }
+                            .padding(.horizontal, V5.S.s14x)
+                            .frame(minHeight: 52)
+                            .frame(maxWidth: .infinity)
+                            .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
                         }
+                        .buttonStyle(V5PressStyle())
+                        .accessibilityLabel(opt.id == shoe.id
+                                            ? "\(opt.label), currently worn"
+                                            : opt.label)
                     }
                 }
-                Divider()
-                Button("Manage shoes", action: onChangeShoe)
-            } label: {
-                ListRow(label: shoe.label, sub: shoe.sub, value: Self.fv(shoe.value), onTap: nil)
-                    // `Menu` swallows the row's own tap target, so the row is
-                    // drawn plain and the whole thing is made hittable here.
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Shoes you wore, \(shoe.label)")
-            .accessibilityHint("Opens a menu to pick a different pair")
+            .task { await loadShoesIfNeeded() }
+        }
+    }
+
+    /// The payload's garage, or the one this view fetched for itself.
+    private var shoeChoices: [V5Row] {
+        model.shoeOptions.isEmpty ? fetchedShoes : model.shoeOptions
+    }
+
+    /// A `Picker` binding whose setter is the write. Reading it gives the pair
+    /// currently worn, so the tick sits in the right place without this view
+    /// keeping a second copy of that fact.
+    private var shoeSelection: Binding<String> {
+        Binding(
+            get: { model.shoesWorn?.id ?? "" },
+            set: { newId in
+                guard !newId.isEmpty, newId != model.shoesWorn?.id else { return }
+                onPickShoe(newId)
+            }
+        )
+    }
+
+    /// Fetch the garage once, only when the payload did not carry it.
+    ///
+    /// A phone on a new build talking to a server that predates `shoeOptions`
+    /// still gets a working picker. When the field is present this never runs.
+    private func loadShoesIfNeeded() async {
+        guard model.shoeOptions.isEmpty, fetchedShoes.isEmpty, !shoesLoading else { return }
+        shoesLoading = true
+        defer { shoesLoading = false }
+        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/shoe"))
+        req.httpMethod = "GET"
+        guard let (data, _) = try? await API.authedSend(req) else { return }
+        struct Row: Decodable { let id: Int?; let brand: String?; let model: String?; let mileage: Double?; let retired: Bool? }
+        struct Payload: Decodable { let shoes: [Row] }
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: data) else { return }
+        fetchedShoes = payload.shoes.compactMap { r in
+            guard r.retired != true, let id = r.id else { return nil }
+            let name = [r.brand, r.model].compactMap { $0 }.joined(separator: " ")
+            guard !name.isEmpty else { return nil }
+            // Same sentence the server writes, so a fetched row and a payload
+            // row are indistinguishable to the reader.
+            let sub = r.mileage.map { "\(Int($0.rounded())) mi on them" } ?? "Mileage not tracked"
+            return V5Row(id: String(id), label: name, sub: sub, value: nil, action: nil)
         }
     }
 

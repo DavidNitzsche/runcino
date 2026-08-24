@@ -39,12 +39,30 @@ YML="$NATIVE/project.yml"
 fail=0
 note() { printf '%s\n' "$*"; }
 
+# NO NATIVE TREE, NO OPINION.
+#
+# This gate runs in web-v2's `prebuild`, which is what Railway executes to
+# deploy the SERVER. A checkout without `native-v2/` is a perfectly valid web
+# build, and failing it there would take the whole site down over an Xcode
+# project file — a native gate holding the deploy hostage.
+#
+# This is NOT the silent-skip failure mode. It says which half is absent and
+# why it is not judging it, and it only ever skips when BOTH the generated
+# project and its source-of-truth are missing together. A tree with one and
+# not the other is drift, and drift is exactly what this exists to catch.
+if [ ! -f "$PROJ" ] && [ ! -f "$YML" ]; then
+  note "check-xcodeproj-sync: SKIP — no native-v2 tree in this checkout."
+  note "  Nothing to compare. A web-only build has no Xcode project to drift from."
+  exit 0
+fi
 if [ ! -f "$PROJ" ]; then
-  note "check-xcodeproj-sync: $PROJ not found"
+  note "check-xcodeproj-sync: FAIL — $YML exists but $PROJ does not."
+  note "  The generator's source is here and its output is not. Run: cd native-v2 && xcodegen generate"
   exit 1
 fi
 if [ ! -f "$YML" ]; then
-  note "check-xcodeproj-sync: $YML not found"
+  note "check-xcodeproj-sync: FAIL — $PROJ exists but $YML does not."
+  note "  A generated project with no generator. Something deleted the source of truth."
   exit 1
 fi
 
