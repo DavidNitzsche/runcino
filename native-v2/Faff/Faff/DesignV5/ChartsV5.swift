@@ -966,10 +966,34 @@ struct WeekStripV5: View {
         }
     }
 
+    /// THE RAIL SAYS WHETHER THERE IS A RUN, AND WHETHER IT IS DONE.
+    ///
+    /// David, 2026-08-21: "I cant tell what is a run and what isnt on the
+    /// days. They all have lines."
+    ///
+    /// He is right, and the cause is that four states were encoded on ONE
+    /// dimension. Rest sat at 0.18 opacity and a planned run at 0.30 — twelve
+    /// points of alpha apart, on a moving gradient, at four points tall. Those
+    /// are the same mark to anyone not comparing them side by side, which is
+    /// the only reading this strip ever gets.
+    ///
+    /// It also drew TODAY solid whatever today was, so a rest day that
+    /// happened to be today showed a full bar and read as a session.
+    ///
+    /// Now two dimensions carry it, and today carries none of it:
+    ///
+    ///   PRESENCE · a rail exists when a session does. A rest day draws
+    ///     nothing, and absence is unambiguous in a row where the other days
+    ///     have bars — far clearer than a fainter version of the same shape.
+    ///   FILL · solid when it has been run, quiet when it is still ahead.
+    ///
+    /// Today needs no encoding here: it already carries the raised pill behind
+    /// the date. Taking it out of the rail is what lets the rail answer "is
+    /// there a run today" instead of "is it today", which is the question the
+    /// number above it has already answered.
     private func rail(_ d: WeekStripDayV5) -> Color {
-        if d.isRest { return panelInk.primary.opacity(0.18) }
-        if d.isToday { return panelInk.primary }
-        return panelInk.primary.opacity(d.isDone ? 0.55 : 0.30)
+        guard !d.isRest else { return .clear }
+        return panelInk.primary.opacity(d.isDone ? 1.0 : 0.42)
     }
 }
 
