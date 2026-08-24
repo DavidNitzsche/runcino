@@ -255,47 +255,15 @@ enum FaffWidgetStore {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// NEEDS: the watch app has to WRITE this snapshot. Nothing in the app was
-// edited to do it — another agent is in those files — so the call site is
-// described here rather than added.
+// CLOSED. The watch app writes this snapshot.
 //
-// ONE call site closes it, in `PhoneSync.apply(_:)`
-// (legacy/native/Faff/FaffWatch Watch App/PhoneSync.swift, ~line 238), at the
-// end of the block that has just resolved the day's payload. It already has
-// all three branches the snapshot needs:
+// `PhoneSync.writeWidgetSnapshot(workout:message:glance:replayed:)` is
+// implemented and called from both branches of `apply(_:)` — the resolved
+// session and the no-session-with-a-reason path — and a decode failure still
+// writes nothing, so the shelf keeps its last good snapshot and ages honestly
+// rather than being cleared to a no-plan board.
 //
-//   · the `todayWorkout = workout` success branch  → a session
-//   · the `noWorkout` branch                       → rest / no session
-//   · the decode-failure branch                    → write NOTHING, so the
-//     widget keeps the last good snapshot and it goes stale honestly rather
-//     than being replaced by a wrong one
-//
-// The shape:
-//
-//     FaffWidgetStore.write(
-//         FaffSessionSnapshot(
-//             sessionDay: FaffWidgetStore.dayString(),
-//             ramp: <SessionClass on the wire — the same string the lobby
-//                    hands WatchV5.DayState.forSession>,
-//             lede: workout.name.uppercased(),   // nil where there is no
-//                                                // session type to name
-//             dose: <the single-line dose the lobby draws, already
-//                    formatted for workout.unitsDistance>,
-//             workoutId: workout.workoutId
-//         )
-//     )
-//
-// and on sign-out, `FaffWidgetStore.clear()`.
-//
-// Two things NOT to do at that call site:
-//   · Do not write on every WCSession message. `write` already no-ops on an
-//     identical payload; that is the budget guard, and calling it in a loop
-//     with a re-encoded-but-equal snapshot defeats it.
-//   · Do not write a snapshot for a day other than the one the payload is
-//     for. `sessionDay` is what staleness is measured against and it is the
-//     only thing standing between the runner and a nine-day-old dose drawn
-//     as today's.
-//
-// Until that call site exists the widget is CORRECT AND EMPTY: it draws the
-// no-plan board, which is the true answer to "what has the app told us".
-// ─────────────────────────────────────────────────────────────────────────
+// This note used to describe the call site as outstanding. It was closed and
+// the note was not, which is worse than no note: it sends the next person to
+// build something that already exists, and it did.
+
