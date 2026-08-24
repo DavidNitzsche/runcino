@@ -22,6 +22,7 @@ import { withRequestMemo } from '@/lib/runtime/request-memo';
 import { pool } from '@/lib/db/pool';
 import { zoneTargetForWorkout, zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 import { requireUserId } from '@/lib/auth/session';
+import { composeWhy } from '@/lib/faff/why-voice';
 import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { loadActivePlanStrict } from '@/lib/plan/lookup';
 import { outage } from '@/lib/route/failure';
@@ -253,6 +254,22 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   }
 
   const glance = await loadGlanceState(userId);
+
+  // The last race behind the runner, and how long ago. Read once here rather
+  // than only inside the off-season branch, because "why this run" needs it
+  // on every screen — a recovery block's whole reason is the race it follows.
+  const lastRaceRow = (await pool.query<{ name: string; date: string }>(
+    `SELECT COALESCE(meta->>'name', slug) AS name, meta->>'date' AS date
+       FROM races
+      WHERE user_uuid::text = $1 AND meta->>'priority' IN ('A', 'B')
+        AND meta->>'date' IS NOT NULL AND (meta->>'date')::date < $2::date
+      ORDER BY (meta->>'date')::date DESC LIMIT 1`,
+    [userId, today],
+  ).catch(() => ({ rows: [] as Array<{ name: string; date: string }> }))).rows[0] ?? null;
+  const daysSinceLastRace = lastRaceRow
+    ? Math.max(0, Math.round(
+        (Date.parse(today + 'T12:00:00Z') - Date.parse(lastRaceRow.date + 'T12:00:00Z')) / 86400000))
+    : null;
   const planWeek = await loadPlanWeek(userId, today);
   const todayWeekDay = planWeek.days.find((d) => d.is_today) ?? null;
   const glanceToday = glance.weekDays.find((d) => d.date === today) ?? null;
@@ -490,28 +507,18 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     plannedMi: todayPlan?.distanceMi ?? 0,
     raceDistanceMi: glance.raceGoalDistanceMi, weeksToRace: null,
   });
-  // "WHY THIS RUN" HAS TO ANSWER WHY, NOT DESCRIBE THE RUN.
+  // "WHY THIS RUN" IS A TEXT FROM A COACH, NOT A RECORD.
   //
-  // David, 2026-08-21: "this is not really saying WHY its just what the run
-  // is." He was reading "Easy day. Conversational pace · should feel like
-  // nothing." — three clauses, none of them a reason.
+  // David, 2026-08-21: "I want this section to always feel like a quick text
+  // from a coach. More conversational. Not just this, but for anything ever
+  // in this section."
   //
-  // `derivePurpose` cannot do better on its own: it is keyed on the workout
-  // TYPE, the phase and the race distance, so the most it can produce is a
-  // description of the session in front of you. It does not know a race
-  // happened, where in the block this week sits, or what the phase is for.
-  // For a RECOVERY phase it adds no fact at all — only BASE, PEAK and TAPER
-  // get one — which is why this particular screen read so thin.
-  //
-  // The reason was already authored, cited, and sitting unread. `generatePlan`
-  // writes a rationale onto every phase it builds; this runner's says
-  // "Post-race recovery · Americas Finest City. Easy running only · no
-  // quality." with `Research/00a §recovery + Pfitzinger` behind it. That IS
-  // the why, in the plan's own words, and nothing on Today ever asked for it.
-  //
-  // So the phase rationale leads and the session description follows. Nothing
-  // is invented — this is engine copy the plan committed to when it chose the
-  // block, which is exactly what the runner is owed when they ask why.
+  // It used to be three independently-authored fragments joined with full
+  // stops, each starting cold, three interpuncts between them. Every claim
+  // correct; the whole thing reading like a database row. `composeWhy` owns
+  // the register now — see lib/faff/why-voice.ts for the rules it holds, and
+  // note it invents no claim: the physiology still comes from the plan's own
+  // rationale, the day's own note and `derivePurpose`.
   const phaseRationale = activePlan
     ? ((await pool.query<{ rationale: string | null }>(
         `SELECT pp.rationale
@@ -522,13 +529,14 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         [activePlan.id, today],
       ).catch(() => ({ rows: [] }))).rows[0]?.rationale ?? null)
     : null;
-  const why = [phaseRationale, purpose.verdict, ...purpose.facts]
-    .filter(Boolean)
-    // The phase rationale often opens by naming the block, and the verdict is
-    // a one-word restatement of the type. "Post-race recovery … Easy running
-    // only · no quality. Easy day." says easy three times.
-    .filter((part, i, all) => i === 0 || !(phaseRationale && /easy running only/i.test(phaseRationale) && /^easy day\.?$/i.test(String(part).trim())))
-    .join(' ');
+  const why = composeWhy({
+    phase: glance.phaseLabel,
+    lastRaceName: lastRaceRow?.name ?? null,
+    daysSinceRace: daysSinceLastRace,
+    dayNote: todayWeekDay?.notes?.trim() || null,
+    phaseRationale,
+    fallback: [purpose.verdict, ...purpose.facts].filter(Boolean).join(' '),
+  });
 
   // ── Already ran today? → after_run (5b/5c) ─────────────────────────────
   const ranToday = glanceToday && glanceToday.doneMi >= 0.5;

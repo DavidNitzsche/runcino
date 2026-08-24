@@ -24,6 +24,12 @@ export interface PlanWeekDay {
   type: string;
   distance_mi: number;
   sub_label: string | null;
+  /** The generator's own sentence for THIS day — "Building back · easy
+   *  effort.", "Off. Still recovering." Authored on every row and, until
+   *  2026-08-21, selected by nothing at all.
+   *
+   *  Optional so a caller building a fixture does not have to invent one. */
+  notes?: string | null;
   is_today: boolean;
   is_past: boolean;
   completedRunId: string | null;
@@ -82,7 +88,11 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
   }
 
   const rows = (await pool.query(
-    `SELECT id::text AS id, date_iso, dow, type, distance_mi, sub_label
+    // `notes` is the generator's own per-day reason ("Recovery easy ·
+    // conversational, no surges."). It has been written on every workout row
+    // since the engine could author one and read by nothing — see the note on
+    // `notes` in PlanWeekDay.
+    `SELECT id::text AS id, date_iso, dow, type, distance_mi, sub_label, notes
        FROM plan_workouts
       WHERE plan_id = $1
         AND date_iso::date BETWEEN $2::date AND $3::date
@@ -203,6 +213,7 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
       type: r?.type ?? 'rest',
       distance_mi: r ? Number(r.distance_mi) || 0 : 0,
       sub_label: r?.sub_label ?? (r ? null : 'REST'),
+      notes: r?.notes ?? null,
       is_today: dISO === today,
       is_past: dISO < today,
       completedRunId: actual?.id ?? null,
