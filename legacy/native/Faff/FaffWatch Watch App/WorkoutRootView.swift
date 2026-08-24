@@ -340,7 +340,10 @@ struct WorkoutRootView: View {
     // hit four times already. See docs/design/watch-0821/AUDIT.md.
 
     var body: some View {
-        if let face = FacePreview.selected {
+        if let sim = SessionSim.request {
+            // The REAL surface, driven by a REAL engine — see _SessionSim.swift.
+            SessionSimView(archetype: sim.archetype, at: sim.at)
+        } else if let face = FacePreview.selected {
             FacePreviewView(name: face)
         } else {
             appBody

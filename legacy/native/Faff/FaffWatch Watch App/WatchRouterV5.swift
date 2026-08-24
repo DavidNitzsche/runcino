@@ -633,6 +633,22 @@ struct WatchRunSurfaceV5: View {
     // MARK: Phase boards
 
     private func isStructured(_ phase: WatchPhase) -> Bool {
+        // A ONE-PHASE WORKOUT HAS NO STRUCTURE TO SHOW.
+        //
+        // An easy run, a long run and a just-run are a single `.work` phase,
+        // and `.work` meant "structured" — so an easy six miles was drawn as a
+        // phase board: a 58:58 countdown of the phase's own duration as the
+        // lead metric, and "1 of 1" at the foot. A rep count on a run with no
+        // reps, and a countdown on a run nobody is counting down.
+        //
+        // Caught by driving the real engine through a real session and
+        // screenshotting the real surface. Every hand-written fixture for
+        // these boards passed an interval session's shape, so the board looked
+        // right in review and no easy run could ever produce it.
+        //
+        // The design says as much: §2 gives an easy run Page 1 — pace, heart,
+        // distance, time. It is what the runner gets now.
+        guard engine.workout.phases.count > 1 else { return false }
         switch phase.type {
         case .work, .recovery, .warmup: return true
         case .cooldown:                 return false
@@ -806,11 +822,39 @@ struct WatchRunSurfaceV5: View {
     /// noise, and drawing it would be a claim the run cannot support.
     private var onGoalDelta: String? {
         guard let goal = engine.workout.goalSec, goal > 0,
-              let total = engine.workout.distanceMi, total > 0,
-              tracker.distanceMi >= 0.5 else { return nil }
+              let total = engine.workout.distanceMi, total > 0 else { return nil }
+
+        // ENOUGH OF THE RACE TO BE WORTH PROJECTING FROM.
+        //
+        // The gate was a flat half mile, which is a tenth of a 5K and a
+        // fiftieth of a marathon — and this projects the runner's average pace
+        // across the WHOLE distance, so at mile 0.5 of a marathon every second
+        // of pace error is multiplied by 26.2. Caught in a simulated race,
+        // where the board drew "−172:59" in the first mile: arithmetically
+        // faithful to a noisy average, and a claim the run cannot support.
+        //
+        // Before the gun settles a runner is in a crowd, on a cold GPS fix,
+        // going out fast. A tenth of the race is the earliest this means
+        // anything — 2.6 miles into a marathon, 0.5 into a 5K, which is where
+        // the old constant happened to be right.
+        let minMi = max(0.5, total * 0.10)
+        guard tracker.distanceMi >= minMi else { return nil }
+
         let goalPace = Double(goal) / total
         let projected = Double(engine.totalElapsedSec) / tracker.distanceMi
         let deltaSec = Int(((projected - goalPace) * total).rounded())
+
+        // A DELTA THIS LARGE IS NOT A PROJECTION, IT IS A SENSOR PROBLEM.
+        //
+        // Twenty minutes either side covers any real race — a marathoner
+        // blowing up loses minutes, not an hour — and beyond it the input is
+        // more likely a GPS drop or a stopped watch than a runner. Drawing it
+        // anyway also breaks the format: `WFmt.short` is m:ss, so an hour of
+        // error renders as "172:59", which reads like a clock and is not one.
+        // Silence over an unfalsifiable claim, which is the rule everywhere
+        // else on these boards.
+        guard abs(deltaSec) < 20 * 60 else { return nil }
+
         let sign = deltaSec <= 0 ? "\u{2212}" : "+"
         return sign + WFmt.short(abs(deltaSec))
     }
