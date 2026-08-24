@@ -299,6 +299,28 @@ targets:
   # targets share the WatchThemeV5/WatchKitV5 sources, which were authored
   # against SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor. Compiling the same files
   # under a different isolation default is how one file gets two meanings.
+  # The watch engine's tests. 24 of them, and until 2026-08-24 they were in
+  # no project that could build: they live under legacy/, whose xcodeproj has
+  # no widget target and therefore cannot compile the watch app at all. Tests
+  # that never run are worse than no tests — they read as coverage.
+  FaffWatch Watch AppTests:
+    type: bundle.unit-test
+    platform: watchOS
+    sources:
+      - path: Faff/FaffWatch Watch AppTests
+    dependencies:
+      - target: FaffWatch Watch App
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: run.faff.app.watchkitapp.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/FaffWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FaffWatch Watch App"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        SWIFT_VERSION: "5.9"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_STRICT_CONCURRENCY: minimal
+        SWIFT_UPCOMING_FEATURE_STRICT_CONCURRENCY: NO
+
   FaffWatch Widgets:
     type: app-extension
     platform: watchOS

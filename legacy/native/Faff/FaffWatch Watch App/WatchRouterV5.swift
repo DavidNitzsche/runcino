@@ -1045,7 +1045,8 @@ struct WatchRunSurfaceV5: View {
         // header names the rep, because Skip without that is a question the
         // runner cannot answer.
         FaceControlsV5(
-            mode: engine.currentPhase?.type == .work ? .structured : .steady,
+            mode: engine.workout.isRace ? .race
+                : (engine.currentPhase?.type == .work ? .structured : .steady),
             header: controlsHeader,
             // Only ever called inside a rep: a steady run draws no lead verb,
             // because the one it used to draw was Lap and Lap changed nothing

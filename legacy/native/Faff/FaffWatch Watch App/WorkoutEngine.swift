@@ -559,6 +559,21 @@ final class WorkoutEngine: ObservableObject {
     /// Freeze the clock for a stoplight / water stop. Elapsed time and
     /// phase progress hold; the tracked session pauses with them.
     func pause() {
+        // A RACE CANNOT BE PAUSED (audit W-3).
+        //
+        // Race elapsed is gun-to-mat. Stopping the watch clock desyncs it from
+        // the only clock that counts, and every downstream number — the delta
+        // against goal, the projected finish, the chip-time comparison on the
+        // finish board — is computed from it.
+        //
+        // The guard was documented, tested, and absent: `racePauseIsBlocked`
+        // has been asserting this since it was written and had never run,
+        // because the watch test target was in no project that could build it.
+        // Thirty-three tests, one failure, and this was it.
+        //
+        // The controls board drops its Pause verb on a race to match — a
+        // blocked verb that still draws is the Lap problem again.
+        guard !isRace else { return }
         guard state == .running, !isPaused else { return }
         isPaused = true
         pauseStart = .now

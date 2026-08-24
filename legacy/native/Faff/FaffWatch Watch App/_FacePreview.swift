@@ -206,6 +206,11 @@ struct FacePreviewView: View {
             return AnyView(FaceControlsV5(mode: .steady,
                 header: "Mile 5 \(sep) 44:16",
                 onLead: {}, onPause: {}, onEnd: {}))
+        case "controlsrace":
+            // One verb. A race cannot be paused, so Pause is not drawn.
+            return AnyView(FaceControlsV5(mode: .race,
+                header: "Mile 9 \(sep) 1:11:48",
+                onLead: {}, onPause: {}, onEnd: {}))
         case "controlsrep":
             // Lap becomes Skip rep in the SAME slot, and the header names the
             // rep — Skip without it is a question the runner cannot answer.

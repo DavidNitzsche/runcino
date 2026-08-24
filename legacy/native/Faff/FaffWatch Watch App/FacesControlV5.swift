@@ -140,14 +140,24 @@ enum WControlsMode: Equatable {
     case steady
     /// Inside a rep of a structured session. Skip rep leads.
     case structured
+    /// Race day. ONE verb.
+    ///
+    /// A race cannot be paused — elapsed is gun-to-mat, and every number the
+    /// race board draws is computed from it (audit W-3, enforced in the
+    /// engine). So Pause is not offered rather than offered and ignored: a
+    /// verb whose effect the runner cannot see is the defect Lap was.
+    case race
 
     /// Whether a lead verb is drawn at all.
     var hasLead: Bool { self == .structured }
 
+    /// Whether Pause is offered.
+    var hasPause: Bool { self != .race }
+
     var leadVerb: String {
         switch self {
-        case .steady:     return ""
-        case .structured: return "Skip rep"
+        case .steady, .race: return ""
+        case .structured:    return "Skip rep"
         }
     }
 }
@@ -215,8 +225,26 @@ struct FaceControlsV5: View {
                     if mode.hasLead {
                         band(mode.leadVerb, fill: WatchV5.value, ink: .black, action: onLead)
                     }
-                    band("Pause", fill: WatchV5.attention, ink: .black, action: onPause)
+                    if mode.hasPause {
+                        band("Pause", fill: WatchV5.attention, ink: .black, action: onPause)
+                    }
+                    // A LONE VERB DOES NOT FILL THE SCREEN.
+                    //
+                    // The bands grow to take the space because two or three of
+                    // them should — a bigger target is a better target when
+                    // the choice is between things. A race has one verb, and
+                    // letting it grow turned the whole display into a red End
+                    // run: on the one run where ending by accident is
+                    // unrecoverable, a sleeve brush plus a tap. Rule 7 is
+                    // about exactly this, and the fact that End confirm stands
+                    // behind it is not a reason to make the door bigger.
+                    //
+                    // So on its own it takes the standard target height and
+                    // sits at the foot, with the empty board above it saying
+                    // there is nothing else here.
+                    if !mode.hasLead && !mode.hasPause { Spacer(minLength: 0) }
                     band("End run", fill: WatchV5.fault, ink: .white, action: onEnd)
+                        .frame(height: mode.hasPause || mode.hasLead ? nil : g.pill.height)
                 }
                 .padding(.top, topPad)
                 .padding(.bottom, footPad)
