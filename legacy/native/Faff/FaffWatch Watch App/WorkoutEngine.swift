@@ -164,6 +164,18 @@ final class WorkoutEngine: ObservableObject {
     /// weighted by the time it actually represents. See the sampling block in
     /// `tick()`.
     private var lastAggregateSec: Int = 0
+    /// Every unit boundary the run has crossed, and the time it took.
+    ///
+    /// The data was flowing through `tick()` and being thrown away: the split
+    /// cue is built from `lapSec` and nothing kept it. So the finish summary
+    /// had nothing per-mile to show and fell back to one row per WORK PHASE —
+    /// which on an easy run is one phase, drawn as "Mile 1" carrying the whole
+    /// run's average. A six-mile run opened at 8:00 and finished at 6:00 read
+    /// as a single 6:20 opening mile.
+    ///
+    /// Recorded whether or not the cue was drawn: the mile happened either way,
+    /// and a split suppressed inside a rep still belongs in the summary.
+    private(set) var mileSplits: [(unitIndex: Int, sec: Int)] = []
     /// Rolling distance-progress watch — see the stall check in `tick()`.
     /// Reset by `start()` so a new run never inherits the last one's stall.
     private var stallWatchMi: Double = 0
@@ -488,6 +500,7 @@ final class WorkoutEngine: ObservableObject {
         stallWatchMi = coveredMi
         stallWatchSec = 0
         lastAggregateSec = 0
+        mileSplits = []
         planComplete = false
         // AFTER the reset, not before it. This guard was fifteen lines higher
         // up and `planComplete = false` cleared it on the way past, so the
@@ -551,6 +564,22 @@ final class WorkoutEngine: ObservableObject {
     /// User tapped "End interval" — bank the current phase as ended
     /// early and advance.
     func endCurrentPhase() {
+        // NOT WHILE PAUSED. `pause()` freezes the clock and clears the board;
+        // `tick()` returns early. This did not check, so advancing from a
+        // paused run raised a "Rep 2 of 6" takeover for a rep whose clock is
+        // not running — and the router ranks a live transition ABOVE the
+        // paused board, so the paused screen was replaced by an announcement
+        // for a rep that had not started.
+        //
+        // It also left `resume()` unsound: that shifts `phaseStart` forward by
+        // the WHOLE pause, which is only correct if the phase in flight is the
+        // one that was in flight when the pause began. After a mid-pause
+        // advance it drove `phaseElapsedSec` to −6 on a 90-second rep, so the
+        // rep counted down from more than its own duration and
+        // `totalElapsedSec` went backwards with it.
+        //
+        // One guard closes both.
+        guard !isPaused else { return }
         guard state == .running, !planComplete else { return }
         advance(completedCurrent: false)
     }
@@ -1213,6 +1242,7 @@ final class WorkoutEngine: ObservableObject {
             // teleport), we only flash the most-recent mile rather than
             // queuing several — the runner can't process N flashes anyway.
             let lapSec = max(1, totalElapsedSec - lastMileElapsedSec)
+            mileSplits.append((unitIndex: mileIndex, sec: lapSec))
             lastMileElapsedSec = totalElapsedSec
             lastMileIndex = mileIndex
             noteMileBand(inBand: paceZone == .onTarget)
@@ -1234,6 +1264,8 @@ final class WorkoutEngine: ObservableObject {
             Haptics.play(moment: .split)
             flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 3.0)
         } else if mileIndex > lastMileIndex {
+            mileSplits.append((unitIndex: mileIndex,
+                               sec: max(1, totalElapsedSec - lastMileElapsedSec)))
             // Suppressed the flash, but still advance the mile bookkeeping
             // so the NEXT split (when we leave the work phase) reads the
             // correct mile number and the correct banked split duration.

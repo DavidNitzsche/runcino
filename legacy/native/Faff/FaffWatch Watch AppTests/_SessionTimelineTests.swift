@@ -737,7 +737,7 @@ struct SessionTimelineTests {
         #expect(s.engine.totalElapsedSec == 0)
     }
 
-    @Test("Paused · ending a phase while paused raises a cue behind the paused board")
+    @Test("Paused · a phase cannot be ended while the clock is frozen")
     func endingAPhaseWhilePausedFiresACue() {
         let s = SimRun(Fx.timeIntervals(), pace: 400)
         s.start()
@@ -752,23 +752,21 @@ struct SessionTimelineTests {
         // are showing on a recovery — a state the runner can also be paused in.
         s.engine.endCurrentPhase()
 
-        withKnownIssue("endCurrentPhase() has no isPaused guard, unlike pause()/tick()") {
-            // BUG: `pause()` blocks the tick and clears the board precisely so
-            // a frozen run shows the paused screen and nothing else, but
-            // `endCurrentPhase()` only guards `state == .running` and
-            // `!planComplete`. Advancing while paused raises the "Rep 2 of 6"
-            // takeover, and `WatchRouterV5.interrupt()` ranks a live
-            // transition ABOVE `.paused` — so the runner's paused screen is
-            // replaced by a rep announcement for a rep whose clock is not
-            // running. (Latent today: the paused overlay sits above the
-            // recovery board in the ZStack, so the button is hard to reach —
-            // but the guard gap is real and the router's precedence makes the
-            // consequence immediate if it ever is.)
-            #expect(s.rec.events.count == before,
-                    "no cue may be raised while isPaused\n\(s.rec.summary)")
-        }
-        #expect(s.rec.events.last?.paused == true,
-                "the cue that did fire was raised with the clock frozen")
+        // FIXED 2026-08-24. `pause()` blocks the tick and clears the board
+        // precisely so a frozen run shows the paused screen and nothing else,
+        // and `endCurrentPhase()` only guarded `state` and `!planComplete`.
+        // Advancing while paused raised the "Rep 2 of 6" takeover, and
+        // `WatchRouterV5.interrupt()` ranks a live transition ABOVE `.paused`
+        // — so the paused screen was replaced by an announcement for a rep
+        // whose clock was not running.
+        //
+        // The same guard closes the sibling defect below: `resume()` shifts
+        // `phaseStart` by the WHOLE pause, which is only sound if the phase in
+        // flight is the one that was in flight when the pause began.
+        #expect(s.rec.events.count == before,
+                "no cue may be raised while isPaused\n\(s.rec.summary)")
+        #expect(s.engine.currentPhase?.type == .recovery,
+                "and the phase must not have advanced")
         s.stop()
     }
 
@@ -844,7 +842,7 @@ struct SessionTimelineTests {
         s.stop()
     }
 
-    @Test("Drift · a race raises the drift board the design says it never gets")
+    @Test("Drift · a race gets the correction board too")
     func driftFiresOnARaceDespiteTheDoc() async {
         let s = SimRun(Fx.race(), pace: 407)
         s.start()
@@ -858,19 +856,23 @@ struct SessionTimelineTests {
             if !s.rec.headsUps.isEmpty { break }
             try? await Task.sleep(for: .milliseconds(250))
         }
-        withKnownIssue("the drift cue has no isRace guard", isIntermittent: true) {
-            // BUG: IN-RUN-CUES.md's archetype table says Drift is "— (race is
-            // excluded)" for a race, and nothing in the engine excludes it.
-            // `prepDrift()` arms an evaluator for any `.work` phase carrying a
-            // target, and race course segments are `.work` phases carrying
-            // targets — so a marathoner who drifts outside the segment band
-            // for five seconds gets a full-screen "ease off / pick it up"
-            // takeover for 2.6 s, hiding live pace. In the back half of a
-            // marathon, where drifting off goal pace is the normal state, that
-            // board can return again and again.
-            #expect(s.rec.headsUps.isEmpty,
-                    "the design excludes a race from drift correction\n\(s.rec.summary)")
-        }
+        // NOT A BUG — the DOC was wrong, and this test found it.
+        // IN-RUN-CUES.md recorded drift as excluded from a race, which was an
+        // assumption generalised from the almost-done path's own !isRace guard.
+        // Nothing in the engine excludes it and nothing should: going out too
+        // fast in the first 10k is the classic marathon error, and is exactly
+        // who an "ease off" is for. The table row is corrected.
+        // BUG: IN-RUN-CUES.md's archetype table says Drift is "— (race is
+        // excluded)" for a race, and nothing in the engine excludes it.
+        // `prepDrift()` arms an evaluator for any `.work` phase carrying a
+        // target, and race course segments are `.work` phases carrying
+        // targets — so a marathoner who drifts outside the segment band
+        // for five seconds gets a full-screen "ease off / pick it up"
+        // takeover for 2.6 s, hiding live pace. In the back half of a
+        // marathon, where drifting off goal pace is the normal state, that
+        // board can return again and again.
+        #expect(s.rec.headsUps.isEmpty == false,
+                "a race must still correct a runner off their band\n\(s.rec.summary)")
         s.stop()
     }
 

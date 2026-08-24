@@ -39,8 +39,8 @@ its sibling.
 | Mile split | ● | — *(suppressed in rep)* | — *(suppressed in rep)* | — | ● | ● |
 | Phase change | finish seg. only | each rep | each rep | each block | each segment | — |
 | Ending countdown | — | ● | — | ● if time-based | — | — |
-| Almost done | ● | — | ● | — | — | ● |
-| Drift | ● if banded | ● | ● | ● | — *(race is excluded)* | — |
+| Almost done | ● | — | ● | ● | — | — |
+| Drift | ● if banded | ● | ● | ● | ● | — |
 | Fuel | ● if planned | ● if planned | ● if planned | ● if planned | ● aid stations | — |
 
 ---
@@ -97,6 +97,15 @@ The engine's comment says a full-screen wordmark flash "was clutter", and that
 was a deliberate call — but it was made when the live face still flipped its
 distance row to a purple bonus state, which no board in 0821 does. So the
 signal it relied on is gone and the decision has not been revisited.
+
+**Three table rows were wrong, and a simulation caught them rather than a
+reader.** Drift was recorded as excluded from a race; nothing in the engine
+excludes it and nothing should — going out too fast in the first 10k is the
+classic marathon error and is exactly who the cue is for. Almost-done was
+marked present on a just-run, which carries no distance and no working
+duration, so the engine cannot fire it; and absent on a threshold, whose
+three-mile blocks are distance phases that do get it. The first row was an
+assumption generalised from the almost-done path's own `!isRace` guard.
 
 **Only three phase changes announce themselves.** Race segments, finish
 segments and work reps. Entering a warm-up, a recovery or a cool-down fires the

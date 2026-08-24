@@ -1438,10 +1438,24 @@ struct WatchFinishSurfaceV5: View {
         // A structured session's splits are one row per WORK REP, so calling
         // them miles reads "Mile 1 - 6:31" for a seven-minute threshold rep.
         let hasReps = engine.workout.phases.filter { $0.type == .work }.count > 1
-        let noun = hasReps ? "Rep" : (WFmt.isKm(units) ? "Km" : "Mile")
-        return engine.splits.enumerated().compactMap { (i, split) -> FinishSummaryRow? in
-            guard let p = WFmt.paceWithUnit(split.paceSPerMi, units: units) else { return nil }
-            return FinishSummaryRow("\(noun) \(i + 1)", p.value)
+        if hasReps {
+            return engine.splits.enumerated().compactMap { (i, split) -> FinishSummaryRow? in
+                guard let p = WFmt.paceWithUnit(split.paceSPerMi, units: units) else { return nil }
+                return FinishSummaryRow("Rep \(i + 1)", p.value)
+            }
+        }
+        // A RUN WITH NO REPS SPLITS BY DISTANCE, NOT BY PHASE.
+        //
+        // `engine.splits` is one row per work phase, and an easy, long or
+        // just-run session is ONE work phase — so this drew a single row
+        // labelled "Mile 1" carrying the whole run's average pace. A six-mile
+        // run opened at 8:00 and finished at 6:00 showed "Mile 1 · 6:20", and
+        // the runner reads that as their opening mile.
+        //
+        // The engine records every unit boundary now, so the rows are real.
+        let noun = WFmt.isKm(units) ? "Km" : "Mile"
+        return engine.mileSplits.map { split in
+            FinishSummaryRow("\(noun) \(split.unitIndex)", WFmt.short(split.sec))
         }
     }
 

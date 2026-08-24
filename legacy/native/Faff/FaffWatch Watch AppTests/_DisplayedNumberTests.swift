@@ -814,14 +814,23 @@ struct DisplayedNumberEngineTests {
         simulate(e, seconds: 1800)
         e.endCurrentPhase()
 
+        // `e.splits` is one row per WORK PHASE and still is — that is what it
+        // means, and 2280 / 6.00 = 380 s/mi is the honest phase average.
         #expect(e.splits.count == 1)
-        withKnownIssue("the row labelled Mile 1 carries the whole run's average pace") {
-            // 480 s/mi is what mile 1 was actually run at.
-            #expect(e.splits.first?.paceSPerMi == 480)
-        }
-        // What it really holds: 2280 / 6.00 = 380 s/mi.
         #expect(e.splits.first?.paceSPerMi == 380)
         #expect(e.splits.first?.state == .done)
+
+        // FIXED 2026-08-24. The defect was the summary DRAWING that single
+        // phase row as "Mile 1", so a six-mile run opened at 8:00 and finished
+        // at 6:00 read as a 6:20 opening mile. The engine records every unit
+        // boundary now, and the summary uses those for a run with no reps.
+        //
+        // Mile 1 is its own row at its own pace — 480 s — rather than the
+        // run's average wearing a mile's label.
+        #expect(e.mileSplits.first?.unitIndex == 1)
+        #expect(e.mileSplits.first?.sec == 480,
+                "the opening mile keeps its own time")
+        #expect(e.mileSplits.count >= 2, "and it is not the only row")
         e.reset()
     }
 
