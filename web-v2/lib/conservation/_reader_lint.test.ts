@@ -221,6 +221,15 @@ describe('reader lint · one reader for how long a run took', () => {
       ['app/api/v5/today/route.ts', 'the poster and the recap'],
       ['lib/coach/log-state.ts', 'the log'],
       ['lib/coach/run-state.ts', 'run detail'],
+      // Added 2026-08-24. This route is the sentence the runner actually
+      // reads — "Easy 11.0 mi at 3:37/mi" — and it was the last surface
+      // assembling its facts inline. Note that the LADDER scan above never
+      // flagged it: after the first half of the migration it spelled exactly
+      // ONE clock key (`data.durationSec`, into the weather window), and a
+      // ladder needs two. One raw key is not a ladder and is still a second
+      // opinion, which is why the wiring check exists beside the ladder check
+      // rather than instead of it.
+      ['app/api/runs/[id]/recap/route.ts', 'the post-run recap sentence'],
     ];
     // Two facades over ONE reconciler, not two readers. `runFacts` carries the
     // basis preference a surface needs; `coherentPace` / `coherentDurationSec`
@@ -237,6 +246,47 @@ describe('reader lint · one reader for how long a run took', () => {
       }
     }
     expect(unwired, 'a surface stopped reading through the shared reader and can drift again').toEqual([]);
+  });
+
+  it('nothing hands judgeWeather a raw clock key', () => {
+    /* ── THE HEAT CLOCK · added 2026-08-24 ──────────────────────────────────
+     *
+     * `judgeWeather`'s `durationS` is how long the runner was in the heat, and
+     * a null falls back to the FULL marathon-distance penalty — the Maughan
+     * table in `Research/06` is anchored at marathon duration and scaled DOWN
+     * for shorter efforts. So a missing clock does not produce a missing heat
+     * number. It produces the largest one there is.
+     *
+     * All three callers read `durationSec` directly, and 133 of the 256
+     * canonical rows carry no `durationSec` key at all — their wall clock is
+     * in `elapsedTimeS`. Those runs were charged a marathon's worth of heat.
+     * On 91 of the 207 weather-enriched rows the percentage was overstated,
+     * and on 16 the recap showed a heat note on a day that did not warrant
+     * one: "61°F. Cost you about 3% on pace" became "61°F · good conditions."
+     * The worst was a 47-minute run at 83°F told it lost 12% to heat, against
+     * a true 7%.
+     *
+     * This is the same defect as the clock ladders above wearing a different
+     * hat — a raw key read where a reconciled one belongs — but the ladder
+     * scan cannot see it, because ONE key is not a ladder. Hence its own
+     * check, keyed on the call rather than on the key count. */
+    const offenders: string[] = [];
+    for (const file of sourceFiles()) {
+      const src = fs.readFileSync(file, 'utf8');
+      if (!src.includes('judgeWeather(') && !src.includes('heatEffort(')) continue;
+      // The property assignment, on one line, with a raw key on its right.
+      for (const m of src.matchAll(/durationS:\s*([^\n]*)/g)) {
+        const rhs = m[1];
+        if (/\b(durationSec|elapsedTimeS|movingTimeS|movingSec)\b/.test(rhs)) {
+          offenders.push(`${rel(file)} — durationS: ${rhs.trim()}`);
+        }
+      }
+    }
+    expect(offenders,
+      'a heat judgement is reading a clock key directly. A null durationS charges the FULL ' +
+      'marathon-distance penalty, so a missing key silently maximises the heat number. ' +
+      'Use coherentElapsedSec / reconcileRun.',
+    ).toEqual([]);
   });
 
   it('the shared readers are called by something other than their own tests', () => {

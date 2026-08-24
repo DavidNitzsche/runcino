@@ -21,6 +21,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import type { WorkoutSpec } from '@/lib/faff/types';
 import { heatAdjustedStatus } from './heat-band';
+import { coherentElapsedSec } from '@/lib/runs/coherence';
 
 export interface GlanceWeekDay {
   date: string;            // ISO YYYY-MM-DD
@@ -212,15 +213,27 @@ async function computeTodayExecution(
     // both flip under ~8-11% slowdown). The watch's on-device `verdict` is
     // weather-unaware, so we recompute from target/actual + the run's slowdown.
     let slowdownPct = 0;
+    // 2026-08-24 · was `(data->>'durationSec')::int AS dur`, which is null on
+    // 133 of the 256 canonical rows — those carry their wall clock in
+    // `elapsedTimeS` instead. A null `durationS` makes `judgeWeather` charge
+    // the FULL marathon-distance heat penalty (Research/06 · the Maughan table
+    // is anchored there and scaled down for shorter efforts), and that number
+    // is the allowance this function then grades the runner's pace against.
+    // Too big an allowance forgives a genuine miss. The whole row comes back
+    // now so the reconciler answers the clock question once, the same way the
+    // recap route and run detail ask it.
     const wr = (await pool.query(
-      `SELECT data->'weather' AS weather, (data->>'durationSec')::int AS dur
+      `SELECT data
          FROM runs WHERE user_uuid = $1 AND data->>'date' = $2
            AND absorbed_into_canonical_at IS NULL AND (data ? 'mergedIntoId') = false
          LIMIT 1`,
       [userId, today],
-    ).catch(() => ({ rows: [] }))).rows[0] as { weather?: Record<string, unknown> | null; dur?: number | null } | undefined;
-    if (wr?.weather) {
-      const w = wr.weather;
+    ).catch(() => ({ rows: [] }))).rows[0] as { data?: Record<string, unknown> | null } | undefined;
+    const wrWeather = wr?.data && typeof wr.data === 'object'
+      ? (wr.data as Record<string, unknown>).weather as Record<string, unknown> | null | undefined
+      : null;
+    if (wrWeather) {
+      const w = wrWeather;
       const { judgeWeather } = await import('./weather-adjust');
       slowdownPct = judgeWeather({
         tempF: typeof w.temp_f === 'number' ? w.temp_f : null,
@@ -229,7 +242,7 @@ async function computeTodayExecution(
         conditions: typeof w.conditions === 'string' ? w.conditions : null,
         cloudCoverPct: typeof w.cloud_cover_pct === 'number' ? w.cloud_cover_pct : null,
         windMph: typeof w.wind_mph === 'number' ? w.wind_mph : null,
-        durationS: typeof wr.dur === 'number' ? wr.dur : null,
+        durationS: coherentElapsedSec(wr!.data),
       }).slowdownPct ?? 0;
     }
 

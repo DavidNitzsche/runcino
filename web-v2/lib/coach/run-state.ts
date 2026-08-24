@@ -1210,7 +1210,22 @@ async function computeHeatSlowdownForRun(r: Record<string, unknown>): Promise<nu
     windMph: typeof weather.wind_mph === 'number' ? weather.wind_mph : null,
     conditions: typeof weather.conditions === 'string' ? weather.conditions : null,
     cloudCoverPct: typeof weather.cloud_cover_pct === 'number' ? weather.cloud_cover_pct : null,
-    durationS: typeof r.durationSec === 'number' ? r.durationSec : null,
+    // 2026-08-24 · was `typeof r.durationSec === 'number' ? r.durationSec : null`.
+    //
+    // `durationS` is how long the runner was in the heat, and `judgeWeather`
+    // falls back to the FULL MARATHON-DISTANCE penalty when it is null
+    // (Research/06 · the Maughan table is anchored at marathon duration and
+    // scaled down for shorter efforts). 133 of 256 canonical rows carry no
+    // `durationSec` key at all — their wall clock lives in `elapsedTimeS` —
+    // so those runs were charged a marathon's worth of heat. On 2026-05-20,
+    // a 47-minute run at 83°F, the recap said heat "cost you about 12% on
+    // pace"; for that duration it is 7%. On 91 of the 207 weather-enriched
+    // rows the figure was overstated, and on 16 the note appeared at all on
+    // a day that did not warrant one — "61°F. Cost you about 3% on pace."
+    //
+    // The doc comment above promises this mirrors what the recap route
+    // passes. It has to keep doing so, so both now read the same reconciler.
+    durationS: coherentElapsedSec(r),
   });
   return j.slowdownPct ?? 0;
 }
