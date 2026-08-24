@@ -54,20 +54,50 @@ final class SpokenCues {
 
     /// Samantha, chosen by ear against Daniel, Eddy and Flo — David, 2026-08-24.
     ///
-    /// PREFERRED, NOT REQUIRED. Which voices a watch actually has installed is
-    /// not ours to decide: Apple's genuinely natural ones are Enhanced or
-    /// Premium quality and must be downloaded by the runner, and Siri's own
-    /// voice is not available to third-party apps at all. So this asks for the
-    /// best Samantha it can find, prefers a higher-quality variant if the
-    /// runner has one, and falls back to the system default rather than
-    /// refusing to speak.
+    /// PREFERRED, NOT REQUIRED, AND NOT AT ANY PRICE. Which voices a watch has
+    /// is not ours to decide: Apple's genuinely natural ones are Enhanced or
+    /// Premium quality and are downloaded rather than shipped, and Siri's own
+    /// voice is closed to third-party apps. David heard Compact Samantha and
+    /// called it computery, and he was right — Compact is the floor of what
+    /// the platform can do.
+    ///
+    /// So this ranks QUALITY FIRST and uses the name only to break a tie
+    /// inside a tier. An earlier version filtered to Samantha and only then
+    /// took the best quality, which would have pinned a watch that HAD a
+    /// better voice installed to the floor anyway — the name preference
+    /// outranking the thing the preference was a proxy for.
+    ///
+    /// Enhanced Ava beats Compact Samantha. Compact Samantha beats Compact
+    /// Fred. A watch with no English voice at all still speaks.
     private lazy var voice: AVSpeechSynthesisVoice? = {
-        let all = AVSpeechSynthesisVoice.speechVoices()
+        let ranked = AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix("en") }
-        let samantha = all.filter { $0.name.localizedCaseInsensitiveContains("Samantha") }
-        let best = samantha.max { a, b in a.quality.rawValue < b.quality.rawValue }
-        return best ?? AVSpeechSynthesisVoice(language: Locale.preferredLanguages.first)
+            .max { SpokenCues.rank($0) < SpokenCues.rank($1) }
+        return ranked ?? AVSpeechSynthesisVoice(language: Locale.preferredLanguages.first)
     }()
+
+    /// Voices David picked by ear, best first. Only consulted within a tier.
+    static let preferredNames = ["Samantha", "Ava", "Allison", "Susan", "Zoe", "Nicky"]
+
+    /// How good a voice is, in the order the qualities actually matter:
+    /// installed quality, then David's ear, then US English over other English.
+    ///
+    /// Internal rather than private so the ordering itself can be tested —
+    /// the bug this replaced was in the ORDER, not in either half.
+    static func rank(_ v: AVSpeechSynthesisVoice) -> (Int, Int, Int) {
+        rank(quality: v.quality.rawValue, name: v.name, language: v.language)
+    }
+
+    /// The ordering itself, over plain values, so a test can state the rule
+    /// without needing a watch that has the voices installed.
+    static func rank(quality: Int, name: String, language: String) -> (Int, Int, Int) {
+        let byEar = preferredNames.firstIndex {
+            name.localizedCaseInsensitiveContains($0)
+        }
+        return (quality,
+                byEar.map { preferredNames.count - $0 } ?? 0,
+                language == "en-US" ? 1 : 0)
+    }
 
     private init() {}
 

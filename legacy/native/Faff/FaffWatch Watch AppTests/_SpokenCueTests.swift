@@ -161,3 +161,78 @@ struct SpokenCueTests {
         #expect(line(.almostDone(value: "0.25", unit: "mi left")) == nil)
     }
 }
+
+
+// MARK: - Which voice the watch picks
+
+/// David heard Compact Samantha and called it computery. Compact is the
+/// platform floor, and the Enhanced and Premium tiers are downloads rather
+/// than something every watch ships with — so the app cannot choose to sound
+/// better, it can only avoid choosing to sound worse.
+///
+/// The bug these lock: preferring the NAME ahead of the QUALITY. Filtering to
+/// Samantha and then taking her best variant sounds like a preference for the
+/// better voice, and is in fact a preference for the worse one on any watch
+/// that has something good installed under another name.
+@MainActor
+struct VoicePreferenceTests {
+
+    // AVSpeechSynthesisVoiceQuality raw values.
+    private let compact = 1, enhanced = 2, premium = 3
+
+    @Test("quality outranks the name preference")
+    func qualityBeatsName() {
+        let enhancedAva = SpokenCues.rank(
+            quality: enhanced, name: "Ava", language: "en-US")
+        let compactSamantha = SpokenCues.rank(
+            quality: compact, name: "Samantha", language: "en-US")
+        #expect(enhancedAva > compactSamantha)
+    }
+
+    @Test("the name breaks a tie inside one quality tier")
+    func nameBreaksTieWithinTier() {
+        let samantha = SpokenCues.rank(
+            quality: compact, name: "Samantha", language: "en-US")
+        let fred = SpokenCues.rank(
+            quality: compact, name: "Fred", language: "en-US")
+        #expect(samantha > fred)
+    }
+
+    @Test("a voice David never named still beats a worse-quality one he did")
+    func unnamedVoiceCanWinOnQuality() {
+        let premiumStranger = SpokenCues.rank(
+            quality: premium, name: "Nathan", language: "en-US")
+        let enhancedSamantha = SpokenCues.rank(
+            quality: enhanced, name: "Samantha", language: "en-US")
+        #expect(premiumStranger > enhancedSamantha)
+    }
+
+    @Test("US English wins only when quality and name are level")
+    func localeIsTheLastWord() {
+        let us = SpokenCues.rank(
+            quality: compact, name: "Samantha", language: "en-US")
+        let gb = SpokenCues.rank(
+            quality: compact, name: "Samantha", language: "en-GB")
+        #expect(us > gb)
+
+        // ...and never ahead of quality.
+        let enhancedGB = SpokenCues.rank(
+            quality: enhanced, name: "Daniel", language: "en-GB")
+        #expect(enhancedGB > us)
+    }
+
+    @Test("every name David picked is ranked, and Samantha is first")
+    func preferredListIsHonoured() {
+        #expect(SpokenCues.preferredNames.first == "Samantha")
+        let ranks = SpokenCues.preferredNames.map {
+            SpokenCues.rank(quality: compact, name: $0, language: "en-US").1
+        }
+        // Strictly descending: each named voice outranks the next.
+        #expect(ranks == ranks.sorted(by: >))
+        #expect(Set(ranks).count == ranks.count)
+        // An unlisted voice ranks below all of them.
+        let unlisted = SpokenCues.rank(
+            quality: compact, name: "Zarvox", language: "en-US").1
+        #expect(ranks.allSatisfy { $0 > unlisted })
+    }
+}
