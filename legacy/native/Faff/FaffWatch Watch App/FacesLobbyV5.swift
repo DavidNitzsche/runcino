@@ -176,7 +176,15 @@ struct V5LobbyPoster: View {
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
 
-                VStack(spacing: 4) {
+                // TYPE RHYTHM, not a flat 4pt gap.
+                //
+                // The registers step down in size, so a single spacing value
+                // sets them at very different optical distances: 4pt under a
+                // 36pt display word is a collision, and 4pt under a 15pt line
+                // is a gulf. Each gap is now proportional to the type above
+                // it, which is what makes three lines read as one block
+                // instead of as three stacked labels.
+                VStack(spacing: 0) {
                     if let lede = session.lede {
                         WDisplayWord(text: lede, size: V5LobbySession.ledeSize(lede))
                     }
@@ -185,24 +193,26 @@ struct V5LobbyPoster: View {
                             .font(WatchV5.number(session.doseSize))
                             .foregroundStyle(WatchV5.value)
                             .multilineTextAlignment(.center)
-                            .lineSpacing(1)
+                            .padding(.top, session.doseSize * 0.22)
                     }
                     if let qualifier = session.qualifier {
                         Text(qualifier)
                             .font(WatchV5.number(15))
                             .foregroundStyle(WatchV5.prose)
                             .multilineTextAlignment(.center)
+                            .padding(.top, 3)
                     }
                     if let band = session.band {
                         Text(band)
                             .font(WatchV5.number(session.bandSize))
                             .foregroundStyle(WatchV5.valueStated)
-                            .padding(.top, 4)
+                            .padding(.top, session.bandSize * 0.34)
                     }
                     if let sub = session.bandSub {
                         Text(sub)
                             .font(WatchV5.number(15))
                             .foregroundStyle(WatchV5.valueStated)
+                            .padding(.top, 2)
                     }
                     if let note = session.note {
                         // The reason, stated once, in the coach's register.
@@ -210,15 +220,18 @@ struct V5LobbyPoster: View {
                         // argue with at 6am.
                         WCoachLine(text: note, size: 14, color: WatchV5.proseOnRamp)
                             .multilineTextAlignment(.center)
-                            .padding(.top, 4)
+                            .padding(.top, 8)
                     }
                 }
                 .frame(maxWidth: .infinity)
 
                 Spacer(minLength: 0)
 
+                // The dots belong to the reading block above, not to the
+                // target below — they say how many pages this session has.
+                // Sitting them 7pt off the pill made them read as part of it.
                 WPageDots(count: pageCount, index: pageIndex)
-                    .padding(.bottom, WatchV5.Metric.readingToStack)
+                    .padding(.bottom, 10)
 
                 WTarget(label: startLabel, weight: .onRamp, action: onStart)
             }

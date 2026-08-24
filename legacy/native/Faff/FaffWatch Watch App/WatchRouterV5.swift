@@ -836,30 +836,10 @@ struct WatchRunSurfaceV5: View {
         return "\(quick.value)–\(steady.value) \(quick.unit)"
     }
 
-    /// A figure plus the band it is being judged against. The gauge and the
-    /// grade travel together deliberately: a board cannot say "green" and
-    /// draw the mark outside the lit segment.
-    private func reading(_ value: String, grade: FacePaceGrade, phase: WatchPhase) -> WBandReading {
-        let b = band(for: phase)
-        return WBandReading(
-            value: value,
-            // The unit was never set, so every phase board drew a /km figure
-            // under a hardcoded "/mi" default — the same defect the lobby's
-            // band line already had fixed once.
-            unit: livePace.unit,
-            inBand: grade == .inBand,
-            // The REAL grade. `inBand` alone made .untrusted read as amber.
-            metric: grade.metricGrade,
-            // No fabricated band. `band(for:)` returns nil when the phase
-            // prescribes no target, and the old fallback invented one at
-            // 25-75% with the mark dead-centre — asserting a target that does
-            // not exist and claiming the runner was exactly on it.
-            hasBand: b != nil,
-            bandStart: b?.start ?? 0,
-            bandEnd: b?.end ?? 0,
-            marker: b?.marker ?? 0
-        )
-    }
+    // `reading(_:grade:phase:)` and its `WBandReading` return type were
+    // deleted with the V5 phase boards they fed. The function was still
+    // defined here and called from nowhere.
+
 
     /// The prescribed band, as fractions of the strip, or nil when the phase
     /// prescribes none. A band with no target is not a band.

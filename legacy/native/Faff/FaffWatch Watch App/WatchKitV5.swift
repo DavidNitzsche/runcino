@@ -80,10 +80,31 @@ struct WBoard<Content: View>: View {
 
             content()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(.top, g.margins.minY)
+                // CLOCK CLEARANCE, not Apple's raw content-box top.
+                //
+                // Apple's box starts at 18 and the clock inks at 20-34, so a
+                // board that leads with a display word drew it level with the
+                // time — measured on End confirm, whose "END RUN" sat on the
+                // clock's own baseline. The running faces already cleared it
+                // because the workout shell was measured separately.
+                .padding(.top, g.clockClearance)
                 .padding(.horizontal, g.margins.minX)
                 .padding(.bottom, scrolls ? 0 : g.screen.height - g.margins.maxY)
         }
+        // PINNED TO THE PHYSICAL SCREEN.
+        //
+        // `ignoresSafeArea` extends a view PAST the safe area; it does not
+        // make it fill its parent. With nothing forcing a height, the ZStack
+        // sized to its tallest child — the content — so a short board ended
+        // short and the ramp ended with it. The easy lobby stopped at 204pt of
+        // 248 and left 44pt of black under the Start pill, while the threshold
+        // lobby, whose content happens to be taller, filled correctly. A
+        // full-bleed design that is only full-bleed when the copy runs long is
+        // not full-bleed.
+        //
+        // Explicit, because there is exactly one right answer and the device
+        // knows it.
+        .frame(width: g.screen.width, height: g.screen.height)
         // The system safe area is IGNORED on purpose and replaced with
         // Apple's own layout-guide margins — see WatchLayout.swift for the
         // numbers and for why the system's own insets are the wrong tool

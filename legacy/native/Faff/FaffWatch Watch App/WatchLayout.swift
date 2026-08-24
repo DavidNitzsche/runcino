@@ -51,6 +51,20 @@ enum WatchLayout {
         /// First text baseline under the top margin.
         let firstBaseline: CGFloat
 
+        /// Where content must start to clear the SYSTEM CLOCK.
+        ///
+        /// Apple's content box starts at 18 on a 46mm and the clock's own ink
+        /// sits at y 20-34 — measured off the simulator, not assumed. So the
+        /// top of Apple's box is inside the clock's line, and any board whose
+        /// first element is display-register type lands level with the time.
+        /// Small-caps kickers beside the clock are a normal watchOS pattern
+        /// and read fine; a 26pt word does not.
+        ///
+        /// This is the number the design's own rule 5 was reaching for when it
+        /// said "the top 22pt of every board is empty". 22 was measured off the
+        /// design file's shell; this is measured off the device.
+        var clockClearance: CGFloat { 36 }
+
         /// `Three Bottom Controls`: two 35pt side slots and one 46pt centre
         /// slot, all sharing a centre line.
         let sideControl: CGFloat

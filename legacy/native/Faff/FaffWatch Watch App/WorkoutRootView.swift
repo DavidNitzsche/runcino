@@ -340,7 +340,11 @@ struct WorkoutRootView: View {
     // hit four times already. See docs/design/watch-0821/AUDIT.md.
 
     var body: some View {
-        appBody
+        if let face = FacePreview.selected {
+            FacePreviewView(name: face)
+        } else {
+            appBody
+        }
     }
 
     private var appBody: some View {

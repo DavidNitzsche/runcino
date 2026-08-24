@@ -346,50 +346,6 @@ struct FaceGPSAcquiringV5: View {
     }
 }
 
-/// Board `Heart dropout`.
-///
-/// **Page 1 with ONE SLOT BROKEN.** The other three values are untouched — the
-/// pace still grades, the distance and the elapsed still read exactly as they
-/// did a second ago — so the failure reads as one slot and not one screen.
-///
-/// Rule 2 is absolute in that broken slot: red states that the sensor is
-/// unread, IN WORDS, and never renders a number. A red 148 would be a value
-/// the runner half believes. A last-known number greyed out was drawn and
-/// thrown away: a stale heart rate in a work interval is worse than none.
-/// `WSensorFault` takes no figure, so this cannot be undone by accident.
-///
-/// Still four slots, so rule 4 holds: the broken one occupies its slot rather
-/// than vacating it, which is what keeps the other three where the runner's
-/// eye already is.
-struct FaceHeartDropoutV5: View {
-    /// The lead metric, still graded — the session's question is unaffected.
-    let pace: String
-    var paceUnit: String = "/mi"
-    var paceInBand: Bool = true
-    let distance: String
-    var distanceUnit: String = "mi"
-    let elapsed: String
-
-    var body: some View {
-        WBoard {
-            VStack(alignment: .leading, spacing: 8) {
-                Spacer(minLength: 0)
-
-                WMetric(value: pace, unit: paceUnit, rank: .hero,
-                        grade: paceInBand ? .inBand : .outOfBand)
-
-                // The broken slot. Words, never a figure. 19pt by
-                // default, which is what the design draws.
-                WSensorFault(sensor: "No heart signal")
-
-                WMetric(value: distance, unit: distanceUnit, rank: .secondary, size: 31)
-                WMetric(value: elapsed, rank: .tertiary, grade: .dim, size: 26)
-
-                Spacer(minLength: 0)
-            }
-        }
-    }
-}
 
 /// Board `Low battery`.
 ///
@@ -466,8 +422,19 @@ struct FaceWaterLockV5: View {
                 Spacer(minLength: 0)
 
                 WDisplayWord(text: "Locked", size: 22, color: WatchV5.valueDim)
-                WFigure(value: distance, unit: distanceUnit, size: 38)
-                WFigure(value: elapsed, size: 28, color: WatchV5.valueDim)
+
+                // The two live numbers go through the shared stack rather than
+                // being hand-sized at 38 and 28. Two moving figures at two
+                // sizes is the same defect the no-heart-signal board had: the
+                // board's job here is to PROVE the run is still recording, and
+                // a pair that disagrees about its own type size undercuts that
+                // before it is read.
+                WorkoutMetricStack(metrics: [
+                    WorkoutMetric(value: distance, unit: distanceUnit, role: "Distance"),
+                    WorkoutMetric(value: elapsed, role: "Elapsed"),
+                ])
+                .frame(height: 92)
+
                 WCoachLine(text: "Turn the crown to unlock.", size: 13, color: WatchV5.valueLabel)
                     .padding(.top, 4)
 
@@ -680,11 +647,6 @@ struct FaceSpokenCueV5: View {
 
 #Preview("GPS acquiring") {
     FaceGPSAcquiringV5(onStart: {})
-}
-
-#Preview("Heart dropout") {
-    FaceHeartDropoutV5(pace: "8:24", paceInBand: true,
-                       distance: "3.41", elapsed: "28:39")
 }
 
 #Preview("Low battery") {

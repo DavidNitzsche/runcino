@@ -317,7 +317,7 @@ struct FinishSummaryBoard: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, WatchV5.Metric.bottomPadding)
+                .padding(.bottom, 12)   // scrolling board owns its own tail inset
             }
         }
     }

@@ -39,111 +39,118 @@ private let offBand = (start: 0.30, end: 0.70, marker: 0.86, inBand: false)
 struct FacePreviewView: View {
     let name: String
 
+    // SPLIT BY CATEGORY, returning AnyView. One switch over fifty boards
+    // inside a ViewBuilder does not type-check in reasonable time — the
+    // compiler has to unify fifty distinct result types into one opaque
+    // return. AnyView erases them, and the cost is irrelevant in a harness
+    // that renders one board and exits.
     var body: some View {
+        running() ?? phases() ?? controls() ?? faults()
+            ?? asks() ?? moments() ?? lobby() ?? finish()
+            ?? AnyView(Color.black)
+    }
+
+    private func running() -> AnyView? {
         switch name {
 
         // MARK: Page 1
 
         case "p1":
-            RunFaceV6(pace: "7:38", grade: .onTarget, band: inBand,
-                      heartRate: "154", distance: "8.72", elapsed: "1:14:28")
+            return AnyView(RunFaceV6(pace: "7:38", grade: .onTarget, band: inBand,
+                      heartRate: "154", distance: "8.72", elapsed: "1:14:28"))
         case "p1drift":
-            RunFaceV6(pace: "8:24", grade: .drifting, band: offBand,
-                      heartRate: "171", distance: "12.06", elapsed: "1:41:53")
+            return AnyView(RunFaceV6(pace: "8:24", grade: .drifting, band: offBand,
+                      heartRate: "171", distance: "12.06", elapsed: "1:41:53"))
         case "p1nohr":
-            RunFaceV6(pace: "7:38", grade: .onTarget, band: inBand,
-                      heartRate: nil, distance: "8.72", elapsed: "1:14:28")
+            return AnyView(RunFaceV6(pace: "7:38", grade: .onTarget, band: inBand,
+                      heartRate: nil, distance: "8.72", elapsed: "1:14:28"))
         case "p1tread":
             // A belt grades nothing and gets no gauge: there is no trustworthy
             // pace to put a mark on. White throughout, by rule.
-            RunFaceV6(pace: "8:00", grade: .neutral,
-                      heartRate: "142", distance: "3.10", elapsed: "24:48")
+            return AnyView(RunFaceV6(pace: "8:00", grade: .neutral,
+                      heartRate: "142", distance: "3.10", elapsed: "24:48"))
         case "p1free":
             // A steady run with no prescribed band. Pace is measured, not
             // graded, so it is white and there is no strip.
-            RunFaceV6(pace: "8:57", grade: .neutral,
-                      heartRate: "139", distance: "6.21", elapsed: "55:36")
+            return AnyView(RunFaceV6(pace: "8:57", grade: .neutral,
+                      heartRate: "139", distance: "6.21", elapsed: "55:36"))
         case "p1ugly":
             // Worst case in every slot at once.
-            RunFaceV6(pace: "10:59", grade: .drifting, band: offBand,
-                      heartRate: "204", distance: "100.0", elapsed: "5:59:59")
-
+            return AnyView(RunFaceV6(pace: "10:59", grade: .drifting, band: offBand,
+                      heartRate: "204", distance: "100.0", elapsed: "5:59:59"))
         // MARK: Page 2
 
         case "p2":
-            PerfFaceV6(cadence: "158", averagePace: "7:51",
-                       power: "287", elevation: "+842")
+            return AnyView(PerfFaceV6(cadence: "158", averagePace: "7:51",
+                       power: "287", elevation: "+842"))
         case "p2min":
             // Power and climb absent. The board becomes two metrics; it never
             // draws a dash, because a dash claims the slot is working.
-            PerfFaceV6(cadence: "204", averagePace: "12:34")
+            return AnyView(PerfFaceV6(cadence: "204", averagePace: "12:34"))
         case "p2tread":
-            PerfFaceV6(cadence: "176", averagePace: "9:14")
-
+            return AnyView(PerfFaceV6(cadence: "176", averagePace: "9:14"))
         // MARK: Always-On
 
         case "alwayson":
-            AlwaysOnFaceV6(pace: "7:42", grade: .onTarget,
-                           distance: "5.72", elapsedMinutes: "44")
-
+            return AnyView(AlwaysOnFaceV6(pace: "7:42", grade: .onTarget,
+                           distance: "5.72", elapsedMinutes: "44"))
         // MARK: Structured phases
 
         case "warmup":
-            PhaseFaceV6(phase: "Warm-up", metrics: [
+            return AnyView(PhaseFaceV6(phase: "Warm-up", metrics: [
                 WorkoutMetric(value: "4:12", role: "Time left"),
                 WorkoutMetric(value: "9:31", unit: "/mi", role: "Pace"),
                 WorkoutMetric(value: "128", unit: "bpm", role: "Heart rate"),
                 WorkoutMetric(value: "1.06", unit: "mi", role: "Distance"),
-            ])
+            ]))
         case "work":
-            PhaseFaceV6(phase: "Work", context: "3 of 6",
+            return AnyView(PhaseFaceV6(phase: "Work", context: "3 of 6",
                         band: offBand, bandRow: 1, metrics: [
                 WorkoutMetric(value: "1:12", role: "Time left in rep"),
                 WorkoutMetric(value: "6:48", unit: "/mi", grade: .drifting, role: "Pace"),
                 WorkoutMetric(value: "168", unit: "bpm", role: "Heart rate"),
                 WorkoutMetric(value: "0.42", unit: "mi", role: "Rep distance"),
-            ])
+            ]))
         case "recovery":
             // Two metrics, no pace, no band. A recovery is not asking for a
             // pace and drawing one invites the runner to race it.
-            PhaseFaceV6(phase: "Recovery", context: "3 of 6", metrics: [
+            return AnyView(PhaseFaceV6(phase: "Recovery", context: "3 of 6", metrics: [
                 WorkoutMetric(value: "1:12", role: "Time left"),
                 WorkoutMetric(value: "148", unit: "bpm", role: "Heart rate"),
-            ])
+            ]))
         case "strides":
             // Cadence, not pace: over twenty seconds a GPS pace is mostly lag.
-            PhaseFaceV6(phase: "Strides", context: "4 of 8", metrics: [
+            return AnyView(PhaseFaceV6(phase: "Strides", context: "4 of 8", metrics: [
                 WorkoutMetric(value: "0:14", role: "Time left in stride"),
                 WorkoutMetric(value: "191", unit: "spm", role: "Cadence"),
                 WorkoutMetric(value: "162", unit: "bpm", role: "Heart rate"),
-            ])
+            ]))
         case "threshold":
-            PhaseFaceV6(phase: "Threshold", context: "2 of 4",
+            return AnyView(PhaseFaceV6(phase: "Threshold", context: "2 of 4",
                         band: inBand, bandRow: 1, metrics: [
                 WorkoutMetric(value: "5:30", role: "Time left in rep"),
                 WorkoutMetric(value: "6:31", unit: "/mi", grade: .onTarget, role: "Pace"),
                 WorkoutMetric(value: "6:34", unit: "avg", role: "Average pace"),
                 WorkoutMetric(value: "172", unit: "bpm", role: "Heart rate"),
-            ])
+            ]))
         case "race":
             // The graded metric is row 0 here, not row 1 — which is why the
             // router derives the band row instead of hardcoding it.
-            PhaseFaceV6(phase: "Mile 9", context: "sub 3:30",
+            return AnyView(PhaseFaceV6(phase: "Mile 9", context: "sub 3:30",
                         band: inBand, bandRow: 0, metrics: [
                 WorkoutMetric(value: "7:52", unit: "/mi", grade: .onTarget, role: "Pace"),
                 WorkoutMetric(value: "−0:22", role: "Against goal"),
                 WorkoutMetric(value: "9.14", unit: "mi", role: "Distance"),
                 WorkoutMetric(value: "1:11:48", role: "Elapsed"),
-            ])
+            ]))
         case "raceugly":
-            PhaseFaceV6(phase: "Mile 26", context: "sub 3:30",
+            return AnyView(PhaseFaceV6(phase: "Mile 26", context: "sub 3:30",
                         band: offBand, bandRow: 0, metrics: [
                 WorkoutMetric(value: "10:59", unit: "/mi", grade: .drifting, role: "Pace"),
                 WorkoutMetric(value: "+12:47", role: "Against goal"),
                 WorkoutMetric(value: "26.22", unit: "mi", role: "Distance"),
                 WorkoutMetric(value: "4:38:02", role: "Elapsed"),
-            ])
-
+            ]))
         // MARK: The metric-count matrix
         //
         // Task 2 of the foundation brief: one to four metrics on the final
@@ -151,37 +158,232 @@ struct FacePreviewView: View {
         // rather than at the one a board happens to use.
 
         case "m1":
-            WorkoutPage { WorkoutMetricStack(metrics: [
+            return AnyView(WorkoutPage { WorkoutMetricStack(metrics: [
                 WorkoutMetric(value: "10:59", unit: "/mi", grade: .onTarget, role: "Pace"),
-            ]) }
+            ]) })
         case "m2":
-            WorkoutPage { WorkoutMetricStack(metrics: [
+            return AnyView(WorkoutPage { WorkoutMetricStack(metrics: [
                 WorkoutMetric(value: "1:11:48", role: "Elapsed"),
                 WorkoutMetric(value: "204", unit: "bpm", role: "Heart rate"),
-            ]) }
+            ]) })
         case "m3":
-            WorkoutPage { WorkoutMetricStack(metrics: [
+            return AnyView(WorkoutPage { WorkoutMetricStack(metrics: [
                 WorkoutMetric(value: "10:59", unit: "/mi", grade: .drifting, role: "Pace"),
                 WorkoutMetric(value: "100.0", unit: "mi", role: "Distance"),
                 WorkoutMetric(value: "5:59:59", role: "Elapsed"),
-            ]) }
+            ]) })
         case "m4":
-            WorkoutPage { WorkoutMetricStack(metrics: [
+            return AnyView(WorkoutPage { WorkoutMetricStack(metrics: [
                 WorkoutMetric(value: "10:59", unit: "/mi", grade: .drifting, role: "Pace"),
                 WorkoutMetric(value: "204", unit: "bpm", role: "Heart rate"),
                 WorkoutMetric(value: "100.0", unit: "mi", role: "Distance"),
                 WorkoutMetric(value: "5:59:59", role: "Elapsed"),
-            ]) }
+            ]) })
         case "m4band":
-            WorkoutPage { WorkoutMetricStack(band: offBand, bandRow: 0, metrics: [
+            return AnyView(WorkoutPage { WorkoutMetricStack(band: offBand, bandRow: 0, metrics: [
                 WorkoutMetric(value: "10:59", unit: "/mi", grade: .drifting, role: "Pace"),
                 WorkoutMetric(value: "204", unit: "bpm", role: "Heart rate"),
                 WorkoutMetric(value: "100.0", unit: "mi", role: "Distance"),
                 WorkoutMetric(value: "5:59:59", role: "Elapsed"),
-            ]) }
+            ]) })
+        default: return nil
+        }
+    }
 
-        default:
-            Color.black
+    // MARK: - Structured phases (V6 boards live in running(); nothing here yet)
+
+    private func phases() -> AnyView? { nil }
+
+    // MARK: - Controls
+    //
+    // Reached by tapping the running face. Three verbs and no telemetry: the
+    // runner came here to do something, not to read.
+
+    private func controls() -> AnyView? {
+        let sep = WatchV5.separator
+        switch name {
+        case "controls":
+            return AnyView(FaceControlsV5(mode: .steady,
+                header: "Mile 5 \(sep) 44:16",
+                onLead: {}, onPause: {}, onEnd: {}))
+        case "controlsrep":
+            // Lap becomes Skip rep in the SAME slot, and the header names the
+            // rep — Skip without it is a question the runner cannot answer.
+            return AnyView(FaceControlsV5(mode: .structured,
+                header: "Rep 4 of 6 \(sep) 1:12 left",
+                onLead: {}, onPause: {}, onEnd: {}))
+        case "endconfirm":
+            return AnyView(FaceEndConfirmV5(unfinished: "Two reps unfinished",
+                onEndAndSave: {}, onKeepRunning: {}, onDiscard: {}))
+        case "endconfirmclean":
+            return AnyView(FaceEndConfirmV5(
+                onEndAndSave: {}, onKeepRunning: {}, onDiscard: {}))
+        case "skipconfirm":
+            return AnyView(FaceSkipConfirmV5(repLabel: "Skip rep 4",
+                coachLine: "Three are banked \(sep) the last three are where the session earns its name.",
+                onSkipAnyway: {}, onFinishIt: {}))
+        case "extend":
+            return AnyView(FaceExtendRecoveryV5(secondsRemaining: 72,
+                onAddThirty: {}, onGoNow: {}))
+        default: return nil
+        }
+    }
+
+    // MARK: - Faults
+    //
+    // No sensor blocks the run. Start stays pressable on every board here.
+
+    private func faults() -> AnyView? {
+        switch name {
+        case "gps":
+            return AnyView(FaceGPSAcquiringV5(onStart: {}))
+        // "heartdrop" is GONE. The design says the no-heart-signal state IS
+        // page 1 with one slot broken, and page 1 does that — see "p1nohr".
+        // A second board for the same state drew the same three numbers at
+        // three different sizes and was wired to nothing.
+        case "battery":
+            return AnyView(FaceLowBatteryV5(percent: 14, projectedMinutes: 40,
+                onDropGPS: {}, onKeepItAll: {}))
+        case "batterynoest":
+            // The projection clause is DROPPED, not guessed.
+            return AnyView(FaceLowBatteryV5(percent: 14, projectedMinutes: nil,
+                onDropGPS: {}, onKeepItAll: {}))
+        case "waterlock":
+            return AnyView(FaceWaterLockV5(distance: "4.88", elapsed: "41:02"))
+        default: return nil
+        }
+    }
+
+    // MARK: - The coach asks
+
+    private func asks() -> AnyView? {
+        let sep = WatchV5.separator
+        switch name {
+        case "bail":
+            return AnyView(FaceBailOfferedV5(evidence: "Two miles adrift",
+                judgement: "The stimulus is already banked \(sep) forcing the rest buys fatigue, not fitness.",
+                onCutItShort: {}, onRunItOut: {}))
+        case "ceiling":
+            return AnyView(FaceCeilingBreachV5(bpm: "178", ceiling: "168"))
+        case "ceilingoverride":
+            return AnyView(FaceCeilingOverrideV5(bpm: "174", ceiling: "165",
+                coachLine: "Hot day, so the number runs high \(sep) the effort may be honest.",
+                onLiftForToday: {}, onEaseOff: {}))
+        case "spokencue":
+            return AnyView(FaceSpokenCueV5(
+                line: "Last two miles. Hold what you have \(sep) this is the part that counts."))
+        default: return nil
+        }
+    }
+
+    // MARK: - Moments
+    //
+    // Take the screen for two or three seconds behind a haptic, then give it
+    // back. A moment REDUCES density: one or two registers at a size no other
+    // board uses.
+
+    private func moments() -> AnyView? {
+        let sep = WatchV5.separator
+        switch name {
+        case "mgo":
+            return AnyView(WMomentGo(session: "easy"))
+        case "mphase":
+            return AnyView(WMomentPhaseChange(word: "Work",
+                detail: "Rep 4 of 6 \(sep) 3 min", band: "6:45\u{2013}7:00"))
+        case "msplit":
+            return AnyView(WMomentSplit(label: "Mile 5", time: "7:48",
+                comparison: "4 sec quicker"))
+        case "mfuel":
+            return AnyView(WMomentFuel(index: 2, total: 3))
+        case "measeoff":
+            return AnyView(WMomentHeadsUp(direction: .easeOff, pace: "7:48",
+                band: "8:15\u{2013}8:45"))
+        case "mquicken":
+            return AnyView(WMomentHeadsUp(direction: .quicken, pace: "7:14",
+                band: "6:45\u{2013}7:00"))
+        case "mpaused":
+            return AnyView(WMomentPaused(distance: "5.72", elapsed: "44:16",
+                onResume: {}, onEnd: {}))
+        default: return nil
+        }
+    }
+
+    // MARK: - Lobby
+    //
+    // The one place colour fills a screen. The lede steps DOWN as the session
+    // name grows, which is the whole reason every name length is a fixture.
+
+    private func lobby() -> AnyView? {
+        switch name {
+        case "lobbyeasy":
+            return AnyView(V5LobbyPoster(session: V5LobbyFixtures.easy,
+                pageCount: 2, pageIndex: 0) { })
+        case "lobbylong":
+            return AnyView(V5LobbyPoster(session: V5LobbyFixtures.long,
+                pageCount: 2, pageIndex: 0) { })
+        case "lobbythreshold":
+            return AnyView(V5LobbyPoster(session: V5LobbyFixtures.threshold,
+                pageCount: 3, pageIndex: 0) { })
+        case "lobbyintervals":
+            return AnyView(V5LobbyPoster(session: V5LobbyFixtures.intervals,
+                pageCount: 3, pageIndex: 0) { })
+        case "lobbyrace":
+            return AnyView(V5LobbyPoster(session: V5LobbyFixtures.race,
+                pageCount: 3, pageIndex: 0) { })
+        case "lobbymoved":
+            // Readiness arrived and changed the dose. It appears as a session
+            // that HAS already changed, with the reason stated once — never as
+            // a score to argue with at 6am.
+            return AnyView(V5LobbyPoster(session: V5LobbyFixtures.readinessMoved,
+                pageCount: 2, pageIndex: 0) { })
+        case "lobbyplan":
+            return AnyView(V5LobbyBreakdown(kicker: "The plan",
+                steps: V5LobbyFixtures.racePlan,
+                footerName: "Gels", footerValue: "8 \u{00B7} 15 \u{00B7} 21",
+                pageCount: 3, pageIndex: 1))
+        case "lobbysteps":
+            return AnyView(V5LobbyBreakdown(kicker: "The steps",
+                steps: V5LobbyFixtures.sessionSteps,
+                pageCount: 3, pageIndex: 1))
+        case "lobbyweek":
+            return AnyView(V5LobbyWeek(days: V5LobbyFixtures.week,
+                milesRun: "18", milesPlanned: "42",
+                pageCount: 3, pageIndex: 2))
+        case "restday":
+            return AnyView(V5LobbyRefusal(lede: "Rest",
+                sentence: "Nothing today \u{00B7} you ran 34 miles this week and the long one was Sunday. Resting is the work.",
+                escapeLabel: "Run anyway", ramp: .rest) { })
+        default: return nil
+        }
+    }
+
+    // MARK: - Finish and pre-session
+
+    private func finish() -> AnyView? {
+        let sep = WatchV5.separator
+        switch name {
+        case "complete":
+            return AnyView(FinishCompleteBoard(session: "easy", distance: "6.02",
+                duration: "48:12", pace: "8:01 /mi",
+                coachLine: "Held the band the whole way \(sep) that is the session.") { })
+        case "racecomplete":
+            return AnyView(FinishRaceCompleteBoard(raceName: "Marathon",
+                watchTime: "3:28:44", goalComparison: "Under 3:29:59") { })
+        case "summary":
+            return AnyView(FinishSummaryBoard(distance: "6.02", duration: "48:12",
+                averages: [FinishSummaryRow("Pace", "8:01 /mi"),
+                           FinishSummaryRow("Heart", "148 avg"),
+                           FinishSummaryRow("Cadence", "159 spm")],
+                splits: [FinishSummaryRow("Mile 1", "8:12"),
+                         FinishSummaryRow("Mile 2", "8:04"),
+                         FinishSummaryRow("Mile 3", "7:58"),
+                         FinishSummaryRow("Mile 4", "7:56"),
+                         FinishSummaryRow("Mile 5", "8:00"),
+                         FinishSummaryRow("Mile 6", "7:54")],
+                totals: [FinishSummaryRow("Climb", "312 ft")]))
+        case "firstlaunch":
+            return AnyView(PreSessionFirstLaunchBoard { })
+        default: return nil
         }
     }
 }
