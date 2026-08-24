@@ -1211,6 +1211,25 @@ struct SplitBar: Identifiable, Equatable {
     var fraction: Double = 1
     /// Nil when the run carries no target window.
     var inBand: Bool? = nil
+
+    /// Average heart rate over this split, when the row carried one.
+    ///
+    /// SPOKEN, NOT DRAWN, AND THAT IS PENDING A RULING.
+    ///
+    /// `RunSplit` has carried `hr` in the same row the chart reads pace from
+    /// since it was written, and nothing has ever read it. Round three item 5
+    /// asked design to confirm that this chart is bars only — "no labels, no
+    /// scale, it reads beautifully as the shape of a run" — and that question
+    /// is still open. Until it is answered, a second visible channel is not
+    /// something to add on our own: the chart's one job is the shape, and
+    /// height already carries pace.
+    ///
+    /// So the honest minimum ships. VoiceOver already names every bar with its
+    /// mile and its pace, and now names its heart rate too — real data
+    /// reaching a real reader, at zero cost to the reading the chart exists
+    /// for. If the ruling comes back "give it a visible channel", this field
+    /// is already populated and the change is in the drawing, not the wire.
+    var hr: Int? = nil
 }
 
 struct SplitBars: View {
@@ -1267,10 +1286,16 @@ struct SplitBars: View {
         let which = b.fraction < 0.95
             ? "Part mile \(b.mile), \(Int((b.fraction * 10).rounded())) tenths"
             : "Mile \(b.mile)"
+        // The heart rate goes LAST and only when the row carried one. Pace is
+        // what the bar's height means and stays the first thing said; a
+        // reader listening for mile nine's pace should not have to sit
+        // through a heart rate to reach it. A split with no HR says nothing
+        // about HR rather than "no data" — absence is not a reading.
+        let heart = b.hr.map { ", heart rate \($0)" } ?? ""
         switch b.inBand {
-        case .some(true):  return "\(which), \(pace) per \(unitWord), inside the target."
-        case .some(false): return "\(which), \(pace) per \(unitWord), outside the target."
-        case .none:        return "\(which), \(pace) per \(unitWord)."
+        case .some(true):  return "\(which), \(pace) per \(unitWord), inside the target\(heart)."
+        case .some(false): return "\(which), \(pace) per \(unitWord), outside the target\(heart)."
+        case .none:        return "\(which), \(pace) per \(unitWord)\(heart)."
         }
     }
 

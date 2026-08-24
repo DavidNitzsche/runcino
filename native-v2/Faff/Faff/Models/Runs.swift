@@ -233,6 +233,11 @@ struct RunDetail: Decodable, Identifiable {
     let name: String?
     let source: String
     let type: String?
+    /// The runner-facing word for `type`, composed by the server's one
+    /// enum-to-name table (`displayTypeFor`). Nil on a server that predates
+    /// the field; see `RunDetailV5.title` for what happens then and why the
+    /// table is not restated here.
+    let type_display: String?
 
     let distance_mi: Double
     let pace: String?
@@ -298,7 +303,7 @@ struct RunDetail: Decodable, Identifiable {
     let recovery_extensions: [RunRecoveryExtension]
 
     enum CodingKeys: String, CodingKey {
-        case id, date, start_local, name, source, type
+        case id, date, start_local, name, source, type, type_display
         case distance_mi, pace, pace_s_per_mi, time_moving, time_elapsed, avg_speed_mph
         case hr_avg, hr_max, cadence_avg, elev_gain_ft, temp_f
         case has_route, route_polyline, splits, hrZonePcts, form
@@ -317,6 +322,7 @@ struct RunDetail: Decodable, Identifiable {
         self.name = try c.decodeIfPresent(String.self, forKey: .name)
         self.source = try c.decodeIfPresent(String.self, forKey: .source) ?? "unknown"
         self.type = try c.decodeIfPresent(String.self, forKey: .type)
+        self.type_display = try c.decodeIfPresent(String.self, forKey: .type_display)
         self.distance_mi = try c.decodeIfPresent(Double.self, forKey: .distance_mi) ?? 0
         self.pace = try c.decodeIfPresent(String.self, forKey: .pace)
         self.pace_s_per_mi = c.decodeFlexInt(forKey: .pace_s_per_mi)
@@ -377,6 +383,75 @@ struct PhaseBreakdown: Decodable, Identifiable {
     let avg_cadence: Int?
     let completed: Bool
     let status: String?                    // "on" | "fast" | "slow" | nil
+
+    /// THE WATCH'S OWN GRADE, and not the same thing as `status`.
+    ///
+    /// `status` is the server's read, recomputed from the two paces with a
+    /// heat allowance. `verdict` is what the device decided on the wrist,
+    /// against the tolerance the server sent it, using a 5-second sample
+    /// stream that never leaves the watch:
+    ///
+    ///   hit        · mean pace in band AND at least 70% of samples in band
+    ///   drifted    · mean pace in band, under 70% of samples in band
+    ///   missed     · mean pace outside the band
+    ///   incomplete · the phase ended before reaching its target
+    ///
+    /// The two legitimately disagree. A rep whose mean was fine but which
+    /// sawed either side of the band reads `on` and `drifted`, and the second
+    /// is the one holding the sample stream's evidence.
+    ///
+    /// Nil on every treadmill phase and on any phase with no target — absence
+    /// of recording, never a judgement.
+    let verdict: String?                   // "hit" | "drifted" | "missed" | "incomplete" | nil
+    /// Seconds inside the pace band, as the device counted them.
+    let time_in_tolerance_sec: Int?
+    /// Seconds outside it. `in + out` is the GRADED time and is shorter than
+    /// `actual_duration_sec` — the device only grades while it has a pace.
+    let time_out_of_tolerance_sec: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case index, label, type
+        case target_pace, target_pace_sec, tolerance_pace_sec
+        case target_distance_mi, target_duration_sec
+        case actual_pace, actual_distance_mi, actual_duration_sec
+        case avg_hr, max_hr, avg_cadence, completed, status
+        case verdict, time_in_tolerance_sec, time_out_of_tolerance_sec
+    }
+
+    /// WRITTEN OUT, NOT SYNTHESISED, and the reason is in `decodeFlexInt`'s
+    /// own doc comment in `API.swift`: "one throw inside a nested Codable
+    /// failed the whole parent array". Every Int here comes off `Number(...)`
+    /// in `lib/coach/run-state.ts`, and HealthKit / Apple Watch averaging
+    /// produces fractional heart rates and cadences that are JSON-valid and
+    /// throw `Int.self`. This struct decoded through the synthesised
+    /// initialiser, so one `"avg_hr": 164.5` would have taken down not just
+    /// the phase list but the ENTIRE run detail — `phase_breakdown` is read
+    /// with `try c.decodeIfPresent`, which re-raises.
+    ///
+    /// Nothing here throws now. A field we cannot read is nil, which every
+    /// reader already treats as "the watch did not record it".
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.index = c.decodeFlexInt(forKey: .index) ?? 0
+        self.label = (try? c.decode(String.self, forKey: .label)) ?? ""
+        self.type = (try? c.decode(String.self, forKey: .type)) ?? "unknown"
+        self.target_pace = try? c.decodeIfPresent(String.self, forKey: .target_pace)
+        self.target_pace_sec = try? c.decodeIfPresent(Double.self, forKey: .target_pace_sec)
+        self.tolerance_pace_sec = try? c.decodeIfPresent(Double.self, forKey: .tolerance_pace_sec)
+        self.target_distance_mi = try? c.decodeIfPresent(Double.self, forKey: .target_distance_mi)
+        self.target_duration_sec = c.decodeFlexInt(forKey: .target_duration_sec)
+        self.actual_pace = try? c.decodeIfPresent(String.self, forKey: .actual_pace)
+        self.actual_distance_mi = try? c.decodeIfPresent(Double.self, forKey: .actual_distance_mi)
+        self.actual_duration_sec = c.decodeFlexInt(forKey: .actual_duration_sec)
+        self.avg_hr = c.decodeFlexInt(forKey: .avg_hr)
+        self.max_hr = c.decodeFlexInt(forKey: .max_hr)
+        self.avg_cadence = c.decodeFlexInt(forKey: .avg_cadence)
+        self.completed = (try? c.decodeIfPresent(Bool.self, forKey: .completed)) ?? true
+        self.status = try? c.decodeIfPresent(String.self, forKey: .status)
+        self.verdict = try? c.decodeIfPresent(String.self, forKey: .verdict)
+        self.time_in_tolerance_sec = c.decodeFlexInt(forKey: .time_in_tolerance_sec)
+        self.time_out_of_tolerance_sec = c.decodeFlexInt(forKey: .time_out_of_tolerance_sec)
+    }
 }
 
 /// 8b · the ceiling the runner lifted, as the watch recorded it.

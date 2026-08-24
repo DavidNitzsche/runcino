@@ -98,10 +98,36 @@ struct RunRecap: Decodable {
     /// runs or when there's no target.
     let intervalsAdjustedTargetSPerMi: Int?
 
+    /// E3 · THE PACE THE VERDICT WAS JUDGED AGAINST.
+    ///
+    /// The recap route emits three of these and the phone's `CodingKeys`
+    /// named none — so run detail printed a pace with nothing to read it
+    /// against, while 5b's table is literally called asked-vs-ran.
+    ///
+    /// `evaluated` is the one that was actually used: the target frozen into
+    /// the watch completion where one exists, else the live plan row. That is
+    /// the number the coach's sentence is about, so it is the one a screen can
+    /// print beside a pace without having to explain which of three it picked.
+    ///
+    /// THE OTHER TWO ARE DELIBERATELY NOT DECODED. `prescribed_pace_s_per_mi`
+    /// and `plan_now_pace_s_per_mi` exist so a falsifier can see a divergence
+    /// after an in-place re-pace, and the route already turns the only
+    /// runner-facing part of that divergence into prose: when the two differ
+    /// by 10 s/mi or more it appends "Plan now reads 6:52 for this one · it
+    /// was re-paced after you ran" to `facts`, which this screen now renders.
+    /// Decoding a field no view reads is the exact bug this whole round is
+    /// about; two more of them would not be an improvement.
+    ///
+    /// RULE ONE: this is a PRESCRIPTION, not a reading. A screen printing it
+    /// says "asked" beside it, and VoiceOver says "estimated" before the
+    /// figure. Never a bare number next to a measured pace.
+    let evaluatedPaceSPerMi: Int?
+
     enum CodingKeys: String, CodingKey {
         case ok, runId, date, type, phase
         case verdict, facts, coach_tip, conditions_note, win
         case intervalsAdjustedTargetSPerMi = "intervals_adjusted_target_s_per_mi"
+        case evaluatedPaceSPerMi = "evaluated_pace_s_per_mi"
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -116,5 +142,6 @@ struct RunRecap: Decodable {
         self.conditions_note = try c.decodeIfPresent(String.self, forKey: .conditions_note)
         self.win = try c.decodeIfPresent(String.self, forKey: .win)
         self.intervalsAdjustedTargetSPerMi = c.decodeFlexInt(forKey: .intervalsAdjustedTargetSPerMi)
+        self.evaluatedPaceSPerMi = c.decodeFlexInt(forKey: .evaluatedPaceSPerMi)
     }
 }

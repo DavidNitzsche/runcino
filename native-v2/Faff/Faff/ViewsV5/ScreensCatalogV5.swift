@@ -60,6 +60,14 @@ struct ScreensCatalogV5: View {
                                      onFlagNiggle: { _ in }, onOpenInjuryFlare: {},
                                      onChangeShoe: {}, onRowAction: { _ in }, onPushStrava: {}))
             },
+            // Asked 5, ran 11. The case the table was built for and could not
+            // describe until the Distance row landed.
+            Entry(id: "5d", title: "Today · after a long overshoot", sub: "Asked 5 mi, ran 11") {
+                AnyView(TodayAfterV5(model: TodayAfterV5Samples.overshot,
+                                     onOpenAccount: {}, onLogEffort: { _ in },
+                                     onFlagNiggle: { _ in }, onOpenInjuryFlare: {},
+                                     onChangeShoe: {}, onRowAction: { _ in }, onPushStrava: {}))
+            },
             Entry(id: "5c", title: "Today · after a treadmill run", sub: "On the belt, no route card") {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.treadmill,
                                      onOpenAccount: {}, onLogEffort: { _ in },
@@ -116,6 +124,22 @@ struct ScreensCatalogV5: View {
             Entry(id: "23a", title: "Run detail", sub: "Splits, route, zones, what you decided") {
                 AnyView(RunDetailV5(detail: RunDetailV5Sample.outdoor,
                                     recap: RunDetailV5Sample.recap))
+            },
+            // The rep session, on the real 2026-08-11 payload. A separate
+            // entry rather than a change to 23a because the two are genuinely
+            // different screens: an easy run has a shape and no reps, a
+            // tune-up has reps and its mile chart is misleading on its own.
+            // Both need looking at.
+            Entry(id: "23b", title: "Run detail \u{00B7} reps", sub: "Rep by rep, and what the watch graded") {
+                AnyView(RunDetailV5(detail: RunDetailV5Sample.intervals,
+                                    recap: RunDetailV5Sample.intervalsRecap))
+            },
+            // A DECISION IS NOT A LAPSE, on a rep. The fourth rep is a stop
+            // the watch offered and the runner took: no verdict, no dash
+            // where a pace would be, and a sentence naming whose call it was.
+            Entry(id: "23c", title: "Run detail \u{00B7} a rep you stopped", sub: "The offer taken, not a rep lost") {
+                AnyView(RunDetailV5(detail: RunDetailV5Sample.intervalsWithSkip,
+                                    recap: RunDetailV5Sample.intervalsRecap))
             },
             Entry(id: "13a", title: "Injury flare", sub: "Not today") {
                 AnyView(InjuryFlareV5(model: .sampleV5))

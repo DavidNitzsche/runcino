@@ -130,9 +130,7 @@ struct TodayAfterV5: View {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 panel
                 askedVsRanSection
-                if let verdict = model.verdict, !verdict.isEmpty {
-                    CoachSay(text: verdict, size: .md)
-                }
+                recapSection
                 if !model.groups.isEmpty {
                     groupsTile
                 }
@@ -326,6 +324,86 @@ struct TodayAfterV5: View {
         // would clip off the edge of the panel instead of scaling.
         .lineLimit(1)
         .minimumScaleFactor(0.5)
+    }
+
+    // MARK: - What the coach actually said
+    //
+    // THIS SCREEN USED TO DRAW ONE SENTENCE OUT OF FIVE.
+    //
+    // `deriveRecap` returns a verdict, one or two supporting facts, an
+    // optional conditions note and an optional forward-looking tip;
+    // `run-win.ts` adds a short headline. All five are composed on every
+    // request. This view rendered `verdict` and nothing else, and the wire did
+    // not even carry the rest — they were written, returned, and dropped
+    // between the engine and the glass.
+    //
+    // THE ORDER IS THE READING ORDER, and it matches the web surface so the
+    // two do not tell the same run in different sequences:
+    //
+    //   win        · the headline. Four to ten words, the most specific thing
+    //                the engine can say. Null far more often than not.
+    //   verdict    · the fuller read. Always present on a finished run.
+    //   facts      · the evidence under it, quieter, one line each.
+    //   conditions · what the weather did, quieter still.
+    //   tip        · the only line about NEXT time, and the only one that
+    //                leaves the tile — a caveat gets quieter treatment than
+    //                the thing it qualifies.
+    //
+    // RULE THREE. Every one of these is optional and a null is the engine
+    // declining, not a gap. The tile is not drawn at all when it would be
+    // empty, and no line gets a heading of its own that could survive its
+    // content going away.
+    //
+    // NOT RE-WORDED HERE. Every string is quoted verbatim from the composer,
+    // which is the same contract `coachLine` keeps on the changed-overnight
+    // screen. One voice, one author.
+
+    @ViewBuilder
+    private var recapSection: some View {
+        let verdict = model.verdict?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let win = model.win?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let facts = model.facts.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let conditions = model.conditionsNote?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if !verdict.isEmpty || !win.isEmpty || !facts.isEmpty || !conditions.isEmpty {
+            Tile {
+                if !win.isEmpty {
+                    Text(win)
+                        .font(.faffText(TypeScaleV5.body17, weight: .semibold))
+                        .foregroundStyle(V5.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !verdict.isEmpty {
+                    Text(verdict)
+                        .font(.faffText(TypeScaleV5.body17))
+                        .foregroundStyle(V5.textPrimary)
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(facts, id: \.self) { fact in
+                    Text(fact)
+                        .font(.faffText(TypeScaleV5.body15))
+                        .foregroundStyle(V5.textSecondary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !conditions.isEmpty {
+                    // No "CONDITIONS" label. The web surface carries one
+                    // because it sits in a column of unrelated callouts; here
+                    // it is the fourth line of one paragraph by the same
+                    // author, and a heading would break it into two voices.
+                    Text(conditions)
+                        .font(.faffText(TypeScaleV5.label14))
+                        .foregroundStyle(V5.textQuiet)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+
+        if let tip = model.coachTip?.trimmingCharacters(in: .whitespacesAndNewlines), !tip.isEmpty {
+            CoachCaveat(text: tip)
+        }
     }
 
     // MARK: - Asked vs ran
@@ -729,11 +807,16 @@ enum TodayAfterV5Samples {
       "whereYouAre": [],
       "beforeYouGo": [],
       "askedVsRan": [
+        { "id": "distance", "label": "Distance", "sub": "asked 6 mi", "value": { "text": "6 mi", "modelled": false }, "action": null },
         { "id": "r1", "label": "Pace", "sub": "8:50–9:35", "value": { "text": "9:02", "modelled": false }, "action": null },
         { "id": "r2", "label": "Heart", "sub": "under 148", "value": { "text": "141", "modelled": false }, "action": null },
         { "id": "r3", "label": "Effort", "sub": "3 to 6", "value": null, "action": "log_effort" }
       ],
       "verdict": "Sat in the band all the way bar mile five, which crept thirty seconds quick. Pull that one back and this is a clean easy day.",
+      "facts": ["6.02 mi at 9:02/mi, HR averaged 141."],
+      "win": "Easy and honest \\u00b7 legs stayed fresh",
+      "conditionsNote": null,
+      "coachTip": "Mile five ran hot. Worth a check on effort next time it happens twice in a row.",
       "zoneShares": [6, 58, 30, 5, 1],
       "zoneTarget": 2,
       "zoneTargets": [2],
@@ -832,6 +915,77 @@ enum TodayAfterV5Samples {
         { "id": "w2", "label": "Easy, tomorrow", "sub": "6 mi recovery", "value": null, "action": null }
       ],
       "runId": "run_2b7a",
+      "changed": null,
+      "injury": null,
+      "weekOff": null,
+      "offSeason": null,
+      "notOnPhoneYet": null
+    }
+    """
+
+    // ─────────────────────────────────────────────────────────────────────
+    // THE DAY THE TABLE HAD NOTHING TO SAY ABOUT THE BIGGEST THING THAT
+    // HAPPENED. 2026-08-23, read out of production on 2026-08-24: the plan
+    // asked for a 5 mile medium-long and the runner covered 11.01 in 1:28:18,
+    // averaging 147 bpm over 3195 feet of climb. Asked-vs-ran showed pace,
+    // heart and effort.
+    //
+    // Note what the Distance row does NOT do here. Six extra miles carry no
+    // tone, no chevron and nothing tappable, exactly as a wrist decision
+    // would not — the screen does not know whether the runner felt good and
+    // added, or ran a route that came out long, and inking it would grade
+    // both as faults. It states the two numbers and lets the verdict, which
+    // has the context, do the talking.
+    static let overshot: V5Today = decode(overshotJSON)
+
+    private static let overshotJSON = """
+    {
+      "dateISO": "2026-08-23",
+      "state": "after_run",
+      "panel": {
+        "dayState": "long",
+        "quiet": false,
+        "place": "Today",
+        "dateLine": "Maintenance",
+        "weekLine": "Logged 7:22",
+        "kicker": null,
+        "type": "Medium-long",
+        "dose": null,
+        "stats": [
+          { "label": "Distance", "value": { "text": "11.0", "modelled": false }, "tone": null },
+          { "label": "Time", "value": { "text": "1:28:18", "modelled": false }, "tone": null },
+          { "label": "Pace", "value": { "text": "8:01", "modelled": false }, "tone": null }
+        ]
+      },
+      "weekStrip": [],
+      "groups": [],
+      "why": null,
+      "whereYouAre": [],
+      "beforeYouGo": [],
+      "askedVsRan": [
+        { "id": "distance", "label": "Distance", "sub": "asked 5 mi", "value": { "text": "11 mi", "modelled": false }, "action": null },
+        { "id": "pace", "label": "Pace", "sub": "9:22", "value": { "text": "8:01", "modelled": false }, "action": null },
+        { "id": "heart", "label": "Heart", "sub": null, "value": { "text": "147", "modelled": false }, "action": null },
+        { "id": "effort", "label": "Effort", "sub": null, "value": null, "action": "log_effort" }
+      ],
+      "verdict": "Six miles past what the day asked for, at a minute a mile quicker. Good legs, but that was tomorrow's session spent today.",
+      "facts": [
+        "11.0 mi at 8:01/mi, HR averaged 147.",
+        "3195 ft of climb, which is most of why the effort held at that pace."
+      ],
+      "win": null,
+      "conditionsNote": null,
+      "coachTip": "Tomorrow was easy and it still is. Take it slower than feels right.",
+      "zoneShares": [4, 41, 38, 15, 2],
+      "zoneTarget": 2,
+      "zoneTargets": [2],
+      "elevation": [220, 480, 760, 1010, 880, 1240, 1490, 1180, 900, 610, 300],
+      "onTheBelt": null,
+      "shoesWorn": null,
+      "whatThisDidToTheWeek": [
+        { "id": "w1", "label": "This week", "sub": "24.2 of 38 mi done", "value": { "text": "64%", "modelled": false }, "action": null }
+      ],
+      "runId": "run_aug23",
       "changed": null,
       "injury": null,
       "weekOff": null,

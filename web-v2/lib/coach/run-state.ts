@@ -29,6 +29,8 @@ import {
 } from '@/lib/runs/log-enrich';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
+// THE one enum-to-word table. Imported, never restated — see `type_display`.
+import { displayTypeFor } from '@/lib/faff/v5-today';
 
 export interface RunSplit {
   mile: number;
@@ -70,6 +72,33 @@ export interface PhaseBreakdown {
   completed: boolean;
   // Derived: did the rep hit target? "on" / "fast" / "slow" / null
   status: 'on' | 'fast' | 'slow' | null;
+  /**
+   * THE WATCH'S OWN GRADE, passed through untouched.
+   *
+   * `status` above is the SERVER's read — heat-adjusted, recomputed here from
+   * the two paces. `verdict` is what the device decided on the wrist against
+   * the tolerance the server sent it, using the 5-second sample stream that
+   * never leaves the watch (`WorkoutEngine.buildCompletion`):
+   *
+   *   hit        · mean pace in band AND ≥70% of samples in band
+   *   drifted    · mean pace in band, under 70% of samples in band
+   *   missed     · mean pace outside the band
+   *   incomplete · the phase ended before reaching its target
+   *
+   * The two disagree, legitimately and often: a rep whose mean pace was fine
+   * but which sawed either side of the band is `status: 'on'` and
+   * `verdict: 'drifted'`, and the second is the one that carries the sample
+   * stream's evidence. Both travel; neither overwrites the other.
+   *
+   * Null on every treadmill phase and on any phase with no target — absence
+   * of recording, never a judgement.
+   */
+  verdict: 'hit' | 'drifted' | 'missed' | 'incomplete' | null;
+  /** Seconds inside the pace band, as the device counted them. */
+  time_in_tolerance_sec: number | null;
+  /** Seconds outside it. `in + out` is the graded time, which is shorter than
+   *  `actual_duration_sec` — the device grades only while it has a pace. */
+  time_out_of_tolerance_sec: number | null;
 }
 
 /** Shoe entry surfaced inline on the run detail so the picker doesn't
@@ -113,6 +142,25 @@ export interface RunDetail {
   name: string | null;
   source: 'watch' | 'apple_health' | 'manual' | 'strava' | string;
   type: string | null;            // 'easy', 'long', 'tempo', etc.
+  /**
+   * The runner-facing name for `type`, from `lib/faff/v5-today.ts`'s
+   * `displayTypeFor` — the ONE table that maps a workout enum to a word.
+   *
+   * AN ENUM WAS REACHING THE GLASS. `type` is a column value, and the phone's
+   * run detail title-cased it and drew it in the display register, so a
+   * race-week tune-up headlined "RACE_WEEK_TUNEUP". Every other surface got
+   * the right word because every other surface reads `/api/v5/today`, which
+   * has been calling `displayTypeFor` all along; this payload never carried
+   * it, so run detail had nothing to draw but the enum.
+   *
+   * The phone does NOT get its own copy of the switch. This file's own
+   * zone-target note is the precedent: a copy of a table is a table that will
+   * disagree with the original, and that one had already drifted.
+   *
+   * `planned_sub_label` wins when it is a NAME ("THRESHOLD", "FIELD TEST")
+   * rather than a description, which is `displayTypeFor`'s own rule.
+   */
+  type_display: string | null;
 
   distance_mi: number;
   pace: string | null;            // formatted "9:18"
@@ -900,6 +948,10 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     name: runDisplayName,
     source: r.source ?? 'strava',
     type: r.type ?? null,
+    // The plan's type where there is a plan row, else the run's own. A run
+    // logged off-plan still has a kind, and naming it from the run is the
+    // only source there is.
+    type_display: displayTypeFor(plannedRow?.type ?? r.type ?? null, planned_sub_label),
 
     distance_mi: Number(r.distanceMi) || 0,
     pace, pace_s_per_mi: paceSPerMi,
@@ -1166,7 +1218,21 @@ async function loadPhaseBreakdown(
   if (typeof payload === 'string') {
     try { payload = JSON.parse(payload); } catch { return []; }
   }
-  const phases: any[] = Array.isArray(payload?.phases) ? payload.phases : [];
+  return mapWatchPhases(payload?.phases, heatSlowdownPct);
+}
+
+/**
+ * The watch's phase array, as the phone's `phase_breakdown`.
+ *
+ * SPLIT OUT OF `loadPhaseBreakdown` SO IT CAN BE TESTED. The loader is a
+ * query and a `JSON.parse`; this is the whole contract — which fields survive
+ * the trip, which the server recomputes, and which are passed through
+ * untouched. It had no test because the only way to reach it was a database.
+ *
+ * `heatSlowdownPct` widens the on-target band; see `heatAdjustedStatus`.
+ */
+export function mapWatchPhases(raw: unknown, heatSlowdownPct: number = 0): PhaseBreakdown[] {
+  const phases: any[] = Array.isArray(raw) ? raw : [];
   if (phases.length === 0) return [];
 
   return phases.map((p: any, i: number): PhaseBreakdown => {
@@ -1227,8 +1293,32 @@ async function loadPhaseBreakdown(
       avg_cadence: Number(p.avgCadence) || null,
       completed: Boolean(p.completed ?? true),
       status,
+      // Passed through, never re-derived. `PHASE_VERDICTS` is the same
+      // whitelist `lib/runs/run-shape.ts` applies, restated here rather than
+      // imported because this loader reads the coach_intents blob directly
+      // and that module reads `runs.data` — same vocabulary, two doors.
+      verdict: PHASE_VERDICT_WORDS.has(String(p.verdict))
+        ? (String(p.verdict) as PhaseBreakdown['verdict'])
+        : null,
+      // `Number(null)` is 0, and a zero here would claim the device graded
+      // this phase and found none of it in band. It did not grade it at all.
+      time_in_tolerance_sec: toleranceSec(p.timeInToleranceSec),
+      time_out_of_tolerance_sec: toleranceSec(p.timeOutOfToleranceSec),
     };
   });
+}
+
+/** The four grades `WorkoutEngine.buildCompletion` can emit. Anything else on
+ *  the wire is an era we do not know and is dropped rather than guessed at. */
+const PHASE_VERDICT_WORDS = new Set(['hit', 'drifted', 'missed', 'incomplete']);
+
+/** A tolerance counter, or null. Zero is a real reading (a rep the device
+ *  graded and found entirely outside the band — David's 2026-08-11 recovery
+ *  jog at index 6 is exactly that). Absent is not. */
+function toleranceSec(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 function defaultLabel(type: PhaseBreakdown['type'], i: number): string {
