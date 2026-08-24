@@ -247,11 +247,36 @@ struct TodayAfterV5: View {
         return out
     }
 
+    /// THREE NUMBERS, ONE LINE, ALL THE SAME SIZE.
+    ///
+    /// The row was a fixed HStack at 32pt with 28pt gaps. Three values fit
+    /// comfortably while the middle one was a time under an hour — "54:16",
+    /// five glyphs. An eleven-mile run reads "1:28:18", two glyphs wider, and
+    /// the pace fell off the end: the unit wrapped to a second line and the
+    /// poster read "8:01/" over "mi".
+    ///
+    /// It survived because it only breaks past sixty minutes, which on this
+    /// runner's plan is the long run and nothing else.
+    ///
+    /// `ViewThatFits` picks the first size that fits on one line, so all three
+    /// numbers shrink TOGETHER. Per-`Text` `minimumScaleFactor` would have
+    /// been one line of code and would have scaled each number independently
+    /// — three different sizes on a poster whose whole effect is that they
+    /// are one row of type.
     private var posterStatsRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: V5.S.s24 + V5.S.s4) {
+        ViewThatFits(in: .horizontal) {
+            statsRow(size: 32)
+            statsRow(size: 28)
+            statsRow(size: 24)
+            statsRow(size: 20)
+        }
+    }
+
+    private func statsRow(size: CGFloat) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: size >= 32 ? V5.S.s24 + V5.S.s4 : V5.S.s16) {
             ForEach(Array(posterStats.enumerated()), id: \.offset) { _, item in
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    FaffValueText(item.value, font: .faffText(32, weight: .semibold),
+                    FaffValueText(item.value, font: .faffText(size, weight: .semibold),
                                   color: panelInk.primary, mark: panelInk.mark)
                     if let unit = item.unit {
                         Text(unit)
@@ -279,6 +304,8 @@ struct TodayAfterV5: View {
                 )
             }
         }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     // MARK: - Asked vs ran
@@ -397,19 +424,50 @@ struct TodayAfterV5: View {
 
     // MARK: - Zone bar
 
+    /// The zone(s) the session asked for, ascending.
+    ///
+    /// This read `model.zoneTarget` alone, and that single Int is NULL
+    /// whenever the ask is a set. A half-marathon asks for Z4 and Z5 both —
+    /// its %HRmax band straddles the 90% edge — so the server sends null
+    /// rather than pick one of them, and this screen highlighted NOTHING on
+    /// the one kind of day the bar is most worth drawing. `zoneTargets`
+    /// carries the whole ask; the Int stays as the fallback for a phone
+    /// talking to a server that predates it.
+    private var zoneTargets: [Int] {
+        if let t = model.zoneTargets, !t.isEmpty { return t.sorted() }
+        return model.zoneTarget.map { [$0] } ?? []
+    }
+
+    /// "zone 2" / "zones 4 and 5" — the caption's own tail, so the set case
+    /// reads as a sentence instead of as a list.
+    private func zonePhrase(_ zones: [Int]) -> String {
+        if zones.count == 1 { return "zone \(zones[0])" }
+        let names = zones.map(String.init)
+        let head = names.dropLast().joined(separator: ", ")
+        return "zones \(head) and \(names[names.count - 1])"
+    }
+
     private func zoneTile(_ shares: [Double]) -> some View {
-        Tile {
+        // Guard the indices here rather than at each use — a target outside
+        // the five zones is a wire fault, not something to crash over.
+        let targets = zoneTargets.filter { $0 >= 1 && $0 <= shares.count }
+        return Tile {
             HStack(alignment: .firstTextBaseline) {
                 Text("Where the heart sat")
                     .font(.faffText(TypeScaleV5.label13))
                     .foregroundStyle(V5.textSecondary)
                 Spacer(minLength: 0)
-                if let target = model.zoneTarget, target >= 1, target <= shares.count {
+                if !targets.isEmpty {
+                    // Summed across the ask, because the ask is one
+                    // instruction: a half run 38% in Z4 and 24% in Z5 spent
+                    // 62% where it was told to, and reporting either half
+                    // alone would understate a race that went right.
+                    let pct = targets.reduce(0.0) { $0 + shares[$1 - 1] }
                     HStack(spacing: 0) {
-                        Text("\(Int(shares[target - 1].rounded()))%")
+                        Text("\(Int(pct.rounded()))%")
                             .font(.faffText(15, weight: .semibold))
                             .foregroundStyle(V5.textPrimary)
-                        Text(" in zone \(target)")
+                        Text(" in \(zonePhrase(targets))")
                             .font(.faffText(TypeScaleV5.label13))
                             .foregroundStyle(V5.textQuiet)
                     }
@@ -421,7 +479,7 @@ struct TodayAfterV5: View {
                     .accessibilityElement(children: .combine)
                 }
             }
-            ZoneBar(shares: shares, target: model.zoneTarget, height: 44, labels: false)
+            ZoneBar(shares: shares, targets: Set(targets), height: 44, labels: false)
         }
     }
 
@@ -658,6 +716,7 @@ enum TodayAfterV5Samples {
       "verdict": "Sat in the band all the way bar mile five, which crept thirty seconds quick. Pull that one back and this is a clean easy day.",
       "zoneShares": [6, 58, 30, 5, 1],
       "zoneTarget": 2,
+      "zoneTargets": [2],
       "elevation": [412, 418, 430, 452, 470, 460, 445, 458, 468, 452, 430],
       "onTheBelt": null,
       "shoesWorn": { "id": "shoe1", "label": "Endorphin Speed 4", "sub": "214 mi on them", "value": null, "action": null },
@@ -741,6 +800,7 @@ enum TodayAfterV5Samples {
       "verdict": "First block sat dead on it, second gave up eleven seconds a mile. That is the honest edge of your threshold today, not a miss.",
       "zoneShares": [2, 14, 28, 44, 12],
       "zoneTarget": 4,
+      "zoneTargets": [4],
       "elevation": null,
       "onTheBelt": [
         { "label": "Avg speed", "value": { "text": "7.7", "modelled": false }, "tone": null },

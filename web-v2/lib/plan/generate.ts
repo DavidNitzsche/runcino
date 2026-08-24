@@ -6110,8 +6110,8 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
         // into maintenance/race-prep (RECOVERY-1's 4-week reverse taper otherwise ended long-less for
         // marathon/ultra). Earlier weeks keep the day as a building-back medium.
         slots[longBackDow] = isFinalRecoveryWeek
-          ? { dow: longBackDow as DOW, type: 'long', distanceMi: mediumMi, isQuality: false, isLong: true, subLabel: 'LONG (EASY)', notes: 'Long run back · easy effort.' }
-          : { dow: longBackDow as DOW, type: 'easy', distanceMi: mediumMi, isQuality: false, isLong: false, subLabel: 'EASY (MEDIUM)', notes: 'Building back · easy effort.' };
+          ? { dow: longBackDow as DOW, type: 'long', distanceMi: mediumMi, isQuality: false, isLong: true, subLabel: 'LONG', notes: 'Long run back · easy effort.' }
+          : { dow: longBackDow as DOW, type: 'easy', distanceMi: mediumMi, isQuality: false, isLong: false, subLabel: 'MEDIUM-LONG', notes: 'Building back · easy effort.' };
       }
     } else if (isFinalRecoveryWeek && longBackDow != null) {
       // MT-REC-1 (2026-06-23) · HM (wkPct [0.20,0.40]) and 10K (wkPct [0.30]) recovery NEVER reach wkPct≥0.50,
@@ -6119,7 +6119,7 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
       // GENTLE long on the final recovery week, sized to recent long capped to ~40% of the week's volume.
       // Research/00b:200-201 (long reintroduced day 7-10, ~45-60min easy). Marathon/ultra unaffected (≥0.50).
       const reLongMi = Math.max(3, Math.min(input.recentLongMi || 6, Math.round(wkWeekly * 0.40)));
-      slots[longBackDow] = { dow: longBackDow as DOW, type: 'long', distanceMi: reLongMi, isQuality: false, isLong: true, subLabel: 'LONG (EASY)', notes: 'Long run back · easy effort.' };
+      slots[longBackDow] = { dow: longBackDow as DOW, type: 'long', distanceMi: reLongMi, isQuality: false, isLong: true, subLabel: 'LONG', notes: 'Long run back · easy effort.' };
     }
     // Fill rest with easies.
     const allocated = slots.filter(Boolean).reduce((s, d) => s + (d?.distanceMi ?? 0), 0);
