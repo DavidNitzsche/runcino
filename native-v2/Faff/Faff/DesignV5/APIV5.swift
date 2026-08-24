@@ -473,8 +473,25 @@ struct V5Today: Decodable, Equatable {
     let zoneTargets: [Int]?
     let zoneTarget: Int?
     /// The route's elevation, for the profile. Absent on a treadmill run,
-    /// where the design replaces the card entirely.
+    /// where the design replaces the card entirely — and absent, now, when
+    /// no split carried an elevation reading. It used to arrive as a run of
+    /// zeros in that case, which drew a flat line at sea level and was
+    /// indistinguishable from a genuinely flat run.
     let elevation: [Double]?
+    /// The run's encoded route. Null on a treadmill and null when no GPS was
+    /// recorded; the card says which rather than drawing an empty frame.
+    let routePolyline: String?
+    /// The run's MEASURED climb, in feet.
+    ///
+    /// Read instead of summing `elevation`. The card used to derive its climb
+    /// from the profile, so a run whose splits carried no elevation reported
+    /// "0 ft up" while its own row recorded 128. The profile is a picture of
+    /// the terrain; this is the measurement of it.
+    let elevGainFt: Int?
+    /// Every shoe in the garage, so the worn row can offer a menu instead of
+    /// sending the runner to another screen to answer a question about
+    /// this run.
+    let shoeOptions: [V5Row]
     /// The treadmill run's "On the belt" card. Avg speed mph, avg incline pct.
     let onTheBelt: [V5Stat]?
     let shoesWorn: V5Row?
@@ -1297,6 +1314,7 @@ extension V5Today {
     enum K: String, CodingKey {
         case dateISO, state, panel, weekStrip, groups, why, whereYouAre, beforeYouGo
         case askedVsRan, verdict, zoneShares, zoneTargets, zoneTarget, elevation, onTheBelt
+        case routePolyline, elevGainFt, shoeOptions
         case shoesWorn, whatThisDidToTheWeek, runId
         case changed, injury, weekOff, offSeason, notOnPhoneYet
         case paceNote, sick
@@ -1322,6 +1340,9 @@ extension V5Today {
         zoneTargets = c.opt(.zoneTargets)
         zoneTarget = c.opt(.zoneTarget)
         elevation = c.opt(.elevation)
+        routePolyline = c.opt(.routePolyline)
+        elevGainFt = c.opt(.elevGainFt)
+        shoeOptions = c.list(.shoeOptions)
         onTheBelt = c.opt(.onTheBelt)
         shoesWorn = c.opt(.shoesWorn)
         whatThisDidToTheWeek = c.list(.whatThisDidToTheWeek)

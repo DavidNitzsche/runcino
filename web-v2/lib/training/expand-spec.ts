@@ -612,9 +612,28 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
         // steps from the end rather than rewriting a leading count.
         const stepped = Array.isArray(s.steps) && (s.steps as unknown[]).length > 0;
         const specReps = stepped ? 0 : (Number(s.rep_count ?? 0) || 0);
-        const lead = authored.match(/^(\s*)(\d+)(\s*[×xX]\s*)/);
+        // SPECFIRST-1 (2026-08-24) · the count is not always at the front.
+        //
+        // This matched `/^(\s*)(\d+)(\s*[×xX]\s*)/` — anchored. It reconciles
+        // "6×90s hills" correctly and misses "2mi E w/ 5×1 min surges @ T
+        // effort" entirely, because that label opens with the day's MILEAGE.
+        // Three live plan rows carried exactly that string over a spec with
+        // `rep_count: 4` (verified in production 2026-08-24): the label said
+        // five surges, the watch ran four, and now that the phone card is
+        // composed from the same spec the watch runs, the card's own headline
+        // was the last thing still saying five.
+        //
+        // The count is the first `N×` followed by a rep SIZE — a digit, as in
+        // "5×1 min", "6×90s", "4×400 m". Requiring the trailing digit is what
+        // keeps a stray "x" in prose from being read as a multiplier, and the
+        // leading boundary is what stops "2mi" being read as the "2" of a
+        // count. A label that already leads with its count behaves exactly as
+        // it did before.
+        const lead = authored.match(/(^|[^0-9])(\d+)(\s*[×xX]\s*)(?=\d)/);
         const reconciled = specReps > 0 && lead && Number(lead[2]) !== specReps
-          ? `${lead[1]}${specReps}${lead[3]}${authored.slice(lead[0].length)}`
+          ? authored.slice(0, lead.index! + lead[1].length)
+            + specReps + lead[3]
+            + authored.slice(lead.index! + lead[0].length)
           : authored;
         // COLD-4 (2026-08-17) · the same reconciliation the rep COUNT gets, for
         // the PACE. An authored prescription names a zone — "3×8 min @ T pace"

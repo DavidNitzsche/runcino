@@ -400,6 +400,7 @@ lib/training/aerobic-decoupling.ts :: Walks the SPLIT series. paceSPerMi on a sp
 lib/training/cadence-fatigue.ts :: Same split-level scope, same guard.
 lib/training/expand-spec.ts :: Expands plan_workouts.workout_spec into phases. Plan-side, not runs.data - the key names collide, the tables do not.
 lib/training/goal-projection.ts :: Reads split-level paces and watch-PHASE durations, not the run-level family. Its one run-level read is a single key in SQL, which cannot contradict a sibling it does not fetch.
+lib/training/spec-card.ts :: Composes the Today card from plan_workouts.workout_spec. Plan-side, the same collision as expand-spec.ts and build-workout.ts: its distanceMi / durationSec / targetPaceSPerMi are a PRESCRIPTION's figures, carried on ExpandedPhase, and there is no stored row for them to contradict. It is the phone-side sibling of lib/watch/build-workout.ts and reads runs.data never.
 lib/training/vdot.ts :: The Daniels table and its conversions. Pure arithmetic over arguments; it reads no stored row.
 lib/watch/build-workout.ts :: Builds the watch payload from the plan. Plan-side, same collision as expand-spec.ts.
 lib/weather/openmeteo.ts :: Uses the clock only to size the weather lookup window. A wrong clock moves the window by minutes and cannot put a false number on a screen.

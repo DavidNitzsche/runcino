@@ -28,6 +28,7 @@
 
 import SwiftUI
 import Foundation
+import CoreLocation
 
 struct TodayAfterV5: View {
     /// Same rule as the before-run screen: the ink comes from the same
@@ -49,8 +50,11 @@ struct TodayAfterV5: View {
     var onFlagNiggle: (String) -> Void
     /// "See it in Injury" — this view does not navigate.
     var onOpenInjuryFlare: () -> Void
-    /// Tapping the shoe row, when the server marked it actionable.
+    /// "Manage shoes", and the fallback when the garage did not arrive.
     var onChangeShoe: () -> Void
+    /// A pair was chosen from the menu. Leaves the screen: the caller
+    /// persists it and refreshes.
+    var onPickShoe: (String) -> Void
     /// Any `whatThisDidToTheWeek` row the server marked actionable, other
     /// than the niggle row this view composes itself.
     var onRowAction: (V5Row) -> Void
@@ -94,6 +98,7 @@ struct TodayAfterV5: View {
          onFlagNiggle: @escaping (String) -> Void = { _ in },
          onOpenInjuryFlare: @escaping () -> Void = {},
          onChangeShoe: @escaping () -> Void = {},
+         onPickShoe: @escaping (String) -> Void = { _ in },
          onRowAction: @escaping (V5Row) -> Void = { _ in },
          onPushStrava: @escaping () -> Void = {},
          onPickDay: @escaping (String) -> Void = { _ in },
@@ -112,6 +117,7 @@ struct TodayAfterV5: View {
         self.onFlagNiggle = onFlagNiggle
         self.onOpenInjuryFlare = onOpenInjuryFlare
         self.onChangeShoe = onChangeShoe
+        self.onPickShoe = onPickShoe
         self.onRowAction = onRowAction
         self.onPushStrava = onPushStrava
         self.onPickDay = onPickDay
@@ -140,8 +146,7 @@ struct TodayAfterV5: View {
                 routeOrBeltCard
                 if let shoe = model.shoesWorn {
                     ListGroup(header: "Shoes you wore") {
-                        ListRow(label: shoe.label, sub: shoe.sub, value: Self.fv(shoe.value),
-                                onTap: shoe.action != nil ? onChangeShoe : nil)
+                        shoeRow(shoe)
                     }
                 }
                 whatThisDidSection
@@ -587,13 +592,81 @@ struct TodayAfterV5: View {
     // map, never a zero — the treadmill run gets its own card, not a hollow
     // version of the outdoor one.
 
+    /// PICK THE SHOE WHERE THE QUESTION IS ASKED.
+    ///
+    /// This row used to push the whole Shoes screen — leaving the run, and
+    /// the run's own answer, to go and manage a garage. A garage is a handful
+    /// of pairs, so the list rides along on the payload and the choice
+    /// happens here.
+    ///
+    /// It falls back to the old navigation when the server sent no options:
+    /// an empty menu is a dead tap, and a dead tap is worse than a longer
+    /// route to the same place.
+    @ViewBuilder
+    private func shoeRow(_ shoe: V5Row) -> some View {
+        if model.shoeOptions.isEmpty {
+            ListRow(label: shoe.label, sub: shoe.sub, value: Self.fv(shoe.value),
+                    onTap: shoe.action != nil ? onChangeShoe : nil)
+        } else {
+            Menu {
+                ForEach(model.shoeOptions, id: \.id) { opt in
+                    Button {
+                        guard opt.id != shoe.id else { return }
+                        onPickShoe(opt.id)
+                    } label: {
+                        // A tick on the pair already worn, so the menu says
+                        // what is currently true rather than only offering
+                        // alternatives.
+                        if opt.id == shoe.id {
+                            Label(opt.label, systemImage: "checkmark")
+                        } else if let sub = opt.sub, !sub.isEmpty {
+                            Text("\(opt.label) · \(sub)")
+                        } else {
+                            Text(opt.label)
+                        }
+                    }
+                }
+                Divider()
+                Button("Manage shoes", action: onChangeShoe)
+            } label: {
+                ListRow(label: shoe.label, sub: shoe.sub, value: Self.fv(shoe.value), onTap: nil)
+                    // `Menu` swallows the row's own tap target, so the row is
+                    // drawn plain and the whole thing is made hittable here.
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Shoes you wore, \(shoe.label)")
+            .accessibilityHint("Opens a menu to pick a different pair")
+        }
+    }
+
     @ViewBuilder
     private var routeOrBeltCard: some View {
         if let belt = model.onTheBelt, !belt.isEmpty {
             beltCard(belt)
-        } else if let points = model.elevation, points.count > 1 {
-            routeCard(points)
+        } else if model.routePolyline != nil || (model.elevation?.count ?? 0) > 1 {
+            routeCard(model.elevation ?? [])
         }
+    }
+
+    /// Which axis the map colours along, from the day's own state.
+    ///
+    /// The same choice `RunDetailV5.mappedEffort` makes from `detail.type` —
+    /// this screen has `panel.dayState` instead, which is the same fact one
+    /// step earlier. It picks the AXIS, never a number.
+    private var mappedEffort: FaffEffort {
+        switch model.panel.dayState.lowercased() {
+        case "long":    return .long
+        case "quality": return .intervals
+        case "race":    return .race
+        case "rest":    return .rest
+        default:        return .easy
+        }
+    }
+
+    private var routeCoords: [CLLocationCoordinate2D] {
+        guard let poly = model.routePolyline, !poly.isEmpty else { return [] }
+        return decodePolyline(poly).map { CLLocationCoordinate2D(latitude: $0.0, longitude: $0.1) }
     }
 
     private func beltCard(_ stats: [V5Stat]) -> some View {
@@ -620,21 +693,67 @@ struct TodayAfterV5: View {
         }
     }
 
+    /// THE ROUTE, and then the terrain under it.
+    ///
+    /// This card was an elevation sparkline wearing the word "Route". The
+    /// runner's own polyline — a couple of thousand characters of it, on the
+    /// row — never reached this screen at all, while run detail has drawn a
+    /// real map from that exact key for months.
+    ///
+    /// The climb beside the heading is the run's MEASURED `elevGainFt`, not a
+    /// sum of the profile. Deriving it from the picture is how a run with 128
+    /// recorded feet of climb came to print "0 ft up": its splits carried no
+    /// elevation, the profile was a row of zeros, and zero summed to zero.
     private func routeCard(_ points: [Double]) -> some View {
-        Tile {
+        let coords = routeCoords
+        return Tile {
             HStack(alignment: .firstTextBaseline) {
                 Text("Route")
                     .font(.faffText(TypeScaleV5.label13))
                     .foregroundStyle(V5.textSecondary)
                 Spacer(minLength: 0)
-                HStack(spacing: 4) {
-                    FaffValueText(.measured("\(elevationGain(points))"), font: .faffText(15, weight: .semibold), color: V5.textPrimary)
-                    Text("ft up")
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.textQuiet)
+                // Absent is absent. A run with no recorded climb says nothing
+                // here rather than asserting a measured zero.
+                if let ft = model.elevGainFt, ft > 0 {
+                    HStack(spacing: 4) {
+                        FaffValueText(.measured("\(ft)"), font: .faffText(15, weight: .semibold), color: V5.textPrimary)
+                        Text("ft up")
+                            .font(.faffText(TypeScaleV5.label13))
+                            .foregroundStyle(V5.textQuiet)
+                    }
                 }
             }
-            ElevationProfile(points: points, height: 150)
+
+            if coords.count >= 2 {
+                RouteMapView(coords: coords,
+                             splits: [],
+                             phases: [],
+                             effort: mappedEffort,
+                             hrZones: [],
+                             paceBand: nil)
+                    .frame(height: 200)
+                    .clipShape(RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
+                    // MapKit hit-tests its region even when non-interactive,
+                    // which otherwise hijacks the parent ScrollView's pan.
+                    .allowsHitTesting(false)
+                    // `.allowsHitTesting(false)` suppresses touch, not the
+                    // accessibility tree; MKMapView publishes its overlays as
+                    // children and VoiceOver walks into MapKit's furniture.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Route map")
+            } else {
+                // RULE THREE. No GPS is an answer, not an empty frame.
+                Text("No GPS for this run.")
+                    .font(.faffText(TypeScaleV5.body15))
+                    .foregroundStyle(V5.textQuiet)
+            }
+
+            // The terrain, under the route it belongs to. Drawn only when the
+            // run actually recorded some — the server sends null rather than
+            // a row of zeros now, so an absent profile means absent.
+            if points.count > 1 {
+                ElevationProfile(points: points, height: 110)
+            }
         }
     }
 

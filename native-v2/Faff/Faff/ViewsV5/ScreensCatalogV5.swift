@@ -58,7 +58,7 @@ struct ScreensCatalogV5: View {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.outdoor,
                                      onOpenAccount: {}, onLogEffort: { _ in },
                                      onFlagNiggle: { _ in }, onOpenInjuryFlare: {},
-                                     onChangeShoe: {}, onRowAction: { _ in }, onPushStrava: {}))
+                                     onChangeShoe: {}, onPickShoe: { _ in }, onRowAction: { _ in }, onPushStrava: {}))
             },
             // Asked 5, ran 11. The case the table was built for and could not
             // describe until the Distance row landed.
@@ -66,13 +66,13 @@ struct ScreensCatalogV5: View {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.overshot,
                                      onOpenAccount: {}, onLogEffort: { _ in },
                                      onFlagNiggle: { _ in }, onOpenInjuryFlare: {},
-                                     onChangeShoe: {}, onRowAction: { _ in }, onPushStrava: {}))
+                                     onChangeShoe: {}, onPickShoe: { _ in }, onRowAction: { _ in }, onPushStrava: {}))
             },
             Entry(id: "5c", title: "Today · after a treadmill run", sub: "On the belt, no route card") {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.treadmill,
                                      onOpenAccount: {}, onLogEffort: { _ in },
                                      onFlagNiggle: { _ in }, onOpenInjuryFlare: {},
-                                     onChangeShoe: {}, onRowAction: { _ in }, onPushStrava: {}))
+                                     onChangeShoe: {}, onPickShoe: { _ in }, onRowAction: { _ in }, onPushStrava: {}))
             },
             // BLOCK — THE SECOND TAB — HAD NO ENTRY HERE UNTIL 2026-08-24.
             //

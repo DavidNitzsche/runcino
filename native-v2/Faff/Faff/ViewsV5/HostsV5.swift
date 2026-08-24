@@ -215,6 +215,7 @@ struct TodayHostV5: View {
                          onFlagNiggle: { part in Task { await flagNiggle(part) } },
                          onOpenInjuryFlare: { path.append(.injuryFlare) },
                          onChangeShoe: { path.append(.shoes) },
+                         onPickShoe: { id in Task { await pickShoe(model, id) } },
                          onRowAction: { _ in },
                          onPushStrava: { Task { await pushStrava(model) } },
                          onPickDay: { id in pickDay(id, in: model) },
@@ -390,6 +391,24 @@ struct TodayHostV5: View {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["rpe": rpe])
         _ = try? await API.authedSend(req)
+        await surface.load()
+    }
+
+    /// Persist the pair the runner picked from the shoe menu.
+    ///
+    /// `POST /api/today/shoe { date_iso, shoe_id }` is the same endpoint the
+    /// Shoes screen already writes through, so a choice made here and a
+    /// choice made there land in exactly one place.
+    private func pickShoe(_ model: V5Today, _ shoeId: String) async {
+        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/today/shoe"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(
+            withJSONObject: ["date_iso": model.dateISO, "shoe_id": shoeId])
+        _ = try? await API.authedSend(req)
+        // Reload rather than mutate locally: the row's mileage line changes
+        // with the assignment, and a locally-patched label beside a stale
+        // mileage is two numbers disagreeing about one shoe.
         await surface.load()
     }
 

@@ -248,7 +248,36 @@ describe('2026-05-20 · five zeros beside a measured 145 bpm', () => {
 
   it('a real distribution is untouched', () => {
     expect(reconcileHrZones({ avgHr: 145, hrZonePcts: { z1: 5, z2: 70, z3: 20, z4: 4, z5: 1 } }))
-      .not.toBeNull();
+      .toEqual({ z1: 5, z2: 70, z3: 20, z4: 4, z5: 1 });
+  });
+
+  /* ZONES-SUM-1 (2026-08-24) · the tolerance decides whether these five
+   * numbers are a distribution. Once they are, they have to add up. */
+
+  it('the 99 that reached the screen · re-apportioned to 100', () => {
+    // The live 2026-08-23 row. The web renderers set each bar's width straight
+    // from its percentage, so a 99 left a one-point gap at the end of the bar.
+    // The spare point goes to the largest remainder, which is the largest
+    // zone — the least distorting place for it.
+    expect(reconcileHrZones({ avgHr: 147, hrZonePcts: { z1: 15, z2: 37, z3: 21, z4: 12, z5: 14 } }))
+      .toEqual({ z1: 15, z2: 38, z3: 21, z4: 12, z5: 14 });
+  });
+
+  it('a 101 comes back at 100 too', () => {
+    const z = reconcileHrZones({ avgHr: 147, hrZonePcts: { z1: 21, z2: 21, z3: 21, z4: 21, z5: 17 } })!;
+    expect(z.z1 + z.z2 + z.z3 + z.z4 + z.z5).toBe(100);
+  });
+
+  it('a sum too far from 100 is REFUSED, never rescaled', () => {
+    // Stretching a 60 up to 100 would invent forty points of a runner's hour.
+    // That is the difference between fixing a rounding artefact and
+    // manufacturing data.
+    const refusals: Array<{ family: string }> = [];
+    expect(reconcileHrZones(
+      { avgHr: 145, hrZonePcts: { z1: 10, z2: 20, z3: 15, z4: 10, z5: 5 } },
+      refusals as never,
+    )).toBeNull();
+    expect(refusals.map((r) => r.family)).toContain('hr.zones-vs-avg');
   });
 
   it('zones with no HR beside them are unusable rather than false · no refusal', () => {

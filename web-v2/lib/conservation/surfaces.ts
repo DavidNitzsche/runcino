@@ -119,8 +119,13 @@ function posterCtx(shape: RunShape, data: RunData): V5TodayContext {
       zoneTargets: null,
       elevationSamples: null,
       elevGainFt: (data.elevGainFt as number | null) ?? null,
+      // Not conserved by any law here — the harness grades numbers, and a
+      // polyline is a picture. Null so the map's refusal branch is what this
+      // fixture exercises; the map itself is covered by the Swift sweep.
+      routePolyline: null,
       weekDoneMi: facts.distanceMi ?? 0,
       weekPlannedMi: null,
+      shoeOptions: [{ id: 's1', name: 'Vomero Premium', mi: 62.7 }, { id: 's2', name: 'Vaporfly 3', mi: 88 }],
       shoeWorn: null,
       niggleFlagged: null,
     },

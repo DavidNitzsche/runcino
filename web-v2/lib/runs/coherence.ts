@@ -219,8 +219,14 @@ export interface RunCoherence {
   speedMph: number | null;
 
   /**
-   * Time-in-zone percentages, or null when the row's distribution contradicts
-   * its own average heart rate.
+   * Time-in-zone percentages, SUMMING TO EXACTLY 100, or null when the row's
+   * distribution contradicts its own average heart rate.
+   *
+   * ZONES-SUM-1 · a stored set within `MAX_ZONE_SUM_DRIFT_PCT` of 100 is
+   * re-apportioned before it leaves here, so a caller can render five bar
+   * widths without checking whether they fill the bar. A set outside that is
+   * not a distribution and is refused rather than rescaled — stretching a 60
+   * up to 100 would invent 40 points of a runner's hour.
    */
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number } | null;
 
@@ -234,6 +240,75 @@ export interface RunCoherence {
   /** Everything this row was not allowed to print, with the reason. */
   refusals: Refusal[];
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * ZONES-SUM-1 (2026-08-24) · A DISTRIBUTION HAS TO ADD UP
+ *
+ * These five numbers were five independent `Math.round` calls over one
+ * denominator. Nothing tied them together, so the set could land on 99 or on
+ * 101, and one production row does: 2026-08-23 stores
+ * `{z1:15,z2:37,z3:21,z4:12,z5:14}` — 99. The web renderers set each bar's
+ * width straight from its percentage, so a 99 leaves a gap at the end of the
+ * bar and a 101 overflows it. The chart is not describing a run that spent 1%
+ * of itself nowhere; it is showing a rounding artefact as data.
+ *
+ * The function's own doc comment claimed it "returns z1-z5 percentages summing
+ * to 100". It did not, and could not.
+ *
+ * `apportionToHundred` is the largest-remainder (Hare) method: floor every
+ * share, then hand the leftover whole points to the largest fractional parts,
+ * biggest first. It is the standard answer to this exact problem and it is
+ * ARITHMETIC — no threshold, no claim about physiology, so no doctrine
+ * registry entry, on the same argument `lib/runs/coherence.ts` makes for its
+ * own rules. Every output sums to exactly 100, no zone moves by more than one
+ * point from its naive rounding, and a zone with no time in it stays at 0.
+ *
+ * AND WHERE IT CANNOT, IT REFUSES. `bucketHrSamplesByZone` used to return five
+ * zeros when it had nothing to count, which is not a distribution — it is the
+ * absence of one, wearing a distribution's shape. Five zeros then travelled
+ * down the write path and landed in `runs.data`, where five canonical rows now
+ * carry them beside a MEASURED average of 135-145 bpm. A run with a heart rate
+ * spent its time in some zone. `reconcileHrZones` in `lib/runs/coherence.ts`
+ * catches that contradiction on the read; this stops it being written.
+ * RULE THREE — the refusal is null, and callers say less rather than draw a
+ * chart of nothing.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Turn per-zone counts into five integer percentages that sum to exactly 100.
+ *
+ * Largest remainder: floor each share, then distribute the shortfall to the
+ * largest fractional parts. Ties break toward the lower zone index, which is
+ * arbitrary but must be DETERMINISTIC — the same run has to draw the same
+ * chart every time it is rendered.
+ *
+ * Returns null when there is nothing to distribute. Zero is a refusal here,
+ * not a share.
+ */
+export function apportionToHundred(counts: readonly number[]): number[] | null {
+  const total = counts.reduce((a, b) => a + (b > 0 ? b : 0), 0);
+  if (!(total > 0)) return null;
+
+  const exact = counts.map((c) => ((c > 0 ? c : 0) / total) * 100);
+  const floors = exact.map((x) => Math.floor(x));
+  let short = 100 - floors.reduce((a, b) => a + b, 0);
+
+  // Candidates ordered by fractional part, largest first; index ascending on
+  // a tie. A zone with zero time has a zero remainder and therefore never
+  // receives a point — it stays at 0, which is the honest reading.
+  const order = exact
+    .map((x, i) => ({ i, frac: x - Math.floor(x) }))
+    .filter((e) => e.frac > 0)
+    .sort((a, b) => (b.frac - a.frac) || (a.i - b.i));
+
+  const out = floors.slice();
+  for (let k = 0; short > 0 && k < order.length; k++, short--) out[order[k].i]++;
+  // `short` can only exceed the candidate count when every share is a whole
+  // number, in which case the floors already sum to 100 and the loop never
+  // ran. Nothing to reconcile.
+  return out;
+}
+
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 3 · HELPERS
@@ -494,7 +569,27 @@ export function reconcileHrZones(
   if (parts.some((p) => p == null)) return null;
 
   const sum = (parts as number[]).reduce((a, b) => a + b, 0);
-  if (Math.abs(sum - 100) <= MAX_ZONE_SUM_DRIFT_PCT) return z;
+  if (Math.abs(sum - 100) <= MAX_ZONE_SUM_DRIFT_PCT) {
+    // ZONES-SUM-1 (2026-08-24) · WITHIN TOLERANCE IS NOT THE SAME AS CORRECT.
+    //
+    // This returned the stored object untouched, so a distribution summing to
+    // 99 passed the gate and reached the screen as a 99 — and the web
+    // renderers set each bar's width straight from its percentage, leaving a
+    // one-point gap at the end of the bar. One production row is exactly this
+    // (2026-08-23 · `{z1:15,z2:37,z3:21,z4:12,z5:14}`).
+    //
+    // The tolerance is doing its real job — deciding whether these five
+    // numbers are a distribution at all. Once they are, the last point is a
+    // rounding artefact and belongs to the zone with the largest remainder,
+    // not to nobody. Re-apportioned with the SAME function `hr-zone-bucket.ts`
+    // uses to build one from samples, so a stored distribution and a freshly
+    // computed one cannot round differently.
+    //
+    // A set already summing to 100 comes back byte-identical.
+    const fixed = apportionToHundred(parts as number[]);
+    if (!fixed) return null;
+    return { z1: fixed[0], z2: fixed[1], z3: fixed[2], z4: fixed[3], z5: fixed[4] };
+  }
 
   const avgHr = runAvgHr(d);
   if (avgHr == null) {

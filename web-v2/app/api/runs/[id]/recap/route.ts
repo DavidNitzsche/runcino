@@ -26,7 +26,8 @@ import { requireUserId } from '@/lib/auth/session';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
-import { coherentPace, coherentElapsedSec } from '@/lib/runs/coherence';
+import { reconcileRun } from '@/lib/runs/coherence';
+import { runAvgHr, runMaxHr, runElevGainFt, type RunData } from '@/lib/runs/run-shape';
 import type { Phase, WorkoutType } from '@/lib/coach/run-purpose';
 
 export const dynamic = 'force-dynamic';
@@ -102,6 +103,51 @@ export async function GET(
   const data = runRow.data ?? {};
   const date = (data.date as string) ?? String(data.startLocal ?? '').slice(0, 10);
 
+  /* ── E4 (2026-08-24 · rewritten, then finished) ────────────────────────────
+   *
+   * THE RECAP IS THE SENTENCE THE RUNNER ACTUALLY READS, and it was the last
+   * surface assembling its own facts inline.
+   *
+   * The pace line used to read `Number(data.paceSPerMi) || parsePaceToSec(...)`
+   * and on 2026-08-23 that made this route say: "Easy 11.0 mi at 3:37/mi. A
+   * touch quicker than the 9:22/mi easy target." The row stored `paceSPerMi`
+   * 217 beside a `durationSec` of 5298 for 11.01 miles — 8:01/mi — because the
+   * merge absorbed Strava's moving time onto the watch's row without its
+   * matching clock. Preferring the NUMBER also disagreed with
+   * `lib/coach/log-state.ts`, which preferred the STRING, so the same run
+   * printed two paces on two screens even when nothing was corrupt.
+   *
+   * That fix went in through `coherentPace` / `coherentElapsedSec`. What it
+   * left behind was three separate reconciliations of one row plus a set of
+   * raw reads beside them — `Number(data.distanceMi)`, `data.durationSec` into
+   * the weather window, `data.avgHr`, `data.elevGainFt` — each of which is a
+   * place this row can go back to answering one question two ways.
+   *
+   * ONE reconciliation now, and every fact below comes off it. `reconcileRun`
+   * is the same decision point `runFacts`, `coherentPace` and
+   * `coherentDurationSec` are all façades over, so the recap cannot drift from
+   * the poster, the log or run detail: they are reading the same object.
+   *
+   * MEASURED, so the claim is not bigger than the change (256 canonical rows,
+   * 2026-08-24, `faff_readonly`): the reconciled elapsed clock equals the raw
+   * `durationSec` on 256 of 256, and the reconciled distance equals the raw
+   * `distanceMi` on 256 of 256. Today this migration changes NO number on any
+   * screen. It removes the four places where the next merge could. */
+  const runc = reconcileRun(data as RunData);
+
+  const actualPaceSPerMi = runc.paceSecPerMi;
+  const actualElapsedSec = runc.elapsedSec;
+  // `?? 0` is kept from the read this replaces, deliberately and not by
+  // inertia: `deriveRecap` and `deriveWin` both take `actualMi: number`, and
+  // widening that signature to nullable is a change to the recap ENGINE with
+  // its own blast radius, not to this route's reads. Worth knowing that the
+  // two are not the same claim — 0 says "ran nothing", null would say "we do
+  // not know how far this was" — but no canonical row in production reaches
+  // it: all 256 carry a distance the reconciler accepts.
+  const actualMi = runc.distanceMi ?? 0;
+  const actualAvgHr = runAvgHr(data as RunData);
+  const actualMaxHr = runMaxHr(data as RunData);
+
   // Find the matching plan_workouts row for this date (intent vs execution).
   const planRow = date ? (await pool.query<{
     type: string;
@@ -140,7 +186,9 @@ export async function GET(
 
   const type = (TYPE_NORMALIZE[(planRow?.type ?? data.workoutType ?? '').toLowerCase()] ?? 'unplanned') as WorkoutType;
   const phase = planRow?.phase ? (PHASE_FROM_LABEL[planRow.phase] ?? null) : null;
-  const plannedMi = planRow?.distance_mi ? Number(planRow.distance_mi) : Number(data.distanceMi) || 0;
+  // No plan row for this date · the run itself is the only intent there is,
+  // and it is read through the reconciler like every other fact here.
+  const plannedMi = planRow?.distance_mi ? Number(planRow.distance_mi) : actualMi;
 
   // A4 — load per-rep phases from coach_intents for interval/structured
   // runs. Same query as loadPhaseBreakdown in run-state.ts; winIntervals
@@ -183,6 +231,26 @@ export async function GET(
     } catch { /* non-fatal: win falls back to per-mile heuristic */ }
   }
 
+  /* SPLITS · deliberately NOT gated on `runc.splitsCoverRun`.
+   *
+   * 35 of the 256 canonical rows carry a splits array whose distances sum more
+   * than a quarter mile away from the run's own distance, and the reconciler
+   * correctly reports those as not decomposing the run. But `deriveRecap` uses
+   * splits for exactly two things — `detectHrDrift` and `detectPaceFade` — and
+   * both read a TREND across the sequence. Neither sums the array. Refusing
+   * the sequence because its total drifts would delete a valid first-half /
+   * second-half read from one run in seven to protect an arithmetic nobody is
+   * doing.
+   *
+   * Two of the 35 are a different matter: a 0.84-mile row carrying four
+   * splits, and a 1.34-mile row carrying five, both totalling three to four
+   * miles. Those arrays describe some other run, and a fade read across them
+   * is meaningless. Separating those from an ordinary 5% GPS drift needs a
+   * PROPORTIONAL bound, and `MAX_SPLIT_SUM_DRIFT_MI` is a flat quarter mile —
+   * 5% of an 18-mile run and 209% of a 1.34-mile one. Picking that ratio is a
+   * threshold decision with two defensible answers, so it is reported rather
+   * than chosen here. See the session report. */
+  //
   // A5 — when GPS splits are flagged unreliable at ingest, don't feed
   // them into drift/fade heuristics. The flag signals the splits-sum
   // exceeded run duration by >5s (pause events inflated GPS timestamps).
@@ -190,28 +258,6 @@ export async function GET(
   const splitsForRecap = splitsReliable && Array.isArray(data.splits) && (data.splits as any[]).length > 0
     ? data.splits as any[]
     : undefined;
-
-  // E4 (2026-08-24 · rewritten): the pace is RECONCILED against the row's own
-  // clock, not picked off a key.
-  //
-  // This line used to read `Number(data.paceSPerMi) || parsePaceToSec(...)`,
-  // and on 2026-08-23 that made the recap say: "Easy 11.0 mi at 3:37/mi. A
-  // touch quicker than the 9:22/mi easy target." The row stored `paceSPerMi`
-  // 217 beside a `durationSec` of 5298 for 11.01 miles — 8:01/mi — because the
-  // merge absorbed Strava's moving time onto the watch's row without its
-  // matching clock.
-  //
-  // Preferring the NUMBER also disagreed with lib/coach/log-state.ts, which
-  // preferred the STRING. Those are two different quantities (the string is an
-  // elapsed-clock pace on 115 of 115 rows), so the same run printed two paces
-  // on two screens even when nothing was corrupt. Both read the reconciler now.
-  const paceRead = coherentPace(data);
-  const actualPaceSPerMi = paceRead?.secPerMi ?? null;
-
-  // The wall clock. `durationSec` first, `elapsedTimeS` only as a fallback —
-  // the same ladder this file already used, now in one place, and refusing a
-  // value the row's own arithmetic disproves.
-  const actualElapsedSec = coherentElapsedSec(data);
 
   // E3: evaluate a completed run against what it was PRESCRIBED AT THE TIME
   // (the frozen phase target baked into the watch completion), not the live
@@ -286,7 +332,9 @@ export async function GET(
     windMph: typeof data.weather.wind_mph === 'number' ? data.weather.wind_mph : null,
     conditions: typeof data.weather.conditions === 'string' ? data.weather.conditions : null,
     cloudCoverPct: typeof data.weather.cloud_cover_pct === 'number' ? data.weather.cloud_cover_pct : null,
-    durationS: typeof data.durationSec === 'number' ? data.durationSec : null,
+    // The reconciled wall clock, not a fourth raw read of `durationSec`.
+    // This decides which hour's temperature the run is judged against.
+    durationS: actualElapsedSec,
   } : null;
 
   // 2026-08-17 · adaptive voice band for recap framing. Best-effort ·
@@ -304,10 +352,10 @@ export async function GET(
   const terrain = resolveRunTerrain({
     source: typeof data.source === 'string' ? data.source : null,
     indoor: data.indoor === true,
-    distanceMi: Number(data.distanceMi) || null,
+    distanceMi: runc.distanceMi,
     durationSec: actualElapsedSec,
-    paceSPerMi: actualPaceSPerMi || null,
-    elevGainFt: Number(data.elevGainFt) || null,
+    paceSPerMi: actualPaceSPerMi,
+    elevGainFt: runElevGainFt(data as RunData),
     elevGainSource: typeof data.elevGainSource === 'string' ? data.elevGainSource : null,
     startLatLng: data.startLatLng,
     endLatLng: data.endLatLng,
@@ -321,7 +369,7 @@ export async function GET(
     plannedMi,
     plannedPaceSPerMi: evalPlannedPaceSPerMi,
     plannedHrCap: planRow?.hr_cap ?? null,
-    actualMi: Number(data.distanceMi) || 0,
+    actualMi,
     actualPaceSPerMi,
     // Real elapsed time where the row carries one · the recap otherwise derives
     // it from distance × pace. Drives the Research/18 fuelling-relevance gate.
@@ -334,8 +382,8 @@ export async function GET(
     finishMi: finishMiSpec,
     finishPaceSPerMi,
     finishLabel: finishLabelRaw,
-    actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
-    actualMaxHr: data.maxHr != null ? Number(data.maxHr) : null,
+    actualAvgHr,
+    actualMaxHr,
     splits: splitsForRecap,
     weather: weatherInput,
     // 2026-06-09 Phase 2 (3.2) · taken bail leads the recap (bail ≠ fail).
@@ -369,9 +417,9 @@ export async function GET(
     plannedMi,
     plannedPaceSPerMi: evalPlannedPaceSPerMi,
     plannedHrCap: planRow?.hr_cap ?? null,
-    actualMi: Number(data.distanceMi) || 0,
+    actualMi,
     actualPaceSPerMi,
-    actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
+    actualAvgHr,
     splits: splitsForRecap,
     phases: winPhases.length > 0 ? winPhases : undefined,
     verdict: recap.verdict,

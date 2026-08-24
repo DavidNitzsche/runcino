@@ -242,6 +242,19 @@ export interface V5Today {
   /// is null whenever that set is not a single zone. Empty asserts nothing.
   zoneTargets: number[] | null;
   elevation: number[] | null;
+  /** The garage, for the shoe menu. Empty when nothing is logged. */
+  shoeOptions: V5Row[];
+  /** Encoded route for the map. Null when the run has none. */
+  routePolyline: string | null;
+  /**
+   * The run's MEASURED climb, in feet.
+   *
+   * Sent because the phone used to derive it by summing the elevation
+   * profile, which meant a run with no per-split elevation reported a climb
+   * of zero while its own row recorded 128 ft. The profile is a picture; this
+   * is the measurement.
+   */
+  elevGainFt: number | null;
   onTheBelt: V5Stat[] | null;
   shoesWorn: V5Row | null;
   whatThisDidToTheWeek: V5Row[];
@@ -287,6 +300,23 @@ const MIN_CONVERGING_DOMAINS = 3; // CONVERGENCE.redMinDomains, lib/coach/conver
  */
 import { fmtMi, fmtClock, fmtPaceSlash as fmtPace } from '@/lib/format/run';
 export { fmtMi, fmtClock, fmtPace };
+
+const TRACK_M = [200, 300, 400, 600, 800, 1000, 1200, 1500] as const;
+export function fmtRepDistance(mi: number | null | undefined): string | null {
+  if (mi == null || !isFinite(mi) || mi <= 0) return null;
+  // A mile is a mile. Without this guard 1.0 mi (1609.3 m) lands within 1% of
+  // 1600 m and a runner reading "5 × 1 mi" would be shown "5 × 1600 m".
+  if (mi >= 0.98) return fmtMi(mi);
+  const m = mi * 1609.344;
+  for (const t of TRACK_M) {
+    if (Math.abs(m - t) / t <= 0.01) return t === 1000 ? '1 km' : `${t} m`;
+  }
+  // Not a track distance. Below half a mile a tenth is too coarse to be true.
+  if (mi < 0.5) return `${(Math.round(mi * 100) / 100).toFixed(2)} mi`;
+  return fmtMi(mi);
+}
+
+
 
 const DOW_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -525,9 +555,24 @@ export interface V5RecentRunCtx {
   zoneTargets: number[] | null;
   elevationSamples: number[] | null;
   elevGainFt: number | null;
+  /**
+   * The run's encoded route, when it has one. Null on a treadmill and null
+   * when no GPS was recorded — both honest absences the card says out loud
+   * rather than drawing an empty frame.
+   */
+  routePolyline: string | null;
   weekDoneMi: number;
   weekPlannedMi: number | null;
   shoeWorn: { id: string; name: string; mi: number } | null;
+  /**
+   * EVERY SHOE THE RUNNER COULD HAVE WORN, so the card can offer a menu.
+   *
+   * The row used to carry a `change_shoe` action that navigated away to the
+   * whole Shoes screen — leaving the run to answer a question about the run.
+   * The list is small (a garage is a handful of pairs), so it rides along and
+   * the choice happens where the question is asked.
+   */
+  shoeOptions: Array<{ id: string; name: string; mi: number | null }>;
   niggleFlagged: string | null;
 }
 
@@ -642,7 +687,14 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
 
   const stepMain = (s: V5PrescriptionStepLike): string => {
     if (s.reps != null && s.reps > 0) {
-      const rd = fmtMi(s.rep_distance_mi);
+      // SPECFIRST-1 · a rep is counted in the unit it was WRITTEN in. Doctrine
+      // sizes a hill rep, a Mona surge and a stride in seconds (Research/04
+      // §8.1, §9.2, §7.2) and a cruise interval in distance; the spec carries
+      // whichever, and `spec-card.ts` puts the seconds in `duration`. Reading
+      // only `rep_distance_mi` here collapsed every time-based set to a bare
+      // "6 reps" — including the shakeout's "4 × 20 sec" strides, which this
+      // builder has been dropping the "20 sec" from since it shipped.
+      const rd = fmtRepDistance(s.rep_distance_mi) ?? s.duration ?? null;
       return rd ? `${s.reps} × ${rd}` : `${s.reps} reps`;
     }
     const dist = fmtMi(s.distance_mi);
@@ -805,6 +857,9 @@ function buildRecentRun(r: V5RecentRunCtx): {
   askedVsRan: V5Row[];
   onTheBelt: V5Stat[] | null;
   elevation: number[] | null;
+  routePolyline: string | null;
+  elevGainFt: number | null;
+  shoeOptions: V5Row[];
   panelStats: V5Stat[];
   panelKicker: string | null;
   shoesWorn: V5Row | null;
@@ -967,6 +1022,18 @@ function buildRecentRun(r: V5RecentRunCtx): {
       }
     : null;
 
+  // The menu's contents. Same line shape as the worn row, so the chosen one
+  // reads identically before and after the choice.
+  const shoeOptions: V5Row[] = (r.shoeOptions ?? []).map((o) => ({
+    id: o.id,
+    label: o.name,
+    sub: o.mi != null && Number.isFinite(Number(o.mi))
+      ? `${fmtMi(o.mi) ?? '0 mi'} on them`
+      : 'Mileage not tracked',
+    value: null,
+    action: null,
+  }));
+
   const doneMi = Math.round((r.weekDoneMi) * 10) / 10;
   const whatThisDidToTheWeek: V5Row[] = [
     {
@@ -988,7 +1055,7 @@ function buildRecentRun(r: V5RecentRunCtx): {
   // one — an expanding body-part picker that writes — so emitting a row here
   // too put "Flag a niggle" on the screen twice, once inert and once real.
 
-  return { askedVsRan, onTheBelt, elevation, panelStats, panelKicker, shoesWorn, whatThisDidToTheWeek };
+  return { askedVsRan, onTheBelt, shoeOptions, elevation, routePolyline: r.indoor ? null : r.routePolyline, elevGainFt: r.indoor ? null : r.elevGainFt, panelStats, panelKicker, shoesWorn, whatThisDidToTheWeek };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1018,6 +1085,9 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   zoneTarget: null,
   zoneTargets: null,
   elevation: null,
+  routePolyline: null,
+  elevGainFt: null,
+  shoeOptions: [],
   onTheBelt: null,
   shoesWorn: null,
   whatThisDidToTheWeek: [],
@@ -1159,8 +1229,11 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.zoneTarget = ctx.recentRun.zoneTarget;
     t.zoneTargets = ctx.recentRun.zoneTargets;
     t.elevation = built.elevation;
+    t.routePolyline = built.routePolyline;
+    t.elevGainFt = built.elevGainFt;
     t.onTheBelt = built.onTheBelt;
     t.shoesWorn = built.shoesWorn;
+    t.shoeOptions = built.shoeOptions;
     t.whatThisDidToTheWeek = built.whatThisDidToTheWeek;
     t.runId = ctx.recentRun.runId;
     t.weekStrip = buildWeekStrip(ctx);

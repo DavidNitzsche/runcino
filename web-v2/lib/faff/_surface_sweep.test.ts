@@ -253,9 +253,11 @@ function recentRunFor(cell: Cell): V5TodayContext['recentRun'] {
     zoneTargets: cell.state === 'race_day' ? [4, 5] : null,
     elevationSamples: r.indoor ? null : [10, 22, 31, 18],
     elevGainFt: r.indoor ? null : 240,
+    routePolyline: null,
     weekDoneMi: cell.shape === 'hundred_mile_week' ? 100.4 : 24.2,
     weekPlannedMi: cell.state === 'off_season' || cell.state === 'no_goal' ? null : 42,
     // `shoeMi: null` is the production shape whose display asserted a zero.
+    shoeOptions: [{ id: 's1', name: 'Vomero Premium', mi: 62.7 }, { id: 's2', name: 'Vaporfly 3', mi: 88 }],
     shoeWorn: { id: 'shoe-1', name: 'Endorphin Speed 4', mi: r.shoeMi as number },
     niggleFlagged: cell.state === 'return_ladder' ? 'Left calf' : null,
   };
