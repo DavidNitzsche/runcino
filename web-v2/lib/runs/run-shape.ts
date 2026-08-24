@@ -801,10 +801,41 @@ export function runMovingSec(d: RunData): number | null {
   return pos(d.movingTimeS) ?? pos(d.movingSec) ?? pos(d.durationSec);
 }
 
-/** Finish seconds as the VDOT path defines it — `durationSec` first.
- *  Mirrors `runFinishSecSql`, including its known bias toward paused time. */
+/**
+ * Finish seconds — the clock a fitness estimate should be built on.
+ *
+ * ⚠ 2026-08-24 · THIS DID NOT MIRROR `runFinishSecSql`, AND SAID IT DID.
+ *
+ * The SQL fragment was reordered on 2026-08-17 to put `movingTimeS` first
+ * (pace is distance over time spent *running*; see its header). This accessor
+ * was not, and kept `durationSec` first while its own docstring claimed to
+ * mirror the SQL "including its known bias toward paused time" — a sentence
+ * describing an order the SQL had already stopped using. On the 28 production
+ * rows where the two keys differ the pair returned different numbers, by up to
+ * 2909 seconds.
+ *
+ * Latent rather than live: nothing outside the tests called this. That is the
+ * only reason it never shipped a wrong VDOT, and it is not a reason to leave
+ * it. A helper that answers a question differently from its own SQL twin is
+ * the same contradiction one level up.
+ *
+ * Now: moving time when the row's own elapsed clock supports it, the elapsed
+ * clock when it does not. That agrees with the SQL's intent AND refuses the
+ * shape the SQL cannot see — a stored moving time implying more than
+ * `MAX_PAUSED_SHARE` of the run was paused. Unlike `runMovingSec` this never
+ * returns null when any clock exists: a finish time may fall back to
+ * wall-clock, because a race that took an hour took an hour.
+ */
 export function runFinishSec(d: RunData): number | null {
-  return pos(d.durationSec) ?? pos(d.movingTimeS) ?? pos(d.movingSec) ?? pos(d.elapsedTimeS);
+  const elapsed = pos(d.durationSec) ?? pos(d.elapsedTimeS);
+  const moving = pos(d.movingTimeS) ?? pos(d.movingSec);
+  if (moving != null) {
+    if (elapsed == null) return moving;
+    const pausedShare = 1 - moving / elapsed;
+    if (pausedShare >= 0 && pausedShare <= MAX_PAUSED_SHARE) return moving;
+    return elapsed;
+  }
+  return elapsed;
 }
 
 /** Elapsed (wall-clock) seconds. Strava-era only. */

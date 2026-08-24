@@ -105,12 +105,17 @@ fi
 # the same silence it was meant to replace.
 #
 # Owner: the watch build wiring. Remedy: xcodegen generate, committed.
-EXEMPT_ORPHANS="
-_SessionSim.swift
-_DisplayedNumberTests.swift
-_HostileInputTests.swift
-_SessionTimelineTests.swift
-"
+# EMPTY, and it should stay that way. It briefly held four watch files while
+# the project file was stale. Waiving `_SessionSim.swift` turned out to be
+# unsafe in a way the waiver could not see: `WorkoutRootView.body` references
+# `SessionSim` unguarded, so an uncompiled `_SessionSim.swift` broke the
+# RELEASE build outright — a TestFlight archive would have failed. The gate
+# above only asks whether a file is compiled; it cannot know who depends on it.
+#
+# The lesson is the waiver's, not the gate's: a file can only be waived when
+# nothing references it, and checking that is more work than regenerating.
+# Regenerate instead.
+EXEMPT_ORPHANS=""
 
 printf '%s\n' $EXEMPT_ORPHANS | sed '/^$/d' | sort -u > "$tmp/exempt"
 

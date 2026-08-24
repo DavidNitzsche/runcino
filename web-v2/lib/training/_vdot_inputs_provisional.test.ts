@@ -134,9 +134,20 @@ describe('loadVdotInputs · provisional flag reads the whole ladder', () => {
     expect(c.provisionalSource).toBeNull();
   });
 
-  it('a rung-3 Strava/run date+distance match is provisional', async () => {
+  it('a rung-3 Strava/run date+distance match is provisional, and reads ELAPSED', async () => {
     const c = (await bySlug()).get('unlogged-half')!;
-    expect(c.finish_seconds).toBe(6400);
+    // 2026-08-24 · was 6400, the fixture's `movingTimeS`. Rung 3 read
+    // `movingTimeS || elapsedTimeS`, which is the moving-time ladder
+    // lib/race/auto-result.ts had already ruled the wrong field for a race
+    // result on 2026-08-17: a race is timed gun-to-mat, and moving time
+    // subtracts every stopped second at an aid station, so it reads
+    // systematically FASTER than the chip time it stands in for — and that
+    // bias flows into vdotFromRace and out through every future pace target.
+    //
+    // The 2026-08-17 fix landed in auto-result.ts and not here, so the two
+    // readers of "this race's finish time" disagreed by exactly the bias the
+    // fix was written to remove. 6410 is the fixture's `elapsedTimeS`.
+    expect(c.finish_seconds).toBe(6410);
     expect(c.provisional).toBe(true);
     expect(c.provisionalSource).toBe('run_match');
   });

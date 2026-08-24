@@ -44,6 +44,7 @@ import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { bestRecentVdot } from '@/lib/training/vdot';
 import { resolveFitness } from '@/lib/fitness/fitness-model';
 import { buildFitnessRow } from '@/lib/faff/fitness-read';
+import { reconcileHrZones, coherentPace, coherentDurationSec } from '@/lib/runs/coherence';
 import {
   composeV5Today,
   type V5TodayContext,
@@ -624,7 +625,14 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         inclinePct = belt.inclinePct;
       }
 
-      const zonePcts = data.hrZonePcts as Record<string, number> | undefined;
+      // 2026-08-24 · reconciled. A five-zero object is truthy and well-shaped,
+      // so this used to hand the phone `[0,0,0,0,0]` and the zone bar rendered
+      // nothing — on 5 canonical rows carrying a MEASURED average of 135-145
+      // bpm. A run with a heart rate spent its time in some zone; a flat zero
+      // distribution is a computation that produced nothing, drawn as a chart.
+      // `lib/coach/run-state.ts` has guarded this since 2026-05-31 and the
+      // phone route never picked the guard up.
+      const zonePcts = reconcileHrZones(data);
       const zoneShares = zonePcts
         ? [zonePcts.z1 ?? 0, zonePcts.z2 ?? 0, zonePcts.z3 ?? 0, zonePcts.z4 ?? 0, zonePcts.z5 ?? 0]
         : null;

@@ -110,6 +110,91 @@ function tierFor(source: string | null | undefined): number {
   return SOURCE_TIER[source] ?? 0;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * ARITHMETIC FAMILIES · THE FILL-WHEN-MISSING HOLE
+ *
+ * 2026-08-24. The tier ladder protects a field the canonical ALREADY HAS. It
+ * does nothing for a field the canonical LACKS: the branch below reads
+ * "Canonical field is missing · always populate", and always means always,
+ * from any tier.
+ *
+ * That is how David's 2026-08-23 run ended up telling three different stories.
+ * The watch row (tier 5) carried `durationSec` 5298 and `avgPaceMinPerMi`
+ * "8:01" for 11.01 miles. It does NOT write `movingTimeS`, `paceSPerMi`,
+ * `elapsedTimeS` or `avgSpeedMph` — see /api/watch/workouts/complete, which
+ * writes `durationSec`, `movingSec`, `timeMoving` and `avgPaceMinPerMi` and
+ * nothing else in this family. So when the Strava twin (tier 1) was absorbed:
+ *
+ *   durationSec       present on canonical → tier 1 < tier 5 → SKIPPED. Good.
+ *   avgPaceMinPerMi   present on canonical → tier 1 < tier 5 → SKIPPED. Good.
+ *   movingTimeS       absent  on canonical → "always populate" → 2389. Bad.
+ *   paceSPerMi        absent  on canonical → "always populate" →  217. Bad.
+ *   elapsedTimeS      absent  on canonical → "always populate" → 2389. Bad.
+ *
+ * Neither source was wrong. Strava's row was internally consistent at
+ * 3:37/mi, the watch's at 8:01/mi. The canonical was built from half of each,
+ * and no read could tell which half to believe because both halves came with
+ * the same authority.
+ *
+ * THE RULE: a member of an arithmetic family may not enter a row from a source
+ * that did not also supply the rest of the family. Provenance belongs to the
+ * FAMILY, not to the field.
+ *
+ * The fill-when-missing branch therefore asks one more question: does the
+ * canonical already hold a sibling of this family, from a source that outranks
+ * the incoming one? If so the gap is left open, and the read-time reconciler
+ * (lib/runs/coherence.ts) computes the missing member from the siblings that
+ * agree. A gap the reconciler can fill beats a number that contradicts.
+ *
+ * Kept deliberately narrow — clock/pace/speed only. These are the members
+ * bound by exact arithmetic, where one wrong entrant makes the whole row
+ * unreadable. Splits, elevation and HR are absorbed as before: they have their
+ * own guards (`splitsAreReal` above, `split-sanity.ts`, `elev-sanity.ts`) and
+ * no cross-key arithmetic that a single field can break.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The keys bound by `pace × distance = time`, as one unit.
+ *
+ * Mirrors the `clock.*`, `pace.*` and `speed.*` entries in
+ * `lib/runs/derived-registry.ts`. `distanceMi` is deliberately NOT here: it is
+ * the family's shared denominator, present on 100% of rows, and never the
+ * member that arrives alone.
+ */
+export const CLOCK_FAMILY = new Set<string>([
+  'movingTimeS', 'movingSec', 'durationSec', 'elapsedTimeS',
+  'paceSPerMi', 'avgPaceMinPerMi', 'avgSpeedMph', 'timeMoving',
+]);
+
+/**
+ * Whether a MISSING field may be filled from this absorbed row.
+ *
+ * True for anything outside the clock family, and for a clock-family member
+ * when the canonical holds no sibling that outranks the incoming source.
+ *
+ * Exported for `_canonical_family.test.ts`, which is the only reason it is not
+ * a closure.
+ */
+export function familyGuardedFill(
+  key: string,
+  canonicalData: Record<string, unknown> | null | undefined,
+  provenance: Record<string, string> | null | undefined,
+  incomingTier: number,
+): { allow: true } | { allow: false; blockedBy: string; siblingTier: number } {
+  if (!CLOCK_FAMILY.has(key)) return { allow: true };
+  const data = canonicalData ?? {};
+  for (const sibling of CLOCK_FAMILY) {
+    if (sibling === key) continue;
+    const v = data[sibling];
+    if (v == null || v === '') continue;
+    const siblingTier = existingTierFor(data, provenance, sibling);
+    if (siblingTier > incomingTier) {
+      return { allow: false, blockedBy: sibling, siblingTier };
+    }
+  }
+  return { allow: true };
+}
+
 /** Real per-mile splits = a non-empty array with at least one entry carrying a
  *  per-mile pace (under any historical key). Drives the Fix-4a tier-independent
  *  splits absorption: a watch row's whole-run "stub" (or no splits) is NOT real;
@@ -266,10 +351,20 @@ export async function enhanceCanonicalFromAbsorbed(args: {
       || canonicalVal === ''
       || (Array.isArray(canonicalVal) && canonicalVal.length === 0)
     ) {
-      // Canonical field is missing · always populate
-      updatedData[key] = incomingVal;
-      updatedProv[key] = incomingSource;
-      fieldsAdded.push(key);
+      // Canonical field is missing · populate UNLESS it is one member of an
+      // arithmetic family whose other members already came from a better
+      // source. See familyGuardedFill above for the 2026-08-23 incident.
+      const verdict = familyGuardedFill(key, canonicalData, canonicalProv, incomingTier);
+      if (verdict.allow) {
+        updatedData[key] = incomingVal;
+        updatedProv[key] = incomingSource;
+        fieldsAdded.push(key);
+      } else {
+        fieldsSkipped.push(
+          key + ' (clock family · would contradict ' + verdict.blockedBy
+          + ' at tier ' + verdict.siblingTier + ' from tier ' + incomingTier + ')',
+        );
+      }
     } else if (IDENTITY_FILL_ONLY.has(key)) {
       // Present already · an absorbed row never moves the run in time.
       fieldsSkipped.push(key + ' (identity field · fill-only, never overwritten)');

@@ -52,11 +52,8 @@
  * point: the three numbers leave here agreeing with each other, so a surface
  * cannot print a pace its own clock disproves.
  */
-import {
-  type RunData,
-  runDistanceMi,
-  runPaceSecPerMi,
-} from './run-shape';
+import type { RunData } from './run-shape';
+import { reconcileRun, MAX_PAUSED_SHARE as COHERENCE_MAX_PAUSED_SHARE } from './coherence';
 
 /**
  * The largest share of a run that may plausibly be paused before its stored
@@ -71,7 +68,12 @@ import {
  * Deliberately the same constant, and the same argument, as the one behind
  * `runPaceSecPerMi`. The two must never drift apart.
  */
-export const MAX_PAUSED_SHARE = 0.5;
+// RE-EXPORTED, not redeclared. It was defined here at 0.5 and in
+// `coherence.ts` at 0.5, which is two constants that happen to agree — the
+// same shape as the three clock ladders that agreed until they didn't. One
+// definition, re-exported, so a change to the threshold cannot land in one
+// reader and not the other.
+export const MAX_PAUSED_SHARE = COHERENCE_MAX_PAUSED_SHARE;
 
 /** Which clock a surface wants to print beside the distance. */
 export type ClockBasis = 'moving' | 'elapsed';
@@ -104,11 +106,6 @@ export interface RunFacts {
   refused: string[];
 }
 
-function pos(v: unknown): number | null {
-  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
 /**
  * Read a run's distance, time and pace as one coherent set.
  *
@@ -118,49 +115,28 @@ function pos(v: unknown): number | null {
  * honour falls through to the clock that survives.
  */
 export function runFacts(d: RunData, opts?: { basis?: ClockBasis }): RunFacts {
+  // ONE DECISION POINT, 2026-08-24.
+  //
+  // This function used to make the moving/elapsed/pace judgements itself, and
+  // `lib/runs/coherence.ts` made the same ones independently. Two readers that
+  // agree today are two readers that disagree after the next edit, which is
+  // the precise defect this module was created to end — so the judgement now
+  // happens once, in `reconcileRun`, and this function keeps only the part
+  // that is genuinely its own: which clock the CALLING SURFACE prefers.
+  //
+  // `reconcileRun` is the deeper of the two. It knows something this file's
+  // former `Math.max(durationSec, elapsedTimeS)` did not: on all 29 watch rows
+  // and all 32 strava rows in production, `elapsedTimeS` is a byte copy of
+  // `movingTimeS` and carries no wall-clock information whatsoever. Taking the
+  // max of a real clock and a copied moving time is right by luck on those
+  // rows and wrong the moment a row carries a genuinely larger stamped moving
+  // time. Preferring `durationSec` outright is right by evidence.
+  const c = reconcileRun(d);
+  const mi = c.distanceMi;
   const basis: ClockBasis = opts?.basis ?? 'moving';
-  const mi = runDistanceMi(d);
-  const refused: string[] = [];
 
-  // The elapsed clock. `durationSec` is the watch/HealthKit total and
-  // `elapsedTimeS` is Strava's; both are wall-clock, and the larger of the
-  // two is the honest outer bound when a merge left both behind. Taking the
-  // max is what makes the 2026-08-23 row recoverable: it carried a true
-  // durationSec of 5298 and a stamped elapsedTimeS of 2389.
-  const durationSec = pos(d.durationSec);
-  const elapsedTimeS = pos(d.elapsedTimeS);
-  const elapsedSec =
-    durationSec != null && elapsedTimeS != null
-      ? Math.max(durationSec, elapsedTimeS)
-      : durationSec ?? elapsedTimeS;
-
-  /** A candidate moving time is believable only against the row's own clock. */
-  const believable = (t: number): boolean =>
-    elapsedSec == null || (t <= elapsedSec && t >= elapsedSec * (1 - MAX_PAUSED_SHARE));
-
-  // The stored moving time.
-  let movingSec: number | null = null;
-  const storedMoving = pos(d.movingTimeS) ?? pos(d.movingSec);
-  if (storedMoving != null) {
-    if (believable(storedMoving)) movingSec = storedMoving;
-    else refused.push(d.movingTimeS != null ? 'movingTimeS' : 'movingSec');
-  }
-
-  // A stored pace is itself a claim about moving time, so it is checked the
-  // same way. `runPaceSecPerMi` states this rule for the pace alone; calling
-  // it keeps the two from drifting rather than restating the arithmetic.
-  const storedPace = pos(d.paceSPerMi);
-  if (storedPace != null) {
-    const checked = runPaceSecPerMi(d);
-    if (checked != null && Math.abs(checked - storedPace) > 0.5) refused.push('paceSPerMi');
-    else if (movingSec == null && mi != null) {
-      // No usable stored moving time, but a pace the row does not disprove.
-      // The pace IS the moving-time evidence.
-      const implied = storedPace * mi;
-      if (believable(implied)) movingSec = implied;
-      else if (!refused.includes('paceSPerMi')) refused.push('paceSPerMi');
-    }
-  }
+  const elapsedSec = c.elapsedSec;
+  const movingSec = c.movingSec;
 
   const preferred = basis === 'elapsed' ? elapsedSec : movingSec;
   const fallback = basis === 'elapsed' ? movingSec : elapsedSec;
@@ -177,10 +153,16 @@ export function runFacts(d: RunData, opts?: { basis?: ClockBasis }): RunFacts {
   return {
     distanceMi: mi,
     timeSec,
-    // THE LAW, made structural. Never a stored key.
+    // THE LAW, made structural. Never a stored key: whatever clock survived
+    // above is the clock this pace is divided by, so the three numbers a
+    // surface prints always multiply out. This is the line that would have
+    // made "11 mi · 1:28:18 · 3:37/mi" impossible to render.
     paceSecPerMi: mi != null && mi > 0 && timeSec != null ? timeSec / mi : null,
     basis: resolvedBasis,
     elapsedSec,
-    refused,
+    // The reconciler reports refusals as {family, field, detail}; this module's
+    // contract is the bare key list. The detail is not dropped — it is on the
+    // reconciler's own return for any caller that wants to explain itself.
+    refused: c.refusals.map((r) => r.field),
   };
 }

@@ -12,6 +12,7 @@ import { getCanonicalRunIds, ALL_TIME } from '@/lib/runs/volume';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { reconcileRun, coherentPace, coherentDurationSec } from '@/lib/runs/coherence';
 import {
   coalesceRunName, normalizeDataWorkoutType, matchRaceForRun,
   resolveWorkoutType, badgeForRun,
@@ -34,6 +35,21 @@ export interface LogRun {
    *  `time_moving` formats · exposed so consumers can sum without
    *  re-parsing the mm:ss string. */
   time_moving_sec: number | null;
+  /**
+   * WHICH CLOCK `time_moving` IS · 2026-08-24.
+   *
+   * `'moving'` when the row carries a moving time its own elapsed clock
+   * supports. `'elapsed'` when it does not, and this is the wall clock
+   * instead — which is the honest answer for how long the run took, and is
+   * NOT the same quantity the column name promises.
+   *
+   * The 2026-08-23 run is why. Its stored moving time of 2389s against a
+   * 5298s clock implied 54.9% of an eleven-mile run was paused, so the log
+   * rendered `39:49` for a run that took `1:28:18`. The value is now the
+   * clock that survives and this says which one it is, so a surface can
+   * label it rather than a reader assuming.
+   */
+  time_moving_basis: 'moving' | 'elapsed' | null;
   avg_hr: number | null;
   max_hr: number | null;
   cadence: number | null;
@@ -324,16 +340,12 @@ export async function loadLogState(
   const rawRuns: LogRun[] = rows.map((r: any) => {
     const a = r.data;
     const date = a.date || (a.startLocal ?? '').slice(0, 10);
-    // The log prints the MOVING clock. Distance, clock and pace are read as
-    // one set so the three cannot disagree: this row used to take
-    // `a.paceSPerMi` and the moving-time COALESCE independently, and a run
-    // carrying a Strava moving time of 2389s beside a watch `durationSec` of
-    // 5298 printed 39:49 next to a pace of 8:01 — an eleven-mile run at eleven
-    // miles an hour. See `lib/runs/run-facts.ts`.
-    const facts = runFacts(a, { basis: 'moving' });
-    const sPerMi = facts.paceSecPerMi;
+    // 2026-08-24 · reconciled against the row's own clock rather than read
+    // straight off `paceSPerMi`. See lib/runs/coherence.ts.
+    const clock = coherentDurationSec(a);
+    const sPerMi = coherentPace(a)?.secPerMi ?? null;
     const activityType: string | null = a.type ?? null;
-    const distanceMi = facts.distanceMi ?? 0;
+    const distanceMi = reconcileRun(a).distanceMi ?? 0;
     const twins = twinsByCanonical.get(String(r.row_id)) ?? [];
     // workoutType hint from the PHYSICAL run — canonical row first, then
     // any merged twin (the Strava twin carries workout_type '1' = race).
@@ -378,18 +390,21 @@ export async function loadLogState(
       source: a.source ?? 'strava',
       type: activityType,
       distance_mi: distanceMi,
-      // THE NUMBER FIRST, NOT THE STORED STRING. `a.avgPaceMinPerMi` is a
-      // display string some other writer formatted, and on a merged row it can
-      // be the one figure that DISAGREES with the clock printed beside it.
-      // Deriving from the same set that produced `time_moving` is what keeps
-      // the two columns of this table telling the same story.
-      pace: fmtPaceFromSec(sPerMi) || a.avgPaceMinPerMi || null,
-      // #2 · the moving-time COALESCE used to be spelled out here, in an order
-      // that differed from run detail's and from Today's. All three now read
-      // `runFacts`, which also refuses a moving time the row's own elapsed
-      // clock disproves.
-      time_moving: fmtDuration(facts.timeSec),
-      time_moving_sec: facts.timeSec,
+      // 2026-08-24 · `a.avgPaceMinPerMi` is no longer preferred. It reads as
+      // "average pace" and is not the same quantity as `paceSPerMi`: on 115 of
+      // 115 production rows the string is derived from `durationSec` and the
+      // number from `movingTimeS`. Preferring the string here while
+      // /api/runs/[id]/recap preferred the number is how one run showed two
+      // different paces on two screens. Both now come from the reconciler.
+      pace: fmtPaceFromSec(sPerMi) || null,
+      // #2 · the moving-time COALESCE used to be hand-rolled here — movingTimeS
+      // → movingSec → durationSec — which silently returns the ELAPSED clock
+      // under a moving-time name whenever no moving key exists, and returns a
+      // disproved moving time when one does. Reconciled now; `time_moving_basis`
+      // says which clock survived.
+      time_moving: fmtDuration(clock?.sec ?? null),
+      time_moving_sec: clock?.sec ?? null,
+      time_moving_basis: clock?.basis ?? null,
       avg_hr: Number(a.avgHr) || null,
       max_hr: Number(a.maxHr) || null,
       cadence: Number(a.avgCadence) || null,

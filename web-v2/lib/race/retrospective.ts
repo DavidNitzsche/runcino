@@ -248,7 +248,19 @@ export async function buildRaceRetro(args: {
   // ── Miles · actual_result.miles first, watch splits as labeled fallback ─
   let miles: RetroMile[] = [];
   let milesSource: RaceRetro['milesSource'] = null;
-  let avgHr = num(ar.avgHr);
+  // 2026-08-24 · READ BOTH SPELLINGS. `actual_result` stores race HR under two
+  // key names and no row carries both: the two live writers
+  // (result-chain.ts:manualResultPatch and auto-result.ts) both emit
+  // `avgHrBpm`, while this reader only ever looked at `avgHr`. In production
+  // that is 1 of the 4 HR-carrying races — Americas Finest City, 168 bpm,
+  // confirmed by the runner — resolving null here and falling through to
+  // `loadMatchedRunSplits` below, which substitutes a Strava-matched TRAINING
+  // run's average HR, unlabelled. That is CLAUDE.md race-data question 3:
+  // a Strava fallback shown where a curated value exists.
+  //
+  // `avgHrBpm` first because it is what both current writers emit; `avgHr` is
+  // the legacy spelling on the three older rows.
+  let avgHr = num(ar.avgHrBpm) ?? num(ar.avgHr);
   let maxHr = num(ar.maxHr);
   if (Array.isArray(ar.miles) && (ar.miles as unknown[]).length >= 2) {
     miles = mapMiles(ar.miles as unknown[]);

@@ -5,7 +5,7 @@
   "description": "faff.run v2 — coaching-app rewrite against deck-v1-2026-05-25.html. Replaces legacy/web on cutover.",
   "scripts": {
     "dev": "next dev",
-    "prebuild": "bash ../scripts/check-palette-sync.sh && bash ../scripts/check-modelled-mark.sh && bash ../scripts/check-coach-voice.sh && bash ../scripts/check-doctrine.sh && bash ../scripts/check-wire-keys.sh && bash ../scripts/check-generated-content.sh && bash ../scripts/check-surface-sweep.sh && bash ../scripts/check-xcodeproj-sync.sh && bash ../scripts/check-swallowed-failure.sh",
+    "prebuild": "bash ../scripts/check-palette-sync.sh && bash ../scripts/check-modelled-mark.sh && bash ../scripts/check-coach-voice.sh && bash ../scripts/check-doctrine.sh && bash ../scripts/check-wire-keys.sh && bash ../scripts/check-generated-content.sh && bash ../scripts/check-surface-sweep.sh && bash ../scripts/check-xcodeproj-sync.sh && bash ../scripts/check-swallowed-failure.sh && bash ../scripts/check-derived-consistency.sh",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -20,7 +20,8 @@
     "test:truth": "node ../scripts/sim/truth-contract.mjs",
     "test:generated": "bash ../scripts/check-generated-content.sh",
     "test:surfaces": "bash ../scripts/check-surface-sweep.sh",
-    "test:swallow": "bash ../scripts/check-swallowed-failure.sh"
+    "test:swallow": "bash ../scripts/check-swallowed-failure.sh",
+    "test:derived": "bash ../scripts/check-derived-consistency.sh"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

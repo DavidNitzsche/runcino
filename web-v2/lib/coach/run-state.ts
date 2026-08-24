@@ -29,6 +29,7 @@ import {
 } from '@/lib/runs/log-enrich';
 import { runFacts } from '@/lib/runs/run-facts';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { reconcileRun, coherentPace, coherentMovingSec, coherentElapsedSec } from '@/lib/runs/coherence';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 // THE one enum-to-word table. Imported, never restated — see `type_display`.
 import { displayTypeFor } from '@/lib/faff/v5-today';
@@ -585,25 +586,40 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     }
   })();
 
-  // DISTANCE, CLOCK AND PACE, READ AS ONE SET.
+  // ── Pace and the clocks · reconciled, 2026-08-24 ────────────────────────
   //
-  // These were three independent reads and each was wrong in its own way.
-  // `paceSPerMi` took the stored key without checking it against the row's own
-  // clock — on 2026-08-23 that key held 3:37/mi for an eleven-mile run. And
-  // both time reads named `duration_sec`, in snake_case, which is a key that
-  // exists on ZERO rows: the census spells it `durationSec`. On the 24
-  // canonical rows whose only clock IS `durationSec`, both of these resolved
-  // to null and run detail fell through to a pre-formatted display string —
-  // the same string that once rendered a 1h42m half as "102:33".
+  // TWO BUGS LIVED IN THE FIVE LINES THIS REPLACES, and together they are why
+  // run detail printed `39:49` for David's 2026-08-23 run while the poster for
+  // the same run printed `1:28:18`.
   //
-  // Run detail prints the moving clock, so its pace is the moving pace.
-  const facts = runFacts(r, { basis: 'moving' });
-  const paceSPerMi = facts.paceSecPerMi;
-  // The stored display strings are the LAST resort now, not the first. A
-  // string another writer formatted cannot be checked against anything.
-  const pace = fmtPace(paceSPerMi) || r.avgPaceMinPerMi || r.pace || null;
-  const movingSec = facts.timeSec;
-  const elapsedSec = facts.elapsedSec;
+  // 1 · `Number(r.duration_sec)` — THERE IS NO SUCH KEY. `r` is the run's own
+  //     `data` blob, which spells it `durationSec`; `duration_sec` is a column
+  //     on the unrelated plan-phase rows further down this file. Both rungs
+  //     evaluated to NaN on every row ever, so the ladders were really
+  //     `movingTimeS || null` and `elapsedTimeS || null`, and the watch's own
+  //     total clock was never consulted. That is the run-shape.ts bug class: a
+  //     literal nobody checks, resolving to a null indistinguishable from "not
+  //     measured".
+  //
+  // 2 · Even with the key fixed, `movingTimeS` was 2389s against a 5298s
+  //     clock — 54.9% of an eleven-mile run "paused" — because the merge
+  //     absorbed Strava's moving time onto the watch's row without its
+  //     matching clock. `elapsedTimeS` is no help: on all 29 watch rows and
+  //     all 32 strava rows in production it is a byte copy of `movingTimeS`.
+  //
+  // The reconciler answers both. `movingSec` is null when the row disproves
+  // it — deliberately not backfilled from the wall clock, because presenting
+  // elapsed as moving is a different measurement wearing this one's name.
+  const paceRead = coherentPace(r);
+  const paceSPerMi = paceRead?.secPerMi ?? null;
+  // `r.avgPaceMinPerMi` is no longer preferred either: it is the ELAPSED-clock
+  // pace on 115 of 115 production rows while `paceSPerMi` is the MOVING one,
+  // so preferring the string printed a different number here than the recap
+  // printed for the same run.
+  const pace = fmtPace(paceSPerMi) || null;
+
+  const movingSec  = coherentMovingSec(r);
+  const elapsedSec = coherentElapsedSec(r);
 
   // Splits — normalize various source shapes. Per-split `phase` tag is
   // filled in after phaseBreakdown loads (a few lines down) · null here
@@ -739,12 +755,11 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     userId,
     stravaCalories: Number(r.calories) || null,
     startLocal: r.startLocal as string | null,
-    // A FOURTH ladder over the same four keys lived here, in a different
-    // order again, inside the same function as the three above. The calorie
-    // estimate and the health-sample window it opens are now measured against
-    // the same clock the screen prints.
-    movingTimeS: movingSec ?? 0,
-    distanceMi: facts.distanceMi ?? 0,
+    // The calorie window. Reconciled, and elapsed when moving is refused —
+    // a window sized off a disproved 2389s would have missed 48 minutes of
+    // HealthKit samples on the 2026-08-23 run.
+    movingTimeS: movingSec ?? elapsedSec ?? 0,
+    distanceMi: reconcileRun(r).distanceMi ?? 0,
     avgHr: Number(r.avgHr) || null,
   });
 
@@ -968,7 +983,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     type_display: displayTypeFor(plannedRow?.type ?? r.type ?? null, planned_sub_label),
 
     // Same set as `pace` and `time_moving` above, so the three agree.
-    distance_mi: facts.distanceMi ?? 0,
+    distance_mi: reconcileRun(r).distanceMi ?? 0,
     pace, pace_s_per_mi: paceSPerMi,
     // ─────────────────────────────────────────────────────────────────
     // THE SECONDS ARE THE FACT; THE STRING IS SOMEONE ELSE'S FORMATTING

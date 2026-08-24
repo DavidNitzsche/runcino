@@ -63,9 +63,32 @@ const ROOTS = ['lib', 'app'];
 const CLOCK_KEYS = ['movingTimeS', 'movingSec', 'elapsedTimeS', 'durationSec'];
 
 /** Modules allowed to speak these literals — the reader layer itself. */
+/**
+ * Every spelling that reaches the one reconciler. A surface calling any of
+ * these is wired; a surface calling none of them is reading raw keys.
+ */
+const SHARED_READER_CALLS = [
+  'runFacts(',
+  'reconcileRun(',
+  'coherentPace(',
+  'coherentDurationSec(',
+  'coherentMovingSec(',
+  'coherentElapsedSec(',
+];
+
 const READER_MODULES = new Set([
   'lib/runs/run-shape.ts',   // the accessor layer and the SQL fragment builders
-  'lib/runs/run-facts.ts',   // the coherent triple
+  'lib/runs/run-facts.ts',   // the basis-aware facade
+  // THE DECISION POINT, added 2026-08-24. `reconcileRun` is where a row's
+  // clocks are judged against each other; `runFacts` above is now a thin
+  // basis-preference layer over it rather than a second opinion. Both are
+  // readers by definition and must name every key they arbitrate — that is
+  // the job, not a ladder.
+  'lib/runs/coherence.ts',
+  // The gate's own registry of which keys belong to which family. It lists
+  // the members in order to police them; a lint that flagged its own
+  // vocabulary would be unable to describe what it checks.
+  'lib/runs/derived-registry.ts',
 ]);
 
 /**
@@ -74,6 +97,8 @@ const READER_MODULES = new Set([
  * at once is its own risk — and it is the queue.
  */
 const ALLOW: Record<string, string> = {
+  'lib/runs/canonical.ts':
+    "THE WRITE SIDE, and the reason the read side had a problem to solve. `familyGuardedFill` has to name every member of the clock family in order to refuse a partial one — a fill that knew only two spellings is precisely how Strava's moving time landed on the watch's row on 2026-08-23 without its matching clock. It reads the keys to POLICE them, not to pick one, so it is a guard rather than a ladder. It should stay listed anyway: if this file ever starts CHOOSING a clock, that is a real finding and the entry is where the argument lives.",
   /* ── WRITERS. A writer has to name what it writes; these are not drift. ── */
   'app/api/watch/workouts/complete/route.ts':
     'WRITER · the watch completion mapper. Builds runs.data inline inside POST.',
@@ -88,8 +113,6 @@ const ALLOW: Record<string, string> = {
 
   /* ── READERS NOT YET MIGRATED. Each is a place a number can still drift,
    *    and this is the queue, in the order I would take them. ───────────── */
-  'app/api/runs/[id]/recap/route.ts':
-    'NEXT · the recap route assembles RecapInput inline from three clock keys. The recap is what told David 3:37/mi, and Today\'s copy of it is migrated while this one is not.',
   'lib/coach/run-state.ts':
     'MIGRATED, but the scan still fires: the file discusses `durationSec` in prose and passes a field NAMED `movingTimeS` to two helpers. The substring scan cannot tell those from a read, and over-reporting is the right direction for a lint.',
   'lib/coach/recovery-brief.ts':
@@ -113,11 +136,7 @@ const ALLOW: Record<string, string> = {
    *    run keys are the labelled-provisional fallback. Migrating them means
    *    reasoning about the race source-of-truth rule as well, so they are
    *    deliberately last rather than accidentally missed. ─────────────────── */
-  'lib/coach/races-state.ts': 'RACE PATH · see the note above',
   'lib/race/auto-result.ts': 'RACE PATH · see the note above',
-  'lib/race/personal-records.ts': 'RACE PATH · see the note above',
-  'lib/training/vdot-inputs.ts':
-    'THE FITNESS ANCHOR · `runFinishSec` has a documented bias toward paused time, and changing which clock feeds VDOT moves every runner\'s anchor. A deliberate decision, not a cleanup.',
 };
 
 const rel = (p: string) => path.relative(WEB, p).split(path.sep).join('/');
@@ -203,22 +222,36 @@ describe('reader lint · one reader for how long a run took', () => {
       ['lib/coach/log-state.ts', 'the log'],
       ['lib/coach/run-state.ts', 'run detail'],
     ];
+    // Two facades over ONE reconciler, not two readers. `runFacts` carries the
+    // basis preference a surface needs; `coherentPace` / `coherentDurationSec`
+    // answer the narrower question without one. Both call `reconcileRun`, so a
+    // surface reading through either cannot drift from a surface reading
+    // through the other — which is the property this test defends. Naming only
+    // `runFacts` here would fail a surface that is correctly wired, and a lint
+    // that cries wolf gets an allowlist entry rather than a fix.
     const unwired: string[] = [];
     for (const [file, what] of MUST_CALL) {
       const src = fs.readFileSync(path.join(WEB, file), 'utf8');
-      if (!src.includes('runFacts(')) unwired.push(`${file} (${what}) does not call runFacts`);
+      if (!SHARED_READER_CALLS.some((c) => src.includes(c))) {
+        unwired.push(`${file} (${what}) reads no shared reader`);
+      }
     }
     expect(unwired, 'a surface stopped reading through the shared reader and can drift again').toEqual([]);
   });
 
-  it('runFacts is called by something other than its own tests', () => {
+  it('the shared readers are called by something other than their own tests', () => {
     // The generalised version of the same check. A guard whose only caller is
     // its own test file is a comment with a green tick beside it.
     let callers = 0;
     for (const file of sourceFiles()) {
-      if (rel(file) === 'lib/runs/run-facts.ts') continue;
-      if (fs.readFileSync(file, 'utf8').includes('runFacts(')) callers++;
+      if (READER_MODULES.has(rel(file))) continue;
+      const src = fs.readFileSync(file, 'utf8');
+      if (SHARED_READER_CALLS.some((c) => src.includes(c))) callers++;
     }
-    expect(callers, 'runFacts has no production callers — it is dead code').toBeGreaterThanOrEqual(3);
+    // This is the assertion that would have caught the morning of 2026-08-24,
+    // when `runPaceSecPerMi` stated the rule correctly and had ZERO callers
+    // while its own unit test passed. A guard whose only caller is its own
+    // test file is a comment with a green tick beside it.
+    expect(callers, 'the shared reader has no production callers — it is dead code').toBeGreaterThanOrEqual(3);
   });
 });
