@@ -817,6 +817,7 @@ extension V5Today {
       "verdict": null,
       "zoneShares": null,
       "zoneTarget": null,
+      "zoneTargets": [],
       "elevation": null,
       "onTheBelt": null,
       "shoesWorn": null,

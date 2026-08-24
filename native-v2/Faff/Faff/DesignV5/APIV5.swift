@@ -428,6 +428,15 @@ struct V5Today: Decodable, Equatable {
     let verdict: String?
     /// Percent in each of five zones.
     let zoneShares: [Double]?
+    /// The zone(s) the session asked for, ascending.
+    ///
+    /// `zoneTarget` is the older single-Int field and is NULL whenever the
+    /// ask is a set — the server will not pick one of a half-marathon's two
+    /// zones to fit an Int, because emphasising half an instruction is worse
+    /// than emphasising none. Read `zoneTargets`; `zoneTarget` is kept only
+    /// so a phone running against a server that predates the set still has
+    /// something to fall back to.
+    let zoneTargets: [Int]?
     let zoneTarget: Int?
     /// The route's elevation, for the profile. Absent on a treadmill run,
     /// where the design replaces the card entirely.
@@ -1253,7 +1262,7 @@ private extension KeyedDecodingContainer {
 extension V5Today {
     enum K: String, CodingKey {
         case dateISO, state, panel, weekStrip, groups, why, whereYouAre, beforeYouGo
-        case askedVsRan, verdict, zoneShares, zoneTarget, elevation, onTheBelt
+        case askedVsRan, verdict, zoneShares, zoneTargets, zoneTarget, elevation, onTheBelt
         case shoesWorn, whatThisDidToTheWeek, runId
         case changed, injury, weekOff, offSeason, notOnPhoneYet
         case paceNote, sick
@@ -1271,6 +1280,7 @@ extension V5Today {
         askedVsRan = c.list(.askedVsRan)
         verdict = c.opt(.verdict)
         zoneShares = c.opt(.zoneShares)
+        zoneTargets = c.opt(.zoneTargets)
         zoneTarget = c.opt(.zoneTarget)
         elevation = c.opt(.elevation)
         onTheBelt = c.opt(.onTheBelt)

@@ -441,10 +441,10 @@ struct TodayAfterV5: View {
     /// "zone 2" / "zones 4 and 5" — the caption's own tail, so the set case
     /// reads as a sentence instead of as a list.
     private func zonePhrase(_ zones: [Int]) -> String {
-        if zones.count == 1 { return "zone \(zones[0])" }
-        let names = zones.map(String.init)
-        let head = names.dropLast().joined(separator: ", ")
-        return "zones \(head) and \(names[names.count - 1])"
+        guard let last = zones.last else { return "" }
+        if zones.count == 1 { return "zone \(last)" }
+        let head = zones.dropLast().map(String.init).joined(separator: ", ")
+        return "zones \(head) and \(last)"
     }
 
     private func zoneTile(_ shares: [Double]) -> some View {

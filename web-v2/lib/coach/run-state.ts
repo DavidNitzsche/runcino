@@ -28,6 +28,7 @@ import {
   type RaceForMatch,
 } from '@/lib/runs/log-enrich';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 
 export interface RunSplit {
   mile: number;
@@ -289,6 +290,26 @@ export interface RunDetail {
   /** plan_workouts.distance_mi for the matching row; used as the "planned
    *  distance" axis when the spec ships rep-only structures. */
   planned_distance_mi: number | null;
+  /**
+   * The ACSM zone(s) the PLANNED session asked for, ascending. `[]` when
+   * nothing was planned for the day, or when the planned type is one
+   * doctrine does not assign a zone to.
+   *
+   * IT COMES FROM THE PRESCRIPTION, NEVER FROM WHERE THE TIME LANDED —
+   * `plan_workouts.type` and `.distance_mi`, not this run's own `type` or
+   * `distance_mi`. The zone bar exists to answer "did it sit where it was
+   * asked to", and a target read off the outcome makes that question
+   * unanswerable: the bar would agree with itself on every run.
+   *
+   * A set, not a number, because a race is not one zone — a half straddles
+   * the 90% %HRmax edge and asks for Z4 AND Z5. See `lib/coach/zone-target.ts`
+   * and the `ZONETARGET.race-zone-comes-from-the-race-hr-band` claim, which
+   * re-derives the whole mapping out of Research/08 §6.1 × Research/03 §4 at
+   * run time. This module is a CONSUMER of that table and must never restate
+   * it — the phone used to carry its own copy of the switch and had already
+   * drifted (it mapped `mp` and knew nothing of `race_week_tuneup`).
+   */
+  zoneTargets: number[];
   /** 8b · the decisions the runner took on the wrist mid-run, passed
    *  through from `runs.data` exactly as the watch recorded them.
    *
@@ -768,6 +789,12 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const planned_distance_mi = plannedRow?.distance_mi != null
     ? Number(plannedRow.distance_mi)
     : null;
+  // The prescribed zone(s) for the day, from the plan row above — the same
+  // `zoneTargetsForWorkout` call `/api/v5/today` makes, off the same two
+  // columns, so the two screens cannot disagree about what was asked. The
+  // race branch reads the planned distance because doctrine's answer depends
+  // on it (5K/10K → Z5, half → Z4+Z5, marathon → Z4).
+  const zoneTargets = zoneTargetsForWorkout(plannedRow?.type ?? null, planned_distance_mi);
 
   // 2026-07-06 · P1-43 fix · server-side easy-run HR read against the
   // runner's OWN threshold (resolveThresholdHr above · stored LTHR or
@@ -1008,6 +1035,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     planned_spec,
     planned_sub_label,
     planned_distance_mi,
+    zoneTargets,
     ceiling_lift: (r.ceilingLift as Record<string, unknown> | undefined) ?? null,
     rep_skips: Array.isArray(r.repSkips) ? (r.repSkips as Array<Record<string, unknown>>) : [],
     recovery_extensions: Array.isArray(r.recoveryExtensions)

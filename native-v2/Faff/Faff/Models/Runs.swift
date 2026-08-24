@@ -278,6 +278,20 @@ struct RunDetail: Decodable, Identifiable {
     let planned_spec: WorkoutSpec?     // Migration 120 structured spec
     let planned_sub_label: String?
     let planned_distance_mi: Double?
+    /// The zone(s) the PLANNED session asked for, 1-indexed and ascending.
+    /// Empty when nothing was planned that day, or when doctrine assigns the
+    /// planned type no zone — an unhighlighted bar is honest, a guessed one
+    /// is not.
+    ///
+    /// Server-derived (`lib/coach/zone-target.ts`, off the `plan_workouts`
+    /// row) and never re-derived here. This screen used to carry its own
+    /// copy of that switch keyed on `type` — the RUN's own type, not the
+    /// prescription's — and the copy had already drifted from the table it
+    /// was copying. One table, one owner, and the owner is the server.
+    ///
+    /// A SET because a race is not one zone: a half straddles the 90%
+    /// %HRmax edge and asks for Z4 and Z5 both.
+    let zoneTargets: [Int]
     /// 8b · what the runner decided on the wrist. Empty for almost every run.
     let ceiling_lift: RunCeilingLift?
     let rep_skips: [RunRepSkip]
@@ -292,6 +306,7 @@ struct RunDetail: Decodable, Identifiable {
         case phase_breakdown
         case suffer_score, kudos, shoe_id, shoes, hr_zones_from_lthr
         case planned_spec, planned_sub_label, planned_distance_mi
+        case zoneTargets
         case ceiling_lift, rep_skips, recovery_extensions
     }
     init(from decoder: Decoder) throws {
@@ -333,6 +348,10 @@ struct RunDetail: Decodable, Identifiable {
         self.planned_spec = try c.decodeIfPresent(WorkoutSpec.self, forKey: .planned_spec)
         self.planned_sub_label = try c.decodeIfPresent(String.self, forKey: .planned_sub_label)
         self.planned_distance_mi = try c.decodeIfPresent(Double.self, forKey: .planned_distance_mi)
+        // Lenient like every sibling here: an older server that does not
+        // send the key yields [], which highlights nothing — the same thing
+        // this screen did before the field existed, never a wrong zone.
+        self.zoneTargets = (try? c.decode([Int].self, forKey: .zoneTargets)) ?? []
         self.ceiling_lift = try? c.decodeIfPresent(RunCeilingLift.self, forKey: .ceiling_lift)
         self.rep_skips = (try? c.decode([RunRepSkip].self, forKey: .rep_skips)) ?? []
         self.recovery_extensions = (try? c.decode([RunRecoveryExtension].self, forKey: .recovery_extensions)) ?? []

@@ -439,39 +439,39 @@ struct RunDetailV5: View {
         return (z.z1 + z.z2 + z.z3 + z.z4 + z.z5) > 0
     }
 
-    /// The zone the session ASKED for, mirroring `lib/coach/zone-target.ts`
-    /// (ACSM five-zone table, `Research/03` §4) — which is the same mapping
-    /// `V5Today.zoneTarget` already hands the after-run screen. 23a reads no
-    /// such field, so it derives the target from the run's own type rather
-    /// than leaving the graphic mute.
+    /// The zone(s) the session ASKED for — read off the wire, not derived.
     ///
     /// ─────────────────────────────────────────────────────────────────────
-    /// THE ONE CASE THAT STAYS NIL, AND WHY IT IS ONLY ONE
+    /// WHAT THIS USED TO BE, AND WHY IT IS GONE
     ///
-    /// Round three says the target "comes from the session's own prescription"
-    /// and that "a race targets Z4/Z5". `zoneTargetForWorkout` maps race to
-    /// zone 3, off §4's own Purpose column, with a doctrine claim watching it.
-    /// A design ruling does not move a physiological constant, so the constant
-    /// stands — but drawing Z3 on a race would put the design's own screen at
-    /// odds with the ruling that commissioned it, so a race highlights nothing
-    /// and the bar states the distribution without answering.
+    /// This was a local `switch` over `detail.type` that restated
+    /// `lib/coach/zone-target.ts` from memory. Two things were wrong with it,
+    /// and the second is the one that mattered.
     ///
-    /// This screen previously passed nil for EVERY run for that reason, which
-    /// was the wrong size of retreat: the two sources disagree on races alone.
-    /// On an easy, long, threshold or interval run they name the same zone, so
-    /// there was never a conflict to dodge — and a bar with nothing highlighted
-    /// cannot answer "did it sit where it was asked to", which is the only
-    /// question it exists for.
-    private var zoneTarget: Int? {
-        switch (detail.type ?? "").lowercased() {
-        case "easy", "recovery", "shakeout", "long":  return 2
-        case "tempo", "progression", "mp":            return 3
-        case "threshold", "fartlek":                  return 4
-        case "intervals", "vo2max":                   return 5
-        // Race: see above. Rest and anything unrecognised: nothing was asked.
-        default:                                       return nil
-        }
-    }
+    ///   · IT HAD DRIFTED. The local copy mapped `mp` and had never heard of
+    ///     `race_week_tuneup`; the server's table is the reverse. A copy of a
+    ///     table is a table that will disagree with the original, and this one
+    ///     already did.
+    ///
+    ///   · IT WAS KEYED ON THE WRONG THING. `detail.type` is the RUN's type,
+    ///     what came back from the watch or Strava. The zone bar asks "did it
+    ///     sit where it was asked to", and the ask lives in the plan row, not
+    ///     in the run. `detail.zoneTargets` comes from `plan_workouts.type`
+    ///     and `.distance_mi` — the prescription — so the bar is now answering
+    ///     the question it was drawn for.
+    ///
+    /// Races used to highlight nothing here, deliberately: round three said a
+    /// race targets Z4/Z5, the constant said zone 3, and drawing zone 3 on a
+    /// race would have put the screen at odds with the ruling that
+    /// commissioned it. Refusing a design ruling as grounds to move a
+    /// physiological constant was right. The constant itself was wrong, and
+    /// has since been re-derived from the two doctrine tables that settle it
+    /// (Research/08 §6.1 race HR bands × Research/03 §4 ACSM zones, commit
+    /// c6b7ed13): 5K and 10K ask for Z5, a half for Z4 AND Z5, a marathon for
+    /// Z4. No race distance doctrine publishes reaches down into zone 3.
+    ///
+    /// So there is nothing left to dodge, and nothing left to restate.
+    private var zoneTargets: Set<Int> { Set(detail.zoneTargets) }
 
     private var zoneSection: some View {
         Tile {
@@ -480,7 +480,7 @@ struct RunDetailV5: View {
                 .foregroundStyle(V5.textSecondary)
             ZoneBar(shares: [detail.hrZonePcts.z1, detail.hrZonePcts.z2, detail.hrZonePcts.z3,
                              detail.hrZonePcts.z4, detail.hrZonePcts.z5],
-                    target: zoneTarget, height: 44, labels: true)
+                    targets: zoneTargets, height: 44, labels: true)
         }
     }
 
@@ -650,6 +650,7 @@ enum RunDetailV5Sample {
         { "mile": 6, "pace": "9:09", "hr": 141, "elev_change_ft": 4 }
       ],
       "hrZonePcts": { "z1": 6, "z2": 58, "z3": 30, "z4": 5, "z5": 1 },
+      "zoneTargets": [2],
       "shoe_id": 12,
       "shoes": [
         { "id": 12, "brand": "Saucony", "model": "Endorphin Speed 4", "color": null,
@@ -677,6 +678,7 @@ enum RunDetailV5Sample {
       "route_polyline": null,
       "splits": [],
       "hrZonePcts": { "z1": 2, "z2": 14, "z3": 28, "z4": 44, "z5": 12 },
+      "zoneTargets": [4, 5],
       "shoes": []
     }
     """
