@@ -457,7 +457,13 @@ struct OnboardingV5: View {
             VStack(alignment: .leading, spacing: V5.S.s20) {
                 stepHeadlineText("What fits your week")
 
-                FaffStepper(label: "Days per week", value: $answers.daysPerWeek, range: 2...7,
+                // 2026-08-25 · was `2...7`, and the host then submitted
+                // `min(max(daysPerWeek, 0), 6)` because `VALID_FREQ` stops at
+                // six — so a runner who picked seven got a six-day plan and
+                // nothing said so. `WeeklyFrequency` is `0…6` and the builder
+                // places a rest day before it applies the cap, so seven is not
+                // a week this product can write. Do not offer it.
+                FaffStepper(label: "Days per week", value: $answers.daysPerWeek, range: 2...6,
                             helper: daysHelper)
 
                 FaffSelect(

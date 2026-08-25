@@ -104,15 +104,52 @@ enum A11yDump {
             print("A11YDUMP: no window")
             return
         }
-        var lines: [String] = ["===== A11Y TREE ====="]
+        var lines: [String] = []
         walk(window, depth: 0, into: &lines)
-        lines.append("===== END =====")
-        print(lines.joined(separator: "\n"))
+        // 2026-08-25 · AN EMPTY TREE IS NOT A CLEAN ONE.
+        //
+        // The header above warns that this prints nothing unless an assistive
+        // client is attached. The OUTPUT did not: it printed a well-formed
+        // `===== A11Y TREE =====` / `===== END =====` with nothing between, on
+        // a screen with a dozen labelled values. Run without the VoiceOver
+        // defaults it reads as "this screen has no accessibility elements",
+        // which is the finding this tool exists to make — reported by a tool
+        // that could not see. `check-swallowed-failure.sh` names the shape in
+        // its own words: a scanner that opens no files and reports clean is
+        // the bug being hunted, one level up. It must refuse on nothing.
+        guard !lines.isEmpty else {
+            print("""
+            ===== A11Y TREE =====
+            REFUSED · walked the key window and found no accessibility elements.
+            SwiftUI only materialises the tree while an assistive client is
+            attached, so this is almost certainly the dump and not the screen.
+            Turn VoiceOver on first (see A11yDump.swift's header) and re-run:
+              xcrun simctl spawn <udid> defaults write com.apple.Accessibility \\
+                  ApplicationAccessibilityEnabled -int 1
+              xcrun simctl spawn <udid> defaults write com.apple.Accessibility \\
+                  VoiceOverTouchEnabled -int 1
+            ===== END =====
+            """)
+            return
+        }
+        print((["===== A11Y TREE ====="] + lines + ["===== END ====="])
+            .joined(separator: "\n"))
     }
 
     /// Call once from the app root when the launch argument is present.
+    ///
+    /// 2026-08-25 · `installed` · the call site is `let _ =
+    /// A11yDump.installIfRequested()` inside `FaffApp.body`, which SwiftUI
+    /// re-evaluates. Every evaluation scheduled another three timers, so a
+    /// two-render launch printed six dumps and the log read as though the
+    /// screen had been captured twice at each delay. "Call once" was a
+    /// comment; it is a guarantee now.
+    private static var installed = false
+
     static func installIfRequested() {
         guard ProcessInfo.processInfo.arguments.contains("-faffA11yDump") else { return }
+        guard !installed else { return }
+        installed = true
         // Repeat so a screen that loads asynchronously is captured too.
         for delay in [3.0, 8.0, 14.0] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {

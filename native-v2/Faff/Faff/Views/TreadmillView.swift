@@ -262,6 +262,11 @@ struct TreadmillView: View {
             .onReceive(session.$tickStamp) { now in
                 maintainWatchBridge(at: now)
                 attachHrForClosedSegments()
+                // 2026-08-25 · same wiring as the v5 console · the meter must
+                // measure its step rate over the belt's MOVING clock, not over
+                // wall clock, or a paused minute lands in the denominator of a
+                // cadence the run is then filed with.
+                meter.note(movingSec: session.belt.elapsedSec, isPaused: !session.isRunning)
             }
         }
         .task {

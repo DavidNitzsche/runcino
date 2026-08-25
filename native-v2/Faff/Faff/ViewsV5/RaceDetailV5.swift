@@ -197,8 +197,26 @@ struct RaceDetailV5: View {
     /// been run the middle column holds the finish the runner actually
     /// recorded, so the label has to say so — the route stops projecting a
     /// past race and sends the result in that slot instead.
+    ///
+    /// 2026-08-25 · AND THE VALUE HAS TO AGREE. This read `isPast` alone, so
+    /// the word "Result" was a claim about which SLOT the route filled rather
+    /// than about the number in it. `V5Number` carries `modelled` for exactly
+    /// this and the label ignored it.
+    ///
+    /// The tilde is retired, so on this screen the label is the ONLY thing
+    /// carrying provenance — which makes "Result" over a modelled figure the
+    /// strongest possible false claim, and an unmarked one. Driven on a
+    /// simulator, the catalog's own past-race samples showed a marathon
+    /// PROJECTION of 3:31:48 under the word "Result" on a half marathon, one
+    /// of them directly above the words "Log your result". `racePlateFor`
+    /// cannot currently produce that pair, so this is a guard rather than a
+    /// live bug — but a guard is what makes it stay that way, and a label
+    /// derived from a sibling field instead of from its own value is the
+    /// shape that lets it come back.
     private var middleStatLabel: String {
-        raceDetail.resultEntry?.isPast == true ? "Result" : "Projected"
+        let past = raceDetail.resultEntry?.isPast == true
+        let measured = raceDetail.projected?.modelled == false
+        return past && measured ? "Result" : "Projected"
     }
 
     /// AN UNSET GOAL IS NOT AN UNREADABLE ONE.
@@ -415,19 +433,62 @@ extension V5RaceDetail {
         resultEntry: nil
     )
 
+    // ── The half-marathon samples' own course and plan ──────────────────────
+    //
+    // 2026-08-25 · the three half samples below were each `let r = v5Sample`
+    // followed by a field-by-field copy, and every one of them inherited CIM's
+    // marathon numbers: goal 3:30:00, projection 3:31:48, gap +1:48, an
+    // elevation mark reading "Big drop, mile 16", and a pace plan whose last
+    // row is "Miles 21–26.2". Rendered, the Sombrero Half showed
+    // "Result 3:31:48" — a MARATHON projection, under the word Result, on a
+    // thirteen-mile race, directly above the words "Log your result".
+    //
+    // A catalog exists so a screen gets LOOKED AT. A sample that cannot happen
+    // makes the screen unreadable as evidence: every real defect on it is
+    // indistinguishable from the sample being nonsense, which is how the
+    // "Result over a modelled number" label bug above sat unnoticed on three
+    // entries at once. Halves get a half's course and a half's plan.
+    static let halfElevation: [Double] = [
+        80, 78, 76, 79, 74, 70, 66, 60, 54, 50, 46, 40, 34,
+        30, 26, 20, 14, 10, 6, 2, 0,
+    ]
+    static let halfElevationMarks: [V5ElevationMark] = [
+        V5ElevationMark(id: "m1", at: 0.15, label: "Rollers, mile 2"),
+        V5ElevationMark(id: "m2", at: 0.53, label: "Big drop, mile 7"),
+        V5ElevationMark(id: "m3", at: 0.92, label: "Flat to the line"),
+    ]
+    /// 1:30:00 over 13.11 mi is 6:52/mi. Opening a shade easy, holding, then
+    /// whatever is left — the same three-beat shape as the marathon plan.
+    static let halfPacePlan: [V5Row] = [
+        V5Row(id: "p1", label: "Miles 1–3", sub: "Easy into it",
+              value: V5Number(text: "6:58–7:04/mi", modelled: false), action: nil),
+        V5Row(id: "p2", label: "Miles 4–10", sub: "Threshold effort, the pace that matters",
+              value: V5Number(text: "6:48–6:54/mi", modelled: false), action: nil),
+        V5Row(id: "p3", label: "Miles 11–13.1", sub: "Whatever is left, honestly",
+              value: V5Number(text: "Even or better", modelled: false), action: nil),
+    ]
+
     /// A past race with an auto-detected (watch-matched, not chip-confirmed)
     /// finish — rule one's whole reason for this section to exist. `finish`
     /// carries `modelled: true`, so the value drawn in the entry row's own
     /// chevron-value slot already shows the amber tilde before the Alert's
     /// copy says the same thing in words.
     static let v5SampleProvisional: V5RaceDetail = {
-        let r = v5Sample
         return V5RaceDetail(
             slug: "cedar-falls-half", name: "Cedar Falls Half",
-            dateLine: "Half marathon · Sunday 3 August", goal: r.goal, projected: r.projected, gap: r.gap,
-            elevation: r.elevation, elevationMarks: r.elevationMarks, elevationFootnotes: r.elevationFootnotes,
-            pacePlan: r.pacePlan, taperProgress: nil, taperEndpoints: [], taperCentreLabel: nil,
-            gear: [], coachLine: r.coachLine,
+            dateLine: "Half marathon · Sunday 3 August",
+            goal: V5Number(text: "1:30:00", modelled: false),
+            // `racePlateFor` puts the FINISH in this slot for a past race, at
+            // `modelled: false`, and measures the gap against the goal. The
+            // provisional reading is the only finish there is, so it is what
+            // the plate carries — and the Provisional Result section below is
+            // what says it is not chip-confirmed yet.
+            projected: V5Number(text: "1:32:04", modelled: false),
+            gap: V5Number(text: "+2:04", modelled: false),
+            elevation: halfElevation, elevationMarks: halfElevationMarks,
+            elevationFootnotes: ["Net −80 ft", "Nothing over 2%"],
+            pacePlan: halfPacePlan, taperProgress: nil, taperEndpoints: [], taperCentreLabel: nil,
+            gear: [], coachLine: "The drop is all in the second half · run the first six by effort.",
             resultEntry: V5RaceResultEntry(isPast: true, status: "provisional",
                                             finish: V5Number(text: "1:32:04", modelled: true))
         )
@@ -436,13 +497,18 @@ extension V5RaceDetail {
     /// A past race with nothing logged at all yet — the plain "Log your
     /// result" entry row, no Alert.
     static let v5SampleNoResult: V5RaceDetail = {
-        let r = v5Sample
         return V5RaceDetail(
             slug: "sombrero-half", name: "Sombrero Half",
-            dateLine: "Half marathon · Sunday 15 June", goal: r.goal, projected: r.projected, gap: r.gap,
-            elevation: r.elevation, elevationMarks: r.elevationMarks, elevationFootnotes: r.elevationFootnotes,
-            pacePlan: r.pacePlan, taperProgress: nil, taperEndpoints: [], taperCentreLabel: nil,
-            gear: [], coachLine: r.coachLine,
+            dateLine: "Half marathon · Sunday 15 June",
+            goal: V5Number(text: "1:30:00", modelled: false),
+            // PAST AND UNFINISHED · `racePlateFor` returns `middleSec: nil` and
+            // `gapSec: nil` here, and `showsColumns` then draws neither. A race
+            // with nothing logged has no result and nothing to gap against.
+            projected: nil, gap: nil,
+            elevation: halfElevation, elevationMarks: halfElevationMarks,
+            elevationFootnotes: ["Net −80 ft", "Nothing over 2%"],
+            pacePlan: halfPacePlan, taperProgress: nil, taperEndpoints: [], taperCentreLabel: nil,
+            gear: [], coachLine: "The drop is all in the second half · run the first six by effort.",
             resultEntry: V5RaceResultEntry(isPast: true, status: nil, finish: nil)
         )
     }()
@@ -462,8 +528,10 @@ extension V5RaceDetail {
         return V5RaceDetail(
             slug: "clarksburg-half", name: "Clarksburg Half",
             dateLine: "Half marathon · Sunday 24 November · 13 weeks out",
-            goal: nil, projected: r.projected, gap: nil,
-            elevation: r.elevation, elevationMarks: [], elevationFootnotes: r.elevationFootnotes,
+            // Upcoming, so the middle column IS a projection — and a half's
+            // projection, not the marathon sample's 3:31:48.
+            goal: nil, projected: V5Number(text: "1:41:22", modelled: true), gap: nil,
+            elevation: halfElevation, elevationMarks: [], elevationFootnotes: r.elevationFootnotes,
             pacePlan: [], taperProgress: nil, taperEndpoints: [], taperCentreLabel: nil,
             gear: [], coachLine: nil,
             resultEntry: V5RaceResultEntry(isPast: false, status: nil, finish: nil)

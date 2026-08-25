@@ -293,6 +293,20 @@ const STREAK_MIN_DAYS = 3;
 const SUBJECTIVE_DISAGREE_THRESHOLD = 15;
 
 /**
+ * HRV CV band edges · Research/03 §CV, RMSSDcv on RAW RMSSD.
+ * Up to ~10% is recreational-normal; 10–14% is increased acute perturbation
+ * ("watch", Research/03 line 371); above 14% is the non-functional
+ * overreaching band ("destabilizing", line 385).
+ *
+ * 2026-08-25 · exported because the Health page's HRV CV tile grades against
+ * these same edges and had a copy that collapsed `watch` into `stable` — a
+ * 13.3% CV rendered good-state green. A band with two readers gets one
+ * definition.
+ */
+export const HRV_CV_STABLE_CEILING_PCT = 10;
+export const HRV_CV_WATCH_CEILING_PCT = 14;
+
+/**
  * Compose the readiness brief for a runner.
  *
  * Pulls 60d of history, computes the score (using existing readiness.ts),
@@ -463,7 +477,9 @@ export async function loadReadinessBrief(
 
   // 2026-06-01 · HRV CV surface. Early-overreach signal already computed
   // in readiness-history · expose it here as a top-level field so the
-  // Health page can render a tile.
+  // Health page can render a tile. The two band edges are exported (see the
+  // constants above) because the Health tile grades against the SAME edges
+  // and had drifted off them.
   // 2026-06-16 · #20 · bands recalibrated to Research/03 §CV (RMSSDcv,
   // computed on RAW RMSSD): recreational-normal up to ~10%; 10–14% is
   // increased acute perturbation (watch · Research/03 line 371); >14% is
@@ -473,9 +489,9 @@ export async function loadReadinessBrief(
   const hrvCv = history.hrvPlews?.cv != null
     ? {
         pct: history.hrvPlews.cv,
-        band: (history.hrvPlews.cv <= 10
+        band: (history.hrvPlews.cv <= HRV_CV_STABLE_CEILING_PCT
           ? 'stable'
-          : history.hrvPlews.cv <= 14 ? 'watch' : 'destabilizing') as 'stable' | 'watch' | 'destabilizing',
+          : history.hrvPlews.cv <= HRV_CV_WATCH_CEILING_PCT ? 'watch' : 'destabilizing') as 'stable' | 'watch' | 'destabilizing',
         swcMs: history.hrvPlews.swc,
         series: history.hrvPlews.cvSeries ?? [],
       }

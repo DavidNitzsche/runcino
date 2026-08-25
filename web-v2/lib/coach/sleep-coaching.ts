@@ -125,9 +125,17 @@ export async function computeSleepCoaching(userUuid: string): Promise<SleepCoach
 
     if (!recentlyCleared && (streakNights >= STREAK_NIGHTS || trendActive)) {
       const kind: 'streak' | 'trend' = streakNights >= STREAK_NIGHTS ? 'streak' : 'trend';
+      // 2026-08-25 · the trend headline used to read `Two weeks averaging
+      // ${avg7}h`, which printed the SEVEN-night mean under a two-week label.
+      // HealthView renders `7-night {avg7}h · 14-night {avg14}h` directly
+      // underneath, so the card stated two different two-week averages at
+      // once: "Two weeks averaging 6.6h" above "14-night 5.8h". The trend
+      // branch fires on a persistence test — this week AND last week both
+      // under the floor — so say that, and leave the two averages to the one
+      // line that labels each of them correctly.
       const headline = kind === 'streak'
         ? `Night ${streakNights} under ${floorH}h.`
-        : `Two weeks averaging ${avg7}h.`;
+        : `Two weeks under ${floorH}h.`;
       // 2026-08-19 · coach voice · this line used to read "The plan assumes
       // recovery you're not banking ... Target tonight: in bed for 7:30",
       // which is a lecture with a bedtime in it. The owner's standing line is

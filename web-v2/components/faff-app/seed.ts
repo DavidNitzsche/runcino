@@ -28,6 +28,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 import { dayKeyFromLocalParts, pgDayKey, addDaysToDayKey } from '@/lib/runtime/day-key';
 import { stripResearchCitations as stripCitationsSafe } from '@/lib/plan/strip-citations';
+import { HRV_CV_STABLE_CEILING_PCT } from '@/lib/coach/readiness-brief';
 import { loadSettings } from '@/lib/coach/settings';
 import { resolveShoeCapMi } from '@/lib/shoe/lifespan';
 import { resolveActiveEnergyBatch } from '@/lib/runs/energy';
@@ -1249,10 +1250,16 @@ function adaptHealth(
     clock = false,
     noData = false,
     targetKind?: 'baseline' | 'target' | 'avg7',
+    // 2026-08-25 · `HealthMetric.band` has existed on the type since the tile
+    // renderer was written and had no producer, so HealthView's
+    // `band ${lo}–${hi}` caption was unreachable and every band-graded tile
+    // fell through to the generic caption instead. Sleep stages carry one.
+    band?: [number, number],
   ): HealthMetric => ({
     k, label, unit, current: cur, target, dom, series: s, status, decimals, clock,
     ...(noData ? { noData: true } : {}),
     ...(targetKind ? { targetKind } : {}),
+    ...(band ? { band } : {}),
   });
 
   // 2026-06-03 · honest empty-state · when the runner skipped wearing
@@ -1343,7 +1350,12 @@ function adaptHealth(
        // below. On a runner with no weight data the tile printed "—" and
        // "NO DATA YET" with a good-state green dot and a green caption,
        // which is a verdict on a number nobody has.
-       weightSeries, !hasWeight ? 'neutral' : 'good', 1, false, !hasWeight),
+       // 2026-08-25 · web drive-through · the 08-21 pass fixed the NO-data
+       // half and left the has-data half saying 'good'. `target` is
+       // `undefined` here, so the tile rendered "ON TARGET" against a target
+       // that does not exist — a verdict on a number with nothing to be a
+       // verdict about. A weight is a fact, not a grade.
+       weightSeries, 'neutral', 1, false, !hasWeight),
     // P2 #11 (2026-05-30): real VO2 trend over 6 months. health-state ships
     // vo2Series as the sparse Apple Health readings. We sort + clamp into
     // a 30-point chart (downsample if 30+ points, pad-with-last if fewer).
@@ -1354,7 +1366,8 @@ function adaptHealth(
        // this list reads `!hasX ? 'neutral' : ...`; this one graded a
        // metric it had not read, and the tone paints the trend bar — so
        // the fabricated series above came out in good-state green.
-       !hasVo2 ? 'neutral' : 'good', 1, false, !hasVo2),
+       // 2026-08-25 · and the same target-less "ON TARGET" as WEIGHT above.
+       'neutral', 1, false, !hasVo2),
     // 2026-06-01 · Health page Quick Wins · 5 new tiles.
     // Wrist temp · Apple Watch nightly skin temp. Doctrine: rises before
     // HRV drops on early illness/overtraining (Research/00b).
@@ -1384,18 +1397,30 @@ function adaptHealth(
     // Body fat % · trend signal for body composition.
     mk('body_fat', 'BODY FAT', '%', bfCurrent, undefined,
        [Math.max(5, (bfCurrent || 15) - 5), (bfCurrent || 15) + 5],
-       bodyFatSeriesArr, !hasBodyFat ? 'neutral' : 'good', 1, false, !hasBodyFat),
+       // 2026-08-25 · target-less, so 'good' rendered as "ON TARGET". See
+       // WEIGHT above.
+       bodyFatSeriesArr, 'neutral', 1, false, !hasBodyFat),
     // Lean mass · maintaining lean mass through build = strength outcome.
     mk('lean_mass', 'LEAN MASS', 'lb', lmCurrentLb, undefined,
        [Math.max(100, (lmCurrentLb || 150) - 10), (lmCurrentLb || 150) + 10],
-       leanMassSeriesLb, !hasLeanMass ? 'neutral' : 'good', 1, false, !hasLeanMass),
+       leanMassSeriesLb, 'neutral', 1, false, !hasLeanMass),
   ];
   // 2026-06-01 · HRV CV (Plews coefficient of variation %). Surfaced
   // when readinessBrief carries it · early-overreach signal that fires
   // 24-72h before HRV ms itself drops per Research/15. Append as a body
   // tile so the Health page can render alongside HRV/RHR.
   if (hrvCv?.pct != null) {
-    const cvStatus: 'good' | 'warn' = hrvCv.band === 'destabilizing' ? 'warn' : 'good';
+    // 2026-08-25 · this collapsed a THREE-band signal into two and handed the
+    // middle band to the good state. `readiness-brief.ts` bands CV as
+    // stable ≤10 · watch ≤14 · destabilizing >14; `!== 'destabilizing'`
+    // meant a 13.3% CV — squarely in `watch` — painted the tile good-state
+    // green and captioned it "ON TARGET". Watch is not good, and the band
+    // edge the grade is made against is now passed as the tile's comparator
+    // so the runner can see the number the verdict came from.
+    const cvStatus: 'good' | 'warn' | 'neutral' =
+      hrvCv.band === 'destabilizing' ? 'warn'
+        : hrvCv.band === 'watch' ? 'neutral'
+          : 'good';
     // 2026-06-01 · pass the 14d CV series for the trend strip · empty
     // until 14d of HRV history exists, in which case the tile renders
     // bare current-vs-band.
@@ -1404,15 +1429,20 @@ function adaptHealth(
     // on raw RMSSD (Research/03 §CV): recreational-normal is 8–12% and
     // the NFOR band is >14%, so real values exceed the old single-digit
     // axis built for the (never-firing) rolling-LnRMSSD CV.
-    body.push(mk('hrv_cv', 'HRV CV', '%', hrvCv.pct, undefined, [0, 20], cvSeriesPct, cvStatus, 1));
+    body.push(mk('hrv_cv', 'HRV CV', '%', hrvCv.pct, HRV_CV_STABLE_CEILING_PCT,
+                 [0, 20], cvSeriesPct, cvStatus, 1, false, false, 'target'));
   }
   // 2026-06-01 · Max HR tile · 30-day true max (informs zone math + HRR).
   // Health-state computes MAX over 30d so a single low-effort walk doesn't
   // pull the ceiling down. No series · just the ceiling.
   const maxHrCurrent = health?.maxHr.current ?? 0;
   if (maxHrCurrent > 0) {
+    // 2026-08-25 · the status was a hardcoded 'good'. No target, no band, no
+    // series — the tile said "180bpm · 30-day · ON TARGET" over an empty
+    // chart. An observed 30-day ceiling is a measurement; there is no target
+    // for it to be on, and nothing here computed a verdict.
     body.push(mk('max_hr', 'MAX HR', 'bpm', maxHrCurrent, undefined,
-      [Math.max(150, maxHrCurrent - 30), maxHrCurrent + 10], [], 'good'));
+      [Math.max(150, maxHrCurrent - 30), maxHrCurrent + 10], [], 'neutral'));
   }
   // 2026-06-01 · Active energy from iPhone 031fe5fd · daily kcal total.
   // Bumps to ~180 buckets/run once TF updates · same query works either
@@ -1473,30 +1503,50 @@ function adaptHealth(
   // lands in the runner's account · they read as "no data" until then.
   // Targets per Research/00b: deep 60-90 min (younger), REM 90-120 min,
   // awake < 30 min ideal. Light is the residual · no fixed target.
+  //
+  // 2026-08-25 · the three numbers below are the ones the comment above has
+  // always cited. They were previously inline literals that had drifted from
+  // it (see the note on the stage tiles).
+  const DEEP_SLEEP_BAND_MIN: [number, number] = [60, 90];
+  const REM_SLEEP_BAND_MIN: [number, number] = [90, 120];
+  const AWAKE_CEILING_MIN = 30;
   const stages = health?.sleepStages;
   if (stages) {
     const deepSeriesMin = (stages.deepSeries ?? []).map((d) => d.min);
     const remSeriesMin  = (stages.remSeries  ?? []).map((d) => d.min);
+    // 2026-08-25 · both stage tiles captioned an invented midpoint and graded
+    // against a different number. DEEP said "target 75" and graded at 60, so
+    // a 65-minute night read "target 75 · ON TARGET". REM said "target 100"
+    // and graded at 80 — and 80 is BELOW the low edge of the 90-120 band this
+    // very comment cites, so the tile called an out-of-band night good.
+    // Neither 75 nor 100 appears in Research/00b; the BANDS do. Carry the
+    // band, grade at its low edge, and let the caption say what the verdict
+    // was made against. `HealthMetric.band` already existed and had no
+    // producer — this is its first.
     if (stages.deepMin != null) {
-      body.push(mk('sleep_deep', 'DEEP SLEEP', 'min', stages.deepMin, 75,
+      body.push(mk('sleep_deep', 'DEEP SLEEP', 'min', stages.deepMin, undefined,
         [0, 120], deepSeriesMin,
-        stages.deepMin >= 60 ? 'good' : 'warn',
-        0, false, false, 'target'));
+        stages.deepMin >= DEEP_SLEEP_BAND_MIN[0] ? 'good' : 'warn',
+        0, false, false, undefined, DEEP_SLEEP_BAND_MIN));
     }
     if (stages.remMin != null) {
-      body.push(mk('sleep_rem', 'REM SLEEP', 'min', stages.remMin, 100,
+      body.push(mk('sleep_rem', 'REM SLEEP', 'min', stages.remMin, undefined,
         [0, 150], remSeriesMin,
-        stages.remMin >= 80 ? 'good' : 'warn',
-        0, false, false, 'target'));
+        stages.remMin >= REM_SLEEP_BAND_MIN[0] ? 'good' : 'warn',
+        0, false, false, undefined, REM_SLEEP_BAND_MIN));
     }
     if (stages.lightMin != null) {
       body.push(mk('sleep_light', 'LIGHT SLEEP', 'min', stages.lightMin, undefined,
         [0, 400], [], 'neutral'));
     }
     if (stages.awakeMin != null) {
-      body.push(mk('sleep_awake', 'AWAKE', 'min', stages.awakeMin, undefined,
+      // 2026-08-25 · this graded against 30 minutes and passed no target, so
+      // the caption fell through to "30-day" and the chip read "OFF TARGET"
+      // against a ceiling the runner was never shown. Pass the ceiling.
+      body.push(mk('sleep_awake', 'AWAKE', 'min', stages.awakeMin, AWAKE_CEILING_MIN,
         [0, 60], [],
-        stages.awakeMin <= 30 ? 'good' : 'warn'));
+        stages.awakeMin <= AWAKE_CEILING_MIN ? 'good' : 'warn',
+        0, false, false, 'target'));
     }
   }
   // Real form metrics from health_samples (HealthKit ingest).
@@ -1558,7 +1608,11 @@ function adaptHealth(
     mk('power', 'RUN POWER', 'W', Math.round(powerForm.last), undefined,
        [Math.max(150, (powerForm.last || 280) - 50), (powerForm.last || 280) + 50],
        powerForm.series.map(v => Math.round(v)),
-       powerForm.last > 0 ? 'good' : 'neutral',
+       // 2026-08-25 · `> 0 ? 'good'` graded the tile on whether a number
+       // arrived, not on what the number was. Every runner with a power
+       // reading scored good-state green. The comment above gives ranges,
+       // not a threshold, so there is no verdict to make here.
+       'neutral',
        0, false, powerMissing),
     // 2026-05-30: L/R Balance removed. Apple Health doesn't expose a
     // left/right balance signal — the card had a zero-data source and

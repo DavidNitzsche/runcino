@@ -406,18 +406,12 @@ struct LiveRunOutdoorV5: View {
         .background(V5.materialTile, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
-    /// Two decimals, and ONLY here.
-    ///
-    /// `FaffFmt.miles` is the system's distance format and gives one decimal,
-    /// which is right everywhere a distance is a finished fact. It is wrong on
-    /// a console being read mid-stride: it holds at "0" for the first 0.05 mi
-    /// and then steps 0.1 at a time, so the tile reads as broken for the first
-    /// few hundred metres of every run and as frozen for forty seconds at a
-    /// stretch after that. The shipped legacy console already used two
-    /// decimals here for exactly this reason. Every non-live distance still
-    /// goes through `FaffFmt.miles`.
+    /// Two decimals on a live console · now `FaffFmt.liveMiles`, because the
+    /// treadmill console needed the identical thing and had no way to reach
+    /// this. The argument for it lives with the definition. Every non-live
+    /// distance still goes through `FaffFmt.miles`.
     static func liveMiles(_ mi: Double) -> String {
-        String(format: "%.2f", mi)
+        FaffFmt.liveMiles(mi) ?? "\u{2014}"
     }
 
     // MARK: - Pace tile
