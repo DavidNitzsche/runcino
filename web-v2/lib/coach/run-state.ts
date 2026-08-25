@@ -28,6 +28,7 @@ import {
   type RaceForMatch,
 } from '@/lib/runs/log-enrich';
 import { runFacts } from '@/lib/runs/run-facts';
+import { loadRunTwins, resolveElevationGain } from '@/lib/runs/twins';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
@@ -180,6 +181,15 @@ export interface RunDetail {
   hr_max: number | null;
   cadence_avg: number | null;
   elev_gain_ft: number | null;
+  /**
+   * Whether a real instrument measured that climb. False when the surviving
+   * figure came from GPS altitude arithmetic or from our own recomputation.
+   * Rule one: a consumer drawing `elev_gain_ft` with this false must carry
+   * the modelled mark. Mirrors `elevGainMeasured` on the poster's wire.
+   */
+  elev_gain_measured: boolean;
+  /** The instrument that won — `raw`, `treadmill_incline`, `gps_derived`. */
+  elev_gain_source: string | null;
   /**
    * 2026-08-17 · terrain, from `lib/terrain/run-terrain.ts`.
    *
@@ -672,6 +682,27 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // filled in after phaseBreakdown loads (a few lines down) · null here
   // because we don't know yet, and a later pass walks the splits + phase
   // cumulative-distance map to attach the right tag per mile.
+  /* ── THE ABSORBED TWINS ───────────────────────────────────────────────
+   *
+   * Loaded once, here, because two of the figures below are better on a row
+   * this one absorbed than on this one. See `lib/runs/twins.ts` for the
+   * argument; the short version is that the dedup picks the best row OVERALL
+   * and that is not the best row for every FIELD.
+   *
+   * `null` means the read FAILED and is not the same as "no twins". The
+   * elevation resolver refuses on null rather than letting the canonical
+   * row's weaker instrument win by default. */
+  const twins = await loadRunTwins(row.id);
+
+  /** The climb, ranked by instrument across this row and every twin. */
+  const elevationReading = resolveElevationGain({
+    elevGainFt: Number(r.elevGainFt) || null,
+    elevGainSource: (r.elevGainSource as string | null) ?? null,
+    source: (r.source as string | null) ?? null,
+    splits: null,
+    distanceMi: null,
+  }, twins);
+
   const rawSplits: any[] = Array.isArray(r.splits) ? r.splits as any[] : [];
 
   /* ── does this array decompose THIS run? ──────────────────────────────
@@ -1095,26 +1126,37 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     // for sum-of-positive-deltas from splits. The splits sum is a
     // lower bound (it misses in-mile climbs that net to zero) but a
     // credible one · always better than a fictional number.
-    elev_gain_ft: (() => {
-      // 2026-05-31: barometric-drift sanity check (read-time fallback for
-      // rows ingested before the sanity check landed on the ingest path).
-      // New rows get `data.elevGainSource = 'recomputed'` stamped by the
-      // ingest writer when this same check fires there.
-      const raw = Number(r.elevGainFt) || null;
-      const distMi = Number(r.distanceMi) || 0;
-      if (raw == null || raw <= 0 || distMi <= 0) return raw;
-      const ftPerMi = raw / distMi;
-      if (ftPerMi <= 250) return raw;
-      const minSplits = Math.max(3, Math.floor(distMi * 0.75));
-      if (splits.length < minSplits) return raw;
-      const splitsPositive = splits.reduce((s, sp) => {
-        const c = Number(sp.elev_change_ft ?? 0);
-        return s + (c > 0 ? c : 0);
-      }, 0);
-      if (splitsPositive <= 0) return raw;
-      if (splitsPositive >= raw * 0.6) return raw;
-      return Math.round(splitsPositive);
-    })(),
+    /* ── THE CLIMB · ONE READER, 2026-08-24 ──────────────────────────────
+     *
+     * What stood here was a 250 ft/mi drift heuristic that recomputed the
+     * climb from the splits' own deltas. It was a reasonable guess and it
+     * was this surface's PRIVATE guess — the log read `data.elevGainFt`
+     * raw, and the poster asked `pickElevationGain`. One run, three
+     * readers, three numbers:
+     *
+     *     2026-08-23 · 11.01 mi
+     *       row          3195 ft  (source `watch`, an untrusted instrument)
+     *       log          3195 ft
+     *       run detail     57 ft  (the heuristic that used to live here)
+     *       poster         57 ft  (pickElevationGain over the twins)
+     *
+     * and on 2026-08-24 run detail printed 128 ft `gps_derived` while the
+     * absorbed twin held 13 ft from the watch's BAROMETER. That is the run
+     * the runner said he could promise was not 128 feet.
+     *
+     * The heuristic is gone rather than kept as a fallback. It answered a
+     * different question — "is this figure implausible" — and answering it
+     * per-surface is what produced three numbers. `pickElevationGain` ranks
+     * by INSTRUMENT, which is the question that actually decides, and it
+     * REFUSES when nothing trustworthy survives. A refusal is a correct
+     * answer here: an invented 3195 ft is worse than a blank, because the
+     * runner cannot tell it is invented. */
+    elev_gain_ft: elevationReading?.ft ?? null,
+    /* False when the surviving figure is `gps_derived` or `recomputed`.
+     * Rule one: a modelled number must never look measured, so a surface
+     * drawing this must carry the modelled mark when it is false. */
+    elev_gain_measured: elevationReading?.measured ?? false,
+    elev_gain_source: elevationReading?.source ?? null,
     // 2026-08-17 · terrain. Resolved from the SAME raw row, not from the
     // normalized fields above: `rawSplits` still carries whichever of the four
     // elevation-delta key names the importer wrote, and summing the negatives
