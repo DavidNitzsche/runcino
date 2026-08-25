@@ -8,15 +8,18 @@
  * second-to-last, `users` last. The route executes the steps inside one
  * transaction.
  *
- * Why runtime enumeration instead of a hardcoded table list: the schema
- * gains user-keyed tables regularly (49 at the time of writing) and a
- * stale hardcoded list silently leaves orphaned PII behind — the exact
- * failure Apple's real-deletion requirement forbids.
+ * Why runtime enumeration instead of a hardcoded table list: the set of
+ * user-keyed tables churns in both directions (44 as of the 2026-08-24
+ * probe — it was 49 on 2026-07-06, and the six it lost are not the same
+ * as the three it gained) and a stale hardcoded list silently leaves
+ * orphaned PII behind — the exact failure Apple's real-deletion
+ * requirement forbids.
  *
  * Why ordering matters even though most FKs here are ON DELETE CASCADE:
- * verified against prod via pg_constraint (2026-07-06 read-only probe),
+ * verified against prod via pg_constraint (2026-08-24 read-only probe),
  * `runs.shoe_id -> shoes.id` is NO ACTION — deleting `shoes` before
- * `runs` aborts the transaction. The planner does a children-first
+ * `runs` aborts the transaction. It is still the only such edge among
+ * the 44 distinct child->parent pairs. The planner does a children-first
  * topological sort over the FK edges so any future NO ACTION edge is
  * handled the same way.
  *
@@ -81,11 +84,31 @@ export interface DeletionPlan {
  * — reached through the enumeration itself going empty instead of a list
  * going stale.
  *
- * Prod carries 49 user-keyed tables (2026-07-06 probe); the floor is set
- * comfortably below that so ordinary schema growth/shrinkage never
- * false-positives, while zero/near-zero always does.
+ * HOW THE NUMBER IS CHOSEN
+ *
+ * Prod carried 44 user-keyed tables on the 2026-08-24 read-only probe.
+ * FLOOR_MARGIN below is the deliberate gap: the floor must sit far
+ * enough under reality that ordinary schema shrinkage never
+ * false-positives, and far enough over zero that a collapsed
+ * enumeration always does. Nine tables (~20% of the current set) is
+ * more shrinkage than this schema has ever done between probes — it
+ * dropped six in the seven weeks from 2026-07-06 to 2026-08-24, its
+ * largest recorded move — while still refusing anything that has lost
+ * a fifth of the schema.
+ *
+ * This pair of numbers is the part that rots. The 2026-07-06 floor of
+ * 40 was written against a real count of 49 (margin 9); by 2026-08-24
+ * the real count was 44 and the margin had quietly halved to 4, with
+ * nothing anywhere that would have said so. `MIN_USER_KEYED_TABLES` and
+ * the fixture in deletion-plan.test.ts must therefore be re-derived
+ * together, from the same probe — which is what
+ * scripts/check-deletion-plan-fixture.sh enforces on a schedule and on
+ * every PR that touches this module.
  */
-export const MIN_USER_KEYED_TABLES = 40;
+const PROD_TABLE_COUNT_AT_LAST_PROBE = 44; // 2026-08-24, faff_readonly
+const FLOOR_MARGIN = 9;
+export const MIN_USER_KEYED_TABLES =
+  PROD_TABLE_COUNT_AT_LAST_PROBE - FLOOR_MARGIN; // 35
 
 /**
  * Throws if `tableCount` is below the sanity floor. Call this on the
