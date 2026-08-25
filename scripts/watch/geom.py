@@ -14,7 +14,17 @@ import sys, glob, os
 from PIL import Image, ImageFilter, ImageChops
 
 SCALE = 2                      # screenshot px per point
-LEFT, TOP, W, H = 15, 18, 178, 212
+# 2026-08-25 · the box is now per-device, because the gate only ever rendered
+# a 46mm and 46mm is the ROOMIEST content width the app ships (178pt against
+# 163 at 44mm). A board can pass here and overflow on a smaller wrist, which is
+# the "reads as coverage" shape this repo has already paid for once.
+# Override with WATCH_BOX="left,top,w,h".
+import os as _os
+_box = _os.environ.get("WATCH_BOX")
+if _box:
+    LEFT, TOP, W, H = (float(v) for v in _box.split(","))
+else:
+    LEFT, TOP, W, H = 15, 18, 178, 212
 RIGHT = LEFT + W               # 193
 BOTTOM = TOP + H               # 230
 CLOCK_STRIP = 44               # pt: top band the system clock owns
@@ -25,7 +35,11 @@ BLUR = 3                       # px radius of the high pass
 # which IS the content box — so the tolerance is the halo, not slack.
 TOL = BLUR / SCALE + 0.5
 
+# Slack on the bottom edge only. See the argument at the check below.
+BOTTOM_SLACK = 14
+
 fails = 0
+near_bottom = []
 for p in sorted(sys.argv[1:]):
     name = os.path.basename(p)[:-4]
     im = Image.open(p).convert('L'); Wpx, Hpx = im.size
@@ -60,10 +74,34 @@ for p in sorted(sys.argv[1:]):
     msgs = []
     if r > RIGHT + TOL:  msgs.append(f"RIGHT OVERFLOW {r:.1f} > {RIGHT}")
     if l < LEFT - TOL: msgs.append(f"LEFT OVERFLOW {l:.1f} < {LEFT}")
-    if b > BOTTOM + 14 + TOL: msgs.append(f"BOTTOM OVERFLOW {b:.1f} > {BOTTOM}")
+    # THE BOTTOM IS NOT HELD TO THE SAME LINE AS THE SIDES, and that was
+    # undocumented until 2026-08-25. `BOTTOM_SLACK` exists because the control
+    # boards legitimately own the bottom edge — the pill is placed against it
+    # by Apple's own guide — so holding them to the content box would fire on
+    # correct boards, which is the thing that teaches you to ignore a check.
+    #
+    # But it is slack, not truth. A board inside BOTTOM+slack is NOT "inside
+    # Apple's content box", and printing that sentence made the gate claim
+    # more than it checked. Anything past the strict line is now named as
+    # NEAR-BOTTOM: not a failure, because tightening it needs the per-board
+    # argument the sides already have, and visible, because `summary` clearing
+    # it by 12pt is the known "last row sliced" defect hiding in the slack.
+    strict_bottom = b > BOTTOM + TOL
+    if b > BOTTOM + BOTTOM_SLACK + TOL:
+        msgs.append(f"BOTTOM OVERFLOW {b:.1f} > {BOTTOM}")
     flag = "  ".join(msgs)
     if flag: fails += 1
+    elif strict_bottom:
+        near_bottom.append((name, b))
+        flag = f"near-bottom {b:.1f} > {BOTTOM}"
     print(f"  {name:<12} x {l:6.1f}..{r:6.1f}   y {t:6.1f}..{b:6.1f}   {flag}")
 
-print(f"\n{fails} board(s) out of bounds" if fails else "\nall boards inside Apple's content box")
+if fails:
+    print(f"\n{fails} board(s) out of bounds")
+elif near_bottom:
+    names = ", ".join(f"{n} {v:.1f}" for n, v in near_bottom)
+    print(f"\nall boards inside the sides; {len(near_bottom)} past the strict "
+          f"bottom {BOTTOM} within the {BOTTOM_SLACK}pt control allowance: {names}")
+else:
+    print("\nall boards inside Apple's content box")
 sys.exit(1 if fails else 0)
