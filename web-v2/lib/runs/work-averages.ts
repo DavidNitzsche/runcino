@@ -1,3 +1,4 @@
+import { fmtPace } from '@/lib/format/run';
 /**
  * lib/runs/work-averages.ts · the run's numbers with the jogging taken out.
  *
@@ -93,10 +94,16 @@ export function workAveragesFromPhases(phases: WorkPhaseSample[]): WorkAverages 
   };
 }
 
-/** "6:48" from seconds per mile. Null in, null out. */
+/**
+ * "6:48" from seconds per mile. Null in, null out.
+ *
+ * Delegates. The version this replaces was CORRECT — it carried the minute
+ * when the seconds rounded to 60, which nineteen formatters in this repo did
+ * not — but it was still a fifth implementation of one rule, and every one of
+ * the other four was written by someone equally sure they had it right.
+ * `lib/format/run.ts` is where the rule lives; `_format_lint.test.ts` is what
+ * noticed this one within the hour.
+ */
 export function formatWorkPace(sPerMi: number | null): string | null {
-  if (sPerMi == null || !isFinite(sPerMi) || sPerMi <= 0) return null;
-  const m = Math.floor(sPerMi / 60);
-  const s = Math.round(sPerMi % 60);
-  return s === 60 ? `${m + 1}:00` : `${m}:${String(s).padStart(2, '0')}`;
+  return fmtPace(sPerMi);
 }

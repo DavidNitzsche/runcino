@@ -254,6 +254,7 @@ function recentRunFor(cell: Cell): V5TodayContext['recentRun'] {
     elevationSamples: r.indoor ? null : [10, 22, 31, 18],
     elevGainFt: r.indoor ? null : 240,
     elevGainMeasured: true,
+    hrMax: 158, cadenceAvg: 172, tempF: 61, workoutType: 'easy', hrAvgWork: null, cadenceAvgWork: null, paceWork: null,
     routeSplits: [],
     routePhases: [],
     hrZones: [],

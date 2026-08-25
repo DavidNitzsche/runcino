@@ -26,7 +26,7 @@ import { computeZones } from '@/lib/training/zones';
 import { pickElevationGain } from '@/lib/runs/elevation';
 import { pickSplits } from '@/lib/runs/splits-pick';
 import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
-import { normalizeSessionType } from '@/lib/training/workout-type';
+import { canonicalSessionType } from '@/lib/training/workout-type';
 import { workAveragesFromPhases, formatWorkPace } from '@/lib/runs/work-averages';
 import { rowsOrNull } from '@/lib/db/read';
 import { resolveThresholdHr } from '@/lib/training/lthr';
@@ -898,7 +898,12 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
             paceWork: formatWorkPace(w.paceSPerMi),
           };
         })(),
-        workoutType: normalizeSessionType(
+        // `canonicalSessionType`, which returns NULL for anything it does not
+        // recognise rather than falling back to a guess. That matters here more
+        // than usual: this value now decides the whole shape of the screen, and
+        // an unknown type quietly resolving to "easy" would give a rep session
+        // an easy run's breakdown and an easy run's aggregates.
+        workoutType: canonicalSessionType(
           (todayPlan?.type ?? data.workoutType ?? data.type ?? null) as string | null,
         ),
         indoor, speedMph, inclinePct,

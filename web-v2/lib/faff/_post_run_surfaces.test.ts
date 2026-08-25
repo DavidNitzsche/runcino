@@ -96,6 +96,7 @@ function aug23Run(overrides: Partial<V5RecentRunCtx> = {}): V5RecentRunCtx {
     zoneTargets: [],
     elevationSamples: null,
     elevGainFt: 3195, elevGainMeasured: true,
+    hrMax: 158, cadenceAvg: 172, tempF: 61, workoutType: 'easy', hrAvgWork: null, cadenceAvgWork: null, paceWork: null,
     routeSplits: [],
     routePhases: [],
     hrZones: [],

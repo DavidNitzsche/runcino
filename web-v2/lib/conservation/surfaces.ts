@@ -122,7 +122,8 @@ function posterCtx(shape: RunShape, data: RunData): V5TodayContext {
       // Not conserved by any law here — the harness grades numbers, and a
       // polyline is a picture. Null so the map's refusal branch is what this
       // fixture exercises; the map itself is covered by the Swift sweep.
-      routeSplits: [],
+      hrMax: 158, cadenceAvg: 172, tempF: 61, workoutType: 'easy', hrAvgWork: null, cadenceAvgWork: null, paceWork: null,
+    routeSplits: [],
       routePhases: [],
       hrZones: [],
       paceBand: null,
