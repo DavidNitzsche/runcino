@@ -5931,6 +5931,44 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       // MAINT-SKIP-1 (2026-06-24) · floor not round — rounding up would let maintenance
       // eat into the build window. pickPlanMode already routes floor=0 to race-prep,
       // so this is guaranteed ≥ 1 when composeMaintenancePlan is called.
+      //
+      // ── A DIVERGENCE FROM DOCTRINE, ARGUED RATHER THAN CLOSED (2026-08-24) ──
+      //
+      // This has no ceiling, and doctrine gives one. `Research/22` §7
+      // Maintenance Plan publishes `Duration | Open-ended (4-15 wk
+      // realistically)`, and its whole basis is a stated time limit: "~2/3 of
+      // training volume maintains VO2max for ~15 weeks if intensity is
+      // preserved". Past that the maintenance dose stops maintaining.
+      // `MAINTENANCE_BY_TIER`'s own DOCTRINE-MAINTFREQ-1 ruling says §6 Base
+      // Building governs this mode rather than §7 — "that runner is
+      // base-building, not maintaining" — and §6 publishes `Duration | 8-16
+      // weeks`. Neither section sanctions what this line can produce: a runner
+      // who enters a half fifty-three weeks out is authored a FORTY-ONE-WEEK
+      // hold block, and it is flat (one `targetWeekly` for the whole span, a
+      // 20% step-down every fourth week, no progression at all), where §6 asks
+      // for 80-100% of last cycle's peak reached through reverse
+      // periodization.
+      //
+      // NOT CAPPED HERE, and the reason is structural rather than a judgement
+      // about the doctrine. Nothing re-authors a race-anchored hold block that
+      // runs out. `graduateDue` fires on the RACE date, not the block's end.
+      // The `plan_elapsed` branch of `/api/cron/plan-drift` is gated on
+      // `!activePlanRow.race_id`, and this block carries one. `openBlockDue`
+      // requires `!hasFutureTarget`, and this runner has a target. So a
+      // fifteen-week cap would leave somebody a year out from a marathon with
+      // no plan at all from week sixteen until the build window opened — which
+      // is a worse failure than a hold that holds too long.
+      //
+      // Closing it properly is two changes and one decision, and the decision
+      // is the owner's because it moves prescribed volume for every hold-block
+      // runner: (1) size the block to the doctrine ceiling, (2) teach the
+      // elapsed-plan branch to re-author a race-anchored hold block, and
+      // (3) rule on whether a long hold progresses (§6) or holds (§7).
+      //
+      // Cite: Research/22-plan-templates.md §"Maintenance Plan" — Duration
+      //       open-ended, 4-15 wk realistically; ~15 weeks of VO2max hold
+      // Cite: Research/22-plan-templates.md §"Base Building / Off-Season Plan"
+      //       — Duration 8-16 weeks, 80-100% of last cycle's peak
       TOTAL_WEEKS = Math.max(1, Math.floor(weeksToRace - buildWindow));
     }
   }
@@ -6711,6 +6749,56 @@ export function persistedDayShape(
   };
 }
 
+/**
+ * `plan_weeks.is_peak` and `plan_weeks.is_cutback`, per week.
+ *
+ * Extracted from `persistPlan` 2026-08-24 so the rule can be driven without a
+ * database. Both columns are DISPLAY facts — the Block screen's week flag and
+ * the block chart read them — and neither is re-derivable by a reader, which
+ * is why they are written rather than computed at read time.
+ *
+ *   is_peak     the highest-mileage non-race week; first occurrence wins, so a
+ *               block that ties its peak twice marks the earlier one.
+ *   is_cutback  a drop of more than 15% off the week before.
+ *
+ * TAPER-NOT-CUTBACK-1 (2026-08-24) · `is_cutback` now excludes TAPER weeks as
+ * well as race week. A taper week always drops more than 15% — by design, that
+ * IS the taper — so every taper week was landing in the column, and the Block
+ * screen checks cutback BEFORE the phase name. A runner scanning their block
+ * for where the taper starts saw "Cutback" on the taper weeks and
+ * "RACE-SPECIFIC" on the week before it. Live on both production plans that
+ * had reached a taper on 2026-08-24: three weeks between them, all
+ * mislabelled.
+ *
+ * The app already said this out loud in the one place it was asked:
+ * `proposeChange('cutback')` refuses a taper week with "The taper is already a
+ * cutback, and cutting it again would leave you flat on race day." A cutback is
+ * a deload inserted INTO a build to absorb the ramp; the taper is the block's
+ * ending. Race week was excluded here for that reason and the taper is the
+ * rest of it.
+ */
+export function planWeekFlags(
+  weeks: Array<{ isRaceWeek: boolean; phase: string; days: Array<{ distanceMi: number }> }>,
+): { isPeakByWeek: boolean[]; isCutbackByWeek: boolean[]; weeklyMiles: number[] } {
+  const weeklyMiles = weeks.map((w) => w.days.reduce((s, d) => s + d.distanceMi, 0));
+  const maxMi = Math.max(...weeklyMiles.filter((_, i) => !weeks[i].isRaceWeek), 0);
+  let peakMarked = false;
+  const isPeakByWeek = weeklyMiles.map((mi, i) => {
+    if (!weeks[i].isRaceWeek && mi === maxMi && !peakMarked) {
+      peakMarked = true;
+      return true;
+    }
+    return false;
+  });
+  const isCutbackByWeek = weeklyMiles.map((mi, i) =>
+    i > 0
+    && !weeks[i].isRaceWeek
+    && weeks[i].phase !== 'TAPER'
+    && mi < weeklyMiles[i - 1] * 0.85,
+  );
+  return { isPeakByWeek, isCutbackByWeek, weeklyMiles };
+}
+
 async function persistPlan(client: PoolClient, args: {
   userId: string; raceSlug: string | null; raceDateISO: string;
   blocks: BlockPlan; weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean; tPaceSec?: number | null }>;
@@ -6822,21 +6910,7 @@ async function persistPlan(client: PoolClient, args: {
   const weekRows: unknown[][] = [];
   const workoutRows: unknown[][] = [];
 
-  // Pre-compute is_peak and is_cutback for plan_weeks (finding 2.4 — generator
-  // never set these; all rows landed as false). is_peak = highest-mileage
-  // non-race week (first occurrence wins); is_cutback = ≥15% drop from prior.
-  const weeklyMiles = args.weeks.map(w => w.days.reduce((s, d) => s + d.distanceMi, 0));
-  const maxMi = Math.max(...weeklyMiles.filter((_, i) => !args.weeks[i].isRaceWeek), 0);
-  let peakMarked = false;
-  const isPeakByWeek = weeklyMiles.map((mi, i) => {
-    if (!args.weeks[i].isRaceWeek && mi === maxMi && !peakMarked) {
-      peakMarked = true; return true;
-    }
-    return false;
-  });
-  const isCutbackByWeek = weeklyMiles.map((mi, i) =>
-    i > 0 && !args.weeks[i].isRaceWeek && mi < weeklyMiles[i - 1] * 0.85
-  );
+  const { isPeakByWeek, isCutbackByWeek } = planWeekFlags(args.weeks);
 
   for (let wi = 0; wi < args.weeks.length; wi++) {
     const w = args.weeks[wi];

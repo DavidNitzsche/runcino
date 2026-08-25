@@ -12826,6 +12826,63 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
     },
   },
+  /* -- MAINT-LENGTH-1 (2026-08-24) ------------------------------------------
+   *
+   * How long the engine can hold a runner in a hold block, against how long
+   * doctrine says a hold block lasts. Recorded here with an exemption rather
+   * than closed, because closing it strands runners (see the argued block at
+   * `composeMaintenancePlan`'s TOTAL_WEEKS) and because the fix moves
+   * prescribed volume, which is the owner's call.
+   */
+  {
+    id: 'MAINTENANCE.hold-block-length',
+    binds: ['lib/plan/goal-tiers.ts#BUILD_WINDOW_WEEKS'],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 6. Base Building / Off-Season Plan',
+    claim:
+      'A hold block runs from today until the race enters its build window, so the LONGEST ' +
+      'one the engine can author is the longest runway it accepts (365 days, from ' +
+      'loadGeneratorInputs) minus that distance build window. Doctrine publishes a Duration ' +
+      'for the block this runner is in: section 6 Base Building says 8-16 weeks, and section ' +
+      '7 Maintenance says open-ended but 4-15 weeks realistically, on the stated basis that ' +
+      'two thirds of training volume holds VO2max for about fifteen weeks. ' +
+      'MAINTENANCE_BY_TIER already ruled that section 6 governs this mode, so the ceiling ' +
+      'read here is section 6 own Duration row.',
+    check({ cite, exempt }) {
+      const MAX_RUNWAY_WEEKS = 365 / 7;   // loadGeneratorInputs refuses beyond a year
+      const ceiling = parseBand(cite.table().cell('Duration', 'Value'))[1];
+      const over: string[] = [];
+      for (const cat of CATS) {
+        const longestHold = Math.floor(MAX_RUNWAY_WEEKS - BUILD_WINDOW_WEEKS[cat]);
+        if (longestHold > ceiling) {
+          over.push(`${cat}: up to ${longestHold} wk against a ${ceiling} wk ceiling`);
+        }
+      }
+      if (over.length > 0 && exempt('no-ceiling-on-a-long-hold')) return;
+      if (over.length > 0) {
+        throw new Error(
+          `the hold block has no length ceiling - ${over.join(' · ')}`,
+        );
+      }
+    },
+    exempt: {
+      'no-ceiling-on-a-long-hold':
+        'REAL VIOLATION, RUNNER-FACING, NOT FIXED HERE - it is the owner call. ' +
+        'composeMaintenancePlan sizes the block as floor(weeksToRace - buildWindow) with no ' +
+        'ceiling, so a runner who enters a half fifty-three weeks out is authored a ' +
+        'FORTY-ONE WEEK hold, and it is flat: one targetWeekly for the whole span with a ' +
+        '20% step-down every fourth week, no progression at all. Section 6 asks for 80-100% ' +
+        'of last cycle peak reached through reverse periodization over 8-16 weeks. ' +
+        'Capping it here would be worse than the violation: nothing re-authors a ' +
+        'race-anchored hold block that runs out (graduateDue fires on the race date, the ' +
+        'plan_elapsed branch of /api/cron/plan-drift is gated on !race_id, and openBlockDue ' +
+        'requires no future target), so a runner a year out would have no plan at all from ' +
+        'week sixteen until the build window opened. Closing this needs the block sized to ' +
+        'the ceiling AND the elapsed-plan branch taught to re-author a hold block AND a ' +
+        'ruling on whether a long hold progresses (section 6) or holds (section 7). Delete ' +
+        'this entry when those three land.',
+    },
+  },
 ];
 
 /** The four race-week templates in Research/08 section 9.3, by their own

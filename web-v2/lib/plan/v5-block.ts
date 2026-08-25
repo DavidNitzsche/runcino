@@ -245,9 +245,17 @@ export function buildCoachLine(
 
 // ── weeks (all of them) ─────────────────────────────────────────────────
 
-function weekFlag(w: PlanWeek): string {
+export function weekFlag(w: PlanWeek): string {
   if (w.isCurrent) return 'This week';
   if (w.isRaceWeek) return 'Race week';
+  // TAPER-NOT-CUTBACK-1 (2026-08-24) · the taper is not a cutback, and the
+  // taper is the more important word. `planWeekFlags` stops writing the column
+  // that way for blocks authored from here on; this is what the two production
+  // plans already carrying it read as in the meantime. Three weeks between
+  // them, every one a taper week labelled "Cutback" with "RACE-SPECIFIC" on
+  // the week before it — so the block did not say anywhere that the taper had
+  // started.
+  if (w.phase === 'TAPER') return w.phase;
   if (w.isCutback) return 'Cutback';
   return w.phase;
 }

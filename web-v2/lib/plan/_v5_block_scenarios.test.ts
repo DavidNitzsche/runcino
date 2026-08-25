@@ -23,7 +23,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { anotherRaceBlockGate, type PlanShape } from './replan-scenarios';
-import { findMoveDayCandidate, libraryPhaseKey, buildPanel, buildCoachLine } from './v5-block';
+import { findMoveDayCandidate, libraryPhaseKey, buildPanel, buildCoachLine, weekFlag } from './v5-block';
+import { planWeekFlags } from './generate';
 import { pickPlanMode, buildOpensISO } from './goal-tiers';
 
 // ── fixtures ─────────────────────────────────────────────────────────────
@@ -290,5 +291,74 @@ describe('buildCoachLine · MAINTENANCE with a race on the calendar', () => {
     // A race we cannot size (no distance on the row) falls back rather than
     // guessing at a category.
     expect(buildCoachLine(maint('2026-12-13'), null)).toContain('no block to build toward');
+  });
+});
+
+// ── 5 · the taper is not a cutback ─────────────────────────────────────────
+//
+// `plan_weeks.is_cutback` marks a week that drops more than 15% off the one
+// before, and a taper week always does — by design, that IS the taper. So
+// every taper week landed in the column, and the Block screen's week flag
+// checks cutback BEFORE the phase name. Live in production on 2026-08-24 on
+// both plans that had reached a taper: three weeks between them, each showing
+// "Cutback" with "RACE-SPECIFIC" on the week before, so the block did not say
+// anywhere that the taper had begun.
+//
+// The app already had the rule and only ever applied it in one place:
+// `proposeChange('cutback')` refuses a taper week with "The taper is already a
+// cutback, and cutting it again would leave you flat on race day."
+
+const wk = (phase: string, mi: number, isRaceWeek = false) => ({
+  isRaceWeek, phase, days: [{ distanceMi: mi }],
+});
+
+describe('planWeekFlags · is_cutback and is_peak', () => {
+  it('does not mark a taper week as a cutback, however far its volume drops', () => {
+    const { isCutbackByWeek } = planWeekFlags([
+      wk('QUALITY', 40), wk('QUALITY', 44), wk('RACE-SPECIFIC', 46),
+      wk('TAPER', 32), wk('TAPER', 22), wk('TAPER', 12, true),
+    ]);
+    expect(isCutbackByWeek).toEqual([false, false, false, false, false, false]);
+  });
+
+  it('still marks a real deload inside the build', () => {
+    const { isCutbackByWeek } = planWeekFlags([
+      wk('BASE', 30), wk('BASE', 33), wk('BASE', 35), wk('BASE', 26),
+      wk('QUALITY', 36),
+    ]);
+    expect(isCutbackByWeek).toEqual([false, false, false, true, false]);
+  });
+
+  it('never marks week 0, which has nothing to have dropped from', () => {
+    const { isCutbackByWeek } = planWeekFlags([wk('BASE', 4), wk('BASE', 30)]);
+    expect(isCutbackByWeek[0]).toBe(false);
+  });
+
+  it('marks the highest non-race week as the peak, earliest occurrence winning', () => {
+    const { isPeakByWeek } = planWeekFlags([
+      wk('QUALITY', 40), wk('RACE-SPECIFIC', 46), wk('RACE-SPECIFIC', 46),
+      wk('TAPER', 30), wk('TAPER', 50, true),
+    ]);
+    expect(isPeakByWeek).toEqual([false, true, false, false, false]);
+  });
+});
+
+describe('weekFlag · what the Block screen prints on a week row', () => {
+  const week = (over: Partial<import('@/lib/coach/training-state').PlanWeek>) => ({
+    id: 'w', idx: 0, phase: 'QUALITY', startDate: '2026-08-24', plannedMi: 30,
+    isRaceWeek: false, isCutback: false, days: [], isCurrent: false,
+    ...over,
+  } as import('@/lib/coach/training-state').PlanWeek);
+
+  it('says TAPER on a taper week even when the stored column says cutback', () => {
+    // The two live plans on 2026-08-24 carry exactly this row.
+    expect(weekFlag(week({ phase: 'TAPER', isCutback: true }))).toBe('TAPER');
+  });
+
+  it('keeps the order that matters above it', () => {
+    expect(weekFlag(week({ phase: 'TAPER', isCutback: true, isCurrent: true }))).toBe('This week');
+    expect(weekFlag(week({ phase: 'TAPER', isCutback: true, isRaceWeek: true }))).toBe('Race week');
+    expect(weekFlag(week({ phase: 'QUALITY', isCutback: true }))).toBe('Cutback');
+    expect(weekFlag(week({ phase: 'BASE' }))).toBe('BASE');
   });
 });
