@@ -27,6 +27,7 @@ import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
 import { canonicalSessionType } from '@/lib/training/workout-type';
 import { workAveragesFromPhases, formatWorkPace } from '@/lib/runs/work-averages';
 import { rowsOrNull } from '@/lib/db/read';
+import { composeRecap } from '@/lib/faff/recap-voice';
 import { loadRunTwins, resolveElevationGain, resolveSplits } from '@/lib/runs/twins';
 import { resolveThresholdHr } from '@/lib/training/lthr';
 import { requireUserId } from '@/lib/auth/session';
@@ -986,13 +987,17 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         askedMi: todayPlan?.distanceMi ?? null,
         effortAsked: null,
         effortLogged: rpe?.rpe ?? null,
-        verdict: recap.verdict,
-        // `deriveRecap` returns four sentences and this route was forwarding
-        // one. The other three were composed on every request and discarded.
-        facts: recap.facts,
-        conditionsNote: recap.conditions_note,
-        coachTip: recap.coach_tip,
-        win: deriveWin({
+        // SAID ONCE. `deriveRecap` returns four parts and `deriveWin` a
+        // fifth, each composed without sight of the others, so they restated
+        // each other: "Steady the whole way", "Easy done." and "the right way
+        // to take an easy day" are one judgement three times; three sentences
+        // running said it was hot; and the tip told him to run by effort on a
+        // run he had already run. `composeRecap` keeps only the parts with
+        // something left to add. It never rewrites a number and never merges
+        // two facts — a part survives whole or not at all.
+        ...(() => {
+          const spoken = composeRecap({
+            win: deriveWin({
           type: purposeType, phase: purposePhase,
           plannedMi: todayPlan?.distanceMi ?? 0,
           plannedPaceSPerMi: askedPaceSPerMi,
@@ -1019,6 +1024,20 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
               }))
             : undefined,
         }),
+            verdict: recap.verdict,
+            facts: recap.facts,
+            conditionsNote: recap.conditions_note,
+            coachTip: recap.coach_tip,
+          });
+          return {
+            verdict: spoken.body[0] ?? null,
+            facts: spoken.body.slice(1),
+            conditionsNote: null,
+            coachTip: null,
+            win: spoken.headline,
+          };
+        })(),
+
         zoneShares,
         // The race row's zone is its DISTANCE's row in Research/08 §6.1, so the
         // planned distance has to travel with the type. `zoneTarget` stays for

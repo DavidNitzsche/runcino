@@ -817,37 +817,31 @@ struct TodayAfterV5: View {
         return out
     }
 
-    /// THE READING CARD. Drawn only when the run earned at least one row —
-    /// a header over nothing reads as a section that failed to load.
-    /// THE READINGS, ON THE GROUND RATHER THAN ON A TILE.
+    /// THE READINGS, AS THE SAME ROW THE EFFORT IS.
     ///
-    /// They used to sit in a `ListGroup` under a "READING" heading, which made
-    /// them look like a separate subject. They are not: they are the rest of
-    /// what the sensors recorded about the run whose effort is stated directly
-    /// above, and the effort row is the last thing the session ASKED for.
-    /// Continuing the same column, on the page's own black, says that — a
-    /// heading and a raised tile would keep insisting it is a new topic.
+    /// These were hand-built `HStack`s while the effort row above them was a
+    /// `ListRow`, so the two lists differed in every dimension that makes a
+    /// column read as a column: a different horizontal inset, a 15pt
+    /// secondary label against a 16pt medium primary one, and 44pt rows
+    /// against 58pt. The labels did not line up and the weights did not
+    /// match, which is exactly what it looked like.
     ///
-    /// Quieter than the effort row above them on purpose. Effort is his
-    /// answer; these are the watch's.
+    /// Alignment is not something to nudge into place, it is something to
+    /// make structural. One component, so the two halves cannot drift apart
+    /// the next time either is touched.
+    ///
+    /// They stay OFF a tile and under no heading. Effort is the last thing
+    /// the session asked for; these are the rest of what the watch recorded
+    /// about the same run, and one continuous column says that. A heading
+    /// would insist they are a new subject.
     @ViewBuilder
     private var readingSection: some View {
         if !readingRows.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(readingRows, id: \.0) { row in
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(row.0)
-                            .font(.faffText(TypeScaleV5.body15))
-                            .foregroundStyle(V5.textSecondary)
-                        Spacer(minLength: V5.S.s12)
-                        FaffValueText(row.1,
-                                      font: .faffText(TypeScaleV5.body15),
-                                      color: V5.textQuiet)
-                    }
-                    .frame(minHeight: 44)
+                    ListRow(label: row.0, value: row.1)
                 }
             }
-            .padding(.horizontal, V5.S.s14x)
         }
     }
 
