@@ -19,7 +19,11 @@
  */
 import { pool } from '@/lib/db/pool';
 import { logReadFailure } from '@/lib/db/read';
-import { prescriptionFor, type WorkoutType, type PrescriptionStep } from '@/lib/training/prescriptions';
+import {
+  prescriptionFor,
+  narrowToPrescriptionType,
+  type PrescriptionStep,
+} from '@/lib/training/prescriptions';
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
 import { parseRaceTime as parseRaceGoalSec } from '@/lib/training/vdot';
 import { runnerToday } from '@/lib/runtime/runner-tz';
@@ -457,8 +461,25 @@ function stepToPhases(step: PrescriptionStep, defaultTolerance: number): WatchPh
 
 // ── Pace label helpers ──────────────────────────────────────────────────
 
-function paceLabelFor(t: string): string {
-  switch (t) {
+/**
+ * The plan's own zone tag · "T" / "I" / "L" / "E" / "R".
+ *
+ * WATCH-TYPE-1 (2026-08-25) · this switched on the RAW `plan_workouts.type`
+ * and returned the empty string for four types the generator actually emits —
+ * `race_week_tuneup`, `fartlek`, `progression`, `vo2max` — plus `recovery`.
+ * The empty string is not inert on the wrist. `WatchLobbyAdapter.ramp`
+ * (WatchRouterV5.swift:1331) reads this tag to decide the session's identity
+ * ACROSS THE WHOLE PRODUCT, and its default arm is `.easy`: a race-week
+ * tune-up and a VO2max session both arrived on the wrist wearing the easy
+ * ramp. `isThreshold` (:838) reads it too, so the tune-up also lost the
+ * average-pace row a threshold block is judged by.
+ *
+ * Narrowed through the SAME function the phone narrows through, so the two
+ * surfaces cannot name a session differently. Every type that already
+ * resolved is byte-identical; only the ones that returned "" change.
+ */
+export function paceLabelFor(rawType: string): string {
+  switch (narrowToPrescriptionType(rawType)) {
     case 'easy':       return 'E';
     case 'long':       return 'L';
     case 'tempo':      return 'T';   // tempo is run at threshold effort (Daniels T), not marathon
@@ -470,16 +491,35 @@ function paceLabelFor(t: string): string {
   }
 }
 
-function labelFor(t: string): string {
+/**
+ * The session's NAME, used only when the row carries no `sub_label`.
+ *
+ * WATCH-TYPE-1 · the old default arm upper-cased the first character of the
+ * raw column and stopped, so a race-week tune-up was announced on the wrist
+ * as "Race_week_tuneup". Named explicitly where the product has a name for
+ * it; the default now at least reads as prose rather than as a column value.
+ */
+export function labelFor(t: string): string {
   switch (t) {
-    case 'easy':       return 'Easy';
-    case 'long':       return 'Long';
-    case 'tempo':      return 'Tempo';
-    case 'threshold':  return 'Threshold';
-    case 'intervals':  return 'Intervals';
-    case 'race':       return 'Race';
-    case 'shakeout':   return 'Shakeout';
-    default:           return t.charAt(0).toUpperCase() + t.slice(1);
+    case 'easy':             return 'Easy';
+    case 'long':             return 'Long';
+    case 'tempo':            return 'Tempo';
+    case 'threshold':        return 'Threshold';
+    case 'intervals':        return 'Intervals';
+    case 'race':             return 'Race';
+    case 'shakeout':         return 'Shakeout';
+    case 'race_week_tuneup': return 'Tune-up';
+    case 'fartlek':          return 'Fartlek';
+    case 'progression':      return 'Progression';
+    case 'recovery':         return 'Recovery';
+    case 'vo2max':
+    case 'vo2':
+    case 'interval':
+    case 'track':            return 'Intervals';
+    default:
+      return t
+        .replace(/[_-]+/g, ' ')
+        .replace(/^\w/, (c) => c.toUpperCase());
   }
 }
 
@@ -1098,7 +1138,13 @@ export async function buildWatchToday(
   // deprecated -7h Pacific hack. The hack is correct only for Pacific-PDT;
   // web coach-state migrated to runnerToday on 2026-06-03, watch/iPhone
   // (this builder) had not. Fixes "today's workout" for every non-Pacific user.
-  const today = overrideDate ?? await runnerToday(userId);
+  //
+  // WATCH-HEAT-DATE-1 (2026-08-25) · the runner's REAL today is resolved even
+  // when the caller overrode the date, because one thing on this path is only
+  // true for today: the weather. See the heat block in step 6b.
+  const actualToday = await runnerToday(userId);
+  const today = overrideDate ?? actualToday;
+  const isActualToday = today === actualToday;
 
   // 1. Find today's plan workout
   const plan = (await pool.query(
@@ -1242,17 +1288,44 @@ export async function buildWatchToday(
   // whenever it is non-zero. The proxy stays only for the case it was built
   // for — no rows in the window to read — and is no longer allowed to override
   // a number we actually have.
+  //
+  // ── WATCH-WEEK-1 (2026-08-25) · TWO SURFACES, TWO WEEKS ──────────────────
+  //
+  // The window was a hardcoded Monday-to-Sunday span computed right here. The
+  // training week in this product does NOT start on Monday: it ENDS on the
+  // runner's own long-run day and starts the day after
+  // (lib/notifications/week-window.ts:trainingWeekWindow, locked 2026-06-16,
+  // one source of truth in /api/plan/week). For a Saturday long-run runner the
+  // two windows overlap by five days and disagree about two — so the phone and
+  // the wrist doses the SAME quality session against two different weekly
+  // volumes, and `prescriptionFor` turns that into a different rep count.
+  //
+  // `rawWeek` is the shared loader's answer and is already in hand above (the
+  // lobby's week strip is built from it), so this reads its window rather than
+  // deriving a second one. The Monday math survives ONLY as the fallback for a
+  // runner whose week could not be loaded at all — an unknown window is worse
+  // than an approximate one, but it must not be the default.
   const todayDow = new Date(today + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
   const daysSinceMonday = todayDow === 0 ? 6 : todayDow - 1;
-  const weeklyMiRow = (await pool.query(
-    `SELECT SUM(distance_mi)::numeric AS mi FROM plan_workouts
-      WHERE plan_id = $1
-        AND date_iso::date BETWEEN ($2::date - $3::int) AND ($2::date - $3::int + 6)`,
-    [plan.id, today, daysSinceMonday]
+  const planWeekStart = rawWeek?.week_start_iso ?? null;
+  const planWeekEnd = rawWeek?.week_end_iso ?? null;
+  const weeklyMiRow = (await (planWeekStart && planWeekEnd
+    ? pool.query(
+        `SELECT SUM(distance_mi)::numeric AS mi FROM plan_workouts
+          WHERE plan_id = $1
+            AND date_iso::date BETWEEN $2::date AND $3::date`,
+        [plan.id, planWeekStart, planWeekEnd],
+      )
+    : pool.query(
+        `SELECT SUM(distance_mi)::numeric AS mi FROM plan_workouts
+          WHERE plan_id = $1
+            AND date_iso::date BETWEEN ($2::date - $3::int) AND ($2::date - $3::int + 6)`,
+        [plan.id, today, daysSinceMonday],
+      ))
     // LOWVOL-5 · a failed read is unknown, not thirty miles. It still falls to
     // the proxy below, same as an empty window, so it logs — otherwise a
     // fabricated weekly volume and a genuinely planless week are one value.
-  ).catch((e) => { logReadFailure('watch/build-workout · weekly mi', e); return { rows: [{ mi: null }] }; })).rows[0];
+    .catch((e) => { logReadFailure('watch/build-workout · weekly mi', e); return { rows: [{ mi: null }] }; })).rows[0];
   const realWeeklyMi = Number(weeklyMiRow?.mi) || 0;
   const proxyWeeklyMi = Math.max(distanceMi * 6, 25);
   const weeklyMi = realWeeklyMi > 0 ? realWeeklyMi : proxyWeeklyMi;
@@ -1260,8 +1333,26 @@ export async function buildWatchToday(
   // 4. Generate the same prescription the iPhone modal uses · used as
   //    a fallback (and to source the headline / pacing strings when
   //    workout_spec is absent).
+  //
+  // WATCH-TYPE-1 (2026-08-25) · this was `wo.type as WorkoutType`, and the
+  // cast was lying. `prescriptionFor`'s switch implements nine types; the
+  // generator emits at least five more. `race_week_tuneup`, `fartlek`,
+  // `progression`, `recovery` and `vo2max` reached the `default` arm and came
+  // back as `total_mi: 0`, headline "No workout scheduled" — which is not an
+  // internal detail on this path, because `summary` is built from that
+  // headline UNCONDITIONALLY. A runner standing at the door on race-week
+  // tune-up morning read "5.0 mi · No workout scheduled" on their wrist. When
+  // the row also had no `workout_spec` to expand, `prescription.steps` was
+  // empty too, so the whole session collapsed to one open 9:00/mi work phase
+  // carrying that same headline as its label and no pace target at all.
+  //
+  // `narrowToPrescriptionType` is the phone's own narrowing, lifted into
+  // `prescriptions.ts` on 2026-08-24 for exactly this caller and then not
+  // wired to it. A tune-up is a threshold session, a fartlek and a
+  // progression are tempo, a recovery run is easy, a vo2max is intervals.
+  const prescriptionType = narrowToPrescriptionType(wo.type);
   const prescription = prescriptionFor(
-    wo.type as WorkoutType,
+    prescriptionType,
     weeklyMi,
     { lthr, goal_seconds, goal_distance_mi },
     distanceMi,
@@ -1341,12 +1432,21 @@ export async function buildWatchToday(
   const isQualityWorkout = sessionClass === 'threshold' || sessionClass === 'interval';
   const isIntervalWorkout = sessionClass === 'interval';
   const rawHrTarget = isQualityWorkout ? (specHrBpm ?? lthr ?? null) : null;
-  // %HRmax fallback when LTHR absent (Friel conservative). Already the final
-  // target — must NOT receive the 1.05× interval uplift that LTHR sources use.
+  // %HRmax fallback when LTHR absent. Both figures are the BOTTOM of their
+  // Daniels row in Research/03 §8 ("Daniels' HR Zones": T 86-92 %HRmax,
+  // I 95-100 %HRmax), which is what "conservative" means here. Already the
+  // final target — must NOT receive the 1.05× interval uplift that LTHR
+  // sources use.
+  //
+  // WATCH-TYPE-1 · the second arm read the RAW column (`wo.type === 'tempo'`)
+  // while the gate above it reads `sessionClass`. Same doctrine row, two
+  // answers: a `threshold` row, a `race_week_tuneup`, a `fartlek` and a
+  // `progression` are all T-intensity and all fell through to null, so a
+  // runner with no LTHR on file got an HR reference on a tempo and none on
+  // the identical threshold session. Keyed off the class, like its gate.
   const maxHrFallback: number | null = !rawHrTarget && isQualityWorkout && maxHr
-    ? isIntervalWorkout   ? Math.round(maxHr * 0.95)
-    : wo.type === 'tempo' ? Math.round(maxHr * 0.87)
-    : null
+    ? isIntervalWorkout ? Math.round(maxHr * 0.95)
+    :                     Math.round(maxHr * 0.87)
     : null;
   const workHrTargetBpm = rawHrTarget != null
     ? (isIntervalWorkout ? Math.round(rawHrTarget * 1.05) : rawHrTarget)
@@ -1405,12 +1505,36 @@ export async function buildWatchToday(
   //     BEFORE totals are computed, so an eased distance phase's estimate
   //     moves with its target. Race is skipped inside; every failure path
   //     leaves the phases untouched. See lib/watch/heat.ts.
+  //
+  // ── WATCH-HEAT-DATE-1 (2026-08-25) · TOMORROW'S BAND, TODAY'S WEATHER ────
+  //
+  // This endpoint takes an optional `?date=`, and the PHONE uses it: tapping
+  // any tile in the week strip calls `API.fetchWatchWorkout(date:)`
+  // (TodayView.swift:701 and :3263) to preview that day's session. `today` is
+  // then the tile's date, but `adjustPhasesForHeat` reads CURRENT conditions —
+  // the only conditions there are. Two things followed, and both are the
+  // failure this whole mechanism was built to stop:
+  //
+  //   1. The preview showed Thursday's targets eased by Monday's temperature,
+  //      with a `heatNote` naming Monday's degrees as though they were
+  //      Thursday's. A number the runner cannot check, presented as fact.
+  //   2. Worse, `recordHeatEasing` then WROTE that easing against Thursday's
+  //      date. Come Thursday the pre-run card read it back and eased a cool
+  //      morning's band, and the recap read `targetAlreadyHeatEased` and
+  //      declined to price the heat that was actually there. One tap on a
+  //      future tile silently corrupted that day's whole heat ledger — and
+  //      tapping a PAST tile did the same to a run already in the book.
+  //
+  // Current conditions are evidence about NOW. On any other date there is no
+  // observation, so there is no adjustment and nothing is recorded: the
+  // preview shows the authored band and says nothing about weather. RULE
+  // THREE — a refusal is a correct answer.
   const preHeatSec = phases.reduce((s, p) => s + p.durationSec, 0);
-  const heat = await adjustPhasesForHeat(userId, phases, {
+  const heat = isActualToday ? await adjustPhasesForHeat(userId, phases, {
     isRace: wo.type === 'race',
     intervalStyle: isIntervalWorkout,
     totalSec: preHeatSec,
-  }).catch(() => null);
+  }).catch(() => null) : null;
   // Remember what we asked for, so the recap does not price the same heat a
   // second time when it grades this run against the band we just eased.
   // Fire-and-forget: see lib/watch/heat.ts.
@@ -1479,8 +1603,15 @@ export async function buildWatchToday(
     hrCeilingBpm,
     // Long runs foreground HR (the easy-aerobic discipline) — EXCEPT when
     // they carry an HM/M finish, where pace is the target (D1).
-    displayHint: wo.type === 'long'  ? (longHasFinish ? 'pace' : 'hr')
-             : wo.type === 'tempo' ? 'tempo'
+    //
+    // WATCH-TYPE-1 · keyed off `sessionClass`, not the raw column, so it can
+    // no longer disagree with `longHasFinish` and `hrCeilingBpm` — both of
+    // which already read the class. A row typed `easy` whose spec says
+    // `kind: 'long'` used to get the long-run ceiling and the easy-run hint at
+    // the same time, and the lobby ramp reads this field when the pace label
+    // does not settle it (WatchRouterV5.swift:1337).
+    displayHint: sessionClass === 'long'      ? (longHasFinish ? 'pace' : 'hr')
+             : sessionClass === 'threshold'   ? 'tempo'
              : null,
     unitsDistance,
     // Null unless the targets above were actually eased. `heatNote` returns

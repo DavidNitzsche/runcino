@@ -167,7 +167,9 @@ struct WatchPhase: Codable, Identifiable {
     /// Stable identity for SwiftUI lists · the cursor index assigned at
     /// decode time (the backend payload has no per-phase id).
     var id: Int { index }
-    let index: Int
+    /// `var` only so `reindexed(_:)` can copy-and-overwrite. Nothing outside
+    /// this type may move a phase's position — see RESTAMP-2.
+    private(set) var index: Int
     let type: WatchPhaseType
     let label: String
     let durationSec: Int
@@ -229,6 +231,18 @@ struct WatchPhase: Codable, Identifiable {
         self.ruleJudgement = ruleJudgement
     }
 
+    /// A copy of this phase carrying its position in the array.
+    ///
+    /// RESTAMP-2 · the ONLY way `WatchWorkout`'s decoder stamps an index.
+    /// Copy-and-overwrite, never a positional re-construction: a field added
+    /// to this struct tomorrow survives the round trip without anyone having
+    /// to remember that this line exists. Twice now, nobody did.
+    func reindexed(_ i: Int) -> WatchPhase {
+        var copy = self
+        copy.index = i
+        return copy
+    }
+
     private enum CodingKeys: String, CodingKey {
         case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm, isFinishSegment
         case isStrideSegment, ruleLabel, ruleEvidence, ruleJudgement
@@ -275,6 +289,17 @@ struct WatchPhase: Codable, Identifiable {
         try c.encodeIfPresent(distanceMi, forKey: .distanceMi)
         try c.encodeIfPresent(hrTargetBpm, forKey: .hrTargetBpm)
         try c.encode(isFinishSegment, forKey: .isFinishSegment)
+        // RESTAMP-2 · the same four fields, dropped again on the way OUT.
+        // This is not a cosmetic symmetry: `WorkoutEngine.persistSnapshot`
+        // stores the crash-recovery snapshot as `JSONEncoder().encode(workout)`
+        // (WorkoutEngine.swift:640 and :2451), so a run resumed after a crash
+        // decodes a workout whose strides are no longer flagged and whose bail
+        // registers are gone. The decode side was the visible half; while it
+        // was broken this half could not be noticed.
+        try c.encode(isStrideSegment, forKey: .isStrideSegment)
+        try c.encodeIfPresent(ruleLabel, forKey: .ruleLabel)
+        try c.encodeIfPresent(ruleEvidence, forKey: .ruleEvidence)
+        try c.encodeIfPresent(ruleJudgement, forKey: .ruleJudgement)
     }
 }
 
@@ -453,14 +478,33 @@ struct WatchWorkout: Codable {
         // distanceMi was lost mid-decode. Same bug ate the distance count-
         // down. Round-trip smoke test in WatchFixtures · cruise-decode-
         // tomorrow caught it.
+        //
+        // RESTAMP-2 (2026-08-25) · AND IT HAPPENED AGAIN, TO THE NEXT FOUR.
+        //
+        // The note above is the fix for the FIRST two fields this constructor
+        // dropped. Every field added to `WatchPhase` since then was decoded
+        // correctly by `WatchPhase.init(from:)` on the line above and then
+        // thrown away here, because the re-stamp names its fields positionally
+        // and the trailing ones default:
+        //
+        //   · `isStrideSegment` → false. Decoded 2026-08-23 specifically so
+        //     the stride board would stop routing on prose, with a comment at
+        //     WatchRouterV5.swift:828 saying "the flag is the evidence". The
+        //     flag never arrived; `isStrides` has been carried the whole time
+        //     by its own `label.contains("stride")` fallback, so renaming
+        //     "Stride N of M" upstream still silently retires the board. The
+        //     fix reads as landed and is inert.
+        //   · `ruleLabel` / `ruleEvidence` / `ruleJudgement` → nil. The
+        //     server has pinned the bail's two registers onto the phases it
+        //     scopes to since 2026-08-21 (build-workout.ts, B7).
+        //
+        // A positional re-stamp cannot be made safe by remembering to update
+        // it; this is the second time it was not remembered. Copying through a
+        // `var` and overwriting only `index` means a field added tomorrow
+        // survives by default, and the dropping case has to be written on
+        // purpose rather than reached by forgetting.
         let raw = try c.decode([WatchPhase].self, forKey: .phases)
-        self.phases = raw.enumerated().map { (i, p) in
-            WatchPhase(index: i, type: p.type, label: p.label, durationSec: p.durationSec,
-                       targetPaceSPerMi: p.targetPaceSPerMi,
-                       tolerancePaceSPerMi: p.tolerancePaceSPerMi, haptic: p.haptic,
-                       repUnit: p.repUnit, distanceMi: p.distanceMi, hrTargetBpm: p.hrTargetBpm,
-                       isFinishSegment: p.isFinishSegment)
-        }
+        self.phases = raw.enumerated().map { (i, p) in p.reindexed(i) }
     }
 }
 

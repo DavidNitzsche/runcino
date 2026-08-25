@@ -20,10 +20,36 @@
 # than the newest source file, and only then install and shoot.
 set -euo pipefail
 
-ROOT="/Volumes/WP/06 Claude Code/Runcino"
+# WORKTREE-RENDER-1 (2026-08-25) · this was a hardcoded absolute path to the
+# main checkout, and that is a sixth way to judge a screenshot of the wrong
+# binary — the five above are all about building the wrong thing, and this one
+# builds the right thing in the wrong TREE.
+#
+# Several sessions run in `.claude/worktrees/*` at once. `check-watch.sh`
+# resolves its own root with `git rev-parse --show-toplevel` and says why in a
+# comment: without it "the gate would silently no-op". It then invokes THIS
+# script by its resolved path — so the gate correctly ran the worktree's tests
+# and then rendered the MAIN checkout's boards, in one run, reporting both
+# under one green line. An agent verifying a face change by rendering it saw
+# somebody else's code and had no way to tell.
+#
+# Same resolution as the gate, with the literal kept as the fallback for the
+# case it was written for: invocation from somewhere that is not a git tree.
+# Anchored on THIS FILE, not on the caller's cwd — the gate invokes this by
+# absolute path from wherever the push happened, and a cwd-relative answer
+# would reintroduce the same wrong-tree bug through a different door.
+ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$ROOT" ] || [ ! -d "$ROOT/native-v2" ]; then
+  ROOT="/Volumes/WP/06 Claude Code/Runcino"
+fi
 PROJ="$ROOT/native-v2"
 WATCH="$ROOT/legacy/native/Faff/FaffWatch Watch App"
-DD="/tmp/faff-watch-dd"
+# WORKTREE-RENDER-1 · overridable, because two TREES sharing one derived-data
+# path is the same collision the gate already avoids between two xcodebuilds.
+# The staleness assert below compares the binary against THIS tree's sources,
+# so a cross-tree reuse is caught rather than shot — but caught is a failed
+# run, and a per-tree path is simply correct.
+DD="${WATCH_SHOOT_DD:-/tmp/faff-watch-dd}"
 SIM="${SIM:-DC794E30-23E7-475B-AECD-05DC44E39A75}"   # Series 11 46mm
 OUT="${OUT:-/tmp/faces}"
 FACE="${1:?usage: shoot.sh <face-name> [more names...]}"

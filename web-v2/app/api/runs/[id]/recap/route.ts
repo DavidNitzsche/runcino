@@ -212,7 +212,7 @@ export async function GET(
   // uses these instead of unreliable per-mile splits.
   // Cold-start: returns [] when no watch_completion intent exists (any
   // runner's first run, non-Faff-watch sources, open easy runs).
-  let winPhases: Array<{ type?: string | null; verdict?: string | null; actualPaceSPerMi?: number | null; targetPaceSPerMi?: number | null; actualDistanceMi?: number | null; isFinishSegment?: boolean }> = [];
+  let winPhases: Array<{ type?: string | null; verdict?: string | null; actualPaceSPerMi?: number | null; targetPaceSPerMi?: number | null; actualDistanceMi?: number | null; isFinishSegment?: boolean; actualSpeedMph?: number | null; actualInclinePct?: number | null; completed?: boolean | null }> = [];
   if (date) {
     try {
       const intentRow = (await pool.query(
@@ -243,6 +243,13 @@ export async function GET(
           targetPaceSPerMi: Number(p.targetPaceSPerMi) || null,
           actualDistanceMi: Number(p.actualDistanceMi) || null,
           isFinishSegment: p.isFinishSegment === true,
+          // BELT-WIN-1 · the treadmill console's own readings, carried so
+          // `winTreadmill` has something to read. `completed` keeps its
+          // three states — a phase that never said is not a phase that
+          // said no, and the composer's `!== false` test depends on that.
+          actualSpeedMph: Number(p.actualSpeedMph) || null,
+          actualInclinePct: typeof p.actualInclinePct === 'number' ? p.actualInclinePct : null,
+          completed: typeof p.completed === 'boolean' ? p.completed : null,
         }));
       }
     } catch { /* non-fatal: win falls back to per-mile heuristic */ }

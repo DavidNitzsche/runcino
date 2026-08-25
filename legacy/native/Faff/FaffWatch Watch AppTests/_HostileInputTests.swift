@@ -1037,4 +1037,148 @@ struct HostileInputTests {
         #expect(engine.state == .running)
         engine.reset()
     }
+
+    // MARK: - OVERTIME-GRADE-1 · the run nothing is grading
+
+    /// An easy run: ONE work phase, and it carries a band. This is the shape
+    /// that overruns — a runner who is told 6 miles and does 7.
+    private func bandedEasyRun() -> WatchWorkout {
+        let phases = [
+            WatchPhase(index: 0, type: .work, label: "Easy run", durationSec: 3240,
+                       targetPaceSPerMi: 537, tolerancePaceSPerMi: 20,
+                       haptic: .start, repUnit: .distance, distanceMi: 6.0),
+        ]
+        return WatchWorkout(workoutId: "overtime-easy", name: "Easy", summary: "6.0 mi",
+                            totalEstimatedMinutes: 54, phases: phases,
+                            completionEndpoint: "/x", expiresAt: "2099-01-01T00:00:00Z",
+                            distanceMi: 6.0, paceLabel: "E")
+    }
+
+    /// THE STATE THAT MAKES THE LIE POSSIBLE.
+    ///
+    /// Overtime does not clear the cursor: `advance()` leaves `currentIndex`
+    /// on the final phase on purpose, and force-sets `paceZone = .onTarget`
+    /// before `tick()` stops re-evaluating it. So every input `grade()` reads
+    /// still says "on target, band present" about a session that ended. This
+    /// test pins that state, so nobody reads `currentPhase` for a grading
+    /// decision again believing it goes nil at the end.
+    @Test func overtimeLeavesTheCursorAndTheZonePinnedOnTarget() {
+        let (engine, tracker) = newRig(bandedEasyRun())
+        engine.start()
+
+        // Run the six miles the plan asked for. A DISTANCE phase closes on the
+        // odometer, not on the clock, so the distance has to move.
+        tracker.setFixture(pace: 540, hr: 150, cadence: 170, distanceMi: 6.1)
+        simulate(engine, seconds: 3300)
+        #expect(engine.planComplete == true)
+
+        // Now keep running, well outside the band the session asked for.
+        tracker.setFixture(pace: 700, hr: 150, cadence: 170, distanceMi: 7.4)
+        simulate(engine, seconds: 700)
+
+        // 700 s/mi against a 537 ± 20 band is a long way outside it, and the
+        // engine still reports "on target" — because `advance()` pinned the
+        // zone on the way into overtime and `tick()` stopped re-evaluating it.
+        #expect(engine.paceZone == .onTarget)
+        // And the cursor never moved off the finished phase, so its band is
+        // still sitting there for anything that asks `currentPhase`.
+        #expect(engine.currentPhase != nil)
+        #expect(engine.currentPhase?.targetPaceSPerMi == 537)
+        engine.reset()
+    }
+
+    /// The fix, stated as the rule rather than as the symptom: in overtime
+    /// there is no phase in flight, so there is no band, so nothing grades.
+    @Test func overtimeHasNoGradingPhaseSoNothingCanGoGreen() {
+        let phase = bandedEasyRun().phases[0]
+
+        // Mid-plan the phase grades normally · green when the zone says so.
+        let live = WatchRouterV5.gradingPhase(phase, planComplete: false)
+        #expect(live != nil)
+        #expect(WatchRouterV5.grade(.onTarget, treadmill: false,
+                                    hasBand: live != nil, hasReading: true) == .inBand)
+
+        // Past the end of the plan there is nothing to be inside of. The band
+        // goes, and with it the only colour in this product that grades.
+        let over = WatchRouterV5.gradingPhase(phase, planComplete: true)
+        #expect(over == nil)
+        #expect(WatchRouterV5.grade(.onTarget, treadmill: false,
+                                    hasBand: over != nil, hasReading: true) == .untrusted)
+    }
+
+    // MARK: - RESTAMP-2 · every phase field survives the decode
+
+    /// THE RE-STAMP MUST NOT BE A FILTER.
+    ///
+    /// `WatchWorkout.init(from:)` re-stamps each phase with its cursor index.
+    /// Twice now that re-stamp has been written positionally and has silently
+    /// dropped every field added after it: first `repUnit` + `distanceMi`
+    /// (which cost a long run its distance countdown), then `isStrideSegment`
+    /// and the three `rule*` registers. `WatchPhase.init(from:)` decoded them
+    /// correctly both times; the workout-level re-stamp threw them away one
+    /// line later, so the wire, the model and the tests all looked right.
+    ///
+    /// Asserted through the WHOLE payload decode, not the phase decode, since
+    /// the phase decode was never the broken half.
+    @Test func decodingAWorkoutKeepsEveryFieldOnEveryPhase() throws {
+        let json = """
+        {"workoutId":"restamp","name":"Easy","summary":"6.0 mi",
+         "totalEstimatedMinutes":54,"completionEndpoint":"/x",
+         "expiresAt":"2099-01-01T00:00:00Z","isRace":false,
+         "phases":[
+           {"type":"work","label":"Warm 1","durationSec":600,"haptic":"start",
+            "repUnit":"distance","distanceMi":1.0},
+           {"type":"work","label":"Stride 3 of 6","durationSec":20,
+            "haptic":"transition-work","repUnit":"time",
+            "isStrideSegment":true,
+            "ruleLabel":"Heart rate over 167 · the stimulus is banked",
+            "ruleEvidence":"Heart rate over 167 and still climbing",
+            "ruleJudgement":"The stimulus is already banked."}
+         ]}
+        """.data(using: .utf8)!
+
+        let w = try JSONDecoder().decode(WatchWorkout.self, from: json)
+        #expect(w.phases.count == 2)
+        // The index the re-stamp exists to assign.
+        #expect(w.phases[0].index == 0)
+        #expect(w.phases[1].index == 1)
+        // RESTAMP-1's two fields · the regression this test also covers.
+        #expect(w.phases[0].repUnit == .distance)
+        #expect(w.phases[0].distanceMi == 1.0)
+        // RESTAMP-2's four. The stride flag is the live one: WatchRouterV5's
+        // `isStrides` says "the flag is the evidence", and the flag never
+        // arrived, so the board was carried entirely by its label fallback.
+        #expect(w.phases[1].isStrideSegment == true)
+        #expect(w.phases[1].ruleEvidence == "Heart rate over 167 and still climbing")
+        #expect(w.phases[1].ruleJudgement == "The stimulus is already banked.")
+        #expect(w.phases[1].ruleLabel?.isEmpty == false)
+        // And the phase that was NOT a stride did not acquire the flag.
+        #expect(w.phases[0].isStrideSegment == false)
+    }
+
+    /// The same fields have to survive being written back out, because
+    /// `WorkoutEngine.persistSnapshot` stores the crash-recovery copy as
+    /// `JSONEncoder().encode(workout)`. A run resumed after a crash used to
+    /// come back with its strides unflagged and its bail registers gone.
+    @Test func encodingAWorkoutAndReadingItBackKeepsEveryPhaseField() throws {
+        let original = WatchWorkout(
+            workoutId: "snap", name: "Easy", summary: "6.0 mi",
+            totalEstimatedMinutes: 54,
+            phases: [
+                WatchPhase(index: 0, type: .work, label: "Stride 1 of 6",
+                           durationSec: 20, targetPaceSPerMi: nil,
+                           tolerancePaceSPerMi: nil, haptic: .transitionWork,
+                           repUnit: .time, distanceMi: nil, hrTargetBpm: nil,
+                           isFinishSegment: false, isStrideSegment: true,
+                           ruleLabel: "L", ruleEvidence: "E", ruleJudgement: "J"),
+            ],
+            completionEndpoint: "/x", expiresAt: "2099-01-01T00:00:00Z")
+
+        let round = try JSONDecoder().decode(
+            WatchWorkout.self, from: try JSONEncoder().encode(original))
+        #expect(round.phases[0].isStrideSegment == true)
+        #expect(round.phases[0].ruleLabel == "L")
+        #expect(round.phases[0].ruleEvidence == "E")
+        #expect(round.phases[0].ruleJudgement == "J")
+    }
 }
