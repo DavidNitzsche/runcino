@@ -12,10 +12,12 @@ const TABLES = [
   ['user_prefs', 'user_uuid'],
   ['training_plans', 'user_uuid'],
   ['races', 'user_uuid'],
-  ['daily_checkin', 'user_uuid'],
+  // 2026-08-24 · daily_checkin / skipped_workouts / recovery_sessions were
+  // dropped. subjective_checkins holds the daily reply; skips are day_actions
+  // rows with action='skip'; recovery sessions have no successor table.
+  ['subjective_checkins', 'user_uuid'],
   ['personal_goals', 'user_uuid'],
-  ['skipped_workouts', 'user_uuid'],
-  ['recovery_sessions', 'user_uuid'],
+  ['day_actions', 'user_uuid'],
   ['shoes', 'user_uuid'],
   ['strava_activities', 'user_uuid'],
 ];

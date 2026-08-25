@@ -18,7 +18,9 @@ async function main() {
   out.users_row = await q(`SELECT * FROM users WHERE id=$1`, [DAVID]);
   out.profile_row = await q(`SELECT * FROM profile WHERE user_uuid=$1 OR user_id='me'`, [DAVID]);
   out.user_prefs_row = await q(`SELECT * FROM user_prefs WHERE user_uuid=$1 OR user_id='me'`, [DAVID]);
-  out.runner_profile_all = await q(`SELECT * FROM runner_profile`);
+  // 2026-08-24 · dropped `runner_profile` (Cluster 2 DDL, 2026-06-05 — see
+  // lib/coach/biological-sex.ts). Everything it held is on `profile`, which
+  // out.profile_row above already dumps, so there is nothing to re-point.
 
   out.connectors = await q(`SELECT id, provider, scope, last_sync_at, last_sync_status, activities_count, connected_at, disconnected_at FROM connector_tokens WHERE user_id=$1`, [DAVID]);
 
@@ -42,7 +44,9 @@ async function main() {
   out.recent_health_samples = await q(`SELECT sample_type, sample_date, value, source FROM health_samples WHERE user_id=$1 ORDER BY sample_date DESC, sample_type LIMIT 20`, [DAVID]);
   out.health_sample_types = await q(`SELECT sample_type, COUNT(*)::int AS n, MIN(sample_date) AS first, MAX(sample_date) AS last FROM health_samples WHERE user_id=$1 GROUP BY sample_type ORDER BY n DESC`, [DAVID]);
 
-  out.daily_checkins = await q(`SELECT date, energy, soreness, stress FROM daily_checkin WHERE user_uuid=$1 ORDER BY date DESC LIMIT 14`, [DAVID]);
+  // 2026-08-24 · daily_checkin was dropped; the runner's subjective
+  // readiness reply now lives in subjective_checkins (rating 0-10 + notes).
+  out.subjective_checkins = await q(`SELECT date, rating, notes FROM subjective_checkins WHERE user_uuid=$1 ORDER BY date DESC LIMIT 14`, [DAVID]);
   out.check_ins = await q(`SELECT * FROM check_ins WHERE user_id=$1 ORDER BY ts DESC LIMIT 5`, [DAVID]);
 
   out.niggles = await q(`SELECT * FROM niggles WHERE user_id=$1 ORDER BY logged_at DESC`, [DAVID]);
@@ -50,7 +54,10 @@ async function main() {
   out.coach_actions = await q(`SELECT id, action_type, mode, trigger, rationale, created_at FROM coach_actions WHERE user_uuid=$1 ORDER BY created_at DESC LIMIT 5`, [DAVID]);
   out.coach_proposals = await q(`SELECT id, proposal_type, status, created_at FROM coach_proposals WHERE user_uuid=$1 ORDER BY created_at DESC LIMIT 5`, [DAVID]);
   out.coach_intents = await q(`SELECT * FROM coach_intents WHERE user_id=$1 ORDER BY ts DESC LIMIT 5`, [DAVID]);
-  out.briefings = await q(`SELECT id, surface, mode, generated_at FROM briefings WHERE user_id=$1 ORDER BY generated_at DESC LIMIT 5`, [DAVID]);
+  // 2026-08-24 · no `briefings` dump: the table was dropped and nothing
+  // replaced it. /api/briefing recomputes the fact block deterministically
+  // on every read and lib/coach/cache.ts is a no-op shim, so there is no
+  // cached briefing state left to inspect.
   out.coach_usage_last5 = await q(`SELECT generated_at::date AS day, surface, mode, input_tokens, output_tokens FROM coach_usage WHERE user_id=$1 ORDER BY generated_at DESC LIMIT 5`, [DAVID]);
 
   out.device_tokens = await q(`SELECT id, platform, app_version, last_seen_at, registered_at FROM device_tokens WHERE user_id=$1`, [DAVID]);

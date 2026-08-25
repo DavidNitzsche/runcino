@@ -207,9 +207,11 @@ try {
   console.log(JSON.stringify(adaptLog?.adaptation_log)?.slice(0, 500));
 
   // ────────── Orphan deep-check ──────────
-  box('Orphan deep-check (16 migration-126 tables)');
+  // 2026-08-24 · `briefings` and `coach_intent` were dropped from
+  // production, so 14 of the original 16 migration-126 tables remain.
+  box('Orphan deep-check (14 surviving migration-126 tables)');
   const migration126Tables = [
-    'briefings', 'check_ins', 'coach_intent', 'coach_intents', 'coach_usage',
+    'check_ins', 'coach_intents', 'coach_usage',
     'connector_tokens', 'day_actions', 'device_tokens', 'health_samples',
     'niggles', 'notifications_log', 'notifications_pending', 'sessions',
     'sick_episodes', 'workout_completions', 'workout_routes',
