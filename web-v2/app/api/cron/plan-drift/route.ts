@@ -544,14 +544,21 @@ export async function POST(req: NextRequest) {
             });
             if (result.ok) {
               r.proposals_written++;
-              // generatePlan archives via clearActivePlansFor with the
-              // generic 'regenerated'; restamp the recovery plan's
-              // archive_reason so the lifecycle reads honestly.
-              await pool.query(
-                `UPDATE training_plans SET archive_reason = 'recovery_complete'
-                  WHERE id = $1 AND archived_iso IS NOT NULL`,
-                [recoveryRow.plan_id],
-              ).catch(() => null);
+              // 2026-08-25 · THE RESTAMP IS RETIRED. This used to fire a second,
+              // separate UPDATE after the rebuild to correct `archive_reason`
+              // from the generic 'regenerated' to 'recovery_complete', ending
+              // `.catch(() => null)` — so a failed restamp was indistinguishable
+              // from this path never having run. `fireAutoRebuild` now hands the
+              // kind to `generatePlan`, which stamps it inside the rebuild's own
+              // transaction: the reason lands atomically with the archive, or
+              // the whole rebuild rolls back. There is nothing left to correct
+              // after the fact.
+              //
+              // For the record, since the question came up: on 2026-08-25 this
+              // path did not fire at all. The plan was replaced by the
+              // soft-drift path (proposal 54, kind `long_drift`), and every
+              // rebuild wrote the same 'regenerated' because the `reason`
+              // parameter had a default and no caller.
             }
           } catch (e) {
             console.error('[plan-drift] recovery-complete transition failed:', e);
@@ -589,12 +596,26 @@ export async function POST(req: NextRequest) {
         const compromised = await runnerIsCompromised(u).catch(() => ({ compromised: false } as const));
         if (compromised.compromised) {
           r.goal_gap_suppressed_compromised = (r.goal_gap_suppressed_compromised ?? 0) + 1;
+          // 2026-08-25 · PUSH BEFORE CONTINUE. `results.push(r)` is the last
+          // statement of the loop body, so this `continue` skipped it: the
+          // runner vanished from the cron's own report, taking the
+          // `goal_gap_suppressed_compromised` count that was just set with
+          // them. The report then read the same as if the runner had never
+          // been iterated at all — the exact confusion this whole audit is
+          // about, one level up. A suppression is a decision and has to be
+          // legible as one.
+          results.push(r);
           continue;
         }
         // Auto-rebuild if no recent goal-gap rebuild. '' planId = any
         // plan for this user (the strict plan_id='' match could never
         // hit a real row, so this dedupe was dead before 2026-08-17).
-        const recentGapRebuild = await hasPendingProposal(u, '', 'goal_gap_widening').catch(() => false);
+        // 2026-08-25 · FAILS CLOSED. `false` here means "nothing standing, go
+        // ahead and re-author the block", so a thrown guard used to license the
+        // very action it guards. `hasPendingProposal` now fails closed on its
+        // own; this outer catch must agree with it, not undo it.
+        const recentGapRebuild = await hasPendingProposal(u, '', 'goal_gap_widening')
+          .catch((e) => { logReadFailure('cron/plan-drift · goal-gap rebuild guard', e); return true; });
         // 2026-08-18 · goal-gap now covers no-race goal mode, where there is
         // no race slug for fireAutoRebuild to match the active plan against
         // (its race_id check would reject a null anyway). Those runners get
@@ -692,7 +713,13 @@ export async function POST(req: NextRequest) {
       // how one runner accumulated 19 daily duplicates).
       let recent = false;
       for (const k of SOFT_DRIFT_PROPOSAL_KINDS) {
-        if (await hasPendingProposal(u, report.planId, k).catch(() => false)) {
+        // 2026-08-25 · FAILS CLOSED, same argument as the goal-gap guard above.
+        // This is the guard that stands in front of `fireAutoRebuild` for every
+        // soft-drift kind — the path that re-authored this runner's block on
+        // 2026-08-25 — so `false` on a failed read is the one answer it must
+        // never give.
+        if (await hasPendingProposal(u, report.planId, k)
+          .catch((e) => { logReadFailure('cron/plan-drift · soft-drift rebuild guard', e); return true; })) {
           recent = true;
           break;
         }

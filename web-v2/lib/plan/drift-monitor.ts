@@ -37,6 +37,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { bestRecentVdot, VDOT_FULL_VALUE_DAYS, vdotFromTpace } from '@/lib/training/vdot';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
@@ -1048,13 +1049,55 @@ export async function hasPendingProposal(
   const r = (await pool.query<{ id: number }>(
     `SELECT id FROM plan_proposals
       WHERE user_uuid = $1 AND proposal_kind = $2
-        AND ($3::text IS NULL OR plan_id::text = $3::text)
         AND (
-              status = 'pending'
-              OR (status = 'dismissed' AND resolved_at >= NOW() - interval '14 days')
+              -- Standing / recently-refused rows, scoped to the plan they
+              -- were written against.
+              (
+                ($3::text IS NULL OR plan_id::text = $3::text)
+                AND (
+                      status = 'pending'
+                      OR (status = 'dismissed' AND resolved_at >= NOW() - interval '14 days')
+                    )
+              )
+              -- 2026-08-25 · A REBUILD THAT ALREADY LANDED IS NOT INVISIBLE.
+              --
+              -- This arm did not exist. The guard matched 'pending' and
+              -- recently-'dismissed' only, so the one outcome it could not see
+              -- was the one that matters most: a rebuild that SUCCEEDED. Run
+              -- this cron twice in a day and the second run re-authored the
+              -- block, because the first run's row says 'auto_applied'.
+              --
+              -- Deliberately USER-scoped, not plan-scoped. A successful rebuild
+              -- archives the plan the row points at and authors a new one, so
+              -- by the time the next run asks, planId is the NEW plan's id
+              -- and the row carries the OLD one. Scoping this arm the way the
+              -- arm above is scoped would make it structurally unable to ever
+              -- match — the same dead-guard shape as the plan_id = the empty string
+              -- equality the 2026-08-17 fix found.
+              --
+              -- 20 hours, argued: the schedule is daily (0 9 * * *) and GitHub
+              -- Actions runs it late, never early. Observed starts on this
+              -- deployment span 09:20-09:58 UTC, so the tightest gap between
+              -- two consecutive legitimate runs is ~23h. 20h clears that with
+              -- room, and covers any same-day re-run or workflow_dispatch.
+              -- This is an IDEMPOTENCE floor — "twice for one cause is once" —
+              -- not a policy cooldown. How long a runner should be left alone
+              -- after a rebuild is a separate question, and a bigger one.
+              OR (status = 'auto_applied' AND created_at >= NOW() - interval '20 hours')
             )
       ORDER BY created_at DESC LIMIT 1`,
     [userUuid, kind, scoped ? planId : null],
-  ).catch(() => ({ rows: [] }))).rows[0];
+    // 2026-08-25 · FAILS CLOSED. Was `.catch(() => ({ rows: [] }))`, and two
+    // lines later `return r != null` turned that empty into `false` — "nothing
+    // is pending, go ahead". The consumer of that `false` is the only guard
+    // standing between the nightly cron and REPLACING THE RUNNER'S TRAINING
+    // BLOCK, so a transient DB error was a licence to re-author it.
+    //
+    // The 2026-08-24 sweep fixed exactly this shape in the four inline dedupe
+    // guards in the plan-drift route and missed this one, because the scanner's
+    // taxonomy reads `{ rows: [] }` as EMPTIED (a harmless empty container)
+    // and cannot see the minting that happens outside the catch. A guard that
+    // cannot see must assume the thing it guards against has already happened.
+  ).catch((e) => { logReadFailure('plan/drift-monitor · rebuild guard', e); return { rows: [{ id: -1 }] }; })).rows[0];
   return r != null;
 }

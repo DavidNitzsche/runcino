@@ -31,7 +31,27 @@ export type PlanProposalKind =
   | 'a_race_removed'
   // 2026-08-17 · coaching-loop reconciliation
   | 'goal_renegotiation'   // unclosable gap sustained ≥5d · revised target band, ambition stays
-  | 'pace_reanchor';       // training-drift fitness regression · propose a re-anchor rebuild
+  | 'pace_reanchor'        // training-drift fitness regression · propose a re-anchor rebuild
+  // 2026-08-25 · THE KINDS THE WRITERS ALREADY STAMP AND THIS TYPE DENIED.
+  //
+  // `AutoRebuildKind` (lib/plan/auto-rebuild.ts) and the settings path have
+  // written these to `plan_proposals.proposal_kind` for months. This union
+  // never listed them, which made `synthesizeMessage` below LOOK exhaustive to
+  // the compiler while returning `undefined` at runtime for every one of them:
+  // an auto-applied notice card with a title and an empty body, on a surface
+  // whose entire job is to say what just changed to the runner's plan.
+  //
+  // Verified against prod on 2026-08-25: five `plan_change` rows carry no
+  // `reasons.message`, and `rebuildActivePlanForPrefs` writes `replan` the
+  // same way. A settings change is one of the paths that rewrites a block
+  // without the runner watching it happen — the least acceptable place for a
+  // blank explanation.
+  | 'replan'               // settings/prefs change rebuilt the block
+  | 'plan_change'          // legacy alias for the same
+  | 'race_graduate'        // goal race finished · graduated to the next one
+  | 'recovery_complete'    // recovery block finished · rebuilt toward the race
+  | 'plan_elapsed'         // plan ran out of prescribed days · rebuilt toward the goal
+  | 'maintenance_to_raceprep';  // race entered its build window
 
 export type PlanProposalStatus =
   | 'pending'
@@ -229,5 +249,31 @@ function synthesizeMessage(
       return 'The gap to your goal is wider than the remaining weeks can close. A revised race target is recommended. The goal stays on the board as the season ambition.';
     case 'pace_reanchor':
       return 'Training evidence reads below the plan\'s pace anchor. Recommend re-anchoring paces to current fitness.';
+    case 'replan':
+    case 'plan_change':
+      return status === 'auto_applied'
+        ? 'Your training settings changed · the block was rebuilt around them.'
+        : 'Your training settings changed · the block needs a rebuild.';
+    case 'race_graduate':
+      return 'Your goal race is behind you · the block was rebuilt toward the next one.';
+    case 'recovery_complete':
+      return 'Your recovery block finished · the next block was built toward your race.';
+    case 'plan_elapsed':
+      return 'Your block ran out of prescribed days · a new one was built toward your goal.';
+    case 'maintenance_to_raceprep':
+      return 'Your race entered its build window · maintenance gave way to race-prep.';
   }
+  // 2026-08-25 · A REAL DEFAULT, NOT AN IMPLICIT `undefined`.
+  //
+  // The switch above used to end here with nothing. TypeScript read it as
+  // exhaustive over `PlanProposalKind` and let the function fall off the end,
+  // so any kind a writer stamped that this union did not list returned
+  // `undefined` — and `PlanProposal.message` is documented three fields up as
+  // "Always populated". It was not.
+  //
+  // The union is now wide enough to cover every writer, so this line should be
+  // unreachable. It exists because the last time this was unreachable it was
+  // not: a runner's plan changed and the card explaining it rendered blank.
+  // The next kind someone adds gets an honest sentence instead of an empty one.
+  return 'Your training plan changed. Open the plan to see what moved.';
 }

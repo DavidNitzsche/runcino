@@ -86,7 +86,20 @@ export async function POST(req: NextRequest) {
   }
 
   // Run the rebuild · generatePlan handles archive + persist
-  const result = await generatePlan({ userId: userUuid, raceSlug: raceSlug! });
+  //
+  // 2026-08-25 · SILENT TO THE RUNNER, NOT TO THE DATABASE. This route writes
+  // no proposal row and fires no banner, deliberately — it lands code upgrades,
+  // not coach decisions. The unintended consequence was that it left NO trace
+  // anywhere except a GitHub Actions log: the archived plan said `regenerated`,
+  // which is what every other path said too. So when a runner asked "why did my
+  // plan change overnight", an operator dispatch of this route and a nightly
+  // drift rebuild were indistinguishable in the data.
+  //
+  // `archive_reason = 'silent_rebuild'` does not surface to the runner and does
+  // not change what this route may do. It makes the question answerable.
+  const result = await generatePlan({
+    userId: userUuid, raceSlug: raceSlug!, archiveReason: 'silent_rebuild',
+  });
   if (!result.ok) {
     return NextResponse.json({ ok: false, reason: result.reason }, { status: 500 });
   }

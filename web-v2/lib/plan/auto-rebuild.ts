@@ -187,9 +187,17 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
   let rebuildOk = false;
   let rebuildReason: string | undefined;
   try {
+    // 2026-08-25 · the archived plan records WHICH trigger replaced it. The
+    // proposal row below is the fuller story, but it is a separate write on a
+    // separate transaction — if it fails, the plan is already gone and this
+    // stamp is the only thing left that says why.
     const result = input.raceSlug
-      ? await generatePlan({ userId: input.userUuid, raceSlug: input.raceSlug })
-      : await generatePlan({ userId: input.userUuid, goalTarget: input.goalTarget! });
+      ? await generatePlan({
+          userId: input.userUuid, raceSlug: input.raceSlug, archiveReason: input.kind,
+        })
+      : await generatePlan({
+          userId: input.userUuid, goalTarget: input.goalTarget!, archiveReason: input.kind,
+        });
     if (result.ok) {
       rebuildOk = true;
       newPlanId = result.plan_id;
@@ -319,9 +327,12 @@ export async function rebuildActivePlanForPrefs(
     // (goal_iso) — through the canonical goalTarget entry. Only the shaping
     // prefs (which generatePlan re-reads itself) change.
     const result = plan.race_id
-      ? await generatePlan({ userId: userUuid, raceSlug: String(plan.race_id) })
+      ? await generatePlan({
+          userId: userUuid, raceSlug: String(plan.race_id), archiveReason: 'settings_prefs',
+        })
       : await generatePlan({
           userId: userUuid,
+          archiveReason: 'settings_prefs',
           goalTarget: {
             distanceMi: goalModeDistanceMi as number,
             goalSec: plan.goal_sec != null && Number.isFinite(Number(plan.goal_sec))

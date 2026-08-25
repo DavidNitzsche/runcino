@@ -136,7 +136,12 @@ export async function POST(req: NextRequest) {
     // COACHED-GATE-1 (2026-08-19) · a runner asking to replan after illness or
     // a missed block is asking for exactly this. Same reasoning as
     // /api/plan/generate; the gate is for the automatic paths.
-    const result = await generatePlan({ userId, raceSlug: String(plan.race_id), allowCoached: true });
+    const result = await generatePlan({
+      userId, raceSlug: String(plan.race_id), allowCoached: true,
+      // 2026-08-25 · the runner asked for this one. Telling that apart from a
+      // cron deciding it unasked is the whole reason the column exists.
+      archiveReason: 'runner_replan',
+    });
     const newPlanId = result.ok ? (result.plan_id ?? null) : null;
     if (!newPlanId) {
       return NextResponse.json(
