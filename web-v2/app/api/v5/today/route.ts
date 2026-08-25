@@ -321,14 +321,19 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // The last race behind the runner, and how long ago. Read once here rather
   // than only inside the off-season branch, because "why this run" needs it
   // on every screen — a recovery block's whole reason is the race it follows.
-  const lastRaceRow = (await pool.query<{ name: string; date: string }>(
-    `SELECT COALESCE(meta->>'name', slug) AS name, meta->>'date' AS date
+  const lastRaceRow = (await pool.query<{ name: string; date: string; distance_mi: string | null }>(
+    // `distanceMi` rides along for the recap's per-finding race-recency
+    // filter: the post-race window is distance-keyed (Research/00b via
+    // `expectedDaysForAnchor`), and three weeks after a marathon is not the
+    // same claim as three weeks after a 5K.
+    `SELECT COALESCE(meta->>'name', slug) AS name, meta->>'date' AS date,
+            meta->>'distanceMi' AS distance_mi
        FROM races
       WHERE user_uuid::text = $1 AND meta->>'priority' IN ('A', 'B')
         AND meta->>'date' IS NOT NULL AND (meta->>'date')::date < $2::date
       ORDER BY (meta->>'date')::date DESC LIMIT 1`,
     [userId, today],
-  ).catch(() => ({ rows: [] as Array<{ name: string; date: string }> }))).rows[0] ?? null;
+  ).catch(() => ({ rows: [] as Array<{ name: string; date: string; distance_mi: string | null }> }))).rows[0] ?? null;
   const daysSinceLastRace = lastRaceRow
     ? Math.max(0, Math.round(
         (Date.parse(today + 'T12:00:00Z') - Date.parse(lastRaceRow.date + 'T12:00:00Z')) / 86400000))
@@ -859,6 +864,9 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         splits: splitsForRecap,
         weather: recapWeather,
         terrain: null,
+        // Per-finding race-recency filter · see RecapInput.daysSinceRace.
+        daysSinceRace: daysSinceLastRace,
+        raceDistanceMi: lastRaceRow?.distance_mi != null ? Number(lastRaceRow.distance_mi) : null,
       });
 
       const shoes = await loadShoes(userId);

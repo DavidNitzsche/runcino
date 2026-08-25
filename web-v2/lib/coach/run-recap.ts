@@ -37,6 +37,7 @@ import { composeEffortFactor } from '@/lib/terrain/grade-adjust';
 import type { RunTerrain } from '@/lib/terrain/run-terrain';
 import { reconcilePaceWithClock } from '@/lib/runs/run-shape';
 import { miNum, fmtPaceSlash } from '@/lib/format/run';
+import { expectedDaysForAnchor } from '@/lib/coach/recovery-phase';
 
 /**
  * Minutes of running below which `Research/18` prescribes no fuelling at all,
@@ -152,6 +153,35 @@ export interface RecapInput {
    *  pre-band output. 'calibration' softens with a learning frame ·
    *  'challenge' tersens. Word choice only, never structure. */
   voiceBand?: 'calibration' | 'guided' | 'challenge' | null;
+  /**
+   * 2026-08-24 · THE RACE BEHIND THIS RUN, when there is one close enough to
+   * be the reason for what the recap is about to observe.
+   *
+   * CLAUDE.md, per-finding context filters, locked 2026-05-19 round 4: a
+   * surface that aggregates N findings runs N filter applications, one per
+   * finding. This engine had no race-recency input at all, so every finding
+   * ran unfiltered — and the two findings whose CAUSE a recent race changes
+   * are the two a runner reads most in the week after one.
+   *
+   * The day after a marathon, an easy run whose heart rate sits above its cap
+   * read:
+   *
+   *     Your HR (152) ran past the 145 target. Slow it down next time · easy
+   *     days only work when they're actually easy.
+   *
+   * The observation is true. The instruction is wrong — an elevated easy-day
+   * heart rate is what the first days after a race are — and rule four says
+   * never scold. Same for a long run's HR drift, which is told to the runner
+   * as "usually fuel or water".
+   *
+   * Absent / null on every existing caller, and the copy is then byte-
+   * identical to the pre-filter output.
+   */
+  daysSinceRace?: number | null;
+  /** Distance of that race, miles. Sets the window length — the recovery
+   *  band is distance-keyed, and 21 days after a marathon is not the same
+   *  claim as 21 days after a 5K. Null leaves the filter off. */
+  raceDistanceMi?: number | null;
 }
 
 export interface RecapPayload {
@@ -540,6 +570,29 @@ function judgeableAgainstTarget(input: RecapInput): boolean {
   return input.terrain?.basis !== 'treadmill-incline-unknown';
 }
 
+/**
+ * TRUE when a race is close enough behind this run to be the reason for an
+ * elevated heart rate, rather than something the runner did wrong today.
+ *
+ * The window is `expectedDaysForAnchor('race', distance)` — the SAME
+ * distance-keyed band `lib/coach/recovery-phase.ts` reads out of
+ * `Research/00b` §"Recovery by Distance", not a second number invented here.
+ * A marathon buys three weeks, a 5K buys six days, and the two surfaces
+ * cannot come to disagree about which.
+ *
+ * Applied per finding, never at the top of the function. The distance, the
+ * pace, the split spread and the rep pattern are all still reported exactly as
+ * measured in this window — a race does not make a run unmeasurable. Only the
+ * findings whose stated CAUSE the race changes are reframed.
+ */
+function inPostRaceWindow(input: RecapInput): boolean {
+  const days = input.daysSinceRace;
+  const mi = input.raceDistanceMi;
+  if (days == null || !Number.isFinite(days) || days < 0) return false;
+  if (mi == null || !Number.isFinite(mi) || mi <= 0) return false;
+  return days <= expectedDaysForAnchor('race', mi);
+}
+
 export function deriveRecap(input: RecapInput): RecapPayload {
   /**
    * THE PACE THIS RECAP MAY SPEAK, checked against the run's own clock before
@@ -606,6 +659,11 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
   // heatAdjustedStatus and heatAwareDrift use, so the recap prose, the phase
   // bars and the drift chip all change their mind at the same moment.
   const heatExplainsDrift = conditionsMaterial && (weather?.slowdownPct ?? 0) >= 2;
+
+  // 2026-08-24 · resolved ONCE, applied PER FINDING below. Heat is checked
+  // first at every site it matters, because a hot day is the more specific
+  // explanation and a runner in the week after a race still runs in weather.
+  const postRace = inPostRaceWindow(input);
 
   // 2026-06-09 Phase 2 (3.2) · a TAKEN bail leads the facts. The runner
   // made the smart call mid-run; the recap must say so before any
@@ -713,6 +771,14 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
           facts.push(
             `Your HR climbed ${drift.drift} bpm by the end (${drift.firstHr} → ${drift.lastHr}). That's normal in heat like this · the body works harder to cool itself, not because you're slowing down.`,
           );
+        } else if (postRace) {
+          // PER-FINDING FILTER. Fuel is the usual cause of a long-run HR
+          // climb and it is the wrong one this week: the aerobic system is
+          // still carrying a race. Naming fuel here sends the runner to fix
+          // something that is not broken.
+          facts.push(
+            `Your HR climbed ${drift.drift} bpm by the end (${drift.firstHr} → ${drift.lastHr}). Expected this soon after the race · the legs are still paying it back.`,
+          );
         } else if (fuellingApplies) {
           facts.push(
             `Your HR climbed ${drift.drift} bpm by the end (${drift.firstHr} → ${drift.lastHr}). Usually fuel or water · try eating something earlier and drinking more next time.`,
@@ -725,9 +791,12 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       }
       if (fade && fade > 25 && !heatExplainsDrift) {
         facts.push(
-          fuellingApplies
-            ? `The last third was about ${fade}s/mi slower than the rest. Worth checking your fueling.`
-            : `The last third was about ${fade}s/mi slower than the rest. Too short to be fuel · that's a pacing read, so go out closer to the pace you can hold.`,
+          postRace
+            // PER-FINDING FILTER, again on the CAUSE and not on the number.
+            ? `The last third was about ${fade}s/mi slower than the rest. Normal this close to the race · the endurance comes back last.`
+            : fuellingApplies
+              ? `The last third was about ${fade}s/mi slower than the rest. Worth checking your fueling.`
+              : `The last third was about ${fade}s/mi slower than the rest. Too short to be fuel · that's a pacing read, so go out closer to the pace you can hold.`,
         );
       }
       return {
@@ -781,6 +850,12 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       if (input.plannedHrCap && input.actualAvgHr && input.actualAvgHr > input.plannedHrCap + 5) {
         if (heatExplainsDrift) {
           facts.push(`Your HR (${input.actualAvgHr}) ran a bit above the ${input.plannedHrCap} target, but it was hot · effort was right.`);
+        } else if (postRace) {
+          // PER-FINDING FILTER. The reading stands; the instruction does not.
+          // An easy-day heart rate sitting above its cap is what the days
+          // after a race are, and telling the runner to slow down implies he
+          // did something wrong. Rule four: never scold.
+          facts.push(`Your HR (${input.actualAvgHr}) sat above the ${input.plannedHrCap} target. That is the race still in the legs, not the pace.`);
         } else {
           facts.push(`Your HR (${input.actualAvgHr}) ran past the ${input.plannedHrCap} target. Slow it down next time · easy days only work when they're actually easy.`);
         }

@@ -28,6 +28,7 @@ import { loadHeatEasingPct } from '@/lib/watch/heat';
 import { deriveWin } from '@/lib/coach/run-win';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
 import { reconcileRun } from '@/lib/runs/coherence';
+import { rowOrNull } from '@/lib/db/read';
 import { runAvgHr, runMaxHr, runElevGainFt, type RunData } from '@/lib/runs/run-shape';
 import type { Phase, WorkoutType } from '@/lib/coach/run-purpose';
 
@@ -341,6 +342,43 @@ export async function GET(
   const finishPhase = winPhases.find((p) => p.isFinishSegment === true && p.actualPaceSPerMi != null);
   const finishPaceSPerMi = finishPhase?.actualPaceSPerMi ?? finishPaceSpec;
 
+  /* THE RACE BEHIND THIS RUN, for the recap's per-finding race-recency filter.
+   *
+   * CLAUDE.md, per-finding context filters: a surface that aggregates N
+   * findings runs N filter applications. The recap engine had no race-recency
+   * input at all, so the day after a marathon an easy run whose heart rate sat
+   * above its cap read "Slow it down next time · easy days only work when
+   * they're actually easy" — a true observation with a wrong instruction and a
+   * scold attached, on the screen the runner opens in the week he most needs
+   * the app to be right about why his heart rate is high.
+   *
+   * `rowOrNull`, so the read's three states stay three. A row means a race,
+   * `undefined` means the runner has none, and `null` means the read FAILED —
+   * and all three leave the filter off, because a race nobody could look up is
+   * not a race the copy may lean on. What the helper buys is that the failure
+   * is logged instead of arriving as an answer, which is the whole argument of
+   * `lib/audit/swallow-scan.ts`: the same `.catch(() => ({ rows: [] }))` shape
+   * hid four broken date comparisons for months.
+   *
+   * The window itself is `expectedDaysForAnchor('race', distance)` inside the
+   * engine — the same distance-keyed band `lib/coach/recovery-phase.ts` reads
+   * out of Research/00b, not a second number. */
+  const lastRace = date ? await rowOrNull<{ date: string; distance_mi: string | null }>(
+    'runs/recap · the race behind this run',
+    pool.query(
+      `SELECT meta->>'date' AS date, meta->>'distanceMi' AS distance_mi
+         FROM races
+        WHERE user_uuid::text = $1 AND meta->>'priority' IN ('A', 'B')
+          AND meta->>'date' IS NOT NULL AND (meta->>'date')::date < $2::date
+        ORDER BY (meta->>'date')::date DESC LIMIT 1`,
+      [userId, date],
+    ),
+  ) : null;
+  const daysSinceRace = lastRace?.date
+    ? Math.max(0, Math.round(
+        (Date.parse(date + 'T12:00:00Z') - Date.parse(lastRace.date + 'T12:00:00Z')) / 86400000))
+    : null;
+
   // Single weather object · fed to both deriveRecap and deriveWin so the
   // recap verdict, the win line, and the phase bars all judge against the
   // same heat number (no surface shows a different heat % than another).
@@ -412,6 +450,9 @@ export async function GET(
     ruleOutcomes: Array.isArray(data.ruleOutcomes) ? data.ruleOutcomes : null,
     terrain,
     voiceBand,
+    // Per-finding race-recency filter · see RecapInput.daysSinceRace.
+    daysSinceRace,
+    raceDistanceMi: lastRace?.distance_mi != null ? Number(lastRace.distance_mi) : null,
   });
 
   // E3: light secondary reconciliation note. The verdict above stays anchored
