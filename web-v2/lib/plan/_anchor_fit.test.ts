@@ -140,6 +140,14 @@ const SHAPES: Shape[] = [
     dipIsMandated: true,
   },
   {
+    id: 'david-post-CIM',
+    why: 'THE BLOCK HE WILL ACTUALLY RUN. The same real production history, authored the day after a marathon instead of a half — which is what CIM produces. Four reverse-taper weeks against a 52.3 mi/wk peak, five stated running days.',
+    daily: DAVID_DAILY,
+    lastRaceDaysAgo: 1, lastRaceDistance: 'marathon', lastRacePriority: 'A',
+    raceDateISO: FAR_RACE, experienceLevel: 'advanced', vdot: 44.1, freq: 5,
+    dipIsMandated: true,
+  },
+  {
     id: 'post-marathon-lowvol-beginner',
     why: 'WKRAMP-REC-1 · the reverse taper where doctrine\'s percentages produce small numbers. An 18 mi/wk beginner running four days: 75% of peak is 13.5 mi, and a 20% recovery long is under three. The shape gate cannot see this and the ramp cap is not what causes it.',
     daily: buildThenRace(18, 0),
@@ -345,8 +353,13 @@ const DECISIONS_EXPECTED: Record<string, string> = {
   // RAMP_CAP_TRUNCATES_REVERSE_TAPER was RULED ON (2026-08-25) and closed by
   // WKRAMP-REC-1: a recovery block is graded against the pre-race peak it is
   // unwinding, not against its own deload weeks. Its entry is deleted here
-  // because this map's staleness assertion requires it — the check itself
-  // stays, with a positive control, as the regression lock.
+  // because this map's staleness assertion requires it. The CHECK stays, with
+  // a positive control, but be honest about what it is now: no runner shape in
+  // this file can reach it any more, so it is a named regression lock rather
+  // than a live finding. The lock that actually bites if the wiring is lost is
+  // RECOVERY.reverse-taper-ceiling-is-the-pre-race-peak in the doctrine
+  // registry, which traces the ceiling from the constant through the composer
+  // to the pass and was falsified by unwiring it.
   'RECOVERY_ROW_UNREACHABLE_AT_THIS_VOLUME':
     'Underneath the ramp cap, at low volume, and it misses in BOTH directions from one cause. ' +
     'A recovery week of N runs can only express volumes between N x the 2-mile junk-run floor ' +
@@ -528,15 +541,20 @@ describe('anchor fit · positive controls', () => {
     // a 62 mi/wk peak, doctrine's [15%, 35%, 55%, 75%], and the weeks that
     // come out. Each one lands on the previous peak × 1.15 rather than on the
     // row it was supposed to hit.
+    // Each week lands exactly on the previous one x 1.15 while the week's SHAPE
+    // could comfortably have held its row — five runs with a 9-mile longest
+    // reach 37.8 mi against a 21.7 mi row. So the only thing explaining the
+    // miss is the compounding cap, which is what this predicate is for.
     const bad: AnchorFacts = {
       ...CONTROL_BASE, measuredPeakMi: 62, peakAnchorMi: 62,
-      doctrinePct: [0.15, 0.35, 0.55, 0.75], weeklyMi: [10, 10, 10, 17],
-      longestRunMi: [5, 5, 5, 9], runDays: [2, 4, 5, 6],
+      doctrinePct: [0.15, 0.35, 0.55, 0.75], weeklyMi: [10, 11.5, 13.2, 15.2],
+      longestRunMi: [8, 9, 10, 11], runDays: [5, 5, 5, 5],
       blocks: [26, 34, 47, 57, 59, 53, 50, 47, 46, 43, 41, 38, 36, 34, 32, 30],
     };
     const names = fire(bad);
     expect(names).toContain('RAMP_CAP_TRUNCATES_REVERSE_TAPER');
     expect(names).not.toContain('VOLUME_OUTSIDE_ANCHOR_BAND');
+    expect(names).not.toContain('RECOVERY_ROW_UNREACHABLE_AT_THIS_VOLUME');
   });
 
   it('WKRAMP-REC-1 · the same block, sized against the pre-race peak, is in band', () => {
@@ -588,6 +606,27 @@ describe('anchor fit · positive controls', () => {
     // It must name the BRACKET, not just complain about the miss.
     expect(msg).toContain('8.0 mi');
     expect(msg).toContain('junk-run floor');
+  });
+
+  it('and names the UNDER direction of the same grid, on the engine\'s own easy-below-long rule', () => {
+    // A3 returns on the first offending week, and above that is the OVER
+    // direction. Weeks 1-2 in band here so week 4 is what gets graded: 75% of
+    // 18 is 13.5, and four runs with a 3-mile long reach 3 x (1 + 0.8 x 3) =
+    // 10.2. The bracket has to be the engine's rule and not a looser
+    // stand-in — 4 x 3 = 12 would call this reachable, and the same looseness
+    // would have hidden the owner's own post-CIM week 4.
+    const bad: AnchorFacts = {
+      ...CONTROL_BASE, measuredPeakMi: 18, peakAnchorMi: 18, meanMi: 10.2,
+      blocks: [7.6, 13.5, 9.9, 9.9, 11.2, 12.6, 11.9, 14.1, 15, 13.3, 15.7, 14.4, 12.6, 11.5, 10.8, 9.9],
+      doctrinePct: [0.15, 0.35, 0.55, 0.75], weeklyMi: [2.7, 6.3, 9.9, 9],
+      longestRunMi: [2, 2, 3, 3], runDays: [2, 4, 4, 4],
+    };
+    const names = fire(bad);
+    expect(names).toContain('RECOVERY_ROW_UNREACHABLE_AT_THIS_VOLUME');
+    expect(names).not.toContain('VOLUME_OUTSIDE_ANCHOR_BAND');
+    const msg = runChecks(bad).find((f) => f.check === 'RECOVERY_ROW_UNREACHABLE_AT_THIS_VOLUME')!.message;
+    expect(msg).toContain('10.2 mi');
+    expect(msg).toContain('3 at 0.8 of it');
   });
 
   it('names a silent downgrade, and forgives a stated one', () => {
