@@ -87,6 +87,10 @@ const SHARED_FORMAT_CALLS = [
  * no violation is how an allowlist rots into decoration.
  */
 const ALLOW: Record<string, string> = {
+  "lib/plan/anchor-fit.ts":
+    "A GATE, and nothing it rounds is shown to a runner. Every `toFixed(1)` here is inside a FAILURE MESSAGE for an engineer, and the `Math.round(x*10)/10` is the fixture helper reproducing `mileageByDay`'s own 0.1-mi rounding so a fixture week sums to the number it declares. Routing either through lib/format/run.ts would make the gate's arithmetic disagree with the engine's.",
+  "lib/plan/sim-inputs.ts":
+    "The `Math.round(x*10)/10` is ANCHORFIT-1 mirroring `weeklyAvgFromWindow` and `resolvePeakWeekly` so a simulated runner's anchors are byte-identical to the production readers'. It is engine arithmetic standing in for a database read, not a rendered number.",
   "app/api/cron/notifications/route.ts":
     "API ROUTE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
   "app/api/ingest/health/route.ts":

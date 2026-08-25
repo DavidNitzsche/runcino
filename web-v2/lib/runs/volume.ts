@@ -278,7 +278,16 @@ export async function recentMileageWindow(
   const today = await runnerToday(userUuid);
   const fromISO = new Date(Date.parse(today + 'T12:00:00Z') - windowDays * 86400000)
     .toISOString().slice(0, 10);
-  const byDay = await mileageByDay(userUuid, fromISO, today).catch(() => new Map());
+  // ANCHORFIT-2 (2026-08-25) · not swallowed. This is the 28-day mean every
+  // pace anchor, every cold-start VDOT floor and every volume ramp reads. A
+  // failed read used to answer `totalMi: 0`, which `weeklyAvgFromWindow` turns
+  // into `null` — indistinguishable from "this account has never run" — and
+  // from there `recentWeeklyMileage`'s `?? 0` hands the composer a zero. A
+  // 45 mi/wk marathoner would be authored a cold-start block off a database
+  // blip, and the drift monitor's volume axis would read a 100% shortfall
+  // against the plan and fire a rebuild. Both consumers are better served by
+  // a thrown error than by a fabricated zero. See lib/db/read.ts.
+  const byDay = await mileageByDay(userUuid, fromISO, today);
   let total = 0;
   for (const { mi } of byDay.values()) total += mi;
   return {
