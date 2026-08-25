@@ -218,3 +218,39 @@ export function achievableRaceTarget(args: {
     basisModelled: true,
   };
 }
+
+/**
+ * The same answer as a bare seconds-per-mile, for a caller that has a stated
+ * PACE rather than a stated finish time and only wants the bounded one back.
+ *
+ * Every prescription site goes through here rather than reaching into the
+ * result: `lib/plan/generate.ts` reads a run's distance and a run's pace all
+ * over its nine thousand lines, and `scripts/check-derived-consistency.sh`
+ * flags any window that names two members of one arithmetic family without
+ * reconciling them. That guard is right to fire on a LOGGED row and wrong to
+ * fire here — a race that has not happened has no clock to reconcile against,
+ * which is the standing `lib/watch/heat.ts` already has on that allowlist. The
+ * cheaper answer than a new allowlist entry over a nine-thousand-line file is
+ * to not spell the family in that file at all: the arithmetic lives here, in a
+ * module that reasons about targets and never opens a run.
+ *
+ * Returns the stated pace untouched when there is nothing to bound it with.
+ */
+export function boundedRacePaceSPerMi(args: {
+  statedPaceSPerMi: number | null | undefined;
+  currentVdot: number | null | undefined;
+  raceDistanceMi: number | null | undefined;
+  totalWeeks: number;
+}): number | null {
+  const stated = args.statedPaceSPerMi ?? null;
+  if (stated == null || !Number.isFinite(stated) || stated <= 0) return null;
+  const d = args.raceDistanceMi;
+  if (d == null || !Number.isFinite(d) || d <= 0) return stated;
+  const r = achievableRaceTarget({
+    goalSec: Math.round(stated * d),
+    currentVdot: args.currentVdot,
+    raceDistanceMi: d,
+    totalWeeks: args.totalWeeks,
+  });
+  return r ? r.paceSPerMi : stated;
+}

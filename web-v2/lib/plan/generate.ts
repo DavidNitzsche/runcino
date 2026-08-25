@@ -30,7 +30,7 @@ import { pickWorkout, type WorkoutFamily } from './workout-library';
 import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, STRIDE_DAYS_PER_WEEK, STRIDE_DEFAULT_REPS, STRIDE_DURATION_S } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor } from '@/lib/training/vdot';
-import { achievableRaceTarget } from '@/lib/training/achievable-target';
+import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achievable-target';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
@@ -4610,18 +4610,14 @@ export function embedMidBlockRaces(
     // RACEPACE-1 · this race's own goal, bounded by this race's own runway at
     // this race's own distance. `weeksToThis` counts from the block's start to
     // the race date, which is the build the runner actually has for it.
-    slot.raceGoalPaceSec = ((): number | null => {
-      const stated = race.goalPaceSec ?? null;
-      if (stated == null || opts.currentVdot == null) return stated;
-      const weeksToThis = Math.max(0, o / 7);
-      const goalSec = Math.round(stated * race.distanceMi);
-      return achievableRaceTarget({
-        goalSec,
-        currentVdot: opts.currentVdot,
-        raceDistanceMi: race.distanceMi,
-        totalWeeks: weeksToThis,
-      })?.paceSPerMi ?? stated;
-    })();
+    slot.raceGoalPaceSec = boundedRacePaceSPerMi({
+      statedPaceSPerMi: race.goalPaceSec ?? null,
+      currentVdot: opts.currentVdot ?? null,
+      raceDistanceMi: race.distanceMi,
+      // The build this runner actually has for THIS race: the block's start to
+      // its date, not the target race's runway.
+      totalWeeks: Math.max(0, o / 7),
+    });
     slot.notes = race.priority === 'B'
       ? `${race.name}. B race · race effort. Recovery days follow before quality resumes.`
       : `${race.name}. C race · this is the week's quality session. Run it as the workout.`;
