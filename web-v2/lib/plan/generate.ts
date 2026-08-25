@@ -49,6 +49,13 @@ import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal
 // 2026-08-17 · coaching-loop reconciliation · shared blend implementation
 // (authoring + adaptation-time recompute run the same math).
 import { blendedTPaceForWeek, measuredProgressFraction } from './recompute-paces';
+import {
+  type LongRunKind,
+  DRESS_REHEARSAL,
+  isDressRehearsalSlot,
+  dressRehearsalDose,
+} from './long-run-rows';
+import { type CourseTerrain, UNKNOWN_TERRAIN, loadRaceCourseTerrain } from './course-profile';
 // PROGRESSION-1 (2026-08-17) · the authored default overload trajectory.
 // `Design/adaptive-progression-engine.md` §3's "calendar proposes" half: the
 // plan carries a lever-driven trajectory so a block progresses by duration,
@@ -1804,6 +1811,30 @@ export interface DayPlan {
   /** The session's intent · `Design/adaptive-progression-engine.md` §4. */
   challengeZone?: ChallengeZone | null;
   /**
+   * LONGRUN-ROWS-1 (2026-08-25) · WHICH `Research/04` §4.1 ROW this long run's
+   * race-pace segment came from.
+   *
+   * The engine used to model §4.4's marathon-pace long, §4.5's fast-finish long
+   * and §4.6's dress rehearsal as one `{ pct, tag }` object, and a ruling made
+   * about one of them silently governed the other two. See ./long-run-rows.
+   * Absent on every day that carries no race-pace segment.
+   */
+  longRunKind?: LongRunKind | null;
+  /**
+   * LONGRUN-TRACE-1 (2026-08-25) · a race-pace segment this day USED to carry.
+   *
+   * Four passes can shorten or delete a long run's race-pace block after it is
+   * authored, and until now all four did it silently. On the owner's CIM block
+   * the post-race window removed the whole marathon-pace finish from the
+   * twenty-one-mile run three weeks out — the single most important session of
+   * the build — and the only evidence left was the absence of it. A session of
+   * that weight disappearing has to leave a mark somebody can read.
+   *
+   * Collected into `authored_state.long_run_race_pace_changes` by
+   * `finalizeComposedPlan`.
+   */
+  racePaceChange?: { fromMi: number; toMi: number; reason: string; kind: LongRunKind | null } | null;
+  /**
    * COLD-4 (2026-08-17) · THE CALIBRATION INTRO.
    *
    * True on the quality sessions of the opening `CALIBRATION_INTRO_WEEKS` when
@@ -2347,7 +2378,7 @@ function longFinishSegment(
    *  week. Only the RACE-SPECIFIC arm consults it; the QUALITY warm-in ramp is
    *  three weeks long and already a cadence of its own. */
   cadenceWeek: boolean = true,
-): { pct: number; tag: 'HM' | 'M' | 'MP' } | null {
+): { pct: number; tag: 'HM' | 'M' | 'MP'; kind: LongRunKind } | null {
   if (!racePaceTag) return null;
   // Research/22 §3 Advanced peak week: "16mi LR w/ last 8mi @ HMP" = 50%.
   // §4 Marathon peaks at 64-70%; Research/00a §fast-finish says 10-25% (general principle).
@@ -2360,16 +2391,24 @@ function longFinishSegment(
     // in "When in cycle | Specific phase, marathon and HM". Off-cadence weeks
     // run the long easy, for both distances.
     if (!cadenceWeek) return null;
-    return { pct: 0.50, tag: racePaceTag };
+    // LONGRUN-ROWS-1 · the marathon's race-specific long IS §4.4's
+    // marathon-pace long run ("14-22 mi | Easy warmup + 8-16 mi at MP"); the
+    // half's is §4.5's fast finish, which is what this arm's own comment
+    // already cites for it. Naming them apart is what stops a ruling about one
+    // reaching the other. See ./long-run-rows.
+    return { pct: 0.50, tag: racePaceTag, kind: racePaceTag === 'MP' ? 'mp_long' : 'fast_finish' };
   }
   if (phase !== 'QUALITY') return null;
   // Last three QUALITY weeks build toward race pace. HM ramps M → M → HMP;
   // M holds MP throughout (race pace == marathon pace).
   const mTag: 'M' | 'MP' = racePaceTag === 'HM' ? 'M' : 'MP';
+  // The warm-in ramp is §4.5's shape at every step — "final 2-6 mi at MP or
+  // slightly faster" — for both distances. §4.4's larger dose starts at the
+  // RACE-SPECIFIC seam above.
   switch (weeksToPhaseEnd) {
-    case 0:  return { pct: 0.33, tag: racePaceTag };  // last QUALITY wk · HMP step / MP
-    case 1:  return { pct: 0.33, tag: mTag };
-    case 2:  return { pct: 0.30, tag: mTag };
+    case 0:  return { pct: 0.33, tag: racePaceTag, kind: 'fast_finish' };  // last QUALITY wk · HMP step / MP
+    case 1:  return { pct: 0.33, tag: mTag, kind: 'fast_finish' };
+    case 2:  return { pct: 0.30, tag: mTag, kind: 'fast_finish' };
     default: return null;                             // earlier QUALITY · plain long
   }
 }
@@ -3005,6 +3044,7 @@ function layoutWeek({
   const hasFinish = finishSeg != null && finishMi > 0 && finishMi < longMi;
   slots[longRunDow] = {
     dow: longRunDow, type: 'long', distanceMi: longMi, isQuality: false, isLong: true,
+    ...(hasFinish ? { longRunKind: finishSeg!.kind } : {}),
     subLabel: hasFinish ? `LONG · ${finishMi}mi @ ${finishSeg!.tag}` : 'LONG',
     notes: hasFinish
       ? `Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${finishSeg!.tag === 'HM' ? 'half-marathon pace' : 'marathon pace'}.`
@@ -4931,7 +4971,7 @@ export function enforceRampCeilingAfterEmbedding(
       const long = w.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
       if (long && splitDay(long).qualityMi > 0
         && daysBetween(e.date, dowDateInWeek(w.startISO, long.dow)) <= postRaceNoQualityDays(e.distanceMi, e.priority)
-      ) setLongFinish(long, 0);
+      ) setLongFinish(long, 0, `inside the post-race no-quality window after ${e.name}`);
     }
     // Ramp reference · the most recent week distorted by neither a tune-up nor
     // a planned cutback. Falls back to the prior peak when the block has none.
@@ -5020,7 +5060,8 @@ function trimWeekToVolume(week: ComposedWeek, targetMi: number, protectLong = fa
   if (long) {
     const finish = splitDay(long).qualityMi;
     if (finish > 0 && finish > long.distanceMi * 0.5) {
-      setLongFinish(long, Math.max(0, Math.floor(long.distanceMi * 0.5 * 2) / 2));
+      setLongFinish(long, Math.max(0, Math.floor(long.distanceMi * 0.5 * 2) / 2),
+        'resized after the week was trimmed to its ramp ceiling');
     }
   }
   week.weeklyMi = sum();
@@ -5207,6 +5248,13 @@ export interface ComposePlanInput {
   raceDistanceMi: number;
   goalSec: number | null;
   goalPaceSec: number | null;
+  /**
+   * COURSE-PLAN-1 (2026-08-25) · the target race's MEASURED terrain, from
+   * `loadRaceCourseTerrain`. Optional: absent, or `UNKNOWN_TERRAIN`, composes
+   * exactly as this engine composed before it could see a course at all —
+   * which is what every synthetic-runner and simulator path passes.
+   */
+  courseTerrain?: CourseTerrain | null;
   /** Race day ISO date (YYYY-MM-DD). */
   raceDateISO: string;
   /** Monday of the plan start week (YYYY-MM-DD). Caller computes from
@@ -7503,7 +7551,15 @@ export function reverseTaperCeilingMi(composed: ComposePlanResult): number | nul
  * never drift. No DB, no clock. Behavior-preserving lift of the former inline
  * block — asserted byte-stable by the plan test suite.
  */
-export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi: number, level: LevelKey = null): void {
+export function finalizeComposedPlan(
+  composed: ComposePlanResult,
+  raceDistanceMi: number,
+  level: LevelKey = null,
+  /** COURSE-PLAN-1 · the target race's measured terrain. Optional and
+   *  defaulted so every existing caller is byte-identical; an unknown course
+   *  composes exactly as it did before the plan engine could see one. */
+  courseTerrain: CourseTerrain = UNKNOWN_TERRAIN,
+): void {
   // Long-run WoW smoother · clamp each training long to ≤ prev × 1.30
   // (rounded down to 0.5mi), trimming the week total to match. Defined as a
   // function so it can be RE-APPLIED after the taper rescale below — the
@@ -7731,6 +7787,12 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
     }
   }
 
+  // LONGRUN-ROWS-1 (2026-08-25) · Research/04 §4.6's dress rehearsal, three
+  // weeks out. Runs after MIDRACE-RAMP-1's post-race strip (so the window that
+  // legitimately removes §4.4's marathon-pace long cannot also remove §4.6's
+  // rehearsal) and before both caps below (so they still get the last word).
+  authorDressRehearsal(composed, raceDistanceMi);
+
   // DOCTRINE-DOSING-2 (2026-08-18) · Daniels' dosing caps, reconciled after
   // every pass that moved mileage. Runs BEFORE the intensity floor: it only
   // ever converts hard miles to easy ones, so it can lift a week's easy share
@@ -7740,6 +7802,52 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
   // DOCTRINE-TID-1 (2026-08-17) · the 80/20 constraint, which the engine has
   // never had in any form. Runs LAST, because every pass above moves mileage.
   applyIntensityFloor(composed);
+
+  // COURSE-PLAN-1 (2026-08-25) · terrain guidance on the long runs. After the
+  // intensity floor because `setLongFinish` rewrites a long run's notes
+  // wholesale, and this appends to them.
+  applyCourseGuidance(composed, courseTerrain, raceDistanceMi);
+
+  // LONGRUN-TRACE-1 (2026-08-25) · collect every race-pace segment a later pass
+  // shortened or removed, so a session disappearing is a thing the audit
+  // surface can read rather than an absence somebody has to notice. Written
+  // even when empty is false: the key is absent on a block where nothing moved,
+  // which is the honest shape.
+  {
+    const changes: Array<Record<string, unknown>> = [];
+    for (const w of composed.weeks) {
+      for (const d of w.days) {
+        if (!d.racePaceChange) continue;
+        changes.push({
+          week_start_iso: w.startISO,
+          date_iso: dowDateInWeek(w.startISO, d.dow),
+          kind: d.racePaceChange.kind,
+          from_mi: d.racePaceChange.fromMi,
+          to_mi: d.racePaceChange.toMi,
+          reason: d.racePaceChange.reason,
+        });
+      }
+    }
+    if (changes.length > 0) {
+      (composed.authoredState as Record<string, unknown>).long_run_race_pace_changes = changes;
+    }
+  }
+
+  // COURSE-PLAN-1 · what the engine saw of the course, recorded whether or not
+  // it changed anything. "The plan is blind to the course" was true for every
+  // race for the whole life of this engine and nothing said so; an `unknown`
+  // here is now a statement rather than a silence.
+  (composed.authoredState as Record<string, unknown>).course = {
+    shape: courseTerrain.shape,
+    net_ft: courseTerrain.netFt,
+    gain_ft: courseTerrain.gainFt,
+    loss_ft: courseTerrain.lossFt,
+    vert_per_10mi: courseTerrain.vertPer10Mi,
+    provenance: courseTerrain.provenance,
+    confidence: courseTerrain.confidence,
+    trusted: courseTerrain.trusted,
+    geometry_source: courseTerrain.geometrySource,
+  };
 
   /* ── VOL-2 (2026-08-19) · authored_state agrees with the plan ──────────────
    *
@@ -7961,7 +8069,8 @@ function trimSessionDose(
   //     notes together — it is the only carrier of the finish between compose
   //     and persist.
   if (day.isLong && day.type === 'long') {
-    setLongFinish(day, Math.max(0, Math.floor(targetMi * 2) / 2));
+    setLongFinish(day, Math.max(0, Math.floor(targetMi * 2) / 2),
+      "trimmed to Daniels' marathon-pace cap for the week");
     return measure(day);
   }
 
@@ -8213,6 +8322,186 @@ function resizeMpSession(day: DayPlan, totalMi: number): void {
  * all. Applying a training-volume floor to either would be reading the claim
  * against weeks it was never about.
  */
+/**
+ * LONGRUN-ROWS-1 (2026-08-25) · §4.6'S DRESS REHEARSAL, RESTORED.
+ *
+ * `Research/04-workout-vocabulary.md` §4.6 is its own row of the long-run
+ * table, and until now the engine had never read it:
+ *
+ *   | Purpose       | Final equipment, fueling, and timing rehearsal |
+ *   | Distance      | 18-22 mi (marathon); 12-14 mi (HM) |
+ *   | Structure     | Race-day breakfast, race-day kit, race-day fueling
+ *                     intervals; segments at MP |
+ *   | Pace          | Easy bulk + 2-3 segments at MP (4-8 mi total at MP) |
+ *   | When in cycle | 3 weeks pre-marathon; before taper begins |
+ *   | Contraindications | Not a fitness builder - keep effort controlled |
+ *
+ * `Research/08` §9.2's marathon taper table asks for the same session from the
+ * other side: its -3 row pairs "Final MP-specific" with "Last long (20-22 mi)".
+ *
+ * WHY IT WAS MISSING. `longFinishSegment` returns null for TAPER, on a ruling
+ * recorded beside `TAPER_MP_DOSE` that cites §16's "Fast finish long run before
+ * goal race | Adds depletion in taper window". That is a true statement about
+ * §4.5 and it is not a statement about §4.6 - see ./long-run-rows for the full
+ * argument. The owner overturned the collapse on 2026-08-25.
+ *
+ * WHERE IT RUNS. After `enforceRampCeilingAfterEmbedding`, deliberately. On the
+ * owner's block the three-weeks-out long is seven days after a B-race half, and
+ * that pass strips a race-pace finish inside the post-race window. Authoring
+ * the rehearsal BEFORE the strip would have it removed again by the rule that
+ * removed §4.4's; authoring it after says what §4.6 says, which is that a
+ * controlled four-to-eight-mile rehearsal is a different session from the
+ * eight-to-sixteen-mile marathon-pace long the window is protecting him from.
+ *
+ * Still BEFORE `applyDosingCaps` and `applyIntensityFloor`, so Daniels' cap and
+ * the 75% easy floor both get the last word - and if either shortens it, it now
+ * says so (LONGRUN-TRACE-1).
+ *
+ * Keyed on DAYS BEFORE THE RACE rather than on a phase, because that is the
+ * unit §4.6 states its placement in.
+ */
+function authorDressRehearsal(composed: ComposePlanResult, raceDistanceMi: number): void {
+  if (distanceCategoryOf(raceDistanceMi) !== 'm') return;
+  const raceISO = raceDayISO(composed);
+  if (!raceISO) return;
+  for (const w of composed.weeks) {
+    if (w.isRaceWeek) continue;
+    const long = w.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
+    if (!long) continue;
+    const daysToRace = daysBetween(dowDateInWeek(w.startISO, long.dow), raceISO);
+    if (!isDressRehearsalSlot(daysToRace)) continue;
+    // A long that already carries race pace is §4.4's session sitting in this
+    // slot. It is not upgraded and it is not doubled: the cadence put it there.
+    if (splitDay(long).qualityMi > 0) return;
+    // AFFORDABILITY, BEFORE AUTHORING. `applyIntensityFloor` runs after this
+    // and gives surplus hard miles back by shrinking exactly this segment, so a
+    // rehearsal sized past the week's 75% easy floor would be authored and then
+    // immediately shaved — "a floor that fires every single time is not a
+    // safety net, it is the generator's real behaviour arriving through a
+    // correction pass" (DOCTRINE-HMLONG-1's own words). The same reasoning
+    // `select.ts#fits` applies to every other session: price it against what
+    // the week may spend, and refuse rather than trim.
+    const training = w.days.filter((d) => d.type !== 'race');
+    const totals = training.reduce(
+      (acc, d) => { const sp = splitDay(d); acc.easy += sp.easyMi; acc.hard += sp.qualityMi; return acc; },
+      { easy: 0, hard: 0 },
+    );
+    const runningMi = totals.easy + totals.hard;
+    const easyFloorHeadroomMi = runningMi > 0
+      ? runningMi * (1 - EASY_SHARE_FLOOR) - totals.hard
+      : 0;
+    const budgetMi = Math.min(
+      weeklyDoseBudgetMi(w.weeklyMi, 'M', w.phase === 'TAPER' ? 'taper' : 'training'),
+      easyFloorHeadroomMi,
+    );
+    // Research/00b §"Recovery by Effort" · a rehearsal on legs still inside a
+    // tune-up's no-quality window takes §4.6's slow edge. `enforceRampCeiling-
+    // AfterEmbedding` has already removed §4.4's larger session from this day
+    // for the same reason; the two rows are treated differently on purpose.
+    const inPostRaceWindow = (
+      ((composed.authoredState as Record<string, unknown>)?.embedded_races ?? []) as EmbeddedRaceSummary[]
+    ).some((e) => {
+      const gap = daysBetween(e.date, dowDateInWeek(w.startISO, long.dow));
+      return gap > 0 && gap <= postRaceNoQualityDays(e.distanceMi, e.priority);
+    });
+    const dose = dressRehearsalDose(long.distanceMi, budgetMi, FAST_FINISH_MIN_MI, inPostRaceWindow);
+    if (!dose) return;
+    long.longRunKind = 'dress_rehearsal';
+    long.subLabel = `LONG · ${dose.mpMi}mi @ MP`;
+    // §4.6's own contraindication row, in the coach's voice. The runner is
+    // told this is a rehearsal, not a test, which is the whole difference
+    // between this row and §4.5's.
+    long.notes =
+      `Dress rehearsal · Research/04 §4.6. Steady ${dose.easyMi}mi, then ${dose.mpMi}mi at marathon pace. `
+      + 'Race kit, race breakfast, race fuelling. Controlled effort, not a fitness test.';
+    return;
+  }
+}
+
+/** The plan's own race day, or null for a goal-mode or open block. */
+function raceDayISO(composed: ComposePlanResult): string | null {
+  for (let i = composed.weeks.length - 1; i >= 0; i--) {
+    const w = composed.weeks[i];
+    if (!w.isRaceWeek) continue;
+    const race = w.days.find((d) => d.type === 'race');
+    if (race) return dowDateInWeek(w.startISO, race.dow);
+  }
+  return null;
+}
+
+/**
+ * COURSE-PLAN-1 (2026-08-25) · THE LONG RUNS LEARN WHAT THE COURSE IS.
+ *
+ * `Research/11-course-specific-training.md` §"Net-Downhill Training
+ * Adjustments" states the dose in the long run's own units:
+ *
+ *   "60-80% of long-run mileage should occur on terrain with similar grade to
+ *    the race's average descent."
+ *
+ * and §"Avoid the Late-Taper Trap" states the exception:
+ *
+ *   "A heavy downhill session inside ~10 days of race day risks racing on quads
+ *    still impaired by EIMD. The last race-pace downhill should be 2-3 weeks
+ *    out; final downhill running in the taper is short and easy."
+ *
+ * `Research/08` §4.5 says why it is not optional for this class of course:
+ * "0% or negative for untrained".
+ *
+ * GUIDANCE, NOT ARITHMETIC. This appends a sentence to the long run's notes and
+ * changes no distance, no pace and no structure. Rule 1: the elevation quoted
+ * is MEASURED off the runner's own course file and reads as measured, and no
+ * pace adjustment is derived from it, because doctrine's instruction here is
+ * about terrain rather than time. `trusted` gates it regardless - a
+ * low-confidence trace may be SHOWN but may not move a prescription
+ * (`elevationIsTrustedForAdjustment`).
+ *
+ * Runs dead last, after every pass that can rewrite a long run's notes.
+ */
+function applyCourseGuidance(
+  composed: ComposePlanResult,
+  terrain: CourseTerrain,
+  raceDistanceMi: number,
+): void {
+  if (terrain.shape !== 'net_downhill' || !terrain.trusted) return;
+  if (distanceCategoryOf(raceDistanceMi) === 'ultra') return;
+  const raceISO = raceDayISO(composed);
+  if (!raceISO) return;
+  const drop = terrain.netFt != null ? `${Math.abs(terrain.netFt)} ft` : 'a net drop';
+  const sharePct = Math.round(NET_DOWNHILL_LONG_RUN_SHARE * 100);
+  for (const w of composed.weeks) {
+    if (w.isRaceWeek) continue;
+    const long = w.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
+    if (!long) continue;
+    const daysToRace = daysBetween(dowDateInWeek(w.startISO, long.dow), raceISO);
+    // §"Avoid the Late-Taper Trap" - the last ten to fourteen days.
+    long.notes += daysToRace <= LATE_TAPER_DOWNHILL_DAYS
+      ? ` Course drops ${drop}. Downhill running stays short and easy from here · Research/11 §late-taper trap.`
+      : ` Course drops ${drop}. Run at least ${sharePct}% of this on downhill-similar terrain · Research/11 §net-downhill adjustments.`;
+  }
+}
+
+/**
+ * COURSE-PLAN-1 · "60-80% of long-run mileage should occur on terrain with
+ * similar grade to the race's average descent" (`Research/11` §"Net-Downhill
+ * Training Adjustments").
+ *
+ * The band's LOW edge. The high edge describes a runner who can find that much
+ * of the right terrain; the low edge is the instruction that holds for everyone,
+ * and over-prescribing terrain a runner does not have is how a plan stops being
+ * followed. Bound by `COURSE.net-downhill-long-run-share`.
+ */
+export const NET_DOWNHILL_LONG_RUN_SHARE = 0.60;
+
+/**
+ * COURSE-PLAN-1 · "A heavy downhill session inside ~10 days of race day risks
+ * racing on quads still impaired by EIMD" (`Research/11` §"Avoid the Late-Taper
+ * Trap"). The same row's next sentence gives the other end - "the last
+ * race-pace downhill should be 2-3 weeks out" - so the window closes somewhere
+ * in ten-to-fourteen days and this takes the SAFE edge of it, fourteen.
+ * Bound by `COURSE.late-taper-downhill-window`.
+ */
+export const LATE_TAPER_DOWNHILL_DAYS = 14;
+
 function applyIntensityFloor(composed: ComposePlanResult): void {
   for (const w of composed.weeks) {
     if (w.isRaceWeek || w.phase === 'TAPER') continue;
@@ -8259,7 +8548,7 @@ function applyIntensityFloor(composed: ComposePlanResult): void {
     // over — this pass never touches a quality session's prescription, so the
     // sub_label a runner reads always matches the spec their watch executes.
     const newFinish = Math.max(0, Math.floor((finishMi - surplus) * 2) / 2);
-    setLongFinish(long, newFinish);
+    setLongFinish(long, newFinish, 'gave hard miles back to hold the 75% easy floor');
   }
 }
 
@@ -8269,9 +8558,13 @@ function applyIntensityFloor(composed: ComposePlanResult): void {
  * `buildWorkoutSpec`'s `extractFinishSegment` reads it back out — so the label
  * and the notes are rewritten together and there is no third place to drift.
  */
-function setLongFinish(day: DayPlan, finishMi: number): void {
+function setLongFinish(day: DayPlan, finishMi: number, reason = 'unrecorded'): void {
   const tagMatch = String(day.subLabel ?? '').match(/mi\s*@\s*(HM|MP|M)\b/i);
   const tag = tagMatch ? tagMatch[1].toUpperCase() : 'MP';
+  // LONGRUN-TRACE-1 · what this call is about to change, recorded before it
+  // changes it. `splitDay` reads the segment back out of the sub_label, which
+  // is where it lives between compose and persist.
+  const beforeMi = splitDay(day).qualityMi;
   // DOCTRINE-DOSING-2 · the same floor `layoutWeek` authors to, applied to
   // every later trim. `Research/04` §4.5 states the segment as "final 2-6 mi at
   // MP or slightly faster", so a give-back that would leave less than two miles
@@ -8280,11 +8573,19 @@ function setLongFinish(day: DayPlan, finishMi: number): void {
   // this function, and neither should be able to invent a shape doctrine does
   // not describe.
   if (finishMi > 0 && finishMi < FAST_FINISH_MIN_MI) finishMi = 0;
+  const trace = (toMi: number) => {
+    if (Math.abs(beforeMi - toMi) < 0.05) return;
+    day.racePaceChange = { fromMi: beforeMi, toMi, reason, kind: day.longRunKind ?? null };
+  };
   if (finishMi <= 0) {
+    trace(0);
     day.subLabel = 'LONG';
     day.notes = 'Conversational throughout. Build the engine.';
+    // The row identity goes with the segment it described.
+    day.longRunKind = null;
     return;
   }
+  trace(finishMi);
   const easyMi = Math.max(0, Math.round((day.distanceMi - finishMi) * 10) / 10);
   day.subLabel = `LONG · ${finishMi}mi @ ${tag}`;
   day.notes = `Steady ${easyMi}mi, then ${finishMi}mi at ${tag === 'HM' ? 'half-marathon pace' : 'marathon pace'}.`;
@@ -8643,7 +8944,8 @@ async function composeForUserInternal(
     // (30 for all four distance categories — kept literal here because
     // generate→validate would be a runtime import cycle). Race-day rows
     // are not training longs and are skipped, matching the validator.
-    finalizeComposedPlan(composed, inputs.compose.raceDistanceMi, inputs.compose.level);
+    finalizeComposedPlan(composed, inputs.compose.raceDistanceMi, inputs.compose.level,
+      inputs.compose.courseTerrain ?? UNKNOWN_TERRAIN);
     // MAINT-WEEKLYML-1 (2026-06-23) · re-snapshot vols from the VOL-1-reconciled weeklyMi values so
     // non-race-prep modes (maintenance/recovery) carry realized volumes, not the pre-finalize budgets.
     // composePlan derives vols from volumeCurve (the real source); maintenance/recovery authored weeklyMi
@@ -9520,12 +9822,20 @@ async function loadGeneratorInputs(
   const lthr = lthrRow?.lthr ?? null;
   // maxHr resolved above alongside loadVdotInputs; used here for Rule 16.
 
+  // COURSE-PLAN-1 (2026-08-25) · what the course actually looks like. Loaded
+  // ONCE per authoring, here, alongside every other input — the parse of a
+  // large GPX is not something a per-week pass should be doing. Never throws
+  // and never guesses: an unreadable or absent course resolves to
+  // `UNKNOWN_TERRAIN` and the block composes as it always has.
+  const courseTerrain = await loadRaceCourseTerrain(userId, raceSlug ?? null, raceDistanceMi);
+
   return {
     ok: true,
     compose: {
       raceDistanceMi,
       goalSec,
       goalPaceSec,
+      courseTerrain,
       raceDateISO,
       startMondayISO,
       level,

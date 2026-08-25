@@ -39,6 +39,7 @@ import {
 } from './generate';
 import { tPaceFromGoal } from './spec-builder';
 import { GENERAL_RAMP_CEILING } from './goal-tiers';
+import { DRESS_REHEARSAL } from './long-run-rows';
 
 const START_MONDAY = '2026-08-31';
 
@@ -137,12 +138,41 @@ describe('RAMP CEILING · the week after a tune-up', () => {
     expect(after.weeklyMi).toBeLessThan(peak + 0.05);
   });
 
-  it('the week after a raced half carries no race-pace finish on its long run', () => {
+  it('the week after a raced half carries no MARATHON-PACE LONG on its long run', () => {
     const raceWk = dayAt(composed, MALIBU.date)!.weekIdx;
     const long = composed.weeks[raceWk + 1].days.find((d) => d.isLong && d.type === 'long');
     expect(long).toBeDefined();
-    // POST_RACE_RECOVERY_WEEKS.hm = 2 weeks of no quality · an MP finish is quality.
-    expect(long!.subLabel ?? '').not.toMatch(/@\s*(HM|MP|M)\b/i);
+    // Research/00b §"Post-Race Recovery" · §4.4's marathon-pace long run is
+    // 8-16 mi at MP and is not run on legs inside the window.
+    expect(long!.longRunKind).not.toBe('mp_long');
+    expect(long!.longRunKind).not.toBe('fast_finish');
+  });
+
+  it('the removal of that session is RECORDED, not silent', () => {
+    // LONGRUN-TRACE-1 · this is the defect the trace exists for. On the owner's
+    // own block the strip took an eleven-mile marathon-pace finish off the
+    // twenty-one-mile run three weeks out — the biggest session of the build —
+    // and left nothing but its absence behind.
+    const changes = (composed.authoredState as Record<string, unknown>)
+      .long_run_race_pace_changes as Array<Record<string, unknown>> | undefined;
+    expect(changes, 'authored_state records what was taken off a long run').toBeDefined();
+    const strip = (changes ?? []).find((c) => String(c.reason).includes('post-race no-quality window'));
+    expect(strip, 'the post-race strip appears in the ledger').toBeDefined();
+    expect(strip!.kind).toBe('mp_long');
+    expect(Number(strip!.from_mi)).toBeGreaterThan(0);
+    expect(Number(strip!.to_mi)).toBe(0);
+  });
+
+  it("§4.6's dress rehearsal survives that window, at §4.6's own dose", () => {
+    // LONGRUN-ROWS-1 · the point of separating the rows. The window removes
+    // §4.4's 8-16 mi session and does NOT remove §4.6's controlled rehearsal;
+    // inside the window that rehearsal takes the slow edge of its own band.
+    const raceWk = dayAt(composed, MALIBU.date)!.weekIdx;
+    const long = composed.weeks[raceWk + 1].days.find((d) => d.isLong && d.type === 'long')!;
+    expect(long.longRunKind).toBe('dress_rehearsal');
+    const mi = Number((long.subLabel ?? '').match(/([\d.]+)mi\s*@/)?.[1] ?? 0);
+    expect(mi, 'inside a post-race window the rehearsal is at the band floor').toBe(DRESS_REHEARSAL.mpMiBand[0]);
+    expect(long.notes).toMatch(/not a fitness test/i);
   });
 
   it('every post-tune-up week respects the general ramp ceiling off the last undistorted week', () => {

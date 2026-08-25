@@ -167,7 +167,15 @@ import {
   RACE_RUNUP_DAYS,
   POST_RACE_PRIORITY_SCALE,
   postRaceNoQualityDays,
+  NET_DOWNHILL_LONG_RUN_SHARE,
+  LATE_TAPER_DOWNHILL_DAYS,
 } from '@/lib/plan/generate';
+import {
+  DRESS_REHEARSAL,
+  DRESS_REHEARSAL_WINDOW_DAYS,
+  dressRehearsalDose,
+  isDressRehearsalSlot,
+} from '@/lib/plan/long-run-rows';
 import {
   BLEND_GRACE_FRACTION,
   blendedTPaceForWeek,
@@ -611,6 +619,131 @@ import {
 } from '@/lib/onboarding/state';
 
 export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
+  // == LONG-RUN ROWS · Research/04 4.1's five rows, kept apart ===============
+  {
+    id: 'LONGRUN.dress-rehearsal',
+    binds: [
+      'lib/plan/long-run-rows.ts#DRESS_REHEARSAL',
+      'lib/plan/long-run-rows.ts#dressRehearsalDose',
+      'lib/plan/long-run-rows.ts#isDressRehearsalSlot',
+      'lib/plan/generate.ts#authorDressRehearsal',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.6 Dress rehearsal long run',
+    claim:
+      'The dress rehearsal is its own long-run row, not a fast finish. It is 18-22 mi for a ' +
+      'marathoner, it carries 4-8 mi at marathon pace inside an easy bulk, it lands three weeks ' +
+      'before the race, and its own contraindication row says it is not a fitness test. The ' +
+      'engine must place it where the doc places it, dose it inside the band the doc states, ' +
+      'and never size it above that band however long the run is.',
+    check({ cite }) {
+      const t = cite.table();
+      // 1 · placement, in the doc's own words.
+      const when = t.cell('When in cycle', 'Prescription');
+      const weeksOut = parseBand(when)[0];
+      if (DRESS_REHEARSAL.daysBeforeRace !== weeksOut * 7) {
+        throw new Error(
+          `DRESS_REHEARSAL.daysBeforeRace = ${DRESS_REHEARSAL.daysBeforeRace}, doctrine says "${when}"`,
+        );
+      }
+      // 2 · the marathon distance band, read off the Distance row (which states
+      //     the HM band after it in parentheses-free prose, so take the first).
+      const distBand = parseBand(t.cell('Distance', 'Prescription').split(';')[0]);
+      if (DRESS_REHEARSAL.totalMiBand[0] !== distBand[0] || DRESS_REHEARSAL.totalMiBand[1] !== distBand[1]) {
+        throw new Error(
+          `DRESS_REHEARSAL.totalMiBand = ${DRESS_REHEARSAL.totalMiBand.join('-')}, doctrine says ${distBand.join('-')}`,
+        );
+      }
+      // 3 · the MP dose. The Pace row reads "Easy bulk + 2-3 segments at MP
+      //     (4-8 mi total at MP)" — the band in the parenthesis is the total,
+      //     which is what the engine doses; the 2-3 in front counts segments.
+      const paceRow = t.cell('Pace', 'Prescription');
+      const mpBand = parseBands(paceRow).find((b) => /mi total at MP/i.test(paceRow) && b[1] > 3);
+      if (!mpBand) throw new Error(`LONGRUN.dress-rehearsal: no "N-N mi total at MP" band in "${paceRow}"`);
+      if (DRESS_REHEARSAL.mpMiBand[0] !== mpBand[0] || DRESS_REHEARSAL.mpMiBand[1] !== mpBand[1]) {
+        throw new Error(
+          `DRESS_REHEARSAL.mpMiBand = ${DRESS_REHEARSAL.mpMiBand.join('-')}, doctrine says ${mpBand.join('-')}`,
+        );
+      }
+      // 4 · and the engine actually obeys the band it just read. A long run in
+      //     the middle of the distance band gets a dose in the middle of the MP
+      //     band; an enormous long run never gets more than the band's top.
+      const mid = dressRehearsalDose((distBand[0] + distBand[1]) / 2, 99, 2);
+      if (!mid) throw new Error('dressRehearsalDose refuses the band midpoint');
+      within(mid.mpMi, mpBand, 'dressRehearsalDose at the distance-band midpoint');
+      const huge = dressRehearsalDose(40, 99, 2);
+      if (huge && huge.mpMi > mpBand[1]) {
+        throw new Error(`dressRehearsalDose(40 mi) = ${huge.mpMi} mi at MP, over doctrine's ${mpBand[1]}`);
+      }
+      // 5 · the slot is exactly one long run wide. Wider selects two, narrower
+      //     selects none, and both are silent failures.
+      const slots = [];
+      for (let d = 0; d <= 60; d++) if (isDressRehearsalSlot(d)) slots.push(d);
+      if (slots.length !== DRESS_REHEARSAL_WINDOW_DAYS * 2 + 1 || slots.length !== 7) {
+        throw new Error(`the dress-rehearsal window is ${slots.length} days wide; a long run is weekly, so it must be 7`);
+      }
+      if (!isDressRehearsalSlot(DRESS_REHEARSAL.daysBeforeRace)) {
+        throw new Error('the dress-rehearsal window does not contain its own centre');
+      }
+    },
+  },
+
+  // == COURSE · Research/11, which lib/plan/ could not read until 2026-08-25 ==
+  {
+    id: 'COURSE.net-downhill-long-run-share',
+    binds: [
+      'lib/plan/generate.ts#NET_DOWNHILL_LONG_RUN_SHARE',
+      'lib/plan/generate.ts#applyCourseGuidance',
+    ],
+    doc: 'Research/11-course-specific-training.md',
+    anchor: '### Net-Downhill Training Adjustments',
+    claim:
+      'Preparing for a net-downhill race is a LONG-RUN instruction with a stated dose: most of ' +
+      "the long run's mileage should be run on terrain matching the race's descent. The engine " +
+      "surfaces the band's low edge, which is the instruction that holds for every runner.",
+    check({ cite }) {
+      const line = cite.text().split('\n').find((l) => /long-run mileage/i.test(l));
+      if (!line) {
+        throw new Error('COURSE.net-downhill-long-run-share: the long-run-mileage bullet is gone from this section');
+      }
+      const band = parsePctBand(line);
+      within(NET_DOWNHILL_LONG_RUN_SHARE, band, 'NET_DOWNHILL_LONG_RUN_SHARE');
+      if (NET_DOWNHILL_LONG_RUN_SHARE !== band[0]) {
+        throw new Error(
+          `NET_DOWNHILL_LONG_RUN_SHARE = ${NET_DOWNHILL_LONG_RUN_SHARE}; doctrine's band is ` +
+          `${band[0]}-${band[1]} and the engine states its LOW edge (${band[0]})`,
+        );
+      }
+    },
+  },
+  {
+    id: 'COURSE.late-taper-downhill-window',
+    binds: ['lib/plan/generate.ts#LATE_TAPER_DOWNHILL_DAYS'],
+    doc: 'Research/11-course-specific-training.md',
+    anchor: '### Avoid the Late-Taper Trap',
+    claim:
+      'Downhill running close to race day races the runner on damaged quads. Doctrine gives the ' +
+      'window twice in one paragraph — a heavy session inside about ten days, and a last ' +
+      'race-pace downhill two to three weeks out — so the engine stops prescribing downhill ' +
+      'terrain somewhere between ten and twenty-one days, and takes the safe end of it.',
+    check({ cite }) {
+      const text = cite.text();
+      const heavy = text.match(/inside\s*~?(\d+)\s*days/i);
+      const last = text.match(/(\d+)\s*[-–]\s*(\d+)\s*weeks out/i);
+      if (!heavy || !last) {
+        throw new Error('COURSE.late-taper-downhill-window: this section no longer states both edges of the window');
+      }
+      const lo = Number(heavy[1]);
+      const hi = Number(last[2]) * 7;
+      within(LATE_TAPER_DOWNHILL_DAYS, [lo, hi], 'LATE_TAPER_DOWNHILL_DAYS');
+      if (LATE_TAPER_DOWNHILL_DAYS < lo) {
+        throw new Error(
+          `LATE_TAPER_DOWNHILL_DAYS = ${LATE_TAPER_DOWNHILL_DAYS} is inside the ${lo}-day window ` +
+          'doctrine says to stay out of',
+        );
+      }
+    },
+  },
   // ══ RECOVERY · the incident ═══════════════════════════════════════════════
   {
     id: 'RECOVERY.post-race-duration',
