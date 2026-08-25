@@ -361,11 +361,20 @@ struct WatchWorkout: Codable {
     /// Lines the coach says, each also drawn. See `WatchSpokenCue`.
     let spokenCues: [WatchSpokenCue]?
 
+    /// 2026-08-24 · today's conditions, one sentence, LOBBY ONLY.
+    ///
+    /// Present only when the server actually eased this payload's targets for
+    /// the heat, so its presence IS the adjustment and its absence is not a
+    /// silent failure. Nothing on a running face ever draws it: a runner
+    /// mid-effort cannot act on a temperature, and the band they are being
+    /// held to already carries the correction.
+    let heatNote: String?
+
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
         case readinessScore, readinessLabel, distanceMi, paceLabel
         case isRace, goalSec, strategyLabel, gelsMi, fueling, hrCeilingBpm
-        case displayHint, unitsDistance, rules, spokenCues
+        case displayHint, unitsDistance, rules, spokenCues, heatNote
     }
 
     init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
@@ -376,7 +385,8 @@ struct WatchWorkout: Codable {
          fueling: WatchFueling? = nil, hrCeilingBpm: Int? = nil,
          displayHint: String? = nil, unitsDistance: String? = nil,
          rules: [WatchRule]? = nil,
-         spokenCues: [WatchSpokenCue]? = nil) {
+         spokenCues: [WatchSpokenCue]? = nil,
+         heatNote: String? = nil) {
         self.workoutId = workoutId
         self.name = name
         self.summary = summary
@@ -398,6 +408,7 @@ struct WatchWorkout: Codable {
         self.unitsDistance = unitsDistance
         self.rules = rules
         self.spokenCues = spokenCues
+        self.heatNote = heatNote
     }
 
     init(from decoder: Decoder) throws {
@@ -430,6 +441,9 @@ struct WatchWorkout: Codable {
         // Lenient: a malformed rules array must never cost the workout.
         self.rules = (try? c.decodeIfPresent([WatchRule].self, forKey: .rules)) ?? nil
         self.spokenCues = (try? c.decodeIfPresent([WatchSpokenCue].self, forKey: .spokenCues)) ?? nil
+        // Lenient, like its neighbours. A sentence about the weather must
+        // never be the reason a runner has no workout.
+        self.heatNote = (try? c.decodeIfPresent(String.self, forKey: .heatNote)) ?? nil
         // Re-stamp each phase with its cursor index. CRITICAL: pass through
         // repUnit + distanceMi too — earlier this constructor only carried
         // the first 7 fields forward, which silently dropped repUnit (→ .time)

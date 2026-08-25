@@ -1457,7 +1457,21 @@ struct WatchLobbySurfaceV5: View {
                     // Readiness appears as a session that has ALREADY changed,
                     // with the reason stated once — never as a score, because
                     // a score on a lobby is a thing to argue with at 6am.
-                    note: sessionMoved?.line
+                    //
+                    // ONE REGISTER, SO IT NEEDS A PRECEDENCE. A session that
+                    // was changed outranks a session that was eased: the first
+                    // says the runner is about to do something other than what
+                    // they expected, the second only says why the band reads
+                    // the way it does. They are not joined, because two
+                    // clauses in this slot on a 42mm is the shrunk-copy defect
+                    // rule 14 exists to stop — and because an adaptation whose
+                    // own reason is heat would then say heat twice.
+                    //
+                    // The heat adjustment is never silent even when this line
+                    // loses: the eased band is drawn in the band register
+                    // regardless. What is lost is the explanation, not the
+                    // fact.
+                    note: sessionMoved?.line ?? workout.heatNote
                 ),
                 pageCount: pageCount,
                 pageIndex: 0,
