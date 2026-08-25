@@ -34,7 +34,7 @@ import { hrToNum } from '@/lib/runs/run-shape';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
-  coherentPace, coherentMovingSec, coherentElapsedSec,
+  coherentPace, coherentMovingSec, coherentElapsedSec, runCadenceSpm,
 } from '@/lib/runs/coherence';
 import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
 import { workAveragesFromPhases } from '@/lib/runs/work-averages';
@@ -1192,8 +1192,11 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     // card cannot print two different heart rates for one run.
     hr_avg: runAvgHr(r as unknown as RunData),
     hr_max: runMaxHr(r as unknown as RunData),
-    // Prefer activity-supplied cadence; fall back to the day's HealthKit cadence.
-    cadence_avg: Number(r.avgCadence) || form.cadence_spm,
+    // Prefer activity-supplied cadence; fall back to the day's HealthKit
+    // cadence. Resolved to BOTH FEET first: `avgCadence` is Strava's per-leg
+    // count on the 57 pre-May-2026 imports, and run detail printed it as a
+    // step rate. `cadence.units-split` in lib/runs/derived-registry.ts.
+    cadence_avg: runCadenceSpm(r)?.spm ?? form.cadence_spm,
     // 2026-05-31: barometric-drift sanity check on Strava's rolled-up
     // elev_gain_ft. Barometric watches occasionally report 5-10x the
     // real gain when ambient pressure swings during a run (humidity,
@@ -1320,7 +1323,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     readings: deriveReadingScopes({
       phases: phaseBreakdown,
       wholeHrBpm: Number(r.avgHr) || null,
-      wholeCadenceSpm: Number(r.avgCadence) || form.cadence_spm,
+      wholeCadenceSpm: runCadenceSpm(r)?.spm ?? form.cadence_spm,
       workHrBpm: workAvgs.hrAvg,
       workCadenceSpm: workAvgs.cadenceAvg,
       wholePaceSPerMi: paceSPerMi,
@@ -1940,12 +1943,17 @@ async function computeHrOnPaceDelta(args: {
     const PACE_BUCKET = 10; // ±10 s/mi
     // Phase B · one canonical dedup. A dupe of a same-type+pace run would put
     // two identical avgHr into the 4-sample median baseline. LIMIT 4 windows it.
+    //
+    // 2026-08-24 · the query below also carried `absorbed_into_canonical_at IS
+    // NULL`. Removed, with nothing in its place: `canonicalIds` is already
+    // identity-clustered, and the stamp survives a promotion back to canonical
+    // — six of this runner's canonical rows carry a stale one. See
+    // CANONICAL_ROW_SQL in lib/runs/volume.ts.
     const canonicalIds = await getCanonicalRunIds(args.userId, ...ALL_TIME);
     const recent = (await pool.query<{ avg_hr: string }>(
       `SELECT (data->>'avgHr')::numeric AS avg_hr
          FROM runs
         WHERE user_uuid = $1
-          AND absorbed_into_canonical_at IS NULL
           AND id = ANY($6::bigint[])
           AND id::text <> $2
           AND data->>'type' = $3

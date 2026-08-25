@@ -9,6 +9,7 @@ import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
+import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 
 export interface HealthState {
   today: string;
@@ -260,13 +261,18 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
     // Falls back to health_samples when runs has no avgCadence yet
     // (manual entry, Strava-only ingest, brand-new runner).
     pool.query(
+      // 2026-08-24 · resolved to BOTH FEET before averaging. The band that
+      // stood here (130-220) was doing two jobs badly: it hid the 57 per-leg
+      // rows rather than converting them, and it also discarded a genuine
+      // 114 spm row as out of range. `runCadenceSpmSql` decides the unit from
+      // the row's own stride and returns NULL only when neither reading is a
+      // running cadence. See lib/runs/coherence.ts section 8.
       `WITH run_cadence AS (
-         SELECT AVG((data->>'avgCadence')::numeric)::numeric AS avg
+         SELECT AVG(${runCadenceSpmSql()})::numeric AS avg
            FROM runs
           WHERE user_uuid = $1::uuid
             AND id = ANY($3::bigint[])
-            AND data->>'avgCadence' IS NOT NULL
-            AND (data->>'avgCadence')::numeric BETWEEN 130 AND 220
+            AND ${runCadenceSpmSql()} IS NOT NULL
             AND (data->>'date')::date >= ($2::date - interval '60 days')
        ),
        hk_cadence AS (

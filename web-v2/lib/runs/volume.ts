@@ -29,10 +29,20 @@ import { clusterRuns, pickCanonical, type RunRow } from '@/lib/runs/identity';
  * sets it on the row that lost a dedup. `absorbed_into_canonical_at` is NOT a
  * reliable canonical/loser discriminator on its own: a row that lost a merge
  * then got PROMOTED back to canonical can carry a stale stamp (merge.ts:66
- * clears it on promotion, but pre-2026-06-11 residue exists — verified: 1 such
- * row in prod, the 2026-06-14 13.13mi run, which IS the canonical for its day
- * and whose two siblings both point mergedIntoId → it). Filtering on the stamp
- * would WRONGLY drop that canonical and zero the day. So the shared predicate
+ * clears it on promotion, but residue exists).
+ *
+ * 2026-08-24 · RECOUNTED. This note used to say "verified: 1 such row in prod".
+ * It is SIX, and they are not old residue — the newest is 2026-08-10:
+ *
+ *     2026-06-14   13.13 mi      2026-07-07    7.56 mi
+ *     2026-06-19    6.45 mi      2026-07-25   18.00 mi   (the long run)
+ *     2026-07-06    6.01 mi      2026-08-10    4.02 mi
+ *
+ * Each is the canonical row for its day, stamped absorbed, with two siblings
+ * pointing mergedIntoId → it. 55.17 of this runner's 1114.72 canonical miles,
+ * 6 of 149 runs. Filtering on the stamp does not shade those days down, it
+ * zeroes them: every one reads 0.00 mi. `_absorption_predicate.test.ts` now
+ * fails the build if a reader adds the stamp back. So the shared predicate
  * keys ONLY on mergedIntoId. (pullSync previously also filtered the stamp,
  * which made it the stricter outlier; aligning it here can only let it FIND a
  * stale-stamped canonical to write into — never pick a true loser, since true

@@ -457,8 +457,15 @@ export function executionQualityFromTestPoints(
 /** 2026-07-13 · S1 · absence inputs for executionQuality. Execution is the
  *  lever (CLAUDE.md) — a rest week that logs no new completed sessions used to
  *  leave q frozen at its prior value, so a real break was invisible. Two reads,
- *  both dedup-aware (NOT data ? 'mergedIntoId' AND absorbed_into_canonical_at
- *  IS NULL) and runner-local:
+ *  both dedup-aware (`NOT (data ? 'mergedIntoId')` — the ONE canonical-row
+ *  predicate, `CANONICAL_ROW_SQL` in lib/runs/volume.ts) and runner-local.
+ *  2026-08-24 · the `absorbed_into_canonical_at IS NULL` clause that used to
+ *  sit beside it was REMOVED from all five queries in this file. The stamp is
+ *  not a loser marker: a row promoted back to canonical keeps a stale stamp,
+ *  and six of this runner's canonical rows carry one — 55.17 of 1114.72 mi,
+ *  including the 18.00 mi long run of 2026-07-25 and the 13.13 mi of
+ *  2026-06-14. Every one of those days read as ZERO miles here, so a run he
+ *  completed was graded as a missed key session:
  *    · daysSinceLastRun · calendar days since the most recent honest run.
  *    · recentMissedKeyDates · dates of key sessions (long/tempo/threshold/
  *      intervals) in the PAST within the last 14 runner-local days with NO
@@ -481,7 +488,6 @@ async function loadExecutionAbsence(userUuid: string): Promise<{
        FROM runs r
       WHERE r.user_uuid = $1::uuid
         AND NOT (r.data ? 'mergedIntoId')
-        AND r.absorbed_into_canonical_at IS NULL
         AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0`,
     [userUuid],
   ).catch(() => ({ rows: [] }))).rows[0];
@@ -508,7 +514,6 @@ async function loadExecutionAbsence(userUuid: string): Promise<{
           SELECT 1 FROM runs r
            WHERE r.user_uuid = $1::uuid
              AND NOT (r.data ? 'mergedIntoId')
-             AND r.absorbed_into_canonical_at IS NULL
              AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10)) = pw.date_iso
              AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
         )
@@ -695,7 +700,6 @@ async function loadNextTestPoints(
                WHERE r.user_uuid = $1::uuid
                  AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10)) = pw.date_iso
                  AND NOT (r.data ? 'mergedIntoId')
-                 AND r.absorbed_into_canonical_at IS NULL
                  AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
             )
           ORDER BY pw.id
@@ -1138,7 +1142,6 @@ export async function loadRecentTestPoints(
              ON r.user_uuid = $1::uuid
             AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10)) = pw.date_iso
             AND NOT (r.data ? 'mergedIntoId')
-            AND r.absorbed_into_canonical_at IS NULL
             AND COALESCE((r.data->>'distanceMi')::numeric, 0) >= 1.0
           WHERE tp.user_uuid = $1::uuid
             AND ($6::boolean OR tp.archived_iso IS NULL)
@@ -1808,9 +1811,14 @@ async function detectPlanAdapterDrift(userUuid: string): Promise<DriftSignal | n
  *
  *  2026-07-13 · S2 · window bounds are now RUNNER-LOCAL (runnerToday), not
  *  server-UTC CURRENT_DATE — a runner west of UTC could otherwise have a plan
- *  day graded a day early. The completed-EXISTS subquery gained the
- *  absorbed_into_canonical_at IS NULL dedup guard and the ::uuid cast on
- *  user_uuid to match the sibling queries.
+ *  day graded a day early. The completed-EXISTS subquery gained a dedup guard
+ *  and the ::uuid cast on user_uuid to match the sibling queries.
+ *
+ *  2026-08-24 · that dedup guard was `absorbed_into_canonical_at IS NULL` and
+ *  it is GONE. The stamp is not a loser marker (see loadExecutionAbsence
+ *  above); on six of this runner's canonical rows it is stale residue, and
+ *  this query counted each of those completed sessions as MISSED. Drift is
+ *  allowed to say a week was missed only when it was.
  *
  *  Weight ladder:
  *   · MEDIUM · a FULL missed week — a trailing stretch of >= FULL_WEEK_DAYS
@@ -1831,7 +1839,6 @@ async function detectMissedKeyWorkoutDrift(userUuid: string): Promise<DriftSigna
               SELECT 1 FROM runs r
                WHERE r.user_uuid = $1::uuid
                  AND NOT (r.data ? 'mergedIntoId')
-                 AND r.absorbed_into_canonical_at IS NULL
                  AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10)) = kw.date_iso
                  AND (r.data->>'distanceMi')::numeric >= kw.distance_mi * 0.8
             ) AS completed

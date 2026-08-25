@@ -58,7 +58,7 @@ import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { bestRecentVdot } from '@/lib/training/vdot';
 import { resolveFitness } from '@/lib/fitness/fitness-model';
 import { buildFitnessRow } from '@/lib/faff/fitness-read';
-import { reconcileHrZones, coherentPace, coherentDurationSec } from '@/lib/runs/coherence';
+import { reconcileHrZones, coherentPace, coherentDurationSec, runCadenceSpm } from '@/lib/runs/coherence';
 // `runAvgHr` / `runMaxHr` bound a reading to something a heart can do. Reading
 // `data.avgHr` raw passes a sensor sentinel straight into the recap's prose.
 import {
@@ -905,9 +905,14 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // removing.
         avgHr: runAvgHr(data as RunData),
         hrMax: runMaxHr(data as RunData),
+        // BOTH FEET, resolved once. `avgCadence` holds Strava's PER-LEG count
+        // on the 57 pre-May-2026 imports and the watch's step rate on the
+        // rest, and nothing in the row says which — so the poster showed 78
+        // spm for one run and 161 for the next with no unit change on screen.
+        // Same reader as run detail and the recap. `cadence.units-split`.
         cadenceAvg: (() => {
-          const v = Number(data.avgCadence);
-          return Number.isFinite(v) && v > 0 ? Math.round(v) : null;
+          const c = runCadenceSpm(data);
+          return c ? Math.round(c.spm) : null;
         })(),
         // WHICH TEMPERATURE, DELIBERATELY. Two live spellings disagree and
         // `run-shape.ts` exposes both: `runTempFSql` is the bare top-level

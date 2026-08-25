@@ -25,6 +25,7 @@ import { predictRaceTime, formatRaceTime, parseRaceTime } from '@/lib/training/v
 import { userIdFromCookies } from '@/lib/auth/session';
 import { withRequestMemo } from '@/lib/runtime/request-memo';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 import { dayKeyFromLocalParts, pgDayKey, addDaysToDayKey } from '@/lib/runtime/day-key';
 import { stripResearchCitations as stripCitationsSafe } from '@/lib/plan/strip-citations';
 import { loadSettings } from '@/lib/coach/settings';
@@ -190,8 +191,10 @@ async function loadFormMetrics(uid: string) {
 
     // 1. Per-run series for cadence, power, stride · from runs.data.
     const runRows = await pool.query(
+      // Cadence resolved to BOTH FEET · `avgCadence` is Strava's per-leg count
+      // on the pre-May-2026 imports. See lib/runs/coherence.ts section 8.
       `SELECT (data->>'date')::date AS d,
-              (data->>'avgCadence')::numeric AS cadence,
+              ${runCadenceSpmSql()} AS cadence,
               (data->>'avgPowerW')::numeric AS power,
               (data->>'avgStrideLengthM')::numeric AS stride
          FROM runs

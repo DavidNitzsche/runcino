@@ -132,15 +132,20 @@ export async function GET(req: NextRequest) {
   const connMap = Object.fromEntries(connQ.rows.map((r: any) => [r.user_uuid, { strava: r.strava, healthkit: r.healthkit }]));
 
   // ── 7. Run count (last 30 days) ──────────────────────────────────────────
-  // runs.data is JSONB: distanceMi, startLocal; absorbed_into_canonical_at = dedup flag
+  // runs.data is JSONB: distanceMi, date. The loser marker is `mergedIntoId`,
+  // NOT absorbed_into_canonical_at — the stamp survives a promotion back to
+  // canonical, and filtering on it drops real runs (6 rows / 55.17 mi on this
+  // runner as of 2026-08-24). See CANONICAL_ROW_SQL in lib/runs/volume.ts.
+  // Day bucketing uses `date` (runner-local) first: `startLocal` carries a Z
+  // suffix on 142 of 257 rows and casting it to ::date yields the UTC day.
   const runsQ = await pool.query(
     `SELECT user_uuid,
             COUNT(*) AS run_count,
             ROUND(SUM((data->>'distanceMi')::numeric)) AS run_mi
      FROM runs
      WHERE user_uuid = ANY($1)
-       AND absorbed_into_canonical_at IS NULL
-       AND (data->>'startLocal')::date >= CURRENT_DATE - 30
+       AND NOT (data ? 'mergedIntoId')
+       AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::date >= CURRENT_DATE - 30
      GROUP BY user_uuid`,
     [uuids],
   );

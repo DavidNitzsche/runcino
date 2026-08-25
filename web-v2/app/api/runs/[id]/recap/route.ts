@@ -29,7 +29,7 @@ import { deriveWin } from '@/lib/coach/run-win';
 import { mapWatchPhases } from '@/lib/coach/run-state';
 import { deriveReadingScopes } from '@/lib/coach/reading-scope';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
-import { reconcileRun } from '@/lib/runs/coherence';
+import { reconcileRun, runCadenceSpm } from '@/lib/runs/coherence';
 import { rowOrNull } from '@/lib/db/read';
 import { runAvgHr, runMaxHr, runElevGainFt, type RunData } from '@/lib/runs/run-shape';
 import { loadRunTwins, resolveElevationGain } from '@/lib/runs/twins';
@@ -461,7 +461,9 @@ export async function GET(
   const readings = deriveReadingScopes({
     phases: mapWatchPhases(Array.isArray(data.phases) ? data.phases : []),
     wholeHrBpm: actualAvgHr,
-    wholeCadenceSpm: typeof data.avgCadence === 'number' ? data.avgCadence : null,
+    // BOTH FEET · `cadence.units-split`. The raw key is a per-leg count on the
+    // pre-May-2026 Strava imports and the recap read it as a step rate.
+    wholeCadenceSpm: runCadenceSpm(data)?.spm ?? null,
   });
 
   const recap = deriveRecap({

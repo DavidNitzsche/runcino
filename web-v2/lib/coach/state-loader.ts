@@ -13,6 +13,8 @@ import { computeAcwr } from './acwr';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { loadBiologicalSex } from '@/lib/coach/biological-sex';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runCadenceSpm } from '@/lib/runs/coherence';
+import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 
 export async function loadCoachState(userId: string): Promise<CoachState> {
   // 2026-06-03 · runner TZ instead of the old UTC-minus-7-hour Pacific
@@ -52,7 +54,8 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
         pace: r.avgPaceMinPerMi || r.pace || null,
         timeMoving: r.timeMoving || r.duration || null,
         hr: Number(r.avgHr) || null,
-        cadence: Number(r.avgCadence) || null,
+        // BOTH FEET · see `cadence.units-split` in lib/runs/derived-registry.ts.
+        cadence: runCadenceSpm(r)?.spm ?? null,
         tempF: Number(r.tempF) || null,
         name: r.name || null,
       }
@@ -293,13 +296,14 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // would return null once the 60d window slides past that date). Pattern
   // mirrors health-state.ts run_cadence / hk_cadence COALESCE.
   const cad = (await pool.query(
+    // BOTH FEET · see lib/runs/coherence.ts section 8. The 130-220 band this
+    // replaces hid the per-leg rows rather than converting them.
     `WITH run_cadence AS (
-       SELECT AVG((data->>'avgCadence')::numeric)::numeric AS avg
+       SELECT AVG(${runCadenceSpmSql()})::numeric AS avg
          FROM runs
         WHERE user_uuid = $1::uuid
           AND NOT (data ? 'mergedIntoId')
-          AND data->>'avgCadence' IS NOT NULL
-          AND (data->>'avgCadence')::numeric BETWEEN 130 AND 220
+          AND ${runCadenceSpmSql()} IS NOT NULL
           AND (data->>'date')::date >= ($2::date - interval '60 days')
      ),
      hk_cadence AS (
