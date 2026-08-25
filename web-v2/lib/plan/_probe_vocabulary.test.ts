@@ -54,12 +54,23 @@ const MARATHON: SimInputs = {
   bestRecentVdotOverride: 52,
 } as unknown as SimInputs;
 
-/** The same runner, on the half build whose vocabulary is the counter-example. */
+/**
+ * The same runner on a HALF build — the counter-example.
+ *
+ * His AFC half prescribed 63 tempo sessions, 63 threshold, 4 intervals and one
+ * tune-up across the block: two pace families doing all the work. The question
+ * this arm answers is whether the engine would author that shape again.
+ *
+ * The race sits twelve weeks out rather than fourteen because a half's build
+ * window is shorter than a marathon's: at fourteen weeks `pickPlanMode` holds
+ * the runner in MAINTENANCE until the window opens, and a one-week hold block
+ * measures nothing.
+ */
 const HALF: SimInputs = {
   ...MARATHON,
   distance: 'half',
-  raceDateISO: '2026-12-06',
-  planWeeks: 14,
+  raceDateISO: '2026-11-22',
+  planWeeks: 12,
   goalTimeSec: 5100,
 } as unknown as SimInputs;
 
