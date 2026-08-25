@@ -396,6 +396,10 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'A GATE. The conservation laws — distance in equals distance out, a pace equals its own surface\'s time over its own distance, splits sum to the run. Consulted by _run_conservation.test.ts, never at runtime. Same shape as the doctrine registry.',
   'web-v2/lib/conservation/shapes.ts':
     'Test fixtures for the conservation harness. Fourteen run shapes derived from a read-only census of the live table on 2026-08-24, including the 2026-08-23 row verbatim. Test-only is correct.',
+  'web-v2/lib/postrun-siege/shapes.ts':
+    'Test fixtures for the post-run siege. Forty-odd hostile row shapes — zero splits, a hundred, reversed, duplicated mile numbers, a mile numbered 0, splits summing to twice and to a tenth of the run, moving time exceeding elapsed, a 3-second run, HR of 0 and of 250, zone shares summing to 0/99/140 — each carrying the ingest that produces it. Test-only is correct; it also carries the MIN_SHAPES floor so the catalogue cannot quietly shrink.',
+  'web-v2/lib/postrun-siege/invariants.ts':
+    'A GATE. What a post-run surface may say about a run: no debug token in prose, no distance larger than the row carries, the headline triple multiplies out, a zone distribution sums to exactly 100 or is refused, a climb marked measured came from an instrument. Deliberately a separate module from the test so _controls.test.ts can feed each check a PLANTED fabrication — a checker that cannot catch a planted lie cannot be trusted to catch a real one.',
   'web-v2/lib/conservation/surfaces.ts':
     'A GATE. Reads one run the way each screen reads it, through the real composers where a pure seam exists. Test-only is correct; wiring it would make the harness part of the thing it measures.',
   'web-v2/lib/faff/personas.ts':

@@ -57,6 +57,9 @@ import { bestRecentVdot } from '@/lib/training/vdot';
 import { resolveFitness } from '@/lib/fitness/fitness-model';
 import { buildFitnessRow } from '@/lib/faff/fitness-read';
 import { reconcileHrZones, coherentPace, coherentDurationSec } from '@/lib/runs/coherence';
+// `runAvgHr` / `runMaxHr` bound a reading to something a heart can do. Reading
+// `data.avgHr` raw passes a sensor sentinel straight into the recap's prose.
+import { runAvgHr, runMaxHr } from '@/lib/runs/run-shape';
 import {
   composeV5Today,
   type V5TodayContext,
@@ -794,6 +797,55 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         ? zoneTable.zones.map((z) => ({ label: z.shortLabel, lower: z.lower, upper: z.upper }))
         : [];
 
+      /* ── THE SAME RUN MAY NOT TELL TWO STORIES (2026-08-24) ───────────────
+       *
+       * This block and `app/api/runs/[id]/recap/route.ts` both call
+       * `deriveRecap` on the same row, and they were assembling its input four
+       * different ways. One runner, one run, the phone and the web open side
+       * by side, and each of these was a sentence that differed:
+       *
+       *  · SPLITS, UNRELIABLE. The recap route drops the array when the row
+       *    carries `splits_unreliable` — the flag pause events set when the
+       *    split TIMES no longer sum to the run's duration. This route fed
+       *    them in regardless, and `detectPaceFade` reads exactly those times.
+       *    Eleven canonical rows carry the flag with a splits array: on every
+       *    one of them the phone could print "the last third was about Ns/mi
+       *    slower" off timestamps the ingest already declared unusable.
+       *
+       *  · SPLITS, WHICH ARRAY. `splitChoice` above picks the array that
+       *    decomposes the run, and on 26 of 71 merged runs that is an absorbed
+       *    twin's rather than the canonical's. The map drew the twin's miles
+       *    and the prose underneath read the canonical's — one screen, two
+       *    arrays, and the recap's was the poorer of the two by construction.
+       *
+       *  · HEART RATE. `Number(data.avgHr)` passes a sentinel straight into
+       *    prose. `runAvgHr` is the reader that bounds it to something a heart
+       *    can do; the recap route has used it all along.
+       *
+       *  · WEATHER. Handing `null` here is not "no weather", it is "do not
+       *    look" — and the branch it silences is the one that decides WHY the
+       *    heart rate climbed. With weather the recap says a hot day explains
+       *    the drift; without it, the same run on the same day tells the
+       *    runner to eat earlier and drink more. The row carries `data.weather`
+       *    and this route was already reading it two lines below for nothing.
+       */
+      const splitsForRecap = data.splits_unreliable !== true && splitChoice
+        ? (splitChoice.splits as Parameters<typeof deriveRecap>[0]['splits'])
+        : undefined;
+
+      const recapWeather = data.weather ? {
+        tempF: typeof data.weather.temp_f === 'number' ? data.weather.temp_f
+          : (typeof data.tempF === 'number' ? data.tempF : null),
+        tempF_start: typeof data.weather.temp_f_start === 'number' ? data.weather.temp_f_start : null,
+        tempF_end: typeof data.weather.temp_f_end === 'number' ? data.weather.temp_f_end : null,
+        tempF_peak: typeof data.weather.temp_f_peak === 'number' ? data.weather.temp_f_peak : null,
+        humidityPct: typeof data.weather.humidity_pct === 'number' ? data.weather.humidity_pct : null,
+        windMph: typeof data.weather.wind_mph === 'number' ? data.weather.wind_mph : null,
+        conditions: typeof data.weather.conditions === 'string' ? data.weather.conditions : null,
+        cloudCoverPct: typeof data.weather.cloud_cover_pct === 'number' ? data.weather.cloud_cover_pct : null,
+        durationS: durationSec,
+      } : null;
+
       const recap = deriveRecap({
         type: purposeType, phase: purposePhase,
         plannedMi: todayPlan?.distanceMi ?? 0,
@@ -802,10 +854,10 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         actualMi: distanceMi,
         actualPaceSPerMi: paceSPerMi,
         actualDurationSec: durationSec,
-        actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
-        actualMaxHr: data.maxHr != null ? Number(data.maxHr) : null,
-        splits: Array.isArray(data.splits) ? data.splits : undefined,
-        weather: null,
+        actualAvgHr: runAvgHr(data),
+        actualMaxHr: runMaxHr(data),
+        splits: splitsForRecap,
+        weather: recapWeather,
         terrain: null,
       });
 
@@ -858,10 +910,13 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           plannedHrCap: askedHrCap,
           actualMi: distanceMi,
           actualPaceSPerMi: paceSPerMi,
-          actualAvgHr: data.avgHr != null ? Number(data.avgHr) : null,
-          splits: Array.isArray(data.splits) ? data.splits : undefined,
+          // Same four reads as the recap above, for the same reason: the win
+          // line and the recap sit one under the other on the phone, and they
+          // may not be judging different splits under different weather.
+          actualAvgHr: runAvgHr(data),
+          splits: splitsForRecap,
           verdict: recap.verdict,
-          weather: null,
+          weather: recapWeather,
           indoor,
           source: typeof data.source === 'string' ? data.source : undefined,
           phases: completionPhases.length > 0
