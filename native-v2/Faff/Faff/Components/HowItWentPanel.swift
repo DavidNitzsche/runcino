@@ -587,14 +587,31 @@ private struct AerobicStampPanel: View {
     @ViewBuilder
     private var signature: some View {
         if let avg = detail?.hr_avg {
-            let lthrish = 162
-            let delta = avg - lthrish
-            let tone: HIWTone = abs(delta) <= 10 ? .good : (delta < 0 ? .good : .warn)
+            /* ── "VS THRESHOLD" MEANS THE RUNNER'S THRESHOLD ──────────────────
+             *
+             * `let lthrish = 162` stood here. Not a placeholder that never
+             * shipped — it was drawn on every run, for every runner, under a
+             * label that names a physiological quantity. A runner whose real
+             * threshold is 148 was told a 152 bpm easy run sat 10 under it.
+             *
+             * The wire has carried the real figure all along:
+             * `hr_zones_from_lthr.lthr`, resolved server-side by
+             * `resolveThresholdHr` from the stored profile.
+             *
+             * When it is ABSENT — a genuine cold start, no threshold
+             * established — the delta is dropped and the reading stands
+             * alone. That is rule three: a refusal is a correct answer, and
+             * "your average was 139 bpm" with nothing beside it is true,
+             * while "+/-N vs threshold" against a number invented for someone
+             * else is not. The value the runner came for is still on screen. */
+            let threshold = detail?.hr_zones_from_lthr?.lthr
+            let delta = threshold.map { avg - $0 }
+            let tone: HIWTone = delta.map { abs($0) <= 10 ? .good : ($0 < 0 ? .good : .warn) } ?? .neutral
             HowItWentSignature(
                 label: "AVG HR",
                 value: "\(avg)",
                 valueUnit: "bpm",
-                delta: "\(delta >= 0 ? "+" : "")\(delta) vs threshold",
+                delta: delta.map { "\($0 >= 0 ? "+" : "")\($0) vs threshold" },
                 deltaTone: tone,
                 onMesh: onMesh
             )
