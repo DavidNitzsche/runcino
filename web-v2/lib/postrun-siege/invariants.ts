@@ -155,14 +155,26 @@ export function checkZoneShares(
 export function checkZoneTableTiles(t: ZoneTable): Violation[] {
   const out: Violation[] = [];
   const z = t.zones;
+  // THE FIRST FLOOR AND THE LAST CEILING ARE NULL ON PURPOSE.
+  //
+  // Friel's Z1 is "< 85% of LTHR" and his top zone is "> 106%" — both open.
+  // They used to be written as 0 and 1.10 x LTHR, which is why a rep finish at
+  // 182 fell off the top of the table and why every running heart rate sat
+  // near the top of a 138-wide Z1. A null bound is the honest shape, so this
+  // check must not treat it as a gap.
   for (let i = 1; i < z.length; i++) {
-    if (z[i].lower !== z[i - 1].upper + 1) {
-      out.push(`${z[i - 1].shortLabel} ends at ${z[i - 1].upper} and ${z[i].shortLabel} ` +
-               `starts at ${z[i].lower} · ${z[i].lower > z[i - 1].upper + 1 ? 'gap' : 'overlap'}`);
+    const prevHi = z[i - 1].upper;
+    const lo = z[i].lower;
+    if (prevHi == null || lo == null) continue;   // an open edge is not a seam
+    if (lo !== prevHi + 1) {
+      out.push(`${z[i - 1].shortLabel} ends at ${prevHi} and ${z[i].shortLabel} ` +
+               `starts at ${lo} · ${lo > prevHi + 1 ? 'gap' : 'overlap'}`);
     }
   }
   for (const band of z) {
-    if (band.upper < band.lower) out.push(`${band.shortLabel} runs ${band.lower}-${band.upper}`);
+    if (band.upper != null && band.lower != null && band.upper < band.lower) {
+      out.push(`${band.shortLabel} runs ${band.lower}-${band.upper}`);
+    }
   }
   return out;
 }

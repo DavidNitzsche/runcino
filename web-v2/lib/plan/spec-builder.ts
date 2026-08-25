@@ -47,7 +47,7 @@ import {
 // `lib/plan/catalogue-rx.ts#anchorsFor` also reads — so the zones the catalogue
 // is allowed to anchor and the zones this file can pace cannot diverge.
 import { resolveZoneAnchors, zonePaceSec } from './zone-anchors';
-import { lthrZones } from '@/lib/training/zones';
+import { aerobicCeilingBpm } from '@/lib/training/zones';
 import type { PaceZone } from '@/lib/workout-catalogue/types';
 // 2026-08-17 · the stored race abort CALLS doctrine now instead of mirroring
 // its numbers. See the contingency-rules block for what "keep in sync" cost.
@@ -193,15 +193,10 @@ export interface SpecBuildResult {
  * this aligns the plan generator with the watch app · single doctrine.
  */
 export function hrCapEasy(lthr: number | null, maxHr: number | null = null): number | null {
-  // 2026-08-24 · READ FROM THE TABLE, not re-derived from 0.89.
-  //
-  // `HR.easy-run-ceiling` says in as many words that the prescription side and
-  // the judgement side use the SAME ceiling, and it is the Friel Z2 upper.
-  // Both sides used to spell that as their own `Math.round(anchor * 0.89)`,
-  // which is two definitions of one boundary — they agreed until the zone
-  // bands were tiled to close the gaps between them, and then the plan asked
-  // for one number while the recap graded against another.
-  const lthrCap = lthr ? lthrZones(lthr).zones[1].upper : null;
+  // ZONE-BANDS-1 · one derivation of the Friel Z2 ceiling, shared with
+  // `judgeEasyRunHr` and the watch builder. The hand-written 0.89 gave 144 at
+  // LTHR 162; the band's real top is 145.
+  const lthrCap = lthr ? aerobicCeilingBpm(lthr) : null;
   const maxHrCap = maxHr ? Math.round(maxHr * 0.78) : null;
   if (lthrCap == null && maxHrCap == null) return null;
   if (lthrCap == null) return maxHrCap;

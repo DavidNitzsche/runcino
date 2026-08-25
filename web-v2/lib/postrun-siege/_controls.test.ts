@@ -29,6 +29,10 @@ const table = (bands: Array<[number, number]>): ZoneTable => ({
   citation: 'control',
   zones: bands.map(([lower, upper], i) => ({
     idx: i + 1, label: `Z${i + 1}`, shortLabel: `Z${i + 1}`, lower, upper, purpose: '',
+    // The percent edges the band was derived FROM. A control table states them
+    // so it is the same shape as a real one — a fixture that omits a field the
+    // production type carries tests a type nothing produces.
+    loPct: 0, hiPct: 0,
   })),
 });
 

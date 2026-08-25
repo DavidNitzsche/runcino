@@ -22,8 +22,23 @@ export interface HRZone {
   idx: number;            // 1..5 for %MHR, 1..7 for Friel (5a/5b/5c → 5,6,7)
   label: string;          // "Recovery", "Aerobic", "Tempo", etc.
   shortLabel: string;     // "Z1", "Z2", "Z3"
-  lower: number;          // bpm
-  upper: number;          // bpm
+  /** Inclusive bpm floor · NULL when the band is open below. Friel's zone 1
+   *  is "< 85% LTHR" and has no floor; writing 0 there was a claim that
+   *  0 bpm is a recovery heart rate, and consumers believed it (the web run
+   *  detail drew its HR scale from 0, and the phone's route-map ramp put a
+   *  128 bpm mile 93% of the way up a 138-wide band and painted it Z2). */
+  lower: number | null;
+  /** Inclusive bpm ceiling · NULL when the band is open above. Friel's 5c is
+   *  "> 106% LTHR" and has no ceiling; the old 1.10 × LTHR cap put a hard
+   *  rep finish outside every band. */
+  upper: number | null;
+  /** The band's floor as a fraction of the anchor · NULL when open below.
+   *  This is the doctrine number; `lower` is derived from it. */
+  loPct: number | null;
+  /** The band's ceiling as a fraction of the anchor, EXCLUSIVE · NULL when
+   *  open above. The next band starts exactly here, which is what makes the
+   *  bpm edges tile with no hole and no overlap. */
+  hiPct: number | null;
   purpose: string;        // human-readable purpose
 }
 
@@ -35,61 +50,134 @@ export interface ZoneTable {
   note?: string;          // e.g. "estimated from your half-marathon avg HR"
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * THE BANDS MUST TILE (2026-08-24)
- *
- * Every table below used to compute `lower` and `upper` INDEPENDENTLY, from
- * the two fractions the doctrine row prints. Two independent roundings of two
- * adjacent fractions do not meet, and at LTHR 162 they did not:
- *
- *     Z1  0–138    Z2  138–144    Z3  146–152    Z4  154–160    Z5  162–178
- *          ↑ 138 is in TWO zones        ↑ 145, 153 and 161 are in NONE
- *
- * Both halves reach the runner. 138 resolves to Z1 because `.find()` returns
- * the first match, so a heart rate at 85.2% of threshold — Z2 by the doctrine
- * table's own words — is charted as Recovery. And 145 matched nothing at all,
- * which two separate `classify` helpers papered over by snapping to the
- * nearest band MIDPOINT. The phone is handed the band table as a legend and
- * the shares as a chart, on one screen: it printed "Z2 138–144" beside a Z2
- * bar holding time spent at 145.
- *
- * The fix is to read the doctrine table the way it is written. `2 Aerobic /
- * Endurance | 85–89%` and `3 Tempo | 90–94%` are not two closed intervals
- * with a hole between them; they are consecutive bands, and 89.5% is in the
- * second one. So each zone's FLOOR stays exactly where doctrine puts it —
- * 85%, 90%, 95%, 100% of LTHR are the meaningful physiological entry points
- * and every one of them is unchanged — and each CEILING becomes the next
- * floor minus one beat. The top zone keeps its own published ceiling.
- *
- * Arithmetic, not a new claim: no fraction moved. `HR.friel-lthr-zones`,
- * `HR.lthr-five-zone-collapse` and `HR.pct-hrmax-zones` all check ceilings to
- * ±1 bpm and all still pass, because adjacent doctrine fractions differ by
- * exactly one percentage point and `computeZones` only admits an LTHR under
- * 210 — where one point is always 1 or 2 beats.
- * ═══════════════════════════════════════════════════════════════════════ */
+// ── Band arithmetic ──────────────────────────────────────────────────────
 
 /**
- * Turn a list of floor fractions plus one final ceiling into bands that tile:
- * contiguous, non-overlapping, covering every integer bpm from 0 upward.
+ * ZONE-BANDS-1 (2026-08-24) · turn a list of percent EDGES into bpm bands.
  *
- * `floors[0]` is the bottom zone's floor and is expected to be 0 — a heart
- * rate below the first real threshold is still Recovery, not nothing.
+ * The old code rounded each band's two percent bounds to bpm independently:
+ *
+ *     Z2 = round(0.85 × lthr) … round(0.89 × lthr)
+ *     Z3 = round(0.90 × lthr) … round(0.94 × lthr)
+ *
+ * At LTHR 162 that is Z2 138…144 and Z3 146…152, so 145 belonged to no zone
+ * at all, and 153 and 161 likewise. Z1's ceiling (round(0.85 × lthr) = 138)
+ * collided with Z2's floor, so 138 belonged to two. Four faults from one
+ * mistake: a band is not two independently-rounded numbers, it is the gap
+ * between two EDGES, and the edges are shared.
+ *
+ * So: bucket in percent space, derive bpm from that. Given ordered fractions
+ * e₁ < e₂ < … < eₙ, the bands are
+ *
+ *     (−∞, e₁)  [e₁, e₂)  …  [eₙ₋₁, eₙ)  [eₙ, +∞)
+ *
+ * and a bpm b sits in [eₖ, eₖ₊₁) exactly when anchor·eₖ ≤ b < anchor·eₖ₊₁.
+ * The least integer bpm in that band is therefore `ceil(anchor × eₖ)`, and
+ * the greatest is `ceil(anchor × eₖ₊₁) − 1`. Every integer bpm lands in
+ * exactly one band, and each band's ceiling is the next one's floor minus
+ * one. No hole, no overlap, by construction rather than by luck.
+ *
+ * `openLow` says whether there is a band BELOW the first edge. Friel has one
+ * ("< 85% LTHR"); the ACSM %HRmax table starts at its first edge (50%).
+ *
+ * Every table is open ABOVE. Friel says so outright ("5c: > 106%"). The ACSM
+ * table appears to close at 100%, but that 100% is the DEFINITION of HRmax
+ * rather than a band edge, and this app's HRmax is frequently an ESTIMATE
+ * (Tanaka, or the §11 crosswalk) which real efforts routinely exceed. A
+ * reading above it is still the top zone, because there is no zone above it.
+ * `PCT_MAX_ZONE_BANDS` keeps the published pairs verbatim for the claim that
+ * reads them; this is a statement about classification, not about the table.
+ *
+ * Cite: Research/03-heart-rate-zones.md §6 (Friel) and §4 (ACSM). Bound by
+ * `HR.zone-bands-tile-the-line` in lib/doctrine/registry.ts.
  */
-function tiledBands(
+export function bandsFromPctEdges(
   anchorBpm: number,
-  floors: readonly number[],
-  topCeiling: number,
-): Array<{ lower: number; upper: number }> {
-  const lowers = floors.map((f) => Math.round(anchorBpm * f));
-  return lowers.map((lower, i) => ({
-    lower,
-    // The next zone's floor is where this zone stops. One beat below it is
-    // the last beat this zone owns.
-    upper: i + 1 < lowers.length ? lowers[i + 1] - 1 : Math.round(anchorBpm * topCeiling),
-  }));
+  edges: readonly number[],
+  opts: { openLow: boolean },
+): Array<{ lower: number | null; upper: number | null; loPct: number | null; hiPct: number | null }> {
+  const loPcts: Array<number | null> = opts.openLow ? [null, ...edges] : [...edges];
+  // Each band's EXCLUSIVE ceiling is the next band's floor. The top is open.
+  const hiPcts: Array<number | null> = [...loPcts.slice(1), null];
+  const bpmFloor = (pct: number | null) => (pct == null ? null : Math.ceil(anchorBpm * pct));
+  return loPcts.map((loPct, i) => {
+    const hiPct = hiPcts[i] ?? null;
+    const floor = bpmFloor(hiPct);
+    return {
+      lower: bpmFloor(loPct),
+      // Inclusive ceiling = the next band's floor − 1. Open above → null.
+      upper: floor == null ? null : floor - 1,
+      loPct,
+      hiPct,
+    };
+  });
+}
+
+/**
+ * Which zone a heart rate belongs to · the ONE classifier.
+ *
+ * Returns the zone's `idx`, or null when there is no table. Total over the
+ * reals: the open bottom band catches everything below, the open top band
+ * everything above, and a closed outer edge clamps rather than dropping the
+ * reading — a heart rate that exceeds an ESTIMATED HRmax is still the top
+ * zone, because there is no zone above it.
+ *
+ * Classifies against the derived integer bpm edges rather than re-deriving
+ * the percent, so the answer always agrees with the band the runner is shown.
+ */
+export function zoneIdxForBpm(bpm: number, table: ZoneTable | null): number | null {
+  if (!table || !table.zones.length || !isFinite(bpm)) return null;
+  for (const z of table.zones) {
+    const lo = z.lower;
+    const hi = z.upper;
+    if (lo != null && bpm < lo) break;          // below this band, and bands ascend
+    if (hi == null || bpm <= hi) return z.idx;  // open top, or inside
+  }
+  // Below the lowest closed floor → the bottom band. Above the highest closed
+  // ceiling → the top band. Both are clamps, not fabrications.
+  return bpm < (table.zones[0].lower ?? -Infinity)
+    ? table.zones[0].idx
+    : table.zones[table.zones.length - 1].idx;
 }
 
 // ── LTHR-based (Friel 7-zone, simplified to 5 for app UI) ────────────────
+
+/**
+ * Friel's percent-of-LTHR EDGES, Research/03 §6's own table.
+ *
+ * The doctrine table publishes whole-percent runs — `< 85`, `85–89`, `90–94`,
+ * `95–99`, `100–102`, `103–106`, `> 106` — which tile the whole percents
+ * exactly. Their continuous extension is therefore half-open at each stated
+ * floor: the row covering whole percents 85…89 is [85%, 90%), because the
+ * next row starts at 90. Read any other way the rows leave gaps at 89.5% and
+ * 94.5% and 99.5%, and gaps are precisely the defect this replaced — the
+ * table's whole point is to cover every heart rate once.
+ *
+ * So the edges are the stated floors, with 5c's floor being 5b's stated
+ * ceiling plus one whole percent. `HR.zone-bands-tile-the-line` re-derives
+ * exactly this list out of the doc at run time rather than trusting it here.
+ */
+export const FRIEL_7_ZONE_EDGES: readonly number[] = [0.85, 0.90, 0.95, 1.00, 1.03, 1.07];
+
+/** The same table with 5a/5b/5c merged · the five-zone view the app shows.
+ *  Zones 1-4 keep the exact Friel edges; Z5 is everything at or above LTHR. */
+export const FRIEL_5_ZONE_EDGES: readonly number[] = [0.85, 0.90, 0.95, 1.00];
+
+/**
+ * The top of Friel Z2 in bpm — the aerobic ceiling an easy run is capped at,
+ * and judged against.
+ *
+ * ZONE-BANDS-1 (2026-08-24) · this existed as `Math.round(lthr * 0.89)`
+ * written out by hand in THREE places (the plan's `hrCapEasy`, the watch's
+ * `build-workout`, and `judgeEasyRunHr`), each of which had to be kept in
+ * step with the zone table by hand and none of which was. `round(0.89 × 162)`
+ * is 144; Z2's real ceiling is 145, because Z3 starts at 90% and 145 is 89.5%
+ * of LTHR. So a run averaging 145 was capped-and-judged as too hard while the
+ * zone bar beside it drew the same beat inside Z2. One derivation now.
+ */
+export function aerobicCeilingBpm(lthr: number): number {
+  return Math.ceil(lthr * FRIEL_5_ZONE_EDGES[1]) - 1;
+}
 
 /** Friel zones, condensed to the 5 most-actionable for marathoners.
  *  We collapse 5a/5b/5c (cruise/VO2/anaerobic) since the in-app coach
@@ -97,42 +185,44 @@ function tiledBands(
  *  Friel split is still available via the `friel7Zones` helper.
  */
 export function lthrZones(lthr: number, _maxHrHint?: number): ZoneTable {
-  const b = tiledBands(lthr, [0, 0.85, 0.90, 0.95, 1.00], 1.10);
+  const b = bandsFromPctEdges(lthr, FRIEL_5_ZONE_EDGES, { openLow: true });
+  const meta = [
+    { idx: 1, label: 'Recovery',  shortLabel: 'Z1',
+      purpose: 'Recovery, walking, true easy days · clear the legs, no stress' },
+    { idx: 2, label: 'Aerobic',   shortLabel: 'Z2',
+      purpose: 'Aerobic base · long runs and the bulk of weekly mileage' },
+    { idx: 3, label: 'Tempo',     shortLabel: 'Z3',
+      purpose: 'Marathon pace, sub-threshold steady efforts' },
+    { idx: 4, label: 'Threshold', shortLabel: 'Z4',
+      purpose: 'Just below LT · cruise intervals, controlled hard' },
+    { idx: 5, label: 'VO2 / Max', shortLabel: 'Z5',
+      purpose: 'At and above LT · short reps, hill repeats, race finishes' },
+  ];
   return {
     method: 'lthr-friel',
     anchor: { label: 'LTHR', bpm: lthr },
     citation: 'Research/03-heart-rate-zones.md §6 (Friel)',
-    zones: [
-      { idx: 1, label: 'Recovery',  shortLabel: 'Z1', ...b[0],
-        purpose: 'Recovery, walking, true easy days · clear the legs, no stress' },
-      { idx: 2, label: 'Aerobic',   shortLabel: 'Z2', ...b[1],
-        purpose: 'Aerobic base · long runs and the bulk of weekly mileage' },
-      { idx: 3, label: 'Tempo',     shortLabel: 'Z3', ...b[2],
-        purpose: 'Marathon pace, sub-threshold steady efforts' },
-      { idx: 4, label: 'Threshold', shortLabel: 'Z4', ...b[3],
-        purpose: 'Just below LT · cruise intervals, controlled hard' },
-      { idx: 5, label: 'VO2 / Max', shortLabel: 'Z5', ...b[4],
-        purpose: 'At and above LT · short reps, hill repeats, race finishes' },
-    ],
+    zones: meta.map((m, i) => ({ ...m, ...b[i] })),
   };
 }
 
 /** Full Joe Friel 7-zone table (5a/5b/5c separated). For runners who want detail. */
 export function friel7Zones(lthr: number): ZoneTable {
-  const b = tiledBands(lthr, [0, 0.85, 0.90, 0.95, 1.00, 1.03, 1.07], 1.15);
+  const b = bandsFromPctEdges(lthr, FRIEL_7_ZONE_EDGES, { openLow: true });
+  const meta = [
+    { idx: 1, label: 'Recovery',          shortLabel: 'Z1',  purpose: 'Recovery / very easy' },
+    { idx: 2, label: 'Aerobic',           shortLabel: 'Z2',  purpose: 'Long-run base' },
+    { idx: 3, label: 'Tempo',             shortLabel: 'Z3',  purpose: 'Sub-LT steady' },
+    { idx: 4, label: 'SubThreshold',      shortLabel: 'Z4',  purpose: 'Just below LT' },
+    { idx: 5, label: 'Threshold',         shortLabel: 'Z5a', purpose: 'At LT, cruise intervals' },
+    { idx: 6, label: 'Aerobic capacity',  shortLabel: 'Z5b', purpose: 'VO2max 3-5 min reps' },
+    { idx: 7, label: 'Anaerobic',         shortLabel: 'Z5c', purpose: 'Short max reps' },
+  ];
   return {
     method: 'lthr-friel',
     anchor: { label: 'LTHR', bpm: lthr },
     citation: 'Research/03-heart-rate-zones.md §6 (Friel 7-zone)',
-    zones: [
-      { idx: 1, label: 'Recovery',          shortLabel: 'Z1',  ...b[0], purpose: 'Recovery / very easy' },
-      { idx: 2, label: 'Aerobic',           shortLabel: 'Z2',  ...b[1], purpose: 'Long-run base' },
-      { idx: 3, label: 'Tempo',             shortLabel: 'Z3',  ...b[2], purpose: 'Sub-LT steady' },
-      { idx: 4, label: 'SubThreshold',      shortLabel: 'Z4',  ...b[3], purpose: 'Just below LT' },
-      { idx: 5, label: 'Threshold',         shortLabel: 'Z5a', ...b[4], purpose: 'At LT, cruise intervals' },
-      { idx: 6, label: 'Aerobic capacity',  shortLabel: 'Z5b', ...b[5], purpose: 'VO2max 3-5 min reps' },
-      { idx: 7, label: 'Anaerobic',         shortLabel: 'Z5c', ...b[6], purpose: 'Short max reps' },
-    ],
+    zones: meta.map((m, i) => ({ ...m, ...b[i] })),
   };
 }
 
@@ -169,31 +259,25 @@ export const PCT_MAX_ZONE_BANDS: readonly (readonly [number, number])[] = [
  * is §4's five-zone ACSM one, and that is what it now cites.
  */
 export function pctMaxZones(maxHr: number): ZoneTable {
-  // Tiled, for the reason above. This table's boundaries are shared outright
-  // — Z1 is 50-60% and Z2 is 60-70%, so 0.60 × HRmax was the ceiling of one
-  // zone and the floor of the next, and every boundary beat resolved to the
-  // LOWER zone. Floors come from `PCT_MAX_ZONE_BANDS` unchanged, Z1's
-  // included: unlike the Friel table this one publishes a real bottom (50% of
-  // HRmax) and `HR.pct-hrmax-zones` checks it. A reading below that is genuine
-  // but outside the doctrine table, and `classify` places it in Z1 without the
-  // table having to claim a band it does not have.
-  const b = tiledBands(maxHr, PCT_MAX_ZONE_BANDS.map((z) => z[0]), 1.00);
+  // The published pairs' floors ARE the edges — 50/60/70/80/90 — because the
+  // table is contiguous already (each row's ceiling is the next row's floor).
+  // That contiguity is exactly what the old two-independent-roundings code
+  // destroyed: at maxHr 190 it emitted Z1 …114 and Z2 114…, so 114 was in two
+  // zones, and the `.find()` that read the table gave it to the lower one.
+  const edges = PCT_MAX_ZONE_BANDS.map(([lo]) => lo);
+  const b = bandsFromPctEdges(maxHr, edges, { openLow: false });
+  const meta = [
+    { idx: 1, label: 'Very Light', shortLabel: 'Z1', purpose: 'Warmup, cooldown, recovery' },
+    { idx: 2, label: 'Aerobic',    shortLabel: 'Z2', purpose: 'Aerobic base, long runs' },
+    { idx: 3, label: 'Moderate',   shortLabel: 'Z3', purpose: 'Marathon pace, steady' },
+    { idx: 4, label: 'Threshold',  shortLabel: 'Z4', purpose: 'Tempo, lactate threshold' },
+    { idx: 5, label: 'Maximum',    shortLabel: 'Z5', purpose: 'VO2 max intervals, short bursts' },
+  ];
   return {
     method: 'pct-mhr',
     anchor: { label: 'MaxHR', bpm: maxHr },
     citation: 'Research/03-heart-rate-zones.md §4 (5-Zone ACSM %HRmax fallback)',
-    zones: [
-      { idx: 1, label: 'Very Light', shortLabel: 'Z1', ...b[0],
-        purpose: 'Warmup, cooldown, recovery' },
-      { idx: 2, label: 'Aerobic',    shortLabel: 'Z2', ...b[1],
-        purpose: 'Aerobic base, long runs' },
-      { idx: 3, label: 'Moderate',   shortLabel: 'Z3', ...b[2],
-        purpose: 'Marathon pace, steady' },
-      { idx: 4, label: 'Threshold',  shortLabel: 'Z4', ...b[3],
-        purpose: 'Tempo, lactate threshold' },
-      { idx: 5, label: 'Maximum',    shortLabel: 'Z5', ...b[4],
-        purpose: 'VO2 max intervals, short bursts' },
-    ],
+    zones: meta.map((m, i) => ({ ...m, ...b[i] })),
   };
 }
 
@@ -264,7 +348,7 @@ export type EasyHrVerdict = 'aerobic' | 'gray-zone' | 'above-threshold';
  * renders the same personalized read.
  *
  * Bands (Friel LTHR zones above · Research/03-heart-rate-zones.md §6):
- *   · aerobic         · avgHr ≤ Z2 upper (0.89 × LTHR) · where easy days belong
+ *   · aerobic         · avgHr ≤ Z2 upper · where easy days belong
  *   · gray-zone       · Z2 upper < avgHr < LTHR · Z3/Z4 — too hard for an
  *                       easy day, but not at threshold
  *   · above-threshold · avgHr ≥ LTHR · a quality effort wearing an easy label
@@ -285,16 +369,7 @@ export function judgeEasyRunHr(args: {
   const heat = Math.max(0, Math.round(args.heatBumpBpm ?? 0));
   if (!isFinite(avgHrBpm) || avgHrBpm < 60 || avgHrBpm > 230) return null;
   if (!isFinite(thresholdBpm) || thresholdBpm <= 100 || thresholdBpm >= 210) return null;
-  // 2026-08-24 · READ FROM THE TABLE, not re-derived from 0.89.
-  //
-  // This line said `Math.round(thresholdBpm * 0.89)` and its own comment said
-  // "Friel Z2 upper" — two definitions of one boundary, which is the shape
-  // this whole layer exists to end. They agreed until the bands were tiled,
-  // and then they did not: Z2's published top is the beat below Z3's floor,
-  // and at LTHR 162 that is 145 while 0.89 rounds to 144. The verdict a
-  // runner reads and the band the same screen prints beside it may not
-  // disagree about where easy stops.
-  const easyCeilingBpm = lthrZones(thresholdBpm).zones[1].upper + heat;
+  const easyCeilingBpm = aerobicCeilingBpm(thresholdBpm) + heat;
   const effectiveThreshold = thresholdBpm + heat;
   const verdict: EasyHrVerdict =
     avgHrBpm <= easyCeilingBpm ? 'aerobic'

@@ -1,0 +1,481 @@
+{
+  "takenAt": "2026-08-25T04:09:39.576Z",
+  "note": "ZONE-BANDS-1 · pre-recompute values of runs.data.hrZonePcts. Restore with scripts/_restore_hr_zone_pcts.sql.",
+  "rows": [
+    {
+      "runId": "-4100288002784906",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-19",
+      "source": "apple_watch",
+      "hrZonePcts": {
+        "z1": 0,
+        "z2": 0,
+        "z3": 0,
+        "z4": 0,
+        "z5": 0
+      }
+    },
+    {
+      "runId": "-3363396946462586",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-20",
+      "source": "apple_watch",
+      "hrZonePcts": {
+        "z1": 0,
+        "z2": 0,
+        "z3": 0,
+        "z4": 0,
+        "z5": 0
+      }
+    },
+    {
+      "runId": "-1109157298233570",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-21",
+      "source": "apple_watch",
+      "hrZonePcts": {
+        "z1": 0,
+        "z2": 0,
+        "z3": 0,
+        "z4": 0,
+        "z5": 0
+      }
+    },
+    {
+      "runId": "-514138731845836",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-21",
+      "source": "apple_watch",
+      "hrZonePcts": {
+        "z1": 0,
+        "z2": 0,
+        "z3": 0,
+        "z4": 0,
+        "z5": 0
+      }
+    },
+    {
+      "runId": "-2818378315677006",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-22",
+      "source": "apple_watch",
+      "hrZonePcts": {
+        "z1": 0,
+        "z2": 0,
+        "z3": 0,
+        "z4": 0,
+        "z5": 0
+      }
+    },
+    {
+      "runId": "-1135018536585133",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-24",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2045716995500221",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-24",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-4466990534547521",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-25",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-573194905917117",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-26",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2660106955895943",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-27",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1176022801177594",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-29",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1466010895152803",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-05-31",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2987651096082307",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-01",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-3558250452245243",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-02",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-3858000542489904",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-03",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1483290537416636",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-04",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2142575830045023",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-05",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-977449062696924",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-08",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-227867093947909",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-09",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-763298079097609",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-10",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-140999945150690",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-11",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-4103293651232813",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-14",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1379097925561833",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-15",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-3524810659692108",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-16",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-689529591569685",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-17",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1290175639974807",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-18",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2879891908180737",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-19",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-386311530097203",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-21",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1311970832226386",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-23",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-3813725101122266",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-25",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-4086538471561527",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-06-27",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2431764854705885",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-06",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1627162702297366",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-07",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-3584691068430173",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-08",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1155398071665602",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-09",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-639306516579527",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-10",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2556438566943676",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-12",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1816044660127688",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-13",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-4269086812782646",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-14",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2610551602554450",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-16",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2267175060297633",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-17",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-4443179353638217",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-20",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2237410597692427",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-21",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2128080027856960",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-22",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-375579766909448",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-07-25",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2702777794856273",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-01",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1950595132467743",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-01",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-3807709883889447",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-01",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-3393139793149075",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-03",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2262505561379993",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-05",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1044354498526307",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-07",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-1995827603096484",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-09",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2876070262105625",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-10",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-842621496543787",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-11",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-2101149874800974",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-16",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-216056293577712",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-21",
+      "source": "watch",
+      "hrZonePcts": {
+        "z1": 11,
+        "z2": 7,
+        "z3": 21,
+        "z4": 17,
+        "z5": 44
+      }
+    },
+    {
+      "runId": "-1417336841756979",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-21",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-3850571487038434",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-23",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    },
+    {
+      "runId": "-55341764239083",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-23",
+      "source": "watch",
+      "hrZonePcts": {
+        "z1": 15,
+        "z2": 37,
+        "z3": 21,
+        "z4": 12,
+        "z5": 14
+      }
+    },
+    {
+      "runId": "-220066891328078",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-24",
+      "source": "watch",
+      "hrZonePcts": {
+        "z1": 37,
+        "z2": 42,
+        "z3": 17,
+        "z4": 4,
+        "z5": 0
+      }
+    },
+    {
+      "runId": "-4431053414610308",
+      "userEmail": "dnitch85@me.com",
+      "date": "2026-08-24",
+      "source": "apple_watch",
+      "hrZonePcts": null
+    }
+  ]
+}

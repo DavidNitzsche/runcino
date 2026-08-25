@@ -5,19 +5,16 @@
  * Doctrine: Research/03-heart-rate-zones.md §6 (Friel zones) +
  * Research/06-weather-adjustments.md §1 (heat HR bump).
  *
- * 2026-08-24 · the ceiling moved by one beat, from 144 to 145 at LTHR 162,
- * and the number below is no longer written down twice. The Friel bands used
- * to compute each zone's floor and ceiling from two independent roundings, so
- * Z2 ended at 144 while Z3 began at 146 and no zone owned 145. The bands now
- * tile — a zone stops one beat below where the next one starts — and
- * `judgeEasyRunHr` reads Z2's published top rather than re-deriving 0.89.
- *
- * The runner-visible effect is exactly this: an easy run averaging 145 at
- * LTHR 162 used to be graded gray-zone by a ceiling of 144 while the zone
- * chart on the same screen showed that beat inside Z2.
+ * ZONE-BANDS-1 (2026-08-24) · the ceiling moved 144 → 145 at LTHR 162, and
+ * that is the fix rather than a side effect. Z2 is "85-89% LTHR" and Z3 is
+ * "90-94%", so the band runs up to but not including 90% of LTHR; 145 is
+ * 89.5%, inside Z2. The old `round(0.89 × 162)` computed a different thing —
+ * where 89% lands, not where the band ends — and landed one beat low, so a
+ * run averaging exactly 145 was called gray-zone while the zone bar beside it
+ * drew the same beat inside Z2.
  */
 import { describe, it, expect } from 'vitest';
-import { judgeEasyRunHr, lthrZones, computeZones } from './zones';
+import { computeZones, friel7Zones, judgeEasyRunHr, lthrZones, pctMaxZones, zoneIdxForBpm } from './zones';
 
 describe('judgeEasyRunHr', () => {
   it('aerobic · easy run under the Z2 ceiling', () => {
@@ -86,11 +83,20 @@ describe('judgeEasyRunHr', () => {
     // Recovery.
     for (const lthr of [110, 140, 150, 162, 175, 190, 205]) {
       const zones = lthrZones(lthr).zones;
+      // Interior seams tile exactly; the two outer edges are OPEN, which is
+      // what Friel's "< 85%" and "> 106%" actually say. Asserting a zero floor
+      // was the old bug written down as a test.
       for (let i = 1; i < zones.length; i++) {
-        expect(zones[i].lower).toBe(zones[i - 1].upper + 1);
+        const prevHi = zones[i - 1].upper;
+        const lo = zones[i].lower;
+        if (prevHi == null || lo == null) continue;
+        expect(lo).toBe(prevHi + 1);
       }
-      expect(zones[0].lower).toBe(0);
-      for (const z of zones) expect(z.upper).toBeGreaterThanOrEqual(z.lower);
+      expect(zones[0].lower).toBeNull();
+      expect(zones[zones.length - 1].upper).toBeNull();
+      for (const z of zones) {
+        if (z.upper != null && z.lower != null) expect(z.upper).toBeGreaterThanOrEqual(z.lower);
+      }
     }
   });
 });
@@ -100,5 +106,109 @@ describe('computeZones bounds (unchanged · guards the resolver gates)', () => {
     expect(computeZones({ lthr: 162 })!.method).toBe('lthr-friel');
     expect(computeZones({ lthr: 90 })).toBeNull();
     expect(computeZones({ maxHr: 190 })!.method).toBe('pct-mhr');
+  });
+});
+
+/**
+ * ZONE-BANDS-1 (2026-08-24) · the bands themselves.
+ *
+ * Four faults, one mistake: the old code rounded each band's two percent
+ * bounds to bpm independently, so adjacent bands were derived from different
+ * arithmetic and stopped meeting. At LTHR 162 that produced
+ *
+ *   Z1 0..138   Z2 138..144   Z3 146..152   Z4 154..160   Z5 162..178
+ *
+ * — 145, 153 and 161 in no zone, 138 in two, a zone 1 floored at 0 bpm (which
+ * made every running heart rate sit near the top of a 138-wide band, so the
+ * route map's ramp put 128 bpm at 0.93 and painted a Z1 mile Z2), and a top
+ * capped at 1.10 x LTHR while Friel's 5c is unbounded.
+ */
+describe('ZONE-BANDS-1 · the bands tile the line', () => {
+  const T = lthrZones(162);
+  const band = (idx: number) => T.zones.find((z) => z.idx === idx)!;
+
+  it('the exact bands at LTHR 162 · the numbers on the tile', () => {
+    expect(T.zones.map((z) => [z.lower, z.upper])).toEqual([
+      [null, 137],   // Z1 · open below · Friel says "< 85%", not "0 bpm and up"
+      [138, 145],
+      [146, 153],
+      [154, 161],
+      [162, null],   // Z5 · open above · a 182 bpm rep finish is still Z5
+    ]);
+  });
+
+  it('the three integers that belonged to no zone now belong to one', () => {
+    expect(zoneIdxForBpm(145, T)).toBe(2);
+    expect(zoneIdxForBpm(153, T)).toBe(3);
+    expect(zoneIdxForBpm(161, T)).toBe(4);
+  });
+
+  it('138 belonged to two zones · it is Z2, because 85.2% of LTHR is Z2', () => {
+    // The old `.find()` returned the first band containing it, which was Z1's
+    // ceiling. A whole year of easy runs read one beat of Recovery too many.
+    expect(zoneIdxForBpm(138, T)).toBe(2);
+    expect(zoneIdxForBpm(137, T)).toBe(1);
+  });
+
+  it('a hard rep finish above 1.10 x LTHR is still Z5, not off the table', () => {
+    expect(zoneIdxForBpm(179, T)).toBe(5);
+    expect(zoneIdxForBpm(182, T)).toBe(5);
+    expect(zoneIdxForBpm(205, T)).toBe(5);
+    expect(band(5).upper).toBeNull();
+  });
+
+  it('zone 1 is open below · no consumer may read a floor of 0 bpm off it', () => {
+    expect(band(1).lower).toBeNull();
+    expect(zoneIdxForBpm(80, T)).toBe(1);
+  });
+
+  it('every integer bpm lands in exactly one band, across every plausible LTHR', () => {
+    for (const lthr of [120, 140, 162, 171, 185, 205]) {
+      for (const table of [lthrZones(lthr), friel7Zones(lthr), pctMaxZones(lthr + 20)]) {
+        for (let bpm = 30; bpm <= 240; bpm++) {
+          const hits = table.zones.filter(
+            (z) => (z.lower == null || bpm >= z.lower) && (z.upper == null || bpm <= z.upper),
+          );
+          // pctMaxZones is closed below (the ACSM table states a 50% floor),
+          // so readings under it hit nothing and are CLAMPED to zone 1.
+          expect(hits.length, `LTHR ${lthr} · ${bpm} bpm · ${table.method}`).toBeLessThanOrEqual(1);
+          expect(zoneIdxForBpm(bpm, table), `LTHR ${lthr} · ${bpm} bpm`).not.toBeNull();
+        }
+        // Contiguity: each band starts one beat above the last.
+        for (let i = 0; i + 1 < table.zones.length; i++) {
+          expect(table.zones[i].upper! + 1, `${table.method} @ ${lthr} · Z${i + 1}/Z${i + 2}`)
+            .toBe(table.zones[i + 1].lower);
+        }
+      }
+    }
+  });
+
+  it('the seven-zone table splits Z5 without moving zones 1-4', () => {
+    const seven = friel7Zones(162).zones;
+    expect(seven.map((z) => [z.lower, z.upper])).toEqual([
+      [null, 137], [138, 145], [146, 153], [154, 161],
+      [162, 166],  // 5a · 100-102%
+      [167, 173],  // 5b · 103-106%
+      [174, null], // 5c · "> 106%", unbounded
+    ]);
+    for (let i = 0; i < 4; i++) {
+      expect([seven[i].lower, seven[i].upper]).toEqual([T.zones[i].lower, T.zones[i].upper]);
+    }
+  });
+
+  it('%HRmax bands stop overlapping too · 114 was in Z1 and Z2 at maxHr 190', () => {
+    const p = pctMaxZones(190);
+    expect(p.zones.map((z) => [z.lower, z.upper])).toEqual([
+      [95, 113], [114, 132], [133, 151], [152, 170], [171, null],
+    ]);
+    expect(zoneIdxForBpm(114, p)).toBe(2);
+    // An effort above an ESTIMATED HRmax is the top zone, not nothing.
+    expect(zoneIdxForBpm(196, p)).toBe(5);
+    // And below the table's stated 50% floor it clamps rather than refusing.
+    expect(zoneIdxForBpm(70, p)).toBe(1);
+  });
+
+  it('no table · no zone. A refusal, not a default to Z1', () => {
+    expect(zoneIdxForBpm(140, null)).toBeNull();
   });
 });

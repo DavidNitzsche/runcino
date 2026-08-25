@@ -669,7 +669,13 @@ export function reciteMe(state: ProfileState): CoachFactBlock {
   // HR ZONES · 5-row table summarized as one fact (rows in `meta`).
   if (state.physiology.zones && state.physiology.zones.zones.length > 0) {
     const zt = state.physiology.zones;
-    const lines = zt.zones.map((z) => `${z.shortLabel} ${z.lower}-${z.upper}`);
+    // ZONE-BANDS-1 · Z1 is open below and the top zone open above, so a bare
+    // `lower-upper` would recite "Z1 -137" and "Z5 162-". Say what the band
+    // actually is.
+    const lines = zt.zones.map((z) =>
+      z.lower == null ? `${z.shortLabel} <${(z.upper ?? 0) + 1}`
+      : z.upper == null ? `${z.shortLabel} ${z.lower}+`
+      : `${z.shortLabel} ${z.lower}-${z.upper}`);
     facts.push({
       label: 'HR ZONES',
       value: `${zt.zones.length} zones · ${zt.anchor.label} ${zt.anchor.bpm}`,

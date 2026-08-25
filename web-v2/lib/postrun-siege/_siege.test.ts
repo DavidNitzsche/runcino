@@ -249,7 +249,10 @@ describe('POST-RUN SIEGE · zone shares and the bands they are drawn against', (
     const t = computeZones({ lthr: 162 })!;
     // 145, 153 and 161 matched no band before the tiling fix. 138 matched two.
     for (const bpm of [138, 145, 153, 161]) {
-      const owners = t.zones.filter((z) => bpm >= z.lower && bpm <= z.upper);
+      // Null is OPEN, not "no bound" — Z1 has no floor and the top zone no
+      // ceiling, so an open edge always contains the beat on that side.
+      const owners = t.zones.filter((z) =>
+        (z.lower == null || bpm >= z.lower) && (z.upper == null || bpm <= z.upper));
       expect(owners.length, `${bpm} bpm at LTHR 162`).toBe(1);
       const share = bucketHrSamplesByZone([{ hrSamples: [{ bpm }] }], t)!;
       const charted = [share.z1, share.z2, share.z3, share.z4, share.z5].findIndex((v) => v === 100) + 1;

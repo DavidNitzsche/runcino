@@ -29,7 +29,15 @@
  *     stored value is missing (covers existing runs ingested
  *     before this fix).
  */
-import type { ZoneTable } from '@/lib/training/zones';
+/* ZONE-BANDS-1 (2026-08-24) · this module used to carry its own `classify`,
+ * which snapped a reading that fell in a GAP between two bands to whichever
+ * band's midpoint was nearest. There are no gaps any more — `zoneIdxForBpm`
+ * is total, because the bands now tile the line — so the snap is deleted
+ * rather than kept as a safety net. A safety net under a hole is how the hole
+ * stayed open: the bucketer looked correct while 138 bpm, claimed by both Z1
+ * and Z2, went to Z1 on a `.find()` that returned the first match. That is
+ * 85.2% of a 162 LTHR — Z2 by doctrine, and read as Recovery for a year. */
+import { zoneIdxForBpm, type ZoneTable } from '@/lib/training/zones';
 
 /* ZONES-SUM-1 (2026-08-24) · the apportionment lives in `lib/runs/coherence.ts`
  * with the rest of the arithmetic that makes a row agree with itself, and is
@@ -60,39 +68,6 @@ export type ZonePcts = {
   z4: number;
   z5: number;
 };
-
-/**
- * Classify one HR reading into a zone idx.
- *
- * Exact match first. The bands TILE as of 2026-08-24 (`tiledBands` in
- * lib/training/zones.ts), so every beat from 0 to the top zone's ceiling has
- * exactly one owner and the exact match is what actually runs. The snap below
- * survives for the only case left — a reading ABOVE the top band, which the
- * doctrine table does not cover — and for any future table that does not tile.
- *
- * It used to carry the gaps: Friel computed each floor and each ceiling from
- * two independent roundings, so at LTHR 162 Z2 ended at 144, Z3 began at 146,
- * and 145 was snapped to the nearest band MIDPOINT while the legend on the
- * same screen showed neither band containing it.
- *
- * EXPORTED so `lib/coach/run-state.ts` stops keeping its own copy. Two
- * implementations of one rule is the defect class this whole layer exists for.
- */
-export function classify(bpm: number, table: ZoneTable): number {
-  const exact = table.zones.find((zz) => bpm >= zz.lower && bpm <= zz.upper);
-  if (exact) return exact.idx;
-  let bestIdx = table.zones[0]?.idx ?? 1;
-  let bestDist = Infinity;
-  for (const zz of table.zones) {
-    const mid = (zz.lower + zz.upper) / 2;
-    const dist = Math.abs(bpm - mid);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestIdx = zz.idx;
-    }
-  }
-  return bestIdx;
-}
 
 /**
  * Walk every HR sample across every split and aggregate time per zone.
@@ -128,7 +103,8 @@ export function bucketHrSamplesByZone(
     for (const samp of samples) {
       const bpm = Number(samp?.bpm) || 0;
       if (bpm < 40 || bpm > 230) continue;
-      const idx = classify(bpm - hrOffsetBpm, table);
+      const idx = zoneIdxForBpm(bpm - hrOffsetBpm, table);
+      if (idx == null) continue;
       counts[idx] = (counts[idx] ?? 0) + 1;
       total++;
     }
@@ -180,7 +156,12 @@ export function zoneSharesFromSplitHr(
     // The same readable range `bucketHrSamplesByZone` applies to a sample. A
     // strap sentinel is not a mile spent in Recovery.
     if (bpm < 40 || bpm > 230) continue;
-    const idx = classify(bpm - hrOffsetBpm, table);
+    // `zoneIdxForBpm` is the ONE classifier now — the two midpoint-snap copies
+    // that used to live here and in run-state.ts are gone, and with them the
+    // silent reclassification of a beat that belonged to no band. It returns
+    // null only for an unreadable beat, which the guard above already excluded.
+    const idx = zoneIdxForBpm(bpm - hrOffsetBpm, table);
+    if (idx == null) continue;
     counts[idx] = (counts[idx] ?? 0) + 1;
   }
   const share = apportionToHundred([counts[1], counts[2], counts[3], counts[4], counts[5]]);

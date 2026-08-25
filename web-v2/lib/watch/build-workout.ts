@@ -26,6 +26,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { raceOpeningSegments } from '@/lib/race/distance-doctrine';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
+import { aerobicCeilingBpm } from '@/lib/training/zones';
 import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 import { distanceMiFromLabel as sharedDistanceMiFromLabel } from '@/lib/race/distance';
@@ -1428,7 +1429,10 @@ export async function buildWatchToday(
     && Number((wo.workout_spec as Record<string, unknown>)?.finish_mi) > 0;
   // HR ceiling only for easy/long where staying aerobic is the discipline
   const hrCeilingBpm = (sessionClass === 'easy' || sessionClass === 'long') && !longHasFinish
-    ? lthr  ? Math.round(lthr * 0.89)   // top of Z2 in Friel zones
+    // ZONE-BANDS-1 · the shared Friel Z2 ceiling. Was a hand-written 0.89,
+    // which gave 144 at LTHR 162 while the band's real top is 145 — so the
+    // watch capped an easy run one beat tighter than the plan asked for.
+    ? lthr  ? aerobicCeilingBpm(lthr)
     : maxHr ? Math.round(maxHr * 0.78)  // %HRmax fallback when LTHR absent
     : null
     : null;
