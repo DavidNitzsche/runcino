@@ -360,15 +360,32 @@ function detectHrDrift(splits: RecapInput['splits']): {
   lastHr: number;
 } | null {
   if (!splits || splits.length < 4) return null;
-  const withHr = splits
-    .map((s, i) => ({ i, hr: splitHr(s) }))
-    .filter((s): s is { i: number; hr: number } => s.hr != null && s.hr > 0);
-  if (withHr.length < 4) return null;
-  const half = Math.floor(withHr.length / 2);
-  const first = withHr.slice(0, half);
-  const last = withHr.slice(-half);
-  const firstAvg = first.reduce((s, x) => s + x.hr, 0) / first.length;
-  const lastAvg = last.reduce((s, x) => s + x.hr, 0) / last.length;
+  /* 2026-08-24 · CUT ON POSITION IN THE RUN, NOT POSITION IN THE SURVIVORS.
+   *
+   * This compacted to the splits carrying a heart rate and then halved THAT
+   * array, so "the back half" meant the back half of whatever survived. A
+   * twelve-mile run whose strap dropped after mile six compared miles 1-3
+   * against miles 4-6 and reported the result as "by the end". See
+   * `detectPaceFade` for the same fix and the sentence it produced.
+   *
+   * Cutting on the index within the ORIGINAL array keeps the halves meaning
+   * what the copy says they mean, and returns null when either half has
+   * nothing left to average — which is a refusal, and correct.
+   */
+  const mid = Math.floor(splits.length / 2);
+  const hrs = splits.map((s) => splitHr(s));
+  const first: number[] = [];
+  const last: number[] = [];
+  for (let i = 0; i < splits.length; i++) {
+    const hr = hrs[i];
+    if (hr == null || hr <= 0) continue;
+    (i < mid ? first : last).push(hr);
+  }
+  // Two per side is the floor the old `withHr.length < 4` gate implied; it
+  // just could not enforce which side they came from.
+  if (first.length < 2 || last.length < 2) return null;
+  const firstAvg = first.reduce((s, x) => s + x, 0) / first.length;
+  const lastAvg = last.reduce((s, x) => s + x, 0) / last.length;
   return {
     drift: Math.round(lastAvg - firstAvg),
     firstHr: Math.round(firstAvg),
@@ -382,11 +399,34 @@ function detectHrDrift(splits: RecapInput['splits']): {
  */
 function detectPaceFade(splits: RecapInput['splits']): number | null {
   if (!splits || splits.length < 5) return null;
-  const paced = splits.map(s => splitPaceS(s)).filter((p): p is number => p != null && p > 0);
-  if (paced.length < 5) return null;
-  const cut = Math.floor(paced.length * 2 / 3);
-  const front = paced.slice(0, cut);
-  const back = paced.slice(cut);
+  /* 2026-08-24 · "THE LAST THIRD" HAS TO BE THE LAST THIRD OF THE RUN.
+   *
+   * This dropped the splits with no pace and then took the last third of what
+   * was LEFT. On a twelve-mile run whose GPS stopped pacing after mile six,
+   * the six survivors compacted to a six-element array and the "last third"
+   * became miles 5 and 6 — the middle of the run — reported to the runner as:
+   *
+   *     The last third was about 60s/mi slower than the rest.
+   *     Worth checking your fueling.
+   *
+   * A real observation, attached to the wrong part of the run, with a cause
+   * attached to that. The numbers were all real; the sentence was not.
+   *
+   * Cutting on the index within the ORIGINAL array fixes the attribution, and
+   * an empty side returns null. Rule three: when the back of the run was not
+   * paced, there is no back-half read, and saying nothing is the answer.
+   */
+  const cut = Math.floor(splits.length * 2 / 3);
+  const front: number[] = [];
+  const back: number[] = [];
+  for (let i = 0; i < splits.length; i++) {
+    const p = splitPaceS(splits[i]);
+    if (p == null || p <= 0) continue;
+    (i < cut ? front : back).push(p);
+  }
+  // The old gate wanted five paced splits before it would speak. Keep the
+  // same weight of evidence, now with both sides guaranteed to be represented.
+  if (front.length < 3 || back.length < 1 || front.length + back.length < 5) return null;
   const frontAvg = front.reduce((s, x) => s + x, 0) / front.length;
   const backAvg = back.reduce((s, x) => s + x, 0) / back.length;
   return Math.round(backAvg - frontAvg);
@@ -827,7 +867,33 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
         // not the pace. Covers "didn't finish" for rep-based sessions.
         leadLine = `Did ${reps.length} of ${prescribed} reps${avgPart}${hrPart}.`;
       } else if (reps.length >= 2 && target && adj) {
-        const inRange = reps.filter((p) => p >= target - 6 && p <= adj + 4).length;
+        /* 2026-08-24 · THE BAND WAS EXCLUDING EVERY POSSIBLE PACE.
+         *
+         * `target - 6` to `adj + 4` was written when the only adjustment was
+         * heat, which can only ever make a target SLOWER, so `adj >= target`
+         * held and the interval was well ordered. Terrain arrived later and
+         * goes the other way: a net-downhill session gets `adj < target`, and
+         * once the run is downhill enough that `adj + 4 < target - 6` the
+         * "band" is an empty interval. Not a narrow one — empty. No number
+         * satisfies it.
+         *
+         * A six-mile session down 900 ft, four reps of 399/401/400/402
+         * against a 400 target, read:
+         *
+         *     0 of 4 reps in range · HR 160.
+         *     Even across all 4 · held the line. HR 160 says the effort was right.
+         *
+         * Two sentences in one payload, and the first is false for any rep
+         * the runner could have run — including one landing exactly on either
+         * target.
+         *
+         * Ordering the bounds keeps both edges doing their job: the fast edge
+         * still catches overcooking and the slow edge still forgives the
+         * conditions, whichever direction the conditions pushed.
+         */
+        const lo = Math.min(target, adj) - 6;
+        const hi = Math.max(target, adj) + 4;
+        const inRange = reps.filter((p) => p >= lo && p <= hi).length;
         leadLine =
           inRange === reps.length
             ? `All ${reps.length} reps in range${avgPart}${hrPart}.`
