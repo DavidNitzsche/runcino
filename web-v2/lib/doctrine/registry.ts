@@ -236,7 +236,10 @@ import {
   gradeFactor,
   treadmillEffectiveGradePct,
 } from '@/lib/terrain/grade-adjust';
-import { friel7Zones, lthrZones, pctMaxZones, PCT_MAX_ZONE_BANDS } from '@/lib/training/zones';
+import {
+  aerobicCeilingBpm, friel7Zones, judgeEasyRunHr, lthrZones, pctMaxZones, zoneIdxForBpm,
+  FRIEL_5_ZONE_EDGES, FRIEL_7_ZONE_EDGES, PCT_MAX_ZONE_BANDS,
+} from '@/lib/training/zones';
 import { deriveReadingScopes, HR_REP_KINETICS_FLOOR_SEC } from '@/lib/coach/reading-scope';
 import { lthrFromMaxHr } from '@/lib/training/lthr';
 import {
@@ -429,6 +432,74 @@ function signedBand(cell: string): [number, number] {
   const nums = [...cell.replace(/\([^)]*\)/g, ' ').matchAll(/([+-]?\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]));
   if (nums.length < 2) throw new Error(`DOCTRINE · no signed band in doctrine cell "${cell}"`);
   return [nums[0], nums[1]];
+}
+
+/**
+ * ZONE-BANDS-1 · read Friel's percent EDGES out of the doctrine table's own
+ * cells, rather than restating them here.
+ *
+ * The rows are `< 85%`, `85–89%`, … `103–106%`, `> 106%` — whole-percent runs
+ * that tile the whole percents exactly. Each bounded row's stated FLOOR is an
+ * edge; the open top row's floor is the row before it plus one whole percent,
+ * which is the only reading under which the rows tile.
+ */
+function frielEdgesFromDoctrine(cells: string[]): number[] {
+  if (cells.length < 3) throw new Error(`DOCTRINE · Friel table has only ${cells.length} rows`);
+  const bounded = cells.slice(1, -1).map((c) => parsePctBand(c));
+  const [openLowPct] = parsePctBand(cells[0]);
+  if (Math.abs(openLowPct - bounded[0][0]) > 1e-9) {
+    throw new Error(
+      `DOCTRINE · the table's open bottom row says "${cells[0]}" but the next row starts at ` +
+      `${bounded[0][0]} · those must be the same edge`,
+    );
+  }
+  const [openHighPct] = parsePctBand(cells[cells.length - 1]);
+  const lastBoundedHi = bounded[bounded.length - 1][1];
+  if (Math.abs(openHighPct - lastBoundedHi) > 1e-9) {
+    throw new Error(
+      `DOCTRINE · the table's open top row says "${cells[cells.length - 1]}" but the row before ` +
+      `it ends at ${lastBoundedHi} · those must be the same edge`,
+    );
+  }
+  // Floors of the bounded rows, then one whole percent above the last of them.
+  const edges = bounded.map(([lo]) => lo);
+  edges.push(Number((lastBoundedHi + 0.01).toFixed(4)));
+  return edges;
+}
+
+/**
+ * ZONE-BANDS-1 · assert a table's bpm bands ARE the percent buckets.
+ *
+ * No tolerance. The derivation is deterministic — band k runs from
+ * `ceil(anchor × eₖ)` to `ceil(anchor × eₖ₊₁) − 1` — so an engine that agrees
+ * with doctrine agrees exactly. The `± 1` slack these claims used to carry is
+ * precisely what let two independently-rounded edges leave a 1-bpm hole
+ * between every pair of adjacent zones and pass the gate for a year.
+ */
+function assertBandsMatchEdges(
+  zones: Array<{ shortLabel: string; lower: number | null; upper: number | null }>,
+  anchorBpm: number,
+  edges: number[],
+  what: string,
+  opts: { openLow: boolean } = { openLow: true },
+): void {
+  const floors: Array<number | null> = opts.openLow
+    ? [null, ...edges.map((e) => Math.ceil(anchorBpm * e))]
+    : edges.map((e) => Math.ceil(anchorBpm * e));
+  if (floors.length !== zones.length) {
+    throw new Error(`${what}: ${zones.length} zones for ${floors.length} bands`);
+  }
+  zones.forEach((z, i) => {
+    const wantLower = floors[i];
+    const wantUpper = i + 1 < floors.length ? floors[i + 1]! - 1 : null;
+    if (z.lower !== wantLower || z.upper !== wantUpper) {
+      throw new Error(
+        `${what} ${z.shortLabel} @ anchor ${anchorBpm}: engine has ` +
+        `${z.lower ?? '-inf'}-${z.upper ?? '+inf'}, the doctrine percents give ` +
+        `${wantLower ?? '-inf'}-${wantUpper ?? '+inf'}`,
+      );
+    }
+  });
 }
 
 function atMost(value: number, ceiling: number, what: string): void {
@@ -2336,20 +2407,24 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'boundary the engine emits is read straight off the doctrine table.',
     check({ cite }) {
       const t = cite.table();
+      const edges = frielEdgesFromDoctrine(t.rows.map((r) => r['% LTHR']));
       const lthr = 160;
       const zones = friel7Zones(lthr);
       if (zones.zones.length !== t.rows.length) {
         throw new Error(`friel7Zones emits ${zones.zones.length} zones · the doctrine table has ${t.rows.length}`);
       }
-      t.rows.forEach((row, i) => {
-        const [lo, hi] = parsePctBand(row['% LTHR']);
-        const z = zones.zones[i];
-        // Bottom zone is open-below and the top is open-above · check the bounded edge.
-        if (i > 0) within(z.lower, [Math.round(lthr * lo) - 1, Math.round(lthr * lo) + 1], `Friel zone ${i + 1} floor`);
-        if (i < t.rows.length - 1) {
-          within(z.upper, [Math.round(lthr * hi) - 1, Math.round(lthr * hi) + 1], `Friel zone ${i + 1} ceiling`);
-        }
-      });
+      // The engine's own edge list must BE the doc's, to the percent.
+      if (FRIEL_7_ZONE_EDGES.length !== edges.length
+          || FRIEL_7_ZONE_EDGES.some((e, i) => Math.abs(e - edges[i]) > 1e-9)) {
+        throw new Error(
+          `FRIEL_7_ZONE_EDGES is [${FRIEL_7_ZONE_EDGES.join(', ')}] · the doctrine table's edges ` +
+          `are [${edges.join(', ')}]`,
+        );
+      }
+      // And the bpm bands must be exactly that percent bucketing — no
+      // tolerance, because the derivation is now deterministic. A ±1 slack is
+      // what let the two-independent-roundings bug sit under this claim.
+      assertBandsMatchEdges(zones.zones, lthr, edges, 'Friel 7-zone');
     },
   },
   {
@@ -2363,16 +2438,35 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'quietly move the threshold line.',
     check({ cite }) {
       const t = cite.table();
+      const seven = frielEdgesFromDoctrine(t.rows.map((r) => r['% LTHR']));
+      // Merging 5a/5b/5c means dropping the two edges INSIDE them (103%, 107%)
+      // and keeping the one that separates Z4 from Z5 — the threshold line at
+      // 100% LTHR. Derived from the doc, not restated.
+      const five = seven.slice(0, 4);
       const lthr = 160;
       const z = lthrZones(lthr).zones;
       if (z.length !== 5) throw new Error(`lthrZones emits ${z.length} zones · the five-zone view must emit 5`);
-      for (let i = 1; i < 4; i++) {
-        const [lo, hi] = parsePctBand(t.rows[i]['% LTHR']);
-        within(z[i].lower, [Math.round(lthr * lo) - 1, Math.round(lthr * lo) + 1], `Z${i + 1} floor`);
-        within(z[i].upper, [Math.round(lthr * hi) - 1, Math.round(lthr * hi) + 1], `Z${i + 1} ceiling`);
+      if (FRIEL_5_ZONE_EDGES.length !== five.length
+          || FRIEL_5_ZONE_EDGES.some((e, i) => Math.abs(e - five[i]) > 1e-9)) {
+        throw new Error(
+          `FRIEL_5_ZONE_EDGES is [${FRIEL_5_ZONE_EDGES.join(', ')}] · collapsing 5a/5b/5c out of ` +
+          `the doctrine table leaves [${five.join(', ')}]`,
+        );
       }
-      const [z5lo] = parsePctBand(t.rows[4]['% LTHR']);
-      within(z[4].lower, [Math.round(lthr * z5lo) - 1, Math.round(lthr * z5lo) + 1], 'Z5 floor · the threshold line');
+      // Zones 1-4 keep the seven-zone bands byte for byte; Z5 is open above.
+      assertBandsMatchEdges(z, lthr, five, 'Friel 5-zone');
+      const seven7 = friel7Zones(lthr).zones;
+      for (let i = 0; i < 4; i++) {
+        if (z[i].lower !== seven7[i].lower || z[i].upper !== seven7[i].upper) {
+          throw new Error(
+            `collapsing the top three moved Z${i + 1}: five-zone has ${z[i].lower}-${z[i].upper}, ` +
+            `seven-zone has ${seven7[i].lower}-${seven7[i].upper}`,
+          );
+        }
+      }
+      if (z[4].lower !== seven7[4].lower) {
+        throw new Error(`the threshold line moved · Z5 floor ${z[4].lower} vs 5a floor ${seven7[4].lower}`);
+      }
     },
   },
   {
@@ -2382,17 +2476,106 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     anchor: '### 5-Zone (ACSM / generic / commercial wearables)',
     claim:
       'When no LTHR is known the app falls back to the standard five %HRmax zones. Those are ' +
-      'a published table, not a house convention, and must match it exactly.',
+      'a published table, not a house convention, and must match it exactly. The one departure ' +
+      'is the top band, which is open above: this app\'s HRmax is frequently an ESTIMATE and ' +
+      'real efforts exceed it, and a reading with no zone is worse than a reading in the ' +
+      'highest one there is.',
     check({ cite }) {
       const t = cite.table();
       const maxHr = 190;
       const z = pctMaxZones(maxHr).zones;
       if (z.length !== t.rows.length) throw new Error(`pctMaxZones emits ${z.length} zones · doctrine has ${t.rows.length}`);
-      t.rows.forEach((row, i) => {
-        const [lo, hi] = parsePctBand(row['% HRmax']);
-        within(z[i].lower, [Math.round(maxHr * lo) - 1, Math.round(maxHr * lo) + 1], `%HRmax zone ${i + 1} floor`);
-        within(z[i].upper, [Math.round(maxHr * hi) - 1, Math.round(maxHr * hi) + 1], `%HRmax zone ${i + 1} ceiling`);
-      });
+      const bands = t.rows.map((row) => parsePctBand(row['% HRmax']));
+      // The doctrine table is contiguous already · each row's ceiling is the
+      // next row's floor. Assert that, then the floors ARE the edges.
+      for (let i = 0; i + 1 < bands.length; i++) {
+        if (Math.abs(bands[i][1] - bands[i + 1][0]) > 1e-9) {
+          throw new Error(
+            `Research/03 §4 zone ${i + 1} ends at ${bands[i][1]} but zone ${i + 2} starts at ` +
+            `${bands[i + 1][0]} · the table is no longer contiguous, so the edge model is wrong`,
+          );
+        }
+      }
+      const edges = bands.map(([lo]) => lo);
+      // Closed below (the table states a 50% floor), open above.
+      assertBandsMatchEdges(z, maxHr, edges, '%HRmax', { openLow: false });
+      // The published top ceiling is still checked — as the point beyond which
+      // the band is open, not as a ceiling that drops readings.
+      if (z[z.length - 1].upper !== null) {
+        throw new Error(`%HRmax top zone must be open above · it caps at ${z[z.length - 1].upper}`);
+      }
+    },
+  },
+  {
+    id: 'HR.zone-bands-tile-the-line',
+    binds: ['lib/training/zones.ts#bandsFromPctEdges', 'lib/training/zones.ts#zoneIdxForBpm'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '### Friel 7-Zone Running HR Table',
+    claim:
+      'A zone table must answer for every heart rate, exactly once. The doctrine rows tile the ' +
+      'whole percents with no gap and no overlap, so the bpm bands derived from them must tile ' +
+      'the integers the same way: each band starts one beat above the last, zone 1 is open ' +
+      'below and the top zone open above. The four faults this ends were all one mistake — ' +
+      'rounding a band\'s two percent bounds to bpm INDEPENDENTLY, which at LTHR 162 left 145, ' +
+      '153 and 161 in no zone, put 138 in two, floored zone 1 at 0 bpm, and capped the top at ' +
+      '1.10 x LTHR so a 182 bpm rep finish fell off the table.',
+    check({ cite }) {
+      const t = cite.table();
+      const edges = frielEdgesFromDoctrine(t.rows.map((r) => r['% LTHR']));
+      // The doctrine rows themselves must still tile the whole percents. If a
+      // future edit opens a gap in the doc, this claim says so rather than
+      // quietly propagating it.
+      const bands = t.rows.slice(1, -1).map((r) => parsePctBand(r['% LTHR']));
+      for (let i = 0; i + 1 < bands.length; i++) {
+        if (Math.abs((bands[i][1] + 0.01) - bands[i + 1][0]) > 1e-9) {
+          throw new Error(
+            `Research/03 §6 row ${i + 2} ends at ${bands[i][1]} and row ${i + 3} starts at ` +
+            `${bands[i + 1][0]} · the doctrine rows no longer tile the whole percents`,
+          );
+        }
+      }
+      for (const lthr of [140, 150, 162, 171, 185, 199]) {
+        for (const table of [lthrZones(lthr), friel7Zones(lthr), pctMaxZones(lthr + 20)]) {
+          const zs = table.zones;
+          if (zs[0].lower !== null && table.method === 'lthr-friel') {
+            throw new Error(`LTHR ${lthr}: Friel zone 1 must be open below · it floors at ${zs[0].lower}`);
+          }
+          if (zs[zs.length - 1].upper !== null) {
+            throw new Error(`LTHR ${lthr}: the top zone must be open above · it caps at ${zs[zs.length - 1].upper}`);
+          }
+          for (let i = 0; i + 1 < zs.length; i++) {
+            if (zs[i].upper == null || zs[i + 1].lower == null) {
+              throw new Error(`LTHR ${lthr}: only the outermost edges may be open`);
+            }
+            if (zs[i].upper! + 1 !== zs[i + 1].lower!) {
+              throw new Error(
+                `LTHR ${lthr}: ${zs[i].shortLabel} ends at ${zs[i].upper} and ${zs[i + 1].shortLabel} ` +
+                `starts at ${zs[i + 1].lower} · ${zs[i].upper! + 1 < zs[i + 1].lower! ? 'a hole' : 'an overlap'}`,
+              );
+            }
+          }
+          // Every plausible running heart rate gets exactly one zone, and it
+          // is the one whose printed band contains it.
+          for (let bpm = 30; bpm <= 240; bpm++) {
+            const idx = zoneIdxForBpm(bpm, table);
+            if (idx == null) throw new Error(`LTHR ${lthr}: ${bpm} bpm belongs to no zone`);
+            const z = zs.find((x) => x.idx === idx)!;
+            const inside = (z.lower == null || bpm >= z.lower) && (z.upper == null || bpm <= z.upper);
+            // A reading outside every closed band is CLAMPED to the outermost
+            // one, which is the only honest answer; anywhere else it must sit
+            // inside the band it was given.
+            const clamped = (zs[0].lower != null && bpm < zs[0].lower && idx === zs[0].idx);
+            if (!inside && !clamped) {
+              throw new Error(
+                `LTHR ${lthr}: ${bpm} bpm classified ${z.shortLabel}, whose band is ` +
+                `${z.lower ?? '-inf'}-${z.upper ?? '+inf'}`,
+              );
+            }
+          }
+        }
+        // And the bpm edges are the percent edges, exactly.
+        assertBandsMatchEdges(friel7Zones(lthr).zones, lthr, edges, `Friel 7-zone @ LTHR ${lthr}`);
+      }
     },
   },
   {
@@ -2468,28 +2651,54 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
   {
     id: 'HR.easy-run-ceiling',
-    binds: ['lib/plan/spec-builder.ts#hrCapEasy', 'lib/training/zones.ts#judgeEasyRunHr'],
+    binds: [
+      'lib/training/zones.ts#aerobicCeilingBpm',
+      'lib/plan/spec-builder.ts#hrCapEasy',
+      'lib/watch/build-workout.ts#hrCeilingBpm',
+      'lib/training/zones.ts#judgeEasyRunHr',
+    ],
     doc: 'Research/03-heart-rate-zones.md',
     anchor: '### Friel 7-Zone Running HR Table',
     claim:
-      'An easy run is capped at the top of the aerobic zone. Both the prescription side and ' +
-      'the judgement side use the same ceiling, and it is the Friel Z2 upper bound — not a ' +
-      'rounder number chosen because it looked about right.',
+      'An easy run is capped at the top of the aerobic zone. The prescription side, the watch ' +
+      'and the judgement side use the same ceiling, and it is the Friel Z2 upper bound — not a ' +
+      'rounder number chosen because it looked about right. ZONE-BANDS-1: all three used to ' +
+      'write `round(0.89 x LTHR)` out by hand, which is 144 at LTHR 162 while the band Z3 ' +
+      'starts above actually tops out at 145. One derivation now, and it is the zone table\'s.',
     check({ cite }) {
-      const ceiling = parsePctBand(cite.table().rows[1]['% LTHR'])[1];
-      const sites: [string, string, RegExp][] = [
-        ['web-v2/lib/plan/spec-builder.ts', 'hrCapEasy', /const lthrCap = lthr \? Math\.round\(lthr \* (\d*\.?\d+)\)/],
-        [
-          'web-v2/lib/training/zones.ts',
-          'judgeEasyRunHr',
-          /const easyCeilingBpm = Math\.round\(thresholdBpm \* (\d*\.?\d+)\)/,
-        ],
-      ];
-      for (const [file, binding, re] of sites) {
-        const v = Number(matchLiteral(sourceOf(file), re, binding)[1]);
-        if (Math.abs(v - ceiling) > 0.005) {
-          throw new Error(`${binding} caps easy at ${v} of LTHR · Friel Z2 tops out at ${ceiling}`);
+      const rows = cite.table().rows.map((r) => r['% LTHR']);
+      // The ceiling is the band below the one Z3 opens: everything under the
+      // 90% edge. Read the edge out of the doc, never restate it.
+      const z3floor = frielEdgesFromDoctrine(rows)[1];
+      for (const lthr of [140, 162, 185, 199]) {
+        const want = Math.ceil(lthr * z3floor) - 1;
+        if (aerobicCeilingBpm(lthr) !== want) {
+          throw new Error(
+            `aerobicCeilingBpm(${lthr}) is ${aerobicCeilingBpm(lthr)} · the last beat below the ` +
+            `doctrine's ${z3floor} Z3 floor is ${want}`,
+          );
         }
+        // And it must BE the zone table's Z2 upper, not a parallel derivation.
+        const z2 = lthrZones(lthr).zones.find((z) => z.idx === 2)!;
+        if (z2.upper !== want) {
+          throw new Error(`lthrZones(${lthr}) Z2 tops at ${z2.upper} · the easy ceiling is ${want}`);
+        }
+        // The judgement side agrees with the prescription side, beat for beat.
+        const j = judgeEasyRunHr({ avgHrBpm: want, thresholdBpm: lthr })!;
+        if (j.easyCeilingBpm !== want || j.verdict !== 'aerobic') {
+          throw new Error(
+            `judgeEasyRunHr calls ${want} bpm "${j.verdict}" against a ${j.easyCeilingBpm} ceiling ` +
+            `· the prescription caps easy at exactly ${want}`,
+          );
+        }
+      }
+      // The two remaining call sites must route through the helper rather than
+      // re-deriving. A literal here is how the three drifted apart before.
+      for (const [file, binding, re] of [
+        ['web-v2/lib/plan/spec-builder.ts', 'hrCapEasy', /const lthrCap = lthr \? aerobicCeilingBpm\(lthr\)/],
+        ['web-v2/lib/watch/build-workout.ts', 'hrCeilingBpm', /\? lthr\s+\? aerobicCeilingBpm\(lthr\)/],
+      ] as [string, string, RegExp][]) {
+        matchLiteral(sourceOf(file), re, binding);
       }
     },
   },

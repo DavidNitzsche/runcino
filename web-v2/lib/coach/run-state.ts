@@ -8,7 +8,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { getCanonicalRunIds, ALL_TIME } from '@/lib/runs/volume';
-import { computeZones, judgeEasyRunHr, type EasyHrVerdict } from '@/lib/training/zones';
+import { computeZones, judgeEasyRunHr, zoneIdxForBpm, type EasyHrVerdict } from '@/lib/training/zones';
 import { resolveThresholdHr, type ThresholdHrMethod } from '@/lib/training/lthr';
 import { baselineTempF } from '@/lib/weather/lookup';
 import { weatherContext } from '@/lib/weather/heat-adjustment';
@@ -380,7 +380,12 @@ export interface RunDetail {
   hr_zones_from_lthr: {
     lthr: number | null;
     method?: ThresholdHrMethod;
-    ranges: { label: string; lower: number; upper: number }[];
+    /** ZONE-BANDS-1 · `lower` is null on the open-below zone 1 and `upper` is
+     *  null on the open-above top zone. Consumers must render those as "< x"
+     *  and "x +", and must not use a null bound as a chart axis. The web run
+     *  detail's HR scale did exactly that with the old 0 and drew its axis
+     *  from 0 bpm; a null makes its `??` fallback fire as intended. */
+    ranges: { label: string; lower: number | null; upper: number | null }[];
   } | null;
   /** 2026-07-06 · P1-43 fix · server-computed easy-run HR read. The phone's
    *  AEROBIC STAMP panel was judging every runner's easy-run avg HR against
@@ -895,7 +900,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     // are present (watch path). Falls through to deriveHrZones
     // (per-split-avg) for older runs or Strava-source that ships
     // only summary HR per split. See lib/coach/hr-zone-bucket.ts.
-    ?? await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits);
+    ?? await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits, 0, r.phases);
 
   // Bring the user's LTHR-anchored zone ranges so the modal can render
   // an actionable "where your HR landed" panel.
@@ -997,7 +1002,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     : (actualTempF != null ? Math.max(0, Math.min(10, Math.round(actualTempF - 60))) : 0);
   const heatBumpBpm = heatSlowdownPct >= 6 ? heatBumpRawBpm : 0;
   if (heatBumpBpm > 0) {
-    const adj = await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits, heatBumpBpm);
+    const adj = await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits, heatBumpBpm, r.phases);
     // ZONES-SUM-1 · a refusal stays a refusal. There is no heat-adjusted easy
     // share when there was no distribution to adjust, and 0% easy on a hot day
     // is a claim, not a blank.
@@ -2021,23 +2026,11 @@ async function deriveHrZones(
   const z = computeZones({ lthr });
   if (!z) return null;
 
-  // Classify a HR reading. Friel's bands leave 1-bpm gaps between zones
-  // (e.g. Z2 upper 144, Z3 lower 146 at LTHR=162). A reading of 145 used to
-  // default to Z1 because the `.find()` missed every band — flooring it
-  // into Recovery is the opposite of what the runner did. Snap to the
-  // nearest band by midpoint distance instead.
-  const classify = (bpm: number) => {
-    const exact = z.zones.find((zz) => bpm >= zz.lower && bpm <= zz.upper);
-    if (exact) return exact;
-    let best = z.zones[0];
-    let bestDist = Infinity;
-    for (const zz of z.zones) {
-      const mid = (zz.lower + zz.upper) / 2;
-      const dist = Math.abs(bpm - mid);
-      if (dist < bestDist) { bestDist = dist; best = zz; }
-    }
-    return best;
-  };
+  // ZONE-BANDS-1 (2026-08-24) · the SECOND copy of the midpoint-snap
+  // classifier lived here, and the two had to be kept in step by hand. Both
+  // are gone: the bands tile the line now, so `zoneIdxForBpm` answers for
+  // every reading and there is one implementation to keep correct.
+  const classify = (bpm: number) => zoneIdxForBpm(bpm, z);
 
   // If we have per-mile HR, classify each mile.
   if (splits.length > 0 && splits.some((s) => s.hr)) {
@@ -2047,7 +2040,8 @@ async function deriveHrZones(
       if (!s.hr) continue;
       total++;
       const zone = classify(s.hr - hrOffsetBpm);
-      const k = `z${zone.idx}` as keyof typeof counts;
+      if (zone == null) continue;
+      const k = `z${zone}` as keyof typeof counts;
       counts[k]++;
     }
     // ZONES-SUM-1 · largest remainder, so the five add to exactly 100. Five
@@ -2060,7 +2054,8 @@ async function deriveHrZones(
   // No splits — assign 100% to the band the avg HR falls in. Already sums.
   const empty = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
   const zone = classify(hr - hrOffsetBpm);
-  const k = `z${zone.idx}` as keyof typeof empty;
+  if (zone == null) return null;
+  const k = `z${zone}` as keyof typeof empty;
   return { ...empty, [k]: 100 };
 }
 
@@ -2075,6 +2070,15 @@ async function deriveHrZones(
  * when no samples are present · covers Strava-source runs and any
  * legacy data shape that doesn't carry per-second HR.
  *
+ * ZONE-BANDS-1 (2026-08-24) · `rawPhases` is new, and it is where the samples
+ * actually are. This function only ever looked inside `splits`, but the watch
+ * writes its 5-second HR under `data.phases[].hrSamples` — which is why
+ * `/api/watch/workouts/complete` hands the bucketer a synthetic split built
+ * out of the phases. The READ path had no such handling, so on every one of
+ * the 50 stored watch runs carrying per-second HR this silently fell through
+ * to the per-mile-average path the 06-04 fix existed to replace. Same rule as
+ * the write path now: look in both places, prefer whichever carries samples.
+ *
  * Cite: lib/coach/hr-zone-bucket.ts · David's QC 2026-06-04.
  */
 async function deriveHrZonesFromSamples(
@@ -2083,11 +2087,18 @@ async function deriveHrZonesFromSamples(
   avgHr: number | string | null,
   splits: RunSplit[],
   hrOffsetBpm = 0,
+  rawPhases?: unknown,
 ): Promise<{ z1: number; z2: number; z3: number; z4: number; z5: number } | null> {
   const { bucketHrSamplesByZone, hasHrSamples } = await import('./hr-zone-bucket');
-  const rawArr = Array.isArray(rawSplits)
-    ? rawSplits as Parameters<typeof bucketHrSamplesByZone>[0]
-    : [];
+  type Bucketable = Parameters<typeof bucketHrSamplesByZone>[0];
+  let rawArr = Array.isArray(rawSplits) ? rawSplits as Bucketable : ([] as Bucketable);
+  if (rawArr.length === 0 || !hasHrSamples(rawArr)) {
+    // Phases carry `hrSamples` in the same shape; one synthetic split holding
+    // all of them buckets identically, because counting time-even samples IS
+    // time-weighting and the bucketer never reads a split's own fields.
+    const phaseArr = Array.isArray(rawPhases) ? rawPhases as Bucketable : ([] as Bucketable);
+    if (phaseArr.length > 0 && hasHrSamples(phaseArr)) rawArr = phaseArr;
+  }
   if (rawArr.length === 0 || !hasHrSamples(rawArr)) {
     return deriveHrZones(userId, avgHr, splits, hrOffsetBpm);
   }

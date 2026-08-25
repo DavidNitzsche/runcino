@@ -29,7 +29,15 @@
  *     stored value is missing (covers existing runs ingested
  *     before this fix).
  */
-import type { ZoneTable } from '@/lib/training/zones';
+/* ZONE-BANDS-1 (2026-08-24) · this module used to carry its own `classify`,
+ * which snapped a reading that fell in a GAP between two bands to whichever
+ * band's midpoint was nearest. There are no gaps any more — `zoneIdxForBpm`
+ * is total, because the bands now tile the line — so the snap is deleted
+ * rather than kept as a safety net. A safety net under a hole is how the hole
+ * stayed open: the bucketer looked correct while 138 bpm, claimed by both Z1
+ * and Z2, went to Z1 on a `.find()` that returned the first match. That is
+ * 85.2% of a 162 LTHR — Z2 by doctrine, and read as Recovery for a year. */
+import { zoneIdxForBpm, type ZoneTable } from '@/lib/training/zones';
 
 /* ZONES-SUM-1 (2026-08-24) · the apportionment lives in `lib/runs/coherence.ts`
  * with the rest of the arithmetic that makes a row agree with itself, and is
@@ -60,32 +68,6 @@ export type ZonePcts = {
   z4: number;
   z5: number;
 };
-
-/**
- * Classify one HR reading into a zone idx (1-5). Exact match first;
- * if the reading falls in a gap between bands (Friel rounds with
- * 1-bpm gaps · e.g. Z2 upper 144, Z3 lower 146 at LTHR=162), snap
- * to the nearest band by midpoint distance.
- *
- * Same rule as the legacy `classify` inside `deriveHrZones` · keep
- * them aligned so the per-sample path produces a result consistent
- * with the per-split-avg fallback when samples are absent.
- */
-function classify(bpm: number, table: ZoneTable): number {
-  const exact = table.zones.find((zz) => bpm >= zz.lower && bpm <= zz.upper);
-  if (exact) return exact.idx;
-  let bestIdx = table.zones[0]?.idx ?? 1;
-  let bestDist = Infinity;
-  for (const zz of table.zones) {
-    const mid = (zz.lower + zz.upper) / 2;
-    const dist = Math.abs(bpm - mid);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestIdx = zz.idx;
-    }
-  }
-  return bestIdx;
-}
 
 /**
  * Walk every HR sample across every split and aggregate time per zone.
@@ -121,7 +103,8 @@ export function bucketHrSamplesByZone(
     for (const samp of samples) {
       const bpm = Number(samp?.bpm) || 0;
       if (bpm < 40 || bpm > 230) continue;
-      const idx = classify(bpm - hrOffsetBpm, table);
+      const idx = zoneIdxForBpm(bpm - hrOffsetBpm, table);
+      if (idx == null) continue;
       counts[idx] = (counts[idx] ?? 0) + 1;
       total++;
     }

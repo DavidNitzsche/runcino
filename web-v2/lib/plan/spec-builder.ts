@@ -47,6 +47,7 @@ import {
 // `lib/plan/catalogue-rx.ts#anchorsFor` also reads — so the zones the catalogue
 // is allowed to anchor and the zones this file can pace cannot diverge.
 import { resolveZoneAnchors, zonePaceSec } from './zone-anchors';
+import { aerobicCeilingBpm } from '@/lib/training/zones';
 import type { PaceZone } from '@/lib/workout-catalogue/types';
 // 2026-08-17 · the stored race abort CALLS doctrine now instead of mirroring
 // its numbers. See the contingency-rules block for what "keep in sync" cost.
@@ -192,7 +193,10 @@ export interface SpecBuildResult {
  * this aligns the plan generator with the watch app · single doctrine.
  */
 function hrCapEasy(lthr: number | null, maxHr: number | null = null): number | null {
-  const lthrCap = lthr ? Math.round(lthr * 0.89) : null;
+  // ZONE-BANDS-1 · one derivation of the Friel Z2 ceiling, shared with
+  // `judgeEasyRunHr` and the watch builder. The hand-written 0.89 gave 144 at
+  // LTHR 162; the band's real top is 145.
+  const lthrCap = lthr ? aerobicCeilingBpm(lthr) : null;
   const maxHrCap = maxHr ? Math.round(maxHr * 0.78) : null;
   if (lthrCap == null && maxHrCap == null) return null;
   if (lthrCap == null) return maxHrCap;

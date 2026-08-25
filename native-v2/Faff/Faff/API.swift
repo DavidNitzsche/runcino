@@ -2050,8 +2050,13 @@ struct ProfileHRZone: Decodable, Identifiable {
     let idx: Int                    // 1 … 5
     let label: String               // "Recovery" / "Aerobic" / …
     let shortLabel: String          // "Z1" … "Z5"
-    let lower: Int                  // bpm
-    let upper: Int                  // bpm
+    /// ZONE-BANDS-1 (2026-08-24) · nil where the band is OPEN. Zone 1 is
+    /// Friel's "< 85% LTHR" and has no floor; the top zone is "> 106%" and
+    /// has no ceiling. Both used to default to 0 here, so a top zone would
+    /// have rendered "162-0 bpm" the moment anything drew this. Render an
+    /// open edge as "< x" or "x +", never as a bound.
+    let lower: Int?                 // bpm · nil = open below
+    let upper: Int?                 // bpm · nil = open above
     let purpose: String             // 1-line description
     var id: Int { idx }
 
@@ -2061,8 +2066,8 @@ struct ProfileHRZone: Decodable, Identifiable {
         self.idx = c.decodeFlexInt(forKey: .idx) ?? 0
         self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
         self.shortLabel = try c.decodeIfPresent(String.self, forKey: .shortLabel) ?? ""
-        self.lower = c.decodeFlexInt(forKey: .lower) ?? 0
-        self.upper = c.decodeFlexInt(forKey: .upper) ?? 0
+        self.lower = c.decodeFlexInt(forKey: .lower)
+        self.upper = c.decodeFlexInt(forKey: .upper)
         self.purpose = try c.decodeIfPresent(String.self, forKey: .purpose) ?? ""
     }
 }

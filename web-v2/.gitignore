@@ -34,3 +34,4 @@ next-env.d.ts
 scripts/probe-*.mjs
 scripts/route-debug.mjs
 scripts/smoke-recap-*.mjs
+.script-bundle-*/

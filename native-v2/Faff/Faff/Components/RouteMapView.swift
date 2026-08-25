@@ -376,12 +376,47 @@ struct RouteMapView: UIViewRepresentable {
     /// HR (bpm) → continuous zone position 0…(n-1): zone index + fraction
     /// through that zone's band. Drives the zone ramp so HR drift inside Z2
     /// shifts gently and crossing into Z3 lands on amber.
+    ///
+    /// ZONE-BANDS-1 (2026-08-24) · the outermost bands are OPEN, and a
+    /// fraction through an open band is not a real number. Zone 1 is Friel's
+    /// "< 85% LTHR": it has no floor, and this used to substitute 0 for the
+    /// missing one, which made the band 138 bpm wide at LTHR 162. A 128 bpm
+    /// mile — deep, obvious Z1 — then sat 93% of the way up it and painted
+    /// almost the colour of Z2. The mile was not nearly Z2; the denominator
+    /// was fiction.
+    ///
+    /// So an open edge borrows the width of its bounded neighbour. Zone 1
+    /// ramps only across the last Z2-width below Z2's floor and is otherwise
+    /// flat Z1; the top zone ramps one band-width above its floor and then
+    /// holds at full. Below and above that, the colour stops moving, which is
+    /// the honest reading: at 128 bpm the answer is "Z1", not "93% of the way
+    /// to somewhere else".
     private static func zonePosition(_ hr: Double, _ zones: [HRZoneRange]) -> Double {
         guard !zones.isEmpty else { return 0 }
+        // Width of the nearest band that actually has two ends. Used only to
+        // give an open edge a scale; never to invent a bound.
+        func neighbourWidth(from i: Int) -> Double {
+            for j in [i - 1, i + 1] where j >= 0 && j < zones.count {
+                if let lo = zones[j].lower, let hi = zones[j].upper, hi > lo { return hi - lo }
+            }
+            return 10   // last resort · roughly a Friel band on a typical LTHR
+        }
         for (i, z) in zones.enumerated() {
-            let lo = z.lower ?? 0
-            let hi = z.upper ?? .greatestFiniteMagnitude
+            let hi = z.upper
+            guard let lo = z.lower else {
+                // Open below · ramp across one neighbour-width up to this
+                // band's ceiling, flat Z1 beneath that.
+                guard let hi else { return Double(i) }
+                if hr > hi { continue }
+                let w = neighbourWidth(from: i)
+                return Double(i) + min(1, max(0, (hr - (hi - w)) / w))
+            }
             if hr < lo { return Double(i) }
+            guard let hi else {
+                // Open above · ramp one neighbour-width, then hold at full.
+                let w = neighbourWidth(from: i)
+                return Double(i) + min(1, max(0, (hr - lo) / w))
+            }
             if hr <= hi {
                 let frac = hi > lo ? (hr - lo) / (hi - lo) : 0
                 return Double(i) + min(1, max(0, frac))
