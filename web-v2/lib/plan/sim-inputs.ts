@@ -35,6 +35,14 @@ import {
   composeRecoveryPlan,
   finalizeComposedPlan,
   weekStartBoundaryOf,
+  // ANCHORFIT-1 · the SAME pure resolvers production spends, so a simulated
+  // runner with history is anchored by the shipped functions, not by a copy.
+  resolvePeakWeekly,
+  resolveRampBase,
+  weeklyBlocksFromDaily,
+  allowedInterruptionWeeksFor,
+  RAMP_BASE_LOOKBACK_WEEKS,
+  type RampBaseEvidence,
 } from './generate';
 import { lookupTierTarget, pickPlanMode, buildOpensISO, type PlanMode } from './goal-tiers';
 import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/distance-category';
@@ -102,6 +110,13 @@ export interface SimBuildOk {
     bestRecentVdotSelfReported: boolean;
     recentWeeklyMi: number;
     recentLongMi: number;
+    /** ANCHORFIT-1 · the anchors the composers were actually handed. Null when
+     *  no history was supplied, which is how a caller tells "the buckets ran"
+     *  from "the readers ran". */
+    measuredPeakWeeklyMi: number | null;
+    recentPeakWeeklyMi: number | null;
+    rampBase: RampBaseEvidence | null;
+    goalTier: string | null;
     longRunDow: DOW;
     restDow: DOW;
     qualityDows: DOW[];
@@ -132,9 +147,49 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
 
   // ── shared runner-profile derivation (mirrors loadGeneratorInputs) ──
   const level = sim.experienceLevel as LevelKey;
-  const recentWeeklyMi = recentWeeklyMiFromBucket(sim.weeklyMileageBucket);
-  let recentLongMi = recentLongMiFromBucket(sim.longestRunBucket);
-  const easyDayMedianMi = sim.easyDayMedianMi != null && sim.easyDayMedianMi > 0 ? sim.easyDayMedianMi : 0;
+
+  // ── ANCHORFIT-1 · a runner WITH history ────────────────────────────────
+  //
+  // Absent (the default, and every existing archetype) this whole block is
+  // inert and the buckets govern exactly as before. Present, it stands in for
+  // the three DB readers `loadGeneratorInputs` runs — `recentWeeklyMileageMi`,
+  // `recentPeakWeeklyMileage`, `rampBaseForBuild` — using their own pure
+  // halves, so the harness can finally express the case the anchors exist for:
+  // a runner whose recent weeks do not describe what they can do.
+  const daily = sim.dailyMiMostRecentFirst ?? null;
+  const hist = daily && daily.length >= 28 ? (() => {
+    const at = (i: number): number => {
+      const v = daily[i];
+      return Number.isFinite(v) && v > 0 ? v : 0;
+    };
+    let total28 = 0;
+    for (let i = 0; i < 28; i++) total28 += at(i);
+    // Mirrors `weeklyAvgFromWindow(total, 28, 28)` for a fully-covered window.
+    const mean28 = Math.round((total28 / 4) * 10) / 10;
+    // The 28-day longest single day · `recentPeakLongMi`'s shape.
+    let long28 = 0;
+    for (let i = 0; i < 28; i++) if (at(i) > long28) long28 = at(i);
+    // `easyDayMedianMi` · runs of 3-9 mi over the last 14 days, median, to 0.5.
+    const easies: number[] = [];
+    for (let i = 0; i < 14; i++) { const m = at(i); if (m >= 3 && m <= 9) easies.push(m); }
+    easies.sort((a, b) => a - b);
+    const easyMed = easies.length === 0 ? 0
+      : Math.round((easies.length % 2 ? easies[(easies.length - 1) / 2]
+        : (easies[easies.length / 2 - 1] + easies[easies.length / 2]) / 2) * 2) / 2;
+    return {
+      mean28,
+      peak: resolvePeakWeekly(daily),
+      long28: Math.round(long28 * 10) / 10,
+      easyMed,
+      blocks: weeklyBlocksFromDaily(daily, RAMP_BASE_LOOKBACK_WEEKS),
+    };
+  })() : null;
+
+  const recentWeeklyMi = hist ? hist.mean28 : recentWeeklyMiFromBucket(sim.weeklyMileageBucket);
+  let recentLongMi = hist ? hist.long28 : recentLongMiFromBucket(sim.longestRunBucket);
+  const easyDayMedianMi = sim.easyDayMedianMi != null && sim.easyDayMedianMi > 0
+    ? sim.easyDayMedianMi
+    : (hist ? hist.easyMed : 0);
   const bestRecentVdot = sim.bestRecentVdotOverride != null && sim.bestRecentVdotOverride > 0
     ? sim.bestRecentVdotOverride
     : bestVdotFromHistory(sim.raceHistory);
@@ -227,6 +282,14 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   let lastRaceFinished: ComposeNonRaceInput['lastRaceFinished'] = null;
   let nextRace: ComposeNonRaceInput['nextRace'] = null;
 
+  // ANCHORFIT-1 · the finished race is a fact about the RUNNER, not about the
+  // mode the engine picked. `rampBaseForBuild` reads it on the race-prep path
+  // — the one path where `lastRaceFinished` above stays null — because a race
+  // is precisely what entitles a build to read through a low stretch.
+  const lastRaceDaysAgo = sim.lastRaceFinishedDaysAgo ?? 0;
+  const lastRaceISO = lastRaceDaysAgo > 0 ? addDaysISO(blockStartISO, -lastRaceDaysAgo) : null;
+  const lastRaceMi = sim.lastRaceDistance ? SIM_DISTANCE_MI[sim.lastRaceDistance] : null;
+
   if (sim.goalMode === 'justRun') {
     // No goal · the consistency block. Reference distance (half) only selects
     // the validator's constraint row; maintenance skips the long-run cap.
@@ -255,16 +318,20 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     raceDateISO = sim.raceDateISO;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(raceDateISO)) return { ok: false, reason: 'invalid race date' };
     goalSec = sim.goalTimeSec ?? null;
-    const lastDaysAgo = sim.lastRaceFinishedDaysAgo ?? 0;
-    const lastISO = lastDaysAgo > 0 ? addDaysISO(blockStartISO, -lastDaysAgo) : null;
-    const lastDistMi = sim.lastRaceDistance ? SIM_DISTANCE_MI[sim.lastRaceDistance] : null;
+    const lastISO = lastRaceISO;
+    const lastDistMi = lastRaceMi;
     // WEEK-ALIGN-1 · production asks this of TODAY (`composeForUserInternal`
     // passes `todayISO`), never of the week-0 anchor. A snapped anchor sits up
     // to six days earlier, which is enough to flip the maintenance/race-prep
     // boundary on its own.
     mode = pickPlanMode(blockStartISO, raceDateISO, raceDistanceMi, lastISO, lastDistMi);
     if (mode === 'recovery' && lastISO && lastDistMi) {
-      lastRaceFinished = { slug: 'sim-last', name: 'Last race', date: lastISO, distanceMi: lastDistMi };
+      lastRaceFinished = {
+        slug: 'sim-last', name: 'Last race', date: lastISO, distanceMi: lastDistMi,
+        // ANCHORFIT-1 · DOCTRINE-5 scales the recovery WINDOW by priority, and
+        // the harness could not say which priority the race was.
+        ...(sim.lastRacePriority ? { priority: sim.lastRacePriority } : {}),
+      };
     }
   }
 
@@ -284,6 +351,19 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   // NEW-A · floor tPaceSec at currentT (mirrors the loader) so maintenance/recovery don't inherit a slow soft goal.
   const goalTpSim = tPaceFromGoal(goalSec, raceDistanceMi);
   const tPaceSec = (goalTpSim != null && currentT != null ? Math.min(goalTpSim, currentT) : goalTpSim) ?? currentT ?? 480;
+
+  // ANCHORFIT-1 · RAMPBASE-1's pure half, on the same path production runs it
+  // (`if (mode === 'race-prep')`). Null with no history, and then the sim
+  // behaves exactly as it did: `volumeCurve` opens from `recentWeeklyMi`.
+  const rampEvidence: RampBaseEvidence | null = (hist && mode === 'race-prep')
+    ? resolveRampBase({
+        meanWeeklyMi: recentWeeklyMi,
+        weeklySeries: hist.blocks,
+        allowedInterruptionWeeks: allowedInterruptionWeeksFor(
+          blockStartISO, lastRaceISO, lastRaceMi, sim.lastRacePriority ?? null,
+        ),
+      })
+    : null;
 
   if (mode === 'race-prep') {
     // Production's runway gate measures from TODAY (`loadGeneratorInputs`:
@@ -325,6 +405,12 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       isMidBlock: sim.isMidBlock ?? false,
       longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
       rxQuality, rxRaceSpecific, tPaceSec, lthr: sim.lthr ?? null, maxHr: sim.maxHr ?? null,
+      // ANCHORFIT-1 · RAMPBASE-1, resolved by the shipped pure function. Same
+      // conditionality production uses: `rampBaseMi` only when the lift fired,
+      // the evidence always (the base-rebuilt gate reads it either way).
+      ...(rampEvidence
+        ? { rampBaseEvidence: rampEvidence, ...(rampEvidence.lifted ? { rampBaseMi: rampEvidence.baseMi } : {}) }
+        : {}),
     };
     composed = composePlan(input);
   } else {
@@ -340,12 +426,20 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       nextRace = { slug: 'sim-race', name: 'Goal race', date: raceDateISO, distanceMi: raceDistanceMi, goalPaceSec };
     }
     const nonRace: ComposeNonRaceInput = {
-      startMondayISO, level, recentWeeklyMi, recentLongMi, recentPeakWeeklyMi: recentWeeklyMi,
+      startMondayISO, level, recentWeeklyMi, recentLongMi,
+      // ANCHORFIT-1 · DOCTRINE-4's real peak week when the harness was given a
+      // history, exactly as `composeForUserInternal` wires it. Without one this
+      // stays the pre-DOCTRINE-4 proxy, which is correct for the case the sim
+      // was built for and was WRONG as a gate: every archetype in
+      // `_sweep_allusers.test.ts` sized recovery and maintenance off a peak
+      // that was the 28-day mean, which is the defect DOCTRINE-4 fixed. A gate
+      // that cannot express the bug cannot catch it.
+      recentPeakWeeklyMi: hist ? Math.max(hist.peak, recentWeeklyMi) : recentWeeklyMi,
       // MAINT-NOBLOCK-1 · the simulator mirrors ONBOARDING, where there are no
       // logged runs at all — so the measured peak is 0 and the maintenance
       // block holds the runner's stated volume rather than cutting it by 30%
       // toward a completed block they do not have.
-      measuredPeakWeeklyMi: 0,
+      measuredPeakWeeklyMi: hist ? hist.peak : 0,
       easyDayMedianMi, longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
       tier, nextRace, lastRaceFinished, rxQuality, tPaceSec, lthr: sim.lthr ?? null,
     };
@@ -400,6 +494,15 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     derived: {
       mode, raceDistanceMi, raceDateISO, startMondayISO, blockStartISO, buildOpensISO: buildOpens, goalPaceSec, tPaceSec,
       bestRecentVdot: bestRecentVdot ?? null, bestRecentVdotSelfReported, recentWeeklyMi, recentLongMi,
+      // ANCHORFIT-1 · what the composers were handed, for a gate to grade.
+      measuredPeakWeeklyMi: hist ? hist.peak : null,
+      recentPeakWeeklyMi: hist ? Math.max(hist.peak, recentWeeklyMi) : null,
+      rampBase: rampEvidence,
+      goalTier: (() => {
+        const t = (composed.authoredState as Record<string, unknown> | undefined)?.['goal_tier']
+          ?? (composed.authoredState as Record<string, unknown> | undefined)?.['tier'];
+        return typeof t === 'string' ? t : null;
+      })(),
       longRunDow, restDow, qualityDows, trainingDaysPerWeek, distanceCategory: cat,
     },
     validateCtx: {

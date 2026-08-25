@@ -63,6 +63,27 @@ export interface SimInputs {
   longRunDay: DayKey;
   availableDays?: DayKey[] | null;
 
+  /**
+   * ANCHORFIT-1 (2026-08-25) · the runner's LOGGED history, most-recent-first,
+   * `dailyMiMostRecentFirst[i]` = miles run `i` days before `startDateISO`.
+   *
+   * Optional and absent by default, so every existing archetype composes
+   * byte-identically. Its whole purpose is that `_sweep_allusers.test.ts` and
+   * /sim/plan mirror ONBOARDING, where there are no logged runs at all — and
+   * two of the three volume anchors (`recentPeakWeeklyMileage` and
+   * `rampBaseForBuild`) are DB-only readers that therefore could not be graded
+   * by any gate in the repo. `recentPeakWeeklyMi` was pinned to
+   * `recentWeeklyMi`, which is the pre-DOCTRINE-4 proxy the reverse-taper
+   * defect came from: the sweep was still grading the engine that shipped it.
+   *
+   * When present, the three anchors are resolved from it by the SAME pure
+   * functions production spends (`resolvePeakWeekly`, `resolveRampBase`).
+   */
+  dailyMiMostRecentFirst?: readonly number[] | null;
+  /** ANCHORFIT-1 · last race PRIORITY, which sets how long a mandated
+   *  interruption `rampBaseForBuild` may read through. */
+  lastRacePriority?: 'A' | 'B' | 'C' | null;
+
   // ── Advanced overrides (normally derived from Strava/runs) ──
   bestRecentVdotOverride?: number | null;
   easyDayMedianMi?: number | null;

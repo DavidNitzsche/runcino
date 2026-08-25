@@ -391,6 +391,8 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'A GATE. This file.',
   'web-v2/lib/faff/surface-sweep-matrix.ts':
     'A GATE. Same shape as the doctrine registry: the runner states, data shapes, boundaries and rules that _surface_sweep.test.ts and check-surface-sweep.sh drive, never consulted at runtime. It is deliberately a separate module rather than inlined in the test so the cold half of check-surface-sweep.sh can count the axes and the rules with sed on a container that has no toolchain.',
+  'web-v2/lib/plan/anchor-fit.ts':
+    'A GATE. Same shape as the doctrine registry: the checks that ask whether a plan\'s ANCHOR fits the runner it was measured from, consulted by lib/plan/_anchor_fit.test.ts, never at runtime. It is a separate module rather than inlined in the test for one reason — the checks are pure predicates over an AnchorFacts record, so the same code that grades sixteen real runner shapes also grades planted-bad fact sets, and the gate can prove it still sees the defect it was written for (the owner\'s 29-mi anchor against a 47-mi runner). A gate whose predicates are only ever run on healthy input is a gate that cannot tell you it is broken.',
   'web-v2/lib/audit/swallow-scan.ts':
     'A GATE. Same shape as sql-scan.ts: consulted by _swallow_scan.test.ts and check-swallowed-failure.sh, never at runtime. It finds the places where a database failure becomes a plausible answer — the `.catch(() => empty)` that hid four broken date_iso comparisons for months.',
   'web-v2/lib/audit/swallowed-failure-registry.ts':

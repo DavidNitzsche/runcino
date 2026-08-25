@@ -5093,6 +5093,85 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  // ══ ANCHOR FIT · the anchor is graded against the RUNNER ══════════════════
+  {
+    id: 'ANCHORFIT.gate-exists-and-can-see-the-runner',
+    binds: [
+      'lib/plan/anchor-fit.ts#checkAnchorNotCircular',
+      'lib/plan/_anchor_fit.test.ts#SHAPES',
+      'lib/plan/sim-inputs.ts#dailyMiMostRecentFirst',
+      'lib/plan/generate.ts#resolvePeakWeekly',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '| 8-14 days | 70% of pre-layoff volume for 1 wk, 85% for wk 2, full for wk 3 |',
+    claim:
+      'Every other gate grades the plan against its anchor. This one grades the anchor ' +
+      'against the runner, and it can only do that if the harness is able to express a ' +
+      'runner with a history. `buildSimPlan` mirrors onboarding — no logged runs — so the ' +
+      'two volume readers added for exactly this defect (`recentPeakWeeklyMileage`, ' +
+      '`rampBaseForBuild`) were unreachable by any test in the repo, and every sweep ' +
+      'archetype composed recovery off `recentPeakWeeklyMi = recentWeeklyMi`: the ' +
+      'pre-DOCTRINE-4 proxy the reverse-taper defect came from. The floor the gate applies ' +
+      'is doctrine\'s own resume fraction, parsed from the cited row, not a literal.',
+    check({ cite }) {
+      const stated = cite.section.find((l) => l.includes('70% of pre-layoff volume'));
+      if (!stated) throw new Error('the short-layoff resume row moved · the anchor-fit floor has no source');
+      const docFraction = Number((stated.match(/(\d+)%\s+of\s+pre-layoff/) ?? [])[1]) / 100;
+      // 1 · the gate's floor is the doc's number, reached through the shared constant.
+      if (Math.abs(RAMP_BASE_RESUME_FRACTION - docFraction) > 0.001) {
+        throw new Error('the anchor-fit floor and the doctrine resume fraction have diverged');
+      }
+      const checks = sourceOf('web-v2/lib/plan/anchor-fit.ts');
+      if (!/RAMP_BASE_RESUME_FRACTION/.test(checks)) {
+        throw new Error('anchor-fit no longer floors on the doctrine resume fraction · it has a literal');
+      }
+      // 2 · the gate still runs the checks. This claim cannot be satisfied by
+      //     deleting the thing it watches (the GUARD 2 posture of
+      //     check-swallowed-failure.sh).
+      const gate = sourceOf('web-v2/lib/plan/_anchor_fit.test.ts');
+      if (!/runChecks\(/.test(gate) || !/const SHAPES: Shape\[\]/.test(gate)) {
+        throw new Error('the anchor-fit gate no longer runs the checks over runner shapes');
+      }
+      if (!/dailyMiMostRecentFirst/.test(gate)) {
+        throw new Error('the anchor-fit gate no longer feeds the harness a runner history');
+      }
+      // 3 · the harness regression itself. If this line comes back, the sweep
+      //     is grading the pre-DOCTRINE-4 engine again and nobody will notice.
+      const sim = sourceOf('web-v2/lib/plan/sim-inputs.ts');
+      if (/recentPeakWeeklyMi: recentWeeklyMi,/.test(sim)) {
+        throw new Error(
+          'buildSimPlan pins recentPeakWeeklyMi to the 28-day mean unconditionally again · ' +
+            'every archetype in _sweep_allusers is back to grading a peak that is an average',
+        );
+      }
+      if (!/recentPeakWeeklyMi: hist \? Math\.max\(hist\.peak, recentWeeklyMi\)/.test(sim)) {
+        throw new Error('buildSimPlan no longer resolves a real peak from a supplied history');
+      }
+      // 4 · the peak reader's pure half must still be spent by the DB half, or
+      //     the gate is testing a function production does not run.
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/export function resolvePeakWeekly\(/.test(gen)) {
+        throw new Error('resolvePeakWeekly is gone · the peak anchor is untestable without a database again');
+      }
+      if (!/return resolvePeakWeekly\(daily\);/.test(gen)) {
+        throw new Error('recentPeakWeeklyMileage no longer spends resolvePeakWeekly · two implementations');
+      }
+      // 5 · and neither volume anchor may swallow a failed read back into a
+      //     zero. An empty history and a broken query are the same value, and
+      //     the value they share is "this runner is smaller than they are".
+      for (const fn of ['recentPeakWeeklyMileage', 'rampBaseForBuild']) {
+        const body = gen.slice(gen.indexOf(`async function ${fn}(`));
+        const head = body.slice(0, body.indexOf('\n}\n'));
+        if (/mileageByDay\([^)]*\)\s*\n?\s*\.catch\(/.test(head) || /mileageByDay\([^;]*\.catch\(/.test(head)) {
+          throw new Error(
+            `${fn} swallows a failed mileage read into an empty map · the anchor silently ` +
+              'falls back to the depressed 28-day mean, which is the DOCTRINE-4 defect at runtime',
+          );
+        }
+      }
+    },
+  },
+
   // == MARATHON TAPER . MP work survives the volume cut . Research/08 9.2 ====
   {
     id: 'TAPERMP.marathon-taper-mp-dose',

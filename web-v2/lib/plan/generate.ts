@@ -582,20 +582,53 @@ async function recentWeeklyMileage(userId: string): Promise<number> {
  * split in two. Returns 0 when there is no history (cold start), which leaves
  * the caller's `max(peak, mean)` floor to supply the anchor exactly as before.
  */
-async function recentPeakWeeklyMileage(userId: string, todayISO: string): Promise<number> {
-  const { mileageByDay, isoDaysBefore } = await import('@/lib/runs/volume');
-  const WINDOW_DAYS = 112; // 16 weeks
-  const fromISO = isoDaysBefore(todayISO, WINDOW_DAYS);
-  const byDay = await mileageByDay(userId, fromISO, todayISO).catch(() => new Map());
-  if (byDay.size === 0) return 0;
-  const dayMi = (iso: string): number => (byDay.get(iso)?.mi ?? 0);
+/** 16 weeks · spans a full build block. See the header above. */
+export const PEAK_WEEK_LOOKBACK_DAYS = 112;
+
+/**
+ * ANCHORFIT-1 (2026-08-25) · pure half of DOCTRINE-4, split out for the same
+ * reason `resolveRampBase` was: the DB half cannot be graded without a
+ * database, so the anchor that sizes every recovery and maintenance week
+ * shipped with no test that fed it a runner's history.
+ *
+ * `dailyMi[i]` is miles run `i` days before today, so index 0 is today. The
+ * rolling window is closed over the array's own length, which is what lets a
+ * fixture hand it 112 days without inventing dates.
+ */
+export function resolvePeakWeekly(dailyMi: readonly number[]): number {
   let peak = 0;
-  for (let end = 0; end < WINDOW_DAYS; end++) {
+  const at = (i: number): number => {
+    const v = dailyMi[i];
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  };
+  for (let end = 0; end < dailyMi.length; end++) {
     let sum = 0;
-    for (let k = 0; k < 7; k++) sum += dayMi(isoDaysBefore(todayISO, end + k));
+    for (let k = 0; k < 7; k++) sum += at(end + k);
     if (sum > peak) peak = sum;
   }
   return Math.round(peak * 10) / 10;
+}
+
+async function recentPeakWeeklyMileage(userId: string, todayISO: string): Promise<number> {
+  const { mileageByDay, isoDaysBefore } = await import('@/lib/runs/volume');
+  const WINDOW_DAYS = PEAK_WEEK_LOOKBACK_DAYS;
+  const fromISO = isoDaysBefore(todayISO, WINDOW_DAYS);
+  // ANCHORFIT-2 (2026-08-25) · NOT `.catch(() => new Map())`. See lib/db/read.ts:
+  // a failed read and an honest nothing were the same value here, and the
+  // consumer is `peakAnchor = max(peak, 28-day mean)` — so a transient database
+  // error silently demoted every recovery and maintenance block back onto the
+  // trailing average this whole reader exists to replace. That is the DOCTRINE-4
+  // defect, reachable at runtime with no code change. An authoring that cannot
+  // read the runner's history must refuse, not invent a smaller runner.
+  const byDay = await mileageByDay(userId, fromISO, todayISO);
+  if (byDay.size === 0) return 0;
+  const dayMi = (iso: string): number => (byDay.get(iso)?.mi ?? 0);
+  // Exactly the WINDOW_DAYS the query fetched. `resolvePeakWeekly` reads past
+  // the end as zero, which is what the old inline loop did too — days 112-117
+  // sat outside `fromISO` and always answered 0.
+  const daily: number[] = [];
+  for (let i = 0; i < WINDOW_DAYS; i++) daily.push(dayMi(isoDaysBefore(todayISO, i)));
+  return resolvePeakWeekly(daily);
 }
 
 // ── RAMPBASE-1 (2026-08-17) · the volume a build may honestly ramp FROM ──
@@ -709,6 +742,54 @@ export function resolveRampBase(opts: {
   };
 }
 
+/**
+ * RAMPBASE-1 · how long an interruption this authoring may read THROUGH.
+ *
+ * A race the runner actually ran explains its own taper AND its own post-race
+ * recovery window — both are volumes the engine itself prescribed, so reading
+ * them as fitness is the defect. Nothing else earns more than the short-layoff
+ * allowance.
+ *
+ * ANCHORFIT-1 (2026-08-25) · lifted out of `rampBaseForBuild` so the sim
+ * harness answers this question with the SAME function rather than a second
+ * copy that can drift. A HISTORY row, not the goal race, so an unrecognised
+ * distance is a real possibility and refusing the whole authoring for it would
+ * be wrong: a race whose distance we do not know explains no mandated
+ * interruption, and the short-layoff allowance stands.
+ */
+export function allowedInterruptionWeeksFor(
+  todayISO: string,
+  lastRaceDateISO: string | null,
+  lastRaceDistanceMi: number | null,
+  lastRacePriority: string | null,
+): number {
+  let allowed = SHORT_LAYOFF_WEEKS;
+  if (lastRaceDateISO && lastRaceDistanceMi != null && lastRaceDistanceMi > 0) {
+    const weeksSince = Math.floor(daysBetween(lastRaceDateISO, todayISO) / 7);
+    const cat = distanceCategoryOrNull(lastRaceDistanceMi);
+    if (cat != null) {
+      const mandated = BLOCK_SHAPE[cat].taperWeeks + postRaceRecoveryWeeks(cat, lastRacePriority);
+      if (weeksSince >= 0 && weeksSince <= mandated) allowed = Math.max(allowed, mandated);
+    }
+  }
+  return allowed;
+}
+
+/** ANCHORFIT-1 · pure · 16 most-recent-first 7-day sums from a daily series. */
+export function weeklyBlocksFromDaily(dailyMi: readonly number[], blocks = RAMP_BASE_LOOKBACK_WEEKS): number[] {
+  const at = (i: number): number => {
+    const v = dailyMi[i];
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  };
+  const out: number[] = [];
+  for (let w = 0; w < blocks; w++) {
+    let sum = 0;
+    for (let k = 0; k < 7; k++) sum += at(w * 7 + k);
+    out.push(Math.round(sum * 10) / 10);
+  }
+  return out;
+}
+
 /** DB half of RAMPBASE-1 · builds the 7-day series and spends `resolveRampBase`. */
 async function rampBaseForBuild(
   userId: string,
@@ -720,33 +801,21 @@ async function rampBaseForBuild(
 ): Promise<RampBaseEvidence> {
   const { mileageByDay, isoDaysBefore } = await import('@/lib/runs/volume');
   const WINDOW_DAYS = RAMP_BASE_LOOKBACK_WEEKS * 7;
-  const byDay = await mileageByDay(userId, isoDaysBefore(todayISO, WINDOW_DAYS), todayISO)
-    .catch(() => new Map());
+  // ANCHORFIT-2 (2026-08-25) · not swallowed. An empty map here makes every
+  // 7-day block zero, `sustained` zero, and `resolveRampBase` return the
+  // 28-day mean — the exact number RAMPBASE-1 exists to stop a build ramping
+  // from. See the sibling note in `recentPeakWeeklyMileage`.
+  const byDay = await mileageByDay(userId, isoDaysBefore(todayISO, WINDOW_DAYS), todayISO);
   const dayMi = (iso: string): number => (byDay.get(iso)?.mi ?? 0);
-  const series: number[] = [];
-  for (let w = 0; w < RAMP_BASE_LOOKBACK_WEEKS; w++) {
-    let sum = 0;
-    for (let k = 0; k < 7; k++) sum += dayMi(isoDaysBefore(todayISO, w * 7 + k));
-    series.push(Math.round(sum * 10) / 10);
-  }
-  // How long an interruption this authoring may look through. A race the
-  // runner actually ran explains its own taper AND its own recovery window —
-  // both are volumes the engine itself prescribed, so reading them as fitness
-  // is the defect. Nothing else earns more than the short-layoff allowance.
-  let allowed = SHORT_LAYOFF_WEEKS;
+  const daily: number[] = [];
+  for (let i = 0; i < WINDOW_DAYS; i++) daily.push(dayMi(isoDaysBefore(todayISO, i)));
+  const series = weeklyBlocksFromDaily(daily, RAMP_BASE_LOOKBACK_WEEKS);
+  // How long an interruption this authoring may look through · see
+  // `allowedInterruptionWeeksFor`.
   const lastMi = lastRaceDistanceMi ?? lastRaceFinished?.distanceMi ?? null;
-  if (lastRaceFinished?.date && lastMi != null && lastMi > 0) {
-    const weeksSince = Math.floor(daysBetween(lastRaceFinished.date, todayISO) / 7);
-    // A HISTORY row, not the goal race, so an unrecognised distance is a real
-    // possibility and refusing the whole authoring for it would be wrong. The
-    // honest answer is that a race whose distance we do not know explains no
-    // mandated interruption, so the short-layoff allowance stands.
-    const cat = distanceCategoryOrNull(lastMi);
-    if (cat != null) {
-      const mandated = BLOCK_SHAPE[cat].taperWeeks + postRaceRecoveryWeeks(cat, lastRacePriority);
-      if (weeksSince >= 0 && weeksSince <= mandated) allowed = Math.max(allowed, mandated);
-    }
-  }
+  const allowed = allowedInterruptionWeeksFor(
+    todayISO, lastRaceFinished?.date ?? null, lastMi, lastRacePriority,
+  );
   return resolveRampBase({ meanWeeklyMi, weeklySeries: series, allowedInterruptionWeeks: allowed });
 }
 
