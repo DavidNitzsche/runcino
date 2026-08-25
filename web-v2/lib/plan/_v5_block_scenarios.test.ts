@@ -23,7 +23,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { anotherRaceBlockGate, type PlanShape } from './replan-scenarios';
-import { findMoveDayCandidate, libraryPhaseKey, buildPanel, buildCoachLine, weekFlag } from './v5-block';
+import { findMoveDayCandidate, libraryPhaseKey, buildPanel, buildCoachLine, weekFlag, buildSoFar } from './v5-block';
 import { planWeekFlags } from './generate';
 import { pickPlanMode, buildOpensISO } from './goal-tiers';
 
@@ -220,7 +220,7 @@ function trainingState(over: Partial<TrainingStateShape> = {}): TrainingStateSha
       id: 'wk0', idx: 0, phase: 'QUALITY', startDate: '2026-08-24', plannedMi: 34,
       isRaceWeek: false, isCutback: false, days, isCurrent: true,
     }],
-    currentPhase: 'QUALITY', currentWeekIdx: 0, nextQuality: null,
+    currentPhase: 'QUALITY', currentWeekIdx: 0, currentWeekOrdinal: 1, nextQuality: null,
     weekDone: 12, weekPlanned: 34,
     weekWindow: { startISO: '2026-08-24', endISO: '2026-08-30' },
     weekWindowDays: days,
@@ -228,6 +228,49 @@ function trainingState(over: Partial<TrainingStateShape> = {}): TrainingStateSha
     ...over,
   };
 }
+
+describe('buildSoFar · "Weeks in" counts, it does not do arithmetic on week_idx', () => {
+  // ── David's phone, 2026-08-25 · Block read "Weeks in — 2 of 1" ──────────
+  //
+  // His active plan holds exactly one week, and that week carries
+  // `week_idx = 1` because it is the surviving second week of a two-week
+  // recovery plan. `currentWeekIdx + 1` therefore said two against a
+  // denominator of one — a number that cannot exist.
+  it('a single week carrying week_idx 1 is week 1 of 1, not 2 of 1', () => {
+    const days = windowDays();
+    const state = trainingState({
+      weeks: [{
+        id: 'wk_only', idx: 1, phase: 'RECOVERY', startDate: '2026-08-24', plannedMi: 38,
+        isRaceWeek: false, isCutback: false, days, isCurrent: true,
+      }],
+      currentPhase: 'RECOVERY', currentWeekIdx: 1, currentWeekOrdinal: 1,
+    });
+    const weeksIn = buildSoFar(state).find((r) => r.id === 'weeks-in');
+    expect(weeksIn?.value?.text).toBe('1 of 1');
+  });
+
+  it('the numerator never exceeds the denominator, whatever the stored indices are', () => {
+    const days = windowDays();
+    // Indices 4 and 5 — a block whose first three weeks were dropped.
+    const state = trainingState({
+      weeks: [
+        { id: 'a', idx: 4, phase: 'BASE', startDate: '2026-08-17', plannedMi: 30,
+          isRaceWeek: false, isCutback: false, days, isCurrent: false },
+        { id: 'b', idx: 5, phase: 'BASE', startDate: '2026-08-24', plannedMi: 34,
+          isRaceWeek: false, isCutback: false, days, isCurrent: true },
+      ],
+      currentWeekIdx: 5, currentWeekOrdinal: 2,
+    });
+    const weeksIn = buildSoFar(state).find((r) => r.id === 'weeks-in');
+    expect(weeksIn?.value?.text).toBe('2 of 2');
+  });
+
+  it('off-plan reads zero rather than guessing', () => {
+    const state = trainingState({ currentWeekIdx: null, currentWeekOrdinal: null });
+    const weeksIn = buildSoFar(state).find((r) => r.id === 'weeks-in');
+    expect(weeksIn?.value?.text).toBe('0 of 1');
+  });
+});
 
 describe("buildPanel · the three stats describe the runner's week", () => {
   it('prints the window total, not the plan-week row total', () => {

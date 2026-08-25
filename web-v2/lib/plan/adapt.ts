@@ -1980,7 +1980,20 @@ async function deriveTPaceSecForRebuild(
     )).rows[0];
     if (!race) return null;
     const goalSec = Number(race.plan?.goal?.finish_time_s);
-    const goalDistanceMi = Number(race.meta?.distanceMi);
+    // RESOLVED AT READ TIME, NOT READ RAW.
+    //
+    // This was `Number(race.meta?.distanceMi)`, and that field is NULL on
+    // every race row written by a path that stores a label only — which is
+    // most of them. David's Santa Monica 10K carries `distanceLabel: "10K"`
+    // and no number, so this produced NaN, `tPaceFromGoal` could not size the
+    // race, and the T-pace anchored on that goal silently did not exist. A
+    // lever that CANNOT fire looks exactly like a lever with nothing to say.
+    //
+    // `distanceMiOfMeta` is the one parser the read paths converged on. It
+    // still returns null on genuinely unresolvable, which callers must treat
+    // as "unknown distance" — never default it.
+    const goalDistanceMi = distanceMiOfMeta(race.meta);
+    if (goalDistanceMi == null) return null;
     const fromGoal = tPaceFromGoal(goalSec, goalDistanceMi);
     return fromGoal ?? null;
   } catch {

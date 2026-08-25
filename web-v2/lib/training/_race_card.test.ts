@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 import {
   composeRaceCard, buildDecisionCard, decisionTriggerForVerdict,
   heatFactCard, courseChangedFactCard, chipLockFactCard, twoARacesChoiceCard,
+  collidingARacePair, A_RACE_COLLISION_DAYS,
   type V5DecisionCardOut,
 } from './race-card';
 import type { GoalAssessment, GoalFeasibility } from './goal-assessment';
@@ -92,6 +93,47 @@ describe('race-card · the eight design triggers', () => {
     for (const a of card.answers) expect(a.action).toBe('choose_race');
     // each answer's id IS the race slug it targets, and both are unique
     expect(new Set(card.answers.map(a => a.id)).size).toBe(2);
+  });
+
+  // ── WHICH pair of A races is a conflict at all ────────────────────────
+  //
+  // David, 2026-08-25, on his phone: "needs a decision is coming up but makes
+  // no sense. One is in December and one is in March." The detector asked
+  // "are there two?" when the question is "do they collide?".
+  describe('collidingARacePair', () => {
+    const race = (slug: string, days: number) => ({ slug, name: slug.toUpperCase(), days });
+
+    it("David's own pair — CIM 2026-12-06 and LA 2027-03-07 — is not a conflict", () => {
+      // 103 and 194 days from 2026-08-25: thirteen weeks apart, a whole block.
+      expect(collidingARacePair([race('cim', 103), race('la', 194)])).toBeNull();
+    });
+
+    it('two A races inside one block IS a conflict', () => {
+      const pair = collidingARacePair([race('cim', 103), race('la', 145)]);
+      expect(pair?.map(r => r.slug)).toEqual(['cim', 'la']);
+    });
+
+    it('one A race is never a conflict', () => {
+      expect(collidingARacePair([race('cim', 103)])).toBeNull();
+      expect(collidingARacePair([])).toBeNull();
+    });
+
+    it('names the colliding pair, not blindly the first two', () => {
+      // No conflict between 10 and 120; a real one between 120 and 130.
+      const pair = collidingARacePair([race('a', 10), race('b', 120), race('c', 130)]);
+      expect(pair?.map(r => r.slug)).toEqual(['b', 'c']);
+    });
+
+    it('sorts by date first — the caller is not trusted to', () => {
+      const pair = collidingARacePair([race('later', 60), race('sooner', 20)]);
+      expect(pair?.map(r => r.slug)).toEqual(['sooner', 'later']);
+    });
+
+    it('the window is exclusive at the boundary', () => {
+      // Exactly a block apart is exactly enough, so it is not a collision.
+      expect(collidingARacePair([race('a', 0), race('b', A_RACE_COLLISION_DAYS)])).toBeNull();
+      expect(collidingARacePair([race('a', 0), race('b', A_RACE_COLLISION_DAYS - 1)])).not.toBeNull();
+    });
   });
 
   // ── the four DECISION triggers — verdict-driven, decision shape, and

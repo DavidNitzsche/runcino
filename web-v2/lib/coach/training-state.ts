@@ -91,6 +91,26 @@ export interface TrainingState {
   weeks: PlanWeek[];
   currentPhase: string | null;
   currentWeekIdx: number | null;
+  /**
+   * WHICH WEEK OF THE BLOCK THIS IS, COUNTED — 1-based, null off-plan.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * NOT `currentWeekIdx + 1`. That was the arithmetic every caller used, and
+   * it reads `plan_weeks.week_idx` as if it were a 0-based ordinal within
+   * this plan. It is not: it is the index the week was AUTHORED with, and a
+   * plan that has been re-authored, truncated or split keeps the old numbers.
+   *
+   * David's phone, 2026-08-25, Block screen: "Weeks in — 2 of 1". His active
+   * plan `pln_974c307d22ee0f61` holds exactly one week and that week carries
+   * `week_idx = 1`, because it is the surviving second week of a two-week
+   * recovery plan. So `idx + 1` said two, `weeks.length` said one, and the
+   * screen printed a number that cannot exist.
+   *
+   * Counting position in the sorted list cannot produce that, whatever the
+   * stored indices are, because it is derived from the same array the
+   * denominator comes from. Numerator and denominator now have one source.
+   */
+  currentWeekOrdinal: number | null;
   nextQuality: { date: string; dow: number; type: string; label: string | null; mi: number } | null;
   weekDone: number;            // canonical mileage, week-start→today (long_run_day window)
   /**
@@ -145,7 +165,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   if (!plan) {
     return {
       plan_id: null, today, race: null, phases: [], weeks: [],
-      currentPhase: null, currentWeekIdx: null, nextQuality: null,
+      currentPhase: null, currentWeekIdx: null, currentWeekOrdinal: null, nextQuality: null,
       weekDone: 0, weekPlanned: null,
       // No plan · no window worth naming, but the field is not optional and a
       // caller must not have to guess. Today's own seven days, empty.
@@ -331,6 +351,11 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   const current = weeks.find((w) => w.isCurrent);
   const currentPhase = current?.phase ?? null;
   const currentWeekIdx = current?.idx ?? null;
+  // Counted, not computed from the stored index — see `currentWeekOrdinal`.
+  // `weeks` is already in `week_idx` order from the query, so position in it
+  // IS the ordinal, and it shares its array with the denominator.
+  const currentWeekPos = current ? weeks.indexOf(current) : -1;
+  const currentWeekOrdinal = currentWeekPos >= 0 ? currentWeekPos + 1 : null;
 
   // Next quality day = first future non-rest, non-easy workout (or first quality session in plan).
   const QUALITY_TYPES = new Set(['threshold', 'tempo', 'intervals', 'long', 'race']);
@@ -397,7 +422,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
 
   return {
     plan_id: plan.id, today, race, phases, weeks,
-    currentPhase, currentWeekIdx, nextQuality, weekDone, weekPlanned,
+    currentPhase, currentWeekIdx, currentWeekOrdinal, nextQuality, weekDone, weekPlanned,
     weekWindow, weekWindowDays,
     last_adapted_at: plan.last_adapted_at,
     horizonRaise,

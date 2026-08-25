@@ -883,6 +883,14 @@ struct WeekStripDayV5: Identifiable, Equatable {
     /// identity — the date is a lookup, not an identity. A synthesised rest
     /// day with no row falls back to a `date:`-prefixed key.
     let id: String
+    /// The day this cell is, as `yyyy-MM-dd`.
+    ///
+    /// A LOOKUP, NEVER AN IDENTITY — `id` is still what a tap hands back. This
+    /// is here so the strip can work out the weeks either side of itself by
+    /// arithmetic while a swipe is under the finger, which it has to do before
+    /// any payload for those weeks could arrive. Optional because the strip is
+    /// also built by hand in previews and catalogue screens.
+    var dateISO: String? = nil
     /// One letter. M T W T F S S.
     let letter: String
     /// The weekday spelled out, for speech only — never drawn.
@@ -906,10 +914,6 @@ struct WeekStripV5: View {
     var onTap: ((WeekStripDayV5) -> Void)? = nil
 
     /// Page the whole strip a week at a time. -1 back, +1 forward.
-    ///
-    /// A horizontal drag, not a swipe gesture, because the strip's day cells
-    /// are tappable and it sits inside a vertically-scrolling page. The
-    /// threshold below has to clear a tap without stealing the scroll.
     var onPageWeek: ((Int) -> Void)? = nil
 
     /// The strip is drawn INSIDE the panel, so it takes the ramp's ink. Unlike
@@ -917,18 +921,92 @@ struct WeekStripV5: View {
     /// environment resolves correctly here.
     @Environment(\.v5PanelInk) private var panelInk
 
-    /// A drag counts as a week page when it is decisively sideways.
+    /// ─────────────────────────────────────────────────────────────────────
+    /// THE SWIPE FOLLOWS THE FINGER
+    ///
+    /// David, 2026-08-25: "also need to be able to easily swipe to go back and
+    /// forth weeks. just like an iphone native control."
+    ///
+    /// There WAS a week swipe here, and it was invisible. It lived entirely in
+    /// `.onEnded`: nothing moved while the finger was down, and then the whole
+    /// strip was replaced when the payload landed. A gesture with no response
+    /// until it completes cannot be discovered, cannot be aborted, and cannot
+    /// be judged — you learn how far is far enough by being wrong. Which is
+    /// why it read as "clunky" rather than as a feature.
+    ///
+    /// It now tracks. The strip moves with the finger, the neighbouring weeks
+    /// come in either side, and letting go either commits or springs back —
+    /// the contract every paged control on the phone keeps.
+    ///
+    /// THE NEIGHBOURS ARE DRAWN FROM DATES, NOT FROM DATA. Next week's plan is
+    /// a fetch away, and the strip has to be under the finger NOW. Dates are
+    /// arithmetic, so the incoming week shows its real numbers immediately and
+    /// its rails stay blank until the payload for that week arrives. Blank is
+    /// the honest mark for "we have not read this yet" — it is the same mark a
+    /// rest day wears, which is a small ambiguity that lasts one round trip,
+    /// and far better than inventing rails or sliding an empty box.
+    @State private var drag: CGFloat = 0
+    /// The strip's own width, measured. One page of travel.
+    @State private var stripWidth: CGFloat = 0
+    /// Set while a committed page animates out, so the strip keeps travelling
+    /// in the direction it was thrown instead of snapping back first.
+    @State private var committing = false
+
+    /// A drag becomes a page when it is decisively sideways.
     ///
     /// Both conditions matter. The distance clears a tap on a day cell — a
     /// finger moves a few points on any real tap. The ratio keeps the parent
-    /// ScrollView's vertical pan: a drag that is mostly downward is the
-    /// runner scrolling the page, and the strip must not swallow it.
+    /// ScrollView's vertical pan: a drag that is mostly downward is the runner
+    /// scrolling the page, and the strip must not swallow it.
     private static let pageMinDx: CGFloat = 44
     private static let pageDominance: CGFloat = 1.5
+    /// How far past the edge the rubber band stretches when there is nothing
+    /// to page to. Same feel as a scroll view hitting its end.
+    private static let overscroll: CGFloat = 0.35
 
     var body: some View {
+        // THE REAL WEEK SETS THE SIZE; THE NEIGHBOURS ARE PAINTED ON TOP.
+        //
+        // The obvious build — a GeometryReader around three weeks in an HStack
+        // — needs a hard height, because a GeometryReader has no intrinsic one.
+        // Any number written here would be wrong for a runner who has changed
+        // their text size: everything under 28pt in this strip scales, so a
+        // fixed 74 clips the numbers at the first accessibility step.
+        //
+        // So the middle week is laid out normally and keeps its natural
+        // height, and the two neighbours are overlaid and pushed a full width
+        // to either side. They cannot affect the layout because an overlay
+        // never does, and the strip stays exactly as tall as its own content.
+        week(days)
+            .offset(x: drag)
+            .overlay {
+                week(neighbour(-7)).offset(x: drag - stripWidth)
+                week(neighbour(7)).offset(x: drag + stripWidth)
+            }
+            .background {
+                GeometryReader { g in
+                    Color.clear.onChange(of: g.size.width, initial: true) { _, w in
+                        stripWidth = w
+                    }
+                }
+            }
+        // The neighbours sit outside the strip's own width and must not bleed
+        // across the panel.
+        .clipShape(Rectangle())
+        .contentShape(Rectangle())
+        .gesture(pageGesture)
+        // A gesture is not reachable by VoiceOver — the same trap that left
+        // the treadmill's speed controls inoperable mid-run. These are the
+        // spoken way through the weeks.
+        .accessibilityAction(named: "Previous week") { onPageWeek?(-1) }
+        .accessibilityAction(named: "Next week") { onPageWeek?(1) }
+    }
+
+    /// One week of seven cells.
+    @ViewBuilder
+    private func week(_ ds: [WeekStripDayV5]) -> some View {
         HStack(spacing: V5.S.s4) {
-            ForEach(days) { d in
+            ForEach(ds) { d in
                 let cell = VStack(spacing: V5.S.s8) {
                     Text(d.letter)
                         .font(.faffText(TypeScaleV5.label12))
@@ -959,24 +1037,70 @@ struct WeekStripV5: View {
                 }
             }
         }
-        .contentShape(Rectangle())
-        .gesture(pageGesture)
-        // A gesture is not reachable by VoiceOver — the same trap that left
-        // the treadmill's speed controls inoperable mid-run. These are the
-        // spoken way through the weeks.
-        .accessibilityAction(named: "Previous week") { onPageWeek?(-1) }
-        .accessibilityAction(named: "Next week") { onPageWeek?(1) }
     }
+
+    /// The week `offset` days away, as dates only.
+    ///
+    /// No state, no rails, no plate: we have not read that week and must not
+    /// draw a claim about it. The `id` is deliberately date-keyed and NOT a
+    /// plan row id — nothing can tap these, and a fabricated server id is
+    /// exactly the sort of thing that ends up in a request.
+    private func neighbour(_ offset: Int) -> [WeekStripDayV5] {
+        days.compactMap { d in
+            guard let iso = d.dateISO,
+                  let base = Self.iso.date(from: iso),
+                  let moved = Calendar.current.date(byAdding: .day, value: offset, to: base)
+            else { return nil }
+            var c = Calendar(identifier: .gregorian)
+            c.timeZone = TimeZone(identifier: "UTC")!
+            return WeekStripDayV5(id: "ghost:\(Self.iso.string(from: moved))",
+                                  letter: d.letter,
+                                  weekday: d.weekday,
+                                  number: String(c.component(.day, from: moved)),
+                                  state: .rest, isToday: false, isDone: false, isRest: true)
+        }
+    }
+
+    private static let iso: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
 
     private var pageGesture: some Gesture {
         DragGesture(minimumDistance: 12)
+            .onChanged { v in
+                guard onPageWeek != nil, !committing else { return }
+                let dx = v.translation.width
+                // Sideways or not at all. A mostly-vertical drag belongs to
+                // the page's own scroll view and this must not take it.
+                guard abs(dx) > abs(v.translation.height) * Self.pageDominance else {
+                    drag = 0
+                    return
+                }
+                drag = dx
+            }
             .onEnded { v in
-                guard let onPageWeek else { return }
+                guard let onPageWeek, !committing else { return }
                 let dx = v.translation.width
                 let dy = v.translation.height
-                guard abs(dx) >= Self.pageMinDx else { return }
-                guard abs(dx) > abs(dy) * Self.pageDominance else { return }
+                let sideways = abs(dx) > abs(dy) * Self.pageDominance
+                // Velocity counts, the same way it does in a scroll view: a
+                // short fast flick is a page, and a long slow drag that stops
+                // short is not.
+                let flick = abs(v.predictedEndTranslation.width) > Self.pageMinDx * 2
+                guard sideways, abs(dx) >= Self.pageMinDx || flick else {
+                    withAnimation(V5.Motion.expand) { drag = 0 }
+                    return
+                }
+                committing = true
                 onPageWeek(dx < 0 ? 1 : -1)
+                // Carry the strip the rest of the way, then put it back under
+                // the middle week — which by then holds the week we asked for.
+                withAnimation(V5.Motion.expand) { drag = 0 }
+                committing = false
             }
     }
 

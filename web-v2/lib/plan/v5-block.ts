@@ -40,6 +40,7 @@
  * plain read (`loadPlanShape`, `anotherRaceBlockGate`) — never `applyChange`.
  * Nothing in this module writes a row.
  */
+import { dateWords as usDateWords } from '@/lib/format/date';
 import { loadTrainingState, type TrainingState, type PlanWeek } from '@/lib/coach/training-state';
 import { loadSettings } from '@/lib/coach/settings';
 import { pool } from '@/lib/db/pool';
@@ -67,16 +68,21 @@ import { displayTypeFor } from '@/lib/faff/v5-today';
 // ── small local formatters — presentation only, no doctrine here ───────────
 
 const DOW_NUM: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-] as const;
 
+/**
+ * "August 25" — month, then day.
+ *
+ * US order, per David 2026-08-25, and no longer a local `MONTHS` array: this
+ * was the sixth hand-rolled date formatter in the codebase, and the reason
+ * they keep appearing is that each one is three lines. `lib/format/date.ts`
+ * owns the question now.
+ *
+ * No weekday and no year, which is what this register wants: it sits at 26pt
+ * on the Block panel above a phase name, next to "15 weeks to California
+ * International Marathon", and both of those already place it in time.
+ */
 function dateWords(iso: string): string {
-  const parts = iso.split('-').map(Number);
-  const m = parts[1] ?? 1;
-  const d = parts[2] ?? 1;
-  return `${d} ${MONTHS[m - 1]}`;
+  return usDateWords(iso, { long: true, noWeekday: true, noYear: true });
 }
 
 function fmtMi(n: number): string {
@@ -201,7 +207,9 @@ export function buildSoFar(state: TrainingState) {
       if (d.isQuality && d.type !== 'race' && d.doneMi > 0) qualityDone++;
     }
   }
-  const weeksIn = state.currentWeekIdx != null ? state.currentWeekIdx + 1 : 0;
+  // COUNTED, NOT `currentWeekIdx + 1` — that printed "2 of 1" on David's
+  // phone on 2026-08-25. See `TrainingState.currentWeekOrdinal`.
+  const weeksIn = state.currentWeekOrdinal ?? 0;
   const totalWeeks = state.weeks.length;
 
   return [

@@ -27,6 +27,7 @@
  *        still ahead — authority is "once known", not asserted early.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { dateWords } from '@/lib/format/date';
 import { withRequestMemo } from '@/lib/runtime/request-memo';
 import { pool } from '@/lib/db/pool';
 import { rowOrNull, rowsOrNull } from '@/lib/db/read';
@@ -47,6 +48,7 @@ import { computeRaceConditions } from '@/lib/training/race-conditions';
 import { loadCoachLog } from '@/lib/coach/coach-log';
 import {
   composeRaceCard, heatFactCard, courseChangedFactCard, chipLockFactCard, twoARacesChoiceCard,
+  collidingARacePair,
   TRIGGER_SUPPRESS_DAYS,
   type FactChoiceSpec, type FactChoiceTriggerId, type V5DecisionCardOut,
 } from '@/lib/training/race-card';
@@ -123,12 +125,12 @@ async function detectChipLock(past: RaceRow[]): Promise<FactChoiceSpec | null> {
 }
 
 async function detectTwoARaces(aRaces: RaceRow[]): Promise<FactChoiceSpec | null> {
-  const upcoming = aRaces.filter(r => !r.is_past).sort((a, b) => a.days - b.days);
-  if (upcoming.length < 2) return null;
-  return twoARacesChoiceCard(
-    { slug: upcoming[0].slug, name: upcoming[0].name },
-    { slug: upcoming[1].slug, name: upcoming[1].name },
-  );
+  // Two A races are only a conflict when one block cannot serve both — see
+  // `collidingARacePair`, which owns the window and the reasoning.
+  const pair = collidingARacePair(aRaces.filter(r => !r.is_past));
+  if (!pair) return null;
+  const [a, b] = pair;
+  return twoARacesChoiceCard({ slug: a.slug, name: a.name }, { slug: b.slug, name: b.name });
 }
 
 async function detectCourseChanged(race: RaceRow | null, userId: string): Promise<FactChoiceSpec | null> {
@@ -241,19 +243,13 @@ function raceRowAuthority(
 
 
 /**
- * "Sunday 13 December 2026". A schedule row was printing the raw ISO date,
- * which is the database showing through — the same class of leak as
- * "about 0 min" on a rest day.
+ * "Sun, Dec 6, 2026". A schedule row was printing the raw ISO date, which is
+ * the database showing through — the same class of leak as "about 0 min" on a
+ * rest day. The words themselves now come from `lib/format/date`, which is the
+ * one place that decides how a date is written down; this file used to carry
+ * its own copy, and so did the race-detail route.
  */
-function raceDateWords(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(String(iso).slice(0, 10) + 'T12:00:00Z');
-  if (Number.isNaN(d.getTime())) return String(iso);
-  const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
-               'August', 'September', 'October', 'November', 'December'];
-  return `${DOW[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
-}
+const raceDateWords = (iso: string | null | undefined): string => dateWords(iso);
 
 // 2026-08-21 perf · read-only surface · one memo scope per request. Scope
 // dies with the response; nothing is cached between requests. If this route

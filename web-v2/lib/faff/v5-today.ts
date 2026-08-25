@@ -370,6 +370,7 @@ const MIN_CONVERGING_DOMAINS = 3; // CONVERGENCE.redMinDomains, lib/coach/conver
  * Re-exported rather than deleted because they are imported by name across
  * the app, and a rename is churn with no reader-visible benefit.
  */
+import { dateWords as usDateWords } from '@/lib/format/date';
 import { fmtMi, fmtMi2, fmtClock, fmtPaceSlash as fmtPace } from '@/lib/format/run';
 export { fmtMi, fmtClock, fmtPace };
 
@@ -390,21 +391,24 @@ export function fmtRepDistance(mi: number | null | undefined): string | null {
 
 
 
-const DOW_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DOW_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 /**
- * "Thursday 20 August" — day, then date, then month.
+ * "Thursday, August 20" — weekday, then month, then day.
  *
- * The design's own sample data writes it that way, and Block's panel already
- * did ("20 August") while Today wrote "Thursday August 20". Two date formats
- * on two tabs of the same app is the kind of thing nobody reports and everyone
- * notices.
+ * US order, per David 2026-08-25: "it should be Month, Day, Year formatted."
+ * The words come from `lib/format/date.ts`, which is the one place that
+ * decides how a date is written down — this used to keep its own `DOW_FULL`
+ * and `MONTH_FULL` arrays, and it was one of six such copies.
+ *
+ * NO LONGER DRAWN ON TODAY. Both Today screens stopped rendering
+ * `panel.dateLine` on 2026-08-25 — it repeated the date the header and the
+ * week strip were already carrying. It is still composed because onboarding's
+ * day-one screen reads it as its phase line (`HostsV5.dayOne`), and because a
+ * client that wants a date line should get a correct one rather than none.
  */
 export function dateLineFor(iso: string): string {
-  const d = new Date(iso + 'T12:00:00Z');
-  return `${DOW_FULL[d.getUTCDay()]} ${d.getUTCDate()} ${MONTH_FULL[d.getUTCMonth()]}`;
+  return usDateWords(iso, { long: true, noYear: true });
 }
 
 /** dayState the phone's 6-gradient vocabulary accepts. `plannedType` is the

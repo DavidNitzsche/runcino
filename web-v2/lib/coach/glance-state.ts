@@ -9,6 +9,7 @@
  *
  * Cheap pg queries only — no Anthropic call. Page renders in ~200ms.
  */
+import { distanceMiOfMeta } from '@/lib/race/distance';
 import { pool } from '@/lib/db/pool';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
 import { loadReadinessBandBaseline } from './readiness-history';
@@ -758,15 +759,17 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     // into null pace targets across the glance + breakdown surfaces.
     const { parseRaceTime } = await import('@/lib/training/vdot');
     raceGoalSeconds = parseRaceTime(meta.goalDisplay);
-    if (meta.distanceMi) {
-      raceGoalDistanceMi = Number(meta.distanceMi);
-    } else {
-      const dl = String(meta.distanceLabel ?? '').toLowerCase();
-      if (dl.includes('marathon') && !dl.includes('half')) raceGoalDistanceMi = 26.2;
-      else if (dl.includes('half') || dl.includes('21k')) raceGoalDistanceMi = 13.1;
-      else if (dl.includes('10k')) raceGoalDistanceMi = 6.2;
-      else if (dl.includes('5k')) raceGoalDistanceMi = 3.1;
-    }
+    // ONE PARSER. This was a fifth hand-rolled fork of the label reader —
+    // four branches, which covered marathon / half / 10K / 5K and silently
+    // returned nothing for 15K, every ultra the Add Race sheet offers, the
+    // "10 mile" and "20 mile" labels, the bare "26.2" / "13.1" literals, and
+    // the numeric fallback. Every one of those is a race whose goal pace
+    // could not be sized, and the failure is invisible: a null distance and
+    // an unknown distance look identical downstream.
+    //
+    // `distanceMiOfMeta` already prefers the numeric field and falls back to
+    // the label, which is exactly what these ten lines were trying to be.
+    raceGoalDistanceMi = distanceMiOfMeta(meta) ?? raceGoalDistanceMi;
   }
 
   // STRENGTH-3 (2026-08-17) · the strength-day recommender is UNWIRED.

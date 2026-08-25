@@ -150,6 +150,8 @@ private struct StateScreenScaffold<Panel: View, Body: View>: View {
             }
             .padding(.horizontal, V5.S.gutter)
             .padding(.bottom, V5.S.s24)
+            // A vertical page must never pan sideways — see `v5PageWidth`.
+            .v5PageWidth()
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
@@ -301,14 +303,26 @@ struct WeekOffV5: View {
         }
 
         let cal = Calendar(identifier: .gregorian)
+        // ── US ORDER, WHICH MOVES THE ABBREVIATION TO THE OTHER END ───────
+        //
+        // David, 2026-08-25: "it should be Month, Day, Year formatted."
+        //
+        // A range says the month once, and which end carries it depends on
+        // the order. Written the British way the month trails, so the FIRST
+        // date is the bare number: "24 – 30 August". Written the US way the
+        // month leads, so the SECOND one is: "August 24 – 30". Swapping the
+        // format string alone would have produced "24 – August 30", which is
+        // neither convention and reads as a typo.
         let day = DateFormatter(); day.dateFormat = "d"
-        let dayMonth = DateFormatter(); dayMonth.dateFormat = "d MMMM"
+        day.locale = Locale(identifier: "en_US_POSIX")
+        let monthDay = DateFormatter(); monthDay.dateFormat = "MMMM d"
+        monthDay.locale = Locale(identifier: "en_US_POSIX")
 
         let sameMonth = cal.component(.month, from: from) == cal.component(.month, from: to)
             && cal.component(.year, from: from) == cal.component(.year, from: to)
 
-        let left = sameMonth ? day.string(from: from) : dayMonth.string(from: from)
-        let right = dayMonth.string(from: to)
+        let left = monthDay.string(from: from)
+        let right = sameMonth ? day.string(from: to) : monthDay.string(from: to)
         return "\(left) – \(right)"
     }
 }

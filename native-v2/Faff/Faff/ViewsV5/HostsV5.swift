@@ -146,6 +146,12 @@ struct TodayHostV5: View {
             await surface.load()
             NotificationCenter.default.post(name: .faffSurfaceReady, object: "today")
         }
+        // EVERY DAY THAT LANDS IS KEPT. Including the one the app opens on,
+        // and including a refresh of a day already in the cache — the newer
+        // payload wins, which is what makes `present`-then-refresh safe.
+        .onChange(of: surface.model?.dateISO, initial: true) { _, _ in
+            if let m = surface.model { dayCache[m.dateISO] = m }
+        }
         .refreshable { await surface.load() }
         .v5ReloadOnForeground { await surface.load() }
     }
@@ -220,6 +226,7 @@ struct TodayHostV5: View {
                          onPushStrava: { Task { await pushStrava(model) } },
                          onPickDay: { id in pickDay(id, in: model) },
                          viewingDayLabel: viewingDayLabel,
+                         selectedDayISO: selectedISO,
                          onBackToToday: { backToToday() },
                          onPageWeek: { step($0 * 7, from: model) },
                          initials: initials,
@@ -242,6 +249,7 @@ struct TodayHostV5: View {
                           },
                           onPickDay: { id in pickDay(id, in: model) },
                           viewingDayLabel: viewingDayLabel,
+                          selectedDayISO: selectedISO,
                           onBackToToday: { backToToday() },
                           onPageWeek: { step($0 * 7, from: model) },
                           onOpenPacesMoved: { path.append(.pacesMoved) },
@@ -252,37 +260,128 @@ struct TodayHostV5: View {
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // MOVING BETWEEN DAYS
+    //
+    // David, 2026-08-25: "the week strip is so slow and so clunky. It needs to
+    // be instant when clicking on another date."
+    //
+    // It was neither of the two things a tap has to be. The plate did not move
+    // until the payload landed, because the plate is drawn from the payload's
+    // own `isToday` — so for the length of a round trip the runner had tapped
+    // Thursday and the app was still showing Tuesday, with nothing anywhere
+    // saying it had heard them. And when it did land, `.id(dateISO)` +
+    // `.transition(.opacity)` crossfaded, which spends more time on a day the
+    // runner already has than on the one they asked for.
+    //
+    // Three changes, and they are separable on purpose:
+    //
+    //   1. `selectedISO` — the plate is now driven by what was TAPPED, not by
+    //      what has arrived. It moves on the same tick as the finger. This is
+    //      the whole of "instant" for the seven cells; it costs no network.
+    //
+    //   2. `dayCache` — every day decoded this session is kept. A day already
+    //      in hand is presented synchronously (`V5Surface.present`) and
+    //      refreshed behind the screen, so going back to a day you just left
+    //      is free, and so is stepping back and forth over a week.
+    //
+    //   3. `prefetchAround` — after a day settles, its neighbours are read
+    //      quietly. Stepping is overwhelmingly sequential, so the day the
+    //      runner asks for next is usually already in the cache by the time
+    //      they ask for it.
+    //
+    // The cache is per-session and in-memory. It is NOT a correctness
+    // mechanism — every presented day still refreshes — so nothing here can
+    // strand the runner on a stale plan.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Days decoded this session, keyed by ISO date. `viewingDate == nil`
+    /// (the runner's own today) is keyed by its real ISO, never by nil, so
+    /// stepping onto today and tapping today reach the same entry.
+    @State private var dayCache: [String: V5Today] = [:]
+
+    /// The day the runner has ASKED for, which is not always the day on
+    /// screen yet. Nil until they step off today.
+    @State private var selectedISO: String?
+
+    /// Which strip cell wears the plate. The tapped day if there is one, and
+    /// otherwise whatever the payload says — a fresh screen, a foreground
+    /// refresh, or a runner who has not stepped anywhere.
+    private func stripDays(_ model: V5Today) -> [WeekStripDayV5] {
+        guard let selectedISO else { return model.weekStrip.map(\.strip) }
+        return model.weekStrip.map { d in
+            var s = d.strip
+            s.isToday = d.dateISO == selectedISO
+            return s
+        }
+    }
+
     /// The strip hands back a plan row's server id; the date lives beside it
     /// on the same row. Identity is the id, the date is a lookup — never the
     /// other way round.
     private func pickDay(_ id: String, in model: V5Today) {
         guard let day = model.weekStrip.first(where: { $0.id == id }) else { return }
-        let iso: String? = day.isToday ? nil : day.dateISO
-        guard iso != viewingDate else { return }
-        viewingDate = iso
-        Task {
-            await surface.rebind { try await API.fetchV5Today(date: iso) }
-        }
+        goTo(day.dateISO, todayISO: todayISO(model))
     }
 
     private func backToToday() {
-        guard viewingDate != nil else { return }
-        viewingDate = nil
-        Task { await surface.rebind { try await API.fetchV5Today() } }
+        guard let model = surface.model else { return }
+        goTo(todayISO(model), todayISO: todayISO(model))
     }
 
-    /// Step one day. Nil means today, so stepping from nil starts at the
+    /// Step by days. Nil means today, so stepping from nil starts at the
     /// runner's own today rather than at a date the device invented.
     private func step(_ days: Int, from model: V5Today) {
         let base = viewingDate ?? model.dateISO
         guard let d = Self.iso.date(from: base),
               let next = Calendar.current.date(byAdding: .day, value: days, to: d) else { return }
-        let iso = Self.iso.string(from: next)
-        // Stepping back onto today is going home, not visiting a date.
-        let target: String? = iso == model.dateISO && viewingDate == nil ? nil
-                            : (iso == todayISO(model) ? nil : iso)
-        viewingDate = target
-        Task { await surface.rebind { try await API.fetchV5Today(date: target) } }
+        goTo(Self.iso.string(from: next), todayISO: todayISO(model))
+    }
+
+    /// The one way onto another day. Everything above funnels here so the
+    /// plate, the cache and the fetch can never disagree about which day the
+    /// screen is on.
+    private func goTo(_ iso: String, todayISO today: String) {
+        guard iso != (selectedISO ?? viewingDate ?? today) else { return }
+
+        // Landing back on the runner's own today is going HOME, not visiting a
+        // date: `viewingDate` goes nil so the header stops offering a way back
+        // to where you already are, and the read drops its `date=` parameter.
+        let isHome = iso == today
+        selectedISO = isHome ? nil : iso
+        viewingDate = isHome ? nil : iso
+
+        let param: String? = isHome ? nil : iso
+        let refresh: () async throws -> API.V5Fetch<V5Today> = { try await API.fetchV5Today(date: param) }
+
+        if let known = dayCache[iso] {
+            // Already decoded. On screen this tick, refreshed behind it.
+            surface.present(known, refreshWith: refresh)
+        } else {
+            Task { await surface.rebind(refresh) }
+        }
+        Task { await prefetchAround(iso) }
+    }
+
+    /// Read the days either side of `iso` quietly, and keep whatever comes
+    /// back. Failures are dropped on purpose — a prefetch that cannot be
+    /// served is not a thing to tell the runner about, and the real read for
+    /// that day will report its own outage if they actually go there.
+    ///
+    /// ONE DAY EITHER SIDE, AND ONE WEEK EITHER SIDE. Those are the four moves
+    /// the strip offers: the neighbouring cells, and the swipe. Prefetching
+    /// the whole visible week would be seven reads for a runner who taps one.
+    private func prefetchAround(_ iso: String) async {
+        guard let d = Self.iso.date(from: iso) else { return }
+        let offsets = [-1, 1, -7, 7]
+        for off in offsets {
+            guard let n = Calendar.current.date(byAdding: .day, value: off, to: d) else { continue }
+            let key = Self.iso.string(from: n)
+            if dayCache[key] != nil { continue }
+            if case .ok(let payload)? = try? await API.fetchV5Today(date: key) {
+                dayCache[key] = payload
+            }
+        }
     }
 
     /// The runner's own today, as the payload reported it when we were on it.
@@ -297,13 +396,36 @@ struct TodayHostV5: View {
         return f
     }()
 
-    /// "Tue 18 Aug" — what the place label says when it is not today.
+    /// "UPCOMING" or "EARLIER" — what the place label says when it is not today.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// DAVID, 2026-08-25: "other days show the date twice. not needed. Can
+    /// just say UPCOMING."
+    ///
+    /// This used to return "THU 27 AUG", and the panel drew "Thursday 27
+    /// August" at 26pt directly underneath it. The same date, twice, six
+    /// points apart — and a third time in the week strip below, where the 27
+    /// is the cell wearing the plate. Three statements of one fact, in a
+    /// panel whose whole job is to say what the day ASKS FOR.
+    ///
+    /// The date line is gone from both Today screens (see `TodayBeforeV5` and
+    /// `TodayAfterV5`), so the strip is now the thing that says WHICH day —
+    /// which it was always doing better, because it says it in context. That
+    /// leaves this label free to say the thing the strip cannot: what the day
+    /// is TO you. Today, or one you have stepped forward to, or one behind.
+    ///
+    /// Not the date, then, but the tense. It keeps the header's promise that
+    /// a screen called TODAY showing another day is a lie, without repeating
+    /// what is already on screen twice.
     private var viewingDayLabel: String? {
         guard let viewingDate, let d = Self.iso.date(from: viewingDate) else { return nil }
-        let f = DateFormatter()
-        f.dateFormat = "EEE d MMM"
-        f.timeZone = TimeZone(identifier: "UTC")
-        return f.string(from: d)
+        // Compared against the payload's own today, never the device's.
+        // `V5Today.weekStrip` carries which cell is today, and the runner's
+        // day boundary is the server's to decide — the same reason `step`
+        // resolves "home" from the model rather than from `Date()`.
+        guard let today = surface.model.map({ todayISO($0) }),
+              let t = Self.iso.date(from: today) else { return "Upcoming" }
+        return d < t ? "Earlier" : "Upcoming"
     }
 
     /// RULE THREE · a refusal is a correct answer, and a correct answer still

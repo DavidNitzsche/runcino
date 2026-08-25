@@ -69,6 +69,13 @@ struct TodayAfterV5: View {
     /// same contract `TodayBeforeV5` uses — identity is never the date.
     var onPickDay: (String) -> Void = { _ in }
     var viewingDayLabel: String? = nil
+    /// The day the runner has TAPPED, which is not always the day on screen
+    /// yet — see `TodayHostV5.goTo`. The strip plates this one, so the plate
+    /// moves on the same tick as the finger instead of waiting for a payload.
+    /// Nil means "plate whatever the payload says", which is the right answer
+    /// on a fresh screen and on the runner's own today.
+    var selectedDayISO: String? = nil
+
     var onBackToToday: (() -> Void)? = nil
     /// Page the week strip. -1 back a week, +1 forward.
     var onPageWeek: (Int) -> Void = { _ in }
@@ -107,11 +114,13 @@ struct TodayAfterV5: View {
          onPushStrava: @escaping () -> Void = {},
          onPickDay: @escaping (String) -> Void = { _ in },
          viewingDayLabel: String? = nil,
+         selectedDayISO: String? = nil,
          onBackToToday: (() -> Void)? = nil,
          onPageWeek: @escaping (Int) -> Void = { _ in },
          initials: String? = nil,
          onReportSick: @escaping (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }) {
         self.viewingDayLabel = viewingDayLabel
+        self.selectedDayISO = selectedDayISO
         self.onBackToToday = onBackToToday
         self.onPageWeek = onPageWeek
         self.initials = initials
@@ -133,6 +142,18 @@ struct TodayAfterV5: View {
         let effortRow = model.askedVsRan.first(where: { $0.action != nil })
         let notAnswered = effortRow?.value?.text == nil
         _expandedRowID = State(initialValue: notAnswered ? effortRow?.id : nil)
+    }
+
+
+    /// The strip's days, with the plate moved to whatever was tapped. See
+    /// `selectedDayISO` — the payload's own `isToday` is still the fallback.
+    private func stripDays() -> [WeekStripDayV5] {
+        guard let selectedDayISO else { return model.weekStrip.map(\.strip) }
+        return model.weekStrip.map { d in
+            var s = d.strip
+            s.isToday = d.dateISO == selectedDayISO
+            return s
+        }
     }
 
     var body: some View {
@@ -175,6 +196,8 @@ struct TodayAfterV5: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, V5.S.gutter)
             .padding(.bottom, V5.S.s24)
+            // A vertical page must never pan sideways — see `v5PageWidth`.
+            .v5PageWidth()
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
@@ -194,12 +217,26 @@ struct TodayAfterV5: View {
                           initials: initials,
                           onAccount: onOpenAccount)
 
-            HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
-                Text(model.panel.dateLine)
-                    .font(.faffDisplay(26))
-                    .foregroundStyle(panelInk.primary)
-                Spacer(minLength: 0)
-                if let weekLine = model.panel.weekLine {
+            // ── THE DATE LINE IS GONE ────────────────────────────────────
+            //
+            // David, 2026-08-25: "TODAY does not need the 'Tuesday 25 August'
+            // type", and on a stepped day, "other days show the date twice.
+            // not needed."
+            //
+            // It was drawing the date a second time under a header that had
+            // just given it, and a third time under a week strip whose whole
+            // job is to say which day this is — in context, against the six
+            // days around it, which is strictly more than a date line can say.
+            // The panel's business is what the day ASKS FOR; the display
+            // register below is the session, and that is what should be
+            // wearing 26pt and up.
+            //
+            // The week line stays where it stood, hard right. It is the one
+            // thing on this row the strip does not carry: which week of the
+            // block this is.
+            if let weekLine = model.panel.weekLine {
+                HStack(spacing: V5.S.s12) {
+                    Spacer(minLength: 0)
                     Text(weekLine)
                         .font(.faffText(TypeScaleV5.label13))
                         .foregroundStyle(panelInk.secondary)
@@ -210,7 +247,7 @@ struct TodayAfterV5: View {
             // it, not only the one before the run. It was inert here — which
             // is the state the runner is in for most of the day once they
             // have run.
-            WeekStripV5(days: model.weekStrip.map { $0.strip },
+            WeekStripV5(days: stripDays(),
                         onTap: { day in onPickDay(day.id) },
                         onPageWeek: { onPageWeek($0) })
 

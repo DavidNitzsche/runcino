@@ -300,6 +300,8 @@ struct RunDetailV5: View {
                 }
                 .padding(.horizontal, V5.S.gutter)
                 .padding(.bottom, V5.S.s32)
+                // A vertical page must never pan sideways — see `v5PageWidth`.
+                .v5PageWidth()
             }
         }
         .background(V5.surfacePage)
@@ -363,7 +365,10 @@ struct RunDetailV5: View {
     }()
     private static let displayFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.dateFormat = "EEEE d MMMM"
+        // US order — month, then day. David, 2026-08-25: "it should be Month, Day,
+        // Year formatted". `lib/format/date.ts` is the same decision on the
+        // server, for the strings it composes.
+        f.dateFormat = "EEEE, MMMM d"
         f.timeZone = TimeZone(identifier: "UTC")
         return f
     }()

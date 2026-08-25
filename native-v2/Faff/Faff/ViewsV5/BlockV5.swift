@@ -143,6 +143,8 @@ struct BlockV5: View {
             }
             .padding(.horizontal, V5.S.gutter)
             .padding(.bottom, V5.S.s24)
+            // A vertical page must never pan sideways — see `v5PageWidth`.
+            .v5PageWidth()
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
@@ -636,7 +638,10 @@ struct BlockV5: View {
         let f = DateFormatter()
         f.calendar = cal
         f.timeZone = cal.timeZone
-        f.dateFormat = "EEEE d MMMM"
+        // US order — month, then day. David, 2026-08-25: "it should be Month, Day,
+        // Year formatted". `lib/format/date.ts` is the same decision on the
+        // server, for the strings it composes.
+        f.dateFormat = "EEEE, MMMM d"
         return f.string(from: date)
     }
 

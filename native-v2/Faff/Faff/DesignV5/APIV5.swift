@@ -335,7 +335,8 @@ struct V5WeekStripDay: Decodable, Equatable, Hashable, Identifiable {
     let isRest: Bool
 
     var strip: WeekStripDayV5 {
-        WeekStripDayV5(id: id, letter: letter, weekday: Self.weekdayName(dateISO),
+        WeekStripDayV5(id: id, dateISO: dateISO,
+                       letter: letter, weekday: Self.weekdayName(dateISO),
                        number: number,
                        state: V5.DayState(rawValue: dayState) ?? .easy,
                        isToday: isToday, isDone: isDone, isRest: isRest)

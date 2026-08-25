@@ -18,6 +18,7 @@
  *        never an invented kit list.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { dateWords } from '@/lib/format/date';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { loadRacesState } from '@/lib/coach/races-state';
@@ -42,19 +43,13 @@ const num = (text: string | null, modelled: boolean): V5NumberOut => ({ text, mo
 
 
 /**
- * "Sunday 13 December 2026". The schedule list already learned this lesson
- * (see raceDateWords in app/api/v5/races/route.ts); the detail screen was
- * still printing the raw column.
+ * "Sun, Dec 6, 2026". A schedule row was printing the raw ISO date, which is
+ * the database showing through — the same class of leak as "about 0 min" on a
+ * rest day. The words themselves now come from `lib/format/date`, which is the
+ * one place that decides how a date is written down; this file used to carry
+ * its own copy, and so did the race-detail route.
  */
-function raceDateWords(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(String(iso).slice(0, 10) + 'T12:00:00Z');
-  if (Number.isNaN(d.getTime())) return String(iso);
-  const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
-               'August', 'September', 'October', 'November', 'December'];
-  return `${DOW[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
-}
+const raceDateWords = (iso: string | null | undefined): string => dateWords(iso);
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const auth = await requireUserId(req);

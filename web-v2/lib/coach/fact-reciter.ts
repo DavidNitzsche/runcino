@@ -191,11 +191,13 @@ export function recitePlan(state: TrainingState): CoachFactBlock {
   const today = state.today;
 
   // PHASE · BUILD · week N of M
-  if (state.currentPhase && state.currentWeekIdx != null && state.weeks.length > 0) {
+  if (state.currentPhase && state.currentWeekOrdinal != null && state.weeks.length > 0) {
     const totalWeeks = state.weeks.length;
     facts.push({
       label: 'PHASE',
-      value: `${state.currentPhase.toUpperCase()} · week ${state.currentWeekIdx + 1} of ${totalWeeks}`,
+      // Counted, not `currentWeekIdx + 1` — the same arithmetic that printed
+      // "week 2 of 1" on Block. See `TrainingState.currentWeekOrdinal`.
+      value: `${state.currentPhase.toUpperCase()} · week ${state.currentWeekOrdinal} of ${totalWeeks}`,
     });
   } else if (state.plan_id) {
     facts.push({ label: 'PHASE', value: 'PLAN ACTIVE', meta: 'phase not yet set' });

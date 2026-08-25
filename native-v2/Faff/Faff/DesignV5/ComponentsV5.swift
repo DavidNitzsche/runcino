@@ -1466,3 +1466,46 @@ struct WristDecisionsV5: View {
         }
     }
 }
+
+// MARK: - A vertical page must never pan sideways
+//
+// ─────────────────────────────────────────────────────────────────────────
+// DAVID, 2026-08-25: "the races page can go left and right and slides off
+// the edge."
+//
+// SwiftUI's `ScrollView` takes an AXES argument, and every reading of that
+// argument except UIScrollView's own is wrong. `.vertical` does not mean
+// "only scrolls vertically" — it sets `alwaysBounceVertical`, and nothing
+// else. Scrolling itself is governed by `contentSize` against `bounds`, on
+// BOTH axes, always. So a vertical page whose content lays out even a
+// fraction of a point wider than the viewport becomes horizontally
+// scrollable, and once it is scrollable it also RUBBER-BANDS: a half-point
+// of real overflow buys the runner a hundred points of drag. That is what
+// David saw, and why it reads as the whole page sliding off the edge rather
+// than as something being slightly too wide.
+//
+// Which child overflows is a moving target — it depends on the payload (a
+// long race name, an address, a gun-time sentence) and on the runner's own
+// text size, since everything below 28pt scales with Dynamic Type. Chasing
+// the child of the day fixes one screen for one payload. Pinning the band
+// fixes the class: the scrolling content reports exactly the width of the
+// scroll view it sits in, no matter what it contains, so `contentSize.width`
+// can never exceed `bounds.width` and the horizontal axis is dead.
+//
+// `.frame(width:)` semantics are the point — the pin REPORTS the container's
+// width whatever the child does with the proposal. A child that genuinely
+// wants more is then clipped by the scroll view instead of towing the page
+// with it. Clipped is a visible bug someone reports; a page that slides is
+// a mystery.
+//
+// APPLY IT OUTSIDE THE GUTTER PADDING. Inside, the pin sets the band to the
+// container width and the padding then adds 32 back on, which is the very
+// overflow this exists to remove.
+// ─────────────────────────────────────────────────────────────────────────
+extension View {
+    /// Pins scrolling content to the width of its scroll view, so a vertical
+    /// page can never scroll or rubber-band horizontally.
+    func v5PageWidth() -> some View {
+        containerRelativeFrame(.horizontal)
+    }
+}

@@ -97,6 +97,7 @@ import {
   distanceCategoryOrNull,
 } from '@/lib/race/distance-category';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { A_RACE_COLLISION_DAYS } from '@/lib/training/race-card';
 import { HR_TARGET_MIN_REP_SEC } from '@/lib/training/spec-card';
 import { anchorsFor, doctrinePhasesForWeek, renderPrescription } from '@/lib/plan/catalogue-rx';
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
@@ -13266,6 +13267,54 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         'the ceiling AND the elapsed-plan branch taught to re-author a hold block AND a ' +
         'ruling on whether a long hold progresses (section 6) or holds (section 7). Delete ' +
         'this entry when those three land.',
+    },
+  },
+  {
+    id: 'SEASON.two-a-races-is-a-season-not-a-conflict',
+    binds: ['lib/training/race-card.ts#A_RACE_COLLISION_DAYS'],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Annual Race Planning Heuristic',
+    claim:
+      'Doctrine budgets a runner TWO A races a year. So two A races on the calendar is the ' +
+      'shape doctrine expects, not a mistake to be corrected — and the Races screen must not ' +
+      'demand the runner demote one of them merely for both existing. The card exists for a ' +
+      'genuine collision: two A races close enough that one cannot get a build and a taper of ' +
+      'its own. The window that defines "close enough" must therefore be far shorter than the ' +
+      'spacing a two-per-year season implies, or the engine contradicts the doctrine it is ' +
+      'built on every time a runner plans their year correctly.',
+    check({ cite }) {
+      // Read the allowance out of the doc rather than restating it here.
+      const text = cite.text();
+      const m = text.match(/A races:\s*(\d+)\s*max per year/i);
+      if (!m) {
+        throw new Error(
+          `DOCTRINE · could not read the A-race-per-year allowance from ${cite.doc} under ` +
+            'its Annual Race Planning Heuristic. The claim depends on that number.',
+        );
+      }
+      const perYear = Number(m[1]);
+      if (!Number.isFinite(perYear) || perYear < 1) {
+        throw new Error(`DOCTRINE · unreadable A-race allowance "${m[1]}" in ${cite.doc}`);
+      }
+      // Evenly spaced, N A races a year sit this far apart. A collision window
+      // at or above that would flag every doctrine-legal season.
+      const evenSpacingDays = Math.floor(365 / perYear);
+      if (A_RACE_COLLISION_DAYS >= evenSpacingDays) {
+        throw new Error(
+          `A_RACE_COLLISION_DAYS is ${A_RACE_COLLISION_DAYS} days, but ${cite.doc} budgets ` +
+            `${perYear} A races a year — evenly spaced, that is ${evenSpacingDays} days apart. ` +
+            'A window that wide calls a doctrine-legal season a conflict.',
+        );
+      }
+      // And it must still be long enough to MEAN something: a window under a
+      // month would let two A races a fortnight apart through, which is the
+      // case the card was written for.
+      if (A_RACE_COLLISION_DAYS < 28) {
+        throw new Error(
+          `A_RACE_COLLISION_DAYS is ${A_RACE_COLLISION_DAYS} days · too short to catch two A ` +
+            'races stacked inside a single build, which is the collision the card exists for.',
+        );
+      }
     },
   },
 ];

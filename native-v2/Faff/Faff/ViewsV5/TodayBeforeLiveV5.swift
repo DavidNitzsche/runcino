@@ -45,6 +45,9 @@ struct TodayBeforeLiveV5: View {
     var onAccountRowTap: (V5Row) -> Void = { _ in }
     var onPickDay: (String) -> Void = { _ in }
     var viewingDayLabel: String? = nil
+    /// Passed straight through to `TodayBeforeV5` — the day the runner tapped,
+    /// so the strip's plate moves with the finger rather than with the fetch.
+    var selectedDayISO: String? = nil
     var onBackToToday: () -> Void = {}
     /// Page the week strip. -1 back a week, +1 forward.
     var onPageWeek: (Int) -> Void = { _ in }
@@ -85,6 +88,7 @@ struct TodayBeforeLiveV5: View {
             accountWeekLine: accountWeekLine,
             accountRows: accountRows,
             calendarWeeks: resolvedCalendarWeeks,
+            calendarNote: calendarNote,
             beforeYouGoOptions: options(for:),
             onSelectBeforeYouGoOption: select,
             readinessPillars: pillars,
@@ -93,6 +97,7 @@ struct TodayBeforeLiveV5: View {
             onAccountRowTap: onAccountRowTap,
             onPickDay: onPickDay,
             viewingDayLabel: viewingDayLabel,
+            selectedDayISO: selectedDayISO,
             onBackToToday: onBackToToday,
             onPageWeek: onPageWeek,
             onOpenPacesMoved: onOpenPacesMoved,
@@ -162,6 +167,29 @@ struct TodayBeforeLiveV5: View {
         }
     }
 
+    /// Where the plan ends, when the calendar would otherwise end without
+    /// explanation. See `TodayBeforeV5.calendarNote`.
+    ///
+    /// THE TEST IS "IS THERE ANOTHER WEEK AFTER THIS ONE", not "how many
+    /// weeks are there". A sixteen-week block read in its last week needs
+    /// this sentence exactly as much as a one-week recovery plan does, and
+    /// for the same reason: the runner has reached the end of what is
+    /// written and nothing on the screen says so.
+    ///
+    /// Silent while the block is still loading. A sentence about the shape of
+    /// the plan, published before the plan has been read, is a guess.
+    private var calendarNote: String? {
+        guard let block, !block.weeks.isEmpty else { return nil }
+        guard let currentIdx = block.weeks.firstIndex(where: { $0.isCurrent }) else { return nil }
+        guard currentIdx == block.weeks.count - 1 else { return nil }
+
+        let last = block.weeks[currentIdx].days.compactMap(\.dateISO).max()
+        guard let last, let d = Self.iso.date(from: last) else {
+            return "This is the whole plan as written."
+        }
+        return "The plan runs to \(Self.noteDateFormatter.string(from: d)). Nothing is written past it yet."
+    }
+
     private func daySub(_ day: V5BlockDay) -> String {
         let type = day.type ?? ""
         if type.caseInsensitiveCompare("Rest") == .orderedSame || type.isEmpty {
@@ -180,6 +208,17 @@ struct TodayBeforeLiveV5: View {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    /// "Sun, Aug 30" — month, day, US order, matching `lib/format/date.ts`.
+    /// No year: this sentence is always about a date inside the block the
+    /// runner is reading.
+    private static let noteDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE, MMM d"
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.locale = Locale(identifier: "en_US_POSIX")
         return f
     }()
 

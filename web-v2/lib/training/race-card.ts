@@ -150,6 +150,62 @@ export function chipLockFactCard(raceName: string): FactChoiceSpec {
   };
 }
 
+/**
+ * TWO A RACES ARE ONLY A CONFLICT WHEN ONE BLOCK CANNOT SERVE BOTH.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * David, 2026-08-25: "needs a decision is coming up but makes no sense. One
+ * is in December and one is in March."
+ *
+ * He is right, and the bug was that the detector asked "are there two?" when
+ * the question is "do they collide?". CIM is 2026-12-06 and LA is 2027-03-07
+ * — thirteen weeks apart, which is a whole marathon block with a week to
+ * spare. Nothing about that pair needs choosing between; it is a season, and
+ * it is the season a marathoner is supposed to run. The card demanded the
+ * runner demote one of two races that were never competing, and both answers
+ * it offered did damage.
+ *
+ * The card is still right when the races are genuinely stacked. Two A races
+ * six weeks apart cannot both get a build and a taper, and the engine
+ * genuinely cannot choose which one gets the block — which is why this is the
+ * app's one CHOICE shape rather than something a threshold settles.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * WHY TWELVE WEEKS
+ *
+ * It is the shortest gap in which the second race gets a real block of its
+ * own: recovery from the first, then a build, then a taper. Below it the
+ * second A race is being trained for out of the first one's leftovers, and
+ * which race owns the block is a decision with two defensible answers.
+ *
+ * MEASURED BETWEEN THE TWO RACES, never from today. Two A races nine weeks
+ * apart are the same collision whether they are next month or next year; how
+ * far away the first one is says nothing about whether the second can have a
+ * block of its own.
+ */
+export const A_RACE_COLLISION_DAYS = 84;
+
+/**
+ * The nearest pair of upcoming A races close enough to collide, or null.
+ *
+ * NOT BLINDLY THE FIRST TWO. Three A races at 10 / 120 / 130 days out hold no
+ * conflict between the first two and a real one between the last two, and
+ * asking about the wrong pair is the same failure as asking when there is no
+ * conflict at all.
+ *
+ * Takes anything carrying `days` (days from today, ascending once sorted), so
+ * the route can hand it its own row type without this file knowing about it.
+ */
+export function collidingARacePair<T extends { days: number }>(upcoming: T[]): [T, T] | null {
+  const byDate = [...upcoming].sort((a, b) => a.days - b.days);
+  for (let i = 0; i + 1 < byDate.length; i++) {
+    if (byDate[i + 1].days - byDate[i].days < A_RACE_COLLISION_DAYS) {
+      return [byDate[i], byDate[i + 1]];
+    }
+  }
+  return null;
+}
+
 /** Two A races both ahead. Nothing in the engine can choose — this is the
  *  one CHOICE shape. Each answer's `id` IS that race's slug: `POST
  *  /api/v5/goal-answer` reads it back as `raceSlug` for `choose_race`. */

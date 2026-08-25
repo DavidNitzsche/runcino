@@ -144,6 +144,8 @@ struct ShoesV5: View {
                 }
                 .padding(.horizontal, V5.S.gutter)
                 .padding(.bottom, V5.S.s32)
+                // A vertical page must never pan sideways — see `v5PageWidth`.
+                .v5PageWidth()
             }
         }
         .background(V5.surfacePage)

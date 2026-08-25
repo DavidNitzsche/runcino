@@ -110,6 +110,24 @@ struct TodayBeforeV5: View {
 
     // Calendar sheet content. Not part of `V5Today` either.
     let calendarWeeks: [TodayCalendarWeek]
+    /// A closing sentence for the calendar, when the calendar needs one.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// DAVID, 2026-08-25: "clicking on the calendar icon here only brings up
+    /// this week. Now, this could be because my next plan hasnt gone into
+    /// effect yet, which is fine but I want to make sure it's an easy way to
+    /// see the whole plan."
+    ///
+    /// It WAS the whole plan. His active block holds exactly one week, so one
+    /// week is everything there is to list — and a screen called TRAINING
+    /// CALENDAR that shows a single week is indistinguishable from one that
+    /// failed to load the rest. The list was right and it read as broken,
+    /// which is its own kind of wrong.
+    ///
+    /// So the calendar now ends by saying where the plan ends. Nil when the
+    /// plan runs on past this week, because then the list is already saying
+    /// it and a sentence would be noise.
+    var calendarNote: String? = nil
 
     // The options behind an expanding "Before you go" row, and what happens
     // when one is picked. Both default to no-ops so a caller wiring only the
@@ -177,6 +195,13 @@ struct TodayBeforeV5: View {
     /// Set when the runner has stepped off today. The panel says which day and
     /// offers the way back.
     var viewingDayLabel: String? = nil
+    /// The day the runner has TAPPED, which is not always the day on screen
+    /// yet — see `TodayHostV5.goTo`. The strip plates this one, so the plate
+    /// moves on the same tick as the finger instead of waiting for a payload.
+    /// Nil means "plate whatever the payload says", which is the right answer
+    /// on a fresh screen and on the runner's own today.
+    var selectedDayISO: String? = nil
+
     var onBackToToday: () -> Void = {}
     /// Page the week strip. -1 back a week, +1 forward.
     var onPageWeek: (Int) -> Void = { _ in }
@@ -195,6 +220,18 @@ struct TodayBeforeV5: View {
     @State private var accountOpen = false
     @State private var expandedBeforeRowID: String? = nil
     @State private var readinessExpanded = false
+
+
+    /// The strip's days, with the plate moved to whatever was tapped. See
+    /// `selectedDayISO` — the payload's own `isToday` is still the fallback.
+    private func stripDays() -> [WeekStripDayV5] {
+        guard let selectedDayISO else { return model.weekStrip.map(\.strip) }
+        return model.weekStrip.map { d in
+            var s = d.strip
+            s.isToday = d.dateISO == selectedDayISO
+            return s
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -221,6 +258,8 @@ struct TodayBeforeV5: View {
                 }
                 .padding(.horizontal, V5.S.gutter)
                 .padding(.bottom, V5.S.s24)
+                // A vertical page must never pan sideways — see `v5PageWidth`.
+                .v5PageWidth()
             }
             .background(V5.surfacePage)
             .scrollIndicators(.hidden)
@@ -280,17 +319,26 @@ struct TodayBeforeV5: View {
                           initials: avatarInitials.isEmpty ? nil : avatarInitials,
                           onAccount: { withAnimation(V5.Motion.sheet) { accountOpen = true } })
 
-            HStack(alignment: .lastTextBaseline, spacing: V5.S.s12) {
-                Text(model.panel.dateLine)
-                    .faffDisplayV5(26, fit: .free)
-                    .foregroundStyle(panelInk.primary)
-                // "justify-content:space-between" — the date sits left, the
-                // week line right (5a markup, dc.html:533). The Spacer used
-                // to sit AFTER the week line, which hugged both to the left
-                // and made 5a the only panel in the app whose date row reads
-                // differently from its own after-run sibling.
-                Spacer(minLength: 0)
-                if let weekLine = model.panel.weekLine {
+            // ── THE DATE LINE IS GONE ────────────────────────────────────
+            //
+            // David, 2026-08-25: "TODAY does not need the 'Tuesday 25 August'
+            // type", and on a stepped day, "other days show the date twice.
+            // not needed."
+            //
+            // It was drawing the date a second time under a header that had
+            // just given it, and a third time under a week strip whose whole
+            // job is to say which day this is — in context, against the six
+            // days around it, which is strictly more than a date line can say.
+            // The panel's business is what the day ASKS FOR; the display
+            // register below is the session, and that is what should be
+            // wearing 26pt and up.
+            //
+            // The week line stays where it stood, hard right. It is the one
+            // thing on this row the strip does not carry: which week of the
+            // block this is.
+            if let weekLine = model.panel.weekLine {
+                HStack(spacing: V5.S.s12) {
+                    Spacer(minLength: 0)
                     Text(weekLine)
                         .font(.faffText(TypeScaleV5.label13))
                         .foregroundStyle(panelInk.secondary)
@@ -298,7 +346,7 @@ struct TodayBeforeV5: View {
             }
 
             // The strip stays on every day, and pages a week at a time.
-            WeekStripV5(days: model.weekStrip.map(\.strip),
+            WeekStripV5(days: stripDays(),
                         onTap: { day in onPickDay(day.id) },
                         onPageWeek: { onPageWeek($0) })
 
@@ -661,9 +709,22 @@ struct TodayBeforeV5: View {
                         // is not enough — the proxy needs it on the view.
                         .id(week.id)
                     }
+
+                    // Where the plan ends, said out loud — see `calendarNote`.
+                    // Quiet ink and no tile: it is a note about the list, not
+                    // another row in it.
+                    if let calendarNote {
+                        Text(calendarNote)
+                            .font(.faffText(TypeScaleV5.label13))
+                            .foregroundStyle(V5.textQuiet)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, V5.S.s4)
+                    }
                 }
                 .padding(.horizontal, V5.S.gutter)
                 .padding(.bottom, V5.S.s24)
+                // A vertical page must never pan sideways — see `v5PageWidth`.
+                .v5PageWidth()
             }
             .scrollIndicators(.hidden)
             .onAppear {
