@@ -4971,6 +4971,20 @@ export interface ComposedWeek {
   weeklyMi: number;
   days: DayPlan[];
   isRaceWeek: boolean;
+  /**
+   * THIS WEEK'S NUMBER WITHIN THE BLOCK, when it is not its array position.
+   *
+   * A recovery block authored mid-recovery emits only the weeks that REMAIN
+   * (see RECOVERY-2), so the array holds one week and `persistPlan` wrote
+   * `week_idx` 0. The runner then read "Week 1 of 1" on day nine of a
+   * fourteen-day recovery, which is the exact shape the comment above
+   * `recoveryOff` says must not happen — the offset reached the taper row,
+   * the run-day cap and the final-week test, and never reached the label.
+   *
+   * Absent means the array position is the number, which is true of every
+   * block that starts at its own week one.
+   */
+  blockWeekIdx?: number;
   /** 2026-06-03 · Rule 3 · per-week T-pace from the bestRecentVdot →
    *  goalT blend. persistPlan writes this into each quality row's
    *  pace_target_s_per_mi instead of the plan-wide tPaceSec. */
@@ -6408,6 +6422,9 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
 
   for (let wi = 0; wi < (remainingWeeks); wi++) {
     const wkPct = wkPctSeq[wi + recoveryOff] ?? wkPctSeq[wkPctSeq.length - 1]; // RECOVERY-2 · elapsed offset
+    // The same offset the taper row, the run-day cap and the final-week test
+    // already carry. It reaches the LABEL now too.
+    const blockWeekIdx = wi + recoveryOff;
     const wkWeekly = Math.round(peakAnchor * wkPct);
     const slots: (DayPlan | null)[] = new Array(7).fill(null);
     slots[input.restDow] = { dow: input.restDow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Recover.' };
@@ -6534,6 +6551,7 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
       days: slots.filter(Boolean) as DayPlan[],
       isRaceWeek: false,
       tPaceSec: null,
+      blockWeekIdx,
     });
   }
 
@@ -6801,7 +6819,7 @@ export function planWeekFlags(
 
 async function persistPlan(client: PoolClient, args: {
   userId: string; raceSlug: string | null; raceDateISO: string;
-  blocks: BlockPlan; weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean; tPaceSec?: number | null }>;
+  blocks: BlockPlan; weeks: Array<{ startISO: string; phase: string; days: DayPlan[]; isRaceWeek: boolean; tPaceSec?: number | null; blockWeekIdx?: number }>;
   authoredState: Record<string, unknown>;
   /** Runner's T-pace (s/mi) at generate-time. Used to populate every
    *  quality workout's pace_target_s_per_mi + workout_spec at insert ·
@@ -6924,8 +6942,11 @@ async function persistPlan(client: PoolClient, args: {
     const weekStartDow = new Date(w.startISO + 'T12:00:00Z').getUTCDay();
     const dateForDow = (dow: number) => addDays(w.startISO, ((dow - weekStartDow + 7) % 7));
     weekRows.push(
-      [weekId, planId, wi, w.startISO, phaseForWeek(wi), w.isRaceWeek,
-       `${w.phase} · week ${wi + 1}`, isPeakByWeek[wi], isCutbackByWeek[wi]]
+      // `blockWeekIdx` where the composer stated one — a mid-recovery block
+      // emits only the remaining weeks, so its array position is not its
+      // number. Everything else numbers itself by position, as before.
+      [weekId, planId, w.blockWeekIdx ?? wi, w.startISO, phaseForWeek(wi), w.isRaceWeek,
+       `${w.phase} · week ${(w.blockWeekIdx ?? wi) + 1}`, isPeakByWeek[wi], isCutbackByWeek[wi]]
     );
 
     for (const d of w.days) {

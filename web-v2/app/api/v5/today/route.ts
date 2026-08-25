@@ -383,7 +383,13 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         const total = await rowOrNull<{ n: string }>(
           'v5/today · plan week count',
           pool.query<{ n: string }>(
-            `SELECT COUNT(*)::text AS n FROM plan_weeks WHERE plan_id = $1`,
+            // MAX(week_idx)+1, NOT COUNT(*). A block authored mid-recovery
+            // emits only the weeks that remain, so counting its rows answered
+            // "of 1" on day nine of a fourteen-day recovery — the block held
+            // one week because one was left, not because recovery is one week
+            // long. The highest index a week claims is how long the block is;
+            // for every block that starts at its own week one the two agree.
+            `SELECT (MAX(week_idx) + 1)::text AS n FROM plan_weeks WHERE plan_id = $1`,
             [activePlan.id],
           ),
         );
