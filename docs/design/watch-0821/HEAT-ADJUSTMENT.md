@@ -362,3 +362,64 @@ flatter the run. On a cool day that costs nothing, because the correction is ~0.
 No new physiology constant was introduced, so no Rule 7 registry claim is owed.
 The two constants added — a 90-minute staleness window and a 1 s/mi
 meaningfulness floor — assert nothing about the body.
+
+---
+
+## The first-load race, and the fix nobody should build in a hurry
+
+Settled 2026-08-25 between the watch and phone sessions, after one wrong
+premise on each side. Recorded because the reasoning is worth more than the
+outcome, and because the eventual fix has a trap in it.
+
+### What is actually true
+
+`recordHeatEasing` only writes when `/api/watch/today` builds a payload. The
+obvious reading is that a phone opened before the day's first watch fetch reads
+0 and shows the cold band — a standing inconsistency between the two surfaces.
+
+It is not. **The phone itself calls `/api/watch/today`**, from
+`native-v2/Faff/Faff/WatchSync.swift` — `refresh()` on a 60-second throttle,
+fired on `scenePhase → .active` (`FaffApp.swift:190`) and on watch
+reachability, which calls `pushTodayToWatch()`. So opening the phone triggers
+the watch build, and the record gets written.
+
+That reduces it to a **race on the first load of the day**: the card can render
+before the build completes. Verified on disk by both sessions rather than
+reasoned about — the phone session had talked itself into implementing a fix on
+the unchecked premise, and the watch session confirmed the call path only after
+being handed the correction.
+
+### Why it was left open
+
+The failure mode is benign. On a miss the card shows the **authored** band and
+says nothing about heat. It never claims an eased number it does not have, and
+it corrects itself on the next refresh. **Cold, not wrong.**
+
+Weighed against touching a write path hours before a TestFlight submission,
+that is not a trade worth taking. Left visible and flagged rather than closed
+in a hurry.
+
+### The eventual fix, and the trap
+
+One writer implementation, called by whichever surface loads first, so either
+can be first and the other reads the record. Better than the two alternatives
+considered — the phone keeping its own record desyncs the
+`targetAlreadyHeatEased` guard, and the phone asking the weather itself is the
+second-engine bug `lib/watch/heat.ts` exists to prevent.
+
+**The trap:** `adjustPhasesForHeat` takes `totalSec` and `intervalStyle`, and
+those are what the Research/06 duration scale and the §2 interval halving key
+off. The watch builder has a built phase list to derive them from; the phone
+has the spec and the distance. **Derive them differently and the two surfaces
+compute different percentages off the same weather** — a subtler rerun of
+exactly the bug this module was written to stop, and one that would not look
+like a bug at either call site.
+
+Calling the builder itself rather than `adjustPhasesForHeat` directly
+guarantees parity, at the cost of weight. That is the trade to decide.
+
+The dedup already holds up under either shape: `WHERE NOT EXISTS` on an
+identical value absorbs two simultaneous writes, and `ORDER BY ts DESC LIMIT 1`
+picking the newest is right on its own terms — the later observation is the one
+closer to the run.
+
