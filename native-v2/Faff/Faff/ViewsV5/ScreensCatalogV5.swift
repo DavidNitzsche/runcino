@@ -43,6 +43,11 @@ struct ScreensCatalogV5: View {
     /// copy of a list is a second thing to forget.
     static var allIDs: Set<String> { Set(entries.map(\.id)).union(["system"]) }
 
+    /// The ids IN ORDER, with duplicates intact — `allIDs` is a Set and so
+    /// cannot show one. `CatalogSampleArithmeticTests` needs the list, not
+    /// the set, to tell a duplicate from a unique id.
+    static var entryIDsForTest: [String] { entries.map(\.id) }
+
     private var entries: [Entry] { Self.entries }
 
     private static var entries: [Entry] {
@@ -281,7 +286,13 @@ struct ScreensCatalogV5: View {
             Entry(id: "8e", title: "Race detail · no goal time", sub: "No pace plan to draw") {
                 AnyView(RaceDetailV5(raceDetail: .v5SampleNoGoal))
             },
-            Entry(id: "23b", title: "Run detail · no GPS", sub: "Treadmill, no route card") {
+            // 2026-08-25 · this was a SECOND `23b`. "Run detail · reps" holds
+            // that id further up, so `-faffV5Screens 23b` opened the reps
+            // screen and the treadmill one had no deep link at all — and
+            // `allIDs` is a Set, which is why nothing noticed. The same file
+            // already argues that a second copy of a list is a second thing
+            // to forget; a second copy of an ID is the same bug in one line.
+            Entry(id: "23d", title: "Run detail · no GPS", sub: "Treadmill, no route card") {
                 AnyView(RunDetailV5(detail: RunDetailV5Sample.treadmill))
             },
             Entry(id: "sick", title: "Sick", sub: "Not an injury") {
@@ -336,6 +347,43 @@ struct ScreensCatalogV5: View {
             },
         ]
         #endif
+
+        // 2026-08-25 · ONBOARDING, which nothing could open.
+        //
+        // `OnboardingV5` shipped with five `#Preview`s and no catalog entry,
+        // so on a device the only way to reach it was to create an account —
+        // which is the one thing an audit is told not to do. The result is
+        // that the first five screens a new runner ever sees are the only
+        // five in v5 that had been swept in TypeScript and never once looked
+        // at on glass. `initialStep` and `initialAnswers` already exist for
+        // exactly this; they just had no route in.
+        //
+        // `onSubmit` returns the sample rather than posting: the catalog is
+        // sample-only ("Nothing here touches the network", per this file's
+        // header), and an onboarding screen that signed somebody up would be
+        // the single worst place to break that.
+        out += [
+            Entry(id: "9a", title: "Onboarding · welcome", sub: "Before anything is asked") {
+                AnyView(OnboardingV5(onSubmit: { _ in .success(.sampleV5) }, onSeeToday: {}))
+            },
+            Entry(id: "9a-goal", title: "Onboarding · goal", sub: "Distance, date, target") {
+                AnyView(OnboardingV5(onSubmit: { _ in .success(.sampleV5) }, onSeeToday: {},
+                                     initialStep: 1, initialAnswers: .sampleV5))
+            },
+            Entry(id: "9a-fitness", title: "Onboarding · fitness", sub: "What the plan is built off") {
+                AnyView(OnboardingV5(onSubmit: { _ in .success(.sampleV5) }, onSeeToday: {},
+                                     initialStep: 2, initialAnswers: .sampleV5))
+            },
+            Entry(id: "9a-availability", title: "Onboarding · availability", sub: "Days, mileage, long-run day") {
+                AnyView(OnboardingV5(onSubmit: { _ in .success(.sampleV5) }, onSeeToday: {},
+                                     initialStep: 3, initialAnswers: .sampleV5))
+            },
+            Entry(id: "9a-reveal", title: "Onboarding · day one", sub: "The first session, modelled") {
+                AnyView(OnboardingV5(onSubmit: { _ in .success(.sampleV5) }, onSeeToday: {},
+                                     initialStep: 4, initialAnswers: .sampleV5,
+                                     initialDayOne: .sampleV5))
+            },
+        ]
 
         return out
     }

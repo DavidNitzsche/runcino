@@ -152,6 +152,33 @@ final class CatalogSampleArithmeticTests: XCTestCase {
         XCTAssertNil(d.gap?.text, "and nothing to measure a gap against")
     }
 
+    // MARK: - The catalog's own index
+
+    /// Every entry id is unique.
+    ///
+    /// `ScreensCatalogV5.allIDs` is a `Set`, and the picker's `ForEach` keys on
+    /// `Entry.id`, so a duplicate silently costs one screen its deep link and
+    /// gives SwiftUI two rows with one identity. "Run detail · no GPS" was a
+    /// second `23b`: `-faffV5Screens 23b` opened the REPS screen and the
+    /// treadmill one could not be opened by argument at all.
+    func testEveryCatalogEntryHasItsOwnID() {
+        let ids = ScreensCatalogV5.entryIDsForTest
+        XCTAssertFalse(ids.isEmpty, "no entries read, so this proves nothing")
+        var seen = Set<String>()
+        for id in ids {
+            XCTAssertTrue(seen.insert(id).inserted, "duplicate catalog id \"\(id)\"")
+        }
+    }
+
+    /// And every id is reachable by `-faffV5Screens <id>`, which is what
+    /// `allIDs` is for.
+    func testEveryCatalogEntryIsReachableByLaunchArgument() {
+        for id in ScreensCatalogV5.entryIDsForTest {
+            XCTAssertTrue(ScreensCatalogV5.allIDs.contains(id),
+                          "\"\(id)\" is in the picker but not openable by argument")
+        }
+    }
+
     // MARK: - Fixtures under test
 
     private static var raceSamples: [(String, V5RaceDetail)] {

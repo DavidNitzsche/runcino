@@ -47,7 +47,23 @@ struct SettingsV5Model: Equatable {
     var longRunDay: String
     var longRunDayOptions: [String]
     var daysPerWeek: Int
-    var daysPerWeekRange: ClosedRange<Int> = 2...7
+    /// 2026-08-25 · was `2...7`. Seven is not a weekly frequency this product
+    /// has: `lib/onboarding/state.ts` types `WeeklyFrequency` as `0…6`,
+    /// `/api/onboarding/complete` rejects anything outside that set, and the
+    /// plan builder assigns a rest day BEFORE it applies the frequency cap, so
+    /// a seven can only ever come out as six sessions and a rest day.
+    ///
+    /// The onboarding host already knew, and clamped: `min(max(daysPerWeek,
+    /// 0), 6)`. This screen did not — it writes through `/api/profile`, whose
+    /// validator is `intIn(1, 7)` — so one control offered seven and silently
+    /// gave six, and the other offered seven and stored a seven the type
+    /// system says is not a frequency. Same column, two answers.
+    ///
+    /// Offering a number the engine cannot deliver is the choice to remove.
+    /// Nobody currently holds a 7 (checked against production, read-only:
+    /// stored values are 0, 2, 3, 4, 5 and null), so nothing regresses.
+    /// The `/api/profile` range disagreement is reported, not fixed here.
+    var daysPerWeekRange: ClosedRange<Int> = 2...6
     var phoneRunEnabled: Bool
     var sessionReminders: Bool
     var weeklySummary: Bool
