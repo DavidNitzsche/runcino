@@ -76,10 +76,46 @@ export interface CatalogueHistory {
   runs: Array<{ slug: string; weekIdx: number }>;
   /** Runnings per slug across the whole cycle, for entries with `perCycleMax`. */
   cycleCounts: Record<string, number>;
+  /**
+   * ROTATION-ATTEMPT-1 (2026-08-25) · sessions the rotation OFFERED and the
+   * engine could not express, with the week it happened in.
+   *
+   * `selectSlotWorkout`'s retry loop drops a shape it cannot render into the
+   * prescription grammar and asks the selector again, which is correct. What
+   * was missing is that the attempt left no trace. The rotation is LEAST
+   * RECENTLY USED and an entry that is never authored is never recorded in
+   * `runs`, so an unrenderable entry stays permanently "never run", wins the
+   * staleness tie EVERY week, and is dropped again — burning the top of the
+   * rotation every week for the length of the block.
+   *
+   * Measured on the owner's CIM block: §8.5's Lydiard hill circuit is a lap of
+   * four unequal segments ("800m of springing/bounding uphill, 800m flat jog,
+   * 700m fast relaxed striding downhill, 800m wind sprints") with no rep-set
+   * rendering, and it was the first pick in EVERY week of his hill block. Each
+   * time the slot fell through to the second choice, which is how weeks 1 and 3
+   * both ran §8.4's long hill repeats while §8.3's medium hill repeats and
+   * §9.2's Mona fartlek went unused. The block read as narrower than the
+   * catalogue it was drawing from, and the cause was a session that never
+   * appeared in it.
+   *
+   * An ATTEMPT, deliberately, and not a ban. Renderability depends on the slot
+   * (§5.2's continuous tempo renders as a phrase on the tempo slot and not as a
+   * rep set on the threshold slot) and on the dose (`renderPrescription`
+   * declines a set that has been sized down to one repetition), so a verdict
+   * recorded once and applied forever would delete sessions that would render
+   * perfectly well in another week. Feeding it to the rotation instead makes it
+   * self-correcting: the entry simply stops being the stalest, and comes round
+   * again in its turn.
+   *
+   * Kept out of `runs` and out of `cycleCounts` for the same reason. A session
+   * the runner was never handed did not happen, and it must not count against
+   * a `perCycleMax` ("1× per training cycle") that describes sessions run.
+   */
+  attempts: Array<{ slug: string; weekIdx: number }>;
 }
 
 export function newCatalogueHistory(): CatalogueHistory {
-  return { runs: [], cycleCounts: {} };
+  return { runs: [], cycleCounts: {}, attempts: [] };
 }
 
 export function recordCatalogueChoice(
@@ -97,6 +133,25 @@ function recentFrom(history: CatalogueHistory, weekIdx: number): RecentSession[]
   for (const r of history.runs) {
     const weeksAgo = weekIdx - r.weekIdx;
     if (weeksAgo >= 0) out.push({ slug: r.slug, weeksAgo });
+  }
+  // ROTATION-ATTEMPT-1 · offers the engine could not express, fed to the
+  // rotation so they stop winning the staleness tie forever. See
+  // `CatalogueHistory.attempts`.
+  //
+  // `selectWorkout` reads `recent` in two places and this reaches both:
+  // `rankCandidates`, which is the staleness this exists for, and the CADENCE
+  // check, which asks how many weeks since the session was run. So an attempt
+  // also holds the entry off for its own `cadence.minDays` window, which is
+  // stricter than doctrine states — an attempt is not a run. Accepted rather
+  // than plumbed around: the effect is bounded by the entry's own cadence, it
+  // errs toward offering a DIFFERENT session (which is the direction this
+  // whole change is going), and splitting the two readings would mean widening
+  // `RecentSession` across the selector's public surface to carry a flag that
+  // one call site consults. Revisit if an entry with a long stated cadence
+  // ever turns out to be unrenderable.
+  for (const a of history.attempts ?? []) {
+    const weeksAgo = weekIdx - a.weekIdx;
+    if (weeksAgo >= 0) out.push({ slug: a.slug, weeksAgo });
   }
   return out;
 }
@@ -648,6 +703,16 @@ export function selectSlotWorkout(req: SlotRequest): SlotChoice {
     const phrase = req.slot === 'tempo' ? renderContinuousPhrase(entry, dose) : null;
     if (prescription == null && phrase == null) {
       exclude.add(entry.slug);
+      // ROTATION-ATTEMPT-1 · the rotation offered it and the engine could not
+      // express it. Record the ATTEMPT so a later week's rotation sees it as
+      // recently offered rather than as never used. Without this the same
+      // entry is the first pick every single week and every week's slot falls
+      // through to its second choice.
+      if (req.history.attempts && !req.history.attempts.some(
+        (a) => a.slug === entry.slug && a.weekIdx === req.weekIdx,
+      )) {
+        req.history.attempts.push({ slug: entry.slug, weekIdx: req.weekIdx });
+      }
       lastRefusal = {
         reason: 'not-renderable',
         detail: `${entry.name} (${entry.section}) has no ${req.slot}-slot rendering in the engine's prescription grammar`,
