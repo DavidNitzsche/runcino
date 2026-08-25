@@ -466,13 +466,17 @@ export const DERIVED_REGISTRY: readonly DerivedFamily[] = [
         'read migration, not a guard, and it is queued rather than done here ' +
         'because the column feeds a chart whose axis label has to change with it.',
       'lib/coach/run-state.ts':
-        'resolveCalories() returns tier 1 = Strava TOTAL energy, tier 2 = ' +
-        'summed HealthKit ACTIVE energy, tier 3 = an ACTIVE-energy estimator, ' +
-        'all under one field. It also never reads `data.kcal` at all, despite ' +
-        'the watch route comment claiming tier 1 does — 67 rows of the ' +
-        'watch\'s own measurement are unread. Both are real and both are ' +
-        'reported rather than silently patched: picking a tier order is a ' +
-        'product decision about which number the runner is shown.',
+        'HALF CLOSED 2026-08-24. The unread-measurement half is FIXED: ' +
+        '`data.kcal` is now tier 2 in resolveCalories(), above the HealthKit ' +
+        'sum and the estimator, so the watch\'s own measurement is no longer ' +
+        'discarded in favour of arithmetic — that was a modelled number ' +
+        'looking measured on all 67 watch rows, off by -26% to +28%. ' +
+        'STILL OPEN, and the reason this entry survives: the field is TOTAL ' +
+        'energy at tier 1 and ACTIVE energy at tiers 2-4, so it can still ' +
+        'move ~30% between two runs for a reason the runner cannot see. ' +
+        'Closing that means dropping Strava\'s total from the ladder, which ' +
+        'changes the calorie figure on every Strava-sourced run at once — a ' +
+        'product decision, not a bug fix, and argued in place at the tier.',
     },
     controls: [
       {
