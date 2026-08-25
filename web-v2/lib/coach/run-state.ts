@@ -29,6 +29,7 @@ import {
   type RaceForMatch,
 } from '@/lib/runs/log-enrich';
 import { runFacts } from '@/lib/runs/run-facts';
+import { resolveActiveEnergy, watchActiveEnergyKcal } from '@/lib/runs/energy';
 import { loadRunTwins, resolveElevationGain, resolveSplits } from '@/lib/runs/twins';
 import { hrToNum } from '@/lib/runs/run-shape';
 import { distanceMiFromLabel } from '@/lib/race/distance';
@@ -245,15 +246,23 @@ export interface RunDetail {
     mean: number | null;
   } | null;
   /**
-   * Total calories burned for the run. Two source-tier paths:
-   *   1. Strava ships `data.calories` on detail-pulled activities · this
-   *      is the strongest signal (Strava blends HR + power + weight).
-   *   2. Fallback: sum of `active_energy` health samples whose
-   *      sample_date falls within [start_local, start_local + moving_time].
-   *      Works for Apple-Watch-only runs that never hit Strava.
-   * Null when neither source has a value.
+   * ACTIVE energy for the run, in kilocalories. The cost of the running, not
+   * the cost of the hour.
+   *
+   * One quantity on every surface as of 2026-08-24. Strava's total-energy key
+   * is TOTAL energy and is deliberately NOT a source here — see the header of
+   * `lib/runs/energy.ts` for why it is refused rather than converted.
+   *
+   * Null when no tier can answer. A refusal is a correct answer.
    */
   calories_kcal: number | null;
+  /** Which instrument produced `calories_kcal`. Null when it is null. */
+  calories_source: 'watch' | 'healthkit' | 'estimate' | null;
+  /**
+   * False when `calories_kcal` came from the estimator. The surface must mark
+   * it — a modelled number must never look measured.
+   */
+  calories_measured: boolean | null;
   /**
    * Post-run weather context. When the run was meaningfully hotter or
    * cooler than the runner's recent baseline, surfaces a one-line
@@ -925,22 +934,22 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const day = r.date || (r.startLocal ?? '').slice(0, 10);
   const form = await loadFormMetrics(userId, day);
 
-  // Calories. Strava ships `data.calories` on detail-pulled runs · trust
-  // that first. Otherwise, sum active_energy samples in the run's window.
-  // Otherwise, fall back to a HR + weight + distance estimator (Phase
-  // calories-fix · 2026-06-01).
-  const caloriesKcal = await resolveCalories({
-    userId,
-    stravaCalories: Number(r.calories) || null,
-    // The watch's own active-energy total. Present on 67 rows and read by
-    // nothing until 2026-08-24, which is why every watch run showed an
-    // estimate. See the tier-2 block in `resolveCalories`.
-    watchActiveKcal: Number(r.kcal) || null,
-    startLocal: r.startLocal as string | null,
-    // The calorie window. Reconciled, and elapsed when moving is refused —
-    // a window sized off a disproved 2389s would have missed 48 minutes of
-    // HealthKit samples on the 2026-08-23 run.
-    movingTimeS: movingSec ?? elapsedSec ?? 0,
+  // Active energy. ONE quantity, resolved by the shared ladder in
+  // lib/runs/energy.ts — the watch's own measurement, else a marked estimate.
+  //
+  // Strava's total-energy key used to sit above both, and it is TOTAL energy:
+  // on 2026-08-16 this field printed Strava's 2202 beside a measured 1807 for
+  // the same effort. The owner ruled active-energy-everywhere on 2026-08-24
+  // and the resolver now takes no total argument at all.
+  //
+  // The HealthKit-window tier that used to sit between them is gone too, and
+  // that one was not a product call: `health_samples` can hold one
+  // active_energy row per DAY and stamps it with the ingest time, so the tier
+  // matched nothing on all 106 rows that reached it and would have credited a
+  // whole day's energy to one run if a sync had ever landed mid-run. The
+  // argument is at the top of lib/runs/energy.ts.
+  const activeEnergy = await resolveActiveEnergy(userId, {
+    watchActiveKcal: watchActiveEnergyKcal(r),
     distanceMi: reconcileRun(r).distanceMi ?? 0,
     avgHr: Number(r.avgHr) || null,
   });
@@ -1295,7 +1304,9 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     // health_samples; mirror it at the top level so RunDetailModal
     // doesn't need to dig into the form nest.
     power_avg_w: form.run_power_w,
-    calories_kcal: caloriesKcal,
+    calories_kcal: activeEnergy?.kcal ?? null,
+    calories_source: activeEnergy?.source ?? null,
+    calories_measured: activeEnergy?.measured ?? null,
     hr_on_pace_delta_bpm: hrOnPaceDelta,
 
     shoe_id: shoeId,
@@ -1757,148 +1768,6 @@ async function computeWorkAverages(
     cadenceAvg: cads.length > 0 ? Math.round(cads.reduce((a, b) => a + b, 0) / cads.length) : null,
     workSeconds,
   };
-}
-
-/**
- * Resolve calories burned for a run. Four tiers, measurements before models:
- *
- *   1. Strava `data.calories` · TOTAL energy (basal included). Strava blends
- *      HR + power + weight + duration into a calibrated value.
- *   2. `data.kcal` · the watch's own ACTIVE energy, straight off
- *      HKLiveWorkoutBuilder. A measurement by the device that ran the
- *      session. Added 2026-08-24 — see the block at the tier itself for why
- *      it was missing and what it was costing.
- *   3. Sum of `active_energy` health samples in the run's window.
- *      HealthKit ships these per ~15-second bucket. We sum any sample
- *      whose timestamp falls inside [start, start + movingTimeS].
- *   4. An estimator. The only modelled tier, and now genuinely last.
- *
- * NOTE the tiers do not all mean the same thing: 1 is total energy, 2-4 are
- * active. That is a real inconsistency, it is argued at tier 2, and closing
- * it is a product decision rather than a bug fix.
- *
- * Returns null when neither path has data. Wrapped defensively so a
- * malformed start time or DB error degrades the field to null instead
- * of throwing.
- */
-async function resolveCalories(args: {
-  userId: string;
-  stravaCalories: number | null;
-  /** `data.kcal` — the watch's own active-energy total, from HKLiveWorkoutBuilder. */
-  watchActiveKcal: number | null;
-  startLocal: string | null;
-  movingTimeS: number;
-  distanceMi: number;
-  avgHr: number | null;
-}): Promise<number | null> {
-  // Tier 1 · Strava-reported (blends HR + power + weight + duration · best)
-  if (args.stravaCalories != null && args.stravaCalories > 0) {
-    return Math.round(args.stravaCalories);
-  }
-
-  /* ── TIER 2 · THE WATCH'S OWN MEASUREMENT, 2026-08-24 ────────────────────
-   *
-   * A MODELLED NUMBER WAS LOOKING MEASURED, on every watch run in the app.
-   *
-   * The watch completion route writes active energy to `data.kcal` and its
-   * comment says "resolveCalories() tier 1 reads this and skips the estimator
-   * fallback when it's present". It did not. It read `data.calories`, which
-   * watch rows do not carry, so all 67 rows holding the watch's measurement
-   * fell through to the tier-3 ESTIMATOR and the runner was shown arithmetic
-   * where a measurement existed:
-   *
-   *     2026-08-24    measured  484 kcal    shown  368   -24%
-   *     2026-08-23    measured 1417 kcal    shown 1046   -26%
-   *     2026-08-16    measured 1807 kcal    shown 2202   +22%
-   *     2026-08-11    measured  774 kcal    shown  991   +28%
-   *
-   * The sign flips run to run, so it is not even a consistent bias the runner
-   * could learn to discount.
-   *
-   * ── WHAT IS FIXED HERE AND WHAT IS DELIBERATELY NOT ────────────────────
-   *
-   * FIXED, because it needs no product judgement: a measurement outranks an
-   * estimate of the same quantity. `data.kcal` is active energy and so are
-   * tiers 3 and 4, so this slots in above both and changes no row that
-   * currently resolves from Strava.
-   *
-   * NOT FIXED, because it is a product decision and it moves a number
-   * app-wide: this field is still TOTAL energy on the 65 rows that have
-   * Strava's `calories` and ACTIVE energy on the rest, and those differ by
-   * the runner's basal rate — measured at 1.21x to 1.38x across the 32 rows
-   * carrying both (see `energy.total-vs-active` in derived-registry.ts). So
-   * the column can still move ~30% between two runs for a reason the runner
-   * cannot see.
-   *
-   * My recommendation, for whoever rules on it: make the field ACTIVE energy
-   * and drop Strava's total from this ladder entirely. Three of the four
-   * tiers are already active energy, the tier-3 formula is an active-energy
-   * formula, and the alternative — making it total — requires inventing a
-   * basal rate the row does not carry. Not done here because it would change
-   * the calorie figure on every Strava-sourced run at once. */
-  if (args.watchActiveKcal != null && args.watchActiveKcal > 0) {
-    return Math.round(args.watchActiveKcal);
-  }
-
-  // Tier 3 · sum of HK active_energy samples in the run's window
-  if (args.startLocal && args.movingTimeS > 0) {
-    try {
-      const startMs = Date.parse(args.startLocal);
-      if (isFinite(startMs)) {
-        const endMs = startMs + args.movingTimeS * 1000;
-        const startIso = new Date(startMs).toISOString();
-        const endIso = new Date(endMs).toISOString();
-        const r = await pool.query(
-          `SELECT COALESCE(SUM(value), 0)::numeric AS total
-             FROM health_samples
-            WHERE COALESCE(user_uuid, user_id) = $1
-              AND sample_type = 'active_energy'
-              AND COALESCE(recorded_at, sample_date::timestamptz) >= $2::timestamptz
-              AND COALESCE(recorded_at, sample_date::timestamptz) <  $3::timestamptz`,
-          [args.userId, startIso, endIso],
-        );
-        const total = Number(r.rows[0]?.total ?? 0);
-        if (total > 0) return Math.round(total);
-      }
-    } catch {/* fall through to estimator */}
-  }
-
-  // Tier 4 · estimator (2026-06-01 · added because HK active_energy ingest
-  // is undersampling · 1 sample per 7 days instead of ~180 per run).
-  //
-  // Formula · kcal = distance_mi × weight_kg × 1.04 × hr_multiplier.
-  //   distance × weight × 1.04 is the canonical "running cost" formula
-  //   (Margaria 1963 · ~1 kcal per kg per km, miles convert via 1.609 ÷ 1.55).
-  //   hr_multiplier scales for effort · +0% at HR 130, +20% at HR 170 (typical
-  //   easy-to-threshold range).
-  //
-  // Validated against Strava's calorie reports on past runs:
-  //   8mi @ avg HR 145, 75kg → formula = 620 kcal, Strava = 645 (4% delta)
-  //   12mi @ avg HR 158, 75kg → formula = 1010 kcal, Strava = 1050 (4%)
-  //
-  // Reasonable for any source that has distance + weight. Returns null
-  // when distance is missing (can't estimate without it).
-  if (args.distanceMi <= 0) return null;
-
-  try {
-    const w = (await pool.query<{ value: string }>(
-      `SELECT value::text FROM health_samples
-        WHERE COALESCE(user_uuid, user_id) = $1
-          AND sample_type = 'body_mass'
-        ORDER BY sample_date DESC LIMIT 1`,
-      [args.userId],
-    ).catch(() => ({ rows: [] }))).rows[0];
-    const weightKg = Number(w?.value);
-    if (!Number.isFinite(weightKg) || weightKg <= 30 || weightKg > 200) return null;
-
-    const baseKcal = args.distanceMi * weightKg * 1.04;
-    const hrMult = args.avgHr != null && args.avgHr > 130
-      ? 1 + Math.min(0.20, (args.avgHr - 130) / 200)
-      : 1.0;
-    return Math.round(baseKcal * hrMult);
-  } catch {
-    return null;
-  }
 }
 
 /**

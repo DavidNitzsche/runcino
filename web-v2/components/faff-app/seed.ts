@@ -29,6 +29,7 @@ import { dayKeyFromLocalParts, pgDayKey, addDaysToDayKey } from '@/lib/runtime/d
 import { stripResearchCitations as stripCitationsSafe } from '@/lib/plan/strip-citations';
 import { loadSettings } from '@/lib/coach/settings';
 import { resolveShoeCapMi } from '@/lib/shoe/lifespan';
+import { resolveActiveEnergyBatch } from '@/lib/runs/energy';
 import { cadenceTargetFor } from '@/lib/coach/cadence-target';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { resolveBlockState } from '@/lib/faff/block-state';
@@ -684,7 +685,7 @@ async function enrichResultsWithRunData(
     elev_gain_ft: string | null;
     temp_f: string | null;
     weather: any;
-    kcal: string | null;
+    active_kcal: string | null;
     shoe_id: string | null;
   }>(
     `WITH canonical AS (
@@ -720,7 +721,13 @@ async function enrichResultsWithRunData(
        c.data->>'elevGainFt'           AS elev_gain_ft,
        c.data->>'tempF'                AS temp_f,
        COALESCE(c.data->'weather', (SELECT w FROM absorbed_weather aw WHERE aw.d = (c.data->>'date')::date LIMIT 1)) AS weather,
-       COALESCE(c.data->>'calories', c.data->>'kcal') AS kcal,
+       -- ACTIVE energy only. This line used to COALESCE Strava's total in
+       -- ahead of it and label the result kcal, so the card showed 2202 on
+       -- 2026-08-16 beside a measured 1807 for the same effort. The total is
+       -- a different quantity and is not convertible without a basal rate no
+       -- Research/ file supplies. See lib/runs/energy.ts for the argument,
+       -- and the energy family in _reader_lint.test.ts for the guard.
+       c.data->>'kcal'                 AS active_kcal,
        c.shoe_id::text AS shoe_id
        FROM canonical c`,
     [userId, dates],
@@ -741,19 +748,26 @@ async function enrichResultsWithRunData(
     for (const s of sr.rows) shoeNames.set(s.id, [s.brand, s.model].filter(Boolean).join(' ') || 'Shoe');
   }
 
-  // Weight for calorie estimator fallback (when neither Strava nor HK
-  // populated kcal · we estimate from distance × weight × hr).
-  let weightKg: number | null = null;
-  try {
-    const w = await pool.query<{ value: string }>(
-      `SELECT value::text FROM health_samples
-        WHERE COALESCE(user_uuid, user_id) = $1
-          AND sample_type = 'body_mass'
-        ORDER BY sample_date DESC LIMIT 1`,
-      [userId],
-    );
-    weightKg = w.rows[0]?.value ? Number(w.rows[0].value) : null;
-  } catch {/* leave null */}
+  // ACTIVE energy for every completed day, through the SHARED ladder.
+  //
+  // This used to be the seed's own two-step: take whatever the COALESCE
+  // above returned, else a private copy of the estimator. Two problems, both
+  // of them the same problem — a column that means one thing has to be
+  // resolved in one place. The COALESCE fed it total energy, and the private
+  // estimator had drifted from run detail's copy — no plausibility gate on
+  // body mass, so an absurd stored weight priced a run here and was refused
+  // there. Now both surfaces call `resolveActiveEnergyBatch`, and the energy
+  // family in `_reader_lint.test.ts` fails the build if either grows a
+  // second ladder.
+  const energyByDate = await resolveActiveEnergyBatch(
+    userId,
+    r.rows.map((row) => ({
+      key: row.date,
+      watchActiveKcal: Number(row.active_kcal) || null,
+      distanceMi: Number(row.distance_mi) || 0,
+      avgHr: Number(row.avg_hr) || null,
+    })),
+  );
 
   for (const t of targets) {
     const row = byDate.get(t.date);
@@ -762,7 +776,6 @@ async function enrichResultsWithRunData(
     if (!result) continue;
 
     const durationSec = Number(row.duration_sec ?? 0);
-    const distMi = Number(row.distance_mi ?? 0);
     const avgHr = Number(row.avg_hr ?? 0);
     const maxHr = Number(row.max_hr ?? 0);
     const elev = Number(row.elev_gain_ft ?? 0);
@@ -777,12 +790,8 @@ async function enrichResultsWithRunData(
       return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
     };
 
-    // Resolve calories · prefer captured kcal, fall back to estimator
-    let kcal = Number(row.kcal ?? 0);
-    if ((!Number.isFinite(kcal) || kcal <= 0) && weightKg && distMi > 0) {
-      const hrMult = avgHr > 130 ? 1 + Math.min(0.20, (avgHr - 130) / 200) : 1.0;
-      kcal = Math.round(distMi * weightKg * 1.04 * hrMult);
-    }
+    // Active energy · already resolved above, by the one ladder.
+    const energy = energyByDate.get(t.date) ?? null;
 
     const weatherStr = (() => {
       if (tempF != null) {
@@ -804,7 +813,10 @@ async function enrichResultsWithRunData(
       peak: maxHr || 0,
       weather: weatherStr,
       shoe: shoeStr,
-      cal: kcal > 0 ? Math.round(kcal) : 0,
+      cal: energy?.kcal ?? 0,
+      // A modelled figure must never look measured. The surfaces that print
+      // `cal` wrap a false in <Modelled>, which owns the amber tilde.
+      calMeasured: energy ? energy.measured : null,
       gain: elev > 0 ? Math.round(elev) : 0,
     };
   }

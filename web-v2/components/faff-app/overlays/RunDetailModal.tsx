@@ -5,6 +5,7 @@ import { ZC } from '../constants';
 import { elevPathFromSplits } from '@/lib/route/polyline';
 import { PostRunCheckinChips, RPEEntryCard } from '../toolkit';
 import { RouteMap } from '../RouteMap';
+import { Modelled } from '../Modelled';
 
 /**
  * Run-detail overlay. Opens off Activity / Recent Runs / Heatmap clicks
@@ -51,7 +52,11 @@ type RunDetail = {
   /** Span-aware temp arc · "65°F → 77°F (peak 78°F)" rendering. Null on
    *  legacy single-point rows or runs without GPS. */
   temp_range_f?: { start: number | null; end: number | null; peak: number | null; mean: number | null } | null;
-  /** Total calories. Strava > HK active_energy fallback. Null when
+  /** Which instrument produced `calories_kcal`. */
+  calories_source?: 'watch' | 'healthkit' | 'estimate' | null;
+  /** False when the figure is modelled. The label says APPROX when it is. */
+  calories_measured?: boolean | null;
+  /** ACTIVE calories. Watch > HK active_energy > marked estimate. Null when
    *  neither writer had a value. */
   calories_kcal?: number | null;
   /** HR-vs-baseline delta at today's pace bucket. ≥5 bpm = meaningful
@@ -481,7 +486,22 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                   {data.power_avg_w != null && (
                     <div className="i"><div className="k">AVG POWER</div><div className="v">{data.power_avg_w}<small> W</small></div></div>
                   )}
-                  <div className="i"><div className="k">CALORIES</div><div className="v">{data.calories_kcal != null ? `${data.calories_kcal}` : '·'}{data.calories_kcal != null ? <small> kcal</small> : null}</div></div>
+                  {/* ACTIVE energy, never Strava's total — see lib/runs/energy.ts.
+                      The estimator's answer wears the amber tilde, because a
+                      modelled number must never look measured and this one used
+                      to print bare beside the watch's real measurements. */}
+                  <div className="i">
+                    <div className="k">CALORIES</div>
+                    <div className="v">
+                      {data.calories_kcal == null ? '·' : data.calories_measured === false ? (
+                        <Modelled title="Estimated from distance, body mass and average heart rate">
+                          {data.calories_kcal}<small> kcal</small>
+                        </Modelled>
+                      ) : (
+                        <>{data.calories_kcal}<small> kcal</small></>
+                      )}
+                    </div>
+                  </div>
                   <div className="i"><div className="k">SHOE</div><div className="v">{currentShoeName(data) || '·'}</div></div>
                 </div>
               </div>

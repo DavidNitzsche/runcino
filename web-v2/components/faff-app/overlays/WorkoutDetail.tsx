@@ -177,7 +177,19 @@ function CompletedBody({ d, dayIdx, seed }: { d: FaffSeed['week'][number]; dayId
           <div className="i"><div className="k">WEATHER</div><div className="v">{det.weather}</div></div>
           <div className="i"><div className="k">SHOE</div><div className="v">{det.shoe}</div></div>
           <div className="i"><div className="k">FUEL</div><div className="v">{det.fuel ?? ' · '}</div></div>
-          <div className="i"><div className="k">CALORIES</div><div className="v">{det.cal} kcal</div></div>
+          {/* ACTIVE energy, the same quantity every other surface prints.
+              A zero means no tier could answer — a refusal, not a nought —
+              and an estimate wears the mark. */}
+          <div className="i">
+            <div className="k">CALORIES</div>
+            <div className="v">
+              {det.cal <= 0 ? ' · ' : det.calMeasured === false ? (
+                <Modelled title="Estimated from distance, body mass and average heart rate">
+                  {det.cal} kcal
+                </Modelled>
+              ) : `${det.cal} kcal`}
+            </div>
+          </div>
         </div>
       </div>
       {det.recap && (
