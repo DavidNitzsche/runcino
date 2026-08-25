@@ -64,6 +64,21 @@ export interface RecapParts {
 
 export interface RecapVoice {
   headline: string | null;
+  /**
+   * ONE PARAGRAPH, not a list.
+   *
+   * De-duplicating got it from five repeating blocks down to four terse ones,
+   * and four terse blocks is a shorter list, not a message. The phone renders
+   * verdict, facts, conditions and tip as separately styled runs of text, so
+   * even once each says something new they still read as a form. His standing
+   * instruction for anything in this register: "always feel like a quick text
+   * from a coach."
+   *
+   * So the surviving clauses are joined into one paragraph and the parts are
+   * emptied. Joining is composition, not invention — no clause is reworded,
+   * nothing is merged into a claim neither made, and every sentence here can
+   * still be found verbatim in what the engine wrote.
+   */
   body: string[];
 }
 
@@ -157,5 +172,8 @@ export function composeRecap(p: RecapParts): RecapVoice {
     if (forward.length) { const t = forward.slice(0, 2).join(' '); body.push(t); remember(t); }
   }
 
-  return { headline, body };
+  // One paragraph. Short sentences, in the engine's own words, in the order
+  // it wrote them: what happened, then the condition that explains it, then
+  // the one thing about next time.
+  return { headline, body: body.length ? [body.join(' ')] : [] };
 }

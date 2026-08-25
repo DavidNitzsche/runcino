@@ -25,7 +25,7 @@ describe('recap voice · said once', () => {
 
   it('keeps the fact and drops the sentence defending it', () => {
     const r = composeRecap(REAL);
-    expect(r.body).toContain('Easy 4 mi at 8:34/mi.');
+    expect(r.body.join(' ')).toContain('Easy 4 mi at 8:34/mi.');
     expect(r.body.join(' ')).not.toContain('the right way to take an easy day');
   });
 
@@ -69,6 +69,15 @@ describe('recap voice · said once', () => {
       coachTip: 'Ease off the pace and let the heart rate settle.',
     });
     expect(r.body).toEqual([]);
+  });
+
+  it('is ONE paragraph, not a list of parts', () => {
+    // Four terse blocks is a shorter list, not a message. The phone styles
+    // each part separately, so anything more than one run of text reads as a
+    // form however good the sentences are.
+    const r = composeRecap(REAL);
+    expect(r.body.length).toBeLessThanOrEqual(1);
+    expect(r.body[0]).toBe('Easy 4 mi at 8:34/mi. 88°F, hot for running. Move the run earlier next time.');
   });
 
   it('CONTROL · the pre-fix payload really did repeat itself', () => {
