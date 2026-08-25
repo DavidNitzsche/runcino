@@ -358,6 +358,50 @@ extension API {
         return (200..<300).contains(http.statusCode)
     }
 
+    // MARK: - Plan proposals
+
+    /// GET /api/plan/proposal · pending plan-drift proposals plus rebuilds
+    /// applied in the last 24 hours.
+    ///
+    /// 2026-08-25 · This endpoint has existed since 2026-08-17 and nothing on
+    /// the phone called it. The note in TodayView said the phone had no read
+    /// surface "because /api/plan/proposal is POST-only", which stopped being
+    /// true the day the GET landed, and nobody went back to the note.
+    ///
+    /// The cost, on 2026-08-25: the nightly cron replaced the owner's training
+    /// block, the web had a card explaining it, and the phone had nothing. He
+    /// found out because the week counter reset.
+    ///
+    /// Same loader the web seed uses, so the two surfaces cannot describe the
+    /// same row differently. Never throws on a bad page: an empty list is the
+    /// honest state for a runner whose plan has not changed.
+    static func fetchPlanProposals() async throws -> [PlanProposal] {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/plan/proposal"))
+        req.httpMethod = "GET"
+        let (data, http) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else { return [] }
+        let env = try? JSONDecoder().decode(PlanProposalsResponse.self, from: data)
+        return env?.proposals ?? []
+    }
+
+    /// POST /api/plan/proposal · `{ id, action }`.
+    ///
+    /// accept → the server rebuilds the plan and resolves the row.
+    /// dismiss → the plan is left alone and the row records that the runner
+    /// said no, which is what keeps the cron from re-proposing it tomorrow.
+    @discardableResult
+    static func respondPlanProposal(id: Int, accept: Bool) async throws -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/plan/proposal"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "id": id,
+            "action": accept ? "accept" : "dismiss",
+        ])
+        let (_, http) = try await API.authedSend(req)
+        return (200..<300).contains(http.statusCode)
+    }
+
     // MARK: - Coach's log
 
     /// GET /api/coach/log · the coach's log, newest first (week closes,

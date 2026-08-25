@@ -128,6 +128,12 @@ struct TodayView: View {
     /// table from `pendingProposals` (coach_proposals, injury/illness/
     /// swap) — both feed the one coach-decision queue, different triggers.
     @State private var workoutProposals: [WorkoutProposal] = []
+    /// 2026-08-25 · Block-level plan proposals (plan_proposals) · GET
+    /// /api/plan/proposal. Pending rows are a decision the coach is waiting on;
+    /// auto_applied rows are the notice that a rebuild already happened. Both
+    /// were unreachable on this surface until now, which is how a cron replaced
+    /// the owner's training block overnight with nothing on the phone saying so.
+    @State private var planProposals: [PlanProposal] = []
     /// Local dismissals for APPLIED notices, keyed by the decision key,
     /// persisted so a dismissed notice doesn't reappear on the next
     /// loadAll within the same 24h recency window. Cheap UserDefaults
@@ -824,16 +830,25 @@ struct TodayView: View {
     /// The ordered interruption queue · every source folded into one list
     /// by the pure selector, minus anything the runner already dismissed.
     ///
-    /// Plan-drift proposals (web's `plan_proposals`) are deliberately
-    /// absent: the phone has no read surface for them. `/api/plan/proposal`
-    /// is POST-only and the web reads the rows off its own seed, so there
-    /// is nothing for native to call. Adding them needs a server-side GET
-    /// (see the report) — the selector's priority ladder already leaves
-    /// the slot so wiring it later reshuffles nothing.
+    /// 2026-08-25 · PLAN PROPOSALS ARE IN THE QUEUE NOW.
+    ///
+    /// This comment used to explain why they were not: "the phone has no read
+    /// surface for them. /api/plan/proposal is POST-only." That was true when
+    /// it was written and stopped being true on 2026-08-17, when the GET was
+    /// added for exactly this reason. Nobody came back to the note.
+    ///
+    /// What it cost, on 2026-08-25: the nightly drift cron archived the owner's
+    /// two-week recovery block in the middle of week two and authored a
+    /// one-week block in its place, taking his week from 23 miles to 38. The
+    /// web rendered a card saying so. The phone rendered nothing. He found out
+    /// because the week counter reset and he asked why.
+    ///
+    /// The ladder's promise held: adding the slot reshuffled nothing.
     private var coachDecisionQueue: [CoachDecision] {
         CoachDecisions.select(
             coachProposals: pendingProposals,
             workoutProposals: workoutProposals,
+            planProposals: planProposals,
             adaptations: adaptationIntents,
             todayISO: plan?.today_iso.isEmpty == false ? plan!.today_iso : todayISO
         ).filter { !dismissedDecisionKeys.contains($0.key) }
@@ -849,6 +864,14 @@ struct TodayView: View {
             return ok
         case .workoutProposal(let p):
             let ok = (try? await API.respondWorkoutProposal(id: p.id, accept: a.role == .accept)) ?? false
+            if ok { await loadAll() }
+            return ok
+        case .planProposal(let p):
+            // 2026-08-25 · accept rebuilds the block server-side; keep records
+            // that the runner said no, which is what stops the cron proposing
+            // the same thing again tomorrow. Reload either way on success so
+            // Today reflects the plan that now exists.
+            let ok = (try? await API.respondPlanProposal(id: p.id, accept: a.role == .accept)) ?? false
             if ok { await loadAll() }
             return ok
         case .adaptation:
@@ -3510,6 +3533,17 @@ struct TodayView: View {
             self.activeSick = activeSickRow
             self.pendingProposals = proposals
             self.workoutProposals = workoutProps
+            // 2026-08-25 · block-level proposals. Fetched in its own Task
+            // alongside the other best-effort reads so a slow or failing call
+            // cannot hold up Today rendering. A failed fetch leaves the last
+            // known list in place rather than blanking it: an empty list means
+            // "your plan has not changed", and that is not a thing to say
+            // because a request timed out.
+            Task {
+                if let rows = try? await API.fetchPlanProposals() {
+                    await MainActor.run { self.planProposals = rows }
+                }
+            }
             let resolvedToday = planWeek?.today_iso ?? self.plan?.today_iso
             if let today = resolvedToday, selectedDayID.isEmpty { selectedDayID = today }
 

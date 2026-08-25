@@ -61,6 +61,9 @@ enum CoachDecisionKind {
 enum CoachDecisionSource {
     case coachProposal(PendingProposal)
     case workoutProposal(WorkoutProposal)
+    /// 2026-08-25 · plan_proposals · the block-level rebuild. Pending rows are
+    /// a decision; auto_applied rows are the notice that it already happened.
+    case planProposal(PlanProposal)
     case adaptation(CoachIntent)
 }
 
@@ -106,12 +109,19 @@ enum CoachDecisions {
 
     /* priority ladder · mirrors decision-cards.ts PRIORITY.
        Injury / illness first: those rows exist because something happened
-       to the runner's body. Then a single workout, then passive notices.
-       (plan_proposal has no native reader yet — see the file note in
-       TodayView.loadAll; the slots are left in the ladder so adding it
-       later does not reshuffle anything.) */
+       to the runner's body. Then the whole block, then a single workout,
+       then passive notices.
+
+       2026-08-25 · plan_proposal FILLED. The slot was left here on the
+       promise that "adding it later does not reshuffle anything", and that
+       held: the two numbers below are unchanged. A block-level rebuild
+       outranks a single-workout tweak because it is the larger change to
+       the runner's week, and is outranked by injury and illness because
+       those are about the runner's body. */
     static let priorityCoachProposal = 10
+    static let priorityPlanProposal = 20
     static let priorityWorkoutProposal = 30
+    static let priorityPlanApplied = 60
     static let priorityAdaptation = 70
 
     /// Recency gate for adaptation notices · "happened in the last day",
@@ -127,6 +137,10 @@ enum CoachDecisions {
     static func select(
         coachProposals: [PendingProposal],
         workoutProposals: [WorkoutProposal],
+        // 2026-08-25 · defaulted so every existing call site and preview keeps
+        // compiling unchanged. The default is the empty list, which is what
+        // this surface has effectively been passing since the app shipped.
+        planProposals: [PlanProposal] = [],
         adaptations: [CoachIntent],
         todayISO: String,
         now: Date = Date()
@@ -134,6 +148,9 @@ enum CoachDecisions {
         var out: [CoachDecision] = []
         for p in coachProposals { out.append(fromCoachProposal(p)) }
         for p in workoutProposals { out.append(fromWorkoutProposal(p, todayISO: todayISO)) }
+        for p in planProposals {
+            if let d = fromPlanProposal(p, now: now) { out.append(d) }
+        }
         for a in adaptations where isWithinRecency(a.when_iso, now: now) {
             out.append(fromAdaptation(a))
         }
@@ -213,6 +230,106 @@ enum CoachDecisions {
             ],
             priority: priorityWorkoutProposal
         )
+    }
+
+    /// Titles per plan-proposal kind. Mirrors `PLAN_TITLES` in decision-cards.ts.
+    ///
+    /// A dictionary rather than a switch, and a String key rather than an enum,
+    /// so a kind this build has never heard of falls back to a real sentence
+    /// instead of disappearing. The web's equivalent was an exhaustive switch
+    /// over a union that had drifted behind its writers, and it returned
+    /// `undefined` — a card with a title and an empty body — for four kinds the
+    /// server was actively stamping.
+    private static let planTitles: [String: String] = [
+        "volume_drift": "Your volume has drifted off plan",
+        "vdot_drift": "Your fitness has moved",
+        "staleness": "This plan is due a refresh",
+        "easy_drift": "Your easy days have drifted",
+        "long_drift": "Your long runs have drifted",
+        "quality_drift": "Your quality work has drifted",
+        "goal_gap_widening": "The gap to your goal is widening",
+        "race_date_changed": "A race date changed",
+        "goal_time_changed": "Your goal time changed",
+        "a_race_added": "A goal race was added",
+        "a_race_removed": "A goal race was removed",
+        "goal_renegotiation": "Your race target needs a call",
+        "pace_reanchor": "Your paces are off your fitness",
+        "replan": "Your settings reshaped the block",
+        "plan_change": "Your settings reshaped the block",
+        "race_graduate": "The next block is up",
+        "recovery_complete": "Recovery is done",
+        "plan_elapsed": "That block ran out",
+        "maintenance_to_raceprep": "Race prep starts here",
+    ]
+
+    /// What ACCEPT concretely does, per kind. Mirrors `PLAN_ACCEPT_VERB`.
+    private static let planAcceptVerbs: [String: String] = [
+        "staleness": "REFRESH THE PLAN",
+        "goal_renegotiation": "SET THE REVISED TARGET",
+        "pace_reanchor": "RE-ANCHOR THE PACES",
+    ]
+
+    /// 2026-08-25 · the block-level rebuild, on the phone at last.
+    ///
+    /// TWO SHAPES, and the difference is the whole point of this audit:
+    ///
+    ///   pending      · the coach is asking. ACCEPT rebuilds, KEEP does not.
+    ///                  These were completely unreachable on the phone — a
+    ///                  proposal could stand for fourteen days and the surface
+    ///                  that would have shown it could not be called.
+    ///
+    ///   auto_applied · it ALREADY HAPPENED. No buttons, because there is
+    ///                  nothing left to decide; a notice, because the runner is
+    ///                  owed the fact and the reason. This is the shape that
+    ///                  went missing on 2026-08-25.
+    ///
+    /// Every other status (accepted, dismissed, superseded, expired) is
+    /// resolved and never interrupts, exactly as the web decides it.
+    private static func fromPlanProposal(_ p: PlanProposal, now: Date) -> CoachDecision? {
+        let title = planTitles[p.kind] ?? "Your training plan changed"
+        // The server always populates `message`. If it somehow did not, say the
+        // honest generic thing rather than rendering an empty card.
+        let body = p.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Open the plan to see what moved."
+            : p.message
+
+        if p.status == "pending" {
+            let verb = planAcceptVerbs[p.kind] ?? "REBUILD THE PLAN"
+            return CoachDecision(
+                key: "plan-\(p.id)",
+                source: .planProposal(p),
+                kind: .decision,
+                eyebrow: eyebrowDecision,
+                title: title,
+                body: body,
+                stamp: p.createdAt.isEmpty ? nil : p.createdAt,
+                actions: [
+                    .init(role: .accept, label: "ACCEPT · \(verb)", busyLabel: "REBUILDING"),
+                    .init(role: .keep, label: "KEEP THE CURRENT PLAN", busyLabel: "NOTING"),
+                ],
+                priority: priorityPlanProposal
+            )
+        }
+
+        if p.status == "auto_applied" {
+            // The server's own 24h window on auto_applied rows is the contract.
+            // Applying the same recency filter the adaptation notices use means
+            // a stale payload cannot resurface a week-old rebuild as news.
+            guard isWithinRecency(p.createdAt, now: now) else { return nil }
+            return CoachDecision(
+                key: "plan-\(p.id)",
+                source: .planProposal(p),
+                kind: .notice,
+                eyebrow: eyebrowNotice,
+                title: title,
+                body: body,
+                stamp: p.createdAt.isEmpty ? nil : p.createdAt,
+                actions: [],
+                priority: priorityPlanApplied
+            )
+        }
+
+        return nil
     }
 
     private static func fromAdaptation(_ a: CoachIntent) -> CoachDecision {

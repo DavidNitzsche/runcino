@@ -333,6 +333,88 @@ describe('GUARD 4 · the plan writers in the source are the plan writers on the 
   });
 });
 
+/**
+ * GUARD 6 · "surfaced" means surfaced ON THE PHONE TOO.
+ *
+ * The failure this exists for, exactly:
+ *
+ *   · `plan_proposals` rows have rendered on the web since 2026-06-02 — a card
+ *     saying what changed, with a link to the diff.
+ *   · The phone had no reader. TodayView carried a comment explaining why:
+ *     "/api/plan/proposal is POST-only ... Adding them needs a server-side GET."
+ *   · That GET was added on 2026-08-17. The comment was never revisited.
+ *   · On 2026-08-25 the drift cron replaced the owner's block. The web had the
+ *     card. The phone, which is the surface he uses daily, had nothing.
+ *
+ * So "does the runner see it" was TRUE and FALSE at the same time, and the true
+ * half is the one everyone quoted. A visibility claim that holds on one surface
+ * is not a visibility claim.
+ *
+ * The check is deliberately crude — does any Swift file mention the endpoint —
+ * because the failure it catches is crude: nobody called it at all.
+ */
+describe('GUARD 6 · a surfaced change reaches the phone, not just the web', () => {
+  const NATIVE = resolve(ROOT, 'native-v2');
+
+  /** Every .swift file under native-v2, concatenated once. */
+  function nativeSource(): string {
+    const files: string[] = [];
+    const walkSwift = (dir: string) => {
+      if (!existsSync(dir)) return;
+      for (const name of readdirSync(dir)) {
+        if (name.startsWith('.')) continue;
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) walkSwift(p);
+        else if (name.endsWith('.swift')) files.push(p);
+      }
+    };
+    walkSwift(NATIVE);
+    return files.map((f) => readFileSync(f, 'utf8')).join('\n');
+  }
+
+  /**
+   * The endpoint each surfaced mutation is read through, and the phone is
+   * expected to call. Only listed where a phone reader is the right answer.
+   */
+  const SURFACE_ENDPOINTS: Record<string, string> = {
+    'cron/plan-drift': 'api/plan/proposal',
+    'cron/run-adaptations': 'api/plan/workout-proposals',
+  };
+
+  it('opened the native tree', () => {
+    expect(existsSync(NATIVE), 'native-v2 missing · this guard cannot report clean on nothing').toBe(true);
+    expect(nativeSource().length).toBeGreaterThan(100_000);
+  });
+
+  it('every surfaced mutation with a named endpoint has a native reader', () => {
+    const src = nativeSource();
+    const missing: string[] = [];
+    for (const [id, endpoint] of Object.entries(SURFACE_ENDPOINTS)) {
+      const entry = AUTOMATIC_MUTATIONS.find((m) => m.id === id);
+      if (!entry || entry.runnerSees !== 'surfaced') continue;
+      if (!src.includes(endpoint)) missing.push(`${id} → ${endpoint}`);
+    }
+    expect(
+      missing,
+      'The registry says the runner sees this and the phone never calls the endpoint that '
+      + 'would show it. That is how a cron replaced a training block overnight with a card on '
+      + 'the web and nothing on the surface the runner actually opens.',
+    ).toEqual([]);
+  });
+
+  it('the native reader is a real call, not a comment about one', () => {
+    const src = nativeSource();
+    // The 2026-08-25 state precisely: the only mention of the endpoint anywhere
+    // in native-v2 was inside a comment explaining that it could not be called.
+    // A guard that greps for the string alone would have passed on that.
+    const code = stripComments(src);
+    expect(
+      code.includes('api/plan/proposal'),
+      'api/plan/proposal appears in native-v2 only inside comments. A comment is not a reader.',
+    ).toBe(true);
+  });
+});
+
 describe('GUARD 5 · the planted defect', () => {
   /**
    * The gate must be able to FAIL. A coverage test that passes on a codebase it
