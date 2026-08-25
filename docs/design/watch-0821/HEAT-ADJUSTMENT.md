@@ -337,17 +337,24 @@ flatter the run. On a cool day that costs nothing, because the correction is ~0.
 
 ## What did NOT ship, and why
 
-- **The watch does not yet DRAW `heatNote`.** The field is on the wire and set
-  correctly; the Swift lobby has no view for it. Server-side is complete and
-  additive — a watch that ignores the field is unaffected.
+- ~~The watch does not yet DRAW `heatNote`.~~ **Done** (`b8773025`). Decoded
+  leniently and drawn in the lobby's note register only. One register means a
+  precedence: a session that was CHANGED outranks a session that was EASED, and
+  the two are not joined. When the heat line loses, the adjustment is still not
+  silent — the eased band is drawn regardless. What is lost is the explanation,
+  not the fact.
 - **Decision 2 (the phone shows the eased band) is BLOCKED, not deferred.**
   `/api/v5/today` and `lib/faff/v5-today.ts` belong to another session and must
   not be edited from here. **Until that lands, the phone and the wrist will
   print different numbers for the same session on a hot day** — precisely what
   decision 2 forbids. This is the single most important follow-up.
-- **Decision 5 (the runner says "indoors" at Start)** is unimplemented. It is a
-  watch UI change, not a server one, and `isTreadmill` still infers from
-  `tracker.distanceSourceUnavailable`.
+- **Decision 5 (the runner says "indoors" at Start)** is PARTLY there and was
+  mis-reported as unimplemented. The lobby already offers `onStartIndoors`
+  (suppressed on a race), so the explicit choice exists at Start. What has not
+  been done is making that choice the source of truth for `isTreadmill`, which
+  still infers from `tracker.distanceSourceUnavailable` — a signal that arrives
+  minutes late and reads a lost GPS fix and a treadmill as the same thing. The
+  remaining work is the wiring, not the control.
 - **Race fuelling still passes `tempF: null`.** Race conditions are priced in
   the execution plan; wiring this one too would be the double-pricing again, in
   the fuelling column.
