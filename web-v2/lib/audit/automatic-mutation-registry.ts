@@ -418,15 +418,20 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     trigger: 'GET /api/watch/today · app cold launch, every scenePhase active, every watch reachability change, and any ?date= preview',
     reach: 'append_or_fill',
     changes: ['coach_intents'],
-    idempotent: false,
-    onPartialFailure: 'Fire and forget from a read handler.',
+    idempotent: true,
+    onPartialFailure: 'Fire and forget from a read handler. One statement, so nothing incoherent is left.',
     runnerSees: 'invisible',
     reversible: 'Only by deleting coach_intents rows.',
     note:
-      'A GET that mints a coaching record. Verified in prod 2026-08-25: 40 rows on the owner\'s account in one '
-      + 'day across nine date keys, including FUTURE dates, because a preview of another day writes an easing '
-      + 'computed from today\'s weather. loadHeatEasing reads ORDER BY ts DESC LIMIT 1, so a run is graded '
-      + 'against whatever the last app-open wrote.',
+      'A GET that mints a coaching record. FIXED 2026-08-25, and the entry is kept because the shape is worth '
+      + 'remembering. It was not idempotent: the dedupe matched exact equality of a value blob containing '
+      + 'observedAgeMin, the age of the weather observation in minutes, which differs between any two calls. '
+      + 'And it had no date guard while adjustPhasesForHeat reads CURRENT conditions with no date, so a ?date= '
+      + 'preview of another day stamped that day with today\'s weather. Prod on 2026-08-25: 40 rows on the '
+      + 'owner\'s account in one day across nine date keys, past and future. Now one row per decision, and only '
+      + 'for the day the runner is living. RESIDUAL: loadHeatEasing still reads ORDER BY ts DESC LIMIT 1, so a '
+      + 'later same-day build whose decision genuinely changed can still re-price a finished run. Closing that '
+      + 'means keying the record to the build the watch CONSUMED, which is a completion-payload contract change.',
   },
   {
     id: 'readpath/run-detail-weather',
@@ -452,17 +457,22 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     trigger: 'every run write',
     reach: 'overwrites_engine_state',
     changes: ['calibration_sessions', 'coach_intents'],
-    idempotent: false,
-    onPartialFailure: 'The session write is transactional.',
+    idempotent: true,
+    onPartialFailure: 'The session write is transactional, and the UPDATE is now guarded so rowCount 0 rolls back and re-reads rather than stamping a second intent.',
     runnerSees: 'invisible',
     reversible: 'No surface reaches it.',
     note:
-      'The function\'s own docstring claims it returns the existing result when already completed. It does not: '
-      + 'it selects WHERE completed_at IS NULL AND skipped_at IS NULL, finds none, and inserts a fresh one. '
-      + 'Verified in prod 2026-08-25: the owner has 31 completed calibration sessions. voice-band.ts reads the '
-      + 'most recent and hard-overrides the coaching voice band, so the band is set from evidence the runner '
-      + 'never volunteered. A SKIPPED session is excluded from the lookup rather than treated as an answer, so '
-      + 'a runner who tapped skip is silently recalibrated on their next run.',
+      'FIXED 2026-08-25, kept because the OPEN QUESTION under it is bigger than the bug was. The function\'s '
+      + 'docstring claimed it returned the existing result when already completed; it selected WHERE '
+      + 'completed_at IS NULL AND skipped_at IS NULL, found none, and inserted a fresh one on every run write. '
+      + 'Prod on 2026-08-25: the owner had 31 completed sessions where there should be one. A skipped session '
+      + 'was excluded from the lookup rather than treated as an answer, so a runner who tapped skip was '
+      + 'silently recalibrated on their next run. Both closed. STILL OPEN, for David: voice-band.ts reads the '
+      + 'most recent completed session and HARD-OVERRIDES the coaching voice band off it, and calibration is '
+      + 'listed in MODULE_ORPHANS as unmounted end to end. An unmounted feature is steering the coach\'s voice '
+      + 'off evidence the runner never volunteered. It fires on the Strava path only, because post-write-hooks '
+      + 'passes the runs.id BIGINT and calibration.ts matches it against data->>\'id\'. Correcting that join '
+      + 'turns it on for HealthKit, watch and manual too, which is a product decision, not a bug fix.',
   },
 ] as const;
 

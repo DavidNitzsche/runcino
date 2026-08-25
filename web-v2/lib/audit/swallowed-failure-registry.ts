@@ -141,7 +141,30 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
  * It is NOT a target to reach zero in one pass. It is a line that only moves
  * one way.
  */
-export const EMPTIED_BASELINE = 388;
+/**
+ * 2026-08-25 · 388 → 380. The ratchet tightens, which is the only direction it
+ * moves.
+ *
+ * Eight sites closed in the automatic-mutation audit that followed the drift
+ * cron replacing the owner's training block overnight. Seven were guards
+ * standing in front of an action — four dedupe reads and three that authorise
+ * pushing a runner's long run up — plus `hasPendingProposal`, the one guard
+ * between the nightly cron and re-authoring a block.
+ *
+ * That last one is worth recording here rather than only in its own file,
+ * because it is a gap in THIS scanner's reach, not just a missed site. It
+ * caught `.catch(() => ({ rows: [] }))` and was classified EMPTIED — a harmless
+ * empty container, held under this ratchet rather than argued as an exemption.
+ * Two lines below the catch, `return r != null` turned that empty into `false`,
+ * and `false` to its only two callers meant "nothing standing, go ahead". So an
+ * EMPTIED fallback was laundered into a MINTED decision just outside the
+ * scanner's window, and the 2026-08-24 sweep fixed the four sibling guards in
+ * the plan-drift route while walking past this one.
+ *
+ * If you are extending the scanner: the shape to look for is an EMPTIED
+ * fallback whose enclosing function returns a boolean or a count.
+ */
+export const EMPTIED_BASELINE = 380;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
