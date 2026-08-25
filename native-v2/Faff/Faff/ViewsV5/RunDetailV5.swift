@@ -265,6 +265,26 @@ struct RunDetailV5: View {
 
                     routeSection
 
+                    // THE MILES, AS NUMBERS, UNDER THE ROUTE.
+                    //
+                    // The split chart above says what SHAPE the run was; this
+                    // says what each mile actually did — pace, heart rate,
+                    // climb. That reading used to be attempted by tinting the
+                    // polyline, which has one channel and could not carry it:
+                    // the 2026-08-24 run went 127 / 140 / 138 / 144 / 158 bpm,
+                    // a Z1 opening and a Z4 finish, and no shading of a line
+                    // was going to say so.
+                    //
+                    // NOT ON A REP SESSION. A mile of a tune-up holds the back
+                    // of one rep, a jog and the front of the next, averaged
+                    // into one row — `RepBreakdownV5` above is already showing
+                    // that session at the grain it was run at, and a mile
+                    // table under it would be a second, worse answer to the
+                    // same question.
+                    if repPieces.isEmpty, !milePieces.isEmpty {
+                        MileBreakdownV5(title: "Mile by mile", pieces: milePieces)
+                    }
+
                     if let shoe = wornShoe {
                         ListGroup(header: "Shoes worn") {
                             ListRow(label: shoe.displayName,
@@ -668,6 +688,17 @@ struct RunDetailV5: View {
         return (Int(lo.rounded()), Int(hi.rounded()))
     }
 
+    /// The run mile by mile, for `MileBreakdownV5`.
+    ///
+    /// `detail.distance_mi` sizes a trailing piece the wire did not size
+    /// itself — the same arithmetic `splitBars` does for its last bar, kept in
+    /// one place in the component so the chart and the table cannot come to
+    /// different conclusions about how long the last mile was.
+    var milePieces: [MilePiece] {
+        MileBreakdownV5.pieces(from: detail.splits,
+                               totalMi: detail.distance_mi > 0 ? detail.distance_mi : nil)
+    }
+
     var splitBars: [SplitBar] {
         let band = splitBand
         // `hr` travels with the mile from here. It has sat in `RunSplit`
@@ -814,7 +845,16 @@ struct RunDetailV5: View {
                          splits: detail.splits,
                          phases: RouteMapView.phaseSamples(from: detail.phase_breakdown),
                          effort: mappedEffort,
-                         hrZones: detail.hr_zones_from_lthr?.ranges ?? [],
+                         // NO ZONE AXIS ON THIS MAP ANY MORE. Passing the
+                         // bands turned the line into a five-step HR ramp,
+                         // and a line has one channel: it could say roughly
+                         // which zone and never the reading, the climb or the
+                         // cadence. `MileBreakdownV5` below carries all four
+                         // as numbers. Withholding the bands is the whole
+                         // change — `usesHrZones` needs two of them, so the
+                         // map falls back to what it was always best at,
+                         // which is saying where the runner went.
+                         hrZones: [],
                          // THE SAME BAND THE SPLIT CHART USES. That is the
                          // whole point of round three item 4 — the grey
                          // stretch on the map and the grey bar in the chart

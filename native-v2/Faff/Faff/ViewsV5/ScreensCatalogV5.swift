@@ -68,6 +68,26 @@ struct ScreensCatalogV5: View {
                                      onFlagNiggle: { _ in }, onOpenInjuryFlare: {},
                                      onChangeShoe: {}, onPickShoe: { _ in }, onRowAction: { _ in }, onPushStrava: {}))
             },
+            // THE POST-RUN BREAKDOWN, ON BOTH GRAINS AND ON ITS AWKWARD CASES.
+            //
+            // The section picks miles or sections from what the run was, so
+            // one entry can only ever show half of it. These four also carry
+            // the three ways the data is thinner than the table — no cadence
+            // or climb, a missing reading, a trailing part-mile — which are
+            // the cases where a table is easiest to make dishonest.
+            // See `BreakdownV5Samples`.
+            Entry(id: "5b-miles", title: "Today · mile by mile", sub: "Z1 opening, Z4 finish, part-mile tail") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.easy))
+            },
+            Entry(id: "5b-miles-thin", title: "Today · mile by mile, thin", sub: "Pace and heart rate, nothing else") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.easyThin))
+            },
+            Entry(id: "5b-miles-gaps", title: "Today · miles with no reading", sub: "Blank, never a neighbour's number") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.easyGaps))
+            },
+            Entry(id: "5b-sections", title: "Today · section by section", sub: "A session made of pieces") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.reps))
+            },
             Entry(id: "5c", title: "Today · after a treadmill run", sub: "On the belt, no route card") {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.treadmill,
                                      onOpenAccount: {}, onLogEffort: { _ in },

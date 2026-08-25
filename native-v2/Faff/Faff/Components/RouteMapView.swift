@@ -160,16 +160,33 @@ struct RouteMapView: UIViewRepresentable {
                        blue: ab + (bb - ab) * f, alpha: aa + (ba - aa) * f)
     }
 
-    /// HR-zone palette · Z1→Z5 (teal → green → cream → orange → red). = the
-    /// app's Theme.Zone time-in-zones colors, deliberately distinct from the
-    /// pace bucketColors so HR mode reads as a different axis at a glance.
-    static let zoneColors: [UIColor] = [
-        UIColor(Color(hex: 0x27B4E0)),   // Z1 · Light Blue (palette)
-        UIColor(Color(hex: 0x3EBD41)),   // Z2 · Success green (palette)
-        UIColor(Color(hex: 0xF3AD38)),   // Z3 · Attention amber (palette)
-        UIColor(Color(hex: 0xD03F3F)),   // Z4 · Redish (palette · orange retired 2026-06-18)
-        UIColor(Color(hex: 0xFC4D64)),   // Z5 · Warning red (palette)
-    ]
+    /// HR-zone palette · Z1 lightest to Z5 densest, ordinal density on one
+    /// neutral ink.
+    ///
+    /// IT WAS A v4 RAMP ON A v5 SURFACE. Teal, green, cream, red, rose — not
+    /// one of the five is a v5 token, and brief v2 forbids green as a grade
+    /// outright. That mattered most where it was most visible: the zone tile
+    /// two inches above the map paints the asked-for zone in `V5.signal`,
+    /// while the map painted the same zone #3EBD41 green, so one screen gave
+    /// two answers about what zone 2 looks like, about one run. Worse on its
+    /// own terms, as this file already argues for the pace axis three
+    /// paragraphs up: a hue that lands on the prescription is the graphic
+    /// saying "good", which this app never does.
+    ///
+    /// Density, not hue — it says WHICH zone without saying whether the
+    /// distribution was good, which is exactly the shape `ZoneBar.restFill`
+    /// already uses on the tile. Opaque rather than an alpha, because the
+    /// route is drawn as many short overlapping polylines and a translucent
+    /// stroke doubles up at every round-capped joint, beading the line.
+    ///
+    /// The v5 route cards no longer colour by zone at all — see
+    /// `MileBreakdownV5`, which carries the per-mile reading as numbers
+    /// instead. This remains for the legacy `RoutePolylineCard`, which still
+    /// draws the axis and its own Z1–Z5 legend, and which had no business
+    /// drawing retired hexes either.
+    static let zoneColors: [UIColor] = (0..<5).map {
+        UIColor(white: CGFloat(0.50 + Double($0) * 0.11), alpha: 1)
+    }
 
     /// Continuous Z1→Z5 ramp · t in 0…1. Lets HR drift fade across the zone
     /// colors instead of hard-switching at zone edges.

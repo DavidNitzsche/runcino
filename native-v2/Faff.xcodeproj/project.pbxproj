@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0326FC753B14C5D8D88F0047 /* StravaPushSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A3B4A49A291F2E6280DAC72 /* StravaPushSheet.swift */; };
 		037104D1F1956FCD28FA4915 /* TodayPreRunBodyV3.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6142CF93DF4BB8739EB299D /* TodayPreRunBodyV3.swift */; };
+		03E4A13F4A64C82FE77B80B5 /* BreakdownV5Samples.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31431AEC8AB9E1581A6F66E /* BreakdownV5Samples.swift */; };
 		0565B4AAF1E1AC26C3DE1F75 /* WatchSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */; };
 		05EEB9EB948603B0592062F2 /* TodayShoePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3F9F97249181DA2EB82D25D /* TodayShoePicker.swift */; };
 		06733C4049CBBF30D8DF2EA1 /* API+Toolkit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E06A7E99186B27147ADDE22 /* API+Toolkit.swift */; };
@@ -160,6 +161,7 @@
 		AD3CC94D0BD982BE1DE30211 /* APIV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED93C1BD27C8E4828D6A7984 /* APIV5.swift */; };
 		AE498C495063F6C98677718F /* RegisterSweepTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2066A2748323E0E82C09E971 /* RegisterSweepTests.swift */; };
 		B1A6E0DF54B3924387506BAA /* TrainingCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 339FE2F9F859B2369B4348E2 /* TrainingCalendarView.swift */; };
+		B2BC7B429ADDA0AA8B070554 /* MileBreakdownV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B93A292D47A0897A9E97E59 /* MileBreakdownV5.swift */; };
 		B5DFBF384D9E66275E5A115A /* CoachDecisionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5CA8D8B53BA60480112C8E /* CoachDecisionCard.swift */; };
 		B6076F76806872AA099B2961 /* LiveRunTreadmillV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21C4E0103C48556262CA34E6 /* LiveRunTreadmillV5.swift */; };
 		B6D9A30FAAC0365482CBE064 /* FaffWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -336,6 +338,7 @@
 		3A3B4A49A291F2E6280DAC72 /* StravaPushSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaPushSheet.swift; sourceTree = "<group>"; };
 		3A85664CAD8235007F2987E2 /* RecorderConcurrencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecorderConcurrencyTests.swift; sourceTree = "<group>"; };
 		3ABD39EA42BBBD797873A1DE /* H_Race.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H_Race.swift; sourceTree = "<group>"; };
+		3B93A292D47A0897A9E97E59 /* MileBreakdownV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MileBreakdownV5.swift; sourceTree = "<group>"; };
 		3C2B62D9179AAC7D41426156 /* FaffApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffApp.swift; sourceTree = "<group>"; };
 		3C5CA8D8B53BA60480112C8E /* CoachDecisionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachDecisionCard.swift; sourceTree = "<group>"; };
 		3ECBCD6E9046A23C7E277F44 /* _SessionSim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = _SessionSim.swift; sourceTree = "<group>"; };
@@ -479,6 +482,7 @@
 		CE323D928DA355934197F38B /* G_Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = G_Settings.swift; sourceTree = "<group>"; };
 		CFC017C2FCF5BCEF864B8086 /* ComponentsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComponentsV5.swift; sourceTree = "<group>"; };
 		D2E15DBC78C7149E2AA0EB45 /* WeekStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekStrip.swift; sourceTree = "<group>"; };
+		D31431AEC8AB9E1581A6F66E /* BreakdownV5Samples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreakdownV5Samples.swift; sourceTree = "<group>"; };
 		D3843DD3013BCFD88312736A /* IndoorDistanceMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndoorDistanceMeter.swift; sourceTree = "<group>"; };
 		D399E6BD092E5FEF2DA13466 /* FaffWidgetProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWidgetProvider.swift; sourceTree = "<group>"; };
 		D3E061B6DE76C25B0D93E9FF /* DecodeSweepTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecodeSweepTests.swift; sourceTree = "<group>"; };
@@ -526,6 +530,7 @@
 				ED93C1BD27C8E4828D6A7984 /* APIV5.swift */,
 				8FD04D91D8038BA91A4D9E20 /* ChartsV5.swift */,
 				CFC017C2FCF5BCEF864B8086 /* ComponentsV5.swift */,
+				3B93A292D47A0897A9E97E59 /* MileBreakdownV5.swift */,
 				B89B85857DDA2DA69F8C141A /* PanelV5.swift */,
 				8C67FC57A7AA49F34251FE7F /* RepBreakdownV5.swift */,
 				46EC493626E589550944B025 /* RepeatStepV5.swift */,
@@ -704,6 +709,7 @@
 				C29FB6AFE3C447E23C510022 /* AddRaceV5.swift */,
 				81BE49875D680861EF42A9BB /* AddShoeV5.swift */,
 				95083B2C82E448D42B6FAF88 /* BlockV5.swift */,
+				D31431AEC8AB9E1581A6F66E /* BreakdownV5Samples.swift */,
 				9EA6E4EA5BC58D6CDD52FE13 /* CourseImportV5.swift */,
 				A4141967D7277D2DF4252A9A /* GalleryV5.swift */,
 				6F6FF20A96440B706E0DF836 /* HostsV5.swift */,
@@ -1176,6 +1182,7 @@
 				335EB81D74D63A27EC090AF5 /* BeltTracker.swift in Sources */,
 				FC0ECB647C054902767A8C7E /* BlockV5.swift in Sources */,
 				22DC594B5818D987FD7101EB /* Brandmark.swift in Sources */,
+				03E4A13F4A64C82FE77B80B5 /* BreakdownV5Samples.swift in Sources */,
 				E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */,
 				D3BC37653D9BE02DAEABE840 /* C_CoachTransparency.swift in Sources */,
 				12CCD50936DC4C94D2F4B5B5 /* ChartsV5.swift in Sources */,
@@ -1223,6 +1230,7 @@
 				468FE2BC3CFB56D3952DA40E /* LiveRunOutdoorV5.swift in Sources */,
 				B6076F76806872AA099B2961 /* LiveRunTreadmillV5.swift in Sources */,
 				FF78B023B6AF759194C870EC /* LoadState.swift in Sources */,
+				B2BC7B429ADDA0AA8B070554 /* MileBreakdownV5.swift in Sources */,
 				DECF5720E3070DDD9BD23D18 /* MorningBriefBlock.swift in Sources */,
 				47F3245DF57F054F4D025850 /* NotificationCategories.swift in Sources */,
 				A2E9E71A2FA154AA15B03FC3 /* NotificationInboxSheet.swift in Sources */,

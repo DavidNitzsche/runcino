@@ -46,6 +46,21 @@ export interface RunSplit {
   cadence: number | null;
   elev_change_ft: number | null;
   /**
+   * How much of a mile this split actually covers. 1 for a whole mile; a
+   * fraction for the trailing piece.
+   *
+   * THE STORED SPLIT HAS ALWAYS CARRIED THIS AND THE NORMALIZER DROPPED IT.
+   * A 4.11 mi run stores five splits and the fifth reads
+   * `distanceMi: 0.111`; the wire flattened that to "mile 5" and every
+   * surface downstream then had to guess the tail from the run total, or
+   * silently draw a tenth of a mile with a whole mile's weight.
+   *
+   * Null when the source did not say, which is not the same as 1 — a
+   * consumer must be able to tell "this is a whole mile" from "we were not
+   * told", because only one of those licenses printing a distance.
+   */
+  distanceMi: number | null;
+  /**
    * Phase classification for this mile · derived from the run's
    * structured phaseBreakdown when present. Null for runs without
    * phase data (free-form easy runs, manual entries, Strava-only
@@ -751,6 +766,13 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       // this fallback the read-time elev sanity check below saw all-zero
       // splits and bailed back to the raw 4684 ft on watch-source rows.
       elev_change_ft: Number(s.elev_change_ft ?? s.elevChangeFt ?? s.elev_ft) || null,
+      // Carried, not derived. `|| null` would turn a legitimately tiny
+      // trailing split into "we were not told", so the guard is an explicit
+      // finite-and-positive test.
+      distanceMi: (() => {
+        const d = Number(s.distanceMi ?? s.distance_mi ?? s.mi);
+        return isFinite(d) && d > 0 ? d : null;
+      })(),
       phase: null,
     };
   });
