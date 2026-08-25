@@ -343,7 +343,24 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     ? Math.max(0, Math.round(
         (Date.parse(today + 'T12:00:00Z') - Date.parse(lastRaceRow.date + 'T12:00:00Z')) / 86400000))
     : null;
-  const planWeek = await loadPlanWeek(userId, today);
+  // THE RUNNER'S REAL TODAY, NOT THE DATE BEING VIEWED.
+  //
+  // `loadPlanWeek(userId, today, dateParam?)` takes the two apart on purpose
+  // — `today` marks `is_today` on the day it equals, `dateParam` only picks
+  // which week to window on — but this call was passing ONE date for both.
+  // Stepping to another day sets `today` (this file's own variable) to that
+  // date, so every day in the returned week got `is_today` compared against
+  // the VIEWED date instead of the real one: viewing Sunday marked SUNDAY as
+  // today, not Tuesday.
+  //
+  // Invisible everywhere the client trusts its OWN idea of today over the
+  // wire's — which is everywhere except one place: `TodayHostV5.backToToday()`
+  // resolves "today" by reading `isToday` back OFF THIS PAYLOAD (the one
+  // screen with no other source, since it is what "today" even means once
+  // you have stepped away). With `is_today` lying, "back to today" compared
+  // the viewed date to itself, matched, and silently no-opped — the button
+  // that fired but did nothing, on David's phone, 2026-08-25.
+  const planWeek = await loadPlanWeek(userId, runnerTodayISO, today);
   const todayWeekDay = planWeek.days.find((d) => d.is_today) ?? null;
   const glanceToday = glance.weekDays.find((d) => d.date === today) ?? null;
 
@@ -572,8 +589,9 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // worked, but only by accident: a stepped-to day inside the current week is
   // still in `weekDays`.
   //
-  // `planWeek` IS date-aware — `loadPlanWeek(userId, today)` windows on the
-  // date it was given — so `todayWeekDay` already holds the right row. Glance
+  // `planWeek` IS date-aware — `loadPlanWeek(userId, runnerTodayISO, today)`
+  // windows on the date it was given — so `todayWeekDay` already holds the
+  // right row. Glance
   // stays first because it carries the adaptation provenance (what the day
   // WAS before the coach moved it), which the plan row alone cannot say.
   //

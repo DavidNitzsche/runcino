@@ -1157,7 +1157,12 @@ export async function buildWatchToday(
   // response can carry it — a rest day still has a week behind it, and the
   // rest board's own sentence is built out of the same rows. Best-effort:
   // never fail the payload over the week strip.
-  const rawWeek: PlanWeekResult | null = await loadPlanWeek(userId, today).catch(() => null);
+  // The real today, not `overrideDate` — see `is_today: dISO === today` in
+  // `loadPlanWeek`. Same shape as the bug fixed in `app/api/v5/today/route.ts`
+  // 2026-08-25: passing one date for both "which day is today" and "which
+  // week to window on" marks the OVERRIDDEN date as today instead of the
+  // real one, whenever a caller ever passes `overrideDate`.
+  const rawWeek: PlanWeekResult | null = await loadPlanWeek(userId, actualToday, today).catch(() => null);
   const weekStrip = rawWeek ? projectWeekStrip(rawWeek) : null;
 
   if (!plan) {

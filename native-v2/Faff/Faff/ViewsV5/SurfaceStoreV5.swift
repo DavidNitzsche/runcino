@@ -109,9 +109,25 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     /// refresh it schedules is the async part, and nothing on screen waits for
     /// it.
     func present(_ known: Model, refreshWith newFetch: @escaping () async throws -> API.V5Fetch<Model>) {
-        model = known
-        stale = false
-        absentReason = nil
+        // A HARD CUT, NOT A CROSSFADE.
+        //
+        // Today keys its content on `dateISO` and fades between days, which
+        // is right when the new day is arriving off the network: the fade
+        // covers the gap. It is wrong when the day is already in hand. Then
+        // the 200ms is not covering anything — it is 200ms of the day the
+        // runner just left, added to a tap that had nothing to wait for, and
+        // it reads as exactly the lag it was meant to hide.
+        //
+        // `disablesAnimations` overrides the `.animation(_:value:)` on the
+        // content, which is why this has to be a transaction rather than an
+        // `withAnimation(nil)`.
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
+            model = known
+            stale = false
+            absentReason = nil
+        }
         fetch = newFetch
         Task { await load() }
     }

@@ -1359,11 +1359,41 @@ struct PlaceHeaderV5: View {
                         }
                         .foregroundStyle(panelInk.primary)
                         .padding(.horizontal, V5.S.s10)
-                        .frame(height: 30)
+                        .frame(height: V5.Shell.headerButton)
                         .background(panelInk.control, in: Capsule())
-                        .contentShape(Capsule())
                     }
                     .buttonStyle(V5PressStyle())
+                    // ── 44 TALL TO TAP, `V5.Shell.headerButton` TALL TO SEE ──
+                    //
+                    // David, 2026-08-25: "the TODAY back button is hard to
+                    // click" — it drew at 30pt, under Apple's own 44pt
+                    // minimum. Then, once a 44pt VISUAL pill was sitting next
+                    // to the 30pt calendar disc: "if you need to make things
+                    // bigger then everything else needs to match too."
+                    //
+                    // Both are true, and this is the same recipe
+                    // `v5HeaderTarget` already uses for that calendar disc:
+                    // `.frame` grows the tap box first, `.contentShape` bakes
+                    // the hit-test region in AT that size, and only THEN does
+                    // negative padding shrink the reported LAYOUT footprint
+                    // back to `V5.Shell.headerButton` — so this row measures
+                    // the same as it always did and nothing shifts, while the
+                    // capsule stays visually the same height as the disc
+                    // beside it.
+                    //
+                    // AN EARLIER PASS TRIED THIS SAME RECIPE AND IT DID NOT
+                    // WORK — tapping did nothing. That turned out to be a
+                    // false trail: the button was always receiving the tap
+                    // and calling `onBackToToday`; the server was marking the
+                    // VIEWED day `is_today` instead of the real one, so the
+                    // handler compared the target date to itself and no-opped
+                    // silently. See `goTo` in `HostsV5.swift` and the fix in
+                    // `app/api/v5/today/route.ts`, 2026-08-25. The enlarge
+                    // recipe was never the problem; it just failed alongside
+                    // the real bug and took the blame.
+                    .frame(height: 44)
+                    .contentShape(Rectangle())
+                    .padding(.vertical, -(44 - V5.Shell.headerButton) / 2)
                     .accessibilityLabel("Back to today")
                 } else if let onAccount {
                     HeaderDiscV5(glyph: .account(initials),

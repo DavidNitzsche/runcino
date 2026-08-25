@@ -922,47 +922,50 @@ struct WeekStripV5: View {
     @Environment(\.v5PanelInk) private var panelInk
 
     /// ─────────────────────────────────────────────────────────────────────
-    /// THE SWIPE FOLLOWS THE FINGER
+    /// A TabView(.page) PORT WAS TRIED AND REVERTED
     ///
-    /// David, 2026-08-25: "also need to be able to easily swipe to go back and
-    /// forth weeks. just like an iphone native control."
+    /// David, 2026-08-25: "it worked perfectly in the old design of the app
+    /// ... we should replicate however the old app did it." The old
+    /// `Components/WeekStrip.swift` paged with a real `TabView(.page)` over
+    /// an array it held in full, and that IS the better mechanism — native
+    /// rubber-banding, velocity, VoiceOver's own paging gesture, all of it
+    /// for free. Ported here the same way (three pages tagged -1/0/1,
+    /// recentring on page change — the standard "infinite" TabView trick),
+    /// it stopped receiving touches at all inside this host: not swipes, not
+    /// taps on the day cells either. Most likely the nested-scroll
+    /// interaction between this TabView and the panel's own outer
+    /// `ScrollView` — SwiftUI's two scrolling containers do not always
+    /// negotiate gesture ownership the way two native `UIScrollView`s do —
+    /// but diagnosing UIKit gesture-recognizer internals from outside Xcode
+    /// was not going to happen safely before David needed this back.
     ///
-    /// There WAS a week swipe here, and it was invisible. It lived entirely in
-    /// `.onEnded`: nothing moved while the finger was down, and then the whole
-    /// strip was replaced when the payload landed. A gesture with no response
-    /// until it completes cannot be discovered, cannot be aborted, and cannot
-    /// be judged — you learn how far is far enough by being wrong. Which is
-    /// why it read as "clunky" rather than as a feature.
+    /// A strip that cannot be tapped is a worse regression than a clunky one,
+    /// so this reverts to the tracked `DragGesture` below, with the ACTUAL
+    /// defect from the second round fixed — see `pageGesture`'s `.onEnded`.
+    /// If a native TabView is revisited, it needs to be built and felt on a
+    /// real device first, not shipped from a guess.
     ///
-    /// It now tracks. The strip moves with the finger, the neighbouring weeks
-    /// come in either side, and letting go either commits or springs back —
-    /// the contract every paged control on the phone keeps.
-    ///
-    /// THE NEIGHBOURS ARE DRAWN FROM DATES, NOT FROM DATA. Next week's plan is
-    /// a fetch away, and the strip has to be under the finger NOW. Dates are
-    /// arithmetic, so the incoming week shows its real numbers immediately and
-    /// its rails stay blank until the payload for that week arrives. Blank is
-    /// the honest mark for "we have not read this yet" — it is the same mark a
-    /// rest day wears, which is a small ambiguity that lasts one round trip,
-    /// and far better than inventing rails or sliding an empty box.
+    /// THE NEIGHBOURS ARE DRAWN FROM DATES, NOT FROM DATA. Next week's plan
+    /// is a fetch away, and the strip has to be under the finger NOW. Dates
+    /// are arithmetic, so the incoming week shows its real day numbers
+    /// immediately and its rails stay blank until the payload arrives. Blank
+    /// is the honest mark for "not read yet" — the same mark a rest day
+    /// wears — and far better than inventing rails or sliding an empty box.
     @State private var drag: CGFloat = 0
     /// The strip's own width, measured. One page of travel.
     @State private var stripWidth: CGFloat = 0
-    /// Set while a committed page animates out, so the strip keeps travelling
-    /// in the direction it was thrown instead of snapping back first.
+    /// Set from the moment a swipe commits until the real week lands, so a
+    /// second swipe started mid-flight cannot fight the one still resolving.
     @State private var committing = false
 
     /// A drag becomes a page when it is decisively sideways.
     ///
     /// Both conditions matter. The distance clears a tap on a day cell — a
     /// finger moves a few points on any real tap. The ratio keeps the parent
-    /// ScrollView's vertical pan: a drag that is mostly downward is the runner
-    /// scrolling the page, and the strip must not swallow it.
+    /// ScrollView's vertical pan: a drag that is mostly downward is the
+    /// runner scrolling the page, and the strip must not swallow it.
     private static let pageMinDx: CGFloat = 44
     private static let pageDominance: CGFloat = 1.5
-    /// How far past the edge the rubber band stretches when there is nothing
-    /// to page to. Same feel as a scroll view hitting its end.
-    private static let overscroll: CGFloat = 0.35
 
     var body: some View {
         // THE REAL WEEK SETS THE SIZE; THE NEIGHBOURS ARE PAINTED ON TOP.
@@ -971,7 +974,7 @@ struct WeekStripV5: View {
         // — needs a hard height, because a GeometryReader has no intrinsic one.
         // Any number written here would be wrong for a runner who has changed
         // their text size: everything under 28pt in this strip scales, so a
-        // fixed 74 clips the numbers at the first accessibility step.
+        // fixed number clips at the first accessibility step.
         //
         // So the middle week is laid out normally and keeps its natural
         // height, and the two neighbours are overlaid and pushed a full width
@@ -995,11 +998,78 @@ struct WeekStripV5: View {
         .clipShape(Rectangle())
         .contentShape(Rectangle())
         .gesture(pageGesture)
+        // THE PAGE LANDS WHEN THE WEEK DOES.
+        //
+        // A committed swipe leaves the strip parked one full width over, on
+        // the neighbour it carried in. The moment the real week arrives, the
+        // middle week draws what that neighbour was showing — so snapping
+        // `drag` back to zero is a no-op on screen, and it MUST be
+        // unanimated: animated, it would slide the new week back across the
+        // screen it just arrived on.
+        //
+        // Keyed on the week's own first date, not on the array, so a refresh
+        // of the SAME week (foreground, pull-to-refresh) does not re-fire.
+        .onChange(of: days.first?.dateISO) { _, _ in
+            guard committing else { return }
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) { drag = 0 }
+            committing = false
+        }
         // A gesture is not reachable by VoiceOver — the same trap that left
         // the treadmill's speed controls inoperable mid-run. These are the
         // spoken way through the weeks.
         .accessibilityAction(named: "Previous week") { onPageWeek?(-1) }
         .accessibilityAction(named: "Next week") { onPageWeek?(1) }
+    }
+
+    private var pageGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { v in
+                guard onPageWeek != nil, !committing else { return }
+                let dx = v.translation.width
+                // Sideways or not at all. A mostly-vertical drag belongs to
+                // the page's own scroll view and this must not take it.
+                guard abs(dx) > abs(v.translation.height) * Self.pageDominance else {
+                    drag = 0
+                    return
+                }
+                drag = dx
+            }
+            .onEnded { v in
+                guard let onPageWeek, !committing else { return }
+                let dx = v.translation.width
+                let dy = v.translation.height
+                let sideways = abs(dx) > abs(dy) * Self.pageDominance
+                // Velocity counts, the same way it does in a scroll view: a
+                // short fast flick is a page, and a long slow drag that stops
+                // short is not.
+                let flick = abs(v.predictedEndTranslation.width) > Self.pageMinDx * 2
+                guard sideways, abs(dx) >= Self.pageMinDx || flick else {
+                    withAnimation(V5.Motion.expand) { drag = 0 }
+                    return
+                }
+                // ── CARRY IT THE REST OF THE WAY. DO NOT SPRING BACK. ──
+                //
+                // David, second pass, 2026-08-25: "the week strip is still SO
+                // CLUNKY." This is what was actually wrong with it: releasing
+                // used to animate `drag` straight back to 0 — a spring to the
+                // week you just left — and THEN, a round trip later, the
+                // content changed under you. Two motions in opposite
+                // directions for one gesture.
+                //
+                // The neighbour already under the finger holds the right
+                // dates, so the honest motion is to finish the throw: travel
+                // the rest of one page width and stop there, on the
+                // neighbour. `days` then changes when the real payload lands,
+                // and the `onChange` above puts the strip back under the
+                // middle week with NO animation — invisible, because the
+                // middle week by then draws exactly what the neighbour was
+                // already showing.
+                committing = true
+                onPageWeek(dx < 0 ? 1 : -1)
+                withAnimation(V5.Motion.expand) { drag = dx < 0 ? -stripWidth : stripWidth }
+            }
     }
 
     /// One week of seven cells.
@@ -1068,41 +1138,6 @@ struct WeekStripV5: View {
         f.locale = Locale(identifier: "en_US_POSIX")
         return f
     }()
-
-    private var pageGesture: some Gesture {
-        DragGesture(minimumDistance: 12)
-            .onChanged { v in
-                guard onPageWeek != nil, !committing else { return }
-                let dx = v.translation.width
-                // Sideways or not at all. A mostly-vertical drag belongs to
-                // the page's own scroll view and this must not take it.
-                guard abs(dx) > abs(v.translation.height) * Self.pageDominance else {
-                    drag = 0
-                    return
-                }
-                drag = dx
-            }
-            .onEnded { v in
-                guard let onPageWeek, !committing else { return }
-                let dx = v.translation.width
-                let dy = v.translation.height
-                let sideways = abs(dx) > abs(dy) * Self.pageDominance
-                // Velocity counts, the same way it does in a scroll view: a
-                // short fast flick is a page, and a long slow drag that stops
-                // short is not.
-                let flick = abs(v.predictedEndTranslation.width) > Self.pageMinDx * 2
-                guard sideways, abs(dx) >= Self.pageMinDx || flick else {
-                    withAnimation(V5.Motion.expand) { drag = 0 }
-                    return
-                }
-                committing = true
-                onPageWeek(dx < 0 ? 1 : -1)
-                // Carry the strip the rest of the way, then put it back under
-                // the middle week — which by then holds the week we asked for.
-                withAnimation(V5.Motion.expand) { drag = 0 }
-                committing = false
-            }
-    }
 
     // ─────────────────────────────────────────────────────────────────────
     // THE RAIL IS THE ONLY THING THAT SAYS WHAT KIND OF DAY THIS IS, AND IT
