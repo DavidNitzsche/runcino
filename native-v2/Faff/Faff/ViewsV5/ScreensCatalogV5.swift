@@ -54,6 +54,34 @@ struct ScreensCatalogV5: View {
                                       accountRows: TodayBeforeV5Sample.accountRows,
                                       calendarWeeks: TodayBeforeV5Sample.calendarWeeks))
             },
+            Entry(id: "5a-reps", title: "Today · rep session", sub: "PRERUN-1 · real 5×400 m off prod") {
+                AnyView(TodayBeforeV5(model: .samplePreRun_tuneup,
+                                      accountName: "Jamie Rowe",
+                                      accountWeekLine: "Week 7 of 16",
+                                      accountRows: TodayBeforeV5Sample.accountRows,
+                                      calendarWeeks: TodayBeforeV5Sample.calendarWeeks))
+            },
+            Entry(id: "5a-hills", title: "Today · hill set", sub: "PRERUN-1 · by effort, no pace to state") {
+                AnyView(TodayBeforeV5(model: .samplePreRun_hills,
+                                      accountName: "Jamie Rowe",
+                                      accountWeekLine: "Week 7 of 16",
+                                      accountRows: TodayBeforeV5Sample.accountRows,
+                                      calendarWeeks: TodayBeforeV5Sample.calendarWeeks))
+            },
+            Entry(id: "5a-long", title: "Today · long, heat eased", sub: "PRERUN-1 · finish is the session") {
+                AnyView(TodayBeforeV5(model: .samplePreRun_longFinish,
+                                      accountName: "Jamie Rowe",
+                                      accountWeekLine: "Week 7 of 16",
+                                      accountRows: TodayBeforeV5Sample.accountRows,
+                                      calendarWeeks: TodayBeforeV5Sample.calendarWeeks))
+            },
+            Entry(id: "5a-race", title: "Today · race day", sub: "PRERUN-1 · the plan for going wrong") {
+                AnyView(TodayBeforeV5(model: .samplePreRun_race,
+                                      accountName: "Jamie Rowe",
+                                      accountWeekLine: "Race week",
+                                      accountRows: TodayBeforeV5Sample.accountRows,
+                                      calendarWeeks: TodayBeforeV5Sample.calendarWeeks))
+            },
             Entry(id: "5b", title: "Today · after the run", sub: "Asked against ran") {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.outdoor,
                                      onOpenAccount: {}, onLogEffort: { _ in },

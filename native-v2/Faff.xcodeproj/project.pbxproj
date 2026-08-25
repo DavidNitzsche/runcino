@@ -157,6 +157,7 @@
 		AA3F43C1079621406B520A96 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E94BF41A96C49C2F0DFE896D /* ActivityView.swift */; };
 		AAF411FFC548C34FA08F3A29 /* WorkoutRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9F1D1BCD775FDA96459FBA9 /* WorkoutRootView.swift */; };
 		ABA8B73ABAB07391B459D29A /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71B88D7D0751ABFACD1479 /* API.swift */; };
+		AC4FB60711E872AAA71485BD /* TodayBeforeSamplesPreRunV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0891DA9583913A7F36C7268C /* TodayBeforeSamplesPreRunV5.swift */; };
 		ACA6645F1B466A2A24E43209 /* HealthKitImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D2418C21CF2BDF76B22187B /* HealthKitImporter.swift */; };
 		ACD4562E5E4883B123C27304 /* WatchRouterV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2A42FABAA22658215C406B /* WatchRouterV5.swift */; };
 		AD3CC94D0BD982BE1DE30211 /* APIV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED93C1BD27C8E4828D6A7984 /* APIV5.swift */; };
@@ -299,6 +300,7 @@
 		04C367E8791B53FBF3C23ADD /* V5PostRunSurfacesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5PostRunSurfacesTests.swift; sourceTree = "<group>"; };
 		0743519D766EECA60297B74F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		081F3BDD4979D92FC6A19386 /* TodayRecoveryPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayRecoveryPanel.swift; sourceTree = "<group>"; };
+		0891DA9583913A7F36C7268C /* TodayBeforeSamplesPreRunV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayBeforeSamplesPreRunV5.swift; sourceTree = "<group>"; };
 		09ABAABCF2CDD7B4DBC82200 /* A_Signals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = A_Signals.swift; sourceTree = "<group>"; };
 		0B9D4547CDA7A3180224CA48 /* FaffComplicationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffComplicationViews.swift; sourceTree = "<group>"; };
 		0BBD87A2B7AEEDE1D12808EB /* BeltTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeltTrackerTests.swift; sourceTree = "<group>"; };
@@ -734,6 +736,7 @@
 				B817BE00E8380E26CE5AC512 /* SurfaceStoreV5.swift */,
 				52B5E856FFADC87375561C98 /* TodayAfterV5.swift */,
 				9EE93A5F82FD8DB924A5C5BA /* TodayBeforeLiveV5.swift */,
+				0891DA9583913A7F36C7268C /* TodayBeforeSamplesPreRunV5.swift */,
 				CC98F967EA1071686B9F86C0 /* TodayBeforeV5.swift */,
 				4F0124D264EEFDA136F90DDA /* TodayChangedV5.swift */,
 			);
@@ -1293,6 +1296,7 @@
 				49DD1311332CCD7EC88681EC /* Tips.swift in Sources */,
 				4CBB899AC37AB8C338E36E6E /* TodayAfterV5.swift in Sources */,
 				EF84DFE8FF178924D761D894 /* TodayBeforeLiveV5.swift in Sources */,
+				AC4FB60711E872AAA71485BD /* TodayBeforeSamplesPreRunV5.swift in Sources */,
 				42367FE0DE8698D9FA9C4C79 /* TodayBeforeV5.swift in Sources */,
 				650D0C3ED3CEC1CA9863BC0C /* TodayChangedV5.swift in Sources */,
 				C04EABC1AFE4F8CEAC64F2F5 /* TodayPostRunBody.swift in Sources */,

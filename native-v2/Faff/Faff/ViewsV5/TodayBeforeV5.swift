@@ -366,6 +366,18 @@ struct TodayBeforeV5: View {
             .padding(.horizontal, V5.S.s4)
 
             groupTile(group, hue: hue)
+
+            // PRERUN-1 · how to run it, and what to do when it goes wrong.
+            // The design's own `groupFooter`. Quiet, under the tile, one
+            // sentence per group — the numbers say what the session IS, this
+            // says how to hold it. Drawn only when the engine sends one.
+            if let footer = group.footer, !footer.isEmpty {
+                Text(footer)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, V5.S.s4)
+            }
         }
     }
 
