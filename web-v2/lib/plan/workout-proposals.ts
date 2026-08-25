@@ -19,6 +19,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { AdaptationAction, AdaptationTrigger } from './adapt';
 import { stripResearchCitations } from './strip-citations';
@@ -97,13 +98,26 @@ export async function writeWorkoutProposals(
 
         // Dedupe · skip if a pending proposal already exists for this
         // workout. Idempotent re-run.
-        const dup = (await pool.query<{ id: number }>(
-          `SELECT id FROM plan_workout_proposals
+        //
+        // 2026-08-25 · swallowed-failure sweep · fails CLOSED. This was
+        // `.catch(() => ({ rows: [] })).rows[0]`, so a database blip answered
+        // "no pending proposal on record" — the one answer that INSERTS. The
+        // table has no unique key on plan_workout_id, and the evening cron
+        // re-runs, so the runner opened Today to the same decision card two
+        // and three times over. A proposal skipped tonight comes back with
+        // tomorrow's detection; a stack of duplicate cards has to be cleared
+        // by hand.
+        const dup = await rowOrNull<{ id: number }>(
+          'plan/workout-proposals · pending-proposal dedup',
+          pool.query<{ id: number }>(
+            `SELECT id FROM plan_workout_proposals
             WHERE plan_workout_id = $1 AND status = 'pending'
             LIMIT 1`,
-          [workoutId],
-        ).catch(() => ({ rows: [] }))).rows[0];
-        if (dup) continue;
+            [workoutId],
+          ),
+        );
+        if (dup === null) continue;   // read failed · assume already proposed
+        if (dup) continue;            // pending proposal on record
 
         const payload = {
           newType: action.newType ?? null,

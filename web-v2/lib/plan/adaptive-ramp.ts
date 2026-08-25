@@ -97,18 +97,27 @@ export async function detectRampSignals(
   // 2026-06-03 · runner TZ for "today" anchors.
   const today = await runnerToday(userId);
   // 1. Readiness · no pull-back streaks ≥ 2 days
-  const readinessRow = await pool.query<{ streaks: unknown }>(
-    `SELECT streaks
+  const readinessRow = await rowOrNull<{ streaks: unknown }>(
+    'plan/adaptive-ramp · readiness pull-back streaks',
+    pool.query<{ streaks: unknown }>(
+      `SELECT streaks
        FROM readiness_snapshots
       WHERE user_uuid = $1 AND snapshot_date >= $2::date - 1
       ORDER BY snapshot_date DESC LIMIT 1`,
-    [userId, today],
-  ).then((r) => r.rows[0]).catch(() => undefined);
+      [userId, today],
+    ),
+  );
+  // A failed read is not "no pull-back streak". `.catch(() => undefined)` here
+  // gave `streaks = []`, `pullbackStreakDays = 0`, `readinessGreen = true` — a
+  // dropped connection read as a runner absorbing load well, and this gate is
+  // one of five that authorise PRESCRIBING MORE MILEAGE. The one signal that
+  // would stop a bump is exactly the one an unreadable table cannot show.
+  const readinessReadFailed = readinessRow === null;
   const streaks = (readinessRow?.streaks as Array<{ direction?: string; days?: number }> | undefined) ?? [];
   const pullbackStreakDays = streaks
     .filter((s) => s.direction === 'below')
     .reduce((max, s) => Math.max(max, Number(s.days ?? 0)), 0);
-  const readinessGreen = pullbackStreakDays < 2;
+  const readinessGreen = !readinessReadFailed && pullbackStreakDays < 2;
 
   // 2. Last 2 quality workouts · hit prescribed pace ± tolerance
   const recentQuality = await pool.query<{
@@ -137,28 +146,40 @@ export async function detectRampSignals(
   );
 
   // 3. Last long · aerobic decoupling clean
-  const recentLong = await pool.query<{ decoupling: number | null }>(
-    `SELECT (data->>'aerobicDecouplingPct')::numeric AS decoupling
+  const recentLong = await rowOrNull<{ decoupling: number | null }>(
+    'plan/adaptive-ramp · last long decoupling',
+    pool.query<{ decoupling: number | null }>(
+      `SELECT (data->>'aerobicDecouplingPct')::numeric AS decoupling
        FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
         AND (data->>'type') = 'long'
         AND (data->>'date')::date >= $2::date - 14
       ORDER BY (data->>'date')::date DESC LIMIT 1`,
-    [userId, today],
-  ).then((r) => r.rows[0]).catch(() => undefined);
+      [userId, today],
+    ),
+  );
+  const longReadFailed = recentLong === null;
   const lastLongDecouplingPct = recentLong?.decoupling != null
     ? Number(recentLong.decoupling)
     : null;
-  // If no decoupling data, give benefit of doubt (treat as clean).
-  const lastLongClean = lastLongDecouplingPct == null
-    || lastLongDecouplingPct < LONG_DECOUPLING_PCT_CAP;
+  // A long run we looked for and did not find, or found without decoupling
+  // recorded, still counts as clean · that is a fact about the data we have.
+  // A read that FAILED is not that fact. The old comment argued "benefit of
+  // doubt" for both cases at once, and the benefit was being handed to the
+  // engine, not the runner: the answer it produced was permission to add
+  // mileage. We do not get the doubt when we cannot see.
+  const lastLongClean = !longReadFailed
+    && (lastLongDecouplingPct == null
+      || lastLongDecouplingPct < LONG_DECOUPLING_PCT_CAP);
 
   // 4. Plan's current peak weekly · is there headroom?
   const tierWeeklyUpper = readTierUpper(activePlan.authoredState, 'tier_peak_weekly_band');
   const tierLongUpper = readTierUpper(activePlan.authoredState, 'tier_peak_long_band');
-  const peakRow = await pool.query<{ peak_weekly: number | null; peak_long: number | null }>(
-    `SELECT MAX(weekly)::numeric AS peak_weekly, MAX(long_mi)::numeric AS peak_long
+  const peakRow = await rowOrNull<{ peak_weekly: number | null; peak_long: number | null }>(
+    'plan/adaptive-ramp · plan peak weekly headroom',
+    pool.query<{ peak_weekly: number | null; peak_long: number | null }>(
+      `SELECT MAX(weekly)::numeric AS peak_weekly, MAX(long_mi)::numeric AS peak_long
        FROM (
          SELECT pwk.id AS week_id,
                 SUM(pw.distance_mi) AS weekly,
@@ -169,11 +190,18 @@ export async function detectRampSignals(
           WHERE pw.plan_id = $1 AND pp.label <> 'TAPER'
           GROUP BY pwk.id
        ) wk`,
-    [activePlan.id],
-  ).then((r) => r.rows[0]).catch(() => ({ peak_weekly: null, peak_long: null }));
+      [activePlan.id],
+    ),
+  );
+  // A failed read is not "the plan peaks at zero". `.catch(() => ({ peak_weekly:
+  // null }))` minted 0, and 0 against the tier upper is FULL headroom · the one
+  // reading that makes the ceiling gate wave everything through. The plan we
+  // could not measure is the plan we must not add to.
+  const peakReadFailed = peakRow === null;
   const currentPeakWeekly = Number(peakRow?.peak_weekly ?? 0);
   const peakHeadroomMi = tierWeeklyUpper - currentPeakWeekly;
-  const belowTierUpper = peakHeadroomMi > tierWeeklyUpper * 0.05;  // ≥ 5% headroom
+  const belowTierUpper = !peakReadFailed
+    && peakHeadroomMi > tierWeeklyUpper * 0.05;  // ≥ 5% headroom
 
   // 5. Cooldown · no bump applied in last 7 days
   //
