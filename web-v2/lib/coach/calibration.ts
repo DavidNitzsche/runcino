@@ -43,6 +43,13 @@ export interface CalibrationResult {
   pillars: CalibrationPillars;
   qualified: boolean;
   wasStartTapped: boolean;
+  /**
+   * True when this result was READ BACK from a session that was already
+   * complete · nothing was written on this call. Callers report what
+   * happened, and "fired" for a read is the same class of drift as the
+   * duplicate sessions this field exists because of.
+   */
+  alreadyCompleted: boolean;
 }
 
 export interface CalibrationPillars {
@@ -77,6 +84,120 @@ const CONFIDENCE_WIDE_BAND = 0.45;
 /** Band widths in seconds-per-mile. */
 const BAND_QUALIFIED = 15;
 const BAND_WIDE = 20;
+
+/**
+ * The auto-fire haircut. A calibration the runner never asked for is worth
+ * less than one they tapped Start on, so it costs confidence and widens the
+ * band. Named constants because the completion writes them and the read-back
+ * below has to undo them; two hand-written 0.10s would drift.
+ */
+const UNTAPPED_CONFIDENCE_HAIRCUT = 0.10;
+const UNTAPPED_BAND_WIDENING = 5;
+
+/* ────────────────────────── Session state ────────────────────────── */
+
+/** Everything the completion path needs to decide, in one row. */
+interface SessionRow {
+  id: string;
+  was_start_tapped: boolean;
+  completed_at: string | null;
+  skipped_at: string | null;
+  calibrated_easy_pace_s_per_mi: number | null;
+  confidence: string | null;
+  pillars: unknown;
+}
+
+const SESSION_COLS = `id::text,
+            was_start_tapped,
+            completed_at::text,
+            skipped_at::text,
+            calibrated_easy_pace_s_per_mi,
+            confidence::text,
+            pillars`;
+
+/**
+ * The runner's most recent stated position on calibration, WHATEVER it is.
+ *
+ * Deliberately unfiltered. The old lookup asked only for rows that were
+ * neither completed nor skipped, so a completed session and a skipped session
+ * both read as "nothing here" and the caller minted a fresh one. Ordering by
+ * `started_at DESC` and reading the state off the row makes an explicit
+ * re-start still win, because a re-start is a NEWER row.
+ */
+async function latestSession(userUuid: string): Promise<SessionRow | undefined> {
+  return (await pool.query<SessionRow>(
+    `SELECT ${SESSION_COLS}
+       FROM calibration_sessions
+      WHERE user_uuid = $1::uuid
+      ORDER BY started_at DESC LIMIT 1`,
+    [userUuid],
+  )).rows[0];
+}
+
+/** Confidence + band for a fresh completion. One place, so the read-back can
+ *  invert it exactly. */
+function gradeFor(qualified: boolean, wasStartTapped: boolean): {
+  confidence: number;
+  bandSPerMi: number;
+} {
+  let confidence = qualified ? CONFIDENCE_QUALIFIED : CONFIDENCE_WIDE_BAND;
+  let bandSPerMi = qualified ? BAND_QUALIFIED : BAND_WIDE;
+  if (!wasStartTapped) {
+    confidence = Math.max(0, confidence - UNTAPPED_CONFIDENCE_HAIRCUT);
+    bandSPerMi = bandSPerMi + UNTAPPED_BAND_WIDENING;
+  }
+  return { confidence, bandSPerMi };
+}
+
+function parsePillars(raw: unknown, paceSPerMi: number): CalibrationPillars {
+  let v: unknown = raw;
+  if (typeof v === 'string') {
+    try { v = JSON.parse(v); } catch { v = null; }
+  }
+  const p = v as Partial<CalibrationPillars> | null;
+  if (p && typeof p.miles2to3AvgPaceSPerMi === 'number') return p as CalibrationPillars;
+  // A completed session whose pillars did not survive still has a pace and a
+  // confidence, which is what every consumer reads. Say what is missing rather
+  // than inventing a distance and a variance that were never measured.
+  return {
+    miles2to3AvgPaceSPerMi: paceSPerMi,
+    paceVarianceSPerMi: 0,
+    hrDriftBpmPerMi: null,
+    runDistanceMi: 0,
+    qualifiedReasons: ['pillars not stored on this session'],
+  };
+}
+
+/**
+ * Read a COMPLETED session back as the result it produced. No writes.
+ *
+ * `qualified` is not a column, so it is recovered by undoing the auto-fire
+ * haircut: a tapped session scores 0.70/0.45, an untapped one 0.60/0.35.
+ */
+function resultFromCompletedRow(row: SessionRow): CalibrationResult | null {
+  const pace = row.calibrated_easy_pace_s_per_mi != null
+    ? Number(row.calibrated_easy_pace_s_per_mi) : NaN;
+  if (!isFinite(pace)) return null;
+
+  const wasStartTapped = !!row.was_start_tapped;
+  const stored = row.confidence != null ? Number(row.confidence) : NaN;
+  const undone = isFinite(stored)
+    ? stored + (wasStartTapped ? 0 : UNTAPPED_CONFIDENCE_HAIRCUT)
+    : NaN;
+  const qualified = isFinite(undone) && undone >= CONFIDENCE_QUALIFIED - 1e-9;
+  const grade = gradeFor(qualified, wasStartTapped);
+
+  return {
+    sessionId: Number(row.id),
+    calibratedEasyPaceSPerMi: pace,
+    bandSPerMi: grade.bandSPerMi,
+    confidence: isFinite(stored) ? stored : grade.confidence,
+    pillars: parsePillars(row.pillars, pace),
+    qualified,
+    wasStartTapped,
+    alreadyCompleted: true,
+  };
+}
 
 /* ────────────────────────── Public API ────────────────────────── */
 
@@ -121,17 +242,54 @@ export async function startCalibrationSession(
  * writes the calibration row + a coach_intent so voice band can step.
  *
  * Idempotent · if the session is already completed, returns the
- * existing result. If no in_progress session exists, creates one
- * for this run (auto-fire path from the run-write pipeline).
+ * existing result. A skipped session is an ANSWER, not an empty slot:
+ * it returns null and writes nothing. Only when the runner has no
+ * session at all does this create one for this run (the auto-fire path
+ * from the run-write pipeline).
  *
  * Returns null when the run isn't usable (no distance, no splits at
  * all, > 14 days old). The session stays in_progress; next qualifying
  * run gets a fresh shot.
+ *
+ * ── WHY THIS IS WRITTEN THE WAY IT IS ────────────────────────────────
+ *
+ * The docstring above said "idempotent" from the day it shipped and the
+ * code never did it. The session lookup asked for
+ * `completed_at IS NULL AND skipped_at IS NULL`, so a runner who had
+ * already calibrated, and a runner who had explicitly skipped, both
+ * read as "no session" · and the next line INSERTed a fresh one,
+ * completed it, and stamped another `coach_intents` row.
+ * `post-write-hooks.ts` calls this on EVERY run write.
+ *
+ * Confirmed in production 2026-08-25: the owner's account held 31
+ * calibration sessions, all 31 completed, 0 skipped. There should be
+ * one. `lib/coach/voice-band.ts` reads the most recent completed
+ * session and HARD-OVERRIDES the coaching voice band when confidence
+ * clears its threshold, which the auto-fire path reaches at 0.60. So
+ * the runner's coaching voice was being set from evidence they never
+ * volunteered, and re-set on every qualifying run.
+ *
+ * Two rules, both enforced before any work happens:
+ *
+ *   · COMPLETED IS FINAL. Return what the session already produced.
+ *     Whether a very old or fitness-superseded session should ever be
+ *     re-run is a POLICY question and is deliberately NOT decided here.
+ *
+ *   · SKIPPED IS FINAL. A refusal is a correct answer, not an empty
+ *     state. The runner can still overrule themselves: tapping Start
+ *     again writes a NEWER row, and this reads the newest row.
  */
 export async function completeCalibrationSession(
   userUuid: string,
   runId: string,
 ): Promise<CalibrationResult | null> {
+  // 0. What has this runner already said? Asked FIRST, before the run read
+  //    and the pillar math, because on a calibrated runner every later step
+  //    is work whose result is thrown away.
+  const prior = await latestSession(userUuid);
+  if (prior?.completed_at) return resultFromCompletedRow(prior);
+  if (prior?.skipped_at) return null;
+
   // 1. Load the run · pull distance, splits, avgHr, date
   const runRow = (await pool.query<{ data: any }>(
     `SELECT data FROM runs
@@ -171,54 +329,48 @@ export async function completeCalibrationSession(
   }
   pillars.qualifiedReasons = qualifiedReasons.length === 0 ? ['all thresholds passed'] : qualifiedReasons;
 
-  // 4. Find or create the in_progress session
-  let session = (await pool.query<{ id: string; was_start_tapped: boolean; completed_at: string | null }>(
-    `SELECT id::text, was_start_tapped, completed_at::text
-       FROM calibration_sessions
-      WHERE user_uuid = $1::uuid
-        AND completed_at IS NULL
-        AND skipped_at IS NULL
-      ORDER BY started_at DESC LIMIT 1`,
-    [userUuid],
-  )).rows[0];
+  // 4. The session to complete. `prior` is in_progress or absent · step 0
+  //    already returned for completed and skipped, so there is nothing left
+  //    here to overwrite.
+  let session = prior;
 
   if (!session) {
     // Auto-fire path · runner didn't tap "Start calibration" but
     // completed a qualifying run. Create the row with was_start_tapped=false.
-    const created = (await pool.query<{ id: string; was_start_tapped: boolean; completed_at: string | null }>(
+    session = (await pool.query<SessionRow>(
       `INSERT INTO calibration_sessions (user_uuid, was_start_tapped)
        VALUES ($1::uuid, false)
-       RETURNING id::text, was_start_tapped, completed_at::text`,
+       RETURNING ${SESSION_COLS}`,
       [userUuid],
     )).rows[0];
-    session = created;
   }
 
   const wasStartTapped = !!session.was_start_tapped;
 
-  // 5. Confidence + band
-  let confidence = qualified ? CONFIDENCE_QUALIFIED : CONFIDENCE_WIDE_BAND;
-  let bandSPerMi = qualified ? BAND_QUALIFIED : BAND_WIDE;
-  if (!wasStartTapped) {
-    // Wide-band fallback · slight confidence haircut + wider band when
-    // calibration was auto-fired (no explicit start tap).
-    confidence = Math.max(0, confidence - 0.10);
-    bandSPerMi = bandSPerMi + 5;
-  }
+  // 5. Confidence + band · wide-band fallback for the auto-fired path.
+  const { confidence, bandSPerMi } = gradeFor(qualified, wasStartTapped);
 
   // 6. Write the completion + coach_intent in a single txn
   const client = await pool.connect();
+  let raced = false;
   try {
     await client.query('BEGIN');
 
-    await client.query(
+    // The WHERE carries the idempotence, so two ingest paths landing runs at
+    // the same moment cannot both complete the same session. Step 0's read is
+    // the fast path; this is the one that actually holds. rowCount 0 means
+    // somebody else answered between the read and the write · their answer
+    // stands and this one rolls back rather than stamping a second intent.
+    const upd = await client.query(
       `UPDATE calibration_sessions
           SET completed_at = NOW(),
               run_id = $2,
               calibrated_easy_pace_s_per_mi = $3,
               confidence = $4,
               pillars = $5::jsonb
-        WHERE id = $1::bigint`,
+        WHERE id = $1::bigint
+          AND completed_at IS NULL
+          AND skipped_at IS NULL`,
       [
         session.id,
         runId,
@@ -228,20 +380,29 @@ export async function completeCalibrationSession(
       ],
     );
 
-    await client.query(
-      `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)
-       VALUES ($1::uuid, $1::uuid, NOW(), 'calibration_completed',
-               'easyPaceSPerMi', $2::text)`,
-      [userUuid, String(pillars.miles2to3AvgPaceSPerMi)],
-    );
-
-    await client.query('COMMIT');
+    if ((upd.rowCount ?? 0) === 0) {
+      raced = true;
+      await client.query('ROLLBACK');
+    } else {
+      await client.query(
+        `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)
+         VALUES ($1::uuid, $1::uuid, NOW(), 'calibration_completed',
+                 'easyPaceSPerMi', $2::text)`,
+        [userUuid, String(pillars.miles2to3AvgPaceSPerMi)],
+      );
+      await client.query('COMMIT');
+    }
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[calibration/complete] txn failed:', e instanceof Error ? e.message : String(e));
     throw e;
   } finally {
     client.release();
+  }
+
+  if (raced) {
+    const settled = await latestSession(userUuid);
+    return settled?.completed_at ? resultFromCompletedRow(settled) : null;
   }
 
   return {
@@ -252,13 +413,20 @@ export async function completeCalibrationSession(
     pillars,
     qualified,
     wasStartTapped,
+    alreadyCompleted: false,
   };
 }
 
 /**
- * Skip the active session · runner explicitly dismissed calibration.
- * Suppresses the prompt for 7 days (consumer-side gating via
- * status() === 'skipped').
+ * Skip · runner explicitly dismissed calibration. Suppresses the prompt for
+ * 7 days (consumer-side gating via status() === 'skipped') and stops the
+ * run-write pipeline auto-completing a session they did not ask for.
+ *
+ * The refusal is always WRITTEN, even when there is no active session to
+ * mark. A runner can meet the banner before ever tapping Start, and the
+ * UPDATE alone matched nothing for them, so the dismissal left no trace and
+ * their next qualifying run auto-calibrated regardless. A refusal that
+ * records nothing is indistinguishable from never having been asked.
  */
 export async function skipCalibrationSession(userUuid: string): Promise<{ ok: boolean }> {
   const result = await pool.query(
@@ -269,7 +437,21 @@ export async function skipCalibrationSession(userUuid: string): Promise<{ ok: bo
         AND skipped_at IS NULL`,
     [userUuid],
   );
-  return { ok: (result.rowCount ?? 0) > 0 };
+  if ((result.rowCount ?? 0) > 0) return { ok: true };
+
+  const prior = await latestSession(userUuid);
+  // Already calibrated · there is no prompt left to suppress, and a skip must
+  // not look like it undid a completed session.
+  if (prior?.completed_at) return { ok: false };
+  // Already refused · idempotent, and re-stamping would restart the 7 days.
+  if (prior?.skipped_at) return { ok: true };
+
+  await pool.query(
+    `INSERT INTO calibration_sessions (user_uuid, was_start_tapped, skipped_at)
+     VALUES ($1::uuid, false, NOW())`,
+    [userUuid],
+  );
+  return { ok: true };
 }
 
 /**

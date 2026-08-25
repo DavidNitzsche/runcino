@@ -3,8 +3,12 @@
  *
  * Single chokepoint for everything that fires AFTER a run lands in
  * `runs`. Today's hooks:
- *   · auto-fire calibration completion when an in_progress session
- *     exists (lib/coach/calibration.ts)
+ *   · auto-fire calibration completion when the runner has neither
+ *     calibrated nor refused (lib/coach/calibration.ts). It is called
+ *     on EVERY run write, so it has to be idempotent on its own · this
+ *     file does no gating. Until 2026-08-25 it was not, and the owner's
+ *     account accumulated 31 completed calibration sessions where there
+ *     should have been one.
  *   · GPS-derived elev gain enrichment when the device payload didn't
  *     carry one (Faff watch app + iPhone HK importer omit elev_gain_ft
  *     today · we sample the polyline against Open-Meteo's elevation
@@ -30,8 +34,37 @@ import { assignShoeIfMissing } from '@/lib/shoe/auto-assign';
 
 export interface AfterRunWriteInput {
   userUuid: string;
-  /** The run.data->>'id' just persisted. Required · we read the run
-   *  back to compute calibration pillars from splits. */
+  /**
+   * The `runs.id` BIGINT primary key just persisted, as a string.
+   *
+   * This docstring used to say `run.data->>'id'`, and it has never been true
+   * of a single caller. All five pass the row's PK:
+   *
+   *   · HK ingest      `String(stableId)`, and the row was written
+   *                    `INSERT INTO runs (id, …) VALUES ($1::bigint …)` with
+   *                    that same stableId
+   *   · watch complete `String(stableId)`, same shape
+   *   · manual entry   `String(stableId)`, same shape
+   *   · Strava webhook `String(id)`, the activity id, which IS the row id on
+   *                    that path because the insert uses it as the PK
+   *   · Strava pullSync `String(act.id)`, likewise
+   *
+   * `data->>'id'` is a different value on three of those five: `wko_<uuid>`
+   * for HK, `effectiveWorkoutId` for the watch, a slug for manual entry. Only
+   * Strava has `data.id === String(runs.id)`.
+   *
+   * KNOWN DEFECT, NOT FIXED HERE · `lib/coach/calibration.ts` matches this
+   * value against `(data->>'id')`, so the calibration hook silently no-ops on
+   * the HK, watch and manual paths and only ever fires for Strava. The other
+   * two hooks below (`enrichElevIfMissing`, `assignShoeIfMissing`) both read
+   * `WHERE id = $2::BIGINT` and are correct. The join in calibration.ts is the
+   * wrong side of the mismatch; `lib/runs/_run_shape_lint.test.ts` already
+   * carries it on the RAW_ACCESS_ALLOWED list as "Reads data->>'id' (the
+   * PROVIDER id) · next batch". Correcting it removes the last raw jsonb read
+   * from that file, which makes its allowlist entry stale and fails that
+   * lint's staleness check, so the fix is one line in calibration.ts plus one
+   * deletion in a file outside this change's ownership.
+   */
   runId: string;
   /** Optional source hint · 'strava' | 'watch' | 'hk' | 'manual'. Used
    *  for telemetry; doesn't change behavior. */
@@ -56,10 +89,18 @@ export async function afterRunWrite(input: AfterRunWriteInput): Promise<{
   try {
     const result = await completeCalibrationSession(input.userUuid, input.runId);
     if (result) {
-      calibration = 'fired';
-      reason = `pace ${result.calibratedEasyPaceSPerMi}s/mi · ±${result.bandSPerMi}s · ${result.qualified ? 'qualified' : 'wide-band'}`;
+      // A read-back is not a firing. Reporting one as "fired" is how a status
+      // surface ends up describing 31 sessions as 31 successes.
+      calibration = result.alreadyCompleted ? 'skipped' : 'fired';
+      reason = result.alreadyCompleted
+        ? `already calibrated · session ${result.sessionId}`
+        : `pace ${result.calibratedEasyPaceSPerMi}s/mi · ±${result.bandSPerMi}s · ${result.qualified ? 'qualified' : 'wide-band'}`;
     } else {
-      reason = 'run not usable · session stays in_progress';
+      // null now covers two different answers: the runner refused calibration
+      // (skipped, and that stands), or this run was not usable. Neither wrote
+      // anything. Do not report "stays in_progress" · that was only ever true
+      // of the second one.
+      reason = 'no calibration written · refused, or run not usable';
     }
   } catch (e) {
     calibration = 'failed';

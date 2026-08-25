@@ -32,6 +32,7 @@
 import { fetchCurrentConditions, resolveHomeLatLng } from '@/lib/weather/openmeteo';
 import { effortSlowdownPct, abilityTierFromVdot } from '@/lib/training/heat-model';
 import { loadLatestVdotForUser } from '@/lib/training/projection-snapshots';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 /** The shape this needs from a phase. Structural, so tests need no builder. */
 export interface HeatAdjustablePhase {
@@ -233,38 +234,118 @@ const defaultDeps: HeatDeps = {
 // BUILD time, and the recap only has the conditions during the run.
 //
 // So the server records what it asked for. No wire change, no watch change,
-// no new column — a `coach_intents` row keyed by date, read back the same way
+// no new column: a `coach_intents` row keyed by date, read back the same way
 // the completion payload itself is read. When several payloads are built on
 // one day the newest wins, which is the one the runner actually left with.
+//
+// 2026-08-25 · "the newest wins" holds only for builds that happen BEFORE the
+// run. A build after it is not a payload the runner left with, and the read is
+// `ORDER BY ts DESC LIMIT 1`, so a later same-day build with a genuinely
+// different decision still re-prices a run that is already finished. The two
+// guards below cut this down to the case where the weather actually moved the
+// number: recording is refused outright for any date that is not the runner's
+// today, and an unchanged decision writes nothing at all. Closing the residual
+// means keying the record to the build the watch CONSUMED, which is a contract
+// change across the completion payload rather than a guard in this file.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const HEAT_EASING_REASON = 'watch_heat_easing';
 export const heatEasingField = (dateIso: string) => `heat-${dateIso}`;
 
-/** Fire-and-forget. A failure here must never cost the runner their workout. */
+/**
+ * The decision, rounded the way it is stored. Two builds that reached the same
+ * easing are the same record, however far apart they ran and however fresh the
+ * observation behind each one was.
+ */
+const decisionPct = (pct: number) => Math.round(pct * 1000) / 1000;
+
+/**
+ * Fire-and-forget. A failure here must never cost the runner their workout.
+ *
+ * ── WHY THIS FUNCTION REFUSES MOST OF THE CALLS IT GETS ──────────────────────
+ *
+ * It is reached from `buildWatchToday`, which is the whole body of
+ * GET /api/watch/today. The phone hits that endpoint on cold launch, on every
+ * `scenePhase → .active` (60s throttle) and on every watch-reachability change.
+ * A read handler that mints a coaching row on each of those mints a lot of
+ * them, and until 2026-08-25 both of its brakes were off:
+ *
+ *   · The idempotency guard was `value::text = $3` against a blob that carried
+ *     `observedAgeMin`, the age of the weather observation in minutes. That
+ *     number differs between any two calls, so the guard could essentially
+ *     never match.
+ *
+ *   · There was no date guard, and `adjustPhasesForHeat` reads CURRENT
+ *     conditions with no date at all. `?date=` previews of another day were
+ *     therefore stamped with the weather of the day the preview was taken.
+ *
+ * The owner's account carried 40 `watch_heat_easing` rows written between 00:56
+ * and 18:19 UTC on ONE day, spanning nine `field` keys, `heat-2026-08-18`
+ * through `heat-2026-08-30`. Past dates and future dates. One key had 11 rows
+ * to itself. A future reader tempted to simplify either guard away should read
+ * that sentence again: both of these are load-bearing.
+ *
+ * Row count is the cheap half of the harm. `loadHeatEasing` reads
+ * `ORDER BY ts DESC LIMIT 1`, so the record a run is graded against is whatever
+ * the last app-open wrote, not what the wrist actually held during the run.
+ * Opening the app at 3pm after a 6am run re-priced that run's heat.
+ */
 export async function recordHeatEasing(
   userId: string,
   dateIso: string,
   o: WatchHeatOutcome,
 ): Promise<void> {
   if (!o.applied || o.slowdownPct <= 0) return;
+  const pct = decisionPct(o.slowdownPct);
+  if (pct <= 0) return;
+
+  // GUARD 1 · only the day being lived.
+  //
+  // The easing above was computed from the weather RIGHT NOW. That is only a
+  // true statement about `dateIso` when `dateIso` is today. A preview of
+  // Saturday's long run taken on a hot Wednesday may still SHOW its easing on
+  // the card, which is useful, but it must not leave a coaching record for a
+  // day whose weather has not happened: Saturday's recap would then un-price
+  // heat that was never applied to Saturday's band.
+  //
+  // A date we cannot establish is not today. Fail closed: writing a possibly
+  // future-dated coaching row is the harm this guard exists to stop, and the
+  // cost of skipping the record is that the recap prices the heat itself.
+  const today = await runnerToday(userId).catch((e) => {
+    console.warn('[watch/heat] recordHeatEasing · runnerToday failed:',
+      (e as Error)?.message ?? e);
+    return null;
+  });
+  if (today == null || dateIso !== today) return;
+
+  // GUARD 2 · one record per DECISION, not one per call.
+  //
+  // The thing meant to be unique is the runner, the reason, the date and the
+  // easing itself. `observedAgeMin` and the exact temperature are provenance:
+  // they still go into the stored value because the phone's pre-run card names
+  // the conditions, but they no longer decide whether a row is written.
+  //
+  // Read through `loadHeatEasing` rather than a NOT EXISTS, so "have we
+  // already asked for this" is answered by the same lens the recap uses. Its
+  // three-state contract carries the whole decision here: an equal pct is a
+  // duplicate, a different pct is a genuinely changed decision and gets its
+  // own row, and a FAILED read (null) writes. That last one is deliberate. A
+  // missing record makes the recap price the heat a second time on a band that
+  // was already eased, which is the exact double-pricing this mechanism
+  // exists to prevent; one duplicate row is much the cheaper mistake.
+  const already = await loadHeatEasing(userId, dateIso);
+  if (already !== null && already.pct === pct) return;
+
   const { pool } = await import('@/lib/db/pool');
   const value = JSON.stringify({
-    pct: Math.round(o.slowdownPct * 1000) / 1000,
+    pct,
     tempF: o.tempF,
     dewpointF: o.dewpointF,
     observedAgeMin: o.observedAgeMin,
   });
   await pool.query(
     `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)
-     SELECT $1::uuid, $1::uuid, NOW(), '${HEAT_EASING_REASON}', $2, $3
-     WHERE NOT EXISTS (
-       SELECT 1 FROM coach_intents
-        WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
-          AND reason = '${HEAT_EASING_REASON}'
-          AND field = $2
-          AND value::text = $3
-     )`,
+     VALUES ($1::uuid, $1::uuid, NOW(), '${HEAT_EASING_REASON}', $2, $3)`,
     [userId, heatEasingField(dateIso), value],
   ).catch((e) => {
     console.warn('[watch/heat] recordHeatEasing failed:', (e as Error)?.message ?? e);

@@ -1414,6 +1414,26 @@ export async function buildWatchToday(
   // Remember what we asked for, so the recap does not price the same heat a
   // second time when it grades this run against the band we just eased.
   // Fire-and-forget: see lib/watch/heat.ts.
+  //
+  // `today` here is NOT necessarily today. It is `overrideDate ?? runnerToday`,
+  // and the phone passes `?date=` whenever it previews another day's workout,
+  // while `adjustPhasesForHeat` above reads CURRENT conditions with no date at
+  // all. Recording unconditionally therefore stamped, for example, a
+  // `heat-<Saturday>` easing computed from Wednesday's weather. That is the
+  // production data: 40 rows in one day across nine date keys, past and future.
+  //
+  // `recordHeatEasing` now refuses any date that is not the runner's today and
+  // writes once per decision instead of once per call, so a preview still SHOWS
+  // its easing and simply leaves no coaching record behind. The guard lives in
+  // heat.ts rather than here on purpose: this is one of two callers of the
+  // easing path, and a rule that only some callers apply is the shape of the
+  // bug, not the fix.
+  //
+  // Firing a write from a GET handler is defensible once both guards hold. The
+  // record is not a decision about the runner; it is a receipt for the payload
+  // THIS request just handed the watch, and no other process knows what was
+  // handed over. It is idempotent, scoped to the day being lived, and never
+  // blocks the response.
   if (heat?.applied) void recordHeatEasing(userId, today, heat);
 
   // 7. Workout-level fields
