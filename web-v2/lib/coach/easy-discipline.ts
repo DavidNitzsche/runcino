@@ -80,6 +80,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { weatherContext } from '@/lib/weather/heat-adjustment';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { normalizeDataWorkoutType } from '@/lib/runs/log-enrich';
 
 /* ═══════════════════════ Doctrine-bound constants ═══════════════════════ */
 
@@ -719,7 +720,10 @@ interface RunRow {
     elevGainFt?: number | string | null;
     tempF?: number | string | null;
     weather?: { temp_f?: number | null } | null;
-    workoutType?: string | null;
+    /** TWO vocabularies · a semantic label on plan-stamped rows, Strava's
+     *  integer enum on the imports. Typed to admit both so a reader cannot
+     *  quietly stringify a 2. Read it through `normalizeDataWorkoutType`. */
+    workoutType?: string | number | null;
   };
 }
 
@@ -764,10 +768,27 @@ export async function loadEasyDiscipline(
 
     const rows = await pool
       .query<RunRow>(
+        /* 2026-08-24 · `AND (data->>'type') = 'Run'` used to stand here and it
+         * was reading a field that holds two different vocabularies.
+         *
+         * `data.type` is Strava's ACTIVITY KIND ('Run') on 141 rows and the
+         * faff WORKOUT TYPE ('easy') on 45, and is absent on 71. The clause
+         * looks like "exclude rides and swims" and cannot be: every row in
+         * this table that carries a `sportType` carries 'Run', so there is
+         * nothing for it to exclude. What it actually did was keep the
+         * Strava-shaped rows and drop everything else.
+         *
+         * Measured over the live 90-day window: 32 rows in, of which 13 were
+         * easy. Without the clause: 56 rows in, 22 easy. Nine easy runs — 41%
+         * of them — were invisible to a surface whose whole output is
+         * "N of your last M easy days ran faster than the band". It was
+         * counting to thirteen and calling it his last M.
+         *
+         * The easy test itself lives below, on `workoutType`, which carries
+         * the label on every one of the 22. Nothing here needed the kind. */
         `SELECT data FROM runs
           WHERE user_uuid = $1
             AND NOT (data ? 'mergedIntoId')
-            AND (data->>'type') = 'Run'
             AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) BETWEEN $2 AND $3
           ORDER BY 1`,
         [userId, fromISO, todayISO],
@@ -827,7 +848,19 @@ export async function loadEasyDiscipline(
       const d = r.data;
       const dateISO = dateOf(r);
       if (!dateISO) continue;
-      if (!EASY_TYPES.has(String(d.workoutType ?? '').toLowerCase())) continue;
+      /* `workoutType` carries TWO vocabularies as well: a semantic label on
+       * the plan-stamped rows and Strava's integer enum on the imports, where
+       * 0 means "the runner picked nothing" and 1/2/3 mean race/long/workout.
+       * `String(d.workoutType ?? '')` turned a 0 into the string '0' and a 2
+       * into '2', so a Strava LONG RUN and a Strava unlabelled run were
+       * rejected for the same reason — neither is in the set — and the fact
+       * that one of those is right was luck.
+       *
+       * `normalizeDataWorkoutType` is the shared reader for the enum and is
+       * what the log and run detail already use. A 0 becomes null (honest:
+       * nothing was recorded) and a 2 becomes 'long' (correctly not easy). */
+      const label = normalizeDataWorkoutType(d.workoutType);
+      if (label == null || !EASY_TYPES.has(label)) continue;
 
       // Nearest race, and the doctrine window that race carries.
       let daysFromNearestRace: number | null = null;
