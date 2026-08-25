@@ -41,6 +41,24 @@ const READINESS_SIGNAL_TYPES = new Set([
 const SAMPLE_BOUNDS: Record<string, { lo: number; hi: number }> = {
   hrv: { lo: 10, hi: 200 },          // ms · rMSSD
   resting_hr: { lo: 25, hi: 110 },   // bpm
+  // 2026-08-25 · `max_hr` belongs on this list at least as much as the two
+  // above, and was missing.
+  //
+  // The comment over this table says the unbounded types "don't feed the
+  // readiness score directly", which was the test applied. It is the wrong
+  // test. `max_hr` feeds something with a longer half-life than a daily score:
+  // `lib/training/max-hr.ts` takes a 12-month rolling MAX of these rows, and
+  // `POST /api/cron/max-hr-ratchet` writes the winner to `users.max_hr` with
+  // `GREATEST(...)` — monotone up, no history row, nothing surfaced. Every HR
+  // zone and every HR-derived pace descends from it. One impossible sample
+  // would have set the runner's ceiling for a year, and the only way back is
+  // typing an override.
+  //
+  // The reader is now bounded too (`MAX_HR_FLOOR_BPM`/`MAX_HR_CEILING_BPM`),
+  // so this is the second of two independent gates rather than the only one.
+  // It is the better place to stop it: a value rejected here never enters the
+  // table, so nothing downstream has to remember to exclude it.
+  max_hr: { lo: 100, hi: 230 },      // bpm · mirrors lib/training/max-hr.ts
 };
 
 const ALLOWED_TYPES = new Set([

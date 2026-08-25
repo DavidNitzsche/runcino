@@ -28,7 +28,9 @@ export async function POST(req: NextRequest) {
     // a button that says generate my plan: a decision, not a surprise, and the
     // gate exists to stop surprises. Overridden explicitly, per call, so the
     // decision is visible here rather than absent from every call site.
-    const result = await generatePlan({ userId, raceSlug, allowCoached: true });
+    const result = await generatePlan({
+      userId, raceSlug, allowCoached: true, archiveReason: 'runner_generate',
+    });
     if (!result.ok) {
       return NextResponse.json({ error: result.reason ?? 'generation failed' }, { status: 400 });
     }

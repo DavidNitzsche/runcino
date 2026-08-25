@@ -187,6 +187,15 @@ const PLAN_TITLES: Record<string, string> = {
   a_race_removed: 'A goal race was removed',
   goal_renegotiation: 'Your race target needs a call',
   pace_reanchor: 'Your paces are off your fitness',
+  // 2026-08-25 · the kinds the writers stamp that this map did not carry. They
+  // fell through to the generic "Your plan needs an update", which reads as a
+  // request for action on a card that is reporting a change already made.
+  replan: 'Your settings reshaped the block',
+  plan_change: 'Your settings reshaped the block',
+  race_graduate: 'The next block is up',
+  recovery_complete: 'Recovery is done',
+  plan_elapsed: 'That block ran out',
+  maintenance_to_raceprep: 'Race prep starts here',
 };
 
 /** The concrete thing ACCEPT does, per plan-drift kind. Keeps the verb

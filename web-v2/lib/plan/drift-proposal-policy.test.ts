@@ -104,6 +104,68 @@ describe('hasPendingProposal · plan scoping', () => {
   });
 });
 
+/**
+ * 2026-08-25 · THE GUARD IN FRONT OF REPLACING A RUNNER'S TRAINING BLOCK.
+ *
+ * `hasPendingProposal` is the only thing standing between the nightly cron and
+ * `fireAutoRebuild`. On 2026-08-25 it let a rebuild through that archived the
+ * owner's two-week recovery block mid-flight, and two independent properties of
+ * this function meant it could have let a SECOND one through the same day:
+ *
+ *   · it could not see a rebuild that had already SUCCEEDED. It matched
+ *     'pending' and recently-'dismissed' only, so the outcome that matters
+ *     most — auto_applied — was invisible to it.
+ *   · a failed read returned `false`, which reads as "nothing standing, go
+ *     ahead". The 2026-08-24 swallowed-failure sweep fixed exactly this shape
+ *     in four inline guards in the plan-drift route and missed this one,
+ *     because the scanner classifies `{ rows: [] }` as a harmless empty
+ *     container and cannot see the `return r != null` two lines below turning
+ *     it into a decision.
+ */
+describe('hasPendingProposal · the rebuild guard fails CLOSED and sees a landed rebuild', () => {
+  it('a DB error answers "hold", never "go ahead"', async () => {
+    mockQuery.mockRejectedValue(new Error('connection terminated'));
+    const hit = await hasPendingProposal('user-1', 'plan-9', 'long_drift');
+    expect(
+      hit,
+      'A guard that cannot see must assume the thing it guards against has happened. '
+      + 'false here licenses the nightly cron to re-author the runner\'s block.',
+    ).toBe(true);
+  });
+
+  it('matches an auto_applied rebuild, USER-scoped, so a same-day re-run is a no-op', async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+    await hasPendingProposal('user-1', 'plan-NEW', 'long_drift');
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("status = 'auto_applied'");
+    // The window has to be shorter than the gap between two daily runs and
+    // longer than any same-day re-run. The schedule is 0 9 * * * and GitHub
+    // Actions runs it late, never early, so consecutive runs are ~23h apart at
+    // the tightest.
+    expect(sql).toContain("interval '20 hours'");
+    // And it must NOT be trapped inside the plan-scoped clause. A successful
+    // rebuild archives the plan the row points at, so by the next call planId
+    // is the NEW plan and the row carries the OLD one. Scoping this arm makes
+    // it structurally unable to match, which is the dead-guard shape the
+    // 2026-08-17 fix found in the `plan_id = ''` equality.
+    const autoArm = sql.slice(sql.indexOf("status = 'auto_applied'"));
+    expect(autoArm).not.toContain('plan_id');
+  });
+
+  it('the planted defect · the OLD behaviour fails this oracle', async () => {
+    // The pre-2026-08-25 implementation, reproduced exactly. If the assertions
+    // above ever stop being able to tell the two apart, this fails loudly
+    // rather than the suite passing on a guard that reverted.
+    const oldHasPending = async (): Promise<boolean> => {
+      const r = (await Promise.resolve(pool.query('...', []))
+        .catch(() => ({ rows: [] as unknown[] }))).rows[0];
+      return r != null;
+    };
+    mockQuery.mockRejectedValue(new Error('connection terminated'));
+    await expect(oldHasPending()).resolves.toBe(false);
+  });
+});
+
 describe('expireStalePendingProposals · historical mislabeled spam', () => {
   it('runs the age pass AND the mislabeled goal_time_changed pass, summing counts', async () => {
     mockQuery

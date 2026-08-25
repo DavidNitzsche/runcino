@@ -376,6 +376,34 @@ export interface GenerateInput {
    * block), which is the whole point.
    */
   allowCoached?: boolean;
+  /**
+   * 2026-08-25 · WHY THE PLAN THIS ONE REPLACES WAS REPLACED.
+   *
+   * Stamped on the outgoing plan's `training_plans.archive_reason` by
+   * `clearActivePlansFor`. That parameter has existed since 2026-06-09 with a
+   * default of `'regenerated'` and NO caller has ever passed it, so every plan
+   * this module has ever archived — a nightly drift rebuild, a settings
+   * reshape, a race graduation, an admin silent-rebuild landing a code upgrade
+   * — carries the identical string. The column looked like a lifecycle record
+   * and was a constant.
+   *
+   * That cost a real answer on 2026-08-25. A runner's block was replaced
+   * overnight; `archive_reason` said `regenerated`, which is what it says for
+   * everything, so the row could not distinguish "the recovery block finished"
+   * from "the drift cron inferred something" from "an operator dispatched a
+   * rebuild". Only the `plan_proposals` row settled it — and the one path that
+   * writes no proposal at all, by design, is `silent-rebuild`.
+   *
+   * This records what happened. It does not change what any caller is allowed
+   * to do, and it fires no banner: `silent-rebuild` stays silent to the runner
+   * and stops being silent to the database.
+   *
+   * Callers pass the trigger they already know (`fireAutoRebuild` its
+   * `AutoRebuildKind`, the prefs path `'settings_prefs'`, silent-rebuild
+   * `'silent_rebuild'`). Absent → `'regenerated'`, the historical value, so an
+   * unconverted call site reads exactly as it did before rather than lying.
+   */
+  archiveReason?: string;
 }
 
 export interface GenerateResult {
@@ -8361,7 +8389,8 @@ async function persistComposedPlan(
     // every retro surface (badge, recap, VDOT, adapt-text) would lie.
     // Throws on DB error · the rebuild aborts rather than unsealing.
     const sealedSnapshot = await snapshotSealedDays(client, userId);
-    await clearActivePlansFor(client, userId);
+    // 2026-08-25 · the trigger, not the constant. See GenerateInput.archiveReason.
+    await clearActivePlansFor(client, userId, input.archiveReason ?? 'regenerated');
     planId = await persistPlan(client, {
       userId,
       raceSlug: raceSlug ?? null,  // null for goal-mode AND for an open block (no race row)

@@ -23,6 +23,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import { autoMergeRecent } from '@/lib/runs/merge';
 
 export const maxDuration = 120;
@@ -79,13 +80,45 @@ export async function POST(req: NextRequest) {
     for (const u of users) {
       try {
         const census = await computeFlagCensus(u);
-        const prev = (await pool.query<{ metadata: { loadBearing?: number; loadBearingIds?: string[] } | null }>(
-          `SELECT metadata FROM ops_alerts
+        const prevRow = await rowOrNull<{ metadata: { loadBearing?: number; loadBearingIds?: string[] } | null }>(
+          'cron/dedupe-runs · previous flag census baseline',
+          pool.query<{ metadata: { loadBearing?: number; loadBearingIds?: string[] } | null }>(
+            `SELECT metadata FROM ops_alerts
             WHERE kind = 'dedup_flag_census' AND metadata->>'userUuid' = $1
             ORDER BY created_at DESC LIMIT 1`,
-          [u],
-        ).catch(() => ({ rows: [] }))).rows[0]?.metadata ?? null;
+            [u],
+          ),
+        );
 
+        // 2026-08-25 · swallowed-failure sweep · THE FAILED READ USED TO BURN
+        // THE EVIDENCE. `.catch(() => ({ rows: [] }))` made prev null, which
+        // made prevCount null, which made `dropped` false, which sent control
+        // to the else-branch — and that branch WRITES THE CURRENT COUNT AS THE
+        // NEW BASELINE. So a single unreadable read on the night a load-bearing
+        // flag was wiped did not just miss the alarm: it recorded the lowered
+        // count as normal, and no later night could ever see the drop. The
+        // flags it protects sit outside this cron's 14-day repair window, so
+        // nothing self-heals and volume silently inflates.
+        //
+        // On a failed read we compare nothing and write nothing. The alert
+        // below deliberately OMITS `userUuid` from its metadata, because the
+        // query above selects the newest 'dedup_flag_census' row keyed on that
+        // field — an alert carrying it would itself become tomorrow's baseline
+        // (with no loadBearing in it), which is the same evidence loss by
+        // another route.
+        if (prevRow === null) {
+          await raiseAlert({
+            kind: 'dedup_flag_census',
+            severity: 'error',
+            source: 'cron/dedupe-runs',
+            message: `Flag census baseline UNREADABLE for ${u.slice(0, 8)}… · tonight's census (${census.loadBearing} load-bearing, ${census.loadBearingMi} mi) was NOT compared and NOT stored. The last good baseline is intact; re-run the cron once the read works.`,
+            metadata: { censusReadFailed: true, userUuidRef: u, observedLoadBearing: census.loadBearing },
+          });
+          censusOut.push({ user_uuid: u, loadBearing: census.loadBearing, alerted: false });
+          continue;
+        }
+
+        const prev = prevRow?.metadata ?? null;
         const prevCount = prev?.loadBearing ?? null;
         const dropped = prevCount != null && census.loadBearing < prevCount;
         if (dropped) {

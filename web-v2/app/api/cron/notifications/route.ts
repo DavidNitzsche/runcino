@@ -39,7 +39,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { logReadFailure, rowOrNull } from '@/lib/db/read';
+import { logReadFailure, rowOrNull, rowsOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { apnsHost } from '@/lib/notifications/apns';
 import { raiseAlert } from '@/lib/ops/alerts';
@@ -595,8 +595,18 @@ function isAtLocalTime(hour: number, minute: number, hm: string, slackMin = 30):
 }
 
 /**
- * Idempotent enqueue. The pending dedup index prevents duplicate rows
- * for the same dedup_key within the prior 24h.
+ * Idempotent enqueue.
+ *
+ * 2026-08-25 · swallowed-failure sweep · THE INDEX DOES NOT SAVE US. This
+ * docblock used to say "the pending dedup index prevents duplicate rows for
+ * the same dedup_key within the prior 24h". It does not.
+ * `notifications_pending_dedup_idx` is a plain btree, not UNIQUE, and the
+ * INSERT below carries no ON CONFLICT. The SELECT is the ONLY thing standing
+ * between one push and eight of them: the catchment windows are now hours
+ * wide (see isAtLocalTime) against a 30-minute tick grid, so every tick inside
+ * the window re-asks this question. If you are here to simplify the SELECT away
+ * because "the index handles it", it does not, and the runner gets the same
+ * notification once per tick.
  */
 async function enqueueIfFresh(
   userId: string,
@@ -604,8 +614,10 @@ async function enqueueIfFresh(
   fireAt: Date,
 ): Promise<boolean> {
   // Recently-sent on log AND recently-pending on queue both gate enqueue.
-  const dup = await pool.query(
-    `SELECT 1 FROM notifications_log
+  const dup = await rowsOrNull(
+    'cron/notifications · enqueueIfFresh dedup',
+    pool.query<Record<string, unknown>>(
+      `SELECT 1 FROM notifications_log
        WHERE dedup_key = $1
          AND fired_at > now() - interval '24 hours'
          AND delivered = true
@@ -615,9 +627,16 @@ async function enqueueIfFresh(
          AND created_at > now() - interval '24 hours'
          AND processed_at IS NULL
       LIMIT 1`,
-    [tpl.dedup_key],
-  ).catch(() => ({ rows: [] }));
-  if (dup.rows.length > 0) return false;
+      [tpl.dedup_key],
+    ),
+  );
+  // Fail CLOSED. `.catch(() => ({ rows: [] }))` here answered "no duplicate on
+  // record", which is the answer that INSERTS. With nothing unique downstream,
+  // a database blip on a wide window meant 8-16 identical rows, i.e. the runner
+  // woken repeatedly by the same push. A skipped notification is recoverable on
+  // the next tick; a duplicate that already landed on the phone is not.
+  if (dup === null) return false;
+  if (dup.length > 0) return false;
 
   await pool.query(
     `INSERT INTO notifications_pending (user_id, user_uuid, category, fire_at, payload, dedup_key)

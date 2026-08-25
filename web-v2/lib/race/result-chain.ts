@@ -223,7 +223,10 @@ export async function runPostResultChain(args: PostResultChainArgs): Promise<Pos
 
       if (nextRaceRow) {
         const { generatePlan } = await import('@/lib/plan/generate');
-        const gen = await generatePlan({ userId, raceSlug: nextRaceRow.slug });
+        // 2026-08-25 · automatic path · the archived plan records the trigger.
+        const gen = await generatePlan({
+          userId, raceSlug: nextRaceRow.slug, archiveReason: 'race_completed',
+        });
 
         let compressed = false;
         if (gen.ok && gen.plan_id) {

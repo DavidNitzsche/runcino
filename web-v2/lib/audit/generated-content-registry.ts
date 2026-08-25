@@ -387,6 +387,8 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'A GATE. Same shape as the doctrine registry: consulted by _generated_content_gate.test.ts and check-generated-content.sh, never at runtime.',
   'web-v2/lib/audit/module-graph.ts':
     'A GATE. Same as sql-scan.ts.',
+  'web-v2/lib/audit/automatic-mutation-registry.ts':
+    'A GATE. Same shape as the doctrine registry: the inventory of everything that changes a runner\'s data without the runner asking, consulted by lib/audit/_automatic_mutations.test.ts and check-automatic-mutations.sh, never at runtime. Written 2026-08-25 after the plan-drift cron replaced the owner\'s training block overnight with nothing on any surface saying so. Test-only is its correct state — the gate derives the plan-writer set from source and makes this list agree, so wiring it into the app would only give it a second, unchecked reader.',
   'web-v2/lib/audit/generated-content-registry.ts':
     'A GATE. This file.',
   'web-v2/lib/faff/surface-sweep-matrix.ts':

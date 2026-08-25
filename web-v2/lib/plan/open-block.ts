@@ -161,6 +161,8 @@ export async function authorOpenBlock(input: AuthorOpenBlockInput): Promise<Open
         userId: userUuid,
         goalTarget: goal,
         freshTarget: true,
+        // 2026-08-25 · automatic path · the archived plan records the trigger.
+        archiveReason: 'open_block',
       }).catch((e: unknown) => ({
         ok: false as const,
         reason: e instanceof Error ? e.message : String(e),
@@ -219,6 +221,8 @@ async function authorNoTargetBlock(
   const gen = await generatePlan({
     userId: input.userUuid,
     openTarget: { after: input.lastRace },
+    // 2026-08-25 · automatic path · the archived plan records the trigger.
+    archiveReason: 'open_block',
     // The block starts TODAY, not on the training-week boundary behind it. A
     // runner who is planless right now needs today prescribed; anchoring to
     // Monday would date the opening days before the block was authored, which

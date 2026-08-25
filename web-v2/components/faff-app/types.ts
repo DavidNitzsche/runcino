@@ -1,4 +1,7 @@
 import type { EffortKey, PlannedDay, CompletedRun, ViewKey } from './constants';
+// 2026-08-25 · the proposal kind/status vocabulary lives with the loader that
+// reads the rows. See PlanProposalSeed below for why it is not re-listed here.
+import type { PlanProposalKind, PlanProposalStatus } from '@/lib/plan/proposals-state';
 
 export type DriverRow = { name: string; why: string; pct: number; pts: number; dir: 'pos'|'neg' };
 export type Readiness = {
@@ -532,15 +535,17 @@ export type PlanProposalSeed = {
    *  for the diff page reader. */
   previousPlanId: string | null;
   newPlanId: string | null;
-  kind: 'volume_drift' | 'vdot_drift' | 'staleness'
-      // 2026-08-17 · truth-bug fix · drift proposals carry their TRUE
-      // kind now ('goal_time_changed' is reserved for actual goal edits).
-      | 'easy_drift' | 'long_drift' | 'quality_drift' | 'goal_gap_widening'
-      | 'race_date_changed' | 'goal_time_changed'
-      | 'a_race_added' | 'a_race_removed'
-      // 2026-08-17 · coaching-loop reconciliation
-      | 'goal_renegotiation' | 'pace_reanchor';
-  status: 'pending' | 'auto_applied' | 'accepted' | 'dismissed' | 'superseded' | 'expired';
+  // 2026-08-25 · IMPORTED, NOT RE-LISTED.
+  //
+  // This union used to be typed out again by hand here. Two hand-maintained
+  // copies of the same list is a promise to keep them in sync that nobody
+  // keeps, and they had already drifted: the loader's union grew the kinds its
+  // writers actually stamp and this one stayed where it was, so the seed type
+  // and the thing it types disagreed about what a proposal can be.
+  //
+  // One list now, in the module that owns the rows.
+  kind: PlanProposalKind;
+  status: PlanProposalStatus;
   source: string;
   reasons: Record<string, unknown>;
   message: string;

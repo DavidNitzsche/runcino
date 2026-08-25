@@ -231,6 +231,81 @@ struct WorkoutProposalsResponse: Decodable {
     }
 }
 
+// MARK: - Plan proposals
+
+/// One `plan_proposals` row from GET /api/plan/proposal.
+///
+/// 2026-08-25 · THE ROW THE PHONE COULD NOT READ.
+///
+/// On 2026-08-25 the plan-drift cron archived the owner's two-week recovery
+/// block in the middle of week two and authored a one-week block in its place.
+/// His week went from 23 miles to 38. The web renders exactly this row as a
+/// card saying what changed and why, with a link to the diff. The phone
+/// rendered nothing, so on the surface he actually uses the only evidence was
+/// the week counter resetting.
+///
+/// That was a deliberate decision, recorded in TodayView: the phone had no read
+/// surface because `/api/plan/proposal` was POST-only. The GET was added on
+/// 2026-08-17 and the note was never revisited, so the server change the
+/// comment said was needed had already shipped.
+///
+/// Wire is the `PlanProposal` shape from `lib/plan/proposals-state.ts`, byte for
+/// byte what the web seed puts in `planProposals` — same loader, same ordering,
+/// same cap of five. Lenient decode per doctrine 2026-05-31.
+struct PlanProposal: Decodable, Identifiable {
+    let id: Int
+    /// The plan the proposal was written against. On an `auto_applied` row this
+    /// is the OLD plan, the `from` side of the diff.
+    let previousPlanId: String?
+    let newPlanId: String?
+    /// `long_drift`, `staleness`, `goal_renegotiation`, `replan`, and so on —
+    /// the server's `PlanProposalKind`. Kept as a String deliberately: a kind
+    /// this build has never heard of must still render, not vanish. The web
+    /// shipped a card with an empty body for months for exactly that reason.
+    let kind: String
+    /// `pending` · the coach is waiting on an answer.
+    /// `auto_applied` · it already happened, and this says what.
+    let status: String
+    let source: String
+    /// Plain language. Always populated server-side.
+    let message: String
+    let severity: Double?
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, planId, previousPlanId, newPlanId, kind, status, source, message, severity, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = c.decodeFlexInt(forKey: .id) ?? 0
+        // `previousPlanId` is an explicit alias for `planId`. Fall back to it so
+        // a payload carrying only the older field still resolves the diff's
+        // `from` side.
+        self.previousPlanId = (try? c.decode(String.self, forKey: .previousPlanId))
+            ?? (try? c.decode(String.self, forKey: .planId))
+        self.newPlanId = try? c.decode(String.self, forKey: .newPlanId)
+        self.kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        self.status = try c.decodeIfPresent(String.self, forKey: .status) ?? ""
+        self.source = try c.decodeIfPresent(String.self, forKey: .source) ?? ""
+        self.message = try c.decodeIfPresent(String.self, forKey: .message) ?? ""
+        self.severity = try? c.decode(Double.self, forKey: .severity)
+        self.createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
+    }
+}
+
+struct PlanProposalsResponse: Decodable {
+    let proposals: [PlanProposal]
+    let pendingCount: Int
+
+    enum CodingKeys: String, CodingKey { case proposals, pendingCount }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.proposals = (try? c.decode([PlanProposal].self, forKey: .proposals)) ?? []
+        self.pendingCount = c.decodeFlexInt(forKey: .pendingCount) ?? 0
+    }
+}
+
 // MARK: - Notification inbox
 
 struct NotifInboxItem: Decodable, Identifiable {

@@ -73,6 +73,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { rowsOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { loadActivePlan } from '@/lib/plan/lookup';
@@ -245,14 +246,36 @@ export function composeFirstEverEntry(f: FirstEverInput): { title: string; body:
 
 /* ──────────────────── Idempotent writer ──────────────────── */
 
-async function entryExists(userId: string, reason: string, field: string): Promise<boolean> {
-  const r = await pool.query(
-    `SELECT 1 FROM coach_intents
+/**
+ * The whole idempotency of the coach log. `coach_intents` has NO unique index
+ * on (user, reason, field), so this SELECT is the only thing that stops a
+ * second copy of the same line being written.
+ *
+ * 2026-08-25 · swallowed-failure sweep · fails CLOSED. This was
+ * `.catch(() => ({ rows: [] }))` then `rows.length > 0`, so an unreadable
+ * table answered `false` · "not logged yet" · and the caller wrote the entry
+ * again. The daily pass re-asks every kind every morning, so one bad read
+ * meant the runner's log carried the same "Base done" or "Longest run you
+ * have ever logged" twice, permanently, with no path to remove it. Saying a
+ * true thing twice reads as the coach not remembering. Skipping tonight costs
+ * nothing: the next pass asks the same question and writes it then.
+ *
+ * Exported ONLY as a seam for lib/plan/_guard_fail_closed.test.ts, which
+ * drives the read to reject and asserts this answers `true`. Nothing outside
+ * this module calls it.
+ */
+export async function entryExists(userId: string, reason: string, field: string): Promise<boolean> {
+  const rows = await rowsOrNull(
+    'coach/coach-log · entryExists idempotency',
+    pool.query<Record<string, unknown>>(
+      `SELECT 1 FROM coach_intents
       WHERE COALESCE(user_uuid, user_id) = $1 AND reason = $2 AND field = $3
       LIMIT 1`,
-    [userId, reason, field],
-  ).catch(() => ({ rows: [] as unknown[] }));
-  return r.rows.length > 0;
+      [userId, reason, field],
+    ),
+  );
+  if (rows === null) return true;  // read failed · treat as already logged
+  return rows.length > 0;
 }
 
 async function writeEntry(

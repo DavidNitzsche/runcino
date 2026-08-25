@@ -127,7 +127,25 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
       ? { source: best.source, refId: best.source === 'race' ? best.slug : best.id }
       : null);
   }
-  catch { reanchor = null; }
+  // 2026-08-25 · A FAILED PLAN REWRITE USED TO LEAVE NO TRACE ANYWHERE.
+  //
+  // This was `catch { reanchor = null; }` — a bare catch with no binding, so
+  // the error object was not merely unlogged, it was unreachable. `reanchor:
+  // null` in the cron's JSON response is also what a runner who needed no
+  // re-anchor produces, so "nothing to do" and "the rewrite threw" were the
+  // same output, in the response, in the Railway logs and in `ops_alerts`.
+  //
+  // This route is named `snapshot-projections` and reads like a reporting job,
+  // but `reanchorActivePlan` rewrites `plan_workouts.pace_target_s_per_mi` and
+  // `workout_spec` for every future unsealed day. It is the third automatic
+  // writer of the runner's plan, alongside the drift cron and the rebuild core,
+  // and the only one whose name does not say so. A failure here means the
+  // runner trains tomorrow to the paces of an anchor the engine already knows
+  // is wrong. That should be loud.
+  catch (e) {
+    reanchor = null;
+    console.error('[snapshot-projections] plan re-anchor failed:', userUuid, e);
+  }
 
   return { vdot, snapshots, reanchor };
 }

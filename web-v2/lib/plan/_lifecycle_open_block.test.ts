@@ -223,7 +223,14 @@ describe('2 · a goal-mode plan that elapses', () => {
   it('fireAutoRebuild accepts a goal target as well as a race slug', () => {
     const src = code('lib/plan/auto-rebuild.ts');
     expect(src).toMatch(/goalTarget\?: RebuildGoalTarget/);
-    expect(src).toMatch(/generatePlan\(\{ userId: input\.userUuid, goalTarget: input\.goalTarget! \}\)/);
+    // 2026-08-25 · matched on SUBSTANCE, not on line breaks. This was pinned to
+    // the exact single-line spelling `generatePlan({ userId: input.userUuid,
+    // goalTarget: input.goalTarget! })`, so adding a third argument — the
+    // archiveReason that records WHICH trigger replaced the plan — reflowed the
+    // call across lines and failed a test that was asking whether a goal target
+    // reaches the generator. It still does. A source-text assertion should
+    // assert the thing it cares about; whitespace is not that thing.
+    expect(src).toMatch(/generatePlan\(\{[\s\S]{0,160}goalTarget:\s*input\.goalTarget!/);
     // A goal-anchored rebuild must not be rejected by the race-match check.
     expect(src).toMatch(/input\.raceSlug && plan && plan\.race_id !== input\.raceSlug/);
   });

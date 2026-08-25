@@ -33,6 +33,33 @@
  */
 import { pool } from '@/lib/db/pool';
 
+/**
+ * 2026-08-25 · THE PLAUSIBILITY BAND FOR AN OBSERVED HRmax, NAMED ONCE.
+ *
+ * 100-230 bpm was already hardcoded four times in this file — the override
+ * check, the `runs` aggregate, the stored-manual check, and the implicit
+ * `>= 100` on the merged observation — and NOT AT ALL on the `health_samples`
+ * aggregate, which is the branch a HealthKit import writes to. A constant
+ * repeated by hand at four sites and forgotten at the fifth is how the fifth
+ * happens; naming it is what makes the omission visible.
+ *
+ * This is a sanity band, not a doctrine claim. It says "no human running
+ * outdoors has a max heart rate outside this", which is what you need to
+ * reject a strap artefact. The doctrine claim in this file is the 12-month
+ * window (Research/03 §HRmax), which is cited in the header and unchanged.
+ *
+ * The band is deliberately generous at both ends. It exists to reject
+ * impossible values, not to second-guess an unusual runner.
+ */
+export const MAX_HR_FLOOR_BPM = 100;
+export const MAX_HR_CEILING_BPM = 230;
+
+/** True when `bpm` is a number a human heart could actually have produced. */
+export function isPlausibleMaxHr(bpm: unknown): boolean {
+  const n = Number(bpm);
+  return Number.isFinite(n) && n >= MAX_HR_FLOOR_BPM && n <= MAX_HR_CEILING_BPM;
+}
+
 export interface EffectiveMaxHr {
   /** The number to use everywhere. */
   bpm: number | null;
@@ -86,8 +113,31 @@ async function resolveEffectiveMaxHr(
   //    Compute both sources independently so we know which "won."
   const [hkRow, runsRow] = await Promise.all([
     pool.query<{ value: number | string | null }>(
+      // 2026-08-25 · THE SAME PHYSIOLOGICAL BAND THE `runs` BRANCH BELOW HAS
+      // ALWAYS HAD. This branch had none.
+      //
+      // Every heart-rate zone and every HR-derived pace in the app descends
+      // from this number, and the ratchet that stores it is monotone UP with a
+      // 365-day memory and no history row. So one absurd HealthKit `max_hr`
+      // sample — a strap artefact, a cadence lock, a bad import — set the
+      // runner's ceiling for a year, invisibly and irreversibly except by
+      // typing an override.
+      //
+      // The `>= 100` check below caught garbage that was too LOW and let
+      // through anything too HIGH, which is the wrong half: the ratchet only
+      // moves upward, so high garbage is the only kind that sticks.
+      //
+      // Bounded in SQL rather than in JS on purpose. `MAX()` picks the winner
+      // inside the database, so a value filtered afterwards has already won;
+      // it has to be excluded before the aggregate sees it.
+      //
+      // Verified against prod 2026-08-25: `health_samples` does hold
+      // out-of-band `max_hr` rows (81, 84, 86, 88, 90, 94, 97). All of them
+      // happen to be low, so nothing has stuck yet. The guard was absent, not
+      // merely untested.
       `SELECT COALESCE(MAX(value::numeric), 0) AS value FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'max_hr'
+          AND value::numeric BETWEEN ${MAX_HR_FLOOR_BPM} AND ${MAX_HR_CEILING_BPM}
           AND sample_date >= ($2::date - interval '365 days')`,
       [userId, today],
     ).then((r) => r.rows[0]),
@@ -95,7 +145,7 @@ async function resolveEffectiveMaxHr(
       `SELECT COALESCE(MAX((data->>'maxHr')::numeric), 0) AS value FROM runs
         WHERE user_uuid = $1::uuid AND NOT (data ? 'mergedIntoId')
           AND data->>'maxHr' IS NOT NULL
-          AND (data->>'maxHr')::numeric BETWEEN 100 AND 230
+          AND (data->>'maxHr')::numeric BETWEEN ${MAX_HR_FLOOR_BPM} AND ${MAX_HR_CEILING_BPM}
           AND (data->>'date')::date >= ($2::date - interval '365 days')`,
       [userId, today],
     ).then((r) => r.rows[0]),
@@ -103,9 +153,17 @@ async function resolveEffectiveMaxHr(
 
   const hkMax = Number(hkRow?.value ?? 0);
   const runsMax = Number(runsRow?.value ?? 0);
-  if (hkMax >= 100 || runsMax >= 100) {
+  if (hkMax >= MAX_HR_FLOOR_BPM || runsMax >= MAX_HR_FLOOR_BPM) {
     const observed = Math.max(hkMax, runsMax);
     const observedFrom: 'health_samples' | 'runs' = runsMax >= hkMax ? 'runs' : 'health_samples';
+    // 2026-08-25 · belt to the SQL band's braces. Both aggregates are bounded
+    // now, so this cannot fire; it is here because the number leaving this
+    // function sets every HR zone the runner trains to, and "cannot fire" is
+    // what was true of the `runs` branch while the `health_samples` branch
+    // beside it had no bound at all.
+    if (!isPlausibleMaxHr(observed)) {
+      return { bpm: null, source: 'unknown', observedFrom: null };
+    }
     return { bpm: Math.round(observed), source: 'observed_12mo', observedFrom };
   }
 

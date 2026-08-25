@@ -172,7 +172,12 @@ export async function POST(req: NextRequest) {
     // the code that RAISES proposals, is gated (fireAutoRebuild), so a coached
     // runner should see none; a standing one is a row from before they told us
     // about their coach, and accepting it is still their decision to make.
-    const result = await generatePlan({ userId, raceSlug: planRow.race_id, allowCoached: true });
+    const result = await generatePlan({
+      userId, raceSlug: planRow.race_id, allowCoached: true,
+      // 2026-08-25 · the runner ACCEPTED a proposal, as against the cron
+      // applying one unasked.
+      archiveReason: 'proposal_accepted',
+    });
     rebuildOk = result.ok;
     newPlanId = result.plan_id;
     rebuildReason = result.reason;
