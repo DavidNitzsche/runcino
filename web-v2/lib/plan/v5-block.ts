@@ -119,7 +119,15 @@ export function buildPanel(state: TrainingState) {
   // and the quality share was a ratio of two numbers taken from that other
   // week while the runner read this one.
   const windowDays = state.weekWindowDays;
+  // BLOCK-ENDED-1 (2026-08-24) · null means the block does not reach this week
+  // at all — it ended, or it has not started. That is not the same fact as
+  // "nothing is planned this week", and `?? 0` printed it as the second one:
+  // a runner whose plan ran out two days ago (one exists in production on
+  // 2026-08-24, whose block's last day was 2026-08-22) reads "0 mi" for the
+  // week, which asserts a prescription of zero rather than saying the block is
+  // over. Same reasoning the Long run stat already applies below.
   const weekMi = state.weekPlanned ?? 0;
+  const weekReaches = state.weekPlanned != null;
   const qualityMi = windowDays
     .filter((d) => d.isQuality && d.type !== 'race')
     .reduce((s, d) => s + d.mi, 0);
@@ -141,7 +149,7 @@ export function buildPanel(state: TrainingState) {
       // as a broken stat — the week has a longest run, it just has no LONG
       // run. Say the true thing instead of printing a zero.
       { label: 'Long run', value: num(longMi > 0 ? `${fmtMi(longMi)} mi` : 'None', false), tone: 'neutral' },
-      { label: "This week's mileage", value: num(`${fmtMi(weekMi)} mi`, false), tone: 'neutral' },
+      { label: "This week's mileage", value: num(weekReaches ? `${fmtMi(weekMi)} mi` : 'None', false), tone: 'neutral' },
     ],
   };
 }
@@ -211,6 +219,23 @@ export function buildCoachLine(
    *  plan has no race row, which is the genuine no-goal case. */
   raceDistanceMi: number | null = null,
 ): string | null {
+  // BLOCK-ENDED-1 (2026-08-24) · the block ran out and is still the active one.
+  // The phase line above it keeps naming the last phase it reached and the
+  // week list keeps drawing weeks that are all in the past, so a line that
+  // narrates the phase is narrating something that is over. One production
+  // plan was in this state on 2026-08-24 — last prescribed day 2026-08-22,
+  // still `archived_iso IS NULL`. Say what is true; the lifecycle cron writes
+  // the next block, and until it does the runner should not be told to hit
+  // sessions that no longer exist.
+  const lastWeek = state.weeks[state.weeks.length - 1];
+  if (lastWeek) {
+    const lastDay = new Date(Date.parse(lastWeek.startDate + 'T12:00:00Z') + 6 * 86400000)
+      .toISOString().slice(0, 10);
+    if (lastDay < state.today) {
+      return 'This block has finished. The next one gets written from where you actually got to.';
+    }
+  }
+
   // MAINTENANCE is the mode a runner is in when their race is real and simply
   // is not near yet, and the line here said the opposite of that: "There is no
   // block to build toward yet." For a runner sixteen weeks out from a half

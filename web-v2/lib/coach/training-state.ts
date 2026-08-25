@@ -175,10 +175,26 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
        FROM plan_weeks WHERE plan_id = $1 ORDER BY week_idx`,
     [plan.id]
   )).rows;
+  // STRENGTH-3-READ-1 (2026-08-24) · the removal was enforced on WRITERS only.
+  // `_no_strength_rows.test.ts` scans every plan-row writer and is clean, but
+  // rows written before 2026-08-17 are still in the table, and nothing stopped
+  // them reaching a screen. One production plan on 2026-08-24 carries fourteen
+  // of them, EIGHT of them in the future: the Block screen's week list emits
+  // one day cell per row, so that runner's weeks render nine days for seven,
+  // two of them a zero-mile "Strength" for a feature the app removed.
+  //
+  // The week strip happened to hide them — every legacy row shares its day
+  // with an easy run and loses `shapePlanWeekDays`' priority pick — which is
+  // luck, not a guard. This is the guard. Filtered at the READ so the rows
+  // stay in the table: the removal is meant to be reversible and the data was
+  // deliberately kept.
   const workouts = (await pool.query(
     `SELECT id::text AS id, week_id::text AS week_id, date_iso, dow, type, distance_mi, sub_label, workout_spec,
             is_quality, is_long
-       FROM plan_workouts WHERE plan_id = $1 ORDER BY date_iso`,
+       FROM plan_workouts
+      WHERE plan_id = $1
+        AND type NOT IN ('strength', 'cross', 'xt')
+      ORDER BY date_iso`,
     [plan.id]
   )).rows;
 

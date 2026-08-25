@@ -103,10 +103,19 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
     // conversational, no surges."). It has been written on every workout row
     // since the engine could author one and read by nothing — see the note on
     // `notes` in PlanWeekDay.
+    // STRENGTH-3-READ-1 (2026-08-24) · legacy `strength` / `cross` rows written
+    // before the 2026-08-17 removal are still in the table and nothing stopped
+    // them reaching a screen. The strip has been getting away with it: every
+    // one of the fourteen live rows shares its day with an easy run and loses
+    // `shapePlanWeekDays`' priority pick. A row on an otherwise-rest day would
+    // win it and render the day as a gym session. Filtered at the read, so the
+    // rows stay in the table — the removal is reversible by design and the
+    // data was deliberately kept.
     `SELECT id::text AS id, date_iso, dow, type, distance_mi, sub_label, notes
        FROM plan_workouts
       WHERE plan_id = $1
         AND date_iso::date BETWEEN $2::date AND $3::date
+        AND type NOT IN ('strength', 'cross', 'xt')
       ORDER BY date_iso ASC`,
     [plan.id, weekStart, weekEnd]
   )).rows;

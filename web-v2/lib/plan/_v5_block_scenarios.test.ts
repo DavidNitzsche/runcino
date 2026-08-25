@@ -362,3 +362,34 @@ describe('weekFlag · what the Block screen prints on a week row', () => {
     expect(weekFlag(week({ phase: 'BASE' }))).toBe('BASE');
   });
 });
+
+describe('the block that has finished', () => {
+  it('says so, instead of narrating a phase that is over', () => {
+    // The state one production plan was in on 2026-08-24: last prescribed day
+    // 2026-08-22, still the active plan.
+    const ended = trainingState({
+      today: '2026-08-24',
+      weeks: [{
+        id: 'w0', idx: 0, phase: 'QUALITY', startDate: '2026-08-16', plannedMi: 20,
+        isRaceWeek: false, isCutback: false, days: [], isCurrent: false,
+      }],
+      weekPlanned: null,
+      weekWindowDays: [],
+    });
+    const line = buildCoachLine(ended, null) ?? '';
+    expect(line).toContain('finished');
+    expect(line).not.toContain('Hit the quality sessions');
+    expect(line).not.toMatch(/[!\u2014]/);
+  });
+
+  it("does not print a prescription of zero for a week the block does not reach", () => {
+    const ended = trainingState({ weekPlanned: null, weekWindowDays: [] });
+    const panel = buildPanel(ended);
+    expect(panel.stats.find((x) => x.label === "This week's mileage")?.value.text).toBe('None');
+  });
+
+  it('a block still running narrates its phase as before', () => {
+    const line = buildCoachLine(trainingState(), null) ?? '';
+    expect(line).toContain('Hit the quality sessions');
+  });
+});

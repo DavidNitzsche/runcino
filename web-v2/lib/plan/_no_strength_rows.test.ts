@@ -154,4 +154,58 @@ describe('STRENGTH-3 · no strength or cross row reaches a generated plan', () =
       expect(spoken.length, 'the week has to say what it is doing').toBeGreaterThan(3);
     }
   });
+
+// ── The READ side (2026-08-24) ──────────────────────────────────────────
+//
+// Everything above scans WRITERS, and every writer is clean. Rows written
+// before 2026-08-17 are still in `plan_workouts` — deliberately, because the
+// removal is meant to be reversible and the data was kept — and nothing
+// stopped them reaching a screen.
+//
+// One production plan on 2026-08-24 carried fourteen of them, eight in the
+// future. `loadTrainingState` selected every row of the plan with no type
+// filter, and `/api/v5/block`'s week list emits one day cell per row, so that
+// runner's weeks rendered nine days for seven, two of them a zero-mile
+// "Strength" for a feature the app removed. The week strip happened to hide
+// them only because every one of those rows shares its day with an easy run
+// and loses `shapePlanWeekDays`' priority pick — luck, not a guard. A legacy
+// row on an otherwise-rest day wins that pick and renders the day as a gym
+// session.
+//
+// So the two plan readers filter at the SQL, and this is what holds them to
+// it. A source scan for the same reason the writer scan above is one: both
+// readers are DB-bound and a behavioural test would need a database.
+
+describe('the plan READERS do not hand a legacy strength row to a screen', () => {
+  const READERS: Array<[string, string]> = [
+    ['lib/coach/training-state.ts', 'loadTrainingState · the Block screen and the Train tab'],
+    ['lib/plan/week-loader.ts', 'loadPlanWeek · the week strip and /api/v5/today'],
+  ];
+
+  for (const [rel, what] of READERS) {
+    it(`${rel} filters non-running types out of its plan_workouts read (${what})`, () => {
+      const src = code(join(ROOT, rel));
+      // The read has to name the types it refuses. Matched loosely on the
+      // predicate rather than on whitespace, so a reformat does not fail it.
+      const sql = src.replace(/\s+/g, ' ');
+      expect(
+        sql,
+        `${rel} selects from plan_workouts without excluding strength/cross/xt · a legacy row reaches the screen`,
+      ).toMatch(/FROM plan_workouts[\s\S]{0,300}?type NOT IN \( ?'strength', ?'cross', ?'xt' ?\)/);
+    });
+  }
+
+  it('the exclusion names every non-running type the schema has ever carried', () => {
+    // `shapePlanWeekDays`' own NON_RUN_TYPES is the list of types the reader
+    // treats as not-a-run, minus 'rest' which is a real prescribed day. If a
+    // type is added there it has to be added to both reads, and this is what
+    // says so.
+    const shaper = code(join(ROOT, 'lib/plan/week-loader.ts'));
+    const m = shaper.match(/NON_RUN_TYPES = new Set\(\[([^\]]*)\]\)/);
+    expect(m, 'NON_RUN_TYPES moved · re-point this check before trusting it').not.toBeNull();
+    const listed = [...(m![1].matchAll(/'([a-z_]+)'/g))].map((x) => x[1]).filter((t) => t !== 'rest');
+    expect(listed.sort()).toEqual(['cross', 'strength', 'xt']);
+  });
+});
+
 });
