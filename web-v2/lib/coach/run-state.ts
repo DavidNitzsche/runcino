@@ -29,6 +29,7 @@ import {
   type RaceForMatch,
 } from '@/lib/runs/log-enrich';
 import { runFacts } from '@/lib/runs/run-facts';
+import { loadRunTwins, resolveElevationGain, resolveSplits } from '@/lib/runs/twins';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
@@ -198,6 +199,15 @@ export interface RunDetail {
   hr_max: number | null;
   cadence_avg: number | null;
   elev_gain_ft: number | null;
+  /**
+   * Whether a real instrument measured that climb. False when the surviving
+   * figure came from GPS altitude arithmetic or from our own recomputation.
+   * Rule one: a consumer drawing `elev_gain_ft` with this false must carry
+   * the modelled mark. Mirrors `elevGainMeasured` on the poster's wire.
+   */
+  elev_gain_measured: boolean;
+  /** The instrument that won — `raw`, `treadmill_incline`, `gps_derived`. */
+  elev_gain_source: string | null;
   /**
    * 2026-08-17 · terrain, from `lib/terrain/run-terrain.ts`.
    *
@@ -702,7 +712,53 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // filled in after phaseBreakdown loads (a few lines down) · null here
   // because we don't know yet, and a later pass walks the splits + phase
   // cumulative-distance map to attach the right tag per mile.
-  const rawSplits: any[] = Array.isArray(r.splits) ? r.splits as any[] : [];
+  /* ── THE ABSORBED TWINS ───────────────────────────────────────────────
+   *
+   * Loaded once, here, because two of the figures below are better on a row
+   * this one absorbed than on this one. See `lib/runs/twins.ts` for the
+   * argument; the short version is that the dedup picks the best row OVERALL
+   * and that is not the best row for every FIELD.
+   *
+   * `null` means the read FAILED and is not the same as "no twins". The
+   * elevation resolver refuses on null rather than letting the canonical
+   * row's weaker instrument win by default. */
+  const twins = await loadRunTwins(row.id);
+
+  /** The climb, ranked by instrument across this row and every twin. */
+  const elevationReading = resolveElevationGain({
+    elevGainFt: Number(r.elevGainFt) || null,
+    elevGainSource: (r.elevGainSource as string | null) ?? null,
+    source: (r.source as string | null) ?? null,
+    splits: null,
+    distanceMi: null,
+  }, twins);
+
+  /* ── WHICH SPLIT ARRAY DECOMPOSES THIS RUN · 2026-08-24 ────────────────
+   *
+   * `r.splits` stood here, which is the canonical row's array and routinely
+   * not the best one. 2026-08-24, a 4.02-mile run:
+   *
+   *     canonical (watch)        3 splits, 3.00 mi
+   *     twin      (apple_watch)  5 splits, 4.11 mi, with cadence and
+   *                              per-mile elevation the canonical lacks
+   *
+   * A quarter of the run had no split and the last mile he ran was missing
+   * entirely — the mile at 158 bpm, squarely Z4. True of 26 of the 71 merged
+   * runs here. The poster already asked `pickSplits`; run detail did not, so
+   * the phone's post-run screen and the run's own detail page drew different
+   * breakdowns of the same run.
+   *
+   * The trailing-stub arithmetic below still runs, on whichever array wins.
+   * The two questions are different and both are needed: `pickSplits` asks
+   * WHICH INSTRUMENT decomposed the run, `reconcileSplitsTotal` asks whether
+   * the array it chose has a fabricated tail on the end. */
+  const splitChoice = resolveSplits({
+    elevGainFt: null, elevGainSource: null,
+    source: (r.source as string | null) ?? null,
+    splits: Array.isArray(r.splits) ? (r.splits as any[]) : null,
+    distanceMi,
+  }, twins);
+  const rawSplits: any[] = (splitChoice?.splits as any[]) ?? [];
 
   /* ── does this array decompose THIS run? ──────────────────────────────
    *
@@ -869,6 +925,10 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const caloriesKcal = await resolveCalories({
     userId,
     stravaCalories: Number(r.calories) || null,
+    // The watch's own active-energy total. Present on 67 rows and read by
+    // nothing until 2026-08-24, which is why every watch run showed an
+    // estimate. See the tier-2 block in `resolveCalories`.
+    watchActiveKcal: Number(r.kcal) || null,
     startLocal: r.startLocal as string | null,
     // The calorie window. Reconciled, and elapsed when moving is refused —
     // a window sized off a disproved 2389s would have missed 48 minutes of
@@ -1138,26 +1198,37 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     // for sum-of-positive-deltas from splits. The splits sum is a
     // lower bound (it misses in-mile climbs that net to zero) but a
     // credible one · always better than a fictional number.
-    elev_gain_ft: (() => {
-      // 2026-05-31: barometric-drift sanity check (read-time fallback for
-      // rows ingested before the sanity check landed on the ingest path).
-      // New rows get `data.elevGainSource = 'recomputed'` stamped by the
-      // ingest writer when this same check fires there.
-      const raw = Number(r.elevGainFt) || null;
-      const distMi = Number(r.distanceMi) || 0;
-      if (raw == null || raw <= 0 || distMi <= 0) return raw;
-      const ftPerMi = raw / distMi;
-      if (ftPerMi <= 250) return raw;
-      const minSplits = Math.max(3, Math.floor(distMi * 0.75));
-      if (splits.length < minSplits) return raw;
-      const splitsPositive = splits.reduce((s, sp) => {
-        const c = Number(sp.elev_change_ft ?? 0);
-        return s + (c > 0 ? c : 0);
-      }, 0);
-      if (splitsPositive <= 0) return raw;
-      if (splitsPositive >= raw * 0.6) return raw;
-      return Math.round(splitsPositive);
-    })(),
+    /* ── THE CLIMB · ONE READER, 2026-08-24 ──────────────────────────────
+     *
+     * What stood here was a 250 ft/mi drift heuristic that recomputed the
+     * climb from the splits' own deltas. It was a reasonable guess and it
+     * was this surface's PRIVATE guess — the log read `data.elevGainFt`
+     * raw, and the poster asked `pickElevationGain`. One run, three
+     * readers, three numbers:
+     *
+     *     2026-08-23 · 11.01 mi
+     *       row          3195 ft  (source `watch`, an untrusted instrument)
+     *       log          3195 ft
+     *       run detail     57 ft  (the heuristic that used to live here)
+     *       poster         57 ft  (pickElevationGain over the twins)
+     *
+     * and on 2026-08-24 run detail printed 128 ft `gps_derived` while the
+     * absorbed twin held 13 ft from the watch's BAROMETER. That is the run
+     * the runner said he could promise was not 128 feet.
+     *
+     * The heuristic is gone rather than kept as a fallback. It answered a
+     * different question — "is this figure implausible" — and answering it
+     * per-surface is what produced three numbers. `pickElevationGain` ranks
+     * by INSTRUMENT, which is the question that actually decides, and it
+     * REFUSES when nothing trustworthy survives. A refusal is a correct
+     * answer here: an invented 3195 ft is worse than a blank, because the
+     * runner cannot tell it is invented. */
+    elev_gain_ft: elevationReading?.ft ?? null,
+    /* False when the surviving figure is `gps_derived` or `recomputed`.
+     * Rule one: a modelled number must never look measured, so a surface
+     * drawing this must carry the modelled mark when it is false. */
+    elev_gain_measured: elevationReading?.measured ?? false,
+    elev_gain_source: elevationReading?.source ?? null,
     // 2026-08-17 · terrain. Resolved from the SAME raw row, not from the
     // normalized fields above: `rawSplits` still carries whichever of the four
     // elevation-delta key names the importer wrote, and summing the negatives
@@ -1678,13 +1749,22 @@ async function computeWorkAverages(
 }
 
 /**
- * Resolve total calories burned for a run. Two-tier resolution:
+ * Resolve calories burned for a run. Four tiers, measurements before models:
  *
- *   1. Strava `data.calories` · trusted when present. Strava blends HR +
- *      power + weight + duration into a calibrated value · best signal.
- *   2. Sum of `active_energy` health samples in the run's window.
+ *   1. Strava `data.calories` · TOTAL energy (basal included). Strava blends
+ *      HR + power + weight + duration into a calibrated value.
+ *   2. `data.kcal` · the watch's own ACTIVE energy, straight off
+ *      HKLiveWorkoutBuilder. A measurement by the device that ran the
+ *      session. Added 2026-08-24 — see the block at the tier itself for why
+ *      it was missing and what it was costing.
+ *   3. Sum of `active_energy` health samples in the run's window.
  *      HealthKit ships these per ~15-second bucket. We sum any sample
  *      whose timestamp falls inside [start, start + movingTimeS].
+ *   4. An estimator. The only modelled tier, and now genuinely last.
+ *
+ * NOTE the tiers do not all mean the same thing: 1 is total energy, 2-4 are
+ * active. That is a real inconsistency, it is argued at tier 2, and closing
+ * it is a product decision rather than a bug fix.
  *
  * Returns null when neither path has data. Wrapped defensively so a
  * malformed start time or DB error degrades the field to null instead
@@ -1693,6 +1773,8 @@ async function computeWorkAverages(
 async function resolveCalories(args: {
   userId: string;
   stravaCalories: number | null;
+  /** `data.kcal` — the watch's own active-energy total, from HKLiveWorkoutBuilder. */
+  watchActiveKcal: number | null;
   startLocal: string | null;
   movingTimeS: number;
   distanceMi: number;
@@ -1703,7 +1785,51 @@ async function resolveCalories(args: {
     return Math.round(args.stravaCalories);
   }
 
-  // Tier 2 · sum of HK active_energy samples in the run's window
+  /* ── TIER 2 · THE WATCH'S OWN MEASUREMENT, 2026-08-24 ────────────────────
+   *
+   * A MODELLED NUMBER WAS LOOKING MEASURED, on every watch run in the app.
+   *
+   * The watch completion route writes active energy to `data.kcal` and its
+   * comment says "resolveCalories() tier 1 reads this and skips the estimator
+   * fallback when it's present". It did not. It read `data.calories`, which
+   * watch rows do not carry, so all 67 rows holding the watch's measurement
+   * fell through to the tier-3 ESTIMATOR and the runner was shown arithmetic
+   * where a measurement existed:
+   *
+   *     2026-08-24    measured  484 kcal    shown  368   -24%
+   *     2026-08-23    measured 1417 kcal    shown 1046   -26%
+   *     2026-08-16    measured 1807 kcal    shown 2202   +22%
+   *     2026-08-11    measured  774 kcal    shown  991   +28%
+   *
+   * The sign flips run to run, so it is not even a consistent bias the runner
+   * could learn to discount.
+   *
+   * ── WHAT IS FIXED HERE AND WHAT IS DELIBERATELY NOT ────────────────────
+   *
+   * FIXED, because it needs no product judgement: a measurement outranks an
+   * estimate of the same quantity. `data.kcal` is active energy and so are
+   * tiers 3 and 4, so this slots in above both and changes no row that
+   * currently resolves from Strava.
+   *
+   * NOT FIXED, because it is a product decision and it moves a number
+   * app-wide: this field is still TOTAL energy on the 65 rows that have
+   * Strava's `calories` and ACTIVE energy on the rest, and those differ by
+   * the runner's basal rate — measured at 1.21x to 1.38x across the 32 rows
+   * carrying both (see `energy.total-vs-active` in derived-registry.ts). So
+   * the column can still move ~30% between two runs for a reason the runner
+   * cannot see.
+   *
+   * My recommendation, for whoever rules on it: make the field ACTIVE energy
+   * and drop Strava's total from this ladder entirely. Three of the four
+   * tiers are already active energy, the tier-3 formula is an active-energy
+   * formula, and the alternative — making it total — requires inventing a
+   * basal rate the row does not carry. Not done here because it would change
+   * the calorie figure on every Strava-sourced run at once. */
+  if (args.watchActiveKcal != null && args.watchActiveKcal > 0) {
+    return Math.round(args.watchActiveKcal);
+  }
+
+  // Tier 3 · sum of HK active_energy samples in the run's window
   if (args.startLocal && args.movingTimeS > 0) {
     try {
       const startMs = Date.parse(args.startLocal);
@@ -1726,7 +1852,7 @@ async function resolveCalories(args: {
     } catch {/* fall through to estimator */}
   }
 
-  // Tier 3 · estimator (2026-06-01 · added because HK active_energy ingest
+  // Tier 4 · estimator (2026-06-01 · added because HK active_energy ingest
   // is undersampling · 1 sample per 7 days instead of ~180 per run).
   //
   // Formula · kcal = distance_mi × weight_kg × 1.04 × hr_multiplier.

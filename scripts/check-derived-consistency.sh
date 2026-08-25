@@ -373,6 +373,7 @@ lib/watch/heat.ts :: A PRESCRIPTION, NOT AN OBSERVATION. Its distanceMi/duration
 lib/adaptation/load.ts :: Sums training load over canonical rows. An aggregate, never a per-run figure.
 lib/coach/calibration.ts :: Reads timeMoving for a calibration trend. Comparative; same batch.
 lib/coach/easy-discipline.ts :: Reads the clock for an easy-day effort distribution. Comparative; same batch.
+lib/runs/twins.ts :: A READER MODULE, in the same sense as lib/runs/coherence.ts. It holds the run's distance beside the twins' split arrays precisely in order to RECONCILE them — that is the call to pickSplits, and it is the fix for run detail drawing three miles of a four-mile run. A reconciler has to name the members of the family it reconciles, and a lint that flagged its own vocabulary could not describe what it checks. If this file ever starts CHOOSING a clock or computing a pace, that is a real finding and this entry is where the argument lives.
 lib/coach/pacing-discipline.ts :: Parses avgPaceMinPerMi in SQL for a pacing-discipline TREND. Comparative within one query, so a consistent elapsed basis does not skew it. Already on the run-shape lint allowlist for the same batch.
 lib/coach/recovery-brief.ts :: SQL-side moving-time SUM over a recovery window. Comparative within one query and never printed as a per-run figure; queued behind the surfaces that print numbers.
 lib/coach/recovery-phase.ts :: SQL-side moving-time sum, same shape and same queue.

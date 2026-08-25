@@ -39,8 +39,11 @@ import { describe, it, expect } from 'vitest';
 import {
   distanceConserved, timeConserved, paceMatchesOwnClock, surfacesAgree,
   splitsSumToDistance, zonesSumTo100, phasesWithinRun,
+  absoluteFiguresAgree, modelledNeverLooksMeasured, splitAverageMatchesMeasured,
+  splitsCoverTheRun, ABSOLUTE_FIGURES,
   type Finding, type RunTruth, type SurfaceReading,
 } from './laws';
+import { ELEVATION_TRUST, ELEVATION_MEASURED_FLOOR } from '@/lib/runs/elevation';
 import { RUN_SHAPES, MIN_SHAPES, type RunShape } from './shapes';
 import { readAllSurfaces, UNCOVERED } from './surfaces';
 import { runFacts } from '@/lib/runs/run-facts';
@@ -86,6 +89,20 @@ const EXEMPT: Record<string, string> = {
  * this comfortably; a sweep that silently stopped reading rows does not.
  */
 const MIN_ASSERTIONS = 200;
+
+/**
+ * The smallest number of distinct FIGURES this gate may cover, and the
+ * smallest number of cross-surface comparisons it may make, before a clean
+ * report means anything.
+ *
+ * These exist because `MIN_ASSERTIONS` did not catch the thing it was written
+ * to catch. It was green for months over four laws and three figures —
+ * distance, clock, pace — while elevation was wrong on seven of eight
+ * production runs and the calorie figure was an estimate on every watch run.
+ * A floor on the VOLUME of checking says nothing about its BREADTH.
+ */
+const MIN_FIGURES = 6;
+const MIN_FIGURE_COMPARISONS = 40;
 
 let assertions = 0;
 /** `n` is how many things this law actually looked at. Zero counts as zero. */
@@ -168,13 +185,62 @@ function sweepShape(shape: RunShape): { findings: Finding[]; readings: SurfaceRe
   findings.push(...apply(n, () => paceMatchesOwnClock(shape.id, truth, readings)));
   findings.push(...apply(n, () => surfacesAgree(shape.id, truth, readings)));
 
+  // HOP 3b · EVERY FIGURE THAT IS NOT A CLOCK.
+  //
+  // Separate from the block above because the QUESTION is different. Time and
+  // pace may legitimately differ between two screens — the poster prints the
+  // elapsed clock, run detail prints the moving one, on purpose — and laws 2
+  // and 4 encode that allowed pair. Elevation, heart rate, cadence,
+  // temperature and calories have no such pair. One run, one climb, one
+  // average heart rate, on every screen that prints one.
+  const abs = absoluteFiguresAgree(shape.id, readings);
+  assertions += abs.comparisons;
+  figureComparisons += abs.comparisons;
+  findings.push(...abs.findings);
+
+  // Rule one, on the figure that most often breaks it.
+  const elevSource = (shape.canonical.elevGainSource as string | null) ?? null;
+  findings.push(...apply(readings.length, () => modelledNeverLooksMeasured(
+    shape.id, readings, TRUSTED_ELEVATION_SOURCES,
+    Object.fromEntries(readings.map((r) => [r.surface, elevSource])),
+  )));
+
   // HOP 4 · THE PARTS.
   findings.push(...apply(shape.splitDistancesMi?.length ?? 0, () => splitsSumToDistance(shape.id, truth, shape.splitDistancesMi ?? null)));
   findings.push(...apply(shape.zones ? 1 : 0, () => zonesSumTo100(shape.id, shape.zones ?? null, (shape.canonical.avgHr as number | null) ?? null)));
   findings.push(...apply(shape.phases?.length ?? 0, () => phasesWithinRun(shape.id, truth, shape.phases ?? null)));
 
+  // HOP 4b · THE BREAKDOWN, against the run and against the measurement.
+  //
+  // `splitsCoverTheRun` catches an array that stops short — 2026-08-24 drew
+  // three miles of a 4.02-mile run. `splitAverageMatchesMeasured` catches the
+  // 141: a re-average of that array landing somewhere the measured whole-run
+  // figure is not.
+  for (const r of readings) {
+    findings.push(...apply(r.splitDistancesMi?.length ?? 0,
+      () => splitsCoverTheRun(shape.id, r.surface, truth, r.splitDistancesMi)));
+    findings.push(...apply(r.splitHrs?.length ?? 0,
+      () => splitAverageMatchesMeasured(shape.id, r.surface, r.splitHrs, r.splitDistancesMi,
+        (shape.canonical.avgHr as number | null) ?? null)));
+  }
+
   return { findings, readings };
 }
+
+/**
+ * Elevation sources that represent an actual instrument, derived from the
+ * app's own trust table rather than restated here. Restating it is how two
+ * constants that agree today disagree after the next edit — the same argument
+ * as `MAX_PAUSED_SHARE` being re-exported rather than redeclared.
+ */
+const TRUSTED_ELEVATION_SOURCES: ReadonlySet<string> = new Set(
+  Object.entries(ELEVATION_TRUST)
+    .filter(([, t]) => t >= ELEVATION_MEASURED_FLOOR)
+    .map(([k]) => k),
+);
+
+/** How many cross-surface comparisons of a non-clock figure the sweep made. */
+let figureComparisons = 0;
 
 /* ══════════════════════════════════════════════════════════════════════════
  * POSITIVE CONTROLS
@@ -245,6 +311,66 @@ const CONTROLS: Control[] = [
     law: 'DISTANCE_MISSING',
     run: () => distanceConserved('control', TRUTH, [{ ...good, distanceMi: null }]),
   },
+
+  /* ── THE 2026-08-24 FAMILY · one per real defect ────────────────────────
+   *
+   * Each of these is a corruption that WAS on screen, planted here so the
+   * laws that now catch it are proved to still catch it. A gate whose laws
+   * quietly stop firing reports the same clean as a gate over clean data. */
+  {
+    name: 'the log saying 3195 ft while run detail said 57 for one run',
+    law: 'FIGURE_DISAGREES',
+    run: () => absoluteFiguresAgree('control', [
+      { ...good, surface: 'log', elevGainFt: 3195 },
+      { ...good, surface: 'run detail', elevGainFt: 57 },
+    ]).findings,
+  },
+  {
+    name: 'run detail printing 128 ft where the absorbed twin measured 13',
+    law: 'FIGURE_DISAGREES',
+    run: () => absoluteFiguresAgree('control', [
+      { ...good, surface: 'run detail', elevGainFt: 128 },
+      { ...good, surface: 'poster', elevGainFt: 13 },
+    ]).findings,
+  },
+  {
+    name: 'the watch measured 484 kcal and run detail estimated 368',
+    law: 'FIGURE_DISAGREES',
+    run: () => absoluteFiguresAgree('control', [
+      { ...good, surface: 'run detail', caloriesKcal: 368 },
+      { ...good, surface: 'poster', caloriesKcal: 484 },
+    ]).findings,
+  },
+  {
+    name: 'two screens disagreeing about the average heart rate',
+    law: 'FIGURE_DISAGREES',
+    run: () => absoluteFiguresAgree('control', [
+      { ...good, surface: 'run detail', avgHrBpm: 139 },
+      { ...good, surface: 'poster', avgHrBpm: 141 },
+    ]).findings,
+  },
+  {
+    name: 'a GPS-derived climb presented as a measurement',
+    law: 'MODELLED_LOOKS_MEASURED',
+    run: () => modelledNeverLooksMeasured('control',
+      [{ ...good, surface: 'run detail', elevGainFt: 128, elevGainMeasured: true }],
+      TRUSTED_ELEVATION_SOURCES, { 'run detail': 'gps_derived' }),
+  },
+  {
+    name: 'THE 141 · a plain mean over a partial final mile, 139 measured',
+    law: 'SPLIT_AVERAGE_DRIFTS',
+    run: () => splitAverageMatchesMeasured('control', 'run detail',
+      [127, 140, 138, 144, 158],
+      // Every split declared a whole mile — which is what an UNWEIGHTED mean
+      // amounts to, and it is exactly the arithmetic that produced 141.
+      [1, 1, 1, 1, 1], 139),
+  },
+  {
+    name: 'a breakdown covering three miles of a four-mile run',
+    law: 'SPLITS_MISS_PART_OF_THE_RUN',
+    run: () => splitsCoverTheRun('control', 'run detail',
+      { distanceMi: 4.02, elapsedSec: 2065, movingSec: null }, [1, 1, 1]),
+  },
 ];
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -288,6 +414,50 @@ const QUIET: Array<{ name: string; run: () => Finding[] }> = [
     name: 'an elite pace · the laws have no opinion about human speed',
     run: () => paceMatchesOwnClock('quiet', { distanceMi: 10, elapsedSec: 3000, movingSec: null },
       [{ surface: 'poster', distanceMi: 10, timeSec: 3000, paceSecPerMi: 300 }]),
+  },
+  {
+    // THE ALLOWED PAIR, encoded rather than flattened. The poster prints the
+    // elapsed clock and run detail prints the moving one, deliberately, and
+    // both read the same reconciler to get there. That is a labelled product
+    // difference, not a divergence, and the figure law must not see it —
+    // which is why the clock is not in ABSOLUTE_FIGURES.
+    name: 'the poster on elapsed beside run detail on moving · the intended pair',
+    run: () => absoluteFiguresAgree('quiet', [
+      { surface: 'poster', distanceMi: 6, timeSec: 3600, paceSecPerMi: 600, avgHrBpm: 148, elevGainFt: 120 },
+      { surface: 'run detail', distanceMi: 6, timeSec: 3240, paceSecPerMi: 540, avgHrBpm: 148, elevGainFt: 120 },
+    ]).findings,
+  },
+  {
+    name: 'a surface that simply does not draw a figure · absence is not disagreement',
+    run: () => absoluteFiguresAgree('quiet', [
+      { surface: 'poster', distanceMi: 6, timeSec: 3600, paceSecPerMi: 600, caloriesKcal: 620 },
+      { surface: 'log', distanceMi: 6, timeSec: 3600, paceSecPerMi: 600 },
+    ]).findings,
+  },
+  {
+    name: 'a GPS-derived climb correctly carrying the modelled mark',
+    run: () => modelledNeverLooksMeasured('quiet',
+      [{ surface: 'run detail', distanceMi: 6, timeSec: 3600, paceSecPerMi: 600, elevGainFt: 128, elevGainMeasured: false }],
+      TRUSTED_ELEVATION_SOURCES, { 'run detail': 'gps_derived' }),
+  },
+  {
+    name: 'a barometric climb presented as measured · because it is one',
+    run: () => modelledNeverLooksMeasured('quiet',
+      [{ surface: 'run detail', distanceMi: 6, timeSec: 3600, paceSecPerMi: 600, elevGainFt: 13, elevGainMeasured: true }],
+      TRUSTED_ELEVATION_SOURCES, { 'run detail': 'raw' }),
+  },
+  {
+    // The 141 shape, WEIGHTED. Same five heart rates, same run, the fifth
+    // split declared at its real 0.11 mi. The weighted mean is 139.0 and the
+    // law must be silent — otherwise the fix has no way to prove itself.
+    name: 'the same five splits, weighted by their real lengths, land on 139',
+    run: () => splitAverageMatchesMeasured('quiet', 'run detail',
+      [127, 140, 138, 144, 158], [1, 1, 1, 1, 0.111], 139),
+  },
+  {
+    name: 'a breakdown with a trailing partial mile · that is what a run looks like',
+    run: () => splitsCoverTheRun('quiet', 'run detail',
+      { distanceMi: 4.02, elapsedSec: 2065, movingSec: null }, [1, 1, 1, 1, 0.02]),
   },
 ];
 
@@ -335,6 +505,16 @@ describe('conservation · a number\'s journey through the pipeline', () => {
 
     console.log(`\n=== PUSHED ${RUN_SHAPES.length} RUN SHAPES · ${assertions} law applications ===`);
     console.log(`(${observed} carry a canonical row observed in production rather than computed)`);
+    // PRINTED, not merely asserted. A floor that only ever appears as a green
+    // tick is a floor nobody notices has been quietly lowered — check the
+    // artefact, not the exit code.
+    console.log(
+      `\n--- COVERAGE · ${ABSOLUTE_FIGURES.length} absolute figures ` +
+      `(${ABSOLUTE_FIGURES.map((f) => f.label).join(', ')})` +
+      `\n              ${figureComparisons} cross-surface comparisons, floor ${MIN_FIGURE_COMPARISONS}` +
+      `\n              plus distance, clock and pace, which carry an ALLOWED per-surface` +
+      `\n              difference (poster prints elapsed, run detail prints moving) and are` +
+      `\n              policed by timeConserved / surfacesAgree instead ---`);
     console.log('\n--- what the poster prints ---');
     for (const line of posters) console.log(line);
 
@@ -376,6 +556,38 @@ describe('conservation · a number\'s journey through the pipeline', () => {
       .toBeGreaterThanOrEqual(MIN_SHAPES);
     expect(assertions, 'too few law applications — the sweep did not actually run')
       .toBeGreaterThanOrEqual(MIN_ASSERTIONS);
+
+    /* ── THE FIGURE FLOOR · added 2026-08-24 ────────────────────────────────
+     *
+     * The assertion floor above counts law APPLICATIONS, and it was satisfied
+     * for months by four laws over three figures. It would have stayed
+     * satisfied while elevation, heart rate, cadence, temperature and
+     * calories went entirely unchecked — which is what was happening, and
+     * elevation was wrong on seven of eight production runs the whole time.
+     *
+     * So the floor is stated in the two dimensions that actually matter:
+     * how many FIGURES this gate knows about, and how many cross-surface
+     * COMPARISONS it made. Both must be non-trivial or the sweep is decorative.
+     *
+     * MIN_FIGURE_COMPARISONS is deliberately well below what a healthy run
+     * produces. It is a smoke alarm for "the readings arrived empty", not a
+     * coverage target to be gamed upward. */
+    expect(ABSOLUTE_FIGURES.length, 'the gate has stopped covering figures')
+      .toBeGreaterThanOrEqual(MIN_FIGURES);
+    expect(figureComparisons, 'no figure was compared across two surfaces — the sweep read nothing')
+      .toBeGreaterThanOrEqual(MIN_FIGURE_COMPARISONS);
+
+    /* ── THE SURFACE FLOOR ──────────────────────────────────────────────────
+     *
+     * Four screens describe a run. A sweep that lost one of them and reported
+     * clean is the failure this file exists to name, and losing one is a
+     * one-line edit in `readAllSurfaces`. */
+    const surfacesSeen = new Set<string>();
+    for (const shape of RUN_SHAPES) {
+      for (const r of readAllSurfaces(shape, shape.canonical)) surfacesSeen.add(r.surface);
+    }
+    expect([...surfacesSeen].sort(), 'a surface dropped out of the sweep')
+      .toEqual(['log', 'poster', 'recap', 'run detail']);
 
     // THE GATE. Every finding is either fixed or named. Nothing is quiet.
     expect(live.map((f) => `${key(f)}${f.surface ? ' · ' + f.surface : ''} — ${f.saw}`))

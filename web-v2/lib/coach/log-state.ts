@@ -19,6 +19,7 @@ import {
   type MergedTwin, type RaceForMatch, type PlanWorkoutLite, type LogBadge,
 } from '@/lib/runs/log-enrich';
 import { runFacts } from '@/lib/runs/run-facts';
+import { pickElevationGain } from '@/lib/runs/elevation';
 import { fmtPace, fmtClock } from '@/lib/format/run';
 
 export interface LogRun {
@@ -230,10 +231,18 @@ export async function loadLogState(
   const loadedRowIds = rows.map((r: any) => String(r.row_id));
   const [twinRows, allPlanWorkoutRows, raceRows] = await Promise.all([
     loadedRowIds.length === 0 ? Promise.resolve({ rows: [] as any[] }) : pool.query(
-      `SELECT data->>'mergedIntoId' AS canonical_id,
-              data->>'name'         AS name,
-              data->>'source'       AS source,
-              data->>'workoutType'  AS workout_type
+      // 2026-08-24 · the twin's ELEVATION joins the twin's name here. The
+      // absorbed row routinely holds a barometric climb where the canonical
+      // holds a GPS-derived one — 13 ft against 128 on 2026-08-24 — and the
+      // log was reading `data.elevGainFt` off the canonical raw. Same query,
+      // two more columns, so the log can ask `pickElevationGain` the same
+      // question the poster asks.
+      `SELECT data->>'mergedIntoId'    AS canonical_id,
+              data->>'name'            AS name,
+              data->>'source'          AS source,
+              data->>'workoutType'     AS workout_type,
+              data->>'elevGainFt'      AS elev_gain_ft,
+              data->>'elevGainSource'  AS elev_gain_source
          FROM runs
         WHERE user_uuid = $1
           AND data->>'mergedIntoId' = ANY($2::text[])`,
@@ -265,6 +274,8 @@ export async function loadLogState(
       name: t.name ?? null,
       source: t.source ?? null,
       workoutType: t.workout_type ?? null,
+      elevGainFt: t.elev_gain_ft == null ? null : Number(t.elev_gain_ft),
+      elevGainSource: t.elev_gain_source ?? null,
     });
     twinsByCanonical.set(String(t.canonical_id), arr);
   }
@@ -404,7 +415,21 @@ export async function loadLogState(
       avg_hr: Number(a.avgHr) || null,
       max_hr: Number(a.maxHr) || null,
       cadence: Number(a.avgCadence) || null,
-      elev_gain_ft: Number(a.elevGainFt) || null,
+      /* ── THE CLIMB · ONE READER, 2026-08-24 ─────────────────────────────
+       *
+       * `Number(a.elevGainFt)` stood here and printed whatever instrument
+       * happened to write the canonical row. On 2026-08-23 that was 3195 ft
+       * from a source labelled `watch`, against barometric twins reading 57
+       * and 94 — and run detail showed 57 for the same run on the same day.
+       *
+       * `pickElevationGain` ranks by instrument and REFUSES when nothing
+       * trustworthy survives. Null is the correct answer for an untrusted
+       * figure: the log's climb column simply stays blank rather than
+       * carrying a number the runner cannot check. */
+      elev_gain_ft: pickElevationGain([
+        { ft: Number(a.elevGainFt) || null, source: (a.elevGainSource as string | null) ?? null, ingest: a.source ?? null },
+        ...twins.map((t) => ({ ft: t.elevGainFt ?? null, source: t.elevGainSource ?? null, ingest: t.source })),
+      ])?.ft ?? null,
       workoutType,
       phaseLabel: date ? phaseFor(date) : null,
       shoeName,

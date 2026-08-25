@@ -48,7 +48,65 @@ export interface SurfaceReading {
   paceSecPerMi: number | null;
   /** The literal strings the runner sees, when the surface formats them. */
   printed?: { distance?: string | null; time?: string | null; pace?: string | null };
+
+  /* ── THE ABSOLUTE FIGURES · added 2026-08-24 ──────────────────────────────
+   *
+   * Everything below has exactly ONE right answer per run. Unlike the clock,
+   * where a surface may legitimately prefer moving over elapsed, there is no
+   * defensible reason for two screens to print two different climbs or two
+   * different average heart rates for the same session — and yet:
+   *
+   *   ELEVATION  2026-08-23 · the log said 3195 ft, run detail said 57, the
+   *              poster said 57, the recap fed 3195 into the terrain model
+   *              that judges how hard the run was.
+   *   AVG HR     2026-08-24 · the row measured 139 bpm and the post-run
+   *              panel's own arithmetic over the split array produced 141.
+   *   CALORIES   2026-08-24 · the watch measured 484 kcal and run detail
+   *              printed an estimate of 368.
+   *
+   * `absoluteFiguresAgree` is the law over this block. Add a figure here and
+   * it is policed automatically; that is the point of one shared shape rather
+   * than a law per field. */
+  avgHrBpm?: number | null;
+  maxHrBpm?: number | null;
+  cadenceSpm?: number | null;
+  tempF?: number | null;
+  elevGainFt?: number | null;
+  caloriesKcal?: number | null;
+  /**
+   * Whether the surface would present its elevation as MEASURED. False means
+   * the figure came from GPS altitude arithmetic or our own recomputation and
+   * must carry the modelled mark. Rule one lives on this field.
+   */
+  elevGainMeasured?: boolean | null;
+  /** Per-split distances the surface would draw, when it draws a breakdown. */
+  splitDistancesMi?: number[] | null;
+  /** Per-split heart rates the surface would draw, aligned with the above. */
+  splitHrs?: Array<number | null> | null;
 }
+
+/**
+ * THE FIGURES WITH ONE RIGHT ANSWER, and the tolerance each is printed to.
+ *
+ * Deliberately NOT a list that includes time or pace. Those two have a real,
+ * intended per-surface difference — the poster prints the elapsed clock and
+ * run detail prints the moving clock, on purpose — and they are policed by
+ * `timeConserved` and `surfacesAgree`, which know about that pair. Flattening
+ * them into this list would either force the poster to lie or force this law
+ * to be so loose it caught nothing.
+ *
+ * The tolerance is the display quantum: these are all printed as integers
+ * except temperature, so anything more than half a unit apart is two
+ * different numbers rather than two roundings of one.
+ */
+export const ABSOLUTE_FIGURES = [
+  { key: 'avgHrBpm', label: 'average heart rate', unit: 'bpm', tol: 0.5 },
+  { key: 'maxHrBpm', label: 'max heart rate', unit: 'bpm', tol: 0.5 },
+  { key: 'cadenceSpm', label: 'cadence', unit: 'spm', tol: 0.5 },
+  { key: 'tempF', label: 'temperature', unit: 'F', tol: 0.5 },
+  { key: 'elevGainFt', label: 'elevation gain', unit: 'ft', tol: 0.5 },
+  { key: 'caloriesKcal', label: 'calories', unit: 'kcal', tol: 0.5 },
+] as const satisfies ReadonlyArray<{ key: keyof SurfaceReading; label: string; unit: string; tol: number }>;
 
 /** The run as it was actually performed. The harness's ground truth. */
 export interface RunTruth {
@@ -311,6 +369,173 @@ export function phasesWithinRun(
       `${phases.length} phases summing to ${clock(dur)} inside a ${clock(truth.elapsedSec)} run`));
   }
   return out;
+}
+
+/**
+ * LAW 8 · A FIGURE WITH ONE RIGHT ANSWER HAS ONE VALUE ON EVERY SCREEN.
+ *
+ * The generalisation of law 4 to everything that is not a clock. Elevation,
+ * heart rate, cadence, temperature and calories admit no per-surface
+ * preference: there is one climb, and every screen that prints one prints it.
+ *
+ * Every figure in `ABSOLUTE_FIGURES` is checked, so covering a new one is an
+ * entry in that list rather than a new law. That matters more than it looks:
+ * the reason this class of defect kept coming back is that each fix was
+ * written for one field, so the next field started from zero.
+ *
+ * A surface that does not print a figure at all contributes nothing here.
+ * Absence is not disagreement — the log has no calories column and that is a
+ * layout decision, not a divergence.
+ *
+ * ── THE RETURNED COUNT ──────────────────────────────────────────────────
+ * The caller needs to know how many COMPARISONS were made, not how many
+ * findings came back, because a floor stated in findings is a floor that
+ * passes when the harness reads nothing. `comparisons` is that number.
+ */
+export function absoluteFiguresAgree(
+  shape: string,
+  readings: SurfaceReading[],
+): { findings: Finding[]; comparisons: number } {
+  const out: Finding[] = [];
+  let comparisons = 0;
+  for (const fig of ABSOLUTE_FIGURES) {
+    const seen = readings
+      .map((r) => ({ surface: r.surface, v: r[fig.key] as number | null | undefined }))
+      .filter((x): x is { surface: string; v: number } => typeof x.v === 'number' && Number.isFinite(x.v));
+    if (seen.length < 2) continue;
+    const base = seen[0];
+    for (let i = 1; i < seen.length; i++) {
+      comparisons++;
+      const other = seen[i];
+      if (Math.abs(base.v - other.v) <= fig.tol) continue;
+      out.push(f('FIGURE_DISAGREES', shape, `${base.surface} vs ${other.surface}`,
+        `${fig.label} reads ${round1(base.v)} ${fig.unit} on ${base.surface}` +
+        ` and ${round1(other.v)} ${fig.unit} on ${other.surface}`));
+    }
+  }
+  return { findings: out, comparisons };
+}
+
+/**
+ * LAW 9 · A MODELLED NUMBER MUST NEVER LOOK MEASURED.
+ *
+ * Rule one, made checkable, on the one figure in this app that most often
+ * breaks it. A climb from `gps_derived` or `recomputed` is arithmetic over the
+ * weakest axis of a GPS fix — it wanders tens of feet while the runner stands
+ * still — and on this database it runs 2.3x the barometer. It may be shown.
+ * It may not be shown as a measurement.
+ *
+ * A surface that prints an elevation and declares it measured, when the
+ * instrument behind it was not one, is the finding. A surface that prints no
+ * elevation, or prints one and marks it modelled, is correct.
+ */
+export function modelledNeverLooksMeasured(
+  shape: string,
+  readings: SurfaceReading[],
+  trustedSources: ReadonlySet<string>,
+  sourceBySurface: Record<string, string | null | undefined>,
+): Finding[] {
+  const out: Finding[] = [];
+  for (const r of readings) {
+    if (r.elevGainFt == null) continue;
+    const src = sourceBySurface[r.surface];
+    if (src == null) continue;
+    const isMeasured = trustedSources.has(src);
+    if (r.elevGainMeasured === true && !isMeasured) {
+      out.push(f('MODELLED_LOOKS_MEASURED', shape, r.surface,
+        `${Math.round(r.elevGainFt)} ft from \`${src}\` presented as measured`));
+    }
+  }
+  return out;
+}
+
+/**
+ * LAW 10 · A RE-AVERAGED SUBSET AGREES WITH THE MEASURED WHOLE.
+ *
+ * THE 141. On 2026-08-24 the row carried a measured whole-run average of 139
+ * bpm. The post-run panel took a plain mean of the five per-mile heart rates
+ * and drew 141 beside it. The fifth "mile" was 0.11 of one — the runner's
+ * hardest tenth, 158 bpm — and counting it as a whole mile is the entire
+ * difference.
+ *
+ * The law is not "never re-average". Thirds and halves are real readings the
+ * wire does not carry and they have to be computed somewhere. The law is that
+ * the arithmetic must be WEIGHTED, and the test of that is simple: average the
+ * whole array the way the surface averages a subset, and it must land on the
+ * measured figure. If it does not, the weighting is wrong, and every subset
+ * drawn with it is wrong by an amount nobody can see.
+ *
+ * The band is 2 bpm. Per-split heart rates are stored as integers and a
+ * genuinely weighted mean over them can round a point either way; three points
+ * apart is a different arithmetic, not a rounding.
+ */
+export const SPLIT_AVERAGE_TOL_BPM = 2;
+
+export function splitAverageMatchesMeasured(
+  shape: string,
+  surface: string,
+  splitHrs: Array<number | null> | null | undefined,
+  splitDistancesMi: number[] | null | undefined,
+  measuredAvgHr: number | null,
+): Finding[] {
+  if (measuredAvgHr == null || !Array.isArray(splitHrs) || splitHrs.length === 0) return [];
+
+  // The UNWEIGHTED mean — the arithmetic the defect used.
+  const usable = splitHrs
+    .map((hr, i) => ({ hr, w: splitDistancesMi?.[i] ?? 1 }))
+    .filter((x): x is { hr: number; w: number } => typeof x.hr === 'number' && x.hr > 0);
+  if (usable.length === 0) return [];
+
+  const plain = usable.reduce((s, x) => s + x.hr, 0) / usable.length;
+  const wSum = usable.reduce((s, x) => s + x.w, 0);
+  const weighted = wSum > 0 ? usable.reduce((s, x) => s + x.hr * x.w, 0) / wSum : plain;
+
+  // Only a finding when the WEIGHTED mean misses the measurement. A plain mean
+  // that misses is expected — that is what the weighting is for — and flagging
+  // it would report the disease as the symptom on every run with a partial
+  // final mile, which is most of them.
+  if (Math.abs(weighted - measuredAvgHr) > SPLIT_AVERAGE_TOL_BPM) {
+    return [f('SPLIT_AVERAGE_DRIFTS', shape, surface,
+      `the split array averages to ${Math.round(weighted)} bpm weighted` +
+      ` (${Math.round(plain)} unweighted) against a measured ${measuredAvgHr} bpm`)];
+  }
+  return [];
+}
+
+/**
+ * LAW 11 · THE BREAKDOWN DECOMPOSES THE RUN IT SITS UNDER.
+ *
+ * Law 5 asks whether the splits sum to the distance. This asks the question
+ * the runner asks, which is slightly different: does the array I am looking at
+ * account for the run I did? 2026-08-24 drew three miles of a 4.02-mile run
+ * and the missing mile was the hard one.
+ *
+ * Separate from law 5 because the failure is the opposite direction — law 5
+ * catches an array that overshoots, this catches one that stops short — and
+ * because the fix is elsewhere: an overshoot is bad derivation, a shortfall is
+ * a reader that chose the wrong array.
+ */
+export function splitsCoverTheRun(
+  shape: string,
+  surface: string,
+  truth: RunTruth,
+  splitDistancesMi: number[] | null | undefined,
+): Finding[] {
+  if (!Array.isArray(splitDistancesMi) || splitDistancesMi.length === 0) return [];
+  const sum = splitDistancesMi.reduce((s, v) => s + v, 0);
+  const shortfall = truth.distanceMi - sum;
+  // A quarter mile is a trailing partial or GPS rounding. More is a mile the
+  // breakdown does not have.
+  if (shortfall > 0.25) {
+    return [f('SPLITS_MISS_PART_OF_THE_RUN', shape, surface,
+      `${splitDistancesMi.length} splits account for ${sum.toFixed(2)} of ${truth.distanceMi.toFixed(2)} mi` +
+      ` — ${shortfall.toFixed(2)} mi of the run has no split`)];
+  }
+  return [];
+}
+
+function round1(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

@@ -551,6 +551,104 @@ struct RunSplit: Decodable, Identifiable, Equatable {
     let distanceMi: Double?
 }
 
+// MARK: - Averaging a split array
+
+/// AVERAGING A SLICE OF A RUN, BY DISTANCE AND NOT BY ROW COUNT.
+///
+/// ─────────────────────────────────────────────────────────────────────────
+/// THE NUMBER THIS EXISTS TO STOP
+///
+/// A run's last split is a fragment. 2026-08-24 is 4.02 miles: four splits of
+/// a mile and one of 0.11. That fragment was the runner's hardest tenth —
+/// 158 bpm, squarely Z4 — and every average on the post-run panel counted it
+/// as a whole mile alongside a 127 bpm opener.
+///
+/// A plain mean of that array is 141 bpm. The run's MEASURED whole-run
+/// average, off the watch, is 139. Both appeared on the same screen, and the
+/// 141 had no instrument behind it at all — it was an artefact of dividing by
+/// five when the fifth entry was worth a ninth of the others.
+///
+/// ─────────────────────────────────────────────────────────────────────────
+/// WHAT THIS IS AND IS NOT FOR
+///
+/// It is for SUBSETS the wire does not carry a figure for: the first half
+/// against the second, the thirds, the work phase. Those genuinely have to be
+/// computed on device.
+///
+/// It is NOT for the run's own average. That is `detail.hr_avg` and
+/// `detail.pace_s_per_mi`, measured and reconciled server-side, and
+/// recomputing them here from the splits is how one run gets two averages.
+extension Array where Element == RunSplit {
+
+    /// Each split's weight. Its real length when the wire carries one.
+    ///
+    /// When NO split in the slice carries a distance the weights all collapse
+    /// to 1 and this degrades to a plain mean — which is honest, because with
+    /// no distances there is nothing to weight BY, and refusing to draw a
+    /// drift row over a source that never recorded mile lengths would remove
+    /// a true reading rather than correct a false one.
+    ///
+    /// A MIXED slice — some splits with a distance, some without — takes 1.0
+    /// for the missing ones. That is the only assumption available and it is
+    /// the right one: a split array is per-mile by construction, so an entry
+    /// with no stated length is a whole mile. The fragment that caused the
+    /// defect is the one that DOES state its length.
+    private func weights() -> [Double] {
+        // `Swift.max`, spelled out: inside an Array extension a bare `max`
+        // resolves to `Sequence.max()`, which takes no arguments.
+        map { Swift.max(0, $0.distanceMi ?? 1.0) }
+    }
+
+    /// Distance-weighted mean heart rate across this slice, rounded.
+    /// Nil when no split in the slice carries a usable heart rate.
+    var weightedAvgHr: Int? {
+        let w = weights()
+        var num = 0.0, den = 0.0
+        for (i, s) in enumerated() {
+            guard let hr = s.hr, hr > 0, w[i] > 0 else { continue }
+            num += Double(hr) * w[i]
+            den += w[i]
+        }
+        guard den > 0 else { return nil }
+        return Int((num / den).rounded())
+    }
+
+    /// Distance-weighted mean pace across this slice, in seconds per mile.
+    ///
+    /// Note this is a weighted mean of PACES, which is not the same as the
+    /// slice's total time over its total distance — pace is a reciprocal, so
+    /// the two differ. Weighting by distance is the correct one of the two
+    /// here: it is exactly total-time-over-total-distance rewritten, because
+    /// each split's time is its pace times its distance.
+    var weightedAvgPaceSec: Int? {
+        let w = weights()
+        var num = 0.0, den = 0.0
+        for (i, s) in enumerated() {
+            guard let p = RunSplit.parsePaceSeconds(s.pace), p > 0, w[i] > 0 else { continue }
+            num += Double(p) * w[i]
+            den += w[i]
+        }
+        guard den > 0 else { return nil }
+        return Int((num / den).rounded())
+    }
+}
+
+extension RunSplit {
+    /// "9:18" -> 558. Nil on anything that is not mm:ss.
+    ///
+    /// Lives here rather than in each panel because three views parsed this
+    /// string with three private copies of the same function, and a split
+    /// pace that failed to parse simply dropped out of one average and not
+    /// another.
+    static func parsePaceSeconds(_ s: String?) -> Int? {
+        guard let s, !s.isEmpty else { return nil }
+        let parts = s.split(separator: ":")
+        guard parts.count == 2,
+              let m = Int(parts[0]), let sec = Int(parts[1]) else { return nil }
+        return m * 60 + sec
+    }
+}
+
 struct HRZonePcts: Decodable {
     let z1: Double
     let z2: Double

@@ -35,6 +35,18 @@ export interface MergedTwin {
   /** Raw data.workoutType from the twin (Strava numeric '1'/'3' or a
    *  plan-stamped string like 'race'/'tempo'). */
   workoutType: string | null;
+  /**
+   * The twin's own climb and the instrument that produced it. Optional
+   * because two of the three loaders predate the field; a loader that omits
+   * them simply contributes no elevation candidate, which is the honest
+   * shape rather than a zero.
+   *
+   * These are here because the absorbed row is routinely the BETTER
+   * elevation source: the watch's barometer lands on the twin while the
+   * canonical carries GPS arithmetic. 13 ft against 128 on 2026-08-24.
+   */
+  elevGainFt?: number | null;
+  elevGainSource?: string | null;
 }
 
 /** Minimal race shape for run↔race matching (from races.meta). */

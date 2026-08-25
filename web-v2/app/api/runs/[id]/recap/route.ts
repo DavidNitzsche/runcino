@@ -31,6 +31,7 @@ import { deriveReadingScopes } from '@/lib/coach/reading-scope';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
 import { reconcileRun } from '@/lib/runs/coherence';
 import { runAvgHr, runMaxHr, runElevGainFt, type RunData } from '@/lib/runs/run-shape';
+import { loadRunTwins, resolveElevationGain } from '@/lib/runs/twins';
 import type { Phase, WorkoutType } from '@/lib/coach/run-purpose';
 
 export const dynamic = 'force-dynamic';
@@ -105,6 +106,18 @@ export async function GET(
 
   const data = runRow.data ?? {};
   const date = (data.date as string) ?? String(data.startLocal ?? '').slice(0, 10);
+
+  /* The absorbed twins, and the climb ranked by instrument across them. See
+   * `lib/runs/twins.ts`. A failed read refuses rather than letting the
+   * canonical row's weaker instrument win by default. */
+  const elevTwins = await loadRunTwins(runRow.id);
+  const elevationReading = resolveElevationGain({
+    elevGainFt: runElevGainFt(data as RunData),
+    elevGainSource: typeof data.elevGainSource === 'string' ? data.elevGainSource : null,
+    source: typeof data.source === 'string' ? data.source : null,
+    splits: null,
+    distanceMi: null,
+  }, elevTwins);
 
   /* ── E4 (2026-08-24 · rewritten, then finished) ────────────────────────────
    *
@@ -378,8 +391,21 @@ export async function GET(
     distanceMi: runc.distanceMi,
     durationSec: actualElapsedSec,
     paceSPerMi: actualPaceSPerMi,
-    elevGainFt: runElevGainFt(data as RunData),
-    elevGainSource: typeof data.elevGainSource === 'string' ? data.elevGainSource : null,
+    /* ── THE CLIMB · ONE READER, 2026-08-24 ───────────────────────────────
+     *
+     * `runElevGainFt(data)` read the canonical row alone, which made this the
+     * FOURTH reader of one number: the log took the row raw, run detail ran
+     * its own 250 ft/mi heuristic, the poster asked `pickElevationGain`, and
+     * this asked the accessor. On 2026-08-23 they answered 3195 / 57 / 57 for
+     * one eleven-mile run.
+     *
+     * The recap's use is not cosmetic — terrain feeds the grade-adjusted pace
+     * the coach judges the run against, so an invented 3195 ft becomes an
+     * invented verdict about how hard the runner worked. `null` when nothing
+     * trustworthy survives simply drops the terrain adjustment, which is the
+     * refusal this path should already have had. */
+    elevGainFt: elevationReading?.ft ?? null,
+    elevGainSource: elevationReading?.source ?? null,
     startLatLng: data.startLatLng,
     endLatLng: data.endLatLng,
     splits: Array.isArray(data.splits) ? data.splits : undefined,
