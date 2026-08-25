@@ -126,9 +126,19 @@ function BarCard({ m, onClick, active }: { m: HealthMetric; onClick?: () => void
   // = warn). Generic "off ${noun}" is direction-agnostic and honest for
   // every metric · the COLOR (yellow) still communicates "this is the
   // concerning state."
-  const STATUS_TXT: Record<HealthMetric['status'], string> = {
-    good: `on ${targetNoun}`, warn: `off ${targetNoun}`, neutral: 'steady',
-  };
+  // 2026-08-25 · `TARGET_NOUN` defaults to 'target' when `targetKind` is
+  // absent, and `targetKind` is absent on every tile built with no target at
+  // all. So MAX HR, RUN POWER, WEIGHT, VO₂, BODY FAT and LEAN MASS each read
+  // "ON TARGET" against nothing — the noun asserted a comparator the tile did
+  // not have and never showed. The seed no longer grades those (they are
+  // 'neutral' now), but the renderer must not be able to produce the claim
+  // for the next tile someone adds: with no comparator there is no on-or-off,
+  // only the observation and its tone. A band-graded tile says band.
+  const hasComparator = m.target != null || m.band != null;
+  const comparatorNoun = m.target == null && m.band != null ? 'band' : targetNoun;
+  const STATUS_TXT: Record<HealthMetric['status'], string> = hasComparator
+    ? { good: `on ${comparatorNoun}`, warn: `off ${comparatorNoun}`, neutral: 'steady' }
+    : { good: 'steady', warn: 'watch', neutral: 'steady' };
   // Local scale so the bars use the full mini-chart height
   let lo = series.length ? Math.min(...series) : 0;
   let hi = series.length ? Math.max(...series) : 1;
@@ -152,11 +162,19 @@ function BarCard({ m, onClick, active }: { m: HealthMetric; onClick?: () => void
     : m.targetKind === 'avg7'
       ? '7d avg'
       : 'target';
+  // 2026-08-25 · the last fallback used to be an unconditional '30-day'.
+  // MAX HR, LIGHT SLEEP, AWAKE and CYCLE are all built with an EMPTY series
+  // (`mk(..., [], ...)`), so those four captioned a thirty-day window over a
+  // chart band that reads "trend builds with daily syncs" — the tile naming a
+  // window it does not have. A window claim is only true when there is a
+  // series behind it.
   const caption = targetValStr != null
     ? `${targetPrefix} ${targetValStr}`
     : m.band
       ? `band ${m.band[0]}–${m.band[1]}`
-      : '30-day';
+      : series.length > 0
+        ? '30-day'
+        : '';
   return (
     <div
       className={`hmc${active ? ' on' : ''}${onClick ? ' clickable' : ''}`}
@@ -349,11 +367,23 @@ function NiggleHistory({ onLogNiggle }: { onLogNiggle: () => void }) {
   const [fetchErr, setFetchErr] = useState(false);
 
   useEffect(() => {
+    // 2026-08-25 · the `.catch` below was unreachable for every failure the
+    // server can actually produce. A 401 and a 500 both answer with a JSON
+    // body, so `r.json()` RESOLVES, `d.summary` is undefined, `?? []` turns it
+    // into an empty array, and the card rendered "No injury history yet" — an
+    // affirmative claim about the runner's body, off a read that never
+    // happened. Status first, then parse; a failed read reports itself.
     fetch('/api/niggle/history')
-      .then(r => r.json())
+      .then(async r => {
+        if (!r.ok) throw new Error(`niggle/history ${r.status}`);
+        return r.json();
+      })
       .then(d => {
-        setSummary(d.summary ?? []);
-        setEpisodes(d.episodes ?? []);
+        if (!Array.isArray(d?.summary) || !Array.isArray(d?.episodes)) {
+          throw new Error('niggle/history: unexpected shape');
+        }
+        setSummary(d.summary);
+        setEpisodes(d.episodes);
       })
       .catch(() => setFetchErr(true));
   }, []);
