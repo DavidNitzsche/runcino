@@ -720,15 +720,25 @@ export function strideSuffix(spec: WorkoutSpec): string {
  *   "3×8 min @ T pace · 90s jog"  →  "3×8 min @ T effort · 90s jog"
  *   "5×1km @ I · 2 min jog"       →  "5×1km @ I effort · 2 min jog"
  *   "6×90s hills"                 →  unchanged (states no zone)
+ *   "7×3 min hills @ T-10K effort" → unchanged (a zone RANGE, already effort)
  *
  * Only ever applied to a spec that carries `by_effort`, so a paced session's
  * label is untouched. Deliberately conservative — it edits the zone token and
  * nothing else, because the rest of the string is the workout's identity.
+ *
+ * ZONE-RANGE-1 (2026-08-25) · the second pattern used to fire INSIDE a zone
+ * range. `Research/04` §8.4's long hill repeats are prescribed "@ T–10K
+ * effort" — a band, one token — and `catalogue-rx.ts#zoneClause` renders every
+ * effort-only entry that way (`zones.map(ZONE_LABEL).join('-')`). The `@ T`
+ * at the front of that band matched, and the runner's phone read
+ * "7×3 min hills @ T effort-10K effort". Live on week 3 of the owner's CIM
+ * block. A hyphen after the letter means the token is a range, and a range
+ * ending in "effort" has already said what this function exists to say.
  */
 function effortizeZone(label: string): string {
   return label
     .replace(/@\s*([TIRME])\s*pace\b/gi, '@ $1 effort')
-    .replace(/@\s*([TIRME])\b(?!\s*(?:effort|pace))/g, '@ $1 effort');
+    .replace(/@\s*([TIRME])\b(?![-–]|\s*(?:effort|pace))/g, '@ $1 effort');
 }
 
 function formatMi(n: number): string {

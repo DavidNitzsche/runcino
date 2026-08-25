@@ -4491,6 +4491,28 @@ export function guardGoalRaceRunUp(
   return changed;
 }
 
+/**
+ * MIDRACE-SHAPE-1 (2026-08-25) · a day that stops being quality stops carrying
+ * the overload trajectory's shape.
+ *
+ * `persistedDayShape` attaches `progressionSpecFields` whenever the day still
+ * has a `workShape`, so a session demoted to easy by a mini-taper or a
+ * post-race window persisted with the demoted label, the demoted notes, the
+ * demoted type — and the ORIGINAL workout's geometry still in its spec. Live on
+ * the owner's CIM block: the Thursday inside Run Malibu's mini-taper read
+ * "Easy. Inside the mini-taper for Run Malibu · no quality this close." over a
+ * spec carrying `progression: { reps: 3, rep_minutes: 10, pace_s_per_mi: 438,
+ * zone: PROGRESSIVE }`. One row, two contradictory instructions.
+ *
+ * `raceGoalPaceSec` is already deleted at each of those sites for the same
+ * reason. This is the field that was missed.
+ */
+function clearWorkShape(d: DayPlan): void {
+  delete d.workShape;
+  delete d.progressionLever;
+  delete d.challengeZone;
+}
+
 export function embedMidBlockRaces(
   weeks: ComposedWeek[],
   vols: number[],
@@ -4571,6 +4593,7 @@ export function embedMidBlockRaces(
         d.subLabel = 'EASY';
         d.notes = `Easy. Inside the mini-taper for ${race.name} · no quality this close.`;
         delete d.raceGoalPaceSec;
+        clearWorkShape(d);
         touchedWeeks.add(Math.floor(off / 7));
       }
       // The last running day before the race is the shakeout.
@@ -4591,14 +4614,14 @@ export function embedMidBlockRaces(
       // Post-race easy days per race-mile scale (see doctrine block above):
       // half+ → 4, 10K/5-11mi → 2, shorter → 1.
       const recoveryDays = race.distanceMi >= 12 ? 4 : race.distanceMi >= 5 ? 2 : 1;
-      let firstDisplacedQuality: Pick<DayPlan, 'type' | 'distanceMi' | 'subLabel'> | null = null;
+      let firstDisplacedQuality: Pick<DayPlan, 'type' | 'distanceMi' | 'subLabel' | 'notes'> | null = null;
       for (let j = 1; j <= recoveryDays; j++) {
         const d = dayAt(o + j);
         if (!d || d.type === 'race') continue;
         const wiJ = Math.floor((o + j) / 7);
         if (d.isQuality && !d.isLong) {
           if (!firstDisplacedQuality) {
-            firstDisplacedQuality = { type: d.type, distanceMi: d.distanceMi, subLabel: d.subLabel };
+            firstDisplacedQuality = { type: d.type, distanceMi: d.distanceMi, subLabel: d.subLabel, notes: d.notes };
           }
           d.type = 'easy';
           d.distanceMi = Math.min(d.distanceMi, 5);
@@ -4606,6 +4629,7 @@ export function embedMidBlockRaces(
           d.subLabel = 'EASY';
           d.notes = `Post-race recovery · day ${j} after ${race.name}. Easy only; quality resumes after the recovery window.`;
           delete d.raceGoalPaceSec;
+          clearWorkShape(d);
           touchedWeeks.add(wiJ);
         } else if (d.isLong && race.distanceMi >= 12) {
           // Deliberate long-rule exception (documented above): a half+ B race
@@ -4617,6 +4641,7 @@ export function embedMidBlockRaces(
           d.subLabel = 'EASY';
           d.notes = `Post-race recovery · day ${j} after ${race.name}. The long run stands down this week; easy miles only.`;
           delete d.raceGoalPaceSec;
+          clearWorkShape(d);
           touchedWeeks.add(wiJ);
         }
       }
@@ -4640,7 +4665,20 @@ export function embedMidBlockRaces(
               d.distanceMi = firstDisplacedQuality.distanceMi;
               d.isQuality = true;
               d.subLabel = wasIntervals ? null : firstDisplacedQuality.subLabel;
-              d.notes = `Quality resumes after ${race.name} recovery.`;
+              // MIDRACE-NOTE-1 (2026-08-25) · the restored session keeps its
+              // own coaching note. This wrote the scheduling sentence over it,
+              // so the one session of the week arrived with no instruction for
+              // running it: the owner's CIM block shipped a 4×2km threshold set
+              // whose entire `notes` read "Quality resumes after Run Malibu
+              // recovery." The note explains WHY the day moved; it is not the
+              // prescription, and it was standing in for one.
+              //
+              // Only when the type is preserved. A downgraded intervals session
+              // is a different family and its note ("800m repeats · Research/04
+              // §6.4") would describe a workout the runner is no longer doing.
+              d.notes = !wasIntervals && firstDisplacedQuality.notes
+                ? `${firstDisplacedQuality.notes} Quality resumes after ${race.name} recovery.`
+                : `Quality resumes after ${race.name} recovery.`;
               touchedWeeks.add(endWi);
               break;
             }
@@ -4800,6 +4838,29 @@ export function embedMidBlockRaces(
  * finish leaves the aerobic long intact and removes the quality that doctrine
  * says has not been earned back yet.
  *
+ * MIDRACE-WINDOW-1 (2026-08-25) · that strip now measures the window in DAYS,
+ * and scales it by the race's PRIORITY. It used to do neither, and both are
+ * things `Research/00b` states outright.
+ *
+ *   · §"Recovery by Effort" is a table about priority, and the strip read
+ *     `POST_RACE_RECOVERY_WEEKS`, which is keyed on DISTANCE alone. That
+ *     constant is the A-race column — the by-distance table's own header reads
+ *     "Total recovery days (no quality)" and §"Recovery by Effort" says an A
+ *     race takes the "Full table above". A B race takes "60–70% of A-race
+ *     recovery duration", and the row says the same thing again in days: "For
+ *     a B-race half marathon, expect 7–10 days of recovery rather than 14."
+ *     Every tune-up this engine embeds is a B or a C.
+ *
+ *   · And it stripped a WEEK, not a window. `weeks[weekIdx + 1]`'s long run is
+ *     seven days after a Sunday race and thirteen after a Monday one; the
+ *     strip fired identically on both. A window has a length and the long run
+ *     has a date, so compare them.
+ *
+ * For the owner's own CIM block this changes nothing — Run Malibu is a Sunday
+ * B half and his long run is the following Sunday, day 7, inside the 10-day
+ * B-race window on either reading. It is corrected because it is wrong, not
+ * because it moved his plan.
+ *
  * WHERE IT RUNS. Inside `finalizeComposedPlan`, AFTER the VOL-1 reconcile and
  * before the taper enforcement. Running it in `composePlan` (the obvious place,
  * right after the embed) compares BUDGET volumes, and the budget is not what
@@ -4808,6 +4869,48 @@ export function embedMidBlockRaces(
  * stayed the block's peak. Same budget-vs-realized trap COH-4 documents one
  * pass below. The taper then descends from the corrected peak.
  */
+/**
+ * MIDRACE-WINDOW-1 (2026-08-25) · fraction of the A-race recovery window a
+ * tune-up of this priority actually costs.
+ *
+ * `Research/00b-recovery-protocols.md` §"Recovery by Effort":
+ *
+ *   | **A race** | Maximum, full taper, peak day | 2–3 weeks | Full table above |
+ *   | **B race** | ... | 7–10 days | 60–70% of A-race recovery duration |
+ *   | **C race / hard workout substitute** | ... | 25–50% of A-race recovery
+ *     duration; treat like a hard workout |
+ *
+ * Each band's SLOW edge, for the same reason `ST_OFFSET_S_PER_MI` takes its
+ * band's slow edge: the direction the error is dangerous in. A window read too
+ * short authors quality onto legs that have not recovered; read too long it
+ * costs one session. `POST_RACE_RECOVERY_WEEKS.hm` is 14 days, so a B half
+ * lands on 10 — which is the number §"Recovery by Effort" states in words for
+ * exactly that case ("expect 7–10 days of recovery rather than 14").
+ *
+ * Bound by `RECOVERY.priority-scale` in lib/doctrine/registry.ts.
+ */
+export const POST_RACE_PRIORITY_SCALE: Record<'A' | 'B' | 'C', number> = {
+  A: 1.0,
+  B: 0.70,
+  C: 0.50,
+};
+
+/** Days of no quality owed after a mid-block tune-up of this distance and
+ *  priority. Reads the A-race window off `POST_RACE_RECOVERY_WEEKS` (the
+ *  by-distance table) and scales it per §"Recovery by Effort". */
+export function postRaceNoQualityDays(distanceMi: number, priority: 'A' | 'B' | 'C'): number {
+  const aRaceDays = POST_RACE_RECOVERY_WEEKS[distanceCategoryOf(distanceMi)] * 7;
+  return Math.round(aRaceDays * POST_RACE_PRIORITY_SCALE[priority]);
+}
+
+/** The ISO date of `dow` inside a composed week, whatever weekday that week
+ *  starts on. Same mapping `embedMidBlockRaces` walks with its absolute
+ *  offsets, expressed for a caller that holds a week rather than the block. */
+function dowDateInWeek(weekStartISO: string, dow: DOW): string {
+  const startDow = new Date(weekStartISO + 'T12:00:00Z').getUTCDay();
+  return addDays(weekStartISO, ((dow - startDow) % 7 + 7) % 7);
+}
+
 export function enforceRampCeilingAfterEmbedding(
   weeks: ComposedWeek[],
   vols: number[],
@@ -4823,9 +4926,12 @@ export function enforceRampCeilingAfterEmbedding(
     const prev = weeks[wi - 1];
     if (!w || !prev || w.isRaceWeek || bRaceWeeks.has(wi)) continue;
     // Race-pace finish inside the post-race no-quality window (half+ only).
+    // MIDRACE-WINDOW-1 · measured in days from race day, priority-scaled.
     if (e.distanceMi >= 12) {
       const long = w.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
-      if (long && splitDay(long).qualityMi > 0) setLongFinish(long, 0);
+      if (long && splitDay(long).qualityMi > 0
+        && daysBetween(e.date, dowDateInWeek(w.startISO, long.dow)) <= postRaceNoQualityDays(e.distanceMi, e.priority)
+      ) setLongFinish(long, 0);
     }
     // Ramp reference · the most recent week distorted by neither a tune-up nor
     // a planned cutback. Falls back to the prior peak when the block has none.

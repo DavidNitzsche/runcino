@@ -165,6 +165,8 @@ import {
   QUALITY_LOOKBACK_DAYS,
   qualityLookbackDays,
   RACE_RUNUP_DAYS,
+  POST_RACE_PRIORITY_SCALE,
+  postRaceNoQualityDays,
 } from '@/lib/plan/generate';
 import {
   BLEND_GRACE_FRACTION,
@@ -640,6 +642,50 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         '3 days, 1 overshoots the ceiling by 2. The engine takes 0 because over-resting a 5K ' +
         'runner costs a whole training week, and the sub-week protocol is carried by the ' +
         'day-level recovery composer rather than the plan-mode gate.',
+    },
+  },
+  {
+    id: 'RECOVERY.priority-scale',
+    binds: [
+      'lib/plan/generate.ts#POST_RACE_PRIORITY_SCALE',
+      'lib/plan/generate.ts#postRaceNoQualityDays',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Race priority | Effort given | Taper before | Recovery scale |',
+    claim:
+      'How long a runner stays off quality after a race depends on what the race WAS, not ' +
+      'only on how far it was. This table scales the by-distance window by priority: an A ' +
+      'race takes the full window, a B race 60-70% of it, a C race 25-50%. The engine takes ' +
+      "each band's slow edge, because a window read too short authors quality onto legs that " +
+      'have not recovered while one read too long costs a single session. The doc states the ' +
+      'B-race half case in days as well, and the engine must land inside that too.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'Recovery scale';
+      // A · the row states no percentage ("Full table above"), which is 100%.
+      if (!/full table/i.test(t.cell('A race', col))) {
+        throw new Error(`RECOVERY.priority-scale: the A row no longer says "Full table above": "${t.cell('A race', col)}"`);
+      }
+      if (POST_RACE_PRIORITY_SCALE.A !== 1) {
+        throw new Error(`POST_RACE_PRIORITY_SCALE.A = ${POST_RACE_PRIORITY_SCALE.A}, doctrine gives an A race the full window`);
+      }
+      // B and C · the band is in the cell; the engine takes its slow edge.
+      for (const [p, row] of [['B', 'B race'], ['C', 'C race / hard workout substitute']] as const) {
+        const band = parsePctBand(t.cell(row, col));
+        within(POST_RACE_PRIORITY_SCALE[p], band, `POST_RACE_PRIORITY_SCALE.${p}`);
+        if (POST_RACE_PRIORITY_SCALE[p] !== band[1]) {
+          throw new Error(
+            `POST_RACE_PRIORITY_SCALE.${p} = ${POST_RACE_PRIORITY_SCALE[p]}, doctrine's band is ` +
+            `${band[0]}-${band[1]} and the engine takes the SLOW edge (${band[1]})`,
+          );
+        }
+      }
+      // And the worked case the section states in prose, in days.
+      const prose = cite.text().split('\n').find((l) => /B-race half marathon/i.test(l));
+      if (!prose) {
+        throw new Error('RECOVERY.priority-scale: the "B-race half marathon" sentence is gone from this section');
+      }
+      within(postRaceNoQualityDays(13.1, 'B'), parseBand(prose), `postRaceNoQualityDays(half, B)`);
     },
   },
   {
