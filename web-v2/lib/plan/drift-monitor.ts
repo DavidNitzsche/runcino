@@ -190,12 +190,36 @@ export async function detectDrift(userUuid: string): Promise<DriftReport | null>
   // 4-6. Per-day-type drift (Phase 1.2 · catches what volume_drift
   // misses at sub-40% deviation). These trigger TARGETED rebuilds
   // rather than full plan refreshes.
-  const easy = await checkEasyDrift(userUuid, plan);
-  if (easy) signals.push(easy);
-  const long = await checkLongDrift(userUuid, plan);
-  if (long) signals.push(long);
-  const quality = await checkQualityDrift(userUuid, plan);
-  if (quality) signals.push(quality);
+  // RECOVERY-DRIFT-1 (2026-08-25) · A RECOVERY BLOCK IS NOT DRIFTING.
+  //
+  // These three compare what the runner has been doing against what the plan
+  // asks, and none of them knew what KIND of plan was asking. A recovery
+  // block suppresses long runs and quality on purpose — that is the entire
+  // prescription — so the runner's pre-race long runs measured against a
+  // recovery block's are a guaranteed, enormous, meaningless deviation.
+  //
+  // It fired on 2026-08-25 at 09:29 for the owner: `long_drift`, mid-recovery
+  // from a half, nine days after the race. The consequence was not a banner.
+  // It regenerated the plan, and the rebuild replaced a correct two-week
+  // recovery block (17-30 Aug, weeks idx 0 and 1) with a one-week block
+  // starting today — so his Today screen went from "Week 2 of 2" to
+  // "Week 1 of 1" overnight, with nothing on any surface to say why.
+  //
+  // This is CLAUDE.md's per-finding context filter, unapplied: each finding
+  // asks what context distorts THIS observation. The context that distorts
+  // all three of these is that the plan is deliberately holding the runner
+  // back. Volume drift and staleness above are left alone — a recovery block
+  // running far OVER its volume is a real signal, and one that has not been
+  // refreshed in weeks is still stale.
+  const inRecovery = plan.mode === 'recovery';
+  if (!inRecovery) {
+    const easy = await checkEasyDrift(userUuid, plan);
+    if (easy) signals.push(easy);
+    const long = await checkLongDrift(userUuid, plan);
+    if (long) signals.push(long);
+    const quality = await checkQualityDrift(userUuid, plan);
+    if (quality) signals.push(quality);
+  }
 
   const primary = signals.length > 0
     ? signals.slice().sort((a, b) => b.severity - a.severity)[0]
@@ -216,6 +240,8 @@ interface ActivePlan {
   race_id: string | null;
   authored_iso: string;
   authored_state: Record<string, unknown>;
+  /** `race-prep` · `maintenance` · `recovery`. See RECOVERY-DRIFT-1 below. */
+  mode: string | null;
 }
 
 async function loadActivePlan(userUuid: string): Promise<ActivePlan | null> {
@@ -224,8 +250,9 @@ async function loadActivePlan(userUuid: string): Promise<ActivePlan | null> {
     race_id: string | null;
     authored_iso: Date;
     authored_state: Record<string, unknown>;
+    mode: string | null;
   }>(
-    `SELECT id, race_id, authored_iso, authored_state
+    `SELECT id, race_id, authored_iso, authored_state, mode
        FROM training_plans
       WHERE user_uuid = $1 AND archived_iso IS NULL
       ORDER BY authored_iso DESC LIMIT 1`,
@@ -237,6 +264,7 @@ async function loadActivePlan(userUuid: string): Promise<ActivePlan | null> {
     race_id: r.race_id,
     authored_iso: r.authored_iso instanceof Date ? r.authored_iso.toISOString() : String(r.authored_iso),
     authored_state: r.authored_state ?? {},
+    mode: r.mode ?? null,
   };
 }
 
