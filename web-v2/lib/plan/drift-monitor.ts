@@ -190,36 +190,33 @@ export async function detectDrift(userUuid: string): Promise<DriftReport | null>
   // 4-6. Per-day-type drift (Phase 1.2 · catches what volume_drift
   // misses at sub-40% deviation). These trigger TARGETED rebuilds
   // rather than full plan refreshes.
-  // RECOVERY-DRIFT-1 (2026-08-25) · A RECOVERY BLOCK IS NOT DRIFTING.
+  // RECOVERY-DRIFT-1, REVERSED THE SAME DAY (2026-08-25).
   //
-  // These three compare what the runner has been doing against what the plan
-  // asks, and none of them knew what KIND of plan was asking. A recovery
-  // block suppresses long runs and quality on purpose — that is the entire
-  // prescription — so the runner's pre-race long runs measured against a
-  // recovery block's are a guaranteed, enormous, meaningless deviation.
+  // I guarded these three during a recovery block, on the reasoning that a
+  // block which suppresses long runs on purpose cannot meaningfully be said
+  // to be drifting. The owner disagreed — "I dont need low mileage after a
+  // half for 2 weeks in a recovery. Im obv still putting in high miles" — and
+  // the data is his:
   //
-  // It fired on 2026-08-25 at 09:29 for the owner: `long_drift`, mid-recovery
-  // from a half, nine days after the race. The consequence was not a banner.
-  // It regenerated the plan, and the rebuild replaced a correct two-week
-  // recovery block (17-30 Aug, weeks idx 0 and 1) with a one-week block
-  // starting today — so his Today screen went from "Week 2 of 2" to
-  // "Week 1 of 1" overnight, with nothing on any surface to say why.
+  //   RECOVERY_WEEKLY_PCT_OF_BASE.hm is [0.60, 0.80], so recovery week two
+  //   is 80% of BASE. His real peak weeks are 47.5, 47.3 and 44.9 mi, which
+  //   puts week two at about 38. The block authored on 17 Aug gave him 23,
+  //   implying a base of 29 — his DEPRESSED post-race average rather than his
+  //   peak, the exact anchor DOCTRINE-4 was written to stop using.
   //
-  // This is CLAUDE.md's per-finding context filter, unapplied: each finding
-  // asks what context distorts THIS observation. The context that distorts
-  // all three of these is that the plan is deliberately holding the runner
-  // back. Volume drift and staleness above are left alone — a recovery block
-  // running far OVER its volume is a real signal, and one that has not been
-  // refreshed in weeks is still stale.
-  const inRecovery = plan.mode === 'recovery';
-  if (!inRecovery) {
-    const easy = await checkEasyDrift(userUuid, plan);
-    if (easy) signals.push(easy);
-    const long = await checkLongDrift(userUuid, plan);
-    if (long) signals.push(long);
-    const quality = await checkQualityDrift(userUuid, plan);
-    if (quality) signals.push(quality);
-  }
+  //   The drift rebuild on 25 Aug re-authored against the right anchor and
+  //   produced 38. It did not overreach him; it corrected an
+  //   under-prescription, and my guard would have locked him at 23.
+  //
+  // The thing that was actually wrong was never the adaptation. It was that
+  // it happened silently and reset the week counter. Both are fixed
+  // elsewhere. Drift stays on.
+  const easy = await checkEasyDrift(userUuid, plan);
+  if (easy) signals.push(easy);
+  const long = await checkLongDrift(userUuid, plan);
+  if (long) signals.push(long);
+  const quality = await checkQualityDrift(userUuid, plan);
+  if (quality) signals.push(quality);
 
   const primary = signals.length > 0
     ? signals.slice().sort((a, b) => b.severity - a.severity)[0]
