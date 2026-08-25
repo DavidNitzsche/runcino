@@ -289,6 +289,84 @@ describe('reader lint · one reader for how long a run took', () => {
     ).toEqual([]);
   });
 
+  it('every surface that prints a climb asks the same instrument question', () => {
+    /* ── THE ELEVATION FAMILY · added 2026-08-24 ────────────────────────────
+     *
+     * The clock check above is the same rule for a different field, and the
+     * elevation family broke in exactly the same way and was not caught,
+     * because the ladder scan looks for `durationSec`-shaped keys and an
+     * elevation reader spells ONE key. One key is not a ladder.
+     *
+     * What was on screen for one eleven-mile run on 2026-08-23:
+     *
+     *     log          3195 ft   read data.elevGainFt raw
+     *     run detail     57 ft   its own private 250 ft/mi drift heuristic
+     *     recap        3195 ft   runElevGainFt(), canonical row only
+     *     poster         57 ft   pickElevationGain(), over the twins
+     *
+     * `pickElevationGain` had one caller. It was correct and it was ignored,
+     * which is the same failure `runPaceSecPerMi` had the morning before —
+     * a guard nothing calls is a comment.
+     *
+     * Keyed on the CALL rather than on the key count, for the same reason the
+     * judgeWeather check below is. */
+    const RESOLVER_CALLS = [
+      'pickElevationGain(',
+      'resolveElevationGain(',
+      // The terrain resolver takes an already-resolved figure as an argument;
+      // a file that only hands it one is a consumer, not a second opinion.
+    ];
+    const MUST_RESOLVE: Array<[string, string]> = [
+      ['app/api/v5/today/route.ts', 'the poster'],
+      ['lib/coach/run-state.ts', 'run detail'],
+      ['lib/coach/log-state.ts', 'the log'],
+      ['app/api/runs/[id]/recap/route.ts', 'the recap, which feeds terrain and so feeds the verdict'],
+    ];
+    const unwired: string[] = [];
+    for (const [file, what] of MUST_RESOLVE) {
+      const src = fs.readFileSync(path.join(WEB, file), 'utf8');
+      if (!RESOLVER_CALLS.some((c) => src.includes(c))) {
+        unwired.push(`${file} (${what}) resolves elevation without the instrument ranking`);
+      }
+    }
+    expect(unwired,
+      'a surface is reading a climb without asking which instrument produced it. ' +
+      'GPS-derived elevation runs 2.3x the barometer on this data and the tail is ' +
+      'nonsense — 3195 ft against barometric twins reading 57. Use ' +
+      '`resolveElevationGain` from lib/runs/twins.ts.',
+    ).toEqual([]);
+  });
+
+  it('no surface re-derives a climb from split deltas', () => {
+    /* The specific private heuristic that used to live in run-state: sum the
+     * positive per-split elevation deltas and use that instead of the stored
+     * figure when the stored one looks steep. It is a plausible guess and it
+     * is the WRONG QUESTION — "is this implausible" rather than "which
+     * instrument measured it" — and answering it per-surface is what put four
+     * numbers on four screens.
+     *
+     * Scanned as a shape rather than by name because the next copy will be
+     * spelled differently: an accumulation over `elev_change_ft` inside a
+     * reader is the tell. */
+    const offenders: string[] = [];
+    for (const file of sourceFiles()) {
+      const r = rel(file);
+      if (r === 'lib/runs/elevation.ts' || r === 'lib/runs/elev-from-gps.ts'
+        || r === 'lib/runs/elev-sanity.ts' || r === 'lib/terrain/run-terrain.ts') continue;
+      const src = fs.readFileSync(file, 'utf8');
+      // A reduce/loop that accumulates a per-split elevation delta.
+      if (/reduce\([^)]*\)\s*=>[^;]{0,200}elev_change_ft/s.test(src)
+        || /\+=\s*[^;\n]{0,60}elev_change_ft/.test(src)) {
+        offenders.push(r);
+      }
+    }
+    expect(offenders,
+      'a reader is rebuilding a run\'s climb out of its split deltas. That is a ' +
+      'private opinion about a figure four surfaces have to agree on. Rank the ' +
+      'instruments with `pickElevationGain` instead.',
+    ).toEqual([]);
+  });
+
   it('the shared readers are called by something other than their own tests', () => {
     // The generalised version of the same check. A guard whose only caller is
     // its own test file is a comment with a green tick beside it.

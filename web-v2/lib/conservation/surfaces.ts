@@ -38,6 +38,7 @@ import { runFacts } from '@/lib/runs/run-facts';
 import type { RunData } from '@/lib/runs/run-shape';
 import type { SurfaceReading } from './laws';
 import type { RunShape } from './shapes';
+import { pickElevationGain } from '@/lib/runs/elevation';
 
 /**
  * Hops this harness cannot execute, stated once so no report can imply they
@@ -118,7 +119,17 @@ function posterCtx(shape: RunShape, data: RunData): V5TodayContext {
       zoneTarget: null,
       zoneTargets: null,
       elevationSamples: null,
-      elevGainFt: (data.elevGainFt as number | null) ?? null, elevGainMeasured: true,
+      /* THE CLIMB AND WHETHER IT IS A MEASUREMENT.
+       *
+       * `elevGainMeasured: true` was hardcoded here, which is a harness
+       * telling itself what it is supposed to be checking. Rule one — a
+       * modelled number must never look measured — cannot be tested by a
+       * fixture that declares every number measured, and `pickElevationGain`
+       * is what the route itself asks. Asked here too, so a `gps_derived`
+       * shape arrives at the law marked modelled, the way it would on the
+       * phone. */
+      elevGainFt: absoluteFigures(data).elevGainFt ?? null,
+      elevGainMeasured: absoluteFigures(data).elevGainMeasured ?? false,
       // Not conserved by any law here — the harness grades numbers, and a
       // polyline is a picture. Null so the map's refusal branch is what this
       // fixture exercises; the map itself is covered by the Swift sweep.
@@ -179,6 +190,19 @@ export function readPoster(shape: RunShape, data: RunData): SurfaceReading {
     timeSec: readClock(t),
     paceSecPerMi: readPace(p),
     printed: { distance: d, time: t, pace: p },
+    // Read back off what the composer RETURNED, not off the context that went
+    // in, for the same reason the three stats above are: a pipeline that
+    // carries a correct climb to a panel that drops it still shows the runner
+    // the wrong thing.
+    elevGainFt: out.elevGainFt ?? null,
+    elevGainMeasured: out.elevGainMeasured ?? null,
+    avgHrBpm: absoluteFigures(data).avgHrBpm ?? null,
+    maxHrBpm: absoluteFigures(data).maxHrBpm ?? null,
+    cadenceSpm: absoluteFigures(data).cadenceSpm ?? null,
+    tempF: absoluteFigures(data).tempF ?? null,
+    caloriesKcal: absoluteFigures(data).caloriesKcal ?? null,
+    splitDistancesMi: absoluteFigures(data).splitDistancesMi ?? null,
+    splitHrs: absoluteFigures(data).splitHrs ?? null,
   };
 }
 
@@ -243,6 +267,7 @@ export function readRunDetail(_shape: RunShape, data: RunData): SurfaceReading {
     distanceMi: facts.distanceMi,
     timeSec: facts.timeSec,
     paceSecPerMi: facts.paceSecPerMi,
+    ...absoluteFigures(data),
   };
 }
 
@@ -253,6 +278,67 @@ export function readLog(_shape: RunShape, data: RunData): SurfaceReading {
     distanceMi: facts.distanceMi,
     timeSec: facts.timeSec,
     paceSecPerMi: facts.paceSecPerMi,
+    // The log draws no calories column and no temperature. Absence is a
+    // layout decision, not a divergence, and `absoluteFiguresAgree` skips a
+    // figure a surface does not print rather than treating it as a zero.
+    ...(({ caloriesKcal: _c, tempF: _t, ...rest }) => rest)(absoluteFigures(data)),
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE ABSOLUTE FIGURES · one resolution, read by every surface.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * WHY THESE ARE NOT TRANSCRIBED PER SURFACE
+ *
+ * The clock readings above are deliberately taken through each surface's own
+ * basis preference, because the surfaces genuinely differ there. These do not
+ * differ, and as of 2026-08-24 every one of the four calls the same resolver
+ * for them. So the harness calls it once too.
+ *
+ * That makes `absoluteFiguresAgree` LOOK trivially satisfiable, and it is
+ * worth being explicit that this file knows it: the law here proves the
+ * SHAPE — that every surface is reading one resolution and that the
+ * resolution is internally sound — and it cannot prove the WIRING. Nothing
+ * inside a harness can. If run detail quietly grows its own elevation
+ * heuristic again, this file will still be calling the shared one and will
+ * still report clean.
+ *
+ * That direction is covered, and has to be, by `_reader_lint.test.ts`, which
+ * scans the surfaces themselves for a private ladder. The two checks are a
+ * pair: the lint proves the surfaces call the reader, this proves the reader
+ * is right. Neither is sufficient alone, and the 2026-08-24 morning — a
+ * correct guard with zero call sites and a green suite — is what happens when
+ * only the second exists.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+function num(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Elevation, heart rate, cadence, temperature and calories, resolved once. */
+export function absoluteFigures(data: RunData): Partial<SurfaceReading> {
+  const elev = pickElevationGain([
+    { ft: num(data.elevGainFt), source: (data.elevGainSource as string | null) ?? null, ingest: (data.source as string | null) ?? null },
+  ]);
+  const splits = Array.isArray(data.splits) ? (data.splits as Array<Record<string, unknown>>) : null;
+  return {
+    avgHrBpm: num(data.avgHr),
+    maxHrBpm: num(data.maxHr),
+    cadenceSpm: num(data.avgCadence),
+    tempF: num(data.tempF),
+    elevGainFt: elev?.ft ?? null,
+    elevGainMeasured: elev?.measured ?? null,
+    // The watch's own active-energy measurement. Strava's `calories` is a
+    // DIFFERENT quantity (total energy, basal included) and is deliberately
+    // not coalesced in here — see `energy.total-vs-active` in the derived
+    // registry for the 1.21x-1.38x gap that coalescing hides.
+    caloriesKcal: num(data.kcal),
+    splitDistancesMi: splits
+      ? splits.map((s) => num(s.distanceMi ?? s.distance_mi) ?? 1)
+      : null,
+    splitHrs: splits ? splits.map((s) => num(s.hr)) : null,
   };
 }
 
