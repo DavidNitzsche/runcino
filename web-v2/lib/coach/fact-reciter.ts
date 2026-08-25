@@ -23,6 +23,7 @@ import type { TrainingState, PlanWeek } from './training-state';
 import type { RacesState, RaceRow } from './races-state';
 import type { HealthState } from './health-state';
 import type { ProfileState } from './profile-state';
+import { personalGoalHorizon, personalGoalTypeLabel } from '@/lib/faff/personal-goal-copy';
 import type { ReadinessBreakdown } from './readiness';
 
 // ── Public types ───────────────────────────────────────────────────────
@@ -56,6 +57,11 @@ export interface CoachFactBlock {
 }
 
 const DASH = ' · ';
+
+/** How many standing goals reciteMe() states before it summarises the rest.
+ *  The ME surface is a fact list, not a goal list; four is enough to be a
+ *  real read without burying LTHR / VDOT / MAX HR below the fold. */
+const MAX_RECITED_GOALS = 4;
 
 // ── Tiny helpers ───────────────────────────────────────────────────────
 
@@ -625,6 +631,58 @@ export function reciteMe(state: ProfileState): CoachFactBlock {
       value: DASH,
       meta: 'no race or goal set',
     });
+  }
+
+  // CHASING · the runner's standing non-race goals (`personal_goals`).
+  //
+  // 2026-08-24 · these were write-only. The runner set them on Targets, the
+  // row landed, and no surface ever spent it. This block is the coach's half
+  // of the fix: whatever else the plan is pointed at, the ME surface says back
+  // what the runner told us they are chasing. iPhone's ProfileView renders
+  // this block verbatim, so the phone gets the read without a native list.
+  //
+  // Three states, and they are NOT two:
+  //   null → the read failed. We do not know. Say that.
+  //   []   → we looked, and they have set none.
+  //   rows → one fact each, in deadline order.
+  if (state.personalGoals === null) {
+    facts.push({
+      label: 'CHASING',
+      value: DASH,
+      meta: 'goals unavailable · could not read them',
+    });
+  } else if (state.personalGoals.length === 0) {
+    facts.push({
+      label: 'CHASING',
+      value: DASH,
+      meta: 'no standing goals set',
+    });
+  } else {
+    // Capped so one runner with a dozen habits cannot push LTHR and VDOT off
+    // the surface. The overflow is stated, never silently dropped.
+    const shown = state.personalGoals.slice(0, MAX_RECITED_GOALS);
+    for (const g of shown) {
+      // meta carries, in order: where they are now (only when they said · this
+      // is never derived), the horizon, and their own reason.
+      const meta = [
+        g.current ? `now ${g.current}` : null,
+        personalGoalHorizon(g),
+        g.rationale,
+      ].filter(Boolean).join(' · ');
+      facts.push({
+        label: `CHASING · ${personalGoalTypeLabel(g.goal_type)}`,
+        value: g.target,
+        meta: meta || undefined,
+      });
+    }
+    const hidden = state.personalGoals.length - shown.length;
+    if (hidden > 0) {
+      facts.push({
+        label: 'CHASING · MORE',
+        value: `+${hidden} more goal${hidden === 1 ? '' : 's'}`,
+        meta: 'all of them are on Targets',
+      });
+    }
   }
 
   // LTHR · primary zone anchor (Friel)

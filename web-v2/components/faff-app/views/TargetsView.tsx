@@ -17,7 +17,12 @@
  *   4 · RACES     · split into CALENDAR (role chips that state what the
  *                   generator does with each race) and RESULTS (result +
  *                   provenance chip, each row opening the retro page).
- *   5 · RECORDS   · the PR grid, anchored against the goal. Not in the
+ *   5 · STANDING  · the non-race goals the runner set (`personal_goals`),
+ *                   with the pill that creates them. Added 2026-08-24: the
+ *                   pill had been here since the page shipped and what it
+ *                   wrote was never rendered anywhere, so a runner could set
+ *                   a goal, watch it save, and never see it again.
+ *   6 · RECORDS   · the PR grid, anchored against the goal. Not in the
  *                   deck's mock; kept because it is live, correct, and not
  *                   in the audit's dead list. Demoted below RACES so the
  *                   deck's beat order still reads first.
@@ -43,6 +48,7 @@ import { GapPanel } from './GapPanel';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { resolveGoalStatus, formatGapClock, type GoalStatusRead } from '@/lib/faff/goal-status';
 import { resolveRaceRole, resolveProvenance } from '@/lib/faff/race-roles';
+import { personalGoalHorizon, personalGoalTypeLabel } from '@/lib/faff/personal-goal-copy';
 import { StatusChip } from '../StatusChip';
 import { Modelled } from '../Modelled';
 
@@ -78,10 +84,15 @@ export function TargetsView({
           <div style={{ marginTop: 14, fontSize: 18, lineHeight: 1.5, color: 'rgba(255,255,255,.86)' }}>
             Set a primary race to start tracking your gap to goal.
           </div>
-          <div className="raceacts" style={{ marginTop: 22 }}>
-            <button type="button" className="racebtn" onClick={() => setGoalOpen(true)}>+ New goal</button>
-          </div>
         </div>
+        {/* A runner with no primary race can still be chasing something, and
+            this is the state where that is most likely — so the standing
+            goals render HERE too, not only on the full page. */}
+        <StandingGoals
+          goals={seed.personalGoals}
+          onNew={() => setGoalOpen(true)}
+          onChanged={() => router.refresh()}
+        />
         {goalOpen ? (
           <SheetOverlay onDismiss={() => setGoalOpen(false)}>
             <NewGoalSheet onSaved={() => router.refresh()} onClose={() => setGoalOpen(false)} />
@@ -281,12 +292,18 @@ export function TargetsView({
           </div>
         </div>
 
-        <div className="raceacts">
-          <button type="button" className="racebtn" onClick={() => setGoalOpen(true)}>+ New goal</button>
-        </div>
       </div>
 
-      {/* ============ 5 · RECORDS ============ */}
+      {/* ============ 5 · STANDING GOALS ============ */}
+      {/* The "+ New goal" pill used to sit in the RACES band, next to nothing
+          it produced. It lives here now, attached to the list it writes to. */}
+      <StandingGoals
+        goals={seed.personalGoals}
+        onNew={() => setGoalOpen(true)}
+        onChanged={() => router.refresh()}
+      />
+
+      {/* ============ 6 · RECORDS ============ */}
       {seed.prs.length > 0 ? (
         <div className="band">
           <div className="eyebrow-sec">Personal records · measured against the goal</div>
@@ -349,6 +366,146 @@ export function TargetsView({
 // this module the local binding its own JSX uses; a bare `export … from`
 // would re-export the name without defining it here.)
 export { StatusChip };
+
+// ============================ STANDING GOALS ============================
+/**
+ * The non-race goals the runner set, and the pill that sets them.
+ *
+ * 2026-08-24 · WHY THIS EXISTS. `personal_goals` was a write-only loop. The
+ * "+ New goal" pill has been on this page since it shipped, `NewGoalSheet`
+ * POSTed faithfully, migration 152 gave the row somewhere to land — and then
+ * nothing in the app ever read it back. A runner could say what they were
+ * chasing, watch it save, and never see it again. This section is the read.
+ *
+ * THREE STATES, AND THEY ARE NOT TWO.
+ *   null → the read FAILED. We do not know what this runner is chasing, and
+ *          saying "no goals" here is the exact lie lib/db/read.ts exists to
+ *          stop. The section says it could not read them, and does NOT offer
+ *          the pill — writing a goal into a store we just failed to read is
+ *          not something to invite.
+ *   []   → we looked; they have set none. Invite one.
+ *   rows → the list.
+ *
+ * NOTHING HERE IS DERIVED. `target` and `current` are the runner's own words
+ * and are printed as written. The app does not compute progress against a
+ * free-text target, and a made-up percentage next to a real one is a modelled
+ * number wearing a measured one's clothes (RULE ONE).
+ */
+function StandingGoals({
+  goals, onNew, onChanged,
+}: {
+  goals: FaffSeed['personalGoals'];
+  onNew: () => void;
+  onChanged: () => void;
+}) {
+  return (
+    <div className="band">
+      <div className="eyebrow-sec">Standing goals · what you said you want</div>
+      <div className="t2card" style={{ padding: '20px 22px' }}>
+        {goals === null ? (
+          <EmptyLine>
+            Your goals could not be read just now. They are not gone — try again in a moment.
+          </EmptyLine>
+        ) : goals.length === 0 ? (
+          <EmptyLine>
+            Nothing standing. A goal here is anything that is not a race —
+            a weekly volume, a habit, a distance you want to be able to cover.
+          </EmptyLine>
+        ) : (
+          <div style={{ marginTop: 6 }}>
+            {goals.map((g) => (
+              <StandingGoalRow key={g.id} goal={g} onRemoved={onChanged} />
+            ))}
+          </div>
+        )}
+      </div>
+      {goals !== null ? (
+        <div className="raceacts">
+          <button type="button" className="racebtn" onClick={onNew}>+ New goal</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function StandingGoalRow({
+  goal, onRemoved,
+}: {
+  goal: NonNullable<FaffSeed['personalGoals']>[number];
+  onRemoved: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function remove() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/goals/${goal.id}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      onRemoved();
+    } catch {
+      // The DELETE is the whole state change, so a failure means the goal is
+      // still there — say that rather than leaving a row that looks removed.
+      setErr('That did not delete. The goal is still here.');
+      setBusy(false);
+    }
+  }
+
+  // The runner's own reason for the number. `personal_goals.rationale` —
+  // registered in lib/audit/generated-content-registry.ts, rendered here.
+  const rationale = goal.rationale?.trim() || null;
+
+  return (
+    <div style={goalRowStyle}>
+      <span style={{
+        fontSize: 9.5, fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase',
+        color: '#F3AD38', border: '1px solid #F3AD3866', background: '#F3AD3814',
+        borderRadius: 7, padding: '3px 7px', whiteSpace: 'nowrap',
+      }}>
+        {personalGoalTypeLabel(goal.goal_type)}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#fff' }}>{goal.target}</div>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,.6)', marginTop: 2 }}>
+          {[goal.current ? `now ${goal.current}` : null, personalGoalHorizon(goal)]
+            .filter(Boolean).join(' · ')}
+        </div>
+        {rationale ? (
+          <div style={{
+            fontSize: 11.5, color: 'rgba(255,255,255,.5)', marginTop: 4,
+            lineHeight: 1.45, fontStyle: 'italic',
+          }}>
+            {rationale}
+          </div>
+        ) : null}
+        {err ? (
+          <div style={{ fontSize: 11, color: 'var(--warn, #F3AD38)', marginTop: 4 }}>{err}</div>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        onClick={remove}
+        disabled={busy}
+        style={{
+          background: 'none', border: 'none', cursor: busy ? 'default' : 'pointer',
+          fontFamily: 'var(--f-label)', fontSize: 10, fontWeight: 700,
+          letterSpacing: '1px', textTransform: 'uppercase',
+          color: busy ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.55)',
+          padding: '4px 2px', whiteSpace: 'nowrap',
+        }}
+      >
+        {busy ? 'Removing…' : 'Remove'}
+      </button>
+    </div>
+  );
+}
+
+const goalRowStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'flex-start', gap: 14,
+  padding: '13px 4px',
+  borderBottom: '1px solid rgba(255,255,255,.05)',
+};
 
 // ============================ RENEGOTIATION ============================
 /**

@@ -167,8 +167,13 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
   {
     id: 'personal_goals.rationale',
     verdict: 'surfaced',
-    holds: 'Why a personal goal was set at the value it was.',
-    surface: { file: 'web-v2/app/api/goals/route.ts', token: 'rationale' },
+    holds: 'Why a personal goal was set at the value it was — the runner\'s own sentence. "Coming back from a calf strain, so volume before pace."',
+    // 2026-08-24 · re-pointed. This used to name app/api/goals/route.ts, which
+    // only ACCEPTED the value — the route was the write side, and naming it as
+    // the surface let a column that no screen rendered pass GUARD 3. The whole
+    // table was write-only at the time. It is rendered now, in the goal row on
+    // Targets, and this points at the file that draws it.
+    surface: { file: 'web-v2/components/faff-app/views/TargetsView.tsx', token: 'rationale' },
   },
 
   // ── evidence the engine records about the runner ───────────────────────────

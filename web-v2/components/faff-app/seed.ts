@@ -2350,6 +2350,9 @@ function emptySeed(): FaffSeed {
     races: [],
     pastRaces: [],
     unloggedRaceAlert: null,
+    // A signed-out shell has no runner, so it has no goals — and that is a
+    // looked-and-found-nothing, not a failed read.
+    personalGoals: [],
     // A signed-out shell has no plan · that is a no-plan between-blocks
     // read, and Targets is not rendered for guests anyway.
     blockState: resolveBlockState({ planMode: null, todayISO: new Date().toISOString().slice(0, 10), goalRace: null }),
@@ -3037,6 +3040,11 @@ async function buildSeedInner(): Promise<FaffSeed> {
     races: racesList,
     pastRaces: adaptPastRaces(races),
     unloggedRaceAlert: adaptUnloggedRaceAlert(races),
+    // Straight off ProfileState · loaded above with the rest of the page, so
+    // the STANDING GOALS section costs no query of its own. `profile` is null
+    // when its whole load failed, which is exactly the case the section must
+    // not render as "no goals" — hence null, not [].
+    personalGoals: profile ? profile.personalGoals : null,
     blockState,
     projectionTrend,
     activity,

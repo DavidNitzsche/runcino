@@ -8,7 +8,7 @@
 //    · /api/niggle  + /recovery + DELETE · SymptomReportSheet + DailyCheckChip
 //    · /api/sick    + /recovery + DELETE · SymptomReportSheet + ReturnGateCard
 //    · /api/strength · HealthKit ingest only (STRENGTH-3)
-//    · /api/goals                       · NewGoalSheet
+//    · /api/goals                       · REMOVED 2026-08-24 · see below
 //    · /api/runs/[id]/rpe GET/POST      · RPEEntryCard
 //    · /api/profile/notifications GET/PATCH · NotificationPrefsList
 //
@@ -213,25 +213,28 @@ extension API {
         return (200..<300).contains(http.statusCode)
     }
 
-    // MARK: - Goals
-
-    @discardableResult
-    static func postGoal(type: String, target: String, deadline: String) async throws -> Bool {
-        var req = URLRequest(url: baseURL.appendingPathComponent("api/goals"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // Field names match web-v2/app/api/goals/route.ts:
-        //   goal_type ('volume' | 'speed' | 'distance' | 'habit' | 'health') ·
-        //   target (string) · deadline (ISO date · optional).
-        let body: [String: Any] = [
-            "goal_type": type.lowercased(),
-            "target": target,
-            "deadline": deadline
-        ]
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, http) = try await API.authedSend(req)
-        return (200..<300).contains(http.statusCode)
-    }
+    // MARK: - Goals · postGoal REMOVED 2026-08-24
+    //
+    // `postGoal` POSTed to /api/goals (personal_goals) and NOTHING CALLED IT.
+    // It was written for a native standing-goal form that was never built, and
+    // the header of this file listed `NewGoalSheet` as its client for months.
+    // That is not what NewGoalSheet does: TargetsView's "+ SET GOAL" opens
+    // SetGoalSheet, which posts a race-style time goal to /api/profile/goal
+    // via `API.setFitnessGoal` and generates a plan. Two different products
+    // that happen to share the word "goal".
+    //
+    // Removed rather than left mounted, for the same reason the table it wrote
+    // to got a reader on the same day: a write side with no other side is a
+    // bug in one of two directions, and here the direction is waste. Standing
+    // goals are created on web (`NewGoalSheet` in
+    // web-v2/components/faff-app/toolkit/sheets.tsx), and the phone READS them
+    // — reciteMe() puts them on the ME fact block, which ProfileView renders
+    // via `API.fetchCoachFacts(surface: "me")`.
+    //
+    // If a native create form is ever built, the endpoint is unchanged:
+    //   POST /api/goals { goal_type, target, deadline?, current?, tolerance?,
+    //                     rationale? } · goal_type is one of
+    //   volume | speed | distance | habit | health.
 
     // MARK: - RPE
 

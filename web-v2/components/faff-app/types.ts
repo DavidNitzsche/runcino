@@ -263,6 +263,14 @@ export type FaffSeed = {
   // Past A/B race with no logged result, surfaced for up to 30 days post-race.
   // Drives the "AFC was 3 days ago — log your result" callout in TargetsView.
   unloggedRaceAlert: { slug: string; name: string; daysSince: number } | null;
+  /** 2026-08-24 · the runner's standing non-race goals (`personal_goals`),
+   *  rendered by Targets · STANDING GOALS. Comes off ProfileState, which is
+   *  already loaded for this page, so it costs no extra query.
+   *
+   *  NULL means the read failed — the section says so. `[]` means they have
+   *  set none. A create form whose output is invisible is the bug this field
+   *  closes; collapsing null into [] would reopen it one level down. */
+  personalGoals: import('@/lib/coach/personal-goals').PersonalGoal[] | null;
   /** 2026-08-17 · recomposition deck Decision 3 · is the runner inside a
    *  training block or between two of them? Targets' THE WORK renders the
    *  explicit BETWEEN BLOCKS state off this instead of an empty list.

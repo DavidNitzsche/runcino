@@ -33,19 +33,27 @@
  * does not make a read incapable of failing. An empty `goals` array now means
  * what it says: we looked, and this runner has set no goals.
  *
- * STILL TRUE, AND WORTH KNOWING: nothing in the app READS this table yet.
- * NewGoalSheet (web) and API.postGoal (iPhone) both POST; the GET has no
- * in-app consumer, and the coach's state-loader does not query
- * `personal_goals`. So the loop stores a goal faithfully and no surface
- * spends it. That is a product gap, not a defect in this route.
+ * 2026-08-24 (later the same day) · THE READ SIDE NOW EXISTS.
+ *
+ * The entry above used to end by noting that nothing in the app READ this
+ * table: both clients POSTed, `GET` had no in-app caller, and the coach never
+ * saw a goal. A create form whose output is invisible is worse than no form —
+ * it asks the runner what they are chasing and then never mentions it again.
+ *
+ * The read side is `lib/coach/personal-goals.ts`, and it is the ONE query.
+ * This route's GET calls it, `lib/coach/profile-state.ts` puts the same rows on
+ * ProfileState, `reciteMe()` states them back on the coach's ME surface
+ * (/api/coach/facts?surface=me + /api/briefing, which is what iPhone's
+ * ProfileView renders), and Targets renders STANDING GOALS beside the pill that
+ * creates them. `lib/coach/_personal_goals_wiring.test.ts` is the guard.
  *
  * ('strength' is in the table's CHECK because STRENGTH-3 kept existing rows
  * readable while gating new writes — see `VALID_GOAL_TYPES` below.)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { rowsOrNull } from '@/lib/db/read';
 import { outage } from '@/lib/route/failure';
+import { loadPersonalGoals } from '@/lib/coach/personal-goals';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 
@@ -60,23 +68,13 @@ export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
-  const rows = await rowsOrNull(
-    'api/goals · list',
-    pool.query(
-      `SELECT id, goal_type, target, current, deadline::text AS deadline,
-            tolerance, rationale, created_at::text AS created_at,
-            updated_at::text AS updated_at
-       FROM personal_goals
-      WHERE user_uuid = $1
-        AND (deadline IS NULL OR deadline >= CURRENT_DATE)
-      ORDER BY deadline ASC NULLS LAST, created_at DESC`,
-      [userId],
-    ),
-  );
-  // A failed read is not an empty goal list. See the header for why this read
-  // fails on every call today.
-  if (rows === null) return outage('api/goals', new Error('personal_goals read failed'));
-  return NextResponse.json({ ok: true, goals: rows });
+  // One query, shared with every other reader · lib/coach/personal-goals.ts.
+  // It returns null on a failed read and [] on an honest nothing, and this
+  // route is the reason that distinction has to survive the trip.
+  const goals = await loadPersonalGoals(userId);
+  // A failed read is not an empty goal list.
+  if (goals === null) return outage('api/goals', new Error('personal_goals read failed'));
+  return NextResponse.json({ ok: true, goals });
 }
 
 export async function POST(req: NextRequest) {
@@ -113,8 +111,10 @@ export async function POST(req: NextRequest) {
     ],
   );
 
-  // Coach picks goals up via state-loader; bust cache so the next
-  // briefing render sees the new goal.
+  // The coach reads goals through lib/coach/personal-goals.ts →
+  // profile-state → reciteMe (NOT the state-loader · that claim stood here
+  // for months and was never true). 'profile_edit' is the right event: the ME
+  // surface is where the goal now shows up, so a cached briefing has to go.
   await bustBriefingCacheForEvent(userId, 'profile_edit').catch(() => {});
 
   return NextResponse.json({ ok: true, goal: r.rows[0] });
