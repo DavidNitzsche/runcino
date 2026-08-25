@@ -65,14 +65,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'no active sick episode' }, { status: 404 });
     }
 
-    // 2026-08-24 · swallowed-failure sweep · `sick_recovery` does not exist in
-    // production — migration 117 declares it alongside `sick_episodes` and only
-    // the first table landed. This INSERT threw, the handler answered 500
-    // "recovery insert failed", and the `cleared_at` update below never ran. A
-    // runner tapping "recovered" got an error and stayed marked sick, so the
-    // plan stayed paused. Clearing the episode is what they asked for; the
-    // append-only trend row is not worth blocking it. Creating the table is a
-    // DDL PROPOSAL; the statement is already in migration 117.
+    // 2026-08-24 · `sick_recovery` did not exist in production — migration 117
+    // declares it alongside `sick_episodes` and only the first table landed.
+    // This INSERT threw, the handler answered 500 "recovery insert failed", and
+    // the `cleared_at` update below never ran. A runner tapping "recovered" got
+    // an error and STAYED MARKED SICK, so the plan stayed paused on an illness
+    // they had told us was over.
+    //
+    // Two fixes, and the order matters. The table now exists (migration 154,
+    // applied to prod 2026-08-24), so the trend row lands. And this `attempt()`
+    // stays regardless: clearing the episode is what the runner asked for, the
+    // append-only log is not worth blocking it, and the state change must not
+    // be reachable by a failure in the line above it. Falsified by injecting an
+    // INSERT failure on a local clone — the episode still cleared, Today still
+    // handed the day back to the plan, and the failure was loud in the log.
     await attempt(
       'api/sick/recovery · trend row',
       pool.query(

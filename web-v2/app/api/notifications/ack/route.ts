@@ -229,18 +229,18 @@ async function ackNiggleSick(
       [userId],
     )).rows[0];
     if (!active) return { side_effect: 'no_active_sick_episode' };
-    // 2026-08-24 · swallowed-failure sweep · `sick_recovery` does not exist in
-    // production. Migration 117 creates both `sick_episodes` and
-    // `sick_recovery`; only the first landed. So this INSERT threw, and it
-    // threw BEFORE the `cleared_at` update below — meaning a runner who
-    // answered "recovered" never had their episode cleared and the plan stayed
-    // paused on an illness they had told us was over.
+    // 2026-08-24 · `sick_recovery` did not exist in production. Migration 117
+    // creates both `sick_episodes` and `sick_recovery`; only the first landed.
+    // So this INSERT threw, and it threw BEFORE the `cleared_at` update below —
+    // meaning a runner who answered "recovered" from the lock screen never had
+    // their episode cleared, and the plan stayed paused on an illness they had
+    // told us was over.
     //
-    // The trend log is a nice-to-have; clearing the episode is the thing the
-    // runner asked for. Order and blast radius both change: the append-only log
-    // is best-effort and loud, the state change always runs. Creating the table
-    // is a DDL PROPOSAL — see `db/migrations/117_sick_episodes.sql`, which
-    // already carries the exact statement.
+    // The table now exists (`db/migrations/154_sick_recovery.sql`, applied to
+    // prod 2026-08-24, replaying 117's statements verbatim). The `attempt()`
+    // stays anyway: the append-only log is best-effort and loud, the state
+    // change always runs. Sibling of the identical guard in
+    // app/api/sick/recovery/route.ts — both paths verified end to end.
     await attempt(
       'notifications/ack · sick_recovery trend',
       pool.query(

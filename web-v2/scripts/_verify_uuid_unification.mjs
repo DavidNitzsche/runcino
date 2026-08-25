@@ -77,6 +77,19 @@ for (const t of MIGRATION_126_TABLES) {
 console.log('\n=== Backfill check: no orphan user_id without user_uuid ===');
 for (const t of [...MIGRATION_126_TABLES, ...BOTH_LEGACY_TABLES]) {
   try {
+    // 2026-08-24 · a table with NO `user_id` column is the END STATE of this
+    // migration, not a failure of it — `personal_goals` (migration 152) was
+    // created uuid-only on purpose, because the legacy column defaulted every
+    // runner to the string 'me'. Asking "are there rows with user_id and no
+    // user_uuid" of a table that has no user_id used to throw 42703 and get
+    // scored as a FAIL, which would have this script reporting a regression
+    // for the thing it is supposed to be checking FOR.
+    const hasUserId = (await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name=$1 AND column_name='user_id'`,
+      [t],
+    )).rows.length > 0;
+    if (!hasUserId) { ok(`${t} — uuid-only (no legacy user_id column to orphan)`); continue; }
     const r = await pool.query(
       `SELECT COUNT(*)::int AS n FROM "${t}" WHERE user_id IS NOT NULL AND user_uuid IS NULL`
     );
