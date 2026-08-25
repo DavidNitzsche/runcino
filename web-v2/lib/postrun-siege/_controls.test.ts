@@ -19,6 +19,7 @@ import {
   checkTripleMultipliesOut, checkZoneShares, checkZoneTableTiles,
   checkElevationReading,
 } from './invariants';
+import { apportionToHundred, reconcileHrZones } from '@/lib/runs/coherence';
 import type { ZoneTable } from '@/lib/training/zones';
 
 /** A zone table with whatever bands the control needs. */
@@ -133,6 +134,21 @@ describe('CONTROL · the zone checks catch both distribution defects', () => {
       .toBeGreaterThan(0);
     expect(checkZoneShares({ z1: -10, z2: 40, z3: 30, z4: 20, z5: 20 }).length)
       .toBeGreaterThan(0);
+  });
+
+  it('refuses a set carrying a negative share rather than clamping it away', () => {
+    // The clamp made `{-10, 40, 30, 20, 20}` come back as `{0, 36, 28, 18, 18}`
+    // — five plausible percentages that are neither what the row carried nor a
+    // correction of it.
+    expect(apportionToHundred([-10, 40, 30, 20, 20])).toBeNull();
+    expect(reconcileHrZones({
+      avgHr: 140, hrZonePcts: { z1: -10, z2: 40, z3: 30, z4: 20, z5: 20 },
+    } as never)).toBeNull();
+    // A zero share is still a share, and a real set still apportions.
+    expect(checkZoneShares(
+      (() => { const a = apportionToHundred([0, 40, 30, 20, 20])!;
+               return { z1: a[0], z2: a[1], z3: a[2], z4: a[3], z5: a[4] }; })(),
+    )).toEqual([]);
   });
 
   it('accepts a real distribution and an honest absence', () => {

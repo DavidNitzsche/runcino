@@ -297,6 +297,14 @@ const HR_SHAPES: Shape[] = [
     },
   },
   {
+    id: 'hr/zones-with-a-negative-share',
+    origin: 'a bucketer that subtracted before it apportioned',
+    data: {
+      distanceMi: 5, durationSec: 2400, avgHr: 140,
+      hrZonePcts: { z1: -10, z2: 40, z3: 30, z4: 20, z5: 20 },
+    },
+  },
+  {
     id: 'hr/zones-without-avg',
     origin: 'a distribution survived a merge its own average did not',
     data: {

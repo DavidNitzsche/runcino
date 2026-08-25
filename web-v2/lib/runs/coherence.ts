@@ -286,6 +286,17 @@ export interface RunCoherence {
  * not a share.
  */
 export function apportionToHundred(counts: readonly number[]): number[] | null {
+  // 2026-08-24 · A NEGATIVE SHARE IS NOT A SMALL ONE.
+  //
+  // Every reduction here read `b > 0 ? b : 0`, which treats a negative as a
+  // zero — so a stored `{z1:-10, z2:40, z3:30, z4:20, z5:20}` sums to 100,
+  // passes `reconcileHrZones`'s distribution test, and comes back out of here
+  // as `{0, 36, 28, 18, 18}`: five plausible percentages that are not the ones
+  // the row carried and are not a correction of them either. Silently
+  // substituting a different distribution is the shape this module exists to
+  // stop, so the set is refused instead. No production row carries one today;
+  // the guard costs a line and the alternative is unfalsifiable on screen.
+  if (counts.some((c) => Number.isFinite(c) && c < 0)) return null;
   const total = counts.reduce((a, b) => a + (b > 0 ? b : 0), 0);
   if (!(total > 0)) return null;
 
