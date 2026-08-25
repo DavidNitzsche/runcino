@@ -37,6 +37,32 @@
  * where its two failure modes were found by running it against real data
  * rather than by a test. It lives here now so the next surface that needs to
  * ask this question does not re-derive it — and get it wrong the same two ways.
+ *
+ * ── 2026-08-25 · THE ACTIVE PLAN BREAKS THE TIE FIRST ────────────────────
+ *
+ * The ordering is `(tp.archived_iso IS NULL) DESC, tp.authored_iso DESC`, and
+ * the first clause is new. It exists because `authored_iso DESC` alone
+ * silently assumes the newest-authored plan is the live one — which held for
+ * every write path this app had, because a rebuild archives the old plan and
+ * authors the new one in the same transaction.
+ *
+ * `POST /api/plan/undo` breaks that assumption on purpose. It archives the
+ * block the cron authored and un-archives the older one the runner asked for.
+ * Under the old ordering the undone block would have kept winning every shared
+ * date here — so the week strip (which filters `archived_iso IS NULL`) would
+ * show the restored block while execution scoring, adaptation and the goal
+ * projection (which read through this) went on grading him against the block
+ * he had just rejected. Two surfaces, two answers, no error anywhere. That is
+ * the split-brain the undo route's whole design is trying not to create.
+ *
+ * It changes NOTHING for existing data. For a date covered by both an active
+ * and an archived plan, the active plan is always the more recently authored
+ * one, so the new clause and the old one agree; and for a date covered only by
+ * archived plans — every date before the last rebuild, which is most of the
+ * runner's history — the clause is constant across all candidates and
+ * `authored_iso DESC` decides exactly as before. Post-race history still
+ * survives the rollover, which is the property the section above exists to
+ * protect. `_owned_days_active_first.test.ts` states both halves.
  */
 
 import { pool } from '@/lib/db/pool';
@@ -84,7 +110,7 @@ export function ownedDaysSql(opts: OwnedDaysSqlOptions = {}): string {
       FROM plan_workouts pw
       JOIN training_plans tp ON tp.id = pw.plan_id
      WHERE pw.user_uuid = $${userParam} AND pw.date_iso >= $${fromParam} AND pw.date_iso < $${toParam}
-     ORDER BY pw.date_iso, tp.authored_iso DESC`;
+     ORDER BY pw.date_iso, (tp.archived_iso IS NULL) DESC, tp.authored_iso DESC`;
 }
 
 /** One planned day, as the plan that owned it described it. */

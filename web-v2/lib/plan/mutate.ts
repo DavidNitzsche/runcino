@@ -203,6 +203,7 @@ import type { PoolClient } from 'pg';
 import { validateComposedPlan, PlanValidationError } from './validate';
 import type { ComposePlanResult, ComposedWeek, DayPlan } from './generate';
 import type { PlanMode } from './goal-tiers';
+import type { PlanPrescription } from './plan-delta';
 
 // ── row shapes ────────────────────────────────────────────────────────────────
 
@@ -473,6 +474,107 @@ export async function snapshotPlan(tx: Queryable, planId: string): Promise<PlanS
     weeks: weeks.rows,
     workouts: workouts.rows,
   };
+}
+
+/**
+ * 2026-08-25 · THE SAME THREE TABLES, READ FOR A DIFFERENT QUESTION.
+ *
+ * `snapshotPlan` above serves the VALIDATOR, so it selects the fields
+ * `validateComposedPlan` reads and no others. `snapshotPrescription` serves the
+ * question "did this rebuild change anything the runner would notice", which
+ * needs a wider set: `pace_target_s_per_mi` and `workout_spec` are not read by
+ * any invariant, and are exactly what a re-anchor moves.
+ *
+ * Kept as a second reader rather than a widening of `snapshotPlan` on purpose.
+ * `structuralFingerprint` is built from that snapshot and is load-bearing for
+ * the `derivations` declaration proof — it must NOT start seeing pace and spec,
+ * or a legitimate derivations-only write would begin rolling itself back.
+ *
+ * The block-level fields (mode, race, goal date) come off `training_plans`, so
+ * a rebuild that re-points at a different race is never mistaken for a no-op
+ * even when it lands the same days. That is the `race_graduate` case.
+ */
+export async function snapshotPrescription(
+  tx: Queryable,
+  planId: string,
+): Promise<PlanPrescription> {
+  const [planRes, weekRes, dayRes] = await Promise.all([
+    tx.query<{ mode: string | null; race_id: string | null; goal_iso: string | null }>(
+      `SELECT mode, race_id, goal_iso::text AS goal_iso
+         FROM training_plans WHERE id = $1 LIMIT 1`,
+      [planId],
+    ),
+    tx.query<{ week_start_iso: string; label: string | null; is_race_week: boolean | null; is_cutback: boolean | null }>(
+      `SELECT w.week_start_iso::text AS week_start_iso, p.label,
+              w.is_race_week, w.is_cutback
+         FROM plan_weeks w
+         LEFT JOIN plan_phases p ON p.id = w.phase_id
+        WHERE w.plan_id = $1
+        ORDER BY w.week_idx ASC`,
+      [planId],
+    ),
+    tx.query<{
+      date_iso: string; type: string; distance_mi: string | null;
+      pace_target_s_per_mi: string | null; sub_label: string | null;
+      workout_spec: unknown; is_quality: boolean | null; is_long: boolean | null;
+      notes: string | null;
+    }>(
+      `SELECT date_iso::text AS date_iso, type, distance_mi::text AS distance_mi,
+              pace_target_s_per_mi::text AS pace_target_s_per_mi, sub_label,
+              workout_spec, is_quality, is_long, notes
+         FROM plan_workouts WHERE plan_id = $1`,
+      [planId],
+    ),
+  ]);
+
+  const plan = planRes.rows[0];
+  return {
+    planId,
+    mode: plan?.mode ?? null,
+    raceId: plan?.race_id ?? null,
+    goalISO: plan?.goal_iso ? String(plan.goal_iso).slice(0, 10) : null,
+    weeks: weekRes.rows.map((w) => ({
+      startISO: String(w.week_start_iso).slice(0, 10),
+      phase: w.label ?? '',
+      isRaceWeek: w.is_race_week === true,
+      isCutback: w.is_cutback === true,
+    })),
+    days: dayRes.rows.map((d) => ({
+      dateISO: String(d.date_iso).slice(0, 10),
+      type: String(d.type),
+      distanceMi: d.distance_mi != null ? Number(d.distance_mi) : null,
+      paceTargetSPerMi: d.pace_target_s_per_mi != null ? Number(d.pace_target_s_per_mi) : null,
+      subLabel: d.sub_label,
+      workoutSpec: d.workout_spec ?? null,
+      isQuality: d.is_quality === true,
+      isLong: d.is_long === true,
+      notes: d.notes,
+    })),
+  };
+}
+
+/**
+ * The runner's single active plan, as a prescription, or NULL.
+ *
+ * NULL is returned for "no active plan" AND for "more than one active plan".
+ * The second is supposed to be impossible — `training_plans_active_uq`
+ * (migration 142) is a unique partial index on `(user_uuid) WHERE archived_iso
+ * IS NULL` — but the no-op gate's action is to ROLL A REBUILD BACK, and rolling
+ * back on a match with one of two active plans would leave the other one
+ * standing. When the invariant this depends on is not holding, the gate
+ * declines to act rather than acting on half a picture.
+ */
+export async function snapshotActivePrescription(
+  tx: Queryable,
+  userUuid: string,
+): Promise<PlanPrescription | null> {
+  const rows = (await tx.query<{ id: string }>(
+    `SELECT id::text AS id FROM training_plans
+      WHERE user_uuid = $1::uuid AND archived_iso IS NULL`,
+    [userUuid],
+  )).rows;
+  if (rows.length !== 1) return null;
+  return snapshotPrescription(tx, rows[0].id);
 }
 
 interface PlanContextRow {

@@ -66,7 +66,12 @@ import { dropLastSegment, keepFirstSegment, parsePrescription, parseSegments, pa
 // stimulus it can actually see.
 import { progressionSpecFields } from './progression-spec';
 import { validateComposedPlan } from './validate';
-import { mutatePlan } from './mutate';
+import { mutatePlan, snapshotPrescription, snapshotActivePrescription } from './mutate';
+// 2026-08-25 · the commit gate + the "what moved" line. See lib/plan/plan-delta.ts.
+import {
+  computeDelta, samePrescription, prescriptionFingerprint, fingerprintDigest,
+  type PlanPrescription, type PlanDelta,
+} from './plan-delta';
 import { EASY_SHARE_FLOOR, weekIntensity, splitDay } from './intensity-distribution';
 // DOCTRINE-DOSING-2 · the composer sizes to the SAME doctrine the gate checks.
 // Importing the budget from the module that measures the breach is what makes
@@ -411,6 +416,114 @@ export interface GenerateResult {
   plan_id?: string;
   weeks_generated?: number;
   reason?: string;
+  /**
+   * 2026-08-25 · TRUE when the rebuild ran, produced nothing worth landing, and
+   * was rolled back. `ok` is still true and `plan_id` is the plan the runner
+   * KEPT, so a caller that only reads those two behaves exactly as it did.
+   *
+   * A caller that reports what happened must read this. Writing "plan rebuilt"
+   * off `ok: true` when nothing was rebuilt is the drift between the report and
+   * reality that this whole night's work is about.
+   */
+  unchanged?: boolean;
+  /** Why it was refused. Absent when a plan was written. */
+  refusedReason?: RebuildRefusalReason;
+  /**
+   * What moved, both blocks read off the database. Absent on a first authoring
+   * (there is no prior block) and whenever the prior read could not be taken.
+   * Never modelled: every number in here is a sum of persisted rows.
+   */
+  plan_delta?: PlanDelta;
+}
+
+/**
+ * 2026-08-25 · WHY A REBUILD MAY BE REFUSED AFTER IT HAS ALREADY RUN.
+ *
+ *   'no_change'        · the composed block is identical, field for field, to
+ *                        the one it was about to replace. Landing it would
+ *                        archive a live block, mint a fresh set of
+ *                        `plan_workouts` ids, reset the week counter and raise
+ *                        a notice card, in exchange for nothing. The morning
+ *                        of 2026-08-25 the runner noticed the rebuild BECAUSE
+ *                        the week counter reset; a counter that resets for no
+ *                        reason is a false alarm on the one signal he has.
+ *
+ *   'undone_by_runner' · the runner put a block back, and this rebuild would
+ *                        re-land the exact block they put away. Scoped to the
+ *                        OUTPUT, not to the signal: an engine that wants
+ *                        something genuinely different is free to act
+ *                        immediately, and only the rejected block is held off.
+ *                        That is what keeps this from becoming the fourteen-day
+ *                        silence the propose-and-wait model would have created,
+ *                        which is the harm the apply-with-undo decision was
+ *                        taken to avoid.
+ */
+export type RebuildRefusalReason = 'no_change' | 'undone_by_runner';
+
+/**
+ * How long an undone block stays refused. Not a cooldown on the SIGNAL — the
+ * engine may act on the same drift tomorrow, as long as it wants a different
+ * week. It is how long the runner's "no, put it back" holds against that exact
+ * answer being re-imposed.
+ *
+ * 14 days matches the window `hasPendingProposal` already gives a dismissed
+ * proposal, so a runner who says no through the undo and a runner who says no
+ * through the Keep button are honoured for the same length of time. THE NUMBER
+ * ITSELF IS A JUDGMENT CALL and is flagged as one: there is no doctrine on how
+ * long a runner's refusal should stand.
+ */
+export const UNDO_REFUSAL_DAYS = 14;
+
+
+/**
+ * Thrown from inside the rebuild transaction to reach `mutatePlan`'s ROLLBACK.
+ * Caught immediately by `persistComposedPlan` and turned back into a value —
+ * it never escapes this module and is never an error condition.
+ */
+export class RebuildRefused extends Error {
+  constructor(
+    readonly reason: RebuildRefusalReason,
+    /** The plan the runner keeps. The one that was never archived. */
+    readonly keptPlanId: string,
+  ) {
+    super(`rebuild refused · ${reason}`);
+    this.name = 'RebuildRefused';
+  }
+}
+
+/**
+ * Has the runner undone a block that looks exactly like this one, recently?
+ *
+ * The undo route records the fingerprint of the block it put away
+ * (`plan_proposals.reasons.undone_fingerprint`, status `'undone'`). This asks
+ * whether the plan we just wrote reproduces it.
+ *
+ * FAILS OPEN, deliberately, and this is the opposite posture from
+ * `hasPendingProposal` for a reason worth stating. That guard stands in front
+ * of REPLACING a block, so it must assume the worst when it cannot see. This
+ * one stands in front of REFUSING to replace one, and a read error that
+ * silently froze a runner's plan against every future rebuild would be a much
+ * quieter and much worse failure than one that lets a rebuild through.
+ */
+async function undoneWithin(
+  client: PoolClient,
+  userUuid: string,
+  candidate: PlanPrescription,
+  days: number,
+): Promise<boolean> {
+  const fp = fingerprintDigest(prescriptionFingerprint(candidate));
+  const r = await client.query<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM plan_proposals
+      WHERE user_uuid = $1::uuid
+        AND status = 'undone'
+        AND resolved_at >= NOW() - ($2::text || ' days')::interval
+        AND reasons->>'undone_fingerprint' = $3`,
+    [userUuid, String(days), fp],
+  ).catch((e) => {
+    logReadFailure('plan/generate · undone-block check', e);
+    return { rows: [{ n: '0' }] };
+  });
+  return Number(r.rows[0]?.n ?? 0) > 0;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -8374,6 +8487,12 @@ async function persistComposedPlan(
   // NOTE: composition and phase logic above are untouched; only the
   // persistence transaction moved.
   let planId: string | undefined;
+  /** The block being replaced, read inside the transaction before it is
+   *  archived. Null when the runner has no active plan (a first authoring) or
+   *  has more than one (see `snapshotActivePrescription`) — in both cases the
+   *  commit gate stands down and the rebuild lands as it always did. */
+  let priorPrescription: PlanPrescription | null = null;
+  let planDelta: PlanDelta | null = null;
   const boundary = await mutatePlan<string | undefined>({
     userUuid: userId,
     source: 'generate/persistComposedPlan',
@@ -8389,6 +8508,12 @@ async function persistComposedPlan(
     // every retro surface (badge, recap, VDOT, adapt-text) would lie.
     // Throws on DB error · the rebuild aborts rather than unsealing.
     const sealedSnapshot = await snapshotSealedDays(client, userId);
+    // 2026-08-25 · READ THE OUTGOING BLOCK BEFORE IT IS ARCHIVED, for the same
+    // reason the sealed snapshot is taken here: `snapshotActivePrescription`
+    // filters on `archived_iso IS NULL`, and one statement later there is no
+    // active plan to read. This is the `before` side of the commit gate at the
+    // bottom of this callback.
+    priorPrescription = await snapshotActivePrescription(client, userId);
     // 2026-08-25 · the trigger, not the constant. See GenerateInput.archiveReason.
     await clearActivePlansFor(client, userId, input.archiveReason ?? 'regenerated');
     planId = await persistPlan(client, {
@@ -8494,20 +8619,76 @@ async function persistComposedPlan(
       `UPDATE training_plans SET mode = $1 WHERE id = $2`,
       [mode, planId],
     );
+
+    // 2026-08-25 · THE COMMIT GATE. See RebuildRefused below for the argument.
+    //
+    // Runs LAST, on the fully written plan, because the only honest way to ask
+    // "did this rebuild change anything" is to compare what was actually
+    // persisted. `persistPlan` re-derives distances from the spec, caps the
+    // spec to the day distance and overlays Rule 15 sealed days — a comparison
+    // made against the in-memory composition would be answering about a plan
+    // that was never written.
+    if (priorPrescription) {
+      const after = await snapshotPrescription(client, planId);
+      planDelta = computeDelta(priorPrescription, after, todayISO);
+      if (samePrescription(priorPrescription, after)) {
+        throw new RebuildRefused('no_change', priorPrescription.planId);
+      }
+      const undone = await undoneWithin(client, userId, after, UNDO_REFUSAL_DAYS);
+      if (undone) {
+        throw new RebuildRefused('undone_by_runner', priorPrescription.planId);
+      }
+    }
     return planId;
     },
   }).catch((e) => {
     // The boundary already rolled back, so the prior active plan stays live.
+    // A RebuildRefused is not an error; it is this function's other correct
+    // answer, and it is re-thrown here only because throwing is how a caller
+    // inside `apply` reaches the boundary's ROLLBACK. Caught immediately below.
+    if (e instanceof RebuildRefused) throw e;
     console.error('[generatePlan]', `rebuild rolled back · prior active plan untouched · user=${userId.slice(0, 8)} ·`, e instanceof Error ? e.message : String(e));
     throw e;
+  }).catch((e) => {
+    if (e instanceof RebuildRefused) return e;
+    throw e;
   });
+
+  // THE REFUSAL PATH. Nothing was written, nothing was archived, the runner is
+  // still in the block they were in this morning, and the week counter reads
+  // what it read yesterday. `ok` is TRUE: the engine ran, and "your plan is
+  // already right" is a successful outcome, not a failure to rebuild. Callers
+  // that need to tell the two apart read `unchanged` / `refusedReason`.
+  if (boundary instanceof RebuildRefused) {
+    console.log(
+      `[generatePlan] refused · ${boundary.reason} · plan kept ${boundary.keptPlanId} · `
+      + `user=${userId.slice(0, 8)} · trigger=${input.archiveReason ?? 'regenerated'}`,
+    );
+    return {
+      ok: true,
+      plan_id: boundary.keptPlanId,
+      weeks_generated: 0,
+      unchanged: true,
+      refusedReason: boundary.reason,
+      plan_delta: planDelta ?? undefined,
+    };
+  }
+
   planId = boundary.value ?? planId;
 
   // Post-commit, best-effort · plan mutation → invalidate memoized lookup
   // so the next /today render sees the new active plan.
   (await import('./lookup')).bustPlanLookupCache(userId);
 
-  return { ok: true, plan_id: planId, weeks_generated: composed.totalWeeks };
+  return {
+    ok: true, plan_id: planId, weeks_generated: composed.totalWeeks,
+    unchanged: false,
+    // What moved, for the notice card. Null on a first plan (nothing to
+    // compare against) and on a rebuild where the prior read could not be
+    // taken; the card falls back to the trigger's own message and never
+    // invents a number.
+    plan_delta: planDelta ?? undefined,
+  };
 }
 
 /**

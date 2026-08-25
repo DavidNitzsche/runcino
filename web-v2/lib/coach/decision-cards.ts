@@ -43,9 +43,24 @@ export type DecisionSource =
  *   accept · primary, label always begins "ACCEPT"
  *   keep   · secondary, label always begins "KEEP"
  *   link   · quiet text link on notices ("SEE THE CHANGE ›")
+ *   undo   · secondary on a NOTICE, label always begins "PUT"
+ *
+ * 2026-08-25 · THE GRAMMAR GREW BY ONE, and it is worth saying why rather than
+ * quietly widening a union the deck locked.
+ *
+ * The deck's rule was: notices carry a single quiet link, because a notice is
+ * something that already happened and there is nothing left to decide. That
+ * held for as long as an applied change was irreversible. It is not any more —
+ * the runner's ruling on 2026-08-25 was "apply, but let me undo", and an undo
+ * the runner cannot reach is not an undo.
+ *
+ * `keep` was the obvious reuse and it is wrong here. "KEEP THE CURRENT PLAN"
+ * means decline a change that has not happened. On a notice the change HAS
+ * happened, so a KEEP button would be offering to keep the thing the runner is
+ * trying to get rid of. A separate role with its own verb is the honest shape.
  */
 export type DecisionAction = {
-  role: 'accept' | 'keep' | 'link';
+  role: 'accept' | 'keep' | 'link' | 'undo';
   label: string;
   /** Shown while the POST is in flight. Ignored for role 'link'. */
   busyLabel?: string;
@@ -301,6 +316,26 @@ function fromPlanProposal(p: PlanProposalInput): CoachDecision | null {
     const href = p.newPlanId
       ? `/training/plans/${p.newPlanId}/diff${from ? `?from=${from}` : ''}`
       : undefined;
+    const actions: DecisionAction[] = [];
+    if (href) actions.push({ role: 'link', label: 'SEE THE CHANGE ›', href });
+    // 2026-08-25 · the undo. Offered whenever the row records BOTH sides of the
+    // swap, because those two ids are what the route needs to reverse it.
+    //
+    // The button is offered optimistically and the SERVER decides. It has to
+    // be that way round: whether an undo is safe depends on which days the
+    // runner has run since, which is a database question, and a client that
+    // guessed would either hide a safe undo or promise an unsafe one. A refused
+    // undo comes back 409 with a sentence to render, which is a better answer
+    // than a button that was never there.
+    if (from && p.newPlanId) {
+      actions.push({
+        role: 'undo',
+        label: 'PUT THE OLD BLOCK BACK',
+        busyLabel: 'PUTTING IT BACK',
+        endpoint: '/api/plan/undo',
+        body: { id: p.id },
+      });
+    }
     return {
       key: `plan-${p.id}`,
       source: 'plan_proposal',
@@ -310,11 +345,13 @@ function fromPlanProposal(p: PlanProposalInput): CoachDecision | null {
       body: p.message ?? '',
       stamp: p.createdAt ?? null,
       priority: PRIORITY.plan_proposal_applied,
-      actions: href ? [{ role: 'link', label: 'SEE THE CHANGE ›', href }] : [],
+      actions,
     };
   }
 
-  // accepted / dismissed / superseded / expired never interrupt.
+  // accepted / dismissed / superseded / expired / no_change / undone never
+  // interrupt. `no_change` is a rebuild that found nothing to do and `undone`
+  // is a change the runner has already reversed; neither is news.
   return null;
 }
 

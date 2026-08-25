@@ -1083,7 +1083,20 @@ export async function hasPendingProposal(
               -- This is an IDEMPOTENCE floor — "twice for one cause is once" —
               -- not a policy cooldown. How long a runner should be left alone
               -- after a rebuild is a separate question, and a bigger one.
-              OR (status = 'auto_applied' AND created_at >= NOW() - interval '20 hours')
+              -- 2026-08-25 · AND NEITHER IS A REBUILD THAT LOOKED AND FOUND
+              -- NOTHING. no_change is what the commit gate writes when the
+              -- block it composed was identical to the one already active, so
+              -- the rebuild rolled back. That is an OUTCOME for this cause, and
+              -- the arm above is an idempotence floor over causes, not over
+              -- successes: re-running the same composition four hours later can
+              -- only reach the same rollback.
+              --
+              -- Widening an OR arm can only make this guard fire MORE often,
+              -- which is the direction it is safe to be wrong in. It does not
+              -- touch the fail-closed catch or the 'auto_applied' arm below it,
+              -- both of which are load-bearing and were fixed earlier today.
+              OR (status IN ('auto_applied', 'no_change')
+                  AND created_at >= NOW() - interval '20 hours')
             )
       ORDER BY created_at DESC LIMIT 1`,
     [userUuid, kind, scoped ? planId : null],

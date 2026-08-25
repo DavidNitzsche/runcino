@@ -26,6 +26,7 @@ import { logReadFailure } from '@/lib/db/read';
 import { generatePlan } from '@/lib/plan/generate';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { isCoachedExternally, COACHED_SKIP_REASON } from '@/lib/plan/coached-gate';
+import type { PlanDelta } from '@/lib/plan/plan-delta';
 
 export type AutoRebuildKind =
   | 'race_date_changed'
@@ -98,6 +99,13 @@ export interface AutoRebuildResult {
   oldPlanId?: string;
   newPlanId?: string;
   proposalId?: number;
+  /** 2026-08-25 · the rebuild ran and produced the block the runner already
+   *  had, so nothing was archived and `newPlanId` is absent. `ok` stays true:
+   *  the engine did its job. A caller that counts rebuilds must not count
+   *  this one. */
+  unchanged?: boolean;
+  /** What moved, when something did. Read off both persisted blocks. */
+  planDelta?: PlanDelta;
 }
 
 /**
@@ -186,6 +194,11 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
   let newPlanId: string | undefined;
   let rebuildOk = false;
   let rebuildReason: string | undefined;
+  // 2026-08-25 · the two things the audit row could not say before: whether a
+  // plan actually landed, and what moved when one did.
+  let unchanged = false;
+  let refusedReason: string | undefined;
+  let planDelta: PlanDelta | undefined;
   try {
     // 2026-08-25 · the archived plan records WHICH trigger replaced it. The
     // proposal row below is the fuller story, but it is a separate write on a
@@ -201,6 +214,9 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
     if (result.ok) {
       rebuildOk = true;
       newPlanId = result.plan_id;
+      unchanged = result.unchanged === true;
+      refusedReason = result.refusedReason;
+      planDelta = result.plan_delta;
     } else {
       rebuildReason = result.reason;
     }
@@ -210,6 +226,26 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
 
   // 4. Always write the audit row · success or fail · the runner needs
   //    to see what was attempted and why.
+  //
+  // 2026-08-25 · THREE OUTCOMES NOW, NOT TWO.
+  //
+  //   auto_applied · a new block landed. The runner gets a notice card saying
+  //                  what moved, with an undo on it.
+  //   no_change    · the engine ran and the block it produced was the block the
+  //                  runner already had, so nothing was archived. The row
+  //                  exists because "we looked and there was nothing to do" is
+  //                  a real answer and the audit trail is poorer without it.
+  //                  It does NOT surface: `loadPlanProposals` selects pending
+  //                  and auto_applied only, and interrupting a runner to tell
+  //                  them their plan is unchanged is not a coaching act.
+  //   pending      · the rebuild FAILED. Unchanged from before: a human surface
+  //                  can retry it.
+  //
+  // The distinction matters beyond tidiness. Stamping `auto_applied` on a
+  // rebuild that never happened would put a notice card in front of the runner
+  // pointing at a `new_plan_id` equal to the plan they were already on, and its
+  // undo button would offer to restore a block that was never replaced.
+  const status = !rebuildOk ? 'pending' : unchanged ? 'no_change' : 'auto_applied';
   const proposalRow = (await pool.query<{ id: number }>(
     `INSERT INTO plan_proposals
        (user_uuid, plan_id, proposal_kind, reasons, status, source, new_plan_id, created_at, resolved_at)
@@ -223,10 +259,19 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
         ...input.reasons,
         rebuild_ok: rebuildOk,
         rebuild_reason: rebuildReason ?? null,
+        ...(unchanged ? { unchanged: true, refused_reason: refusedReason ?? null } : {}),
+        // The delta is the card's body. Stored on the row rather than recomputed
+        // at read time because by then the block it describes has been archived
+        // and the two sides of the comparison no longer both exist as "the
+        // active plan" — recomputing later would be reconstructing history from
+        // a plan that has since moved on.
+        ...(planDelta ? { plan_delta: planDelta } : {}),
       }),
-      rebuildOk ? 'auto_applied' : 'pending',  // failures fall back to pending so a human surface can retry
+      status,
       input.source,
-      newPlanId ?? null,
+      // A refused rebuild has no new plan. Writing the kept plan's id here
+      // would make the row read as "we replaced X with X".
+      unchanged ? null : (newPlanId ?? null),
     ],
     // `-1` is a sentinel, not an id — no row has it, so a caller can tell the
     // proposal was not written. It logs now; a proposal that silently failed to
@@ -237,8 +282,11 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
     ok: rebuildOk,
     reason: rebuildReason,
     oldPlanId: plan?.id ?? undefined,
-    newPlanId,
+    // Absent on a refusal. The caller asked whether a NEW plan exists.
+    newPlanId: unchanged ? undefined : newPlanId,
     proposalId: proposalRow.id,
+    unchanged,
+    planDelta,
   };
 }
 
@@ -321,6 +369,14 @@ export async function rebuildActivePlanForPrefs(
   let newPlanId: string | undefined;
   let rebuildOk = false;
   let rebuildReason: string | undefined;
+  // 2026-08-25 · same three outcomes as fireAutoRebuild. A settings change that
+  // does not move a single prescribed day must not archive the block: the
+  // runner edited a preference, and if the preference makes no difference to
+  // what they run then their block identity and week counter are not the price
+  // of finding that out.
+  let unchanged = false;
+  let refusedReason: string | undefined;
+  let planDelta: PlanDelta | undefined;
   try {
     // Race-prep plans regen off their race; goal-mode plans (P1-16) regen off
     // the goal the plan recorded — same distance, same target, same deadline
@@ -340,7 +396,13 @@ export async function rebuildActivePlanForPrefs(
             raceDateISO: String(plan.goal_iso).slice(0, 10),
           },
         });
-    if (result.ok) { rebuildOk = true; newPlanId = result.plan_id; }
+    if (result.ok) {
+      rebuildOk = true;
+      newPlanId = result.plan_id;
+      unchanged = result.unchanged === true;
+      refusedReason = result.refusedReason;
+      planDelta = result.plan_delta;
+    }
     else rebuildReason = result.reason;
   } catch (e: unknown) {
     rebuildReason = e instanceof Error ? e.message : String(e);
@@ -359,9 +421,11 @@ export async function rebuildActivePlanForPrefs(
         fields: changedFields,
         rebuild_ok: rebuildOk,
         rebuild_reason: rebuildReason ?? null,
+        ...(unchanged ? { unchanged: true, refused_reason: refusedReason ?? null } : {}),
+        ...(planDelta ? { plan_delta: planDelta } : {}),
       }),
-      rebuildOk ? 'auto_applied' : 'pending',
-      newPlanId ?? null,
+      !rebuildOk ? 'pending' : unchanged ? 'no_change' : 'auto_applied',
+      unchanged ? null : (newPlanId ?? null),
     ],
     // `-1` is a sentinel, not an id — no row has it, so a caller can tell the
     // proposal was not written. It logs now; a proposal that silently failed to
@@ -372,8 +436,10 @@ export async function rebuildActivePlanForPrefs(
     ok: rebuildOk,
     reason: rebuildReason,
     oldPlanId: plan.id,
-    newPlanId,
+    newPlanId: unchanged ? undefined : newPlanId,
     proposalId: proposalRow.id,
+    unchanged,
+    planDelta,
   };
 }
 

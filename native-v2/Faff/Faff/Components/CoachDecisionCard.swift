@@ -70,13 +70,42 @@ enum CoachDecisionSource {
 /// One button. `role` fixes the grammar.
 ///   accept · primary, label always begins "ACCEPT"
 ///   keep   · secondary, label always begins "KEEP"
+///   undo   · secondary on a NOTICE, label always begins "PUT"
+///
+/// 2026-08-25 · `undo` is new, and mirrors `decision-cards.ts` exactly. The
+/// deck's rule was that a notice carries no buttons because it already
+/// happened and there is nothing left to decide. That held while an applied
+/// change was irreversible. It is not any more: the ruling was "apply, but let
+/// me undo", and an undo the runner cannot reach is not an undo.
+///
+/// `keep` was the obvious reuse and it is wrong. "KEEP THE CURRENT PLAN" means
+/// decline a change that has not happened; on a notice the change HAS happened,
+/// so KEEP would be offering to keep the very thing being got rid of.
 struct CoachDecisionAction: Identifiable, Equatable {
-    enum Role { case accept, keep }
+    enum Role { case accept, keep, undo }
     let role: Role
     let label: String
     /// Shown while the request is in flight.
     let busyLabel: String
     var id: String { label }
+}
+
+/// What came back when the runner tapped.
+///
+/// 2026-08-25 · this was a `Bool`, and a Bool cannot tell the difference
+/// between "the network dropped" and "the server looked at your training and
+/// said no". Undo can genuinely refuse — the runner has already run a day the
+/// two blocks treat differently — and a refusal is a correct answer carrying a
+/// sentence about his own training. Rendering it as "could not save, check
+/// your connection and try again" would tell him to retry something that will
+/// refuse every time, for a reason he was never shown.
+enum CoachDecisionOutcome: Equatable {
+    /// It landed. The card clears.
+    case done
+    /// The request did not reach a verdict. Retrying is reasonable.
+    case failed
+    /// The server declined, and this is what to show. Coach voice, server-side.
+    case refused(String)
 }
 
 struct CoachDecision: Identifiable {
@@ -316,6 +345,16 @@ enum CoachDecisions {
             // Applying the same recency filter the adaptation notices use means
             // a stale payload cannot resurface a week-old rebuild as news.
             guard isWithinRecency(p.createdAt, now: now) else { return nil }
+            // 2026-08-25 · THE NOTICE GREW A BUTTON.
+            //
+            // Offered whenever the row records BOTH sides of the swap, because
+            // those two ids are what the server needs to reverse it. Whether the
+            // undo is SAFE is not decided here: it depends on which days the
+            // runner has run since the rebuild, which is a database question. A
+            // client that guessed would either hide a safe undo or promise an
+            // unsafe one, so the button is offered and the server rules. A
+            // refusal comes back with a sentence, which the card renders.
+            let canUndo = (p.previousPlanId?.isEmpty == false) && (p.newPlanId?.isEmpty == false)
             return CoachDecision(
                 key: "plan-\(p.id)",
                 source: .planProposal(p),
@@ -324,7 +363,9 @@ enum CoachDecisions {
                 title: title,
                 body: body,
                 stamp: p.createdAt.isEmpty ? nil : p.createdAt,
-                actions: [],
+                actions: canUndo
+                    ? [.init(role: .undo, label: "PUT THE OLD BLOCK BACK", busyLabel: "PUTTING IT BACK")]
+                    : [],
                 priority: priorityPlanApplied
             )
         }
@@ -438,7 +479,7 @@ struct CoachDecisionCard: View {
     let queue: [CoachDecision]
     /// Perform the action. Returns true on success; the card resolves the
     /// item out of its local view only when the parent confirms.
-    let onAct: (CoachDecision, CoachDecisionAction) async -> Bool
+    let onAct: (CoachDecision, CoachDecisionAction) async -> CoachDecisionOutcome
     /// Persist a notice dismissal (parent writes it to UserDefaults so it
     /// survives the next load within the recency window).
     let onDismiss: (CoachDecision) -> Void
@@ -448,7 +489,9 @@ struct CoachDecisionCard: View {
     /// the pager count stays honest without a reload.
     @State private var resolved: Set<String> = []
     @State private var busy: String? = nil
-    @State private var failed: Bool = false
+    /// The server's own sentence when it declined, or the generic line when the
+    /// request never got a verdict. Nil when nothing has gone wrong.
+    @State private var failure: String? = nil
 
     private var live: [CoachDecision] {
         queue.filter { !resolved.contains($0.key) }
@@ -513,8 +556,8 @@ struct CoachDecisionCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if failed {
-                Text("Could not save. Check your connection and try again.")
+            if let failure {
+                Text(failure)
                     .font(.body(11, weight: .semibold))
                     .foregroundStyle(Theme.overText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -603,14 +646,22 @@ struct CoachDecisionCard: View {
 
     private func act(_ item: CoachDecision, _ action: CoachDecisionAction) {
         busy = action.label
-        failed = false
+        failure = nil
         Task {
-            let ok = await onAct(item, action)
+            let outcome = await onAct(item, action)
             await MainActor.run {
                 busy = nil
-                failed = !ok
-                if ok {
+                switch outcome {
+                case .done:
+                    failure = nil
                     withAnimation(Theme.Motion.smooth) { _ = resolved.insert(item.key) }
+                case .failed:
+                    failure = "Could not save. Check your connection and try again."
+                case .refused(let why):
+                    // The card STAYS. A refusal is information about the
+                    // runner's training, not a dead end to be swept away, and
+                    // the row it belongs to is still the true state of things.
+                    failure = why
                 }
             }
         }
