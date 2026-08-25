@@ -229,19 +229,31 @@ struct MileBreakdownV5: View {
 
     private func row(_ p: MilePiece) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(p.mile)")
-                    .font(.faffText(TypeScaleV5.body17))
-                    .foregroundStyle(V5.textPrimary)
-                // Only when we were told. See `isPartial`.
+            // THE PARTIAL IS NOT NUMBERED.
+            //
+            // This drew a full-size "5" with "0.11 mi" beneath it, and the
+            // owner read exactly what it says: five miles, plus an orphan
+            // tenth "for no reason and to nowhere". The number was the
+            // problem. There is no fifth mile — there is four miles and a
+            // remainder, and a numeral claims the mile whatever the subtitle
+            // says underneath it.
+            //
+            // So the remainder gives up its number and states its length in
+            // the same slot, in the same weight the numerals use. The column
+            // then reads 1, 2, 3, 4, 0.11 mi — which is what happened.
+            //
+            // In miles, for the same reason the header says MILE: this is a
+            // mile-cut piece, so its length is a fraction of a mile. "0.18 km"
+            // would describe it in a unit it was never measured in.
+            Group {
                 if p.isPartial, let d = p.distanceMi {
-                    // In miles, for the same reason the header says MILE: this
-                    // is a mile-cut piece, so its length is a fraction of a
-                    // mile. "0.18 km" would describe it in a unit it was never
-                    // measured in.
                     Text(String(format: "%.2f mi", d))
-                        .font(.faffText(TypeScaleV5.label12))
-                        .foregroundStyle(V5.textQuiet)
+                        .font(.faffText(TypeScaleV5.body17))
+                        .foregroundStyle(V5.textSecondary)
+                } else {
+                    Text("\(p.mile)")
+                        .font(.faffText(TypeScaleV5.body17))
+                        .foregroundStyle(V5.textPrimary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
