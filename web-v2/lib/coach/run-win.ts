@@ -82,6 +82,12 @@ export interface WinInput {
     verdict?: string | null;
     actualPaceSPerMi?: number | null;
     targetPaceSPerMi?: number | null;
+    /** BELT-WIN-1 (2026-08-25) · the treadmill's own readings. These live on
+     *  `runs.data.phases` (written verbatim from the completion body), which
+     *  is what `phases` is — they were never on `splits`. See winTreadmill. */
+    actualSpeedMph?: number | null;
+    actualInclinePct?: number | null;
+    completed?: boolean | null;
   }>;
   /** 2026-06-08 · weather for the run · deriveWin derives the heat
    *  slowdown % from this (same judgeWeather call as deriveRecap) so the
@@ -620,10 +626,38 @@ function winTimeInTolerance(input: WinInput): string | null {
 //      disciplined-recovery win
 //
 // Doctrine: same gating as outdoor — only fire on positive verdict
-// frames. The treadmill phase data lives on splits[i].actualSpeedMph
-// and actualInclinePct (added 2026-06-01 in deriveSplitsFromPhases).
+// frames.
+//
+// ── BELT-WIN-1 (2026-08-25) · IT READ THE WRONG ARRAY, AND NEVER FIRED ──────
+//
+// This read `input.splits`, and the comment above it said the belt fields were
+// "added 2026-06-01 in deriveSplitsFromPhases". There is no such function
+// anywhere in the repo — the only two references to that name are stale
+// comments. What actually populates `runs.data.splits` is
+// `deriveSplitsFromPaceSamples` (lib/runs/derive-splits.ts), whose entire
+// return type is four fields:
+//
+//     interface DerivedSplit { mile; pace; hr; paceSecPerMi }
+//
+// No `type`, no `actualSpeedMph`, no `actualInclinePct`, no `completed`. So
+// `workSpeeds` was empty on every real run and this returned null at the
+// third line — and `deriveWin` early-returns this composer for any indoor or
+// treadmill run with NO fallback. Every treadmill run since this shipped has
+// had no win line at all, silently, because "returns null" is also what an
+// honest refusal looks like.
+//
+// The readings were never missing. They ride `runs.data.phases`, written
+// verbatim from the completion body (complete/route.ts, `phases: body.phases`),
+// which is exactly what `input.phases` carries — the same array `winIntervals`
+// and `winTempo` already prefer for the same reason. `splits` stays as the
+// fallback so a caller that only has the narrow shape is not made worse.
 function winTreadmill(input: WinInput): string | null {
-  const phases = input.splits ?? [];
+  const phases: Array<{
+    type?: string | null;
+    actualSpeedMph?: number | null;
+    actualInclinePct?: number | null;
+    completed?: boolean | null;
+  }> = (input.phases?.length ? input.phases : input.splits) ?? [];
   if (phases.length === 0) return null;
 
   // Split into work + recovery phases by `type`. Phases without a type

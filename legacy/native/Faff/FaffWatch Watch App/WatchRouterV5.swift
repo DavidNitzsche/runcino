@@ -272,6 +272,34 @@ final class WatchRouterV5: ObservableObject {
         if treadmill || !hasBand || !hasReading { return .untrusted }
         return zone == .onTarget ? .inBand : .outOfBand
     }
+
+    /// THE PHASE THAT IS ACTUALLY IN FLIGHT — nil once the plan is done.
+    ///
+    /// OVERTIME-GRADE-1 (2026-08-25) · a fourth way of having nothing to say,
+    /// and the one `grade()` above does not cover, because it arrives disguised
+    /// as a phase that carries a perfectly good band.
+    ///
+    /// `WorkoutEngine.advance()` does NOT move `currentIndex` past the last
+    /// phase when it sets `planComplete` — it deliberately leaves the cursor
+    /// where it is and enters overtime. So `engine.currentPhase` keeps
+    /// returning the FINAL phase, target and tolerance intact, for as long as
+    /// the runner keeps going. Meanwhile `advance()` force-sets
+    /// `paceZone = .onTarget`, and `tick()` returns early while `planComplete`,
+    /// so nothing ever re-evaluates that zone again.
+    ///
+    /// Every guard in `grade()` therefore passes — not a belt, a band exists,
+    /// a reading exists — and mile 12 of a 10-mile plan draws GREEN, with a
+    /// band marker that keeps moving off the live tracker. Green here is a
+    /// verdict nothing computed, and the movement is what sells it as live.
+    /// Any session whose last phase carried a target lands on this: every easy
+    /// and long run carries a ~20 s/mi band, which makes the commonest overrun
+    /// there is the one that lies.
+    ///
+    /// Pure and static for the same reason `grade` is — the router has to be
+    /// testable without an `HKWorkoutSession`.
+    static func gradingPhase(_ phase: WatchPhase?, planComplete: Bool) -> WatchPhase? {
+        planComplete ? nil : phase
+    }
 }
 
 // MARK: - The running surface
@@ -330,8 +358,17 @@ struct WatchRunSurfaceV5: View {
     }
     /// Is there a live pace reading at all? "--" is not a slow pace.
     private var hasPaceReading: Bool { tracker.paceSPerMi > 0 }
+    /// The phase actually in flight · nil in overtime. See
+    /// `WatchRouterV5.gradingPhase` for why this is not `engine.currentPhase`.
+    /// The face branch at :546 already reached the same conclusion for the
+    /// phase board — "There is no rep to be inside of any more" — and stopped
+    /// short of the grade and the band.
+    private var gradingPhase: WatchPhase? {
+        WatchRouterV5.gradingPhase(engine.currentPhase, planComplete: engine.planComplete)
+    }
+
     /// Does the phase in flight prescribe a band to be inside of?
-    private var hasBand: Bool { band(for: engine.currentPhase) != nil }
+    private var hasBand: Bool { band(for: gradingPhase) != nil }
 
     /// The one graded value on the face, with its evidence stated.
     private var paceGrade: FacePaceGrade {
@@ -724,8 +761,12 @@ struct WatchRunSurfaceV5: View {
     ///
     /// nil when the phase prescribes no target, and nil on a belt, where
     /// there is no trustworthy pace to put a mark on.
+    /// OVERTIME-GRADE-1 · `gradingPhase`, not `currentPhase`. A band drawn off
+    /// a phase that finished is a scale with no session behind it, and its
+    /// marker keeps moving off the live tracker, which is what makes it read
+    /// as a live judgement rather than a leftover.
     private var workoutBand: (start: Double, end: Double, marker: Double, inBand: Bool)? {
-        guard !isTreadmill, let b = band(for: engine.currentPhase) else { return nil }
+        guard !isTreadmill, let b = band(for: gradingPhase) else { return nil }
         return (start: b.start, end: b.end, marker: b.marker,
                 inBand: paceGrade == .inBand)
     }
