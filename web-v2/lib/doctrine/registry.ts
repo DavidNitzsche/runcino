@@ -237,6 +237,7 @@ import {
   treadmillEffectiveGradePct,
 } from '@/lib/terrain/grade-adjust';
 import { friel7Zones, lthrZones, pctMaxZones, PCT_MAX_ZONE_BANDS } from '@/lib/training/zones';
+import { deriveReadingScopes, HR_REP_KINETICS_FLOOR_SEC } from '@/lib/coach/reading-scope';
 import { lthrFromMaxHr } from '@/lib/training/lthr';
 import {
   EASY_HRMAX_CEILING_PCT,
@@ -2409,6 +2410,60 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const lthr = lthrFromMaxHr(maxHr);
       if (lthr == null) throw new Error('lthrFromMaxHr returned null for a valid HRmax');
       within(lthr / maxHr, band, 'lthrFromMaxHr fraction of HRmax');
+    },
+  },
+  {
+    id: 'HR.rep-kinetics-floor',
+    binds: ['lib/coach/reading-scope.ts#HR_REP_KINETICS_FLOOR_SEC'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '### Decision Table',
+    claim:
+      'Below a stated rep length, doctrine says to IGNORE heart rate rather than measure it more ' +
+      'carefully — the rep ends before HR reaches its band, so the reading is the sensor rise ' +
+      'time. The engine refuses to report an HR average on reps shorter than that, and the ' +
+      'length is the one the doctrine table names, not a round number picked to look about right.',
+    check({ cite }) {
+      const rows = cite.table().rows;
+      const repRow = rows.find((r) => /reps\s*\/\s*r-pace/i.test(r['Workout type'] ?? ''));
+      if (!repRow) {
+        throw new Error("Research/03 §14 no longer carries a 'Reps / R-pace' row");
+      }
+      // The instruction itself. If doctrine ever softens "Ignore HR" into
+      // something else, this file's whole refusal branch needs re-reading.
+      if (!/ignore hr/i.test(repRow['Notes'] ?? '')) {
+        throw new Error(
+          `Research/03 §14 'Reps / R-pace' no longer says to ignore HR · it says "${repRow['Notes']}"`,
+        );
+      }
+      if (!/^pace$/i.test((repRow['Primary'] ?? '').trim())) {
+        throw new Error(`Research/03 §14 'Reps / R-pace' primary is now "${repRow['Primary']}", not pace`);
+      }
+      // The number, read out of the row's own label — "Reps / R-pace (<2 min)".
+      const m = /\(\s*<\s*(\d+(?:\.\d+)?)\s*min\s*\)/i.exec(repRow['Workout type'] ?? '');
+      if (!m) {
+        throw new Error(
+          `Research/03 §14 'Reps / R-pace' row no longer states its duration: "${repRow['Workout type']}"`,
+        );
+      }
+      const doctrineSec = Number(m[1]) * 60;
+      if (HR_REP_KINETICS_FLOOR_SEC !== doctrineSec) {
+        throw new Error(
+          `reading-scope refuses HR below ${HR_REP_KINETICS_FLOOR_SEC}s · Research/03 §14 states ${doctrineSec}s`,
+        );
+      }
+      // And the refusal is real, not just a constant sitting in a file.
+      const shortRep = deriveReadingScopes({
+        phases: [
+          { type: 'work', actual_duration_sec: doctrineSec - 1, avg_hr: 150 },
+          { type: 'work', actual_duration_sec: doctrineSec - 1, avg_hr: 150 },
+        ],
+        wholeHrBpm: 150,
+      });
+      if (shortRep.hr.scope !== 'none') {
+        throw new Error(
+          `reps of ${doctrineSec - 1}s produced an HR reading at scope '${shortRep.hr.scope}' · doctrine says ignore HR`,
+        );
+      }
     },
   },
   {

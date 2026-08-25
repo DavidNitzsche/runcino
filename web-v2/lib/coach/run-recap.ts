@@ -37,6 +37,7 @@ import { composeEffortFactor } from '@/lib/terrain/grade-adjust';
 import type { RunTerrain } from '@/lib/terrain/run-terrain';
 import { reconcilePaceWithClock } from '@/lib/runs/run-shape';
 import { miNum, fmtPaceSlash } from '@/lib/format/run';
+import type { ReadingScopes } from '@/lib/coach/reading-scope';
 
 /**
  * Minutes of running below which `Research/18` prescribes no fuelling at all,
@@ -109,6 +110,21 @@ export interface RecapInput {
   finishLabel?: string | null;
   actualAvgHr: number | null;
   actualMaxHr: number | null;
+  /**
+   * 2026-08-24 · the interval `actualAvgHr` is actually the average of.
+   *
+   * THE RECAP WAS SAYING THE NUMBER OUT LOUD. Both the tempo and the interval
+   * arms interpolated `actualAvgHr` into their lead line — "Tempo done · 4.0 mi
+   * @ 6:59 · avg HR 148" — where 148 is the whole run, warm-up and cool-down
+   * included, sitting in a sentence otherwise entirely about the work block.
+   * The reader has no way to know the two halves of that sentence describe
+   * different intervals.
+   *
+   * Optional. Absent → every arm behaves exactly as before, which is what
+   * keeps the existing recap snapshots byte-identical for unstructured runs.
+   * See `lib/coach/reading-scope.ts`.
+   */
+  readings?: ReadingScopes | null;
   /**
    * Mile-by-mile splits with pace + HR per segment when available.
    * 2026-05-31 fix: accept both naming conventions on the wire ·
@@ -210,6 +226,47 @@ function judgedPace(observedSPerMi: number, t: RecapInput['terrain']): number {
  * beside the poster's "3.1 mi" for one float. Those now call `miNum`.
  */
 const paceLabel = fmtPaceSlash;
+
+/**
+ * The heart-rate clause for a sentence that is otherwise about the WORK, or
+ * nothing at all.
+ *
+ * Three outcomes, and the third is why this exists rather than a `?? fallback`:
+ *
+ *   work  · "· HR 165 across the 4 reps" — the number and the interval, in one
+ *           breath, so the reader cannot take it for the whole run
+ *   whole · "· avg HR 139" — unchanged, because on a run with one intent the
+ *           whole-run mean IS the work
+ *   none  · **empty string.** `Research/03` §14: `| Reps / R-pace (<2 min) |
+ *           Pace | RPE | Ignore HR |`. On reps that short the recorded HR is
+ *           the sensor's rise time, and a coach who quotes it is quoting the
+ *           lag. Saying nothing is the honest sentence.
+ *
+ * With no `readings` on the input this returns the pre-2026-08-24 clause
+ * verbatim, so every existing caller's output is byte-identical.
+ */
+/**
+ * The heart rate this run is entitled to quote, as a bare number — or null.
+ *
+ * The counterpart to `hrClause` for the call sites that build their own
+ * sentence. Null means REFUSED, never "unknown", so a caller that treats null
+ * as "skip the clause" is doing the right thing by construction.
+ */
+function scopedWorkHr(input: RecapInput): number | null {
+  const r = input.readings?.hr;
+  if (!r) return input.actualAvgHr ?? null;
+  return r.scope === 'none' ? null : r.value;
+}
+
+function hrClause(input: RecapInput, opts?: { prefix?: string }): string {
+  const prefix = opts?.prefix ?? ' · avg HR ';
+  const r = input.readings?.hr;
+  if (!r) return input.actualAvgHr ? `${prefix}${input.actualAvgHr}` : '';
+  if (r.scope === 'none' || r.value == null) return '';
+  if (r.scope === 'whole') return `${prefix}${r.value}`;
+  // Work scope · the interval rides with the number, always.
+  return `${prefix}${r.value} ${r.note ?? 'on the work'}`;
+}
 
 /**
  * Read the rep-by-rep pacing pattern for an interval / cruise session and
@@ -705,12 +762,14 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
     case 'tempo':
     case 'threshold': {
       const workPaceStr = paceLabel(input.workPaceSPerMi);
-      const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
+      // Was `actualAvgHr`, unqualified, in a sentence about the tempo block.
+      // The two halves described different intervals and nothing said so.
+      const hrPart = hrClause(input);
       const leadLine = workPaceStr && input.workDistanceMi
         ? `Tempo done · ${miNum(input.workDistanceMi)} mi @ ${workPaceStr.replace('/mi', '')}${hrPart}.`
         : workPaceStr
           ? `Tempo done · ${workPaceStr} tempo block${hrPart}.`
-          : `Tempo done · ${miNum(input.actualMi)} mi total${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
+          : `Tempo done · ${miNum(input.actualMi)} mi total${paceStr ? ' at ' + paceStr : ''}${hrClause(input, { prefix: ', avg HR ' })}.`;
       facts.push(leadLine);
       // Execution analysis: how did the work block actually go?
       // Reads work-phase splits vs target — specific to this run.
@@ -731,14 +790,22 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
 
     case 'intervals': {
       const workPaceStr = paceLabel(input.workPaceSPerMi);
-      const hrPart = input.actualAvgHr ? ` · HR ${input.actualAvgHr}` : '';
+      // Same fix as the tempo arm, and it bites harder here: on a rep session
+      // the whole-run HR is the mean of hard reps and slow jogs. On reps under
+      // two minutes the clause disappears entirely rather than shrinking.
+      const hrPart = hrClause(input, { prefix: ' · HR ' });
       // The real read: rep-by-rep pacing pattern vs the heat-adjusted target
       // (went out fast · faded · even · built), HR as the guardrail.
       const pacing = intervalPacing(
         input.repPaces ?? [],
         input.plannedPaceSPerMi ?? null,
         weather?.slowdownPct ?? 0,
-        input.actualAvgHr ?? null,
+        // "HR 165 says the effort was right" is a claim about the REPS, so it
+        // has to be the reps' heart rate. It was the whole run's, which on a
+        // session with three jog recoveries is a materially lower number and
+        // therefore made the effort look easier than it was. Null when the
+        // reps are too short for HR to mean anything — the clause then drops.
+        scopedWorkHr(input),
         input.terrain,
         input.targetAlreadyHeatEased === true,
       );
@@ -770,7 +837,7 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
             ? `Reps done · ${repStr}${hrPart}.`
             : workPaceStr
               ? `Reps done · ${workPaceStr} work avg${hrPart}.`
-              : `Reps done · ${miNum(input.actualMi)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualAvgHr ? ', HR ' + input.actualAvgHr : ''}.`;
+              : `Reps done · ${miNum(input.actualMi)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${hrClause(input, { prefix: ', HR ' })}.`;
       }
       facts.push(leadLine);
       facts.push(pacing.fact ?? `Building the top end · these stack.`);
@@ -780,6 +847,105 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
         coach_tip,
         conditions_note,
         intervals_adjusted_target_s_per_mi: pacing.adjTarget,
+      };
+    }
+
+    // ── THREE TYPES THAT REACHED THE DEFAULT ARM AND SAID "LOGGED." ────────
+    //
+    // `fartlek`, `progression` and `race_week_tuneup` are all in
+    // `SESSION_TYPES`, all authored by the generator, all carried through the
+    // plan — and all fell off the end of this switch. A runner who executed a
+    // race-week tune-up got "Logged · 6.0 mi at 7:18." for a session that is
+    // arguably the most consequential one in the block.
+
+    case 'race_week_tuneup': {
+      // THE ONE SESSION THAT MUST NOT BE GRADED ON THE CLOCK.
+      //
+      // `Research/08` §9.4: "'Taper crud' / 'taper madness' — fatigue,
+      // sluggish legs, irritability, sleeplessness, phantom pains — is normal.
+      // Resist the urge to test fitness. The work is done."
+      //
+      // And `Research/02` §12.4 on what a race-effort tune-up IS: "Not a
+      // quantitative predictor, but a binary go/no-go signal: if the tempo
+      // feels redline, the goal is too aggressive." Go/no-go, not a time.
+      //
+      // So this arm names the work and explicitly declines the inference. A
+      // heavy tune-up in taper is a taper artefact until something else says
+      // otherwise, and the recap saying so is the difference between a runner
+      // arriving confident and a runner arriving worried about a number.
+      const workPaceStr = paceLabel(input.workPaceSPerMi);
+      const reps = (input.repPaces ?? []).filter((p) => typeof p === 'number' && p > 0);
+      const hrPart = hrClause(input, { prefix: ' · HR ' });
+      facts.push(
+        reps.length >= 2 && workPaceStr
+          ? `Sharpener done · ${reps.length} at ${workPaceStr.replace('/mi', '')}${hrPart}.`
+          : workPaceStr
+            ? `Sharpener done · ${workPaceStr} on the work${hrPart}.`
+            : `Sharpener done · ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}${hrPart}.`,
+      );
+      facts.push('Race week. This was about touching race pace, not testing fitness · heavy legs now are the taper, not a problem.');
+      return {
+        verdict: 'Sharpener done.',
+        facts,
+        coach_tip,
+        conditions_note,
+      };
+    }
+
+    case 'fartlek': {
+      // `Research/04` §9: fartlek is "speed play"; the floats are "recovery
+      // jogs (not stops)" and the session is run by feel. So the read is the
+      // shape across the surges, and there is no pace to miss — these specs
+      // carry `by_effort`, and quoting an average pace over a run that
+      // alternated 5K effort with jogging would describe neither.
+      const surges = (input.repPaces ?? []).filter((p) => typeof p === 'number' && p > 0);
+      facts.push(
+        surges.length >= 2
+          ? `Fartlek done · ${surges.length} surges over ${miNum(input.actualMi)} mi.`
+          : `Fartlek done · ${miNum(input.actualMi)} mi of mixed effort.`,
+      );
+      if (surges.length >= 4) {
+        const half = Math.floor(surges.length / 2);
+        const avg = (a: number[]) => a.reduce((s, x) => s + x, 0) / a.length;
+        const drift = Math.round(avg(surges.slice(-half)) - avg(surges.slice(0, half)));
+        facts.push(
+          drift >= 8
+            ? `The back surges came in about ${drift}s slower than the front ones. Start a shade easier and the whole set holds.`
+            : drift <= -8
+              ? 'Built through the set · the last surges were the quickest. That is the one to repeat.'
+              : 'Surges held their shape from front to back. That is the session.',
+        );
+      } else {
+        facts.push('Effort session, not a pace session. The variety is the work.');
+      }
+      return {
+        verdict: 'Fartlek done.',
+        facts,
+        coach_tip,
+        conditions_note,
+      };
+    }
+
+    case 'progression': {
+      // The one session whose whole-run average is guaranteed to describe no
+      // part of it: a progression is two intents by design, and its mean sits
+      // between them. `Research/00a` §"Long-Run Variations":
+      // "| Progression | Start easy; finish at marathon pace or faster |".
+      // So the read is the delta between the ends, never the middle.
+      const fade = detectPaceFade(input.splits);
+      facts.push(`Progression done · ${miNum(input.actualMi)} mi.`);
+      facts.push(
+        fade != null && fade <= -15
+          ? `Dropped about ${Math.abs(fade)}s/mi from the front third to the back. That is the workout.`
+          : fade != null && fade >= 15
+            ? `Drifted about ${fade}s/mi slower across the run · a progression wants the other shape. Start easier than feels right.`
+            : 'Held pretty even front to back. A progression wants a faster finish than start · leave more in the tank early.',
+      );
+      return {
+        verdict: 'Progression done.',
+        facts,
+        coach_tip,
+        conditions_note,
       };
     }
 

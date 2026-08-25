@@ -26,6 +26,8 @@ import { requireUserId } from '@/lib/auth/session';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { loadHeatEasingPct } from '@/lib/watch/heat';
 import { deriveWin } from '@/lib/coach/run-win';
+import { mapWatchPhases } from '@/lib/coach/run-state';
+import { deriveReadingScopes } from '@/lib/coach/reading-scope';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
 import { reconcileRun } from '@/lib/runs/coherence';
 import { runAvgHr, runMaxHr, runElevGainFt, type RunData } from '@/lib/runs/run-shape';
@@ -384,6 +386,20 @@ export async function GET(
     phases: Array.isArray(data.phases) ? data.phases : undefined,
   });
 
+  // 2026-08-24 · WHICH AVERAGES THIS RECAP MAY QUOTE.
+  //
+  // `mapWatchPhases` rather than `data.phases` straight: the stored payload is
+  // the watch's camelCase shape and the scoping rule reads the mapped one.
+  // Going through the same mapper the run-detail wire uses is what stops the
+  // recap and the screen from disagreeing about the same session — two
+  // readers of one blob with two field-name conventions is exactly the bug
+  // class this repo keeps re-finding.
+  const readings = deriveReadingScopes({
+    phases: mapWatchPhases(Array.isArray(data.phases) ? data.phases : []),
+    wholeHrBpm: actualAvgHr,
+    wholeCadenceSpm: typeof data.avgCadence === 'number' ? data.avgCadence : null,
+  });
+
   const recap = deriveRecap({
     type,
     phase,
@@ -406,6 +422,7 @@ export async function GET(
     finishLabel: finishLabelRaw,
     actualAvgHr,
     actualMaxHr,
+    readings,
     splits: splitsForRecap,
     weather: weatherInput,
     // 2026-06-09 Phase 2 (3.2) · taken bail leads the recap (bail ≠ fail).

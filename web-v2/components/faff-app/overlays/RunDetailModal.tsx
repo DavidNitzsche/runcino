@@ -24,6 +24,24 @@ type RunDetail = {
   hr_avg: number | null;
   hr_max: number | null;
   cadence_avg: number | null;
+  /**
+   * 2026-08-24 · the interval each whole-run average above is actually the
+   * average of. Derived server-side in `lib/coach/reading-scope.ts`; optional
+   * here so a cached payload without it renders exactly as before.
+   *
+   * `hr.scope === 'none'` is a refusal — draw no HR figure at all rather than
+   * falling back to `hr_avg`, which is the defect this field exists to close.
+   */
+  readings?: {
+    hr: { scope: 'whole' | 'work' | 'none'; value: number | null; note: string | null };
+    cadence: { scope: 'whole' | 'work' | 'none'; value: number | null; note: string | null };
+    /** Seconds per mile. Never 'none' — a pace always has a true whole-run
+     *  value; only its label changes. */
+    pace: { scope: 'whole' | 'work' | 'none'; value: number | null; note: string | null };
+    splitsMeaningful: boolean;
+    zoneBarMeaningful: boolean;
+    isRepSet: boolean;
+  } | null;
   elev_gain_ft: number | null;
   temp_f: number | null;
   /** "Hotter than usual" context — run-state.ts computes weatherContext
@@ -62,6 +80,27 @@ type RunDetail = {
   route_polyline: string | null;
   shoes?: Array<{ id: number; brand: string; model: string }>;
   shoe_id?: number | null;
+  /**
+   * 2026-08-24 · the session at the grain it was actually run at.
+   *
+   * It has been on this endpoint since P44 and this modal never asked for it,
+   * which is why a 4×1km and a recovery jog rendered the identical row set
+   * here. Optional so an older cached payload degrades to no section rather
+   * than an empty one.
+   */
+  phase_breakdown?: Array<{
+    index: number;
+    label: string;
+    type: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'unknown' | string;
+    target_pace: string | null;
+    actual_pace: string | null;
+    actual_distance_mi: number | null;
+    actual_duration_sec: number | null;
+    avg_hr: number | null;
+    verdict: string | null;
+    time_in_tolerance_sec: number | null;
+    time_out_of_tolerance_sec: number | null;
+  }>;
 };
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
@@ -140,8 +179,42 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
               <div className="wk-keyrow">
                 <div><div className="k">DISTANCE</div><div className="v">{data.distance_mi.toFixed(1)}<small> mi</small></div></div>
                 {data.time_moving && <div><div className="k">TIME</div><div className="v">{data.time_moving}</div></div>}
-                {data.pace && <div><div className="k">AVG PACE</div><div className="v">{data.pace}<small>/mi</small></div></div>}
-                {data.hr_avg && <div><div className="k">AVG HR</div><div className="v">{data.hr_avg}<small> bpm</small></div></div>}
+                {/* "AVG PACE 7:18" over a session whose reps ran 6:2x invites
+                    exactly one comparison, and it is the wrong one — the 7:18
+                    is a warm-up, four reps, three jogs and a cool-down. On a
+                    structured run this becomes WORK PACE, which the phone's
+                    post-run body has done for quality sessions since P42;
+                    this is the same rule, applied by structure rather than by
+                    a type that three quarters of his runs do not carry. */}
+                {(() => {
+                  const r = data.readings?.pace;
+                  if (r && r.scope === 'work' && r.value) {
+                    const mm = Math.floor(r.value / 60);
+                    const ss = String(Math.round(r.value % 60)).padStart(2, '0');
+                    return <div><div className="k">WORK PACE</div><div className="v">{`${mm}:${ss}`}<small>/mi</small></div></div>;
+                  }
+                  return data.pace ? <div><div className="k">AVG PACE</div><div className="v">{data.pace}<small>/mi</small></div></div> : null;
+                })()}
+                {/* AVG HR, SCOPED OR ABSENT — never unlabelled.
+                    This row printed `hr_avg` on every run, so a 4×1km session
+                    whose reps ran 164/169/168/160 showed "AVG HR 153": the
+                    mean of hard reps and slow jogs, a value nothing on the run
+                    happened at. `readings.hr` names the interval instead, and
+                    on reps under two minutes it refuses outright — `Research/03`
+                    §14, "Reps / R-pace (<2 min) → Ignore HR". */}
+                {(() => {
+                  const r = data.readings?.hr;
+                  if (r) {
+                    if (r.scope === 'none' || r.value == null) return null;
+                    return (
+                      <div>
+                        <div className="k">{r.scope === 'whole' ? 'AVG HR' : `HR ${(r.note ?? 'on the work').toUpperCase()}`}</div>
+                        <div className="v">{r.value}<small> bpm</small></div>
+                      </div>
+                    );
+                  }
+                  return data.hr_avg ? <div><div className="k">AVG HR</div><div className="v">{data.hr_avg}<small> bpm</small></div></div> : null;
+                })()}
                 {data.elev_gain_ft != null && data.elev_gain_ft > 0 && <div><div className="k">GAIN</div><div className="v">{Math.round(data.elev_gain_ft)}<small> ft</small></div></div>}
               </div>
               <RouteAndElev data={data} />
@@ -228,7 +301,82 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                   {data.splits_note}
                 </div>
               )}
-              {!data.splits_unreliable && data.splits?.length > 0 && (() => {
+              {/* REP BY REP · the replacement, not merely a removal.
+                  Taking the mile chart off a rep session and putting nothing
+                  back would leave the runner with less than before, however
+                  much more honest it was. This is the same evidence at the
+                  grain the plan actually asked for, and it goes ABOVE the mile
+                  chart for the runs that still draw one: a runner opening a
+                  tune-up wants rep three, and no row of a mile table is rep
+                  three. Mirrors `RepBreakdownV5` on the phone. */}
+              {(data.phase_breakdown?.length ?? 0) > 1 && (() => {
+                const phases = data.phase_breakdown!;
+                const work = phases.filter(p => p.type === 'work');
+                // "In the band for X of Y" — the deciding measure for a tempo
+                // or a threshold set (`Research/04` §5.2, §5.3: the dose and
+                // the discipline, not the average). The watch has counted this
+                // per phase since P44 and no web surface has ever shown it.
+                // WORK PHASES ONLY: a long steady cool-down counted against
+                // easy pace would drown the four kilometres that were the
+                // session.
+                const inSec = work.reduce((s, p) => s + (p.time_in_tolerance_sec ?? 0), 0);
+                const outSec = work.reduce((s, p) => s + (p.time_out_of_tolerance_sec ?? 0), 0);
+                const graded = inSec + outSec;
+                const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+                return (
+                  <div className="band">
+                    <div className="fll">{work.length >= 2 ? 'REP BY REP' : 'PIECE BY PIECE'}</div>
+                    <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                      {phases.map(p => {
+                        const isWork = p.type === 'work';
+                        return (
+                          <div
+                            key={p.index}
+                            style={{
+                              display: 'flex', justifyContent: 'space-between', gap: 12,
+                              fontSize: 12, lineHeight: 1.4,
+                              // The jogs are context, not results. Dimming them
+                              // is the whole visual grammar of this list.
+                              opacity: isWork ? 1 : 0.45,
+                            }}
+                          >
+                            <span style={{ fontWeight: isWork ? 600 : 400 }}>{p.label}</span>
+                            <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              {p.actual_pace ? `${p.actual_pace}/mi` : '·'}
+                              {/* A RECOVERY JOG'S "TARGET" IS NOT A TARGET.
+                                  The server writes easy pace into every
+                                  recovery phase because the watch needs
+                                  something to draw a band against; printing it
+                                  here would assert a prescription the plan
+                                  never wrote, and make a 90-second jog between
+                                  two hard kilometres look like a two-minute
+                                  miss. Same rule the phone applies. */}
+                              {isWork && p.target_pace && (
+                                <small style={{ opacity: 0.6 }}>{` asked ${p.target_pace}`}</small>
+                              )}
+                              {p.avg_hr && <small style={{ opacity: 0.6 }}>{` · HR ${p.avg_hr}`}</small>}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {graded > 0 && (
+                      <div style={{ fontSize: 11, opacity: 0.5, marginTop: 10, lineHeight: 1.5 }}>
+                        {`The watch had you inside the target pace for ${clock(inSec)} of the ${clock(graded)} of work it graded.`}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              {/* A THIRD REASON NOT TO DRAW THIS TABLE, beside "unreliable"
+                  and "does not sum". A rep session was not run in miles: mile
+                  two of a 4×1km is the back of rep one, a recovery jog and the
+                  front of rep two averaged into one row, and no colouring
+                  rescues that. `Research/01` §"Pace zone width and lock-in
+                  rules" asks for reps "by interval time, not by per-mile
+                  pace". The phase legend below was an attempt to survive this;
+                  the honest move is not to draw it. */}
+              {!data.splits_unreliable && (data.readings?.splitsMeaningful ?? true) && data.splits?.length > 0 && (() => {
                 const maxFill = Math.max(...data.splits.map(s => paceToSec(s.pace ?? '') || 0));
                 const minFill = Math.min(...data.splits.filter(s => paceToSec(s.pace ?? '') > 0).map(s => paceToSec(s.pace!) || 0));
                 const span = Math.max(1, maxFill - minFill);
@@ -285,7 +433,13 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                   </div>
                 );
               })()}
-              {data.hrZonePcts && (
+              {/* Suppressed on a rep set for the same reason. The bar spans a
+                  warm-up, the reps, the jogs between them and a cool-down; it
+                  is mostly the jogs and mostly HR's own rise time, and the zone
+                  the session asked for is unreachable across that span by
+                  construction — so it can only ever report a miss on a session
+                  that was executed as written. */}
+              {data.hrZonePcts && (data.readings?.zoneBarMeaningful ?? true) && (
                 <div className="band">
                   <div className="fll">TIME IN ZONES</div>
                   <div className="wk-zbar">
@@ -311,7 +465,18 @@ export function RunDetailModal({ open, runId, onClose }: { open: boolean; runId:
                     <div className="k">WEATHER</div>
                     <div className="v">{renderTempRange(data) || '·'}</div>
                   </div>
-                  <div className="i"><div className="k">CADENCE</div><div className="v">{data.cadence_avg ? `${Math.round(data.cadence_avg)} spm` : '·'}</div></div>
+                  {/* Cadence tracks pace, gradient and fatigue (`Research/16`
+                      §2.3), so a single figure across a run that changed pace
+                      four times is the mean of four distributions. On the
+                      2026-08-11 session the reps ran 162–174 spm and two of the
+                      jogs ran 115 — one number for both is not a summary. */}
+                  {(() => {
+                    const r = data.readings?.cadence;
+                    const value = r ? r.value : data.cadence_avg;
+                    if (r?.scope === 'none' || value == null) return null;
+                    const label = !r || r.scope === 'whole' ? 'CADENCE' : `CADENCE ${(r.note ?? 'on the work').toUpperCase()}`;
+                    return <div className="i"><div className="k">{label}</div><div className="v">{`${Math.round(value)} spm`}</div></div>;
+                  })()}
                   <div className="i"><div className="k">MAX HR</div><div className="v">{data.hr_max ? `${data.hr_max} bpm` : '·'}</div></div>
                   {data.power_avg_w != null && (
                     <div className="i"><div className="k">AVG POWER</div><div className="v">{data.power_avg_w}<small> W</small></div></div>

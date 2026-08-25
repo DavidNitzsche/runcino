@@ -259,34 +259,23 @@ struct RunDetailV5: View {
                                        toleranceLine: toleranceLine)
                     }
 
-                    // THE SPLIT CHART IS GONE, AND THE BREAKDOWN STANDS IN
-                    // ITS PLACE.
-                    //
-                    // "wtf is this?" — six orange bars, no mile number, no
-                    // pace, no axis, no scale. The accessibility tree was
-                    // strictly richer than the picture: `SplitBars.spoken`
-                    // says "Mile 9, 7:42 per mile, inside the target" for a
-                    // bar that prints nothing at all, so a sighted reader
-                    // could not decode a single one.
-                    //
-                    // Its heights were misleading on top of being unlabelled.
-                    // `barHeight` builds its domain from the run's own
-                    // min..max with a floor of 6% — about thirty seconds on a
-                    // 505 s/mi pace — so an eleven-second spread across five
-                    // miles was stretched over the full bar height. Its own
-                    // comment says a run "held honestly at one pace must not
-                    // draw as a mountain range", which is exactly what it did.
-                    //
-                    // Two graphics that each half-answer the question are
-                    // worse than one that answers it, so this is a
-                    // REPLACEMENT rather than a table beside a chart. The
-                    // fill rule it carried is not lost: `SplitBars.barFill`
-                    // still decides in-band from out-of-band, in the pace
-                    // column, measured by `V5ContrastTests` against the same
-                    // static.
-                    breakdownSection
+                    // The breakdown, drawn only when a decomposition of this
+                    // run means anything. `splitsMeaningful` is the SERVER's
+                    // judgement (see lib/coach/reading-scope.ts) — an 8x400
+                    // has splits, and they describe nothing.
+                    if detail.readings?.splitsMeaningful ?? true {
+                        breakdownSection
+                    }
 
-                    if hasZoneData { zoneSection }
+                    // Same ruling, applied to the heart. A time-in-zone bar
+                    // over a warm-up, four reps, three jogs and a cool-down is
+                    // mostly the jogs and mostly HR's own rise time, and the
+                    // zone the session asked for is unreachable across that
+                    // span by construction — so the bar can only ever report a
+                    // miss on a session that was executed.
+                    if hasZoneData, detail.readings?.zoneBarMeaningful ?? true {
+                        zoneSection
+                    }
 
                     if shape.showsRoute { routeSection }
 
@@ -440,56 +429,66 @@ struct RunDetailV5: View {
     // actually carries. Each one only appears when `RunDetail` has it; there
     // is no invented row for a field the source did not populate.
 
-    /// THE SHAPE OF THIS SESSION · one rule, shared with `TodayAfterV5`.
-    ///
-    /// `PostRunShapeV5` decides which of these rows a run of this kind may
-    /// claim, and the two screens ask the same question of the same type so
-    /// they cannot answer one run differently.
-    ///
-    /// `indoor: false` is a KNOWN GAP, not a claim. The `/api/runs/[id]` wire
-    /// carries no indoor flag — `LogRun` has one and `RunDetail` does not — so
-    /// the treadmill suppressions (no temperature, no elevation, no route)
-    /// cannot fire on this screen yet. Named in the report; guessing it from
-    /// an absent polyline would confuse a treadmill with a watch that lost
-    /// GPS, which are different runs.
+    /// The client-side shape, kept ONLY as the fallback below. `readings` from
+    /// the server is the decision; this is what answers when a phone on a new
+    /// build meets a server that predates it.
     var shape: RunShapeV5 {
         RunShapeV5.of(workoutType: detail.type, indoor: false)
     }
 
-    /// THE READING, AND ONLY THE ROWS THIS RUN EARNS.
+    /// EVERY AVERAGE NAMES ITS INTERVAL, OR IT DOES NOT APPEAR.
     ///
-    /// Every figure here is a reading, so every one renders `.measured`. What
-    /// changed is WHICH of them appear: an aggregate asserts the run was one
-    /// thing, and on a session made of pieces that assertion is false. See
-    /// `PostRunShapeV5` for the argument and the citations behind each gate.
+    /// What this used to be: `hr_avg` and `cadence_avg` straight out of the
+    /// row, on every run, with no label beyond "avg". On 2026-08-11 that drew
+    /// "Heart rate, avg · 153 bpm" over a session whose four kilometre reps ran
+    /// 164, 169, 168 and 160. The stored 153 is the mean of hard reps and slow
+    /// jogs and **nothing on that run happened at it** — a number that is
+    /// arithmetically correct and describes no part of the session, which is
+    /// the whole failure mode this pass exists to remove.
     ///
-    /// The work-scoped pair is the payoff. `hr_avg_work` and
-    /// `cadence_avg_work` — "the real effort numbers minus the jog-in-between
-    /// dilution" — have been on this wire and decoded by this very struct
-    /// since P44, and no screen has ever drawn them. On a tempo or a rep
-    /// session they replace the whole-run figures that lie.
+    /// The scope is not decided here. `detail.readings` is derived server-side
+    /// (`lib/coach/reading-scope.ts`) so this screen and the web one cannot
+    /// drift apart, and it keys on the run's PHASE STRUCTURE rather than its
+    /// type — because only 36 of his 143 live runs carry a semantic type,
+    /// while phases are on every watch run since June and are the thing that
+    /// actually makes a whole-run mean span two intents.
+    ///
+    /// THREE OUTCOMES, AND THE THIRD IS THE ONE THAT MATTERS:
+    ///   whole · one intent end to end · row unchanged, no label needed
+    ///   work  · row reads "Heart rate, across the 4 reps"
+    ///   none  · **no row at all**, and that is an answer
+    ///
+    /// `none` fires on reps under two minutes, where `Research/03` §14 says
+    /// `| Reps / R-pace (<2 min) | Pace | RPE | Ignore HR |`. Not average it
+    /// more carefully — ignore it. An 8×400 never reaches its HR band, so the
+    /// HR it did reach is the rise time. Drawing a smaller, better-labelled
+    /// version of a number that measures the sensor rather than the runner
+    /// would be the same mistake with a nicer caption.
+    ///
+    /// MAX HR SURVIVES ALL THREE. A peak is not an average — it names the
+    /// single hardest moment, which is a true statement about any run
+    /// regardless of how many intents it contained.
+    ///
+    /// Nil `readings` (a payload from a server that predates the field) falls
+    /// back to the old unscoped rows, so this ships without a coordinated
+    /// release.
     private var readingRows: [(String, FaffValue)] {
         var out: [(String, FaffValue)] = []
-        if shape.showsWholeRunHrAvg, let hr = detail.hr_avg {
-            out.append(("Heart rate, avg", .measured("\(hr) bpm")))
-        }
-        // NAMED FOR ITS SCOPE. "Heart rate, avg" on a rep session would be the
-        // same words over a different population; the label carries the scope
-        // so the two can never be read as the same number.
-        if shape.showsWorkHrAvg, let hrWork = detail.hr_avg_work {
-            out.append(("Heart rate, across the work", .measured("\(hrWork) bpm")))
-        }
-        if shape.showsMaxHr, let hrMax = detail.hr_max {
-            out.append(("Heart rate, max", .measured("\(hrMax) bpm")))
-        }
-        if shape.showsWholeRunCadence, let cad = detail.cadence_avg {
-            out.append(("Cadence", .measured("\(cad) spm")))
-        }
-        if shape.showsWorkCadence, let cadWork = detail.cadence_avg_work {
-            out.append(("Cadence, across the work", .measured("\(cadWork) spm")))
-        }
-        if shape.showsWorkHrAvg, let paceWork = detail.pace_work {
-            out.append(("Pace, across the work", .measured(paceWork)))
+
+        if let r = detail.readings {
+            if !r.hr.isRefused, let hr = r.hr.value {
+                let label = r.hr.isWhole ? "Heart rate, avg" : "Heart rate, \(r.hr.note ?? "on the work")"
+                out.append((label, .measured("\(hr) bpm")))
+            }
+            if let hrMax = detail.hr_max { out.append(("Heart rate, max", .measured("\(hrMax) bpm"))) }
+            if !r.cadence.isRefused, let cad = r.cadence.value {
+                let label = r.cadence.isWhole ? "Cadence" : "Cadence, \(r.cadence.note ?? "on the work")"
+                out.append((label, .measured("\(cad) spm")))
+            }
+        } else {
+            if let hr = detail.hr_avg { out.append(("Heart rate, avg", .measured("\(hr) bpm"))) }
+            if let hrMax = detail.hr_max { out.append(("Heart rate, max", .measured("\(hrMax) bpm"))) }
+            if let cad = detail.cadence_avg { out.append(("Cadence", .measured("\(cad) spm"))) }
         }
         // RULE ONE. Nothing on the phone or the watch has a thermometer in it.
         // A run's temperature is a weather read for a grid square and an hour

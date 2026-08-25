@@ -302,6 +302,15 @@ struct RunDetail: Decodable, Identifiable {
     let rep_skips: [RunRepSkip]
     let recovery_extensions: [RunRecoveryExtension]
 
+    /// 2026-08-24 · WHICH WHOLE-RUN AVERAGES THIS RUN MAY SHOW, AND OVER WHAT.
+    ///
+    /// Nil on a payload from a server that predates the field, and every
+    /// reader below falls back to the old unscoped behaviour when it is —
+    /// which is the only reason this could ship without a coordinated release.
+    ///
+    /// `hr.scope == .none` is a REFUSAL, not an absence. See `RunReading`.
+    let readings: RunReadings?
+
     enum CodingKeys: String, CodingKey {
         case id, date, start_local, name, source, type, type_display
         case distance_mi, pace, pace_s_per_mi, time_moving, time_elapsed, avg_speed_mph
@@ -313,6 +322,7 @@ struct RunDetail: Decodable, Identifiable {
         case planned_spec, planned_sub_label, planned_distance_mi
         case zoneTargets
         case ceiling_lift, rep_skips, recovery_extensions
+        case readings
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -361,7 +371,48 @@ struct RunDetail: Decodable, Identifiable {
         self.ceiling_lift = try? c.decodeIfPresent(RunCeilingLift.self, forKey: .ceiling_lift)
         self.rep_skips = (try? c.decode([RunRepSkip].self, forKey: .rep_skips)) ?? []
         self.recovery_extensions = (try? c.decode([RunRecoveryExtension].self, forKey: .recovery_extensions)) ?? []
+        self.readings = try? c.decodeIfPresent(RunReadings.self, forKey: .readings)
     }
+}
+
+/// One whole-run average, and the interval it is actually the average of.
+///
+/// THE SCOPE IS THE POINT, not the number. A mean over an interval of one
+/// intent describes that interval; a mean over a warm-up, four reps, three jogs
+/// and a cool-down describes nothing, and the app printed one of those for
+/// years because the arithmetic was fine. Derived server-side in
+/// `lib/coach/reading-scope.ts` so this screen and the web one cannot disagree.
+struct RunReading: Decodable {
+    /// `whole` · the run had one intent end to end.
+    /// `work`  · the mean covers the work phases only, and `note` names them.
+    /// `none`  · no honest mean exists. **Draw no row.** Falling back to the
+    ///           whole-run figure here is the original defect wearing a label.
+    let scope: String
+    let value: Int?
+    /// The interval, in runner-English — "across the 4 reps", "on the work".
+    /// Nil at `whole` scope, where there is nothing to name.
+    let note: String?
+
+    var isWhole: Bool { scope == "whole" }
+    var isRefused: Bool { scope == "none" }
+}
+
+struct RunReadings: Decodable {
+    let hr: RunReading
+    let cadence: RunReading
+    /// Seconds per mile. Never refused — a pace always has a true whole-run
+    /// value, and the poster carries distance and time regardless. What the
+    /// scope changes is what it may be CALLED.
+    let pace: RunReading
+    /// False when the session was run in reps. A per-mile chart cuts across
+    /// them — mile 2 of a 4×1km is the back of rep 1, a jog and the front of
+    /// rep 2 in one bar.
+    let splitsMeaningful: Bool
+    /// False on a rep set. The bar is dominated by the jogs and by HR's own
+    /// rise time, and the zone the session asked for is unreachable by
+    /// construction — it can only ever say the runner missed.
+    let zoneBarMeaningful: Bool
+    let isRepSet: Bool
 }
 
 /// P44 — single phase of a structured workout, plan vs actual.

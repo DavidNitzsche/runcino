@@ -15,6 +15,7 @@ import { weatherContext } from '@/lib/weather/heat-adjustment';
 import { enrichOneActivity, WEATHER_VERSION_CURRENT } from '@/lib/weather/openmeteo';
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 import { computeCadenceFatigue } from '@/lib/training/cadence-fatigue';
+import { deriveReadingScopes, type ReadingScopes } from './reading-scope';
 import { heatAdjustedStatus } from './heat-band';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 import { coerceShoeType, resolveShoeCapMi, type ShoeType } from '@/lib/shoe/lifespan';
@@ -329,6 +330,18 @@ export interface RunDetail {
   pace_work_s_per_mi: number | null;
   hr_avg_work: number | null;
   cadence_avg_work: number | null;
+  /**
+   * 2026-08-24 · the scope every whole-run average on this run is allowed to
+   * claim. Additive: a client that has never heard of it renders exactly as
+   * before, which is why it ships alongside the raw fields rather than
+   * replacing them.
+   *
+   * `readings.hr.scope === 'none'` is a REFUSAL, not a missing value. It means
+   * this session has no interval over which an average heart rate would be
+   * true (`Research/03` §14 · reps under two minutes), and a renderer must
+   * draw no HR row rather than fall back to `hr_avg`.
+   */
+  readings: ReadingScopes;
   work_seconds: number | null;
 
   // P44 — phase-by-phase breakdown when the watch did the workout.
@@ -1214,6 +1227,27 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     hr_avg_work: workAvgs.hrAvg,
     cadence_avg_work: workAvgs.cadenceAvg,
     work_seconds: workAvgs.workSeconds,
+
+    // 2026-08-24 · WHICH OF THE ABOVE MAY APPEAR, AND OVER WHAT.
+    //
+    // The three work-only fields have been on this wire since P42 and no
+    // renderer read them, so every surface kept printing the whole-run
+    // averages beside them. On 2026-08-11 that meant "Heart rate, avg 153"
+    // over a session whose four reps ran 164/169/168/160 — a number no part
+    // of that run happened at.
+    //
+    // The decision is made ONCE, here, rather than in each client, because
+    // two clients deriving it independently is how they come to disagree.
+    // See lib/coach/reading-scope.ts for the rule and the doctrine.
+    readings: deriveReadingScopes({
+      phases: phaseBreakdown,
+      wholeHrBpm: Number(r.avgHr) || null,
+      wholeCadenceSpm: Number(r.avgCadence) || form.cadence_spm,
+      workHrBpm: workAvgs.hrAvg,
+      workCadenceSpm: workAvgs.cadenceAvg,
+      wholePaceSPerMi: paceSPerMi,
+      workPaceSPerMi: workAvgs.paceSPerMi,
+    }),
 
     has_route: Boolean(r.summaryPolyline || r.routePolyline || r.startLatLng),
     route_polyline: r.summaryPolyline ?? r.routePolyline ?? null,
