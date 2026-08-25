@@ -15,11 +15,10 @@
  * new infra.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * 2026-08-24 · `coach_reads_cache` DOES NOT EXIST IN PRODUCTION.
+ * 2026-08-24 · `coach_reads_cache` DID NOT EXIST. NOW IT DOES — migration 153.
  *
- * Checked with `faff_readonly` on 2026-08-24, and against every file in
- * `db/migrations`: nothing creates it. So the whole loop below runs on a
- * relation that is not there —
+ * Nothing in `db/migrations` created it, so the whole loop below ran on a
+ * relation that was not there, and it looked exactly like a working feature:
  *
  *   · `readCache` threw and `.catch(() => ({ rows: [] }))` reported a cache
  *     MISS, which is a perfectly ordinary thing for a cache to report;
@@ -30,23 +29,19 @@
  *     "connected, and your coach has scheduled nothing."
  *
  * Every load re-fetched the feed and threw the parsed events away. The runner
- * saw an empty calendar and no error, and the ICS host saw traffic.
+ * saw an empty calendar and no error, and the coach's ICS host saw the traffic.
  *
- * `lastError` now carries the storage failure, because a status object with a
- * `lastError` field is exactly where a failure belongs. DDL to fix it properly
- * is a PROPOSAL:
+ * Both halves are fixed. `lastError` carries the storage failure, because a
+ * status object with a `lastError` field is exactly where a failure belongs;
+ * and `153_coach_reads_cache.sql` (applied to prod 2026-08-24) means there is
+ * no storage failure to carry. Verified end to end against a local clone: a
+ * three-event feed connects, caches, serves from cache on the next read with
+ * an unchanged `fetchedAt`, and disconnect removes the row.
  *
- *   CREATE TABLE coach_reads_cache (
- *     user_id           text NOT NULL,
- *     user_uuid         uuid NOT NULL,
- *     read_kind         text NOT NULL,
- *     cache_key         text NOT NULL,
- *     content           jsonb NOT NULL,
- *     computed_at       timestamptz NOT NULL DEFAULT now(),
- *     ttl_at            timestamptz,
- *     source_state_hash text,
- *     PRIMARY KEY (user_uuid, read_kind, cache_key)
- *   );
+ * KEEP the `attempt()` around the write and the `null`-means-unreadable branch
+ * in `readCache`. A cache that cannot be written is still a real condition, and
+ * "we could not read the cache" must never again collapse into "your coach has
+ * scheduled nothing".
  */
 import { pool } from '@/lib/db/pool';
 import { attempt, rowOrNull } from '@/lib/db/read';

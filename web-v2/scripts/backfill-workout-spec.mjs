@@ -1,5 +1,35 @@
 /**
- * backfill-workout-spec.mjs
+ * backfill-workout-spec.mjs — RETIRED 2026-08-24. DO NOT RUN. It refuses.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * This is the stale fork the ADMIN ROUTE was de-forked away from on 2026-08-17,
+ * and it kept everything that de-forking removed. `buildWorkoutSpec` below is a
+ * hand-copy of the plan-builder frozen at 2026-05-28, and its own comment says
+ * the quiet part: "If the plan-builder evolves, this mirror MUST be updated in
+ * lock-step." The plan-builder evolved for three months. The mirror did not.
+ *
+ * Running it would overwrite good specs with retired doctrine:
+ *   · easy/long HR caps at 0.88 / 0.85 × LTHR against the canonical
+ *     MAX(0.89×LTHR, 0.78×maxHR) — Rule 16 (2026-06-03) exists because the
+ *     tighter number puts an easy day in the RECOVERY zone;
+ *   · no maxHR branch, no prescription parsing (so "5×2K descend MP → T" comes
+ *     back an anonymous 5×1000m), no PACE-5 ultra guard, no ZONE-R-1 anchors;
+ *   · a raw `UPDATE plan_workouts SET workout_spec = $2` with NEITHER the Rule
+ *     6 progression guard (`preserveProgressionSql`) NOR the `mutatePlan`
+ *     boundary the admin route is required to write through.
+ *
+ * "Keep in sync" is not a mechanism. The route calls the canonical builder;
+ * this file copies it. That is the whole difference, and it is why only one of
+ * them is allowed to write.
+ *
+ * The route is `POST /api/admin/backfill-workout-spec`. Read its header first —
+ * it also records why that route must not be pointed at archived plans.
+ *
+ * Kept on disk rather than deleted so the retired numbers stay readable next to
+ * the incident that retired them.
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * ORIGINAL HEADER FOLLOWS, PRESERVED AS WRITTEN:
  *
  * Migration 120 added a `workout_spec` JSONB column on `plan_workouts`.
  * Plans authored AFTER the migration land with the column populated by
@@ -24,6 +54,23 @@
 import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
+
+// The refusal is executable, not advisory. A comment does not stop a paste of
+// the usage line three screens above it.
+console.error(`
+scripts/backfill-workout-spec.mjs is RETIRED and will not run.
+
+It is a hand-copy of the plan-builder frozen at 2026-05-28 and it writes
+retired doctrine (0.88/0.85 x LTHR easy/long caps against the canonical
+MAX(0.89xLTHR, 0.78xmaxHR); no prescription parsing; no PACE-5 ultra guard),
+through a raw UPDATE that skips both the Rule 6 progression guard and the
+mutatePlan boundary.
+
+Use POST /api/admin/backfill-workout-spec, which calls the canonical builder.
+Read that route's header first: it records why it must not be pointed at
+archived plans either.
+`);
+process.exit(2);
 
 const env = fs.readFileSync('.env.local', 'utf8').split('\n').reduce((a, l) => {
   const m = l.match(/^([A-Z_]+)=(.*)$/);

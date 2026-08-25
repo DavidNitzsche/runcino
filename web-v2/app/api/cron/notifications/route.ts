@@ -39,7 +39,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { logReadFailure } from '@/lib/db/read';
+import { logReadFailure, rowOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { apnsHost } from '@/lib/notifications/apns';
 import { raiseAlert } from '@/lib/ops/alerts';
@@ -155,6 +155,7 @@ export async function POST(req: NextRequest) {
     skipped_apns_not_configured: 0,
     skipped_quiet: 0,
     skipped_stale: 0,
+    skipped_resolved: 0,
     retry_pending: 0,
     gave_up: 0,
     failed: 0,
@@ -264,6 +265,30 @@ async function drainPending(stats: any): Promise<void> {
         });
         continue;
       }
+      // 2026-08-24 · A CHECK-IN ABOUT SOMETHING THAT IS OVER.
+      //
+      // Sibling of the expiry check above, and the same principle: a
+      // notification about a moment that has passed is not a late
+      // notification, it is a wrong one. `POST /api/sick` enqueues tomorrow
+      // 07:15's check the instant the runner reports an illness. If they
+      // recover before it fires — the common case for a 24-hour bug — nothing
+      // between here and their lock screen re-asked whether the episode is
+      // still open, so the coach asked "how is it this morning?" about an
+      // illness they had already told us was over. (The daily CATEGORY E
+      // scheduler does re-check; only the already-enqueued row did not.)
+      //
+      // Deliberately NOT symmetrical with a read failure.
+      // `checkInSubjectResolved` returns true only when the parent row is
+      // definitively cleared; an unreadable parent returns false and the
+      // notification goes out.
+      // Suppressing a runner's check-in because a query failed would be the
+      // swallowed-failure shape wearing a helpful face.
+      if (row.category === 'niggle_sick' && await checkInSubjectResolved(row.payload)) {
+        stats.skipped_resolved++;
+        await markProcessed(row.id, { outcome: 'subject_resolved' });
+        continue;
+      }
+
       // The pending row carries the fully-rendered template (we stored it
       // pre-rendered at enqueue time so what was decided IS what fires).
       // Bookkeeping keys the drain adds (_attempts, _last_error, _final,
@@ -329,6 +354,39 @@ async function drainPending(stats: any): Promise<void> {
       await retryLater(row, `exception: ${err?.message ?? err}`, stats);
     }
   }
+}
+
+/**
+ * TRUE only when this niggle/sick check-in's subject is definitively over —
+ * the parent `niggles` / `sick_episodes` row has a `cleared_at`.
+ *
+ * FALSE for everything else, and that asymmetry is the whole design. False on
+ * a payload with no parent id, false on a parent that is still open, and false
+ * when the lookup FAILS. A read that could not answer must not be allowed to
+ * silence a runner's check-in: sending a check-in that turns out to be
+ * unnecessary is a small cost, and swallowing one because a query broke is the
+ * exact failure this codebase keeps paying for.
+ */
+async function checkInSubjectResolved(payload: unknown): Promise<boolean> {
+  const data = (payload as { data?: Record<string, unknown> } | null)?.data;
+  if (!data) return false;
+  const episodeId = data.episode_id;
+  const niggleId = data.niggle_id;
+  const [table, id] =
+    typeof episodeId === 'number' ? ['sick_episodes', episodeId] as const
+    : typeof niggleId === 'number' ? ['niggles', niggleId] as const
+    : [null, null] as const;
+  if (!table) return false;
+  // `rowOrNull` keeps three outcomes apart: a row, no row, or a failed read.
+  // Only the first can resolve to true.
+  const row = await rowOrNull<{ cleared: boolean }>(
+    `cron/notifications · ${table} still open?`,
+    pool.query<{ cleared: boolean }>(
+      `SELECT (cleared_at IS NOT NULL) AS cleared FROM ${table} WHERE id = $1`,
+      [id],
+    ),
+  );
+  return row?.cleared === true;
 }
 
 /** Terminal outcome — consume the pending row. Optional `final` lands in
