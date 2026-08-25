@@ -137,15 +137,25 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
       'The rebuild itself is one transaction (mutatePlan): archive and insert commit together or not at all. '
       + 'The plan_proposals audit row is a SEPARATE write AFTER it, so a failure between them leaves the block '
       + 'replaced with no proposal explaining it. Since 2026-08-25 the archived plan carries the trigger in '
-      + 'archive_reason, stamped inside the rebuild transaction, so that gap no longer loses the reason entirely.',
+      + 'archive_reason, stamped inside the rebuild transaction, so that gap no longer loses the reason entirely. '
+      + 'That gap is now also the ONLY way to lose an undo: the proposal row is what pairs old plan to new, and '
+      + 'POST /api/plan/undo refuses (not_undoable) when no pairing exists rather than guessing at one.',
     runnerSees: 'surfaced',
     reversible:
-      'No undo. The prior plan and all its plan_workouts rows survive as an archived row, so the data is '
-      + 'recoverable; nothing in any surface reaches it.',
+      'YES, since 2026-08-25. POST /api/plan/undo archives the block this cron authored and un-archives the one '
+      + 'it replaced, in one transaction; nothing is deleted either way. Reachable from the notice card on web '
+      + 'and iPhone. It REFUSES rather than acting when the runner has already run a day the two blocks '
+      + 'prescribe differently, when the plan has changed again since, or when the earlier block has run out '
+      + 'of days. Before this the prior plan survived archived and no surface reached it.',
     note:
-      'Applies first, writes the proposal row afterwards, so the proposal is a RECORD and not a GATE. That is '
-      + 'the open policy question from the 2026-08-25 incident and it is deliberately not settled here. '
-      + 'Surfaced on web only until the phone reads GET /api/plan/proposal.',
+      'Applies first, writes the proposal row afterwards, so the proposal is a RECORD and not a GATE. The '
+      + '2026-08-25 ruling settled that deliberately: of 40 engine-raised proposals this runner has answered '
+      + 'zero, so a gate is an expiry. The bargain is apply-with-undo, and both halves are now built — the '
+      + 'notice says what moved in miles (reasons.plan_delta), and the undo puts it back. '
+      + 'A rebuild whose output is identical to the block it would replace no longer lands at all: generatePlan '
+      + 'diffs both persisted blocks inside the transaction and rolls back, recording status no_change. Without '
+      + 'that, a no-op rebuild still burned the block identity and reset the week counter, which is the one '
+      + 'signal that told the runner anything had happened.',
   },
   {
     id: 'cron/snapshot-projections',
@@ -186,12 +196,19 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     idempotent: false,
     onPartialFailure: 'The rebuild is transactional. The coach_intents ack is a separate best-effort write; a failure leaves stale banners up for one cycle.',
     runnerSees: 'audit_row_only',
-    reversible: 'No undo. The prior plan survives archived.',
+    reversible:
+      'No undo. The prior plan survives archived, but this path writes NO plan_proposals row, and that row is '
+      + 'the only record pairing an old plan to the one that replaced it — so POST /api/plan/undo has nothing '
+      + 'to key off. The 2026-08-25 no-op gate does apply (an identical rebuild rolls back and archives '
+      + 'nothing), which is the half of the protection that needs no ledger.',
     note:
       'Silent to the RUNNER by design, to land code upgrades without a banner. It was also silent to the '
       + 'DATABASE, which was not by design: it writes no proposal row, so before archive_reason carried '
       + 'silent_rebuild the only evidence it had ever run was a GitHub Actions log. Two dispatches rebuild twice; '
-      + 'there is no dedupe. An operator action, so that is arguably correct.',
+      + 'there is no dedupe — though since 2026-08-25 the second one rolls back as no_change unless the '
+      + 'composition actually moved, so a double dispatch no longer burns two block identities. An operator '
+      + 'action, so the absence of a proposal row is arguably correct; the cost is that it is the one plan '
+      + 'writer the runner cannot undo.',
   },
 
   // ── The physiological constants ───────────────────────────────────────────

@@ -155,6 +155,21 @@ export function CoachDecisionCard({
       });
       const j = await r.json().catch(() => ({} as Record<string, unknown>));
       if (!r.ok && !(j as { ok?: boolean }).ok) {
+        // 2026-08-25 · A REFUSAL IS AN ANSWER, NOT A FAILED SAVE.
+        //
+        // `/api/plan/undo` returns 409 with a `message` when it declines — the
+        // runner has already run a day the two blocks treat differently, or
+        // the plan has moved on since. Those are the sentences that explain
+        // the runner's own training to them. Collapsing them into "that did
+        // not save, try again" would tell him to retry something that will
+        // refuse every time for a reason he was never shown.
+        //
+        // Only a response with NO message falls through to the generic line.
+        const msg = (j as { message?: unknown }).message;
+        if (typeof msg === 'string' && msg.length > 0) {
+          setErr(msg);
+          return;
+        }
         const e = typeof (j as { error?: unknown }).error === 'string'
           ? (j as { error: string }).error
           : `HTTP ${r.status}`;

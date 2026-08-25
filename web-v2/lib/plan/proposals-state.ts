@@ -12,6 +12,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { describeDelta, type PlanDelta } from './plan-delta';
 
 export type PlanProposalKind =
   | 'volume_drift'
@@ -63,7 +64,21 @@ export type PlanProposalStatus =
   | 'accepted'
   | 'dismissed'
   | 'superseded'
-  | 'expired';             // 2026-08-17 · pending >14d, expired by the drift cron
+  | 'expired'              // 2026-08-17 · pending >14d, expired by the drift cron
+  // 2026-08-25 · THE TWO OUTCOMES A REBUILD COULD NOT PREVIOUSLY RECORD.
+  //
+  // 'no_change' · the engine ran, composed a block identical to the one the
+  //   runner already had, and rolled back rather than archiving a live block
+  //   to replace it with itself. Never surfaces — `loadPlanProposals` selects
+  //   pending and auto_applied only — because there is nothing to tell anyone.
+  //   It is here so `?all=1` can answer "did the cron look at me last night".
+  //
+  // 'undone' · the runner put the previous block back. Carries
+  //   `reasons.undone_fingerprint`, which is what stops the next rebuild from
+  //   re-landing the exact block they rejected. Also never surfaces: an undo
+  //   is a thing the runner did, not news for them.
+  | 'no_change'
+  | 'undone';
 
 export interface PlanProposal {
   id: number;
@@ -211,14 +226,71 @@ function isHardDriftKind(kind: PlanProposalKind): boolean {
       || kind === 'goal_renegotiation';
 }
 
+/**
+ * 2026-08-25 · WHAT MOVED, THEN WHY.
+ *
+ * `reasons.message` is the drift DETECTOR's sentence. It answers why. It never
+ * answered what, and on 2026-08-25 that was the whole gap: the runner's block
+ * was replaced overnight and the most any surface could have told him was
+ * "your long runs have drifted from this plan's targets" — true, and no help
+ * at all in working out that his week had gone from 23 miles to 38.
+ *
+ * `reasons.plan_delta` is written by the rebuild itself, from both persisted
+ * blocks, and is the missing half. Where it exists it leads, because the first
+ * thing a runner needs is the number that changed.
+ *
+ * Returns null when there is no delta, which is the normal case for a PENDING
+ * proposal: nothing has happened yet, so nothing has moved.
+ */
+function deltaSentence(kind: PlanProposalKind, reasons: Record<string, unknown>): string | null {
+  const raw = reasons.plan_delta;
+  if (raw == null || typeof raw !== 'object') return null;
+  return describeDelta(raw as PlanDelta, kind);
+}
+
+/**
+ * The applied voice, per kind.
+ *
+ * The switch at the bottom of this file is written for a PROPOSAL: it tells the
+ * runner what the engine noticed and what it would like to do ("Refit for an
+ * honest target"). Once the rebuild has already happened that reads as an
+ * instruction the runner cannot act on, so an auto-applied row says the same
+ * observation in the past tense and asks for nothing.
+ *
+ * Nothing here scolds. "Your easy days run longer than this plan prescribes" is
+ * a fine thing to say to someone deciding whether to refit, and the wrong thing
+ * to say to someone who has just been told their week was rewritten overnight.
+ */
+const APPLIED_WHY: Partial<Record<PlanProposalKind, string>> = {
+  volume_drift: 'Your recent weeks had moved away from what this block was built on.',
+  vdot_drift: 'Your pace targets had drifted from current fitness.',
+  staleness: 'The block was more than eight weeks old.',
+  easy_drift: 'Your easy days had settled longer than the block prescribed.',
+  long_drift: 'Your long runs had moved past what the block prescribed.',
+  quality_drift: 'Your quality sessions had moved away from the block’s targets.',
+  goal_gap_widening: 'The projection had been drifting away from the goal.',
+};
+
 function synthesizeMessage(
   kind: PlanProposalKind,
   status: PlanProposalStatus,
   reasons: Record<string, unknown>,
 ): string {
-  if (typeof reasons.message === 'string' && reasons.message.length > 0) {
-    return reasons.message;
+  const what = deltaSentence(kind, reasons);
+  const why = typeof reasons.message === 'string' && reasons.message.length > 0
+    ? reasons.message
+    : null;
+
+  if (status === 'auto_applied') {
+    const appliedWhy = APPLIED_WHY[kind] ?? why;
+    if (what && appliedWhy) return `${what} ${appliedWhy}`;
+    if (what) return what;
+    if (appliedWhy) return appliedWhy;
   }
+
+  if (why) return what ? `${what} ${why}` : why;
+  if (what) return what;
+
   // Fallback copy per kind · plain English.
   switch (kind) {
     case 'volume_drift':

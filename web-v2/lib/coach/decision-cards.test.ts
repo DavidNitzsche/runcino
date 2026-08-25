@@ -183,19 +183,37 @@ describe('one button grammar', () => {
     }
   });
 
-  it('notices carry no accept or keep, only a quiet link when one exists', () => {
+  it('notices never ask the runner to accept or keep anything', () => {
+    // 2026-08-25 · this used to read "only a quiet link", and the rule behind
+    // it was: a notice already happened, so there is nothing to decide. That
+    // held while an applied change was irreversible. It is not any more — the
+    // ruling was "apply, but let me undo" — so a notice may now carry an UNDO
+    // alongside its link.
+    //
+    // What has NOT changed, and is the part actually worth locking: a notice
+    // never carries ACCEPT or KEEP. Those two are the vocabulary of a decision
+    // the coach is waiting on, and offering "KEEP THE CURRENT PLAN" against a
+    // change that already landed would be offering to keep the very thing the
+    // runner is trying to get rid of.
     const q = selectCoachDecisions({
       planProposals: [appliedRebuild],
       adaptations: [adapted],
       todayISO: TODAY,
     });
     for (const d of q) {
-      expect(d.actions.every((a) => a.role === 'link')).toBe(true);
+      expect(d.kind).toBe('notice');
+      for (const a of d.actions) {
+        expect(a.role === 'link' || a.role === 'undo', `unexpected role ${a.role} on a notice`).toBe(true);
+      }
     }
     const applied = q.find((d) => d.key === 'plan-22')!;
-    expect(applied.actions[0].href).toBe('/training/plans/plan-new/diff?from=plan-old');
-    // An auto-applied row with nowhere to link renders no button at all
-    // rather than a dead one.
+    expect(applied.actions.find((a) => a.role === 'link')!.href)
+      .toBe('/training/plans/plan-new/diff?from=plan-old');
+    expect(applied.actions.find((a) => a.role === 'undo')!.label).toBe('PUT THE OLD BLOCK BACK');
+
+    // An auto-applied row with nowhere to link renders no button at all rather
+    // than a dead one — and no undo either, because the missing `newPlanId` is
+    // exactly the pairing the undo route needs to reverse the swap.
     const noLink = selectCoachDecisions({
       planProposals: [{ ...appliedRebuild, newPlanId: null }],
       todayISO: TODAY,

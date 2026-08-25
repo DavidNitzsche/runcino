@@ -855,28 +855,40 @@ struct TodayView: View {
     }
 
     /// Dispatch one decision's action to the endpoint that owns it.
-    /// Returns true on success so the card only clears what really landed.
-    private func performCoachDecision(_ d: CoachDecision, _ a: CoachDecisionAction) async -> Bool {
+    ///
+    /// Returns the outcome so the card only clears what really landed, and so a
+    /// server REFUSAL reaches the runner as the sentence the server wrote
+    /// rather than as a connection error. See `CoachDecisionOutcome`.
+    private func performCoachDecision(_ d: CoachDecision, _ a: CoachDecisionAction) async -> CoachDecisionOutcome {
         switch d.source {
         case .coachProposal(let p):
             let ok = await postCoachProposal(p, action: a.role == .accept ? "accept" : "decline")
             if ok { await loadAll() }
-            return ok
+            return ok ? .done : .failed
         case .workoutProposal(let p):
             let ok = (try? await API.respondWorkoutProposal(id: p.id, accept: a.role == .accept)) ?? false
             if ok { await loadAll() }
-            return ok
+            return ok ? .done : .failed
         case .planProposal(let p):
-            // 2026-08-25 · accept rebuilds the block server-side; keep records
-            // that the runner said no, which is what stops the cron proposing
-            // the same thing again tomorrow. Reload either way on success so
-            // Today reflects the plan that now exists.
+            // 2026-08-25 · UNDO takes its own route. The block was already
+            // re-authored, so there is nothing to accept or dismiss — the
+            // question is whether to put the previous one back, and that is the
+            // one action here the server can legitimately say no to.
+            if a.role == .undo {
+                let outcome = (try? await API.undoPlanRebuild(id: p.id)) ?? .failed
+                if outcome == .done { await loadAll() }
+                return outcome
+            }
+            // accept rebuilds the block server-side; keep records that the
+            // runner said no, which is what stops the cron proposing the same
+            // thing again tomorrow. Reload either way on success so Today
+            // reflects the plan that now exists.
             let ok = (try? await API.respondPlanProposal(id: p.id, accept: a.role == .accept)) ?? false
             if ok { await loadAll() }
-            return ok
+            return ok ? .done : .failed
         case .adaptation:
             // Notices carry no actions · nothing to post.
-            return true
+            return .done
         }
     }
 

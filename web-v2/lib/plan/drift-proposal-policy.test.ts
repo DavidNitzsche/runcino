@@ -137,7 +137,14 @@ describe('hasPendingProposal · the rebuild guard fails CLOSED and sees a landed
     mockQuery.mockResolvedValue({ rows: [] });
     await hasPendingProposal('user-1', 'plan-NEW', 'long_drift');
     const [sql] = mockQuery.mock.calls[0];
-    expect(sql).toContain("status = 'auto_applied'");
+    expect(sql).toContain("'auto_applied'");
+    // 2026-08-25 · `no_change` joined this arm. It is what the commit gate
+    // writes when the composed block was identical to the active one and the
+    // rebuild rolled back — an OUTCOME for the same cause, and re-running the
+    // same composition four hours later can only reach the same rollback.
+    // Widening an OR arm can only make the guard fire MORE often, which is the
+    // direction it is safe to be wrong in.
+    expect(sql).toContain("'no_change'");
     // The window has to be shorter than the gap between two daily runs and
     // longer than any same-day re-run. The schedule is 0 9 * * * and GitHub
     // Actions runs it late, never early, so consecutive runs are ~23h apart at
@@ -148,8 +155,11 @@ describe('hasPendingProposal · the rebuild guard fails CLOSED and sees a landed
     // is the NEW plan and the row carries the OLD one. Scoping this arm makes
     // it structurally unable to match, which is the dead-guard shape the
     // 2026-08-17 fix found in the `plan_id = ''` equality.
-    const autoArm = sql.slice(sql.indexOf("status = 'auto_applied'"));
-    expect(autoArm).not.toContain('plan_id');
+    // Anchored on the clause itself, not on the string 'auto_applied', which
+    // also appears in the SQL comments above it that explain this very trap.
+    const clauseAt = sql.indexOf('status IN (');
+    expect(clauseAt, 'the landed-rebuild arm must be a real clause').toBeGreaterThan(-1);
+    expect(sql.slice(clauseAt)).not.toContain('plan_id');
   });
 
   it('the planted defect · the OLD behaviour fails this oracle', async () => {

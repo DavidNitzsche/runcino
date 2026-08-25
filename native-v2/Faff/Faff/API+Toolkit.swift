@@ -402,6 +402,40 @@ extension API {
         return (200..<300).contains(http.statusCode)
     }
 
+    /// POST /api/plan/undo · put the previous training block back.
+    ///
+    /// 2026-08-25 · the other half of "apply, but let me undo". The engine
+    /// re-authors a block without asking; this reverses it. Nothing is deleted
+    /// either way — the two blocks swap which one carries `archived_iso`.
+    ///
+    /// THE RETURN IS NOT A BOOL, and that is the point. The server can refuse:
+    /// most importantly when the runner has already RUN a day the two blocks
+    /// prescribe differently, because putting the old block back would change
+    /// what he was asked to do on a day he already did. That refusal arrives as
+    /// a 409 carrying a coach-voice sentence, and it has to reach the card
+    /// intact — collapsing it into `false` would render "check your connection"
+    /// over a verdict that has nothing to do with the network and will not
+    /// change on a retry.
+    ///
+    /// Never throws for a verdict. Throws only when the request itself fails.
+    static func undoPlanRebuild(id: Int) async throws -> CoachDecisionOutcome {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/plan/undo"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["id": id])
+        let (data, http) = try await API.authedSend(req)
+        if (200..<300).contains(http.statusCode) { return .done }
+        // A refusal carries `message`. Anything else is a failure to get a
+        // verdict, including a body this build cannot read: inventing a reason
+        // for a refusal we did not understand would be worse than saying the
+        // generic true thing.
+        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let msg = obj["message"] as? String, !msg.isEmpty {
+            return .refused(msg)
+        }
+        return .failed
+    }
+
     // MARK: - Coach's log
 
     /// GET /api/coach/log · the coach's log, newest first (week closes,
