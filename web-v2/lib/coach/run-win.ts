@@ -96,6 +96,24 @@ export interface WinInput {
  * one didn't happen).
  */
 export function deriveWin(input: WinInput): string | null {
+  /* 2026-08-24 · THERE IS NO WIN IN A RUN NOBODY MEASURED.
+   *
+   * This function's own header says it returns null on "no usable signal
+   * (off-plan, DNF, missing data)", and every composer below was written to
+   * honour that — but four of them end in a canned sentence that fires
+   * whatever the input was. A HealthKit workout carrying a duration and no
+   * distance samples reached `winRecovery`, failed both its pace tests, and
+   * returned "Easy day banked". `winLong` and `winRace` compare
+   * `actualMi >= plannedMi * 0.95`, which a zero-distance row passes against
+   * a zero plan, so they said "Long run banked · time on feet earned" and
+   * "Race executed" about the same nothing.
+   *
+   * A distance is the one thing every one of these lines is a claim about.
+   * Without it there is nothing to be right about, so the sheet falls back to
+   * the verdict and the recap, which say what IS known. Rule three.
+   */
+  if (!(input.actualMi > 0)) return null;
+
   // Gate · only compose for "on plan" / "banked" / "delivered" verdicts.
   // Off-plan, DNF, struggled runs return null and the sheet falls
   // back to verdict + recap.
@@ -265,17 +283,39 @@ function winIntervals(input: WinInput, splits: NormalSplit[]): string | null {
   if (input.phases && input.phases.length > 0) {
     return winIntervalsFromPhases(input.phases);
   }
-  // Legacy fallback: per-mile heuristic for non-Faff-watch runs
-  // (Strava, Apple Watch Workouts, older iPhone HK ingests).
+  /* Legacy fallback: per-mile heuristic for non-Faff-watch runs
+   * (Strava, Apple Watch Workouts, older iPhone HK ingests).
+   *
+   * 2026-08-24 · THE ORDER CAME BACK SORTED, AND THE SENTENCE WAS ABOUT ORDER.
+   *
+   * `workSplitPaces` sorts the paces ascending in order to drop the two
+   * slowest as warm-up and cool-down. The first/last-half comparison below
+   * then ran on that SORTED array, so "the last N" meant "the N slowest",
+   * never "the N run last" — and the sentence it produced,
+   * "6 on the rail · last 2 the strongest", is a claim about which reps came
+   * at the end of the session. It could not be true by construction: on a
+   * sorted array the back half is always the slower one, so the branch only
+   * fired when every rep was within 3 s of every other, and then named the
+   * two slowest of them the strongest.
+   *
+   * The drop has to happen without losing the order. `workSplitPaces` now
+   * returns the reps IN THE ORDER THEY WERE RUN with the two slowest removed,
+   * so the comparison below is about time again.
+   */
   const repPaces = workSplitPaces(splits);
   if (repPaces.length < 3) return null;
   const firstHalf = repPaces.slice(0, Math.ceil(repPaces.length / 2));
   const lastHalf = repPaces.slice(Math.ceil(repPaces.length / 2));
   const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
   const lastAvg = lastHalf.reduce((a, b) => a + b, 0) / lastHalf.length;
+  // "Strongest" is a comparison, so it needs the back half to actually be
+  // quicker. Merely level is "held the line", which is a different sentence
+  // and a true one.
+  if (lastAvg < firstAvg - 3) {
+    return `${repPaces.length} on the rail · last ${lastHalf.length} the strongest`;
+  }
   if (lastAvg <= firstAvg + 3) {
-    const strongCount = lastHalf.length;
-    return `${repPaces.length} on the rail · last ${strongCount} the strongest`;
+    return `${repPaces.length} on the rail · held the pace across the set`;
   }
   return `${repPaces.length} reps delivered`;
 }
@@ -407,10 +447,23 @@ function closingKick(splits: NormalSplit[]): number | null {
 function workSplitPaces(splits: NormalSplit[]): number[] {
   // Pick the fastest splits · likely the reps. Drop the slowest 2
   // (warmup + cooldown) when there are 5+ splits.
+  //
+  // 2026-08-24 · RETURNS THEM IN THE ORDER THEY WERE RUN. This used to hand
+  // back the sorted array, and its only caller then read the first half
+  // against the last half and called the difference a pacing pattern. See
+  // `winIntervals`.
   const paces = splits.map((s) => s.paceS).filter((p): p is number => p != null && p > 0);
   if (paces.length < 4) return paces;
-  const sorted = [...paces].sort((a, b) => a - b);
-  return sorted.slice(0, sorted.length - 2);
+  const slowest = [...paces].sort((a, b) => b - a).slice(0, 2);
+  const drop = [...slowest];
+  return paces.filter((p) => {
+    // Remove ONE occurrence per slot, so a set where the two slowest paces
+    // are equal does not lose every rep at that pace.
+    const i = drop.indexOf(p);
+    if (i === -1) return true;
+    drop.splice(i, 1);
+    return false;
+  });
 }
 
 function avgPace(splits: NormalSplit[]): number | null {

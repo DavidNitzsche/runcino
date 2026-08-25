@@ -212,6 +212,30 @@ function judgedPace(observedSPerMi: number, t: RecapInput['terrain']): number {
 const paceLabel = fmtPaceSlash;
 
 /**
+ * A distance clause, or nothing.
+ *
+ * 2026-08-24 · EVERY LEAD LINE IN THIS FILE INTERPOLATED `miNum(...)`
+ * DIRECTLY, and `miNum` returns null for a distance the reader refuses. A
+ * template literal writes that null down. The recap route hands this function
+ * `runc.distanceMi ?? 0` — the `?? 0` is there because `deriveRecap` takes a
+ * non-nullable `actualMi` — so a row whose distance the reconciler declines
+ * arrives here as a zero, `miNum` refuses the zero, and the runner reads:
+ *
+ *     Easy null mi. Run by feel · the right way to take an easy day.
+ *
+ * Not a crash and not a fabrication, but it is the app failing in front of
+ * him, on the screen he opens after every run.
+ *
+ * Rule three. When there is no distance to state, the sentence says the other
+ * true things and leaves the distance out. It never guesses one and it never
+ * prints the word null.
+ */
+function miPhrase(mi: number | null | undefined): string | null {
+  const n = miNum(mi);
+  return n == null ? null : `${n} mi`;
+}
+
+/**
  * Read the rep-by-rep pacing pattern for an interval / cruise session and
  * say what actually happened — judged against the HEAT-ADJUSTED target,
  * not the raw cold-weather number.
@@ -569,7 +593,26 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
   switch (input.type) {
     case 'long': {
       const finishMi = input.finishMi ?? 0;
-      const hasFinish = finishMi > 0 && input.finishPaceSPerMi != null;
+      /* 2026-08-24 · A BREAKDOWN THAT DOES NOT ADD UP IS NOT A BREAKDOWN.
+       *
+       * `finishMi` is the PRESCRIBED finish segment, off `workout_spec`. The
+       * easy portion below is `actualMi − finishMi` clamped at zero, and the
+       * finish leg was never clamped at all — so a 20-mile long run with a
+       * 6-mile marathon-pace finish, abandoned at mile 3, printed:
+       *
+       *     Long run done · 0mi easy + 6mi @ MP 6:40 · avg HR 150.
+       *
+       * Six miles at marathon pace, on a run that covered three. Both halves
+       * of the sentence are drawn from real fields and the sum is fiction —
+       * the worst of the three outcomes, because the runner cannot tell.
+       *
+       * A prescribed segment longer than the whole run is proof the segment
+       * was not run as prescribed, and nothing on this wire says how much of
+       * it was. So the structured line is refused and the plain long-run line
+       * states the distance that is actually known. Rule three.
+       */
+      const finishFitsTheRun = finishMi > 0 && input.actualMi > 0 && finishMi <= input.actualMi;
+      const hasFinish = finishFitsTheRun && input.finishPaceSPerMi != null;
       if (hasFinish) {
         // Easy portion = what was ACTUALLY run minus the finish segment, so
         // the breakdown sums to the real distance covered — not plannedMi,
@@ -589,13 +632,18 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
          * zone is a nicety; naming it wrong is a defect. */
         const label = rawLabel === 'HM' ? 'HMP' : rawLabel === 'M' ? 'MP' : rawLabel || null;
         const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
+        // A leg that rounds to nothing is not a leg. "0mi easy + 6mi @ MP" on
+        // a 6.2-mile run reads as a run with no easy portion, which is a
+        // different session from the one that happened.
+        const easyLeg = easyMi > 0 ? `${easyMi}mi easy + ` : '';
         facts.push(
-          `Long run done · ${easyMi}mi easy + ${Math.round(finishMi)}mi @ ${label ? `${label} ` : ''}${fPaceStr}${hrPart}.`,
+          `Long run done · ${easyLeg}${Math.round(finishMi)}mi @ ${label ? `${label} ` : ''}${fPaceStr}${hrPart}.`,
         );
       } else {
         const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
+        const miPart = miPhrase(input.actualMi);
         facts.push(
-          `Long run done · ${miNum(input.actualMi)} mi${hrPart} · kept it aerobic.`,
+          `Long run done${miPart ? ` · ${miPart}` : ''}${hrPart} · kept it aerobic.`,
         );
       }
       /* 2026-08-19 · FUEL IS A CAUSE ONLY ONCE THE RUN IS LONG ENOUGH TO HAVE
@@ -655,7 +703,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       // range, so compare actual to the easy target and say what happened:
       // honest-easy, a touch quick (the one easy-day mistake worth flagging),
       // or relaxed. Falls back to a by-feel line when there's no target pace.
-      const lead = `Easy ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}.`;
+      const easyMiPart = miPhrase(input.actualMi);
+      const lead = easyMiPart
+        ? `Easy ${easyMiPart}${paceStr ? ' at ' + paceStr : ''}.`
+        : `Easy run${paceStr ? ' at ' + paceStr : ''}.`;
       const easyTgt = input.plannedPaceSPerMi ?? null;
       const easyAct = input.actualPaceSPerMi ?? null;
       if (easyTgt && easyAct && judgeableAgainstTarget(input)) {
@@ -706,11 +757,13 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
     case 'threshold': {
       const workPaceStr = paceLabel(input.workPaceSPerMi);
       const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
-      const leadLine = workPaceStr && input.workDistanceMi
-        ? `Tempo done · ${miNum(input.workDistanceMi)} mi @ ${workPaceStr.replace('/mi', '')}${hrPart}.`
+      const workMiPart = miPhrase(input.workDistanceMi);
+      const tempoMiPart = miPhrase(input.actualMi);
+      const leadLine = workPaceStr && workMiPart
+        ? `Tempo done · ${workMiPart} @ ${workPaceStr.replace('/mi', '')}${hrPart}.`
         : workPaceStr
           ? `Tempo done · ${workPaceStr} tempo block${hrPart}.`
-          : `Tempo done · ${miNum(input.actualMi)} mi total${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
+          : `Tempo done${tempoMiPart ? ` · ${tempoMiPart} total` : ''}${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`;
       facts.push(leadLine);
       // Execution analysis: how did the work block actually go?
       // Reads work-phase splits vs target — specific to this run.
@@ -770,7 +823,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
             ? `Reps done · ${repStr}${hrPart}.`
             : workPaceStr
               ? `Reps done · ${workPaceStr} work avg${hrPart}.`
-              : `Reps done · ${miNum(input.actualMi)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualAvgHr ? ', HR ' + input.actualAvgHr : ''}.`;
+              : (() => {
+                  const m = miPhrase(input.actualMi);
+                  return `Reps done${m ? ` · ${m} total` : ''}${paceStr ? ' at ' + paceStr + ' avg' : ''}${input.actualAvgHr ? ', HR ' + input.actualAvgHr : ''}.`;
+                })();
       }
       facts.push(leadLine);
       facts.push(pacing.fact ?? `Building the top end · these stack.`);
@@ -785,7 +841,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
 
     case 'recovery':
     case 'shakeout': {
-      facts.push(`Recovery jog · ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}. Just blood flow. Box checked.`);
+      {
+        const m = miPhrase(input.actualMi);
+        facts.push(`Recovery jog${m ? ` · ${m}` : ''}${paceStr ? ' at ' + paceStr : ''}. Just blood flow. Box checked.`);
+      }
       return {
         verdict: 'Legs cleared.',
         facts,
@@ -795,7 +854,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
     }
 
     case 'race': {
-      facts.push(`Race · ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`);
+      {
+        const m = miPhrase(input.actualMi);
+        facts.push(`Race${m ? ` · ${m}` : ''}${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`);
+      }
       return {
         verdict: 'Raced it.',
         facts,
@@ -805,7 +867,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
     }
 
     default: {
-      facts.push(`Logged · ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}.`);
+      {
+        const m = miPhrase(input.actualMi);
+        facts.push(`Logged${m ? ` · ${m}` : ''}${paceStr ? ' at ' + paceStr : ''}.`);
+      }
       return {
         verdict: 'Logged.',
         facts,
