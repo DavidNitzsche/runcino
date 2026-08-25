@@ -177,7 +177,15 @@ echo "→ Watch engine test gate (build-for-testing)…"
 WATCH_SIM=$(xcrun simctl list devices available 2>/dev/null | \
   grep -A30 "watchOS" | grep -m1 -oE "[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}" || true)
 if [ -n "$WATCH_SIM" ]; then
-  ( cd "$ROOT/legacy/native/Faff" && \
+  # 2026-08-25 · THIS BUILT THE WRONG PROJECT AND BLOCKED EVERY SHIP.
+  #
+  # It pointed at `legacy/native/Faff/Faff.xcodeproj`, which has no widget
+  # target — so `FaffWidgetSnapshot.swift` is not in it and `PhoneSync`'s use
+  # of `FaffWidgetStore` could not compile. Verified against a CLEAN main, not
+  # against any particular change: no ship has passed this step since the
+  # widget shelf landed. The watch sources are the same files either way
+  # (native-v2 reaches them by symlink); only native-v2 can build them.
+  ( cd "$NATIVE_V2" && \
     xcodebuild build-for-testing \
       -project Faff.xcodeproj \
       -scheme "FaffWatch Watch App" \
