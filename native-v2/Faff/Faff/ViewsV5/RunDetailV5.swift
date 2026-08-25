@@ -499,8 +499,23 @@ struct RunDetailV5: View {
         // by the type's own rule — if a screen cannot tell, the answer is
         // modelled — this is modelled. Same shape as the race-morning forecast
         // that shipped as a hard read.
+        //
+        // 2026-08-25 · AND THE LABEL HAS TO CARRY IT, because since the amber
+        // tilde was retired on 2026-08-21 nothing else does. Driven with
+        // VoiceOver attached, this row announced "estimated 61 degrees
+        // Fahrenheit" while the screen drew a bare "61°F" in a section headed
+        // READING, between "Heart rate, avg 141 bpm" and "Cadence 172 spm" —
+        // two genuine reads. The accessible name knew more than the picture,
+        // which means the picture was the thing that was wrong.
+        //
+        // The retirement's own argument was that the words beside a value were
+        // already carrying the distinction: "Pace band" and "HR ceiling" are
+        // prescriptions by name, Races says "Projected", 8c says "on the
+        // watch". "Temperature" says nothing, so it is the row that argument
+        // missed. The comma-qualifier is the same idiom as "Cadence, on the
+        // work" directly above.
         if shape.showsTemperature, let temp = detail.temp_f {
-            out.append(("Temperature", .modelled("\(Int(temp.rounded()))\u{00B0}F")))
+            out.append(("Temperature, from weather", .modelled("\(Int(temp.rounded()))\u{00B0}F")))
         }
         return out
     }
