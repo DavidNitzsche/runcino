@@ -2681,6 +2681,9 @@ function CompletedHeroV2({
                 </div>
               </div>
               <div>
+                {/* CALORIES here is ACTIVE energy, the same quantity run
+                    detail prints — Strava's total is a different quantity and
+                    no longer reaches this tile. An estimate wears the mark. */}
                 <div className="kcl">{runData?.power_avg_w != null ? 'AVG POWER' : 'CALORIES'}</div>
                 <div className="kcv" style={
                   (runData?.power_avg_w == null && (!result?.cal || result.cal <= 0))
@@ -2689,7 +2692,11 @@ function CompletedHeroV2({
                 }>
                   {runData?.power_avg_w != null
                     ? `${runData.power_avg_w} W`
-                    : (result?.cal && result.cal > 0 ? `${result.cal} kcal` : 'NO DATA')}
+                    : !result?.cal || result.cal <= 0
+                      ? 'NO DATA'
+                      : result.calMeasured === false
+                        ? <Modelled title="Estimated from distance, body mass and average heart rate">{result.cal} kcal</Modelled>
+                        : `${result.cal} kcal`}
                 </div>
               </div>
             </div>

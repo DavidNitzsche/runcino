@@ -450,34 +450,33 @@ export const DERIVED_REGISTRY: readonly DerivedFamily[] = [
       'HKLiveWorkoutBuilder. On the 32 rows carrying both, `calories` is ' +
       '1.21x to 1.38x `kcal` — the basal share of an hour\'s running. All 32 ' +
       '"disagree" and all 32 are right. Nothing needs fixing in the data. ' +
-      'What needs fixing is that two live readers COALESCE them, so one ' +
-      'column is total energy on one row and active energy on the next and ' +
-      'moves ~30% for no reason the runner can see. The accessors ' +
+      'What needed fixing was that two live readers COALESCEd them, so one ' +
+      'column was total energy on one row and active energy on the next and ' +
+      'moved ~30% for no reason the runner could see. The accessors ' +
       '`runTotalEnergyKcal` and `runActiveEnergyKcal` exist so the choice has ' +
-      'to be made by name.',
+      'to be made by name. CLOSED 2026-08-24: the owner ruled ACTIVE ENERGY ' +
+      'EVERYWHERE, both readers now call `resolveActiveEnergyBatch` in ' +
+      'lib/runs/energy.ts, and that ladder takes no Strava-total argument at ' +
+      'all. A total is refused rather than converted — subtracting a basal ' +
+      'rate is a physiological claim and `Research/` supplies no resting- or ' +
+      'basal-metabolic basis to cite for one, so per Rule 7 there is no ' +
+      'constant to bind. The observed mean 1.314x describes 25 rows; it is ' +
+      'not a rate. Cost of refusing, measured: ONE canonical row app-wide ' +
+      '(2026-08-01, 1.34 mi) loses its total and falls to a marked estimate.',
+    // Still 'none', and deliberately. `guard` names a REFUSAL in
+    // `reconcileRun`, and there is nothing here to refuse: both readings are
+    // sound. What was wrong was the READ, and a reconciler cannot see a read.
+    // The guard for that is the energy family in
+    // `lib/conservation/_reader_lint.test.ts`, which fails the build if any
+    // file names both keys or if either surface stops calling the shared
+    // ladder. Naming it in this field instead would make the gate assert a
+    // coherence export that does not and should not exist.
     guard: 'none',
     measured:
-      '2026-08-24 · 65 rows carry `calories`, 67 carry `kcal`, 32 carry both. ' +
-      'Ratio min 1.210, mean 1.314, max 1.380.',
-    exempt: {
-      'components/faff-app/seed.ts':
-        'Line 723 · `COALESCE(c.data->>\'calories\', c.data->>\'kcal\') AS kcal` ' +
-        'labels total energy as kcal. A display-only seed query; the fix is a ' +
-        'read migration, not a guard, and it is queued rather than done here ' +
-        'because the column feeds a chart whose axis label has to change with it.',
-      'lib/coach/run-state.ts':
-        'HALF CLOSED 2026-08-24. The unread-measurement half is FIXED: ' +
-        '`data.kcal` is now tier 2 in resolveCalories(), above the HealthKit ' +
-        'sum and the estimator, so the watch\'s own measurement is no longer ' +
-        'discarded in favour of arithmetic — that was a modelled number ' +
-        'looking measured on all 67 watch rows, off by -26% to +28%. ' +
-        'STILL OPEN, and the reason this entry survives: the field is TOTAL ' +
-        'energy at tier 1 and ACTIVE energy at tiers 2-4, so it can still ' +
-        'move ~30% between two runs for a reason the runner cannot see. ' +
-        'Closing that means dropping Strava\'s total from the ladder, which ' +
-        'changes the calorie figure on every Strava-sourced run at once — a ' +
-        'product decision, not a bug fix, and argued in place at the tier.',
-    },
+      '2026-08-24 · of 143 canonical rows, 26 carry `calories`, 37 carry ' +
+      '`kcal`, 25 carry both and exactly 1 carries a total with no active ' +
+      'reading. Ratio min 1.210, mean 1.314, max 1.380.',
+    exempt: {},
     controls: [
       {
         label: 'total and active energy are read by name, never coalesced',

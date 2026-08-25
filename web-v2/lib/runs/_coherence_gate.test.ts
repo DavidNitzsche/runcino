@@ -235,7 +235,13 @@ describe('exemptions', () => {
     }
     // The exemption list is not empty today. If it empties legitimately, drop
     // this floor in the same commit that removes the last entry.
-    expect(checked).toBeGreaterThanOrEqual(3);
+    //
+    // 3 → 2 on 2026-08-24. `energy.total-vs-active` carried both remaining
+    // entries and both are closed: the seed no longer coalesces a total into
+    // the kcal column and run detail no longer serves one at tier 1. The
+    // floor is lowered rather than the exemptions kept, because a stale
+    // exemption is the thing this file exists to make impossible.
+    expect(checked).toBeGreaterThanOrEqual(2);
   });
 
   it('carry a reason, not a shrug', () => {

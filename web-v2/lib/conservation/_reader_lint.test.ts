@@ -113,8 +113,11 @@ const ALLOW: Record<string, string> = {
 
   /* ── READERS NOT YET MIGRATED. Each is a place a number can still drift,
    *    and this is the queue, in the order I would take them. ───────────── */
-  'lib/coach/run-state.ts':
-    'MIGRATED, but the scan still fires: the file discusses `durationSec` in prose and passes a field NAMED `movingTimeS` to two helpers. The substring scan cannot tell those from a read, and over-reporting is the right direction for a lint.',
+  // `lib/coach/run-state.ts` was here until 2026-08-24 with the honest reason
+  // that it passed a field NAMED `movingTimeS` into its private calorie
+  // ladder. That ladder is gone — the file now calls `resolveActiveEnergy` —
+  // and the scan finds one clock key left, in a comment. The staleness check
+  // is what made deleting this entry mandatory rather than optional.
   'lib/coach/recovery-brief.ts':
     'post-race recovery copy · its own ladder over three keys',
   'lib/coach/recovery-phase.ts':
@@ -141,7 +144,13 @@ const ALLOW: Record<string, string> = {
 
 const rel = (p: string) => path.relative(WEB, p).split(path.sep).join('/');
 
-function sourceFiles(): string[] {
+/**
+ * `roots` defaults to the clock check's `lib` + `app`. The energy check below
+ * passes `components` as well, because the COALESCE that started it lived in
+ * `components/faff-app/seed.ts` — a scan that could not see the offending
+ * file is the same failure as a guard with no call sites.
+ */
+function sourceFiles(roots: string[] = ROOTS): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
     if (!fs.existsSync(dir)) return;
@@ -155,7 +164,7 @@ function sourceFiles(): string[] {
       }
     }
   };
-  for (const r of ROOTS) walk(path.join(WEB, r));
+  for (const r of roots) walk(path.join(WEB, r));
   return out;
 }
 
@@ -364,6 +373,147 @@ describe('reader lint · one reader for how long a run took', () => {
       'a reader is rebuilding a run\'s climb out of its split deltas. That is a ' +
       'private opinion about a figure four surfaces have to agree on. Rank the ' +
       'instruments with `pickElevationGain` instead.',
+    ).toEqual([]);
+  });
+
+  /* ══════════════════════════════════════════════════════════════════════
+   * THE ENERGY FAMILY · the column may not mean two things again
+   * ═══════════════════════════════════════════════════════════════════ */
+
+  it('nothing coalesces total energy into the active-energy column', () => {
+    /* ── added 2026-08-24, when the owner ruled active-energy-everywhere ───
+     *
+     * `runs.data` carries two energy keys and they are two DIFFERENT
+     * quantities: `calories` is Strava/HealthKit TOTAL energy, basal
+     * included, and `kcal` is the watch's ACTIVE energy. Measured over the 25
+     * canonical prod rows carrying both, `calories` is 1.210x to 1.380x
+     * `kcal`. On 2026-08-16 the runner saw Strava's 2202 next to a measured
+     * 1807 for the same effort, because two readers coalesced them:
+     *
+     *     components/faff-app/seed.ts  COALESCE(data->>'calories', data->>'kcal')
+     *     lib/coach/run-state.ts       Strava's total at tier 1, active at 2-4
+     *
+     * One column, total energy on one row and active energy on the next,
+     * moving ~30% for a reason the runner cannot see. That is the defect —
+     * not the absence of a number, the presence of a wrong-labelled one.
+     *
+     * This is the elevation and clock checks again in a third costume, and it
+     * needs its own because the shapes differ: a clock ladder is spotted by
+     * counting spellings of ONE fact, and this is TWO facts that must never
+     * be spelled in one breath. A file naming both keys is either coalescing
+     * them or arbitrating between them, and only the reader layer may do the
+     * second.
+     *
+     * The conversion route is closed on purpose. Subtracting a basal rate is
+     * a physiological assertion and `Research/` holds no resting-metabolic
+     * basis to cite for one, so per CLAUDE.md Rule 7 there is no constant to
+     * bind. The mean 1.314x is a description of 25 rows, not a rate. */
+    /**
+     * Scanned as a READ of the row rather than as any mention of the word.
+     * The clock check one screen up is a plain substring scan because
+     * over-reporting is the right direction there; here it is not, because
+     * `laws.ts` legitimately holds `label: 'calories'` beside `unit: 'kcal'`
+     * to draw a stat row, and flagging a display label as a data read teaches
+     * people to add allowlist entries instead of fixing anything.
+     *
+     * The cost of the tighter form: a comment that quotes the literal SQL
+     * counts as a read. That is a live trade — a scan that stripped comments
+     * could miss a real one hiding in a template literal — so the seed's
+     * migration note describes the old COALESCE in words rather than quoting
+     * it, and this sentence is why.
+     */
+    const ENERGY_READ_FORMS: Record<string, RegExp[]> = {
+      calories: [/\.calories\b/, /->>\s*'calories'/, /\['calories'\]/],
+      kcal: [/\.kcal\b/, /->>\s*'kcal'/, /\['kcal'\]/],
+    };
+    const ENERGY_READERS = new Set([
+      // The ladder itself, and the only file that may name both keys in order
+      // to say which one the column means.
+      'lib/runs/energy.ts',
+      // The by-name accessors and the family that documents the split.
+      'lib/runs/coherence.ts',
+      'lib/runs/derived-registry.ts',
+      // The row shape. Declaring both keys is describing the table, not
+      // reading it.
+      'lib/runs/run-shape.ts',
+    ]);
+    // Empty on purpose, and it should stay that way. `lib/strava/pullSync.ts`
+    // needed no entry: it writes Strava's total under Strava's own name and
+    // never touches `kcal`, which is exactly right. Storing the total is
+    // correct; showing it as active was not.
+    const ENERGY_ALLOW: Record<string, string> = {};
+    const spells = (src: string) => Object.entries(ENERGY_READ_FORMS)
+      .filter(([, forms]) => forms.some((f) => f.test(src)))
+      .map(([k]) => k);
+
+    const violations: string[] = [];
+    for (const file of sourceFiles([...ROOTS, 'components'])) {
+      const r = rel(file);
+      if (ENERGY_READERS.has(r) || ENERGY_ALLOW[r]) continue;
+      const hits = spells(fs.readFileSync(file, 'utf8'));
+      if (hits.length >= 2) violations.push(`${r} — ${hits.join(' / ')}`);
+    }
+    expect(violations,
+      'a file names both energy keys. They are different quantities: `calories` is TOTAL ' +
+      'energy and `kcal` is ACTIVE, 1.21x-1.38x apart on this data. Read active energy ' +
+      'through `resolveActiveEnergy` / `watchActiveEnergyKcal` in lib/runs/energy.ts, and ' +
+      'do not convert a total — no Research/ file supplies a basal rate to convert it with.',
+    ).toEqual([]);
+  });
+
+  it('every surface that prints calories resolves them through the one ladder', () => {
+    /* The wiring half, keyed on the CALL — the same pairing the elevation
+     * family has. The scan above proves no file names both keys; this proves
+     * the surfaces that print the column are still asking the shared ladder
+     * rather than reading `data.kcal` raw and inventing their own fallback.
+     *
+     * Both of these had a private estimator before 2026-08-24, and they had
+     * already drifted: run detail gated body mass to a plausible 30-200 kg
+     * and the seed did not, so an absurd stored mass priced a run on one
+     * surface and was refused on the other. */
+    const LADDER_CALLS = ['resolveActiveEnergy(', 'resolveActiveEnergyBatch('];
+    const MUST_RESOLVE: Array<[string, string]> = [
+      ['lib/coach/run-state.ts', 'run detail'],
+      ['components/faff-app/seed.ts', 'the post-run card and the workout detail overlay'],
+    ];
+    const unwired: string[] = [];
+    for (const [file, what] of MUST_RESOLVE) {
+      const src = fs.readFileSync(path.join(WEB, file), 'utf8');
+      if (!LADDER_CALLS.some((c) => src.includes(c))) {
+        unwired.push(`${file} (${what}) resolves calories without the shared ladder`);
+      }
+    }
+    expect(unwired,
+      'a surface is resolving calories on its own. Use `resolveActiveEnergy` / ' +
+      '`resolveActiveEnergyBatch` from lib/runs/energy.ts so the column means one quantity.',
+    ).toEqual([]);
+  });
+
+  it('a surface that prints an estimated calorie figure marks it', () => {
+    /* Rule one, for this specific column. The ladder returns `measured:
+     * false` when the estimator answered, and that flag is only worth
+     * carrying if the surface acts on it. 106 of the runner's 143 canonical
+     * runs have no watch reading, so this is the common case, not the edge —
+     * and before 2026-08-24 all 106 printed a bare number beside the 37 real
+     * measurements with nothing to tell them apart.
+     *
+     * Checked as a pairing rather than by reading JSX: a file that knows the
+     * provenance flag exists and does not draw `<Modelled>` is either
+     * ignoring it or hand-painting its own mark, and both are findings. */
+    const offenders: string[] = [];
+    for (const file of sourceFiles([...ROOTS, 'components'])) {
+      const src = fs.readFileSync(file, 'utf8');
+      if (!/\bcalMeasured\b|\bcalories_measured\b/.test(src)) continue;
+      // Definers and resolvers carry the flag without printing it.
+      const r = rel(file);
+      if (r === 'components/faff-app/constants.ts' || r === 'lib/coach/run-state.ts'
+        || r === 'components/faff-app/seed.ts') continue;
+      if (!src.includes('<Modelled')) offenders.push(r);
+    }
+    expect(offenders,
+      'a surface reads the calorie provenance flag but never draws the mark. Wrap an ' +
+      'estimated figure in <Modelled> from components/faff-app/Modelled.tsx — a modelled ' +
+      'number must never look measured, and 106 of 143 canonical runs are estimates.',
     ).toEqual([]);
   });
 

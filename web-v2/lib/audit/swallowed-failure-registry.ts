@@ -128,14 +128,20 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
 /**
  * How many EMPTIED sites the tree is allowed to carry.
  *
- * 2026-08-24 · 389, measured after the sweep. This number may never rise. When
+ * 2026-08-24 · 389, measured after the sweep. Lowered to 388 the same day:
+ * the week seed's private body-mass query and its private calorie estimator
+ * both went away when the calorie column was migrated to the shared
+ * active-energy ladder in `lib/runs/energy.ts`. One fewer place a DB failure
+ * could quietly become a number.
+ *
+ * This number may never rise. When
  * you fix one, lower it — the gate tells you the new figure and fails until you
  * write it down, which is what stops the line drifting back up.
  *
  * It is NOT a target to reach zero in one pass. It is a line that only moves
  * one way.
  */
-export const EMPTIED_BASELINE = 389;
+export const EMPTIED_BASELINE = 388;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

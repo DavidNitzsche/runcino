@@ -222,7 +222,20 @@ export type CompletedRun = {
   win: string; winx: string;
   time: string; apace: string; hr: number; peak: number;
   zones: [number,number,number,number,number];
-  weather: string; shoe: string; fuel?: string; cal: number; gain: number;
+  weather: string; shoe: string; fuel?: string;
+  /**
+   * ACTIVE energy in kcal — the cost of the running, never Strava's total.
+   * 0 means no tier could answer; surfaces print NO DATA, not a nought.
+   * Resolved by `resolveActiveEnergyBatch` in lib/runs/energy.ts.
+   */
+  cal: number;
+  /**
+   * False when `cal` came from the estimator rather than a device. Surfaces
+   * must mark a false with `<Modelled>` — a modelled number must never look
+   * measured. Null when there is no figure to qualify.
+   */
+  calMeasured?: boolean | null;
+  gain: number;
   splits: Array<[string, number, string, string]>; // mile, fill%, pace, color
   recap: string;
 };

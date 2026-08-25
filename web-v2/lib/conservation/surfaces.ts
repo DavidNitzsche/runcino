@@ -39,6 +39,7 @@ import type { RunData } from '@/lib/runs/run-shape';
 import type { SurfaceReading } from './laws';
 import type { RunShape } from './shapes';
 import { pickElevationGain } from '@/lib/runs/elevation';
+import { watchActiveEnergyKcal } from '@/lib/runs/energy';
 
 /**
  * Hops this harness cannot execute, stated once so no report can imply they
@@ -331,11 +332,16 @@ export function absoluteFigures(data: RunData): Partial<SurfaceReading> {
     tempF: num(data.tempF),
     elevGainFt: elev?.ft ?? null,
     elevGainMeasured: elev?.measured ?? null,
-    // The watch's own active-energy measurement. Strava's `calories` is a
-    // DIFFERENT quantity (total energy, basal included) and is deliberately
-    // not coalesced in here — see `energy.total-vs-active` in the derived
-    // registry for the 1.21x-1.38x gap that coalescing hides.
-    caloriesKcal: num(data.kcal),
+    // ACTIVE energy, through the shared accessor rather than a local read.
+    // Strava's `calories` is a DIFFERENT quantity (total, basal included) and
+    // is deliberately not coalesced in — see `energy.total-vs-active` in the
+    // derived registry for the 1.21x-1.38x gap that coalescing hid.
+    //
+    // Only tier 1 is reachable from a harness: tiers 2 and 3 need the
+    // database. That is the honest limit of what this file can prove, and it
+    // is the tier that matters here — the question a harness can answer is
+    // whether two surfaces read the same KEY, not whether the fallback works.
+    caloriesKcal: watchActiveEnergyKcal(data),
     splitDistancesMi: splits
       ? splits.map((s) => num(s.distanceMi ?? s.distance_mi) ?? 1)
       : null,

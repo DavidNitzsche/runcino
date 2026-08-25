@@ -330,8 +330,12 @@ describe('2026-08-01 · a 1.34 mile run with 4.14 miles of splits', () => {
 
 describe('2026-06-14 · total energy is not active energy', () => {
   it('the COALESCE that conflates them picks the larger by ~32%', () => {
-    // components/faff-app/seed.ts:723, verbatim:
-    //   COALESCE(c.data->>'calories', c.data->>'kcal') AS kcal
+    // What components/faff-app/seed.ts used to select: Strava's total
+    // coalesced ahead of the watch's active figure, under the label kcal.
+    // Removed 2026-08-24 — the column means active energy on every surface
+    // now, and the energy family in lib/conservation/_reader_lint.test.ts
+    // fails the build if a file names both keys again. Kept here as the
+    // arithmetic of what it cost: 2187 shown where 1661 was measured.
     const OLD = JUN14.calories ?? JUN14.kcal;
     expect(OLD).toBe(2187);
     expect(runActiveEnergyKcal(JUN14)).toBe(1661);
