@@ -1075,9 +1075,17 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
     // work" — which is why `SLOT_FAMILIES_IN_PHASE.intervals.taper` admits §7
     // at all. A floor written for the rep session would delete the very
     // sessions those two rows prescribe by name.
+    // And the floor only speaks where the dose HAS a duration to measure. §8.5's
+    // Lydiard hill circuit is a lap — "800m of springing/bounding uphill, 800m
+    // flat jog, 700m fast relaxed striding downhill, 800m wind sprints" — and
+    // `fits` reports zero minutes for it because no step carries one, not
+    // because the session is small: §8.5's own Total-session row reads "45–75
+    // min". Reading that zero as a refusal deleted a forty-five-minute session
+    // from the phase §15 places it in, which is the opposite of the defect this
+    // floor exists to close.
     const isVo2Slot = slot === 'intervals'
       && (phase === 'hill_strength' || phase === 'specific_support' || phase === 'race_specific');
-    if (isVo2Slot && picked.atPaceMinutes + 1e-9 < VO2_SESSION_MIN_MINUTES) {
+    if (isVo2Slot && picked.atPaceMinutes > 0 && picked.atPaceMinutes + 1e-9 < VO2_SESSION_MIN_MINUTES) {
       push(
         entry.slug, 'does-not-fit-the-week',
         `${picked.atPaceMinutes.toFixed(1)} min of work is less than one §6 repetition ` +
