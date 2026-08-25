@@ -224,13 +224,29 @@ struct V5Group: Decodable, Equatable, Hashable, Identifiable {
     /// the bookends quiet; inferring that from POSITION breaks the moment a
     /// session has two work blocks or none, so the engine says which.
     let isWork: Bool?
+    /// PRERUN-1 · how to EXECUTE this group, and what to do when it goes
+    /// wrong. "Same pace on every rep. If the last one slips, the target was
+    /// too fast." "Continuous and controlled. If the breathing turns ragged,
+    /// ease off 5 to 10 sec/mi."
+    ///
+    /// The approved 5a design carries this as `groupFooter`, and the server
+    /// has composed the sentences in `lib/training/spec-card.ts` all along —
+    /// one per phase role, never naming a distance, so they cannot contradict
+    /// the structure above them. `lib/faff/v5-today.ts` was dropping them on
+    /// the floor with the rest of the step, which left the screen holding
+    /// numbers and no instruction: on a rep day the only thing telling the
+    /// runner what to do when the third rep slips was nothing at all.
+    ///
+    /// Optional and additive. A build that has never heard of it decodes and
+    /// renders exactly as it did before.
+    let footer: String?
 
     var work: Bool { isWork ?? false }
 
     init(id: String, title: String, note: String? = nil,
-         steps: [V5Step], isWork: Bool? = nil) {
+         steps: [V5Step], isWork: Bool? = nil, footer: String? = nil) {
         self.id = id; self.title = title; self.note = note
-        self.steps = steps; self.isWork = isWork
+        self.steps = steps; self.isWork = isWork; self.footer = footer
     }
 }
 

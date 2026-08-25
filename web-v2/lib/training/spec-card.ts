@@ -41,6 +41,7 @@
 
 import { expandSpecToPhases, subLabelFromSpec, type ExpandedPhase } from './expand-spec';
 import { fmtPace as fmtPaceNoUnit, roundTo } from '@/lib/format/run';
+import { applyHeatEasing } from '@/lib/watch/heat';
 import { sessionRationale, type PrescriptionStep, type WorkoutType } from './prescriptions';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 
@@ -51,6 +52,43 @@ export interface SpecCard {
   citation: string;
   steps: PrescriptionStep[];
   total_mi: number;
+  /**
+   * PRERUN-1 · the WORK's own pace target and tolerance, in s/mi, straight off
+   * the phase the runner is being asked to hold. Null when the work goes out
+   * by feel.
+   *
+   * Exists so the panel's "Pace band" stat can be read off THIS session
+   * instead of re-derived. It used to come from `derivePaces()`, whose whole
+   * tree hangs off the runner's typed goal time, so the largest number on the
+   * panel and the steps three lines below it were two different answers to one
+   * question. Same defect the card's structure had before SPECFIRST-1, one
+   * register up.
+   */
+  workPaceSPerMi: number | null;
+  workToleranceSPerMi: number | null;
+  /**
+   * PRERUN-1 · how long the session takes, summed over the SAME phases the
+   * watch sums for its own `totalEstimatedMinutes`. Null when there are no
+   * phases to sum (a row-basis card).
+   *
+   * The panel's "about 54 min" kicker used to be `total_mi × one pace`. On an
+   * easy day that is fine; on a rep day it is not, because the one pace it
+   * picked was the REP pace and the warm-up, the cool-down and every jog
+   * recovery are run minutes slower. A 4.3 mi tune-up came out at 31 minutes
+   * against a real 37. Phase durations already exist, already account for the
+   * heat easing applied above, and are what the wrist is told.
+   */
+  totalDurationSec: number | null;
+  /**
+   * PRERUN-1 · this session ends at race pace.
+   *
+   * True only for a long run carrying an HM/M finish segment. The watch has
+   * suppressed its aerobic HR ceiling on exactly these days since 2026-06-07
+   * (Audit D/D1): a workout-level Z2 cap would red-alert through the entire
+   * finish and coach against the prescription. The phone printed the ceiling
+   * anyway, so this says the same thing to the same gate.
+   */
+  hasRacePaceFinish: boolean;
   /**
    * Where the card's STRUCTURE came from. `'spec'` means every count, distance
    * and pace below was read off `workout_spec`, so the phone and the watch are
@@ -110,10 +148,66 @@ const NOTE = {
   long: 'Time on feet beats pace. Fuel around 45 min in, then every 30.',
   race: 'Hold the plan through the first 5K. Mile 1 decisions are paid for at mile 12.',
   finish: 'The point of the session. Find race rhythm and hold it home.',
+  /* A rep the plan sized in effort, not in pace. `Research/03` §14 puts hill
+   * repeats under RPE and calls pace meaningless on them, so telling this
+   * runner to hold even splits is advice against a number the screen has just
+   * refused to state — the footer would be arguing with the "By effort" on the
+   * row above it. */
+  repByEffort: 'Effort is the target here, not a pace. The last one should cost what the first one cost.',
 } as const;
 
-function repNote(type: WorkoutType, isStride: boolean): string {
+/**
+ * What the rep IS, in the plural, read off the phase's own label.
+ *
+ * `expandReps` writes "Hill 3 of 11 · 10s" when the spec's label mentions a
+ * hill and "Rep 3 of 11 · 10s" when it does not; `appendStrides` writes
+ * "Stride 3 of 6". That first word is the only place the distinction survives
+ * the expansion, and the card was throwing it away — eleven ten-second hill
+ * reps rendered on the phone as "11 × 10s", which is a flat-ground session.
+ *
+ * Returns null for anything unrecognised rather than guessing a noun.
+ */
+function repNoun(p: ExpandedPhase): string | null {
+  if (p.isStrideSegment === true) return 'strides';
+  const first = String(p.label ?? '').trim().split(/[\s·]/)[0].toLowerCase();
+  switch (first) {
+    case 'hill': return 'hills';
+    case 'stride': return 'strides';
+    case 'surge': return 'surges';
+    // `Rep` and `Interval` are what the expander calls a rep it has nothing
+    // more specific to say about. Neither adds anything a runner did not
+    // already read in the count: "5 × 400 m intervals" and "5 × 400 m reps"
+    // are both longer ways of writing "5 × 400 m". Only a noun that CHANGES
+    // the session — a hill, a stride, a surge — earns the words.
+    case 'rep': case 'interval': return null;
+    default: return null;
+  }
+}
+
+/**
+ * PRERUN-1 · below this, a heart-rate band is not a target a runner can hold.
+ *
+ * `Research/03-heart-rate-zones.md` §13, "Implications by Rep Duration", top
+ * row: a rep under 30 seconds gets `Useless — HR lags`, and the anchor it
+ * names instead is `Pace, RPE`. §2 gives the kinetics behind it — HR rises
+ * with a half-time of about 30 s and plateaus at 90-180 s — so on a
+ * ten-second hill the number has not begun to arrive by the time the rep is
+ * over. §14's table says the same thing a second way: `Hill repeats | RPE |
+ * HR | Pace meaningless`.
+ *
+ * The card was stating one anyway. "11 × 10s hills · 172-185" was live on two
+ * active plans: a band nobody can reach inside the rep, printed in the one
+ * column that tells the runner what to aim at, on a rep the plan had marked
+ * `by_effort` precisely because it declined to name a target.
+ *
+ * Watched by `PRERUN.hr-short-rep-floor` in lib/doctrine/registry.ts, which
+ * reads the boundary out of that table rather than restating it here.
+ */
+export const HR_TARGET_MIN_REP_SEC = 30;
+
+function repNote(type: WorkoutType, isStride: boolean, byEffort = false): string {
   if (isStride) return NOTE.stride;
+  if (byEffort) return NOTE.repByEffort;
   if (type === 'threshold' || type === 'tempo') return NOTE.repThreshold;
   if (type === 'intervals') return NOTE.repInterval;
   return NOTE.repGeneric;
@@ -187,6 +281,17 @@ export function cardFromSpec(input: {
   /** HR band strings by zone, from `hrTargets(profile)`. Null when no LTHR. */
   hr?: { z1: string | null; z2: string | null; z3: string | null; z4: string | null; z5: string | null } | null;
   toleranceSec?: number;
+  /**
+   * PRERUN-1 · the Research/06 slowdown the WATCH was already given for this
+   * day, percent, from `loadHeatEasing`. Applied to the same phase list, by
+   * the same function (`applyHeatEasing`), so the wrist and the card state one
+   * number.
+   *
+   * Nothing here decides whether or by how much. This is a read-back of a
+   * decision already made and already recorded; a second heat engine is the
+   * specific bug `lib/watch/heat.ts` exists to prevent.
+   */
+  heatEasingPct?: number | null;
 }): SpecCard | null {
   const { spec, type, distanceMi, easyPaceSec, hr } = input;
   if (!spec) return null;
@@ -202,6 +307,15 @@ export function cardFromSpec(input: {
     workPhaseLabel: type === 'race' ? 'Race effort' : type === 'shakeout' ? 'Shakeout' : undefined,
   });
   if (!phases || phases.length === 0) return null;
+
+  /* Same easing, same phases, same function as the wrist — and in the same
+   * place in the order: after the expansion is final, before anything is
+   * rendered off it. A race is never eased (`adjustPhasesForHeat` refuses one
+   * outright, because race pace is priced in the execution plan), so a
+   * recorded percentage arriving on a race day is not applied here either. */
+  if (type !== 'race' && input.heatEasingPct != null && input.heatEasingPct > 0) {
+    applyHeatEasing(phases, input.heatEasingPct);
+  }
 
   const rationale = sessionRationale(type);
   const steps: PrescriptionStep[] = [];
@@ -265,12 +379,28 @@ export function cardFromSpec(input: {
     const paceStr = fmtPace(w.targetPaceSPerMi);
     const recDur = fmtDuration(t.rec?.durationSec);
     const recPace = fmtPace(t.rec?.targetPaceSPerMi);
-    const hrForStep = isStride ? null : workHr;
+    /* A rep too short for a heart rate to arrive gets no heart rate.
+     * `Research/03` §13 — see `HR_TARGET_MIN_REP_SEC`. A stride was already
+     * excluded by name; this is the same physiology stated as a duration, so
+     * a ten-second hill is covered whether or not anyone flagged it. */
+    const tooShortForHr =
+      w.distanceMi == null
+      && typeof w.durationSec === 'number'
+      && w.durationSec > 0
+      && w.durationSec < HR_TARGET_MIN_REP_SEC;
+    const hrForStep = isStride || tooShortForHr ? null : workHr;
+    /* …and then the row is not left blank. The plan said BY EFFORT, which is
+     * the anchor `Research/03` §13 names for exactly this rep length ("Pace,
+     * RPE"), so the card says it in words rather than leaving the target
+     * column empty and reading as a number that failed to load. RULE THREE:
+     * a refusal states its reason. */
+    const effortOnly = paceStr == null && hrForStep == null && !isStride;
 
     if (n > 1) {
       steps.push({
         label: isStride ? 'Strides' : `Repeat ${n}×`,
         reps: n,
+        ...(repNoun(w) ? { rep_noun: repNoun(w)! } : {}),
         ...(w.distanceMi != null ? { rep_distance_mi: w.distanceMi } : {}),
         // Time-based reps (hills, fartlek surges, Mona) carry no distance. The
         // duration IS the instruction — "90 s hard", Research/04 §9.2 — so it
@@ -278,7 +408,8 @@ export function cardFromSpec(input: {
         ...(w.distanceMi == null && fmtDuration(w.durationSec) ? { duration: fmtDuration(w.durationSec)! } : {}),
         ...(paceStr ? { pace_target: paceStr } : {}),
         ...(hrForStep ? { hr_target: hrForStep } : {}),
-        note: repNote(type, isStride),
+        ...(effortOnly ? { effort_target: 'By effort' } : {}),
+        note: repNote(type, isStride, effortOnly),
         ...(recDur ? {
           recovery: {
             duration: recDur,
@@ -293,11 +424,13 @@ export function cardFromSpec(input: {
       steps.push({
         label: w.label,
         reps: 1,
+        ...(repNoun(w) ? { rep_noun: repNoun(w)! } : {}),
         ...(w.distanceMi != null ? { rep_distance_mi: w.distanceMi } : {}),
         ...(w.distanceMi == null && fmtDuration(w.durationSec) ? { duration: fmtDuration(w.durationSec)! } : {}),
         ...(paceStr ? { pace_target: paceStr } : {}),
         ...(hrForStep ? { hr_target: hrForStep } : {}),
-        note: repNote(type, false),
+        ...(effortOnly ? { effort_target: 'By effort' } : {}),
+        note: repNote(type, false, effortOnly),
         ...(recDur ? {
           recovery: {
             duration: recDur,
@@ -313,7 +446,8 @@ export function cardFromSpec(input: {
         ...(w.distanceMi == null && fmtDuration(w.durationSec) ? { duration: fmtDuration(w.durationSec)! } : {}),
         ...(paceStr ? { pace_target: paceStr } : {}),
         ...(hrForStep ? { hr_target: hrForStep } : {}),
-        note: isStride ? NOTE.stride : workNote(type, w),
+        ...(effortOnly ? { effort_target: 'By effort' } : {}),
+        note: isStride ? NOTE.stride : effortOnly ? NOTE.repByEffort : workNote(type, w),
         ...(recDur ? {
           recovery: {
             duration: recDur,
@@ -340,6 +474,21 @@ export function cardFromSpec(input: {
   const name = derived || stored;
   const headline = name && name.toUpperCase() !== name ? name : rationale.headline;
 
+  /* The pace the WORK asks for, off the phases themselves.
+   *
+   * The work phase is the one the session is named after — a rep, a tempo
+   * block, the long run itself — never the warm-up. On a long run with an
+   * HM/M finish there are two work phases at two paces; the FINISH is the
+   * point of the session (`NOTE.finish` says so on the step right above), so
+   * it wins. Null when the work goes out by feel, which the panel must then
+   * render as no stat rather than as a number from somewhere else. */
+  const workPhases = phases.filter((p) => p.type === 'work');
+  const paceSource =
+    workPhases.find((p) => p.isFinishSegment === true && p.targetPaceSPerMi != null)
+    ?? workPhases.find((p) => p.isStrideSegment !== true && p.targetPaceSPerMi != null)
+    ?? workPhases.find((p) => p.targetPaceSPerMi != null)
+    ?? null;
+
   return {
     type,
     headline,
@@ -347,6 +496,13 @@ export function cardFromSpec(input: {
     citation: rationale.citation,
     steps,
     total_mi: total,
+    workPaceSPerMi: paceSource?.targetPaceSPerMi ?? null,
+    workToleranceSPerMi: paceSource?.tolerancePaceSPerMi ?? null,
+    hasRacePaceFinish: phases.some((p) => p.isFinishSegment === true),
+    totalDurationSec: (() => {
+      const sec = phases.reduce((a, p) => a + (Number(p.durationSec) || 0), 0);
+      return sec > 0 ? Math.round(sec) : null;
+    })(),
     basis: 'spec',
   };
 }
@@ -374,6 +530,55 @@ export function cardFromSpec(input: {
  * write, so it needs David's explicit go; until it runs, this refusal is the
  * correct behaviour rather than a stopgap.
  */
+/**
+ * PRERUN-1 · the day is stored under a type this screen cannot prescribe.
+ *
+ * The pre-run card is a RUNNING prescription. `plan_workouts.type` also holds
+ * `strength` (44 rows, 14 on active plans) and could hold `cross`, and David
+ * removed both as surfaces on 2026-08-17 — the run is the product. Until now
+ * such a row reached `narrowToPrescriptionType`, came back `'easy'`, and drew
+ * an easy run's card over a session with no run in it, headlined "Easy
+ * aerobic" in the panel's dose slot because a zero-mile easy run has no
+ * distance to put there.
+ *
+ * `lib/coach/glance-state.ts` already drops strength rows before the day is
+ * chosen (STRENGTH-3) and `lib/plan/week-loader.ts` ranks them below every
+ * running type, so this path is a BACKSTOP rather than a live rendering —
+ * verified against production 2026-08-24: every active-plan strength date also
+ * carries a running row, which wins. It is not dead code, though: a strength
+ * row landing on a day whose only sibling is `rest` outranks that rest row
+ * (`TYPE_PRIORITY.strength = 1` vs `rest = 0`) and would reach the card.
+ *
+ * RULE THREE. It says what the day is stored as and that no run is prescribed.
+ * It does not invent a session and it does not scold.
+ */
+export function cardForUnprescribableType(input: {
+  /** The raw `plan_workouts.type`, unnarrowed — this is what we cannot name. */
+  rawType: string | null;
+  subLabel?: string | null;
+}): SpecCard {
+  const raw = (input.rawType ?? '').trim().toLowerCase();
+  const named = raw ? raw.replace(/_/g, ' ') : null;
+  return {
+    type: 'rest',
+    headline: 'No run today',
+    why: named
+      ? `The plan has this day down as ${named}. There is no run prescribed for it.`
+      : 'The plan has no run down for this day.',
+    citation: '',
+    steps: [{
+      label: 'Today',
+      note: 'Nothing to run. The week counts it as a day off the road.',
+    }],
+    total_mi: 0,
+    workPaceSPerMi: null,
+    workToleranceSPerMi: null,
+    totalDurationSec: null,
+    hasRacePaceFinish: false,
+    basis: 'row',
+  };
+}
+
 export function cardWithoutSpec(input: {
   type: WorkoutType;
   subLabel?: string | null;
@@ -389,7 +594,8 @@ export function cardWithoutSpec(input: {
   if (type === 'rest') {
     return {
       type, headline: rationale.headline, why: rationale.why, citation: rationale.citation,
-      total_mi: 0, basis: 'row',
+      total_mi: 0, workPaceSPerMi: null, workToleranceSPerMi: null, totalDurationSec: null,
+      hasRacePaceFinish: false, basis: 'row',
       steps: [{ label: 'Today', note: 'No running. Sleep, mobility, fuel.' }],
     };
   }
@@ -423,6 +629,7 @@ export function cardWithoutSpec(input: {
 
   return {
     type, headline, why: rationale.why, citation: rationale.citation,
-    steps, total_mi: total, basis: 'row',
+    steps, total_mi: total, workPaceSPerMi: paceTargetSPerMi ?? null, workToleranceSPerMi: null,
+    totalDurationSec: null, hasRacePaceFinish: false, basis: 'row',
   };
 }

@@ -38,10 +38,13 @@ import { loadGlanceState } from '@/lib/coach/glance-state';
 import { loadPlanWeek } from '@/lib/plan/week-loader';
 import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeWorkoutType } from '@/lib/coach/run-purpose';
 import {
-  prescriptionFor, derivePaces, hrTargets, narrowToPrescriptionType,
+  prescriptionFor, derivePaces, hrTargets, narrowToPrescriptionType, strictPrescriptionType,
   type WorkoutType as PrescriptionWorkoutType,
 } from '@/lib/training/prescriptions';
-import { cardFromSpec, cardWithoutSpec, type SpecCard } from '@/lib/training/spec-card';
+import { cardFromSpec, cardWithoutSpec, cardForUnprescribableType, type SpecCard } from '@/lib/training/spec-card';
+import { loadHeatEasing } from '@/lib/watch/heat';
+import { splitRuleRegisters } from '@/lib/watch/build-workout';
+import { fmtPace as fmtPaceShared } from '@/lib/format/run';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
@@ -1154,7 +1157,17 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
 
   // ── Before-run panel: prescription, groups, dose, stats ────────────────
   const dp = derivePaces({ lthr: glance.lthr, goal_seconds: glance.raceGoalSeconds, goal_distance_mi: glance.raceGoalDistanceMi });
-  const prescriptionType = toPrescriptionType(todayPlan?.type ?? null);
+  /* PRERUN-1 · the day is named, or it is refused.
+   *
+   * `toPrescriptionType` closes with `default: return 'easy'` — the move
+   * `canonicalSessionType`'s own doc comment forbids in as many words two
+   * files away. `strictPrescriptionType` is the same narrowing without the
+   * guess. Null here means the plan has this day down as something that is
+   * not a run (`strength` is the live case: 44 rows, 14 on active plans) and
+   * the card says so instead of drawing an easy run over it. */
+  const strictType = strictPrescriptionType(todayPlan?.type ?? null);
+  const unprescribable = todayPlan != null && strictType == null;
+  const prescriptionType = strictType ?? 'easy';
   // The runner's OWN prescribed pace for this session type, in s/mi. Hoisted
   // above the fuelling call because two things downstream need it and both
   // used to invent their own number instead: the kicker (fixed) and the
@@ -1234,8 +1247,39 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     prescriptionType === 'threshold' || prescriptionType === 'intervals' ? 8
     : prescriptionType === 'race' ? 12 : 20;
 
-  const prescription: SpecCard | null = todayPlan
-    ? (cardFromSpec({
+  /* ── PRERUN-1 · THE WRIST AND THE PHONE STATED DIFFERENT PACES ───────────
+   *
+   * `lib/watch/heat.ts` eases every phase target for today's real conditions
+   * before the watch is handed the workout, and records what it asked for.
+   * This card was built off the AUTHORED band and never asked. So on a warm
+   * morning the phone said 7:29 and the wrist said 7:41 for the same rep, and
+   * the recap — which grades against the eased band via `targetAlreadyHeatEased`
+   * — agreed with the wrist. Two of the three surfaces were right and the one
+   * the runner reads before leaving the house was the odd one out.
+   *
+   * READ BACK, DO NOT RE-DERIVE. `loadHeatEasing` returns exactly what the
+   * watch was given. Asking the weather again here would be a second heat
+   * engine, which is the specific failure `lib/watch/heat.ts`'s own header
+   * says it exists to prevent, and two calls seconds apart can disagree.
+   *
+   * FAIL CLOSED ON NULL. Null means the READ failed, not that nothing was
+   * eased — the distinction the module goes out of its way to preserve. On a
+   * failed read the card shows the authored band unchanged and says nothing
+   * about heat, because a claim we cannot support is worse than a number that
+   * is merely cold. Zero means nothing was eased, which is the honest answer
+   * for a cool day and for a day whose watch payload has not been built yet.
+   */
+  const heatEasing = todayPlan && !isSteppedDay
+    ? await loadHeatEasing(userId, today)
+    : { pct: 0, tempF: null, dewpointF: null };
+  const heatPct = heatEasing?.pct ?? 0;
+
+  const prescription: SpecCard | null = !todayPlan
+    ? null
+    : unprescribable
+    ? cardForUnprescribableType({ rawType: todayPlan.type, subLabel: todayPlan.subLabel })
+    : (cardFromSpec({
+        heatEasingPct: heatPct,
         spec: specRow?.workout_spec ?? null,
         type: prescriptionType,
         subLabel: specRow?.sub_label ?? todayPlan.subLabel ?? null,
@@ -1254,8 +1298,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         distanceMi: todayPlan.distanceMi,
         paceTargetSPerMi: specRow?.pace_target_s_per_mi ?? null,
         hr: hrBands,
-      }))
-    : null;
+      }));
 
   const fuelingType: WorkoutFuelingType =
     prescriptionType === 'long' || prescriptionType === 'race' ? prescriptionType
@@ -1281,10 +1324,16 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     specRow?.pace_target_s_per_mi ?? (
       prescriptionType === 'easy' || prescriptionType === 'long' ? easyPaceAnchor : null
     ) ?? paceForType;
-  const fuelingDurationEstMin =
-    prescription && fuelPaceSPerMi != null && fuelPaceSPerMi > 0
-      ? Math.round(((prescription.total_mi || 0) * fuelPaceSPerMi) / 60)
-      : 0;
+  //
+  // PRERUN-1 · and it now prefers the PHASES over the pace ladder, because a
+  // rep session's minutes are not `miles × one pace` — the warm-up, the
+  // cool-down and every jog recovery run minutes per mile slower than the rep
+  // whose pace this ladder returns. `sessionMinutes` sums the same phase
+  // durations the watch sums, and falls back to the ladder only for a card
+  // with no phases behind it. The panel's kicker reads the same function, so
+  // "about 54 min" and the gel schedule under it can no longer disagree about
+  // how long the run is.
+  const fuelingDurationEstMin = sessionMinutes(prescription, fuelPaceSPerMi);
   const fueling = prescription
     ? computeFueling({
         durationEstMin: fuelingDurationEstMin,
@@ -1302,7 +1351,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           label: s.label, distance_mi: s.distance_mi, reps: s.reps,
           rep_distance_mi: s.rep_distance_mi, duration: s.duration,
           pace_target: s.pace_target, hr_target: s.hr_target, note: s.note,
-          recovery: s.recovery,
+          recovery: s.recovery, rep_noun: s.rep_noun, effort_target: s.effort_target,
         })),
         total_mi: prescription.total_mi,
         fueling: fueling ? { needed: fueling.needed, shortLine: fueling.shortLine } : null,
@@ -1329,6 +1378,25 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     ?? recommendShoe(shoes, shoeType);
 
   const beforeYouGo: V5Row[] = [];
+  /* PRERUN-1 · say it, once, where the runner is already checking things.
+   *
+   * A moved target with no stated reason reads as a wrong number. The wrist
+   * says it in the lobby (`heatNote`); this is the same sentence in the same
+   * register, built from the same recorded observation, so the two cannot
+   * drift. Present only when something actually moved — never as a standing
+   * weather row, and never when we do not know (a failed read leaves `heatPct`
+   * at 0 and this row absent). */
+  if (heatPct > 0 && heatEasing?.tempF != null) {
+    const t = Math.round(heatEasing.tempF);
+    const dp = heatEasing.dewpointF != null ? Math.round(heatEasing.dewpointF) : null;
+    beforeYouGo.push({
+      id: 'conditions', label: 'Conditions',
+      sub: dp != null && dp >= 60
+        ? `${t} degrees, dewpoint ${dp}. Targets eased for the heat.`
+        : `${t} degrees. Targets eased for the heat.`,
+      value: null, action: null,
+    });
+  }
   if (shoePick) {
     beforeYouGo.push({
       id: 'shoe', label: shoeDisplayName(shoePick) ?? 'Shoe',
@@ -1343,6 +1411,22 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   }
 
   const raceDay = todayPlan?.type === 'race';
+
+  /* PRERUN-1 · the plan for going wrong, off the same key the wrist reads.
+   *
+   * `splitRuleRegisters` is `lib/watch/build-workout.ts`'s own decorator, so
+   * the sentence on the phone is the sentence on the watch, character for
+   * character. A rule whose shape neither recognises contributes its own
+   * label rather than a guess, and a rule that yields no evidence line at all
+   * is dropped rather than rendered empty. */
+  const contingency = (() => {
+    const raw = (specRow?.workout_spec as Record<string, unknown> | null)?.rules;
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    const out = raw
+      .map((r) => splitRuleRegisters(r as Record<string, unknown>))
+      .filter((r): r is { evidence: string; judgement: string | null } => r.evidence != null);
+    return out.length > 0 ? out : null;
+  })();
 
   const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
   ctx.todayPlan = todayPlan;
@@ -1367,26 +1451,73 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // nothing rather than to a constant. `paceForType` is now hoisted above the
   // fuelling call, which had the identical `* 9` bug and was missed the first
   // time round — one definition, so a third caller cannot fork it again.
+  //
+  // PRERUN-1 · and it now asks the PLAN first, the same ladder the fuelling
+  // estimate has used since SPECFIRST-1 and the same one the pace stat above
+  // now uses. `fuelPaceSPerMi` is already that ladder — stored plan pace, then
+  // the plan's own easy band, then the derived figure, then nothing — so the
+  // two estimates are built from one number instead of two. They sit on the
+  // same screen: "about 54 min" in the panel and a gel schedule underneath
+  // that was sized off a different pace was two answers to how long the run
+  // takes.
   const totalMi = prescription ? (prescription.total_mi || 0) : 0;
-  const kickerMin =
-    totalMi > 0 && paceForType != null && paceForType > 0
-      ? Math.round((totalMi * paceForType) / 60)
-      : 0;
+  const kickerMin = sessionMinutes(prescription, fuelPaceSPerMi);
   ctx.weatherKicker = kickerMin > 0 ? `about ${kickerMin} min` : null;
-  ctx.paceBandStat = todayPlan
-    ? (prescriptionType === 'easy' ? fmtBand(dp.easySecLo, dp.easySecHi)
-      : prescriptionType === 'long' ? fmtBand(dp.longSecLo, dp.longSecHi)
-      : prescriptionType === 'threshold' ? fmtSingle(dp.thresholdSec)
-      : prescriptionType === 'tempo' ? fmtBand(dp.tempoSecLo, dp.tempoSecHi)
-      : prescriptionType === 'intervals' ? fmtSingle(dp.intervalSec)
-      : null)
-    : null;
+  /* ── PRERUN-1 · THE PANEL'S PACE AND THE STEPS' PACE WERE TWO ANSWERS ────
+   *
+   * This stat used to come from `derivePaces()` in every arm — a tree that
+   * hangs off `tPaceFromGoal(goal_seconds, goal_distance_mi)`, i.e. the
+   * runner's TYPED GOAL TIME. The steps three lines below it come off the
+   * plan's own `workout_spec`. Those are different numbers, and on a warm day
+   * with the easing applied above they are now different by more again.
+   *
+   * The panel's job is to state, large, the pace this session asks for. So it
+   * states the pace this session asks for: `workPaceSPerMi`, read off the
+   * work phase the card itself renders, ± the tolerance the watch grades
+   * against. Same number, same source, one screen.
+   *
+   * The derived band survives only as the LAST rung, for a day whose spec
+   * carries no pace at all (`by_effort` hills), and even then only for the
+   * aerobic types where a band off the goal is a defensible statement of
+   * intent rather than a target. A by-effort rep day gets no stat, which is
+   * correct: the plan declined to name a pace and so does the panel.
+   */
+  ctx.paceBandStat = !todayPlan || prescriptionType === 'rest' || unprescribable
+    ? null
+    : prescription?.workPaceSPerMi != null
+      ? (prescription.workToleranceSPerMi != null && prescription.workToleranceSPerMi > 0
+          ? fmtBand(prescription.workPaceSPerMi - prescription.workToleranceSPerMi,
+                    prescription.workPaceSPerMi + prescription.workToleranceSPerMi)
+          : fmtSingle(prescription.workPaceSPerMi))
+      : (prescriptionType === 'easy' ? fmtBand(dp.easySecLo, dp.easySecHi)
+        : prescriptionType === 'long' ? fmtBand(dp.longSecLo, dp.longSecHi)
+        : null);
   // A ceiling is a ceiling FOR SOMETHING. On a rest day there is no running
   // to hold under it, and the poster showed "HR ceiling 144 bpm" beside the
   // word REST. Same guard the pace band already has: no plan, no stat.
-  ctx.hrCapStat = (todayPlan && prescriptionType !== 'rest' && dp.aerobicCapBpm != null)
-    ? `${dp.aerobicCapBpm} bpm`
-    : null;
+  //
+  // PRERUN-1 · AND A CEILING IS A CEILING ON SOMETHING AEROBIC.
+  //
+  // `dp.aerobicCapBpm` is the top of Z2. `lib/watch/build-workout.ts` sends it
+  // to the wrist for EASY AND LONG ONLY, in as many words — "HR ceiling only
+  // for easy/long where staying aerobic is the discipline" — and suppresses it
+  // even there when a long run carries an HM/M finish, because a workout-level
+  // aerobic ceiling would red-alert through the whole finish and coach the
+  // opposite of the prescription (Audit D/D1, 2026-06-07).
+  //
+  // The phone ignored all of that and printed it on every non-rest day. Live
+  // consequence, rendered: "HR ceiling 146 bpm" beside the word RACE on a
+  // marathon, and beside INTERVALS on a VO2 session. Both are numbers the
+  // runner is supposed to spend the entire session above. Same gate as the
+  // wrist now, for the same stated reason.
+  ctx.hrCapStat =
+    todayPlan
+    && !unprescribable
+    && (prescriptionType === 'easy' || prescriptionType === 'long' || prescriptionType === 'shakeout')
+    && prescription?.hasRacePaceFinish !== true
+    && dp.aerobicCapBpm != null
+      ? `${dp.aerobicCapBpm} bpm`
+      : null;
   // The design's 5a poster shows a third stat, "effort" (an RPE band). No
   // engine constant prescribes one per workout type — Rule 1 in reverse: an
   // invented number is worse than a missing stat. Left null (the panel
@@ -1397,6 +1528,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   ctx.whereYouAre = buildWhereYouAre(glance, fitnessRow);
   ctx.beforeYouGo = beforeYouGo;
   ctx.raceDay = raceDay;
+  ctx.contingency = contingency;
   ctx.convergence = convergence;
   ctx.paceNote = await loadPaceNoteRow(activePlan?.id ?? null);
 
@@ -1422,7 +1554,7 @@ function emptyContext(todayISO: string, raceMode: boolean, isSteppedDay = false)
     todayISO, raceMode, isSteppedDay,
     todayPlan: null, weekLine: null, phaseLine: null, weekStripDays: [],
     prescription: null, weatherKicker: null, paceBandStat: null, hrCapStat: null, effortStat: null, why: null,
-    whereYouAre: [], beforeYouGo: [], raceDay: false, recentRun: null,
+    whereYouAre: [], beforeYouGo: [], raceDay: false, contingency: null, recentRun: null,
     weekOff: null, offSeason: null, injury: null, convergence: null,
     paceNote: null, sick: null,
   };
@@ -1503,14 +1635,52 @@ function buildWhereYouAre(
   return rows;
 }
 
+/* PRERUN-1 · both of these carried the `6:60/mi` bug.
+ *
+ * `Math.floor(s / 60)` with `Math.round(s % 60)` carries the SECONDS to 60
+ * without the minute hearing about it: 419.6 s/mi printed "6:60/mi". This is
+ * the bug `lib/format/run.ts` was extracted to end and that `spec-card.ts`'s
+ * own `fmtPace` documents killing — and it was still live in the two
+ * formatters that write the panel's largest stat, which is the one number on
+ * the screen a runner reads at a glance. Now routed through the shared
+ * formatter, which rounds the total before it splits it.
+ *
+ * `dp.easySecLo` and friends are averages of Daniels table entries and land on
+ * fractional seconds routinely, so this was not theoretical.
+ */
+/**
+ * PRERUN-1 · how many minutes today's session takes, one definition.
+ *
+ * Phases first — that is the expander's own arithmetic, already carrying the
+ * heat easing, and the same sum `lib/watch/build-workout.ts` puts on the
+ * wrist as `totalEstimatedMinutes`. The pace ladder is the fallback for a card
+ * with no phases behind it (a plan row with no `workout_spec`).
+ *
+ * Returns 0 when neither is available, which is the caller's cue to say
+ * nothing: `computeFueling` prescribes no gels off a zero and the panel omits
+ * the kicker entirely. A missing estimate beats an invented one.
+ */
+function sessionMinutes(card: SpecCard | null, fallbackPaceSPerMi: number | null): number {
+  if (!card) return 0;
+  if (card.totalDurationSec != null && card.totalDurationSec > 0) {
+    return Math.round(card.totalDurationSec / 60);
+  }
+  const mi = card.total_mi || 0;
+  if (mi > 0 && fallbackPaceSPerMi != null && fallbackPaceSPerMi > 0) {
+    return Math.round((mi * fallbackPaceSPerMi) / 60);
+  }
+  return 0;
+}
+
 function fmtBand(loS: number | null, hiS: number | null): string | null {
-  if (loS == null || hiS == null) return null;
-  const f = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
-  return `${f(loS)}-${f(hiS)}/mi`;
+  const lo = fmtPaceShared(loS);
+  const hi = fmtPaceShared(hiS);
+  if (lo == null || hi == null) return null;
+  return lo === hi ? `${lo}/mi` : `${lo}-${hi}/mi`;
 }
 function fmtSingle(s: number | null): string | null {
-  if (s == null) return null;
-  return `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}/mi`;
+  const p = fmtPaceShared(s);
+  return p == null ? null : `${p}/mi`;
 }
 
 function plusDaysISO(iso: string, days: number): string {

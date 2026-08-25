@@ -95,7 +95,35 @@ export type WorkoutType = SessionType;
  * on. One definition, so a third caller cannot fork it again.
  */
 export function narrowToPrescriptionType(plannedType: string | null): WorkoutType {
-  const t = (plannedType ?? '').toLowerCase();
+  return strictPrescriptionType(plannedType) ?? 'easy';
+}
+
+/**
+ * PRERUN-1 · the same narrowing, WITHOUT the closing guess.
+ *
+ * `narrowToPrescriptionType`'s `default: return 'easy'` is the exact move
+ * `canonicalSessionType`'s own doc comment forbids two files away — "silently
+ * returning `easy` for an unknown string is how a rep session becomes a jog"
+ * — and the pre-run card was built on it. Measured against production
+ * 2026-08-24: `strength` is a live `plan_workouts.type` with 44 rows, 8 of
+ * them on active future-dated plans, and every one of them reached the phone
+ * as an EASY RUN. Because a strength row carries `distance_mi = 0`, the easy
+ * card came back with no steps and a headline of "Easy aerobic", and the
+ * panel's dose slot — the largest text on the screen — printed the words
+ * "Easy aerobic" where a distance belongs.
+ *
+ * RULE THREE. A caller that cannot name the day must say so, not run the
+ * nearest card it happens to implement. Null here; the caller refuses.
+ *
+ * `narrowToPrescriptionType` keeps the fallback because the WATCH still
+ * depends on it (`lib/watch/build-workout.ts` has no refusal path and a wrist
+ * that shows nothing is worse than a wrist that shows an easy run), and
+ * because changing it would silently alter every caller at once. One
+ * definition, two contracts, and the difference is stated rather than
+ * implied.
+ */
+export function strictPrescriptionType(plannedType: string | null): WorkoutType | null {
+  const t = (plannedType ?? '').trim().toLowerCase();
   switch (t) {
     case 'easy': case 'long': case 'tempo': case 'threshold': case 'intervals':
     case 'race': case 'shakeout': case 'rest': case 'unplanned':
@@ -103,8 +131,8 @@ export function narrowToPrescriptionType(plannedType: string | null): WorkoutTyp
     case 'race_week_tuneup': return 'threshold';
     case 'recovery': return 'easy';
     case 'fartlek': case 'progression': return 'tempo';
-    case 'vo2max': return 'intervals';
-    default: return 'easy';
+    case 'vo2max': case 'vo2': case 'interval': case 'track': return 'intervals';
+    default: return null;
   }
 }
 
@@ -126,6 +154,35 @@ export interface PrescriptionStep {
     pace_target?: string;   // "easy jog"
     note: string;
   };
+
+  /**
+   * PRERUN-1 · what the rep IS, in the plural, when this step is a rep block.
+   * "hills", "reps", "strides", "surges".
+   *
+   * `expandSpecToPhases` names each work phase for what it is — "Hill 3 of 11
+   * · 10s" — and `cardFromSpec` was collapsing eleven of those into the single
+   * label "Repeat 11×". The screen then rendered "11 × 10s", which is a
+   * different session from "11 × 10s hills" and cannot be run off the page:
+   * ten seconds on the flat and ten seconds up a hill are not the same
+   * prescription. Read off the phase label, never inferred from the type.
+   *
+   * Server-internal. Not a wire field — `lib/faff/v5-today.ts` folds it into
+   * the step's own text before the payload is built.
+   */
+  rep_noun?: string;
+
+  /**
+   * PRERUN-1 · what the plan asked for when it asked for no NUMBER.
+   *
+   * A rep under 30 seconds gets no heart-rate band (`Research/03` §13 — see
+   * `HR_TARGET_MIN_REP_SEC`) and a `by_effort` rep carries no pace, so the
+   * target column had nothing in it at all. An empty target column on a
+   * screen full of targets reads as a value that failed to load, not as a
+   * plan that declined to name one. This says which.
+   *
+   * Server-internal, like `rep_noun`.
+   */
+  effort_target?: string;
 }
 
 export interface Prescription {

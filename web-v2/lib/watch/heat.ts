@@ -36,7 +36,12 @@ import { loadLatestVdotForUser } from '@/lib/training/projection-snapshots';
 /** The shape this needs from a phase. Structural, so tests need no builder. */
 export interface HeatAdjustablePhase {
   targetPaceSPerMi?: number | null;
-  durationSec?: number;
+  // `number | null` rather than `number` since PRERUN-1, so `ExpandedPhase` —
+  // whose `durationSec` is nullable — satisfies this without a cast. The loop
+  // already narrows with `typeof … === 'number'` before touching it, so the
+  // widening changes no behaviour; it only stops a caller from having to lie
+  // about its own type to reach the one implementation.
+  durationSec?: number | null;
   distanceMi?: number | null;
 }
 
@@ -132,6 +137,37 @@ export async function adjustPhasesForHeat(
     };
   }
 
+  applyHeatEasing(phases, pct);
+
+  return {
+    applied: true,
+    slowdownPct: pct,
+    tempF: now.temp_f,
+    dewpointF: now.dewpoint_f,
+    observedAgeMin: now.age_min,
+    reason: null,
+  };
+}
+
+/**
+ * Move every pace target in a phase list by an ALREADY-DECIDED slowdown.
+ *
+ * Split out of `adjustPhasesForHeat` 2026-08-24 (PRERUN-1) so the phone's
+ * pre-run card can apply the SAME arithmetic to the SAME phase list without
+ * deciding anything of its own. The percentage is still decided in exactly one
+ * place — `effortSlowdownPct`, off `Research/06` — and the phone gets it by
+ * reading back what the wrist was given (`loadHeatEasing`), never by asking
+ * the weather a second time.
+ *
+ * The alternative was for the card to re-multiply its own formatted pace
+ * strings, which is both a second implementation of this loop and a parse of
+ * something we had just printed. This is the one loop, exported.
+ *
+ * Mutates `phases`. No-op for a non-positive percentage.
+ */
+export function applyHeatEasing(phases: HeatAdjustablePhase[], pct: number): void {
+  if (!isFinite(pct) || pct <= 0) return;
+  const factor = 1 + pct / 100;
   for (const p of phases) {
     const t = p.targetPaceSPerMi;
     if (typeof t !== 'number' || !isFinite(t) || t <= 0) continue;
@@ -146,15 +182,6 @@ export async function adjustPhasesForHeat(
     }
     p.targetPaceSPerMi = eased;
   }
-
-  return {
-    applied: true,
-    slowdownPct: pct,
-    tempF: now.temp_f,
-    dewpointF: now.dewpoint_f,
-    observedAgeMin: now.age_min,
-    reason: null,
-  };
 }
 
 /**
@@ -268,13 +295,34 @@ export async function loadHeatEasingPct(
   userId: string,
   dateIso: string,
 ): Promise<number | null> {
+  const r = await loadHeatEasing(userId, dateIso);
+  return r === null ? null : r.pct;
+}
+
+/**
+ * The whole recorded easing, not just the percentage.
+ *
+ * PRERUN-1 · the phone's pre-run card needs two things the pct alone cannot
+ * give it: the same eased targets the wrist is holding, and the CONDITIONS to
+ * name when it says so. "Targets eased for the heat" with no temperature is a
+ * claim the runner cannot check.
+ *
+ * Same three-state contract as `loadHeatEasingPct` and for the same reason:
+ *   · a record   — this is exactly what the watch was given
+ *   · pct 0      — nothing was eased (cool day, or built before this shipped)
+ *   · null       — the read FAILED and we do not know
+ */
+export async function loadHeatEasing(
+  userId: string,
+  dateIso: string,
+): Promise<{ pct: number; tempF: number | null; dewpointF: number | null } | null> {
   const { rowOrNull } = await import('@/lib/db/read');
   const { pool } = await import('@/lib/db/pool');
   // `rowOrNull` distinguishes all three states the caller needs: a row, no
   // row, or a read that failed. Hand-rolling the catch here is what put this
   // file in front of the swallowed-failure gate in the first place.
   const row = await rowOrNull<{ value: unknown }>(
-    'watch/heat.loadHeatEasingPct',
+    'watch/heat.loadHeatEasing',
     pool.query(
       `SELECT value FROM coach_intents
         WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
@@ -284,16 +332,19 @@ export async function loadHeatEasingPct(
       [userId, heatEasingField(dateIso)],
     ),
   );
+  const NONE_RECORDED = { pct: 0, tempF: null, dewpointF: null };
   if (row === null) return null;                 // the read failed
-  if (row === undefined || row.value == null) return 0;  // nothing was eased
+  if (row === undefined || row.value == null) return NONE_RECORDED;  // nothing was eased
 
   let parsed: unknown = row.value;
   if (typeof parsed === 'string') {
     try { parsed = JSON.parse(parsed); } catch { return null; }
   }
-  const pct = Number((parsed as { pct?: unknown } | null)?.pct);
+  const v = parsed as { pct?: unknown; tempF?: unknown; dewpointF?: unknown } | null;
+  const pct = Number(v?.pct);
   // A row we wrote but cannot read is "unknown", not "zero" — same reasoning
   // as a failed read, and the caller fails closed on both.
   if (!isFinite(pct)) return null;
-  return pct > 0 ? pct : 0;
+  const numOrNull = (x: unknown) => (typeof x === 'number' && isFinite(x) ? x : null);
+  return { pct: pct > 0 ? pct : 0, tempF: numOrNull(v?.tempF), dewpointF: numOrNull(v?.dewpointF) };
 }

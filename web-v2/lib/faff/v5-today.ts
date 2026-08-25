@@ -101,6 +101,21 @@ export interface V5Group {
   note: string | null;
   steps: V5Step[];
   /**
+   * PRERUN-1 · how to EXECUTE this group, and what to do when it goes wrong.
+   * The approved 5a design's `groupFooter`. See `V5Group.footer` in APIV5.swift.
+   *
+   * `spec-card.ts` has written one of these per step since it shipped — "Same
+   * pace on every rep. If the last one slips, the target was too fast." — and
+   * this composer read every other field on the step and dropped that one. The
+   * screen was left holding numbers with no instruction attached to them, on
+   * the surface whose whole job is telling a runner what to go and do.
+   *
+   * ONE per group, not one per step: three notes stacked under three rows is a
+   * wall of prose, and within a group every step shares a role anyway. The
+   * WORK step's note wins because that is the step the session is named after.
+   */
+  footer?: string | null;
+  /**
    * True for the group carrying the actual work, as against the warm up and
    * cool down around it. See `V5Group.isWork` in APIV5.swift — the client
    * used to infer this from POSITION, which breaks on two work blocks or
@@ -394,8 +409,23 @@ export function dateLineFor(iso: string): string {
 
 /** dayState the phone's 6-gradient vocabulary accepts. `plannedType` is the
  *  raw `plan_workouts.type` (or GlanceWeekDay.plannedType) column value. */
+/**
+ * PRERUN-1 · the day types that are not a run.
+ *
+ * `plan_workouts.type` also holds `strength` (44 rows, 14 on active plans) and
+ * `cross`, and David removed both as surfaces on 2026-08-17 — the run is the
+ * product. Every consumer here was reading them as running days by omission:
+ * `dayStateWordFor` fell through to `'easy'` and painted the easy gradient,
+ * and `displayTypeFor` accepted "SESSION A" as a session NAME and drew
+ * "Session a" at 56pt where "Threshold" or "Long" goes.
+ *
+ * They are days with no run in them, which is what the panel now says.
+ */
+const NON_RUN_TYPES = new Set(['strength', 'cross', 'xt', 'mobility']);
+
 export function dayStateWordFor(plannedType: string | null | undefined): V5DayStateWord {
   const t = (plannedType ?? '').toLowerCase();
+  if (NON_RUN_TYPES.has(t)) return 'rest';
   if (t === 'long') return 'long';
   if (t === 'race' || t === 'race_week_tuneup') return 'race';
   if (['threshold', 'tempo', 'intervals', 'fartlek', 'progression', 'vo2max', 'quality'].includes(t)) return 'quality';
@@ -471,6 +501,13 @@ function deshout(s: string): string {
  *  doc comment) — this stays Title Case so it also reads fine anywhere the
  *  client does NOT uppercase (e.g. inside a coach-voice sentence). */
 export function displayTypeFor(plannedType: string | null | undefined, subLabel?: string | null): string {
+  // PRERUN-1 · a day with no run in it is named for that, not for its own
+  // sub_label. This gate sits ABOVE the name check on purpose: "SESSION A"
+  // passes every test `subLabelIsName` applies — nine characters, no
+  // prescription syntax — and the phone drew "Session a" as the day's 56pt
+  // headline over a card that says there is no run today.
+  if (NON_RUN_TYPES.has((plannedType ?? '').trim().toLowerCase())) return 'Rest';
+
   // sub_label carries the runner-facing name for quality/tuneup sessions
   // ("THRESHOLD", "FIELD TEST") — prefer it, but only when it IS a name.
   if (subLabelIsName(subLabel)) return deshout(String(subLabel).trim());
@@ -513,6 +550,10 @@ export interface V5PrescriptionStepLike {
   hr_target?: string;
   note: string;
   recovery?: { duration: string; pace_target?: string; note: string };
+  /** PRERUN-1 · "hills" / "strides" / "surges". See `PrescriptionStep.rep_noun`. */
+  rep_noun?: string;
+  /** PRERUN-1 · "By effort". See `PrescriptionStep.effort_target`. */
+  effort_target?: string;
 }
 
 export interface V5PrescriptionLike {
@@ -738,6 +779,26 @@ export interface V5TodayContext {
 
   raceDay: boolean;
 
+  /**
+   * PRERUN-1 · WHAT TO DO IF IT GOES WRONG.
+   *
+   * `workout_spec.rules` carries the authored contingencies — today, one per
+   * race: "Mile 5 check: pace slower than goal +23s · switch to the B plan".
+   * `lib/watch/build-workout.ts` has threaded them to the wrist since
+   * 2026-06-09 and decorates each with the evidence/judgement split (0821 B7).
+   * The phone read the same column for its structure and never read this key,
+   * so on race morning the screen the runner reads in the corral said less
+   * about their own race than the watch on their wrist did.
+   *
+   * Four rows in the table carry rules, three of them future-dated races, and
+   * race day is the single pre-run screen where the plan for going wrong
+   * matters most.
+   *
+   * Both registers come from `splitRuleRegisters` — the SAME function the
+   * watch decorates with — so the two surfaces cannot word it differently.
+   */
+  contingency?: Array<{ evidence: string; judgement: string | null }> | null;
+
   recentRun: V5RecentRunCtx | null;
 
   weekOff: V5WeekOffCtx | null;
@@ -793,7 +854,11 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
       // "6 reps" — including the shakeout's "4 × 20 sec" strides, which this
       // builder has been dropping the "20 sec" from since it shipped.
       const rd = fmtRepDistance(s.rep_distance_mi) ?? s.duration ?? null;
-      return rd ? `${s.reps} × ${rd}` : `${s.reps} reps`;
+      // PRERUN-1 · and it is counted in the thing it IS. "11 × 10s" and
+      // "11 × 10s hills" are different sessions; `rep_noun` is read off the
+      // expander's own phase label, so the word is the plan's, not ours.
+      const unit = rd ? `${s.reps} × ${rd}` : `${s.reps} reps`;
+      return s.rep_noun ? `${unit} ${s.rep_noun}` : unit;
     }
     const dist = fmtMi(s.distance_mi);
     if (dist) return dist;
@@ -802,8 +867,65 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
     // the bare structural label.
     return s.duration ?? s.note ?? s.label;
   };
+
+  /* PRERUN-1 · THE REST INTERVAL REACHES THE SCREEN.
+   *
+   * `PrescriptionStep.recovery` has carried the jog — its duration, its pace
+   * and its own note — since the type was written, and `V5PrescriptionStepLike`
+   * declares the field. This builder read every other field on the step and
+   * dropped that one on the floor, so the phone rendered
+   *
+   *     3 × 3:00        7:46 /mi
+   *
+   * for a spec that reads "3×3 min @ 5K-10K race pace · 2 min jog". A rep
+   * session cannot be run off that: the recovery is half the prescription and
+   * two minutes' jog against thirty seconds' jog are different workouts. The
+   * watch had it the whole time — `expandReps` emits the recovery as its own
+   * phase and `build-workout.ts` sends it — so the wrist and the phone were
+   * describing different sessions again, one register below the one
+   * SPECFIRST-1 closed. Fourteen live rep sessions on active plans, every one
+   * of them affected (production, 2026-08-24).
+   *
+   * The recovery becomes ITS OWN STEP, which is what the approved 5a design
+   * does: its quality day's work group holds two rows, "3 mi at 7:22" and
+   * "1 mi float · 9:05 · 9:25 /mi". A separate row rather than a suffix keeps
+   * the pace of the jog in the sub column where every other pace on the screen
+   * lives, and keeps the rep line short enough not to wrap.
+   *
+   * No wire field is added. A deployed client renders this the moment the
+   * server does.
+   */
+  /** "1:30" / "45s" / "7:00" back to seconds. The inverse of `spec-card.ts`'s
+   *  `fmtDuration`, which is the only thing that writes these strings. */
+  const durationToSec = (d: string | undefined): number => {
+    if (!d) return 0;
+    const clock = /^(\d+):([0-5]\d)$/.exec(d);
+    if (clock) return Number(clock[1]) * 60 + Number(clock[2]);
+    const secs = /^(\d+)s$/.exec(d);
+    return secs ? Number(secs[1]) : 0;
+  };
+
+  const recoveryStep = (s: V5PrescriptionStepLike, idx: number, groupKey: string): V5Step | null => {
+    const rec = s.recovery;
+    if (!rec || !rec.duration) return null;
+    // A stride's recovery is a walk back, not a jog — `spec-card.ts` says so in
+    // the note it wrote, and calling it a jog would tell the runner to keep
+    // running through the one recovery doctrine wants fully walked
+    // (Research/04 §7.2). Read the note rather than re-deciding.
+    const walk = /walk/i.test(rec.note ?? '');
+    return {
+      id: `${groupKey}-${idx}-rec`,
+      main: `${rec.duration} ${walk ? 'walk back' : 'jog'} between`,
+      sub: rec.pace_target ? num(rec.pace_target, true) : null,
+    };
+  };
   const stepSub = (s: V5PrescriptionStepLike): V5Number | null => {
-    const text = s.pace_target ?? s.hr_target ?? null;
+    // PRERUN-1 · `effort_target` is the last rung and exists so the column is
+    // never blank on a step the plan deliberately left unnumbered. A rep under
+    // 30 seconds gets no HR band (`Research/03` §13) and a `by_effort` rep
+    // carries no pace, which left the target column empty — indistinguishable,
+    // on a screen otherwise full of numbers, from a value that failed to load.
+    const text = s.pace_target ?? s.hr_target ?? s.effort_target ?? null;
     // Same provenance as the panel's pace band and HR ceiling, and for the
     // same reason: `prescriptionFor` gets both from `paces(p)` / `hrTargets(p)`,
     // which are `tPaceFromGoal(...)` and the LTHR zone model. A step that
@@ -816,6 +938,41 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
     sub: stepSub(s),
   });
 
+  /* The group's one execution sentence. See `V5Group.footer`.
+   *
+   * Most groups hold one role and therefore one sentence repeated down the
+   * steps, so this de-duplicates and usually emits exactly that sentence.
+   *
+   * Where a group holds TWO roles it emits both, in order, and that is not a
+   * nicety. A long run with a marathon-pace finish is two steps under one
+   * header: "Time on feet beats pace. Fuel around 45 min in, then every 30."
+   * belongs to the easy nine miles and "The point of the session. Find race
+   * rhythm and hold it home." to the ten at race pace. Printing only the first
+   * tells a runner to stop caring about pace on the ten miles the whole
+   * session exists for — the footer would be coaching against the workout
+   * above it. Seven live long runs carry a finish. The same shape covers an
+   * easy day with strides.
+   *
+   * Two is the cap: no group emits three roles today, and a third sentence
+   * would be a paragraph under a two-line tile.
+   *
+   * A group whose steps carry no note gets no footer rather than an empty
+   * line. Nothing is composed here; the sentences are `spec-card.ts`'s, whole
+   * and in its order. */
+  const groupFooter = (steps: V5PrescriptionStepLike[]): string | null => {
+    const seen: string[] = [];
+    for (const s of steps) {
+      const n = (s.note ?? '').trim();
+      if (!n) continue;
+      // A step whose `main` IS its note (a rest day's single line, a
+      // duration-only step) must not print the same sentence twice.
+      if (stepMain(s) === n) continue;
+      if (!seen.includes(n)) seen.push(n);
+      if (seen.length === 2) break;
+    }
+    return seen.length > 0 ? seen.join(' ') : null;
+  };
+
   const warm = rx.steps.filter((s) => s.label.toLowerCase() === 'warmup');
   const cool = rx.steps.filter((s) => s.label.toLowerCase() === 'cooldown');
   const work = rx.steps.filter((s) => s.label.toLowerCase() !== 'warmup' && s.label.toLowerCase() !== 'cooldown');
@@ -825,6 +982,7 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
     groups.push({
       id: 'warmup', title: 'Warm up',
       note: fmtMi(warm.reduce((s, x) => s + (x.distance_mi ?? 0), 0)),
+      footer: groupFooter(warm),
       steps: warm.map((s, i) => toStep(s, i, 'warmup')),
       // Never the work — the engine says so explicitly rather than leaving
       // the client to infer it from this group's position in the list.
@@ -833,10 +991,27 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
   }
   if (work.length > 0) {
     const workMi = work.reduce((s, x) => s + (x.distance_mi ?? (x.reps ?? 0) * (x.rep_distance_mi ?? 0)), 0);
+    /* PRERUN-1 · a time-based rep set has no miles to report, and the header
+     * said nothing at all.
+     *
+     * "11 × 10s hills" carries no `rep_distance_mi` — doctrine sizes a hill
+     * rep in seconds (Research/04 §8.1) — so this sum came to zero, `fmtMi(0)`
+     * returned null, and the WORK group was the only one of the three whose
+     * header had no figure beside it while Warm up and Cool down both did.
+     * Eight of the fourteen live rep sessions render that way.
+     *
+     * The honest figure for a set counted in seconds is the time it adds up
+     * to, so that is what the header states. It is the work only, not the
+     * recoveries: the group's job is to say how much WORK is in it. */
+    const workSec = work.reduce((s, x) => s + (x.reps ?? 1) * durationToSec(x.duration), 0);
     groups.push({
       id: 'work', title: warm.length > 0 || cool.length > 0 ? 'Work' : rx.headline,
-      note: fmtMi(workMi),
-      steps: work.map((s, i) => toStep(s, i, 'work')),
+      note: fmtMi(workMi) ?? (workSec > 0 ? `${fmtClock(workSec)} of work` : null),
+      footer: groupFooter(work),
+      steps: work.flatMap((s, i) => {
+        const rec = recoveryStep(s, i, 'work');
+        return rec ? [toStep(s, i, 'work'), rec] : [toStep(s, i, 'work')];
+      }),
       // The group carrying the actual work — see V5Group.isWork's doc
       // comment in APIV5.swift. There is exactly one work group in this
       // builder's output today (`work` is everything that isn't warmup/
@@ -850,11 +1025,32 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
     groups.push({
       id: 'cooldown', title: 'Cool down',
       note: fmtMi(cool.reduce((s, x) => s + (x.distance_mi ?? 0), 0)),
+      footer: groupFooter(cool),
       steps: cool.map((s, i) => toStep(s, i, 'cooldown')),
       isWork: false,
     });
   }
   return groups;
+}
+
+/** See `V5TodayContext.contingency`. A group with no rules draws nothing —
+ *  never a bare "IF IT GOES WRONG" header over blank space, which is the
+ *  orphan-header shape this file already fixed once for "Where you are". */
+function buildContingencyGroup(rules: V5TodayContext['contingency']): V5Group[] {
+  if (!rules || rules.length === 0) return [];
+  return [{
+    id: 'contingency',
+    title: 'If it goes wrong',
+    note: null,
+    steps: rules.map((r, i) => ({
+      id: `contingency-${i}`,
+      main: r.evidence,
+      // Modelled: the trigger is a number the plan DERIVED from a goal, and
+      // the judgement is a rule, not a reading. Rule one — it wears the mark.
+      sub: r.judgement ? num(r.judgement, true) : null,
+    })),
+    isWork: false,
+  }];
 }
 
 function buildWeekStrip(ctx: V5TodayContext): V5WeekStripDay[] {
@@ -1473,7 +1669,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
       ...(ctx.effortStat ? [{ label: 'Effort', value: num(ctx.effortStat, true), tone: null }] : []),
     ],
   };
-  t.groups = buildGroups(ctx.prescription);
+  t.groups = [...buildGroups(ctx.prescription), ...buildContingencyGroup(ctx.contingency)];
   t.why = ctx.why;
   t.whereYouAre = ctx.whereYouAre;
   t.beforeYouGo = ctx.beforeYouGo;

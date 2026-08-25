@@ -96,6 +96,7 @@ import {
   distanceCategoryOrNull,
 } from '@/lib/race/distance-category';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+import { HR_TARGET_MIN_REP_SEC } from '@/lib/training/spec-card';
 import { anchorsFor, doctrinePhasesForWeek, renderPrescription } from '@/lib/plan/catalogue-rx';
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
 import { MIN_SESSIONS_PER_STAGE } from '@/lib/plan/return-ladder';
@@ -12910,6 +12911,50 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
               'must highlight nothing, never default to a row',
           );
         }
+      }
+    },
+  },
+  {
+    id: 'PRERUN.hr-short-rep-floor',
+    binds: ['lib/training/spec-card.ts#HR_TARGET_MIN_REP_SEC'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '### Implications by Rep Duration',
+    claim:
+      'A rep short enough that heart rate has not arrived gets no heart-rate target on the ' +
+      "pre-run card. The doc's own table names the boundary: the top row is the one whose HR " +
+      'utility is useless, and the row below it is the first where late-rep HR means ' +
+      'something. The engine constant is read off where those two meet, so a doc edit that ' +
+      'moves the boundary moves the card with it. Live defect this was written for: ' +
+      '"11 x 10s hills · 172-185" on two active plans, a band no runner reaches inside a ' +
+      'ten-second rep, printed on a rep the plan had marked by_effort.',
+    check({ cite }) {
+      const t = cite.table();
+      // The first row is the useless band ("<30 s"); its upper bound is the
+      // floor below which no HR target may be stated. Parsed, not restated.
+      const first = t.rows[0];
+      const lenCol = Object.keys(first).find((k) => /rep length/i.test(k));
+      const useCol = Object.keys(first).find((k) => /utility/i.test(k));
+      if (!lenCol || !useCol) {
+        throw new Error(`${cite.doc} §13's rep-duration table no longer has the columns this claim reads`);
+      }
+      if (!/useless/i.test(first[useCol])) {
+        throw new Error(
+          `${cite.doc} §13's first rep-duration row is now "${first[useCol]}" · this claim ` +
+            'assumes the table opens with the band where HR is useless',
+        );
+      }
+      const m = /<\s*(\d+)\s*s/i.exec(first[lenCol]);
+      if (!m) {
+        throw new Error(
+          `cannot read a seconds bound out of "${first[lenCol]}" in ${cite.doc} §13`,
+        );
+      }
+      const bound = Number(m[1]);
+      if (HR_TARGET_MIN_REP_SEC !== bound) {
+        throw new Error(
+          `HR_TARGET_MIN_REP_SEC is ${HR_TARGET_MIN_REP_SEC}s, but ${cite.doc} §13 puts the ` +
+            `useless-HR band at "${first[lenCol]}" · the constant must equal ${bound}`,
+        );
       }
     },
   },
