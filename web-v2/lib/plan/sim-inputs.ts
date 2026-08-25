@@ -362,6 +362,9 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
         allowedInterruptionWeeks: allowedInterruptionWeeksFor(
           blockStartISO, lastRaceISO, lastRaceMi, sim.lastRacePriority ?? null,
         ),
+        // WKPEAK-1 · the same `resolvePeakWeekly` number production reads, off
+        // the same daily series. `hist.peak` already IS that call.
+        peakWeeklyMi: hist.peak,
       })
     : null;
 

@@ -57,6 +57,10 @@ import {
   taperFactor,
   GENERAL_RAMP_CEILING,
   COMEBACK_RAMP_CEILING,
+  CYCLE_GROWTH_CEILING,
+  PEAK_HOLD_WEEKS,
+  MLR_MAX_WEEK_SHARE,
+  MLR_MIN_MI,
   TIER_TARGETS,
   MAINTENANCE_BY_TIER,
   BUILD_WINDOW_WEEKS,
@@ -156,6 +160,9 @@ import {
   TAPER_MP_DOSE,
   taperMpDose,
   RAMP_BASE_RESUME_FRACTION,
+  RESUME_SEQUENCE,
+  cycleBoundedPeak,
+  type RampBaseEvidence,
   SHORT_LAYOFF_WEEKS,
   RAMP_BASE_SUSTAINED_RANK,
   resolveRampBase,
@@ -390,6 +397,14 @@ import {
 } from '@/lib/shoe/lifespan';
 
 const CATS: DistCategory[] = ['5k', '10k', 'hm', 'm', 'ultra'];
+
+/** A `RampBaseEvidence` with nothing in it · claims that exercise
+ *  `cycleBoundedPeak` spread one field over this so a new field on the
+ *  interface cannot silently change what they are testing. */
+const EVIDENCE_ZERO: RampBaseEvidence = {
+  baseMi: 0, meanMi: 0, sustainedMi: 0, peakMi: 0,
+  interruptionWeeks: 0, allowedInterruptionWeeks: 0, lifted: false,
+};
 const TIERS: GoalTier[] = ['elite', 'advanced', 'intermediate', 'developing'];
 
 /** DistCategory → the row label it maps to in the Research/ distance tables. */
@@ -892,7 +907,13 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (!/export function enforceWeeklyRampCeiling\([\s\S]{0,400}?blockCeilingMi\?/.test(gen)) {
         throw new Error('enforceWeeklyRampCeiling no longer accepts a whole-block ceiling · a reverse taper is being graded against its own deload weeks again');
       }
-      if (!/enforceWeeklyRampCeiling\(composed\.weeks, composed\.vols, level, reverseTaperCeilingMi\(composed\)\)/.test(gen)) {
+      // WKRESUME-1 (2026-08-25) · the trailing `\)` is gone from this pattern.
+      // It used to pin the call to a single line with the ceiling as the LAST
+      // argument, which made the tripwire fire the moment the pass gained a
+      // fifth parameter — a signature change, not a doctrine one. What the
+      // claim asserts is that the computed ceiling REACHES the pass; the
+      // pattern now says exactly that and nothing about argument count.
+      if (!/enforceWeeklyRampCeiling\(\s*composed\.weeks,\s*composed\.vols,\s*level,\s*reverseTaperCeilingMi\(composed\)/.test(gen)) {
         throw new Error('finalizeComposedPlan no longer passes the reverse-taper ceiling · the ceiling is computed and then discarded');
       }
       if (!/block_ceiling_mi: recoveryCeilingMi/.test(gen) || !/recoveryBlockCeilingPct\(lastCat\)/.test(gen)) {
@@ -1517,6 +1538,314 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           'recentPeakLongMi filters the lookback by a minimum distance again · a runner whose ' +
             'longest run is below that floor reads 0 and rampCeiling stops bounding their long run',
         );
+      }
+    },
+  },
+
+  // ══ CYCLE-OVER-CYCLE VOLUME GROWTH ════════════════════════════════════════
+  {
+    id: 'RAMP.cycle-over-cycle-peak-growth',
+    binds: [
+      'lib/plan/goal-tiers.ts#CYCLE_GROWTH_CEILING',
+      'lib/plan/generate.ts#cycleBoundedPeak',
+      'lib/plan/generate.ts#volumeCurve.peakTarget',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'The base-growth row states a figure PER TRAINING CYCLE — "5-15% per training cycle for ' +
+      'trained athletes" — and the engine spent it entirely on the week-over-week climb ' +
+      '(RAMP.general-case-ceiling, above). The quantity the row literally bounds is how far ' +
+      'this block\'s peak may sit above the last peak the runner demonstrated, and until ' +
+      'WKPEAK-1 nothing bounded it: `volumeCurve` built to the tier band floor from wherever ' +
+      'the runner happened to be. So the per-cycle ceiling must exist, must sit inside the ' +
+      'band doctrine states, must apply only to the cohort doctrine states it FOR (the row ' +
+      'says "for trained athletes"; the novice clause is about ramp rate over 8 vs 12 weeks, ' +
+      'and reading it as a cycle bound caps a first-time marathoner off 15 mi/wk at 19 ' +
+      'against a Research/22 beginner row that asks 30-35), and must never be able to pull a ' +
+      'target BELOW either the peak the runner has already held or the least volume the ' +
+      'distance table asks of anyone racing that distance.',
+    check({ cite }) {
+      const spec = cite.table().cell('Year-on-year base growth', 'Specification');
+      if (!/for trained athletes/i.test(spec)) {
+        throw new Error(
+          'the base-growth row no longer says the 5-15% figure is "for trained athletes" · ' +
+            'CYCLE_GROWTH_CEILING excludes beginners on exactly that wording — re-read the row',
+        );
+      }
+      const trained = parseBand(spec.split(';')[0]);      // 5-15
+      const lo = 1 + trained[0] / 100;
+      const hi = 1 + trained[1] / 100;
+      for (const [level, v] of Object.entries(CYCLE_GROWTH_CEILING)) {
+        if (level === 'beginner') {
+          if (v != null) {
+            throw new Error(
+              `CYCLE_GROWTH_CEILING.beginner is ${v} · doctrine states its per-cycle figure ` +
+                'for TRAINED athletes only, so a novice carries no cycle bound here',
+            );
+          }
+          continue;
+        }
+        if (v == null) {
+          throw new Error(`CYCLE_GROWTH_CEILING.${level} is null · a trained runner IS bounded by this row`);
+        }
+        within(v, [lo, hi], `CYCLE_GROWTH_CEILING.${level}`);
+      }
+      // The generator must READ the table rather than carry its own factor.
+      if (!/CYCLE_GROWTH_CEILING\[/.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
+        throw new Error('generate.ts does not read CYCLE_GROWTH_CEILING · the peak target is bounded by its own number');
+      }
+      // The two floors, exercised rather than asserted: for every distance and
+      // every trained level, a runner whose measured peak is ABSURDLY small
+      // still gets at least what the distance's own developing row asks, and a
+      // runner already above the tier target is never built below themselves.
+      for (const cat of CATS) {
+        const developingFloor = TIER_TARGETS[cat].developing.peakWeeklyMileageBand[0];
+        const advTarget = TIER_TARGETS[cat].advanced.peakWeeklyMileageBand[0];
+        for (const level of ['intermediate', 'advanced', 'advanced_plus'] as const) {
+          const tiny = cycleBoundedPeak(advTarget, { ...EVIDENCE_ZERO, peakMi: 2 }, level, cat);
+          if (tiny < developingFloor) {
+            throw new Error(
+              `cycleBoundedPeak(${cat}/${level}) took a 2 mi/wk runner to ${tiny}, below the ` +
+                `${developingFloor} the ${cat} developing row asks of anyone racing it`,
+            );
+          }
+          const big = cycleBoundedPeak(advTarget, { ...EVIDENCE_ZERO, peakMi: advTarget + 20 }, level, cat);
+          if (big < advTarget + 20) {
+            throw new Error(
+              `cycleBoundedPeak(${cat}/${level}) built a ${advTarget + 20} mi/wk runner down to ${big}`,
+            );
+          }
+          // Nothing measured → nothing bounded. A refusal, not a guess.
+          if (cycleBoundedPeak(advTarget, { ...EVIDENCE_ZERO, peakMi: 0 }, level, cat) !== advTarget) {
+            throw new Error(`cycleBoundedPeak(${cat}/${level}) bounded a target with no measured peak`);
+          }
+        }
+      }
+    },
+  },
+  {
+    id: 'RAMP.short-layoff-resume-sequence',
+    binds: [
+      'lib/plan/generate.ts#RESUME_SEQUENCE',
+      'lib/plan/generate.ts#RAMP_BASE_RESUME_FRACTION',
+      'lib/plan/generate.ts#volumeCurve.resumeSteps',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### Return from Short Layoff (1-2 weeks off)',
+    claim:
+      'The 8-14-day row publishes a THREE-WEEK return — 70% of pre-layoff volume for week 1, ' +
+      '85% for week 2, full for week 3 — and the engine read only the first number, made it ' +
+      'the base of a nine-week geometric climb, and got the runner back to full volume in ' +
+      'week five. All three numbers must be encoded, in order, ending at full; the first must ' +
+      'BE `RAMP_BASE_RESUME_FRACTION` so the resume and the base the lift is computed from ' +
+      'cannot disagree; and the curve must spend the sequence rather than only its first cell.',
+    check({ cite }) {
+      const row = cite.table().cell('8-14 days', 'Restart approach');
+      // The doc's own numbers: every percentage in the cell, plus "full" = 100.
+      const pcts = [...row.matchAll(/(\d+)\s*%/g)].map((m) => Number(m[1]));
+      if (!/\bfull\b/i.test(row)) {
+        throw new Error('the 8-14-day row no longer ends at "full" · re-read the return protocol');
+      }
+      const doctrineSeq = [...pcts, 100].map((p) => p / 100);
+      if (RESUME_SEQUENCE.length !== doctrineSeq.length) {
+        throw new Error(
+          `RESUME_SEQUENCE has ${RESUME_SEQUENCE.length} steps, the doctrine row publishes ` +
+            `${doctrineSeq.length} (${doctrineSeq.join(' · ')})`,
+        );
+      }
+      doctrineSeq.forEach((want, i) => {
+        if (Math.abs(RESUME_SEQUENCE[i] - want) > 1e-9) {
+          throw new Error(`RESUME_SEQUENCE[${i}] is ${RESUME_SEQUENCE[i]}, doctrine says ${want}`);
+        }
+      });
+      if (RESUME_SEQUENCE[0] !== RAMP_BASE_RESUME_FRACTION) {
+        throw new Error(
+          'RESUME_SEQUENCE[0] is not RAMP_BASE_RESUME_FRACTION · the resume and the ramp base ' +
+            'are two readings of one doctrine number and must be one constant',
+        );
+      }
+      if (!/RESUME_SEQUENCE\b/.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
+        throw new Error('volumeCurve does not spend RESUME_SEQUENCE · the other two weeks are dropped again');
+      }
+    },
+  },
+  {
+    id: 'PLAN.peak-is-a-phase-not-a-week',
+    binds: [
+      'lib/plan/goal-tiers.ts#PEAK_HOLD_WEEKS',
+      'lib/plan/generate.ts#volumeCurve.hold',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### Marathon — Beginner',
+    claim:
+      'The marathon phase row names a PEAK PHASE with a length — "peak (3 wk)" — so a build ' +
+      'that touches its target on one week and tapers has not run the phase doctrine ' +
+      'describes. `volumeCurve` was a pure geometric climb reaching the peak on the last ' +
+      'climbing week. The engine\'s marathon hold must equal the length the row states, and ' +
+      'must not be silently carried across to distances whose rows name no peak phase.',
+    check({ cite }) {
+      const phases = cite.table().cell('Phases', 'Value');
+      const m = phases.match(/peak\s*\((\d+)\s*wk\)/i);
+      if (!m) {
+        throw new Error(
+          `the Marathon — Beginner Phases row no longer names a peak phase: "${phases}" · ` +
+            'PEAK_HOLD_WEEKS.m is read off that phrase',
+        );
+      }
+      const stated = Number(m[1]);
+      if (PEAK_HOLD_WEEKS.m !== stated) {
+        throw new Error(`PEAK_HOLD_WEEKS.m is ${PEAK_HOLD_WEEKS.m}, doctrine's marathon peak phase is ${stated} wk`);
+      }
+      // The ultra takes the FLOOR of its own rows, the same way every other
+      // band in this engine is read.
+      const ultraPhases = resolveCitation('Research/22-plan-templates.md', '### 50 Mile')
+        .table().cell('Phases', 'Value');
+      const um = ultraPhases.match(/peak\s*\((\d+)(?:-\d+)?\s*wk\)/i);
+      if (!um) {
+        throw new Error(`the 50 Mile Phases row no longer names a peak phase: "${ultraPhases}"`);
+      }
+      if (PEAK_HOLD_WEEKS.ultra !== Number(um[1])) {
+        throw new Error(`PEAK_HOLD_WEEKS.ultra is ${PEAK_HOLD_WEEKS.ultra}, the 50 Mile row says ${um[1]} wk`);
+      }
+      // The distances whose own phase rows name no peak phase hold ZERO. Read
+      // out of the doc across all three rungs, not asserted: if any 5K, 10K or
+      // half plan ever grows a peak phase, this fails rather than going quiet.
+      for (const [cat, label] of [['5k', '5K'], ['10k', '10K'], ['hm', 'Half Marathon']] as const) {
+        for (const rung of ['Beginner', 'Intermediate', 'Advanced'] as const) {
+          const row = resolveCitation('Research/22-plan-templates.md', `### ${label} — ${rung}`)
+            .table().cell('Phases', 'Value');
+          if (/\bpeak\b/i.test(row) && PEAK_HOLD_WEEKS[cat] === 0) {
+            throw new Error(
+              `${label} — ${rung} now names a peak phase ("${row}") and PEAK_HOLD_WEEKS.${cat} is still 0`,
+            );
+          }
+          if (!/\bpeak\b/i.test(row) && PEAK_HOLD_WEEKS[cat] !== 0) {
+            throw new Error(
+              `PEAK_HOLD_WEEKS.${cat} is ${PEAK_HOLD_WEEKS[cat]} but ${label} — ${rung} names no peak ` +
+                `phase ("${row}") · that is the marathon's number carried across`,
+            );
+          }
+        }
+      }
+      if (!/PEAK_HOLD_WEEKS\[/.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
+        throw new Error('volumeCurve does not read PEAK_HOLD_WEEKS · the peak is a single week again');
+      }
+    },
+  },
+
+  {
+    id: 'PLAN.medium-long-run',
+    binds: [
+      'lib/plan/goal-tiers.ts#TierTarget.mlrPeakMi',
+      'lib/plan/goal-tiers.ts#MLR_MAX_WEEK_SHARE',
+      'lib/plan/goal-tiers.ts#MLR_MIN_MI',
+      'lib/plan/generate.ts#layoutWeek.mlr',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### 3. Medium-long run',
+    claim:
+      'The medium-long run is one of the seven workout categories, with its own purpose, its own ' +
+      'duration band and its own frequency row — "1×/wk in marathon and half cycles; optional in ' +
+      '5K/10K". The engine had none at any volume for any runner: layoutWeek gave every easy day ' +
+      'the same number, so a 61-mile advanced-marathon week was a long run and three identical ' +
+      'eight-mile days. So: the distances doctrine PRESCRIBES it for must carry a ceiling and the ' +
+      'ones it calls optional must carry none (optional is not prescribed, and inventing one for ' +
+      'a 5K plan is the carry-across this lint exists to stop); the marathon ceilings must be the ' +
+      'numbers Research/22 publishes in its own MLR rows; the beginner rungs, none of which names ' +
+      'an MLR, must be null; the floor below which the engine authors no MLR at all must be the ' +
+      'floor of THIS row\'s duration band; and the share of a week it may take must not exceed the ' +
+      'share doctrine\'s own sample peak weeks spend on it.',
+    check({ cite }) {
+      const t = cite.table();
+      const freq = t.cell('Frequency', 'Specification');
+      const dur = t.cell('Duration', 'Specification');
+      if (!/marathon and half/i.test(freq) || !/optional in\s*5K\/10K/i.test(freq)) {
+        throw new Error(
+          `the medium-long-run frequency row now reads "${freq}" · the engine's per-distance ` +
+            'nulls are read off "1×/wk in marathon and half cycles; optional in 5K/10K"',
+        );
+      }
+      // MLR_MIN_MI is the floor of this row's own mile band.
+      const miBand = dur.replace(/[–—−]/g, "-").match(/(\d+)-(\d+)\s*mi(?![a-z])/);
+      if (!miBand) throw new Error(`the medium-long-run duration row no longer states a mile band: "${dur}"`);
+      if (MLR_MIN_MI !== Number(miBand[1])) {
+        throw new Error(`MLR_MIN_MI is ${MLR_MIN_MI}, doctrine's medium-long band opens at ${miBand[1]} mi`);
+      }
+      // PRESCRIBED vs OPTIONAL, per distance.
+      for (const cat of ['5k', '10k'] as const) {
+        for (const tier of TIERS) {
+          if (TIER_TARGETS[cat][tier].mlrPeakMi != null) {
+            throw new Error(
+              `TIER_TARGETS.${cat}.${tier}.mlrPeakMi is ${TIER_TARGETS[cat][tier].mlrPeakMi} · doctrine ` +
+                'calls the MLR OPTIONAL at these distances and no Research/22 5K or 10K row names one',
+            );
+          }
+        }
+      }
+      for (const cat of ['m', 'hm'] as const) {
+        if (!TIERS.some((tier) => TIER_TARGETS[cat][tier].mlrPeakMi != null)) {
+          throw new Error(`no ${cat} tier carries an MLR ceiling · doctrine prescribes one 1×/wk in ${cat} cycles`);
+        }
+      }
+      // The marathon ceilings ARE the numbers Research/22 publishes.
+      for (const [tier, heading] of [
+        ['advanced', '### Marathon — Advanced'],
+        ['intermediate', '### Marathon — Intermediate'],
+      ] as const) {
+        const row = resolveCitation('Research/22-plan-templates.md', heading)
+          .table().cell('Key workout types', 'Value');
+        const band = row.replace(/[–—−]/g, '-').match(/MLR\s*\((\d+)-(\d+)\s*mi\)/i);
+        if (!band) throw new Error(`${heading} Key workout types no longer publishes an MLR band: "${row}"`);
+        if (TIER_TARGETS.m[tier].mlrPeakMi !== Number(band[2])) {
+          throw new Error(
+            `TIER_TARGETS.m.${tier}.mlrPeakMi is ${TIER_TARGETS.m[tier].mlrPeakMi}, doctrine's row says ` +
+              `${band[1]}-${band[2]} mi`,
+          );
+        }
+      }
+      // Every BEGINNER rung is null, read out of the doc rather than asserted.
+      for (const [cat, heading] of [
+        ['5k', '### 5K — Beginner'],
+        ['10k', '### 10K — Beginner'],
+        ['hm', '### Half Marathon — Beginner'],
+        ['m', '### Marathon — Beginner'],
+      ] as const) {
+        const row = resolveCitation('Research/22-plan-templates.md', heading)
+          .table().cell('Key workout types', 'Value');
+        const namesMlr = /\bMLR\b|medium-long/i.test(row);
+        if (!namesMlr && TIER_TARGETS[cat].developing.mlrPeakMi != null) {
+          throw new Error(
+            `TIER_TARGETS.${cat}.developing.mlrPeakMi is set but ${heading} names no MLR ("${row}")`,
+          );
+        }
+        if (namesMlr && TIER_TARGETS[cat].developing.mlrPeakMi == null) {
+          throw new Error(`${heading} now names an MLR ("${row}") and the developing row is still null`);
+        }
+      }
+      // The share bound sits at or under the smallest share doctrine's own
+      // sample peak weeks give it. Both numbers come out of each section.
+      const sampleShare = (heading: string): number => {
+        const sec = resolveCitation('Research/22-plan-templates.md', heading).text();
+        const wk = sec.match(/Sample peak week[^)]*~\s*(\d+)\s*mpw/i);
+        const mlr = sec.match(/(\d+)\s*mi\s*MLR/i);
+        if (!wk || !mlr) {
+          throw new Error(`${heading}'s sample peak week no longer publishes both an MLR and a weekly total`);
+        }
+        return Number(mlr[1]) / Number(wk[1]);
+      };
+      const shares = [
+        '### Marathon — Advanced',
+        '### Marathon — Intermediate',
+        '### Half Marathon — Advanced',
+      ].map(sampleShare);
+      atMost(MLR_MAX_WEEK_SHARE, Math.min(...shares) + 1e-9, 'MLR_MAX_WEEK_SHARE vs doctrine sample peak weeks');
+      // And the layout actually spends all three.
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      for (const sym of ['tierTarget.mlrPeakMi', 'MLR_MAX_WEEK_SHARE', 'MLR_MIN_MI']) {
+        if (!gen.includes(sym)) {
+          throw new Error(`layoutWeek does not read ${sym} · the medium-long run is unbounded or absent`);
+        }
       }
     },
   },
