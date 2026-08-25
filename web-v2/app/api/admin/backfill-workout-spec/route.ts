@@ -56,6 +56,48 @@
  * the prescription, maxHR, goal pace) so a backfilled spec is byte-identical
  * to what the generator would have authored for the same row. There is no
  * spec-shaping logic left in this file to go stale.
+ *
+ * ── 2026-08-24 · THIS IS NOT AN INSTRUMENT FOR ARCHIVED PLANS ─────────────
+ *
+ * Asked to point this at the null-spec rows on ARCHIVED plans. It must not go
+ * there, and the reasons compound. Measured against prod on 2026-08-24:
+ *
+ *   1. IT CANNOT REACH THEM. The plan query is `archived_iso IS NULL`. Every
+ *      archived row is out of scope by construction, so "run the backfill over
+ *      archived plans" is not a run of this route — it is a different route
+ *      wearing its name.
+ *
+ *   2. IT IS NOT DETERMINISTIC ACROSS TIME, and that is the disqualifying one.
+ *      T-pace comes from the runner's NEXT upcoming A-race
+ *      (`meta->>'date' >= CURRENT_DATE - 1 day`), and the HR anchors come from
+ *      today's profile LTHR and today's effective maxHR. Point that at a week
+ *      from May and you write December's goal paces into it. The row would then
+ *      SAY it prescribed something it never prescribed — a modelled number
+ *      wearing the clothes of a measured one, in the one place the app keeps as
+ *      a record of what was actually asked. Filling a gap and rewriting history
+ *      are not the same operation, and this route can only do the second one to
+ *      an archived plan.
+ *
+ *   3. THERE IS NOTHING TO GAIN ON THE PLANS IT CAN REACH. Of the 165 null-spec
+ *      rows on active plans in prod, every single one is `type='rest'` — and
+ *      `buildWorkoutSpec` returns `{ spec: null }` for rest/cross/strength, so
+ *      `if (spec === null) continue` skips all 165. A permitted run updates
+ *      zero rows. The remaining 3,079 null-spec rows are all on archived plans.
+ *
+ *   4. EVERY ONE OF THOSE ROWS BELONGS TO A PROTECTED ACCOUNT — dnitch85@me.com
+ *      (3,005), apple-review@faff.run (80), and four qa-* accounts (159).
+ *
+ * The default path already cannot touch a populated row (`workout_spec IS
+ * NULL`); `?force=1` can, but only rows missing the `kind` discriminator, and
+ * prod has none of those, so force=1 is a no-op today. Both remain true and
+ * both should stay checked before any future run.
+ *
+ * If a genuine need to give archived weeks their specs ever appears, the honest
+ * version reconstructs each plan's OWN authoring-time anchors from
+ * `training_plans.authored_state` rather than today's race. Note that in prod
+ * zero archived plans with null-spec rows carry `authored_state.danielsPaces`,
+ * so that reconstruction has no inputs either. The correct answer today is that
+ * a past week with no spec recorded is a past week with no spec recorded.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';

@@ -1,14 +1,19 @@
 /**
  * /api/goals/[id] — update or delete a personal_goals row.
  *
- * 2026-08-24 · `personal_goals` does not exist in production — see the header
- * of `app/api/goals/route.ts` for the check and the DDL proposal. Both
- * statements below threw `relation "personal_goals" does not exist`, and
- * `.catch(() => ({ rows: [] }))` turned that into `rows.length === 0`, which is
- * this file's test for "goal not found". So the runner got a clean 404 telling
- * them their goal is not there, on a table that is not there.
+ * 2026-08-24 · `personal_goals` did not exist in production — see the header of
+ * `app/api/goals/route.ts`. Both statements below threw `relation
+ * "personal_goals" does not exist`, and `.catch(() => ({ rows: [] }))` turned
+ * that into `rows.length === 0`, which is this file's test for "goal not
+ * found". So the runner got a clean 404 telling them their goal is not there,
+ * on a table that was not there.
  *
- * A read that failed is not a 404. It is an outage, and it says so.
+ * The table now exists (db/migrations/152_personal_goals.sql, applied to prod
+ * 2026-08-24), so the 404 below is once again a fact about the goal.
+ *
+ * The `outage()` branches STAY. A read that failed is not a 404, whether or not
+ * the table happens to exist today — that distinction is the point, and it
+ * outlives the outage that exposed it.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';

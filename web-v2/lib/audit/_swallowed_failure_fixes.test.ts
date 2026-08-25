@@ -24,7 +24,7 @@
  *     write it out. That lint's opt-out marker is above; see its comment.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseIntentValue, intentValueField } from '@/lib/coach/intent-value';
 import { classifyFallback } from './swallow-scan';
@@ -156,23 +156,50 @@ describe('a reader may not name a column or a table that is not there', () => {
     expect(s).toContain('p.mode');
   });
 
-  it('the phantom-table features refuse rather than answering "none"', () => {
-    // `personal_goals` and `coach_reads_cache` are named by the code and exist
-    // nowhere in the database or in any migration. Until the DDL lands, these
-    // reads must not answer.
+  it('a failed read still refuses rather than answering "none"', () => {
+    // `personal_goals` and `coach_reads_cache` were named by the code and
+    // existed in no database and no migration, so every read failed and every
+    // failure rendered as an honest-looking nothing. Migrations 152 and 153
+    // (2026-08-24) created them.
+    //
+    // THESE ASSERTIONS OUTLIVE THAT. The refusal branches are not scaffolding
+    // for a missing table — a table existing has never made a read incapable
+    // of failing, and the day one of these reads fails again is the day the
+    // distinction earns its keep. Deleting them because "the table is there
+    // now" would restore the exact bug the migrations were written to end.
     expect(read('app/api/goals/route.ts')).toContain("outage('api/goals'");
+    expect(read('app/api/goals/[id]/route.ts')).toContain("outage('api/goals/[id]'");
     expect(read('lib/coach-calendar/store.ts')).toContain('Calendar storage is unavailable');
+  });
+
+  it('the three tables the code writes to are declared by a migration', () => {
+    // The whole failure class was a statement naming a relation that no file
+    // in db/migrations creates. This is the cheap standing guard against a
+    // fourth one: the table's own DDL has to exist in the repo.
+    const ddl = readdirSync(join(ROOT, 'db/migrations'))
+      .filter((f) => f.endsWith('.sql'))
+      .map((f) => readFileSync(join(ROOT, 'db/migrations', f), 'utf8'))
+      .join('\n');
+    for (const t of ['personal_goals', 'coach_reads_cache', 'sick_recovery']) {
+      expect(ddl, t).toContain(`CREATE TABLE IF NOT EXISTS ${t}`);
+    }
   });
 
   it('a runner who reports recovery gets their episode cleared even without sick_recovery', () => {
     // Migration 117 declares sick_episodes AND sick_recovery; only the first
     // landed. The trend INSERT ran BEFORE the cleared_at UPDATE, so it took the
     // whole handler down and the runner stayed marked sick with the plan paused.
+    // Migration 154 replays 117's statements, so the row lands now — but the
+    // ordering guard is what makes the state change unreachable by a failure in
+    // the log write, and that is true whatever the schema does next.
     for (const f of ['app/api/sick/recovery/route.ts', 'app/api/notifications/ack/route.ts']) {
       const s = read(f);
       expect(s, f).toContain('INSERT INTO sick_recovery');
       // Wrapped, so the failure cannot reach the state change below it.
       expect(s, f).toMatch(/attempt\(\s*\n?\s*'[^']*',\s*\n?\s*pool\.query\(\s*\n?\s*`INSERT INTO sick_recovery/);
+      // And the UPDATE comes after it, never inside the same throw path.
+      expect(s.indexOf('INSERT INTO sick_recovery'), f)
+        .toBeLessThan(s.indexOf('UPDATE sick_episodes SET cleared_at'));
     }
   });
 });

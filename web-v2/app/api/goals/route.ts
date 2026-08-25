@@ -14,42 +14,33 @@
  * Cite: docs/SYSTEM_DOCTRINE.md §3 input tiers (T6 pro features).
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * 2026-08-24 · THE TABLE DOES NOT EXIST IN PRODUCTION.
+ * 2026-08-24 · THE TABLE DID NOT EXIST. NOW IT DOES — db/migrations/152.
  *
  * `personal_goals` is named by these four statements and by nothing else in the
- * app, and there is no migration that creates it — checked against prod with
- * `faff_readonly` on 2026-08-24, and against every file in `db/migrations`.
+ * app, and no migration created it. GET therefore threw `relation
+ * "personal_goals" does not exist` on every call, and `.catch(() => ({ rows: []
+ * }))` turned that into `{ ok: true, goals: [] }` — a 200 saying the runner has
+ * no goals. Not "this is not available". No goals, stated confidently, forever.
  *
- * So GET threw `relation "personal_goals" does not exist` on every call, and
- * `.catch(() => ({ rows: [] }))` turned that into `{ ok: true, goals: [] }`.
- * A 200 saying the runner has no goals. Not "this is not available" — no
- * goals, stated confidently, forever.
+ * Two things were wrong and both are fixed, in the order they had to be:
+ *   1. the swallow — replaced with `outage()` (lib/route/failure.ts): 5xx,
+ *      coach voice, no `reason` key, so the phone renders a retryable outage
+ *      and never a refusal or an empty state;
+ *   2. the absence — `152_personal_goals.sql`, applied to prod 2026-08-24.
  *
- * Until the table exists this route cannot answer, and the honest answer to a
- * question you cannot answer is to say so. `outage()` is the one way a route
- * reports that it could not read (lib/route/failure.ts): 5xx, coach voice, no
- * `reason` key, so the phone renders it as a retryable outage and never as a
- * refusal or an empty state.
+ * KEEP THE `outage()` BRANCHES. They are not scaffolding for a missing table;
+ * they are what a failed read is supposed to look like, and the table existing
+ * does not make a read incapable of failing. An empty `goals` array now means
+ * what it says: we looked, and this runner has set no goals.
  *
- * The DDL to make this work is a PROPOSAL, not something this change runs:
+ * STILL TRUE, AND WORTH KNOWING: nothing in the app READS this table yet.
+ * NewGoalSheet (web) and API.postGoal (iPhone) both POST; the GET has no
+ * in-app consumer, and the coach's state-loader does not query
+ * `personal_goals`. So the loop stores a goal faithfully and no surface
+ * spends it. That is a product gap, not a defect in this route.
  *
- *   CREATE TABLE personal_goals (
- *     id          bigserial PRIMARY KEY,
- *     user_uuid   uuid NOT NULL,
- *     goal_type   text NOT NULL CHECK (goal_type IN
- *                   ('volume','speed','distance','habit','health','strength')),
- *     target      text NOT NULL,
- *     current     text,
- *     deadline    date,
- *     tolerance   text,
- *     rationale   text,
- *     created_at  timestamptz NOT NULL DEFAULT now(),
- *     updated_at  timestamptz NOT NULL DEFAULT now()
- *   );
- *   CREATE INDEX personal_goals_user_idx ON personal_goals (user_uuid, deadline);
- *
- * ('strength' is in the CHECK because STRENGTH-3 kept existing rows readable
- * while gating new writes — see `VALID_GOAL_TYPES` below.)
+ * ('strength' is in the table's CHECK because STRENGTH-3 kept existing rows
+ * readable while gating new writes — see `VALID_GOAL_TYPES` below.)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
