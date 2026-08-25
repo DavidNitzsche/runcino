@@ -1,0 +1,77 @@
+# Account-deletion refusal floor · schema-drift gate.
+#
+# POST /api/account/delete refuses to delete anything if its runtime
+# pg_catalog enumeration returns fewer than MIN_USER_KEYED_TABLES tables — the
+# only defense against a truncated enumeration producing a valid-looking plan
+# that deletes the users row and orphans every other table.
+#
+# That floor is a number sized against another number, and both rot in silence.
+# On 2026-07-06 the floor was 40 against a real 49. By 2026-08-24 prod held 44
+# and the headroom had quietly halved, while the test fixture claiming to
+# mirror prod still listed six tables that no longer existed. Nothing failed.
+# Nobody would have found out until deletion started refusing.
+#
+# So this runs weekly against prod, and on any PR that touches the planner, the
+# route, the fixture or the script. It cannot live in web-v2's `prebuild`
+# beside check-doctrine.sh and friends: those must pass on a cold Railway
+# container with no database, so a prod-dependent gate there would either break
+# every deploy or skip itself on every deploy — and skipping silently is the
+# exact failure this gate exists to end. scripts/check-deletion-plan-fixture.sh
+# refuses to run without a database for the same reason.
+#
+# Read-only: two SELECTs against pg_catalog, nothing else.
+
+name: Deletion-plan fixture
+
+on:
+  schedule:
+    - cron: '17 7 * * 1'   # Mondays, after the 06:00 UTC telemetry tick
+  push:
+    branches: [main]
+    paths:
+      - 'web-v2/lib/account/deletion-plan.ts'
+      - 'web-v2/lib/account/deletion-plan.test.ts'
+      - 'web-v2/app/api/account/delete/route.ts'
+      - 'scripts/check-deletion-plan-fixture.sh'
+      - '.github/workflows/deletion-plan-fixture.yml'
+  pull_request:
+    paths:
+      - 'web-v2/lib/account/deletion-plan.ts'
+      - 'web-v2/lib/account/deletion-plan.test.ts'
+      - 'web-v2/app/api/account/delete/route.ts'
+      - 'scripts/check-deletion-plan-fixture.sh'
+      - '.github/workflows/deletion-plan-fixture.yml'
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ubuntu-latest ships the postgres client; pin it in case that changes.
+      - name: Ensure psql
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
+
+      - name: Fixture and floor still describe prod
+        env:
+          # Read-only role if one is configured as a secret, else the main URL.
+          # The script only ever SELECTs from pg_catalog.
+          FAFF_DELETION_FIXTURE_DB: ${{ secrets.DATABASE_URL_RO || secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$FAFF_DELETION_FIXTURE_DB" ]; then
+            echo "::error::neither DATABASE_URL_RO nor DATABASE_URL is configured — this gate does not skip"
+            exit 1
+          fi
+          bash scripts/check-deletion-plan-fixture.sh
+
+      - name: Planner suite (no database — pure ordering logic)
+        working-directory: web-v2
+        run: |
+          npm ci --no-audit --no-fund || npm install
+          npx vitest run lib/account/deletion-plan.test.ts

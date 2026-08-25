@@ -25,14 +25,16 @@
  *   - Every user-keyed table (columns user_uuid/user_id) is enumerated
  *     from pg_catalog AT RUNTIME — no hardcoded table list to go stale.
  *     (pg_catalog, not information_schema: information_schema is
- *     privilege-filtered and showed 0 of the 56 real FKs under the RO
- *     role during the 2026-07-06 probe.)
+ *     privilege-filtered and showed 0 of the real FKs under the RO role
+ *     during the 2026-07-06 probe.)
  *   - Runtime enumeration is itself sanity-floored
  *     (assertSufficientTableCount / MIN_USER_KEYED_TABLES in
- *     lib/account/deletion-plan.ts, currently 40 vs. prod's real 49)
- *     before anything is deleted — a near-empty or empty enumeration
- *     result refuses with a 500 instead of silently deleting only
- *     `users` and orphaning everything else.
+ *     lib/account/deletion-plan.ts, currently 35 vs. prod's real 44 —
+ *     re-probed 2026-08-24, and kept honest by
+ *     scripts/check-deletion-plan-fixture.sh) before anything is
+ *     deleted — a near-empty or empty enumeration result refuses with a
+ *     500 instead of silently deleting only `users` and orphaning
+ *     everything else.
  *   - FK edges are enumerated the same way and the pure planner
  *     (lib/account/deletion-plan.ts) orders children before parents —
  *     required because runs.shoe_id -> shoes.id is NO ACTION.
