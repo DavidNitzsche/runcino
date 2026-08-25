@@ -44,7 +44,7 @@ enum BreakdownV5Samples {
     /// PER MILE. The five-split array — the trailing 0.11 mi piece and the
     /// 158 bpm finish included.
     static let easy: V5Today = make(
-        dayState: "easy", paceBand: "null",
+        dayState: "easy", paceBand: "null", workoutType: "easy",
         splits: """
         [{"mile":1,"pace":"8:17","hr":127,"cadence":150,"elev_change_ft":2,"distanceMi":1},
          {"mile":2,"pace":"8:27","hr":140,"cadence":167,"elev_change_ft":-7,"distanceMi":1},
@@ -55,7 +55,7 @@ enum BreakdownV5Samples {
 
     /// PER MILE, THINNER. The poorer array the merge currently keeps.
     static let easyThin: V5Today = make(
-        dayState: "easy", paceBand: "null",
+        dayState: "easy", paceBand: "null", workoutType: "easy",
         splits: """
         [{"mile":1,"pace":"8:28","hr":128},
          {"mile":2,"pace":"8:23","hr":140},
@@ -64,7 +64,7 @@ enum BreakdownV5Samples {
 
     /// PER MILE, WITH GAPS. Two miles with no heart rate of their own.
     static let easyGaps: V5Today = make(
-        dayState: "easy", paceBand: "null",
+        dayState: "easy", paceBand: "null", workoutType: "easy",
         splits: """
         [{"mile":1,"pace":"8:17","hr":127,"elev_change_ft":2,"distanceMi":1},
          {"mile":2,"pace":"8:27","elev_change_ft":-7,"distanceMi":1},
@@ -87,14 +87,119 @@ enum BreakdownV5Samples {
         [{"mi":1.20,"sec":542},{"mi":0.62,"sec":404},{"mi":0.25,"sec":528},
          {"mi":0.62,"sec":399},{"mi":0.25,"sec":531},{"mi":0.62,"sec":407},
          {"mi":1.06,"sec":549}]
+        """,
+        hrAvgWork: "171", cadenceAvgWork: "186", paceWork: "\"6:41\"")
+
+
+    // ── one card per run type · what each kind is allowed to claim ─────────
+    //
+    // `PostRunShapeV5` decides, and the only way to review a decision to
+    // REMOVE a row is to look at the screen it was removed from. Each of these
+    // carries the same four readings in its payload; the screen keeps only the
+    // ones that kind of session earns.
+
+    /// RECOVERY · the one flat prohibition. `Research/03` §14: "cap HR; ignore
+    /// pace". No pace row, no max HR, no cadence.
+    static let recovery: V5Today = make(
+        dayState: "easy", paceBand: "null", workoutType: "recovery",
+        splits: """
+        [{"mile":1,"pace":"9:48","hr":118,"cadence":163,"elev_change_ft":3,"distanceMi":1},
+         {"mile":2,"pace":"9:55","hr":121,"cadence":161,"elev_change_ft":-2,"distanceMi":1},
+         {"mile":3,"pace":"9:51","hr":123,"cadence":162,"elev_change_ft":1,"distanceMi":0.41}]
+        """)
+
+    /// LONG · miles, whole-run HR and cadence, no max HR. The story is what
+    /// happened late, and the last two miles here say it.
+    static let long: V5Today = make(
+        dayState: "long", paceBand: "null", workoutType: "long",
+        splits: """
+        [{"mile":1,"pace":"9:12","hr":131,"cadence":169,"elev_change_ft":14,"distanceMi":1},
+         {"mile":2,"pace":"9:04","hr":134,"cadence":170,"elev_change_ft":-8,"distanceMi":1},
+         {"mile":3,"pace":"9:08","hr":136,"cadence":170,"elev_change_ft":22,"distanceMi":1},
+         {"mile":4,"pace":"9:05","hr":140,"cadence":169,"elev_change_ft":-11,"distanceMi":1},
+         {"mile":5,"pace":"9:14","hr":146,"cadence":167,"elev_change_ft":6,"distanceMi":1},
+         {"mile":6,"pace":"9:26","hr":151,"cadence":164,"elev_change_ft":-4,"distanceMi":1},
+         {"mile":7,"pace":"9:33","hr":154,"cadence":162,"elev_change_ft":9,"distanceMi":0.88}]
+        """)
+
+    /// TEMPO · a block inside a frame. Whole-run HR and cadence come OFF: the
+    /// warm-up and cool-down are half the run, and an average across them
+    /// lands near marathon pace, which nothing here was.
+    static let tempo: V5Today = make(
+        dayState: "quality", paceBand: "{\"lo\": 400, \"hi\": 420}", workoutType: "tempo",
+        splits: """
+        [{"mile":1,"pace":"9:14","hr":128,"distanceMi":1},
+         {"mile":2,"pace":"6:52","hr":159,"distanceMi":1},
+         {"mile":3,"pace":"6:48","hr":166,"distanceMi":1},
+         {"mile":4,"pace":"6:51","hr":169,"distanceMi":1},
+         {"mile":5,"pace":"9:21","hr":137,"distanceMi":0.74}]
+        """,
+        phases: """
+        [{"mi":1.50,"sec":554},{"mi":3.00,"sec":410},{"mi":1.24,"sec":561}]
+        """,
+        hrAvgWork: "165", cadenceAvgWork: "179", paceWork: "\"6:50\"")
+
+    /// RACE-WEEK TUNE-UP · 35 minutes containing five of quality. Every
+    /// whole-run aggregate describes the jogging, so all of them come off.
+    static let tuneUp: V5Today = make(
+        dayState: "quality", paceBand: "null", workoutType: "race_week_tuneup",
+        splits: """
+        [{"mile":1,"pace":"9:20","hr":126,"distanceMi":1},
+         {"mile":2,"pace":"8:04","hr":144,"distanceMi":1},
+         {"mile":3,"pace":"9:11","hr":131,"distanceMi":1}]
+        """,
+        phases: """
+        [{"mi":1.10,"sec":560},{"mi":0.19,"sec":372},{"mi":0.15,"sec":540},
+         {"mi":0.19,"sec":369},{"mi":0.15,"sec":545},{"mi":0.19,"sec":374},
+         {"mi":1.05,"sec":558}]
+        """)
+
+    /// RACE · no whole-run average heart rate. A race's HR is a deliberately
+    /// rising curve (`Research/08` §6.1) and the per-mile column IS that curve
+    /// — 148 to 176 across the distance, which one average would erase.
+    static let race: V5Today = make(
+        dayState: "race", paceBand: "{\"lo\": 400, \"hi\": 412}", workoutType: "race",
+        splits: """
+        [{"mile":1,"pace":"6:52","hr":148,"cadence":178,"elev_change_ft":-4,"distanceMi":1},
+         {"mile":2,"pace":"6:44","hr":158,"cadence":179,"elev_change_ft":2,"distanceMi":1},
+         {"mile":3,"pace":"6:46","hr":163,"cadence":179,"elev_change_ft":6,"distanceMi":1},
+         {"mile":4,"pace":"6:49","hr":168,"cadence":177,"elev_change_ft":-3,"distanceMi":1},
+         {"mile":5,"pace":"6:58","hr":172,"cadence":174,"elev_change_ft":8,"distanceMi":1},
+         {"mile":6,"pace":"7:04","hr":176,"cadence":171,"elev_change_ft":1,"distanceMi":0.21}]
+        """,
+        hrAvg: "165", hrMax: "179", cadenceAvg: "177", tempF: "54")
+
+    /// TREADMILL · no route, no elevation, no temperature. The belt card
+    /// stands in for the map, and the "temperature" a weather model would have
+    /// supplied is a reading of somewhere the runner was not standing.
+    static let treadmill: V5Today = make(
+        dayState: "easy", paceBand: "null", workoutType: "easy",
+        splits: """
+        [{"mile":1,"pace":"8:34","hr":133,"cadence":171,"distanceMi":1},
+         {"mile":2,"pace":"8:34","hr":139,"cadence":172,"distanceMi":1},
+         {"mile":3,"pace":"8:34","hr":143,"cadence":172,"distanceMi":1},
+         {"mile":4,"pace":"8:34","hr":146,"cadence":171,"distanceMi":0.55}]
+        """,
+        belt: """
+        [{"label":"Avg speed","value":{"text":"7.0","modelled":false}},
+         {"label":"Avg incline","value":{"text":"1.0","modelled":false}}]
         """)
 
     // MARK: - Assembly
 
     private static func make(dayState: String,
                              paceBand: String,
+                             workoutType: String = "easy",
                              splits: String,
-                             phases: String = "[]") -> V5Today {
+                             phases: String = "[]",
+                             hrAvg: String = "141",
+                             hrMax: String = "158",
+                             cadenceAvg: String = "172",
+                             tempF: String = "61",
+                             hrAvgWork: String = "null",
+                             cadenceAvgWork: String = "null",
+                             paceWork: String = "null",
+                             belt: String = "null") -> V5Today {
         let json = """
         {
           "dateISO": "2026-08-24",
@@ -111,6 +216,11 @@ enum BreakdownV5Samples {
           "zoneTargets": [2],
           "elevation": [12, 18, 26, 31, 24, 19, 14, 11, 16, 22, 28, 21, 15, 10],
           "elevGainFt": 74, "elevGainMeasured": true,
+          "workoutType": "\(workoutType)",
+          "hrAvg": \(hrAvg), "hrMax": \(hrMax),
+          "cadenceAvg": \(cadenceAvg), "tempF": \(tempF),
+          "hrAvgWork": \(hrAvgWork), "cadenceAvgWork": \(cadenceAvgWork),
+          "paceWork": \(paceWork),
           "routePolyline": "\(Self.polyline)",
           "routeSplits": \(splits),
           "routePhases": \(phases),
@@ -121,7 +231,7 @@ enum BreakdownV5Samples {
                       {"label":"Z5","lower":162,"upper":178}],
           "paceBand": \(paceBand),
           "whatThisDidToTheWeek": [], "shoesWorn": null, "shoeOptions": [],
-          "onTheBelt": null
+          "onTheBelt": \(belt)
         }
         """
         // swiftlint:disable:next force_try

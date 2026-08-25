@@ -259,31 +259,36 @@ struct RunDetailV5: View {
                                        toleranceLine: toleranceLine)
                     }
 
-                    if !splitBars.isEmpty { splitsSection }
+                    // THE SPLIT CHART IS GONE, AND THE BREAKDOWN STANDS IN
+                    // ITS PLACE.
+                    //
+                    // "wtf is this?" — six orange bars, no mile number, no
+                    // pace, no axis, no scale. The accessibility tree was
+                    // strictly richer than the picture: `SplitBars.spoken`
+                    // says "Mile 9, 7:42 per mile, inside the target" for a
+                    // bar that prints nothing at all, so a sighted reader
+                    // could not decode a single one.
+                    //
+                    // Its heights were misleading on top of being unlabelled.
+                    // `barHeight` builds its domain from the run's own
+                    // min..max with a floor of 6% — about thirty seconds on a
+                    // 505 s/mi pace — so an eleven-second spread across five
+                    // miles was stretched over the full bar height. Its own
+                    // comment says a run "held honestly at one pace must not
+                    // draw as a mountain range", which is exactly what it did.
+                    //
+                    // Two graphics that each half-answer the question are
+                    // worse than one that answers it, so this is a
+                    // REPLACEMENT rather than a table beside a chart. The
+                    // fill rule it carried is not lost: `SplitBars.barFill`
+                    // still decides in-band from out-of-band, in the pace
+                    // column, measured by `V5ContrastTests` against the same
+                    // static.
+                    breakdownSection
 
                     if hasZoneData { zoneSection }
 
-                    routeSection
-
-                    // THE MILES, AS NUMBERS, UNDER THE ROUTE.
-                    //
-                    // The split chart above says what SHAPE the run was; this
-                    // says what each mile actually did — pace, heart rate,
-                    // climb. That reading used to be attempted by tinting the
-                    // polyline, which has one channel and could not carry it:
-                    // the 2026-08-24 run went 127 / 140 / 138 / 144 / 158 bpm,
-                    // a Z1 opening and a Z4 finish, and no shading of a line
-                    // was going to say so.
-                    //
-                    // NOT ON A REP SESSION. A mile of a tune-up holds the back
-                    // of one rep, a jog and the front of the next, averaged
-                    // into one row — `RepBreakdownV5` above is already showing
-                    // that session at the grain it was run at, and a mile
-                    // table under it would be a second, worse answer to the
-                    // same question.
-                    if repPieces.isEmpty, !milePieces.isEmpty {
-                        MileBreakdownV5(title: "Mile by mile", pieces: milePieces)
-                    }
+                    if shape.showsRoute { routeSection }
 
                     if let shoe = wornShoe {
                         ListGroup(header: "Shoes worn") {
@@ -435,11 +440,57 @@ struct RunDetailV5: View {
     // actually carries. Each one only appears when `RunDetail` has it; there
     // is no invented row for a field the source did not populate.
 
+    /// THE SHAPE OF THIS SESSION · one rule, shared with `TodayAfterV5`.
+    ///
+    /// `PostRunShapeV5` decides which of these rows a run of this kind may
+    /// claim, and the two screens ask the same question of the same type so
+    /// they cannot answer one run differently.
+    ///
+    /// `indoor: false` is a KNOWN GAP, not a claim. The `/api/runs/[id]` wire
+    /// carries no indoor flag — `LogRun` has one and `RunDetail` does not — so
+    /// the treadmill suppressions (no temperature, no elevation, no route)
+    /// cannot fire on this screen yet. Named in the report; guessing it from
+    /// an absent polyline would confuse a treadmill with a watch that lost
+    /// GPS, which are different runs.
+    var shape: RunShapeV5 {
+        RunShapeV5.of(workoutType: detail.type, indoor: false)
+    }
+
+    /// THE READING, AND ONLY THE ROWS THIS RUN EARNS.
+    ///
+    /// Every figure here is a reading, so every one renders `.measured`. What
+    /// changed is WHICH of them appear: an aggregate asserts the run was one
+    /// thing, and on a session made of pieces that assertion is false. See
+    /// `PostRunShapeV5` for the argument and the citations behind each gate.
+    ///
+    /// The work-scoped pair is the payoff. `hr_avg_work` and
+    /// `cadence_avg_work` — "the real effort numbers minus the jog-in-between
+    /// dilution" — have been on this wire and decoded by this very struct
+    /// since P44, and no screen has ever drawn them. On a tempo or a rep
+    /// session they replace the whole-run figures that lie.
     private var readingRows: [(String, FaffValue)] {
         var out: [(String, FaffValue)] = []
-        if let hr = detail.hr_avg { out.append(("Heart rate, avg", .measured("\(hr) bpm"))) }
-        if let hrMax = detail.hr_max { out.append(("Heart rate, max", .measured("\(hrMax) bpm"))) }
-        if let cad = detail.cadence_avg { out.append(("Cadence", .measured("\(cad) spm"))) }
+        if shape.showsWholeRunHrAvg, let hr = detail.hr_avg {
+            out.append(("Heart rate, avg", .measured("\(hr) bpm")))
+        }
+        // NAMED FOR ITS SCOPE. "Heart rate, avg" on a rep session would be the
+        // same words over a different population; the label carries the scope
+        // so the two can never be read as the same number.
+        if shape.showsWorkHrAvg, let hrWork = detail.hr_avg_work {
+            out.append(("Heart rate, across the work", .measured("\(hrWork) bpm")))
+        }
+        if shape.showsMaxHr, let hrMax = detail.hr_max {
+            out.append(("Heart rate, max", .measured("\(hrMax) bpm")))
+        }
+        if shape.showsWholeRunCadence, let cad = detail.cadence_avg {
+            out.append(("Cadence", .measured("\(cad) spm")))
+        }
+        if shape.showsWorkCadence, let cadWork = detail.cadence_avg_work {
+            out.append(("Cadence, across the work", .measured("\(cadWork) spm")))
+        }
+        if shape.showsWorkHrAvg, let paceWork = detail.pace_work {
+            out.append(("Pace, across the work", .measured(paceWork)))
+        }
         // RULE ONE. Nothing on the phone or the watch has a thermometer in it.
         // A run's temperature is a weather read for a grid square and an hour
         // bucket — `lib/weather/openmeteo.ts` fetches it from the forecast API
@@ -449,7 +500,9 @@ struct RunDetailV5: View {
         // by the type's own rule — if a screen cannot tell, the answer is
         // modelled — this is modelled. Same shape as the race-morning forecast
         // that shipped as a hard read.
-        if let temp = detail.temp_f { out.append(("Temperature", .modelled("\(Int(temp.rounded()))\u{00B0}F"))) }
+        if shape.showsTemperature, let temp = detail.temp_f {
+            out.append(("Temperature", .modelled("\(Int(temp.rounded()))\u{00B0}F")))
+        }
         return out
     }
 
@@ -696,7 +749,30 @@ struct RunDetailV5: View {
     /// different conclusions about how long the last mile was.
     var milePieces: [MilePiece] {
         MileBreakdownV5.pieces(from: detail.splits,
-                               totalMi: detail.distance_mi > 0 ? detail.distance_mi : nil)
+                               totalMi: detail.distance_mi > 0 ? detail.distance_mi : nil,
+                               band: splitBand)
+    }
+
+    /// MILES OR PIECES, decided by what the session was and what it recorded.
+    @ViewBuilder
+    var breakdownSection: some View {
+        let d = shape.decomposition(hasSections: !repPieces.isEmpty,
+                                    hasMiles: !milePieces.isEmpty)
+        switch d {
+        case .sections:
+            RepBreakdownV5(title: repSectionTitle,
+                           pieces: repPieces,
+                           toleranceLine: toleranceLine)
+        case .miles:
+            MileBreakdownV5(title: shape.breakdownTitle(.miles),
+                            pieces: milePieces,
+                            bandLine: splitBand != nil
+                                ? "Orange where the mile sat inside what the session asked for."
+                                : nil)
+        case .none:
+            // RULE THREE, belt and braces. A run with neither draws nothing.
+            EmptyView()
+        }
     }
 
     var splitBars: [SplitBar] {

@@ -140,6 +140,10 @@ struct TodayAfterV5: View {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 panel
                 askedVsRanSection
+                // THE READING, where run detail puts it: under what was asked
+                // against what was run, above the coach's verdict. Numbers
+                // first, then the sentence about them.
+                readingSection
                 recapSection
                 if !model.groups.isEmpty {
                     groupsTile
@@ -721,21 +725,112 @@ struct TodayAfterV5: View {
     /// that recorded phases is a session made of sections, and a mile of one
     /// holds the back of a rep, a jog and the front of the next averaged
     /// together. Everything else is made of miles.
+    /// THE SHAPE OF THIS SESSION, which decides what the screen may claim.
+    /// One rule, in `PostRunShapeV5`, shared with run detail — the two screens
+    /// may not answer one run differently.
+    private var shape: RunShapeV5 {
+        RunShapeV5.of(workoutType: model.workoutType,
+                      indoor: model.onTheBelt != nil)
+    }
+
     @ViewBuilder
     private var breakdownSection: some View {
-        // A treadmill run has neither and draws nothing. RULE THREE — the
-        // belt card above has already said what this run was.
-        if !sectionPieces.isEmpty {
-            RepBreakdownV5(title: "Section by section", pieces: sectionPieces)
-        } else if !milePieces.isEmpty {
-            MileBreakdownV5(title: "Mile by mile", pieces: milePieces)
+        // The shape states a preference; what the run actually recorded
+        // decides. A rep session whose phases never reached the phone is still
+        // better served by its miles than by nothing at all.
+        let d = shape.decomposition(hasSections: !sectionPieces.isEmpty,
+                                    hasMiles: !milePieces.isEmpty)
+        switch d {
+        case .sections:
+            RepBreakdownV5(title: shape.breakdownTitle(.sections), pieces: sectionPieces)
+        case .miles:
+            MileBreakdownV5(title: shape.breakdownTitle(.miles),
+                            pieces: milePieces,
+                            bandLine: model.paceBand != nil
+                                ? "Orange where the mile sat inside what the session asked for."
+                                : nil)
+        case .none:
+            // RULE THREE. A run with neither draws nothing — not a header over
+            // an empty list, which reads as a section that failed to load.
+            EmptyView()
+        }
+    }
+
+    // MARK: - The reading
+
+    /// THE FOUR INSTRUMENT VALUES, AND ONLY THE ONES THIS RUN EARNS.
+    ///
+    /// Run detail has drawn a Reading card since it was written and this
+    /// screen never had one — "I like seeing this too which isnt on the latest
+    /// sim build im seeing". Same builder shape as `RunDetailV5.readingRows`,
+    /// same refusals, plus the per-type composition that neither screen had.
+    ///
+    /// WHAT IS REMOVED, AND FROM WHAT. See `PostRunShapeV5` for the argument
+    /// behind each of these; in summary:
+    ///   · whole-run average HR and cadence come OFF tempo, threshold,
+    ///     tune-up, interval, fartlek and progression runs, because an average
+    ///     across a session made of pieces is a number no part of it was at.
+    ///   · maximum HR comes OFF easy, recovery, long and progression runs,
+    ///     where the peak is a hill or a road crossing and printing it beside
+    ///     a Z2 prescription invites reading a spike as a failed session.
+    ///   · temperature comes OFF treadmill runs entirely. It is a weather
+    ///     model for a grid square the runner was not standing in.
+    ///
+    /// An absent reading draws no row. A run with no cadence shows no cadence
+    /// row — not a zero, and not a dash we typed.
+    private var readingRows: [(String, FaffValue)] {
+        var out: [(String, FaffValue)] = []
+        if shape.showsWholeRunHrAvg, let hr = model.hrAvg {
+            out.append(("Heart rate, avg", .measured("\(hr) bpm")))
+        }
+        if shape.showsMaxHr, let hrMax = model.hrMax {
+            out.append(("Heart rate, max", .measured("\(hrMax) bpm")))
+        }
+        // NAMED FOR ITS SCOPE. "Heart rate, avg" on a rep session would be
+        // the same words over a different population, so the label carries
+        // the scope and the two can never be read as the same number.
+        if shape.showsWorkHrAvg, let hrWork = model.hrAvgWork {
+            out.append(("Heart rate, across the work", .measured("\(hrWork) bpm")))
+        }
+        if shape.showsWholeRunCadence, let cad = model.cadenceAvg {
+            out.append(("Cadence", .measured("\(cad) spm")))
+        }
+        if shape.showsWorkCadence, let cadWork = model.cadenceAvgWork {
+            out.append(("Cadence, across the work", .measured("\(cadWork) spm")))
+        }
+        if shape.showsWorkHrAvg, let paceWork = model.paceWork {
+            out.append(("Pace, across the work", .measured(paceWork)))
+        }
+        // RULE ONE. Nothing on the phone or the watch has a thermometer in it,
+        // so a run's temperature is a weather read for a grid square and an
+        // hour bucket. The wire carries no source with it, and by the type's
+        // own rule — if a screen cannot tell, the answer is modelled — this is
+        // modelled. The same call `RunDetailV5` already makes, made the same
+        // way, because the two screens print the same number.
+        if shape.showsTemperature, let temp = model.tempF {
+            out.append(("Temperature", .modelled("\(Int(temp.rounded()))\u{00B0}F")))
+        }
+        return out
+    }
+
+    /// THE READING CARD. Drawn only when the run earned at least one row —
+    /// a header over nothing reads as a section that failed to load.
+    @ViewBuilder
+    private var readingSection: some View {
+        if !readingRows.isEmpty {
+            ListGroup(header: "Reading") {
+                ForEach(readingRows, id: \.0) { row in
+                    ListRow(label: row.0, value: row.1)
+                }
+            }
         }
     }
 
     private var milePieces: [MilePiece] {
         // No run total on this payload, so a trailing piece is sized only if
         // the wire told us its length. Unknown is not "a whole mile".
-        MileBreakdownV5.pieces(from: model.routeSplits)
+        MileBreakdownV5.pieces(from: model.routeSplits,
+                               band: model.paceBand.map { (lo: $0.lo, hi: $0.hi) })
     }
 
     /// Sections, from what this screen actually has.

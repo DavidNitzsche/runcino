@@ -103,6 +103,7 @@
 		650D0C3ED3CEC1CA9863BC0C /* TodayChangedV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0124D264EEFDA136F90DDA /* TodayChangedV5.swift */; };
 		661A5023FC889EDA87B6F560 /* Fonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E27550579AE4BDFA95531DD /* Fonts.swift */; };
 		69DC55B9E2B4A094BCF9B2D1 /* PhoneRunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAA1CCA3DF5D33860D0F8DA9 /* PhoneRunView.swift */; };
+		6A41A06EA9E2FD8E7C5EE1B6 /* PostRunShapeV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15382D38B31D33872F58ED87 /* PostRunShapeV5.swift */; };
 		6B930F8989398BEEA3B40C40 /* DayActionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBCDD014F2781B0C1CAD4C04 /* DayActionSheet.swift */; };
 		6BE40F3E6AA911AD15D8C08E /* SignInFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15FB44D69A865618A457AB74 /* SignInFlowTests.swift */; };
 		6C87D43270238C0B213BB3D3 /* ShellV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 180080F47DB86118277DF47B /* ShellV5.swift */; };
@@ -306,6 +307,7 @@
 		12F0216F8FF9AE20E14B49D4 /* K_TargetsProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = K_TargetsProjection.swift; sourceTree = "<group>"; };
 		139264554EDD5A64F64E384F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		14E6C4CECAB490A0F91D63C3 /* RecoveryBrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryBrief.swift; sourceTree = "<group>"; };
+		15382D38B31D33872F58ED87 /* PostRunShapeV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostRunShapeV5.swift; sourceTree = "<group>"; };
 		15FB44D69A865618A457AB74 /* SignInFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInFlowTests.swift; sourceTree = "<group>"; };
 		162F4E9C0CB7F4A9A9298265 /* FaffWatch Watch App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "FaffWatch Watch App.entitlements"; sourceTree = "<group>"; };
 		174FE8C6F00184359AC974B6 /* Races.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Races.swift; sourceTree = "<group>"; };
@@ -532,6 +534,7 @@
 				CFC017C2FCF5BCEF864B8086 /* ComponentsV5.swift */,
 				3B93A292D47A0897A9E97E59 /* MileBreakdownV5.swift */,
 				B89B85857DDA2DA69F8C141A /* PanelV5.swift */,
+				15382D38B31D33872F58ED87 /* PostRunShapeV5.swift */,
 				8C67FC57A7AA49F34251FE7F /* RepBreakdownV5.swift */,
 				46EC493626E589550944B025 /* RepeatStepV5.swift */,
 				F7CFE2D883A30CAC352006F8 /* TokensV5.swift */,
@@ -1242,6 +1245,7 @@
 				F36FFE86BA1F5C6A8215B496 /* PanelV5.swift in Sources */,
 				FFF338FB78E8EDB247A9B0D4 /* PhoneRunTracker.swift in Sources */,
 				69DC55B9E2B4A094BCF9B2D1 /* PhoneRunView.swift in Sources */,
+				6A41A06EA9E2FD8E7C5EE1B6 /* PostRunShapeV5.swift in Sources */,
 				D2D6BC52AB864AD678DF3709 /* Primitives.swift in Sources */,
 				3F8961DDB77A018095E82A1D /* ProView.swift in Sources */,
 				21BAA9938430A3B59A7DA1FF /* ProfileView.swift in Sources */,

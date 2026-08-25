@@ -101,6 +101,21 @@ struct MilePiece: Identifiable, Equatable {
     /// is why it is not defaulted to 1.
     let distanceMi: Double?
 
+    /// Did this mile sit inside the pace window the session asked for?
+    ///
+    /// NIL WHEN NOTHING WAS ASKED, and that is the common case — an unplanned
+    /// run has no window, and a session with a rep pace has no single one.
+    /// Then the pace column carries no verdict at all.
+    ///
+    /// THIS IS THE ONE THING COLOUR MEANS IN THIS TABLE. It is inherited, not
+    /// invented: the split chart this replaces used its bar fill for exactly
+    /// this and nothing else, and its own screen printed the rule underneath
+    /// ("filled where the mile sat inside what the session asked for"), which
+    /// is the proof the colour was load-bearing rather than decorative. The
+    /// fill comes from `SplitBars.barFill` rather than being restated here, so
+    /// `V5ContrastTests` still measures the colour that actually ships.
+    let inBand: Bool?
+
     /// True only when we were TOLD the split is short. A nil distance is not
     /// evidence of a whole mile, and it is not evidence of a fragment either,
     /// so it produces no claim in the label.
@@ -117,6 +132,15 @@ struct MileBreakdownV5: View {
     /// holding the runner's unit preference.
     let title: String
     let pieces: [MilePiece]
+
+    /// The colour rule, said once in words, when there is a rule to say.
+    ///
+    /// Carried over from the chart this replaces for the reason its own
+    /// comment gave: without it the fill is a code the screen never breaks.
+    /// Nil when the session asked for no window, because then there is no
+    /// code — every pace draws the same and a sentence about colour would be
+    /// describing something that is not happening.
+    var bandLine: String? = nil
 
     /// Columns are drawn only where at least one mile has something to put in
     /// them. See the header comment: a column of blanks reads as a failure to
@@ -146,6 +170,13 @@ struct MileBreakdownV5: View {
                 .padding(.vertical, V5.S.s6)
                 .background(V5.materialTile,
                             in: RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
+                if let bandLine {
+                    Text(bandLine)
+                        .font(.faffText(TypeScaleV5.label12))
+                        .foregroundStyle(V5.textQuiet)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, V5.S.s4)
+                }
             }
         }
     }
@@ -198,7 +229,12 @@ struct MileBreakdownV5: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            cell(p.paceSec.map { Units.formatPaceBare(secPerMile: $0) })
+            // THE PACE COLUMN IS THE ONLY ONE THAT CAN CARRY A VERDICT, and
+            // only when the session asked for something. `barFill(inBand:)`
+            // returns signal for nil too, so a run with no window draws every
+            // pace in full ink and asserts nothing.
+            cell(p.paceSec.map { Units.formatPaceBare(secPerMile: $0) },
+                 color: SplitBars.barFill(inBand: p.inBand))
             if showsHr { cell(p.hr.map { "\($0)" }) }
             if showsElev { cell(p.elevFt.map { $0 > 0 ? "+\($0)" : "\($0)" }) }
             if showsCadence { cell(p.cadence.map { "\($0)" }) }
@@ -216,11 +252,11 @@ struct MileBreakdownV5: View {
     /// and colouring it like one would be the table crying wolf four times a
     /// run. Empty space is the honest mark for nothing.
     @ViewBuilder
-    private func cell(_ text: String?) -> some View {
+    private func cell(_ text: String?, color: Color = V5.textPrimary) -> some View {
         if let text {
             FaffValueText(.measured(text),
                           font: .faffText(TypeScaleV5.body17, weight: .semibold),
-                          color: V5.textPrimary)
+                          color: color)
                 .frame(width: numberColumn, alignment: .trailing)
         } else {
             Color.clear.frame(width: numberColumn, height: 1)
@@ -248,6 +284,13 @@ struct MileBreakdownV5: View {
             out.append(e >= 0 ? "\(e) feet up" : "\(abs(e)) feet down")
         }
         if let c = p.cadence { out.append("cadence \(c)") }
+        // The colour, in words. A sighted reader gets it from the fill; this
+        // is the same fact, not an extra one.
+        switch p.inBand {
+        case .some(true):  out.append("inside the target")
+        case .some(false): out.append("outside the target")
+        case .none:        break
+        }
         return out.joined(separator: ", ") + "."
     }
 }
@@ -263,7 +306,9 @@ extension MileBreakdownV5 {
     /// `distanceMi` to say so. Passing nil (a surface that does not know the
     /// total) means the last row makes no claim about its length, which is
     /// correct: unknown is not "whole".
-    static func pieces(from splits: [RunSplit], totalMi: Double? = nil) -> [MilePiece] {
+    static func pieces(from splits: [RunSplit],
+                       totalMi: Double? = nil,
+                       band: (lo: Int, hi: Int)? = nil) -> [MilePiece] {
         let ordered = splits.sorted { $0.mile < $1.mile }
         return ordered.enumerated().map { i, s in
             let derived: Double? = {
@@ -276,13 +321,22 @@ extension MileBreakdownV5 {
                 let remainder = total - Double(ordered.count - 1)
                 return (remainder > 0 && remainder < 0.95) ? remainder : nil
             }()
+            let sec = paceSeconds(s.pace)
+            // ONE VERDICT IN BOTH DIRECTIONS, inherited from the chart: a mile
+            // run fast and a mile run slow are both "not what was asked", and
+            // giving fast its own colour would grade it good.
+            let inBand: Bool? = {
+                guard let band, let sec else { return nil }
+                return sec >= band.lo && sec <= band.hi
+            }()
             return MilePiece(id: s.mile,
                              mile: s.mile,
-                             paceSec: paceSeconds(s.pace),
+                             paceSec: sec,
                              hr: (s.hr ?? 0) > 0 ? s.hr : nil,
                              elevFt: s.elev_change_ft,
                              cadence: (s.cadence ?? 0) > 0 ? s.cadence : nil,
-                             distanceMi: derived)
+                             distanceMi: derived,
+                             inBand: inBand)
         }
     }
 
