@@ -27,9 +27,10 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
-import { buildWorkoutSpec, conservativeVdotFromMileage, marathonPaceSPerMi, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, STRIDE_DAYS_PER_WEEK, STRIDE_DEFAULT_REPS, STRIDE_DURATION_S } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, STRIDE_DAYS_PER_WEEK, STRIDE_DEFAULT_REPS, STRIDE_DURATION_S } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor } from '@/lib/training/vdot';
+import { achievableRaceTarget } from '@/lib/training/achievable-target';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
@@ -48,7 +49,7 @@ import { distanceMiOfMeta } from '@/lib/race/distance'; // 2026-07-07 · ultra-h
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 // 2026-08-17 · coaching-loop reconciliation · shared blend implementation
 // (authoring + adaptation-time recompute run the same math).
-import { blendedTPaceForWeek, measuredProgressFraction } from './recompute-paces';
+import { blendedTPaceForWeek, measuredProgressFraction, maxSeasonalVdotGain } from './recompute-paces';
 // PROGRESSION-1 (2026-08-17) · the authored default overload trajectory.
 // `Design/adaptive-progression-engine.md` §3's "calendar proposes" half: the
 // plan carries a lever-driven trajectory so a block progresses by duration,
@@ -2375,7 +2376,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, catalogueHistory = null, level = null,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -2446,6 +2447,25 @@ function layoutWeek({
    *  Anchors the catalogue's M and MP zones — §11.3's and §4.4's marathon-pace
    *  sessions were declined `no-anchor` without it. */
   weekMpPaceSec?: number | null;
+  /**
+   * MPLABEL-1 (2026-08-25) · WHICH marathon pace `weekMpPaceSec` is.
+   *
+   * `Research/04` §"Pace zone shorthand" carries both codes in one table:
+   * `M` = Goal MP, `MP` = Current MP. `resolveMarathonPace` decides between
+   * them and, until now, threw the decision away — so every note this function
+   * writes over an MP session asserted the goal's pace regardless of which one
+   * the session actually got.
+   *
+   * true  → the goal genuinely sits inside the marathon zone and is prescribed
+   *         "exactly — not faster" (`Research/04` §4.4). Notes may name it as
+   *         race pace.
+   * false → the goal was refused (faster than the runner's own threshold, or
+   *         slower than their long-run bulk) and the session is at marathon
+   *         EFFORT for demonstrated fitness. Notes must say so.
+   * null  → no marathon-pace work in play (no goal, or not a marathon block).
+   *         Every note falls back to its pre-MPLABEL-1 wording.
+   */
+  weekMpAtGoalPace?: boolean | null;
   /**
    * VOCAB-CATALOGUE-1 · the plan's running record of which catalogue sessions
    * it has already authored. Stateful and ordered, the same contract as
@@ -2959,6 +2979,10 @@ function layoutWeek({
   const taperMp = (phase === 'TAPER' && !isRaceWeek && cat === 'm' && !baseBuilding)
     ? taperMpDose(weeksToPhaseEnd, qualityCeiling)
     : null;
+  // MPLABEL-1 · null (no signal threaded) reads as "at goal pace", which is the
+  // pre-2026-08-25 wording — so a composer that does not pass the flag is
+  // byte-identical. Only an explicit `false` changes a sentence.
+  const taperMpAtGoalPace = weekMpAtGoalPace !== false;
   const finishSeg = longFinishSegment(phase, weeksToPhaseEnd, racePaceTag, racePaceLongWeek);
   // DOCTRINE-DOSING-2 · the long-run finish is a DOSE, and it was never charged
   // to one. A half of the long run at marathon pace is marathon-pace mileage —
@@ -3007,7 +3031,13 @@ function layoutWeek({
     dow: longRunDow, type: 'long', distanceMi: longMi, isQuality: false, isLong: true,
     subLabel: hasFinish ? `LONG · ${finishMi}mi @ ${finishSeg!.tag}` : 'LONG',
     notes: hasFinish
-      ? `Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${finishSeg!.tag === 'HM' ? 'half-marathon pace' : 'marathon pace'}.`
+      // MPLABEL-1 · "at marathon pace" reads as the goal's marathon pace, and
+      // on a refused goal it is not. An HM finish rides `tPaceSec` and never
+      // had this ambiguity, so only the M arm is qualified.
+      ? `Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${
+          finishSeg!.tag === 'HM' ? 'half-marathon pace'
+          : taperMpAtGoalPace ? 'marathon pace'
+          : 'marathon effort for your current fitness'}.`
       : phase === 'TAPER' ? 'Easy long, hold pace. Quality lives in the race itself.'
       : 'Conversational throughout. Build the engine.',
   };
@@ -4034,7 +4064,29 @@ function layoutWeek({
         // DOCTRINE-TAPERMP-1 · Research/04 §4.4 "Pace | MP exactly — not faster".
         // The taper is where a runner is most tempted to test fitness (§9.4
         // "Resist the urge to test fitness"), so the note says the quiet part.
-        : (taperMp && effectiveType === 'tempo') ? 'Race pace, not faster. This is a rehearsal, not a test.'
+        // MPLABEL-1 (2026-08-25) · SAY WHICH MARATHON PACE THIS IS.
+        //
+        // This note was unconditionally "Race pace, not faster. This is a
+        // rehearsal, not a test." — and on the owner's CIM block it sat over a
+        // pace 62 s/mi slower than the race it named, on the two longest
+        // sessions of the taper (8.5 mi and 7 mi at "MP", three and two weeks
+        // out). The number was right; `marathonPaceSPerMi` had correctly
+        // refused a goal faster than the runner's own threshold, and
+        // `Research/01` §"Marathon-specific correction" only ever moves an MP
+        // prescription downward. The sentence was the defect, and the sentence
+        // is the part the runner reads on the morning of the session.
+        //
+        // `Research/04` §"Pace zone shorthand" carries both codes in one table
+        // — `M` = Goal MP, `MP` = Current MP — so there is a cited vocabulary
+        // for the distinction and the engine was collapsing it. Same shape as
+        // ZONE-LABEL-1's three sites, one zone over.
+        //
+        // Voice: no scolding, no hedging, no exclamation. It states which pace
+        // it is and why that is the right pace to rehearse today.
+        : (taperMp && effectiveType === 'tempo')
+          ? (taperMpAtGoalPace
+              ? 'Race pace, not faster. This is a rehearsal, not a test.'
+              : 'Marathon effort at the fitness you have shown, not goal pace. Not faster. This is a rehearsal, not a test.')
         : effectiveType === 'intervals'        ? 'WU 1.5mi, reps, CD 1mi. Hold pace, even splits.'
         : effectiveType === 'threshold'        ? 'WU 1.5mi, threshold reps, CD 1mi. Comfortably hard.'
         : effectiveType === 'tempo'            ? 'WU, continuous tempo block, CD. Just below threshold.'
@@ -4499,6 +4551,26 @@ export function embedMidBlockRaces(
     raceDateISO: string;
     midBlockRaces: MidBlockRace[];
     trainingDaysPerWeek: number | null;
+    /**
+     * RACEPACE-1 (2026-08-25) · measured fitness, so an embedded race's own
+     * stated goal gets the same realism the target race's does.
+     *
+     * Found by the CIM audit and it is not a hypothetical: the owner's Run
+     * Malibu row, a B race four weeks out, carried `goalPaceSec` 412 — 6:52/mi
+     * for a HALF, i.e. a 1:30:00, off a 1:41:53 half run three months earlier.
+     * It went onto the row untouched, so the plan's sharpest tune-up asked for
+     * eleven minutes faster than the runner's own most recent race at that
+     * exact distance, and the race that is supposed to TEST the goal was
+     * pre-committed to failing it (`Research/02` §12.3 makes the tune-up half
+     * "the default predictor" — a predictor paced at fiction predicts nothing).
+     *
+     * Each embedded race is bounded at ITS distance over ITS remaining runway,
+     * per-finding, not by inheriting the target race's ceiling. CLAUDE.md
+     * §"Per-finding context filters": a surface that aggregates N findings runs
+     * N filter applications, and a Malibu-shaped question must be asked about
+     * Malibu. Null → no clamp, byte-identical to before.
+     */
+    currentVdot?: number | null;
   },
 ): EmbeddedRaceSummary[] {
   const totalDays = weeks.length * 7;
@@ -4535,7 +4607,21 @@ export function embedMidBlockRaces(
     slot.isQuality = true;                               // the race is the day's (and often the week's) quality
     slot.isLong = wasLong;                               // race ON the long-run day replaces the long
     slot.subLabel = 'RACE';
-    slot.raceGoalPaceSec = race.goalPaceSec ?? null;
+    // RACEPACE-1 · this race's own goal, bounded by this race's own runway at
+    // this race's own distance. `weeksToThis` counts from the block's start to
+    // the race date, which is the build the runner actually has for it.
+    slot.raceGoalPaceSec = ((): number | null => {
+      const stated = race.goalPaceSec ?? null;
+      if (stated == null || opts.currentVdot == null) return stated;
+      const weeksToThis = Math.max(0, o / 7);
+      const goalSec = Math.round(stated * race.distanceMi);
+      return achievableRaceTarget({
+        goalSec,
+        currentVdot: opts.currentVdot,
+        raceDistanceMi: race.distanceMi,
+        totalWeeks: weeksToThis,
+      })?.paceSPerMi ?? stated;
+    })();
     slot.notes = race.priority === 'B'
       ? `${race.name}. B race · race effort. Recovery days follow before quality resumes.`
       : `${race.name}. C race · this is the week's quality session. Run it as the workout.`;
@@ -5622,13 +5708,19 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // the UI; only the prescribed paces are floored. Derived from CURRENT fitness (never goalVdot, which
   // is null off-table). Byte-safe for an at/near-goal runner (achievableFloorT faster ⇒ max keeps goalT).
   const goalTraw = tPaceFromGoal(input.goalSec, input.raceDistanceMi) ?? currentT ?? input.tPaceSec;
-  const maxSeasonalVdotGain = Math.min(6, 2 + totalWeeks * 0.22);
+  // GAINRATE-2 (2026-08-25) · this was a SECOND copy of the formula, written
+  // inline here while `recompute-paces.ts` exported an identical one so "the
+  // recompute path floors goalT off the SAME curve the author used". Two copies
+  // of one curve is the fork class this file has paid for repeatedly; the
+  // export is now the only definition, and it reads the bound doctrine band
+  // rather than a fourth uncited rate. See that function's header.
+  const seasonalGainVdot = maxSeasonalVdotGain(totalWeeks, input.raceDistanceMi);
   // achievableFloorT is derived from estimatedCurrentVdot, which floors at
   // VDOT 30 (conservativeVdotFromMileage) when the runner has no measured
   // VDOT — completely blind to a below-table anchor's real (slower) pace.
   // For a below-table runner this "achievable floor" guard can legitimize a
   // VDOT-30-territory goalT that is faster than the runner has ever run.
-  const achievableFloorT = tPaceFromVdot(estimatedCurrentVdot + maxSeasonalVdotGain);
+  const achievableFloorT = tPaceFromVdot(estimatedCurrentVdot + seasonalGainVdot);
   const goalTFloored = (achievableFloorT != null && goalTraw != null) ? Math.max(goalTraw, achievableFloorT) : goalTraw;
   // 2026-07-08 · P0 re-audit follow-up (3rd instance of the P1-56 unclamped-
   // pace bug class) · clamp goalT itself to the anchor pace. tPaceForWeek
@@ -5638,6 +5730,39 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   const goalT = input.belowTableAnchor
     ? clampToSanePace(goalTFloored, input.belowTableAnchor.anchor.paceSPerMi)
     : goalTFloored;
+
+  /**
+   * RACEPACE-1 (2026-08-25) · THE SAME CEILING, APPLIED TO THE ONE PACE THE
+   * GOAL IS ACTUALLY ABOUT.
+   *
+   * Everything above bounds THRESHOLD. Nothing bounded RACE pace, so
+   * `input.goalPaceSec` reached the race-day row untouched. On a block whose
+   * every marathon-pace session correctly refused the goal and ran at the
+   * in-zone default, race day still prescribed the goal — the runner rehearses
+   * one pace for fourteen weeks and is handed another at the gun.
+   *
+   * `achievableRaceTarget` answers with the goal when the goal is inside
+   * `Research/20` §"SMART criteria"'s ~5% achievability band, and with the
+   * runway's own ceiling when it is not. Either way the STATED goal is
+   * untouched: it stays on `authored_state.goal_pace_s_per_mi` below, and
+   * `Design/goal-pursuit-doctrine.md` §14 ("Fitness updates often. Goals do
+   * not.") is honoured because nothing here writes a goal.
+   *
+   * Deliberately NOT fed to `marathonPaceSPerMi`. That function's refusal is
+   * the guard that keeps MP work inside the marathon zone, and it can only fire
+   * if it is shown the real goal. See `buildWorkoutSpec`'s
+   * `prescribedRacePaceSPerMi` parameter for why the two are separate arguments.
+   */
+  const achievableRace = achievableRaceTarget({
+    goalSec: input.goalSec,
+    // The same anchor `achievableFloorT` uses one line up, so the two ceilings
+    // are the same claim about the same runner.
+    currentVdot: anchorIsProvisional ? null : estimatedCurrentVdot,
+    raceDistanceMi: input.raceDistanceMi,
+    totalWeeks,
+  });
+  /** What the race row is prescribed at · null when there is no goal to bound. */
+  const prescribedRacePaceSec = achievableRace?.paceSPerMi ?? null;
 
   // Goal-realism guard: flag when the entered goal implies a VDOT >15% above
   // the conservative current estimate. Written to authoredState for the plan
@@ -5773,6 +5898,31 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     const weekQualityDows = input.qualityDows.slice(0, weekDensity);
     // 2026-06-03 · Rule 3 · per-week T-pace.
     const weekT = tPaceForWeek(wi, phaseLabel);
+    /**
+     * ZONE-R-1 · THE marathon-pace expression, called rather than re-derived,
+     * so the pace the selector prices an MP session at is the pace
+     * `buildWorkoutSpec` will build it at. The two inputs are the ones
+     * `persistPlan` hands `buildWorkoutSpec`, in the same shapes: `currentT` is
+     * the same `resolveCurrentTPace` cascade, and the goal pace carries the
+     * same below-table fallback. Diverging on either would size an MP session
+     * at one pace and run it at another.
+     *
+     * MPLABEL-1 · resolved through the provenance-returning form, because the
+     * notes downstream need to know WHICH marathon pace this is. The stated
+     * goal is passed, never the achievable target — the refusal below is the
+     * guard that keeps MP work inside the marathon zone and it can only fire
+     * on the real goal.
+     */
+    const weekMp = weekT != null && weekT > 0
+      ? resolveMarathonPace({
+          tPaceSec: weekT,
+          easyAnchorTSec: currentT,
+          goalPaceSPerMi: input.goalPaceSec
+            ?? (input.belowTableAnchor
+              ? Math.round(input.belowTableAnchor.anchor.paceSPerMi)
+              : null),
+        })
+      : null;
     const days = layoutWeek({
       phase: phaseLabel,
       weekIdx: wi,
@@ -5819,23 +5969,14 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       trajectory,
       weekTPaceSec: weekT,
       weekIPaceSec: iPaceForWeek(weekT),
-      // ZONE-R-1 · THE marathon-pace expression, called rather than re-derived,
-      // so the pace the selector prices an MP session at is the pace
-      // `buildWorkoutSpec` will build it at.
-      // The two inputs are the ones `persistPlan` hands `buildWorkoutSpec`, in
-      // the same shapes: `currentT` is the same `resolveCurrentTPace` cascade,
-      // and the goal pace carries the same below-table fallback. Diverging on
-      // either would size an MP session at one pace and run it at another.
-      weekMpPaceSec: weekT != null && weekT > 0
-        ? marathonPaceSPerMi({
-            tPaceSec: weekT,
-            easyAnchorTSec: currentT,
-            goalPaceSPerMi: input.goalPaceSec
-              ?? (input.belowTableAnchor
-                ? Math.round(input.belowTableAnchor.anchor.paceSPerMi)
-                : null),
-          })
-        : null,
+      // ZONE-R-1 · resolved above, so the pace the selector prices an MP
+      // session at is the pace `buildWorkoutSpec` will build it at.
+      weekMpPaceSec: weekMp?.paceSPerMi ?? null,
+      // MPLABEL-1 · the decision `resolveMarathonPace` just made, carried
+      // rather than discarded. `layoutWeek` writes the notes that name this
+      // pace; without the flag it named the goal's pace over a session that had
+      // refused it. Null when there is no MP work in play at all.
+      weekMpAtGoalPace: weekMp ? weekMp.source === 'goal' : null,
       // VOCAB-CATALOGUE-1 · the plan's running record of which of
       // Research/04's named workouts it has already authored. Stepped in
       // ascending week order, the same contract as `trajectory`, so the
@@ -5908,6 +6049,11 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         raceDateISO: input.raceDateISO,
         midBlockRaces: input.midBlockRaces,
         trainingDaysPerWeek: input.trainingDaysPerWeek,
+        // RACEPACE-1 · the same anchor the target race's ceiling is built on,
+        // withheld when it is provisional (a mileage-derived VDOT is not
+        // evidence, and a ceiling drawn off it would be fiction bounding
+        // fiction).
+        currentVdot: anchorIsProvisional ? null : estimatedCurrentVdot,
       })
     : [];
 
@@ -5969,6 +6115,36 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         tsbAtStart: input.tsbAtStart ?? null,
       },
       goal_realism: goalRealism,
+      /**
+       * RACEPACE-1 · what this authoring decided the block may PRESCRIBE as a
+       * race-relative target, and why.
+       *
+       * Written alongside — never instead of — `goal_pace_s_per_mi` above.
+       * Rule 1: `basis_modelled` is true whenever `pace_s_per_mi` came out of
+       * the gain model rather than out of the runner's own stated goal, and no
+       * surface may render a modelled target as a measured capability. The wire
+       * already has the vocabulary for this (`V5Number { text, modelled }`), so
+       * a reader has somewhere honest to put it.
+       *
+       * `optimism_fraction` is the raw distance between ambition and runway. It
+       * is what a §8 feasibility read ("Supported / Reach / Stretch / Unlikely /
+       * Unsupported") should be computed from, rather than from the older
+       * `goal_realism.flag`, which is a boolean struck at a 15% VDOT threshold
+       * and cannot express four of those five states.
+       */
+      prescribed_race_pace: achievableRace
+        ? {
+            pace_s_per_mi: achievableRace.paceSPerMi,
+            target_sec: achievableRace.targetSec,
+            source: achievableRace.source,
+            goal_sec: achievableRace.goalSec,
+            goal_pace_s_per_mi: input.goalPaceSec,
+            ceiling_sec: achievableRace.ceilingSec,
+            ceiling_vdot: achievableRace.ceilingVdot,
+            optimism_fraction: achievableRace.optimismFraction,
+            basis_modelled: achievableRace.basisModelled,
+          }
+        : null,
       // 2026-08-17 · coaching-loop reconciliation · the blend anchors, so
       // recomputePacesForPlan (adaptation-time pace rewrite) can gate the
       // weekly blend on measured evidence against the SAME season anchor
@@ -6944,6 +7120,12 @@ export function specForComposedDay(
     easyAnchorTSec: number | null;
     goalIPaceEligible: boolean;
     belowTableAnchor?: BelowTableAnchor | null;
+    /** RACEPACE-1 · the achievable race target for the PLAN's own race day.
+     *  Null → the race branch reads `goalPaceSec`, byte-identical to before.
+     *  Deliberately not applied to an embedded mid-block tune-up: that row
+     *  carries its OWN goal (`raceGoalPaceSec`) at its OWN distance, and this
+     *  ceiling was computed for the goal race at the goal distance. */
+    prescribedRacePaceSec?: number | null;
   },
 ): { paceTargetSPerMi: number | null; spec: ReturnType<typeof buildWorkoutSpec>['spec'] } {
   if (weekT == null) return { paceTargetSPerMi: null, spec: null };
@@ -6984,6 +7166,10 @@ export function specForComposedDay(
     // COLD-4 · the composer's calibration-intro decision. The spec goes
     // out `by_effort` with no rep pace and no pace_target column.
     d.effortCued === true,
+    // RACEPACE-1 · only the plan's OWN race day is bounded by the ceiling
+    // computed for this goal at this distance. An embedded tune-up
+    // (`raceGoalPaceSec` set) is a different race and keeps its own target.
+    d.raceGoalPaceSec !== undefined ? null : (args.prescribedRacePaceSec ?? null),
   );
   return { paceTargetSPerMi: built.paceTargetSPerMi, spec: built.spec };
 }
@@ -7029,6 +7215,8 @@ export function persistedDayShape(
     easyAnchorTSec: number | null;
     goalIPaceEligible: boolean;
     belowTableAnchor?: BelowTableAnchor | null;
+    /** RACEPACE-1 · see `specForComposedDay`. */
+    prescribedRacePaceSec?: number | null;
   },
   /** The prior plan's prescription for this date, when the day is sealed. */
   sealed?: SealedPrescription | null,
@@ -7164,6 +7352,17 @@ async function persistPlan(client: PoolClient, args: {
    *  goal time · spec-builder falls back to an inverse-offset
    *  derivation from T. */
   goalPaceSec: number | null;
+  /**
+   * RACEPACE-1 (2026-08-25) · what the race-day row is actually prescribed at.
+   *
+   * `goalPaceSec` above is the AMBITION and stays exactly what the runner
+   * typed. This is the ambition bounded by what the runway supports
+   * (`lib/training/achievable-target.ts`), and it is the number the race row,
+   * its ±5 s/mi band and its mid-race abort rule are built from. Read back off
+   * `authoredState.prescribed_race_pace` so the persisted plan and the audit
+   * trail can never say two different things. Null → byte-identical to before.
+   */
+  prescribedRacePaceSec?: number | null;
   /** 2026-06-23 · PACE-E-1 · current-fitness T-pace anchor for EASY/long/recovery bands. Those are
    *  EFFORT runs and must track CURRENT fitness, not the goal-blended weekT — otherwise a sub-fitness
    *  goal makes "easy" ramp faster every week (cold-start: easy can pass current MP). null → falls
@@ -8181,7 +8380,18 @@ function setLongFinish(day: DayPlan, finishMi: number): void {
   }
   const easyMi = Math.max(0, Math.round((day.distanceMi - finishMi) * 10) / 10);
   day.subLabel = `LONG · ${finishMi}mi @ ${tag}`;
-  day.notes = `Steady ${easyMi}mi, then ${finishMi}mi at ${tag === 'HM' ? 'half-marathon pace' : 'marathon pace'}.`;
+  // MPLABEL-1 · this function REWRITES a note `layoutWeek` already wrote, and
+  // that note is the only place the goal-vs-current-fitness qualifier exists by
+  // the time a trim runs. Re-deriving it here would need the week's pace
+  // anchors, which a give-back pass walking finished days does not have — so
+  // the qualifier is carried forward off the note being replaced. Exactly the
+  // reasoning in this function's own header: the label and the notes are
+  // rewritten together so there is no third place to drift.
+  const wasCurrentFitness = /marathon effort for your current fitness/i.test(String(day.notes ?? ''));
+  const finishPhrase = tag === 'HM' ? 'half-marathon pace'
+    : wasCurrentFitness ? 'marathon effort for your current fitness'
+    : 'marathon pace';
+  day.notes = `Steady ${easyMi}mi, then ${finishMi}mi at ${finishPhrase}.`;
 }
 
 /**
@@ -8704,6 +8914,18 @@ async function persistComposedPlan(
         ?? (inputs.compose.belowTableAnchor
           ? Math.round(inputs.compose.belowTableAnchor.anchor.paceSPerMi)
           : null),
+      // RACEPACE-1 · read back out of the state this compose just authored,
+      // rather than recomputed here. A second derivation is a second chance to
+      // disagree, and `authored_state.prescribed_race_pace` is what every later
+      // reader (the recompute, the audit, the phone) will resolve the row
+      // against. Absent (maintenance/recovery composers, no goal) → null →
+      // the race branch falls back to `goalPaceSec` exactly as before.
+      prescribedRacePaceSec: ((): number | null => {
+        const p = (composed.authoredState as Record<string, unknown> | undefined)
+          ?.prescribed_race_pace as { pace_s_per_mi?: unknown } | null | undefined;
+        const v = p?.pace_s_per_mi;
+        return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
+      })(),
       // R3 + PACE-I-1 (2026-06-23) · 5K/10K/HM race goals get true VO2max I-pace intervals. HM was
       // excluded, but its quality day is explicitly labeled "6×800m @ I pace" (inlinePrescriptions) —
       // with iPace null it shipped the cruise T−18 default: a +6..+28 s/mi too-slow "VO2max" rep that

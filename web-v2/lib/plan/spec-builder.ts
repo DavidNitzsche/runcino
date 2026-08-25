@@ -138,13 +138,70 @@ export function marathonPaceSPerMi(args: {
   easyAnchorTSec?: number | null;
   goalPaceSPerMi?: number | null;
 }): number {
+  return resolveMarathonPace(args).paceSPerMi;
+}
+
+/**
+ * Which of the two marathon paces this session is actually prescribed at.
+ *
+ * `Research/04` §"Pace zone shorthand" keeps them as SEPARATE CODES in one
+ * table, and the engine has been collapsing them:
+ *
+ *   | M  | Marathon      | … | Goal MP    |
+ *   | MP | Marathon pace | … | Current MP |
+ *
+ * · `'goal'`           — the runner's own goal marathon pace, prescribed
+ *                        "exactly — not faster" (`Research/04` §4.4). The
+ *                        corpus's `M`.
+ * · `'current_fitness'` — the T+18 default, i.e. marathon EFFORT at the
+ *                        fitness the runner has demonstrated. The corpus's
+ *                        `MP`. This is what the refusal below returns, and it
+ *                        is a correct, cited answer — not a fallback.
+ */
+export type MarathonPaceSource = 'goal' | 'current_fitness';
+
+export interface MarathonPaceRead {
+  paceSPerMi: number;
+  source: MarathonPaceSource;
+  /**
+   * The goal marathon pace this call declined to prescribe, when it declined
+   * one. Null when `source === 'goal'`, and null when no goal pace was passed
+   * at all — a runner training by feel has refused nothing.
+   *
+   * MPLABEL-1 (2026-08-25) · THIS IS THE FIELD THE BUG NEEDED.
+   *
+   * The refusal was invisible. `marathonPaceSPerMi` returned a bare number and
+   * every reader downstream assumed it was the goal's, so a fourteen-week
+   * marathon block wrote "Race pace, not faster. This is a rehearsal, not a
+   * test." over a pace 62 s/mi slower than the race it was rehearsing — and did
+   * it on the two biggest sessions of the taper, three and two weeks out. The
+   * NUMBER was right (a runner cannot rehearse a marathon at a pace faster than
+   * their current threshold, and `Research/01` §"Marathon-specific correction"
+   * only ever moves an MP prescription DOWNWARD). The SENTENCE was a lie, and
+   * the sentence is what the runner reads.
+   *
+   * Same shape as ZONE-LABEL-1's three sites, one zone over.
+   */
+  refusedGoalPaceSPerMi: number | null;
+}
+
+export function resolveMarathonPace(args: {
+  tPaceSec: number;
+  easyAnchorTSec?: number | null;
+  goalPaceSPerMi?: number | null;
+}): MarathonPaceRead {
   const { tPaceSec } = args;
   const easyAnchorT = args.easyAnchorTSec ?? tPaceSec;
   const longLo = easyAnchorT + 55;
   const goal = args.goalPaceSPerMi ?? null;
-  return (goal != null && goal > tPaceSec && goal < longLo)
-    ? goal
-    : Math.min(tPaceSec, easyAnchorT) + 18;
+  if (goal != null && goal > tPaceSec && goal < longLo) {
+    return { paceSPerMi: goal, source: 'goal', refusedGoalPaceSPerMi: null };
+  }
+  return {
+    paceSPerMi: Math.min(tPaceSec, easyAnchorT) + 18,
+    source: 'current_fitness',
+    refusedGoalPaceSPerMi: goal,
+  };
 }
 
 export interface SpecBuildResult {
@@ -567,6 +624,29 @@ export function buildWorkoutSpec(
    * false (the default) → every branch below is byte-identical to before.
    */
   effortCued = false,
+  /**
+   * RACEPACE-1 (2026-08-25) · what the RACE row is prescribed at, when that is
+   * not the stated goal.
+   *
+   * `goalPaceSPerMi` above serves two readers with opposite needs:
+   *
+   *   · `marathonPace` needs the TRUE goal, because its whole job is to decide
+   *     whether the goal sits inside the marathon zone and to refuse it when it
+   *     does not. Hand it a pre-clamped number and the refusal stops being able
+   *     to fire, which is the one guard standing between an over-ambitious goal
+   *     and a block of "marathon-pace" work run at threshold.
+   *   · the `race` branch needs the ACHIEVABLE target, because it writes a
+   *     single number onto a start line and `Research/08` §18.2 puts the cost
+   *     of getting that wrong at unrecoverable.
+   *
+   * One argument could not be both, so there are two. Null (the default) → the
+   * race branch reads `goalPaceSPerMi` exactly as it always has, so every
+   * caller that does not thread this builds byte-identically.
+   *
+   * See `lib/training/achievable-target.ts` for how the value is derived and
+   * why it is MODELLED whenever it is not the goal itself.
+   */
+  prescribedRacePaceSPerMi: number | null = null,
 ): SpecBuildResult {
   // 2026-06-02 · parse the prescription up front (e.g. "6×800m @ I
   // pace · 90s jog" → {reps:6, repDistanceMi:0.497, restS:90}). When
@@ -629,8 +709,16 @@ export function buildWorkoutSpec(
         rules.push({ kind: 'abort', metric: 'hr', op: '>', value: abortHr, scope, action: 'switch_to_b_goal',
           label: `${at} check: avgHr over ${abortHr} · switch to the B plan` });
       }
-      if (goalPaceSPerMi != null) {
-        const abortPace = Math.round(goalPaceSPerMi * (1 + RACE_PACE_ABORT_FRACTION));
+      // RACEPACE-1 · the mid-race abort is a check against the pace the runner
+      // was TOLD to run, not against an ambition the row never prescribed. Off
+      // the stated goal this rule was doubly dead on an over-ambitious target:
+      // it triggers at goal+5%, and a runner correctly executing a target 12%
+      // slower than the goal is already past it at the gun — so the rule either
+      // fires on mile one of a well-run race or, once the row is honest, fires
+      // where it was meant to. Same precedence as `racePace` above.
+      const abortAnchor = prescribedRacePaceSPerMi ?? goalPaceSPerMi;
+      if (abortAnchor != null) {
+        const abortPace = Math.round(abortAnchor * (1 + RACE_PACE_ABORT_FRACTION));
         rules.push({ kind: 'abort', metric: 'pace', op: '>', value: abortPace, scope, action: 'switch_to_b_goal',
           label: `${at} check: pace slower than ${Math.floor(abortPace / 60)}:${String(abortPace % 60).padStart(2, '0')}/mi · switch to the B plan` });
       }
@@ -1027,7 +1115,12 @@ export function buildWorkoutSpec(
       // distance offsets to recover it from T.
       const dMi = distance_mi ?? 13.1;
       const inverseOffset = dMi >= 31 ? 40 : dMi >= 25 ? 18 : dMi >= 12 ? 5 : dMi >= 5 ? -8 : -15; // PACE-5 · ultra races well below T
-      const racePace = goalPaceSPerMi ?? (tPaceSec + inverseOffset);
+      // RACEPACE-1 · the achievable target when the composer resolved one,
+      // else the stated goal, else the inverse-of-T derivation. The stated
+      // goal is NOT deleted — it stays on `authored_state.goal_pace_s_per_mi`
+      // and on every surface that shows ambition. This is only what the row
+      // asks the runner to run.
+      const racePace = prescribedRacePaceSPerMi ?? goalPaceSPerMi ?? (tPaceSec + inverseOffset);
       return {
         spec: {
           kind: 'long',  // no 'race' kind in WorkoutSpec union · stash as long
