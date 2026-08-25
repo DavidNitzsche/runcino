@@ -50,6 +50,7 @@ import {
   RECOVERY_WEEKLY_PCT_OF_BASE,
   RECOVERY_RUN_DAYS,
   RECOVERY_LONG_PCT,
+  recoveryBlockCeilingPct,
   RECOVERY_EFFORT_SCALE,
   recoveryEffortScale,
   TAPER_RACE_WEEK_PCT_OF_PEAK,
@@ -822,6 +823,80 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           );
         }
         seq.forEach((pct, i) => within(pct, bands[i], `RECOVERY_WEEKLY_PCT_OF_BASE.${cat} week ${i + 1}`));
+      }
+    },
+  },
+  {
+    id: 'RECOVERY.reverse-taper-ceiling-is-the-pre-race-peak',
+    binds: [
+      'lib/plan/goal-tiers.ts#recoveryBlockCeilingPct',
+      'lib/plan/generate.ts#enforceWeeklyRampCeiling',
+      'lib/plan/generate.ts#reverseTaperCeilingMi',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Marathon Recovery (4-week reverse taper)',
+    claim:
+      'A reverse taper is bounded by the PRE-RACE PEAK it is unwinding, never by its own weeks. ' +
+      'Every week in the block is a deload, so a week-over-week ramp rule measured against the ' +
+      'block\'s own prior peak compounds the first deload and the block can never reach its last ' +
+      'row. The ceiling is the deepest fraction of peak doctrine publishes for the distance ' +
+      'raced, and it is below 1: doctrine puts the full return to peak AFTER the block.',
+    check({ cite }) {
+      // ── the ceiling is doctrine's own deepest row, read out of the doc ──
+      const bands = cite.table().rows.map((r) => parsePctBand(r['Volume vs. peak']));
+      if (bands.length === 0) throw new Error('the reverse-taper table has no rows · re-read the claim');
+      const deepest = bands[bands.length - 1];
+      for (const cat of ['m', 'ultra'] as const) {
+        within(recoveryBlockCeilingPct(cat), deepest, `recoveryBlockCeilingPct("${cat}")`);
+        // and it is DERIVED from the sequence the weeks are sized off, not a
+        // second table beside it that could drift from the first.
+        const seq = RECOVERY_WEEKLY_PCT_OF_BASE[cat];
+        if (recoveryBlockCeilingPct(cat) !== Math.max(...seq)) {
+          throw new Error(
+            `recoveryBlockCeilingPct("${cat}") is ${recoveryBlockCeilingPct(cat)} but the deepest ` +
+              `week in RECOVERY_WEEKLY_PCT_OF_BASE.${cat} is ${Math.max(...seq)} · the ceiling ` +
+              'must be the block\'s own deepest row, or the two can disagree',
+          );
+        }
+      }
+      // ── below 100%, because doctrine says full return is AFTER the block ──
+      // Read the week the doc names rather than asserting "< 1" on faith.
+      const note = /full return to peak training load typically week\s*(\d+)\s*[–—-]\s*(\d+)/i.exec(cite.text());
+      if (!note) {
+        throw new Error(
+          'the reverse-taper section no longer states when full return to peak happens · that ' +
+            'sentence is what puts the ceiling below 100% of peak, so re-read the claim',
+        );
+      }
+      const returnsAtWeek = Number(note[1]);
+      if (!(returnsAtWeek > POST_RACE_RECOVERY_WEEKS.m)) {
+        throw new Error(
+          `doctrine now returns to peak in week ${returnsAtWeek}, inside the ` +
+            `${POST_RACE_RECOVERY_WEEKS.m}-week recovery block · the ceiling can no longer be ` +
+            'below peak by construction',
+        );
+      }
+      for (const cat of ['5k', '10k', 'hm', 'm', 'ultra'] as const) {
+        if (recoveryBlockCeilingPct(cat) >= 1) {
+          throw new Error(
+            `recoveryBlockCeilingPct("${cat}") is ${recoveryBlockCeilingPct(cat)} · a recovery ` +
+              `block that reaches the pre-race peak has stopped being recovery, and doctrine ` +
+              `puts the full return at week ${returnsAtWeek}`,
+          );
+        }
+      }
+      // ── and the ceiling actually REACHES the pass that enforces it ────────
+      // A constant nothing spends is the DOCTRINE-5 defect: RECOVERY_EFFORT_SCALE
+      // was added and imported nowhere for four hours. Trace the whole wire.
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/export function enforceWeeklyRampCeiling\([\s\S]{0,400}?blockCeilingMi\?/.test(gen)) {
+        throw new Error('enforceWeeklyRampCeiling no longer accepts a whole-block ceiling · a reverse taper is being graded against its own deload weeks again');
+      }
+      if (!/enforceWeeklyRampCeiling\(composed\.weeks, composed\.vols, level, reverseTaperCeilingMi\(composed\)\)/.test(gen)) {
+        throw new Error('finalizeComposedPlan no longer passes the reverse-taper ceiling · the ceiling is computed and then discarded');
+      }
+      if (!/block_ceiling_mi: recoveryCeilingMi/.test(gen) || !/recoveryBlockCeilingPct\(lastCat\)/.test(gen)) {
+        throw new Error('composeRecoveryPlan no longer publishes block_ceiling_mi off recoveryBlockCeilingPct · nothing downstream can read the block\'s bound');
       }
     },
   },

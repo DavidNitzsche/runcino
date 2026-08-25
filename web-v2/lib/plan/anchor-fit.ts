@@ -42,6 +42,7 @@
 import {
   RAMP_BASE_RESUME_FRACTION,
   RAMP_BASE_SUSTAINED_RANK,
+  RECOVERY_MIN_EASY,
   type RampBaseEvidence,
 } from './generate';
 
@@ -72,6 +73,14 @@ export interface AnchorFacts {
   // ── what it prescribed ──
   /** Per-week planned miles, in block order. */
   readonly weeklyMi: readonly number[];
+  /** The week's LONGEST run, aligned to `weeklyMi`. Not the flagged long — the
+   *  biggest number on the week — because what bounds a week is the size of its
+   *  biggest run, whatever the composer labelled it. */
+  readonly longestRunMi: readonly number[];
+  /** Running days per week, aligned to `weeklyMi`. With the above it gives an
+   *  arithmetic ceiling on what a week can carry, which is what separates "the
+   *  engine under-prescribed" from "the week's shape could not hold the row". */
+  readonly runDays: readonly number[];
   /** Doctrine's own per-week fraction of the anchor, aligned to `weeklyMi`.
    *  Empty when the composer publishes no such table (race-prep). */
   readonly doctrinePct: readonly number[];
@@ -192,6 +201,13 @@ export function checkAnchorNotInflated(f: AnchorFacts): Finding | null {
  */
 export const BAND_TOLERANCE = 0.15;
 
+/** The most `finalizeComposedPlan` lets a non-long day reach, as a fraction of
+ *  the week's long run — its own easy≤long sweep holds easy "STRICTLY below the
+ *  long (~0.8×) so the long stays visibly the longest run". Mirrored here so
+ *  the granularity attribution below bounds a week by the engine's rule rather
+ *  than by a guess about it. */
+export const EASY_BELOW_LONG = 0.8;
+
 export function checkVolumesInBandOfAnchor(f: AnchorFacts): Finding | null {
   if (f.doctrinePct.length === 0) return null;
   const anchor = f.peakAnchorMi ?? 0;
@@ -208,6 +224,58 @@ export function checkVolumesInBandOfAnchor(f: AnchorFacts): Finding | null {
       `${f.id} · ${f.mode} week ${i + 1} prescribes ${got.toFixed(1)} mi where doctrine's own ` +
       `${(f.doctrinePct[i] * 100).toFixed(0)}% of the ${anchor.toFixed(1)} mi/wk anchor is ` +
       `${want.toFixed(1)} (${pct(got, want)} of it).`;
+    // ── ATTRIBUTION · THE ROW IS FINER THAN THE GRID THE WEEK LANDS ON ────
+    //
+    // The ramp cap was one reason a reverse-taper week missed its row. With it
+    // closed, a second one is visible underneath at low volume, and it is not
+    // a cap at all — it is granularity, and it misses in BOTH directions.
+    //
+    // A recovery week of N running days can only express volumes between
+    //   N × RECOVERY_MIN_EASY               (the 2-mile junk-run floor)
+    //   L × (1 + EASY_BELOW_LONG × (N - 1)) (the longest run, plus N-1 runs at
+    //                                        the most finalizeComposedPlan will
+    //                                        let a non-long day reach)
+    // On an 18 mi/wk beginner running four days, that grid is 8 to 10.2 miles.
+    // Doctrine's week-2 row is 30-40% of peak — 6.3 mi — which is BELOW the
+    // floor, so the week comes out over. Its week-4 row is 75% — 13.5 mi —
+    // which is above the ceiling, because `RECOVERY_LONG_PCT` holds the
+    // marathon's recovery long at 20% of the week (right for a marathoner on
+    // six days; on four it makes the longest run under three miles, and
+    // finalizeComposedPlan then holds every easy day at ~0.8 of it). So the
+    // same runner is over-prescribed in week 2 and under-prescribed in week 4,
+    // from one cause.
+    //
+    // Both halves of the bound are the engine's OWN rules read back, not
+    // assumptions about it: the floor is `RECOVERY_MIN_EASY`, imported rather
+    // than restated, and `EASY_BELOW_LONG` mirrors the easy≤long sweep in
+    // `finalizeComposedPlan` ("easy is held STRICTLY below the long, ~0.8×, so
+    // the long stays visibly the longest run"). A week cannot exceed the
+    // bracket, so this can never swallow a miss the week's shape could have
+    // absorbed.
+    //
+    // A DECISION: closing it means raising the recovery long-run share at low
+    // day counts and/or moving the junk-run floor. Both move real miles for
+    // real runners, and both are different constants from the ceiling fixed
+    // here.
+    const longest = f.longestRunMi[i] ?? 0;
+    const days = f.runDays[i] ?? 0;
+    if (longest > 0 && days > 0) {
+      const gridLo = days * RECOVERY_MIN_EASY;
+      const gridHi = longest * (1 + EASY_BELOW_LONG * (days - 1));
+      if (want < gridLo || want > gridHi) {
+        return {
+          check: 'RECOVERY_ROW_UNREACHABLE_AT_THIS_VOLUME',
+          severity: 'DECISION',
+          message:
+            `${detail} The row is outside what this week can express: ${days} running days land ` +
+            `between ${gridLo.toFixed(1)} mi (every run at the ${RECOVERY_MIN_EASY}-mile ` +
+            `junk-run floor) and ${gridHi.toFixed(1)} mi (a ${longest.toFixed(1)}-mile longest ` +
+            `run plus ${days - 1} at ${EASY_BELOW_LONG} of it). No ceiling is involved — the ` +
+            `floor and the recovery long-run share bracket the week, and doctrine's row falls ` +
+            `outside the bracket.`,
+        };
+      }
+    }
     // ── ATTRIBUTION, not just complaint ──────────────────────────────────
     //
     // A shortfall that lands within a whisker of `prior peak × ramp ceiling`
@@ -225,8 +293,21 @@ export function checkVolumesInBandOfAnchor(f: AnchorFacts): Finding | null {
     // so the block can never reach the 75% row it is supposed to end on, no
     // matter what the anchor says.
     //
-    // Reported as a DECISION because closing it raises prescribed post-race
-    // volume for every runner who finishes a race.
+    // RULED ON (2026-08-25) and fixed in WKRAMP-REC-1: a recovery block now
+    // carries its own whole-block ceiling, `peak × recoveryBlockCeilingPct`,
+    // and `enforceWeeklyRampCeiling` grades it against that instead of against
+    // its own deload weeks. The attribution STAYS — it is the regression lock.
+    // If the wiring is ever lost the shortfall comes back, and this names it
+    // rather than reporting an unexplained miss.
+    //
+    // IT RUNS SECOND, AND THAT ORDER IS LOAD-BEARING. This test is a numeric
+    // COINCIDENCE — "the miss happens to sit near prior peak × ceiling" — and
+    // coincidences happen. With the ceiling fixed, the owner's own post-CIM
+    // week 4 landed 32 mi against a 30 mi week before it and a 1.10 ceiling,
+    // which is 33: a whisker from the cap, and nothing to do with the cap. The
+    // grid bound above is an arithmetic PROOF that the week could not have held
+    // the row, so it is asked first and this only speaks about a week whose
+    // shape could have.
     const prev = i > 0 ? f.weeklyMi[i - 1] : 0;
     const priorPeak = i > 0 ? Math.max(...f.weeklyMi.slice(0, i)) : 0;
     const cap = priorPeak * f.rampCeiling;
@@ -242,6 +323,7 @@ export function checkVolumesInBandOfAnchor(f: AnchorFacts): Finding | null {
           `own deload weeks.`,
       };
     }
+
     return { check: 'VOLUME_OUTSIDE_ANCHOR_BAND', severity: 'FIRM', message: detail };
   }
   return null;
@@ -431,6 +513,39 @@ export function checkPeakIsNotStale(f: AnchorFacts): Finding | null {
   };
 }
 
+/**
+ * A9 · A RECOVERY BLOCK IS STILL RECOVERY.
+ *
+ * The other side of WKRAMP-REC-1. That fix removed a cap, and a removed cap
+ * needs something asserting what still bounds the thing — otherwise the next
+ * edit to `recoveryBlockCeilingPct` or to the wiring in `finalizeComposedPlan`
+ * has nothing standing in its way.
+ *
+ * Research/00b's reverse taper runs to 70-80% of peak and then says, in the
+ * note under its own table, that "full return to peak training load" is
+ * typically week 5-6 — AFTER the block. So no week inside a recovery block may
+ * reach the pre-race peak. A3 already grades each week against its own row in
+ * both directions; this is the absolute line underneath it, stated separately
+ * because it is the one the fix could plausibly break.
+ *
+ * FIRM. Nothing about it is a judgement call.
+ */
+export function checkRecoveryStaysBelowPeak(f: AnchorFacts): Finding | null {
+  if (f.mode !== 'recovery') return null;
+  const anchor = f.peakAnchorMi ?? 0;
+  if (!(anchor > 0)) return null;
+  const biggest = Math.max(0, ...f.weeklyMi);
+  if (biggest <= anchor + 0.05) return null;
+  return {
+    check: 'RECOVERY_EXCEEDS_PRE_RACE_PEAK',
+    severity: 'FIRM',
+    message:
+      `${f.id} · a recovery week prescribes ${biggest.toFixed(1)} mi against a pre-race peak of ` +
+      `${anchor.toFixed(1)} (${pct(biggest, anchor)}). Research/00b puts the full return to peak ` +
+      `at week 5-6, after this block — the reverse taper ends at 70-80%, not above it.`,
+  };
+}
+
 export const CHECKS: readonly { name: string; run: (f: AnchorFacts) => Finding | null }[] = [
   { name: 'ANCHOR_CIRCULAR', run: checkAnchorNotCircular },
   { name: 'ANCHOR_INFLATED', run: checkAnchorNotInflated },
@@ -440,6 +555,7 @@ export const CHECKS: readonly { name: string; run: (f: AnchorFacts) => Finding |
   { name: 'PACE_ANCHOR_STILL_DEPRESSED', run: checkPaceAnchorAgreesWithVolume },
   { name: 'PEAK_IS_AN_OUTLIER', run: checkPeakIsNotAnOutlier },
   { name: 'PEAK_IS_STALE', run: checkPeakIsNotStale },
+  { name: 'RECOVERY_EXCEEDS_PRE_RACE_PEAK', run: checkRecoveryStaysBelowPeak },
 ];
 
 /**
@@ -454,6 +570,8 @@ export const EMITTABLE: readonly string[] = [
   'ANCHOR_INFLATED',
   'VOLUME_OUTSIDE_ANCHOR_BAND',
   'RAMP_CAP_TRUNCATES_REVERSE_TAPER',
+  'RECOVERY_ROW_UNREACHABLE_AT_THIS_VOLUME',
+  'RECOVERY_EXCEEDS_PRE_RACE_PEAK',
   'AUDIT_RECORD_DISAGREES_WITH_PLAN',
   'SILENT_DOWNGRADE',
   'MAINTENANCE_CUTS_BELOW_CURRENT_VOLUME',
