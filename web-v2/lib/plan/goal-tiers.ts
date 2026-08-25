@@ -175,6 +175,42 @@ export const RECOVERY_LONG_PCT: Record<DistCategory, number> = {
 };
 
 /**
+ * WKRAMP-REC-1 (2026-08-25) · THE CEILING ON A REVERSE TAPER, AS A FRACTION OF
+ * THE PRE-RACE PEAK.
+ *
+ * A recovery block's weeks are stated in Research/00b as percentages of PEAK —
+ * the reverse-taper column header says "Volume vs. peak" in as many words, and
+ * every number in `RECOVERY_WEEKLY_PCT_OF_BASE` above is read off that column
+ * (or, below the marathon, off that distance's own day-by-day protocol). The
+ * deepest row doctrine publishes for a distance is therefore the most volume
+ * the block is ever entitled to carry, and the block's own earlier weeks — all
+ * of which are deloads — say nothing at all about that bound.
+ *
+ * This is derived, never declared. `max()` of the sequence the doctrine gate
+ * already watches cannot drift from it, which a second per-distance table
+ * beside it could. It is also why there is no new `Record<DistCategory, …>`
+ * here for the lint to have to explain.
+ *
+ * WHERE IT IS SPENT. `composeRecoveryPlan` multiplies it by the same
+ * `peakAnchor` every week of the block is sized off, and hands the product to
+ * `enforceWeeklyRampCeiling` as the block's ceiling. See WKRAMP-REC-1 in
+ * generate.ts for what that pass did before, and why measuring a reverse taper
+ * against its own deload weeks could never let it reach its last row.
+ *
+ * WHAT IT IS NOT. It is not a target and it is not a resume level. Doctrine's
+ * own note under the marathon table — "Full return to peak training load
+ * typically week 5-6" — puts 100% of peak AFTER the block, which is exactly
+ * why the deepest row (0.75 for the marathon, 0.80 for the half) is below 1.
+ *
+ * Cite: Research/00b-recovery-protocols.md §"Marathon Recovery (4-week reverse taper)"
+ * Bound by RECOVERY.reverse-taper-ceiling-is-the-pre-race-peak.
+ */
+export function recoveryBlockCeilingPct(cat: DistCategory): number {
+  const seq = RECOVERY_WEEKLY_PCT_OF_BASE[cat];
+  return seq.length > 0 ? Math.max(...seq) : 1;
+}
+
+/**
  * Effort scaling · Research/00b:216-222. An A race is run to the floor
  * off a full taper and earns the full table. A B race is hard but not
  * depleted (60-70% of A-race recovery duration); a C race is a hard

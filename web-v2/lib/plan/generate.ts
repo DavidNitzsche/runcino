@@ -36,7 +36,7 @@ import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAn
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
-import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING } from './goal-tiers';
+import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING } from './goal-tiers';
 import {
   type AnchorSource, isProvisionalAnchor, isUnverifiedAnchor, paceBlendAnchorIsProvisional,
   CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES,
@@ -4860,19 +4860,70 @@ function trimWeekToVolume(week: ComposedWeek, targetMi: number, protectLong = fa
  * MIDRACE-RAMP-1 both document) and after MIDRACE-RAMP-1, before the taper
  * pass, so the taper descends from the corrected peak.
  *
+ * WKRAMP-REC-1 (2026-08-25) · THE THIRD REGIME, WHICH DEFEATED BOTH OF THOSE.
+ *
+ * The two regimes above are a STEP and a REBOUND, and both are measured against
+ * the block's own prior peak. A post-race REVERSE TAPER is neither, and the
+ * prior-peak reference fails on it completely: the block contains nothing but
+ * deload weeks, so the reference IS the deload. Week 1 of a marathon recovery
+ * is 15% of peak and the ceiling is 1.15, so the block's own arithmetic caps
+ * week 4 at 0.15 × 1.15³ ≈ 23% of peak where Research/00b's row asks for 70-80%.
+ * A 62 mi/wk marathoner authored the day after their race was given
+ * 10 · 10 · 10 · 17 against doctrine's 9 · 22 · 34 · 47. The header above says
+ * measuring a rebound against the deload week "would punish the runner for
+ * deloading"; it got that right for a cutback inside a build and never
+ * considered a block whose whole shape is downward.
+ *
+ * DOCTRINE-4 fixed the DENOMINATOR of those percentages four hours earlier —
+ * peak instead of a trailing mean — which moved the delivered miles from about
+ * 46% of the doctrine row to about 50%. The other half of the shortfall was
+ * this pass, one layer down, undoing the fix on the way out.
+ *
+ * THE RULE FOR A REVERSE TAPER. `blockCeilingMi`, when the caller supplies one,
+ * REPLACES the prior-peak reference for the whole block: no week may exceed it,
+ * and nothing else is capped. `composeRecoveryPlan` supplies
+ * `peakAnchor × recoveryBlockCeilingPct(cat)` — the deepest row doctrine
+ * publishes for the distance just raced, off the same pre-race peak every week
+ * of the block is already sized against. So the reverse taper reaches its rows,
+ * and a recovery block still cannot climb past the volume the runner
+ * demonstrated before the race (doctrine puts that at week 5-6, after the
+ * block). Week-over-week is deliberately NOT checked here: inside a reverse
+ * taper the step from 15% to 35% of peak IS the prescription, and grading it as
+ * a ramp error is the defect.
+ *
+ * Absent (every build, maintenance and open block) this parameter is inert and
+ * the pass is byte-identical.
+ *
  * Cite: Research/00a-distance-running-training.md §"Volume progression rules"
  *       (via GENERAL_RAMP_CEILING — one constant, read by the curve, by this
  *       pass, and by `validate.ts`, so the three cannot diverge)
  * Cite: Research/00b-recovery-protocols.md §"What Cutback Weeks Are Not"
  *       (the rebound is the design)
+ * Cite: Research/00b-recovery-protocols.md §"Marathon Recovery (4-week reverse taper)"
+ *       (the reverse taper is stated against peak, not against itself)
  * Bound by RAMP.realized-weekly-step-is-the-general-ceiling.
+ * Bound by RECOVERY.reverse-taper-ceiling-is-the-pre-race-peak.
  */
 export function enforceWeeklyRampCeiling(
   weeks: ComposedWeek[],
   vols: number[],
   level: LevelKey,
+  /** WKRAMP-REC-1 · a whole-block ceiling in miles, for a block whose shape is
+   *  downward by design. Null/undefined → the week-over-week rule above. */
+  blockCeilingMi?: number | null,
 ): void {
   const ceiling = GENERAL_RAMP_CEILING[level ?? 'intermediate'];
+  if (blockCeilingMi != null && Number.isFinite(blockCeilingMi) && blockCeilingMi > 0) {
+    for (let wi = 0; wi < weeks.length; wi++) {
+      const w = weeks[wi];
+      if (!w || w.isRaceWeek) continue;
+      if ((w.weeklyMi ?? 0) > blockCeilingMi + 0.05) {
+        trimWeekToVolume(w, blockCeilingMi, true);
+        if (Array.isArray(vols) && wi < vols.length) vols[wi] = w.weeklyMi;
+      }
+    }
+    return;
+  }
   let priorPeak = 0;
   let prevMi = 0;
   for (let wi = 0; wi < weeks.length; wi++) {
@@ -4906,6 +4957,15 @@ export function enforceWeeklyRampCeiling(
  *  the week could afford better) and layoutWeek's own per-day coherence
  *  minimum. */
 const TRIM_MIN_RUN_MI = 2;
+
+/** The shortest easy run `composeRecoveryPlan` will place. The same junk-run
+ *  floor as `TRIM_MIN_RUN_MI` above, and the reason a recovery week's realized
+ *  volume lands on a grid of (running days × 2 mi) rather than exactly on its
+ *  doctrine row. Exported (2026-08-25) so `anchor-fit.ts` can read the engine's
+ *  own number when it attributes a low-volume miss, rather than restating it —
+ *  a gate that copies the constant it is grading proves only that it agrees
+ *  with itself. */
+export const RECOVERY_MIN_EASY = 2;
 
 /** Absolute slack on the WKRAMP-1 cap · the same 4mi the validator's §6 WoW
  *  check uses, so the generator and the validator agree about which jumps are
@@ -6496,6 +6556,21 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
   // still pass a proxy, where it is a no-op.
   const peakAnchor = Math.max(input.recentPeakWeeklyMi, input.recentWeeklyMi);
 
+  // WKRAMP-REC-1 (2026-08-25) · the block's own ceiling, published so
+  // `finalizeComposedPlan` can hand it to `enforceWeeklyRampCeiling` instead of
+  // letting that pass measure this block against its own deload weeks. See the
+  // ramp ceiling's WKRAMP-REC-1 note, and `recoveryBlockCeilingPct` for why the
+  // fraction is derived from the sequence the weeks are already sized off
+  // rather than declared beside it.
+  //
+  // Null when there is no anchor at all (a cold-start runner with no logged
+  // history): a ceiling of zero would trim every week to nothing, so the pass
+  // falls back to its ordinary week-over-week rule, which is what it did for
+  // this runner before.
+  const recoveryCeilingMi = peakAnchor > 0
+    ? Math.round(peakAnchor * recoveryBlockCeilingPct(lastCat) * 10) / 10
+    : null;
+
   // RECOVERY-3 (2026-08-17) · per-distance volume profiles. Previously every
   // distance ran on the marathon reverse taper, so a half prescribed 20% of
   // base in week 1 → 2 running days → 6 miles for a 33mpw runner with a
@@ -6506,6 +6581,20 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
   const wkPctSeq = RECOVERY_WEEKLY_PCT_OF_BASE[lastCat];
   const runDaySeq = RECOVERY_RUN_DAYS[lastCat];
   const longPct = RECOVERY_LONG_PCT[lastCat];
+  // What this block was sized against and the ceiling `finalizeComposedPlan`
+  // enforces on it. Published rather than passed as an argument, because
+  // `finalizeComposedPlan` takes only the composed result — and because a
+  // modelled number that moves a runner's miles belongs on the audit surface
+  // rather than implicit in a call. Built here rather than inline in the
+  // `authoredState` literal so that literal stays compact: the
+  // EVIDENCE.no-calendar-pace-advance claim reads it by proximity to
+  // `mode: 'recovery'`, and a long comment inside it silently pushes
+  // `season_anchor_vdot` out of the window that claim looks in.
+  const reverseTaperRecord = {
+    peak_anchor_mi: peakAnchor,
+    weekly_pct: wkPctSeq,
+    block_ceiling_mi: recoveryCeilingMi,
+  };
   const weeks: ComposedWeek[] = [];
   const blocks: BlockPlan = {
     totalWeeks: remainingWeeks,
@@ -6525,9 +6614,34 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     const wkWeekly = Math.round(peakAnchor * wkPct);
     const slots: (DayPlan | null)[] = new Array(7).fill(null);
     slots[input.restDow] = { dow: input.restDow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Recover.' };
-    // 1 extra rest day adjacent · 2 rest in recovery weeks
-    const extraRestDow = ((input.restDow + 3) % 7) as DOW;
-    slots[extraRestDow] = { dow: extraRestDow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Extra rest · still recovering.' };
+    // RECWK-RESTDAYS-1 (2026-08-25) · THE SECOND REST DAY IS NOT UNCONDITIONAL.
+    //
+    // "2 rest in recovery weeks" was written when every distance ran on the
+    // marathon percentages and no recovery week asked for more than five
+    // running days. RECOVERY-3 replaced `ceil(wkPct * 7)` with each distance's
+    // OWN protocol, and two of those rows ask for six: the marathon's week 4
+    // ("rebuilding to 6") and the half's week 2 ("5-6 days in week 2",
+    // Research/00b's 14-day table, days 8-14). Two hard-coded rest days out of
+    // seven make six impossible, so the composer published a run-day table it
+    // then quietly capped at five — and the missing day is a whole easy run,
+    // which is what held the marathon's last reverse-taper week at ~60% of peak
+    // when the doctrine row asks for 70-80%.
+    //
+    // So the extra rest day is placed only while the week actually intends six
+    // running days — the run-day row AND the runner's own stated frequency,
+    // which RECWK1-FREQ-1 already treats as a ceiling over it. A runner who
+    // says they run five days gets five, and gets them with the rest days
+    // SPACED, exactly as before; the day is only surrendered when it is the
+    // thing standing between the week and its doctrine row. Every week whose
+    // target is five or fewer is untouched.
+    const recoveryRunCap = runDaySeq[wi + recoveryOff] ?? runDaySeq[runDaySeq.length - 1];
+    const weekRunTarget = input.trainingDaysPerWeek != null
+      ? Math.min(input.trainingDaysPerWeek, recoveryRunCap)
+      : recoveryRunCap;
+    const extraRestDow: number = weekRunTarget <= 5 ? ((input.restDow + 3) % 7) : -1;
+    if (extraRestDow >= 0) {
+      slots[extraRestDow] = { dow: extraRestDow as DOW, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Extra rest · still recovering.' };
+    }
     // 1 medium easy mid-week (optional · only if Pfitz says >40% of peak).
     // 2026-06-21 · #7 · the medium-easy used to claim slots[longRunDow]
     // unconditionally. When longRunDow coincides with restDow or the
@@ -6596,7 +6710,9 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // marathon percentages, so feeding it a half's shallower profile capped
     // the week at 2 running days when the half protocol runs on four
     // (days 3, 4, 6, 7 · Research/00b:240-255).
-    const recoveryRunCap = runDaySeq[wi + recoveryOff] ?? runDaySeq[runDaySeq.length - 1];
+    // RECWK-RESTDAYS-1 (2026-08-25) · `recoveryRunCap` is now resolved at the
+    // TOP of the week, because the second rest day's placement depends on it.
+    // Same value, read once.
     // RECWK1-FREQ-1 (2026-06-23) · stated frequency is a CEILING for normal training, not a floor that
     // overrides recovery's deliberate frequency rebuild. A stated-freq=5 runner was getting 5 running days
     // in marathon-recovery week 1 (should be ~2). Apply recoveryRunCap to stated-freq runners too:
@@ -6610,7 +6726,6 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // recovery week is deliberately light, so size easy days off the budget
     // (a small 2mi sanity floor only, no baseline floor) and ensure the realized
     // day-sum tracks wkWeekly. Floor never inflates the week above its target.
-    const RECOVERY_MIN_EASY = 2;
     const perEasyRaw = targetEasyCount > 0 ? Math.round(easyMiBudget / targetEasyCount) : 0;
     // REC-EASY-CAP-1 (2026-06-23) · the mediumMi ceiling (originally added to prevent "recovery
     // easy" spikes when available_days constrains slots) was applied unconditionally. In early
@@ -6664,6 +6779,7 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
       last_race_finished: input.lastRaceFinished,
       next_race: input.nextRace,
       target_weekly_mi: weeks[0]?.weeklyMi ?? 0,
+      reverse_taper: reverseTaperRecord,
       // EVIDENCE-2 · a recovery block wrote NO pace anchor, so the race-prep
       // authoring that follows it found none and fell through to the calendar
       // blend ungated. Record the fitness the block was entered at.
@@ -7140,6 +7256,26 @@ async function persistPlan(client: PoolClient, args: {
 // ── Main entrypoint ─────────────────────────────────────────────────────
 
 /**
+ * WKRAMP-REC-1 (2026-08-25) · the whole-block ceiling a reverse taper is graded
+ * against, or null for every other block.
+ *
+ * Reads `authored_state.reverse_taper.block_ceiling_mi`, which only
+ * `composeRecoveryPlan` writes. Deliberately defensive about the shape: an
+ * older persisted block re-finalized through this path carries no
+ * `reverse_taper` key at all, and a block with no peak anchor publishes a null
+ * ceiling on purpose. Both answer null, which restores the ordinary
+ * week-over-week rule rather than trimming a week to zero.
+ */
+export function reverseTaperCeilingMi(composed: ComposePlanResult): number | null {
+  const st = composed.authoredState as Record<string, unknown> | undefined;
+  if (!st || st['mode'] !== 'recovery') return null;
+  const rt = st['reverse_taper'];
+  if (!rt || typeof rt !== 'object') return null;
+  const mi = (rt as Record<string, unknown>)['block_ceiling_mi'];
+  return typeof mi === 'number' && Number.isFinite(mi) && mi > 0 ? mi : null;
+}
+
+/**
  * Post-composition finalize · pure, mutates `composed` in place. Applies the
  * refinements that sit between composePlan and validateComposedPlan: the
  * long-run WoW smoother, the taper rescale, a second WoW smooth, and the final
@@ -7248,7 +7384,12 @@ export function finalizeComposedPlan(composed: ComposePlanResult, raceDistanceMi
   // how a beginner marathoner was authored a 44% week-over-week step. Runs on
   // the numbers VOL-1 just wrote and before the taper pass, so the taper
   // descends from the corrected peak. See the function's own note.
-  enforceWeeklyRampCeiling(composed.weeks, composed.vols, level);
+  //
+  // WKRAMP-REC-1 (2026-08-25) · a post-race reverse taper is graded against the
+  // PRE-RACE PEAK it is unwinding, not against its own deload weeks. Only
+  // `composeRecoveryPlan` publishes that ceiling, so every other composer
+  // passes null here and is byte-identical.
+  enforceWeeklyRampCeiling(composed.weeks, composed.vols, level, reverseTaperCeilingMi(composed));
 
   // 2026-06-23 · COH-4 · PROGRESSIVE taper enforcement, AFTER VOL-1 so it sees each week's REALIZED
   // day-sum. The race week's pre-race easy volume often EXCEEDS the volume-curve budget (the layout

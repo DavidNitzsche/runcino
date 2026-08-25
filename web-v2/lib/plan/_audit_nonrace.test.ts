@@ -45,7 +45,7 @@ import {
   type ComposePlanResult,
   type DOW,
 } from './generate';
-import { type GoalTier } from './goal-tiers';
+import { RECOVERY_RUN_DAYS, type GoalTier } from './goal-tiers';
 
 const SM = '2026-01-05'; // Monday
 
@@ -226,14 +226,44 @@ describe('NON-RACE composers · maintenance + recovery sweep', () => {
     expect(mk(31.0)).toBe(4);
   });
 
-  it('fix (l) · recovery week is a real cutback (day-sum tracks weekly, < base, ≥2 rest) when avail unrestricted', () => {
+  it('fix (l) · recovery week is a real cutback (day-sum tracks weekly, < base, rest days per its own run-day row) when avail unrestricted', () => {
+    // RECWK-RESTDAYS-1 (2026-08-25) · THE FLAT "≥2 REST" WAS ABOVE DOCTRINE,
+    // AND IT WAS HOLDING THE LAST REVERSE-TAPER WEEK BELOW ITS ROW.
+    //
+    // This assertion was written when every distance ran on the marathon
+    // percentages and `ceil(wkPct * 7)` never asked for more than five running
+    // days, so "≥2 rest" and the run-day table could not disagree. RECOVERY-3
+    // replaced that formula with each distance's own protocol, and two of its
+    // rows ask for SIX running days: the marathon's week 4 and the half's week
+    // 2. Two rest days out of seven make six arithmetically impossible, so the
+    // composer published a table it then capped — and the missing day was a
+    // whole easy run, which is what left a 62 mi/wk marathoner's week 4 at 60%
+    // of peak where Research/00b's row asks for 70-80%.
+    //
+    // Doctrine does not ask for two. Research/00b §"Recovery Scaled to Weekly
+    // Mileage" gives "Rest days/week" as 1-2 at 20-40 mpw, 1 at 40-60, 0-1 at
+    // 60-80 and "often 0" above that — and the week this now affects is the one
+    // the reverse taper calls "First true workout", immediately before the
+    // "full return to peak training load" doctrine puts at week 5-6. Weeks
+    // still rebuilding keep both rest days; only a week whose own row asks for
+    // six gives one up, and never the last one.
     const res = composeRecoveryPlan(baseInput({ tier: 'advanced', recentPeakWeeklyMi: 60, recentLongMi: 20, lastRaceFinished: { slug: 'l', name: 'M', date: '2026-01-01', distanceMi: 26.2 } }));
-    res.weeks.forEach((w) => {
+    res.weeks.forEach((w, i) => {
       const daySum = w.days.reduce((s, d) => s + d.distanceMi, 0);
       expect(daySum).toBeLessThanOrEqual(w.weeklyMi * 1.2 + 4);
       expect(w.weeklyMi).toBeLessThan(60);
-      expect(w.days.filter((d) => d.type === 'rest').length).toBeGreaterThanOrEqual(2);
+      // The week's own row is the authority, and it is read here rather than
+      // restated: a week that intends N running days may have 7 - N rest days,
+      // and never fewer than one.
+      const intended = RECOVERY_RUN_DAYS.m[i] ?? RECOVERY_RUN_DAYS.m[RECOVERY_RUN_DAYS.m.length - 1];
+      const rest = w.days.filter((d) => d.type === 'rest').length;
+      expect(rest, `week ${i + 1} · run-day row asks for ${intended}`).toBeGreaterThanOrEqual(Math.max(1, 7 - intended));
+      expect(rest, `week ${i + 1} · a recovery week is never a 7-day week`).toBeGreaterThanOrEqual(1);
     });
+    // And the rebuild really does rebuild: the block ends on more running days
+    // than it began with, which is the whole point of a reverse taper.
+    const runDays = (w: ComposePlanResult['weeks'][number]) => w.days.filter((d) => d.distanceMi > 0).length;
+    expect(runDays(res.weeks[res.weeks.length - 1])).toBeGreaterThan(runDays(res.weeks[0]));
   });
 
   it('fix (j) · maintenance + recovery never place a run on a non-available day', () => {
