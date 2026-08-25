@@ -768,7 +768,9 @@ struct RunDetailV5: View {
                             pieces: milePieces,
                             bandLine: splitBand != nil
                                 ? "Orange where the mile sat inside what the session asked for."
-                                : nil)
+                                : nil,
+                            allowsElevation: shape.showsElevation,
+                            allowsPace: shape.showsPerMilePace)
         case .none:
             // RULE THREE, belt and braces. A run with neither draws nothing.
             EmptyView()

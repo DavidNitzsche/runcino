@@ -284,6 +284,22 @@ enum RunShapeV5: Equatable {
         }
     }
 
+    /// A PACE COLUMN IN THE BREAKDOWN.
+    ///
+    /// Off on a recovery run, which is the only place this is false, and it is
+    /// the sharp end of the same ruling as `showsWholeRunPace`. `Research/03`
+    /// §14 does not say "de-emphasise pace" for a recovery jog, it says
+    /// "ignore pace" — and suppressing only the whole-run figure while listing
+    /// it mile by mile would leave the incentive exactly where it was.
+    /// `Research/00b` §"Recovery Run vs. Easy Run" names the consequence:
+    /// mislabelling the two "produces fatigue accumulation", and a runner
+    /// reading three paces off a recovery run is being invited to make it a
+    /// slow easy run.
+    ///
+    /// Heart rate stays, because that is the one thing the session is graded
+    /// on — RPE 2-3, under 60% HRmax.
+    var showsPerMilePace: Bool { self != .recovery }
+
     /// TEMPERATURE.
     ///
     /// Every outdoor run, because heat is the largest confounder of pace the

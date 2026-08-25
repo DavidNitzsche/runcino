@@ -748,7 +748,9 @@ struct TodayAfterV5: View {
                             pieces: milePieces,
                             bandLine: model.paceBand != nil
                                 ? "Orange where the mile sat inside what the session asked for."
-                                : nil)
+                                : nil,
+                            allowsElevation: shape.showsElevation,
+                            allowsPace: shape.showsPerMilePace)
         case .none:
             // RULE THREE. A run with neither draws nothing — not a header over
             // an empty list, which reads as a section that failed to load.

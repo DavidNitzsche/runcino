@@ -133,6 +133,7 @@ struct MileBreakdownV5: View {
     let title: String
     let pieces: [MilePiece]
 
+
     /// The colour rule, said once in words, when there is a rule to say.
     ///
     /// Carried over from the chart this replaces for the reason its own
@@ -142,11 +143,27 @@ struct MileBreakdownV5: View {
     /// describing something that is not happening.
     var bandLine: String? = nil
 
+    /// False where the run type says a per-mile climb is not a measurement.
+    /// Defaults true so a caller that has no shape still gets the data-driven
+    /// behaviour rather than a silently missing column.
+    var allowsElevation: Bool = true
+
+    /// False on a recovery run, where doctrine says to ignore pace outright.
+    /// See `RunShapeV5.showsPerMilePace`.
+    var allowsPace: Bool = true
+
     /// Columns are drawn only where at least one mile has something to put in
     /// them. See the header comment: a column of blanks reads as a failure to
     /// load, not as an absence of data.
     private var showsHr: Bool { pieces.contains { $0.hr != nil } }
-    private var showsElev: Bool { pieces.contains { $0.elevFt != nil } }
+    /// Data AND doctrine. A column nobody has readings for is not drawn — and
+    /// a column the run type says is a fabrication is not drawn even when
+    /// readings exist. A treadmill's per-mile "climb" is invented by the
+    /// barometer or zero regardless of a 6% grade; either way it is not the
+    /// run's climb. See `RunShapeV5.showsElevation`.
+    private var showsElev: Bool {
+        allowsElevation && pieces.contains { $0.elevFt != nil }
+    }
     /// Cadence is the first thing to go when the row is tight. It is the least
     /// asked-for of the four and the only one with no coaching consequence on
     /// this screen, so it draws only when there is room left after the rest.
@@ -198,7 +215,7 @@ struct MileBreakdownV5: View {
             // converts — but the SPLIT does not.
             Text("MILE")
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text("PACE").frame(width: numberColumn, alignment: .trailing)
+            if allowsPace { Text("PACE").frame(width: numberColumn, alignment: .trailing) }
             if showsHr { Text("HR").frame(width: numberColumn, alignment: .trailing) }
             if showsElev { Text("CLIMB").frame(width: numberColumn, alignment: .trailing) }
             if showsCadence { Text("SPM").frame(width: numberColumn, alignment: .trailing) }
@@ -230,11 +247,20 @@ struct MileBreakdownV5: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // THE PACE COLUMN IS THE ONLY ONE THAT CAN CARRY A VERDICT, and
-            // only when the session asked for something. `barFill(inBand:)`
-            // returns signal for nil too, so a run with no window draws every
-            // pace in full ink and asserts nothing.
-            cell(p.paceSec.map { Units.formatPaceBare(secPerMile: $0) },
-                 color: SplitBars.barFill(inBand: p.inBand))
+            // only when the session asked for something.
+            //
+            // `barFill(inBand:)` returns SIGNAL for nil, which is right on the
+            // chart it comes from — an orange bar among orange bars is
+            // neutral — and wrong here. A column of orange numbers reads as a
+            // column of highlighted numbers, so a run with no pace window
+            // would look graded when nothing was asked of it. Nil takes plain
+            // ink; the shared fill is consulted only when there is a window,
+            // which keeps `V5ContrastTests` measuring the colour that ships.
+            if allowsPace {
+                cell(p.paceSec.map { Units.formatPaceBare(secPerMile: $0) },
+                     color: p.inBand == nil ? V5.textPrimary
+                                            : SplitBars.barFill(inBand: p.inBand))
+            }
             if showsHr { cell(p.hr.map { "\($0)" }) }
             if showsElev { cell(p.elevFt.map { $0 > 0 ? "+\($0)" : "\($0)" }) }
             if showsCadence { cell(p.cadence.map { "\($0)" }) }
@@ -276,7 +302,10 @@ struct MileBreakdownV5: View {
         } else {
             out.append("Mile \(p.mile)")
         }
-        if let s = p.paceSec {
+        // A REFUSAL IS A REFUSAL IN BOTH CHANNELS. Speaking a pace the screen
+        // deliberately does not print would hand it straight back to the one
+        // reader who cannot see that it was withheld.
+        if allowsPace, let s = p.paceSec {
             out.append("\(Units.formatPaceBare(secPerMile: s)) per \(unitWord)")
         }
         if let hr = p.hr { out.append("heart rate \(hr)") }
