@@ -122,7 +122,9 @@ describe('asked vs ran · the Distance row', () => {
     expect(distance).toBeDefined();
     expect(distance?.label).toBe('Distance');
     expect(distance?.sub).toBe('asked 5 mi');
-    expect(distance?.value?.text).toBe('11 mi');
+    // Two places. The poster states the run's own distance now, so this row
+    // states it the same way — one number, one format, on one screen.
+    expect(distance?.value?.text).toBe('11.01 mi');
   });
 
   it('leads the table · every row under it is read through the distance moved', () => {
@@ -148,14 +150,21 @@ describe('asked vs ran · the Distance row', () => {
     expect(distance?.action).toBeNull();
   });
 
-  it('draws on a day the two AGREE · a row that appears only on a bad day teaches the runner to read its absence', () => {
+  it('stays away on a day the two AGREE · the poster already states the distance run', () => {
+    // REVERSED 2026-08-24, deliberately, and the old reasoning is worth
+    // keeping written down: a row that appears only on a bad day teaches the
+    // runner to read its absence. That held while this row was the ONLY place
+    // the distance appeared. It is not any more — the poster's top line states
+    // the distance actually run, on every run, so what appears conditionally
+    // here is the COMPARISON, and a comparison earns its place only when there
+    // is a difference to see.
+    //
+    // 5.02 against 5 is the ordinary difference between a plan and a pavement.
     const out = composeV5Today(baseCtx({
       todayPlan: { type: 'easy', subLabel: 'MEDIUM-LONG', distanceMi: 5, originalType: null, originalSubLabel: null },
-      recentRun: aug23Run({ distanceMi: 5.02 }),
+      recentRun: aug23Run({ distanceMi: 5.02, askedMi: 5 }),
     }));
-    const distance = out.askedVsRan.find((r) => r.id === 'distance');
-    expect(distance?.sub).toBe('asked 5 mi');
-    expect(distance?.value?.text).toBe('5 mi');
+    expect(out.askedVsRan.find((r) => r.id === 'distance')).toBeUndefined();
   });
 
   it('RULE THREE · no plan row means no Distance row, never an empty one', () => {
@@ -166,7 +175,11 @@ describe('asked vs ran · the Distance row', () => {
       recentRun: aug23Run({ askedMi: null }),
     }));
     expect(out.askedVsRan.find((r) => r.id === 'distance')).toBeUndefined();
-    expect(out.askedVsRan.map((r) => r.id)).toEqual(['pace', 'heart', 'effort']);
+    // Pace and Heart left this table too: pace is on the poster's top line,
+    // and heart moved to the readings, where the other sensor numbers are.
+    // Effort is what remains, and it is the only row that was ever really
+    // asked-versus-ran — the plan asked a band, and the answer is his.
+    expect(out.askedVsRan.map((r) => r.id)).toEqual(['effort']);
   });
 
   it('RULE ONE · the ran side is measured, because it is a logged distance', () => {

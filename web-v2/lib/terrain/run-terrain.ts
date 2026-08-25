@@ -42,7 +42,7 @@
  * angle is read from `phases[]` instead — the source that number came from,
  * consumed once rather than twice.
  */
-import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
+import { sanitizeElevGain, splitsContradictTotal } from '@/lib/runs/elev-sanity';
 import {
   runGradeAdjustment,
   type RunGradeAdjustment,
@@ -199,8 +199,42 @@ export function resolveRunTerrain(row: RunTerrainRow): RunTerrain {
     return { ...adj, note: terrainNote(adj, incline) };
   }
 
+  /* ── THE SPLIT SUM IS CHECKED AGAINST THE ROW'S OWN TOTAL (2026-08-24) ────
+   *
+   * Per-split deltas have precedence here because they are the only way this
+   * data model can tell a net-downhill run from a rolling one. That also made
+   * them the one elevation path that is never checked against anything: the
+   * `elevGainFt` branch below runs `sanitizeElevGain`, and this branch, which
+   * takes precedence over it, ran nothing.
+   *
+   * It matters because terrain does not merely decorate. `deriveRecap` judges
+   * pace against target THROUGH this factor, so a climb that never happened
+   * forgives a tempo that was genuinely off, and prints "the climbing was
+   * worth about 21s/mi · this was a harder effort than the pace shows".
+   *
+   * The check is arithmetic and one-directional, so it makes no claim about
+   * how steep a hill can be and is as correct in the Alps as in LA. A split is
+   * a NET delta over its mile: a mile that climbs 100 ft and gives it all back
+   * contributes 0 here and 100 ft to the true total. So the sum of per-mile
+   * positives can only ever UNDER-count the run's gain. When it OVER-counts,
+   * the two figures on this one row contradict each other and the row does not
+   * say which is wrong.
+   *
+   * Three canonical rows do exactly that: 554 ft of splits against a stored
+   * 174 (2026-06-18), 589 against 217 (2026-08-09), 2224 against 1238
+   * (2026-03-21). Rule three — no adjustment, and the note says why rather
+   * than saying nothing.
+   */
   const fromSplits = gainLossFromSplits(row.splits);
   if (fromSplits) {
+    const storedTotalFt = num(row.elevGainFt);
+    if (storedTotalFt != null && splitsContradictTotal(fromSplits.gainFt, storedTotalFt)) {
+      const adj = runGradeAdjustment({ distanceMi, durationSec, surface: 'outdoor' });
+      return {
+        ...adj,
+        note: 'Elevation did not add up on this one, so the climb is left out of the read.',
+      };
+    }
     const adj = runGradeAdjustment({
       distanceMi,
       durationSec,

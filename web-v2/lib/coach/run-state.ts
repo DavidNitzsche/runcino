@@ -30,6 +30,7 @@ import {
 } from '@/lib/runs/log-enrich';
 import { runFacts } from '@/lib/runs/run-facts';
 import { loadRunTwins, resolveElevationGain, resolveSplits } from '@/lib/runs/twins';
+import { hrToNum } from '@/lib/runs/run-shape';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
@@ -38,6 +39,7 @@ import {
 import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
 import { workAveragesFromPhases } from '@/lib/runs/work-averages';
 import { apportionToHundred } from './hr-zone-bucket';
+import { zoneSharesFromSplitHr } from './hr-zone-bucket';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 import { fmtPace as fmtPaceNoUnit, fmtClock } from '@/lib/format/run';
 // THE one enum-to-word table. Imported, never restated — see `type_display`.
@@ -1559,8 +1561,12 @@ export function mapWatchPhases(raw: unknown, heatSlowdownPct: number = 0): Phase
       actual_pace: fmtPace(actualSPerMi),
       actual_distance_mi: Number(p.actualDistanceMi) || null,
       actual_duration_sec: Number(p.actualDurationSec) || null,
-      avg_hr: Number(p.avgHr) || null,
-      max_hr: Number(p.maxHr) || null,
+      // 2026-08-24 · bounded, the same way the run-level reading is. `Number()
+      // || null` turns a 0 into an absence correctly and lets a 4 or a 250
+      // through as a measurement — and the phase panel prints it beside the
+      // rep. A strap sentinel is not a heart rate at any level of the payload.
+      avg_hr: hrToNum(p.avgHr),
+      max_hr: hrToNum(p.maxHr),
       avg_cadence: Number(p.avgCadence) || null,
       completed: Boolean(p.completed ?? true),
       status,
@@ -2021,47 +2027,17 @@ async function deriveHrZones(
   const z = computeZones({ lthr });
   if (!z) return null;
 
-  // Classify a HR reading. Friel's bands leave 1-bpm gaps between zones
-  // (e.g. Z2 upper 144, Z3 lower 146 at LTHR=162). A reading of 145 used to
-  // default to Z1 because the `.find()` missed every band — flooring it
-  // into Recovery is the opposite of what the runner did. Snap to the
-  // nearest band by midpoint distance instead.
-  const classify = (bpm: number) => {
-    const exact = z.zones.find((zz) => bpm >= zz.lower && bpm <= zz.upper);
-    if (exact) return exact;
-    let best = z.zones[0];
-    let bestDist = Infinity;
-    for (const zz of z.zones) {
-      const mid = (zz.lower + zz.upper) / 2;
-      const dist = Math.abs(bpm - mid);
-      if (dist < bestDist) { bestDist = dist; best = zz; }
-    }
-    return best;
-  };
-
-  // If we have per-mile HR, classify each mile.
-  if (splits.length > 0 && splits.some((s) => s.hr)) {
-    const counts = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-    let total = 0;
-    for (const s of splits) {
-      if (!s.hr) continue;
-      total++;
-      const zone = classify(s.hr - hrOffsetBpm);
-      const k = `z${zone.idx}` as keyof typeof counts;
-      counts[k]++;
-    }
-    // ZONES-SUM-1 · largest remainder, so the five add to exactly 100. Five
-    // independent roundings over one denominator could land on 99 or 101, and
-    // the web renderers set each bar's width straight from its percentage.
-    const share = apportionToHundred([counts.z1, counts.z2, counts.z3, counts.z4, counts.z5]);
-    if (share) return { z1: share[0], z2: share[1], z3: share[2], z4: share[3], z5: share[4] };
-  }
-
-  // No splits — assign 100% to the band the avg HR falls in. Already sums.
-  const empty = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
-  const zone = classify(hr - hrOffsetBpm);
-  const k = `z${zone.idx}` as keyof typeof empty;
-  return { ...empty, [k]: 100 };
+  // ONE BUCKETER. The per-mile counting, the readable-HR range and the
+  // largest-remainder apportionment all live in lib/coach/hr-zone-bucket.ts
+  // beside the per-sample path, so a run bucketed from samples and a run
+  // bucketed from mile averages cannot round differently or disagree about
+  // which band a beat is in. This file kept its own copy of all three.
+  //
+  // ZONES-SUM-2 · a null here is the answer, not a gap to fill. It used to
+  // end "no splits, so assign 100% to the band the average falls in", which
+  // is a chart of an hour drawn from one number. See the function's own doc
+  // comment for what that shipped on 16 of 149 canonical runs.
+  return zoneSharesFromSplitHr(splits, z, hrOffsetBpm);
 }
 
 /**

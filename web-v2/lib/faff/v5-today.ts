@@ -355,7 +355,7 @@ const MIN_CONVERGING_DOMAINS = 3; // CONVERGENCE.redMinDomains, lib/coach/conver
  * Re-exported rather than deleted because they are imported by name across
  * the app, and a rename is churn with no reader-visible benefit.
  */
-import { fmtMi, fmtClock, fmtPaceSlash as fmtPace } from '@/lib/format/run';
+import { fmtMi, fmtMi2, fmtClock, fmtPaceSlash as fmtPace } from '@/lib/format/run';
 export { fmtMi, fmtClock, fmtPace };
 
 const TRACK_M = [200, 300, 400, 600, 800, 1000, 1200, 1500] as const;
@@ -970,6 +970,58 @@ function buildRecentRun(r: V5RecentRunCtx): {
 } {
   const askedVsRan: V5Row[] = [];
 
+  // THE ASKED DISTANCE SURVIVES, BUT ONLY WHEN IT DISAGREES.
+  //
+  // The poster's top line now states the distance actually run, to two places,
+  // so restating it here was redundant — that is why the row went. What the
+  // top line does NOT carry is what the session ASKED for, and on the day the
+  // plan said 5 and the run covered 11, that is the only number that explains
+  // the screen.
+  //
+  // The old row drew always, and its argument was that a row appearing only on
+  // a bad day teaches the runner to read its absence. That argument applied
+  // when this row was the only place the distance appeared at all. It is not
+  // any more: the run's own distance is always on the poster. What appears
+  // conditionally is the COMPARISON, and a comparison is worth making only
+  // when there is a difference to see.
+  //
+  // No tone. Eleven against five is unambiguous arithmetic, and the screen
+  // still does not know whether he felt good and added or ran a route that
+  // came out long. It states both numbers and lets the verdict talk.
+  const askedMiForRow = r.askedMi;
+  if (askedMiForRow != null && r.distanceMi > 0) {
+    const gap = Math.abs(r.distanceMi - askedMiForRow);
+    // A quarter mile, or a tenth of the ask on a short session — below that it
+    // is the ordinary difference between a plan and a pavement.
+    const material = gap > Math.max(0.25, askedMiForRow * 0.1);
+    const askedText = fmtMi(askedMiForRow);
+    if (material && askedText) {
+      askedVsRan.push({
+        id: 'distance', label: 'Distance',
+        sub: `asked ${askedText}`,
+        value: num(fmtMi2(r.distanceMi), false),
+        action: null,
+      });
+    }
+  }
+
+  // DISTANCE, PACE AND HEART ARE NOT HERE ANY MORE.
+  //
+  // Distance and pace are the poster's own top line, two inches above — the
+  // table was restating them, and a number stated twice on one screen is a
+  // number that can disagree with itself.
+  //
+  // Heart moved to the readings below, where it sits with max heart rate,
+  // cadence and temperature. It was never in the top line, so it is not lost:
+  // it is with the other things a sensor measured, rather than in a table
+  // about what the session ASKED for. Nothing asked for a heart rate on an
+  // easy day.
+  //
+  // Effort is what is left, and it is the only row here that was ever really
+  // asked-versus-ran: the plan requested a band, the runner answered it, and
+  // the answer is his rather than a sensor's.
+
+
   /**
    * THE PACE THIS SCREEN MAY PRINT, checked against the clock printed beside
    * it. Not `r.paceSPerMi` directly — see `reconcilePaceWithClock`.
@@ -1007,14 +1059,6 @@ function buildRecentRun(r: V5RecentRunCtx): {
   // shows distance only when it went wrong is a table that means something
   // different on a good day, and the runner learns to read its absence.
   const askedMiText = fmtMi(r.askedMi);
-  if (askedMiText) {
-    askedVsRan.push({
-      id: 'distance', label: 'Distance',
-      sub: `asked ${askedMiText}`,
-      value: num(fmtMi(r.distanceMi), false),
-      action: null,
-    });
-  }
 
   // Pace's tone is left unset here on purpose. There is no context-aware
   // band available to this composer for a whole-run average — no tolerance,
@@ -1028,32 +1072,30 @@ function buildRecentRun(r: V5RecentRunCtx): {
   // example is this exact row ("a client comparison would paint a
   // deliberately easy taper mile amber"). Absent stays absent until the
   // engine actually holds that judgement.
+  // HEART STAYS ONLY WHEN THE SESSION ASKED FOR ONE.
+  //
+  // The plain reading moved to the readings below, with the other numbers a
+  // sensor produced. But a hard HR CAP is not a reading, it is a prescription
+  // — "stay under 146" — and exceeding it is the one unambiguous breach on
+  // this table. Dropping the row wholesale would have taken that signal with
+  // it, which is not what was asked for: the ask was to stop repeating what
+  // the poster already says, and the poster says nothing about heart rate.
+  //
+  // `askedHrIsHardCap` is load-bearing. The cap is display-resolved from three
+  // different meanings and only ONE is a ceiling; a threshold session that
+  // reached its own LTHR reference executed exactly as asked, and inking that
+  // amber would grade the point of the session as a fault.
+  if (r.askedHrCap != null && r.askedHrIsHardCap) {
+    askedVsRan.push({
+      id: 'heart', label: 'Heart',
+      sub: `under ${r.askedHrCap}`,
+      value: num(r.avgHr != null ? `${r.avgHr}` : null, false),
+      action: null,
+      tone: (r.avgHr != null && r.avgHr > r.askedHrCap) ? 'attention' : null,
+    });
+  }
+
   const askedPaceText = r.askedPaceSPerMi != null ? fmtPace(r.askedPaceSPerMi) : 'by feel';
-  askedVsRan.push({
-    id: 'pace', label: 'Pace', sub: askedPaceText,
-    // RULE ONE. `?? '—'` pre-formatted the dash HERE and shipped it as a
-    // measured string, which defeats the whole type: the phone's own
-    // `FaffValue.from(text:modelled:)` turns a NULL text into `.unreadable`
-    // and paints it fault red. A dash we typed is a measured value that
-    // happens to look like a dash. Null is the honest wire shape.
-    value: num(fmtPace(shownPaceSPerMi), false),
-    action: null,
-  });
-  askedVsRan.push({
-    id: 'heart', label: 'Heart',
-    sub: r.askedHrCap != null ? `under ${r.askedHrCap}` : null,
-    value: num(r.avgHr != null ? `${r.avgHr}` : null, false),
-    action: null,
-    // A stated ceiling is the one band this row's own sub-text already
-    // asserts ("under 146") — exceeding it is unambiguous, no heat/taper
-    // reasoning required. But `askedHrCap` is display-resolved from three
-    // different meanings (see `askedHrIsHardCap`'s doc comment) and only ONE
-    // of them is actually a ceiling; grading against the other two would
-    // paint a threshold session that reached its own LTHR reference as a
-    // miss, when reaching it was the point.
-    tone: (r.askedHrIsHardCap && r.askedHrCap != null && r.avgHr != null && r.avgHr > r.askedHrCap)
-      ? 'attention' : null,
-  });
   askedVsRan.push({
     id: 'effort', label: 'Effort',
     sub: r.effortAsked ? `${r.effortAsked.lo} to ${r.effortAsked.hi}` : null,
@@ -1090,7 +1132,14 @@ function buildRecentRun(r: V5RecentRunCtx): {
 
   const panelStats: V5Stat[] = [
     // Null, not a typed dash — see the askedVsRan pace row above.
-    { label: 'Distance', value: num(fmtMi(r.distanceMi), false), tone: null },
+    // THE DISTANCE ACTUALLY RUN, to two places.
+    //
+    // `fmtMi` rounds to a tenth and drops a trailing zero, so 4.02 printed
+    // "4 mi" — the PRESCRIBED distance, sitting where the run's own figure
+    // goes. A run is almost never exactly what was asked for, and a poster
+    // that rounds the difference away is quietly agreeing with the plan
+    // instead of reporting the morning.
+    { label: 'Distance', value: num(fmtMi2(r.distanceMi), false), tone: null },
     { label: 'Time', value: num(fmtClock(r.durationSec), false), tone: null },
     { label: 'Pace', value: num(fmtPace(shownPaceSPerMi), false), tone: null },
   ];

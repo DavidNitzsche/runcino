@@ -174,7 +174,7 @@ import {
   fastQualityLeftTheBand,
   slowQualityNeverReachedTheBand,
 } from '@/lib/training/threshold-band';
-import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
+import { conservativeVdotFromMileage, hrCapEasy } from '@/lib/plan/spec-builder';
 import { MAX_LONG_BUMP_MI, MAX_WEEKLY_BUMP_MI, MAX_PER_EASY_BUMP_MI } from '@/lib/plan/adaptive-ramp';
 import { COLD_START_CALIBRATION, simulate } from '@/lib/plan/simulator';
 import {
@@ -236,8 +236,8 @@ import {
   gradeFactor,
   treadmillEffectiveGradePct,
 } from '@/lib/terrain/grade-adjust';
-import { friel7Zones, lthrZones, pctMaxZones, PCT_MAX_ZONE_BANDS } from '@/lib/training/zones';
 import { deriveReadingScopes, HR_REP_KINETICS_FLOOR_SEC } from '@/lib/coach/reading-scope';
+import { friel7Zones, judgeEasyRunHr, lthrZones, pctMaxZones, PCT_MAX_ZONE_BANDS } from '@/lib/training/zones';
 import { lthrFromMaxHr } from '@/lib/training/lthr';
 import {
   EASY_HRMAX_CEILING_PCT,
@@ -2475,20 +2475,43 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'An easy run is capped at the top of the aerobic zone. Both the prescription side and ' +
       'the judgement side use the same ceiling, and it is the Friel Z2 upper bound — not a ' +
       'rounder number chosen because it looked about right.',
+    /* 2026-08-24 · CHECKS THE VALUE, NOT THE SPELLING.
+     *
+     * This used to read a `0.89` literal out of each of the two call sites.
+     * That proved they both said 0.89; it could not prove they agreed with
+     * the zone table the runner is shown, and when the bands were tiled to
+     * close the gaps between them (see `tiledBands` in zones.ts) the literal
+     * and the published Z2 upper came apart by a beat.
+     *
+     * Both sites now call `lthrZones` instead of re-deriving the fraction, so
+     * the claim imports the same function and asserts three things at once:
+     * the two sites agree with each other, they agree with the band the UI
+     * prints, and that band's top is where doctrine puts it — the beat below
+     * Z3's floor, checked to the ±1 bpm the sibling zone claims already use.
+     */
     check({ cite }) {
-      const ceiling = parsePctBand(cite.table().rows[1]['% LTHR'])[1];
-      const sites: [string, string, RegExp][] = [
-        ['web-v2/lib/plan/spec-builder.ts', 'hrCapEasy', /const lthrCap = lthr \? Math\.round\(lthr \* (\d*\.?\d+)\)/],
-        [
-          'web-v2/lib/training/zones.ts',
-          'judgeEasyRunHr',
-          /const easyCeilingBpm = Math\.round\(thresholdBpm \* (\d*\.?\d+)\)/,
-        ],
-      ];
-      for (const [file, binding, re] of sites) {
-        const v = Number(matchLiteral(sourceOf(file), re, binding)[1]);
-        if (Math.abs(v - ceiling) > 0.005) {
-          throw new Error(`${binding} caps easy at ${v} of LTHR · Friel Z2 tops out at ${ceiling}`);
+      const t = cite.table();
+      const z2hi = parsePctBand(t.rows[1]['% LTHR'])[1];
+      const z3lo = parsePctBand(t.rows[2]['% LTHR'])[0];
+      for (const lthr of [150, 162, 175, 190]) {
+        const published = lthrZones(lthr).zones[1].upper;
+        // The band the UI prints tops out where doctrine's next band starts.
+        within(published, [Math.round(lthr * z3lo) - 1 - 1, Math.round(lthr * z3lo) - 1 + 1],
+          `Friel Z2 ceiling at LTHR ${lthr}`);
+        within(published, [Math.round(lthr * z2hi) - 1, Math.round(lthr * z2hi) + 1],
+          `Friel Z2 ceiling vs the doctrine row at LTHR ${lthr}`);
+        // The judgement side grades against exactly that band.
+        const judged = judgeEasyRunHr({ avgHrBpm: 120, thresholdBpm: lthr });
+        if (judged == null || judged.easyCeilingBpm !== published) {
+          throw new Error(
+            `judgeEasyRunHr grades easy against ${judged?.easyCeilingBpm} at LTHR ${lthr} · ` +
+            `the Friel Z2 band it is shown beside tops out at ${published}`);
+        }
+        // And the prescription side asks for it.
+        const prescribed = hrCapEasy(lthr);
+        if (prescribed !== published) {
+          throw new Error(
+            `hrCapEasy prescribes ${prescribed} at LTHR ${lthr} · judgeEasyRunHr grades against ${published}`);
         }
       }
     },

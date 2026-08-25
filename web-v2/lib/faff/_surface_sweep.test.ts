@@ -624,7 +624,13 @@ function auditToday(out: V5Today, ctx: V5TodayContext, cell: Cell): Finding[] {
   const rowPace = out.askedVsRan.find((r) => r.id === 'pace')?.value?.text ?? null;
   if (out.state === 'after_run') {
     check();
-    if (panelPace !== rowPace) {
+    // ABSENCE IS NOT CONTRADICTION.
+    //
+    // The asked-vs-ran table no longer carries a pace row — the poster's top
+    // line is the one place a pace appears, which is what this rule was
+    // written to enforce in the first place. Two surfaces cannot disagree when
+    // only one of them speaks. The rule still fires the moment both do.
+    if (rowPace != null && panelPace !== rowPace) {
       add('SELF_CONTRADICTION', `panel pace ${JSON.stringify(panelPace)} and asked-vs-ran pace ${JSON.stringify(rowPace)} on one screen`, 'panel.stats/askedVsRan');
     }
   }

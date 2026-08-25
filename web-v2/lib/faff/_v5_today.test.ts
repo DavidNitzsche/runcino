@@ -151,7 +151,7 @@ describe('composeV5Today · state precedence', () => {
     }));
     expect(out.state).toBe('after_run');
     // Four rows, not three. Distance leads — see buildRecentRun's note.
-    expect(out.askedVsRan.map((r) => r.id)).toEqual(['distance', 'pace', 'heart', 'effort']);
+    expect(out.askedVsRan.map((r) => r.id)).toEqual(['effort']);
     expect(out.askedVsRan.find((r) => r.id === 'effort')?.action).toBeNull(); // already logged
     expect(out.zoneShares).toEqual([8, 26, 14, 46, 6]);
     expect(out.elevation).toEqual([0, 12, 8, 20]);
@@ -252,7 +252,12 @@ describe('composeV5Today · state precedence', () => {
         shoeWorn: null, niggleFlagged: null,
       },
     }));
-    expect(out.askedVsRan.find((r) => r.id === 'heart')?.tone).toBeNull();
+    // The row is ABSENT now, not present-and-uninked. A target or an LTHR
+    // reference is not a prescription to stay under, so there is nothing here
+    // to compare against and the reading lives with the other sensor numbers.
+    // The rule this test defends is unchanged and still proved: a non-cap
+    // reference never inks attention. It cannot — there is no row to ink.
+    expect(out.askedVsRan.find((r) => r.id === 'heart')).toBeUndefined();
   });
 
   it('race_day / before_run · groups say which one is the work, never inferred from position', () => {

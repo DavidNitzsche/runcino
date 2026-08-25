@@ -1099,8 +1099,26 @@ export function paceToSec(p: unknown): number | null {
  */
 export function hrToNum(h: unknown): number | null {
   if (h == null) return null;
-  const n = typeof h === 'number' ? h : Number(h);
-  return Number.isFinite(n) && n > 40 && n < 230 ? n : null;
+  const raw = typeof h === 'number' ? h : Number(h);
+  if (!Number.isFinite(raw)) return null;
+  /* A HEART RATE IS A COUNT OF BEATS (2026-08-24).
+   *
+   * Strava stores `average_heartrate` as a float and 68 of the 256 canonical
+   * rows carry one — 145.8, 151.4. This reader passed the tenths straight
+   * through and the recap printed them: "Long run done · 5.3 mi · avg HR
+   * 145.8 · kept it aerobic."
+   *
+   * Nothing in the app resolves a tenth of a beat. The zone bands are whole
+   * bpm, the plan's HR cap is a whole bpm, `judgeEasyRunHr` compares against
+   * a whole bpm, and the sensor reports whole beats which something upstream
+   * averaged. A decimal place there is precision the measurement does not
+   * have, printed as though it did.
+   *
+   * Rounded BEFORE the bounds, so a 229.6 does not round up out of the range
+   * it was admitted under.
+   */
+  const n = Math.round(raw);
+  return n > 40 && n < 230 ? n : null;
 }
 
 /** Identify which of the six shapes an element is. */

@@ -139,11 +139,13 @@ struct TodayAfterV5: View {
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 panel
-                askedVsRanSection
-                // THE READING, where run detail puts it: under what was asked
-                // against what was run, above the coach's verdict. Numbers
-                // first, then the sentence about them.
-                readingSection
+                // Effort, then the readings, as one column. The gap between
+                // them is the row gap, not the group gap — they are one list
+                // of numbers about one run, not two subjects.
+                VStack(alignment: .leading, spacing: 0) {
+                    askedVsRanSection
+                    readingSection
+                }
                 recapSection
                 if !model.groups.isEmpty {
                     groupsTile
@@ -817,14 +819,35 @@ struct TodayAfterV5: View {
 
     /// THE READING CARD. Drawn only when the run earned at least one row —
     /// a header over nothing reads as a section that failed to load.
+    /// THE READINGS, ON THE GROUND RATHER THAN ON A TILE.
+    ///
+    /// They used to sit in a `ListGroup` under a "READING" heading, which made
+    /// them look like a separate subject. They are not: they are the rest of
+    /// what the sensors recorded about the run whose effort is stated directly
+    /// above, and the effort row is the last thing the session ASKED for.
+    /// Continuing the same column, on the page's own black, says that — a
+    /// heading and a raised tile would keep insisting it is a new topic.
+    ///
+    /// Quieter than the effort row above them on purpose. Effort is his
+    /// answer; these are the watch's.
     @ViewBuilder
     private var readingSection: some View {
         if !readingRows.isEmpty {
-            ListGroup(header: "Reading") {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(readingRows, id: \.0) { row in
-                    ListRow(label: row.0, value: row.1)
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(row.0)
+                            .font(.faffText(TypeScaleV5.body15))
+                            .foregroundStyle(V5.textSecondary)
+                        Spacer(minLength: V5.S.s12)
+                        FaffValueText(row.1,
+                                      font: .faffText(TypeScaleV5.body15),
+                                      color: V5.textQuiet)
+                    }
+                    .frame(minHeight: 44)
                 }
             }
+            .padding(.horizontal, V5.S.s14x)
         }
     }
 

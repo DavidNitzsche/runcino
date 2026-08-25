@@ -38,6 +38,7 @@ import type { RunTerrain } from '@/lib/terrain/run-terrain';
 import { reconcilePaceWithClock } from '@/lib/runs/run-shape';
 import { miNum, fmtPaceSlash } from '@/lib/format/run';
 import type { ReadingScopes } from '@/lib/coach/reading-scope';
+import { expectedDaysForAnchor } from '@/lib/coach/recovery-phase';
 
 /**
  * Minutes of running below which `Research/18` prescribes no fuelling at all,
@@ -168,6 +169,35 @@ export interface RecapInput {
    *  pre-band output. 'calibration' softens with a learning frame ·
    *  'challenge' tersens. Word choice only, never structure. */
   voiceBand?: 'calibration' | 'guided' | 'challenge' | null;
+  /**
+   * 2026-08-24 · THE RACE BEHIND THIS RUN, when there is one close enough to
+   * be the reason for what the recap is about to observe.
+   *
+   * CLAUDE.md, per-finding context filters, locked 2026-05-19 round 4: a
+   * surface that aggregates N findings runs N filter applications, one per
+   * finding. This engine had no race-recency input at all, so every finding
+   * ran unfiltered — and the two findings whose CAUSE a recent race changes
+   * are the two a runner reads most in the week after one.
+   *
+   * The day after a marathon, an easy run whose heart rate sits above its cap
+   * read:
+   *
+   *     Your HR (152) ran past the 145 target. Slow it down next time · easy
+   *     days only work when they're actually easy.
+   *
+   * The observation is true. The instruction is wrong — an elevated easy-day
+   * heart rate is what the first days after a race are — and rule four says
+   * never scold. Same for a long run's HR drift, which is told to the runner
+   * as "usually fuel or water".
+   *
+   * Absent / null on every existing caller, and the copy is then byte-
+   * identical to the pre-filter output.
+   */
+  daysSinceRace?: number | null;
+  /** Distance of that race, miles. Sets the window length — the recovery
+   *  band is distance-keyed, and 21 days after a marathon is not the same
+   *  claim as 21 days after a 5K. Null leaves the filter off. */
+  raceDistanceMi?: number | null;
 }
 
 export interface RecapPayload {
@@ -266,6 +296,30 @@ function hrClause(input: RecapInput, opts?: { prefix?: string }): string {
   if (r.scope === 'whole') return `${prefix}${r.value}`;
   // Work scope · the interval rides with the number, always.
   return `${prefix}${r.value} ${r.note ?? 'on the work'}`;
+}
+
+/**
+ * A distance clause, or nothing.
+ *
+ * 2026-08-24 · EVERY LEAD LINE IN THIS FILE INTERPOLATED `miNum(...)`
+ * DIRECTLY, and `miNum` returns null for a distance the reader refuses. A
+ * template literal writes that null down. The recap route hands this function
+ * `runc.distanceMi ?? 0` — the `?? 0` is there because `deriveRecap` takes a
+ * non-nullable `actualMi` — so a row whose distance the reconciler declines
+ * arrives here as a zero, `miNum` refuses the zero, and the runner reads:
+ *
+ *     Easy null mi. Run by feel · the right way to take an easy day.
+ *
+ * Not a crash and not a fabrication, but it is the app failing in front of
+ * him, on the screen he opens after every run.
+ *
+ * Rule three. When there is no distance to state, the sentence says the other
+ * true things and leaves the distance out. It never guesses one and it never
+ * prints the word null.
+ */
+function miPhrase(mi: number | null | undefined): string | null {
+  const n = miNum(mi);
+  return n == null ? null : `${n} mi`;
 }
 
 /**
@@ -393,15 +447,32 @@ function detectHrDrift(splits: RecapInput['splits']): {
   lastHr: number;
 } | null {
   if (!splits || splits.length < 4) return null;
-  const withHr = splits
-    .map((s, i) => ({ i, hr: splitHr(s) }))
-    .filter((s): s is { i: number; hr: number } => s.hr != null && s.hr > 0);
-  if (withHr.length < 4) return null;
-  const half = Math.floor(withHr.length / 2);
-  const first = withHr.slice(0, half);
-  const last = withHr.slice(-half);
-  const firstAvg = first.reduce((s, x) => s + x.hr, 0) / first.length;
-  const lastAvg = last.reduce((s, x) => s + x.hr, 0) / last.length;
+  /* 2026-08-24 · CUT ON POSITION IN THE RUN, NOT POSITION IN THE SURVIVORS.
+   *
+   * This compacted to the splits carrying a heart rate and then halved THAT
+   * array, so "the back half" meant the back half of whatever survived. A
+   * twelve-mile run whose strap dropped after mile six compared miles 1-3
+   * against miles 4-6 and reported the result as "by the end". See
+   * `detectPaceFade` for the same fix and the sentence it produced.
+   *
+   * Cutting on the index within the ORIGINAL array keeps the halves meaning
+   * what the copy says they mean, and returns null when either half has
+   * nothing left to average — which is a refusal, and correct.
+   */
+  const mid = Math.floor(splits.length / 2);
+  const hrs = splits.map((s) => splitHr(s));
+  const first: number[] = [];
+  const last: number[] = [];
+  for (let i = 0; i < splits.length; i++) {
+    const hr = hrs[i];
+    if (hr == null || hr <= 0) continue;
+    (i < mid ? first : last).push(hr);
+  }
+  // Two per side is the floor the old `withHr.length < 4` gate implied; it
+  // just could not enforce which side they came from.
+  if (first.length < 2 || last.length < 2) return null;
+  const firstAvg = first.reduce((s, x) => s + x, 0) / first.length;
+  const lastAvg = last.reduce((s, x) => s + x, 0) / last.length;
   return {
     drift: Math.round(lastAvg - firstAvg),
     firstHr: Math.round(firstAvg),
@@ -415,11 +486,34 @@ function detectHrDrift(splits: RecapInput['splits']): {
  */
 function detectPaceFade(splits: RecapInput['splits']): number | null {
   if (!splits || splits.length < 5) return null;
-  const paced = splits.map(s => splitPaceS(s)).filter((p): p is number => p != null && p > 0);
-  if (paced.length < 5) return null;
-  const cut = Math.floor(paced.length * 2 / 3);
-  const front = paced.slice(0, cut);
-  const back = paced.slice(cut);
+  /* 2026-08-24 · "THE LAST THIRD" HAS TO BE THE LAST THIRD OF THE RUN.
+   *
+   * This dropped the splits with no pace and then took the last third of what
+   * was LEFT. On a twelve-mile run whose GPS stopped pacing after mile six,
+   * the six survivors compacted to a six-element array and the "last third"
+   * became miles 5 and 6 — the middle of the run — reported to the runner as:
+   *
+   *     The last third was about 60s/mi slower than the rest.
+   *     Worth checking your fueling.
+   *
+   * A real observation, attached to the wrong part of the run, with a cause
+   * attached to that. The numbers were all real; the sentence was not.
+   *
+   * Cutting on the index within the ORIGINAL array fixes the attribution, and
+   * an empty side returns null. Rule three: when the back of the run was not
+   * paced, there is no back-half read, and saying nothing is the answer.
+   */
+  const cut = Math.floor(splits.length * 2 / 3);
+  const front: number[] = [];
+  const back: number[] = [];
+  for (let i = 0; i < splits.length; i++) {
+    const p = splitPaceS(splits[i]);
+    if (p == null || p <= 0) continue;
+    (i < cut ? front : back).push(p);
+  }
+  // The old gate wanted five paced splits before it would speak. Keep the
+  // same weight of evidence, now with both sides guaranteed to be represented.
+  if (front.length < 3 || back.length < 1 || front.length + back.length < 5) return null;
   const frontAvg = front.reduce((s, x) => s + x, 0) / front.length;
   const backAvg = back.reduce((s, x) => s + x, 0) / back.length;
   return Math.round(backAvg - frontAvg);
@@ -533,6 +627,29 @@ function judgeableAgainstTarget(input: RecapInput): boolean {
   return input.terrain?.basis !== 'treadmill-incline-unknown';
 }
 
+/**
+ * TRUE when a race is close enough behind this run to be the reason for an
+ * elevated heart rate, rather than something the runner did wrong today.
+ *
+ * The window is `expectedDaysForAnchor('race', distance)` — the SAME
+ * distance-keyed band `lib/coach/recovery-phase.ts` reads out of
+ * `Research/00b` §"Recovery by Distance", not a second number invented here.
+ * A marathon buys three weeks, a 5K buys six days, and the two surfaces
+ * cannot come to disagree about which.
+ *
+ * Applied per finding, never at the top of the function. The distance, the
+ * pace, the split spread and the rep pattern are all still reported exactly as
+ * measured in this window — a race does not make a run unmeasurable. Only the
+ * findings whose stated CAUSE the race changes are reframed.
+ */
+function inPostRaceWindow(input: RecapInput): boolean {
+  const days = input.daysSinceRace;
+  const mi = input.raceDistanceMi;
+  if (days == null || !Number.isFinite(days) || days < 0) return false;
+  if (mi == null || !Number.isFinite(mi) || mi <= 0) return false;
+  return days <= expectedDaysForAnchor('race', mi);
+}
+
 export function deriveRecap(input: RecapInput): RecapPayload {
   /**
    * THE PACE THIS RECAP MAY SPEAK, checked against the run's own clock before
@@ -600,6 +717,11 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
   // bars and the drift chip all change their mind at the same moment.
   const heatExplainsDrift = conditionsMaterial && (weather?.slowdownPct ?? 0) >= 2;
 
+  // 2026-08-24 · resolved ONCE, applied PER FINDING below. Heat is checked
+  // first at every site it matters, because a hot day is the more specific
+  // explanation and a runner in the week after a race still runs in weather.
+  const postRace = inPostRaceWindow(input);
+
   // 2026-06-09 Phase 2 (3.2) · a TAKEN bail leads the facts. The runner
   // made the smart call mid-run; the recap must say so before any
   // pace/distance copy reads like a miss. Breached-but-continued gets a
@@ -626,7 +748,26 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
   switch (input.type) {
     case 'long': {
       const finishMi = input.finishMi ?? 0;
-      const hasFinish = finishMi > 0 && input.finishPaceSPerMi != null;
+      /* 2026-08-24 · A BREAKDOWN THAT DOES NOT ADD UP IS NOT A BREAKDOWN.
+       *
+       * `finishMi` is the PRESCRIBED finish segment, off `workout_spec`. The
+       * easy portion below is `actualMi − finishMi` clamped at zero, and the
+       * finish leg was never clamped at all — so a 20-mile long run with a
+       * 6-mile marathon-pace finish, abandoned at mile 3, printed:
+       *
+       *     Long run done · 0mi easy + 6mi @ MP 6:40 · avg HR 150.
+       *
+       * Six miles at marathon pace, on a run that covered three. Both halves
+       * of the sentence are drawn from real fields and the sum is fiction —
+       * the worst of the three outcomes, because the runner cannot tell.
+       *
+       * A prescribed segment longer than the whole run is proof the segment
+       * was not run as prescribed, and nothing on this wire says how much of
+       * it was. So the structured line is refused and the plain long-run line
+       * states the distance that is actually known. Rule three.
+       */
+      const finishFitsTheRun = finishMi > 0 && input.actualMi > 0 && finishMi <= input.actualMi;
+      const hasFinish = finishFitsTheRun && input.finishPaceSPerMi != null;
       if (hasFinish) {
         // Easy portion = what was ACTUALLY run minus the finish segment, so
         // the breakdown sums to the real distance covered — not plannedMi,
@@ -646,13 +787,18 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
          * zone is a nicety; naming it wrong is a defect. */
         const label = rawLabel === 'HM' ? 'HMP' : rawLabel === 'M' ? 'MP' : rawLabel || null;
         const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
+        // A leg that rounds to nothing is not a leg. "0mi easy + 6mi @ MP" on
+        // a 6.2-mile run reads as a run with no easy portion, which is a
+        // different session from the one that happened.
+        const easyLeg = easyMi > 0 ? `${easyMi}mi easy + ` : '';
         facts.push(
-          `Long run done · ${easyMi}mi easy + ${Math.round(finishMi)}mi @ ${label ? `${label} ` : ''}${fPaceStr}${hrPart}.`,
+          `Long run done · ${easyLeg}${Math.round(finishMi)}mi @ ${label ? `${label} ` : ''}${fPaceStr}${hrPart}.`,
         );
       } else {
         const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
+        const miPart = miPhrase(input.actualMi);
         facts.push(
-          `Long run done · ${miNum(input.actualMi)} mi${hrPart} · kept it aerobic.`,
+          `Long run done${miPart ? ` · ${miPart}` : ''}${hrPart} · kept it aerobic.`,
         );
       }
       /* 2026-08-19 · FUEL IS A CAUSE ONLY ONCE THE RUN IS LONG ENOUGH TO HAVE
@@ -682,6 +828,14 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
           facts.push(
             `Your HR climbed ${drift.drift} bpm by the end (${drift.firstHr} → ${drift.lastHr}). That's normal in heat like this · the body works harder to cool itself, not because you're slowing down.`,
           );
+        } else if (postRace) {
+          // PER-FINDING FILTER. Fuel is the usual cause of a long-run HR
+          // climb and it is the wrong one this week: the aerobic system is
+          // still carrying a race. Naming fuel here sends the runner to fix
+          // something that is not broken.
+          facts.push(
+            `Your HR climbed ${drift.drift} bpm by the end (${drift.firstHr} → ${drift.lastHr}). Expected this soon after the race · the legs are still paying it back.`,
+          );
         } else if (fuellingApplies) {
           facts.push(
             `Your HR climbed ${drift.drift} bpm by the end (${drift.firstHr} → ${drift.lastHr}). Usually fuel or water · try eating something earlier and drinking more next time.`,
@@ -694,9 +848,12 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       }
       if (fade && fade > 25 && !heatExplainsDrift) {
         facts.push(
-          fuellingApplies
-            ? `The last third was about ${fade}s/mi slower than the rest. Worth checking your fueling.`
-            : `The last third was about ${fade}s/mi slower than the rest. Too short to be fuel · that's a pacing read, so go out closer to the pace you can hold.`,
+          postRace
+            // PER-FINDING FILTER, again on the CAUSE and not on the number.
+            ? `The last third was about ${fade}s/mi slower than the rest. Normal this close to the race · the endurance comes back last.`
+            : fuellingApplies
+              ? `The last third was about ${fade}s/mi slower than the rest. Worth checking your fueling.`
+              : `The last third was about ${fade}s/mi slower than the rest. Too short to be fuel · that's a pacing read, so go out closer to the pace you can hold.`,
         );
       }
       return {
@@ -712,7 +869,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       // range, so compare actual to the easy target and say what happened:
       // honest-easy, a touch quick (the one easy-day mistake worth flagging),
       // or relaxed. Falls back to a by-feel line when there's no target pace.
-      const lead = `Easy ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}.`;
+      const easyMiPart = miPhrase(input.actualMi);
+      const lead = easyMiPart
+        ? `Easy ${easyMiPart}${paceStr ? ' at ' + paceStr : ''}.`
+        : `Easy run${paceStr ? ' at ' + paceStr : ''}.`;
       const easyTgt = input.plannedPaceSPerMi ?? null;
       const easyAct = input.actualPaceSPerMi ?? null;
       if (easyTgt && easyAct && judgeableAgainstTarget(input)) {
@@ -747,6 +907,12 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       if (input.plannedHrCap && input.actualAvgHr && input.actualAvgHr > input.plannedHrCap + 5) {
         if (heatExplainsDrift) {
           facts.push(`Your HR (${input.actualAvgHr}) ran a bit above the ${input.plannedHrCap} target, but it was hot · effort was right.`);
+        } else if (postRace) {
+          // PER-FINDING FILTER. The reading stands; the instruction does not.
+          // An easy-day heart rate sitting above its cap is what the days
+          // after a race are, and telling the runner to slow down implies he
+          // did something wrong. Rule four: never scold.
+          facts.push(`Your HR (${input.actualAvgHr}) sat above the ${input.plannedHrCap} target. That is the race still in the legs, not the pace.`);
         } else {
           facts.push(`Your HR (${input.actualAvgHr}) ran past the ${input.plannedHrCap} target. Slow it down next time · easy days only work when they're actually easy.`);
         }
@@ -762,14 +928,33 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
     case 'tempo':
     case 'threshold': {
       const workPaceStr = paceLabel(input.workPaceSPerMi);
-      // Was `actualAvgHr`, unqualified, in a sentence about the tempo block.
-      // The two halves described different intervals and nothing said so.
+      // Scoped, not whole-run: the two halves of this sentence described
+      // different intervals and nothing said so.
       const hrPart = hrClause(input);
-      const leadLine = workPaceStr && input.workDistanceMi
-        ? `Tempo done · ${miNum(input.workDistanceMi)} mi @ ${workPaceStr.replace('/mi', '')}${hrPart}.`
+      /* THE WORK BLOCK IS PART OF THE RUN, NOT LONGER THAN IT (2026-08-24).
+       *
+       * `workDistanceMi` is the sum of the work phases' `actualDistanceMi`
+       * from the watch completion, and nothing checked it against the run it
+       * decomposes. Same shape as the long-run finish leg, in the tempo arm:
+       * a phase set carrying a target distance for a rep the runner did not
+       * reach, or a rep counted twice by a merge, prints "Tempo done · 8 mi @
+       * 6:52" on a five-mile run — two real fields whose sum is fiction.
+       *
+       * No canonical row does this today (55 watch completions, none), which
+       * is exactly why it is worth pinning now: the finish leg did not either,
+       * until it did. When the block does not fit the run, the pace is still
+       * true and is still printed; only the distance claim is dropped.
+       */
+      const workMiFits = input.workDistanceMi != null && input.actualMi > 0
+        ? input.workDistanceMi <= input.actualMi + 0.05
+        : input.actualMi <= 0 ? false : true;
+      const workMiPart = workMiFits ? miPhrase(input.workDistanceMi) : null;
+      const tempoMiPart = miPhrase(input.actualMi);
+      const leadLine = workPaceStr && workMiPart
+        ? `Tempo done · ${workMiPart} @ ${workPaceStr.replace('/mi', '')}${hrPart}.`
         : workPaceStr
           ? `Tempo done · ${workPaceStr} tempo block${hrPart}.`
-          : `Tempo done · ${miNum(input.actualMi)} mi total${paceStr ? ' at ' + paceStr : ''}${hrClause(input, { prefix: ', avg HR ' })}.`;
+          : `Tempo done${tempoMiPart ? ` · ${tempoMiPart} total` : ''}${paceStr ? ' at ' + paceStr : ''}${hrClause(input, { prefix: ', avg HR ' })}.`;
       facts.push(leadLine);
       // Execution analysis: how did the work block actually go?
       // Reads work-phase splits vs target — specific to this run.
@@ -824,7 +1009,33 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
         // not the pace. Covers "didn't finish" for rep-based sessions.
         leadLine = `Did ${reps.length} of ${prescribed} reps${avgPart}${hrPart}.`;
       } else if (reps.length >= 2 && target && adj) {
-        const inRange = reps.filter((p) => p >= target - 6 && p <= adj + 4).length;
+        /* 2026-08-24 · THE BAND WAS EXCLUDING EVERY POSSIBLE PACE.
+         *
+         * `target - 6` to `adj + 4` was written when the only adjustment was
+         * heat, which can only ever make a target SLOWER, so `adj >= target`
+         * held and the interval was well ordered. Terrain arrived later and
+         * goes the other way: a net-downhill session gets `adj < target`, and
+         * once the run is downhill enough that `adj + 4 < target - 6` the
+         * "band" is an empty interval. Not a narrow one — empty. No number
+         * satisfies it.
+         *
+         * A six-mile session down 900 ft, four reps of 399/401/400/402
+         * against a 400 target, read:
+         *
+         *     0 of 4 reps in range · HR 160.
+         *     Even across all 4 · held the line. HR 160 says the effort was right.
+         *
+         * Two sentences in one payload, and the first is false for any rep
+         * the runner could have run — including one landing exactly on either
+         * target.
+         *
+         * Ordering the bounds keeps both edges doing their job: the fast edge
+         * still catches overcooking and the slow edge still forgives the
+         * conditions, whichever direction the conditions pushed.
+         */
+        const lo = Math.min(target, adj) - 6;
+        const hi = Math.max(target, adj) + 4;
+        const inRange = reps.filter((p) => p >= lo && p <= hi).length;
         leadLine =
           inRange === reps.length
             ? `All ${reps.length} reps in range${avgPart}${hrPart}.`
@@ -837,7 +1048,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
             ? `Reps done · ${repStr}${hrPart}.`
             : workPaceStr
               ? `Reps done · ${workPaceStr} work avg${hrPart}.`
-              : `Reps done · ${miNum(input.actualMi)} mi total${paceStr ? ' at ' + paceStr + ' avg' : ''}${hrClause(input, { prefix: ', HR ' })}.`;
+              : (() => {
+                  const m = miPhrase(input.actualMi);
+                  return `Reps done${m ? ` · ${m} total` : ''}${paceStr ? ' at ' + paceStr + ' avg' : ''}${hrClause(input, { prefix: ', HR ' })}.`;
+                })();
       }
       facts.push(leadLine);
       facts.push(pacing.fact ?? `Building the top end · these stack.`);
@@ -881,7 +1095,7 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
           ? `Sharpener done · ${reps.length} at ${workPaceStr.replace('/mi', '')}${hrPart}.`
           : workPaceStr
             ? `Sharpener done · ${workPaceStr} on the work${hrPart}.`
-            : `Sharpener done · ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}${hrPart}.`,
+            : (() => { const m = miPhrase(input.actualMi); return `Sharpener done${m ? ` · ${m}` : ''}${paceStr ? ' at ' + paceStr : ''}${hrPart}.`; })(),
       );
       facts.push('Race week. This was about touching race pace, not testing fitness · heavy legs now are the taper, not a problem.');
       return {
@@ -901,8 +1115,8 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       const surges = (input.repPaces ?? []).filter((p) => typeof p === 'number' && p > 0);
       facts.push(
         surges.length >= 2
-          ? `Fartlek done · ${surges.length} surges over ${miNum(input.actualMi)} mi.`
-          : `Fartlek done · ${miNum(input.actualMi)} mi of mixed effort.`,
+          ? (() => { const m = miPhrase(input.actualMi); return m ? `Fartlek done · ${surges.length} surges over ${m}.` : `Fartlek done · ${surges.length} surges.`; })()
+          : (() => { const m = miPhrase(input.actualMi); return m ? `Fartlek done · ${m} of mixed effort.` : 'Fartlek done · mixed effort.'; })(),
       );
       if (surges.length >= 4) {
         const half = Math.floor(surges.length / 2);
@@ -933,7 +1147,7 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       // "| Progression | Start easy; finish at marathon pace or faster |".
       // So the read is the delta between the ends, never the middle.
       const fade = detectPaceFade(input.splits);
-      facts.push(`Progression done · ${miNum(input.actualMi)} mi.`);
+      facts.push((() => { const m = miPhrase(input.actualMi); return m ? `Progression done · ${m}.` : 'Progression done.'; })());
       facts.push(
         fade != null && fade <= -15
           ? `Dropped about ${Math.abs(fade)}s/mi from the front third to the back. That is the workout.`
@@ -951,7 +1165,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
 
     case 'recovery':
     case 'shakeout': {
-      facts.push(`Recovery jog · ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}. Just blood flow. Box checked.`);
+      {
+        const m = miPhrase(input.actualMi);
+        facts.push(`Recovery jog${m ? ` · ${m}` : ''}${paceStr ? ' at ' + paceStr : ''}. Just blood flow. Box checked.`);
+      }
       return {
         verdict: 'Legs cleared.',
         facts,
@@ -961,7 +1178,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
     }
 
     case 'race': {
-      facts.push(`Race · ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`);
+      {
+        const m = miPhrase(input.actualMi);
+        facts.push(`Race${m ? ` · ${m}` : ''}${paceStr ? ' at ' + paceStr : ''}${input.actualAvgHr ? ', avg HR ' + input.actualAvgHr : ''}.`);
+      }
       return {
         verdict: 'Raced it.',
         facts,
@@ -971,7 +1191,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
     }
 
     default: {
-      facts.push(`Logged · ${miNum(input.actualMi)} mi${paceStr ? ' at ' + paceStr : ''}.`);
+      {
+        const m = miPhrase(input.actualMi);
+        facts.push(`Logged${m ? ` · ${m}` : ''}${paceStr ? ' at ' + paceStr : ''}.`);
+      }
       return {
         verdict: 'Logged.',
         facts,

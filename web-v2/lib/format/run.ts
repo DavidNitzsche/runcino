@@ -136,6 +136,23 @@ function minSec(totalSec: number): string {
 export function miNum(mi: number | null | undefined): string | null {
   if (!usable(mi)) return null;
   const r = roundTo(mi, 1);
+  // A RUN THAT HAPPENED MAY NOT PRINT AS ZERO (2026-08-24).
+  //
+  // One decimal turns every distance under 0.05 mi into the string "0", and
+  // "0" is the one value this formatter is documented to refuse — `usable`
+  // rejects a zero because zero is not a distance. So a mis-started watch
+  // logging 0.01 mi, or a treadmill entry of 0.03, printed a number the same
+  // module says cannot be a distance, and the recap read "Easy 0 mi at
+  // 5:00/mi" — a pace across nothing.
+  //
+  // Below the point where one decimal can carry the value, two decimals do.
+  // Nothing else changes: 0.05 and up round exactly as before. Below 0.005 mi
+  // — eight metres — two decimals cannot carry it either, and there is no
+  // distance here worth writing down; that refuses like any other absent one.
+  if (r === 0) {
+    const r2 = roundTo(mi, 2);
+    return r2 === 0 ? null : r2.toFixed(2);
+  }
   return r % 1 === 0 ? r.toFixed(0) : r.toFixed(1);
 }
 

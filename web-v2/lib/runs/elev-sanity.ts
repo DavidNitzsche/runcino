@@ -62,6 +62,27 @@ export interface ElevSanityResult {
 /** Cap: above this ft/mi we don't trust the raw without corroboration. */
 const SUSPICION_THRESHOLD_FT_PER_MI = 250;
 
+/**
+ * TRUE when a run's per-mile positives sum to MORE than the total climb the
+ * same row reports, by more than rounding can explain.
+ *
+ * That direction is arithmetically impossible, not merely surprising. A split
+ * is a NET delta over its mile: a mile that climbs 100 ft and gives it all
+ * back contributes 0 to this sum and 100 ft to the true total. So the sum of
+ * per-mile positives can only ever UNDER-count the gain. When it over-counts,
+ * one of the two figures is wrong and the row does not say which.
+ *
+ * Three canonical rows: 554 ft of splits against a stored 174 (2026-06-18),
+ * 589 against 217 (2026-08-09), 2224 against 1238 (2026-03-21).
+ *
+ * 10% plus 10 ft of slack, because the two are rounded independently and a
+ * short run's rounding is a large share of a small number.
+ */
+export function splitsContradictTotal(splitPositiveFt: number, storedTotalFt: number): boolean {
+  if (!(storedTotalFt > 0) || !(splitPositiveFt > 0)) return false;
+  return splitPositiveFt > storedTotalFt * 1.1 + 10;
+}
+
 export function sanitizeElevGain(input: ElevSanityInput): ElevSanityResult {
   const raw = Number(input.elevGainFt);
   if (!isFinite(raw) || raw <= 0) {

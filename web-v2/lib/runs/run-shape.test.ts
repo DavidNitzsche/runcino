@@ -151,7 +151,17 @@ describe('accessors · null for absent, never a default', () => {
     expect(runAvgHr({ avgHr: 0 })).toBeNull();
     expect(runAvgHr({ avgHr: 4 })).toBeNull();
     expect(runAvgHr({ avgHr: 250 })).toBeNull();
-    expect(runAvgHr({ avgHr: 117.2 })).toBe(117.2); // fractional values are real
+    // 2026-08-24 · fractional readings are REAL and are rounded for use.
+    // Strava stores `average_heartrate` as a float and 68 of the 256
+    // canonical rows carry one, so the recap printed "avg HR 145.8" — a
+    // tenth of a beat, which nothing in the app resolves and no sensor
+    // reported. The value is kept, its false precision is not.
+    expect(runAvgHr({ avgHr: 117.2 })).toBe(117);
+    expect(runAvgHr({ avgHr: 145.8 })).toBe(146);
+    // Rounded before the bounds, so a reading admitted inside the range
+    // cannot round its way out of it.
+    expect(runAvgHr({ avgHr: 229.6 })).toBeNull();
+    expect(runAvgHr({ avgHr: 40.6 })).toBe(41);
   });
 
   it('isMergedAway keys on presence, not value', () => {
