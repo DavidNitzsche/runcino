@@ -40,6 +40,7 @@
 import {
   selectWorkout,
   PHASE_FROM_ENGINE,
+  type CapFamily,
   type Dose,
   type PlacedSession,
   type RecentSession,
@@ -507,6 +508,16 @@ export interface SlotRequest {
    * does with it and why it is not the overload trajectory's job.
    */
   blockPosition?: number | null;
+  /**
+   * ONE-PER-FAMILY-1 · what this WEEK has left in each of Daniels' three capped
+   * families, after every other slot in it is accounted for.
+   *
+   * The composer's number, because only the composer knows how many slots the
+   * week is filling and what the earlier ones already spent. Passed straight
+   * through — `SelectorInput.capFamilyRemainingMi` carries the reasoning and
+   * the defect it closes.
+   */
+  capFamilyRemainingMi?: Partial<Record<CapFamily, number>> | null;
 }
 
 export type SlotChoice =
@@ -621,6 +632,7 @@ export function selectSlotWorkout(req: SlotRequest): SlotChoice {
         exclude,
         targetAtPaceMinutes: req.targetAtPaceMinutes ?? null,
         blockPosition: req.blockPosition ?? null,
+        capFamilyRemainingMi: req.capFamilyRemainingMi ?? undefined,
       };
       const res = selectWorkout(input);
       if (res.ok) {

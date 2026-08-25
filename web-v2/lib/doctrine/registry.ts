@@ -74,8 +74,10 @@ import {
 import { DOCTRINE_PHASES } from '@/lib/workout-catalogue/types';
 import { ZONE_TARGET, raceZoneTargets, zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 import {
+  capFamilyOf,
   combinationViolation,
   rampedReps,
+  selectWorkout,
   LONG_RUN_WEEKLY_SHARE_CAP,
   PHASE_FROM_ENGINE,
 } from '@/lib/workout-catalogue/select';
@@ -5601,6 +5603,48 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
   {
+    id: 'PROGRESSION.interval-rep-ceiling-binds-both-levers',
+    binds: ['lib/prescription/levers.ts#advanceShape.work_density'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## 6. VO2max workouts',
+    claim:
+      'The 3-5 minute VO2 repetition bounds the DENSITY lever as well as the duration lever. ' +
+      'SLOT-ROTATE-3 stopped density merging a rep set below §6.1\'s three-rep floor and left ' +
+      'the rep length unbounded, so with the count pinned at three every further step poured ' +
+      'the set into longer repetitions instead: a marathon\'s race-specific weeks shipped 3x7 ' +
+      'and then 3x10 minutes labelled as intervals. Past the window the session is threshold ' +
+      'work wearing VO2\'s name, which is the same failure the count floor exists to prevent.',
+    check({ cite }) {
+      const rep = matchLiteral(
+        cite.text(), /each interval should be (\d+)[–-](\d+) min long/, 'VO2 rep window',
+      );
+      const max = Number(rep[2]);
+      within(INTERVAL_REP_MINUTES.max, [max, max], 'VO2 rep maximum minutes');
+      // Behaviour: a set whose merge would exceed the window is refused, on a
+      // weekly mileage whose volume cap is nowhere near binding.
+      const merged = advanceShape({
+        shape: { reps: 6, repMinutes: max, recoveryMinutes: 3, paceSPerMi: 360, zone: 'ESTABLISHED' },
+        lever: 'work_density', stepMultiplier: 1, weeklyMi: 120, family: 'interval',
+      });
+      if (!merged.capped) {
+        throw new Error(
+          `the density lever merged 6x${max} into ${merged.shape.reps}x${merged.shape.repMinutes}, past the ${max}-minute window`,
+        );
+      }
+      // And the same fence on R, whose window Research/01 states at two minutes.
+      // Four reps rather than eight because the merge divides the same total by
+      // one fewer rep: 8x2 lands back on 2 once rounded and is no breach, while
+      // 4x2 lands on 2.67 and is one.
+      const r = advanceShape({
+        shape: { reps: 4, repMinutes: REPETITION_REP_MINUTES_MAX, recoveryMinutes: 3, paceSPerMi: 300, zone: 'ESTABLISHED' },
+        lever: 'work_density', stepMultiplier: 1, weeklyMi: 120, family: 'repetition',
+      });
+      if (!r.capped) {
+        throw new Error('the density lever walked an R set past its two-minute repetition ceiling');
+      }
+    },
+  },
+  {
     id: 'PROGRESSION.week-affordability-respects-the-share-cap',
     binds: [
       'lib/prescription/trajectory.ts#clampToWeek',
@@ -10397,6 +10441,52 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (duplicatePaceFamily(['threshold', 'intervals']) !== null) {
         throw new Error('duplicatePaceFamily rejects a legal T + I week');
+      }
+    },
+  },
+  {
+    id: 'DOSING.cap-family-is-the-session-not-the-slot',
+    binds: [
+      'lib/workout-catalogue/select.ts#selectWorkout',
+      'lib/plan/generate.ts#capLedger',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 12.3 1K cutdowns',
+    claim:
+      'Which of Daniels\' three capped families a session spends is a property of the SESSION\'S ' +
+      'OWN PACES, not of the slot it lands on. §12.3\'s 1K cutdowns run "Start at MP, finish at ' +
+      '5K", so they are charged to the interval budget however the composer files them — and a ' +
+      'week that has already committed its interval budget to a rep session cannot afford them. ' +
+      'DOSING.one-session-per-pace-family holds the same rule over the SLOT TYPES; without this ' +
+      'one a week ran the cutdown on its threshold slot beside a full 1200m set, spent 16% of ' +
+      'the week at I against doctrine\'s 8%, and both sessions were then trimmed below the rep ' +
+      'floors their own doc rows state.',
+    check({ cite }) {
+      // The doc must still put this session's finish above threshold. If a
+      // future edit stops it there, the charge changes and this fails loudly.
+      matchLiteral(cite.table().cell('Pace', 'Prescription'), /Start at MP, finish at 5K/i, '1K cutdown pace ramp');
+      const cutdown = workoutBySlug('1k-cutdowns');
+      if (!cutdown) throw new Error('§12.3 1K cutdowns is not in the catalogue');
+      if (capFamilyOf(cutdown) !== 'interval') {
+        throw new Error(`§12.3 finishes at 5K but is charged to ${capFamilyOf(cutdown)}`);
+      }
+      // Behaviour: offered a week with NOTHING left in the interval budget, the
+      // selector must not place it — whatever slot is asking.
+      const ask = (intervalLeftMi: number) =>
+        selectWorkout({
+          phase: 'specific_support', distance: 'm', tier: 'advanced', weekIndex: 4,
+          weeklyMi: 56, slot: 'threshold',
+          anchors: { MP: 420, '5K': 340, T: 390, I: 355, R: 320 },
+          exclude: new Set(
+            WORKOUT_CATALOGUE.filter((e) => e.slug !== '1k-cutdowns').map((e) => e.slug),
+          ),
+          capFamilyRemainingMi: { threshold: 5.6, interval: intervalLeftMi, repetition: 2.8 },
+        });
+      if (ask(4.5).ok !== true) {
+        throw new Error('§12.3 was refused on a week whose interval budget is untouched');
+      }
+      if (ask(0).ok !== false) {
+        throw new Error('§12.3 was placed on a week whose whole interval budget is already spent');
       }
     },
   },
