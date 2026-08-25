@@ -3490,9 +3490,29 @@ function layoutWeek({
       };
       /** Slots still to be resolved, in order, by their nominal family. */
       const pending = plannedSlots.map((s) => (s ? nominalOf(s.qt) : null));
+      /**
+       * ONE-PER-FAMILY-2 · the SAME ceilings `sizeFromPrescription` will apply.
+       *
+       * `sizeFromPrescription` cuts a rep set against three bounds — the
+       * session cap, `slotBudgetMi`, and `mpLongAtPaceCapMi` — and the selector
+       * priced against only the first. So on a marathon-pace long week the
+       * selector offered §11.2's Canova 2K repeats at their doctrine floor of
+       * four, the cut then took them to two, and the runner read "2×2km · MP →
+       * T | Canova 2K repeats · Research/04 §11.2" against a row that says
+       * "4–8 × 2 km". The 75%-easy floor leaving 2.9 at-pace miles beside a
+       * ten-mile MP finish is CORRECT; offering a session that cannot fit in
+       * 2.9 miles and then shaving it until it does is not. Priced here, the
+       * selector refuses it and ranks the next session §15 places on the slot,
+       * and if nothing fits the slot falls back to the trajectory's generic
+       * shape — which claims no doc row and is the honest answer.
+       */
+      const slotCeilingMi = (qt: DayPlan['type']): number => Math.min(
+        slotBudgetMi(qt),
+        mpLongAtPaceCapMi ?? Infinity,
+      );
       return {
         /** What slot `i` may spend in each family, given the rest of the week. */
-        remainingFor(i: number): Partial<Record<CapFamily, number>> {
+        remainingFor(i: number, qt: DayPlan['type']): Partial<Record<CapFamily, number>> {
           const mine = pending[i];
           const claimedByOthers = new Set<CapFamily>();
           for (let j = 0; j < pending.length; j++) {
@@ -3500,11 +3520,12 @@ function layoutWeek({
             const f = pending[j];
             if (f) claimedByOthers.add(f);
           }
+          const ceiling = slotCeilingMi(qt);
           const out: Partial<Record<CapFamily, number>> = {};
           for (const f of FAMILIES) {
             out[f] = f !== mine && claimedByOthers.has(f)
               ? 0
-              : Math.max(0, budget[f] - spent[f]);
+              : Math.max(0, Math.min(budget[f] - spent[f], ceiling));
           }
           return out;
         },
@@ -3690,7 +3711,7 @@ function layoutWeek({
             // ONE-PER-FAMILY-1 · what this week has left in each of Daniels'
             // three capped families, with the families the week's OTHER slots
             // are budgeted for held back. See `capLedger` above.
-            capFamilyRemainingMi: capLedger.remainingFor(slotIdx),
+            capFamilyRemainingMi: capLedger.remainingFor(slotIdx, qt),
           })
         : null;
       if (choice?.ok) {
