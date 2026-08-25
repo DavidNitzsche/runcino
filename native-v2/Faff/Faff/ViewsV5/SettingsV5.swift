@@ -43,7 +43,7 @@ import SwiftUI
 /// What this screen needs to render. The composition root assembles this
 /// from `UserSettings` + `ProfileFields`; this file does not know either
 /// shape.
-struct SettingsV5Model {
+struct SettingsV5Model: Equatable {
     var longRunDay: String
     var longRunDayOptions: [String]
     var daysPerWeek: Int
@@ -151,6 +151,10 @@ struct SettingsV5: View {
         // The phone-run switch is the ONE control here that talks to the
         // network directly — see the file header.
         .onChange(of: phoneRunEnabled) { _, newValue in
+            // Only write a value the server does not already have. Without
+            // this the revert below (a failed write putting the local state
+            // back) would itself look like a toggle and write again.
+            guard newValue != model.phoneRunEnabled else { return }
             if let onSetPhoneRun {
                 onSetPhoneRun(newValue)
             } else {
@@ -159,6 +163,38 @@ struct SettingsV5: View {
                     await SettingsCache.shared.invalidate()
                 }
             }
+        }
+        // 2026-08-25 · THE SCREEN HAS TO FOLLOW THE SERVER BACK.
+        //
+        // Every control here writes through the host, and every one of the
+        // host's writers ends `await load()` — which rebuilds `model` from
+        // `SettingsCache` so a write that did not land shows its real value
+        // again. It could not. `State(initialValue:)` runs on the FIRST build
+        // of a view only, and `SettingsHostV5` keeps this view's identity
+        // across every reload, so all six locals below were seeded once at
+        // first render and never looked at the model again. (The identical
+        // trap is called out in `LiveRunTreadmillV5`, where a plan arriving
+        // after the first build never reached the belt.)
+        //
+        // Both host writers are `_ = try? await`, so a PATCH that fails is
+        // silent — and with the state frozen the screen went on showing the
+        // runner's choice while the server kept the old one. Two of these are
+        // `long_run_day` and `weekly_frequency`: the day the training week
+        // ends, and how many times a week the engine writes a run. A runner
+        // who believes they moved their long run to Saturday, on a server that
+        // still says Sunday, gets a plan shaped against a week they think they
+        // changed, with nothing on screen disagreeing.
+        //
+        // Following the model means a failed write now visibly reverts. That
+        // is not the same as saying so, which the host should — noted in the
+        // report — but a silent revert beats a silent lie.
+        .onChange(of: model) { _, m in
+            longRunDay = m.longRunDay
+            daysPerWeek = m.daysPerWeek
+            phoneRunEnabled = m.phoneRunEnabled
+            sessionReminders = m.sessionReminders
+            weeklySummary = m.weeklySummary
+            units = m.units
         }
     }
 
@@ -221,8 +257,15 @@ struct SettingsV5: View {
             .padding(V5.S.tilePad)
             .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
         }
-        .onChange(of: sessionReminders) { _, newValue in onToggleSessionReminders(newValue) }
-        .onChange(of: weeklySummary) { _, newValue in onToggleWeeklySummary(newValue) }
+        // Same guard as the phone-run switch above · a revert is not a tap.
+        .onChange(of: sessionReminders) { _, newValue in
+            guard newValue != model.sessionReminders else { return }
+            onToggleSessionReminders(newValue)
+        }
+        .onChange(of: weeklySummary) { _, newValue in
+            guard newValue != model.weeklySummary else { return }
+            onToggleWeeklySummary(newValue)
+        }
     }
 
     // MARK: Units
