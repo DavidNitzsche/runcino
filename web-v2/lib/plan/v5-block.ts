@@ -48,7 +48,7 @@ import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 // RACE-PREP-OPENS-1 · the Block screen asks the mode machine itself when the
 // build opens, rather than re-deriving it from BUILD_WINDOW_WEEKS.
-import { pickPlanMode } from '@/lib/plan/goal-tiers';
+import { buildOpensISO } from '@/lib/plan/goal-tiers';
 import {
   proposeChange,
   loadPlanShape,
@@ -204,33 +204,6 @@ export function buildSoFar(state: TrainingState) {
 }
 
 // ── coach line ───────────────────────────────────────────────────────────
-
-/**
- * The first day `pickPlanMode` would answer 'race-prep' for this race, asked
- * of the function itself rather than re-derived from `BUILD_WINDOW_WEEKS`.
- *
- * `pickPlanMode` does not open the window at exactly `race − buildWindow`:
- * MAINT-SKIP-1 pulls it forward whenever fewer than one whole maintenance week
- * would remain. A date computed off the constant would be right most of the
- * time and wrong at the seam, which is the one week a runner would be looking
- * at it. Null when the race is already inside the window (so the caller says
- * nothing rather than naming a date in the past) or when it never opens.
- */
-export function buildOpensISO(
-  todayISO: string,
-  raceDateISO: string,
-  raceDistanceMi: number,
-): string | null {
-  if (pickPlanMode(todayISO, raceDateISO, raceDistanceMi, null, null) === 'race-prep') return null;
-  const day = (n: number) =>
-    new Date(Date.parse(todayISO + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);
-  for (let n = 1; n <= 400; n++) {
-    const d = day(n);
-    if (d > raceDateISO) return null;
-    if (pickPlanMode(d, raceDateISO, raceDistanceMi, null, null) === 'race-prep') return d;
-  }
-  return null;
-}
 
 export function buildCoachLine(
   state: TrainingState,

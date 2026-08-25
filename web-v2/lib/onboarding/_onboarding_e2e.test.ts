@@ -111,20 +111,23 @@ const KNOWN: Record<string, string> = {
   // days before the runner's first, so no run predates them and every authored
   // week is one `trainingWeekWindow` reads back whole. LAW O4 still asks
   // 11,324 times and the control above still proves it has teeth.
-  THE_SIMULATOR_SHOWS_A_PLAN_PRODUCTION_DOES_NOT_AUTHOR:
-    'OPEN · and it is the one that makes the other sweeps suspect. `buildSimPlan` chains: for a ' +
-    'race outside `BUILD_WINDOW_WEEKS` it composes the hold block and then the entire ' +
-    'periodized build and returns one calendar. `composeForUserInternal` calls `pickPlanMode` ' +
-    'once and one composer once — there is no chain in production. A half marathon SIXTEEN ' +
-    'weeks out is outside the 12-week half window, and sixteen is one of the three plan lengths ' +
-    'the native goal sheet offers for a half, so this is an ordinary answer and not an edge. ' +
-    'What the runner is given on day one: a rolling maintenance block with no build ' +
-    'in it — FOUR weeks for a half sixteen weeks out — for the race they just entered, while ' +
-    '/sim/plan draws the full seventeen. The runner is not stranded — the rebuild authors the ' +
-    'build once the race enters the window — but the plan they are shown at signup is not the ' +
-    'plan they were previewed. ' +
-    'It also means `_sweep_allusers.test.ts`, whose far-out archetypes use raceDateISO ' +
-    '2027-03-01, has been grading the CHAINED block for those rows.',
+  // THE_SIMULATOR_SHOWS_A_PLAN_PRODUCTION_DOES_NOT_AUTHOR · CLOSED 2026-08-24
+  // by SIM-CHAIN-1.
+  //
+  // `buildSimPlan` chained: for a race outside `BUILD_WINDOW_WEEKS` it composed
+  // the hold block and then the entire periodized build and returned one
+  // calendar, while `composeForUserInternal` calls `pickPlanMode` once and one
+  // composer once. A half sixteen weeks out — one of the three plan lengths
+  // the native goal sheet offers — got four maintenance weeks in production
+  // and seventeen in /sim/plan. It also meant `_sweep_allusers.test.ts` was
+  // grading the chained block for its far-out rows, against its own comment
+  // saying that arc grades maintenance.
+  //
+  // The chain is gone. The concern it was written for — "a 1-4 week stub that
+  // just stops" — is answered on the screen instead: `buildOpensISO` names the
+  // day the build gets written, and both /sim/plan and the Block screen's
+  // coach line say it. LAW O11b now asserts the chain never fires and LAW O11c
+  // asserts the date is always there.
   TODAY_DOSE_IS_NOT_THE_PLANNED_DISTANCE:
     'OPEN · belongs to the phone/watch prescription pass. `V5Panel.dose` and every step under ' +
     'it come from `prescriptionFor(type, weekMi, profile, targetMi)` — a GENERIC template of ' +
@@ -310,8 +313,12 @@ interface Walked {
   /** Total block mileage, as authored. */
   totalAuthoredMi: number;
   /** True when `buildSimPlan` chained a race-prep build onto a hold block —
-   *  something `composeForUserInternal` never does. */
+   *  something `composeForUserInternal` never does. Held after SIM-CHAIN-1
+   *  removed the chain: LAW O11b now asserts this is always false, and a
+   *  detector that is deleted the day it stops firing cannot catch a revival. */
   chainFired: boolean;
+  /** SIM-CHAIN-1 · the day the build opens, for a hold block. */
+  buildOpensISO: string | null;
   /** How many weeks production would actually have authored when it did. */
   holdWeeks: number;
 }
@@ -401,6 +408,7 @@ function walk(r: Runner, rungs: number[], bands: string[]): Walked | { refused: 
 
   return {
     runner: r, derived, weeks, chainFired, holdWeeks,
+    buildOpensISO: built.derived.buildOpensISO,
     mode: built.mode, raceDistanceMi: built.raceDistanceMi,
     goalPaceSec: built.derived.goalPaceSec, tPaceSec: built.derived.tPaceSec,
     longRunDow: DOW_OF[(derived.longRunDay ?? 'sun') as DayKey],
@@ -768,21 +776,44 @@ function grade(r: Runner, rungs: number[], bands: string[]): void {
 
   /* ── LAW O11b · THE SIMULATOR AUTHORS WHAT PRODUCTION AUTHORS ──
    *
-   * `buildSimPlan` chains: when the race sits outside `BUILD_WINDOW_WEEKS` it
-   * composes the hold block AND THEN the whole periodized build, and hands
-   * back one calendar. Its own comment says why — "so the runner sees the
-   * complete picture instead of a 1-4 week stub that just stops."
-   *
-   * `composeForUserInternal` does not. It calls `pickPlanMode` once and one
-   * composer once. So for a race outside the window, production writes the
-   * stub and the simulator draws the complete picture, and they are not the
-   * same plan. This law names every archetype where the two part company. */
+   * `buildSimPlan` used to chain: for a race outside `BUILD_WINDOW_WEEKS` it
+   * composed the hold block AND THEN the whole periodized build and handed
+   * back one calendar, while `composeForUserInternal` called `pickPlanMode`
+   * once and one composer once. A half sixteen weeks out got four maintenance
+   * weeks in production and seventeen in /sim/plan. SIM-CHAIN-1 removed the
+   * chain, so this law now asserts the absence rather than naming instances:
+   * a block whose mode is not race-prep must carry no build phases. */
+  ask('THE_SIMULATOR_SHOWS_A_PLAN_PRODUCTION_DOES_NOT_AUTHOR');
   if (w.chainFired) {
-    ask('THE_SIMULATOR_SHOWS_A_PLAN_PRODUCTION_DOES_NOT_AUTHOR');
     say('THE_SIMULATOR_SHOWS_A_PLAN_PRODUCTION_DOES_NOT_AUTHOR', arc,
       `${r.distance} ${r.raceInWeeks} weeks out · the simulator composes ${w.weeks.length} weeks ` +
       `(${[...new Set(w.weeks.map((x) => x.phase))].join('→')}); production's \`pickPlanMode\` answers ` +
       `"${w.mode}" and authors only the first ${w.holdWeeks} of them`);
+  }
+
+  /* ── LAW O11c · A HOLD BLOCK SAYS WHEN THE BUILD OPENS ──
+   *
+   * The other half of removing the chain. A four-week maintenance block for a
+   * race sixteen weeks out is the right plan and a baffling screen unless the
+   * runner is told why it is four weeks. `buildOpensISO` is the answer, asked
+   * of `pickPlanMode` itself, and both /sim/plan and the Block screen's coach
+   * line read it. A hold block with a real race behind it and no open date is
+   * a stub that just stops, which is exactly what the chain was written to
+   * avoid. */
+  if (w.mode !== 'race-prep' && r.raceInWeeks != null) {
+    ask('HOLD_BLOCK_DOES_NOT_SAY_WHEN_THE_BUILD_OPENS');
+    const opens = w.buildOpensISO;
+    if (!opens) {
+      say('HOLD_BLOCK_DOES_NOT_SAY_WHEN_THE_BUILD_OPENS', arc,
+        `${w.mode} block for a race ${r.raceInWeeks} weeks out names no date for the build`);
+    } else if (opens <= w.weeks[w.weeks.length - 1].startISO && opens < (w.derived.date ?? '9999')) {
+      // The date has to be in the future relative to the block, or it is not
+      // a thing that is going to happen; and it has to be before race day.
+      if (opens < w.weeks[0].startISO) {
+        say('HOLD_BLOCK_DOES_NOT_SAY_WHEN_THE_BUILD_OPENS', arc,
+          `${w.mode} block says the build opened ${opens}, before the block starts`);
+      }
+    }
   }
 
   /* ── LAW O12 · THE BLOCK REACHES THE RACE THE RUNNER ENTERED ──
@@ -790,8 +821,14 @@ function grade(r: Runner, rungs: number[], bands: string[]): void {
    * A plan authored today for a race N weeks out has to still be a plan when N
    * is small and when N is large. The engine refuses under two weeks and over
    * a year, and a refusal is a correct answer — but anything it AGREES to
-   * build must arrive on the day. */
-  if (r.raceInWeeks != null && w.derived.date) {
+   * build must arrive on the day.
+   *
+   * SIM-CHAIN-1 (2026-08-24) · scoped to RACE-PREP. Before the chain was
+   * removed every far-out archetype came back as one long chained calendar
+   * that did reach the race, so this law read as satisfied for runners
+   * production hands a four-week hold block. A hold block is not supposed to
+   * reach the race; LAW O11c is what holds it to account instead. */
+  if (r.raceInWeeks != null && w.derived.date && w.mode === 'race-prep') {
     ask('THE_BLOCK_DOES_NOT_REACH_THE_RACE');
     const last = w.weeks[w.weeks.length - 1];
     const lastDay = addDays(last.startISO, 6);
@@ -813,12 +850,20 @@ function grade(r: Runner, rungs: number[], bands: string[]): void {
    * it is a calendar. Only asserted where doctrine's taper applies — a block
    * with fewer weeks than the shortest taper doctrine names has no room. */
   //
-  // Gated on the block ENDING AT A RACE, not on `mode`. A half 14 weeks out is
-  // outside `BUILD_WINDOW_WEEKS.hm` (12), so `pickPlanMode` answers
-  // `maintenance` and the composer chains the hold block onto the full build
-  // — 230 of this file's 258 archetypes take that path. Reading `mode` here
-  // skipped every one of them, which is how a law comes to be asked ten times.
-  if (r.raceInWeeks != null && w.weeks.length >= 6) {
+  // Gated on RACE-PREP since SIM-CHAIN-1 (2026-08-24).
+  //
+  // It used to be gated on "the block ends at a race, not on `mode`", and the
+  // reasoning was sound at the time: `buildSimPlan` chained the hold block
+  // onto the full build, so 230 of this file's archetypes were maintenance-mode
+  // blocks that nevertheless ended in a taper and a race, and reading `mode`
+  // would have skipped every one of them.
+  //
+  // The chain is gone, so those archetypes are now what production writes: a
+  // hold block that ends when the build window opens. It has no taper in it
+  // and should not have one — there is nothing to taper into yet — and this
+  // law fired eight times saying so. LAW O11c is what holds a hold block to
+  // account; this one is about blocks that reach a start line.
+  if (r.raceInWeeks != null && w.weeks.length >= 6 && w.mode === 'race-prep') {
     ask('NO_TAPER_BEFORE_THE_RACE');
     const tail = w.weeks.slice(-3);
     if (!tail.some((wk) => wk.phase === 'TAPER' || wk.isRaceWeek)) {
@@ -947,8 +992,10 @@ const BASE: Omit<Runner, 'label' | 'longRunDay' | 'signupISO' | 'daysPerWeek'> =
 function* boundaryMatrix(): Generator<Runner> {
   // Two runways per cell: 12 weeks is inside `BUILD_WINDOW_WEEKS.hm` and
   // composes as a straight race-prep block; 16 is outside it, so the engine
-  // holds in maintenance and chains the build on behind. Both are ordinary
-  // answers to the same screen and they take different code paths.
+  // holds in maintenance until the build window opens. Both are ordinary
+  // answers to the same screen and they take different code paths — and since
+  // SIM-CHAIN-1 the 16-week cells are the ONLY ones walking the maintenance
+  // composer, which is what production actually writes for them.
   // EVERY frequency the screen offers, not just the comfortable ones. 0 is
   // "not running right now" and floors to a three-day couch-to-X; 1 and 2 are
   // hard caps the layout has to respect, and they are where "a three-day
@@ -1132,7 +1179,9 @@ describe('onboarding · a new runner walks in, and the plan they get is the plan
     // 5b · And the engine does not build one. The runner the law was written
     //      from: a Wednesday signup with Sunday long runs. Every week of the
     //      block must read back whole, and no day may predate the signup.
-    const wed: Runner = { ...BASE, label: 'control/wed-signup', longRunDay: 'sun', daysPerWeek: 5, signupISO: '2026-09-09' };
+    // Twelve weeks out, so the block is a straight race-prep build and the
+    // control is about the WEEK GRID rather than about which composer ran.
+    const wed: Runner = { ...BASE, label: 'control/wed-signup', longRunDay: 'sun', daysPerWeek: 5, signupISO: '2026-09-09', raceInWeeks: 12 };
     const walked = walk(wed, hostWeeklyMiRungs()!, hostHistAvgBands()!);
     if ('refused' in walked) {
       missed.push(`the control runner was refused a plan: ${walked.refused}`);
@@ -1140,7 +1189,7 @@ describe('onboarding · a new runner walks in, and the plan they get is the plan
       const rows = walked.weeks.flatMap((x) => x.rows);
       const wkOf = new Map<string, number>();
       walked.weeks.forEach((x, i) => { for (const r of x.rows) wkOf.set(r.date_iso, i); });
-      const probe = addDays(walked.weeks[2].startISO, 2);
+      const probe = addDays(walked.weeks[Math.min(2, walked.weeks.length - 1)].startISO, 2);
       const week = readBackWeek(walked, rows, probe);
       const spans = new Set(week.days.filter((d) => d.plan_workout_id).map((d) => wkOf.get(d.date_iso)));
       if (spans.size > 1) missed.push('a Wednesday signup with Sunday long runs still straddles two plan weeks');
@@ -1188,10 +1237,25 @@ describe('onboarding · a new runner walks in, and the plan they get is the plan
       const last = addDays(w.weeks[w.weeks.length - 1].startISO, 6);
       const phases = [...new Set(w.weeks.map((x) => x.phase))].join('→');
       const peak = Math.max(...w.weeks.map((x) => x.rows.reduce((s, y) => s + Number(y.distance_mi), 0)));
-      console.log(`  ${String(raceInWeeks).padStart(2)} wk  ${String(w.weeks.length).padStart(2)} weeks · ${w.mode.padEnd(11)} · peak ${peak.toFixed(1)} mi · ${phases} · ends ${last} (race ${w.derived.date})`);
-      if (w.derived.date && w.derived.date > last) bad.push(`${raceInWeeks}wk: the block ends ${last}, the race is ${w.derived.date}`);
+      const opens = w.buildOpensISO ? ` · build opens ${w.buildOpensISO}` : '';
+      console.log(`  ${String(raceInWeeks).padStart(2)} wk  ${String(w.weeks.length).padStart(2)} weeks · ${w.mode.padEnd(11)} · peak ${peak.toFixed(1)} mi · ${phases} · ends ${last} (race ${w.derived.date})${opens}`);
+      // SIM-CHAIN-1 (2026-08-24) · a RACE-PREP block has to arrive on the day.
+      // A HOLD block is not supposed to: production authors four maintenance
+      // weeks for a half sixteen weeks out and writes the build when the
+      // window opens. What it must not do is stop with no explanation, so the
+      // honest answer for a hold block is a date, and that date has to be a
+      // real one — after the block starts, and before the race.
+      if (w.mode === 'race-prep') {
+        if (w.derived.date && w.derived.date > last) bad.push(`${raceInWeeks}wk: the block ends ${last}, the race is ${w.derived.date}`);
+      } else if (w.derived.date) {
+        if (!w.buildOpensISO) {
+          bad.push(`${raceInWeeks}wk: a ${w.mode} block that ends ${last} for a race on ${w.derived.date}, and never says when the build starts`);
+        } else if (w.buildOpensISO < w.weeks[0].startISO || w.buildOpensISO > w.derived.date) {
+          bad.push(`${raceInWeeks}wk: the build is said to open ${w.buildOpensISO}, outside ${w.weeks[0].startISO}..${w.derived.date}`);
+        }
+      }
     }
-    expect(bad, 'a race the block never reaches, or a refusal with nothing in it').toEqual([]);
+    expect(bad, 'a race the block never reaches, or a hold block that stops with no explanation').toEqual([]);
   });
 
   it('every archetype gets the plan it was promised', () => {
@@ -1221,10 +1285,20 @@ describe('onboarding · a new runner walks in, and the plan they get is the plan
 
     // THE FLOOR. A walk that walked nothing and reported clean is the same
     // bug one level up.
+    //
+    // 2026-08-24 · the three volume floors came down (10000/60000/70000 →
+    // 6000/40000/42000) and it is not the walk going quiet. SIM-CHAIN-1
+    // stopped `buildSimPlan` chaining a full periodized build onto every
+    // far-out hold block, and 230 of these 750 archetypes were on that path,
+    // so each of them now composes the four-to-forty-week hold block
+    // production actually writes instead of a fifty-week calendar it never
+    // does. Fewer weeks, and every one of them a week a runner can be given.
+    // The archetype count is unchanged, which is the number that says the
+    // sweep still walks everything.
     expect(arcsWalked, 'too few archetypes for this walk to mean anything').toBeGreaterThanOrEqual(750);
-    expect(weeksWalked, 'no weeks were composed — the engine refused everything').toBeGreaterThanOrEqual(10000);
-    expect(rowsWritten, 'no rows were written — the persist hop was never reached').toBeGreaterThanOrEqual(60000);
-    expect(daysRendered, 'no days were rendered — the reader returned nothing').toBeGreaterThanOrEqual(70000);
+    expect(weeksWalked, 'no weeks were composed — the engine refused everything').toBeGreaterThanOrEqual(6000);
+    expect(rowsWritten, 'no rows were written — the persist hop was never reached').toBeGreaterThanOrEqual(40000);
+    expect(daysRendered, 'no days were rendered — the reader returned nothing').toBeGreaterThanOrEqual(42000);
     // ALL THREE ENGINE MODES. `composePlan`, `composeMaintenancePlan` and
     // `composeRecoveryPlan` are three different authors and a walk that only
     // reached one of them has audited a third of onboarding.
@@ -1240,26 +1314,41 @@ describe('onboarding · a new runner walks in, and the plan they get is the plan
     console.log(`\n--- MODES · ${JSON.stringify(modeCounts)} ---`);
     console.log('\n--- LAWS ASKED ---');
     for (const [law, n] of Object.entries(exercised).sort()) console.log(`  ${String(n).padStart(6)}× ${law}`);
+    //
+    // 2026-08-24 · EVERY PER-WEEK FLOOR CAME DOWN, for one reason shared by
+    // all of them: SIM-CHAIN-1. `buildSimPlan` used to chain a full periodized
+    // build onto every far-out hold block, and 230 of these 750 archetypes
+    // were on that path, so each was walking a fifty-week calendar production
+    // never writes. They now walk the four-to-forty-week hold block it does.
+    // Roughly 40% fewer weeks means roughly 40% fewer asks of every law that
+    // asks per week or per day. The archetype count is untouched — that is the
+    // number that would have caught the sweep actually going quiet.
+    //
+    // RACE-RUNUP-1 took a further bite out of LONG_RUN_ON_THE_WRONG_DAY on top
+    // of that: a long run inside the seven days before the race is eased to an
+    // easy day, so there are fewer long runs left to ask about.
+    //
+    // Each floor sits just under the figure the sweep produces today, so a law
+    // that quietly stops being asked still fails here.
     const asleep = Object.entries({
       MORE_RUNNING_DAYS_THAN_THE_RUNNER_HAS: 600,
-      // 2026-08-24 · was 10000, and RACE-RUNUP-1 took it to 9929: a long run
-      // inside the seven days before the race is now eased to an easy day, so
-      // there are ~70 fewer long runs across the sweep for this law to ask
-      // about. The floor moves to just under the new figure rather than to it,
-      // so it still catches the law going quiet without failing on the next
-      // legitimate handful.
-      LONG_RUN_ON_THE_WRONG_DAY: 9800,
-      PLAN_WEEK_IS_NOT_THE_RUNNERS_WEEK: 10000,
-      WATCH_WEEK_MILEAGE_DISAGREES_WITH_THE_PHONE: 10000,
-      TODAY_DOSE_IS_NOT_THE_PLANNED_DISTANCE: 5000,
-      THE_BLOCK_DOES_NOT_REACH_THE_RACE: 700,
-      NO_TAPER_BEFORE_THE_RACE: 700,
+      LONG_RUN_ON_THE_WRONG_DAY: 5400,
+      PLAN_WEEK_IS_NOT_THE_RUNNERS_WEEK: 6000,
+      WATCH_WEEK_MILEAGE_DISAGREES_WITH_THE_PHONE: 6000,
+      TODAY_DOSE_IS_NOT_THE_PLANNED_DISTANCE: 2800,
+      THE_BLOCK_DOES_NOT_REACH_THE_RACE: 340,
+      NO_TAPER_BEFORE_THE_RACE: 340,
       // Only the post-race personas reach these two, and they are the pair
       // the 52174bcd incident turned on.
       RECOVERY_SPENDS_THE_WRONG_COLUMN: 6,
       QUALITY_INSIDE_THE_NO_QUALITY_WINDOW: 6,
-      THE_SIMULATOR_SHOWS_A_PLAN_PRODUCTION_DOES_NOT_AUTHOR: 300,
-      PANEL_HAS_NO_DOSE_ON_A_RUNNING_DAY: 5000,
+      // Asked once per archetype now, not once per chained block: the law
+      // asserts the chain never fires, so it has to be asked where it could.
+      THE_SIMULATOR_SHOWS_A_PLAN_PRODUCTION_DOES_NOT_AUTHOR: 700,
+      // The other side of the same change — every hold block with a race
+      // behind it must name the day the build opens.
+      HOLD_BLOCK_DOES_NOT_SAY_WHEN_THE_BUILD_OPENS: 350,
+      PANEL_HAS_NO_DOSE_ON_A_RUNNING_DAY: 2800,
     }).filter(([law, floor]) => (exercised[law] ?? 0) < floor)
       .map(([law, floor]) => `${law} was asked ${exercised[law] ?? 0}×, needs ${floor}`);
     expect(asleep, 'these laws never reached their precondition — they are reporting clean on nothing').toEqual([]);

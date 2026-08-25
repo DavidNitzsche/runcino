@@ -23,8 +23,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { anotherRaceBlockGate, type PlanShape } from './replan-scenarios';
-import { findMoveDayCandidate, libraryPhaseKey, buildPanel, buildCoachLine, buildOpensISO } from './v5-block';
-import { pickPlanMode } from './goal-tiers';
+import { findMoveDayCandidate, libraryPhaseKey, buildPanel, buildCoachLine } from './v5-block';
+import { pickPlanMode, buildOpensISO } from './goal-tiers';
 
 // ── fixtures ─────────────────────────────────────────────────────────────
 
