@@ -101,14 +101,16 @@ const say = (law: string, arc: string, saw: string) => { findings.push({ law, ar
  * deletes it for you the moment the engine stops producing it.
  */
 const KNOWN: Record<string, string> = {
-  PLAN_WEEK_IS_NOT_THE_RUNNERS_WEEK:
-    'OPEN · the block is authored in weeks that start on the weekday the runner signed up ' +
-    '(`loadGeneratorInputs`, startAnchor "today"), and read back in weeks that end on their ' +
-    'long-run day (`trainingWeekWindow`). They coincide for one signup weekday in seven. ' +
-    'Two of the seven active plans in production are misaligned today — both authored on a ' +
-    'Wednesday against a Sunday long run. What the runner is given: a week strip whose seven ' +
-    'days are halves of two different training weeks, a "Week N of M" counted off a third ' +
-    'window, and a planned-mileage figure on Today that does not equal the strip beneath it.',
+  // PLAN_WEEK_IS_NOT_THE_RUNNERS_WEEK · CLOSED 2026-08-24 by WEEK-ALIGN-1.
+  //
+  // The block was authored in weeks starting on the weekday the runner signed
+  // up and read back in weeks ending on their long-run day; they coincided for
+  // one signup weekday in seven, and two of the seven active production plans
+  // were misaligned on the day it was fixed. Week 0 now starts on the
+  // training-week boundary like every other week and `persistPlan` clips the
+  // days before the runner's first, so no run predates them and every authored
+  // week is one `trainingWeekWindow` reads back whole. LAW O4 still asks
+  // 11,324 times and the control above still proves it has teeth.
   THE_SIMULATOR_SHOWS_A_PLAN_PRODUCTION_DOES_NOT_AUTHOR:
     'OPEN · and it is the one that makes the other sweeps suspect. `buildSimPlan` chains: for a ' +
     'race outside `BUILD_WINDOW_WEEKS` it composes the hold block and then the entire ' +
@@ -146,16 +148,21 @@ const KNOWN: Record<string, string> = {
     'absent the watch has an empty card to fall back on — in race week, on the tune-up. The ' +
     'narrowing is now `narrowToPrescriptionType` in `lib/training/prescriptions.ts` and the ' +
     'watch has only to call it.',
-  SIM_SEED_IS_NOT_A_SEED_THE_ROUTE_CAN_WRITE:
-    'OPEN · DECISION. The top three rungs of the simulator\'s volume ladder seed 62 / 80 / 100 ' +
-    'mi/wk. Production cannot produce any of those: the phone sends a band, the route persists ' +
-    'that band\'s HIST_AVG_MIDPOINTS value, and the engine reads the column — so a real ' +
-    'high-volume signup is seeded 52 / 70 / 90. The ladders were widened separately by ' +
-    'HIGHVOL-1 and given different midpoints. Nothing runner-facing is wrong today, because ' +
-    'this function runs only in /sim/plan and in the sweeps; what is wrong is that the three ' +
-    'highest rungs have never been graded as production would build them, and the cold-start ' +
-    'pace floor (`conservativeVdotFromMileage`) reads exactly this number. Which ladder wins ' +
-    'is the owner\'s call, so it is recorded rather than picked.',
+  // SIM_SEED_IS_NOT_A_SEED_THE_ROUTE_CAN_WRITE · CLOSED 2026-08-24 by SIM-SEED-1.
+  //
+  // The top three rungs of the simulator's volume ladder seeded 62 / 80 / 100
+  // mi/wk and production can persist none of those — the phone sends a band,
+  // the route persists that band's HIST_AVG_MIDPOINTS value, and the engine
+  // reads the column, so a real high-volume signup is seeded 52 / 70 / 90.
+  // It was recorded as the owner's call on the reading "which ladder is
+  // right". It was not a call: the simulator's job is to author what
+  // production authors, so the simulator adopts the route's ladder and no
+  // runner's prescribed pace moves. `recentWeeklyMiFromBucket` now resolves
+  // through the Swift's own band cut points into the midpoint table, and this
+  // law re-fires the moment the two drift apart again.
+  //
+  // The widening HIGHVOL-1 bought is intact: the nine buckets still cover
+  // every seed a signup can reach, 90 mi/wk included.
   WATCH_DOSES_OFF_A_DIFFERENT_WEEK:
     'OPEN · belongs to the phone/watch prescription pass. `lib/watch/build-workout.ts` sums ' +
     'the week it doses quality sessions against over a HARDCODED Monday-anchored window, ' +
@@ -362,6 +369,10 @@ function walk(r: Runner, rungs: number[], bands: string[]): Walked | { refused: 
       // it decides which days exist at all.
       if (d.distanceMi === 0 && d.type !== 'rest' && d.type !== 'race') continue;
       const dateISO = addDays(w.startISO, (d.dow - weekStartDow + 7) % 7);
+      // WEEK-ALIGN-1 · `persistPlan`'s `clipBeforeISO`. Week 0 is composed from
+      // the training-week boundary so the week reads back whole; the part of it
+      // that predates the runner is not written.
+      if (dateISO < built.derived.blockStartISO) continue;
       const shape = persistedDayShape(d, w.tPaceSec ?? built.derived.tPaceSec, args, null);
       const id = `w${wi}d${d.dow}`;
       authored.push({ dow: d.dow, type: d.type, distanceMi: d.distanceMi, subLabel: d.subLabel, isLong: d.isLong });
@@ -1081,9 +1092,46 @@ describe('onboarding · a new runner walks in, and the plan they get is the plan
     // 4 · Engine shorthand in it.
     if (subLabelIsName('EASY (MEDIUM)')) missed.push('`EASY (MEDIUM)` passes the name gate');
 
-    // 5 · The boundary law itself. A Wednesday signup with Sunday long runs
-    //     is the exact shape two live production plans are in today; if this
-    //     stops producing a straddle, LAW O4 has stopped working.
+    // 5 · The boundary law itself, driven by a block built to break it.
+    //
+    //     This control used to ask the ENGINE for a Wednesday signup with
+    //     Sunday long runs and assert the result straddled — which it did,
+    //     because the anchor was literal (two live production plans were in
+    //     exactly that shape on 2026-08-24). WEEK-ALIGN-1 snapped the anchor,
+    //     so the engine no longer produces one, and a control phrased as "the
+    //     defect still reproduces" retires itself the moment the defect is
+    //     fixed. That is backwards: the control's job is to prove the DETECTOR
+    //     has teeth, and the detector must keep them forever.
+    //
+    //     So the misaligned block is synthesised here instead — weeks laid on
+    //     a Wed→Tue grid against a Sunday long run, which is what the engine
+    //     used to write — and LAW O4's own straddle test is run against it.
+    {
+      const misaligned: PlanWorkoutRow[] = [];
+      const wkOf = new Map<string, number>();
+      for (let wi = 0; wi < 3; wi++) {
+        const start = addDays('2026-09-09', wi * 7);   // 2026-09-09 is a Wednesday
+        for (let i = 0; i < 7; i++) {
+          const d = addDays(start, i);
+          misaligned.push({
+            id: `m${wi}-${i}`, date_iso: d, dow: dowOf(d),
+            type: dowOf(d) === 0 ? 'long' : 'easy', distance_mi: '5',
+            sub_label: dowOf(d) === 0 ? 'LONG' : 'EASY',
+          });
+          wkOf.set(d, wi);
+        }
+      }
+      const asIfWalked = { longRunDow: 0 } as Walked;   // Sunday long runs
+      const week = readBackWeek(asIfWalked, misaligned, '2026-09-18');
+      const spans = new Set(week.days.filter((d) => d.plan_workout_id).map((d) => wkOf.get(d.date_iso)));
+      if (spans.size <= 1) {
+        missed.push('a Wed→Tue block read back in Mon→Sun windows no longer registers as a straddle — LAW O4 is asleep');
+      }
+    }
+
+    // 5b · And the engine does not build one. The runner the law was written
+    //      from: a Wednesday signup with Sunday long runs. Every week of the
+    //      block must read back whole, and no day may predate the signup.
     const wed: Runner = { ...BASE, label: 'control/wed-signup', longRunDay: 'sun', daysPerWeek: 5, signupISO: '2026-09-09' };
     const walked = walk(wed, hostWeeklyMiRungs()!, hostHistAvgBands()!);
     if ('refused' in walked) {
@@ -1095,7 +1143,9 @@ describe('onboarding · a new runner walks in, and the plan they get is the plan
       const probe = addDays(walked.weeks[2].startISO, 2);
       const week = readBackWeek(walked, rows, probe);
       const spans = new Set(week.days.filter((d) => d.plan_workout_id).map((d) => wkOf.get(d.date_iso)));
-      if (spans.size <= 1) missed.push('a Wednesday signup with Sunday long runs no longer straddles two plan weeks — LAW O4 is asleep, or the defect is fixed and KNOWN needs deleting');
+      if (spans.size > 1) missed.push('a Wednesday signup with Sunday long runs still straddles two plan weeks');
+      const early = rows.filter((r) => r.date_iso < wed.signupISO);
+      if (early.length > 0) missed.push(`${early.length} rows are dated before the runner signed up (first ${early[0].date_iso})`);
     }
 
     // 6 · The route's refusals still refuse.
@@ -1112,7 +1162,7 @@ describe('onboarding · a new runner walks in, and the plan they get is the plan
 
     // The controls must not leave findings of their own behind.
     findings.length = before;
-    console.log(`\n=== ONBOARDING CONTROLS · ${9 - missed.length} of 9 caught ===`);
+    console.log(`\n=== ONBOARDING CONTROLS · ${11 - missed.length} of 11 caught ===`);
     for (const m of missed) console.log(`  MISSED  ${m}`);
     expect(missed, 'the onboarding laws have stopped working').toEqual([]);
   });
@@ -1192,7 +1242,13 @@ describe('onboarding · a new runner walks in, and the plan they get is the plan
     for (const [law, n] of Object.entries(exercised).sort()) console.log(`  ${String(n).padStart(6)}× ${law}`);
     const asleep = Object.entries({
       MORE_RUNNING_DAYS_THAN_THE_RUNNER_HAS: 600,
-      LONG_RUN_ON_THE_WRONG_DAY: 10000,
+      // 2026-08-24 · was 10000, and RACE-RUNUP-1 took it to 9929: a long run
+      // inside the seven days before the race is now eased to an easy day, so
+      // there are ~70 fewer long runs across the sweep for this law to ask
+      // about. The floor moves to just under the new figure rather than to it,
+      // so it still catches the law going quiet without failing on the next
+      // legitimate handful.
+      LONG_RUN_ON_THE_WRONG_DAY: 9800,
       PLAN_WEEK_IS_NOT_THE_RUNNERS_WEEK: 10000,
       WATCH_WEEK_MILEAGE_DISAGREES_WITH_THE_PHONE: 10000,
       TODAY_DOSE_IS_NOT_THE_PLANNED_DISTANCE: 5000,

@@ -425,6 +425,37 @@ export function weekStartBoundaryOf(iso: string, weekStartDow: number): string {
   return addDays(iso, shift);
 }
 
+/**
+ * WEEK-ALIGN-1 (2026-08-24) · the first day the runner OWNS, or null when the
+ * caller named none.
+ *
+ * Two different questions were being answered by one variable, and conflating
+ * them is what misaligned the block from the week the runner reads:
+ *
+ *   · WHERE DOES WEEK 0 BEGIN?   Always a training-week boundary, so a
+ *     `plan_weeks` row spans the same seven days as `trainingWeekWindow`.
+ *   · WHICH DAY IS THE RUNNER'S FIRST?  The literal day they signed up or
+ *     chose, so nothing is ever dated before they existed.
+ *
+ * This answers the second. `null` means the caller did not name a first day —
+ * the lifecycle-regen path (`startAnchor: 'monday'`), which deliberately
+ * re-authors the whole current week including the days already run, because
+ * Rule 15 re-seals those rows from the prior plan. Clipping there would erase
+ * the prescriptions the runner actually trained against.
+ *
+ * Kept next to `weekStartBoundaryOf` and exported so the loader (which snaps
+ * the anchor) and the persister (which clips the days) cannot answer it
+ * differently.
+ */
+export function requestedBlockStartISO(
+  todayISO: string,
+  startAnchor: 'today' | 'monday',
+  startDateISO?: string,
+): string | null {
+  if (startDateISO && startDateISO >= todayISO) return startDateISO;
+  return startAnchor === 'today' ? todayISO : null;
+}
+
 // 2026-06-03 · delegate to lib/training/vdot.parseRaceTime (single
 // canonical parser, imported at the top of this file). Re-exported so
 // the generator-bench keeps its existing test surface. Was a local
@@ -4136,6 +4167,120 @@ export interface EmbeddedRaceSummary {
   weekIdx: number;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * RACE-RUNUP-1 (2026-08-24) · THE SEVEN DAYS BEFORE THE GOAL RACE
+ *
+ * The race-week composer lays out a race week from `raceDow` INSIDE the
+ * composed week the race falls in. That works while race day sits near the
+ * end of that week, and stops working the moment it does not: the days that
+ * lead into the race are then in the PREVIOUS composed week, where nothing
+ * knows a race is coming. Under the old literal anchor a well-formed race
+ * week required `raceDow === (startDow + 6) % 7` — one signup weekday in
+ * seven — and the composer's own probe shows what the other six produce: for
+ * a Monday-anchored block with a Sunday race, the last week before the race
+ * ends with a TEN-MILE LONG RUN on the Saturday. The day before a marathon.
+ *
+ * WEEK-ALIGN-1 changes which combinations land there (the grid is now the
+ * runner's training week, so a Sunday-long runner racing on a Sunday is
+ * perfect and a Saturday-long runner racing on a Sunday is the bad corner),
+ * but it does not remove the class. This does, and it is scoped to the two
+ * things every template in the doctrine agrees on:
+ *
+ *   · NO LONG RUN in the seven days ending on race day. Not one of the four
+ *     race-week templates in Research/08 §9.3 contains one.
+ *   · THE LAST RUNNING DAY BEFORE THE RACE IS A SHAKEOUT. Marathon Sat, half
+ *     Sat, 10K Fri, 5K Fri — all four, all "15-25 min easy + strides".
+ *
+ * Deliberately silent on QUALITY placement. The templates put one race-prep
+ * workout at T-5, and for a 5K or 10K that lands inside four days of the gun
+ * on purpose; a blanket no-quality window would delete the sharpener the
+ * doctrine prescribes. The mid-block B-race mini-taper below has its own
+ * no-quality rule because a tune-up is not the goal race and the trade is
+ * different.
+ *
+ * A NO-OP on every block whose race week was already well-formed: the last
+ * running day there is already the composer's own 2-mile shakeout, and there
+ * is no long run to move.
+ *
+ * Cite: Research/08-pacing-and-race-week.md §"Day-by-day race week templates"
+ * Watched by: RACE_RUNUP.no-long-run-in-race-week and
+ *             RACE_RUNUP.last-run-is-a-shakeout in lib/doctrine/registry.ts.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** Calendar days before race day that the run-up owns. Seven days ending ON
+ *  race day = race day plus the six before it, which is the span every
+ *  Research/08 §9.3 template is written over. */
+export const RACE_RUNUP_DAYS = 6;
+/** How close a running day has to be for the shakeout rule to claim it. The
+ *  templates put the shakeout at T-1; T-2 is allowed because a runner whose
+ *  T-1 is a rest day has already tapered it and the day before THAT is the
+ *  last time they run. Beyond that, leave the week alone. */
+const SHAKEOUT_WINDOW_DAYS = 2;
+/** What a long run inside the run-up becomes. Same ceiling the B-race
+ *  mini-taper uses for the same reason — an easy run, not a session. */
+const RUNUP_EASY_CAP_MI = 6;
+
+/**
+ * Enforces the two run-up rules above across composed WEEK BOUNDARIES.
+ * Mutates `weeks` in place. Returns the dates it changed, for the record.
+ */
+export function guardGoalRaceRunUp(
+  weeks: ComposedWeek[],
+  opts: { startMondayISO: string; raceDateISO: string },
+): string[] {
+  const totalDays = weeks.length * 7;
+  const raceOff = daysBetween(opts.startMondayISO, opts.raceDateISO);
+  if (raceOff <= 0 || raceOff >= totalDays) return [];
+  const startDow = new Date(opts.startMondayISO + 'T12:00:00Z').getUTCDay();
+  // Unlike `embedMidBlockRaces`' accessor this does NOT skip the race week.
+  // Reaching into it is the entire point: the run-up spans the seam.
+  const dayAt = (o: number): DayPlan | null => {
+    if (o < 0 || o >= totalDays) return null;
+    const wi = Math.floor(o / 7);
+    const dow = ((startDow + o) % 7) as DOW;
+    return weeks[wi]?.days.find((d) => d.dow === dow) ?? null;
+  };
+
+  const changed: string[] = [];
+  const dateOf = (o: number) => addDays(opts.startMondayISO, o);
+
+  // 1 · No long run in the seven days ending on race day.
+  for (let j = 1; j <= RACE_RUNUP_DAYS; j++) {
+    const d = dayAt(raceOff - j);
+    if (!d || d.type === 'race') break;   // plan edge, or an embedded B race owns its own taper
+    if (!d.isLong && d.type !== 'long') continue;
+    d.type = 'easy';
+    d.isLong = false;
+    d.isQuality = false;
+    d.distanceMi = Math.min(d.distanceMi, RUNUP_EASY_CAP_MI);
+    d.subLabel = 'EASY';
+    d.notes = 'Easy. Race week · the long run is behind you.';
+    delete d.raceGoalPaceSec;
+    changed.push(dateOf(raceOff - j));
+  }
+
+  // 2 · The last running day before the race is a shakeout.
+  for (let j = 1; j <= SHAKEOUT_WINDOW_DAYS; j++) {
+    const d = dayAt(raceOff - j);
+    if (!d || d.type === 'race') break;
+    if (d.distanceMi <= 0) continue;      // a rest day is already taper
+    if (d.type === 'shakeout') break;     // the composer already did this
+    d.type = 'shakeout';
+    d.distanceMi = 2;
+    d.isQuality = false;
+    d.isLong = false;
+    // DOCTRINE-STRIDES-1 · strides belong in the sub_label, which is the
+    // prescription spec-builder reads.
+    d.subLabel = 'SHAKEOUT · 4×20s strides';
+    d.notes = '2 mi easy. Loosen the legs.';
+    delete d.raceGoalPaceSec;
+    changed.push(dateOf(raceOff - j));
+    break;
+  }
+
+  return changed;
+}
+
 export function embedMidBlockRaces(
   weeks: ComposedWeek[],
   vols: number[],
@@ -5481,6 +5626,16 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         trainingDaysPerWeek: input.trainingDaysPerWeek,
       })
     : [];
+
+  // RACE-RUNUP-1 · last, so it sees the calendar every other pass has already
+  // written — including an embedded B race, whose own mini-taper it must not
+  // undo (the loops stop at a `race` day). Before `finalizeComposedPlan`, so
+  // the WoW smoothers and the VOL-1 reconcile see the eased week.
+  const runUpChanged = guardGoalRaceRunUp(weeks, {
+    startMondayISO: input.startMondayISO,
+    raceDateISO: input.raceDateISO,
+  });
+
   return {
     weeks,
     blocks,
@@ -5512,6 +5667,11 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // race days, by plan week. Empty array when none. Drives the plan
       // UI chip + the brief's tune-up framing.
       embedded_races: embeddedRaces,
+      // RACE-RUNUP-1 · the dates the goal-race run-up guard rewrote, so a
+      // block that had a long run inside race week says so on its own record
+      // rather than only in a diff. Absent when it changed nothing, which is
+      // every already-well-formed block.
+      ...(runUpChanged.length > 0 ? { race_runup_eased: runUpChanged } : {}),
       // 2026-06-03 · Rule 10 · transparency envelope so the runner can
       // audit which signals drove their plan. Surfaces in /plan brief
       // as "plan built from your last 28 days." Cite: §Rule 10.
@@ -6600,6 +6760,16 @@ async function persistPlan(client: PoolClient, args: {
    *  pace" bug one level down from the T-pace fix. Null for every runner
    *  with a measured VDOT (the vast majority) — byte-identical then. */
   belowTableAnchor?: BelowTableAnchor | null;
+  /** WEEK-ALIGN-1 (2026-08-24) · the runner's FIRST day. Week 0 is composed
+   *  from the training-week boundary so it lines up with the window every
+   *  read surface uses, which puts up to six composed days before the day the
+   *  runner actually signed up. Those days are not written.
+   *
+   *  Null on the lifecycle-regen path, which re-authors the current week
+   *  whole on purpose — Rule 15 re-seals the days already run from the prior
+   *  plan, and dropping them would erase the prescriptions the runner trained
+   *  against. See `requestedBlockStartISO`. */
+  clipBeforeISO: string | null;
 }): Promise<string> {
   const planId = id('pln');
   await client.query(
@@ -6686,8 +6856,13 @@ async function persistPlan(client: PoolClient, args: {
 
     for (const d of w.days) {
       if (d.distanceMi === 0 && d.type !== 'rest' && d.type !== 'race') continue;
-      const wkoId = id('wko');
       const dateISO = dateForDow(d.dow);
+      // WEEK-ALIGN-1 · a day before the runner's first day is a day that is
+      // not theirs. Week 0 is authored from the training-week boundary so the
+      // week reads back whole; the part of it that predates them is dropped
+      // here rather than shown as already missed.
+      if (args.clipBeforeISO && dateISO < args.clipBeforeISO) continue;
+      const wkoId = id('wko');
       // 2026-06-01 · derive pace_target + workout_spec at insert time
       // (web agent gap brief). Was leaving both NULL waiting on the
       // backfill cron · now every freshly-generated quality row
@@ -7959,6 +8134,13 @@ async function persistComposedPlan(
   const { compose, composed, mode, todayISO } = staged;
   const inputs = { compose };
   const openTarget = (!raceSlug && !goalTarget) ? input.openTarget : undefined;
+  // WEEK-ALIGN-1 · the same question the loader asked when it snapped the
+  // anchor, asked through the same function so the two cannot answer it
+  // differently: which day is the runner's first? Null on the lifecycle-regen
+  // path, which keeps the whole current week.
+  const clipBeforeISO = requestedBlockStartISO(
+    todayISO, input.startAnchor ?? 'monday', input.startDateISO,
+  );
 
   // OPEN-TARGET-1 · `goal_iso` on an open block is the block's OWN last day,
   // not the `todayISO` the loader carried as a placeholder. The column answers
@@ -8020,6 +8202,7 @@ async function persistComposedPlan(
       userId,
       raceSlug: raceSlug ?? null,  // null for goal-mode AND for an open block (no race row)
       raceDateISO: openTarget ? openBlockEndISO : inputs.compose.raceDateISO,
+      clipBeforeISO,
       blocks: composed.blocks,
       weeks: composed.weeks.map((w) => ({
         // 2026-06-06 · Audit C C1-1f · pass the per-week blended tPaceSec
@@ -8416,16 +8599,39 @@ async function loadGeneratorInputs(
   // instead of a hardcoded Monday. So a plan_weeks row spans the same 7 days
   // as the WeekStrip window for non-Sunday-long runners (was: Monday-anchored
   // rows straddled the strip). For David (long=Sun → start=Mon) the boundary
-  // IS Monday, so weekStartBoundaryOf == mondayOf — a provable no-op. The
-  // onboarding (startDateISO) and start-today paths stay literal: forcing them
-  // to a boundary would date runs before signup / shift the runner's chosen
-  // start. Both runway endpoints snap to the SAME boundary so totalWeeks stays
-  // an exact multiple of 7 (fractional weeks broke phase advancement, the C1
-  // bug class — see composePlan).
+  // IS Monday, so weekStartBoundaryOf == mondayOf — a provable no-op. Both
+  // runway endpoints snap to the SAME boundary so totalWeeks stays an exact
+  // multiple of 7 (fractional weeks broke phase advancement, the C1 bug class
+  // — see composePlan).
+  //
+  // ── WEEK-ALIGN-1 (2026-08-24) · THE ONBOARDING ANCHOR SNAPS TOO ─────────
+  //
+  // Until now the onboarding and start-today paths stayed LITERAL, on the
+  // reasoning that snapping would date runs before signup. That reasoning was
+  // sound and the conclusion was not: the anchor and the clip are two
+  // different decisions (see `requestedBlockStartISO`), and holding them as
+  // one bought "no run before signup" at the price of a block whose weeks are
+  // not the runner's weeks.
+  //
+  // What it cost, live. A block authored on a Wednesday against a Sunday long
+  // run is written in Wed→Tue weeks and read back in Mon→Sun ones — they
+  // coincide for one signup weekday in seven. Two of the seven active plans in
+  // production on 2026-08-24 were authored exactly that way, and both handed
+  // their runner a Today screen whose planned-mileage figure disagreed with
+  // the week strip printed directly beneath it (29.5 against 31.0 on one,
+  // 3.0 against 2.0 on the other), a "Week N of M" counted off the authored
+  // window, and a seven-day strip that is the tail of one training week and
+  // the head of the next.
+  //
+  // So week 0 now starts on the boundary like every other week, and
+  // `persistPlan` drops the days before the runner's first (`clipBeforeISO`
+  // below). Nothing is dated before signup, and every week the engine authors
+  // is a week `trainingWeekWindow` can read back whole. Week 0 is short by
+  // however many days the runner missed by signing up mid-week, which is the
+  // honest shape of a week you joined on Wednesday.
   const weekStartDow = (longRunDow + 1) % 7;  // day after the long run, per /api/plan/week
-  const startMondayISO = (startDateISO && startDateISO >= todayISO)
-    ? startDateISO
-    : startAnchor === 'today' ? todayISO : weekStartBoundaryOf(todayISO, weekStartDow);
+  const blockStartISO = requestedBlockStartISO(todayISO, startAnchor, startDateISO);
+  const startMondayISO = weekStartBoundaryOf(blockStartISO ?? todayISO, weekStartDow);
   // LSP2-1 (2026-06-23) · a goalTarget race date is start+weeks*7 with NO weekday snap, so it lands on
   // day-0 of its week → SP-4 strips every tune-up/shakeout/easy that wraps onto the post-race days and
   // the final week collapses to a bare race day (all 7 start weekdays, prod-only — the sim snaps and

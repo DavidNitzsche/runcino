@@ -162,6 +162,7 @@ import {
   FAST_FINISH_MIN_MI,
   QUALITY_LOOKBACK_DAYS,
   qualityLookbackDays,
+  RACE_RUNUP_DAYS,
 } from '@/lib/plan/generate';
 import {
   BLEND_GRACE_FRACTION,
@@ -12727,4 +12728,112 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
     },
   },
+  /* -- RACE-RUNUP-1 (2026-08-24) --------------------------------------------
+   *
+   * `guardGoalRaceRunUp` is the pass that owns the seven days ending on race
+   * day, across composed week boundaries. It exists because the race-week
+   * composer only reaches inside the week the race falls in, and when race day
+   * sits early in that week the run-up lives in the PREVIOUS week, where
+   * nothing knew a race was coming -- a marathon block with a Monday anchor
+   * and a Sunday race ended its last full week with a ten-mile long run on the
+   * Saturday.
+   *
+   * These two claims read Research/08's four race-week templates and assert
+   * the pass enforces what all four agree on, rather than what looked
+   * reasonable in the diff.
+   */
+  {
+    id: 'RACERUNUP.no-long-run-in-race-week',
+    binds: ['lib/plan/generate.ts#RACE_RUNUP_DAYS'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 9.3 Day-by-day race week templates',
+    claim:
+      'Research/08 section 9.3 publishes a day-by-day race-week template for each of the ' +
+      'marathon, half, 10K and 5K, each covering the seven days ending on race day. Not one ' +
+      'row in any of the four prescribes a long run. So the window the engine protects must ' +
+      'be at least as long as the templates are, and no day inside it may carry a long run.',
+    check() {
+      for (const heading of RACE_WEEK_TEMPLATES) {
+        const t = resolveCitation('Research/08-pacing-and-race-week.md', heading).table();
+        const day = t.headers[0];
+        const workout = t.headers[1];
+        // The template's own length, read out of the doc: the rows before the
+        // RACE row are the run-up days the engine has to own.
+        // The RACE row is the one whose Workout cell IS "RACE" - matching
+        // /race/i would hit the marathon's Tuesday "Race-prep workout" and
+        // silently shrink the template to one row.
+        const raceIdx = t.rows.findIndex((r) => r[workout].trim().toUpperCase() === 'RACE');
+        if (raceIdx < 0) {
+          throw new Error(
+            `section 9.3 template "${heading}" has no RACE row - the anchor or the table changed`,
+          );
+        }
+        if (RACE_RUNUP_DAYS < raceIdx) {
+          throw new Error(
+            `RACE_RUNUP_DAYS = ${RACE_RUNUP_DAYS} is shorter than the ${raceIdx}-day run-up ` +
+              `"${heading}" prescribes - the earliest template days sit outside the guard`,
+          );
+        }
+        for (const r of t.rows.slice(0, raceIdx)) {
+          if (/\blong\b/i.test(r[workout])) {
+            throw new Error(
+              `section 9.3 "${heading}" now prescribes a long run on ${r[day]} ` +
+                `("${r[workout]}") - the engine eases every long run inside the run-up, so ` +
+                'doctrine and engine disagree',
+            );
+          }
+        }
+      }
+    },
+  },
+  {
+    id: 'RACERUNUP.day-before-is-the-shortest-run',
+    binds: ['lib/plan/generate.ts#RACE_RUNUP_DAYS'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 9.3 Day-by-day race week templates',
+    claim:
+      'In every one of the four section-9.3 templates the day before the race carries the ' +
+      'SHORTEST run of the week - 15-25 min easy with a few strides. Three of the four name ' +
+      'it a shakeout outright and the 5K describes the same session without the word, so the ' +
+      'claim reads the Duration column rather than the label. The engine rewrites the last ' +
+      'running day before the goal race to a two-mile shakeout for exactly this, and if a ' +
+      'template ever stopped ending on its shortest run the engine would be standing on ' +
+      'nothing.',
+    check() {
+      for (const heading of RACE_WEEK_TEMPLATES) {
+        const t = resolveCitation('Research/08-pacing-and-race-week.md', heading).table();
+        const day = t.headers[0];
+        const workout = t.headers[1];
+        const duration = t.headers[2];
+        const raceIdx = t.rows.findIndex((r) => r[workout].trim().toUpperCase() === 'RACE');
+        if (raceIdx < 1) {
+          throw new Error(
+            `section 9.3 template "${heading}" has no run-up rows before its RACE row`,
+          );
+        }
+        // Longest end of each run-up day's published duration band, out of the
+        // doc. A "0-30 min" rest-or-shakeout row tops out at 30.
+        const tops = t.rows.slice(0, raceIdx).map((r) => parseBand(r[duration])[1]);
+        const dayBefore = tops[tops.length - 1];
+        const shortest = Math.min(...tops);
+        if (dayBefore !== shortest) {
+          throw new Error(
+            `section 9.3 "${heading}" now puts ${dayBefore} min on ${t.rows[raceIdx - 1][day]}, ` +
+              `the day before the race, and the shortest run of the run-up is ${shortest} min ` +
+              '- the engine makes that day the shortest run of the week',
+          );
+        }
+      }
+    },
+  },
+];
+
+/** The four race-week templates in Research/08 section 9.3, by their own
+ *  headings. Shared by the two RACE_RUNUP claims so neither can be updated to
+ *  a different set of templates than the other. */
+const RACE_WEEK_TEMPLATES = [
+  '**Marathon — race week template (Sunday race):**',
+  '**Half marathon — race week template (Sunday race):**',
+  '**10K — race week template (Saturday race):**',
+  '**5K — race week template (Saturday race):**',
 ];

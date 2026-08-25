@@ -201,9 +201,13 @@ describe('maintenance + display invariants (diagnostic)', () => {
   // The prior CAL_MERGE gate hardcoded long=sun and missed three classes the render-layer fix closes:
   //   #6 CAL_MERGE — under plan-week grouping no rendered row may exceed the stated frequency, for ANY long day.
   //   #5 RACE_WEEKDAY — the goal race cell must land on longRunDow (production parity), not a forced Saturday.
-  //   #8 WEEK0_START — the sim must compose from the LITERAL chosen start (no snap-to-longRunDow), so week-0
-  //      matches production (frontLoadFirstRun "run on day one"); weeks[0].startISO must equal the chosen start.
-  it('sim is faithful across every long-run day (#5 race weekday · #6 no merge · #8 literal start)', () => {
+  //   #8 WEEK0_START — the sim must compose from the same anchor production does. WEEK-ALIGN-1
+  //      (2026-08-24) moved that anchor from the LITERAL chosen start to the runner's TRAINING-WEEK
+  //      BOUNDARY on or before it, because a block authored on the signup weekday is read back by
+  //      `trainingWeekWindow` on the long-run-day grid and the two coincide one weekday in seven.
+  //      So this now asserts the boundary, and that the boundary is never after the chosen start
+  //      and never more than the six days `persistPlan` clips before it.
+  it('sim is faithful across every long-run day (#5 race weekday · #6 no merge · #8 aligned start)', () => {
     const LONGDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     const dowOfDay = (d: string) => LONGDAYS.indexOf(d);
     const GOAL_STARTS = ['2026-07-05', '2026-07-06', '2026-07-08']; // Sun, Mon, Wed
@@ -222,8 +226,17 @@ describe('maintenance + display invariants (diagnostic)', () => {
               } as any);
               if (!built.ok) continue;
               plans++;
-              // #8 · week-0 composed from the literal chosen start (no snap-back)
-              if (built.composed.weeks[0]?.startISO !== startDateISO) { week0Off++; ex.week0 ??= `${distance}/${longRunDay}/start${startDateISO} → wk0 ${built.composed.weeks[0]?.startISO}`; }
+              // #8 · week-0 composed from the runner's training-week boundary (WEEK-ALIGN-1)
+              const w0 = built.composed.weeks[0]?.startISO;
+              const weekStartDow = (dowOfDay(longRunDay) + 1) % 7;
+              const startDow = new Date(startDateISO + 'T12:00:00Z').getUTCDay();
+              const back = ((startDow - weekStartDow) % 7 + 7) % 7;
+              const anchor = new Date(Date.parse(startDateISO + 'T12:00:00Z') - back * 86400000)
+                .toISOString().slice(0, 10);
+              if (w0 !== anchor || (w0 != null && w0 > startDateISO)) {
+                week0Off++;
+                ex.week0 ??= `${distance}/${longRunDay}/start${startDateISO} → wk0 ${w0}, boundary ${anchor}`;
+              }
               // #6 · plan-week grouping → no row exceeds freq
               for (const w of built.composed.weeks) {
                 if (w.isRaceWeek) continue;
@@ -240,7 +253,7 @@ describe('maintenance + display invariants (diagnostic)', () => {
     if (ex.week0) console.log(`  week0Off e.g. ${ex.week0}`);
     expect(merge, `a rendered row exceeds the stated frequency — CAL_MERGE regressed (#6)`).toBe(0);
     expect(raceOff, `goal race cell is not on the long-run day — sim/prod race-weekday parity broke (#5)`).toBe(0);
-    expect(week0Off, `week-0 startISO != chosen start — a start-snap was re-introduced (#8)`).toBe(0);
+    expect(week0Off, `week-0 startISO is not the runner's training-week boundary (#8)`).toBe(0);
   });
 
   // ── RECOVERY_CHAIN · a post-race runner with a far next race must see the forward build (#2) ──
