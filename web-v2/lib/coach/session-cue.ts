@@ -32,10 +32,21 @@ export interface CueInput {
   /** 2026-06-02 · was yesterday a hard session (race/long/intervals
    *  /tempo/threshold)? Drives the "easy after hard" voice. */
   recentHardSession?: boolean;
-  /** 2026-06-02 · expected HR penalty in bpm from heat today (per
-   *  Research/06 heat adjustment). Adds an honest "it's hot, give
-   *  yourself the bump" line on threshold/tempo. */
-  heatPenaltyBpm?: number | null;
+  /**
+   * 2026-08-24 · Research/06 composed slowdown for today's conditions,
+   * percent — the SAME number lib/training/heat-model.ts gives every other
+   * heat-aware surface. Gates the "run it by effort, not HR" line on
+   * threshold and tempo.
+   *
+   * REPLACED `heatPenaltyBpm`, which computed `(temp_max_f - 65) / 2` under a
+   * citation to "Research/06 §heat · ~1 bpm per 2°F". There is no §heat
+   * section and no such rule anywhere in the corpus — the only per-bpm figures
+   * in Research/06 are the acclimation table's HR *decreases* over days and a
+   * heat-illness warning sign at >15 bpm drift, neither of which is a
+   * per-degree penalty. The advice was right and the number was invented, so
+   * the number is gone and the advice stays. See docs/PRODUCT_DECISIONS.md.
+   */
+  heatSlowdownPct?: number | null;
   /** 2026-06-02 · is HRV / RHR / sleep tracking 3+ days red? Adjusts
    *  voice for "we're watching this · don't push." */
   pillarDownStreak?: boolean;
@@ -103,9 +114,19 @@ function composeEasyCue(input: CueInput): string {
   return 'Keep the first mile slow. The pace finds itself by mile 3.';
 }
 
+/**
+ * The 2% gate, which is the one heat-band.ts's `heatAdjustedStatus` and
+ * `heatAwareDrift` already use, and the one run-recap.ts gates its heat prose
+ * on. Same threshold everywhere means the cue, the recap and the phase panel
+ * agree about whether today was hot.
+ */
+function isHeatMaterial(slowdownPct: number | null | undefined): boolean {
+  return slowdownPct != null && isFinite(slowdownPct) && slowdownPct >= 2;
+}
+
 function composeTempoCue(input: CueInput): string {
-  if (input.heatPenaltyBpm != null && input.heatPenaltyBpm >= 5) {
-    return `Hold the line by effort. Heat will bump HR ${input.heatPenaltyBpm} bpm above target.`;
+  if (isHeatMaterial(input.heatSlowdownPct)) {
+    return 'Hold the line by effort. Heat lifts HR above target at the same pace.';
   }
   if (input.pillarDownStreak) {
     return 'Bail if it feels off. One missed tempo doesn\'t cost a build.';
@@ -121,8 +142,8 @@ function composeTempoCue(input: CueInput): string {
 }
 
 function composeThresholdCue(input: CueInput): string {
-  if (input.heatPenaltyBpm != null && input.heatPenaltyBpm >= 5) {
-    return `Effort over HR today. Heat adds ${input.heatPenaltyBpm} bpm even on the right pace.`;
+  if (isHeatMaterial(input.heatSlowdownPct)) {
+    return 'Effort over HR today. Heat lifts HR even on the right pace.';
   }
   if (input.pillarDownStreak) {
     return 'Threshold is the bank. Skip a rep if form breaks before quality.';
@@ -155,7 +176,7 @@ function composeIntervalsCue(input: CueInput): string {
 }
 
 function composeLongCue(input: CueInput): string {
-  if (input.heatPenaltyBpm != null && input.heatPenaltyBpm >= 5) {
+  if (isHeatMaterial(input.heatSlowdownPct)) {
     return 'Hydrate early and often. Heat compounds across long miles.';
   }
   if (input.plannedMi >= 18) {

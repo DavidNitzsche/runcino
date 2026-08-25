@@ -141,7 +141,7 @@ async function loadAnchorRace(userId: string, todayIso: string): Promise<AnchorR
  */
 async function loadCueContext(userId: string, date: string): Promise<{
   recentHardSession: boolean;
-  heatPenaltyBpm: number | null;
+  heatSlowdownPct: number | null;
   pillarDownStreak: boolean;
   /** 2026-08-17 · adaptive voice band from CoachState (voice-band.ts).
    *  null on any load failure · composeCue treats null as 'guided'. */
@@ -159,15 +159,35 @@ async function loadCueContext(userId: string, date: string): Promise<{
   const recentHardSession = t === 'race' || t === 'long' || t === 'intervals'
     || t === 'tempo' || t === 'threshold' || t === 'fartlek' || dist >= 12;
 
-  let heatPenaltyBpm: number | null = null;
+  // 2026-08-24 · was `heatPenaltyBpm`, computed as `(temp_max_f - 65) / 2`
+  // under a citation to "Research/06 §heat · ~1 bpm per 2°F". That section
+  // does not exist and neither does the rule; the figure was spoken to the
+  // runner as "Heat will bump HR 12 bpm above target". Now the composed
+  // Research/06 slowdown from the shared model — the same number every other
+  // heat-aware surface reads, so they cannot disagree about whether today is
+  // hot. The cue no longer names a magnitude, because none is citable.
+  let heatSlowdownPct: number | null = null;
   try {
     const { resolveHomeLatLng, fetchDayForecast } = await import('@/lib/weather/openmeteo');
+    const { effortSlowdownPct, abilityTierFromVdot } = await import('@/lib/training/heat-model');
     const home = await resolveHomeLatLng(userId);
     if (home) {
       const f = await fetchDayForecast(home.lat, home.lng, date);
-      if (f?.temp_max_f != null && f.temp_max_f >= 75) {
-        // Research/06 §heat · ~1 bpm per 2°F over 65°F baseline.
-        heatPenaltyBpm = Math.round((f.temp_max_f - 65) / 2);
+      if (f?.temp_max_f != null) {
+        const { loadLatestVdotForUser } = await import('@/lib/training/projection-snapshots');
+        const vdot = await loadLatestVdotForUser(userId).catch(() => null);
+        heatSlowdownPct = effortSlowdownPct({
+          tempF: f.temp_max_f,
+          // The forecast carries no dewpoint; the model estimates it from
+          // relative humidity (Research/06 §12 / heat-model estimateDewpointF)
+          // rather than dropping the surcharge.
+          dewpointF: null,
+          humidityPct: f.humidity_pct,
+          cloudCoverPct: f.cloud_cover_pct,
+          durationS: null,
+          intervalStyle: false,
+          tier: abilityTierFromVdot(vdot),
+        });
       }
     }
   } catch { /* swallow · null is fine */ }
@@ -187,7 +207,7 @@ async function loadCueContext(userId: string, date: string): Promise<{
     }
   } catch { /* swallow · false is fine */ }
 
-  return { recentHardSession, heatPenaltyBpm, pillarDownStreak, voiceBand };
+  return { recentHardSession, heatSlowdownPct, pillarDownStreak, voiceBand };
 }
 
 /**
@@ -395,7 +415,7 @@ export async function GET(req: NextRequest) {
     const cue = composeCue({
       type, phase: phaseUpper, plannedMi,
       recentHardSession: cueContext.recentHardSession,
-      heatPenaltyBpm: cueContext.heatPenaltyBpm,
+      heatSlowdownPct: cueContext.heatSlowdownPct,
       pillarDownStreak: cueContext.pillarDownStreak,
       voiceBand: cueContext.voiceBand,
     });

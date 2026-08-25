@@ -57,7 +57,7 @@ describe('composeCue · voice-band tone branches', () => {
     expect(composeCue({ ...hard, voiceBand: 'calibration' })).toBe(composeCue(hard));
     expect(composeCue({ ...hard, voiceBand: 'challenge' })).toBe(composeCue(hard));
 
-    const hot: CueInput = { ...base('threshold'), heatPenaltyBpm: 8 };
+    const hot: CueInput = { ...base('threshold'), heatSlowdownPct: 6 };
     expect(composeCue({ ...hot, voiceBand: 'calibration' })).toBe(composeCue(hot));
     expect(composeCue({ ...hot, voiceBand: 'challenge' })).toBe(composeCue(hot));
   });
