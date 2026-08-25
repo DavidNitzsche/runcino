@@ -250,6 +250,8 @@ export interface V5Today {
   routeSplits: Array<{
     mile: number; pace: string | null; hr: number | null;
     cadence: number | null; elev_change_ft: number | null;
+    /** The mile's real length. Null when the source did not record one. */
+    distanceMi: number | null;
   }>;
   /** Workout phases, so reps colour at their true pace. Empty on a steady run. */
   routePhases: Array<{ mi: number; sec: number }>;
@@ -587,6 +589,8 @@ export interface V5RecentRunCtx {
   routeSplits: Array<{
     mile: number; pace: string | null; hr: number | null;
     cadence: number | null; elev_change_ft: number | null;
+    /** The mile's real length. Null when the source did not record one. */
+    distanceMi: number | null;
   }>;
   routePhases: Array<{ mi: number; sec: number }>;
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;

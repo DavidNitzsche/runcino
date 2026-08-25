@@ -24,6 +24,7 @@ import { rowOrNull } from '@/lib/db/read';
 import { zoneTargetForWorkout, zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 import { computeZones } from '@/lib/training/zones';
 import { pickElevationGain } from '@/lib/runs/elevation';
+import { pickSplits } from '@/lib/runs/splits-pick';
 import { rowsOrNull } from '@/lib/db/read';
 import { resolveThresholdHr } from '@/lib/training/lthr';
 import { requireUserId } from '@/lib/auth/session';
@@ -46,7 +47,7 @@ import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } f
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 import {
   runDaySql, runNotMergedSql, runDistanceMiSql,
-  runElevGainFtSql, runElevGainSourceSql, runSourceSql, runMergedIntoIdSql,
+  runElevGainFtSql, runElevGainSourceSql, runSourceSql, runMergedIntoIdSql, runSplitsSql,
 } from '@/lib/runs/run-shape';
 import { runFacts } from '@/lib/runs/run-facts';
 import { beltAverages } from '@/lib/runs/belt-averages';
@@ -746,10 +747,11 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       // it". Collapsing the two would let a `gps_derived` figure win by
       // default the moment the database hiccuped — which is precisely how the
       // wrong number got on screen in the first place.
-      const elevTwins = await rowsOrNull<{ ft: string | null; src: string | null; ingest: string | null }>(
+      const elevTwins = await rowsOrNull<{ ft: string | null; src: string | null; ingest: string | null; splits: unknown }>(
         'v5/today · absorbed twin elevation',
         pool.query(
-          `SELECT ${runElevGainFtSql()} AS ft, ${runElevGainSourceSql()} AS src, ${runSourceSql()} AS ingest
+          `SELECT ${runElevGainFtSql()} AS ft, ${runElevGainSourceSql()} AS src, ${runSourceSql()} AS ingest,
+                  ${runSplitsSql()} AS splits
              FROM runs
             WHERE ${runMergedIntoIdSql()} = $1`,
           [String(runRow.id)],
@@ -763,6 +765,25 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
             { ft: data.elevGainFt as number | null, source: data.elevGainSource as string | null, ingest: data.source as string | null },
             ...elevTwins.map((t) => ({ ft: t.ft == null ? null : Number(t.ft), source: t.src, ingest: t.ingest })),
           ]);
+
+      // THE SPLIT ARRAY THAT ACTUALLY DECOMPOSES THIS RUN.
+      //
+      // The canonical row for 2026-08-24 carries three splits covering 3.00 of
+      // 4.02 miles; the absorbed apple_watch twin carries five covering 4.11,
+      // with cadence and per-mile elevation the canonical lacks. The merge kept
+      // the poorer one. True of 26 of the 71 merged runs here — and the mile it
+      // dropped was the one that mattered, 158 bpm and squarely Z4.
+      //
+      // Coverage decides, then richness. Never a blend of two arrays: they are
+      // separate instruments observing the same run, and interleaving them
+      // would invent miles nothing recorded.
+      const splitChoice = pickSplits(distanceMi, [
+        { splits: Array.isArray(data.splits) ? data.splits : null, source: 'canonical' },
+        ...(elevTwins ?? []).map((t) => ({
+          splits: Array.isArray(t.splits) ? (t.splits as Array<Record<string, unknown>>) : null,
+          source: t.ingest,
+        })),
+      ]);
 
       // The runner's own zone bands, from their threshold heart rate. Null
       // at true cold start — never fabricated, and an absent band simply
@@ -885,15 +906,28 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // it just needs the run's own splits, its phases, the runner's zone
         // bands and the window the session asked for. Without them a map
         // tells the runner only where they went, which they already knew.
-        routeSplits: indoor || !Array.isArray(data.splits)
+        routeSplits: indoor || splitChoice == null
           ? []
-          : (data.splits as Array<Record<string, unknown>>).map((sp, i) => ({
+          : (splitChoice.splits as Array<Record<string, unknown>>).map((sp, i) => ({
               mile: Number(sp.mile ?? sp.split ?? i + 1) || i + 1,
               pace: typeof sp.pace === 'string' ? sp.pace : null,
               hr: sp.hr != null && Number.isFinite(Number(sp.hr)) ? Math.round(Number(sp.hr)) : null,
               cadence: sp.cadence != null && Number.isFinite(Number(sp.cadence)) ? Math.round(Number(sp.cadence)) : null,
-              elev_change_ft: sp.elev_change_ft != null && Number.isFinite(Number(sp.elev_change_ft))
-                ? Math.round(Number(sp.elev_change_ft)) : null,
+              elev_change_ft: (() => {
+                // `elev_ft` on the watch's array, `elev_change_ft` on Strava's.
+                // Two spellings of one measurement — read the set, never a
+                // `??` ladder over whichever the winning source happened to use.
+                const v = sp.elev_change_ft ?? sp.elev_ft;
+                return v != null && Number.isFinite(Number(v)) ? Math.round(Number(v)) : null;
+              })(),
+              // THE MILE'S REAL LENGTH. A 4.02 mi run is four miles and a bit,
+              // and the bit is a real 0.11 mi the runner ran. Null when the
+              // source did not say, which a breakdown must render as a whole
+              // mile only if it is willing to say so.
+              distanceMi: (() => {
+                const v = sp.distanceMi ?? sp.distance_mi;
+                return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
+              })(),
             })),
         // Phases colour the reps at their TRUE pace instead of smearing them
         // into mile averages — the whole reason a rep session's map is worth

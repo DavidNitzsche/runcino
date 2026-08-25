@@ -494,6 +494,10 @@ struct RunSplit: Decodable, Identifiable, Equatable {
     let hr: Int?
     let cadence: Int?
     let elev_change_ft: Int?
+    /// The mile's real length. Null when the source did not record one — a
+    /// breakdown may then treat it as a whole mile only if it says so. A 4.02
+    /// mile run is four miles and a 0.11 that the runner actually ran.
+    let distanceMi: Double?
 }
 
 struct HRZonePcts: Decodable {
