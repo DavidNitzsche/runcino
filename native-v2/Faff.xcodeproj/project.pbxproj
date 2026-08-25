@@ -66,6 +66,7 @@
 		3DFD4C5161A0FAD5F32AB8CA /* EmailSignInSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E9955658E632F56C2B84C68 /* EmailSignInSheet.swift */; };
 		3E28E1189EB347FEFCABFED7 /* FaffLogoMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F562BA41AED08247EB40613 /* FaffLogoMark.swift */; };
 		3E67FE462AE95724C099C5E7 /* WorkoutGrade.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA3827C851A7F3AE4FBE6B0D /* WorkoutGrade.swift */; };
+		3E71C61C03EEB17ADE58BD88 /* CatalogSampleArithmeticTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB6EA7F37EF5FFF18E53441 /* CatalogSampleArithmeticTests.swift */; };
 		3EB76E519E17B14973CF58F1 /* K_TargetsProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12F0216F8FF9AE20E14B49D4 /* K_TargetsProjection.swift */; };
 		3F8961DDB77A018095E82A1D /* ProView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 188559D9B23742DBC413C75E /* ProView.swift */; };
 		3FA40EF549EB399B802A3C9A /* Runs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761D6D9F643EAA00C64D9BBC /* Runs.swift */; };
@@ -323,6 +324,7 @@
 		1B4214411E5A308A6B07D6E4 /* ToolkitPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolkitPayloads.swift; sourceTree = "<group>"; };
 		1D4E8F519A9E24A36E4D0BC7 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
 		1EA8EB84CF316484DDD472B3 /* SettingsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsV5.swift; sourceTree = "<group>"; };
+		1EB6EA7F37EF5FFF18E53441 /* CatalogSampleArithmeticTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogSampleArithmeticTests.swift; sourceTree = "<group>"; };
 		1F097DD1FEE235AC5D4AD178 /* HealthSegmentedControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSegmentedControl.swift; sourceTree = "<group>"; };
 		2066A2748323E0E82C09E971 /* RegisterSweepTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegisterSweepTests.swift; sourceTree = "<group>"; };
 		21C4E0103C48556262CA34E6 /* LiveRunTreadmillV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillV5.swift; sourceTree = "<group>"; };
@@ -550,6 +552,7 @@
 			children = (
 				5714B50567FAC68FA7473384 /* _SplitsDecompositionTests.swift */,
 				0BBD87A2B7AEEDE1D12808EB /* BeltTrackerTests.swift */,
+				1EB6EA7F37EF5FFF18E53441 /* CatalogSampleArithmeticTests.swift */,
 				58ADF42EDED4C71FB0AD2CDD /* Info.plist */,
 				FA3B687F7BD1375763E551FE /* NetworkFence.swift */,
 				8AFF6EE9836728CE662BA316 /* OpenEndedSessionTests.swift */,
@@ -1145,6 +1148,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CC56F6522DB4029831F4ECE1 /* BeltTrackerTests.swift in Sources */,
+				3E71C61C03EEB17ADE58BD88 /* CatalogSampleArithmeticTests.swift in Sources */,
 				1BB8C7635DAD616EC84CB80E /* DecodeSweepTests.swift in Sources */,
 				87BBC4C1C5A3A8FE69C0D763 /* FormatConformanceTests.swift in Sources */,
 				F1CA1817A927220804808DA0 /* FormatVectors.generated.swift in Sources */,

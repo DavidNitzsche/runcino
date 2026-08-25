@@ -144,17 +144,26 @@ enum RunLogV5Sample {
         try! JSONDecoder().decode(LogState.self, from: Data(json.utf8))
     }
 
+    /// 2026-08-25 · the three totals in here were 24.3 mi / 17.2 mi /
+    /// "2:34:10" and not one of them was the sum of the runs underneath: the
+    /// header claimed 24.3 mi over four runs that add to 36.3, and THIS WEEK
+    /// claimed 17.2 over three that add to 29.2 — a 12-mile week invented in a
+    /// sample. `log-state.ts` builds both by reducing the very rows it sends,
+    /// so production cannot produce this. But the catalog is where a screen
+    /// gets LOOKED AT, and a sample whose figures do not add up makes a real
+    /// summation bug indistinguishable from the sample being nonsense.
+    /// `FaffTests/CatalogSampleArithmeticTests.swift` now adds them up.
     private static let json = """
     {
       "today": "2026-08-20",
       "totalRuns": 4,
-      "totalMi": 24.3,
+      "totalMi": 36.3,
       "weeks": [
         {
           "monday": "2026-08-17",
           "label": "This week",
-          "totalMi": 17.2,
-          "totalDuration": "2:34:10",
+          "totalMi": 29.2,
+          "totalDuration": "3:54:53",
           "isCurrent": true,
           "runs": [
             { "id": "run_9f21", "date": "2026-08-18", "dow": 2, "name": "Run",
