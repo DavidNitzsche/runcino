@@ -15,6 +15,9 @@ import { loadBiologicalSex } from '@/lib/coach/biological-sex';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { runCadenceSpm } from '@/lib/runs/coherence';
 import { runCadenceSpmSql } from '@/lib/runs/run-shape';
+// WEEK-READ-1 · the runner's own seven days, from the one helper that answers it.
+import { weekWindowFor } from '@/lib/coach/week-window';
+import { loadSettings } from '@/lib/coach/settings';
 
 export async function loadCoachState(userId: string): Promise<CoachState> {
   // 2026-06-03 · runner TZ instead of the old UTC-minus-7-hour Pacific
@@ -148,7 +151,23 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
         date: d.date_iso, dow: d.dow, type: d.type,
         mi: Number(d.distance_mi) || 0, label: d.sub_label,
       }));
-      weekPlanned = Math.round(currentWeekDays.reduce((s, d) => s + d.mi, 0) * 10) / 10;
+      // WEEK-READ-1 (2026-08-24) · `currentWeekDays` is the PLAN's week (the
+      // rows sharing today's week_id) and stays that way — the LLM reads it as
+      // the block's own unit. `weekPlanned` is the number the runner is shown
+      // beside the week strip, so it is summed over the RUNNER's week: the
+      // seven days ending on their long-run day, the same window
+      // `/api/plan/week`, `glance-state` and `training-state` all use.
+      //
+      // On a block authored on the runner's own grid these are the same
+      // number. On one that is not they are two different weeks, which is what
+      // put 29.5 mi over a 31.0 mi strip on a live phone on 2026-08-24.
+      const win = weekWindowFor((await loadSettings(userId)).long_run_day, today);
+      const inWindow = workouts.filter((w) => w.date_iso >= win.startISO && w.date_iso <= win.endISO);
+      // Null, not zero, when the block does not reach this week — zero claims
+      // nothing is planned, absent says we cannot see a week here.
+      weekPlanned = inWindow.length > 0
+        ? Math.round(inWindow.reduce((s, w) => s + (Number(w.distance_mi) || 0), 0) * 10) / 10
+        : null;
       phaseLabel = phases.find((p) => cw.week_idx >= p.start_week_idx && cw.week_idx <= p.end_week_idx)?.label ?? null;
     }
 

@@ -311,12 +311,31 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     )).rows;
     const cw = weeks.find((w: any) => w.week_start_iso <= today &&
       new Date(Date.parse(w.week_start_iso + 'T00:00:00Z') + 7 * 86400000).toISOString().slice(0, 10) > today);
-    if (cw) {
+    // WEEK-READ-1 (2026-08-24) · planned is summed over the RUNNER'S seven days
+    // — `weekDates` above, the long-run-day window this same function already
+    // builds `weekDays` from — not over the plan_weeks row today falls inside.
+    //
+    // The two were different objects on the same screen. `weekPlanned` is the
+    // headline figure ("X of Y mi") and `weekDays` is the strip printed under
+    // it; on a block authored on a different grid from the one it is read on,
+    // the headline described one week and the strip another. Live on
+    // 2026-08-24: 29.5 above a strip summing to 31.0 for one runner, 3.0 above
+    // 2.0 for a second. WEEK-ALIGN-1 stops new blocks being authored that way;
+    // this makes the pair agree for the ones that already were.
+    //
+    // Still one query, now bounded by date instead of by week id.
+    {
       const wkmi = await pool.query(
-        `SELECT SUM(distance_mi)::numeric AS mi FROM plan_workouts WHERE plan_id = $1 AND week_id = $2`,
-        [plan.id, cw.id]
+        `SELECT SUM(distance_mi)::numeric AS mi, COUNT(*)::int AS n
+           FROM plan_workouts
+          WHERE plan_id = $1 AND date_iso::date BETWEEN $2::date AND $3::date`,
+        [plan.id, weekDates[0].date, weekDates[6].date]
       );
-      weekPlanned = Number(wkmi.rows[0]?.mi ?? 0);
+      // Null, not zero, when the block does not reach this week at all. Zero
+      // is a claim that nothing is planned; absent is what we actually know.
+      weekPlanned = Number(wkmi.rows[0]?.n ?? 0) > 0 ? Number(wkmi.rows[0]?.mi ?? 0) : null;
+    }
+    if (cw) {
       const phases = (await pool.query(
         `SELECT label, start_week_idx, end_week_idx FROM plan_phases WHERE plan_id = $1`,
         [plan.id]

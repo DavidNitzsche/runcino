@@ -163,6 +163,7 @@ import {
   FAST_FINISH_MIN_MI,
   QUALITY_LOOKBACK_DAYS,
   qualityLookbackDays,
+  RACE_RUNUP_DAYS,
 } from '@/lib/plan/generate';
 import {
   BLEND_GRACE_FRACTION,
@@ -12958,4 +12959,169 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
     },
   },
+  /* -- RACE-RUNUP-1 (2026-08-24) --------------------------------------------
+   *
+   * `guardGoalRaceRunUp` is the pass that owns the seven days ending on race
+   * day, across composed week boundaries. It exists because the race-week
+   * composer only reaches inside the week the race falls in, and when race day
+   * sits early in that week the run-up lives in the PREVIOUS week, where
+   * nothing knew a race was coming -- a marathon block with a Monday anchor
+   * and a Sunday race ended its last full week with a ten-mile long run on the
+   * Saturday.
+   *
+   * These two claims read Research/08's four race-week templates and assert
+   * the pass enforces what all four agree on, rather than what looked
+   * reasonable in the diff.
+   */
+  {
+    id: 'RACERUNUP.no-long-run-in-race-week',
+    binds: ['lib/plan/generate.ts#RACE_RUNUP_DAYS'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 9.3 Day-by-day race week templates',
+    claim:
+      'Research/08 section 9.3 publishes a day-by-day race-week template for each of the ' +
+      'marathon, half, 10K and 5K, each covering the seven days ending on race day. Not one ' +
+      'row in any of the four prescribes a long run. So the window the engine protects must ' +
+      'be at least as long as the templates are, and no day inside it may carry a long run.',
+    check() {
+      for (const heading of RACE_WEEK_TEMPLATES) {
+        const t = resolveCitation('Research/08-pacing-and-race-week.md', heading).table();
+        const day = t.headers[0];
+        const workout = t.headers[1];
+        // The template's own length, read out of the doc: the rows before the
+        // RACE row are the run-up days the engine has to own.
+        // The RACE row is the one whose Workout cell IS "RACE" - matching
+        // /race/i would hit the marathon's Tuesday "Race-prep workout" and
+        // silently shrink the template to one row.
+        const raceIdx = t.rows.findIndex((r) => r[workout].trim().toUpperCase() === 'RACE');
+        if (raceIdx < 0) {
+          throw new Error(
+            `section 9.3 template "${heading}" has no RACE row - the anchor or the table changed`,
+          );
+        }
+        if (RACE_RUNUP_DAYS < raceIdx) {
+          throw new Error(
+            `RACE_RUNUP_DAYS = ${RACE_RUNUP_DAYS} is shorter than the ${raceIdx}-day run-up ` +
+              `"${heading}" prescribes - the earliest template days sit outside the guard`,
+          );
+        }
+        for (const r of t.rows.slice(0, raceIdx)) {
+          if (/\blong\b/i.test(r[workout])) {
+            throw new Error(
+              `section 9.3 "${heading}" now prescribes a long run on ${r[day]} ` +
+                `("${r[workout]}") - the engine eases every long run inside the run-up, so ` +
+                'doctrine and engine disagree',
+            );
+          }
+        }
+      }
+    },
+  },
+  {
+    id: 'RACERUNUP.day-before-is-the-shortest-run',
+    binds: ['lib/plan/generate.ts#RACE_RUNUP_DAYS'],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 9.3 Day-by-day race week templates',
+    claim:
+      'In every one of the four section-9.3 templates the day before the race carries the ' +
+      'SHORTEST run of the week - 15-25 min easy with a few strides. Three of the four name ' +
+      'it a shakeout outright and the 5K describes the same session without the word, so the ' +
+      'claim reads the Duration column rather than the label. The engine rewrites the last ' +
+      'running day before the goal race to a two-mile shakeout for exactly this, and if a ' +
+      'template ever stopped ending on its shortest run the engine would be standing on ' +
+      'nothing.',
+    check() {
+      for (const heading of RACE_WEEK_TEMPLATES) {
+        const t = resolveCitation('Research/08-pacing-and-race-week.md', heading).table();
+        const day = t.headers[0];
+        const workout = t.headers[1];
+        const duration = t.headers[2];
+        const raceIdx = t.rows.findIndex((r) => r[workout].trim().toUpperCase() === 'RACE');
+        if (raceIdx < 1) {
+          throw new Error(
+            `section 9.3 template "${heading}" has no run-up rows before its RACE row`,
+          );
+        }
+        // Longest end of each run-up day's published duration band, out of the
+        // doc. A "0-30 min" rest-or-shakeout row tops out at 30.
+        const tops = t.rows.slice(0, raceIdx).map((r) => parseBand(r[duration])[1]);
+        const dayBefore = tops[tops.length - 1];
+        const shortest = Math.min(...tops);
+        if (dayBefore !== shortest) {
+          throw new Error(
+            `section 9.3 "${heading}" now puts ${dayBefore} min on ${t.rows[raceIdx - 1][day]}, ` +
+              `the day before the race, and the shortest run of the run-up is ${shortest} min ` +
+              '- the engine makes that day the shortest run of the week',
+          );
+        }
+      }
+    },
+  },
+  /* -- MAINT-LENGTH-1 (2026-08-24) ------------------------------------------
+   *
+   * How long the engine can hold a runner in a hold block, against how long
+   * doctrine says a hold block lasts. Recorded here with an exemption rather
+   * than closed, because closing it strands runners (see the argued block at
+   * `composeMaintenancePlan`'s TOTAL_WEEKS) and because the fix moves
+   * prescribed volume, which is the owner's call.
+   */
+  {
+    id: 'MAINTENANCE.hold-block-length',
+    binds: ['lib/plan/goal-tiers.ts#BUILD_WINDOW_WEEKS'],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 6. Base Building / Off-Season Plan',
+    claim:
+      'A hold block runs from today until the race enters its build window, so the LONGEST ' +
+      'one the engine can author is the longest runway it accepts (365 days, from ' +
+      'loadGeneratorInputs) minus that distance build window. Doctrine publishes a Duration ' +
+      'for the block this runner is in: section 6 Base Building says 8-16 weeks, and section ' +
+      '7 Maintenance says open-ended but 4-15 weeks realistically, on the stated basis that ' +
+      'two thirds of training volume holds VO2max for about fifteen weeks. ' +
+      'MAINTENANCE_BY_TIER already ruled that section 6 governs this mode, so the ceiling ' +
+      'read here is section 6 own Duration row.',
+    check({ cite, exempt }) {
+      const MAX_RUNWAY_WEEKS = 365 / 7;   // loadGeneratorInputs refuses beyond a year
+      const ceiling = parseBand(cite.table().cell('Duration', 'Value'))[1];
+      const over: string[] = [];
+      for (const cat of CATS) {
+        const longestHold = Math.floor(MAX_RUNWAY_WEEKS - BUILD_WINDOW_WEEKS[cat]);
+        if (longestHold > ceiling) {
+          over.push(`${cat}: up to ${longestHold} wk against a ${ceiling} wk ceiling`);
+        }
+      }
+      if (over.length > 0 && exempt('no-ceiling-on-a-long-hold')) return;
+      if (over.length > 0) {
+        throw new Error(
+          `the hold block has no length ceiling - ${over.join(' · ')}`,
+        );
+      }
+    },
+    exempt: {
+      'no-ceiling-on-a-long-hold':
+        'REAL VIOLATION, RUNNER-FACING, NOT FIXED HERE - it is the owner call. ' +
+        'composeMaintenancePlan sizes the block as floor(weeksToRace - buildWindow) with no ' +
+        'ceiling, so a runner who enters a half fifty-three weeks out is authored a ' +
+        'FORTY-ONE WEEK hold, and it is flat: one targetWeekly for the whole span with a ' +
+        '20% step-down every fourth week, no progression at all. Section 6 asks for 80-100% ' +
+        'of last cycle peak reached through reverse periodization over 8-16 weeks. ' +
+        'Capping it here would be worse than the violation: nothing re-authors a ' +
+        'race-anchored hold block that runs out (graduateDue fires on the race date, the ' +
+        'plan_elapsed branch of /api/cron/plan-drift is gated on !race_id, and openBlockDue ' +
+        'requires no future target), so a runner a year out would have no plan at all from ' +
+        'week sixteen until the build window opened. Closing this needs the block sized to ' +
+        'the ceiling AND the elapsed-plan branch taught to re-author a hold block AND a ' +
+        'ruling on whether a long hold progresses (section 6) or holds (section 7). Delete ' +
+        'this entry when those three land.',
+    },
+  },
+];
+
+/** The four race-week templates in Research/08 section 9.3, by their own
+ *  headings. Shared by the two RACE_RUNUP claims so neither can be updated to
+ *  a different set of templates than the other. */
+const RACE_WEEK_TEMPLATES = [
+  '**Marathon — race week template (Sunday race):**',
+  '**Half marathon — race week template (Sunday race):**',
+  '**10K — race week template (Saturday race):**',
+  '**5K — race week template (Saturday race):**',
 ];

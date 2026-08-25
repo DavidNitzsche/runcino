@@ -26,7 +26,7 @@ interface SimDay { dow: number; type: string; distanceMi: number; isQuality: boo
 interface SimWeek { startISO: string; phase: string; weeklyMi: number; isRaceWeek: boolean; tPaceSec: number | null; days: SimDay[]; }
 interface SimResult {
   ok: boolean; reason?: string; mode?: string;
-  derived?: { mode: string; raceDistanceMi: number; raceDateISO: string; goalPaceSec: number | null; tPaceSec: number; bestRecentVdot: number | null; recentWeeklyMi: number; recentLongMi: number; longRunDow: number; restDow: number; qualityDows: number[]; trainingDaysPerWeek: number | null; distanceCategory: string; };
+  derived?: { mode: string; raceDistanceMi: number; raceDateISO: string; buildOpensISO?: string | null; goalPaceSec: number | null; tPaceSec: number; bestRecentVdot: number | null; recentWeeklyMi: number; recentLongMi: number; longRunDow: number; restDow: number; qualityDows: number[]; trainingDaysPerWeek: number | null; distanceCategory: string; };
   validation?: { valid: boolean; violations: string[] };
   plan?: { totalWeeks: number; vols: number[]; weeks: SimWeek[] };
 }
@@ -331,6 +331,18 @@ export default function PlanSimulatorPage() {
               {modeLabel && <span className="sim-modechip">{modeLabel}</span>}
               {loading && <span className="sim-spin" aria-label="loading" />}
             </h1>
+            {/* SIM-CHAIN-1 (2026-08-24) · this preview used to draw the hold
+                block AND the whole periodized build behind it, which is a plan
+                production never writes: `composeForUserInternal` picks one mode
+                and runs one composer. A half sixteen weeks out is four
+                maintenance weeks here and seventeen weeks in the old preview.
+                The chain is gone; the reason the block is short is stated
+                instead, in the same words the Block screen uses. */}
+            {derived?.buildOpensISO && (
+              <div className="sim-holdnote">
+                Hold block. The build gets written {derived.buildOpensISO}, when the race enters the build window.
+              </div>
+            )}
             <div className="sim-statrow">
               <Stat label="Weeks" value={plan ? String(plan.totalWeeks) : '—'} />
               <Stat label="Peak" value={plan ? `${peakMi} mi` : '—'} />
@@ -576,6 +588,7 @@ input.sim-text[type=date]{color-scheme:dark;}
 .sim-main{flex:1;padding:24px 28px 60px;overflow-x:auto;height:100vh;overflow-y:auto;}
 .sim-summary{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:18px;}
 .sim-title{font-family:Oswald,sans-serif;font-weight:600;font-size:26px;margin:0 0 12px;display:flex;align-items:center;gap:12px;}
+.sim-holdnote{font-size:11px;color:var(--cyan);margin:6px 0 2px;}
 .sim-modechip{font-size:10px;font-weight:800;letter-spacing:1px;color:var(--cyan);border:1px solid var(--cyan);border-radius:5px;padding:3px 7px;}
 .sim-spin{width:13px;height:13px;border:2px solid var(--line);border-top-color:var(--gold);border-radius:50%;display:inline-block;animation:simspin .7s linear infinite;}
 @keyframes simspin{to{transform:rotate(360deg);}}

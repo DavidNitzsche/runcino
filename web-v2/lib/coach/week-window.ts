@@ -18,16 +18,19 @@
  * matching every other date helper in the coach layer.
  */
 import type { UserSettings } from './settings';
+// WEEK-READ-1 (2026-08-24) · THE arithmetic, once. This file and
+// `lib/notifications/week-window.ts` each held their own copy of the same
+// four lines — identical today, and each documented as the source of truth for
+// the other's callers. Two identical implementations of one rule is the drift
+// this file was created to prevent, one level up. This one now delegates and
+// keeps only what it adds: the settings-shaped `long_run_day` string, its
+// default, and the `{ startISO, endISO }` shape its callers read.
+import { trainingWeekWindow } from '@/lib/notifications/week-window';
 
 /** 0=Sun..6=Sat — the JS getUTCDay() basis (NOT the Mon-indexed plan basis). */
 const DOW_OF: Record<UserSettings['long_run_day'], number> = {
   sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
 };
-
-function addDaysISO(iso: string, days: number): string {
-  return new Date(Date.parse(iso + 'T12:00:00Z') + days * 86400000)
-    .toISOString().slice(0, 10);
-}
 
 export interface WeekWindow {
   /** ISO day the training week starts (day AFTER the long-run day). */
@@ -49,10 +52,7 @@ export function weekWindowFor(
   todayISO: string,
 ): WeekWindow {
   const longRunDow = DOW_OF[(longRunDay ?? 'sun') as UserSettings['long_run_day']] ?? 0;
-  const weekStartDow = (longRunDow + 1) % 7;                    // day after the long run
   const dow = new Date(todayISO + 'T12:00:00Z').getUTCDay();    // 0=Sun..6=Sat
-  const daysSinceWeekStart = (dow - weekStartDow + 7) % 7;
-  const startISO = addDaysISO(todayISO, -daysSinceWeekStart);
-  const endISO = addDaysISO(startISO, 6);
-  return { startISO, endISO };
+  const { week_start_iso, week_end_iso } = trainingWeekWindow(todayISO, dow, longRunDow);
+  return { startISO: week_start_iso, endISO: week_end_iso };
 }

@@ -358,8 +358,20 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
 
   const weekLine = activePlan
     ? await (async () => {
+        // BLOCK-ENDED-1 (2026-08-24) · the week has to CONTAIN today, not merely
+        // start before it. Without the upper bound a block whose last week
+        // finished still answered with that week, so a runner whose plan ran
+        // out kept reading "Week 1 of 1" every morning — the same
+        // forever-stale shape `planElapsed` was written for, one surface up.
+        // One production plan was in exactly this state on 2026-08-24 (last
+        // prescribed day 2026-08-22, still the active plan). No row now means
+        // no line, which is the honest answer and the one this block already
+        // takes for a failed count.
         const w = (await pool.query<{ week_idx: number }>(
-          `SELECT week_idx FROM plan_weeks WHERE plan_id = $1 AND week_start_iso <= $2
+          `SELECT week_idx FROM plan_weeks
+            WHERE plan_id = $1
+              AND week_start_iso::date <= $2::date
+              AND week_start_iso::date + 7 > $2::date
             ORDER BY week_start_iso DESC LIMIT 1`,
           [activePlan.id, today],
         ).catch(() => ({ rows: [] as any[] }))).rows[0];

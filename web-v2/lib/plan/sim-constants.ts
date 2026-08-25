@@ -152,10 +152,14 @@ export const WEEKLY_MI_OPTIONS: { value: SimWeeklyMi; label: string }[] = [
   // HIGHVOL-1 (2026-08-19) · the ladder stopped at an open-ended '45+', so the
   // simulator could not represent — and therefore could not audit — any runner
   // in the sub-elite or elite rows of Research/00a §"Volume table".
+  // SIM-SEED-1 (2026-08-24) · the top three labels now name the bands the
+  // engine is actually seeded from (`histAvgBandForMi`'s cut points), not
+  // rounder numbers that spanned two of them. A picker whose label and whose
+  // seed disagree is a picker that previews somebody else's plan.
   { value: 45, label: '45 to 55 miles' },
-  { value: 55, label: '55 to 70 miles' },
-  { value: 70, label: '70 to 90 miles' },
-  { value: 90, label: '90+ miles' },
+  { value: 55, label: '55 to 65 miles' },
+  { value: 70, label: '65 to 85 miles' },
+  { value: 90, label: '85+ miles' },
 ];
 
 export const LONG_BUCKET_OPTIONS: { value: SimLongBucket; label: string }[] = [
@@ -180,25 +184,57 @@ export const RACE_HISTORY_DISTANCES: { value: SimRaceDistance; label: string }[]
 
 export const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
-/** weeklyMi bucket → recentWeeklyMi. Native maps the bucket to a histAvg range
- *  (OnboardingView.swift:112-120: <5→"0-5", <15→"5-15", <25→"15-25", <35→
- *  "25-35", else→"35+"), then the backend maps that range to a midpoint
- *  (state.ts HIST_AVG_MIDPOINTS: 3/10/20/30/40/50). This is the exact (lossy) value
- *  a new no-Strava signup's plan is seeded from. VAR-06pt2 · 45+ no longer collapses to 40. */
+/**
+ * weeklyMi bucket → recentWeeklyMi · THE COLD-START SEED, and it must be a
+ * number production can actually persist.
+ *
+ * The real chain has three hops and this function is a model of all three:
+ * `OnboardingHostV5.snapWeeklyMi` snaps the runner's typed mileage to a rung,
+ * `OnboardingHostV5.histAvgBand` turns that rung into a BAND STRING, and
+ * `POST /api/onboarding/complete` persists that band's `HIST_AVG_MIDPOINTS`
+ * value. The engine reads the column. So the set of seeds a real signup can
+ * produce is exactly the set of midpoints, and nothing between them.
+ *
+ * SIM-SEED-1 (2026-08-24) · the top three rungs used to answer 62 / 80 / 100,
+ * which no runner can be seeded with — HIGHVOL-1 widened the two ladders
+ * separately and gave them different midpoints, so /sim/plan and every sweep
+ * that walks these buckets were grading three runners production cannot build,
+ * and `conservativeVdotFromMileage` (the cold-start pace floor) reads exactly
+ * this number. The bands are read off the same cut points the Swift switches
+ * on, so the three ladders now move together or not at all.
+ *
+ * The nine buckets cover every achievable seed. The phone offers eleven rungs
+ * (0/5/15/25/35/45/55/65/75/85/95) but 65 and 75 share the "60-80" band and 85
+ * and 95 share "80+", so {3, 10, 20, 30, 40, 50, 52, 70, 90} is the whole
+ * reachable set and each bucket below lands on one of them.
+ */
 export function recentWeeklyMiFromBucket(b: SimWeeklyMi): number {
-  if (b < 5) return 3;
-  if (b < 15) return 10;
-  if (b < 25) return 20;
-  if (b < 35) return 30;
-  if (b < 45) return 40; // VAR-06pt2 · 35-45 bucket stays 40
-  if (b < 55) return 50; // VAR-06pt2 · 45+ runners start/peak higher (Research/00a §"Volume table")
-  // HIGHVOL-1 (2026-08-19) · midpoints of the bands above; the open-ended top
-  // rung sits at the bottom of the marathon-elite row rather than its middle,
-  // keeping a self-report conservative.
-  if (b < 70) return 62;
-  if (b < 90) return 80;
-  return 100;
+  return HIST_AVG_MIDPOINT_BY_BAND[histAvgBandForMi(b)];
 }
+
+/** `OnboardingHostV5.histAvgBand`, in TypeScript. The cut points are the
+ *  Swift's `case ..<N` list, unchanged. */
+function histAvgBandForMi(mi: number): string {
+  if (mi < 5) return '0-5';
+  if (mi < 15) return '5-15';
+  if (mi < 25) return '15-25';
+  if (mi < 35) return '25-35';
+  if (mi < 45) return '35+';
+  if (mi < 55) return '45+';
+  if (mi < 65) return '45-60';
+  if (mi < 85) return '60-80';
+  return '80+';
+}
+
+/** `lib/onboarding/state.ts` `HIST_AVG_MIDPOINTS`, mirrored rather than
+ *  imported: this module is CLIENT-SAFE by contract and the onboarding state
+ *  module is a separate dependency chain. `_onboarding_e2e.test.ts` LAW O1
+ *  drives the real table through the real route, so a divergence between the
+ *  two is a test failure and not a silent drift. */
+const HIST_AVG_MIDPOINT_BY_BAND: Record<string, number> = {
+  '0': 0, '0-5': 3, '5-15': 10, '15-25': 20, '25-35': 30,
+  '35+': 40, '45+': 50, '45-60': 52, '60-80': 70, '80+': 90,
+};
 
 /** longest-run bucket → recentLongMi (state.ts HIST_LONG_MIDPOINTS: 2/5/8/12). */
 export function recentLongMiFromBucket(b: SimLongBucket): number {

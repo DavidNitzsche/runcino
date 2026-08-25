@@ -201,9 +201,13 @@ describe('maintenance + display invariants (diagnostic)', () => {
   // The prior CAL_MERGE gate hardcoded long=sun and missed three classes the render-layer fix closes:
   //   #6 CAL_MERGE — under plan-week grouping no rendered row may exceed the stated frequency, for ANY long day.
   //   #5 RACE_WEEKDAY — the goal race cell must land on longRunDow (production parity), not a forced Saturday.
-  //   #8 WEEK0_START — the sim must compose from the LITERAL chosen start (no snap-to-longRunDow), so week-0
-  //      matches production (frontLoadFirstRun "run on day one"); weeks[0].startISO must equal the chosen start.
-  it('sim is faithful across every long-run day (#5 race weekday · #6 no merge · #8 literal start)', () => {
+  //   #8 WEEK0_START — the sim must compose from the same anchor production does. WEEK-ALIGN-1
+  //      (2026-08-24) moved that anchor from the LITERAL chosen start to the runner's TRAINING-WEEK
+  //      BOUNDARY on or before it, because a block authored on the signup weekday is read back by
+  //      `trainingWeekWindow` on the long-run-day grid and the two coincide one weekday in seven.
+  //      So this now asserts the boundary, and that the boundary is never after the chosen start
+  //      and never more than the six days `persistPlan` clips before it.
+  it('sim is faithful across every long-run day (#5 race weekday · #6 no merge · #8 aligned start)', () => {
     const LONGDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     const dowOfDay = (d: string) => LONGDAYS.indexOf(d);
     const GOAL_STARTS = ['2026-07-05', '2026-07-06', '2026-07-08']; // Sun, Mon, Wed
@@ -222,8 +226,17 @@ describe('maintenance + display invariants (diagnostic)', () => {
               } as any);
               if (!built.ok) continue;
               plans++;
-              // #8 · week-0 composed from the literal chosen start (no snap-back)
-              if (built.composed.weeks[0]?.startISO !== startDateISO) { week0Off++; ex.week0 ??= `${distance}/${longRunDay}/start${startDateISO} → wk0 ${built.composed.weeks[0]?.startISO}`; }
+              // #8 · week-0 composed from the runner's training-week boundary (WEEK-ALIGN-1)
+              const w0 = built.composed.weeks[0]?.startISO;
+              const weekStartDow = (dowOfDay(longRunDay) + 1) % 7;
+              const startDow = new Date(startDateISO + 'T12:00:00Z').getUTCDay();
+              const back = ((startDow - weekStartDow) % 7 + 7) % 7;
+              const anchor = new Date(Date.parse(startDateISO + 'T12:00:00Z') - back * 86400000)
+                .toISOString().slice(0, 10);
+              if (w0 !== anchor || (w0 != null && w0 > startDateISO)) {
+                week0Off++;
+                ex.week0 ??= `${distance}/${longRunDay}/start${startDateISO} → wk0 ${w0}, boundary ${anchor}`;
+              }
               // #6 · plan-week grouping → no row exceeds freq
               for (const w of built.composed.weeks) {
                 if (w.isRaceWeek) continue;
@@ -240,18 +253,32 @@ describe('maintenance + display invariants (diagnostic)', () => {
     if (ex.week0) console.log(`  week0Off e.g. ${ex.week0}`);
     expect(merge, `a rendered row exceeds the stated frequency — CAL_MERGE regressed (#6)`).toBe(0);
     expect(raceOff, `goal race cell is not on the long-run day — sim/prod race-weekday parity broke (#5)`).toBe(0);
-    expect(week0Off, `week-0 startISO != chosen start — a start-snap was re-introduced (#8)`).toBe(0);
+    expect(week0Off, `week-0 startISO is not the runner's training-week boundary (#8)`).toBe(0);
   });
 
-  // ── RECOVERY_CHAIN · a post-race runner with a far next race must see the forward build (#2) ──
-  // The HOLD+RACE-PREP chain was gated `mode==='maintenance'` and excluded recovery, so a post-race
-  // runner planning a next race saw only 1-4 recovery weeks and the plan stopped — the entire build was
-  // invisible (asymmetric with maintenance under identical geometry). Both hold modes must chain forward.
-  it('recovery-mode preview appends the forward build when a next race is far out (#2)', () => {
+  // ── HOLD_SYMMETRY · recovery and maintenance answer a far race the same way (#2) ──
+  //
+  // The defect this began as: the HOLD+RACE-PREP chain was gated
+  // `mode==='maintenance'` and excluded recovery, so under identical geometry a
+  // post-race runner saw 1-4 recovery weeks and a not-post-race runner saw the
+  // whole build. An asymmetry with no reason behind it.
+  //
+  // SIM-CHAIN-1 (2026-08-24) closed it from the other side. The chain is gone
+  // entirely, because `composeForUserInternal` never had one: it calls
+  // `pickPlanMode` once and one composer once, so a half sixteen weeks out got
+  // four maintenance weeks in production while /sim/plan drew seventeen. Both
+  // hold modes now do what production does, which is still symmetric and is
+  // additionally true.
+  //
+  // So the gate flips from "both chain forward" to "neither does, and both say
+  // when the build opens" — the answer that replaced the chain, and the one the
+  // Block screen's coach line prints.
+  it('a hold block for a far race carries no build, and names the day the build opens (#2)', () => {
     const PHASES_BUILD = new Set(['BASE', 'QUALITY', 'RACE-SPECIFIC', 'TAPER']);
-    let recoveryPlans = 0, noForward = 0;
+    let holdPlans = 0, carriedBuild = 0, noOpenDate = 0, endsOnRace = 0;
+    const byMode: Record<string, number> = {};
     const ex: string[] = [];
-    for (const lastDistance of ['half', 'marathon', '50k'] as const)
+    for (const lastDistance of [null, 'half', 'marathon', '50k'] as const)
       for (const distance of DISTANCES)
         for (const freq of [4, 5])
           for (const mileage of [25, 35]) {
@@ -259,19 +286,38 @@ describe('maintenance + display invariants (diagnostic)', () => {
               goalMode: 'race', distance, experienceLevel: 'intermediate', weeklyFrequency: freq,
               weeklyMileageBucket: mileage, longestRunBucket: '6-10', longRunDay: 'sun', restDay: 'sat',
               startDateISO: '2026-07-06', raceDateISO: '2027-03-01', goalTimeSec: GOAL_SEC[distance],
-              planWeeks: 0, lastRaceFinishedDaysAgo: 7, lastRaceDistance: lastDistance, raceHistory: [], availableDays: [],
+              planWeeks: 0,
+              lastRaceFinishedDaysAgo: lastDistance ? 7 : 0,
+              lastRaceDistance: lastDistance, raceHistory: [], availableDays: [],
             } as any);
-            if (!built.ok || built.mode !== 'recovery') continue;
-            recoveryPlans++;
-            const hasBuild = built.composed.weeks.some((w: any) => PHASES_BUILD.has(w.phase));
-            const endsOnRaceWeek = built.composed.weeks[built.composed.weeks.length - 1]?.isRaceWeek === true;
-            if (!hasBuild || !endsOnRaceWeek) { noForward++; if (ex.length < 5) ex.push(`last=${lastDistance}/next=${distance}/f${freq}/m${mileage} weeks=${built.composed.weeks.length} build=${hasBuild} endRace=${endsOnRaceWeek}`); }
+            if (!built.ok || built.mode === 'race-prep') continue;
+            holdPlans++;
+            byMode[built.mode] = (byMode[built.mode] ?? 0) + 1;
+
+            // 1 · no build phases. A hold block is a hold block.
+            if (built.composed.weeks.some((w: any) => PHASES_BUILD.has(w.phase))) {
+              carriedBuild++;
+              if (ex.length < 5) ex.push(`${built.mode}/last=${lastDistance}/next=${distance}: phases ${[...new Set(built.composed.weeks.map((w: any) => w.phase))].join('→')}`);
+            }
+            // 2 · and it does not pretend to reach the start line.
+            if (built.composed.weeks[built.composed.weeks.length - 1]?.isRaceWeek === true) endsOnRace++;
+            // 3 · but it does say when the build gets written, or it is a stub
+            //     that just stops — the thing the chain was invented to avoid.
+            const opens = built.derived.buildOpensISO;
+            if (!opens || opens > '2027-03-01' || opens < '2026-07-06') {
+              noOpenDate++;
+              if (ex.length < 5) ex.push(`${built.mode}/last=${lastDistance}/next=${distance}: buildOpensISO=${opens}`);
+            }
           }
-    console.log(`\nRECOVERY_CHAIN: ${recoveryPlans} recovery-mode plans · ${noForward} missing the forward build`);
+    console.log(`\nHOLD_SYMMETRY: ${holdPlans} hold blocks ${JSON.stringify(byMode)} · ${carriedBuild} carrying a build · ${endsOnRace} ending on a race week · ${noOpenDate} with no open date`);
     for (const e of ex) console.log(`  ${e}`);
-    expect(recoveryPlans, 'no recovery-mode plans were exercised — the test matrix stopped triggering recovery').toBeGreaterThan(0);
-    // Was 6300/6300 missing the build (audit) → 0 after RECOVERY-CHAIN.
-    expect(noForward, `recovery preview is missing the forward race-prep build — RECOVERY-CHAIN regressed (#2)`).toBe(0);
+    // BOTH hold modes must be exercised, or the symmetry is asserted over one
+    // of them — which is exactly the shape of the defect this began as.
+    expect(byMode.maintenance ?? 0, 'no maintenance-mode plans were exercised').toBeGreaterThan(0);
+    expect(byMode.recovery ?? 0, 'no recovery-mode plans were exercised').toBeGreaterThan(0);
+    expect(carriedBuild, 'a hold block carries build phases — the sim/production chain is back (#2)').toBe(0);
+    expect(endsOnRace, 'a hold block ends on a race week — it is pretending to reach the start line').toBe(0);
+    expect(noOpenDate, 'a hold block does not say when the build opens — a stub that just stops (#2)').toBe(0);
   });
 
   // ── RACE_ON_AVAIL · the goal race cell must land on a declared-available day (#7) ──

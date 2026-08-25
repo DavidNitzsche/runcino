@@ -36,7 +36,7 @@ import {
   finalizeComposedPlan,
   weekStartBoundaryOf,
 } from './generate';
-import { lookupTierTarget, pickPlanMode, type PlanMode } from './goal-tiers';
+import { lookupTierTarget, pickPlanMode, buildOpensISO, type PlanMode } from './goal-tiers';
 import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/distance-category';
 import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
 import { tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
@@ -78,6 +78,20 @@ export interface SimBuildOk {
     mode: PlanMode;
     raceDistanceMi: number;
     raceDateISO: string;
+    /** WEEK-ALIGN-1 · where week 0 BEGINS: the training-week boundary on or
+     *  before the runner's start day, so every composed week is a week
+     *  `trainingWeekWindow` reads back whole. */
+    startMondayISO: string;
+    /** WEEK-ALIGN-1 · the runner's FIRST day. Composed days before it belong
+     *  to the part of week 0 that predates them; `persistPlan` drops those
+     *  (`clipBeforeISO`) and any faithful preview must drop them too. */
+    blockStartISO: string;
+    /** SIM-CHAIN-1 · on a HOLD block (maintenance or recovery) with a real
+     *  race behind it, the day `pickPlanMode` flips to race-prep and the build
+     *  gets authored. This is what a four-week block for a race sixteen weeks
+     *  out means, and it is the honest thing to draw instead of the build
+     *  itself. Null when there is no race, or the window is already open. */
+    buildOpensISO: string | null;
     goalPaceSec: number | null;
     tPaceSec: number;
     bestRecentVdot: number | null;
@@ -109,8 +123,12 @@ export type SimBuildResult = SimBuildOk | { ok: false; reason: string };
 
 /** Native onboarding answers → composed plan via the real engine. */
 export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedPrescriptions; rxRaceSpecific: ResolvedPrescriptions }): SimBuildResult {
-  const startMondayISO = sim.startDateISO;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(startMondayISO)) return { ok: false, reason: 'invalid start date' };
+  /** The day the runner tapped "Start training" — their FIRST day. Week 0 is
+   *  composed from the training-week boundary on or before it; the days in
+   *  between belong to a week the runner was not here for and are not
+   *  persisted. See `requestedBlockStartISO` in generate.ts. */
+  const blockStartISO = sim.startDateISO;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(blockStartISO)) return { ok: false, reason: 'invalid start date' };
 
   // ── shared runner-profile derivation (mirrors loadGeneratorInputs) ──
   const level = sim.experienceLevel as LevelKey;
@@ -159,14 +177,23 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     restDow = (!aset.has(restDow) ? restDow : (unavail[0] ?? restDow)) as DOW;
     qualityDows = spacedQualityDowsFromAvailable(avail, longRunDow);
   }
-  // SIM-FIDELITY (2026-06-24) · the sim uses the LITERAL chosen start date, exactly as production
-  // onboarding does (generate.ts loadGeneratorInputs / seed-from-onboarding), so the previewed week-0
-  // matches what production builds — including frontLoadFirstRun ("run on day one" on the chosen start).
-  // The earlier MAINT-ALIGN-1 snap-to-longRunDow was reverted: it mutated the week-0 day shape away
-  // from production AND only aligned sun-long weeks anyway. Calendar-row alignment is now handled purely
-  // at render time (app/sim/plan/page.tsx groups days into rows by PLAN-WEEK membership, so no Sun-Sat
-  // row ever merges two training weeks — for ANY long-run day), which is the correct layer for a display
-  // concern. Keeping startMondayISO un-snapped is what makes the sim a faithful preview.
+  // WEEK-ALIGN-1 (2026-08-24) · week 0 begins on the runner's TRAINING-WEEK
+  // BOUNDARY, mirroring `loadGeneratorInputs` after the same change there.
+  //
+  // The sim previously used the literal chosen start date because production
+  // did, and the note here recorded a reverted snap-to-longRunDow experiment
+  // and concluded that alignment is a render concern. It is not. A block
+  // authored in Wed→Tue weeks is READ BACK in Mon→Sun ones by
+  // `trainingWeekWindow`, so every per-week number beside the strip — planned
+  // mileage, "Week N of M", cutback detection — is about a week the runner is
+  // not looking at. Grouping the calendar rows by plan-week membership made
+  // /sim/plan's own picture coherent and hid that from exactly the tool built
+  // to catch it.
+  //
+  // Snapped AFTER `longRunDow` is resolved, because `availableDays` can move
+  // the long run and the boundary is defined off wherever it lands — the same
+  // ordering `loadGeneratorInputs` uses (its §2 layout precedes its §4 anchor).
+  const startMondayISO = weekStartBoundaryOf(blockStartISO, (longRunDow + 1) % 7);
 
   // stated frequency → trainingDaysPerWeek + quality-count slice
   const rawFreq = Number.isFinite(sim.weeklyFrequency) ? Number(sim.weeklyFrequency) : null;
@@ -205,7 +232,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     // the validator's constraint row; maintenance skips the long-run cap.
     mode = 'maintenance';
     raceDistanceMi = SIM_DISTANCE_MI['half'];
-    raceDateISO = addDaysISO(startMondayISO, 28);
+    raceDateISO = addDaysISO(blockStartISO, 28);
     goalSec = null;
   } else if (sim.goalMode === 'goal') {
     raceDistanceMi = SIM_DISTANCE_MI[sim.distance];
@@ -216,7 +243,10 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     // days — the sim previewed a Saturday race the runner would never get — and, with weeks now
     // grouped by plan-week at render time, a non-Saturday long would leave trailing post-race rest days.
     // Placing the race on longRunDow keeps it the natural end of its (now plan-week-grouped) final week.
-    const rawDeadline = addDaysISO(startMondayISO, weeks * 7);
+    // WEEK-ALIGN-1 · off the runner's OWN start day, not the snapped anchor:
+    // `/api/profile/goal` computes the deadline as `startDateISO + weeks*7`
+    // before `generatePlan` ever sees it, so it cannot move when the anchor does.
+    const rawDeadline = addDaysISO(blockStartISO, weeks * 7);
     raceDateISO = addDaysISO(weekStartBoundaryOf(rawDeadline, ((longRunDow + 1) % 7)), 6);
     goalSec = sim.goalTimeSec ?? null;
     mode = 'race-prep'; // goal-anchored is always a build
@@ -226,9 +256,13 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     if (!/^\d{4}-\d{2}-\d{2}$/.test(raceDateISO)) return { ok: false, reason: 'invalid race date' };
     goalSec = sim.goalTimeSec ?? null;
     const lastDaysAgo = sim.lastRaceFinishedDaysAgo ?? 0;
-    const lastISO = lastDaysAgo > 0 ? addDaysISO(startMondayISO, -lastDaysAgo) : null;
+    const lastISO = lastDaysAgo > 0 ? addDaysISO(blockStartISO, -lastDaysAgo) : null;
     const lastDistMi = sim.lastRaceDistance ? SIM_DISTANCE_MI[sim.lastRaceDistance] : null;
-    mode = pickPlanMode(startMondayISO, raceDateISO, raceDistanceMi, lastISO, lastDistMi);
+    // WEEK-ALIGN-1 · production asks this of TODAY (`composeForUserInternal`
+    // passes `todayISO`), never of the week-0 anchor. A snapped anchor sits up
+    // to six days earlier, which is enough to flip the maintenance/race-prep
+    // boundary on its own.
+    mode = pickPlanMode(blockStartISO, raceDateISO, raceDistanceMi, lastISO, lastDistMi);
     if (mode === 'recovery' && lastISO && lastDistMi) {
       lastRaceFinished = { slug: 'sim-last', name: 'Last race', date: lastISO, distanceMi: lastDistMi };
     }
@@ -252,7 +286,9 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   const tPaceSec = (goalTpSim != null && currentT != null ? Math.min(goalTpSim, currentT) : goalTpSim) ?? currentT ?? 480;
 
   if (mode === 'race-prep') {
-    const d = daysBetween(startMondayISO, raceDateISO);
+    // Production's runway gate measures from TODAY (`loadGeneratorInputs`:
+    // `daysBetween(todayISO, raceDateISO)`), not from the anchor.
+    const d = daysBetween(blockStartISO, raceDateISO);
     if (d < 14) return { ok: false, reason: 'Race is under 2 weeks out · too close to build a plan. Push it later or pick a longer plan.' };
     if (d > 365) return { ok: false, reason: 'Race is over a year out · the engine plans within a year.' };
   }
@@ -315,46 +351,32 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     };
     composed = mode === 'recovery' ? composeRecoveryPlan(nonRace) : composeMaintenancePlan(nonRace);
 
-    // HOLD+RACE-PREP CHAIN (2026-06-24) · when a race is scheduled outside the build window, show the
-    // hold block (maintenance OR recovery) THEN the full race-prep plan in a single calendar, so the
-    // runner sees the complete picture instead of a 1-4 week stub that just stops.
-    // RECOVERY-CHAIN (2026-06-24) · the guard previously read `mode === 'maintenance'`, so a post-race
-    // runner planning a next race resolved to mode='recovery' and saw ONLY the 1-4 recovery weeks — the
-    // entire periodized build was invisible (asymmetric with maintenance under identical geometry). Both
-    // hold modes now chain forward; composePlan from the post-recovery start seeds off the hold block's
-    // peak and ramps gradually from that deloaded base.
-    if ((mode === 'maintenance' || mode === 'recovery') && sim.goalMode === 'race') {
-      const holdWeeksArr = composed.weeks;
-      const racePrepStartISO = addDaysISO(startMondayISO, holdWeeksArr.length * 7);
-      const daysTillRace = daysBetween(racePrepStartISO, raceDateISO);
-      if (daysTillRace >= 14 && daysTillRace <= 365) {
-        const holdPeakWeekly = holdWeeksArr.reduce((mx, w) => Math.max(mx, w.weeklyMi), recentWeeklyMi);
-        const holdPeakLong = holdWeeksArr.reduce(
-          (mx, w) => Math.max(mx, ...w.days.filter((d) => d.isLong).map((d) => d.distanceMi), 0),
-          recentLongMi,
-        );
-        const racePrepInput: ComposePlanInput = {
-          raceDistanceMi, goalSec, goalPaceSec, raceDateISO,
-          startMondayISO: racePrepStartISO, level,
-          recentWeeklyMi: holdPeakWeekly, easyDayMedianMi,
-          recentLongMi: Math.max(holdPeakLong, 1),
-          recentQualityDistanceMi: undefined, recentQualityPerWeek: undefined,
-          bestRecentVdot, bestRecentVdotSelfReported, tsbAtStart: undefined, horizonRaces: undefined, isMidBlock: false,
-          longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
-          rxQuality, rxRaceSpecific, tPaceSec, lthr: sim.lthr ?? null, maxHr: sim.maxHr ?? null,
-        };
-        try {
-          const racePrepPlan = composePlan(racePrepInput);
-          finalizeComposedPlan(racePrepPlan, raceDistanceMi, level);
-          composed = {
-            ...racePrepPlan,
-            weeks: [...holdWeeksArr, ...racePrepPlan.weeks],
-            totalWeeks: holdWeeksArr.length + racePrepPlan.weeks.length,
-            vols: [...composed.vols, ...racePrepPlan.vols],
-          };
-        } catch { /* compose failed · show the hold block only */ }
-      }
-    }
+    // THE CHAIN, REMOVED (SIM-CHAIN-1, 2026-08-24).
+    //
+    // What used to be here: when the race sat outside `BUILD_WINDOW_WEEKS`,
+    // this composed the hold block and then the ENTIRE periodized build and
+    // concatenated them into one calendar, "so the runner sees the complete
+    // picture instead of a 1-4 week stub that just stops."
+    //
+    // `composeForUserInternal` has never done that. It calls `pickPlanMode`
+    // once and one composer once. So for a half marathon sixteen weeks out —
+    // outside the 12-week half window, and one of the three plan lengths the
+    // native goal sheet offers — production authored four maintenance weeks
+    // and /sim/plan drew seventeen. Two different plans from one set of
+    // answers, and the simulator was the optimistic one.
+    //
+    // It also meant `_sweep_allusers.test.ts` was grading the chain. Its
+    // far-out arc is commented "≥26 weeks → maintenance until the build window
+    // opens" — the author's intent was the hold block, and the chain quietly
+    // handed the sweep a build instead. Removing it restores what that arc
+    // says it grades.
+    //
+    // The concern the chain was written for is real and is answered on the
+    // screen instead of in the calendar: the Block panel's coach line now
+    // names the day the build opens (`buildOpensISO`, asked of `pickPlanMode`
+    // itself), so a runner on a four-week hold block is told why it is four
+    // weeks rather than shown thirteen weeks that will not be written.
+    // `derived.buildOpensISO` below carries the same date to /sim/plan.
   }
   finalizeComposedPlan(composed, raceDistanceMi, level);
   // VOLS-SNAP (2026-06-24) · re-snapshot the volume-curve series from the VOL-1/COH-4-reconciled
@@ -364,19 +386,25 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   // that disagree by up to 33mi (and the maint+race-prep chain concatenated two pre-finalize budgets).
   composed.vols = composed.weeks.map((w) => w.weeklyMi);
 
+  // SIM-CHAIN-1 · asked of the mode machine, from the runner's own start day,
+  // so the preview and the Block screen answer this with one function.
+  const buildOpens = (sim.goalMode === 'race' && mode !== 'race-prep')
+    ? buildOpensISO(blockStartISO, raceDateISO, raceDistanceMi)
+    : null;
+
   return {
     ok: true,
     mode,
     raceDistanceMi,
     composed,
     derived: {
-      mode, raceDistanceMi, raceDateISO, goalPaceSec, tPaceSec,
+      mode, raceDistanceMi, raceDateISO, startMondayISO, blockStartISO, buildOpensISO: buildOpens, goalPaceSec, tPaceSec,
       bestRecentVdot: bestRecentVdot ?? null, bestRecentVdotSelfReported, recentWeeklyMi, recentLongMi,
       longRunDow, restDow, qualityDows, trainingDaysPerWeek, distanceCategory: cat,
     },
     validateCtx: {
       level, isSteppingStoneToMarathon: false, priorPlanPeakLongMi: null,
-      todayISO: startMondayISO, trainingDaysPerWeek,
+      todayISO: blockStartISO, trainingDaysPerWeek,
       trailingAvgWeeklyMi: recentWeeklyMi > 0 ? recentWeeklyMi : null,
       // GOAL-1 · available_days stranded quality to empty → composer folds to long+easy (valid)
       qualityStrandedByAvailability: availableDows != null && qualityDows.length === 0,

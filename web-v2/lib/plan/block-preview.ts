@@ -119,8 +119,12 @@ export function previewBlockShape(input: BlockShapePreviewInput): BlockShapePrev
   const inRecovery = !!input.recoveryEndISO && input.recoveryEndISO >= input.todayISO;
   const recoveryEndISO = inRecovery ? input.recoveryEndISO! : null;
 
-  // "today" boundary-snapped — matches generatePlan's own startMondayISO for
-  // its default startAnchor='monday' path (generate.ts ~5859-5861).
+  // "today" boundary-snapped — matches generatePlan's own startMondayISO.
+  // WEEK-ALIGN-1 (2026-08-24) · the qualifier "for its default
+  // startAnchor='monday' path" is gone because there is no other path now:
+  // `loadGeneratorInputs` snaps every anchor to the training-week boundary and
+  // clips the pre-start days at persist, so this preview and the real
+  // authoring agree for a start-today signup too, which they did not before.
   const todayBoundaryISO = weekStartBoundaryOf(input.todayISO, weekStartDow);
   const raceBoundaryISO = weekStartBoundaryOf(input.raceDateISO, weekStartDow);
   const totalWeeksToRace = Math.max(0, daysBetween(todayBoundaryISO, raceBoundaryISO) / 7 + 1);
