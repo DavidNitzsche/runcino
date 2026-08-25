@@ -168,6 +168,17 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
     'web-v2/lib/plan/goal-tiers.ts#RECOVERY_LONG_PCT:m==ultra':
       'The marathon and ultra both hold the long deliberately small inside the reverse taper · ' +
       'documented at goal-tiers.ts:128-133.',
+    'web-v2/lib/plan/goal-tiers.ts#PEAK_HOLD_WEEKS:5k==10k':
+      'Zero is each row\'s OWN answer, not a copied one. Research/22 names a peak phase in the ' +
+      'phase row for the marathon ("peak (3 wk)") and the ultras ("race-specific peak (4 wk)"); ' +
+      'no 5K, 10K or half plan at any experience rung names one — they run build → sharpen → ' +
+      'taper, and the sharpening weeks are deliberately not at peak volume. ' +
+      'PLAN.peak-is-a-phase-not-a-week reads all nine of those phase rows out of the doc and ' +
+      'fails if any of them grows a peak phase while the engine still holds 0.',
+    'web-v2/lib/plan/goal-tiers.ts#PEAK_HOLD_WEEKS:5k==hm':
+      'Same three-distance zero · see PEAK_HOLD_WEEKS:5k==10k.',
+    'web-v2/lib/plan/goal-tiers.ts#PEAK_HOLD_WEEKS:10k==hm':
+      'Same three-distance zero · see PEAK_HOLD_WEEKS:5k==10k.',
     'web-v2/lib/plan/goal-tiers.ts#BUILD_WINDOW_WEEKS:10k==hm':
       'DOCTRINE-HMWIN-1 (2026-08-17). The two arrive at 12 from different directions and both ' +
       'are read out of the doc. Research/22 §3 publishes `Duration | 12 weeks` for ALL THREE ' +

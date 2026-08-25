@@ -413,6 +413,123 @@ export const GENERAL_RAMP_CEILING: Record<Exclude<LevelKeyLite, null>, number> =
   advanced_plus: 1.15,
 };
 
+/**
+ * WKPEAK-1 (2026-08-25) · HOW MUCH BIGGER THIS CYCLE'S PEAK MAY BE THAN THE
+ * LAST ONE THE RUNNER ACTUALLY RAN.
+ *
+ * `GENERAL_RAMP_CEILING` above and this table read the SAME row of
+ * `Research/00a` §"Volume progression rules", on two different axes, and only
+ * one of those axes was ever bounded:
+ *
+ *   | Year-on-year base growth | 5-15% per training cycle for trained
+ *   | athletes; novices safely +20-25% over 8 weeks vs. +10% over 12 |
+ *
+ * DOCTRINE-7 spent that row on the WEEK-OVER-WEEK climb, which is a defensible
+ * ruling about the SHAPE of a build (00a §"The 10% rule — reconsidered" argues
+ * against a tight weekly cap, and something has to bound the climb). But the
+ * row's own words are "per training cycle", and the quantity it literally
+ * bounds — how far this block's peak may sit above the last peak the runner
+ * demonstrated — was bounded by nothing at all. `volumeCurve` took
+ * `TIER_TARGETS[cat][tier].peakWeeklyMileageBand[0]` and built to it from
+ * wherever the runner happened to be.
+ *
+ * WHAT THAT COST, MEASURED. The owner's CIM block: rolling-7-day peak 52.3 in
+ * the sixteen weeks before authoring, 51.3 in the sixteen before that — a
+ * ceiling he has held twice and grown 2% across. `TIER_TARGETS.m.advanced` is
+ * 65-90, so the curve was built to 65: a 24% single-cycle step onto ground he
+ * has not touched in eighteen months of records. The block did not deliver it
+ * (see WKPEAK-2 and the resume ramp for why), so the defect never surfaced as
+ * an injury — it surfaced as a build that peaked at 52.5, exactly his existing
+ * peak, having built nothing.
+ *
+ * BOTH FAILURES COME FROM THE SAME MISSING QUANTITY. A target nobody checks
+ * against the runner is either unreachable or unsafe, and which one you get is
+ * decided by accident downstream.
+ *
+ * WHY THE TIER BAND IS NOT DEMOTED INSTEAD. Research/22's rows carry an entry
+ * condition in their own prose — §"Marathon — Advanced" opens "Multiple
+ * marathons, 50+ mpw base" — and the engine reads the row by goal pace and
+ * stated experience without ever asking whether the base is there. Demoting
+ * the tier would answer that, and answer it wrongly: the tier also sets the
+ * long-run band, quality sessions per week and days per week, all of which are
+ * right for this runner. The band is the destination; this is how fast a
+ * runner is walked to it. A runner who spends a cycle at 60 arrives at the
+ * next authoring with a 60 peak, and 65 is then inside their own ceiling.
+ *
+ * BEGINNER IS null, AND THAT IS THE DOCTRINE. The 5-15% figure is stated "for
+ * trained athletes". The novice half of the row is a different claim about ramp
+ * RATE over 8 vs 12 weeks, not about cycle-over-cycle base growth, and reading
+ * it as one caps a first-time marathoner building off 15 mi/wk at 19 — against
+ * a Research/22 beginner row that asks for 30-35. Doctrine bounds the trained
+ * runner here and says nothing about the novice; so does this table.
+ *
+ * Cite: Research/00a-distance-running-training.md §"Volume progression rules"
+ *       — the "Year-on-year base growth" row, per-cycle axis
+ * Cite: Research/00a-distance-running-training.md §"Volume table — miles per
+ *       week (km in parentheses)" — corroboration, not the binding: the
+ *       marathon row's "Recreational competitive 40-60" is the band a 52 mi/wk
+ *       marathoner is in, and 60 is its top
+ * Bound by RAMP.cycle-over-cycle-peak-growth.
+ */
+export const CYCLE_GROWTH_CEILING: Record<Exclude<LevelKeyLite, null>, number | null> = {
+  beginner: null,        // doctrine's per-cycle figure is stated for TRAINED athletes only
+  intermediate: 1.15,    // trained: top of the 5-15% band, same reading GENERAL_RAMP_CEILING takes
+  advanced: 1.15,
+  advanced_plus: 1.15,
+};
+
+/**
+ * WKPEAK-2 (2026-08-25) · HOW MANY BUILD WEEKS THE PLAN SPENDS AT ITS PEAK.
+ *
+ * `volumeCurve` is a pure geometric climb whose factor is
+ * `(peak/base)^(1/(climbWeeks-1))`, so it touches the peak on the LAST climbing
+ * week and then tapers. One week at the target, at the end, and every other
+ * week of the block below it.
+ *
+ * Research/22 does not describe a build that shape for a marathon. It names a
+ * peak PHASE in the phase row and repeats the peak long run in the parameter
+ * row, in three places that agree:
+ *
+ *   · §"Marathon — Beginner"     Phases "… → peak (3 wk) → taper (3 wk)"
+ *   · §"Marathon — Intermediate" Peak long run "20-22 mi (2-3 times)"
+ *   · §"Marathon — Advanced"     sample peak week is "week 12 of 18" against a
+ *                                2-3 week taper — three to four build weeks
+ *                                still to come after the peak volume lands
+ *
+ * The floor common to all three is THREE weeks, and it is the number the
+ * beginner row states outright, so that is what this table takes.
+ *
+ * ZERO IS NOT AN OVERSIGHT. No 5K, 10K or half row in Research/22 names a peak
+ * phase — they run "build → sharpen → taper", where the sharpening weeks are
+ * deliberately NOT at peak volume. Carrying the marathon's number across to
+ * them would be exactly the class `_doctrine_lint`'s "no distance category
+ * silently carries another category's value" check exists to catch. The ultra
+ * rows do name one ("race-specific peak (4 wk)" · "(4-6 wk)" · "(6 wk)"), and
+ * take its floor.
+ *
+ * WHAT IT ACTUALLY CHANGES. Only the reach: the curve now aims to arrive at the
+ * target with this many climbing weeks left, and the existing
+ * `Math.min(cappedTarget, peakTarget)` clamp holds it there. Nothing about the
+ * climb's safety moves — `GENERAL_RAMP_CEILING` still caps every step, so for
+ * an under-based runner whose ideal factor already exceeded the ceiling this is
+ * inert (the ceiling governs, and the plan reaches whatever it reaches). It
+ * bites only where the runner has the base to arrive early, which is the case
+ * doctrine is describing.
+ *
+ * Cite: Research/22-plan-templates.md §"Marathon — Beginner" — the Phases row's
+ *       "peak (3 wk)"
+ * Cite: Research/22-plan-templates.md §"Marathon — Intermediate" — "Peak long
+ *       run | 20-22 mi (2-3 times)"
+ * Bound by PLAN.peak-is-a-phase-not-a-week.
+ */
+export const PEAK_HOLD_WEEKS: Record<DistCategory, number> = {
+  '5k': 0,     // no 5K phase row names a peak phase · build → sharpen → taper
+  '10k': 0,    // no 10K phase row names a peak phase · aerobic build → strength → race-specific → taper
+  'hm': 0,     // no half phase row names a peak phase · endurance → LT → race-specific → taper
+  'm': 3,      // §"Marathon — Beginner" Phases row: "peak (3 wk)"
+  'ultra': 4,  // §"50 Mile" Phases row: "race-specific peak (4 wk)" · floor of the ultra rows
+};
+
 /** Local mirror of generate.ts's LevelKey · kept here to avoid a circular import. */
 export type LevelKeyLite = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
 
@@ -591,7 +708,85 @@ export interface TierTarget {
   longRunShare: number;
   /** Days/week running (rest days = 7 - this). */
   daysPerWeek: number;
+  /**
+   * MLR-1 (2026-08-25) · the week's MEDIUM-LONG run at peak, in miles. Null
+   * where doctrine names none for this distance and tier.
+   *
+   * `Research/00a` §"3. Medium-long run" gives the session its own row in the
+   * seven workout categories — "Purpose | Aerobic strength under fatigue
+   * without long-run cost", "Frequency | 1×/wk in marathon and half cycles;
+   * optional in 5K/10K" — and `Research/22` names it in the Key-workout-types
+   * row of the marathon and half plans and lays one out in their sample peak
+   * weeks. The engine had none, anywhere. `layoutWeek` split the week's
+   * non-long, non-quality budget EQUALLY across the easy days, so a 61.5-mile
+   * advanced-marathon week came out as a 20-mile long plus three identical
+   * 8-mile easy days. Raising the volume without this makes the week bigger and
+   * not more like the week doctrine publishes: the same runs, padded.
+   *
+   * READ ROW BY ROW, INCLUDING THE NULLS.
+   *   · m/advanced 17, m/elite 17 — §"Marathon — Advanced" "MLR (13-17 mi)".
+   *   · m/intermediate 15 — §"Marathon — Intermediate" "MLR (11-15 mi)".
+   *   · hm/advanced 14, hm/elite 14 — §"Half Marathon — Advanced" names "MLR
+   *     with HMP-MP segments" and its sample peak week lays out "13 mi MLR".
+   *     The half's parameter row publishes no band, so the ceiling is the top
+   *     of `00a` §3's own "8-14 mi typical", which the sample sits inside.
+   *   · hm/intermediate null, DESPITE the row naming "MLR with M segments".
+   *     Doctrine is ambiguous here and its own published week settles it: the
+   *     HM-Intermediate sample peak week's mid-week run is "6 mi GA", below
+   *     `MLR_MIN_MI`. A 6-mile run is a general-aerobic day, not a medium-long
+   *     run, and the engine already authors that.
+   *   · every beginner/developing row null — none of them names an MLR, and
+   *     `00a` §3's frequency row does not reach them.
+   *   · 5k and 10k null at every tier — `00a` §3 says "optional in 5K/10K" and
+   *     no Research/22 5K or 10K row names one. Optional is not prescribed.
+   *   · ultra null — its rows replace the MLR with back-to-back weekend long
+   *     runs, which is a different session with a different purpose, and
+   *     ULTRA-OUT-1 refuses ultra authorship regardless.
+   *
+   * The number is a CEILING reached at the block's peak week, not a weekly
+   * dose: `layoutWeek` ramps it with the volume curve exactly as it ramps the
+   * long run, and `MLR_MAX_WEEK_SHARE` holds it to the share doctrine's own
+   * sample weeks spend on it.
+   *
+   * Bound by PLAN.medium-long-run.
+   */
+  mlrPeakMi: number | null;
 }
+
+/**
+ * MLR-1 · the largest share of a week doctrine's own sample peak weeks give the
+ * medium-long run. Derived, not chosen: the three Research/22 plans that lay
+ * one out publish both the MLR and the week it sits in —
+ *
+ *   §"Marathon — Advanced"      15 mi MLR · "~70 mpw"  = 21.4%
+ *   §"Marathon — Intermediate"  11 mi MLR · "~55 mpw"  = 20.0%
+ *   §"Half Marathon — Advanced" 13 mi MLR · "~63 mpw"  = 20.6%
+ *
+ * — and this is the floor of the three, the conservative end of the only
+ * figures doctrine reports. It is what stops `mlrPeakMi` from being spent in a
+ * week too small to hold it: a runner peaking at 45 mi/wk does not get the
+ * 17-mile MLR of a runner peaking at 76, they get 20% of their own week.
+ *
+ * Cite: Research/22-plan-templates.md §"Marathon — Advanced" (sample peak week)
+ * Bound by PLAN.medium-long-run.
+ */
+export const MLR_MAX_WEEK_SHARE = 0.20;
+
+/**
+ * MLR-1 · below this a medium-long run is not one.
+ *
+ * Research/00a §"3. Medium-long run" states the session's own duration:
+ * "75-110 min (12-20 km / 8-14 mi typical)". Eight miles is the floor of that
+ * band, and a week that cannot afford eight miles in one run without starving
+ * the rest simply does not get an MLR — the engine authors the easy days it
+ * already authored. That refusal is what keeps every low-volume plan
+ * byte-identical, and it is why `hm/intermediate` needs no special case: its
+ * own doctrine week's mid-week run is six miles and would fail this floor.
+ *
+ * Cite: Research/00a-distance-running-training.md §"3. Medium-long run"
+ * Bound by PLAN.medium-long-run.
+ */
+export const MLR_MIN_MI = 8;
 
 /**
  * Doctrine table · sourced row-by-row from Research/22-plan-templates.md.
@@ -702,40 +897,40 @@ export interface TierTarget {
  */
 export const TIER_TARGETS: Record<DistCategory, Record<GoalTier, TierTarget>> = {
   '5k': {
-    elite:        { peakWeeklyMileageBand: [55, 80], peakLongMiBand: [10, 14], qualityPerWeek: 3, longRunShare: 0.18, daysPerWeek: 6 },
-    advanced:     { peakWeeklyMileageBand: [40, 70], peakLongMiBand: [8, 12],  qualityPerWeek: 2, longRunShare: 0.18, daysPerWeek: 6 }, // DOCTRINE-8 · Research/22 §"5K — Advanced" 40-70 mpw (was [35,50], floor below the row) · TIERDAYS-1 (2026-08-19) · daysPerWeek 5 → 6, see the note above TIER_TARGETS
-    intermediate: { peakWeeklyMileageBand: [25, 35], peakLongMiBand: [6, 8],   qualityPerWeek: 2, longRunShare: 0.24, daysPerWeek: 4 },
-    developing:   { peakWeeklyMileageBand: [16, 24], peakLongMiBand: [3.5, 5], qualityPerWeek: 1, longRunShare: 0.28, daysPerWeek: 3 },
+    elite:        { peakWeeklyMileageBand: [55, 80], peakLongMiBand: [10, 14], qualityPerWeek: 3, longRunShare: 0.18, daysPerWeek: 6, mlrPeakMi: null },
+    advanced:     { peakWeeklyMileageBand: [40, 70], peakLongMiBand: [8, 12],  qualityPerWeek: 2, longRunShare: 0.18, daysPerWeek: 6, mlrPeakMi: null }, // DOCTRINE-8 · Research/22 §"5K — Advanced" 40-70 mpw (was [35,50], floor below the row) · TIERDAYS-1 (2026-08-19) · daysPerWeek 5 → 6, see the note above TIER_TARGETS
+    intermediate: { peakWeeklyMileageBand: [25, 35], peakLongMiBand: [6, 8],   qualityPerWeek: 2, longRunShare: 0.24, daysPerWeek: 4, mlrPeakMi: null },
+    developing:   { peakWeeklyMileageBand: [16, 24], peakLongMiBand: [3.5, 5], qualityPerWeek: 1, longRunShare: 0.28, daysPerWeek: 3, mlrPeakMi: null },
   },
   '10k': {
-    elite:        { peakWeeklyMileageBand: [65, 90], peakLongMiBand: [13, 17], qualityPerWeek: 3, longRunShare: 0.20, daysPerWeek: 6 },
-    advanced:     { peakWeeklyMileageBand: [50, 75], peakLongMiBand: [13, 15], qualityPerWeek: 2, longRunShare: 0.22, daysPerWeek: 6 }, // TIERDAYS-1 (2026-08-19) · daysPerWeek 5 → 6, see the note above TIER_TARGETS · DOCTRINE-8 · Research/22 §"10K — Advanced" 50-75 mpw (was [40,55]) · XTIER-1 (2026-06-23) · was [10,13] — Research/22:144 10K-Advanced peak long is 13-15mi; the old top sat at research's FLOOR (RC2-2 then drives it into band, clamped ≤30%/week)
-    intermediate: { peakWeeklyMileageBand: [30, 42], peakLongMiBand: [9, 12],  qualityPerWeek: 2, longRunShare: 0.27, daysPerWeek: 5 },
-    developing:   { peakWeeklyMileageBand: [22, 30], peakLongMiBand: [6, 8],   qualityPerWeek: 1, longRunShare: 0.33, daysPerWeek: 4 },
+    elite:        { peakWeeklyMileageBand: [65, 90], peakLongMiBand: [13, 17], qualityPerWeek: 3, longRunShare: 0.20, daysPerWeek: 6, mlrPeakMi: null },
+    advanced:     { peakWeeklyMileageBand: [50, 75], peakLongMiBand: [13, 15], qualityPerWeek: 2, longRunShare: 0.22, daysPerWeek: 6, mlrPeakMi: null }, // TIERDAYS-1 (2026-08-19) · daysPerWeek 5 → 6, see the note above TIER_TARGETS · DOCTRINE-8 · Research/22 §"10K — Advanced" 50-75 mpw (was [40,55]) · XTIER-1 (2026-06-23) · was [10,13] — Research/22:144 10K-Advanced peak long is 13-15mi; the old top sat at research's FLOOR (RC2-2 then drives it into band, clamped ≤30%/week)
+    intermediate: { peakWeeklyMileageBand: [30, 42], peakLongMiBand: [9, 12],  qualityPerWeek: 2, longRunShare: 0.27, daysPerWeek: 5, mlrPeakMi: null },
+    developing:   { peakWeeklyMileageBand: [22, 30], peakLongMiBand: [6, 8],   qualityPerWeek: 1, longRunShare: 0.33, daysPerWeek: 4, mlrPeakMi: null },
   },
   'hm': {
     // Research/22 §"Half Marathon — Advanced" · sub-1:30, 45+ mpw base
     // Sample peak week shows 16mi LR / 63mi weekly = 0.254 long share.
-    elite:        { peakWeeklyMileageBand: [70, 100], peakLongMiBand: [16, 20], qualityPerWeek: 3, longRunShare: 0.25, daysPerWeek: 7 },
-    advanced:     { peakWeeklyMileageBand: [55, 85],  peakLongMiBand: [15, 17], qualityPerWeek: 2, longRunShare: 0.25, daysPerWeek: 6 },
+    elite:        { peakWeeklyMileageBand: [70, 100], peakLongMiBand: [16, 20], qualityPerWeek: 3, longRunShare: 0.25, daysPerWeek: 7, mlrPeakMi: 14 },
+    advanced:     { peakWeeklyMileageBand: [55, 85],  peakLongMiBand: [15, 17], qualityPerWeek: 2, longRunShare: 0.25, daysPerWeek: 6, mlrPeakMi: 14 },
     // Research/22 §"Half Marathon — Intermediate" · sub-2:00, 25-35 mpw base
-    intermediate: { peakWeeklyMileageBand: [35, 45],  peakLongMiBand: [12, 14], qualityPerWeek: 2, longRunShare: 0.33, daysPerWeek: 5 },
-    developing:   { peakWeeklyMileageBand: [25, 35],  peakLongMiBand: [9, 12],  qualityPerWeek: 1, longRunShare: 0.44, daysPerWeek: 4 },
+    intermediate: { peakWeeklyMileageBand: [35, 45],  peakLongMiBand: [12, 14], qualityPerWeek: 2, longRunShare: 0.33, daysPerWeek: 5, mlrPeakMi: null },
+    developing:   { peakWeeklyMileageBand: [25, 35],  peakLongMiBand: [9, 12],  qualityPerWeek: 1, longRunShare: 0.44, daysPerWeek: 4, mlrPeakMi: null },
   },
   'm': {
     // Research/22 §"Marathon — Advanced" · sub-3, 60+ mpw base
-    elite:        { peakWeeklyMileageBand: [70, 100], peakLongMiBand: [22, 25], qualityPerWeek: 3, longRunShare: 0.28, daysPerWeek: 7 },
-    advanced:     { peakWeeklyMileageBand: [65, 90],  peakLongMiBand: [22, 24], qualityPerWeek: 2, longRunShare: 0.29, daysPerWeek: 6 }, // DOCTRINE-8 · Research/22 §"Marathon — Advanced" 65-90 mpw / 22-24 mi long (was [55,75]/[20,22])
-    intermediate: { peakWeeklyMileageBand: [45, 55],  peakLongMiBand: [20, 22], qualityPerWeek: 2, longRunShare: 0.35, daysPerWeek: 5 }, // DOCTRINE-8 · Research/22 §"Marathon — Intermediate" 45-55 mpw / 20-22 mi long (was [40,55]/[18,20])
-    developing:   { peakWeeklyMileageBand: [30, 45],  peakLongMiBand: [16, 20], qualityPerWeek: 1, longRunShare: 0.54, daysPerWeek: 5 }, // DOCTRINE-8b · Research/22 §"Marathon — Beginner" sample peak week: 20mi long in a 37mi week
+    elite:        { peakWeeklyMileageBand: [70, 100], peakLongMiBand: [22, 25], qualityPerWeek: 3, longRunShare: 0.28, daysPerWeek: 7, mlrPeakMi: 17 },
+    advanced:     { peakWeeklyMileageBand: [65, 90],  peakLongMiBand: [22, 24], qualityPerWeek: 2, longRunShare: 0.29, daysPerWeek: 6, mlrPeakMi: 17 }, // DOCTRINE-8 · Research/22 §"Marathon — Advanced" 65-90 mpw / 22-24 mi long (was [55,75]/[20,22])
+    intermediate: { peakWeeklyMileageBand: [45, 55],  peakLongMiBand: [20, 22], qualityPerWeek: 2, longRunShare: 0.35, daysPerWeek: 5, mlrPeakMi: 15 }, // DOCTRINE-8 · Research/22 §"Marathon — Intermediate" 45-55 mpw / 20-22 mi long (was [40,55]/[18,20])
+    developing:   { peakWeeklyMileageBand: [30, 45],  peakLongMiBand: [16, 20], qualityPerWeek: 1, longRunShare: 0.54, daysPerWeek: 5, mlrPeakMi: null }, // DOCTRINE-8b · Research/22 §"Marathon — Beginner" sample peak week: 20mi long in a 37mi week
   },
   'ultra': {
     // Research/22 §"Ultramarathon" · peak long 22-32 mi or 5-7 hr
     // time-on-feet · 70-100 mpw advanced · B2B long-run option.
-    elite:        { peakWeeklyMileageBand: [85, 120], peakLongMiBand: [28, 32], qualityPerWeek: 1, longRunShare: 0.30, daysPerWeek: 6 },
-    advanced:     { peakWeeklyMileageBand: [65, 100], peakLongMiBand: [24, 28], qualityPerWeek: 1, longRunShare: 0.30, daysPerWeek: 6 },
-    intermediate: { peakWeeklyMileageBand: [50, 75],  peakLongMiBand: [20, 24], qualityPerWeek: 1, longRunShare: 0.32, daysPerWeek: 5 },
-    developing:   { peakWeeklyMileageBand: [35, 55],  peakLongMiBand: [16, 20], qualityPerWeek: 1, longRunShare: 0.35, daysPerWeek: 5 },
+    elite:        { peakWeeklyMileageBand: [85, 120], peakLongMiBand: [28, 32], qualityPerWeek: 1, longRunShare: 0.30, daysPerWeek: 6, mlrPeakMi: null },
+    advanced:     { peakWeeklyMileageBand: [65, 100], peakLongMiBand: [24, 28], qualityPerWeek: 1, longRunShare: 0.30, daysPerWeek: 6, mlrPeakMi: null },
+    intermediate: { peakWeeklyMileageBand: [50, 75],  peakLongMiBand: [20, 24], qualityPerWeek: 1, longRunShare: 0.32, daysPerWeek: 5, mlrPeakMi: null },
+    developing:   { peakWeeklyMileageBand: [35, 55],  peakLongMiBand: [16, 20], qualityPerWeek: 1, longRunShare: 0.35, daysPerWeek: 5, mlrPeakMi: null },
   },
 };
 

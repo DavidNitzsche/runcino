@@ -488,6 +488,29 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
   // Compact, human-auditable fingerprint: per-week [phase | weeklyMi | longMi |
   // quality types]. If ANY of this changes, this assertion breaks and forces a
   // human to confirm the drift was intended.
+  //
+  // DRIFT ACCEPTED · WKPEAK-2 (2026-08-25) · THE PEAK IS A PHASE.
+  //
+  // wk3 47.5→51.5 · wk4 61.5→64.5 · wk5 62→65 · wk6 64→66 · wk7 50→51 (long
+  // 18→19) · wk8 63→66 · wk10 64→68. The peak barely moves (67.5 → 68); the
+  // middle of the block fills in. `volumeCurve` was a pure geometric climb
+  // reaching its target on the LAST climbing week, so a build spent one week at
+  // the volume it was built for. Research/22's marathon rows name a peak PHASE
+  // — §"Marathon — Beginner" Phases "peak (3 wk)", §"Marathon — Intermediate"
+  // "Peak long run | 20-22 mi (2-3 times)" — and PEAK_HOLD_WEEKS.m now makes
+  // the curve arrive with three climbing weeks to spare and hold there.
+  //
+  // Nothing about the ceiling moved: GENERAL_RAMP_CEILING still caps every
+  // step, the doctrine-band test above still passes (68 is inside [55,75]×1.1),
+  // and the taper is untouched. What changed is that the weeks between the ramp
+  // and the taper now carry the volume the block is built for instead of
+  // approaching it asymptotically.
+  //
+  // The vocabulary snapshot moves once, in the same direction and for the same
+  // reason: wk6's I session goes 7×800m → 10×800m because that week is now 66
+  // miles instead of 64 and the interval dose is a share of weekly volume, not
+  // a fixed rep count. 10×800m is 5.0 mi in a 66 mi week — 7.6%, inside
+  // Daniels' ≤8% I cap, which `_dosing_doctrine.test.ts` checks independently.
   it('FROZEN: per-week structural fingerprint is byte-stable', () => {
     COMBO_COUNT++;
     const fp = result.weeks.map((w, i) => {
