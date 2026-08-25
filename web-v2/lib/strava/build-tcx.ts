@@ -57,6 +57,28 @@ interface BuildOpts {
   }>;
 }
 
+/**
+ * TCX `<Cadence>` IS PER-LEG. Everything in this app is both-feet.
+ *
+ * Garmin's TCX schema defines the element as one foot's cadence, and Strava
+ * renders it that way — which is why this app's own importer doubles what
+ * Strava hands back. `lib/strava/pullSync.ts` does exactly that, with the
+ * comment "Strava's running average_cadence is per-leg (half true steps/min)",
+ * and the internal sanity band it validates against is 130-220 both-feet.
+ *
+ * So writing a both-feet number here published DOUBLE on every run this app
+ * has ever pushed: a true 166 spm appeared on Strava as 332. The direction is
+ * settled by our own read path rather than by reasoning about the spec, which
+ * matters because getting it backwards halves every run instead.
+ *
+ * Owner's ruling, 2026-08-25: fix going forward, do not backfill. Activities
+ * already on Strava keep the doubled figure — a bulk external write to his
+ * account is a bigger thing than the defect.
+ */
+export function tcxCadence(bothFeetSpm: number): number {
+  return Math.round(bothFeetSpm / 2);
+}
+
 export function buildTcx(opts: BuildOpts): string {
   const startUtc = toUtcIso(opts.startLocalIso);
   const totalMeters = opts.distanceMi * 1609.344;
@@ -118,7 +140,7 @@ export function buildTcx(opts: BuildOpts): string {
       ${lap.avgHr != null ? `<AverageHeartRateBpm><Value>${Math.round(lap.avgHr)}</Value></AverageHeartRateBpm>` : ''}
       ${lap.maxHr != null ? `<MaximumHeartRateBpm><Value>${Math.round(lap.maxHr)}</Value></MaximumHeartRateBpm>` : ''}
       <Intensity>${lap.intensity}</Intensity>
-      ${lap.avgCadence != null ? `<Cadence>${Math.round(lap.avgCadence)}</Cadence>` : ''}
+      ${lap.avgCadence != null ? `<Cadence>${tcxCadence(lap.avgCadence)}</Cadence>` : ''}
       <TriggerMethod>Manual</TriggerMethod>${trackXml}
       ${lap.notes ? `<Notes>${xmlEsc(lap.notes)}</Notes>` : ''}
     </Lap>`;
