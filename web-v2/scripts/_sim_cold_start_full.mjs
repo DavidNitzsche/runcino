@@ -13,6 +13,14 @@
  *
  * Every "0 rows" / "null" / shared-but-non-user-specific = ✓ pass.
  * Any David row leaking through = ⚠️ fail.
+ *
+ * 2026-08-24 · re-pointed at the tables that actually exist. The /health
+ * check read `daily_checkin` and the /log check read `skipped_workouts`;
+ * both were dropped from production, so this script threw 42P01 partway
+ * through and the surfaces after it never got checked. The live homes:
+ *   daily_checkin     → subjective_checkins  (/api/readiness/subjective)
+ *   skipped_workouts  → day_actions, action='skip'  (/api/today/skip,
+ *                       db/migrations/114_day_actions.sql)
  */
 import { Pool } from 'pg';
 const SYNTH = '99999999-0000-0000-0000-000000000002';
@@ -55,13 +63,13 @@ try {
   check('niggles', 0, (await q(`SELECT id FROM niggles WHERE user_id = $1`, [SYNTH])).length);
   check('sick_episodes', 0, (await q(`SELECT id FROM sick_episodes WHERE user_id = $1`, [SYNTH])).length);
   check('runner_injuries', 0, (await q(`SELECT id FROM runner_injuries WHERE user_uuid = $1`, [SYNTH])).length);
-  check('daily_checkin', 0, (await q(`SELECT id FROM daily_checkin WHERE user_uuid = $1`, [SYNTH])).length);
+  check('subjective_checkins', 0, (await q(`SELECT id FROM subjective_checkins WHERE user_uuid = $1`, [SYNTH])).length);
 
   console.log('\n=== /log ===');
   check('strava_activities', 0, (await q(`SELECT id FROM runs WHERE user_uuid = $1`, [SYNTH])).length);
   check('workout_completions', 0, (await q(`SELECT id FROM workout_completions WHERE user_id = $1`, [SYNTH])).length);
   check('workout_routes', 0, (await q(`SELECT id FROM workout_routes WHERE user_id = $1`, [SYNTH])).length);
-  check('skipped_workouts', 0, (await q(`SELECT id FROM skipped_workouts WHERE user_uuid = $1`, [SYNTH])).length);
+  check('day_actions (skips)', 0, (await q(`SELECT id FROM day_actions WHERE user_uuid = $1 AND action = 'skip'`, [SYNTH])).length);
 
   console.log('\n=== goals + sessions (new APIs) ===');
   check('personal_goals (active)', 0, (await q(`SELECT id FROM personal_goals WHERE user_uuid = $1 AND (deadline IS NULL OR deadline >= CURRENT_DATE)`, [SYNTH])).length);

@@ -18,21 +18,29 @@ import fs from 'fs';
 const env = fs.readFileSync('.env.local','utf8').split('\n').reduce((a,l)=>{const m=l.match(/^([A-Z_]+)=(.*)$/);if(m)a[m[1]]=m[2].replace(/^["']|["']$/g,'');return a;},{});
 const pool = new pg.Pool({ connectionString: env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-// Tables migration 126 added user_uuid to.
+// Tables migration 126 added user_uuid to, less the ones since dropped.
+// 2026-08-24 · `briefings` and `coach_intent` no longer exist in production.
 const MIGRATION_126_TABLES = [
-  'briefings','check_ins','coach_intent','coach_intents','coach_usage',
+  'check_ins','coach_intents','coach_usage',
   'connector_tokens','day_actions','device_tokens','health_samples','niggles',
   'notifications_log','notifications_pending','sessions','sick_episodes',
   'workout_completions','workout_routes',
 ];
 
 // Tables that already had BOTH user_id text + user_uuid uuid (pre-126).
+// 2026-08-24 · `daily_checkin`, `runner_notes` and `skipped_workouts` were
+// dropped; `subjective_checkins` is where the daily reply lives now.
 const BOTH_LEGACY_TABLES = [
   'coach_actions','coach_proposals','coach_reads_cache','cross_training_sessions',
-  'daily_checkin','personal_goals','post_run_rpe','profile','runner_illnesses',
-  'runner_injuries','runner_notes','skipped_workouts','strength_sessions',
+  'post_run_rpe','profile','runner_illnesses',
+  'runner_injuries','strength_sessions',
   'training_plans','user_prefs',
 ];
+
+// Tables that are user_uuid-ONLY — no legacy user_id column ever. The
+// backfill check below has nothing to assert on these; they are listed so
+// the David-visibility sweep still covers them.
+const UUID_ONLY_TABLES = ['personal_goals','subjective_checkins'];
 
 let pass = 0, total = 0, fail = 0;
 
@@ -75,8 +83,15 @@ for (const t of MIGRATION_126_TABLES) {
 }
 
 console.log('\n=== Backfill check: no orphan user_id without user_uuid ===');
-for (const t of [...MIGRATION_126_TABLES, ...BOTH_LEGACY_TABLES]) {
+for (const t of [...MIGRATION_126_TABLES, ...BOTH_LEGACY_TABLES, ...UUID_ONLY_TABLES]) {
   try {
+    // 2026-08-24 · a table with no user_id column at all is the FINISHED
+    // state of this migration, not a failure. Reporting it as FAIL is how
+    // `personal_goals` sat red here indefinitely while being perfectly fine.
+    const hasUserId = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name=$1 AND column_name='user_id'`, [t]);
+    if (hasUserId.rowCount === 0) { ok(`${t} — no user_id column (fully migrated)`); continue; }
     const r = await pool.query(
       `SELECT COUNT(*)::int AS n FROM "${t}" WHERE user_id IS NOT NULL AND user_uuid IS NULL`
     );
@@ -90,14 +105,14 @@ for (const t of [...MIGRATION_126_TABLES, ...BOTH_LEGACY_TABLES]) {
 
 console.log('\n=== David visibility on user_uuid ===');
 const DAVID = '0645f40c-951d-4ccc-b86e-9979cd26c795';
-for (const t of [...MIGRATION_126_TABLES, ...BOTH_LEGACY_TABLES]) {
+for (const t of [...MIGRATION_126_TABLES, ...BOTH_LEGACY_TABLES, ...UUID_ONLY_TABLES]) {
   try {
     const r = await pool.query(`SELECT COUNT(*)::int AS n FROM "${t}" WHERE user_uuid = $1`, [DAVID]);
     const n = r.rows[0].n;
     // Tables with rows that David should own.
     const expectsDavid = ['training_plans','profile','user_prefs','niggles','sessions','health_samples',
-                          'coach_usage','briefings','check_ins','coach_intents','coach_actions',
-                          'coach_proposals','daily_checkin','day_actions','connector_tokens',
+                          'coach_usage','check_ins','coach_intents','coach_actions',
+                          'coach_proposals','subjective_checkins','day_actions','connector_tokens',
                           'device_tokens','notifications_pending','workout_completions','workout_routes',
                           'post_run_rpe','sick_episodes'];
     if (expectsDavid.includes(t) && n === 0) {

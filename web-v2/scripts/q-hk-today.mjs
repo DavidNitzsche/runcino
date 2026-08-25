@@ -24,16 +24,15 @@ console.log('\n=== coach_intents schema ===');
 const cic = await pool.query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_name='coach_intents' ORDER BY ordinal_position`);
 for (const c of cic.rows) console.log(' ', c.column_name, c.data_type);
 console.log('\n=== coach_intents from today ===');
-const ci = await pool.query(`SELECT * FROM coach_intents WHERE created_at::date >= CURRENT_DATE - interval '1 day' ORDER BY created_at DESC LIMIT 20`);
+// 2026-08-24 · coach_intents timestamps its rows with `ts`; there is no
+// `created_at` column, so this threw 42703 before it printed anything.
+const ci = await pool.query(`SELECT * FROM coach_intents WHERE ts::date >= CURRENT_DATE - interval '1 day' ORDER BY ts DESC LIMIT 20`);
 for (const row of ci.rows) console.log(JSON.stringify(row));
 
-console.log('\n=== latest briefing for today ===');
-const b = await pool.query(`
-  SELECT surface, compact, generated_at::text AS generated_at,
-         length(payload::text) AS payload_len
-    FROM briefings
-   WHERE user_id::text = $1
-   ORDER BY generated_at DESC LIMIT 6`, ['0645f40c-951d-4ccc-b86e-9979cd26c795']);
-for (const row of b.rows) console.log(JSON.stringify(row));
+// 2026-08-24 · the "latest briefing" block that used to close this probe is
+// gone. `briefings` was dropped from prod and has no successor: briefings are
+// recomputed per read, never stored. What the coach actually SAID lives in
+// coach_intents under reason 'coach_log_%' — the block above already dumps
+// today's coach_intents, which covers it.
 
 await pool.end();
