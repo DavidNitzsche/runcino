@@ -62,16 +62,23 @@ export type ZonePcts = {
 };
 
 /**
- * Classify one HR reading into a zone idx (1-5). Exact match first;
- * if the reading falls in a gap between bands (Friel rounds with
- * 1-bpm gaps · e.g. Z2 upper 144, Z3 lower 146 at LTHR=162), snap
- * to the nearest band by midpoint distance.
+ * Classify one HR reading into a zone idx.
  *
- * Same rule as the legacy `classify` inside `deriveHrZones` · keep
- * them aligned so the per-sample path produces a result consistent
- * with the per-split-avg fallback when samples are absent.
+ * Exact match first. The bands TILE as of 2026-08-24 (`tiledBands` in
+ * lib/training/zones.ts), so every beat from 0 to the top zone's ceiling has
+ * exactly one owner and the exact match is what actually runs. The snap below
+ * survives for the only case left — a reading ABOVE the top band, which the
+ * doctrine table does not cover — and for any future table that does not tile.
+ *
+ * It used to carry the gaps: Friel computed each floor and each ceiling from
+ * two independent roundings, so at LTHR 162 Z2 ended at 144, Z3 began at 146,
+ * and 145 was snapped to the nearest band MIDPOINT while the legend on the
+ * same screen showed neither band containing it.
+ *
+ * EXPORTED so `lib/coach/run-state.ts` stops keeping its own copy. Two
+ * implementations of one rule is the defect class this whole layer exists for.
  */
-function classify(bpm: number, table: ZoneTable): number {
+export function classify(bpm: number, table: ZoneTable): number {
   const exact = table.zones.find((zz) => bpm >= zz.lower && bpm <= zz.upper);
   if (exact) return exact.idx;
   let bestIdx = table.zones[0]?.idx ?? 1;
@@ -125,6 +132,56 @@ export function bucketHrSamplesByZone(
       counts[idx] = (counts[idx] ?? 0) + 1;
       total++;
     }
+  }
+  const share = apportionToHundred([counts[1], counts[2], counts[3], counts[4], counts[5]]);
+  if (!share) return null;
+  return { z1: share[0], z2: share[1], z3: share[2], z4: share[3], z5: share[4] };
+}
+
+/**
+ * Time in zone from PER-MILE average heart rates, when the run carries no
+ * per-second samples. One mile, one vote — coarse, and honest about being a
+ * decomposition of the run rather than a guess at one.
+ *
+ * Returns null when no split carries a heart rate, and that is the whole
+ * point of it being a separate function.
+ *
+ * ── ZONES-SUM-2 (2026-08-24) · WHAT THIS REPLACED ─────────────────────────
+ *
+ * `deriveHrZones` in `lib/coach/run-state.ts` used to end, when no split
+ * carried an HR:
+ *
+ *     // No splits — assign 100% to the band the avg HR falls in.
+ *     return { ...empty, [`z${classify(avgHr).idx}`]: 100 };
+ *
+ * A bar chart of where a runner's heart spent an hour, drawn from one
+ * averaged figure that says nothing about where any of it went. Every run
+ * with a warm-up disproves it on sight: a tempo averaging 150 bpm did not
+ * spend all of itself in Z3, it spent some in Z1 and some in Z4, and the
+ * average is what was left after that information was discarded.
+ *
+ * It summed to 100, so it satisfied `RunDetail.hrZonePcts`'s own contract and
+ * every guard downstream — the same defect five-zeros was, wearing the
+ * opposite shape. It reached 16 of the 149 canonical runs: every treadmill
+ * and apple_watch row carrying an average and no per-mile detail.
+ *
+ * There is no honest distribution to be had from one number, so there is no
+ * distribution. Rule one and rule three at once.
+ */
+export function zoneSharesFromSplitHr(
+  splits: ReadonlyArray<{ hr?: number | null; avgHr?: number | null }>,
+  table: ZoneTable | null,
+  hrOffsetBpm = 0,
+): ZonePcts | null {
+  if (!table) return null;
+  const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  for (const s of splits ?? []) {
+    const bpm = Number(s?.hr ?? s?.avgHr) || 0;
+    // The same readable range `bucketHrSamplesByZone` applies to a sample. A
+    // strap sentinel is not a mile spent in Recovery.
+    if (bpm < 40 || bpm > 230) continue;
+    const idx = classify(bpm - hrOffsetBpm, table);
+    counts[idx] = (counts[idx] ?? 0) + 1;
   }
   const share = apportionToHundred([counts[1], counts[2], counts[3], counts[4], counts[5]]);
   if (!share) return null;

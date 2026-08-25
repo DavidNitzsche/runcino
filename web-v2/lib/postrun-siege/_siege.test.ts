@@ -28,7 +28,7 @@ import { deriveWin } from '@/lib/coach/run-win';
 import { pickElevationGain, ELEVATION_TRUST, ELEVATION_MEASURED_FLOOR } from '@/lib/runs/elevation';
 import { pickSplits } from '@/lib/runs/splits-pick';
 import { computeZones, lthrZones, pctMaxZones, friel7Zones } from '@/lib/training/zones';
-import { bucketHrSamplesByZone } from '@/lib/coach/hr-zone-bucket';
+import { bucketHrSamplesByZone, zoneSharesFromSplitHr } from '@/lib/coach/hr-zone-bucket';
 import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
 import type { WorkoutType } from '@/lib/coach/run-purpose';
 
@@ -236,6 +236,30 @@ describe('POST-RUN SIEGE · zone shares and the bands they are drawn against', (
       const charted = [share.z1, share.z2, share.z3, share.z4, share.z5].findIndex((v) => v === 100) + 1;
       // The bar and the legend on the same screen name the same zone.
       expect(charted, `${bpm} bpm charted vs the band it is shown in`).toBe(owners[0].idx);
+    }
+  });
+
+  it('one average heart rate does not become a distribution', () => {
+    /* ZONES-SUM-2 · the run-detail chart used to end "no per-mile HR, so
+     * assign 100% to the band the average falls in". That is a bar chart of
+     * where a heart spent an hour, drawn from the one number left after that
+     * information was discarded — and it summed to 100, so every guard
+     * downstream waved it through. 16 of 149 canonical runs. */
+    const t = computeZones({ lthr: 162 })!;
+    for (const avg of [110, 130, 145, 150, 165, 180]) {
+      expect(zoneSharesFromSplitHr([], t), `avg ${avg} bpm with no per-mile HR`).toBeNull();
+    }
+    // A split array that carries no readable heart rate is the same absence.
+    expect(zoneSharesFromSplitHr([{ hr: null }, { hr: 0 }, { hr: 4 }], t)).toBeNull();
+    // A run with real per-mile heart rates still gets its chart.
+    const real = zoneSharesFromSplitHr([{ hr: 130 }, { hr: 148 }, { hr: 158 }, { hr: 166 }], t);
+    expect(checkZoneShares(real)).toEqual([]);
+    expect(real).not.toBeNull();
+    // And the two bucketers agree about which band a beat is in.
+    for (const bpm of [120, 138, 145, 150, 153, 161, 170]) {
+      const fromSplit = zoneSharesFromSplitHr([{ hr: bpm }], t)!;
+      const fromSample = bucketHrSamplesByZone([{ hrSamples: [{ bpm }] }], t)!;
+      expect(fromSplit, `${bpm} bpm bucketed two ways`).toEqual(fromSample);
     }
   });
 
