@@ -28,7 +28,7 @@ import {
   type RaceForMatch,
 } from '@/lib/runs/log-enrich';
 import { runFacts } from '@/lib/runs/run-facts';
-import { loadRunTwins, resolveElevationGain } from '@/lib/runs/twins';
+import { loadRunTwins, resolveElevationGain, resolveSplits } from '@/lib/runs/twins';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
@@ -46,6 +46,23 @@ export interface RunSplit {
   hr: number | null;
   cadence: number | null;
   elev_change_ft: number | null;
+  /**
+   * How far this split actually covers, in miles. Usually 1; the LAST split
+   * of a run is a fragment — 0.11 mi on 2026-08-24.
+   *
+   * Added 2026-08-24 because the wire did not carry it and every consumer
+   * that averaged the array therefore had to weight every entry equally. The
+   * phone's post-run panel takes a plain mean of the per-split heart rates
+   * for its thirds and its drift row, so that 0.11-mile fragment — run at
+   * 158 bpm, the hardest tenth of the session — counted the same as a whole
+   * mile at 127. A plain mean of that array is 141 bpm against a MEASURED
+   * whole-run average of 139, and the two sat on the same screen.
+   *
+   * Null when the source array carries no distance and a fallback would be a
+   * guess. A consumer must then either weight by nothing and say so, or
+   * refuse; it must not silently assume one mile.
+   */
+  distanceMi: number | null;
   /**
    * Phase classification for this mile · derived from the run's
    * structured phaseBreakdown when present. Null for runs without
@@ -703,7 +720,32 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     distanceMi: null,
   }, twins);
 
-  const rawSplits: any[] = Array.isArray(r.splits) ? r.splits as any[] : [];
+  /* ── WHICH SPLIT ARRAY DECOMPOSES THIS RUN · 2026-08-24 ────────────────
+   *
+   * `r.splits` stood here, which is the canonical row's array and routinely
+   * not the best one. 2026-08-24, a 4.02-mile run:
+   *
+   *     canonical (watch)        3 splits, 3.00 mi
+   *     twin      (apple_watch)  5 splits, 4.11 mi, with cadence and
+   *                              per-mile elevation the canonical lacks
+   *
+   * A quarter of the run had no split and the last mile he ran was missing
+   * entirely — the mile at 158 bpm, squarely Z4. True of 26 of the 71 merged
+   * runs here. The poster already asked `pickSplits`; run detail did not, so
+   * the phone's post-run screen and the run's own detail page drew different
+   * breakdowns of the same run.
+   *
+   * The trailing-stub arithmetic below still runs, on whichever array wins.
+   * The two questions are different and both are needed: `pickSplits` asks
+   * WHICH INSTRUMENT decomposed the run, `reconcileSplitsTotal` asks whether
+   * the array it chose has a fabricated tail on the end. */
+  const splitChoice = resolveSplits({
+    elevGainFt: null, elevGainSource: null,
+    source: (r.source as string | null) ?? null,
+    splits: Array.isArray(r.splits) ? (r.splits as any[]) : null,
+    distanceMi,
+  }, twins);
+  const rawSplits: any[] = (splitChoice?.splits as any[]) ?? [];
 
   /* ── does this array decompose THIS run? ──────────────────────────────
    *
@@ -782,6 +824,10 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       // this fallback the read-time elev sanity check below saw all-zero
       // splits and bailed back to the raw 4684 ft on watch-source rows.
       elev_change_ft: Number(s.elev_change_ft ?? s.elevChangeFt ?? s.elev_ft) || null,
+      // The split's real length. Null rather than a defaulted 1 when the
+      // source carries none — see the field's doc on RunSplit. A consumer
+      // that needs to weight must be able to tell "one mile" from "unknown".
+      distanceMi: Number(s.distanceMi ?? s.distance_mi) || null,
       phase: null,
     };
   });
