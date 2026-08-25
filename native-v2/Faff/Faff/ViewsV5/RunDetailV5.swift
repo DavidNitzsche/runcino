@@ -259,9 +259,28 @@ struct RunDetailV5: View {
                                        toleranceLine: toleranceLine)
                     }
 
-                    if !splitBars.isEmpty { splitsSection }
+                    // THE COMMENT ABOVE SAID WHY THE MILE CHART CANNOT SHOW A
+                    // REP, AND THE SCREEN DREW IT ANYWAY. That contradiction
+                    // is closed here: on a rep set the chart is gone, not
+                    // greyed. Mile two of a 4×1km genuinely is the back of rep
+                    // one, a recovery jog and the front of rep two averaged
+                    // into one bar — on his 2026-07-16 session the mile splits
+                    // read 7:33 and 8:34 for work run at 6:2x, and a runner
+                    // reading those bars is reading noise. The rep list above
+                    // already holds the evidence at the grain that exists.
+                    if !splitBars.isEmpty, detail.readings?.splitsMeaningful ?? true {
+                        splitsSection
+                    }
 
-                    if hasZoneData { zoneSection }
+                    // Same ruling, applied to the heart. A time-in-zone bar
+                    // over a warm-up, four reps, three jogs and a cool-down is
+                    // mostly the jogs and mostly HR's own rise time, and the
+                    // zone the session asked for is unreachable across that
+                    // span by construction — so the bar can only ever report a
+                    // miss on a session that was executed.
+                    if hasZoneData, detail.readings?.zoneBarMeaningful ?? true {
+                        zoneSection
+                    }
 
                     routeSection
 
@@ -415,11 +434,60 @@ struct RunDetailV5: View {
     // actually carries. Each one only appears when `RunDetail` has it; there
     // is no invented row for a field the source did not populate.
 
+    /// EVERY AVERAGE NAMES ITS INTERVAL, OR IT DOES NOT APPEAR.
+    ///
+    /// What this used to be: `hr_avg` and `cadence_avg` straight out of the
+    /// row, on every run, with no label beyond "avg". On 2026-08-11 that drew
+    /// "Heart rate, avg · 153 bpm" over a session whose four kilometre reps ran
+    /// 164, 169, 168 and 160. The stored 153 is the mean of hard reps and slow
+    /// jogs and **nothing on that run happened at it** — a number that is
+    /// arithmetically correct and describes no part of the session, which is
+    /// the whole failure mode this pass exists to remove.
+    ///
+    /// The scope is not decided here. `detail.readings` is derived server-side
+    /// (`lib/coach/reading-scope.ts`) so this screen and the web one cannot
+    /// drift apart, and it keys on the run's PHASE STRUCTURE rather than its
+    /// type — because only 36 of his 143 live runs carry a semantic type,
+    /// while phases are on every watch run since June and are the thing that
+    /// actually makes a whole-run mean span two intents.
+    ///
+    /// THREE OUTCOMES, AND THE THIRD IS THE ONE THAT MATTERS:
+    ///   whole · one intent end to end · row unchanged, no label needed
+    ///   work  · row reads "Heart rate, across the 4 reps"
+    ///   none  · **no row at all**, and that is an answer
+    ///
+    /// `none` fires on reps under two minutes, where `Research/03` §14 says
+    /// `| Reps / R-pace (<2 min) | Pace | RPE | Ignore HR |`. Not average it
+    /// more carefully — ignore it. An 8×400 never reaches its HR band, so the
+    /// HR it did reach is the rise time. Drawing a smaller, better-labelled
+    /// version of a number that measures the sensor rather than the runner
+    /// would be the same mistake with a nicer caption.
+    ///
+    /// MAX HR SURVIVES ALL THREE. A peak is not an average — it names the
+    /// single hardest moment, which is a true statement about any run
+    /// regardless of how many intents it contained.
+    ///
+    /// Nil `readings` (a payload from a server that predates the field) falls
+    /// back to the old unscoped rows, so this ships without a coordinated
+    /// release.
     private var readingRows: [(String, FaffValue)] {
         var out: [(String, FaffValue)] = []
-        if let hr = detail.hr_avg { out.append(("Heart rate, avg", .measured("\(hr) bpm"))) }
-        if let hrMax = detail.hr_max { out.append(("Heart rate, max", .measured("\(hrMax) bpm"))) }
-        if let cad = detail.cadence_avg { out.append(("Cadence", .measured("\(cad) spm"))) }
+
+        if let r = detail.readings {
+            if !r.hr.isRefused, let hr = r.hr.value {
+                let label = r.hr.isWhole ? "Heart rate, avg" : "Heart rate, \(r.hr.note ?? "on the work")"
+                out.append((label, .measured("\(hr) bpm")))
+            }
+            if let hrMax = detail.hr_max { out.append(("Heart rate, max", .measured("\(hrMax) bpm"))) }
+            if !r.cadence.isRefused, let cad = r.cadence.value {
+                let label = r.cadence.isWhole ? "Cadence" : "Cadence, \(r.cadence.note ?? "on the work")"
+                out.append((label, .measured("\(cad) spm")))
+            }
+        } else {
+            if let hr = detail.hr_avg { out.append(("Heart rate, avg", .measured("\(hr) bpm"))) }
+            if let hrMax = detail.hr_max { out.append(("Heart rate, max", .measured("\(hrMax) bpm"))) }
+            if let cad = detail.cadence_avg { out.append(("Cadence", .measured("\(cad) spm"))) }
+        }
         // RULE ONE. Nothing on the phone or the watch has a thermometer in it.
         // A run's temperature is a weather read for a grid square and an hour
         // bucket — `lib/weather/openmeteo.ts` fetches it from the forecast API

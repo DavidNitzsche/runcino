@@ -180,6 +180,24 @@ export function derivePurpose(input: PurposeInput): PurposePayload {
       };
     }
 
+    case 'race_week_tuneup': {
+      // ADDED 2026-08-24. This type has been in `SESSION_TYPES` since the
+      // taper work landed, the generator emits it, and it fell to the
+      // `default` arm — so the last quality session before a goal race, the
+      // one a runner is most likely to over-read, was introduced as "By feel."
+      //
+      // The copy declines the fitness question on purpose. `Research/08` §9.4:
+      // "Resist the urge to test fitness. The work is done." Said BEFORE the
+      // run, that is worth more than saying it after.
+      return {
+        verdict: 'Sharpener.',
+        facts: [
+          'Short touches of race pace with full recovery. The point is to remind the legs what it feels like, not to prove anything.',
+          'If it feels heavy, that is the taper, not your fitness. Run the paces and stop · there is nothing to gain from an extra rep this week.',
+        ],
+      };
+    }
+
     case 'race': {
       return {
         verdict: 'Race day.',
