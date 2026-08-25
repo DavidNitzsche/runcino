@@ -474,6 +474,33 @@ struct V5Today: Decodable, Equatable {
     let conditionsNote: String?
     /// The only sentence here that is about next time.
     let coachTip: String?
+    /// THE READING · the four instrument values the run recorded.
+    ///
+    /// Quantities, not sentences: this screen owns the words and the units, so
+    /// a wording change never touches the payload. Nil means the run recorded
+    /// nothing, and the row is then NOT DRAWN — never a zero, never a dash.
+    let hrAvg: Int?
+    let hrMax: Int?
+    let cadenceAvg: Int?
+    /// Air temperature, F. MODELLED — nothing on the wrist or in the phone has
+    /// a thermometer, so this is a weather read for a grid square and an hour
+    /// bucket. Rendered `.modelled`, the same call run detail already makes.
+    let tempF: Double?
+    /// The canonical session type, from `lib/training/workout-type.ts`.
+    ///
+    /// THE SCREEN COMPOSES ITSELF FROM THIS. `panel.dayState` is the coarse
+    /// four-way bucket and cannot tell a tempo from a rep set — and those two
+    /// need different screens, because an aggregate that summarises a tempo
+    /// block describes no part of a rep session.
+    let workoutType: String?
+    /// THE SAME READING, SCOPED TO THE WORK.
+    ///
+    /// What a session made of pieces shows INSTEAD of the whole-run figures,
+    /// not as well as. Computed by `lib/runs/work-averages.ts`, the one place
+    /// in the app that does this arithmetic, shared with run detail.
+    let hrAvgWork: Int?
+    let cadenceAvgWork: Int?
+    let paceWork: String?
     /// Percent in each of five zones.
     let zoneShares: [Double]?
     /// The zone(s) the session asked for, ascending.
@@ -1345,6 +1372,8 @@ extension V5Today {
         case changed, injury, weekOff, offSeason, notOnPhoneYet
         case paceNote, sick
         case facts, win, conditionsNote, coachTip
+        case hrAvg, hrMax, cadenceAvg, tempF, workoutType
+        case hrAvgWork, cadenceAvgWork, paceWork
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -1362,6 +1391,14 @@ extension V5Today {
         win = c.opt(.win)
         conditionsNote = c.opt(.conditionsNote)
         coachTip = c.opt(.coachTip)
+        hrAvg = c.opt(.hrAvg)
+        hrMax = c.opt(.hrMax)
+        cadenceAvg = c.opt(.cadenceAvg)
+        tempF = c.opt(.tempF)
+        workoutType = c.opt(.workoutType)
+        hrAvgWork = c.opt(.hrAvgWork)
+        cadenceAvgWork = c.opt(.cadenceAvgWork)
+        paceWork = c.opt(.paceWork)
         zoneShares = c.opt(.zoneShares)
         zoneTargets = c.opt(.zoneTargets)
         zoneTarget = c.opt(.zoneTarget)

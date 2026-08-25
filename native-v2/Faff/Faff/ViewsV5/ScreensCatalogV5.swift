@@ -68,6 +68,49 @@ struct ScreensCatalogV5: View {
                                      onFlagNiggle: { _ in }, onOpenInjuryFlare: {},
                                      onChangeShoe: {}, onPickShoe: { _ in }, onRowAction: { _ in }, onPushStrava: {}))
             },
+            // THE POST-RUN BREAKDOWN, ON BOTH GRAINS AND ON ITS AWKWARD CASES.
+            //
+            // The section picks miles or sections from what the run was, so
+            // one entry can only ever show half of it. These four also carry
+            // the three ways the data is thinner than the table — no cadence
+            // or climb, a missing reading, a trailing part-mile — which are
+            // the cases where a table is easiest to make dishonest.
+            // See `BreakdownV5Samples`.
+            Entry(id: "5b-miles", title: "Today · mile by mile", sub: "Z1 opening, Z4 finish, part-mile tail") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.easy))
+            },
+            Entry(id: "5b-miles-thin", title: "Today · mile by mile, thin", sub: "Pace and heart rate, nothing else") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.easyThin))
+            },
+            Entry(id: "5b-miles-gaps", title: "Today · miles with no reading", sub: "Blank, never a neighbour's number") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.easyGaps))
+            },
+            Entry(id: "5b-sections", title: "Today · section by section", sub: "A session made of pieces") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.reps))
+            },
+            // ONE ENTRY PER RUN TYPE. The composition REMOVES rows, and the
+            // only way to review a removal is to look at the screen it was
+            // removed from. Every payload below carries all four readings; the
+            // screen keeps what that kind of session earns. See
+            // `PostRunShapeV5` for the argument behind each.
+            Entry(id: "5b-recovery", title: "Today · recovery", sub: "No pace row, by doctrine") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.recovery))
+            },
+            Entry(id: "5b-long", title: "Today · long", sub: "Miles, and what happened late") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.long))
+            },
+            Entry(id: "5b-tempo", title: "Today · tempo", sub: "The block, not the whole run") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.tempo))
+            },
+            Entry(id: "5b-tuneup", title: "Today · race-week tune-up", sub: "Aggregates all suppressed") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.tuneUp))
+            },
+            Entry(id: "5b-race", title: "Today · race", sub: "The HR curve, not one average") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.race))
+            },
+            Entry(id: "5b-belt", title: "Today · treadmill", sub: "No route, no climb, no weather") {
+                AnyView(TodayAfterV5(model: BreakdownV5Samples.treadmill))
+            },
             Entry(id: "5c", title: "Today · after a treadmill run", sub: "On the belt, no route card") {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.treadmill,
                                      onOpenAccount: {}, onLogEffort: { _ in },

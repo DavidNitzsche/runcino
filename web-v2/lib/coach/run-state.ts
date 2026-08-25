@@ -33,6 +33,8 @@ import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
   coherentPace, coherentMovingSec, coherentElapsedSec,
 } from '@/lib/runs/coherence';
+import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
+import { workAveragesFromPhases } from '@/lib/runs/work-averages';
 import { apportionToHundred } from './hr-zone-bucket';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 import { fmtPace as fmtPaceNoUnit, fmtClock } from '@/lib/format/run';
@@ -45,6 +47,21 @@ export interface RunSplit {
   hr: number | null;
   cadence: number | null;
   elev_change_ft: number | null;
+  /**
+   * How much of a mile this split actually covers. 1 for a whole mile; a
+   * fraction for the trailing piece.
+   *
+   * THE STORED SPLIT HAS ALWAYS CARRIED THIS AND THE NORMALIZER DROPPED IT.
+   * A 4.11 mi run stores five splits and the fifth reads
+   * `distanceMi: 0.111`; the wire flattened that to "mile 5" and every
+   * surface downstream then had to guess the tail from the run total, or
+   * silently draw a tenth of a mile with a whole mile's weight.
+   *
+   * Null when the source did not say, which is not the same as 1 — a
+   * consumer must be able to tell "this is a whole mile" from "we were not
+   * told", because only one of those licenses printing a distance.
+   */
+  distanceMi: number | null;
   /**
    * Phase classification for this mile · derived from the run's
    * structured phaseBreakdown when present. Null for runs without
@@ -751,6 +768,13 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       // this fallback the read-time elev sanity check below saw all-zero
       // splits and bailed back to the raw 4684 ft on watch-source rows.
       elev_change_ft: Number(s.elev_change_ft ?? s.elevChangeFt ?? s.elev_ft) || null,
+      // Carried, not derived. `|| null` would turn a legitimately tiny
+      // trailing split into "we were not told", so the guard is an explicit
+      // finite-and-positive test.
+      distanceMi: (() => {
+        const d = Number(s.distanceMi ?? s.distance_mi ?? s.mi);
+        return isFinite(d) && d > 0 ? d : null;
+      })(),
       phase: null,
     };
   });
@@ -1080,8 +1104,14 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     time_elapsed: fmtDuration(elapsedSec) || r.timeElapsed || null,
     avg_speed_mph: Number(r.avgSpeedMph) || null,
 
-    hr_avg: Number(r.avgHr) || null,
-    hr_max: Number(r.maxHr) || null,
+    // THE SAME PAIR THE POST-RUN CARD READS. `Number(r.avgHr) || null` is
+    // unbounded, so a sensor artefact — a 0, a 4 — passed through as a heart
+    // rate, and `||` swallowed a legitimate 0 anyway. `runAvgHr`/`runMaxHr`
+    // bound to a physiologically possible range and are what
+    // `app/api/v5/today/route.ts` now uses, so run detail and the post-run
+    // card cannot print two different heart rates for one run.
+    hr_avg: runAvgHr(r as unknown as RunData),
+    hr_max: runMaxHr(r as unknown as RunData),
     // Prefer activity-supplied cadence; fall back to the day's HealthKit cadence.
     cadence_avg: Number(r.avgCadence) || form.cadence_spm,
     // 2026-05-31: barometric-drift sanity check on Strava's rolled-up
@@ -1545,47 +1575,24 @@ async function computeWorkAverages(
   const empty = { pace: null, paceSPerMi: null, hrAvg: null, cadenceAvg: null, workSeconds: null };
 
   // (a) Phase-data path — preferred when WatchCompletion phases exist.
+  //
+  // THE ARITHMETIC MOVED TO `lib/runs/work-averages.ts`, unchanged, so the v5
+  // Today route can compute the same numbers from the same code. It held the
+  // only work-scoped averages in the app and only run detail could see them;
+  // two screens deriving them two ways is the defect class this codebase has
+  // spent the day removing.
   if (phases.length > 0) {
-    const workPhases = phases.filter((p) => p.type === 'work');
-    if (workPhases.length > 0) {
-      // Sum duration, distance for the pace calc; weight HR + cadence by duration.
-      let totalSec = 0;
-      let totalMi = 0;
-      let hrWeighted = 0;
-      let hrWeight = 0;
-      let cadWeighted = 0;
-      let cadWeight = 0;
-      for (const p of workPhases) {
-        const sec = Number(p.actual_duration_sec) || 0;
-        const mi = Number(p.actual_distance_mi) || 0;
-        if (sec > 0) totalSec += sec;
-        if (mi > 0) totalMi += mi;
-        if (p.avg_hr && sec > 0) {
-          hrWeighted += p.avg_hr * sec;
-          hrWeight += sec;
-        }
-        if (p.avg_cadence && sec > 0) {
-          cadWeighted += p.avg_cadence * sec;
-          cadWeight += sec;
-        }
-      }
-      const paceSPerMi = totalMi > 0 && totalSec > 0
-        ? Math.round(totalSec / totalMi)
-        : null;
-      const hrAvg = hrWeight > 0 ? Math.round(hrWeighted / hrWeight) : null;
-      const cadenceAvg = cadWeight > 0 ? Math.round(cadWeighted / cadWeight) : null;
-
-      // If at least one of the three signals exists, return them. Otherwise
-      // fall through to the heuristic path.
-      if (paceSPerMi != null || hrAvg != null || cadenceAvg != null) {
-        return {
-          pace: fmtPace(paceSPerMi),
-          paceSPerMi,
-          hrAvg,
-          cadenceAvg,
-          workSeconds: totalSec > 0 ? totalSec : null,
-        };
-      }
+    const w = workAveragesFromPhases(phases.map((p) => ({
+      type: p.type ?? null,
+      sec: Number(p.actual_duration_sec) || null,
+      mi: Number(p.actual_distance_mi) || null,
+      hr: p.avg_hr ?? null,
+      cadence: p.avg_cadence ?? null,
+    })));
+    // If at least one of the three signals exists, return them. Otherwise
+    // fall through to the heuristic path.
+    if (w.paceSPerMi != null || w.hrAvg != null || w.cadenceAvg != null) {
+      return { pace: fmtPace(w.paceSPerMi), ...w };
     }
   }
 

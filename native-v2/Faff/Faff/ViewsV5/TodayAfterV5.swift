@@ -140,6 +140,10 @@ struct TodayAfterV5: View {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 panel
                 askedVsRanSection
+                // THE READING, where run detail puts it: under what was asked
+                // against what was run, above the coach's verdict. Numbers
+                // first, then the sentence about them.
+                readingSection
                 recapSection
                 if !model.groups.isEmpty {
                     groupsTile
@@ -148,6 +152,7 @@ struct TodayAfterV5: View {
                     zoneTile(shares)
                 }
                 routeOrBeltCard
+                breakdownSection
                 if let shoe = model.shoesWorn {
                     ListGroup(header: "Shoes you wore") {
                         shoeRow(shoe)
@@ -709,6 +714,162 @@ struct TodayAfterV5: View {
         }
     }
 
+    // MARK: - What the run was made of
+
+    /// THE BREAKDOWN, AT THE GRAIN THE RUN WAS ACTUALLY RUN AT.
+    ///
+    /// "lets just add in a breakdown for per mile on easy or longer runs and
+    /// per section for intervals and tempos or whatever is best for the run."
+    ///
+    /// The choice is made from the run, not from the day's label: a session
+    /// that recorded phases is a session made of sections, and a mile of one
+    /// holds the back of a rep, a jog and the front of the next averaged
+    /// together. Everything else is made of miles.
+    /// THE SHAPE OF THIS SESSION, which decides what the screen may claim.
+    /// One rule, in `PostRunShapeV5`, shared with run detail — the two screens
+    /// may not answer one run differently.
+    private var shape: RunShapeV5 {
+        RunShapeV5.of(workoutType: model.workoutType,
+                      indoor: model.onTheBelt != nil)
+    }
+
+    @ViewBuilder
+    private var breakdownSection: some View {
+        // The shape states a preference; what the run actually recorded
+        // decides. A rep session whose phases never reached the phone is still
+        // better served by its miles than by nothing at all.
+        let d = shape.decomposition(hasSections: !sectionPieces.isEmpty,
+                                    hasMiles: !milePieces.isEmpty)
+        switch d {
+        case .sections:
+            RepBreakdownV5(title: shape.breakdownTitle(.sections), pieces: sectionPieces)
+        case .miles:
+            MileBreakdownV5(title: shape.breakdownTitle(.miles),
+                            pieces: milePieces,
+                            bandLine: model.paceBand != nil
+                                ? "Orange where the mile sat inside what the session asked for."
+                                : nil,
+                            allowsElevation: shape.showsElevation,
+                            allowsPace: shape.showsPerMilePace)
+        case .none:
+            // RULE THREE. A run with neither draws nothing — not a header over
+            // an empty list, which reads as a section that failed to load.
+            EmptyView()
+        }
+    }
+
+    // MARK: - The reading
+
+    /// THE FOUR INSTRUMENT VALUES, AND ONLY THE ONES THIS RUN EARNS.
+    ///
+    /// Run detail has drawn a Reading card since it was written and this
+    /// screen never had one — "I like seeing this too which isnt on the latest
+    /// sim build im seeing". Same builder shape as `RunDetailV5.readingRows`,
+    /// same refusals, plus the per-type composition that neither screen had.
+    ///
+    /// WHAT IS REMOVED, AND FROM WHAT. See `PostRunShapeV5` for the argument
+    /// behind each of these; in summary:
+    ///   · whole-run average HR and cadence come OFF tempo, threshold,
+    ///     tune-up, interval, fartlek and progression runs, because an average
+    ///     across a session made of pieces is a number no part of it was at.
+    ///   · maximum HR comes OFF easy, recovery, long and progression runs,
+    ///     where the peak is a hill or a road crossing and printing it beside
+    ///     a Z2 prescription invites reading a spike as a failed session.
+    ///   · temperature comes OFF treadmill runs entirely. It is a weather
+    ///     model for a grid square the runner was not standing in.
+    ///
+    /// An absent reading draws no row. A run with no cadence shows no cadence
+    /// row — not a zero, and not a dash we typed.
+    private var readingRows: [(String, FaffValue)] {
+        var out: [(String, FaffValue)] = []
+        if shape.showsWholeRunHrAvg, let hr = model.hrAvg {
+            out.append(("Heart rate, avg", .measured("\(hr) bpm")))
+        }
+        if shape.showsMaxHr, let hrMax = model.hrMax {
+            out.append(("Heart rate, max", .measured("\(hrMax) bpm")))
+        }
+        // NAMED FOR ITS SCOPE. "Heart rate, avg" on a rep session would be
+        // the same words over a different population, so the label carries
+        // the scope and the two can never be read as the same number.
+        if shape.showsWorkHrAvg, let hrWork = model.hrAvgWork {
+            out.append(("Heart rate, across the work", .measured("\(hrWork) bpm")))
+        }
+        if shape.showsWholeRunCadence, let cad = model.cadenceAvg {
+            out.append(("Cadence", .measured("\(cad) spm")))
+        }
+        if shape.showsWorkCadence, let cadWork = model.cadenceAvgWork {
+            out.append(("Cadence, across the work", .measured("\(cadWork) spm")))
+        }
+        if shape.showsWorkHrAvg, let paceWork = model.paceWork {
+            out.append(("Pace, across the work", .measured(paceWork)))
+        }
+        // RULE ONE. Nothing on the phone or the watch has a thermometer in it,
+        // so a run's temperature is a weather read for a grid square and an
+        // hour bucket. The wire carries no source with it, and by the type's
+        // own rule — if a screen cannot tell, the answer is modelled — this is
+        // modelled. The same call `RunDetailV5` already makes, made the same
+        // way, because the two screens print the same number.
+        if shape.showsTemperature, let temp = model.tempF {
+            out.append(("Temperature", .modelled("\(Int(temp.rounded()))\u{00B0}F")))
+        }
+        return out
+    }
+
+    /// THE READING CARD. Drawn only when the run earned at least one row —
+    /// a header over nothing reads as a section that failed to load.
+    @ViewBuilder
+    private var readingSection: some View {
+        if !readingRows.isEmpty {
+            ListGroup(header: "Reading") {
+                ForEach(readingRows, id: \.0) { row in
+                    ListRow(label: row.0, value: row.1)
+                }
+            }
+        }
+    }
+
+    private var milePieces: [MilePiece] {
+        // No run total on this payload, so a trailing piece is sized only if
+        // the wire told us its length. Unknown is not "a whole mile".
+        MileBreakdownV5.pieces(from: model.routeSplits,
+                               band: model.paceBand.map { (lo: $0.lo, hi: $0.hi) })
+    }
+
+    /// Sections, from what this screen actually has.
+    ///
+    /// TODAY'S PAYLOAD IS THINNER THAN RUN DETAIL'S, AND THE TABLE SAYS ONLY
+    /// WHAT IT KNOWS. `RunDetailV5` builds its pieces from
+    /// `phase_breakdown` — real labels, the asked pace, the watch's own grade
+    /// — and gets "Interval · 1 km, 6:45, asked 6:40, held it". All this
+    /// screen carries is `routePhases`, which is a distance and a duration per
+    /// phase. So the rows are numbered rather than named, and carry no target
+    /// and no verdict, because inventing either from a pace would be the phone
+    /// deciding what the plan asked for.
+    ///
+    /// Every piece draws `isWork: true` — not a claim that all of them are
+    /// work, but a refusal to claim which ones are. `isWork` drives ink weight
+    /// and nothing else, so uniform weight asserts no hierarchy; guessing
+    /// which phase was a rep from its pace would assert one that nothing on
+    /// this payload supports.
+    private var sectionPieces: [RepPiece] {
+        let usable = model.routePhases.filter { $0.mi > 0 && $0.sec > 0 }
+        // A SINGLE PHASE IS THE RUN, and the poster at the top of this screen
+        // already carries its distance, its time and its pace. Restating them
+        // in a list of one is a section that says nothing — the same ruling
+        // `RunDetailV5.repPieces` makes, for the same reason.
+        guard usable.count > 1 else { return [] }
+        return usable.enumerated().map { i, p in
+            RepPiece(id: i,
+                     label: "Section \(i + 1)",
+                     isWork: true,
+                     actualPace: Units.formatPace(secPerMile: p.sec),
+                     askedPace: nil,
+                     detail: "\(Units.formatDistance(miles: p.mi, decimals: 2)) \(Units.distanceLabel())",
+                     verdictPhrase: nil,
+                     chosen: false)
+        }
+    }
+
     @ViewBuilder
     private var routeOrBeltCard: some View {
         if let belt = model.onTheBelt, !belt.isEmpty {
@@ -718,22 +879,21 @@ struct TodayAfterV5: View {
         }
     }
 
-    /// Names the axis the map is drawn along, in the runner's words.
-    ///
-    /// It has to agree with what `RouteMapView` actually did, so it asks the
-    /// same three questions in the same order the component does: a
-    /// prescription outranks the axis, phases outrank the per-mile gradient,
-    /// and HR only colours a steady run when the bands and the readings are
-    /// both there.
-    private var routeLegend: String {
-        if model.paceBand != nil { return "shaded against your target pace" }
-        if !model.routePhases.isEmpty { return "shaded by rep" }
-        let steady = mappedEffort == .easy || mappedEffort == .long || mappedEffort == .recovery
-        let hasHr = model.routeSplits.contains { $0.hr != nil }
-        if steady && hasHr && !model.hrZones.isEmpty { return "shaded by heart-rate zone" }
-        if model.routeSplits.count > 1 { return "shaded by pace, mile by mile" }
-        return "where you went"
-    }
+    // THE LEGEND SENTENCE IS GONE, AND SO IS THE CLAIM IT WAS MAKING.
+    //
+    // `routeLegend` named the axis the map was drawn along — "shaded by
+    // heart-rate zone" — and the runner's reply was that naming an axis is
+    // not decoding it: "instead of saying 'shaded by HR zone' we need a key."
+    // The honest end of that thread is not a key. A line has one channel and
+    // the reading has four, so the breakdown below carries it as numbers and
+    // the map goes back to saying where he went.
+    //
+    // It was also drifting. It re-derived the axis here with `!routePhases
+    // .isEmpty` where the component needs two VALID phases, `!hrZones.isEmpty`
+    // where it needs two bands, and `hr != nil` where it needs `hr > 0` — so
+    // runs existed whose caption named an axis the line had not been drawn
+    // along. A second copy of a rule is a second thing to get wrong, and the
+    // fix for that is to stop keeping one.
 
     /// Which axis the map colours along, from the day's own state.
     ///
@@ -798,16 +958,12 @@ struct TodayAfterV5: View {
                     .font(.faffText(TypeScaleV5.label13))
                     .foregroundStyle(V5.textSecondary)
                 Spacer(minLength: 0)
-                // WHAT THE COLOUR MEANS, where a bare climb figure used to sit.
-                //
-                // "128 ft up" in the corner of a map answered a question
-                // nobody asked of a map, and left the actual question — what
-                // are these colours telling me — unanswered. The climb belongs
-                // under the elevation profile, which is the graphic about
-                // climbing. This line names the axis.
-                Text(routeLegend)
-                    .font(.faffText(TypeScaleV5.label13))
-                    .foregroundStyle(V5.textQuiet)
+                // Nothing in this corner. "128 ft up" was here first and
+                // answered a question nobody asks of a map; the axis sentence
+                // that replaced it made a claim the line could not keep. The
+                // climb sits under the elevation profile, which is the
+                // graphic about climbing, and the per-mile reading sits in
+                // the breakdown below.
             }
 
             if coords.count >= 2 {
@@ -815,7 +971,11 @@ struct TodayAfterV5: View {
                              splits: model.routeSplits,
                              phases: model.routePhases.map { PhaseSample(mi: $0.mi, sec: $0.sec) },
                              effort: mappedEffort,
-                             hrZones: model.hrZones,
+                             // No zone axis. See `RunDetailV5`'s route map for
+                             // the reasoning: a line has one channel, and the
+                             // breakdown under this card carries the reading
+                             // as numbers instead.
+                             hrZones: [],
                              paceBand: model.paceBand.map { (lo: $0.lo, hi: $0.hi) })
                     .frame(height: 200)
                     .clipShape(RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))

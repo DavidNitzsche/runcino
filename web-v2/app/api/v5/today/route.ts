@@ -25,6 +25,9 @@ import { zoneTargetForWorkout, zoneTargetsForWorkout } from '@/lib/coach/zone-ta
 import { computeZones } from '@/lib/training/zones';
 import { pickElevationGain } from '@/lib/runs/elevation';
 import { pickSplits } from '@/lib/runs/splits-pick';
+import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
+import { normalizeSessionType } from '@/lib/training/workout-type';
+import { workAveragesFromPhases, formatWorkPace } from '@/lib/runs/work-averages';
 import { rowsOrNull } from '@/lib/db/read';
 import { resolveThresholdHr } from '@/lib/training/lthr';
 import { requireUserId } from '@/lib/auth/session';
@@ -837,7 +840,67 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       const recentRun: V5RecentRunCtx = {
         runId: runRow.id,
         distanceMi, durationSec, paceSPerMi,
-        avgHr: data.avgHr != null ? Number(data.avgHr) : null,
+        // THE READING · four instrument values run detail has drawn since it
+        // was written and this screen never had on the wire.
+        //
+        // `runAvgHr` / `runMaxHr` rather than a bare `Number(...)`: they bound
+        // the value to a physiologically possible range, so a 0 or a 4 from a
+        // sensor artefact reads as "no measurement" instead of as a heart
+        // rate. Run detail's `hr_avg` is now resolved through the same pair —
+        // two screens two taps apart may not answer one run differently, and
+        // that is precisely the defect class this codebase has spent the day
+        // removing.
+        avgHr: runAvgHr(data as RunData),
+        hrMax: runMaxHr(data as RunData),
+        cadenceAvg: (() => {
+          const v = Number(data.avgCadence);
+          return Number.isFinite(v) && v > 0 ? Math.round(v) : null;
+        })(),
+        // WHICH TEMPERATURE, DELIBERATELY. Two live spellings disagree and
+        // `run-shape.ts` exposes both: `runTempFSql` is the bare top-level
+        // `tempF`, and `runWeatherTempFSql` is the enrichment block's PEAK,
+        // which exists for heat-cost arithmetic ("a run is paced by the worst
+        // of its conditions"). The Reading card states the run's ambient
+        // temperature, not its worst minute, so this mirrors run detail's own
+        // read exactly — top-level first, then the enrichment MEAN — because
+        // the two screens must not print different temperatures for one run.
+        tempF: (() => {
+          const top = Number(data.tempF);
+          if (Number.isFinite(top) && top !== 0) return top;
+          const w = (data.weather ?? null) as Record<string, unknown> | null;
+          const mean = Number(w?.temp_f);
+          return Number.isFinite(mean) && mean !== 0 ? mean : null;
+        })(),
+        // The canonical session type, so the phone can compose the screen from
+        // what the run WAS. `panel.dayState` is the coarse four-way bucket and
+        // cannot tell a tempo from a rep set — and those two need different
+        // screens, because an average across a rep session describes none of
+        // its parts.
+        // THE WORK-SCOPED AVERAGES · the same numbers run detail has drawn
+        // since P44, off the same code, so the two screens cannot disagree.
+        //
+        // These are what a rep or tempo session shows INSTEAD of the whole-run
+        // figures, not as well as. An average across a session made of pieces
+        // blends the reps with their recovery and lands in a zone the session
+        // never asked for; scoped to the work it is the number the runner
+        // actually held.
+        ...(() => {
+          const w = workAveragesFromPhases(completionPhases.map((ph: any) => ({
+            type: ph.type ?? null,
+            sec: Number(ph.durationSec ?? ph.duration_sec) || null,
+            mi: Number(ph.distanceMi ?? ph.distance_mi) || null,
+            hr: Number(ph.avgHr ?? ph.avg_hr) || null,
+            cadence: Number(ph.avgCadence ?? ph.avg_cadence) || null,
+          })));
+          return {
+            hrAvgWork: w.hrAvg,
+            cadenceAvgWork: w.cadenceAvg,
+            paceWork: formatWorkPace(w.paceSPerMi),
+          };
+        })(),
+        workoutType: normalizeSessionType(
+          (todayPlan?.type ?? data.workoutType ?? data.type ?? null) as string | null,
+        ),
         indoor, speedMph, inclinePct,
         askedPaceSPerMi, askedHrCap, askedHrIsHardCap,
         // The same number this route already hands `deriveRecap` as

@@ -235,6 +235,48 @@ export interface V5Today {
   conditionsNote: string | null;
   /// Forward-looking, and the only sentence here that is about next time.
   coachTip: string | null;
+  /**
+   * THE READING · the four instrument values the run recorded.
+   *
+   * Run detail has drawn these since it was written and the post-run Today
+   * screen never had them on the wire at all. Quantities, not sentences: the
+   * phone owns the words and the units, so a wording change never touches the
+   * payload — the same seam `RepBreakdownV5` and `WristDecisionsV5` keep.
+   *
+   * Null means the run recorded nothing, and the phone draws NO ROW rather
+   * than a zero or a dash we typed.
+   */
+  hrAvg: number | null;
+  hrMax: number | null;
+  cadenceAvg: number | null;
+  /**
+   * Air temperature, F. MODELLED, and the phone marks it so — nothing on the
+   * wrist or in the phone has a thermometer, so a run's temperature is a
+   * weather read for a grid square and an hour bucket.
+   */
+  tempF: number | null;
+  /**
+   * WHAT THE SESSION WAS, canonically — easy, long, tempo, intervals, race,
+   * race_week_tuneup and the rest of `lib/training/workout-type.ts`.
+   *
+   * The screen composes itself from this. `panel.dayState` is the coarse
+   * four-way bucket (easy / quality / long / race) and cannot tell a tempo
+   * from a rep set, which is a distinction that changes what is honest to
+   * show: an average heart rate summarises a tempo block and describes no
+   * part of a rep session.
+   */
+  workoutType: string | null;
+  /**
+   * THE SAME READING, SCOPED TO THE WORK · what a session made of pieces shows
+   * instead of the whole-run figures.
+   *
+   * `lib/runs/work-averages.ts` is the one place this is computed, shared with
+   * run detail. Null when the run recorded no work phase, which is every
+   * steady run — and there the whole-run figures are the honest ones.
+   */
+  hrAvgWork: number | null;
+  cadenceAvgWork: number | null;
+  paceWork: string | null;
   zoneShares: number[] | null;
   zoneTarget: number | null;
   /// Every zone the session asked for, ascending. A race prescribes a SET —
@@ -565,6 +607,28 @@ export interface V5RecentRunCtx {
   win: string | null;
   conditionsNote: string | null;
   coachTip: string | null;
+  /** The reading · see `V5Today.hrAvg`. `avgHr` is already above. */
+  hrMax: number | null;
+  cadenceAvg: number | null;
+  tempF: number | null;
+  /**
+   * The canonical session type. Drives WHICH rows the post-run screen draws —
+   * see `V5Today.workoutType`. Null when the run was never planned and its own
+   * row carries no recognisable type; the phone then composes for a steady
+   * run, which is the shape that asserts least.
+   */
+  workoutType: string | null;
+  /**
+   * THE SAME READING, SCOPED TO THE WORK · what a session made of pieces shows
+   * instead of the whole-run figures.
+   *
+   * `lib/runs/work-averages.ts` is the one place this is computed, shared with
+   * run detail. Null when the run recorded no work phase, which is every
+   * steady run — and there the whole-run figures are the honest ones.
+   */
+  hrAvgWork: number | null;
+  cadenceAvgWork: number | null;
+  paceWork: string | null;
   zoneShares: number[] | null;
   zoneTarget: number | null;
   zoneTargets: number[] | null;
@@ -1129,6 +1193,14 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   win: null,
   conditionsNote: null,
   coachTip: null,
+  hrAvg: null,
+  hrMax: null,
+  cadenceAvg: null,
+  tempF: null,
+  workoutType: null,
+  hrAvgWork: null,
+  cadenceAvgWork: null,
+  paceWork: null,
   zoneShares: null,
   zoneTarget: null,
   zoneTargets: null,
@@ -1278,6 +1350,17 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.win = ctx.recentRun.win;
     t.conditionsNote = ctx.recentRun.conditionsNote;
     t.coachTip = ctx.recentRun.coachTip;
+    // THE READING, straight through. `avgHr` already travelled on this
+    // context for the recap's own arithmetic and stopped at the composer; the
+    // other three are new. All four now reach the screen.
+    t.hrAvg = ctx.recentRun.avgHr;
+    t.hrMax = ctx.recentRun.hrMax;
+    t.cadenceAvg = ctx.recentRun.cadenceAvg;
+    t.tempF = ctx.recentRun.tempF;
+    t.workoutType = ctx.recentRun.workoutType;
+    t.hrAvgWork = ctx.recentRun.hrAvgWork;
+    t.cadenceAvgWork = ctx.recentRun.cadenceAvgWork;
+    t.paceWork = ctx.recentRun.paceWork;
     t.zoneShares = ctx.recentRun.zoneShares;
     t.zoneTarget = ctx.recentRun.zoneTarget;
     t.zoneTargets = ctx.recentRun.zoneTargets;
