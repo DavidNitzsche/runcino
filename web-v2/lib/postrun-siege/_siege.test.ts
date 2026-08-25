@@ -30,6 +30,8 @@ import { pickSplits } from '@/lib/runs/splits-pick';
 import { computeZones, lthrZones, pctMaxZones, friel7Zones } from '@/lib/training/zones';
 import { bucketHrSamplesByZone, zoneSharesFromSplitHr } from '@/lib/coach/hr-zone-bucket';
 import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
+import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
+import { splitsContradictTotal } from '@/lib/runs/elev-sanity';
 import type { WorkoutType } from '@/lib/coach/run-purpose';
 
 /**
@@ -271,6 +273,69 @@ describe('POST-RUN SIEGE · zone shares and the bands they are drawn against', (
     // to distribute and the answer is a refusal rather than a chart of one beat.
     expect(bucketHrSamplesByZone([{ hrSamples: [{ bpm: 250 }] }], t)).toBeNull();
     expect(bucketHrSamplesByZone([{ hrSamples: [{ bpm: 140 }] }], null)).toBeNull();
+  });
+});
+
+describe('POST-RUN SIEGE · terrain, which moves a pace verdict', () => {
+  for (const shape of SHAPES) {
+    it(`${shape.id} · the climb never forgives a pace it cannot justify`, () => {
+      const t = resolveRunTerrain(shape.data as Parameters<typeof resolveRunTerrain>[0]);
+      const bad: string[] = [];
+      if (!Number.isFinite(t.factor) || t.factor <= 0) bad.push(`factor ${t.factor}`);
+      if (!Number.isFinite(t.deltaSPerMi)) bad.push(`deltaSPerMi ${t.deltaSPerMi}`);
+      // An unmaterial adjustment is exactly a no-op, never a small nudge.
+      if (!t.material && t.factor !== 1) bad.push(`immaterial but factor ${t.factor}`);
+      // A treadmill has no terrain, whatever elevation the row carries.
+      if (shape.data.indoor === true || shape.data.source === 'treadmill') {
+        if (t.surface !== 'treadmill') bad.push(`belt run read as ${t.surface}`);
+        if (t.gainFt != null) bad.push(`belt run carried ${t.gainFt} ft of climb`);
+      }
+      if (t.note) bad.push(...checkCoachVoice([t.note]));
+      expect(bad, `${shape.id} (${shape.origin})`).toEqual([]);
+    });
+  }
+
+  it('a split sum larger than the row\'s own total climb is refused, not believed', () => {
+    /* A split is a NET delta over its mile, so the sum of per-mile positives
+     * can only ever UNDER-count a run's gain: a mile that climbs 100 ft and
+     * gives it back contributes 0 here and 100 to the true total. Over-counting
+     * is impossible, and three canonical rows do it — 554 ft of splits against
+     * a stored 174, 589 against 217, 2224 against 1238.
+     *
+     * It reached the runner because `deriveRecap` judges pace against target
+     * THROUGH this factor: an invented climb forgives a tempo that was off and
+     * prints "this was a harder effort than the pace shows". */
+    const row = {
+      source: 'watch', distanceMi: 8.15, durationSec: 8.15 * 480,
+      elevGainFt: 174,
+      splits: Array.from({ length: 8 }, (_, i) => ({ mile: i + 1, elev_ft: 70 })),
+    };
+    const t = resolveRunTerrain(row);
+    expect(t.material).toBe(false);
+    expect(t.factor).toBe(1);
+    expect(t.note).toContain('did not add up');
+
+    // The honest version of the same run keeps its adjustment.
+    const ok = resolveRunTerrain({ ...row, elevGainFt: 620 });
+    expect(ok.material).toBe(true);
+    expect(ok.factor).toBeGreaterThan(1);
+
+    // And a row with no stored total to contradict is not punished for it.
+    const noTotal = resolveRunTerrain({ ...row, elevGainFt: null });
+    expect(noTotal.material).toBe(true);
+  });
+
+  it('splitsContradictTotal only fires in the impossible direction', () => {
+    expect(splitsContradictTotal(554, 174)).toBe(true);
+    expect(splitsContradictTotal(2224, 1238)).toBe(true);
+    // Under-counting is the normal case and must never fire.
+    expect(splitsContradictTotal(174, 554)).toBe(false);
+    expect(splitsContradictTotal(600, 620)).toBe(false);
+    // Rounding slack, so a short run's independent roundings do not trip it.
+    expect(splitsContradictTotal(105, 100)).toBe(false);
+    // Nothing to compare against is not a contradiction.
+    expect(splitsContradictTotal(500, 0)).toBe(false);
+    expect(splitsContradictTotal(0, 500)).toBe(false);
   });
 });
 
