@@ -221,6 +221,13 @@ struct LiveRunTreadmillV5: View {
         .onReceive(session.$tickStamp) { now in
             maintainWatchBridge(at: now)
             attachHrForClosedPhases()
+            // 2026-08-25 · the meter is started in `.onAppear` and stopped in
+            // `.onDisappear`, so nothing between them ever told it the run had
+            // paused. It measured its step rate over wall clock while the run
+            // is stored against the belt's moving clock, which under-reports
+            // cadence by every paused minute and can drop the carried gate
+            // altogether. It reads the same clock as the distance now.
+            meter.note(movingSec: session.belt.elapsedSec, isPaused: !session.isRunning)
         }
         .task {
             // A belt run this app was killed in the middle of. Same contract
@@ -641,8 +648,14 @@ struct LiveRunTreadmillV5: View {
                 // other modelled number in the app.
                 // A distance we cannot format is one we cannot read, and a
                 // confident "0" is the opposite of that. nil is .unreadable.
+                // 2026-08-25 · was `FaffFmt.miles`, the one-decimal format for a
+                // finished distance. On a belt console it read a bare "0" for
+                // the first 0.05 mi and then stepped a tenth at a time — the
+                // outdoor console had already diagnosed exactly this and fixed
+                // it privately, so the two live consoles printed one distance
+                // two ways. `FaffFmt.liveMiles` is now that fix, shared.
                 statColumn(label: "DIST",
-                           value: FaffValue.from(FaffFmt.miles(distanceMi),
+                           value: FaffValue.from(FaffFmt.liveMiles(distanceMi),
                                                  modelled: distanceIsModelled))
                 // PACE here is 3600 / the belt speed the runner typed in.
                 // Nothing sensed it — it inherits the distance's provenance,

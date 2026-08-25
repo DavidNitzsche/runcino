@@ -114,6 +114,56 @@ final class IndoorDistanceMeter: ObservableObject {
     private var startedAt: Date?
     private var running = false
 
+    // ── The MOVING clock ────────────────────────────────────────────────────
+    //
+    // 2026-08-25 · every rate below used to be `steps / (now - startedAt)`,
+    // which is WALL CLOCK. The consoles that own this meter never stop it on
+    // pause — `meter.start` is called in `.onAppear` and `meter.stop` in
+    // `.onDisappear`, and `session.togglePause()` sits between them — so a
+    // paused minute went straight into the denominator while the run's own
+    // stored `totalDurationSec` is the belt's MOVING clock. Two clocks for one
+    // run.
+    //
+    // The size of it: 30 minutes at a true 170 spm with a 5-minute pause banks
+    // 5100 steps and divides them by 35 minutes, and the run is filed at 146
+    // spm — a figure the Health page then grades against a 170 target. The
+    // same denominator drives the `carriedStepsPerMin` gate, so a long enough
+    // pause also drops the rate under 100 and the whole reading collapses to
+    // `.notCarried`: the belt cross-check disappears, silently, on a run where
+    // the phone was carried the entire time.
+    //
+    // Steps taken DURING a pause are excluded from the numerator too, off the
+    // cumulative count at each boundary — a runner stretching beside the belt
+    // is not running at 200 spm.
+    /// Moving seconds, as the owning session counts them. Nil until an owner
+    /// reports one, in which case wall clock is all there is.
+    private var movingSec: Double?
+    /// Cumulative step count when the current pause began, or nil when moving.
+    private var pausedStepBaseline: Int?
+    /// Steps banked across completed pauses.
+    private var stepsWhilePaused: Int = 0
+
+    /// Report the owning session's moving clock and pause state.
+    ///
+    /// Call on every tick. `movingSec` is the session's own elapsed clock — the
+    /// one that stops on pause and is what the run is ultimately stored with —
+    /// so the step rate is measured over the same seconds the distance is.
+    func note(movingSec: Double, isPaused: Bool) {
+        self.movingSec = max(0, movingSec)
+        if isPaused {
+            if pausedStepBaseline == nil { pausedStepBaseline = rawSteps ?? 0 }
+        } else if let base = pausedStepBaseline {
+            stepsWhilePaused += max(0, (rawSteps ?? base) - base)
+            pausedStepBaseline = nil
+        }
+    }
+
+    /// Steps taken while actually moving.
+    private func movingSteps(_ cumulative: Int) -> Int {
+        let duringThisPause = pausedStepBaseline.map { max(0, cumulative - $0) } ?? 0
+        return max(0, cumulative - stepsWhilePaused - duringThisPause)
+    }
+
     /// True when this device can measure at all — used to decide whether to
     /// say anything about a missing reading.
     static var isSupported: Bool {
@@ -150,10 +200,12 @@ final class IndoorDistanceMeter: ObservableObject {
         if let meters { rawDistanceMi = meters / 1609.344 }
 
         guard let startedAt else { return }
-        let minutes = now.timeIntervalSince(startedAt) / 60.0
+        // The session's own moving clock when an owner reports one; wall clock
+        // is the fallback for a caller that has no pause concept at all.
+        let minutes = (movingSec ?? now.timeIntervalSince(startedAt)) / 60.0
         // Under half a minute there is not enough of a step rate to judge.
         guard minutes >= 0.5 else { return }
-        let stepsPerMin = Double(steps) / minutes
+        let stepsPerMin = Double(movingSteps(steps)) / minutes
         guard stepsPerMin >= Self.carriedStepsPerMin else {
             reading = .notCarried
             currentCadenceSpm = nil

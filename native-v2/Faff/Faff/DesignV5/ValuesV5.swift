@@ -283,6 +283,29 @@ enum FaffFmt {
         miles(mi).map { $0 + " mi" }
     }
 
+    /// `2.40` · a distance on a console being read MID-STRIDE. Two decimals.
+    ///
+    /// `miles` above is right everywhere a distance is a finished fact, and
+    /// wrong while one is accumulating: it holds at "0" for the first 0.05 mi
+    /// and then steps a tenth at a time, so a live tile reads as broken for the
+    /// first few hundred metres of every run and as frozen for forty seconds at
+    /// a stretch after that. The shipped legacy console used two decimals here
+    /// for exactly that reason.
+    ///
+    /// 2026-08-25 · this lived as a private `static func liveMiles` on
+    /// `LiveRunOutdoorV5`, with that argument written out beside it — and the
+    /// TREADMILL console, the other live console in the same set, went on
+    /// calling `miles`. Driven on a simulator its DIST tile read a bare "0" at
+    /// eight seconds while the outdoor one read "2.40": one product, two live
+    /// consoles, two distance formats, and the diagnosis for the defect sitting
+    /// in a doc comment the other file could not reach. One definition, both
+    /// consoles. Optional in, optional out, so a distance that cannot be
+    /// formatted stays unreadable rather than becoming a confident zero.
+    static func liveMiles(_ mi: Double?) -> String? {
+        guard let mi, mi.isFinite, mi >= 0 else { return nil }
+        return String(format: "%.2f", mi)
+    }
+
     /// `+24 s/mi` · a signed per-zone pace move. Slower is positive, which is
     /// the direction the engine reports, and the sign is always drawn.
     static func paceDeltaSec(_ sec: Double?) -> String? {
