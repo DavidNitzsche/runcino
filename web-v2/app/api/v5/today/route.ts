@@ -23,9 +23,7 @@ import { pool } from '@/lib/db/pool';
 import { rowOrNull } from '@/lib/db/read';
 import { zoneTargetForWorkout, zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 import { computeZones } from '@/lib/training/zones';
-import { pickElevationGain } from '@/lib/runs/elevation';
-import { pickSplits } from '@/lib/runs/splits-pick';
-import { rowsOrNull } from '@/lib/db/read';
+import { loadRunTwins, resolveElevationGain, resolveSplits } from '@/lib/runs/twins';
 import { resolveThresholdHr } from '@/lib/training/lthr';
 import { requireUserId } from '@/lib/auth/session';
 import { composeWhy } from '@/lib/faff/why-voice';
@@ -45,10 +43,10 @@ import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
-import {
-  runDaySql, runNotMergedSql, runDistanceMiSql,
-  runElevGainFtSql, runElevGainSourceSql, runSourceSql, runMergedIntoIdSql, runSplitsSql,
-} from '@/lib/runs/run-shape';
+// The five elevation / splits / merge SQL fragments that used to be imported
+// here went with the inline twin query — `lib/runs/twins.ts` builds that
+// statement now, in one place, for all four surfaces.
+import { runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
 import { runFacts } from '@/lib/runs/run-facts';
 import { beltAverages } from '@/lib/runs/belt-averages';
 import { loadPaceZoneEvent } from '@/lib/plan/pace-drop-event';
@@ -740,31 +738,32 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         [userId, rpeIds],
       ).catch(() => ({ rows: [] as any[] }))).rows[0];
 
-      // Every climb figure this run carries, its own and its absorbed twins'.
-      // `rowsOrNull`, not a `.catch(() => [])`. The difference matters here:
-      // an empty twin list means "this run has no absorbed twins", while a
-      // FAILED read means "a better instrument may exist and I could not see
-      // it". Collapsing the two would let a `gps_derived` figure win by
-      // default the moment the database hiccuped — which is precisely how the
-      // wrong number got on screen in the first place.
-      const elevTwins = await rowsOrNull<{ ft: string | null; src: string | null; ingest: string | null; splits: unknown }>(
-        'v5/today · absorbed twin elevation',
-        pool.query(
-          `SELECT ${runElevGainFtSql()} AS ft, ${runElevGainSourceSql()} AS src, ${runSourceSql()} AS ingest,
-                  ${runSplitsSql()} AS splits
-             FROM runs
-            WHERE ${runMergedIntoIdSql()} = $1`,
-          [String(runRow.id)],
-        ),
-      );
-      // The read failed → refuse rather than guess. A climb the runner cannot
-      // trust is worse than no climb, and the profile still draws.
-      const elevationReading = elevTwins === null
-        ? null
-        : pickElevationGain([
-            { ft: data.elevGainFt as number | null, source: data.elevGainSource as string | null, ingest: data.source as string | null },
-            ...elevTwins.map((t) => ({ ft: t.ft == null ? null : Number(t.ft), source: t.src, ingest: t.ingest })),
-          ]);
+      /* ── THE ABSORBED TWINS · through the shared seam, 2026-08-24 ──────────
+       *
+       * This query, and the two resolver calls under it, used to be written
+       * out here. They were correct — and being written HERE, inside a route,
+       * is why no other surface could reuse them. Run detail, the log and the
+       * recap each ended up with a private answer for the same climb, and one
+       * run printed 3195 / 57 / 57 / 3195 across four screens.
+       *
+       * `lib/runs/twins.ts` is the same logic with a door on it. Nothing about
+       * the poster's behaviour changes; what changes is that the other three
+       * surfaces can now ask the identical question, and a future change to
+       * the ranking lands on all four at once instead of on whichever file
+       * someone remembered.
+       *
+       * The failed-read distinction is preserved inside the seam: null means
+       * the read FAILED and `resolveElevationGain` refuses, rather than
+       * letting the canonical row's weaker instrument win by default. */
+      const elevTwins = await loadRunTwins(runRow.id);
+      const canonicalFigures = {
+        elevGainFt: data.elevGainFt as number | null,
+        elevGainSource: data.elevGainSource as string | null,
+        source: data.source as string | null,
+        splits: Array.isArray(data.splits) ? (data.splits as Array<Record<string, unknown>>) : null,
+        distanceMi,
+      };
+      const elevationReading = resolveElevationGain(canonicalFigures, elevTwins);
 
       // THE SPLIT ARRAY THAT ACTUALLY DECOMPOSES THIS RUN.
       //
@@ -777,13 +776,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       // Coverage decides, then richness. Never a blend of two arrays: they are
       // separate instruments observing the same run, and interleaving them
       // would invent miles nothing recorded.
-      const splitChoice = pickSplits(distanceMi, [
-        { splits: Array.isArray(data.splits) ? data.splits : null, source: 'canonical' },
-        ...(elevTwins ?? []).map((t) => ({
-          splits: Array.isArray(t.splits) ? (t.splits as Array<Record<string, unknown>>) : null,
-          source: t.ingest,
-        })),
-      ]);
+      const splitChoice = resolveSplits(canonicalFigures, elevTwins);
 
       // The runner's own zone bands, from their threshold heart rate. Null
       // at true cold start — never fabricated, and an absent band simply
