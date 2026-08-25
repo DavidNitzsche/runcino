@@ -23,7 +23,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { anotherRaceBlockGate, type PlanShape } from './replan-scenarios';
-import { findMoveDayCandidate, libraryPhaseKey } from './v5-block';
+import { findMoveDayCandidate, libraryPhaseKey, buildPanel, buildCoachLine, buildOpensISO } from './v5-block';
+import { pickPlanMode } from './goal-tiers';
 
 // ── fixtures ─────────────────────────────────────────────────────────────
 
@@ -184,5 +185,110 @@ describe('libraryPhaseKey · plan_phases.label → workout_library.phase_fit', (
 
   it('RECOVERY (generate.ts\'s post-race composer) has no phase_fit value of its own — null, not a guess', () => {
     expect(libraryPhaseKey('RECOVERY', false)).toBeNull();
+  });
+});
+
+// ── 4 · the panel describes ONE week, and the coach line tells the truth ────
+//
+// Both added 2026-08-24. `buildPanel` derived its three stats from the
+// plan_weeks row today falls inside while the week strip beneath it drew the
+// runner's own training week, so on a block authored on a different grid the
+// mileage stat and the strip were two different weeks (29.5 mi over a 31.0 mi
+// strip, live, on 2026-08-24). And `buildCoachLine` told every MAINTENANCE
+// runner "There is no block to build toward yet" — including the ones holding
+// a goal race, named in the panel directly above the line.
+
+type TrainingStateShape = import('@/lib/coach/training-state').TrainingState;
+
+function windowDays(): TrainingStateShape['weekWindowDays'] {
+  // The runner's week: Mon 2026-08-24 to Sun 2026-08-30 (Sunday long runs).
+  const dates = ['2026-08-24', '2026-08-25', '2026-08-26', '2026-08-27', '2026-08-28', '2026-08-29', '2026-08-30'];
+  return dates.map((date, i) => ({
+    id: `d${i}`, date, dow: new Date(date + 'T12:00:00Z').getUTCDay(),
+    type: i === 6 ? 'long' : 'easy', mi: i === 6 ? 10 : 4, label: null,
+    isQuality: i === 1, isLong: i === 6, spec: null,
+    doneMi: 0, activityId: null, donePaceSec: null, doneAvgHr: null, adaptation: null,
+  }));
+}
+
+function trainingState(over: Partial<TrainingStateShape> = {}): TrainingStateShape {
+  const days = windowDays();
+  return {
+    plan_id: 'pln_x', today: '2026-08-26', race: null, phases: [],
+    weeks: [{
+      id: 'wk0', idx: 0, phase: 'QUALITY', startDate: '2026-08-24', plannedMi: 34,
+      isRaceWeek: false, isCutback: false, days, isCurrent: true,
+    }],
+    currentPhase: 'QUALITY', currentWeekIdx: 0, nextQuality: null,
+    weekDone: 12, weekPlanned: 34,
+    weekWindow: { startISO: '2026-08-24', endISO: '2026-08-30' },
+    weekWindowDays: days,
+    last_adapted_at: null, horizonRaise: null,
+    ...over,
+  };
+}
+
+describe("buildPanel · the three stats describe the runner's week", () => {
+  it('prints the window total, not the plan-week row total', () => {
+    // The misalignment, reproduced: the plan_weeks row says 34 mi and the
+    // runner's own seven days hold 41. The panel must print the seven days.
+    const panel = buildPanel(trainingState({ weekPlanned: 41 }));
+    const mileage = panel.stats.find((s) => s.label === "This week's mileage");
+    expect(mileage?.value.text).toBe('41 mi');
+  });
+
+  it('takes the quality share and the long run from the same seven days as the mileage', () => {
+    const panel = buildPanel(trainingState());
+    // One quality day of 4 mi in a 34 mi week.
+    expect(panel.stats.find((s) => s.label === 'Quality share')?.value.text).toBe('12%');
+    expect(panel.stats.find((s) => s.label === 'Long run')?.value.text).toBe('10 mi');
+  });
+
+  it('a week with no designated long run says None rather than 0 mi', () => {
+    const flat = windowDays().map((d) => ({ ...d, isLong: false }));
+    const panel = buildPanel(trainingState({ weekWindowDays: flat }));
+    expect(panel.stats.find((s) => s.label === 'Long run')?.value.text).toBe('None');
+  });
+});
+
+describe('buildCoachLine · MAINTENANCE with a race on the calendar', () => {
+  const HALF_MI = 13.1094;
+  const maint = (raceDate: string | null) => trainingState({
+    currentPhase: 'MAINTENANCE',
+    race: raceDate
+      ? {
+          slug: 'sombrero', name: 'Sombrero Half', date: raceDate, goal: null,
+          days_to_race: Math.round(
+            (Date.parse(raceDate + 'T12:00:00Z') - Date.parse('2026-08-26T12:00:00Z')) / 86400000,
+          ),
+        }
+      : null,
+  });
+
+  it('names the day the build opens instead of denying the race exists', () => {
+    // Sixteen weeks out from a half, which is one of the three plan lengths
+    // the native goal sheet offers, and outside BUILD_WINDOW_WEEKS.hm.
+    const line = buildCoachLine(maint('2026-12-13'), HALF_MI) ?? '';
+    expect(line).toContain('Sombrero Half');
+    expect(line).toContain('opens');
+    expect(line).not.toContain('no block to build toward');
+    // Coach voice: no shouting, no em dash.
+    expect(line).not.toMatch(/[!—]/);
+  });
+
+  it('the date it names is the day pickPlanMode itself flips to race-prep', () => {
+    const opens = buildOpensISO('2026-08-26', '2026-12-13', HALF_MI);
+    expect(opens).not.toBeNull();
+    expect(pickPlanMode(opens!, '2026-12-13', HALF_MI, null, null)).toBe('race-prep');
+    const dayBefore = new Date(Date.parse(opens! + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
+    expect(pickPlanMode(dayBefore, '2026-12-13', HALF_MI, null, null)).toBe('maintenance');
+  });
+
+  it('says nothing new when the window is already open, and keeps the old line with no race', () => {
+    expect(buildOpensISO('2026-08-26', '2026-09-27', HALF_MI)).toBeNull();
+    expect(buildCoachLine(maint(null), null)).toContain('no block to build toward');
+    // A race we cannot size (no distance on the row) falls back rather than
+    // guessing at a category.
+    expect(buildCoachLine(maint('2026-12-13'), null)).toContain('no block to build toward');
   });
 });

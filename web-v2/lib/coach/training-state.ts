@@ -93,7 +93,34 @@ export interface TrainingState {
   currentWeekIdx: number | null;
   nextQuality: { date: string; dow: number; type: string; label: string | null; mi: number } | null;
   weekDone: number;            // canonical mileage, week-start→today (long_run_day window)
+  /**
+   * Planned mileage for the SAME seven days `weekDone` is summed over, and the
+   * same seven `/api/plan/week` puts on the strip — the runner's training week,
+   * ending on their long-run day.
+   *
+   * WEEK-READ-1 (2026-08-24) · this used to be `current.plannedMi`, the total
+   * of the plan_weeks row today happens to sit inside. On a block authored on
+   * the same grid the runner reads, the two are the same number. On one that
+   * is not, they are two different weeks: production on 2026-08-24 held two
+   * plans authored on a Wednesday against a Sunday long run, and the phone
+   * printed 29.5 mi planned above a strip that summed to 31.0 (and 3.0 above
+   * 2.0 on the other). WEEK-ALIGN-1 stops NEW blocks being authored that way;
+   * this makes the number right for the ones that already were, and for any
+   * plan whose rows some other writer moved.
+   *
+   * The per-week figure on the Block screen's week list is still the authored
+   * week (`weeks[].plannedMi`) — that is the block's own unit and it is the
+   * honest one there. This field is the RUNNER's week.
+   */
   weekPlanned: number | null;
+  /** The window `weekDone` and `weekPlanned` are both measured over, so a
+   *  surface can say which seven days it is talking about instead of implying
+   *  it. */
+  weekWindow: { startISO: string; endISO: string };
+  /** The plan's own days inside that window, in date order. What the Block
+   *  panel derives its quality share and long run from, so all three of its
+   *  numbers describe one week. */
+  weekWindowDays: PlanWeek['days'];
   /** ISO timestamp of the last run-adaptations cron pass. Drives the
    *  "Plan refreshed Xh ago" freshness line on the Train tab. Added
    *  2026-05-30 audit. Null when the cron hasn't run yet. */
@@ -120,6 +147,10 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
       plan_id: null, today, race: null, phases: [], weeks: [],
       currentPhase: null, currentWeekIdx: null, nextQuality: null,
       weekDone: 0, weekPlanned: null,
+      // No plan · no window worth naming, but the field is not optional and a
+      // caller must not have to guess. Today's own seven days, empty.
+      weekWindow: weekWindowFor('sun', today),
+      weekWindowDays: [],
       last_adapted_at: null,
       horizonRaise: null,
     };
@@ -306,12 +337,29 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   // deprecated MAX-per-day heuristic, so weekDone matches Today's "WEEK MI"
   // (glance-state already sums canonicalMileageByDay).
   const settings = await loadSettings(userId);
-  const { startISO: weekStartISO } = weekWindowFor(settings.long_run_day, today);
+  const weekWindow = weekWindowFor(settings.long_run_day, today);
+  const { startISO: weekStartISO, endISO: weekEndISO } = weekWindow;
   const weekByDay = await mileageByDay(userId, weekStartISO, today).catch(() => new Map());
   let weekDoneSum = 0;
   for (const { mi } of weekByDay.values()) weekDoneSum += mi;
   const weekDone = Math.round(weekDoneSum * 10) / 10;
-  const weekPlanned = current?.plannedMi ?? null;
+
+  // WEEK-READ-1 (2026-08-24) · planned is summed over the SAME seven days
+  // `weekDone` is, and the same seven the strip draws — not over the
+  // plan_weeks row today falls inside. See the note on `weekPlanned`.
+  //
+  // The days come out of `weeks`, which is already loaded, so this costs no
+  // query: it is a re-slice of the block by date rather than by week id.
+  const weekWindowDays = weeks
+    .flatMap((w) => w.days)
+    .filter((d) => d.date >= weekStartISO && d.date <= weekEndISO)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  // Null, not zero, when the block does not cover this week at all — an
+  // off-season gap or a block that has ended. Zero would read as "nothing is
+  // planned this week", which is a claim; absent is the honest answer.
+  const weekPlanned = weekWindowDays.length > 0
+    ? Math.round(weekWindowDays.reduce((s, d) => s + d.mi, 0) * 10) / 10
+    : null;
 
   // Race
   let race: TrainingState['race'] = null;
@@ -334,6 +382,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   return {
     plan_id: plan.id, today, race, phases, weeks,
     currentPhase, currentWeekIdx, nextQuality, weekDone, weekPlanned,
+    weekWindow, weekWindowDays,
     last_adapted_at: plan.last_adapted_at,
     horizonRaise,
   };

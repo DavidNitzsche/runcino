@@ -46,6 +46,9 @@ import { pool } from '@/lib/db/pool';
 import { loadAllWorkouts, type PlanPhase as LibraryPhase } from '@/lib/plan/workout-library';
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { distanceMiFromLabel } from '@/lib/race/distance';
+// RACE-PREP-OPENS-1 · the Block screen asks the mode machine itself when the
+// build opens, rather than re-deriving it from BUILD_WINDOW_WEEKS.
+import { pickPlanMode } from '@/lib/plan/goal-tiers';
 import {
   proposeChange,
   loadPlanShape,
@@ -105,14 +108,23 @@ export function buildPanel(state: TrainingState) {
     weekLine = `${weeksToRace} week${weeksToRace === 1 ? '' : 's'} to ${state.race.name}`;
   }
 
-  const weekMi = current?.plannedMi ?? 0;
-  const qualityMi = current
-    ? current.days.filter((d) => d.isQuality && d.type !== 'race').reduce((s, d) => s + d.mi, 0)
-    : 0;
+  // WEEK-READ-1 (2026-08-24) · all three of the panel's stats are now derived
+  // from the SAME seven days: the runner's training week, ending on their
+  // long-run day, which is the window the week strip draws and the window
+  // `weekDone` is summed over.
+  //
+  // They were derived from the plan_weeks row today falls inside. On a block
+  // authored on the runner's own grid that is the same week; on one that is
+  // not, "This week's mileage" was a different week from the strip below it,
+  // and the quality share was a ratio of two numbers taken from that other
+  // week while the runner read this one.
+  const windowDays = state.weekWindowDays;
+  const weekMi = state.weekPlanned ?? 0;
+  const qualityMi = windowDays
+    .filter((d) => d.isQuality && d.type !== 'race')
+    .reduce((s, d) => s + d.mi, 0);
   const qualityShare = weekMi > 0 ? Math.round((qualityMi / weekMi) * 100) : 0;
-  const longMi = current
-    ? Math.max(0, ...current.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.mi))
-    : 0;
+  const longMi = Math.max(0, ...windowDays.filter((d) => d.isLong && d.type !== 'race').map((d) => d.mi));
 
   return {
     dayState: 'phase',
@@ -193,7 +205,50 @@ export function buildSoFar(state: TrainingState) {
 
 // ── coach line ───────────────────────────────────────────────────────────
 
-export function buildCoachLine(state: TrainingState): string | null {
+/**
+ * The first day `pickPlanMode` would answer 'race-prep' for this race, asked
+ * of the function itself rather than re-derived from `BUILD_WINDOW_WEEKS`.
+ *
+ * `pickPlanMode` does not open the window at exactly `race − buildWindow`:
+ * MAINT-SKIP-1 pulls it forward whenever fewer than one whole maintenance week
+ * would remain. A date computed off the constant would be right most of the
+ * time and wrong at the seam, which is the one week a runner would be looking
+ * at it. Null when the race is already inside the window (so the caller says
+ * nothing rather than naming a date in the past) or when it never opens.
+ */
+export function buildOpensISO(
+  todayISO: string,
+  raceDateISO: string,
+  raceDistanceMi: number,
+): string | null {
+  if (pickPlanMode(todayISO, raceDateISO, raceDistanceMi, null, null) === 'race-prep') return null;
+  const day = (n: number) =>
+    new Date(Date.parse(todayISO + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+  for (let n = 1; n <= 400; n++) {
+    const d = day(n);
+    if (d > raceDateISO) return null;
+    if (pickPlanMode(d, raceDateISO, raceDistanceMi, null, null) === 'race-prep') return d;
+  }
+  return null;
+}
+
+export function buildCoachLine(
+  state: TrainingState,
+  /** The goal race's distance, for the build-window question. Absent when the
+   *  plan has no race row, which is the genuine no-goal case. */
+  raceDistanceMi: number | null = null,
+): string | null {
+  // MAINTENANCE is the mode a runner is in when their race is real and simply
+  // is not near yet, and the line here said the opposite of that: "There is no
+  // block to build toward yet." For a runner sixteen weeks out from a half
+  // they entered on this app, with the race named in the panel directly above,
+  // that is the screen contradicting itself. Say when the build opens instead.
+  if (state.currentPhase === 'MAINTENANCE' && state.race && raceDistanceMi != null && raceDistanceMi > 0) {
+    const opens = buildOpensISO(state.today, state.race.date, raceDistanceMi);
+    if (opens) {
+      return `Holding steady. The build for ${state.race.name} opens ${dateWords(opens)}.`;
+    }
+  }
   switch (state.currentPhase) {
     case 'TAPER':
       return 'The taper is doing its job. Volume drops, intensity stays sharp, the legs come back under you.';
@@ -505,7 +560,7 @@ export async function loadV5Block(userId: string) {
   return {
     panel: buildPanel(state),
     phases: buildPhases(state),
-    coachLine: buildCoachLine(state),
+    coachLine: buildCoachLine(state, raceDistanceMi),
     soFar: buildSoFar(state),
     weeks: buildWeeks(state),
     library,
