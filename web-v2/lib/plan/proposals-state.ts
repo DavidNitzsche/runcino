@@ -46,8 +46,12 @@ export type PlanProposalKind =
   // same way. A settings change is one of the paths that rewrites a block
   // without the runner watching it happen — the least acceptable place for a
   // blank explanation.
-  | 'replan'               // settings/prefs change rebuilt the block
-  | 'plan_change'          // legacy alias for the same
+  | 'replan'               // a settings/prefs change rebuilt the block
+  /** The plan-change sheet. Written by replan-scenarios.ts already stamped
+   *  'accepted', because it records a change the RUNNER made rather than asking
+   *  them anything. Never renders as a card; listed so the loader can describe
+   *  the row rather than returning undefined for it. */
+  | 'plan_change'
   | 'race_graduate'        // goal race finished · graduated to the next one
   | 'recovery_complete'    // recovery block finished · rebuilt toward the race
   | 'plan_elapsed'         // plan ran out of prescribed days · rebuilt toward the goal
