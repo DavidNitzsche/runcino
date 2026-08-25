@@ -601,6 +601,93 @@ export function runMaxHrSql(alias = ''): string {
 }
 
 /**
+ * Human running stride, metres per step, both feet — the band a whole-run
+ * average has to land in for the cadence that produced it to be a step count.
+ *
+ * Measured on this database, 2026-08-24, over every row with a cadence and a
+ * coherent clock: 1.118 to 1.391 m across the 106 Apple Watch rows, against a
+ * REPORTED `avgStrideLengthM` of 1.12 to 1.38 m on the same rows. The band is
+ * wide enough to hold a walk break and a finishing kick either side of that,
+ * and less than half as wide as the factor of two it has to separate — which
+ * is what makes the test decisive rather than a judgement.
+ *
+ * Not a doctrine constant: it asserts no training rule and prescribes nothing.
+ * It is a shape check on a unit, the same kind of claim as "a run cannot move
+ * for longer than it lasted".
+ */
+export const MIN_RUNNING_STRIDE_M = 0.80;
+export const MAX_RUNNING_STRIDE_M = 2.05;
+
+/**
+ * The band a both-feet running cadence falls in, used ONLY for rows with no
+ * clock or distance to derive a stride from. Coarser than the stride test on
+ * purpose: 90 spm both feet is a slow shuffle and also a plausible per-leg
+ * figure, and nothing but the stride can tell those two apart.
+ */
+export const MIN_RUNNING_CADENCE_SPM = 120;
+export const MAX_RUNNING_CADENCE_SPM = 250;
+
+/**
+ * Cadence in steps per minute across BOTH FEET, whichever unit the row stored.
+ *
+ * `data.avgCadence` holds two quantities. Apple Watch writes a step rate;
+ * Strava's `average_cadence` for a run is a PER-LEG count, half of it. 57 rows
+ * here carry the per-leg figure (median 78 spm) and 179 carry the step rate
+ * (median 161 spm), and nothing in the row says which — so a query that reads
+ * the key raw makes the runner's cadence halve in May 2026, when what changed
+ * was the importer.
+ *
+ * The test is the row's own arithmetic, not a band on the value: distance
+ * divided by (cadence x minutes) is a stride length, and whichever of `cad`
+ * and `cad x 2` puts it inside a human running stride is the step count.
+ * Neither, and this returns NULL — a cadence whose unit cannot be established
+ * is not a cadence. The full argument, including the 114 spm row a value-band
+ * rule gets wrong, is in `lib/runs/coherence.ts` section 8.
+ *
+ * The bounds are IMPORTED from the reconciler rather than retyped, so the SQL
+ * and the TypeScript cannot drift; `_cadence_units.test.ts` asserts the
+ * literals in the emitted string are those constants.
+ *
+ * The clock is the SAME reconciliation `runFinishSec` performs and
+ * `reconcileRun` performs: moving time when the row's own elapsed clock
+ * supports it, elapsed when the implied pause exceeds `MAX_PAUSED_SHARE`.
+ * That is not a nicety. On the pre-May-2026 Strava rows `elapsedTimeS` is a
+ * genuine wall clock and runs up to 40% longer than the moving time, which is
+ * enough to pull a per-leg cadence's implied stride down into the human band
+ * and have this fragment leave it halved. An elapsed-first draft of this
+ * function did exactly that to 5 of the 56 affected rows.
+ */
+export function runCadenceSpmSql(alias = ''): string {
+  const d = col(alias);
+  const cad = `NULLIF(${d}->>'avgCadence','')::numeric`;
+  const mi = `NULLIF(${d}->>'distanceMi','')::numeric`;
+  const moving = `COALESCE(NULLIF(${d}->>'movingTimeS','')::numeric, NULLIF(${d}->>'movingSec','')::numeric)`;
+  const elapsed = `COALESCE(NULLIF(${d}->>'durationSec','')::numeric, NULLIF(${d}->>'elapsedTimeS','')::numeric)`;
+  const sec = `CASE
+      WHEN ${moving} IS NOT NULL AND ${elapsed} IS NOT NULL
+           AND (1 - ${moving} / NULLIF(${elapsed}, 0)) BETWEEN 0 AND ${MAX_PAUSED_SHARE}
+        THEN ${moving}
+      WHEN ${moving} IS NOT NULL AND ${elapsed} IS NULL THEN ${moving}
+      ELSE ${elapsed}
+    END`;
+  // metres per step at cadence x. NULL-safe: any missing input yields NULL and
+  // both CASE arms fall through to the value-band fallback below.
+  const stride = (mult: string) =>
+    `(${mi} * 1609.34) / NULLIF((${cad}) * ${mult} * (${sec} / 60.0), 0)`;
+  const lo = MIN_RUNNING_STRIDE_M;
+  const hi = MAX_RUNNING_STRIDE_M;
+  return `CASE
+    WHEN ${cad} IS NULL OR ${cad} <= 0 THEN NULL
+    WHEN ${stride('1')} BETWEEN ${lo} AND ${hi} THEN ${cad}
+    WHEN ${stride('2')} BETWEEN ${lo} AND ${hi} THEN ${cad} * 2
+    WHEN ${stride('1')} IS NOT NULL THEN NULL
+    WHEN ${cad} BETWEEN ${MIN_RUNNING_CADENCE_SPM} AND ${MAX_RUNNING_CADENCE_SPM} THEN ${cad}
+    WHEN ${cad} * 2 BETWEEN ${MIN_RUNNING_CADENCE_SPM} AND ${MAX_RUNNING_CADENCE_SPM} THEN ${cad} * 2
+    ELSE NULL
+  END`;
+}
+
+/**
  * Air temperature in FAHRENHEIT at the time of the run. NULL when the row was
  * never weather-enriched.
  *

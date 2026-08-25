@@ -51,6 +51,7 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
+import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 import { lutealAdjustedHrvBaseline } from './readiness';
 // 2026-08-19 · ONE sleep target · Research/00b, mileage-scaled.
 import { sleepTargetForMileage } from './tier-rules';
@@ -625,7 +626,7 @@ async function loadMuscleSignals(
   // avgStrideLengthM. GCT lives on health_samples (sample_type =
   // 'ground_contact_time') · joined by date to the easy runs.
   const afterRows = await pool.query<{ cadence: number | string | null; stride: number | string | null; power: number | string | null; gct: number | string | null; pace: number | string | null }>(
-    `SELECT (r.data->>'avgCadence')::numeric AS cadence,
+    `SELECT ${runCadenceSpmSql('r')} AS cadence,
             (r.data->>'avgStrideLengthM')::numeric AS stride,
             (r.data->>'avgPowerW')::numeric AS power,
             (r.data->>'paceSPerMi')::numeric AS pace,
@@ -647,7 +648,7 @@ async function loadMuscleSignals(
 
   // Baseline form metrics from easy runs BEFORE anchor (30d window).
   const beforeRows = await pool.query<{ cadence: number | string | null; stride: number | string | null; power: number | string | null; gct: number | string | null; pace: number | string | null }>(
-    `SELECT (r.data->>'avgCadence')::numeric AS cadence,
+    `SELECT ${runCadenceSpmSql('r')} AS cadence,
             (r.data->>'avgStrideLengthM')::numeric AS stride,
             (r.data->>'avgPowerW')::numeric AS power,
             (r.data->>'paceSPerMi')::numeric AS pace,

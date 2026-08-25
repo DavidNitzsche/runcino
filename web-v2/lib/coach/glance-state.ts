@@ -15,6 +15,7 @@ import { loadReadinessBandBaseline } from './readiness-history';
 import { loadNextARace } from './race-lookup';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { computeAcwr } from './acwr';
+import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadSettings } from '@/lib/coach/settings';
@@ -226,7 +227,7 @@ async function computeTodayExecution(
     const wr = (await pool.query(
       `SELECT data
          FROM runs WHERE user_uuid = $1 AND data->>'date' = $2
-           AND absorbed_into_canonical_at IS NULL AND (data ? 'mergedIntoId') = false
+           AND NOT (data ? 'mergedIntoId')
          LIMIT 1`,
       [userId, today],
     ).catch(() => ({ rows: [] }))).rows[0] as { data?: Record<string, unknown> | null } | undefined;
@@ -499,13 +500,15 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   // health_samples.cadence (writing stopped 2026-05-25; falls null ~49d
   // from now). Same COALESCE pattern as health-state.ts.
   const cad = (await pool.query(
+    // BOTH FEET · `runCadenceSpmSql` replaces the 130-220 band, which hid the
+    // 57 per-leg rows instead of converting them and dropped a real 114 spm
+    // row as out of range. See lib/runs/coherence.ts section 8.
     `WITH run_cadence AS (
-       SELECT AVG((data->>'avgCadence')::numeric)::numeric AS avg
+       SELECT AVG(${runCadenceSpmSql()})::numeric AS avg
          FROM runs
         WHERE user_uuid = $1::uuid
           AND NOT (data ? 'mergedIntoId')
-          AND data->>'avgCadence' IS NOT NULL
-          AND (data->>'avgCadence')::numeric BETWEEN 130 AND 220
+          AND ${runCadenceSpmSql()} IS NOT NULL
           AND (data->>'date')::date >= ($2::date - interval '60 days')
      ),
      hk_cadence AS (

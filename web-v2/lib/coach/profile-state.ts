@@ -10,7 +10,7 @@ import { loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadNextARace } from './race-lookup';
 import { loadActivePlan } from '@/lib/plan/lookup';
-import { computeShoeMileage } from '@/lib/shoe/mileage';
+import { computeShoeMileageBreakdown } from '@/lib/shoe/mileage';
 import { coerceShoeType, resolveShoeCapMi, type ShoeType } from '@/lib/shoe/lifespan';
 import { loadStravaConnectionStatus } from '@/lib/strava/connection-status';
 import { distanceMiFromLabel } from '@/lib/race/distance';
@@ -49,7 +49,15 @@ export interface ProfileState {
     lthr_set_at: string | null;      // ISO timestamp
     zones: ZoneTable | null;         // computed zones (LTHR-based if available, else %MHR)
   };
-  shoes: { id: string; name: string; brand: string; model: string; color: string | null; color2: string | null; notes: string | null; runTypes: string[]; mileage: number; cap: number; pctUsed: number; preferred: boolean | null; retired: boolean; baseline_mi: number; shoeType: ShoeType }[];
+  /**
+   * `mileage` is tracked miles. `inferredMi` is the share of it the app
+   * GUESSED — runs auto-assigned to this shoe from the preferred shoe and the
+   * run type rather than chosen by the runner. 65% of this runner's shoe miles
+   * on 2026-08-24, two shoes at 100%, one of those retired on the figure. A
+   * surface that prints `mileage` without consulting `inferredMi` is showing a
+   * modelled number as a measured one. See lib/shoe/mileage.ts.
+   */
+  shoes: { id: string; name: string; brand: string; model: string; color: string | null; color2: string | null; notes: string | null; runTypes: string[]; mileage: number; inferredMi: number; inferredRuns: number; cap: number; pctUsed: number; preferred: boolean | null; retired: boolean; baseline_mi: number; shoeType: ShoeType }[];
   nextARace: { slug: string; name: string; date: string; goal: string | null; days_to_race: number } | null;
   /** 2026-06-15 · no-race anchor: the runner's tt_goal_*. Present when there's
    *  no A-race so the briefing voice can say "TRAINING FOR · 10K · 41:35". */
@@ -222,9 +230,17 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   // Mileage computed ON READ from canonical runs (lib/shoe/mileage.ts) ·
   // the stored `shoes.mileage` column is stale/fictional and no longer
   // trusted. pctUsed therefore reflects real tracked miles.
-  const shoeMiles = await computeShoeMileage(userId);
+  //
+  // 2026-08-24 · the breakdown, not the bare total. 38 of this runner's 55
+  // shoe-assigned runs were AUTO-assigned — a guess from the preferred shoe
+  // and the run type — and 65% of his tracked shoe miles are inferred. Two
+  // shoes are at 100% and one of them is RETIRED on the figure. `inferredMi`
+  // rides along so a surface can mark the number instead of printing a guess
+  // as a measurement. See lib/shoe/mileage.ts.
+  const shoeMiles = await computeShoeMileageBreakdown(userId);
   const shoes = shoesRows.map((s: any) => {
-    const tracked = shoeMiles.get(Number(s.id)) ?? 0;
+    const detail = shoeMiles.get(Number(s.id));
+    const tracked = detail?.totalMi ?? 0;
     const baseline = Number(s.baseline_mi ?? 0);
     const m = tracked + baseline;
     // Retirement target · lib/shoe/lifespan.ts is the ONE resolver (was a
@@ -240,6 +256,12 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
       notes: s.notes ?? null,
       runTypes: s.run_types ?? [],
       mileage: Math.round(m),
+      /** Of `mileage`, the miles this shoe was GUESSED onto rather than
+       *  chosen for. Never larger than `mileage`. A surface that prints the
+       *  total without consulting this is presenting a guess as a
+       *  measurement — see lib/shoe/mileage.ts for the 65% figure. */
+      inferredMi: Math.round(detail?.inferredMi ?? 0),
+      inferredRuns: detail?.inferredRuns ?? 0,
       cap, pctUsed: Math.round((m / cap) * 100),
       shoeType,
       preferred: s.preferred,

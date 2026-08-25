@@ -5,7 +5,7 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { distanceMiFromLabel } from '@/lib/race/distance';
-import { coherentElapsedSec, coherentPace, coherentMovingSec } from '@/lib/runs/coherence';
+import { coherentElapsedSec, coherentPace, coherentMovingSec, runCadenceSpm } from '@/lib/runs/coherence';
 
 /** The one provisional-finish label every surface renders verbatim.
  *  Wording is the CLAUDE.md race-data Rule 3 canonical example. */
@@ -356,7 +356,9 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
           // than the recap printed for the same run. Reconciled, one basis.
           pace: fmtPace(coherentPace(best)?.secPerMi ?? null),
           avg_hr: Number(best.avgHr) || null,
-          cadence: Number(best.avgCadence) || null,
+          // BOTH FEET. A race matched to a pre-May-2026 Strava row carries a
+          // per-leg cadence; see `cadence.units-split`.
+          cadence: runCadenceSpm(best)?.spm ?? null,
           elev_gain_ft: Number(best.elevGainFt) || null,
         };
       }

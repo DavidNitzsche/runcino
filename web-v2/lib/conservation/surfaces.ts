@@ -40,6 +40,7 @@ import type { SurfaceReading } from './laws';
 import type { RunShape } from './shapes';
 import { pickElevationGain } from '@/lib/runs/elevation';
 import { watchActiveEnergyKcal } from '@/lib/runs/energy';
+import { runCadenceSpm } from '@/lib/runs/coherence';
 
 /**
  * Hops this harness cannot execute, stated once so no report can imply they
@@ -328,7 +329,11 @@ export function absoluteFigures(data: RunData): Partial<SurfaceReading> {
   return {
     avgHrBpm: num(data.avgHr),
     maxHrBpm: num(data.maxHr),
-    cadenceSpm: num(data.avgCadence),
+    // Steps per minute across BOTH FEET. The raw key holds a per-leg count on
+    // the 57 pre-May-2026 Strava imports, so reading it directly puts the same
+    // runner at 78 spm on one row and 161 on the next. See
+    // `cadence.units-split` in the derived registry.
+    cadenceSpm: runCadenceSpm(data)?.spm ?? null,
     tempF: num(data.tempF),
     elevGainFt: elev?.ft ?? null,
     elevGainMeasured: elev?.measured ?? null,

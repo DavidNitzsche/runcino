@@ -485,6 +485,69 @@ export const DERIVED_REGISTRY: readonly DerivedFamily[] = [
       },
     ],
   },
+
+  /* ────────────────────────────────────────────────────────────────────── */
+  {
+    id: 'cadence.units-split',
+    members: ['avgCadence', 'distanceMi', 'movingTimeS', 'durationSec', 'avgStrideLengthM'],
+    invariant:
+      'distance / (cadence x minutes) is the runner\'s stride length, and a ' +
+      'running stride is between 0.80 m and 2.05 m.',
+    winner: 'refuse',
+    why:
+      'TWO UNITS, ONE LABEL. Apple Watch writes `avgCadence` as steps per ' +
+      'minute across BOTH FEET. Strava\'s `average_cadence` for a run is a ' +
+      'PER-LEG count — half of that. Both are correct readings of the same ' +
+      'foot and neither row says which it is, so the value alone cannot be ' +
+      'read. The row\'s own arithmetic can: at 78 spm this runner\'s stride ' +
+      'comes out at 2.60 m, which is not a stride, and doubling the cadence ' +
+      'puts it at 1.30 m, which is what his watch reports on the runs either ' +
+      'side of it. The conversion is EXACT — a per-leg count is half a step ' +
+      'count by definition — so the result stays measured, and ' +
+      '`cadenceBasis` says which rows were converted. Where the arithmetic ' +
+      'answers neither way, the figure is refused: a cadence nobody can name ' +
+      'the unit of is not a cadence.',
+    guard: 'reconcileCadence',
+    measured:
+      '2026-08-24, run through `runCadenceSpmSql` against prod · 165 rows ' +
+      'carry `avgCadence`. 108 read as stored (median 161-162 spm); 57 are ' +
+      'per-leg and are doubled (median before 78 spm, after 155.1); 0 are ' +
+      'refused. 54 of the 57 are CANONICAL, so they were on screen at half ' +
+      'their value. Before: the same runner reads 50-90 spm through April and ' +
+      '139-169 from May. After: 100-180 throughout. The 88 pre-May-2026 ' +
+      'Strava imports are the affected set; `pullSync.ts` and the webhook ' +
+      'have doubled on ingest since.',
+    controls: [
+      {
+        label: '2026-05-14 · a legacy Strava import at 77.6 spm per leg',
+        // Real shape: 4.36 mi, 2213 s, cadence 77.6. Stride as stored 2.60 m.
+        row: { distanceMi: 4.36, durationSec: 2213, movingTimeS: 2213, avgCadence: 77.6 },
+        shouldRefuse: null,
+        expect: (c) => c.cadenceSpm === 155.2 && c.cadenceBasis === 'per_leg_doubled',
+      },
+      {
+        label: 'a watch row at 161 spm is left alone',
+        row: { distanceMi: 6.01, durationSec: 3010, movingTimeS: 3010, avgCadence: 161 },
+        shouldRefuse: null,
+        expect: (c) => c.cadenceSpm === 161 && c.cadenceBasis === 'as_recorded',
+      },
+      {
+        label: 'the 114 spm webhook row · a real low cadence, NOT a halved one',
+        // Real row, 2026-05-22 · 7.77 mi in 5730 s at 114 spm. The boundary
+        // case a value-band rule gets wrong: stride as stored is 1.149 m, and
+        // doubled it would assert 0.57 m, below any running stride.
+        row: { distanceMi: 7.77, durationSec: 5730, movingTimeS: 5730, avgCadence: 114 },
+        shouldRefuse: null,
+        expect: (c) => c.cadenceSpm === 114 && c.cadenceBasis === 'as_recorded',
+      },
+      {
+        label: 'a cadence no stride can explain either way is refused',
+        row: { distanceMi: 6.0, durationSec: 3000, movingTimeS: 3000, avgCadence: 12 },
+        shouldRefuse: 'cadence.units-split',
+        expect: (c) => c.cadenceSpm === null,
+      },
+    ],
+  },
 ];
 
 /* ══════════════════════════════════════════════════════════════════════════

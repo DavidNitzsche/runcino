@@ -25,6 +25,7 @@ import {
   coalesceRunName,
   matchRaceForRun,
   normalizeDataWorkoutType,
+  runStimulusType,
   type MergedTwin,
   type RaceForMatch,
 } from '@/lib/runs/log-enrich';
@@ -35,7 +36,7 @@ import { hrToNum } from '@/lib/runs/run-shape';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
-  coherentPace, coherentMovingSec, coherentElapsedSec,
+  coherentPace, coherentMovingSec, coherentElapsedSec, runCadenceSpm,
 } from '@/lib/runs/coherence';
 import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
 import { workAveragesFromPhases } from '@/lib/runs/work-averages';
@@ -963,6 +964,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     userId,
     runIdToExclude: String(r.id ?? activityId),
     type: (r.type as string | null) ?? null,
+    workoutType: (r.workoutType as string | number | null) ?? null,
     paceSPerMi: Number(r.paceSPerMi) || null,
     avgHr: Number(r.avgHr) || null,
   });
@@ -1201,8 +1203,11 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     // card cannot print two different heart rates for one run.
     hr_avg: runAvgHr(r as unknown as RunData),
     hr_max: runMaxHr(r as unknown as RunData),
-    // Prefer activity-supplied cadence; fall back to the day's HealthKit cadence.
-    cadence_avg: Number(r.avgCadence) || form.cadence_spm,
+    // Prefer activity-supplied cadence; fall back to the day's HealthKit
+    // cadence. Resolved to BOTH FEET first: `avgCadence` is Strava's per-leg
+    // count on the 57 pre-May-2026 imports, and run detail printed it as a
+    // step rate. `cadence.units-split` in lib/runs/derived-registry.ts.
+    cadence_avg: runCadenceSpm(r)?.spm ?? form.cadence_spm,
     // 2026-05-31: barometric-drift sanity check on Strava's rolled-up
     // elev_gain_ft. Barometric watches occasionally report 5-10x the
     // real gain when ambient pressure swings during a run (humidity,
@@ -1331,7 +1336,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     readings: deriveReadingScopes({
       phases: phaseBreakdown,
       wholeHrBpm: Number(r.avgHr) || null,
-      wholeCadenceSpm: Number(r.avgCadence) || form.cadence_spm,
+      wholeCadenceSpm: runCadenceSpm(r)?.spm ?? form.cadence_spm,
       workHrBpm: workAvgs.hrAvg,
       workCadenceSpm: workAvgs.cadenceAvg,
       wholePaceSPerMi: paceSPerMi,
@@ -1799,31 +1804,88 @@ async function computeWorkAverages(
 async function computeHrOnPaceDelta(args: {
   userId: string;
   runIdToExclude: string;
+  /** `data.type` · an activity kind on 141 rows, a session type on 45. */
   type: string | null;
+  /** `data.workoutType` · a semantic label, or Strava's integer enum. */
+  workoutType?: string | number | null;
   paceSPerMi: number | null;
   avgHr: number | null;
 }): Promise<number | null> {
-  if (!args.type || !args.paceSPerMi || !args.avgHr) return null;
+  if (!args.paceSPerMi || !args.avgHr) return null;
   if (args.paceSPerMi <= 0 || args.avgHr <= 0) return null;
   try {
     const PACE_BUCKET = 10; // ±10 s/mi
     // Phase B · one canonical dedup. A dupe of a same-type+pace run would put
     // two identical avgHr into the 4-sample median baseline. LIMIT 4 windows it.
+    //
+    // 2026-08-24 · the query below also carried `absorbed_into_canonical_at IS
+    // NULL`. Removed, with nothing in its place: `canonicalIds` is already
+    // identity-clustered, and the stamp survives a promotion back to canonical
+    // — six of this runner's canonical rows carry a stale one. See
+    // CANONICAL_ROW_SQL in lib/runs/volume.ts.
     const canonicalIds = await getCanonicalRunIds(args.userId, ...ALL_TIME);
-    const recent = (await pool.query<{ avg_hr: string }>(
-      `SELECT (data->>'avgHr')::numeric AS avg_hr
+
+    /* ── 2026-08-24 · THE MATCH USED TO PARTITION BY IMPORTER ──────────────
+     *
+     * This clause was `AND data->>'type' = $3`, with `$3` the caller's own
+     * `r.type`. Self-consistent, and not what the doc comment above claims.
+     * `data.type` carries TWO vocabularies: Strava's ACTIVITY KIND ('Run') on
+     * 141 rows and the faff WORKOUT TYPE ('easy') on 45. Among this runner's
+     * rows that have both a pace and a heart rate, the field takes exactly two
+     * values — 'Run' on 101 and 'easy' on 22 — so the "same stimulus" bucket
+     * was really "same ingest era".
+     *
+     * A tempo run stored as 'Run' was compared against a hundred mostly-easy
+     * runs, and the sentence built on the result is "you worked harder than
+     * usual today". Usual was the wrong usual.
+     *
+     * `normalizeDataWorkoutType` is the shared reader for both vocabularies
+     * (it is what the run's own name resolution above already uses), and it
+     * maps Strava's 0 to null rather than to a stimulus called "0". Resolved
+     * on BOTH sides here, in TypeScript, so there is no SQL twin of the
+     * normalizer to drift from it.
+     *
+     * MEASURED over prod, both versions run against all 123 of this runner's
+     * canonical rows that carry a pace and a heart rate:
+     *
+     *     a delta was returned      114 runs  ->  38
+     *     the value CHANGED                        30
+     *     now refused (no stimulus recorded)       77
+     *
+     * The 30 that changed are the point. Three of them flip sign by 15-20 bpm,
+     * and `RunDetailModal` draws a red or green callout at |delta| >= 5 — so
+     * 2026-06-08 read "11 bpm easier than usual" in green and is actually
+     * 9 bpm HARDER than usual for an easy run. "Usual" had been every
+     * Strava-shaped run near that pace, tempo sessions included.
+     *
+     * The 77 are the price, and they are rule three: not knowing what kind of
+     * session a run was is a correct answer. Every one of them had its delta
+     * measured against a cohort assembled by importer. If the coverage matters
+     * more than the cohort, the honest version of that is a BASIS field on the
+     * wire saying "pace-matched only" — not a silent widening. */
+    const stimulus = runStimulusType({ workoutType: args.workoutType, type: args.type });
+    if (stimulus == null) return null;
+
+    const candidates = (await pool.query<{ avg_hr: string; type: string | null; workout_type: string | null }>(
+      `SELECT (data->>'avgHr')::numeric AS avg_hr,
+              data->>'type'        AS type,
+              data->>'workoutType' AS workout_type
          FROM runs
         WHERE user_uuid = $1
-          AND absorbed_into_canonical_at IS NULL
-          AND id = ANY($6::bigint[])
+          AND id = ANY($5::bigint[])
           AND id::text <> $2
-          AND data->>'type' = $3
-          AND (data->>'paceSPerMi')::numeric BETWEEN ($4::numeric - $5) AND ($4::numeric + $5)
+          AND (data->>'paceSPerMi')::numeric BETWEEN ($3::numeric - $4) AND ($3::numeric + $4)
           AND (data->>'avgHr')::numeric > 0
         ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) DESC
-        LIMIT 4`,
-      [args.userId, args.runIdToExclude, args.type, args.paceSPerMi, PACE_BUCKET, canonicalIds],
-    ).catch(() => ({ rows: [] as Array<{ avg_hr: string }> }))).rows;
+        LIMIT 60`,
+      [args.userId, args.runIdToExclude, args.paceSPerMi, PACE_BUCKET, canonicalIds],
+    ).catch(() => ({ rows: [] as Array<{ avg_hr: string; type: string | null; workout_type: string | null }> }))).rows;
+
+    // Same stimulus, most recent four. The LIMIT above is the pace-bucket
+    // candidate window; this is the "last 4 comparable runs" the doc describes.
+    const recent = candidates
+      .filter((c) => runStimulusType({ workoutType: c.workout_type, type: c.type }) === stimulus)
+      .slice(0, 4);
 
     if (recent.length < 2) return null;
 

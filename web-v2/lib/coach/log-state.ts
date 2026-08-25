@@ -12,7 +12,7 @@ import { getCanonicalRunIds, ALL_TIME } from '@/lib/runs/volume';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { distanceMiFromLabel } from '@/lib/race/distance';
-import { reconcileRun, coherentPace, coherentDurationSec } from '@/lib/runs/coherence';
+import { reconcileRun, coherentPace, coherentDurationSec, runCadenceSpm } from '@/lib/runs/coherence';
 import {
   coalesceRunName, normalizeDataWorkoutType, matchRaceForRun,
   resolveWorkoutType, badgeForRun,
@@ -414,7 +414,13 @@ export async function loadLogState(
       time_moving_basis: clock?.basis ?? null,
       avg_hr: Number(a.avgHr) || null,
       max_hr: Number(a.maxHr) || null,
-      cadence: Number(a.avgCadence) || null,
+      /* ── CADENCE · BOTH FEET, 2026-08-24 ────────────────────────────────
+       * `Number(a.avgCadence)` printed whatever unit the importer of the day
+       * used. 57 rows here hold Strava's PER-LEG count — 54 of them canonical
+       * — so the log showed this runner at 78 spm through April and 161 spm
+       * from June, with nothing on screen to say the unit changed rather than
+       * the runner. `cadence.units-split` in the derived registry. */
+      cadence: runCadenceSpm(a)?.spm ?? null,
       /* ── THE CLIMB · ONE READER, 2026-08-24 ─────────────────────────────
        *
        * `Number(a.elevGainFt)` stood here and printed whatever instrument

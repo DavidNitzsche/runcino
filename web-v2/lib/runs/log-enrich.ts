@@ -116,6 +116,40 @@ export function normalizeDataWorkoutType(v: unknown): string | null {
 }
 
 /**
+ * Activity KINDS, which are not session types.
+ *
+ * `data.type` holds Strava's activity kind on 141 of 257 rows ('Run') and the
+ * faff workout type on 45 ('easy'). Reading the field without this set turns
+ * "it was a run" into a stimulus called `run`, which then forms its own
+ * comparison bucket — the exact partition-by-importer this exists to end.
+ */
+const ACTIVITY_KINDS = new Set(['run', 'virtualrun', 'virtual_run', 'trailrun', 'trail_run', 'treadmillrun', 'walk', 'hike']);
+
+/**
+ * WHAT KIND OF SESSION was this — easy, tempo, long, intervals — or null.
+ *
+ * The single answer to a question `runs.data` gives two half-answers to.
+ * `workoutType` carries a semantic label on the plan-stamped rows and Strava's
+ * integer enum on the imports; `type` carries a semantic label on 45 rows and
+ * Strava's activity kind on 141. Neither field alone covers the history, and
+ * either read carelessly invents a stimulus.
+ *
+ * Order: `workoutType` first, because when it is present it is the thing the
+ * runner or the plan actually said. `type` second, and only when it is not an
+ * activity kind. Null when nothing recorded a stimulus — which is 68 of this
+ * runner's 123 runs that have both a pace and a heart rate, and is an honest
+ * answer rather than a bucket called `run`.
+ */
+export function runStimulusType(d: { workoutType?: unknown; type?: unknown } | null | undefined): string | null {
+  if (!d) return null;
+  const fromWorkoutType = normalizeDataWorkoutType(d.workoutType);
+  if (fromWorkoutType != null && !ACTIVITY_KINDS.has(fromWorkoutType)) return fromWorkoutType;
+  const fromType = normalizeDataWorkoutType(d.type);
+  if (fromType != null && !ACTIVITY_KINDS.has(fromType)) return fromType;
+  return null;
+}
+
+/**
  * Match a run against the user's races: same local date AND (run distance
  * within ~12% of the race distance OR any row of the physical run —
  * canonical or twin — carries workoutType='race'). The 12% band absorbs

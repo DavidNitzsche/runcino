@@ -103,7 +103,18 @@ import {
   runDistanceMi,
   runAvgHr,
   paceToSec,
+  MIN_RUNNING_STRIDE_M,
+  MAX_RUNNING_STRIDE_M,
+  MIN_RUNNING_CADENCE_SPM,
+  MAX_RUNNING_CADENCE_SPM,
 } from '@/lib/runs/run-shape';
+
+export {
+  MIN_RUNNING_STRIDE_M,
+  MAX_RUNNING_STRIDE_M,
+  MIN_RUNNING_CADENCE_SPM,
+  MAX_RUNNING_CADENCE_SPM,
+};
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1 · TOLERANCES
@@ -158,6 +169,13 @@ export const MAX_ZONE_SUM_DRIFT_PCT = 2;
 
 /** Which clock a pace was computed against. Never inferred by a caller. */
 export type PaceBasis = 'moving' | 'elapsed';
+
+/** Where a reconciled cadence came from. */
+export type CadenceBasis =
+  /** The row's own number, in steps per minute across both feet. */
+  | 'as_recorded'
+  /** The row's number doubled: it was a per-leg count. Exact, not estimated. */
+  | 'per_leg_doubled';
 
 /**
  * One value this row was not allowed to print, and why.
@@ -236,6 +254,25 @@ export interface RunCoherence {
    * describes some other distance. Null when there are no measurable splits.
    */
   splitsCoverRun: boolean | null;
+
+  /**
+   * Steps per minute, BOTH FEET, whatever unit the row stored it in.
+   *
+   * Null, with a refusal, when neither the stored figure nor its double is a
+   * cadence a running human produces at this run's own stride.
+   */
+  cadenceSpm: number | null;
+
+  /**
+   * Whether `cadenceSpm` is the stored number or twice it.
+   *
+   * A caller that prints a converted figure as though the row held it is
+   * printing something the device never said. The conversion is exact — a
+   * per-leg count is half a step count by definition, not an estimate of one —
+   * so the number stays MEASURED; the basis exists so an audit can tell which
+   * rows were touched.
+   */
+  cadenceBasis: CadenceBasis | null;
 
   /** Everything this row was not allowed to print, with the reason. */
   refusals: Refusal[];
@@ -475,6 +512,13 @@ export function reconcileRun(d: RunData): RunCoherence {
   /* ── splits, against the run's own distance ───────────────────────────── */
   const splitsCoverRun = reconcileSplitsTotal(d, distanceMi, refusals);
 
+  /* ── cadence, against the stride it implies ────────────────────────────
+   * Two sources write `avgCadence` in two different units. Which one this row
+   * used is decided by the row's own distance and clock, not by its source
+   * label — 88 of the rows carrying the halved unit have no source label at
+   * all. See section 8. */
+  const cadence = reconcileCadence(d, distanceMi, movingSec ?? elapsedSec, refusals);
+
   return {
     distanceMi,
     elapsedSec,
@@ -484,6 +528,8 @@ export function reconcileRun(d: RunData): RunCoherence {
     speedMph,
     hrZonePcts,
     splitsCoverRun,
+    cadenceSpm: cadence.spm,
+    cadenceBasis: cadence.basis,
     refusals,
   };
 }
@@ -698,4 +744,134 @@ export function runTotalEnergyKcal(d: RunData): number | null {
 /** ACTIVE energy for the run, as the watch measured it. Excludes basal. */
 export function runActiveEnergyKcal(d: RunData): number | null {
   return pos(d.kcal);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 8 · CADENCE · ONE LABEL, TWO UNITS
+ *
+ * `data.avgCadence` holds two different quantities, and nothing in the row
+ * says which. Measured on this database, 2026-08-24:
+ *
+ *     source          rows   median avgCadence   implied stride
+ *     apple_watch       58            161 spm          1.212 m
+ *     watch             48            162 spm          1.261 m
+ *     (no source)       56             78 spm          2.601 m
+ *     apple_health       1             79 spm          2.678 m
+ *
+ * A 2.6 m stride is not a running human. Those rows hold Strava's
+ * `average_cadence`, which for a run is a PER-LEG count — half the steps.
+ * `pullSync.ts` and the webhook both double it on the way in now; the 88 rows
+ * imported before they did still carry the raw figure, and 54 of them are
+ * canonical, so they are on screen.
+ *
+ * The runner's cadence did not halve in May 2026. He changed importers.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * WHY THE STRIDE AND NOT THE VALUE
+ *
+ * The obvious rule — "under 130, double it" — is wrong at the boundary, and
+ * this database contains the row that proves it. One `strava_webhook` row
+ * holds 114 spm; its implied stride is 1.149 m, which is a real cadence for a
+ * slow mile, and doubling it would assert a 2.30 m stride. A band on the value
+ * cannot see that. The row's own distance and clock can.
+ *
+ * So the test is the row's ARITHMETIC, the same instrument the clock and pace
+ * families use: distance / (cadence x minutes) is a stride length, and a
+ * stride length has a human range. Whichever of `raw` and `raw x 2` lands in
+ * it is the step count. Neither, and the figure is refused.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * THE CLOCK HAS TO BE THE RECONCILED ONE
+ *
+ * This is why the check takes a clock rather than reading one. The 2026-08-23
+ * row carries `movingTimeS` 2389 s beside a `durationSec` of 5298 s for 11.01
+ * miles — Strava's moving time against the watch's wall clock, the incident
+ * that started all of this. Against 2389 s its cadence of 164 implies a 2.71 m
+ * stride and would be "corrected" to 328 spm. Against the reconciled clock it
+ * implies 1.223 m, which is what the same row REPORTS in `avgStrideLengthM`
+ * (1.25 m). A guard fed a disproved clock produces a confident wrong answer,
+ * which is worse than no guard.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** Metres per step implied by a cadence over a run. Null when unanswerable. */
+export function impliedStrideM(
+  cadenceSpm: number,
+  distanceMi: number | null,
+  seconds: number | null,
+): number | null {
+  if (!(cadenceSpm > 0)) return null;
+  if (distanceMi == null || !(distanceMi > 0)) return null;
+  if (seconds == null || !(seconds > 0)) return null;
+  return (distanceMi * 1609.34) / (cadenceSpm * (seconds / 60));
+}
+
+const strideIsHuman = (m: number | null): boolean =>
+  m != null && m >= MIN_RUNNING_STRIDE_M && m <= MAX_RUNNING_STRIDE_M;
+
+/**
+ * Resolve `avgCadence` to steps per minute across both feet.
+ *
+ * `seconds` must be a clock that survived reconciliation — see the section
+ * note. Pushes a refusal when neither reading is a running cadence.
+ */
+export function reconcileCadence(
+  d: RunData,
+  distanceMi: number | null,
+  seconds: number | null,
+  refusals: Refusal[],
+): { spm: number | null; basis: CadenceBasis | null } {
+  const raw = pos(d.avgCadence);
+  if (raw == null) return { spm: null, basis: null };
+
+  const strideRaw = impliedStrideM(raw, distanceMi, seconds);
+  const strideDoubled = impliedStrideM(raw * 2, distanceMi, seconds);
+
+  if (strideRaw != null) {
+    // Prefer the row as stored. Converting needs positive evidence, and near
+    // the floor both readings can land in the band at once.
+    if (strideIsHuman(strideRaw)) return { spm: raw, basis: 'as_recorded' };
+    if (strideIsHuman(strideDoubled)) return { spm: raw * 2, basis: 'per_leg_doubled' };
+    refusals.push({
+      family: 'cadence.units-split',
+      field: 'avgCadence',
+      detail:
+        `cadence ${raw} spm over ${distanceMi?.toFixed(2)} mi in ${seconds}s implies a ` +
+        `${strideRaw.toFixed(2)} m stride, and doubled a ${strideDoubled?.toFixed(2)} m one · ` +
+        `neither is a running stride, so the unit cannot be established`,
+    });
+    return { spm: null, basis: null };
+  }
+
+  // No usable clock or distance. Fall back to the value's own band, which can
+  // only convert figures far below any possible both-feet running cadence.
+  if (raw >= MIN_RUNNING_CADENCE_SPM && raw <= MAX_RUNNING_CADENCE_SPM) {
+    return { spm: raw, basis: 'as_recorded' };
+  }
+  const doubled = raw * 2;
+  if (doubled >= MIN_RUNNING_CADENCE_SPM && doubled <= MAX_RUNNING_CADENCE_SPM) {
+    return { spm: doubled, basis: 'per_leg_doubled' };
+  }
+  refusals.push({
+    family: 'cadence.units-split',
+    field: 'avgCadence',
+    detail:
+      `cadence ${raw} spm is outside the running band ` +
+      `${MIN_RUNNING_CADENCE_SPM}-${MAX_RUNNING_CADENCE_SPM} spm either as stored or ` +
+      `doubled, and the row carries no clock to derive a stride from`,
+  });
+  return { spm: null, basis: null };
+}
+
+/**
+ * Steps per minute across both feet for a loose row, or null.
+ *
+ * The drop-in every surface should call in place of `Number(data.avgCadence)`.
+ * Returns the basis too: a caller that wants to mark a converted figure can,
+ * and one that does not is at least not printing a per-leg count as a step
+ * count.
+ */
+export function runCadenceSpm(row: unknown): { spm: number; basis: CadenceBasis } | null {
+  const c = reconcileRun(loose(row));
+  if (c.cadenceSpm == null || c.cadenceBasis == null) return null;
+  return { spm: c.cadenceSpm, basis: c.cadenceBasis };
 }

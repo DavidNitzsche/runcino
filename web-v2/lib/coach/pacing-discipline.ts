@@ -84,6 +84,12 @@ export async function computePacingDiscipline(
   // Phase B · one canonical dedup. A dupe of one race/tempo run would otherwise
   // appear twice in the qualifying set and skew the pace-CV buffer.
   const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(today, windowDays), today);
+  // 2026-08-24 · the query below used to carry `absorbed_into_canonical_at IS
+  // NULL` beside the id filter. It is gone and nothing replaces it:
+  // `canonicalIds` is identity-clustered and strictly stronger. The stamp is
+  // not a loser marker — six of this runner's canonical rows carry a stale
+  // one, and filtering on it took his 18-mile long run out of the pacing set.
+  // See CANONICAL_ROW_SQL in lib/runs/volume.ts.
   const rows = (await pool.query<{
     id: string;
     type: string | null;
@@ -108,7 +114,6 @@ export async function computePacingDiscipline(
             COALESCE(data->'phases', '[]'::jsonb) AS phases
        FROM runs r
       WHERE r.user_uuid = $1
-        AND r.absorbed_into_canonical_at IS NULL
         AND r.id = ANY($5::bigint[])
         AND (data->>'distanceMi')::numeric >= $2
         AND (data->>'splits_unreliable')::boolean IS NOT TRUE
