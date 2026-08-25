@@ -757,7 +757,24 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
     case 'threshold': {
       const workPaceStr = paceLabel(input.workPaceSPerMi);
       const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
-      const workMiPart = miPhrase(input.workDistanceMi);
+      /* THE WORK BLOCK IS PART OF THE RUN, NOT LONGER THAN IT (2026-08-24).
+       *
+       * `workDistanceMi` is the sum of the work phases' `actualDistanceMi`
+       * from the watch completion, and nothing checked it against the run it
+       * decomposes. Same shape as the long-run finish leg, in the tempo arm:
+       * a phase set carrying a target distance for a rep the runner did not
+       * reach, or a rep counted twice by a merge, prints "Tempo done · 8 mi @
+       * 6:52" on a five-mile run — two real fields whose sum is fiction.
+       *
+       * No canonical row does this today (55 watch completions, none), which
+       * is exactly why it is worth pinning now: the finish leg did not either,
+       * until it did. When the block does not fit the run, the pace is still
+       * true and is still printed; only the distance claim is dropped.
+       */
+      const workMiFits = input.workDistanceMi != null && input.actualMi > 0
+        ? input.workDistanceMi <= input.actualMi + 0.05
+        : input.actualMi <= 0 ? false : true;
+      const workMiPart = workMiFits ? miPhrase(input.workDistanceMi) : null;
       const tempoMiPart = miPhrase(input.actualMi);
       const leadLine = workPaceStr && workMiPart
         ? `Tempo done · ${workMiPart} @ ${workPaceStr.replace('/mi', '')}${hrPart}.`

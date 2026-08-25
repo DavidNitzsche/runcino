@@ -28,6 +28,7 @@ import {
   type RaceForMatch,
 } from '@/lib/runs/log-enrich';
 import { runFacts } from '@/lib/runs/run-facts';
+import { hrToNum } from '@/lib/runs/run-shape';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
@@ -1424,8 +1425,12 @@ export function mapWatchPhases(raw: unknown, heatSlowdownPct: number = 0): Phase
       actual_pace: fmtPace(actualSPerMi),
       actual_distance_mi: Number(p.actualDistanceMi) || null,
       actual_duration_sec: Number(p.actualDurationSec) || null,
-      avg_hr: Number(p.avgHr) || null,
-      max_hr: Number(p.maxHr) || null,
+      // 2026-08-24 · bounded, the same way the run-level reading is. `Number()
+      // || null` turns a 0 into an absence correctly and lets a 4 or a 250
+      // through as a measurement — and the phase panel prints it beside the
+      // rep. A strap sentinel is not a heart rate at any level of the payload.
+      avg_hr: hrToNum(p.avgHr),
+      max_hr: hrToNum(p.maxHr),
       avg_cadence: Number(p.avgCadence) || null,
       completed: Boolean(p.completed ?? true),
       status,

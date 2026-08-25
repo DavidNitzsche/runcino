@@ -50,7 +50,16 @@ const TRUSTED_MEASURED = Object.entries(ELEVATION_TRUST)
   .filter(([, t]) => t >= ELEVATION_MEASURED_FLOOR)
   .map(([s]) => s);
 
-/** What the recap route and the v5 route both build, from one row. */
+/**
+ * What the recap route and the v5 route both build, from one row.
+ *
+ * The plan-side fields are held constant and DELIBERATELY OVERSIZED: a
+ * 20-mile prescription with a 6-mile marathon-pace finish and a 4-mile work
+ * block. That is a real long-run spec, and the point of the harness is to run
+ * it against rows that did not deliver it — the abandonment, the row with no
+ * distance, the one whose splits describe a different run. A prescription
+ * that happens to match its row cannot catch a leg the copy never clamped.
+ */
 function recapInputFor(data: RunData, type: WorkoutType): RecapInput {
   const c = reconcileRun(data);
   return {
@@ -70,6 +79,14 @@ function recapInputFor(data: RunData, type: WorkoutType): RecapInput {
     ...(type === 'long'
       ? { finishMi: 6, finishPaceSPerMi: 400, finishLabel: 'M' as const }
       : {}),
+    // The work block off a watch completion: four one-mile reps. Same trap in
+    // the tempo and interval arms — a phase set can carry more distance than
+    // the run it decomposes, and nothing used to check.
+    workDistanceMi: 4,
+    workPaceSPerMi: 420,
+    repCount: 4,
+    repPaces: [418, 421, 419, 424],
+    prescribedRepCount: 5,
     plannedPaceSPerMi: 540,
     plannedHrCap: 150,
   };
