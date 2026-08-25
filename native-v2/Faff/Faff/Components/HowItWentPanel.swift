@@ -489,23 +489,20 @@ private struct AerobicStampPanel: View {
     private var splitsWithHr: [RunSplit] {
         (detail?.splits ?? []).filter { ($0.hr ?? 0) > 0 }
     }
+    // DRIFT, WEIGHTED. Both halves used to divide by the number of splits,
+    // which gave a run's trailing fragment — 0.11 mi on 2026-08-24, and the
+    // hardest tenth of the session at 158 bpm — the same say as a whole mile.
+    // It landed entirely in the SECOND half, so it inflated the drift delta
+    // and the band above it. See `weightedAvgHr` in Models/Runs.swift.
     private var firstHalfHr: Int? {
         let arr = splitsWithHr
         guard !arr.isEmpty else { return nil }
-        let mid = max(1, arr.count / 2)
-        let slice = Array(arr.prefix(mid))
-        guard !slice.isEmpty else { return nil }
-        let sum = slice.reduce(0) { $0 + ($1.hr ?? 0) }
-        return sum / slice.count
+        return Array(arr.prefix(max(1, arr.count / 2))).weightedAvgHr
     }
     private var secondHalfHr: Int? {
         let arr = splitsWithHr
         guard !arr.isEmpty else { return nil }
-        let mid = arr.count / 2
-        let slice = Array(arr.suffix(arr.count - mid))
-        guard !slice.isEmpty else { return nil }
-        let sum = slice.reduce(0) { $0 + ($1.hr ?? 0) }
-        return sum / slice.count
+        return Array(arr.suffix(arr.count - arr.count / 2)).weightedAvgHr
     }
     private var hrDelta: Int? {
         guard let a = firstHalfHr, let b = secondHalfHr else { return nil }
@@ -554,10 +551,18 @@ private struct AerobicStampPanel: View {
             parsePaceSec(s.pace)
         }
     }
+    /// The reference line the mile-pace footprint is drawn against.
+    ///
+    /// THE RUN'S OWN PACE FIRST, not a re-average of the splits. `pace_s_per_mi`
+    /// is distance over time, reconciled server-side, and it is the number
+    /// printed at the top of this very screen. Averaging the split array
+    /// instead produced a second, quieter answer that disagreed with it —
+    /// unweighted, so a trailing fragment counted as a whole mile.
+    ///
+    /// The weighted split mean is the fallback for a row that carries splits
+    /// but no reconciled pace.
     private var avgPaceSec: Int? {
-        let arr = paceSecondsPerMile
-        guard !arr.isEmpty else { return nil }
-        return arr.reduce(0, +) / arr.count
+        detail?.pace_s_per_mi ?? (detail?.splits ?? []).weightedAvgPaceSec
     }
 
     @ViewBuilder
@@ -721,16 +726,14 @@ private struct ThePLongPanel: View {
         }
     }
 
-    private func avgPace(_ arr: [RunSplit]) -> Int? {
-        let secs = arr.compactMap { parsePaceSec($0.pace) }
-        guard !secs.isEmpty else { return nil }
-        return secs.reduce(0, +) / secs.count
-    }
-    private func avgHr(_ arr: [RunSplit]) -> Int? {
-        let hrs = arr.compactMap { $0.hr }.filter { $0 > 0 }
-        guard !hrs.isEmpty else { return nil }
-        return hrs.reduce(0, +) / hrs.count
-    }
+    // Weighted, and shared. Both of these divided by the number of splits,
+    // so a run's trailing fragment counted as a whole mile in whichever
+    // third it fell into. `weightedAvgHr` / `weightedAvgPaceSec` in
+    // Models/Runs.swift are the one implementation; three copies of this
+    // arithmetic across this file is how the thirds and the drift row came
+    // to disagree with each other about the same miles.
+    private func avgPace(_ arr: [RunSplit]) -> Int? { arr.weightedAvgPaceSec }
+    private func avgHr(_ arr: [RunSplit]) -> Int? { arr.weightedAvgHr }
 }
 
 // MARK: - THE TEMPO
@@ -924,11 +927,8 @@ private struct TempoPostPanel: View {
         }
     }
 
-    private func avgHr(_ arr: [RunSplit]) -> Int? {
-        let hrs = arr.compactMap { $0.hr }.filter { $0 > 0 }
-        guard !hrs.isEmpty else { return nil }
-        return hrs.reduce(0, +) / hrs.count
-    }
+    // Weighted. See the note on the pair above and `weightedAvgHr`.
+    private func avgHr(_ arr: [RunSplit]) -> Int? { arr.weightedAvgHr }
     private func distLabel(_ mi: Double?) -> String? {
         guard let m = mi, m > 0 else { return nil }
         let converted = Units.convertDistance(miles: m, to: Units.preference.distance)
