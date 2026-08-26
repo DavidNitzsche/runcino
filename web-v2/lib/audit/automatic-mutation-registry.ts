@@ -299,15 +299,31 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     route: 'app/api/cron/promote-courses/route.ts',
     trigger: '45 7 * * *',
     reach: 'append_or_fill',
-    changes: ['course_library', 'course_library.contributor_count', 'races.promoted_to_library_iso'],
+    changes: [
+      'races.course_geometry',
+      'races.course_source',
+      'course_library',
+      'course_library.contributor_count',
+      'races.promoted_to_library_iso',
+    ],
     idempotent: false,
     onPartialFailure:
       'NOT TRANSACTIONAL, and the write order is wrong: every branch writes course_library BEFORE setting '
       + 'promoted_to_library_iso, and that flag is the only dedupe. Dying between them leaves contributor_count '
-      + 'incremented and the race unflagged, so the next pass increments it again.',
+      + 'incremented and the race unflagged, so the next pass increments it again. The step-0 hydrate is the '
+      + 'exception: its UPDATE fires only on a row whose course_geometry is empty, so a crash mid-pass leaves '
+      + 'each row either untouched or fully written, and the next pass finishes the rest.',
     runnerSees: 'invisible',
-    reversible: 'A double-counted contributor_count is not self-correcting.',
-    note: 'Clean re-runs are idempotent. Crashed ones are not.',
+    reversible:
+      'A double-counted contributor_count is not self-correcting. A hydrated geometry is: '
+      + 'UPDATE races SET course_geometry = NULL, course_source = NULL WHERE slug = ANY($1) AND user_uuid = $2. '
+      + 'gpx_text is never touched, so the source file survives the reversal.',
+    note:
+      'Clean re-runs are idempotent. Crashed ones are not. 2026-08-25 · step 0 hydrates course_geometry from '
+      + 'the gpx_text already on the row, capped at 10 rows a pass. It is the only writer in the app whose input '
+      + 'is gpx_text, which is why nine of eleven races sat with a NULL column and six of them with a parseable '
+      + 'GPX beside it. It refuses any track assessGeometryConfidence rejects, and a refusal is reported in the '
+      + 'response rather than silently skipped.',
   },
   {
     id: 'cron/notifications',

@@ -3,7 +3,20 @@
  *
  * Daily L1 → L2 promotion sweep.
  *
- * Scans recent races where:
+ * Two steps, in order.
+ *
+ * STEP 0 · HYDRATE (2026-08-25). Fill `course_geometry` from the `gpx_text`
+ * already on the row. Added because step 1's scan is
+ * `course_geometry IS NOT NULL`, which made this cron a promoter that could
+ * never populate what it promotes: nine of the owner's eleven races had a NULL
+ * column, six of them with parseable GPX in the same row, and the three
+ * writers of that column all take a fresh user action as input. Nothing in
+ * this app could turn a stored GPX into geometry. Now this does, on the pass
+ * before promotion, so a hydrated race is promoted the same morning rather
+ * than the next one. Refuses any track `assessGeometryConfidence` rejects.
+ * The argument is in `lib/race/course-geometry-source.ts`.
+ *
+ * STEP 1 · PROMOTE. Scans recent races where:
  *   - course_geometry IS NOT NULL (the runner has GPX on the race)
  *   - promoted_to_library_iso IS NULL (we haven't promoted it yet)
  *
@@ -34,6 +47,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { promoteCourseFromRace, type PromoteResult } from '@/lib/courses/promote-from-race';
+import { hydrateCourseGeometry } from '@/lib/race/hydrate-course-geometry';
 
 export const maxDuration = 60;
 
@@ -61,6 +75,13 @@ export async function POST(req: NextRequest) {
   const LIMIT = 50;
   const SOFT_DEADLINE_MS = 45_000;
   const startedAt = Date.now();
+
+  // ── STEP 0 · hydrate course_geometry from gpx_text ──────────────────────
+  // Capped well below the promote limit: the parse is a regex over the whole
+  // file and the owner's largest is 3.5 MB. Idempotent, so anything skipped
+  // today is picked up tomorrow. Never overwrites a populated column.
+  const hydration = await hydrateCourseGeometry({ commit: true, limit: 10 });
+
   const candidates = (await pool.query<{ slug: string; user_uuid: string }>(
     `SELECT slug, user_uuid
        FROM races
@@ -99,8 +120,23 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({
-    ok: counts.error === 0,
+    ok: counts.error === 0 && hydration.plans !== null,
     timestamp: new Date().toISOString(),
+    // `null` here means the hydrate candidate read FAILED. It is not the same
+    // as an empty list, and the ok flag above says so.
+    hydration: hydration.plans === null
+      ? { read: 'failed' }
+      : {
+          read: 'ok',
+          counts: hydration.counts,
+          wrote: hydration.plans.filter((p) => p.written).map((p) => ({
+            slug: p.slug, points: p.points, gainFt: p.gainFt, netFt: p.netFt,
+            confidence: p.confidence, courseSource: p.courseSource,
+          })),
+          refused: hydration.plans
+            .filter((p) => p.verdict === 'refused' || p.verdict === 'unparseable')
+            .map((p) => ({ slug: p.slug, verdict: p.verdict, reason: p.reason })),
+        },
     scanned: candidates.length,
     limit: LIMIT,
     counts,
