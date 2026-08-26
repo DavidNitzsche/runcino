@@ -128,6 +128,18 @@ import {
   TAPER_WEEKS_BY_DISTANCE,
   taperWeeksForDistance,
 } from '@/lib/training/fitness-trajectory';
+// RACEPACE-1 · the prescribed-race-pace ceiling and the two 5% constants it
+// must stay pinned to.
+import { GOAL_OPTIMISM_TOLERANCE, seasonalVdotCeiling } from '@/lib/training/achievable-target';
+import { TRAINING_ESTIMATE_SOFT_CAP_VDOT } from '@/lib/training/vdot';
+import {
+  TRAINING_LEAD_DELTA_THRESHOLD,
+  TRAINING_LEAD_MIN_SESSIONS,
+  TRAINING_LEAD_MIN_SPAN_DAYS,
+  REGRESSION_DELTA_THRESHOLD,
+} from '@/lib/plan/adapt';
+import { MAX_GOAL_OPTIMISM_FRACTION } from '@/lib/race/effective-race-target';
+import { maxSeasonalVdotGain } from '@/lib/plan/recompute-paces';
 import {
   ASSESSMENT_BLOCK_WEEKS_FAST,
   ASSESSMENT_BLOCK_WEEKS_SLOW,
@@ -13911,6 +13923,324 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           `A_RACE_COLLISION_DAYS is ${A_RACE_COLLISION_DAYS} days · too short to catch two A ` +
             'races stacked inside a single build, which is the collision the card exists for.',
+
+  /**
+   * MPLABEL-1 / RACEPACE-1 (2026-08-25) · the three claims that hold the
+   * goal-relative pace path honest. They were prompted by a defect on the
+   * owner's own CIM block: every marathon-pace session in fourteen weeks ran at
+   * 7:54/mi while race day prescribed 6:52/mi, and both were called marathon
+   * pace.
+   */
+  {
+    id: 'PACE.marathon-pace-is-not-ramped',
+    binds: [
+      'lib/plan/spec-builder.ts#resolveMarathonPace',
+      'lib/plan/recompute-paces.ts#blendedTPaceForWeek',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.4 Marathon-pace long run',
+    claim:
+      'Marathon-pace work is prescribed at ONE anchor, stated as "MP exactly — not faster". ' +
+      'What doctrine progresses across a marathon build is the VOLUME at that pace (this ' +
+      "section's own 8-16 mi at MP, and Daniels' 4-18 mi M cap), never the pace itself. No " +
+      'passage in Research/ describes an MP pace that gets faster week by week, so the engine ' +
+      'must not carry a calendar-indexed race-pace ramp. The only thing permitted to move a ' +
+      'prescribed pace is evidence (engine-doctrine Rule 1), which is what the measured blend ' +
+      'in blendedTPaceForWeek does and the deleted weekIdx ramp did not.',
+    check({ cite }) {
+      const text = cite.text();
+      // Read the rule out of the doc rather than restating it.
+      if (!/MP exactly\s*[—-]\s*not faster/i.test(text)) {
+        throw new Error(
+          'Research/04 §4.4 no longer states the MP pace rule as "MP exactly — not faster"',
+        );
+      }
+      // And read the DOSE range out of the same table, which is the axis that
+      // is allowed to move.
+      const dose = /(\d+)\s*[–-]\s*(\d+)\s*mi at MP/i.exec(text);
+      if (!dose) {
+        throw new Error('Research/04 §4.4 no longer states a mileage range at MP · the volume axis is the one that progresses');
+      }
+      if (Number(dose[1]) >= Number(dose[2])) {
+        throw new Error('Research/04 §4.4 MP dose is no longer a range · nothing left for the block to progress');
+      }
+
+      // The deleted violation must stay deleted. `blendedTPaceForWeek` still
+      // TAKES weekIdx/buildWeeks (callers and the audit trail want them) but
+      // nothing may read them back into the blend.
+      const rp = sourceOf('web-v2/lib/plan/recompute-paces.ts');
+      const body = /export function blendedTPaceForWeek[\s\S]*?\n}/.exec(rp)?.[0] ?? '';
+      if (!body) throw new Error('blendedTPaceForWeek is no longer findable in recompute-paces.ts');
+      if (/\bblend\s*=\s*[^;]*\bweekIdx\b/.test(body) || /weekIdx\s*\/\s*/.test(body)) {
+        throw new Error(
+          'blendedTPaceForWeek has re-introduced a calendar term · a pace that advances on the ' +
+            'week number asserts a fitness change nobody measured (engine-doctrine Rule 1, ' +
+            'violation #1 by file)',
+        );
+      }
+    },
+  },
+
+  {
+    id: 'PACE.marathon-pace-code-provenance',
+    binds: ['lib/plan/spec-builder.ts#resolveMarathonPace'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## Pace zone shorthand',
+    claim:
+      'The corpus carries TWO marathon-pace codes in one table and keeps them apart: M is ' +
+      'anchored to "Goal MP", MP to "Current MP". The engine prescribes both — the goal when ' +
+      'it genuinely sits inside the marathon zone, the T+18 default when the goal is refused — ' +
+      'and it must record WHICH, because every label and note downstream names the pace to the ' +
+      'runner. A resolver that returns a bare number cannot be asked, and the sessions then ' +
+      'assert the goal regardless of what they were built at.',
+    check({ cite }) {
+      const text = cite.text();
+      // Both anchors come out of the doc's own table row.
+      const mRow = /\|\s*M\s*\|\s*Marathon\s*\|[^\n]*\|\s*([^|\n]+?)\s*\|\s*$/m.exec(text);
+      const mpRow = /\|\s*MP\s*\|\s*Marathon pace\s*\|[^\n]*\|\s*([^|\n]+?)\s*\|\s*$/m.exec(text);
+      if (!mRow || !mpRow) {
+        throw new Error('Research/04 §"Pace zone shorthand" no longer carries both an M and an MP row');
+      }
+      const mAnchor = mRow[1].trim();
+      const mpAnchor = mpRow[1].trim();
+      if (!/goal/i.test(mAnchor)) {
+        throw new Error(`Research/04 M row is no longer goal-anchored (reads "${mAnchor}")`);
+      }
+      if (!/current/i.test(mpAnchor)) {
+        throw new Error(`Research/04 MP row is no longer current-fitness-anchored (reads "${mpAnchor}")`);
+      }
+      if (mAnchor === mpAnchor) {
+        throw new Error('Research/04 no longer distinguishes M from MP · the engine is carrying a distinction its doctrine dropped');
+      }
+
+      // The engine must answer the question the doc keeps open.
+      const sb = sourceOf('web-v2/lib/plan/spec-builder.ts');
+      if (!/type MarathonPaceSource\s*=\s*'goal'\s*\|\s*'current_fitness'/.test(sb)) {
+        throw new Error(
+          'spec-builder.ts no longer names which of the two marathon paces it resolved · ' +
+            'the labels downstream go back to asserting the goal over a refused one',
+        );
+      }
+      if (!/refusedGoalPaceSPerMi/.test(sb)) {
+        throw new Error('resolveMarathonPace no longer reports the goal pace it declined');
+      }
+      // And the notes must actually consult it.
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/weekMpAtGoalPace/.test(gen)) {
+        throw new Error('generate.ts no longer threads the marathon-pace provenance into the notes it writes');
+      }
+    },
+  },
+
+  {
+    id: 'GOAL.prescribed-race-pace-ceiling',
+    binds: [
+      'lib/training/achievable-target.ts#GOAL_OPTIMISM_TOLERANCE',
+      'lib/training/achievable-target.ts#achievableRaceTarget',
+      'lib/race/effective-race-target.ts#MAX_GOAL_OPTIMISM_FRACTION',
+    ],
+    doc: 'Research/20-mental-training.md',
+    anchor: '### SMART criteria',
+    claim:
+      'The corpus puts one number on how far a goal may sit from fitness and still be treated ' +
+      'as achievable: "Within ~5% of current fitness ceiling". That bound governs what the ' +
+      'engine PRESCRIBES, not what the runner may want — the stated goal is never moved ' +
+      '(goal-pursuit-doctrine section 14). Threshold pace has had a ceiling since GOAL-2 ' +
+      '(achievableFloorT); race pace had none, so an unreachable goal reached the race-day row ' +
+      'untouched while every marathon-pace session in the block correctly refused it. The two ' +
+      'moments that apply the bound — authoring and race-day execution — must apply the SAME ' +
+      'number, and the ceiling under race pace must be the SAME ceiling as under threshold.',
+    check({ cite }) {
+      const text = cite.text();
+      // The tolerance is read out of the doc's own Achievable row.
+      const row = /\|\s*A\s*\|\s*Achievable\s*\|\s*([^|\n]+?)\s*\|/i.exec(text);
+      if (!row) {
+        throw new Error('Research/20 §"SMART criteria" no longer carries an Achievable row');
+      }
+      const pct = /~?\s*(\d+(?:\.\d+)?)\s*%/.exec(row[1]);
+      if (!pct) {
+        throw new Error(`Research/20 Achievable row no longer states a percentage (reads "${row[1]}")`);
+      }
+      if (!/current fitness/i.test(row[1])) {
+        throw new Error(`Research/20 Achievable row is no longer anchored to current fitness (reads "${row[1]}")`);
+      }
+      const tolerance = Number(pct[1]) / 100;
+      const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+      if (!near(GOAL_OPTIMISM_TOLERANCE, tolerance)) {
+        throw new Error(
+          `GOAL_OPTIMISM_TOLERANCE = ${GOAL_OPTIMISM_TOLERANCE}, doctrine's achievability band is ${tolerance}`,
+        );
+      }
+      // ONE number across both moments. This module cannot import the other
+      // (it must stay free of `pg` for client bundles), so the claim is what
+      // pins them — the same posture as TAPER.trajectory-build-weeks.
+      if (!near(MAX_GOAL_OPTIMISM_FRACTION, GOAL_OPTIMISM_TOLERANCE)) {
+        throw new Error(
+          `authoring bounds a prescribed target at ${GOAL_OPTIMISM_TOLERANCE} and execution at ` +
+            `${MAX_GOAL_OPTIMISM_FRACTION} · one runner, one race, two rules`,
+        );
+      }
+
+      // ONE ceiling under threshold and race pace. The defect this replaces was
+      // a fourth, uncited gain model (min(6, 2 + weeks x 0.22)) that only
+      // threshold read, whose cap sat ABOVE the bound block ceiling.
+      // Comments are stripped first: the file DOCUMENTS the formula it
+      // replaced, and a guard that cannot tell an epitaph from a resurrection
+      // fires on the wrong one.
+      const rp = sourceOf('web-v2/lib/plan/recompute-paces.ts')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^[ \t]*\/\/.*$/gm, '');
+      if (/Math\.min\(\s*6\s*,\s*2\s*\+/.test(rp)) {
+        throw new Error(
+          'recompute-paces.ts has re-introduced the uncited min(6, 2 + weeks x 0.22) seasonal ' +
+            'gain formula · there is no VDOT-gain-per-build rate anywhere in Research/, so the ' +
+            'only defensible ceiling is the ADAPTATION.vdot-gain-rate band',
+        );
+      }
+      for (const weeks of [6, 14, 24]) {
+        if (seasonalVdotCeiling(44, weeks, 26.22).gainVdot !== maxSeasonalVdotGain(weeks, 26.22)) {
+          throw new Error('the threshold ceiling and the race-pace ceiling have diverged');
+        }
+        if (seasonalVdotCeiling(44, weeks, 26.22).gainVdot > MAX_BLOCK_GAIN_VDOT) {
+          throw new Error('the seasonal ceiling now exceeds MAX_BLOCK_GAIN_VDOT');
+        }
+      }
+
+      // Rule 1 · a ceiling-sourced target is modelled and must say so.
+      const at = sourceOf('web-v2/lib/training/achievable-target.ts');
+      if (!/basisModelled/.test(at) || !/MODELLED/.test(at)) {
+        throw new Error('achievable-target.ts no longer marks a ceiling-sourced target as modelled');
+      }
+      // And the goal must survive the clamp untouched.
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/goal_pace_s_per_mi:\s*input\.goalPaceSec/.test(gen)) {
+        throw new Error(
+          'authored_state no longer records the runner’s stated goal pace verbatim · ' +
+            'bounding what is prescribed must never move what was asked for',
+        );
+      }
+    },
+  },
+
+  /**
+   * TRAINING-LEAD-1 (2026-08-25) · what sustained training evidence is worth,
+   * and the guard that keeps it reachable.
+   *
+   * Prompted by a defect with no bug in it: `TRAINING_ESTIMATE_SOFT_CAP_VDOT`
+   * (1.0) capped every training-derived candidate, and the two constants that
+   * decide whether to ACT on a fitness change both demanded more —
+   * `REGRESSION_DELTA_THRESHOLD` 1.5 and `REANCHOR_VDOT_DELTA` 2.0. A ceiling
+   * beneath a floor. The owner could nail every quality session for months and
+   * nothing would move unless one of those weeks contained a race.
+   */
+  {
+    id: 'ADAPTATION.training-lead-quantum',
+    binds: [
+      'lib/plan/adapt.ts#TRAINING_LEAD_DELTA_THRESHOLD',
+      'lib/plan/adapt.ts#TRAINING_LEAD_MIN_SESSIONS',
+      'lib/plan/adapt.ts#TRAINING_LEAD_MIN_SPAN_DAYS',
+      'lib/training/vdot.ts#TRAINING_ESTIMATE_SOFT_CAP_VDOT',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Triggers to retest',
+    claim:
+      'Training evidence alone moves VDOT UP by exactly one point, and doctrine states that '
+      + 'quantum twice in this table ("Add 1 VDOT point; re-derive paces" and "+1 VDOT, '
+      + 'field-test"). The same rows give the corroboration: the downward hard-tempo row needs '
+      + '2 sessions and the upward HR row needs the signal sustained 2 weeks. Three things must '
+      + 'hold. (1) The engine\'s upward training quantum IS the doc\'s, not a mirror of the '
+      + 'downward threshold — the table is deliberately asymmetric, +1 up against -1 to -2 down, '
+      + 'because an over-read prescribes work the runner cannot absorb while an under-read only '
+      + 'prescribes work that is too easy. (2) The corroboration gate is the doc\'s 2 sessions '
+      + 'and 2 weeks, not the 4-6 week TESTING cadence, which answers a different question. '
+      + '(3) THE FLOOR MUST BE REACHABLE FROM THE CEILING: the value that licenses acting on a '
+      + 'training lead can never exceed the cap that bounds one, or the path is closed by '
+      + 'construction and no test of either constant alone can see it.',
+    check({ cite }) {
+      const text = cite.text();
+
+      // The upward training quantum, read out of the doc's own rows.
+      const upRow = /\|\s*Tempo runs feel notably easier[^|]*\|\s*([^|\n]+?)\s*\|/i.exec(text);
+      if (!upRow) {
+        throw new Error('Research/01 §"Triggers to retest" no longer carries the "tempo feels notably easier" row');
+      }
+      const upStep = /Add\s+(\d+(?:\.\d+)?)\s+VDOT/i.exec(upRow[1]);
+      if (!upStep) {
+        throw new Error(`the tempo-easier row no longer states a VDOT step (reads "${upRow[1]}")`);
+      }
+      const up = Number(upStep[1]);
+      if (TRAINING_LEAD_DELTA_THRESHOLD !== up) {
+        throw new Error(
+          `TRAINING_LEAD_DELTA_THRESHOLD = ${TRAINING_LEAD_DELTA_THRESHOLD}, doctrine's training-evidence step is ${up}`,
+        );
+      }
+      // And the row must still demand a field test — the reason the quantum is
+      // one point and not the race-row's 2-3.
+      if (!/field.?test/i.test(upRow[1])) {
+        throw new Error('the tempo-easier row no longer attaches a field test · the +1 is provisional by construction');
+      }
+
+      // The downward band, so the asymmetry is asserted rather than assumed.
+      const downRow = /\|\s*Tempo runs unexpectedly hard[^|]*\|\s*([^|\n]+?)\s*\|/i.exec(text);
+      if (!downRow) {
+        throw new Error('Research/01 §"Triggers to retest" no longer carries the "tempo unexpectedly hard" row');
+      }
+      // The doc writes this band with EN-DASH minus signs ("–1 to –2 VDOT"),
+      // so each magnitude carries a leading sign the separator must not eat.
+      const downBand = /[-–—]?\s*(\d+(?:\.\d+)?)\s*(?:to|[-–—])\s*[-–—]?\s*(\d+(?:\.\d+)?)\s*VDOT/i.exec(downRow[1]);
+      if (!downBand) {
+        throw new Error(`the tempo-hard row no longer states a VDOT band (reads "${downRow[1]}")`);
+      }
+      const downMin = Number(downBand[1]);
+      if (!(up < downMin) && up !== downMin) {
+        throw new Error(
+          `doctrine's bands are +${up} up and -${downMin}..-${downBand[2]} down; the engine must not `
+          + 'flatten that asymmetry',
+        );
+      }
+      if (!(TRAINING_LEAD_DELTA_THRESHOLD <= REGRESSION_DELTA_THRESHOLD)) {
+        throw new Error(
+          `the upward gate (${TRAINING_LEAD_DELTA_THRESHOLD}) has risen above the downward one `
+          + `(${REGRESSION_DELTA_THRESHOLD}) · doctrine is heavier DOWNWARD, not upward`,
+        );
+      }
+
+      // The corroboration gate, read out of the same table.
+      const sessions = /unexpectedly hard for\s*(?:≥|>=)\s*(\d+)\s*sessions/i.exec(text);
+      if (!sessions) {
+        throw new Error('Research/01 §"Triggers to retest" no longer states a session count for sustained tempo evidence');
+      }
+      if (TRAINING_LEAD_MIN_SESSIONS !== Number(sessions[1])) {
+        throw new Error(
+          `TRAINING_LEAD_MIN_SESSIONS = ${TRAINING_LEAD_MIN_SESSIONS}, doctrine's sustained-evidence count is ${sessions[1]}`,
+        );
+      }
+      const weeks = /sustained\s*(?:≥|>=)\s*(\d+)\s*weeks/i.exec(text);
+      if (!weeks) {
+        throw new Error('Research/01 §"Triggers to retest" no longer states a sustained-signal window in weeks');
+      }
+      if (TRAINING_LEAD_MIN_SPAN_DAYS !== Number(weeks[1]) * 7) {
+        throw new Error(
+          `TRAINING_LEAD_MIN_SPAN_DAYS = ${TRAINING_LEAD_MIN_SPAN_DAYS}, doctrine's sustained window is `
+          + `${weeks[1]} weeks (${Number(weeks[1]) * 7} days)`,
+        );
+      }
+
+      // (3) THE CLOSED DOOR. This is the claim that could not have been made
+      // about either constant on its own, and it is the whole reason this entry
+      // exists: a gate that licenses acting on a training lead is unsatisfiable
+      // the moment it demands more than the cap can supply.
+      if (TRAINING_LEAD_DELTA_THRESHOLD > TRAINING_ESTIMATE_SOFT_CAP_VDOT) {
+        throw new Error(
+          `the upward training gate (${TRAINING_LEAD_DELTA_THRESHOLD}) now exceeds the soft cap that `
+          + `bounds every training candidate (${TRAINING_ESTIMATE_SOFT_CAP_VDOT}) · the path is closed by `
+          + 'construction, which is exactly the defect this claim was written after',
+        );
+      }
+      if (TRAINING_ESTIMATE_SOFT_CAP_VDOT !== up) {
+        throw new Error(
+          `the training soft cap (${TRAINING_ESTIMATE_SOFT_CAP_VDOT}) has diverged from doctrine's `
+          + `training-evidence quantum (${up}) · they are the same number in the same row`,
         );
       }
     },

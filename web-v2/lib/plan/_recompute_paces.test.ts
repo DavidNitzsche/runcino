@@ -37,6 +37,8 @@ import {
   gatedBlendFraction,
   blendedTPaceForWeek,
 } from './recompute-paces';
+import { seasonalVdotCeiling } from '@/lib/training/achievable-target';
+import { VDOT_GAIN_PER_WEEK_MAX, MAX_BLOCK_GAIN_VDOT } from '@/lib/training/vdot-gain-rate';
 
 describe('measuredProgressFraction', () => {
   it('is null on missing inputs', () => {
@@ -183,10 +185,51 @@ describe('blendedTPaceForWeek · the measured gate', () => {
 });
 
 describe('maxSeasonalVdotGain', () => {
-  it('scales with build length and caps at 6 (Research/01:314-321)', () => {
-    expect(maxSeasonalVdotGain(0)).toBe(2);
-    expect(maxSeasonalVdotGain(10)).toBeCloseTo(4.2, 5);
-    expect(maxSeasonalVdotGain(18.18)).toBeCloseTo(5.9996, 3);
-    expect(maxSeasonalVdotGain(30)).toBe(6);
+  /**
+   * GAINRATE-2 (2026-08-25) · this suite used to assert the fourth gain model:
+   * `min(6, 2 + weeks × 0.22)`, under a title citing "Research/01:314-321" —
+   * a line-number citation, which Rule 7 forbids, to a passage that says
+   * something else. It asserted a zero-week block was worth +2 VDOT.
+   *
+   * The assertions below are derived from the bound band rather than restated,
+   * so this test cannot go on agreeing with itself if the band moves.
+   */
+  it('spends only the BUILD weeks, at the doctrine band fast edge', () => {
+    // A marathon's taper is 3 weeks and builds no fitness, so a 3-week
+    // marathon block has no build weeks at all and is worth nothing. The old
+    // formula paid it +2.66.
+    expect(maxSeasonalVdotGain(3, 26.22)).toBe(0);
+    expect(maxSeasonalVdotGain(0, 26.22)).toBe(0);
+    // 14 weeks to a marathon = 11 build weeks at the fast edge.
+    expect(maxSeasonalVdotGain(14, 26.22)).toBeCloseTo(11 * VDOT_GAIN_PER_WEEK_MAX, 6);
+    // A 5K taper is one week, so the same runway buys more build.
+    expect(maxSeasonalVdotGain(14, 3.1)).toBeCloseTo(13 * VDOT_GAIN_PER_WEEK_MAX, 6);
+  });
+
+  it('never exceeds the block ceiling every other consumer honours', () => {
+    // The old cap was 6, ABOVE the bound MAX_BLOCK_GAIN_VDOT of 5 — it could
+    // authorise a gain the rest of the engine calls impossible.
+    for (const weeks of [20, 30, 52, 104]) {
+      expect(maxSeasonalVdotGain(weeks, 26.22)).toBeLessThanOrEqual(MAX_BLOCK_GAIN_VDOT);
+    }
+    expect(maxSeasonalVdotGain(104, 26.22)).toBe(MAX_BLOCK_GAIN_VDOT);
+  });
+
+  it('is monotonic in runway', () => {
+    let prev = -1;
+    for (let w = 0; w <= 40; w++) {
+      const g = maxSeasonalVdotGain(w, 26.22);
+      expect(g).toBeGreaterThanOrEqual(prev);
+      prev = g;
+    }
+  });
+
+  it('is the SAME ceiling the race target is bounded by', () => {
+    // The whole point of RACEPACE-1: threshold and race pace stopped being
+    // floored by two different numbers.
+    for (const weeks of [6, 14, 24]) {
+      expect(seasonalVdotCeiling(44.1, weeks, 26.22).gainVdot)
+        .toBe(maxSeasonalVdotGain(weeks, 26.22));
+    }
   });
 });

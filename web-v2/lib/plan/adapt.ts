@@ -66,7 +66,7 @@
  * plan changed.
  */
 import { pool } from '@/lib/db/pool';
-import { logReadFailure } from '@/lib/db/read';
+import { logReadFailure, rowsOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore, mileageByDay, observableCoverageDays, weeklyAvgFromWindow } from '@/lib/runs/volume';
 import { paceBlendAnchorIsProvisional } from './anchor-provenance';
@@ -175,15 +175,31 @@ export type AdaptationTriggerKind =
                           // gate that re-decides every morning is noise, and
                           // doctrine talks in cycles. See lib/plan/
                           // progression-pass.ts.
-  | 'fitness_regression'; // 2026-08-17 · symmetric DOWNWARD re-anchor ·
+  | 'fitness_regression' // 2026-08-17 · symmetric DOWNWARD re-anchor ·
                           // race result or 28d sustained evidence shows
                           // VDOT < last-reviewed − 1.5 → recompute paces
                           // (auto for race-sourced, propose-first for
-                          // training-drift). Cite: Research/01:316-320
-                          // ("tempo unexpectedly hard ≥2 sessions → −1 to
-                          // −2 VDOT"; layoff rows) + freshness window
-                          // (:659-677 · stale anchor is a floor, not a
-                          // pace source).
+                          // training-drift).
+                          // 2026-08-25 · CITATION REPAIRED. This read
+                          // "Research/01:316-320", and those lines are the two
+                          // UPWARD rows plus the layoff rows — the "tempo
+                          // unexpectedly hard ≥2 sessions → −1 to −2 VDOT" row
+                          // it describes is a different line, and a line
+                          // number is what CLAUDE.md Rule 7 forbids anchoring
+                          // on precisely because it rots. Cite:
+                          // Research/01-pace-zones-vdot.md §"Triggers to
+                          // retest" (the −1 to −2 hard-tempo row) +
+                          // §"Freshness window — when does a VDOT signal
+                          // expire?" (a stale anchor is a floor, not a pace
+                          // source).
+  | 'training_lead';      // 2026-08-25 · the UPWARD training-evidence path ·
+                          // sustained quality work reading above the last race
+                          // anchor by the doctrinal soft-lead quantum. The
+                          // mirror `fitness_regression`'s training_drift arm
+                          // never had. Cite: Research/01 §"Triggers to retest"
+                          // ("Tempo runs feel notably easier at the same target
+                          // pace | Add 1 VDOT point; re-derive paces;
+                          // field-test within 2 weeks").
 
 export interface AdaptationTrigger {
   kind: AdaptationTriggerKind;
@@ -1116,9 +1132,26 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   //     (auto for race-sourced, propose-first for training drift).
   //     Skipped when pr_bank fired — the two are evidence-exclusive and
   //     the upward recompute already re-anchors everything.
+  let regression: AdaptationTrigger | null = null;
   if (!prBank) {
-    const regression = await detectFitnessRegression(userId);
+    regression = await detectFitnessRegression(userId);
     if (regression) triggers.push(regression);
+  }
+
+  // 8c. TRAINING_LEAD (2026-08-25) · the UPWARD training-evidence path.
+  //     Sustained quality work reading a full VDOT point above the last race
+  //     anchor re-derives paces, per Research/01 §"Triggers to retest"
+  //     ("Tempo runs feel notably easier ... Add 1 VDOT point; re-derive
+  //     paces; field-test within 2 weeks").
+  //
+  //     RACE EVIDENCE WINS. Gated on BOTH race-sourced detectors, the same
+  //     exclusivity fitness_regression already has against pr_bank: a race is
+  //     the stronger signal (goal-pursuit-doctrine §5) and its recompute
+  //     re-anchors everything this one would have. Running both in one pass
+  //     would move the same number twice off overlapping evidence.
+  if (!prBank && !regression) {
+    const lead = await detectTrainingLead(userId);
+    if (lead) triggers.push(lead);
   }
 
   // 9. GOAL_CHANGED · runner accepted adaptive-VDOT bump (manual override)
@@ -3048,14 +3081,25 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
   const today = await runnerToday(userId);
 
   // Race within the next 7 days → suppress (taper/race-week filter).
-  const upcoming = await pool.query(
-    `SELECT 1 FROM races
-      WHERE user_uuid = $1::uuid
-        AND (meta->>'date')::date BETWEEN $2::date AND $2::date + 7
-      LIMIT 1`,
-    [userId, today],
-  ).catch(() => ({ rows: [] as unknown[] }));
-  if (upcoming.rows.length > 0) return null;
+  //
+  // FAILS CLOSED. A swallowed failure here used to read as "no race is
+  // coming", so a database blip during race week would let a re-anchor
+  // through in the one window doctrine reserves for the race machinery.
+  // `rowsOrNull` is the difference between "nothing matched" and "I could
+  // not tell", and this branch needs both answers to mean stop. Mirrors
+  // `detectTrainingLead`'s identical filter, applied independently per
+  // CLAUDE.md's per-finding rule rather than inherited.
+  const upcoming = await rowsOrNull(
+    'detectFitnessRegression/upcoming-race',
+    pool.query(
+      `SELECT 1 FROM races
+        WHERE user_uuid = $1::uuid
+          AND (meta->>'date')::date BETWEEN $2::date AND $2::date + 7
+        LIMIT 1`,
+      [userId, today],
+    ),
+  );
+  if (upcoming == null || upcoming.length > 0) return null;
 
   // Anchor VDOT · reviewed column first, then the active plan's
   // authored_state fallbacks (see cascade note above).
@@ -3215,6 +3259,308 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
     };
   }
   return null;
+}
+
+
+// ── TRAINING_LEAD · the upward training-evidence path (2026-08-25) ─────
+
+/**
+ * The upward move training evidence alone may license.
+ *
+ * `Research/01` §"Triggers to retest" states it twice, and both times as ONE
+ * point:
+ *
+ *   | Tempo runs feel notably easier at the same target pace | Add 1 VDOT
+ *     point; re-derive paces; field-test within 2 weeks |
+ *   | HR is 5+ bpm lower at the same workout pace, sustained >=2 weeks |
+ *     +1 VDOT, field-test |
+ *
+ * The same document's §"Update logic" gives the deadband that makes 1.0 the
+ * firing threshold as well as the ceiling:
+ *
+ *   if abs(new_VDOT - current_VDOT) >= 1: regenerate_all_paces()
+ *
+ * So the quantum and the trigger coincide, and there is nothing to invent. A
+ * lead smaller than a point is movement doctrine says not to act on; a lead
+ * larger than a point is not on offer, because `vdot.ts`'s AUDIT #8 soft cap
+ * already bounds every training-derived candidate at `bestRaceRaw + 1.0`.
+ *
+ * NOT the mirror of `REGRESSION_DELTA_THRESHOLD` (1.5), and deliberately so.
+ * The doctrine table is ASYMMETRIC on purpose — "+1" up against "-1 to -2"
+ * down — because the two errors do not cost the same: an over-read prescribes
+ * work the runner cannot absorb, an under-read only prescribes work that is too
+ * easy. `detectPrBank`'s header makes the same argument. Copying 1.5 across to
+ * be tidy would sit 50% above the entire upward band, and be unreachable
+ * anyway: the cap is 1.0.
+ */
+export const TRAINING_LEAD_DELTA_THRESHOLD = 1.0;
+
+/**
+ * How much corroboration a training lead needs before it is acted on.
+ *
+ * `Research/01` §"Triggers to retest" qualifies both directions the same way:
+ * the downward row fires on ">=2 sessions", and the upward HR row on "sustained
+ * >=2 weeks". §"Testing cadence" repeats the tempo row with "(sustained)"
+ * appended. So doctrine's own bar for a training trend is TWO SESSIONS ACROSS
+ * TWO WEEKS — not the six weeks a reader might assume from the 4-6 week
+ * testing cadence, which is about how often to deliberately TEST, not about how
+ * long a signal must run before it counts.
+ *
+ * `Design/execution-memory-firing.md` §"Cut short because the athlete was
+ * cooked" is the only session count in the Design corpus and it agrees in
+ * shape: "Once, after bad sleep or heat: mostly noise. Three quality sessions
+ * running: signal."
+ *
+ * Both conditions bind, and they are different questions. Two sessions in the
+ * same week is a good week; two sessions a fortnight apart with nothing in
+ * between is not sustained either. Requiring the span AND the count is what
+ * separates a trend from a warm Tuesday.
+ */
+export const TRAINING_LEAD_MIN_SESSIONS = 2;
+export const TRAINING_LEAD_MIN_SPAN_DAYS = 14;
+
+/**
+ * How stale the most recent qualifying session may be.
+ *
+ * `Research/01` §"Freshness window" puts a race at "0-4 weeks · Fresh signal.
+ * Use without adjustment." A training lead is weaker evidence than a race, so
+ * it does not get a longer life than one: the newest session behind the lead
+ * must sit inside the same fresh window, or the lead is describing a fitness
+ * the runner last showed a month ago.
+ */
+export const TRAINING_LEAD_MAX_AGE_DAYS = 28;
+
+/**
+ * Pure firing predicate · the signed mirror of `fitnessRegressionFires`, at the
+ * threshold doctrine gives the upward direction rather than the downward one.
+ * Exported for tests.
+ */
+export function trainingLeadFires(
+  oldVdot: number | null | undefined,
+  evidenceVdot: number | null | undefined,
+): boolean {
+  if (oldVdot == null || evidenceVdot == null) return false;
+  if (!Number.isFinite(oldVdot) || !Number.isFinite(evidenceVdot)) return false;
+  // >= rather than >, because the soft cap makes a qualifying value land
+  // EXACTLY on the threshold: a capped candidate is `bestRaceRaw + 1.0` to one
+  // decimal. A strict > here would make the predicate unsatisfiable by
+  // construction — which is the defect this whole path exists to fix, one level
+  // down. The 1e-9 absorbs binary rounding, it is not a tolerance band.
+  return evidenceVdot - oldVdot >= TRAINING_LEAD_DELTA_THRESHOLD - 1e-9;
+}
+
+/**
+ * Is a set of qualifying sessions a SUSTAINED lead? Pure · exported so the gate
+ * can be exercised without a database.
+ */
+export function trainingLeadSustained(
+  qualifyingDatesISO: string[],
+  todayISO: string,
+): { sustained: boolean; sessions: number; spanDays: number; newestAgeDays: number | null } {
+  const dates = [...new Set(qualifyingDatesISO)].sort();
+  const sessions = dates.length;
+  if (sessions === 0) return { sustained: false, sessions: 0, spanDays: 0, newestAgeDays: null };
+  const day = (iso: string) => Date.parse(iso + 'T12:00:00Z');
+  const spanDays = Math.round((day(dates[dates.length - 1]) - day(dates[0])) / 86400000);
+  const newestAgeDays = Math.round((day(todayISO) - day(dates[dates.length - 1])) / 86400000);
+  return {
+    sustained: sessions >= TRAINING_LEAD_MIN_SESSIONS
+      && spanDays >= TRAINING_LEAD_MIN_SPAN_DAYS
+      && newestAgeDays <= TRAINING_LEAD_MAX_AGE_DAYS,
+    sessions,
+    spanDays,
+    newestAgeDays,
+  };
+}
+
+/**
+ * TRAINING_LEAD · the mirror `fitness_regression`'s training_drift arm never
+ * had, and the reason a runner could nail every quality session for months and
+ * watch nothing move.
+ *
+ * ── THE DEFECT, IN TWO CONSTANTS ────────────────────────────────────────────
+ *
+ * Training evidence DID reach the fitness read: `vdotFromRun` inverts the
+ * Daniels zone so a threshold effort reads at its zone-implied VDOT, expressly
+ * so "a tempo at the right pace could move current fitness off a stale race
+ * anchor". AUDIT #8 then caps any training-derived candidate at
+ * `bestRaceRaw + 1.0` — the doctrinal soft lead, and correct.
+ *
+ * But every consumer of that read demanded MORE than a point before it would
+ * act:
+ *
+ *   · `reanchor-plan.ts`  REANCHOR_VDOT_DELTA        = 2.0
+ *   · `adapt.ts`          REGRESSION_DELTA_THRESHOLD = 1.5  (downward only)
+ *
+ * A ceiling of 1.0 underneath a floor of 1.5 is not a high bar, it is a closed
+ * door. Twelve nailed threshold sessions at VDOT-50 pace, on the owner's own
+ * anchor of 44.1, produce a measured read of exactly 45.1 — pinned at the cap,
+ * half a point short of the nearest trigger, forever. Neither constant was
+ * wrong alone; they were written eight weeks apart and never compared.
+ *
+ * The fix is NOT to raise the cap. `Research/01` §"Triggers to retest" is
+ * explicit that a race UPDATES VDOT while training ADDS ONE POINT and asks for
+ * a field test, and `Research/02` §12.4 calls a tempo "not a quantitative
+ * predictor". The fix is to let the point doctrine already grants actually
+ * reach the paces — which is the other half of the same row: "Add 1 VDOT
+ * point; RE-DERIVE PACES; field-test within 2 weeks."
+ *
+ * ── WHY THIS AUTO-APPLIES ───────────────────────────────────────────────────
+ *
+ * Its downward sibling proposes rather than applies, and that asymmetry is
+ * deliberate — but it is not a general preference for caution and it does not
+ * transfer here on symmetry alone. Three reasons this arm applies:
+ *
+ * 1. DOCTRINE SAYS SO, IN THE IMPERATIVE. The row's own action is "re-derive
+ *    paces", §"Update logic" is `regenerate_all_paces()`, and the section
+ *    header reads "update zones immediately if any of these are true".
+ *    Proposing would be doing less than the cited row instructs.
+ * 2. IT IS BOUNDED AND CANNOT COMPOUND. The move is at most one point, and the
+ *    cap is measured from the RACE anchor, never from the last credited lead —
+ *    so a runner who banks a lead cannot bank a second one on top of it. The
+ *    ceiling holds until a race or field test moves the race anchor itself. One
+ *    VDOT point is about 9 s/mi at threshold; there is no runaway to guard.
+ * 3. THE SAFETY FLOOR IS THE CAP, NOT THE CONFIRMATION STEP. The anchor exists
+ *    so the engine does not prescribe work the runner is not ready for. A
+ *    bounded, evidence-gated, doctrine-quantised single point satisfies that
+ *    floor without a wait state.
+ *
+ * The field test doctrine attaches to the lead is not dropped: it is named in
+ * the reason, and `detectFieldTestDue` schedules it on its own cadence.
+ *
+ * ── DOUBLE-COUNTING ─────────────────────────────────────────────────────────
+ *
+ * Race evidence outranks a training lead and must win when both are present
+ * (`Design/goal-pursuit-doctrine.md` §5: "Races are highly informative. A
+ * 20-minute threshold interval is useful."). Three things enforce it:
+ *
+ *   · the caller runs this detector only when neither `pr_bank` nor
+ *     `fitness_regression` fired — the same exclusivity `fitness_regression`
+ *     already has against `pr_bank`;
+ *   · the soft cap is computed off the best RACE candidate, so a fresh race
+ *     re-bases the ceiling before this detector ever sees it;
+ *   · the anchor cascade below reads `vdot_last_reviewed` first, and the
+ *     `recompute_paces` limb stamps it after applying — so a credited lead
+ *     becomes the anchor it was measured against, the delta collapses to zero,
+ *     and the detector cannot re-fire on the same evidence.
+ *
+ * Per-finding context filter (CLAUDE.md round 4): suppressed within 7 days
+ * BEFORE a race, mirroring the downward path. Race week belongs to the race
+ * machinery, and a sharpening taper legitimately reads fast.
+ */
+async function detectTrainingLead(userId: string): Promise<AdaptationTrigger | null> {
+  const today = await runnerToday(userId);
+
+  // Race within the next 7 days → suppress. Same filter as the downward path,
+  // applied independently rather than inherited (CLAUDE.md per-finding rule).
+  //
+  // FAILS CLOSED, and that is not the shape the sibling downward path uses.
+  // `detectFitnessRegression` swallows a failure here into an empty result,
+  // which reads as "no race is coming" — so a database blip during race week
+  // would let a re-anchor through in the one window doctrine reserves for the
+  // race machinery. A suppression filter that cannot read its own input has to
+  // suppress; `rowsOrNull` is the difference between "nothing matched" and "I
+  // could not tell", and this branch needs both answers to mean stop.
+  const upcoming = await rowsOrNull(
+    'detectTrainingLead/upcoming-race',
+    pool.query(
+      `SELECT 1 FROM races
+        WHERE user_uuid = $1::uuid
+          AND (meta->>'date')::date BETWEEN $2::date AND $2::date + 7
+        LIMIT 1`,
+      [userId, today],
+    ),
+  );
+  if (upcoming == null || upcoming.length > 0) return null;
+
+  // Anchor VDOT · the SAME cascade detectFitnessRegression walks, including its
+  // COLD-3 refusal to reason from a provisional anchor. A mileage-derived VDOT
+  // is not fitness, so it cannot be led FROM either: crediting a lead over an
+  // invented baseline would ship a fabrication wearing a measurement's clothes.
+  //
+  // Also fails closed: an unreadable anchor is not a zero anchor, and crediting
+  // a lead measured against a number we could not fetch would be the
+  // fabrication this detector's own provisional-anchor guard exists to refuse.
+  const anchorRows = await rowsOrNull<{ reviewed: string | null; authored_state: Record<string, unknown> | null }>(
+    'detectTrainingLead/anchor',
+    pool.query(
+      `SELECT (SELECT vdot_last_reviewed::numeric::text FROM users WHERE id = $1::uuid) AS reviewed,
+              tp.authored_state
+         FROM training_plans tp
+        WHERE tp.user_uuid = $1::uuid AND tp.archived_iso IS NULL
+        ORDER BY tp.authored_iso DESC LIMIT 1`,
+      [userId],
+    ),
+  );
+  const anchorRow = anchorRows?.[0];
+  if (!anchorRow) return null;
+  const st = (anchorRow.authored_state ?? {}) as Record<string, any>;
+  const anchorProvisional = paceBlendAnchorIsProvisional(st.pace_blend);
+  const oldVdot: number | null =
+    (anchorRow.reviewed != null ? Number(anchorRow.reviewed) : null)
+    ?? (st.pace_recompute?.vdot != null ? Number(st.pace_recompute.vdot) : null)
+    ?? (!anchorProvisional && st.pace_blend?.season_anchor_vdot != null ? Number(st.pace_blend.season_anchor_vdot) : null)
+    ?? (st.derived_from?.bestRecentVdot != null ? Number(st.derived_from.bestRecentVdot) : null);
+  if (oldVdot == null || !Number.isFinite(oldVdot)) return null;
+
+  // The canonical evidence-only read, through the SAME loader the projection
+  // cron and the generator use. Re-deriving the candidate set here would let
+  // this detector disagree with the estimator whose number it is about to act
+  // on, which is the fork class this file has already paid for.
+  const { loadVdotInputs } = await import('@/lib/training/vdot-inputs');
+  const { bestRecentVdot: readBestVdot } = await import('@/lib/training/vdot');
+  const inputs = await loadVdotInputs(userId, today).catch(() => null);
+  if (!inputs) return null;
+  const { VDOT_FULL_VALUE_DAYS } = await import('@/lib/training/vdot');
+  const read = readBestVdot(
+    inputs.raceCandidates, today, VDOT_FULL_VALUE_DAYS,
+    inputs.runCandidates, inputs.runFloorMi,
+  );
+  const measured = read.best?.vdot ?? null;
+  if (measured == null) return null;
+  if (!trainingLeadFires(oldVdot, measured)) return null;
+
+  // The lead must be carried by TRAINING. A race candidate winning the read is
+  // pr_bank's business, and that detector has the representativeness gate this
+  // one deliberately does not.
+  if (read.best?.source !== 'run') return null;
+
+  // Corroboration · every training candidate standing at or above the lead.
+  const qualifying = read.considered.filter(
+    (c) => c.source === 'run' && trainingLeadFires(oldVdot, c.vdot),
+  );
+  const span = trainingLeadSustained(qualifying.map((c) => c.date), today);
+  if (!span.sustained) return null;
+
+  const delta = measured - oldVdot;
+  // The UNCAPPED read, for the reason string only. It is what the sessions
+  // literally imply and is usually well above the point being credited; saying
+  // so is the honest way to explain why the credit is small.
+  const raws = qualifying
+    .map((c) => (c.source === 'run' ? c.vdot_raw : null))
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  const rawBest = raws.length > 0 ? Math.max(...raws) : null;
+
+  return {
+    kind: 'training_lead',
+    severity: 'info',
+    reason:
+      `${span.sessions} quality sessions over ${span.spanDays} days are reading above your last race. `
+      + `Paces move up ${delta.toFixed(1)} VDOT, to ${measured.toFixed(1)}. `
+      + `Training earns one point. A race or a field test is what confirms the rest.`,
+    evidence: {
+      source: 'training_lead',
+      new_vdot: measured,
+      old_vdot: oldVdot,
+      delta,
+      sessions: span.sessions,
+      span_days: span.spanDays,
+      newest_age_days: span.newestAgeDays,
+      raw_training_vdot: rawBest,
+      capped_at_soft_lead: true,
+      citation: 'Research/01-pace-zones-vdot.md §"Triggers to retest"',
+    },
+  };
 }
 
 /**
@@ -3976,6 +4322,25 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         workoutIds: next7.map((r: any) => r.id),
         shaveFraction: 0.17,
         why: `Volume ${Math.round(t.evidence.last7d_mi)}mi exceeded ${baselineWhy}. Shave next 7 days 17%.`,
+      }];
+    }
+    case 'training_lead': {
+      // TRAINING_LEAD (2026-08-25) · auto-applies, and the reasoning for that
+      // is on `detectTrainingLead`. Mechanically identical to the pr_bank limb
+      // — a real `recompute_paces` off the measured VDOT — because the action
+      // Research/01 §"Triggers to retest" prescribes is the same one: "Add 1
+      // VDOT point; re-derive paces".
+      //
+      // `newVdot` is stated rather than left null. The null path below resolves
+      // the latest projection SNAPSHOT, which is written by a cron that may not
+      // have run since the session that earned this lead; passing the number
+      // the detector actually fired on keeps the applied value and the reason
+      // string describing the same evidence.
+      return [{
+        kind: 'recompute_paces',
+        newVdot: t.evidence.new_vdot != null ? Number(t.evidence.new_vdot) : null,
+        why: t.reason,
+        sourceTrigger: 'training_lead',
       }];
     }
     case 'pr_bank':

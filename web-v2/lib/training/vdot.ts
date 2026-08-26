@@ -1062,7 +1062,11 @@ export const FRESH_RACE_PRECEDENCE_DAYS = 28;
  * (goal-projection.ts, commit 3ba8529a) is a SEPARATE, intentionally-capped
  * mechanism and is unaffected.
  */
-const TRAINING_ESTIMATE_SOFT_CAP_VDOT = 1.0;
+// 2026-08-25 · EXPORTED so ADAPTATION.training-lead-quantum can bind it. The
+// cap is a ceiling and `adapt.ts`'s TRAINING_LEAD_DELTA_THRESHOLD is the floor
+// that acts on it; for two years the floor sat ABOVE the ceiling and nobody
+// could see it because neither constant was visible to the other.
+export const TRAINING_ESTIMATE_SOFT_CAP_VDOT = 1.0;
 
 /**
  * 2026-07-07 · AUDIT P1-56 · the honest sub-table read. When NOTHING in scope

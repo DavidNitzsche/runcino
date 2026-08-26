@@ -43,6 +43,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import {
   tPaceFromVdot, iPaceFromVdot, vdotFromTpace, vdotFromRace,
 } from '@/lib/training/vdot';
+import { seasonalVdotCeiling, achievableRaceTarget } from '@/lib/training/achievable-target';
 import { buildWorkoutSpec, tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
 import { preserveProgressionSql } from './progression-spec';
 import { distanceCategoryOrNull } from './goal-tiers';
@@ -59,12 +60,65 @@ import { paceBlendAnchorIsProvisional } from './anchor-provenance';
  */
 export const BLEND_GRACE_FRACTION = 0.15;
 
-/** GOAL-2 seasonal-gain cap (mirror of composePlan's local formula ·
- *  Research/01:314-321 — retest deltas ~+2-3, scaled with build length,
- *  capped ~+6). Exported so the recompute path floors goalT off the SAME
- *  curve the author used. */
-export function maxSeasonalVdotGain(totalWeeks: number): number {
-  return Math.min(6, 2 + totalWeeks * 0.22);
+/**
+ * GOAL-2 seasonal-gain cap · the ceiling `achievableFloorT` floors goal-T at,
+ * and (since RACEPACE-1) the ceiling the prescribed RACE pace is floored at too.
+ *
+ * GAINRATE-2 (2026-08-25) · THE FOURTH GAIN MODEL, RECONCILED.
+ *
+ * This was `Math.min(6, 2 + totalWeeks * 0.22)`, carrying the citation
+ * "Research/01:314-321 — retest deltas ~+2-3, scaled with build length, capped
+ * ~+6". Three problems, and the third is the one that matters:
+ *
+ *  1. It is a LINE-NUMBER citation, which Rule 7 forbids precisely because
+ *     line numbers rot.
+ *  2. Its cap (6) sits ABOVE `MAX_BLOCK_GAIN_VDOT` (5.0), the bound ceiling
+ *     every other consumer honours — so this formula could authorise a gain
+ *     the rest of the engine calls impossible.
+ *  3. The 2026-08-18 gain-rate reconciliation collapsed THREE incompatible
+ *     rates (goal-ready 0.167-0.25, fitness-trajectory 0.35, goal-gap 0.5)
+ *     into `lib/training/vdot-gain-rate.ts`, bound by ADAPTATION.vdot-gain-rate.
+ *     It did not find this one. There were four.
+ *
+ * A fresh sweep of `Research/` and `BuildResearch/` confirms what that
+ * reconciliation concluded: **the corpus contains no VDOT-gain-per-build rate
+ * at all.** Every VDOT delta in it is REACTIVE — a trigger fired by an observed
+ * signal (`Research/01` §"Triggers to retest": a race, a tempo that felt
+ * easier, an HR that dropped). The single per-TIME quantum is §"Testing cadence
+ * — how often to deliberately test", and `vdot-gain-rate.ts` already derives
+ * the 0.167-0.25/wk band from it. So there is no third opinion available to
+ * hold; there is one derivation, and this function now reads it.
+ *
+ * `+2 for free` is gone with it: it awarded two VDOT points to a zero-week
+ * block, which is Rule 1's violation in its purest form (fitness from nothing
+ * but the existence of a plan).
+ *
+ * TAPER DOES NOT BUILD. The old formula spent the whole `totalWeeks`, taper
+ * included. `fitness-trajectory.ts` has always subtracted the taper before
+ * sizing a gain ("taper expresses fitness, doesn't build it") and `assessGoal`
+ * does the same; this now agrees with both, off the one shared
+ * `taperWeeksForDistance` table.
+ *
+ * NET EFFECT: strictly more conservative at every horizon (14 weeks: 5.08 → 2.75).
+ * Prescribed paces get slower, never faster, so no runner inherits work they
+ * were not already being given.
+ *
+ * @param totalWeeks   the block's full length, taper included.
+ * @param raceDistanceMi  used only to look up the taper length. Null → the
+ *   shortest taper in the table, which maximises the build window and is
+ *   therefore the direction that never silently withholds gain from a runner
+ *   whose distance we could not read.
+ */
+export function maxSeasonalVdotGain(
+  totalWeeks: number,
+  raceDistanceMi: number | null = null,
+): number {
+  // RACEPACE-1 · delegated, not duplicated. The ceiling under THRESHOLD work
+  // and the ceiling under RACE work are the same physiological claim about the
+  // same runway, so they are the same call. `achievable-target.ts` owns it
+  // because it must also be reachable from a client bundle, which this module
+  // (it imports `pg`) can never be.
+  return seasonalVdotCeiling(0, totalWeeks, raceDistanceMi).gainVdot;
 }
 
 /**
@@ -277,7 +331,7 @@ export async function recomputePacesForPlan(
   // fitness are idempotent).
   const currentT = tPaceFromVdot(vdotNow);
   const goalTraw = raceDistanceMi != null ? tPaceFromGoal(goalSec, raceDistanceMi) : null;
-  const achievableFloorT = tPaceFromVdot(vdotNow + maxSeasonalVdotGain(totalWeeks));
+  const achievableFloorT = tPaceFromVdot(vdotNow + maxSeasonalVdotGain(totalWeeks, raceDistanceMi));
   const goalT = (goalTraw != null && achievableFloorT != null)
     ? Math.max(goalTraw, achievableFloorT)
     : (goalTraw ?? currentT);
@@ -345,6 +399,14 @@ export async function recomputePacesForPlan(
   // PACE-E-1 · easy/long/recovery anchor tracks CURRENT fitness.
   const easyAnchorTSec = currentT;
 
+  // RACEPACE-1 · the achievable race target, re-run against TODAY's fitness
+  // over the plan's authored horizon — the same posture `achievableFloorT`
+  // takes above, and for the same reason: a runner who gained gets a target
+  // that reflects it, a runner who lost gets one that reflects that too.
+  const prescribedRacePaceSec = achievableRaceTarget({
+    goalSec, currentVdot: vdotNow, raceDistanceMi, totalWeeks,
+  })?.paceSPerMi ?? null;
+
   const { subLabelFromSpec } = await import('@/lib/training/expand-spec');
 
   let updated = 0;
@@ -363,6 +425,15 @@ export async function recomputePacesForPlan(
                             // re-derive on the next full rebuild (same posture
                             // as adapt.ts rebuildWorkoutDerivations)
         goalPaceSec, iPaceSec, easyAnchorTSec,
+        false,              // effortCued · a recompute runs on measured evidence
+                            // by definition, so the calibration intro is over
+        // RACEPACE-1 · re-derived off vdotNow, not carried forward. This is the
+        // point of the whole mechanism: when evidence moves the anchor, the
+        // race target the block rehearses moves with it. `RECOMPUTE_EXEMPT_
+        // TYPES` currently excludes `race`, so no row reads this today — it is
+        // threaded so that the day race rows come into scope they cannot come
+        // in still anchored to the authoring-time ceiling.
+        prescribedRacePaceSec,
       );
       if (!built.spec && built.paceTargetSPerMi == null) continue;
       const derivedLabel = built.spec
