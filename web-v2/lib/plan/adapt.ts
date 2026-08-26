@@ -3068,14 +3068,25 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
   const today = await runnerToday(userId);
 
   // Race within the next 7 days → suppress (taper/race-week filter).
-  const upcoming = await pool.query(
-    `SELECT 1 FROM races
-      WHERE user_uuid = $1::uuid
-        AND (meta->>'date')::date BETWEEN $2::date AND $2::date + 7
-      LIMIT 1`,
-    [userId, today],
-  ).catch(() => ({ rows: [] as unknown[] }));
-  if (upcoming.rows.length > 0) return null;
+  //
+  // FAILS CLOSED. A swallowed failure here used to read as "no race is
+  // coming", so a database blip during race week would let a re-anchor
+  // through in the one window doctrine reserves for the race machinery.
+  // `rowsOrNull` is the difference between "nothing matched" and "I could
+  // not tell", and this branch needs both answers to mean stop. Mirrors
+  // `detectTrainingLead`'s identical filter, applied independently per
+  // CLAUDE.md's per-finding rule rather than inherited.
+  const upcoming = await rowsOrNull(
+    'detectFitnessRegression/upcoming-race',
+    pool.query(
+      `SELECT 1 FROM races
+        WHERE user_uuid = $1::uuid
+          AND (meta->>'date')::date BETWEEN $2::date AND $2::date + 7
+        LIMIT 1`,
+      [userId, today],
+    ),
+  );
+  if (upcoming == null || upcoming.length > 0) return null;
 
   // Anchor VDOT · reviewed column first, then the active plan's
   // authored_state fallbacks (see cascade note above).
