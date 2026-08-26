@@ -26,6 +26,7 @@ import { requireUserId } from '@/lib/auth/session';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { loadHeatEasingPct } from '@/lib/watch/heat';
 import { deriveWin } from '@/lib/coach/run-win';
+import { composeRecap } from '@/lib/faff/recap-voice';
 import { mapWatchPhases } from '@/lib/coach/run-state';
 import { deriveReadingScopes } from '@/lib/coach/reading-scope';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
@@ -543,6 +544,27 @@ export async function GET(
     source: typeof data.source === 'string' ? data.source : undefined,
   });
 
+  // SAID ONCE. `deriveRecap` returns four parts and `deriveWin` a fifth,
+  // each composed without sight of the others — this is the exact route
+  // David was reading on his own easy four miles (recap-voice.ts's own
+  // docstring): "Steady the whole way / Easy done. / Easy 4 mi at 8:34/mi.
+  // Run by feel · the right way to take an easy day. / 88°F · hot for
+  // running. Warm enough to cost a little pace. Heat does that · your
+  // fitness is fine." One judgement, three times; one condition, three
+  // times. `composeRecap` was written to fix exactly this and had been
+  // wired into the Today after-run sheet (`v5/today/route.ts`) since — this
+  // route, which is what `RunDetailV5` (run history) actually reads, was
+  // still shipping the five raw, unmerged parts. Same reshape as `today`'s:
+  // the composed paragraph rides in `verdict`, `facts` carries only what
+  // didn't fit, `conditions_note`/`coach_tip` are folded in already spoken.
+  const spoken = composeRecap({
+    win,
+    verdict: recap.verdict,
+    facts: recap.facts,
+    conditionsNote: recap.conditions_note,
+    coachTip: recap.coach_tip,
+  });
+
   return NextResponse.json({
     ok: true,
     runId: runRow.id,
@@ -550,7 +572,11 @@ export async function GET(
     type,
     phase,
     ...recap,
-    win,
+    verdict: spoken.body[0] ?? '',
+    facts: spoken.body.slice(1),
+    conditions_note: null,
+    coach_tip: null,
+    win: spoken.headline,
     // E3: the target the verdict was judged against (frozen prescribed when a
     // watch completion exists, else the live plan) + the current plan target,
     // so consumers/falsifiers can see which contract was used and the divergence.
