@@ -258,6 +258,18 @@ export interface AdaptationAction {
    *  default-to-apply posture as before). */
   sourceTrigger?: AdaptationTriggerKind;
   /**
+   * PACENOTE-1 (2026-08-25) · the anchor the recompute is moving FROM.
+   *
+   * `newVdot` alone cannot answer "did the runner's paces just move, and which
+   * way", which is the question `V5Today.paceNote` and design 18a exist to
+   * answer. The detectors have always had the number — every `recompute_paces`
+   * trigger carries `evidence.old_vdot` — and the action dropped it on the
+   * floor, so `recordPaceZoneEvent` had nothing to record and Today's
+   * pace-moved row never appeared for an adapter-driven re-pace at all. Only
+   * the daily self-heal and the race-authority fallback ever wrote one.
+   */
+  fromVdot?: number | null;
+  /**
    * Gap B3 (2026-08-19) · the structured verdict `gradeConvergence()` graded
    * this morning, carried from `detectReadinessPullback`'s trigger through to
    * the `downgrade` action so `applyAdaptations` can persist it on the
@@ -1775,6 +1787,43 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
             workouts_updated: res?.workoutsUpdated ?? 0,
             workouts_sealed: res?.workoutsSealed ?? 0,
             measured_progress_fraction: res?.measuredProgressFraction ?? null,
+          });
+          /**
+           * PACENOTE-1 (2026-08-25) · make the move visible on Today.
+           *
+           * `V5Today.paceNote` and design 18a have existed since
+           * `pace-drop-event.ts` shipped, and the type has carried
+           * `direction: 'faster'` and `evidenceSource: 'training'` from the
+           * day it was written. Nothing on this path ever wrote one: only the
+           * daily self-heal and the race-authority fallback did. So EVERY
+           * adapter-driven re-pace — a banked PR, a downward race re-anchor,
+           * and now a training lead — changed the numbers on the runner's
+           * plan and told them nothing.
+           *
+           * The coach log picks these intents up on its own (`coach-log.ts`
+           * merges `plan_adapt_recompute_paces` into a `fitness_shift` line),
+           * but the log is history the runner goes looking for. The pace note
+           * is the row on the screen they open anyway.
+           *
+           * `goal_changed` is deliberately excluded by supplying no
+           * `fromVdot`: its paces moved because the goal moved, and 18a's
+           * card asks the runner to confirm a FITNESS read. Offering it there
+           * would be asking them to ratify something that never happened.
+           * `recordPaceZoneEvent` no-ops on a null `fromVdot` and on a move
+           * that rounds to nothing, so both cases fall out without a branch.
+           */
+          const { recordPaceZoneEvent } = await import('./pace-drop-event');
+          await recordPaceZoneEvent(client, planRow.id, {
+            fromVdot: a.fromVdot ?? null,
+            toVdot: vdotNow,
+            evidenceSource: a.sourceTrigger === 'training_lead' ? 'training'
+              : a.sourceTrigger === 'pr_bank' || a.sourceTrigger === 'fitness_regression' ? 'race'
+              : null,
+          }).catch((e: unknown) => {
+            // Same posture as writeIntent below it: the pace change matters
+            // more than the card announcing it.
+            console.error('[applyAdaptations] recordPaceZoneEvent failed:',
+              e instanceof Error ? e.message : String(e));
           });
           if ((res?.workoutsUpdated ?? 0) > 0) touched++;
           postCommitVdotReviewed = vdotNow;
@@ -3531,10 +3580,37 @@ async function detectTrainingLead(userId: string): Promise<AdaptationTrigger | n
   return {
     kind: 'training_lead',
     severity: 'info',
+    /**
+     * THE LINE THE RUNNER READS. It surfaces two ways, both already built:
+     * `coach-log.ts` merges every `plan_adapt_recompute_paces` intent into a
+     * `fitness_shift` entry and renders this string as the body, and Today's
+     * `paceNote` row opens onto design 18a beside it.
+     *
+     * Modelled on `pr_bank`'s "New race fitness · VDOT 45.1 · your paces just
+     * moved." — same shape, same restraint, same " · " joiner, and the same
+     * closing clause, because the runner-facing fact is the same one.
+     *
+     * Two differences, both deliberate:
+     *
+     *  · IT NAMES THE EVIDENCE. A race speaks for itself; "your training" does
+     *    not, and a runner told their paces moved with no reason given has
+     *    been handed a number to distrust. The session count and the span are
+     *    the two facts that make it a trend rather than a good Tuesday, and
+     *    they are the same two the gate actually tested.
+     *  · IT SAYS WHAT WOULD CONFIRM IT. Rule 1 — a modelled number must never
+     *    look measured. `pr_bank` may state a VDOT flat because a race IS the
+     *    measurement; this one is a soft LEAD that doctrine caps at a point
+     *    and attaches a field test to (`Research/01` §"Triggers to retest").
+     *    Printing it bare would present a lead as a verdict.
+     *
+     * No hype, and the temptation is real here — this is good news and the
+     * house voice still does not celebrate. Plain statement of what happened
+     * and what would settle it.
+     */
     reason:
-      `${span.sessions} quality sessions over ${span.spanDays} days are reading above your last race. `
-      + `Paces move up ${delta.toFixed(1)} VDOT, to ${measured.toFixed(1)}. `
-      + `Training earns one point. A race or a field test is what confirms the rest.`,
+      `${span.sessions} quality sessions over ${span.spanDays} days reading ahead of your last race `
+      + `· VDOT ${measured.toFixed(1)} · your paces just moved. `
+      + `A race or field test confirms it.`,
     evidence: {
       source: 'training_lead',
       new_vdot: measured,
@@ -4326,6 +4402,7 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       return [{
         kind: 'recompute_paces',
         newVdot: t.evidence.new_vdot != null ? Number(t.evidence.new_vdot) : null,
+        fromVdot: t.evidence.old_vdot != null ? Number(t.evidence.old_vdot) : null,
         why: t.reason,
         sourceTrigger: 'training_lead',
       }];
@@ -4353,7 +4430,17 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         newVdot: t.kind === 'pr_bank' && t.evidence.new_vdot != null
           ? Number(t.evidence.new_vdot)
           : null,  // goal_changed → latest snapshot VDOT at apply time
+        // PACENOTE-1 · pr_bank has carried `old_vdot` since it was written and
+        // nothing read it, so the race that moved a runner's paces never lit
+        // Today's pace-moved row either. `goal_changed` deliberately supplies
+        // none: the paces moved because the GOAL moved, not because fitness
+        // did, and design 18a's card asks the runner to confirm a FITNESS
+        // read. See the recompute limb for the guard that drops it.
+        fromVdot: t.kind === 'pr_bank' && t.evidence.old_vdot != null
+          ? Number(t.evidence.old_vdot)
+          : null,
         why,
+        sourceTrigger: t.kind,
       }];
     }
     case 'fitness_regression': {
@@ -4368,7 +4455,9 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         return [{
           kind: 'recompute_paces',
           newVdot: t.evidence.new_vdot != null ? Number(t.evidence.new_vdot) : null,
+          fromVdot: t.evidence.old_vdot != null ? Number(t.evidence.old_vdot) : null,
           why: t.reason,
+          sourceTrigger: 'fitness_regression',
         }];
       }
       // training_drift → propose-first (plan_proposals · pending). Accept

@@ -164,7 +164,21 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
  * If you are extending the scanner: the shape to look for is an EMPTIED
  * fallback whose enclosing function returns a boolean or a count.
  */
-export const EMPTIED_BASELINE = 380;
+/**
+ * 380 → 379 (2026-08-25, TRAINING-LEAD-1). Re-tightened, not slackened: the
+ * upward training-evidence detector added two reads and both went through
+ * `rowsOrNull`, and fixing the shape it was copied FROM took the count below
+ * where it started.
+ *
+ * The one that mattered was `detectFitnessRegression`'s race-week suppression
+ * query. It swallowed a failure into an empty result, which reads as "no race
+ * is coming" — so a database blip during race week would let a downward
+ * re-anchor through in the one window doctrine reserves for the race
+ * machinery. A suppression filter that cannot read its own input has to
+ * suppress. The new detector's copy fails closed; the original is still open
+ * and is named in the hand-off.
+ */
+export const EMPTIED_BASELINE = 379;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
