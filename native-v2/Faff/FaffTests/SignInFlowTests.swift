@@ -139,6 +139,28 @@ final class SignInFlowTests: XCTestCase {
         await fulfillment(of: [notif], timeout: 1.0)
     }
 
+    /// A protected endpoint 401ing with NO token attached must still bounce
+    /// the gate back to sign-in. This is the "faff.onboarded survived an app
+    /// update, the Keychain token didn't" case: `tokenAtSend` is nil, so the
+    /// old `if let snap = tokenAtSend, snap == tokenNow` guard in
+    /// authedSend never matched and the runner was stranded on an empty main
+    /// app with no route back to SignInView.
+    func test_401ResponseWithNoToken_stillPostsSessionExpiredNotification() async throws {
+        // setUp() already cleared TokenStore · confirm the starting state.
+        XCTAssertFalse(TokenStore.shared.isSignedIn)
+
+        Self.responder = { _ in
+            let data = Data("{\"error\":\"Unauthorized\"}".utf8)
+            let resp = HTTPURLResponse(url: URL(string: "https://www.faff.run/api/log")!,
+                                       statusCode: 401, httpVersion: nil, headerFields: nil)!
+            return (resp, data)
+        }
+
+        let notif = expectation(forNotification: .faffSessionExpired, object: nil)
+        _ = try? await API.fetchLog(limit: 10)
+        await fulfillment(of: [notif], timeout: 1.0)
+    }
+
     // MARK: - TokenStore Keychain round-trip
 
     func test_tokenStore_keychainPersists() throws {

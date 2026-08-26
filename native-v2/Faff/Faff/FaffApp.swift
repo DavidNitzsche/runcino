@@ -451,7 +451,19 @@ struct RootContainer: View {
         }
 
         let defaults = UserDefaults.standard
-        if defaults.bool(forKey: "faff.onboarded") {
+        // The token requirement here is load-bearing, same reasoning as the
+        // cached-surfaces heuristic below (2026-08-21 multi-tenancy audit
+        // comment): `faff.onboarded` is an ordinary UserDefaults value, so it
+        // survives an app update even when the Keychain item backing the
+        // session token does not (an update that changes signing/entitlements
+        // can invalidate Keychain access without touching UserDefaults at
+        // all). Without the isSignedIn check, a runner in that state landed
+        // in the main app with no token, every surface read 401'd, and the
+        // old `if let snap = tokenAtSend, snap == tokenNow` guard in
+        // API.authedSend never raised .faffSessionExpired for a 401 with no
+        // token attached in the first place — so nothing ever bounced them
+        // back to sign-in. Home screen, forever, no data, no way out.
+        if defaults.bool(forKey: "faff.onboarded") && TokenStore.shared.isSignedIn {
             enterMain(); return
         }
         // Returning user heuristic: any cached surface bytes means they've

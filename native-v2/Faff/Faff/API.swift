@@ -85,13 +85,20 @@ enum API {
     static func authedSend(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         var req = request
         // Snapshot the token before the request (nonisolated keychain read — no
-        // main-actor hop). Used below to guard against two spurious-expiry vectors:
+        // main-actor hop). Used below to guard against three spurious/missed-
+        // expiry vectors:
         // (1) Pre-first-unlock background wake: keychain is locked → no Bearer
         //     attached → server 401s → without this guard we'd wipe a valid token.
         // (2) Late-401 clobber: prefetch sends 13 parallel requests; after a
         //     genuine expiry + re-sign-in, a still-in-flight old-token request 401s
         //     and would clobber the new token. Compare confirms it's still the same.
-        let tokenAtSend = TokenStore.shared.readToken()
+        // (3) Genuinely signed-out: no token existed at send time either. This
+        //     must NOT be folded into (1) — `.absent` (errSecItemNotFound, no
+        //     token was ever written) and `.inaccessible` (locked, or any
+        //     other SecItem failure) both read as `nil` from `readToken()`,
+        //     but only the former is safe to treat as "raise
+        //     .faffSessionExpired" — see ReadStatus in TokenStore.swift.
+        let tokenAtSend = TokenStore.shared.readTokenStatus()
         TokenStore.shared.authorize(&req)
         let data: Data
         let resp: URLResponse
@@ -108,8 +115,26 @@ enum API {
         }
         guard let http = resp as? HTTPURLResponse else { throw APIError.badStatus(-1) }
         if http.statusCode == 401 {
-            let tokenNow = TokenStore.shared.readToken()
-            if let snap = tokenAtSend, snap == tokenNow {
+            let tokenNow = TokenStore.shared.readTokenStatus()
+            // Only two shapes are safe to raise .faffSessionExpired for:
+            //   · both reads .absent — no token existed before or after this
+            //     call, so there is nothing to lose by bouncing to sign-in,
+            //     and (vector 3 above) nothing else ever will.
+            //   · both reads .present with the SAME value — a genuinely
+            //     stale token, not a race against a fresher one landing
+            //     mid-request (vector 2).
+            // `.inaccessible` on either side (vector 1: keychain locked) never
+            // matches, so a merely-locked read can't wipe a valid token.
+            let shouldExpire: Bool
+            switch (tokenAtSend, tokenNow) {
+            case (.absent, .absent):
+                shouldExpire = true
+            case let (.present(a), .present(b)):
+                shouldExpire = a == b
+            default:
+                shouldExpire = false
+            }
+            if shouldExpire {
                 // Post on main: the notification handler updates @Published props +
                 // triggers SwiftUI. URLSession completions run on the pool thread.
                 DispatchQueue.main.async {

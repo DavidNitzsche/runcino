@@ -81,6 +81,22 @@ final class TokenStore: ObservableObject {
     /// current token and avoid clobbering a freshly-minted replacement.
     nonisolated func readToken() -> String? { TokenStore.keychainRead(K.token) }
 
+    /// A token read that distinguishes "no session token exists" from
+    /// "couldn't tell right now" (Keychain locked pre-first-unlock, or any
+    /// other SecItem failure). `readToken()` collapses both to `nil`, which
+    /// is right for `authorize(_:)` (no token to attach either way) but
+    /// wrong for `authedSend`'s 401 guard: firing .faffSessionExpired on a
+    /// merely-locked read would wipe a perfectly valid, just-inaccessible
+    /// token, while suppressing it on a genuinely absent token strands a
+    /// signed-out runner with no route back to sign-in.
+    enum ReadStatus: Equatable {
+        case present(String)
+        case absent
+        case inaccessible
+    }
+
+    nonisolated func readTokenStatus() -> ReadStatus { TokenStore.keychainReadStatus(K.token) }
+
     /// Augment a request with `Authorization: Bearer` when a token is set.
     /// Called from API helpers (authedGET/authedSend) on every outbound
     /// request. Reads the keychain directly (nonisolated) so background-
@@ -116,9 +132,11 @@ final class TokenStore: ObservableObject {
     // MARK: - SecItem wrappers
 
     /// Read a string from Keychain. Returns nil for missing-or-error ·
-    /// callers treat that as "no session" rather than distinguishing
-    /// between errSecItemNotFound and a real failure (the user-visible
-    /// outcome is the same: route to sign-in).
+    /// fine for `authorize(_:)`, which just needs to know whether to attach
+    /// a Bearer header. `authedSend`'s 401 guard needs the finer-grained
+    /// `keychainReadStatus` below instead — collapsing "absent" and
+    /// "inaccessible" here is exactly the distinction that guard cannot
+    /// afford to lose.
     nonisolated fileprivate static func keychainRead(_ account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -131,6 +149,37 @@ final class TokenStore: ObservableObject {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    /// Same lookup as `keychainRead`, but reports errSecItemNotFound (no
+    /// session token was ever written, or it was explicitly cleared) as
+    /// `.absent`, distinct from any other SecItem failure — most notably
+    /// errSecInteractionNotAllowed, returned when the device is locked and
+    /// the item's `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` blocks the
+    /// read. Those two cases must not be treated the same: the app cannot
+    /// tell a locked device apart from a token that never existed by the
+    /// string value alone.
+    nonisolated fileprivate static func keychainReadStatus(_ account: String) -> TokenStore.ReadStatus {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:
+            guard let data = result as? Data, let str = String(data: data, encoding: .utf8) else {
+                return .inaccessible
+            }
+            return .present(str)
+        case errSecItemNotFound:
+            return .absent
+        default:
+            return .inaccessible
+        }
     }
 
     /// Write a string to Keychain · upserts the account row. Nil clears.
