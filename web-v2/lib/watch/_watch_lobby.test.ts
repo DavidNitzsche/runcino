@@ -107,7 +107,7 @@ describe('rest day · every clause drops rather than guesses', () => {
     const raw = week();
     // Move today past the long run so it has actually happened.
     raw.days[6] = day({ date_iso: '2026-08-23', dow: 0, type: 'long', distance_mi: 17, is_past: true, done_mi: 17.2, completedRunId: 'r7' });
-    const s = buildRestDayState(projectWeekStrip(raw), raw);
+    const s = buildRestDayState(projectWeekStrip(raw), raw, '2026-08-20');
     expect(s.coachLine).toBe(
       'Nothing today · you ran 31.5 miles this week and the long one was Sunday. Resting is the work.',
     );
@@ -118,7 +118,7 @@ describe('rest day · every clause drops rather than guesses', () => {
 
   it('says the long one IS Sunday when it is still ahead', () => {
     const raw = week();
-    const s = buildRestDayState(projectWeekStrip(raw), raw);
+    const s = buildRestDayState(projectWeekStrip(raw), raw, '2026-08-20');
     expect(s.coachLine).toContain('the long one is Sunday');
     obeysCopyRules(s.coachLine);
   });
@@ -129,7 +129,7 @@ describe('rest day · every clause drops rather than guesses', () => {
     // having happened would be the bug; reporting the miss would be the
     // scolding. It says neither.
     raw.days[6] = day({ date_iso: '2026-08-23', dow: 0, type: 'long', distance_mi: 17, is_past: true });
-    const s = buildRestDayState(projectWeekStrip(raw), raw);
+    const s = buildRestDayState(projectWeekStrip(raw), raw, '2026-08-20');
     expect(s.coachLine).not.toContain('long one');
     expect(s.coachLine).toContain('you ran 14.3 miles this week');
     expect(s.longRunDayName).toBe('Sunday');   // the fact still rides the wire
@@ -139,7 +139,7 @@ describe('rest day · every clause drops rather than guesses', () => {
   it('never tells a runner they ran zero miles', () => {
     const raw = week();
     raw.days = raw.days.map((d) => ({ ...d, done_mi: null, completedRunId: null, is_past: false }));
-    const s = buildRestDayState(projectWeekStrip(raw), raw);
+    const s = buildRestDayState(projectWeekStrip(raw), raw, '2026-08-20');
     expect(s.coachLine).not.toContain('you ran');
     expect(s.coachLine).toBe('Nothing today · the long one is Sunday. Resting is the work.');
     expect(s.weekMilesDone).toBe(0);
@@ -152,9 +152,26 @@ describe('rest day · every clause drops rather than guesses', () => {
       today_iso: '2026-08-20',
       days: week().days.map((d) => ({ ...d, type: 'rest', distance_mi: 0, done_mi: null, completedRunId: null })),
     };
-    const s = buildRestDayState(projectWeekStrip(raw), raw);
+    const s = buildRestDayState(projectWeekStrip(raw), raw, '2026-08-20');
     expect(s.coachLine).toBe('Nothing today. Resting is the work.');
     expect(s.longRunDayName).toBeNull();
+  });
+});
+
+describe('next workout · the first running day still ahead in the loaded week', () => {
+  it('finds the nearest day with miles on it, skipping the rest day between', () => {
+    const raw = week();
+    const s = buildRestDayState(projectWeekStrip(raw), raw, '2026-08-20');
+    // Today is Thu. Fri is a rest day (skipped). Sat is the nearest run: 5mi.
+    expect(s.nextWorkout).toMatchObject({
+      dayName: 'Saturday', dateIso: '2026-08-22', type: 'easy', distanceMi: 5, daysAway: 2,
+    });
+  });
+
+  it('is null when the loaded week has nothing left after today', () => {
+    const raw = week();
+    const s = buildRestDayState(projectWeekStrip(raw), raw, '2026-08-23');
+    expect(s.nextWorkout).toBeNull();
   });
 });
 
@@ -171,7 +188,7 @@ describe('no session · one reason per state, and always a plain run', () => {
     it(`${reason} · titled, reasoned, and offers a plain run`, () => {
       const raw = week();
       const s = buildNoSessionState(reason, {
-        week: projectWeekStrip(raw), raw,
+        week: projectWeekStrip(raw), raw, today: '2026-08-20',
         resumesIso: reason === 'week_off' ? '2026-08-24' : null,
         injurySite: reason === 'injury' ? 'Knee' : null,
       });
@@ -186,7 +203,7 @@ describe('no session · one reason per state, and always a plain run', () => {
 
   it('names the day the block resumes', () => {
     const raw = week();
-    const s = buildNoSessionState('week_off', { week: projectWeekStrip(raw), raw, resumesIso: '2026-08-24' });
+    const s = buildNoSessionState('week_off', { week: projectWeekStrip(raw), raw, today: '2026-08-20', resumesIso: '2026-08-24' });
     expect(s.resumesDayName).toBe('Monday');
     expect(s.coachLine).toBe(
       'The block resumes Monday. Walk, swim, or do nothing. None of it goes in the book.',
@@ -195,16 +212,16 @@ describe('no session · one reason per state, and always a plain run', () => {
 
   it('drops the day rather than inventing one when nothing follows the break', () => {
     const raw = week();
-    const s = buildNoSessionState('week_off', { week: projectWeekStrip(raw), raw, resumesIso: null });
+    const s = buildNoSessionState('week_off', { week: projectWeekStrip(raw), raw, today: '2026-08-20', resumesIso: null });
     expect(s.resumesDayName).toBeNull();
     expect(s.coachLine).toContain('resumes when you get back');
   });
 
   it('names the site on an injury and stays silent when it cannot', () => {
     const raw = week();
-    const withSite = buildNoSessionState('injury', { week: null, raw, injurySite: 'Achilles' });
+    const withSite = buildNoSessionState('injury', { week: null, raw, today: '2026-08-20', injurySite: 'Achilles' });
     expect(withSite.coachLine).toContain('The achilles is still open');
-    const without = buildNoSessionState('injury', { week: null, raw, injurySite: null });
+    const without = buildNoSessionState('injury', { week: null, raw, today: '2026-08-20', injurySite: null });
     expect(without.coachLine).not.toContain('undefined');
     expect(without.coachLine).toContain('while this settles');
   });

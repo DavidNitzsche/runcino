@@ -298,6 +298,25 @@ export interface WatchDayState {
   /** "Monday" + its date · when the block resumes. Week-off only. */
   resumesDayName: string | null;
   resumesIso: string | null;
+  /** The next running day in THIS week's window after today, if any.
+   *  Rest-day and no-session boards look forward with this rather than
+   *  backward-only (miles this week, the long run) — a runner staring at
+   *  an empty day wants to know what's next, not just what's past.
+   *  Null when the window has nothing left (e.g. today is the week's last
+   *  day) — never guessed past the loaded week. */
+  nextWorkout: WatchNextWorkout | null;
+}
+
+/** One upcoming day, surfaced on the Rest / No-session boards. */
+export interface WatchNextWorkout {
+  /** "Thursday" */
+  dayName: string;
+  dateIso: string;
+  /** plan_workouts.type — "easy" · "long" · "tempo" · "intervals" · … */
+  type: string;
+  distanceMi: number;
+  /** 1 = tomorrow, 2 = "in 2 days", etc. Always >= 1. */
+  daysAway: number;
 }
 
 /** Fields that ride BOTH branches of the response. Every one optional. */
@@ -683,14 +702,35 @@ function longRunOfWeek(week: PlanWeekResult): { dayName: string; isPast: boolean
   };
 }
 
+/** The first running day after `todayIso` still inside this loaded window,
+ *  in words. Null when the window has nothing left after today — this never
+ *  reaches into a week that wasn't loaded to find one. */
+function nextWorkoutOfWeek(week: PlanWeekResult, todayIso: string): WatchNextWorkout | null {
+  const todayMs = Date.parse(todayIso + 'T00:00:00Z');
+  const upcoming = week.days
+    .filter((d) => Number(d.distance_mi) > 0 && d.type !== 'rest' && d.date_iso > todayIso)
+    .sort((a, b) => a.date_iso.localeCompare(b.date_iso));
+  const next = upcoming[0];
+  if (!next) return null;
+  const daysAway = Math.round((Date.parse(next.date_iso + 'T00:00:00Z') - todayMs) / 86_400_000);
+  return {
+    dayName: DAY_NAMES[next.dow] ?? '',
+    dateIso: next.date_iso,
+    type: next.type,
+    distanceMi: Math.round((Number(next.distance_mi) || 0) * 10) / 10,
+    daysAway: Math.max(1, daysAway),
+  };
+}
+
 /** The Rest-day board. "Nothing today · you ran 34 miles this week and the
  *  long one was Sunday. Resting is the work."
  *
  *  Every clause is dropped rather than guessed when its evidence is absent:
  *  a week with nothing in it does not get told it ran zero miles, and a long
  *  run that was scheduled and missed is not reported as having happened. */
-export function buildRestDayState(week: WatchWeekStrip | null, raw: PlanWeekResult | null): WatchDayState {
+export function buildRestDayState(week: WatchWeekStrip | null, raw: PlanWeekResult | null, today: string): WatchDayState {
   const long = raw ? longRunOfWeek(raw) : null;
+  const nextWorkout = raw ? nextWorkoutOfWeek(raw, today) : null;
   const milesDone = week?.milesDone ?? null;
   const clauses: string[] = [];
   if (milesDone != null && milesDone >= 0.5) {
@@ -720,6 +760,7 @@ export function buildRestDayState(week: WatchWeekStrip | null, raw: PlanWeekResu
     longRunDone: long?.done ?? false,
     resumesDayName: null,
     resumesIso: null,
+    nextWorkout,
   };
 }
 
@@ -732,6 +773,7 @@ export function buildNoSessionState(
   opts: {
     week: WatchWeekStrip | null;
     raw: PlanWeekResult | null;
+    today: string;
     resumesIso?: string | null;
     injurySite?: string | null;
   },
@@ -739,6 +781,7 @@ export function buildNoSessionState(
   const resumesIso = opts.resumesIso ?? null;
   const resumesDayName = resumesIso ? (DAY_NAMES[dowOfIso(resumesIso)] ?? null) : null;
   const site = opts.injurySite ? String(opts.injurySite).toLowerCase() : null;
+  const nextWorkout = opts.raw ? nextWorkoutOfWeek(opts.raw, opts.today) : null;
 
   let title: string;
   let coachLine: string;
@@ -788,6 +831,7 @@ export function buildNoSessionState(
     longRunDone: long?.done ?? false,
     resumesDayName,
     resumesIso,
+    nextWorkout,
   };
 }
 
@@ -1178,7 +1222,7 @@ export async function buildWatchToday(
     return {
       message: "No active plan.",
       weekStrip,
-      dayState: buildNoSessionState(everRacePrep ? 'off_season' : 'no_plan', { week: weekStrip, raw: rawWeek }),
+      dayState: buildNoSessionState(everRacePrep ? 'off_season' : 'no_plan', { week: weekStrip, raw: rawWeek, today }),
     };
   }
 
@@ -1214,7 +1258,7 @@ export async function buildWatchToday(
   // it is purely additive.
   const noSessionState = noSession
     ? buildNoSessionState(noSession.reason, {
-        week: weekStrip, raw: rawWeek,
+        week: weekStrip, raw: rawWeek, today,
         resumesIso: noSession.resumesIso, injurySite: noSession.injurySite,
       })
     : null;
@@ -1224,7 +1268,7 @@ export async function buildWatchToday(
       message: "Nothing on the calendar today.",
       weekStrip,
       dayState: noSessionState
-        ?? buildNoSessionState('nothing_scheduled', { week: weekStrip, raw: rawWeek }),
+        ?? buildNoSessionState('nothing_scheduled', { week: weekStrip, raw: rawWeek, today }),
     };
   }
   if (wo.type === 'rest') {
@@ -1233,7 +1277,7 @@ export async function buildWatchToday(
       weekStrip,
       // A no-session reason outranks a planned rest day: "Week off" is a
       // truer answer than "Nothing today" when the whole window is zeroed.
-      dayState: noSessionState ?? buildRestDayState(weekStrip, rawWeek),
+      dayState: noSessionState ?? buildRestDayState(weekStrip, rawWeek, today),
     };
   }
 
@@ -1242,7 +1286,7 @@ export async function buildWatchToday(
     return {
       message: "Rest day. Recover hard.",
       weekStrip,
-      dayState: noSessionState ?? buildRestDayState(weekStrip, rawWeek),
+      dayState: noSessionState ?? buildRestDayState(weekStrip, rawWeek, today),
     };
   }
 
