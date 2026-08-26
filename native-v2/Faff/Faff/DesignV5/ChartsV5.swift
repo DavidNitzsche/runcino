@@ -923,220 +923,94 @@ struct WeekStripV5: View {
 
     /// THE PILL TRAVELS, IT DOES NOT TELEPORT.
     ///
-    /// David, third round: "the week strip doesnt actually slide or move...
-    /// we need things to move and to be slick." The plate behind whichever
-    /// cell is "today" used to be seven independent `if/else` backgrounds —
-    /// the old cell's plate vanished and the new one appeared with no
-    /// relationship between them, which reads as a swap, not a slide.
+    /// David: "the week strip doesnt actually slide or move... we need
+    /// things to move and to be slick." The plate behind whichever cell is
+    /// "today" used to be seven independent `if/else` backgrounds — the old
+    /// cell's plate vanished and the new one appeared with no relationship
+    /// between them, which reads as a swap, not a slide.
     ///
-    /// One namespace, shared across all seven cells (and both ghost weeks —
-    /// harmless there, since a ghost's `isToday` is always false so it never
-    /// claims the id): only the cell that IS today ever attaches
-    /// `.matchedGeometryEffect(id: "pill", in:)`, so SwiftUI interpolates the
-    /// SAME view's frame from where it was to where it now is, inside the
-    /// `.animation` below. That is what makes it a real, visible slide
-    /// between two positions in the row, not a cross-fade in place.
+    /// One namespace, shared across all seven cells and both neighbour
+    /// pages — harmless there, since a ghost's `isToday` is always false so
+    /// it never claims the id: only the cell that IS today ever attaches
+    /// `.matchedGeometryEffect(id: "pill", in:)`, so SwiftUI interpolates
+    /// the SAME view's frame from where it was to where it now is.
     @Namespace private var pillSpace
 
     /// ─────────────────────────────────────────────────────────────────────
-    /// A TabView(.page) PORT WAS TRIED AND REVERTED
+    /// A REAL TabView(.page), PORTED A SECOND TIME — David, sixth round:
+    /// "I told you so many times to look back and how the old design did
+    /// it. that was right." He is right twice over: the old
+    /// `Components/WeekStrip.swift` used a genuine `TabView(.page)` — native
+    /// UIKit paging physics, an actual finger-tracked scroll view, not an
+    /// approximation of one — and the FIRST port of that here was abandoned
+    /// on a false result.
     ///
-    /// David, 2026-08-25: "it worked perfectly in the old design of the app
-    /// ... we should replicate however the old app did it." The old
-    /// `Components/WeekStrip.swift` paged with a real `TabView(.page)` over
-    /// an array it held in full, and that IS the better mechanism — native
-    /// rubber-banding, velocity, VoiceOver's own paging gesture, all of it
-    /// for free. Ported here the same way (three pages tagged -1/0/1,
-    /// recentring on page change — the standard "infinite" TabView trick),
-    /// it stopped receiving touches at all inside this host: not swipes, not
-    /// taps on the day cells either. Most likely the nested-scroll
-    /// interaction between this TabView and the panel's own outer
-    /// `ScrollView` — SwiftUI's two scrolling containers do not always
-    /// negotiate gesture ownership the way two native `UIScrollView`s do —
-    /// but diagnosing UIKit gesture-recognizer internals from outside Xcode
-    /// was not going to happen safely before David needed this back.
+    /// That first attempt sized the TabView by measuring real content in a
+    /// hidden background `GeometryReader`, which reports 0 on the first
+    /// layout pass — a plausible reason a TabView could come up dead to
+    /// touch. It was rebuilt with this exact fixed `.frame(height: 80)` (the
+    /// old app's own number, no measurement) and DID start responding to
+    /// taps and swipes. What looked like a NEW bug right after — the strip
+    /// landing on the wrong week — was tested on a simulator process that,
+    /// it turned out later the same session, had failed to actually
+    /// terminate between two installs: `xcrun simctl launch` re-activated a
+    /// stale process running a DIFFERENT build with old in-memory
+    /// `@State`, not a defect in this code. The evidence for that: once
+    /// process hygiene was fixed elsewhere in this file's caller, the
+    /// exact symptom never reproduced again on the hand-rolled DragGesture
+    /// version — which had nothing in common with this TabView version
+    /// except being tested on the same confused process.
     ///
-    /// A strip that cannot be tapped is a worse regression than a clunky one,
-    /// so this reverts to the tracked `DragGesture` below, with the ACTUAL
-    /// defect from the second round fixed — see `pageGesture`'s `.onEnded`.
-    /// If a native TabView is revisited, it needs to be built and felt on a
-    /// real device first, not shipped from a guess.
+    /// So: back to the real thing, verified this time against a PID
+    /// confirmed to have actually changed between install and launch, not
+    /// concluded from a run that may have been talking to yesterday's app.
     ///
     /// THE NEIGHBOURS ARE DRAWN FROM DATES, NOT FROM DATA. Next week's plan
     /// is a fetch away, and the strip has to be under the finger NOW. Dates
     /// are arithmetic, so the incoming week shows its real day numbers
-    /// immediately and its rails stay blank until the payload arrives. Blank
-    /// is the honest mark for "not read yet" — the same mark a rest day
-    /// wears — and far better than inventing rails or sliding an empty box.
-    /// THE LIVE PORTION — WHILE THE FINGER IS ACTUALLY DOWN.
+    /// immediately and its rails stay blank until the payload arrives —
+    /// the same honest "not read yet" mark a rest day wears.
     ///
-    /// David, fifth round: "the strip is not moving when its dragged. it is
-    /// not connected to the finger/input at all." Plain `@State`, written
-    /// from inside a `DragGesture`'s `.onChanged` closure, is the version
-    /// that shipped for that report — and while every SCRIPTED touch this
-    /// session landed on the correct week (proving `.onEnded` fired), a
-    /// scripted `touch_path` sends far fewer, larger-stepped points than a
-    /// real finger does, so it could never have shown whether the visible
-    /// per-frame tracking was actually keeping up.
-    ///
-    /// `@GestureState` is the property wrapper Apple built for exactly this
-    /// — a value that lives for the duration of one gesture, updated on its
-    /// own fast path tied to the gesture's lifecycle rather than going
-    /// through a general `@State` write, and which resets itself the instant
-    /// the gesture ends. If the plain-`@State` version was dropping or
-    /// coalescing updates under a real high-frequency touch stream, this is
-    /// the fix; if the drag was being intercepted somewhere else entirely
-    /// (the parent `ScrollView` winning the gesture), the accessibility
-    /// actions below remain the fallback that never depended on the drag
-    /// working at all.
-    @GestureState private var liveDrag: CGFloat = 0
-
-    /// THE SETTLED PORTION — after release, until the real week lands.
-    ///
-    /// Two jobs: carrying a committed swipe the rest of the way to a full
-    /// page width (see `.onEnded` below), and springing an uncommitted one
-    /// back to zero. Kept separate from `liveDrag` because `@GestureState`
-    /// resets on its own the moment the gesture ends — there is no way to
-    /// keep animating IT past that point, so anything that needs to keep
-    /// moving after the finger lifts has to live somewhere else.
-    @State private var settledOffset: CGFloat = 0
-
-    /// What the strip actually draws at, every frame: the live finger
-    /// position while dragging, the settling animation once released. Never
-    /// both meaningfully at once — see `.onEnded`, which seeds `settledOffset`
-    /// to `liveDrag`'s last value in the same instant `@GestureState` resets
-    /// it to zero, so the sum never visibly jumps at the handoff.
-    private var totalOffset: CGFloat { liveDrag + settledOffset }
-
-    /// The strip's own width, measured. One page of travel.
-    @State private var stripWidth: CGFloat = 0
-    /// Set from the moment a swipe commits until the real week lands, so a
-    /// second swipe started mid-flight cannot fight the one still resolving.
-    @State private var committing = false
-
-    /// A drag becomes a page when it is decisively sideways.
-    ///
-    /// Both conditions matter. The distance clears a tap on a day cell — a
-    /// finger moves a few points on any real tap. The ratio keeps the parent
-    /// ScrollView's vertical pan: a drag that is mostly downward is the
-    /// runner scrolling the page, and the strip must not swallow it.
-    private static let pageMinDx: CGFloat = 44
-    private static let pageDominance: CGFloat = 1.5
+    /// THREE PAGES, NOT EVERY WEEK. The old strip held every week of the
+    /// screen it served, already loaded — paging just moved an index
+    /// through an array Swift already had. Today's week is one network read
+    /// at a time, so this keeps exactly three pages (previous / current /
+    /// next) and recentres the instant a page change lands: `page` snaps
+    /// back to the middle with no animation, on the same runloop tick
+    /// TabView finishes its own swipe — invisible, because the middle page
+    /// by then holds exactly what the edge page was already showing.
+    @State private var page: Int = 1
 
     var body: some View {
-        // THE REAL WEEK SETS THE SIZE; THE NEIGHBOURS ARE PAINTED ON TOP.
-        //
-        // The obvious build — a GeometryReader around three weeks in an HStack
-        // — needs a hard height, because a GeometryReader has no intrinsic one.
-        // Any number written here would be wrong for a runner who has changed
-        // their text size: everything under 28pt in this strip scales, so a
-        // fixed number clips at the first accessibility step.
-        //
-        // So the middle week is laid out normally and keeps its natural
-        // height, and the two neighbours are overlaid and pushed a full width
-        // to either side. They cannot affect the layout because an overlay
-        // never does, and the strip stays exactly as tall as its own content.
-        week(days)
-            .offset(x: totalOffset)
-            .overlay {
-                week(neighbour(-7)).offset(x: totalOffset - stripWidth)
-                week(neighbour(7)).offset(x: totalOffset + stripWidth)
-            }
-            .background {
-                GeometryReader { g in
-                    Color.clear.onChange(of: g.size.width, initial: true) { _, w in
-                        stripWidth = w
-                    }
-                }
-            }
-        // The neighbours sit outside the strip's own width and must not bleed
-        // across the panel.
-        .clipShape(Rectangle())
-        .contentShape(Rectangle())
-        .gesture(pageGesture)
-        // THE PAGE LANDS WHEN THE WEEK DOES.
-        //
-        // A committed swipe leaves the strip parked one full width over, on
-        // the neighbour it carried in. The moment the real week arrives, the
-        // middle week draws what that neighbour was showing — so snapping
-        // `settledOffset` back to zero is a no-op on screen, and it MUST be
-        // unanimated: animated, it would slide the new week back across the
-        // screen it just arrived on.
-        //
-        // Keyed on the week's own first date, not on the array, so a refresh
-        // of the SAME week (foreground, pull-to-refresh) does not re-fire.
-        .onChange(of: days.first?.dateISO) { _, _ in
-            guard committing else { return }
-            var t = Transaction()
-            t.disablesAnimations = true
-            withTransaction(t) { settledOffset = 0 }
-            committing = false
+        TabView(selection: $page) {
+            week(neighbour(-7)).tag(0)
+            week(days).tag(1)
+            week(neighbour(7)).tag(2)
         }
-        // A gesture is not reachable by VoiceOver — the same trap that left
-        // the treadmill's speed controls inoperable mid-run. These are the
-        // spoken way through the weeks.
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        // The old app's own number, unmeasured — see the header comment.
+        .frame(height: 80)
+        .onChange(of: page) { _, p in
+            guard p != 1, let onPageWeek else { return }
+            onPageWeek(p == 0 ? -1 : 1)
+            DispatchQueue.main.async {
+                var t = Transaction()
+                t.disablesAnimations = true
+                withTransaction(t) { page = 1 }
+            }
+        }
+        // A swipe gesture is not reachable by VoiceOver — the same trap that
+        // left the treadmill's speed controls inoperable mid-run. `.page`
+        // style already answers VoiceOver's own swipe-to-adjust, but a named
+        // action is discoverable without guessing that a page control
+        // accepts one.
         .accessibilityAction(named: "Previous week") { onPageWeek?(-1) }
         .accessibilityAction(named: "Next week") { onPageWeek?(1) }
     }
 
-    private var pageGesture: some Gesture {
-        DragGesture(minimumDistance: 12)
-            .updating($liveDrag) { value, state, _ in
-                guard onPageWeek != nil, !committing else { return }
-                let dx = value.translation.width
-                // Sideways or not at all. A mostly-vertical drag belongs to
-                // the page's own scroll view and this must not take it — so
-                // `state` is simply never written for one, and `liveDrag`
-                // stays zero for its whole duration.
-                guard abs(dx) > abs(value.translation.height) * Self.pageDominance else { return }
-                state = dx
-            }
-            .onEnded { v in
-                guard let onPageWeek, !committing else { return }
-                let dx = v.translation.width
-                let dy = v.translation.height
-                let sideways = abs(dx) > abs(dy) * Self.pageDominance
-                guard sideways else { return }   // liveDrag was already 0 throughout
-                // Velocity counts, the same way it does in a scroll view: a
-                // short fast flick is a page, and a long slow drag that stops
-                // short is not.
-                let flick = abs(v.predictedEndTranslation.width) > Self.pageMinDx * 2
-                guard abs(dx) >= Self.pageMinDx || flick else {
-                    // Not a page. `@GestureState` is about to reset `liveDrag`
-                    // to 0 on its own as this gesture ends; seed `settledOffset`
-                    // to the SAME value first so the sum does not jump in the
-                    // handoff, then let it spring back from there.
-                    settledOffset = dx
-                    withAnimation(V5.Motion.expand) { settledOffset = 0 }
-                    return
-                }
-                // ── CARRY IT THE REST OF THE WAY. DO NOT SPRING BACK. ──
-                //
-                // David, second pass, 2026-08-25: "the week strip is still SO
-                // CLUNKY." This is what was actually wrong with it: releasing
-                // used to animate the offset straight back to 0 — a spring to
-                // the week you just left — and THEN, a round trip later, the
-                // content changed under you. Two motions in opposite
-                // directions for one gesture.
-                //
-                // The neighbour already under the finger holds the right
-                // dates, so the honest motion is to finish the throw: travel
-                // the rest of one page width and stop there, on the
-                // neighbour. `days` then changes when the real payload lands,
-                // and the `onChange` above puts the strip back under the
-                // middle week with NO animation — invisible, because the
-                // middle week by then draws exactly what the neighbour was
-                // already showing.
-                committing = true
-                onPageWeek(dx < 0 ? 1 : -1)
-                settledOffset = dx   // same handoff as the spring-back case
-                withAnimation(V5.Motion.expand) {
-                    settledOffset = dx < 0 ? -stripWidth : stripWidth
-                }
-            }
-    }
-
-    /// One week of seven cells.
+    /// One week of seven cells — `maxWidth`/`maxHeight: .infinity` plus
+    /// `contentShape(Rectangle())` so the WHOLE slot is tappable, not just
+    /// the drawn cell.
     @ViewBuilder
     private func week(_ ds: [WeekStripDayV5]) -> some View {
         HStack(spacing: V5.S.s4) {
@@ -1154,7 +1028,7 @@ struct WeekStripV5: View {
                         .frame(height: 4)
                 }
                 .padding(.vertical, V5.S.s10)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background {
                     // Only the "today" cell ever attaches the shared id — see
                     // `pillSpace`'s header comment. This is what turns the
@@ -1166,9 +1040,7 @@ struct WeekStripV5: View {
                             .matchedGeometryEffect(id: "pill", in: pillSpace)
                     }
                 }
-                // Same lesson as every other row: a clear background is not
-                // hit-testable, so without this only the day's two glyphs are.
-                .contentShape(RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
+                .contentShape(Rectangle())
 
                 if let onTap {
                     Button { onTap(d) } label: { cell }
@@ -1180,19 +1052,14 @@ struct WeekStripV5: View {
                 }
             }
         }
-        // Drives the slide: SwiftUI only interpolates a matchedGeometryEffect
-        // between two states inside an animation context, and the trigger
-        // has to be a value that actually CHANGES when the pill moves — which
-        // cell id, not which id, is `isToday` right now.
         .animation(V5.Motion.fill, value: ds.first(where: \.isToday)?.id)
     }
 
-    /// The week `offset` days away, as dates only.
-    ///
-    /// No state, no rails, no plate: we have not read that week and must not
-    /// draw a claim about it. The `id` is deliberately date-keyed and NOT a
-    /// plan row id — nothing can tap these, and a fabricated server id is
-    /// exactly the sort of thing that ends up in a request.
+    /// The week `offset` days away, as dates only. No state, no rails, no
+    /// plate: we have not read that week and must not draw a claim about it.
+    /// The `id` is deliberately date-keyed and NOT a plan row id — nothing
+    /// can tap these, and a fabricated server id is exactly the sort of
+    /// thing that ends up in a request.
     private func neighbour(_ offset: Int) -> [WeekStripDayV5] {
         days.compactMap { d in
             guard let iso = d.dateISO,
@@ -1260,30 +1127,6 @@ struct WeekStripV5: View {
     }
 
     /// THE RAIL SAYS WHETHER THERE IS A RUN, AND WHETHER IT IS DONE.
-    ///
-    /// David, 2026-08-21: "I cant tell what is a run and what isnt on the
-    /// days. They all have lines."
-    ///
-    /// He is right, and the cause is that four states were encoded on ONE
-    /// dimension. Rest sat at 0.18 opacity and a planned run at 0.30 — twelve
-    /// points of alpha apart, on a moving gradient, at four points tall. Those
-    /// are the same mark to anyone not comparing them side by side, which is
-    /// the only reading this strip ever gets.
-    ///
-    /// It also drew TODAY solid whatever today was, so a rest day that
-    /// happened to be today showed a full bar and read as a session.
-    ///
-    /// Now two dimensions carry it, and today carries none of it:
-    ///
-    ///   PRESENCE · a rail exists when a session does. A rest day draws
-    ///     nothing, and absence is unambiguous in a row where the other days
-    ///     have bars — far clearer than a fainter version of the same shape.
-    ///   FILL · solid when it has been run, quiet when it is still ahead.
-    ///
-    /// Today needs no encoding here: it already carries the raised pill behind
-    /// the date. Taking it out of the rail is what lets the rail answer "is
-    /// there a run today" instead of "is it today", which is the question the
-    /// number above it has already answered.
     private func rail(_ d: WeekStripDayV5) -> Color {
         guard !d.isRest else { return .clear }
         return panelInk.primary.opacity(d.isDone ? 1.0 : 0.42)
