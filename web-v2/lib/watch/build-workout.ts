@@ -1578,12 +1578,16 @@ export async function buildWatchToday(
   // observation, so there is no adjustment and nothing is recorded: the
   // preview shows the authored band and says nothing about weather. RULE
   // THREE — a refusal is a correct answer.
+  // TURNED OFF · David 2026-08-26, reversing the 2026-08-24 decision above
+  // after running under it: "it changed the paces based on that weather. I
+  // dont want to do that." The band the lobby shows is the authored one,
+  // full stop — no live weather read, no easing, no note. `heat.ts` and
+  // `recordHeatEasing` are left in place rather than deleted; this is the
+  // one call site that turns the mechanism on, and it is now permanently
+  // off. `preHeatSec` and `heat` stay so the totals math three lines below
+  // doesn't need its own special case for a heat-less phase list.
   const preHeatSec = phases.reduce((s, p) => s + p.durationSec, 0);
-  const heat = isActualToday ? await adjustPhasesForHeat(userId, phases, {
-    isRace: wo.type === 'race',
-    intervalStyle: isIntervalWorkout,
-    totalSec: preHeatSec,
-  }).catch(() => null) : null;
+  const heat = null as Awaited<ReturnType<typeof adjustPhasesForHeat>> | null;
   // Remember what we asked for, so the recap does not price the same heat a
   // second time when it grades this run against the band we just eased.
   // Fire-and-forget: see lib/watch/heat.ts.
