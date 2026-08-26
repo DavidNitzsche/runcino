@@ -921,6 +921,23 @@ struct WeekStripV5: View {
     /// environment resolves correctly here.
     @Environment(\.v5PanelInk) private var panelInk
 
+    /// THE PILL TRAVELS, IT DOES NOT TELEPORT.
+    ///
+    /// David, third round: "the week strip doesnt actually slide or move...
+    /// we need things to move and to be slick." The plate behind whichever
+    /// cell is "today" used to be seven independent `if/else` backgrounds —
+    /// the old cell's plate vanished and the new one appeared with no
+    /// relationship between them, which reads as a swap, not a slide.
+    ///
+    /// One namespace, shared across all seven cells (and both ghost weeks —
+    /// harmless there, since a ghost's `isToday` is always false so it never
+    /// claims the id): only the cell that IS today ever attaches
+    /// `.matchedGeometryEffect(id: "pill", in:)`, so SwiftUI interpolates the
+    /// SAME view's frame from where it was to where it now is, inside the
+    /// `.animation` below. That is what makes it a real, visible slide
+    /// between two positions in the row, not a cross-fade in place.
+    @Namespace private var pillSpace
+
     /// ─────────────────────────────────────────────────────────────────────
     /// A TabView(.page) PORT WAS TRIED AND REVERTED
     ///
@@ -951,7 +968,46 @@ struct WeekStripV5: View {
     /// immediately and its rails stay blank until the payload arrives. Blank
     /// is the honest mark for "not read yet" — the same mark a rest day
     /// wears — and far better than inventing rails or sliding an empty box.
-    @State private var drag: CGFloat = 0
+    /// THE LIVE PORTION — WHILE THE FINGER IS ACTUALLY DOWN.
+    ///
+    /// David, fifth round: "the strip is not moving when its dragged. it is
+    /// not connected to the finger/input at all." Plain `@State`, written
+    /// from inside a `DragGesture`'s `.onChanged` closure, is the version
+    /// that shipped for that report — and while every SCRIPTED touch this
+    /// session landed on the correct week (proving `.onEnded` fired), a
+    /// scripted `touch_path` sends far fewer, larger-stepped points than a
+    /// real finger does, so it could never have shown whether the visible
+    /// per-frame tracking was actually keeping up.
+    ///
+    /// `@GestureState` is the property wrapper Apple built for exactly this
+    /// — a value that lives for the duration of one gesture, updated on its
+    /// own fast path tied to the gesture's lifecycle rather than going
+    /// through a general `@State` write, and which resets itself the instant
+    /// the gesture ends. If the plain-`@State` version was dropping or
+    /// coalescing updates under a real high-frequency touch stream, this is
+    /// the fix; if the drag was being intercepted somewhere else entirely
+    /// (the parent `ScrollView` winning the gesture), the accessibility
+    /// actions below remain the fallback that never depended on the drag
+    /// working at all.
+    @GestureState private var liveDrag: CGFloat = 0
+
+    /// THE SETTLED PORTION — after release, until the real week lands.
+    ///
+    /// Two jobs: carrying a committed swipe the rest of the way to a full
+    /// page width (see `.onEnded` below), and springing an uncommitted one
+    /// back to zero. Kept separate from `liveDrag` because `@GestureState`
+    /// resets on its own the moment the gesture ends — there is no way to
+    /// keep animating IT past that point, so anything that needs to keep
+    /// moving after the finger lifts has to live somewhere else.
+    @State private var settledOffset: CGFloat = 0
+
+    /// What the strip actually draws at, every frame: the live finger
+    /// position while dragging, the settling animation once released. Never
+    /// both meaningfully at once — see `.onEnded`, which seeds `settledOffset`
+    /// to `liveDrag`'s last value in the same instant `@GestureState` resets
+    /// it to zero, so the sum never visibly jumps at the handoff.
+    private var totalOffset: CGFloat { liveDrag + settledOffset }
+
     /// The strip's own width, measured. One page of travel.
     @State private var stripWidth: CGFloat = 0
     /// Set from the moment a swipe commits until the real week lands, so a
@@ -981,10 +1037,10 @@ struct WeekStripV5: View {
         // to either side. They cannot affect the layout because an overlay
         // never does, and the strip stays exactly as tall as its own content.
         week(days)
-            .offset(x: drag)
+            .offset(x: totalOffset)
             .overlay {
-                week(neighbour(-7)).offset(x: drag - stripWidth)
-                week(neighbour(7)).offset(x: drag + stripWidth)
+                week(neighbour(-7)).offset(x: totalOffset - stripWidth)
+                week(neighbour(7)).offset(x: totalOffset + stripWidth)
             }
             .background {
                 GeometryReader { g in
@@ -1003,7 +1059,7 @@ struct WeekStripV5: View {
         // A committed swipe leaves the strip parked one full width over, on
         // the neighbour it carried in. The moment the real week arrives, the
         // middle week draws what that neighbour was showing — so snapping
-        // `drag` back to zero is a no-op on screen, and it MUST be
+        // `settledOffset` back to zero is a no-op on screen, and it MUST be
         // unanimated: animated, it would slide the new week back across the
         // screen it just arrived on.
         //
@@ -1013,7 +1069,7 @@ struct WeekStripV5: View {
             guard committing else { return }
             var t = Transaction()
             t.disablesAnimations = true
-            withTransaction(t) { drag = 0 }
+            withTransaction(t) { settledOffset = 0 }
             committing = false
         }
         // A gesture is not reachable by VoiceOver — the same trap that left
@@ -1025,36 +1081,41 @@ struct WeekStripV5: View {
 
     private var pageGesture: some Gesture {
         DragGesture(minimumDistance: 12)
-            .onChanged { v in
+            .updating($liveDrag) { value, state, _ in
                 guard onPageWeek != nil, !committing else { return }
-                let dx = v.translation.width
+                let dx = value.translation.width
                 // Sideways or not at all. A mostly-vertical drag belongs to
-                // the page's own scroll view and this must not take it.
-                guard abs(dx) > abs(v.translation.height) * Self.pageDominance else {
-                    drag = 0
-                    return
-                }
-                drag = dx
+                // the page's own scroll view and this must not take it — so
+                // `state` is simply never written for one, and `liveDrag`
+                // stays zero for its whole duration.
+                guard abs(dx) > abs(value.translation.height) * Self.pageDominance else { return }
+                state = dx
             }
             .onEnded { v in
                 guard let onPageWeek, !committing else { return }
                 let dx = v.translation.width
                 let dy = v.translation.height
                 let sideways = abs(dx) > abs(dy) * Self.pageDominance
+                guard sideways else { return }   // liveDrag was already 0 throughout
                 // Velocity counts, the same way it does in a scroll view: a
                 // short fast flick is a page, and a long slow drag that stops
                 // short is not.
                 let flick = abs(v.predictedEndTranslation.width) > Self.pageMinDx * 2
-                guard sideways, abs(dx) >= Self.pageMinDx || flick else {
-                    withAnimation(V5.Motion.expand) { drag = 0 }
+                guard abs(dx) >= Self.pageMinDx || flick else {
+                    // Not a page. `@GestureState` is about to reset `liveDrag`
+                    // to 0 on its own as this gesture ends; seed `settledOffset`
+                    // to the SAME value first so the sum does not jump in the
+                    // handoff, then let it spring back from there.
+                    settledOffset = dx
+                    withAnimation(V5.Motion.expand) { settledOffset = 0 }
                     return
                 }
                 // ── CARRY IT THE REST OF THE WAY. DO NOT SPRING BACK. ──
                 //
                 // David, second pass, 2026-08-25: "the week strip is still SO
                 // CLUNKY." This is what was actually wrong with it: releasing
-                // used to animate `drag` straight back to 0 — a spring to the
-                // week you just left — and THEN, a round trip later, the
+                // used to animate the offset straight back to 0 — a spring to
+                // the week you just left — and THEN, a round trip later, the
                 // content changed under you. Two motions in opposite
                 // directions for one gesture.
                 //
@@ -1068,7 +1129,10 @@ struct WeekStripV5: View {
                 // already showing.
                 committing = true
                 onPageWeek(dx < 0 ? 1 : -1)
-                withAnimation(V5.Motion.expand) { drag = dx < 0 ? -stripWidth : stripWidth }
+                settledOffset = dx   // same handoff as the spring-back case
+                withAnimation(V5.Motion.expand) {
+                    settledOffset = dx < 0 ? -stripWidth : stripWidth
+                }
             }
     }
 
@@ -1091,8 +1155,17 @@ struct WeekStripV5: View {
                 }
                 .padding(.vertical, V5.S.s10)
                 .frame(maxWidth: .infinity)
-                .background(d.isToday ? panelInk.plate : .clear,
-                            in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
+                .background {
+                    // Only the "today" cell ever attaches the shared id — see
+                    // `pillSpace`'s header comment. This is what turns the
+                    // plate into something that SLIDES between two cells
+                    // instead of vanishing from one and appearing on another.
+                    if d.isToday {
+                        RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous)
+                            .fill(panelInk.plate)
+                            .matchedGeometryEffect(id: "pill", in: pillSpace)
+                    }
+                }
                 // Same lesson as every other row: a clear background is not
                 // hit-testable, so without this only the day's two glyphs are.
                 .contentShape(RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
@@ -1107,6 +1180,11 @@ struct WeekStripV5: View {
                 }
             }
         }
+        // Drives the slide: SwiftUI only interpolates a matchedGeometryEffect
+        // between two states inside an animation context, and the trigger
+        // has to be a value that actually CHANGES when the pill moves — which
+        // cell id, not which id, is `isToday` right now.
+        .animation(V5.Motion.fill, value: ds.first(where: \.isToday)?.id)
     }
 
     /// The week `offset` days away, as dates only.

@@ -86,6 +86,62 @@ final class V5Surface<Model: Decodable>: ObservableObject {
         await load()
     }
 
+    /// Put a payload the caller already holds on screen NOW, then refresh it
+    /// for real behind that.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// DAVID, 2026-08-25, THIRD ROUND: "Click on the days needs to feel like
+    /// it pushes the data change. Not a button, a load, wait, see it."
+    ///
+    /// A day already decoded this session needs no round trip to be shown —
+    /// it is correct, in memory, and stale by at most a few seconds. This
+    /// paints it in the SAME `Task` the caller is already tracking, then
+    /// keeps going to fetch the real thing behind it, so a genuinely stale
+    /// cached day still self-corrects.
+    ///
+    /// AN EARLIER VERSION OF THIS EXISTED AND WAS DELETED. It fired its own
+    /// untracked `Task { await load() }` internally — a second, independent
+    /// unit of concurrency the CALLER could not cancel. Two navigations in a
+    /// row could each spawn one, and whichever finished last won the screen,
+    /// which was the actual cause of a real "position jumps to the wrong
+    /// week" bug, not this technique itself. This version is `async` and
+    /// does none of its own task-spawning: the caller wraps the ENTIRE
+    /// present-then-refresh sequence in ONE `Task` it owns and can cancel,
+    /// exactly like `rebind`. Cancelling that Task here cancels the refresh
+    /// too, the same way it always did for a plain `rebind`.
+    ///
+    /// A HARD CUT, NOT A CROSSFADE. Today keys its content on `dateISO` and
+    /// fades between days, which is right when the new day is arriving off
+    /// the network — the fade covers the gap. It is wrong when the day is
+    /// already in hand: the 200ms would be 200ms of the day the runner just
+    /// left, on a tap that had nothing left to wait for.
+    func present(_ known: Model, refreshWith newFetch: @escaping () async throws -> API.V5Fetch<Model>) async {
+        // NOT A HARD CUT ANY MORE. David, third round: "the motion is there
+        // but then everything just sort of flashes... we need things to move
+        // and to be slick."
+        //
+        // This used to force `disablesAnimations = true` on the assignment
+        // below, reasoning that the screen's own 200ms crossfade
+        // (`.animation(V5.Motion.fill, value: surface.model?.dateISO)` in
+        // `HostsV5`) was "200ms of the day you just left, on a tap that had
+        // nothing left to wait for." That reasoning mistook the fade for a
+        // delay. It is not a delay — it is motion, cheap and instant to
+        // START, and motion is exactly what was missing: the strip's own
+        // drag genuinely slides, and then the panel underneath it snapped
+        // with no transition at all, which reads as a flash sitting in the
+        // middle of a slide.
+        //
+        // Plain assignment, no transaction override, lets the ambient
+        // `.animation(value:)` already on the screen pick it up — the SAME
+        // 200ms fade a network-driven `rebind` was already using, so a
+        // cached day and a freshly fetched one move exactly the same way.
+        model = known
+        stale = false
+        absentReason = nil
+        fetch = newFetch
+        await load()
+    }
+
 
     init(cache: AppCache.Key?, fetch: @escaping () async throws -> API.V5Fetch<Model>) {
         self.cacheKey = cache
