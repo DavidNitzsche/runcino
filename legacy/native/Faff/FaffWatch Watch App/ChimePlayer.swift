@@ -120,7 +120,22 @@ final class ChimePlayer {
     func play() {
         guard isActive, let buffer else { return }
         if !engine.isRunning { try? engine.start() }
-        player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+        player.scheduleBuffer(buffer, at: nil, options: []) { [weak self] in
+            // Stop the moment the bell's own 180ms is over, so the OS sees
+            // the session go idle and lets go of `.duckOthers`. Left
+            // running, the engine keeps rendering (silence, between
+            // chimes) for the rest of the workout, and the system treats
+            // that as audio still active — the runner's music got ducked
+            // once and never came back to full volume for the whole run.
+            // engine.start()/stop() doesn't touch the AVAudioSession (see
+            // activate()'s own note on this), so it's safe mid-workout;
+            // the guard at the top of this function restarts it lazily on
+            // the next chime.
+            DispatchQueue.main.async {
+                self?.player.stop()
+                if self?.engine.isRunning == true { self?.engine.stop() }
+            }
+        }
         if !player.isPlaying { player.play() }
     }
 

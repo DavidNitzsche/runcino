@@ -547,16 +547,19 @@ struct WatchRunSurfaceV5: View {
 
     @ViewBuilder
     private var faceLayer: some View {
-        if tracker.isLuminanceReduced {
-            AlwaysOnFaceV6(
-                pace: livePace.value,
-                paceUnit: livePace.unit,
-                grade: paceGrade.workoutGrade,
-                distance: dist.value,
-                distanceUnit: dist.unit,
-                elapsedMinutes: String(max(0, engine.totalElapsedSec / 60))
-            )
-        } else if let phase = engine.currentPhase, phase.type == .recovery, router.controlsShowing {
+        // No separate Always-On layout — David 2026-08-26: raising the
+        // wrist to the reduced `AlwaysOnFaceV6` (pace/distance/elapsed
+        // only) and then waiting for it to swap to the full face read as
+        // a lag he didn't want. The SAME content now stays on screen
+        // through Always-On; the system dims the physical display on its
+        // own (that's how watchOS AOD works at the hardware level — no
+        // app-side opacity needed on top of it), so this is genuinely the
+        // full board, dimmer, with no swap to wait out. The engine's own
+        // ticker already throttles its publish rate to every 5s while
+        // `tracker.isLuminanceReduced` (see WorkoutEngine's timer comment
+        // "WRIST DOWN COSTS LESS") — that governs update FREQUENCY, not
+        // which view this renders, and needs no change here.
+        if let phase = engine.currentPhase, phase.type == .recovery, router.controlsShowing {
             // RULE 11 · anything the runner can answer is answered where it is
             // asked. Extend recovery lives on the recovery face rather than in
             // controls, because it is only true for ninety seconds — and the
@@ -1627,21 +1630,9 @@ struct WatchFinishSurfaceV5: View {
                 distanceUnit: dist.unit,
                 duration: duration,
                 pace: pace,
-                coachLine: completeLine,
                 onSave: { showingSummary = true }
             )
         }
-    }
-
-    /// One line of judgement on the run. Says what the session was FOR when
-    /// the watch can stand behind it, and says nothing when it cannot —
-    /// silence over an unfalsifiable claim, which on this board means the
-    /// phone's summary gets the last word instead.
-    private var completeLine: String {
-        if engine.workout.phases.contains(where: { $0.type == .work && $0.targetPaceSPerMi != nil }) {
-            return "That is the session. The rest is on the phone."
-        }
-        return "Logged. The rest is on the phone."
     }
 
     /// "Under 3:29:59" / "Over 3:29:59". Under the goal, and nothing else —
@@ -1692,7 +1683,15 @@ struct WatchFinishSurfaceV5: View {
     /// first screenful still ends on a whole row — a sliced row reads as a
     /// bug rather than an invitation to scroll.
     private var totals: [FinishSummaryRow] {
-        guard let climb = WFmt.elevation(tracker.elevGainM, units: units) else { return [] }
+        // Off the CAPTURED completion, not the live tracker. `tracker.end()`
+        // zeroes `elevGainM` as part of its own teardown (see its doc —
+        // "elevation consumed too") before this screen ever renders, since
+        // Summary only shows once the run has already finished. Reading the
+        // live property here read +0 ft on every run regardless of the
+        // actual climb. `engine.completion.elevGainFt` is built from the
+        // SAME accumulator, captured before that teardown runs.
+        let metres = engine.completion?.elevGainFt.map { $0 / 3.28084 } ?? tracker.elevGainM
+        guard let climb = WFmt.elevation(metres, units: units) else { return [] }
         return [FinishSummaryRow("Climb", climb.value + " " + climb.unit)]
     }
 }

@@ -98,8 +98,12 @@ struct FinishCompleteBoard: View {
     var distanceUnit: String = "mi"
     let duration: String            // "48:12"
     let pace: String                // "8:01 /mi"
-    let coachLine: String
-    var saveLabel: String = "Save"
+    /// Absent by default. "That is the session. The rest is on the phone"
+    /// stated the obvious and read as a brush-off on a board whose only
+    /// other content is the runner's own numbers — the figures are the
+    /// board now.
+    var coachLine: String? = nil
+    var saveLabel: String = "Done"
     let onSave: () -> Void
 
     var body: some View {
@@ -130,10 +134,12 @@ struct FinishCompleteBoard: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
 
-                    WCoachLine(text: coachLine,
-                               size: 14,                    // 28px
-                               color: WatchV5.proseOnRamp)
-                        .padding(.top, 3)                   // 6px
+                    if let coachLine {
+                        WCoachLine(text: coachLine,
+                                   size: 14,                // 28px
+                                   color: WatchV5.proseOnRamp)
+                            .padding(.top, 3)               // 6px
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -167,7 +173,7 @@ struct FinishRaceCompleteBoard: View {
     /// Stated against the goal and nothing else. "Under 3:29:59".
     let goalComparison: String
     var provisionalLabel: String = "Provisional"
-    var saveLabel: String = "Save"
+    var saveLabel: String = "Done"
     let onSave: () -> Void
 
     var body: some View {

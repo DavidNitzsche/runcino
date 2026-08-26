@@ -582,8 +582,15 @@ struct WorkoutRootView: View {
                     workout: workout,
                     weekStrip: phone.weekStrip,
                     sessionMoved: phone.sessionMoved,
-                    onStart: { model.start(workout) },
-                    onStartIndoors: { model.start(workout, indoors: true) }
+                    onStart: { model.start(workout) }
+                    // No onStartIndoors — David 2026-08-26: "I dont think we
+                    // need a treadmill/indoors run from the watch. Those
+                    // will always be started from the phone." The pill was
+                    // reading as a status label ("you are indoors") rather
+                    // than the alternate-start button it actually is, on
+                    // top of not being wanted at all. `onStartIndoors`
+                    // defaults to nil, which is what suppresses the pill —
+                    // see V5LobbyPoster's own doc on that parameter.
                 )
             }
         } else if phone.noWorkoutMessage != nil {
