@@ -1,20 +1,21 @@
 /**
- * lib/training/_race_card.test.ts · the Races decision card, both axes.
+ * lib/training/_race_card.test.ts · the Races card.
  *
- * Walks all eight design-doc trigger values and asserts:
- *   1. The card shape matches the design contract's table exactly.
- *   2. No `fact` or `choice` card EVER emits a `safeTarget`/`stretchTarget`
- *      pair or an answer whose `action` is `take` (a target-naming answer).
- *   3. A `decision` card's safe/stretch targets, when present, always carry
- *      `modelled: true` — rule one, structurally, not by convention.
- *
- * That is the whole point of the trigger/verdict split
- * (`docs/faff-iphone-design-contract.md` §2): "A 'Take 3:16:45' button under
- * 'is it hot on race morning' answers a question nobody asked."
+ * 2026-08-26 · a pure `assessGoal()` verdict (no discrete trigger) no longer
+ * produces a card at all — `composeRaceCard` returns `null` unless one of
+ * the four real fact/choice triggers fired. See `race-card.ts`'s own header
+ * for the full "we don't need ANY of this" removal. What remains to test:
+ *   1. The four fact/choice triggers still compose to the right shape.
+ *   2. None of them EVER emits a `safeTarget`/`stretchTarget` pair or a
+ *      target-naming answer (the split `docs/faff-iphone-design-contract.md`
+ *      §2 exists for: "A 'Take 3:16:45' button under 'is it hot on race
+ *      morning' answers a question nobody asked").
+ *   3. Absent a fact/choice, `composeRaceCard` returns `null` — no verdict
+ *      ever synthesises a card of its own.
  */
 import { describe, it, expect } from 'vitest';
 import {
-  composeRaceCard, buildDecisionCard, decisionTriggerForVerdict,
+  composeRaceCard,
   heatFactCard, courseChangedFactCard, chipLockFactCard, twoARacesChoiceCard,
   collidingARacePair, A_RACE_COLLISION_DAYS,
   type V5DecisionCardOut,
@@ -55,12 +56,12 @@ function assertNoSafeStretchOrTake(card: V5DecisionCardOut) {
   }
 }
 
-describe('race-card · the eight design triggers', () => {
-  // ── the four FACT/CHOICE triggers — never a decision shape, never a
-  //    safe/stretch pair, never a target-naming answer ──────────────────
+describe('race-card', () => {
+  // ── the four FACT/CHOICE triggers — never a safe/stretch pair, never a
+  //    target-naming answer ──────────────────────────────────────────────
   it('race-morning heat → fact, no safe/stretch, no take', () => {
     const spec = heatFactCard('CIM', 78);
-    const card = composeRaceCard({ assessment: assessment({}), factOrChoice: spec });
+    const card = composeRaceCard({ assessment: assessment({}), factOrChoice: spec })!;
     expect(card.shape).toBe('fact');
     expect(card.trigger).toBe('heat');
     assertNoSafeStretchOrTake(card);
@@ -69,7 +70,7 @@ describe('race-card · the eight design triggers', () => {
 
   it('course changed → fact, no safe/stretch, no take', () => {
     const spec = courseChangedFactCard('CIM');
-    const card = composeRaceCard({ assessment: assessment({}), factOrChoice: spec });
+    const card = composeRaceCard({ assessment: assessment({}), factOrChoice: spec })!;
     expect(card.shape).toBe('fact');
     expect(card.trigger).toBe('course_changed');
     assertNoSafeStretchOrTake(card);
@@ -77,7 +78,7 @@ describe('race-card · the eight design triggers', () => {
 
   it('chip-time lock approaching → fact, no safe/stretch, no take', () => {
     const spec = chipLockFactCard('QA Tune-up 10K');
-    const card = composeRaceCard({ assessment: assessment({}), factOrChoice: spec });
+    const card = composeRaceCard({ assessment: assessment({}), factOrChoice: spec })!;
     expect(card.shape).toBe('fact');
     expect(card.trigger).toBe('chip_lock');
     assertNoSafeStretchOrTake(card);
@@ -86,7 +87,7 @@ describe('race-card · the eight design triggers', () => {
 
   it('two A races conflicting → choice, no safe/stretch, no take', () => {
     const spec = twoARacesChoiceCard({ slug: 'cim', name: 'CIM' }, { slug: 'nyc', name: 'NYC Marathon' });
-    const card = composeRaceCard({ assessment: assessment({}), factOrChoice: spec });
+    const card = composeRaceCard({ assessment: assessment({}), factOrChoice: spec })!;
     expect(card.shape).toBe('choice');
     expect(card.trigger).toBe('two_a_races');
     assertNoSafeStretchOrTake(card);
@@ -136,63 +137,41 @@ describe('race-card · the eight design triggers', () => {
     });
   });
 
-  // ── the four DECISION triggers — verdict-driven, decision shape, and
-  //    every safe/stretch value present carries modelled:true ────────────
-  const decisionCases: Array<{ feasibility: GoalFeasibility; trigger: string | null; injury?: boolean }> = [
-    { feasibility: 'comfortable', trigger: 'fitness_ahead' },
-    { feasibility: 'realistic', trigger: 'fitness_ahead' },
-    { feasibility: 'ambitious', trigger: 'fitness_behind' },
-    { feasibility: 'aggressive', trigger: 'fitness_behind' },
-    { feasibility: 'out-of-reach', trigger: 'fitness_behind' },
-    { feasibility: 'unreadable', trigger: 'evidence_stale' },
-    { feasibility: 'out-of-reach', trigger: 'returning_injury', injury: true },
-    { feasibility: 'date-passed', trigger: 'returning_injury', injury: true },
+  // ── NO card without a real trigger ─────────────────────────────────────
+  //
+  // 2026-08-26 · David, mid-session, escalating past each smaller fix in
+  // turn: "there is no reason that in Aug I have to accept defeat on a race
+  // in December" → "if we fix this right then this decision card shouldnt
+  // even come up... there is no decision" → "my point is that we dont even
+  // need ANY of this." A pure verdict (no discrete event behind it) used to
+  // synthesise a "NEEDS A DECISION" card of its own, for every feasibility
+  // value, on every load. It no longer does, for any of them — a verdict is
+  // not a trigger, and `Goal`/`Projected`/`Gap` on the panel already carry
+  // the honest read.
+  const everyFeasibility: GoalFeasibility[] = [
+    'comfortable', 'realistic', 'ambitious', 'aggressive', 'out-of-reach',
+    'open-ended', 'date-passed', 'unreadable',
   ];
 
-  for (const c of decisionCases) {
-    it(`${c.feasibility}${c.injury ? ' + returning from injury' : ''} → decision, trigger ${c.trigger}`, () => {
-      const a = assessment({
-        feasibility: c.feasibility,
-        safeTargetSec: c.feasibility === 'unreadable' || c.feasibility === 'date-passed' ? null : 3 * 3600 + 18 * 60,
-        stretchTargetSec: c.feasibility === 'unreadable' || c.feasibility === 'date-passed' ? null : 3 * 3600 + 10 * 60,
-      });
-      const card = composeRaceCard({ assessment: a, factOrChoice: null, returningFromInjury: !!c.injury });
-      expect(card.shape).toBe('decision');
-      expect(card.verdict).toBe(c.feasibility);
-      expect(card.trigger).toBe(c.trigger);
-      // safe/stretch, when present, are ALWAYS modelled — rule one.
-      if (card.safeTarget) expect(card.safeTarget.modelled).toBe(true);
-      if (card.stretchTarget) expect(card.stretchTarget.modelled).toBe(true);
+  for (const feasibility of everyFeasibility) {
+    it(`${feasibility} verdict with no fact/choice trigger → no card at all`, () => {
+      const card = composeRaceCard({ assessment: assessment({ feasibility }), factOrChoice: null });
+      expect(card).toBeNull();
     });
   }
 
-  it('decisionTriggerForVerdict: out-of-reach WITHOUT an injury reads fitness_behind, not returning_injury', () => {
-    expect(decisionTriggerForVerdict('out-of-reach', false)).toBe('fitness_behind');
-    expect(decisionTriggerForVerdict('out-of-reach', true)).toBe('returning_injury');
+  it('still no card even for a runner returning from injury — that is not a discrete trigger either', () => {
+    const card = composeRaceCard({
+      assessment: assessment({ feasibility: 'out-of-reach' }),
+      factOrChoice: null,
+      returningFromInjury: true,
+    });
+    expect(card).toBeNull();
   });
 
-  it('unreadable and date-passed decision cards never fabricate a "Take X" answer', () => {
-    for (const feasibility of ['unreadable', 'date-passed'] as GoalFeasibility[]) {
-      const card = buildDecisionCard(assessment({ feasibility, safeTargetSec: null, stretchTargetSec: null }));
-      expect(card.answers.some(a => a.action === 'take')).toBe(false);
-      expect(card.safeTarget).toBeNull();
-      expect(card.stretchTarget).toBeNull();
-    }
-  });
-
-  it('comfortable/realistic offer the STRETCH number under "take"; behind-goal verdicts offer SAFE', () => {
-    const ahead = buildDecisionCard(assessment({ feasibility: 'realistic' }));
-    const takeAhead = ahead.answers.find(a => a.action === 'take')!;
-    expect(takeAhead.targetSec).toBe(3 * 3600 + 10 * 60); // stretch
-
-    const behind = buildDecisionCard(assessment({ feasibility: 'aggressive' }));
-    const takeBehind = behind.answers.find(a => a.action === 'take')!;
-    expect(takeBehind.targetSec).toBe(3 * 3600 + 18 * 60); // safe
-  });
-
-  it('a fact/choice trigger always wins the shape over the verdict, even an "ahead" verdict', () => {
+  it('a fact/choice trigger always wins over an absent one, even an "ahead" verdict', () => {
     const spec = heatFactCard('CIM', 90);
-    const card = composeRaceCard({ assessment: assessment({ feasibility: 'comfortable' }), factOrChoice: spec });
+    const card = composeRaceCard({ assessment: assessment({ feasibility: 'comfortable' }), factOrChoice: spec })!;
     expect(card.shape).toBe('fact');
     expect(card.verdict).toBe('comfortable'); // verdict still travels, unlike the shape
   });

@@ -40,6 +40,7 @@ import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/p
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { parseRaceTime, formatRaceTime, predictRaceTime } from '@/lib/training/vdot';
 import { assessGoal } from '@/lib/training/goal-assessment';
+import { computeGoalProjection } from '@/lib/training/goal-projection';
 import { taperWeeksForDistance } from '@/lib/training/fitness-trajectory';
 import { recentWeeklyMileageMi } from '@/lib/runs/volume';
 import { selectionAuthority, authorityTier, type AuthorityTier } from '@/lib/race/effort-authority';
@@ -356,7 +357,32 @@ async function handleGET(req: NextRequest) {
         });
       }
 
-      const projectedSec = assessment?.currentEquivalentSec ?? (vdot != null && distanceMi ? predictRaceTime(vdot, distanceMi) : null);
+      // "Projected" has to answer "where does this build land me on race day",
+      // not "what could I run today" — a frozen current-VDOT lookup is why the
+      // number sat still for months waiting on a race while the runner trained
+      // (David, 2026-08-26: [[feedback_progress_is_the_guiding_light]],
+      // [[feedback_execution_is_the_lever]]). computeGoalProjection's
+      // trajectory is the SAME execution-scaled, doctrine-cited model already
+      // live on Targets (goal-projection.ts) — current VDOT plus the planned
+      // build, scaled by how the runner is actually executing it, projected to
+      // race day. Reused, not reimplemented, so the two surfaces can't drift.
+      // Falls back to the static equivalence at cold start or on failure.
+      const goalProjection = (distanceMi != null && distanceMi > 0 && goalSec != null && goalDateISO)
+        ? await computeGoalProjection({
+            userUuid: userId,
+            goalSec,
+            raceDistanceMi: distanceMi,
+            vdot,
+            daysToRace: nextA.days,
+            vdotAnchorDateISO: anchorDateISO,
+            vdotAnchorDistanceMi: anchorDistanceMi,
+          }).catch(() => null)
+        : null;
+
+      const projectedSec = goalProjection?.trajectory?.projectedSec
+        ?? goalProjection?.vdotProjectionSec
+        ?? assessment?.currentEquivalentSec
+        ?? (vdot != null && distanceMi ? predictRaceTime(vdot, distanceMi) : null);
       const gapSec = (projectedSec != null && goalSec != null) ? projectedSec - goalSec : null;
 
       const stats: V5StatOut[] = [

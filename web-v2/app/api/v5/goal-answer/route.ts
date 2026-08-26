@@ -5,14 +5,6 @@
  * posts `{ action, targetSec?, raceSlug? }` where `action` is one of the
  * card's own answer actions. What each one means:
  *
- *   hold          · keep the stated goal. Logged (shows up in the coach
- *                   log); the verdict simply re-reads fresh next time —
- *                   nothing to suppress, since the verdict is always
- *                   present and not a discrete trigger.
- *   take          · re-state the goal to `targetSec` — through the SAME
- *                   write `PATCH /api/race/[slug]` uses (races.plan.goal +
- *                   meta.goalDisplay, audited, auto-rebuild fired), never a
- *                   direct write. Requires `targetSec`.
  *   not_now       · dismiss. Suppresses whichever fact/choice trigger was
  *                   showing, for `TRIGGER_SUPPRESS_DAYS`. No plan change.
  *   acknowledge   · same as `not_now`, for the heat/course-changed facts.
@@ -36,11 +28,20 @@
  *                   kind `a_race_removed`). Requires `raceSlug` — the race
  *                   that stays the goal.
  *
- * Every goal change (`take`, `choose_race`) goes through the plan's
- * existing race/goal write paths, never a bare UPDATE — CLAUDE.md's
- * multi-writer jsonb rule (Rule 6) is why `PATCH /api/race` already merges
- * rather than replaces, and this route reuses that code path rather than a
- * second writer to the same column.
+ * `take` (re-state the goal to a server-computed number on one tap) and
+ * `hold` (keep the goal — only meaningful as the answer to a `take` it could
+ * have refused) are both gone, removed 2026-08-26 per David's ruling (see
+ * `lib/training/race-card.ts`'s `buildDecisionCard` doc): the coach
+ * projects, it does not renegotiate the goal for the runner, and a pure
+ * verdict read is not a decision needing a yes/no. A runner who wants to
+ * change their own goal number still can, explicitly, through `PATCH
+ * /api/race/[slug]` (the race-edit screen) — a decision the runner makes,
+ * never one this card makes for them.
+ *
+ * `choose_race` goes through the plan's existing race/goal write paths,
+ * never a bare UPDATE — CLAUDE.md's multi-writer jsonb rule (Rule 6) is why
+ * `PATCH /api/race` already merges rather than replaces, and this route
+ * reuses that code path rather than a second writer to the same column.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
@@ -55,7 +56,7 @@ import { outage } from '@/lib/route/failure';
 
 export const dynamic = 'force-dynamic';
 
-const ACTIONS = ['hold', 'take', 'not_now', 'acknowledge', 'repace', 'confirm', 'leave', 'choose_race'] as const;
+const ACTIONS = ['not_now', 'acknowledge', 'repace', 'confirm', 'leave', 'choose_race'] as const;
 type Action = (typeof ACTIONS)[number];
 
 async function writeIntent(userId: string, reason: string, field: string | null, value: Record<string, unknown>): Promise<void> {
@@ -92,11 +93,6 @@ export async function POST(req: NextRequest) {
     const nextA = upcomingAs[0] ?? racesState.aRace ?? null;
 
     switch (action) {
-      case 'hold': {
-        await writeIntent(userId, 'coach_log_goal_answer', nextA?.slug ?? null, { action, race: nextA?.slug ?? null });
-        return NextResponse.json({ ok: true, action });
-      }
-
       case 'not_now': {
         // Best-effort: suppress every fact/choice trigger that could be
         // showing right now (route can't know which one the client saw),
@@ -123,52 +119,6 @@ export async function POST(req: NextRequest) {
         await suppressTrigger(userId, 'chip_lock');
         await writeIntent(userId, 'coach_log_goal_answer', raceSlug ?? nextA?.slug ?? null, { action, left_provisional: true });
         return NextResponse.json({ ok: true, action });
-      }
-
-      case 'take': {
-        if (targetSec == null || targetSec < 600 || targetSec > 21600) {
-          return NextResponse.json({ ok: false, error: 'bad_target', reason: 'That target is outside anything we would build a plan toward.' }, { status: 400 });
-        }
-        if (!nextA) {
-          return NextResponse.json({ ok: false, error: 'no_goal_race', reason: 'No goal race is set to re-state a target against.' }, { status: 404 });
-        }
-        // The SAME write PATCH /api/race/[slug] performs — merged into
-        // meta/plan, never a full-replace (CLAUDE.md Rule 6).
-        const h = Math.floor(targetSec / 3600);
-        const m = Math.floor((targetSec % 3600) / 60);
-        const s = Math.round(targetSec % 60);
-        const goalDisplay = h > 0
-          ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-          : `${m}:${String(s).padStart(2, '0')}`;
-        const current = await pool.query<{ meta: any; plan: any }>(
-          `SELECT meta, plan FROM races WHERE user_uuid = $1::uuid AND slug = $2 LIMIT 1`,
-          [userId, nextA.slug],
-        // RULE THREE. No `.catch` — null here answers "that race is gone",
-        // and a failed read must not be able to say that.
-        ).then(r => r.rows[0]);
-        if (!current) return NextResponse.json({ ok: false, error: 'race_not_found', reason: 'That race is not on your schedule any more.' }, { status: 404 });
-        const oldGoalSec = Number(current.plan?.goal?.finish_time_s ?? 0);
-        const newMeta = { ...current.meta, goalDisplay };
-        const newPlan = { ...current.plan, goal: { ...current.plan?.goal, finish_time_s: targetSec, finish_time_display: goalDisplay } };
-        await pool.query(
-          `UPDATE races SET meta = $1::jsonb, plan = $2::jsonb WHERE user_uuid = $3::uuid AND slug = $4`,
-          [JSON.stringify(newMeta), JSON.stringify(newPlan), userId, nextA.slug],
-        );
-        await writeIntent(userId, 'goal_renegotiated', nextA.slug, {
-          old_goal_sec: oldGoalSec, new_goal_sec: targetSec,
-          old_display: current.meta?.goalDisplay ?? null, new_display: goalDisplay,
-          source: 'v5_goal_card', citation: 'app/api/v5/goal-answer',
-        });
-        try {
-          const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
-          await fireAutoRebuild({
-            userUuid: userId, raceSlug: nextA.slug, kind: 'goal_time_changed',
-            reasons: { drift_kind: 'goal_renegotiated', old_goal_sec: oldGoalSec, new_goal_sec: targetSec, source: 'v5_goal_card' },
-            source: 'v5_goal_answer',
-          });
-        } catch (e) { console.error('[v5/goal-answer take] auto-rebuild warn:', e); }
-        await bustBriefingCacheForEvent(userId, 'plan_swap').catch(() => {});
-        return NextResponse.json({ ok: true, action, goalSec: targetSec, goalDisplay, oldGoalSec });
       }
 
       case 'confirm': {

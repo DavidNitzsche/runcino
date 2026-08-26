@@ -1,5 +1,5 @@
 /**
- * lib/training/race-card.ts · the Races decision card, both axes.
+ * lib/training/race-card.ts · the Races projection card, both axes.
  *
  * `docs/faff-iphone-design-contract.md` §2 and `native-v2/…/APIV5.swift`
  * (`V5DecisionCard`) name TWO axes that both drive the card and neither one
@@ -8,15 +8,18 @@
  *   VERDICT · `assessGoal()`'s `GoalFeasibility` (lib/training/goal-
  *             assessment.ts). Always present — recomputed on every read
  *             whether or not anything happened.
- *   TRIGGER · why we are asking NOW, a discrete event. May be absent (the
- *             goal simply drifted).
+ *   TRIGGER · why we are surfacing THIS shape now, a discrete event. May be
+ *             absent (the goal simply drifted, which is not an event).
  *
  * The trigger decides the card's SHAPE, not just its copy. Four triggers are
- * a decision about the goal (shape `decision`, driven by the verdict) — the
- * other four are a fact the runner needs or a choice only the runner can
- * make (shape `fact` / `choice`), and those get NO safe/stretch pair and NO
- * target-naming buttons. "Take 3:16:45" under a heat question answers
- * something nobody asked; that is the mistake this split exists to prevent.
+ * a pure VERDICT read (shape `decision` — the name is legacy wire vocabulary,
+ * not a claim that anything is being decided: see `buildDecisionCard`'s own
+ * header, `answers` is always empty) — the other four are a fact the runner
+ * needs or a choice only the runner can make (shape `fact` / `choice`), and
+ * those get NO safe/stretch pair. "Take 3:16:45" under a heat question
+ * answered something nobody asked; that split still stands even though
+ * `decision` no longer offers a "Take" of its own (removed 2026-08-26 — see
+ * `buildDecisionCard`).
  *
  * This file is the PURE half: given an already-computed `GoalAssessment`
  * (from `assessGoal`) and, when one was detected, a `FactChoiceSpec`, it
@@ -35,7 +38,7 @@ import { formatRaceTime } from './vdot';
 export type V5CardShape = 'decision' | 'fact' | 'choice';
 
 export type V5CardAnswerAction =
-  | 'hold' | 'take' | 'not_now' | 'acknowledge' | 'repace'
+  | 'not_now' | 'acknowledge' | 'repace'
   | 'confirm' | 'leave' | 'choose_race';
 
 export interface V5CardAnswerOut {
@@ -74,16 +77,6 @@ export interface FactChoiceSpec {
   question: string;
   answers: V5CardAnswerOut[];
 }
-
-/**
- * The four triggers that ARE a decision about the goal, per the design
- * contract's table. `null` covers a verdict the table doesn't name a trigger
- * for (`open-ended` — the design's own "loose end": a no-date goal never
- * reaches the Races screen, which is always anchored to a dated A race).
- */
-export type DecisionTriggerId =
-  | 'fitness_ahead' | 'fitness_behind' | 'evidence_stale' | 'returning_injury'
-  | 'date_passed' | null;
 
 // ─── the four FACT / CHOICE cards ───────────────────────────────────────────
 // Coach voice: short, direct, no hype, no exclamation marks, no emoji, no em
@@ -224,129 +217,61 @@ export function twoARacesChoiceCard(
   };
 }
 
-// ─── the DECISION card, driven by the verdict alone ─────────────────────────
+// ─── THE composer ────────────────────────────────────────────────────────
 
 function fmt(sec: number | null): string | null {
   return sec == null ? null : formatRaceTime(sec) ?? null;
 }
 
 /**
- * Which of the four "this IS a decision" triggers names why we're asking,
- * given the verdict `assessGoal` already computed and whether the runner is
- * currently on (or just off) the return-to-run ladder. Exported for the
- * route, which resolves `returningFromInjury` from the `runner_injuries` table —
- * this function stays pure and takes the answer as a bool. (The route said
- * `injuries` until 2026-08-24; no such table exists, so the answer was always
- * false. See `detectReturningFromInjury`.)
- */
-export function decisionTriggerForVerdict(
-  feasibility: GoalFeasibility,
-  returningFromInjury: boolean,
-): DecisionTriggerId {
-  if (feasibility === 'unreadable') return 'evidence_stale';
-  if (returningFromInjury && (feasibility === 'out-of-reach' || feasibility === 'date-passed')) {
-    return 'returning_injury';
-  }
-  if (feasibility === 'date-passed') return 'date_passed';
-  if (feasibility === 'comfortable' || feasibility === 'realistic') return 'fitness_ahead';
-  if (feasibility === 'ambitious' || feasibility === 'aggressive' || feasibility === 'out-of-reach') {
-    return 'fitness_behind';
-  }
-  return null; // open-ended — not reachable from the Races screen (always dated)
-}
-
-/**
- * The decision-shape card. Safe/stretch always carry `modelled: true` — both
- * are PROJECTED, never a measured result (rule one).
+ * NO CARD AT ALL UNLESS SOMETHING REAL NEEDS THE RUNNER. There used to be a
+ * card built off `assessGoal()`'s verdict ALONE — no discrete trigger, just
+ * "the goal is out of reach" or "the goal is comfortable" surfaced as a
+ * "NEEDS A DECISION" banner with a statement, safe/stretch tiles and
+ * cautions, every single time the Races screen loaded. Removed 2026-08-26,
+ * three steps in one session as David kept pushing past each smaller fix:
+ * first "there is no reason that in Aug I have to accept defeat on a race
+ * in December" (killed the "Take X" button that rewrote the stored goal);
+ * then "if we fix this right then this decision card shouldnt even come up
+ * — there is no decision, its just as I get closer to the race the
+ * prediction becomes accurate and a bit more baked" (killed "Hold"/"Not
+ * now" too, since nothing was left to hold against); then, looking at the
+ * card still standing with its statement and safe/stretch tiles and no
+ * buttons: "my point is that we dont even need ANY of this."
  *
- * The "Take X" button offers whichever number matches the direction of the
- * verdict: ahead of goal offers the STRETCH target (upgrade, since fitness
- * covers more than the stated goal asks); behind goal offers the SAFE
- * target (the honest number `assessGoal` says to report against once the
- * goal itself is aggressive/out-of-reach). Neither number is fabricated: a
- * verdict with no safe/stretch (unreadable, date-passed) gets no "Take"
- * button at all rather than a number invented to fill one.
- */
-export function buildDecisionCard(
-  assessment: GoalAssessment,
-  returningFromInjury = false,
-): V5DecisionCardOut {
-  const trigger = decisionTriggerForVerdict(assessment.feasibility, returningFromInjury);
-  const safeTarget: V5NumberOut | null =
-    assessment.safeTargetSec != null ? { text: fmt(assessment.safeTargetSec), modelled: true } : null;
-  const stretchTarget: V5NumberOut | null =
-    assessment.stretchTargetSec != null ? { text: fmt(assessment.stretchTargetSec), modelled: true } : null;
-  const cautions = assessment.cautions.slice(0, 3);
-
-  const hold: V5CardAnswerOut = { id: 'hold', label: 'Hold the goal', action: 'hold', targetSec: null };
-  const notNow: V5CardAnswerOut = { id: 'not_now', label: 'Not now', action: 'not_now', targetSec: null };
-  const answers: V5CardAnswerOut[] = [];
-
-  if (assessment.feasibility === 'comfortable' || assessment.feasibility === 'realistic') {
-    answers.push(hold);
-    if (assessment.stretchTargetSec != null) {
-      answers.push({
-        id: 'take', label: `Take ${fmt(assessment.stretchTargetSec)}`,
-        action: 'take', targetSec: assessment.stretchTargetSec,
-      });
-    }
-    answers.push(notNow);
-  } else if (
-    assessment.feasibility === 'ambitious' ||
-    assessment.feasibility === 'aggressive' ||
-    assessment.feasibility === 'out-of-reach'
-  ) {
-    answers.push(hold);
-    if (assessment.safeTargetSec != null) {
-      answers.push({
-        id: 'take', label: `Take ${fmt(assessment.safeTargetSec)}`,
-        action: 'take', targetSec: assessment.safeTargetSec,
-      });
-    }
-    answers.push(notNow);
-  } else {
-    // unreadable / date-passed — no honest number exists to offer.
-    answers.push(hold, notNow);
-  }
-
-  return {
-    shape: 'decision',
-    verdict: assessment.feasibility,
-    trigger,
-    question: assessment.statement,
-    safeTarget,
-    stretchTarget,
-    cautions,
-    answers,
-  };
-}
-
-/**
- * THE composer. A pre-detected fact/choice always wins the shape — that is
- * the whole point of the split (four of the eight triggers are not a
- * decision about the goal, and the three-button decision set does not fit
- * them). Absent one, the card falls back to the decision shape driven by
- * the verdict alone.
+ * A verdict is not an event. `Goal` / `Projected` / `Gap` on the panel
+ * already carry the honest read — `Projected` now comes from
+ * `computeGoalProjection`'s execution-scaled trajectory (see
+ * `app/api/v5/races/route.ts`), so it moves on its own as training happens,
+ * sharpening toward race day exactly the way David described, with nothing
+ * ever demanding the runner act on it. There is nothing left for a second,
+ * separate "goal feasibility" card to say that isn't either already on the
+ * panel or a coach opinion nobody asked to render as a decision.
+ *
+ * What's left is the actual four triggers that ARE something happening —
+ * heat forecast, a course-elevation conflict, a race waiting on its chip
+ * time, two A races colliding — each a real, discrete fact or a choice only
+ * the runner can make, never a verdict about how the goal is trending.
+ * Those still return a card. Everything else returns `null`, and the phone
+ * already renders nothing when `model.card` is nil (`RacesV5.swift`).
  */
 export function composeRaceCard(args: {
   assessment: GoalAssessment;
   factOrChoice: FactChoiceSpec | null;
   returningFromInjury?: boolean;
-}): V5DecisionCardOut {
-  const { assessment, factOrChoice, returningFromInjury = false } = args;
-  if (factOrChoice) {
-    return {
-      shape: factOrChoice.kind,
-      verdict: assessment.feasibility,
-      trigger: factOrChoice.trigger,
-      question: factOrChoice.question,
-      safeTarget: null,
-      stretchTarget: null,
-      cautions: [],
-      answers: factOrChoice.answers,
-    };
-  }
-  return buildDecisionCard(assessment, returningFromInjury);
+}): V5DecisionCardOut | null {
+  const { assessment, factOrChoice } = args;
+  if (!factOrChoice) return null;
+  return {
+    shape: factOrChoice.kind,
+    verdict: assessment.feasibility,
+    trigger: factOrChoice.trigger,
+    question: factOrChoice.question,
+    safeTarget: null,
+    stretchTarget: null,
+    cautions: [],
+    answers: factOrChoice.answers,
+  };
 }
 
 /**
