@@ -13923,6 +13923,10 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           `A_RACE_COLLISION_DAYS is ${A_RACE_COLLISION_DAYS} days · too short to catch two A ` +
             'races stacked inside a single build, which is the collision the card exists for.',
+        );
+      }
+    },
+  },
 
   /**
    * MPLABEL-1 / RACEPACE-1 (2026-08-25) · the three claims that hold the
