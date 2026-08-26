@@ -122,11 +122,7 @@ struct TodayHostV5: View {
                             ListRow(label: row.label, sub: row.sub, onTap: {
                                 withAnimation(V5.Motion.sheet) { accountOpen = false }
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                    switch row.action {
-                                    case "settings": path.append(.settings)
-                                    case "shoes":    path.append(.shoes)
-                                    default: break
-                                    }
+                                    handleAccountRowTap(row.action)
                                 }
                             })
                         }
@@ -260,13 +256,7 @@ struct TodayHostV5: View {
                           accountWeekLine: model.panel.weekLine ?? "",
                           accountRows: accountRows,
                           fallbackCalendarWeeks: calendarWeeks(model),
-                          onAccountRowTap: { row in
-                              switch row.action {
-                              case "settings": path.append(.settings)
-                              case "shoes":    path.append(.shoes)
-                              default: break
-                              }
-                          },
+                          onAccountRowTap: { row in handleAccountRowTap(row.action) },
                           onPickDay: { id in pickDay(id, in: model) },
                           viewingDayLabel: viewingDayLabel,
                           selectedDateISO: viewingDate,
@@ -556,11 +546,33 @@ struct TodayHostV5: View {
 
     /// The account sheet's rows. Not on `V5Today`'s contract — it is a shell
     /// concern, so the shell supplies it.
+    ///
+    /// "Sign out" lives here, one tap from the account button, not nested a
+    /// screen deeper inside Settings. This sheet is the runner's ONLY route
+    /// to Settings (see `wayOutHeader`'s doc comment) — it is also the only
+    /// route out of a stuck session, and a runner stuck on an outage screen
+    /// with a dead token has no reason to expect "sign out" lives inside a
+    /// preferences page rather than in the menu the account button itself
+    /// opens. A Lilley in this exact state tapped the account button, saw
+    /// only Settings and Shoes, and never found sign out at all.
     private var accountRows: [V5Row] {
         [
             V5Row(id: "settings", label: "Settings", sub: "Training, notifications, units", action: "settings"),
             V5Row(id: "shoes", label: "Shoes", sub: "Rotation and retirement", action: "shoes"),
+            V5Row(id: "signOut", label: "Sign out", sub: "End this session on this device", action: "signOut"),
         ]
+    }
+
+    /// Shared by both places this sheet's rows get tapped from (the outage/
+    /// refusal overlay above, and `TodayBeforeLiveV5`'s account sheet) so the
+    /// action vocabulary is defined once.
+    private func handleAccountRowTap(_ action: String?) {
+        switch action {
+        case "settings": path.append(.settings)
+        case "shoes":    path.append(.shoes)
+        case "signOut":  Task { await SessionHygiene.signOut() }
+        default: break
+        }
     }
 
     /// The training calendar. Built from the week strip the payload already
