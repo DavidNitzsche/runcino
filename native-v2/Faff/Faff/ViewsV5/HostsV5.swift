@@ -395,12 +395,60 @@ struct TodayHostV5: View {
     /// who taps one.
     private func prefetchAround(_ iso: String) async {
         guard let d = Self.iso.date(from: iso) else { return }
-        for off in [-1, 1, -7, 7] {
-            guard let n = Calendar.current.date(byAdding: .day, value: off, to: d) else { continue }
+
+        // ── EVERY DAY THE STRIP IS ACTUALLY SHOWING, FIRST ─────────────────
+        //
+        // David, live in the simulator: tapped Sunday from a Tuesday-today
+        // week and it was a real, visible wait. The old radius here was
+        // `[-1, 1, -7, 7]` — built around STEPPING one day at a time or
+        // paging a whole week, and it does not cover Sunday from Tuesday at
+        // all: Sunday is 5 days away, which is neither ±1 nor ±7. Every one
+        // of the seven cells in the strip is tappable RIGHT NOW — that is
+        // the whole point of drawing them — so "what might get tapped next"
+        // is the visible week, not an arithmetic neighbourhood the swipe
+        // gesture happens to use.
+        //
+        // Read off `weekStrip` itself rather than re-deriving the week's
+        // bounds by hand, so this can never disagree with what the strip is
+        // actually drawing.
+        //
+        // CONCURRENT, NOT SEQUENTIAL. Seven `await`s in a row, one after
+        // another, is seven round trips of wall-clock time before the LAST
+        // cell in the strip is covered — which defeats the point when the
+        // whole reason this runs is to be ready before the tap. A
+        // `TaskGroup` fires every read at once; the cache is warm in roughly
+        // the time ONE request takes, not seven.
+        if let strip = surface.model?.weekStrip {
+            let missing = strip.map(\.dateISO).filter { dayCache[$0] == nil }
+            if !missing.isEmpty {
+                await withTaskGroup(of: (String, API.V5Fetch<V5Today>?).self) { group in
+                    for key in missing {
+                        group.addTask { (key, try? await API.fetchV5Today(date: key)) }
+                    }
+                    for await (key, result) in group {
+                        if case .ok(let payload)? = result { dayCache[key] = payload }
+                    }
+                }
+            }
+        }
+
+        // ── THEN THE SWIPE NEIGHBOURHOOD, SAME WAY ──────────────────────
+        //
+        // ±1 day for stepping one at a time past the visible week's own
+        // edge, ±7 for "the same weekday, a week over" — priming the week
+        // the strip's own swipe would land on next.
+        let neighbourKeys = [-1, 1, -7, 7].compactMap { off -> String? in
+            guard let n = Calendar.current.date(byAdding: .day, value: off, to: d) else { return nil }
             let key = Self.iso.string(from: n)
-            if dayCache[key] != nil { continue }
-            if case .ok(let payload)? = try? await API.fetchV5Today(date: key) {
-                dayCache[key] = payload
+            return dayCache[key] == nil ? key : nil
+        }
+        guard !neighbourKeys.isEmpty else { return }
+        await withTaskGroup(of: (String, API.V5Fetch<V5Today>?).self) { group in
+            for key in neighbourKeys {
+                group.addTask { (key, try? await API.fetchV5Today(date: key)) }
+            }
+            for await (key, result) in group {
+                if case .ok(let payload)? = result { dayCache[key] = payload }
             }
         }
     }

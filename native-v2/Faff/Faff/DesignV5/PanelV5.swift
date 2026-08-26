@@ -401,8 +401,15 @@ struct DayPanel<Content: View>: View {
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Uniform s20 on every side of the panel's own content — this used
+        // to be s24 on the bottom alone, which was already inconsistent
+        // WITH ITSELF before even reaching the screen below it: the panel's
+        // own left/right margin was one number and its bottom was another,
+        // for no documented reason. Fixed as part of the spacing audit
+        // (David: "vertical spacing between things is still not even close
+        // to being consistent").
         .padding(.horizontal, V5.S.s20)
-        .padding(.bottom, V5.S.s24)
+        .padding(.bottom, V5.S.s20)
         // ── Reaching behind the status bar ──────────────────────────────
         //
         // "Full-bleed gradient panel from the status bar down." The system
