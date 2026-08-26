@@ -147,6 +147,50 @@ export function marathonPaceSPerMi(args: {
     : Math.min(tPaceSec, easyAnchorT) + 18;
 }
 
+/**
+ * ZONE-LABEL-1 (2026-08-25) · THE SPEC'S `kind` IS NOT ITS ZONE.
+ *
+ * `subLabelFromSpec` re-derives a uniform rep set's label from the spec, and it
+ * reads the zone off `kind` alone: a `threshold` spec is written "@ T pace" and
+ * an `intervals` spec "@ I", whatever `rep_pace_s_per_mi` actually holds. Since
+ * ZONE-R-1 those two are routinely different things. Nine zones can be priced
+ * now, `primaryZone` reads whichever one the prescription declares, and the
+ * spec `kind` is only the SHAPE of the session — reps with jog recovery — not
+ * a claim about what pace they are run at.
+ *
+ * Three live rows on the owner's CIM block, all persisted, all read on the
+ * phone against a watch running a different number:
+ *
+ *   §12.3 1K cutdowns      "1×1 km @ T pace"    spec 7:18/mi (the 5K anchor)
+ *   §5.4  Norwegian ST     "5×1 km @ T pace"    spec 7:51/mi (T + 15)
+ *   §9.2  race-week primer "5×400 m @ T pace"   spec 7:04/mi (the I anchor)
+ *
+ * — and his T pace is 7:36/mi, so the label was wrong by 18, 15 and 32 s/mi in
+ * both directions on the three sharpest sessions of the block. The last one
+ * carried the contradiction in the same row: notes reading "Five sharp 5K-pace
+ * reps" under a sub_label reading "@ T pace".
+ *
+ * The fix is the one the `tempo` branch already makes for its marathon-pace
+ * block and `timeRepSpec` already makes for its named families: when the label
+ * would otherwise be wrong, carry the authored prescription so the re-derivation
+ * is skipped. `subLabelFromSpec` still reconciles the rep COUNT against the
+ * spec, so a session the day's budget shortened still reads as shortened.
+ *
+ * Returns `{}` — spread by the caller — whenever the declared zone IS the
+ * branch's own default, so every prescription written before ZONE-R-1 builds
+ * byte-identically.
+ */
+function offZoneLabel(
+  declaredPace: number | null,
+  branchDefaultPace: number | null,
+  prescription: string | null | undefined,
+): Record<string, unknown> {
+  if (!prescription) return {};
+  if (declaredPace == null || !(declaredPace > 0)) return {};
+  if (branchDefaultPace != null && declaredPace === branchDefaultPace) return {};
+  return { label: prescription };
+}
+
 export interface SpecBuildResult {
   /** workout_spec column value · null for types where it's intentionally absent. */
   spec: WorkoutSpec;
@@ -954,6 +998,10 @@ export function buildWorkoutSpec(
           rep_rest_s: restS,
           cooldown_mi: Number(cd.toFixed(1)),
           lthr_bpm: hrLthrBpm(lthr),
+          // ZONE-LABEL-1 · see `offZoneLabel`. A `threshold`-kind spec whose
+          // reps are NOT at T carries its authored prescription, or
+          // `subLabelFromSpec` relabels it "@ T pace" over a different number.
+          ...offZoneLabel(declaredPace, tPaceSec, prescription),
           ...withRules,
         },
         paceTargetSPerMi: effortCued ? null : (declaredPace ?? tPaceSec),
@@ -1011,6 +1059,10 @@ export function buildWorkoutSpec(
           rep_rest_s: restS,
           cooldown_mi: cdVal,
           lthr_bpm: hrLthrBpm(lthr),
+          // ZONE-LABEL-1 · see `offZoneLabel`. An `intervals`-kind spec whose
+          // reps are NOT at I carries its authored prescription, or
+          // `subLabelFromSpec` relabels it "@ I" over a different number.
+          ...offZoneLabel(declaredPace, iPaceSec ?? interval, prescription),
           ...withRules,
         },
         paceTargetSPerMi: effortCued ? null : repPace,
@@ -1153,6 +1205,15 @@ export function buildWorkoutSpec(
           rep_rest_s: restS,
           cooldown_mi: rwCd,
           lthr_bpm: hrLthrBpm(lthr),
+          // ZONE-LABEL-1 · the third site of the same drift, and the one that
+          // carried the contradiction inside a single row. The marathon primer
+          // is `5×400m @ 5K pace · 2min jog` (TAPER-SHARP-1) built at
+          // `iPaceSec`, and this branch emits `kind: 'threshold'`, so
+          // `subLabelFromSpec` relabelled it "5×400 m @ T pace" beside notes
+          // reading "Five sharp 5K-pace reps". Five days before the owner's
+          // marathon. `tPaceSec` is what "@ T pace" would truthfully mean here,
+          // so the ultra primer — which really is at T — is unchanged.
+          ...offZoneLabel(repPace, tPaceSec, prescription),
           ...withRules,
         },
         paceTargetSPerMi: repPace,

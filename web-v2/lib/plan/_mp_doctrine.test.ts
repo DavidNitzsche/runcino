@@ -176,6 +176,13 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
             if (w.phase !== 'RACE-SPECIFIC' || w.isRaceWeek) continue;
             const long = w.days.find((d) => d.isLong && d.type === 'long');
             if (!long) continue;
+            // LONGRUN-ROWS-1 (2026-08-25) · §4.6's dress rehearsal is a
+            // DIFFERENT ROW of Research/04 §4.1, with its own dose (4-8 mi at
+            // MP inside an easy bulk) and its own placement (three weeks out).
+            // Measuring it against §4.4's 50% ratio would read a session at its
+            // own correct size as a shaved one — which is the exact collapse
+            // ./long-run-rows exists to undo. It gets its own assertion below.
+            if (long.longRunKind === 'dress_rehearsal') continue;
             bucket.weeks++;
             const ratio = finishMiOf(long.subLabel) / long.distanceMi;
             // 0 = off-cadence easy long. Otherwise it must still be the real
