@@ -145,6 +145,13 @@ struct TodayHostV5: View {
         .task {
             await surface.load()
             NotificationCenter.default.post(name: .faffSurfaceReady, object: "today")
+            // The FIRST tap a runner makes is overwhelmingly a neighbour of
+            // today — yesterday, tomorrow. `goTo` prefetches around wherever
+            // it lands, but that is by definition one step too late for the
+            // very first navigation of the session. Priming today's own
+            // neighbours here means that first tap gets the instant path
+            // too, not just the second one onward.
+            if let m = surface.model { await prefetchAround(m.dateISO) }
         }
         // Learn the real today the instant any payload actually carries it —
         // see `todayISO(_:)`. A plain side effect, not a render-time read: a
@@ -156,6 +163,14 @@ struct TodayHostV5: View {
             guard let m = surface.model,
                   let real = m.weekStrip.first(where: \.isToday)?.dateISO else { return }
             knownTodayISO = real
+        }
+        // Every day that lands is kept — including a refresh of a day
+        // already in the cache, where the newer payload simply overwrites
+        // the old entry. A passive write only: nothing reads `dayCache`
+        // except `goTo`, so this cannot be the thing two navigations race
+        // over — that's `navigationTask`'s job alone.
+        .onChange(of: surface.model?.dateISO, initial: true) { _, _ in
+            if let m = surface.model { dayCache[m.dateISO] = m }
         }
         .refreshable { await surface.load() }
         .v5ReloadOnForeground { await surface.load() }
@@ -292,15 +307,33 @@ struct TodayHostV5: View {
     // does complete late can never again overwrite what the runner is
     // actually looking at.
     //
-    // This trades away the instant-plate/cache layer's free-feeling tap.
-    // That is deliberate: correct-but-a-beat-slower beats fast-but-wrong,
-    // and the plate now moves only once the payload it is describing has
-    // actually arrived, so it can never show a day the screen isn't on.
+    // A ROUND OF FIXES LATER: "it still feels pretty slow and clunky," and
+    // then, precisely: "Click on the days needs to feel like it pushes the
+    // data change. Not a button, a load, wait, see it."
+    //
+    // Right — a round trip is a round trip, however honestly it is handled.
+    // The fix is not to skip the round trip; it is to skip it ONLY when the
+    // answer is already known. `dayCache` brings that back, and it is safe
+    // THIS time for a specific reason the deleted version was not: every
+    // write to `surface.model` — cached or fresh — now flows through the ONE
+    // `navigationTask`, cancelled and replaced whole by the next `goTo`. The
+    // old version's cache-hit path (`V5Surface.present`) spawned its OWN
+    // second, untracked `Task` for the refresh, which is what actually let
+    // two navigations race — not the idea of showing a cached day instantly.
+    // `present` is `async` now and does no task-spawning of its own; the
+    // caller's single `Task` covers the cached paint AND the refresh behind
+    // it, so cancelling it cancels both.
     // ─────────────────────────────────────────────────────────────────────
 
     /// The one navigation in flight, if any. Cancelled and replaced by every
     /// new `goTo` call, so an old request can never land after a newer one.
     @State private var navigationTask: Task<Void, Never>?
+
+    /// Days decoded this session, keyed by ISO date. Populated passively (see
+    /// the `.onChange` below) and read by `goTo` alone — nothing else derives
+    /// truth from it, so a stale or missing entry can only ever cost a round
+    /// trip, never show the wrong day.
+    @State private var dayCache: [String: V5Today] = [:]
 
     /// The strip hands back a plan row's server id; the date lives beside it
     /// on the same row. Identity is the id, the date is a lookup — never the
@@ -337,9 +370,38 @@ struct TodayHostV5: View {
         viewingDate = isHome ? nil : iso
 
         let param: String? = isHome ? nil : iso
+        let refresh: () async throws -> API.V5Fetch<V5Today> = { try await API.fetchV5Today(date: param) }
+
         navigationTask?.cancel()
-        navigationTask = Task {
-            await surface.rebind { try await API.fetchV5Today(date: param) }
+        if let known = dayCache[iso] {
+            // Already decoded — on screen this tick, refreshed for real
+            // right behind it, both inside the one Task a newer tap cancels.
+            navigationTask = Task { await surface.present(known, refreshWith: refresh) }
+        } else {
+            navigationTask = Task { await surface.rebind(refresh) }
+        }
+        Task { await prefetchAround(iso) }
+    }
+
+    /// Read the days either side of `iso` quietly, and keep whatever comes
+    /// back. Deliberately NOT part of `navigationTask` — it never touches
+    /// `surface.model`, only `dayCache`, so it cannot race the thing that
+    /// actually needs single-flight protection. Worst case on a cancelled or
+    /// overtaken prefetch: a wasted read, never a wrong screen.
+    ///
+    /// ONE DAY EITHER SIDE, AND ONE WEEK EITHER SIDE. Those are the four
+    /// moves the strip offers: the neighbouring cells, and the swipe.
+    /// Prefetching the whole visible week would be seven reads for a runner
+    /// who taps one.
+    private func prefetchAround(_ iso: String) async {
+        guard let d = Self.iso.date(from: iso) else { return }
+        for off in [-1, 1, -7, 7] {
+            guard let n = Calendar.current.date(byAdding: .day, value: off, to: d) else { continue }
+            let key = Self.iso.string(from: n)
+            if dayCache[key] != nil { continue }
+            if case .ok(let payload)? = try? await API.fetchV5Today(date: key) {
+                dayCache[key] = payload
+            }
         }
     }
 

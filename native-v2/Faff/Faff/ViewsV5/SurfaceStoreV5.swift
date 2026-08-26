@@ -86,6 +86,47 @@ final class V5Surface<Model: Decodable>: ObservableObject {
         await load()
     }
 
+    /// Put a payload the caller already holds on screen NOW, then refresh it
+    /// for real behind that.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// DAVID, 2026-08-25, THIRD ROUND: "Click on the days needs to feel like
+    /// it pushes the data change. Not a button, a load, wait, see it."
+    ///
+    /// A day already decoded this session needs no round trip to be shown —
+    /// it is correct, in memory, and stale by at most a few seconds. This
+    /// paints it in the SAME `Task` the caller is already tracking, then
+    /// keeps going to fetch the real thing behind it, so a genuinely stale
+    /// cached day still self-corrects.
+    ///
+    /// AN EARLIER VERSION OF THIS EXISTED AND WAS DELETED. It fired its own
+    /// untracked `Task { await load() }` internally — a second, independent
+    /// unit of concurrency the CALLER could not cancel. Two navigations in a
+    /// row could each spawn one, and whichever finished last won the screen,
+    /// which was the actual cause of a real "position jumps to the wrong
+    /// week" bug, not this technique itself. This version is `async` and
+    /// does none of its own task-spawning: the caller wraps the ENTIRE
+    /// present-then-refresh sequence in ONE `Task` it owns and can cancel,
+    /// exactly like `rebind`. Cancelling that Task here cancels the refresh
+    /// too, the same way it always did for a plain `rebind`.
+    ///
+    /// A HARD CUT, NOT A CROSSFADE. Today keys its content on `dateISO` and
+    /// fades between days, which is right when the new day is arriving off
+    /// the network — the fade covers the gap. It is wrong when the day is
+    /// already in hand: the 200ms would be 200ms of the day the runner just
+    /// left, on a tap that had nothing left to wait for.
+    func present(_ known: Model, refreshWith newFetch: @escaping () async throws -> API.V5Fetch<Model>) async {
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
+            model = known
+            stale = false
+            absentReason = nil
+        }
+        fetch = newFetch
+        await load()
+    }
+
 
     init(cache: AppCache.Key?, fetch: @escaping () async throws -> API.V5Fetch<Model>) {
         self.cacheKey = cache
