@@ -195,6 +195,8 @@ struct TodayBeforeV5: View {
     /// Set when the runner has stepped off today. The panel says which day and
     /// offers the way back.
     var viewingDayLabel: String? = nil
+    /// `TodayHostV5.viewingDate`, straight through — see `stripDays()`.
+    var selectedDateISO: String? = nil
     var onBackToToday: () -> Void = {}
     /// Page the week strip. -1 back a week, +1 forward.
     var onPageWeek: (Int) -> Void = { _ in }
@@ -235,9 +237,24 @@ struct TodayBeforeV5: View {
     /// unambiguous by construction. The plate moves when the content moves,
     /// never before, and never to a day the screen isn't actually showing.
     private func stripDays() -> [WeekStripDayV5] {
-        model.weekStrip.map { d in
+        // David: "still feels pretty slow and clunky." The pill used to wait
+        // for the network — `model.dateISO` only moves once the new payload
+        // has actually landed, so tapping Thursday visibly did nothing for
+        // the length of a round trip.
+        //
+        // `selectedDateISO` is `TodayHostV5`'s `viewingDate`, passed straight
+        // through — the SAME synchronous, single-source-of-truth value that
+        // already drives the header's "Upcoming"/"Earlier" tense instantly.
+        // Reusing it here costs nothing new: no cache, no second variable
+        // that could disagree with the fetch in flight, which is exactly
+        // what made the last attempt at "instant" race. The pill moves the
+        // instant the tap registers; the content underneath still waits for
+        // the real payload, honestly, and simply falls back to describing
+        // whatever IS on screen once it's home again.
+        let selected = selectedDateISO ?? model.dateISO
+        return model.weekStrip.map { d in
             var s = d.strip
-            s.isToday = d.dateISO == model.dateISO
+            s.isToday = d.dateISO == selected
             return s
         }
     }

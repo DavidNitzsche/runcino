@@ -45,6 +45,8 @@ struct TodayBeforeLiveV5: View {
     var onAccountRowTap: (V5Row) -> Void = { _ in }
     var onPickDay: (String) -> Void = { _ in }
     var viewingDayLabel: String? = nil
+    /// `TodayHostV5.viewingDate`, straight through — see `TodayBeforeV5.stripDays()`.
+    var selectedDateISO: String? = nil
     var onBackToToday: () -> Void = {}
     /// Page the week strip. -1 back a week, +1 forward.
     var onPageWeek: (Int) -> Void = { _ in }
@@ -94,6 +96,7 @@ struct TodayBeforeLiveV5: View {
             onAccountRowTap: onAccountRowTap,
             onPickDay: onPickDay,
             viewingDayLabel: viewingDayLabel,
+            selectedDateISO: selectedDateISO,
             onBackToToday: onBackToToday,
             onPageWeek: onPageWeek,
             onOpenPacesMoved: onOpenPacesMoved,
