@@ -528,40 +528,29 @@ export async function POST(req: NextRequest) {
     // assume the thing it guards against has already happened.
   ).catch((e) => { logReadFailure('cron/plan-drift · dedupe guard', e); return { rowCount: 1 }; })).rowCount;
         if (!alreadyTransitioned) {
+          // TURNED OFF · David 2026-08-26 (same ruling as the soft-drift
+          // block below — no rebuild fires without a card to approve).
+          // Recovery→next-block is a real, welcome transition, but it is
+          // still this cron deciding to replace the active plan on its
+          // own; it gets the same pending row, not a silent rebuild.
           try {
-            const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
-            const result = await fireAutoRebuild({
-              userUuid: u,
-              raceSlug: recoveryRow.race_id,
-              kind: 'recovery_complete',
-              reasons: {
-                transition: 'recovery_to_next_block',
-                race_slug: recoveryRow.race_id,
-                recovery_last_workout: recoveryRow.last_workout_iso,
-                message: `Recovery block finished · rebuilding toward ${recoveryRow.race_id}.`,
-              },
-              source: 'recovery_complete_cron',
-            });
-            if (result.ok) {
-              r.proposals_written++;
-              // 2026-08-25 · THE RESTAMP IS RETIRED. This used to fire a second,
-              // separate UPDATE after the rebuild to correct `archive_reason`
-              // from the generic 'regenerated' to 'recovery_complete', ending
-              // `.catch(() => null)` — so a failed restamp was indistinguishable
-              // from this path never having run. `fireAutoRebuild` now hands the
-              // kind to `generatePlan`, which stamps it inside the rebuild's own
-              // transaction: the reason lands atomically with the archive, or
-              // the whole rebuild rolls back. There is nothing left to correct
-              // after the fact.
-              //
-              // For the record, since the question came up: on 2026-08-25 this
-              // path did not fire at all. The plan was replaced by the
-              // soft-drift path (proposal 54, kind `long_drift`), and every
-              // rebuild wrote the same 'regenerated' because the `reason`
-              // parameter had a default and no caller.
-            }
+            await pool.query(
+              `INSERT INTO plan_proposals
+                 (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
+               VALUES ($1, $2, 'recovery_complete', $3::jsonb, 'pending', 'recovery_complete_cron', NOW())`,
+              [
+                u, recoveryRow.plan_id,
+                JSON.stringify({
+                  transition: 'recovery_to_next_block',
+                  race_slug: recoveryRow.race_id,
+                  recovery_last_workout: recoveryRow.last_workout_iso,
+                  message: `Recovery block finished · rebuild toward ${recoveryRow.race_id}?`,
+                }),
+              ],
+            );
+            r.proposals_written++;
           } catch (e) {
-            console.error('[plan-drift] recovery-complete transition failed:', e);
+            console.error('[plan-drift] recovery-complete pending write failed:', e);
           }
         }
       }
@@ -626,30 +615,37 @@ export async function POST(req: NextRequest) {
         if (goalGap.raceSlug == null) {
           r.goal_gap_skipped_goal_mode = (r.goal_gap_skipped_goal_mode ?? 0) + 1;
         } else if (!recentGapRebuild) {
+          // TURNED OFF · David 2026-08-26 (same ruling as the recovery-
+          // complete and soft-drift blocks — no rebuild fires without a
+          // card to approve first).
           try {
-            const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
-            await fireAutoRebuild({
-              userUuid: u,
-              raceSlug: goalGap.raceSlug,
-              // 2026-08-17 · TRUE kind. Was a synthetic
-              // 'goal_time_changed', which rendered as "Goal time
-              // updated" and never matched its own dedupe.
-              kind: 'goal_gap_widening',
-              reasons: {
-                drift_kind: 'goal_gap_widening',
-                message: `Projection drifting away from goal for ${goalGap.consecutiveWideningDays} days · rebuilding to close the gap.`,
-                trajectory_sec: goalGap.trajectorySec,
-                goal_sec: goalGap.goalSec,
-                gap_sec: goalGap.gapSec,
-                weeks_remaining: goalGap.weeksRemaining,
-                what_closes_it: goalGap.whatClosesIt,
-                citation: goalGap.citation,
-              },
-              source: 'goal_gap_cron_auto',
-            });
+            const activePlanId = (await pool.query<{ id: string }>(
+              `SELECT id FROM training_plans
+                WHERE user_uuid = $1 AND archived_iso IS NULL
+                ORDER BY authored_iso DESC LIMIT 1`,
+              [u],
+            ).catch(() => ({ rows: [] }))).rows[0]?.id ?? '';
+            await pool.query(
+              `INSERT INTO plan_proposals
+                 (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
+               VALUES ($1, $2, 'goal_gap_widening', $3::jsonb, 'pending', 'goal_gap_cron_pending', NOW())`,
+              [
+                u, activePlanId,
+                JSON.stringify({
+                  drift_kind: 'goal_gap_widening',
+                  message: `Projection drifting away from goal for ${goalGap.consecutiveWideningDays} days · rebuild to close the gap?`,
+                  trajectory_sec: goalGap.trajectorySec,
+                  goal_sec: goalGap.goalSec,
+                  gap_sec: goalGap.gapSec,
+                  weeks_remaining: goalGap.weeksRemaining,
+                  what_closes_it: goalGap.whatClosesIt,
+                  citation: goalGap.citation,
+                }),
+              ],
+            );
             r.proposals_written++;
           } catch (e) {
-            console.error('[plan-drift] goal-gap rebuild failed:', e);
+            console.error('[plan-drift] goal-gap pending write failed:', e);
           }
         }
       }
@@ -756,58 +752,36 @@ export async function POST(req: NextRequest) {
           // row. The surface must not ask what the engine will refuse.
           r.signals_skipped = report.signals.length;
         } else {
-          // Run the rebuild via fireAutoRebuild · same path the hard-drift
-          // hooks use · same audit shape · same dedupe window.
-          //
-          // 2026-08-19 · race-shape audit · this was `else if (plan?.race_id)`,
-          // the ONLY call site for a drift rebuild. `detectDrift` has always
-          // handled a NULL race_id (it reads the plan directly and never joins
-          // `races`), so a goal-mode runner produced real drift signals, then
-          // fell off the end of the if/else chain: `signals_found` reported
-          // them every night and `proposals_written` never once incremented.
-          // Nothing acted on a single one of them. A goal-mode plan now
-          // rebuilds through the goal target — the same entry
-          // `rebuildActivePlanForPrefs` has used since P1-16 — and a plan with
-          // neither race nor resolvable goal falls through to the pending row.
-          try {
-            const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
-            await fireAutoRebuild({
-              userUuid: u,
-              ...(plan?.race_id ? { raceSlug: plan.race_id } : { goalTarget: goalTarget! }),
-              // 2026-08-17 · TRUE kind (staleness → 'staleness', volume
-              // → 'volume_drift', …). Was a synthetic
-              // 'goal_time_changed' "recalibrate" that rendered as
-              // "Goal time updated" for a staleness observation and
-              // never matched the dedupe guard above.
-              kind: driftProposalKind(signal.kind),
-              reasons: {
+          // TURNED OFF · David 2026-08-26, reversing the 2026-06-01
+          // "zero-gaps" directive after living under it: two of these six
+          // kinds rebuilt his plan on back-to-back mornings (long_drift
+          // 8/25 bumped the easy-day target 4→7 as a side effect of a
+          // long-run correction; easy_drift 8/26 reacted to THAT number
+          // the very next night and cut it to 5.5) — one detector's
+          // rebuild created the exact condition that fired the other,
+          // with nothing surfaced either time. "A real coach would never
+          // rebuild a plan mid-week... something needs to surface asking
+          // if I want to approve." So: every soft-drift signal writes a
+          // pending proposal now, same shape `CoachDecisionCard` already
+          // renders for `easy_drift`/etc (see decision-cards.ts) — it was
+          // built for exactly this, just never reached because this path
+          // auto-applied instead. No more silent rebuild; fireAutoRebuild
+          // is not called here at all now.
+          await pool.query(
+            `INSERT INTO plan_proposals
+               (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
+             VALUES ($1, $2, $3, $4::jsonb, 'pending', 'drift_cron_pending', NOW())`,
+            [
+              u, report.planId, driftProposalKind(signal.kind),
+              JSON.stringify({
                 drift_kind: signal.kind,
                 message: signal.message,
                 severity: signal.severity,
                 ...signal.details,
-              },
-              source: 'drift_cron_auto',
-            });
-            r.proposals_written++;
-          } catch (e: unknown) {
-            // If auto-rebuild fails, fall back to writing a pending proposal
-            // (the old behavior · runner sees a card to manually accept)
-            await pool.query(
-              `INSERT INTO plan_proposals
-                 (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
-               VALUES ($1, $2, $3, $4::jsonb, 'pending', 'drift_cron_fallback', NOW())`,
-              [
-                u, report.planId, signal.kind,
-                JSON.stringify({
-                  message: signal.message,
-                  severity: signal.severity,
-                  auto_rebuild_error: e instanceof Error ? e.message : String(e),
-                  ...signal.details,
-                }),
-              ],
-            );
-            r.proposals_written++;
-          }
+              }),
+            ],
+          );
+          r.proposals_written++;
         }
       }
     } catch (e: unknown) {
