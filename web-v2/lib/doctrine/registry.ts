@@ -124,6 +124,13 @@ import {
 // RACEPACE-1 · the prescribed-race-pace ceiling and the two 5% constants it
 // must stay pinned to.
 import { GOAL_OPTIMISM_TOLERANCE, seasonalVdotCeiling } from '@/lib/training/achievable-target';
+import { TRAINING_ESTIMATE_SOFT_CAP_VDOT } from '@/lib/training/vdot';
+import {
+  TRAINING_LEAD_DELTA_THRESHOLD,
+  TRAINING_LEAD_MIN_SESSIONS,
+  TRAINING_LEAD_MIN_SPAN_DAYS,
+  REGRESSION_DELTA_THRESHOLD,
+} from '@/lib/plan/adapt';
 import { MAX_GOAL_OPTIMISM_FRACTION } from '@/lib/race/effective-race-target';
 import { maxSeasonalVdotGain } from '@/lib/plan/recompute-paces';
 import {
@@ -13467,6 +13474,130 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           'authored_state no longer records the runner’s stated goal pace verbatim · ' +
             'bounding what is prescribed must never move what was asked for',
+        );
+      }
+    },
+  },
+
+  /**
+   * TRAINING-LEAD-1 (2026-08-25) · what sustained training evidence is worth,
+   * and the guard that keeps it reachable.
+   *
+   * Prompted by a defect with no bug in it: `TRAINING_ESTIMATE_SOFT_CAP_VDOT`
+   * (1.0) capped every training-derived candidate, and the two constants that
+   * decide whether to ACT on a fitness change both demanded more —
+   * `REGRESSION_DELTA_THRESHOLD` 1.5 and `REANCHOR_VDOT_DELTA` 2.0. A ceiling
+   * beneath a floor. The owner could nail every quality session for months and
+   * nothing would move unless one of those weeks contained a race.
+   */
+  {
+    id: 'ADAPTATION.training-lead-quantum',
+    binds: [
+      'lib/plan/adapt.ts#TRAINING_LEAD_DELTA_THRESHOLD',
+      'lib/plan/adapt.ts#TRAINING_LEAD_MIN_SESSIONS',
+      'lib/plan/adapt.ts#TRAINING_LEAD_MIN_SPAN_DAYS',
+      'lib/training/vdot.ts#TRAINING_ESTIMATE_SOFT_CAP_VDOT',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Triggers to retest',
+    claim:
+      'Training evidence alone moves VDOT UP by exactly one point, and doctrine states that '
+      + 'quantum twice in this table ("Add 1 VDOT point; re-derive paces" and "+1 VDOT, '
+      + 'field-test"). The same rows give the corroboration: the downward hard-tempo row needs '
+      + '2 sessions and the upward HR row needs the signal sustained 2 weeks. Three things must '
+      + 'hold. (1) The engine\'s upward training quantum IS the doc\'s, not a mirror of the '
+      + 'downward threshold — the table is deliberately asymmetric, +1 up against -1 to -2 down, '
+      + 'because an over-read prescribes work the runner cannot absorb while an under-read only '
+      + 'prescribes work that is too easy. (2) The corroboration gate is the doc\'s 2 sessions '
+      + 'and 2 weeks, not the 4-6 week TESTING cadence, which answers a different question. '
+      + '(3) THE FLOOR MUST BE REACHABLE FROM THE CEILING: the value that licenses acting on a '
+      + 'training lead can never exceed the cap that bounds one, or the path is closed by '
+      + 'construction and no test of either constant alone can see it.',
+    check({ cite }) {
+      const text = cite.text();
+
+      // The upward training quantum, read out of the doc's own rows.
+      const upRow = /\|\s*Tempo runs feel notably easier[^|]*\|\s*([^|\n]+?)\s*\|/i.exec(text);
+      if (!upRow) {
+        throw new Error('Research/01 §"Triggers to retest" no longer carries the "tempo feels notably easier" row');
+      }
+      const upStep = /Add\s+(\d+(?:\.\d+)?)\s+VDOT/i.exec(upRow[1]);
+      if (!upStep) {
+        throw new Error(`the tempo-easier row no longer states a VDOT step (reads "${upRow[1]}")`);
+      }
+      const up = Number(upStep[1]);
+      if (TRAINING_LEAD_DELTA_THRESHOLD !== up) {
+        throw new Error(
+          `TRAINING_LEAD_DELTA_THRESHOLD = ${TRAINING_LEAD_DELTA_THRESHOLD}, doctrine's training-evidence step is ${up}`,
+        );
+      }
+      // And the row must still demand a field test — the reason the quantum is
+      // one point and not the race-row's 2-3.
+      if (!/field.?test/i.test(upRow[1])) {
+        throw new Error('the tempo-easier row no longer attaches a field test · the +1 is provisional by construction');
+      }
+
+      // The downward band, so the asymmetry is asserted rather than assumed.
+      const downRow = /\|\s*Tempo runs unexpectedly hard[^|]*\|\s*([^|\n]+?)\s*\|/i.exec(text);
+      if (!downRow) {
+        throw new Error('Research/01 §"Triggers to retest" no longer carries the "tempo unexpectedly hard" row');
+      }
+      // The doc writes this band with EN-DASH minus signs ("–1 to –2 VDOT"),
+      // so each magnitude carries a leading sign the separator must not eat.
+      const downBand = /[-–—]?\s*(\d+(?:\.\d+)?)\s*(?:to|[-–—])\s*[-–—]?\s*(\d+(?:\.\d+)?)\s*VDOT/i.exec(downRow[1]);
+      if (!downBand) {
+        throw new Error(`the tempo-hard row no longer states a VDOT band (reads "${downRow[1]}")`);
+      }
+      const downMin = Number(downBand[1]);
+      if (!(up < downMin) && up !== downMin) {
+        throw new Error(
+          `doctrine's bands are +${up} up and -${downMin}..-${downBand[2]} down; the engine must not `
+          + 'flatten that asymmetry',
+        );
+      }
+      if (!(TRAINING_LEAD_DELTA_THRESHOLD <= REGRESSION_DELTA_THRESHOLD)) {
+        throw new Error(
+          `the upward gate (${TRAINING_LEAD_DELTA_THRESHOLD}) has risen above the downward one `
+          + `(${REGRESSION_DELTA_THRESHOLD}) · doctrine is heavier DOWNWARD, not upward`,
+        );
+      }
+
+      // The corroboration gate, read out of the same table.
+      const sessions = /unexpectedly hard for\s*(?:≥|>=)\s*(\d+)\s*sessions/i.exec(text);
+      if (!sessions) {
+        throw new Error('Research/01 §"Triggers to retest" no longer states a session count for sustained tempo evidence');
+      }
+      if (TRAINING_LEAD_MIN_SESSIONS !== Number(sessions[1])) {
+        throw new Error(
+          `TRAINING_LEAD_MIN_SESSIONS = ${TRAINING_LEAD_MIN_SESSIONS}, doctrine's sustained-evidence count is ${sessions[1]}`,
+        );
+      }
+      const weeks = /sustained\s*(?:≥|>=)\s*(\d+)\s*weeks/i.exec(text);
+      if (!weeks) {
+        throw new Error('Research/01 §"Triggers to retest" no longer states a sustained-signal window in weeks');
+      }
+      if (TRAINING_LEAD_MIN_SPAN_DAYS !== Number(weeks[1]) * 7) {
+        throw new Error(
+          `TRAINING_LEAD_MIN_SPAN_DAYS = ${TRAINING_LEAD_MIN_SPAN_DAYS}, doctrine's sustained window is `
+          + `${weeks[1]} weeks (${Number(weeks[1]) * 7} days)`,
+        );
+      }
+
+      // (3) THE CLOSED DOOR. This is the claim that could not have been made
+      // about either constant on its own, and it is the whole reason this entry
+      // exists: a gate that licenses acting on a training lead is unsatisfiable
+      // the moment it demands more than the cap can supply.
+      if (TRAINING_LEAD_DELTA_THRESHOLD > TRAINING_ESTIMATE_SOFT_CAP_VDOT) {
+        throw new Error(
+          `the upward training gate (${TRAINING_LEAD_DELTA_THRESHOLD}) now exceeds the soft cap that `
+          + `bounds every training candidate (${TRAINING_ESTIMATE_SOFT_CAP_VDOT}) · the path is closed by `
+          + 'construction, which is exactly the defect this claim was written after',
+        );
+      }
+      if (TRAINING_ESTIMATE_SOFT_CAP_VDOT !== up) {
+        throw new Error(
+          `the training soft cap (${TRAINING_ESTIMATE_SOFT_CAP_VDOT}) has diverged from doctrine's `
+          + `training-evidence quantum (${up}) · they are the same number in the same row`,
         );
       }
     },
