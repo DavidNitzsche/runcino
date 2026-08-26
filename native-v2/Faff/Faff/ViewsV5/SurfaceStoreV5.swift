@@ -116,13 +116,28 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     /// already in hand: the 200ms would be 200ms of the day the runner just
     /// left, on a tap that had nothing left to wait for.
     func present(_ known: Model, refreshWith newFetch: @escaping () async throws -> API.V5Fetch<Model>) async {
-        var t = Transaction()
-        t.disablesAnimations = true
-        withTransaction(t) {
-            model = known
-            stale = false
-            absentReason = nil
-        }
+        // NOT A HARD CUT ANY MORE. David, third round: "the motion is there
+        // but then everything just sort of flashes... we need things to move
+        // and to be slick."
+        //
+        // This used to force `disablesAnimations = true` on the assignment
+        // below, reasoning that the screen's own 200ms crossfade
+        // (`.animation(V5.Motion.fill, value: surface.model?.dateISO)` in
+        // `HostsV5`) was "200ms of the day you just left, on a tap that had
+        // nothing left to wait for." That reasoning mistook the fade for a
+        // delay. It is not a delay — it is motion, cheap and instant to
+        // START, and motion is exactly what was missing: the strip's own
+        // drag genuinely slides, and then the panel underneath it snapped
+        // with no transition at all, which reads as a flash sitting in the
+        // middle of a slide.
+        //
+        // Plain assignment, no transaction override, lets the ambient
+        // `.animation(value:)` already on the screen pick it up — the SAME
+        // 200ms fade a network-driven `rebind` was already using, so a
+        // cached day and a freshly fetched one move exactly the same way.
+        model = known
+        stale = false
+        absentReason = nil
         fetch = newFetch
         await load()
     }

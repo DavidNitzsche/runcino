@@ -921,6 +921,23 @@ struct WeekStripV5: View {
     /// environment resolves correctly here.
     @Environment(\.v5PanelInk) private var panelInk
 
+    /// THE PILL TRAVELS, IT DOES NOT TELEPORT.
+    ///
+    /// David, third round: "the week strip doesnt actually slide or move...
+    /// we need things to move and to be slick." The plate behind whichever
+    /// cell is "today" used to be seven independent `if/else` backgrounds —
+    /// the old cell's plate vanished and the new one appeared with no
+    /// relationship between them, which reads as a swap, not a slide.
+    ///
+    /// One namespace, shared across all seven cells (and both ghost weeks —
+    /// harmless there, since a ghost's `isToday` is always false so it never
+    /// claims the id): only the cell that IS today ever attaches
+    /// `.matchedGeometryEffect(id: "pill", in:)`, so SwiftUI interpolates the
+    /// SAME view's frame from where it was to where it now is, inside the
+    /// `.animation` below. That is what makes it a real, visible slide
+    /// between two positions in the row, not a cross-fade in place.
+    @Namespace private var pillSpace
+
     /// ─────────────────────────────────────────────────────────────────────
     /// A TabView(.page) PORT WAS TRIED AND REVERTED
     ///
@@ -1091,8 +1108,17 @@ struct WeekStripV5: View {
                 }
                 .padding(.vertical, V5.S.s10)
                 .frame(maxWidth: .infinity)
-                .background(d.isToday ? panelInk.plate : .clear,
-                            in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
+                .background {
+                    // Only the "today" cell ever attaches the shared id — see
+                    // `pillSpace`'s header comment. This is what turns the
+                    // plate into something that SLIDES between two cells
+                    // instead of vanishing from one and appearing on another.
+                    if d.isToday {
+                        RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous)
+                            .fill(panelInk.plate)
+                            .matchedGeometryEffect(id: "pill", in: pillSpace)
+                    }
+                }
                 // Same lesson as every other row: a clear background is not
                 // hit-testable, so without this only the day's two glyphs are.
                 .contentShape(RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
@@ -1107,6 +1133,11 @@ struct WeekStripV5: View {
                 }
             }
         }
+        // Drives the slide: SwiftUI only interpolates a matchedGeometryEffect
+        // between two states inside an animation context, and the trigger
+        // has to be a value that actually CHANGES when the pill moves — which
+        // cell id, not which id, is `isToday` right now.
+        .animation(V5.Motion.fill, value: ds.first(where: \.isToday)?.id)
     }
 
     /// The week `offset` days away, as dates only.
