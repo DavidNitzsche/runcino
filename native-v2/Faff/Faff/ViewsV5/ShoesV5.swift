@@ -116,8 +116,10 @@ struct ShoesV5: View {
             VStack(spacing: 0) {
                 AppBar(title: "Shoes", onBack: onBack)
 
-                // The prototype's content band: `padding:0 16px 32px;gap:24px`.
-                VStack(alignment: .leading, spacing: V5.S.s24) {
+                // The prototype's content band specified `gap:24px` here; unified
+                // onto the app's one "between top-level sections" rhythm instead —
+                // see `betweenGroups`'s own doc comment.
+                VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                     VStack(alignment: .leading, spacing: V5.S.s10) {
                         V5SectionLabel(text: "In rotation").padding(.horizontal, V5.S.s4)
                         VStack(spacing: V5.S.inGroup) {

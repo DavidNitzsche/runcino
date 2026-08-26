@@ -62,7 +62,9 @@ struct CourseImportV5: View {
             VStack(spacing: 0) {
                 AppBar(title: "Course", onBack: onBack)
 
-                VStack(alignment: .leading, spacing: V5.S.s24) {
+                // Unified onto `betweenGroups`, the app's one "between
+                // top-level sections" rhythm — see its doc comment.
+                VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                     header
                     lookupField
                     stateBody

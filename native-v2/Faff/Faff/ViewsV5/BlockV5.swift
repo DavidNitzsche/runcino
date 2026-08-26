@@ -982,7 +982,7 @@ private struct BlockWeekRow: View {
                     }
                 }
                 .padding(.horizontal, V5.S.tilePad)
-                .padding(.vertical, V5.S.s14x)
+                .padding(.vertical, V5.S.s14)
                 .background(V5.materialTileRaised)
                 .transition(.opacity)
             }

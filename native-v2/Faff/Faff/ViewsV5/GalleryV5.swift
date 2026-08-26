@@ -123,7 +123,7 @@ struct GalleryV5: View {
                                     Text(o).font(.faffText(TypeScaleV5.body15))
                                         .foregroundStyle(V5.textPrimary)
                                         .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, V5.S.s14x)
+                                        .padding(.horizontal, V5.S.s14)
                                         .frame(height: 44)
                                         .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
                                 }

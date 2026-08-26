@@ -230,7 +230,7 @@ struct RunDetailV5: View {
             VStack(spacing: 0) {
                 AppBar(title: title, eyebrow: eyebrow, onBack: onBack)
 
-                VStack(alignment: .leading, spacing: V5.S.s24) {
+                VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                     statsRow
 
                     if !readingRows.isEmpty {

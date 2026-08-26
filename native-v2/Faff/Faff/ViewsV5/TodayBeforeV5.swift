@@ -597,7 +597,7 @@ struct TodayBeforeV5: View {
                             }
                         }
                     }
-                    .padding(.horizontal, V5.S.s14x)
+                    .padding(.horizontal, V5.S.s14)
                     .frame(minHeight: 48)
                     .frame(maxWidth: .infinity)
                     .background(V5.materialTile,
@@ -694,7 +694,7 @@ struct TodayBeforeV5: View {
                                 FaffValueText(value, font: .faffText(TypeScaleV5.body15), color: V5.textSecondary)
                             }
                         }
-                        .padding(.horizontal, V5.S.s14x)
+                        .padding(.horizontal, V5.S.s14)
                         .frame(minHeight: 48)
                         .frame(maxWidth: .infinity)
                         .background(V5.materialTile,

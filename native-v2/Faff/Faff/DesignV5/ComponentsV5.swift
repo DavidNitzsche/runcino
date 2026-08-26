@@ -809,7 +809,7 @@ struct FaffSelect: View {
                                 .foregroundStyle(opt == value ? V5.signal : V5.textPrimary)
                             Spacer(minLength: 0)
                         }
-                        .padding(.horizontal, V5.S.s14x)
+                        .padding(.horizontal, V5.S.s14)
                         .frame(height: 44)
                         .frame(maxWidth: .infinity)
                         .background(V5.materialTile,
@@ -822,10 +822,6 @@ struct FaffSelect: View {
     }
 }
 
-extension V5.S {
-    /// The prototype's in-control horizontal padding (`padding:12px 14px`).
-    static let s14x: CGFloat = 14
-}
 
 // MARK: - Stepper
 

@@ -353,7 +353,20 @@ enum V5 {
         static let tilePad: CGFloat = 18
         /// Gap between tiles in a group.
         static let inGroup: CGFloat = 8
-        /// Gap between groups.
+        /// THE app-wide rhythm between top-level sections on a screen — the
+        /// gap after the hero panel, between "Long Run" and "About", between
+        /// any two of a screen's own major groups. Every v5 screen's outer
+        /// content `VStack` should use this, not a raw number.
+        ///
+        /// The original handoff's own CSS specified a "20–24" range for this
+        /// gap and different screens picked different points in it — Today/
+        /// Block/Races landed on 20, Settings/Shoes/RaceDetail/RunDetail on a
+        /// raw 24. That is exactly the kind of per-screen latitude that reads
+        /// as inconsistency the moment a runner moves between two screens
+        /// that picked different ends of the range (David, 2026-08-25: "I
+        /// take one look at this and can see vertical spacing between things
+        /// is still not even close to being consistent"). Unified on 20,
+        /// the more heavily used value, across every screen listed above.
         static let betweenGroups: CGFloat = 20
     }
 

@@ -733,7 +733,7 @@ struct TodayAfterV5: View {
                                         .foregroundStyle(V5.textSecondary)
                                 }
                             }
-                            .padding(.horizontal, V5.S.s14x)
+                            .padding(.horizontal, V5.S.s14)
                             .frame(minHeight: 52)
                             .frame(maxWidth: .infinity)
                             .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
@@ -1168,7 +1168,7 @@ struct TodayAfterV5: View {
                                     .foregroundStyle(V5.textPrimary)
                                 Spacer(minLength: 0)
                             }
-                            .padding(.horizontal, V5.S.s14x)
+                            .padding(.horizontal, V5.S.s14)
                             .frame(height: 44)
                             .frame(maxWidth: .infinity)
                             .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))

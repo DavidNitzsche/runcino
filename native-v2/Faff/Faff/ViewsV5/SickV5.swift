@@ -256,7 +256,7 @@ struct SickReportRowV5: View {
             Text(opt.label)
                 .font(.faffText(13, weight: .semibold))
                 .foregroundStyle(selected ? V5.actionPrimaryText : V5.textSecondary)
-                .padding(.horizontal, V5.S.s14x)
+                .padding(.horizontal, V5.S.s14)
                 .frame(height: 34)
                 .background(selected ? V5.signal : V5.materialTileRaised, in: Capsule())
                 // THE CHIP DRAWS AT 34 AND IS TAPPED AT 44.

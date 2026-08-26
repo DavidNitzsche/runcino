@@ -76,10 +76,13 @@ struct RaceDetailV5: View {
             VStack(spacing: 0) {
                 AppBar(title: raceDetail.name, eyebrow: raceDetail.dateLine, onBack: onBack)
 
-                // The prototype's content band spells this out as `gap:24px`
-                // (`padding:0 16px 32px;gap:24px`), the upper end of the
-                // brief's stated 20–24 "between groups" range.
-                VStack(alignment: .leading, spacing: V5.S.s24) {
+                // The prototype specified `gap:24px` here — the upper end of the
+                // brief's own stated 20-24 "between groups" range, which is exactly
+                // the kind of per-screen pick-a-number-in-the-range latitude that
+                // reads as inconsistency once two screens land on different ends of
+                // it. Unified onto `betweenGroups`, the same rhythm Today/Block/
+                // Races already use for this exact relationship.
+                VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                     statsRow
 
                     // Above the form rather than inside it: the result
