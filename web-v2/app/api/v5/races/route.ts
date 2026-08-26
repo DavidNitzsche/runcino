@@ -471,11 +471,15 @@ async function handleGET(req: NextRequest) {
       }
     }
 
-    // ── the schedule — every race, upcoming ranked, past dimmed ───────────
+    // ── the schedule — every race, upcoming soonest-first, past dimmed ────
+    // 2026-08-26 · David: tier (A/B/C) is not a sort key, only a badge —
+    // concatenating aRaces-then-Bs-then-Cs put a March 2027 A race above a
+    // September 2026 B race. Upcoming races are date-sorted individually in
+    // races-state.ts (races-state.ts:277); this just has to merge those
+    // three tiers back into one date order instead of stacking them.
     const schedule = [
-      ...racesState.aRaces.filter(r => !r.is_past),
-      ...racesState.upcomingBs,
-      ...racesState.upcomingCs,
+      ...[...racesState.aRaces.filter(r => !r.is_past), ...racesState.upcomingBs, ...racesState.upcomingCs]
+        .sort((a, b) => a.date.localeCompare(b.date)),
       ...racesState.past,
     ].map((r) => {
       const hasResult = !!r.finishTime;

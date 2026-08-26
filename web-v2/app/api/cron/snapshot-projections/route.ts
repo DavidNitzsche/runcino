@@ -29,6 +29,8 @@ import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-input
 import { reanchorActivePlan } from '@/lib/plan/reanchor-plan';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { refreshRunnerCalibration } from '@/lib/coach/runner-calibration';
+import { resolveNextAGoalProjection } from '@/lib/training/goal-projection-resolve';
+import { checkAndNotifyProjectionChange } from '@/lib/notifications/projection-changed';
 
 export const maxDuration = 60;
 
@@ -175,7 +177,7 @@ export async function POST(req: NextRequest) {
   // hardcoded-user append. (Pre-signup this force-included David's UUID
   // as legacy-row paranoia; every active plan now carries user_uuid.)
 
-  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchored?: { mode: string; from: number | null; to: number; workouts: number; sealed: number; cleared_provisional: boolean }; calibration?: { data_quality: string; workouts: number; quality: number } | { error: string }; error?: string }> = [];
+  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchored?: { mode: string; from: number | null; to: number; workouts: number; sealed: number; cleared_provisional: boolean }; calibration?: { data_quality: string; workouts: number; quality: number } | { error: string }; projectionAlert?: { race_slug: string; sent: boolean; reason: string } | { error: string }; error?: string }> = [];
   for (const u of userIds) {
     try {
       const today = await runnerToday(u);
@@ -190,10 +192,35 @@ export async function POST(req: NextRequest) {
         .then((c) => ({ data_quality: c.dataQuality as string, workouts: c.sourceWorkoutCount, quality: c.sourceQualityCount }))
         .catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
 
+      // 2026-08-26 · David asked for a push when the Races card's
+      // "Projected" moves >= 30s day-over-day. Resolves the SAME
+      // computeGoalProjection number the card reads (goal-projection-resolve
+      // is the shared source for both), snapshots it, and diffs against
+      // yesterday. Its own try/catch — a failed alert must never mask or
+      // break the projection snapshot this route exists to write.
+      let projectionAlert: { race_slug: string; sent: boolean; reason: string } | { error: string } | undefined;
+      try {
+        const goalProjection = await resolveNextAGoalProjection(u);
+        if (goalProjection) {
+          const check = await checkAndNotifyProjectionChange({
+            userUuid: u,
+            raceSlug: goalProjection.raceSlug,
+            raceName: goalProjection.raceName,
+            todayISO: today,
+            projectedSec: goalProjection.projectedSec,
+          });
+          projectionAlert = { race_slug: goalProjection.raceSlug, sent: check.sent, reason: check.reason };
+        }
+      } catch (e: unknown) {
+        projectionAlert = { error: e instanceof Error ? e.message : String(e) };
+        console.error('[snapshot-projections] projection-change alert failed:', u, e);
+      }
+
       results.push({
         user_uuid: u, vdot: r.vdot, snapshots: r.snapshots,
         ...(r.reanchor ? { reanchored: { mode: r.reanchor.mode, from: r.reanchor.fromVdot, to: r.reanchor.toVdot, workouts: r.reanchor.workoutsUpdated, sealed: r.reanchor.workoutsSealed, cleared_provisional: r.reanchor.clearedProvisional } } : {}),
         calibration,
+        ...(projectionAlert ? { projectionAlert } : {}),
       });
     } catch (e: unknown) {
       results.push({

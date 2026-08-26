@@ -37,6 +37,10 @@ export interface NotificationPrefs {
   /** The session-moved nudge. Defaults ON: a plan that changed overnight and
    *  said nothing is the surprise this exists to prevent. */
   session_moved_enabled: boolean;
+  /** 2026-08-26 · the Races card's "Projected" moved >= 30s day-over-day.
+   *  Defaults ON — David explicitly asked for this the day the projection
+   *  went from a frozen snapshot to a live trajectory read. */
+  projection_change_enabled: boolean;
   strava_reconnect_enabled: boolean;
   race_day_wake_time: string;     // 'HH:MM'
   weekly_checkin_time: string;    // 'HH:MM' (Sunday)
@@ -55,6 +59,7 @@ export const DEFAULT_PREFS: NotificationPrefs = {
   race_countdown_enabled: true,
   run_unread_enabled: true,
   session_moved_enabled: true,
+  projection_change_enabled: true,
   strava_reconnect_enabled: true,
   race_day_wake_time: '05:30',
   weekly_checkin_time: '20:00',
@@ -215,6 +220,7 @@ export function categoryEnabled(prefs: NotificationPrefs, c: NotificationCategor
     case 'race_countdown':   return prefs.race_countdown_enabled;
     case 'run_unread':       return prefs.run_unread_enabled;
     case 'session_moved':    return prefs.session_moved_enabled;
+    case 'projection_change': return prefs.projection_change_enabled;
     case 'strava_reconnect': return prefs.strava_reconnect_enabled;
   }
 }

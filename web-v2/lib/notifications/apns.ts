@@ -58,7 +58,12 @@ export type NotificationCategory =
    *  Fires ONCE for that run · a second reminder would make it a nag. */
   | 'run_unread'
   | 'session_moved'
-  | 'strava_reconnect';
+  | 'strava_reconnect'
+  /** 2026-08-26 · the Races card's "Projected" moved >= 30s day-over-day
+   *  (lib/notifications/projection-changed.ts). No action, same shape as
+   *  race_countdown/session_moved — reuses FAFF_MILESTONE below rather than
+   *  a new iOS registration for a board with no buttons. */
+  | 'projection_change';
 
 /** UNNotificationCategory identifier the iOS app registers — must match the
  *  string the iOS NotificationCategories.swift uses in setNotificationCategories. */
@@ -85,6 +90,8 @@ export function apnsCategoryId(c: NotificationCategory): string {
     case 'run_unread':       return 'FAFF_RUN_UNREAD';
     case 'session_moved':    return 'FAFF_SESSION_MOVED';
     case 'strava_reconnect': return 'FAFF_STRAVA_RECON';
+    // No actions, same as race_countdown's reuse of this id above.
+    case 'projection_change': return 'FAFF_MILESTONE';
   }
 }
 

@@ -493,6 +493,42 @@ export function renderSessionMoved(s: SessionMovedSlots): RenderedTemplate {
   };
 }
 
+// ──────────────────────────────────────────────────────────────
+// Projection changed · 2026-08-26 · the Races card's "Projected" moved
+// ──────────────────────────────────────────────────────────────
+
+export interface ProjectionChangedSlots {
+  user_id: string;
+  race_slug: string;
+  race_name: string;
+  /** YYYY-MM-DD of the snapshot that crossed the threshold. Anchors the
+   *  dedup key, so a cron re-run the same day notifies once. */
+  date_iso: string;
+  /** Pre-formatted "3:24:07" — templates take primitives, not seconds. */
+  now_display: string;
+  was_display: string;
+}
+
+/** Projection changed · NO ACTION. Same shape as session-moved: the number
+ *  already moved, there is nothing to approve, so no button. States the
+ *  fact — now vs. was — and lets the runner read the direction themselves
+ *  rather than grading it "good news" or "bad news" for them. */
+export function renderProjectionChanged(s: ProjectionChangedSlots): RenderedTemplate {
+  return {
+    category: 'projection_change',
+    title: `${s.race_name} projection moved`,
+    body: `Now ${s.now_display} · was ${s.was_display}.`,
+    interruption_level: 'active',
+    dedup_key: `projection-change:${s.user_id}:${s.race_slug}:${s.date_iso}`,
+    data: {
+      deeplink: 'faff://races',
+      race_slug: s.race_slug,
+      date_iso: s.date_iso,
+      kicker_text: 'Projection',
+    },
+  };
+}
+
 export interface RunUnreadSlots {
   user_id: string;
   /** YYYY-MM-DD of the run · the dedup key's own once-only anchor. */
