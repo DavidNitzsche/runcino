@@ -30,6 +30,15 @@ final class WatchRootModel: ObservableObject {
     /// root only observes `model`, so a state flip after the engine is
     /// assigned (e.g. the countdown completing) would never re-render.
     private var stateForward: AnyCancellable?
+    /// The SAME problem, one level down: `state` alone doesn't change during
+    /// the countdown — only `countdownValue` ticks 3 → 2 → 1 while `state`
+    /// holds at `.countingDown` the whole time. Without its own forward the
+    /// countdown board rendered once at 3, on the state flip INTO
+    /// `.countingDown`, and then never again until the NEXT state flip —
+    /// `.countingDown` → `.running` — three seconds later, which is a state
+    /// change that no longer matches `case .countingDown`. The board never
+    /// held; it just never got a second chance to draw.
+    private var countdownForward: AnyCancellable?
     /// Guard so the finished workout's completion is sent to the iPhone exactly
     /// once, the moment the run ends — NOT gated on the user tapping "Done" on
     /// the summary (a wrist-drop there used to mean the run never synced).
@@ -160,11 +169,15 @@ final class WatchRootModel: ObservableObject {
                     PhoneSync.shared.sendCompletion(completion)
                 }
             }
+        countdownForward = engine.$countdownValue
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
         self.engine = engine
     }
 
     func reset() {
         stateForward?.cancel(); stateForward = nil
+        countdownForward?.cancel(); countdownForward = nil
         didSendCompletion = false
         engine?.reset()
         engine = nil
