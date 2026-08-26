@@ -86,51 +86,6 @@ final class V5Surface<Model: Decodable>: ObservableObject {
         await load()
     }
 
-    /// Put a payload the caller already holds on screen NOW, and point the
-    /// surface at the read that would have produced it.
-    ///
-    /// ─────────────────────────────────────────────────────────────────────
-    /// DAVID, 2026-08-25: "the week strip is so slow and so clunky. It needs
-    /// to be instant when clicking on another date."
-    ///
-    /// `rebind` is honest but it is always a round trip: the old day stays up
-    /// — deliberately, see above — and the new one lands when the network says
-    /// so. Tapping Thursday therefore did nothing at all for as long as the
-    /// request took, and then the whole panel crossfaded. Both halves read as
-    /// lag, and the second half reads as lag the app CHOSE.
-    ///
-    /// A day the runner has already looked at this session needs none of that.
-    /// It is decoded, in memory, and correct. This paints it on the same
-    /// runloop tick as the tap — no skeleton, no crossfade, no wait — and then
-    /// refreshes behind it, so a stale cached day still self-corrects.
-    ///
-    /// SYNCHRONOUS BY DESIGN. It is not `async`, because the whole point is
-    /// that it happens before the tap gesture has finished being handled. The
-    /// refresh it schedules is the async part, and nothing on screen waits for
-    /// it.
-    func present(_ known: Model, refreshWith newFetch: @escaping () async throws -> API.V5Fetch<Model>) {
-        // A HARD CUT, NOT A CROSSFADE.
-        //
-        // Today keys its content on `dateISO` and fades between days, which
-        // is right when the new day is arriving off the network: the fade
-        // covers the gap. It is wrong when the day is already in hand. Then
-        // the 200ms is not covering anything — it is 200ms of the day the
-        // runner just left, added to a tap that had nothing to wait for, and
-        // it reads as exactly the lag it was meant to hide.
-        //
-        // `disablesAnimations` overrides the `.animation(_:value:)` on the
-        // content, which is why this has to be a transaction rather than an
-        // `withAnimation(nil)`.
-        var t = Transaction()
-        t.disablesAnimations = true
-        withTransaction(t) {
-            model = known
-            stale = false
-            absentReason = nil
-        }
-        fetch = newFetch
-        Task { await load() }
-    }
 
     init(cache: AppCache.Key?, fetch: @escaping () async throws -> API.V5Fetch<Model>) {
         self.cacheKey = cache

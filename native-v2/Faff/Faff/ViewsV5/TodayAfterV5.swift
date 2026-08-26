@@ -69,13 +69,6 @@ struct TodayAfterV5: View {
     /// same contract `TodayBeforeV5` uses — identity is never the date.
     var onPickDay: (String) -> Void = { _ in }
     var viewingDayLabel: String? = nil
-    /// The day the runner has TAPPED, which is not always the day on screen
-    /// yet — see `TodayHostV5.goTo`. The strip plates this one, so the plate
-    /// moves on the same tick as the finger instead of waiting for a payload.
-    /// Nil means "plate whatever the payload says", which is the right answer
-    /// on a fresh screen and on the runner's own today.
-    var selectedDayISO: String? = nil
-
     var onBackToToday: (() -> Void)? = nil
     /// Page the week strip. -1 back a week, +1 forward.
     var onPageWeek: (Int) -> Void = { _ in }
@@ -114,13 +107,11 @@ struct TodayAfterV5: View {
          onPushStrava: @escaping () -> Void = {},
          onPickDay: @escaping (String) -> Void = { _ in },
          viewingDayLabel: String? = nil,
-         selectedDayISO: String? = nil,
          onBackToToday: (() -> Void)? = nil,
          onPageWeek: @escaping (Int) -> Void = { _ in },
          initials: String? = nil,
          onReportSick: @escaping (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }) {
         self.viewingDayLabel = viewingDayLabel
-        self.selectedDayISO = selectedDayISO
         self.onBackToToday = onBackToToday
         self.onPageWeek = onPageWeek
         self.initials = initials
@@ -145,13 +136,29 @@ struct TodayAfterV5: View {
     }
 
 
-    /// The strip's days, with the plate moved to whatever was tapped. See
-    /// `selectedDayISO` — the payload's own `isToday` is still the fallback.
+    /// The strip's plate — which of the seven cells wears the "you are here"
+    /// mark. NOT the server's own `isToday` (that always names the runner's
+    /// real today, everywhere in the payload); this compares each day
+    /// against `model.dateISO`, the date THIS payload is describing.
+    /// Ordinarily the same day — but the moment the runner steps away,
+    /// `model.dateISO` moves with them and `isToday` does not, so this is
+    /// what keeps the plate on the day actually on screen.
+    ///
+    /// A PURE FUNCTION OF `model`, DELIBERATELY. Two earlier attempts at this
+    /// carried a SEPARATE piece of state (`selectedISO` / `selectedDayISO`)
+    /// so the plate could move before the payload for the tapped day had
+    /// arrived — the "instant tap" David asked for. That state could go
+    /// stale independently of `model`, and when two navigations overlapped
+    /// in flight it did: the plate, the header and the actual content payload
+    /// could each be describing a DIFFERENT day at the same moment. This
+    /// reads only `model`, which is the one thing on this screen that cannot
+    /// disagree with itself — whichever payload is currently loaded is
+    /// unambiguous by construction. The plate moves when the content moves,
+    /// never before, and never to a day the screen isn't actually showing.
     private func stripDays() -> [WeekStripDayV5] {
-        guard let selectedDayISO else { return model.weekStrip.map(\.strip) }
-        return model.weekStrip.map { d in
+        model.weekStrip.map { d in
             var s = d.strip
-            s.isToday = d.dateISO == selectedDayISO
+            s.isToday = d.dateISO == model.dateISO
             return s
         }
     }
@@ -234,13 +241,26 @@ struct TodayAfterV5: View {
             // The week line stays where it stood, hard right. It is the one
             // thing on this row the strip does not carry: which week of the
             // block this is.
-            if let weekLine = model.panel.weekLine {
-                HStack(spacing: V5.S.s12) {
-                    Spacer(minLength: 0)
-                    Text(weekLine)
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(panelInk.secondary)
-                }
+            // ── THE ROW HOLDS ITS SPACE EVEN WITH NOTHING TO SAY ───────────
+            //
+            // David, 2026-08-25, watching the strip live: "the week 2 of 2
+            // is gone making it jump. hold the space for it even if its not
+            // there."
+            //
+            // Stepping past the end of the block (nothing written beyond it)
+            // correctly has no week number to report — but `if let` made the
+            // ABSENCE of that sentence also delete its ROW, so the panel's
+            // height changed and everything below it — the strip, the
+            // display register — shifted up a line the instant the runner
+            // crossed that boundary. A real Text at empty string, not a
+            // conditional view, reserves the exact line height every other
+            // week already draws, invisibly, so nothing moves.
+            HStack(spacing: V5.S.s12) {
+                Spacer(minLength: 0)
+                Text(model.panel.weekLine ?? "")
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(panelInk.secondary)
+                    .opacity(model.panel.weekLine == nil ? 0 : 1)
             }
 
             // The strip is a WAY THROUGH THE WEEK on every state that shows

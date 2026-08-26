@@ -146,11 +146,16 @@ struct TodayHostV5: View {
             await surface.load()
             NotificationCenter.default.post(name: .faffSurfaceReady, object: "today")
         }
-        // EVERY DAY THAT LANDS IS KEPT. Including the one the app opens on,
-        // and including a refresh of a day already in the cache — the newer
-        // payload wins, which is what makes `present`-then-refresh safe.
+        // Learn the real today the instant any payload actually carries it —
+        // see `todayISO(_:)`. A plain side effect, not a render-time read: a
+        // computed property (`viewingDayLabel`) calls `todayISO` too, and
+        // mutating state from inside a property `body` reads during layout
+        // is exactly the "modifying state during view update" trap. This
+        // fires on its own schedule, whenever the model changes underneath.
         .onChange(of: surface.model?.dateISO, initial: true) { _, _ in
-            if let m = surface.model { dayCache[m.dateISO] = m }
+            guard let m = surface.model,
+                  let real = m.weekStrip.first(where: \.isToday)?.dateISO else { return }
+            knownTodayISO = real
         }
         .refreshable { await surface.load() }
         .v5ReloadOnForeground { await surface.load() }
@@ -226,7 +231,6 @@ struct TodayHostV5: View {
                          onPushStrava: { Task { await pushStrava(model) } },
                          onPickDay: { id in pickDay(id, in: model) },
                          viewingDayLabel: viewingDayLabel,
-                         selectedDayISO: selectedISO,
                          onBackToToday: { backToToday() },
                          onPageWeek: { step($0 * 7, from: model) },
                          initials: initials,
@@ -249,7 +253,6 @@ struct TodayHostV5: View {
                           },
                           onPickDay: { id in pickDay(id, in: model) },
                           viewingDayLabel: viewingDayLabel,
-                          selectedDayISO: selectedISO,
                           onBackToToday: { backToToday() },
                           onPageWeek: { step($0 * 7, from: model) },
                           onOpenPacesMoved: { path.append(.pacesMoved) },
@@ -263,58 +266,39 @@ struct TodayHostV5: View {
     // ─────────────────────────────────────────────────────────────────────
     // MOVING BETWEEN DAYS
     //
-    // David, 2026-08-25: "the week strip is so slow and so clunky. It needs to
-    // be instant when clicking on another date."
+    // David, 2026-08-25: "the week strip is so slow and so clunky." Then,
+    // after a caching/instant-plate layer was added to fix that: "position
+    // still jumping" — tapping Today from a stepped day landed on a THIRD,
+    // unrelated week, reproducibly, on a clean launch.
     //
-    // It was neither of the two things a tap has to be. The plate did not move
-    // until the payload landed, because the plate is drawn from the payload's
-    // own `isToday` — so for the length of a round trip the runner had tapped
-    // Thursday and the app was still showing Tuesday, with nothing anywhere
-    // saying it had heard them. And when it did land, `.id(dateISO)` +
-    // `.transition(.opacity)` crossfaded, which spends more time on a day the
-    // runner already has than on the one they asked for.
+    // The cause was concurrency, not the plate or the cache themselves. Every
+    // tap kicked off its own independent, un-tracked `Task { await
+    // surface.rebind(...) }` — tapping Sunday started a fetch for Sunday,
+    // and tapping Today a moment later started a SECOND, completely separate
+    // fetch for today, with nothing stopping the first one from finishing
+    // AFTER the second and overwriting it. Two in-flight requests, and the
+    // display showed whichever happened to land last — not whichever the
+    // runner asked for last. A background prefetch (reading the neighbouring
+    // days after every navigation) added a third and fourth unmanaged
+    // request into the same race.
     //
-    // Three changes, and they are separable on purpose:
+    // The fix is not "make it slower" or "make it faster" — it is "make it
+    // ONE navigation at a time." `navigationTask` is the single in-flight
+    // request; a new `goTo` cancels whatever is still running before
+    // starting its own. `V5Surface.load()` already turns a cancelled fetch
+    // into a no-op (`catch is CancellationError`), so a stale request that
+    // does complete late can never again overwrite what the runner is
+    // actually looking at.
     //
-    //   1. `selectedISO` — the plate is now driven by what was TAPPED, not by
-    //      what has arrived. It moves on the same tick as the finger. This is
-    //      the whole of "instant" for the seven cells; it costs no network.
-    //
-    //   2. `dayCache` — every day decoded this session is kept. A day already
-    //      in hand is presented synchronously (`V5Surface.present`) and
-    //      refreshed behind the screen, so going back to a day you just left
-    //      is free, and so is stepping back and forth over a week.
-    //
-    //   3. `prefetchAround` — after a day settles, its neighbours are read
-    //      quietly. Stepping is overwhelmingly sequential, so the day the
-    //      runner asks for next is usually already in the cache by the time
-    //      they ask for it.
-    //
-    // The cache is per-session and in-memory. It is NOT a correctness
-    // mechanism — every presented day still refreshes — so nothing here can
-    // strand the runner on a stale plan.
+    // This trades away the instant-plate/cache layer's free-feeling tap.
+    // That is deliberate: correct-but-a-beat-slower beats fast-but-wrong,
+    // and the plate now moves only once the payload it is describing has
+    // actually arrived, so it can never show a day the screen isn't on.
     // ─────────────────────────────────────────────────────────────────────
 
-    /// Days decoded this session, keyed by ISO date. `viewingDate == nil`
-    /// (the runner's own today) is keyed by its real ISO, never by nil, so
-    /// stepping onto today and tapping today reach the same entry.
-    @State private var dayCache: [String: V5Today] = [:]
-
-    /// The day the runner has ASKED for, which is not always the day on
-    /// screen yet. Nil until they step off today.
-    @State private var selectedISO: String?
-
-    /// Which strip cell wears the plate. The tapped day if there is one, and
-    /// otherwise whatever the payload says — a fresh screen, a foreground
-    /// refresh, or a runner who has not stepped anywhere.
-    private func stripDays(_ model: V5Today) -> [WeekStripDayV5] {
-        guard let selectedISO else { return model.weekStrip.map(\.strip) }
-        return model.weekStrip.map { d in
-            var s = d.strip
-            s.isToday = d.dateISO == selectedISO
-            return s
-        }
-    }
+    /// The one navigation in flight, if any. Cancelled and replaced by every
+    /// new `goTo` call, so an old request can never land after a newer one.
+    @State private var navigationTask: Task<Void, Never>?
 
     /// The strip hands back a plan row's server id; the date lives beside it
     /// on the same row. Identity is the id, the date is a lookup — never the
@@ -339,54 +323,53 @@ struct TodayHostV5: View {
     }
 
     /// The one way onto another day. Everything above funnels here so the
-    /// plate, the cache and the fetch can never disagree about which day the
-    /// screen is on.
+    /// header, the strip and the fetch can never disagree about which day
+    /// the screen is on.
     private func goTo(_ iso: String, todayISO today: String) {
-        guard iso != (selectedISO ?? viewingDate ?? today) else { return }
+        guard iso != (viewingDate ?? today) else { return }
 
         // Landing back on the runner's own today is going HOME, not visiting a
         // date: `viewingDate` goes nil so the header stops offering a way back
         // to where you already are, and the read drops its `date=` parameter.
         let isHome = iso == today
-        selectedISO = isHome ? nil : iso
         viewingDate = isHome ? nil : iso
 
         let param: String? = isHome ? nil : iso
-        let refresh: () async throws -> API.V5Fetch<V5Today> = { try await API.fetchV5Today(date: param) }
-
-        if let known = dayCache[iso] {
-            // Already decoded. On screen this tick, refreshed behind it.
-            surface.present(known, refreshWith: refresh)
-        } else {
-            Task { await surface.rebind(refresh) }
+        navigationTask?.cancel()
+        navigationTask = Task {
+            await surface.rebind { try await API.fetchV5Today(date: param) }
         }
-        Task { await prefetchAround(iso) }
     }
 
-    /// Read the days either side of `iso` quietly, and keep whatever comes
-    /// back. Failures are dropped on purpose — a prefetch that cannot be
-    /// served is not a thing to tell the runner about, and the real read for
-    /// that day will report its own outage if they actually go there.
+    /// The runner's own real today, once learned. See `todayISO(_:)` — this
+    /// is what makes "back to Today" still know what today IS after a week
+    /// spent stepping away from it.
+    @State private var knownTodayISO: String?
+
+    /// The runner's own today. NOT simply "whatever the current payload's
+    /// `isToday` row says" — that row only exists when today happens to fall
+    /// inside the SAME seven-day week the payload is describing.
     ///
-    /// ONE DAY EITHER SIDE, AND ONE WEEK EITHER SIDE. Those are the four moves
-    /// the strip offers: the neighbouring cells, and the swipe. Prefetching
-    /// the whole visible week would be seven reads for a runner who taps one.
-    private func prefetchAround(_ iso: String) async {
-        guard let d = Self.iso.date(from: iso) else { return }
-        let offsets = [-1, 1, -7, 7]
-        for off in offsets {
-            guard let n = Calendar.current.date(byAdding: .day, value: off, to: d) else { continue }
-            let key = Self.iso.string(from: n)
-            if dayCache[key] != nil { continue }
-            if case .ok(let payload)? = try? await API.fetchV5Today(date: key) {
-                dayCache[key] = payload
-            }
-        }
-    }
-
-    /// The runner's own today, as the payload reported it when we were on it.
+    /// David, 2026-08-25, live in the simulator: swiped the strip forward a
+    /// full week, then tapped "Today" — nothing happened. `weekStrip` for
+    /// that far week (Aug31–Sep6) holds no row for the real today (Aug25) at
+    /// all, because Aug25 isn't one of its seven days. `.first(where:
+    /// isToday)` correctly found nothing, and the OLD fallback —
+    /// `?? model.dateISO` — silently returned the VIEWED date instead,
+    /// making `backToToday()` compare that date to itself and no-op. Working
+    /// perfectly one week away, dead two weeks away: the fallback was never
+    /// wrong on a nearby day, which is exactly why it went unnoticed.
+    ///
+    /// `knownTodayISO` is the fix: captured once, whenever a payload DOES
+    /// carry a real `isToday` row (which every payload does the moment the
+    /// runner is anywhere in today's own week, including the instant the app
+    /// opens), and kept from then on as the fallback of last resort — ahead
+    /// of the viewed date, which was never a safe guess.
     private func todayISO(_ model: V5Today) -> String {
-        model.weekStrip.first(where: \.isToday)?.dateISO ?? model.dateISO
+        if let real = model.weekStrip.first(where: \.isToday)?.dateISO {
+            return real
+        }
+        return knownTodayISO ?? model.dateISO
     }
 
     private static let iso: DateFormatter = {
