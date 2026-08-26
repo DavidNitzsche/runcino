@@ -1651,7 +1651,26 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
       : ctx.weekLine,
     kicker: ctx.weatherKicker,
     type: displayTypeFor(ctx.todayPlan?.type, ctx.todayPlan?.subLabel),
-    dose: ctx.prescription ? num(fmtMi(ctx.prescription.total_mi) ?? ctx.prescription.headline, false) : null,
+    // David, live in the simulator, 2026-08-25: "it says REST, REST day.
+    // then extra rest" — three statements of the same fact stacked at the
+    // top of one screen. `type` already carries the word at 56pt; the dose
+    // line's job is to add the NUMBER that word alone can't say. A rest day
+    // has no number, so the fallback below reached for
+    // `sessionRationale('rest').headline` — 'Rest day' — which is not new
+    // information, it is `type` said again in a different case. Sitting
+    // directly under a 56pt REST, that repetition is the loudest of the
+    // three; the "About" section a few rows down ("Extra rest, still
+    // recovering") is a real THIRD sentence but reads as pure pile-on once
+    // this one is gone.
+    //
+    // Genuinely null, not a fabricated dash: `FaffValueText` conflates "we
+    // don't know" and "there is nothing to know" only when a caller passes
+    // `.unreadableIfAbsent`. The client side of this fix reads the field as
+    // `.optionalValue` instead, so a rest day draws no dose row at all
+    // rather than an unexplained "—".
+    dose: ctx.prescription && ctx.todayPlan?.type !== 'rest'
+      ? num(fmtMi(ctx.prescription.total_mi) ?? ctx.prescription.headline, false)
+      : null,
     stats: [
       // RULE ONE. Both of these shipped `false` and neither is a read of
       // anything that happened.

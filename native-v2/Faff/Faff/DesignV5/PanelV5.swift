@@ -347,7 +347,7 @@ extension PanelFill {
     }
 }
 
-enum PanelFill: Equatable {
+enum PanelFill: Equatable, Hashable {
     /// A day-state gradient, with grain.
     case state(V5.DayState)
     /// No gradient: a quiet fill, for the screens with nothing to prescribe.
@@ -419,6 +419,22 @@ struct DayPanel<Content: View>: View {
                 case .quiet:        V5.surface2
                 }
             }
+            // David: "lets also animate the background color changing." A
+            // `LinearGradient`'s own stops are not reliably `Animatable` in
+            // SwiftUI, so switching `fill` used to CUT straight from one
+            // day's colour to the next with no interpolation, whatever
+            // animation context surrounded it. `.id(fill)` forces the old
+            // and new gradient to be two distinct view instances rather than
+            // one view whose properties change — which means the ordinary,
+            // always-reliable `.transition(.opacity)` crossfade applies
+            // instead of depending on gradient interpolation working.
+            //
+            // Scoped INSIDE `.v5Grain()`'s receiver, not around it: the grain
+            // texture is a constant overlay, not something that should fade
+            // in and out with the colour underneath it.
+            .id(fill)
+            .transition(.opacity)
+            .animation(V5.Motion.fill, value: fill)
             .v5Grain()
             // THE PANEL IS PAINT, NOT CONTENT.
             //

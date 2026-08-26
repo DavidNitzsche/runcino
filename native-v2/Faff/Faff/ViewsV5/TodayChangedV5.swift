@@ -127,9 +127,13 @@ struct TodayChangedV5: View {
                     .foregroundStyle(panelInk.primary)
             }
 
-            FaffValueText(panel.dose.unreadableIfAbsent,
-                          font: .faffText(28, weight: .semibold),
-                          color: panelInk.primary, mark: panelInk.mark)
+            // Same fix as TodayBeforeV5's hero: a rest day's dose is
+            // genuinely absent, not unreadable — `type` already says REST.
+            if let dose = panel.dose?.value {
+                FaffValueText(dose,
+                              font: .faffText(28, weight: .semibold),
+                              color: panelInk.primary, mark: panelInk.mark)
+            }
         }
     }
 }

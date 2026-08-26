@@ -993,7 +993,15 @@ struct WeekStripV5: View {
         .onChange(of: page) { _, p in
             guard p != 1, let onPageWeek else { return }
             onPageWeek(p == 0 ? -1 : 1)
-            DispatchQueue.main.async {
+            // `Task { @MainActor in ... }` rather than `DispatchQueue.main
+            // .async`. Both land the reset "next tick", but a GCD block is
+            // scheduled outside SwiftUI's own actor-isolated update cycle —
+            // it can land in the middle of a render pass SwiftUI is already
+            // mid-way through, rather than cleanly after one commits. A
+            // `Task` hop is still one MainActor turn, and MainActor turns
+            // are exactly what SwiftUI's own state commits run on, so this
+            // recentre lands where the framework's own updates do.
+            Task { @MainActor in
                 var t = Transaction()
                 t.disablesAnimations = true
                 withTransaction(t) { page = 1 }
@@ -1052,7 +1060,20 @@ struct WeekStripV5: View {
                 }
             }
         }
-        .animation(V5.Motion.fill, value: ds.first(where: \.isToday)?.id)
+        // David, sixth round: "make sure that nothing JUMPS and nothing
+        // POPS... If we can animate anything do it." This used to key off
+        // ONLY which cell is today, so the pill slid but everything else
+        // about a cell — its rail appearing, its label ink switching from
+        // quiet to primary — changed in a single unanimated frame. Sharpest
+        // case: a neighbour page is drawn as a GHOST (blank rails — "we
+        // haven't read that week and must not draw a claim about it"), and
+        // the moment the real payload lands its rails, done-marks and inks
+        // all snap in at once. Keying on every cell's full drawn state
+        // instead of just which one is `isToday` means the whole row
+        // crossfades together — the rail fading in rather than appearing,
+        // which is what turns "the ghost got replaced" into "this cell
+        // learned its answer."
+        .animation(V5.Motion.fill, value: ds.map { "\($0.id)|\($0.state.rawValue)|\($0.isDone)|\($0.isRest)" })
     }
 
     /// The week `offset` days away, as dates only. No state, no rails, no

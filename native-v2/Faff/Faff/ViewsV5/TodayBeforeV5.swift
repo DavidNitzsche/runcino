@@ -400,9 +400,17 @@ struct TodayBeforeV5: View {
                     .foregroundStyle(panelInk.primary)
             }
 
-            FaffValueText(model.panel.dose.unreadableIfAbsent,
-                          font: .faffText(28, weight: .semibold),
-                          color: panelInk.primary, mark: panelInk.mark)
+            // Genuinely absent, not unreadable. A rest day carries no dose —
+            // `type` already says REST at 56pt directly above, and the
+            // server stopped restating it here (David: "it says REST, REST
+            // day. then extra rest"). `.optionalValue` draws nothing for
+            // nil; `.unreadableIfAbsent` would draw an unexplained dash
+            // where the redundant word used to be.
+            if let dose = model.panel.dose?.value {
+                FaffValueText(dose,
+                              font: .faffText(28, weight: .semibold),
+                              color: panelInk.primary, mark: panelInk.mark)
+            }
 
             PanelStatPlate(stats: model.panel.stats.map { stat in
                 PanelStat(stat.label, stat.value.value,
