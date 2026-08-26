@@ -1008,8 +1008,13 @@ function buildGroups(rx: V5PrescriptionLike | null): V5Group[] {
      * to, so that is what the header states. It is the work only, not the
      * recoveries: the group's job is to say how much WORK is in it. */
     const workSec = work.reduce((s, x) => s + (x.reps ?? 1) * durationToSec(x.duration), 0);
+    // 2026-08-25 · David, live: "REST DAY" three times on one screen — the
+    // hero already says REST / Rest day, so a lone rest-day group titled
+    // 'Rest day' (rx.headline) repeated it a third time. The single step's
+    // own label stands in instead; the note underneath still says what to
+    // actually do ("No running. Sleep, mobility, fuel.").
     groups.push({
-      id: 'work', title: warm.length > 0 || cool.length > 0 ? 'Work' : rx.headline,
+      id: 'work', title: warm.length > 0 || cool.length > 0 ? 'Work' : (rx.type === 'rest' ? 'Today' : rx.headline),
       note: fmtMi(workMi) ?? (workSec > 0 ? `${fmtClock(workSec)} of work` : null),
       footer: groupFooter(work),
       steps: work.flatMap((s, i) => {
