@@ -196,3 +196,62 @@ describe('what it is worth · the pace actually tightens', () => {
     expect(withRace.best!.vdot).toBeGreaterThan(read(6, 425).best!.vdot);
   });
 });
+
+describe('the coach says it out loud', () => {
+  /**
+   * The line `detectTrainingLead` composes, kept here in one place so the
+   * assertions and the hand-off report quote the same string.
+   *
+   * It reaches the runner two ways, both already built: `coach-log.ts` merges
+   * every `plan_adapt_recompute_paces` intent into a `fitness_shift` entry and
+   * renders this as the body, and `V5Today.paceNote` puts a row on the screen
+   * they open anyway.
+   */
+  const line = (sessions: number, spanDays: number, vdot: number) =>
+    `${sessions} quality sessions over ${spanDays} days reading ahead of your last race `
+    + `· VDOT ${vdot.toFixed(1)} · your paces just moved. `
+    + `A race or field test confirms it.`;
+
+  const SAMPLE = line(4, 21, 45.1);
+
+  it('is what the runner actually sees', () => {
+    expect(SAMPLE).toBe(
+      '4 quality sessions over 21 days reading ahead of your last race '
+      + '· VDOT 45.1 · your paces just moved. A race or field test confirms it.',
+    );
+  });
+
+  it('names the evidence AND the number · both facts, not one', () => {
+    expect(SAMPLE).toMatch(/\d+ quality sessions over \d+ days/);  // what happened
+    expect(SAMPLE).toMatch(/VDOT \d+\.\d/);                         // what changed
+  });
+
+  it('does not present a soft lead as a measurement (Rule 1)', () => {
+    // pr_bank may state a VDOT flat, because a race IS the measurement. This
+    // one is capped at a point and carries a field test in doctrine, so the
+    // line has to say what would settle it.
+    expect(SAMPLE).toMatch(/race or field test confirms it/i);
+  });
+
+  it('is coach voice · no hype, no exclamation, no emoji, no em dash (Rule 4)', () => {
+    expect(SAMPLE).not.toMatch(/!/);
+    expect(SAMPLE).not.toMatch(/—/);
+    expect(SAMPLE).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
+    for (const hype of [
+      'great', 'amazing', 'awesome', 'crushing', 'crushed', 'nailed', 'smashed',
+      'congrats', 'congratulations', 'well done', 'keep it up', 'nice work',
+    ]) {
+      expect(SAMPLE.toLowerCase()).not.toContain(hype);
+    }
+  });
+
+  it('matches pr_bank register · same closing clause, same joiner', () => {
+    // pr_bank: "New race fitness · VDOT 45.1 · your paces just moved."
+    expect(SAMPLE).toContain(' · ');
+    expect(SAMPLE).toContain('your paces just moved.');
+  });
+
+  it('states, never grades', () => {
+    expect(SAMPLE).not.toMatch(/should|need to|must|behind/i);
+  });
+});

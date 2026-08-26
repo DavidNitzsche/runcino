@@ -102,10 +102,25 @@ async function loadPaceNoteRow(planId: string | null): Promise<V5Row | null> {
   if (!planId) return null;
   const event = await loadPaceZoneEvent(planId).catch(() => null);
   if (!event || event.acknowledgedAt) return null;
+  // PACENOTE-1 (2026-08-25) · the sub-line names WHAT MOVED THEM.
+  //
+  // "See what changed and confirm it" was written for the race case, where
+  // there genuinely is something to confirm: 18a asks the runner the
+  // representativeness question about the result. A TRAINING-sourced event has
+  // no such question — the card is dismiss-only (see `PaceZoneEvent
+  // .acknowledgedAt`) — so the old sub was asking the runner to ratify
+  // something the screen never puts in front of them.
+  //
+  // It is also the moment worth naming. A pace that moves with no stated cause
+  // is a number the runner has to take on trust; "your training did this" is
+  // the whole reason the upward path exists.
+  const sub = event.evidenceSource === 'training'
+    ? 'Your quality sessions moved them. See what changed.'
+    : 'See what changed and confirm it';
   return {
     id: 'paces-moved',
     label: event.direction === 'slower' ? 'Paces moved slower' : 'Paces moved faster',
-    sub: 'See what changed and confirm it',
+    sub,
     value: null,
     action: 'paces_moved',
   };
