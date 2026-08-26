@@ -77,6 +77,7 @@
 import {
   AT_PACE_WEEKLY_SHARE_CAP,
   CONTINUOUS_TEMPO_MINUTES,
+  INTERVAL_REP_MINUTES,
 } from '@/lib/prescription/levers';
 import { WORKOUT_CATALOGUE } from './catalogue';
 import type {
@@ -134,6 +135,19 @@ export const ZONE_CAP_FAMILY: Record<PaceZone, CapFamily | null> = {
  * long-run weekly share the doc gives.
  */
 export const LONG_RUN_WEEKLY_SHARE_CAP = 0.30;
+
+/**
+ * VO2-SESSION-FLOOR-1 · the least work a session may carry and still be the
+ * week's VO2max day, in minutes.
+ *
+ * §6's own lead — "each interval should be 3–5 min long" — states the size of
+ * ONE repetition, and this is that number: a whole session carrying less work
+ * than a single doctrine repetition is not a rep session. Derived from
+ * `INTERVAL_REP_MINUTES.min` rather than written out, so the two cannot drift.
+ * See the refusal in `selectWorkout` for why the floor is on total work rather
+ * than on rep length, and which sessions it separates.
+ */
+export const VO2_SESSION_MIN_MINUTES = INTERVAL_REP_MINUTES.min;
 
 /**
  * The cap a whole workout spends against: the most restrictive of its zones.
@@ -218,7 +232,22 @@ const SLOT_FAMILIES: Record<Slot, CatalogueEntry['family'][]> = {
   // have no continuous phrase to render. They were reachable only through the
   // tempo slot, where `renderContinuousPhrase` refused them every time.
   threshold: ['threshold', 'cutdown', 'race_specific', 'marathon_specific', 'ladder', 'combo'],
-  intervals: ['vo2max', 'hills', 'fartlek', 'race_specific', 'ladder'],
+  // ONE-PER-FAMILY-1 · `cutdown` sits on the INTERVALS slot as well as the
+  // threshold slot, because §12's family is two shapes and only one of them is
+  // threshold work. §12.2's Purpose row is "final reps at I/R pace force
+  // composure under fatigue" and §12.3's Pace row is "Start at MP, finish at
+  // 5K" — both END above threshold, so `capFamilyOf` charges them to
+  // `interval`, which is the budget the intervals slot is priced against.
+  // §12.5's continuous mile cutdown stops at HM ("drop to slightly faster than
+  // HM by final mile") and stays threshold work on the slot it already had.
+  //
+  // Reachable only through the threshold slot, they spent the I budget from a
+  // slot budgeted for T, and the week's real I session was cut back to pay for
+  // it — see `SelectorInput.capFamilyRemainingMi` for the measured case. Adding
+  // the slot is what keeps the vocabulary: without it the ledger would refuse
+  // §12.2 and §12.3 on every week that also carries a rep session, which is
+  // every QUALITY week of a 5K or 10K build.
+  intervals: ['vo2max', 'hills', 'fartlek', 'race_specific', 'ladder', 'cutdown'],
   tempo: ['threshold', 'combo'],
   // The week's long run and the mid-week medium-long are different DAYS with
   // different recovery costs — §3 is explicit that a medium-long "should not
@@ -413,6 +442,40 @@ export interface SelectorInput {
    * read for a structure with no `repBuild`.
    */
   blockPosition?: number | null;
+  /**
+   * ONE-PER-FAMILY-1 (2026-08-25) · WHAT IS LEFT OF EACH CAP FAMILY'S WEEKLY
+   * BUDGET, AFTER EVERY OTHER SLOT IN THIS WEEK HAS BEEN ACCOUNTED FOR.
+   *
+   * `sessionAllowanceMi` answers "how much may ONE session of this entry spend
+   * on a week this size", and it answered it for every slot independently. So
+   * a week with two slots could hand each of them Daniels' whole 8%, and did —
+   * because the slot a session lands on and the cap family it SPENDS are not
+   * the same thing.
+   *
+   * §12.3's 1K cutdowns are the case that shows it. Their zones are `MP` →
+   * `5K`, so `capFamilyOf` charges the session to `interval`; but the slot they
+   * are admitted on is `threshold`, which the composer budgets against Daniels'
+   * ten percent for T. A marathon QUALITY week therefore authored an 8×1K
+   * cutdown (4.97 mi charged to I) beside a 6×1200m rep set (4.47 mi at I) on a
+   * 56.5 mi week whose whole I allowance is 4.52 — 16.7% against doctrine's 8%.
+   * `applyDosingCaps` then shed reps off both until the arithmetic closed, and
+   * what shipped was "1×1km · MP → 5K" and "2×1200m @ I pace": two sessions
+   * below the rep floor their own doc rows state (§12.3 "5–8 × 1K", §6.1 "4–6 ×
+   * 1200"), which is to say neither of them was the workout its label named.
+   *
+   * `generate.ts` has carried the ruling in a comment since DOCTRINE-DOSING-2 —
+   * "ONE SESSION PER PACE FAMILY, PER WEEK", with "`assertOnePerPaceFamily`
+   * below holds the invariant" written beside it. There is no such function
+   * anywhere in the repo. This field is the invariant, built where the decision
+   * is actually made: a session that cannot fit in what its OWN family has left
+   * is refused here, and the selector ranks the next session doctrine places on
+   * the slot — instead of being authored and then shaved into a shape doctrine
+   * does not describe.
+   *
+   * Absent leaves the previous behaviour exactly: every entry gets the family's
+   * whole weekly share.
+   */
+  capFamilyRemainingMi?: Partial<Record<CapFamily, number>>;
 }
 
 /* ──────────────────────────────────────────────────────────── the output ── */
@@ -857,6 +920,7 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
     placedThisWeek = [], dayOffset = 0, recent = [],
     inTaperWindow = false, cycleCounts = {}, exclude,
     targetAtPaceMinutes = null, blockPosition = null,
+    capFamilyRemainingMi = undefined,
   } = input;
 
   const rejected: Rejection[] = [];
@@ -920,7 +984,20 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
     }
 
     // Affordability, and the refusal path.
-    const allowanceMi = sessionAllowanceMi(entry, weeklyMi);
+    //
+    // ONE-PER-FAMILY-1 · two bounds, and the tighter wins. `sessionAllowanceMi`
+    // is what a session of this shape may spend on a week this size; the
+    // remaining budget is what THIS week has left in the family this session
+    // actually charges to, after every other slot in it is accounted for. A
+    // session that cannot fit the second is not affordable however well it fits
+    // the first — see `SelectorInput.capFamilyRemainingMi`.
+    const entryCapFamily = capFamilyOf(entry);
+    const familyLeftMi = entryCapFamily != null && capFamilyRemainingMi
+      ? capFamilyRemainingMi[entryCapFamily]
+      : undefined;
+    const allowanceMi = familyLeftMi != null
+      ? Math.min(sessionAllowanceMi(entry, weeklyMi), Math.max(0, familyLeftMi))
+      : sessionAllowanceMi(entry, weeklyMi);
     // SLOT-ROTATE-2 · the block's earned dose in this session's own currency.
     // An effort-prescribed session spends no at-pace miles at all (§8.1's pace
     // column is "5K–10K effort"), so there is nothing for the trajectory to
@@ -958,6 +1035,62 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
     }
     if (!picked) {
       push(entry.slug, 'does-not-fit-the-week', lastDetail);
+      continue;
+    }
+
+    // ── VO2-SESSION-FLOOR-1 (2026-08-25) · A REP SLOT CARRIES A REP SESSION ──
+    //
+    // Once the base phase is behind, the `intervals` slot IS the week's VO2max
+    // day: §15's specific-support row names "mile repeats at slower I" for it
+    // and §8.4's own Purpose row calls the long hill repeat a "substitute for
+    // flat intervals". A 62 mi/wk marathon build authored `11×10s hills · by
+    // effort` there — one hundred and ten seconds of work as a week's rep
+    // session — because §8.2 sits in the `hills` family and the rotation is
+    // least-recently-used, so a session's identity was ranked without regard
+    // for whether it is the same KIND of stimulus as the one it displaced.
+    //
+    // Doctrine draws the line itself, twice, in the same document. §6.6's Note
+    // reads "Daniels: pure 400s alone are inefficient for VO2max because it
+    // takes ~2 min to elicit VO2max. Use 400s for speed/economy or as part of a
+    // longer set." And §7's own lead defines the alternative it is naming —
+    // "Short, fast, full-recovery work to develop neuromuscular coordination,
+    // running economy, and stride mechanics" — which is a different family
+    // with a different purpose and a different weekly cap.
+    //
+    // So the floor is on the session's TOTAL WORK, not on its rep length: §8.3
+    // runs 60-90 s repetitions and §8.2 runs 10-30 s ones, and what separates
+    // them here is that six of §8.3's is six minutes of climbing and eleven of
+    // §8.2's is under two. The number is §6's own smallest repetition — "each
+    // interval should be 3–5 min long" — so a session that does not carry as
+    // much work as ONE doctrine repetition is not the week's rep session.
+    // Below it the selector ranks the next session §15 places on the slot, and
+    // §7's own work stays where §7.2's Placement row puts it: on the easy days,
+    // as strides, every week.
+    //
+    // BASE and TAPER are deliberately exempt, and for the same reason: in
+    // neither is this slot the VO2max day. §15's base row names "strides, hill
+    // sprints" as that phase's own primary workouts (DOCTRINE-BASE-2 routes the
+    // day through the `speed` slot there), and §15's taper row names
+    // "Reduced-volume versions of recent workouts; strides; short race-pace
+    // work" — which is why `SLOT_FAMILIES_IN_PHASE.intervals.taper` admits §7
+    // at all. A floor written for the rep session would delete the very
+    // sessions those two rows prescribe by name.
+    // And the floor only speaks where the dose HAS a duration to measure. §8.5's
+    // Lydiard hill circuit is a lap — "800m of springing/bounding uphill, 800m
+    // flat jog, 700m fast relaxed striding downhill, 800m wind sprints" — and
+    // `fits` reports zero minutes for it because no step carries one, not
+    // because the session is small: §8.5's own Total-session row reads "45–75
+    // min". Reading that zero as a refusal deleted a forty-five-minute session
+    // from the phase §15 places it in, which is the opposite of the defect this
+    // floor exists to close.
+    const isVo2Slot = slot === 'intervals'
+      && (phase === 'hill_strength' || phase === 'specific_support' || phase === 'race_specific');
+    if (isVo2Slot && picked.atPaceMinutes > 0 && picked.atPaceMinutes + 1e-9 < VO2_SESSION_MIN_MINUTES) {
+      push(
+        entry.slug, 'does-not-fit-the-week',
+        `${picked.atPaceMinutes.toFixed(1)} min of work is less than one §6 repetition ` +
+        `(${VO2_SESSION_MIN_MINUTES} min), so it is §7 speed work rather than this week's rep session`,
+      );
       continue;
     }
 

@@ -102,7 +102,7 @@ import {
   newCatalogueHistory, recordCatalogueChoice, selectSlotWorkout,
   type CatalogueHistory, type ComposerSlot,
 } from './catalogue-rx';
-import type { PlacedSession } from '@/lib/workout-catalogue/select';
+import { capFamilyOf, type CapFamily, type PlacedSession } from '@/lib/workout-catalogue/select';
 import type { Tier } from '@/lib/workout-catalogue/types';
 // #12 follow-up (2026-08-18) · THE race-distance categorizer. generate.ts kept
 // four more inline mileage branches after the goal-tiers re-export landed, and
@@ -3617,6 +3617,101 @@ function layoutWeek({
       };
     })();
 
+    /* ── ONE-PER-FAMILY-1 (2026-08-25) · THE INVARIANT THE COMMENT PROMISED ───
+     *
+     * DOCTRINE-DOSING-2's header states the rule — "ONE SESSION PER PACE
+     * FAMILY, PER WEEK" — and ends "`assertOnePerPaceFamily` below holds the
+     * invariant". There is no such function in the repo. What was actually
+     * built holds it over the SLOT TYPES (`duplicatePaceFamily`), and a slot
+     * type is not what a session spends: `slotDosePace('threshold')` is `T`,
+     * but §12.3's 1K cutdowns ramp `MP → 5K` and `capFamilyOf` charges the
+     * whole session to `interval`. Both halves were individually right and the
+     * join was missing.
+     *
+     * The cost, measured on the owner's own marathon build: a QUALITY week
+     * authored an 8×1K cutdown on the threshold slot and a 6×1200m rep set on
+     * the intervals slot — 9.4 mi charged to I on a 56.5 mi week whose whole I
+     * allowance is 4.5. `applyDosingCaps` then shaved reps off both until the
+     * arithmetic closed, and what the runner read was "1×1km · MP → 5K" and
+     * "2×1200m @ I pace". §12.3's own row is "5–8 × 1K" and §6.1's is "4–6 ×
+     * 1200": neither session was still the workout its label named, and the
+     * week's I dose came out at 2.6% against a doctrine band of 10-15%.
+     *
+     * So the ledger below is the week's actual budget in each of Daniels'
+     * three capped families, and each slot is offered only what its OWN family
+     * has left — with the families other slots in the week are budgeted for
+     * held back. The refusal then happens where a refusal belongs, at
+     * selection, and the selector ranks the next session §15 places on the
+     * slot rather than authoring one and shaving it into a shape doctrine does
+     * not describe. `applyDosingCaps` stays exactly as it is: it is the
+     * backstop for what the composer could not foresee, and it stops being the
+     * primary mechanism.
+     */
+    const capLedger = (() => {
+      const FAMILY_OF_PACE: Partial<Record<DosePace, CapFamily>> = {
+        T: 'threshold', I: 'interval', R: 'repetition',
+      };
+      const FAMILIES: CapFamily[] = ['threshold', 'interval', 'repetition'];
+      const budget: Record<CapFamily, number> = {
+        threshold: weeklyDoseBudgetMi(weeklyMi, 'T', weekDoseContext),
+        interval: weeklyDoseBudgetMi(weeklyMi, 'I', weekDoseContext),
+        repetition: weeklyDoseBudgetMi(weeklyMi, 'R', weekDoseContext),
+      };
+      const spent: Record<CapFamily, number> = { threshold: 0, interval: 0, repetition: 0 };
+      /** The cap family a slot is BUDGETED against, from its day type. */
+      const nominalOf = (qt: DayPlan['type']): CapFamily | null => {
+        const p = slotDosePace(qt, Boolean(taperMp) && qt === 'tempo');
+        return p ? FAMILY_OF_PACE[p] ?? null : null;
+      };
+      /** Slots still to be resolved, in order, by their nominal family. */
+      const pending = plannedSlots.map((s) => (s ? nominalOf(s.qt) : null));
+      /**
+       * ONE-PER-FAMILY-2 · the SAME ceilings `sizeFromPrescription` will apply.
+       *
+       * `sizeFromPrescription` cuts a rep set against three bounds — the
+       * session cap, `slotBudgetMi`, and `mpLongAtPaceCapMi` — and the selector
+       * priced against only the first. So on a marathon-pace long week the
+       * selector offered §11.2's Canova 2K repeats at their doctrine floor of
+       * four, the cut then took them to two, and the runner read "2×2km · MP →
+       * T | Canova 2K repeats · Research/04 §11.2" against a row that says
+       * "4–8 × 2 km". The 75%-easy floor leaving 2.9 at-pace miles beside a
+       * ten-mile MP finish is CORRECT; offering a session that cannot fit in
+       * 2.9 miles and then shaving it until it does is not. Priced here, the
+       * selector refuses it and ranks the next session §15 places on the slot,
+       * and if nothing fits the slot falls back to the trajectory's generic
+       * shape — which claims no doc row and is the honest answer.
+       */
+      const slotCeilingMi = (qt: DayPlan['type']): number => Math.min(
+        slotBudgetMi(qt),
+        mpLongAtPaceCapMi ?? Infinity,
+      );
+      return {
+        /** What slot `i` may spend in each family, given the rest of the week. */
+        remainingFor(i: number, qt: DayPlan['type']): Partial<Record<CapFamily, number>> {
+          const mine = pending[i];
+          const claimedByOthers = new Set<CapFamily>();
+          for (let j = 0; j < pending.length; j++) {
+            if (j === i) continue;
+            const f = pending[j];
+            if (f) claimedByOthers.add(f);
+          }
+          const ceiling = slotCeilingMi(qt);
+          const out: Partial<Record<CapFamily, number>> = {};
+          for (const f of FAMILIES) {
+            out[f] = f !== mine && claimedByOthers.has(f)
+              ? 0
+              : Math.max(0, Math.min(budget[f] - spent[f], ceiling));
+          }
+          return out;
+        },
+        /** Record what slot `i` actually committed, and retire its claim. */
+        commit(i: number, family: CapFamily | null, atPaceMi: number): void {
+          pending[i] = null;
+          if (family && Number.isFinite(atPaceMi) && atPaceMi > 0) spent[family] += atPaceMi;
+        },
+      };
+    })();
+
     /* ── SLOT-ROTATE-2 · THE TRACK A SLOT SITS ON, AND WHO OWNS THE LABEL ─────
      *
      * These were one function and they are two questions.
@@ -3729,7 +3824,7 @@ function layoutWeek({
       return mins > 0 ? mins : null;
     };
 
-    const resolvedSlots = plannedSlots.map((planned) => {
+    const resolvedSlots = plannedSlots.map((planned, slotIdx) => {
       if (!planned) return null; // conflict · skip
       const { dow, qt } = planned;
       const candidateFamily = (baseBuilding || (taperMp && qt === 'tempo'))
@@ -3788,6 +3883,10 @@ function layoutWeek({
             // Pure in `(weekIdx, totalWeeks)` — no clock, no counter — so the
             // plan still regenerates byte-identically.
             blockPosition: totalWeeks > 1 ? weekIdx / (totalWeeks - 1) : 0,
+            // ONE-PER-FAMILY-1 · what this week has left in each of Daniels'
+            // three capped families, with the families the week's OTHER slots
+            // are budgeted for held back. See `capLedger` above.
+            capFamilyRemainingMi: capLedger.remainingFor(slotIdx, qt),
           })
         : null;
       if (choice?.ok) {
@@ -3797,6 +3896,7 @@ function layoutWeek({
           usedFamilies.add(choice.family);
           placedThisWeek.push({ slug: choice.entry.slug, dayOffset: dow });
           recordCatalogueChoice(catalogueHistory!, choice.entry.slug, weekIdx);
+          capLedger.commit(slotIdx, capFamilyOf(choice.entry), choice.dose.atPaceMi);
           return {
             dow, qt,
             vocabFamily: choice.family,
@@ -3806,6 +3906,11 @@ function layoutWeek({
           };
         }
       }
+      // ONE-PER-FAMILY-1 · the catalogue declined, so this slot falls back to
+      // the overload trajectory's generic shape — which runs at the slot's own
+      // nominal pace and spends that family's budget through `slotBudgetMi`.
+      // Its claim is therefore deliberately NOT retired: a later slot must
+      // still be unable to reach into the family this one is about to spend.
       const vocabFamily = (candidateFamily && !usedFamilies.has(candidateFamily)) ? candidateFamily : null;
       const vocabRx = vocabFamily ? rx.families[vocabFamily] : undefined;
       if (vocabFamily && vocabRx) usedFamilies.add(vocabFamily);

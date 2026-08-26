@@ -529,6 +529,38 @@ export function advanceShape(args: {
       if (family === 'threshold' && next.reps === 1 && next.repMinutes > CONTINUOUS_TEMPO_MINUTES.max) {
         return { shape, change: 'continuous tempo would exceed 40 minutes', capped: true };
       }
+      // REP-LENGTH-CEILING-1 (2026-08-25) · THE OTHER HALF OF SLOT-ROTATE-3.
+      //
+      // SLOT-ROTATE-3 stopped this lever merging a VO2max set below §6.1's
+      // three-rep floor, and left the rep LENGTH unbounded. So the runaway
+      // simply changed direction: with the count pinned at three, every further
+      // application poured the whole set into longer and longer repetitions,
+      // and a marathon's race-specific weeks shipped `3×7 min` and then
+      // `3×10 min @ I`. `Research/04-workout-vocabulary.md` §6's own lead is
+      // "each interval should be 3–5 min long" and `Research/01`'s I row states
+      // the window as "3–5 min (max 11 min)"; `Research/00a` says why — "Long
+      // intervals (3–5 min) accrue more time at >90% VO2max than short,
+      // intensified intervals", which stops being true once the repetition is
+      // long enough that the runner is holding it at threshold instead.
+      //
+      // The `duration` lever above has guarded this since it was written
+      // (`maxRep = INTERVAL_REP_MINUTES.max`, and `REPETITION_REP_MINUTES_MAX`
+      // for R). Density and duration are two routes to the same number and
+      // only one of them was fenced. This is the same fence, on the other route.
+      const maxMergedRep = family === 'interval'
+        ? INTERVAL_REP_MINUTES.max
+        : family === 'repetition'
+        ? REPETITION_REP_MINUTES_MAX
+        : Infinity;
+      if (next.repMinutes > maxMergedRep) {
+        return {
+          shape,
+          change: family === 'interval'
+            ? '§6 puts a VO2max repetition at 3-5 minutes; merging would run past it'
+            : 'an R repetition stops at two minutes; merging would run past it',
+          capped: true,
+        };
+      }
       return {
         shape: next,
         change: `${shape.reps} x ${shape.repMinutes} min becomes ${next.reps} x ${next.repMinutes} min — same volume, less rest`,

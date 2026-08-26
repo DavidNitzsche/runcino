@@ -29,7 +29,7 @@ import { WORKOUT_CATALOGUE } from '@/lib/workout-catalogue/catalogue';
 import { selectWorkout, type Slot } from '@/lib/workout-catalogue/select';
 import { ALL_DISTANCES, DOCTRINE_PHASES, TIERS, type PaceZone } from '@/lib/workout-catalogue/types';
 import { anchorsFor, renderPrescription, renderContinuousPhrase } from './catalogue-rx';
-import { parsePrescription, parseTimeReps, parseTempoLeadMi } from './prescription-parser';
+import { parsePrescription, parseSegments, parseTimeReps, parseTempoLeadMi } from './prescription-parser';
 import { buildWorkoutSpec } from './spec-builder';
 
 const base = {
@@ -78,6 +78,26 @@ describe('VOCAB-CATALOGUE-1 · every rendered prescription round-trips', () => {
               if (parseTempoLeadMi(s) != null) drift.push(`${res.entry.slug}: tempo phrase leads with a size — "${s}"`);
               if (/@\s*MP\b/i.test(s)) drift.push(`${res.entry.slug}: tempo phrase declares MP, which dosePaceOf would charge to the marathon budget — "${s}"`);
               if (parseTempoLeadMi(`5mi ${s}`) !== 5) drift.push(`${res.entry.slug}: composed tempo label does not read back — "5mi ${s}"`);
+              continue;
+            }
+
+            // GRAMMAR-SEQ · an UNEQUAL-STEP session's label has no single
+            // leading rep count to compare against `dose.reps` — §9.2's Mona
+            // fartlek is "2×90s + 4×60s + 4×30s + 4×15s", where the leading
+            // two is the first segment and the dose's fourteen is every step.
+            // The round-trip claim still applies, in the grammar the label is
+            // actually written in: the segments must read back, and they must
+            // sum to the dose. Reading `2` off the front and calling it drift
+            // was the test's model of a shape the engine renders correctly —
+            // caught when a rotation change first made §9.2 the index-0 pick
+            // on this slot, having never been reachable there before.
+            if (res.dose.structure.kind === 'sequence') {
+              const segs = parseSegments(s);
+              if (!segs) {
+                drift.push(`${res.entry.slug}: unequal-step label does not parse as segments — "${s}"`);
+              } else if (segs.length !== res.dose.reps) {
+                drift.push(`${res.entry.slug}: label carries ${segs.length} steps, the dose is ${res.dose.reps} — "${s}"`);
+              }
               continue;
             }
 
