@@ -143,8 +143,8 @@ struct RepBreakdownV5: View {
                             .foregroundStyle(V5.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, V5.S.s14)
+                            .padding(.vertical, V5.S.s12)
                             .background(V5.materialTileRaised,
                                         in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
                             .padding(.horizontal, V5.S.s8)
@@ -166,7 +166,7 @@ struct RepBreakdownV5: View {
         let primary = p.isWork ? V5.textPrimary : V5.textSecondary
 
         return HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: V5.S.s4) {
                 Text(p.label)
                     .font(.faffText(p.isWork ? TypeScaleV5.body17 : TypeScaleV5.body15))
                     .foregroundStyle(primary)
@@ -183,7 +183,7 @@ struct RepBreakdownV5: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            VStack(alignment: .trailing, spacing: 3) {
+            VStack(alignment: .trailing, spacing: V5.S.s4) {
                 // NOTHING, NOT A DASH, when there is no pace.
                 //
                 // `FaffValue.measured(nil)` is `.unreadable`, which draws "—"
@@ -207,8 +207,8 @@ struct RepBreakdownV5: View {
                 }
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .padding(.horizontal, V5.S.tilePad)
+        .padding(.vertical, V5.S.s12)
         // One element per piece. Read as five separate strings a rep becomes
         // "Interval · 1 km" followed by four orphaned fragments, and the
         // fragment that says whose decision the skip was is the one that

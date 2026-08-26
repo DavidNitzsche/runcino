@@ -196,7 +196,7 @@ struct AddRaceV5: View {
                                       onRetry: { Task { await save() } })
                         }
                     }
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, V5.S.s2)
                 }
                 .scrollIndicators(.hidden)
                 .frame(maxHeight: .infinity, alignment: .top)

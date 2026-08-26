@@ -630,7 +630,7 @@ private struct OnboardingRevealPanel: View {
     let day: OnboardingV5DayOne
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: V5.S.s14) {
             Text(day.phaseLine)
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(V5.OnPanel.secondary)

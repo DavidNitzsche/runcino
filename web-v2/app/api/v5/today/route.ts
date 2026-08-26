@@ -45,7 +45,7 @@ import {
 import { cardFromSpec, cardWithoutSpec, cardForUnprescribableType, type SpecCard } from '@/lib/training/spec-card';
 import { loadHeatEasing } from '@/lib/watch/heat';
 import { splitRuleRegisters } from '@/lib/watch/build-workout';
-import { fmtPace as fmtPaceShared } from '@/lib/format/run';
+import { fmtPace as fmtPaceShared, fmtMinutesCasual } from '@/lib/format/run';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
@@ -1537,7 +1537,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // takes.
   const totalMi = prescription ? (prescription.total_mi || 0) : 0;
   const kickerMin = sessionMinutes(prescription, fuelPaceSPerMi);
-  ctx.weatherKicker = kickerMin > 0 ? `about ${kickerMin} min` : null;
+  ctx.weatherKicker = kickerMin > 0 ? `about ${fmtMinutesCasual(kickerMin)}` : null;
   /* ── PRERUN-1 · THE PANEL'S PACE AND THE STEPS' PACE WERE TWO ANSWERS ────
    *
    * This stat used to come from `derivePaces()` in every arm — a tree that

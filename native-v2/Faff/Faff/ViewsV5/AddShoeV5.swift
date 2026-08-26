@@ -88,7 +88,7 @@ struct AddShoeV5: View {
                           placeholder: "0 \u{00B7} already broken in",
                           keyboard: .decimalPad)
                 }
-                .padding(.horizontal, 2)
+                .padding(.horizontal, V5.S.s2)
             }
             .scrollIndicators(.hidden)
             .frame(maxHeight: .infinity, alignment: .top)

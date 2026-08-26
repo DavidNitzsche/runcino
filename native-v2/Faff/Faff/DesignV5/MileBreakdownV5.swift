@@ -222,7 +222,7 @@ struct MileBreakdownV5: View {
         }
         .font(.faffText(TypeScaleV5.label12))
         .foregroundStyle(V5.textQuiet)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, V5.S.s14)
         .padding(.bottom, V5.S.s6)
         .accessibilityHidden(true)
     }
@@ -277,8 +277,8 @@ struct MileBreakdownV5: View {
             if showsElev { cell(p.elevFt.map { $0 > 0 ? "+\($0)" : "\($0)" }) }
             if showsCadence { cell(p.cadence.map { "\($0)" }) }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, V5.S.s14)
+        .padding(.vertical, V5.S.s9)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spoken(p))
     }

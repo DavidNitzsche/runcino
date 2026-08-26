@@ -833,7 +833,7 @@ struct RunDetailV5: View {
         VStack(alignment: .leading, spacing: V5.S.s10) {
             V5SectionLabel(text: "Splits").padding(.horizontal, V5.S.s4)
             SplitBars(bars: splitBars)
-                .padding(.top, 18)
+                .padding(.top, V5.S.tilePad)
                 .padding(.horizontal, V5.S.s12)
                 .padding(.bottom, V5.S.s8)
                 .background(V5.materialTile,
@@ -917,7 +917,7 @@ struct RunDetailV5: View {
                     .foregroundStyle(V5.textSecondary)
                 Spacer(minLength: 0)
                 if let ft = detail.elev_gain_ft, ft > 0 {
-                    HStack(spacing: 4) {
+                    HStack(spacing: V5.S.s4) {
                         FaffValueText(.measured("\(ft)"), font: .faffText(15, weight: .semibold), color: V5.textPrimary)
                         Text("ft up")
                             .font(.faffText(TypeScaleV5.label13))

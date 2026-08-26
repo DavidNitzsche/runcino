@@ -368,7 +368,7 @@ struct TodayAfterV5: View {
     private func statsRow(size: CGFloat) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: size >= 32 ? V5.S.s24 + V5.S.s4 : V5.S.s16) {
             ForEach(Array(posterStats.enumerated()), id: \.offset) { _, item in
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: V5.S.s6) {
                     FaffValueText(item.value, font: .faffText(size, weight: .semibold),
                                   color: panelInk.primary, mark: panelInk.mark)
                     if let unit = item.unit {
@@ -713,7 +713,7 @@ struct TodayAfterV5: View {
                             withAnimation(V5.Motion.expand) { shoePickerOpen = false }
                         } label: {
                             HStack(spacing: V5.S.s6) {
-                                VStack(alignment: .leading, spacing: 1) {
+                                VStack(alignment: .leading, spacing: V5.S.s2) {
                                     Text(opt.label)
                                         .font(.faffText(TypeScaleV5.body15))
                                         .foregroundStyle(V5.textPrimary)
@@ -1015,11 +1015,11 @@ struct TodayAfterV5: View {
                 .foregroundStyle(V5.textSecondary)
             HStack(alignment: .top, spacing: V5.S.s16) {
                 ForEach(Array(stats.enumerated()), id: \.offset) { i, s in
-                    VStack(alignment: i == 0 ? .leading : .trailing, spacing: 4) {
+                    VStack(alignment: i == 0 ? .leading : .trailing, spacing: V5.S.s4) {
                         Text(s.label.uppercased())
                             .font(.faffText(TypeScaleV5.label12))
                             .foregroundStyle(V5.textQuiet)
-                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        HStack(alignment: .firstTextBaseline, spacing: V5.S.s2) {
                             FaffValueText(s.value.value, font: .faffText(26, weight: .semibold), color: V5.textPrimary)
                             Text(s.label.lowercased().contains("speed") ? "mph" : "%")
                                 .font(.faffText(TypeScaleV5.label13))

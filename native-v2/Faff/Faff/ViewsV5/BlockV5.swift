@@ -211,7 +211,7 @@ struct BlockV5: View {
             }
 
             VStack(alignment: .leading, spacing: V5.S.s20) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: V5.S.s2) {
                     if let kicker = model.panel.kicker {
                         Text(kicker)
                             .font(.faffText(TypeScaleV5.label13))
@@ -394,7 +394,7 @@ struct BlockV5: View {
     @ViewBuilder
     private var planSheetBody: some View {
         VStack(alignment: .leading, spacing: V5.S.tilePad) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: V5.S.s4) {
                 Text("What changed")
                     .font(.faffDisplay(20))
                     .textCase(.uppercase)
@@ -652,11 +652,11 @@ struct BlockV5: View {
     }
 
     private func dateField(label: String, date: Binding<Date>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: V5.S.s4) {
             Text(label)
                 .font(.faffText(TypeScaleV5.label12))
                 .foregroundStyle(V5.textQuiet)
-                .padding(.horizontal, 2)
+                .padding(.horizontal, V5.S.s2)
             DatePicker("", selection: date, in: Self.tomorrow..., displayedComponents: .date)
                 .datePickerStyle(.compact)
                 .labelsHidden()
@@ -927,7 +927,7 @@ private struct BlockWeekRow: View {
         VStack(spacing: 0) {
             Button(action: onTap) {
                 HStack(alignment: .center, spacing: V5.S.s12) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: V5.S.s2) {
                         Text(week.label)
                             .font(.faffText(15, weight: week.isCurrent ? .bold : .regular))
                             .foregroundStyle(week.isCurrent ? V5.textPrimary : V5.textSecondary)

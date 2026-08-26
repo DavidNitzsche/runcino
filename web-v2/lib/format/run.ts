@@ -234,6 +234,29 @@ export function fmtFinish(sec: number | null | undefined): string | null {
 }
 
 /**
+ * A whole-minute duration in CASUAL register: `"54 min"` under an hour,
+ * `"1h 56m"` at or above it.
+ *
+ * `fmtClock` above is the CLOCK register — `1:56:00` — correct for a time
+ * that will be compared second-by-second (a finish time, a split). This is
+ * for an ESTIMATE already rounded to the minute before it gets here (Today's
+ * "about ␣ min" kicker, sessionMinutes' own rounding), where a clock's
+ * trailing `:00` asserts a precision nobody measured and the minute count
+ * alone reads as one long, un-scannable number past about 90.
+ *
+ * David, 2026-08-25, on a 116-minute long run reading "about 116 min":
+ * "lets also do time in hours if its over 60 min."
+ */
+export function fmtMinutesCasual(min: number | null | undefined): string | null {
+  if (min == null || !Number.isFinite(min) || min < 0) return null;
+  const whole = Math.round(min);
+  if (whole < 60) return `${whole} min`;
+  const h = Math.floor(whole / 60);
+  const m = whole % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+/**
  * A signed difference between two clocks: `"+1:12"`, `"−0:38"`.
  *
  * A true minus sign, not a hyphen: the hyphen reads as a dash in the middle

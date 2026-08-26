@@ -318,8 +318,23 @@ enum V5 {
         static let s4:   CGFloat = 4
         static let s6:   CGFloat = 6
         static let s8:   CGFloat = 8
+        // David, 2026-08-25: "the spacing is all over the place... we need
+        // some guardrails and rules in place." Two rungs the v5 screens kept
+        // reaching for and not finding — a dozen-plus call sites wrote a raw
+        // 9 or a raw 14 by hand rather than pick the nearest named step,
+        // which is exactly how a scale rots: every one of those sites read
+        // as a one-off, and the actual pattern (`14` horizontal / `12`
+        // vertical on a compact tile, repeated across race rows, rep tables
+        // and mile tables) was invisible until this audit put them side by
+        // side. Filled in rather than snapped away, because they recur too
+        // often to be noise — a scale with gaps in exactly the places people
+        // keep needing numbers is not a stricter scale, just a less honest
+        // one. See `scripts/check-spacing-tokens.sh` for the guardrail that
+        // now keeps a raw literal from creeping back into this position.
+        static let s9:   CGFloat = 9
         static let s10:  CGFloat = 10   // the prototype's in-tile row gap
         static let s12:  CGFloat = 12
+        static let s14:  CGFloat = 14
         static let s16:  CGFloat = 16
         static let s20:  CGFloat = 20
         static let s24:  CGFloat = 24

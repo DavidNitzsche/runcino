@@ -314,7 +314,7 @@ struct ZoneBar: View {
     var body: some View {
         GeometryReader { geo in
             VStack(alignment: .leading, spacing: V5.S.s6) {
-                HStack(spacing: 2) {
+                HStack(spacing: V5.S.s2) {
                     ForEach(Array(shares.enumerated()), id: \.offset) { i, s in
                         let isTarget = targets.contains(i + 1)
                         RoundedRectangle(cornerRadius: V5.R.r6, style: .continuous)
@@ -342,7 +342,7 @@ struct ZoneBar: View {
                 // an easy run. The label row now takes the bar's own widths,
                 // and a zone with no time in it gets no label to point at.
                 if labels {
-                    HStack(spacing: 2) {
+                    HStack(spacing: V5.S.s2) {
                         ForEach(Array(shares.enumerated()), id: \.offset) { i, s in
                             Text(s > 0 ? "Z\(i + 1)" : "")
                                 .font(.faffText(TypeScaleV5.label12))
@@ -460,7 +460,7 @@ struct TrendBars: View {
             }
 
             GeometryReader { geo in
-                HStack(alignment: .bottom, spacing: 2) {
+                HStack(alignment: .bottom, spacing: V5.S.s2) {
                     ForEach(Array(values.enumerated()), id: \.offset) { i, v in
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .fill(i == hi ? V5.signal : V5.plotInk.opacity(0.32))
@@ -538,7 +538,7 @@ struct PhaseBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.s6) {
             GeometryReader { geo in
-                HStack(spacing: 2) {
+                HStack(spacing: V5.S.s2) {
                     ForEach(phases) { p in
                         ZStack(alignment: .leading) {
                             RoundedRectangle(cornerRadius: V5.R.r6, style: .continuous)
@@ -1186,7 +1186,7 @@ struct WeekShape: View {
 
     var body: some View {
         GeometryReader { geo in
-            HStack(alignment: .bottom, spacing: 3) {
+            HStack(alignment: .bottom, spacing: V5.S.s4) {
                 ForEach(days) { d in
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
                         .fill(ink(d))
@@ -1402,7 +1402,7 @@ struct SplitBars: View {
 
     var body: some View {
         GeometryReader { geo in
-            HStack(alignment: .bottom, spacing: 5) {
+            HStack(alignment: .bottom, spacing: V5.S.s6) {
                 ForEach(bars) { b in
                     UnevenRoundedRectangle(topLeadingRadius: 4, bottomLeadingRadius: 0,
                                            bottomTrailingRadius: 0, topTrailingRadius: 4,

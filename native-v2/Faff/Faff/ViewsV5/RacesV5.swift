@@ -307,7 +307,7 @@ struct RaceDecisionCardV5: View {
                             Circle()
                                 .fill(V5.attention)
                                 .frame(width: 5, height: 5)
-                                .padding(.top, 6)
+                                .padding(.top, V5.S.s6)
                             Text(text)
                                 .font(.faffText(TypeScaleV5.label14))
                                 .foregroundStyle(V5.textSecondary)
@@ -358,8 +358,8 @@ struct RaceDecisionCardV5: View {
                 .minimumScaleFactor(0.5)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, V5.S.s14)
+        .padding(.vertical, V5.S.s12)
         .background(V5.materialTileRaised, in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
     }
 }
@@ -394,7 +394,7 @@ private struct DecisionAnswerButtonV5: View {
                 .foregroundStyle(ink)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, V5.S.s12)
                 .frame(minWidth: 96, minHeight: 44)
                 .background(fill, in: Capsule(style: .continuous))
                 // "NOT NOW" WAS TAPPABLE ON ITS LETTERS AND NOWHERE ELSE.
@@ -426,8 +426,8 @@ private struct FactAnswerRowV5: View {
                 .font(.faffText(15, weight: .semibold))
                 .foregroundStyle(V5.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .padding(.horizontal, V5.S.s14)
+                .padding(.vertical, V5.S.s12)
                 .background(V5.materialTileRaised, in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
         }
         .buttonStyle(V5PressStyle())

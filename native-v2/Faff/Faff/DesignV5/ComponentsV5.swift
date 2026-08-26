@@ -234,7 +234,7 @@ struct ListRow: View {
         // sub WRAPS then keeps the same breathing room instead of growing
         // past 58 with none — which is what put "…nothing else moves." hard
         // against "Travel" in the change-the-plan menu.
-        .padding(.vertical, 10)
+        .padding(.vertical, V5.S.s10)
         .frame(minHeight: 58)
         .frame(maxWidth: .infinity)
         .background(raised ? V5.materialTileRaised : Color.clear)
@@ -743,6 +743,9 @@ struct FaffRadio: View {
                     Circle().fill(V5.materialTileRaised).frame(width: 22, height: 22)
                     if checked { Circle().fill(V5.signal).frame(width: 11, height: 11) }
                 }
+                // v5-spacing-exempt: 1pt optical nudge, not a spacing value —
+                // aligns the checkbox circle's visual centre with the label's
+                // cap-height baseline. Not on the scale on purpose.
                 .padding(.top, 1)
                 VStack(alignment: .leading, spacing: V5.S.s2) {
                     Text(label)
@@ -1106,9 +1109,9 @@ struct V5SheetHost<Sheet: View>: View {
                     }
                 }
                 .frame(maxHeight: tall ? tallHeight : ceiling, alignment: .top)
-                .padding(.top, 22)
+                .padding(.top, V5.S.s24)
                 .padding(.horizontal, V5.S.tilePad)
-                .padding(.bottom, 34)
+                .padding(.bottom, V5.S.s32)
                 .background(V5.surface1)
                 .clipShape(SheetShape())
                 .shadow(color: V5.Shadow.color, radius: V5.Shadow.radius, y: V5.Shadow.y)
@@ -1351,7 +1354,7 @@ struct PlaceHeaderV5: View {
                 // leave the screen looking like the one it is not.
                 if viewingDayLabel != nil, let onBackToToday {
                     Button(action: onBackToToday) {
-                        HStack(spacing: 3) {
+                        HStack(spacing: V5.S.s4) {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 10, weight: .semibold))
                             Text("Today")
@@ -1470,7 +1473,7 @@ struct WristDecisionsV5: View {
             V5SectionLabel(text: "What you decided").padding(.horizontal, V5.S.s4)
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(decisions) { d in
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: V5.S.s4) {
                         Text(d.statement)
                             .font(.faffText(TypeScaleV5.body17))
                             .foregroundStyle(V5.textPrimary)
@@ -1480,8 +1483,8 @@ struct WristDecisionsV5: View {
                             .foregroundStyle(V5.textSecondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 14)
+                    .padding(.horizontal, V5.S.tilePad)
+                    .padding(.vertical, V5.S.s14)
                     // One element per decision. Read as two separate strings
                     // it becomes "Cut it short at mile 6" followed by an
                     // orphaned fragment, and the reason is the only thing

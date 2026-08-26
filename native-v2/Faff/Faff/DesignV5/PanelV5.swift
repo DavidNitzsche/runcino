@@ -364,6 +364,24 @@ struct DayPanel<Content: View>: View {
     let fill: PanelFill
     @ViewBuilder var content: () -> Content
 
+    /// Two-slot cross-dissolve for the background — see the `.onChange`
+    /// below `body` for how they're driven. Nil means "not yet seeded";
+    /// `slotA ?? fill` / `slotB ?? fill` is what's actually drawn, so a
+    /// brand-new panel paints correctly before the first `.onChange` fires.
+    @State private var slotA: PanelFill?
+    @State private var slotB: PanelFill?
+    /// Which slot is the visible one right now.
+    @State private var showingA = true
+
+    /// One gradient layer, at whatever `PanelFill` it's told to be.
+    @ViewBuilder
+    private func gradientLayer(_ f: PanelFill) -> some View {
+        switch f {
+        case .state(let s): V5Ramp.gradient(s)
+        case .quiet:        V5.surface2
+        }
+    }
+
     /// The ink this panel's own fill requires, published to everything drawn
     /// inside it. A `.quiet` panel is surface-2, which is dark, so it keeps
     /// the white set.
@@ -384,7 +402,7 @@ struct DayPanel<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, V5.S.s20)
-        .padding(.bottom, 26)
+        .padding(.bottom, V5.S.s24)
         // ── Reaching behind the status bar ──────────────────────────────
         //
         // "Full-bleed gradient panel from the status bar down." The system
@@ -413,28 +431,52 @@ struct DayPanel<Content: View>: View {
         // than the 1.94:1 lede this commit fixes.
         .environment(\.v5PanelInk, ink)
         .background(alignment: .top) {
-            Group {
-                switch fill {
-                case .state(let s): V5Ramp.gradient(s)
-                case .quiet:        V5.surface2
-                }
-            }
-            // David: "lets also animate the background color changing." A
-            // `LinearGradient`'s own stops are not reliably `Animatable` in
-            // SwiftUI, so switching `fill` used to CUT straight from one
-            // day's colour to the next with no interpolation, whatever
-            // animation context surrounded it. `.id(fill)` forces the old
-            // and new gradient to be two distinct view instances rather than
-            // one view whose properties change — which means the ordinary,
-            // always-reliable `.transition(.opacity)` crossfade applies
-            // instead of depending on gradient interpolation working.
+            // ── THE CROSSFADE, DONE AS A GUARANTEED OPACITY DISSOLVE ──────
             //
-            // Scoped INSIDE `.v5Grain()`'s receiver, not around it: the grain
-            // texture is a constant overlay, not something that should fade
-            // in and out with the colour underneath it.
-            .id(fill)
-            .transition(.opacity)
-            .animation(V5.Motion.fill, value: fill)
+            // David: "lets also animate the background color changing" —
+            // and then, on the `.id(fill) + .transition(.opacity)` attempt:
+            // "theres no animation between colors it just takes longer to
+            // change now." Right: that technique depends on SwiftUI treating
+            // an `.id()` change as a real remove-then-insert, which it does
+            // reliably for a view behind a ViewBuilder `if`/`switch` or
+            // inside a `ForEach` — NOT reliably for a single, always-present
+            // view whose `.id()` just changed. What actually happened here
+            // was the identity swap landing, unanimated, and the 200ms
+            // being spent on something else nearby — a delayed cut, not a
+            // fade, which is exactly "takes longer" with nothing visibly
+            // interpolating.
+            //
+            // This is the technique that cannot fail that way: two ALWAYS-
+            // PRESENT layers, each a plain, fully-formed gradient, and only
+            // their OPACITY ever changes. Opacity is animatable for any
+            // view, unconditionally — nothing here depends on SwiftUI
+            // deciding a view was inserted or on `LinearGradient` knowing
+            // how to interpolate its own stops. `showingA` flips which
+            // layer is live; the OTHER slot is loaded with the new fill
+            // first, UNANIMATED, then the flip itself is what animates.
+            ZStack {
+                gradientLayer(slotA ?? fill).opacity(showingA ? 1 : 0)
+                gradientLayer(slotB ?? fill).opacity(showingA ? 0 : 1)
+            }
+            .onChange(of: fill, initial: true) { oldValue, newValue in
+                guard slotA != nil || slotB != nil else {
+                    // First appearance. Seed the visible slot directly —
+                    // nothing to fade FROM yet, and no flip needed.
+                    slotA = newValue
+                    return
+                }
+                guard newValue != oldValue else { return }
+                // Load the value into the layer that is currently INVISIBLE,
+                // with no animation — it must be fully painted, at opacity
+                // 0, before the flip starts, or the flip has nothing correct
+                // to fade in TO.
+                var t = Transaction()
+                t.disablesAnimations = true
+                withTransaction(t) {
+                    if showingA { slotB = newValue } else { slotA = newValue }
+                }
+                withAnimation(V5.Motion.fill) { showingA.toggle() }
+            }
             .v5Grain()
             // THE PANEL IS PAINT, NOT CONTENT.
             //

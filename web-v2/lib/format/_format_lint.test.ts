@@ -53,7 +53,7 @@ import * as WF from '@/lib/wire-format/format';
 import {
   roundTo, miNum, fmtMi, fmtMi2,
   fmtPace, fmtPaceSlash, fmtPaceBand,
-  fmtClock, fmtFinish, fmtDelta,
+  fmtClock, fmtFinish, fmtDelta, fmtMinutesCasual,
 } from './run';
 
 const WEB = path.resolve(__dirname, '..', '..');
@@ -403,6 +403,26 @@ describe('format lint · one way to write a run down', () => {
     expect(fmtPaceBand(465, null)).toBe('7:45/mi');
     expect(fmtDelta(72)).toBe('+1:12');
     expect(fmtDelta(0)).toBe('even');
+  });
+
+  it('a casual duration switches to hours over 60 minutes, David 2026-08-25', () => {
+    // The Today panel's "about ␣ min" kicker read "about 116 min" on a
+    // 116-minute long run — a number past the point anyone reads it as a
+    // count rather than parsing it, next to "about 54 min" on an easy day
+    // where the plain minute count is exactly right.
+    expect(fmtMinutesCasual(54)).toBe('54 min');
+    expect(fmtMinutesCasual(59)).toBe('59 min');
+    expect(fmtMinutesCasual(60)).toBe('1h');
+    expect(fmtMinutesCasual(116)).toBe('1h 56m');
+    expect(fmtMinutesCasual(125)).toBe('2h 5m');
+    expect(fmtMinutesCasual(120)).toBe('2h');
+    // Rounds to the whole minute before splitting, same discipline as
+    // fmtClock rounding to the whole second before splitting.
+    expect(fmtMinutesCasual(59.6)).toBe('1h');
+    expect(fmtMinutesCasual(null)).toBeNull();
+    expect(fmtMinutesCasual(undefined)).toBeNull();
+    expect(fmtMinutesCasual(-1)).toBeNull();
+    expect(fmtMinutesCasual(NaN)).toBeNull();
   });
 
   it('refuses a number it cannot write, rather than writing a zero', () => {

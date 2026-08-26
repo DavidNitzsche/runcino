@@ -389,7 +389,7 @@ struct TodayBeforeV5: View {
                         onTap: { day in onPickDay(day.id) },
                         onPageWeek: { onPageWeek($0) })
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: V5.S.s2) {
                 if let kicker = model.panel.kicker {
                     Text(kicker)
                         .font(.faffText(TypeScaleV5.label13))
