@@ -1537,6 +1537,18 @@ final class WorkoutEngine: ObservableObject {
             // a crash during overtime still recovers a complete run.
             persistSnapshot()
             Haptics.play(moment: .finish)
+            // David 2026-08-26: no cue existed anywhere for the plan
+            // actually finishing — only a haptic. He runs past the
+            // prescribed distance often (running home, etc.), so this
+            // says the SESSION is done, never "stop" or "great work" —
+            // overtime is a real, expected mode, not a runner who missed
+            // the memo. Race excluded: a goal distance is read off GPS,
+            // which can true up a few strides early or late, and "session
+            // complete" mid-race reads as "you're done" at exactly the
+            // wrong moment.
+            if !workout.isRace {
+                SpokenCues.shared.say("Session complete.")
+            }
             // No takeover face for plan-done — the live face already
             // signals overtime by flipping the distance row to .bonus
             // purple + counting up, and the finish haptic just fired
