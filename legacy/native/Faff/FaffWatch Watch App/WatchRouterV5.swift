@@ -597,33 +597,49 @@ struct WatchRunSurfaceV5: View {
             // is exactly what Page 1 already draws.
             runningPages
                 .contentShape(Rectangle())
-                .onTapGesture { router.controlsShowing = true }
+                .gesture(revealControlsGesture)
+                .accessibilityAction(.default) { router.controlsShowing = true }
+                .accessibilityLabel("Controls")
+                .accessibilityHint("Pause, lap or end the run")
         } else if let phase = engine.currentPhase, isStructured(phase) {
             // Structured sessions swap the running face for the phase board
             // automatically at each change, announced by the Phase change
             // moment. The numbers below keep page 1's order.
             phaseBoard(phase)
                 .contentShape(Rectangle())
-                .onTapGesture { router.controlsShowing = true }
-                // A bare onTapGesture creates no accessibility element and no
-                // action, so VoiceOver's double-tap had nothing to activate —
-                // which would mean Pause, Lap and End run had no reachable
-                // entry point at all during a run.
+                .gesture(revealControlsGesture)
+                // VoiceOver's double-tap still activates the same action —
+                // the physical gesture below is for a sighted runner's
+                // finger, not for VoiceOver, which has no "swipe from the
+                // edge" of its own to give up.
                 .accessibilityAction(.default) { router.controlsShowing = true }
                 .accessibilityLabel("Controls")
                 .accessibilityHint("Pause, lap or end the run")
         } else {
             runningPages
                 .contentShape(Rectangle())
-                .onTapGesture { router.controlsShowing = true }
-                // A bare onTapGesture creates no accessibility element and no
-                // action, so VoiceOver's double-tap had nothing to activate —
-                // which would mean Pause, Lap and End run had no reachable
-                // entry point at all during a run.
+                .gesture(revealControlsGesture)
                 .accessibilityAction(.default) { router.controlsShowing = true }
                 .accessibilityLabel("Controls")
                 .accessibilityHint("Pause, lap or end the run")
         }
+    }
+
+    /// Left-edge swipe reveals Skip rep / Pause / End run — the same
+    /// "swipe in from the edge" gesture the rest of the app already uses
+    /// for back, not a screen-wide tap that used to fire from a runner's
+    /// finger just checking the numbers mid-stride. `runningPages` pages
+    /// with a VERTICAL swipe (`.tabViewStyle(.verticalPage)`), so this
+    /// horizontal, edge-anchored drag never competes with it.
+    private var revealControlsGesture: some Gesture {
+        DragGesture(minimumDistance: 12, coordinateSpace: .local)
+            .onEnded { value in
+                guard value.startLocation.x < 24,
+                      value.translation.width > 30,
+                      abs(value.translation.height) < value.translation.width
+                else { return }
+                router.controlsShowing = true
+            }
     }
 
     /// Page 1 ◀▶ page 2. Tridots, and the page survives a phase board.
@@ -828,6 +844,18 @@ struct WatchRunSurfaceV5: View {
                 }
                 m.append(WorkoutMetric(value: dist.value, unit: dist.unit, role: "Distance"))
                 m.append(WorkoutMetric(value: WFmt.clock(engine.totalElapsedSec), role: "Elapsed"))
+                return m
+            }
+            if engine.workout.isOpenEnded {
+                // Just Run's one phase carries a 24h duration so the
+                // engine never runs it out on its own — a placeholder
+                // ceiling, not a target. Counting down FROM it as "time
+                // left in rep" read as though the run had 23-odd hours to
+                // go. Elapsed is the honest number here, same shape as the
+                // race board above.
+                var m = [WorkoutMetric(value: WFmt.clock(engine.totalElapsedSec), role: "Elapsed"), paced]
+                if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
+                m.append(WorkoutMetric(value: dist.value, unit: dist.unit, role: "Distance"))
                 return m
             }
             if isStrides(phase) {
@@ -1289,7 +1317,10 @@ struct WatchRunSurfaceV5: View {
     }
 
     private var controlsHeader: String {
-        if engine.currentPhase?.type == .work {
+        // Just Run's one phase is `.work` with a 24h placeholder duration —
+        // never a real rep to count down, so it takes the mile/elapsed
+        // line below rather than "Just run · 1439:32 left".
+        if engine.currentPhase?.type == .work && !engine.workout.isOpenEnded {
             return "\(engine.currentPhase?.label ?? "Rep") \(WatchV5.separator) \(WFmt.short(engine.phaseRemainingSec)) left"
         }
         let mile = Int(tracker.distanceMi) + 1

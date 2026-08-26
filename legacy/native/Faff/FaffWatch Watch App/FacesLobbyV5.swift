@@ -339,6 +339,221 @@ struct V5LobbyRefusal: View {
     }
 }
 
+// MARK: - 2a · Rest hero
+//
+// Page 1 of the 0821+ Rest day / No session flow. Just the word and nothing
+// else — no sentence, no button. The rest sentence used to stack "nothing
+// today" (again, on top of the lede saying the same thing) with the week's
+// miles and the long run's day, all in one line; those facts now have their
+// own pages (Next up, This week) and the escape now has its own page (the
+// last one), so this page has nothing left to say beyond the one word.
+
+struct V5LobbyRestHero: View {
+    /// "Rest" on a rest day. "Week off" / "Off-season" / "Not today" on a
+    /// No-session board — those are already one clean word or two.
+    let lede: String
+    var ramp: V5LobbyRamp = .rest
+    /// Page dots only draw when there's somewhere else to swipe to.
+    var pageCount: Int = 1
+    var pageIndex: Int = 0
+
+    var body: some View {
+        WGradientBoard(session: ramp.wireName) {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                WDisplayWord(text: lede, size: 36)
+                Spacer(minLength: 0)
+                if pageCount > 1 {
+                    WPageDots(count: pageCount, index: pageIndex)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+// MARK: - 2b · Next up
+//
+// Page 2 of Rest day / No session, when the loaded week still has a running
+// day ahead of today. The hero page (1) answers "why nothing today," the
+// week page (3) answers "what's already been run" — this one is the only
+// question left standing: what's next. Skipped entirely, not drawn empty,
+// when the loaded window has nothing left after today.
+
+struct V5LobbyNextUp: View {
+    let dayName: String
+    let daysAway: Int
+    let typeLabel: String
+    let dose: String
+    var pageCount: Int = 3
+    var pageIndex: Int = 1
+
+    /// "Tomorrow" alone when it is — naming the day too was redundant.
+    /// Otherwise just the day name; "in N days" made the runner do the
+    /// arithmetic Wednesday → Saturday themselves for no reason.
+    private var whenLine: String {
+        daysAway <= 1 ? "Tomorrow" : dayName
+    }
+
+    var body: some View {
+        WBoard {
+            VStack(alignment: .leading, spacing: 0) {
+                WKicker(text: "Next up")
+
+                Spacer(minLength: 0)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(whenLine)
+                        .font(WatchV5.number(15))
+                        .foregroundStyle(WatchV5.valueDim)
+                    WDisplayWord(text: typeLabel, size: 30)
+                    Text(dose)
+                        .font(WatchV5.number(19))
+                        .foregroundStyle(WatchV5.valueStated)
+                        .padding(.top, 2)
+                }
+
+                Spacer(minLength: 0)
+
+                WPageDots(count: pageCount, index: pageIndex)
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(maxHeight: .infinity)
+        }
+    }
+}
+
+/// plan_workouts.type → the word Next up draws. Same family of names the
+/// server's own SessionClass switches on; this just spells them out.
+func nextUpTypeLabel(_ type: String) -> String {
+    switch type.lowercased() {
+    case "long":                          return "Long"
+    case "tempo":                         return "Tempo"
+    case "threshold":                     return "Threshold"
+    case "intervals", "interval":         return "Intervals"
+    case "fartlek":                       return "Fartlek"
+    case "progression":                   return "Progression"
+    case "race_week_tuneup":              return "Tune-up"
+    case "cross":                         return "Cross-train"
+    case "strength":                      return "Strength"
+    case "recovery", "shakeout":          return "Recovery"
+    case "race":                          return "Race"
+    default:                              return "Easy"
+    }
+}
+
+// MARK: - 2c · The escape, as its own page
+//
+// "Run anyway" / "Just run" used to be a quiet button riding under the hero
+// sentence — competing with it for the one page a runner glances at first.
+// It gets its own screen instead: the action word, one factual line
+// borrowed from the app's own vocabulary (never invented copy), and the
+// target. Always the LAST page, so seeing the rest of the picture — what's
+// next, what the week looks like — comes before the override.
+
+struct V5LobbyEscape: View {
+    /// "Run anyway" · "Just run" — `WatchDayState.actionLabel`, verbatim.
+    let actionLabel: String
+    var pageCount: Int = 1
+    var pageIndex: Int = 0
+    let onStart: () -> Void
+
+    var body: some View {
+        WBoard {
+            VStack(alignment: .leading, spacing: 0) {
+                Spacer(minLength: 0)
+
+                // Just the word. Page 1 proved one word is enough — no
+                // added line explaining what it does.
+                WDisplayWord(text: actionLabel, size: 30, color: WatchV5.value)
+
+                Spacer(minLength: 0)
+
+                if pageCount > 1 {
+                    WPageDots(count: pageCount, index: pageIndex)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 10)
+                }
+
+                WTarget(label: "Start", weight: .quiet, action: onStart)
+            }
+            .frame(maxHeight: .infinity)
+        }
+    }
+}
+
+// MARK: - 2d · Rest day / No session, as a page sequence
+//
+// Hero (why nothing today) → Next up (when the loaded week still has a
+// running day ahead) → This week (the load, run against planned) → the
+// escape, always last. Next up and This week are skipped rather than drawn
+// empty — the same rule `WatchLobbySurfaceV5` follows for its own breakdown
+// and week pages.
+struct WatchRestSurfaceV5: View {
+    let dayState: WatchDayState
+    let weekStrip: WatchWeekStrip?
+    let onEscape: () -> Void
+
+    private var hasNextUp: Bool { dayState.nextWorkout != nil }
+    private var hasWeek: Bool { weekStrip != nil }
+    private var pageCount: Int { 2 + (hasNextUp ? 1 : 0) + (hasWeek ? 1 : 0) }
+    private var nextUpIndex: Int { 1 }
+    private var weekIndex: Int { 1 + (hasNextUp ? 1 : 0) }
+    private var escapeIndex: Int { pageCount - 1 }
+
+    var body: some View {
+        TabView {
+            V5LobbyRestHero(
+                // "Rest" — the one-word training-state label, not the wire's
+                // "Nothing today" (that title still rides the flat `message`
+                // fallback for older builds; it never draws to this screen).
+                // No-session titles ("Week off" · "Off-season" · "Not
+                // today") are already this short, so they pass straight
+                // through.
+                lede: dayState.isRestDay ? "Rest" : dayState.title,
+                ramp: dayState.isRestDay ? .rest : .noSession,
+                pageCount: pageCount,
+                pageIndex: 0
+            )
+            .tag(0)
+
+            if let next = dayState.nextWorkout {
+                let d = WFmt.distance(next.distanceMi, units: nil)
+                V5LobbyNextUp(
+                    dayName: next.dayName,
+                    daysAway: next.daysAway,
+                    typeLabel: nextUpTypeLabel(next.type),
+                    dose: d.value + " " + d.unit,
+                    pageCount: pageCount,
+                    pageIndex: nextUpIndex
+                )
+                .tag(1)
+            }
+
+            if let strip = weekStrip {
+                V5LobbyWeek(
+                    days: WatchLobbyAdapter.days(from: strip),
+                    milesRun: WFmt.distance(strip.milesDone, units: nil).value,
+                    milesPlanned: WFmt.distance(strip.milesPlanned, units: nil).value,
+                    unit: WFmt.distance(strip.milesPlanned, units: nil).unit,
+                    pageCount: pageCount,
+                    pageIndex: weekIndex
+                )
+                .tag(2)
+            }
+
+            V5LobbyEscape(
+                actionLabel: dayState.actionLabel,
+                pageCount: pageCount,
+                pageIndex: escapeIndex,
+                onStart: onEscape
+            )
+            .tag(3)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+    }
+}
+
 // MARK: - 3 · Countdown
 //
 // The last frame of the lobby, not a new place: three seconds, one numeral,
@@ -450,33 +665,43 @@ struct V5LobbyWeek: View {
     var pageCount: Int = 3
     var pageIndex: Int = 2
 
-    /// The tallest column in the design, which is what every other column is
-    /// drawn against. Bars are relative to the week's own biggest day: the
-    /// strip reads shape, not absolute distance.
-    private let tallestBar: CGFloat = 75
-    /// A day that was run but barely still has to be visible as run.
-    private let shortestBar: CGFloat = 10
-
     var body: some View {
         WBoard {
             VStack(alignment: .leading, spacing: 0) {
                 WKicker(text: "This week")
 
-                HStack(alignment: .bottom, spacing: 4) {
-                    ForEach(Array(days.enumerated()), id: \.offset) { _, day in
-                        VStack(spacing: 4) {
+                // The bars used to be a fixed height regardless of how much
+                // room the board actually had, which left whatever the
+                // device didn't need for that fixed figure as a dead
+                // Spacer gap between the miles line and the dots — worse
+                // the bigger the screen. A GeometryReader instead: the
+                // chart claims every point the layout has left over
+                // between the kicker and the miles line below it, on
+                // every device, and there is no leftover for a Spacer to
+                // waste.
+                GeometryReader { geo in
+                    HStack(alignment: .bottom, spacing: 4) {
+                        ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
                                 .fill(barFill(day.state))
-                                .frame(height: barHeight(day.miles))
-                            Text(day.letter)
-                                .font(WatchV5.number(10))
-                                .foregroundStyle(letterFill(day.state))
+                                .frame(height: barHeight(day.miles, in: geo.size.height))
+                                .frame(maxWidth: .infinity)
                         }
-                        .frame(maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                }
+                .frame(maxHeight: .infinity)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+
+                HStack(spacing: 4) {
+                    ForEach(Array(days.enumerated()), id: \.offset) { _, day in
+                        Text(day.letter)
+                            .font(WatchV5.number(10))
+                            .foregroundStyle(letterFill(day.state))
+                            .frame(maxWidth: .infinity)
                     }
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 5)
 
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text(milesRun)
@@ -486,8 +711,7 @@ struct V5LobbyWeek: View {
                         .font(WatchV5.number(15))
                         .foregroundStyle(WatchV5.valueMute)
                 }
-
-                Spacer(minLength: 0)
+                .padding(.top, 6)
 
                 WPageDots(count: pageCount, index: pageIndex)
                     .frame(maxWidth: .infinity)
@@ -497,10 +721,18 @@ struct V5LobbyWeek: View {
         }
     }
 
-    private func barHeight(_ miles: Double) -> CGFloat {
+    /// A day that was run but barely still has to be visible as run — a
+    /// floor relative to the chart's OWN available height, not a constant.
+    /// Zero stays zero. The floor only lifts a day that ran or is planned
+    /// for SOME distance into visibility against a much bigger peak — it
+    /// used to also catch true zero days, which drew a rest day as though
+    /// it were a short run.
+    private func barHeight(_ miles: Double, in containerHeight: CGFloat) -> CGFloat {
+        guard miles > 0 else { return 0 }
+        let floor = containerHeight * 0.14
         let peak = days.map(\.miles).max() ?? 0
-        guard peak > 0, miles > 0 else { return shortestBar }
-        return max(shortestBar, tallestBar * CGFloat(miles / peak))
+        guard peak > 0 else { return floor }
+        return max(floor, containerHeight * CGFloat(miles / peak))
     }
 
     /// Today is the ONE lit column, and it is lit in band green — the wrist's
@@ -658,21 +890,51 @@ enum V5LobbyFixtures {
                 pageIndex: 2)
 }
 
-#Preview("Rest day") {
-    V5LobbyRefusal(
-        lede: "Rest",
-        sentence: "Nothing today \u{00B7} you ran 34 miles this week and the long one was Sunday. Resting is the work.",
-        escapeLabel: "Run anyway",
-        ramp: .rest
-    ) { }
-}
-
 #Preview("No session") {
     V5LobbyRefusal(
         lede: nil,
         sentence: "Week off \u{00B7} the block resumes Monday. Walk, swim, or do nothing. None of it goes in the book.",
         escapeLabel: "Just run",
         ramp: .noSession
+    ) { }
+}
+
+#Preview("Rest hero") {
+    V5LobbyRestHero(lede: "Rest", ramp: .rest, pageCount: 4, pageIndex: 0)
+}
+
+#Preview("Rest day · next up") {
+    V5LobbyNextUp(
+        dayName: "Saturday",
+        daysAway: 2,
+        typeLabel: "Easy",
+        dose: "5 mi",
+        pageCount: 4,
+        pageIndex: 1
+    )
+}
+
+#Preview("Rest day · the escape") {
+    V5LobbyEscape(actionLabel: "Run anyway", pageCount: 4, pageIndex: 3) { }
+}
+
+#Preview("Rest day · full sequence") {
+    WatchRestSurfaceV5(
+        dayState: WatchDayState(
+            kind: "rest", title: "Nothing today", coachLine: "Nothing today. Resting is the work.",
+            actionLabel: "Run anyway", actionKind: "run_anyway",
+            nextWorkout: WatchNextWorkout(dayName: "Saturday", dateIso: "2026-08-29", type: "easy", distanceMi: 5, daysAway: 2)
+        ),
+        weekStrip: WatchWeekStrip(
+            weekStartIso: "2026-08-24", weekEndIso: "2026-08-30",
+            milesDone: 18, milesPlanned: 42,
+            days: zip(V5LobbyFixtures.week, 24...30).map { day, date in
+                WatchWeekStripDay(dateIso: "2026-08-\(date)", dow: date % 7, letter: day.letter,
+                                  state: day.state == .done ? "done" : (day.state == .today ? "today" : "remaining"),
+                                  isPast: day.state == .done, type: "easy", plannedMi: day.miles,
+                                  doneMi: day.state == .done ? day.miles : nil)
+            }
+        )
     ) { }
 }
 

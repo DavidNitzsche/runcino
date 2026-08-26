@@ -540,11 +540,12 @@ struct WorkoutRootView: View {
         // the same call and could not make it differently without the
         // complication contradicting the lobby.
         if let dayState = phone.dayState {
-            V5LobbyRefusal(
-                lede: dayState.isRestDay ? dayState.title : nil,
-                sentence: dayState.coachLine,
-                escapeLabel: dayState.actionLabel,
-                ramp: dayState.isRestDay ? .rest : .noSession,
+            // Rest day / No session, now three pages: why nothing today (1),
+            // what's next when the loaded week still has a day ahead (2),
+            // and the same "This week" board every lobby ends on (3).
+            WatchRestSurfaceV5(
+                dayState: dayState,
+                weekStrip: phone.weekStrip,
                 onEscape: { model.start(.makeJustRun()) }
             )
         } else if let workout = phone.todayWorkout ?? Self.simulatorWorkout {

@@ -712,6 +712,41 @@ struct WatchSessionMoved: Codable {
     }
 }
 
+/// The next running day still ahead in the loaded week, surfaced on the
+/// Rest / No-session boards. nil when the window has nothing left after
+/// today — never guessed past what the server loaded.
+struct WatchNextWorkout: Codable {
+    /// "Thursday"
+    let dayName: String
+    let dateIso: String
+    /// plan_workouts.type · "easy" · "long" · "tempo" · "intervals" · …
+    let type: String
+    let distanceMi: Double
+    /// 1 = tomorrow, 2 = "in 2 days", etc. Always >= 1.
+    let daysAway: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case dayName, dateIso, type, distanceMi, daysAway
+    }
+
+    init(dayName: String, dateIso: String, type: String, distanceMi: Double, daysAway: Int) {
+        self.dayName = dayName
+        self.dateIso = dateIso
+        self.type = type
+        self.distanceMi = distanceMi
+        self.daysAway = daysAway
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.dayName = try c.decodeIfPresent(String.self, forKey: .dayName) ?? ""
+        self.dateIso = try c.decode(String.self, forKey: .dateIso)
+        self.type = try c.decodeIfPresent(String.self, forKey: .type) ?? "easy"
+        self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi) ?? 0
+        self.daysAway = try c.lenientInt(forKey: .daysAway)
+    }
+}
+
 /// Why there is no prescribed session. `kind == "rest"` is a planned rest
 /// day and is its own board; every other value is the No-session board.
 /// The flat `message` string still rides the response beside this, so a
@@ -742,6 +777,9 @@ struct WatchDayState: Codable {
     /// "Monday" plus its date · when the block resumes. Week-off only.
     let resumesDayName: String?
     let resumesIso: String?
+    /// The next running day still ahead in the loaded week. nil when the
+    /// window has nothing left after today.
+    let nextWorkout: WatchNextWorkout?
 
     var isRestDay: Bool { kind == "rest" }
     var isJustRun: Bool { actionKind == "just_run" }
@@ -750,7 +788,7 @@ struct WatchDayState: Codable {
         case kind, reason, title, coachLine, actionLabel, actionKind
         case weekMilesDone, weekMilesPlanned
         case longRunDayName, longRunIsPast, longRunDone
-        case resumesDayName, resumesIso
+        case resumesDayName, resumesIso, nextWorkout
     }
 
     init(kind: String, reason: String? = nil, title: String, coachLine: String,
@@ -758,7 +796,7 @@ struct WatchDayState: Codable {
          weekMilesDone: Double? = nil, weekMilesPlanned: Double? = nil,
          longRunDayName: String? = nil, longRunIsPast: Bool = false,
          longRunDone: Bool = false, resumesDayName: String? = nil,
-         resumesIso: String? = nil) {
+         resumesIso: String? = nil, nextWorkout: WatchNextWorkout? = nil) {
         self.kind = kind
         self.reason = reason
         self.title = title
@@ -772,6 +810,7 @@ struct WatchDayState: Codable {
         self.longRunDone = longRunDone
         self.resumesDayName = resumesDayName
         self.resumesIso = resumesIso
+        self.nextWorkout = nextWorkout
     }
 
     init(from decoder: Decoder) throws {
@@ -789,6 +828,7 @@ struct WatchDayState: Codable {
         self.longRunDone = try c.decodeIfPresent(Bool.self, forKey: .longRunDone) ?? false
         self.resumesDayName = try c.decodeIfPresent(String.self, forKey: .resumesDayName)
         self.resumesIso = try c.decodeIfPresent(String.self, forKey: .resumesIso)
+        self.nextWorkout = try c.decodeIfPresent(WatchNextWorkout.self, forKey: .nextWorkout)
     }
 }
 
