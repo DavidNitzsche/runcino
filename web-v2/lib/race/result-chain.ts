@@ -198,6 +198,10 @@ export async function runPostResultChain(args: PostResultChainArgs): Promise<Pos
       planArchived = (r.rowCount ?? 0) > 0;
     } catch { /* best-effort */ }
   }
+  if (planArchived) {
+    const { supersedeProposalsForArchivedPlans } = await import('@/lib/plan/proposals-state');
+    await supersedeProposalsForArchivedPlans(pool, userId).catch(() => 0);
+  }
 
   // ── 4. Auto-generate plan for the next A/B race ────────────────────
   // Inner try/catch: failures surface in nextPlan.reason, not as a throw.

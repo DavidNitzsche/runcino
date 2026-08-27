@@ -55,6 +55,7 @@ import { randomBytes } from 'crypto';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadSettings } from '@/lib/coach/settings';
 import { mutatePlan } from './mutate';
+import { supersedeProposalsForArchivedPlans } from './proposals-state';
 import {
   resolveInjuryProtocol,
   stageForWeek,
@@ -449,6 +450,7 @@ export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBu
       WHERE user_uuid = $1 AND archived_iso IS NULL`,
     [userId],
   ).catch(() => {});
+  await supersedeProposalsForArchivedPlans(pool, userId).catch(() => 0);
 
   // Create the new INJURY plan.
   await pool.query(
