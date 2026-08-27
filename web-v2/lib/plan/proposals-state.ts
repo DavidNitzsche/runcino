@@ -216,43 +216,6 @@ export async function loadAllPlanProposals(
   return sortProposals(rows.map(toProposal));
 }
 
-/**
- * 2026-08-27 · THE PROPOSAL THAT OUTLIVED ITS PLAN.
- *
- * Archiving a plan (`clearActivePlansFor`, the race-completed archive in
- * result-chain.ts, the plan-elapsed archive in the drift cron, injury-builder,
- * onboarding reseed) never touched `plan_proposals`. A pending proposal points
- * at a `plan_id` by TEXT reference with no FK, so nothing broke — the row just
- * sat there, `status = 'pending'`, surfacing on Today as a live decision for
- * up to 14 days after the plan it was computed against had already been
- * replaced, sometimes more than once. `goal_renegotiation` proposal 53 sat
- * that way for 5 days across two intervening rebuilds before this was caught.
- *
- * Called right after every "archive the active plan(s) for this user" write,
- * on the SAME client/transaction where one is open, so a proposal can never
- * observe a plan as archived before this has also marked it stale. Scoped by
- * `user_uuid` rather than a specific plan id: whichever plan(s) just went
- * archived, ANY pending proposal still pointing at an archived plan for this
- * user is equally stale, including ones orphaned by an earlier bug before this
- * function existed.
- */
-export async function supersedeProposalsForArchivedPlans(
-  client: { query: typeof pool.query },
-  userUuid: string,
-): Promise<number> {
-  const result = await client.query(
-    `UPDATE plan_proposals p
-        SET status = 'superseded', resolved_at = NOW()
-       FROM training_plans tp
-      WHERE p.plan_id = tp.id
-        AND p.user_uuid = $1
-        AND p.status = 'pending'
-        AND tp.archived_iso IS NOT NULL`,
-    [userUuid],
-  );
-  return result.rowCount ?? 0;
-}
-
 function isHardDriftKind(kind: PlanProposalKind): boolean {
   return kind === 'race_date_changed'
       || kind === 'goal_time_changed'

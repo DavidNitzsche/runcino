@@ -7660,13 +7660,6 @@ async function clearActivePlansFor(client: PoolClient, userId: string, reason = 
       WHERE user_uuid = $1 AND archived_iso IS NULL`,
     [userId, reason]
   );
-  // The plan(s) just archived may have had their own still-pending
-  // plan_proposals (a goal-renegotiation card, a drift proposal awaiting
-  // accept/dismiss) computed against a plan that no longer exists. Same
-  // transaction, so a proposal can never be read as live against an
-  // already-archived plan.
-  const { supersedeProposalsForArchivedPlans } = await import('./proposals-state');
-  await supersedeProposalsForArchivedPlans(client, userId);
 }
 
 /**
