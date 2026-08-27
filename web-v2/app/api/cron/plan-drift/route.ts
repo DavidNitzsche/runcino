@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { logReadFailure } from '@/lib/db/read';
+import { logReadFailure, rowOrNull } from '@/lib/db/read';
 import { detectDrift, hasPendingProposal } from '@/lib/plan/drift-monitor';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
 import {
@@ -619,12 +619,16 @@ export async function POST(req: NextRequest) {
           // complete and soft-drift blocks — no rebuild fires without a
           // card to approve first).
           try {
-            const activePlanId = (await pool.query<{ id: string }>(
-              `SELECT id FROM training_plans
-                WHERE user_uuid = $1 AND archived_iso IS NULL
-                ORDER BY authored_iso DESC LIMIT 1`,
-              [u],
-            ).catch(() => ({ rows: [] }))).rows[0]?.id ?? '';
+            const activePlanRow = await rowOrNull(
+              'cron/plan-drift · goal-gap active plan lookup',
+              pool.query<{ id: string }>(
+                `SELECT id FROM training_plans
+                  WHERE user_uuid = $1 AND archived_iso IS NULL
+                  ORDER BY authored_iso DESC LIMIT 1`,
+                [u],
+              ),
+            );
+            const activePlanId = activePlanRow?.id ?? null;
             await pool.query(
               `INSERT INTO plan_proposals
                  (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
@@ -668,12 +672,16 @@ export async function POST(req: NextRequest) {
           if (shouldProposeRenegotiation(goalGap)) {
             const { composeGapReport } = await import('@/lib/plan/gap-report');
             const gapReport = await composeGapReport(u).catch(() => null);
-            const activePlanId = (await pool.query<{ id: string }>(
-              `SELECT id FROM training_plans
-                WHERE user_uuid = $1 AND archived_iso IS NULL
-                ORDER BY authored_iso DESC LIMIT 1`,
-              [u],
-            ).catch(() => ({ rows: [] }))).rows[0]?.id ?? null;
+            const activePlanRow = await rowOrNull(
+              'cron/plan-drift · goal-renegotiation active plan lookup',
+              pool.query<{ id: string }>(
+                `SELECT id FROM training_plans
+                  WHERE user_uuid = $1 AND archived_iso IS NULL
+                  ORDER BY authored_iso DESC LIMIT 1`,
+                [u],
+              ),
+            );
+            const activePlanId = activePlanRow?.id ?? null;
             const wrote = await writeGoalRenegotiationProposal(u, activePlanId, goalGap, gapReport);
             if (wrote) r.proposals_written++;
           }

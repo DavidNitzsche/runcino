@@ -178,7 +178,7 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
  * suppress. The new detector's copy fails closed; the original is still open
  * and is named in the hand-off.
  */
-export const EMPTIED_BASELINE = 379;
+export const EMPTIED_BASELINE = 378;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
