@@ -485,6 +485,10 @@ async function clearActivePlansFor(userId: string, tx: Queryable = pool): Promis
       WHERE user_uuid = $1 AND archived_iso IS NULL`,
     [userId],
   );
+  // See generate.ts:clearActivePlansFor — a still-pending proposal against
+  // whatever just got archived here is stale the moment this commits.
+  const { supersedeProposalsForArchivedPlans } = await import('./proposals-state');
+  await supersedeProposalsForArchivedPlans(tx, userId);
   // Plan mutation → invalidate memoized lookup.
   (await import('./lookup')).bustPlanLookupCache(userId);
 }

@@ -403,6 +403,8 @@ export async function POST(req: NextRequest) {
                   WHERE id = $1 AND archived_iso IS NULL`,
                 [activePlanRow.plan_id],
               ).catch(() => null));
+              const { supersedeProposalsForArchivedPlans } = await import('@/lib/plan/proposals-state');
+              await supersedeProposalsForArchivedPlans(pool, u).catch(() => 0);
               r.plans_elapsed = (r.plans_elapsed ?? 0) + 1;
             }
           } catch (e) {
