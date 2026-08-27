@@ -986,18 +986,9 @@ struct TodayView: View {
     @ViewBuilder private var runHeroDetail: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            // Weather chip — right-aligned, only shown when heat is meaningful
-            if let t = weather?.tempF, t > 10, t < 130 {
-                // 2026-08-17 · execution-layer audit — the band now comes from
-                // the backend's WBGT flag (DailyForecast.heat_band, computed by
-                // lib/coach/heat-gate.ts heatBandForConditions), not the retired
-                // dry-bulb HeatBand.from(tempF:) guess. Only the displayed
-                // tempLabel string still derives from `t` (via
-                // Units.formatTemperature); the band itself reads the doctrine
-                // value. forecast.heat_band nil → HeatBand.from(nil) → .unknown,
-                // which renders as no heat word rather than a dry-bulb guess.
-                HStack { Spacer(minLength: 0); HeatBandChip(band: HeatBand.from(forecast?.heat_band), tempLabel: Units.formatTemperature(fahrenheit: t)) }
-            } else if let tag = weatherTagLabel {
+            // Weather chip — right-aligned, only shown when the delta from
+            // baseline is meaningful.
+            if let tag = weatherTagLabel {
                 HStack {
                     Spacer(minLength: 0)
                     Text(tag)
@@ -3611,7 +3602,7 @@ struct TodayView: View {
     private func isWorthShowing(_ t: Topic) -> Bool {
         switch t.kind {
         case .next_workout, .weather_chip:
-            return false   // already covered by the hero + HeatBandChip
+            return false   // already covered by the hero's own weather tag
         case .unknown:
             return (t.coach_note ?? "").isEmpty == false
         default:

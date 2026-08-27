@@ -2,7 +2,7 @@
 //  J_CoachVerdict.swift
 //  Family J · Coach verdict & narration.
 //
-//  Components: CitationChip · HeatBandChip.
+//  Components: CitationChip.
 //
 //  RunPurposeCard + RunRecapCard already live in TodayView /
 //  RunDetailView · this file holds the shared atoms that family uses.
@@ -51,81 +51,6 @@ struct CitationRow: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - HeatBandChip
-//
-// One field, four colors. Tints the conditions tag on a ramp:
-//   neutral (grey) · warm (amber) · hot (orange) · extreme (red).
-
-enum HeatBand: String {
-    case neutral, warm, hot, extreme, unknown
-
-    static func from(_ raw: String?) -> HeatBand {
-        switch (raw ?? "").lowercased() {
-        case "neutral": return .neutral
-        case "warm":    return .warm
-        case "hot":     return .hot
-        case "extreme": return .extreme
-        default:        return .unknown
-        }
-    }
-    var label: String { rawValue.capitalized }
-    var color: Color {
-        switch self {
-        case .neutral: return Theme.mute
-        case .warm:    return Theme.goal
-        case .hot:     return Theme.race
-        case .extreme: return Theme.over
-        case .unknown: return Theme.mute
-        }
-    }
-    // 2026-08-17 · execution-layer audit · DE-FORKED. `from(tempF:)` used
-    // to derive this band from dry-bulb temperature at 60/75/85°F
-    // ("Maughan-ish") breakpoints. The backend's lib/coach/heat-gate.ts
-    // names this exact function as one of four independent taxonomies
-    // that disagreed about the same afternoon — at 72°F the server said
-    // "hot" and the phone said "warm" about the same run — and retires
-    // all four in favor of one ACSM/KSI WBGT flag band computed
-    // server-side (needs humidity + cloud cover, which dry-bulb alone
-    // can't approximate). That value now ships as
-    // DailyForecast.heat_band; every call site reads it through
-    // `HeatBand.from(_ raw: String?)` above. A surface that cannot
-    // supply the backend value shows no heat word (`.unknown`), never a
-    // dry-bulb guess standing in for it.
-}
-
-struct HeatBandChip: View {
-    let band: HeatBand
-    let tempLabel: String?    // "74°F"
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: bandIcon)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(band.color)
-            Text(textLabel)
-                .font(.body(11.5, weight: .extraBold)).tracking(0.4)
-                .foregroundStyle(band == .neutral ? Theme.txt : band.color)
-        }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(band == .neutral ? Theme.Glass.fill : band.color.opacity(0.14), in: Capsule())
-        .overlay(Capsule().stroke(band.color.opacity(0.40), lineWidth: 1))
-    }
-
-    private var bandIcon: String {
-        switch band {
-        case .neutral: return "sun.max"
-        case .warm:    return "sun.max"
-        case .hot:     return "sun.max.fill"
-        case .extreme: return "thermometer.sun.fill"
-        case .unknown: return "sun.max"
-        }
-    }
-    private var textLabel: String {
-        let t = tempLabel.map { " · \($0)" } ?? ""
-        return band == .unknown ? "Conditions" : "\(band.label)\(t)"
     }
 }
 

@@ -743,21 +743,6 @@ enum RacesV5Sample {
             ],
             goal: "Sub 3:30", gap: "\u{2014}", gapAttention: false
         )),
-        ("weather", Spec(
-            shape: "fact", verdict: "realistic",
-            question: "Race morning heat is forecast at 68\u{b0}F wet-bulb, well above what the paces were built for \u{b7} the goal stands, race morning is harder.",
-            cautions: [
-                "Heat like this has cost 3\u{2013}4% in every past race",
-                "The fuel plan was not built for this dew point",
-                "Course shade is thin after mile 18"
-            ],
-            safeTarget: nil, stretchTarget: nil,
-            answers: [
-                ("ack", "Acknowledge", "acknowledge", nil),
-                ("repace", "Re-pace the day", "repace", nil)
-            ],
-            goal: "Sub 3:30", gap: "+2:56", gapAttention: false
-        )),
         ("course", Spec(
             shape: "fact", verdict: "realistic",
             question: "The final six miles were rerouted uphill this week \u{b7} we can see the elevation moved, we cannot know which course you will actually race.",
@@ -978,7 +963,7 @@ extension RacesV5 {
     static let sample: V5Races = RacesV5Sample.decode("ahead")
 }
 
-// MARK: - Previews · every one of the 8 verdicts, both shapes
+// MARK: - Previews · every one of the 7 verdicts, both shapes
 
 #Preview("Ahead \u{b7} decision") {
     RacesV5(model: RacesV5.sample)
@@ -994,10 +979,6 @@ extension RacesV5 {
 
 #Preview("Injury \u{b7} decision") {
     RacesV5(model: RacesV5Sample.decode("injury"))
-}
-
-#Preview("Race-morning heat \u{b7} fact") {
-    RacesV5(model: RacesV5Sample.decode("weather"))
 }
 
 #Preview("Course changed \u{b7} fact") {

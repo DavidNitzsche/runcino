@@ -108,8 +108,6 @@ struct ProView: View {
              title: "Adaptive AI plan", sub: "retunes daily from readiness, sleep & load"),
         Feat(icon: "chart.xyaxis.line", tint: Color(hex: 0xFFAE7A),
              title: "Full analytics & trends", sub: "form, cadence, GCT, every history chart"),
-        Feat(icon: "sun.max.fill", tint: Color(hex: 0xF3AD38),
-             title: "Heat & weather recalibration", sub: "targets & HR read adjusted to conditions"),
         Feat(icon: "target", tint: Theme.Accent.mintReady,
              title: "Unlimited race goals", sub: "every distance, projections & the gap"),
         Feat(icon: "person.2.fill", tint: Theme.dist,

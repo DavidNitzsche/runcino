@@ -828,8 +828,7 @@ struct TodayPostRunBody: View {
                 effort: hiwEffort,
                 detail: detail,
                 accent: accent,
-                onMesh: onMesh,
-                adjustedTargetSPerMi: recap?.intervalsAdjustedTargetSPerMi
+                onMesh: onMesh
             )
             .padding(.horizontal, 24).padding(.vertical, 18)
             .background(sectionBg)
