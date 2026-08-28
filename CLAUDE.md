@@ -250,7 +250,7 @@ Do **not** loosen the claim. Add a key to that claim's `exempt` map with an hone
 
 Append these as the engine audit reaches them:
 
-- Daniels' weekly dosing caps (T ≤10%, I ≤8%, R ≤5% of weekly mileage; M ≤ lesser of 18 mi or 20%) — **not enforced anywhere in the engine**, so there is no constant to bind yet.
+- ~~Daniels' weekly dosing caps~~ — CLOSED 2026-08-28: enforced at authoring (`applyDosingCaps` inside `finalizeComposedPlan`), fatal in `validateComposedPlan` §10, corpus-gated by `_dosing_sweep_gate.test.ts` (full archetype matrix, zero enforced findings), bound by `DOSING.enforced-findings-bind-the-composer`. Taper/race weeks keep their doctrine-cited percentage exemption.
 - Polarized intensity distribution (70-80% E, 10-15% M+T, 10-15% I+R).
 - `validate.ts` `longRunWoWMaxPct` / `weeklyVolWoWMaxPct`, and `longRunCapMi`'s absolute per-distance ceilings.
 - The `PLAN_TEMPLATES` table in `plan-templates.ts` (every row cites a book, none cite `Research/`).
