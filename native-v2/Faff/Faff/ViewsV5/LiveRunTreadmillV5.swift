@@ -223,6 +223,7 @@ struct LiveRunTreadmillV5: View {
         // bridge and the heart-rate window.
         .onReceive(session.$tickStamp) { now in
             maintainWatchBridge(at: now)
+            pushLiveStatsToWatch()
             attachHrForClosedPhases()
             // 2026-08-25 · the meter is started in `.onAppear` and stopped in
             // `.onDisappear`, so nothing between them ever told it the run had
@@ -328,6 +329,21 @@ struct LiveRunTreadmillV5: View {
             lastPingAt = now
             WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
         }
+    }
+
+    /// Distance / elapsed / pace, pushed to the watch every tick once it's
+    /// actually linked — David: "use our in run layout? HR yes but also
+    /// distance, time, etc?" The watch has no independent way to know any of
+    /// these (no GPS indoors, and the belt's speed × time arithmetic lives
+    /// entirely here), so `TreadmillHRView` cannot draw them without this.
+    /// Gated on `treadmillSessionConfirmed`, not just `startedAt != nil` —
+    /// pushing to a watch that never linked is discarded WCSession traffic
+    /// for a screen nothing is showing it on.
+    private func pushLiveStatsToWatch() {
+        guard startedAt != nil, watchSync.treadmillSessionConfirmed else { return }
+        let pace: Int? = speedMph > 0 ? Int((3600.0 / speedMph).rounded()) : nil
+        WatchSync.shared.sendTreadmillLiveStats(
+            sessionId: workoutId, distanceMi: distanceMi, elapsedSec: elapsedSec, paceSecPerMi: pace)
     }
 
     /// What to say about heart rate, or nothing when it is flowing. "No watch"

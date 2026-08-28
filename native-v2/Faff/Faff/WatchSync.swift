@@ -401,6 +401,31 @@ final class WatchSync: NSObject, ObservableObject {
         )
     }
 
+    /// Distance / elapsed time / pace, pushed to the watch every tick while
+    /// the treadmill run is live — the watch has no independent way to know
+    /// any of these (no GPS indoors, and the belt's speed × time arithmetic
+    /// lives entirely on the phone), so `TreadmillHRView` cannot show David's
+    /// "in run layout" (distance/time/pace/HR, same as the outdoor faces)
+    /// without the phone handing it these numbers directly.
+    ///
+    /// Best-effort, like the ping above · a live tally that misses one tick
+    /// gets the next one a second later, so there is nothing worth a durable
+    /// retry here. Silently no-ops when unreachable — the watch just holds
+    /// its last-known values rather than freezing on an error.
+    func sendTreadmillLiveStats(sessionId: String, distanceMi: Double, elapsedSec: Int, paceSecPerMi: Int?) {
+        guard WCSession.isSupported() else { return }
+        let s = WCSession.default
+        guard s.activationState == .activated, s.isReachable else { return }
+        var payload: [String: Any] = [
+            "request": "treadmillStats",
+            "sessionId": sessionId,
+            "distanceMi": distanceMi,
+            "elapsedSec": elapsedSec,
+        ]
+        if let paceSecPerMi { payload["paceSecPerMi"] = paceSecPerMi }
+        s.sendMessage(payload, replyHandler: nil, errorHandler: { _ in /* best-effort */ })
+    }
+
     /// Guards against a flush that is already running, and against the whole
     /// queue re-POSTing on a failure that will fail identically for all of it.
     ///

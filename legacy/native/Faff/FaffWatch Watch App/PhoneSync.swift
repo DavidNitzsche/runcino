@@ -642,16 +642,35 @@ extension PhoneSync: WCSessionDelegate {
         }
     }
 
-    /// No-reply messages from the iPhone. `pingTreadmillHR` is the treadmill
-    /// keepalive (audit P2-49): the phone pings every ~2 min while its console
-    /// is live; TreadmillHRSession's dead-man timer auto-ends the HR session
-    /// when pings stop arriving (phone died, app killed, out of range).
+    /// No-reply messages from the iPhone.
+    ///   · `pingTreadmillHR` — the treadmill keepalive (audit P2-49): the
+    ///     phone pings every ~2 min while its console is live;
+    ///     TreadmillHRSession's dead-man timer auto-ends the HR session when
+    ///     pings stop arriving (phone died, app killed, out of range).
+    ///   · `treadmillStats` (2026-08-28) — distance / elapsed / pace, pushed
+    ///     every tick while the run is live, so TreadmillHRView can show
+    ///     David's "in run layout" (distance/time/pace/HR) instead of bpm
+    ///     alone. The watch has no independent way to know any of these —
+    ///     see WatchSync.sendTreadmillLiveStats's doc on the phone side.
     nonisolated func session(_ session: WCSession,
                              didReceiveMessage message: [String: Any]) {
-        guard (message["request"] as? String) == "pingTreadmillHR" else { return }
         let sessionId = (message["sessionId"] as? String) ?? ""
-        Task { @MainActor in
-            TreadmillHRSession.shared.ping(sessionId: sessionId)
+        switch message["request"] as? String {
+        case "pingTreadmillHR":
+            Task { @MainActor in
+                TreadmillHRSession.shared.ping(sessionId: sessionId)
+            }
+        case "treadmillStats":
+            let distanceMi = message["distanceMi"] as? Double
+            let elapsedSec = message["elapsedSec"] as? Int
+            let paceSecPerMi = message["paceSecPerMi"] as? Int
+            Task { @MainActor in
+                TreadmillHRSession.shared.applyLiveStats(
+                    sessionId: sessionId, distanceMi: distanceMi,
+                    elapsedSec: elapsedSec, paceSecPerMi: paceSecPerMi)
+            }
+        default:
+            break
         }
     }
 

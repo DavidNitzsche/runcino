@@ -50,6 +50,20 @@ final class TreadmillHRSession: NSObject, ObservableObject {
     /// stop responses to the start it asked for.
     @Published private(set) var sessionId: String?
 
+    // ── Live stats from the phone (2026-08-28) ────────────────────────
+    //
+    // Distance, elapsed time and pace all live on the iPhone — the belt has
+    // no GPS and the speed × time arithmetic is entirely the phone's
+    // (`BeltSession`). Pushed here via WatchSync.sendTreadmillLiveStats so
+    // TreadmillHRView can show David's "in run layout" (distance/time/pace/
+    // HR) instead of bpm alone.
+
+    @Published private(set) var liveDistanceMi: Double?
+    @Published private(set) var liveElapsedSec: Int?
+    /// Nil when the belt is stopped/speed is zero — a pace of "0:00" would
+    /// claim a speed nobody is running at.
+    @Published private(set) var livePaceSecPerMi: Int?
+
     // ── Runaway-session guards (audit P2-49 · 2026-07-06) ─────────────
     //
     // The stop message only arrives while the phone is reachable. Phone
@@ -79,6 +93,17 @@ final class TreadmillHRSession: NSObject, ObservableObject {
     func ping(sessionId: String) {
         guard isActive, self.sessionId == sessionId else { return }
         lastPhonePingAt = Date()
+    }
+
+    /// Live distance/elapsed/pace from the iPhone (WatchSync.
+    /// sendTreadmillLiveStats). Same session-match guard as `ping` — a stat
+    /// push for a session that isn't (or is no longer) the active one must
+    /// not overwrite the current run's numbers with a stale run's.
+    func applyLiveStats(sessionId: String, distanceMi: Double?, elapsedSec: Int?, paceSecPerMi: Int?) {
+        guard isActive, self.sessionId == sessionId else { return }
+        if let distanceMi { self.liveDistanceMi = distanceMi }
+        if let elapsedSec { self.liveElapsedSec = elapsedSec }
+        self.livePaceSecPerMi = paceSecPerMi
     }
 
     private func startWatchdog() {
@@ -175,6 +200,12 @@ final class TreadmillHRSession: NSObject, ObservableObject {
             self.sessionId = sessionId
             self.startedAt = start
             self.isActive = true
+            // 2026-08-28 · a fresh session must not open showing the PRIOR
+            // run's distance/elapsed/pace — these only ever update again
+            // once the phone's first `treadmillStats` push lands.
+            self.liveDistanceMi = nil
+            self.liveElapsedSec = nil
+            self.livePaceSecPerMi = nil
             // P2-49 · seed the dead-man window and arm the watchdog.
             self.lastPhonePingAt = start
             self.startWatchdog()
@@ -217,6 +248,7 @@ final class TreadmillHRSession: NSObject, ObservableObject {
         watchdog = nil
         guard let session, let builder else {
             isActive = false; currentBpm = 0; startedAt = nil; sessionId = nil
+            liveDistanceMi = nil; liveElapsedSec = nil; livePaceSecPerMi = nil
             return
         }
         let endAt = Date()
@@ -240,6 +272,9 @@ final class TreadmillHRSession: NSObject, ObservableObject {
         self.currentBpm = 0
         self.startedAt = nil
         self.sessionId = nil
+        self.liveDistanceMi = nil
+        self.liveElapsedSec = nil
+        self.livePaceSecPerMi = nil
     }
 
     // MARK: - HR plumbing for the watch's own display
