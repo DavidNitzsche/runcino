@@ -264,12 +264,21 @@ export async function pushRunToStrava(
  * run can't be found.
  */
 export async function suggestTitleForRun(userId: string, runId: string): Promise<string | null> {
-  const runRow = (await pool.query(
+  let runRow = (await pool.query(
     `SELECT data FROM runs
       WHERE user_uuid = $1 AND (data->>'id' = $2 OR data->>'activityId' = $2)
       LIMIT 1`,
     [userId, runId],
   )).rows[0];
+  // Same runs.id-primary-key fallback as pushRunToStrava above — the GET
+  // status check runs before the POST and must resolve the same run, or
+  // the sheet's "smart default" silently degrades to a bare "Run".
+  if (!runRow?.data && /^-?\d+$/.test(runId)) {
+    runRow = (await pool.query(
+      `SELECT data FROM runs WHERE user_uuid = $1 AND id = $2::bigint LIMIT 1`,
+      [userId, runId],
+    )).rows[0];
+  }
   if (!runRow?.data) return null;
   const run = runRow.data;
   let runType: string | null = run.type ?? null;
