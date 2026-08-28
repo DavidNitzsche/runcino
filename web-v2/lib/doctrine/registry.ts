@@ -212,6 +212,8 @@ import {
   NET_DOWNHILL_LONG_RUN_SHARE,
   LATE_TAPER_DOWNHILL_DAYS,
   R3_MIN_TRAINING_DAYS,
+  MIDRACE_RESUME_RX,
+  CUTBACK_LONG_DROP,
 } from '@/lib/plan/generate';
 import {
   DRESS_REHEARSAL,
@@ -272,7 +274,7 @@ import {
 } from '@/lib/prescription/levers';
 import { ST_OFFSET_S_PER_MI, resolveZoneAnchors } from '@/lib/plan/zone-anchors';
 import { rPaceFromVdot, racePaceFromVdot, TABLE_RACE_DISTANCE_MI } from '@/lib/training/vdot';
-import { parseSegments, parseZones } from '@/lib/plan/prescription-parser';
+import { parsePrescription, parseSegments, parseZones } from '@/lib/plan/prescription-parser';
 import { SESSION_LADDER } from '@/lib/prescription/trajectory';
 import {
   QUALITY_WARMUP_MI,
@@ -2430,6 +2432,101 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           `REQUESTED_CUTBACK_LONG_CUT_BAND is [${lo}, ${hi}] · doctrine's own long-run figures ` +
             `span [${doctrineBand[0]}, ${doctrineBand[1]}]. The band is read off the table, not chosen.`,
+        );
+      }
+    },
+  },
+  {
+    id: 'CUTBACK.long-run-depth',
+    binds: ['lib/plan/generate.ts#CUTBACK_LONG_DROP'],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Depth of Cutback by Mileage Tier',
+    claim:
+      'The cutback week\'s LONG RUN drops by the figure the table\'s Notes column states for the ' +
+      'runner\'s peak-load tier — 20-30% at 20-40 mpw, 25% at 40-60, 25-30% at 60-80, 30% at 80+. ' +
+      'The engine\'s per-tier drop table aligns row-for-row with the doc\'s table (boundaries read ' +
+      'from the doc\'s own "Peak-load mpw" column) and each drop sits inside its row\'s band.',
+    check({ cite }) {
+      const rows = cite.table().rows;
+      if (CUTBACK_LONG_DROP.length !== rows.length) {
+        throw new Error(
+          `CUTBACK_LONG_DROP has ${CUTBACK_LONG_DROP.length} tiers · doctrine's table has ` +
+            `${rows.length} rows. The engine table mirrors the doc's, row for row.`,
+        );
+      }
+      rows.forEach((r, i) => {
+        const mpwCell = String(r['Peak-load mpw'] ?? '');
+        const [, mpwHi] = parseBand(mpwCell);
+        const openEnded = /\+/.test(mpwCell);
+        const engine = CUTBACK_LONG_DROP[i];
+        const expectedMax = openEnded ? Infinity : mpwHi;
+        if (engine.maxMpw !== expectedMax) {
+          throw new Error(
+            `CUTBACK_LONG_DROP row ${i} caps at ${engine.maxMpw} mpw · doctrine's row is ` +
+              `"${mpwCell}" (upper bound ${openEnded ? 'open' : mpwHi}). Boundaries come off the table.`,
+          );
+        }
+        const note = String(r['Notes'] ?? '');
+        const m = note.match(/long run[^.]*?((?:\d+\s*[–-]\s*)?\d+)\s*%/i);
+        if (!m) {
+          throw new Error(
+            `Research/00b's cutback row "${mpwCell}" no longer states a long-run reduction in ` +
+              'its Notes column · re-read it before this tier\'s drop is justified',
+          );
+        }
+        within(engine.drop * 100, parseBand(m[1]), `cutback long-run drop · tier "${mpwCell}"`);
+      });
+    },
+  },
+  {
+    id: 'MIDRACE.resume-quality-light',
+    binds: ['lib/plan/generate.ts#MIDRACE_RESUME_RX'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 5.3 Cruise intervals (Daniels)',
+    claim:
+      'The first quality day back after an embedded race\'s recovery window is a cruise-interval ' +
+      'set at the light end of §5.3: rep count and rep distance inside the doc\'s own Structure ' +
+      'row ("3-6 x 1 mi with 1 min jog, or 2-4 x 2 mi with 2 min jog"), recovery at least the ' +
+      'doc\'s 1-min-jog-per-mile rule, and total at-pace volume STRICTLY BELOW the doc\'s ' +
+      'full-session "Total volume at pace" floor — Research/00b\'s reverse taper reintroduces ' +
+      'short tempo before a full quality session, so the re-entry must be smaller than the ' +
+      'smallest full cruise session doctrine describes.',
+    check({ cite }) {
+      const parsed = parsePrescription(MIDRACE_RESUME_RX);
+      if (!parsed || parsed.restS == null) {
+        throw new Error(
+          `MIDRACE_RESUME_RX ("${MIDRACE_RESUME_RX}") does not parse as a rep prescription · ` +
+            'an unparseable resume day is exactly the unprescribed-slot bug this constant fixes',
+        );
+      }
+      const structure = cite.table().cell('Structure', 'Prescription');
+      const alts = [...structure.replace(/[–—]/g, '-').matchAll(/(\d+)\s*-\s*(\d+)\s*×\s*(\d+(?:\.\d+)?)\s*mi/g)];
+      if (alts.length === 0) {
+        throw new Error(`no "N-M × D mi" structure found in doctrine cell "${structure}"`);
+      }
+      const countBand: [number, number] = [
+        Math.min(...alts.map((a) => Number(a[1]))),
+        Math.max(...alts.map((a) => Number(a[2]))),
+      ];
+      const distBand: [number, number] = [
+        Math.min(...alts.map((a) => Number(a[3]))),
+        Math.max(...alts.map((a) => Number(a[3]))),
+      ];
+      within(parsed.reps, countBand, 'resume-day cruise rep count');
+      within(parsed.repDistanceMi, distBand, 'resume-day cruise rep distance (mi)');
+      // "Recovery | 1 min jog per mile of work segment" · generous means ≥.
+      if (parsed.restS < 60 * parsed.repDistanceMi) {
+        throw new Error(
+          `resume-day jog ${parsed.restS}s is under doctrine's 1 min per mile of work ` +
+            `(${Math.round(60 * parsed.repDistanceMi)}s for a ${parsed.repDistanceMi} mi rep)`,
+        );
+      }
+      const [fullLo] = parseBand(cite.table().cell('Total volume at pace', 'Prescription'));
+      const atPaceMi = parsed.reps * parsed.repDistanceMi;
+      if (!(atPaceMi < fullLo)) {
+        throw new Error(
+          `resume-day at-pace volume ${atPaceMi} mi is not below the §5.3 full-session floor ` +
+            `${fullLo} mi · a re-entry at full dose is not a re-entry`,
         );
       }
     },

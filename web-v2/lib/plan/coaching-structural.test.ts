@@ -33,13 +33,16 @@ import {
   finalizeComposedPlan,
   inlinePrescriptions,
   embedMidBlockRaces,
+  MIDRACE_RESUME_RX,
+  CUTBACK_LONG_DROP,
+  cutbackLongDropFor,
   type ComposePlanInput,
   type ComposedWeek,
   type DOW,
   type DayPlan,
 } from './generate';
 import { validateComposedPlan } from './validate';
-import { tPaceFromGoal } from './spec-builder';
+import { tPaceFromGoal, buildWorkoutSpec } from './spec-builder';
 import {
   buildReRampActions,
   reRampWeeklyCeilingMi,
@@ -191,6 +194,33 @@ describe('MIDRACE-1 · mid-block tune-up race embedding', () => {
     expect(friday.notes).toContain('Quality resumes');
   });
 
+  it('MIDRACE-RESUME-1 · the resume day carries a real light-threshold prescription', () => {
+    // The restored day is never an unprescribed slot: it goes out as the
+    // cruise-interval re-entry (Research/04 §5.3 light end, per Research/00b's
+    // reverse-taper ordering), through the same parsePrescription →
+    // buildWorkoutSpec machinery as every authored quality day.
+    const friday = dayByDow(embedded.weeks[12], 5);
+    expect(friday.type).toBe('threshold');
+    expect(friday.subLabel).toBe(MIDRACE_RESUME_RX);
+    expect(friday.notes).toContain('Research/04 §5.3');
+    const tSec = tPaceFromGoal(10800, 26.2);
+    if (tSec == null) throw new Error('fixture T pace unresolvable');
+    const resume = buildWorkoutSpec('threshold', friday.distanceMi, tSec, null, friday.subLabel).spec as {
+      rep_count: number; rep_distance_mi: number; rep_rest_s: number; rep_pace_s_per_mi: number | null;
+    };
+    // The subLabel parsed into the spec — not the default fallback shape.
+    expect(resume.rep_count).toBe(2);
+    expect(resume.rep_distance_mi).toBeCloseTo(1.5, 5);
+    expect(resume.rep_rest_s).toBe(180);
+    expect(resume.rep_pace_s_per_mi).toBe(tSec);
+    // And its at-pace dose sits below a normal (unprescribed-default)
+    // threshold day's at the same distance — the day is light on purpose.
+    const normal = buildWorkoutSpec('threshold', friday.distanceMi, tSec, null, null).spec as {
+      rep_count: number; rep_distance_mi: number;
+    };
+    expect(resume.rep_count * resume.rep_distance_mi).toBeLessThan(normal.rep_count * normal.rep_distance_mi);
+  });
+
   it('weekly mileage accounting includes tune-up race miles', () => {
     for (const wi of [3, 5, 11]) {
       const wk = embedded.weeks[wi];
@@ -240,6 +270,71 @@ describe('MIDRACE-1 · mid-block tune-up race embedding', () => {
       trainingDaysPerWeek: null,
     });
     expect(out).toEqual([]);
+  });
+});
+
+// ── CUTBACK-LONG-1 · cutback weeks drop the long run per Research/00b ────
+
+describe('CUTBACK-LONG-1 · cutback long-run depth (Research/00b §Depth of Cutback by Mileage Tier)', () => {
+  const plan = composePlan(davidCimInput(undefined));
+
+  it('the drop table sits at the low end of each doc row (gate parses the doc side)', () => {
+    expect(CUTBACK_LONG_DROP.map((t) => t.drop)).toEqual([0.20, 0.25, 0.25, 0.30]);
+    expect(cutbackLongDropFor(55)).toBe(0.25);
+    expect(cutbackLongDropFor(30)).toBe(0.20);
+    expect(cutbackLongDropFor(90)).toBe(0.30);
+  });
+
+  it('every curve cutback drops its long to the tier target and keeps the week inside the 20-30% band', () => {
+    let checked = 0;
+    for (let wi = 0; wi < plan.weeks.length; wi++) {
+      const w = plan.weeks[wi];
+      if (!w.isCutback || w.isRaceWeek || w.phase === 'TAPER') continue;
+      let refLong = 0;
+      let refMpw = 0;
+      for (let j = wi - 1; j >= 0; j--) {
+        const p = plan.weeks[j];
+        if (p.isCutback || p.isRaceWeek || p.phase === 'TAPER') break;
+        refMpw = Math.max(refMpw, p.weeklyMi);
+        const ld = p.days.find((d) => d.isLong && d.type !== 'race');
+        if (ld) refLong = Math.max(refLong, ld.distanceMi);
+      }
+      if (!(refLong > 0) || !(refMpw > 0)) continue;
+      const long = w.days.find((d) => d.isLong && d.type !== 'race');
+      expect(long).toBeTruthy();
+      const target = Math.round(refLong * (1 - cutbackLongDropFor(refMpw)));
+      const maxOther = Math.max(0, ...w.days.filter((d) => d !== long).map((d) => d.distanceMi));
+      // The long reaches its tier target unless a stated bound stopped it:
+      // it must stay the week's longest run, and the week's total cut must
+      // not blow past the doc's 30% ceiling.
+      const atTarget = long!.distanceMi <= target;
+      const flooredByWeekMax = long!.distanceMi <= maxOther + 0.001;
+      const trimExhausted = w.weeklyMi <= refMpw * 0.70 + 0.5;
+      expect(atTarget || flooredByWeekMax || trimExhausted).toBe(true);
+      // And the week's total cut stays inside the doc's own band.
+      expect(w.weeklyMi).toBeGreaterThanOrEqual(refMpw * 0.70 - 0.5);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('the David fixture cutbacks land in-band against their preceding load blocks', () => {
+    // wk2 55mi/17mi-long → wk3 cutback; wk6 62/20 → wk7; wk10 65/22.5 → wk11.
+    const cases: Array<[number, number, number]> = [[3, 55, 17], [7, 62, 20], [11, 65, 22.5]];
+    for (const [wi, refMpw, refLong] of cases) {
+      const w = plan.weeks[wi];
+      expect(w.isCutback).toBe(true);
+      const long = w.days.find((d) => d.isLong)!;
+      const dropPct = (refLong - long.distanceMi) / refLong;
+      const weekCutPct = (refMpw - w.weeklyMi) / refMpw;
+      // Long drop reaches the tier figure (to whole-mile rounding).
+      expect(long.distanceMi).toBe(Math.round(refLong * (1 - cutbackLongDropFor(refMpw))));
+      expect(dropPct).toBeGreaterThanOrEqual(0.20 - 0.03);   // rounding slack
+      expect(dropPct).toBeLessThanOrEqual(0.30);
+      // Weekly cut inside the doc's 20-30% band.
+      expect(weekCutPct).toBeGreaterThanOrEqual(0.20 - 0.005);
+      expect(weekCutPct).toBeLessThanOrEqual(0.30 + 0.005);
+    }
   });
 });
 

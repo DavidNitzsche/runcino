@@ -547,6 +547,20 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
   // Fix here is snapshot-only: `npx vitest run ... -u` against current
   // composePlan output, which the doctrine-band test above and every other
   // invariant in this file already passes against. No engine change.
+  //
+  // DRIFT ACCEPTED · CUTBACK-LONG-1 (2026-08-28) · THE CUTBACK LONG DROPS.
+  //
+  // Exactly the three cutback weeks move, nothing else: wk3 51.5→47.5 (long
+  // 17→13), wk7 51→47 (long 19→15), wk11 53.5→51.5 (long 19→17). Research/00b
+  // §"Depth of Cutback by Mileage Tier" states the long run's OWN reduction
+  // per tier in the table's Notes column ("Long run –25%" for this fixture's
+  // 60-80 mpw blocks); the engine cut the WEEK by 20% but the long dropped
+  // only 6-16%, so the weekday runs absorbed the whole deload. Each cutback
+  // long now lands at round(refLong × 0.75) off its preceding load block's
+  // longest long (17×.75→13, 20×.75→15, 22.5×.75→17), and each week's total
+  // cut lands inside the doc's 20-30% band (wk3 24.6% of 63, wk7 28.8% of 66,
+  // wk11 24.3% of 68). Bound by CUTBACK.long-run-depth in the doctrine
+  // registry; the applying pass is `applyCutbackLongDrop` in generate.ts.
   it('FROZEN: per-week structural fingerprint is byte-stable', () => {
     COMBO_COUNT++;
     const fp = result.weeks.map((w, i) => {

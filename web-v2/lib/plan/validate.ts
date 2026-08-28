@@ -489,6 +489,20 @@ export function validateComposedPlan(
   for (let i = 1; i < longByWeek.length; i++) {
     const prev = longByWeek[i - 1];
     const curr = longByWeek[i];
+    // CUTBACK-LONG-1 (2026-08-28) · the week after a PLANNED cutback measures
+    // its jump against the last load week's long, bridging over the deload.
+    // Doctrine builds the dip on purpose — the cutback long now drops 20-30%
+    // per Research/00b's tier table — so a plain ratio reads the planned
+    // rebound as a spike (a 25% dip returns at +33% > the 30% limit). Same
+    // reasoning as §6's move to ACWR: the rebound to a level the block already
+    // held is not a ramp. A jump BEYOND the bridged level still fires — the
+    // limit is applied to the pre-cutback long instead of being waived.
+    // Consecutive cutbacks cannot occur (cadence is every 3rd or 4th week),
+    // so `i - 2` is always a load week when `i - 1` is a curve deload.
+    if (weeks[i - 1]?.isCutback && !weeks[i - 1]?.isRaceWeek) {
+      const bridge = longByWeek[i - 2] ?? 0;
+      if (bridge > 0 && curr <= bridge * (1 + c.longRunWoWMaxPct / 100)) continue;
+    }
     if (prev > 0 && curr > prev * (1 + c.longRunWoWMaxPct / 100)) {
       const pct = Math.round(((curr - prev) / prev) * 100);
       violations.push(

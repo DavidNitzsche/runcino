@@ -1933,6 +1933,101 @@ function cutbackCadence(tsbAtStart?: number): number {
   return (typeof tsbAtStart === 'number' && tsbAtStart < -10) ? 3 : 4;
 }
 
+/**
+ * CUTBACK-LONG-1 (2026-08-28) · how far the cutback week's LONG RUN drops.
+ *
+ * Research/00b §"Depth of Cutback by Mileage Tier" prescribes the long run's
+ * own reduction separately from the week's, per tier, in the table's Notes
+ * column: "Drop the long run by 20–30%" (20–40 mpw), "Long run –25%" (40–60),
+ * "Long run –25–30%" (60–80), "Long run –30%" (80+). The engine cut the WEEK
+ * by 20% (`volumeCurve`'s 0.80 deload, in band) but nothing cut the long: it
+ * was sized proportionally off the reduced weekly volume and then re-floored
+ * by the ramp anchors, so observed cutback longs dropped only 6–16% against
+ * the surrounding load weeks — the weekday runs absorbed the whole deload,
+ * which is #13's "opposite of a deload" arriving through the sizing path
+ * instead of the floor path.
+ *
+ * One row per doc row, same order, boundaries read from the doc's own
+ * "Peak-load mpw" column by the gate. Each drop sits at the low end of its
+ * row's band — consistent with the weekly cut sitting on its band's floor.
+ * Keyed by the PRECEDING LOAD BLOCK's peak weekly mileage, which is the same
+ * base the doc names for the weekly cut ("from the highest week in the
+ * preceding load block"). Bound by CUTBACK.long-run-depth.
+ */
+export const CUTBACK_LONG_DROP: ReadonlyArray<{ maxMpw: number; drop: number }> = [
+  { maxMpw: 40, drop: 0.20 },
+  { maxMpw: 60, drop: 0.25 },
+  { maxMpw: 80, drop: 0.25 },
+  { maxMpw: Infinity, drop: 0.30 },
+];
+
+export function cutbackLongDropFor(peakLoadMpw: number): number {
+  for (const tier of CUTBACK_LONG_DROP) {
+    if (peakLoadMpw <= tier.maxMpw) return tier.drop;
+  }
+  return CUTBACK_LONG_DROP[CUTBACK_LONG_DROP.length - 1].drop;
+}
+
+/**
+ * CUTBACK-LONG-1 · apply the long-run drop to every planned cutback week.
+ *
+ * Runs once, after the week loop has laid every day out and before the
+ * mid-block race embed (so an embedded race week — which sets its own
+ * `isCutback` flag for the validator's benefit — is never mistaken for a
+ * volume-curve deload; at this point the only `isCutback` weeks are the
+ * curve's own).
+ *
+ * For each cutback week: the reference is the preceding load block (walk back
+ * to the previous cutback, exclusive), its longest long and its highest
+ * weekly volume. The cutback long is trimmed down to `refLong × (1 − drop)`,
+ * bounded three ways:
+ *
+ *   · it stays the longest run of its week — a "long" shorter than the
+ *     midweek medium-long is not a long run;
+ *   · the WEEK's total cut never exceeds 30% of the reference load — the
+ *     ceiling of the same doc table's "% reduction" column — so deepening the
+ *     long cannot push the week out the bottom of the band it was cut into;
+ *   · a long already at or under its target is left alone.
+ *
+ * The trimmed miles are shed, not redistributed: §"What to Cut First" cuts
+ * total volume first and the long run second, so a cutback week that lands
+ * deeper than 20% (but inside 30%) because its long came down is the doc's
+ * own ordering, not a bug. `weeklyMi` and `vols` are re-reconciled to the
+ * realized day sum so every downstream reader (embed, validator, VOL-1) sees
+ * the same week.
+ */
+function applyCutbackLongDrop(weeks: ComposedWeek[], vols: number[]): void {
+  for (let wi = 0; wi < weeks.length; wi++) {
+    const w = weeks[wi];
+    if (!w.isCutback || w.isRaceWeek || w.phase === 'TAPER') continue;
+    let refLong = 0;
+    let refMpw = 0;
+    for (let j = wi - 1; j >= 0; j--) {
+      const prev = weeks[j];
+      if (prev.isCutback || prev.isRaceWeek || prev.phase === 'TAPER') break;
+      refMpw = Math.max(refMpw, prev.weeklyMi);
+      const prevLong = prev.days.find((d) => d.isLong && d.type !== 'race');
+      if (prevLong) refLong = Math.max(refLong, prevLong.distanceMi);
+    }
+    if (!(refLong > 0) || !(refMpw > 0)) continue;
+    const longDay = w.days.find((d) => d.isLong && d.type !== 'race');
+    if (!longDay) continue;
+    const target = Math.round(refLong * (1 - cutbackLongDropFor(refMpw)));
+    if (longDay.distanceMi <= target) continue;
+    const maxOtherMi = Math.max(
+      0,
+      ...w.days.filter((d) => d !== longDay && d.type !== 'race').map((d) => d.distanceMi),
+    );
+    const floorMi = Math.max(target, maxOtherMi);
+    const maxTrim = Math.max(0, w.weeklyMi - refMpw * 0.70);
+    const trim = Math.min(longDay.distanceMi - floorMi, maxTrim);
+    if (trim <= 0) continue;
+    longDay.distanceMi = Math.round((longDay.distanceMi - trim) * 10) / 10;
+    w.weeklyMi = Math.round(w.days.reduce((s, d) => s + d.distanceMi, 0) * 10) / 10;
+    vols[wi] = w.weeklyMi;
+  }
+}
+
 export type LevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
 
 /**
@@ -2010,7 +2105,10 @@ export function cycleBoundedPeak(
  * 2026-06-02 rewrite (David's fail-proof generator ask):
  *   · ramp geometrically from baseMi to tier.peakWeeklyMileageBand[0]
  *     (the tier's LOWER bound · ambitious but doctrine-safe)
- *   · cutback every 4th non-taper week to 85% of last peak
+ *   · cutback every 4th non-taper week to 80% of the last climbing week
+ *     (RC2-4 · the doc's 20-30% band; this line used to say "85% of last
+ *     peak", which was stale twice over — the factor moved to 0.80 and the
+ *     base was never the peak. The loop below is the truth.)
  *   · taper math unchanged
  *
  * The geometric ramp is bounded by GENERAL_RAMP_CEILING (Research/00a
@@ -5608,6 +5706,26 @@ function clearWorkShape(d: DayPlan): void {
   delete d.challengeZone;
 }
 
+/**
+ * MIDRACE-RESUME-1 (2026-08-28) · the first quality day back after an embedded
+ * race's recovery window.
+ *
+ * A short cruise-interval set at the light end of Research/04 §5.3's structure
+ * row ("3–6 × 1 mi with 1 min jog, or 2–4 × 2 mi with 2 min jog"), with a
+ * deliberately generous jog: 3 mi at T, under the §5.3 full-session "4–8 mi"
+ * at-pace band. Doctrine for the sizing is Research/00b's re-entry ordering —
+ * the reverse taper reintroduces "strides, then short tempo" before a full
+ * quality session, and every recovery table's first-intensity row is a
+ * fraction of a normal workout. The string is a real prescription: it goes
+ * through `parsePrescription` → `buildWorkoutSpec` exactly like every other
+ * authored quality day, so the day carries a spec, a pace target and phases on
+ * the watch — not a bare `threshold` label over a default-shaped session.
+ *
+ * Bound by MIDRACE.resume-quality-light in the doctrine registry, which parses
+ * both the §5.3 structure row and its at-pace band out of the doc.
+ */
+export const MIDRACE_RESUME_RX = '2×1.5 mi @ T · 3 min jog';
+
 export function embedMidBlockRaces(
   weeks: ComposedWeek[],
   vols: number[],
@@ -5858,25 +5976,45 @@ export function embedMidBlockRaces(
           for (let oo = o + recoveryDays + 1; oo < (endWi + 1) * 7; oo++) {
             const d = dayAt(oo);
             if (d && d.type === 'easy' && d.distanceMi > 0 && !d.isLong) {
-              const wasIntervals = firstDisplacedQuality.type === 'intervals';
-              d.type = wasIntervals ? 'threshold' : firstDisplacedQuality.type;
+              // MIDRACE-RESUME-1 (2026-08-28) · the restored day is a LIGHT
+              // threshold re-entry with a real prescription, not the displaced
+              // session at full dose — and never an unprescribed slot.
+              //
+              // Two defects, one root. The intervals path (MIDRACE-NOTE-1's
+              // "downgrade to threshold") nulled the sub_label, so the day
+              // shipped as `{type:'threshold', subLabel:null}` and
+              // buildWorkoutSpec fell through to its default full 4×1mi @ T —
+              // a quality day with a distance and a scheduling note but no
+              // stated shape. The preserved-threshold path was worse in the
+              // other direction: it restored the displaced session at full
+              // dose (the owner's CIM block put a 6×1km MP→5K cutdown five
+              // days after a half).
+              //
+              // Doctrine says the first quality back is light either way.
+              // Research/00b §"The Reverse Taper Principle" orders re-entry
+              // "reintroduce strides, then short tempo" before "reintroduce
+              // one quality session (threshold or fartlek)", and the recovery
+              // tables' first-intensity rows are all sized under a full
+              // session ("40 min easy or short fartlek (4× 1 min @ 10K
+              // effort) | First intensity, optional"). So the resume day is a
+              // short cruise-interval set at the light end of Research/04
+              // §5.3's structure ("3–6 × 1 mi with 1 min jog, or 2–4 × 2 mi
+              // with 2 min jog") with a generous jog: 3 mi at T, below the
+              // §5.3 full-session band of "4–8 mi" at pace. The day's total
+              // distance is unchanged — the warm-up and cool-down absorb the
+              // difference — so the week's volume accounting is untouched.
+              //
+              // MIDRACE-NOTE-1's lesson stands: the scheduling sentence is
+              // kept, but it rides behind a real prescription instead of
+              // standing in for one. Bound by MIDRACE.resume-quality-light.
+              d.type = 'threshold';
               d.distanceMi = firstDisplacedQuality.distanceMi;
               d.isQuality = true;
-              d.subLabel = wasIntervals ? null : firstDisplacedQuality.subLabel;
-              // MIDRACE-NOTE-1 (2026-08-25) · the restored session keeps its
-              // own coaching note. This wrote the scheduling sentence over it,
-              // so the one session of the week arrived with no instruction for
-              // running it: the owner's CIM block shipped a 4×2km threshold set
-              // whose entire `notes` read "Quality resumes after Run Malibu
-              // recovery." The note explains WHY the day moved; it is not the
-              // prescription, and it was standing in for one.
-              //
-              // Only when the type is preserved. A downgraded intervals session
-              // is a different family and its note ("800m repeats · Research/04
-              // §6.4") would describe a workout the runner is no longer doing.
-              d.notes = !wasIntervals && firstDisplacedQuality.notes
-                ? `${firstDisplacedQuality.notes} Quality resumes after ${race.name} recovery.`
-                : `Quality resumes after ${race.name} recovery.`;
+              d.subLabel = MIDRACE_RESUME_RX;
+              d.notes =
+                `Cruise-interval re-entry · Research/04 §5.3, light end. First quality back after ` +
+                `${race.name} · short T reps with a generous jog before full sessions return ` +
+                `(Research/00b reverse taper). Quality resumes after ${race.name} recovery.`;
               touchedWeeks.add(endWi);
               break;
             }
@@ -7323,6 +7461,11 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     weeks.push({ startISO: weekStart, phase: phaseLabel, weeklyMi: vols[wi], days, isRaceWeek, tPaceSec: weekT, isCutback: wi > 0 && (wi + 1) % cutbackEveryN === 0 });
     phaseWkRemaining--;
   }
+
+  // CUTBACK-LONG-1 · the cutback week's long run drops per the doc's own
+  // per-tier band. Before the race embed on purpose — see the function's
+  // doctrine block.
+  applyCutbackLongDrop(weeks, vols);
 
   // 2026-06-10 · "get them running on day one." A mid-week onboarder
   // (today-anchored · start day is not a Monday) whose preferred run days

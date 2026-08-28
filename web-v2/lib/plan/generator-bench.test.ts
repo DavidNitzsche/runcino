@@ -187,8 +187,14 @@ describe('Generator bench · composePlan() output against persona doctrine', () 
       it('no build-week long is shorter than runner recent long (2026-06-03)', () => {
         // The fix that closed David's "why is Sun 9mi when I just did 12?"
         // bug · the generator must not author a long shorter than the
-        // runner's recent peak long (modulo cutback margin). Cutback weeks
-        // can drop ~2mi; non-cutback build weeks must hold the floor.
+        // runner's recent peak long (modulo cutback margin). Non-cutback
+        // build weeks must hold the floor.
+        // CUTBACK-LONG-1 (2026-08-28) · cutback weeks now drop the long
+        // 20-30% off the preceding load block (Research/00b §"Depth of
+        // Cutback by Mileage Tier") — the old "~2mi" allowance here encoded
+        // the shallow cutback this fix removed. The deepest doctrine-legal
+        // cutback long is 70% of a reference that is itself floored at
+        // recentLong - 1, so that is the answer-side floor now.
         // Mid-block personas pass explicit recentLongMi; cold-start
         // personas use the derived value (matches personaToComposeInput).
         const recentLong = p.profile.midBlock?.recentLongMi
@@ -198,7 +204,7 @@ describe('Generator bench · composePlan() output against persona doctrine', () 
           const w = result.weeks[i];
           if (w.phase === 'TAPER' || w.phase === 'BASE' || w.isRaceWeek) continue;
           const isCutback = i > 0 && (i + 1) % 4 === 0;
-          const floor = isCutback ? recentLong - 2 : recentLong - 1;
+          const floor = isCutback ? Math.floor((recentLong - 1) * 0.70) - 1 : recentLong - 1;
           const long = weekLong(w);
           if (long === 0) continue; // no long that week (rare)
           expect(long).toBeGreaterThanOrEqual(floor);
