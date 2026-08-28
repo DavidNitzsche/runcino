@@ -286,6 +286,22 @@ final class WatchSync: NSObject, ObservableObject {
     // iPhone gracefully shows no live HR pill. The treadmill workout
     // still records · the iPhone's POST is independent of the watch.
 
+    /// Non-nil while a treadmill start is unconfirmed — the sessionId to
+    /// retry the LIVE handshake for the moment the watch becomes reachable
+    /// (`sessionReachabilityDidChange` below). Cleared on confirm or stop.
+    ///
+    /// 2026-08-28 · David: "how do I know it's linked? It's confusing." The
+    /// durable `transferUserInfo` fallback below has no reply channel, so a
+    /// watch that was unreachable at Start and only comes into range later
+    /// (opened on the wrist, exactly what the phone's own prompt asks for)
+    /// left `treadmillSessionConfirmed` false FOREVER — the phone's prompt
+    /// never updated one way or the other, confirmed or failed, regardless
+    /// of whether the watch actually picked it up. Tracking the pending id
+    /// lets reachability-change retry the LIVE path, which DOES get a real
+    /// reply, turning "we don't know" into an answer within seconds of the
+    /// runner doing exactly what the prompt told them to do.
+    private var pendingTreadmillSessionId: String?
+
     /// Ask the watch to start an indoor-running HR session.
     /// Returns `true` if the message was *sent* (watch was reachable at send
     /// time). The watch's actual acknowledgement is reflected in
@@ -299,6 +315,7 @@ final class WatchSync: NSObject, ObservableObject {
         let s = WCSession.default
         guard s.activationState == .activated else { return false }
         treadmillSessionConfirmed = false
+        pendingTreadmillSessionId = sessionId
         // 2026-08-27 · durable start, mirroring stopTreadmillHRSession below.
         // An unreachable watch at the exact moment the console appears used to
         // mean the bridge never engaged for the whole run — no retry until the
@@ -308,7 +325,17 @@ final class WatchSync: NSObject, ObservableObject {
             s.transferUserInfo(["treadmillStart": sessionId])
             return false
         }
-        s.sendMessage(
+        sendLiveTreadmillStart(sessionId: sessionId)
+        return true
+    }
+
+    /// The live half of `startTreadmillHRSession` — split out so
+    /// `sessionReachabilityDidChange` can retry it without re-running the
+    /// reachability gate (it's calling this BECAUSE reachability just
+    /// changed to true) or re-queuing another durable fallback on top of the
+    /// one already in flight.
+    private func sendLiveTreadmillStart(sessionId: String) {
+        WCSession.default.sendMessage(
             ["request": "startTreadmillHR", "sessionId": sessionId],
             replyHandler: { [weak self] reply in
                 Task { @MainActor [weak self] in
@@ -318,7 +345,9 @@ final class WatchSync: NSObject, ObservableObject {
                     // for a key that can't exist and treadmillSessionConfirmed
                     // was permanently false regardless of whether the watch
                     // session actually started.
-                    self?.treadmillSessionConfirmed = (reply["status"] as? String) == "started"
+                    let ok = (reply["status"] as? String) == "started"
+                    self?.treadmillSessionConfirmed = ok
+                    if ok { self?.pendingTreadmillSessionId = nil }
                 }
             },
             errorHandler: { [weak self] err in
@@ -326,7 +355,6 @@ final class WatchSync: NSObject, ObservableObject {
                 print("[WatchSync] startTreadmillHR failed: \(err.localizedDescription)")
             }
         )
-        return true
     }
 
     /// Ask the watch to end the indoor-running HR session. Idempotent ·
@@ -339,6 +367,7 @@ final class WatchSync: NSObject, ObservableObject {
     /// the next connection; the watch's own dead-man timer (no phone ping)
     /// is the second layer.
     func stopTreadmillHRSession(sessionId: String) {
+        if pendingTreadmillSessionId == sessionId { pendingTreadmillSessionId = nil }
         guard WCSession.isSupported() else { return }
         let s = WCSession.default
         guard s.activationState == .activated else { return }
@@ -586,7 +615,19 @@ extension WatchSync: WCSessionDelegate {
     /// hammer /api/watch/today. (RK-4)
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         guard session.isReachable else { return }
-        Task { @MainActor in await self.refresh() }
+        Task { @MainActor in
+            await self.refresh()
+            // 2026-08-28 · the watch coming into reach is exactly the moment
+            // a queued `treadmillStart` transferUserInfo delivers — but
+            // transferUserInfo has no reply, so this is the phone's only
+            // chance to find out whether it actually took. Retry the LIVE
+            // handshake, which DOES get a real reply now that the watch is
+            // reachable. See `pendingTreadmillSessionId`'s doc for the full
+            // story — this closes the "prompt never updates" confusion.
+            if let sessionId = self.pendingTreadmillSessionId, !self.treadmillSessionConfirmed {
+                self.sendLiveTreadmillStart(sessionId: sessionId)
+            }
+        }
     }
 
     nonisolated func session(_ session: WCSession,

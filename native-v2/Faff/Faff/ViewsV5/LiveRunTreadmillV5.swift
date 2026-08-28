@@ -802,12 +802,32 @@ struct LiveRunTreadmillV5: View {
             // into a run that's already missing heart rate. Same message the
             // in-run `hrHint` falls back to, shown here proactively instead
             // of reactively.
-            if startedAt == nil, readyScreenSettled, !watchSync.treadmillSessionConfirmed {
-                Text("Open Faff on your Apple Watch for heart rate.")
-                    .font(.faffText(TypeScaleV5.label13))
-                    .foregroundStyle(V5.textQuiet)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
+            //
+            // 2026-08-28 · David: "how do I know where to start it? how do I
+            // know its linked? Its confusing." The old copy said to open the
+            // watch and stopped there — nothing about what to do once it's
+            // open (nothing — the daily plan's own Start button starts a
+            // DIFFERENT kind of run and must not be tapped), and nothing
+            // ever confirmed success; the line just silently vanished once
+            // `treadmillSessionConfirmed` flipped, which reads as "did that
+            // do anything?" rather than as an answer. Now says explicitly
+            // there's nothing to tap, names the visible signal (the watch
+            // switches off its lobby onto the live heart-rate screen), and
+            // replaces itself with a positive confirmation once linked.
+            if startedAt == nil {
+                if watchSync.treadmillSessionConfirmed {
+                    Text("Linked to your Apple Watch.")
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textQuiet)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                } else if readyScreenSettled {
+                    Text("Open Faff on your Apple Watch. Nothing to tap there. It'll switch off the day's plan onto the heart rate screen once it's linked.")
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textQuiet)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                }
             }
             buttonRow
         }
