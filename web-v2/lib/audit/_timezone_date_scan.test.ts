@@ -35,13 +35,19 @@ describe('guard 0 · the scanner refuses to pass on nothing', () => {
   const result = scanTreeForTimezoneDateBug(ROOT);
 
   it('opened a real number of files', () => {
+    // 2026-08-27 · was >500, calibrated against a local checkout carrying
+    // uncommitted files from concurrent work. Railway's clean clone scans
+    // ~488 committed .ts files under lib/ and app/ — a real, honest count,
+    // not a broken walker. 400 is comfortably below either environment's
+    // legitimate count and still catches the failure this guards against
+    // (the walker opening 0 or a handful of files and reporting clean).
     expect(
       result.filesScanned,
       `only ${result.filesScanned} files scanned. Either the walker broke or ` +
-      'the tree moved — web-v2 has thousands of .ts files under lib/ and app/ ' +
+      'the tree moved — web-v2 has hundreds of .ts files under lib/ and app/ ' +
       'alone. A scanner that opens nothing and reports clean is worse than no ' +
       'scanner.',
-    ).toBeGreaterThan(500);
+    ).toBeGreaterThan(400);
   });
 
   it('is watching all six confirmed timestamptz columns', () => {
