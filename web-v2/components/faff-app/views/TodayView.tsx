@@ -1008,15 +1008,12 @@ type RunSummary = {
    *  14-day baseline at this lat/lon. Set when the delta is ≥8°F. */
   weather_context?: { message: string; hr_bump_bpm: number } | null;
   /** 2026-06-04 · duration-scaled Maughan/Vihma heat slowdown % for this
-   *  run · used to render a faded heat-adjusted band on the pace bars
-   *  so the runner can see when their actual pace was "on plan given
-   *  the conditions" vs honestly off. Same value drives the heat-
-   *  adjusted phase verdict. 0 when conditions weren't material. */
+   *  run. No longer widens any pace band or share shown to the runner
+   *  (removed 2026-08-27 per David — he paces off feel, not a heat
+   *  allowance). Kept only so heatAwareDrift can relabel a back-half HR
+   *  rise as HEAT DRIFT instead of decoupling · an HR-confounder read,
+   *  not a pace grade. 0 when conditions weren't material. */
   heat_slowdown_pct?: number | null;
-  /** 2026-06-08 · heat-adjusted KEPT-IT-EASY share (Z1+Z2 %) · non-null only
-   *  on hot runs (heat_slowdown_pct >= 6). The easy gauge prefers it over the
-   *  raw share so thermoregulation isn't scored as a failure. */
-  easy_share_heat_adj?: number | null;
   /** Phase-by-phase breakdown from coach_intents watch_completion payload.
    *  Drives THE REPS card for intervals · warmup/cooldown/recovery rows
    *  + per-rep plan-vs-result bars. Empty array for Strava/HK runs that
@@ -2856,7 +2853,6 @@ function CompletedHeroV2({
         {d.type === 'intervals' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 ? (
           <RepsRail
             phases={runData.phase_breakdown}
-            heatSlowdownPct={runData.heat_slowdown_pct ?? null}
           />
         ) : (d.type === 'easy' || d.type === 'recovery') && splits.length >= 3 ? (
           <EasyPanel
@@ -2881,7 +2877,6 @@ function CompletedHeroV2({
             // to per-mile mean inside EasyPanel when null.
             runAvgPaceSec={runData?.pace ? paceToSec(runData.pace) : null}
             heatSlowdownPct={runData?.heat_slowdown_pct ?? null}
-            easyShareHeatAdj={runData?.easy_share_heat_adj ?? null}
           />
         ) : d.type === 'long' && runData?.phase_breakdown && runData.phase_breakdown.length > 0 &&
             (d.workoutSpec as { finish_mi?: number | null } | null)?.finish_mi != null ? (
@@ -2953,7 +2948,7 @@ function CompletedHeroV2({
  * splits on intervals · meaningless for the workout shape.
  */
 type RepsPhase = NonNullable<RunSummary['phase_breakdown']>[number];
-function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdownPct?: number | null }) {
+function RepsRail({ phases }: { phases: RepsPhase[] }) {
   const workPhases = phases.filter(p => p.type === 'work');
   if (workPhases.length === 0) return null;
 
@@ -3121,16 +3116,6 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
               ? TICK_PCT - 3
               : (delta != null && delta > 0 ? markerPos : TICK_PCT);
 
-            // 2026-06-04 · per-rep heat band · same model as TempoPanel.
-            const heatPct = heatSlowdownPct ?? 0;
-            const heatBandLeft = (goalSec > 0 && heatPct >= 2)
-              ? (() => {
-                  const heatOffsetSec = (goalSec * heatPct) / 100;
-                  const heatBarUnits = Math.min(45, (heatOffsetSec / maxdev) * 45);
-                  return TICK_PCT - heatBarUnits;
-                })()
-              : null;
-            const heatBandW = heatBandLeft != null ? TICK_PCT - heatBandLeft : 0;
             return (
               <div key={key} style={{
                 display: 'grid', gridTemplateColumns: REP_GRID_COLS,
@@ -3153,15 +3138,6 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
                   position: 'relative', height: BAR_HEIGHT, borderRadius: 6,
                   background: 'rgba(255,255,255,.1)',
                 }}>
-                  {heatBandW > 0 && heatBandLeft != null && (
-                    <div style={{
-                      position: 'absolute', top: 1, bottom: 1,
-                      left: `${heatBandLeft}%`, width: `${heatBandW}%`,
-                      background: 'rgba(92,173,227,0.16)',
-                      border: '1px dashed rgba(92,173,227,0.45)',
-                      borderRadius: 3, zIndex: 1,
-                    }} />
-                  )}
                   {fillW > 0 && (
                     <div style={{
                       position: 'absolute', top: 1, bottom: 1,
@@ -3258,7 +3234,7 @@ function RepsRail({ phases, heatSlowdownPct }: { phases: RepsPhase[]; heatSlowdo
  * missing the panel renders just the section header.
  */
 function EasyPanel({
-  hrZonePcts, splits, hrAvg, paceInBand, runAvgPaceSec, heatSlowdownPct, easyShareHeatAdj,
+  hrZonePcts, splits, hrAvg, paceInBand, runAvgPaceSec, heatSlowdownPct,
 }: {
   hrZonePcts: { z1: number; z2: number; z3: number; z4: number; z5: number } | null | undefined;
   splits: Array<{ mile: number; pace: string | null; elev_change_ft: number | null; hr?: number | null }>;
@@ -3273,19 +3249,17 @@ function EasyPanel({
   // uses this instead of the mean of per-mile paces · the per-mile
   // mean misrepresents the run when the last split is a partial mile.
   runAvgPaceSec?: number | null;
-  // 2026-06-08 · heat context · slowdownPct relabels the drift band (>=2)
-  // and selects the heat-adjusted easy share (>=6). Both null on cool runs.
+  // 2026-06-08 · heat context · slowdownPct relabels the drift band (>=2).
+  // Null on cool runs. No longer selects a heat-adjusted easy share — that
+  // widening was removed 2026-08-27 per David; the gauge always judges the
+  // raw Z1+Z2 split.
   heatSlowdownPct: number | null;
-  easyShareHeatAdj: number | null;
 }) {
-  // KEPT IT EASY · Z1+Z2 share. On a HOT day (heatSlowdownPct >= 6) prefer the
-  // heat-adjusted share (zones shifted up by the expected heat bump, computed
-  // server-side) so the gauge judges effort, not thermoregulation.
-  const rawEasyPct = hrZonePcts
+  // KEPT IT EASY · plain Z1+Z2 share. Never heat-adjusted — the runner
+  // paces (and judges effort) off feel, not a thermoregulation allowance.
+  const easyPct = hrZonePcts
     ? Math.round((hrZonePcts.z1 ?? 0) + (hrZonePcts.z2 ?? 0))
     : null;
-  const useHeatEasy = (heatSlowdownPct ?? 0) >= 6 && easyShareHeatAdj != null;
-  const easyPct = useHeatEasy ? easyShareHeatAdj : rawEasyPct;
   // 2026-06-03 · Rule 17 · thresholds depend on whether pace was the
   // authoritative easy signal. When pace was in band, HR-zone share
   // is informational · drift into Z3 from heat/fatigue is honest
@@ -3422,11 +3396,9 @@ function EasyPanel({
                 The Z1-Z2 share is descriptive, not a fault. Was: just
                 "Z1-Z2 share of moving time" with a 50% bar reading like
                 a failure next to the ON PLAN badge above. */}
-            {useHeatEasy
-              ? 'Heat-adjusted · your easy ceiling rises when it is hot'
-              : paceInBand && easyPct != null && easyPct < 70
-                ? 'Pace held the easy band · HR was descriptive, not the gate'
-                : 'Z1–Z2 share of moving time'}
+            {paceInBand && easyPct != null && easyPct < 70
+              ? 'Pace held the easy band · HR was descriptive, not the gate'
+              : 'Z1–Z2 share of moving time'}
           </div>
         </div>
       ) : null}
@@ -3862,36 +3834,13 @@ function TempoPanel({
     ? 47
     : (delta != null && delta > 0 ? markerPos : 50);
 
-  // 2026-06-04 · heat-adjusted band · faded region from center
-  // extending LEFT to the position the heat-adjusted target would
-  // occupy. When the runner's marker lands inside this band, they
-  // executed "on plan for the conditions" even if they missed the
-  // nominal target. For David's 12% heat day: band extends from
-  // center (50%) to wherever a 50s slowdown would put the marker
-  // (= 5% of the bar). Marker at ~34% lands INSIDE the band ·
-  // visual confirms the ✓ ON verdict.
-  const heatPct = heatSlowdownPct ?? 0;
-  const heatBandLeft = (targetSec > 0 && heatPct >= 2)
-    ? (() => {
-        const heatOffsetSec = (targetSec * heatPct) / 100;
-        const heatBarUnits = Math.min(45, (heatOffsetSec / maxdev) * 45);
-        return 50 - heatBarUnits;
-      })()
-    : null;
-  const heatBandW = heatBandLeft != null ? 50 - heatBandLeft : 0;
-  // 2026-06-04 · runner landed inside the heat-adjusted band ·
-  // drives the chip and replaces the "+X vs goal" tail with "on
-  // plan for conditions" copy.
-  const insideHeatBand = heatBandW > 0 && heatBandLeft != null
-    && delta != null && delta > 0 && markerPos >= heatBandLeft;
-
   // 2026-08-17 · measured thirds where the splits carry per-mile HR on the
   // work phase; the avg/peak shape, honestly labelled, below three of them.
-  // 2026-08-17 · heat reaches this panel now. `heatSlowdownPct` was already
-  // in scope two lines up, drawing the heat band on the pace gauge, and was
-  // not passed to the HR reading directly below it. Research/03 §2 puts heat
-  // at 25°C+ at +5-20 bpm against an 8 bpm warn edge, so the amber card could
-  // be entirely weather.
+  // 2026-08-17 · heat reaches this panel's LATE-third warning suppression.
+  // Research/03 §2 puts heat at 25°C+ at +5-20 bpm against an 8 bpm warn
+  // edge, so the amber card could be entirely weather — an HR-confounder
+  // read (computeHrThirds withholds the warning, never the measurement),
+  // not a pace adjustment.
   const hrThirds = computeHrThirds(splits, {
     avgHr: work.avg_hr,
     maxHr: work.max_hr,
@@ -3944,19 +3893,6 @@ function TempoPanel({
           position: 'relative', height: 12, borderRadius: 6,
           background: 'rgba(255,255,255,.1)', marginTop: 10,
         }}>
-          {/* 2026-06-04 · heat-adjusted band · the "still on plan
-              given conditions" zone, faded green. When the marker
-              lands INSIDE this band, the runner executed honestly
-              for the day. Only renders when heat slowdown ≥ 2%. */}
-          {heatBandW > 0 && heatBandLeft != null && (
-            <div style={{
-              position: 'absolute', top: 1, bottom: 1,
-              left: `${heatBandLeft}%`, width: `${heatBandW}%`,
-              background: 'rgba(92,173,227,0.18)',
-              border: '1px dashed rgba(92,173,227,0.50)',
-              borderRadius: 3, zIndex: 1,
-            }} />
-          )}
           {/* Faded center reference · target */}
           <div style={{
             position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1,
@@ -3977,18 +3913,6 @@ function TempoPanel({
             boxShadow: '0 0 0 1px rgba(0,0,0,.25)',
           }} />
         </div>
-        {/* 2026-06-04 · explainer chip · only when the band actually
-            rendered AND the runner landed inside it. Tells the runner
-            what they're looking at without bloating the panel. */}
-        {insideHeatBand ? (
-          <div style={{
-            marginTop: 6, fontSize: 9, fontWeight: 700, letterSpacing: 0.6,
-            color: 'rgba(120,190,235,0.95)',
-            textTransform: 'uppercase',
-          }}>
-            ✓ INSIDE HEAT-ADJUSTED BAND · {Math.round(heatPct)}% pace tax for conditions
-          </div>
-        ) : null}
         <div style={{
           display: 'flex', justifyContent: 'space-between',
           fontSize: 8, fontWeight: 700, letterSpacing: 1.1, marginTop: 6,
@@ -4097,21 +4021,12 @@ function TempoPanel({
             fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 500, opacity: 0.6,
           }}>/mi</small>
           {delta != null ? (
-            insideHeatBand ? (
-              <span style={{
-                fontSize: 11, fontWeight: 700, marginLeft: 5,
-                color: 'rgba(120,190,235,0.95)',
-              }}>
-                · on plan for conditions
-              </span>
-            ) : (
-              <span style={{
-                fontSize: 11, fontWeight: 700, marginLeft: 5,
-                color: beat ? '#86efa0' /* --mint-readiness */ : '#F3AD38' /* --warn-text */,
-              }}>
-                · {delta > 0 ? `+${delta}` : delta} vs goal
-              </span>
-            )
+            <span style={{
+              fontSize: 11, fontWeight: 700, marginLeft: 5,
+              color: beat ? '#86efa0' /* --mint-readiness */ : '#F3AD38' /* --warn-text */,
+            }}>
+              · {delta > 0 ? `+${delta}` : delta} vs goal
+            </span>
           ) : null}
         </span>
       </div>

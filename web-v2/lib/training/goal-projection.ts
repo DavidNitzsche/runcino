@@ -145,7 +145,7 @@ export interface GoalProjection {
     passCriteria: { paceMaxSPerMi: number; hrMaxBpm: number | null } | null;
   }>;
   /** 2026-06-04 · the past 1-3 completed quality runs · "recent test
-   *  points." Same shape + verdict from the heat-adjusted phase band.
+   *  points." Same shape + verdict from the plain (unadjusted) phase band.
    *  Lets the runner see what the recent quality work landed at without
    *  leaving the Targets page. */
   recentTestPoints: Array<{
@@ -155,9 +155,9 @@ export interface GoalProjection {
     distanceMi: number | null;
     /** Actual avg pace string · "7:17". Null when run lacked pace data. */
     actualPace: string | null;
-    /** Heat-adjusted verdict · 'on' when ran inside the duration-scaled
-     *  Maughan band, 'fast' when overcooked vs plan, 'slow' when real
-     *  miss even with heat allowance. Null when target pace unknown. */
+    /** Plain verdict, never widened for heat · 'on' when ran inside the
+     *  ±10s/mi band, 'fast' when overcooked vs plan, 'slow' when a real
+     *  miss. Null when target pace unknown. */
     verdict: 'on' | 'fast' | 'slow' | null;
     /** 2026-07-06 · P1-10 fix · WHAT the verdict compared. Additive —
      *  existing fields keep their meanings.
@@ -1038,16 +1038,17 @@ export function judgeTestPointExecution(input: {
 /**
  * 2026-06-04 · the past 3 quality workouts that landed a real run.
  * Mirrors loadNextTestPoints in shape but joins to canonical runs to
- * pull the actual pace + weather, then re-derives a heat-adjusted
- * verdict on the fly. Same band rule as lib/coach/run-state.ts
- * loadPhaseBreakdown so the Targets page agrees with the phase
- * breakdown table on the Run Detail page.
+ * pull the actual pace + weather, then derives a verdict on the fly.
+ * Same band rule as lib/coach/run-state.ts loadPhaseBreakdown so the
+ * Targets page agrees with the phase breakdown table on the Run Detail
+ * page.
  *
- * Verdict bands (mirrors the canonical heat-adjusted rule):
- *   · effectiveTarget = target × (1 + heatSlowdownPct/100)
- *   · 'on'   · actual ∈ [target − 10s, effectiveTarget + 10s]
+ * Verdict bands · plain, symmetric, never widened for heat (removed
+ * 2026-08-27 per David — he paces off feel, not a heat allowance; see
+ * `heatAdjustedStatus` in lib/coach/heat-band.ts):
+ *   · 'on'   · actual ∈ [target − 10s, target + 10s]
  *   · 'fast' · actual < target − 10s (overcooked vs plan)
- *   · 'slow' · actual > effectiveTarget + 10s (real miss with heat allowance)
+ *   · 'slow' · actual > target + 10s (real miss)
  *
  * 2026-07-06 · P1-10 fix · WHAT gets compared is now resolved per-point by
  * judgeTestPointExecution (work-phase pace when watch or splits carry it,
@@ -1059,8 +1060,8 @@ export function judgeTestPointExecution(input: {
  *
  * The projection wants the last handful of test points; the adaptation model
  * wants every judged session in its window. Same judgement either way — the
- * basis ladder, the heat adjustment and the double-ingest dedup must not be
- * reimplemented anywhere, which is what a second copy of this query would be.
+ * basis ladder and the double-ingest dedup must not be reimplemented
+ * anywhere, which is what a second copy of this query would be.
  *
  * @param limit    how many points, newest first. Default 3 (the projection's).
  * @param sinceISO oldest date to include. Null keeps the original behaviour.

@@ -1048,7 +1048,6 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           actualAvgHr: runAvgHr(data),
           splits: splitsForRecap,
           verdict: recap.verdict,
-          weather: recapWeather,
           indoor,
           source: typeof data.source === 'string' ? data.source : undefined,
           phases: completionPhases.length > 0

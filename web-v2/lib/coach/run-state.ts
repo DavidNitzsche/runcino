@@ -274,17 +274,13 @@ export interface RunDetail {
    * Cite: Research/06-weather-adjustments.md §1 Heat Adjustment.
    */
   weather_context: { message: string; hr_bump_bpm: number } | null;
-  /** 2026-06-04 · duration-scaled Maughan heat slowdown % · drives
-   *  the heat-adjusted band on the pace-comparison bars and is the
-   *  same number the phase verdict uses. 0 when conditions weren't
-   *  material. */
+  /** 2026-06-04 · duration-scaled Maughan heat slowdown % · no longer widens
+   *  any pace-comparison band (that visual + the KEPT-IT-EASY heat-adjusted
+   *  share were removed 2026-08-27 per David). Kept only because
+   *  `heatAwareDrift` still uses it client-side to relabel a back-half HR
+   *  rise as HEAT DRIFT instead of decoupling — an HR-confounder read, not
+   *  a pace grade. 0 when conditions weren't material. */
   heat_slowdown_pct: number;
-  /** 2026-06-08 · heat-adjusted KEPT-IT-EASY share (Z1+Z2 %) · the easy
-   *  share recomputed against zones shifted up by the expected heat HR-bump.
-   *  Non-null only on HOT runs (heat_slowdown_pct >= 6) with a known bump ·
-   *  the gauge prefers this over the raw share so a hot easy run isn't
-   *  scored as a failure. Null otherwise → fall back to raw Z1+Z2. */
-  easy_share_heat_adj: number | null;
   /** A5 — GPS splits were flagged unreliable at ingest (splits-sum
    *  exceeded run duration by >5s due to HK pause-event gap). When
    *  true, MILE SPLITS should not be displayed and split-based
@@ -988,39 +984,23 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // empty array for non-watch runs (Apple Watch Workouts, Strava, manual)
   // where we don't have the planned phase structure.
   //
-  // 2026-06-04 · pass heat slowdown so phase status uses a heat-aware
-  // tolerance band instead of the hardcoded ±5s/mi. Without this,
-  // David's tempo phase (target 6:59, actual 7:17, 74°F sun) was
-  // tagged 'slow'/'missed' because the watch had no concept of heat.
-  // The judgeWeather output is the canonical heat penalty · same
-  // duration-scaled value the recap voice uses.
+  // heatSlowdownPct no longer widens the phase-status tolerance band (see
+  // heatAdjustedStatus in heat-band.ts) — still computed because
+  // heat_slowdown_pct travels to the client for heatAwareDrift's HR-rise
+  // relabel, a different, in-scope purpose (explains HR, not pace).
   const heatSlowdownPct = await computeHeatSlowdownForRun(r).catch(() => 0);
-  // 2026-06-08 · heat-adjusted easy share · on a HOT day (slowdownPct >= 6)
-  // the same easy effort runs a higher HR, so the raw Z1+Z2 share punishes
-  // the runner for thermoregulation. Recompute the share against zones
-  // shifted up by the expected heat HR-bump — the HR analog of heat-band.ts
-  // widening the slow side for pace. Null unless hot + a known bump · the
-  // panel falls back to the raw share.
-  let easyShareHeatAdj: number | null = null;
-  // Heat HR-elevation to shift the easy zones up by. Prefer the baseline-
-  // relative bump (weatherCtx) when present, else derive from absolute temp
-  // vs a ~60°F thermoneutral reference — the cited Maughan rule (~1 bpm/°F
-  // above 60°F, capped 10 · Research/06-weather-adjustments.md §1). Watch
-  // rows are polyline-only (no flat startLat/startLng), so weatherCtx is
-  // usually null and the absolute-temp path is what actually carries this.
-  // 2026-07-06 · hoisted out of the >= 6 gate so easy_hr_read below shares
-  // the same number; the gate itself (HOT runs only) is applied where used.
+  // Heat HR-elevation used ONLY to explain an elevated easy-run HR
+  // (easy_hr_read below), never to adjust a displayed pace or effort
+  // share. Prefer the baseline-relative bump (weatherCtx) when present,
+  // else derive from absolute temp vs a ~60°F thermoneutral reference —
+  // the cited Maughan rule (~1 bpm/°F above 60°F, capped 10 ·
+  // Research/06-weather-adjustments.md §1). Watch rows are polyline-only
+  // (no flat startLat/startLng), so weatherCtx is usually null and the
+  // absolute-temp path is what actually carries this.
   const heatBumpRawBpm = (weatherCtx && weatherCtx.hr_bump_bpm > 0)
     ? weatherCtx.hr_bump_bpm
     : (actualTempF != null ? Math.max(0, Math.min(10, Math.round(actualTempF - 60))) : 0);
   const heatBumpBpm = heatSlowdownPct >= 6 ? heatBumpRawBpm : 0;
-  if (heatBumpBpm > 0) {
-    const adj = await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits, heatBumpBpm, r.phases);
-    // ZONES-SUM-1 · a refusal stays a refusal. There is no heat-adjusted easy
-    // share when there was no distribution to adjust, and 0% easy on a hot day
-    // is a claim, not a blank.
-    easyShareHeatAdj = adj ? Math.round(adj.z1 + adj.z2) : null;
-  }
 
   const phaseBreakdown = await loadPhaseBreakdown(userId, day, heatSlowdownPct);
 
@@ -1078,7 +1058,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // easy day is an easy run. Unplanned generic rows stay null (unknown
   // intent · don't judge a fartlek as a failed easy run). Per-finding
   // context filter: the heat bump resolves on THIS observation (same
-  // HOT-run gate as easy_share_heat_adj). Null → the judgment is skipped
+  // HOT-run gate `heatBumpBpm` above uses). Null → the judgment is skipped
   // entirely — no verdict beats a wrong constant.
   const easy_hr_read = (() => {
     const runType = String(r.type ?? '').toLowerCase();
@@ -1358,7 +1338,6 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       : null,
     splits,
     hrZonePcts,
-    easy_share_heat_adj: easyShareHeatAdj,
     hr_zones_from_lthr,
     easy_hr_read,
     form,
@@ -1435,16 +1414,16 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
  * latest one wins.
  */
 /**
- * Compute the duration-scaled heat slowdown % for this run. Used by
- * loadPhaseBreakdown to widen the 'on-target' tolerance band so a
- * tempo phase that ran at the original target despite heat isn't
- * tagged 'missed'. Returns 0 when conditions weren't material or
- * the data is missing · falls through to the legacy ±5s/mi band.
- *
- * Mirrors what /api/runs/[id]/recap passes to judgeWeather · single
- * source of truth for the heat number · the runner shouldn't see one
- * heat % in the recap and a different verdict-tolerance heat % in
- * the phase breakdown.
+ * Compute the duration-scaled heat slowdown % for this run. Heat-widened
+ * 2026-06-04 · widening removed 2026-08-27 — `heatAdjustedStatus` now grades
+ * the phase band symmetrically regardless of this value (the runner paces
+ * off feel, not a heat allowance). The number still travels two places:
+ * into `loadPhaseBreakdown` below (kept only for call-site compatibility —
+ * see `heatAdjustedStatus`) and out on `heat_slowdown_pct` for the client's
+ * `heatAwareDrift`, which relabels a back-half HR rise as HEAT DRIFT instead
+ * of decoupling — an HR-confounder read, not a pace grade, and explicitly
+ * out of scope for this removal. Returns 0 when conditions weren't material
+ * or the data is missing.
  */
 async function computeHeatSlowdownForRun(r: Record<string, unknown>): Promise<number> {
   const weather = (r.weather && typeof r.weather === 'object') ? r.weather as Record<string, unknown> : null;
@@ -1523,7 +1502,8 @@ async function loadPhaseBreakdown(
  * the trip, which the server recomputes, and which are passed through
  * untouched. It had no test because the only way to reach it was a database.
  *
- * `heatSlowdownPct` widens the on-target band; see `heatAdjustedStatus`.
+ * `heatSlowdownPct` no longer widens the on-target band — kept only for
+ * call-site compatibility; see `heatAdjustedStatus`.
  */
 export function mapWatchPhases(raw: unknown, heatSlowdownPct: number = 0): PhaseBreakdown[] {
   const phases: any[] = Array.isArray(raw) ? raw : [];
@@ -1533,27 +1513,12 @@ export function mapWatchPhases(raw: unknown, heatSlowdownPct: number = 0): Phase
     const targetSPerMi = Number(p.targetPaceSPerMi) || null;
     const actualSPerMi = Number(p.actualPaceSPerMi) || null;
 
-    // 2026-06-04 · heat-adjusted tolerance band.
-    //
-    // Was: ±5s/mi hardcoded, no weather context. David's tempo
-    // (target 6:59, actual 7:17, 74°F sun) got tagged 'slow' because
-    // the watch had no concept of heat. But 7:17 is BETTER than the
-    // heat-adjusted target (6:59 × 1.12 ≈ 7:49 with the duration-
-    // scaled Maughan penalty) · runner executed despite conditions,
-    // not a miss.
-    //
-    // Now: 'on' band is asymmetric · extends from (original target
-    // − 10s) downward (faster than expected) to (heat-adjusted
-    // target + 10s) upward (slower than heat-adjusted is still OK).
-    //   · 'fast' · ran faster than original target − 10s (overcooked
-    //     vs plan, even after accounting for heat slack)
-    //   · 'on'   · landed inside the band (executed for conditions)
-    //   · 'slow' · ran slower than heat-adjusted target + 10s
-    //     (real miss even with heat allowance)
-    //
-    // When heat is < 2% (cool conditions), effectiveTarget collapses
-    // to the original target and the band stays symmetric ±10s.
-    // Cite: Research/06-weather-adjustments.md §"heat-aware verdict".  // TODO: no matching heading in Research/06 — concept is engine-internal, not a Research section
+    // Plain ±10s/mi tolerance band, regardless of conditions — the runner
+    // paces off feel, not a heat allowance. (Was widened for heat
+    // 2026-06-04; that widening was removed 2026-08-27 per David: "I know
+    // how to pace myself based on the heat... remove all of that." See
+    // `heatAdjustedStatus` in heat-band.ts, which now ignores the
+    // slowdown-pct argument entirely.)
     let status: 'on' | 'fast' | 'slow' | null = null;
     if (targetSPerMi && actualSPerMi && p.type !== 'recovery' && p.type !== 'rest') {
       status = heatAdjustedStatus(targetSPerMi, actualSPerMi, heatSlowdownPct);

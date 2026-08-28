@@ -517,7 +517,6 @@ export async function GET(
     splits: splitsForRecap,
     phases: winPhases.length > 0 ? winPhases : undefined,
     verdict: recap.verdict,
-    weather: weatherInput,
     indoor: data.indoor === true,
     source: typeof data.source === 'string' ? data.source : undefined,
   });
