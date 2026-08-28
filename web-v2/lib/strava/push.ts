@@ -90,6 +90,20 @@ export async function pushRunToStrava(
       )).rows[0];
     }
   }
+  // Fallback: the phone's Today card hands the button the run's DB primary
+  // key (runs.id, a bigint that can be negative for watch-sourced rows —
+  // see app/api/v5/today/route.ts), not the JSON payload's own id/activityId.
+  // Every push from that button failed "run not found" until this matched —
+  // confirmed against three real attempts in strava_pushes, all run_id
+  // '-89674653468297', all 'run not found'.
+  if (!runRow?.data && /^-?\d+$/.test(runId)) {
+    runRow = (await pool.query(
+      `SELECT data FROM runs
+        WHERE user_uuid = $1 AND id = $2::bigint
+        LIMIT 1`,
+      [userId, runId],
+    )).rows[0];
+  }
   if (!runRow?.data) {
     return recordUnpushable(userId, runId, 'run not found');
   }
