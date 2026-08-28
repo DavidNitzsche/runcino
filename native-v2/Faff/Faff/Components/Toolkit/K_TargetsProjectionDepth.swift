@@ -41,6 +41,11 @@ struct TargetsProjectionDepth: View {
 
     private var otherDistancesSection: some View {
         let rows = summary.raceProjections ?? []
+        // 2026-08-28 · the adjustment note under the table, present exactly
+        // when a row was adjusted and naming the percentage the server
+        // applied (Research/02 §13.1 — the Marathon row off a sub-marathon
+        // anchor with no marathon block carries +5% one-sided).
+        let adjustedPct = rows.compactMap(\.adjustedPct).first
         return depthSection("AT OTHER DISTANCES", caption: "Equivalent efforts at today's fitness") {
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { idx, entry in
@@ -55,7 +60,11 @@ struct TargetsProjectionDepth: View {
                             .tracking(0.8)
                             .foregroundStyle(Theme.txt.opacity(0.7))
                         Spacer()
-                        Text(entry.time)
+                        // RULE ONE · a modelled row wears the amber ~, drawn
+                        // by the client off the row's own `modelled` flag
+                        // (the server's hand-drawn "~" prefix is stripped so
+                        // the mark is never doubled — `timeDisplay`).
+                        projectionTimeText(entry)
                             .font(.display(18, weight: .semibold))
                             .tracking(-0.5)
                             .foregroundStyle(Theme.txt)
@@ -63,9 +72,27 @@ struct TargetsProjectionDepth: View {
                     }
                     .padding(.vertical, 11)
                 }
+                if let pct = adjustedPct {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.06))
+                        .frame(height: 1)
+                    Text("~ includes +\(Int(pct.rounded())) percent until marathon-specific training is in the block.")
+                        .font(.body(10.5, weight: .medium))
+                        .foregroundStyle(Theme.warnText.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 9)
+                }
             }
             .depthTile()
         }
+    }
+
+    /// The time cell: amber tilde on a modelled row, bare time otherwise.
+    private func projectionTimeText(_ entry: RaceProjectionEntry) -> Text {
+        entry.isModelled
+            ? Text("~").foregroundColor(Theme.warnText) + Text(entry.timeDisplay)
+            : Text(entry.timeDisplay)
     }
 
     // ── Shared section chrome (matches TargetsView styling) ───────────────

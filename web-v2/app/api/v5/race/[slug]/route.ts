@@ -77,8 +77,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 
     // ── geometry + course-aware pace plan ──────────────────────────────────
     const [geoRow, libRow] = await Promise.all([
-      pool.query<{ course_geometry: StoredGeometry | null; course_source: string | null }>(
-        `SELECT course_geometry, course_source FROM races WHERE slug = $1 AND user_uuid = $2`,
+      pool.query<{ course_geometry: StoredGeometry | null; course_source: string | null; terrain: string | null }>(
+        `SELECT course_geometry, course_source, meta->>'terrain' AS terrain
+           FROM races WHERE slug = $1 AND user_uuid = $2`,
         [slug, userId],
       ).then(r => r.rows[0] ?? null).catch(() => null),
       pool.query<{ elevation_gain_ft: number | string | null; net_elevation_ft: number | string | null; geometry_json: unknown }>(
@@ -106,6 +107,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     let elevation: number[] = [];
     let elevationFootnotes: string[] = [];
     let resolvedProvenance: string = 'unknown';
+    /** Measured course gain (ft) when the resolver produced one — feeds the
+     *  coach-goal hilly gate below, same read the footnotes are built from. */
+    let resolvedGainFt: number | null = null;
     try {
       elevation = elevationSeriesFt(courseGeometry);
       const resolveInput: ResolveCourseElevationInput = {
@@ -114,6 +118,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       };
       const resolved = resolveCourseElevation(resolveInput);
       resolvedProvenance = resolved.provenance;
+      resolvedGainFt = resolved.elevationGainFt ?? null;
       if (resolved.elevationGainFt != null) {
         elevationFootnotes.push(`${Math.round(resolved.elevationGainFt)} ft gain`);
       }
@@ -301,6 +306,35 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       finish: race.finishTime != null ? num(race.finishTime, race.finishProvisional) : null,
     };
 
+    // ── coach-set goal (2026-08-28) ─────────────────────────────────────
+    //
+    // The SAME loader GET /api/race/[slug] and the web race page call
+    // (lib/race/coach-goal-load.ts), so all three surfaces read one answer.
+    // Null whenever the runner has a stated goal (untouchable), the race is
+    // past, or there is no honest evidence to set one from. kind:'time'
+    // carries A/B/C — every number modelled, so the client renders the amber
+    // ~ on each — and kind:'effort' is the C-priority / hilly framing with
+    // no time at all. Never feeds the pace plan above.
+    let coachGoal: Awaited<ReturnType<
+      typeof import('@/lib/race/coach-goal-load').loadCoachGoalForRace
+    >> = null;
+    try {
+      const daysAway = race.days ?? (race.date
+        ? Math.round((Date.parse(race.date + 'T12:00:00Z') - Date.parse(todayISO + 'T12:00:00Z')) / 86400000)
+        : null);
+      const { loadCoachGoalForRace } = await import('@/lib/race/coach-goal-load');
+      coachGoal = await loadCoachGoalForRace(userId, {
+        slug: race.slug,
+        name: race.name,
+        priority: race.priority ?? null,
+        statedGoalSec: goalSec != null && goalSec > 0 ? goalSec : null,
+        distanceMi: race.distance_mi ?? null,
+        metaTerrain: geoRow?.terrain ?? null,
+        elevationGainFt: resolvedGainFt != null && resolvedGainFt > 0 ? resolvedGainFt : null,
+        daysAway,
+      });
+    } catch { coachGoal = null; /* additive — never fail the detail over it */ }
+
     return NextResponse.json({
       slug: race.slug,
       name: race.name,
@@ -324,6 +358,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       gear,
       coachLine,
       resultEntry,
+      coachGoal,
     });
   } catch (err: unknown) {
     // Was `err?.message` in the body.

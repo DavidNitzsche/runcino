@@ -1196,6 +1196,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       ctx.whereYouAre = buildWhereYouAre(glance, fitnessRow);
       ctx.recentRun = recentRun;
       ctx.paceNote = await loadPaceNoteRow(activePlan?.id ?? null);
+      ctx.blockNote = await loadBlockNote(userId);
       return NextResponse.json(composeV5Today(ctx));
     }
   }
@@ -1572,6 +1573,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   ctx.contingency = contingency;
   ctx.convergence = convergence;
   ctx.paceNote = await loadPaceNoteRow(activePlan?.id ?? null);
+  ctx.blockNote = await loadBlockNote(userId);
 
   return NextResponse.json(composeV5Today(ctx));
 }
@@ -1597,8 +1599,45 @@ function emptyContext(todayISO: string, raceMode: boolean, isSteppedDay = false)
     prescription: null, weatherKicker: null, paceBandStat: null, hrCapStat: null, effortStat: null, why: null,
     whereYouAre: [], beforeYouGo: [], raceDay: false, contingency: null, recentRun: null,
     weekOff: null, offSeason: null, injury: null, convergence: null,
-    paceNote: null, sick: null,
+    paceNote: null, blockNote: null, sick: null,
   };
+}
+
+/**
+ * 2026-08-28 · the block-transition note for Today's own surface.
+ *
+ * The recovery→build handoff (and its lifecycle siblings) now auto-applies —
+ * `fireAutoRebuild` writes an `auto_applied` plan_proposals row and
+ * `notifyBlockStarted` sends the 07:15 push. This is the in-app half: on the
+ * morning the block starts, Today says so in the coach's own words instead of
+ * greeting the runner with a silently reset week counter.
+ *
+ * Reads the same `loadPlanProposals` surface read the web notice card uses
+ * (24h auto_applied window built in), and the same `PLAN_TITLES` headline map
+ * `CoachDecisionCard` renders — one source, so the note and the card can
+ * never tell the story differently. Only the block-transition kinds surface
+ * here; drift rebuilds keep their card and do not double as a Today banner.
+ * Never throws — an absent note is a quiet Today, not a failed one.
+ */
+const BLOCK_NOTE_KINDS = new Set([
+  'recovery_complete', 'plan_elapsed', 'race_graduate', 'maintenance_to_raceprep',
+]);
+async function loadBlockNote(
+  userId: string,
+): Promise<{ title: string; body: string } | null> {
+  try {
+    const { loadPlanProposals } = await import('@/lib/plan/proposals-state');
+    const { PLAN_TITLES } = await import('@/lib/coach/decision-cards');
+    const row = (await loadPlanProposals(userId)).find(
+      (p) => p.status === 'auto_applied' && BLOCK_NOTE_KINDS.has(p.kind),
+    );
+    if (!row) return null;
+    const body = (row.message ?? '').trim();
+    if (!body) return null;
+    return { title: PLAN_TITLES[row.kind] ?? 'Your training plan changed', body };
+  } catch {
+    return null;
+  }
 }
 
 /**

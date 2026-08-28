@@ -555,12 +555,23 @@ struct TargetsProjectionPanel: View {
 
     // 1+2 · Today → GAP → Race-day row
 
+    /// 2026-08-28 · RULE ONE on the two headline clocks. When the server
+    /// applied the §13.1 marathon-specificity adjustment
+    /// (`projectionSpecificity` non-nil), both times it serves here are
+    /// adjusted models and carry the amber ~ — the design contract's one mark
+    /// for "estimated". Absent the flag, byte-identical to before.
+    private func specTime(_ sec: Int?) -> Text {
+        let t = Text(projFormatTime(sec))
+        guard summary.projectionSpecificity != nil, sec != nil else { return t }
+        return Text("~").foregroundColor(Theme.warnText) + t
+    }
+
     private func todayToRaceRow(_ st: ProjState) -> some View {
         HStack(alignment: .top, spacing: 0) {
             // LEFT · Build week
             VStack(alignment: .leading, spacing: 0) {
                 eyebrow(todayEyebrow)
-                Text(projFormatTime(fitnessSec))
+                specTime(fitnessSec)
                     .font(.display(38, weight: .semibold))
                     .tracking(-1)
                     .foregroundStyle(Color.white)
@@ -581,7 +592,7 @@ struct TargetsProjectionPanel: View {
             // RIGHT · Race day
             VStack(alignment: .trailing, spacing: 0) {
                 eyebrow("RACE DAY")
-                Text(projFormatTime(projSec))
+                specTime(projSec)
                     .font(.display(38, weight: .semibold))
                     .tracking(-1)
                     .foregroundStyle(st.accent)
@@ -601,15 +612,30 @@ struct TargetsProjectionPanel: View {
     // Summary line · centered coach sentence.
 
     private var summarySection: some View {
-        // Server-authored sentence when present; client OFFLINE fallback else.
-        Text(summary.summaryLine ?? offlineSummaryFallback)
-            .font(.body(13, weight: .medium))
-            .foregroundStyle(Color(hex: 0xC9CED8))
-            .lineSpacing(3)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.top, 14)
+        VStack(spacing: 6) {
+            // Server-authored sentence when present; client OFFLINE fallback else.
+            Text(summary.summaryLine ?? offlineSummaryFallback)
+                .font(.body(13, weight: .medium))
+                .foregroundStyle(Color(hex: 0xC9CED8))
+                .lineSpacing(3)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .center)
+            // 2026-08-28 · marathon-specificity honesty (Research/02 §13.1).
+            // Present exactly when the server adjusted the projection, and it
+            // names the percentage the server actually applied — never a
+            // hardcoded 5. Coach voice: one sentence, states the fact and the
+            // way out, no drama.
+            if let spec = summary.projectionSpecificity {
+                Text("Projection includes +\(Int(spec.pct.rounded())) percent until marathon-specific training is in the block.")
+                    .font(.body(11, weight: .medium))
+                    .foregroundStyle(Theme.warnText.opacity(0.9))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+        .padding(.top, 14)
     }
 
     // 5 · Where you are in the build

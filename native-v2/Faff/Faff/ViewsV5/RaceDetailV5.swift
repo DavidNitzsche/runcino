@@ -85,6 +85,8 @@ struct RaceDetailV5: View {
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                     statsRow
 
+                    coachGoalSection
+
                     // Above the form rather than inside it: the result
                     // section stops drawing the moment a time is confirmed,
                     // and a reason has to survive whatever the refetch does
@@ -291,6 +293,63 @@ struct RaceDetailV5: View {
         .accessibilityElement(children: .combine)
     }
 
+    // MARK: Coach-set goal
+    //
+    // Shown ONLY while the runner's own goal is empty — the moment they state
+    // one, the server stops sending `coachGoal` and this section vanishes,
+    // leaving the stated goal rendering exactly as it always has. The guard
+    // here re-checks `goal == nil` anyway so a payload that carried both can
+    // never draw a second, competing goal (standing rule: the coach projects,
+    // it never renegotiates a stated goal).
+    //
+    // RULE ONE: every tier is modelled by construction, so each time wears
+    // the amber tilde — the same treatment the web's RaceView gives its
+    // "COACH SET · A ~45:00 · B ~45:55 · C ~46:50" line. An effort framing
+    // (C race, hilly course) has no numbers at all, by doctrine, and renders
+    // the framing sentence alone.
+
+    @ViewBuilder
+    private var coachGoalSection: some View {
+        if raceDetail.goal == nil, let cg = raceDetail.coachGoal {
+            VStack(alignment: .leading, spacing: V5.S.s6) {
+                Text("COACH SET")
+                    .font(.faffText(TypeScaleV5.label12, weight: .bold))
+                    .tracking(TypeScaleV5.label12 * 0.08)
+                    .foregroundStyle(V5.textQuiet)
+                if cg.hasTiers {
+                    coachTierLine(cg)
+                }
+                if let line = cg.line, !line.isEmpty {
+                    Text(line)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textQuiet)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(V5.S.tilePad)
+            .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
+            // One element: "Coach set. A, estimated 45:00 …" — the tiers and
+            // their estimated-ness arrive as a sentence, not six swipes.
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    /// "A ~45:00 · B ~45:55 · C ~46:50" — tilde in attention amber per the
+    /// design contract, times in primary ink. Text concatenation so the
+    /// amber mark and the number stay one line that can scale together.
+    private func coachTierLine(_ cg: V5CoachGoal) -> some View {
+        func tier(_ label: String, _ display: String?) -> Text {
+            Text("\(label) ").foregroundColor(V5.textSecondary)
+                + Text("~").foregroundColor(V5.attention)
+                + Text(display ?? "").foregroundColor(V5.textPrimary)
+        }
+        let dot = Text(" · ").foregroundColor(V5.textQuiet)
+        return (tier("A", cg.aDisplay) + dot + tier("B", cg.bDisplay) + dot + tier("C", cg.cDisplay))
+            .font(.faffText(17, weight: .semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+    }
+
     // MARK: Course
 
     private var courseSection: some View {
@@ -435,7 +494,8 @@ extension V5RaceDetail {
                   value: V5Number(text: "Change", modelled: false), action: "changeShoe")
         ],
         coachLine: "The course drops the whole way · bank nothing early and it pays you back after mile 20.",
-        resultEntry: nil
+        resultEntry: nil,
+        coachGoal: nil
     )
 
     // ── The half-marathon samples' own course and plan ──────────────────────
@@ -495,7 +555,8 @@ extension V5RaceDetail {
             pacePlan: halfPacePlan, taperProgress: nil, taperEndpoints: [], taperCentreLabel: nil,
             gear: [], coachLine: "The drop is all in the second half · run the first six by effort.",
             resultEntry: V5RaceResultEntry(isPast: true, status: "provisional",
-                                            finish: V5Number(text: "1:32:04", modelled: true))
+                                            finish: V5Number(text: "1:32:04", modelled: true)),
+            coachGoal: nil
         )
     }()
 
@@ -514,7 +575,8 @@ extension V5RaceDetail {
             elevationFootnotes: ["Net −80 ft", "Nothing over 2%"],
             pacePlan: halfPacePlan, taperProgress: nil, taperEndpoints: [], taperCentreLabel: nil,
             gear: [], coachLine: "The drop is all in the second half · run the first six by effort.",
-            resultEntry: V5RaceResultEntry(isPast: true, status: nil, finish: nil)
+            resultEntry: V5RaceResultEntry(isPast: true, status: nil, finish: nil),
+            coachGoal: nil
         )
     }()
 
@@ -539,7 +601,13 @@ extension V5RaceDetail {
             elevation: halfElevation, elevationMarks: [], elevationFootnotes: r.elevationFootnotes,
             pacePlan: [], taperProgress: nil, taperEndpoints: [], taperCentreLabel: nil,
             gear: [], coachLine: nil,
-            resultEntry: V5RaceResultEntry(isPast: false, status: nil, finish: nil)
+            resultEntry: V5RaceResultEntry(isPast: false, status: nil, finish: nil),
+            // A no-goal race is exactly where the coach-set framing lands —
+            // sampled here so the section stays LOOKED AT, same rule as the
+            // empty state this entry already exists for.
+            coachGoal: V5CoachGoal(kind: "time",
+                                   aDisplay: "1:39:30", bDisplay: "1:41:20", cDisplay: "1:43:10",
+                                   line: "Coach set from your current fitness. Yours to edit.")
         )
     }()
 }

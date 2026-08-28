@@ -199,6 +199,15 @@ struct TodayAfterV5: View {
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 panel
+                // Block-transition note (2026-08-28) — same section the
+                // before-run screen draws, because a runner who ran early
+                // still wakes into a new block and is owed the sentence.
+                if let note = model.blockNote {
+                    VStack(alignment: .leading, spacing: V5.S.s10) {
+                        V5SectionLabel(text: note.title, color: V5.textSecondary)
+                        CoachSay(text: note.body, size: .md)
+                    }
+                }
                 // Effort, then the readings, as one column. The gap between
                 // them is the row gap, not the group gap — they are one list
                 // of numbers about one run, not two subjects.

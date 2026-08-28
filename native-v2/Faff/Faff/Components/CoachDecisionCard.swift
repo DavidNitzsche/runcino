@@ -299,6 +299,11 @@ enum CoachDecisions {
         "staleness": "REFRESH THE PLAN",
         "goal_renegotiation": "SET THE REVISED TARGET",
         "pace_reanchor": "RE-ANCHOR THE PACES",
+        // 2026-08-28 · the lifecycle kinds normally auto-apply, but both keep
+        // a pending fallback (undone-by-runner, compromised runner, failed
+        // rebuild) — same verbs the web card ships for those rows.
+        "recovery_complete": "START THE BUILD",
+        "plan_elapsed": "BUILD THE NEXT BLOCK",
     ]
 
     /// 2026-08-25 · the block-level rebuild, on the phone at last.

@@ -234,6 +234,14 @@ export interface V5Today {
   /// 18a (`V5Route.pacesMoved`), never shown on a state that has nothing new
   /// to say. See `app/api/v5/today/route.ts`'s pace-note block.
   paceNote: V5Row | null;
+  /// 2026-08-28 · the block-transition coach note, on the morning it landed.
+  /// Non-null only while a fresh `auto_applied` block-transition proposal row
+  /// stands (recovery→build handoff and its lifecycle siblings; the same 24h
+  /// window the web notice card uses). `title` is the decision card's own
+  /// headline ("Recovery is done"), `body` the proposal's composed message.
+  /// The push notification (`renderBlockStarted`) is the lock-screen half of
+  /// this; the note is what the runner finds when they open Today.
+  blockNote: { title: string; body: string } | null;
 
   askedVsRan: V5Row[];
   verdict: string | null;
@@ -780,6 +788,9 @@ export interface V5TodayContext {
   /// race_day / changed_overnight / after_run) — never on a refusal state,
   /// which already has its own thing to say.
   paceNote: V5Row | null;
+  /// See `V5Today.blockNote`. Same content-states-only contract as paceNote.
+  /// Optional (like `contingency`) so pre-existing context builders stay valid.
+  blockNote?: { title: string; body: string } | null;
 
   raceDay: boolean;
 
@@ -1450,6 +1461,7 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   whereYouAre: [],
   beforeYouGo: [],
   paceNote: null,
+  blockNote: null,
   askedVsRan: [],
   verdict: null,
   facts: [],
@@ -1605,6 +1617,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.whereYouAre = ctx.whereYouAre;
     t.beforeYouGo = [];
     t.paceNote = ctx.paceNote;
+    t.blockNote = ctx.blockNote ?? null;
     t.askedVsRan = built.askedVsRan;
     t.verdict = ctx.recentRun.verdict;
     // QUOTED, NEVER RE-WRITTEN. One voice, one composer — the same rule
@@ -1711,6 +1724,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
   t.whereYouAre = ctx.whereYouAre;
   t.beforeYouGo = ctx.beforeYouGo;
   t.paceNote = ctx.paceNote;
+  t.blockNote = ctx.blockNote ?? null;
   t.changed = changed;
   t.weekStrip = buildWeekStrip(ctx);
   return t;

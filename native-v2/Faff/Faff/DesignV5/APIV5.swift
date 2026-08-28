@@ -469,6 +469,12 @@ struct V5Today: Decodable, Equatable {
     /// carries an unacknowledged pace-drop event — `V5Route.pacesMoved`,
     /// "reached from a coach line, not from the bar".
     let paceNote: V5Row?
+    /// The block-transition coach note (2026-08-28). Non-nil only on the
+    /// morning a block auto-started (recovery→build handoff and its
+    /// lifecycle siblings, the server's own 24h window). The push
+    /// notification is the lock-screen half; this is what the runner finds
+    /// when they open Today. Absent on older servers.
+    let blockNote: V5BlockNote?
 
     // ── after a run ──
     /// The asked-vs-ran table. Effort is the only tappable row.
@@ -577,6 +583,14 @@ struct V5Today: Decodable, Equatable {
     /// Race mode is the only mode the phone draws. Everything else is a
     /// refusal with a reason, not three blank screens.
     let notOnPhoneYet: String?
+}
+
+/// One block-transition note: the decision card's own headline plus the
+/// proposal's composed message, quoted verbatim — the phone never rewrites
+/// the coach's sentence (same contract as `verdict`/`facts`).
+struct V5BlockNote: Decodable, Equatable {
+    let title: String
+    let body: String
 }
 
 // MARK: - Block · GET /api/v5/block
@@ -930,6 +944,36 @@ struct V5RaceDetail: Decodable, Equatable {
     /// Whether — and how — this race can take a logged result. Absent
     /// entirely on an upcoming race (no entry makes sense yet).
     let resultEntry: V5RaceResultEntry?
+    /// Coach-set goal for a race the runner left without one (2026-08-28).
+    /// Non-nil only when the runner's own goal is EMPTY — the moment they
+    /// state one, the server goes silent here and the stated goal renders
+    /// exactly as before. Absent on older servers (additive decode).
+    let coachGoal: V5CoachGoal?
+}
+
+/// The coach-set A/B/C framing from `lib/race/coach-goal.ts`.
+///
+/// `kind == "time"` carries the three tier displays — every one of them
+/// MODELLED by construction (the server's own `modelled: true`), so the view
+/// draws the amber tilde on each, the same mark rule one puts on every
+/// estimated number. `kind == "effort"` is the C-priority / hilly framing:
+/// no time at all, by doctrine rather than by data gap, and `line` says so.
+struct V5CoachGoal: Decodable, Equatable {
+    let kind: String          // "time" | "effort"
+    let aDisplay: String?
+    let bDisplay: String?
+    let cDisplay: String?
+    /// Coach-voice basis line ("Coach set from your current fitness. Yours
+    /// to edit.") or the effort framing ("No time goal. Run it hard and
+    /// enjoy the day.").
+    let line: String?
+
+    /// True when this can render the A/B/C row — a `time` framing whose
+    /// three displays all made it over the wire.
+    var hasTiers: Bool {
+        kind == "time" && aDisplay?.isEmpty == false
+            && bDisplay?.isEmpty == false && cDisplay?.isEmpty == false
+    }
 }
 
 /// Job 3 · "no way to enter a race result". Rule-one territory: `status`
@@ -1387,7 +1431,7 @@ extension V5Today {
         case routeSplits, routePhases, hrZones, paceBand, elevGainMeasured
         case shoesWorn, whatThisDidToTheWeek, runId
         case changed, injury, weekOff, offSeason, notOnPhoneYet
-        case paceNote, sick
+        case paceNote, blockNote, sick
         case facts, win, conditionsNote, coachTip
         case hrAvg, hrMax, cadenceAvg, tempF, workoutType
         case hrAvgWork, cadenceAvgWork, paceWork
@@ -1438,6 +1482,7 @@ extension V5Today {
         offSeason = c.opt(.offSeason)
         notOnPhoneYet = c.opt(.notOnPhoneYet)
         paceNote = c.opt(.paceNote)
+        blockNote = c.opt(.blockNote)
         sick = c.opt(.sick)
     }
 }
@@ -1514,7 +1559,7 @@ extension V5RaceDetail {
     enum K: String, CodingKey {
         case slug, name, dateLine, goal, projected, gap, elevation, elevationMarks
         case elevationFootnotes, pacePlan, taperProgress, taperEndpoints
-        case taperCentreLabel, gear, coachLine, resultEntry
+        case taperCentreLabel, gear, coachLine, resultEntry, coachGoal
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -1534,6 +1579,7 @@ extension V5RaceDetail {
         gear = c.list(.gear)
         coachLine = c.opt(.coachLine)
         resultEntry = c.opt(.resultEntry)
+        coachGoal = c.opt(.coachGoal)
     }
 }
 

@@ -459,7 +459,60 @@ struct ProjectionLastMove: Decodable {
 
 struct RaceProjectionEntry: Decodable {
     let distance: String   // "5K" / "10K" / "Half" / "Marathon"
-    let time: String       // "19:42" / "1:34:59"
+    let time: String       // "19:42" / "1:34:59" — may arrive "~"-prefixed on a modelled row
+    /// 2026-08-28 · row-level provenance (additive). True when the §13.1
+    /// marathon-specificity adjustment moved this row — the server also
+    /// prefixes `time` with "~" for older clients; a client that reads THIS
+    /// flag strips that prefix and draws its own amber tilde instead.
+    let modelled: Bool?
+    /// The one-sided percentage applied when `modelled` (currently +5).
+    let adjustedPct: Double?
+    /// "personal-exponent" when the runner's own fitted Riegel exponent
+    /// (Research/02 §11.4) produced the row instead of the population curve.
+    let method: String?
+
+    enum CodingKeys: String, CodingKey { case distance, time, modelled, adjustedPct, method }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.distance    = try c.decodeIfPresent(String.self, forKey: .distance) ?? ""
+        self.time        = try c.decodeIfPresent(String.self, forKey: .time) ?? ""
+        self.modelled    = try? c.decodeIfPresent(Bool.self,   forKey: .modelled)
+        self.adjustedPct = try? c.decodeIfPresent(Double.self, forKey: .adjustedPct)
+        self.method      = try? c.decodeIfPresent(String.self, forKey: .method)
+    }
+
+    /// The row is an adjusted model — either the flag says so, or an older
+    /// payload said it the only way it could, with the hand-drawn prefix.
+    var isModelled: Bool { modelled == true || time.hasPrefix("~") }
+    /// The time with any server-drawn "~" stripped, so the client draws the
+    /// mark itself (amber, per the design contract) exactly once.
+    var timeDisplay: String { time.hasPrefix("~") ? String(time.dropFirst()) : time }
+}
+
+/// 2026-08-28 · non-nil when the §13.1 +5% one-sided marathon-specificity
+/// rule moved projectionSec / trajectoryProjectedSec / trajectoryAccruedSec.
+/// Clients mark those numbers modelled (~) when this is set.
+struct ProjectionSpecificity: Decodable {
+    let pct: Double
+    let oneSided: Bool
+    enum CodingKeys: String, CodingKey { case pct, oneSided }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.pct      = try c.decodeIfPresent(Double.self, forKey: .pct) ?? 0
+        self.oneSided = try c.decodeIfPresent(Bool.self, forKey: .oneSided) ?? true
+    }
+}
+
+/// 2026-08-28 · the runner-specific Riegel exponent (Research/02 §11.4) when
+/// two qualifying recent races exist. Only `b` is rendered; the fitted races
+/// ride the wire for provenance and are deliberately not modelled here.
+struct PersonalExponentWire: Decodable {
+    let b: Double?
+    enum CodingKeys: String, CodingKey { case b }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.b = try? c.decodeIfPresent(Double.self, forKey: .b)
+    }
 }
 
 struct ProjectionConfidenceInterval: Decodable {
@@ -549,6 +602,14 @@ struct ProjectionSummary: Decodable {
     // Formatted strings ("1:34:59") — zero local race-time math on device.
     let raceProjections: [RaceProjectionEntry]?
 
+    // 2026-08-28 · prediction-honesty provenance (additive, nil on older
+    // servers). projectionSpecificity non-nil → projectionSec /
+    // trajectoryProjectedSec / trajectoryAccruedSec carry the §13.1 +5%
+    // one-sided adjustment and render with the amber ~. personalExponent
+    // non-nil → raceProjections rode the runner's own fitted curve.
+    let projectionSpecificity: ProjectionSpecificity?
+    let personalExponent: PersonalExponentWire?
+
     // §2.5 Confidence interval + label (2026-06-08)
     let confidenceInterval: ProjectionConfidenceInterval?
     let confidenceLabel: ProjectionConfidenceLabel?
@@ -592,6 +653,7 @@ struct ProjectionSummary: Decodable {
              conditionsImpactSec, conditionsSource,
              executionBufferSec, executionSource, executionCV, executionN,
              levers, heldDays, lastMove, raceProjections,
+             projectionSpecificity, personalExponent,
              confidenceInterval, confidenceLabel,
              aheadOfGoal, planUnderBuilt, overPerformanceBonusVdot, trajectoryProjectedSec,
              trajectoryAccruedSec,
@@ -635,6 +697,8 @@ struct ProjectionSummary: Decodable {
         self.heldDays = try c.decodeIfPresent(Int.self, forKey: .heldDays) ?? 0
         self.lastMove = try c.decodeIfPresent(ProjectionLastMove.self, forKey: .lastMove)
         self.raceProjections    = try? c.decode([RaceProjectionEntry].self,            forKey: .raceProjections)
+        self.projectionSpecificity = try? c.decode(ProjectionSpecificity.self,         forKey: .projectionSpecificity)
+        self.personalExponent      = try? c.decode(PersonalExponentWire.self,          forKey: .personalExponent)
         self.confidenceInterval = try? c.decode(ProjectionConfidenceInterval.self,     forKey: .confidenceInterval)
         self.confidenceLabel    = try? c.decode(ProjectionConfidenceLabel.self,        forKey: .confidenceLabel)
         self.aheadOfGoal              = try c.decodeIfPresent(Bool.self,   forKey: .aheadOfGoal)

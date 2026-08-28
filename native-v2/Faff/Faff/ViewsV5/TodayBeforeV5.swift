@@ -264,6 +264,7 @@ struct TodayBeforeV5: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                     panel
+                    blockNoteSection
                     groupsSection
                     whySection
                     paceNoteSection
@@ -496,6 +497,27 @@ struct TodayBeforeV5: View {
         .padding(.horizontal, hue ? 0 : V5.S.s4)
         .background(hue ? V5.materialTile : Color.clear,
                     in: RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
+    }
+
+    // MARK: - Block started
+    //
+    // The block-transition coach note (2026-08-28). The server sends
+    // `blockNote` only while a fresh auto-applied block transition stands —
+    // the recovery→build handoff and its lifecycle siblings, the same 24h
+    // window the web notice card uses — so this section appears the morning
+    // the block starts and is gone the next. Directly under the panel: the
+    // reset week counter is the thing it explains, so the explanation sits
+    // where the surprise is. Informational only — the transition already
+    // happened, so no buttons (the undo lives on the decision-card surface).
+
+    @ViewBuilder
+    private var blockNoteSection: some View {
+        if let note = model.blockNote {
+            VStack(alignment: .leading, spacing: V5.S.s10) {
+                V5SectionLabel(text: note.title, color: V5.textSecondary)
+                CoachSay(text: note.body, size: .md)
+            }
+        }
     }
 
     // MARK: - Why this run

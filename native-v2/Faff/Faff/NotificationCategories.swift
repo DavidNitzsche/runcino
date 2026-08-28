@@ -38,6 +38,15 @@ enum NotificationCategoryId {
     /// by dedup_key prefix ('sick-check:' vs 'niggle-check:').
     static let sick           = "FAFF_SICK"
     static let milestone      = "FAFF_MILESTONE"
+    /// 2026-08-28 · session-moved / block-started. Both templates
+    /// (renderSessionMoved, renderBlockStarted — web-v2/lib/notifications/
+    /// templates.ts) ride the `session_moved` wire category and carry NO
+    /// action buttons by design: the change already happened, and a button
+    /// would imply a decision that is not being asked. Registered with an
+    /// empty actions array (same as FAFF_MILESTONE) so the id the server has
+    /// been sending resolves to a deliberate registration rather than
+    /// falling through as an unknown category.
+    static let sessionMoved   = "FAFF_SESSION_MOVED"
     static let stravaReconnect = "FAFF_STRAVA_RECON"
 }
 
@@ -252,6 +261,16 @@ enum NotificationCategories {
             options: []
         )
 
+        // F2 · SESSION MOVED / BLOCK STARTED — deliberately no actions.
+        // "Today changed overnight" and "Recovery is done" state a change
+        // already made; the body tap routes on faff.deeplink to Today.
+        let sessionMoved = UNNotificationCategory(
+            identifier: NotificationCategoryId.sessionMoved,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+
         // G · STRAVA RECONNECT — RECONNECT requires unlock (touches OAuth).
         let stravaReconnect = UNNotificationCategory(
             identifier: NotificationCategoryId.stravaReconnect,
@@ -266,7 +285,7 @@ enum NotificationCategories {
             options: []
         )
 
-        return [raceDay, raceEve, runUnread, skipRecov, weekly, niggle, sick, milestone, stravaReconnect]
+        return [raceDay, raceEve, runUnread, skipRecov, weekly, niggle, sick, milestone, sessionMoved, stravaReconnect]
     }
 
     /// Map a UNNotificationCategory identifier to the wire-level kind the
@@ -285,6 +304,7 @@ enum NotificationCategories {
         case NotificationCategoryId.niggle:          return "niggle_sick"
         case NotificationCategoryId.sick:            return "niggle_sick"
         case NotificationCategoryId.milestone:       return "streak"
+        case NotificationCategoryId.sessionMoved:    return "session_moved"
         case NotificationCategoryId.stravaReconnect: return "strava_reconnect"
         default:                                     return "unknown"
         }

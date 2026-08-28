@@ -31,6 +31,7 @@ function baseCtx(overrides: Partial<V5TodayContext> = {}): V5TodayContext {
     whereYouAre: [],
     beforeYouGo: [],
     paceNote: null,
+    blockNote: null,
     raceDay: false,
     recentRun: null,
     weekOff: null,
@@ -386,6 +387,60 @@ describe('composeV5Today · state precedence', () => {
     expect(byLabel['HR ceiling']?.modelled).toBe(true);
     expect(out.groups).toHaveLength(1);
     expect(out.groups[0].title).toBe('Easy aerobic');
+  });
+
+  // ── blockNote · the block-transition coach note (2026-08-28) ────────────
+  //
+  // The recovery→build handoff auto-applies overnight; the push is the
+  // lock-screen half and this is the in-app half. The composer's only job is
+  // passthrough on the content states and silence on the refusal states — a
+  // runner mid-injury does not need to hear a block started underneath them.
+  it('blockNote · reaches the wire on before_run and after_run, quoted verbatim', () => {
+    const note = {
+      title: 'Recovery is done',
+      body: 'Your recovery block finished · the next block was built toward your race.',
+    };
+    const before = composeV5Today(baseCtx({
+      todayPlan: { type: 'easy', subLabel: null, distanceMi: 6, originalType: null, originalSubLabel: null },
+      blockNote: note,
+    }));
+    expect(before.state).toBe('before_run');
+    expect(before.blockNote).toEqual(note);
+
+    const after = composeV5Today(baseCtx({
+      todayPlan: { type: 'easy', subLabel: null, distanceMi: 6, originalType: null, originalSubLabel: null },
+      blockNote: note,
+      recentRun: {
+        runId: 'r1', distanceMi: 6.1, durationSec: 3300, paceSPerMi: 541,
+        avgHr: 140, indoor: false, speedMph: null, inclinePct: null,
+        askedPaceSPerMi: 540, askedHrCap: 146, askedHrIsHardCap: true, askedMi: 6,
+        facts: [], win: null, conditionsNote: null, coachTip: null,
+        effortAsked: null, effortLogged: null,
+        verdict: 'Easy done.',
+        zoneShares: null, zoneTarget: null, zoneTargets: null,
+        elevationSamples: null, elevGainFt: null, elevGainMeasured: false,
+        hrMax: null, cadenceAvg: null, tempF: null, workoutType: 'easy',
+        hrAvgWork: null, cadenceAvgWork: null, paceWork: null, routePolyline: null,
+        routeSplits: [], routePhases: [], hrZones: [], paceBand: null,
+        weekDoneMi: 12, weekPlannedMi: 40,
+        shoeOptions: [], shoeWorn: null, niggleFlagged: null,
+      },
+    }));
+    expect(after.state).toBe('after_run');
+    expect(after.blockNote).toEqual(note);
+  });
+
+  it('blockNote · never rides a refusal state', () => {
+    const note = { title: 'Recovery is done', body: 'The next block was built.' };
+    const out = composeV5Today(baseCtx({
+      blockNote: note,
+      injury: {
+        area: 'Left calf', since: 'Flagged 2 days ago', verdict: 'Rest, not run.',
+        whatChanged: [], checkIn: [], returnAvailable: false,
+      },
+    }));
+    expect(out.state).toBe('injury_flare');
+    expect(out.blockNote).toBeNull();
   });
   // ────────────────────────────────────────────────────────────────────────
   // 22b · a stepped-to day carries no present-tense context.

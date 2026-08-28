@@ -188,7 +188,9 @@ export const TARGETS_OWNED_PLAN_KINDS = ['goal_renegotiation'] as const;
 /** Plan-drift kinds → the coach's own headline. Mirrors the labels the
  *  retired PlanProposalCard shipped, minus its per-kind eyebrows (the
  *  eyebrow is kind-driven now). */
-const PLAN_TITLES: Record<string, string> = {
+/** Exported (2026-08-28) so the v5 Today block-started note renders the SAME
+ *  headline the decision card does — one map, two surfaces, no drift. */
+export const PLAN_TITLES: Record<string, string> = {
   volume_drift: 'Your volume has drifted off plan',
   vdot_drift: 'Your fitness has moved',
   staleness: 'This plan is due a refresh',
