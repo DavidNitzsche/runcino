@@ -90,7 +90,20 @@ struct TodayAfterV5: View {
     @State private var niggleOpen = false
     @State private var niggleFlagged: String?
 
-    @State private var stravaSent = false
+    /// Ported from `Components/TodayPostRunBody.swift`'s Strava section —
+    /// same states, same sheet, same poll. The old naive version here just
+    /// flipped a local bool to "Sent to Strava" the instant the button was
+    /// tapped and threw away `onPushStrava()`'s result with `_ = try?`, so a
+    /// failed push (e.g. the runId-lookup bug fixed in lib/strava/push.ts)
+    /// showed success anyway (David, 2026-08-27: "it also never pushed
+    /// anything to Strava").
+    private enum StravaPushUIState { case idle, pushing, pending, done, dup, failed }
+    @State private var stravaPushState: StravaPushUIState = .idle
+    @State private var stravaAutoPush = false
+    @State private var stravaSuggestedTitle: String? = nil
+    @State private var showStravaSheet = false
+    @State private var stravaEditTitle = ""
+    @State private var stravaEditDesc = ""
 
     /// Fixed body-part list for the in-place niggle picker. Not on the wire —
     /// `V5Row` carries no child options — and stable across runners, so it is
@@ -212,11 +225,8 @@ struct TodayAfterV5: View {
                     niggleLink
                 }
                 SickReportRowV5(onReport: onReportSick)
-                FaffButton(stravaSent ? "Sent to Strava" : "Send it to Strava",
-                           variant: stravaSent ? .secondary : .primary,
-                           size: .lg) {
-                    stravaSent = true
-                    onPushStrava()
+                if let runId = model.runId {
+                    stravaSection(runId: runId)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -227,6 +237,123 @@ struct TodayAfterV5: View {
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
+    }
+
+    // MARK: - Strava push
+    //
+    // Self-contained, like the legacy component it's ported from — this view
+    // calls `API` directly rather than round-tripping the result through
+    // `onPushStrava`, because the host has no way to hand a push OUTCOME back
+    // through a fire-and-forget `() -> Void` closure. `onPushStrava` stays on
+    // the initializer for the previews/host call sites that still pass it;
+    // it is simply no longer what drives this section.
+
+    @ViewBuilder
+    private func stravaSection(runId: String) -> some View {
+        VStack(spacing: 0) {
+            switch stravaPushState {
+            case .done, .dup:
+                stravaStatusPill(text: "Published to Strava")
+            case .pushing, .pending:
+                stravaStatusPill(text: stravaAutoPush ? "Publishing to Strava…" : "Pushing…")
+            case .idle, .failed:
+                if stravaAutoPush {
+                    stravaStatusPill(
+                        text: stravaPushState == .failed ? "Couldn’t publish to Strava" : "Publishing to Strava…")
+                } else {
+                    FaffButton(stravaPushState == .failed ? "Push failed · tap to retry" : "Send it to Strava",
+                               variant: stravaPushState == .failed ? .secondary : .primary,
+                               size: .lg) {
+                        stravaEditTitle = stravaSuggestedTitle ?? (model.workoutType?.capitalized ?? "Run")
+                        stravaEditDesc = ""
+                        showStravaSheet = true
+                    }
+                }
+            }
+        }
+        .task(id: runId) { await loadStravaStatus(runId: runId) }
+        .sheet(isPresented: $showStravaSheet) {
+            StravaPushSheet(
+                title: $stravaEditTitle,
+                description: $stravaEditDesc,
+                isPushing: stravaPushState == .pushing,
+                onPush: { performStravaPush(runId: runId) },
+                onCancel: { showStravaSheet = false }
+            )
+            .presentationDetents([.height(440), .large])
+            .presentationDragIndicator(.visible)
+            .preferredColorScheme(.dark)
+        }
+    }
+
+    @ViewBuilder
+    private func stravaStatusPill(text: String) -> some View {
+        Text(text)
+            .font(.body(15, weight: .extraBold)).tracking(0.3)
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(Theme.Brand.strava.opacity(0.28), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    /// Load current push status on appear · mirrors `TodayPostRunBody`'s
+    /// `loadStravaStatus`. A read that fails leaves the section idle rather
+    /// than claiming a state it hasn't confirmed.
+    private func loadStravaStatus(runId: String) async {
+        guard let s = try? await API.fetchStravaPushStatus(runId: runId) else { return }
+        await MainActor.run {
+            stravaAutoPush = s.autoPush ?? false
+            if let t = s.suggestedTitle { stravaSuggestedTitle = t }
+            switch s.status {
+            case "uploaded":  stravaPushState = .done
+            case "duplicate": stravaPushState = .dup
+            case "pending":
+                stravaPushState = .pending
+                Task { await pollStravaPush(runId: runId) }
+            case "failed":    stravaPushState = .failed
+            default:          break   // "never" · stay idle
+            }
+        }
+    }
+
+    /// Push with the sheet's edited title + description, then dismiss. Only
+    /// flips to `.done`/`.dup` on the server's own confirmed status — never
+    /// optimistically, per the bug this replaced.
+    private func performStravaPush(runId: String) {
+        guard stravaPushState != .pushing else { return }
+        stravaPushState = .pushing
+        let title = stravaEditTitle
+        let desc = stravaEditDesc
+        Task {
+            let s = try? await API.pushRunToStrava(runId: runId, title: title, description: desc)
+            await MainActor.run {
+                switch s?.status {
+                case "uploaded":  stravaPushState = .done
+                case "duplicate": stravaPushState = .dup
+                case "pending":
+                    stravaPushState = .pending
+                    Task { await pollStravaPush(runId: runId) }
+                default:          stravaPushState = .failed
+                }
+                showStravaSheet = false
+            }
+        }
+    }
+
+    private func pollStravaPush(runId: String, attempt: Int = 0) async {
+        guard attempt < 8 else { return }
+        try? await Task.sleep(nanoseconds: 5_000_000_000)
+        guard let s = try? await API.fetchStravaPushStatus(runId: runId) else {
+            await pollStravaPush(runId: runId, attempt: attempt + 1)
+            return
+        }
+        await MainActor.run {
+            switch s.status {
+            case "uploaded":  stravaPushState = .done
+            case "duplicate": stravaPushState = .dup
+            case "failed":    stravaPushState = .failed
+            default:          Task { await pollStravaPush(runId: runId, attempt: attempt + 1) }
+            }
+        }
     }
 
     // MARK: - Panel

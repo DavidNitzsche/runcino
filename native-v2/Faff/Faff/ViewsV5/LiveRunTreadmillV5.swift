@@ -134,6 +134,11 @@ struct LiveRunTreadmillV5: View {
     @State private var lastPingAt: Date = .distantPast
     @State private var lastBridgeAskAt: Date = .distantPast
     @State private var lastBpmAt: Date?
+    /// True 5s after the ready screen appears — the grace window for the
+    /// watch's reply to the bridge ask fired in `.onAppear`. Gates the
+    /// pre-run "open your watch" prompt so it doesn't flash on before the
+    /// watch has had any real chance to answer.
+    @State private var readyScreenSettled = false
 
     /// Stable id, stamped once. Same role as `TreadmillView`'s `workoutId` —
     /// backend idempotency key, and reused as the payload's `workoutId` so a
@@ -143,6 +148,10 @@ struct LiveRunTreadmillV5: View {
     /// its phase. Only HR lives here — the belt's own numbers are
     /// `session.actuals`, because a stale copy of those is the defect.
     @State private var hrByPhase: [Int: (avg: Int?, max: Int?)] = [:]
+    /// Per-phase running-form + energy extras (power/GCT/vertical
+    /// oscillation/stride length/kcal), same watch bridge, same boundary as
+    /// `hrByPhase` — closed alongside it in `attachHrForClosedPhases()`.
+    @State private var hrExtrasByPhase: [Int: TreadmillHRStreamer.ExtraMetrics] = [:]
     /// How many phase closes we have already attached HR to.
     @State private var hrClosedCount: Int = 0
     /// True once the plan has been handed to the recorder.
@@ -243,6 +252,18 @@ struct LiveRunTreadmillV5: View {
             // Start (see `buttons`/`startRun()`) the same way the belt itself
             // waits for a button before the display starts counting.
             configurePlanIfNeeded()
+            // Ask the watch for the HR bridge NOW, while the runner is still
+            // dialing in speed/incline — not after Start. A confirmation that
+            // only had 45 seconds of an already-running clock to land is a
+            // confirmation that arrives too late to act on; this way a
+            // failed bridge shows up on the ready screen, before anything is
+            // being timed. `startRun()` asks again on its own anchor, so this
+            // is a head start, not a replacement.
+            WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
+            Task {
+                try? await Task.sleep(for: .seconds(5))
+                if startedAt == nil { readyScreenSettled = true }
+            }
         }
         // The plan arrives AFTER this view is built (the host renders it at
         // `.opacity(0)` while it fetches), and `State(initialValue:)` only
@@ -351,6 +372,10 @@ struct LiveRunTreadmillV5: View {
             let closed = hrClosedCount
             let result = hr.closePhase()
             hrByPhase[closed] = (result.avg, result.max)
+            // 2026-08-27 · same boundary, same window, the five running-form
+            // + energy metrics the watch bridge now also carries. Additive
+            // sibling call — closePhase() above is untouched.
+            hrExtrasByPhase[closed] = hr.closePhaseExtras()
             hrClosedCount += 1
         }
     }
@@ -367,6 +392,7 @@ struct LiveRunTreadmillV5: View {
         let phasePayloads: [[String: Any]] = effectivePhases.enumerated().map { i, phase in
             let act = session.actuals[i]
             let bpm = hrByPhase[i]
+            let extras = hrExtrasByPhase[i]
             var p: [String: Any] = [
                 "index": phase.index,
                 "label": phase.label,
@@ -402,6 +428,17 @@ struct LiveRunTreadmillV5: View {
                 }
                 if let avgHr = bpm?.avg { p["avgHr"] = avgHr }
                 if let maxHr = bpm?.max { p["maxHr"] = maxHr }
+                // 2026-08-27 · running-form + energy, same watch bridge as
+                // HR above, same "absent when no watch" contract. Names
+                // match `RunData` (avgPowerW / avgGctMs / avgVertOscCm /
+                // avgStrideLengthM / kcal) — see TreadmillHRStreamer's
+                // header for why these are the same fields the HealthKit
+                // IMPORT path already writes for outdoor runs.
+                if let v = extras?.avgPowerW { p["avgPowerW"] = v }
+                if let v = extras?.avgGctMs { p["avgGctMs"] = v }
+                if let v = extras?.avgVertOscCm { p["avgVertOscCm"] = v }
+                if let v = extras?.avgStrideLengthM { p["avgStrideLengthM"] = v }
+                if let v = extras?.kcal { p["kcal"] = v }
             }
             return p
         }
@@ -409,6 +446,9 @@ struct LiveRunTreadmillV5: View {
         // captures samples landing right at a phase boundary. Nil when no
         // watch is paired.
         let sessionHr = hr.closeSession()
+        // Same rollup for the five running-form + energy metrics · additive
+        // sibling call, does not disturb hr's own HR-only close above.
+        let sessionExtras = hr.closeSessionExtras()
         var payload: [String: Any] = [
             "workoutId": workoutId,
             "startedAt": iso.string(from: startedAt ?? Date(timeIntervalSinceNow: -session.belt.elapsedSec)),
@@ -424,6 +464,19 @@ struct LiveRunTreadmillV5: View {
         ]
         if let avgHr = sessionHr.avg { payload["avgHr"] = avgHr }
         if let maxHr = sessionHr.max { payload["maxHr"] = maxHr }
+        // 2026-08-27 · session-level running-form + energy, same watch
+        // bridge. `kcal` is the one worth calling out: treadmill runs have
+        // never carried a measured calorie figure (TreadmillHRSession never
+        // collected anything but HR before today), so this is the first
+        // real number in the slot the backend's resolveCalories tier-1
+        // already prefers over the estimator — see route.ts's own kcal
+        // comment. Absent (not zero) when no watch answered the bridge ask,
+        // same "no watch → nil" contract as avgHr/maxHr above.
+        if let v = sessionExtras.avgPowerW { payload["avgPowerW"] = v }
+        if let v = sessionExtras.avgGctMs { payload["avgGctMs"] = v }
+        if let v = sessionExtras.avgVertOscCm { payload["avgVertOscCm"] = v }
+        if let v = sessionExtras.avgStrideLengthM { payload["avgStrideLengthM"] = v }
+        if let v = sessionExtras.kcal { payload["kcal"] = v }
         // What this run could not witness. Keys ABSENT on a clean run.
         if session.belt.unmeasuredSec >= 1 {
             payload["unmeasuredSec"] = Int(session.belt.unmeasuredSec.rounded())
@@ -440,13 +493,13 @@ struct LiveRunTreadmillV5: View {
             return IndoorDistanceMeter.materiallyDisagree(beltMi: session.belt.distanceMi, measuredMi: m)
                 ? "belt_contested" : "belt_corroborated"
         }()
-        // Cadence, MEASURED. The phone-driven watch bridge carries heart
-        // rate only — TreadmillHRSession collects nothing else, and the phone
-        // reads HR out of HealthKit rather than over WatchConnectivity — so a
-        // treadmill run has never had a cadence figure, while watch-started
-        // outdoor runs have carried one since WorkoutTracker started reading
-        // CMPedometer.currentCadence. Same pedometer, same carried gate: nil
-        // rather than a zero when the phone was parked on the console.
+        // Cadence, MEASURED. The watch bridge (2026-08-27: HR + running
+        // power/GCT/vertical oscillation/stride length/active energy, all
+        // via TreadmillHRStreamer reading HealthKit) does not carry step
+        // cadence — CMPedometer.currentCadence on the PHONE covers that,
+        // same as watch-started outdoor runs via WorkoutTracker. Same
+        // pedometer, same carried gate: nil rather than a zero when the
+        // phone was parked on the console.
         if let cad = meter.avgCadenceSpm { payload["avgCadence"] = cad }
         if let m = meter.rawDistanceMi { payload["pedometerDistanceMi"] = (m * 100).rounded() / 100 }
         if let st = meter.rawSteps { payload["pedometerSteps"] = st }
@@ -744,6 +797,23 @@ struct LiveRunTreadmillV5: View {
     // MARK: - Buttons
 
     private var buttons: some View {
+        VStack(spacing: V5.S.s10) {
+            // 2026-08-27 · fix it BEFORE the clock is running, not 45 seconds
+            // into a run that's already missing heart rate. Same message the
+            // in-run `hrHint` falls back to, shown here proactively instead
+            // of reactively.
+            if startedAt == nil, readyScreenSettled, !watchSync.treadmillSessionConfirmed {
+                Text("Open Faff on your Apple Watch for heart rate.")
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+            buttonRow
+        }
+    }
+
+    private var buttonRow: some View {
         HStack(spacing: V5.S.s10) {
             if startedAt == nil {
                 FaffButton("Start", variant: .primary, size: .lg) {
