@@ -11,74 +11,22 @@
 import { describe, it, expect } from 'vitest';
 import { buildSimPlan } from './sim-inputs';
 import { validateComposedPlan, PlanValidationError } from './validate';
-import { classifyGoalTier, TIER_TARGETS, distanceCategoryOf, BUILD_WINDOW_WEEKS } from './goal-tiers';
-import { recentWeeklyMiFromBucket, recentLongMiFromBucket, SIM_DISTANCE_MI, type SimDistance } from './sim-constants';
+import { classifyGoalTier, TIER_TARGETS, distanceCategoryOf } from './goal-tiers';
 import { ULTRA_UNSUPPORTED_REASON } from './supported-distances';
 import { predictRaceTime } from '@/lib/training/vdot';
 
-const DISTANCES: SimDistance[] = ['5k', '10k', 'half', 'marathon', '50k', '100k'];
-// COLD-1 (2026-08-17) · `null` IS the production state — `profile.experience_level` is
-// NULL on real accounts and the sweep could not see it, so the rung where a typed goal
-// time picked the tier by itself was never graded. Keep it first: it is the default a
-// new signup lands on.
-const EXPERIENCE = [null, 'beginner', 'intermediate', 'advanced', 'advanced_plus'];
-const FREQ = [3, 4, 5, 6];
-// CC2-2 (2026-06-23) · bucket 0 = true-zero base. The refuse-vs-plan boundary (where BRK-2/CC2-1 live)
-// was untested — lowest fed was recentWeeklyMiFromBucket(5)=10. Split-graded in grade().
-const MILEAGE = [0, 5, 15, 25, 35, 45];
-const LONGEST = ['0-3', '3-6', '6-10', '10+'];
-// representative goal times that, with the experience clamp, exercise tiers
-const GOAL_SEC: Record<SimDistance, number> = { '5k': 1350, '10k': 2700, half: 6300, marathon: 13500, '50k': 18000, '100k': 43200 };
-const catOf: Record<SimDistance, '5k' | '10k' | 'hm' | 'm' | 'ultra'> = { '5k': '5k', '10k': '10k', half: 'hm', marathon: 'm', '50k': 'ultra', '100k': 'ultra' };
-const isUltra = (d: SimDistance) => catOf[d] === 'ultra';
+// The archetype corpus lives in `./sim-matrix` (extracted 2026-08-28) so the
+// dosing gate (`_dosing_sweep_gate.test.ts`) can drive the IDENTICAL matrix
+// without importing this test file. Add arcs THERE; every gate sweeps them.
+import { matrix, isUltra, arcStr, type Arc } from './sim-matrix';
+
 const catOfMi = (mi: number) => distanceCategoryOf(mi);
-const WEEKS: Record<SimDistance, number> = { '5k': 10, '10k': 12, half: 14, marathon: 18, '50k': 22, '100k': 24 };
-
-type Arc = { goalMode: 'goal' | 'justRun' | 'race'; distance: SimDistance; experienceLevel: string | null; weeklyFrequency: number; weeklyMileageBucket: number; longestRunBucket: string; goalTimeSec: number | null; planWeeks: number; raceDateISO?: string; availableDays?: string[]; bestRecentVdotOverride?: number };
-
-function* matrix(): Generator<Arc> {
-  for (const distance of DISTANCES)
-    for (const experienceLevel of EXPERIENCE)
-      for (const weeklyFrequency of FREQ)
-        for (const weeklyMileageBucket of MILEAGE)
-          for (const longestRunBucket of LONGEST) {
-            const common = { distance, experienceLevel, weeklyFrequency, weeklyMileageBucket, longestRunBucket };
-            // goal mode (race-prep) — with a goal time and by-feel
-            for (const goal of [GOAL_SEC[distance], null])
-              yield { ...common, goalMode: 'goal', goalTimeSec: goal, planWeeks: WEEKS[distance] };
-            // just-run (maintenance / consistency block)
-            yield { ...common, goalMode: 'justRun', goalTimeSec: null, planWeeks: 0 };
-            // far-out race (≥26 weeks → maintenance until the build window opens)
-            yield { ...common, goalMode: 'race', goalTimeSec: GOAL_SEC[distance], planWeeks: 0, raceDateISO: '2027-03-01' };
-          }
-  // GOAL-1 · available_days geometry (the scheduler↔validator dead-end that left a saved goal with
-  // NO plan). Purely geometric, so a reduced cross over distance × constraining set × freq suffices:
-  // adjacent pairs (NOQ-mode fold), tight pairs (GAP-mode downgrade), weekday-only, full-week.
-  const AVAIL_SETS = [['sat', 'sun'], ['mon', 'fri'], ['sun', 'fri'], ['tue', 'thu', 'sat'], ['mon', 'tue', 'wed', 'thu', 'fri']];
-  for (const distance of DISTANCES)
-    for (const availableDays of AVAIL_SETS)
-      for (const weeklyFrequency of [3, 5])
-        yield { goalMode: 'goal', distance, experienceLevel: 'intermediate', weeklyFrequency, weeklyMileageBucket: 25, longestRunBucket: '6-10', goalTimeSec: GOAL_SEC[distance], planWeeks: WEEKS[distance], availableDays };
-  // CC-5 · elite-tier coverage — the 5 elite (cat,tier) rows are otherwise never instantiated (a single
-  // moderate GOAL_SEC + by-feel only reaches intermediate/advanced). Elite goal × advanced experience
-  // (so the clamp doesn't fight) × high mileage so the band is reachable.
-  const ELITE_GOAL: Record<SimDistance, number> = { '5k': 1000, '10k': 2050, half: 4650, marathon: 9300, '50k': 16200, '100k': 39000 };
-  for (const distance of DISTANCES)
-    yield { goalMode: 'goal', distance, experienceLevel: 'advanced', weeklyFrequency: 6, weeklyMileageBucket: 45, longestRunBucket: '10+', goalTimeSec: ELITE_GOAL[distance], planWeeks: WEEKS[distance] };
-  // CC-4 · PR-seeded pace path (bestRecentVdotOverride) — the matrix otherwise always passes the empty
-  // raceHistory, so the fitness-anchored pace path ships ungraded. A slow + a fast fitness signal: a
-  // fast PR on a low base must not push peak above the safe ramp, and paces must stay sane.
-  for (const distance of DISTANCES)
-    for (const bestRecentVdotOverride of [38, 55])
-      yield { goalMode: 'goal', distance, experienceLevel: 'intermediate', weeklyFrequency: 5, weeklyMileageBucket: 25, longestRunBucket: '6-10', goalTimeSec: GOAL_SEC[distance], planWeeks: WEEKS[distance], bestRecentVdotOverride };
-}
 
 const FIRM: Record<string, number> = {};
 const WARN: Record<string, number> = {};
 const examples: Record<string, string> = {};
 const firm = (k: string, a: Arc) => { FIRM[k] = (FIRM[k] || 0) + 1; if (!examples[k]) examples[k] = arcStr(a); };
 const warn = (k: string, a: Arc) => { WARN[k] = (WARN[k] || 0) + 1; if (!examples[k]) examples[k] = arcStr(a); };
-const arcStr = (a: Arc) => `${a.distance}/${a.experienceLevel}/f${a.weeklyFrequency}/m${a.weeklyMileageBucket}/L${a.longestRunBucket}/${a.goalTimeSec ? 'goal' : 'byfeel'}`;
 
 function grade(a: Arc) {
   const built = buildSimPlan({

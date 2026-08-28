@@ -243,6 +243,7 @@ import {
   capEnforced,
   duplicatePaceFamily,
   weeklyDoseBudgetMi,
+  weekDosingFindings,
 } from '@/lib/plan/dosing';
 import {
   CALIBRATION_INTRO_WEEKS,
@@ -10319,12 +10320,14 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
    * column, nothing read the marathon row at all, and nothing read the absolute
    * cumulative ceilings in the I and R cells.
    *
-   * The three claims below bind what `lib/plan/dosing.ts` now reads. Note that
-   * the DETECTOR those constants feed is advisory: `validateComposedPlan` can
-   * report a dosing breach but cannot fail a plan on one. These claims are
-   * therefore about the NUMBERS being right, not about the engine obeying them
-   * — the engine does not obey them yet, and that gap is documented in
-   * dosing.ts rather than hidden behind an exemption here.
+   * The three claims below bind what `lib/plan/dosing.ts` reads — the NUMBERS.
+   * They landed when the module was a detector; since DOCTRINE-DOSING-2
+   * (2026-08-18) the engine also OBEYS them: `applyDosingCaps` clamps at
+   * authoring inside `finalizeComposedPlan`, `validateComposedPlan` §10 makes
+   * any surviving enforced breach fatal, and the full-matrix measurement
+   * (2026-08-28, `_dosing_sweep_gate.test.ts`) holds the corpus at zero.
+   * DOSING.enforced-findings-bind-the-composer below is the claim on that
+   * behaviour; these three stay about the numbers.
    * ═════════════════════════════════════════════════════════════════════════ */
   {
     id: 'DOSING.weekly-cap-column',
@@ -11687,6 +11690,49 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (!Number.isFinite(taperI) || taperI > 6.3) {
         throw new Error('weeklyDoseBudgetMi drops the I cumulative ceiling inside a taper');
       }
+    },
+  },
+  {
+    id: 'DOSING.enforced-findings-bind-the-composer',
+    binds: [
+      'lib/plan/dosing.ts#weekDosingFindings',
+      'lib/plan/generate.ts#applyDosingCaps',
+      'lib/plan/validate.ts#validateComposedPlan',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: "### Dosing rules — Daniels' caps",
+    claim:
+      'The caps are ENFORCED, not advisory. A training week spending more than the caps table\'s ' +
+      'weekly percentage at a pace yields a finding marked enforced, whose cap in miles is the ' +
+      'doc\'s own percentage of that week\'s mileage — `applyDosingCaps` trims to that number at ' +
+      'authoring and `validateComposedPlan` §10 fails any plan still carrying a breach. Measured ' +
+      '2026-08-28 across the full archetype matrix (11,598 arcs, 8,692 composed): zero enforced ' +
+      'breaches; `_dosing_sweep_gate.test.ts` is the gate that keeps the number zero.',
+    check({ cite }) {
+      const t = cite.table();
+      const tPct = parsePctBand(t.cell('T', 'Weekly cap'));
+      // The budget the composer sizes to IS the doc's percentage on a training week.
+      within(weeklyDoseBudgetMi(40, 'T', 'training'), [40 * tPct[0], 40 * tPct[1]], 'T training-week budget');
+      // And the module-header scenario — two sessions each individually legal
+      // at the single-workout cap, together double the weekly column — yields
+      // an ENFORCED weekly finding capped at the doc's own number. This is the
+      // exact gap the weekly column exists to close.
+      const findings = weekDosingFindings({
+        phase: 'QUALITY', isRaceWeek: false,
+        days: [
+          { type: 'easy', distanceMi: 6, subLabel: 'EASY' },
+          { type: 'tempo', distanceMi: 8, subLabel: '2 mi WU · 4 mi @ T · 2 mi CD' },
+          { type: 'easy', distanceMi: 5, subLabel: 'EASY' },
+          { type: 'threshold', distanceMi: 9, subLabel: '4×1mi @ T pace · 60s jog' },
+          { type: 'long', distanceMi: 12, subLabel: 'LONG', isLong: true },
+        ],
+      } as never);
+      const f = findings.find((x) => x.pace === 'T' && x.scope === 'weekly');
+      if (!f) throw new Error('a week at double the weekly T cap yields no weekly T finding');
+      if (!f.enforced) {
+        throw new Error('a training-week percentage breach is not marked enforced — the caps have gone advisory again');
+      }
+      within(f.capMi, [40 * tPct[0], 40 * tPct[1]], 'enforced weekly T cap in miles');
     },
   },
   {
