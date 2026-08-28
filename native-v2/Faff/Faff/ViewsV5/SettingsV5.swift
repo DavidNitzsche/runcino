@@ -92,6 +92,10 @@ struct SettingsV5: View {
     /// the single source of truth the design says it is. Nil falls back to
     /// the direct write, so a preview still toggles.
     var onSetPhoneRun: ((Bool) -> Void)? = nil
+    /// TRAVEL-1 · opens the travel-windows sheet. Routed out like every other
+    /// control — the host owns the presentation, this view only reports the
+    /// tap. Nil hides the row (previews without a host still render).
+    var onOpenTravel: (() -> Void)? = nil
     var onBack: (() -> Void)? = nil
 
     @State private var longRunDay: String
@@ -109,6 +113,7 @@ struct SettingsV5: View {
          onSetUnits: @escaping (String) -> Void,
          onToggleStrava: @escaping () -> Void,
          onSetPhoneRun: ((Bool) -> Void)? = nil,
+         onOpenTravel: (() -> Void)? = nil,
          onBack: (() -> Void)? = nil) {
         self.model = model
         self.onSetLongRunDay = onSetLongRunDay
@@ -118,6 +123,7 @@ struct SettingsV5: View {
         self.onSetUnits = onSetUnits
         self.onToggleStrava = onToggleStrava
         self.onSetPhoneRun = onSetPhoneRun
+        self.onOpenTravel = onOpenTravel
         self.onBack = onBack
         _longRunDay = State(initialValue: model.longRunDay)
         _daysPerWeek = State(initialValue: model.daysPerWeek)
@@ -151,6 +157,7 @@ struct SettingsV5: View {
                 // see `betweenGroups`'s own doc comment.
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                     trainingSection
+                    travelSection
                     coachSection
                     notificationsSection
                     unitsSection
@@ -241,6 +248,24 @@ struct SettingsV5: View {
             }
             .padding(V5.S.tilePad)
             .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
+        }
+    }
+
+    // MARK: Travel
+
+    /// TRAVEL-1 · the entry the owner asked for: "something the phone should
+    /// surface". The sheet behind it lists windows and takes new ones; the
+    /// plan keeps the runner running through them (easy-preferred days,
+    /// quality on home days). Hidden when no host wired the closure, so a
+    /// bare preview does not draw a dead row.
+    @ViewBuilder
+    private var travelSection: some View {
+        if let onOpenTravel {
+            ListGroup(header: "Travel") {
+                ListRow(label: "Travel windows",
+                        sub: "Tell the plan when you are away \u{b7} it keeps you running through it",
+                        onTap: onOpenTravel)
+            }
         }
     }
 

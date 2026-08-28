@@ -24,17 +24,20 @@
  * `ConvergenceContext` supports alcohol and travel suppressors because
  * Research/15 §"Confounders that elevate RHR independent of training stress"
  * names both, and the rule should be written against the doctrine rather than
- * against today's schema. THE APP DOES NOT MEASURE EITHER. There is no alcohol
- * log and no timezone-change history, so both are passed as "not known" —
- * which means NO suppression, not silent suppression.
+ * against today's schema.
  *
- * Be clear about the direction of that gap: it makes the detector MORE likely
- * to fire, not less. A business trip that wrecks three nights of sleep and
- * lifts nocturnal heart rate is the case it would miss. Race-related travel is
- * largely covered anyway — race week suppresses load and the post-race window
- * suppresses the autonomic, cardiac and subjective domains — so the exposure
- * is non-race travel. Fabricating a travel signal from run locations would be
- * worse than naming the gap, so it is named here and in the handover.
+ * TRAVEL IS NOW INSTRUMENTED (TRAVEL-1, 2026-08-28): the runner declares
+ * travel windows on the phone (`travel_windows` table, migration 159), and
+ * `daysSinceTravel` below is days since the most recent window ended — 0
+ * while one is open. The windows carry no time zones, so this is the
+ * conservative reading of doctrine's "travel … (elevates nocturnal HR 3–5
+ * days)": any declared trip counts, exactly so a travel week's soft
+ * biometrics do not read as training drift. The exposure that remains is a
+ * trip the runner never entered, which fails in the same honest direction as
+ * before — MORE likely to fire, never silent suppression.
+ *
+ * ALCOHOL is still not measured. There is no alcohol log, so it is passed as
+ * "not known" — NO suppression, not silent suppression.
  */
 
 import { pool } from '@/lib/db/pool';
@@ -254,9 +257,18 @@ export async function loadConvergenceContext(
     // the V5 Z2 filter: the number is describing the plan, not the runner.
     inPlannedCutback: mode === 'recovery' || label.includes('TAPER') || label.includes('RECOVERY'),
     illnessActive: sick.rows.length > 0,
+    // TRAVEL-1 · days since the runner's most recent declared travel window
+    // ended (0 while inside one) · see the module docblock. Catch-guarded to
+    // null — a read failure (or the table not yet migrated) means no
+    // suppression, never silent suppression.
+    daysSinceTravel: await (async () => {
+      try {
+        const { daysSinceTravelEnd } = await import('@/lib/plan/travel-store');
+        return await daysSinceTravelEnd(userId, todayISO);
+      } catch { return null; }
+    })(),
     // Not instrumented · see the module docblock. Unknown means no
     // suppression, never silent suppression.
-    daysSinceTravel: null,
     alcoholLastNight: false,
     heatFlaggedDaysRecent: await countHeatFlaggedDays(userId, todayISO),
   };

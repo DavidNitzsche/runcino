@@ -351,6 +351,28 @@ export function validateComposedPlan(
   const { weeks } = result;
   const violations: string[] = [];
 
+  // ── TRAVEL-1 (2026-08-28) · per-finding travel context ────────────────────
+  // The composer's travel pass (lib/plan/travel-windows.ts) can ease a long
+  // run or a quality session on a declared travel day when the week has no
+  // clean seat, and it records every such day in authored_state.travel_shaped.
+  // Three findings below read week volume or quality presence, and each one
+  // applies this context ITSELF (CLAUDE.md §"Per-finding context filters"): a
+  // taper week that dips because the runner is away is describing the trip,
+  // not a taper defect, and a travel week that folded its quality is the
+  // same accepted fold as AWAY-1 / qualityStrandedByAvailability. Plans with
+  // no travel windows carry no travel_shaped key → every check byte-identical.
+  const travelShaped: Array<{ date: string; action: string }> = (() => {
+    const raw = (result.authoredState as Record<string, unknown> | undefined)?.['travel_shaped'];
+    return Array.isArray(raw)
+      ? raw.filter((x): x is { date: string; action: string } =>
+          !!x && typeof (x as { date?: unknown }).date === 'string'
+          && typeof (x as { action?: unknown }).action === 'string')
+      : [];
+  })();
+  const weekTravelEased = (w: { startISO: string }, actions: string[]): boolean =>
+    travelShaped.some((t) => actions.includes(t.action)
+      && t.date >= w.startISO && t.date <= addDays(w.startISO, 6));
+
   // ── 0. vols / weeklyMi coherence (VOLS-SNAP) ─────────────────────────────
   // composed.vols is the volume-curve series a consumer receives alongside each week's weeklyMi.
   // finalize reconciles weeklyMi to the realized day-sum (VOL-1) but never touches vols; both the
@@ -558,11 +580,27 @@ export function validateComposedPlan(
         // ceiling is not a safer taper, it is detraining before a race. This is
         // the check that was structurally missing — it is what would have caught
         // the marathon's 0.45 factor being applied to a 5K.
-        if (deepestDrop > c.taperDropMaxPct) {
-          violations.push(
-            `Taper bottoms at ${deepest}mi, ${Math.round(deepestDrop)}% below peak ${peakVol}mi ` +
-            `(max ${c.taperDropMaxPct}% for this distance, Research/08 §9.1) — taper too deep`,
-          );
+        //
+        // TRAVEL-1 · measured over the weeks the TAPER authored, not the weeks
+        // travel eased: a taper week whose long run was eased because the
+        // runner is away (authored_state.travel_shaped · long_eased) dips
+        // below the authored curve by declared circumstance, and reading that
+        // dip as "detraining by design" would refuse the exact plan the
+        // runner asked for. Weeks travel did not touch are still held to the
+        // full band; if EVERY taper week was travel-eased there is no
+        // authored depth left to grade and the too-deep check stands down
+        // (the too-shallow check above still ran against the deepest week,
+        // where travel can only help).
+        const authoredTaperW = taperW.filter(w => !weekTravelEased(w, ['long_eased']));
+        if (authoredTaperW.length > 0) {
+          const authoredDeepest = Math.min(...authoredTaperW.map(w => w.weeklyMi));
+          const authoredDrop = ((peakVol - authoredDeepest) / peakVol) * 100;
+          if (authoredDrop > c.taperDropMaxPct) {
+            violations.push(
+              `Taper bottoms at ${authoredDeepest}mi, ${Math.round(authoredDrop)}% below peak ${peakVol}mi ` +
+              `(max ${c.taperDropMaxPct}% for this distance, Research/08 §9.1) — taper too deep`,
+            );
+          }
         }
         // DOCTRINE-1b · and each pre-race taper week against the shared model
         // the generator used, so a layout or reconciliation pass cannot quietly
@@ -585,11 +623,29 @@ export function validateComposedPlan(
               `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi is ABOVE peak ${peakVol}mi — taper must reduce volume`,
             );
           }
+          // TRAVEL-1 · a prior taper week that dipped because travel eased its
+          // long run is not the descent reference — the week after it returns
+          // to the authored curve, which reads as a "rise" only against the
+          // dip. Bridge to the last non-travel-eased taper week (the same
+          // shape as CUTBACK-LONG-1's bridge over a planned deload); when
+          // every earlier taper week was travel-eased, the descent has no
+          // authored reference and the pair is skipped.
           if (i > 0 && taperW[i].weeklyMi > taperW[i - 1].weeklyMi * 1.05) {
-            violations.push(
-              `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi rises above the prior taper week ` +
-              `${taperW[i - 1].weeklyMi}mi — taper must descend`,
-            );
+            const ref = [...taperW.slice(0, i)].reverse()
+              .find(w => !weekTravelEased(w, ['long_eased']));
+            if (!ref || taperW[i].weeklyMi > ref.weeklyMi * 1.05) {
+              if (ref && ref !== taperW[i - 1]) {
+                violations.push(
+                  `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi rises above the last authored taper week ` +
+                  `${ref.weeklyMi}mi — taper must descend`,
+                );
+              } else if (ref) {
+                violations.push(
+                  `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi rises above the prior taper week ` +
+                  `${taperW[i - 1].weeklyMi}mi — taper must descend`,
+                );
+              }
+            }
           }
         }
       }
@@ -637,6 +693,14 @@ export function validateComposedPlan(
     // only"). Inert for authoring either way — the generator never writes an
     // empty week, and `_sweep_allusers.test.ts` fails an `EMPTY_WEEK` outright.
     if (week.days.length > 0 && !(week.weeklyMi > 0)) continue;
+    // TRAVEL-1 · a week whose quality was eased onto easy legs because every
+    // clean seat was inside a declared travel window is the same accepted
+    // fold as the two allowances above: the miles are still there, the
+    // intensity was moved off travel days on purpose (Research/12 "avoid
+    // hard efforts"), and the fold is on the plan's own record
+    // (authored_state.travel_shaped). A week travel merely RELOCATED quality
+    // within still carries it, so this only fires on the recorded ease.
+    if (weekTravelEased(week, ['quality_eased'])) continue;
     if (!week.days.some(d => d.isQuality)) {
       violations.push(
         `Week ${week.startISO} (${week.phase}): no quality sessions prescribed — ` +

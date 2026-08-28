@@ -479,6 +479,10 @@ export interface RescheduleDayContext {
  *   · respects weekly_frequency (moving in must not exceed the week's
  *     run-day budget)
  *   · never race week / within 3 days of a race (dateNearRace)
+ *   · never a declared travel day (TRAVEL-1 · travel days are easy-preferred
+ *     by owner ruling and Research/12 "avoid hard efforts" — rescheduling a
+ *     missed quality session ONTO one would undo exactly the shaping the
+ *     composer did)
  * Returns null when no day qualifies → caller DROPS the workout with a
  * coach_intents record (data, not debt).
  */
@@ -490,8 +494,11 @@ export function chooseRescheduleDate(opts: {
   restDow: number | null;
   weeklyFrequency: number | null;
   raceDates: string[];
+  /** TRAVEL-1 · ISO dates inside the runner's travel windows. Optional —
+   *  absent/empty keeps the search byte-identical to before. */
+  travelDates?: Set<string> | null;
 }): string | null {
-  const { todayISO, byDate, longRunDow, restDow, weeklyFrequency, raceDates } = opts;
+  const { todayISO, byDate, longRunDow, restDow, weeklyFrequency, raceDates, travelDates } = opts;
   for (let i = 1; i <= 4; i++) {
     const d = plusDaysISO(todayISO, i);
     const ctx = byDate[d] ?? { runCount: 0, qualityOrLong: false, hasRestRow: false, weekRunCount: null };
@@ -505,6 +512,7 @@ export function chooseRescheduleDate(opts: {
     if (prev?.qualityOrLong || next?.qualityOrLong) continue;
     if (weeklyFrequency != null && ctx.weekRunCount != null && ctx.weekRunCount + 1 > weeklyFrequency) continue;
     if (dateNearRace(d, raceDates)) continue;
+    if (travelDates?.has(d)) continue;
     return d;
   }
   return null;
@@ -3998,8 +4006,22 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         weeklyFrequency = freqRow?.weekly_frequency ?? null;
       } catch { /* frequency unknown → check skipped */ }
 
+      // TRAVEL-1 · the runner's declared travel days over the candidate span
+      // [today+1, today+4]. Catch-guarded to empty (table lands via manual
+      // migration 159; a read failure means no suppression, never a crash —
+      // the composer's own shaping already keeps quality off those days).
+      const travelDates = await (async () => {
+        try {
+          const { travelWindowsOverlapping } = await import('@/lib/plan/travel-store');
+          const { travelDatesBetween } = await import('@/lib/plan/travel-windows');
+          const wins = await travelWindowsOverlapping(userId, today, plusDaysISO(today, 5));
+          return travelDatesBetween(wins, today, plusDaysISO(today, 5));
+        } catch { return new Set<string>(); }
+      })();
+
       const target = chooseRescheduleDate({
         todayISO: today, byDate, longRunDow, restDow, weeklyFrequency, raceDates,
+        travelDates,
       });
 
       if (!target) {

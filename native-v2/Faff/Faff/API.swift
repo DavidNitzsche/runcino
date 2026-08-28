@@ -1856,6 +1856,76 @@ struct ProfileFields: Decodable {
 /// it so the editor can toast "Plan updated".
 struct ReplanAck: Decodable { let replanned: Bool? }
 
+// MARK: - TRAVEL-1 · travel windows (/api/travel)
+//
+// The runner's declared travel dates. The plan engine keeps them running
+// through a window — travel days are easy-preferred, quality and the long run
+// land on home days where the week has room — so the phone's only job here is
+// to get the dates in. Wire shape mirrors web-v2/app/api/travel/route.ts.
+
+struct TravelWindowWire: Decodable, Identifiable, Equatable {
+    let id: Int
+    let start_date: String   // YYYY-MM-DD, inclusive
+    let end_date: String     // YYYY-MM-DD, inclusive
+    let note: String?
+}
+
+struct TravelWindowsResponse: Decodable { let windows: [TravelWindowWire] }
+
+/// Ack for the write endpoints · `replanned: true` means the window overlaps
+/// the active plan and the server rebuilt it inline.
+struct TravelWindowAck: Decodable {
+    let ok: Bool?
+    let replanned: Bool?
+    let window: TravelWindowWire?
+}
+
+extension API {
+    static func fetchTravelWindows() async throws -> [TravelWindowWire] {
+        let url = baseURL.appendingPathComponent("api/travel")
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else { throw APIError.badStatus(http.statusCode) }
+        return (try? JSONDecoder().decode(TravelWindowsResponse.self, from: data))?.windows ?? []
+    }
+
+    /// POST (id nil) or PATCH (id set) one window. Returns the server ack so
+    /// the sheet can say when the plan reshaped around the trip.
+    @discardableResult
+    static func saveTravelWindow(id: Int?, startDate: String, endDate: String,
+                                 note: String?) async throws -> TravelWindowAck? {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/travel"))
+        req.httpMethod = id == nil ? "POST" : "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
+            "start_date": startDate,
+            "end_date": endDate,
+        ]
+        if let id { body["id"] = id }
+        if let note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["note"] = note
+        }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
+        }
+        return try? JSONDecoder().decode(TravelWindowAck.self, from: data)
+    }
+
+    @discardableResult
+    static func deleteTravelWindow(id: Int) async throws -> TravelWindowAck? {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/travel"))
+        req.httpMethod = "DELETE"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["id": id])
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedSend(req)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
+        }
+        return try? JSONDecoder().decode(TravelWindowAck.self, from: data)
+    }
+}
+
 // MARK: - ProfileState (full /profile rendering)
 //
 // Mirrors web-v2/lib/coach/profile-state.ts → trimmed to identity +

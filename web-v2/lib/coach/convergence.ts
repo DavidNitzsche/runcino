@@ -267,7 +267,12 @@ export interface ConvergenceContext {
   inPlannedCutback: boolean;
   /** An illness episode is logged and active. */
   illnessActive: boolean;
-  /** Days since crossing ≥2 time zones; null when no recent travel. */
+  /** Days since the runner's most recent travel ended (0 while a declared
+   *  travel window is open); null when no recent travel is known. TRAVEL-1:
+   *  fed by the runner's own `travel_windows` entries, which carry dates but
+   *  not time zones — the conservative reading of Research/15's "travel …
+   *  (elevates nocturnal HR 3–5 days)" confound, so a travel week's soft
+   *  biometrics never read as training drift. */
   daysSinceTravel: number | null;
   /** Heat-flagged sessions in the trailing window (Research/06 gate). */
   heatFlaggedDaysRecent: number;

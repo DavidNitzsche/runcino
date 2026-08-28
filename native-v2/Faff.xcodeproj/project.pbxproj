@@ -100,6 +100,7 @@
 		5CC15617CBD77E60E78F0B75 /* ShoeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADD08DB3E4484B1FC6C0C0F8 /* ShoeView.swift */; };
 		5E96515E4E3AEB50C7224C2F /* TargetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89D7554D68355339D82D6F51 /* TargetsView.swift */; };
 		621F3BF05BA2F7DBEAAD2033 /* J_CoachVerdict.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED073449FE88CA9532AFF720 /* J_CoachVerdict.swift */; };
+		6375319A151652850547BD28 /* TravelV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FCBEC856C1DF94056E0B70B /* TravelV5.swift */; };
 		63C6AC43E35C1C167EF6CBDF /* _FacePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 997FEBC00F6B932860648500 /* _FacePreview.swift */; };
 		650D0C3ED3CEC1CA9863BC0C /* TodayChangedV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F0124D264EEFDA136F90DDA /* TodayChangedV5.swift */; };
 		661A5023FC889EDA87B6F560 /* Fonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E27550579AE4BDFA95531DD /* Fonts.swift */; };
@@ -425,6 +426,7 @@
 		8C2A42FABAA22658215C406B /* WatchRouterV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRouterV5.swift; sourceTree = "<group>"; };
 		8C67FC57A7AA49F34251FE7F /* RepBreakdownV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepBreakdownV5.swift; sourceTree = "<group>"; };
 		8CC881ECD5A5FD781AFD226A /* _SessionTimelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = _SessionTimelineTests.swift; sourceTree = "<group>"; };
+		8FCBEC856C1DF94056E0B70B /* TravelV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TravelV5.swift; sourceTree = "<group>"; };
 		8FCD25057781DAE979CCDBFC /* ShoesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoesView.swift; sourceTree = "<group>"; };
 		8FD04D91D8038BA91A4D9E20 /* ChartsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartsV5.swift; sourceTree = "<group>"; };
 		918DFA9C4478972044408D2A /* MorningBriefBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MorningBriefBlock.swift; sourceTree = "<group>"; };
@@ -742,6 +744,7 @@
 				0891DA9583913A7F36C7268C /* TodayBeforeSamplesPreRunV5.swift */,
 				CC98F967EA1071686B9F86C0 /* TodayBeforeV5.swift */,
 				4F0124D264EEFDA136F90DDA /* TodayChangedV5.swift */,
+				8FCBEC856C1DF94056E0B70B /* TravelV5.swift */,
 			);
 			path = ViewsV5;
 			sourceTree = "<group>";
@@ -1314,6 +1317,7 @@
 				A2205010201940343C1796E2 /* ToolkitPayloads.swift in Sources */,
 				DDEC03C890DF05DF53ECDF7F /* TrainView.swift in Sources */,
 				B1A6E0DF54B3924387506BAA /* TrainingCalendarView.swift in Sources */,
+				6375319A151652850547BD28 /* TravelV5.swift in Sources */,
 				E1D19AD240AAA3B18043EF2F /* TreadmillHRStreamer.swift in Sources */,
 				93719A4457B3D049C1A86D64 /* TreadmillView.swift in Sources */,
 				74D86F02898E21A4BFE78C3F /* Units.swift in Sources */,

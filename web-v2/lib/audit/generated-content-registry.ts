@@ -115,6 +115,12 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
     surface: { file: 'web-v2/lib/plan/week-loader.ts', token: 'notes' },
   },
   {
+    id: 'travel_windows.note',
+    verdict: 'surfaced',
+    holds: 'The runner\'s own label for a trip. "Thanksgiving". Runner-authored (the one prose column here the engine never writes), optional.',
+    surface: { file: 'native-v2/Faff/Faff/ViewsV5/TravelV5.swift', token: 'note' },
+  },
+  {
     id: 'plan_workouts.original_type',
     verdict: 'surfaced',
     holds: 'What the day WAS before the coach moved it. Drives the "was Threshold" kicker.',

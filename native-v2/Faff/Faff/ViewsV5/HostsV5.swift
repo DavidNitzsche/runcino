@@ -1105,26 +1105,37 @@ struct SettingsHostV5: View {
     @EnvironmentObject private var runGate: PhoneRunGate
     @State private var stravaConnecting = false
     @State private var model: SettingsV5Model?
+    /// TRAVEL-1 · the travel-windows sheet, hosted here the way AddRaceHostV5
+    /// hosts its own: a V5SheetHost over the screen, never a system sheet.
+    @State private var travelOpen = false
 
     var body: some View {
-        Group {
-            if let model {
-                SettingsV5(model: model,
-                           onSetLongRunDay: { d in Task { await patch(["long_run_day": Self.dayKey(d)]) } },
-                           onSetDaysPerWeek: { n in Task { await patchProfile(["weekly_frequency": n]) } },
-                           onToggleSessionReminders: { v in
-                               Task { await setPref("skip_recovery_enabled", v) }
-                           },
-                           onToggleWeeklySummary: { v in
-                               Task { await setPref("weekly_checkin_enabled", v) }
-                           },
-                           onSetUnits: { u in Task { await patch(["units_distance": Self.unitKey(u)]) } },
-                           onToggleStrava: { Task { await connectStrava() } },
-                           onSetPhoneRun: { v in Task { await patch(["phone_run_enabled": v]) } },
-                           onBack: { dismiss() })
-            } else {
-                ScrollView { Skeleton(lines: 6).padding(.horizontal, V5.S.gutter) }
-                    .background(V5.surfacePage)
+        ZStack {
+            Group {
+                if let model {
+                    SettingsV5(model: model,
+                               onSetLongRunDay: { d in Task { await patch(["long_run_day": Self.dayKey(d)]) } },
+                               onSetDaysPerWeek: { n in Task { await patchProfile(["weekly_frequency": n]) } },
+                               onToggleSessionReminders: { v in
+                                   Task { await setPref("skip_recovery_enabled", v) }
+                               },
+                               onToggleWeeklySummary: { v in
+                                   Task { await setPref("weekly_checkin_enabled", v) }
+                               },
+                               onSetUnits: { u in Task { await patch(["units_distance": Self.unitKey(u)]) } },
+                               onToggleStrava: { Task { await connectStrava() } },
+                               onSetPhoneRun: { v in Task { await patch(["phone_run_enabled": v]) } },
+                               onOpenTravel: { travelOpen = true },
+                               onBack: { dismiss() })
+                } else {
+                    ScrollView { Skeleton(lines: 6).padding(.horizontal, V5.S.gutter) }
+                        .background(V5.surfacePage)
+                }
+            }
+            if travelOpen {
+                V5SheetHost(isPresented: $travelOpen, tall: true) {
+                    TravelSheetV5(onClose: { travelOpen = false })
+                }
             }
         }
         .task { await load() }

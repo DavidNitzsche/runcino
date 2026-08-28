@@ -46,6 +46,7 @@ import { isBaseBuildingPlan } from './plan-templates';
 import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
 import { isCoachedExternally, COACHED_SKIP_REASON } from './coached-gate';
 import { distanceMiOfMeta } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
+import { shapeTravelWindows, type TravelWindow } from './travel-windows'; // TRAVEL-1 (2026-08-28) · runner-declared travel shapes the composed block
 import { ROLE_POST_QUALITY_FREE_DAYS, isRaceRole } from '@/lib/race/race-role'; // RACEROLE-1 (2026-08-28) · answered tune-up roles
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 // 2026-08-17 · coaching-loop reconciliation · shared blend implementation
@@ -6706,6 +6707,16 @@ export interface ComposePlanInput {
     plannedRole?: 'b_effort' | 'race' | 'mp_workout' | null;
   }>;
   isMidBlock: boolean;
+  /** TRAVEL-1 (2026-08-28) · the runner's declared travel windows that
+   *  overlap the plan window (travel_windows table, entered on the phone).
+   *  Travel days are EASY-PREFERRED, never rest-by-default: quality and the
+   *  long run avoid them when the week has a clean seat, easy dose is
+   *  unchanged, and every shaped day carries a coach note saying why.
+   *  Undefined/empty → composePlan output is byte-identical to before.
+   *  Cite: Research/12-travel-timezone.md §Pre/In/Post-Flight Running
+   *  Adjustments ("avoid hard efforts" · "First quality session
+   *  permissible" only days after arrival). See lib/plan/travel-windows.ts. */
+  travelWindows?: TravelWindow[];
   longRunDow: DOW;
   restDow: DOW;
   qualityDows: DOW[];
@@ -7514,6 +7525,18 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       })
     : [];
 
+  // TRAVEL-1 · after the race embed (a tune-up day must already read as a
+  // race so the travel pass leaves it alone), before the run-up guard (which
+  // must see the calendar with travel already shaped — a long run this pass
+  // relocates into the run-up window still gets eased there). Gated: no
+  // windows → byte-identical output.
+  const travelShaped = (input.travelWindows && input.travelWindows.length > 0)
+    ? shapeTravelWindows(weeks, {
+        startMondayISO: input.startMondayISO,
+        travelWindows: input.travelWindows,
+      })
+    : [];
+
   // RACE-RUNUP-1 · last, so it sees the calendar every other pass has already
   // written — including an embedded B race, whose own mini-taper it must not
   // undo (the loops stop at a `race` day). Before `finalizeComposedPlan`, so
@@ -7564,6 +7587,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // rather than only in a diff. Absent when it changed nothing, which is
       // every already-well-formed block.
       ...(runUpChanged.length > 0 ? { race_runup_eased: runUpChanged } : {}),
+      // TRAVEL-1 · which days the travel pass shaped and how, plus the
+      // windows it shaped them from, so a week that looks unusual says why on
+      // the plan's own record. Absent when no window touched the block.
+      ...(travelShaped.length > 0
+        ? { travel_shaped: travelShaped, travel_windows: input.travelWindows }
+        : {}),
       // 2026-06-03 · Rule 10 · transparency envelope so the runner can
       // audit which signals drove their plan. Surfaces in /plan brief
       // as "plan built from your last 28 days." Cite: §Rule 10.
@@ -11511,6 +11540,22 @@ async function loadGeneratorInputs(
         plannedRole: isRaceRole(m.plannedRole) ? m.plannedRole : null,
       };
     });
+  // TRAVEL-1 (2026-08-28) · the runner's declared travel windows overlapping
+  // the plan window. Catch-guarded to [] twice over: the table lands via
+  // manual migration 159, and a runner with no windows (or a pre-migration
+  // deploy) must compose byte-identically to before the feature existed.
+  // Loaded here, beside the other date-anchored inputs, so composePlan stays
+  // pure. Only the race-prep composer shapes around them (maintenance and
+  // recovery blocks have no quality/long geometry worth relocating — their
+  // days are already easy-dominant); the adapter and the convergence loader
+  // read the same table through lib/plan/travel-store.ts.
+  const travelWindows: TravelWindow[] = await (async () => {
+    try {
+      const { travelWindowsOverlapping } = await import('./travel-store');
+      return await travelWindowsOverlapping(userId, startMondayISO, raceDateISO);
+    } catch { return []; }
+  })();
+
   // 2026-06-02 · ensure totalWeeks is an integer here too · matches
   // the same fix in composePlan. Was producing fractional totalWeeks
   // that broke phase advancement.
@@ -11604,6 +11649,9 @@ async function loadGeneratorInputs(
       tsbAtStart,
       horizonRaces: horizonRaces.length > 0 ? horizonRaces : undefined,
       midBlockRaces: midBlockRaces.length > 0 ? midBlockRaces : undefined,
+      // TRAVEL-1 · undefined (not []) when none, so the composer's gate and
+      // every synthetic-input caller stay byte-identical.
+      travelWindows: travelWindows.length > 0 ? travelWindows : undefined,
       isMidBlock,
       longRunDow,
       restDow,
