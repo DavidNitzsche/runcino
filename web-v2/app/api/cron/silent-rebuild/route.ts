@@ -20,10 +20,19 @@
  *   3. acks any plan_adapt_* coach_intents that point at the archived
  *      plan_workouts (those rows no longer exist · the banners are stale)
  *
- * What it does NOT do:
- *   · NO plan_proposals row
+ * 2026-08-28 · NOW WRITES THE plan_proposals ROW, THROUGH fireAutoRebuild.
+ * This was the one plan writer the runner could not undo: it bypassed the
+ * proposal-row write, so POST /api/plan/undo had no row pairing the archived
+ * plan to its replacement and returned `not_undoable`. Routed through
+ * `fireAutoRebuild` (kind 'silent_rebuild') it gains the `auto_applied`
+ * pairing row, the 60-second double-dispatch dedupe, and the no_change
+ * rollback. The cost, accepted: the runner sees the auto-applied notice card
+ * for 24h ("engine updated · undo puts the old block back") — post-incident
+ * doctrine is visibility-plus-undo, and an invisible irreversible rebuild was
+ * the worse half of "silent".
+ *
+ * What it still does NOT do:
  *   · NO new coach_intents
- *   · NO "your plan was adapted" banner on Today
  *   · NO authorship for a runner whose own coach writes their plan
  *     (COACHED-GATE-1, 2026-08-19). The gate lives at the top of
  *     `generatePlan`, so this route needs no line of its own — which is the
@@ -38,7 +47,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { generatePlan } from '@/lib/plan/generate';
+import { fireAutoRebuild } from '@/lib/plan/auto-rebuild';
 
 export const maxDuration = 60;
 
@@ -85,20 +94,20 @@ export async function POST(req: NextRequest) {
     priorPlanId = prior?.id ?? null;
   }
 
-  // Run the rebuild · generatePlan handles archive + persist
-  //
-  // 2026-08-25 · SILENT TO THE RUNNER, NOT TO THE DATABASE. This route writes
-  // no proposal row and fires no banner, deliberately — it lands code upgrades,
-  // not coach decisions. The unintended consequence was that it left NO trace
-  // anywhere except a GitHub Actions log: the archived plan said `regenerated`,
-  // which is what every other path said too. So when a runner asked "why did my
-  // plan change overnight", an operator dispatch of this route and a nightly
-  // drift rebuild were indistinguishable in the data.
-  //
-  // `archive_reason = 'silent_rebuild'` does not surface to the runner and does
-  // not change what this route may do. It makes the question answerable.
-  const result = await generatePlan({
-    userId: userUuid, raceSlug: raceSlug!, archiveReason: 'silent_rebuild',
+  // Run the rebuild · through fireAutoRebuild (2026-08-28), which runs
+  // generatePlan with archiveReason 'silent_rebuild' exactly as before AND
+  // writes the auto_applied plan_proposals row that pairs the archived plan
+  // to its replacement — the pairing POST /api/plan/undo keys off. Also
+  // brings the 60s double-dispatch dedupe and no_change handling.
+  if (!raceSlug) {
+    return NextResponse.json({ error: 'active plan has no race_id and no raceSlug provided' }, { status: 400 });
+  }
+  const result = await fireAutoRebuild({
+    userUuid,
+    raceSlug,
+    kind: 'silent_rebuild',
+    reasons: { trigger: 'operator_dispatch', message: 'The plan engine was updated · your block was rebuilt around the same goal. Undo puts the old block back.' },
+    source: 'silent_rebuild_dispatch',
   });
   if (!result.ok) {
     return NextResponse.json({ ok: false, reason: result.reason }, { status: 500 });
@@ -109,7 +118,10 @@ export async function POST(req: NextRequest) {
   // banner-rendering UI uses acknowledged_at IS NULL to surface, so
   // stamping it makes them stop showing without deleting the audit log.
   let ackedIntents = 0;
-  if (priorPlanId) {
+  // 2026-08-28 · only when a new block actually landed. On a no_change
+  // rollback the prior plan is still the ACTIVE plan and its banners are not
+  // stale — acking them would silently clear live adaptation history.
+  if (priorPlanId && result.newPlanId && !result.unchanged) {
     const ack = await pool.query(
       `UPDATE coach_intents ci
           SET acknowledged_at = NOW()
@@ -127,8 +139,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     prior_plan_id: priorPlanId,
-    new_plan_id: result.plan_id,
-    weeks_generated: result.weeks_generated,
+    new_plan_id: result.newPlanId ?? null,
+    // 2026-08-28 · the engine composed an identical block and rolled back —
+    // nothing archived, nothing to undo, and the caller should know.
+    unchanged: result.unchanged === true,
+    // The undo pairing row (auto_applied) this route used to skip.
+    proposal_id: result.proposalId ?? null,
     acked_stale_intents: ackedIntents,
   });
 }

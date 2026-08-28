@@ -131,7 +131,7 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     route: 'app/api/cron/plan-drift/route.ts',
     trigger: '0 9 * * * · plus workflow_dispatch',
     reach: 'replaces_plan',
-    changes: ['training_plans', 'plan_workouts', 'plan_weeks', 'plan_phases', 'plan_proposals', 'races.actual_result', 'notifications_pending'],
+    changes: ['training_plans', 'plan_workouts', 'plan_weeks', 'plan_phases', 'plan_proposals', 'races.actual_result', 'notifications_pending', 'coach_intents.superseded_at'],
     idempotent: true,
     onPartialFailure:
       'The rebuild itself is one transaction (mutatePlan): archive and insert commit together or not at all. '
@@ -162,7 +162,10 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
       + 'this runner has answered zero, so a gate is an expiry. The bargain is apply-with-undo — the notice '
       + 'says what moved in miles (reasons.plan_delta), and the undo puts it back. A rebuild whose output is '
       + 'identical to the block it would replace no longer lands at all: generatePlan diffs both persisted '
-      + 'blocks inside the transaction and rolls back, recording status no_change.',
+      + 'blocks inside the transaction and rolls back, recording status no_change. 2026-08-28 · each nightly '
+      + 'pass also sweeps coach_intents: any plan_adapt_* intent whose field points at an archived plan\'s '
+      + 'workout is stamped superseded_at (+ acknowledged_at backfill) — mark, not delete — closing the '
+      + 'dangling-intent shape supersedeProposalsForArchivedPlans closed for proposals.',
   },
   {
     id: 'cron/snapshot-projections',
@@ -180,7 +183,11 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     note:
       'THE THIRD PLAN WRITER, and the one whose name hides it. reanchorActivePlan rewrites pace_target_s_per_mi '
       + 'and workout_spec for every future unsealed day. Sealed days are skipped, so it cannot rewrite what the '
-      + 'runner already ran. It was not on the incident brief.',
+      + 'runner already ran. It was not on the incident brief. 2026-08-28 · it now DEFERS to the 03:00 adapter: '
+      + 'when a plan_adapt_recompute_paces intent exists within 24h it stands down with a recorded '
+      + 'reanchor_skipped no-op in the cron response, unless its own move is a provisional-to-measured anchor '
+      + 'upgrade (which the adapter cannot perform, and which must still fire to end a calibration intro). '
+      + 'Thresholds and the anchor cascade live in lib/training/pace-anchor.ts, shared with the adapter.',
   },
   {
     id: 'cron/run-adaptations',
@@ -192,30 +199,40 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     onPartialFailure: 'mutatePlan transaction with differential doctrine validation and rollback.',
     runnerSees: 'surfaced',
     reversible: 'No undo. Sealed days are filtered out, so it cannot rewrite a day already run.',
-    note: 'Rewrites prescribed workouts in place rather than replacing the block. Some changes propose, some apply.',
+    note:
+      'Rewrites prescribed workouts in place rather than replacing the block. Some changes propose, some apply. '
+      + '2026-08-28 · pace-anchor thresholds (race 1.5 / training-lead 1.0) live in lib/training/pace-anchor.ts, '
+      + 'shared with the 07:30 self-heal, which now defers to this cron\'s recompute for 24h. The adaptive bump '
+      + '(tryAdaptiveBump) is blocked for 48h after any applied pull-back intent (downgrade/shave/readiness red), '
+      + 'not just same-tick. A day_actions skip is now a decision, not a debt: the skipped session is never '
+      + 'rescheduled, a plan_adapt_skip_respected note intent records it, and it still reads as a non-running day '
+      + 'to gap and volume detection.',
   },
   {
     id: 'cron/silent-rebuild',
     route: 'app/api/cron/silent-rebuild/route.ts',
     trigger: 'workflow_dispatch ONLY · no schedule, and nothing else in the repo calls it',
     reach: 'replaces_plan',
-    changes: ['training_plans', 'plan_workouts', 'plan_weeks', 'plan_phases', 'coach_intents.acknowledged_at'],
-    idempotent: false,
-    onPartialFailure: 'The rebuild is transactional. The coach_intents ack is a separate best-effort write; a failure leaves stale banners up for one cycle.',
-    runnerSees: 'audit_row_only',
+    changes: ['training_plans', 'plan_workouts', 'plan_weeks', 'plan_phases', 'plan_proposals', 'coach_intents.acknowledged_at'],
+    idempotent: true,
+    onPartialFailure:
+      'The rebuild is transactional. The plan_proposals row is a separate write after it (fireAutoRebuild), so '
+      + 'a failure between them leaves the block replaced with archive_reason silent_rebuild as the only record '
+      + '— the same residual gap plan-drift carries. The coach_intents ack is a further best-effort write; a '
+      + 'failure there leaves stale banners up for one cycle.',
+    runnerSees: 'surfaced',
     reversible:
-      'No undo. The prior plan survives archived, but this path writes NO plan_proposals row, and that row is '
-      + 'the only record pairing an old plan to the one that replaced it — so POST /api/plan/undo has nothing '
-      + 'to key off. The 2026-08-25 no-op gate does apply (an identical rebuild rolls back and archives '
-      + 'nothing), which is the half of the protection that needs no ledger.',
+      'YES, since 2026-08-28. Routed through fireAutoRebuild (kind silent_rebuild), it writes the auto_applied '
+      + 'plan_proposals row pairing the archived plan to its replacement, which is exactly what POST '
+      + '/api/plan/undo keys off — before this it was the one plan writer the runner could not undo '
+      + '(not_undoable). The 2026-08-25 no-op gate still applies (an identical rebuild rolls back as '
+      + 'no_change), and the intents ack is skipped on no_change so live banners are not cleared.',
     note:
-      'Silent to the RUNNER by design, to land code upgrades without a banner. It was also silent to the '
-      + 'DATABASE, which was not by design: it writes no proposal row, so before archive_reason carried '
-      + 'silent_rebuild the only evidence it had ever run was a GitHub Actions log. Two dispatches rebuild twice; '
-      + 'there is no dedupe — though since 2026-08-25 the second one rolls back as no_change unless the '
-      + 'composition actually moved, so a double dispatch no longer burns two block identities. An operator '
-      + 'action, so the absence of a proposal row is arguably correct; the cost is that it is the one plan '
-      + 'writer the runner cannot undo.',
+      'Lands code upgrades, not coach decisions. Since 2026-08-28 it is silent-ISH: the auto_applied row '
+      + 'surfaces the standard notice card for 24h ("engine updated · undo puts the old block back") — the '
+      + 'accepted price of making it undoable, per the post-incident visibility-plus-undo doctrine. '
+      + 'fireAutoRebuild also brings the 60-second dedupe, so a double dispatch no longer rebuilds twice even '
+      + 'within the same minute.',
   },
 
   // ── The physiological constants ───────────────────────────────────────────

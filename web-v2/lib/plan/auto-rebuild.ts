@@ -65,7 +65,15 @@ export type AutoRebuildKind =
    *  prescribed days. `graduateDue` only ever asked about a RACE date, so a
    *  goal-mode plan had no end at all: sixteen weeks elapsed and Today kept
    *  rendering the last day forever. Rebuilt toward the goal, not a race. */
-  | 'plan_elapsed';
+  | 'plan_elapsed'
+  /** 2026-08-28 · operator-dispatched code-upgrade rebuild
+   *  (POST /api/cron/silent-rebuild). It used to call generatePlan directly,
+   *  bypassing the proposal-row write — which made it the ONE plan writer the
+   *  runner could not undo (POST /api/plan/undo keys off the auto_applied
+   *  row pairing old plan to new, and returned not_undoable). Routed through
+   *  fireAutoRebuild it gains the pairing row, the 60s double-dispatch
+   *  dedupe, and the no_change rollback for free. */
+  | 'silent_rebuild';
 
 /** 2026-08-19 · the no-race target. Same shape `generatePlan` already takes
  *  (GenerateInput.goalTarget) and the same one `rebuildActivePlanForPrefs` has

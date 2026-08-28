@@ -175,11 +175,15 @@ const PLAN_WRITER_FILES = scanPlanWriterFiles(SOURCE_FILES);
  */
 const PLAN_WRITER_FILE_OWNERS: Record<string, string> = {
   // Automatic.
+  // 2026-08-28 · auto-rebuild.ts is reached by cron/plan-drift AND
+  // cron/silent-rebuild (the latter routed through fireAutoRebuild so its
+  // rebuild writes the undo-pairing proposal row; its route file no longer
+  // calls generatePlan directly and so no longer registers in the scan —
+  // the registry entry cron/silent-rebuild still declares the write).
   'lib/plan/auto-rebuild.ts': 'cron/plan-drift',
   'lib/plan/open-block.ts': 'cron/plan-drift',
   'lib/plan/generate.ts': 'cron/plan-drift',
   'lib/race/result-chain.ts': 'cron/plan-drift',
-  'app/api/cron/silent-rebuild/route.ts': 'cron/silent-rebuild',
   'app/api/cron/snapshot-projections/route.ts': 'cron/snapshot-projections',
   'lib/plan/reanchor-plan.ts': 'cron/snapshot-projections',
   'lib/plan/recompute-paces.ts': 'cron/snapshot-projections',

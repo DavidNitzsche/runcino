@@ -479,8 +479,10 @@ describe('date helpers', () => {
 describe('SQL contracts · adapt.ts source', () => {
   const src = readFileSync(fileURLToPath(new URL('./adapt.ts', import.meta.url)), 'utf8');
 
-  it('NO-CHAIN-DRAG: the missed detector excludes rows the adapter already rescheduled/dropped/noted', () => {
-    expect(src).toMatch(/ci\.reason IN \('plan_adapt_reschedule',\s*'plan_adapt_drop_missed',\s*'plan_adapt_missed_noted'\)/);
+  it('NO-CHAIN-DRAG: the missed detector excludes rows the adapter already rescheduled/dropped/noted/skip-respected', () => {
+    // 2026-08-28 · plan_adapt_skip_respected joined the exclusion list: a
+    // deliberately-skipped session's note intent is also its dedupe record.
+    expect(src).toMatch(/ci\.reason IN \('plan_adapt_reschedule',\s*'plan_adapt_drop_missed',\s*'plan_adapt_missed_noted',\s*'plan_adapt_skip_respected'\)/);
   });
 
   it('P1-39: missed detection covers long runs', () => {

@@ -447,9 +447,79 @@ export async function actionForAdaptiveRamp(
 }
 
 /**
+ * 2026-08-28 · PULL-DOWN / PUSH-UP GUARD WINDOW.
+ *
+ * The same-tick check (`pullbackApplied`) only knew about pull-backs applied
+ * in THIS cron pass — a red-readiness downgrade applied Monday did not stop a
+ * volume bump Tuesday. Doctrine spaces hard stimulus from recovery in DAYS,
+ * not ticks: Research/00b-recovery-protocols.md §"The Hard-Easy Principle" —
+ * "hard day → 1–2 easy/recovery/rest days → next hard day" — and a bump the
+ * morning after a pull-back is the engine adding load into the exact window
+ * the pull-back opened for recovery. So: no upward bump within 48 hours of
+ * any APPLIED pull-back action.
+ *
+ * The evidence is the adapter's own coach_intents records — the downgrade and
+ * shave intents `applyAdaptations` writes in the same transaction as the
+ * mutation, plus the red-convergence record-only note for a red morning that
+ * found nothing to soften (still a red morning). No new state.
+ */
+export const PULLBACK_BUMP_LOOKBACK_HOURS = 48;
+
+/** The intent reasons that count as an applied pull-back / red-readiness
+ *  morning. `plan_adapt_downgrade` covers readiness-red, niggle, gap and
+ *  missed-workout anti-stacking downgrades; `plan_adapt_shave` covers volume
+ *  and comeback shaves. */
+export const PULLBACK_INTENT_REASONS = [
+  'plan_adapt_downgrade',
+  'plan_adapt_shave',
+  'readiness_convergence_red_no_quality',
+] as const;
+
+/**
+ * Pure window predicate, exported for tests: does a pull-back at
+ * `pullbackTsISO` block a bump decided at `nowMs`? An unparseable timestamp
+ * blocks — a guard that cannot read its own evidence must not wave a load
+ * increase through.
+ */
+export function pullbackBlocksBump(
+  pullbackTsISO: string | null | undefined,
+  nowMs: number,
+  lookbackHours: number = PULLBACK_BUMP_LOOKBACK_HOURS,
+): boolean {
+  if (pullbackTsISO == null) return false;
+  const t = new Date(pullbackTsISO).getTime();
+  if (!Number.isFinite(t)) return true;
+  return nowMs - t < lookbackHours * 3_600_000;
+}
+
+/**
+ * Most recent applied pull-back intent inside a 7-day read window (wide
+ * enough for any lookback this file will ever use). `null` ts = none on
+ * record; `failed: true` = the read itself failed, which is its own state —
+ * the caller fails CLOSED, same posture as every other gate in this file.
+ */
+async function recentPullbackTs(
+  userId: string,
+): Promise<{ failed: boolean; ts: string | null }> {
+  const row = await rowOrNull<{ ts: string | null }>(
+    'plan/adaptive-ramp · pull-back lookback',
+    pool.query<{ ts: string | null }>(
+      `SELECT MAX(ts)::text AS ts FROM coach_intents
+        WHERE COALESCE(user_uuid, user_id) = $1::uuid
+          AND reason = ANY($2::text[])
+          AND ts >= NOW() - interval '7 days'`,
+      [userId, [...PULLBACK_INTENT_REASONS]],
+    ),
+  );
+  if (row === null) return { failed: true, ts: null };
+  return { failed: false, ts: row?.ts ?? null };
+}
+
+/**
  * Cron-path orchestrator · run after detectAdaptations + applyAdaptations.
- * Skips bump when pull-back actions fired this tick · we don't push up
- * the same day we pulled down. Calls applyAdaptations with the
+ * Skips bump when pull-back actions fired this tick OR within the last
+ * 48 hours (see PULLBACK_BUMP_LOOKBACK_HOURS) · we don't push up while a
+ * pull-down is still buying recovery. Calls applyAdaptations with the
  * mark_upgrade action so all mutations + intent logging go through
  * one canonical path.
  *
@@ -460,6 +530,18 @@ export async function tryAdaptiveBump(
   pullbackApplied: boolean,
 ): Promise<{ bumps: number; longBumpMi: number; weeklyBumpMi: number; why: string } | null> {
   if (pullbackApplied) return null;
+  // 48h lookback · a pull-back applied on an EARLIER tick still blocks.
+  // Fails closed: an unreadable intents table is not "no recent pull-back".
+  const pullback = await recentPullbackTs(userId);
+  if (pullback.failed || pullbackBlocksBump(pullback.ts, Date.now())) {
+    if (!pullback.failed) {
+      console.log(
+        `[adaptive-ramp] bump blocked · pull-back within ${PULLBACK_BUMP_LOOKBACK_HOURS}h `
+        + `(last at ${pullback.ts}) · user=${userId.slice(0, 8)}`,
+      );
+    }
+    return null;
+  }
   const action = await actionForAdaptiveRamp(userId);
   if (!action) return null;
   const { applyAdaptations } = await import('./adapt');

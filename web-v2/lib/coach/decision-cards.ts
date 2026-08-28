@@ -211,6 +211,9 @@ const PLAN_TITLES: Record<string, string> = {
   recovery_complete: 'Recovery is done',
   plan_elapsed: 'That block ran out',
   maintenance_to_raceprep: 'Race prep starts here',
+  // 2026-08-28 · the operator code-upgrade rebuild now writes an auto_applied
+  // row so it can be undone (it was the one rebuild undo could not pair).
+  silent_rebuild: 'The engine rebuilt your block',
 };
 
 /** The concrete thing ACCEPT does, per plan-drift kind. Keeps the verb

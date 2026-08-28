@@ -69,7 +69,15 @@ import { pool } from '@/lib/db/pool';
 import { logReadFailure, rowsOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore, mileageByDay, observableCoverageDays, weeklyAvgFromWindow } from '@/lib/runs/volume';
-import { paceBlendAnchorIsProvisional } from './anchor-provenance';
+// 2026-08-28 · the ONE pace-anchor authority. The adapter's evidence-kind
+// thresholds and the anchor cascade live in lib/training/pace-anchor.ts,
+// shared with the 07:30 self-heal (reanchor-plan.ts) so the two writers of
+// pace_target_s_per_mi can no longer carry diverging policies.
+import {
+  RACE_EVIDENCE_REANCHOR_DELTA,
+  TRAINING_LEAD_REANCHOR_DELTA,
+  anchorVdotFromState,
+} from '@/lib/training/pace-anchor';
 import { distanceMiOfMeta } from '@/lib/race/distance';
 import { distanceCategoryOrNull, type DistanceCategory } from '@/lib/race/distance-category';
 import type { ExperienceLevel } from '@/lib/coach/profile-state';
@@ -2076,14 +2084,92 @@ async function deriveTPaceSecForRebuild(
 // ── Detectors ──────────────────────────────────────────────────────────
 
 /** Per-candidate record the missed detector hands to the action builder. */
-interface MissedCandidate {
+export interface MissedCandidate {
   workout_id: string;
   planned_date: string;
   type: string;
   distance_mi: number | null;
 }
 
-async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger | null> {
+/**
+ * 2026-08-28 · A DELIBERATE SKIP IS A DECISION, NOT A DEBT (owner ruling).
+ *
+ * `day_actions action='skip'` (POST /api/today/skip) is the runner saying
+ * "the plan said run today and I'm actively choosing not to". Until now this
+ * detector could not see it, so a deliberately-skipped quality day read as a
+ * passive no-show and could be rescheduled — the engine re-imposing a session
+ * the runner had just declined.
+ *
+ * The ruling: never reschedule a skipped session. Record it as a note intent
+ * (`plan_adapt_skip_respected`) so the trajectory and the coach's log see the
+ * decision. The day still reads as a non-running day everywhere that counts
+ * running — gap detection (`detectTrainingGap` walks actual run mileage) and
+ * volume detection see the absence exactly as before; only the RESPONSE
+ * changes. Passive misses keep the existing graded handling.
+ *
+ * Pure partition of the not-completed candidates, exported so the policy is
+ * locked by tests without a database. Order of classification:
+ *   completed (caller filters first) → skipped → long → stale → rescheduable.
+ */
+export function partitionMissedCandidates(opts: {
+  /** Candidates already confirmed NOT completed near their date. */
+  candidates: Array<MissedCandidate & { original_date_iso: string | null }>;
+  /** Dates (YYYY-MM-DD) carrying a day_actions 'skip' row. */
+  skippedDates: ReadonlySet<string>;
+  todayISO: string;
+}): {
+  skips: MissedCandidate[];
+  longMisses: MissedCandidate[];
+  drops: MissedCandidate[];
+  rescheduable: MissedCandidate[];
+} {
+  const skips: MissedCandidate[] = [];
+  const longMisses: MissedCandidate[] = [];
+  const drops: MissedCandidate[] = [];
+  const rescheduable: MissedCandidate[] = [];
+  for (const c of opts.candidates) {
+    const rec: MissedCandidate = {
+      workout_id: c.workout_id, planned_date: c.planned_date,
+      type: c.type, distance_mi: c.distance_mi,
+    };
+    if (opts.skippedDates.has(c.planned_date)) {
+      // Deliberate skip · respected whatever the type. A skipped long is a
+      // decision about the long, not a passive miss of it.
+      skips.push(rec);
+    } else if (c.type === 'long') {
+      // P1-39 · missed long runs are DATA, never rescheduled.
+      longMisses.push(rec);
+    } else if (isStaleMissed(c.original_date_iso ?? c.planned_date, opts.todayISO)) {
+      // P1-38 · staleness expiry · >3 days past its ORIGINAL date.
+      drops.push(rec);
+    } else {
+      rescheduable.push(rec);
+    }
+  }
+  return { skips, longMisses, drops, rescheduable };
+}
+
+/**
+ * The record-only actions for deliberately-skipped sessions. Pure and
+ * exported for the same reason as the partition above. Follows the existing
+ * `note` action pattern (drop/missed-noted): writes a coach_intents row,
+ * mutates nothing, and the intent record is what stops the detector
+ * re-emitting the same skip tomorrow.
+ */
+export function skipRespectedActions(skips: MissedCandidate[]): AdaptationAction[] {
+  return skips.map((s) => ({
+    kind: 'note' as const,
+    noteReason: 'plan_adapt_skip_respected',
+    workoutIds: [s.workout_id],
+    noteValue: {
+      planned_date: s.planned_date, type: s.type, distance_mi: s.distance_mi,
+      skipped_by_runner: true,
+    },
+    why: `${s.type} on ${s.planned_date} was skipped by choice. A skip is a decision, not a debt. Not rescheduled.`,
+  }));
+}
+
+export async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger | null> {
   // 2026-06-03 · runner TZ.
   const today = await runnerToday(userId);
   // 2026-07-06 rewrite (P1-38/P1-39/P1-40) · walk EVERY quality + long
@@ -2113,7 +2199,8 @@ async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger
                  AND ci.field = pw.id
                  AND ci.reason IN ('plan_adapt_reschedule',
                                    'plan_adapt_drop_missed',
-                                   'plan_adapt_missed_noted')
+                                   'plan_adapt_missed_noted',
+                                   'plan_adapt_skip_respected')
             )
       ORDER BY pw.date_iso::date DESC`,
     [userId, today]
@@ -2148,27 +2235,36 @@ async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger
     return false;
   };
 
-  const longMisses: MissedCandidate[] = [];
-  const drops: MissedCandidate[] = [];
-  const rescheduable: MissedCandidate[] = [];
-  for (const c of candidates) {
-    const distanceMi = c.distance_mi != null ? Number(c.distance_mi) : null;
-    if (completedNear(c.date, completionThresholdMi(distanceMi))) continue;
-    const rec: MissedCandidate = {
-      workout_id: c.id, planned_date: c.date, type: c.type, distance_mi: distanceMi,
-    };
-    if (c.type === 'long') {
-      // P1-39 · missed long runs are DATA, never rescheduled — the long
-      // is not crammable; it feeds the layoff/volume picture instead.
-      longMisses.push(rec);
-    } else if (isStaleMissed(c.original_date_iso ?? c.date, today)) {
-      // P1-38 · staleness expiry · >3 days past its ORIGINAL date.
-      drops.push(rec);
-    } else {
-      rescheduable.push(rec);
-    }
-  }
-  if (longMisses.length === 0 && drops.length === 0 && rescheduable.length === 0) return null;
+  // 2026-08-28 · deliberate skips (day_actions action='skip') for the same
+  // lookback window. A skipped session is a decision, not a debt — see
+  // partitionMissedCandidates. Fails CLOSED to "no skips on record": an
+  // unreadable table must not turn passive misses into respected skips, and
+  // the reverse error (rescheduling a skipped session once) is the pre-fix
+  // behavior for one day, not a new failure.
+  const skippedDates = new Set<string>(
+    (await pool.query<{ d: string }>(
+      `SELECT date_iso::date::text AS d FROM day_actions
+        WHERE COALESCE(user_uuid, user_id) = $1::uuid
+          AND action = 'skip'
+          AND date_iso::date BETWEEN $2::date - 7 AND $2::date - 1`,
+      [userId, today],
+    ).catch((e) => {
+      logReadFailure('plan/adapt · detectMissedKeyWorkout skips', e);
+      return { rows: [] as Array<{ d: string }> };
+    })).rows.map((r) => r.d),
+  );
+
+  const notCompleted = candidates
+    .map((c) => ({
+      workout_id: c.id, planned_date: c.date, type: c.type,
+      distance_mi: c.distance_mi != null ? Number(c.distance_mi) : null,
+      original_date_iso: c.original_date_iso,
+    }))
+    .filter((c) => !completedNear(c.planned_date, completionThresholdMi(c.distance_mi)));
+  const { skips, longMisses, drops, rescheduable } = partitionMissedCandidates({
+    candidates: notCompleted, skippedDates, todayISO: today,
+  });
+  if (skips.length === 0 && longMisses.length === 0 && drops.length === 0 && rescheduable.length === 0) return null;
 
   // One reschedule per pass, the most recent miss. Older fresh misses
   // drop as data — reinserting two quality sessions into one week is
@@ -2176,9 +2272,12 @@ async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger
   const primary = rescheduable[0] ?? null;
   for (const extra of rescheduable.slice(1)) drops.push(extra);
 
+  const recordedCount = drops.length + longMisses.length;
   const reason = primary
     ? `${primary.type} on ${primary.planned_date} appears uncompleted.`
-    : `${drops.length + longMisses.length} planned session${drops.length + longMisses.length === 1 ? '' : 's'} passed uncompleted. Recorded, not rescheduled.`;
+    : recordedCount > 0
+      ? `${recordedCount} planned session${recordedCount === 1 ? '' : 's'} passed uncompleted. Recorded, not rescheduled.`
+      : `${skips.length} planned session${skips.length === 1 ? '' : 's'} skipped by choice. Respected, not rescheduled.`;
   return {
     kind: 'missed_key_workout',
     severity: 'warn',
@@ -2191,6 +2290,8 @@ async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger
       distance_mi: primary?.distance_mi ?? null,
       drops,
       long_misses: longMisses,
+      // 2026-08-28 · deliberately-skipped sessions · note-only, never rescheduled.
+      skips,
     },
   };
 }
@@ -2760,7 +2861,7 @@ async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
     }
   }
   const oldVdot = Number(r.old_vdot);
-  if (bestNewVdot - oldVdot <= 1.5) return null;
+  if (bestNewVdot - oldVdot <= RACE_EVIDENCE_REANCHOR_DELTA) return null;
 
   // 2026-08-17 · rule 8, applied to the upward branch for the first time.
   // Identical four steps to detectFitnessRegression: assess representativeness,
@@ -2789,7 +2890,7 @@ async function detectPrBank(userId: string): Promise<AdaptationTrigger | null> {
   if (scaledVdot == null) return null;
 
   const delta = scaledVdot - oldVdot;
-  if (delta <= 1.5) return null;
+  if (delta <= RACE_EVIDENCE_REANCHOR_DELTA) return null;
 
   return {
     kind: 'pr_bank',
@@ -2962,8 +3063,10 @@ async function detectFieldTestDue(userId: string): Promise<AdaptationTrigger | n
 /** Same magnitude as pr_bank's upward gate · Research/01:316-317 puts a
  *  single "tempo unexpectedly hard" signal at −1 to −2 VDOT, so 1.5 is
  *  one honest evidence step in either direction. Exported for the
- *  invariants suite. */
-export const REGRESSION_DELTA_THRESHOLD = 1.5;
+ *  invariants suite. 2026-08-28 · the VALUE lives in the shared anchor-policy
+ *  module beside the self-heal's threshold; this export is kept for its
+ *  consumers (doctrine registry included). */
+export const REGRESSION_DELTA_THRESHOLD = RACE_EVIDENCE_REANCHOR_DELTA;
 
 /** Pure firing predicate · fires when evidence VDOT sits more than the
  *  threshold BELOW the last-reviewed anchor. Exported for tests. */
@@ -3040,22 +3143,12 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!anchorRow) return null;
-  const st = (anchorRow.authored_state ?? {}) as Record<string, any>;
   // COLD-3 (2026-08-17) · READER 1 · a PROVISIONAL anchor is not fitness, so it
-  // cannot be regressed FROM. `pace_blend.season_anchor_vdot` may be
-  // conservativeVdotFromMileage's reading of a weekly-mileage self-report — for a
-  // 30 mi/wk cold-start signup, VDOT 40. Around day 8 this detector compared that
-  // invented 40 against the runner's first genuinely-measured effort and reported
-  // a fitness regression: "you have lost 6 points of fitness" to somebody who had
-  // simply never been measured before. Nothing was lost; nothing had been
-  // established. Skip the rung and fall through to `derived_from.bestRecentVdot`,
-  // which is null unless something was actually measured.
-  const anchorProvisional = paceBlendAnchorIsProvisional(st.pace_blend);
-  const oldVdot: number | null =
-    (anchorRow.reviewed != null ? Number(anchorRow.reviewed) : null)
-    ?? (st.pace_recompute?.vdot != null ? Number(st.pace_recompute.vdot) : null)
-    ?? (!anchorProvisional && st.pace_blend?.season_anchor_vdot != null ? Number(st.pace_blend.season_anchor_vdot) : null)
-    ?? (st.derived_from?.bestRecentVdot != null ? Number(st.derived_from.bestRecentVdot) : null);
+  // cannot be regressed FROM. The provisional-skipping cascade lives in the
+  // shared anchor authority (`anchorVdotFromState`, lib/training/pace-anchor.ts)
+  // since 2026-08-28, so this detector, detectTrainingLead and any future
+  // consumer read the SAME anchor.
+  const oldVdot = anchorVdotFromState(anchorRow.reviewed, anchorRow.authored_state);
   if (oldVdot == null || !Number.isFinite(oldVdot)) return null;
 
   const { vdotFromRace } = await import('../training/vdot');
@@ -3221,7 +3314,7 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
  * be tidy would sit 50% above the entire upward band, and be unreachable
  * anyway: the cap is 1.0.
  */
-export const TRAINING_LEAD_DELTA_THRESHOLD = 1.0;
+export const TRAINING_LEAD_DELTA_THRESHOLD = TRAINING_LEAD_REANCHOR_DELTA;
 
 /**
  * How much corroboration a training lead needs before it is acted on.
@@ -3422,13 +3515,9 @@ async function detectTrainingLead(userId: string): Promise<AdaptationTrigger | n
   );
   const anchorRow = anchorRows?.[0];
   if (!anchorRow) return null;
-  const st = (anchorRow.authored_state ?? {}) as Record<string, any>;
-  const anchorProvisional = paceBlendAnchorIsProvisional(st.pace_blend);
-  const oldVdot: number | null =
-    (anchorRow.reviewed != null ? Number(anchorRow.reviewed) : null)
-    ?? (st.pace_recompute?.vdot != null ? Number(st.pace_recompute.vdot) : null)
-    ?? (!anchorProvisional && st.pace_blend?.season_anchor_vdot != null ? Number(st.pace_blend.season_anchor_vdot) : null)
-    ?? (st.derived_from?.bestRecentVdot != null ? Number(st.derived_from.bestRecentVdot) : null);
+  // The SAME shared cascade detectFitnessRegression walks, COLD-3 provisional
+  // refusal included (anchorVdotFromState · lib/training/pace-anchor.ts).
+  const oldVdot = anchorVdotFromState(anchorRow.reviewed, anchorRow.authored_state);
   if (oldVdot == null || !Number.isFinite(oldVdot)) return null;
 
   // The canonical evidence-only read, through the SAME loader the projection
@@ -3773,9 +3862,15 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         workout_id: string | null; planned_date: string | null;
         type: string | null; distance_mi: number | null;
         drops?: MissedCandidate[]; long_misses?: MissedCandidate[];
+        skips?: MissedCandidate[];
       };
 
-      // Data-only records first · stale/dropped quality and missed longs
+      // 2026-08-28 · deliberate skips first · a decision, not a debt (owner
+      // ruling). Note intent only, never a reschedule; the intent is also the
+      // dedupe record. See partitionMissedCandidates.
+      out.push(...skipRespectedActions(ev.skips ?? []));
+
+      // Data-only records next · stale/dropped quality and missed longs
       // become coach_intents rows (data, not debt). The intent record is
       // also what stops the detector re-emitting them tomorrow.
       for (const d of ev.drops ?? []) {

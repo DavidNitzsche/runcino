@@ -78,6 +78,7 @@ vi.mock('@/lib/plan/open-block', () => ({
 
 vi.mock('@/lib/plan/proposals-state', () => ({
   supersedeProposalsForArchivedPlans: vi.fn().mockResolvedValue(0),
+  supersedeIntentsForArchivedPlans: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('@/lib/notifications/block-started', () => ({

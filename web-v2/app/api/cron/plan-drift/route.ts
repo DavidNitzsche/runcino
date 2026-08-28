@@ -123,6 +123,20 @@ export async function POST(req: NextRequest) {
       } catch (e) {
         console.error('[plan-drift] proposal expiry failed:', e);
       }
+      // 2026-08-28 · intent hygiene, same pass. plan_proposals pointing at
+      // archived plans get superseded at each archive site; coach_intents rows
+      // had NO symmetric supersede anywhere, so plan_adapt_* intents kept
+      // pointing at archived-plan workouts (dangling provenance, stale
+      // pending banners). This nightly per-user sweep marks them
+      // (superseded_at, migration 157) whichever writer did the archiving —
+      // generate, result-chain, injury-builder, seed, this cron. Best-effort:
+      // an audit stamp must never fail the drift pass.
+      try {
+        const { supersedeIntentsForArchivedPlans } = await import('@/lib/plan/proposals-state');
+        await supersedeIntentsForArchivedPlans(pool, u);
+      } catch (e) {
+        console.error('[plan-drift] intent supersede sweep failed:', e);
+      }
       // 2026-08-17 · race-lifecycle · auto-provisional race results FIRST.
       // Before any graduate/transition decision, log a provisional
       // watch-time result for any recent race the runner finished but

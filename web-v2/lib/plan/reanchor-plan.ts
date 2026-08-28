@@ -68,6 +68,12 @@ import { paceBlendAnchorIsProvisional } from './anchor-provenance';
 import { mutatePlan } from './mutate';
 import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 import { recordPaceZoneEvent, type PaceZoneEvidenceSource } from './pace-drop-event';
+import {
+  SELF_HEAL_REANCHOR_DELTA,
+  ADAPTER_ANCHOR_DEFER_HOURS,
+  adapterMovedAnchorWithin,
+  selfHealShouldDefer,
+} from '@/lib/training/pace-anchor';
 
 /**
  * What licensed the new VDOT, as far as the caller can say. Threaded through
@@ -84,8 +90,12 @@ export interface ReanchorEvidence {
 }
 
 /** Refresh only when fitness moved enough to matter — avoids churning paces on
- *  day-to-day VDOT jitter (the fade/candidate set wiggles ±~0.5). */
-export const REANCHOR_VDOT_DELTA = 2.0;
+ *  day-to-day VDOT jitter (the fade/candidate set wiggles ±~0.5).
+ *  2026-08-28 · the VALUE now lives in the shared anchor-policy module
+ *  (`lib/training/pace-anchor.ts`), beside the adapter's evidence-kind gates,
+ *  so the two writers' thresholds can no longer drift apart unseen. This
+ *  export is kept for its existing consumers. */
+export const REANCHOR_VDOT_DELTA = SELF_HEAL_REANCHOR_DELTA;
 
 /**
  * Should we re-anchor? Yes when a measured read exists AND either the plan is
@@ -180,17 +190,44 @@ export interface ReanchorResult {
 }
 
 /**
+ * 2026-08-28 · the same-morning skip, recorded rather than silent.
+ *
+ * The 03:00 adapter and this 07:30 self-heal both write
+ * `pace_target_s_per_mi`; when the adapter has already moved the anchor
+ * within `ADAPTER_ANCHOR_DEFER_HOURS`, the self-heal stands down UNLESS its
+ * own move is strictly more authoritative (a provisional→measured upgrade,
+ * which the adapter cannot perform). The skip is returned as an explicit
+ * no-op with a reason so the cron's audit trail says "deferred", never
+ * nothing — `null` still means "nothing warranted a refresh".
+ */
+export interface ReanchorDeferral {
+  planId: string;
+  skipped: true;
+  reason: 'deferred_to_adapter_recompute';
+  windowHours: number;
+}
+
+export type ReanchorOutcome = ReanchorResult | ReanchorDeferral | null;
+
+/** Discriminant helper for consumers of `ReanchorOutcome`. */
+export function isReanchorDeferral(o: ReanchorOutcome): o is ReanchorDeferral {
+  return o != null && (o as ReanchorDeferral).skipped === true;
+}
+
+/**
  * Re-anchor a user's ACTIVE plan to their measured fitness, whatever its mode.
  *
  * No-op (returns null) when there is no active plan, no measured VDOT, or no
- * refresh is warranted. Best-effort by design — the cron catches per-user.
+ * refresh is warranted. Returns a `ReanchorDeferral` when the adapter already
+ * moved this anchor this morning (see the type above). Best-effort by design
+ * — the cron catches per-user.
  */
 export async function reanchorActivePlan(
   userId: string,
   measuredVdot: number | null,
   today: string,
   evidence?: ReanchorEvidence | null,
-): Promise<ReanchorResult | null> {
+): Promise<ReanchorOutcome> {
   // GUARD 2 · a measured read, or nothing happens. A provisional anchor is
   // never upgraded off another provisional one.
   if (measuredVdot == null || !Number.isFinite(measuredVdot) || measuredVdot <= 0) return null;
@@ -208,6 +245,36 @@ export async function reanchorActivePlan(
 
   const st = (planRow.authored_state ?? {}) as Record<string, any>;
   const isRacePrep = planRow.mode === 'race-prep' || planRow.race_id != null;
+
+  // ── ONE ANCHOR AUTHORITY (2026-08-28) · defer to the 03:00 adapter ────────
+  //
+  // Is this run an UPGRADE (non-measured anchor → measured)? Race-prep reads
+  // the pace_blend vocabulary, maintenance the seeder's `anchorSource` — the
+  // same predicates the two arms' own gates use, evaluated here so the
+  // deferral question is answered before either arm runs.
+  const upgradesProvisionalAnchor = isRacePrep
+    ? (paceBlendAnchorIsProvisional(st.pace_blend)
+       || st.pace_blend?.season_anchor_vdot == null
+       || !Number.isFinite(Number(st.pace_blend?.season_anchor_vdot)))
+    : ((st.anchorSource as string | undefined) !== 'measured_run');
+  if (!upgradesProvisionalAnchor) {
+    const adapterMoveRecent = await adapterMovedAnchorWithin(pool, userId, ADAPTER_ANCHOR_DEFER_HOURS);
+    if (selfHealShouldDefer({ upgradesProvisionalAnchor, adapterMoveRecent })) {
+      // The adapter re-anchored this morning with evidence-kind context this
+      // self-heal does not have (or the record could not be read, which must
+      // mean the same thing). Recorded, not silent.
+      console.log(
+        `[reanchorPlan] deferred to adapter recompute within ${ADAPTER_ANCHOR_DEFER_HOURS}h · `
+        + `plan=${planRow.id} · user=${userId.slice(0, 8)}`,
+      );
+      return {
+        planId: planRow.id,
+        skipped: true,
+        reason: 'deferred_to_adapter_recompute',
+        windowHours: ADAPTER_ANCHOR_DEFER_HOURS,
+      };
+    }
+  }
 
   return isRacePrep
     ? reanchorRacePrep(userId, planRow.id, st, measuredVdot, today, evidence)

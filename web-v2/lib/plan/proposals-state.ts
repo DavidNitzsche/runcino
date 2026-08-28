@@ -56,7 +56,12 @@ export type PlanProposalKind =
   | 'race_graduate'        // goal race finished · graduated to the next one
   | 'recovery_complete'    // recovery block finished · rebuilt toward the race
   | 'plan_elapsed'         // plan ran out of prescribed days · rebuilt toward the goal
-  | 'maintenance_to_raceprep';  // race entered its build window
+  | 'maintenance_to_raceprep'   // race entered its build window
+  // 2026-08-28 · the operator code-upgrade rebuild now writes its audit row
+  // through fireAutoRebuild (it was the one plan writer POST /api/plan/undo
+  // could not pair, and returned not_undoable for). The row is what makes it
+  // undoable; the card it puts up for 24h is the price of that, accepted.
+  | 'silent_rebuild';
 
 export type PlanProposalStatus =
   | 'pending'
@@ -253,6 +258,53 @@ export async function supersedeProposalsForArchivedPlans(
   return result.rowCount ?? 0;
 }
 
+/**
+ * 2026-08-28 · THE SAME SUPERSEDE, FOR coach_intents.
+ *
+ * The function above closes the dangling-proposal shape; coach_intents had
+ * the identical shape with nothing closing it. An intent row's `field` holds
+ * a `plan_workouts.id`; when the plan is archived those rows keep pointing at
+ * workouts nothing renders, and the PENDING ones (`acknowledged_at IS NULL`)
+ * keep feeding the briefing voice changes made to a plan that no longer
+ * exists. `silent-rebuild` acked its own archived plan's intents by hand;
+ * every other archive path (drift rebuilds, result-chain, injury-builder,
+ * onboarding reseed, generate) left them dangling.
+ *
+ * Mark, don't delete: `superseded_at` (migration 157, additive) records that
+ * the workout this intent points at left the active plan, and
+ * `acknowledged_at` is back-filled so a stale banner stops surfacing — the
+ * same stamp the silent-rebuild ack has always used. Rows the detectors read
+ * by reason + ts as idempotency markers (gap markers, progression week
+ * markers) are untouched in every column those reads consult.
+ *
+ * Scoped like its sibling: ANY plan_adapt_* intent still pointing at an
+ * archived plan's workout, so a nightly sweep also heals rows orphaned before
+ * this existed. Callers treat it as best-effort (catch-guarded) — it names a
+ * column that lands with migration 157, and a plan archive must never fail on
+ * the audit stamp.
+ */
+export async function supersedeIntentsForArchivedPlans(
+  client: { query: typeof pool.query },
+  userUuid: string,
+): Promise<number> {
+  const result = await client.query(
+    `UPDATE coach_intents ci
+        SET superseded_at = NOW(),
+            acknowledged_at = COALESCE(ci.acknowledged_at, NOW())
+      WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
+        AND ci.superseded_at IS NULL
+        AND ci.reason LIKE 'plan_adapt_%'
+        AND ci.field IN (
+          SELECT pw.id FROM plan_workouts pw
+            JOIN training_plans tp ON tp.id = pw.plan_id
+           WHERE tp.user_uuid = $1::uuid
+             AND tp.archived_iso IS NOT NULL
+        )`,
+    [userUuid],
+  );
+  return result.rowCount ?? 0;
+}
+
 function isHardDriftKind(kind: PlanProposalKind): boolean {
   return kind === 'race_date_changed'
       || kind === 'goal_time_changed'
@@ -382,6 +434,8 @@ function synthesizeMessage(
         : 'Your block ran out of prescribed days · accept to build the next one.';
     case 'maintenance_to_raceprep':
       return 'Your race entered its build window · maintenance gave way to race-prep.';
+    case 'silent_rebuild':
+      return 'The plan engine was updated · your block was rebuilt around the same goal. Undo puts the old block back.';
   }
   // 2026-08-25 · A REAL DEFAULT, NOT AN IMPLICIT `undefined`.
   //

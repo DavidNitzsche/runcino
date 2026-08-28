@@ -8081,7 +8081,13 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           throw new Error(`detectPrBank no longer calls ${what} · the upward re-anchor is ungated again`);
         }
       }
-      if (!/const delta = scaledVdot - oldVdot;\s*\n\s*if \(delta <= 1\.5\) return null;/.test(body)) {
+      // 2026-08-28 · the threshold literal became the shared named constant
+      // (lib/training/pace-anchor.ts · RACE_EVIDENCE_REANCHOR_DELTA, one
+      // pace-anchor authority for the adapter and the 07:30 self-heal). The
+      // gate's property is unchanged: the predicate must re-test the SCALED
+      // value, at the race-evidence threshold — whose VALUE is asserted by
+      // REGRESSION_DELTA_THRESHOLD's own claims (it equals the same constant).
+      if (!/const delta = scaledVdot - oldVdot;\s*\n\s*if \(delta <= RACE_EVIDENCE_REANCHOR_DELTA\) return null;/.test(body)) {
         throw new Error(
           'detectPrBank no longer re-checks its firing threshold against the SCALED VDOT · ' +
             'scaling a value and then testing the raw one is a gate that cannot bite',
