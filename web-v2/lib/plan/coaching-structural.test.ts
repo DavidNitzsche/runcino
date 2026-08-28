@@ -49,7 +49,6 @@ import {
   type GapPlanRow,
 } from './adapt';
 import { heatAdjustQualitySample } from './drift-monitor';
-import { effortSlowdownPct } from '@/lib/training/heat-model';
 
 // ── Fixture · David's CIM block ─────────────────────────────────────────
 
@@ -421,7 +420,11 @@ describe('field-test detector gating (Research/01:684-686)', () => {
   });
 });
 
-// ── HEAT-DRIFT-1 · per-run heat normalization ───────────────────────────
+// ── HEAT-DRIFT-1 · REMOVED 2026-08-27 ────────────────────────────────────
+// heatAdjustQualitySample no longer normalizes for heat (see its doc
+// comment in drift-monitor.ts) — it's a pure passthrough kept only so
+// callers don't need restructuring. These tests cover that passthrough,
+// not the removed normalization.
 
 describe('quality-drift heat context filter (Research/06 §1-§2)', () => {
   const base = {
@@ -434,15 +437,10 @@ describe('quality-drift heat context filter (Research/06 §1-§2)', () => {
     durationS: 3600 as number | null,
   };
 
-  it('applies the doctrine slowdown for a hot continuous tempo', () => {
-    const s = { ...base, tempF: 80 };
-    const expectedPct = effortSlowdownPct({ tempF: 80, dewpointF: null, durationS: 3600, tier: 'mid_pack' });
-    const { adjustedSPerMi, slowdownPct } = heatAdjustQualitySample(s);
-    expect(slowdownPct).toBeCloseTo(Math.round(expectedPct * 10) / 10, 5);
-    expect(adjustedSPerMi).toBeCloseTo(450 / (1 + expectedPct / 100), 5);
-    // The August failure mode: a 78-80°F tempo landing ~5% slow reads as
-    // ~on-pace once heat-normalized, not as a fitness shortfall.
-    expect(adjustedSPerMi).toBeLessThan(450);
+  it('hot conditions → still unadjusted (heat normalization removed)', () => {
+    const { adjustedSPerMi, slowdownPct } = heatAdjustQualitySample({ ...base, tempF: 80 });
+    expect(adjustedSPerMi).toBe(450);
+    expect(slowdownPct).toBe(0);
   });
 
   it('no weather data → silently unadjusted', () => {
@@ -457,16 +455,16 @@ describe('quality-drift heat context filter (Research/06 §1-§2)', () => {
     expect(slowdownPct).toBe(0);
   });
 
-  it('intervals get half the continuous adjustment (Research/06 §2)', () => {
+  it('intervals get no adjustment either (heat normalization removed)', () => {
     const cont = heatAdjustQualitySample({ ...base, tempF: 85 });
     const ints = heatAdjustQualitySample({ ...base, tempF: 85, workoutType: 'intervals' });
-    expect(ints.slowdownPct).toBeCloseTo(Math.round((cont.slowdownPct / 2) * 10) / 10, 1);
-    expect(ints.adjustedSPerMi).toBeGreaterThan(cont.adjustedSPerMi);
+    expect(ints.slowdownPct).toBe(cont.slowdownPct);
+    expect(ints.adjustedSPerMi).toBe(cont.adjustedSPerMi);
   });
 
-  it('dewpoint surcharge stacks on top of temperature (Research/06 §12)', () => {
+  it('dewpoint no longer produces a surcharge (heat normalization removed)', () => {
     const dry = heatAdjustQualitySample({ ...base, tempF: 80 });
     const humid = heatAdjustQualitySample({ ...base, tempF: 80, dewpointF: 70 });
-    expect(humid.slowdownPct).toBeGreaterThan(dry.slowdownPct);
+    expect(humid.slowdownPct).toBe(dry.slowdownPct);
   });
 });
