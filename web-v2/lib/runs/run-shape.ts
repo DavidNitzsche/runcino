@@ -410,9 +410,21 @@ export interface RunData {
   watchCompletionRef?: string;
   client_workout_id?: string;
 
-  /* ── running dynamics · HealthKit era only ────────────────────────────── */
+  /* ── running dynamics ─────────────────────────────────────────────────── */
 
-  /** All four appear together on the same 98 rows, all nullable. */
+  /**
+   * All four appeared together on the same 98 rows, all nullable, written
+   * ONLY by the HealthKit-import path (HealthKitImporter.swift's post-
+   * workout statAvg reads, for outdoor runs with a synced HKWorkout).
+   *
+   * 2026-08-27 · second writer: the treadmill watch bridge
+   * (TreadmillHRStreamer.swift, via `/api/watch/workouts/complete`) reads
+   * the SAME four HealthKit quantity types live, off the same active
+   * `HKWorkoutSession` that already streams heart rate — the first source
+   * these fields have ever had for an INDOOR run, which never gets an
+   * HKWorkout to import running-dynamics from. Same fields, same units,
+   * two independent writers; a row can now carry either provenance.
+   */
   avgCadence?: number | null;
   avgGctMs?: number | null;
   avgVertOscCm?: number | null;

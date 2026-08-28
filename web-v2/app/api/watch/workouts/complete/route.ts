@@ -69,6 +69,20 @@ interface WatchCompletionPhaseBody {
   avgHr?: number | null;
   maxHr?: number | null;
   avgCadence?: number | null;
+  // 2026-08-27 · treadmill watch bridge, phase-scoped. Same watch
+  // HKWorkoutSession that already streams HR (TreadmillHRStreamer.swift)
+  // also samples these at the same fast cadence. Names match `RunData`
+  // (lib/runs/run-shape.ts) exactly — the same fields the HealthKit-import
+  // path (`/api/ingest/workout`) already writes for outdoor runs, so a
+  // treadmill-bridge value and an imported value land in the same slot.
+  // `kcal` is a SUM of active-energy samples across the phase; the other
+  // four are the phase mean. Absent, not zero, when no watch answered the
+  // bridge ask.
+  avgPowerW?: number | null;
+  avgGctMs?: number | null;
+  avgVertOscCm?: number | null;
+  avgStrideLengthM?: number | null;
+  kcal?: number | null;
   completed?: boolean;
   paceSamples?: WatchCompletionPhaseSample[] | null;
   hrSamples?: WatchCompletionPhaseSample[] | null;
@@ -103,6 +117,14 @@ interface WatchCompletionBody {
   maxHr?: number | null;
   avgCadence?: number | null;
   kcal?: number | null;
+  // 2026-08-27 · treadmill watch bridge, session-level — same fields as
+  // WatchCompletionPhaseBody above, whole-run rollup. See that interface's
+  // comment for the naming rationale (matches RunData / the HealthKit
+  // import path) and the sum-vs-mean split.
+  avgPowerW?: number | null;
+  avgGctMs?: number | null;
+  avgVertOscCm?: number | null;
+  avgStrideLengthM?: number | null;
   source?: string;            // 'watch' | 'treadmill' | 'phone' — backend whitelists
   indoor?: boolean;           // spliced in by treadmill path
   timezone?: string;          // spliced in by iPhone relay (WatchSync)
@@ -624,12 +646,27 @@ export async function POST(req: NextRequest) {
     avgHrKind: wholeRunHr != null ? 'whole_run' : (body.avgHr != null ? 'work_weighted' : null),
     maxHr: body.maxHr ?? null,
     avgCadence: body.avgCadence ?? null,
-    // Active calories from HKLiveWorkoutBuilder (2026-06-01) ·
-    // resolveCalories() tier 1 reads this and skips the estimator
-    // fallback when it's present. Optional · the watch may omit it
-    // on very short runs or sensor glitches, and the field is also
-    // omitted by older watch builds. Doctrine:
-    // designs/briefs/iphone-calories-and-absorption-brief.md.
+    // 2026-08-27 · treadmill watch bridge (TreadmillHRStreamer.swift). Same
+    // active HKWorkoutSession that streams HR also samples running power /
+    // ground contact time / vertical oscillation / stride length at the
+    // same fast cadence — names match the HealthKit-IMPORT path's
+    // (`/api/ingest/workout`) RunData fields exactly, so a treadmill-bridge
+    // value and an imported outdoor-run value share the same slot. Null
+    // (key stripped by the upsert's jsonb_strip_nulls, per Rule 6) rather
+    // than a made-up figure when no watch answered the bridge ask.
+    avgPowerW: body.avgPowerW ?? null,
+    avgGctMs: body.avgGctMs ?? null,
+    avgVertOscCm: body.avgVertOscCm ?? null,
+    avgStrideLengthM: body.avgStrideLengthM ?? null,
+    // Active calories. Two live sources land here: HKLiveWorkoutBuilder
+    // (2026-06-01, outdoor watch-paired runs) and, as of 2026-08-27, the
+    // treadmill watch bridge's SUMMED active-energy samples — the first
+    // measured calorie figure a treadmill run has ever had (previously
+    // always null, since TreadmillHRSession collected nothing but HR).
+    // resolveCalories() tier 1 reads this and skips the estimator fallback
+    // when it's present, for either source. Optional · omitted on very
+    // short runs, sensor glitches, older watch builds, or no watch at all.
+    // Doctrine: designs/briefs/iphone-calories-and-absorption-brief.md.
     kcal: body.kcal ?? null,
     // 2026-06-09 Phase 2 (3.2) · contingency-rule outcomes, verbatim.
     // "Took the bail" is a recorded DECISION the recap reasons about
