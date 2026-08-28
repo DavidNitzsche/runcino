@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { logReadFailure, rowOrNull, rowsOrNull } from '@/lib/db/read';
 import { detectDrift, hasPendingProposal } from '@/lib/plan/drift-monitor';
+import { roundTo } from '@/lib/format/run';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
 import {
   SOFT_DRIFT_PROPOSAL_KINDS,
@@ -1030,7 +1031,7 @@ export async function POST(req: NextRequest) {
                   race_date: String(m.date ?? ''),
                   race_distance_mi: dMi,
                   gain_ft: resolved.elevationGainFt,
-                  gain_ft_per_mi: Math.round(graded.gainFtPerMi * 10) / 10,
+                  gain_ft_per_mi: roundTo(graded.gainFtPerMi, 1),
                   gain_provenance: resolved.provenance,
                   gain_confidence: resolved.confidence,
                   days_to_race: m.date ? framingDayDiff(userToday, String(m.date)) : null,

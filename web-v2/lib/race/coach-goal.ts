@@ -101,6 +101,7 @@ import {
   marathonSpecificityAdjustment,
 } from '@/lib/training/goal-projection';
 import { roundTargetSec } from './effective-race-target';
+import { roundTo } from '@/lib/format/run';
 import { selectionAuthority, REPRESENTATIVE_FLOOR } from './effort-authority';
 import type { AuthorityTier } from './effort-authority';
 
@@ -671,7 +672,7 @@ export function deriveCoachGoal(input: CoachGoalInput): CoachGoalFraming | null 
     personalExponent,
     vdotBasis: method === 'daniels-vdot' ? (input.vdot ?? null) : null,
     hillAdjustedSec: hill ? hill.costSec : null,
-    hillGainFtPerMi: hill ? Math.round(hill.gainFtPerMi * 10) / 10 : null,
+    hillGainFtPerMi: hill ? roundTo(hill.gainFtPerMi, 1) : null,
     effortLine: hill ? HILL_EFFORT_LINE : null,
     line: hill
       ? 'Coach set from your current fitness, graded for the climb. Yours to edit.'
