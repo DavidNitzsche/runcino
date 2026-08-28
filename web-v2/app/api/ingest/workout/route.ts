@@ -573,9 +573,9 @@ export async function POST(req: NextRequest) {
             WHERE COALESCE(user_uuid, user_id) = $1
               AND reason = 'watch_completion'
               AND acknowledged_at IS NULL
-              AND ts::date = $2::date
+              AND (ts AT TIME ZONE $3::text)::date = $2::date
               AND (value::jsonb->>'status') IN ('abandoned', 'aborted')`,
-          [userId, body.date]
+          [userId, body.date, wallTz]
         );
       }
     } catch (e: any) {

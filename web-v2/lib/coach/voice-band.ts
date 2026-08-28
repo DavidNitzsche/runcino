@@ -39,7 +39,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { rowOrNull } from '@/lib/db/read';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import type { CoachState } from '@/lib/topics/types';
 import { distanceMiFromLabel } from '@/lib/race/distance';
@@ -487,6 +487,7 @@ async function countSubjectiveObjectiveMismatchDays(
 ): Promise<number | null> {
   // 2026-06-03 · runner TZ anchors the readiness-snapshot lookback.
   const today = await runnerToday(userUuid);
+  const mismatchTz = await runnerTimezone(userUuid).catch(() => 'UTC');
   // 2026-08-24 · swallowed-failure sweep · the `objective` CTE read
   // `readiness_snapshots.sample_date` and `.value`. That table has neither — the
   // columns are `snapshot_date` and `score`, and there is no `user_id` on it at
@@ -498,7 +499,7 @@ async function countSubjectiveObjectiveMismatchDays(
     'coach/voice-band · subjective-objective mismatch',
     pool.query<{ mismatch_days: string }>(
       `WITH days AS (
-       SELECT ts::date AS d, rating
+       SELECT (ts AT TIME ZONE $4::text)::date AS d, rating
          FROM check_ins
         WHERE COALESCE(user_uuid, user_id) = $1::uuid
           AND ts >= NOW() - ($2::text || ' days')::interval
@@ -523,7 +524,7 @@ async function countSubjectiveObjectiveMismatchDays(
        FROM scored s JOIN objective o ON o.d = s.d
       WHERE s.subjective_score IS NOT NULL
         AND ABS(s.subjective_score - o.objective_score) >= 15`,
-      [userUuid, lookbackDays, today],
+      [userUuid, lookbackDays, today, mismatchTz],
     ),
   );
   // A failed read is not zero mismatched days. Return null and let the caller

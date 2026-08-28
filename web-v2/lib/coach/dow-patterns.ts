@@ -10,7 +10,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 
 export interface DowPatterns {
   sleep: Array<{ dow: number; label: string; avg: number | null }>;
@@ -21,16 +21,26 @@ export interface DowPatterns {
 
 const DOW_LABELS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
 
-async function loadDowSeries(userUuid: string, sampleType: string, dateCol: 'sample_date' | 'recorded_at::date', today: string): Promise<DowPatterns['sleep']> {
+/**
+ * `column` names which health_samples column carries the day. `sample_date`
+ * is already a plain calendar date (no conversion needed); `recorded_at` is
+ * `timestamp with time zone` and MUST be read in the runner's own zone
+ * before bucketing by day-of-week — a bare `recorded_at::date` reads the
+ * UTC calendar day, which silently reassigns any evening-Pacific reading to
+ * the wrong day-of-week bucket (the same shift as the coach_intents
+ * `ts::date` bug this file's siblings were fixed for on 2026-08-27).
+ */
+async function loadDowSeries(userUuid: string, sampleType: string, column: 'sample_date' | 'recorded_at', today: string, tz: string): Promise<DowPatterns['sleep']> {
+  const dateExpr = column === 'recorded_at' ? `(recorded_at AT TIME ZONE $4::text)::date` : 'sample_date';
   const rows = await pool.query<{ dow: number | string; avg: number | string }>(
-    `SELECT EXTRACT(dow FROM ${dateCol})::int AS dow, AVG(value::numeric) AS avg
+    `SELECT EXTRACT(dow FROM ${dateExpr})::int AS dow, AVG(value::numeric) AS avg
        FROM health_samples
       WHERE COALESCE(user_uuid, user_id) = $1
         AND sample_type = $2
-        AND ${dateCol} >= $3::date - interval '60 days'
-      GROUP BY EXTRACT(dow FROM ${dateCol})
+        AND ${dateExpr} >= $3::date - interval '60 days'
+      GROUP BY EXTRACT(dow FROM ${dateExpr})
       ORDER BY dow ASC`,
-    [userUuid, sampleType, today],
+    [userUuid, sampleType, today, tz],
   ).then((r) => r.rows).catch(() => []);
 
   const byDow = new Map<number, number>();
@@ -81,10 +91,11 @@ function computeInsight(series: DowPatterns['sleep'], metric: string, isLowerBet
 export async function computeDowPatterns(userUuid: string): Promise<DowPatterns | null> {
   // 2026-06-03 · runner TZ anchors the 60-day window.
   const today = await runnerToday(userUuid);
+  const dowTz = await runnerTimezone(userUuid).catch(() => 'UTC');
   const [sleep, hrv, rhr] = await Promise.all([
-    loadDowSeries(userUuid, 'sleep_hours', 'sample_date', today),
-    loadDowSeries(userUuid, 'hrv', 'recorded_at::date', today),
-    loadDowSeries(userUuid, 'resting_hr', 'recorded_at::date', today),
+    loadDowSeries(userUuid, 'sleep_hours', 'sample_date', today, dowTz),
+    loadDowSeries(userUuid, 'hrv', 'recorded_at', today, dowTz),
+    loadDowSeries(userUuid, 'resting_hr', 'recorded_at', today, dowTz),
   ]);
 
   // Need at least one pillar with day-of-week coverage.

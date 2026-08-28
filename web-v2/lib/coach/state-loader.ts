@@ -12,7 +12,7 @@ import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { computeAcwr } from './acwr';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { loadBiologicalSex } from '@/lib/coach/biological-sex';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { runCadenceSpm } from '@/lib/runs/coherence';
 import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 // WEEK-READ-1 · the runner's own seven days, from the one helper that answers it.
@@ -24,6 +24,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   // hack (Date.now() - 7 * 3600000). Now uses profile.timezone which
   // handles DST + non-Pacific runners + travel automatically.
   const today = await runnerToday(userId);
+  const stateTz = await runnerTimezone(userId).catch(() => 'UTC');
 
   // PROFILE — includes LTHR + observed maxHR + experience for HR-zone reasoning
   const profResult = await pool.query(
@@ -274,14 +275,14 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
 
   const loadStableBaseline = async (sampleType: string, currentWindow = 1): Promise<{ current: number | null; baseline: number | null }> => {
     const rows = (await pool.query<{ d: string; v: number | string }>(
-      `SELECT recorded_at::date::text AS d, AVG(value)::numeric AS v
+      `SELECT (recorded_at AT TIME ZONE $3::text)::date::text AS d, AVG(value)::numeric AS v
          FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1
           AND sample_type = $2
           AND recorded_at >= NOW() - interval '60 days'
-        GROUP BY recorded_at::date
+        GROUP BY (recorded_at AT TIME ZONE $3::text)::date
         ORDER BY d ASC`,
-      [userId, sampleType]
+      [userId, sampleType, stateTz]
     ).catch(() => ({ rows: [] as Array<{ d: string; v: number | string }> }))).rows;
     const vals = rows.slice(-30).map((r) => Math.round(Number(r.v))).filter((v) => v > 0);
     if (vals.length === 0) return { current: null, baseline: null };

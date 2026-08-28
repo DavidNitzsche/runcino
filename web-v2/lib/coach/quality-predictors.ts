@@ -21,7 +21,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 
 export interface QualityPredictors {
   topPredictor: {
@@ -72,6 +72,7 @@ function liftScore(rows: JoinedRow[], threshold: number, higherIsBetter: boolean
 export async function computeQualityPredictors(userUuid: string): Promise<QualityPredictors | null> {
   // 2026-06-03 · runner TZ anchors the 60d window.
   const today = await runnerToday(userUuid);
+  const predictorTz = await runnerTimezone(userUuid).catch(() => 'UTC');
   // Pull joined dataset · runs + prior night's recovery metrics.
   // 2026-06-01 · pace lives at `avgPaceMinPerMi` as mm:ss text · parse
   // to seconds in JS · SQL converts it via a CASE on whether colons
@@ -98,11 +99,11 @@ export async function computeQualityPredictors(userUuid: string): Promise<Qualit
             (SELECT value::numeric FROM health_samples h
               WHERE COALESCE(h.user_uuid, h.user_id) = $1
                 AND h.sample_type = 'hrv'
-                AND h.recorded_at::date = (r.data->>'date')::date) AS hrv,
+                AND (h.recorded_at AT TIME ZONE $3::text)::date = (r.data->>'date')::date) AS hrv,
             (SELECT value::numeric FROM health_samples h
               WHERE COALESCE(h.user_uuid, h.user_id) = $1
                 AND h.sample_type = 'resting_hr'
-                AND h.recorded_at::date = (r.data->>'date')::date) AS rhr,
+                AND (h.recorded_at AT TIME ZONE $3::text)::date = (r.data->>'date')::date) AS rhr,
             (SELECT value::numeric FROM health_samples h
               WHERE COALESCE(h.user_uuid, h.user_id) = $1
                 AND h.sample_type = 'sleep_deep_minutes'
@@ -117,7 +118,7 @@ export async function computeQualityPredictors(userUuid: string): Promise<Qualit
         AND r.data->>'avgPaceMinPerMi' IS NOT NULL
         AND (r.data->>'date')::date >= $2::date - interval '60 days'
         AND COALESCE(r.data->>'type', '') NOT IN ('race', 'shakeout', 'recovery')`,
-    [userUuid, today],
+    [userUuid, today, predictorTz],
   ).then((q) => q.rows).catch(() => []);
 
   if (rows.length < 12) return null;

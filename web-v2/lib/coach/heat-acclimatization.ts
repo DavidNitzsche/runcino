@@ -47,7 +47,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import {
   isHeatDoseDay,
@@ -179,6 +179,7 @@ export function expectedHeatPenaltyBpm(dayN: number): number {
 export async function computeHeatAcclimatization(userUuid: string): Promise<HeatAcclimatization | null> {
   // 2026-06-03 · runner TZ anchors the 14d window.
   const today = await runnerToday(userUuid);
+  const heatTz = await runnerTimezone(userUuid).catch(() => 'UTC');
   // Pull last 14d of runs with weather + RHR.
   // Phase B · one canonical dedup. An unflagged watch+HK dupe of one run would
   // otherwise weight its weather temp 2× in the avg + heat-day count.
@@ -238,14 +239,14 @@ export async function computeHeatAcclimatization(userUuid: string): Promise<Heat
   // Resting HR trend across the window. Kept because it is a real load
   // signal, but explicitly NOT the acclimation signature.
   const rhrRows = await pool.query<{ d: string; v: number | string }>(
-    `SELECT recorded_at::date::text AS d, AVG(value::numeric)::numeric AS v
+    `SELECT (recorded_at AT TIME ZONE $2::text)::date::text AS d, AVG(value::numeric)::numeric AS v
        FROM health_samples
       WHERE COALESCE(user_uuid, user_id) = $1
         AND sample_type = 'resting_hr'
         AND recorded_at >= NOW() - interval '14 days'
-      GROUP BY recorded_at::date
-      ORDER BY recorded_at::date ASC`,
-    [userUuid],
+      GROUP BY (recorded_at AT TIME ZONE $2::text)::date
+      ORDER BY (recorded_at AT TIME ZONE $2::text)::date ASC`,
+    [userUuid, heatTz],
   ).then((r) => r.rows).catch(() => []);
   const rhrSeries = rhrRows.map((r) => Number(r.v)).filter((v) => Number.isFinite(v));
 

@@ -58,7 +58,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { computeAcwr } from './acwr';
 
 export type StrengthHabit = 'on_track' | 'building' | 'lapsed' | 'dormant' | 'unknown';
@@ -1040,6 +1040,7 @@ export async function emitStrengthSkipIntent(
 
   // 2026-06-03 · runner TZ for idempotency-per-day · was using server UTC.
   const today = await runnerToday(userUuid);
+  const skipTz = await runnerTimezone(userUuid).catch(() => 'UTC');
   // Atomic INSERT...SELECT...WHERE NOT EXISTS — idempotent per (user, kind, day).
   await pool.query(
     `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)
@@ -1049,9 +1050,9 @@ export async function emitStrengthSkipIntent(
        WHERE (user_uuid = $1::uuid OR user_id = $1::uuid)
          AND reason = 'strength_skip'
          AND field = $2
-         AND ts::date = $4::date
+         AND (ts AT TIME ZONE $5::text)::date = $4::date
      )`,
-    [userUuid, kind, gate.note, today],
+    [userUuid, kind, gate.note, today, skipTz],
   ).catch((e) => { console.warn('[strength-recommender] emitStrengthSkipIntent failed:', e?.message ?? e); });
 }
 

@@ -19,6 +19,7 @@ import { pool } from '@/lib/db/pool';
 import { resolveCourseElevation, elevationIsTrustedForAdjustment } from './course-elevation';
 import { TAPER_RACE_WEEK_PCT_OF_PEAK, distanceCategoryOf } from '@/lib/plan/goal-tiers';
 import { isProvisionalResult } from '@/lib/coach/races-state';
+import { runnerTimezone } from '@/lib/runtime/runner-tz';
 import {
   assessRepresentativeness,
   type RaceSplit,
@@ -91,6 +92,7 @@ export async function assessRaceRepresentativeness(args: {
   direction?: RepresentativenessDirection;
 }): Promise<RepresentativenessRead | null> {
   const { userId, raceSlug, raceDateISO, distanceMi, finishS, anchorVdot, raceVdot } = args;
+  const repTz = await runnerTimezone(userId).catch(() => 'UTC');
 
   // ── 1 · The race row · priority, curated splits, GPX course geometry ────
   const raceRow = (await pool.query<{
@@ -218,19 +220,19 @@ export async function assessRaceRepresentativeness(args: {
   const sick = (await pool.query(
     `SELECT 1 FROM sick_episodes
       WHERE COALESCE(user_uuid, user_id) = $1::uuid
-        AND logged_at::date <= $2::date
-        AND (cleared_at IS NULL OR cleared_at::date >= $2::date)
+        AND (logged_at AT TIME ZONE $3::text)::date <= $2::date
+        AND (cleared_at IS NULL OR (cleared_at AT TIME ZONE $3::text)::date >= $2::date)
       LIMIT 1`,
-    [userId, raceDateISO],
+    [userId, raceDateISO, repTz],
   ).catch(() => ({ rows: [] as unknown[] }))).rows.length > 0;
 
   const niggle = (await pool.query<{ severity: string | null }>(
     `SELECT severity::text FROM niggles
       WHERE COALESCE(user_uuid, user_id) = $1::uuid
-        AND logged_at::date <= $2::date
-        AND (cleared_at IS NULL OR cleared_at::date >= $2::date)
+        AND (logged_at AT TIME ZONE $3::text)::date <= $2::date
+        AND (cleared_at IS NULL OR (cleared_at AT TIME ZONE $3::text)::date >= $2::date)
       ORDER BY severity DESC LIMIT 1`,
-    [userId, raceDateISO],
+    [userId, raceDateISO, repTz],
   ).catch(() => ({ rows: [] }))).rows[0];
 
   const input: RepresentativenessInput = {

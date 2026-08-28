@@ -399,6 +399,10 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'A GATE. Same shape as sql-scan.ts: consulted by _swallow_scan.test.ts and check-swallowed-failure.sh, never at runtime. It finds the places where a database failure becomes a plausible answer — the `.catch(() => empty)` that hid four broken date_iso comparisons for months.',
   'web-v2/lib/audit/swallowed-failure-registry.ts':
     'A GATE. The argued exemption list swallow-scan.ts is checked against, plus the empty-result ratchet. Test-only is its correct state.',
+  'web-v2/lib/audit/timezone-date-scan.ts':
+    'A GATE. Same shape as swallow-scan.ts: consulted by _timezone_date_scan.test.ts, never at runtime. It finds a `timestamp with time zone` column (ts, recorded_at, logged_at, cleared_at, created_at, fetched_at) cast bare to `::date` and compared against a runner\'s local calendar day — the shape that blanked the "On the belt" treadmill card on 2026-08-27 by silently mismatching a UTC-stamped coach_intents row against the runner\'s Pacific "today". Zero-tolerance, unlike the swallow-scan ratchet — the 2026-08-27 sweep fixed every known site the same day.',
+  'web-v2/lib/audit/timezone-date-exemptions.ts':
+    'A GATE. The argued exemption list timezone-date-scan.ts is checked against. Test-only is its correct state, and it is expected to stay empty — see the module doc for why this bug class gets no ratchet.',
   'web-v2/lib/plan/synthetic-runners.ts':
     'Test fixtures for the plan-engine bench. Test-only is correct.',
   'web-v2/lib/conservation/laws.ts':

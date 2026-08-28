@@ -37,6 +37,10 @@ import path from 'node:path';
 vi.mock('@/lib/db/pool', () => ({ pool: { query: vi.fn() } }));
 vi.mock('@/lib/runtime/runner-tz', () => ({
   runnerToday: vi.fn().mockResolvedValue('2026-08-21'),
+  // 2026-08-27 · countSubjectiveObjectiveMismatchDays now resolves the
+  // runner's own zone before bucketing check_ins.ts by calendar day (was a
+  // bare `ts::date`, same UTC-shift bug as the coach_intents incident).
+  runnerTimezone: vi.fn().mockResolvedValue('America/Los_Angeles'),
 }));
 vi.mock('@/lib/runs/volume', () => ({
   getCanonicalRunIds: vi.fn().mockResolvedValue([1, 2, 3]),

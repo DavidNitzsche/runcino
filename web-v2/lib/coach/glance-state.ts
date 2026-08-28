@@ -493,15 +493,19 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     return s.length % 2 === 1 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
   };
   const loadStableBaseline = async (sampleType: string, currentWindow = 1): Promise<{ current: number | null; baseline: number | null }> => {
+    // 2026-08-27 · same UTC-shift bug as the watch-completion date match
+    // above — a sample recorded late evening bucketed into tomorrow's
+    // (UTC) day, skewing which entries land in the last-30/baseline split.
+    const glanceTz = await runnerTimezone(userId).catch(() => 'UTC');
     const rows = (await pool.query<{ d: string; v: number | string }>(
-      `SELECT recorded_at::date::text AS d, AVG(value)::numeric AS v
+      `SELECT (recorded_at AT TIME ZONE $3::text)::date::text AS d, AVG(value)::numeric AS v
          FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1
           AND sample_type = $2
           AND recorded_at >= NOW() - interval '60 days'
-        GROUP BY recorded_at::date
+        GROUP BY (recorded_at AT TIME ZONE $3::text)::date
         ORDER BY d ASC`,
-      [userId, sampleType]
+      [userId, sampleType, glanceTz]
     ).catch(() => ({ rows: [] as Array<{ d: string; v: number | string }> }))).rows;
     const vals = rows.slice(-30).map((r) => Math.round(Number(r.v))).filter((v) => v > 0);
     if (vals.length === 0) return { current: null, baseline: null };

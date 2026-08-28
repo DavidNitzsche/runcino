@@ -29,7 +29,7 @@
 import { pool } from '@/lib/db/pool';
 import { logReadFailure } from '@/lib/db/read';
 import { pgDayKey } from '@/lib/runtime/day-key';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { computeReadiness, computeDynamicSleepTarget, weeklyMpwFor, lutealAdjustedHrvBaseline, READINESS_WEIGHTS, type ReadinessBreakdown, type ReadinessInput } from './readiness';
 import { loadReadinessHistory, loadReadinessBandBaseline, type PillarPoint, type ReadinessHistory } from './readiness-history';
 import type { CoachState } from '@/lib/topics/types';
@@ -861,6 +861,7 @@ async function computeYesterdayPillars(
   try {
     const yesterdayISO = new Date(Date.parse(todayISO + 'T00:00:00Z') - 86400000)
       .toISOString().slice(0, 10);
+    const yesterdayTz = await runnerTimezone(userId).catch(() => 'UTC');
 
     // Query each signal as of yesterday. Each query returns the
     // most-recent reading on or before yesterdayISO · matches what the
@@ -870,17 +871,17 @@ async function computeYesterdayPillars(
         `SELECT value::text AS v FROM health_samples
           WHERE COALESCE(user_uuid, user_id) = $1
             AND sample_type = 'hrv'
-            AND recorded_at::date <= $2::date
+            AND (recorded_at AT TIME ZONE $3::text)::date <= $2::date
           ORDER BY recorded_at DESC LIMIT 1`,
-        [userId, yesterdayISO],
+        [userId, yesterdayISO, yesterdayTz],
       ).catch(() => ({ rows: [] as { v: string }[] })),
       pool.query<{ v: string }>(
         `SELECT value::text AS v FROM health_samples
           WHERE COALESCE(user_uuid, user_id) = $1
             AND sample_type = 'resting_hr'
-            AND recorded_at::date <= $2::date
+            AND (recorded_at AT TIME ZONE $3::text)::date <= $2::date
           ORDER BY recorded_at DESC LIMIT 1`,
-        [userId, yesterdayISO],
+        [userId, yesterdayISO, yesterdayTz],
       ).catch(() => ({ rows: [] as { v: string }[] })),
       // 7-night avg ending yesterday · matches the sleep pillar's
       // observedV framing of "X.Xh · 7-night avg"
@@ -899,9 +900,9 @@ async function computeYesterdayPillars(
         `SELECT value::text AS v FROM health_samples
           WHERE COALESCE(user_uuid, user_id) = $1
             AND sample_type = 'hr_recovery'
-            AND recorded_at::date <= $2::date
+            AND (recorded_at AT TIME ZONE $3::text)::date <= $2::date
           ORDER BY recorded_at DESC LIMIT 1`,
-        [userId, yesterdayISO],
+        [userId, yesterdayISO, yesterdayTz],
       ).catch(() => ({ rows: [] as { v: string }[] })),
     ]);
 

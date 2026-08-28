@@ -6,7 +6,7 @@
 import { pool } from '@/lib/db/pool';
 import { rowsOrNull } from '@/lib/db/read';
 import { pgDayKey } from '@/lib/runtime/day-key';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { runCadenceSpmSql } from '@/lib/runs/run-shape';
@@ -190,6 +190,7 @@ export interface HealthState {
 
 export async function loadHealthState(userId: string): Promise<HealthState> {
   const today = await runnerToday(userId);
+  const healthTz = await runnerTimezone(userId).catch(() => 'UTC');
 
   // 2026-05-27: was 6 sequential awaits = 6× round-trip latency. Now all
   // six health_samples queries fire in parallel via Promise.all — they
@@ -232,20 +233,20 @@ export async function loadHealthState(userId: string): Promise<HealthState> {
       [userId, today]
     ).then((r) => r.rows),
     pool.query(
-      `SELECT recorded_at::date AS d, AVG(value)::numeric AS v FROM health_samples
+      `SELECT (recorded_at AT TIME ZONE $2::text)::date AS d, AVG(value)::numeric AS v FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
           AND recorded_at >= NOW() - interval '60 days'
-        GROUP BY recorded_at::date
+        GROUP BY (recorded_at AT TIME ZONE $2::text)::date
         ORDER BY d ASC`,
-      [userId]
+      [userId, healthTz]
     ).then((r) => r.rows),
     pool.query(
-      `SELECT recorded_at::date AS d, AVG(value)::numeric AS v FROM health_samples
+      `SELECT (recorded_at AT TIME ZONE $2::text)::date AS d, AVG(value)::numeric AS v FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hrv'
           AND recorded_at >= NOW() - interval '60 days'
-        GROUP BY recorded_at::date
+        GROUP BY (recorded_at AT TIME ZONE $2::text)::date
         ORDER BY d ASC`,
-      [userId]
+      [userId, healthTz]
     ).then((r) => r.rows),
     pool.query(
       `SELECT sample_date, value FROM health_samples

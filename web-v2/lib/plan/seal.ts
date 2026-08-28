@@ -46,6 +46,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { rowOrNull } from '@/lib/db/read';
+import { runnerTimezone } from '@/lib/runtime/runner-tz';
 import type { PoolClient } from 'pg';
 
 /**
@@ -70,6 +71,7 @@ export async function isDaySealed(userUuid: string, dateIso: string): Promise<bo
   // Both sides are pinned explicitly now: uuid where the column is uuid, text
   // where the comparison is text. A bare `$1` shared across two differently
   // typed columns is the shape to watch for.
+  const sealTz = await runnerTimezone(userUuid).catch(() => 'UTC');
   const r = await rowOrNull<{ n: string }>(
     'plan/seal · isDaySealed',
     pool.query<{ n: string }>(
@@ -81,9 +83,9 @@ export async function isDaySealed(userUuid: string, dateIso: string): Promise<bo
        + (SELECT COUNT(*) FROM coach_intents
          WHERE COALESCE(user_uuid::text, user_id::text) = $1::text
            AND reason = 'watch_completion'
-           AND ts::date = $2::date)
+           AND (ts AT TIME ZONE $3::text)::date = $2::date)
      )::text AS n`,
-      [userUuid, dateIso],
+      [userUuid, dateIso, sealTz],
     ),
   );
   // A read that FAILED is not a day we know to be mutable. This guard exists to

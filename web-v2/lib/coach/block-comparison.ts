@@ -12,7 +12,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 
 export interface BlockComparison {
   currentBlock: {
@@ -37,7 +37,7 @@ export interface BlockComparison {
   message: string;
 }
 
-async function loadWindowAverages(userUuid: string, startDate: string, endDate: string): Promise<{
+async function loadWindowAverages(userUuid: string, startDate: string, endDate: string, tz: string): Promise<{
   sleep: number | null; hrv: number | null; rhr: number | null;
 }> {
   const [sleep, hrv, rhr] = await Promise.all([
@@ -50,14 +50,14 @@ async function loadWindowAverages(userUuid: string, startDate: string, endDate: 
     pool.query<{ avg: number | string | null }>(
       `SELECT AVG(value::numeric) AS avg FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hrv'
-          AND recorded_at::date >= $2::date AND recorded_at::date <= $3::date`,
-      [userUuid, startDate, endDate],
+          AND (recorded_at AT TIME ZONE $4::text)::date >= $2::date AND (recorded_at AT TIME ZONE $4::text)::date <= $3::date`,
+      [userUuid, startDate, endDate, tz],
     ).then((r) => r.rows[0]?.avg ?? null).catch(() => null),
     pool.query<{ avg: number | string | null }>(
       `SELECT AVG(value::numeric) AS avg FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
-          AND recorded_at::date >= $2::date AND recorded_at::date <= $3::date`,
-      [userUuid, startDate, endDate],
+          AND (recorded_at AT TIME ZONE $4::text)::date >= $2::date AND (recorded_at AT TIME ZONE $4::text)::date <= $3::date`,
+      [userUuid, startDate, endDate, tz],
     ).then((r) => r.rows[0]?.avg ?? null).catch(() => null),
   ]);
   return {
@@ -70,11 +70,12 @@ async function loadWindowAverages(userUuid: string, startDate: string, endDate: 
 export async function computeBlockComparison(userUuid: string): Promise<BlockComparison | null> {
   // 2026-06-03 · runner TZ for "today" + race-recency cutoff.
   const today = await runnerToday(userUuid);
+  const blockTz = await runnerTimezone(userUuid).catch(() => 'UTC');
 
   // Current block: last 28 days · runner-TZ anchored.
   const todayMs = Date.parse(today + 'T12:00:00Z');
   const currentStartStr = new Date(todayMs - 28 * 86400000).toISOString().slice(0, 10);
-  const current = await loadWindowAverages(userUuid, currentStartStr, today);
+  const current = await loadWindowAverages(userUuid, currentStartStr, today, blockTz);
 
   // Reference: most-recent A-race finish · or peak-VDOT window.
   const raceRow = (await pool.query<{ date: string; name: string | null }>(
@@ -115,7 +116,7 @@ export async function computeBlockComparison(userUuid: string): Promise<BlockCom
     refLabel = '~60-90 days ago';
   }
 
-  const reference = await loadWindowAverages(userUuid, refStartStr, refEndStr);
+  const reference = await loadWindowAverages(userUuid, refStartStr, refEndStr, blockTz);
 
   // Skip if both windows have no data.
   if (current.sleep == null && current.hrv == null && current.rhr == null) return null;

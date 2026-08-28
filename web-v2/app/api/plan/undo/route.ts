@@ -128,7 +128,7 @@ import { snapshotPrescription } from '@/lib/plan/mutate';
 import {
   dayFingerprint, prescriptionFingerprint, fingerprintDigest, type PrescribedDay,
 } from '@/lib/plan/plan-delta';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 
 /** The reason a refusal gives, in the voice the card renders verbatim. */
@@ -248,7 +248,8 @@ export async function POST(req: NextRequest) {
     //     months without anyone noticing, and the cost of trusting a guard that
     //     can fail silently is a run the runner did being re-described as
     //     something he did not.
-    const conflicts = await conflictingCompletedDays(client, userId, restore.days, putAway.days);
+    const tzForConflictScan = await runnerTimezone(userId).catch(() => 'UTC');
+    const conflicts = await conflictingCompletedDays(client, userId, restore.days, putAway.days, tzForConflictScan);
     if (conflicts.length > 0) {
       const first = conflicts[0];
       const n = conflicts.length;
@@ -382,6 +383,7 @@ async function conflictingCompletedDays(
   userUuid: string,
   restoreDays: PrescribedDay[],
   putAwayDays: PrescribedDay[],
+  tz: string,
 ): Promise<string[]> {
   const spanStart = [...restoreDays, ...putAwayDays]
     .reduce<string | null>((m, d) => (m == null || d.dateISO < m ? d.dateISO : m), null);
@@ -405,13 +407,13 @@ async function conflictingCompletedDays(
         WHERE r.user_uuid = $1::uuid
           AND ${runNotMergedSql('r')}
        UNION
-       SELECT ci.ts::date AS d
+       SELECT (ci.ts AT TIME ZONE $4::text)::date AS d
          FROM coach_intents ci
         WHERE COALESCE(ci.user_uuid::text, ci.user_id::text) = $1::text
           AND ci.reason = 'watch_completion'
      ) x
       WHERE d >= $2::date AND d <= $3::date`,
-    [userUuid, spanStart, spanEnd],
+    [userUuid, spanStart, spanEnd, tz],
   )).rows.map((r) => String(r.d).slice(0, 10));
 
   const fpRestore = new Map<string, string>();

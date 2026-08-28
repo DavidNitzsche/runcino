@@ -20,7 +20,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { pgDayKey } from '@/lib/runtime/day-key';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { BASELINE_WINDOW_DAYS, type ReadinessBandBaseline } from './readiness';
 
 /**
@@ -109,6 +109,7 @@ export async function loadReadinessHistory(userId: string): Promise<ReadinessHis
   // compares against a TIMESTAMP column · the day boundary doesn't
   // matter for a 60-day rolling window of HRV/RHR readings.
   const today = await runnerToday(userId);
+  const historyTz = await runnerTimezone(userId).catch(() => 'UTC');
   const [sleepRows, rhrRows, hrvRows, hrrRows, wristTempRows] = await Promise.all([
     pool.query(
       `SELECT sample_date::date AS d, value
@@ -120,30 +121,30 @@ export async function loadReadinessHistory(userId: string): Promise<ReadinessHis
       [userId, today],
     ).then((r) => r.rows).catch(() => [] as Array<{ d: Date; value: number }>),
     pool.query(
-      `SELECT recorded_at::date AS d, AVG(value)::numeric AS v
+      `SELECT (recorded_at AT TIME ZONE $2::text)::date AS d, AVG(value)::numeric AS v
          FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
           AND recorded_at >= NOW() - interval '60 days'
-        GROUP BY recorded_at::date
+        GROUP BY (recorded_at AT TIME ZONE $2::text)::date
         ORDER BY d ASC`,
-      [userId],
+      [userId, historyTz],
     ).then((r) => r.rows).catch(() => [] as Array<{ d: Date; v: string }>),
     pool.query(
-      `SELECT recorded_at::date AS d, AVG(value)::numeric AS v
+      `SELECT (recorded_at AT TIME ZONE $2::text)::date AS d, AVG(value)::numeric AS v
          FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hrv'
           AND recorded_at >= NOW() - interval '60 days'
-        GROUP BY recorded_at::date
+        GROUP BY (recorded_at AT TIME ZONE $2::text)::date
         ORDER BY d ASC`,
-      [userId],
+      [userId, historyTz],
     ).then((r) => r.rows).catch(() => [] as Array<{ d: Date; v: string }>),
     pool.query(
-      `SELECT recorded_at::date AS d, value
+      `SELECT (recorded_at AT TIME ZONE $2::text)::date AS d, value
          FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'hr_recovery'
           AND recorded_at >= NOW() - interval '60 days'
         ORDER BY recorded_at ASC`,
-      [userId],
+      [userId, historyTz],
     ).then((r) => r.rows).catch(() => [] as Array<{ d: Date; value: number }>),
     // 2026-06-01 · wrist temp 30d for the wrist-temp forecaster.
     // Research/15 §Spotting-Illness-Early · rises 24-48h pre-illness · the  // was §wrist temp · heading: ## Spotting Illness Early
