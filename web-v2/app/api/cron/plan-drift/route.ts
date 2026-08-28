@@ -19,7 +19,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { logReadFailure, rowOrNull } from '@/lib/db/read';
+import { logReadFailure, rowOrNull, rowsOrNull } from '@/lib/db/read';
 import { detectDrift, hasPendingProposal } from '@/lib/plan/drift-monitor';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
 import {
@@ -755,20 +755,23 @@ export async function POST(req: NextRequest) {
       // no plan change — the authored composition stands, and the card copy
       // says so.
       try {
-        const buildPlan = (await pool.query<{
+        // LEFT JOIN + the date predicate (NULL date never compares true), so a
+        // NULL race_id row simply drops out — the lifecycle branches above
+        // require the same shape and their gate scans this whole file.
+        const buildPlan = await rowOrNull<{
           plan_id: string; race_id: string; race_date: string | null; race_meta: any;
-        }>(
+        }>('cron/plan-drift · race-role build-plan read', pool.query(
           `SELECT tp.id::text AS plan_id, tp.race_id::text AS race_id,
                   (rc.meta->>'date')::text AS race_date, rc.meta AS race_meta
              FROM training_plans tp
-             JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
+             LEFT JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
             WHERE tp.user_uuid = $1
               AND tp.archived_iso IS NULL
               AND (tp.mode = 'race-prep' OR tp.mode IS NULL)
               AND (rc.meta->>'date')::date > $2::date
             ORDER BY tp.authored_iso DESC LIMIT 1`,
           [u, userToday],
-        ).catch(() => ({ rows: [] }))).rows[0];
+        ));
 
         if (buildPlan?.race_date) {
           const {
@@ -782,7 +785,10 @@ export async function POST(req: NextRequest) {
           const aRaceIsMarathon = aMi != null && aMi >= 25;
           const aRaceName = String(buildPlan.race_meta?.name || buildPlan.race_id);
 
-          const tuneUps = (await pool.query<{ slug: string; meta: any }>(
+          // A failed read skips the fire for this tick — the [12..15] window
+          // gives the cron three more nights, so silence would still resolve.
+          const tuneUps = (await rowsOrNull<{ slug: string; meta: any }>(
+            'cron/plan-drift · race-role tune-up read', pool.query(
             `SELECT slug, meta
                FROM races
               WHERE user_uuid = $1
@@ -794,7 +800,7 @@ export async function POST(req: NextRequest) {
               ORDER BY (meta->>'date')::date ASC`,
             [u, userToday, buildPlan.race_date,
              RACE_ROLE_FIRE_WINDOW_DAYS[0], RACE_ROLE_FIRE_WINDOW_DAYS[1]],
-          ).catch(() => ({ rows: [] }))).rows;
+          ))) ?? [];
 
           for (const tu of tuneUps) {
             const m = tu.meta || {};

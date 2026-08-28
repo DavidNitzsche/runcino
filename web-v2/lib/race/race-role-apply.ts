@@ -44,6 +44,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { preserveProgressionSql } from '@/lib/plan/progression-spec';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import {
   ROLE_POST_QUALITY_FREE_DAYS,
@@ -140,7 +141,7 @@ export async function applyRaceRole(opts: {
                   sub_label = 'SHARPENER · 4×20s strides',
                   notes = $4,
                   pace_target_s_per_mi = NULL,
-                  workout_spec = '{"kind":"easy"}'::jsonb
+                  workout_spec = ${preserveProgressionSql(`'{"kind":"easy"}'`)}
             WHERE plan_id = $1
               AND date_iso >= $2 AND date_iso < $3
               AND date_iso > $5
@@ -166,7 +167,7 @@ export async function applyRaceRole(opts: {
                   sub_label = 'EASY',
                   notes = $4,
                   pace_target_s_per_mi = NULL,
-                  workout_spec = '{"kind":"easy"}'::jsonb
+                  workout_spec = ${preserveProgressionSql(`'{"kind":"easy"}'`)}
             WHERE plan_id = $1
               AND date_iso > $2 AND date_iso <= $3
               AND date_iso > $5
@@ -235,7 +236,7 @@ export async function applyRaceRole(opts: {
                   sub_label = 'EASY',
                   notes = $4,
                   pace_target_s_per_mi = NULL,
-                  workout_spec = '{"kind":"easy"}'::jsonb
+                  workout_spec = ${preserveProgressionSql(`'{"kind":"easy"}'`)}
             WHERE plan_id = $1
               AND date_iso >= $2 AND date_iso <= $3
               AND date_iso > $5
@@ -255,7 +256,7 @@ export async function applyRaceRole(opts: {
                   sub_label = 'EASY',
                   notes = $3,
                   pace_target_s_per_mi = NULL,
-                  workout_spec = '{"kind":"easy"}'::jsonb
+                  workout_spec = ${preserveProgressionSql(`'{"kind":"easy"}'`)}
             WHERE plan_id = $1 AND date_iso = $2 AND date_iso > $4
               AND is_quality = true AND COALESCE(is_long, false) = false
               AND type NOT IN ('race', 'rest')`,

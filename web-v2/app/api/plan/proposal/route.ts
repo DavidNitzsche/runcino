@@ -72,6 +72,7 @@ import { requireUserId } from '@/lib/auth/session';
 import { generatePlan } from '@/lib/plan/generate';
 import { resolveGoalTarget } from '@/lib/plan/auto-rebuild';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { logReadFailure } from '@/lib/db/read';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -166,7 +167,9 @@ export async function POST(req: NextRequest) {
             SET reasons = reasons || jsonb_build_object('accept_attempt_failed', $2::text)
           WHERE id = $1`,
         [proposalId, `${applied.outcome}${applied.reason ? ` · ${applied.reason}` : ''}`],
-      ).catch(() => null);
+        // Best-effort marker on a path already returning 500 — but logged,
+        // never silent (2026-08-24 swallow sweep).
+      ).catch((e) => logReadFailure('api/plan/proposal · race_role attempt marker write', e));
       return NextResponse.json({
         ok: false, status: 'pending', reason: applied.outcome,
       }, { status: 500 });
