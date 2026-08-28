@@ -60,4 +60,11 @@ jobs:
           fi
           git add docs/SYSTEM_TELEMETRY.html
           git commit -m "telemetry: refresh $(date -u +%Y-%m-%dT%H:%M)"
+          # main moves under this job routinely (agents push all day); the
+          # report commit touches one generated file, so rebase-and-retry.
+          for i in 1 2 3; do
+            git push && exit 0
+            git fetch origin main
+            git rebase origin/main || { git rebase --abort; exit 1; }
+          done
           git push
