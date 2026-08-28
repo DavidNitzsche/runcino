@@ -134,11 +134,6 @@ struct LiveRunTreadmillV5: View {
     @State private var lastPingAt: Date = .distantPast
     @State private var lastBridgeAskAt: Date = .distantPast
     @State private var lastBpmAt: Date?
-    /// True 5s after the ready screen appears — the grace window for the
-    /// watch's reply to the bridge ask fired in `.onAppear`. Gates the
-    /// pre-run "open your watch" prompt so it doesn't flash on before the
-    /// watch has had any real chance to answer.
-    @State private var readyScreenSettled = false
 
     /// Stable id, stamped once. Same role as `TreadmillView`'s `workoutId` —
     /// backend idempotency key, and reused as the payload's `workoutId` so a
@@ -260,10 +255,6 @@ struct LiveRunTreadmillV5: View {
             // being timed. `startRun()` asks again on its own anchor, so this
             // is a head start, not a replacement.
             WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
-            Task {
-                try? await Task.sleep(for: .seconds(5))
-                if startedAt == nil { readyScreenSettled = true }
-            }
         }
         // The plan arrives AFTER this view is built (the host renders it at
         // `.opacity(0)` while it fetches), and `State(initialValue:)` only
@@ -803,17 +794,14 @@ struct LiveRunTreadmillV5: View {
             // in-run `hrHint` falls back to, shown here proactively instead
             // of reactively.
             //
-            // 2026-08-28 · David: "how do I know where to start it? how do I
-            // know its linked? Its confusing." The old copy said to open the
-            // watch and stopped there — nothing about what to do once it's
-            // open (nothing — the daily plan's own Start button starts a
-            // DIFFERENT kind of run and must not be tapped), and nothing
-            // ever confirmed success; the line just silently vanished once
-            // `treadmillSessionConfirmed` flipped, which reads as "did that
-            // do anything?" rather than as an answer. Now says explicitly
-            // there's nothing to tap, names the visible signal (the watch
-            // switches off its lobby onto the live heart-rate screen), and
-            // replaces itself with a positive confirmation once linked.
+            // 2026-08-28 · David called the first rewrite of this line "lame"
+            // (over-explained) and asked it show immediately rather than
+            // after a delay, going away only once the watch actually
+            // confirms — not on a timer that might fire before or after the
+            // real answer lands. Both are fixed: no more grace-window gate
+            // (`readyScreenSettled` is gone), and the line itself is back to
+            // one short sentence, swapped for a one-line confirmation the
+            // moment `treadmillSessionConfirmed` flips true.
             if startedAt == nil {
                 if watchSync.treadmillSessionConfirmed {
                     Text("Linked to your Apple Watch.")
@@ -821,8 +809,8 @@ struct LiveRunTreadmillV5: View {
                         .foregroundStyle(V5.textQuiet)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
-                } else if readyScreenSettled {
-                    Text("Open Faff on your Apple Watch. Nothing to tap there. It'll switch off the day's plan onto the heart rate screen once it's linked.")
+                } else {
+                    Text("Open Faff on your Apple Watch for heart rate.")
                         .font(.faffText(TypeScaleV5.label13))
                         .foregroundStyle(V5.textQuiet)
                         .multilineTextAlignment(.center)
