@@ -352,6 +352,8 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
  * feature is not.
  */
 export const MODULE_ORPHANS: Record<string, string> = {
+  'web-v2/lib/plan/sim-matrix.ts':
+    'A fixture set, which is a fine reason by this gate\'s own text. The archetype corpus was extracted from _sweep_allusers.test.ts on 2026-08-28 so the dosing-caps gate (_dosing_sweep_gate.test.ts) drives the IDENTICAL matrix as the sweep without importing a test file. Two gates import it; no runtime code should.',
   'web-v2/lib/plan/block-preview.ts':
     'INSTANCE 3, STILL OPEN. Built 2026-08-18 to answer the owner\'s own question — why the shape of the next block stays invisible until recovery ends. Its route has no caller either. It should be WIRED, not deleted: the question was asked and the answer is written and tested. Wiring it needs a screen decision, so it stays named here rather than quietly removed.',
   'web-v2/lib/plan/core.ts':
