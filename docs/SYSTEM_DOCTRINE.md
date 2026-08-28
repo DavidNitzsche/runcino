@@ -122,19 +122,23 @@ Citation: `web-v2/lib/training/vdot.ts` (vdotFromRace, vdotFromRun, bestRecentVd
 
 ### 2.3 · Readiness scoring algorithm
 
-Weighted composite 0-100, banded into READY / MODERATE / BACK-OFF / REST.
+(Corrected 2026-08-28 — this section previously described a retired formula with absolute bands and a Check-in pillar. Current code is authoritative: `web-v2/lib/coach/readiness.ts`.)
 
-| Input | Weight | Source |
-|---|---|---|
-| Sleep (7-night avg vs 7.5h target) | 25% | `health_samples` sample_type=sleep_hours |
-| HRV (today vs 28d baseline) | 25% | `health_samples` sample_type=hrv |
-| RHR (today vs baseline) | 20% | `health_samples` sample_type=resting_hr |
-| Check-in (last 1-2 reply chips) | 15% | `check_ins.rating` |
-| Load (ACWR = acute7 / chronic28) | 15% | computed from `strava_activities` |
+Weighted composite 0-100, baseline 70. Every pillar is personal-baseline-relative; absent pillars never default to a flattering value (`recoveryCoverage` reports how much of the picture is real; total cold start returns `score: null`).
 
-Bands: ≥70 READY, 50-69 MODERATE, 30-49 BACK-OFF, &lt;30 REST.
+| Input | Weight | Comparison | Source |
+|---|---|---|---|
+| HRV | 40% | 7-day median vs 30-day personal baseline | `health_samples` sample_type=hrv |
+| Sleep | 22% | 7-night avg vs mileage-scaled target | `health_samples` sleep_* |
+| RHR | 18% | 3-day rolling vs 30-day personal baseline | `health_samples` sample_type=resting_hr |
+| HR recovery | 5% | most recent vs 30-day baseline | `health_samples` sample_type=hr_recovery |
+| Load (ACWR) | 15% | multiplier ×0.88/0.95/1.00/1.05 applied after the composite — it can modulate a score but never create one | computed from runs |
 
-Citation: `web-v2/lib/coach/readiness.ts`. Implementation: `briefings.payload._state.readiness.inputs`.
+Bands are z-scored against the runner's own 28-day score distribution (SD floored at 1, minimum 14 baseline days): SHARP at z ≥ +1.5, MODERATE at z ≤ −1.0, PULL BACK at z ≤ −2.0, further gated SUSTAINED (yesterday also at/below the cut) and CORROBORATED (≥2 dragging pillars among sleep/hrv/rhr). Absolute bands were retired 2026-08-17 after producing 18 PULL BACK days in 78 that the runner correctly trained through.
+
+The score itself never modifies training. The only mutation path is the convergence ladder in `web-v2/lib/coach/convergence.ts` (≥3 independent domains, each with multi-day persistence and per-domain confounder suppression), which can downgrade today's quality session to easy — nothing else, never paces.
+
+Citation: `web-v2/lib/coach/readiness.ts`, `web-v2/lib/coach/convergence.ts`.
 
 ### 2.4 · ACWR injury-risk threshold
 
