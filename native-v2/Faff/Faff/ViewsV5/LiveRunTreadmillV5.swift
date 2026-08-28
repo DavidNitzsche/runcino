@@ -201,7 +201,7 @@ struct LiveRunTreadmillV5: View {
 
             Spacer(minLength: V5.S.s16)
 
-            buttons
+            buttonRow
                 .padding(.horizontal, V5.S.s20)
                 .padding(.top, V5.S.s12)
                 .padding(.bottom, V5.S.s16)
@@ -247,14 +247,30 @@ struct LiveRunTreadmillV5: View {
             // Start (see `buttons`/`startRun()`) the same way the belt itself
             // waits for a button before the display starts counting.
             configurePlanIfNeeded()
-            // Ask the watch for the HR bridge NOW, while the runner is still
-            // dialing in speed/incline — not after Start. A confirmation that
-            // only had 45 seconds of an already-running clock to land is a
-            // confirmation that arrives too late to act on; this way a
-            // failed bridge shows up on the ready screen, before anything is
-            // being timed. `startRun()` asks again on its own anchor, so this
-            // is a head start, not a replacement.
-            WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
+            // 2026-08-28 · REMOVED the early `startTreadmillHRSession` call
+            // that used to fire right here. David, after opening this screen
+            // just to check the watch link (never tapping Start): "somethign
+            // still started a timer as you can see on my watch. no run
+            // started, just checking the linking for the HR and this
+            // appeared" — a screenshot of watchOS's own system "active
+            // workout" pill, ticking. That head start really did start a
+            // real HKWorkoutSession on the watch the instant this screen
+            // rendered, before any run existed to bridge HR for — and if the
+            // runner then backgrounds the phone instead of tapping Start (no
+            // "End" exists yet to tap; only "Start" shows), `.onDisappear`
+            // never fires because the view never left the hierarchy, so
+            // nothing tells the watch to stop until its own 15-minute
+            // dead-man timer does. A live sensor session sitting there for
+            // up to 15 minutes because someone glanced at the ready screen
+            // is exactly the battery-drain risk he'd just asked about one
+            // message earlier — a "head start" is not worth that. The bridge
+            // now starts ONLY in `startRun()`, anchored to the runner's own
+            // Start tap, same as the clock, the pedometer and the HR stream
+            // it already anchors there. The in-run `hrHint` (see below)
+            // already covers "watch hasn't confirmed yet" reactively, so
+            // nothing here needs to ask early to give the runner a chance to
+            // fix it — see `hrHint`'s own doc for the ORIGINAL point that
+            // motivated the head start.
         }
         // The plan arrives AFTER this view is built (the host renders it at
         // `.opacity(0)` while it fetches), and `State(initialValue:)` only
@@ -786,40 +802,13 @@ struct LiveRunTreadmillV5: View {
     }
 
     // MARK: - Buttons
-
-    private var buttons: some View {
-        VStack(spacing: V5.S.s10) {
-            // 2026-08-27 · fix it BEFORE the clock is running, not 45 seconds
-            // into a run that's already missing heart rate. Same message the
-            // in-run `hrHint` falls back to, shown here proactively instead
-            // of reactively.
-            //
-            // 2026-08-28 · David called the first rewrite of this line "lame"
-            // (over-explained) and asked it show immediately rather than
-            // after a delay, going away only once the watch actually
-            // confirms — not on a timer that might fire before or after the
-            // real answer lands. Both are fixed: no more grace-window gate
-            // (`readyScreenSettled` is gone), and the line itself is back to
-            // one short sentence, swapped for a one-line confirmation the
-            // moment `treadmillSessionConfirmed` flips true.
-            if startedAt == nil {
-                if watchSync.treadmillSessionConfirmed {
-                    Text("Linked to your Apple Watch.")
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.textQuiet)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Text("Open Faff on your Apple Watch for heart rate.")
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.textQuiet)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            buttonRow
-        }
-    }
+    //
+    // 2026-08-28 · the pre-run "open your watch" / "Linked" line that used to
+    // sit above this row is gone along with the early `.onAppear` bridge
+    // start it was reporting on (see that removal's comment) — nothing
+    // happens on the watch until Start is tapped, so there was nothing left
+    // to say here pre-Start. `hrHint` below covers the same question the
+    // moment the run actually starts.
 
     private var buttonRow: some View {
         HStack(spacing: V5.S.s10) {
