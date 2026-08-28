@@ -68,6 +68,17 @@ struct WBoard<Content: View>: View {
     /// Boards that scroll (Summary is the only one) manage their own bottom
     /// inset, so they opt out of the fixed bottom padding.
     var scrolls: Bool = false
+    /// A paged board's dots. Drawn OUTSIDE `content()`, in the margin gutter
+    /// below Apple's own content box — never inside the VStack a page
+    /// builds, because a per-page Spacer or GeometryReader shoves an inline
+    /// dots row to wherever that page's content happens to end. One page had
+    /// a button riding under its dots and the next had nothing, so the same
+    /// row landed at two different heights depending on which page you were
+    /// on. The gutter is untouched by every page's own content (the bottom
+    /// padding above stops right at its top edge) and is the same height on
+    /// every board that shares a device, so a row centred in it is the one
+    /// position that cannot drift from page to page.
+    var pageDots: (count: Int, index: Int)? = nil
     @ViewBuilder var content: () -> Content
 
     private var g: WatchLayout.Guides { WatchLayout.current }
@@ -90,6 +101,16 @@ struct WBoard<Content: View>: View {
                 .padding(.top, g.clockClearance)
                 .padding(.horizontal, g.margins.minX)
                 .padding(.bottom, scrolls ? 0 : g.screen.height - g.margins.maxY)
+
+            if let pageDots, pageDots.count > 1 {
+                // Centred in the gutter: half the gutter's own height, minus
+                // half the dot's 4pt, off the true bottom edge — tucked into
+                // the curve the way the system's own page indicator would
+                // sit, not drawn as part of anything a page authored.
+                WPageDots(count: pageDots.count, index: pageDots.index)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, g.bottom / 2 - 2)
+            }
         }
         // PINNED TO THE PHYSICAL SCREEN.
         //
@@ -120,10 +141,11 @@ struct WBoard<Content: View>: View {
 struct WGradientBoard<Content: View>: View {
     let session: String
     var scrolls: Bool = false
+    var pageDots: (count: Int, index: Int)? = nil
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        WBoard(background: AnyView(WRamp(session: session)), scrolls: scrolls) {
+        WBoard(background: AnyView(WRamp(session: session)), scrolls: scrolls, pageDots: pageDots) {
             content()
         }
     }

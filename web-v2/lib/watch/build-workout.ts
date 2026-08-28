@@ -40,6 +40,9 @@ import { loadSettings } from '@/lib/coach/settings';
 // re-derived here — see projectWeekStrip.
 import { loadPlanWeek, type PlanWeekResult } from '@/lib/plan/week-loader';
 import { adjustPhasesForHeat, heatNote, recordHeatEasing } from '@/lib/watch/heat';
+import { runFacts } from '@/lib/runs/run-facts';
+import { runAvgHr, runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
+import { fmtMi, fmtMi2 } from '@/lib/format/run';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
 
@@ -264,6 +267,35 @@ export interface WatchSessionMoved {
   adaptedAt: string | null;
 }
 
+/** One row of the lobby's post-run recap — "Distance / asked 7 mi / 3.14 mi",
+ *  "Heart / under 145 / 121", "Effort / — / 4 of 10". Same three rows
+ *  `/api/v5/today`'s `askedVsRan` composes (lib/faff/v5-today.ts,
+ *  buildRecentRun) — built from the same canonical readers below so the
+ *  watch and the phone cannot disagree about today's run. `sub`/`value` are
+ *  precomposed strings, same convention as `WatchDayState.coachLine`: this
+ *  is prose the server already formatted, not a number the watch reformats. */
+export interface WatchCompletedRow {
+  id: string;
+  label: string;
+  sub: string | null;
+  value: string | null;
+  tone: 'attention' | null;
+}
+
+/** The lobby draws this instead of the Start board once today's session is
+ *  already run — asked-vs-ran, not the phone's full recap (no elevation,
+ *  weather, shoes, splits; those stay screen real estate the wrist doesn't
+ *  have). `distanceMi`/`durationSec`/`paceSPerMi` are raw numbers so the
+ *  watch's own WFmt formatters render them, same convention as every other
+ *  numeric field on this payload. */
+export interface WatchCompletedRun {
+  distanceMi: number;
+  durationSec: number | null;
+  paceSPerMi: number | null;
+  avgHr: number | null;
+  rows: WatchCompletedRow[];
+}
+
 /** Why there is no prescribed session. `rest` is a planned rest day and is
  *  its own board; every other value is the No-session board. */
 export type WatchDayStateKind = 'rest' | 'no_session';
@@ -328,6 +360,11 @@ export interface WatchTodayGlance {
    *  sick day, travel week) — the workout still ships beside it, so an old
    *  build runs the session and a 0821 build draws the No-session board. */
   dayState?: WatchDayState | null;
+  /** Present only when today's own session is already run — the same "did
+   *  this day happen" predicate the week strip's today entry uses. Rides
+   *  beside `workout`, never replaces it: the lobby still knows what was
+   *  asked, it also now knows it already happened. */
+  completedToday?: WatchCompletedRun | null;
 }
 
 export type WatchTodayResponse =
@@ -1171,6 +1208,123 @@ async function loadSessionMoved(
     kind: info.kind,
     adaptedAt: info.adaptedAt,
   };
+}
+
+/** Today's asked-vs-ran, for the lobby's recap. Same canonical readers
+ *  `/api/v5/today` uses for the same day (runFacts on the elapsed basis,
+ *  runAvgHr, the post_run_rpe id-ladder) — deliberately re-run here rather
+ *  than shared through a common function, because the phone route's version
+ *  is entangled with elevation twins, weather and shoe resolution this
+ *  payload has no use for. The QUERIES are the shared thing; the composition
+ *  is trimmed to the three rows the wrist has room to draw. `wo` is the
+ *  `plan_workouts` row `buildWatchToday` already fetched for today — no
+ *  second read of it here. */
+async function loadCompletedRun(
+  userId: string,
+  today: string,
+  wo: { distance_mi: number | string | null; pace_target_s_per_mi: number | null; workout_spec: any },
+): Promise<WatchCompletedRun | null> {
+  const runRow = (await pool.query<{ id: string; data: Record<string, any> }>(
+    `SELECT id::text AS id, data FROM runs
+      WHERE user_uuid = $1 AND ${runNotMergedSql()}
+        AND ${runDaySql()} = $2
+      ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
+      LIMIT 1`,
+    [userId, today],
+  ).catch(() => ({ rows: [] as any[] }))).rows[0];
+  if (!runRow) return null;
+
+  const data = runRow.data ?? {};
+  // Elapsed basis — the lobby's own hero prints the elapsed clock beside
+  // the distance, so its pace has to be the elapsed pace. Same reasoning
+  // as /api/v5/today's own comment on this exact read (route.ts, the
+  // 2026-08-23 3:37/mi fiction).
+  const facts = runFacts(data, { basis: 'elapsed' });
+  const distanceMi = facts.distanceMi ?? 0;
+  const durationSec = facts.timeSec;
+  const paceSPerMi = facts.paceSecPerMi;
+  const avgHr = runAvgHr(data);
+
+  const askedMi = wo.distance_mi != null ? Number(wo.distance_mi) : null;
+  const spec = wo.workout_spec ?? null;
+  const askedHrCap: number | null = spec
+    ? Number(spec.hr_cap_bpm ?? spec.hr_target_bpm ?? spec.lthr_bpm) || null
+    : null;
+  // Only `hr_cap_bpm` is a genuine "stay under this" ceiling — see
+  // V5RecentRunCtx.askedHrIsHardCap's doc in lib/faff/v5-today.ts for why
+  // the other two fallbacks are display-only and wrong to grade against.
+  const askedHrIsHardCap = Boolean(spec && Number(spec.hr_cap_bpm) > 0);
+
+  // Same id-ladder /api/v5/today's route uses (fixed 2026-08-24): a watch
+  // row files its effort under its own primary key, a Strava row under
+  // `data.activityId` — matching only one spelling strands the other.
+  const rpeIds = Array.from(new Set(
+    [data.activityId, data.id, runRow.id].filter((v) => v != null).map(String),
+  ));
+  const rpeRow = (await pool.query<{ rpe: number | null }>(
+    `SELECT rpe FROM post_run_rpe
+      WHERE (user_uuid = $1 OR user_id::text = $1::text)
+        AND activity_id = ANY($2::text[])
+      ORDER BY (notes IS DISTINCT FROM 'auto-imported from strava') DESC,
+               logged_at DESC
+      LIMIT 1`,
+    [userId, rpeIds],
+  ).catch(() => ({ rows: [] as any[] }))).rows[0];
+  const effortLogged = rpeRow?.rpe ?? null;
+
+  const rows: WatchCompletedRow[] = [];
+
+  // Distance — only when the gap from what was asked is material. Same
+  // threshold /api/v5/today's askedVsRan row uses: a quarter mile, or a
+  // tenth of the ask on a short session.
+  if (askedMi != null && distanceMi > 0) {
+    const gap = Math.abs(distanceMi - askedMi);
+    const material = gap > Math.max(0.25, askedMi * 0.1);
+    const askedText = fmtMi(askedMi);
+    if (material && askedText) {
+      rows.push({
+        id: 'distance', label: 'Distance',
+        sub: `asked ${askedText}`,
+        value: fmtMi2(distanceMi),
+        tone: null,
+      });
+    }
+  }
+
+  // Heart — only when the plan set a genuine ceiling, never a target to
+  // hover near or a bare LTHR reference (askedHrIsHardCap above).
+  if (askedHrCap != null && askedHrIsHardCap) {
+    rows.push({
+      id: 'heart', label: 'Heart',
+      sub: `under ${askedHrCap}`,
+      value: avgHr != null ? `${avgHr}` : null,
+      tone: (avgHr != null && avgHr > askedHrCap) ? 'attention' : null,
+    });
+  }
+
+  // Effort — always present. `effortAsked` (a prescribed band) is not
+  // computed anywhere in this app yet, watch or phone — v5-today.ts still
+  // hands its own row a hardcoded null. `sub` stays null here on the same
+  // terms until that lands.
+  rows.push({
+    id: 'effort', label: 'Effort',
+    sub: null,
+    value: effortLogged != null ? `${effortLogged} of 10` : null,
+    tone: null,
+  });
+
+  // Heart rate, avg — a plain reading, not an asked-vs-ran row (the phone's
+  // own TodayAfterV5 draws it the same way, outside its askedVsRan table).
+  if (avgHr != null) {
+    rows.push({
+      id: 'hr_avg', label: 'Heart rate, avg',
+      sub: null,
+      value: `${avgHr} bpm`,
+      tone: null,
+    });
+  }
+
+  return { distanceMi, durationSec, paceSPerMi, avgHr, rows };
 }
 
 export async function buildWatchToday(
@@ -2044,5 +2198,16 @@ export async function buildWatchToday(
   const sessionMoved = await loadSessionMoved(String(plan.id), wo.id ?? null, distanceMi)
     .catch(() => null);
 
-  return { workout, weekStrip, sessionMoved, dayState: noSessionState };
+  // Same "did this day happen" predicate the week strip's own today entry
+  // uses (projectWeekStrip's `ran`, above) — reusing rawWeek's already-loaded
+  // row rather than a second completion query.
+  const todayWeekDay = rawWeek?.days.find((d) => d.date_iso === today);
+  const ranToday = todayWeekDay
+    ? (todayWeekDay.completedRunId != null || (todayWeekDay.done_mi != null && todayWeekDay.done_mi >= 0.5))
+    : false;
+  const completedToday = ranToday
+    ? await loadCompletedRun(userId, today, wo).catch(() => null)
+    : null;
+
+  return { workout, weekStrip, sessionMoved, dayState: noSessionState, completedToday };
 }

@@ -832,7 +832,78 @@ struct WatchDayState: Codable {
     }
 }
 
-/// The three glance objects on their own. Because JSONDecoder ignores keys
+/// One row of the lobby's post-run recap · "Distance / asked 7 mi / 3.14 mi",
+/// "Heart / under 145 / 121", "Effort / — / 4 of 10". `sub`/`value` arrive
+/// precomposed — the server already formatted this prose, the watch draws it
+/// verbatim, same convention as `WatchDayState.coachLine`.
+struct WatchCompletedRow: Codable, Identifiable {
+    var id: String { rowId }
+    let rowId: String
+    let label: String
+    let sub: String?
+    let value: String?
+    /// "attention" · nil.
+    let tone: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case rowId = "id", label, sub, value, tone
+    }
+
+    init(rowId: String, label: String, sub: String? = nil, value: String? = nil, tone: String? = nil) {
+        self.rowId = rowId
+        self.label = label
+        self.sub = sub
+        self.value = value
+        self.tone = tone
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.rowId = try c.decodeIfPresent(String.self, forKey: .rowId) ?? ""
+        self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        self.sub = try c.decodeIfPresent(String.self, forKey: .sub)
+        self.value = try c.decodeIfPresent(String.self, forKey: .value)
+        self.tone = try c.decodeIfPresent(String.self, forKey: .tone)
+    }
+}
+
+/// The lobby draws this instead of the Start board once today's session is
+/// already run — asked-vs-ran, the same three rows `/api/v5/today` composes
+/// for the phone, trimmed to what the wrist has room for (no elevation,
+/// weather, shoes). `distanceMi`/`durationSec`/`paceSPerMi` are raw so the
+/// watch's own WFmt formatters render them, same convention as every other
+/// numeric field on this payload.
+struct WatchCompletedRun: Codable {
+    let distanceMi: Double
+    let durationSec: Int?
+    let paceSPerMi: Double?
+    let avgHr: Int?
+    let rows: [WatchCompletedRow]
+
+    private enum CodingKeys: String, CodingKey {
+        case distanceMi, durationSec, paceSPerMi, avgHr, rows
+    }
+
+    init(distanceMi: Double, durationSec: Int? = nil, paceSPerMi: Double? = nil,
+         avgHr: Int? = nil, rows: [WatchCompletedRow] = []) {
+        self.distanceMi = distanceMi
+        self.durationSec = durationSec
+        self.paceSPerMi = paceSPerMi
+        self.avgHr = avgHr
+        self.rows = rows
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi) ?? 0
+        self.durationSec = try? c.decodeIfPresent(Int.self, forKey: .durationSec)
+        self.paceSPerMi = try c.decodeIfPresent(Double.self, forKey: .paceSPerMi)
+        self.avgHr = try? c.decodeIfPresent(Int.self, forKey: .avgHr)
+        self.rows = (try? c.decodeIfPresent([WatchCompletedRow].self, forKey: .rows)) ?? []
+    }
+}
+
+/// The four glance objects on their own. Because JSONDecoder ignores keys
 /// it was not asked for, this decodes straight out of the FULL
 /// /api/watch/today body as well as out of a bridge payload carrying only
 /// the glance — the iPhone relay can forward either without reshaping.
@@ -840,18 +911,22 @@ struct WatchTodayGlance: Codable {
     let weekStrip: WatchWeekStrip?
     let sessionMoved: WatchSessionMoved?
     let dayState: WatchDayState?
+    let completedToday: WatchCompletedRun?
 
-    var isEmpty: Bool { weekStrip == nil && sessionMoved == nil && dayState == nil }
+    var isEmpty: Bool {
+        weekStrip == nil && sessionMoved == nil && dayState == nil && completedToday == nil
+    }
 
     private enum CodingKeys: String, CodingKey {
-        case weekStrip, sessionMoved, dayState
+        case weekStrip, sessionMoved, dayState, completedToday
     }
 
     init(weekStrip: WatchWeekStrip? = nil, sessionMoved: WatchSessionMoved? = nil,
-         dayState: WatchDayState? = nil) {
+         dayState: WatchDayState? = nil, completedToday: WatchCompletedRun? = nil) {
         self.weekStrip = weekStrip
         self.sessionMoved = sessionMoved
         self.dayState = dayState
+        self.completedToday = completedToday
     }
 
     /// Never throws on the glance itself. Each object is read with `try?`:
@@ -862,6 +937,7 @@ struct WatchTodayGlance: Codable {
         self.weekStrip = (try? c.decodeIfPresent(WatchWeekStrip.self, forKey: .weekStrip)) ?? nil
         self.sessionMoved = (try? c.decodeIfPresent(WatchSessionMoved.self, forKey: .sessionMoved)) ?? nil
         self.dayState = (try? c.decodeIfPresent(WatchDayState.self, forKey: .dayState)) ?? nil
+        self.completedToday = (try? c.decodeIfPresent(WatchCompletedRun.self, forKey: .completedToday)) ?? nil
     }
 }
 
@@ -881,23 +957,26 @@ struct WatchTodayResponse: Codable {
     let weekStrip: WatchWeekStrip?
     let sessionMoved: WatchSessionMoved?
     let dayState: WatchDayState?
+    let completedToday: WatchCompletedRun?
 
     var glance: WatchTodayGlance {
-        WatchTodayGlance(weekStrip: weekStrip, sessionMoved: sessionMoved, dayState: dayState)
+        WatchTodayGlance(weekStrip: weekStrip, sessionMoved: sessionMoved,
+                          dayState: dayState, completedToday: completedToday)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case workout, message, weekStrip, sessionMoved, dayState
+        case workout, message, weekStrip, sessionMoved, dayState, completedToday
     }
 
     init(workout: WatchWorkout? = nil, message: String? = nil,
          weekStrip: WatchWeekStrip? = nil, sessionMoved: WatchSessionMoved? = nil,
-         dayState: WatchDayState? = nil) {
+         dayState: WatchDayState? = nil, completedToday: WatchCompletedRun? = nil) {
         self.workout = workout
         self.message = message
         self.weekStrip = weekStrip
         self.sessionMoved = sessionMoved
         self.dayState = dayState
+        self.completedToday = completedToday
     }
 
     init(from decoder: Decoder) throws {
@@ -908,6 +987,7 @@ struct WatchTodayResponse: Codable {
         self.weekStrip = g.weekStrip
         self.sessionMoved = g.sessionMoved
         self.dayState = g.dayState
+        self.completedToday = g.completedToday
     }
 }
 

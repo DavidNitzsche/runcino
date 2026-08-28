@@ -562,7 +562,20 @@ struct WorkoutRootView: View {
                 onEscape: { model.start(.makeJustRun()) }
             )
         } else if let workout = phone.todayWorkout ?? Self.simulatorWorkout {
-            if model.stalePending && workout.isExpired {
+            if let recap = phone.completedToday ?? Self.simulatorCompletedToday {
+                // Today's own session is already run — the lobby draws the
+                // recap instead of Start. Checked first, ahead of the stale-
+                // plan board: whether the CACHED prescription is fresh has
+                // nothing to say about a session that already happened.
+                V5LobbyRecap(
+                    typeLabel: workout.name,
+                    distanceMi: recap.distanceMi,
+                    durationSec: recap.durationSec,
+                    paceSPerMi: recap.paceSPerMi,
+                    rows: recap.rows,
+                    units: workout.unitsDistance
+                )
+            } else if model.stalePending && workout.isExpired {
                 // RK-2 — the cached plan is past its window and a refetch is
                 // out. The moment a fresh payload lands, `isExpired` reads
                 // false and this branch falls back to the normal START.
@@ -632,6 +645,28 @@ struct WorkoutRootView: View {
         // face on the finish phase (not the rep face), with a FINISH cue.
         if args.contains("-finish") { return .sampleLongFinish }
         return .sample
+        #else
+        return nil
+        #endif
+    }
+
+    /// Sim has no paired phone → show today already run, with David's own
+    /// verified 2026-08-27 figures (3.14 mi against a 7 mi ask, 121 avg bpm
+    /// under a 145 cap, effort logged 4 of 10), so the recap board is
+    /// exercisable against real numbers rather than round ones that would
+    /// hide a formatting bug a real payload wouldn't.
+    private static var simulatorCompletedToday: WatchCompletedRun? {
+        #if targetEnvironment(simulator)
+        guard ProcessInfo.processInfo.arguments.contains("-completed") else { return nil }
+        return WatchCompletedRun(
+            distanceMi: 3.14, durationSec: 1716, paceSPerMi: 546.4968152866242, avgHr: 121,
+            rows: [
+                WatchCompletedRow(rowId: "distance", label: "Distance", sub: "asked 7 mi", value: "3.14 mi"),
+                WatchCompletedRow(rowId: "heart", label: "Heart", sub: "under 145", value: "121"),
+                WatchCompletedRow(rowId: "effort", label: "Effort", value: "4 of 10"),
+                WatchCompletedRow(rowId: "hr_avg", label: "Heart rate, avg", value: "121 bpm"),
+            ]
+        )
         #else
         return nil
         #endif

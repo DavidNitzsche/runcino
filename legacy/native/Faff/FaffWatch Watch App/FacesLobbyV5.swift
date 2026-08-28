@@ -185,7 +185,8 @@ struct V5LobbyPoster: View {
     var onStartIndoors: (() -> Void)? = nil
 
     var body: some View {
-        WGradientBoard(session: session.ramp.wireName) {
+        WGradientBoard(session: session.ramp.wireName,
+                        pageDots: (pageCount, pageIndex)) {
             VStack(spacing: 0) {
                 // INDOORS SITS IN THE TOP LEFT, which is empty on every
                 // variant of this board — the system clock owns the right of
@@ -284,13 +285,102 @@ struct V5LobbyPoster: View {
 
                 Spacer(minLength: 0)
 
-                // The dots belong to the reading block above, not to the
-                // target below — they say how many pages this session has.
-                // Sitting them 7pt off the pill made them read as part of it.
-                WPageDots(count: pageCount, index: pageIndex)
-                    .padding(.bottom, 10)
-
                 WTarget(label: startLabel, weight: .onRamp, action: onStart)
+            }
+            .frame(maxHeight: .infinity)
+        }
+    }
+}
+
+// MARK: - 1b · Lobby, already run today
+//
+// The runner reopens the app later the same day, and the session is no
+// longer "start this" — it is "here is what happened." Same content shape
+// FinishSummaryBoard already draws (a distance/duration header, a group of
+// label/value rows) rather than FinishCompleteBoard's loud full-bleed ramp:
+// that board is the one moment this design allows itself to be loud, right
+// at the wrist-up finish. Reopening the lobby that afternoon is a lookup,
+// not a moment, so it reads as this app's other flat boards do.
+//
+// Rows arrive precomposed from the server (web-v2/lib/watch/build-workout.ts,
+// loadCompletedRun) — same asked-vs-ran rows /api/v5/today draws on the
+// phone, trimmed to what the wrist has room for.
+
+struct V5LobbyRecap: View {
+    /// The session's own name — "Easy" · "Long" · "Threshold" — the wire's
+    /// `workout.name`, drawn verbatim, never re-derived.
+    let typeLabel: String
+    let distanceMi: Double
+    let durationSec: Int?
+    let paceSPerMi: Double?
+    let rows: [WatchCompletedRow]
+    var units: String? = nil
+    var pageCount: Int = 1
+    var pageIndex: Int = 0
+
+    private var dist: (value: String, unit: String) { WFmt.distance(distanceMi, units: units) }
+    private var durationText: String? { durationSec.map(WFmt.clock) }
+    private var paceText: String? {
+        guard let paceSPerMi, let p = WFmt.pace(Int(paceSPerMi.rounded())) else { return nil }
+        return WFmt.isKm(units) ? "\(p) /km" : "\(p) /mi"
+    }
+    private var statLine: String? {
+        let parts = [durationText, paceText].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " \(WatchV5.separator) ")
+    }
+
+    var body: some View {
+        WBoard(pageDots: (pageCount, pageIndex)) {
+            VStack(alignment: .leading, spacing: 8) {          // 16px
+                WKicker(text: typeLabel)
+
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(dist.value)
+                        .font(WatchV5.number(31))              // 62px
+                        .foregroundStyle(WatchV5.value)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text(dist.unit)
+                        .font(WatchV5.number(14))               // 28px
+                        .foregroundStyle(WatchV5.valueMute)
+                }
+                if let statLine {
+                    Text(statLine)
+                        .font(WatchV5.number(15))                // 30px
+                        .foregroundStyle(WatchV5.valueDim)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+
+                if !rows.isEmpty {
+                    WRowGroup {
+                        ForEach(rows) { row in
+                            WGroupRow(fill: WatchV5.surface2) {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(row.label)
+                                        .font(WatchV5.number(12))    // 24px
+                                        .foregroundStyle(WatchV5.valueLabel)
+                                        .lineLimit(1)
+                                    if let sub = row.sub {
+                                        Text(sub)
+                                            .font(WatchV5.number(10)) // 20px
+                                            .foregroundStyle(WatchV5.valueMute)
+                                            .lineLimit(1)
+                                    }
+                                }
+                            } trailing: {
+                                Text(row.value ?? "\u{2014}")
+                                    .font(WatchV5.number(15))        // 30px
+                                    .foregroundStyle(row.tone == "attention" ? WatchV5.attention : WatchV5.value)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                            }
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+
+                Spacer(minLength: 0)
             }
             .frame(maxHeight: .infinity)
         }
@@ -358,14 +448,12 @@ struct V5LobbyRestHero: View {
     var pageIndex: Int = 0
 
     var body: some View {
-        WGradientBoard(session: ramp.wireName) {
+        WGradientBoard(session: ramp.wireName,
+                        pageDots: (pageCount, pageIndex)) {
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 WDisplayWord(text: lede, size: 36)
                 Spacer(minLength: 0)
-                if pageCount > 1 {
-                    WPageDots(count: pageCount, index: pageIndex)
-                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -396,7 +484,7 @@ struct V5LobbyNextUp: View {
     }
 
     var body: some View {
-        WBoard {
+        WBoard(pageDots: (pageCount, pageIndex)) {
             VStack(alignment: .leading, spacing: 0) {
                 WKicker(text: "Next up")
 
@@ -414,9 +502,6 @@ struct V5LobbyNextUp: View {
                 }
 
                 Spacer(minLength: 0)
-
-                WPageDots(count: pageCount, index: pageIndex)
-                    .frame(maxWidth: .infinity)
             }
             .frame(maxHeight: .infinity)
         }
@@ -459,7 +544,7 @@ struct V5LobbyEscape: View {
     let onStart: () -> Void
 
     var body: some View {
-        WBoard {
+        WBoard(pageDots: (pageCount, pageIndex)) {
             VStack(alignment: .leading, spacing: 0) {
                 Spacer(minLength: 0)
 
@@ -468,12 +553,6 @@ struct V5LobbyEscape: View {
                 WDisplayWord(text: actionLabel, size: 30, color: WatchV5.value)
 
                 Spacer(minLength: 0)
-
-                if pageCount > 1 {
-                    WPageDots(count: pageCount, index: pageIndex)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 10)
-                }
 
                 WTarget(label: "Start", weight: .quiet, action: onStart)
             }
@@ -597,7 +676,7 @@ struct V5LobbyBreakdown: View {
     var pageIndex: Int = 1
 
     var body: some View {
-        WBoard {
+        WBoard(pageDots: (pageCount, pageIndex)) {
             VStack(alignment: .leading, spacing: 8) {
                 WKicker(text: kicker)
 
@@ -638,9 +717,6 @@ struct V5LobbyBreakdown: View {
                 }
 
                 Spacer(minLength: 0)
-
-                WPageDots(count: pageCount, index: pageIndex)
-                    .frame(maxWidth: .infinity)
             }
             .frame(maxHeight: .infinity)
         }
@@ -666,7 +742,7 @@ struct V5LobbyWeek: View {
     var pageIndex: Int = 2
 
     var body: some View {
-        WBoard {
+        WBoard(pageDots: (pageCount, pageIndex)) {
             VStack(alignment: .leading, spacing: 0) {
                 WKicker(text: "This week")
 
@@ -712,10 +788,6 @@ struct V5LobbyWeek: View {
                         .foregroundStyle(WatchV5.valueMute)
                 }
                 .padding(.top, 6)
-
-                WPageDots(count: pageCount, index: pageIndex)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, WatchV5.Metric.readingToStack)
             }
             .frame(maxHeight: .infinity)
         }
