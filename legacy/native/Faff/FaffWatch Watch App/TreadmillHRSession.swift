@@ -103,7 +103,24 @@ final class TreadmillHRSession: NSObject, ObservableObject {
     /// no-op. If a session exists for a DIFFERENT sessionId, the old one
     /// is torn down first (the iPhone restarted treadmill before stopping
     /// us cleanly · happens on app crash + relaunch).
-    func start(sessionId: String) {
+    ///
+    /// 2026-08-28 · David: "the HR never worked. it said to open the watch
+    /// app but the watch app never went into treadmill mode." Root cause —
+    /// `WorkoutTracker.requestAuthorization()` is the ONLY place this watch
+    /// app has ever requested `HKQuantityType.workoutType()` SHARE
+    /// authorization, and it only runs when the runner taps Start ON THE
+    /// WATCH itself (`WorkoutRootView.launch()`). A runner who always starts
+    /// from the phone — which is the entire point of the treadmill bridge —
+    /// never triggers that path, so the authorization can sit at
+    /// `.notDetermined` indefinitely. `HKWorkoutSession(...)` below then
+    /// fails into the `catch` block with nothing surfaced anywhere: `isActive`
+    /// never flips true, `WorkoutRootView`'s router never switches into
+    /// `TreadmillHRView()`, and the watch just sits on its ordinary lobby —
+    /// exactly what was reported. `start()` now requests its own
+    /// authorization first, same share/read shape `WorkoutTracker` already
+    /// proves works for outdoor runs, plus the four running-form reads
+    /// `TreadmillHRStreamer.swift` (iPhone) needs from this session's writes.
+    func start(sessionId: String) async {
         if isActive, self.sessionId == sessionId { return }
         // Close the OLD session by value, not by property. `end()` is async,
         // so the Task ran after this synchronous body finished and operated on
@@ -122,6 +139,25 @@ final class TreadmillHRSession: NSObject, ObservableObject {
         }
 
         guard HKHealthStore.isHealthDataAvailable() else { return }
+
+        let share: Set<HKSampleType> = [HKQuantityType.workoutType()]
+        let read: Set<HKObjectType> = [
+            HKQuantityType(.heartRate),
+            HKQuantityType(.activeEnergyBurned),
+            HKQuantityType(.runningPower),
+            HKQuantityType(.runningGroundContactTime),
+            HKQuantityType(.runningVerticalOscillation),
+            HKQuantityType(.runningStrideLength),
+        ]
+        do {
+            try await healthStore.requestAuthorization(toShare: share, read: read)
+        } catch {
+            print("[TreadmillHRSession] HealthKit authorization request failed: \(error.localizedDescription)")
+            // Fall through and try anyway — a prior grant (e.g. from an
+            // outdoor watch-started run) may already cover this, and a
+            // failed REQUEST is not the same as a failed AUTHORIZATION.
+        }
+
         let config = HKWorkoutConfiguration()
         config.activityType = .running
         config.locationType = .indoor   // ← key difference from WorkoutTracker
@@ -143,9 +179,12 @@ final class TreadmillHRSession: NSObject, ObservableObject {
             self.lastPhonePingAt = start
             self.startWatchdog()
         } catch {
-            // Session-start failures are rare (auth missing, conflicting
-            // session). Leave isActive=false; the iPhone gracefully
-            // shows no live HR pill if samples don't appear.
+            // 2026-08-28 · this used to swallow the error completely — no
+            // print, no state change, nothing. Session-start failures ARE
+            // rare once authorization is granted, but "rare" is not "never,"
+            // and a silent failure here is indistinguishable from the bridge
+            // simply not being asked to start at all.
+            print("[TreadmillHRSession] HKWorkoutSession start failed: \(error.localizedDescription)")
             session = nil
             builder = nil
         }
@@ -244,5 +283,11 @@ extension TreadmillHRSession: HKWorkoutSessionDelegate {
                                     didChangeTo toState: HKWorkoutSessionState,
                                     from fromState: HKWorkoutSessionState,
                                     date: Date) {}
-    nonisolated func workoutSession(_ session: HKWorkoutSession, didFailWithError error: Error) {}
+    nonisolated func workoutSession(_ session: HKWorkoutSession, didFailWithError error: Error) {
+        // 2026-08-28 · was a total no-op — an async failure after a
+        // successful start (distinct from the synchronous init/startActivity
+        // failure caught in `start()`) left isActive stuck true with a dead
+        // session underneath it and nothing in the logs to explain either.
+        print("[TreadmillHRSession] workout session failed: \(error.localizedDescription)")
+    }
 }

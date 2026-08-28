@@ -610,8 +610,14 @@ extension PhoneSync: WCSessionDelegate {
         switch request {
         case "startTreadmillHR":
             Task { @MainActor in
-                TreadmillHRSession.shared.start(sessionId: sessionId)
-                replyHandler(["status": "started", "sessionId": sessionId])
+                let live = TreadmillHRSession.shared
+                await live.start(sessionId: sessionId)
+                // 2026-08-28 · this used to reply "started" unconditionally,
+                // before `start()` even ran to completion — so a session that
+                // failed to start (HK auth, conflicting session) told the
+                // phone it had succeeded, and `treadmillSessionConfirmed`
+                // came back true for a bridge that was never actually up.
+                replyHandler(["status": live.isActive ? "started" : "failed", "sessionId": sessionId])
             }
         case "stopTreadmillHR":
             Task { @MainActor in
@@ -679,7 +685,7 @@ extension PhoneSync: WCSessionDelegate {
             Task { @MainActor in
                 let live = TreadmillHRSession.shared
                 if !live.isActive || live.sessionId == startId {
-                    live.start(sessionId: startId)
+                    await live.start(sessionId: startId)
                 }
             }
         }
