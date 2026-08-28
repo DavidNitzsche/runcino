@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coach System Audit — 2026-08-28</title>
+<style>
+  :root { --bg:#000; --s1:#0d0d0d; --s2:#161616; --line:#242424; --tx:#e8e8e8; --dim:#9a9a9a; --orange:#FF5A1F; --amber:#F2B03C; --red:#FF4438; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--tx); font:16px/1.55 "Inter",-apple-system,sans-serif; padding:48px 20px 80px; }
+  main { max-width:880px; margin:0 auto; }
+  h1 { font:800 44px/1.05 "Archivo","Inter",sans-serif; letter-spacing:-.5px; margin-bottom:6px; }
+  .sub { color:var(--dim); margin-bottom:40px; }
+  h2 { font:700 13px/1 "Inter",sans-serif; letter-spacing:.14em; text-transform:uppercase; color:var(--orange); margin:44px 0 14px; }
+  p { margin-bottom:12px; }
+  .card { background:var(--s1); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:12px; }
+  .card b { display:block; margin-bottom:4px; }
+  .card .why { color:var(--dim); font-size:14px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; margin:10px 0 4px; }
+  th { text-align:left; color:var(--dim); font-weight:600; padding:6px 10px 6px 0; border-bottom:1px solid var(--line); }
+  td { padding:7px 10px 7px 0; border-bottom:1px solid var(--s2); vertical-align:top; }
+  .amber { color:var(--amber); } .red { color:var(--red); } .ok { color:var(--tx); }
+  code { background:var(--s2); border-radius:4px; padding:1px 6px; font:13px ui-monospace,monospace; }
+  .stat { display:inline-block; margin:0 26px 8px 0; }
+  .stat .n { font:800 34px/1 "Archivo","Inter",sans-serif; } .stat .l { color:var(--dim); font-size:13px; }
+</style>
+</head>
+<body><main>
+<h1>Coach system audit</h1>
+<p class="sub">2026-08-28 · plan generation, variety, adaptation, goal trajectory — audited as a whole system, fixed as found. Three waves, twelve agents, all deployed to main.</p>
+
+<div>
+<span class="stat"><div class="n">31</div><div class="l">defects fixed &amp; deployed</div></span>
+<span class="stat"><div class="n">~284</div><div class="l">doctrine claims (was 266)</div></span>
+<span class="stat"><div class="n">11,598</div><div class="l">archetype sweep · 0 findings</div></span>
+<span class="stat"><div class="n">2</div><div class="l">DB migrations applied (142 · 157)</div></span>
+</div>
+
+<h2>The headline finds</h2>
+<div class="card"><b>Your CIM build would never have started.</b><div class="why">The recovery→build handoff was a card you'd statistically never tap (0 of 40 engine cards ever answered). Now it auto-fires with an undo and a morning coach note. It authors your build Monday, Aug 31.</div></div>
+<div class="card"><b>Three plan writers, no shared belief.</b><div class="why">A 3:00 AM adapter, a 7:30 AM pace re-anchor, and a 9:00 AM drift monitor wrote the same rows on different thresholds. Now: one pace-anchor authority, a 24h defer rule, a 48h pull-back→bump guard, every rebuild undoable, one-active-plan enforced by unique index.</div></div>
+<div class="card"><b>The research corpus itself had a corrupted table.</b><div class="why">Research/02's VDOT equivalence table was mislabeled by up to ~5 VDOT points. Regenerated from the Daniels–Gilbert equations; doc 01 verified and canonical; no engine code read the bad rows.</div></div>
+<div class="card"><b>The variety machine existed — long runs and short-distance runners weren't in it.</b><div class="why">Long runs now rotate progression / fast-finish / MP shapes on the doctrine's 1-in-2–3 cadence. 10K plans get M-pace finishes, halves get their dress rehearsal, 5K/10K advanced get the third (R-pace) quality day, beginners get two different days with a progressing dose.</div></div>
+<div class="card"><b>Cutback long runs under-delivered the deload.</b><div class="why">Weekly depth was compliant (exactly 20%); the long run only dropped 6–16% vs the prescribed 20–30%. Fixed to tier-band drops, locked by claim.</div></div>
+
+<h2>What the coach now does that it didn't yesterday</h2>
+<table>
+<tr><th>Moment</th><th>Behavior</th></tr>
+<tr><td>Recovery ends</td><td>Build auto-authors; you wake to "Recovery is done. Your CIM build starts today. 14 weeks."</td></tr>
+<tr><td>Race with no goal</td><td>Coach sets A/B/C from evidence (Santa Monica: <span class="amber">A ~45:00 · B ~45:55 · C ~46:50</span>); C races get effort framing, no numbers.</td></tr>
+<tr><td>Tune-up approaching</td><td>~14 days out, a role recommendation card (Malibu: "Run it at B effort") — accept softens the week; the answer survives rebuilds.</td></tr>
+<tr><td>You skip a workout</td><td>Respected as a decision — never rescheduled back at you. Passive misses keep graded handling.</td></tr>
+<tr><td>Marathon projection</td><td>Honest: +5% until the marathon-specific block exists, CI band, <span class="amber">~</span> on every modelled number — clears as your build delivers the work.</td></tr>
+<tr><td>After Santa Monica</td><td>Fresh VDOT anchor + your personal Riegel exponent (two-race fit); first quality back is a light 2×1.5 mi @ T re-entry, not an unprescribed day.</td></tr>
+<tr><td>Every new plan</td><td>Reads 16 weeks through race taper/recovery (never as detraining); peak = measured peak × 1.15, chaining CIM ~52 → LA ~59.</td></tr>
+</table>
+
+<h2>Your fall, as the engine now sees it</h2>
+<table>
+<tr><th>Date</th><th>Event</th><th>Role</th></tr>
+<tr><td>Aug 31</td><td>CIM build auto-starts</td><td>14 weeks · base 33 → peak ~52 mi</td></tr>
+<tr><td>Sep 13</td><td>Santa Monica 10K</td><td>All-out · VDOT anchor · coach goal <span class="amber">B ~45:55</span></td></tr>
+<tr><td>Sep 26</td><td>Dodgers 10K</td><td>Hilly fun run · no time goal · excluded as fitness input</td></tr>
+<tr><td>Nov 8</td><td>Run Malibu Half</td><td>Role card ~Oct 25 · recommendation: B effort</td></tr>
+<tr><td>Dec 6</td><td><b>CIM</b></td><td>Goal 3:00 stated · projection honest · launchpad for LA</td></tr>
+</table>
+
+<h2>Open decisions (yours)</h2>
+<table>
+<tr><th></th><th>Decision</th><th>Default if unanswered</th></tr>
+<tr><td>1</td><td>Research/01 corrections: 15K column ~0.5 VDOT slow at VDOT≥55; "Mile" column holds 1500m times. Doc is locked SoT.</td><td>Stands as-is; nothing reads the drifted cells</td></tr>
+<tr><td>2</td><td>Hold-block sizing: cap race-anchored hold blocks at the 16-week ceiling (registry exemption residue)</td><td>Exemption stands, documented</td></tr>
+<tr><td>3</td><td>Drop dead tables <code>workout_completions</code>, <code>coach_actions</code>; retire near-dead <code>workout_library</code> (54 rows, string fallback only)</td><td>Tables stay (destructive DDL needs your go)</td></tr>
+<tr><td>4</td><td>Daniels dosing-caps enforcement: detector is ON, enforcement OFF since the engine-correctness wave</td><td>Detector-only</td></tr>
+<tr><td>5</td><td>TestFlight: phone surfaces are on main, native build verified — sim review together first per your rule</td><td>No ship until your go</td></tr>
+</table>
+
+<h2>Verification</h2>
+<p>Every wave integrated with typecheck + full suites before push (final state: 3,045 tests green, sweep 0/11,598, 282+ doctrine citations resolving, automatic-mutation gate green, native xcodebuild succeeded). Migrations 142 (unique active plan) and 157 (intent supersede) applied to prod with your go / standing additive go. The live proof of the biggest fix is Monday morning: the cron authors your CIM build unprompted.</p>
+</main></body>
+</html>
