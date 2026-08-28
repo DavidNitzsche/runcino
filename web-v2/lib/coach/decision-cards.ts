@@ -229,6 +229,11 @@ const PLAN_ACCEPT_VERB: Record<string, string> = {
   a_race_removed: 'REBUILD THE PLAN',
   goal_renegotiation: 'MOVE THE TARGET',
   pace_reanchor: 'RE-ANCHOR MY PACES',
+  // 2026-08-28 · the lifecycle kinds normally auto-apply, but both keep a
+  // pending fallback (undone-by-runner, compromised runner, failed rebuild)
+  // and the generic 'REBUILD THE PLAN' undersells what accepting starts.
+  recovery_complete: 'START THE BUILD',
+  plan_elapsed: 'BUILD THE NEXT BLOCK',
 };
 
 /* ── per-source mappers ──────────────────────────────────────────────── */

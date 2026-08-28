@@ -23,7 +23,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { logReadFailure } from '@/lib/db/read';
-import { generatePlan } from '@/lib/plan/generate';
+import { generatePlan, type RebuildRefusalReason } from '@/lib/plan/generate';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { isCoachedExternally, COACHED_SKIP_REASON } from '@/lib/plan/coached-gate';
 import type { PlanDelta } from '@/lib/plan/plan-delta';
@@ -104,6 +104,11 @@ export interface AutoRebuildResult {
    *  the engine did its job. A caller that counts rebuilds must not count
    *  this one. */
   unchanged?: boolean;
+  /** 2026-08-28 · WHY it was unchanged, when it was. 'undone_by_runner' is the
+   *  one a nightly caller must read: the runner put this exact block back, so
+   *  re-firing tomorrow is re-imposing an answer they refused. The cron's
+   *  recovery-complete path falls back to a pending card on it. */
+  refusedReason?: RebuildRefusalReason;
   /** What moved, when something did. Read off both persisted blocks. */
   planDelta?: PlanDelta;
 }
@@ -197,7 +202,7 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
   // 2026-08-25 · the two things the audit row could not say before: whether a
   // plan actually landed, and what moved when one did.
   let unchanged = false;
-  let refusedReason: string | undefined;
+  let refusedReason: RebuildRefusalReason | undefined;
   let planDelta: PlanDelta | undefined;
   try {
     // 2026-08-25 · the archived plan records WHICH trigger replaced it. The
@@ -286,6 +291,7 @@ export async function fireAutoRebuild(input: AutoRebuildInput): Promise<AutoRebu
     newPlanId: unchanged ? undefined : newPlanId,
     proposalId: proposalRow.id,
     unchanged,
+    refusedReason,
     planDelta,
   };
 }

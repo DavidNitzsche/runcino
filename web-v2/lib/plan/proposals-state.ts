@@ -370,9 +370,16 @@ function synthesizeMessage(
     case 'race_graduate':
       return 'Your goal race is behind you · the block was rebuilt toward the next one.';
     case 'recovery_complete':
-      return 'Your recovery block finished · the next block was built toward your race.';
+      // The pending shape exists again since 2026-08-28: the auto path falls
+      // back to a card when the runner undid this block or is compromised.
+      // Past tense on a card that is ASKING was the dead-end copy bug.
+      return status === 'auto_applied'
+        ? 'Your recovery block finished · the next block was built toward your race.'
+        : 'Your recovery block finished · accept to start the build toward your race.';
     case 'plan_elapsed':
-      return 'Your block ran out of prescribed days · a new one was built toward your goal.';
+      return status === 'auto_applied'
+        ? 'Your block ran out of prescribed days · a new one was built toward your goal.'
+        : 'Your block ran out of prescribed days · accept to build the next one.';
     case 'maintenance_to_raceprep':
       return 'Your race entered its build window · maintenance gave way to race-prep.';
   }

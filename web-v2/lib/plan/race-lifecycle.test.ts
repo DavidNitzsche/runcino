@@ -14,7 +14,7 @@
  *       territory, never recovery-complete's.
  */
 import { describe, expect, it } from 'vitest';
-import { graduateDue, recoveryCompleteDue } from './race-lifecycle';
+import { graduateDue, planElapsed, recoveryCompleteDue } from './race-lifecycle';
 
 describe('graduateDue — post-race graduate boundary', () => {
   it('F1 · fires the first cron AFTER race day (AFC 8/16 → due 8/17)', () => {
@@ -68,5 +68,49 @@ describe('recoveryCompleteDue — recovery → next-block transition', () => {
 
   it('missing race date → false (nothing to build toward)', () => {
     expect(recoveryCompleteDue('2026-08-30', null, today)).toBe(false);
+  });
+
+  /* 2026-08-28 · the null-race-date dead-end, closed. A recovery plan whose
+   * race lost its date reads false here FOREVER — and until the plan_elapsed
+   * branch of the cron learned to handle race-anchored and dead-anchored
+   * rows, no other predicate ever fired for it either. These cases pin the
+   * handoff: recoveryCompleteDue stays false (correct — there is no race to
+   * build toward), and planElapsed is TRUE for the same inputs, which is the
+   * predicate the cron's elapsed branch now routes through the goal-target /
+   * open-block handoff. */
+  describe('handoff to planElapsed when the anchor is dead', () => {
+    it('race date null · recoveryCompleteDue false, planElapsed true', () => {
+      expect(recoveryCompleteDue('2026-08-30', null, today)).toBe(false);
+      expect(planElapsed('2026-08-30', today)).toBe(true);
+    });
+
+    it('race date already passed · same split (graduate or elapsed owns it, never recovery-complete)', () => {
+      expect(recoveryCompleteDue('2026-08-30', '2026-08-16', today)).toBe(false);
+      expect(planElapsed('2026-08-30', today)).toBe(true);
+      expect(graduateDue('2026-08-16', today)).toBe(true);
+    });
+  });
+});
+
+describe('planElapsed — the end-of-plan question, race or no race', () => {
+  const today = '2026-08-31';
+
+  it('fires when the last prescribed day is behind today', () => {
+    expect(planElapsed('2026-08-30', today)).toBe(true);
+  });
+
+  it('does not fire while today is still prescribed, or the plan runs on', () => {
+    expect(planElapsed(today, today)).toBe(false);
+    expect(planElapsed('2026-09-14', today)).toBe(false);
+  });
+
+  it('a plan with no workout rows is broken, not finished → false', () => {
+    expect(planElapsed(null, today)).toBe(false);
+    expect(planElapsed(undefined, today)).toBe(false);
+    expect(planElapsed('', today)).toBe(false);
+  });
+
+  it('tolerates timestamp-shaped dates (slice to day)', () => {
+    expect(planElapsed('2026-08-30T00:00:00Z', today)).toBe(true);
   });
 });

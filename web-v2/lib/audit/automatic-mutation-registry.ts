@@ -131,7 +131,7 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     route: 'app/api/cron/plan-drift/route.ts',
     trigger: '0 9 * * * · plus workflow_dispatch',
     reach: 'replaces_plan',
-    changes: ['training_plans', 'plan_workouts', 'plan_weeks', 'plan_phases', 'plan_proposals', 'races.actual_result'],
+    changes: ['training_plans', 'plan_workouts', 'plan_weeks', 'plan_phases', 'plan_proposals', 'races.actual_result', 'notifications_pending'],
     idempotent: true,
     onPartialFailure:
       'The rebuild itself is one transaction (mutatePlan): archive and insert commit together or not at all. '
@@ -148,14 +148,21 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
       + 'prescribe differently, when the plan has changed again since, or when the earlier block has run out '
       + 'of days. Before this the prior plan survived archived and no surface reached it.',
     note:
-      'Applies first, writes the proposal row afterwards, so the proposal is a RECORD and not a GATE. The '
-      + '2026-08-25 ruling settled that deliberately: of 40 engine-raised proposals this runner has answered '
-      + 'zero, so a gate is an expiry. The bargain is apply-with-undo, and both halves are now built — the '
-      + 'notice says what moved in miles (reasons.plan_delta), and the undo puts it back. '
-      + 'A rebuild whose output is identical to the block it would replace no longer lands at all: generatePlan '
-      + 'diffs both persisted blocks inside the transaction and rolls back, recording status no_change. Without '
-      + 'that, a no-op rebuild still burned the block identity and reset the week counter, which is the one '
-      + 'signal that told the runner anything had happened.',
+      'TWO TIERS since 2026-08-28. Soft drift and goal-gap PROPOSE ONLY (David 2026-08-26, after two drift '
+      + 'detectors rebuilt the block on back-to-back mornings: no drift rebuild fires without a card to '
+      + 'approve — fireAutoRebuild is not called on those paths at all). Lifecycle transitions AUTO-APPLY '
+      + 'with undo: race_graduate, maintenance→race-prep, recovery_complete (David 2026-08-28 · doctrine- '
+      + 'driven and non-optional, plus a next-morning coach note via notifications_pending) and plan_elapsed '
+      + '(race still ahead → rebuild toward it; race date null/past or no race → goal target, else archive + '
+      + 'open-block handoff). Exceptions that fall back to a pending card instead of applying: a runner who '
+      + 'UNDID this exact block (generatePlan RebuildRefused undone_by_runner), and a COMPROMISED runner '
+      + '(runnerIsCompromised: open injury/illness/override niggle/gap re-entry, or an elapsed injury-return '
+      + 'plan) — never an auto-authored build over either. Where it applies, it applies first and writes the '
+      + 'proposal row afterwards, so the proposal is a RECORD and not a GATE: of 40 engine-raised proposals '
+      + 'this runner has answered zero, so a gate is an expiry. The bargain is apply-with-undo — the notice '
+      + 'says what moved in miles (reasons.plan_delta), and the undo puts it back. A rebuild whose output is '
+      + 'identical to the block it would replace no longer lands at all: generatePlan diffs both persisted '
+      + 'blocks inside the transaction and rolls back, recording status no_change.',
   },
   {
     id: 'cron/snapshot-projections',

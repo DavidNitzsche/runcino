@@ -1,8 +1,16 @@
 // POST /api/cron/plan-drift
 //
-// Nightly scan of every active plan for drift signals. For each
-// runner: load the active plan, compute DriftReport, and persist a
-// pending plan_proposals row when one or more signals fire.
+// Nightly scan of every active plan for drift signals and lifecycle
+// transitions. Two tiers (2026-08-28):
+//
+//   · DRIFT observations (soft drift, goal-gap) persist a pending
+//     plan_proposals row — a card, never a silent rebuild (David
+//     2026-08-26).
+//   · LIFECYCLE transitions (race_graduate, maintenance→race-prep,
+//     recovery_complete, plan_elapsed) auto-apply through
+//     fireAutoRebuild — auto_applied row, undo on the notice card —
+//     unless the runner undid that exact block or is compromised, in
+//     which case they get a pending card instead.
 //
 // Idempotent · we check hasPendingProposal before writing so the
 // nightly run doesn't pile up identical "volume drift" rows.
@@ -261,11 +269,14 @@ export async function POST(req: NextRequest) {
       const activePlanRow = (await pool.query<{
         plan_id: string; race_id: string | null; race_date: string | null;
         goal_mode: string | null; last_workout_iso: string | null; mode: string | null;
+        authored_mode: string | null; mode_label: string | null;
       }>(
         `SELECT tp.id::text AS plan_id, tp.race_id::text AS race_id,
                 (rc.meta->>'date')::text AS race_date,
                 tp.authored_state->>'goal_mode' AS goal_mode,
                 tp.mode::text AS mode,
+                tp.authored_state->>'mode' AS authored_mode,
+                tp.authored_state->>'mode_label' AS mode_label,
                 (SELECT MAX(pw.date_iso) FROM plan_workouts pw
                   WHERE pw.plan_id = tp.id) AS last_workout_iso
            FROM training_plans tp
@@ -278,6 +289,11 @@ export async function POST(req: NextRequest) {
       const finishedRow = activePlanRow?.race_id && graduateDue(activePlanRow.race_date, userToday)
         ? activePlanRow
         : undefined;
+      // 2026-08-28 · a successful graduate replaces the active plan, so
+      // `activePlanRow` is stale from that point on. The elapsed branch below
+      // now also handles race-anchored rows, which makes overlap with the
+      // graduate branch possible for the first time; this flag is the guard.
+      let graduatedThisTick = false;
 
       if (finishedRow) {
         // Pick the next A-race AFTER today
@@ -325,6 +341,7 @@ export async function POST(req: NextRequest) {
                 source: 'graduate_cron',
               });
               if (result.ok) r.proposals_written++;
+              graduatedThisTick = result.ok && !result.unchanged;
             } catch (e) {
               console.error('[plan-drift] race-graduate failed:', e);
             }
@@ -351,16 +368,41 @@ export async function POST(req: NextRequest) {
       // the plan itself recorded, or their profile goal. `fireAutoRebuild`
       // takes a goal target directly now, so this is the same audited path
       // the race-anchored transitions use — same proposal row, same dedupe.
+      //
+      // 2026-08-28 · RACE-ANCHORED ROWS TOO. The `!race_id` gate meant a
+      // race-anchored maintenance hold block (or a recovery block whose race
+      // date went missing) that ran out of days was re-authored by NOTHING:
+      // graduateDue watches the race date, openBlockDue requires no future
+      // target, and this branch skipped the row. That is the strand the
+      // doctrine registry's `no-ceiling-on-a-long-hold` exemption argues from.
+      // Race still ahead → re-author toward it (pickPlanMode chooses
+      // maintenance vs race-prep by build window); race date null or past →
+      // the plan is anchored to nothing real, so it takes the same
+      // goal-target / open-block handoff an un-anchored plan does. A
+      // recovery-mode plan with its race still ahead is EXCLUDED here — the
+      // recovery-complete block below owns that transition (its own kind, its
+      // own coach note). Race day itself is also excluded: the runner is
+      // racing, and graduate fires tomorrow.
       let elapsedHandled = false;
+      const elapsedRaceDate = activePlanRow?.race_date ? activePlanRow.race_date.slice(0, 10) : null;
+      const elapsedRaceAhead = elapsedRaceDate != null && elapsedRaceDate > userToday;
+      const elapsedIsRecovery = activePlanRow?.mode === 'recovery'
+        || activePlanRow?.authored_mode === 'recovery';
       if (
-        activePlanRow && !activePlanRow.race_id
+        activePlanRow
         && planElapsed(activePlanRow.last_workout_iso, userToday)
+        && !graduatedThisTick
+        && !(activePlanRow.race_id && elapsedRaceAhead && elapsedIsRecovery)
+        && !(activePlanRow.race_id && elapsedRaceDate === userToday)
       ) {
         const alreadyRebuilt = (await pool.query(
+          // A standing PENDING row blocks too, not just 24h — the compromised
+          // path below writes one, and re-writing it nightly once the 24h
+          // window lapses would stack identical cards.
           `SELECT 1 FROM plan_proposals
             WHERE user_uuid = $1
               AND proposal_kind = 'plan_elapsed'
-              AND created_at >= NOW() - interval '24 hours'`,
+              AND (created_at >= NOW() - interval '24 hours' OR status = 'pending')`,
           [u],
           // 2026-08-24 · swallowed-failure sweep · this guard fails CLOSED now.
     // `rowCount: 0` means "not already done", so `.catch(() => ({ rowCount: 0 }))`
@@ -370,19 +412,53 @@ export async function POST(req: NextRequest) {
   ).catch((e) => { logReadFailure('cron/plan-drift · dedupe guard', e); return { rowCount: 1 }; })).rowCount;
         if (!alreadyRebuilt) {
           try {
+            // 2026-08-28 · THE INJURY GUARD. Injury-return plans are written
+            // with mode='maintenance', race_id=NULL (injury-builder), so when
+            // one elapsed this branch auto-authored a goal build over an
+            // injured runner. A compromised runner (open injury, active sick
+            // episode, override niggle, gap re-entry — the same predicate the
+            // goal-gap rebuild consults) gets a pending card instead of an
+            // auto-authored block; `mode_label='injury-return'` on the plan
+            // itself is the belt-and-braces signal for a cleared injury row.
+            // FAILS CLOSED: this guard stands in front of AUTHORING, so an
+            // unreadable state must propose, not prescribe.
+            const { runnerIsCompromised } = await import('@/lib/plan/adapt');
+            const compromised = await runnerIsCompromised(u)
+              .catch(() => ({ compromised: true, reason: 'injury' } as const));
+            const injuryReturn = activePlanRow.mode_label === 'injury-return';
             const { fireAutoRebuild, resolveGoalTarget } = await import('@/lib/plan/auto-rebuild');
-            const target = await resolveGoalTarget(u, userToday);
-            if (target) {
+            if (compromised.compromised || injuryReturn) {
+              await pool.query(
+                `INSERT INTO plan_proposals
+                   (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
+                 VALUES ($1, $2, 'plan_elapsed', $3::jsonb, 'pending', 'plan_elapsed_cron_pending', NOW())`,
+                [
+                  u, activePlanRow.plan_id,
+                  JSON.stringify({
+                    transition: 'plan_elapsed',
+                    last_workout_iso: activePlanRow.last_workout_iso,
+                    plan_mode: activePlanRow.mode,
+                    mode_label: activePlanRow.mode_label,
+                    compromised_reason: compromised.compromised ? compromised.reason : null,
+                    injury_return_plan: injuryReturn,
+                    message: 'Your block ran out of prescribed days. You are not cleared for an automatic build · say when you are ready.',
+                  }),
+                ],
+              );
+              r.proposals_written++;
+              r.plans_elapsed = (r.plans_elapsed ?? 0) + 1;
+              elapsedHandled = true;
+            } else if (activePlanRow.race_id && elapsedRaceAhead) {
               const result = await fireAutoRebuild({
                 userUuid: u,
-                goalTarget: target,
+                raceSlug: activePlanRow.race_id,
                 kind: 'plan_elapsed',
                 reasons: {
                   transition: 'plan_elapsed',
                   last_workout_iso: activePlanRow.last_workout_iso,
                   plan_mode: activePlanRow.mode,
-                  goal_mode: activePlanRow.goal_mode === 'true',
-                  message: 'Plan ran out of prescribed days · rebuilding toward the goal.',
+                  race_slug: activePlanRow.race_id,
+                  message: `Plan ran out of prescribed days · rebuilding toward ${activePlanRow.race_id}.`,
                 },
                 source: 'plan_elapsed_cron',
               });
@@ -390,22 +466,48 @@ export async function POST(req: NextRequest) {
               elapsedHandled = result.ok;
               r.plans_elapsed = (r.plans_elapsed ?? 0) + 1;
             } else {
-              // No goal to rebuild toward either. Archive the dead plan so the
-              // open-block handoff below sees an honest "no active plan", then
-              // let it decide what this runner should have. Leaving it active
-              // is what produced the forever-stale plan in the first place.
-              await pool.query(
-                `UPDATE training_plans SET archived_iso = NOW(), archive_reason = 'plan_elapsed'
-                  WHERE id = $1 AND archived_iso IS NULL`,
-                [activePlanRow.plan_id],
-              ).catch(() => pool.query(
-                `UPDATE training_plans SET archived_iso = NOW()
-                  WHERE id = $1 AND archived_iso IS NULL`,
-                [activePlanRow.plan_id],
-              ).catch(() => null));
-              const { supersedeProposalsForArchivedPlans } = await import('@/lib/plan/proposals-state');
-              await supersedeProposalsForArchivedPlans(pool, u).catch(() => 0);
-              r.plans_elapsed = (r.plans_elapsed ?? 0) + 1;
+              // Un-anchored, or anchored to a race date that is null or past
+              // — a dead anchor is no anchor. Rebuild toward the goal.
+              const target = await resolveGoalTarget(u, userToday);
+              if (target) {
+                const result = await fireAutoRebuild({
+                  userUuid: u,
+                  goalTarget: target,
+                  kind: 'plan_elapsed',
+                  reasons: {
+                    transition: 'plan_elapsed',
+                    last_workout_iso: activePlanRow.last_workout_iso,
+                    plan_mode: activePlanRow.mode,
+                    goal_mode: activePlanRow.goal_mode === 'true',
+                    // Present when the plan was race-anchored but the race
+                    // date is null or past — the dead-anchor shape this
+                    // branch now covers instead of skipping.
+                    stale_race_id: activePlanRow.race_id,
+                    message: 'Plan ran out of prescribed days · rebuilding toward the goal.',
+                  },
+                  source: 'plan_elapsed_cron',
+                });
+                if (result.ok) r.proposals_written++;
+                elapsedHandled = result.ok;
+                r.plans_elapsed = (r.plans_elapsed ?? 0) + 1;
+              } else {
+                // No goal to rebuild toward either. Archive the dead plan so the
+                // open-block handoff below sees an honest "no active plan", then
+                // let it decide what this runner should have. Leaving it active
+                // is what produced the forever-stale plan in the first place.
+                await pool.query(
+                  `UPDATE training_plans SET archived_iso = NOW(), archive_reason = 'plan_elapsed'
+                    WHERE id = $1 AND archived_iso IS NULL`,
+                  [activePlanRow.plan_id],
+                ).catch(() => pool.query(
+                  `UPDATE training_plans SET archived_iso = NOW()
+                    WHERE id = $1 AND archived_iso IS NULL`,
+                  [activePlanRow.plan_id],
+                ).catch(() => null));
+                const { supersedeProposalsForArchivedPlans } = await import('@/lib/plan/proposals-state');
+                await supersedeProposalsForArchivedPlans(pool, u).catch(() => 0);
+                r.plans_elapsed = (r.plans_elapsed ?? 0) + 1;
+              }
             }
           } catch (e) {
             console.error('[plan-drift] elapsed-plan rebuild failed:', e);
@@ -518,10 +620,13 @@ export async function POST(req: NextRequest) {
         recoveryCompleteDue(recoveryRow.last_workout_iso, recoveryRow.race_date, userToday)
       ) {
         const alreadyTransitioned = (await pool.query(
+          // A standing PENDING row blocks too, not just 24h — the fallback
+          // paths below write one, and re-writing it nightly once the 24h
+          // window lapses would stack identical cards.
           `SELECT 1 FROM plan_proposals
             WHERE user_uuid = $1
               AND proposal_kind = 'recovery_complete'
-              AND created_at >= NOW() - interval '24 hours'`,
+              AND (created_at >= NOW() - interval '24 hours' OR status = 'pending')`,
           [u],
           // 2026-08-24 · swallowed-failure sweep · this guard fails CLOSED now.
     // `rowCount: 0` means "not already done", so `.catch(() => ({ rowCount: 0 }))`
@@ -530,29 +635,83 @@ export async function POST(req: NextRequest) {
     // assume the thing it guards against has already happened.
   ).catch((e) => { logReadFailure('cron/plan-drift · dedupe guard', e); return { rowCount: 1 }; })).rowCount;
         if (!alreadyTransitioned) {
-          // TURNED OFF · David 2026-08-26 (same ruling as the soft-drift
-          // block below — no rebuild fires without a card to approve).
-          // Recovery→next-block is a real, welcome transition, but it is
-          // still this cron deciding to replace the active plan on its
-          // own; it gets the same pending row, not a silent rebuild.
+          // TURNED BACK ON for THIS kind only · David 2026-08-28. The
+          // 2026-08-26 ruling (soft drift proposes, never silently rebuilds)
+          // STANDS for every drift kind below — that was two detectors
+          // re-authoring the block on back-to-back mornings off observations.
+          // Recovery→next-block is different in kind: the doctrine window
+          // closed, the block has no days left, and the runner has answered
+          // 0 of 40 engine-raised cards ever (39 expired — the evidence the
+          // undo route is built on). A pending card here is a runner parked
+          // in a dead plan for a fortnight. So it auto-applies through
+          // fireAutoRebuild — auto_applied row, undo on the notice card —
+          // and enqueues a coach note for the morning. Two fallbacks keep
+          // the card path alive: a runner who UNDID this exact block
+          // (RebuildRefused 'undone_by_runner') is asked, not overridden,
+          // and a compromised runner (open injury / illness / override
+          // niggle / gap re-entry) is never auto-built over.
           try {
-            await pool.query(
-              `INSERT INTO plan_proposals
-                 (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
-               VALUES ($1, $2, 'recovery_complete', $3::jsonb, 'pending', 'recovery_complete_cron', NOW())`,
-              [
-                u, recoveryRow.plan_id,
-                JSON.stringify({
+            const { runnerIsCompromised } = await import('@/lib/plan/adapt');
+            // FAILS CLOSED: this guard stands in front of AUTHORING, so an
+            // unreadable state must propose, not prescribe.
+            const compromised = await runnerIsCompromised(u)
+              .catch(() => ({ compromised: true, reason: 'injury' } as const));
+            let pendingCardReason: string | null = null;
+            if (compromised.compromised) {
+              pendingCardReason = `compromised:${compromised.reason}`;
+            } else {
+              const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
+              const result = await fireAutoRebuild({
+                userUuid: u,
+                raceSlug: recoveryRow.race_id,
+                kind: 'recovery_complete',
+                reasons: {
                   transition: 'recovery_to_next_block',
                   race_slug: recoveryRow.race_id,
                   recovery_last_workout: recoveryRow.last_workout_iso,
-                  message: `Recovery block finished · rebuild toward ${recoveryRow.race_id}?`,
-                }),
-              ],
-            );
-            r.proposals_written++;
+                  message: `Recovery block finished · rebuilt toward ${recoveryRow.race_id}.`,
+                },
+                source: 'recovery_complete_cron',
+              });
+              if (result.ok && !result.unchanged) {
+                r.proposals_written++;
+                if (result.newPlanId) {
+                  const { notifyBlockStarted } = await import('@/lib/notifications/block-started');
+                  await notifyBlockStarted({
+                    userUuid: u,
+                    raceSlug: recoveryRow.race_id,
+                    newPlanId: result.newPlanId,
+                  });
+                }
+              } else if (result.unchanged && result.refusedReason === 'undone_by_runner') {
+                pendingCardReason = 'undone_by_runner';
+              }
+              // Other outcomes need nothing more: a 'no_change' refusal means
+              // the block the runner has IS the next block, and a failed
+              // rebuild already wrote its own 'pending' audit row inside
+              // fireAutoRebuild (the accept route can retry it; the dedupe
+              // above stops a nightly re-fire from spamming).
+            }
+            if (pendingCardReason != null) {
+              await pool.query(
+                `INSERT INTO plan_proposals
+                   (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
+                 VALUES ($1, $2, 'recovery_complete', $3::jsonb, 'pending', 'recovery_complete_cron', NOW())`,
+                [
+                  u, recoveryRow.plan_id,
+                  JSON.stringify({
+                    transition: 'recovery_to_next_block',
+                    race_slug: recoveryRow.race_id,
+                    recovery_last_workout: recoveryRow.last_workout_iso,
+                    card_fallback_reason: pendingCardReason,
+                    message: `Recovery block finished · rebuild toward ${recoveryRow.race_id}?`,
+                  }),
+                ],
+              );
+              r.proposals_written++;
+            }
           } catch (e) {
-            console.error('[plan-drift] recovery-complete pending write failed:', e);
+            console.error('[plan-drift] recovery-complete transition failed:', e);
           }
         }
       }
@@ -819,11 +978,12 @@ export async function GET() {
     triggers: [
       'auto_result · provisional watch-time result logged for recent unresulted races (full post-result chain for A/B)',
       'race_graduate · active plan race date passed (fires first cron AFTER race day)',
-      'recovery_complete · recovery plan out of prescribed days, target race still ahead → rebuild',
+      'recovery_complete · recovery plan out of prescribed days, target race still ahead → auto-rebuild with undo + coach note (pending card only when the runner undid this block or is compromised)',
+      'plan_elapsed · ANY plan out of prescribed days · race still ahead → auto-rebuild toward it; race date null/past or no race → goal target / open-block handoff; compromised or injury-return runner → pending card, never an auto-authored build',
       'volume_drift · current 28d avg deviates >40% from authored 4wk avg',
       'vdot_drift · current VDOT deviates >2 from plan anchor (inferred from T-pace)',
       'staleness · plan authored >8 weeks ago',
     ],
-    note: 'Idempotent · checks for an existing pending proposal of the same kind before writing (proposals carry their TRUE kind since 2026-08-17). Staleness/drift proposals are suppressed inside 14 days of the target race (the generator refuses to rebuild there). Soft-drift only; hard-drift (race date / goal time / A-race add-or-remove) is handled by immediate-fire hooks at the route level.',
+    note: 'Idempotent · checks for an existing pending proposal of the same kind before writing (proposals carry their TRUE kind since 2026-08-17). Staleness/drift proposals are suppressed inside 14 days of the target race (the generator refuses to rebuild there). Soft-drift only, and soft drift PROPOSES (David 2026-08-26 · no drift rebuild without a card); lifecycle transitions (race_graduate / recovery_complete / plan_elapsed / maintenance→race-prep) auto-apply with undo. Hard-drift (race date / goal time / A-race add-or-remove) is handled by immediate-fire hooks at the route level.',
   });
 }

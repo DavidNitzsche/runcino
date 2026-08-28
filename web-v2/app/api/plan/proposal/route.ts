@@ -70,6 +70,8 @@ import { pool } from '@/lib/db/pool';
 import { outage } from '@/lib/route/failure';
 import { requireUserId } from '@/lib/auth/session';
 import { generatePlan } from '@/lib/plan/generate';
+import { resolveGoalTarget } from '@/lib/plan/auto-rebuild';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -145,8 +147,21 @@ export async function POST(req: NextRequest) {
     return outage('api/plan/proposal', e);
   }
 
+  // 2026-08-28 · a no-race plan is no longer an automatic dead-end. The
+  // plan_elapsed pending path writes cards against plans with race_id NULL
+  // (goal-mode, and injury-return blocks the compromised guard refuses to
+  // auto-build over), so accepting one resolves the runner's goal the same
+  // way the cron's own rebuild would (resolveGoalTarget: the plan's recorded
+  // goal, then the profile goal). Only when NEITHER a race nor a goal
+  // resolves is the card dismissed — there is genuinely nothing to build.
+  let goalTarget: Awaited<ReturnType<typeof resolveGoalTarget>> = null;
   if (!planRow?.race_id) {
-    // The plan referenced by the proposal is gone or has no race · we
+    const todayISO = await runnerToday(userId)
+      .catch(() => new Date().toISOString().slice(0, 10));
+    goalTarget = await resolveGoalTarget(userId, todayISO).catch(() => null);
+  }
+  if (!planRow?.race_id && !goalTarget) {
+    // The plan referenced by the proposal is gone and no goal resolves · we
     // can't rebuild. Mark dismissed with a reason.
     await pool.query(
       `UPDATE plan_proposals
@@ -172,12 +187,17 @@ export async function POST(req: NextRequest) {
     // the code that RAISES proposals, is gated (fireAutoRebuild), so a coached
     // runner should see none; a standing one is a row from before they told us
     // about their coach, and accepting it is still their decision to make.
-    const result = await generatePlan({
-      userId, raceSlug: planRow.race_id, allowCoached: true,
-      // 2026-08-25 · the runner ACCEPTED a proposal, as against the cron
-      // applying one unasked.
-      archiveReason: 'proposal_accepted',
-    });
+    const result = planRow?.race_id
+      ? await generatePlan({
+          userId, raceSlug: planRow.race_id, allowCoached: true,
+          // 2026-08-25 · the runner ACCEPTED a proposal, as against the cron
+          // applying one unasked.
+          archiveReason: 'proposal_accepted',
+        })
+      : await generatePlan({
+          userId, goalTarget: goalTarget!, allowCoached: true,
+          archiveReason: 'proposal_accepted',
+        });
     rebuildOk = result.ok;
     newPlanId = result.plan_id;
     rebuildReason = result.reason;

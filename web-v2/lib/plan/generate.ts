@@ -6973,21 +6973,19 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       // for 80-100% of last cycle's peak reached through reverse
       // periodization.
       //
-      // NOT CAPPED HERE, and the reason is structural rather than a judgement
-      // about the doctrine. Nothing re-authors a race-anchored hold block that
-      // runs out. `graduateDue` fires on the RACE date, not the block's end.
-      // The `plan_elapsed` branch of `/api/cron/plan-drift` is gated on
-      // `!activePlanRow.race_id`, and this block carries one. `openBlockDue`
-      // requires `!hasFutureTarget`, and this runner has a target. So a
-      // fifteen-week cap would leave somebody a year out from a marathon with
-      // no plan at all from week sixteen until the build window opened — which
-      // is a worse failure than a hold that holds too long.
+      // NOT CAPPED HERE. The structural half of that reason retired on
+      // 2026-08-28: the `plan_elapsed` branch of `/api/cron/plan-drift` now
+      // re-authors a race-anchored hold block that runs out (it was gated on
+      // `!activePlanRow.race_id`, so an elapsed hold was re-authored by
+      // nothing), which means a capped hold would no longer strand a runner a
+      // year out with no plan from week sixteen.
       //
-      // Closing it properly is two changes and one decision, and the decision
-      // is the owner's because it moves prescribed volume for every hold-block
-      // runner: (1) size the block to the doctrine ceiling, (2) teach the
-      // elapsed-plan branch to re-author a race-anchored hold block, and
-      // (3) rule on whether a long hold progresses (§6) or holds (§7).
+      // What remains is the owner's decision, because it moves prescribed
+      // volume for every hold-block runner: (1) size the block to the
+      // doctrine ceiling, and (2) rule on whether a long hold progresses (§6)
+      // or holds (§7). Until that ruling lands the block stays open-ended and
+      // the doctrine registry's `no-ceiling-on-a-long-hold` exemption records
+      // the violation honestly.
       //
       // Cite: Research/22-plan-templates.md §"Maintenance Plan" — Duration
       //       open-ended, 4-15 wk realistically; ~15 weeks of VO2max hold

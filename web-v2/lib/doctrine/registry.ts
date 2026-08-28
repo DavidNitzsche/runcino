@@ -13826,9 +13826,12 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
    *
    * How long the engine can hold a runner in a hold block, against how long
    * doctrine says a hold block lasts. Recorded here with an exemption rather
-   * than closed, because closing it strands runners (see the argued block at
-   * `composeMaintenancePlan`'s TOTAL_WEEKS) and because the fix moves
-   * prescribed volume, which is the owner's call.
+   * than closed. The original stranding argument (nothing re-authors a
+   * race-anchored hold block that runs out) was retired 2026-08-28 — the
+   * plan_elapsed branch of /api/cron/plan-drift now re-authors race-anchored
+   * elapsed plans — but the remaining fix moves prescribed volume for every
+   * hold-block runner and needs the owner's ruling on progression, so it
+   * stays argued at `composeMaintenancePlan`'s TOTAL_WEEKS.
    */
   {
     id: 'MAINTENANCE.hold-block-length',
@@ -13869,14 +13872,14 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         'FORTY-ONE WEEK hold, and it is flat: one targetWeekly for the whole span with a ' +
         '20% step-down every fourth week, no progression at all. Section 6 asks for 80-100% ' +
         'of last cycle peak reached through reverse periodization over 8-16 weeks. ' +
-        'Capping it here would be worse than the violation: nothing re-authors a ' +
-        'race-anchored hold block that runs out (graduateDue fires on the race date, the ' +
-        'plan_elapsed branch of /api/cron/plan-drift is gated on !race_id, and openBlockDue ' +
-        'requires no future target), so a runner a year out would have no plan at all from ' +
-        'week sixteen until the build window opened. Closing this needs the block sized to ' +
-        'the ceiling AND the elapsed-plan branch taught to re-author a hold block AND a ' +
-        'ruling on whether a long hold progresses (section 6) or holds (section 7). Delete ' +
-        'this entry when those three land.',
+        'ONE of the three closing conditions landed 2026-08-28: the plan_elapsed branch of ' +
+        '/api/cron/plan-drift now re-authors a race-anchored hold block that runs out ' +
+        '(the old strand — graduateDue fires on the race date, plan_elapsed was gated on ' +
+        '!race_id, openBlockDue requires no future target — is closed), so capping the ' +
+        'block no longer strands anyone. The two that remain are the owner call, because ' +
+        'together they move prescribed volume for every hold-block runner: size the block ' +
+        'to the doctrine ceiling, and rule on whether a long hold progresses (section 6) ' +
+        'or holds (section 7). Delete this entry when those two land.',
     },
   },
   {

@@ -529,6 +529,50 @@ export function renderProjectionChanged(s: ProjectionChangedSlots): RenderedTemp
   };
 }
 
+// ──────────────────────────────────────────────────────────────
+// Block started · 2026-08-28 · recovery handed off to the next block
+// ──────────────────────────────────────────────────────────────
+
+export interface BlockStartedSlots {
+  user_id: string;
+  /** races.meta name, or the slug when the row carries none. */
+  race_name: string;
+  race_slug: string;
+  /** The new plan's mode column. Decides whether "build" is an honest word. */
+  mode: string | null;
+  /** plan_weeks count of the new block. Clause drops on null — a note that
+   *  guesses a length is worse than one that omits it. */
+  weeks: number | null;
+  /** New plan id · anchors the dedup key, so one block notifies once. */
+  new_plan_id: string;
+}
+
+/** Block started · NO ACTION. Same shape as session-moved: the transition has
+ *  already happened (the doctrine window closed, the rebuild landed, the
+ *  auto_applied card carries the undo), so a button here would imply a
+ *  decision that is not being asked. Rides the session_moved category — it is
+ *  the same "your plan changed overnight" bucket, same prefs toggle, same
+ *  actionless iOS registration. */
+export function renderBlockStarted(s: BlockStartedSlots): RenderedTemplate {
+  const weeksClause = s.weeks != null && s.weeks > 0 ? ` ${s.weeks} weeks.` : '';
+  const body = s.mode === 'race-prep'
+    ? `Your ${s.race_name} build starts today.${weeksClause}`
+    : `The next block toward ${s.race_name} starts today.${weeksClause}`;
+  return {
+    category: 'session_moved',
+    title: 'Recovery is done',
+    body,
+    // The block will still have started in an hour. Not time-sensitive.
+    interruption_level: 'active',
+    dedup_key: `block-started:${s.user_id}:${s.new_plan_id}`,
+    data: {
+      deeplink: 'faff://today',
+      race_slug: s.race_slug,
+      kicker_text: 'New block',
+    },
+  };
+}
+
 export interface RunUnreadSlots {
   user_id: string;
   /** YYYY-MM-DD of the run · the dedup key's own once-only anchor. */
