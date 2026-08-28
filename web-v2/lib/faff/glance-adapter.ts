@@ -492,6 +492,23 @@ function buildWorkoutBreakdown(
     case 'long': {
       // Spec-driven · long-runs ship pace band + fuel checkpoints.
       if (spec && spec.kind === 'long') {
+        // VARIETY-LONG-1 · progression variant: BASE + one row per segment
+        // (M middle, T tail). The single-finish fields also exist on such a
+        // spec but hold only the first segment, so the list is read first.
+        if (Array.isArray(spec.finish_segments) && spec.finish_segments.length >= 2) {
+          const totalMi = today.plannedMi;
+          const segTotal = spec.finish_segments.reduce((a, s) => a + (Number(s.mi) || 0), 0);
+          const baseMi = Math.max(0, totalMi - segTotal);
+          const easyBand = `${fmtPace(spec.pace_target_s_per_mi_lo)}–${fmtPace(spec.pace_target_s_per_mi_hi)}/mi`;
+          return [
+            { label: 'BASE', body: `${fmtMi(baseMi)} mi easy build`, tail: easyBand },
+            ...spec.finish_segments.map((seg) => ({
+              label: seg.label === 'T' ? 'CLOSE' : 'FINISH',
+              body: `${fmtMi(seg.mi)} mi @ ${seg.label === 'T' ? 'threshold' : seg.label ? `${seg.label} pace` : 'finish pace'}`,
+              tail: `${fmtPace(seg.pace_s_per_mi)}/mi`,
+            })),
+          ];
+        }
         // D1 · MP-finish variant: two-phase structure when finish_mi present.
         // BASE = aerobic build · FINISH = prescribed finish block at race pace.
         if (spec.finish_mi != null && spec.finish_pace_s_per_mi != null) {

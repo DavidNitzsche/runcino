@@ -108,7 +108,7 @@ import {
   type IntensityDay,
   type IntensityWeek,
 } from './intensity-distribution';
-import { extractFinishSegment } from './spec-builder';
+import { extractFinishSegment, extractLongSegments } from './spec-builder';
 import { parseSegments, parseZones, primaryZone, segmentMi } from './prescription-parser';
 import { ZONE_DOSE_PACE, tightestDosePace, type DosePace } from './zone-anchors';
 import type { PaceZone } from '@/lib/workout-catalogue/types';
@@ -370,6 +370,33 @@ export function dayDoses(day: IntensityDay): DayDose[] {
         const p = zone ? ZONE_DOSE_PACE[zone] : null;
         if (!p) continue;
         byPace.set(p, (byPace.get(p) ?? 0) + mi);
+      }
+      if (sum > 0 && byPace.size > 0) {
+        const k = qualityMi / sum;
+        return [...byPace.entries()]
+          .map(([pace, mi]) => ({ pace, mi: Number((mi * k).toFixed(2)), subLabel }))
+          .filter((d) => d.mi > 0);
+      }
+    }
+  }
+
+  // VARIETY-LONG-1 (2026-08-28) · a progression long doses TWO buckets. Its
+  // sub_label carries the segments — "LONG · 3mi @ M + 2mi @ T" — and charging
+  // the whole day to `dosePaceOf`'s single headline (the first segment's M)
+  // would leave the T tail uncounted against Daniels' 10%, which is the same
+  // one-bucket collapse GRAMMAR-SEQ-1 fixed for the ladders. Each segment goes
+  // to its own bucket ('M'/'HM'/'T' → M/T per Research/01's T band), scaled to
+  // the same `qualityMi` `splitDay` measured so the two accountings agree.
+  // Single-segment longs take the fallback below, exactly as before.
+  if (day.type === 'long') {
+    const segs = extractLongSegments(subLabel);
+    if (segs.length >= 2) {
+      const byPace = new Map<DosePace, number>();
+      let sum = 0;
+      for (const seg of segs) {
+        sum += seg.mi;
+        const p: DosePace = seg.tag === 'M' ? 'M' : 'T';
+        byPace.set(p, (byPace.get(p) ?? 0) + seg.mi);
       }
       if (sum > 0 && byPace.size > 0) {
         const k = qualityMi / sum;

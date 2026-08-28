@@ -510,8 +510,21 @@ export function renderContinuousPhrase(entry: CatalogueEntry, dose: Dose): strin
  * day carries the engine's existing `intervals` type, so nothing new reaches
  * the database, the mutation boundary or the watch. What changes is which
  * doctrine row the session is drawn from, not what shape of row is written.
+ *
+ * VARIETY-LONG-1 (2026-08-28) · `long` joins them, through its own door.
+ * `SLOT_FAMILIES.long` has declared the five §4 long-run entries since the
+ * catalogue was built and no composer path ever passed the slot, so
+ * `base-long-run`, `progression-long-run`, `marathon-pace-long-run`,
+ * `fast-finish-long-run` and `dress-rehearsal-long-run` were doctrine-cited
+ * and unreachable. The long slot does NOT go through `selectSlotWorkout`:
+ * that function's renderability gate asks "can the prescription grammar
+ * express this shape", and a long run's shape is not a prescription string —
+ * it is the composer's own `LONG · …` sub_label, whose segments `layoutWeek`
+ * sizes off the volume curve and the week's dose budgets. `selectLongRunVariant`
+ * below answers only the IDENTITY question (which §4 row this week's intensity
+ * long is), and the composer keeps every number.
  */
-export type ComposerSlot = Extract<Slot, 'threshold' | 'intervals' | 'tempo' | 'speed'>;
+export type ComposerSlot = Extract<Slot, 'threshold' | 'intervals' | 'tempo' | 'speed' | 'long'>;
 
 export interface SlotRequest {
   history: CatalogueHistory;
@@ -749,4 +762,103 @@ export function catalogueNote(entry: CatalogueEntry, dose?: Dose): string {
   // doctrine band that the doc does not state. Here it is the doc's own row.
   const shape = dose?.structure.kind === 'continuous' ? dose.structure.shape : null;
   return shape ? `${name} ${shape}.` : name;
+}
+
+/* ─────────────────────────────────────────── VARIETY-LONG-1 · the long slot ── */
+
+/**
+ * Slugs the long-run rotation never offers, and why each is out:
+ *
+ *   · `dress-rehearsal-long-run` · §4.6 is placed by DAYS BEFORE THE RACE
+ *     ("3 weeks pre-marathon"), not by a weekly cadence, and
+ *     `authorDressRehearsal` already authors it at exactly that slot with its
+ *     own dose and its own `perCycleMax`. Offering it here as well is how the
+ *     session double-fires — once by the calendar, once by the rotation.
+ *   · `base-long-run` · §4.2 is what every OFF-cadence week already runs, and
+ *     the composer authors a plain easy long without consulting the catalogue.
+ *     Left in the rotation it would win the never-run staleness tie on the
+ *     block's first cadence week and hand the one long doctrine reserves for
+ *     intensity back to an easy run.
+ */
+const LONG_ROTATION_EXCLUDED: ReadonlySet<string> = new Set([
+  'dress-rehearsal-long-run',
+  'base-long-run',
+]);
+
+export interface LongVariantRequest {
+  history: CatalogueHistory;
+  /** The engine's block phase · QUALITY / RACE-SPECIFIC. */
+  enginePhase: string;
+  distance: DistCategory;
+  tier: Tier;
+  weekIdx: number;
+  weeklyMi: number;
+  /** The long run's day, 0-6, for §16's spacing rules. */
+  dayOffset: number;
+  inTaperWindow: boolean;
+  tPaceSec: number | null;
+  iPaceSec: number | null;
+  mpPaceSec?: number | null;
+  /** SLOT-ROTATE-5 · same split `selectSlotWorkout` takes for QUALITY. */
+  inHillBlock?: boolean | null;
+  /** Slugs the caller has ruled out beyond the standing exclusions. */
+  exclude?: ReadonlySet<string>;
+}
+
+/**
+ * WHICH of `Research/04` §4's intensity long runs this cadence week carries.
+ *
+ * `Research/00a` §"Long-Run Variations" is the doctrine this serves: "Long
+ * runs are not monolithic. Variants apply across distances", and the
+ * progression row's own Caution column — "Don't make every long run a
+ * progression — rotate." The composer's cadence machinery
+ * (`racePaceLongThisWeek`) decides WHETHER this week's long carries intensity;
+ * this decides WHICH §4 row it is, rotated least-recently-used through the
+ * same `CatalogueHistory` the quality slots rotate through, filtered by the
+ * entries' own phase/distance/tier declarations.
+ *
+ * Identity only. The returned entry's dose is the selector's internal sizing
+ * artifact and the caller must NOT author from it: the long run's distance is
+ * the volume curve's, and its segment sizes are `layoutWeek`'s, bounded by the
+ * week's own dose budgets. Null means nothing in the family is offerable
+ * (no anchor, phase places nothing here, everything excluded) and the caller
+ * keeps its default row.
+ */
+export function selectLongRunVariant(req: LongVariantRequest): {
+  entry: CatalogueEntry;
+  rationale: string;
+} | null {
+  const phases = doctrinePhasesForWeek(req.enginePhase, req.inHillBlock ?? null);
+  if (phases.length === 0) return null;
+  const anchors = anchorsFor({
+    tPaceSec: req.tPaceSec,
+    iPaceSec: req.iPaceSec,
+    mpPaceSec: req.mpPaceSec ?? null,
+  });
+  const recent = recentFrom(req.history, req.weekIdx);
+  const exclude = new Set<string>(LONG_ROTATION_EXCLUDED);
+  for (const s of req.exclude ?? []) exclude.add(s);
+
+  for (const phase of phases) {
+    const res = selectWorkout({
+      phase,
+      distance: req.distance,
+      tier: req.tier,
+      weekIndex: req.weekIdx,
+      weeklyMi: req.weeklyMi,
+      slot: 'long',
+      anchors,
+      // The long run is the day being filled, so the week's other sessions are
+      // not yet placed when this runs; §16's long-run rules are enforced the
+      // other way round — the quality slots see the long via `placedThisWeek`.
+      placedThisWeek: [],
+      dayOffset: req.dayOffset,
+      recent,
+      inTaperWindow: req.inTaperWindow,
+      cycleCounts: req.history.cycleCounts,
+      exclude,
+    });
+    if (res.ok) return { entry: res.entry, rationale: res.rationale };
+  }
+  return null;
 }

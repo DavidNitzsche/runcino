@@ -180,14 +180,35 @@ describe('maintenance + display invariants (diagnostic)', () => {
               } as any);
               if (!built.ok) continue;
               plans++;
-              // collect the sorted quality-weekday SET for each QUALITY week, then count distinct sets
-              const sets = new Set<string>();
+              // collect the sorted quality-weekday SET for each QUALITY week.
+              //
+              // VARIETY-LONG-1 (2026-08-28) · a week whose set is a SUBSET of
+              // the phase's stable set is not oscillation. On the cadence week
+              // the rotation authors §4.3's progression long, the T-family
+              // slot comes out (§4.3 "don't pair with other quality work"; the
+              // long's T tail IS the week's threshold work) and the freed day
+              // runs easy — the same one-slot week DOCTRINE-MPLONG-1 already
+              // authors in RACE-SPECIFIC. The defect this gate holds at zero
+              // is the days MOVING (Mon+Wed ↔ Tue+Thu every 7 days), and a
+              // subset cannot move: every quality day the week does run is on
+              // a day the phase always uses.
+              const weekSets: number[][] = [];
               for (const w of built.composed.weeks) {
                 if (w.phase !== 'QUALITY' || w.isRaceWeek) continue;
                 const qd = w.days.filter((d: any) => d.isQuality && !d.isLong && d.type !== 'rest').map((d: any) => d.dow).sort((a: number, b: number) => a - b);
-                if (qd.length) sets.add(qd.join(','));
+                if (qd.length) weekSets.push(qd);
               }
-              if (sets.size > 1) bump(shuffle, `${distance}/f${freq}/${longRunDay} ${sets.size} distinct sets`, `${distance}/f${freq}/m${mileage}/${longRunDay}`);
+              // Stable = the union of all observed sets is itself one of the
+              // observed sets (the phase's full profile), so every other week
+              // is a subset of it. Two alternating sets (the audit's Mon+Wed ↔
+              // Tue+Thu) have a union nobody runs, and still fail.
+              const union = new Set(weekSets.flat());
+              const stable = weekSets.length > 0
+                && weekSets.some((qd) => qd.length === union.size);
+              if (weekSets.length > 0 && !stable) {
+                const sets = new Set(weekSets.map((qd) => qd.join(',')));
+                bump(shuffle, `${distance}/f${freq}/${longRunDay} ${sets.size} distinct sets`, `${distance}/f${freq}/m${mileage}/${longRunDay}`);
+              }
             }
     const total = Object.values(shuffle).reduce((s, v) => s + v.count, 0);
     console.log(`\nQUAL_PHASE_STABLE: swept ${plans} race-prep plans · ${total} with oscillating quality weekdays across ${Object.keys(shuffle).length} types`);

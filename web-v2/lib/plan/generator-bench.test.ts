@@ -264,27 +264,42 @@ describe('Generator bench · composePlan() output against persona doctrine', () 
         }
       });
 
-      it('late-QUALITY HM long runs carry the M→HMP finish progression (Audit D follow-up)', () => {
-        // 2026-06-07 · the generator must emit M/HMP finish labels on the
-        // last three QUALITY-phase long runs for HM plans (Research/22 §3),
-        // so buildWorkoutSpec encodes the finish and the watch executes it.
-        // Before this fix QUALITY longs were plain "LONG" → flat easy spec
-        // under a label that promised nothing → no specific-endurance
-        // stimulus. Phase-position derived (last 3 QUALITY weeks), not by
-        // hardcoded week number, so it holds across plan lengths.
+      it('late-QUALITY HM long runs carry the race-pace warm-in, on cadence (Audit D + VARIETY-LONG-1)', () => {
+        // 2026-06-07 · the generator must emit race-pace finish labels in the
+        // last-three-QUALITY window for HM plans (Research/22 §3), so
+        // buildWorkoutSpec encodes the finish and the watch executes it.
+        // Before that fix QUALITY longs were plain "LONG" → flat easy spec
+        // under a label that promised nothing → no specific-endurance stimulus.
+        //
+        // VARIETY-LONG-1 (2026-08-28) · the window is now CADENCE-GATED and
+        // the variant ROTATES, so this no longer asserts three consecutive
+        // finishes. Research/00a §"Long-run rules of thumb" — "intensity
+        // inserts come 1 in every 2–3 long runs in marathon/half cycles" —
+        // and §4.5's own Frequency row ("Every 2–3 weeks") both forbid the
+        // three-in-a-row shape the original assertion demanded; the doctrine
+        // gate's LONGRUN.intensity-cadence claim holds the rule. What survives
+        // of Audit D's contract: the warm-in still EXISTS inside the window,
+        // it is still race-pace work (an @ M warm-in, an @ HM step, or §4.3's
+        // M→T progression whose tail is the same T band Research/01 puts HM
+        // pace in), it never fires before the window, and off-cadence weeks
+        // run plain — which is the half Audit D never had.
         if (!(p.race.distanceMi >= 12 && p.race.distanceMi < 25)) return; // HM only
         const qWeeks = result.weeks.filter((w) => w.phase === 'QUALITY');
         if (qWeeks.length < 3) return; // need the full last-3 window
         const longLabel = (w: { days: { type: string; subLabel?: string | null }[] }) =>
           w.days.find((d) => d.type === 'long')?.subLabel ?? '';
-        const [thirdLast, secondLast, last] = qWeeks.slice(-3).map(longLabel);
-        // 3rd- + 2nd-from-last QUALITY weeks · marathon-pace warm-in (@ M)
-        expect(thirdLast).toContain('@ M');
-        expect(thirdLast).not.toContain('@ HM');
-        expect(secondLast).toContain('@ M');
-        expect(secondLast).not.toContain('@ HM');
-        // last QUALITY week · steps up to HMP (@ HM), seam into RACE-SPECIFIC
-        expect(last).toContain('@ HM');
+        const window = qWeeks.slice(-3).map(longLabel);
+        const finishes = window.filter((l) => l !== 'LONG' && l !== '');
+        // The warm-in exists: at least one intensity long inside the window.
+        expect(finishes.length, `no race-pace long in the last-3 QUALITY window: ${window.join(' | ')}`).toBeGreaterThan(0);
+        // And the cadence exists: never all three weeks hot.
+        expect(finishes.length, `every warm-in week carries a finish — the cadence is gone: ${window.join(' | ')}`).toBeLessThan(3);
+        // Every finish in the window is race-pace work at the HM's own paces:
+        // an M warm-in, the HMP step, or the M→T progression.
+        for (const l of finishes) {
+          expect(l, `unexpected warm-in label: ${l}`).toMatch(/@ (M|HM|T)\b/);
+          expect(l).toMatch(/@ M\b|@ HM\b/);
+        }
         // earlier QUALITY weeks stay plain easy longs · no premature race pace
         for (const w of qWeeks.slice(0, -3)) {
           const label = longLabel(w);

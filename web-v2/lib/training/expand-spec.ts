@@ -451,6 +451,56 @@ function expandLong(
     ? Math.max(tolerance, Math.round((hi - lo) / 2))
     : null;
 
+  // VARIETY-LONG-1 (2026-08-28) · a progression long (Research/04 §4.3) walks
+  // TWO paces after the easy bulk — an M middle and a T tail — carried on the
+  // spec as `finish_segments`. Expanded first, because the legacy single
+  // fields also exist on such a spec (they carry the first segment, for
+  // consumers that predate the list) and expanding those instead would run
+  // the tail at the middle's pace. Each segment is a work phase with its own
+  // target and the finish routing flag, so the watch runs easy → M → T as
+  // three phases with no wire change — a flat phase list is all it ever sees.
+  const rawSegments = Array.isArray(s.finish_segments)
+    ? (s.finish_segments as Array<Record<string, unknown>>)
+    : null;
+  if (rawSegments && rawSegments.length >= 2) {
+    const segs = rawSegments
+      .map((seg) => ({
+        mi: Number(seg?.mi) || 0,
+        pace: Number(seg?.pace_s_per_mi) || 0,
+        label: String(seg?.label ?? '').trim(),
+      }))
+      .filter((seg) => seg.mi > 0 && seg.pace > 0);
+    const segTotal = segs.reduce((a, seg) => a + seg.mi, 0);
+    if (segs.length >= 2 && segTotal > 0 && segTotal < totalMi) {
+      const bulkMi = Number((totalMi - segTotal).toFixed(1));
+      const paceWord = (label: string) =>
+        label === 'M' ? 'marathon pace'
+        : label === 'HM' ? 'half marathon pace'
+        : label === 'T' ? 'threshold pace'
+        : label ? `${label} pace` : 'race pace';
+      const phases: ExpandedPhase[] = [{
+        type: 'work',
+        label: `${bulkMi.toFixed(1)} mi easy`,
+        distanceMi: bulkMi,
+        durationSec: Math.round(bulkMi * (mid ?? DURATION_EST_S_PER_MI)),
+        targetPaceSPerMi: mid,
+        tolerancePaceSPerMi: easyTol,
+      }];
+      for (const seg of segs) {
+        phases.push({
+          type: 'work',
+          label: `${seg.mi.toFixed(1)} mi @ ${paceWord(seg.label)}`,
+          distanceMi: Number(seg.mi.toFixed(1)),
+          durationSec: Math.round(seg.mi * seg.pace),
+          targetPaceSPerMi: seg.pace,
+          tolerancePaceSPerMi: 12,
+          isFinishSegment: true,
+        });
+      }
+      return phases;
+    }
+  }
+
   // 2026-06-07 · Audit D / D1 · race-specific + LT-phase long runs carry a
   // faster finish (last N mi @ HM/M pace). Split into easy-build + finish
   // so the watch executes — and guards — each correctly, instead of one
@@ -666,6 +716,19 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
     // derived. race rows are also kind:'long' (stash) but carry no
     // finish_mi → fall through to null and keep the "RACE" label.
     case 'long': {
+      // VARIETY-LONG-1 · a progression long's identity is its segment list;
+      // deriving from the single finish fields here would collapse
+      // "LONG · 3mi @ M + 2mi @ T" to its first segment and the label would
+      // drift from the spec the watch runs — the exact defect this function
+      // exists to prevent, one field over.
+      const segs = Array.isArray(s.finish_segments)
+        ? (s.finish_segments as Array<Record<string, unknown>>)
+            .map((seg) => ({ mi: Number(seg?.mi) || 0, label: String(seg?.label ?? '').trim() }))
+            .filter((seg) => seg.mi > 0 && seg.label)
+        : [];
+      if (segs.length >= 2) {
+        return `LONG · ${segs.map((seg) => `${formatMi(seg.mi)}mi @ ${seg.label}`).join(' + ')}`;
+      }
       const finishMi = Number(s.finish_mi) || 0;
       const finishLabel = String(s.finish_label ?? '').trim();
       if (finishMi > 0 && finishLabel) {

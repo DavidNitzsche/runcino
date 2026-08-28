@@ -124,6 +124,12 @@ export interface WorkoutSpecLong {
   finish_mi?: number;
   finish_pace_s_per_mi?: number;
   finish_label?: string;    // e.g. "M" | "HM" | "Marathon Pace"
+  /** VARIETY-LONG-1 · a progression long (Research/04 §4.3) walks two paces
+   *  after the easy bulk, carried as an ordered segment list. When present
+   *  (always alongside the single-finish fields, which then hold the FIRST
+   *  segment for older consumers) the detail view renders BASE + one row per
+   *  segment. */
+  finish_segments?: Array<{ mi: number; pace_s_per_mi: number; label: string }>;
 }
 
 /**

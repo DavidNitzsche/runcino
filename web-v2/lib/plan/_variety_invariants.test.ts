@@ -21,6 +21,13 @@
  *      beginner rows (5K opens "4×1 min @ T", 10K peaks "6×2 min fartlek")
  *      state a walk, and §15's base row supplies a DIFFERENT second day
  *      ("hill sprints, occasional fartlek/light hills") (VARIETY-BEGIN-1).
+ *   5. Marathon/half intensity longs — one variant per (phase, distance),
+ *      forever, and three consecutive warm-in finishes. Research/00a
+ *      §"Long-Run Variations" ("Don't make every long run a progression —
+ *      rotate") and §"Long-run rules of thumb" ("intensity inserts come 1 in
+ *      every 2–3 long runs") say otherwise; the catalogue's five §4 long-run
+ *      entries were declared on `SLOT_FAMILIES.long` and unreachable
+ *      (VARIETY-LONG-1).
  *
  * Locked here on real composed blocks, `_midrace_invariants.test.ts` idiom —
  * no DB, byte-reproducible. The doctrine registry holds the numbers against
@@ -42,9 +49,11 @@ import {
   beginnerSurgeDose, beginnerHillReps,
   type ComposePlanInput, type DOW, type DayPlan,
 } from './generate';
-import { tPaceFromGoal, buildWorkoutSpec, strideRepsForPhase, STRIDE_REPS_BY_PHASE, STRIDE_DEFAULT_REPS } from './spec-builder';
+import { tPaceFromGoal, buildWorkoutSpec, strideRepsForPhase, STRIDE_REPS_BY_PHASE, STRIDE_DEFAULT_REPS, extractLongSegments } from './spec-builder';
 import { DRESS_REHEARSAL, dressRehearsalDose } from './long-run-rows';
 import { dayDoses, weeklyDoseBudgetMi } from './dosing';
+import { splitDay } from './intensity-distribution';
+import { expandSpecToPhases, subLabelFromSpec } from '@/lib/training/expand-spec';
 
 const START_MONDAY = '2026-08-31';
 
@@ -372,6 +381,17 @@ describe('VARIETY-BEGIN-1 · beginner quality: two different days, a dose that m
 });
 
 // ══ 5 · MARATHON REGRESSION · shared code paths left the marathon alone ═════
+//
+// VARIETY-LONG-1 (2026-08-28) · this section's first assertion used to read
+// "no marathon long carries the 10K progression kind" — written the same day
+// as VARIETY-10K-1, to catch the 10K's FIXED two-mile tail leaking into the
+// marathon through the shared `longFinishSegment`. The marathon now carries a
+// progression long of its OWN: §4.3's fraction-sized two-segment shape
+// ("LONG · 5mi @ M + 2mi @ T"), rotated in by the catalogue's long slot. The
+// original assertion's INTENT stands and is restated below in the terms that
+// actually distinguish the two rows: the 10K's tail is a single fixed
+// TENK_PROGRESSION_FINISH_MI segment; the marathon's progression is always
+// two segments, fraction-sized off its own long.
 
 describe('MARATHON REGRESSION · the marathon\'s long-run rows are untouched', () => {
   const composed = build({
@@ -380,9 +400,16 @@ describe('MARATHON REGRESSION · the marathon\'s long-run rows are untouched', (
   });
   const longs = longsOf(composed);
 
-  it('no marathon long carries the 10K progression kind or its fixed 2-mile tail', () => {
+  it('the 10K\'s fixed 2-mile tail never leaks into the marathon', () => {
     for (const r of longs) {
-      expect(r.long.longRunKind ?? null, `${r.week.startISO}`).not.toBe('progression');
+      // The 10K row is a single fixed 2-mile segment. A marathon long that
+      // reads exactly like it is the leak the original assertion caught.
+      expect(r.long.subLabel, `${r.week.startISO}`).not.toBe(`LONG · ${TENK_PROGRESSION_FINISH_MI}mi @ M`);
+      if (r.long.longRunKind === 'progression') {
+        // A marathon progression is §4.3's two-pace walk, never a single tag.
+        expect(r.long.subLabel, `${r.week.startISO} · a single-segment marathon "progression" is the 10K row wearing §4.3's name`)
+          .toMatch(/^LONG · [\d.]+mi @ M \+ [\d.]+mi @ T$/);
+      }
     }
   });
 
@@ -394,12 +421,159 @@ describe('MARATHON REGRESSION · the marathon\'s long-run rows are untouched', (
       // Fraction-sized (≈50% bounded by the dose budget), never the 10K's fixed 2.
       expect(mi).toBeGreaterThan(TENK_PROGRESSION_FINISH_MI);
     }
+    // VARIETY-LONG-1 · §4.4 does not rotate: EVERY marathon race-specific
+    // cadence long is the MP long. It is the phase's named stimulus, and the
+    // rotation is deliberately scoped away from it.
+    for (const r of longs.filter((x) => x.phase === 'RACE-SPECIFIC')) {
+      if (r.long.longRunKind == null || r.long.longRunKind === 'dress_rehearsal') continue;
+      expect(r.long.longRunKind, `${r.week.startISO} · the marathon RS cadence long rotated away from §4.4`).toBe('mp_long');
+    }
   });
 
-  it('marathon long-run kinds stay inside the pre-existing row set', () => {
+  it('marathon long-run kinds stay inside the known row set', () => {
     for (const r of longs) {
       if (r.long.longRunKind == null) continue;
-      expect(['mp_long', 'fast_finish', 'dress_rehearsal']).toContain(r.long.longRunKind);
+      expect(['mp_long', 'fast_finish', 'dress_rehearsal', 'progression']).toContain(r.long.longRunKind);
+    }
+  });
+});
+
+// ══ 6 · VARIETY-LONG-1 · long runs rotate and stay on cadence ═══════════════
+//
+// Research/00a §"Long-Run Variations": "Long runs are not monolithic" and, on
+// the progression row, "Don't make every long run a progression — rotate."
+// §"Long-run rules of thumb": "Most long runs are easy; intensity inserts come
+// 1 in every 2–3 long runs in marathon/half cycles." Research/04 §4.3 gives the
+// progression long its shape ("middle at strong E or M, final 1/4 to 1/3 at M
+// to T") and the same every-2-3-weeks cadence §4.4/§4.5 carry. The catalogue's
+// `long` slot picks WHICH §4 row a cadence week's long is; the composer keeps
+// every number.
+
+describe('VARIETY-LONG-1 · the marathon block rotates its intensity longs on cadence', () => {
+  const archetype = {
+    raceDistanceMi: 26.22, goalSec: 10800, weeks: 14,
+    level: 'advanced' as const, recentWeeklyMi: 40, recentLongMi: 14, easyDayMedianMi: 6, bestRecentVdot: 50,
+  };
+  const composed = build(archetype);
+  const longs = longsOf(composed);
+  const intensity = longs.filter((r) => r.long.longRunKind != null && r.long.longRunKind !== 'dress_rehearsal');
+
+  it('at least two distinct intensity variants appear across the block', () => {
+    const kinds = new Set(intensity.map((r) => r.long.longRunKind));
+    expect(kinds.size, `only ${[...kinds].join(', ') || 'none'} — the one-variant-forever defect`).toBeGreaterThanOrEqual(2);
+    expect(intensity.length).toBeGreaterThan(1);
+  });
+
+  it('intensity longs land on the cadence: never three in a row, ≥2 weeks apart within a phase', () => {
+    // Research/00a: "intensity inserts come 1 in every 2–3 long runs". The two
+    // phases anchor the same picker on their own last weeks, so a single
+    // one-week gap can exist at the QUALITY → RACE-SPECIFIC seam; three
+    // consecutive intensity longs cannot.
+    const weekIdxOf = (r: (typeof longs)[number]) => composed.weeks.indexOf(r.week);
+    const hot = intensity.map(weekIdxOf).sort((a, b) => a - b);
+    for (let i = 2; i < hot.length; i++) {
+      expect(
+        hot[i] - hot[i - 2],
+        `three consecutive intensity longs at weeks ${hot[i - 2]}..${hot[i]}`,
+      ).toBeGreaterThan(2);
+    }
+    for (const phase of ['QUALITY', 'RACE-SPECIFIC']) {
+      const inPhase = intensity.filter((r) => r.phase === phase).map(weekIdxOf).sort((a, b) => a - b);
+      for (let i = 1; i < inPhase.length; i++) {
+        expect(inPhase[i] - inPhase[i - 1], `${phase} intensity longs one week apart`).toBeGreaterThanOrEqual(2);
+      }
+    }
+    // And plain longs still exist between them — most long runs are easy.
+    expect(longs.filter((r) => r.long.longRunKind == null).length).toBeGreaterThan(0);
+  });
+
+  it('TAPER longs stay plain', () => {
+    for (const r of longs.filter((x) => x.phase === 'TAPER')) {
+      if (r.long.longRunKind === 'dress_rehearsal') continue; // §4.6's own slot, pre-taper by days
+      expect(r.long.longRunKind ?? null, `${r.week.startISO}`).toBeNull();
+      expect(r.long.subLabel ?? 'LONG').toBe('LONG');
+    }
+  });
+
+  it('a progression long re-splits the SAME intensity the default finish was sized to', () => {
+    const prog = longs.filter((r) => r.long.longRunKind === 'progression');
+    expect(prog.length, 'the marathon block never rotated to §4.3 — check the long-slot wiring').toBeGreaterThan(0);
+    for (const r of prog) {
+      const segs = extractLongSegments(r.long.subLabel);
+      expect(segs.length).toBe(2);
+      const [mid, tail] = segs;
+      expect(mid.tag).toBe('M');
+      expect(tail.tag).toBe('T');
+      // Each segment is a real session (§4.5's two-mile floor applies to each).
+      expect(mid.mi).toBeGreaterThanOrEqual(FAST_FINISH_MIN_MI);
+      expect(tail.mi).toBeGreaterThanOrEqual(FAST_FINISH_MIN_MI);
+      // The tail sits inside Daniels' weekly T budget for the realized week.
+      expect(tail.mi).toBeLessThanOrEqual(weeklyDoseBudgetMi(r.week.weeklyMi, 'T', 'training') + 0.55);
+      // Total intensity is the fraction sizing's, so rotating the shape never
+      // added a hard mile: same ceiling the single-tag finish obeys.
+      expect(mid.mi + tail.mi).toBeLessThanOrEqual(r.long.distanceMi * 0.5 + 0.01);
+      // And the week dropped its structured T-family slot (§4.3 "don't pair
+      // with other quality work"; the tail IS the week's threshold work).
+      const q = r.week.days.filter((d) => d.isQuality && d.type !== 'race');
+      expect(q.map((d) => d.type)).not.toContain('threshold');
+      expect(q.map((d) => d.type)).not.toContain('tempo');
+    }
+  });
+
+  it('the accounting sees both segments: splitDay sums them, the doses split by pace', () => {
+    const day = { type: 'long', distanceMi: 20, subLabel: 'LONG · 5mi @ M + 2mi @ T', isLong: true };
+    expect(splitDay(day as never).qualityMi).toBe(7);
+  });
+
+  it('the watch renders the progression: segments in the spec, three phases out', () => {
+    const label = 'LONG · 5mi @ M + 2mi @ T';
+    const { spec } = buildWorkoutSpec('long', 20, 420, null, label);
+    const s = spec as Record<string, unknown>;
+    const segs = s.finish_segments as Array<{ mi: number; pace_s_per_mi: number; label: string }>;
+    expect(Array.isArray(segs)).toBe(true);
+    expect(segs.length).toBe(2);
+    expect(segs[0].label).toBe('M');
+    expect(segs[1].label).toBe('T');
+    // The tail is FASTER than the middle — the walk §4.3 describes.
+    expect(segs[1].pace_s_per_mi).toBeLessThan(segs[0].pace_s_per_mi);
+    // The derived label round-trips, so persist-time reconciliation cannot
+    // collapse the shape to its first segment.
+    expect(subLabelFromSpec(spec)).toBe(label);
+    const phases = expandSpecToPhases({ spec, totalMi: 20, easyPaceSec: 540 });
+    expect(phases).not.toBeNull();
+    expect(phases!.length).toBe(3);
+    expect(phases![0].type).toBe('work');
+    expect(phases![1].isFinishSegment).toBe(true);
+    expect(phases![2].isFinishSegment).toBe(true);
+    expect(phases![2].targetPaceSPerMi!).toBeLessThan(phases![1].targetPaceSPerMi!);
+    expect(Math.round((phases![0].distanceMi ?? 0) + (phases![1].distanceMi ?? 0) + (phases![2].distanceMi ?? 0))).toBe(20);
+  });
+
+  it('the rotation is deterministic: the same inputs compose the same block', () => {
+    const again = build(archetype);
+    const labels = (c: typeof composed) => longsOf(c).map((r) => `${r.week.startISO}:${r.long.subLabel}`);
+    expect(labels(again)).toEqual(labels(composed));
+  });
+});
+
+describe('VARIETY-LONG-1 · the half rotates too, and its cadence holds', () => {
+  const composed = build({
+    raceDistanceMi: 13.11, goalSec: 5400, weeks: 14,
+    level: 'advanced', recentWeeklyMi: 32, recentLongMi: 12, easyDayMedianMi: 6, bestRecentVdot: 48,
+  });
+  const longs = longsOf(composed);
+
+  it('the HM block carries at least two intensity variants', () => {
+    const kinds = new Set(
+      longs.map((r) => r.long.longRunKind).filter((k) => k != null && k !== 'dress_rehearsal'),
+    );
+    expect(kinds.size, `only ${[...kinds].join(', ') || 'none'}`).toBeGreaterThanOrEqual(2);
+  });
+
+  it('an HM progression week runs ONE structured session beside the long', () => {
+    for (const r of longs.filter((x) => x.long.longRunKind === 'progression')) {
+      const q = r.week.days.filter((d) => d.isQuality && d.type !== 'race');
+      expect(q.length, `${r.week.startISO}`).toBe(1);
     }
   });
 });

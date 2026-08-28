@@ -53,7 +53,7 @@
  * re-derived here, so this measurement can never drift from the spec the
  * runner's watch actually executes.
  */
-import { buildWorkoutSpec, extractFinishSegment, type WorkoutSpec } from './spec-builder';
+import { buildWorkoutSpec, extractLongSegments, type WorkoutSpec } from './spec-builder';
 
 /** The shape this module needs from a composed day. Structural, so the
  *  maintenance/recovery composers and the sim harness all fit without
@@ -136,8 +136,14 @@ export function splitDay(day: IntensityDay): { easyMi: number; qualityMi: number
     case 'race':
       return { easyMi: 0, qualityMi: total };
     case 'long': {
-      const finish = extractFinishSegment(day.subLabel ?? null);
-      const hard = finish ? Math.min(finish.mi, total) : 0;
+      // VARIETY-LONG-1 (2026-08-28) · every race-pace segment counts, not the
+      // first. A progression long (Research/04 §4.3) writes two —
+      // "LONG · 3mi @ M + 2mi @ T" — and reading only `extractFinishSegment`
+      // here would report its T tail as easy miles, understating the day to
+      // the 75% floor and the dosing census alike. Single-segment labels sum
+      // to exactly the number they always produced.
+      const segs = extractLongSegments(day.subLabel ?? null);
+      const hard = Math.min(segs.reduce((a, s) => a + s.mi, 0), total);
       return { easyMi: Number((total - hard).toFixed(2)), qualityMi: Number(hard.toFixed(2)) };
     }
     default: {

@@ -183,6 +183,7 @@ import { EASY_SHARE_FLOOR } from '@/lib/plan/intensity-distribution';
 import {
   qualityFamilyFor,
   MP_LONG_CADENCE_WEEKS,
+  PROGRESSION_TAIL_SHARE,
   racePaceLongThisWeek,
   TAPER_MP_DOSE,
   taperMpDose,
@@ -824,6 +825,116 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           `TENK_PROGRESSION_FINISH_MI (${TENK_PROGRESSION_FINISH_MI}) is below FAST_FINISH_MIN_MI (${FAST_FINISH_MIN_MI}) — every tail would be authored and immediately zeroed`,
         );
       }
+    },
+  },
+
+  {
+    id: 'LONGRUN.intensity-cadence',
+    binds: [
+      'lib/plan/generate.ts#longFinishSegment',
+      'lib/plan/generate.ts#layoutWeek.qualityIntensityLongWeek',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Long-run rules of thumb',
+    claim:
+      'Intensity inserts on the long run come one in every two to three long runs across the ' +
+      'whole marathon/half block, not only in the race-specific phase. The QUALITY warm-in ' +
+      'ramp used to put a race-pace finish on each of the phase\'s last THREE weeks — three ' +
+      'consecutive intensity longs, which this rule forbids — so the warm-in window now walks ' +
+      'the same racePaceLongThisWeek cadence the race-specific arm walks, anchored on its own ' +
+      'phase end. The cadence band is read out of the rule\'s own sentence and the engine\'s ' +
+      'constant must sit inside it; the source-level check holds the QUALITY arm to the gate.',
+    check({ cite }) {
+      const rule = cite.text().split('\n').find((l) => /intensity inserts/i.test(l));
+      if (!rule) {
+        throw new Error('§"Long-run rules of thumb" no longer states the intensity-insert rhythm — re-read the section');
+      }
+      const band = rule.match(/1 in every (\d+)\s*[–—-]\s*(\d+) long runs/i);
+      if (!band) {
+        throw new Error(`the rule no longer states a "1 in every N-N long runs" band: "${rule.trim()}"`);
+      }
+      const [lo, hi] = [Number(band[1]), Number(band[2])];
+      if (MP_LONG_CADENCE_WEEKS < lo || MP_LONG_CADENCE_WEEKS > hi) {
+        throw new Error(
+          `MP_LONG_CADENCE_WEEKS is ${MP_LONG_CADENCE_WEEKS}, doctrine's long-run intensity rhythm is 1 in every ${lo}-${hi}`,
+        );
+      }
+      // The QUALITY arm gates on the cadence, unconditionally — the regression
+      // this claim exists to catch is the three-consecutive-week window coming
+      // back.
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      matchLiteral(
+        src,
+        /if \(phase !== 'QUALITY'\) return null;[\s\S]{0,1600}?if \(!cadenceWeek\) return null;/,
+        "longFinishSegment's QUALITY arm gates on the cadence",
+      );
+      matchLiteral(
+        src,
+        /const qualityIntensityLongWeek = phase === 'QUALITY' && racePaceTag != null\s*\n\s*&& racePaceLongThisWeek\(weekIdx, weeksToPhaseEnd, cutbackEveryN\);/,
+        'the QUALITY intensity-long cadence flag walks the same picker as the race-specific arm',
+      );
+    },
+  },
+
+  {
+    id: 'LONGRUN.variant-rotation',
+    binds: [
+      'lib/plan/generate.ts#PROGRESSION_TAIL_SHARE',
+      'lib/plan/catalogue-rx.ts#selectLongRunVariant',
+      'lib/plan/catalogue-rx.ts#LONG_ROTATION_EXCLUDED',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '## Long-Run Variations',
+    claim:
+      'Long runs are not monolithic and no variant runs every time: the progression row\'s own ' +
+      'Caution column reads "Don\'t make every long run a progression — rotate." The engine\'s ' +
+      'cadence weeks therefore consult the catalogue\'s long family for WHICH §4 row the ' +
+      'intensity long is, least-recently-used, with §4.6\'s dress rehearsal excluded (it is ' +
+      'placed by days-before-race and authored by its own pass — offering it to the rotation ' +
+      'is how it double-fires) and §4.2\'s base long excluded (it is what every off-cadence ' +
+      'week already runs). The progression shape itself is §4.3\'s: an M middle and a T tail, ' +
+      'the tail PROGRESSION_TAIL_SHARE of the intensity block, which must keep the tail under ' +
+      'the doc\'s own "final 1/4 to 1/3" ceiling when read against the whole run.',
+    check({ cite }) {
+      const text = cite.text();
+      if (!/Don't make every long run a progression\s*[–—-]\s*rotate/i.test(text)) {
+        throw new Error('§"Long-Run Variations" no longer carries the rotate caution — the rotation loses its citation');
+      }
+      if (!/Long runs are not monolithic/i.test(text)) {
+        throw new Error('§"Long-Run Variations" no longer opens with the variants ruling — re-read the section');
+      }
+      // §4.3's final-segment ceiling, read from its own Structure row. The
+      // engine's tail is a share of the INTENSITY block, and the block is at
+      // most half the run (hasFinish requires finishMi < longMi, and every
+      // authored fraction is ≤ 0.5), so tail-of-run ≤ share × 0.5.
+      const p43 = resolveCitation('Research/04-workout-vocabulary.md', '### 4.3 Progression long run');
+      const finalSeg = p43.table().cell('Structure', 'Prescription')
+        .match(/final\s+1\/(\d+)\s+to\s+1\/(\d+)\s+at\s+M\s+to\s+T/i);
+      if (!finalSeg) {
+        throw new Error('§4.3\'s Structure row no longer states a "final 1/4 to 1/3 at M to T" segment — re-derive the tail');
+      }
+      const ceiling = 1 / Math.min(Number(finalSeg[1]), Number(finalSeg[2]));
+      if (PROGRESSION_TAIL_SHARE * 0.5 > ceiling + 1e-9) {
+        throw new Error(
+          `PROGRESSION_TAIL_SHARE (${PROGRESSION_TAIL_SHARE.toFixed(3)} of the intensity block, ≤ ` +
+            `${(PROGRESSION_TAIL_SHARE * 0.5).toFixed(3)} of the run) exceeds §4.3's final-segment ceiling of 1/${Math.min(Number(finalSeg[1]), Number(finalSeg[2]))}`,
+        );
+      }
+      // The exclusions are structural, not remembered: the wrapper must keep
+      // both slugs out of the rotation.
+      const rx = sourceOf('web-v2/lib/plan/catalogue-rx.ts');
+      matchLiteral(
+        rx,
+        /LONG_ROTATION_EXCLUDED[\s\S]{0,400}?'dress-rehearsal-long-run',\s*\n\s*'base-long-run',/,
+        'the long rotation excludes the dress rehearsal and the base long',
+      );
+      // And the composer actually consults it — a declared-but-unreachable
+      // slot is the defect this whole workstream closes.
+      matchLiteral(
+        sourceOf('web-v2/lib/plan/generate.ts'),
+        /selectLongRunVariant\(\{/,
+        'layoutWeek consults the long-run rotation',
+      );
     },
   },
 

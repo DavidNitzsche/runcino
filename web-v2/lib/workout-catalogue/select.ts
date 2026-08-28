@@ -732,14 +732,28 @@ function fits(
       if (m == null) return { ok: false, detail: 'a sequence step is not convertible without a work pace' };
       mi += m;
     }
-    if (allowanceMi + 1e-9 < mi) {
+    // VARIETY-LONG-1 (2026-08-28) · `scalesBelowFloor` now reaches the sequence
+    // branch, and it has to: the flag was minted FOR the long-run family ("the
+    // long run SHRINKS to what the week can hold rather than being refused")
+    // but only the continuous branch ever read it, and four of the five §4
+    // long-run entries are SEQUENCES carrying the doc's own worked example —
+    // §4.3's "6 mi E + 6 mi M + 4 mi T", §4.4's 3+12, §4.5's 12+4. Read as
+    // fixed shapes they were refused on every week under ~50 mi/wk, which is
+    // the catalogue's own §4.3 convention note read backwards ("the selector
+    // scales the thirds to the runner's long run rather than emitting 6+6+4 at
+    // every distance"). The composer keeps distance authority — the volume
+    // curve sizes the actual long and its segments — so the dose reported here
+    // is the example scaled into the week's allowance, an identity-selection
+    // artifact and never an authored size.
+    if (allowanceMi + 1e-9 < mi && !scalesBelowFloor) {
       return {
         ok: false,
         detail: `the week affords ${allowanceMi.toFixed(2)} mi and this session is a fixed ${mi.toFixed(2)} mi`,
       };
     }
+    const sizedMi = Math.min(mi, allowanceMi);
     const rest = structure.steps.find((s) => s.recoverySec != null)?.recoverySec ?? 0;
-    return dose(structure.steps.length, mi, minutesOf(mi), rest);
+    return dose(structure.steps.length, sizedMi, minutesOf(sizedMi), rest);
   }
 
   if (structure.kind === 'alternation') {

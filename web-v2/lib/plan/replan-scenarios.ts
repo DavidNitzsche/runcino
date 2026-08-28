@@ -493,6 +493,10 @@ function stripLongFinish(row: PlanDayRow, newMi: number): { subLabel: string; sp
     delete spec.finish_mi;
     delete spec.finish_label;
     delete spec.finish_pace_s_per_mi;
+    // VARIETY-LONG-1 · a progression long carries its segments as a list too;
+    // a stripped finish must take all of them or the expander rebuilds the
+    // intensity the deload just removed.
+    delete spec.finish_segments;
     if (Array.isArray(spec.fuel_mi)) {
       spec.fuel_mi = (spec.fuel_mi as unknown[])
         .map((v) => Number(v))

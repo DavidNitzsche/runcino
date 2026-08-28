@@ -100,7 +100,7 @@ import {
 // prescription grammar cannot yet express.
 import {
   anchorsFor,
-  newCatalogueHistory, recordCatalogueChoice, selectSlotWorkout,
+  newCatalogueHistory, recordCatalogueChoice, selectSlotWorkout, selectLongRunVariant,
   type CatalogueHistory, type ComposerSlot,
 } from './catalogue-rx';
 import { capFamilyOf, type CapFamily, type PlacedSession } from '@/lib/workout-catalogue/select';
@@ -1824,6 +1824,28 @@ export const TENK_PROGRESSION_FINISH_MI = 2;
  */
 export const R3_MIN_TRAINING_DAYS = 6;
 
+/**
+ * VARIETY-LONG-1 (2026-08-28) · the threshold tail's share of a progression
+ * long run's intensity block.
+ *
+ * `Research/04-workout-vocabulary.md` §4.3's Structure row: "First 1/3 to 1/2
+ * at E pace, middle at strong E or M, final 1/4 to 1/3 at M to T", and its
+ * worked example — "6 mi E + 6 mi M + 4 mi T" — spends 4 of its 10 intensity
+ * miles (0.40 of the intensity block; the final 1/4 of the RUN) on the tail.
+ * The engine expresses the shape as two segments after an easy bulk: an M
+ * middle and a T tail. The tail takes one third of the intensity block —
+ * inside the doc's own final-quarter-to-third band when read against the whole
+ * run (an intensity block sized at 30-50% of the long puts a one-third tail at
+ * 10-17% of the run, always under the "final 1/4" ceiling) — and the intensity
+ * block's TOTAL is the same fraction of the long that §4.5's single-tag finish
+ * would have taken on the same week, so rotating the shape never adds hard
+ * miles. Bounded per segment by the week's own dose budgets (`M` and `T` each
+ * priced by `weeklyDoseBudgetMi`), floored per segment at `FAST_FINISH_MIN_MI`;
+ * a week that cannot seat both segments keeps the default single-tag finish
+ * rather than shipping a fragment. Bound by LONGRUN.progression-shape.
+ */
+export const PROGRESSION_TAIL_SHARE = 1 / 3;
+
 // Exported for lib/plan/block-preview.ts (the pre-recovery-complete block-shape
 // preview) — it must call this SAME function rather than re-deriving BLOCK_SHAPE
 // or the phase-sizing arithmetic. See that file's header for why.
@@ -2830,7 +2852,17 @@ function longFinishSegment(
     return { pct: 0.50, tag: racePaceTag, kind: racePaceTag === 'MP' ? 'mp_long' : 'fast_finish' };
   }
   if (phase !== 'QUALITY') return null;
-  // Last three QUALITY weeks build toward race pace. HM ramps M → M → HMP;
+  // VARIETY-LONG-1 (2026-08-28) · the warm-in window is now cadence-gated too.
+  // The ramp below is §4.5's shape at every step, and §4.5's own Frequency row
+  // is "Every 2–3 weeks" — a rhythm, not a window. `Research/00a` §"Long-run
+  // rules of thumb" states it block-wide: "Most long runs are easy; intensity
+  // inserts come 1 in every 2–3 long runs in marathon/half cycles." Three
+  // consecutive warm-in finishes were exactly what that sentence forbids.
+  // The caller passes the same `racePaceLongThisWeek` walk, anchored on this
+  // phase's own end, so the LAST warm-in week still carries the step to race
+  // pace and the intervening week runs plain.
+  if (!cadenceWeek) return null;
+  // Last QUALITY weeks build toward race pace. HM ramps M → HMP;
   // M holds MP throughout (race pace == marathon pace).
   const mTag: 'M' | 'MP' = racePaceTag === 'HM' ? 'M' : 'MP';
   // The warm-in ramp is §4.5's shape at every step — "final 2-6 mi at MP or
@@ -3437,6 +3469,20 @@ function layoutWeek({
   // (§4.5) carry "Every 2–3 weeks", so both walk the same cadence.
   const racePaceLongWeek = phase === 'RACE-SPECIFIC' && racePaceTag != null
     && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN);
+  // VARIETY-LONG-1 (2026-08-28) · the QUALITY warm-in ramp is ALSO on the
+  // cadence now. The ramp is §4.5's shape at every step (this function's own
+  // comment says so), and §4.5's Frequency row — "Every 2–3 weeks" — does not
+  // stop applying because the phase changed. `Research/00a` §"Long-run rules of
+  // thumb" states the same rule for the whole block: "Most long runs are easy;
+  // intensity inserts come 1 in every 2–3 long runs in marathon/half cycles."
+  // The old shape put a finish on each of the last THREE QUALITY weeks — three
+  // consecutive intensity longs, which is the one thing both rows forbid. The
+  // cadence is the SAME picker the race-specific arm walks, anchored on this
+  // phase's own last week, so the last QUALITY long still carries the HMP/MP
+  // step and never lands on a deload. Off-cadence warm-in weeks run plain.
+  // Bound by LONGRUN.intensity-cadence.
+  const qualityIntensityLongWeek = phase === 'QUALITY' && racePaceTag != null
+    && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN);
   // The MARATHON-only consequences hang off this narrower flag: §16's forbidden
   // "MP long run + hard tempo" pairing (the half's race-specific mix is
   // threshold + intervals, which §16 does not name) and DAY-SIZE-1's at-pace
@@ -3473,7 +3519,14 @@ function layoutWeek({
   // spends the M budget, which neither structured slot touches.
   const tenKProgressionWeek = cat === '10k' && !baseBuilding
     && phase === 'RACE-SPECIFIC' && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN);
-  const finishSeg = longFinishSegment(phase, weeksToPhaseEnd, racePaceTag, racePaceLongWeek, tenKProgressionWeek);
+  const finishSeg = longFinishSegment(
+    phase, weeksToPhaseEnd, racePaceTag,
+    // VARIETY-LONG-1 · one cadence, whichever phase asks. RACE-SPECIFIC weeks
+    // read `racePaceLongWeek` exactly as before; QUALITY weeks now read their
+    // own phase-anchored walk of the same picker.
+    phase === 'QUALITY' ? qualityIntensityLongWeek : racePaceLongWeek,
+    tenKProgressionWeek,
+  );
   // DOCTRINE-DOSING-2 · the long-run finish is a DOSE, and it was never charged
   // to one. A half of the long run at marathon pace is marathon-pace mileage —
   // `dosePaceOf` reads it as M, `splitDay` counts its miles as hard — but the
@@ -3520,20 +3573,118 @@ function layoutWeek({
   // mix keys on below, so the freed slot comes back automatically.
   const finishMi = finishRawMi >= FAST_FINISH_MIN_MI ? finishRawMi : 0;
   const hasFinish = finishSeg != null && finishMi > 0 && finishMi < longMi;
+
+  /* ── VARIETY-LONG-1 (2026-08-28) · WHICH intensity long, from the catalogue ──
+   *
+   * The cadence machinery above decides WHETHER this week's long carries
+   * intensity. Until now the VARIANT was fixed per (phase, distance): every
+   * marathon race-specific cadence week was §4.4, every other intensity long
+   * was §4.5's single-tag finish, and §4.3's progression long run sat in the
+   * catalogue cited and unreachable — `SLOT_FAMILIES.long` declared the five
+   * §4 entries and no composer path ever passed the slot. `Research/00a`
+   * §"Long-Run Variations" is direct about both halves: "Long runs are not
+   * monolithic" and, on the progression row itself, "Don't make every long run
+   * a progression — rotate."
+   *
+   * So on the cadence weeks the catalogue's `long` family now picks the row,
+   * LRU-rotated through the same `CatalogueHistory` the quality slots rotate
+   * through, filtered by the entries' own phase/distance/tier declarations.
+   * What deliberately does NOT rotate:
+   *
+   *   · Marathon RACE-SPECIFIC cadence weeks stay §4.4. Its row calls the
+   *     session "the marathon-specific stimulus" and §15's race-specific row
+   *     names "MP long runs" among the phase's primary workouts — it is the
+   *     dominant entry there by doctrine, not by rotation. §4.6's rehearsal
+   *     (via `authorDressRehearsal`) is the late-phase variation.
+   *   · The 10K's fixed two-mile tail (kind 'progression' out of
+   *     `longFinishSegment`) is Research/22's own sample-week dose, not a
+   *     fraction-sized shape, and stays as authored.
+   *   · Dress rehearsal never rotates in — §4.6 is placed by days-to-race and
+   *     authored by `authorDressRehearsal`; the selector wrapper excludes it.
+   *
+   * SIZING STAYS THE COMPOSER'S. The chosen entry contributes the SHAPE only.
+   * A progression week re-splits the SAME `finishMi` the default finish was
+   * already sized to (volume-curve fraction, bounded by the week's dose
+   * budget), so rotating the shape never adds a hard mile: an M middle and a
+   * T tail (`PROGRESSION_TAIL_SHARE`), each floored at `FAST_FINISH_MIN_MI`,
+   * the tail additionally inside Daniels' weekly T budget. A week that cannot
+   * seat both segments keeps the default single-tag finish and the offer is
+   * recorded as an attempt, ROTATION-ATTEMPT-1's own device, so the rotation
+   * self-corrects instead of re-offering it forever.
+   */
+  const longTier = (catalogueHistory != null && level != null) ? (level as Tier) : null;
+  const rotatesLongVariant = hasFinish && !baseBuilding
+    && finishSeg!.kind !== 'progression'
+    && !(phase === 'RACE-SPECIFIC' && racePaceTag === 'MP')
+    && (phase === 'QUALITY' || phase === 'RACE-SPECIFIC')
+    && longTier != null && catalogueHistory != null;
+  const longVariant = rotatesLongVariant
+    ? selectLongRunVariant({
+        history: catalogueHistory!,
+        enginePhase: phase,
+        distance: cat,
+        tier: longTier!,
+        weekIdx,
+        weeklyMi,
+        dayOffset: longRunDow,
+        // The rotation only runs in QUALITY / RACE-SPECIFIC (the gate above),
+        // so the taper window reduces to the race week itself.
+        inTaperWindow: isRaceWeek,
+        tPaceSec: weekTPaceSec,
+        iPaceSec: weekIPaceSec,
+        mpPaceSec: weekMpPaceSec,
+        // SLOT-ROTATE-5 · the same QUALITY split the quality slots take.
+        inHillBlock: phase === 'QUALITY' ? weeksToPhaseEnd > 2 : null,
+      })
+    : null;
+  let progressionSeg: { midMi: number; tailMi: number } | null = null;
+  if (longVariant?.entry.slug === 'progression-long-run') {
+    const tBudget = weeklyDoseBudgetMi(weeklyMi, 'T', weekDoseContext);
+    const tailMi = Math.min(
+      Math.max(FAST_FINISH_MIN_MI, Math.floor(finishMi * PROGRESSION_TAIL_SHARE * 2) / 2),
+      Math.floor(tBudget * 2) / 2,
+    );
+    const midMi = Math.round((finishMi - tailMi) * 2) / 2;
+    // Both segments real (§4.5's two-mile floor applies to each), and the easy
+    // bulk still the run's first act (§4.3 "First 1/3 to 1/2 at E pace") —
+    // guaranteed by hasFinish (finishMi ≤ half the long).
+    if (tailMi >= FAST_FINISH_MIN_MI && midMi >= FAST_FINISH_MIN_MI) {
+      progressionSeg = { midMi, tailMi };
+    } else if (catalogueHistory && !catalogueHistory.attempts.some(
+      (a) => a.slug === 'progression-long-run' && a.weekIdx === weekIdx,
+    )) {
+      catalogueHistory.attempts.push({ slug: 'progression-long-run', weekIdx });
+    }
+  }
+  // The rotation's memory: what this week's intensity long actually IS. Only
+  // the rotated weeks record, so the marathon's §4.4 weeks and the 10K's fixed
+  // tail leave the quality-slot history exactly as they left it before.
+  if (rotatesLongVariant && catalogueHistory) {
+    recordCatalogueChoice(
+      catalogueHistory,
+      progressionSeg ? 'progression-long-run' : 'fast-finish-long-run',
+      weekIdx,
+    );
+  }
+  const longRunKindAuthored: LongRunKind | null =
+    !hasFinish ? null : progressionSeg ? 'progression' : finishSeg!.kind;
+  // MPLABEL-1 · "at marathon pace" reads as the goal's marathon pace, and on a
+  // refused goal it is not. An HM finish rides `tPaceSec` and never had this
+  // ambiguity, so only the M arm is qualified.
+  const mPaceWord = taperMpAtGoalPace ? 'marathon pace' : 'marathon effort for your current fitness';
   slots[longRunDow] = {
     dow: longRunDow, type: 'long', distanceMi: longMi, isQuality: false, isLong: true,
-    ...(hasFinish ? { longRunKind: finishSeg!.kind } : {}),
-    subLabel: hasFinish ? `LONG · ${finishMi}mi @ ${finishSeg!.tag}` : 'LONG',
-    notes: hasFinish
-      // MPLABEL-1 · "at marathon pace" reads as the goal's marathon pace, and
-      // on a refused goal it is not. An HM finish rides `tPaceSec` and never
-      // had this ambiguity, so only the M arm is qualified.
-      ? `Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${
-          finishSeg!.tag === 'HM' ? 'half-marathon pace'
-          : taperMpAtGoalPace ? 'marathon pace'
-          : 'marathon effort for your current fitness'}.`
-      : phase === 'TAPER' ? 'Easy long, hold pace. Quality lives in the race itself.'
-      : 'Conversational throughout. Build the engine.',
+    ...(hasFinish ? { longRunKind: longRunKindAuthored! } : {}),
+    subLabel: !hasFinish ? 'LONG'
+      : progressionSeg ? `LONG · ${progressionSeg.midMi}mi @ M + ${progressionSeg.tailMi}mi @ T`
+      : `LONG · ${finishMi}mi @ ${finishSeg!.tag}`,
+    notes: !hasFinish
+      ? (phase === 'TAPER' ? 'Easy long, hold pace. Quality lives in the race itself.'
+        : 'Conversational throughout. Build the engine.')
+      : progressionSeg
+      ? `Progression long. Easy ${Math.round((longMi - finishMi) * 10) / 10}mi, then ${progressionSeg.midMi}mi at ${mPaceWord}, close with ${progressionSeg.tailMi}mi at threshold. Continuous, no stop between segments.`
+      : `Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${
+          finishSeg!.tag === 'HM' ? 'half-marathon pace' : mPaceWord}.`,
   };
   // DAY-SIZE-1 · on a marathon-pace long week, the MP block IS the week's
   // race-specific stimulus.
@@ -3768,6 +3919,13 @@ function layoutWeek({
            // the week runs one T session and one I session.
            : /* m */  (mpLongWeek ? ['threshold'] : ['tempo', 'intervals']))
       : phase === 'QUALITY'
+          // VARIETY-LONG-1 · on the week the rotation authors §4.3's
+          // progression long, the T-family slot comes out and the rep slot
+          // stays — but NOT here. The mix below stays the phase's own so the
+          // DOW placement (QUAL-PHASE-STABLE) is computed from the full
+          // profile; the progression week's slot list is filtered AFTER
+          // scheduling, where the surviving day keeps the weekday the phase
+          // always gives it. See the `scheduledQ` filter below.
           // Each row: one I-family slot, one T-family slot, and the T slot
           // alternates cruise intervals ↔ continuous tempo by week parity —
           // §5.2's "alternating with cruise intervals", read literally.
@@ -3853,7 +4011,35 @@ function layoutWeek({
       ? (() => { const a = qualityTypesFor(0), b = qualityTypesFor(1);
           return a.includes('intervals') ? a : b.includes('intervals') ? b : qualityTypes; })()
       : qualityTypes;
-    const scheduledQ = scheduleQuality(effectiveQDows, qualityTypes, longRunDow, restDow, availableDows, placementProfile);
+    const scheduledQRaw = scheduleQuality(effectiveQDows, qualityTypes, longRunDow, restDow, availableDows, placementProfile);
+    /* ── VARIETY-LONG-1 · the QUALITY progression week runs ONE structured day ──
+     *
+     * On the week the rotation authors §4.3's progression long, the T-family
+     * slot comes out and the rep slot stays. Two grounds, both doctrine's:
+     * §4.3's own contraindication row — "don't pair with other quality work
+     * in same week" — and the dosing arithmetic, because the progression's T
+     * tail spends the same Daniels 10% the cruise/tempo slot is budgeted
+     * against: the identical collision DOCTRINE-HMLONG-DOSE-1 resolves the
+     * identical way for the half's fast-finish cadence weeks. The long IS the
+     * week's threshold work.
+     *
+     * Filtered AFTER scheduling, deliberately. The schedule is computed from
+     * the phase's full profile, so the surviving rep day sits on the weekday
+     * the phase always gives it — dropping the slot BEFORE placement let the
+     * one-day search choose a different weekday and broke QUAL-PHASE-STABLE's
+     * training-days promise on 20 swept archetypes. The freed day becomes an
+     * easy day through the ordinary fill, exactly as an MP-long week's does.
+     */
+    const scheduledQ = (progressionSeg != null && phase === 'QUALITY' && scheduledQRaw.dows.length > 1)
+      ? (() => {
+          const li = scheduledQRaw.types.lastIndexOf('intervals');
+          const i = li >= 0 ? li : 0;
+          return {
+            dows: [scheduledQRaw.dows[i]],
+            types: [scheduledQRaw.types[i]],
+          };
+        })()
+      : scheduledQRaw;
     // DOCTRINE-VOCAB-1 (2026-08-17) · does Research/04 §15 place a specific
     // family on this slot, in this phase, for this distance? If so its
     // prescription supersedes the generic vo2max/threshold/tempo string.
@@ -3914,7 +4100,12 @@ function layoutWeek({
     // long runs it is — the same tag `dosePaceOf` reads.
     if (slots[longRunDow]?.isLong) {
       placedThisWeek.push({
-        slug: finishSeg?.tag === 'MP' ? 'marathon-pace-long-run'
+        // VARIETY-LONG-1 · a rotated progression long names itself, so §16's
+        // predicates see the session that was actually authored (its zones end
+        // at T, which the threshold-spacing rules care about). Every other
+        // week keeps the tag-derived mapping it always had.
+        slug: progressionSeg != null ? 'progression-long-run'
+          : finishSeg?.tag === 'MP' ? 'marathon-pace-long-run'
           : finishSeg?.tag === 'HM' ? 'fast-finish-long-run'
           : 'base-long-run',
         dayOffset: longRunDow,
@@ -9149,6 +9340,24 @@ function trimSessionDose(
   //     notes together — it is the only carrier of the finish between compose
   //     and persist.
   if (day.isLong && day.type === 'long') {
+    // VARIETY-LONG-1 · a progression long carries TWO segments and the T tail
+    // is the cheaper give-back: it is the smaller segment, it spends the
+    // tighter budget (Daniels' 10% for T against the marathon-pace column),
+    // and dropping it returns the session to §4.5's single-tag shape — a
+    // workout doctrine still describes — instead of shaving both segments
+    // into fragments. Only if the day is still over after the tail is gone
+    // does the remaining finish come down, through the same setLongFinish
+    // every single-segment long already goes through.
+    const segs = String(day.subLabel ?? '').match(/(\d+(?:\.\d+)?)mi\s*@\s*(HM|MP|M|T)\b/gi);
+    if (segs && segs.length >= 2) {
+      const firstSeg = String(day.subLabel).match(/(\d+(?:\.\d+)?)mi\s*@\s*(HM|MP|M)\b/i);
+      if (firstSeg) {
+        setLongFinish(day, Number(firstSeg[1]),
+          'dropped the progression tail to fit the week\'s dosing budget');
+        const now = measure(day);
+        if (now <= targetMi + 0.05) return now;
+      }
+    }
     setLongFinish(day, Math.max(0, Math.floor(targetMi * 2) / 2),
       "trimmed to Daniels' marathon-pace cap for the week");
     return measure(day);
@@ -9664,6 +9873,12 @@ function applyIntensityFloor(composed: ComposePlanResult): void {
 function setLongFinish(day: DayPlan, finishMi: number, reason = 'unrecorded'): void {
   const tagMatch = String(day.subLabel ?? '').match(/mi\s*@\s*(HM|MP|M)\b/i);
   const tag = tagMatch ? tagMatch[1].toUpperCase() : 'MP';
+  // VARIETY-LONG-1 · was the label a two-segment progression before this call?
+  // Any rewrite below collapses it to one segment, and the row identity must
+  // follow the shape (§4.3's identity IS the two-pace walk). The 10K's fixed
+  // single-segment tail also carries kind 'progression' and is untouched here.
+  const wasTwoSegment =
+    (String(day.subLabel ?? '').match(/mi\s*@\s*(HM|MP|M|T)\b/gi) ?? []).length >= 2;
   // LONGRUN-TRACE-1 · what this call is about to change, recorded before it
   // changes it. `splitDay` reads the segment back out of the sub_label, which
   // is where it lives between compose and persist.
@@ -9691,6 +9906,10 @@ function setLongFinish(day: DayPlan, finishMi: number, reason = 'unrecorded'): v
   trace(finishMi);
   const easyMi = Math.max(0, Math.round((day.distanceMi - finishMi) * 10) / 10);
   day.subLabel = `LONG · ${finishMi}mi @ ${tag}`;
+  // VARIETY-LONG-1 · a rewrite to a single segment is no longer §4.3's
+  // two-pace progression; what remains is §4.5's single-tag finish, and the
+  // row identity follows the shape it now describes.
+  if (wasTwoSegment && day.longRunKind === 'progression') day.longRunKind = 'fast_finish';
   // MPLABEL-1 · this function REWRITES a note `layoutWeek` already wrote, and
   // that note is the only place the goal-vs-current-fitness qualifier exists by
   // the time a trim runs. Re-deriving it here would need the week's pace

@@ -393,6 +393,38 @@ export function extractFinishSegment(
   return { mi, tag };
 }
 
+/**
+ * VARIETY-LONG-1 (2026-08-28) · EVERY race-pace segment of a long run's
+ * prescription, in order.
+ *
+ * `Research/04` §4.3's progression long run walks TWO paces after its easy bulk
+ * ("middle at strong E or M, final 1/4 to 1/3 at M to T"), which one
+ * `finish_mi` cannot say. The generator writes it as
+ * `"LONG · 3mi @ M + 2mi @ T"` and this reads all of the segments back — the
+ * same one-carrier contract `extractFinishSegment` has always had, widened to a
+ * list. A single-segment label returns a one-element list whose head is exactly
+ * what `extractFinishSegment` returns (plus the `T` tag, which only the
+ * multi-segment shape ever writes), so every single-segment consumer is
+ * byte-identical.
+ *
+ * Tags: 'HM' half-marathon pace · 'M' marathon pace (also written MP) ·
+ * 'T' threshold. Only ever read against a LONG day's sub_label.
+ */
+export function extractLongSegments(
+  prescription?: string | null,
+): Array<{ mi: number; tag: 'HM' | 'M' | 'T' }> {
+  if (!prescription) return [];
+  const out: Array<{ mi: number; tag: 'HM' | 'M' | 'T' }> = [];
+  const re = /(\d+(?:\.\d+)?)\s*mi\s*@\s*(HM|MP|M|T)\b/gi;
+  for (let m = re.exec(String(prescription)); m; m = re.exec(String(prescription))) {
+    const mi = Number(m[1]);
+    if (!Number.isFinite(mi) || mi <= 0) continue;
+    const raw = m[2].toUpperCase();
+    out.push({ mi, tag: raw === 'T' ? 'T' : raw.startsWith('H') ? 'HM' : 'M' });
+  }
+  return out;
+}
+
 // ── Time-based rep sets ──────────────────────────────────────────────────
 
 /**
@@ -930,6 +962,30 @@ export function buildWorkoutSpec(
       // M finish = T+18 (Daniels; mirrors `mp` + `tPaceFromGoal`). Absent →
       // plain flat long (backward-compatible). Cite: Research/22 §3.
       const finish = extractFinishSegment(prescription);
+      // VARIETY-LONG-1 (2026-08-28) · §4.3's progression long walks two paces
+      // after the easy bulk, which one finish_mi cannot say. When the label
+      // carries two segments the spec adds `finish_segments`, each priced by
+      // the SAME expressions the single-segment fields use ('M' rides the
+      // shared marathonPace, 'HM' rides T+5, 'T' rides threshold itself under
+      // the same never-slower-than-easy guard) — and the legacy fields carry
+      // the FIRST segment, so a consumer that has never heard of the list
+      // still sees a well-formed finish long whose stated segment is real.
+      // `expandSpecToPhases` walks the list; the watch receives flat phases
+      // exactly as it always has. Wire-compatible, the finish_mi move itself.
+      const longSegments = extractLongSegments(prescription);
+      const segPace = (tag: 'HM' | 'M' | 'T'): number =>
+        tag === 'M' ? marathonPace
+        : tag === 'HM' ? Math.min(tPaceSec, easyAnchorT) + 5
+        : Math.min(tPaceSec, easyAnchorT);
+      const segmentFields = longSegments.length >= 2
+        ? {
+            finish_segments: longSegments.map((s) => ({
+              mi: s.mi,
+              pace_s_per_mi: segPace(s.tag),
+              label: s.tag,
+            })),
+          }
+        : {};
       const finishFields = finish
         ? {
             finish_mi: finish.mi,
@@ -959,6 +1015,7 @@ export function buildWorkoutSpec(
           hr_cap_bpm: hrCapLong(lthr, maxHr),
           fuel_mi: fuelMi(distance_mi),
           ...finishFields,
+          ...segmentFields,
           ...withRules,
         },
         // Long-run "headline" pace is the easy long pace · take the
