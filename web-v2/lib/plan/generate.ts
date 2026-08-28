@@ -46,6 +46,7 @@ import { isBaseBuildingPlan } from './plan-templates';
 import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
 import { isCoachedExternally, COACHED_SKIP_REASON } from './coached-gate';
 import { distanceMiOfMeta } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
+import { ROLE_POST_QUALITY_FREE_DAYS, isRaceRole } from '@/lib/race/race-role'; // RACEROLE-1 (2026-08-28) · answered tune-up roles
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 // 2026-08-17 · coaching-loop reconciliation · shared blend implementation
 // (authoring + adaptation-time recompute run the same math).
@@ -5464,6 +5465,11 @@ export interface EmbeddedRaceSummary {
   distanceMi: number;
   priority: 'B' | 'C';
   weekIdx: number;
+  /** RACEROLE-1 (2026-08-28) · the runner's answered role for this tune-up
+   *  (races.meta.plannedRole, set by accepting the race_role card). Null →
+   *  unanswered, default shaping. Carried on the summary so the ramp/no-quality
+   *  pass after embedding can key on it too. */
+  plannedRole?: 'b_effort' | 'race' | 'mp_workout' | null;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -5630,6 +5636,13 @@ export function embedMidBlockRaces(
      * Malibu. Null → no clamp, byte-identical to before.
      */
     currentVdot?: number | null;
+    /**
+     * RACEROLE-1 (2026-08-28) · the TARGET race's goal pace (s/mi). Only read
+     * when an embedded race carries plannedRole 'mp_workout': that race day
+     * becomes the week's marathon-pace long, and MP is by definition the goal
+     * marathon's pace. Null → the MP long carries no numeric target.
+     */
+    targetGoalPaceSec?: number | null;
   },
 ): EmbeddedRaceSummary[] {
   const totalDays = weeks.length * 7;
@@ -5659,6 +5672,10 @@ export function embedMidBlockRaces(
     const wasLong = slot.isLong;
     const wasQuality = slot.isQuality;
     const wasRest = slot.type === 'rest' && slot.distanceMi === 0;
+    // RACEROLE-1 · the runner's answered role for this tune-up (only B races
+    // carry one — the race_role card never fires for C). Null → unanswered,
+    // and every shaping below is byte-identical to before.
+    const role = race.priority === 'B' && race.plannedRole ? race.plannedRole : null;
 
     // The race day itself — race-effort framing at the race's own distance.
     slot.type = 'race';
@@ -5678,11 +5695,61 @@ export function embedMidBlockRaces(
       totalWeeks: Math.max(0, o / 7),
     });
     slot.notes = race.priority === 'B'
-      ? `${race.name}. B race · race effort. Recovery days follow before quality resumes.`
+      ? role === 'b_effort'
+        ? `${race.name}. B effort. Hard, not all out. It feeds your goal pacing and leaves the build intact.`
+        : role === 'race'
+          ? `${race.name}. Race it honestly. Full effort; full recovery follows before quality resumes.`
+          : `${race.name}. B race · race effort. Recovery days follow before quality resumes.`
       : `${race.name}. C race · this is the week's quality session. Run it as the workout.`;
+    if (role === 'b_effort') slot.subLabel = 'RACE · B EFFORT';
     touchedWeeks.add(wi);
 
-    if (race.priority === 'B') {
+    if (race.priority === 'B' && role === 'mp_workout') {
+      // RACEROLE-1 · MP WORKOUT WITH A BIB. The runner answered "convert":
+      // the race is closer than the tune-up sanction allows (Research/
+      // REVIEW_NOTES.md A2 · inside 4 weeks of the marathon), so race day
+      // becomes the week's MP-specific long (Research/08 §9.2's week −3
+      // session) instead of a raced half. The day KEEPS its race marker —
+      // the runner is still standing on a start line — but the prescription
+      // is workout-shaped: it is the week's long, it carries the marathon
+      // goal pace, and it takes hard-day spacing rather than a race-recovery
+      // window. No mini-taper (the surrounding week trains through), no
+      // cutback flag, no post-race easy window — the next day eases, as
+      // after any hard long.
+      slot.isLong = true;
+      slot.subLabel = 'RACE · MP LONG';
+      slot.notes = `${race.name}. Run it as the marathon pace long, not a race. Warm up, then marathon pace to the line. Hard day, not a peak effort.`;
+      if (opts.targetGoalPaceSec != null && Number.isFinite(opts.targetGoalPaceSec)) {
+        slot.raceGoalPaceSec = Math.round(opts.targetGoalPaceSec);
+      } else {
+        delete slot.raceGoalPaceSec;
+      }
+      clearWorkShape(slot);
+      // The week's separate long stands down · the race IS the long now.
+      for (const d of weeks[wi].days) {
+        if (d === slot || !d.isLong || d.type === 'race') continue;
+        d.type = 'easy';
+        d.distanceMi = Math.min(d.distanceMi, 6);
+        d.isQuality = false;
+        d.isLong = false;
+        d.subLabel = 'EASY';
+        d.notes = `Easy. ${race.name} is this week's long run.`;
+        delete d.raceGoalPaceSec;
+        clearWorkShape(d);
+      }
+      // Hard-day spacing: the day after eases (not a race-recovery window).
+      const after = dayAt(o + 1);
+      if (after && after.type !== 'race' && after.isQuality && !after.isLong) {
+        after.type = 'easy';
+        after.distanceMi = Math.min(after.distanceMi, 5);
+        after.isQuality = false;
+        after.subLabel = 'EASY';
+        after.notes = `Easy the day after the ${race.name} MP long.`;
+        delete after.raceGoalPaceSec;
+        clearWorkShape(after);
+        touchedWeeks.add(Math.floor((o + 1) / 7));
+      }
+    } else if (race.priority === 'B') {
       // Mini-taper · no quality within the 2 RUNNING days before the race, and
       // the last running day before it is a shakeout (Research/08 §9 race-week
       // idiom scaled down). The long run is never displaced pre-race.
@@ -5732,7 +5799,19 @@ export function embedMidBlockRaces(
       }
       // Post-race easy days per race-mile scale (see doctrine block above):
       // half+ → 4, 10K/5-11mi → 2, shorter → 1.
-      const recoveryDays = race.distanceMi >= 12 ? 4 : race.distanceMi >= 5 ? 2 : 1;
+      //
+      // RACEROLE-1 · when the runner has ANSWERED the race-role card, the
+      // window is the doctrine one for the answered effort instead: role
+      // 'race' is an honest (maximum) effort and takes the A-effort table
+      // floor (00b by-distance: half 10 · 10K 5 · 5K 4); role 'b_effort'
+      // takes the B scale (00b: "expect 7–10 days of recovery rather than
+      // 14" → half 7 · 10K 4 · 5K 3). ROLE_POST_QUALITY_FREE_DAYS is bound
+      // by RACEROLE.recovery-scale in lib/doctrine/registry.ts. Unanswered →
+      // the historical 4/2/1 easy-day window, byte-identical.
+      const roleCat = race.distanceMi >= 12 ? 'hm' : race.distanceMi >= 5 ? '10k' : '5k';
+      const recoveryDays = role === 'race' || role === 'b_effort'
+        ? ROLE_POST_QUALITY_FREE_DAYS[roleCat][role]
+        : race.distanceMi >= 12 ? 4 : race.distanceMi >= 5 ? 2 : 1;
       let firstDisplacedQuality: Pick<DayPlan, 'type' | 'distanceMi' | 'subLabel' | 'notes'> | null = null;
       for (let j = 1; j <= recoveryDays; j++) {
         const d = dayAt(o + j);
@@ -5899,6 +5978,7 @@ export function embedMidBlockRaces(
     embedded.push({
       slug: race.slug, name: race.name, date: race.date,
       distanceMi: race.distanceMi, priority: race.priority, weekIdx: wi,
+      plannedRole: role,
     });
   }
 
@@ -6022,6 +6102,21 @@ export function postRaceNoQualityDays(distanceMi: number, priority: 'A' | 'B' | 
   return Math.round(aRaceDays * POST_RACE_PRIORITY_SCALE[priority]);
 }
 
+/** RACEROLE-1 (2026-08-28) · the recovery priority an embedded tune-up's
+ *  no-quality window is scaled by, once the runner has ANSWERED the race-role
+ *  card. Research/00b §"Recovery by Effort" keys recovery on EFFORT GIVEN,
+ *  not the calendar letter: an honest ('race') tune-up recovers like an A
+ *  effort, an MP-workout conversion is a hard session, not a race (C · "treat
+ *  like a hard workout"), and an unanswered or 'b_effort' tune-up keeps its
+ *  calendar priority. */
+export function effectiveRecoveryPriority(
+  e: Pick<EmbeddedRaceSummary, 'priority' | 'plannedRole'>,
+): 'A' | 'B' | 'C' {
+  if (e.plannedRole === 'race') return 'A';
+  if (e.plannedRole === 'mp_workout') return 'C';
+  return e.priority;
+}
+
 /** The ISO date of `dow` inside a composed week, whatever weekday that week
  *  starts on. Same mapping `embedMidBlockRaces` walks with its absolute
  *  offsets, expressed for a caller that holds a week rather than the block. */
@@ -6050,9 +6145,14 @@ export function enforceRampCeilingAfterEmbedding(
     ? priorLevelMi
     : 0;
   const ceiling = GENERAL_RAMP_CEILING[level ?? 'intermediate'];
-  const bRaceWeeks = new Set(embedded.filter((e) => e.priority === 'B').map((e) => e.weekIdx));
+  // RACEROLE-1 · an mp_workout conversion is a full training week (the race
+  // day IS the week's long), not a mini-tapered cutback — it is neither a
+  // distorted reference week nor a week anything needs to ramp-guard after.
+  const bRaceWeeks = new Set(
+    embedded.filter((e) => e.priority === 'B' && e.plannedRole !== 'mp_workout').map((e) => e.weekIdx),
+  );
   for (const e of embedded) {
-    if (e.priority !== 'B') continue;
+    if (e.priority !== 'B' || e.plannedRole === 'mp_workout') continue;
     const wi = e.weekIdx + 1;
     const w = weeks[wi];
     const prev = weeks[wi - 1];
@@ -6062,7 +6162,8 @@ export function enforceRampCeilingAfterEmbedding(
     if (e.distanceMi >= 12) {
       const long = w.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
       if (long && splitDay(long).qualityMi > 0
-        && daysBetween(e.date, dowDateInWeek(w.startISO, long.dow)) <= postRaceNoQualityDays(e.distanceMi, e.priority)
+        // RACEROLE-1 · window scaled by the ANSWERED effort, not the letter.
+        && daysBetween(e.date, dowDateInWeek(w.startISO, long.dow)) <= postRaceNoQualityDays(e.distanceMi, effectiveRecoveryPriority(e))
       ) setLongFinish(long, 0, `inside the post-race no-quality window after ${e.name}`);
     }
     // Ramp reference · the most recent week distorted by neither a tune-up nor
@@ -6444,6 +6545,13 @@ export interface ComposePlanInput {
     distanceMi: number;
     goalPaceSec: number | null;
     priority: 'B' | 'C';
+    /** RACEROLE-1 (2026-08-28) · the runner's answered tune-up role
+     *  (races.meta.plannedRole · written by the race_role card's accept).
+     *  Read here so a REBUILD preserves the answer: 'b_effort' keeps the
+     *  B shape with B-effort framing, 'race' takes the honest-race framing
+     *  and the A-effort recovery window, 'mp_workout' turns race day into
+     *  the week's MP long. Absent/null → shaping identical to before. */
+    plannedRole?: 'b_effort' | 'race' | 'mp_workout' | null;
   }>;
   isMidBlock: boolean;
   longRunDow: DOW;
@@ -7244,6 +7352,8 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         // evidence, and a ceiling drawn off it would be fiction bounding
         // fiction).
         currentVdot: anchorIsProvisional ? null : estimatedCurrentVdot,
+        // RACEROLE-1 · MP for an mp_workout conversion IS the goal pace.
+        targetGoalPaceSec: input.goalPaceSec ?? null,
       })
     : [];
 
@@ -9714,7 +9824,8 @@ function authorDressRehearsal(composed: ComposePlanResult, raceDistanceMi: numbe
       ((composed.authoredState as Record<string, unknown>)?.embedded_races ?? []) as EmbeddedRaceSummary[]
     ).some((e) => {
       const gap = daysBetween(e.date, dowDateInWeek(w.startISO, long.dow));
-      return gap > 0 && gap <= postRaceNoQualityDays(e.distanceMi, e.priority);
+      // RACEROLE-1 · window scaled by the ANSWERED effort, not the letter.
+      return gap > 0 && gap <= postRaceNoQualityDays(e.distanceMi, effectiveRecoveryPriority(e));
     });
     const dose = dressRehearsalDose(long.distanceMi, budgetMi, FAST_FINISH_MIN_MI, inPostRaceWindow, drTotalBand);
     if (!dose) return;
@@ -11105,6 +11216,11 @@ async function loadGeneratorInputs(
         distanceMi: dMi,
         goalPaceSec: goalSecMid && dMi > 0 ? Math.round(goalSecMid / dMi) : null,
         priority: (m.priority === 'B' ? 'B' : 'C') as 'B' | 'C',
+        // RACEROLE-1 (2026-08-28) · the runner's answered role for this
+        // tune-up (written by the race_role card's accept). Guarded read —
+        // arbitrary jsonb strings never reach the embedder. This is what
+        // makes a REBUILD preserve the answer.
+        plannedRole: isRaceRole(m.plannedRole) ? m.plannedRole : null,
       };
     });
   // 2026-06-02 · ensure totalWeeks is an integer here too · matches

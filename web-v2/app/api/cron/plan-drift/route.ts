@@ -97,6 +97,10 @@ export async function POST(req: NextRequest) {
      *  thing is WHY ('authored' / 'coached_externally' / 'already_pending' /
      *  'no_target_entry_missing'), and there is at most one per runner. */
     open_block?: string;
+    /** 2026-08-28 · RACEROLE-1 · tune-up race-role recommendation cards
+     *  written this tick (a pending card is the WHOLE action — the plan only
+     *  moves if the runner accepts). */
+    race_role_cards?: number;
     error?: string;
   };
   const results: UserResult[] = [];
@@ -730,6 +734,147 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // 2026-08-28 · RACEROLE-1 · tune-up race-role recommendation (David
+      // 2026-08-28: when a tune-up race approaches inside a goal build, the
+      // coach RECOMMENDS how to run it and the runner answers — a genuine
+      // decision, never an auto-mutation, so this block writes a PENDING
+      // card and nothing else). Doctrine: Research/REVIEW_NOTES.md A2 — a
+      // half at exactly 4 weeks pre-marathon must be a B-effort race or be
+      // converted into the week −3 MP-specific session; an A-effort half is
+      // only sanctioned at 5–6 weeks out (Research/02:355 §12.3 · Research/
+      // 00b:201/215 · Research/08:386 §9.2). The matrix lives in
+      // lib/race/race-role.ts (pure, tested, doctrine-gated).
+      //
+      // Fires when a B-priority hm/10k/5k race inside the active build sits
+      // ~14 days out — a [12..15]-day band so one missed cron night cannot
+      // skip it — and EXACTLY ONCE per race: the dedupe is any prior
+      // race_role proposal for that slug, ANY status (fail-closed), plus a
+      // race already carrying an answered meta.plannedRole. C races never
+      // fire (00b prices a C at 0–3 easy days · nothing to renegotiate). On
+      // expiry (14d unanswered, the standing proposal-expiry sweep above):
+      // no plan change — the authored composition stands, and the card copy
+      // says so.
+      try {
+        const buildPlan = (await pool.query<{
+          plan_id: string; race_id: string; race_date: string | null; race_meta: any;
+        }>(
+          `SELECT tp.id::text AS plan_id, tp.race_id::text AS race_id,
+                  (rc.meta->>'date')::text AS race_date, rc.meta AS race_meta
+             FROM training_plans tp
+             JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
+            WHERE tp.user_uuid = $1
+              AND tp.archived_iso IS NULL
+              AND (tp.mode = 'race-prep' OR tp.mode IS NULL)
+              AND (rc.meta->>'date')::date > $2::date
+            ORDER BY tp.authored_iso DESC LIMIT 1`,
+          [u, userToday],
+        ).catch(() => ({ rows: [] }))).rows[0];
+
+        if (buildPlan?.race_date) {
+          const {
+            recommendRaceRole, raceRoleCard, RACE_ROLE_FIRE_WINDOW_DAYS,
+          } = await import('@/lib/race/race-role');
+          const { distanceCategoryOrNull } = await import('@/lib/plan/goal-tiers');
+          const { distanceMiOf } = await import('@/lib/plan/generate');
+          const dayDiff = (a: string, b: string) =>
+            Math.round((Date.parse(b.slice(0, 10) + 'T12:00:00Z') - Date.parse(a.slice(0, 10) + 'T12:00:00Z')) / 86400000);
+          const aMi = distanceMiOf(buildPlan.race_meta);
+          const aRaceIsMarathon = aMi != null && aMi >= 25;
+          const aRaceName = String(buildPlan.race_meta?.name || buildPlan.race_id);
+
+          const tuneUps = (await pool.query<{ slug: string; meta: any }>(
+            `SELECT slug, meta
+               FROM races
+              WHERE user_uuid = $1
+                AND meta->>'priority' = 'B'
+                AND meta->>'plannedRole' IS NULL
+                AND (meta->>'date')::date > $2::date
+                AND (meta->>'date')::date < $3::date
+                AND (meta->>'date')::date - $2::date BETWEEN $4 AND $5
+              ORDER BY (meta->>'date')::date ASC`,
+            [u, userToday, buildPlan.race_date,
+             RACE_ROLE_FIRE_WINDOW_DAYS[0], RACE_ROLE_FIRE_WINDOW_DAYS[1]],
+          ).catch(() => ({ rows: [] }))).rows;
+
+          for (const tu of tuneUps) {
+            const m = tu.meta || {};
+            // Belt and braces beside the SQL filters: the pure matrix makes
+            // the same calls (C → null, answered role → skipped upstream).
+            const dMi = distanceMiOf(m);
+            const cat = dMi != null ? distanceCategoryOrNull(dMi) : null;
+            const gapToADays = m.date ? dayDiff(String(m.date), buildPlan.race_date) : null;
+            const rec = recommendRaceRole({
+              category: cat,
+              priority: typeof m.priority === 'string' ? m.priority : null,
+              gapToADays,
+              aRaceIsMarathon,
+            });
+            if (!rec) continue;
+            if (cat !== 'hm' && cat !== '10k' && cat !== '5k') continue;
+
+            // EXACTLY ONCE per race · any prior race_role row for this slug
+            // (pending, accepted, dismissed OR expired) blocks a re-fire.
+            const alreadyAsked = (await pool.query(
+              `SELECT 1 FROM plan_proposals
+                WHERE user_uuid = $1
+                  AND proposal_kind = 'race_role'
+                  AND reasons->>'race_slug' = $2`,
+              [u, tu.slug],
+              // Fails CLOSED · a guard that cannot see must assume the thing
+              // it guards against has already happened (2026-08-24 sweep).
+            ).catch((e) => { logReadFailure('cron/plan-drift · race-role dedupe guard', e); return { rowCount: 1 }; })).rowCount;
+            if (alreadyAsked) continue;
+
+            const card = raceRoleCard({
+              raceName: String(m.name || tu.slug),
+              aRaceName,
+              gapToADays: gapToADays ?? 0,
+              recommendation: rec,
+              category: cat,
+            });
+            await pool.query(
+              // plan_id is deliberately NULL: the question is about the RACE,
+              // not the block it currently sits in. A mid-window rebuild
+              // archives the plan and supersedeProposalsForArchivedPlans
+              // sweeps every pending proposal pointing at it — a race_role
+              // card tied to the plan would die there and the per-slug
+              // exactly-once dedupe would stop it ever re-firing. The accept
+              // path resolves the ACTIVE plan fresh (race-role-apply), so the
+              // card needs no plan pointer to act. The plan the card was
+              // computed against is still recorded in reasons.a_race_slug +
+              // the audit trail.
+              `INSERT INTO plan_proposals
+                 (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
+               VALUES ($1, $2, 'race_role', $3::jsonb, 'pending', 'race_role_cron', NOW())`,
+              [
+                u, null,
+                JSON.stringify({
+                  race_slug: tu.slug,
+                  race_name: String(m.name || tu.slug),
+                  race_date: String(m.date),
+                  race_distance_mi: dMi,
+                  race_category: cat,
+                  a_race_slug: buildPlan.race_id,
+                  a_race_date: buildPlan.race_date,
+                  gap_to_a_days: gapToADays,
+                  days_to_race: m.date ? dayDiff(userToday, String(m.date)) : null,
+                  recommended_role: rec.role,
+                  why: rec.why,
+                  citation: rec.citation,
+                  card_title: card.title,
+                  accept_verb: card.acceptVerb,
+                  message: card.body,
+                }),
+              ],
+            );
+            r.proposals_written++;
+            r.race_role_cards = (r.race_role_cards ?? 0) + 1;
+          }
+        }
+      } catch (e) {
+        console.error('[plan-drift] race-role card failed:', e);
+      }
+
       // 2026-06-01 · Phase 1.1 · goal-gap engine. Continuous projection-
       // vs-goal check · fires a rebuild when the gap is WIDENING for 3+
       // consecutive days. This is the closed-loop signal the architecture
@@ -994,6 +1139,7 @@ export async function GET() {
       'race_graduate · active plan race date passed (fires first cron AFTER race day)',
       'recovery_complete · recovery plan out of prescribed days, target race still ahead → auto-rebuild with undo + coach note (pending card only when the runner undid this block or is compromised)',
       'plan_elapsed · ANY plan out of prescribed days · race still ahead → auto-rebuild toward it; race date null/past or no race → goal target / open-block handoff; compromised or injury-return runner → pending card, never an auto-authored build',
+      'race_role · a B-priority hm/10k/5k tune-up inside the active build is 12-15 days out → pending recommendation card (never auto-applies; once per race; C races never fire; expiry = the authored composition stands)',
       'volume_drift · current 28d avg deviates >40% from authored 4wk avg',
       'vdot_drift · current VDOT deviates >2 from plan anchor (inferred from T-pace)',
       'staleness · plan authored >8 weeks ago',

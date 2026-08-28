@@ -92,15 +92,19 @@ export async function POST(req: NextRequest) {
   // A FAILED READ IS NOT "NOT FOUND". Swallowing the error made a dropped
   // connection indistinguishable from a proposal that does not exist, and
   // 404 is a statement about the runner's data.
-  let proposal: { id: number; plan_id: string | null; proposal_kind: string; status: string } | undefined;
+  let proposal: {
+    id: number; plan_id: string | null; proposal_kind: string; status: string;
+    reasons: Record<string, unknown> | null;
+  } | undefined;
   try {
     proposal = (await pool.query<{
       id: number;
       plan_id: string | null;
       proposal_kind: string;
       status: string;
+      reasons: Record<string, unknown> | null;
     }>(
-      `SELECT id, plan_id, proposal_kind, status
+      `SELECT id, plan_id, proposal_kind, status, reasons
          FROM plan_proposals
         WHERE id = $1 AND user_uuid = $2`,
       [proposalId, userId],
@@ -128,6 +132,58 @@ export async function POST(req: NextRequest) {
       [proposalId, userId],
     );
     return NextResponse.json({ ok: true, status: 'dismissed' });
+  }
+
+  // 2026-08-28 · RACEROLE-1 · accepting a race_role card is NOT a rebuild.
+  // The card is the coach's recommendation for how to run a tune-up race
+  // (Research/REVIEW_NOTES.md A2); accepting it persists the answered role on
+  // the race row (meta.plannedRole · field-level jsonb_set, Rule 6) and
+  // patches the surrounding plan week through the mutation boundary
+  // (lib/race/race-role-apply.ts). The role survives any later rebuild:
+  // embedMidBlockRaces reads meta.plannedRole and shapes the race week
+  // accordingly. Runner-initiated by construction — this branch only runs on
+  // the runner's accept tap.
+  if (proposal.proposal_kind === 'race_role') {
+    const reasons = proposal.reasons ?? {};
+    const raceSlug = typeof reasons.race_slug === 'string' ? reasons.race_slug : null;
+    const role = typeof reasons.recommended_role === 'string' ? reasons.recommended_role : null;
+    const category = typeof reasons.race_category === 'string' ? reasons.race_category : 'hm';
+    if (!raceSlug || !role) {
+      return NextResponse.json({
+        error: 'race_role proposal is missing race_slug or recommended_role',
+      }, { status: 500 });
+    }
+    let applied: Awaited<ReturnType<typeof import('@/lib/race/race-role-apply')['applyRaceRole']>>;
+    try {
+      const { applyRaceRole } = await import('@/lib/race/race-role-apply');
+      applied = await applyRaceRole({ userId, raceSlug, role, category });
+    } catch (e) {
+      return outage('api/plan/proposal · race_role', e);
+    }
+    if (!applied.ok) {
+      await pool.query(
+        `UPDATE plan_proposals
+            SET reasons = reasons || jsonb_build_object('accept_attempt_failed', $2::text)
+          WHERE id = $1`,
+        [proposalId, `${applied.outcome}${applied.reason ? ` · ${applied.reason}` : ''}`],
+      ).catch(() => null);
+      return NextResponse.json({
+        ok: false, status: 'pending', reason: applied.outcome,
+      }, { status: 500 });
+    }
+    await pool.query(
+      `UPDATE plan_proposals
+          SET status = 'accepted', resolved_at = NOW(),
+              reasons = reasons || jsonb_build_object(
+                'accept_reason', 'race_role_applied',
+                'applied_role', $2::text,
+                'changed_rows', $3::int)
+        WHERE id = $1`,
+      [proposalId, role, applied.changedRows],
+    );
+    return NextResponse.json({
+      ok: true, status: 'accepted', role, changedRows: applied.changedRows,
+    });
   }
 
   // 2b. Accept path · resolve the underlying race, rebuild

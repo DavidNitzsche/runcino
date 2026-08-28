@@ -435,6 +435,14 @@ import {
   SIGMA_SEC_PER_MILE,
   BAND_SIGMAS,
 } from '@/lib/plan/simulator';
+// RACEROLE-1 (2026-08-28) · tune-up race-role recommendation bands + the
+// recovery windows an answered role imposes. See the two RACEROLE claims.
+import {
+  HALF_B_EFFORT_GAP_DAYS,
+  HALF_HONEST_RACE_GAP_DAYS,
+  ROLE_POST_QUALITY_FREE_DAYS,
+  recommendRaceRole,
+} from '@/lib/race/race-role';
 import type { DoctrineClaim } from './types';
 import { matchLiteral, parseBand, parseBands, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
 import {
@@ -15035,6 +15043,111 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       });
       if (!g || g.kind !== 'effort') {
         throw new Error('a hilly course got a flat-equivalent time goal · Research/11 says effort, not pace');
+      }
+    },
+  },
+  {
+    id: 'RACEROLE.half-tuneup-window',
+    binds: [
+      'lib/race/race-role.ts#HALF_B_EFFORT_GAP_DAYS',
+      'lib/race/race-role.ts#HALF_HONEST_RACE_GAP_DAYS',
+      'lib/race/race-role.ts#recommendRaceRole',
+    ],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: 'a half marathon 4–6 weeks before marathon goal, raced at race effort',
+    claim:
+      "§12.3 sanctions the tune-up half at 4-6 weeks before the marathon, raced at race effort. " +
+      'REVIEW_NOTES A2 (2026-08-28) resolves the collision inside that window: at exactly 4 weeks ' +
+      "an A-effort half's 10-14 no-quality days (00b) consume week -3's final MP session (08 §9.2), " +
+      'so 4 weeks = B effort, 5-6 weeks = honest race, closer than 4 weeks = convert to the MP long. ' +
+      'The recommendation bands must partition the doc\'s own window: the honest-race band tops out ' +
+      "at the doc's 6 weeks, the B-effort band brackets the doc's 4 weeks, the two are contiguous, " +
+      'and honest racing never reaches down into week 4.',
+    check({ cite }) {
+      // The doc's window, read off the anchor line itself ("4–6 weeks").
+      const bands = parseBands(cite.section[0]);
+      if (bands.length === 0) throw new Error('§12.3 protocol line no longer carries the 4-6 week band');
+      const [loWk, hiWk] = bands[0];
+      if (HALF_HONEST_RACE_GAP_DAYS[1] !== hiWk * 7) {
+        throw new Error(
+          `honest-race band tops out at ${HALF_HONEST_RACE_GAP_DAYS[1]}d · §12.3's window ends at ${hiWk * 7}d`,
+        );
+      }
+      const fourWeeks = loWk * 7;
+      if (fourWeeks < HALF_B_EFFORT_GAP_DAYS[0] || fourWeeks > HALF_B_EFFORT_GAP_DAYS[1]) {
+        throw new Error(
+          `B-effort band [${HALF_B_EFFORT_GAP_DAYS}] does not bracket the doc's 4-week mark (${fourWeeks}d)`,
+        );
+      }
+      if (HALF_B_EFFORT_GAP_DAYS[1] + 1 !== HALF_HONEST_RACE_GAP_DAYS[0]) {
+        throw new Error('the B-effort and honest-race bands must be contiguous · a gap day would have no recommendation');
+      }
+      if (HALF_HONEST_RACE_GAP_DAYS[0] <= HALF_B_EFFORT_GAP_DAYS[1]) {
+        throw new Error('honest racing reaches down into the 4-week band · A2 sanctions A-effort at 5-6 weeks only');
+      }
+      // The matrix answers the doc, not just the constants.
+      const at = (gapToADays: number) =>
+        recommendRaceRole({ category: 'hm', priority: 'B', gapToADays, aRaceIsMarathon: true })?.role;
+      if (at(fourWeeks) !== 'b_effort') throw new Error(`a half at ${fourWeeks}d (4 weeks) must recommend B effort`);
+      if (at(HALF_HONEST_RACE_GAP_DAYS[0]) !== 'race' || at(hiWk * 7) !== 'race') {
+        throw new Error('a half at 5-6 weeks must recommend racing it honestly');
+      }
+      if (at(fourWeeks - 7) !== 'mp_workout') {
+        throw new Error('a half closer than the 4-week sanction must convert to the week -3 MP session');
+      }
+      // Decided races never get a card: C is a fun run, A is not a tune-up.
+      for (const priority of ['C', 'A'] as const) {
+        if (recommendRaceRole({ category: 'hm', priority, gapToADays: fourWeeks, aRaceIsMarathon: true }) != null) {
+          throw new Error(`a ${priority}-priority race must never receive a race-role recommendation`);
+        }
+      }
+    },
+  },
+  {
+    id: 'RACEROLE.recovery-scale',
+    binds: [
+      'lib/race/race-role.ts#ROLE_POST_QUALITY_FREE_DAYS',
+      'lib/plan/generate.ts#embedMidBlockRaces',
+      'lib/race/race-role-apply.ts#applyRaceRole',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: 'For a B-race half marathon, expect 7–10 days of recovery rather than 14.',
+    claim:
+      'Recovery after a tune-up follows the EFFORT GIVEN, not the calendar letter. An answered ' +
+      "B-effort half owes the doc's stated 7-10 days of no quality; an answered honest race owes " +
+      "the by-distance A-effort table's window (half 10-14 · 10K 5-7 · 5K 3-5, taken at the floor " +
+      'because an honest tune-up still is not a goal race). The role windows must sit inside their ' +
+      "doc bands, an honest race must never owe LESS than a B effort, and the constant must be " +
+      'SPENT by both consumers: the embedder (rebuild path) and the accept patch (immediate path).',
+    check({ cite }) {
+      // The B-scale sentence, read off the anchor line itself ("7–10 days").
+      const bBands = parseBands(cite.section[0]);
+      if (bBands.length === 0) throw new Error('00b no longer states the B-race half window in days');
+      within(ROLE_POST_QUALITY_FREE_DAYS.hm.b_effort, bBands[0], 'ROLE_POST_QUALITY_FREE_DAYS.hm.b_effort');
+      // Honest-race windows against the by-distance table (same anchor the
+      // LIFECYCLE.open-block-recovery-window claim resolves).
+      const dist = resolveCitation(
+        'Research/00b-recovery-protocols.md',
+        '| Total recovery days (no quality) | Days of zero/very-light running |',
+      ).table();
+      const col = 'Total recovery days (no quality)';
+      within(ROLE_POST_QUALITY_FREE_DAYS.hm.race, parseBand(dist.cell('Half marathon', col)), 'ROLE_POST_QUALITY_FREE_DAYS.hm.race');
+      within(ROLE_POST_QUALITY_FREE_DAYS['10k'].race, parseBand(dist.cell('10K', col)), 'ROLE_POST_QUALITY_FREE_DAYS.10k.race');
+      within(ROLE_POST_QUALITY_FREE_DAYS['5k'].race, parseBand(dist.cell('5K', col)), 'ROLE_POST_QUALITY_FREE_DAYS.5k.race');
+      for (const cat of ['hm', '10k', '5k'] as const) {
+        const w = ROLE_POST_QUALITY_FREE_DAYS[cat];
+        if (w.b_effort > w.race) {
+          throw new Error(`${cat}: a B effort (${w.b_effort}d) owes more recovery than an honest race (${w.race}d)`);
+        }
+      }
+      // WIRED · both consumers actually spend the constant.
+      for (const [file, needle] of [
+        ['web-v2/lib/plan/generate.ts', 'ROLE_POST_QUALITY_FREE_DAYS[roleCat][role]'],
+        ['web-v2/lib/race/race-role-apply.ts', 'ROLE_POST_QUALITY_FREE_DAYS[cat][role]'],
+      ] as const) {
+        if (!sourceOf(file).includes(needle)) {
+          throw new Error(`${file} shapes a role's recovery window without ROLE_POST_QUALITY_FREE_DAYS · the answered role would not change the window`);
+        }
       }
     },
   },

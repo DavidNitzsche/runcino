@@ -165,7 +165,12 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
       + 'blocks inside the transaction and rolls back, recording status no_change. 2026-08-28 · each nightly '
       + 'pass also sweeps coach_intents: any plan_adapt_* intent whose field points at an archived plan\'s '
       + 'workout is stamped superseded_at (+ acknowledged_at backfill) — mark, not delete — closing the '
-      + 'dangling-intent shape supersedeProposalsForArchivedPlans closed for proposals.',
+      + 'dangling-intent shape supersedeProposalsForArchivedPlans closed for proposals. 2026-08-28 · '
+      + 'RACEROLE-1: the pass also writes a pending race_role card when a B-priority hm/10k/5k tune-up '
+      + 'inside the active build is 12-15 days out (once per race, dedupe on any prior race_role row for '
+      + 'that slug, fail-closed; C races never fire). The card is the WHOLE automatic action — a proposal, '
+      + 'never an auto-apply; the race row\'s meta.plannedRole and the week patch move only on the '
+      + 'runner\'s accept (lib/race/race-role-apply.ts, runner-initiated, through mutatePlan).',
   },
   {
     id: 'cron/snapshot-projections',

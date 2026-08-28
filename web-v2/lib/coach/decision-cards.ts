@@ -132,6 +132,12 @@ export type PlanProposalInput = {
   newPlanId?: string | null;
   previousPlanId?: string | null;
   planId?: string | null;
+  /** 2026-08-28 · RACEROLE-1 · the raw reasons blob, already on every
+   *  `PlanProposal` the seed passes in. Read for per-card copy the writer
+   *  composed (`card_title`, `accept_verb`) — a race-role card is about ONE
+   *  named race two weeks out ("Run Malibu, four weeks out"), and a static
+   *  per-kind title cannot say which. Absent → the static maps stand. */
+  reasons?: Record<string, unknown> | null;
 };
 
 export type WorkoutProposalInput = {
@@ -216,6 +222,9 @@ export const PLAN_TITLES: Record<string, string> = {
   // 2026-08-28 · the operator code-upgrade rebuild now writes an auto_applied
   // row so it can be undone (it was the one rebuild undo could not pair).
   silent_rebuild: 'The engine rebuilt your block',
+  // 2026-08-28 · RACEROLE-1 · fallback only — the cron writes a per-race
+  // `card_title` ("Run Malibu, four weeks out") that wins when present.
+  race_role: 'A tune-up race needs a call',
 };
 
 /** The concrete thing ACCEPT does, per plan-drift kind. Keeps the verb
@@ -239,6 +248,11 @@ const PLAN_ACCEPT_VERB: Record<string, string> = {
   // and the generic 'REBUILD THE PLAN' undersells what accepting starts.
   recovery_complete: 'START THE BUILD',
   plan_elapsed: 'BUILD THE NEXT BLOCK',
+  // 2026-08-28 · RACEROLE-1 · fallback only — the cron writes a per-role
+  // `accept_verb` (RUN IT AT B EFFORT / RACE IT HONESTLY / MAKE IT THE MP
+  // LONG) that wins when present. Accepting never rebuilds: it sets the role
+  // and adjusts the week around the race.
+  race_role: 'TAKE THE RECOMMENDATION',
 };
 
 /* ── per-source mappers ──────────────────────────────────────────────── */
@@ -289,10 +303,21 @@ function fromCoachProposal(p: CoachProposalInput): CoachDecision {
 }
 
 function fromPlanProposal(p: PlanProposalInput): CoachDecision | null {
-  const title = PLAN_TITLES[p.kind] ?? 'Your plan needs an update';
+  // RACEROLE-1 · writer-composed copy wins over the static per-kind maps.
+  // The reasons blob is engine-written (never runner input), so reading two
+  // named string fields out of it keeps this module pure and the grammar
+  // intact: the title is still sentence-case coach voice, and the accept
+  // label below still always begins ACCEPT.
+  const reasonTitle = typeof p.reasons?.card_title === 'string' && p.reasons.card_title
+    ? p.reasons.card_title
+    : null;
+  const reasonVerb = typeof p.reasons?.accept_verb === 'string' && p.reasons.accept_verb
+    ? p.reasons.accept_verb
+    : null;
+  const title = reasonTitle ?? PLAN_TITLES[p.kind] ?? 'Your plan needs an update';
 
   if (p.status === 'pending') {
-    const verb = PLAN_ACCEPT_VERB[p.kind] ?? 'REBUILD THE PLAN';
+    const verb = reasonVerb ?? PLAN_ACCEPT_VERB[p.kind] ?? 'REBUILD THE PLAN';
     return {
       key: `plan-${p.id}`,
       source: 'plan_proposal',
@@ -306,7 +331,9 @@ function fromPlanProposal(p: PlanProposalInput): CoachDecision | null {
         {
           role: 'accept',
           label: `ACCEPT · ${verb}`,
-          busyLabel: 'REBUILDING',
+          // RACEROLE-1 · accepting a race-role card sets the role and adjusts
+          // the week; nothing rebuilds, so the busy label must not say so.
+          busyLabel: p.kind === 'race_role' ? 'SETTING THE ROLE' : 'REBUILDING',
           endpoint: '/api/plan/proposal',
           body: { id: p.id, action: 'accept' },
         },

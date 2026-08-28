@@ -57,6 +57,12 @@ export type PlanProposalKind =
   | 'recovery_complete'    // recovery block finished · rebuilt toward the race
   | 'plan_elapsed'         // plan ran out of prescribed days · rebuilt toward the goal
   | 'maintenance_to_raceprep'   // race entered its build window
+  // 2026-08-28 · RACEROLE-1 · a tune-up race inside the build is ~14 days out
+  // and the coach recommends how to RUN it (B effort / honest race / convert
+  // to the MP long · Research/REVIEW_NOTES.md A2). Always pending — the plan
+  // only moves if the runner accepts; expiry means the authored composition
+  // stands.
+  | 'race_role'
   // 2026-08-28 · the operator code-upgrade rebuild now writes its audit row
   // through fireAutoRebuild (it was the one plan writer POST /api/plan/undo
   // could not pair, and returned not_undoable for). The row is what makes it
@@ -312,7 +318,10 @@ function isHardDriftKind(kind: PlanProposalKind): boolean {
       || kind === 'a_race_removed'
       // 2026-08-17 · a sustained-unclosable renegotiation is the highest-
       // stakes card the engine writes · never buried under soft drift.
-      || kind === 'goal_renegotiation';
+      || kind === 'goal_renegotiation'
+      // 2026-08-28 · RACEROLE-1 · a race-role card has a hard deadline (the
+      // race itself, ~14 days out when it fires) · never buried under drift.
+      || kind === 'race_role';
 }
 
 /**
@@ -434,6 +443,12 @@ function synthesizeMessage(
         : 'Your block ran out of prescribed days · accept to build the next one.';
     case 'maintenance_to_raceprep':
       return 'Your race entered its build window · maintenance gave way to race-prep.';
+    case 'race_role':
+      // The cron always writes reasons.message (the full coach copy), so this
+      // fallback is for rows that lost it. Accepted rows read as a record.
+      return status === 'accepted'
+        ? 'Race role set · the week around the tune-up was adjusted to match.'
+        : 'A tune-up race inside your build is two weeks out. The coach has a recommendation for how to run it.';
     case 'silent_rebuild':
       return 'The plan engine was updated · your block was rebuilt around the same goal. Undo puts the old block back.';
   }

@@ -194,6 +194,12 @@ const PLAN_WRITER_FILE_OWNERS: Record<string, string> = {
   'lib/plan/injury-builder.ts':
     'runner-initiated: reached only from POST /api/coach/proposal/[id]/accept, which is the runner '
     + 'accepting an injury protocol. adapt.ts mentions it in comments and does not import it.',
+  'lib/race/race-role-apply.ts':
+    'runner-initiated: reached only from POST /api/plan/proposal accept on a race_role card — the '
+    + 'runner accepting the coach\'s tune-up recommendation (RACEROLE-1, 2026-08-28). The nightly '
+    + 'cron writes ONLY the pending plan_proposals card (declared under cron/plan-drift); the race '
+    + 'row\'s meta.plannedRole and the plan_workouts week patch move only on the runner\'s accept, '
+    + 'and the patch runs through mutatePlan.',
   'lib/plan/replan-scenarios.ts':
     'runner-initiated: reached from POST /api/plan/change and POST /api/plan/replan, both runner '
     + 'actions. lib/plan/v5-block.ts also imports it but calls only proposeChange and the read-only '
