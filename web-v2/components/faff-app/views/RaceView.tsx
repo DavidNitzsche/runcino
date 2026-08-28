@@ -152,6 +152,20 @@ export type RaceDetailSeed = {
   // actuals, VDOT + projection movement, next-A-race read. Null on
   // upcoming races.
   retro?: RaceRetro | null;
+  /** 2026-08-28 · coach-set goal for an upcoming race with NO stated goal
+   *  (lib/race/coach-goal.ts via loadCoachGoalForRace). kind:'time' carries
+   *  the A/B/C tiers, all modelled (~); kind:'effort' is the C-priority or
+   *  hilly framing with no time at all. Null whenever the runner has stated
+   *  a goal — their number is untouchable and this never competes with it. */
+  coachGoal?: {
+    kind: 'time' | 'effort';
+    line: string;
+    aDisplay?: string;
+    bDisplay?: string;
+    cDisplay?: string;
+    oneSided?: boolean;
+    reason?: 'c_priority' | 'hilly';
+  } | null;
 };
 
 const FALLBACK: RaceDetailSeed = {
@@ -654,6 +668,25 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
                   >{bGoal}</div>
                 </div>
               </div>
+              {/* 2026-08-28 · coach-set goal. Only when the runner has NOT
+                  stated one (the seed nulls it otherwise). Every number is
+                  modelled — the ~ is the contract mark. Editing the A field
+                  above makes a goal the runner's own and retires this line. */}
+              {r.coachGoal && aGoal === '·' ? (
+                <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5, color: 'var(--mute)' }}>
+                  <span style={{ letterSpacing: '.08em', fontWeight: 700 }}>COACH SET</span>
+                  {r.coachGoal.kind === 'time' ? (
+                    <>
+                      {' · '}A <b>~{r.coachGoal.aDisplay}</b>
+                      {' · '}B <b>~{r.coachGoal.bDisplay}</b>
+                      {' · '}C <b>~{r.coachGoal.cDisplay}</b>
+                      <div>{r.coachGoal.line}</div>
+                    </>
+                  ) : (
+                    <div>{r.coachGoal.line}</div>
+                  )}
+                </div>
+              ) : null}
             </div>
           )}
         </div>

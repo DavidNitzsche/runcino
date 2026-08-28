@@ -16,6 +16,7 @@ import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 import { loadEffectiveRaceTarget, type EffectiveRaceTarget } from '@/lib/race/effective-race-target';
 import { resolveBGoal } from '@/lib/race/b-goal';
+import { loadCoachGoalForRace } from '@/lib/race/coach-goal-load';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,6 +164,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       : (race as any).days <= 60 ? 'sharpening'
       : 'building';
 
+    // ─── Coach-set goal (2026-08-28, David's ruling) ─────────────────────
+    // An upcoming race with an EMPTY goal gets a coach-set A/B/C framing off
+    // current evidence (lib/race/coach-goal.ts). A runner-stated goal makes
+    // this whole block a no-op — deriveCoachGoal refuses structurally, and
+    // nothing here ever writes meta.goalDisplay (the runner's field). The
+    // coach goal feeds DISPLAY only: pacing/fueling/effective-target above
+    // still key off the stated goal alone, so a coach proposal can never
+    // move training paces or the watch payload.
+    const geomGain = (courseGeometry as { elevation_gain_ft?: number } | null)?.elevation_gain_ft;
+    const coachGoal = await loadCoachGoalForRace(userId, {
+      slug,
+      name: (race as { name?: string }).name ?? null,
+      priority: (race as { priority?: string | null }).priority ?? null,
+      statedGoalSec: parseRaceTime((race as { goal?: string | null }).goal),
+      distanceMi: raceDistanceMi > 0 ? raceDistanceMi : null,
+      metaTerrain: (raceMeta as { terrain?: unknown } | null)?.terrain,
+      elevationGainFt: typeof geomGain === 'number' ? geomGain : null,
+      daysAway: (race as { days?: number }).days ?? null,
+    });
+
     // Structured fuel recommendation · servings + schedule + target rate +
     // product. Per-race meta (fuelProduct etc.) overrides the runner-level
     // default (users.fuel_*); documented defaults + isDefault when neither.
@@ -245,6 +266,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
         pace_s_per_mi: raceDistanceMi > 0 ? Math.round(bGoal.sec / raceDistanceMi) : null,
         source: bGoal.source,
       } : null,
+      // 2026-08-28 · coach-set goal for a race the runner left without one.
+      // Additive; null whenever a stated goal exists (untouchable), the race
+      // is past, or there is no honest evidence to set one from. kind:'time'
+      // carries A/B/C (all modelled — render with the ~ mark, labelled coach-
+      // set and editable); kind:'effort' is the C-priority / hilly framing
+      // with no time at all. Never feeds pacing or the plan.
+      coach_goal: coachGoal,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? String(err) }, { status: 500 });

@@ -196,6 +196,12 @@ export interface GoalProjection {
    *  it off the same answer instead of a second database read that could
    *  disagree. */
   marathonSpecificTraining: boolean | null;
+  /** SPEC-CENTER (2026-08-28) · non-null when Research/02 §13.1's +5%
+   *  one-sided marathon-specificity adjustment moved `vdotProjectionSec`
+   *  (marathon target, sub-marathon anchor, no marathon block in place —
+   *  REVIEW_NOTES A5 extends the rule to half-marathon anchors). The
+   *  adjusted number is MODELLED: surfaces mark it with the ~ convention. */
+  specificityAdjustment: { pct: number; oneSided: true } | null;
   /** 2026-06-08 · goal-attainment confidence (HIGH/MEDIUM/LOW). Null at
    *  cold-start. See computeConfidenceLabel. */
   confidenceLabel: ConfidenceLabel | null;
@@ -232,9 +238,44 @@ export async function computeGoalProjection(args: {
   const { userUuid, goalSec, raceDistanceMi, vdot, daysToRace, pacing,
           vdotAnchorDateISO, vdotAnchorDistanceMi } = args;
 
-  const vdotProjectionSec = vdot != null
+  const vdotProjectionSecRaw = vdot != null
     ? predictRaceTime(vdot, raceDistanceMi) ?? null
     : null;
+
+  // CI-CROSS-1 · §13.7's marathon rows split on whether a marathon block is in
+  // place, so the band needs to know. Only asked when it can matter — a
+  // marathon target predicted off a sub-marathon anchor — so no other shape
+  // pays for the query. Failure reads as "no block established", which is
+  // §13.7's wider row, never the narrower one.
+  //
+  // 2026-08-28 · SPEC-CENTER · hoisted above the detectors (it is an
+  // independent plan read), extended to HALF-MARATHON anchors, and now also
+  // applied to the CENTER, not just the band. Research/02 §13.1 :382 states
+  // the point adjustment outright — "for marathon prediction from a
+  // sub-half-marathon input, add 5% if marathon-specific training is absent" —
+  // and REVIEW_NOTES.md A5 (2026-08-28) resolves the corpus's four phrasings
+  // to exactly this rule for a half-marathon input too ("+5% one-sided
+  // pessimistic, and always report the ±3% CI from 02 §13.7"). Before this,
+  // the band opened one-sided but the headline number itself stayed at the
+  // raw equivalence — the exact point estimate §14.7 says "systematically
+  // over-predict[s]". The adjusted projection is MODELLED, and
+  // `specificityAdjustment` below is how a surface knows to mark it (~).
+  const needsMarathonBlockSignal =
+    distanceCategoryOrNull(raceDistanceMi) === 'm' &&
+    vdotAnchorDistanceMi != null &&
+    ['5k', '10k', 'hm'].includes(distanceCategoryOrNull(vdotAnchorDistanceMi) ?? '');
+  const marathonSpecificTraining = needsMarathonBlockSignal
+    ? await loadMarathonSpecificTraining(userUuid).catch(() => null)
+    : null;
+  const specificityAdjustment = marathonSpecificityAdjustment(
+    raceDistanceMi,
+    vdotAnchorDistanceMi ?? null,
+    marathonSpecificTraining,
+  );
+  const vdotProjectionSec =
+    vdotProjectionSecRaw != null && specificityAdjustment != null
+      ? Math.round(vdotProjectionSecRaw * (1 + specificityAdjustment.pct / 100))
+      : vdotProjectionSecRaw;
 
   // Collect drift signals · each detector returns 0 or 1 signal. Failures
   // (DB error, missing data) silently produce no signal · we never punish
@@ -332,18 +373,8 @@ export async function computeGoalProjection(args: {
   // above it, which read as a contradiction). Falls back to vdotProjectionSec
   // when there's no trajectory. The confidence label (goal attainment) is
   // computed once here so web / iPhone / watch all read one number.
-  // CI-CROSS-1 · §13.7's marathon rows split on whether a marathon block is in
-  // place, so the band needs to know. Only asked when it can matter — a
-  // marathon target predicted off a sub-half-marathon anchor — so no other
-  // shape pays for the query. Failure reads as "no block established", which
-  // is §13.7's wider row, never the narrower one.
-  const needsMarathonBlockSignal =
-    distanceCategoryOrNull(raceDistanceMi) === 'm' &&
-    vdotAnchorDistanceMi != null &&
-    ['5k', '10k'].includes(distanceCategoryOrNull(vdotAnchorDistanceMi) ?? '');
-  const marathonSpecificTraining = needsMarathonBlockSignal
-    ? await loadMarathonSpecificTraining(userUuid).catch(() => null)
-    : null;
+  // (marathonSpecificTraining resolved at the top of this function — SPEC-CENTER
+  // hoisted it so the +5% center adjustment and this band read one answer.)
   const confidenceInterval = computeConfidenceInterval({
     centerSec: trajectory?.projectedSec ?? vdotProjectionSec,
     raceDistanceMi,
@@ -374,6 +405,7 @@ export async function computeGoalProjection(args: {
     confidenceInterval,
     confidenceLabel,
     marathonSpecificTraining,
+    specificityAdjustment,
     trajectory,
   };
 }
@@ -2072,8 +2104,13 @@ export function computeConfidenceInterval(args: {
  *
  * Bound by `PREDICTION.cross-distance-span-bands` in lib/doctrine/registry.ts,
  * which parses these percentages out of §13.7's own table.
+ *
+ * Exported (2026-08-28) so the coach-set goal engine (lib/race/coach-goal.ts)
+ * sizes its A/C band off the SAME rows the projection band uses — a coach
+ * goal wider or tighter than the band the app draws would be two answers to
+ * one question.
  */
-function crossSpanCi(
+export function crossSpanCi(
   anchorDistanceMi: number | null,
   targetDistanceMi: number,
   marathonSpecificTraining: boolean | null,
@@ -2101,6 +2138,45 @@ function crossSpanCi(
   // rest — is a span doctrine's table does not state. Left to the target-keyed
   // default rather than interpolated into a number nobody published.
   return null;
+}
+
+/**
+ * SPEC-CENTER (2026-08-28) · Research/02 §13.1's marathon-specificity point
+ * adjustment, stated at :382: "for marathon prediction from a sub-half-marathon
+ * input, add 5% if marathon-specific training is absent". REVIEW_NOTES.md's
+ * 2026-08-28 addendum (A5) resolves the corpus's four overlapping phrasings to
+ * this same rule for a HALF-MARATHON input as well — "+5% (one-sided
+ * pessimistic) and always report the ±3% CI from 02 §13.7" — and forbids
+ * stacking it with the 1.5-VDOT subtraction (which is 01's rule for MP
+ * *prescription*, not prediction; this engine applies that one in the pace
+ * path, never here).
+ *
+ * Bound by `PREDICTION.marathon-specificity-point-adjustment` in the registry.
+ */
+export const MARATHON_SPECIFICITY_PENALTY_PCT = 5;
+
+/**
+ * Does the §13.1 one-sided adjustment govern this prediction? Non-null when
+ * the target is a marathon, the evidence anchor is sub-marathon (5K/10K/HM),
+ * and no marathon-specific block is established (`false` and `null` both
+ * qualify — "we could not establish a block" is not evidence one exists, and
+ * §14.7's instruction on which way to lean is unambiguous).
+ *
+ * The returned pct adjusts the CENTER of a marathon prediction; the CI band
+ * around it stays `crossSpanCi`'s row for the span. Callers must label the
+ * adjusted number modelled (the ~ convention).
+ */
+export function marathonSpecificityAdjustment(
+  targetDistanceMi: number | null | undefined,
+  anchorDistanceMi: number | null | undefined,
+  marathonSpecificTraining: boolean | null,
+): { pct: number; oneSided: true } | null {
+  if (targetDistanceMi == null || anchorDistanceMi == null) return null;
+  if (distanceCategoryOrNull(targetDistanceMi) !== 'm') return null;
+  const from = distanceCategoryOrNull(anchorDistanceMi);
+  if (from == null || !['5k', '10k', 'hm'].includes(from)) return null;
+  if (marathonSpecificTraining === true) return null;
+  return { pct: MARATHON_SPECIFICITY_PENALTY_PCT, oneSided: true };
 }
 
 /**

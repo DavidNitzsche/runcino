@@ -337,6 +337,21 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       geometry: (lib as { geometry_json?: unknown } | null)?.geometry_json as CourseGeometryInput | null,
     });
 
+    // 2026-08-28 · coach-set goal for an upcoming race with no stated goal.
+    // Same loader as GET /api/race/[slug] (lib/race/coach-goal-load.ts), so
+    // web and phone read one answer. Null whenever a stated goal exists.
+    const { loadCoachGoalForRace } = await import('@/lib/race/coach-goal-load');
+    const coachGoal = await loadCoachGoalForRace(userId, {
+      slug: race.slug,
+      name: race.name,
+      priority: race.priority,
+      statedGoalSec: aGoalSec > 0 ? aGoalSec : null,
+      distanceMi: race.distance_mi,
+      metaTerrain: (meta as { terrain?: unknown }).terrain,
+      elevationGainFt: gainFt > 0 ? gainFt : null,
+      daysAway: race.days,
+    });
+
     return {
       slug: race.slug,
       name: race.name,
@@ -371,6 +386,7 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       goalPace: pf.goalPace,
       aGoal,
       bGoal: pf.bGoal,
+      coachGoal,
       effectiveGoal: pf.effectiveGoal,
       effectiveSource: pf.effectiveSource,
       stretchGoal: pf.stretchGoal,

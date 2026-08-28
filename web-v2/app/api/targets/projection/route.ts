@@ -63,7 +63,10 @@ import { resolveCourseElevation, elevationIsTrustedForAdjustment } from '@/lib/r
 import { computeRaceConditions } from '@/lib/training/race-conditions';
 import { computePacingDiscipline } from '@/lib/coach/pacing-discipline';
 import { computeProjectionLevers } from '@/lib/coach/projection-levers';
-import { computeConfidenceInterval, computeConfidenceLabel, computeGoalProjection, reconcileStatusWithConfidence } from '@/lib/training/goal-projection';
+import { computeConfidenceInterval, computeConfidenceLabel, computeGoalProjection, reconcileStatusWithConfidence, marathonSpecificityAdjustment } from '@/lib/training/goal-projection';
+import { loadMarathonSpecificTraining } from '@/lib/training/plan-target';
+import { fitPersonalExponent, predictWithPersonalExponent, type PersonalExponentFit } from '@/lib/race/coach-goal';
+import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { composeTargetsSummaryLine } from '@/lib/training/targets-summary';
 
 export const dynamic = 'force-dynamic';
@@ -360,6 +363,28 @@ export async function GET(req: NextRequest) {
       : null;
     const traj = gp?.trajectory ?? null;
 
+    // ─── SPEC-CENTER (2026-08-28) · marathon-specificity honesty ─────────
+    // Research/02 §13.1 :382: "for marathon prediction from a sub-half-
+    // marathon input, add 5% if marathon-specific training is absent" —
+    // REVIEW_NOTES A5 (2026-08-28) extends the same +5% one-sided rule to a
+    // half-marathon input with no marathon block, alongside §13.7's ±3% CI.
+    // computeGoalProjection resolved whether the rule governs (marathon
+    // target, sub-marathon anchor, no block); this route's own second-space
+    // numbers must carry the same adjustment or the panel contradicts the
+    // engine. Every adjusted number is MODELLED — the payload says so via
+    // `projectionSpecificity`, and formatted strings carry the ~ mark.
+    const specificity = gp?.specificityAdjustment ?? null;
+    const applySpec = (sec: number | null): number | null =>
+      sec != null && specificity != null
+        ? Math.round(sec * (1 + specificity.pct / 100))
+        : sec;
+    projectionSec = applySpec(projectionSec);
+    // Race-day projection: a plan with no marathon block in it does not grow
+    // one by race day, so the same one-sided penalty rides on the trajectory's
+    // seconds (VDOT-space internals stay untouched — the penalty is not a
+    // fitness statement, it is a prediction-error statement).
+    const trajProjectedSecHonest = applySpec(traj?.projectedSec ?? null);
+
     // ─── 3. GapPanel chunks · per-race-per-runner ───────────────
     //   Mirrors the enrichment in seed.ts L1185-L1295 verbatim so the
     //   iPhone and web read identical numbers. Helper signatures owned
@@ -543,6 +568,10 @@ export async function GET(req: NextRequest) {
       if (trajectoryAccruedSec != null && anchorSec != null) {
         trajectoryAccruedSec = Math.max(trajectoryAccruedSec, anchorSec);
       }
+      // SPEC-CENTER · the accrued TODAY estimate is a marathon prediction off
+      // the same sub-marathon evidence — it carries the same +5% or it reads
+      // faster than the projection it converges toward.
+      trajectoryAccruedSec = applySpec(trajectoryAccruedSec);
     }
 
     // Status from the trajectory — the SAME logic web's TargetsView uses — so
@@ -595,7 +624,7 @@ export async function GET(req: NextRequest) {
     // goal-seeking trajectory) so it reads "where you'll likely finish" with
     // the goal sitting inside it, not the frozen current-fitness number.
     const confidenceInterval = computeConfidenceInterval({
-      centerSec: traj?.projectedSec ?? projectionSec,
+      centerSec: trajProjectedSecHonest ?? projectionSec,
       raceDistanceMi: distanceMi,
       status: goalStatus,
       pacing: { cv: executionCV, source: executionSource },
@@ -672,7 +701,7 @@ export async function GET(req: NextRequest) {
     const summaryLine = composeTargetsSummaryLine({
       status,
       goalSec,
-      projectedSec: traj?.projectedSec ?? projectionSec,
+      projectedSec: trajProjectedSecHonest ?? projectionSec,
       goalSource,
       raceName: race?.name ?? null,
       daysAway,
@@ -697,11 +726,69 @@ export async function GET(req: NextRequest) {
     // online" was named explicitly in the finding. When vdot is null but a
     // below-table anchor resolved above, use the SAME Riegel fallback so this
     // surface comes online too, instead of staying null alongside vdot.
+    //
+    // ─── 2026-08-28 · prediction honesty on the equivalents table ─────────
+    //   · Personal exponent (Research/02 §11.4 · §14 rule 3): with two
+    //     qualifying recent races the runner's own fitted b projects the
+    //     other distances instead of the population curve.
+    //   · Marathon specificity (§13.1 :382): the Marathon row predicted off
+    //     a sub-marathon anchor with no marathon block carries +5% one-sided
+    //     and renders with the ~ modelled mark — the row the phone shows is
+    //     the row doctrine says not to over-promise.
+    let personalExponentFit: PersonalExponentFit | null = null;
+    try {
+      const { runnerToday } = await import('@/lib/runtime/runner-tz');
+      const todayForFit = await runnerToday(userId);
+      const { raceCandidates: fitRaces } = await loadVdotInputs(userId, todayForFit);
+      personalExponentFit = fitPersonalExponent(fitRaces, todayForFit);
+    } catch { personalExponentFit = null; }
+    const MARATHON_MI = 26.2188;
+    const equivalentsSpec = (vdot != null && vdotAnchorDistanceMi != null
+        && ['5k', '10k', 'hm'].includes(distanceCategoryOrNull(vdotAnchorDistanceMi) ?? ''))
+      ? marathonSpecificityAdjustment(
+          MARATHON_MI,
+          vdotAnchorDistanceMi,
+          // Reuse the engine's answer when it asked; ask once here otherwise
+          // (the equivalents table needs it even when the goal race is not a
+          // marathon). null/failure reads as "no block" — §14.7's direction.
+          gp?.marathonSpecificTraining
+            ?? await loadMarathonSpecificTraining(userId).catch(() => null),
+        )
+      : null;
     const fixedBelowTableAnchor = belowTableAnchorRef; // stable const for the closures below
     const raceProjections = vdot != null
       ? STANDARD_RACES
-          .map(r => ({ distance: r.distance, time: formatRaceTime(predictRaceTime(vdot, r.mi)) }))
-          .filter((r): r is { distance: string; time: string } => r.time != null)
+          .map(r => {
+            // §14 rule 3 · runner's own exponent when the fit exists.
+            const fitted = personalExponentFit != null
+              ? predictWithPersonalExponent(personalExponentFit, r.mi)
+              : null;
+            let sec = fitted ?? predictRaceTime(vdot, r.mi);
+            let specApplied = false;
+            if (sec != null && r.distance === 'Marathon' && equivalentsSpec != null) {
+              sec = Math.round(sec * (1 + equivalentsSpec.pct / 100));
+              specApplied = true;
+            }
+            const t = formatRaceTime(sec);
+            if (t == null) return null;
+            return {
+              distance: r.distance,
+              // The ~ is the design contract's modelled mark. Hand-drawing it
+              // into the string is normally check-modelled-mark's guard-6 sin,
+              // but `RaceProjectionEntry` on the wire is {distance, time} with
+              // NO provenance field — the same shape as glance-adapter.ts's
+              // carried exemption: "the only honesty available there. Removing
+              // it would make that surface less honest, not more." The
+              // row-level `modelled` flag below is the provenance carrier for
+              // the phone to adopt; when it does, move the mark client-side.
+              time: specApplied ? `~${t}` : t,
+              ...(specApplied
+                ? { modelled: true, adjustedPct: equivalentsSpec!.pct, oneSided: true }
+                : {}),
+              ...(fitted != null ? { method: 'personal-exponent' } : {}),
+            };
+          })
+          .filter((r): r is { distance: string; time: string } => r != null)
       : fixedBelowTableAnchor != null
         ? STANDARD_RACES
             .map(r => ({
@@ -777,6 +864,25 @@ export async function GET(req: NextRequest) {
       raceProjections,
       confidenceInterval,
       confidenceLabel,
+      // ─── 2026-08-28 · prediction-honesty provenance (additive) ─────────
+      // Non-null when the §13.1 +5% one-sided marathon-specificity rule moved
+      // projectionSec / trajectoryProjectedSec / trajectoryAccruedSec above.
+      // Clients mark those numbers modelled (~) when this is set.
+      projectionSpecificity: specificity,
+      // The runner-specific Riegel exponent (Research/02 §11.4) when two
+      // qualifying recent races exist; raceProjections rows then carry
+      // method: 'personal-exponent'.
+      personalExponent: personalExponentFit != null
+        ? {
+            b: personalExponentFit.b,
+            races: personalExponentFit.races.map((r) => ({
+              slug: r.slug ?? null,
+              date: r.date,
+              distance_mi: r.distance_mi,
+              finish_seconds: r.finish_seconds,
+            })),
+          }
+        : null,
       // 2026-06-12 · upgrade gear (trajectory-derived) for the native Goal tab.
       // aheadOfGoal → render the "AHEAD" headline; planUnderBuilt → advisory
       // (rebuild is web-only); trajectoryProjectedSec is the goal-seeking
@@ -784,7 +890,7 @@ export async function GET(req: NextRequest) {
       aheadOfGoal: traj?.aheadOfGoal ?? false,
       planUnderBuilt: traj?.planUnderBuilt ?? null,
       overPerformanceBonusVdot: traj?.overPerformanceBonusVdot ?? 0,
-      trajectoryProjectedSec: traj?.projectedSec ?? null,
+      trajectoryProjectedSec: trajProjectedSecHonest,
       // 2026-06-18 · the "TODAY" accrued estimate · anchor VDOT + gain accrued
       // so far based on fraction of plan completed. Moves week-by-week as training
       // accumulates; converges toward trajectoryProjectedSec by race day.

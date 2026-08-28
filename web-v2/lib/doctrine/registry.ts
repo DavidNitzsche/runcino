@@ -154,7 +154,19 @@ import {
   closableSecPerWeek,
 } from '@/lib/training/vdot-gain-rate';
 import { MIN_WEEKLY_MI_FOR_DISTANCE } from '@/lib/training/goal-assessment';
-import { BUILD_RATE_VDOT_PER_WEEK } from '@/lib/training/goal-projection';
+import {
+  BUILD_RATE_VDOT_PER_WEEK,
+  MARATHON_SPECIFICITY_PENALTY_PCT,
+  marathonSpecificityAdjustment,
+} from '@/lib/training/goal-projection';
+import {
+  deriveCoachGoal,
+  fitPersonalExponent,
+  courseIsHilly,
+  HILLY_GAIN_FT_PER_MI,
+  EXPONENT_FIT_WINDOW_DAYS,
+  type ExponentFitRace,
+} from '@/lib/race/coach-goal';
 import { expectedDaysForAnchor } from '@/lib/coach/recovery-phase';
 import {
   GAP_SHAVE_FRACTIONS,
@@ -14709,6 +14721,209 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           `RHR_ROLLING_WINDOW_DAYS = ${RHR_ROLLING_WINDOW_DAYS} · doctrine's working baseline is ${docDays} days`,
         );
+      }
+    },
+  },
+  {
+    id: 'GOALS.abc-tier-probability-bands',
+    binds: ['lib/race/coach-goal.ts#deriveCoachGoal'],
+    doc: 'Research/20-mental-training.md',
+    anchor: "### Daniels' A/B/C tiered race goals",
+    claim:
+      'A race carries three tiers before race day: A the ~20-30% stretch, B the ~50-60% ' +
+      'realistic outcome, C the ~80-90% floor. The coach-set goal emits all three, ordered ' +
+      'fastest to slowest, with B the equivalent-fitness centre — the number whose CI the ' +
+      'prediction doctrine publishes — and A/C one half-width to either side.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'Probability of achievement on race day';
+      const a = parsePctBand(t.cell('A', col));
+      const b = parsePctBand(t.cell('B', col));
+      const c = parsePctBand(t.cell('C', col));
+      // The doc's probability ladder must still run A < B < C, or the whole
+      // fast-to-slow mapping below reads the wrong way around.
+      if (!(a[1] <= b[0] && b[1] <= c[0])) {
+        throw new Error(
+          `§A/B/C probability bands no longer ascend (A ${a}, B ${b}, C ${c}) · re-read the claim`,
+        );
+      }
+      if (!/Set all three before race day/i.test(cite.text())) {
+        throw new Error('the "Set all three before race day" rule is gone · re-read the claim');
+      }
+      // Engine: a plain race (no stated goal, representative anchor at the
+      // race's own distance) emits all three tiers, fastest to slowest, with
+      // B exactly the Daniels equivalence of the evidence VDOT.
+      const TENK = 6.21371;
+      const g = deriveCoachGoal({
+        statedGoalSec: null, priority: 'B', distanceMi: TENK,
+        vdot: 50, vdotAnchorDistanceMi: TENK, todayISO: '2026-08-28',
+      });
+      if (!g || g.kind !== 'time') {
+        throw new Error('deriveCoachGoal no longer emits the three tiers for a plain race');
+      }
+      if (!(g.aSec < g.bSec && g.bSec < g.cSec)) {
+        throw new Error('tier ladder is not A faster than B faster than C · the probability ordering is broken');
+      }
+      const base = predictRaceTime(50, TENK);
+      if (base == null || Math.abs(g.bSec - base) > 10) {
+        throw new Error(`B (${g.bSec}s) drifted from the equivalent-fitness centre (${base}s)`);
+      }
+      // A stated goal is untouchable — the tier engine must refuse outright.
+      const stated = deriveCoachGoal({
+        statedGoalSec: 3600, priority: 'B', distanceMi: TENK,
+        vdot: 50, vdotAnchorDistanceMi: TENK, todayISO: '2026-08-28',
+      });
+      if (stated != null) {
+        throw new Error('deriveCoachGoal produced tiers over a runner-stated goal · the standing rule is broken');
+      }
+    },
+  },
+  {
+    id: 'PREDICTION.personal-exponent-two-point-fit',
+    binds: [
+      'lib/race/coach-goal.ts#fitPersonalExponent',
+      'lib/race/coach-goal.ts#predictWithPersonalExponent',
+    ],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '### 11.4 Two-Point Exponent Fit',
+    claim:
+      'With two recent races the runner-specific fatigue exponent is ' +
+      'b = ln(T2/T1) / ln(D2/D1), used in place of the population default for a third ' +
+      'distance — and only when both races are recent and on flat courses.',
+    check({ cite }) {
+      const text = cite.text();
+      if (!/b = ln\(T2 \/ T1\) \/ ln\(D2 \/ D1\)/.test(text)) {
+        throw new Error('§11.4 no longer states the two-point formula · re-read the claim');
+      }
+      if (!/recent, on flat courses/.test(text)) {
+        throw new Error('§11.4 dropped the recent/flat caveat the qualifier enforces · re-read the claim');
+      }
+      // The engine reproduces the doc's own formula, exactly.
+      const FIVEK = 3.10686; const TENK = 6.21371;
+      const mk = (over: Partial<ExponentFitRace>): ExponentFitRace => ({
+        date: '2026-08-20', distance_mi: TENK, finish_seconds: 2500,
+        priority: 'B', provisional: false, hilly: false, ...over,
+      });
+      const races: ExponentFitRace[] = [
+        mk({ date: '2026-08-10', distance_mi: FIVEK, finish_seconds: 1200 }),
+        mk({}),
+      ];
+      const fit = fitPersonalExponent(races, '2026-08-28');
+      const expected = Math.log(2500 / 1200) / Math.log(TENK / FIVEK);
+      if (!fit || Math.abs(fit.b - expected) > 0.001) {
+        throw new Error(`fitted b ${fit?.b} != the doc's formula (${expected.toFixed(4)})`);
+      }
+      // The flat-course caveat is enforced, not decorative.
+      if (fitPersonalExponent([races[0], mk({ hilly: true })], '2026-08-28') != null) {
+        throw new Error('a hilly race qualified for the fit · §11.4 says flat courses');
+      }
+      // And "recent" is Research/01's operative freshness window (checked
+      // value-for-value by PREDICTION.exponent-fit-freshness-window).
+      const staleDate = '2026-05-01'; // 119 days before the fixed today
+      if (fitPersonalExponent([races[0], mk({ date: staleDate })], '2026-08-28') != null) {
+        throw new Error('a stale race qualified for the fit · both inputs must be recent');
+      }
+    },
+  },
+  {
+    id: 'PREDICTION.exponent-fit-freshness-window',
+    binds: ['lib/race/coach-goal.ts#EXPONENT_FIT_WINDOW_DAYS'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '**Operative rule:** within the last 8 weeks',
+    claim:
+      "Recent means Research/01's operative freshness window — the last 8 weeks (≤56 " +
+      'days), the same window inside which a race result is the canonical fitness input.',
+    check({ cite }) {
+      const m = matchLiteral(
+        cite.text(), /within the last 8 weeks \(≤\s*(\d+)\s*days\)/,
+        'the operative freshness window',
+      );
+      const docDays = Number(m[1]);
+      if (EXPONENT_FIT_WINDOW_DAYS !== docDays) {
+        throw new Error(
+          `EXPONENT_FIT_WINDOW_DAYS = ${EXPONENT_FIT_WINDOW_DAYS} · doctrine's window is ${docDays} days`,
+        );
+      }
+    },
+  },
+  {
+    id: 'PREDICTION.marathon-specificity-point-adjustment',
+    binds: [
+      'lib/training/goal-projection.ts#MARATHON_SPECIFICITY_PENALTY_PCT',
+      'lib/training/goal-projection.ts#marathonSpecificityAdjustment',
+    ],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '**Adjustment rule**: for marathon prediction from a sub-half-marathon input',
+    claim:
+      'A marathon predicted from sub-marathon evidence without marathon-specific training ' +
+      'carries a +5% one-sided adjustment to the prediction itself — not just a wider band. ' +
+      "REVIEW_NOTES A5 (2026-08-28) resolves the corpus's four phrasings to this same +5% " +
+      'for a half-marathon input, never stacked with the 1.5-VDOT prescription rule.',
+    check({ cite }) {
+      const m = matchLiteral(
+        cite.text(), /add (\d+)% if marathon-specific training is absent/,
+        "§13.1's adjustment rule",
+      );
+      const docPct = Number(m[1]);
+      if (MARATHON_SPECIFICITY_PENALTY_PCT !== docPct) {
+        throw new Error(
+          `MARATHON_SPECIFICITY_PENALTY_PCT = ${MARATHON_SPECIFICITY_PENALTY_PCT} · doctrine says ${docPct}`,
+        );
+      }
+      const M = 26.2188; const HM = 13.1094; const TENK = 6.21371; const FIVEK = 3.10686;
+      for (const anchorMi of [FIVEK, TENK, HM]) {
+        const adj = marathonSpecificityAdjustment(M, anchorMi, null);
+        if (!adj || adj.pct !== docPct || adj.oneSided !== true) {
+          throw new Error(`the +${docPct}% one-sided rule does not fire for a ${anchorMi}mi anchor with no block`);
+        }
+      }
+      if (marathonSpecificityAdjustment(M, HM, true) != null) {
+        throw new Error('the penalty fires even with a marathon block in place · §13.1 scopes it to absent training');
+      }
+      if (marathonSpecificityAdjustment(M, M, null) != null) {
+        throw new Error('marathon evidence is being penalised · the rule is for sub-marathon inputs');
+      }
+      if (marathonSpecificityAdjustment(HM, TENK, null) != null) {
+        throw new Error('the penalty fires on a non-marathon target · §13.1 states it for marathon prediction');
+      }
+    },
+  },
+  {
+    id: 'COURSE.hilly-goal-framing-floor',
+    binds: ['lib/race/coach-goal.ts#HILLY_GAIN_FT_PER_MI', 'lib/race/coach-goal.ts#courseIsHilly'],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '### 13.2 Course Profile',
+    claim:
+      "A course at or past §13.2's Hilly band (500-1500 ft over a road race, read per mile " +
+      'at marathon scale ≈ 19 ft/mi) gets effort framing instead of a flat-equivalent time ' +
+      '(Research/11: effort-based pacing, not pace-based, on hilly courses).',
+    check({ cite }) {
+      // Read the Hilly band's floor out of the doc's own table row label.
+      const hillyRow = cite.section.find((l) => /Hilly \(/.test(l));
+      if (!hillyRow) throw new Error('§13.2 no longer has a Hilly row · re-read the claim');
+      const [floorFt] = parseBand(hillyRow.replace(/\/.*$/, ''));
+      const M = 26.2188;
+      const expected = Math.round(floorFt / M);
+      if (HILLY_GAIN_FT_PER_MI !== expected) {
+        throw new Error(
+          `HILLY_GAIN_FT_PER_MI = ${HILLY_GAIN_FT_PER_MI} · §13.2's Hilly floor (${floorFt} ft) ` +
+          `at marathon scale is ${expected} ft/mi`,
+        );
+      }
+      // The classifier actually uses the floor, in both directions.
+      if (!courseIsHilly({ elevationGainFt: expected * 6.2 + 10, distanceMi: 6.2 })) {
+        throw new Error('a course past the Hilly floor is not classified hilly');
+      }
+      if (courseIsHilly({ elevationGainFt: expected * 6.2 - 40, distanceMi: 6.2 })) {
+        throw new Error('a course well under the Hilly floor is classified hilly');
+      }
+      // And a hilly race gets NO time goal from the coach — effort framing.
+      const g = deriveCoachGoal({
+        statedGoalSec: null, priority: 'B', distanceMi: 6.21371, hilly: true,
+        vdot: 50, todayISO: '2026-08-28',
+      });
+      if (!g || g.kind !== 'effort') {
+        throw new Error('a hilly course got a flat-equivalent time goal · Research/11 says effort, not pace');
       }
     },
   },
