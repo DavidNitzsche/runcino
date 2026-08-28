@@ -391,8 +391,14 @@ export async function POST(req: NextRequest) {
       // race-anchored maintenance hold block (or a recovery block whose race
       // date went missing) that ran out of days was re-authored by NOTHING:
       // graduateDue watches the race date, openBlockDue requires no future
-      // target, and this branch skipped the row. That is the strand the
-      // doctrine registry's `no-ceiling-on-a-long-hold` exemption argues from.
+      // target, and this branch skipped the row. That was the strand the
+      // doctrine registry's `no-ceiling-on-a-long-hold` exemption argued
+      // from; closing it here is what let composeMaintenancePlan cap the
+      // hold block at HOLD_BLOCK_MAX_WEEKS (2026-08-28, exemption deleted,
+      // MAINTENANCE.hold-block-length now gates the cap). A capped hold that
+      // elapses with its race still outside the build window lands in THIS
+      // branch and is authored its next hold; once the window opens the
+      // rebuild is race-prep — same call either way, pickPlanMode decides.
       // Race still ahead → re-author toward it (pickPlanMode chooses
       // maintenance vs race-prep by build window); race date null or past →
       // the plan is anchored to nothing real, so it takes the same

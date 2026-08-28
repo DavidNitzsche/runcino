@@ -15,8 +15,11 @@
  *   2 · A RACE-ANCHORED ELAPSED PLAN RE-AUTHORS. The plan_elapsed branch was
  *       gated on `!race_id`, so a maintenance hold block that ran out of days
  *       with its race still ahead was re-authored by NOTHING (the doctrine
- *       registry's `no-ceiling-on-a-long-hold` exemption argues from exactly
- *       this strand). Race still ahead → rebuild toward it; race date null or
+ *       registry's `no-ceiling-on-a-long-hold` exemption argued from exactly
+ *       this strand — closed 2026-08-28, when the hold block was capped at
+ *       HOLD_BLOCK_MAX_WEEKS on the strength of this branch). Race still
+ *       ahead → rebuild toward it, whether the build window has opened
+ *       (race-prep next) or not (the next capped hold); race date null or
  *       past → the un-anchored goal-target handoff.
  *
  *   3 · NO AUTO-AUTHORED BUILD OVER AN INJURED RUNNER. Injury-return plans are
@@ -275,6 +278,24 @@ describe('2 · plan_elapsed · race-anchored', () => {
     expect(fire).toHaveBeenCalledTimes(1);
     expect(fire.mock.calls[0][0]).toMatchObject({
       userUuid: UUID, raceSlug: 'cim-2026', kind: 'plan_elapsed', source: 'plan_elapsed_cron',
+    });
+    expect(fire.mock.calls[0][0].goalTarget).toBeUndefined();
+  });
+
+  it('a CAPPED hold that elapses with its race still outside the build window is authored its next block', async () => {
+    // MAINT-LENGTH-1 (2026-08-28) · the chain the 16-week cap stands on. A
+    // runner ~30 weeks out gets a 16-week hold (HOLD_BLOCK_MAX_WEEKS); the
+    // race is STILL outside its build window when that hold runs out of days,
+    // and this branch must re-author toward the race anyway — pickPlanMode
+    // inside the rebuild makes the next block another hold. If this handoff
+    // ever re-grew a race-proximity condition, the cap would strand exactly
+    // the runner it was sized for.
+    setRouter(lifecycleRouter({ plan: { ...HOLD_PLAN, race_id: 'cim-2027', race_date: '2027-06-06' } }));
+    await runCron();
+
+    expect(fire).toHaveBeenCalledTimes(1);
+    expect(fire.mock.calls[0][0]).toMatchObject({
+      userUuid: UUID, raceSlug: 'cim-2027', kind: 'plan_elapsed', source: 'plan_elapsed_cron',
     });
     expect(fire.mock.calls[0][0].goalTarget).toBeUndefined();
   });

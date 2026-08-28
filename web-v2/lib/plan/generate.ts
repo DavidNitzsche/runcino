@@ -7782,6 +7782,23 @@ const COLD_START_PEAK_RUN_MIN = 30;
  *  so it is not a second reduction to apply on top. */
 const BASE_BUILD_SUSTAINABLE_PCT = 1.00;
 
+/* ── MAINT-LENGTH-1 (2026-08-28) · the hold block has a ceiling now ─────────
+ *
+ * `Research/22` §6 Base Building / Off-Season publishes `Duration | 8-16
+ * weeks`, and DOCTRINE-MAINTFREQ-1 already ruled that §6 governs this mode
+ * (§7 Maintenance's own row — open-ended, 4-15 wk realistically, on the basis
+ * that ~2/3 of volume holds VO2max for ~15 weeks — points the same way). A
+ * single authored hold block is therefore capped at 16 weeks. The runner a
+ * year out is not stranded at week sixteen: the `plan_elapsed` branch of
+ * /api/cron/plan-drift (2026-08-28) re-authors a race-anchored plan that runs
+ * out of days while its race is still ahead, so a capped hold elapses into
+ * the next block toward the race — another hold if the build window is still
+ * closed, race-prep once it opens. Bound by MAINTENANCE.hold-block-length in
+ * the doctrine registry, which reads the ceiling out of the doc's own
+ * Duration row. */
+/** `Research/22` §6 · "Duration | 8-16 weeks" — the top of the band. */
+export const HOLD_BLOCK_MAX_WEEKS = 16;
+
 /**
  * Compose a 4-week maintenance plan. Single phase 'MAINTENANCE'. The
  * graduate cron regenerates this every 4 weeks until the next race
@@ -7840,42 +7857,28 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       // eat into the build window. pickPlanMode already routes floor=0 to race-prep,
       // so this is guaranteed ≥ 1 when composeMaintenancePlan is called.
       //
-      // ── A DIVERGENCE FROM DOCTRINE, ARGUED RATHER THAN CLOSED (2026-08-24) ──
+      // MAINT-LENGTH-1 (2026-08-28) · capped at the doctrine ceiling. This
+      // line was open-ended for two years of runway — a runner who entered a
+      // half fifty-three weeks out was authored a FORTY-ONE-WEEK hold — and
+      // was argued rather than closed while nothing re-authored a
+      // race-anchored hold that ran out. Both halves are now in place:
+      // `plan_elapsed` in /api/cron/plan-drift re-authors an elapsed
+      // race-anchored plan whose race is still ahead (2026-08-28), and the
+      // owner approved sizing the block to `Research/22` §6's Duration
+      // ceiling (HOLD_BLOCK_MAX_WEEKS, see its header). So the far-out runner
+      // gets a 16-week hold, and when it elapses the cron authors the next
+      // block toward the race. The registry's `no-ceiling-on-a-long-hold`
+      // exemption is deleted; MAINTENANCE.hold-block-length now checks the
+      // cap against the doc's own row. Still open, and not gated: whether a
+      // long hold PROGRESSES (§6 reverse periodization) or HOLDS flat (§7) —
+      // each block is one targetWeekly with a 20% step-down every fourth
+      // week. That ruling moves prescribed volume and stays the owner's.
       //
-      // This has no ceiling, and doctrine gives one. `Research/22` §7
-      // Maintenance Plan publishes `Duration | Open-ended (4-15 wk
-      // realistically)`, and its whole basis is a stated time limit: "~2/3 of
-      // training volume maintains VO2max for ~15 weeks if intensity is
-      // preserved". Past that the maintenance dose stops maintaining.
-      // `MAINTENANCE_BY_TIER`'s own DOCTRINE-MAINTFREQ-1 ruling says §6 Base
-      // Building governs this mode rather than §7 — "that runner is
-      // base-building, not maintaining" — and §6 publishes `Duration | 8-16
-      // weeks`. Neither section sanctions what this line can produce: a runner
-      // who enters a half fifty-three weeks out is authored a FORTY-ONE-WEEK
-      // hold block, and it is flat (one `targetWeekly` for the whole span, a
-      // 20% step-down every fourth week, no progression at all), where §6 asks
-      // for 80-100% of last cycle's peak reached through reverse
-      // periodization.
-      //
-      // NOT CAPPED HERE. The structural half of that reason retired on
-      // 2026-08-28: the `plan_elapsed` branch of `/api/cron/plan-drift` now
-      // re-authors a race-anchored hold block that runs out (it was gated on
-      // `!activePlanRow.race_id`, so an elapsed hold was re-authored by
-      // nothing), which means a capped hold would no longer strand a runner a
-      // year out with no plan from week sixteen.
-      //
-      // What remains is the owner's decision, because it moves prescribed
-      // volume for every hold-block runner: (1) size the block to the
-      // doctrine ceiling, and (2) rule on whether a long hold progresses (§6)
-      // or holds (§7). Until that ruling lands the block stays open-ended and
-      // the doctrine registry's `no-ceiling-on-a-long-hold` exemption records
-      // the violation honestly.
-      //
-      // Cite: Research/22-plan-templates.md §"Maintenance Plan" — Duration
-      //       open-ended, 4-15 wk realistically; ~15 weeks of VO2max hold
       // Cite: Research/22-plan-templates.md §"Base Building / Off-Season Plan"
       //       — Duration 8-16 weeks, 80-100% of last cycle's peak
-      TOTAL_WEEKS = Math.max(1, Math.floor(weeksToRace - buildWindow));
+      // Cite: Research/22-plan-templates.md §"Maintenance Plan" — Duration
+      //       open-ended, 4-15 wk realistically; ~15 weeks of VO2max hold
+      TOTAL_WEEKS = Math.max(1, Math.min(HOLD_BLOCK_MAX_WEEKS, Math.floor(weeksToRace - buildWindow)));
     }
   }
   const weeks: ComposedWeek[] = [];

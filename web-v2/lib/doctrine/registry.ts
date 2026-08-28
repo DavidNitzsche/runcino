@@ -214,6 +214,7 @@ import {
   R3_MIN_TRAINING_DAYS,
   MIDRACE_RESUME_RX,
   CUTBACK_LONG_DROP,
+  HOLD_BLOCK_MAX_WEEKS,
 } from '@/lib/plan/generate';
 import {
   DRESS_REHEARSAL,
@@ -14441,64 +14442,74 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
     },
   },
-  /* -- MAINT-LENGTH-1 (2026-08-24) ------------------------------------------
+  /* -- MAINT-LENGTH-1 (2026-08-24 · closed 2026-08-28) ----------------------
    *
    * How long the engine can hold a runner in a hold block, against how long
-   * doctrine says a hold block lasts. Recorded here with an exemption rather
-   * than closed. The original stranding argument (nothing re-authors a
-   * race-anchored hold block that runs out) was retired 2026-08-28 — the
-   * plan_elapsed branch of /api/cron/plan-drift now re-authors race-anchored
-   * elapsed plans — but the remaining fix moves prescribed volume for every
-   * hold-block runner and needs the owner's ruling on progression, so it
-   * stays argued at `composeMaintenancePlan`'s TOTAL_WEEKS.
+   * doctrine says a hold block lasts. Recorded 2026-08-24 as a violation
+   * under the `no-ceiling-on-a-long-hold` exemption; closed in two halves.
+   * The stranding argument (nothing re-authors a race-anchored hold block
+   * that runs out) retired 2026-08-28 when the plan_elapsed branch of
+   * /api/cron/plan-drift started re-authoring race-anchored elapsed plans,
+   * and the owner then approved sizing the block to the doctrine ceiling:
+   * `composeMaintenancePlan` caps TOTAL_WEEKS at HOLD_BLOCK_MAX_WEEKS, and a
+   * capped hold that elapses is authored its next block toward the race.
+   * Still open, deliberately ungated here: whether a long hold PROGRESSES
+   * (section 6 reverse periodization) or HOLDS flat (section 7) — that
+   * ruling moves prescribed volume for every hold-block runner and stays
+   * the owner's. This claim binds LENGTH only.
    */
   {
     id: 'MAINTENANCE.hold-block-length',
-    binds: ['lib/plan/goal-tiers.ts#BUILD_WINDOW_WEEKS'],
+    binds: [
+      'lib/plan/goal-tiers.ts#BUILD_WINDOW_WEEKS',
+      'lib/plan/generate.ts#HOLD_BLOCK_MAX_WEEKS',
+    ],
     doc: 'Research/22-plan-templates.md',
     anchor: '## 6. Base Building / Off-Season Plan',
     claim:
-      'A hold block runs from today until the race enters its build window, so the LONGEST ' +
-      'one the engine can author is the longest runway it accepts (365 days, from ' +
-      'loadGeneratorInputs) minus that distance build window. Doctrine publishes a Duration ' +
-      'for the block this runner is in: section 6 Base Building says 8-16 weeks, and section ' +
-      '7 Maintenance says open-ended but 4-15 weeks realistically, on the stated basis that ' +
-      'two thirds of training volume holds VO2max for about fifteen weeks. ' +
-      'MAINTENANCE_BY_TIER already ruled that section 6 governs this mode, so the ceiling ' +
-      'read here is section 6 own Duration row.',
-    check({ cite, exempt }) {
+      'A hold block runs from today toward the day the race enters its build window, and a ' +
+      'single authored block is capped at the doctrine ceiling. Doctrine publishes a ' +
+      'Duration for the block this runner is in: section 6 Base Building says 8-16 weeks, ' +
+      'and section 7 Maintenance says open-ended but 4-15 weeks realistically, on the ' +
+      'stated basis that two thirds of training volume holds VO2max for about fifteen ' +
+      'weeks. MAINTENANCE_BY_TIER already ruled that section 6 governs this mode, so the ' +
+      'ceiling read here is section 6 own Duration row, HOLD_BLOCK_MAX_WEEKS must equal ' +
+      'it, and composeMaintenancePlan must size TOTAL_WEEKS through that cap. A runner ' +
+      'whose runway exceeds cap plus window is not stranded: the plan_elapsed branch of ' +
+      'the plan-drift cron re-authors a race-anchored plan that runs out with its race ' +
+      'still ahead.',
+    check({ cite }) {
       const MAX_RUNWAY_WEEKS = 365 / 7;   // loadGeneratorInputs refuses beyond a year
       const ceiling = parseBand(cite.table().cell('Duration', 'Value'))[1];
+      if (HOLD_BLOCK_MAX_WEEKS !== ceiling) {
+        throw new Error(
+          `HOLD_BLOCK_MAX_WEEKS is ${HOLD_BLOCK_MAX_WEEKS}, section 6's Duration row tops out at ${ceiling} wk`,
+        );
+      }
       const over: string[] = [];
       for (const cat of CATS) {
-        const longestHold = Math.floor(MAX_RUNWAY_WEEKS - BUILD_WINDOW_WEEKS[cat]);
+        const longestHold = Math.min(
+          HOLD_BLOCK_MAX_WEEKS,
+          Math.floor(MAX_RUNWAY_WEEKS - BUILD_WINDOW_WEEKS[cat]),
+        );
         if (longestHold > ceiling) {
           over.push(`${cat}: up to ${longestHold} wk against a ${ceiling} wk ceiling`);
         }
       }
-      if (over.length > 0 && exempt('no-ceiling-on-a-long-hold')) return;
       if (over.length > 0) {
         throw new Error(
-          `the hold block has no length ceiling - ${over.join(' · ')}`,
+          `the hold block exceeds its length ceiling - ${over.join(' · ')}`,
         );
       }
-    },
-    exempt: {
-      'no-ceiling-on-a-long-hold':
-        'REAL VIOLATION, RUNNER-FACING, NOT FIXED HERE - it is the owner call. ' +
-        'composeMaintenancePlan sizes the block as floor(weeksToRace - buildWindow) with no ' +
-        'ceiling, so a runner who enters a half fifty-three weeks out is authored a ' +
-        'FORTY-ONE WEEK hold, and it is flat: one targetWeekly for the whole span with a ' +
-        '20% step-down every fourth week, no progression at all. Section 6 asks for 80-100% ' +
-        'of last cycle peak reached through reverse periodization over 8-16 weeks. ' +
-        'ONE of the three closing conditions landed 2026-08-28: the plan_elapsed branch of ' +
-        '/api/cron/plan-drift now re-authors a race-anchored hold block that runs out ' +
-        '(the old strand — graduateDue fires on the race date, plan_elapsed was gated on ' +
-        '!race_id, openBlockDue requires no future target — is closed), so capping the ' +
-        'block no longer strands anyone. The two that remain are the owner call, because ' +
-        'together they move prescribed volume for every hold-block runner: size the block ' +
-        'to the doctrine ceiling, and rule on whether a long hold progresses (section 6) ' +
-        'or holds (section 7). Delete this entry when those two land.',
+      // The constant only caps anything if the sizing line actually runs
+      // through it — the regression this half exists to catch is the cap
+      // quietly dropping out of the min().
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      matchLiteral(
+        src,
+        /TOTAL_WEEKS = Math\.max\(1, Math\.min\(HOLD_BLOCK_MAX_WEEKS, Math\.floor\(weeksToRace - buildWindow\)\)\);/,
+        'composeMaintenancePlan sizes the hold block through HOLD_BLOCK_MAX_WEEKS',
+      );
     },
   },
   {

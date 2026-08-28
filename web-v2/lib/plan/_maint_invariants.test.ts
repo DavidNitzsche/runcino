@@ -21,6 +21,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildSimPlan } from './sim-inputs';
+import { HOLD_BLOCK_MAX_WEEKS } from './generate';
 import type { SimDistance } from './sim-constants';
 
 const DISTANCES: SimDistance[] = ['5k', '10k', 'half', 'marathon', '50k', '100k'];
@@ -297,6 +298,13 @@ describe('maintenance + display invariants (diagnostic)', () => {
   it('a hold block for a far race carries no build, and names the day the build opens (#2)', () => {
     const PHASES_BUILD = new Set(['BASE', 'QUALITY', 'RACE-SPECIFIC', 'TAPER']);
     let holdPlans = 0, carriedBuild = 0, noOpenDate = 0, endsOnRace = 0;
+    // MAINT-LENGTH-1 (2026-08-28) · a single hold block is capped at the
+    // doctrine ceiling, and a CAPPED hold must still name the build-open day
+    // even though its own weeks end before the window opens — the runner is
+    // told when the build starts, the plan-drift cron authors the block(s)
+    // in between. overCap gates the ceiling; cappedHolds proves the sweep
+    // actually exercised a hold long enough to be cut by it.
+    let overCap = 0, cappedHolds = 0;
     const byMode: Record<string, number> = {};
     const ex: string[] = [];
     for (const lastDistance of [null, 'half', 'marathon', '50k'] as const)
@@ -329,8 +337,17 @@ describe('maintenance + display invariants (diagnostic)', () => {
               noOpenDate++;
               if (ex.length < 5) ex.push(`${built.mode}/last=${lastDistance}/next=${distance}: buildOpensISO=${opens}`);
             }
+            // 4 · MAINT-LENGTH-1 · no single hold block outlives the ceiling.
+            if (built.mode === 'maintenance') {
+              const wks = built.composed.weeks.length;
+              if (wks > HOLD_BLOCK_MAX_WEEKS) {
+                overCap++;
+                if (ex.length < 5) ex.push(`${built.mode}/next=${distance}: ${wks} wk hold over the ${HOLD_BLOCK_MAX_WEEKS} wk cap`);
+              }
+              if (wks === HOLD_BLOCK_MAX_WEEKS) cappedHolds++;
+            }
           }
-    console.log(`\nHOLD_SYMMETRY: ${holdPlans} hold blocks ${JSON.stringify(byMode)} · ${carriedBuild} carrying a build · ${endsOnRace} ending on a race week · ${noOpenDate} with no open date`);
+    console.log(`\nHOLD_SYMMETRY: ${holdPlans} hold blocks ${JSON.stringify(byMode)} · ${carriedBuild} carrying a build · ${endsOnRace} ending on a race week · ${noOpenDate} with no open date · ${cappedHolds} at the ${HOLD_BLOCK_MAX_WEEKS} wk cap · ${overCap} over it`);
     for (const e of ex) console.log(`  ${e}`);
     // BOTH hold modes must be exercised, or the symmetry is asserted over one
     // of them — which is exactly the shape of the defect this began as.
@@ -339,6 +356,8 @@ describe('maintenance + display invariants (diagnostic)', () => {
     expect(carriedBuild, 'a hold block carries build phases — the sim/production chain is back (#2)').toBe(0);
     expect(endsOnRace, 'a hold block ends on a race week — it is pretending to reach the start line').toBe(0);
     expect(noOpenDate, 'a hold block does not say when the build opens — a stub that just stops (#2)').toBe(0);
+    expect(overCap, `a hold block exceeds HOLD_BLOCK_MAX_WEEKS (${HOLD_BLOCK_MAX_WEEKS}) — the MAINT-LENGTH-1 cap regressed`).toBe(0);
+    expect(cappedHolds, 'no hold in the sweep reached the cap — the ceiling was never exercised, widen the geometry').toBeGreaterThan(0);
   });
 
   // ── RACE_ON_AVAIL · the goal race cell must land on a declared-available day (#7) ──
