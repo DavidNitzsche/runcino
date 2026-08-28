@@ -165,6 +165,10 @@ export type RaceDetailSeed = {
     cDisplay?: string;
     oneSided?: boolean;
     reason?: 'c_priority' | 'hilly';
+    /** GOALFRAME-1 · rolling-band grading: the effort guidance carried WITH
+     *  the graded numbers ("Steady on the climbs..."). Null off the band. */
+    effortLine?: string | null;
+    hillAdjustedSec?: number | null;
   } | null;
 };
 
@@ -681,6 +685,9 @@ export function RaceView({ seed: _seed, race, onBack }: { seed: FaffSeed; race?:
                       {' · '}B <b>~{r.coachGoal.bDisplay}</b>
                       {' · '}C <b>~{r.coachGoal.cDisplay}</b>
                       <div>{r.coachGoal.line}</div>
+                      {/* GOALFRAME-1 · a rolling course carries the effort
+                          guidance WITH the graded numbers. */}
+                      {r.coachGoal.effortLine ? <div>{r.coachGoal.effortLine}</div> : null}
                     </>
                   ) : (
                     <div>{r.coachGoal.line}</div>

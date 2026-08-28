@@ -77,8 +77,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 
     // ── geometry + course-aware pace plan ──────────────────────────────────
     const [geoRow, libRow] = await Promise.all([
-      pool.query<{ course_geometry: StoredGeometry | null; course_source: string | null; terrain: string | null }>(
-        `SELECT course_geometry, course_source, meta->>'terrain' AS terrain
+      pool.query<{ course_geometry: StoredGeometry | null; course_source: string | null; terrain: string | null; goal_framing: string | null }>(
+        `SELECT course_geometry, course_source, meta->>'terrain' AS terrain,
+                meta->>'goalFraming' AS goal_framing
            FROM races WHERE slug = $1 AND user_uuid = $2`,
         [slug, userId],
       ).then(r => r.rows[0] ?? null).catch(() => null),
@@ -331,6 +332,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
         distanceMi: race.distance_mi ?? null,
         metaTerrain: geoRow?.terrain ?? null,
         elevationGainFt: resolvedGainFt != null && resolvedGainFt > 0 ? resolvedGainFt : null,
+        goalFraming: geoRow?.goal_framing ?? null,
         daysAway,
       });
     } catch { coachGoal = null; /* additive — never fail the detail over it */ }

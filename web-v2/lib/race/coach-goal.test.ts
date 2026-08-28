@@ -17,12 +17,19 @@ import {
   fitPersonalExponent,
   predictWithPersonalExponent,
   courseIsHilly,
+  gradeCourse,
+  hillAdjustmentSec,
   inferDistanceMiFromNameOrSlug,
   EXPONENT_FIT_WINDOW_DAYS,
   PERSONAL_EXPONENT_MIN,
   PERSONAL_EXPONENT_MAX,
+  HILLY_GAIN_FT_PER_MI,
+  STEEP_GAIN_FT_PER_MI,
+  HILL_RATE_SEC_PER_MI_PER_100FT,
+  HILL_EFFORT_LINE,
   type ExponentFitRace,
 } from './coach-goal';
+import { goalFramingCard, gradeGetsTheAsk, isGoalFraming } from './goal-framing';
 import { predictRaceTime } from '@/lib/training/vdot';
 import { marathonSpecificityAdjustment, MARATHON_SPECIFICITY_PENALTY_PCT } from '@/lib/training/goal-projection';
 import { roundTargetSec } from './effective-race-target';
@@ -273,5 +280,198 @@ describe('display-default helpers', () => {
     expect(courseIsHilly({ elevationGainFt: 200, distanceMi: TENK })).toBe(true);  // 32 ft/mi
     expect(courseIsHilly({ elevationGainFt: 80, distanceMi: TENK })).toBe(false);  // 13 ft/mi
     expect(courseIsHilly({})).toBe(false); // unknown terrain is not hilly
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * GOALFRAME-1 · the course bands (Research/02 §13.2, David 2026-08-28)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('gradeCourse · §13.2 tiers read per mile', () => {
+  it('classifies by measured gain per mile against the 19 and 57 ft/mi boundaries', () => {
+    const at = (perMi: number) =>
+      gradeCourse({ elevationGainFt: perMi * TENK, distanceMi: TENK }).grade;
+    expect(at(HILLY_GAIN_FT_PER_MI - 5)).toBe('flat');
+    expect(at(HILLY_GAIN_FT_PER_MI)).toBe('rolling');       // floor is inclusive
+    expect(at(32.5)).toBe('rolling');                        // Santa Monica territory
+    expect(at(STEEP_GAIN_FT_PER_MI - 1)).toBe('rolling');
+    expect(at(STEEP_GAIN_FT_PER_MI)).toBe('steep');          // Mountain floor
+    expect(at(90)).toBe('steep');
+  });
+
+  it('terrain flags grade but cannot price: gainFtPerMi stays null', () => {
+    expect(gradeCourse({ metaTerrain: 'hilly' })).toEqual({
+      grade: 'rolling', gainFtPerMi: null, elevationGainFt: null,
+    });
+    expect(gradeCourse({ metaTerrain: 'mountain trail' }).grade).toBe('steep');
+    expect(gradeCourse({}).grade).toBe('flat'); // absence of geometry is not evidence
+  });
+});
+
+describe('hillAdjustmentSec · §13.2 rule of thumb (2-4 s/mi per 100 ft, gross, no refund)', () => {
+  it('reproduces the doc arithmetic at the band floor and scales the rate inside it', () => {
+    const gainAtFloor = HILLY_GAIN_FT_PER_MI * TENK;
+    const atFloor = hillAdjustmentSec({ elevationGainFt: gainAtFloor, distanceMi: TENK, baseSec: 2755 })!;
+    expect(atFloor.ratePer100Ft).toBeCloseTo(HILL_RATE_SEC_PER_MI_PER_100FT[0], 5);
+    expect(atFloor.costSec).toBe(Math.round((gainAtFloor / 100) * 2 * TENK));
+    // More climb costs more, at a higher rate.
+    const mid = hillAdjustmentSec({ elevationGainFt: 202, distanceMi: TENK, baseSec: 2755 })!;
+    expect(mid.costSec).toBeGreaterThan(atFloor.costSec);
+    expect(mid.ratePer100Ft).toBeGreaterThan(atFloor.ratePer100Ft);
+    expect(mid.ratePer100Ft).toBeLessThan(HILL_RATE_SEC_PER_MI_PER_100FT[1]);
+  });
+
+  it('never negative, null outside the rolling band', () => {
+    expect(hillAdjustmentSec({ elevationGainFt: 0, distanceMi: TENK, baseSec: 2755 })).toBeNull();
+    expect(hillAdjustmentSec({ elevationGainFt: -100, distanceMi: TENK, baseSec: 2755 })).toBeNull();
+    expect(hillAdjustmentSec({ elevationGainFt: 50, distanceMi: TENK, baseSec: 2755 })).toBeNull();  // flat
+    expect(hillAdjustmentSec({ elevationGainFt: 500, distanceMi: TENK, baseSec: 2755 })).toBeNull(); // steep
+    expect(hillAdjustmentSec({ elevationGainFt: null, distanceMi: TENK, baseSec: 2755 })).toBeNull();
+  });
+});
+
+describe('deriveCoachGoal · band matrix (flat / rolling / steep / C)', () => {
+  const base = {
+    statedGoalSec: null as number | null, priority: 'B', distanceMi: TENK,
+    vdot: 50, vdotAnchorDistanceMi: TENK, todayISO: TODAY,
+  };
+  const rollingCourse = (gainFt: number) =>
+    gradeCourse({ elevationGainFt: gainFt, distanceMi: TENK });
+
+  it('flat: unchanged — no adjustment, no effort line', () => {
+    const r = deriveCoachGoal({ ...base, course: rollingCourse(80) });
+    expect(r?.kind).toBe('time');
+    if (r?.kind !== 'time') return;
+    expect(r.hillAdjustedSec).toBeNull();
+    expect(r.effortLine).toBeNull();
+    expect(r.bSec).toBe(roundTargetSec(predictRaceTime(50, TENK)!));
+  });
+
+  it('rolling: GRADED time by default — every tier shifted by the hill cost, effort line carried', () => {
+    const flat = deriveCoachGoal({ ...base });
+    const r = deriveCoachGoal({ ...base, course: rollingCourse(202) });
+    expect(r?.kind).toBe('time');
+    if (r?.kind !== 'time' || flat?.kind !== 'time') return;
+    const raw = predictRaceTime(50, TENK)!;
+    const cost = hillAdjustmentSec({ elevationGainFt: 202, distanceMi: TENK, baseSec: raw })!.costSec;
+    expect(r.hillAdjustedSec).toBe(cost);
+    expect(r.hillGainFtPerMi).toBeCloseTo(32.5, 0);
+    expect(r.effortLine).toBe(HILL_EFFORT_LINE);
+    expect(r.aSec).toBe(roundTargetSec(raw * 0.98 + cost));
+    expect(r.bSec).toBe(roundTargetSec(raw + cost));
+    expect(r.cSec).toBe(roundTargetSec(raw * 1.02 + cost));
+    expect(r.bSec).toBeGreaterThan(flat.bSec);
+    expect(r.line).toContain('graded for the climb');
+  });
+
+  it('steep: effort only, whatever the answer says', () => {
+    for (const goalFraming of [null, 'time'] as const) {
+      const r = deriveCoachGoal({
+        ...base, course: rollingCourse(STEEP_GAIN_FT_PER_MI * TENK + 50), goalFraming,
+      });
+      expect(r?.kind).toBe('effort');
+      if (r?.kind === 'effort') expect(r.reason).toBe('hilly');
+    }
+  });
+
+  it('C beats the band: a rolling C race is still effort, c_priority', () => {
+    const r = deriveCoachGoal({ ...base, priority: 'C', course: rollingCourse(202) });
+    expect(r?.kind).toBe('effort');
+    if (r?.kind === 'effort') expect(r.reason).toBe('c_priority');
+  });
+
+  it('a stated goal beats everything, rolling included', () => {
+    expect(deriveCoachGoal({
+      ...base, statedGoalSec: 2700, course: rollingCourse(202),
+    })).toBeNull();
+  });
+
+  it('rolling with no measured gain (terrain flag only) → effort, never a fabricated number', () => {
+    const r = deriveCoachGoal({ ...base, course: gradeCourse({ metaTerrain: 'hilly' }) });
+    expect(r?.kind).toBe('effort');
+  });
+});
+
+describe('deriveCoachGoal · the goalFraming answer (races.meta.goalFraming)', () => {
+  const base = {
+    statedGoalSec: null, priority: 'B', distanceMi: TENK,
+    vdot: 50, vdotAnchorDistanceMi: TENK, todayISO: TODAY,
+    course: gradeCourse({ elevationGainFt: 202, distanceMi: TENK }),
+  };
+
+  it("unanswered → the graded default stands", () => {
+    const r = deriveCoachGoal({ ...base, goalFraming: null });
+    expect(r?.kind).toBe('time');
+    if (r?.kind === 'time') expect(r.hillAdjustedSec).not.toBeNull();
+  });
+
+  it("'time' confirms the graded numbers", () => {
+    const r = deriveCoachGoal({ ...base, goalFraming: 'time' });
+    expect(r?.kind).toBe('time');
+  });
+
+  it("'effort' flips the framing to effort-only", () => {
+    const r = deriveCoachGoal({ ...base, goalFraming: 'effort' });
+    expect(r?.kind).toBe('effort');
+    if (r?.kind === 'effort') expect(r.reason).toBe('hilly');
+  });
+
+  it('an arbitrary jsonb string is ignored, not honored', () => {
+    const r = deriveCoachGoal({ ...base, goalFraming: 'banana' });
+    expect(r?.kind).toBe('time');
+    expect(isGoalFraming('banana')).toBe(false);
+    expect(isGoalFraming('time')).toBe(true);
+    expect(isGoalFraming('effort')).toBe(true);
+  });
+
+  it('the answer is scoped to the rolling band: flat ignores it', () => {
+    const r = deriveCoachGoal({
+      statedGoalSec: null, priority: 'B', distanceMi: TENK,
+      vdot: 50, vdotAnchorDistanceMi: TENK, todayISO: TODAY,
+      course: gradeCourse({ elevationGainFt: 50, distanceMi: TENK }),
+      goalFraming: 'effort',
+    });
+    expect(r?.kind).toBe('time'); // no hills to frame
+  });
+});
+
+describe('Santa Monica 10K · the live fixture (202 ft, ~32 ft/mi, B, no stated goal)', () => {
+  it('grades rolling and prices ~34 s over the flat equivalence', () => {
+    const graded = gradeCourse({ elevationGainFt: 202, distanceMi: TENK });
+    expect(graded.grade).toBe('rolling');
+    expect(graded.gainFtPerMi!).toBeCloseTo(32.5, 0);
+    // The doc's own arithmetic: 202 ft at a band-scaled ~2.7 s/mi per 100 ft
+    // over 6.21 miles ≈ 34 s — B lands mid-46s off a flat ~45:55.
+    const adj = hillAdjustmentSec({ elevationGainFt: 202, distanceMi: TENK, baseSec: 2755 })!;
+    expect(adj.costSec).toBe(34);
+    expect(adj.ratePer100Ft).toBeCloseTo(2.71, 1);
+    // Applied to the flat-equivalent 45:55: B = 46:29 → rounded 46:30,
+    // inside the owner's expected 46:20-46:40 window.
+    expect(roundTargetSec(2755 + adj.costSec)).toBe(2790);
+  });
+
+  it('the ask card carries the exact copy contract', () => {
+    const card = goalFramingCard({
+      raceName: 'Santa Monica', distanceLabel: '10k',
+      elevationGainFt: 202, gainFtPerMi: 202 / TENK,
+    });
+    expect(card.title).toBe('Santa Monica 10k. Time or effort?');
+    expect(card.acceptVerb).toBe('RACE THE NUMBER');
+    expect(card.keepVerb).toBe('KEEP IT ON EFFORT');
+    expect(card.body).toContain('202 ft of climb');
+    expect(card.body).toContain('Leave this and the graded numbers stand');
+    // Coach voice: no hype, no exclamation marks, no emoji, no em dashes.
+    expect(card.body).not.toMatch(/[!—\u{1F300}-\u{1FAFF}]/u);
+    // A name that already carries its distance is not doubled.
+    expect(goalFramingCard({
+      raceName: 'Santa Monica 10K', distanceLabel: '10k',
+      elevationGainFt: 202, gainFtPerMi: 202 / TENK,
+    }).title).toBe('Santa Monica 10K. Time or effort?');
+  });
+
+  it('only the rolling band ever gets the ask', () => {
+    expect(gradeGetsTheAsk('rolling')).toBe(true);
+    expect(gradeGetsTheAsk('flat')).toBe(false);
+    expect(gradeGetsTheAsk('steep')).toBe(false);
   });
 });

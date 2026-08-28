@@ -63,6 +63,13 @@ export type PlanProposalKind =
   // only moves if the runner accepts; expiry means the authored composition
   // stands.
   | 'race_role'
+  // 2026-08-28 · GOALFRAME-1 · a ROLLING course (Research/02 §13.2's Hilly
+  // tier, 19-57 ft/mi) inside the plan window has no stated goal and no
+  // answered framing — the coach asks "time or effort?". Always pending; the
+  // answer persists on races.meta.goalFraming ('time' on accept, 'effort' on
+  // decline); expiry means the graded default (hill-adjusted A/B/C plus the
+  // effort line) stands.
+  | 'race_goal_framing'
   // 2026-08-28 · the operator code-upgrade rebuild now writes its audit row
   // through fireAutoRebuild (it was the one plan writer POST /api/plan/undo
   // could not pair, and returned not_undoable for). The row is what makes it
@@ -321,7 +328,8 @@ function isHardDriftKind(kind: PlanProposalKind): boolean {
       || kind === 'goal_renegotiation'
       // 2026-08-28 · RACEROLE-1 · a race-role card has a hard deadline (the
       // race itself, ~14 days out when it fires) · never buried under drift.
-      || kind === 'race_role';
+      || kind === 'race_role'
+      || kind === 'race_goal_framing';
 }
 
 /**
@@ -449,6 +457,14 @@ function synthesizeMessage(
       return status === 'accepted'
         ? 'Race role set · the week around the tune-up was adjusted to match.'
         : 'A tune-up race inside your build is two weeks out. The coach has a recommendation for how to run it.';
+    case 'race_goal_framing':
+      // The cron always writes reasons.message (the full coach copy), so this
+      // fallback is for rows that lost it. Either resolution reads as a record.
+      return status === 'accepted'
+        ? 'Framing set · the graded time targets stand for this race.'
+        : status === 'dismissed'
+          ? 'Framing set · this race is run on effort, no time target.'
+          : 'A rolling course inside your plan has no stated goal. Time or effort · the graded numbers stand until you answer.';
     case 'silent_rebuild':
       return 'The plan engine was updated · your block was rebuilt around the same goal. Undo puts the old block back.';
   }

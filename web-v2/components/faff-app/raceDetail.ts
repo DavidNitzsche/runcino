@@ -349,6 +349,7 @@ export async function buildRaceDetail(slug: string): Promise<RaceDetailSeed | nu
       distanceMi: race.distance_mi,
       metaTerrain: (meta as { terrain?: unknown }).terrain,
       elevationGainFt: gainFt > 0 ? gainFt : null,
+      goalFraming: (meta as { goalFraming?: unknown }).goalFraming,
       daysAway: race.days,
     });
 

@@ -170,7 +170,15 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
       + 'inside the active build is 12-15 days out (once per race, dedupe on any prior race_role row for '
       + 'that slug, fail-closed; C races never fire). The card is the WHOLE automatic action — a proposal, '
       + 'never an auto-apply; the race row\'s meta.plannedRole and the week patch move only on the '
-      + 'runner\'s accept (lib/race/race-role-apply.ts, runner-initiated, through mutatePlan).',
+      + 'runner\'s accept (lib/race/race-role-apply.ts, runner-initiated, through mutatePlan). 2026-08-28 · '
+      + 'GOALFRAME-1: the pass also writes a pending race_goal_framing card ("time or effort?") when a '
+      + 'rolling-band (19-57 ft/mi gross, Research/02 §13.2 Hilly tier, trust-gated elevation only) non-C '
+      + 'race inside the plan window has no stated goal and no answered meta.goalFraming and is ≤28 days '
+      + 'out (once per race, dedupe on any prior race_goal_framing row for that slug, fail-closed). The '
+      + 'card is again the WHOLE automatic action — the graded default (hill-adjusted A/B/C plus the '
+      + 'effort line) is compute-on-read and stands unanswered; races.meta.goalFraming moves only on the '
+      + 'runner\'s answer in POST /api/plan/proposal (accept → time, decline → effort; field-level '
+      + 'jsonb_set, Rule 6), and no plan row moves at all.',
   },
   {
     id: 'cron/snapshot-projections',

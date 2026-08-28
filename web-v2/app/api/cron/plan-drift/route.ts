@@ -101,6 +101,11 @@ export async function POST(req: NextRequest) {
      *  written this tick (a pending card is the WHOLE action — the plan only
      *  moves if the runner accepts). */
     race_role_cards?: number;
+    /** 2026-08-28 · GOALFRAME-1 · "time or effort?" framing cards written
+     *  this tick for rolling-band races with no stated goal (the pending
+     *  card is the WHOLE action — the framing only changes if the runner
+     *  answers; unanswered, the graded default stands). */
+    goal_framing_cards?: number;
     error?: string;
   };
   const results: UserResult[] = [];
@@ -887,6 +892,164 @@ export async function POST(req: NextRequest) {
         console.error('[plan-drift] race-role card failed:', e);
       }
 
+      // 2026-08-28 · GOALFRAME-1 · "time or effort?" framing ask (David
+      // 2026-08-28: when the coach-goal engine hits its one genuine judgment
+      // call — a ROLLING course, Research/02 §13.2's Hilly tier read per mile
+      // (19-57 ft/mi gross), where a hill-adjusted time and effort-only
+      // framing are both defensible — the APP asks the runner. A pending
+      // card is the WHOLE action; the graded default (hill-adjusted A/B/C
+      // plus the effort line) stands until, and unless, the runner answers).
+      //
+      // Fires for a non-C race with NO stated goal and NO answered
+      // meta.goalFraming, sitting inside the active plan's window, once the
+      // race is ≤28 days out (GOAL_FRAMING_FIRE_WINDOW_DAYS — the ~4-week
+      // entry, or the next cron night for a race added closer; never parked
+      // until race week). EXACTLY ONCE per race: dedupe on any prior
+      // race_goal_framing row for the slug, ANY status, fail-closed. The
+      // answer persists via the proposal route (accept → meta.goalFraming
+      // 'time', decline → 'effort'; field-level jsonb_set, Rule 6). Expiry
+      // (the standing 14d sweep above) changes nothing — the card copy says
+      // so. Elevation is the TRUST-GATED resolution (course-elevation.ts):
+      // an untrusted trace must not mint a question about a number it
+      // cannot honestly price; the nightly retry window means better data
+      // later still gets asked.
+      try {
+        const framingPlan = await rowOrNull<{
+          plan_id: string; last_workout_iso: string | null;
+        }>('cron/plan-drift · goal-framing plan-window read', pool.query(
+          `SELECT tp.id::text AS plan_id,
+                  (SELECT MAX(pw.date_iso) FROM plan_workouts pw
+                    WHERE pw.plan_id = tp.id) AS last_workout_iso
+             FROM training_plans tp
+            WHERE tp.user_uuid = $1
+              AND tp.archived_iso IS NULL
+            ORDER BY tp.authored_iso DESC LIMIT 1`,
+          [u],
+        ));
+
+        if (framingPlan?.last_workout_iso) {
+          const {
+            GOAL_FRAMING_FIRE_WINDOW_DAYS, goalFramingCard, gradeGetsTheAsk,
+          } = await import('@/lib/race/goal-framing');
+          const { gradeCourse, inferDistanceMiFromNameOrSlug } =
+            await import('@/lib/race/coach-goal');
+          const {
+            resolveCourseElevation, elevationIsTrustedForAdjustment,
+          } = await import('@/lib/race/course-elevation');
+          const { distanceMiOf } = await import('@/lib/plan/generate');
+
+          // LEFT JOIN course_library: the gain can live on the race's own
+          // geometry, the library's, or the library's curated scalar — the
+          // same precedence the display surfaces read through the resolver.
+          // A failed read skips the fire for this tick; the 28-day window
+          // gives the cron every remaining night.
+          const candidates = (await rowsOrNull<{
+            slug: string; meta: any; course_geometry: unknown;
+            geometry_json: unknown; lib_gain_ft: number | string | null;
+            lib_net_ft: number | string | null;
+          }>('cron/plan-drift · goal-framing candidate read', pool.query(
+            `SELECT r.slug, r.meta, r.course_geometry,
+                    cl.geometry_json, cl.elevation_gain_ft AS lib_gain_ft,
+                    cl.net_elevation_ft AS lib_net_ft
+               FROM races r
+               LEFT JOIN course_library cl ON cl.slug = r.slug
+              WHERE r.user_uuid = $1
+                AND COALESCE(r.meta->>'priority', 'A') <> 'C'
+                AND COALESCE(NULLIF(r.meta->>'goalDisplay', ''), NULLIF(r.meta->>'goal', '')) IS NULL
+                AND r.meta->>'goalFraming' IS NULL
+                AND (r.meta->>'date')::date > $2::date
+                AND (r.meta->>'date')::date <= $3::date
+                AND (r.meta->>'date')::date - $2::date <= $4
+              ORDER BY (r.meta->>'date')::date ASC`,
+            [u, userToday, framingPlan.last_workout_iso, GOAL_FRAMING_FIRE_WINDOW_DAYS],
+          ))) ?? [];
+
+          const framingDayDiff = (a: string, b: string) =>
+            Math.round((Date.parse(b.slice(0, 10) + 'T12:00:00Z') - Date.parse(a.slice(0, 10) + 'T12:00:00Z')) / 86400000);
+
+          for (const cand of candidates) {
+            const m = cand.meta || {};
+            // Belt and braces beside the SQL filters (race_role idiom): a C
+            // race never asks, a stated goal makes the whole question moot,
+            // and an already-answered framing is settled.
+            if (String(m.priority ?? 'A') === 'C') continue;
+            if ((typeof m.goalDisplay === 'string' && m.goalDisplay.trim() !== '')
+              || (typeof m.goal === 'string' && m.goal.trim() !== '')) continue;
+            if (m.goalFraming != null) continue;
+            const dMi = distanceMiOf(m)
+              ?? inferDistanceMiFromNameOrSlug(
+                typeof m.name === 'string' ? m.name : null, cand.slug);
+            if (dMi == null || !(dMi > 0)) continue;
+
+            const resolved = resolveCourseElevation({
+              lib: { elevation_gain_ft: cand.lib_gain_ft, net_elevation_ft: cand.lib_net_ft },
+              geometry: (cand.course_geometry ?? cand.geometry_json ?? null) as
+                import('@/lib/race/course-elevation').StoredGeometry | null,
+              nominalDistanceMi: dMi,
+            });
+            if (resolved.elevationGainFt == null) continue;
+            if (!elevationIsTrustedForAdjustment(resolved)) continue;
+
+            const graded = gradeCourse({
+              elevationGainFt: resolved.elevationGainFt, distanceMi: dMi,
+            });
+            if (!gradeGetsTheAsk(graded.grade) || graded.gainFtPerMi == null) continue;
+
+            // EXACTLY ONCE per race · any prior race_goal_framing row for
+            // this slug (any status) blocks a re-fire. Fails CLOSED (a guard
+            // that cannot see must assume the thing it guards against has
+            // already happened · 2026-08-24 sweep).
+            const alreadyAskedFraming = (await pool.query(
+              `SELECT 1 FROM plan_proposals
+                WHERE user_uuid = $1
+                  AND proposal_kind = 'race_goal_framing'
+                  AND reasons->>'race_slug' = $2`,
+              [u, cand.slug],
+            ).catch((e) => { logReadFailure('cron/plan-drift · goal-framing dedupe guard', e); return { rowCount: 1 }; })).rowCount;
+            if (alreadyAskedFraming) continue;
+
+            const card = goalFramingCard({
+              raceName: String(m.name || cand.slug),
+              distanceLabel: typeof m.distanceLabel === 'string' ? m.distanceLabel : null,
+              elevationGainFt: resolved.elevationGainFt,
+              gainFtPerMi: graded.gainFtPerMi,
+            });
+            await pool.query(
+              // plan_id deliberately NULL, same argument as race_role: the
+              // question is about the RACE, and a mid-window rebuild sweeping
+              // plan-pointing pending proposals must not kill the one card
+              // the per-slug dedupe will never re-fire.
+              `INSERT INTO plan_proposals
+                 (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
+               VALUES ($1, $2, 'race_goal_framing', $3::jsonb, 'pending', 'goal_framing_cron', NOW())`,
+              [
+                u, null,
+                JSON.stringify({
+                  race_slug: cand.slug,
+                  race_name: String(m.name || cand.slug),
+                  race_date: String(m.date ?? ''),
+                  race_distance_mi: dMi,
+                  gain_ft: resolved.elevationGainFt,
+                  gain_ft_per_mi: Math.round(graded.gainFtPerMi * 10) / 10,
+                  gain_provenance: resolved.provenance,
+                  gain_confidence: resolved.confidence,
+                  days_to_race: m.date ? framingDayDiff(userToday, String(m.date)) : null,
+                  default_framing: 'time',
+                  card_title: card.title,
+                  accept_verb: card.acceptVerb,
+                  keep_verb: card.keepVerb,
+                  message: card.body,
+                }),
+              ],
+            );
+            r.proposals_written++;
+            r.goal_framing_cards = (r.goal_framing_cards ?? 0) + 1;
+          }
+        }
+      } catch (e) {
+        console.error('[plan-drift] goal-framing card failed:', e);
+      }
+
       // 2026-06-01 · Phase 1.1 · goal-gap engine. Continuous projection-
       // vs-goal check · fires a rebuild when the gap is WIDENING for 3+
       // consecutive days. This is the closed-loop signal the architecture
@@ -1152,6 +1315,7 @@ export async function GET() {
       'recovery_complete · recovery plan out of prescribed days, target race still ahead → auto-rebuild with undo + coach note (pending card only when the runner undid this block or is compromised)',
       'plan_elapsed · ANY plan out of prescribed days · race still ahead → auto-rebuild toward it; race date null/past or no race → goal target / open-block handoff; compromised or injury-return runner → pending card, never an auto-authored build',
       'race_role · a B-priority hm/10k/5k tune-up inside the active build is 12-15 days out → pending recommendation card (never auto-applies; once per race; C races never fire; expiry = the authored composition stands)',
+      'race_goal_framing · a rolling-band (19-57 ft/mi) non-C race inside the plan window with no stated goal and no answered framing is ≤28 days out → pending "time or effort?" card (never auto-applies; once per race; accept persists meta.goalFraming=time, decline persists effort; expiry = the graded default stands)',
       'volume_drift · current 28d avg deviates >40% from authored 4wk avg',
       'vdot_drift · current VDOT deviates >2 from plan anchor (inferred from T-pace)',
       'staleness · plan authored >8 weeks ago',

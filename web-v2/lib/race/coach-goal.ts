@@ -48,14 +48,20 @@
  * the +5% one-sided adjustment, and C sits at the slow edge of the one-sided
  * band. See `marathonSpecificityAdjustment` in goal-projection.ts.
  *
- * Special framings, both time-less by doctrine:
+ * Special framings:
  *   · C-priority races get NO time goal — a C race is run "like a hard
  *     workout" (Research/00b effort table), and doctrine's C-tier framing is
- *     emotional, not chronometric. Effort line instead.
- *   · Hilly courses are raced on effort, not pace (Research/11 §Pacing Rule
- *     for Hilly Courses: "Effort-based pacing (HR or RPE), NOT pace-based").
- *     A flat-equivalent time on a hilly course is a number the runner cannot
- *     pace off, so none is offered.
+ *     emotional, not chronometric. Effort line instead. C races also never
+ *     get the framing ask.
+ *   · Courses are graded against Research/02 §13.2's tiers, per mile
+ *     (David 2026-08-28): a ROLLING course (the doc's Hilly tier, 19-57
+ *     ft/mi) gets hill-adjusted A/B/C times PLUS the effort guidance line —
+ *     the graded default — with the runner's answered meta.goalFraming as
+ *     the override (the race_goal_framing card asks); a STEEP course (the
+ *     doc's Mountain tier, ≥57 ft/mi) is effort-only (Research/11 §Pacing
+ *     Rule for Hilly Courses: "Effort-based pacing (HR or RPE), NOT
+ *     pace-based") — past that tier a flat-equivalent time is a number the
+ *     runner cannot pace off, so none is offered.
  *
  * ── Personal Riegel exponent (Research/02 §11.4) ───────────────────────────
  *
@@ -236,38 +242,154 @@ export function predictWithPersonalExponent(
   return Number.isFinite(t) && t > 0 ? Math.round(t) : null;
 }
 
-// ── Hilly classification (display gate only) ────────────────────────────────
+// ── Course grading (Research/02 §13.2, read per mile) ───────────────────────
 
 /**
- * Gross climb per mile above which a course is raced on effort, not pace.
+ * Gross climb per mile above which a course stops being priced as flat.
  *
  * Research/02 §13.2's course-profile table calls 500-1500 ft of gain over a
  * road race "Hilly (2-5% slowdown)". The table is written at marathon scale;
  * expressed per mile its Hilly floor is 500 ft / 26.2 mi ≈ 19 ft/mi, which is
  * the per-distance-fair reading (a 10K with 120 ft of climb is the same
- * terrain as a marathon with 500). Research/11 §Pacing Rule for Hilly Courses
- * then withholds pace-based targets on such a course outright.
+ * terrain as a marathon with 500).
  */
 export const HILLY_GAIN_FT_PER_MI = 19;
 
-/** Is this course hilly, from whatever the caller could resolve? An explicit
- *  meta flag wins; else the measured gain per mile against the doctrine floor.
- *  Unknown terrain is NOT hilly — absence of geometry is not evidence. */
+/**
+ * Gross climb per mile past which no honest time target exists at all.
+ *
+ * §13.2's next tier up is "Mountain (> 1500 ft / 460m) | 5-15%" — at marathon
+ * scale 1500 ft / 26.2 mi ≈ 57 ft/mi. Between the two boundaries sits the
+ * doc's own Hilly tier (500-1500 ft, 2-5% slowdown): terrain that SLOWS a
+ * race by a priceable margin without dissolving the meaning of a time target.
+ * Owner ruling (David 2026-08-28): in that band the coach grades the A/B/C
+ * for the course AND carries the effort guidance; only past it (Mountain)
+ * does the time target go away entirely (Research/11 §Pacing Rule for Hilly
+ * Courses: effort-based pacing, not pace-based).
+ */
+export const STEEP_GAIN_FT_PER_MI = 57;
+
+/**
+ * §13.2's rule of thumb: "each 100 ft (30 m) of net elevation gain costs
+ * ~2-4 sec/mile in road races; downhills do not symmetrically refund the
+ * cost." This is the fine, distance-transferable instrument behind the tier
+ * table's marathon-scale percentages (500 ft at 2 s/mi/100ft over 26.2 mi
+ * ≈ 2% of a typical marathon — the Hilly tier's own floor).
+ *
+ * The engine reads it two ways, both honest to 02:389:
+ *   · GROSS gain drives the cost. "Downhills do not symmetrically refund"
+ *     means the descents on a loop course do not hand back what the climbs
+ *     took — pricing net gain on a hilly loop (net ≈ 0) would claim exactly
+ *     that refund. So every climbed foot is priced and no descent credits.
+ *   · The adjustment is never negative: a net-downhill course gets no speed
+ *     credit from this module, for the same asymmetry.
+ *
+ * The rate is scaled inside [2, 4] by where the course's gain density sits in
+ * the rolling band — the same monotone reading the tier's 2-5% band encodes.
+ */
+export const HILL_RATE_SEC_PER_MI_PER_100FT: readonly [number, number] = [2, 4];
+
+/**
+ * Cap the total hill adjustment at the Hilly tier's own stated ceiling
+ * ("2-5% slowdown"). The per-quantity rate rule and the tier percentages
+ * agree at the band's floor and drift apart near its top; the tier's ceiling
+ * is doctrine's outer statement of what a rolling course may cost, so the
+ * rate-derived figure never exceeds it.
+ */
+export const HILL_ADJUSTMENT_MAX_PCT = 5;
+
+export type CourseGrade = 'flat' | 'rolling' | 'steep';
+
+export interface GradedCourse {
+  grade: CourseGrade;
+  /** Measured gross gain per mile · null when the grade came from a terrain
+   *  flag with no measured geometry behind it. */
+  gainFtPerMi: number | null;
+  /** The measured gross gain itself, when known. */
+  elevationGainFt: number | null;
+}
+
+/**
+ * Grade a course against §13.2's tiers, from whatever the caller could
+ * resolve. Measured gain wins; an explicit terrain flag with no measurement
+ * grades the course but cannot price it (gainFtPerMi stays null, and the
+ * derivation below then withholds a number rather than fabricating one).
+ * Unknown terrain is FLAT for grading purposes — absence of geometry is not
+ * evidence of hills.
+ */
+export function gradeCourse(input: {
+  metaTerrain?: unknown;
+  elevationGainFt?: number | null;
+  distanceMi?: number | null;
+}): GradedCourse {
+  const measured =
+    input.elevationGainFt != null && input.distanceMi != null && input.distanceMi > 0 &&
+    Number.isFinite(input.elevationGainFt) && input.elevationGainFt >= 0
+      ? input.elevationGainFt / input.distanceMi
+      : null;
+  if (measured != null) {
+    const grade: CourseGrade = measured >= STEEP_GAIN_FT_PER_MI
+      ? 'steep'
+      : measured >= HILLY_GAIN_FT_PER_MI
+        ? 'rolling'
+        : 'flat';
+    return { grade, gainFtPerMi: measured, elevationGainFt: input.elevationGainFt! };
+  }
+  const t = typeof input.metaTerrain === 'string' ? input.metaTerrain.toLowerCase() : '';
+  if (t.includes('mountain') || t.includes('steep')) {
+    return { grade: 'steep', gainFtPerMi: null, elevationGainFt: null };
+  }
+  if (t.includes('hill') || t.includes('rolling')) {
+    return { grade: 'rolling', gainFtPerMi: null, elevationGainFt: null };
+  }
+  return { grade: 'flat', gainFtPerMi: null, elevationGainFt: null };
+}
+
+/** Back-compat read: is this course at or past §13.2's Hilly floor? Kept for
+ *  the surfaces that only need the boolean (the exponent-fit qualifier, race
+ *  cards). Grading is `gradeCourse`. */
 export function courseIsHilly(input: {
   metaTerrain?: unknown;
   elevationGainFt?: number | null;
   distanceMi?: number | null;
 }): boolean {
-  const t = typeof input.metaTerrain === 'string' ? input.metaTerrain.toLowerCase() : '';
-  if (t.includes('hill')) return true;
-  if (
-    input.elevationGainFt != null && input.distanceMi != null && input.distanceMi > 0 &&
-    Number.isFinite(input.elevationGainFt)
-  ) {
-    return input.elevationGainFt / input.distanceMi >= HILLY_GAIN_FT_PER_MI;
-  }
-  return false;
+  return gradeCourse(input).grade !== 'flat';
 }
+
+/**
+ * The hill cost, in whole seconds, for a rolling-band course — §13.2's rule
+ * of thumb applied literally: (gross gain / 100 ft) × rate × race miles,
+ * with the rate interpolated across [2, 4] s/mi per 100 ft by where the
+ * course's gain density sits inside the rolling band, and the total capped
+ * at the tier's stated 5% ceiling of the flat-equivalent time. Null outside
+ * the band or without the inputs to price honestly.
+ */
+export function hillAdjustmentSec(input: {
+  elevationGainFt: number | null | undefined;
+  distanceMi: number | null | undefined;
+  /** Flat-equivalent seconds the adjustment applies to (sizes the 5% cap). */
+  baseSec: number;
+}): { costSec: number; ratePer100Ft: number; gainFtPerMi: number } | null {
+  const gain = input.elevationGainFt;
+  const dist = input.distanceMi;
+  if (gain == null || dist == null || !(dist > 0) || !Number.isFinite(gain) || gain <= 0) return null;
+  const gainFtPerMi = gain / dist;
+  if (gainFtPerMi < HILLY_GAIN_FT_PER_MI || gainFtPerMi >= STEEP_GAIN_FT_PER_MI) return null;
+  const [rLo, rHi] = HILL_RATE_SEC_PER_MI_PER_100FT;
+  const bandPos = Math.min(1, Math.max(0,
+    (gainFtPerMi - HILLY_GAIN_FT_PER_MI) / (STEEP_GAIN_FT_PER_MI - HILLY_GAIN_FT_PER_MI)));
+  const ratePer100Ft = rLo + (rHi - rLo) * bandPos;
+  const raw = (gain / 100) * ratePer100Ft * dist;
+  const capped = Math.min(raw, input.baseSec * (HILL_ADJUSTMENT_MAX_PCT / 100));
+  const costSec = Math.round(capped);
+  if (!Number.isFinite(costSec) || costSec < 0) return null;
+  return { costSec, ratePer100Ft, gainFtPerMi };
+}
+
+/** The effort guidance a hilly course carries — on a rolling course as the
+ *  secondary line under the graded numbers, on a steep one as the whole
+ *  framing. One string, so the two surfaces can never drift. */
+export const HILL_EFFORT_LINE = 'Steady on the climbs, controlled on the descents.';
 
 // ── Distance inference (display defaults only) ──────────────────────────────
 
@@ -325,6 +447,15 @@ export interface CoachGoalTargets {
   personalExponent: number | null;
   /** The VDOT evidence B came from (null for a pure exponent projection). */
   vdotBasis: number | null;
+  /** Whole seconds added to each tier for a rolling-band course (Research/02
+   *  §13.2 rule of thumb, gross gain, no descent refund). Null = flat, no
+   *  grading applied. */
+  hillAdjustedSec: number | null;
+  /** Measured gross gain per mile that priced the adjustment. */
+  hillGainFtPerMi: number | null;
+  /** Secondary effort guidance carried WITH the graded numbers on a
+   *  rolling-band course (HILL_EFFORT_LINE). Null on a flat course. */
+  effortLine: string | null;
   /** Coach-voice basis line, e.g. "Set from your current fitness. Yours to
    *  edit." */
   line: string;
@@ -349,8 +480,17 @@ export interface CoachGoalInput {
   priority: string | null | undefined;
   /** Official distance, or the name/slug inference for a row missing one. */
   distanceMi: number | null | undefined;
-  /** Course judged hilly (courseIsHilly above). */
+  /** Graded course (gradeCourse above). When present it supersedes `hilly`. */
+  course?: GradedCourse | null;
+  /** Legacy coarse signal: course judged hilly with no grade behind it.
+   *  True with no `course` → effort framing (nothing to price honestly). */
   hilly?: boolean | null;
+  /** The runner's answered framing for a rolling-band course
+   *  (races.meta.goalFraming, written by the race_goal_framing card):
+   *  'time' keeps the graded numbers, 'effort' switches the framing to
+   *  effort-only. Ignored off the rolling band and on C races. Absent or
+   *  unanswered → the graded default stands. */
+  goalFraming?: string | null;
   /** Current evidence VDOT (bestRecentVdot). */
   vdot: number | null | undefined;
   /** Distance of the race/run that anchors that VDOT · sizes the §13.7 span. */
@@ -389,16 +529,41 @@ export function deriveCoachGoal(input: CoachGoalInput): CoachGoalFraming | null 
     };
   }
 
-  // 3 · Hilly course → effort framing, never a flat-equivalent time
-  //     (Research/11 §Pacing Rule for Hilly Courses).
-  if (input.hilly === true) {
-    return {
-      kind: 'effort',
-      coachSet: true,
-      reason: 'hilly',
-      line: 'Hilly course. Race it on effort, not a flat time. Steady on the climbs, controlled on the descents.',
-      setAt,
-    };
+  // 3 · The course band (Research/02 §13.2, David 2026-08-28).
+  //
+  //   STEEP (past §13.2's Mountain floor, ≥57 ft/mi) · effort only. No time
+  //   is honest there (Research/11 §Pacing Rule for Hilly Courses).
+  //
+  //   ROLLING (§13.2's Hilly tier, 19-57 ft/mi) · GRADED time framing by
+  //   default — A/B/C adjusted for the course, effort guidance carried as a
+  //   secondary line. The runner's answered meta.goalFraming overrides:
+  //   'effort' flips to effort-only, 'time' confirms the default. A rolling
+  //   grade with NO measured gain (terrain flag only) cannot be priced, so
+  //   it keeps the effort framing — a number would be fabricated.
+  //
+  //   FLAT (<19 ft/mi) · unchanged, no adjustment.
+  //
+  // The legacy boolean keeps its old meaning when no grade was resolved:
+  // hilly-with-no-numbers → effort framing.
+  const course: GradedCourse | null = input.course
+    ?? (input.hilly === true ? { grade: 'rolling', gainFtPerMi: null, elevationGainFt: null } : null);
+  const grade: CourseGrade = course?.grade ?? 'flat';
+  const framingAnswer = input.goalFraming === 'time' || input.goalFraming === 'effort'
+    ? input.goalFraming
+    : null;
+  const effortFraming = (): CoachGoalEffort => ({
+    kind: 'effort',
+    coachSet: true,
+    reason: 'hilly',
+    line: `Hilly course. Race it on effort, not a flat time. ${HILL_EFFORT_LINE}`,
+    setAt,
+  });
+  if (grade === 'steep') return effortFraming();
+  const rollingPriceable = grade === 'rolling'
+    && course?.elevationGainFt != null && course.gainFtPerMi != null;
+  if (grade === 'rolling') {
+    if (framingAnswer === 'effort') return effortFraming();
+    if (!rollingPriceable) return effortFraming();
   }
 
   const distanceMi = input.distanceMi ?? null;
@@ -449,6 +614,20 @@ export function deriveCoachGoal(input: CoachGoalInput): CoachGoalFraming | null 
     oneSided = cross.oneSided;
   }
 
+  // 6b · Rolling-band hill grading (Research/02 §13.2 rule of thumb ·
+  //      2-4 s/mi per 100 ft of GROSS gain, no descent refund, capped at the
+  //      Hilly tier's 5% ceiling). The cost is absolute seconds — that is how
+  //      the doc states it — so every tier shifts by the same amount: the
+  //      hills do not care which kind of day the runner is having.
+  const hill = rollingPriceable
+    ? hillAdjustmentSec({
+        elevationGainFt: course!.elevationGainFt,
+        distanceMi,
+        baseSec,
+      })
+    : null;
+  const hillCost = hill?.costSec ?? 0;
+
   let aSec: number;
   let bSec: number;
   let cSec: number;
@@ -458,15 +637,15 @@ export function deriveCoachGoal(input: CoachGoalInput): CoachGoalFraming | null 
     // IS the A. B carries §13.1's +5%. C sits one CI half-width past B —
     // for the §13.7 one-sided ±10% row that lands at raw +10%, its own slow
     // edge, since the band there is stated from the unadjusted prediction.
-    aSec = roundTargetSec(baseSec);
-    bSec = roundTargetSec(baseSec * (1 + spec.pct / 100));
+    aSec = roundTargetSec(baseSec + hillCost);
+    bSec = roundTargetSec(baseSec * (1 + spec.pct / 100) + hillCost);
     cSec = roundTargetSec(
-      oneSided ? baseSec * (1 + ciPct / 100) : bSec * (1 + ciPct / 100),
+      oneSided ? baseSec * (1 + ciPct / 100) + hillCost : bSec * (1 + ciPct / 100),
     );
   } else {
-    bSec = roundTargetSec(baseSec);
-    aSec = roundTargetSec(baseSec * (1 - ciPct / 100));
-    cSec = roundTargetSec(baseSec * (1 + ciPct / 100));
+    bSec = roundTargetSec(baseSec + hillCost);
+    aSec = roundTargetSec(baseSec * (1 - ciPct / 100) + hillCost);
+    cSec = roundTargetSec(baseSec * (1 + ciPct / 100) + hillCost);
   }
   // Rounding must never invert the ladder.
   if (!(aSec < bSec && bSec < cSec)) {
@@ -491,7 +670,12 @@ export function deriveCoachGoal(input: CoachGoalInput): CoachGoalFraming | null 
     method,
     personalExponent,
     vdotBasis: method === 'daniels-vdot' ? (input.vdot ?? null) : null,
-    line: 'Coach set from your current fitness. Yours to edit.',
+    hillAdjustedSec: hill ? hill.costSec : null,
+    hillGainFtPerMi: hill ? Math.round(hill.gainFtPerMi * 10) / 10 : null,
+    effortLine: hill ? HILL_EFFORT_LINE : null,
+    line: hill
+      ? 'Coach set from your current fitness, graded for the climb. Yours to edit.'
+      : 'Coach set from your current fitness. Yours to edit.',
     setAt,
   };
 }

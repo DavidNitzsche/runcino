@@ -225,6 +225,9 @@ export const PLAN_TITLES: Record<string, string> = {
   // 2026-08-28 · RACEROLE-1 · fallback only — the cron writes a per-race
   // `card_title` ("Run Malibu, four weeks out") that wins when present.
   race_role: 'A tune-up race needs a call',
+  // 2026-08-28 · GOALFRAME-1 · fallback only — the cron writes a per-race
+  // `card_title` ("Santa Monica 10k. Time or effort?") that wins when present.
+  race_goal_framing: 'A rolling course needs a framing',
 };
 
 /** The concrete thing ACCEPT does, per plan-drift kind. Keeps the verb
@@ -253,6 +256,8 @@ const PLAN_ACCEPT_VERB: Record<string, string> = {
   // LONG) that wins when present. Accepting never rebuilds: it sets the role
   // and adjusts the week around the race.
   race_role: 'TAKE THE RECOMMENDATION',
+  // 2026-08-28 · GOALFRAME-1 · accepting keeps the graded time targets.
+  race_goal_framing: 'RACE THE NUMBER',
 };
 
 /* ── per-source mappers ──────────────────────────────────────────────── */
@@ -314,6 +319,13 @@ function fromPlanProposal(p: PlanProposalInput): CoachDecision | null {
   const reasonVerb = typeof p.reasons?.accept_verb === 'string' && p.reasons.accept_verb
     ? p.reasons.accept_verb
     : null;
+  // GOALFRAME-1 · the secondary slot is also writer-composable, because for
+  // race_goal_framing declining IS an answer (it persists effort framing on
+  // the race), and "KEEP THE CURRENT PLAN" would misstate what the tap does.
+  // The grammar holds: writer-composed keep verbs still begin KEEP.
+  const reasonKeepVerb = typeof p.reasons?.keep_verb === 'string' && p.reasons.keep_verb
+    ? p.reasons.keep_verb
+    : null;
   const title = reasonTitle ?? PLAN_TITLES[p.kind] ?? 'Your plan needs an update';
 
   if (p.status === 'pending') {
@@ -331,16 +343,21 @@ function fromPlanProposal(p: PlanProposalInput): CoachDecision | null {
         {
           role: 'accept',
           label: `ACCEPT · ${verb}`,
-          // RACEROLE-1 · accepting a race-role card sets the role and adjusts
-          // the week; nothing rebuilds, so the busy label must not say so.
-          busyLabel: p.kind === 'race_role' ? 'SETTING THE ROLE' : 'REBUILDING',
+          // RACEROLE-1 / GOALFRAME-1 · accepting these cards sets a field and
+          // (for race_role) adjusts the week; nothing rebuilds, so the busy
+          // label must not say so.
+          busyLabel: p.kind === 'race_role'
+            ? 'SETTING THE ROLE'
+            : p.kind === 'race_goal_framing'
+              ? 'SETTING THE FRAMING'
+              : 'REBUILDING',
           endpoint: '/api/plan/proposal',
           body: { id: p.id, action: 'accept' },
         },
         {
           role: 'keep',
-          label: 'KEEP THE CURRENT PLAN',
-          busyLabel: 'NOTING',
+          label: reasonKeepVerb ?? 'KEEP THE CURRENT PLAN',
+          busyLabel: p.kind === 'race_goal_framing' ? 'SETTING THE FRAMING' : 'NOTING',
           endpoint: '/api/plan/proposal',
           body: { id: p.id, action: 'dismiss' },
         },

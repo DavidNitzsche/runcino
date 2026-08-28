@@ -23,10 +23,11 @@
 import {
   deriveCoachGoal,
   fitPersonalExponent,
-  courseIsHilly,
+  gradeCourse,
   inferDistanceMiFromNameOrSlug,
   type CoachGoalFraming,
 } from './coach-goal';
+import { isGoalFraming } from './goal-framing';
 import { distanceCategoryOrNull } from './distance-category';
 
 export type LoadedCoachGoal = CoachGoalFraming & {
@@ -51,6 +52,9 @@ export async function loadCoachGoalForRace(
     metaTerrain?: unknown;
     /** Measured course elevation gain (ft) when known. */
     elevationGainFt?: number | null;
+    /** races.meta.goalFraming — the runner's answered framing from the
+     *  race_goal_framing card ('time' | 'effort'). Anything else ignored. */
+    goalFraming?: unknown;
     /** Negative days = past race → null result. */
     daysAway: number | null;
   },
@@ -66,7 +70,7 @@ export async function loadCoachGoalForRace(
       : null;
     const goalDistanceMi = officialDistanceMi ?? inferredDistanceMi;
 
-    const hilly = courseIsHilly({
+    const course = gradeCourse({
       metaTerrain: race.metaTerrain,
       elevationGainFt: race.elevationGainFt ?? null,
       distanceMi: goalDistanceMi,
@@ -98,7 +102,8 @@ export async function loadCoachGoalForRace(
       statedGoalSec: race.statedGoalSec,
       priority: race.priority,
       distanceMi: goalDistanceMi,
-      hilly,
+      course,
+      goalFraming: isGoalFraming(race.goalFraming) ? race.goalFraming : null,
       vdot: anchor.vdot,
       vdotAnchorDistanceMi: anchor.anchorDistanceMi,
       marathonSpecificTraining,

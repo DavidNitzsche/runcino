@@ -181,6 +181,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       distanceMi: raceDistanceMi > 0 ? raceDistanceMi : null,
       metaTerrain: (raceMeta as { terrain?: unknown } | null)?.terrain,
       elevationGainFt: typeof geomGain === 'number' ? geomGain : null,
+      goalFraming: (raceMeta as { goalFraming?: unknown } | null)?.goalFraming,
       daysAway: (race as { days?: number }).days ?? null,
     });
 

@@ -164,10 +164,16 @@ import {
   deriveCoachGoal,
   fitPersonalExponent,
   courseIsHilly,
+  gradeCourse,
+  hillAdjustmentSec,
   HILLY_GAIN_FT_PER_MI,
+  STEEP_GAIN_FT_PER_MI,
+  HILL_RATE_SEC_PER_MI_PER_100FT,
+  HILL_ADJUSTMENT_MAX_PCT,
   EXPONENT_FIT_WINDOW_DAYS,
   type ExponentFitRace,
 } from '@/lib/race/coach-goal';
+import { gradeGetsTheAsk } from '@/lib/race/goal-framing';
 import { expectedDaysForAnchor } from '@/lib/coach/recovery-phase';
 import {
   GAP_SHAVE_FRACTIONS,
@@ -15311,40 +15317,168 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
   {
     id: 'COURSE.hilly-goal-framing-floor',
-    binds: ['lib/race/coach-goal.ts#HILLY_GAIN_FT_PER_MI', 'lib/race/coach-goal.ts#courseIsHilly'],
+    binds: ['lib/race/coach-goal.ts#HILLY_GAIN_FT_PER_MI', 'lib/race/coach-goal.ts#STEEP_GAIN_FT_PER_MI', 'lib/race/coach-goal.ts#gradeCourse', 'lib/race/coach-goal.ts#courseIsHilly'],
     doc: 'Research/02-race-time-prediction.md',
     anchor: '### 13.2 Course Profile',
     claim:
-      "A course at or past §13.2's Hilly band (500-1500 ft over a road race, read per mile " +
-      'at marathon scale ≈ 19 ft/mi) gets effort framing instead of a flat-equivalent time ' +
-      '(Research/11: effort-based pacing, not pace-based, on hilly courses).',
+      "§13.2's tiers, read per mile at marathon scale, partition the coach-goal course bands: " +
+      'the Hilly row (500-1500 ft ≈ 19-57 ft/mi, 2-5% slowdown) is the ROLLING band — priceable ' +
+      'terrain, graded time framing (David 2026-08-28) — and the Mountain row (> 1500 ft ≈ 57 ' +
+      'ft/mi) is STEEP, where a flat-equivalent time stops meaning anything (Research/11: ' +
+      'effort-based pacing, not pace-based). The two boundaries come from the same table row, ' +
+      'so the bands are contiguous by construction.',
     check({ cite }) {
-      // Read the Hilly band's floor out of the doc's own table row label.
+      // Read BOTH band edges out of the doc's own Hilly row label.
       const hillyRow = cite.section.find((l) => /Hilly \(/.test(l));
       if (!hillyRow) throw new Error('§13.2 no longer has a Hilly row · re-read the claim');
-      const [floorFt] = parseBand(hillyRow.replace(/\/.*$/, ''));
+      const [floorFt, ceilFt] = parseBand(hillyRow.replace(/\/.*$/, ''));
       const M = 26.2188;
-      const expected = Math.round(floorFt / M);
-      if (HILLY_GAIN_FT_PER_MI !== expected) {
+      const expectedFloor = Math.round(floorFt / M);
+      const expectedCeil = Math.round(ceilFt / M);
+      if (HILLY_GAIN_FT_PER_MI !== expectedFloor) {
         throw new Error(
           `HILLY_GAIN_FT_PER_MI = ${HILLY_GAIN_FT_PER_MI} · §13.2's Hilly floor (${floorFt} ft) ` +
-          `at marathon scale is ${expected} ft/mi`,
+          `at marathon scale is ${expectedFloor} ft/mi`,
         );
       }
-      // The classifier actually uses the floor, in both directions.
-      if (!courseIsHilly({ elevationGainFt: expected * 6.2 + 10, distanceMi: 6.2 })) {
+      if (STEEP_GAIN_FT_PER_MI !== expectedCeil) {
+        throw new Error(
+          `STEEP_GAIN_FT_PER_MI = ${STEEP_GAIN_FT_PER_MI} · §13.2's Hilly ceiling (${ceilFt} ft) ` +
+          `at marathon scale is ${expectedCeil} ft/mi`,
+        );
+      }
+      // The Mountain row's own floor must agree — contiguity is the doc's.
+      const mountainRow = cite.section.find((l) => /Mountain \(/.test(l));
+      if (!mountainRow) throw new Error('§13.2 no longer has a Mountain row · re-read the claim');
+      const [mountainFloorFt] = parseBand(mountainRow.replace(/\/.*$/, ''));
+      if (mountainFloorFt !== ceilFt) {
+        throw new Error(`§13.2's Mountain floor (${mountainFloorFt} ft) no longer meets the Hilly ceiling (${ceilFt} ft)`);
+      }
+      // The grader actually uses both boundaries, in all three directions.
+      const gradeAt = (perMi: number) =>
+        gradeCourse({ elevationGainFt: perMi * 6.2, distanceMi: 6.2 }).grade;
+      if (gradeAt(expectedFloor - 5) !== 'flat') throw new Error('a course under the Hilly floor is not flat');
+      if (gradeAt(expectedFloor + 2) !== 'rolling') throw new Error('a course past the Hilly floor is not rolling');
+      if (gradeAt(expectedCeil + 2) !== 'steep') throw new Error('a course past the Mountain floor is not steep');
+      // Back-compat boolean keeps the floor.
+      if (!courseIsHilly({ elevationGainFt: expectedFloor * 6.2 + 10, distanceMi: 6.2 })) {
         throw new Error('a course past the Hilly floor is not classified hilly');
       }
-      if (courseIsHilly({ elevationGainFt: expected * 6.2 - 40, distanceMi: 6.2 })) {
+      if (courseIsHilly({ elevationGainFt: expectedFloor * 6.2 - 40, distanceMi: 6.2 })) {
         throw new Error('a course well under the Hilly floor is classified hilly');
       }
-      // And a hilly race gets NO time goal from the coach — effort framing.
-      const g = deriveCoachGoal({
-        statedGoalSec: null, priority: 'B', distanceMi: 6.21371, hilly: true,
+    },
+  },
+  {
+    id: 'COURSE.rolling-graded-steep-effort',
+    binds: ['lib/race/coach-goal.ts#deriveCoachGoal', 'lib/race/goal-framing.ts#gradeGetsTheAsk'],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '### 13.2 Course Profile',
+    claim:
+      'Owner ruling 2026-08-28 over §13.2: in the Hilly tier (rolling band) the coach grades the ' +
+      'A/B/C for the course and carries the effort guidance as a secondary line — the default ' +
+      "while the race_goal_framing ask is unanswered — with the runner's persisted " +
+      "meta.goalFraming as the override ('effort' flips to effort-only). Past the tier " +
+      '(Mountain / steep) the framing is effort-only regardless, and a rolling grade with no ' +
+      'measured gain behind it cannot be priced and stays effort — a fabricated number is worse ' +
+      'than none. Only the rolling band ever gets the ask.',
+    check() {
+      const base = {
+        statedGoalSec: null, priority: 'B', distanceMi: 6.21371,
         vdot: 50, todayISO: '2026-08-28',
+      } as const;
+      const rolling = { grade: 'rolling' as const, gainFtPerMi: 32.5, elevationGainFt: 202 };
+      // Default (unanswered) → graded time plus the effort line.
+      const g = deriveCoachGoal({ ...base, course: rolling });
+      if (!g || g.kind !== 'time') throw new Error('a rolling course did not default to graded time framing');
+      if (g.hillAdjustedSec == null || g.hillAdjustedSec <= 0) {
+        throw new Error('the rolling default carries no hill adjustment');
+      }
+      if (!g.effortLine) throw new Error('the rolling default dropped the effort guidance line');
+      // Answered 'time' → same shape. Answered 'effort' → effort framing.
+      const gt = deriveCoachGoal({ ...base, course: rolling, goalFraming: 'time' });
+      if (!gt || gt.kind !== 'time') throw new Error("an answered 'time' framing lost the graded numbers");
+      const ge = deriveCoachGoal({ ...base, course: rolling, goalFraming: 'effort' });
+      if (!ge || ge.kind !== 'effort') throw new Error("an answered 'effort' framing kept a time goal");
+      // Steep → effort, even with an answered 'time' (no honest number exists).
+      const steep = { grade: 'steep' as const, gainFtPerMi: 80, elevationGainFt: 500 };
+      for (const goalFraming of [null, 'time'] as const) {
+        const gs = deriveCoachGoal({ ...base, course: steep, goalFraming });
+        if (!gs || gs.kind !== 'effort') {
+          throw new Error('a steep course got a flat-equivalent time goal · Research/11 says effort, not pace');
+        }
+      }
+      // Unpriceable rolling (terrain flag, no measurement) → effort.
+      const gu = deriveCoachGoal({
+        ...base, course: { grade: 'rolling', gainFtPerMi: null, elevationGainFt: null },
       });
-      if (!g || g.kind !== 'effort') {
-        throw new Error('a hilly course got a flat-equivalent time goal · Research/11 says effort, not pace');
+      if (!gu || gu.kind !== 'effort') throw new Error('an unpriceable rolling course was given a fabricated number');
+      // Legacy boolean keeps its meaning: hilly with nothing behind it → effort.
+      const gl = deriveCoachGoal({ ...base, hilly: true });
+      if (!gl || gl.kind !== 'effort') throw new Error('the legacy hilly boolean stopped meaning effort framing');
+      // The ask is scoped to the band where both answers are defensible.
+      if (!gradeGetsTheAsk('rolling') || gradeGetsTheAsk('flat') || gradeGetsTheAsk('steep')) {
+        throw new Error('the framing ask is not scoped to the rolling band');
+      }
+    },
+  },
+  {
+    id: 'COURSE.hill-cost-rate',
+    binds: ['lib/race/coach-goal.ts#HILL_RATE_SEC_PER_MI_PER_100FT', 'lib/race/coach-goal.ts#HILL_ADJUSTMENT_MAX_PCT', 'lib/race/coach-goal.ts#hillAdjustmentSec'],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: 'Rule of thumb: each 100 ft (30 m) of net elevation gain',
+    claim:
+      "§13.2's rule of thumb prices climb at ~2-4 sec/mile per 100 ft of gain, and states that " +
+      'downhills do not symmetrically refund the cost. The engine spends the rate inside the ' +
+      "doc's own 2-4 band (interpolated by gain density across the rolling band), charges GROSS " +
+      'gain with no descent credit (pricing net on a hilly loop would claim exactly the refund ' +
+      "02:389 denies), never returns a negative adjustment, and caps the total at the Hilly " +
+      "tier's stated 5% ceiling.",
+    check({ cite }) {
+      const bands = parseBands(cite.section[0]);
+      if (bands.length === 0) throw new Error('the rule-of-thumb line no longer carries the 2-4 s/mi band');
+      const [rLo, rHi] = bands[0];
+      if (HILL_RATE_SEC_PER_MI_PER_100FT[0] !== rLo || HILL_RATE_SEC_PER_MI_PER_100FT[1] !== rHi) {
+        throw new Error(
+          `HILL_RATE_SEC_PER_MI_PER_100FT = [${HILL_RATE_SEC_PER_MI_PER_100FT}] · doctrine's band is [${rLo}, ${rHi}]`,
+        );
+      }
+      if (!/downhills do not symmetrically refund/.test(cite.text())) {
+        throw new Error('02:389 no longer states the descent asymmetry · re-read the gross-gain argument');
+      }
+      // The cap comes from the Hilly row's own percentage band ceiling.
+      const tier = resolveCitation('Research/02-race-time-prediction.md', '### 13.2 Course Profile');
+      const hillyRow = tier.section.find((l) => /Hilly \(/.test(l));
+      if (!hillyRow) throw new Error('§13.2 no longer has a Hilly row · re-read the claim');
+      const pctBand = parseBand(hillyRow.replace(/^.*\)/, ''));
+      if (HILL_ADJUSTMENT_MAX_PCT !== pctBand[1]) {
+        throw new Error(
+          `HILL_ADJUSTMENT_MAX_PCT = ${HILL_ADJUSTMENT_MAX_PCT} · the Hilly tier's ceiling is ${pctBand[1]}%`,
+        );
+      }
+      // The engine reproduces the doc's arithmetic at the band floor: at the
+      // rolling floor the rate is the doc's own low end, so
+      // cost = (gain/100) × rLo × miles, exactly.
+      const dist = 6.21371;
+      const gainAtFloor = HILLY_GAIN_FT_PER_MI * dist;
+      const atFloor = hillAdjustmentSec({ elevationGainFt: gainAtFloor, distanceMi: dist, baseSec: 2755 });
+      if (!atFloor) throw new Error('the band floor is not priced');
+      const expect = Math.round((gainAtFloor / 100) * rLo * dist);
+      if (Math.abs(atFloor.costSec - expect) > 1) {
+        throw new Error(`floor cost ${atFloor.costSec}s != the doc's own arithmetic (${expect}s)`);
+      }
+      // Monotone in gain, capped at the tier ceiling, never negative.
+      const mid = hillAdjustmentSec({ elevationGainFt: 202, distanceMi: dist, baseSec: 2755 });
+      if (!mid || mid.costSec <= atFloor.costSec) throw new Error('more climb does not cost more');
+      const high = hillAdjustmentSec({
+        elevationGainFt: (STEEP_GAIN_FT_PER_MI - 1) * dist, distanceMi: dist, baseSec: 2755,
+      });
+      if (!high || high.costSec > Math.round(2755 * (HILL_ADJUSTMENT_MAX_PCT / 100))) {
+        throw new Error('the hill cost exceeds the Hilly tier\'s stated ceiling');
+      }
+      if (hillAdjustmentSec({ elevationGainFt: 0, distanceMi: dist, baseSec: 2755 }) != null
+        || hillAdjustmentSec({ elevationGainFt: -100, distanceMi: dist, baseSec: 2755 }) != null) {
+        throw new Error('a flat or net-downhill course was handed a hill adjustment · descents refund nothing here');
       }
     },
   },

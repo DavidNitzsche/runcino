@@ -60,6 +60,9 @@
  * dismiss · marks the proposal dismissed · drift-cron won't re-propose
  *           the SAME kind for 14 days (handled by the cron's
  *           hasPendingProposal check + a 14d window we add here).
+ *           EXCEPTION (2026-08-28 · GOALFRAME-1): on a race_goal_framing
+ *           card the decline IS an answer — it persists
+ *           races.meta.goalFraming = 'effort' before resolving the row.
  *
  * Auto-applied proposals (race_date_changed, etc.) don't go through
  * this route · they were resolved at insert.
@@ -122,6 +125,65 @@ export async function POST(req: NextRequest) {
       error: `proposal already ${proposal.status}`,
       status: proposal.status,
     }, { status: 409 });
+  }
+
+  // 2026-08-28 · GOALFRAME-1 · a race_goal_framing card is answered by BOTH
+  // buttons, so this branch sits before the generic dismiss: accept keeps the
+  // graded time targets (meta.goalFraming = 'time'), decline switches the
+  // race to effort framing (meta.goalFraming = 'effort'). Either way the
+  // answer is ONE field-level jsonb_set on the race row (Rule 6 — races.meta
+  // has many writers with different field coverage; a full-meta replace here
+  // would erase whatever the editor or the geometry hydrator wrote last).
+  // Nothing rebuilds and no plan row moves: the framing is compute-on-read
+  // (deriveCoachGoal reads the persisted answer as the band override).
+  // Runner-initiated by construction — this branch only runs on the tap.
+  if (proposal.proposal_kind === 'race_goal_framing') {
+    const reasons = proposal.reasons ?? {};
+    const raceSlug = typeof reasons.race_slug === 'string' ? reasons.race_slug : null;
+    if (!raceSlug) {
+      return NextResponse.json({
+        error: 'race_goal_framing proposal is missing race_slug',
+      }, { status: 500 });
+    }
+    const framing = action === 'accept' ? 'time' : 'effort';
+    let raceRows = 0;
+    try {
+      raceRows = (await pool.query(
+        `UPDATE races
+            SET meta = jsonb_set(meta, '{goalFraming}', to_jsonb($3::text))
+          WHERE user_uuid = $1 AND slug = $2`,
+        [userId, raceSlug, framing],
+      )).rowCount ?? 0;
+    } catch (e) {
+      return outage('api/plan/proposal · race_goal_framing', e);
+    }
+    if (raceRows === 0) {
+      // The race row is gone · nothing to frame. Resolve the card rather
+      // than stranding it pending forever (the per-slug dedupe means it
+      // would never re-fire anyway).
+      await pool.query(
+        `UPDATE plan_proposals
+            SET status = 'dismissed', resolved_at = NOW(),
+                reasons = reasons || jsonb_build_object('dismiss_reason', 'race_missing')
+          WHERE id = $1 AND user_uuid = $2`,
+        [proposalId, userId],
+      ).catch((e) => logReadFailure('api/plan/proposal · race_goal_framing race-missing resolve', e));
+      return NextResponse.json({ ok: false, status: 'dismissed', reason: 'race_missing' });
+    }
+    await pool.query(
+      `UPDATE plan_proposals
+          SET status = $2, resolved_at = NOW(),
+              reasons = reasons || jsonb_build_object(
+                'accept_reason', 'goal_framing_answered',
+                'applied_framing', $3::text)
+        WHERE id = $1`,
+      [proposalId, action === 'accept' ? 'accepted' : 'dismissed', framing],
+    );
+    return NextResponse.json({
+      ok: true,
+      status: action === 'accept' ? 'accepted' : 'dismissed',
+      goalFraming: framing,
+    });
   }
 
   // 2a. Dismiss path · simple status update
