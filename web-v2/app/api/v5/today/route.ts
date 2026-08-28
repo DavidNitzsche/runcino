@@ -283,6 +283,10 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   const runnerTodayISO = (await runnerToday(userId)).slice(0, 10);
   const requestedDate = url.searchParams.get('date')?.slice(0, 10) || null;
   const today = requestedDate || runnerTodayISO;
+  // Watch-completion date matching (below) needs the runner's own timezone,
+  // not the server's — a UTC insert timestamp for a run logged in the
+  // evening reads as tomorrow's date in UTC.
+  const completionTz = await runnerTimezone(userId).catch(() => null);
   // 22b. THE SCREEN IS NOT IN THE PRESENT TENSE, SO NEITHER IS ITS CONTEXT.
   //
   // `loadGlanceState` takes no date — it reads readiness, the seven-night
@@ -711,9 +715,16 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
             AND (CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
                       THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
-                      ELSE ts::date = $2::date END)
+                      -- 2026-08-27 · was ts::date = $2::date, comparing the
+                      -- UTC insert timestamp's date against the runner's
+                      -- LOCAL "today" with no timezone conversion. A run
+                      -- logged after ~5pm Pacific (UTC already past
+                      -- midnight) failed this match outright -- exactly what
+                      -- silently emptied the belt-averages lookup below,
+                      -- same runnerTimezone convention as goal-projection.ts.
+                      ELSE (ts AT TIME ZONE $3::text)::date = $2::date END)
           ORDER BY ts DESC LIMIT 1`,
-        [userId, today],
+        [userId, today, completionTz ?? 'UTC'],
       ).catch(() => ({ rows: [] as any[] }))).rows[0];
       let completion: any = intent?.value ?? null;
       if (typeof completion === 'string') { try { completion = JSON.parse(completion); } catch { completion = null; } }

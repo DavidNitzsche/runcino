@@ -7,6 +7,7 @@
  * the iOS sync + Strava webhook both write.
  */
 import { pool } from '@/lib/db/pool';
+import { runnerTimezone } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, ALL_TIME } from '@/lib/runs/volume';
 import { computeZones, judgeEasyRunHr, zoneIdxForBpm, type EasyHrVerdict } from '@/lib/training/zones';
 import { resolveThresholdHr, type ThresholdHrMethod } from '@/lib/training/lthr';
@@ -1462,26 +1463,26 @@ async function loadPhaseBreakdown(
   heatSlowdownPct: number = 0,
 ): Promise<PhaseBreakdown[]> {
   if (!date) return [];
+  // 2026-08-27 · the #HHmm-suffix branch was the fix P1-34 shipped for this
+  // fallback's flaw, but a treadmill completion's field (`trd_<uuid>`)
+  // carries no date suffix at all — it always falls through, so the exact
+  // failure this comment already named ("bled into the wrong day's card")
+  // was still live for every treadmill run. Converting to the runner's own
+  // timezone before taking the date is the actual fix; the field-suffix
+  // check above only avoided the fallback, it never corrected it.
+  const tz = await runnerTimezone(userId).catch(() => null);
   const row = (await pool.query(
     `SELECT value FROM coach_intents
       WHERE COALESCE(user_uuid, user_id) = $1
         AND reason = 'watch_completion'
         AND (
-          -- 2026-08-11 · field carries an optional #HHmm session-start
-          -- suffix since the P1-34 cross-day fix (watch/workouts/complete
-          -- mints it on every completion now — see effectiveWorkoutId
-          -- there). The old '%-____-__-__' suffix check didn't tolerate
-          -- it, so every modern completion fell to the ts::date fallback
-          -- below, which is UTC-shifted and matches the WRONG calendar
-          -- day for any run after ~5pm Pacific (crosses UTC midnight) —
-          -- e.g. an 8/10 evening run's phases bled into 8/11's card.
           CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
                THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
-               ELSE ts::date = $2::date
+               ELSE (ts AT TIME ZONE $3::text)::date = $2::date
           END
         )
       ORDER BY ts DESC LIMIT 1`,
-    [userId, date]
+    [userId, date, tz ?? 'UTC']
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!row?.value) return [];
 

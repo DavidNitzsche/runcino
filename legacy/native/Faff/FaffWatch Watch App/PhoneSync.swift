@@ -56,6 +56,9 @@ final class PhoneSync: NSObject, ObservableObject {
     /// The structured empty state (rest · no-session). The flat
     /// `noWorkoutMessage` still rides beside it and is still the fallback.
     var dayState: WatchDayState? { todayGlance?.dayState }
+    /// Today's session, already run — the lobby's post-run recap. Rides
+    /// beside `todayWorkout`, never replaces it.
+    var completedToday: WatchCompletedRun? { todayGlance?.completedToday }
     /// True once we've received any context (so the UI can distinguish
     /// "nothing yet" from "synced, but no workout today").
     @Published private(set) var hasSynced: Bool = false
@@ -651,15 +654,33 @@ extension PhoneSync: WCSessionDelegate {
     /// transferUserInfo — delivered here on the next connection so the HR
     /// session ends as soon as the pipe is back instead of waiting out the
     /// dead-man timer.
+    ///
+    /// 2026-08-27 · `treadmillStart` is the same durable fallback for the
+    /// OTHER end of the bridge — the watch wasn't reachable the instant the
+    /// treadmill console appeared, so `startTreadmillHRSession` queued this
+    /// instead of the live message. Only start if nothing is already active,
+    /// same reasoning as the stop guard: a late/replayed start must not
+    /// clobber a session that's already running (or already ended) for a
+    /// DIFFERENT id than the one this delivery carries.
     nonisolated func session(_ session: WCSession,
                              didReceiveUserInfo userInfo: [String: Any]) {
-        guard let stopId = userInfo["treadmillStop"] as? String else { return }
-        Task { @MainActor in
-            // Only end the session the phone asked about · a stale stop from
-            // a previous workout must not kill a newer session.
-            if TreadmillHRSession.shared.isActive,
-               TreadmillHRSession.shared.sessionId == stopId {
-                await TreadmillHRSession.shared.end()
+        if let stopId = userInfo["treadmillStop"] as? String {
+            Task { @MainActor in
+                // Only end the session the phone asked about · a stale stop from
+                // a previous workout must not kill a newer session.
+                if TreadmillHRSession.shared.isActive,
+                   TreadmillHRSession.shared.sessionId == stopId {
+                    await TreadmillHRSession.shared.end()
+                }
+            }
+            return
+        }
+        if let startId = userInfo["treadmillStart"] as? String {
+            Task { @MainActor in
+                let live = TreadmillHRSession.shared
+                if !live.isActive || live.sessionId == startId {
+                    live.start(sessionId: startId)
+                }
             }
         }
     }

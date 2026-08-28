@@ -1315,7 +1315,16 @@ function buildRecentRun(r: V5RecentRunCtx): {
     action: r.effortLogged == null ? 'log_effort' : null,
   });
 
-  const onTheBelt: V5Stat[] | null = r.indoor
+  // 2026-08-27 · this used to always return the 2-entry array for an indoor
+  // run, with `num(null, true)` entries when `beltAverages` found nothing —
+  // a valid V5Stat with no printable text, not a missing one. The phone gates
+  // this card on `!belt.isEmpty`, which a 2-null-entry array never is, so a
+  // run with no matched completion (the coach_intents lookup above misses —
+  // most often a same-day-but-different-timezone-read miss, see `completion`)
+  // rendered "On the belt / SPEED / INCLINE" with both values permanently
+  // blank instead of the card simply not showing. Return null outright when
+  // neither number resolved, so the phone-side gate actually hides it.
+  const onTheBelt: V5Stat[] | null = r.indoor && (r.speedMph != null || r.inclinePct != null)
     ? [
         // RULE ONE. There is no sensor on a treadmill session — `beltAverages`
         // rolls up the SETTINGS the runner confirmed on the console, which is

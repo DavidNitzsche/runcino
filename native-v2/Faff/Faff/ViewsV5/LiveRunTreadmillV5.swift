@@ -131,7 +131,6 @@ struct LiveRunTreadmillV5: View {
     /// stream the legacy console has had since build 137. On a threshold
     /// session that is the difference between a heart-rate reading and a
     /// souvenir.
-    @State private var watchHRBridgeUp = false
     @State private var lastPingAt: Date = .distantPast
     @State private var lastBridgeAskAt: Date = .distantPast
     @State private var lastBpmAt: Date?
@@ -239,20 +238,11 @@ struct LiveRunTreadmillV5: View {
             await flushInterruptedBeltRun()
         }
         .onAppear {
-            // The host no longer builds this console until the plan has been
-            // asked for, so appearing IS starting. Stamp the clock and anchor
-            // the HR stream to the same instant.
-            let now = Date()
+            // 2026-08-27 · appearing no longer starts the clock — it only gets
+            // the console ready to dial in speed/incline. The runner taps
+            // Start (see `buttons`/`startRun()`) the same way the belt itself
+            // waits for a button before the display starts counting.
             configurePlanIfNeeded()
-            session.start(at: now)
-            meter.start(from: now)
-            UIApplication.shared.isIdleTimerDisabled = true
-            Task { await hr.start(from: now) }
-            // Ask the watch for a real indoor workout session, so HealthKit
-            // gets 5-15 s samples instead of the passive baseline.
-            lastBridgeAskAt = now
-            lastPingAt = now
-            watchHRBridgeUp = WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
         }
         // The plan arrives AFTER this view is built (the host renders it at
         // `.opacity(0)` while it fetches), and `State(initialValue:)` only
@@ -283,7 +273,7 @@ struct LiveRunTreadmillV5: View {
             guard running, startedAt != nil else { return }
             lastBridgeAskAt = .now
             lastPingAt = .now
-            watchHRBridgeUp = WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
+            WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
         }
     }
 
@@ -308,13 +298,21 @@ struct LiveRunTreadmillV5: View {
         if !watchSync.treadmillSessionConfirmed, now.timeIntervalSince(lastBridgeAskAt) >= 60 {
             lastBridgeAskAt = now
             lastPingAt = now
-            watchHRBridgeUp = WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
+            WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
         }
     }
 
     /// What to say about heart rate, or nothing when it is flowing. "No watch"
     /// and "your heart rate stopped four minutes ago" are different problems
     /// and get different sentences.
+    ///
+    /// 2026-08-27 · dropped the passive "No heart rate source · running on
+    /// speed and incline alone." — a dead end with nothing the runner can do
+    /// about it. `treadmillSessionConfirmed` now actually reflects whether the
+    /// watch accepted the bridge request (fixed the same day — it checked for
+    /// a reply key the watch never sends), so the unconfirmed case gets an
+    /// action instead: open the watch app. Confirmed-but-still-no-sample is
+    /// HealthKit latency, not a real problem, so it says nothing.
     private var hrHint: String? {
         guard startedAt != nil else { return nil }
         if let last = lastBpmAt {
@@ -322,7 +320,8 @@ struct LiveRunTreadmillV5: View {
             return "Heart rate stopped \u{00b7} reconnecting to your watch."
         }
         guard elapsedSec > 45 else { return nil }
-        return "No heart rate source \u{00b7} running on speed and incline alone."
+        guard !watchSync.treadmillSessionConfirmed else { return nil }
+        return "Open Faff on your Apple Watch for heart rate."
     }
 
     // MARK: - Phase tracking (for the completion payload)
@@ -531,7 +530,7 @@ struct LiveRunTreadmillV5: View {
                 roundControl(symbol: "minus", diameter: 72, glyphSize: 30,
                             fill: V5.materialControl, ink: V5.textPrimary,
                             spoken: "Slow the belt down") {
-                    adjustSpeed(-2)
+                    adjustSpeed(-1)
                 }
                 // 104pt is drawn for "8.0". A belt at "12.0" is one glyph
                 // wider and truncated to "1..." — the console's largest,
@@ -546,7 +545,7 @@ struct LiveRunTreadmillV5: View {
                 roundControl(symbol: "plus", diameter: 72, glyphSize: 30,
                             fill: V5.materialAction, ink: V5.actionPrimaryText,
                             spoken: "Speed the belt up") {
-                    adjustSpeed(2)
+                    adjustSpeed(1)
                 }
             }
             // Display only \u{00b7} the accumulator and the wire stay mph.
@@ -664,7 +663,7 @@ struct LiveRunTreadmillV5: View {
                            value: FaffValue.from(currentPaceText,
                                                  modelled: distanceIsModelled))
                 if let bpm = hr.currentBpm {
-                    statColumn(label: "HEART",
+                    statColumn(label: "HR",
                                value: FaffValue.from(FaffFmt.bpm(Double(bpm)),
                                                      modelled: false))
                 }
@@ -713,23 +712,17 @@ struct LiveRunTreadmillV5: View {
         return IndoorDistanceMeter.materiallyDisagree(beltMi: session.belt.distanceMi, measuredMi: m)
     }
 
-    /// One quiet line. Names both numbers when they disagree, says what was
-    /// estimated when the console was away, and otherwise says nothing.
+    /// One quiet line. Only fires when the two distance readings actually
+    /// disagree by enough to matter — that's the one case with something
+    /// for the runner to act on. 2026-08-27 dropped the other two cases
+    /// (nothing measured it at all / estimated while backgrounded): both
+    /// were passive disclaimers with no action attached, on by default for
+    /// most treadmill runs (no phone motion sensor, or a locked screen).
     private var provenanceNote: String? {
-        if session.belt.distanceIsModelled { return unmeasuredNote }
         if readingsDisagree, let m = measuredMi {
             return "Your phone counted \(Units.formatDistance(miles: m, decimals: 2)) \(Units.distanceLabel()) \u{00b7} the belt speed you set says \(Units.formatDistance(miles: session.belt.distanceMi, decimals: 2)). Check the belt number."
         }
-        if measuredMi == nil, startedAt != nil, elapsedSec > 120 {
-            return "Distance is from the belt speed you set \u{00b7} nothing here measured it."
-        }
         return nil
-    }
-
-    private var unmeasuredNote: String {
-        let mins = Int((session.belt.unmeasuredSec / 60).rounded())
-        let span = mins >= 1 ? "\(mins) min" : "\(Int(session.belt.unmeasuredSec.rounded())) sec"
-        return "\(span) ran with the app in the background \u{00b7} that distance is estimated at the belt speed you last set."
     }
 
     private var currentPaceText: String {
@@ -752,16 +745,40 @@ struct LiveRunTreadmillV5: View {
 
     private var buttons: some View {
         HStack(spacing: V5.S.s10) {
-            FaffButton(isPaused ? "Resume" : "Pause", variant: .secondary, size: .lg) {
-                // The recorder owns its own clock, so pause and resume
-                // re-anchor inside the model.
-                session.togglePause()
-                onPause()
-            }
-            FaffButton("End", variant: .destructive, size: .lg) {
-                endAndSave()
+            if startedAt == nil {
+                FaffButton("Start", variant: .primary, size: .lg) {
+                    startRun()
+                }
+            } else {
+                FaffButton(isPaused ? "Resume" : "Pause", variant: .secondary, size: .lg) {
+                    // The recorder owns its own clock, so pause and resume
+                    // re-anchor inside the model.
+                    session.togglePause()
+                    onPause()
+                }
+                FaffButton("End", variant: .destructive, size: .lg) {
+                    endAndSave()
+                }
             }
         }
+    }
+
+    /// Everything that used to fire on `.onAppear` — now deferred to the
+    /// runner's own tap. Dial in speed/incline first, then Start: the clock,
+    /// the pedometer, the HR stream and the watch bridge all anchor to this
+    /// instant instead of the moment the console happened to render.
+    private func startRun() {
+        guard startedAt == nil else { return }
+        let now = Date()
+        session.start(at: now)
+        meter.start(from: now)
+        UIApplication.shared.isIdleTimerDisabled = true
+        Task { await hr.start(from: now) }
+        // Ask the watch for a real indoor workout session, so HealthKit
+        // gets 5-15 s samples instead of the passive baseline.
+        lastBridgeAskAt = now
+        lastPingAt = now
+        WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
     }
 
     /// Closes out whatever phase was still open, builds the WatchCompletion

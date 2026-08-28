@@ -18,7 +18,7 @@ import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { computeAcwr } from './acwr';
 import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 import { loadActivePlan } from '@/lib/plan/lookup';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import type { WorkoutSpec } from '@/lib/faff/types';
@@ -189,18 +189,21 @@ async function computeTodayExecution(
   todayRow: GlanceWeekDay | undefined,
 ): Promise<'nailed' | 'short' | 'over' | null> {
   if (!todayRow || todayRow.doneMi < 0.5) return null; // no run today
+  // 2026-08-27 · the #HHmm-suffix branch below was itself the fix for the
+  // fallback's flaw (P1-34), but a treadmill completion's field (`trd_<uuid>`)
+  // carries no date suffix at all and always falls through to it — so every
+  // treadmill run still hit the UTC-shifted date compare this comment warned
+  // about. Convert to the runner's own timezone before taking the date.
+  const tz = await runnerTimezone(userId).catch(() => null);
   const row = (await pool.query(
     `SELECT value FROM coach_intents
       WHERE COALESCE(user_uuid, user_id) = $1
         AND reason = 'watch_completion'
-        -- 2026-08-11 · see lib/coach/run-state.ts loadPhaseBreakdown for
-        -- the full note · tolerate field's #HHmm suffix (P1-34) so this
-        -- doesn't fall to the UTC-shifted ts::date fallback.
         AND (CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
                   THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
-                  ELSE ts::date = $2::date END)
+                  ELSE (ts AT TIME ZONE $3::text)::date = $2::date END)
       ORDER BY ts DESC LIMIT 1`,
-    [userId, today],
+    [userId, today, tz ?? 'UTC'],
   ).catch(() => ({ rows: [] }))).rows[0];
 
   const overreach = todayRow.plannedMi > 0 && todayRow.doneMi >= todayRow.plannedMi * 1.25;

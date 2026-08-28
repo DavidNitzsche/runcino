@@ -297,13 +297,28 @@ final class WatchSync: NSObject, ObservableObject {
     func startTreadmillHRSession(sessionId: String) -> Bool {
         guard WCSession.isSupported() else { return false }
         let s = WCSession.default
-        guard s.activationState == .activated, s.isReachable else { return false }
+        guard s.activationState == .activated else { return false }
         treadmillSessionConfirmed = false
+        // 2026-08-27 · durable start, mirroring stopTreadmillHRSession below.
+        // An unreachable watch at the exact moment the console appears used to
+        // mean the bridge never engaged for the whole run — no retry until the
+        // next 60s poll, itself gated on the same reachability check. Queue the
+        // durable fallback so a watch that wakes mid-run still gets the start.
+        guard s.isReachable else {
+            s.transferUserInfo(["treadmillStart": sessionId])
+            return false
+        }
         s.sendMessage(
             ["request": "startTreadmillHR", "sessionId": sessionId],
             replyHandler: { [weak self] reply in
                 Task { @MainActor [weak self] in
-                    self?.treadmillSessionConfirmed = reply["ok"] != nil
+                    // 2026-08-27 · the watch's actual reply is
+                    // {"status": "started", "sessionId": ...} — there is no
+                    // "ok" key and never has been, so this read was checking
+                    // for a key that can't exist and treadmillSessionConfirmed
+                    // was permanently false regardless of whether the watch
+                    // session actually started.
+                    self?.treadmillSessionConfirmed = (reply["status"] as? String) == "started"
                 }
             },
             errorHandler: { [weak self] err in

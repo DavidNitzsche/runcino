@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
+import { runnerTimezone } from '@/lib/runtime/runner-tz';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { composeRecap } from '@/lib/faff/recap-voice';
@@ -215,22 +216,24 @@ export async function GET(
   let winPhases: Array<{ type?: string | null; verdict?: string | null; actualPaceSPerMi?: number | null; targetPaceSPerMi?: number | null; actualDistanceMi?: number | null; isFinishSegment?: boolean; actualSpeedMph?: number | null; actualInclinePct?: number | null; completed?: boolean | null }> = [];
   if (date) {
     try {
+      // 2026-08-27 · the #HHmm-suffix branch fixed the field-suffix check,
+      // but a treadmill completion's field (`trd_<uuid>`) carries no date
+      // suffix at all and always falls through to the ts::date fallback —
+      // still UTC-shifted, still the wrong calendar day for a run after
+      // ~5pm Pacific. Convert to the runner's own timezone before comparing.
+      const recapTz = await runnerTimezone(userId).catch(() => null);
       const intentRow = (await pool.query(
         `SELECT value FROM coach_intents
           WHERE COALESCE(user_uuid, user_id) = $1
             AND reason = 'watch_completion'
             AND (
-              -- 2026-08-11 · see lib/coach/run-state.ts loadPhaseBreakdown
-              -- for the full note · field's optional #HHmm suffix (P1-34)
-              -- broke the old suffix check, silently falling to the
-              -- UTC-shifted ts::date fallback for every modern completion.
               CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
                    THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
-                   ELSE ts::date = $2::date
+                   ELSE (ts AT TIME ZONE $3::text)::date = $2::date
               END
             )
           ORDER BY ts DESC LIMIT 1`,
-        [userId, date],
+        [userId, date, recapTz ?? 'UTC'],
       )).rows[0];
       if (intentRow?.value) {
         let payload: any = intentRow.value;
