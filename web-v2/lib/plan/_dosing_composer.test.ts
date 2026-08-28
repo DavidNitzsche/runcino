@@ -45,7 +45,6 @@ describe('DOCTRINE-DOSING-2 · one session per pace family, per week', () => {
     // defect `scheduleQuality`'s GAP-mode downgrade used to produce.
     const offenders: string[] = [];
     let weeksChecked = 0;
-    let beginnerFartlekWeeks = 0;
 
     for (const distance of ['5k', '10k', 'half', 'marathon', '50k'] as SimDistance[]) {
       for (const experienceLevel of ['beginner', 'intermediate', 'advanced'] as const) {
@@ -71,26 +70,14 @@ describe('DOCTRINE-DOSING-2 · one session per pace family, per week', () => {
               const quality = w.days.filter((d) => d.isQuality && d.type !== 'race');
               const dup = duplicatePaceFamily(quality.map((d) => d.type));
               if (!dup) continue;
-              // KNOWN-OPEN, and named rather than hidden: the BASE-BUILDING mix
-              // is a single LIGHT FARTLEK type placed on two quality days, so
-              // the week runs two of them. (Base-building is a low-volume tier
-              // decision, not a declared experience level — a 15 mi/wk
-              // "intermediate" ultra runner lands there too — so the exemption
-              // is keyed on the prescription only that path authors.) §5.2 would rather
-              // see one — but collapsing the second into an easy day moves
-              // enough mileage on a beginner ramp to breach the validator's own
-              // 50% week-over-week volume limit, and trading a frequency nuance
-              // for a structural ramp violation is a worse plan. The DOSE is not
-              // the issue: a 5×1 min surge set is ~0.6 mi at T, so two sit far
-              // inside Daniels' 10% on any week a beginner runs, which is why
-              // the census still reads zero. Re-sizing the beginner ramp is a
-              // separate piece of work. See `effectiveQDows` in generate.ts.
-              const allFartlek = quality.every((d) =>
-                /min surges @ T effort/i.test(String(d.subLabel ?? '')));
-              if (allFartlek) {
-                beginnerFartlekWeeks++;
-                continue;
-              }
+              // VARIETY-BEGIN-1 (2026-08-28) · the KNOWN-OPEN exemption that
+              // stood here is DELETED, per its own instruction. The
+              // base-building mix used to be a single light-fartlek type on
+              // two quality days — two identical T sessions a week — and the
+              // exemption recorded it. The mix is now `['tempo','intervals']`
+              // (surge fartlek + Research/04 §8.2's light hills), so a
+              // beginner week runs one session per pace family like every
+              // other week and the rule holds with no carve-out.
               offenders.push(
                 `${distance}/${experienceLevel}/${weeklyMileageBucket}/${weeklyFrequency} ` +
                 `${w.startISO} (${w.phase}): two ${dup} sessions — ` +
@@ -104,10 +91,6 @@ describe('DOCTRINE-DOSING-2 · one session per pace family, per week', () => {
 
     expect(weeksChecked).toBeGreaterThan(500);
     expect(offenders.slice(0, 10).join('\n')).toBe('');
-    // The exemption is real, so it is asserted rather than left implicit — if a
-    // future change fixes the beginner ramp, this drops to zero and the comment
-    // above has to be deleted with it.
-    expect(beginnerFartlekWeeks).toBeGreaterThan(0);
   }, 120_000);
 
   it('divides a shared budget rather than spending it twice', () => {

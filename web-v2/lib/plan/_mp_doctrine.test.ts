@@ -248,12 +248,25 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
       .filter(({ w }) => w.phase === 'RACE-SPECIFIC' && !w.isRaceWeek);
     expect(rs.length).toBeGreaterThan(2);
 
-    const withRp = rs.filter(({ w }) => finishMiOf(w.days.find((d) => d.isLong)?.subLabel) > 0);
-    const withoutRp = rs.filter(({ w }) => finishMiOf(w.days.find((d) => d.isLong)?.subLabel) === 0);
-    // Both kinds exist — that IS the cadence. Before the ruling `withoutRp` was
-    // empty for every half archetype, which is the defect.
+    // VARIETY-HMDR-1 (2026-08-28) · §4.6's dress rehearsal is its own long-run
+    // row (LONGRUN-ROWS-1) and now exists for the half — the Distance row
+    // states "12–14 mi (HM)" — landing three weeks out, which in a standard
+    // half block IS the off-cadence race-specific week. It is neither §4.5's
+    // cadence session (its segments are controlled MP, not a fast finish at
+    // race pace) nor a plain long, so it is classified apart before the §4.5
+    // cadence is measured — the same one-ruling-per-row separation that
+    // module exists to enforce. At most one per block: §4.6 names one slot.
+    const rehearsals = rs.filter(({ w }) => w.days.find((d) => d.isLong)?.longRunKind === 'dress_rehearsal');
+    expect(rehearsals.length).toBeLessThanOrEqual(1);
+    const nonDr = rs.filter(({ w }) => w.days.find((d) => d.isLong)?.longRunKind !== 'dress_rehearsal');
+    const withRp = nonDr.filter(({ w }) => finishMiOf(w.days.find((d) => d.isLong)?.subLabel) > 0);
+    const withoutRp = nonDr.filter(({ w }) => finishMiOf(w.days.find((d) => d.isLong)?.subLabel) === 0);
+    // Both kinds exist — that IS the cadence. Before the ruling every
+    // race-specific long carried a §4.5 finish, which is the defect; the
+    // week §4.5 leaves alone now either runs plain or carries §4.6's one
+    // controlled rehearsal.
     expect(withRp.length).toBeGreaterThan(0);
-    expect(withoutRp.length).toBeGreaterThan(0);
+    expect(withoutRp.length + rehearsals.length).toBeGreaterThan(0);
     for (let i = 1; i < withRp.length; i++) {
       const gap = withRp[i].i - withRp[i - 1].i;
       expect(gap).toBeGreaterThanOrEqual(2);
@@ -290,6 +303,13 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
     for (const { w } of withoutRp) {
       expect(w.days.filter((d) => d.isQuality && d.type !== 'race').length).toBe(2);
     }
+    // VARIETY-HMDR-1 · the rehearsal week keeps both structured sessions —
+    // the mix was decided while its long was plain, and §4.6's session is
+    // priced against the week's easy-floor headroom before it is authored
+    // ("refuse rather than trim"), so the week still clears the 75% floor.
+    for (const { w } of rehearsals) {
+      expect(w.days.filter((d) => d.isQuality && d.type !== 'race').length).toBe(2);
+    }
   });
 
   it('the half cadence takes the intensity floor off its every-week duty', () => {
@@ -312,6 +332,15 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
     let shaved = 0;
     let offCadence = 0;
     let offCadenceShare = 0;
+    // VARIETY-HMDR-1 (2026-08-28) · §4.6's dress rehearsal (now authored for
+    // the half at its own "12–14 mi (HM)" size) lands three weeks out, which
+    // in a standard half block is the off-cadence race-specific week. It is a
+    // third category: not §4.5's cadence finish, not a plain long. Its weeks
+    // are counted apart, and held to the floor itself rather than to the
+    // plain week's headroom — the rehearsal is priced against the week's
+    // easy-floor headroom BEFORE it is authored, so at-the-floor is its
+    // designed landing spot, not a shave.
+    let rehearsalWeeks = 0;
     const cadenceFinishes: number[] = [];
     const pinned: string[] = [];
     for (const experienceLevel of ['beginner', 'intermediate', 'advanced'] as const) {
@@ -329,6 +358,21 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
               const long = w.days.find((d) => d.isLong && d.type === 'long');
               if (!long || long.distanceMi <= 0) continue;
               weeks++;
+              if (long.longRunKind === 'dress_rehearsal') {
+                // §4.6's one controlled session per block. Its own bound: the
+                // week may not sit BELOW the floor (the authoring pass priced
+                // the dose against the headroom, so under-floor means the
+                // pricing broke).
+                rehearsalWeeks++;
+                const share = weekIntensity(w as never).easyShare;
+                if (share < EASY_SHARE_FLOOR - 0.005) {
+                  pinned.push(
+                    `${experienceLevel}/${weeklyMileageBucket}mi/f${weeklyFrequency}/${planWeeks}wk ` +
+                    `(rehearsal) = ${(share * 100).toFixed(1)}%`,
+                  );
+                }
+                continue;
+              }
               const finishMi = finishMiOf(long.subLabel);
               const ratio = finishMi / long.distanceMi;
               if (ratio > 0.01 && ratio < 0.48) shaved++;
@@ -356,11 +400,28 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
     expect(weeks).toBeGreaterThan(100);
     expect(pinned.slice(0, 8).join('\n')).toBe('');
     // A two-week cadence over a race-specific phase leaves about a third of it
-    // running a plain easy long. Before the ruling this was zero.
-    expect(offCadence / weeks).toBeGreaterThan(0.30);
-    // …and those weeks sit clear of the floor rather than on it. Before, every
-    // race-specific week came out inside a point of 75%.
-    expect(offCadenceShare / offCadence).toBeGreaterThan(EASY_SHARE_FLOOR + 0.05);
+    // to something other than §4.5's finish. Before the cadence ruling this
+    // was zero. VARIETY-HMDR-1 · that third is now split between plain easy
+    // longs and §4.6's one dress rehearsal per block — both are the cadence
+    // doing its job, so both count against §4.5's every-week duty.
+    expect((offCadence + rehearsalWeeks) / weeks).toBeGreaterThan(0.30);
+    // The rehearsal is real across the matrix. It refuses only where the
+    // week's easy-floor headroom cannot seat the two-mile minimum — and a
+    // refusal is what leaves a PLAIN week behind. Zero plain weeks is
+    // therefore a legal outcome, not a vacuous one: it means §4.6's session
+    // was affordable on every off-cadence slot the matrix produced. (It
+    // became the outcome when VARIETY-BEGIN-1 moved the beginner's second
+    // structured day off the T budget, which widened exactly the headroom
+    // the rehearsal is priced against.)
+    expect(rehearsalWeeks).toBeGreaterThan(0);
+    // Any PLAIN off-cadence weeks that do remain must sit clear of the floor
+    // rather than on it. Before the cadence ruling, every race-specific week
+    // came out inside a point of 75%. (Rehearsal weeks are deliberately
+    // excluded: §4.6's dose is priced to spend the headroom, and their own
+    // bound is the pinned check above.)
+    if (offCadence > 0) {
+      expect(offCadenceShare / offCadence).toBeGreaterThan(EASY_SHARE_FLOOR + 0.05);
+    }
     // DOCTRINE-DOSING-2 (2026-08-18) · `shaved` counts any finish sized under
     // 50% of the long, and it is no longer the intensity floor doing most of
     // that. `layoutWeek` now caps the finish at Research/01's dosing budget for

@@ -50,10 +50,18 @@
  * Which `Research/04` §4.1 row a long run's race-pace segment came from.
  *
  * Recorded on the day so a later pass that shortens or removes the segment can
- * say WHICH session it changed, and so the three rows stay distinguishable
- * after they have all become miles in a sub_label.
+ * say WHICH session it changed, and so the rows stay distinguishable after
+ * they have all become miles in a sub_label.
+ *
+ * `progression` (2026-08-28) is §4.3's progression long run — "First 1/3 to
+ * 1/2 at E pace, middle at strong E or M, final 1/4 to 1/3 at M to T", "Every
+ * 2–3 weeks in specific phase". The 10K plan's long-run session: `Research/22`
+ * §"10K — Intermediate" names "progression LR" in Key workout types and its
+ * sample peak week runs "9-10 mi E w/ last 2 mi @ M". The engine expresses it
+ * as the modest fixed M-pace tail that sample week states, not §4.4/§4.5's
+ * marathon-sized fractions.
  */
-export type LongRunKind = 'mp_long' | 'fast_finish' | 'dress_rehearsal';
+export type LongRunKind = 'mp_long' | 'fast_finish' | 'dress_rehearsal' | 'progression';
 
 /**
  * §4.6's own table, as numbers.
@@ -64,14 +72,27 @@ export type LongRunKind = 'mp_long' | 'fast_finish' | 'dress_rehearsal';
  *   | When in cycle | 3 weeks pre-marathon; before taper begins |
  *   | Contraindications | Not a fitness builder — keep effort controlled |
  *
+ * The Distance row states TWO bands, one per race, and until 2026-08-28 the
+ * engine carried only the marathon's: `authorDressRehearsal` returned early
+ * for every non-marathon plan, so a half build had no rehearsal at all — the
+ * fueling/kit/timing run the doc prescribes for it at 12–14 mi. `hmTotalMiBand`
+ * is the row's second half; the Pace row's MP band is stated once for the
+ * session and applies to both (`dressRehearsalDose` scales it against the
+ * band the caller passes, so a 13-mile HM rehearsal lands mid-band exactly as
+ * a 20-mile marathon one does). The segments are at MP for BOTH races — the
+ * row says "segments at MP", and for a half that is the controlled effort the
+ * Contraindications row demands, comfortably below HM race pace.
+ *
  * Bound by `LONGRUN.dress-rehearsal` in lib/doctrine/registry.ts, which reads
- * all four rows out of the table rather than trusting these copies.
+ * all the rows out of the table rather than trusting these copies.
  */
 export const DRESS_REHEARSAL = {
   /** "3 weeks pre-marathon". */
   daysBeforeRace: 21,
   /** Marathon distance band, miles. */
   totalMiBand: [18, 22] as [number, number],
+  /** Half-marathon distance band, miles — "12–14 mi (HM)". */
+  hmTotalMiBand: [12, 14] as [number, number],
   /** "4–8 mi total at MP". */
   mpMiBand: [4, 8] as [number, number],
 } as const;
@@ -133,9 +154,17 @@ export function dressRehearsalDose(
    * are seven days off a raced half.
    */
   insidePostRaceWindow = false,
+  /**
+   * The §4.6 Distance band this plan's race reads from — the marathon's
+   * 18–22 by default, the half's 12–14 when `authorDressRehearsal` passes it.
+   * The MP dose scales against this band's midpoint, so a rehearsal in the
+   * middle of ITS OWN distance band always lands in the middle of the one MP
+   * band the Pace row states for the session.
+   */
+  totalMiBand: readonly [number, number] = DRESS_REHEARSAL.totalMiBand,
 ): DressRehearsalDose | null {
   if (!(longMi > 0) || !(budgetMi > 0)) return null;
-  const [bandLo, bandHi] = DRESS_REHEARSAL.totalMiBand;
+  const [bandLo, bandHi] = totalMiBand;
   const [mpLo, mpHi] = DRESS_REHEARSAL.mpMiBand;
   // Midpoint of the MP band at the midpoint of the distance band, scaled by how
   // this long compares to that reference. Capped at the band's own top: a

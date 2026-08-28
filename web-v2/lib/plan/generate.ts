@@ -27,7 +27,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library';
-import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, STRIDE_DAYS_PER_WEEK, STRIDE_DEFAULT_REPS, STRIDE_DURATION_S } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor } from '@/lib/training/vdot';
 import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achievable-target';
@@ -80,7 +80,7 @@ import {
   computeDelta, samePrescription, prescriptionFingerprint, fingerprintDigest,
   type PlanPrescription, type PlanDelta,
 } from './plan-delta';
-import { EASY_SHARE_FLOOR, weekIntensity, splitDay } from './intensity-distribution';
+import { EASY_SHARE_FLOOR, SPEC_PROBE_T_PACE_SEC, weekIntensity, splitDay } from './intensity-distribution';
 // DOCTRINE-DOSING-2 · the composer sizes to the SAME doctrine the gate checks.
 // Importing the budget from the module that measures the breach is what makes
 // the two unable to disagree — see that file's header.
@@ -1542,6 +1542,128 @@ export const BASE_REBUILT_SHARE = 0.70;
 export const BASE_QUALITY_TYPES: ReadonlyArray<DayPlan['type']> = ['intervals'];
 
 /**
+ * VARIETY-BEGIN-1 (2026-08-28) · the beginner's structured days: two DIFFERENT
+ * sessions, and a dose that walks.
+ *
+ * TWO DEFECTS, one slot. The base-building (true beginner) quality mix is
+ * `['tempo']` on two quality days, so `types[i % types.length]` ran the SAME
+ * light fartlek twice a week (recorded as open beside DOCTRINE-DOSING-2's
+ * slot-count derivation); and the seed string "5×1 min surges @ T effort" was
+ * repeated verbatim for every week of the block — the dose never moved from
+ * first sharpen week to race week.
+ *
+ * THE PROGRESSION IS DOCTRINE'S OWN, count first, then duration:
+ *
+ *   · `Research/00b-recovery-protocols.md` §"Marathon Recovery (4-week
+ *     reverse taper)" week 3: "Strides + light fartlek (4-6× 1 min @ 10K
+ *     effort)" — the COUNT is the stated axis, 4 to 6, at one minute.
+ *   · `Research/22-plan-templates.md` §"5K — Beginner" sample week opens the
+ *     session at the band floor: "2.5 mi E w/ 4×1 min @ T effort".
+ *   · `Research/22` §"10K — Beginner" names the session ("fartlek (1 min on /
+ *     1 min off)") and its sample peak week states the built-up end state:
+ *     "4 mi w/ 6×2 min fartlek" — count at its top, THEN the minute doubles.
+ *
+ * So: QUALITY walks 4×1 → 5×1 → 6×1 across its closing weeks;
+ * RACE-SPECIFIC holds six reps and lengthens them, 6×1 → 6×1.5 → 6×2.
+ * The beginner's TAPER day is untouched (`race_week_tuneup`, its own row).
+ *
+ * WHY NOT THE OVERLOAD TRAJECTORY. `trackOfType` deliberately returns null for
+ * base-building (SLOT-ROTATE-2: a beginner's fartlek carries a dose Research/22
+ * states, not a shape for the ladder to render) — and wiring it in would also
+ * be WRONG for this shape: `SESSION_LADDER.threshold` is
+ * `['quality_duration','work_density','pace']` with no `rep_count`, so its
+ * first step turns 5×1 min into 5×3 min (tripling a beginner's T dose in one
+ * week), and `MIN_QUALITY_REP_MINUTES` = 3 makes every day-clamp re-shape
+ * 1-minute surges into 2×3 min cruise blocks — a different session wearing the
+ * fartlek's label. Doctrine's beginner ladder above is count-first at a
+ * one-minute rep, which the trajectory cannot express. Deterministic in
+ * (phase, weeksToPhaseEnd), so plans regenerate byte-identically.
+ *
+ * Bound by `BEGINNER.surge-progression` in lib/doctrine/registry.ts, which
+ * reads the opening dose out of the 5K row and the peak dose out of the 10K
+ * row rather than trusting these copies.
+ */
+export const BEGINNER_SURGE_REPS_BAND: readonly [number, number] = [4, 6];
+export const BEGINNER_SURGE_MINUTES_BAND: readonly [number, number] = [1, 2];
+
+/**
+ * The beginner surge-fartlek dose for a week · see VARIETY-BEGIN-1 above.
+ *
+ * CAPPED BY DANIELS' T SHARE. The walk's top rung (6×2 min ≈ 1.2-1.5 mi at a
+ * beginner's T) can exceed "cap T-pace at 10% of weekly mileage"
+ * (`Research/04`:187, the same rule `weeklyDoseBudgetMi('T')` reads) on the
+ * smallest beginner weeks — a 14 mi/wk week may spend 1.4 mi at T. So when the
+ * caller passes the week, the dose walks back DOWN the same ladder it climbed
+ * (minutes first, then count, never below the 4×1 opening) until it fits.
+ * Weeks that can afford the full walk are byte-identical; the sweep validator
+ * measures the same cap afterwards, so an unaffordable rung is never authored.
+ */
+export function beginnerSurgeDose(
+  phase: string,
+  weeksToPhaseEnd: number,
+  /** The week's mileage, for the 10% T cap. Omitted → uncapped (the registry
+   *  claim reads the doctrine endpoints this way). */
+  weeklyMi?: number | null,
+): { reps: number; minutes: number } {
+  const [repsLo, repsHi] = BEGINNER_SURGE_REPS_BAND;
+  const [minLo, minHi] = BEGINNER_SURGE_MINUTES_BAND;
+  let dose: { reps: number; minutes: number };
+  if (phase === 'RACE-SPECIFIC') {
+    // Count holds at its top; the minute walks toward Research/22 §"10K —
+    // Beginner"'s peak-week "6×2 min fartlek" across the phase's last weeks.
+    const minutes = weeksToPhaseEnd >= 2 ? minLo : weeksToPhaseEnd === 1 ? (minLo + minHi) / 2 : minHi;
+    dose = { reps: repsHi, minutes };
+  } else {
+    // QUALITY (the beginner's first structured phase): open at the 5K-Beginner
+    // row's 4×1 and climb the count toward six across the phase's closing weeks.
+    const reps = Math.max(repsLo, repsHi - Math.min(repsHi - repsLo, Math.max(0, weeksToPhaseEnd)));
+    dose = { reps, minutes: minLo };
+  }
+  if (weeklyMi != null && weeklyMi > 0) {
+    const budgetMi = weeklyDoseBudgetMi(weeklyMi, 'T', 'training');
+    // The MEASUREMENT's own conversion, deliberately: `splitDay`/`dayDoses`
+    // weigh a time-stated rep at the fixed `SPEC_PROBE_T_PACE_SEC`, whatever
+    // the runner's actual T is, so a clamp converted at the plan's slower
+    // real pace would author a session the sweep validator then flags. One
+    // conversion on both sides is the whole label/spec-drift lesson.
+    const capMinutes = (budgetMi * SPEC_PROBE_T_PACE_SEC) / 60;
+    // Walk back down the ladder: 6×2 → 6×1.5 → 6×1 → 5×1 → 4×1.
+    while (dose.reps * dose.minutes > capMinutes) {
+      if (dose.minutes > minLo) dose = { ...dose, minutes: dose.minutes - 0.5 };
+      else if (dose.reps > repsLo) dose = { ...dose, reps: dose.reps - 1 };
+      else break; // the 4×1 opening dose is never refused · ~0.5 mi at T
+    }
+  }
+  return dose;
+}
+
+/**
+ * VARIETY-BEGIN-1 · the beginner's SECOND weekly structured day is light
+ * hills, not a second copy of the fartlek.
+ *
+ * `Research/04` §15's base row places both in the same phase — "Base (8–12+
+ * wks) | E, GA, medium-long, long, strides, hill sprints, occasional
+ * fartlek/light hills | 2 quality sessions/wk max" — and `Research/22`
+ * §"10K — Beginner" lists "light hills" among its own Key workout types. §8.2
+ * (short hill repeats) is the light-hills row: "Duration | 10–30 s",
+ * "Reps | 8–16 (start 8, build to 16)", "Recovery | Walk or jog back to
+ * start; full recovery", "Purpose | Power, tendon stiffness, form; gateway
+ * speed work" — the gateway wording is exactly the beginner's case, and the
+ * label keeps the word "hill" so `buildWorkoutSpec` builds it by effort with
+ * no pace target (§8.1 prescribes hills by effort; a pace is unreachable on a
+ * grade). Reps open at the band's own "start 8" and take one modest step in
+ * RACE-SPECIFIC per its "build to 16" axis — a beginner never approaches the
+ * top of the band. Bound by `BEGINNER.hill-day` in lib/doctrine/registry.ts.
+ */
+export const BEGINNER_HILL_SURGE_S = 20;
+export const BEGINNER_HILL_REPS_BAND: readonly [number, number] = [8, 16];
+
+/** The beginner light-hills rep count for a phase · VARIETY-BEGIN-1. */
+export function beginnerHillReps(phase: string): number {
+  return phase === 'RACE-SPECIFIC' ? BEGINNER_HILL_REPS_BAND[0] + 2 : BEGINNER_HILL_REPS_BAND[0];
+}
+
+/**
  * DOCTRINE-DOSING-2 (2026-08-18) · the smallest race-pace finish that is still
  * a race-pace session.
  *
@@ -1553,6 +1675,36 @@ export const BASE_QUALITY_TYPES: ReadonlyArray<DayPlan['type']> = ['intervals'];
  * goes to its structured session. Bound by MPLONG.fast-finish-floor.
  */
 export const FAST_FINISH_MIN_MI = 2;
+
+/**
+ * VARIETY-10K-1 (2026-08-28) · the 10K progression long run's M-pace tail.
+ *
+ * The 10K's long runs were sixteen identical plain easy runs: `racePaceTag`
+ * is null for the distance (correctly — 10K race pace is I-band work, not a
+ * long-run insert), so `longFinishSegment` never fired and no long-run row
+ * reached the plan at all. But `Research/22-plan-templates.md`
+ * §"10K — Intermediate" lists "progression LR" among Key workout types and
+ * its sample peak week states the dose exactly: "9-10 mi E w/ last 2 mi @ M".
+ * `Research/04` §4.3 gives the session its own row and its own cadence
+ * ("Frequency | Every 2–3 weeks in specific phase") — the same rhythm
+ * `racePaceLongThisWeek` already walks for §4.4/§4.5.
+ *
+ * Two miles FIXED, from the sample week — never the marathon build's 30-50%
+ * fractions, which size §4.4/§4.5 sessions and would put five race-pace miles
+ * on a ten-mile 10K long. Sits exactly at FAST_FINISH_MIN_MI, so the smallest
+ * legal race-pace segment and this tail agree by construction.
+ *
+ * 5K long runs stay plain: every long in Research/22's three 5K rows is E
+ * ("3.5-4 mi (E)", "6 mi E", "10-12 mi E") and no 5K row names a progression
+ * LR. 10K beginners stay plain too — §"10K — Beginner" longs are "E with
+ * optional walk breaks" and its key workouts carry no progression LR — which
+ * the `!baseBuilding` gate at the call site enforces (a stated 'beginner'
+ * level IS a base-building plan, `isBaseBuildingPlan`).
+ *
+ * Bound by `LONGRUN.tenk-progression` in lib/doctrine/registry.ts, which reads
+ * the 2 out of the sample-week cell rather than trusting this copy.
+ */
+export const TENK_PROGRESSION_FINISH_MI = 2;
 
 // Exported for lib/plan/block-preview.ts (the pre-recovery-complete block-shape
 // preview) — it must call this SAME function rather than re-deriving BLOCK_SHAPE
@@ -2503,8 +2655,18 @@ export function taperMpDose(
  *   QUALITY 3rd-from-last:          30% @ {M  | MP}
  *   earlier QUALITY / BASE / TAPER: null
  *
- * 5K/10K (racePaceTag null) → null everywhere · they train via reps, not
- * long-run pace inserts.
+ * 5K (racePaceTag null) → null everywhere · 5Ks train via reps, not long-run
+ * pace inserts: every long run in Research/22's three 5K rows is plain E
+ * ("3.5-4 mi (E)", "6 mi E", "10-12 mi E"). Ultra likewise (see racePaceTag).
+ *
+ * 10K (racePaceTag null) · VARIETY-10K-1 (2026-08-28) · the 10K is NOT plain:
+ * `Research/22` §"10K — Intermediate" names "progression LR" among Key workout
+ * types and its sample peak week states the dose — "9-10 mi E w/ last 2 mi
+ * @ M". That is `Research/04` §4.3's progression long run ("Frequency | Every
+ * 2–3 weeks in specific phase"), expressed as the fixed two-mile M tail the
+ * sample states rather than the marathon-sized fractions above. The caller
+ * passes `tenKProgression` only when the plan is a non-beginner 10K, and the
+ * cadence flag it passes is already scoped to the race-specific phase.
  */
 function longFinishSegment(
   phase: string,
@@ -2514,8 +2676,23 @@ function longFinishSegment(
    *  week. Only the RACE-SPECIFIC arm consults it; the QUALITY warm-in ramp is
    *  three weeks long and already a cadence of its own. */
   cadenceWeek: boolean = true,
-): { pct: number; tag: 'HM' | 'M' | 'MP'; kind: LongRunKind } | null {
-  if (!racePaceTag) return null;
+  /** VARIETY-10K-1 · true only when this is a 10K plan that trains a
+   *  progression LR (non-beginner) AND the week is a race-specific cadence
+   *  week (`racePaceLongThisWeek`, same rhythm as §4.4/§4.5 — §4.3 states the
+   *  identical "Every 2–3 weeks in specific phase"). Encodes the phase test,
+   *  so this function adds none of its own. */
+  tenKProgression: boolean = false,
+): { pct: number; fixedMi?: number; tag: 'HM' | 'M' | 'MP'; kind: LongRunKind } | null {
+  if (!racePaceTag) {
+    // VARIETY-10K-1 · Research/22 §"10K — Intermediate": "9-10 mi E w/ last
+    // 2 mi @ M". Fixed miles, not a fraction — TENK_PROGRESSION_FINISH_MI is
+    // the doc's own 2, so `finishRawMi` takes it verbatim (still bounded by
+    // the week's M-pace dose budget, like every race-pace finish).
+    if (tenKProgression) {
+      return { pct: 0, fixedMi: TENK_PROGRESSION_FINISH_MI, tag: 'M', kind: 'progression' };
+    }
+    return null;
+  }
   // Research/22 §3 Advanced peak week: "16mi LR w/ last 8mi @ HMP" = 50%.
   // §4 Marathon peaks at 64-70%; Research/00a §fast-finish says 10-25% (general principle).
   // 0.50 targets the §22 minimum for the race-specific phase; QUALITY ramp (0.30→0.33→0.33)
@@ -3157,7 +3334,25 @@ function layoutWeek({
   // pre-2026-08-25 wording — so a composer that does not pass the flag is
   // byte-identical. Only an explicit `false` changes a sentence.
   const taperMpAtGoalPace = weekMpAtGoalPace !== false;
-  const finishSeg = longFinishSegment(phase, weeksToPhaseEnd, racePaceTag, racePaceLongWeek);
+  // VARIETY-10K-1 · the 10K's §4.3 progression LR rides the SAME cadence flag
+  // (§4.3's "Every 2–3 weeks in specific phase" is byte-identical to §4.4/§4.5's
+  // rhythm) but cannot reuse `racePaceLongWeek`, which requires a race-pace tag
+  // the 10K deliberately does not have. Beginners excluded — Research/22
+  // §"10K — Beginner" longs are "E with optional walk breaks", no progression
+  // LR row. Off-cadence and non-race-specific weeks stay plain, as does every
+  // TAPER week (the flag is scoped to RACE-SPECIFIC).
+  //
+  // The week's quality mix is NOT thinned on the weeks this lands, and that is
+  // Research/22's own call, not an oversight: the §"10K — Intermediate" sample
+  // peak week runs the T session (Tue), the I session (Thu) AND the "last 2 mi
+  // @ M" long (Sat) in the same seven days. §4.3's "don't pair with other
+  // quality work" contraindication describes its full-size shape ("final 1/4
+  // to 1/3 at M to T" — 3-4 mi of it on a 16-miler); the two-mile M tail is
+  // the smaller session the sample week prescribes alongside both, and it
+  // spends the M budget, which neither structured slot touches.
+  const tenKProgressionWeek = cat === '10k' && !baseBuilding
+    && phase === 'RACE-SPECIFIC' && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN);
+  const finishSeg = longFinishSegment(phase, weeksToPhaseEnd, racePaceTag, racePaceLongWeek, tenKProgressionWeek);
   // DOCTRINE-DOSING-2 · the long-run finish is a DOSE, and it was never charged
   // to one. A half of the long run at marathon pace is marathon-pace mileage —
   // `dosePaceOf` reads it as M, `splitDay` counts its miles as hard — but the
@@ -3180,8 +3375,11 @@ function layoutWeek({
   const finishBudgetMi = finishPace
     ? weeklyDoseBudgetMi(weeklyMi, finishPace, weekDoseContext)
     : Infinity;
+  // VARIETY-10K-1 · a finish that states its miles outright (`fixedMi` — the
+  // 10K's "last 2 mi @ M") takes them verbatim; the fraction-sized rows keep
+  // their share of the long. Both stay bounded by the week's dose budget.
   const finishRawMi = finishSeg
-    ? Math.min(Math.round(longMi * finishSeg.pct), Math.floor(finishBudgetMi * 2) / 2)
+    ? Math.min(finishSeg.fixedMi ?? Math.round(longMi * finishSeg.pct), Math.floor(finishBudgetMi * 2) / 2)
     : 0;
   // DOCTRINE-DOSING-2 · a race-pace finish the week cannot afford is not run at
   // all, rather than run as a fragment.
@@ -3299,12 +3497,23 @@ function layoutWeek({
     // QUAL-PHASE-STABLE placement below can inspect both parities and anchor the days to the more
     // gap-demanding one — keeping the runner's training WEEKDAYS fixed while the workout TYPE rotates.
     const qualityTypesFor = (wi: number): Array<DayPlan['type']> => baseBuilding
-      // Base-building (beginner): a single LIGHT tempo/fartlek in the sharpen
-      // phase only; BASE weeks are pure easy + strides + long. No structured
-      // I/R reps — Research/22 §Beginner (Higdon Novice / Mayo). Sized small
-      // below (the 3mi tempo floor is lifted for base-building).
+      // Base-building (beginner): a LIGHT surge fartlek in the sharpen phase
+      // (the `tempo` slot) — BASE weeks are pure easy + strides + long, no
+      // structured I/R reps — Research/22 §Beginner (Higdon Novice / Mayo).
+      // Sized small below (the 3mi tempo floor is lifted for base-building).
+      //
+      // VARIETY-BEGIN-1 (2026-08-28) · the SECOND day is §8.2's light hills,
+      // on the `intervals` type — DOCTRINE-BASE-2's own convention for a
+      // rep-shaped speed day ("the engine's existing rep-shaped day... nothing
+      // here needs a new day type"). Two entries also close the two-identical-
+      // days defect at the type level: the fill's `types[i % length]` now
+      // alternates instead of cloning, and DOCTRINE-DOSING-2's one-session-
+      // per-pace-family rule holds (the fartlek doses T, the hills day doses
+      // its own family) instead of running two T days. A one-quality-day week
+      // (3-day runners) takes the list's head — the surge fartlek — exactly
+      // as before.
       ? ( phase === 'TAPER' ? ['race_week_tuneup']
-        : (phase === 'QUALITY' || phase === 'RACE-SPECIFIC') ? ['tempo']
+        : (phase === 'QUALITY' || phase === 'RACE-SPECIFIC') ? ['tempo', 'intervals']
         : [] )
       // DOCTRINE-BASE-2 · one slot in BASE, from §15's base row. See
       // `baseQualityTypes` above for the frequency and the two Research/00b
@@ -3455,17 +3664,19 @@ function layoutWeek({
     // fast-finish week, and enumerating a third exception is how the trap stays
     // open. Deriving the count closes it for every mix.
     //
-    // BASE-BUILDING IS EXEMPT, and the reason is a defect rather than doctrine.
-    // Its mix is `['tempo']` on two quality days — two light fartleks, which
-    // §5.2's "1×/week" would rather see as one. But collapsing the second into
-    // an easy day moves enough mileage on a true-beginner ramp to breach the
-    // validator's own 50% week-over-week volume limit (16 archetypes,
-    // `5k/beginner/f6/m0/L0-3` among them). Trading a frequency nuance for a
-    // structural ramp violation is a worse plan, and re-sizing the beginner
-    // ramp is not this workstream's to do. The dose itself is not the problem:
-    // a 5×1 min surge set is ~0.6 mi at T, so two of them sit far inside
-    // Daniels' 10% on any week a beginner runs, and `applyDosingCaps` holds the
-    // cap regardless. Recorded as open rather than papered over.
+    // BASE-BUILDING IS EXEMPT, and the exemption's history matters. Its mix
+    // used to be `['tempo']` on two quality days — two IDENTICAL light
+    // fartleks — which this pass would rather have collapsed to one, but
+    // collapsing the second into an easy day moves enough mileage on a
+    // true-beginner ramp to breach the validator's own 50% week-over-week
+    // volume limit (16 archetypes, `5k/beginner/f6/m0/L0-3` among them), so
+    // the day count was pinned to the runner's quality days and the
+    // two-identical-days defect was recorded as open.
+    // VARIETY-BEGIN-1 (2026-08-28) · that defect is closed at the TYPE level:
+    // the beginner mix is now `['tempo', 'intervals']` — surge fartlek +
+    // §8.2's light hills — so the two expressions this arm chooses between
+    // agree (two types, two days) and the exemption stands only as the
+    // recorded guard against a future one-type mix reopening the ramp trap.
     // DOCTRINE-BASE-2 · NO types means NO days, and the `Math.max(1, …)` floor
     // below cannot say that. This pass used to be skipped wholesale on BASE
     // weeks, so an empty type list never reached it; now that BASE places a
@@ -4212,13 +4423,29 @@ function layoutWeek({
         // PROGRESSION-1 · the trajectory's rendered shape when it owns this
         // slot, the fixed catalog string when it does not (unparseable seed,
         // no pace anchor, or a composer that passes no trajectory at all).
-      : qt === 'intervals'        ? (step?.label ?? rxSized?.prescription ?? rx.intervals)
+      // VARIETY-BEGIN-1 · the beginner's second structured day: §8.2's light
+      // hills ("start 8, build to 16" · 10-30 s · walk-down recovery), typed
+      // `intervals` per DOCTRINE-BASE-2's rep-shaped-day convention. The word
+      // "hill" routes `buildWorkoutSpec` to the by-effort rep spec (§8.1
+      // prescribes hills by effort — a pace is unreachable on a grade).
+      : qt === 'intervals'        ? (baseBuilding
+                                      ? `${Math.max(1.5, Math.round(qualityMiEach * 10) / 10)}mi E w/ ${beginnerHillReps(phase)}×${BEGINNER_HILL_SURGE_S}s light hill surges · walk-down rec`
+                                      : (step?.label ?? rxSized?.prescription ?? rx.intervals))
       : qt === 'threshold'        ? (step?.label ?? rxSized?.prescription ?? rx.threshold)
       : qt === 'tempo'            ? (baseBuilding
-                                      // Beginner sharpen day = a light fartlek: an easy run with a
-                                      // few short surges at T effort, sized to the runner (no 3mi
-                                      // tempo floor). Research/22 §Beginner ("2.5mi E w/ 4×1 min @ T").
-                                      ? `${Math.max(1.5, Math.round(qualityMiEach * 10) / 10)}mi E w/ 5×1 min surges @ T effort`
+                                      // VARIETY-BEGIN-1 · beginner structured days: a light surge
+                                      // fartlek whose dose WALKS (4×1 → 6×1 → 6×2 · Research/00b
+                                      // §"Marathon Recovery" wk3 "4-6× 1 min", Research/22
+                                      // §"5K — Beginner" "4×1 min @ T", §"10K — Beginner" peak
+                                      // "6×2 min fartlek") on the first day, and §8.2's light
+                                      // hills ("start 8, build to 16" · by effort, walk-down
+                                      // recovery) on the second. Sized to the runner (no 3mi
+                                      // tempo floor); both labels carry the rep geometry, so
+                                      // `parseTimeReps` builds the spec the label promises. The
+                                      // "· 1 min jog" is the 10K row's own "1 min on / 1 min off".
+                                      ? (({ reps, minutes }) =>
+                                          `${Math.max(1.5, Math.round(qualityMiEach * 10) / 10)}mi E w/ ${reps}×${minutes} min surges @ T effort · 1 min jog`
+                                        )(beginnerSurgeDose(phase, weeksToPhaseEnd, weeklyMi))
                                       // DOCTRINE-VOCAB-1 · the family entry for a tempo slot is a
                                       // PHRASE ("continuous wave tempo · ±10 s/mi around T"); the
                                       // sizing in front of it is the caller's, exactly as for rx.tempo.
@@ -4367,6 +4594,17 @@ function layoutWeek({
           ? (taperMpAtGoalPace
               ? 'Race pace, not faster. This is a rehearsal, not a test.'
               : 'Marathon effort at the fitness you have shown, not goal pace. Not faster. This is a rehearsal, not a test.')
+        // VARIETY-BEGIN-1 · a beginner's structured days are a surge fartlek
+        // and a light-hills day, never a continuous block or a paced rep set —
+        // "continuous tempo block" over a surge session is the label/spec
+        // drift in note form, and "hold pace, even splits" is exactly wrong on
+        // a hill (§8.1 prescribes hills by effort). §8.2's own rows supply the
+        // hills wording (walk back, controlled); §9.1's fartlek family is
+        // play, not a test. Before the generic type notes, or they never fire.
+        : (baseBuilding && effectiveType === 'tempo')
+          ? 'Easy running with short surges at T effort. Relaxed pickups, full jog between. Not a test.'
+        : (baseBuilding && effectiveType === 'intervals')
+          ? 'Easy running with short uphill pickups. Strong but controlled, walk back down. Form over force.'
         : effectiveType === 'intervals'        ? 'WU 1.5mi, reps, CD 1mi. Hold pace, even splits.'
         : effectiveType === 'threshold'        ? 'WU 1.5mi, threshold reps, CD 1mi. Comfortably hard.'
         : effectiveType === 'tempo'            ? 'WU, continuous tempo block, CD. Just below threshold.'
@@ -4530,13 +4768,22 @@ function layoutWeek({
   // notes — which is what the race-week shakeout did — produces a row that
   // promises strides over a spec that has none, and a watch that runs a flat jog.
   // Distance is untouched: Research/04:349 "Not a workout".
+  // DOCTRINE-STRIDES-2 (2026-08-28) · the rep count is the PHASE's, not a
+  // constant. §7.2's "| Reps | 4–8 |" is a band, and the engine sat at 6
+  // forever: band floor in BASE, mid-band through QUALITY, band top by
+  // RACE-SPECIFIC, and back to the familiar mid-band 6 in the TAPER
+  // (Research/08 §9.1 "Add no novel workout types" — eight reps for the first
+  // time in race week would be the novelty that rule names). The progression
+  // lives in `strideRepsForPhase` (spec-builder), bound by
+  // `STRIDES.rep-progression` in the doctrine registry.
+  const strideReps = strideRepsForPhase(phase);
   {
     let strideDays = 0;
     for (let d = 0; d < 7 && strideDays < STRIDE_DAYS_PER_WEEK; d++) {
       const s = slots[d];
       if (!s || s.type !== 'easy' || s.distanceMi <= 0) continue;
-      s.subLabel = `EASY · ${STRIDE_DEFAULT_REPS}×${STRIDE_DURATION_S}s strides`;
-      s.notes = `${s.notes} Finish with ${STRIDE_DEFAULT_REPS} relaxed ${STRIDE_DURATION_S}-second strides, full recovery between.`;
+      s.subLabel = `EASY · ${strideReps}×${STRIDE_DURATION_S}s strides`;
+      s.notes = `${s.notes} Finish with ${strideReps} relaxed ${STRIDE_DURATION_S}-second strides, full recovery between.`;
       strideDays++;
     }
   }
@@ -4655,14 +4902,17 @@ function layoutWeek({
           slots[d]!.distanceMi = Math.max(0, Math.round(give * 10) / 10);
           left = Math.round((left - slots[d]!.distanceMi) * 10) / 10;
         });
+        // DOCTRINE-STRIDES-2 · re-render at the same phase count the stride
+        // pass above used, so promoting the day to MEDIUM-LONG cannot silently
+        // reset its strides to the old fixed 6.
         const strides = (slots[pick]!.subLabel ?? '').includes('strides')
-          ? ` · ${STRIDE_DEFAULT_REPS}×${STRIDE_DURATION_S}s strides`
+          ? ` · ${strideReps}×${STRIDE_DURATION_S}s strides`
           : '';
         slots[pick]!.subLabel = `MEDIUM-LONG${strides}`;
         slots[pick]!.notes =
           'Easy to steady. Aerobic strength under fatigue, without the cost of a long run. '
           + 'Let the last few miles drift up if they want to.'
-          + (strides ? ` Finish with ${STRIDE_DEFAULT_REPS} relaxed ${STRIDE_DURATION_S}-second strides, full recovery between.` : '');
+          + (strides ? ` Finish with ${strideReps} relaxed ${STRIDE_DURATION_S}-second strides, full recovery between.` : '');
       }
     }
   }
@@ -8779,7 +9029,15 @@ function trimSessionDose(
   //     jog", "6×90s hills"). Reps come off before anything else — doctrine's
   //     own affordability cut does the same, and for the same reason: fewer
   //     reps of the stated length is still the stated workout.
-  const reps = label.match(/^(\s*)(\d+)(\s*[×xX])/);
+  //
+  //     SPECFIRST-1's lesson, applied here (2026-08-28) · the count is not
+  //     always at the front. This matched `/^(\s*)(\d+)(\s*[×xX])/` —
+  //     anchored — so a label that opens with the day's MILEAGE ("2mi E w/
+  //     6×2 min surges @ T effort") had NO trim lever at all: the cap pass
+  //     found the day, called this function, and nothing moved. The count is
+  //     the first `N×` followed by a rep SIZE (a digit), exactly the matcher
+  //     expand-spec already uses for the same reconciliation.
+  const reps = label.match(/(^|[^0-9])(\d+)(\s*[×xX])(?=\d)/);
   if (reps) {
     let n = parseInt(reps[2], 10);
     let cur = label;
@@ -8797,7 +9055,10 @@ function trimSessionDose(
       // is what the gate will see.
       while (n > 1 && now > targetMi + 0.05) {
         n--;
-        cur = cur.replace(/^(\s*)\d+(\s*[×xX])/, `$1${n}$2`);
+        // The same unanchored matcher as above — rewriting only an anchored
+        // leading count here is how a mileage-led label kept its six reps
+        // while the loop counted down to one beside it.
+        cur = cur.replace(/(^|[^0-9])\d+(\s*[×xX])(?=\d)/, `$1${n}$2`);
         day.subLabel = cur;
         now = measure(day);
       }
@@ -9001,7 +9262,18 @@ function resizeMpSession(day: DayPlan, totalMi: number): void {
  * unit §4.6 states its placement in.
  */
 function authorDressRehearsal(composed: ComposePlanResult, raceDistanceMi: number): void {
-  if (distanceCategoryOf(raceDistanceMi) !== 'm') return;
+  // VARIETY-HMDR-1 (2026-08-28) · §4.6's Distance row names TWO races —
+  // "18–22 mi (marathon); 12–14 mi (HM)" — and this pass honoured only the
+  // first: `!== 'm'` returned early and a half build shipped with no fueling/
+  // kit/timing rehearsal at all. The half now runs the same pass with its own
+  // band; everything else — the three-weeks-out slot (§4.6 "3 weeks
+  // pre-marathon; before taper begins", which for the half's shorter 10-14
+  // day taper is likewise before the taper opens · Research/08 §9.1), the
+  // MP-segment dose, the affordability pricing, the post-race softening — is
+  // shared, because the doc states one session with two sizes.
+  const drCat = distanceCategoryOf(raceDistanceMi);
+  if (drCat !== 'm' && drCat !== 'hm') return;
+  const drTotalBand = drCat === 'hm' ? DRESS_REHEARSAL.hmTotalMiBand : DRESS_REHEARSAL.totalMiBand;
   const raceISO = raceDayISO(composed);
   if (!raceISO) return;
   for (const w of composed.weeks) {
@@ -9010,8 +9282,9 @@ function authorDressRehearsal(composed: ComposePlanResult, raceDistanceMi: numbe
     if (!long) continue;
     const daysToRace = daysBetween(dowDateInWeek(w.startISO, long.dow), raceISO);
     if (!isDressRehearsalSlot(daysToRace)) continue;
-    // A long that already carries race pace is §4.4's session sitting in this
-    // slot. It is not upgraded and it is not doubled: the cadence put it there.
+    // A long that already carries race pace is §4.4's session (or, on a half,
+    // §4.5's fast finish) sitting in this slot. It is not upgraded and it is
+    // not doubled: the cadence put it there.
     if (splitDay(long).qualityMi > 0) return;
     // AFFORDABILITY, BEFORE AUTHORING. `applyIntensityFloor` runs after this
     // and gives surplus hard miles back by shrinking exactly this segment, so a
@@ -9044,7 +9317,7 @@ function authorDressRehearsal(composed: ComposePlanResult, raceDistanceMi: numbe
       const gap = daysBetween(e.date, dowDateInWeek(w.startISO, long.dow));
       return gap > 0 && gap <= postRaceNoQualityDays(e.distanceMi, e.priority);
     });
-    const dose = dressRehearsalDose(long.distanceMi, budgetMi, FAST_FINISH_MIN_MI, inPostRaceWindow);
+    const dose = dressRehearsalDose(long.distanceMi, budgetMi, FAST_FINISH_MIN_MI, inPostRaceWindow, drTotalBand);
     if (!dose) return;
     long.longRunKind = 'dress_rehearsal';
     long.subLabel = `LONG · ${dose.mpMi}mi @ MP`;

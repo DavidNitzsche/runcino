@@ -109,9 +109,13 @@ describe('DOCTRINE-TID-1 · easy/hard intensity distribution', () => {
     // unchanged and is the one this test was written for: a long that DOES
     // carry a finish must not have been trimmed below the dose doctrine states.
     //
-    // 5K, 10K and ultra are not usable here: longFinishSegment returns null for
-    // them by design — those distances train race pace through reps, not
-    // long-run inserts — so they have no finish to preserve either way.
+    // 5K and ultra are not usable here: longFinishSegment returns null for
+    // them by design — those distances train race pace through reps (5K) or
+    // time-on-feet (ultra), not long-run inserts — so they have no finish to
+    // preserve either way. VARIETY-10K-1 (2026-08-28) · the 10K now carries a
+    // FIXED two-mile progression tail (Research/22 §"10K — Intermediate"
+    // "last 2 mi @ M"), sized at §4.5's own floor by construction, so it has
+    // nothing for this pct-sized-finish preservation test to measure either.
     const r = buildSimPlan({
       ...base, goalMode: 'goal', distance: 'half', experienceLevel: 'intermediate',
       weeklyMileageBucket: 35, weeklyFrequency: 5, planWeeks: 14,
@@ -121,10 +125,23 @@ describe('DOCTRINE-TID-1 · easy/hard intensity distribution', () => {
     if (!r.ok) return;
     let checked = 0;
     let offCadence = 0;
+    let rehearsals = 0;
     for (const w of r.composed.weeks) {
       if (w.phase !== 'RACE-SPECIFIC' || w.isRaceWeek) continue;
       const long = w.days.find((d) => d.isLong && d.type === 'long');
       if (!long) continue;
+      // VARIETY-HMDR-1 (2026-08-28) · §4.6's dress rehearsal now exists for
+      // the half and lands three weeks out — the off-cadence race-specific
+      // week in a standard block. It is its own long-run row (LONGRUN-ROWS-1),
+      // not §4.5's cadence finish and not a plain long; its MP segments carry
+      // the same two-mile doctrine floor as any race-pace segment.
+      if (long.longRunKind === 'dress_rehearsal') {
+        const dm = String(long.subLabel).match(/(\d+(?:\.\d+)?)mi @ MP\b/);
+        expect(dm, `rehearsal label is malformed: "${long.subLabel}"`).toBeTruthy();
+        expect(Number(dm![1])).toBeGreaterThanOrEqual(2);
+        rehearsals++;
+        continue;
+      }
       const m = String(long.subLabel).match(/(\d+(?:\.\d+)?)mi @ (?:HM|MP|M)\b/);
       if (!m) {
         // Off-cadence week · Research/04 §4.5. It must be a PLAIN long, not a
@@ -154,8 +171,10 @@ describe('DOCTRINE-TID-1 · easy/hard intensity distribution', () => {
       checked++;
     }
     expect(checked).toBeGreaterThan(0);
-    // And the cadence is real in this archetype, not a vacuous pass.
-    expect(offCadence).toBeGreaterThan(0);
+    // And the cadence is real in this archetype, not a vacuous pass: the week
+    // §4.5 leaves alone exists, running plain or carrying §4.6's one
+    // controlled rehearsal (VARIETY-HMDR-1).
+    expect(offCadence + rehearsals).toBeGreaterThan(0);
   });
 
   it('the marathon keeps marathon-pace long runs after the correction', () => {

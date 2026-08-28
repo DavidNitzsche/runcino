@@ -83,6 +83,44 @@ export const STRIDE_DEFAULT_REPS = 6;
  */
 export const STRIDE_DAYS_PER_WEEK = 2;
 
+/**
+ * DOCTRINE-STRIDES-2 (2026-08-28) · the rep count walks §7.2's band with the
+ * block instead of freezing at the middle of it.
+ *
+ * §7.2's Reps row is a BAND — "| Reps | 4–8 |" — and `Research/00a`
+ * §"Practical base-building rules" states the same band ("| Strides preserved
+ * | 4–8×100 m strides 1–2×/wk maintain neuromuscular function |"). The engine
+ * pinned every week of every plan at the mid-band 6: the one prescription in
+ * the whole plan that never moved, from week one of BASE to race week. A band
+ * is an opening dose and a ceiling, not a single number — the shape §8.2
+ * states outright for its own rep band ("Reps | 8–16 (start 8, build to 16)").
+ *
+ * So the count opens at the band FLOOR in BASE, sits mid-band through
+ * QUALITY, and reaches the band TOP in RACE-SPECIFIC. The TAPER steps back to
+ * the mid-band dose the block has been running for weeks: `Research/08` §9.1's
+ * taper rules — "The largest cut is to easy mileage; intensity is preserved
+ * through the taper." and "Add no novel workout types. Anything new in the
+ * final 10 days creates fatigue without adaptation." — keep the strides (they
+ * are the preserved intensity) and rule out arriving at a first-ever eight-rep
+ * set in race week (that would be the novelty). Six is the familiar dose.
+ *
+ * Bound by `STRIDES.rep-progression` in lib/doctrine/registry.ts, which reads
+ * §7.2's band out of the table and checks every value in this map against it,
+ * and checks the taper value is one the block has already run.
+ */
+export const STRIDE_REPS_BY_PHASE: Readonly<Record<string, number>> = {
+  BASE: 4,
+  QUALITY: STRIDE_DEFAULT_REPS,
+  'RACE-SPECIFIC': 8,
+  TAPER: STRIDE_DEFAULT_REPS,
+};
+
+/** The §7.2 rep count for a phase. Unknown phases (maintenance, injury) keep
+ *  the mid-band default, byte-identical to before the progression existed. */
+export function strideRepsForPhase(phase: string | null | undefined): number {
+  return STRIDE_REPS_BY_PHASE[String(phase ?? '')] ?? STRIDE_DEFAULT_REPS;
+}
+
 /** Convert a metre-expressed stride ("6×80m") into the seconds the watch counts
  *  down. §7.2 gives both units for the same thing — 100 m and 20 s are the same
  *  stride — so either form of the prescription lands in the same spec. */

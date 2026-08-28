@@ -59,6 +59,19 @@ function hasStructuredReps(subLabel: string | null | undefined): boolean {
   return DIST_REP.test(subLabel) || I_R_ZONE.test(subLabel);
 }
 
+/**
+ * VARIETY-BEGIN-1 (2026-08-28) · the beginner's second structured day is
+ * Research/04 §8.2's LIGHT HILLS — "Nmi E w/ 8×20s light hill surges ·
+ * walk-down rec" — typed `intervals` (DOCTRINE-BASE-2's rep-shaped-day
+ * convention, the same one BASE-phase speed days already use) and run BY
+ * EFFORT with no pace target. Research/22 §"10K — Beginner" lists "light
+ * hills" among its own Key workout types, so this is base-building vocabulary,
+ * not the I/R machine this invariant fences off. Exempted by its label the
+ * same way the light fartlek is; a real I/R leak — distance reps, an I or R
+ * zone tag — still fires through DIST_REP / I_R_ZONE below.
+ */
+const LIGHT_HILL_SURGES = /\d+\s*[×x]\s*\d+\s*s\s+light\s+hill\s+surges/i;
+
 /** Type-level rep markers: a 'intervals' day is by definition VO2/I-pace rep work. */
 function isRepType(type: string): boolean {
   return type === 'intervals';
@@ -173,7 +186,10 @@ function repWorkdays(result: ComposePlanResult): Array<{ week: number; dow: numb
       // Race-week tune-up / shakeout are universal race rehearsals, not I/R
       // training — excluded from the structured-rep scope (see TUNEUP_TYPES note).
       if (TUNEUP_TYPES.has(d.type)) continue;
-      if (isRepType(d.type) || hasStructuredReps(d.subLabel)) {
+      // VARIETY-BEGIN-1 · the beginner light-hills day rides the `intervals`
+      // type but is by-effort base-building vocabulary, not I/R rep work.
+      const lightHills = LIGHT_HILL_SURGES.test(d.subLabel ?? '');
+      if ((isRepType(d.type) && !lightHills) || hasStructuredReps(d.subLabel)) {
         out.push({ week: wi, dow: d.dow, type: d.type, subLabel: d.subLabel, phase: w.phase });
       }
     }

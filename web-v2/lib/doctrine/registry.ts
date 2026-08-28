@@ -184,6 +184,13 @@ import {
   BASE_REBUILT_SHARE,
   BASE_QUALITY_TYPES,
   FAST_FINISH_MIN_MI,
+  TENK_PROGRESSION_FINISH_MI,
+  BEGINNER_SURGE_REPS_BAND,
+  BEGINNER_SURGE_MINUTES_BAND,
+  beginnerSurgeDose,
+  BEGINNER_HILL_SURGE_S,
+  BEGINNER_HILL_REPS_BAND,
+  beginnerHillReps,
   QUALITY_LOOKBACK_DAYS,
   qualityLookbackDays,
   RACE_RUNUP_DAYS,
@@ -232,6 +239,8 @@ import {
   STRIDE_RECOVERY_S,
   STRIDE_DEFAULT_REPS,
   STRIDE_DAYS_PER_WEEK,
+  STRIDE_REPS_BY_PHASE,
+  strideRepsForPhase,
   buildWorkoutSpec,
   marathonPaceSPerMi,
 } from '@/lib/plan/spec-builder';
@@ -663,10 +672,12 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     anchor: '### 4.6 Dress rehearsal long run',
     claim:
       'The dress rehearsal is its own long-run row, not a fast finish. It is 18-22 mi for a ' +
-      'marathoner, it carries 4-8 mi at marathon pace inside an easy bulk, it lands three weeks ' +
+      'marathoner and 12-14 mi for a half marathoner — the Distance row states BOTH races — ' +
+      'it carries 4-8 mi at marathon pace inside an easy bulk, it lands three weeks ' +
       'before the race, and its own contraindication row says it is not a fitness test. The ' +
       'engine must place it where the doc places it, dose it inside the band the doc states, ' +
-      'and never size it above that band however long the run is.',
+      'never size it above that band however long the run is, and carry BOTH distance bands ' +
+      '— until 2026-08-28 it authored only the marathon\'s and the half had no rehearsal at all.',
     check({ cite }) {
       const t = cite.table();
       // 1 · placement, in the doc's own words.
@@ -677,12 +688,26 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           `DRESS_REHEARSAL.daysBeforeRace = ${DRESS_REHEARSAL.daysBeforeRace}, doctrine says "${when}"`,
         );
       }
-      // 2 · the marathon distance band, read off the Distance row (which states
-      //     the HM band after it in parentheses-free prose, so take the first).
-      const distBand = parseBand(t.cell('Distance', 'Prescription').split(';')[0]);
+      // 2 · the marathon distance band, read off the Distance row's first
+      //     half; the half marathon's is the second half of the same row —
+      //     "18–22 mi (marathon); 12–14 mi (HM)".
+      const distRow = t.cell('Distance', 'Prescription');
+      const distBand = parseBand(distRow.split(';')[0]);
       if (DRESS_REHEARSAL.totalMiBand[0] !== distBand[0] || DRESS_REHEARSAL.totalMiBand[1] !== distBand[1]) {
         throw new Error(
           `DRESS_REHEARSAL.totalMiBand = ${DRESS_REHEARSAL.totalMiBand.join('-')}, doctrine says ${distBand.join('-')}`,
+        );
+      }
+      const hmHalf = distRow.split(';')[1];
+      if (!hmHalf || !/HM|half/i.test(hmHalf)) {
+        throw new Error(
+          `§4.6's Distance row no longer states an HM band ("${distRow}") — the half's rehearsal loses its citation; re-read the section`,
+        );
+      }
+      const hmBand = parseBand(hmHalf);
+      if (DRESS_REHEARSAL.hmTotalMiBand[0] !== hmBand[0] || DRESS_REHEARSAL.hmTotalMiBand[1] !== hmBand[1]) {
+        throw new Error(
+          `DRESS_REHEARSAL.hmTotalMiBand = ${DRESS_REHEARSAL.hmTotalMiBand.join('-')}, doctrine says ${hmBand.join('-')}`,
         );
       }
       // 3 · the MP dose. The Pace row reads "Easy bulk + 2-3 segments at MP
@@ -706,6 +731,16 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (huge && huge.mpMi > mpBand[1]) {
         throw new Error(`dressRehearsalDose(40 mi) = ${huge.mpMi} mi at MP, over doctrine's ${mpBand[1]}`);
       }
+      // 4b · the same obedience for the half: a rehearsal in the middle of the
+      //      HM's own distance band doses inside the one MP band the Pace row
+      //      states, and an oversized long still cannot exceed its top.
+      const hmMid = dressRehearsalDose((hmBand[0] + hmBand[1]) / 2, 99, 2, false, DRESS_REHEARSAL.hmTotalMiBand);
+      if (!hmMid) throw new Error('dressRehearsalDose refuses the HM band midpoint');
+      within(hmMid.mpMi, mpBand, 'dressRehearsalDose at the HM distance-band midpoint');
+      const hmHuge = dressRehearsalDose(20, 99, 2, false, DRESS_REHEARSAL.hmTotalMiBand);
+      if (hmHuge && hmHuge.mpMi > mpBand[1]) {
+        throw new Error(`dressRehearsalDose(20 mi, HM band) = ${hmHuge.mpMi} mi at MP, over doctrine's ${mpBand[1]}`);
+      }
       // 5 · the slot is exactly one long run wide. Wider selects two, narrower
       //     selects none, and both are silent failures.
       const slots = [];
@@ -715,6 +750,66 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (!isDressRehearsalSlot(DRESS_REHEARSAL.daysBeforeRace)) {
         throw new Error('the dress-rehearsal window does not contain its own centre');
+      }
+    },
+  },
+  {
+    id: 'LONGRUN.tenk-progression',
+    binds: [
+      'lib/plan/generate.ts#TENK_PROGRESSION_FINISH_MI',
+      'lib/plan/generate.ts#longFinishSegment',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### 10K — Intermediate',
+    claim:
+      'A 10K build\'s long runs are not all plain. The 10K Intermediate template names the ' +
+      'progression LR among its Key workout types and its sample peak week states the dose: ' +
+      '"9-10 mi E w/ last 2 mi @ M" — a fixed two-mile marathon-pace tail, NOT the marathon ' +
+      'build\'s 30-50% fractions. Research/04 §4.3 gives the session its cadence ("Every 2-3 ' +
+      'weeks in specific phase"), the same rhythm racePaceLongThisWeek already walks. Before ' +
+      '2026-08-28 racePaceTag null meant a 10K plan\'s sixteen long runs were sixteen ' +
+      'identical easy runs. 5K long runs stay plain (every long in Research/22\'s three 5K ' +
+      'rows is E, and no 5K row names a progression LR), as do 10K beginners ("E with ' +
+      'optional walk breaks").',
+    check({ cite }) {
+      // The template still names the session.
+      const keyTypes = cite.table().cell('Key workout types', 'Value');
+      if (!/progression LR/i.test(keyTypes)) {
+        throw new Error(
+          `§"10K — Intermediate" no longer lists a progression LR ("${keyTypes}") — the 10K tail loses its citation; re-read the section`,
+        );
+      }
+      // The dose, read out of the sample week's own cell rather than restated.
+      const sample = cite.text().match(/last\s+(\d+(?:\.\d+)?)\s*mi\s*@\s*M\b/i);
+      if (!sample) {
+        throw new Error('§"10K — Intermediate" no longer states a "last N mi @ M" sample long — re-derive the tail dose');
+      }
+      if (TENK_PROGRESSION_FINISH_MI !== Number(sample[1])) {
+        throw new Error(
+          `TENK_PROGRESSION_FINISH_MI = ${TENK_PROGRESSION_FINISH_MI}, the sample week says "last ${sample[1]} mi @ M"`,
+        );
+      }
+      // §4.3's cadence still reads "every 2-3 weeks", the band MP_LONG_CADENCE_WEEKS
+      // sits in (that constant's own claim holds the value; this holds the citation).
+      const p43 = resolveCitation('Research/04-workout-vocabulary.md', '### 4.3 Progression long run');
+      const [cLo, cHi] = parseBand(p43.table().cell('Frequency', 'Prescription'));
+      if (2 < cLo || 2 > cHi) {
+        throw new Error(`§4.3's cadence is every ${cLo}-${cHi} weeks and no longer admits the engine's 2-week rhythm`);
+      }
+      // 5K stays plain: the claim's own negative half. If a 5K row starts
+      // naming a progression LR, this fix must be revisited, not assumed.
+      for (const lvl of ['Beginner', 'Intermediate', 'Advanced']) {
+        const five = resolveCitation('Research/22-plan-templates.md', `### 5K — ${lvl}`);
+        if (/progression LR/i.test(five.table().cell('Key workout types', 'Value'))) {
+          throw new Error(`§"5K — ${lvl}" now names a progression LR — the 5K's plain-long ruling needs re-reading`);
+        }
+      }
+      // And the fixed tail is at least the smallest legal race-pace segment,
+      // so it can never be authored and then zeroed by the finish floor.
+      if (TENK_PROGRESSION_FINISH_MI < FAST_FINISH_MIN_MI) {
+        throw new Error(
+          `TENK_PROGRESSION_FINISH_MI (${TENK_PROGRESSION_FINISH_MI}) is below FAST_FINISH_MIN_MI (${FAST_FINISH_MIN_MI}) — every tail would be authored and immediately zeroed`,
+        );
       }
     },
   },
@@ -3648,6 +3743,152 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         parseBand(baseRules.table().cell('Strides preserved', 'Application').split('strides')[1]),
         'STRIDE_DAYS_PER_WEEK (Research/00a base-building band)',
       );
+    },
+  },
+  {
+    id: 'STRIDES.rep-progression',
+    binds: [
+      'lib/plan/spec-builder.ts#STRIDE_REPS_BY_PHASE',
+      'lib/plan/spec-builder.ts#strideRepsForPhase',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 7.2 Strides',
+    claim:
+      'The stride count is a 4-8 band, and the engine walks it with the block instead of ' +
+      'freezing every plan at the middle: the band floor in BASE, mid-band through QUALITY, ' +
+      'the band top by RACE-SPECIFIC, and back to the familiar mid-band dose in the TAPER — ' +
+      'Research/08 §9.1 preserves intensity through the taper and forbids anything novel in ' +
+      'the final ten days, so the taper count must be one the block has already run, never a ' +
+      'first-ever dose. Every value the map can emit sits inside §7.2\'s own Reps row.',
+    check({ cite }) {
+      const band = parseBand(cite.table().cell('Reps', 'Prescription'));
+      for (const [phase, reps] of Object.entries(STRIDE_REPS_BY_PHASE)) {
+        within(reps, band, `STRIDE_REPS_BY_PHASE.${phase}`);
+      }
+      // The fallback for unknown phases must sit in-band too.
+      within(strideRepsForPhase('MAINTENANCE-OR-ANYTHING'), band, 'strideRepsForPhase fallback');
+      // The progression must actually progress: BASE opens at or below the
+      // QUALITY dose, which sits at or below the RACE-SPECIFIC dose.
+      if (!(STRIDE_REPS_BY_PHASE['BASE'] <= STRIDE_REPS_BY_PHASE['QUALITY']
+          && STRIDE_REPS_BY_PHASE['QUALITY'] <= STRIDE_REPS_BY_PHASE['RACE-SPECIFIC'])) {
+        throw new Error('the stride count no longer builds BASE → QUALITY → RACE-SPECIFIC');
+      }
+      if (STRIDE_REPS_BY_PHASE['BASE'] >= STRIDE_REPS_BY_PHASE['RACE-SPECIFIC']) {
+        throw new Error('the stride count is flat across the block again — the frozen-at-6 defect, one number over');
+      }
+      // Research/08 §9.1: "Add no novel workout types. Anything new in the
+      // final 10 days creates fatigue without adaptation." The taper dose must
+      // be one an earlier phase already ran.
+      const taper = STRIDE_REPS_BY_PHASE['TAPER'];
+      const earlier = [STRIDE_REPS_BY_PHASE['BASE'], STRIDE_REPS_BY_PHASE['QUALITY'], STRIDE_REPS_BY_PHASE['RACE-SPECIFIC']];
+      if (!earlier.includes(taper)) {
+        throw new Error(`the taper stride count (${taper}) is a dose no earlier phase ran — a novelty in the taper window`);
+      }
+      const taperRules = resolveCitation('Research/08-pacing-and-race-week.md', '### 9.1 Taper duration by distance');
+      if (!/no novel workout types/i.test(taperRules.text())) {
+        throw new Error('Research/08 §9.1 no longer states the no-novelty taper rule · re-read the claim');
+      }
+    },
+  },
+  {
+    id: 'BEGINNER.surge-progression',
+    binds: [
+      'lib/plan/generate.ts#BEGINNER_SURGE_REPS_BAND',
+      'lib/plan/generate.ts#BEGINNER_SURGE_MINUTES_BAND',
+      'lib/plan/generate.ts#beginnerSurgeDose',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### 5K — Beginner',
+    claim:
+      'The beginner\'s surge fartlek opens at the 5K-Beginner sample week\'s own dose ' +
+      '("4×1 min @ T effort"), climbs the rep count first (Research/00b\'s reverse-taper ' +
+      'ladder states the axis: "light fartlek (4-6× 1 min)"), and only then lengthens the ' +
+      'rep, arriving at the 10K-Beginner peak week\'s "6×2 min fartlek" by the end of the ' +
+      'race-specific phase. Before 2026-08-28 the string "5×1 min surges" was repeated ' +
+      'verbatim for every week of every beginner block — a dose that never moved.',
+    check({ cite }) {
+      // The opening dose, read out of the 5K-Beginner sample week.
+      const open = cite.text().match(/(\d+)\s*[×x]\s*(\d+)\s*min\s*@\s*T\b/i);
+      if (!open) throw new Error('§"5K — Beginner" no longer shows an "N×M min @ T" sample day — re-derive the opening dose');
+      const openDose = beginnerSurgeDose('QUALITY', 99);
+      if (openDose.reps !== Number(open[1]) || openDose.minutes !== Number(open[2])) {
+        throw new Error(
+          `the beginner surge block opens at ${openDose.reps}×${openDose.minutes} min; the 5K-Beginner sample opens it at ${open[1]}×${open[2]} min`,
+        );
+      }
+      // The peak dose, read out of the 10K-Beginner sample peak week.
+      const tenK = resolveCitation('Research/22-plan-templates.md', '### 10K — Beginner');
+      const peak = tenK.text().match(/(\d+)\s*[×x]\s*(\d+)\s*min\s*fartlek/i);
+      if (!peak) throw new Error('§"10K — Beginner" no longer shows an "N×M min fartlek" peak day — re-derive the peak dose');
+      const peakDose = beginnerSurgeDose('RACE-SPECIFIC', 0);
+      if (peakDose.reps !== Number(peak[1]) || peakDose.minutes !== Number(peak[2])) {
+        throw new Error(
+          `the beginner surge block peaks at ${peakDose.reps}×${peakDose.minutes} min; the 10K-Beginner peak week says ${peak[1]}×${peak[2]} min`,
+        );
+      }
+      // Research/00b's count band, and monotone total work: every step of the
+      // walk stays inside the bands and never sheds minutes mid-build.
+      const ladder = resolveCitation('Research/00b-recovery-protocols.md', '### Marathon Recovery (4-week reverse taper)');
+      const countBand = ladder.text().match(/fartlek\s*\((\d+)[–-](\d+)\s*[×x]\s*1\s*min/i);
+      if (!countBand) throw new Error('Research/00b no longer states the light-fartlek count band — re-read the claim');
+      if (BEGINNER_SURGE_REPS_BAND[0] !== Number(countBand[1]) || BEGINNER_SURGE_REPS_BAND[1] !== Number(countBand[2])) {
+        throw new Error(
+          `BEGINNER_SURGE_REPS_BAND = ${BEGINNER_SURGE_REPS_BAND.join('-')}, Research/00b says ${countBand[1]}-${countBand[2]}`,
+        );
+      }
+      let prevTotal = 0;
+      for (const [phase, wtpe] of [['QUALITY', 3], ['QUALITY', 2], ['QUALITY', 1], ['QUALITY', 0], ['RACE-SPECIFIC', 2], ['RACE-SPECIFIC', 1], ['RACE-SPECIFIC', 0]] as const) {
+        const d = beginnerSurgeDose(phase, wtpe);
+        within(d.reps, [BEGINNER_SURGE_REPS_BAND[0], BEGINNER_SURGE_REPS_BAND[1]], `beginnerSurgeDose(${phase},${wtpe}).reps`);
+        within(d.minutes, [BEGINNER_SURGE_MINUTES_BAND[0], BEGINNER_SURGE_MINUTES_BAND[1]], `beginnerSurgeDose(${phase},${wtpe}).minutes`);
+        const total = d.reps * d.minutes;
+        if (total < prevTotal) throw new Error(`the beginner surge dose walks backwards at ${phase}/${wtpe} (${total} < ${prevTotal} min)`);
+        prevTotal = total;
+      }
+      if (!(prevTotal > beginnerSurgeDose('QUALITY', 99).reps * beginnerSurgeDose('QUALITY', 99).minutes)) {
+        throw new Error('the beginner surge dose is flat across the block again — the frozen-dose defect');
+      }
+    },
+  },
+  {
+    id: 'BEGINNER.hill-day',
+    binds: [
+      'lib/plan/generate.ts#BEGINNER_HILL_SURGE_S',
+      'lib/plan/generate.ts#BEGINNER_HILL_REPS_BAND',
+      'lib/plan/generate.ts#beginnerHillReps',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 8.2 Short hill repeats (10–30 s)',
+    claim:
+      'The beginner\'s second weekly structured day is §8.2\'s light hills, not a second copy ' +
+      'of the surge fartlek — §15\'s base row places "hill sprints, occasional fartlek/light ' +
+      'hills" in the same phase and Research/22\'s 10K-Beginner row lists "light hills" among ' +
+      'its key workouts. The surge duration sits in §8.2\'s 10-30 s window, the rep count ' +
+      'opens at the row\'s own "start 8" and builds along its stated axis, and both values ' +
+      'stay inside the row\'s bands.',
+    check({ cite }) {
+      const t = cite.table();
+      within(BEGINNER_HILL_SURGE_S, parseBand(t.cell('Duration', 'Prescription')), 'BEGINNER_HILL_SURGE_S');
+      const repsBand = parseBand(t.cell('Reps', 'Prescription'));
+      if (BEGINNER_HILL_REPS_BAND[0] !== repsBand[0] || BEGINNER_HILL_REPS_BAND[1] !== repsBand[1]) {
+        throw new Error(
+          `BEGINNER_HILL_REPS_BAND = ${BEGINNER_HILL_REPS_BAND.join('-')}, §8.2 says ${repsBand.join('-')}`,
+        );
+      }
+      // "start 8, build to 16": opens at the band floor, builds, stays in-band.
+      if (!/start\s*8.*build/i.test(t.cell('Reps', 'Prescription'))) {
+        throw new Error('§8.2\'s Reps row no longer states the start-and-build axis · re-read the claim');
+      }
+      const opening = beginnerHillReps('QUALITY');
+      const built = beginnerHillReps('RACE-SPECIFIC');
+      if (opening !== repsBand[0]) throw new Error(`the beginner hill day opens at ${opening} reps; §8.2 says start ${repsBand[0]}`);
+      if (!(built > opening)) throw new Error('the beginner hill day never builds — §8.2\'s own axis is "start 8, build to 16"');
+      within(built, repsBand, 'beginnerHillReps(RACE-SPECIFIC)');
+      // §15 still places light hills in the base-building vocabulary.
+      const p15 = resolveCitation('Research/04-workout-vocabulary.md', '## 15. Training-cycle placement summary');
+      if (!/light hills/i.test(p15.table().cell('Base (8–12+ wks)', 'Primary workouts'))) {
+        throw new Error('§15\'s base row no longer names light hills · the beginner hill day loses its placement citation');
+      }
     },
   },
   {
