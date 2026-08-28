@@ -2998,16 +2998,6 @@ struct DailyForecast: Decodable {
     /// this over composing the range client-side · keeps surfaces in
     /// sync (web, iPhone, future watch).
     let window_label: String?
-    /// 2026-08-17 · doctrine-conformance audit, cluster 6. The ACSM/KSI
-    /// WBGT flag band ("neutral"/"warm"/"hot"/"extreme"), computed
-    /// server-side by lib/coach/heat-gate.ts heatBandForConditions — the
-    /// one heat taxonomy Research/06 §3 actually specifies. Replaces
-    /// HeatBand.from(tempF:) (J_CoachVerdict.swift), a dry-bulb-only
-    /// 60/75/85°F guess the backend names as retired: at 72°F the server
-    /// said "hot" and the phone said "warm" about the same run. nil when
-    /// humidity couldn't be resolved for this day — render no heat word,
-    /// never fall back to the dry-bulb guess.
-    let heat_band: String?
 }
 
 extension API {

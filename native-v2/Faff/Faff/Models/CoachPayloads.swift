@@ -92,10 +92,8 @@ struct RunRecap: Decodable {
     /// data is insufficient · iPhone hides the green check + win line
     /// and falls back to just the verdict.
     let win: String?
-    /// Heat-adjusted work-rep target (s/mi) for interval sessions · the
-    /// per-rep graph colours against this instead of the raw cold-weather
-    /// target so a hot-day rep isn't flagged as a miss. Null on non-interval
-    /// runs or when there's no target.
+    /// Unused. No UI reads this — reps grade against the plain prescribed
+    /// target only.
     let intervalsAdjustedTargetSPerMi: Int?
 
     /// E3 · THE PACE THE VERDICT WAS JUDGED AGAINST.

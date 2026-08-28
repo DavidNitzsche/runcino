@@ -49,10 +49,6 @@ struct HowItWentPanel: View {
     let detail: RunDetail?
     let accent: Color
     var onMesh: Bool = false
-    /// Heat-adjusted work-rep target (s/mi) from the recap · THE REPS
-    /// colours against the range [raw target → adjusted] so a rep that was
-    /// only a few seconds slow in heat isn't flagged as a miss.
-    var adjustedTargetSPerMi: Int? = nil
 
     var body: some View {
         switch effort {
@@ -63,7 +59,7 @@ struct HowItWentPanel: View {
         case .tempo:
             TempoPostPanel(detail: detail, accent: accent, onMesh: onMesh)
         case .intervals:
-            RepsPostPanel(detail: detail, accent: accent, onMesh: onMesh, adjustedTargetSPerMi: adjustedTargetSPerMi)
+            RepsPostPanel(detail: detail, accent: accent, onMesh: onMesh)
         case .race, .rest:
             EmptyView()
         }
@@ -919,8 +915,8 @@ private struct TempoPostPanel: View {
             let target = parsePaceSec(w.target_pace) ?? actualSec
             // Tone/on-target check stays in raw seconds-per-mile (the ≤3s
             // tolerance is a mile-calibrated threshold, unconverted — same
-            // reasoning as bucket()/HeatBand elsewhere: internal thresholds
-            // don't convert, only the displayed delta magnitude does).
+            // reasoning as bucket() elsewhere: internal thresholds don't
+            // convert, only the displayed delta magnitude does).
             let delta = actualSec - target
             let tone: HIWTone = abs(delta) <= 3 ? .good : (delta > 0 ? .warn : .good)
             // 2026-07-07 · units audit — displayed delta magnitude converts
@@ -961,15 +957,6 @@ private struct RepsPostPanel: View {
     let detail: RunDetail?
     let accent: Color
     var onMesh: Bool = false
-    var adjustedTargetSPerMi: Int? = nil
-
-    /// Slow edge of the acceptable range · the heat-adjusted target when it's
-    /// meaningfully slower than the prescribed one, else the prescribed target.
-    private var adjustedGoalSec: Int? {
-        guard let raw = targetSec else { return adjustedTargetSPerMi }
-        guard let adj = adjustedTargetSPerMi, adj > raw + 2 else { return raw }
-        return adj
-    }
 
     private var sectionBg: Color { onMesh ? Color.white.opacity(0.10) : Color(hex: 0xF6EFE2) }
     private var primaryText: Color { onMesh ? Color.white : Color(hex: 0x14110D) }
@@ -1004,16 +991,6 @@ private struct RepsPostPanel: View {
 
     private var targetMeta: String? {
         guard let t = targetSec else { return nil }
-        // Show the base target, what heat added, and the resulting slow edge —
-        // so the runner sees the prescribed pace and the heat's effect on it,
-        // not just a bare range.
-        if let adj = adjustedGoalSec, adj > t + 2 {
-            // 2026-07-07 · units audit — the "+Ns heat" delta converts to
-            // the preference unit's per-unit seconds (same reasoning as
-            // the tempo delta above).
-            let heatDeltaDisp = Int(Units.convertPaceSecPerUnit(secPerMile: Double(adj - t), to: Units.preference.distance).rounded())
-            return "TARGET \(formatPace(t)) · +\(heatDeltaDisp)s heat → \(formatPace(adj))"
-        }
         return "TARGET \(formatPace(t))/\(Units.distanceLabel())"
     }
 
@@ -1148,36 +1125,29 @@ private struct RepsPostPanel: View {
     private func repRowGraded(idx: Int, rep: PhaseBreakdown) -> some View {
         let actualSec = parsePaceSec(rep.actual_pace) ?? (targetSec ?? 0)
         let rawT = targetSec ?? actualSec
-        let delta = actualSec - rawT   // shown vs the prescribed (raw) target
-        // Acceptable RANGE = prescribed target → heat-adjusted target.
-        // Intervals hit a range (Research/01 · ±3 lock), and heat widens the
-        // slow edge (you judge against the achievable pace, not the cold
-        // number). In range = a hit (green); faster than the range = went out
-        // hot (neutral); slower than the range = faded (amber).
-        // Acceptable RANGE on the SLOWER ◂ ▸ FASTER axis: from the prescribed
-        // target (fast edge) out to the heat-adjusted pace (slow edge), plus a
-        // little slack each side. A rep is a hit when its dot sits in the green
-        // band · the dot's POSITION still shows the spread (hot early, settled
-        // late) without a bar that maxes out and reads like a miss.
-        // The green band IS the acceptable range (target → heat-adjusted, with
-        // a little slack). A rep inside it hit the workout for the conditions;
-        // its needle shows exactly where it landed. The delta is shown as plain
-        // data (muted) so it reads like a splits report, not a verdict — the
-        // only judgment is in/out of range (green vs amber needle).
-        let adjOff = max(0, (adjustedGoalSec ?? rawT) - rawT)
+        let delta = actualSec - rawT   // shown vs the prescribed target
+        // Acceptable RANGE = prescribed target ± slack. Intervals hit a range
+        // (Research/01 · ±3 lock). In range = a hit (green); faster than the
+        // range = went out hot (neutral); slower than the range = faded
+        // (amber). A rep is a hit when its dot sits in the green band · the
+        // dot's POSITION still shows the spread (hot early, settled late)
+        // without a bar that maxes out and reads like a miss. The delta is
+        // shown as plain data (muted) so it reads like a splits report, not
+        // a verdict — the only judgment is in/out of range (green vs amber
+        // needle).
         let fastTol = 6.0   // slack on the fast edge of the range
-        let slowTol = 4.0   // slack on the slow edge (≈ heat-adjusted)
-        let inRange = Double(delta) >= -fastTol && Double(delta) <= Double(adjOff) + slowTol
+        let slowTol = 4.0   // slack on the slow edge
+        let inRange = Double(delta) >= -fastTol && Double(delta) <= slowTol
         let markColor: Color = inRange ? Theme.green : Color(hex: 0xE0913A)
         // Label speaks the range, not a raw delta: "in range" when the rep
         // landed in the band, else how far past the slow edge ("Ns over") or
         // the fast edge ("Ns fast").
         let rangeLabel: String = inRange
             ? "in range"
-            : (Double(delta) > Double(adjOff) + slowTol ? "\(delta - adjOff)s over" : "\(abs(delta))s fast")
+            : (Double(delta) > slowTol ? "\(delta)s over" : "\(abs(delta))s fast")
         // Map a pace delta (s vs raw target · + = slower) to an x fraction.
         // Slower → left, faster → right (matches the SLOWER ◂ ▸ FASTER legend).
-        let window = Double(adjOff) + 20
+        let window = 20.0
         func frac(_ d: Double) -> Double { 0.5 - max(-window, min(window, d)) / window / 2 }
         return HStack(spacing: 10) {
             VStack(spacing: 0) {
@@ -1193,7 +1163,7 @@ private struct RepsPostPanel: View {
                 let w = geo.size.width
                 let xRep = min(0.95, max(0.05, frac(Double(delta))))
                 let xFast = frac(-fastTol)
-                let xSlow = frac(Double(adjOff) + slowTol)
+                let xSlow = frac(slowTol)
                 ZStack(alignment: .leading) {
                     // base track · solid, full width
                     Capsule().fill(dividerColor).frame(height: 6)
@@ -1241,9 +1211,8 @@ private struct RepsPostPanel: View {
                 // Judge the work average against the same RANGE the reps use,
                 // so it reads "in range" instead of a bare "+2 vs goal" that
                 // looks like a miss next to the 6:43–6:53 band.
-                let adjOff = max(0, (adjustedGoalSec ?? t) - t)
-                let inRange = avgWork >= t - 2 && avgWork <= t + adjOff + 3
-                let tone: HIWTone = inRange ? .good : (avgWork > t + adjOff ? .warn : .good)
+                let inRange = avgWork >= t - 2 && avgWork <= t + 3
+                let tone: HIWTone = inRange ? .good : (avgWork > t ? .warn : .good)
                 // 2026-07-07 · units audit — displayed delta seconds convert
                 // to the preference unit's per-unit scale (same as the two
                 // deltas above).
@@ -1252,7 +1221,7 @@ private struct RepsPostPanel: View {
                 }
                 let deltaStr: String = inRange
                     ? "in range"
-                    : (avgWork > t + adjOff ? "+\(dispSec(avgWork - t - adjOff))s over" : "\(dispSec(avgWork - t))s vs target")
+                    : (avgWork > t ? "+\(dispSec(avgWork - t))s over" : "\(dispSec(avgWork - t))s vs target")
                 HowItWentSignature(
                     label: "AVG WORK",
                     value: formatPace(avgWork),

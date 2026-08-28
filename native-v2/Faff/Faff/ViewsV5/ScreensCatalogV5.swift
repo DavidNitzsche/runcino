@@ -73,7 +73,7 @@ struct ScreensCatalogV5: View {
                                       accountRows: TodayBeforeV5Sample.accountRows,
                                       calendarWeeks: TodayBeforeV5Sample.calendarWeeks))
             },
-            Entry(id: "5a-long", title: "Today · long, heat eased", sub: "PRERUN-1 · finish is the session") {
+            Entry(id: "5a-long", title: "Today · long run", sub: "PRERUN-1 · finish is the session") {
                 AnyView(TodayBeforeV5(model: .samplePreRun_longFinish,
                                       accountName: "Jamie Rowe",
                                       accountWeekLine: "Week 7 of 16",
@@ -306,9 +306,6 @@ struct ScreensCatalogV5: View {
             },
             Entry(id: "7a-injury", title: "Races · injury", sub: "A decision under a flare") {
                 AnyView(RacesV5(model: RacesV5Sample.decode("injury")))
-            },
-            Entry(id: "7a-weather", title: "Races · race-morning heat", sub: "A fact, not a decision") {
-                AnyView(RacesV5(model: RacesV5Sample.decode("weather")))
             },
             Entry(id: "7a-course", title: "Races · course changed", sub: "A fact, not a decision") {
                 AnyView(RacesV5(model: RacesV5Sample.decode("course")))
