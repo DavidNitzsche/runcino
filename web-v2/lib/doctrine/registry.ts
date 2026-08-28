@@ -4575,8 +4575,8 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         //
         // Two tolerances, and the difference between them is the point. 3K is
         // TRANSCRIBED, so it must reproduce the column to within the table's own
-        // rounding — the doc says so under the table itself: "(Values reproduce
-        // Daniels' published tables; rounded to nearest second.)". 5K and 10K
+        // rounding — the doc says so under the table itself: "All values
+        // rounded to nearest second." 5K and 10K
         // are inverted from the Daniels & Gilbert equation, and this section's
         // own opening line scopes that: "within ±2 sec/mi for VDOT 35–70". A
         // transcribed column held to the equation's tolerance would let a

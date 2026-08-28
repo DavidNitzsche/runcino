@@ -75,39 +75,49 @@ const RUNNER_REPORTED_AUTHORITY_CAP: Record<Exclude<AuthorityTier, 'representati
 function kmFromMi(mi: number): number { return mi * 1.609344; }
 
 /**
- * AUDIT #7 (2026-06-16) · published Daniels MILE column, used to correct the
- * raw-equation divergence at short distances.
+ * AUDIT #7 (2026-06-16) · Daniels MILE column, used to anchor the mile-range
+ * path to Research/01's published table.
  *
- * The Daniels & Gilbert %VO2max curve (vo2Cost/pctVO2 below) reproduces the
- * published table within ~0.1 VDOT for 5K–marathon, but systematically
- * OVER-reads at the ~4–7 min mile: the raw inversion of 5:24 → VDOT 54.5 where
- * the published table maps 5:24 → VDOT 50 (+4.5), growing to ~+5.6 by VDOT 74,
- * and returning null (raw > 85 clamp) for sub-3:38 miles. A mile-goal runner's
- * required VDOT therefore reads ~4–5 points too high and the readiness verdict
- * fires pessimistically (goal-ready.ts:116).
+ * AUDIT #7 originally measured the raw Daniels & Gilbert inversion "over-
+ * reading by 4–6 VDOT" against this column. The 2026-08-28 table correction
+ * (Research/REVIEW_NOTES.md A1) found the divergence was an artifact: the
+ * doc's Mile column then held 1500m solutions mislabeled as miles, so the raw
+ * mile inversion was being compared against 1500m data. The corrected column
+ * is the true-mile (1609.34m) solution of the doc's own equations, which the
+ * raw inversion reproduces to within rounding — so this table now agrees with
+ * the equation at the mile. It is kept as the transcription the doctrine gate
+ * binds (`PACE.repetition-is-mile-race-pace` walks every row), it clamps
+ * cleanly at the 30/85 table edges, and it keeps mile-range behavior pinned
+ * to the doc rather than to equation drift.
  *
- * Fix: for distances near the mile, interpolate the PUBLISHED mile column
+ * Fix: for distances near the mile, interpolate the mile column
  * (Research/01 §VDOT lookup table — "Interpolate linearly between rows if
  * needed") instead of the raw equation. The 5K–marathon path is untouched.
  *
  * Column is the literal `Mile` column from Research/01, [VDOT, seconds],
- * sorted by VDOT ascending (so seconds descend).
+ * sorted by VDOT ascending (so seconds descend). Corrected 2026-08-28: the
+ * previous literals ([30, 510]…[85, 208]) were the mislabeled 1500m values
+ * and priced R ~25–40 s/mi too fast.
  */
 const MILE_VDOT_TABLE: ReadonlyArray<readonly [number, number]> = [
-  [30, 510], [32, 481], [34, 456], [36, 434], [38, 414], [40, 395], [42, 379],
-  [44, 363], [45, 356], [46, 349], [48, 336], [50, 324], [52, 313], [54, 303],
-  [55, 298], [56, 293], [58, 284], [60, 276], [62, 269], [64, 262], [65, 258],
-  [66, 255], [68, 249], [70, 243], [72, 238], [74, 232], [75, 230], [76, 227],
-  [78, 223], [80, 218], [82, 214], [84, 210], [85, 208],
+  [30, 550], [32, 520], [34, 493], [36, 469], [38, 447], [40, 427], [42, 409],
+  [44, 392], [45, 384], [46, 377], [48, 363], [50, 350], [52, 338], [54, 327],
+  [55, 321], [56, 316], [58, 306], [60, 297], [62, 289], [64, 281], [65, 277],
+  [66, 273], [68, 266], [70, 259], [72, 253], [74, 247], [75, 244], [76, 241],
+  [78, 236], [80, 231], [82, 226], [84, 221], [85, 219],
 ];
 
-/** Distances (mi) for which the mile-table correction applies. The published
- *  short-distance anchor is the mile column; the next column (3K, 1.864mi) is
- *  far enough that the raw equation has nearly converged, and 5K+ is accurate.
- *  Covers 1500m (0.93mi)…~2km so the mile-goal path (always 1.0mi) and nearby
- *  short distances use the table; everything ≥ this stays on the raw equation. */
-const MILE_CORRECTION_MAX_MI = 1.3;
-const MILE_CORRECTION_MIN_MI = 0.9;
+/** Distances (mi) for which the mile-table lookup applies. Narrowed 2026-08-28
+ *  (was 0.9–1.3): the table maps a finish time to VDOT with no distance
+ *  scaling, so it is only honest where the race IS a mile — the old wide
+ *  window read a 1500m (0.93mi) finish as if it were a mile finish, which the
+ *  corrected true-mile column would over-credit by ~4 VDOT. 1500m and other
+ *  nearby distances now fall through to the raw equation, which the corrected
+ *  Research/01 table shows reproduces the doc's own solutions at short
+ *  distances (the old "over-reads at the mile" finding was an artifact of the
+ *  mislabeled 1500m column — see Research/REVIEW_NOTES.md A1). */
+const MILE_CORRECTION_MAX_MI = 1.05;
+const MILE_CORRECTION_MIN_MI = 0.98;
 function isMileRange(distanceMi: number): boolean {
   return distanceMi >= MILE_CORRECTION_MIN_MI && distanceMi <= MILE_CORRECTION_MAX_MI;
 }
@@ -835,10 +845,11 @@ export function racePaceFromVdot(
  * anchor is "~mile to 800m race pace".
  *
  * `predictRaceTime` at one mile routes through `MILE_VDOT_TABLE` — the literal
- * Mile column — rather than through the Daniels & Gilbert equation, which
- * AUDIT #7 measured over-reading by 4-6 VDOT points at the mile. So R comes out
- * of the table Daniels published, at one mile, which makes the seconds the
- * finish time and the pace the same number.
+ * Mile column, corrected 2026-08-28 to true-mile solutions of the doc's own
+ * equations (the prior values were 1500m solutions mislabeled as miles, so R
+ * priced ~25–40 s/mi too fast — Research/REVIEW_NOTES.md A1). So R comes out
+ * of the doc's table, at one mile, which makes the seconds the finish time
+ * and the pace the same number.
  *
  * Bound by `PACE.repetition-is-mile-race-pace` in lib/doctrine/registry.ts.
  */

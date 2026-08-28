@@ -90,9 +90,10 @@ describe('computeGoalReady', () => {
   });
 
   it('1mi and 10k buckets resolve required VDOT', () => {
-    // AUDIT #7 · was `> 55`, which encoded the raw-equation over-read of the
-    // mile (5:00 → ~59.4). The published Daniels table maps 4:58 → VDOT 55, so a
-    // sub-5:00 mile is ~54.6 (now table-interpolated). Corrected to `> 54`.
+    // AUDIT #7 · was `> 55`; corrected to `> 54` when the mile went table-
+    // interpolated. 2026-08-28: the Mile column was found to hold 1500m
+    // solutions and was recomputed as true miles (REVIEW_NOTES A1), so a
+    // sub-5:00 mile now reads ~59.3 — still comfortably above the floor.
     expect(computeGoalReady('1mi', 'Under 5:00', [], TODAY)?.requiredVdot).toBeGreaterThan(54);
     expect(computeGoalReady('10k', '40-45', [], TODAY)?.requiredVdot).toBeGreaterThan(40);
   });

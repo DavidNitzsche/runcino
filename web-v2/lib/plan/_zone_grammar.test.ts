@@ -49,9 +49,9 @@ describe('ZONE-R-1 · the zones the engine can price', () => {
   it('R is the published mile column, not an offset off I', () => {
     // Research/01 §"Pace conversion": "R | ~mile race pace, or ~6 sec/400m
     // faster than I". The first reading, because the mile is a column.
-    expect(rPaceFromVdot(50)).toBe(324);   // Research/01's Mile column, VDOT 50 → 5:24
-    expect(rPaceFromVdot(40)).toBe(395);   // 6:35
-    expect(rPaceFromVdot(70)).toBe(243);   // 4:03
+    expect(rPaceFromVdot(50)).toBe(350);   // Research/01's Mile column, VDOT 50 → 5:50
+    expect(rPaceFromVdot(40)).toBe(427);   // 7:07
+    expect(rPaceFromVdot(70)).toBe(259);   // 4:19
     // Faster than I at every VDOT, which is what makes it a different zone.
     for (const v of [35, 45, 55, 65, 75]) {
       const r = rPaceFromVdot(v)!;
