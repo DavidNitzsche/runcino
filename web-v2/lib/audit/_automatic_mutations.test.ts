@@ -362,9 +362,16 @@ describe('GUARD 6 · a surfaced change reaches the phone, not just the web', () 
     const walkSwift = (dir: string) => {
       if (!existsSync(dir)) return;
       for (const name of readdirSync(dir)) {
-        if (name.startsWith('.')) continue;
+        // Xcode build output can hold entries stat() rejects on this volume, and holds no source.
+        if (name.startsWith('.') || name === 'build' || name === 'DerivedData') continue;
         const p = join(dir, name);
-        if (statSync(p).isDirectory()) walkSwift(p);
+        let stat;
+        try {
+          stat = statSync(p);
+        } catch {
+          continue;
+        }
+        if (stat.isDirectory()) walkSwift(p);
         else if (name.endsWith('.swift')) files.push(p);
       }
     };
